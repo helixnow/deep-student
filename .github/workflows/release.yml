@@ -1,6 +1,9 @@
 # 自动发布工作流
-# 触发方式: 推送 v* 标签时自动运行
-# 流程: 多平台构建 → 签名 → 生成 latest.json → 上传到 GitHub Release
+#
+# 触发方式:
+#   1. 推送到 main → release-please 自动管理 Release PR
+#   2. 合并 Release PR → 自动构建 + 发布全平台产物
+#   3. 推送 v* 标签 → 手动触发构建 + 发布（兼容旧方式）
 #
 # 需要在仓库 Settings → Secrets 中配置:
 #   TAURI_SIGNING_PRIVATE_KEY          - Tauri 更新签名私钥
@@ -12,25 +15,68 @@
 #   ANDROID_KEY_ALIAS                  - 密钥别名 (默认 deepstudent)
 #   ANDROID_KEY_PASSWORD               - 密钥密码
 #
-# macOS 公证（可选，如需公证）:
-#   APPLE_SIGNING_IDENTITY             - 签名身份
-#   APPLE_ID                           - Apple ID
-#   APPLE_PASSWORD                     - App-specific password
-#   APPLE_TEAM_ID                      - Team ID
+# macOS 公证（可选）:
+#   APPLE_SIGNING_IDENTITY / APPLE_ID / APPLE_PASSWORD / APPLE_TEAM_ID
 
 name: Release
 
 on:
   push:
-    tags:
-      - 'v*'
+    branches: [main]
+    tags: ['v*']
 
 env:
   GITHUB_REPO: ${{ github.repository }}
 
 jobs:
+  # ─── Release Please ─────────────────────────────────────
+  release-please:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+    steps:
+      - uses: googleapis/release-please-action@v4
+        id: release
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+  # ─── 准备阶段 ──────────────────────────────────────────
+  prepare:
+    needs: [release-please]
+    if: always() && !failure() && !cancelled()
+    runs-on: ubuntu-latest
+    outputs:
+      should_build: ${{ steps.check.outputs.should_build }}
+      version: ${{ steps.check.outputs.version }}
+      tag_name: ${{ steps.check.outputs.tag_name }}
+    steps:
+      - id: check
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            echo "should_build=true" >> $GITHUB_OUTPUT
+            echo "tag_name=${GITHUB_REF_NAME}" >> $GITHUB_OUTPUT
+            echo "version=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+            echo "🏷️ Manual tag push: ${GITHUB_REF_NAME}"
+          elif [[ "${{ needs.release-please.outputs.release_created }}" == "true" ]]; then
+            echo "should_build=true" >> $GITHUB_OUTPUT
+            TAG="${{ needs.release-please.outputs.tag_name }}"
+            echo "tag_name=${TAG}" >> $GITHUB_OUTPUT
+            echo "version=${TAG#v}" >> $GITHUB_OUTPUT
+            echo "📦 Release created by release-please: ${TAG}"
+          else
+            echo "should_build=false" >> $GITHUB_OUTPUT
+            echo "⏭️ No release needed, skipping builds"
+          fi
+
   # ─── macOS 构建 ──────────────────────────────────────────
   build-macos:
+    needs: [prepare]
+    if: needs.prepare.outputs.should_build == 'true'
     runs-on: macos-latest
     env:
       NODE_OPTIONS: '--max-old-space-size=4096'
@@ -42,6 +88,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: ${{ needs.prepare.outputs.tag_name }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -74,7 +121,6 @@ jobs:
       - name: Rename updater artifacts with arch suffix
         run: |
           BUNDLE_DIR="src-tauri/target/${{ matrix.target }}/release/bundle/macos"
-          # 提取架构简称: aarch64-apple-darwin → aarch64, x86_64-apple-darwin → x86_64
           ARCH=$(echo "${{ matrix.target }}" | cut -d'-' -f1)
           for f in "$BUNDLE_DIR"/*.app.tar.gz; do
             [ -f "$f" ] || continue
@@ -96,6 +142,8 @@ jobs:
 
   # ─── Windows 构建 ─────────────────────────────────────────
   build-windows:
+    needs: [prepare]
+    if: needs.prepare.outputs.should_build == 'true'
     runs-on: windows-latest
     env:
       NODE_OPTIONS: '--max-old-space-size=4096'
@@ -103,6 +151,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: ${{ needs.prepare.outputs.tag_name }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -140,6 +189,8 @@ jobs:
 
   # ─── Android 构建 ──────────────────────────────────────────
   build-android:
+    needs: [prepare]
+    if: needs.prepare.outputs.should_build == 'true'
     runs-on: ubuntu-latest
     env:
       NODE_OPTIONS: '--max-old-space-size=4096'
@@ -147,6 +198,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: ${{ needs.prepare.outputs.tag_name }}
 
       - name: Free disk space
         run: |
@@ -194,7 +246,6 @@ jobs:
         run: |
           NDK_PREBUILT="${NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64"
 
-          # 覆盖 .cargo/config.toml 中的本地 macOS NDK 路径
           sed -i '/\[target.aarch64-linux-android\]/,/^$/{ s|linker = .*|linker = "'"${NDK_PREBUILT}"'/bin/aarch64-linux-android21-clang"|; s|ar = .*|ar = "'"${NDK_PREBUILT}"'/bin/llvm-ar"| }' src-tauri/.cargo/config.toml
 
           echo "CC_aarch64_linux_android=${NDK_PREBUILT}/bin/aarch64-linux-android21-clang" >> $GITHUB_ENV
@@ -215,10 +266,8 @@ jobs:
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
-          # 解码密钥库
           echo "${ANDROID_KEYSTORE_BASE64}" | base64 -d > /tmp/release.keystore
 
-          # 定位未签名 APK
           UNSIGNED_APK=$(find src-tauri/gen/android -name "*-unsigned.apk" -type f | head -1)
           if [ -z "$UNSIGNED_APK" ]; then
             echo "::error::未找到未签名的 APK"
@@ -227,13 +276,10 @@ jobs:
           fi
           echo "找到 APK: $UNSIGNED_APK"
 
-          # 定位 build-tools
           BUILD_TOOLS=$(ls -d "${ANDROID_HOME}/build-tools/"* | sort -V | tail -1)
 
-          # 对齐
           "${BUILD_TOOLS}/zipalign" -v 4 "$UNSIGNED_APK" /tmp/aligned.apk
 
-          # 签名 (V2/V3)
           "${BUILD_TOOLS}/apksigner" sign \
             --ks /tmp/release.keystore \
             --ks-key-alias "${ANDROID_KEY_ALIAS:-deepstudent}" \
@@ -242,15 +288,12 @@ jobs:
             --in /tmp/aligned.apk \
             --out /tmp/signed.apk
 
-          # 验证
           "${BUILD_TOOLS}/apksigner" verify --print-certs /tmp/signed.apk
 
-          # 输出
-          VERSION="${GITHUB_REF_NAME#v}"
+          VERSION="${{ needs.prepare.outputs.version }}"
           mkdir -p android-output
           cp /tmp/signed.apk "android-output/Deep.Student_${VERSION}_arm64.apk"
 
-          # 清理密钥库
           rm -f /tmp/release.keystore
 
           echo "✅ APK 签名完成: Deep.Student_${VERSION}_arm64.apk"
@@ -264,17 +307,13 @@ jobs:
 
   # ─── 发布 ────────────────────────────────────────────────
   publish:
-    needs: [build-macos, build-windows, build-android]
+    needs: [prepare, build-macos, build-windows, build-android]
+    if: needs.prepare.outputs.should_build == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
 
       - name: Download all artifacts
         uses: actions/download-artifact@v4
@@ -286,11 +325,11 @@ jobs:
 
       - name: Generate latest.json
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
+          VERSION="${{ needs.prepare.outputs.version }}"
           REPO="${{ github.repository }}"
+          TAG="${{ needs.prepare.outputs.tag_name }}"
           DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
-          # 初始化 platforms JSON
           PLATFORMS="{}"
 
           # ── macOS aarch64 ──
@@ -301,7 +340,7 @@ jobs:
             if [ -n "$TAR" ] && [ -n "$SIG" ]; then
               TAR_NAME=$(basename "$TAR")
               SIGNATURE=$(cat "$SIG")
-              PLATFORMS=$(echo "$PLATFORMS" | jq --arg url "https://github.com/$REPO/releases/download/v$VERSION/$TAR_NAME" \
+              PLATFORMS=$(echo "$PLATFORMS" | jq --arg url "https://github.com/$REPO/releases/download/$TAG/$TAR_NAME" \
                 --arg sig "$SIGNATURE" \
                 '. + {"darwin-aarch64": {"url": $url, "signature": $sig}}')
             fi
@@ -315,7 +354,7 @@ jobs:
             if [ -n "$TAR" ] && [ -n "$SIG" ]; then
               TAR_NAME=$(basename "$TAR")
               SIGNATURE=$(cat "$SIG")
-              PLATFORMS=$(echo "$PLATFORMS" | jq --arg url "https://github.com/$REPO/releases/download/v$VERSION/$TAR_NAME" \
+              PLATFORMS=$(echo "$PLATFORMS" | jq --arg url "https://github.com/$REPO/releases/download/$TAG/$TAR_NAME" \
                 --arg sig "$SIGNATURE" \
                 '. + {"darwin-x86_64": {"url": $url, "signature": $sig}}')
             fi
@@ -329,13 +368,12 @@ jobs:
             if [ -n "$EXE" ] && [ -n "$SIG" ]; then
               EXE_NAME=$(basename "$EXE")
               SIGNATURE=$(cat "$SIG")
-              PLATFORMS=$(echo "$PLATFORMS" | jq --arg url "https://github.com/$REPO/releases/download/v$VERSION/$EXE_NAME" \
+              PLATFORMS=$(echo "$PLATFORMS" | jq --arg url "https://github.com/$REPO/releases/download/$TAG/$EXE_NAME" \
                 --arg sig "$SIGNATURE" \
                 '. + {"windows-x86_64": {"url": $url, "signature": $sig}}')
             fi
           fi
 
-          # 生成 latest.json
           jq -n \
             --arg version "$VERSION" \
             --arg notes "Deep Student v$VERSION 更新" \
@@ -352,23 +390,21 @@ jobs:
           mkdir -p release-files
           cp latest.json release-files/
 
-          # 复制所有更新包和签名
           find artifacts -name "*.app.tar.gz" -exec cp {} release-files/ \;
           find artifacts -name "*.app.tar.gz.sig" -exec cp {} release-files/ \;
-          # 复制安装包和签名
           find artifacts -name "*.dmg" -exec cp {} release-files/ \;
           find artifacts -name "*.exe" -exec cp {} release-files/ \;
           find artifacts -name "*.exe.sig" -exec cp {} release-files/ \;
-          # 复制 Android APK
           find artifacts -name "*.apk" -exec cp {} release-files/ \;
 
           echo "📦 Release files:"
           ls -lh release-files/
 
-      - name: Create GitHub Release
+      - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ needs.prepare.outputs.tag_name }}
           draft: false
           prerelease: false
-          generate_release_notes: true
+          generate_release_notes: ${{ startsWith(github.ref, 'refs/tags/') }}
           files: release-files/*
