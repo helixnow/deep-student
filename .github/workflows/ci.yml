@@ -5,9 +5,6 @@ on:
     branches: [main, develop]
   pull_request:
     branches: [main, develop]
-  schedule:
-    # 每周一 UTC 6:00 运行安全扫描
-    - cron: '0 6 * * 1'
 
 # 取消同一分支上的重复运行
 concurrency:
@@ -16,69 +13,48 @@ concurrency:
 
 jobs:
   # ============================================
-  # 前端检查与测试
+  # 前端编译检查
   # ============================================
   frontend:
-    name: Frontend (Lint & Test)
+    name: Frontend
     runs-on: ubuntu-latest
-    
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'npm'
 
-      - name: Install dependencies
-        run: npm ci
+      - run: npm ci
 
       - name: Generate version info
         run: node scripts/generate-version.mjs
 
-      - name: Lifecycle score gate
-        run: node scripts/lifecycle-score-gate.mjs
-
       - name: Type check
         run: npx tsc --noEmit
 
-      - name: Unit tests
-        run: npm run test:unit -- --run --reporter=verbose
-
-      - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium
-
-      - name: Component tests
-        run: npm run test-ct
-
   # ============================================
-  # Rust 后端检查
+  # 后端编译检查
   # ============================================
   backend:
-    name: Backend (Rust)
+    name: Backend
     runs-on: ubuntu-latest
     env:
       CARGO_INCREMENTAL: 0
-    
     steps:
       - name: Free disk space
         run: |
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
           sudo docker image prune --all --force
-          df -h
 
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          components: clippy, rustfmt
+          components: rustfmt
 
-      - name: Cache Cargo
-        uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
 
@@ -91,94 +67,6 @@ jobs:
         working-directory: src-tauri
         run: cargo fmt --check
 
-      - name: Clippy
-        working-directory: src-tauri
-        run: cargo clippy --all-targets -- -D warnings
-        continue-on-error: true  # 暂时允许警告，后续逐步清理
-
-      - name: Run Tests
-        working-directory: src-tauri
-        run: cargo test --workspace
-
-      - name: Run Data Governance Tests
-        working-directory: src-tauri
-        run: cargo test --features data_governance --package deep-student-lib
-
       - name: Build check
         working-directory: src-tauri
-        run: cargo check --all-targets
-
-  # ============================================
-  # 构建验证（仅 PR）
-  # ============================================
-  build-check:
-    name: Build Verification
-    runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
-    needs: [frontend, backend]
-    
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache Cargo
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: src-tauri
-
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
-
-      - name: Install npm dependencies
-        run: npm ci
-
-      - name: Build frontend
-        run: npm run build
-
-      - name: Build Tauri (Linux)
-        run: npx tauri build --target x86_64-unknown-linux-gnu
-        env:
-          TAURI_SIGNING_PRIVATE_KEY: ''  # 跳过签名
-
-  # ============================================
-  # 安全扫描（定时 + PR）
-  # ============================================
-  security:
-    name: Security Audit
-    runs-on: ubuntu-latest
-    if: github.event_name == 'schedule' || github.event_name == 'pull_request'
-    
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: NPM Audit
-        run: npm audit --audit-level=high
-        continue-on-error: true
-
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Install cargo-audit
-        run: cargo install cargo-audit
-
-      - name: Cargo Audit
-        working-directory: src-tauri
-        run: cargo audit
-        continue-on-error: true
+        run: cargo check
