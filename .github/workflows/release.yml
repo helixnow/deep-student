@@ -6,6 +6,12 @@
 #   TAURI_SIGNING_PRIVATE_KEY          - Tauri 更新签名私钥
 #   TAURI_SIGNING_PRIVATE_KEY_PASSWORD - 私钥密码
 #
+# Android 签名:
+#   ANDROID_KEYSTORE_BASE64            - release.keystore 的 base64 编码
+#   ANDROID_KEYSTORE_PASSWORD          - 密钥库密码
+#   ANDROID_KEY_ALIAS                  - 密钥别名 (默认 deepstudent)
+#   ANDROID_KEY_PASSWORD               - 密钥密码
+#
 # macOS 公证（可选，如需公证）:
 #   APPLE_SIGNING_IDENTITY             - 签名身份
 #   APPLE_ID                           - Apple ID
@@ -108,9 +114,133 @@ jobs:
             src-tauri/target/release/bundle/nsis/*.exe
             src-tauri/target/release/bundle/nsis/*.exe.sig
 
+  # ─── Android 构建 ──────────────────────────────────────────
+  build-android:
+    runs-on: ubuntu-latest
+    env:
+      NODE_OPTIONS: '--max-old-space-size=4096'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android/sdk/ndk /opt/ghc /opt/hostedtoolcache/CodeQL
+          sudo docker image prune --all --force
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Setup Android SDK & NDK
+        run: |
+          yes | ${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager \
+            "ndk;27.0.12077973" "build-tools;35.0.0" "platforms;android-35" | tail -3
+          echo "NDK_HOME=${ANDROID_HOME}/ndk/27.0.12077973" >> $GITHUB_ENV
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      - name: Setup protoc
+        uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate version info
+        run: node scripts/generate-version.mjs
+
+      - name: Initialize Android project
+        run: npx tauri android init
+
+      - name: Configure NDK toolchain
+        run: |
+          NDK_PREBUILT="${NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64"
+
+          # 覆盖 .cargo/config.toml 中的本地 macOS NDK 路径
+          sed -i '/\[target.aarch64-linux-android\]/,/^$/{ s|linker = .*|linker = "'"${NDK_PREBUILT}"'/bin/aarch64-linux-android21-clang"|; s|ar = .*|ar = "'"${NDK_PREBUILT}"'/bin/llvm-ar"| }' src-tauri/.cargo/config.toml
+
+          echo "CC_aarch64_linux_android=${NDK_PREBUILT}/bin/aarch64-linux-android21-clang" >> $GITHUB_ENV
+          echo "CXX_aarch64_linux_android=${NDK_PREBUILT}/bin/aarch64-linux-android21-clang++" >> $GITHUB_ENV
+          echo "AR_aarch64_linux_android=${NDK_PREBUILT}/bin/llvm-ar" >> $GITHUB_ENV
+          echo "CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=${NDK_PREBUILT}/bin/aarch64-linux-android21-clang" >> $GITHUB_ENV
+
+          echo "✅ NDK toolchain configured:"
+          cat src-tauri/.cargo/config.toml | grep -A2 aarch64-linux-android
+
+      - name: Build Android APK
+        run: npx tauri android build --target aarch64
+
+      - name: Sign APK
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          # 解码密钥库
+          echo "${ANDROID_KEYSTORE_BASE64}" | base64 -d > /tmp/release.keystore
+
+          # 定位未签名 APK
+          UNSIGNED_APK=$(find src-tauri/gen/android -name "*-unsigned.apk" -type f | head -1)
+          if [ -z "$UNSIGNED_APK" ]; then
+            echo "::error::未找到未签名的 APK"
+            find src-tauri/gen/android -name "*.apk" -type f
+            exit 1
+          fi
+          echo "找到 APK: $UNSIGNED_APK"
+
+          # 定位 build-tools
+          BUILD_TOOLS=$(ls -d "${ANDROID_HOME}/build-tools/"* | sort -V | tail -1)
+
+          # 对齐
+          "${BUILD_TOOLS}/zipalign" -v 4 "$UNSIGNED_APK" /tmp/aligned.apk
+
+          # 签名 (V2/V3)
+          "${BUILD_TOOLS}/apksigner" sign \
+            --ks /tmp/release.keystore \
+            --ks-key-alias "${ANDROID_KEY_ALIAS:-deepstudent}" \
+            --ks-pass "pass:${ANDROID_KEYSTORE_PASSWORD}" \
+            --key-pass "pass:${ANDROID_KEY_PASSWORD}" \
+            --in /tmp/aligned.apk \
+            --out /tmp/signed.apk
+
+          # 验证
+          "${BUILD_TOOLS}/apksigner" verify --print-certs /tmp/signed.apk
+
+          # 输出
+          VERSION="${GITHUB_REF_NAME#v}"
+          mkdir -p android-output
+          cp /tmp/signed.apk "android-output/Deep.Student_${VERSION}_arm64.apk"
+
+          # 清理密钥库
+          rm -f /tmp/release.keystore
+
+          echo "✅ APK 签名完成: Deep.Student_${VERSION}_arm64.apk"
+          ls -lh android-output/
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-arm64
+          path: android-output/*.apk
+
   # ─── 发布 ────────────────────────────────────────────────
   publish:
-    needs: [build-macos, build-windows]
+    needs: [build-macos, build-windows, build-android]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -205,6 +335,8 @@ jobs:
           find artifacts -name "*.dmg" -exec cp {} release-files/ \;
           find artifacts -name "*.exe" -exec cp {} release-files/ \;
           find artifacts -name "*.exe.sig" -exec cp {} release-files/ \;
+          # 复制 Android APK
+          find artifacts -name "*.apk" -exec cp {} release-files/ \;
 
           echo "📦 Release files:"
           ls -lh release-files/

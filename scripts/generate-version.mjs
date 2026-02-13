@@ -16,8 +16,8 @@ const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf-8'));
 const appVersion = packageJson.version;
 
 // 获取git总提交次数作为build number
-// ★ 版本基数：新仓库从 10000 起步，确保高于旧仓库所有历史版本
-const VERSION_CODE_BASE = 10000;
+// ★ 版本基数：新仓库从 13000 起步，确保高于旧仓库所有历史版本
+const VERSION_CODE_BASE = 13000;
 let gitCommitCount = 0;
 try {
   gitCommitCount = parseInt(execSync('git rev-list --all --count', { cwd: projectRoot, encoding: 'utf-8' }).trim(), 10) || 0;
