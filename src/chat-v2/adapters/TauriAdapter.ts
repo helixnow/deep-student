@@ -250,7 +250,7 @@ export class ChatV2TauriAdapter {
       const blockEventChannel = `chat_v2_event_${this.sessionId}`;
       const sessionEventChannel = `chat_v2_session_${this.sessionId}`;
 
-      const [blockUnlisten, sessionUnlisten, ankiUnlisten] = await Promise.all([
+      const [blockUnlisten, sessionUnlisten, ankiUnlisten, llmReqUnlisten] = await Promise.all([
         listen<BackendEvent>(blockEventChannel, (event) => {
           this.handleBlockEvent(event.payload);
         }),
@@ -260,9 +260,12 @@ export class ChatV2TauriAdapter {
         listen<unknown>('anki_generation_event', (event) => {
           this.handleAnkiGenerationEvent(event.payload);
         }),
+        listen<{ streamEvent: string; model: string; url: string; requestBody: unknown }>('chat_v2_llm_request_body', (event) => {
+          this.handleLlmRequestBody(event.payload);
+        }),
       ]);
 
-      this.unlisteners.push(blockUnlisten, sessionUnlisten, ankiUnlisten);
+      this.unlisteners.push(blockUnlisten, sessionUnlisten, ankiUnlisten, llmReqUnlisten);
       this.claimAnkiEventOwnership('retrySetupListeners');
       
       console.log(LOG_PREFIX, `Retry successful: ${this.unlisteners.length} event listeners registered`);
@@ -355,6 +358,10 @@ export class ChatV2TauriAdapter {
         listen<unknown>('anki_generation_event', (event) => {
           this.handleAnkiGenerationEvent(event.payload);
         }),
+        // ★ 2026-02-14: 监听后端真实 LLM 请求体，替换前端 rawRequest
+        listen<{ streamEvent: string; model: string; url: string; requestBody: unknown }>('chat_v2_llm_request_body', (event) => {
+          this.handleLlmRequestBody(event.payload);
+        }),
       ]);
       
       // 🔧 P20 修复：保存 listenPromise，供子代理场景等待监听器就绪
@@ -443,8 +450,8 @@ export class ChatV2TauriAdapter {
       sessionSwitchPerf.mark('parallel_done');
       
       // 事件监听在后台继续，不阻塞 setup 完成
-      listenPromise.then(([blockUnlisten, sessionUnlisten, ankiUnlisten]) => {
-        this.unlisteners.push(blockUnlisten, sessionUnlisten, ankiUnlisten);
+      listenPromise.then(([blockUnlisten, sessionUnlisten, ankiUnlisten, llmReqUnlisten]) => {
+        this.unlisteners.push(blockUnlisten, sessionUnlisten, ankiUnlisten, llmReqUnlisten);
         this.claimAnkiEventOwnership('setup');
         // 📊 细粒度打点：listen 完成（后台）
         sessionSwitchPerf.mark('listen_end');
@@ -1166,6 +1173,52 @@ export class ChatV2TauriAdapter {
   }
 
   /**
+   * ★ 2026-02-14: 处理后端真实 LLM 请求体事件
+   *
+   * 后端在构建并脱敏 LLM 请求体后通过 `chat_v2_llm_request_body` 全局事件推送。
+   * 此方法按 streamEvent 中的 session_id 过滤，仅处理当前会话的事件，
+   * 然后将 rawRequest 更新为后端的真实请求体（替换之前保存的前端请求）。
+   */
+  private handleLlmRequestBody(payload: { streamEvent: string; model: string; url: string; requestBody: unknown }): void {
+    // streamEvent 格式: chat_v2_event_{session_id} 或 chat_v2_event_{session_id}_{variant_id}
+    const prefix = `chat_v2_event_${this.sessionId}`;
+    if (!payload.streamEvent.startsWith(prefix)) {
+      return; // 不属于当前会话，忽略
+    }
+
+    // 找到当前正在流式生成的助手消息
+    const state = this.getCurrentState();
+    const streamingMessageId = state.currentStreamingMessageId;
+    if (!streamingMessageId) {
+      // 没有正在流式的消息，尝试用最后一条助手消息
+      const lastMsgId = state.messageOrder[state.messageOrder.length - 1];
+      if (lastMsgId) {
+        const lastMsg = state.messageMap.get(lastMsgId);
+        if (lastMsg && lastMsg.role === 'assistant') {
+          state.updateMessageMeta(lastMsgId, {
+            rawRequest: {
+              _source: 'backend_llm',
+              model: payload.model,
+              url: payload.url,
+              body: payload.requestBody,
+            },
+          });
+        }
+      }
+      return;
+    }
+
+    state.updateMessageMeta(streamingMessageId, {
+      rawRequest: {
+        _source: 'backend_llm',
+        model: payload.model,
+        url: payload.url,
+        body: payload.requestBody,
+      },
+    });
+  }
+
+  /**
    * 处理会话级事件
    * 
    * 注意：此方法是同步的，但内部的保存操作是异步的。
@@ -1841,7 +1894,12 @@ export class ChatV2TauriAdapter {
       this.store.setPendingParallelModelIds(null);
 
       // 🆕 开发者调试：保存完整请求体到助手消息的元数据
-      this.store.updateMessageMeta(assistantMessageId, { rawRequest: request });
+      // ★ 2026-02-14: 如果后端已推送真实 LLM 请求体（_source='backend_llm'），则不覆盖
+      const existingMeta = this.getCurrentState().messageMap.get(assistantMessageId)?._meta;
+      const existingRaw = existingMeta?.rawRequest as { _source?: string } | undefined;
+      if (!existingRaw || existingRaw._source !== 'backend_llm') {
+        this.store.updateMessageMeta(assistantMessageId, { rawRequest: request });
+      }
 
       console.log(LOG_PREFIX, 'Message sent, assistant ID:', returnedAssistantMessageId);
 

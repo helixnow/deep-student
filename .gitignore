@@ -241,3 +241,12 @@ src-tauri/.cargo-target/
 /docs/design/code-review-prompts/
 /docs/design/**/*code-review*.md
 docs/RELEASE-WORKFLOW.md
+
+# Internal architecture/contract docs (not for OSS repo)
+/docs/api-config-provider-editing.md
+/docs/mindmap-layout-architecture.md
+/docs/mindmap-layout-style-system.md
+/docs/ocr-adapters.md
+
+# Intermediate verification/fix docs in src
+src/**/verify-*.md

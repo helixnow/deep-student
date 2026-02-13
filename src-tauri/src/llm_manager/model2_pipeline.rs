@@ -103,6 +103,36 @@ pub(crate) fn log_llm_request_audit(tag: &str, url: &str, model: &str, body: &se
     }
 }
 
+/// ★ 2026-02-14: 将脱敏后的 LLM 请求体推送给前端显示
+///
+/// 通过 `chat_v2_llm_request_body` 全局事件通道发射，前端按 session_id 过滤。
+/// 仅在 `stream_event` 以 `chat_v2_event_` 开头时发射（仅 Chat V2 流）。
+pub(crate) fn emit_llm_request_body_to_frontend(
+    window: &tauri::Window,
+    stream_event: &str,
+    model: &str,
+    url: &str,
+    body: &serde_json::Value,
+) {
+    // 仅对 Chat V2 流发射（stream_event 格式: chat_v2_event_{session_id} 或 chat_v2_event_{session_id}_{variant_id}）
+    let prefix = "chat_v2_event_";
+    if !stream_event.starts_with(prefix) {
+        return;
+    }
+
+    let sanitized = sanitize_request_body_for_audit(body);
+    let payload = json!({
+        "streamEvent": stream_event,
+        "model": model,
+        "url": url,
+        "requestBody": sanitized,
+    });
+
+    if let Err(e) = window.emit("chat_v2_llm_request_body", &payload) {
+        warn!("[LLM_AUDIT] Failed to emit llm_request_body event: {}", e);
+    }
+}
+
 impl LLMManager {
     // 统一AI接口层 - 模型二（核心解析/对话）- 流式版本
     pub async fn call_unified_model_2_stream(
@@ -923,6 +953,7 @@ impl LLMManager {
             .map_err(|e| Self::provider_error("对话请求构建失败", e))?;
 
         log_llm_request_audit("CHAT_STREAM", &preq.url, &config.model, &request_body);
+        emit_llm_request_body_to_frontend(&window, stream_event, &config.model, &preq.url, &request_body);
 
         // 发出开始事件
         let request_id = Uuid::new_v4().to_string();
@@ -2148,6 +2179,7 @@ impl LLMManager {
             .map_err(|e| Self::provider_error("续写请求构建失败", e))?;
 
         log_llm_request_audit("CONTINUE_STREAM", &preq.url, &config.model, &request_body);
+        emit_llm_request_body_to_frontend(&window, stream_event, &config.model, &preq.url, &request_body);
 
         let mut request_builder = self.client
             .post(&preq.url)

@@ -1004,19 +1004,26 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
           )}
 
           {/* 🆕 开发者调试：显示完整请求体（仅助手消息且设置开启时显示） */}
-          {showRawRequest && !isUser && message._meta?.rawRequest && (
+          {showRawRequest && !isUser && message._meta?.rawRequest && (() => {
+            const raw = message._meta.rawRequest as { _source?: string; model?: string; url?: string; body?: unknown };
+            const isBackendLlm = raw._source === 'backend_llm';
+            const displayBody = isBackendLlm ? raw.body : message._meta.rawRequest;
+            const copyText = JSON.stringify(displayBody, null, 2);
+            return (
             <div className="mt-4 rounded-md border border-border/50 bg-muted/30 p-3">
               <div className="mb-2 text-xs font-medium text-muted-foreground flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
                   </svg>
-                  {t('messageItem.rawRequest.title')}
+                  {isBackendLlm
+                    ? `${t('messageItem.rawRequest.title')} — ${raw.model ?? ''}`
+                    : t('messageItem.rawRequest.title')}
                 </div>
                 <button
                   onClick={async () => {
                     try {
-                      await navigator.clipboard.writeText(JSON.stringify(message._meta?.rawRequest, null, 2));
+                      await navigator.clipboard.writeText(copyText);
                       showGlobalNotification('success', t('messageItem.rawRequest.copySuccess'));
                     } catch (error: unknown) {
                       showGlobalNotification('error', getErrorMessage(error), t('messageItem.rawRequest.copyFailed'));
@@ -1031,11 +1038,17 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                   {t('messageItem.rawRequest.copy')}
                 </button>
               </div>
+              {isBackendLlm && raw.url && (
+                <div className="mb-1.5 text-[11px] text-muted-foreground/70 font-mono truncate" title={raw.url}>
+                  POST {raw.url}
+                </div>
+              )}
               <pre className="overflow-x-auto rounded bg-background/80 p-2 text-xs text-foreground/80 font-mono max-h-80 overflow-y-auto">
-                {JSON.stringify(message._meta.rawRequest, null, 2)}
+                {copyText}
               </pre>
             </div>
-          )}
+            );
+          })()}
         </div>
       </div>
       )}
