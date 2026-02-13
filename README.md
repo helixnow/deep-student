@@ -22,8 +22,8 @@
 </div>
 
 <p align="center">
-  <img src="./example/主页面.png" width="48%" alt="桌面端主界面" />
-  <img src="./example/移动端主页面.png" width="48%" alt="移动端主界面" />
+  <img src="./example/主页面.png" width="68%" alt="桌面端主界面" />
+  <img src="./example/移动端主页面.png" width="28%" alt="移动端主界面" />
 </p>
 
 ---
@@ -33,7 +33,7 @@
 | | 功能 | 说明 |
 |:---:|---|---|
 | 💬 | **智能对话** | 多模态输入、深度推理（思维链）、多模型对比、RAG 知识检索 |
-| 📚 | **学习资源中心** | VFS 统一管理笔记/教材/题库，自动 OCR 与向量化索引 |
+| 📚 | **学习资源中心** | VFS 统一管理笔记/教材/题库，批量 OCR 与向量化索引 |
 | 🃏 | **Anki 智能制卡** | 对话式批量制卡，可视化模板编辑，断点续传，一键同步 Anki |
 | 🔬 | **深度调研** | 多步骤 Agent，联网搜索（7 引擎），生成结构化报告并保存笔记 |
 | 🧠 | **知识导图** | AI 对话生成知识体系，多轮编辑，大纲/导图视图切换，背诵模式 |
@@ -108,7 +108,7 @@ DeepStudent 旨在构建一个**完全 AI 原生**的学习闭环，解决碎片
 └─────────────────────────────────────────────────────────┘
 ```
 
-- **AI 原生数据层**：统一的 **虚拟文件系统 (VFS)** 作为所有学习资源的单一数据源 (SSOT)。资源存入后异步进入向量化流水线（OCR → 分块 → 嵌入生成 → LanceDB 存储），成为 AI 可读、可检索、可操作的标准资产。
+- **AI 原生数据层**：统一的 **虚拟文件系统 (VFS)** 作为所有学习资源的单一数据源 (SSOT)。资源存入后进入待索引队列，通过向量化流水线（OCR → 分块 → 嵌入生成 → LanceDB 存储）批量处理，成为 AI 可读、可检索、可操作的标准资产。
 - **以数据为中心**：上层应用（Chat、Learning Hub、CardForge）是对 VFS 数据的不同视图。Chat V2 通过引用模式调用 VFS 资源进行 RAG 检索与上下文注入，打破应用间的数据孤岛。
 - **本地优先**：所有数据（SQLite 元数据 + LanceDB 向量库 + Blob 文件）存储在本地，安全可控，支持完整审计与备份。
 
@@ -125,11 +125,9 @@ DeepStudent 的对话引擎专为学习场景打造，支持多模态输入、�
 
 <details>
 <summary>📸 查看截图</summary>
-<p align="center">
-  <img src="./example/会话浏览.png" width="32%" alt="会话管理" />
-  <img src="./example/分组.png" width="32%" alt="会话分组" />
-  <img src="./example/anki-发送.png" width="32%" alt="引用与发送" />
-</p>
+<p align="center"><img src="./example/会话浏览.png" width="90%" alt="会话管理" /></p>
+<p align="center"><img src="./example/分组.png" width="90%" alt="会话分组" /></p>
+<p align="center"><img src="./example/anki-发送.png" width="90%" alt="引用与发送" /></p>
 </details>
 
 ### 2. 学习资源中心 (Learning Hub)
@@ -137,15 +135,13 @@ DeepStudent 的对话引擎专为学习场景打造，支持多模态输入、�
 像 Finder/访达一样管理你的所有学习资产。
 
 - **全格式支持**：笔记、PDF 教材、题目集、翻译练习、作文批改、知识导图一站式管理。
-- **向量化索引**：资源导入即自动进行 OCR 与向量化，状态实时可视。
+- **向量化索引**：资源导入后进入待索引队列，支持批量触发 OCR 与向量化，状态实时可视。
 - **全能阅读器**：内置 PDF/Office/Markdown 阅读器，支持双页阅读与书签标注。
 
 <details>
 <summary>📸 查看截图</summary>
-<p align="center">
-  <img src="./example/笔记-1.png" width="48%" alt="笔记编辑" />
-  <img src="./example/向量化状态.png" width="48%" alt="向量化状态" />
-</p>
+<p align="center"><img src="./example/笔记-1.png" width="90%" alt="笔记编辑" /></p>
+<p align="center"><img src="./example/向量化状态.png" width="90%" alt="向量化状态" /></p>
 </details>
 
 ### 3. Anki 智能制卡 (ChatAnki)
@@ -159,15 +155,11 @@ DeepStudent 的对话引擎专为学习场景打造，支持多模态输入、�
 
 <details>
 <summary>📸 查看截图</summary>
-<p align="center">
-  <img src="./example/anki-制卡1.png" width="32%" alt="对话生成" />
-  <img src="./example/制卡任务.png" width="32%" alt="任务看板" />
-  <img src="./example/模板管理.png" width="32%" alt="模板管理" />
-</p>
-<p align="center">
-  <img src="./example/anki-制卡2.png" width="32%" alt="3D预览" />
-  <img src="./example/anki-制卡3.png" width="32%" alt="Anki同步" />
-</p>
+<p align="center"><img src="./example/anki-制卡1.png" width="90%" alt="对话生成" /></p>
+<p align="center"><img src="./example/制卡任务.png" width="90%" alt="任务看板" /></p>
+<p align="center"><img src="./example/模板管理.png" width="90%" alt="模板管理" /></p>
+<p align="center"><img src="./example/anki-制卡2.png" width="90%" alt="3D预览" /></p>
+<p align="center"><img src="./example/anki-制卡3.png" width="90%" alt="Anki同步" /></p>
 </details>
 
 ### 4. 技能系统 (Skills)
@@ -180,10 +172,8 @@ DeepStudent 的对话引擎专为学习场景打造，支持多模态输入、�
 
 <details>
 <summary>📸 查看截图</summary>
-<p align="center">
-  <img src="./example/技能管理.png" width="48%" alt="技能管理" />
-  <img src="./example/调研-1.png" width="48%" alt="调研模式" />
-</p>
+<p align="center"><img src="./example/技能管理.png" width="90%" alt="技能管理" /></p>
+<p align="center"><img src="./example/调研-1.png" width="90%" alt="调研模式" /></p>
 </details>
 
 ### 5. 深度调研 (Research Agent)
@@ -197,14 +187,10 @@ DeepStudent 的对话引擎专为学习场景打造，支持多模态输入、�
 
 <details>
 <summary>📸 查看截图</summary>
-<p align="center">
-  <img src="./example/调研-2.png" width="32%" alt="多步执行" />
-  <img src="./example/调研-3.png" width="32%" alt="执行进度" />
-  <img src="./example/调研-5.png" width="32%" alt="自动保存笔记" />
-</p>
-<p align="center">
-  <img src="./example/调研-4.png" width="60%" alt="最终报告" />
-</p>
+<p align="center"><img src="./example/调研-2.png" width="90%" alt="多步执行" /></p>
+<p align="center"><img src="./example/调研-3.png" width="90%" alt="执行进度" /></p>
+<p align="center"><img src="./example/调研-5.png" width="90%" alt="自动保存笔记" /></p>
+<p align="center"><img src="./example/调研-4.png" width="90%" alt="最终报告" /></p>
 </details>
 
 ### 6. 知识导图 (MindMap)
@@ -218,16 +204,12 @@ AI 驱动的知识结构化工具。
 
 <details>
 <summary>📸 查看截图</summary>
-<p align="center">
-  <img src="./example/知识导图-1.png" width="32%" alt="对话生成" />
-  <img src="./example/知识导图-2.png" width="32%" alt="多轮编辑" />
-  <img src="./example/知识导图-3.png" width="32%" alt="完整导图" />
-</p>
-<p align="center">
-  <img src="./example/知识导图-4.png" width="32%" alt="导图编辑" />
-  <img src="./example/知识导图-5.png" width="32%" alt="大纲视图" />
-  <img src="./example/知识导图-6.png" width="32%" alt="背诵模式" />
-</p>
+<p align="center"><img src="./example/知识导图-1.png" width="90%" alt="对话生成" /></p>
+<p align="center"><img src="./example/知识导图-2.png" width="90%" alt="多轮编辑" /></p>
+<p align="center"><img src="./example/知识导图-3.png" width="90%" alt="完整导图" /></p>
+<p align="center"><img src="./example/知识导图-4.png" width="90%" alt="导图编辑" /></p>
+<p align="center"><img src="./example/知识导图-5.png" width="90%" alt="大纲视图" /></p>
+<p align="center"><img src="./example/知识导图-6.png" width="90%" alt="背诵模式" /></p>
 </details>
 
 ### 7. PDF/DOCX 智能阅读
@@ -240,14 +222,10 @@ AI 驱动的知识结构化工具。
 
 <details>
 <summary>📸 查看截图</summary>
-<p align="center">
-  <img src="./example/pdf阅读-1.png" width="32%" alt="PDF阅读" />
-  <img src="./example/pdf阅读-2.png" width="32%" alt="页面引用" />
-  <img src="./example/pdf阅读-3.png" width="32%" alt="引用跳转" />
-</p>
-<p align="center">
-  <img src="./example/docx阅读-1.png" width="60%" alt="DOCX阅读" />
-</p>
+<p align="center"><img src="./example/pdf阅读-1.png" width="90%" alt="PDF阅读" /></p>
+<p align="center"><img src="./example/pdf阅读-2.png" width="90%" alt="页面引用" /></p>
+<p align="center"><img src="./example/pdf阅读-3.png" width="90%" alt="引用跳转" /></p>
+<p align="center"><img src="./example/docx阅读-1.png" width="90%" alt="DOCX阅读" /></p>
 </details>
 
 ### 8. 题目集与 AI 解析 (QBank)
@@ -257,20 +235,16 @@ AI 驱动的知识结构化工具。
 - **一键出题**：上传教材/试卷，AI 自动提取或生成题目集。
 - **多种练习模式**：支持每日练习、限时练习、模拟考试等多种做题模式，实时判分。
 - **模拟考试配置**：支持按题型/难度分布配置组卷参数。
-- **深度解析**：错误题目自动触发 AI 深度解析，分析知识点与解题思路。
+- **AI 解析**：支持对题目触发 AI 深度解析，分析知识点与解题思路。
 - **知识点视图**：按知识点分类统计题目分布和掌握率，精准定位薄弱环节。
 
 <details>
 <summary>📸 查看截图</summary>
-<p align="center">
-  <img src="./example/题目集-1.png" width="32%" alt="一键出题" />
-  <img src="./example/题目集-2.png" width="32%" alt="题库视图" />
-  <img src="./example/题目集-5.png" width="32%" alt="知识点统计" />
-</p>
-<p align="center">
-  <img src="./example/题目集-3.png" width="48%" alt="做题界面" />
-  <img src="./example/题目集-4.png" width="48%" alt="深度解析" />
-</p>
+<p align="center"><img src="./example/题目集-1.png" width="90%" alt="一键出题" /></p>
+<p align="center"><img src="./example/题目集-2.png" width="90%" alt="题库视图" /></p>
+<p align="center"><img src="./example/题目集-5.png" width="90%" alt="知识点统计" /></p>
+<p align="center"><img src="./example/题目集-3.png" width="90%" alt="做题界面" /></p>
+<p align="center"><img src="./example/题目集-4.png" width="90%" alt="深度解析" /></p>
 </details>
 
 ### 9. 智能记忆 (AI Memory)
@@ -283,14 +257,10 @@ AI 驱动的知识结构化工具。
 
 <details>
 <summary>📸 查看截图</summary>
-<p align="center">
-  <img src="./example/记忆-1.png" width="32%" alt="记忆提取" />
-  <img src="./example/记忆-2.png" width="32%" alt="记忆列表" />
-  <img src="./example/记忆-4.png" width="32%" alt="记忆视图" />
-</p>
-<p align="center">
-  <img src="./example/记忆-3.png" width="60%" alt="记忆编辑" />
-</p>
+<p align="center"><img src="./example/记忆-1.png" width="90%" alt="记忆提取" /></p>
+<p align="center"><img src="./example/记忆-2.png" width="90%" alt="记忆列表" /></p>
+<p align="center"><img src="./example/记忆-4.png" width="90%" alt="记忆视图" /></p>
+<p align="center"><img src="./example/记忆-3.png" width="90%" alt="记忆编辑" /></p>
 </details>
 
 ### 10. AI 作文批改 (Essay)
@@ -303,11 +273,9 @@ AI 驱动的知识结构化工具。
 
 <details>
 <summary>📸 查看截图</summary>
-<p align="center">
-  <img src="./example/作文批改-1.png" width="32%" alt="类型选择" />
-  <img src="./example/作文-1.png" width="32%" alt="评分结果" />
-  <img src="./example/作文-2.png" width="32%" alt="详细建议" />
-</p>
+<p align="center"><img src="./example/作文批改-1.png" width="90%" alt="类型选择" /></p>
+<p align="center"><img src="./example/作文-1.png" width="90%" alt="评分结果" /></p>
+<p align="center"><img src="./example/作文-2.png" width="90%" alt="详细建议" /></p>
 </details>
 
 ### 11. MCP 扩展与模型配置
@@ -319,15 +287,11 @@ AI 驱动的知识结构化工具。
 
 <details>
 <summary>📸 查看截图</summary>
-<p align="center">
-  <img src="./example/mcp-1.png" width="32%" alt="MCP调用" />
-  <img src="./example/mcp-2.png" width="32%" alt="MCP管理" />
-  <img src="./example/模型分配.png" width="32%" alt="模型配置" />
-</p>
-<p align="center">
-  <img src="./example/mcp-3.png" width="48%" alt="Arxiv搜索" />
-  <img src="./example/mcp-4.png" width="48%" alt="搜索详情" />
-</p>
+<p align="center"><img src="./example/mcp-1.png" width="90%" alt="MCP调用" /></p>
+<p align="center"><img src="./example/mcp-2.png" width="90%" alt="MCP管理" /></p>
+<p align="center"><img src="./example/模型分配.png" width="90%" alt="模型配置" /></p>
+<p align="center"><img src="./example/mcp-3.png" width="90%" alt="Arxiv搜索" /></p>
+<p align="center"><img src="./example/mcp-4.png" width="90%" alt="搜索详情" /></p>
 </details>
 
 ### 12. 数据治理
@@ -430,6 +394,24 @@ DeepStudent
 
 ---
 
+## 项目历程
+
+DeepStudent 起源于 2025 年 3 月的一个 Python demo 原型，经过近一年的持续迭代演进至今：
+
+| 时间 | 里程碑 |
+|------|--------|
+| **2025.03** | 🌱 项目萌芽 — Python demo 原型，验证 AI 辅助学习的核心想法 |
+| **2025.07** | 🔄 技术栈迁移 — 以 `ai-mistake-manager` 为名，切换至 **Tauri + React + Rust** 架构，首次提交 Anki 制卡功能 |
+| **2025.08** | 🎨 大规模 UI 重构 — 迁移至 shadcn-ui 体系，引入 Chat 对话架构、知识库向量化 |
+| **2025.09** | 📝 笔记系统与模板管理 — Milkdown 编辑器集成、Anki 模板批量导入 |
+| **2025.10** | 🌐 国际化与 E2E 测试 — i18n 全覆盖、Playwright 端到端测试、Lance 向量存储迁移 |
+| **2025.11** | 💬 Chat V2 架构 — 全新对话引擎（Variant 多模型对比、工具事件系统、快照健康监控） |
+| **2025.12** | ⚡ 性能优化 — 会话加载并行化、配置缓存、输入框单例架构、DSTU 资源协议 |
+| **2026.01** | 🧩 技能系统与 VFS — 文件式技能加载、统一虚拟文件系统（VFS）、遗留模块清理 |
+| **2026.02** | 🚀 开源发布 — 更名为 **DeepStudent**，发布 **v0.9.2**，配置 CI/CD、release-please 自动发版 |
+
+---
+
 ## 许可证
 
 DeepStudent 遵循 **[AGPL-3.0](LICENSE)** 开源许可证。
@@ -441,7 +423,23 @@ DeepStudent 遵循 **[AGPL-3.0](LICENSE)** 开源许可证。
 
 DeepStudent 的诞生离不开以下优秀的开源项目：
 
-[Tauri](https://tauri.app) · [React](https://react.dev) · [LanceDB](https://lancedb.com) · [Milkdown](https://milkdown.dev) · [Ant Design](https://ant.design) · [PDF.js](https://mozilla.github.io/pdf.js/) · [Vite](https://vite.dev)
+**框架与运行时**
+[Tauri](https://tauri.app) · [React](https://react.dev) · [Vite](https://vite.dev) · [TypeScript](https://www.typescriptlang.org) · [Rust](https://www.rust-lang.org) · [Tokio](https://tokio.rs)
+
+**编辑器与内容渲染**
+[Milkdown](https://milkdown.dev) · [ProseMirror](https://prosemirror.net) · [CodeMirror](https://codemirror.net) · [KaTeX](https://katex.org) · [Mermaid](https://mermaid.js.org) · [react-markdown](https://github.com/remarkjs/react-markdown)
+
+**UI 与样式**
+[Tailwind CSS](https://tailwindcss.com) · [Radix UI](https://www.radix-ui.com) · [Lucide](https://lucide.dev) · [Framer Motion](https://www.framer.com/motion) · [Recharts](https://recharts.org) · [React Flow](https://reactflow.dev)
+
+**数据与状态**
+[LanceDB](https://lancedb.com) · [SQLite](https://www.sqlite.org) / [rusqlite](https://github.com/rusqlite/rusqlite) · [Apache Arrow](https://arrow.apache.org) · [Zustand](https://zustand.docs.pmnd.rs) · [Immer](https://immerjs.github.io/immer) · [Serde](https://serde.rs)
+
+**文档处理**
+[PDF.js](https://mozilla.github.io/pdf.js/) · [pdfium-render](https://github.com/nicholasgasior/pdfium-render) · [docx-preview](https://github.com/nicholasgasior/docx-preview) · [Mustache](https://mustache.github.io) · [DOMPurify](https://github.com/cure53/DOMPurify)
+
+**国际化与工具链**
+[i18next](https://www.i18next.com) · [date-fns](https://date-fns.org) · [Vitest](https://vitest.dev) · [Playwright](https://playwright.dev) · [ESLint](https://eslint.org) · [Sentry](https://sentry.io)
 
 ---
 
