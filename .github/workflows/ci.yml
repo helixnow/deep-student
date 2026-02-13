@@ -59,8 +59,16 @@ jobs:
   backend:
     name: Backend (Rust)
     runs-on: ubuntu-latest
+    env:
+      CARGO_INCREMENTAL: 0
     
     steps:
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          sudo docker image prune --all --force
+          df -h
+
       - name: Checkout
         uses: actions/checkout@v4
 
