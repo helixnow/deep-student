@@ -45,6 +45,9 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
+      - name: Install protobuf
+        run: brew install protobuf
+
       - name: Install dependencies
         run: npm ci
 
@@ -82,6 +85,9 @@ jobs:
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
+
+      - name: Install protobuf
+        run: choco install protoc -y
 
       - name: Install dependencies
         run: npm ci

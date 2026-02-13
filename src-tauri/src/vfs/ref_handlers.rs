@@ -149,6 +149,14 @@ pub async fn vfs_resolve_resource_refs(
         refs.len()
     );
 
+    // ★ OCR 诊断日志：打印每个 ref 的详细信息，包括 inject_modes
+    for (i, r) in refs.iter().enumerate() {
+        info!(
+            "[OCR_DIAG] ref[{}]: source_id={}, type={:?}, name={}, inject_modes={:?}",
+            i, r.source_id, r.resource_type, r.name, r.inject_modes
+        );
+    }
+
     if refs.len() > MAX_BATCH_RESOURCES {
         return Err(format!(
             "Too many refs to resolve: {} (max: {})",
@@ -165,6 +173,19 @@ pub async fn vfs_resolve_resource_refs(
     for r in &refs {
         match resolve_single_ref_with_conn(&conn, blobs_dir, r) {
             Ok(resource) => {
+                // ★ OCR 诊断日志：打印解析结果摘要
+                info!(
+                    "[OCR_DIAG] resolved: source_id={}, found={}, has_content={}, content_len={}, has_multimodal_blocks={}, content_preview={}",
+                    resource.source_id,
+                    resource.found,
+                    resource.content.is_some(),
+                    resource.content.as_ref().map(|c| c.len()).unwrap_or(0),
+                    resource.multimodal_blocks.is_some(),
+                    resource.content.as_ref().map(|c| {
+                        let preview: String = c.chars().take(200).collect();
+                        format!("\"{}...\"", preview)
+                    }).unwrap_or_else(|| "None".to_string())
+                );
                 resolved.push(resource);
             }
             Err(e) => {
@@ -456,6 +477,10 @@ fn resolve_single_ref_with_conn(
     let (_, table_name, title_column) = match get_source_id_type(&r.source_id) {
         Some(info) => info,
         None => {
+            warn!(
+                "[OCR_DIAG] get_source_id_type returned None for source_id={}, cannot resolve",
+                r.source_id
+            );
             return Ok(ResolvedResource {
                 source_id: r.source_id.clone(),
                 resource_hash: r.resource_hash.clone(),
@@ -479,7 +504,16 @@ fn resolve_single_ref_with_conn(
         .query_row(&exists_sql, params![r.source_id], |_| Ok(true))
         .unwrap_or(false);
 
+    info!(
+        "[OCR_DIAG] resource exists check: source_id={}, table={}, exists={}",
+        r.source_id, table_name, exists
+    );
+
     if !exists {
+        warn!(
+            "[OCR_DIAG] resource NOT FOUND in table '{}': source_id={}",
+            table_name, r.source_id
+        );
         return Ok(ResolvedResource {
             source_id: r.source_id.clone(),
             resource_hash: r.resource_hash.clone(),
@@ -532,22 +566,34 @@ fn resolve_single_ref_with_conn(
                 .and_then(|m| m.image.as_ref())
                 .cloned();
 
+            info!(
+                "[OCR_DIAG] Image branch entered: source_id={}, inject_modes={:?}, image_modes={:?}",
+                r.source_id, r.inject_modes, image_modes
+            );
+
             // 如果用户选择了模式，使用用户选择；否则使用默认行为（返回图片）
             let (include_image, include_ocr) = match image_modes {
                 Some(modes) if !modes.is_empty() => {
                     let has_image = modes.contains(&ImageInjectMode::Image);
                     let has_ocr = modes.contains(&ImageInjectMode::Ocr);
+                    info!(
+                        "[OCR_DIAG] Image: user-selected modes: modes={:?}, has_image={}, has_ocr={}",
+                        modes, has_image, has_ocr
+                    );
                     (has_image, has_ocr)
                 }
                 _ => {
                     // 默认行为：返回 base64 图片
+                    info!(
+                        "[OCR_DIAG] Image: no user-selected modes, using defaults (image=true, ocr=false)"
+                    );
                     (true, false)
                 }
             };
 
             info!(
-                "[PDF_DEBUG] Image type: include_image={}, include_ocr={}",
-                include_image, include_ocr
+                "[OCR_DIAG] Image type: include_image={}, include_ocr={}, source_id={}",
+                include_image, include_ocr, r.source_id
             );
 
             let mut content_parts: Vec<String> = Vec::new();
@@ -1154,6 +1200,70 @@ fn get_essay_session_content_with_conn(
 /// - `Some(String)`: OCR 文本
 /// - `None`: 没有 OCR 文本
 pub fn get_image_ocr_text_with_conn(conn: &Connection, source_id: &str) -> Option<String> {
+    info!(
+        "[OCR_DIAG] get_image_ocr_text_with_conn: querying OCR text for source_id={}",
+        source_id
+    );
+
+    // ★ 诊断：先检查 files 表中是否存在该 source_id
+    let check_files_sql = r#"
+        SELECT a.id, a.resource_id, a.file_name
+        FROM files a
+        WHERE a.id = ?1 OR a.resource_id = ?1
+        ORDER BY CASE WHEN a.id = ?1 THEN 0 ELSE 1 END
+        LIMIT 1
+    "#;
+    match conn.query_row(check_files_sql, params![source_id], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, Option<String>>(1)?,
+            row.get::<_, Option<String>>(2)?,
+        ))
+    }) {
+        Ok((file_id, resource_id, file_name)) => {
+            info!(
+                "[OCR_DIAG] files table match: source_id={} -> file_id={}, resource_id={:?}, file_name={:?}",
+                source_id, file_id, resource_id, file_name
+            );
+        }
+        Err(e) => {
+            warn!(
+                "[OCR_DIAG] files table NO MATCH for source_id={}: {}. This means the SQL JOIN will fail and no OCR text can be retrieved.",
+                source_id, e
+            );
+        }
+    }
+
+    // ★ 诊断：检查关联的 resource 是否有 ocr_text
+    let check_ocr_sql = r#"
+        SELECT r.id, r.ocr_text IS NOT NULL AS has_ocr, LENGTH(r.ocr_text) AS ocr_len
+        FROM files a
+        JOIN resources r ON a.resource_id = r.id
+        WHERE a.id = ?1 OR a.resource_id = ?1
+        ORDER BY CASE WHEN a.id = ?1 THEN 0 ELSE 1 END
+        LIMIT 1
+    "#;
+    match conn.query_row(check_ocr_sql, params![source_id], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, bool>(1)?,
+            row.get::<_, Option<i64>>(2)?,
+        ))
+    }) {
+        Ok((resource_id, has_ocr, ocr_len)) => {
+            info!(
+                "[OCR_DIAG] resource OCR status: source_id={} -> resource_id={}, has_ocr={}, ocr_len={:?}",
+                source_id, resource_id, has_ocr, ocr_len
+            );
+        }
+        Err(e) => {
+            warn!(
+                "[OCR_DIAG] resource OCR check failed for source_id={}: {}",
+                source_id, e
+            );
+        }
+    }
+
     // 尝试从 files 表关联的 resource 获取 OCR 文本
     let sql = r#"
         SELECT r.ocr_text
@@ -1167,8 +1277,36 @@ pub fn get_image_ocr_text_with_conn(conn: &Connection, source_id: &str) -> Optio
     match conn.query_row(sql, params![source_id], |row| {
         row.get::<_, Option<String>>(0)
     }) {
-        Ok(Some(text)) if !text.trim().is_empty() => Some(text),
-        _ => None,
+        Ok(Some(text)) if !text.trim().is_empty() => {
+            info!(
+                "[OCR_DIAG] OCR text FOUND for source_id={}, len={}, preview=\"{}\"",
+                source_id,
+                text.len(),
+                text.chars().take(100).collect::<String>()
+            );
+            Some(text)
+        }
+        Ok(Some(_)) => {
+            warn!(
+                "[OCR_DIAG] OCR text exists but is EMPTY/WHITESPACE for source_id={}",
+                source_id
+            );
+            None
+        }
+        Ok(None) => {
+            warn!(
+                "[OCR_DIAG] OCR text is NULL in database for source_id={}. Possible causes: (1) OCR pipeline not yet completed, (2) OCR failed silently, (3) image was not processed",
+                source_id
+            );
+            None
+        }
+        Err(e) => {
+            warn!(
+                "[OCR_DIAG] OCR text query FAILED for source_id={}: {}. Possible cause: source_id not found in files table (JOIN returned no rows)",
+                source_id, e
+            );
+            None
+        }
     }
 }
 

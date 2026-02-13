@@ -2062,11 +2062,12 @@ impl LLMManager {
 
         debug!("发送请求到: {}", config.base_url);
         // 使用 ProviderAdapter 统一构建请求（避免覆盖分支硬编码/chat/completions）
-        let adapter: Box<dyn ProviderAdapter> = match config.model_adapter.as_str() {
-            "anthropic" | "claude" => Box::new(crate::providers::AnthropicAdapter::new()),
-            "google" | "gemini" => Box::new(crate::providers::GeminiAdapter::new()),
-            _ => Box::new(crate::providers::OpenAIAdapter),
-        };
+        let adapter: Box<dyn ProviderAdapter> =
+            match config.model_adapter.as_str() {
+                "google" | "gemini" => Box::new(crate::providers::GeminiAdapter::new()),
+                "anthropic" | "claude" => Box::new(crate::providers::AnthropicAdapter::new()),
+                _ => Box::new(crate::providers::OpenAIAdapter),
+            };
         let preq = adapter
             .build_request(
                 &config.base_url,
@@ -2842,7 +2843,8 @@ impl LLMManager {
             .map_err(|e| AppError::llm(format!("解析模型二响应失败: {}", e)))?;
 
         // Gemini 非流式响应统一转换为 OpenAI 形状
-        let openai_like_json = if config.model_adapter == "google" {
+        let openai_like_json = if config.model_adapter == "google"
+        {
             // 非流式：先检测安全阻断
             if let Some(safety_msg) = Self::extract_gemini_safety_error(&response_json) {
                 return Err(AppError::llm(safety_msg));
@@ -2987,11 +2989,12 @@ impl LLMManager {
             "stream": false
         });
 
-        let adapter: Box<dyn ProviderAdapter> = match config.model_adapter.as_str() {
-            "google" | "gemini" => Box::new(crate::providers::GeminiAdapter::new()),
-            "anthropic" | "claude" => Box::new(crate::providers::AnthropicAdapter::new()),
-            _ => Box::new(crate::providers::OpenAIAdapter),
-        };
+        let adapter: Box<dyn ProviderAdapter> =
+            match config.model_adapter.as_str() {
+                "google" | "gemini" => Box::new(crate::providers::GeminiAdapter::new()),
+                "anthropic" | "claude" => Box::new(crate::providers::AnthropicAdapter::new()),
+                _ => Box::new(crate::providers::OpenAIAdapter),
+            };
 
         let preq = adapter
             .build_request(
@@ -3049,7 +3052,8 @@ impl LLMManager {
         let response_json: Value = serde_json::from_str(&response_text)
             .map_err(|e| AppError::llm(format!("解析聊天元数据响应失败: {}", e)))?;
 
-        let openai_like_json = if config.model_adapter == "google" {
+        let openai_like_json = if config.model_adapter == "google"
+        {
             if let Some(safety_msg) = Self::extract_gemini_safety_error(&response_json) {
                 return Err(AppError::llm(safety_msg));
             }
@@ -3416,7 +3420,8 @@ impl LLMManager {
                             Ok(resp_json) => {
                                 let is_google = lower_model.contains("gemini")
                                     || lower_base.contains("generativelanguage.googleapis.com");
-                                let openai_like = if is_google {
+                                let is_openai_compat = lower_base.contains("/openai");
+                                let openai_like = if is_google && !is_openai_compat {
                                     crate::adapters::gemini_openai_converter::convert_gemini_nonstream_response_to_openai(&resp_json, &model).unwrap_or(resp_json)
                                 } else {
                                     resp_json
@@ -3596,11 +3601,12 @@ impl LLMManager {
         }
 
         // 4. 通过 ProviderAdapter 构造 HTTP 请求
-        let adapter: Box<dyn ProviderAdapter> = match config.model_adapter.as_str() {
-            "google" | "gemini" => Box::new(crate::providers::GeminiAdapter::new()),
-            "anthropic" | "claude" => Box::new(crate::providers::AnthropicAdapter::new()),
-            _ => Box::new(crate::providers::OpenAIAdapter),
-        };
+        let adapter: Box<dyn ProviderAdapter> =
+            match config.model_adapter.as_str() {
+                "google" | "gemini" => Box::new(crate::providers::GeminiAdapter::new()),
+                "anthropic" | "claude" => Box::new(crate::providers::AnthropicAdapter::new()),
+                _ => Box::new(crate::providers::OpenAIAdapter),
+            };
         let preq = adapter
             .build_request(
                 &config.base_url,
@@ -3664,8 +3670,8 @@ impl LLMManager {
             .map_err(|e| AppError::llm(format!("解析RAW_PROMPT响应失败: {}", e)))?;
 
         // Gemini 非流式响应统一转换为 OpenAI 形状
-        let openai_like_json = if config.model_adapter == "google" {
-            // 非流式：先检测安全阻断
+        let openai_like_json = if config.model_adapter == "google"
+        {
             if let Some(safety_msg) = Self::extract_gemini_safety_error(&response_json) {
                 return Err(AppError::llm(safety_msg));
             }
@@ -3791,11 +3797,12 @@ impl LLMManager {
         );
 
         // 4. 通过 ProviderAdapter 构造 HTTP 请求
-        let adapter: Box<dyn ProviderAdapter> = match config.model_adapter.as_str() {
-            "google" | "gemini" => Box::new(crate::providers::GeminiAdapter::new()),
-            "anthropic" | "claude" => Box::new(crate::providers::AnthropicAdapter::new()),
-            _ => Box::new(crate::providers::OpenAIAdapter),
-        };
+        let adapter: Box<dyn ProviderAdapter> =
+            match config.model_adapter.as_str() {
+                "google" | "gemini" => Box::new(crate::providers::GeminiAdapter::new()),
+                "anthropic" | "claude" => Box::new(crate::providers::AnthropicAdapter::new()),
+                _ => Box::new(crate::providers::OpenAIAdapter),
+            };
         let preq = adapter
             .build_request(
                 &config.base_url,
@@ -3839,7 +3846,8 @@ impl LLMManager {
             .map_err(|e| AppError::llm(format!("解析OCR_MODEL响应失败: {}", e)))?;
 
         // Gemini 非流式响应统一转换为 OpenAI 形状
-        let openai_like_json = if config.model_adapter == "google" {
+        let openai_like_json = if config.model_adapter == "google"
+        {
             if let Some(safety_msg) = Self::extract_gemini_safety_error(&response_json) {
                 return Err(AppError::llm(safety_msg));
             }
@@ -3901,11 +3909,12 @@ impl LLMManager {
             "stream": false,
         });
 
-        let adapter: Box<dyn ProviderAdapter> = match config.model_adapter.as_str() {
-            "google" | "gemini" => Box::new(crate::providers::GeminiAdapter::new()),
-            "anthropic" | "claude" => Box::new(crate::providers::AnthropicAdapter::new()),
-            _ => Box::new(crate::providers::OpenAIAdapter),
-        };
+        let adapter: Box<dyn ProviderAdapter> =
+            match config.model_adapter.as_str() {
+                "google" | "gemini" => Box::new(crate::providers::GeminiAdapter::new()),
+                "anthropic" | "claude" => Box::new(crate::providers::AnthropicAdapter::new()),
+                _ => Box::new(crate::providers::OpenAIAdapter),
+            };
 
         let preq = adapter
             .build_request(&config.base_url, &api_key, &config.model, &request_body)
@@ -4120,11 +4129,12 @@ impl LLMManager {
         debug!("发送 Anki 制卡请求到: {} (经适配器)", config.base_url);
 
         // 5. 通过 ProviderAdapter 发送HTTP请求（支持 Gemini 中转）
-        let adapter: Box<dyn ProviderAdapter> = match config.model_adapter.as_str() {
-            "google" | "gemini" => Box::new(crate::providers::GeminiAdapter::new()),
-            "anthropic" | "claude" => Box::new(crate::providers::AnthropicAdapter::new()),
-            _ => Box::new(crate::providers::OpenAIAdapter),
-        };
+        let adapter: Box<dyn ProviderAdapter> =
+            match config.model_adapter.as_str() {
+                "google" | "gemini" => Box::new(crate::providers::GeminiAdapter::new()),
+                "anthropic" | "claude" => Box::new(crate::providers::AnthropicAdapter::new()),
+                _ => Box::new(crate::providers::OpenAIAdapter),
+            };
         let preq = adapter
             .build_request(
                 &config.base_url,
@@ -4190,7 +4200,8 @@ impl LLMManager {
             .map_err(|e| AppError::llm(format!("解析 Anki 制卡响应失败: {}", e)))?;
 
         // Gemini 非流式响应统一转换为 OpenAI 形状
-        let openai_like_json = if config.model_adapter == "google" {
+        let openai_like_json = if config.model_adapter == "google"
+        {
             // 非流式：先检测安全阻断
             if let Some(safety_msg) = Self::extract_gemini_safety_error(&response_json) {
                 return Err(AppError::llm(safety_msg));

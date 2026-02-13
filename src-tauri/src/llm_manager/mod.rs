@@ -837,6 +837,32 @@ impl LLMManager {
             return;
         }
 
+        // Gemini OpenAI 兼容模式：清理原生字段，转换为 reasoning_effort
+        // 当 base_url 包含 /openai 时，说明走的是 OpenAI 兼容端点，
+        // 该端点不认识 thinkingConfig / gemini_api_version 等原生字段，
+        // 需要用 reasoning_effort 代替（官方文档已确认支持）。
+        if config.base_url.contains("/openai")
+            && matches!(config.model_adapter.as_str(), "google" | "gemini")
+        {
+            // 从 thinkingConfig 中提取 thinking 信息，转换为 reasoning_effort
+            if let Some(thinking_config) = map.remove("thinkingConfig") {
+                if !map.contains_key("reasoning_effort") {
+                    // thinkingLevel → reasoning_effort 映射
+                    if let Some(level) = thinking_config.get("thinkingLevel").and_then(|v| v.as_str()) {
+                        let effort = match level {
+                            "minimal" => "low",
+                            "low" => "low",
+                            "medium" => "medium",
+                            "high" => "high",
+                            _ => "medium",
+                        };
+                        map.insert("reasoning_effort".to_string(), serde_json::json!(effort));
+                    }
+                }
+            }
+            map.remove("gemini_api_version");
+        }
+
         // 应用通用参数
         adapter.apply_common_params(map, config);
     }

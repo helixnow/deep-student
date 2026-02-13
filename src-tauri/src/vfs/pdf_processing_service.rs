@@ -1045,6 +1045,13 @@ impl PdfProcessingService {
         let should_run_image_ocr =
             ocr_config.enabled && ocr_config.ocr_images && !ocr_config.skip_for_multimodal;
 
+        info!(
+            "[OCR_DIAG] Image pipeline OCR decision: file_id={}, has_ocr={}, should_run_image_ocr={}, ocr_config=(enabled={}, ocr_images={}, skip_for_multimodal={}), blob_hash={:?}, resource_id={:?}",
+            file_id, has_ocr, should_run_image_ocr,
+            ocr_config.enabled, ocr_config.ocr_images, ocr_config.skip_for_multimodal,
+            blob_hash, resource_id
+        );
+
         // Stage 1: 图片压缩
         if start_stage <= ProcessingStage::ImageCompression {
             if cancel_token.is_cancelled() {
@@ -1154,6 +1161,10 @@ impl PdfProcessingService {
 
         // Stage 2: OCR 处理（如果需要）
         if start_stage <= ProcessingStage::OcrProcessing && !has_ocr && should_run_image_ocr {
+            info!(
+                "[OCR_DIAG] Image OCR Stage 2 ENTERED: file_id={}, start_stage={:?}",
+                file_id, start_stage
+            );
             if cancel_token.is_cancelled() {
                 return Ok(());
             }
@@ -1645,11 +1656,34 @@ impl PdfProcessingService {
         base64_data: String,
         mime_type: &str,
     ) -> VfsResult<String> {
+        info!(
+            "[OCR_DIAG] stage_image_ocr_with_base64 START: file_id={}, mime_type={}, base64_len={}",
+            file_id, mime_type, base64_data.len()
+        );
+
         let conn = self.db.get_conn_safe()?;
+
+        // ★ 诊断：检查 file_id 关联的 resource_id
+        let resource_id_check: Option<String> = conn
+            .query_row(
+                "SELECT resource_id FROM files WHERE id = ?1",
+                params![file_id],
+                |row| row.get(0),
+            )
+            .optional()?
+            .flatten();
+        info!(
+            "[OCR_DIAG] file->resource mapping: file_id={} -> resource_id={:?}",
+            file_id, resource_id_check
+        );
 
         // 调用 OCR API
         use crate::llm_manager::ImagePayload;
         let adapter = self.llm_manager.get_ocr_adapter().await;
+        info!(
+            "[OCR_DIAG] OCR adapter obtained, calling OCR model for file_id={}",
+            file_id
+        );
         // M11 fix: 使用 build_custom_prompt 确保自定义内容与适配器兼容
         let custom_instruction = "请仔细识别这张图片中的所有文字内容，包括印刷文字和手写文字。输出识别结果，保持原有的格式和结构。如果图片中没有文字，请输出'无文字内容'。";
         let prompt =
@@ -1663,18 +1697,36 @@ impl PdfProcessingService {
             .llm_manager
             .call_ocr_model_raw_prompt(&prompt, Some(vec![image_payload]))
             .await
-            .map_err(|e| VfsError::Other(format!("OCR API call failed: {}", e)))?;
+            .map_err(|e| {
+                warn!(
+                    "[OCR_DIAG] OCR API call FAILED for file_id={}: {}",
+                    file_id, e
+                );
+                VfsError::Other(format!("OCR API call failed: {}", e))
+            })?;
 
         let ocr_text = result.assistant_message;
+        info!(
+            "[OCR_DIAG] OCR API returned for file_id={}: text_len={}, preview=\"{}\"",
+            file_id,
+            ocr_text.len(),
+            ocr_text.chars().take(100).collect::<String>()
+        );
 
         // 存储 OCR 结果到关联的 resource.ocr_text
-        conn.execute(
+        let rows_affected = conn.execute(
             r#"
             UPDATE resources SET ocr_text = ?1, updated_at = datetime('now')
             WHERE id = (SELECT resource_id FROM files WHERE id = ?2)
             "#,
             params![ocr_text, file_id],
         )?;
+        info!(
+            "[OCR_DIAG] OCR text saved to resources table: file_id={}, rows_affected={}{}",
+            file_id,
+            rows_affected,
+            if rows_affected == 0 { " ⚠️ NO ROWS UPDATED - resource_id lookup may have failed!" } else { "" }
+        );
 
         // 更新 processing_progress 中的 ready_modes
         let progress_json: Option<String> = conn
