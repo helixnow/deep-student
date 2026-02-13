@@ -16,9 +16,8 @@ const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf-8'));
 const appVersion = packageJson.version;
 
 // 获取git总提交次数作为build number
-// ★ P0 修复：Android versionCode 需要大于历史版本（0.8.x 系列使用了 8000+）
-// 使用 9000 + git提交数 作为基数，确保可以从旧版本顺利升级
-const VERSION_CODE_BASE = 9000;
+// ★ 版本基数：新仓库从 10000 起步，确保高于旧仓库所有历史版本
+const VERSION_CODE_BASE = 10000;
 let gitCommitCount = 0;
 try {
   gitCommitCount = parseInt(execSync('git rev-list --all --count', { cwd: projectRoot, encoding: 'utf-8' }).trim(), 10) || 0;

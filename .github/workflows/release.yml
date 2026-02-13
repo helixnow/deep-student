@@ -26,6 +26,8 @@ jobs:
   # ─── macOS 构建 ──────────────────────────────────────────
   build-macos:
     runs-on: macos-latest
+    env:
+      NODE_OPTIONS: '--max-old-space-size=4096'
     strategy:
       matrix:
         target: [aarch64-apple-darwin, x86_64-apple-darwin]
@@ -35,7 +37,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
 
       - name: Setup Rust
@@ -67,13 +69,15 @@ jobs:
   # ─── Windows 构建 ─────────────────────────────────────────
   build-windows:
     runs-on: windows-latest
+    env:
+      NODE_OPTIONS: '--max-old-space-size=4096'
     steps:
       - uses: actions/checkout@v4
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
 
       - name: Setup Rust
