@@ -1498,15 +1498,56 @@ fn convert_openai_to_gemini(openai_req: &OpenAIRequest) -> Result<GeminiRequest,
         None
     };
 
+    /// 递归修补 JSON Schema，确保符合 Gemini 原生 API 的严格要求：
+    /// - `type: "array"` 时必须有 `items` 字段
+    /// - 每个 `items` 必须包含 `type` 字段
+    fn fix_schema_for_gemini(value: &mut Value) {
+        match value {
+            Value::Object(map) => {
+                // 如果 type=array 但缺少 items，补充默认 items
+                if map.get("type").and_then(|v| v.as_str()) == Some("array") {
+                    if !map.contains_key("items") {
+                        map.insert("items".to_string(), json!({"type": "string"}));
+                    }
+                }
+                // 如果有 items 但 items 缺少 type，补充默认 type
+                if let Some(items) = map.get_mut("items") {
+                    if let Value::Object(items_map) = items {
+                        if !items_map.contains_key("type") {
+                            if items_map.contains_key("properties") {
+                                items_map.insert("type".to_string(), json!("object"));
+                            } else {
+                                items_map.insert("type".to_string(), json!("string"));
+                            }
+                        }
+                    }
+                }
+                // 递归处理所有子值
+                for v in map.values_mut() {
+                    fix_schema_for_gemini(v);
+                }
+            }
+            Value::Array(arr) => {
+                for v in arr.iter_mut() {
+                    fix_schema_for_gemini(v);
+                }
+            }
+            _ => {}
+        }
+    }
+
     // 转换工具
     let tools = if let Some(openai_tools) = &openai_req.tools {
         let mut function_declarations = Vec::new();
         for tool in openai_tools {
             if tool.tool_type == "function" {
+                let mut params = tool.function.parameters.clone();
+                // Gemini 原生 API 要求所有 schema 节点（包括 items）都必须有 type 字段
+                fix_schema_for_gemini(&mut params);
                 function_declarations.push(GeminiFunctionDeclaration {
                     name: tool.function.name.clone(),
                     description: tool.function.description.clone().unwrap_or_default(),
-                    parameters: tool.function.parameters.clone(),
+                    parameters: params,
                 });
             }
         }

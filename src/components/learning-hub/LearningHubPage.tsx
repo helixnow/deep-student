@@ -387,6 +387,12 @@ export const LearningHubPage: React.FC = () => {
   const globalLeftPanelCollapsed = useUIStore((state) => state.leftPanelCollapsed);
   const [localSidebarCollapsed, setLocalSidebarCollapsed] = useState(false);
   const sidebarCollapsed = globalLeftPanelCollapsed || localSidebarCollapsed;
+  const handleSidebarCollapsedChange = useCallback((collapsed: boolean) => {
+    setLocalSidebarCollapsed(collapsed);
+    if (!collapsed && globalLeftPanelCollapsed) {
+      useUIStore.getState().setLeftPanelCollapsed(false);
+    }
+  }, [globalLeftPanelCollapsed]);
 
   // 侧边栏面板引用
   const sidebarPanelRef = useRef<ImperativePanelHandle>(null);
@@ -863,7 +869,7 @@ export const LearningHubPage: React.FC = () => {
               onOpenApp={handleOpenApp}
               className="w-full h-full"
               isCollapsed={sidebarCollapsed}
-              onToggleCollapse={() => setLocalSidebarCollapsed(!localSidebarCollapsed)}
+              onToggleCollapse={() => handleSidebarCollapsedChange(!sidebarCollapsed)}
               activeFileId={openApp?.id}
               hasOpenApp={hasOpenApp}
               onCloseApp={handleCloseApp}

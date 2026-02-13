@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback, useRef, lazy, Suspense } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
-import { Search, Plus, FolderPlus, X, Trash2, Loader2, Workflow, CheckSquare, ListChecks } from 'lucide-react';
+import { Search, Plus, FolderPlus, X, Trash2, Loader2, Workflow, CheckSquare, ListChecks, ChevronLeft, ChevronRight, Home } from 'lucide-react';
 import { open as dialogOpen } from '@tauri-apps/plugin-dialog';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { textbookDstuAdapter } from '@/dstu/adapters/textbookDstuAdapter';
@@ -2043,7 +2043,57 @@ export function LearningHubSidebar({
           </div>
         )}
 
-{/* 面包屑导航已移至应用顶栏 */}
+{/* ★ Canvas 模式导航栏：返回/前进 + 面包屑 */}
+        {mode === 'canvas' && (
+          <div className="flex items-center gap-1 px-1.5 py-1 border-b border-border/40 bg-muted/30 shrink-0 min-w-0">
+            {/* 返回/前进按钮 */}
+            <NotionButton
+              variant="ghost"
+              size="sm"
+              className="h-6 w-6 p-0 shrink-0"
+              onClick={goBack}
+              disabled={historyIndex <= 0}
+              title={t('finder.toolbar.back', '返回')}
+            >
+              <ChevronLeft className="w-3.5 h-3.5" />
+            </NotionButton>
+            <NotionButton
+              variant="ghost"
+              size="sm"
+              className="h-6 w-6 p-0 shrink-0"
+              onClick={goForward}
+              disabled={historyIndex >= history.length - 1}
+              title={t('finder.toolbar.forward', '前进')}
+            >
+              <ChevronRight className="w-3.5 h-3.5" />
+            </NotionButton>
+            {/* 面包屑路径 */}
+            <div className="flex items-center gap-0.5 min-w-0 overflow-hidden text-xs">
+              <button
+                onClick={() => jumpToBreadcrumb(-1)}
+                className="shrink-0 text-muted-foreground hover:text-foreground transition-colors px-0.5"
+                title={t('learningHub:title', '资源库')}
+              >
+                <Home className="w-3 h-3" />
+              </button>
+              {currentPath.breadcrumbs.map((crumb, index) => (
+                <React.Fragment key={crumb.id}>
+                  <span className="text-muted-foreground/50 shrink-0">/</span>
+                  {index === currentPath.breadcrumbs.length - 1 ? (
+                    <span className="truncate text-foreground font-medium">{crumb.name}</span>
+                  ) : (
+                    <button
+                      onClick={() => jumpToBreadcrumb(index)}
+                      className="truncate text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      {crumb.name}
+                    </button>
+                  )}
+                </React.Fragment>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* ★ Canvas 模式顶部工具栏：多选模式 + 关闭按钮 */}
         {mode === 'canvas' && (

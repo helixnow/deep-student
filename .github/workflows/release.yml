@@ -105,9 +105,8 @@ jobs:
         with:
           name: windows-x86_64
           path: |
-            src-tauri/target/release/bundle/nsis/*.nsis.zip
-            src-tauri/target/release/bundle/nsis/*.nsis.zip.sig
             src-tauri/target/release/bundle/nsis/*.exe
+            src-tauri/target/release/bundle/nsis/*.exe.sig
 
   # ─── 发布 ────────────────────────────────────────────────
   publish:
@@ -171,12 +170,12 @@ jobs:
           # ── Windows x86_64 ──
           WIN_DIR="artifacts/windows-x86_64"
           if [ -d "$WIN_DIR" ]; then
-            ZIP=$(find "$WIN_DIR" -name "*.nsis.zip" ! -name "*.sig" | head -1)
-            SIG=$(find "$WIN_DIR" -name "*.nsis.zip.sig" | head -1)
-            if [ -n "$ZIP" ] && [ -n "$SIG" ]; then
-              ZIP_NAME=$(basename "$ZIP")
+            EXE=$(find "$WIN_DIR" -name "*-setup.exe" ! -name "*.sig" | head -1)
+            SIG=$(find "$WIN_DIR" -name "*-setup.exe.sig" | head -1)
+            if [ -n "$EXE" ] && [ -n "$SIG" ]; then
+              EXE_NAME=$(basename "$EXE")
               SIGNATURE=$(cat "$SIG")
-              PLATFORMS=$(echo "$PLATFORMS" | jq --arg url "https://github.com/$REPO/releases/download/v$VERSION/$ZIP_NAME" \
+              PLATFORMS=$(echo "$PLATFORMS" | jq --arg url "https://github.com/$REPO/releases/download/v$VERSION/$EXE_NAME" \
                 --arg sig "$SIGNATURE" \
                 '. + {"windows-x86_64": {"url": $url, "signature": $sig}}')
             fi
@@ -202,12 +201,10 @@ jobs:
           # 复制所有更新包和签名
           find artifacts -name "*.app.tar.gz" -exec cp {} release-files/ \;
           find artifacts -name "*.app.tar.gz.sig" -exec cp {} release-files/ \;
-          find artifacts -name "*.nsis.zip" -exec cp {} release-files/ \;
-          find artifacts -name "*.nsis.zip.sig" -exec cp {} release-files/ \;
-
-          # 复制安装包（供用户直接下载）
+          # 复制安装包和签名
           find artifacts -name "*.dmg" -exec cp {} release-files/ \;
           find artifacts -name "*.exe" -exec cp {} release-files/ \;
+          find artifacts -name "*.exe.sig" -exec cp {} release-files/ \;
 
           echo "📦 Release files:"
           ls -lh release-files/

@@ -180,6 +180,11 @@ export const ChatV2Page: React.FC = () => {
           console.warn('[ChatV2Page] Failed to save last session ID:', e);
         }
       }
+      // 🔧 Bug fix: 切换对话时关闭右侧预览面板，避免上一个对话的预览残留
+      if (newId !== prev) {
+        setOpenApp(null);
+        setAttachmentPreviewOpen(false);
+      }
       return newId;
     });
   }, [t]);
@@ -196,6 +201,13 @@ export const ChatV2Page: React.FC = () => {
   const globalLeftPanelCollapsed = useUIStore((state) => state.leftPanelCollapsed);
   const [localSidebarCollapsed, setLocalSidebarCollapsed] = useState(false);
   const sidebarCollapsed = globalLeftPanelCollapsed || localSidebarCollapsed;
+  const handleSidebarCollapsedChange = useCallback((collapsed: boolean) => {
+    setLocalSidebarCollapsed(collapsed);
+    // 同步重置全局状态，避免 topbar 收起后本地切换失效
+    if (!collapsed && globalLeftPanelCollapsed) {
+      useUIStore.getState().setLeftPanelCollapsed(false);
+    }
+  }, [globalLeftPanelCollapsed]);
   const [pendingDeleteSessionId, setPendingDeleteSessionId] = useState<string | null>(null);
   const [hoveredSessionId, setHoveredSessionId] = useState<string | null>(null);
   const deleteConfirmTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1332,7 +1344,7 @@ export const ChatV2Page: React.FC = () => {
       // 切换侧边栏
       [COMMAND_EVENTS.CHAT_TOGGLE_SIDEBAR]: () => {
         console.log('[ChatV2Page] CHAT_TOGGLE_SIDEBAR triggered');
-        setLocalSidebarCollapsed(prev => !prev);
+        handleSidebarCollapsedChange(!sidebarCollapsed);
       },
       // 切换功能面板（Learning Hub 侧边栏）
       [COMMAND_EVENTS.CHAT_TOGGLE_PANEL]: () => {
@@ -2469,7 +2481,7 @@ export const ChatV2Page: React.FC = () => {
         <>
           <UnifiedSidebar
             collapsed={sidebarCollapsed}
-            onCollapsedChange={setLocalSidebarCollapsed}
+            onCollapsedChange={handleSidebarCollapsedChange}
             searchQuery={searchQuery}
             onSearchQueryChange={setSearchQuery}
             showMacSafeZone={false}

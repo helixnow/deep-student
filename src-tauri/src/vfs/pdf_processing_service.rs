@@ -1713,6 +1713,20 @@ impl PdfProcessingService {
             ocr_text.chars().take(100).collect::<String>()
         );
 
+        // ★ 2026-02 修复：OCR 返回空文本时不写入数据库
+        // 空字符串会导致 has_ocr_text=true 但 ocr_text_len=0，
+        // 后续 get_image_ocr_text 读取时会判定为 EMPTY 并返回 None，
+        // 最终导致用户选择 OCR 模式但拿不到任何内容。
+        // 不写入空值，让 ocr_text 保持 NULL，后续重试时可以重新触发 OCR。
+        if ocr_text.trim().is_empty() {
+            warn!(
+                "[OCR_DIAG] OCR API returned EMPTY text for file_id={}, NOT writing to DB (keeping ocr_text as NULL so retry is possible). \
+                 Possible causes: (1) OCR model does not support vision, (2) API returned empty response, (3) image has no recognizable text",
+                file_id
+            );
+            return Ok(ocr_text);
+        }
+
         // 存储 OCR 结果到关联的 resource.ocr_text
         let rows_affected = conn.execute(
             r#"

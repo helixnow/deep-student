@@ -45,7 +45,7 @@ const PLATFORM_MAP = {
   'windows-x86_64': {
     targetDir: 'x86_64-pc-windows-msvc',
     bundleSubdir: 'nsis',
-    ext: '-setup.nsis.zip',
+    ext: '-setup.exe',
   },
   'linux-x86_64': {
     targetDir: 'x86_64-unknown-linux-gnu',

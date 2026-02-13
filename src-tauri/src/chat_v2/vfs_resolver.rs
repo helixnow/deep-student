@@ -185,9 +185,21 @@ pub fn resolve_context_ref_data_to_content(
     ref_data: &VfsContextRefData,
     is_multimodal: bool,
 ) -> ResolvedContent {
+    log::info!(
+        "[OCR_DIAG] resolve_context_ref_data_to_content: is_multimodal={}, refs_count={}, ref_ids=[{}]",
+        is_multimodal,
+        ref_data.refs.len(),
+        ref_data.refs.iter().map(|r| format!("{}({:?})", r.source_id, r.resource_type)).collect::<Vec<_>>().join(", ")
+    );
     let mut result = ResolvedContent::new();
     for vfs_ref in &ref_data.refs {
         let content = resolve_vfs_ref_to_content(conn, blobs_dir, vfs_ref, is_multimodal);
+        log::info!(
+            "[OCR_DIAG] resolve_vfs_ref_to_content result: source_id={}, text_count={}, image_count={}",
+            vfs_ref.source_id,
+            content.text_contents.len(),
+            content.image_base64_list.len()
+        );
         result.merge(content);
     }
     result
@@ -217,11 +229,16 @@ fn resolve_image(
     let (include_image, include_ocr, downgraded_non_multimodal) =
         resolve_image_mode_policy(image_modes, is_multimodal);
 
-    log::debug!(
-        "[VfsResolver] resolve_image {}: include_image={}, include_ocr={}",
+    log::info!(
+        "[OCR_DIAG] resolve_image ENTER: source_id={}, name={}, is_multimodal={}, inject_modes={:?}, image_modes={:?} -> include_image={}, include_ocr={}, downgraded={}",
         vfs_ref.source_id,
+        vfs_ref.name,
+        is_multimodal,
+        vfs_ref.inject_modes,
+        image_modes,
         include_image,
-        include_ocr
+        include_ocr,
+        downgraded_non_multimodal
     );
 
     let mut blocks = Vec::new();
@@ -339,6 +356,64 @@ fn resolve_image(
 ///
 /// 从 resources.ocr_text 或附件关联的 resource 中获取 OCR 文本
 fn get_image_ocr_text(conn: &Connection, vfs_ref: &VfsResourceRef) -> Option<String> {
+    log::info!(
+        "[OCR_DIAG] get_image_ocr_text START: source_id={}",
+        vfs_ref.source_id
+    );
+
+    // ★ 诊断层 1：检查 source_id 在 files 表中是否存在，以及 resource_id 映射
+    let file_check: Option<(Option<String>, Option<String>)> = conn
+        .query_row(
+            "SELECT id, resource_id FROM files WHERE id = ?1",
+            rusqlite::params![vfs_ref.source_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .ok();
+
+    match &file_check {
+        Some((file_id, resource_id)) => {
+            log::info!(
+                "[OCR_DIAG] files table lookup: source_id={} -> file_id={:?}, resource_id={:?}",
+                vfs_ref.source_id, file_id, resource_id
+            );
+        }
+        None => {
+            log::warn!(
+                "[OCR_DIAG] source_id={} NOT FOUND in files table by id, trying resource_id match",
+                vfs_ref.source_id
+            );
+            // 尝试通过 resource_id 查找
+            let alt_check: Option<(String, Option<String>)> = conn
+                .query_row(
+                    "SELECT id, resource_id FROM files WHERE resource_id = ?1 LIMIT 1",
+                    rusqlite::params![vfs_ref.source_id],
+                    |row| Ok((row.get(0)?, row.get(1)?)),
+                )
+                .ok();
+            log::info!(
+                "[OCR_DIAG] files table lookup by resource_id: source_id={} -> result={:?}",
+                vfs_ref.source_id, alt_check
+            );
+        }
+    }
+
+    // ★ 诊断层 2：直接检查 resources.ocr_text 状态
+    if let Some((_, Some(ref rid))) = file_check {
+        let ocr_check: Option<(bool, i64)> = conn
+            .query_row(
+                "SELECT ocr_text IS NOT NULL, COALESCE(LENGTH(ocr_text), 0) FROM resources WHERE id = ?1",
+                rusqlite::params![rid],
+                |row| Ok((row.get::<_, i32>(0)? != 0, row.get(1)?)),
+            )
+            .ok();
+        log::info!(
+            "[OCR_DIAG] resources.ocr_text check: resource_id={}, has_ocr_text={:?}, ocr_text_len={:?}",
+            rid,
+            ocr_check.as_ref().map(|(has, _)| has),
+            ocr_check.as_ref().map(|(_, len)| len)
+        );
+    }
+
     // 尝试从附件关联的 resource 获取 OCR 文本
     let sql = r#"
         SELECT r.ocr_text
@@ -352,8 +427,38 @@ fn get_image_ocr_text(conn: &Connection, vfs_ref: &VfsResourceRef) -> Option<Str
     match conn.query_row(sql, rusqlite::params![vfs_ref.source_id], |row| {
         row.get::<_, Option<String>>(0)
     }) {
-        Ok(Some(text)) if !text.trim().is_empty() => Some(text),
-        _ => None,
+        Ok(Some(text)) if !text.trim().is_empty() => {
+            log::info!(
+                "[OCR_DIAG] get_image_ocr_text FOUND: source_id={}, text_len={}, preview=\"{}\"",
+                vfs_ref.source_id,
+                text.len(),
+                text.chars().take(100).collect::<String>()
+            );
+            Some(text)
+        }
+        Ok(Some(text)) => {
+            log::warn!(
+                "[OCR_DIAG] get_image_ocr_text EMPTY: source_id={}, raw_len={} (text is empty/whitespace only)",
+                vfs_ref.source_id,
+                text.len()
+            );
+            None
+        }
+        Ok(None) => {
+            log::warn!(
+                "[OCR_DIAG] get_image_ocr_text NULL: source_id={}, resources.ocr_text is NULL (OCR pipeline may not have completed)",
+                vfs_ref.source_id
+            );
+            None
+        }
+        Err(e) => {
+            log::warn!(
+                "[OCR_DIAG] get_image_ocr_text QUERY_FAILED: source_id={}, error={} (JOIN may have failed - no matching files/resources row)",
+                vfs_ref.source_id,
+                e
+            );
+            None
+        }
     }
 }
 

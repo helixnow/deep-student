@@ -24,6 +24,7 @@ export const Card3DPreview: React.FC<Card3DPreviewProps> = ({ cards, template, t
   const { t } = useTranslation('common');
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isAutoPlay, setIsAutoPlay] = useState(false);
+  const [flippedCards, setFlippedCards] = useState<Set<number>>(new Set());
   const [touchStart, setTouchStart] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
   const autoPlayRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -307,6 +308,36 @@ export const Card3DPreview: React.FC<Card3DPreviewProps> = ({ cards, template, t
     }
   };
 
+  const renderCardBack = (card: AnkiCard) => {
+    try {
+      const cardTemplate = resolveTemplate(card);
+      if (!cardTemplate) {
+        return `<div style="padding:16px;font-size:14px;">${card.back || '—'}</div>`;
+      }
+      const rendered = TemplateRenderService.renderCard(card, cardTemplate as any);
+      let back = rendered.back;
+      if (back.includes('{{FrontSide}}')) {
+        back = back.replace('{{FrontSide}}', `${rendered.front}<hr id="answer">`);
+      }
+      return back;
+    } catch (error: unknown) {
+      debugLog.error('Card3DPreview renderCardBack error', { error, cardId: card.id });
+      return `<div class="render-error">${t('card3DPreview.errorRenderingCard')}</div>`;
+    }
+  };
+
+  const handleFlipCurrent = () => {
+    setFlippedCards((prev) => {
+      const next = new Set(prev);
+      if (next.has(currentIndex)) {
+        next.delete(currentIndex);
+      } else {
+        next.add(currentIndex);
+      }
+      return next;
+    });
+  };
+
   const handlePrevious = () => {
     setCurrentIndex((prev) => (prev - 1 + cards.length) % cards.length);
   };
@@ -333,6 +364,11 @@ export const Card3DPreview: React.FC<Card3DPreviewProps> = ({ cards, template, t
       case 'P':
         e.preventDefault();
         setIsAutoPlay(!isAutoPlay);
+        break;
+      case 'f':
+      case 'F':
+        e.preventDefault();
+        handleFlipCurrent();
         break;
       case 'Home':
         e.preventDefault();
@@ -430,12 +466,19 @@ export const Card3DPreview: React.FC<Card3DPreviewProps> = ({ cards, template, t
       onTouchEnd={handleTouchEnd}
     >
       <div className="card-3d-controls">
-        <button 
+        <button
           className="control-btn"
           onClick={() => setIsAutoPlay(!isAutoPlay)}
           title={isAutoPlay ? "Pause" : "Play"}
         >
           {isAutoPlay ? '⏸' : '▶'}
+        </button>
+        <button
+          className={`control-btn${flippedCards.has(currentIndex) ? ' control-btn-active' : ''}`}
+          onClick={handleFlipCurrent}
+          title={t('card3DPreview.flipCard')}
+        >
+          🔄
         </button>
         <div className="card-counter">
           {currentIndex + 1} / {cards.length}
@@ -453,7 +496,7 @@ export const Card3DPreview: React.FC<Card3DPreviewProps> = ({ cards, template, t
             return (
             <div
               key={card.id}
-              className="card-3d"
+              className={`card-3d${flippedCards.has(index) ? ' card-3d-flipped' : ''}`}
               data-card-index={index}
               style={getCardTransform(index)}
               onClick={() => onCardClick && onCardClick(card, index)}
@@ -469,7 +512,13 @@ export const Card3DPreview: React.FC<Card3DPreviewProps> = ({ cards, template, t
                   </div>
                 </div>
                 <div className="card-3d-face card-3d-back">
-                  <div className="card-3d-back-pattern"></div>
+                  <div className="card-3d-content-wrapper">
+                    <ShadowDomPreview
+                      htmlContent={renderCardBack(card)}
+                      cssContent={(cardTemplate as any)?.css_style || ''}
+                      fidelity="anki"
+                    />
+                  </div>
                 </div>
               </div>
               <div className="card-3d-shadow"></div>
@@ -507,7 +556,7 @@ export const Card3DPreview: React.FC<Card3DPreviewProps> = ({ cards, template, t
       </div>
 
       <div className="card-3d-instructions">
-        <p>← → or A/D: Navigate • Space or P: Play/Pause • 1-9: Jump to card • Home/End: First/Last</p>
+        <p>← → or A/D: Navigate • F: Flip • Space or P: Play/Pause • 1-9: Jump to card • Home/End: First/Last</p>
       </div>
     </div>
   );

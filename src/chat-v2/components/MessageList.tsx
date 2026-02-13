@@ -212,6 +212,38 @@ const MessageListInner: React.FC<MessageListProps> = ({
   const isAutoScrollingRef = useRef(false);
   const rafIdRef = useRef<number | null>(null);
 
+  // 🔧 用户滚动意图检测：通过 wheel/touch 事件判断用户是否主动滚动
+  // 避免仅靠距离阈值判断导致的"拔河"问题
+  const userHasScrolledRef = useRef(false);
+
+  /** 检查当前是否在底部附近（阈值 150px） */
+  const isNearBottom = useCallback(() => {
+    if (!viewportElement) return true;
+    const { scrollTop, scrollHeight, clientHeight } = viewportElement;
+    return scrollHeight - scrollTop - clientHeight < 150;
+  }, [viewportElement]);
+
+  // 监听用户主动滚动事件（wheel / touchmove），设置 userHasScrolled 标志
+  useEffect(() => {
+    if (!viewportElement) return;
+
+    const handleUserScroll = () => {
+      // 用户主动滚动且不在底部附近 → 标记为用户已接管滚动
+      if (!isNearBottom()) {
+        userHasScrolledRef.current = true;
+      }
+    };
+
+    // wheel 和 touchmove 是用户主动发起的滚动行为
+    viewportElement.addEventListener('wheel', handleUserScroll, { passive: true });
+    viewportElement.addEventListener('touchmove', handleUserScroll, { passive: true });
+
+    return () => {
+      viewportElement.removeEventListener('wheel', handleUserScroll);
+      viewportElement.removeEventListener('touchmove', handleUserScroll);
+    };
+  }, [viewportElement, isNearBottom]);
+
   // 🚀 P1优化：流式生成时使用 rAF 自动滚动（替代 setInterval）
   useEffect(() => {
     if (!isStreaming || !viewportElement) {
@@ -219,6 +251,10 @@ const MessageListInner: React.FC<MessageListProps> = ({
       if (rafIdRef.current) {
         cancelAnimationFrame(rafIdRef.current);
         rafIdRef.current = null;
+      }
+      // 流式结束后重置用户滚动标志，下次流式重新开始跟随
+      if (!isStreaming) {
+        userHasScrolledRef.current = false;
       }
       return;
     }
@@ -229,12 +265,18 @@ const MessageListInner: React.FC<MessageListProps> = ({
     const scrollLoop = () => {
       if (!isAutoScrollingRef.current) return;
 
-      // 检查是否需要滚动（用户可能手动滚动到其他位置）
-      const { scrollTop, scrollHeight, clientHeight } = viewportElement;
-      const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
+      // 用户已主动滚离底部 → 停止自动滚动，尊重用户意图
+      if (userHasScrolledRef.current) {
+        rafIdRef.current = requestAnimationFrame(scrollLoop);
+        return;
+      }
 
-      if (isNearBottom) {
-        viewportElement.scrollTop = scrollHeight;
+      // 用户未主动滚动，检查是否在底部附近
+      if (isNearBottom()) {
+        viewportElement.scrollTop = viewportElement.scrollHeight;
+      } else {
+        // 被程序以外的原因滚离（如内容高度突变），也标记为脱离
+        userHasScrolledRef.current = true;
       }
 
       rafIdRef.current = requestAnimationFrame(scrollLoop);
@@ -249,18 +291,20 @@ const MessageListInner: React.FC<MessageListProps> = ({
         rafIdRef.current = null;
       }
     };
-  }, [isStreaming, viewportElement]);
+  }, [isStreaming, viewportElement, isNearBottom]);
 
-  // 新消息时滚动到底部（只在消息数量变化时触发）
+  // 新消息时滚动到底部（只在用户仍在底部附近时触发，避免打断阅读）
   useEffect(() => {
     if (messageOrder.length > prevMessageCountRef.current) {
-      // 新消息添加，滚动到底部
-      requestAnimationFrame(() => {
-        scrollToBottom();
-      });
+      // 仅在用户没有主动滚离底部时才自动滚动
+      if (!userHasScrolledRef.current && isNearBottom()) {
+        requestAnimationFrame(() => {
+          scrollToBottom();
+        });
+      }
     }
     prevMessageCountRef.current = messageOrder.length;
-  }, [messageOrder.length, scrollToBottom]);
+  }, [messageOrder.length, scrollToBottom, isNearBottom]);
 
   // 📊 性能打点：首次渲染完成
   // 只有当 isDataLoaded 为 true 时才触发 first_render，避免 race condition

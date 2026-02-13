@@ -137,7 +137,8 @@
   },
   "card3DPreview": {
     "errorRenderingCard": "Error rendering card",
-    "noCardsToPreview": "No cards to preview"
+    "noCardsToPreview": "No cards to preview",
+    "flipCard": "Flip card"
   },
   "copy": "Copy",
   "copied": "Copied to clipboard",
