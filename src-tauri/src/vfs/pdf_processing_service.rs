@@ -1676,7 +1676,9 @@ impl PdfProcessingService {
     ) -> VfsResult<String> {
         info!(
             "[OCR_DIAG] stage_image_ocr_with_base64 START: file_id={}, mime_type={}, base64_len={}",
-            file_id, mime_type, base64_data.len()
+            file_id,
+            mime_type,
+            base64_data.len()
         );
 
         let conn = self.db.get_conn_safe()?;

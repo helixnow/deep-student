@@ -2257,7 +2257,12 @@ impl LLMManager {
             )
             .map_err(|e| AppError::llm(format!("{} 请求构建失败: {}", engine_name, e)))?;
 
-        model2_pipeline::log_llm_request_audit("OCR_ENGINE_TEST", &preq.url, &config.model, &request_body);
+        model2_pipeline::log_llm_request_audit(
+            "OCR_ENGINE_TEST",
+            &preq.url,
+            &config.model,
+            &request_body,
+        );
 
         // 发送请求
         let client = reqwest::Client::builder()

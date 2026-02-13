@@ -189,7 +189,9 @@ fn build_backend_request_audit_payload(
 
     // ★ 2026-02-13 修复：纯文本模型 + 图片/文件附件 → OCR 始终被期望
     // resolveVfsRefs 会为纯文本模型归一化 injectModes 强制包含 OCR
-    let has_image_or_file_ref = refs.iter().any(|r| r.type_id == "image" || r.type_id == "file");
+    let has_image_or_file_ref = refs
+        .iter()
+        .any(|r| r.type_id == "image" || r.type_id == "file");
     let text_model_implies_ocr = !is_multimodal_model && has_image_or_file_ref;
 
     let expected_image_blocks = is_multimodal_model && has_image_mode;

@@ -374,7 +374,9 @@ fn get_image_ocr_text(conn: &Connection, vfs_ref: &VfsResourceRef) -> Option<Str
         Some((file_id, resource_id)) => {
             log::info!(
                 "[OCR_DIAG] files table lookup: source_id={} -> file_id={:?}, resource_id={:?}",
-                vfs_ref.source_id, file_id, resource_id
+                vfs_ref.source_id,
+                file_id,
+                resource_id
             );
         }
         None => {
@@ -392,7 +394,8 @@ fn get_image_ocr_text(conn: &Connection, vfs_ref: &VfsResourceRef) -> Option<Str
                 .ok();
             log::info!(
                 "[OCR_DIAG] files table lookup by resource_id: source_id={} -> result={:?}",
-                vfs_ref.source_id, alt_check
+                vfs_ref.source_id,
+                alt_check
             );
         }
     }
