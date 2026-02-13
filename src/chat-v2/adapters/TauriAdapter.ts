@@ -1665,7 +1665,7 @@ export class ChatV2TauriAdapter {
         modelId: options.modelId,
         isMultimodalModel,
       });
-      logAttachment('adapter', 'send_request_audit_frontend', requestAudit, requestAudit.expectation.expectationMet ? 'success' : 'warning');
+      logAttachment('adapter', 'send_request_audit_frontend', requestAudit as unknown as Record<string, unknown>, requestAudit.expectation.expectationMet ? 'success' : 'warning');
 
       const returnedAssistantMessageId = await invoke<string>('chat_v2_send_message', {
         request,
@@ -1884,7 +1884,7 @@ export class ChatV2TauriAdapter {
         modelId: options.modelId,
         isMultimodalModel,
       });
-      logAttachment('adapter', 'send_request_audit_frontend', requestAudit, requestAudit.expectation.expectationMet ? 'success' : 'warning');
+      logAttachment('adapter', 'send_request_audit_frontend', requestAudit as unknown as Record<string, unknown>, requestAudit.expectation.expectationMet ? 'success' : 'warning');
 
       const returnedAssistantMessageId = await invoke<string>('chat_v2_send_message', {
         request,

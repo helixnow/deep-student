@@ -98,10 +98,11 @@ const AttachmentOcrRequestAuditPlugin: React.FC<DebugPanelPluginProps> = ({ visi
     let unlisten: (() => void) | undefined;
     void attach("chat_v2_request_audit", (event: { payload: unknown }) => {
       if (!isRequestAuditPayload(event.payload)) return;
+      const payload = event.payload;
       setBackendAudits((prev) => [
         ...prev,
         {
-          ...event.payload,
+          ...payload,
           source: "backend",
           receivedAt: new Date().toISOString(),
         },
