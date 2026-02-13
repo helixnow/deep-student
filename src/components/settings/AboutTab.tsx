@@ -128,19 +128,31 @@ export const AboutTab: React.FC = () => {
                       <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{updater.info.body}</p>
                     )}
                   </div>
-                  <NotionButton
-                    size="sm"
-                    onClick={() => updater.downloadAndInstall()}
-                    disabled={updater.downloading}
-                    className="ml-3 flex-shrink-0"
-                  >
-                    <Download className={`h-3.5 w-3.5 mr-1 ${updater.downloading ? 'animate-bounce' : ''}`} />
-                    {updater.downloading
-                      ? t('about.update.downloading', '下载中...')
-                      : t('about.update.install', '下载更新')}
-                  </NotionButton>
+                  {updater.isMobile ? (
+                    <a
+                      href={`https://github.com/000haoji/deep-student/releases/latest`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="ml-3 flex-shrink-0 inline-flex items-center gap-1 text-sm text-primary hover:underline"
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" />
+                      {t('about.update.goToGithub', '前往下载')}
+                    </a>
+                  ) : (
+                    <NotionButton
+                      size="sm"
+                      onClick={() => updater.downloadAndInstall()}
+                      disabled={updater.downloading}
+                      className="ml-3 flex-shrink-0"
+                    >
+                      <Download className={`h-3.5 w-3.5 mr-1 ${updater.downloading ? 'animate-bounce' : ''}`} />
+                      {updater.downloading
+                        ? t('about.update.downloading', '下载中...')
+                        : t('about.update.install', '下载更新')}
+                    </NotionButton>
+                  )}
                 </div>
-                {updater.downloading && updater.progress > 0 && (
+                {!updater.isMobile && updater.downloading && updater.progress > 0 && (
                   <div className="mt-2 h-1.5 rounded-full bg-muted overflow-hidden">
                     <div className="h-full rounded-full bg-primary transition-all duration-300" style={{ width: `${updater.progress}%` }} />
                   </div>

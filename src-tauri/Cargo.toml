@@ -28,8 +28,6 @@ tauri-plugin-dialog = "2.6"
 tauri-plugin-http = "2.5.7"
 tauri-plugin-fs = "2"
 tauri-plugin-log = "2.8"
-tauri-plugin-updater = "2"
-tauri-plugin-process = "2"
 serde = { version = "1.0", features = ["derive", "rc"] }
 serde_json = { version = "1.0", features = ["preserve_order"] }
 uuid = { version = "1.7.0", features = ["v4", "serde"] }
@@ -132,6 +130,11 @@ aws-config = { version = "1.5", optional = true, default-features = false, featu
 eventsource-stream = "0.2"
 reqwest-eventsource = "0.5"
 zstd = "0.13.3"
+
+# 桌面端专用插件（更新器 + 进程管理）
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+tauri-plugin-updater = "2"
+tauri-plugin-process = "2"
 
 # OAuth2 在 Android 上暂不支持（会引入 native-tls）
 [target.'cfg(not(target_os = "android"))'.dependencies]

@@ -7,6 +7,7 @@
  * - Android/iOS 走应用商店，不使用此机制
  */
 import { useState, useCallback, useEffect } from 'react';
+import { isMobilePlatform } from '../utils/platform';
 
 interface UpdateInfo {
   version: string;
@@ -41,8 +42,48 @@ const initialState: UpdateState = {
 export function useAppUpdater() {
   const [state, setState] = useState<UpdateState>(initialState);
 
+  const mobile = isMobilePlatform();
+
   /** 检查更新 */
   const checkForUpdate = useCallback(async (silent = false) => {
+    // 移动端使用 GitHub API 检查最新版本
+    if (mobile) {
+      setState(prev => ({ ...prev, checking: true, error: null }));
+      try {
+        const resp = await fetch('https://api.github.com/repos/000haoji/deep-student/releases/latest', {
+          headers: { Accept: 'application/vnd.github+json' },
+          signal: AbortSignal.timeout(10000),
+        });
+        if (!resp.ok) throw new Error(`GitHub API ${resp.status}`);
+        const data = await resp.json();
+        const latestVersion = (data.tag_name ?? '').replace(/^v/, '');
+        const { default: VERSION_INFO } = await import('../version');
+        const currentVersion = VERSION_INFO.APP_VERSION;
+        if (latestVersion && latestVersion !== currentVersion) {
+          setState(prev => ({
+            ...prev,
+            checking: false,
+            available: true,
+            info: {
+              version: latestVersion,
+              date: data.published_at ?? undefined,
+              body: data.body ?? undefined,
+            },
+          }));
+        } else {
+          setState(prev => ({ ...prev, checking: false, available: false, info: null }));
+        }
+      } catch (err: any) {
+        if (!silent) {
+          setState(prev => ({ ...prev, checking: false, error: err?.message || String(err) }));
+        } else {
+          setState(prev => ({ ...prev, checking: false }));
+        }
+      }
+      return;
+    }
+
+    // 桌面端使用 Tauri updater 插件
     setState(prev => ({ ...prev, checking: true, error: null }));
 
     try {
@@ -70,7 +111,6 @@ export function useAppUpdater() {
       }
     } catch (err: any) {
       const errorMsg = err?.message || String(err);
-      // 静默模式下不显示错误（启动时检查）
       if (!silent) {
         setState(prev => ({
           ...prev,
@@ -82,10 +122,12 @@ export function useAppUpdater() {
         console.warn('[Updater] Silent check failed:', errorMsg);
       }
     }
-  }, []);
+  }, [mobile]);
 
-  /** 下载并安装更新 */
+  /** 下载并安装更新（仅桌面端） */
   const downloadAndInstall = useCallback(async () => {
+    if (mobile) return; // 移动端不支持 in-app 安装
+
     setState(prev => ({ ...prev, downloading: true, progress: 0, error: null }));
 
     try {
@@ -122,7 +164,7 @@ export function useAppUpdater() {
         error: err?.message || '更新下载失败',
       }));
     }
-  }, []);
+  }, [mobile]);
 
   /** 关闭更新提示 */
   const dismiss = useCallback(() => {
@@ -139,6 +181,7 @@ export function useAppUpdater() {
 
   return {
     ...state,
+    isMobile: mobile,
     checkForUpdate,
     downloadAndInstall,
     dismiss,
