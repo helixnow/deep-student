@@ -29,6 +29,7 @@ jobs:
     env:
       NODE_OPTIONS: '--max-old-space-size=4096'
     strategy:
+      fail-fast: false
       matrix:
         target: [aarch64-apple-darwin, x86_64-apple-darwin]
     steps:
@@ -45,14 +46,13 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
-      - name: Install protobuf
-        run: brew install protobuf
+      - name: Setup protoc
+        uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install dependencies
         run: npm ci
-
-      - name: Build frontend
-        run: npm run build
 
       - name: Build Tauri app
         env:
@@ -86,14 +86,13 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Install protobuf
-        run: choco install protoc -y
+      - name: Setup protoc
+        uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install dependencies
         run: npm ci
-
-      - name: Build frontend
-        run: npm run build
 
       - name: Build Tauri app
         env:

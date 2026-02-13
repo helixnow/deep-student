@@ -3420,8 +3420,7 @@ impl LLMManager {
                             Ok(resp_json) => {
                                 let is_google = lower_model.contains("gemini")
                                     || lower_base.contains("generativelanguage.googleapis.com");
-                                let is_openai_compat = lower_base.contains("/openai");
-                                let openai_like = if is_google && !is_openai_compat {
+                                let openai_like = if is_google {
                                     crate::adapters::gemini_openai_converter::convert_gemini_nonstream_response_to_openai(&resp_json, &model).unwrap_or(resp_json)
                                 } else {
                                     resp_json
