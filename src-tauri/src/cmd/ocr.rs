@@ -69,11 +69,11 @@ pub async fn get_ocr_engines() -> Result<Vec<OcrEngineInfoResponse>> {
 pub async fn get_ocr_engine_type(state: State<'_, AppState>) -> Result<String> {
     let db = &state.database;
 
-    // 从数据库读取配置，默认使用 DeepSeek-OCR
+    // 从数据库读取配置，默认使用 PaddleOCR-VL-1.5
     let engine_type = db
         .get_setting("ocr.engine_type")
         .map_err(|e| AppError::database(format!("读取 OCR 引擎配置失败: {}", e)))?
-        .unwrap_or_else(|| OcrEngineType::DeepSeekOcr.as_str().to_string());
+        .unwrap_or_else(|| OcrEngineType::PaddleOcrVl.as_str().to_string());
 
     Ok(engine_type)
 }

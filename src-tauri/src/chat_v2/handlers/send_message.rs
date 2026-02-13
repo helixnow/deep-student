@@ -187,8 +187,13 @@ fn build_backend_request_audit_payload(
         }));
     }
 
+    // ★ 2026-02-13 修复：纯文本模型 + 图片/文件附件 → OCR 始终被期望
+    // resolveVfsRefs 会为纯文本模型归一化 injectModes 强制包含 OCR
+    let has_image_or_file_ref = refs.iter().any(|r| r.type_id == "image" || r.type_id == "file");
+    let text_model_implies_ocr = !is_multimodal_model && has_image_or_file_ref;
+
     let expected_image_blocks = is_multimodal_model && has_image_mode;
-    let expected_ocr_text = has_ocr_mode;
+    let expected_ocr_text = has_ocr_mode || text_model_implies_ocr;
     let mut mismatch_reasons: Vec<&str> = Vec::new();
     if expected_image_blocks && total_image_blocks == 0 {
         mismatch_reasons.push("selected_image_mode_but_no_image_blocks");
@@ -198,6 +203,9 @@ fn build_backend_request_audit_payload(
     }
     if !is_multimodal_model && has_image_mode && total_image_blocks > 0 {
         mismatch_reasons.push("text_model_received_image_blocks");
+    }
+    if text_model_implies_ocr && total_text_blocks == 0 {
+        mismatch_reasons.push("text_model_expected_ocr_but_no_text_blocks");
     }
 
     json!({

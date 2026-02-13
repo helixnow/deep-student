@@ -1193,12 +1193,22 @@ impl PdfProcessingService {
             if let Some(ref bh) = blob_hash {
                 match self.stage_image_ocr(file_id, bh, mt).await {
                     Ok(ocr_text) => {
-                        info!(
-                            "[MediaProcessingService] Image OCR completed for file: {} ({} chars)",
-                            file_id,
-                            ocr_text.len()
-                        );
-                        ready_modes.push("ocr".to_string());
+                        // ★ 2026-02-13 修复：仅当 OCR 文本非空时才标记 'ocr' 就绪
+                        // 原问题：空文本时 ready_modes 虚标 'ocr'，前端认为 OCR 就绪放行发送，
+                        // 但后端 DB 中 ocr_text=NULL，导致模型只收到占位符
+                        if !ocr_text.trim().is_empty() {
+                            info!(
+                                "[MediaProcessingService] Image OCR completed for file: {} ({} chars)",
+                                file_id,
+                                ocr_text.len()
+                            );
+                            ready_modes.push("ocr".to_string());
+                        } else {
+                            warn!(
+                                "[MediaProcessingService] Image OCR returned empty text for file: {}, NOT marking 'ocr' as ready",
+                                file_id
+                            );
+                        }
                     }
                     Err(e) => {
                         warn!(
@@ -1215,12 +1225,20 @@ impl PdfProcessingService {
                 if let Some(data) = base64_content {
                     match self.stage_image_ocr_with_base64(file_id, data, mt).await {
                         Ok(ocr_text) => {
-                            info!(
-                                "[MediaProcessingService] Image OCR completed for file: {} ({} chars)",
-                                file_id,
-                                ocr_text.len()
-                            );
-                            ready_modes.push("ocr".to_string());
+                            // ★ 2026-02-13 修复：同上，仅非空时标记就绪
+                            if !ocr_text.trim().is_empty() {
+                                info!(
+                                    "[MediaProcessingService] Image OCR completed for file: {} ({} chars)",
+                                    file_id,
+                                    ocr_text.len()
+                                );
+                                ready_modes.push("ocr".to_string());
+                            } else {
+                                warn!(
+                                    "[MediaProcessingService] Image OCR returned empty text for file: {}, NOT marking 'ocr' as ready",
+                                    file_id
+                                );
+                            }
                         }
                         Err(e) => {
                             warn!(
@@ -1735,11 +1753,25 @@ impl PdfProcessingService {
             "#,
             params![ocr_text, file_id],
         )?;
+
+        // ★ 2026-02-13 修复：rows_affected=0 说明 resource_id 映射失败，OCR 文本未持久化
+        // 此时若返回 Ok，调用方会将 'ocr' 加入 ready_modes，但后端查询时找不到数据
+        if rows_affected == 0 {
+            warn!(
+                "[OCR_DIAG] OCR text NOT persisted: file_id={}, rows_affected=0. \
+                 resource_id lookup failed (files.resource_id may be NULL). \
+                 Returning error to prevent ready_modes from falsely including 'ocr'.",
+                file_id
+            );
+            return Err(VfsError::Other(format!(
+                "OCR text produced but DB save failed (rows_affected=0) for file_id={}",
+                file_id
+            )));
+        }
+
         info!(
-            "[OCR_DIAG] OCR text saved to resources table: file_id={}, rows_affected={}{}",
-            file_id,
-            rows_affected,
-            if rows_affected == 0 { " ⚠️ NO ROWS UPDATED - resource_id lookup may have failed!" } else { "" }
+            "[OCR_DIAG] OCR text saved to resources table: file_id={}, rows_affected={}",
+            file_id, rows_affected
         );
 
         // 更新 processing_progress 中的 ready_modes

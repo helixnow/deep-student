@@ -99,8 +99,16 @@ export function buildAttachmentRequestAudit(
       refAudit.injectModes.image.includes("ocr") || refAudit.injectModes.pdf.includes("ocr")
   );
 
+  // ★ 2026-02-13 修复：纯文本模型 + 图片/PDF 附件 → OCR 始终被期望
+  // resolveVfsRefs 会为纯文本模型归一化 injectModes 强制包含 OCR，
+  // 即使用户未显式选择 OCR，审计也应反映实际行为
+  const hasImageOrPdfRef = refAudits.some(
+    (refAudit) => refAudit.typeId === "image" || refAudit.typeId === "file"
+  );
+  const textModelImpliesOcr = !input.isMultimodalModel && hasImageOrPdfRef;
+
   const expectedImageBlocks = input.isMultimodalModel && hasImageModeSelection;
-  const expectedOcrText = hasOcrModeSelection;
+  const expectedOcrText = hasOcrModeSelection || textModelImpliesOcr;
 
   const mismatchReasons: string[] = [];
   if (expectedImageBlocks && blockTotals.image === 0) {
@@ -111,6 +119,9 @@ export function buildAttachmentRequestAudit(
   }
   if (!input.isMultimodalModel && hasImageModeSelection && blockTotals.image > 0) {
     mismatchReasons.push("text_model_received_image_blocks");
+  }
+  if (textModelImpliesOcr && blockTotals.text === 0) {
+    mismatchReasons.push("text_model_expected_ocr_but_no_text_blocks");
   }
 
   return {

@@ -8,19 +8,19 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum OcrEngineType {
-    /// DeepSeek-OCR（默认）- 支持 grounding 坐标输出
-    #[default]
+    /// DeepSeek-OCR - 支持 grounding 坐标输出
     DeepSeekOcr,
-    /// PaddleOCR-VL - 百度 PaddlePaddle 视觉语言模型
+    /// PaddleOCR-VL-1.5（默认）- 百度开源，免费，精度 94.5%
+    #[default]
     PaddleOcrVl,
     /// 通用多模态模型 - 使用标准 VLM 进行 OCR
     GenericVlm,
 }
 
 impl OcrEngineType {
-    /// 从字符串解析引擎类型（未知类型回退到 DeepSeekOcr）
+    /// 从字符串解析引擎类型（未知类型回退到 PaddleOcrVl）
     pub fn from_str(s: &str) -> Self {
-        Self::try_from_str(s).unwrap_or(Self::DeepSeekOcr)
+        Self::try_from_str(s).unwrap_or(Self::PaddleOcrVl)
     }
 
     /// M5 fix: 严格解析，未知类型返回 None

@@ -2257,6 +2257,8 @@ impl LLMManager {
             )
             .map_err(|e| AppError::llm(format!("{} 请求构建失败: {}", engine_name, e)))?;
 
+        model2_pipeline::log_llm_request_audit("OCR_ENGINE_TEST", &preq.url, &config.model, &request_body);
+
         // 发送请求
         let client = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(300))
@@ -2394,7 +2396,7 @@ impl LLMManager {
 
     /// 获取当前配置的 OCR 引擎类型
     ///
-    /// 从数据库读取 `ocr.engine_type` 设置，默认返回 DeepSeek-OCR
+    /// 从数据库读取 `ocr.engine_type` 设置，默认返回 PaddleOCR-VL-1.5
     pub async fn get_ocr_engine_type(&self) -> crate::ocr_adapters::OcrEngineType {
         use crate::ocr_adapters::OcrEngineType;
 
@@ -2403,7 +2405,7 @@ impl LLMManager {
             .get_setting("ocr.engine_type")
             .ok()
             .flatten()
-            .unwrap_or_else(|| "deepseek_ocr".to_string());
+            .unwrap_or_else(|| "paddle_ocr_vl".to_string());
 
         OcrEngineType::from_str(&engine_str)
     }
