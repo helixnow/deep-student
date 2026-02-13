@@ -103,24 +103,38 @@ pub(crate) fn log_llm_request_audit(tag: &str, url: &str, model: &str, body: &se
     }
 }
 
-/// ★ 2026-02-14: 将脱敏后的 LLM 请求体推送给前端显示
+/// ★ 2026-02-14: 审计日志 + 将脱敏后的 LLM 请求体推送给前端显示（合并版本，只做一次 sanitize）
 ///
-/// 通过 `chat_v2_llm_request_body` 全局事件通道发射，前端按 session_id 过滤。
-/// 仅在 `stream_event` 以 `chat_v2_event_` 开头时发射（仅 Chat V2 流）。
-pub(crate) fn emit_llm_request_body_to_frontend(
+/// 1. 输出 info 级别审计日志
+/// 2. 如果 stream_event 以 `chat_v2_event_` 开头，通过 Tauri 事件推送给前端
+pub(crate) fn log_and_emit_llm_request(
+    tag: &str,
     window: &tauri::Window,
     stream_event: &str,
     model: &str,
     url: &str,
     body: &serde_json::Value,
 ) {
-    // 仅对 Chat V2 流发射（stream_event 格式: chat_v2_event_{session_id} 或 chat_v2_event_{session_id}_{variant_id}）
+    let sanitized = sanitize_request_body_for_audit(body);
+
+    // 1. 审计日志
+    match serde_json::to_string_pretty(&sanitized) {
+        Ok(pretty) => info!(
+            "[LLM_AUDIT:{}] model={} url={}\n{}",
+            tag, model, url, pretty
+        ),
+        Err(e) => warn!(
+            "[LLM_AUDIT:{}] model={} url={} (序列化失败: {})",
+            tag, model, url, e
+        ),
+    }
+
+    // 2. 推送给前端（仅 Chat V2 流）
     let prefix = "chat_v2_event_";
     if !stream_event.starts_with(prefix) {
         return;
     }
 
-    let sanitized = sanitize_request_body_for_audit(body);
     let payload = json!({
         "streamEvent": stream_event,
         "model": model,
@@ -952,8 +966,7 @@ impl LLMManager {
             )
             .map_err(|e| Self::provider_error("对话请求构建失败", e))?;
 
-        log_llm_request_audit("CHAT_STREAM", &preq.url, &config.model, &request_body);
-        emit_llm_request_body_to_frontend(&window, stream_event, &config.model, &preq.url, &request_body);
+        log_and_emit_llm_request("CHAT_STREAM", &window, stream_event, &config.model, &preq.url, &request_body);
 
         // 发出开始事件
         let request_id = Uuid::new_v4().to_string();
@@ -2178,8 +2191,7 @@ impl LLMManager {
             )
             .map_err(|e| Self::provider_error("续写请求构建失败", e))?;
 
-        log_llm_request_audit("CONTINUE_STREAM", &preq.url, &config.model, &request_body);
-        emit_llm_request_body_to_frontend(&window, stream_event, &config.model, &preq.url, &request_body);
+        log_and_emit_llm_request("CONTINUE_STREAM", &window, stream_event, &config.model, &preq.url, &request_body);
 
         let mut request_builder = self.client
             .post(&preq.url)

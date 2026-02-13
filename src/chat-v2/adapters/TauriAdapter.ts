@@ -1182,7 +1182,7 @@ export class ChatV2TauriAdapter {
   private handleLlmRequestBody(payload: { streamEvent: string; model: string; url: string; requestBody: unknown }): void {
     // streamEvent 格式: chat_v2_event_{session_id} 或 chat_v2_event_{session_id}_{variant_id}
     const prefix = `chat_v2_event_${this.sessionId}`;
-    if (!payload.streamEvent.startsWith(prefix)) {
+    if (payload.streamEvent !== prefix && !payload.streamEvent.startsWith(`${prefix}_`)) {
       return; // 不属于当前会话，忽略
     }
 
