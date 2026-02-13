@@ -240,3 +240,4 @@ src-tauri/.cargo-target/
 /docs/design/*checklist*.md
 /docs/design/code-review-prompts/
 /docs/design/**/*code-review*.md
+docs/RELEASE-WORKFLOW.md
