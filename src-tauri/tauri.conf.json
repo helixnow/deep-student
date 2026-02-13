@@ -37,7 +37,9 @@
       "csp": "default-src 'self' tauri: asset:; connect-src 'self' data: blob: tauri: ipc: http://ipc.localhost pdfstream: ws: wss: https:; font-src 'self' data:; img-src 'self' data: blob: asset: pdfstream: https:; script-src 'self' 'unsafe-inline' blob:; style-src 'self' 'unsafe-inline'; worker-src 'self' blob: data:;",
       "assetProtocol": {
         "enable": true,
-        "scope": ["**"]
+        "scope": [
+          "**"
+        ]
       }
     },
     "withGlobalTauri": false
@@ -81,7 +83,7 @@
       }
     },
     "android": {
-      "versionCode": 11803
+      "versionCode": 13116
     }
   },
   "plugins": {
