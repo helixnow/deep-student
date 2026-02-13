@@ -139,18 +139,28 @@ export function useAppUpdater() {
         return;
       }
 
-      // 下载并安装
+      // 下载并安装（官方推荐：用 downloaded/contentLength 计算真实进度）
+      let downloaded = 0;
+      let contentLength = 0;
       await update.downloadAndInstall((event) => {
-        if (event.event === 'Started' && event.data.contentLength) {
-          setState(prev => ({ ...prev, progress: 0 }));
-        } else if (event.event === 'Progress') {
-          // 简单进度估算
-          setState(prev => ({
-            ...prev,
-            progress: Math.min(prev.progress + 5, 95),
-          }));
-        } else if (event.event === 'Finished') {
-          setState(prev => ({ ...prev, progress: 100 }));
+        switch (event.event) {
+          case 'Started':
+            contentLength = event.data.contentLength ?? 0;
+            downloaded = 0;
+            setState(prev => ({ ...prev, progress: 0 }));
+            break;
+          case 'Progress':
+            downloaded += event.data.chunkLength;
+            setState(prev => ({
+              ...prev,
+              progress: contentLength > 0
+                ? Math.min(Math.round((downloaded / contentLength) * 100), 99)
+                : Math.min(prev.progress + 2, 95),
+            }));
+            break;
+          case 'Finished':
+            setState(prev => ({ ...prev, progress: 100 }));
+            break;
         }
       });
 

@@ -132,7 +132,8 @@ reqwest-eventsource = "0.5"
 zstd = "0.13.3"
 
 # 桌面端专用插件（更新器 + 进程管理）
-[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+# 官方推荐白名单写法：仅在 macOS/Windows/Linux 编译
+[target.'cfg(any(target_os = "macos", windows, target_os = "linux"))'.dependencies]
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
 
