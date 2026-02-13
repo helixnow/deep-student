@@ -1,0 +1,76 @@
+/* 
+ * 安全区域适配 - 支持 iOS 和 Android
+ * 
+ * iOS: 使用 env(safe-area-inset-*) - 原生支持
+ * Android: 使用 CSS 变量 --android-safe-area-* (由 platform.ts 设置)
+ * 
+ * 在组件中推荐使用：
+ * var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px))
+ */
+
+:root {
+  /* iOS env() 变量映射为 CSS 变量，方便统一使用 */
+  --safe-area-inset-top: env(safe-area-inset-top, 0px);
+  --safe-area-inset-right: env(safe-area-inset-right, 0px);
+  --safe-area-inset-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-area-inset-left: env(safe-area-inset-left, 0px);
+}
+
+/* 应用全局容器适配 */
+.app {
+  /* 移除全局顶部安全区内边距，避免重复偏移 */
+  padding-top: 0;
+}
+
+/* 导航栏适配 - 使用 Android fallback */
+.app-header, 
+.app-nav,
+.chat-toolbar,
+.sidebar-header {
+  padding-top: var(--android-safe-area-top, var(--safe-area-inset-top));
+}
+
+/* 为sidebar内容添加顶部内边距 */
+.sidebar-content {
+  padding-top: calc(var(--android-safe-area-top, var(--safe-area-inset-top)) + 10px);
+}
+
+/* 修复侧边栏在iOS上的高度问题 */
+.modern-sidebar {
+  height: calc(100% - var(--android-safe-area-top, var(--safe-area-inset-top)));
+  margin-top: var(--android-safe-area-top, var(--safe-area-inset-top));
+}
+
+/* 修复内容区域在iOS上的高度问题 */
+.app-main {
+  /* 填充顶部安全区，保持主体内容不被刘海覆盖，但不再缩减高度 */
+  padding-top: var(--android-safe-area-top, var(--safe-area-inset-top));
+  height: 100%;
+}
+
+/* 为模态框添加顶部安全区域 */
+.modal-header {
+  padding-top: calc(1rem + var(--android-safe-area-top, var(--safe-area-inset-top)));
+}
+
+/* iOS设备特定调整 */
+@supports (-webkit-touch-callout: none) {
+  /* 全局底部安全区域适配 */
+  .app-main {
+    padding-bottom: var(--safe-area-inset-bottom);
+  }
+  
+  /* 聊天界面输入框底部安全区域适配 */
+  .chat-input-form {
+    padding-bottom: var(--safe-area-inset-bottom);
+  }
+}
+
+/* Android设备特定调整 */
+html.is-android .app-main {
+  padding-bottom: var(--android-safe-area-bottom, 0px);
+}
+
+html.is-android .chat-input-form {
+  padding-bottom: var(--android-safe-area-bottom, 0px);
+}

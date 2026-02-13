@@ -1,0 +1,36 @@
+# 数据库文件
+*.db
+*.db-shm
+*.db-wal
+irec_mobile.db*
+
+# 临时文件
+*.tmp
+*.temp
+*.log
+
+# 目标文件夹
+target/
+
+# 应用数据
+app_data/
+
+# Android 库文件
+android_libs/
+
+# 生成的文件
+gen/
+
+# 备份文件
+*.bak
+*.backup
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# deb 包文件
+*.deb
+
+# 临时目录
+*_temp/ 

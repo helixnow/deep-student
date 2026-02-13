@@ -1,0 +1,78 @@
+{
+  "app_menu": {
+    "search": {
+      "placeholder": "搜索操作..."
+    },
+    "actions": {
+      "add_to_favorites": "添加到最爱",
+      "remove_from_favorites": "从最爱中移除",
+      "copy_link": "拷贝链接",
+      "duplicate": "创建副本",
+      "rename": "重命名",
+      "move_to": "移动到",
+      "move_to_trash": "移至垃圾箱",
+      "convert_to": "转换为",
+      "open_in_new_tab": "在新选项卡中打开",
+      "open_in_sidebar": "在侧边预览中打开",
+      "undo": "撤消",
+      "redo": "重做",
+      "import": "导入",
+      "export": "导出",
+      "edit_suggestions": "编辑建议",
+      "translate": "翻译",
+      "lock_page": "锁定页面",
+      "unlock_page": "解锁页面",
+      "customize_page": "自定义页面",
+      "view_history": "所有更新和数据分析",
+      "version_history": "版本历史"
+    },
+    "groups": {
+      "page": "页面",
+      "view": "视图",
+      "edit": "编辑",
+      "advanced": "高级",
+      "danger": "危险操作"
+    },
+    "options": {
+      "font": {
+        "default": "默认",
+        "serif": "衬线体",
+        "mono": "等宽体"
+      },
+      "size": {
+        "small": "小字号",
+        "medium": "中字号",
+        "large": "大字号"
+      }
+    },
+    "switch": {
+      "full_width": "全宽",
+      "small_text": "小字号",
+      "table_of_contents": "显示目录"
+    },
+    "footer": {
+      "last_edited_by": "上次由 {{name}} 编辑",
+      "edited_time": "{{time}}"
+    },
+    "select_app": "选择选项",
+    "demo": {
+      "title": "现代化菜单演示",
+      "description": "这是一个仿 现代化的现代化菜单组件，支持下拉菜单和右键菜单两种模式。",
+      "dropdown_demo": "下拉菜单演示",
+      "context_demo": "右键菜单演示",
+      "context_hint": "右键点击此区域",
+      "features": {
+        "title": "组件特性",
+        "search": "可选搜索框",
+        "icons": "图标支持",
+        "shortcuts": "快捷键显示",
+        "groups": "分组和分隔线",
+        "submenu": "子菜单支持",
+        "switch": "开关控件",
+        "options": "选项组（类似字体选择器）",
+        "footer": "底部元信息区域",
+        "dark_light": "暗色/亮色主题自适应"
+      }
+    }
+  }
+}

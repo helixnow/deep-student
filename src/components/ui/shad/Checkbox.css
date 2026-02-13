@@ -1,0 +1,35 @@
+/**
+ * Shad Checkbox 组件样式
+ * 仅针对 data-radix-checkbox-root 属性的元素
+ * 全局小元素保护已在 DeepStudent.css 中定义
+ */
+
+/* Checkbox 根元素 - 固定 16x16 尺寸 */
+[data-radix-checkbox-root] {
+  width: 16px;
+  min-width: 16px;
+  height: 16px;
+  min-height: 16px;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+/* Checkbox 指示器 - 内部勾选图标 */
+[data-radix-checkbox-indicator] {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+}
+
+/* Checkbox 内的 SVG 图标 */
+[data-radix-checkbox-indicator] svg {
+  width: 12px;
+  min-width: 12px;
+  height: 12px;
+  min-height: 12px;
+  flex-shrink: 0;
+}

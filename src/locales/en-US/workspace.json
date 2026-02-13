@@ -1,0 +1,97 @@
+{
+  "title": "Workspace",
+  "noActiveWorkspace": "No active workspace",
+  "viewFull": "View Full",
+  "defaultName": "Default Workspace",
+  "loadError": "Load Error",
+  "agents": "Agents",
+  "messages": "Messages",
+  "documents": "Documents",
+  "context": "Context",
+  "status": {
+    "active": "Active",
+    "completed": "Completed",
+    "archived": "Archived",
+    "noWorkspace": "No Workspace",
+    "historicalWorkspace": "Historical Workspace",
+    "workspaceSwitched": "Workspace Switched",
+    "historicalSnapshot": "Historical Snapshot",
+    "agentsDone": "All Agents Done",
+    "noAgents": "No Agents",
+    "recentMessages": "Recent Messages"
+  },
+  "agentRole": {
+    "coordinator": "Coordinator",
+    "worker": "Worker"
+  },
+  "agentStatus": {
+    "idle": "Idle",
+    "running": "Running",
+    "completed": "Completed",
+    "failed": "Failed"
+  },
+  "messageType": {
+    "task": "Task",
+    "progress": "Progress",
+    "result": "Result",
+    "query": "Query",
+    "correction": "Correction",
+    "broadcast": "Broadcast"
+  },
+  "documentType": {
+    "plan": "Plan",
+    "research": "Research",
+    "artifact": "Artifact",
+    "notes": "Notes"
+  },
+  "actions": {
+    "create": "Create Workspace",
+    "close": "Close Workspace",
+    "delete": "Delete Workspace",
+    "createAgent": "Create Agent",
+    "sendMessage": "Send Message"
+  },
+  "labels": {
+    "workspaceId": "Workspace ID",
+    "workspaceName": "Workspace Name",
+    "createdAt": "Created At",
+    "updatedAt": "Updated At",
+    "creatorSessionId": "Creator Session",
+    "skillId": "Skill ID",
+    "targetAgent": "Target Agent",
+    "messageContent": "Message Content"
+  },
+  "placeholders": {
+    "workspaceName": "Enter workspace name (optional)",
+    "skillId": "Enter skill identifier",
+    "messageContent": "Enter message to send..."
+  },
+  "errors": {
+    "createFailed": "Failed to create workspace",
+    "closeFailed": "Failed to close workspace",
+    "deleteFailed": "Failed to delete workspace",
+    "sendMessageFailed": "Failed to send message",
+    "loadFailed": "Failed to load workspace",
+    "notFound": "Workspace not found"
+  },
+  "tooltips": {
+    "coordinator": "Coordinator assigns tasks and aggregates results",
+    "worker": "Worker executes specific tasks",
+    "broadcast": "Broadcast messages are sent to all agents"
+  },
+  "log": {
+    "title": "Log",
+    "copy": "Copy",
+    "moreMessages": "More Messages"
+  },
+  "subagent": {
+    "noContent": "No Content",
+    "title": "Sub-agent",
+    "loading": "Loading...",
+    "processing": "Processing...",
+    "noOutput": "No Output"
+  },
+  "agent": {
+    "you": "You"
+  }
+}

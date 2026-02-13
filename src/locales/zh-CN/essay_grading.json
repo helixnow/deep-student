@@ -1,0 +1,255 @@
+{
+  "page_title": "AI 作文批改",
+  "tabs": {
+    "grading": "作文批改",
+    "history": "批改历史"
+  },
+  "input_section": {
+    "title": "学生作文",
+    "placeholder": "请输入或粘贴需要批改的作文...",
+    "drag_hint": "支持拖拽图片进行 OCR 识别"
+  },
+  "result_section": {
+    "title": "批改结果",
+    "placeholder": "批改结果将显示在这里",
+    "copy": "复制",
+    "export": "导出",
+    "copied": "已复制到剪贴板",
+    "exported": "批改结果已导出"
+  },
+  "essay_type": {
+    "label": "作文类型",
+    "narrative": "记叙文",
+    "argumentative": "议论文",
+    "expository": "说明文",
+    "other": "其他"
+  },
+  "grade_level": {
+    "label": "年级水平",
+    "middle_school": "初中",
+    "high_school": "高中",
+    "college": "大学"
+  },
+  "session": {
+    "new": "新建会话",
+    "title": "会话标题",
+    "title_placeholder": "输入会话标题...",
+    "default_title": "作文批改 {{date}}"
+  },
+  "round": {
+    "label": "第 {{number}} 轮",
+    "current": "当前轮次",
+    "previous": "上一轮",
+    "next": "下一轮",
+    "new": "提交下一轮",
+    "total": "共 {{count}} 轮"
+  },
+  "actions": {
+    "grade": "开始批改",
+    "grading": "批改中...",
+    "cancel": "取消",
+    "clear": "清空",
+    "next_round": "提交修改稿",
+    "view_history": "查看历史轮次",
+    "retry": "重试",
+    "cancel_confirm_title": "取消批改",
+    "cancel_confirm_message": "确定要取消当前批改吗？已生成的内容将不会保存。"
+  },
+  "stats": {
+    "characters": "字符数"
+  },
+  "prompt_editor": {
+    "title": "自定义批改提示词",
+    "placeholder": "输入自定义批改提示词（可选）",
+    "restore_default": "恢复默认",
+    "save": "保存",
+    "saved": "提示词已保存",
+    "default_prompt": "你是一位专业的作文批改老师，具有丰富的教学经验。请对学生提交的作文进行全面、细致的批改。\n\n批改要求：\n1. 总体评价：对作文整体质量给出评价\n2. 亮点分析：指出作文中的优秀之处\n3. 问题指出：标出存在的问题\n4. 修改建议：给出具体的修改建议\n5. 示范改写：对问题较多的段落给出改写示例\n\n请使用 Markdown 格式输出批改结果。"
+  },
+  "history": {
+    "title": "批改历史",
+    "description": "浏览和恢复您的批改记录",
+    "empty": "暂无批改记录",
+    "empty_hint": "开始批改后，您的批改记录将显示在这里",
+    "records": "条记录",
+    "search_placeholder": "搜索历史记录...",
+    "load_more": "加载更多",
+    "delete": "删除",
+    "deleted": "已删除",
+    "restore": "恢复",
+    "favorite": "收藏",
+    "unfavorite": "取消收藏",
+    "favorited": "已收藏",
+    "unfavorited": "已取消收藏",
+    "show_all": "显示全部",
+    "show_favorites_only": "仅显示收藏",
+    "no_favorites": "暂无收藏",
+    "no_favorites_hint": "点击历史记录中的星标按钮来收藏",
+    "rounds_count": "{{count}} 轮批改"
+  },
+  "progress": {
+    "grading": "批改中"
+  },
+  "errors": {
+    "empty_text": "请输入待批改的作文",
+    "grading_failed": "批改失败",
+    "session_not_found": "会话不存在",
+    "create_session_failed": "创建会话失败",
+    "timeout": "批改超时，请稍后重试",
+    "missing_session_id": "缺少会话 ID",
+    "load_models_failed": "模型列表加载失败，请检查设置",
+    "load_modes_failed": "批阅模式加载失败",
+    "offline": "离线状态下无法批改，请检查网络连接"
+  },
+  "toast": {
+    "grading_success": "批改完成",
+    "grading_failed": "批改失败：{{error}}",
+    "grading_cancelled": "已取消批改",
+    "grading_already": "批改已在进行中",
+    "session_created": "会话已创建",
+    "session_deleted": "会话已删除",
+    "saved": "已保存",
+    "deleted": "已删除",
+    "ocr_processing": "正在识别图片...",
+    "ocr_success": "OCR 识别成功",
+    "ocr_success_multi": "成功识别 {{count}} 张图片",
+    "ocr_empty": "OCR 未识别到文字",
+    "ocr_failed": "OCR 识别失败：{{error}}",
+    "suggestions_in_result": "改进建议已包含在批改结果中"
+  },
+  "round_navigation": {
+    "title": "轮次导航",
+    "go_to_round": "跳转到第 {{number}} 轮"
+  },
+  "view": {
+    "annotated": "批注视图",
+    "raw": "原始内容"
+  },
+  "settings": {
+    "title": "批改设置"
+  },
+  "mode": {
+    "select": "选择模式",
+    "max_score": "满分 {{score}} 分",
+    "manage": "管理模式",
+    "current": "当前模式",
+    "total_score": "总分",
+    "dimensions": "评分维度",
+    "create": "新建",
+    "edit": "编辑模式",
+    "quick_switch": "快速切换"
+  },
+  "model": {
+    "select": "选择模型",
+    "default": "默认",
+    "title": "模型选择"
+  },
+  "fields": {
+    "title": "标题",
+    "titlePlaceholder": "请输入作文标题",
+    "content": "正文",
+    "contentPlaceholder": "请输入作文内容",
+    "feedback": "批改反馈"
+  },
+  "score": {
+    "points": "{{score}} 分",
+    "total": "总分",
+    "dimensions": "分项评分",
+    "grade": {
+      "excellent": "优秀",
+      "good": "良好",
+      "pass": "及格",
+      "fail": "不及格"
+    }
+  },
+  "markers": {
+    "delete": "建议删除",
+    "insert": "建议增加",
+    "replace": "建议替换",
+    "note": "批注",
+    "good": "亮点",
+    "error": {
+      "grammar": "语法错误",
+      "spelling": "拼写错误",
+      "logic": "逻辑问题",
+      "expression": "表达不当"
+    }
+  },
+  "legend": {
+    "title": "批注说明",
+    "collapse": "收起",
+    "expand": "展开说明",
+    "filter_all": "全部",
+    "filter_errors": "错误",
+    "filter_suggestions": "建议",
+    "filter_highlights": "亮点",
+    "del_desc": "红色删除线：建议删除的内容",
+    "ins_desc": "绿色下划线：建议增加的内容",
+    "replace_desc": "橙色箭头：建议替换的内容",
+    "note_desc": "蓝色虚线：批注说明",
+    "good_desc": "金色高亮：写得好的亮点",
+    "err_desc": "红色波浪线：语法/拼写等错误",
+    "example": "示例",
+    "example_old": "旧",
+    "example_new": "新"
+  },
+  "empty_state": {
+    "title": "开始批改作文",
+    "description": "在下方输入或粘贴作文内容，也可以导入图片进行 OCR 识别",
+    "paste_hint": "粘贴或输入作文",
+    "ocr_hint": "导入图片识别",
+    "ocr_supported": "支持 PNG/JPG/WEBP，最多 {{max}} 张"
+  },
+  "next_round_confirm": {
+    "title": "开始新一轮批改",
+    "message": "将清空输入区域，准备接收修改后的作文。当前内容已保存在上一轮批改记录中。",
+    "confirm": "开始新一轮"
+  },
+  "clear_confirm": {
+    "title": "清空内容",
+    "message": "确定要清空当前输入和批改结果吗？此操作不可撤销。",
+    "confirm": "确认清空"
+  },
+  "save_status": {
+    "saved": "已保存",
+    "saving": "保存中...",
+    "unsaved": "未保存"
+  },
+  "char_limit": {
+    "reached": "已达到字符上限（{{max}} 字符）",
+    "warning": "接近字符上限"
+  },
+  "partial_result": {
+    "label": "部分结果",
+    "hint": "批改未完成，以下为已生成的部分内容"
+  },
+  "system_prompt_label": "系统提示词",
+  "score_generating": "评分生成中...",
+  "api_errors": {
+    "create_session_failed": "创建会话失败：{{error}}",
+    "get_session_failed": "获取会话失败：{{error}}",
+    "update_session_failed": "更新会话失败：{{error}}",
+    "delete_session_failed": "删除会话失败：{{error}}",
+    "list_sessions_failed": "获取会话列表失败：{{error}}",
+    "toggle_favorite_failed": "切换收藏失败：{{error}}",
+    "get_rounds_failed": "获取轮次失败：{{error}}",
+    "get_round_failed": "获取轮次失败：{{error}}",
+    "get_round_number_failed": "获取轮次号失败：{{error}}",
+    "get_modes_failed": "获取批阅模式失败：{{error}}",
+    "get_mode_failed": "获取批阅模式失败：{{error}}",
+    "create_mode_failed": "创建批阅模式失败：{{error}}",
+    "update_mode_failed": "更新批阅模式失败：{{error}}",
+    "delete_mode_failed": "删除批阅模式失败：{{error}}",
+    "list_custom_modes_failed": "获取自定义模式列表失败：{{error}}",
+    "save_override_failed": "保存模式覆盖失败：{{error}}",
+    "reset_mode_failed": "重置模式失败：{{error}}",
+    "check_override_failed": "检查模式覆盖失败：{{error}}",
+    "get_models_failed": "获取模型列表失败：{{error}}"
+  },
+  "import_images": {
+    "button": "导入图片",
+    "hint": "支持 PNG/JPG/WEBP，最多 {{max}} 张",
+    "processing": "正在识别第 {{current}}/{{total}} 张...",
+    "per_image_failed": "第 {{index}} 张图片识别失败"
+  }
+}

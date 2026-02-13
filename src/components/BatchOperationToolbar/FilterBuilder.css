@@ -1,0 +1,416 @@
+/* 筛选器构建器样式 */
+.filter-builder-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.filter-builder {
+  background: hsl(var(--card));
+  border-radius: 12px;
+  width: 90%;
+  max-width: 700px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+  animation: builderEntry 0.2s ease-out;
+}
+
+@keyframes builderEntry {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.filter-builder-header {
+  padding: 20px 24px;
+  border-bottom: 1px solid hsl(var(--border));
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.filter-builder-header h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: hsl(var(--foreground));
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.close-btn {
+  background: none;
+  border: none;
+  padding: 8px;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: all 0.2s;
+  color: hsl(var(--muted-foreground));
+}
+
+.close-btn:hover {
+  background: hsl(var(--accent));
+  color: hsl(var(--foreground));
+}
+
+.filter-builder-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px;
+}
+
+/* 无筛选器状态 */
+.no-filters {
+  text-align: center;
+  padding: 40px;
+  color: hsl(var(--muted-foreground));
+}
+
+.no-filters p {
+  margin: 0;
+  font-size: 14px;
+}
+
+/* 筛选器列表 */
+.filter-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.filter-item {
+  background: hsl(var(--muted));
+  border: 1px solid hsl(var(--border));
+  border-radius: 8px;
+  padding: 16px;
+  animation: itemEntry 0.2s ease-out;
+}
+
+@keyframes itemEntry {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.filter-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.filter-connector {
+  padding: 4px 12px;
+  background: #e0e7ff;
+  color: #4338ca;
+  border-radius: 16px;
+  font-size: 12px;
+  font-weight: 500;
+  text-transform: uppercase;
+}
+
+.filter-type-select,
+.filter-operator-select,
+.filter-value-input {
+  padding: 8px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 14px;
+  background: white;
+  transition: all 0.2s;
+}
+
+.filter-type-select {
+  min-width: 140px;
+}
+
+.filter-operator-select {
+  min-width: 120px;
+}
+
+.filter-value-input {
+  flex: 1;
+  min-width: 200px;
+}
+
+.filter-type-select:hover,
+.filter-operator-select:hover,
+.filter-value-input:hover {
+  border-color: #9ca3af;
+}
+
+.filter-type-select:focus,
+.filter-operator-select:focus,
+.filter-value-input:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.filter-remove-btn {
+  background: #fee2e2;
+  border: none;
+  padding: 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+  color: #dc2626;
+  display: flex;
+  align-items: center;
+}
+
+.filter-remove-btn:hover {
+  background: #fecaca;
+  transform: scale(1.05);
+}
+
+/* 添加筛选器按钮 */
+.add-filter-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 12px;
+  background: #f3f4f6;
+  border: 2px dashed #d1d5db;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #6b7280;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.add-filter-btn:hover {
+  background: #e5e7eb;
+  border-color: #9ca3af;
+  color: #374151;
+}
+
+/* 底部操作 */
+.filter-builder-footer {
+  padding: 20px 24px;
+  border-top: 1px solid #e5e7eb;
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.btn-primary,
+.btn-secondary {
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  border: none;
+}
+
+.btn-primary {
+  background: #3b82f6;
+  color: white;
+}
+
+.btn-primary:hover {
+  background: #5a67d8;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.btn-secondary {
+  background: #f3f4f6;
+  color: #374151;
+  border: 1px solid #d1d5db;
+}
+
+.btn-secondary:hover {
+  background: #e5e7eb;
+  border-color: #9ca3af;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .filter-builder {
+    width: 95%;
+    max-height: 90vh;
+  }
+  
+  .filter-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .filter-type-select,
+  .filter-operator-select,
+  .filter-value-input {
+    width: 100%;
+    min-width: unset;
+  }
+  
+  .filter-connector {
+    align-self: flex-start;
+  }
+  
+  .filter-remove-btn {
+    align-self: flex-end;
+  }
+}
+
+/* 暗色模式支持 */
+@media (prefers-color-scheme: dark) {
+  .filter-builder {
+    background: #1f2937;
+    color: #f3f4f6;
+  }
+  
+  .filter-builder-header {
+    border-bottom-color: #374151;
+  }
+  
+  .filter-builder-footer {
+    border-top-color: #374151;
+  }
+  
+  .filter-item {
+    background: #111827;
+    border-color: #374151;
+  }
+  
+  .filter-type-select,
+  .filter-operator-select,
+  .filter-value-input {
+    background: #111827;
+    border-color: #374151;
+    color: #f3f4f6;
+  }
+  
+  .add-filter-btn {
+    background: #111827;
+    border-color: #374151;
+    color: #9ca3af;
+  }
+  
+  .add-filter-btn:hover {
+    background: #1f2937;
+    border-color: #6b7280;
+    color: #e5e7eb;
+  }
+  
+  .close-btn:hover {
+    background: #374151;
+    color: #f3f4f6;
+  }
+  
+  .btn-secondary {
+    background: #374151;
+    color: #f3f4f6;
+    border-color: #4b5563;
+  }
+  
+  .btn-secondary:hover {
+    background: #4b5563;
+    border-color: #6b7280;
+  }
+}
+
+/* 动画效果 */
+.filter-item {
+  position: relative;
+  overflow: hidden;
+}
+
+.filter-item::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(102, 126, 234, 0.1), transparent);
+  transition: left 0.5s;
+}
+
+.filter-item:hover::before {
+  left: 100%;
+}
+
+/* 输入框占位符样式 */
+.filter-value-input::placeholder {
+  color: #9ca3af;
+  font-style: italic;
+}
+
+/* 日期输入框样式 */
+input[type="date"] {
+  position: relative;
+  padding-right: 30px;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator {
+  position: absolute;
+  right: 8px;
+  cursor: pointer;
+  opacity: 0.6;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator:hover {
+  opacity: 1;
+}
+
+/* 选择框下拉箭头样式 */
+select {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b7280' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  padding-right: 36px;
+}
+
+/* 工具提示 */
+.filter-remove-btn {
+  position: relative;
+}
+
+.filter-remove-btn::after {
+  content: attr(title);
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 4px 8px;
+  background: #1f2937;
+  color: white;
+  font-size: 12px;
+  border-radius: 4px;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s;
+}
+
+.filter-remove-btn:hover::after {
+  opacity: 1;
+}

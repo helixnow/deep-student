@@ -1,0 +1,10 @@
+syntax = "proto3";
+package google.protobuf;
+
+// Minimal Any type for prost/protoc compilation.
+// Carries an arbitrary serialized message with a type URL.
+message Any {
+  string type_url = 1;
+  bytes value = 2;
+}
+

@@ -1,0 +1,229 @@
+/**
+ * 响应式工具类
+ * 提供通用的小屏幕优化样式
+ */
+
+/* =================== 响应式表格 =================== */
+
+/* 小屏幕下：表格转为卡片布局 */
+@media (max-width: 767px) {
+  .responsive-table {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  
+  .responsive-table table {
+    min-width: 100%;
+  }
+  
+  /* 表格卡片化：每行变成一个卡片 */
+  .responsive-table-card thead {
+    display: none;
+  }
+  
+  .responsive-table-card tbody,
+  .responsive-table-card tr {
+    display: block;
+  }
+  
+  .responsive-table-card tr {
+    margin-bottom: 1rem;
+    padding: 1rem;
+    border: 1px solid hsl(var(--border));
+    border-radius: 8px;
+    background: hsl(var(--card));
+  }
+  
+  .responsive-table-card td {
+    display: flex;
+    justify-content: space-between;
+    padding: 0.5rem 0;
+    border: none;
+  }
+  
+  .responsive-table-card td::before {
+    content: attr(data-label);
+    font-weight: 600;
+    color: hsl(var(--muted-foreground));
+    margin-right: 1rem;
+  }
+}
+
+/* =================== 响应式网格 =================== */
+
+/* 小屏幕下：网格自动转为单列 */
+@media (max-width: 767px) {
+  .responsive-grid {
+    grid-template-columns: 1fr !important;
+  }
+  
+  .responsive-grid-2 {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+}
+
+/* =================== 响应式容器 =================== */
+
+/* 小屏幕下：减少内边距 */
+@media (max-width: 767px) {
+  .responsive-container {
+    padding-left: 1rem !important;
+    padding-right: 1rem !important;
+  }
+  
+  .responsive-section {
+    padding: 1rem !important;
+  }
+}
+
+/* =================== 响应式文本 =================== */
+
+/* 小屏幕下：调整字体大小 */
+@media (max-width: 767px) {
+  .responsive-title {
+    font-size: 1.5rem !important;
+  }
+  
+  .responsive-subtitle {
+    font-size: 1.125rem !important;
+  }
+  
+  .responsive-text {
+    font-size: 0.875rem !important;
+  }
+}
+
+/* =================== 响应式按钮 =================== */
+
+/* 小屏幕下：按钮堆叠 */
+@media (max-width: 767px) {
+  .responsive-button-group {
+    flex-direction: column !important;
+    width: 100% !important;
+  }
+  
+  .responsive-button-group > * {
+    width: 100% !important;
+  }
+}
+
+/* =================== 触摸优化 =================== */
+
+/*
+ * 触摸设备优化说明：
+ * 
+ * Apple HIG 推荐触摸目标至少 44x44pt，但不应一刀切应用到所有 button/a 元素。
+ * 
+ * 原有规则会导致 Android 上所有按钮变成约 68px 高度（44px min-height + 24px padding），
+ * 造成 UI 布局严重失调。
+ * 
+ * 修改策略：
+ * 1. 只对明确标记 .touch-target 的元素应用 44px 最小尺寸
+ * 2. 其他按钮由各组件自行根据需要设置合适的触摸区域
+ * 3. 对于需要大触摸区域的按钮，在组件级别添加 .touch-target 类
+ */
+@media (hover: none) and (pointer: coarse) {
+  /* 只对明确标记的元素增大可点击区域 */
+  .touch-target {
+    min-height: 44px !important;
+    min-width: 44px !important;
+  }
+  
+  /* 
+   * 已移除对 button, a, .clickable 的全局规则
+   * 原因：导致 Android 上所有按钮高度异常（变成正常的3倍）
+   * 
+   * 如需为特定按钮添加触摸优化，请：
+   * 1. 添加 .touch-target 类，或
+   * 2. 在组件级别设置适当的 min-height/padding
+   */
+}
+
+/* =================== 隐藏/显示工具类 =================== */
+
+/* 仅在小屏幕显示 */
+.show-mobile {
+  display: none !important;
+}
+
+@media (max-width: 767px) {
+  .show-mobile {
+    display: block !important;
+  }
+  
+  .show-mobile-flex {
+    display: flex !important;
+  }
+  
+  .show-mobile-inline {
+    display: inline !important;
+  }
+}
+
+/* 在小屏幕隐藏 */
+@media (max-width: 767px) {
+  .hide-mobile {
+    display: none !important;
+  }
+}
+
+/* 仅在平板显示 */
+.show-tablet {
+  display: none !important;
+}
+
+@media (min-width: 768px) and (max-width: 1023px) {
+  .show-tablet {
+    display: block !important;
+  }
+}
+
+/* 在平板隐藏 */
+@media (min-width: 768px) and (max-width: 1023px) {
+  .hide-tablet {
+    display: none !important;
+  }
+}
+
+/* =================== 滚动优化 =================== */
+
+/* 移动端：平滑滚动 */
+@media (max-width: 767px) {
+  .smooth-scroll {
+    -webkit-overflow-scrolling: touch;
+    scroll-behavior: smooth;
+  }
+}
+
+/* =================== 安全区域适配 =================== */
+
+/*
+ * 为刘海屏等留出安全区域
+ * 使用 CSS 变量作为 Android fallback，iOS 正常使用 env()
+ * 
+ * Android 上 --android-safe-area-* 由 platform.ts 初始化
+ */
+.safe-area-top {
+  padding-top: var(--android-safe-area-top, env(safe-area-inset-top, 0px));
+}
+
+.safe-area-bottom {
+  padding-bottom: var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px));
+}
+
+.safe-area-left {
+  padding-left: env(safe-area-inset-left, 0px);
+}
+
+.safe-area-right {
+  padding-right: env(safe-area-inset-right, 0px);
+}
+
+.safe-area-all {
+  padding-top: var(--android-safe-area-top, env(safe-area-inset-top, 0px));
+  padding-bottom: var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px));
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+}
+

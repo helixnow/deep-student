@@ -1,0 +1,762 @@
+/* 设置页面整体样式 */
+.settings {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: row; /* 改为横向布局：侧边栏 + 内容区 */
+  min-height: 0;
+  overflow: hidden;
+  /* 使用主背景色，让卡片浮层更明显 */
+  background: hsl(var(--background));
+  /* 防止水平溢出 */
+  max-width: 100vw;
+  box-sizing: border-box;
+}
+
+/* 移动端设置页面溢出控制 */
+@media (max-width: 768px) {
+  .settings {
+    overflow-x: hidden;
+  }
+}
+
+/* API编辑模态框动画 */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(20px) scale(0.98);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+}
+
+/* 设置页面标题栏 */
+/* settings-header样式已移除 - 现在使用HeaderTemplate组件 */
+.settings-header-removed {
+  background: hsl(var(--card));
+  border-bottom: 1px solid hsl(var(--border));
+  padding: 24px 32px;
+  position: relative;
+}
+
+/* 添加顶部进度条动画 */
+.settings-header-removed::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 3px;
+  background: linear-gradient(90deg, hsl(var(--primary)), hsl(var(--primary) / 0.7));
+  animation: progress 2s ease-out forwards;
+}
+
+@keyframes progress {
+  to { width: 100%; }
+}
+
+.settings-header-left-removed {
+  display: flex;
+  align-items: center;
+  gap: 0;
+}
+
+.settings-header-removed h2 {
+  font-size: 28px;
+  font-weight: 700;
+  color: hsl(var(--foreground));
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 0;
+}
+
+.settings-header-icon-removed {
+  width: 32px;
+  height: 32px;
+  margin-right: 12px;
+  color: hsl(var(--primary));
+}
+
+.settings-header-description-removed {
+  font-size: 14px;
+  color: hsl(var(--muted-foreground));
+  margin: 0;
+  margin-top: 8px;
+}
+
+.settings-header-right-removed {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.auto-save-indicator {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+  color: hsl(var(--muted-foreground));
+  background: hsl(var(--muted));
+  padding: 0.25rem 0.75rem;
+  border-radius: 9999px;
+}
+
+.auto-save-indicator svg {
+  color: hsl(var(--success));
+}
+
+/* 返回按钮 */
+.back-button {
+  display: none;
+}
+
+/* 设置内容区域 */
+.settings-content {
+  flex: 1;
+  /* overflow-y: auto; 已移除，改用 CustomScrollArea */
+  padding: 1.5rem 2rem 2rem 2rem;
+  min-height: 0;
+  text-align: left; /* 防止上层容器继承居中 */
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+/* 移动端设置内容区域 */
+@media (max-width: 768px) {
+  .settings-content {
+    padding: 1rem;
+    width: 100%;
+    max-width: 100%;
+  }
+}
+
+/* 优雅的标签页导航样式 */
+.settings-tabs {
+  display: flex;
+  flex-shrink: 0;
+  position: relative;
+  background-color: hsl(var(--card));
+  /* 与 HeaderTemplate 左右内边距保持一致 */
+  padding: 0 24px;
+  overflow: visible;
+}
+
+/* 标签页切换指示器（滑动条） */
+.tab-indicator {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 2px;
+  background: hsl(var(--primary)); /* 主题指示条 */
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  z-index: 2; /* 提高层级确保在边框之上 */
+  transform-origin: left center;
+  border-radius: 0;
+  /* 确保只有一个条 */
+  will-change: transform, width;
+  /* 防止左侧溢出 */
+  min-width: 20px;
+  max-width: 100%;
+  margin-left: 0;
+}
+
+/* 标签按钮容器 */
+.tab-buttons {
+  display: flex;
+  position: relative;
+  width: 100%;
+  padding: 0;
+  margin: 0;
+  overflow-x: auto; /* 允许水平滚动，防止标签挤压 */
+  -ms-overflow-style: none; /* IE and Edge */
+  scrollbar-width: none; /* Firefox */
+}
+
+/* 隐藏滚动条但保留功能 */
+.tab-buttons::-webkit-scrollbar {
+  display: none;
+}
+
+/* 标签按钮 */
+.tab-button {
+  padding: 1rem 1.5rem;
+  background: transparent;
+  border: none;
+  color: hsl(var(--muted-foreground));
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color 0.2s ease;
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  white-space: nowrap;
+  margin: 0;
+  border-bottom: none;
+  flex-shrink: 0; /* 防止标签被压缩 */
+}
+
+.tab-button:hover {
+  color: hsl(var(--primary));
+}
+
+.tab-button.active {
+  color: hsl(var(--primary));
+  font-weight: 600;
+}
+
+/* 移除所有可能的伪元素底线 */
+.tab-button::after,
+.tab-button::before {
+  display: none !important;
+}
+
+/* 标签图标 */
+.tab-icon {
+  width: 1rem;
+  height: 1rem;
+}
+
+/* 标签内容区域 */
+.tab-content {
+  background-color: hsl(var(--card));
+  border-radius: 0.5rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+/* 统一的次要操作按钮（与科目配置的刷新按钮风格一致） */
+.settings-secondary-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background: hsl(var(--secondary));
+  color: hsl(var(--secondary-foreground));
+  border: 1px solid hsl(var(--border));
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+  position: relative;
+  overflow: hidden;
+}
+
+.settings-secondary-button:hover:not(:disabled) {
+  background: hsl(var(--accent));
+  color: hsl(var(--accent-foreground));
+  border-color: hsl(var(--ring));
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.settings-secondary-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* 发光扫过效果，与科目配置刷新按钮一致 */
+.settings-secondary-button::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+  transition: left 0.5s ease;
+}
+
+.settings-secondary-button:hover::before {
+  left: 100%;
+}
+
+/* 通用两列自适应网格（小屏自动单列） */
+.two-col-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+@media (max-width: 768px) {
+  .two-col-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* 响应式调整 */
+@media (max-width: 768px) {
+  .settings-tabs {
+    overflow-x: auto;
+    padding: 0;
+  }
+  
+  .tab-button {
+    padding: 1rem 1rem;
+  }
+}
+
+/* 设置页面样式 */
+/* 
+ * .settings-container 已废弃，Settings 组件现在使用 absolute inset-0 布局
+ * 不再需要基于 vh 的 min-height 计算
+ */
+
+/* 模型分配风格 - 直接复制API配置页面样式 */
+.model-assignments {
+  background: hsl(var(--card));
+  border-radius: 12px;
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.model-assignments h4 {
+  margin: 0 0 1.5rem 0;
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: hsl(var(--foreground));
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.model-assignments h4::before {
+  content: '⚙️';
+}
+
+.assignment-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr));
+  gap: 1.5rem;
+}
+
+/* 移动端 assignment-grid 单列显示 */
+@media (max-width: 768px) {
+  .assignment-grid {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+}
+
+.assignment-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.assignment-item label {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: hsl(var(--muted-foreground));
+}
+
+.assignment-item select,
+.assignment-item input[type="number"] {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  background: hsl(var(--background));
+  border: 2px solid hsl(var(--border));
+  border-radius: 8px;
+  font-size: 0.875rem;
+  color: hsl(var(--foreground));
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.assignment-item select:hover:not(:disabled),
+.assignment-item input[type="number"]:hover:not(:disabled) {
+  border-color: hsl(var(--ring));
+  background: hsl(var(--card));
+}
+
+.assignment-item select:focus,
+.assignment-item input[type="number"]:focus {
+  outline: none;
+  border-color: hsl(var(--ring));
+  box-shadow: 0 0 0 3px hsl(var(--ring) / 0.1);
+}
+
+.assignment-item select:disabled,
+.assignment-item input[type="number"]:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.help-text {
+  font-size: 0.75rem;
+  color: hsl(var(--muted-foreground));
+  line-height: 1.4;
+}
+
+/* 强制左对齐（用于覆盖上层 text-center 继承） */
+.force-left {
+  text-align: left !important;
+}
+
+/* 开发功能特殊样式 */
+.model-assignments.dev-features {
+  background: hsl(var(--warning-bg));
+  border: 1px solid hsl(var(--warning) / 0.4);
+}
+
+.model-assignments.dev-features h4::before {
+  content: '🚧';
+}
+
+/* 复选框容器 - 适配assignment-item结构 */
+.checkbox-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  background: hsl(var(--background));
+  border: 2px solid hsl(var(--border));
+  border-radius: 8px;
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.checkbox-wrapper:hover {
+  border-color: hsl(var(--ring));
+  background: hsl(var(--card));
+}
+
+/* 复选框样式 - 适配assignment风格 */
+.checkbox-input {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+  user-select: none;
+  gap: 0.5rem;
+}
+
+.checkbox-input input[type="checkbox"] {
+  position: absolute;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.checkbox-custom {
+  width: 18px;
+  height: 18px;
+  border: 2px solid hsl(var(--border));
+  border-radius: 4px;
+  transition: all 0.2s ease;
+  position: relative;
+  background: hsl(var(--background));
+  flex-shrink: 0;
+}
+
+.checkbox-input input[type="checkbox"]:checked ~ .checkbox-custom {
+  background: hsl(var(--primary));
+  border-color: hsl(var(--primary));
+}
+
+.checkbox-custom::after {
+  content: '';
+  position: absolute;
+  left: 5px;
+  top: 2px;
+  width: 4px;
+  height: 8px;
+  border: solid hsl(var(--primary-foreground));
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg) scale(0);
+  transition: transform 0.2s ease;
+}
+
+.checkbox-input input[type="checkbox"]:checked ~ .checkbox-custom::after {
+  transform: rotate(45deg) scale(1);
+}
+
+.checkbox-label {
+  color: hsl(var(--foreground));
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+/* 已在assignment-item中定义select和input样式 */
+
+/* 已在help-text中定义提示信息样式 */
+
+/* 警告框 */
+.setting-warning {
+  background: hsl(var(--warning-bg));
+  border: 1px solid hsl(var(--warning) / 0.5);
+  border-radius: 8px;
+  padding: 0.875rem 1rem;
+  margin-top: 1rem;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+.setting-warning-icon {
+  color: hsl(var(--warning));
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.setting-warning-text {
+  color: color-mix(in hsl, hsl(var(--warning)), hsl(var(--foreground)) 35%);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+
+/* 分隔线 */
+
+/* 加载动画 */
+.settings-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+}
+
+.settings-loading::after {
+  content: '';
+  width: 40px;
+  height: 40px;
+  border: 3px solid hsl(var(--border));
+  border-top-color: hsl(var(--primary));
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* 语言选择器样式 */
+.language-switcher {
+  width: 100%;
+  margin-top: 0.75rem;
+}
+
+.language-toggle {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.language-label {
+  font-size: 14px;
+  color: hsl(var(--muted-foreground));
+  transition: color 0.2s ease;
+}
+
+.language-label.active {
+  color: hsl(var(--foreground));
+  font-weight: 500;
+}
+
+/* 滑块开关样式 - 已移除，现在使用 Tailwind 内联类 */
+
+/* 底部操作区域 - 与API配置风格一致 */
+.section-actions {
+  display: flex;
+  gap: 1rem;
+  justify-content: flex-end;
+  padding: 1.5rem;
+  background: hsl(var(--card));
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.btn-primary {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.625rem 1.25rem;
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+  border: none;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: hsl(var(--primary) / 0.9);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn-secondary {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.625rem 1.25rem;
+  background: hsl(var(--secondary));
+  color: hsl(var(--secondary-foreground));
+  border: 1px solid hsl(var(--border));
+  border-radius: 8px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: hsl(var(--accent));
+  border-color: hsl(var(--ring));
+  color: hsl(var(--accent-foreground));
+}
+
+.save-button-content {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  position: relative;
+  z-index: 1;
+}
+
+.save-button-content.saving {
+  gap: 0.5rem;
+}
+
+.save-spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: hsl(var(--primary-foreground));
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+/* 开发功能警告样式增强 */
+.setting-warning::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: hsl(var(--warning));
+  border-radius: 2px;
+}
+
+/* 功能标签 */
+.dev-feature-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  background: hsl(var(--warning-bg));
+  color: color-mix(in hsl, hsl(var(--warning)), hsl(var(--foreground)) 35%);
+  padding: 0.125rem 0.5rem;
+  border-radius: 12px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  margin-left: 0.5rem;
+  border: 1px solid hsl(var(--warning) / 0.4);
+}
+
+.dev-feature-badge.beta {
+  background: linear-gradient(135deg, hsl(var(--primary) / 0.25), hsl(var(--primary) / 0.15));
+  color: hsl(var(--primary));
+  border-color: hsl(var(--primary) / 0.4);
+}
+
+.dev-feature-badge.experimental {
+  background: linear-gradient(135deg, hsl(var(--accent) / 0.2), hsl(var(--accent) / 0.1));
+  color: hsl(var(--accent-foreground));
+  border-color: hsl(var(--accent) / 0.4);
+}
+
+/* 开发功能列表增强 */
+.dev-features-list {
+  display: grid;
+  gap: 1rem;
+}
+
+.dev-feature-item {
+  background: hsl(var(--muted));
+  border: 1px solid hsl(var(--border));
+  border-radius: 8px;
+  padding: 1rem;
+  transition: all 0.2s ease;
+}
+
+.dev-feature-item:hover {
+  border-color: hsl(var(--border));
+  background: hsl(var(--card));
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+/* 状态指示器 */
+.feature-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+  font-size: 0.8125rem;
+}
+
+.feature-status.enabled {
+  color: hsl(var(--success));
+}
+
+.feature-status.disabled {
+  color: hsl(var(--muted-foreground));
+}
+
+.feature-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.5;
+    transform: scale(0.8);
+  }
+}
+
+.settings-select-trigger {
+  overflow: hidden;
+}
+
+.settings-select-trigger > span:first-of-type {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+  overflow: hidden;
+  mask-image: linear-gradient(to right, rgba(0, 0, 0, 1) 70%, rgba(0, 0, 0, 0));
+  -webkit-mask-image: linear-gradient(to right, rgba(0, 0, 0, 1) 70%, rgba(0, 0, 0, 0));
+}
+
+.settings-select-trigger > span:first-of-type[data-placeholder] {
+  opacity: 0.6;
+}

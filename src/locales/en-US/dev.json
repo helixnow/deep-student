@@ -1,0 +1,373 @@
+{
+  "crepe_demo": {
+    "title": "Crepe Editor Performance Sandbox",
+    "intro": "Use the selector below to gradually approach the production note editor. Watch which step introduces lag to pinpoint the bottleneck.",
+    "mode_picker": {
+      "label": "Select feature tier:"
+    },
+    "status": {
+      "loading": "Loading editor…",
+      "error": "Failed to initialize: {{message}}"
+    },
+    "stats": {
+      "change": "Content updates: {{count}}",
+      "events": "Events: keydown {{keydown}} · input {{input}} · compositionend {{compositionend}}"
+    },
+    "base_markdown": "# Crepe Minimal Demo\n\nTry typing, selecting, and dragging text here to inspect the editor core.\n\n## Notes\n- No auto save\n- No note references, Slash menu, or business extensions\n- Focus on Milkdown/Crepe interaction performance only\n",
+    "modes": {
+      "bare": {
+        "label": "Step 1: Vanilla Crepe",
+        "description": "Run Crepe with its official defaults to benchmark the editor core."
+      },
+      "listener": {
+        "label": "Step 2: Add listener",
+        "description": "Enable the Milkdown listener plugin to mimic onChange hooks and state syncing."
+      },
+      "notes-css": {
+        "label": "Step 3: Apply note styles",
+        "description": "Load the note page fonts and CSS while keeping the listener to test styling impact."
+      },
+      "notes-css-events": {
+        "label": "Step 4: Bind keyboard events",
+        "description": "Attach keydown/input/composition listeners and count triggers to measure DOM event overhead."
+      },
+      "milkdown-core": {
+        "label": "Step 5: Mount Milkdown core",
+        "description": "Switch to MilkdownMarkdownEditor with only the rendering core, disabling listener, DOM events, and business extensions."
+      },
+      "milkdown-dom": {
+        "label": "Step 6: Enable DOM sync",
+        "description": "Turn on the listener and DOM synchronization while keeping Mentions, Slash, and mistake reference plugins disabled."
+      },
+      "milkdown-extensions": {
+        "label": "Step 7: Load Mentions/Slash",
+        "description": "Enable Mentions and Slash commands while keeping mistake reference and AI preview extensions disabled."
+      },
+      "full-notes-editor": {
+        "label": "Step 8: Full note editor",
+        "description": "Mount the production note editor with Mentions, Slash, mistake references, AI preview, and all business events for comparison."
+      }
+    }
+  },
+  "save_test": {
+    "title": "Chat Save Functionality Test",
+    "context": {
+      "mode": "Mode",
+      "mistake_id": "Mistake ID"
+    },
+    "scenario_selector": {
+      "title": "Select Test Scenario"
+    },
+    "scenarios": {
+      "complete_flow": {
+        "name": "Complete Flow Test",
+        "description": "Test complete chat flow from homepage: multi-turn→edit→save→continue→delete→verify (requires Playwright or manual coordination)"
+      },
+      "delete": {
+        "name": "Delete Message Save",
+        "description": "Test if deleting a chat message saves correctly to database"
+      },
+      "stream_complete": {
+        "name": "Stream Complete Save",
+        "description": "Test if stream completion auto-saves correctly"
+      },
+      "manual_stop": {
+        "name": "Manual Stop Save",
+        "description": "Test if manually stopping stream saves correctly"
+      },
+      "edit_resend": {
+        "name": "Edit Resend Save",
+        "description": "Test if editing and resending message saves correctly"
+      },
+      "manual_save": {
+        "name": "Manual Trigger Save",
+        "description": "Test if manual save button works correctly"
+      }
+    },
+    "steps": {
+      "preflight_check": "Preflight Check",
+      "load_data": "Load Data",
+      "verify_initial": "Verify Initial State",
+      "delete_message": "Execute Delete",
+      "send_message": "Send Message",
+      "wait_stream": "Wait Stream Complete",
+      "manual_stop": "Manual Stop",
+      "edit_message": "Edit Message",
+      "resend_message": "Resend Message",
+      "trigger_save": "Trigger Save",
+      "verify_save": "Verify Save Complete",
+      "reload_verify": "Reload Verify",
+      "integrity_check": "Integrity Check"
+    },
+    "buttons": {
+      "start": "Start Test",
+      "running": "Running...",
+      "auto_test": "Auto Test All",
+      "auto_testing": "Auto Testing..."
+    },
+    "steps_section": {
+      "title": "Test Steps"
+    },
+    "logs_section": {
+      "title": "Test Logs"
+    },
+    "logs": {
+      "copied": "Logs copied to clipboard",
+      "copy_failed": "Copy failed: {{error}}",
+      "test_start": "Test start: {{scenario}}",
+      "test_end": "Test ended: {{scenario}}",
+      "test_failed": "Test failed: {{scenario}}",
+      "test_passed": "Test passed: {{scenario}}",
+      "test_skipped": "Test skipped: {{scenario}}",
+      "test_step_start": "Step started: {{step}}",
+      "test_step_end": "Step ended: {{step}}",
+      "test_step_failed": "Step failed: {{step}}",
+      "test_step_passed": "Step passed: {{step}}",
+      "test_step_skipped": "Step skipped: {{step}}",
+      "test_step_error": "Step error: {{step}}",
+      "test_step_warning": "Step warning: {{step}}",
+      "test_step_info": "Step info: {{step}}",
+      "test_step_debug": "Step debug: {{step}}",
+      "test_step_trace": "Step trace: {{step}}",
+      "test_step_log": "Step log: {{step}}",
+      "test_step_result": "Step result: {{step}}",
+      "test_step_duration": "Step duration: {{step}}",
+      "test_step_error_message": "Step error message: {{step}}",
+      "test_step_warning_message": "Step warning message: {{step}}",
+      "test_step_info_message": "Step info message: {{step}}",
+      "test_step_debug_message": "Step debug message: {{step}}",
+      "test_step_trace_message": "Step trace message: {{step}}",
+      "test_step_log_message": "Step log message: {{step}}",
+      "test_step_result_message": "Step result message: {{step}}",
+      "test_step_duration_message": "Step duration message: {{step}}",
+      "no_report": "No report available to export",
+      "auto_test_start": "========== Auto Test Started ==========",
+      "auto_test_count": "Implemented scenarios: {{count}}",
+      "auto_test_scenario_header": "========== Scenario {{index}}/{{total}}: {{scenario}} ==========",
+      "auto_test_failed": "Auto Test Failed: {{scenario}}",
+      "auto_test_skipped": "Auto Test Skipped: {{scenario}}",
+      "auto_test_success": "Scenario passed: {{scenario}} ({{duration}}ms)",
+      "element_clicked": "Clicked element: {{testid}}",
+      "element_input": "Filled element: {{testid}}",
+      "element_timeout": "Element timed out: {{testid}} ({{timeout}}ms)",
+      "auto_mode": "Fully automated mode (programmatic operations)",
+      "test_env_warning": "Warning: Test will produce real data, recommended to run in test environment",
+      "start": "Complete flow test started",
+      "complete_flow": {
+        "start": "Complete flow test started",
+        "auto_mode": "Fully automated mode (programmatic operations)",
+        "test_env_warning": "Warning: Test will produce real data, recommended to run in test environment"
+      }
+    },
+    "results": {
+      "success": "Test Passed",
+      "failed": "Test Failed",
+      "loaded": "Data loaded, message count: {{count}}",
+      "verified": "Initial state verified, message count: {{count}}",
+      "deleted": "Message deleted: {{stableId}}",
+      "save_verified": "Save verified complete",
+      "verified_final": "Final verification passed: {{from}} → {{to}}"
+    },
+    "error": {
+      "no_mistake": "Missing mistake ID",
+      "load_failed": "Failed to load mistake data",
+      "insufficient_messages": "Insufficient messages, need at least 2 messages to test delete, current: {{count}}",
+      "no_assistant_message": "No assistant message found for deletion",
+      "no_stable_id": "Target message has no stable_id",
+      "delete_timeout": "Delete timeout (5s), listener may not be registered or delete failed",
+      "delete_failed": "Delete failed",
+      "reload_failed": "Reload failed",
+      "count_mismatch": "Message count mismatch! Expected: {{expected}}, Actual: {{actual}}\nInitial: {{initial}} → Delete 1 → Expected: {{expected}}",
+      "missing_navigate_callback": "Missing navigation callback onNavigate",
+      "no_user_message_dom": "User message DOM element not found",
+      "msg5_not_found": "DOM element for message 5 not found",
+      "delete_button_missing": "Delete button not found",
+      "missing_saved_mistake": "Saved mistake ID not recorded",
+      "msg5_exists": "Message 5 still exists! stableId: {{stableId}}",
+      "count_unexpected": "Unexpected message count: {{actual}}, expected at least {{expected}}",
+      "stream_timeout": "Stream timeout (30s), possible network issue or slow model response",
+      "save_timeout": "Save timeout (10s), possible database issue",
+      "msg_count_increased": "Message count not increased, save after stop may have failed",
+      "no_edit_resend_button": "Edit-resend confirm button not found",
+      "no_delete_button": "Delete button not found",
+      "no_msg5_dom": "DOM element for message 5 not found",
+      "save_id_missing": "Saved mistake ID not recorded",
+      "reload_failed_detail": "Reload failed",
+      "insufficient_user_messages": "At least 1 user message required to test edit-resend",
+      "edited_message_not_found": "Edited message not found, save may have failed",
+      "test_message_not_found": "Test message not found, save may have failed",
+      "data_load_failed": "Data load failed",
+      "missing_mistake_id": "Missing mistake ID",
+      "cannot_load_mistake": "Cannot load mistake data",
+      "runtime_not_initialized": "Runtime not initialized or missing stableId",
+      "test_failed": "Test failed"
+    },
+    "warning": {
+      "scenario_not_implemented": "Scenario「{{scenario}}」not implemented yet"
+    },
+    "integrity": {
+      "start": "Starting data integrity verification...",
+      "pass": "Data integrity verification passed",
+      "fail": "Found {{count}} integrity issues",
+      "count_mismatch": "Message count mismatch: expected{{expected}}, actual{{actual}}",
+      "deleted_still_exists": "Deleted message still exists: {{stableId}}",
+      "content_changed": "Message content tampered [{{index}}]: {{stableId}}",
+      "role_changed": "Message role changed [{{index}}]: {{from}} → {{to}}",
+      "thinking_lost": "Chain of thought data lost [{{index}}]: {{stableId}}",
+      "sources_lost": "Source info lost [{{index}}]: {{stableId}}",
+      "order_wrong": "Message order corrupted [{{index}}]: expected{{expected}}, actual{{actual}}",
+      "duplicate_id": "Duplicate stable_id detected"
+    },
+    "polling": {
+      "attempt": "Polling attempt #{{attempt}}/{{max}}, interval{{interval}}ms",
+      "timeout": "Save verification timeout ({{timeout}}ms), poll count: {{count}}"
+    },
+    "instructions": {
+      "title": "Instructions",
+      "step1": "Open a mistake detail page with multiple messages",
+      "step2": "Select a test scenario",
+      "step3": "Click「Start Test」or「Auto Test All」button",
+      "step4": "Observe test steps execution and final results",
+      "selected_scenario": "Selected"
+    },
+    "duration": "Duration: {{ms}}ms",
+    "footer": {
+      "shortcut": "Shortcut"
+    },
+    "complete_flow": {
+      "steps": {
+        "nav_home": "1. Navigate to Home",
+        "send1": "2. Send Message 1",
+        "wait1": "3. Await Reply 1",
+        "edit": "4. Edit Message 1",
+        "send2": "5. Resend as Message 2",
+        "wait2": "6. Await Reply 2",
+        "send3": "7. Send Message 3",
+        "wait3": "8. Await Reply 3",
+        "save_once": "9. One-time Save",
+        "nav_library": "10. Navigate to Library",
+        "open_detail": "11. Open Mistake Detail",
+        "send4": "12. Send Message 4",
+        "send5": "13. Send Message 5",
+        "send6": "14. Send Message 6",
+        "delete5": "15. Delete Message 5",
+        "reload": "16. Reload & Verify",
+        "verify": "17. Final Verification"
+      },
+      "inputs": {
+        "message1": "Automated test message 1, please reply briefly",
+        "message2": "Edited message 2, please reply briefly",
+        "message3": "Automated test message 3, please reply briefly",
+        "message4": "Automated test message 4, please reply briefly",
+        "message5": "Automated test message 5, please reply briefly",
+        "message6": "Automated test message 6, please reply briefly",
+        "message_generic": "Automated test message {{index}}, please reply briefly",
+        "message5_preview": "Automated test message 5"
+      },
+      "logs": {
+        "start": "Complete flow test started",
+        "auto_mode": "Fully automated mode (programmatic operations)",
+        "test_env_warning": "Warning: Test will produce real data, recommended to run in test environment",
+        "nav_home": "Navigating to home...",
+        "send_message": "Sending message {{index}}...",
+        "reply_done": "Message {{index}} reply completed",
+        "edit_message": "Editing message {{index}}...",
+        "save_once": "One-time save to library...",
+        "nav_library": "Navigating to library...",
+        "open_detail": "Opening mistake detail...",
+        "delete_msg5": "Deleting message 5...",
+        "delete_done": "Delete completed",
+        "count_before_reload": "Message count before reload: {{count}}",
+        "reload_verify": "Background reload & verify...",
+        "final_verify": "Final state verification",
+        "record_stable_id": "Recorded message 5 stableId: {{stableId}}",
+        "missing_msg5_dom": "Message 5 DOM element not found (text may not match)",
+        "verify_delete_pass": "Message 5 correctly deleted",
+        "skip_delete_verify": "Skip delete verification (stableId not recorded)",
+        "verify_count_pass": "Message count verified: {{count}} messages",
+        "finish": "Complete flow test finished! Total time: {{seconds}}s"
+      }
+    }
+  },
+  "backendTest": {
+    "title": "Backend API Test (Unified Flow)",
+    "envStatus": "Environment Status:",
+    "available": "Available",
+    "unavailable": "Unavailable",
+    "runInDesktop": "Please run this page in the Tauri desktop app",
+    "tauriUnavailable": "Tauri environment unavailable, please run in the desktop app",
+    "testContext": "Test Context",
+    "running": "Testing in progress…",
+    "runAll": "Run All Tests",
+    "clearResults": "Clear Results",
+    "clearContext": "Clear Context",
+    "runSingle": "Run Single",
+    "testing": "Testing...",
+    "success": "Success",
+    "failed": "Failed",
+    "statistics": "Statistics",
+    "total": "Total",
+    "inProgress": "In Progress"
+  },
+  "mistake_chat_inspector": {
+    "input": {
+      "label": "Mistake ID",
+      "placeholder": "Enter a mistake ID (e.g., d6b9...) to load its stored chats",
+      "observed": "Last captured: {{id}}"
+    },
+    "actions": {
+      "load": "Load",
+      "loading": "Loading…",
+      "use_observed": "Use latest",
+      "reload": "Reload",
+      "copy_json": "Copy JSON"
+    },
+    "summary": {
+      "title": "Mistake Overview",
+      "status": "Status",
+      "category": "Category",
+      "tags": "Tags",
+      "total": "Messages",
+      "user": "User",
+      "assistant": "Assistant",
+      "missing_thinking": "Missing CoT"
+    },
+    "message": {
+      "meta": {
+        "sources": "RAG {{rag}} · Graph {{graph}} · Memory {{memory}} · Web {{web}}",
+        "thinking_ready": "Reasoning captured",
+        "thinking_missing": "Reasoning missing",
+        "attachments": "Document attachments: {{count}}",
+        "empty_content": "(empty content)",
+        "thinking_title": "Show reasoning"
+      }
+    },
+    "copy": {
+      "success": "Chat JSON copied",
+      "failed": "Copy failed: {{message}}"
+    },
+    "layers": {
+      "title": "Multi-layer history snapshot (current page)",
+      "db_projected": "DB → pre-render projection",
+      "runtime": "Runtime.store",
+      "host": "Host chatHistory",
+      "visible": "Visible history (render layer)",
+      "count": "Count: {{count}}",
+      "hint": "Note: These columns represent, respectively, the DB-projected chat history, CompatRuntime.store projection, UniversalAppChatHost chatHistory, and the final visibleChatHistory passed to VirtualizedChatList. They help locate which layer starts dropping messages.",
+      "diagnostic_unknown": "Diagnostic: Host snapshots are not available yet, unable to automatically determine where the divergence starts.",
+      "diagnostic_runtime": "Diagnostic: Message count diverges from the DB projection at the Runtime.store layer (DB={{db}}, Runtime={{runtime}}). Downstream layers inherit this, so focus on CompatRuntime.loadHistory and RuntimeStore.apply.",
+      "diagnostic_host": "Diagnostic: Runtime.store matches the DB projection, but the host chatHistory count differs (DB={{db}}, Host={{host}}). Check additional overrides/filters inside UniversalAppChatHost.",
+      "diagnostic_visible": "Diagnostic: Both Runtime.store and host chatHistory match the DB projection, but visibleHistory differs (DB={{db}}, Visible={{visible}}). Check filters or indexing logic in VirtualizedChatList/MessageWithThinking.",
+      "diagnostic_ok": "Diagnostic: All four layers match the DB-projected message count. If the UI still looks incorrect, compare role sequences and stableIds between layers."
+    },
+    "empty": {
+      "state": "No mistake loaded yet. Enter an ID above to inspect stored chats.",
+      "messages": "This mistake has no chat messages."
+    },
+    "error": {
+      "missing_id": "Please enter a mistake ID first",
+      "not_found": "Cannot find a mistake with ID {{id}}",
+      "load_failed": "Failed to load: {{message}}"
+    }
+  }
+}

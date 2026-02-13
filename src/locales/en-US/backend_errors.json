@@ -1,0 +1,138 @@
+{
+  "cloud_storage": {
+    "s3_endpoint_empty": "S3 endpoint cannot be empty",
+    "s3_bucket_empty": "S3 bucket cannot be empty",
+    "s3_connection_failed": "S3 connection test failed",
+    "s3_upload_failed": "S3 upload failed",
+    "s3_read_response_failed": "Failed to read S3 response body",
+    "s3_download_failed": "S3 download failed",
+    "s3_list_failed": "Failed to list S3 files",
+    "s3_delete_failed": "S3 delete failed",
+    "s3_get_info_failed": "Failed to get S3 file info",
+    "webdav_endpoint_empty": "WebDAV endpoint cannot be empty",
+    "webdav_endpoint_invalid": "Invalid WebDAV endpoint",
+    "webdav_client_build_failed": "Failed to build HTTP client",
+    "webdav_read_response_failed": "Failed to read response body",
+    "webdav_propfind_failed": "WebDAV PROPFIND request failed",
+    "webdav_propfind_read_failed": "Failed to read PROPFIND response",
+    "missing_webdav_config": "Missing WebDAV configuration",
+    "missing_s3_config": "Missing S3 configuration",
+    "webdav_username_empty": "WebDAV username cannot be empty",
+    "s3_access_key_empty": "S3 Access Key ID cannot be empty",
+    "s3_secret_key_empty": "S3 Secret Access Key cannot be empty"
+  },
+  "sync": {
+    "manifest_corrupted": "Manifest and backup are both corrupted",
+    "manifest_corrupted_no_backup": "Manifest is corrupted and no backup available",
+    "serialize_manifest_failed": "Failed to serialize manifest",
+    "read_file_meta_failed": "Failed to read file metadata",
+    "backup_too_large": "Backup file is too large, maximum supported is 2 GB",
+    "read_backup_failed": "Failed to read backup file",
+    "version_not_found": "Specified version not found",
+    "cloud_file_not_exist": "Cloud file does not exist",
+    "backup_checksum_failed": "Backup file checksum failed: file may be corrupted during transfer, please re-download",
+    "create_dir_failed": "Failed to create directory",
+    "save_file_failed": "Failed to save file",
+    "version_not_exist": "Version does not exist"
+  },
+  "backup": {
+    "parse_config_failed": "Failed to parse backup configuration",
+    "serialize_config_failed": "Failed to serialize backup configuration",
+    "mobile_not_supported": "Selecting backup directory is not supported on mobile",
+    "select_backup_dir": "Select Backup Directory",
+    "create_backup_dir_failed": "Failed to create backup directory",
+    "create_backup_file_failed": "Failed to create backup file",
+    "finish_zip_failed": "Failed to finish ZIP writing",
+    "test_db_not_exist": "Test database does not exist",
+    "test_table_not_exist": "test_data table does not exist"
+  },
+  "anki": {
+    "parse_options_failed": "Failed to parse generation options",
+    "get_model_assignment_failed": "Failed to get model assignment",
+    "get_api_config_failed": "Failed to get API configuration",
+    "stream_request_build_failed": "Failed to build Anki streaming request",
+    "ai_request_failed": "AI request failed",
+    "ai_response_timeout": "AI response timeout",
+    "read_ai_stream_failed": "Failed to read AI response stream",
+    "json_parse_failed": "JSON parsing failed",
+    "save_card_failed": "Failed to save card",
+    "back_field_empty": "Back field cannot be empty",
+    "serialize_array_failed": "Failed to serialize array",
+    "save_error_card_failed": "Failed to save error card",
+    "update_task_status_failed": "Failed to update task status",
+    "get_doc_task_failed": "Failed to get document task",
+    "insert_retry_task_failed": "Failed to insert retry task"
+  },
+  "dstu": {
+    "illegal_chars": "Contains illegal characters",
+    "illegal_unicode": "Contains illegal Unicode characters",
+    "path_separator_not_allowed": "Cannot contain path separators",
+    "length_exceeded": "Length exceeded limit",
+    "folder_title_empty": "Folder title cannot be empty",
+    "color_format_error": "Invalid color format, please use #RRGGBB format or predefined color names",
+    "resource_not_exist": "Resource does not exist",
+    "param_format_error": "Invalid parameter format",
+    "target_folder_not_exist": "Target folder does not exist",
+    "db_query_failed": "Database query failed",
+    "folder_not_exist": "Folder does not exist",
+    "operation_failed": "Operation failed",
+    "restore_failed": "Restore failed"
+  },
+  "multimodal": {
+    "embedding_model_not_configured": "Multimodal embedding model not configured",
+    "get_vfs_connection_failed": "Failed to get VFS connection",
+    "get_blob_path_failed": "Failed to get Blob path",
+    "blob_not_exist": "Blob does not exist",
+    "read_blob_failed": "Failed to read Blob file",
+    "detect_dimension_failed": "Unable to detect embedding model output dimension",
+    "embedding_api_empty_result": "Embedding API returned empty result",
+    "reranker_not_configured": "Multimodal reranker model not configured",
+    "dimension_not_registered": "Dimension not registered",
+    "model_config_not_exist": "Model configuration does not exist",
+    "parse_preview_json_failed": "Failed to parse preview_json",
+    "exam_sheet_not_exist": "Question set does not exist",
+    "attachment_not_exist": "Attachment does not exist",
+    "textbook_not_exist": "Textbook does not exist",
+    "textbook_no_preview": "Textbook has no preview data",
+    "create_lance_dir_failed": "Failed to create Lance directory",
+    "connect_lancedb_failed": "Failed to connect to LanceDB",
+    "embedding_vector_empty": "Record embedding vector is empty",
+    "lancedb_not_initialized": "LanceDB not initialized"
+  },
+  "essay_grading": {
+    "mode_name_exists": "Mode name already exists",
+    "mode_not_exist": "Mode does not exist",
+    "vfs_not_initialized": "VFS database not initialized",
+    "custom_mode_manager_not_initialized": "Custom mode manager not initialized",
+    "preset_mode_not_exist": "Preset mode does not exist"
+  },
+  "analysis": {
+    "model_one_failed": "Model one call failed",
+    "get_model_config_failed": "Failed to get model configuration",
+    "model_two_failed": "Model two call failed",
+    "non_stream_deprecated": "Non-streaming version is deprecated, please use streaming version",
+    "api_test_failed": "API connection test failed",
+    "get_initial_answer_failed": "Failed to get initial answer"
+  },
+  "cogni_graph": {
+    "phase1_response_empty": "Phase 1 response is empty",
+    "phase2_response_empty": "Phase 2 response is empty",
+    "target_type_must_be_id": "target.type must be ID",
+    "target_value_format_error": "target.value format error",
+    "parent_tag_id_empty": "Parent tag ID is empty, creation rejected",
+    "embedding_dimension_mismatch": "Embedding dimension mismatch"
+  },
+  "user_memory": {
+    "get_memory_failed": "Failed to get memory",
+    "update_summary_failed": "Failed to update summary",
+    "save_summary_failed": "Failed to save summary",
+    "get_category_list_failed": "Failed to get category list"
+  },
+  "irec": {
+    "sqlite_needs_connection_pool": "SQLite service requires database connection pool"
+  },
+  "metrics": {
+    "parse_addr_failed": "Failed to parse DSTU_METRICS_ADDR",
+    "server_error": "Metrics server error"
+  }
+}

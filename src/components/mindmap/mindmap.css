@@ -1,0 +1,794 @@
+/* ============================================
+   思维导图/大纲笔记 - 接入项目全局颜色系统
+   ============================================ */
+
+.mindmap-container {
+  /* 背景层 */
+  --mm-bg: var(--surface-root, hsl(var(--background)));
+  --mm-bg-elevated: var(--surface-elevated, hsl(var(--card)));
+  --mm-bg-hover: var(--surface-hover, hsl(var(--accent) / 0.5));
+  --mm-bg-active: var(--surface-active, hsl(var(--accent)));
+  
+  /* 边框 */
+  --mm-border: var(--border-default, hsl(var(--border)));
+  --mm-border-strong: hsl(var(--muted-foreground) / 0.5);
+  
+  /* 连线 */
+  --mm-edge: hsl(var(--muted-foreground) / 0.45);
+  
+  /* 阴影 */
+  --mm-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+  --mm-shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+
+  /* 文本 */
+  --mm-text: var(--text-primary, hsl(var(--foreground)));
+  --mm-text-secondary: var(--text-secondary, hsl(var(--muted-foreground)));
+  --mm-text-muted: var(--text-muted, hsl(var(--muted-foreground) / 0.7));
+  
+  /* 主色调 */
+  --mm-primary: hsl(var(--primary));
+  --mm-primary-soft: hsl(var(--primary) / 0.1);
+  
+  /* 布局尺寸 */
+  --mm-line-height: 28px; /* 每一行的高度 */
+  --mm-indent-width: 28px; /* 缩进宽度 */
+  --mm-bullet-size: 6px;
+}
+
+/* ============================================
+   大纲视图核心样式 (Outline View Core)
+   ============================================ */
+
+.mindmap-container {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  color: var(--mm-text);
+  background: var(--mm-bg);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* 隐藏滚动条但保留滚动功能 */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 4px;
+}
+
+.custom-scrollbar:hover::-webkit-scrollbar-thumb {
+  background: var(--mm-text-muted);
+}
+
+/* --- 节点样式 --- */
+
+/* 节点行容器 */
+.outline-node-row {
+  display: flex;
+  align-items: flex-start;
+  min-height: var(--mm-line-height);
+  padding: 2px 0;
+  border-radius: 4px;
+  position: relative;
+  transition: background-color 0.1s ease;
+}
+
+/* 悬停整行效果 - 类似 Notion */
+.outline-node-row:hover {
+  background-color: var(--mm-bg-hover);
+}
+
+.outline-node-row.focused {
+  background-color: var(--mm-bg-hover);
+}
+
+.outline-node-row.is-dragging {
+  opacity: 0.3;
+  background: var(--mm-bg-elevated);
+}
+
+/* 缩进参考线 - 更加细腻 */
+.indent-guide {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background-color: transparent;
+  transition: background-color 0.2s;
+  pointer-events: none;
+}
+
+.mindmap-container:hover .indent-guide {
+  background-color: var(--mm-border);
+  opacity: 0.4;
+}
+
+/* 左侧控制区容器 */
+.node-left-controls {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  height: 100%;
+  padding-top: 6px; /* 对齐文本首行 */
+  width: 24px;
+  flex-shrink: 0;
+  user-select: none;
+}
+
+/* 拖拽把手 (Drag Handle) - 悬停时显示在左侧 */
+.node-drag-handle {
+  position: absolute;
+  left: -20px; /* 向左偏移，悬浮在 gutter 区域 */
+  top: 6px;
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 3px;
+  color: var(--mm-text-muted);
+  cursor: grab;
+  opacity: 0;
+  transition: opacity 0.15s ease, background-color 0.1s;
+}
+
+.outline-node-row:hover .node-drag-handle {
+  opacity: 1;
+}
+
+.node-drag-handle:hover {
+  background-color: var(--mm-border);
+  color: var(--mm-text);
+}
+
+/* 子弹点容器 */
+.node-bullet-container {
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  cursor: pointer;
+  transition: background-color 0.1s;
+  position: relative;
+  z-index: 2;
+}
+
+.node-bullet-container:hover {
+  background-color: var(--mm-border);
+}
+
+/* 子弹点本身 */
+.node-bullet {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: var(--mm-text);
+  opacity: 0.6;
+  transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
+  position: relative;
+}
+
+/* 有子节点的圆点 - 稍微明显一点 */
+.node-bullet.has-children {
+  opacity: 0.9;
+}
+
+/* 聚焦时的子弹点 */
+.outline-node-row.focused .node-bullet {
+  background-color: var(--mm-primary);
+  opacity: 1;
+  transform: scale(1.1);
+}
+
+/* 悬停在容器上时，圆点变深并放大 */
+.node-bullet-container:hover .node-bullet {
+  opacity: 1;
+  transform: scale(1.2);
+}
+
+/* 悬停在有子节点的圆点上 - 显示淡淡的外圈暗示可折叠 */
+.node-bullet-container:hover .node-bullet.has-children {
+  box-shadow: 0 0 0 4px var(--mm-bg-hover);
+}
+
+/* 折叠状态 - 幕布风格：实心圆点 + 双层圆环 */
+.node-bullet.collapsed {
+  background-color: var(--mm-text-secondary);
+  width: 6px;
+  height: 6px;
+  border: none; /* 移除之前的 border */
+  box-shadow: 
+    0 0 0 2px var(--mm-bg), /* 间隔层 */
+    0 0 0 3px var(--mm-text-secondary); /* 外圈 */
+  opacity: 1;
+}
+
+/* 折叠状态悬停 - 外圈变色 */
+.node-bullet-container:hover .node-bullet.collapsed {
+  background-color: var(--mm-text);
+  box-shadow: 
+    0 0 0 2px var(--mm-bg),
+    0 0 0 3px var(--mm-text);
+  transform: scale(1); /* 保持大小，避免外圈模糊 */
+}
+
+/* 折叠状态下的伪元素清除（如果之前有的话） */
+.node-bullet.collapsed::after {
+  display: none;
+}
+
+/* 内容输入框 */
+.node-input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  outline: none;
+  padding: 2px 0 2px 6px; /* 左侧留一点空隙 */
+  font-size: 15px;
+  line-height: 1.6; /* 更好的行高 */
+  color: var(--mm-text);
+  resize: none;
+  font-family: inherit;
+}
+
+.node-input::placeholder {
+  color: var(--mm-text-muted);
+  opacity: 0.6;
+}
+
+/* 根节点特殊样式 */
+.node-input.root {
+  font-size: 28px;
+  font-weight: 700;
+  padding: 12px 0;
+  line-height: 1.3;
+}
+
+.outline-node-row.root:hover {
+  background-color: transparent;
+}
+
+/* 备注 (Note) */
+.node-note {
+  font-size: 13px;
+  color: var(--mm-text-secondary);
+  padding: 0 0 4px 6px;
+  line-height: 1.5;
+  opacity: 0.8;
+}
+
+/* LaTeX 渲染态样式 */
+.node-input-latex {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.node-input-latex .katex {
+  font-size: 1em;
+}
+
+.node-input-latex .katex-display {
+  margin: 0;
+  display: inline;
+}
+
+.node-input-latex .katex-display > .katex {
+  display: inline;
+}
+
+.node-note .katex {
+  font-size: 1em;
+}
+
+.node-input-latex .katex-error,
+.node-note .katex-error {
+  color: hsl(var(--destructive, 0 84% 60%));
+  font-size: 0.85em;
+}
+
+/* 工具栏/操作区 (Hover Actions) */
+.node-actions {
+  opacity: 0;
+  display: flex;
+  align-items: center;
+  padding-right: 8px;
+  gap: 4px;
+  transition: opacity 0.15s ease;
+}
+
+.outline-node-row:hover .node-actions {
+  opacity: 1;
+}
+
+.action-btn {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  color: var(--mm-text-muted);
+  transition: all 0.1s;
+}
+
+.action-btn:hover {
+  background-color: var(--mm-bg-elevated);
+  color: var(--mm-text);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+}
+
+/* --- 拖拽视觉反馈 --- */
+.drop-indicator {
+  height: 2px;
+  background-color: var(--mm-primary);
+  position: absolute;
+  left: 24px;
+  right: 0;
+  pointer-events: none;
+  z-index: 10;
+  border-radius: 1px;
+  box-shadow: 0 0 4px var(--mm-primary-soft);
+}
+
+.drag-overlay-item {
+  background: var(--mm-bg-elevated);
+  border: 1px solid var(--mm-border);
+  box-shadow: 0 8px 20px -4px rgba(0,0,0,0.2);
+  padding: 8px 12px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  opacity: 0.95;
+  transform: scale(1.02);
+}
+
+/* --- 搜索高亮 --- */
+.outline-node-row.search-match {
+  background-color: hsl(var(--warning) / 0.2);
+}
+
+.outline-node-row.search-match.focused {
+  background-color: hsl(var(--warning) / 0.4);
+}
+
+/* ============================================
+   ReactFlow 相关样式
+   ============================================ */
+.mindmap-container .react-flow__node {
+  border: none;
+  box-shadow: none;
+  padding: 0;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  /* 不对 transform 加 transition，防止 hover 触发 GPU 合成导致文字模糊 */
+}
+
+/* ★ 修复：让节点组件填满 ReactFlow 计算的 wrapper 尺寸，使文字居中 */
+.mindmap-container .react-flow__node > div {
+  width: 100%;
+  height: 100%;
+}
+
+.mindmap-container .react-flow__node.dragging {
+  transition: none;
+}
+
+/* 临时诊断模式：尽量关闭 hover 相关动画，定位文字模糊根因 */
+.mm-blur-safety-mode .react-flow__node,
+.mm-blur-safety-mode .react-flow__node * {
+  transition: none !important;
+  animation: none !important;
+}
+
+.mm-blur-safety-mode .mm-node-actions,
+.mm-blur-safety-mode .mm-action-btn,
+.mm-blur-safety-mode .mm-collapse-btn {
+  transition: none !important;
+}
+
+/* 确保 ReactFlow viewport 不使用 3D transform 以避免文字模糊 */
+.mindmap-container .react-flow__viewport {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.mindmap-container .react-flow__edge-path {
+  stroke: var(--mm-edge);
+  stroke-width: 1.5px;
+}
+
+/* 顶部工具栏 */
+.notion-topbar {
+  height: 44px;
+  padding: 0 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--mm-bg);
+  font-size: 14px;
+  position: sticky;
+  top: 0;
+  z-index: 50;
+}
+
+.notion-btn {
+  height: 28px;
+  padding: 0 8px;
+  border-radius: 4px;
+  color: var(--mm-text);
+  background: transparent;
+  border: none;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  transition: background 0.1s ease;
+}
+
+.notion-btn:hover {
+  background: var(--mm-bg-hover);
+}
+
+/* ============================================
+   思维导图节点样式 (Mind Map Nodes)
+   ============================================ */
+
+/* --- 根节点 --- */
+/* ★ 修复：移除硬编码样式，让内联主题样式生效 */
+.mm-root-node {
+  min-width: 80px;
+  text-align: center;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  /* 防止文字竖排 */
+  white-space: nowrap;
+}
+
+.mm-root-node:hover {
+  border-color: var(--mm-primary);
+}
+
+.mm-root-node.selected {
+  border-color: var(--mm-primary);
+  box-shadow: 0 0 0 2px var(--mm-primary-soft);
+}
+
+/* --- 分支节点 --- */
+/* ★ 修复：移除硬编码样式，让内联主题样式生效 */
+.mm-branch-node {
+  min-width: 40px;
+  position: relative;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  /* 防止文字竖排 */
+  white-space: nowrap;
+}
+
+.mm-branch-node:hover {
+  border-color: var(--mm-border-strong);
+}
+
+.mm-branch-node.selected {
+  border-color: var(--mm-primary);
+  box-shadow: 0 0 0 2px var(--mm-primary-soft);
+}
+
+.mm-branch-node.editing {
+  border-color: var(--mm-primary);
+}
+
+/* --- 下划线风格节点 (Level 2+) --- */
+.mindmap-node-underline {
+  background: transparent; /* 不用 !important，允许 inline style 覆盖（高亮背景色） */
+  border: none !important;
+  border-radius: 0 !important;
+  padding: 2px 4px 4px 4px !important; /* 底部稍微多一点 padding 给文字 */
+  box-shadow: none !important;
+  border-bottom: 1.5px solid var(--mm-border) !important; /* 默认颜色，会被 inline style 覆盖 */
+  min-width: 20px !important;
+  transition: border-color 0.2s ease, background-color 0.2s ease;
+  /* 防止文字竖排 */
+  white-space: nowrap !important;
+}
+
+.mindmap-node-underline:hover {
+  /* 悬停时不改变任何可能导致重绘的属性，只改变下划线颜色即可 */
+}
+
+/* 移除强制 hover 变色，让 inline style 生效 */
+.mindmap-node-underline:hover {
+  /* 如果有内联样式设置了 border-color，这里不应该强制覆盖为 primary */
+  /* 只有当没有 branchColor 时才变 primary */
+  /* 但 CSS 无法判断是否有内联样式。 */
+  /* 妥协方案：如果是在彩虹模式下，hover 效果由 brightness 处理；非彩虹模式（默认边框色）则变色 */
+}
+
+/* 默认情况（非彩虹） */
+.mindmap-node-underline:not([style*="border-bottom-color"]):hover {
+   border-bottom-color: var(--mm-primary) !important;
+}
+
+.mindmap-node-underline.selected {
+  /* 加粗下划线以示选中 */
+  border-bottom-width: 2.5px !important;
+  /* 如果没有彩虹色，则使用 primary */
+}
+.mindmap-node-underline:not([style*="border-bottom-color"]).selected {
+   border-bottom-color: var(--mm-primary) !important;
+}
+
+.mindmap-node-underline .node-content {
+  /* 不使用 transform 以避免文字模糊 */
+}
+
+.mindmap-node-underline.editing {
+  border-bottom-color: var(--mm-primary) !important;
+}
+
+/* 下划线节点的操作按钮位置调整 - 不使用 transform 避免模糊 */
+.mindmap-node-underline .mm-node-actions {
+  left: 100%;
+  margin-left: 8px;
+  top: 0;
+  bottom: 0;
+}
+
+/* --- 折叠/展开按钮 --- */
+.mm-collapse-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: none;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.mm-collapse-btn:hover {
+  /* 不使用 transform 避免模糊，改用背景色变化 */
+  background-color: var(--mm-bg-hover);
+}
+
+/* --- 节点操作按钮组 --- */
+.mm-node-actions {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  transition: all 0.15s ease;
+  z-index: 10;
+}
+
+.mm-action-btn {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  border: none;
+  background: var(--mm-bg-elevated);
+  color: var(--mm-text-muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.mm-action-btn:hover {
+  background: var(--mm-bg-hover);
+  color: var(--mm-text);
+}
+
+/* ============================================
+   ReactFlow 连接线和控件样式
+   ============================================ */
+
+/* --- 连接线 (Edges) --- */
+.mindmap-container .react-flow__edge-path,
+.tree-edge {
+  stroke: var(--mm-edge);
+  stroke-width: 1.5px;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  fill: none;
+  /* 移除 opacity transition，防止 hover 时大量 edge 同时触发 GPU 合成导致文字模糊 */
+  transition: stroke 0.3s ease, stroke-width 0.2s ease;
+}
+
+/* 选中节点的连接线高亮 */
+.mindmap-container .react-flow__edge.selected .react-flow__edge-path {
+  /* 选中时只加粗，不使用 filter 以避免模糊 */
+  stroke-width: 2.5px;
+}
+
+/* --- 节点选中状态 --- */
+.mindmap-container .react-flow__node.selected .mm-branch-node,
+.mindmap-container .react-flow__node.selected .mm-root-node {
+  border-color: var(--mm-primary);
+  box-shadow: 0 0 0 2.5px var(--mm-primary-soft), 0 0 12px rgba(59, 130, 246, 0.1);
+}
+
+.mindmap-container .react-flow__node.selected .mindmap-node-underline {
+  box-shadow: 0 2px 0 0 var(--mm-primary);
+}
+
+/* --- ReactFlow 控件面板 --- */
+.mindmap-container .react-flow__controls {
+  background: var(--mm-bg-elevated);
+  border: 1px solid var(--mm-border);
+  border-radius: 6px;
+  box-shadow: var(--mm-shadow);
+}
+
+.mindmap-container .react-flow__controls-button {
+  background: var(--mm-bg-elevated);
+  border: none;
+  border-bottom: 1px solid var(--mm-border);
+  color: var(--mm-text-secondary);
+  width: 28px;
+  height: 28px;
+}
+
+.mindmap-container .react-flow__controls-button:last-child {
+  border-bottom: none;
+}
+
+.mindmap-container .react-flow__controls-button:hover {
+  background: var(--mm-bg-hover);
+  color: var(--mm-text);
+}
+
+.mindmap-container .react-flow__controls-button svg {
+  fill: currentColor;
+}
+
+/* --- MiniMap --- */
+.mindmap-container .react-flow__minimap {
+  background: var(--mm-bg-elevated);
+  border: 1px solid var(--mm-border);
+  border-radius: 6px;
+  box-shadow: var(--mm-shadow);
+}
+
+/* --- 背景 --- */
+.mindmap-container .react-flow__background {
+  background: var(--mm-bg);
+}
+
+/* --- 提示栏 --- */
+.notion-hint-bar {
+  position: absolute;
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 12px;
+  background: var(--mm-bg-elevated);
+  border: 1px solid var(--mm-border);
+  border-radius: 6px;
+  box-shadow: var(--mm-shadow);
+  font-size: 12px;
+  color: var(--mm-text-muted);
+  z-index: 10;
+  pointer-events: none;
+  opacity: 0.9;
+}
+
+.notion-hint-bar kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 18px;
+  padding: 0 4px;
+  background: var(--mm-bg-hover);
+  border: 1px solid var(--mm-border);
+  border-radius: 3px;
+  font-family: ui-monospace, monospace;
+  font-size: 11px;
+  color: var(--mm-text-secondary);
+}
+
+/* --- 完成节点样式 (Completed Nodes) --- */
+.mm-root-node.mm-completed,
+.mm-branch-node.mm-completed,
+.mindmap-node-underline.mm-completed {
+  opacity: 0.5;
+}
+
+.mm-root-node.mm-completed:hover,
+.mm-branch-node.mm-completed:hover,
+.mindmap-node-underline.mm-completed:hover {
+  opacity: 0.7;
+}
+
+/* ============================================
+   Edge Styles - 边样式
+   ============================================ */
+.straight-edge,
+.orthogonal-edge,
+.step-edge {
+  transition: stroke 0.2s ease;
+}
+
+.straight-edge:hover,
+.orthogonal-edge:hover,
+.step-edge:hover {
+  stroke: var(--mm-primary) !important;
+}
+
+/* ============================================
+   拖拽放置目标高亮 (Drag Drop Target)
+   ============================================ */
+
+.mm-dragging {
+  opacity: 0.5;
+  z-index: 1000 !important;
+}
+
+.mm-dragging .mm-root-node,
+.mm-dragging .mm-branch-node,
+.mm-dragging .mindmap-node-underline {
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+  transform: scale(1.02);
+}
+
+.mm-drop-target .mm-root-node,
+.mm-drop-target .mm-branch-node,
+.mm-drop-target .mindmap-node-underline {
+  outline: 2.5px dashed var(--mm-primary);
+  outline-offset: 4px;
+  border-radius: 6px;
+  background-color: color-mix(in srgb, var(--mm-primary) 8%, transparent);
+  transition: outline 0.15s ease, background-color 0.15s ease;
+}
+
+.mm-drop-sibling-before,
+.mm-drop-sibling-after {
+  position: relative;
+}
+
+.mm-drop-sibling-before::before {
+  content: '';
+  position: absolute;
+  top: -3px;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: var(--mm-primary);
+  border-radius: 2px;
+  z-index: 10;
+}
+
+.mm-drop-sibling-after::after {
+  content: '';
+  position: absolute;
+  bottom: -3px;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: var(--mm-primary);
+  border-radius: 2px;
+  z-index: 10;
+}
+
+/* ============================================
+   背诵模式 - 文本选择 (Recite Mode Text Selection)
+   ============================================ */
+
+/* 覆盖 ReactFlow 祖先元素的 user-select: none，允许背诵模式下选中文本进行挖空 */
+.mindmap-container .nopan.nodrag {
+  -webkit-user-select: text !important;
+  -moz-user-select: text !important;
+  user-select: text !important;
+  cursor: text;
+}

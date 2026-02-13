@@ -1,0 +1,27 @@
+#!/usr/bin/env node
+
+// Wrapper script for Tauri CLI - allows Gradle to invoke Tauri via `node tauri`
+import { execSync } from 'child_process';
+import { fileURLToPath } from 'url';
+import { dirname, resolve } from 'path';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+// 切换到项目根目录
+const projectRoot = resolve(__dirname, '..');
+
+// 拼接命令：使用 pnpm dlx 调用 Tauri CLI，并传递所有参数
+const args = process.argv.slice(2).join(' ');
+const command = `pnpm dlx @tauri-apps/cli@latest ${args}`;
+
+try {
+  execSync(command, {
+    cwd: projectRoot,
+    stdio: 'inherit',
+    env: process.env
+  });
+} catch (error) {
+  process.exit(error.status || 1);
+}
+

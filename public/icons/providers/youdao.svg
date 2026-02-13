@@ -1,0 +1,6 @@
+<svg viewBox="0 0 24 24" width="24" height="24" xmlns="http://www.w3.org/2000/svg">
+  <title>Youdao</title>
+  <rect width="24" height="24" rx="4" fill="#E53935"/>
+  <path d="M6 8l6 4-6 4V8z" fill="white"/>
+  <path d="M11 8h7v2h-7zM11 11h5v2h-5zM11 14h7v2h-7z" fill="white"/>
+</svg>

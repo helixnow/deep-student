@@ -1,0 +1,184 @@
+{
+  "types": {
+    "folder": "Folder",
+    "note": "Note",
+    "textbook": "Textbook",
+    "exam": "Question Set",
+    "translation": "Translation",
+    "essay": "Essay",
+    "image": "Image",
+    "file": "File"
+  },
+  "menu": {
+    "open": "Open",
+    "edit": "Edit",
+    "view": "View",
+    "referenceToChat": "Reference to Chat",
+    "copy": "Copy",
+    "moveTo": "Move to...",
+    "rename": "Rename",
+    "versionHistory": "Version History",
+    "delete": "Delete",
+    "share": "Share",
+    "properties": "Properties",
+    "batchReferenceToChat": "Batch Reference to Chat",
+    "batchMoveTo": "Batch Move to...",
+    "batchDelete": "Batch Delete"
+  },
+  "actions": {
+    "create": "Create",
+    "createNote": "Create Note",
+    "createMindMap": "Create Mind Map",
+    "mindMapCreated": "Mind map created",
+    "createFolder": "Create Folder",
+    "import": "Import",
+    "export": "Export",
+    "refresh": "Refresh",
+    "search": "Search",
+    "filter": "Filter",
+    "sort": "Sort"
+  },
+  "sort": {
+    "name": "Name",
+    "createdAt": "Created",
+    "updatedAt": "Updated",
+    "asc": "Ascending",
+    "desc": "Descending"
+  },
+  "preview": {
+    "title": "Preview",
+    "noPreview": "Cannot preview this file",
+    "downloadUnavailable": "Download not available for this file",
+    "loading": "Loading...",
+    "error": "Failed to load",
+    "examPreview": "Question Set Preview",
+    "examHint": "Please use the dedicated question set editor to view full content",
+    "pdfPreview": "PDF Preview",
+    "noImage": "Unable to load image"
+  },
+  "errors": {
+    "notFound": "Resource not found",
+    "invalidPath": "Invalid path",
+    "permissionDenied": "Permission denied",
+    "conflict": "Resource conflict",
+    "internal": "Internal error",
+    "essayParseError": "Essay data format error, degraded to plain text mode",
+    "loadFailed": "Failed to load",
+    "saveFailed": "Failed to save",
+    "deleteFailed": "Failed to delete",
+    "moveFailed": "Failed to move",
+    "copyFailed": "Failed to copy"
+  },
+  "confirmations": {
+    "deleteTitle": "Confirm Delete",
+    "deleteMessage": "Are you sure you want to delete \"{{name}}\"? This action cannot be undone.",
+    "deleteMultipleMessage": "Are you sure you want to delete {{count}} selected items? This action cannot be undone."
+  },
+  "empty": {
+    "title": "No Content",
+    "description": "This folder is empty",
+    "searchNoResults": "No matching results found",
+    "searchTip": "Try searching with different keywords"
+  },
+  "status": {
+    "saving": "Saving...",
+    "saved": "Saved",
+    "modified": "Modified",
+    "syncing": "Syncing...",
+    "synced": "Synced"
+  },
+  "api": {
+    "folder": {
+      "createFailed": "Failed to create folder",
+      "notFound": "Folder not found",
+      "getFailed": "Failed to get folder",
+      "renameFailed": "Failed to rename folder",
+      "deleteFailed": "Failed to delete folder",
+      "moveFailed": "Failed to move folder",
+      "setExpandedFailed": "Failed to set folder expanded state",
+      "addItemFailed": "Failed to add item to folder",
+      "removeItemFailed": "Failed to remove item from folder",
+      "moveItemFailed": "Failed to move item",
+      "listFailed": "Failed to list folders",
+      "getTreeFailed": "Failed to get folder tree",
+      "getItemsFailed": "Failed to get folder items",
+      "getResourcesFailed": "Failed to get folder resources",
+      "reorderFailed": "Failed to reorder folders",
+      "getBreadcrumbsFailed": "Failed to get folder breadcrumbs",
+      "reorderItemsFailed": "Failed to reorder folder items"
+    },
+    "trash": {
+      "softDeleteFailed": "Failed to move to trash",
+      "restoreFailed": "Failed to restore item",
+      "listFailed": "Failed to get trash list",
+      "emptyFailed": "Failed to empty trash",
+      "permanentlyDeleteFailed": "Failed to permanently delete"
+    }
+  },
+  "resource": {
+    "getContent": "Get content",
+    "getResource": "Get resource",
+    "saveResource": "Save resource",
+    "deleteResource": "Delete resource",
+    "createResource": "Create resource",
+    "searchResource": "Search resource"
+  },
+  "adapters": {
+    "essay": {
+      "untitledEssay": "Untitled Essay",
+      "listSessions": "List essay grading sessions",
+      "getSessionDetail": "Get essay session detail",
+      "deleteSession": "Delete essay session",
+      "getSession": "Get essay session",
+      "toggleFavorite": "Toggle favorite",
+      "setFavorite": "Set favorite",
+      "createSession": "Create essay session",
+      "updateSessionMeta": "Update session metadata",
+      "getFullSession": "Get full essay session"
+    },
+    "exam": {
+      "listExams": "List question sets",
+      "getExamDetail": "Get question set detail",
+      "deleteExam": "Delete question set",
+      "getSessionDetail": "Get question set session detail"
+    },
+    "translation": {
+      "listHistory": "List translation history",
+      "getDetail": "Get translation detail",
+      "deleteTranslation": "Delete translation",
+      "getTranslation": "Get translation",
+      "toggleFavorite": "Toggle favorite",
+      "setFavorite": "Set favorite",
+      "createRecord": "Create translation record",
+      "updateRecord": "Update translation record"
+    },
+    "notes": {
+      "listNotes": "List notes",
+      "getNoteDetail": "Get note detail",
+      "getNoteContent": "Get note content",
+      "createNote": "Create note",
+      "updateNoteContent": "Update note content",
+      "updateNoteMetadata": "Update note metadata",
+      "getUpdatedNote": "Get updated note",
+      "noteNotFound": "Note not found",
+      "deleteNote": "Delete note",
+      "searchNotes": "Search notes",
+      "untitled": "Untitled"
+    },
+    "attachment": {
+      "listAttachments": "List attachments",
+      "listImageAttachments": "List image attachments",
+      "listFileAttachments": "List file attachments",
+      "getDetail": "Get attachment detail",
+      "deleteAttachment": "Delete attachment",
+      "createAttachment": "Create attachment",
+      "updateMetadata": "Update attachment metadata",
+      "getUpdatedAttachment": "Get updated attachment",
+      "attachmentNotFound": "Attachment not found",
+      "setFavorite": "Set attachment favorite",
+      "searchAttachments": "Search attachments",
+      "searchImageAttachments": "Search image attachments",
+      "searchFileAttachments": "Search file attachments"
+    }
+  }
+}

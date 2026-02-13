@@ -1,0 +1,93 @@
+{
+  "syncConflicts": "同步冲突",
+  "conflictDescription": "以下题目在本地和远程存在冲突，请选择解决策略。",
+  "noConflicts": "没有待解决的冲突。",
+  "localVersion": "本地版本",
+  "remoteVersion": "远程版本",
+  "newer": "较新",
+  "content": "题干",
+  "answer": "答案",
+  "explanation": "解析",
+  "keepLocal": "保留本地",
+  "keepRemote": "保留远程",
+  "keepNewer": "保留较新",
+  "merge": "智能合并",
+  "manual": "手动选择",
+  "batchResolve": "批量解决",
+  "selectAll": "全选",
+  "selectedCount": "已选择 {{count}} 项",
+  "close": "关闭",
+  "conflictTypes": {
+    "modify_modify": "双方修改",
+    "modify_delete": "本地修改/远程删除",
+    "delete_modify": "本地删除/远程修改",
+    "add_add": "双方新增"
+  },
+  "syncStatus": {
+    "title": "同步状态",
+    "enabled": "同步已启用",
+    "disabled": "同步已禁用",
+    "lastSynced": "最后同步时间",
+    "localModified": "本地修改",
+    "pendingConflicts": "待处理冲突",
+    "synced": "已同步",
+    "total": "总题目数"
+  },
+  "syncConfig": {
+    "title": "同步设置",
+    "defaultStrategy": "默认冲突策略",
+    "autoSync": "自动同步",
+    "syncInterval": "同步间隔（秒）",
+    "syncProgress": "同步学习进度",
+    "syncNotes": "同步用户笔记"
+  },
+  "actions": {
+    "checkStatus": "检查同步状态",
+    "pull": "拉取远程更新",
+    "push": "推送本地更新",
+    "enableSync": "启用同步",
+    "disableSync": "禁用同步"
+  },
+  "messages": {
+    "syncSuccess": "同步成功",
+    "syncFailed": "同步失败",
+    "conflictResolved": "冲突已解决",
+    "batchResolved": "已批量解决 {{count}} 个冲突"
+  },
+  "resource": {
+    "sync_note_failed": "同步笔记失败: {{error}}",
+    "sync_exam_failed": "同步题目集失败: {{error}}",
+    "sync_textbook_pages_failed": "同步教材页面失败: {{error}}",
+    "check_sync_needed_failed": "检查同步状态失败: {{error}}",
+    "create_resource_failed": "创建资源失败: {{error}}"
+  },
+  "conflict_type": {
+    "schema_mismatch": "Schema 版本不匹配",
+    "schema_mismatch_desc": "本地和云端的数据库结构版本不同，需要进行迁移",
+    "data_conflict": "数据版本冲突",
+    "data_conflict_desc": "本地和云端都有数据修改，存在冲突",
+    "checksum_mismatch": "校验和不匹配",
+    "checksum_mismatch_desc": "数据版本相同但内容不一致，可能存在数据损坏",
+    "local_only": "仅本地存在",
+    "local_only_desc": "此数据库仅存在于本地，云端没有",
+    "cloud_only": "仅云端存在",
+    "cloud_only_desc": "此数据库仅存在于云端，本地没有",
+    "unknown_desc": "未知冲突类型"
+  },
+  "strategy_info": {
+    "keep_local": "保留本地",
+    "keep_local_desc": "使用本地数据覆盖云端，本地修改将推送到云端",
+    "use_cloud": "使用云端",
+    "use_cloud_desc": "使用云端数据覆盖本地，云端修改将同步到本地",
+    "keep_latest": "保留最新",
+    "keep_latest_desc": "根据更新时间自动选择较新的版本",
+    "manual": "手动处理",
+    "manual_desc": "逐个查看和选择每条冲突记录的解决方式"
+  },
+  "detail_labels": {
+    "schema_version": "Schema 版本:",
+    "data_version": "数据版本:",
+    "update_time": "更新时间:",
+    "checksum": "Checksum:"
+  }
+}

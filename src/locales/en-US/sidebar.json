@@ -1,0 +1,48 @@
+{
+  "sections": {
+    "flat_analysis": "Flat Analysis",
+    "stereoscopic_analysis": "Stereoscopic Analysis",
+    "anki_tools": "Anki Tools",
+    "system_tools": "System Tools"
+  },
+  "theme": "Theme",
+  "navigation": {
+    "batch": "Batch Analysis",
+    "textbook_library": "Textbook Library",
+    "rag_query": "RAG Query",
+    "anki_generation": "Card Tasks",
+    "template_management": "Template Management",
+    "notes": "Notes",
+    "pdf_reader": "PDF Reader",
+    "pdf_ocr": "PDF OCR Converter",
+    "textbook_study_mode": "Textbook Study",
+    "chat_style_test": "Chat Style Test",
+    "dashboard": "Data Statistics",
+    "data_management": "Data Management",
+    "gemini_adapter_test": "Gemini Adapter Test",
+    "settings": "Settings",
+    "exam_sheet": "Question Set",
+    "translation": "Translation",
+    "essay_grading": "Essay Grading",
+    "canvas_board": "Canvas Board",
+    "learning_hub": "Learning Hub",
+    "extensions": "Extensions",
+    "chat_v2": "Smart Chat",
+    "skills_management": "Skills Management"
+  },
+  "aria": {
+    "sidebar_navigation": "Main navigation"
+  },
+  "expand": "Expand sidebar",
+  "collapse": "Collapse sidebar",
+  "theme_toggle": {
+    "toggle": "Toggle theme",
+    "switch_to_light": "Switch to light mode",
+    "switch_to_dark": "Switch to dark mode",
+    "switch_to_auto": "Switch to auto mode",
+    "light": "Light mode",
+    "dark": "Dark mode",
+    "auto": "Auto mode"
+  }
+}
+

@@ -1,0 +1,131 @@
+# Tauri WebDriver E2E 测试
+# 
+# 使用 tauri-driver + WebDriverIO 进行桌面应用端到端测试
+# 支持 Windows 和 Linux 平台（macOS 由于缺少 WKWebView driver 暂不支持）
+#
+# @see https://v2.tauri.app/develop/tests/webdriver/
+
+name: Tauri E2E Tests
+
+on:
+  # 暂时禁用自动触发 - e2e-tests/ 目录尚未就绪
+  # push:
+  #   branches: [main, develop]
+  # pull_request:
+  #   branches: [main, develop]
+  # 仅允许手动触发
+  workflow_dispatch:
+
+# 取消同一分支上的重复运行
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e-test:
+    name: Tauri E2E (${{ matrix.platform }})
+    runs-on: ${{ matrix.platform }}
+    
+    strategy:
+      # 不因单个平台失败而取消其他平台
+      fail-fast: false
+      matrix:
+        platform: [ubuntu-latest, windows-latest]
+    
+    steps:
+      # ============================================
+      # 基础设置
+      # ============================================
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      # ============================================
+      # 平台特定依赖
+      # ============================================
+      - name: Install Linux dependencies
+        if: matrix.platform == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            webkit2gtk-driver \
+            xvfb
+
+      - name: Install msedgedriver (Windows)
+        if: matrix.platform == 'windows-latest'
+        run: |
+          # 使用 msedgedriver-tool 自动下载匹配版本
+          cargo install --git https://github.com/chippers/msedgedriver-tool --force
+          & "$HOME/.cargo/bin/msedgedriver-tool.exe"
+          # 添加到 PATH
+          $PWD.Path >> $env:GITHUB_PATH
+        shell: pwsh
+
+      # ============================================
+      # 安装依赖
+      # ============================================
+      - name: Install npm dependencies (root)
+        run: npm ci
+
+      - name: Install npm dependencies (e2e-tests)
+        run: npm ci
+        working-directory: e2e-tests
+
+      - name: Install tauri-driver
+        run: cargo install tauri-driver --locked
+
+      # ============================================
+      # 运行 Rust 测试
+      # ============================================
+      - name: Cargo test
+        run: cargo test
+        working-directory: src-tauri
+        continue-on-error: true  # Rust 测试失败不阻止 E2E
+
+      # ============================================
+      # 运行 WebDriver E2E 测试
+      # ============================================
+      - name: WebDriverIO E2E (Linux)
+        if: matrix.platform == 'ubuntu-latest'
+        run: xvfb-run npm test
+        working-directory: e2e-tests
+        env:
+          # 增加超时时间
+          WDIO_TIMEOUT: 120000
+
+      - name: WebDriverIO E2E (Windows)
+        if: matrix.platform == 'windows-latest'
+        run: npm test
+        working-directory: e2e-tests
+        env:
+          WDIO_TIMEOUT: 120000
+
+      # ============================================
+      # 上传测试产物
+      # ============================================
+      - name: Upload screenshots on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-screenshots-${{ matrix.platform }}
+          path: |
+            e2e-tests/screenshots/
+            e2e-tests/logs/
+          if-no-files-found: ignore

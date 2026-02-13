@@ -1,0 +1,30 @@
+/**
+ * Chat V2 - 样式文件入口
+ *
+ * 所有样式限定在 .chat-v2 作用域内，避免污染其他模块。
+ * 
+ * 使用方式：在 Chat V2 容器组件上添加 className="chat-v2"
+ * 
+ * 样式隔离策略：
+ * 1. 所有顶级选择器添加 .chat-v2 前缀
+ * 2. 使用 CSS 变量引用 shadcn 设计系统
+ * 3. 暗色模式使用 :root.dark .chat-v2 或 .dark .chat-v2 选择器
+ */
+
+/* 基础聊天样式 */
+@import './chat.css';
+
+/* 美化样式 */
+@import './chat-beautify.css';
+
+/* Markdown 渲染样式 */
+@import './markdown.css';
+
+/* 分析模式样式 */
+@import './analysis.css';
+
+/* 思维链样式 - 从 renderers 目录导入 */
+@import '../components/renderers/ThinkingChain.css';
+
+/* 来源面板样式 - 从 panels 目录导入 */
+@import '../components/panels/UnifiedSourcePanel.css';

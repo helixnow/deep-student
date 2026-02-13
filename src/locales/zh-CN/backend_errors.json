@@ -1,0 +1,138 @@
+{
+  "cloud_storage": {
+    "s3_endpoint_empty": "S3 endpoint 不能为空",
+    "s3_bucket_empty": "S3 bucket 不能为空",
+    "s3_connection_failed": "S3 连接检测失败",
+    "s3_upload_failed": "S3 上传失败",
+    "s3_read_response_failed": "S3 读取响应体失败",
+    "s3_download_failed": "S3 下载失败",
+    "s3_list_failed": "S3 列出文件失败",
+    "s3_delete_failed": "S3 删除失败",
+    "s3_get_info_failed": "S3 获取文件信息失败",
+    "webdav_endpoint_empty": "WebDAV endpoint 不能为空",
+    "webdav_endpoint_invalid": "无效的 WebDAV endpoint",
+    "webdav_client_build_failed": "构建 HTTP 客户端失败",
+    "webdav_read_response_failed": "读取响应体失败",
+    "webdav_propfind_failed": "WebDAV PROPFIND 请求失败",
+    "webdav_propfind_read_failed": "读取 PROPFIND 响应失败",
+    "missing_webdav_config": "缺少 WebDAV 配置",
+    "missing_s3_config": "缺少 S3 配置",
+    "webdav_username_empty": "WebDAV 用户名不能为空",
+    "s3_access_key_empty": "S3 Access Key ID 不能为空",
+    "s3_secret_key_empty": "S3 Secret Access Key 不能为空"
+  },
+  "sync": {
+    "manifest_corrupted": "manifest 及备份均损坏",
+    "manifest_corrupted_no_backup": "manifest 损坏且无备份",
+    "serialize_manifest_failed": "序列化 manifest 失败",
+    "read_file_meta_failed": "读取文件元信息失败",
+    "backup_too_large": "备份文件过大，最大支持 2 GB",
+    "read_backup_failed": "读取备份文件失败",
+    "version_not_found": "未找到指定版本",
+    "cloud_file_not_exist": "云端文件不存在",
+    "backup_checksum_failed": "备份文件校验失败：文件可能在传输过程中损坏，请重新下载",
+    "create_dir_failed": "创建目录失败",
+    "save_file_failed": "保存文件失败",
+    "version_not_exist": "版本不存在"
+  },
+  "backup": {
+    "parse_config_failed": "解析备份配置失败",
+    "serialize_config_failed": "序列化备份配置失败",
+    "mobile_not_supported": "移动端不支持选择备份目录",
+    "select_backup_dir": "选择备份目录",
+    "create_backup_dir_failed": "创建备份目录失败",
+    "create_backup_file_failed": "创建备份文件失败",
+    "finish_zip_failed": "完成 ZIP 写入失败",
+    "test_db_not_exist": "测试数据库不存在",
+    "test_table_not_exist": "test_data 表不存在"
+  },
+  "anki": {
+    "parse_options_failed": "解析生成选项失败",
+    "get_model_assignment_failed": "获取模型分配失败",
+    "get_api_config_failed": "获取API配置失败",
+    "stream_request_build_failed": "Anki 流式请求构建失败",
+    "ai_request_failed": "AI请求失败",
+    "ai_response_timeout": "AI响应超时",
+    "read_ai_stream_failed": "读取AI响应流失败",
+    "json_parse_failed": "JSON解析失败",
+    "save_card_failed": "保存卡片失败",
+    "back_field_empty": "back字段不能为空",
+    "serialize_array_failed": "无法序列化数组",
+    "save_error_card_failed": "保存错误卡片失败",
+    "update_task_status_failed": "更新任务状态失败",
+    "get_doc_task_failed": "获取文档任务失败",
+    "insert_retry_task_failed": "插入重试任务失败"
+  },
+  "dstu": {
+    "illegal_chars": "包含非法字符",
+    "illegal_unicode": "包含非法Unicode字符",
+    "path_separator_not_allowed": "不能包含路径分隔符",
+    "length_exceeded": "长度超过限制",
+    "folder_title_empty": "文件夹标题不能为空",
+    "color_format_error": "颜色格式错误，请使用 #RRGGBB 格式或预定义颜色名称",
+    "resource_not_exist": "资源不存在",
+    "param_format_error": "参数格式错误",
+    "target_folder_not_exist": "目标文件夹不存在",
+    "db_query_failed": "数据库查询失败",
+    "folder_not_exist": "文件夹不存在",
+    "operation_failed": "操作失败",
+    "restore_failed": "恢复失败"
+  },
+  "multimodal": {
+    "embedding_model_not_configured": "未配置多模态嵌入模型",
+    "get_vfs_connection_failed": "获取 VFS 连接失败",
+    "get_blob_path_failed": "获取 Blob 路径失败",
+    "blob_not_exist": "Blob 不存在",
+    "read_blob_failed": "读取 Blob 文件失败",
+    "detect_dimension_failed": "无法检测嵌入模型输出维度",
+    "embedding_api_empty_result": "嵌入 API 返回空结果",
+    "reranker_not_configured": "未配置多模态重排序模型",
+    "dimension_not_registered": "维度未注册",
+    "model_config_not_exist": "模型配置不存在",
+    "parse_preview_json_failed": "解析 preview_json 失败",
+    "exam_sheet_not_exist": "题目集不存在",
+    "attachment_not_exist": "附件不存在",
+    "textbook_not_exist": "教材不存在",
+    "textbook_no_preview": "教材无预览数据",
+    "create_lance_dir_failed": "创建 Lance 目录失败",
+    "connect_lancedb_failed": "连接 LanceDB 失败",
+    "embedding_vector_empty": "记录的嵌入向量为空",
+    "lancedb_not_initialized": "LanceDB 未初始化"
+  },
+  "essay_grading": {
+    "mode_name_exists": "模式名称已存在",
+    "mode_not_exist": "模式不存在",
+    "vfs_not_initialized": "VFS 数据库未初始化",
+    "custom_mode_manager_not_initialized": "自定义模式管理器未初始化",
+    "preset_mode_not_exist": "预置模式不存在"
+  },
+  "analysis": {
+    "model_one_failed": "模型一调用失败",
+    "get_model_config_failed": "获取模型配置失败",
+    "model_two_failed": "模型二调用失败",
+    "non_stream_deprecated": "非流式版本已废弃，请使用流式版本",
+    "api_test_failed": "API连接测试失败",
+    "get_initial_answer_failed": "获取初始解答失败"
+  },
+  "cogni_graph": {
+    "phase1_response_empty": "阶段1 响应为空",
+    "phase2_response_empty": "阶段2 响应为空",
+    "target_type_must_be_id": "target.type 必须为 ID",
+    "target_value_format_error": "target.value 格式错误",
+    "parent_tag_id_empty": "父标签 ID 为空，拒绝创建",
+    "embedding_dimension_mismatch": "embedding 维度不一致"
+  },
+  "user_memory": {
+    "get_memory_failed": "获取记忆失败",
+    "update_summary_failed": "更新摘要失败",
+    "save_summary_failed": "保存摘要失败",
+    "get_category_list_failed": "获取类别列表失败"
+  },
+  "irec": {
+    "sqlite_needs_connection_pool": "SQLite服务需要数据库连接池"
+  },
+  "metrics": {
+    "parse_addr_failed": "解析DSTU_METRICS_ADDR失败",
+    "server_error": "metrics server错误"
+  }
+}

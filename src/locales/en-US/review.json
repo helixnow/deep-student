@@ -1,0 +1,171 @@
+{
+  "title": "Review Plan",
+  "subtitle": "Spaced repetition for efficient memory",
+  "unknownQuestion": "Unknown question",
+  "interval": "Interval",
+  "days": " days",
+  "times": " times",
+  "accuracy": "Accuracy",
+  "totalReviews": "Reviewed",
+  "startReview": "Start Review",
+
+  "status": {
+    "new": "New",
+    "learning": "Learning",
+    "reviewing": "Reviewing",
+    "graduated": "Mastered",
+    "suspended": "Suspended",
+    "overdue": "Overdue",
+    "difficult": "Difficult"
+  },
+
+  "stats": {
+    "dueToday": "Due Today",
+    "totalDue": "Total Due",
+    "mastered": "Mastered",
+    "accuracy": "Avg. Accuracy",
+    "overdueHint": "{{count}} overdue",
+    "difficultHint": "{{count}} difficult",
+    "ofTotal": "mastery rate",
+    "totalReviews": " reviews"
+  },
+
+  "todayReview": {
+    "title": "Today's Review",
+    "hasDue": "You have {{count}} items to review",
+    "noDue": "Great job! No items to review today"
+  },
+
+  "progress": {
+    "label": "Learning Progress"
+  },
+
+  "queue": {
+    "title": "Review Queue",
+    "sortedByDue": "Sorted by due date",
+    "andMore": "{{count}} more..."
+  },
+
+  "empty": {
+    "title": "All Done!",
+    "description": "You've completed all your review tasks. Keep it up, more content awaits tomorrow!"
+  },
+
+  "session": {
+    "noItems": "No items to review"
+  },
+
+  "card": {
+    "question": "Question",
+    "answer": "Answer",
+    "explanation": "Explanation"
+  },
+
+  "action": {
+    "skip": "Skip",
+    "showAnswer": "Show Answer"
+  },
+
+  "rating": {
+    "prompt": "How well did you know this?",
+    "again": "Again",
+    "againDesc": "<1 min",
+    "hard": "Hard",
+    "hardDesc": "<6 min",
+    "good": "Good",
+    "goodDesc": "<10 min",
+    "easy": "Easy",
+    "easyDesc": ">4 days"
+  },
+
+  "complete": {
+    "excellent": "Excellent!",
+    "excellentMsg": "Outstanding performance, keep it up!",
+    "good": "Well Done!",
+    "goodMsg": "Keep going, you're making progress!",
+    "keepGoing": "Keep Going!",
+    "keepGoingMsg": "A few more reviews and you'll get better!",
+    "needsPractice": "Needs More Practice",
+    "needsPracticeMsg": "Don't give up, practice makes perfect!",
+    "correct": "Correct",
+    "accuracy": "Accuracy",
+    "time": "Time",
+    "reviewAgain": "Review Again",
+    "finish": "Finish"
+  },
+
+  "calendar": {
+    "title": "Review Calendar",
+    "subtitle": "Track your review history",
+    "today": "Today",
+    "totalReviews": "Total Reviews",
+    "passed": "Passed",
+    "accuracy": "Accuracy",
+    "history": "History",
+    "noData": "No reviews on this day",
+    "less": "Less",
+    "more": "More",
+    "currentStreak": "Current Streak",
+    "longestStreak": "Longest Streak",
+    "totalDays": "Days Studied",
+    "weekdaysShort": ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
+    "monthsFull": ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"],
+    "monthYearFormat": "{{monthName}} {{year}}"
+  },
+
+  "questions": {
+    "difficulty": {
+      "easy": "Easy",
+      "medium": "Med",
+      "hard": "Hard",
+      "very_hard": "V.Hard"
+    },
+    "neverPracticed": "Never practiced",
+    "today": "Today",
+    "yesterday": "Yesterday",
+    "daysAgo": "{{count}}d ago",
+    "weeksAgo": "{{count}}w ago",
+    "monthsAgo": "{{count}}mo ago",
+    "noContent": "No content",
+    "selectAll": "Select All",
+    "cancel": "Cancel",
+    "reset": "Reset",
+    "delete": "Delete",
+    "toReview": "To Review",
+    "mastered": "Mastered",
+    "avgAttempts": "Avg <bold>{{count}}</bold> attempts",
+    "masteryRate": "mastery rate",
+    "startReview": "Start Review ({{count}})",
+    "attemptCount": "{{count}}x",
+    "emptyTitle": "Great! No Wrong Answers",
+    "emptyDesc": "You've mastered all questions, keep it up!<br/>Try challenging harder questions.",
+    "masteryTip": "Auto-marked as mastered after <highlight>2 correct</highlight> answers in a row"
+  },
+
+  "actions": {
+    "createPlan": "Create Review Plan",
+    "createPlanDesc": "Create review plans for selected questions",
+    "createForAll": "Create for All",
+    "createForAllDesc": "Create review plans for all questions",
+    "suspend": "Suspend Review",
+    "resume": "Resume Review",
+    "delete": "Delete Plan"
+  },
+
+  "toast": {
+    "createSuccess": "Successfully created {{count}} review plans",
+    "createFailed": "Failed to create review plans",
+    "processSuccess": "Review saved successfully",
+    "processFailed": "Failed to save review",
+    "suspendSuccess": "Review plan suspended",
+    "resumeSuccess": "Review plan resumed",
+    "deleteSuccess": "Review plan deleted"
+  },
+
+  "tips": {
+    "sm2Title": "What is Spaced Repetition?",
+    "sm2Desc": "Spaced repetition is a scientifically proven learning technique that reinforces long-term memory by reviewing at optimal intervals. The system automatically adjusts your next review time based on your performance.",
+    "ratingTitle": "How to Rate?",
+    "ratingDesc": "Rate based on how easily you recalled the answer: Again (completely forgot), Hard (barely recalled), Good (recalled with some effort), Easy (instantly recalled)."
+  }
+}

@@ -1,0 +1,137 @@
+{
+  "input_bar": {
+    "placeholder": "Enter your question...",
+    "placeholder_analyzing": "Analyzing...",
+    "placeholder_generating": "Generating...",
+    "placeholder_ocr": "OCR in progress",
+    "aria_label": "Message input",
+    "send": {
+      "disabled_empty": "Please enter content or add attachments",
+      "disabled_busy": "Processing...",
+      "disabled_parsing": "Document parsing in progress...",
+      "disabled_anki": "Anki template not ready"
+    },
+    "attachments": {
+      "title": "Attachments",
+      "add": "Add Attachment",
+      "remove": "Remove",
+      "image": "Image",
+      "document": "Document",
+      "parsing": "Parsing...",
+      "parse_success": "Parse completed",
+      "parsed": "Parsed",
+      "pending": "Pending",
+      "parse_failed": "Parse failed",
+      "drag_hint": "Drag files here",
+      "button_label": "Attachments",
+      "tooltip": "Add attachments",
+      "images_label": "Images",
+      "docs_label": "Documents",
+      "add_more": "Add attachment",
+      "drop_hint": "Drag files here or click to add",
+      "image_alt": "Attachment image {{index}}",
+      "doc_parsing_start": "Document parsing started",
+      "doc_parsing_complete": "Document parsing completed",
+      "doc_parsing_failed": "Document parsing failed",
+      "empty": "No attachments yet. Click \"Add Attachment\" or drag files here.",
+      "reference": "Reference",
+      "attachment_panel": "Attachment Panel",
+      "clear_all": "Clear All",
+      "upload_failed": "Attachment upload failed",
+      "load_failed": "Failed to read file",
+      "file_too_large": "File too large (max {{size}})",
+      "limit_reached": "Maximum {{count}} attachments allowed",
+      "status": {
+        "processing": "Parsing…",
+        "success": "Parsed",
+        "error": "Parse failed",
+        "pending": "Pending"
+      },
+      "errors": {
+        "unsupported_type": "Unsupported attachment type: {{name}} ({{ext}}). Please upload a supported image or document format.",
+        "size_limit_image": "File too large: {{name}} (image limit {{limit}})",
+        "size_limit_document": "File too large: {{name}} (document limit {{limit}})",
+        "heic_convert_failed": "Failed to convert HEIC: {{error}}",
+        "parse_failed_with_details": "{{name}} failed to parse: {{error}}"
+      },
+      "item_aria_label": "Attachment: {{name}}, size: {{size}} KB, type: {{type}}, status: {{status}}"
+    },
+    "rag": {
+      "title": "Knowledge Base",
+      "select_libraries": "Select Libraries",
+      "selected_count": "Selected {{count}} libraries",
+      "top_k": "TopK",
+      "enable_rerank": "Rerank",
+      "toggle": "Toggle Knowledge Base Panel",
+      "button_label": "Knowledge Base",
+      "tooltip_enabled": "Knowledge base retrieval enabled",
+      "tooltip_disabled": "Enable knowledge base retrieval"
+    },
+    "mcp": {
+      "title": "MCP Tools",
+      "select_tools": "Select MCP servers to enable",
+      "selected_count": "Selected {{count}} tools",
+      "toggle": "Toggle MCP Tools Panel",
+      "search_placeholder": "Search servers or tools...",
+      "empty_hint": "No MCP servers available",
+      "selected_group": "Selected",
+      "selected_badge": "Selected",
+      "online_group": "Online",
+      "online_badge": "Online",
+      "cached_group": "Cached / Static",
+      "cached_badge": "Cached",
+      "server": "Server",
+      "no_tools": "No tools available",
+      "builtin_hint": "Manage in Settings → MCP"
+    },
+    "search_engine": {
+      "title": "Web Search",
+      "select": "Select Engine",
+      "selected_count": "Selected {{count}}",
+      "toggle": "Toggle Search Engine Panel",
+      "hint": "When enabled, AI will automatically search the web for the latest information"
+    },
+    "graph": {
+      "title": "Knowledge Graph",
+      "select_graphs": "Select Graphs",
+      "selected_count": "Selected {{count}} graphs",
+      "toggle": "Toggle Knowledge Graph Panel",
+      "button_label": "Knowledge Graph",
+      "tooltip_enabled": "Knowledge graph enabled",
+      "tooltip_disabled": "Enable knowledge graph retrieval"
+    },
+    "learn_mode": {
+      "button_label": "Learning Mode",
+      "tooltip_enabled": "Learning mode enabled",
+      "tooltip_disabled": "Enable learning mode"
+    },
+    "learning_mode": {
+      "title": "Learning Mode",
+      "enable": "Enable Learning Mode",
+      "disable": "Disable Learning Mode",
+      "custom_prompt": "Custom Tutor Prompt",
+      "toggle": "Toggle Learning Mode Panel",
+      "description": "This mode guides you through concepts step by step, offers exercises, and provides review checkpoints when needed."
+    },
+    "user_preferences": {
+      "title": "Enable user preference prompt",
+      "disable": "Disable user preference prompt",
+      "empty": "No user preferences configured yet. Please open Settings and fill in your background and preferences first.",
+      "button_label": "User Preferences",
+      "tooltip_enabled": "User preferences enabled",
+      "tooltip_disabled": "Enable user preferences"
+    },
+    "actions": {
+      "send": "Send",
+      "analyze": "Start Analysis",
+      "stop": "Stop",
+      "reset": "Reset",
+      "toggle_attachment": "Toggle Attachment Panel",
+      "upload_file": "Upload File"
+    },
+    "notifications": {
+      "panel_state_saved": "Panel state saved",
+      "panel_closed": "Panel closed"
+    }
+  }
+}

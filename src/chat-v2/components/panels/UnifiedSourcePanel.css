@@ -1,0 +1,387 @@
+/**
+ * UnifiedSourcePanel Styles - 统一来源面板样式
+ * 作用域：所有样式限定在 .chat-v2 内
+ * 暗色模式：使用 [data-theme="dark"] 选择器
+ */
+
+.chat-v2 .unified-source-panel {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.chat-v2 .usp-header {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 12px;
+}
+
+.chat-v2 .unified-source-panel .usp-container {
+  border: 1px solid var(--border-soft, rgba(148, 163, 184, 0.35));
+  border-radius: 16px;
+  background: var(--surface-elevated, #ffffff);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
+  overflow: hidden;
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.chat-v2 .usp-header-actions {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.chat-v2 .usp-header-badge-slot {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 6px;
+}
+
+.chat-v2 .panel-header-icon {
+  display: inline-flex;
+  align-items: center;
+  color: var(--text-muted, #94a3b8);
+}
+
+[data-theme="dark"] .chat-v2 .panel-header-icon,
+.dark .chat-v2 .panel-header-icon {
+  color: rgba(203, 213, 225, 0.65);
+}
+
+.chat-v2 .unified-source-panel.collapsed .usp-container {
+  box-shadow: none;
+}
+
+.chat-v2 .usp-header-left {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  font-family: inherit;
+  color: var(--text-secondary, #334155);
+  padding: 0;
+  border-radius: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  transition: color 0.2s ease;
+}
+
+.chat-v2 .usp-header-left:hover,
+.chat-v2 .usp-header-left:focus-visible {
+  outline: none;
+  color: hsl(var(--foreground));
+}
+
+.chat-v2 .usp-header-title {
+  font-size: 0.95rem;
+}
+
+.chat-v2 .usp-header-stage {
+  font-size: 0.75rem;
+  color: var(--text-muted, #6b7280);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-radius: 999px;
+  padding: 2px 8px;
+  margin-left: auto;
+}
+
+.chat-v2 .usp-header-left .usp-header-stage {
+  margin-left: 0;
+}
+
+.chat-v2 .usp-header-arrow {
+  transition: transform 0.2s ease;
+  color: var(--text-muted, #94a3b8);
+}
+
+.chat-v2 .usp-header-arrow.expanded {
+  transform: rotate(90deg);
+}
+
+.chat-v2 .unified-source-panel .usp-body {
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.chat-v2 .unified-source-panel .usp-category-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chat-v2 .unified-source-panel .usp-category-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  background: rgba(248, 250, 252, 0.8);
+  padding: 4px 10px;
+  font-size: 0.78rem;
+  color: var(--text-secondary, #334155);
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease, transform 0.15s ease;
+}
+.chat-v2 .unified-source-panel .usp-category-pill.active {
+  background: var(--surface-muted, rgba(241, 245, 249, 0.85));
+  border-color: rgba(59, 130, 246, 0.35);
+  color: var(--text-primary, #0f172a);
+  transform: translateY(-1px);
+}
+
+.chat-v2 .unified-source-panel .usp-pill-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.chat-v2 .unified-source-panel .usp-pill-count {
+  font-size: 0.7rem;
+  color: var(--text-muted, #6b7280);
+}
+
+.chat-v2 .unified-source-panel .usp-items {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 360px;
+  padding-right: 6px;
+  scroll-behavior: smooth;
+}
+
+.chat-v2 .unified-source-panel .usp-items-scroll-area {
+  width: 100%;
+}
+
+.chat-v2 .unified-source-panel .usp-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-muted, #64748b);
+  padding: 4px 2px;
+}
+
+.chat-v2 .unified-source-panel .usp-section-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.chat-v2 .unified-source-panel .usp-section-count {
+  font-size: 0.75rem;
+  color: var(--text-muted, #94a3b8);
+}
+
+.chat-v2 .unified-source-panel .usp-item {
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-radius: 14px;
+  background: var(--surface-elevated, rgba(255, 255, 255, 0.92));
+  padding: 12px;
+  transition: border-color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+}
+
+.chat-v2 .unified-source-panel .usp-item:hover {
+  border-color: rgba(59, 130, 246, 0.35);
+  background: rgba(239, 246, 255, 0.85);
+  box-shadow: 0 6px 16px rgba(56, 189, 248, 0.12);
+}
+
+.chat-v2 .unified-source-panel .usp-item-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+
+.chat-v2 .unified-source-panel .usp-item-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  color: var(--text-secondary, #334155);
+}
+
+.chat-v2 .unified-source-panel .usp-item-title-text {
+  font-size: 0.9rem;
+}
+
+.chat-v2 .unified-source-panel .usp-item-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.chat-v2 .unified-source-panel .usp-item-score {
+  font-size: 0.75rem;
+  color: var(--text-muted, #6b7280);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-radius: 6px;
+  padding: 2px 6px;
+}
+
+.chat-v2 .unified-source-panel .usp-item-link {
+  font-size: 0.75rem;
+  border: none;
+  background: none;
+  color: var(--brand-primary, #3b82f6);
+  cursor: pointer;
+  padding: 0 4px;
+}
+
+.chat-v2 .unified-source-panel .usp-item-link:hover {
+  text-decoration: underline;
+}
+
+.chat-v2 .unified-source-panel .usp-item-snippet {
+  font-size: 0.85rem;
+  color: var(--text-secondary, #334155);
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.chat-v2 .unified-source-panel .usp-item-link-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 6px;
+  padding: 0;
+  font-size: 0.78rem;
+  border: none;
+  background: none;
+  color: var(--brand-primary, #3b82f6);
+  cursor: pointer;
+}
+
+.chat-v2 .unified-source-panel .usp-item-link-cta:hover {
+  text-decoration: underline;
+}
+
+.chat-v2 .unified-source-panel .usp-empty {
+  padding: 16px 8px;
+  font-size: 0.85rem;
+  color: var(--text-muted, #6b7280);
+  text-align: center;
+}
+
+/* 暗色模式：统一使用 shadcn 变量系统，确保与应用整体背景一致 */
+[data-theme="dark"] .chat-v2 .unified-source-panel .usp-container,
+.dark .chat-v2 .unified-source-panel .usp-container {
+  background: hsl(var(--card));
+  border-color: hsl(var(--border));
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+[data-theme="dark"] .chat-v2 .unified-source-panel .usp-item,
+.dark .chat-v2 .unified-source-panel .usp-item {
+  background: hsl(var(--muted) / 0.3);
+  border-color: hsl(var(--border));
+}
+
+[data-theme="dark"] .chat-v2 .unified-source-panel .usp-item:hover,
+.dark .chat-v2 .unified-source-panel .usp-item:hover {
+  background: hsl(var(--muted) / 0.5);
+  border-color: hsl(var(--primary) / 0.4);
+}
+
+[data-theme="dark"] .chat-v2 .unified-source-panel .usp-category-pill,
+.dark .chat-v2 .unified-source-panel .usp-category-pill {
+  background: hsl(var(--muted) / 0.4);
+  border-color: hsl(var(--border));
+  color: hsl(var(--muted-foreground));
+}
+
+[data-theme="dark"] .chat-v2 .unified-source-panel .usp-category-pill.active,
+.dark .chat-v2 .unified-source-panel .usp-category-pill.active {
+  background: hsl(var(--primary) / 0.2);
+  border-color: hsl(var(--primary) / 0.5);
+  color: hsl(var(--foreground));
+}
+
+[data-theme="dark"] .chat-v2 .unified-source-panel .usp-item-snippet,
+.dark .chat-v2 .unified-source-panel .usp-item-snippet {
+  color: hsl(var(--muted-foreground));
+}
+
+[data-theme="dark"] .chat-v2 .unified-source-panel .usp-item-link-cta,
+.dark .chat-v2 .unified-source-panel .usp-item-link-cta {
+  color: hsl(var(--primary));
+}
+
+[data-theme="dark"] .chat-v2 .unified-source-panel .usp-item-title,
+.dark .chat-v2 .unified-source-panel .usp-item-title {
+  color: hsl(var(--foreground));
+}
+
+[data-theme="dark"] .chat-v2 .unified-source-panel .usp-header-left,
+.dark .chat-v2 .unified-source-panel .usp-header-left {
+  color: hsl(var(--foreground));
+}
+
+[data-theme="dark"] .chat-v2 .unified-source-panel .usp-header-left:hover,
+.dark .chat-v2 .unified-source-panel .usp-header-left:hover {
+  background: hsl(var(--muted) / 0.3);
+}
+
+/* 来源列表容器 */
+.chat-v2 .unified-source-panel .usp-sources-wrapper {
+  position: relative;
+}
+
+/* 翻页按钮 */
+.chat-v2 .unified-source-panel .usp-scroll-btn {
+  opacity: 0.9;
+  transition: opacity 0.2s ease, background-color 0.2s ease;
+}
+
+.chat-v2 .unified-source-panel .usp-scroll-btn:hover {
+  opacity: 1;
+}
+
+.chat-v2 .unified-source-panel .usp-scroll-left {
+  left: -4px;
+  background: linear-gradient(to right, hsl(var(--background)) 60%, transparent);
+  padding-right: 12px;
+  border-radius: 0 50% 50% 0;
+}
+
+.chat-v2 .unified-source-panel .usp-scroll-right {
+  right: -4px;
+  background: linear-gradient(to left, hsl(var(--background)) 60%, transparent);
+  padding-left: 12px;
+  border-radius: 50% 0 0 50%;
+}
+
+/* 展开按钮 */
+.chat-v2 .unified-source-panel .usp-expand-btn {
+  flex-shrink: 0;
+}
+
+/* 暗色模式翻页按钮 */
+[data-theme="dark"] .chat-v2 .unified-source-panel .usp-scroll-btn,
+.dark .chat-v2 .unified-source-panel .usp-scroll-btn {
+  background-color: hsl(var(--card));
+  border-color: hsl(var(--border));
+}
+
+[data-theme="dark"] .chat-v2 .unified-source-panel .usp-scroll-left,
+.dark .chat-v2 .unified-source-panel .usp-scroll-left {
+  background: linear-gradient(to right, hsl(var(--card)) 60%, transparent);
+}
+
+[data-theme="dark"] .chat-v2 .unified-source-panel .usp-scroll-right,
+.dark .chat-v2 .unified-source-panel .usp-scroll-right {
+  background: linear-gradient(to left, hsl(var(--card)) 60%, transparent);
+}

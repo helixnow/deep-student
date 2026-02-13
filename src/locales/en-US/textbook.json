@@ -1,0 +1,45 @@
+{
+  "errors": {
+    "noFile": "No textbook file specified"
+  },
+  "loading": {
+    "largeFile": "Loading large file, please wait..."
+  },
+  "open_study_mode": "Textbook Study",
+  "no_textbook_loaded": "No textbook loaded",
+  "go_to_library": "Go to Library",
+  "select_textbook_hint": "Please select or import a textbook first",
+  "select_page": "Select current page",
+  "deselect_page": "Deselect current page",
+  "selected": "Selected",
+  "select_this_page": "Select this page",
+  "selection_count": "Selected {{count}} / {{max}} pages",
+  "clear": "Clear",
+  "clear_selection": "Clear selection",
+  "send_to_chat": "Prepare to send (type question on right and send)",
+  "send_selected": "Prepare selected pages",
+  "exporting": "Exporting pages...",
+  "export_failed": "Failed to export pages, please retry",
+  "export_success": "{{count}} pages ready, type question on right and send",
+  "no_pages_selected": "Please select pages first",
+  "max_pages_reached": "You can select at most {{max}} pages",
+  "panel": {
+    "title": "Textbook Study",
+    "header_placeholder": "No textbook selected",
+    "preparing": "Preparing {{done}}/{{total}}",
+    "selection_summary": "{{count}} page(s) selected",
+    "selection_summary_with_prepared": "{{count}} page(s) selected - {{prepared}} prepared",
+    "close_button": "Close",
+    "export_failed": "Export failed",
+    "retry_export": "Retry export",
+    "retry": "Retry"
+  },
+  "message_attachment": {
+    "badge": "P{{page}}",
+    "tooltip": "Page {{page}}",
+    "tooltip_with_name": "{{name}} · Page {{page}}"
+  },
+  "bookmarkSaveFailed": "Failed to save bookmark",
+  "export_no_pdf_file": "No PDF file available for export",
+  "export_render_failed": "Unable to render selected pages"
+}

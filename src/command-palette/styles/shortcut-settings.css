@@ -1,0 +1,270 @@
+/**
+ * 快捷键设置界面样式
+ */
+
+.shortcut-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  height: 100%;
+}
+
+/* ==================== 头部工具栏 ==================== */
+
+.shortcut-settings-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.shortcut-settings-search {
+  position: relative;
+  flex: 1;
+  min-width: 200px;
+}
+
+.shortcut-settings-search-icon {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: hsl(var(--muted-foreground));
+  pointer-events: none;
+}
+
+.shortcut-settings-search-input {
+  padding-left: 36px !important;
+}
+
+.shortcut-settings-category-select {
+  height: 36px;
+  padding: 0 12px;
+  font-size: 14px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 6px;
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+  cursor: pointer;
+}
+
+.shortcut-settings-category-select:focus {
+  outline: none;
+  border-color: hsl(var(--primary));
+}
+
+.shortcut-settings-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.shortcut-settings-actions button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* ==================== 快捷键列表 ==================== */
+
+.shortcut-settings-list {
+  flex: 1;
+  overflow-y: auto;
+  border: 1px solid hsl(var(--border));
+  border-radius: 8px;
+  background-color: hsl(var(--card));
+}
+
+/* ==================== 分组 ==================== */
+
+.shortcut-settings-group {
+  border-bottom: 1px solid hsl(var(--border));
+}
+
+.shortcut-settings-group:last-child {
+  border-bottom: none;
+}
+
+.shortcut-settings-group-header {
+  padding: 10px 16px;
+  font-size: 12px;
+  font-weight: 600;
+  color: hsl(var(--muted-foreground));
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background-color: hsl(var(--muted) / 0.5);
+  border-bottom: 1px solid hsl(var(--border));
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+/* ==================== 快捷键项 ==================== */
+
+.shortcut-settings-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid hsl(var(--border) / 0.5);
+  transition: background-color 150ms ease;
+}
+
+.shortcut-settings-item:last-child {
+  border-bottom: none;
+}
+
+.shortcut-settings-item:hover {
+  background-color: hsl(var(--muted) / 0.3);
+}
+
+.shortcut-settings-item-editing {
+  background-color: hsl(var(--primary) / 0.05);
+}
+
+.shortcut-settings-item-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+}
+
+.shortcut-settings-item-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: hsl(var(--foreground));
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.shortcut-settings-item-custom-badge {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background-color: hsl(var(--primary) / 0.1);
+  color: hsl(var(--primary));
+  white-space: nowrap;
+}
+
+.shortcut-settings-item-shortcut {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.shortcut-settings-shortcut-display {
+  font-size: 13px;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, monospace;
+  padding: 4px 8px;
+  border-radius: 4px;
+  background-color: hsl(var(--muted));
+  color: hsl(var(--foreground));
+  min-width: 60px;
+  text-align: center;
+}
+
+.shortcut-settings-no-shortcut {
+  color: hsl(var(--muted-foreground));
+  font-style: italic;
+}
+
+.shortcut-settings-item-actions {
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 150ms ease;
+}
+
+.shortcut-settings-item:hover .shortcut-settings-item-actions {
+  opacity: 1;
+}
+
+/* ==================== 编辑状态 ==================== */
+
+.shortcut-settings-item-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-end;
+}
+
+.shortcut-settings-listening {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  font-size: 14px;
+  color: hsl(var(--primary));
+  background-color: hsl(var(--primary) / 0.1);
+  border-radius: 6px;
+  border: 2px dashed hsl(var(--primary));
+}
+
+.shortcut-settings-new-shortcut {
+  font-size: 14px;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, monospace;
+  padding: 6px 12px;
+  border-radius: 4px;
+  background-color: hsl(var(--primary) / 0.1);
+  color: hsl(var(--primary));
+  font-weight: 600;
+}
+
+.shortcut-settings-conflict {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: hsl(var(--destructive));
+  padding: 6px 10px;
+  background-color: hsl(var(--destructive) / 0.1);
+  border-radius: 4px;
+}
+
+.shortcut-settings-editor-actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* ==================== 空状态 ==================== */
+
+.shortcut-settings-empty {
+  padding: 48px 16px;
+  text-align: center;
+  color: hsl(var(--muted-foreground));
+  font-size: 14px;
+}
+
+/* ==================== 响应式 ==================== */
+
+@media (max-width: 640px) {
+  .shortcut-settings-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .shortcut-settings-search {
+    min-width: auto;
+  }
+  
+  .shortcut-settings-actions {
+    justify-content: flex-end;
+  }
+  
+  .shortcut-settings-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  
+  .shortcut-settings-item-shortcut {
+    width: 100%;
+    justify-content: space-between;
+  }
+  
+  .shortcut-settings-item-actions {
+    opacity: 1;
+  }
+}

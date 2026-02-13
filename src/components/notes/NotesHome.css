@@ -1,0 +1,268 @@
+/* NotesHome.css */
+
+/* Premium Scrollbar - 保持原有设计 */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--muted-foreground) / 0.2);
+  border-radius: 3px;
+  transition: background 0.2s;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground) / 0.4);
+}
+
+/* Layout Helpers */
+.notes-home-container {
+  --notes-sidebar-width: 250px;
+}
+
+/* 悬浮头部区域样式 */
+.notes-editor-header-section {
+  /* 悬浮时添加底部边框以区分内容区域 */
+  border-bottom: 1px solid hsl(var(--border));
+  /* 添加微妙的背景渐变，增强层次感 */
+  background: linear-gradient(
+    to bottom,
+    hsl(var(--background)) 0%,
+    hsl(var(--background)) 90%,
+    hsl(var(--background) / 0.95) 100%
+  );
+  /* 添加一点内边距 */
+  padding-bottom: 0.25rem;
+}
+
+/* Editor Typography - 配合 Reading Mode */
+.prose-note {
+  color: hsl(var(--foreground));
+  line-height: 1.6;
+}
+
+.prose-note h1,
+.prose-note h2,
+.prose-note h3,
+.prose-note h4 {
+  color: hsl(var(--foreground));
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.prose-note h1 {
+  font-size: 2.25em;
+  margin-top: 0;
+  margin-bottom: 0.8em;
+}
+
+.prose-note p {
+  margin-top: 0.35em;
+  margin-bottom: 0.35em;
+}
+
+.prose-note a {
+  color: hsl(var(--primary));
+  text-decoration: none;
+  border-bottom: 1px solid hsl(var(--primary) / 0.3);
+  transition: border-color 0.2s;
+}
+
+.prose-note a:hover {
+  border-bottom-color: hsl(var(--primary));
+}
+
+.prose-note code {
+  background-color: hsl(var(--muted));
+  color: hsl(var(--foreground));
+  padding: 0.2em 0.4em;
+  border-radius: 4px;
+  font-size: 0.875em;
+  font-weight: 500;
+}
+
+.prose-note pre {
+  background-color: hsl(var(--muted));
+  padding: 1em;
+  border-radius: 8px;
+  overflow-x: auto;
+}
+
+.prose-note pre code {
+  background-color: transparent;
+  padding: 0;
+  color: inherit;
+}
+
+.prose-note blockquote {
+  border-left: 3px solid hsl(var(--primary));
+  padding-left: 1em;
+  font-style: italic;
+  color: hsl(var(--muted-foreground));
+}
+
+.prose-note ul {
+  list-style-type: disc;
+  padding-left: 1.5em;
+}
+
+.prose-note ol {
+  list-style-type: decimal;
+  padding-left: 1.5em;
+}
+
+/* Animations */
+@keyframes slideUpFade {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-slide-up {
+  animation: slideUpFade 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Mobile Adjustments */
+@media (max-width: 768px) {
+  .prose-note {
+    font-size: 16px;
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+}
+
+/* ============================================================================
+   打印样式 - Print Styles for Notes Module
+   ============================================================================ */
+@media print {
+  /* 笔记主容器：移除布局约束 */
+  .notes-home-container {
+    display: block !important;
+    position: static !important;
+    overflow: visible !important;
+    height: auto !important;
+    min-height: auto !important;
+    background: white !important;
+    color: black !important;
+  }
+  
+  /* 隐藏笔记侧边栏 */
+  .notes-home-container [data-panel-id="notes-sidebar"],
+  .notes-home-container .notes-sidebar {
+    display: none !important;
+  }
+  
+  /* 隐藏右侧大纲面板 */
+  .notes-home-container [data-panel-id="notes-context"],
+  .notes-home-container .notes-context-panel {
+    display: none !important;
+  }
+  
+  /* 隐藏标签栏、头部和工具栏 */
+  .notes-home-container .notes-tabs-bar,
+  .notes-home-container .notes-header,
+  .notes-home-container .notes-editor-toolbar,
+  /* NotesHeader 组件（标签栏+工具栏容器）*/
+  .notes-home-container .notes-header-container,
+  /* 编辑器头部：标题、面包屑和工具栏区域 */
+  .notes-home-container .notes-editor-header-section {
+    display: none !important;
+  }
+  
+  /* 隐藏调整大小手柄 */
+  .notes-home-container [data-resize-handle],
+  .notes-home-container [data-panel-resize-handle-id] {
+    display: none !important;
+  }
+  
+  /* 面板组和编辑器面板：撑满打印区域 */
+  .notes-home-container [data-panel-group],
+  .notes-home-container [data-panel-id="notes-editor"] {
+    display: block !important;
+    position: static !important;
+    overflow: visible !important;
+    width: 100% !important;
+    height: auto !important;
+    min-height: auto !important;
+    flex: none !important;
+  }
+  
+  /* 编辑器内部容器 - 包括 flex 布局容器 */
+  .notes-home-container [data-panel-id="notes-editor"] > div,
+  .notes-home-container [data-panel-id="notes-editor"] > div.flex-1 {
+    display: block !important;
+    position: static !important;
+    overflow: visible !important;
+    height: auto !important;
+    min-height: auto !important;
+  }
+  
+  /* 滚动区域容器 - 打印时移除滚动约束 */
+  .notes-home-container .notes-editor-content-scroll,
+  .notes-home-container .notes-editor-content-scroll > div {
+    display: block !important;
+    position: static !important;
+    overflow: visible !important;
+    height: auto !important;
+    max-height: none !important;
+  }
+  
+  /* 编辑器内容区域 - 打印样式 */
+  .notes-home-container .notes-editor-content {
+    max-width: none !important;
+    padding: 0 20px !important;
+    margin: 0 !important;
+    background: white !important;
+  }
+  
+  /* 打印时的排版样式 */
+  .prose-note {
+    background: white !important;
+    color: black !important;
+    font-size: 12pt !important;
+    line-height: 1.6 !important;
+    max-width: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+  
+  .prose-note h1,
+  .prose-note h2,
+  .prose-note h3,
+  .prose-note h4 {
+    color: black !important;
+    page-break-after: avoid;
+  }
+  
+  .prose-note a {
+    color: black !important;
+    text-decoration: underline !important;
+  }
+  
+  .prose-note code {
+    background-color: #f5f5f5 !important;
+    color: black !important;
+    border: 1px solid #ddd !important;
+  }
+  
+  .prose-note pre {
+    background-color: #f5f5f5 !important;
+    border: 1px solid #ddd !important;
+    page-break-inside: avoid;
+  }
+  
+  .prose-note blockquote {
+    border-left-color: #333 !important;
+    color: #333 !important;
+  }
+}

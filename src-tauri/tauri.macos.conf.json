@@ -1,0 +1,23 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "app": {
+    "windows": [
+      {
+        "title": "Deep Student",
+        "width": 1200,
+        "height": 750,
+        "minWidth": 320,
+        "minHeight": 480,
+        "resizable": true,
+        "fullscreen": false,
+        "center": true,
+        "decorations": true,
+        "transparent": false,
+        "skipTaskbar": false,
+        "alwaysOnTop": false,
+        "visible": true,
+        "dragDropEnabled": true
+      }
+    ]
+  }
+}

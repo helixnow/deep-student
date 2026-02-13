@@ -1,0 +1,78 @@
+{
+  "app_menu": {
+    "search": {
+      "placeholder": "Search actions..."
+    },
+    "actions": {
+      "add_to_favorites": "Add to Favorites",
+      "remove_from_favorites": "Remove from Favorites",
+      "copy_link": "Copy Link",
+      "duplicate": "Duplicate",
+      "rename": "Rename",
+      "move_to": "Move to",
+      "move_to_trash": "Move to Trash",
+      "convert_to": "Convert to",
+      "open_in_new_tab": "Open in New Tab",
+      "open_in_sidebar": "Open in Side Peek",
+      "undo": "Undo",
+      "redo": "Redo",
+      "import": "Import",
+      "export": "Export",
+      "edit_suggestions": "Edit Suggestions",
+      "translate": "Translate",
+      "lock_page": "Lock Page",
+      "unlock_page": "Unlock Page",
+      "customize_page": "Customize Page",
+      "view_history": "All Updates and Analytics",
+      "version_history": "Version History"
+    },
+    "groups": {
+      "page": "Page",
+      "view": "View",
+      "edit": "Edit",
+      "advanced": "Advanced",
+      "danger": "Danger Zone"
+    },
+    "options": {
+      "font": {
+        "default": "Default",
+        "serif": "Serif",
+        "mono": "Mono"
+      },
+      "size": {
+        "small": "Small",
+        "medium": "Medium",
+        "large": "Large"
+      }
+    },
+    "switch": {
+      "full_width": "Full Width",
+      "small_text": "Small Text",
+      "table_of_contents": "Table of Contents"
+    },
+    "footer": {
+      "last_edited_by": "Last edited by {{name}}",
+      "edited_time": "{{time}}"
+    },
+    "select_app": "Select option",
+    "demo": {
+      "title": "Modern Style Menu Demo",
+      "description": "This is a modern menu component inspired by Modern, supporting both dropdown and context menu modes.",
+      "dropdown_demo": "Dropdown Menu Demo",
+      "context_demo": "Context Menu Demo",
+      "context_hint": "Right-click this area",
+      "features": {
+        "title": "Component Features",
+        "search": "Optional search box",
+        "icons": "Icon support",
+        "shortcuts": "Keyboard shortcut display",
+        "groups": "Groups and separators",
+        "submenu": "Submenu support",
+        "switch": "Switch controls",
+        "options": "Option groups (like font picker)",
+        "footer": "Footer info area",
+        "dark_light": "Dark/Light theme adaptive"
+      }
+    }
+  }
+}

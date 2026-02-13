@@ -1,0 +1,204 @@
+/* ===================================
+   Summary Box – Minimal + High-end Motion
+   设计目标：简洁、占用空间合理、动效克制但高级
+   统一接入主题变量以适配亮暗色模式
+   =================================== */
+
+.summary-box {
+  --sb-surface: hsl(var(--card));
+  --sb-surface-muted: color-mix(in srgb, hsl(var(--card)) 82%, hsl(var(--muted)) 18%);
+  --sb-border: color-mix(in srgb, hsl(var(--border)) 85%, transparent 15%);
+  --sb-border-strong: color-mix(in srgb, hsl(var(--border)) 65%, hsl(var(--foreground)) 35%);
+  --sb-text: hsl(var(--card-foreground));
+  --sb-muted: hsl(var(--muted-foreground));
+  --sb-accent: hsl(var(--primary));
+  --sb-shadow: 0 6px 20px color-mix(in srgb, hsl(var(--foreground)) 12%, transparent 88%);
+  --sb-shadow-strong: 0 10px 28px color-mix(in srgb, hsl(var(--foreground)) 14%, transparent 86%);
+  --sb-badge-bg: color-mix(in srgb, var(--sb-accent) 14%, transparent 86%);
+  --sb-badge-border: color-mix(in srgb, var(--sb-accent) 28%, transparent 72%);
+  --sb-scrollbar-thumb: color-mix(in srgb, hsl(var(--muted-foreground)) 30%, transparent 70%);
+  --sb-scrollbar-thumb-hover: color-mix(in srgb, var(--sb-accent) 28%, transparent 72%);
+  --sb-skeleton-base: color-mix(in srgb, var(--sb-surface-muted) 75%, transparent 25%);
+  --sb-skeleton-highlight: color-mix(in srgb, var(--sb-accent) 24%, transparent 76%);
+  background: var(--sb-surface);
+  border: 1px solid var(--sb-border);
+  border-radius: 12px;
+  box-shadow: var(--sb-shadow);
+  transition: box-shadow 180ms ease, border-color 180ms ease, transform 160ms ease;
+  overflow: hidden;
+  margin: 10px 0;
+}
+
+html.dark .summary-box {
+  --sb-surface-muted: color-mix(in srgb, hsl(var(--card)) 65%, hsl(var(--muted)) 35%);
+  --sb-border: color-mix(in srgb, hsl(var(--border)) 50%, transparent 50%);
+  --sb-border-strong: color-mix(in srgb, hsl(var(--border)) 70%, transparent 30%);
+  --sb-shadow: 0 14px 34px color-mix(in srgb, black 55%, transparent 45%);
+  --sb-shadow-strong: 0 18px 38px color-mix(in srgb, black 60%, transparent 40%);
+  --sb-badge-bg: color-mix(in srgb, var(--sb-accent) 26%, transparent 74%);
+  --sb-badge-border: color-mix(in srgb, var(--sb-accent) 42%, transparent 58%);
+  --sb-scrollbar-thumb: color-mix(in srgb, var(--sb-accent) 32%, transparent 68%);
+  --sb-scrollbar-thumb-hover: color-mix(in srgb, var(--sb-accent) 48%, transparent 52%);
+  --sb-skeleton-base: color-mix(in srgb, var(--sb-surface-muted) 55%, transparent 45%);
+}
+
+.summary-box:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--sb-shadow-strong);
+  border-color: var(--sb-border-strong);
+}
+
+.summary-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--sb-surface);
+}
+
+.summary-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.toggle-icon {
+  display: inline-flex;
+  width: 16px;
+  height: 16px;
+  align-items: center;
+  justify-content: center;
+  color: var(--sb-muted);
+  transition: transform 200ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.summary-box.expanded .toggle-icon { transform: rotate(90deg); }
+
+.summary-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--sb-text);
+}
+
+.summary-badge {
+  font-size: 11px;
+  color: color-mix(in srgb, var(--sb-accent) 70%, var(--sb-text) 30%);
+  background: var(--sb-badge-bg);
+  padding: 2px 8px;
+  border-radius: 9999px;
+  border: 1px solid var(--sb-badge-border);
+}
+
+.summary-actions { display: flex; align-items: center; gap: 6px; }
+
+.sb-btn {
+  height: 28px;
+  padding: 0;
+  font-size: 12px;
+  font-weight: 500;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: var(--sb-muted);
+  transition: color 160ms ease;
+}
+
+.sb-btn:hover { color: var(--sb-text); }
+.sb-btn:active { color: var(--sb-accent); }
+
+.sb-btn-ghost {
+  color: var(--sb-accent);
+}
+
+.sb-btn-ghost:hover { color: color-mix(in srgb, var(--sb-accent) 80%, var(--sb-text) 20%); }
+
+.sb-btn-icon {
+  width: 28px; height: 28px; padding: 0; display: inline-flex; align-items: center; justify-content: center;
+}
+
+.summary-content {
+  background: var(--sb-surface-muted);
+  border-top: 1px solid var(--sb-border);
+  padding: 14px;
+  max-height: 0;
+  opacity: 0;
+  overflow: hidden;
+  transform: translateY(-4px);
+  transition: max-height 260ms cubic-bezier(0.4, 0, 0.2, 1), opacity 220ms ease, transform 260ms ease;
+}
+
+.summary-box.expanded .summary-content {
+  max-height: 320px; /* 合理的可视上限，避免过高 */
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.summary-text {
+  color: var(--sb-text);
+  font-size: 13px; /* 小于正文字号（正文通常14px-16px） */
+  line-height: 1.65;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* Summary 内 markdown 通用缩小字号，保持层级一致 */
+.summary-text .streaming-markdown,
+.summary-text .normal-content {
+  font-size: 13px;
+}
+.summary-text h1 { font-size: 1.15rem; }
+.summary-text h2 { font-size: 1.05rem; }
+.summary-text h3 { font-size: 1rem; }
+.summary-text p,
+.summary-text li,
+.summary-text code,
+.summary-text pre { font-size: 13px; }
+
+.summary-empty {
+  color: var(--sb-muted);
+  text-align: center;
+  padding: 26px 10px;
+  font-size: 13px;
+}
+
+/* 生成中指示器（更克制的loading条） */
+.loading-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; color: var(--sb-accent); font-size: 13px; font-weight: 500; }
+.loading-spinner { width: 18px; height: 18px; border-radius: 9999px; border: 2.5px solid color-mix(in srgb, var(--sb-accent) 30%, transparent 70%); border-top-color: var(--sb-accent); animation: sb-spin 0.9s linear infinite; }
+
+@keyframes sb-spin { to { transform: rotate(360deg); } }
+
+/* 打字光标 */
+.typing-caret { display: inline-block; width: 4px; height: 16px; background: var(--sb-accent); margin-left: 2px; animation: sb-blink 1s steps(2, start) infinite; vertical-align: text-bottom; }
+@keyframes sb-blink { 0%, 50% { opacity: 1; } 51%, 100% { opacity: 0; } }
+
+/* Skeleton 占位（高级动效：Shimmer）*/
+.sb-skeleton { margin-top: 6px; }
+.skeleton-line {
+  height: 10px;
+  border-radius: 6px;
+  background: linear-gradient(90deg, var(--sb-skeleton-base) 8%, var(--sb-skeleton-highlight) 18%, var(--sb-skeleton-base) 33%);
+  background-size: 1200px 100%;
+  animation: shimmer 1.15s linear infinite;
+  margin-bottom: 10px;
+}
+@keyframes shimmer { 0% { background-position: -600px 0; } 100% { background-position: 600px 0; } }
+
+/* 自定义滚动条（克制） */
+.summary-content::-webkit-scrollbar { width: 8px; }
+.summary-content::-webkit-scrollbar-track { background: transparent; }
+.summary-content::-webkit-scrollbar-thumb { background: var(--sb-scrollbar-thumb); border-radius: 4px; }
+.summary-content::-webkit-scrollbar-thumb:hover { background: var(--sb-scrollbar-thumb-hover); }
+
+/* 无障碍：减少动画偏好 */
+@media (prefers-reduced-motion: reduce) {
+  .summary-box, .summary-content, .toggle-icon, .sb-btn { transition: none !important; }
+  .loading-spinner { animation: none !important; }
+}
+
+/* 移动端密集排版 */
+@media (max-width: 640px) {
+  .summary-header { padding: 8px 10px; }
+  .summary-content { padding: 12px; max-height: 260px; }
+}

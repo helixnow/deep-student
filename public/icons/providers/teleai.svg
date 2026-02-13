@@ -1,0 +1,12 @@
+<svg viewBox="0 0 24 24" width="24" height="24" xmlns="http://www.w3.org/2000/svg">
+  <title>TeleAI</title>
+  <defs>
+    <linearGradient id="teleai-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#2196F3"/>
+      <stop offset="100%" style="stop-color:#1565C0"/>
+    </linearGradient>
+  </defs>
+  <rect width="24" height="24" rx="5" fill="url(#teleai-gradient)"/>
+  <path d="M12 4v6M8 7l4 3 4-3" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <text x="12" y="18" font-family="Arial, sans-serif" font-size="6" font-weight="bold" fill="white" text-anchor="middle">5G</text>
+</svg>

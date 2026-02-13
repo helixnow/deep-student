@@ -1,0 +1,93 @@
+{
+  "syncConflicts": "Sync Conflicts",
+  "conflictDescription": "The following questions have conflicts between local and remote versions. Please select a resolution strategy.",
+  "noConflicts": "No conflicts to resolve.",
+  "localVersion": "Local Version",
+  "remoteVersion": "Remote Version",
+  "newer": "Newer",
+  "content": "Content",
+  "answer": "Answer",
+  "explanation": "Explanation",
+  "keepLocal": "Keep Local",
+  "keepRemote": "Keep Remote",
+  "keepNewer": "Keep Newer",
+  "merge": "Smart Merge",
+  "manual": "Manual",
+  "batchResolve": "Batch Resolve",
+  "selectAll": "Select All",
+  "selectedCount": "{{count}} selected",
+  "close": "Close",
+  "conflictTypes": {
+    "modify_modify": "Both Modified",
+    "modify_delete": "Local Modified / Remote Deleted",
+    "delete_modify": "Local Deleted / Remote Modified",
+    "add_add": "Both Added"
+  },
+  "syncStatus": {
+    "title": "Sync Status",
+    "enabled": "Sync Enabled",
+    "disabled": "Sync Disabled",
+    "lastSynced": "Last Synced",
+    "localModified": "Local Modified",
+    "pendingConflicts": "Pending Conflicts",
+    "synced": "Synced",
+    "total": "Total Questions"
+  },
+  "syncConfig": {
+    "title": "Sync Settings",
+    "defaultStrategy": "Default Conflict Strategy",
+    "autoSync": "Auto Sync",
+    "syncInterval": "Sync Interval (seconds)",
+    "syncProgress": "Sync Learning Progress",
+    "syncNotes": "Sync User Notes"
+  },
+  "actions": {
+    "checkStatus": "Check Sync Status",
+    "pull": "Pull Remote Updates",
+    "push": "Push Local Updates",
+    "enableSync": "Enable Sync",
+    "disableSync": "Disable Sync"
+  },
+  "messages": {
+    "syncSuccess": "Sync successful",
+    "syncFailed": "Sync failed",
+    "conflictResolved": "Conflict resolved",
+    "batchResolved": "{{count}} conflicts resolved"
+  },
+  "resource": {
+    "sync_note_failed": "Failed to sync note: {{error}}",
+    "sync_exam_failed": "Failed to sync exam: {{error}}",
+    "sync_textbook_pages_failed": "Failed to sync textbook pages: {{error}}",
+    "check_sync_needed_failed": "Failed to check sync status: {{error}}",
+    "create_resource_failed": "Failed to create resource: {{error}}"
+  },
+  "conflict_type": {
+    "schema_mismatch": "Schema Version Mismatch",
+    "schema_mismatch_desc": "Local and cloud database schema versions differ, migration needed",
+    "data_conflict": "Data Version Conflict",
+    "data_conflict_desc": "Both local and cloud have data modifications with conflicts",
+    "checksum_mismatch": "Checksum Mismatch",
+    "checksum_mismatch_desc": "Data versions match but contents differ, possible data corruption",
+    "local_only": "Local Only",
+    "local_only_desc": "This database only exists locally, not in cloud",
+    "cloud_only": "Cloud Only",
+    "cloud_only_desc": "This database only exists in cloud, not locally",
+    "unknown_desc": "Unknown conflict type"
+  },
+  "strategy_info": {
+    "keep_local": "Keep Local",
+    "keep_local_desc": "Overwrite cloud with local data, local changes will be pushed",
+    "use_cloud": "Use Cloud",
+    "use_cloud_desc": "Overwrite local with cloud data, cloud changes will be synced",
+    "keep_latest": "Keep Latest",
+    "keep_latest_desc": "Automatically select the newer version based on update time",
+    "manual": "Manual",
+    "manual_desc": "Review and resolve each conflicting record individually"
+  },
+  "detail_labels": {
+    "schema_version": "Schema Version:",
+    "data_version": "Data Version:",
+    "update_time": "Updated:",
+    "checksum": "Checksum:"
+  }
+}

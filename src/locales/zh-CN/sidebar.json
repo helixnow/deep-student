@@ -1,0 +1,48 @@
+{
+  "sections": {
+    "flat_analysis": "扁平分析",
+    "stereoscopic_analysis": "立体分析",
+    "anki_tools": "Anki工具",
+    "system_tools": "系统工具"
+  },
+  "theme": "主题",
+  "navigation": {
+    "batch": "批量分析",
+    "textbook_library": "教材库",
+    "rag_query": "RAG查询",
+    "anki_generation": "制卡任务",
+    "template_management": "模板管理",
+    "notes": "笔记",
+    "pdf_reader": "PDF阅读器",
+    "pdf_ocr": "PDF OCR转换",
+    "textbook_study_mode": "教材导学",
+    "chat_style_test": "聊天样式测试",
+    "dashboard": "数据统计",
+    "data_management": "数据管理",
+    "gemini_adapter_test": "Gemini适配器测试",
+    "settings": "设置",
+    "exam_sheet": "题目集",
+    "translation": "翻译",
+    "essay_grading": "作文批改",
+    "canvas_board": "白板",
+    "learning_hub": "学习资源",
+    "extensions": "扩展功能",
+    "chat_v2": "智能对话",
+    "skills_management": "技能管理"
+  },
+  "aria": {
+    "sidebar_navigation": "主导航"
+  },
+  "expand": "展开侧边栏",
+  "collapse": "收起侧边栏",
+  "theme_toggle": {
+    "toggle": "切换主题",
+    "switch_to_light": "切换到亮色模式",
+    "switch_to_dark": "切换到暗色模式",
+    "switch_to_auto": "切换到自动模式",
+    "light": "亮色模式",
+    "dark": "暗色模式",
+    "auto": "自动模式"
+  }
+}
+

@@ -1,0 +1,1504 @@
+/**
+ * Crepe 编辑器样式覆盖
+ * 适配项目设计系统和暗色模式
+ * 
+ * 重要：此文件完全覆盖 Crepe 默认的 frame/frame-dark 主题
+ * 所有颜色都使用项目 CSS 变量
+ */
+
+/* ===== Crepe 颜色变量映射到项目颜色系统 ===== */
+.crepe-editor-wrapper .milkdown {
+  /* 背景色 */
+  --crepe-color-background: hsl(var(--background));
+  --crepe-color-on-background: hsl(var(--foreground));
+  
+  /* 表面色 - 用于代码块、LaTeX 预览等 */
+  --crepe-color-surface: hsl(var(--muted));
+  --crepe-color-surface-low: hsl(var(--card));
+  --crepe-color-on-surface: hsl(var(--foreground));
+  /* 列表标记等次要元素使用较深的颜色，而非浅灰 */
+  --crepe-color-on-surface-variant: hsl(var(--foreground) / 0.7);
+  
+  /* 边框和轮廓 */
+  --crepe-color-outline: hsl(var(--border));
+  
+  /* 主题色 */
+  --crepe-color-primary: hsl(var(--primary));
+  --crepe-color-secondary: hsl(var(--secondary));
+  --crepe-color-on-secondary: hsl(var(--secondary-foreground));
+  
+  /* 反色 */
+  --crepe-color-inverse: hsl(var(--accent));
+  --crepe-color-on-inverse: hsl(var(--accent-foreground));
+  
+  /* 代码和错误 */
+  --crepe-color-inline-code: hsl(var(--destructive));
+  --crepe-color-error: hsl(var(--destructive));
+  
+  /* 交互状态 */
+  --crepe-color-hover: hsl(var(--accent));
+  --crepe-color-selected: hsl(var(--accent));
+  --crepe-color-inline-area: hsl(var(--muted));
+  
+  /* 阴影 */
+  --crepe-shadow-1: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+  --crepe-shadow-2: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+}
+
+/* ===== 编辑器容器 ===== */
+.crepe-editor-wrapper {
+  width: 100%;
+  min-height: 300px;
+  position: relative;
+  overflow: visible;
+}
+
+/* Crepe 编辑器内部容器 */
+.crepe-editor-wrapper .crepe-editor-container {
+  width: 100%;
+  min-height: inherit;
+}
+
+.crepe-editor-wrapper[data-ready="false"] {
+  opacity: 0.7;
+}
+
+/* ===== 编辑器主体 ===== */
+.crepe-editor-wrapper .milkdown {
+  outline: none;
+  min-height: inherit;
+  background: transparent !important;
+  color: var(--foreground) !important;
+  overflow: visible !important; /* 确保 block handle 不被裁剪 */
+  position: relative;
+}
+
+.crepe-editor-wrapper .editor {
+  padding: 1rem 0;
+  min-height: inherit;
+  background: transparent !important;
+}
+
+/* ===== ProseMirror 核心样式 ===== */
+.crepe-editor-wrapper .ProseMirror {
+  outline: none;
+  min-height: inherit;
+  background: transparent !important;
+  color: var(--foreground) !important;
+  caret-color: var(--foreground) !important;
+}
+
+.crepe-editor-wrapper .ProseMirror > * + * {
+  margin-top: 0.75em;
+}
+
+/* ===== 文本选中样式 - 关键修复 ===== */
+.crepe-editor-wrapper .ProseMirror ::selection {
+  background: hsl(var(--primary) / 0.2) !important;
+  color: inherit !important;
+}
+
+.crepe-editor-wrapper .ProseMirror::-moz-selection {
+  background: hsl(var(--primary) / 0.2) !important;
+  color: inherit !important;
+}
+
+/* Crepe/Milkdown 特定选中样式覆盖 */
+.crepe-editor-wrapper .ProseMirror-selectednode {
+  outline: 2px solid hsl(var(--primary)) !important;
+  outline-offset: 2px;
+}
+
+.crepe-editor-wrapper .selectedCell {
+  background: hsl(var(--primary) / 0.1) !important;
+}
+
+/* 选中高亮背景 */
+.crepe-editor-wrapper [data-selected],
+.crepe-editor-wrapper .selected,
+.crepe-editor-wrapper [class*="selected"] {
+  background: hsl(var(--primary) / 0.15) !important;
+}
+
+/* ===== CodeMirror 代码编辑器样式 ===== */
+.crepe-editor-wrapper .cm-editor {
+  background: var(--muted) !important;
+  border-radius: 0.5rem;
+}
+
+.crepe-editor-wrapper .cm-scroller {
+  background: transparent !important;
+}
+
+.crepe-editor-wrapper .cm-content {
+  color: var(--foreground) !important;
+  caret-color: var(--foreground) !important;
+}
+
+.crepe-editor-wrapper .cm-gutters {
+  background: var(--muted) !important;
+  border-color: var(--border) !important;
+  color: var(--muted-foreground) !important;
+}
+
+.crepe-editor-wrapper .cm-activeLineGutter {
+  background: hsl(var(--primary) / 0.1) !important;
+}
+
+.crepe-editor-wrapper .cm-activeLine {
+  background: hsl(var(--primary) / 0.05) !important;
+}
+
+.crepe-editor-wrapper .cm-selectionBackground,
+.crepe-editor-wrapper .cm-editor .cm-selectionBackground {
+  background: hsl(var(--primary) / 0.2) !important;
+}
+
+.crepe-editor-wrapper .cm-cursor {
+  border-left-color: var(--foreground) !important;
+}
+
+.crepe-editor-wrapper .cm-matchingBracket {
+  background: hsl(var(--primary) / 0.2) !important;
+  outline: 1px solid hsl(var(--primary) / 0.5);
+}
+
+/* ===== 代码块容器样式 ===== */
+.crepe-editor-wrapper .milkdown .milkdown-code-block {
+  background: hsl(var(--muted)) !important;
+  border: 1px solid hsl(var(--border)) !important;
+  border-radius: 0.5rem !important;
+}
+
+.crepe-editor-wrapper .milkdown .milkdown-code-block .tools {
+  background: transparent !important;
+}
+
+.crepe-editor-wrapper .milkdown .milkdown-code-block .language-button {
+  background: hsl(var(--accent)) !important;
+  color: hsl(var(--accent-foreground)) !important;
+}
+
+.crepe-editor-wrapper .milkdown .milkdown-code-block .list-wrapper {
+  background: hsl(var(--popover)) !important;
+  border: 1px solid hsl(var(--border)) !important;
+  overflow: hidden !important;
+}
+
+/* 语言搜索框样式修复 - 缩小宽度防止溢出，移除边框 */
+.crepe-editor-wrapper .milkdown .milkdown-code-block .search-box {
+  width: calc(100% - 28px) !important;
+  margin: 0 14px 8px !important;
+  outline: none !important;
+  border: none !important;
+  background: transparent !important;
+}
+
+.crepe-editor-wrapper .milkdown .milkdown-code-block .search-box:has(input:focus) {
+  outline: none !important;
+}
+
+/* 搜索输入框样式 */
+.crepe-editor-wrapper .milkdown .milkdown-code-block .search-box input {
+  background: hsl(var(--muted)) !important;
+  border: 1px solid hsl(var(--border)) !important;
+  border-radius: 4px !important;
+  padding: 6px 10px !important;
+}
+
+.crepe-editor-wrapper .milkdown .milkdown-code-block .search-box input:focus {
+  border-color: hsl(var(--primary)) !important;
+  outline: none !important;
+}
+
+.crepe-editor-wrapper .milkdown .milkdown-code-block .language-list-item:hover {
+  background: hsl(var(--accent)) !important;
+}
+
+/* 语言列表滚动条 - 使用项目自研细滚动条 */
+.crepe-editor-wrapper .milkdown .milkdown-code-block .list-wrapper .language-list,
+.milkdown .milkdown-code-block .language-list {
+  scrollbar-width: thin !important;
+  scrollbar-color: hsl(var(--muted-foreground) / 0.35) transparent !important;
+}
+
+.crepe-editor-wrapper .milkdown .milkdown-code-block .list-wrapper .language-list::-webkit-scrollbar,
+.milkdown .milkdown-code-block .language-list::-webkit-scrollbar {
+  width: 4px !important;
+  height: 4px !important;
+  display: block !important;
+}
+
+.crepe-editor-wrapper .milkdown .milkdown-code-block .list-wrapper .language-list::-webkit-scrollbar-track,
+.milkdown .milkdown-code-block .language-list::-webkit-scrollbar-track {
+  background: transparent !important;
+}
+
+.crepe-editor-wrapper .milkdown .milkdown-code-block .list-wrapper .language-list::-webkit-scrollbar-thumb,
+.milkdown .milkdown-code-block .language-list::-webkit-scrollbar-thumb {
+  background: hsl(var(--muted-foreground) / 0.35) !important;
+  border-radius: 4px !important;
+}
+
+.crepe-editor-wrapper .milkdown .milkdown-code-block .list-wrapper .language-list::-webkit-scrollbar-thumb:hover,
+.milkdown .milkdown-code-block .language-list::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--primary) / 0.55) !important;
+}
+
+/* 暗色模式滚动条 */
+.dark .crepe-editor-wrapper .milkdown .milkdown-code-block .language-list,
+.dark .milkdown .milkdown-code-block .language-list {
+  scrollbar-color: hsl(var(--muted-foreground) / 0.4) transparent !important;
+}
+
+.dark .crepe-editor-wrapper .milkdown .milkdown-code-block .language-list::-webkit-scrollbar-thumb,
+.dark .milkdown .milkdown-code-block .language-list::-webkit-scrollbar-thumb {
+  background: hsl(var(--muted-foreground) / 0.4) !important;
+}
+
+/* 代码块工具栏按钮始终显示（覆盖默认的悬浮显示） */
+.crepe-editor-wrapper .milkdown .milkdown-code-block .tools .tools-button-group button {
+  opacity: 1 !important;
+}
+
+/* ===== LaTeX / 数学公式预览样式 ===== */
+.crepe-editor-wrapper .milkdown .milkdown-code-block .preview-panel {
+  background: hsl(var(--muted)) !important;
+  color: hsl(var(--foreground)) !important;
+  height: auto !important;
+  min-height: auto !important;
+  flex-grow: 0 !important;
+}
+
+.crepe-editor-wrapper .milkdown .milkdown-code-block .preview-panel .preview {
+  background: hsl(var(--card)) !important;
+  color: hsl(var(--card-foreground)) !important;
+  padding: 1rem !important;
+  border-radius: 0.375rem !important;
+}
+
+.crepe-editor-wrapper .milkdown .milkdown-code-block .preview-panel .preview-label {
+  color: hsl(var(--muted-foreground)) !important;
+}
+
+.crepe-editor-wrapper .milkdown .milkdown-code-block .preview-panel .preview-divider {
+  background: hsl(var(--border)) !important;
+}
+
+/* LaTeX 内联编辑器 */
+.crepe-editor-wrapper .milkdown .milkdown-latex-inline-edit {
+  background: hsl(var(--popover)) !important;
+  border: 1px solid hsl(var(--border)) !important;
+  box-shadow: 0 4px 12px rgb(0 0 0 / 0.15) !important;
+}
+
+/* 标题样式 */
+.crepe-editor-wrapper h1 {
+  font-size: 2em;
+  font-weight: 700;
+  line-height: 1.2;
+  margin-top: 1.5em;
+  margin-bottom: 0.5em;
+}
+
+.crepe-editor-wrapper h2 {
+  font-size: 1.5em;
+  font-weight: 600;
+  line-height: 1.3;
+  margin-top: 1.25em;
+  margin-bottom: 0.5em;
+}
+
+.crepe-editor-wrapper h3 {
+  font-size: 1.25em;
+  font-weight: 600;
+  line-height: 1.4;
+  margin-top: 1em;
+  margin-bottom: 0.5em;
+}
+
+/* 代码块样式 */
+.crepe-editor-wrapper pre {
+  background: var(--muted, hsl(210 40% 96.1%));
+  border-radius: 0.5rem;
+  padding: 1rem;
+  overflow-x: auto;
+}
+
+.crepe-editor-wrapper code {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.875em;
+}
+
+.crepe-editor-wrapper :not(pre) > code {
+  background: var(--muted, hsl(210 40% 96.1%));
+  padding: 0.2em 0.4em;
+  border-radius: 0.25rem;
+}
+
+/* 引用块 */
+.crepe-editor-wrapper blockquote {
+  border-left: 4px solid hsl(var(--primary));
+  padding-left: 1rem;
+  margin-left: 0;
+  font-style: italic;
+  /* 引用文字使用稍浅的前景色，但不能太浅 */
+  color: hsl(var(--foreground) / 0.75);
+}
+
+/* 链接 */
+.crepe-editor-wrapper a {
+  color: hsl(var(--primary));
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+  transition: color 0.2s, opacity 0.2s;
+}
+
+.crepe-editor-wrapper a:hover {
+  /* 悬停时使用 primary 的更深/更亮版本，而非 primary-foreground */
+  color: hsl(var(--primary));
+  opacity: 0.8;
+}
+
+/* 列表 */
+.crepe-editor-wrapper ul,
+.crepe-editor-wrapper ol {
+  padding-left: 1.5rem;
+  /* 列表颜色会影响 marker 的颜色 */
+  color: hsl(var(--foreground));
+}
+
+.crepe-editor-wrapper ul {
+  list-style-type: disc;
+}
+
+.crepe-editor-wrapper ol {
+  list-style-type: decimal;
+}
+
+.crepe-editor-wrapper li {
+  margin-top: 0.25em;
+  /* 列表项继承正确的文字颜色 */
+  color: hsl(var(--foreground));
+}
+
+/* 强制无序列表项目符号颜色 */
+.crepe-editor-wrapper ul > li::marker {
+  color: hsl(var(--foreground) / 0.6) !important;
+}
+
+.crepe-editor-wrapper ol > li::marker {
+  color: hsl(var(--foreground) / 0.7) !important;
+}
+
+/* 任务列表 */
+.crepe-editor-wrapper .task-list-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  list-style: none;
+}
+
+.crepe-editor-wrapper .task-list-item input[type="checkbox"] {
+  margin-top: 0.25em;
+  cursor: pointer;
+}
+
+/* 分隔线 */
+.crepe-editor-wrapper hr {
+  border: none;
+  border-top: 1px solid var(--border, hsl(214.3 31.8% 91.4%));
+  margin: 2rem 0;
+}
+
+/* 表格 */
+.crepe-editor-wrapper table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1rem 0;
+}
+
+.crepe-editor-wrapper th,
+.crepe-editor-wrapper td {
+  border: 1px solid var(--border, hsl(214.3 31.8% 91.4%));
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+}
+
+.crepe-editor-wrapper th {
+  background: var(--muted, hsl(210 40% 96.1%));
+  font-weight: 600;
+}
+
+/* 图片 */
+.crepe-editor-wrapper img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 0.5rem;
+}
+
+/* 数学公式 */
+.crepe-editor-wrapper .katex-display {
+  margin: 1rem 0;
+  overflow-x: auto;
+}
+
+/* 占位符 */
+.crepe-editor-wrapper .placeholder {
+  color: var(--muted-foreground, hsl(215.4 16.3% 46.9%));
+  pointer-events: none;
+}
+
+/* ===== 斜杠菜单（Slash Menu） ===== */
+/* 只覆盖视觉样式，保留 Crepe 原有布局和交互逻辑 */
+
+/* 外层容器 - 只修改视觉样式 */
+.crepe-editor-wrapper .milkdown .milkdown-slash-menu {
+  background: hsl(var(--popover)) !important;
+  color: hsl(var(--popover-foreground)) !important;
+  border: 1px solid hsl(var(--border)) !important;
+  border-radius: 8px !important;
+  box-shadow: 0 4px 12px rgb(0 0 0 / 0.12) !important;
+  overflow-x: hidden !important;
+}
+
+/* Tab 标签栏 - 紧凑样式 */
+.crepe-editor-wrapper .milkdown .milkdown-slash-menu .tab-group {
+  padding: 6px 8px 0 !important;
+  border-bottom-color: hsl(var(--border)) !important;
+}
+
+.crepe-editor-wrapper .milkdown .milkdown-slash-menu .tab-group ul {
+  padding: 4px 6px !important;
+  gap: 4px !important;
+}
+
+.crepe-editor-wrapper .milkdown .milkdown-slash-menu .tab-group ul li {
+  padding: 4px 10px !important;
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  line-height: 1.4 !important;
+}
+
+.crepe-editor-wrapper .milkdown .milkdown-slash-menu .tab-group ul li:hover {
+  background: hsl(var(--accent)) !important;
+}
+
+.crepe-editor-wrapper .milkdown .milkdown-slash-menu .tab-group ul li.selected {
+  background: hsl(var(--primary)) !important;
+  color: hsl(var(--primary-foreground)) !important;
+}
+
+/* 菜单滚动区域 - 使用项目自研滚动条（与 CustomScrollArea 同源视觉） */
+.crepe-editor-wrapper .milkdown .milkdown-slash-menu .menu-groups {
+  padding: 4px 8px 8px !important;
+  max-height: 280px !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  overscroll-behavior: contain;
+  scroll-behavior: smooth;
+}
+
+.crepe-editor-wrapper .milkdown .milkdown-slash-menu .menu-groups.ds-slash-scroll-viewport {
+  padding-right: 12px !important;
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+}
+
+.crepe-editor-wrapper .milkdown .milkdown-slash-menu .menu-groups.ds-slash-scroll-viewport::-webkit-scrollbar {
+  width: 0 !important;
+  height: 0 !important;
+  display: none !important;
+}
+
+.crepe-editor-wrapper .milkdown .milkdown-slash-menu .ds-slash-scroll-track {
+  position: absolute;
+  right: 6px;
+  width: 6px;
+  border-radius: 9999px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  z-index: 1;
+}
+
+.crepe-editor-wrapper .milkdown .milkdown-slash-menu .ds-slash-scroll-track[data-enabled='true'][data-visible='true'] {
+  opacity: 1;
+}
+
+.crepe-editor-wrapper .milkdown .milkdown-slash-menu .ds-slash-scroll-thumb {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  min-height: 36px;
+  border-radius: 9999px;
+  pointer-events: auto;
+  background: hsl(var(--muted-foreground) / 0.35);
+  box-shadow: inset 0 0 0 1px hsl(var(--background) / 0.25);
+  transition: background-color 0.15s ease;
+}
+
+.crepe-editor-wrapper .milkdown .milkdown-slash-menu .ds-slash-scroll-track:hover .ds-slash-scroll-thumb {
+  background: hsl(var(--muted-foreground) / 0.55);
+}
+
+.crepe-editor-wrapper .milkdown .milkdown-slash-menu .ds-slash-scroll-thumb:active {
+  background: hsl(var(--muted-foreground) / 0.7);
+}
+
+.dark .crepe-editor-wrapper .milkdown .milkdown-slash-menu .ds-slash-scroll-thumb {
+  background: hsl(var(--muted-foreground) / 0.4);
+}
+
+.dark .crepe-editor-wrapper .milkdown .milkdown-slash-menu .ds-slash-scroll-track:hover .ds-slash-scroll-thumb {
+  background: hsl(var(--muted-foreground) / 0.6);
+}
+
+.dark .crepe-editor-wrapper .milkdown .milkdown-slash-menu .ds-slash-scroll-thumb:active {
+  background: hsl(var(--muted-foreground) / 0.75);
+}
+
+/* 分组标题 - 紧凑样式 */
+.crepe-editor-wrapper .milkdown .milkdown-slash-menu .menu-groups .menu-group h6 {
+  font-size: 10px !important;
+  font-weight: 600 !important;
+  line-height: 1.2 !important;
+  padding: 6px 8px 4px !important;
+  color: hsl(var(--muted-foreground)) !important;
+}
+
+/* 分组分隔线 */
+.crepe-editor-wrapper .milkdown .milkdown-slash-menu .menu-groups .menu-group + .menu-group::before {
+  background: hsl(var(--border)) !important;
+}
+
+/* 菜单项 - 紧凑样式 */
+.crepe-editor-wrapper .milkdown .milkdown-slash-menu .menu-groups .menu-group li {
+  min-width: 140px !important;
+  padding: 6px 8px !important;
+  gap: 10px !important;
+  border-radius: 4px !important;
+}
+
+.crepe-editor-wrapper .milkdown .milkdown-slash-menu .menu-groups .menu-group li > span {
+  font-size: 13px !important;
+  font-weight: 400 !important;
+  line-height: 1.3 !important;
+}
+
+.crepe-editor-wrapper .milkdown .milkdown-slash-menu .menu-groups .menu-group li svg {
+  width: 18px !important;
+  height: 18px !important;
+  color: hsl(var(--muted-foreground)) !important;
+  fill: hsl(var(--muted-foreground)) !important;
+}
+
+.crepe-editor-wrapper .milkdown .milkdown-slash-menu .menu-groups .menu-group li:hover,
+.crepe-editor-wrapper .milkdown .milkdown-slash-menu .menu-groups .menu-group li.hover {
+  background: hsl(var(--accent)) !important;
+}
+
+.crepe-editor-wrapper .milkdown .milkdown-slash-menu .menu-groups .menu-group li.active {
+  background: hsl(var(--primary)) !important;
+  color: hsl(var(--primary-foreground)) !important;
+}
+
+/* ===== 气泡工具栏（Bubble Toolbar） ===== */
+
+/* 覆盖 Crepe 工具栏的 CSS 变量 - 移除按钮边框 */
+.crepe-editor-wrapper .milkdown .milkdown-toolbar {
+  --crepe-color-outline: transparent !important;
+  --crepe-color-surface-low: transparent !important;
+  --crepe-color-line: transparent !important;
+  --crepe-color-border: transparent !important;
+}
+
+/* Milkdown 工具栏容器 */
+.crepe-editor-wrapper .milkdown .milkdown-toolbar {
+  z-index: 50 !important;
+  background: hsl(var(--background)) !important;
+  border: 1px solid hsl(var(--border)) !important;
+  border-radius: 8px !important;
+  box-shadow: 0 4px 12px rgb(0 0 0 / 0.15) !important;
+  contain: layout style;
+  will-change: transform;
+  pointer-events: auto;
+  padding: 4px 6px !important;
+  gap: 4px !important;
+}
+
+/* 工具栏按钮 - button.toolbar-item */
+.crepe-editor-wrapper .milkdown .milkdown-toolbar button.toolbar-item,
+.crepe-editor-wrapper .milkdown .milkdown-toolbar .toolbar-item {
+  all: unset !important;
+  cursor: pointer !important;
+  padding: 6px !important;
+  border-radius: 4px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  transition: background 0.15s !important;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+
+/* 工具栏内所有子元素都重置边框 */
+.crepe-editor-wrapper .milkdown .milkdown-toolbar button.toolbar-item *,
+.crepe-editor-wrapper .milkdown .milkdown-toolbar .toolbar-item *,
+.crepe-editor-wrapper .milkdown .milkdown-toolbar button,
+.crepe-editor-wrapper .milkdown .milkdown-toolbar button *,
+.crepe-editor-wrapper .milkdown .milkdown-toolbar [class*="group"],
+.crepe-editor-wrapper .milkdown .milkdown-toolbar [class*="group"] * {
+  all: unset !important;
+  border: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.crepe-editor-wrapper .milkdown .milkdown-toolbar .toolbar-item svg {
+  color: hsl(var(--foreground) / 0.65) !important;
+  fill: hsl(var(--foreground) / 0.65) !important;
+  width: 18px !important;
+  height: 18px !important;
+  display: block !important;
+}
+
+.crepe-editor-wrapper .milkdown .milkdown-toolbar .toolbar-item:hover {
+  background: hsl(var(--accent)) !important;
+}
+
+.crepe-editor-wrapper .milkdown .milkdown-toolbar .toolbar-item:hover svg {
+  color: hsl(var(--foreground)) !important;
+  fill: hsl(var(--foreground)) !important;
+}
+
+.crepe-editor-wrapper .milkdown .milkdown-toolbar .toolbar-item.active svg {
+  color: hsl(var(--primary)) !important;
+  fill: hsl(var(--primary)) !important;
+}
+
+/* 工具栏分隔线 */
+.crepe-editor-wrapper .milkdown .milkdown-toolbar .divider {
+  all: unset !important;
+  display: block !important;
+  background: hsl(var(--border)) !important;
+  margin: 0 8px !important;
+  width: 1px !important;
+  height: 16px !important;
+}
+
+/* 强制移除 group 容器边框 */
+.crepe-editor-wrapper .milkdown .milkdown-toolbar .group {
+  all: unset !important;
+  display: flex !important;
+  gap: 4px !important;
+}
+
+/* 通用工具栏样式（兼容其他工具栏） */
+.crepe-editor-wrapper [data-milkdown-toolbar],
+.crepe-editor-wrapper [class*="toolbar"]:not(.milkdown-toolbar):not(.notes-editor-toolbar) {
+  z-index: 50;
+  background: hsl(var(--background)) !important;
+  color: hsl(var(--foreground)) !important;
+  border: 1px solid hsl(var(--border)) !important;
+  border-radius: 0.5rem;
+  box-shadow: 0 4px 12px rgb(0 0 0 / 0.15);
+  padding: 0.25rem;
+  display: flex;
+  gap: 0.125rem;
+}
+
+/* 通用工具栏按钮 */
+.crepe-editor-wrapper [data-milkdown-toolbar] button,
+.crepe-editor-wrapper [class*="toolbar"]:not(.notes-editor-toolbar) button {
+  background: transparent !important;
+  color: hsl(var(--foreground) / 0.7) !important;
+  border: none !important;
+  border-radius: 0.25rem;
+  padding: 0.375rem;
+  transition: background 0.15s, color 0.15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.crepe-editor-wrapper [data-milkdown-toolbar] button:hover,
+.crepe-editor-wrapper [class*="toolbar"]:not(.notes-editor-toolbar) button:hover {
+  background: hsl(var(--accent)) !important;
+  color: hsl(var(--foreground)) !important;
+}
+
+.crepe-editor-wrapper [data-milkdown-toolbar] button[data-active="true"],
+.crepe-editor-wrapper [data-milkdown-toolbar] button.active {
+  background: hsl(var(--primary)) !important;
+  color: hsl(var(--primary-foreground)) !important;
+}
+
+/* 通用工具栏图标 */
+.crepe-editor-wrapper [data-milkdown-toolbar] svg {
+  color: inherit !important;
+  fill: currentColor !important;
+}
+
+/* 通用工具栏分隔线 */
+.crepe-editor-wrapper [data-milkdown-toolbar] [class*="divider"],
+.crepe-editor-wrapper [data-milkdown-toolbar] hr {
+  background: hsl(var(--border)) !important;
+  width: 1px;
+  height: 1.25rem;
+  margin: 0 0.25rem;
+}
+
+/* ===== 拖拽句柄（Block Handle） ===== */
+/* 保留 Crepe 原有的 data-show 显示逻辑，只覆盖视觉样式 */
+
+.crepe-editor-wrapper .milkdown .milkdown-block-handle {
+  color: hsl(var(--foreground)) !important;
+  transition: opacity 0.2s, color 0.15s;
+  display: flex !important;
+  align-items: center;
+  gap: 4px !important;
+  cursor: grab !important;
+  user-select: none !important;
+  background: transparent !important;
+  border: none !important;
+  border-radius: 0 !important;
+  padding: 0 !important;
+  box-shadow: none !important;
+}
+
+.dark .crepe-editor-wrapper .milkdown .milkdown-block-handle {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+.crepe-editor-wrapper .milkdown .milkdown-block-handle:active {
+  cursor: grabbing !important;
+}
+
+/* 🔧 关键：block handle 拖拽按钮需要 touch-action: none 才能使 pointer capture 正常工作 */
+.crepe-editor-wrapper .milkdown .milkdown-block-handle .operation-item:nth-child(2) {
+  touch-action: none;
+  cursor: grab;
+}
+
+.crepe-editor-wrapper .milkdown .milkdown-block-handle .operation-item:nth-child(2):active {
+  cursor: grabbing;
+}
+
+/* 拖拽时的视觉反馈 */
+.crepe-editor-wrapper[data-dragging="true"] {
+  cursor: grabbing !important;
+}
+
+.crepe-editor-wrapper[data-dragging="true"] .milkdown {
+  cursor: grabbing !important;
+}
+
+.crepe-editor-wrapper[data-dragging="true"] .ProseMirror {
+  cursor: grabbing !important;
+  /* 禁用文本选择 */
+  user-select: none;
+}
+
+/* 🔧 拖拽时隐藏浮动工具栏，避免干扰 */
+.crepe-editor-wrapper[data-dragging="true"] .milkdown-block-handle,
+.crepe-editor-wrapper[data-dragging="true"] .milkdown-toolbar,
+.crepe-editor-wrapper[data-dragging="true"] .milkdown-slash-menu,
+.crepe-editor-wrapper[data-dragging="true"] .milkdown-link-tooltip,
+.crepe-editor-wrapper[data-dragging="true"] .milkdown-table-tooltip {
+  display: none !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+/* 拖拽预览克隆样式（保持原始块样式） */
+.crepe-drag-preview-clone {
+  /* 基础样式由 JS 动态设置 */
+  /* 这里添加一些增强样式 */
+  transition: none !important;
+  animation: none !important;
+}
+
+.crepe-drag-preview-clone * {
+  transition: none !important;
+  animation: none !important;
+}
+
+/* 暗色模式下的克隆预览 */
+.dark .crepe-drag-preview-clone {
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4) !important;
+}
+
+/* 兼容旧的 data-dragging 在 .milkdown 上的情况 */
+.crepe-editor-wrapper .milkdown[data-dragging="true"] {
+  cursor: grabbing !important;
+}
+
+.crepe-editor-wrapper .milkdown[data-dragging="true"] .ProseMirror {
+  cursor: grabbing !important;
+}
+
+/* 确保编辑器可以接收 drop 事件 */
+.crepe-editor-wrapper .milkdown .ProseMirror {
+  min-height: 100px;
+}
+
+
+.crepe-editor-wrapper .milkdown .milkdown-block-handle .operation-item {
+  border-radius: 6px !important;
+  width: 26px !important;
+  height: 26px !important;
+  padding: 4px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  cursor: pointer !important;
+  background: transparent;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+/* 强制覆盖 Crepe 内部的图标颜色变量 */
+.crepe-editor-wrapper .milkdown .milkdown-block-handle {
+  --crepe-color-solid: hsl(var(--foreground)) !important;
+  --crepe-color-icon: hsl(var(--foreground)) !important;
+  --icon-color: hsl(var(--foreground)) !important;
+  color: hsl(var(--foreground)) !important;
+}
+
+/* Block handle 图标 - 极强覆盖 */
+.crepe-editor-wrapper .milkdown .milkdown-block-handle .operation-item,
+.crepe-editor-wrapper .milkdown .milkdown-block-handle .operation-item * {
+  color: hsl(var(--foreground) / 0.7) !important;
+}
+
+.crepe-editor-wrapper .milkdown .milkdown-block-handle .operation-item svg {
+  width: 18px !important;
+  height: 18px !important;
+  fill: hsl(var(--foreground) / 0.7) !important;
+  color: hsl(var(--foreground) / 0.7) !important;
+  stroke: hsl(var(--foreground) / 0.7) !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+
+/* 如果图标使用 mask-image 实现（通过 span/i/div 子元素） */
+.crepe-editor-wrapper .milkdown .milkdown-block-handle .operation-item > span,
+.crepe-editor-wrapper .milkdown .milkdown-block-handle .operation-item > i,
+.crepe-editor-wrapper .milkdown .milkdown-block-handle .operation-item > div {
+  color: hsl(var(--foreground) / 0.7) !important;
+}
+
+/* 如果子元素使用 mask-image，需要设置 background-color 作为颜色源 */
+.crepe-editor-wrapper .milkdown .milkdown-block-handle .operation-item > *[style*="mask"],
+.crepe-editor-wrapper .milkdown .milkdown-block-handle .operation-item > *[style*="-webkit-mask"] {
+  background-color: hsl(var(--foreground) / 0.7) !important;
+}
+
+/* 覆盖可能的内联样式和任何子元素 */
+.crepe-editor-wrapper .milkdown .milkdown-block-handle .operation-item svg *,
+.crepe-editor-wrapper .milkdown .milkdown-block-handle .operation-item svg[style],
+.crepe-editor-wrapper .milkdown .milkdown-block-handle .operation-item svg[style] * {
+  fill: hsl(var(--foreground) / 0.7) !important;
+  color: hsl(var(--foreground) / 0.7) !important;
+  stroke: hsl(var(--foreground) / 0.7) !important;
+  opacity: 1 !important;
+}
+
+/* 确保 path 元素也有正确的填充色和描边色 */
+.crepe-editor-wrapper .milkdown .milkdown-block-handle .operation-item svg path,
+.crepe-editor-wrapper .milkdown .milkdown-block-handle .operation-item svg circle,
+.crepe-editor-wrapper .milkdown .milkdown-block-handle .operation-item svg line,
+.crepe-editor-wrapper .milkdown .milkdown-block-handle .operation-item svg rect {
+  fill: hsl(var(--foreground) / 0.75) !important;
+  stroke: hsl(var(--foreground) / 0.75) !important;
+}
+
+/* 暗色模式下使用更亮的颜色 */
+.dark .crepe-editor-wrapper .milkdown .milkdown-block-handle {
+  --crepe-color-solid: hsl(var(--foreground)) !important;
+  --crepe-color-icon: hsl(var(--foreground)) !important;
+  --icon-color: hsl(var(--foreground)) !important;
+}
+
+.dark .crepe-editor-wrapper .milkdown .milkdown-block-handle .operation-item svg,
+.dark .crepe-editor-wrapper .milkdown .milkdown-block-handle .operation-item svg path,
+.dark .crepe-editor-wrapper .milkdown .milkdown-block-handle .operation-item svg circle,
+.dark .crepe-editor-wrapper .milkdown .milkdown-block-handle .operation-item svg line,
+.dark .crepe-editor-wrapper .milkdown .milkdown-block-handle .operation-item svg rect,
+.dark .crepe-editor-wrapper .milkdown .milkdown-block-handle .operation-item svg[style],
+.dark .crepe-editor-wrapper .milkdown .milkdown-block-handle .operation-item svg[style] * {
+  fill: hsl(var(--foreground)) !important;
+  color: hsl(var(--foreground)) !important;
+  stroke: hsl(var(--foreground)) !important;
+}
+
+.crepe-editor-wrapper .milkdown .milkdown-block-handle .operation-item:hover {
+  background: var(--accent) !important;
+}
+
+.crepe-editor-wrapper .milkdown .milkdown-block-handle .operation-item:hover svg,
+.crepe-editor-wrapper .milkdown .milkdown-block-handle .operation-item:hover svg path,
+.crepe-editor-wrapper .milkdown .milkdown-block-handle .operation-item:hover svg circle,
+.crepe-editor-wrapper .milkdown .milkdown-block-handle .operation-item:hover svg line,
+.crepe-editor-wrapper .milkdown .milkdown-block-handle .operation-item:hover svg rect {
+  fill: hsl(var(--foreground)) !important;
+  color: hsl(var(--foreground)) !important;
+  stroke: hsl(var(--foreground)) !important;
+}
+
+.crepe-editor-wrapper .milkdown .milkdown-block-handle .operation-item.active {
+  background: var(--primary) !important;
+}
+
+.crepe-editor-wrapper .milkdown .milkdown-block-handle .operation-item.active svg,
+.crepe-editor-wrapper .milkdown .milkdown-block-handle .operation-item.active svg path,
+.crepe-editor-wrapper .milkdown .milkdown-block-handle .operation-item.active svg circle,
+.crepe-editor-wrapper .milkdown .milkdown-block-handle .operation-item.active svg line,
+.crepe-editor-wrapper .milkdown .milkdown-block-handle .operation-item.active svg rect {
+  fill: var(--primary-foreground) !important;
+  color: var(--primary-foreground) !important;
+  stroke: var(--primary-foreground) !important;
+}
+
+/* ===== 链接提示框 ===== */
+.crepe-editor-wrapper [class*="link-tooltip"],
+.crepe-editor-wrapper [data-milkdown-tooltip] {
+  background: var(--popover) !important;
+  color: var(--popover-foreground) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 0.5rem;
+  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+  padding: 0.5rem;
+}
+
+.crepe-editor-wrapper [class*="link-tooltip"] input,
+.crepe-editor-wrapper [data-milkdown-tooltip] input {
+  background: var(--background) !important;
+  color: var(--foreground) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 0.25rem;
+  padding: 0.25rem 0.5rem;
+}
+
+/* ===== 图片块样式 ===== */
+.crepe-editor-wrapper [class*="image-block"],
+.crepe-editor-wrapper [data-type="image"] {
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  overflow: hidden;
+}
+
+/* 选中时高亮边框 */
+.crepe-editor-wrapper [class*="image-block"].selected,
+.crepe-editor-wrapper [data-type="image"].selected {
+  border-color: var(--primary);
+}
+
+/* ===== 过渡动画 ===== */
+.crepe-editor-wrapper [data-milkdown-menu],
+.crepe-editor-wrapper [data-milkdown-toolbar],
+.crepe-editor-wrapper [class*="toolbar"],
+.crepe-editor-wrapper [class*="slash"] {
+  animation: crepe-fade-in 0.15s ease-out;
+}
+
+@keyframes crepe-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ===== Mermaid 图表预览 ===== */
+.crepe-editor-wrapper .mermaid-preview {
+  margin-top: 0.5rem;
+  padding: 1rem;
+  background: var(--muted);
+  border-radius: 0.5rem;
+  border: 1px solid var(--border);
+  overflow-x: auto;
+}
+
+.crepe-editor-wrapper .mermaid-preview svg {
+  max-width: 100%;
+  height: auto;
+}
+
+.crepe-editor-wrapper .mermaid-preview.mermaid-error {
+  color: var(--destructive);
+  font-size: 0.875em;
+}
+
+/* ===== Crepe 内部 frame 主题彻底覆盖 ===== */
+/* 覆盖 Crepe frame/frame-dark 的所有硬编码颜色 */
+
+/* 根元素变量覆盖 */
+.crepe-editor-wrapper,
+.crepe-editor-wrapper .milkdown,
+.crepe-editor-wrapper .editor {
+  --crepe-color-background: var(--background) !important;
+  --crepe-color-surface: var(--card) !important;
+  --crepe-color-overlay: var(--popover) !important;
+  --crepe-color-primary: hsl(var(--primary)) !important;
+  --crepe-color-secondary: var(--secondary) !important;
+  --crepe-color-solid: var(--foreground) !important;
+  --crepe-color-line: var(--border) !important;
+  --crepe-color-border: var(--border) !important;
+  /* 列表标记和次要元素使用较深颜色 */
+  --crepe-color-inline: hsl(var(--foreground) / 0.7) !important;
+  --crepe-color-on-surface-variant: hsl(var(--foreground) / 0.7) !important;
+  --crepe-color-on-primary: var(--primary-foreground) !important;
+  --crepe-color-shadow: 0 0 0 transparent !important;
+}
+
+/* 彻底覆盖所有可能的暗色背景 */
+.crepe-editor-wrapper [style*="background"],
+.crepe-editor-wrapper [style*="background-color"] {
+  background: inherit !important;
+}
+
+/* Crepe 特定类名覆盖 */
+.crepe-editor-wrapper .crepe,
+.crepe-editor-wrapper [class*="crepe-"] {
+  background: transparent !important;
+  color: var(--foreground) !important;
+}
+
+/* 表格单元格选中 */
+.crepe-editor-wrapper .tableWrapper .selectedCell,
+.crepe-editor-wrapper td.selectedCell,
+.crepe-editor-wrapper th.selectedCell {
+  background: hsl(var(--primary) / 0.15) !important;
+  border-color: hsl(var(--primary)) !important;
+}
+
+/* 列表标记颜色 - 亮色模式下使用深色 */
+.crepe-editor-wrapper ul > li::marker,
+.crepe-editor-wrapper ol > li::marker {
+  color: hsl(var(--foreground) / 0.7) !important;
+}
+
+/* ===== Milkdown 列表样式全面覆盖 ===== */
+
+/* Milkdown 使用 .label-wrapper 来渲染列表标记，需要直接覆盖 */
+.crepe-editor-wrapper .milkdown .milkdown-list-item-block li .label-wrapper {
+  color: hsl(var(--foreground) / 0.6) !important;
+}
+
+.crepe-editor-wrapper .milkdown .milkdown-list-item-block li .label-wrapper svg {
+  fill: hsl(var(--foreground) / 0.6) !important;
+}
+
+.crepe-editor-wrapper .milkdown .milkdown-list-item-block li .label-wrapper .label {
+  color: hsl(var(--foreground) / 0.6) !important;
+}
+
+/* 强制所有列表使用深色 - 通过在 ul/ol 上设置 color，marker 会继承 */
+.crepe-editor-wrapper ul,
+.crepe-editor-wrapper ol,
+.crepe-editor-wrapper .milkdown ul,
+.crepe-editor-wrapper .milkdown ol,
+.crepe-editor-wrapper .ProseMirror ul,
+.crepe-editor-wrapper .ProseMirror ol,
+.crepe-editor-wrapper .editor ul,
+.crepe-editor-wrapper .editor ol {
+  color: hsl(var(--foreground) / 0.6) !important;
+}
+
+/* 列表项 - 设置颜色让 marker 继承 */
+.crepe-editor-wrapper li,
+.crepe-editor-wrapper .milkdown li,
+.crepe-editor-wrapper .ProseMirror li,
+.crepe-editor-wrapper .editor li {
+  color: hsl(var(--foreground) / 0.6) !important;
+}
+
+/* 列表项标记 - ::marker 伪元素 - 最高优先级 */
+.crepe-editor-wrapper li::marker,
+.crepe-editor-wrapper ul li::marker,
+.crepe-editor-wrapper ol li::marker,
+.crepe-editor-wrapper .milkdown li::marker,
+.crepe-editor-wrapper .milkdown ul li::marker,
+.crepe-editor-wrapper .milkdown ol li::marker,
+.crepe-editor-wrapper .ProseMirror li::marker,
+.crepe-editor-wrapper .ProseMirror ul li::marker,
+.crepe-editor-wrapper .ProseMirror ol li::marker {
+  color: hsl(var(--foreground) / 0.6) !important;
+}
+
+/* 列表项内的文字内容恢复为正常颜色 */
+.crepe-editor-wrapper li > *,
+.crepe-editor-wrapper li > p,
+.crepe-editor-wrapper li > div,
+.crepe-editor-wrapper li > span,
+.crepe-editor-wrapper .milkdown li > *,
+.crepe-editor-wrapper .milkdown li > p,
+.crepe-editor-wrapper .milkdown li > div,
+.crepe-editor-wrapper .milkdown li > span,
+.crepe-editor-wrapper .ProseMirror li > *,
+.crepe-editor-wrapper .ProseMirror li > p,
+.crepe-editor-wrapper .ProseMirror li > div,
+.crepe-editor-wrapper .ProseMirror li > span {
+  color: hsl(var(--foreground)) !important;
+}
+
+
+/* 任务列表复选框 */
+.crepe-editor-wrapper input[type="checkbox"] {
+  accent-color: hsl(var(--primary));
+}
+
+/* 代码块语言标签 */
+.crepe-editor-wrapper [class*="code-block"] [class*="language"],
+.crepe-editor-wrapper pre [class*="language-label"] {
+  background: var(--muted) !important;
+  color: var(--muted-foreground) !important;
+  border-color: var(--border) !important;
+}
+
+/* ===== 顶部工具栏样式 ===== */
+.notes-editor-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  padding: 0.5rem 0;
+  margin-bottom: 0;
+  /* 边框已由 .notes-editor-header-section 提供，此处移除 */
+}
+
+.notes-editor-toolbar button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border: none;
+  border-radius: 0.375rem;
+  background: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.notes-editor-toolbar button:hover {
+  background: var(--accent);
+  color: var(--accent-foreground);
+}
+
+.notes-editor-toolbar button.active,
+.notes-editor-toolbar button[data-active="true"] {
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+
+.notes-editor-toolbar button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.notes-editor-toolbar .divider {
+  width: 1px;
+  height: 1.5rem;
+  background: var(--border);
+  margin: 0 0.25rem;
+}
+
+/* 移动端工具栏样式优化 - 两行布局 */
+@media (max-width: 640px) {
+  .notes-editor-toolbar {
+    gap: 0.25rem;
+    padding: 0.375rem 0;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+
+  .notes-editor-toolbar button {
+    width: 1.75rem;
+    height: 1.75rem;
+  }
+
+  .notes-editor-toolbar button svg {
+    width: 0.875rem;
+    height: 0.875rem;
+  }
+
+  .notes-editor-toolbar .divider {
+    height: 1.25rem;
+    margin: 0 0.125rem;
+  }
+}
+
+/* ============================================================================
+   打印样式 - Print Styles for Crepe Editor
+   ============================================================================ */
+@media print {
+  /* 编辑器容器 - 打印适配 */
+  .crepe-editor-wrapper {
+    position: static !important;
+    overflow: visible !important;
+    width: 100% !important;
+    max-width: none !important;
+    height: auto !important;
+    min-height: auto !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    background: white !important;
+  }
+  
+  /* Milkdown 编辑器主体 */
+  .crepe-editor-wrapper .milkdown,
+  .crepe-editor-wrapper .editor,
+  .crepe-editor-wrapper .ProseMirror {
+    position: static !important;
+    overflow: visible !important;
+    background: white !important;
+    color: black !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    min-height: auto !important;
+    caret-color: transparent !important;
+  }
+  
+  /* 隐藏编辑器 UI 元素 */
+  .crepe-editor-wrapper .milkdown-toolbar,
+  .crepe-editor-wrapper .milkdown-block-handle,
+  .crepe-editor-wrapper .milkdown-slash-menu,
+  .crepe-editor-wrapper .milkdown-link-tooltip,
+  .crepe-editor-wrapper .notes-editor-toolbar,
+  .crepe-editor-wrapper [data-milkdown-toolbar],
+  .crepe-editor-wrapper [data-milkdown-menu] {
+    display: none !important;
+    visibility: hidden !important;
+  }
+  
+  /* 文本样式 - 黑色文字 */
+  .crepe-editor-wrapper h1,
+  .crepe-editor-wrapper h2,
+  .crepe-editor-wrapper h3,
+  .crepe-editor-wrapper h4,
+  .crepe-editor-wrapper h5,
+  .crepe-editor-wrapper h6 {
+    color: black !important;
+    page-break-after: avoid;
+    page-break-inside: avoid;
+  }
+  
+  .crepe-editor-wrapper p,
+  .crepe-editor-wrapper span,
+  .crepe-editor-wrapper div,
+  .crepe-editor-wrapper li,
+  .crepe-editor-wrapper ul,
+  .crepe-editor-wrapper ol {
+    color: black !important;
+  }
+  
+  /* 列表标记 */
+  .crepe-editor-wrapper li::marker {
+    color: black !important;
+  }
+  
+  /* 链接 */
+  .crepe-editor-wrapper a {
+    color: black !important;
+    text-decoration: underline !important;
+  }
+  
+  /* 引用块 */
+  .crepe-editor-wrapper blockquote {
+    border-left-color: #333 !important;
+    color: #333 !important;
+    background: transparent !important;
+  }
+  
+  /* 代码块 */
+  .crepe-editor-wrapper pre,
+  .crepe-editor-wrapper .milkdown-code-block {
+    background: #f5f5f5 !important;
+    border: 1px solid #ddd !important;
+    color: black !important;
+    page-break-inside: avoid;
+  }
+  
+  .crepe-editor-wrapper code {
+    background: #f5f5f5 !important;
+    border: 1px solid #ddd !important;
+    color: black !important;
+  }
+  
+  /* CodeMirror 代码编辑器 */
+  .crepe-editor-wrapper .cm-editor,
+  .crepe-editor-wrapper .cm-scroller,
+  .crepe-editor-wrapper .cm-content,
+  .crepe-editor-wrapper .cm-gutters {
+    background: #f5f5f5 !important;
+    color: black !important;
+  }
+  
+  .crepe-editor-wrapper .cm-line {
+    color: black !important;
+  }
+  
+  /* 表格 */
+  .crepe-editor-wrapper table {
+    border-collapse: collapse;
+    page-break-inside: avoid;
+  }
+  
+  .crepe-editor-wrapper th,
+  .crepe-editor-wrapper td {
+    border: 1px solid #333 !important;
+    background: white !important;
+    color: black !important;
+  }
+  
+  .crepe-editor-wrapper th {
+    background: #f0f0f0 !important;
+  }
+  
+  /* 图片 */
+  .crepe-editor-wrapper img {
+    max-width: 100% !important;
+    page-break-inside: avoid;
+  }
+  
+  /* 分隔线 */
+  .crepe-editor-wrapper hr {
+    border-color: #333 !important;
+  }
+  
+  /* 任务列表复选框 */
+  .crepe-editor-wrapper input[type="checkbox"] {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  
+  /* LaTeX/数学公式 */
+  .crepe-editor-wrapper .katex,
+  .crepe-editor-wrapper .katex-display {
+    color: black !important;
+  }
+  
+  /* 隐藏预览面板中的编辑器 */
+  .crepe-editor-wrapper .milkdown-code-block .preview-panel {
+    background: #f9f9f9 !important;
+    border: 1px solid #ddd !important;
+  }
+  
+  .crepe-editor-wrapper .milkdown-code-block .preview-panel .preview {
+    background: white !important;
+    color: black !important;
+  }
+}
+
+/* ===== 手动拖拽插入条（模仿文件树实现） ===== */
+/* 这是我们手动实现的 drop indicator，因为 Crepe 没有内置 dropcursor 插件 */
+.crepe-drop-indicator {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  pointer-events: none;
+  z-index: 100;
+  border-radius: 1px;
+  transition: top 0.1s cubic-bezier(0.2, 0, 0, 1);
+}
+
+/* 亮色模式：蓝色指示条 */
+:root:not(.dark) .crepe-drop-indicator {
+  background: hsl(var(--primary));
+  box-shadow: 0 0 6px hsl(var(--primary) / 0.5);
+}
+
+:root:not(.dark) .crepe-drop-indicator::before {
+  content: '';
+  position: absolute;
+  left: -2px;
+  top: -3px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: hsl(var(--primary));
+  border: 2px solid hsl(var(--background));
+  box-shadow: 0 0 3px hsl(var(--primary) / 0.5);
+}
+
+/* 暗色模式：白色指示条 */
+:root.dark .crepe-drop-indicator {
+  background: #ffffff !important;
+  box-shadow: 0 0 8px rgba(255, 255, 255, 0.6) !important;
+}
+
+.crepe-drop-indicator::before {
+  content: '';
+  position: absolute;
+  left: -2px;
+  top: -3px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 2px solid hsl(var(--background));
+}
+
+:root.dark .crepe-drop-indicator::before {
+  background: #ffffff !important;
+  box-shadow: 0 0 4px rgba(255, 255, 255, 0.6) !important;
+}
+
+/* ===== ProseMirror Drop Cursor (备用，如果 Crepe 将来支持) ===== */
+.ProseMirror-dropcursor {
+  position: absolute;
+  z-index: 100;
+  pointer-events: none;
+  height: 2px !important;
+  width: 100% !important;
+  left: 0 !important;
+  right: 0 !important;
+  border-radius: 1px;
+}
+
+:root:not(.dark) .ProseMirror-dropcursor {
+  background: hsl(var(--primary)) !important;
+  box-shadow: 0 0 4px hsl(var(--primary) / 0.5);
+}
+
+:root.dark .ProseMirror-dropcursor {
+  background: #ffffff !important;
+  box-shadow: 0 0 6px rgba(255, 255, 255, 0.6) !important;
+}
+
+/* Gap cursor（用于空白位置） */
+.crepe-editor-wrapper .ProseMirror-gapcursor {
+  display: none;
+  pointer-events: none;
+  position: absolute;
+}
+
+.crepe-editor-wrapper .ProseMirror-gapcursor:after {
+  content: "";
+  display: block;
+  position: absolute;
+  top: -2px;
+  width: 20px;
+  border-top: 2px solid hsl(var(--primary));
+  animation: ProseMirror-cursor-blink 1.1s steps(2, start) infinite;
+}
+
+@keyframes ProseMirror-cursor-blink {
+  to {
+    visibility: hidden;
+  }
+}
+
+.crepe-editor-wrapper .ProseMirror-focused .ProseMirror-gapcursor {
+  display: block;
+}

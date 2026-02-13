@@ -1,0 +1,197 @@
+/* 通用Tooltip样式 */
+.common-tooltip {
+  pointer-events: none;
+  user-select: none;
+  animation: tooltip-fade-in 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+  transform-origin: center;
+}
+
+/* 淡入动画 */
+@keyframes tooltip-fade-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Tooltip内容 */
+.common-tooltip__content {
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+  font-weight: 500;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  box-shadow: 
+    0 4px 16px rgba(0, 0, 0, 0.1),
+    0 2px 8px rgba(0, 0, 0, 0.06);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+}
+
+/* 深色主题（默认） - 使用侧边栏颜色 */
+.common-tooltip--dark .common-tooltip__content,
+.common-tooltip--auto .common-tooltip__content {
+  background: hsl(var(--nav-background));
+  color: hsl(var(--foreground));
+  border: 1px solid hsl(var(--border));
+}
+
+.common-tooltip--dark .common-tooltip__arrow,
+.common-tooltip--auto .common-tooltip__arrow {
+  background: hsl(var(--nav-background));
+}
+
+/* 浅色主题 */
+.common-tooltip--light .common-tooltip__content {
+  background: linear-gradient(135deg, 
+    hsl(var(--popover)) 0%, 
+    hsl(var(--card)) 100%
+  );
+  color: hsl(var(--popover-foreground));
+  border: 1px solid hsl(var(--border));
+}
+
+.common-tooltip--light .common-tooltip__arrow {
+  background: hsl(var(--popover));
+  border-color: hsl(var(--border));
+}
+
+/* 箭头 */
+.common-tooltip__arrow {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  transform: rotate(45deg);
+  border: 1px solid transparent;
+}
+
+/* 上方位置的箭头 */
+.common-tooltip--top.common-tooltip--with-arrow .common-tooltip__arrow {
+  bottom: -4px;
+  left: 50%;
+  transform: translateX(-50%) rotate(45deg);
+  border-right: 1px solid hsl(var(--border));
+  border-bottom: 1px solid hsl(var(--border));
+}
+
+.common-tooltip--top.common-tooltip--light.common-tooltip--with-arrow .common-tooltip__arrow {
+  border-right-color: hsl(var(--border));
+  border-bottom-color: hsl(var(--border));
+}
+
+/* 下方位置的箭头 */
+.common-tooltip--bottom.common-tooltip--with-arrow .common-tooltip__arrow {
+  top: -4px;
+  left: 50%;
+  transform: translateX(-50%) rotate(45deg);
+  border-left: 1px solid hsl(var(--border));
+  border-top: 1px solid hsl(var(--border));
+}
+
+.common-tooltip--bottom.common-tooltip--light.common-tooltip--with-arrow .common-tooltip__arrow {
+  border-left-color: hsl(var(--border));
+  border-top-color: hsl(var(--border));
+}
+
+/* 左侧位置的箭头 */
+.common-tooltip--left.common-tooltip--with-arrow .common-tooltip__arrow {
+  right: -4px;
+  top: 50%;
+  transform: translateY(-50%) rotate(45deg);
+  border-right: 1px solid hsl(var(--border));
+  border-top: 1px solid hsl(var(--border));
+}
+
+.common-tooltip--left.common-tooltip--light.common-tooltip--with-arrow .common-tooltip__arrow {
+  border-right-color: hsl(var(--border));
+  border-top-color: hsl(var(--border));
+}
+
+/* 右侧位置的箭头 */
+.common-tooltip--right.common-tooltip--with-arrow .common-tooltip__arrow {
+  left: -4px;
+  top: 50%;
+  transform: translateY(-50%) rotate(45deg);
+  border-left: 1px solid hsl(var(--border));
+  border-bottom: 1px solid hsl(var(--border));
+}
+
+.common-tooltip--right.common-tooltip--light.common-tooltip--with-arrow .common-tooltip__arrow {
+  border-left-color: hsl(var(--border));
+  border-bottom-color: hsl(var(--border));
+}
+
+/* 暗色模式适配 - 保持与侧边栏一致 */
+@media (prefers-color-scheme: dark) {
+  .common-tooltip--auto .common-tooltip__content {
+    background: hsl(var(--nav-background));
+    color: hsl(var(--foreground));
+    border-color: hsl(var(--border));
+  }
+  
+  .common-tooltip--auto .common-tooltip__arrow {
+    background: hsl(var(--nav-background));
+  }
+}
+
+@media (prefers-color-scheme: light) {
+  .common-tooltip--auto .common-tooltip__content {
+    background: hsl(var(--nav-background));
+    color: hsl(var(--foreground));
+    border-color: hsl(var(--border));
+  }
+  
+  .common-tooltip--auto .common-tooltip__arrow {
+    background: hsl(var(--nav-background));
+  }
+}
+
+/* 响应式调整 */
+@media (max-width: 640px) {
+  .common-tooltip {
+    max-width: calc(100vw - 32px) !important;
+  }
+  
+  .common-tooltip__content {
+    font-size: 11px;
+    padding: 5px 8px;
+  }
+}
+
+/* 确保在所有容器中都能正确显示 */
+.common-tooltip {
+  isolation: isolate;
+  will-change: opacity, transform;
+}
+
+/* 长文本处理 */
+.common-tooltip__content {
+  max-height: min(400px, 80vh);
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.3) transparent;
+}
+
+.common-tooltip__content::-webkit-scrollbar {
+  width: 4px;
+}
+
+.common-tooltip__content::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.common-tooltip__content::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 2px;
+}
+
+.common-tooltip__content::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.5);
+}
+

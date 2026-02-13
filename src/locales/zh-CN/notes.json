@@ -1,0 +1,1340 @@
+{
+  "canvas": {
+    "untitled": "未命名笔记",
+    "error": {
+      "operation_failed": "操作失败"
+    }
+  },
+  "sidebar": {
+    "title": "侧边栏",
+    "expand": "展开侧边栏",
+    "collapse": "收起侧边栏",
+    "trash": "回收站",
+    "actions": {
+      "new_folder": "新建文件夹",
+      "new_note": "新建笔记",
+      "refresh": "刷新",
+      "assistant": "悬浮助手",
+      "assistant_welcome": "有什么可以帮您处理笔记的吗？",
+      "assistant_placeholder": "输入问题...",
+      "vector_manager": "向量管理",
+      "favorites_filter_on": "仅看收藏",
+      "favorites_filter_off": "显示全部笔记",
+      "sort": "排序",
+      "sort_manual": "手动",
+      "sort_name_asc": "文件名 ↑",
+      "sort_name_desc": "文件名 ↓",
+      "sort_modified_desc": "编辑时间 ↓",
+      "sort_modified_asc": "编辑时间 ↑",
+      "sort_created_desc": "创建时间 ↓",
+      "sort_created_asc": "创建时间 ↑"
+    },
+    "search": {
+      "placeholder": "搜索",
+      "search_placeholder": "搜索...",
+      "mode_label": "模式",
+      "mode_notes": "笔记模式",
+      "mode_graph": "图谱模式",
+      "modes": {
+        "keyword": "关键字",
+        "semantic": "语义",
+        "hybrid": "双模"
+      },
+      "filter_by_tag": "按标签筛选",
+      "loading_tags": "加载标签中...",
+      "no_tags": "暂无标签"
+    },
+    "vector_status": {
+      "heading": "向量状态",
+      "none": "未生成",
+      "pending": "待更新",
+      "fresh": "最新",
+      "tooltip": {
+        "none": "尚未生成向量",
+        "pending": "内容已更新，等待重新嵌入向量",
+        "fresh": "向量与内容已同步"
+      }
+    },
+    "favorites": {
+      "title": "收藏笔记",
+      "empty": "暂无收藏笔记",
+      "empty_hint": "右键笔记可添加收藏",
+      "filter_empty": "暂无收藏笔记可显示，可再次点击星标返回全部笔记。",
+      "show_all": "显示全部笔记"
+    }
+  },
+  "summary": {
+    "code_block": "代码块",
+    "image": "图片"
+  },
+  "aiDiff": {
+    "title": "AI 编辑建议",
+    "operation_append": "追加内容",
+    "operation_replace": "替换内容",
+    "operation_set": "设置内容",
+    "accept": "接受",
+    "reject": "拒绝",
+    "no_changes": "未检测到变更"
+  },
+  "errors": {
+    "noteNotFound": "笔记未找到",
+    "search_notes": "搜索笔记",
+    "load_notes_list": "加载笔记列表",
+    "load_note_content": "加载笔记内容",
+    "save_note_content": "保存笔记内容",
+    "update_note_title": "更新笔记标题",
+    "force_refresh_content": "强制刷新内容",
+    "update_note_tags": "更新笔记标签",
+    "get_updated_note": "获取更新后的笔记",
+    "create_note": "创建笔记",
+    "create_canvas_note": "创建Canvas笔记",
+    "delete_notes": "删除笔记",
+    "rename_note": "重命名笔记",
+    "get_renamed_note": "获取重命名后的笔记",
+    "toggle_favorite": "切换收藏状态",
+    "list_directory": "列出目录",
+    "get_resource": "获取资源",
+    "create_resource": "创建资源",
+    "update_resource": "更新资源",
+    "delete_resource": "删除资源",
+    "move_resource": "移动资源",
+    "copy_resource": "复制资源",
+    "search_resource": "搜索资源",
+    "get_content": "获取内容",
+    "set_metadata": "设置元数据",
+    "load_tags_failed": "加载标签失败",
+    "title_save_failed": "保存标题失败"
+  },
+  "error": {
+    "notFound": "笔记未找到"
+  },
+  "learningHub": {
+    "share_success_title": "分享成功",
+    "share_success_message": "已复制资源路径，可发送给其他人",
+    "share_failed_title": "分享失败",
+    "share_failed_message": "复制分享链接失败，请检查剪贴板权限"
+  },
+  "mistakeReferenceCard": {
+    "title": "错题引用",
+    "loading": "加载题目内容中…",
+    "empty": "暂无题目内容",
+    "error": "题目内容加载失败，请稍后重试",
+    "viewDetail": "查看错题详情",
+    "untitled": "未命名错题"
+  },
+  "favorites": {
+    "toast_marked": "已加入收藏",
+    "toast_unmarked": "已取消收藏",
+    "toast_error_title": "收藏操作失败",
+    "context_mark": "加入收藏",
+    "context_unmark": "取消收藏",
+    "toolbar_mark": "收藏当前笔记",
+    "toolbar_unmark": "取消收藏",
+    "open_note": "打开「{{title}}」"
+  },
+  "graph_notes": {
+    "mode_label": "模式",
+    "mode_notes": "笔记",
+    "mode_graph": "知识图谱笔记",
+    "switch_to_graph": "切换到图谱模式",
+    "switch_to_notes": "切换到笔记模式",
+    "load_error": "加载图谱数据失败",
+    "created": "图谱笔记已创建",
+    "create_error": "创建图谱笔记失败",
+    "renamed": "图谱笔记已重命名",
+    "rename_error": "重命名图谱笔记失败",
+    "deleted": "图谱笔记已删除",
+    "delete_error": "删除图谱笔记失败",
+    "search_error": "搜索失败",
+    "tag_added": "标签已添加",
+    "tag_error": "更新标签失败",
+    "feature_disabled": "此功能在图谱笔记模式下不可用",
+    "root_title": "图谱笔记根节点"
+  },
+  "notifications": {
+    "defaultSuccess": "操作完成",
+    "createFailed": "创建笔记失败",
+    "preferenceSaveFailed": "偏好保存失败",
+    "noActiveNote": "未选中笔记",
+    "editorUnavailable": "当前编辑器不可用",
+    "vectorCleared": "已清空向量索引（{{title}} 内容为空）",
+    "vectorQueued": "向量重建已加入队列",
+    "vectorUpdated": "向量已更新",
+    "vectorUpdateFailed": "向量更新失败",
+    "vectorRemoved": "已移除向量索引",
+    "vectorRemoveFailed": "移除向量失败",
+    "reindexingProgress": "重建：{{title}}",
+    "noPendingVectors": "没有待更新的笔记",
+    "copySuccess": "已复制到剪贴板",
+    "importSingle": "文件已导入：{{name}}",
+    "importMultiple": "已导入 {{count}} 个文件",
+    "importFailed": "导入失败：{{error}}",
+    "wordCountTitle": "字数统计",
+    "wordCountDescription": "当前文档共 {{count}} 个字符",
+    "noteLocated": "已定位到笔记",
+    "noteNotFound": "未找到关联的笔记",
+    "jumpFailed": "跳转失败",
+    "tagStateSaveFailed": "标签状态保存失败",
+    "folderStateSaveFailed": "文件夹结构保存失败",
+    "renameFailed": "重命名失败",
+    "treeStateSaveFailed": "树视图状态保存失败",
+    "ragConfigSaved": "已保存配置",
+    "ragConfigSaveFailed": "保存配置失败",
+    "reembedTriggered": "重嵌入已触发",
+    "reembedFailed": "重嵌入失败",
+    "fontSaved": "字体设置已保存",
+    "fontSaveFailed": "字体设置保存失败",
+    "treeStateReset": {
+      "title": "树结构状态已重置",
+      "description": "检测到损坏的树结构偏好，已恢复默认展开状态。"
+    },
+    "vectorStatusPersistFailed": "向量状态保存失败。",
+    "reindexingRunning": "正在刷新向量索引…",
+    "reindexingQueued": "正在排队重建向量索引…",
+    "unknownFile": "未命名文件",
+    "importFailedWithName": "导入 {{name}} 失败",
+    "importParseFailed": "解析失败：{{error}}",
+    "retryLater": "请稍后重试。",
+    "localBackupFailed": "本地备份失败",
+    "storageInsufficient": "浏览器存储空间不足，请手动保存笔记。",
+    "backupRestored": "已恢复本地备份",
+    "backupSaveFailed": "恢复后保存失败。",
+    "retryOrManualSave": "稍后重试或手动保存。",
+    "reembedStart": "已启动重嵌入",
+    "reindexingCompleted": "索引刷新完成（{{count}} 条）",
+    "reindexingQueuedDone": "已加入重建队列（{{count}} 条）",
+    "reindexingFailed": "索引刷新失败",
+    "backfillSuccess": "已补建缺失索引（{{count}} 条）",
+    "backfillFailed": "补建缺失索引失败",
+    "backupRestoredDescription": "{{title}} 已同步保存。",
+    "exportPdfSuccess": "已导出 PDF：{{name}}",
+    "exportPdfFailed": "导出 PDF 失败：{{error}}",
+    "exportSuccessTitle": "导出完成",
+    "exportSuccess": "已将 {{subject_count}} 个学科的 {{note_count}} 条笔记打包至 {{path}}。",
+    "exportFailedTitle": "导出失败",
+    "exportFailed": "导出笔记失败：{{error}}",
+    "exportNeedSelection": "请至少选择一个学科后再导出。",
+    "conflictTitle": "检测到内容冲突",
+    "conflictBody": "这条笔记已在其他窗口或设备保存。我们已在本地备份了当前编辑内容，请先查看最新版本，再决定是否恢复本地草稿。",
+    "loadFailed": "加载失败"
+  },
+  "vector": {
+    "status": {
+      "none": "未选中笔记",
+      "missing": "未建立索引",
+      "stale": "待更新",
+      "fresh": "已同步"
+    }
+  },
+  "findReplace": {
+    "inputRequired": "请输入查找内容",
+    "editorNotReady": "编辑器尚未就绪",
+    "findUnsupported": "当前编辑器不支持查找",
+    "noMatch": "未找到匹配",
+    "replaceUnsupported": "当前编辑器不支持替换",
+    "replaceOne": "已替换 1 处",
+    "replaceFailed": "替换失败",
+    "editorUnavailable": "当前编辑器不可用",
+    "replaceMany": "已替换 {{count}} 处",
+    "replaceNone": "未找到可替换内容"
+  },
+  "mentions": {
+    "loading": "正在加载…",
+    "result_title": "引用匹配",
+    "hint": "输入关键词以引用",
+    "empty": "未找到匹配项",
+    "type_to_search": "输入内容以检索引用对象",
+    "irec_group": "灵感图谱卡片",
+    "untitled_card": "未命名卡片",
+    "no_insight": "暂无分析摘要",
+    "irec_prefix": "@灵感"
+  },
+  "toolbar": {
+    "new_note": "新建笔记",
+    "new_folder": "新建文件夹",
+    "refresh": "刷新",
+    "import": "导入",
+    "import_md": "导入Markdown",
+    "import_pdf": "导入PDF",
+    "import_docx": "导入Word文档",
+    "export": "导出",
+    "export_md": "导出为Markdown",
+    "export_library": "笔记库管理",
+    "export_all": "全部导出",
+    "trash": "回收站",
+    "font_preferences": "字体偏好",
+    "theme_preferences": "主题偏好",
+    "assistant": "AI悬浮助手",
+    "assistant_welcome": "有什么可以帮您处理笔记的吗？",
+    "assistant_placeholder": "输入问题...",
+    "crepe_demo": "打开Crepe示例",
+    "upload": "上传",
+    "save": "保存",
+    "undo": "撤销",
+    "redo": "重做",
+    "copy": "复制",
+    "paste": "粘贴",
+    "print": "打印",
+    "fullscreen": "全屏",
+    "bold": "粗体",
+    "italic": "斜体",
+    "strikethrough": "删除线",
+    "code": "行内代码",
+    "heading1": "一级标题",
+    "heading2": "二级标题",
+    "heading3": "三级标题",
+    "bulletList": "无序列表",
+    "orderedList": "有序列表",
+    "taskList": "任务列表",
+    "quote": "引用",
+    "horizontalRule": "分隔线",
+    "codeBlock": "代码块",
+    "link": "链接",
+    "image": "图片",
+    "table": "表格",
+    "math": "数学公式"
+  },
+  "search": {
+    "placeholder": "搜索笔记...",
+    "semantic_search": "语义检索",
+    "search_current_only": "仅搜索当前笔记",
+    "no_results": "未找到匹配的笔记",
+    "searching": "搜索中...",
+    "search_button": "搜索",
+    "clear_search": "清空搜索",
+    "advanced_search": "高级搜索",
+    "results_count": "找到 {{count}} 个结果",
+    "show": "显示：",
+    "auto_search_hint": "输入自动搜索，结果将显示在编辑器下方",
+    "fts": {
+      "heading": "关键字检索（点击跳转）",
+      "prev": "上一处",
+      "next": "下一处",
+      "shortcutHint": "↑/↓ 选择 · Enter 打开 · Esc 关闭 · Tab 切换"
+    },
+    "rag": {
+      "inspectTitle": "学科索引体检",
+      "inspectSummary": "笔记{{total}}，缺映射{{missing_mapping}}，分库错位{{wrong_library}}，无向量{{no_vectors}}",
+      "inspectLoading": "正在扫描…",
+      "inspectCopy": "复制JSON",
+      "inspectEmpty": "没有发现异常项",
+      "problemsOnly": "仅看异常",
+      "heading": "语义检索结果（链接关联笔记）",
+      "perDocument": "逐条笔记",
+      "prevChunk": "上一分块",
+      "nextChunk": "下一分块"
+    },
+    "collapse": "收起",
+    "expand": "展开"
+  },
+  "editor": {
+    "toolbar": {
+      "bold": "粗体",
+      "italic": "斜体",
+      "underline": "下划线",
+      "strikethrough": "删除线",
+      "heading": "标题",
+      "code": "代码",
+      "code_block": "代码块",
+      "link": "链接",
+      "image": "图片",
+      "table": "表格",
+      "list": "列表",
+      "ordered_list": "有序列表",
+      "unordered_list": "无序列表",
+      "quote": "引用",
+      "divider": "分隔线"
+    },
+    "table": {
+      "add_row_before": "在上方插入行",
+      "add_row_after": "在下方插入行",
+      "delete_row": "删除当前行",
+      "add_col_before": "在左侧插入列",
+      "add_col_after": "在右侧插入列",
+      "delete_col": "删除当前列",
+      "toggle_header_row": "切换表头行",
+      "toggle_header_col": "切换表头列",
+      "merge_cells": "合并单元格",
+      "split_cell": "拆分单元格",
+      "delete_table": "删除整表",
+      "cell_bg_label": "单元格背景色",
+      "set_cell_bg": "应用背景色"
+    },
+    "image_upload": {
+      "save_failed": "图片无法保存到当前笔记：{{error}}",
+      "drop_failed": "拖拽图片处理失败：{{error}}",
+      "paste_failed": "粘贴图片处理失败：{{error}}",
+      "command_failed": "Slash 指令插入图片失败：{{error}}",
+      "success": "图片已插入",
+      "placeholder": "点击或拖拽上传图片",
+      "caption_placeholder": "添加图片说明...",
+      "inline_placeholder": "粘贴图片链接或上传",
+      "drop_overlay_title": "释放以插入图片",
+      "drop_overlay_hint": "支持 PNG、JPG、GIF、WebP 等格式"
+    },
+    "save_status": {
+      "saved": "已保存",
+      "saving": "保存中...",
+      "saved_at": "已保存于 {{time}}",
+      "unsaved": "未保存",
+      "save_failed": "保存失败",
+      "conflict": "检测到冲突，请检查最新内容",
+      "auto_save": "自动保存"
+    },
+    "placeholder": {
+      "default": "开始书写...",
+      "body": "输入 '/' 唤起命令菜单..."
+    },
+    "find_replace": "查找替换",
+    "find": "查找",
+    "replace": "替换",
+    "replace_all": "全部替换",
+    "case_sensitive": "区分大小写",
+    "whole_word": "全字匹配",
+    "regex": "正则表达式",
+    "next": "下一个",
+    "previous": "上一个",
+    "no_matches": "无匹配项",
+    "matches_count": "{{current}}/{{total}}",
+    "importedNoteTitle": "导入笔记",
+    "empty_state": {
+      "title": "未选择笔记",
+      "description": "请从左侧选择笔记，或创建新笔记开始记录。",
+      "actions": {
+        "new_folder": "新建文件夹",
+        "search_note": "搜索笔记",
+        "open_assistant": "打开 AI 助手"
+      }
+    },
+    "font": {
+      "size_label": "字号",
+      "size_placeholder": "字号",
+      "family_label": "字体",
+      "family_placeholder": "字体",
+      "line_height_label": "行距",
+      "line_height_placeholder": "行距",
+      "reset": "重置"
+    },
+    "bubble": {
+      "ask_ai": "向 AI 询问",
+      "reset": "重置",
+      "apply": "应用"
+    },
+    "placeholder_hints": {
+      "heading": "标题 {{level}}",
+      "body": "输入 '/' 呼出命令，连续输入 '++' 触发续写…"
+    },
+    "image": {
+      "alt_prompt": "图片替代文本",
+      "title_prompt": "图片标题/说明",
+      "menu_title": "图片设置",
+      "width": "宽度",
+      "align": "对齐",
+      "align_left": "左对齐",
+      "align_center": "居中",
+      "align_right": "右对齐",
+      "alt_text": "Alt 文本",
+      "alt_placeholder": "描述图片内容...",
+      "caption": "图片说明",
+      "caption_placeholder": "添加图片说明...",
+      "click_to_edit": "点击编辑...",
+      "reset": "重置"
+    },
+    "slash": {
+      "link_title_prompt": "链接标题",
+      "youtube_url_prompt": "YouTube 地址",
+      "video_url_prompt": "视频地址"
+    },
+    "math": {
+      "title_block": "插入块级公式",
+      "title_inline": "插入内联公式",
+      "title_edit": "编辑公式",
+      "insert": "插入",
+      "update": "更新",
+      "code": "代码",
+      "preview": "预览",
+      "shortcut_hint": "提示: Ctrl/⌘ + Enter 快速插入",
+      "invalid_latex": "无效的 LaTeX 语法",
+      "presets": {
+        "fraction": "分数",
+        "sqrt": "平方根",
+        "power": "幂",
+        "subscript": "下标",
+        "summation": "求和",
+        "product": "连乘",
+        "integral": "积分",
+        "limit": "极限",
+        "derivative": "导数",
+        "partial": "偏导数",
+        "matrix2x2": "2×2矩阵",
+        "matrix3x3": "3×3矩阵",
+        "vector": "向量",
+        "greek_alpha": "希腊字母α",
+        "greek_theta": "希腊字母θ",
+        "infinity": "无穷",
+        "neq": "不等式"
+      },
+      "presets_label": "常用模板",
+      "category": {
+        "basic": "基础",
+        "calculus": "微积分",
+        "matrix": "矩阵",
+        "symbols": "符号"
+      }
+    },
+    "image_resizer": {
+      "title": "调整图片大小",
+      "width_label": "宽度",
+      "reset": "重置宽度"
+    },
+    "node_selector": {
+      "placeholder": "块类型",
+      "paragraph": "普通段落",
+      "heading1": "一级标题",
+      "heading2": "二级标题",
+      "heading3": "三级标题",
+      "bullet": "无序列表",
+      "ordered": "有序列表",
+      "task": "待办列表",
+      "quote": "引用"
+    },
+    "generative": {
+      "label": "AI 模式",
+      "enabled": "AI 续写 · {{mode}}",
+      "disabled": "生成模式已关闭",
+      "profile_placeholder": "选择生成风格",
+      "badge": "AI · {{mode}}",
+      "modes": {
+        "balanced": "均衡",
+        "precise": "严谨",
+        "creative": "创意"
+      }
+    },
+    "link_selector": {
+      "title": "插入内部链接",
+      "matching": "匹配 '{{query}}'",
+      "hint": "输入 [[ 快速搜索笔记",
+      "loading": "搜索中…",
+      "empty": "没有找到匹配笔记",
+      "instructions": "↑↓ 切换 · Enter 插入 · Esc 关闭",
+      "create": "使用 '{{query}}' 创建链接",
+      "error": "链接检索失败：{{message}}"
+    },
+    "annotation": {
+      "prompt_text": "批注内容",
+      "prompt_author": "作者"
+    },
+    "ai_stop": "停止续写",
+    "portaled_to_canvas": "编辑器已在白板中打开",
+    "portaled_hint": "在白板中编辑此笔记"
+  },
+  "find": {
+    "placeholder": "查找…"
+  },
+  "tree": {
+    "root": "我的笔记",
+    "all_notes": "全部笔记",
+    "context_menu": {
+      "rename": "重命名",
+      "delete": "删除",
+      "new_note": "新建笔记",
+      "new_folder": "新建文件夹",
+      "move": "移动",
+      "duplicate": "复制",
+      "add_to_favorites": "添加到收藏",
+      "remove_from_favorites": "从收藏移除",
+      "copy_path": "复制路径",
+      "properties": "属性",
+      "open": "打开"
+    },
+    "rename_dialog": {
+      "title": "重命名",
+      "title_note": "重命名笔记",
+      "title_folder": "重命名文件夹",
+      "placeholder": "输入新名称...",
+      "confirm": "确认",
+      "cancel": "取消"
+    },
+    "delete_confirm": {
+      "title": "确认删除",
+      "description": "此操作将把项目移至回收站",
+      "description_note": "确定要删除笔记「{{name}}」吗？",
+      "description_folder": "确定要删除文件夹「{{name}}」吗？该文件夹下的所有内容也会被删除。",
+      "confirm": "删除",
+      "cancel": "取消"
+    },
+    "create_note": {
+      "title": "新建笔记",
+      "placeholder": "输入笔记名称..."
+    },
+    "create_folder": {
+      "title": "新建文件夹",
+      "placeholder": "输入文件夹名称..."
+    },
+    "aria": {
+      "expand": "展开文件夹",
+      "collapse": "折叠文件夹",
+      "tree": "笔记树"
+    },
+    "filter": {
+      "placeholder": "过滤笔记树",
+      "empty": "未找到匹配的节点"
+    },
+    "vectorStatus": {
+      "fresh": "向量：最新",
+      "pending": "向量：待更新",
+      "none": "向量：未生成"
+    },
+    "empty": "暂无数据"
+  },
+  "trash": {
+    "title": "回收站",
+    "empty": "回收站为空",
+    "empty_message": "回收站中没有任何内容",
+    "restore": "恢复",
+    "delete_permanently": "永久删除",
+    "empty_trash": "清空回收站",
+    "confirm_empty": "确定要清空回收站吗？此操作不可撤销。",
+    "confirm_hard_delete": "确定要永久删除「{{name}}」吗？此操作不可撤销。",
+    "confirm_empty_title": "确认清空",
+    "confirm_delete_title": "确认删除",
+    "restored_success": "已恢复",
+    "deleted_success": "已永久删除",
+    "emptied_success": "回收站已清空",
+    "items_count": "{{count}} 个项目",
+    "load_failed": "加载回收站失败",
+    "restore_success": "恢复成功",
+    "restore_failed": "恢复失败",
+    "empty_success": "回收站已清空",
+    "delete_success": "已永久删除",
+    "delete_failed": "删除失败",
+    "empty_placeholder": "回收站为空",
+    "confirm_empty_desc": "确定要清空回收站吗？此操作不可撤销。",
+    "confirm_delete_desc": "确定要永久删除此项目吗？此操作不可撤销。"
+  },
+  "assets": {
+    "title": "资源管理",
+    "upload": "上传资源",
+    "delete": "删除资源",
+    "orphan_scan": "扫描孤立文件",
+    "orphan_clean": "清理孤立文件",
+    "total_size": "总大小",
+    "orphan_count": "孤立文件数",
+    "scanning": "扫描中...",
+    "cleaning": "清理中...",
+    "scan_complete": "扫描完成",
+    "clean_complete": "清理完成",
+    "no_orphans": "未发现孤立文件"
+  },
+  "preferences": {
+    "title": "偏好设置",
+    "font_family": "字体",
+    "font_size": "字体大小",
+    "theme": "主题",
+    "system_default": "系统默认",
+    "sans_serif": "无衬线",
+    "serif": "衬线",
+    "monospace": "等宽",
+    "theme_light": "亮色",
+    "theme_dark": "暗色",
+    "theme_auto": "自动",
+    "editor_settings": "编辑器设置",
+    "line_height": "行高",
+    "indent_size": "缩进大小"
+  },
+  "tabs": {
+    "close": "关闭标签",
+    "close_others": "关闭其他标签",
+    "close_right": "关闭右侧标签",
+    "close_all": "关闭所有标签",
+    "pin": "固定标签",
+    "unpin": "取消固定",
+    "scrollLeft": "向左滚动标签列表",
+    "scrollRight": "向右滚动标签列表"
+  },
+  "library_manager": {
+    "title": "笔记库管理",
+    "description": "导出笔记为 Markdown ZIP 或完整备份，或导入之前导出的笔记库",
+    "tabs": {
+      "export": "导出",
+      "import": "导入"
+    }
+  },
+  "import": {
+    "title": "导入笔记",
+    "errorTitle": "导入错误",
+    "select_file": "选择文件",
+    "importing": "导入中...",
+    "success": "成功导入 {{note_count}} 条笔记（{{subject_count}} 个学科），跳过 {{skipped}} 条已存在的笔记",
+    "success_with_overwrite": "成功导入 {{note_count}} 条笔记（{{subject_count}} 个学科），跳过 {{skipped}} 条，覆盖 {{overwritten}} 条",
+    "successTitle": "导入成功",
+    "failed": "导入失败",
+    "unsupported_format": "不支持的文件格式",
+    "not_implemented": "导入功能开发中，敬请期待",
+    "file": {
+      "label": "选择导入文件",
+      "placeholder": "选择 .zip 备份文件",
+      "choose": "选择文件",
+      "clear": "清除",
+      "help": "支持统一 ZIP 格式（Markdown + 元数据），同时兼容旧版 AIMN 格式",
+      "dialog_title": "选择笔记库备份文件"
+    },
+    "conflict_strategy": {
+      "label": "冲突策略",
+      "placeholder": "选择冲突处理方式",
+      "skip": "跳过已存在的笔记",
+      "overwrite": "覆盖已存在的笔记",
+      "merge_keep_newer": "保留更新时间较新的版本",
+      "help": "当导入的笔记与本地笔记 ID 相同时的处理方式"
+    },
+    "progress": {
+      "stage": {
+        "parsing": "正在解析归档文件...",
+        "importing_notes": "正在导入笔记...",
+        "importing_attachments": "正在导入附件...",
+        "importing_preferences": "正在导入偏好设置...",
+        "done": "导入完成"
+      },
+      "processed": "已处理 {{processed}}/{{total}}"
+    },
+    "instructions": {
+      "title": "导入说明",
+      "step1": "选择之前导出的备份文件（.zip）",
+      "step2": "系统会自动检测文件格式并导入笔记、附件和设置",
+      "step3": "已存在的笔记（相同 ID）将根据冲突策略处理"
+    },
+    "restore_warning": "导入备份时，如果备份中包含已删除的笔记，将会自动恢复并覆盖当前回收站中的同名笔记；请在继续前确认备份数据可靠。",
+    "filter_name": "笔记归档",
+    "actions": {
+      "import": "导入",
+      "importing": "导入中..."
+    }
+  },
+  "export": {
+    "title": "导出笔记库",
+    "description": "将笔记、附件和偏好设置打包成可迁移的归档文件。",
+    "errorTitle": "导出错误",
+    "exporting": "导出中...",
+    "success": "导出成功",
+    "success_desc": "已导出 {{count}} 条笔记到：{{path}}",
+    "failed": "导出失败",
+    "select_format": "选择格式",
+    "format": {
+      "label": "导出格式",
+      "markdown": "统一 ZIP 格式",
+      "markdown_desc": "Markdown 文件 + 完整元数据，兼容其他软件",
+      "markdown_help": "每条笔记导出为独立的 .md 文件（含 YAML 元数据），附件、版本历史和偏好设置一并打包。可直接用常见 Markdown 编辑器打开查看。"
+    },
+    "scope": {
+      "label": "导出范围",
+      "placeholder": "选择学科",
+      "current": "当前学科",
+      "all": "全部学科",
+      "custom": "自定义选择…",
+      "help": "自定义导出可一次性打包多个学科的内容。"
+    },
+    "subjects": {
+      "label": "请选择要导出的学科",
+      "help": "仅会导出已启用且存在笔记的学科。",
+      "empty": "暂无可导出的学科。"
+    },
+    "versions": {
+      "label": "包含版本历史",
+      "help": "将版本快照一同导出，体积会稍大。"
+    },
+    "destination": {
+      "label": "导出位置",
+      "placeholder": "使用默认导出目录",
+      "choose": "选择…",
+      "clear": "清除",
+      "help": "若未指定路径，文件将保存到应用数据目录的 exports 文件夹。"
+    },
+    "filter_name": "笔记备份",
+    "actions": {
+      "export": "导出",
+      "exporting": "正在导出…"
+    }
+  },
+  "dialogs": {
+    "close": "关闭",
+    "confirm": "确认",
+    "cancel": "取消",
+    "save": "保存",
+    "discard": "放弃",
+    "apply": "应用"
+  },
+  "upload": {
+    "uploading": "上传中...",
+    "success": "上传成功",
+    "failed": "上传失败",
+    "image_too_large": "图片过大，超过 {{limit}}MB",
+    "unsupported_format": "不支持的图片格式"
+  },
+  "fontPresets": {
+    "body": {
+      "systemSans": {
+        "label": "系统默认（无衬线）",
+        "description": "适配操作系统的无衬线字体，保持界面风格一致。"
+      },
+      "roundedSans": {
+        "label": "圆体无衬线（Nunito / 苹方）",
+        "description": "圆润的无衬线字体组合，更显亲和柔和。"
+      },
+      "serifSong": {
+        "label": "宋体风格（思源宋体）",
+        "description": "传统衬线／宋体风格，更适合长文本阅读。"
+      },
+      "kaiti": {
+        "label": "楷体风格（霞鹜文楷 / 楷体）",
+        "description": "手写风格字体，适合笔记或草稿。"
+      }
+    },
+    "code": {
+      "jetbrains": {
+        "label": "JetBrains Mono",
+        "description": "带连字的现代程序员字体。"
+      },
+      "fira": {
+        "label": "Fira Code",
+        "description": "常用的连字编程字体。"
+      },
+      "consolas": {
+        "label": "Consolas",
+        "description": "Windows 常见的等宽字体。"
+      },
+      "menlo": {
+        "label": "Menlo",
+        "description": "macOS 常见的等宽字体。"
+      }
+    }
+  },
+  "validation": {
+    "folder": {
+      "empty": "名称不能为空。",
+      "invalidChars": "名称不能包含保留字符 {{chars}}。",
+      "tooLong": "名称过长（最多 120 个字符）。"
+    }
+  },
+  "confirmations": {
+    "leaveWithUnsaved": "存在未保存的更改，确定要离开吗？",
+    "closeTabWithUnsaved": "此标签页有未保存的更改，确定要关闭吗？",
+    "renameMayUpdateTitle": "仍有未保存内容，重命名可能会更新标题行，是否继续？"
+  },
+  "status": {
+    "wordCount": "{{count}} 字符",
+    "saving": "正在保存…",
+    "error": "保存失败",
+    "savedAt": "已保存 {{time}}"
+  },
+  "actions": {
+    "restore": "恢复",
+    "dismiss": "忽略",
+    "saveConfig": "保存配置",
+    "exportMarkdown": "导出 Markdown",
+    "save": "保存",
+    "settings": "设置",
+    "delete_success": "删除成功",
+    "delete_failed": "删除失败",
+    "create_failed": "创建失败",
+    "save_success": "保存成功",
+    "save_failed": "保存失败",
+    "title_save_failed": "内容已保存，但标题更新失败",
+    "update_failed": "更新失败",
+    "rename_failed": "重命名失败",
+    "conflict": "内容已在其他处更新",
+    "conflict_hint": "请刷新后再尝试保存或回滚到历史版本"
+  },
+  "common": {
+    "no_selection": "未选择笔记",
+    "select_or_create_intro": "请从左侧选择笔记，或创建新笔记开始记录。",
+    "untitled": "未命名",
+    "untitledNote": "未命名笔记",
+    "noSubject": "未选择学科",
+    "noteRoot": "笔记",
+    "subjectFallback": "默认",
+    "saving": "保存中…",
+    "saved_at": "已保存 {{time}}",
+    "auto_save_enabled": "自动保存已启用",
+    "deleted_at": "删除时间"
+  },
+  "tooltips": {
+    "save": "保存（{{shortcut}}）",
+    "copyMarkdown": "复制 Markdown",
+    "print": "打印（{{shortcut}}）",
+    "exportPdf": "导出 PDF（{{shortcut}}）",
+    "fullscreen": "切换全屏（{{shortcut}}）"
+  },
+  "font": {
+    "bodyPlaceholder": "例如：'霞鹜文楷', 'KaiTi', serif",
+    "codePlaceholder": "例如：'Fira Code', 'JetBrains Mono', monospace",
+    "bodyCustomHint": "请确认自定义字体已安装。",
+    "codeCustomHint": "请确认自定义等宽字体已安装。",
+    "codeExample": "const preview = \"示例代码\"; // 请确认字体支持等宽显示",
+    "customFallbackHint": "未填写自定义内容时将回退到默认字体。",
+    "customOption": "自定义（CSS font-family）",
+    "previewSample": "示例文本 / Sample text",
+    "sizeHint": "调整正文基础字号（{{min}}-{{max}} 像素），会立即应用到当前笔记页面。"
+  },
+  "rag": {
+    "loading": "正在加载配置…",
+    "currentNote": "当前笔记",
+    "vectorUpdatedAt": "向量更新时间：{{time}}",
+    "vectorNotIndexed": "尚未建立向量索引。",
+    "vectorLatest": "最近：{{time}}",
+    "vectorLatestEmpty": "最近：—",
+    "manualRefreshHint": "内容变更后不会自动更新向量，请在合适时机手动刷新。",
+    "pendingHint": "当笔记内容更新时间晚于向量更新时间时，会显示为“待更新”。自动保存后系统会在后台刷新向量索引。",
+    "pendingCount": "待更新 {{count}} 条",
+    "pendingMore": "… 还有 {{count}} 条待更新",
+    "statusLabel": "状态：",
+    "actions": {
+      "backfillMissing": "补回缺失索引",
+      "backfillSuccess": "补回任务完成",
+      "reembedSubject": "重建当前学科向量",
+      "updateCurrent": "更新当前索引",
+      "clearCurrent": "清除当前索引"
+    },
+    "backfillStart": "正在补回缺失向量…",
+    "backfillSuccess": "补回任务完成",
+    "backfillFailed": "补回失败：{{error}}",
+    "backfillDone": "已补回：{{count}}",
+    "indexManager": {
+      "title": "索引与向量管理",
+      "description": "保存动作仅写入笔记内容，请在内容稳定后手动更新或清理向量索引。"
+    },
+    "statusSummary": "{{documents}} 文档 / {{chunks}} 分块",
+    "noteCount": "笔记 {{count}}",
+    "concurrency": "并发数",
+    "inspectTitle": "学科索引体检",
+    "inspectSummary": "笔记 {{total}} 条，缺失映射 {{missing_mapping}}，归属异常 {{wrong_library}}，无向量 {{no_vectors}}",
+    "inspectLoading": "扫描中…",
+    "inspectCopy": "复制 JSON",
+    "inspectEmpty": "未发现问题",
+    "problemsOnly": "仅显示问题项",
+    "configDialog": {
+      "title": "RAG 设置（{{subject}}）"
+    },
+    "config": {
+      "chunkSize": "分块大小",
+      "chunkOverlap": "分块重叠",
+      "minChunkSize": "最小分块长度",
+      "enableRerank": "启用重排"
+    }
+  },
+  "contextPanel": {
+    "title": "属性"
+  },
+  "context": {
+    "open": "打开",
+    "outline": "大纲",
+    "outgoing": "外链",
+    "select_hint": "选择笔记以查看上下文",
+    "typography_title": "排版样式",
+    "typography_description": "调整字号、行距和字体",
+    "typography_default": "默认",
+    "typography_markdown_hint": "Markdown 编辑器使用默认样式，不支持富文本格式（字体、字号等）。",
+    "created": "创建时间",
+    "updated": "更新时间",
+    "tags": "标签",
+    "add_tag": "添加标签",
+    "tag_add_failed": "添加标签失败",
+    "tag_remove_failed": "删除标签失败",
+    "no_headings": "暂无标题",
+    "assets": "附件",
+    "no_assets": "暂无附件",
+    "no_outgoing": "暂无外链",
+    "external_links": "外部链接",
+    "link_not_found": "未找到关联的笔记",
+    "link_open_failed": "打开链接失败",
+    "external_open_failed": "打开外部链接失败",
+    "external_open_confirm": "即将打开外部链接，是否继续？",
+    "unresolved_link": "未解析",
+    "open_asset_failed": "打开附件失败",
+    "delete_asset_failed": "删除附件失败",
+    "load_failed": "加载链接失败：{{message}}",
+    "retry": "重试",
+    "truncated_outgoing": "已截断显示前 200 条出链",
+    "truncated_external": "已截断显示前 200 条外链"
+  },
+  "outlineMindmap": {
+    "empty": "空空如也",
+    "focusLabel": "当前节点",
+    "untitled": "无标题",
+    "childrenCount": "{{count}} 个直接子节点",
+    "descCount": "共 {{count}} 个下级节点",
+    "depthLabel": "层级 {{depth}}",
+    "hasNote": "包含备注",
+    "search": {
+      "matches": "{{count}} 个匹配结果",
+      "empty": "未找到匹配节点",
+      "listTitle": "匹配列表",
+      "jump": "定位",
+      "more": "还有 {{count}} 条结果"
+    },
+    "stats": {
+      "title": "大纲概览",
+      "nodes": "节点总数",
+      "maxDepth": "最大层级",
+      "collapsed": "折叠 {{count}} 个",
+      "focusedDepth": "当前层级 {{depth}}"
+    },
+    "actions": {
+      "addChild": "添加子节点",
+      "addSibling": "添加同级",
+      "expand": "展开",
+      "collapse": "折叠",
+      "focus": "聚焦此节点",
+      "delete": "删除节点"
+    },
+    "zoom": {
+      "label": "缩放",
+      "in": "放大",
+      "out": "缩小",
+      "reset": "回到中心"
+    },
+    "hints": {
+      "title": "交互提示",
+      "drag": "按住空白处拖动画布",
+      "wheel": "滚轮缩放或横向滚动",
+      "doubleClick": "双击节点即可快速编辑"
+    }
+  },
+  "outlineEditor": {
+    "title": "我的笔记",
+    "search_placeholder": "搜索节点 (Cmd+K)",
+    "view": {
+      "outline": "大纲",
+      "mindmap": "导图"
+    },
+    "undo": "撤销",
+    "redo": "重做",
+    "syncing": "同步中...",
+    "refresh": "刷新",
+    "export": "导出",
+    "close": "关闭",
+    "loading": "加载标签树...",
+    "root_title_placeholder": "知识图谱大纲",
+    "root_desc_placeholder": "根节点描述请在科目设置中维护",
+    "new_node": "新建节点",
+    "node_placeholder": "输入内容...",
+    "note_placeholder": "添加备注 (Markdown 支持)",
+    "focus_mode": "专注模式",
+    "complete": "完成",
+    "delete": "删除",
+    "delete_confirm_title": "确认删除",
+    "delete_confirm_desc": "确定要删除此节点吗？此操作不可撤销。",
+    "cancel": "取消",
+    "confirm": "确认",
+    "cannot_move_to_child": "不能将节点移动到自己的子节点下",
+    "delete_success": "标签已删除",
+    "delete_failed": "删除失败: {{error}}",
+    "create_success": "新建标签成功",
+    "create_child_success": "新建子标签成功",
+    "create_failed": "创建失败: {{error}}",
+    "indent_success": "缩进成功",
+    "indent_failed": "缩进失败: {{error}}",
+    "outdent_success": "反缩进成功",
+    "outdent_failed": "反缩进失败: {{error}}",
+    "order_updated": "标签顺序已更新",
+    "drag_failed": "拖拽同步失败: {{error}}",
+    "sync_name_failed": "同步失败: {{error}}",
+    "sync_desc_failed": "同步描述失败: {{error}}",
+    "load_failed": "加载标签树失败: {{error}}",
+    "root_note": "双向同步的标签树编辑器",
+    "create_default_name": "新建标签",
+    "create_child_name": "新建子标签",
+    "export_title": "导出文档",
+    "export_png": "导出为图片 (PNG)",
+    "export_png_desc": "适合分享到社交媒体",
+    "export_md": "导出为 Markdown",
+    "export_md_desc": "通用文本格式，适合迁移",
+    "export_json": "备份数据 (JSON)",
+    "export_json_desc": "保存完整结构以备恢复",
+    "export_coming": "导出功能开发中，敬请期待",
+    "shortcuts": {
+      "title": "键盘快捷键",
+      "sibling": "新建同级节点",
+      "indent": "缩进 / 新建子节点",
+      "outdent": "反缩进",
+      "move": "移动节点/导航",
+      "move_hint": "拖拽 / 方向键",
+      "edit": "编辑内容",
+      "edit_hint": "双击 / 选中后 Enter",
+      "undo_redo": "撤销 / 重做",
+      "view": "切换视图",
+      "view_hint": "顶部开关"
+    }
+  },
+  "assistant": {
+    "title": "AI悬浮助手",
+    "reset_chat": "重置对话",
+    "welcome": "有什么可以帮您处理笔记的吗？",
+    "thinking": "思考中...",
+    "placeholder": "输入问题..."
+  },
+  "header": {
+    "add_tags": "添加标签...",
+    "manage_tags": "管理标签",
+    "tags": "标签",
+    "no_tags": "暂无标签",
+    "tag_placeholder": "输入新标签...",
+    "suggestions": "建议标签",
+    "load_tags_failed": "加载标签失败",
+    "tag_exists": "标签已存在",
+    "rename_tag": "重命名标签",
+    "rename_tag_success": "标签已更新",
+    "rename_tag_count": "已更新 {{count}} 条笔记",
+    "rename_failed": "重命名标签失败",
+    "remove_tag": "移除标签",
+    "print_failed": "打印失败：无内容可打印",
+    "close_details": "关闭详情",
+    "open_details": "打开详情",
+    "versions": "版本历史",
+    "export": "导出当前学科",
+    "exporting": "导出中...",
+    "export_failed": "导出失败",
+    "export_success": "已导出到：{{path}}",
+    "export_single": "导出当前笔记（含附件）",
+    "export_single_title": "导出单条笔记",
+    "export_single_success": "已导出到：{{path}}",
+    "export_single_failed": "导出失败：{{error}}",
+    "export_single_mobile_hint": "移动端将使用默认导出目录，请稍后在文件管理器中查看。",
+    "exporting_single": "正在导出当前笔记…",
+    "export_filter_name": "Markdown 笔记导出"
+  },
+  "slashMenu": {
+    "textGroup": {
+      "label": "文本",
+      "text": "普通文本",
+      "h1": "一级标题",
+      "h2": "二级标题",
+      "h3": "三级标题",
+      "h4": "四级标题",
+      "h5": "五级标题",
+      "h6": "六级标题",
+      "quote": "引用",
+      "divider": "分隔线"
+    },
+    "listGroup": {
+      "label": "列表",
+      "bulletList": "无序列表",
+      "orderedList": "有序列表",
+      "taskList": "任务列表"
+    },
+    "advancedGroup": {
+      "label": "高级",
+      "image": "图片",
+      "codeBlock": "代码块",
+      "table": "表格",
+      "math": "数学公式"
+    }
+  },
+  "versions": {
+    "title": "版本历史",
+    "empty": "暂无历史版本",
+    "revert": "回滚",
+    "revert_as_new": "作为新版本回滚",
+    "compare": "对比",
+    "load_failed": "加载版本失败",
+    "revert_success": "已回滚到所选版本",
+    "revert_failed": "回滚失败"
+  },
+  "menu": {
+    "page_actions": "页面操作",
+    "copy_link": "拷贝链接",
+    "link_copied": "链接已复制",
+    "reveal_in_sidebar": "在侧边栏中显示",
+    "move_to_trash": "移至垃圾箱",
+    "export_import": "导入导出",
+    "history": "历史",
+    "itemCount": "共 {{count}} 项",
+    "referencedCount": "已引用 {{count}} 项",
+    "confirm": "确认选择",
+    "alreadyReferenced": "已被引用",
+    "addTextbook": "添加教材引用",
+    "addMistake": "添加错题引用"
+  },
+  "reference": {
+    "selectTextbook": "选择教材",
+    "selectMistake": "选择错题",
+    "selectExamSession": "选择题目集",
+    "searchPlaceholder": "搜索资源...",
+    "noTextbooks": "暂无教材",
+    "noMistakes": "暂无错题",
+    "noExamSessions": "暂无题目集",
+    "examSessionFallbackTitle": "题目集",
+    "noSubjectForMistakes": "请先选择科目",
+    "itemCount": "共 {{count}} 项",
+    "referencedCount": "已引用 {{count}} 项",
+    "confirm": "确认选择",
+    "alreadyReferenced": "已被引用",
+    "addTextbook": "添加教材引用",
+    "addMistake": "添加错题引用",
+    "time": {
+      "just_now": "刚刚",
+      "minutes_ago": "{{count}} 分钟前",
+      "hours_ago": "{{count}} 小时前",
+      "days_ago": "{{count}} 天前"
+    },
+    "invalid": "原始资源已被删除",
+    "validating": "校验中...",
+    "remove": "删除引用",
+    "refreshTitle": "刷新标题",
+    "cleanupInvalid": "清理失效引用",
+    "cleanupSuccess": "已清理 {{count}} 个失效引用",
+    "cleanupNone": "没有失效引用",
+    "refreshSuccess": "标题已更新",
+    "refreshFailed": "刷新失败：{{error}}",
+    "cannotPreview": "失效引用无法预览",
+    "cannotAddToChat": "失效引用无法添加到对话",
+    "source_db": {
+      "textbooks": "教材",
+      "mistakes": "错题",
+      "chat_v2": "附件",
+      "exam_sessions": "题目集"
+    },
+    "preview_type": {
+      "markdown": "Markdown",
+      "pdf": "PDF 文档",
+      "card": "卡片",
+      "image": "图片",
+      "exam": "题目集预览",
+      "none": "无预览"
+    },
+    "context_menu": {
+      "open": "打开引用",
+      "open_source": "打开原始资源",
+      "copy_link": "复制引用链接",
+      "remove": "移除引用",
+      "move": "移动到",
+      "properties": "属性"
+    },
+    "tooltip": {
+      "source": "来源：{{source}}",
+      "created_at": "引用于：{{time}}",
+      "invalid_hint": "原始资源已被删除，可右键移除此引用"
+    },
+    "aria": {
+      "reference_icon": "引用图标",
+      "reference_badge": "引用标记"
+    },
+    "empty_id": "请输入有效 ID",
+    "add_failed": "添加引用失败",
+    "add_reference": "添加引用",
+    "add_textbook": "添加教材引用",
+    "add_mistake": "添加错题引用",
+    "already_exists": "引用已存在",
+    "add_success": "已添加引用",
+    "remove_success": "已移除引用",
+    "add_to_folder": "将添加到当前文件夹",
+    "add_to_root": "将添加到根目录",
+    "enter_textbook_id": "请输入教材 ID（即将实现选择器）",
+    "enter_mistake_id": "请输入错题 ID（即将实现选择器）",
+    "to_chat_pending": "功能开发中",
+    "open_source": "打开原始内容",
+    "send_to_chat": "发送到对话",
+    "textbook": "教材",
+    "mistake": "错题",
+    "no_active_session": "没有活跃的对话",
+    "no_active_session_desc": "请先打开一个对话窗口",
+    "session_not_found": "会话不存在",
+    "node_not_found": "节点不存在",
+    "to_chat_success": "已添加到对话",
+    "to_chat_created_new": "已创建新的上下文引用",
+    "to_chat_reused": "复用了已有的上下文引用",
+    "to_chat_failed": "添加到对话失败",
+    "resource_not_found": "资源未找到",
+    "textbook_ref_fallback": "教材引用 {{id}}",
+    "mistake_ref_fallback": "错题引用 {{id}}",
+    "invalid_cannot_refresh": "引用已失效，无法刷新标题"
+  },
+  "previewPanel": {
+    "emptyContent": "暂无内容",
+    "empty": {
+      "title": "未选择内容",
+      "description": "从左侧选择笔记或引用以查看预览"
+    },
+    "folder": {
+      "title": "文件夹",
+      "description": "文件夹不支持预览，请展开后选择具体内容"
+    },
+    "note": {
+      "title": "笔记",
+      "description": "笔记会在编辑器中打开，请从左侧双击打开笔记"
+    },
+    "unsupported": {
+      "title": "不支持预览",
+      "description": "此类型的内容暂不支持预览"
+    },
+    "error": {
+      "title": "加载失败",
+      "unknownError": "未知错误，请稍后重试",
+      "resourceNotFound": "资源未找到",
+      "noReferenceData": "引用数据不存在",
+      "noMistakeData": "错题数据不存在"
+    },
+    "pdf": {
+      "type": "PDF 文档",
+      "unknownFile": "未知文件",
+      "noFile": "未指定 PDF 文件",
+      "opening": "正在打开...",
+      "openButton": "打开 PDF",
+      "openInline": "应用内预览",
+      "openSystem": "系统打开",
+      "hint": "点击按钮使用系统默认应用打开 PDF 文档",
+      "inlineHint": "可在应用内预览或使用系统默认应用打开",
+      "tooLarge": "文件过大，无法预览"
+    },
+    "mistake": {
+      "noData": "暂无错题数据",
+      "defaultType": "错题",
+      "statusCompleted": "已完成",
+      "statusPending": "待处理",
+      "userQuestion": "用户问题",
+      "questionContent": "题目内容",
+      "questionImage": "题目图片",
+      "summary": "错题总结",
+      "viewDetail": "查看详情"
+    },
+    "video": {
+      "noVideo": "无法加载视频",
+      "loadError": "视频加载失败"
+    },
+    "audio": {
+      "noAudio": "无法加载音频",
+      "loadError": "音频加载失败",
+      "skipBack": "快退 10 秒",
+      "pause": "暂停",
+      "play": "播放",
+      "skipForward": "快进 10 秒",
+      "unmute": "取消静音",
+      "mute": "静音"
+    },
+    "image": {
+      "preview": "图片预览",
+      "noImage": "暂无图片",
+      "loadError": "图片加载失败",
+      "zoomIn": "放大",
+      "zoomOut": "缩小",
+      "fullscreen": "全屏查看"
+    },
+    "exam": {
+      "noData": "暂无题目集数据",
+      "untitled": "未命名试卷",
+      "pageLabel": "第 {{index}} 页",
+      "pageImage": "第 {{index}} 页试卷图片",
+      "pageCount": "{{count}} 页",
+      "totalQuestions": "{{count}} 道题",
+      "questionCount": "{{count}} 道题",
+      "unknownQuestion": "未知题号",
+      "ocrText": "识别文本",
+      "noOcrText": "暂无识别文本",
+      "linked": "已关联",
+      "viewCardDetail": "查看题目详情",
+      "viewDetail": "查看题目集详情"
+    }
+  },
+  "tips": {
+    "versionHistory": "版本历史可在笔记面板中查看和回滚"
+  }
+}

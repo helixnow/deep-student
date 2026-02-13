@@ -1,0 +1,226 @@
+[package]
+name = "deep-student"
+version = "0.9.2"
+description = "Deep Student - AI驱动的智能学习助手"
+authors = ["you"]
+edition = "2021"
+default-run = "deep-student"
+license = "AGPL-3.0-or-later"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+# The `_lib` suffix may seem redundant but it is necessary
+# to make the lib name unique and wouldn't conflict with the bin name.
+# This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
+name = "deep_student_lib"
+crate-type = ["cdylib", "rlib", "staticlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+# 使用内置的 protoc 可执行文件，避免系统依赖
+protoc-bin-vendored = "3.0"
+
+[dependencies]
+# 公共依赖
+tauri-plugin-opener = "2.5"
+tauri-plugin-dialog = "2.6"
+tauri-plugin-http = "2.5.7"
+tauri-plugin-fs = "2"
+tauri-plugin-log = "2.8"
+tauri-plugin-updater = "2"
+tauri-plugin-process = "2"
+serde = { version = "1.0", features = ["derive", "rc"] }
+serde_json = { version = "1.0", features = ["preserve_order"] }
+uuid = { version = "1.7.0", features = ["v4", "serde"] }
+tokio = { version = "1.35.1", features = ["full"] }
+tokio-util = { version = "0.7", features = ["rt"] }
+rusqlite = { version = "0.29.0", features = ["bundled", "chrono", "backup"] }  # Android必须使用bundled
+base64 = "0.21.7"
+tempfile = "3.10.1"
+chrono = { version = "0.4.38", features = ["serde"] }
+anyhow = "1.0.80"
+thiserror = "1.0"
+async-trait = "0.1.77"
+futures-util = "0.3"
+r2d2 = "0.8.9"
+r2d2_sqlite = "0.22.0"
+regex = "1.0"
+# html2md 已移除（与 panic=abort 不兼容），使用 html2text 替代
+aes-gcm = "0.10"
+rand = "0.8"
+sha2 = "0.10.8"
+hex = "0.4"
+hostname = "0.4"  # P0-22: 获取主机名用于密钥生成
+nanoid = "0.4"
+ulid = "1.1"
+tracing = { version = "0.1", features = ["log"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+jsonschema = "0.18"
+# blake3 = "1.5"  # 临时禁用避免C编译问题
+# keyring = "2.0"  # 已禁用：改用加密文件存储，避免 Keychain 弹窗
+zip = { version = "0.6", default-features = false, features = ["deflate"] }
+url = "2.4"
+dirs = "4.0"
+image = "0.24"
+zerocopy = "0.7"
+backon = "0.4"
+config = { version = "0.14", features = ["toml"] }
+dotenvy = "0.15"
+sha1 = "0.10"
+html2text = "0.16.7"
+
+# 所有平台统一依赖配置
+tauri = { version = "2", features = ["protocol-asset"] }
+reqwest = { version = "0.11", default-features = false, features = ["json", "rustls-tls", "stream", "blocking"] }
+# 高性能缓存库
+moka = { version = "0.12", features = ["future"] }
+lru = "0.12"
+# 轻量级内置指标服务
+hyper = { version = "0.14", features = ["full"] }
+# RAG文档处理依赖（PDF 文本提取已统一使用 pdfium-render，不再依赖 pdf-extract）
+docx-rs = "0.4"
+calamine = "0.26"  # Excel/OpenDocument 电子表格解析（纯Rust实现）
+# 扩展文档格式支持（纯 Rust，跨平台友好）
+pptx-to-md = "0.2"   # PowerPoint → Markdown
+epub = "2.1"         # EPUB 电子书解析
+rtf-parser = "0.3"   # RTF 富文本解析
+csv = "1.3"          # CSV 解析
+encoding_rs = "0.8"  # 多编码支持（UTF-8/GBK）
+quick-xml = "0.37"   # XML 解析
+# 序列化支持
+bincode = "1.3"
+# 并行计算优化
+rayon = "1.8"
+# 高性能并发哈希表
+dashmap = "5.5.3"
+log = "0.4"
+# 错误上报（Sentry）- Android 使用 rustls 避免 OpenSSL
+# 启用 debug-images 支持 Native crash 符号化，anyhow 捕获 C/C++ 层面异常
+sentry = { version = "0.32", default-features = false, features = ["backtrace", "contexts", "panic", "rustls", "debug-images", "anyhow"] }
+sentry-tracing = { version = "0.32", default-features = false }
+futures = "0.3"
+tokio-tungstenite = { version = "0.21", default-features = false, features = ["connect", "rustls-tls-webpki-roots"] }
+tungstenite = { version = "0.21", default-features = false }
+
+# Optional: LanceDB backend for vectors (feature-gated)
+lancedb = { version = "0.22.1", optional = true, default-features = false }
+arrow-array = { version = "55.2.0", optional = true }
+arrow-schema = { version = "55.2.0", optional = true }
+## Optional tokenizer for precise token counting
+tiktoken-rs = { version = "0.5", optional = true }
+# 数据治理迁移框架
+refinery = { version = "0.9", features = ["rusqlite"], optional = true }
+
+# Additional deps for backup module
+walkdir = "2"
+# 磁盘空间检查: Unix 平台通过 libc::statvfs 获取可用空间
+libc = "0.2"
+
+# PDF 后端渲染（pdfium-render）
+# 注意：需要运行 scripts/download-pdfium.sh 下载对应平台的 pdfium 动态库
+# 使用 image_024 匹配项目的 image = "0.24" 版本
+pdfium-render = { version = "0.8", default-features = false, features = ["image_024", "pdfium_latest", "thread_safe"] }
+fs_extra = "1.3"
+urlencoding = "2.1.3"
+
+# 云存储 S3 兼容（可选，feature-gated 避免默认增加编译时间）
+aws-sdk-s3 = { version = "1.65", optional = true, default-features = false, features = ["behavior-version-latest", "rt-tokio"] }
+aws-config = { version = "1.5", optional = true, default-features = false, features = ["behavior-version-latest", "rt-tokio"] }
+
+# MCP SSE和OAuth支持
+eventsource-stream = "0.2"
+reqwest-eventsource = "0.5"
+zstd = "0.13.3"
+
+# OAuth2 在 Android 上暂不支持（会引入 native-tls）
+[target.'cfg(not(target_os = "android"))'.dependencies]
+oauth2 = "4.4"
+pkce = "0.2"
+# MCP客户端库
+
+
+# 开发调试插件（使用 mcp-debug feature 启用）
+# 注意：使用 hypothesi 的 mcp-server-tauri 桥接插件
+# 功能：截图、DOM访问、IPC监控、输入模拟、控制台日志等
+# 文档：https://hypothesi.github.io/mcp-server-tauri
+tauri-plugin-mcp-bridge = { version = "0.8", optional = true }
+
+[dev-dependencies]
+# 测试框架
+tokio-test = "0.4"
+# 断言增强
+assert_matches = "1.5"
+# 异步测试工具
+futures = "0.3"
+# HTTP模拟服务器
+mockito = "1.0"
+# 临时目录（用于测试）
+tempfile = "3.0"
+# 基准测试
+criterion = { version = "0.5", features = ["html_reports"] }
+
+[[bench]]
+name = "tool_performance"
+harness = false
+
+# macOS 特定依赖
+[target.'cfg(target_os = "macos")'.dependencies]
+cocoa = "0.25"
+objc = "0.2"
+
+[profile.release]
+opt-level = "s"        # 优化大小
+lto = "thin"          # 使用thin LTO减少编译时间
+codegen-units = 1     # 减少代码生成单元以提高优化效果
+panic = "unwind"      # 使用unwind以支持catch_unwind捕获第三方库的panic
+strip = "symbols"     # 仅剥离符号表（保留 debug info 供 Sentry 符号化上传）
+
+# 开发配置：最大化增量与并行，不牺牲产物语义（仅影响dev/bench/test，release不变）
+[profile.dev]
+opt-level = 0          # 保持零优化，编译更快，语义与默认一致
+debug = true           # 完整调试信息，避免调试体验打折
+incremental = true     # 开启增量编译
+codegen-units = 256    # 最大化并行代码生成
+lto = false            # 调试/开发无需LTO
+
+# 移除所有 Cozo/Neo4j 测试二进制，仅保留主程序
+
+[features]
+# 默认启用 SQLite、Lance 与 MCP（确保现有行为不变）
+# 默认启用内部预置模型，可在开源版本中移除该特性
+# 默认启用 S3 云存储支持
+default = ["sqlite", "lance", "mcp", "builtin_free_models", "tokenizer_tiktoken", "cloud_storage_s3", "data_governance"]
+# 启用 SQLite 代码（始终开启占位）
+sqlite = []
+# 启用 LanceDB 向量后端（需网络拉取依赖）
+lance = ["lancedb", "arrow-array", "arrow-schema"]
+# P2修复：精确 tokenizer（默认启用以提供准确的 token 计数，避免启发式估算偏差）
+tokenizer_tiktoken = ["tiktoken-rs"]
+# 可选：MCP 客户端与 rmcp 校验
+mcp = []
+# MCP 调试插件：允许 AI 代理（如 Cursor）通过 MCP 协议调试应用
+# 功能：截图、DOM 快照、IPC 监控、输入模拟、控制台日志流、JS 执行
+mcp-debug = ["tauri-plugin-mcp-bridge"]
+# 已废弃且已移除：neo4j 特性占位（代码已完全清理）
+# neo4j = []
+# 其他开关
+db_migration = []
+# 仅为消除条件编译告警：不产生实际功能影响
+http = []
+old_migration_impl = []
+# 内置免费模型（发行版使用）。开源版本可禁用
+builtin_free_models = []
+# 云存储 S3 兼容支持（可选，避免默认增加编译时间）
+cloud_storage_s3 = ["aws-sdk-s3", "aws-config"]
+# 数据治理模块（迁移、审计、同步等）
+data_governance = ["refinery"]
+# DevTools：仅在开发构建中启用，release 构建不应包含
+# 使用方式：cargo tauri dev --features devtools
+devtools = ["tauri/devtools"]
+
+# Workaround for chrono/arrow trait method conflict (force a compatible chrono)
+
+[patch.crates-io]
+lancedb = { path = "vendor/lancedb" }
+object_store = { path = "vendor/object_store" }

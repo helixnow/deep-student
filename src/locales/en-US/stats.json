@@ -1,0 +1,94 @@
+{
+  "heatmap": {
+    "title": "Learning Heatmap",
+    "loading": "Loading...",
+    "error": "Failed to load: {{error}}",
+    "retry": "Retry",
+    "refresh": "Refresh",
+    "totalActivities": "{{count}} learning activities",
+    "noActivity": "No activity",
+    "stats": {
+      "totalActivities": "Total Activities",
+      "activeDays": "Active Days",
+      "maxDaily": "Max Daily"
+    },
+    "legend": {
+      "less": "Less",
+      "more": "More"
+    },
+    "details": {
+      "chatSessions": "Chat sessions: {{count}}",
+      "chatMessages": "Messages sent: {{count}}",
+      "notesEdited": "Notes edited: {{count}}",
+      "textbooksOpened": "Textbooks opened: {{count}}",
+      "examsCreated": "Exams created: {{count}}",
+      "translationsCreated": "Translations: {{count}}",
+      "essaysCreated": "Essays graded: {{count}}",
+      "ankiCardsCreated": "Cards created: {{count}}",
+      "questionsAnswered": "Questions answered: {{count}}"
+    }
+  },
+  "calendar": {
+    "weekMon": "Mon",
+    "weekWed": "Wed",
+    "weekFri": "Fri",
+    "month1": "Jan",
+    "month2": "Feb",
+    "month3": "Mar",
+    "month4": "Apr",
+    "month5": "May",
+    "month6": "Jun",
+    "month7": "Jul",
+    "month8": "Aug",
+    "month9": "Sep",
+    "month10": "Oct",
+    "month11": "Nov",
+    "month12": "Dec"
+  },
+  "heatmapChart": {
+    "title": "Learning Activity",
+    "totalQuestions": "Total Questions",
+    "activeDays": "Active Days",
+    "streak": "Streak",
+    "streakDays": "{{count}} days",
+    "questionCount": "Questions",
+    "correctCount": "Correct",
+    "correctRate": "Accuracy",
+    "questionUnit": "{{count}}",
+    "noRecord": "No learning records",
+    "legendLess": "Less",
+    "legendMore": "More"
+  },
+  "trendChart": {
+    "title": "Learning Trend",
+    "today": "Today",
+    "week": "This Week",
+    "month": "This Month",
+    "all": "All",
+    "questionCount": "Questions",
+    "correctCount": "Correct",
+    "correctRate": "Accuracy",
+    "questionUnit": "{{count}}",
+    "totalQuestions": "Total Questions",
+    "avgCorrectRate": "Avg. Accuracy",
+    "activeDays": "Active Days",
+    "noRecord": "No learning records",
+    "refreshData": "Refresh"
+  },
+  "knowledgeRadar": {
+    "title": "Knowledge Mastery",
+    "mastery": "Mastery",
+    "correctRate": "Accuracy",
+    "avgMastery": "Avg. Mastery",
+    "avgCorrectRate": "Avg. Accuracy",
+    "knowledgePoints": "Knowledge Points",
+    "details": "Knowledge Details",
+    "questionCount": "Questions",
+    "mastered": "Mastered",
+    "questionUnit": "{{count}}",
+    "itemDetail": "{{total}} questions · Mastered {{mastered}}",
+    "noData": "No knowledge data",
+    "noDataHint": "Complete more questions to see knowledge mastery",
+    "refreshData": "Refresh"
+  }
+}

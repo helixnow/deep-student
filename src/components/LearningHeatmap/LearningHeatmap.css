@@ -1,0 +1,41 @@
+/**
+ * 学习热力图组件样式
+ * 仅保留必要的 SVG 样式覆盖和动画
+ */
+
+/* 月份和星期标签 - 覆盖 react-heat-map 默认样式 */
+.learning-heatmap-chart text,
+.learning-heatmap-chart svg text {
+  fill: hsl(var(--muted-foreground)) !important;
+  font-size: 10px !important;
+  font-weight: 500 !important;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace !important;
+}
+
+/* 热力图单元格 */
+.heatmap-cell {
+  transition: all 0.2s ease;
+}
+
+/* 滚动条美化 */
+.learning-heatmap-chart {
+  scrollbar-width: thin;
+  scrollbar-color: hsl(var(--border)) transparent;
+}
+
+.learning-heatmap-chart::-webkit-scrollbar {
+  height: 4px;
+}
+
+.learning-heatmap-chart::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.learning-heatmap-chart::-webkit-scrollbar-thumb {
+  background: hsl(var(--border));
+  border-radius: 2px;
+}
+
+.learning-heatmap-chart::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground) / 0.5);
+}

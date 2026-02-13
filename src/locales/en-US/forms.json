@@ -1,0 +1,8 @@
+{
+  "labels": {
+    "configured": "Configured",
+    "not_configured": "Not configured",
+    "to_be_configured": "Pending configuration"
+  }
+}
+

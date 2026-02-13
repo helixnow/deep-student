@@ -1,0 +1,97 @@
+{
+  "title": "工作区",
+  "noActiveWorkspace": "无活跃工作区",
+  "viewFull": "查看完整内容",
+  "defaultName": "默认工作区",
+  "loadError": "加载失败",
+  "agents": "Agent",
+  "messages": "消息",
+  "documents": "文档",
+  "context": "上下文",
+  "status": {
+    "active": "活跃",
+    "completed": "已完成",
+    "archived": "已归档",
+    "noWorkspace": "无工作区",
+    "historicalWorkspace": "历史工作区",
+    "workspaceSwitched": "已切换工作区",
+    "historicalSnapshot": "历史快照",
+    "agentsDone": "所有代理已完成",
+    "noAgents": "暂无代理",
+    "recentMessages": "最近消息"
+  },
+  "agentRole": {
+    "coordinator": "协调者",
+    "worker": "执行者"
+  },
+  "agentStatus": {
+    "idle": "空闲",
+    "running": "运行中",
+    "completed": "已完成",
+    "failed": "失败"
+  },
+  "messageType": {
+    "task": "任务",
+    "progress": "进度",
+    "result": "结果",
+    "query": "查询",
+    "correction": "纠正",
+    "broadcast": "广播"
+  },
+  "documentType": {
+    "plan": "计划",
+    "research": "研究",
+    "artifact": "产物",
+    "notes": "笔记"
+  },
+  "actions": {
+    "create": "创建工作区",
+    "close": "关闭工作区",
+    "delete": "删除工作区",
+    "createAgent": "创建 Agent",
+    "sendMessage": "发送消息"
+  },
+  "labels": {
+    "workspaceId": "工作区 ID",
+    "workspaceName": "工作区名称",
+    "createdAt": "创建时间",
+    "updatedAt": "更新时间",
+    "creatorSessionId": "创建者会话",
+    "skillId": "技能 ID",
+    "targetAgent": "目标 Agent",
+    "messageContent": "消息内容"
+  },
+  "placeholders": {
+    "workspaceName": "输入工作区名称（可选）",
+    "skillId": "输入技能标识",
+    "messageContent": "输入要发送的消息..."
+  },
+  "errors": {
+    "createFailed": "创建工作区失败",
+    "closeFailed": "关闭工作区失败",
+    "deleteFailed": "删除工作区失败",
+    "sendMessageFailed": "发送消息失败",
+    "loadFailed": "加载工作区失败",
+    "notFound": "工作区不存在"
+  },
+  "tooltips": {
+    "coordinator": "协调者负责分配任务和汇总结果",
+    "worker": "执行者负责完成具体任务",
+    "broadcast": "广播消息将发送给所有 Agent"
+  },
+  "log": {
+    "title": "日志",
+    "copy": "复制",
+    "moreMessages": "更多消息"
+  },
+  "subagent": {
+    "noContent": "暂无内容",
+    "title": "子代理",
+    "loading": "加载中...",
+    "processing": "处理中...",
+    "noOutput": "暂无输出"
+  },
+  "agent": {
+    "you": "你"
+  }
+}

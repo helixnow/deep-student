@@ -1,0 +1,45 @@
+{
+  "errors": {
+    "noFile": "未指定教材文件"
+  },
+  "loading": {
+    "largeFile": "正在加载大文件，请稍候..."
+  },
+  "open_study_mode": "教材导学",
+  "no_textbook_loaded": "未加载教材",
+  "go_to_library": "前往教材库",
+  "select_textbook_hint": "请先选择或导入教材",
+  "select_page": "选择当前页",
+  "deselect_page": "取消选择当前页",
+  "selected": "已选择",
+  "select_this_page": "选择此页",
+  "selection_count": "已选择 {{count}} / {{max}} 页",
+  "clear": "清空",
+  "clear_selection": "清空选择",
+  "send_to_chat": "准备发送（右侧输入问题后发送）",
+  "send_selected": "准备选中页",
+  "exporting": "正在导出页面...",
+  "export_failed": "导出页面失败，请重试",
+  "export_success": "已准备 {{count}} 页，请在右侧输入问题后发送",
+  "no_pages_selected": "请先选择要发送的页面",
+  "max_pages_reached": "最多只能选择 {{max}} 页",
+  "panel": {
+    "title": "教材导学",
+    "header_placeholder": "未选择教材",
+    "preparing": "正在准备 {{done}}/{{total}}",
+    "selection_summary": "已选择 {{count}} 页",
+    "selection_summary_with_prepared": "已选择 {{count}} 页 · 已准备 {{prepared}}",
+    "close_button": "关闭",
+    "export_failed": "导出失败",
+    "retry_export": "重试导出",
+    "retry": "重试"
+  },
+  "message_attachment": {
+    "badge": "第{{page}}页",
+    "tooltip": "第{{page}}页",
+    "tooltip_with_name": "{{name}} 第{{page}}页"
+  },
+  "bookmarkSaveFailed": "书签保存失败",
+  "export_no_pdf_file": "未找到可导出的PDF文件",
+  "export_render_failed": "无法渲染选中的页面"
+}

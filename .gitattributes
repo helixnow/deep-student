@@ -1,0 +1,21 @@
+# 统一文本文件使用 LF 行结束符
+* text=auto eol=lf
+
+# 明确指定常见源码文件始终 LF
+*.rs   text eol=lf
+*.ts   text eol=lf
+*.tsx  text eol=lf
+*.js   text eol=lf
+*.json text eol=lf
+*.toml text eol=lf
+*.md   text eol=lf
+*.css  text eol=lf
+*.html text eol=lf
+
+# 二进制文件保持原样
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.svg  binary
+*.apkg binary 

@@ -1,0 +1,881 @@
+/**
+ * Analysis Styles - 分析相关样式
+ * 从ReviewAnalysis.css中提取与聊天分析相关的样式
+ *
+ * 作用域：所有样式限定在 .chat-v2 内
+ * 暗色模式：使用 CSS 变量自动响应
+ */
+
+/* ============================================================================
+   分析容器 - Analysis Container
+   ============================================================================ */
+
+.chat-v2 .analysis-container {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  background: transparent;
+}
+
+.chat-v2 .analysis-main {
+  flex: 1;
+  padding: 0;
+  overflow-y: auto;
+}
+
+/* ============================================================================
+   分析头部 - Analysis Header
+   ============================================================================ */
+
+.chat-v2 .analysis-header {
+  background: hsl(var(--card));
+  border-bottom: 1px solid hsl(var(--border));
+  padding: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.chat-v2 .analysis-title {
+  font-size: 20px;
+  font-weight: 600;
+  color: hsl(var(--foreground));
+  margin: 0;
+}
+
+.chat-v2 .analysis-back-btn {
+  padding: 0;
+  background: hsl(var(--muted));
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  color: hsl(var(--foreground));
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: background-color 0.2s;
+}
+
+.chat-v2 .analysis-back-btn:hover {
+  background: hsl(var(--accent));
+}
+
+.chat-v2 .analysis-create-btn {
+  padding: 0;
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: background-color 0.2s;
+}
+
+.chat-v2 .analysis-create-btn:hover {
+  background: hsl(var(--primary) / 0.9);
+}
+
+/* ============================================================================
+   分析步骤指示器 - Analysis Steps
+   ============================================================================ */
+
+.chat-v2 .analysis-steps {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 24px;
+  padding: 0;
+}
+
+.chat-v2 .analysis-step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.chat-v2 .analysis-step-circle {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.chat-v2 .analysis-step-circle.active {
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+}
+
+.chat-v2 .analysis-step-circle.completed {
+  background: hsl(var(--success));
+  color: hsl(var(--success-foreground));
+}
+
+.chat-v2 .analysis-step-circle.pending {
+  background: hsl(var(--muted));
+  color: hsl(var(--muted-foreground));
+}
+
+.chat-v2 .analysis-step-label {
+  font-size: 14px;
+  color: hsl(var(--foreground));
+}
+
+.chat-v2 .analysis-step-divider {
+  width: 32px;
+  height: 1px;
+  background: hsl(var(--border));
+}
+
+/* ============================================================================
+   分析表单 - Analysis Form
+   ============================================================================ */
+
+.chat-v2 .analysis-form-container {
+  background: hsl(var(--card));
+  border-radius: 12px;
+  box-shadow: 0 1px 3px hsl(var(--shadow-base, 0 0% 0%) / 0.1);
+  border: 1px solid hsl(var(--border));
+  padding: 0;
+  margin: 0 20px;
+  min-height: 400px;
+}
+
+.chat-v2 .analysis-form-group {
+  margin-bottom: 20px;
+}
+
+.chat-v2 .analysis-form-label {
+  display: block;
+  font-size: 14px;
+  font-weight: 500;
+  color: hsl(var(--foreground));
+  margin-bottom: 8px;
+}
+
+.chat-v2 .analysis-form-input,
+.chat-v2 .analysis-form-select,
+.chat-v2 .analysis-form-textarea {
+  width: 100%;
+  padding: 0;
+  border: 1px solid hsl(var(--border));
+  border-radius: 6px;
+  font-size: 14px;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+}
+
+.chat-v2 .analysis-form-input:focus,
+.chat-v2 .analysis-form-select:focus,
+.chat-v2 .analysis-form-textarea:focus {
+  outline: none;
+  border-color: hsl(var(--primary));
+  box-shadow: 0 0 0 3px hsl(var(--ring) / 0.2);
+}
+
+/* 提升可访问性：为键盘用户添加可见焦点样式 */
+.chat-v2 .analysis-form-input:focus-visible,
+.chat-v2 .analysis-form-select:focus-visible,
+.chat-v2 .analysis-form-textarea:focus-visible {
+  outline: 2px solid hsl(var(--primary));
+  outline-offset: 2px;
+}
+
+.chat-v2 .analysis-form-input:hover,
+.chat-v2 .analysis-form-select:hover {
+  border-color: hsl(var(--muted-foreground));
+}
+
+.chat-v2 .analysis-form-textarea {
+  resize: vertical;
+  min-height: 120px;
+}
+
+/* ============================================================================
+   分析模板 - Analysis Templates
+   ============================================================================ */
+
+.chat-v2 .analysis-templates {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.chat-v2 .analysis-template-btn {
+  text-align: left;
+  padding: 0;
+  font-size: 14px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 6px;
+  background: hsl(var(--card));
+  color: hsl(var(--foreground));
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.chat-v2 .analysis-template-btn:hover {
+  border-color: hsl(var(--primary));
+  background: hsl(var(--primary) / 0.1);
+}
+
+/* ============================================================================
+   错题选择 - Mistake Selection
+   ============================================================================ */
+
+.chat-v2 .analysis-mistakes-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 16px;
+  max-height: 400px;
+  overflow-y: auto;
+  padding: 0;
+}
+
+.chat-v2 .analysis-mistake-card {
+  border: 1px solid hsl(var(--border));
+  border-radius: 8px;
+  padding: 0;
+  cursor: pointer;
+  transition: all 0.2s;
+  background: hsl(var(--card));
+}
+
+.chat-v2 .analysis-mistake-card:hover {
+  border-color: hsl(var(--muted-foreground));
+  box-shadow: 0 2px 8px hsl(var(--shadow-base, 0 0% 0%) / 0.1);
+}
+
+.chat-v2 .analysis-mistake-card.selected {
+  border-color: hsl(var(--primary));
+  background: hsl(var(--primary) / 0.1);
+  box-shadow: 0 0 0 1px hsl(var(--primary));
+}
+
+.chat-v2 .analysis-mistake-header {
+  display: flex;
+  align-items: center;
+  margin-bottom: 8px;
+  gap: 12px;
+}
+
+.chat-v2 .analysis-mistake-checkbox {
+  width: 16px;
+  height: 16px;
+}
+
+.chat-v2 .analysis-mistake-subject {
+  font-size: 12px;
+  color: hsl(var(--primary));
+  font-weight: 500;
+  background: hsl(var(--primary) / 0.1);
+  padding: 0;
+  border-radius: 12px;
+}
+
+.chat-v2 .analysis-mistake-date {
+  font-size: 12px;
+  color: hsl(var(--muted-foreground));
+  margin-left: auto;
+}
+
+.chat-v2 .analysis-mistake-question {
+  font-weight: 500;
+  color: hsl(var(--foreground));
+  margin-bottom: 8px;
+  line-height: 1.4;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.chat-v2 .analysis-mistake-content {
+  color: hsl(var(--muted-foreground));
+  font-size: 14px;
+  line-height: 1.4;
+  margin-bottom: 12px;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+}
+
+.chat-v2 .analysis-mistake-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.chat-v2 .analysis-mistake-tag {
+  background: hsl(var(--muted));
+  color: hsl(var(--foreground));
+  padding: 0;
+  border-radius: 12px;
+  font-size: 12px;
+}
+
+/* ============================================================================
+   分析筛选 - Analysis Filters
+   ============================================================================ */
+
+.chat-v2 .analysis-filters {
+  display: grid;
+  grid-template-columns: 1fr 1fr 2fr;
+  gap: 20px;
+  margin-bottom: 24px;
+  background: hsl(var(--card));
+  padding: 0;
+  border-radius: 12px;
+  box-shadow: 0 1px 3px hsl(var(--shadow-base, 0 0% 0%) / 0.1);
+  border: 1px solid hsl(var(--border));
+}
+
+.chat-v2 .analysis-search-group {
+  grid-column: 1 / -1;
+}
+
+.chat-v2 .analysis-search-input {
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+}
+
+.chat-v2 .analysis-search-input:focus {
+  box-shadow: 0 0 0 3px hsl(var(--ring) / 0.2);
+}
+
+/* ============================================================================
+   分析库 - Analysis Library
+   ============================================================================ */
+
+.chat-v2 .analysis-library-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+  gap: 20px;
+  padding: 0;
+}
+
+.chat-v2 .analysis-library-card {
+  background: hsl(var(--card));
+  border-radius: 12px;
+  box-shadow: 0 2px 8px hsl(var(--shadow-base, 0 0% 0%) / 0.06);
+  border: 1px solid hsl(var(--border));
+  padding: 0;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
+  animation: fadeInUp 0.3s ease-out;
+}
+
+.chat-v2 .analysis-library-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px hsl(var(--shadow-base, 0 0% 0%) / 0.12);
+  border-color: hsl(var(--muted-foreground));
+}
+
+.chat-v2 .analysis-library-card:active {
+  transform: translateY(0);
+}
+
+.chat-v2 .analysis-library-card:nth-child(odd) {
+  animation-delay: 0.1s;
+}
+
+.chat-v2 .analysis-library-card:nth-child(even) {
+  animation-delay: 0.2s;
+}
+
+.chat-v2 .analysis-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 16px;
+  padding: 0;
+  border-bottom: 1px solid hsl(var(--border));
+}
+
+.chat-v2 .analysis-card-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.chat-v2 .analysis-card-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: hsl(var(--foreground));
+  margin: 0 0 4px 0;
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-v2 .analysis-card-id {
+  font-size: 12px;
+  color: hsl(var(--muted-foreground));
+  font-family: monospace;
+  background: hsl(var(--muted));
+  padding: 0;
+  border-radius: 4px;
+}
+
+.chat-v2 .analysis-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.chat-v2 .analysis-status-badge {
+  font-size: 12px;
+  font-weight: 500;
+  padding: 0;
+  border-radius: 12px;
+  white-space: nowrap;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.chat-v2 .analysis-delete-btn {
+  background: hsl(var(--muted));
+  border: none;
+  border-radius: 6px;
+  padding: 0;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.2s;
+  color: hsl(var(--muted-foreground));
+}
+
+.chat-v2 .analysis-delete-btn:hover {
+  background: hsl(var(--destructive) / 0.1);
+  color: hsl(var(--destructive));
+}
+
+.chat-v2 .analysis-card-content {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.chat-v2 .analysis-meta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.chat-v2 .analysis-meta-item {
+  font-size: 12px;
+  padding: 0;
+  border-radius: 12px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: all 0.2s ease;
+}
+
+.chat-v2 .analysis-library-card:hover .analysis-meta-item {
+  transform: scale(1.05);
+}
+
+.chat-v2 .analysis-subject-tag {
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-weight: 500;
+}
+
+.chat-v2 .analysis-mistake-count {
+  background: #f0fdf4;
+  color: #166534;
+}
+
+.chat-v2 .analysis-chat-count {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.chat-v2 .analysis-target-section,
+.chat-v2 .analysis-preview-section {
+  background: #f9fafb;
+  padding: 0;
+  border-radius: 8px;
+  border-left: 3px solid #3b82f6;
+  transition: all 0.2s ease;
+}
+
+.chat-v2 .analysis-library-card:hover .analysis-target-section,
+.chat-v2 .analysis-library-card:hover .analysis-preview-section {
+  background: #f3f4f6;
+}
+
+.chat-v2 .analysis-target-label,
+.chat-v2 .analysis-preview-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #374151;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.chat-v2 .analysis-target-content,
+.chat-v2 .analysis-preview-content {
+  font-size: 14px;
+  color: #6b7280;
+  line-height: 1.5;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.chat-v2 .analysis-date-section {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  border-top: 1px solid #f3f4f6;
+}
+
+.chat-v2 .analysis-date-icon {
+  font-size: 14px;
+  color: #9ca3af;
+}
+
+.chat-v2 .analysis-date-text {
+  font-size: 12px;
+  color: #6b7280;
+  font-weight: 500;
+}
+
+/* ============================================================================
+   选中项预览 - Selected Preview
+   ============================================================================ */
+
+.chat-v2 .analysis-selected-preview {
+  background: #f9fafb;
+  padding: 0;
+  border-radius: 6px;
+  max-height: 120px;
+  overflow-y: auto;
+  margin-top: 8px;
+}
+
+.analysis-selected-item {
+  font-size: 14px;
+  color: #374151;
+  margin-bottom: 4px;
+  line-height: 1.4;
+}
+
+/* ============================================================================
+   分析按钮 - Analysis Buttons
+   ============================================================================ */
+
+.chat-v2 .analysis-actions {
+  display: flex;
+  justify-content: space-between;
+  padding: 0;
+  background: hsl(var(--card));
+  border-top: 1px solid hsl(var(--border));
+}
+
+.chat-v2 .analysis-action-group {
+  display: flex;
+  gap: 12px;
+}
+
+.chat-v2 .analysis-btn {
+  padding: 0;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.chat-v2 .analysis-btn-primary {
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+}
+
+.chat-v2 .analysis-btn-primary:hover {
+  background: hsl(var(--primary) / 0.9);
+}
+
+.chat-v2 .analysis-btn-primary:disabled {
+  background: hsl(var(--muted));
+  color: hsl(var(--muted-foreground));
+  cursor: not-allowed;
+}
+
+.chat-v2 .analysis-btn-secondary {
+  background: hsl(var(--secondary));
+  color: hsl(var(--secondary-foreground));
+}
+
+.chat-v2 .analysis-btn-secondary:hover {
+  background: hsl(var(--secondary) / 0.8);
+}
+
+.chat-v2 .analysis-btn-ghost {
+  background: hsl(var(--muted));
+  color: hsl(var(--foreground));
+}
+
+.chat-v2 .analysis-btn-ghost:hover {
+  background: hsl(var(--accent));
+}
+
+/* ============================================================================
+   分析状态 - Analysis States
+   ============================================================================ */
+
+.analysis-loading {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 200px;
+  gap: 12px;
+  opacity: 0;
+  animation: fadeIn 0.3s ease-in-out forwards;
+}
+
+.chat-v2 .analysis-loading-spinner {
+  width: 24px;
+  height: 24px;
+  border: 2px solid hsl(var(--border));
+  border-top: 2px solid hsl(var(--primary));
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+/* HUD 风格的小型指示器（与组件内联样式配合） */
+.analyzing-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: rgba(59,130,246,0.08);
+  border: 1px solid rgba(59,130,246,0.25);
+  border-radius: 999px;
+}
+
+.chat-v2 .analysis-loading-text {
+  color: hsl(var(--muted-foreground));
+  font-size: 14px;
+}
+
+.chat-v2 .analysis-empty {
+  text-align: center;
+  padding: 0;
+  color: hsl(var(--muted-foreground));
+}
+
+.analysis-empty-icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+}
+
+.chat-v2 .analysis-empty-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: hsl(var(--foreground));
+  margin-bottom: 8px;
+}
+
+.chat-v2 .analysis-empty-description {
+  font-size: 14px;
+  color: hsl(var(--muted-foreground));
+  margin-bottom: 4px;
+}
+
+.chat-v2 .analysis-empty-hint {
+  font-size: 14px;
+  color: hsl(var(--muted-foreground));
+}
+
+/* ============================================================================
+   分析统计 - Analysis Stats
+   ============================================================================ */
+
+.analysis-library-stats {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+
+.chat-v2 .analysis-stats-text {
+  font-size: 16px;
+  font-weight: 500;
+  color: hsl(var(--foreground));
+}
+
+.analysis-stats-filter {
+  font-size: 14px;
+  color: #6b7280;
+}
+
+/* ============================================================================
+   动画定义 - Animations
+   ============================================================================ */
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeIn {
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* ============================================================================
+   滚动条样式 - Scrollbar
+   ============================================================================ */
+
+.analysis-mistakes-grid::-webkit-scrollbar,
+.analysis-selected-preview::-webkit-scrollbar,
+.analysis-library-grid::-webkit-scrollbar {
+  width: 6px;
+}
+
+.analysis-mistakes-grid::-webkit-scrollbar-track,
+.analysis-selected-preview::-webkit-scrollbar-track,
+.analysis-library-grid::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 3px;
+}
+
+.analysis-mistakes-grid::-webkit-scrollbar-thumb,
+.analysis-selected-preview::-webkit-scrollbar-thumb,
+.analysis-library-grid::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
+}
+
+.analysis-mistakes-grid::-webkit-scrollbar-thumb:hover,
+.analysis-selected-preview::-webkit-scrollbar-thumb:hover,
+.analysis-library-grid::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* ============================================================================
+   响应式设计 - Responsive Design
+   ============================================================================ */
+
+@media (max-width: 1024px) {
+  .analysis-filters {
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+  
+  .analysis-search-group {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 768px) {
+  .analysis-filters {
+    grid-template-columns: 1fr;
+    padding: 16px;
+    gap: 12px;
+  }
+  
+  .analysis-search-group {
+    grid-column: 1;
+  }
+  
+  .analysis-mistakes-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .analysis-templates {
+    grid-template-columns: 1fr;
+  }
+  
+  .analysis-actions {
+    flex-direction: column;
+    gap: 12px;
+  }
+  
+  .analysis-header {
+    padding: 12px 16px;
+    flex-direction: column;
+    gap: 12px;
+    align-items: flex-start;
+  }
+  
+  .analysis-library-stats {
+    width: 100%;
+    align-items: flex-start;
+  }
+  
+  .analysis-library-grid {
+    grid-template-columns: 1fr;
+    gap: 16px;
+    padding: 16px;
+  }
+  
+  .analysis-library-card {
+    padding: 16px;
+  }
+  
+  .analysis-card-header {
+    flex-direction: column;
+    gap: 8px;
+    align-items: flex-start;
+  }
+  
+  .analysis-card-actions {
+    align-self: flex-end;
+  }
+  
+  .analysis-library-stats {
+    align-items: flex-start;
+  }
+}
+
+@media (max-width: 480px) {
+  .analysis-meta-row {
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .analysis-meta-item {
+    align-self: flex-start;
+  }
+}
+
+/* 移动端底部导航栏间距 */
+@media (max-width: 767px) {
+  .chat-v2 .analysis-main {
+    padding-bottom: 60px; /* 为底部导航栏预留空间 */
+  }
+
+  .chat-v2 .analysis-mistakes-grid {
+    padding-bottom: 60px; /* 为底部导航栏预留空间 */
+  }
+
+  .chat-v2 .analysis-selected-preview {
+    padding-bottom: 60px; /* 为底部导航栏预留空间 */
+  }
+}

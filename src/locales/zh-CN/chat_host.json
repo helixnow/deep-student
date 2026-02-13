@@ -1,0 +1,404 @@
+{
+  "error": {
+    "model_not_multimodal": "当前选用的模型不支持图像理解，图片内容可能无法被正确处理。",
+    "model_warning_title": "模型提醒",
+    "stream_failed": "流式响应失败"
+  },
+  "actions": {
+    "copy_summary": "复制摘要",
+    "export_chat": "导出对话",
+    "import_chat": "导入对话",
+    "move_subject": "迁移聊天记录",
+    "view_exam_sheet": "查看题目集"
+  },
+  "session_status": {
+    "generating": "AI 正在生成并自动保存首轮回答，部分操作稍后可用。"
+  },
+  "import": {
+    "dialog_title": "导入对话",
+    "select_file": "选择导出的对话文件",
+    "file_placeholder": "请选择 .json 文件",
+    "choose_file": "选择文件",
+    "importing": "正在导入...",
+    "import_button": "开始导入",
+    "cancel": "取消",
+    "success_title": "导入成功",
+    "success_message": "对话已成功导入",
+    "error_title": "导入失败",
+    "invalid_file": "无效的文件格式",
+    "parse_error": "JSON 解析失败",
+    "version_mismatch": "文件版本不兼容",
+    "warnings_title": "导入警告",
+    "view_imported": "查看导入的对话",
+    "format_hint": "请选择通过「导出对话」功能导出的 JSON 文件",
+    "close_button": "关闭",
+    "file_filter_json": "JSON"
+  },
+  "notifications": {
+    "view_exam_sheet_missing": "未找到关联的题目集记录。",
+    "view_exam_sheet_navigating": "正在打开题目集，将自动定位关联题目。"
+  },
+  "move_subject": {
+    "dialog": {
+      "title": "迁移聊天记录",
+      "description": "选择一个新的科目，系统会重新归档聊天记录，并解除与灵感图谱的关联。",
+      "current_subject_label": "当前科目：",
+      "current_subject_unknown": "未设置",
+      "target_label": "目标科目",
+      "select_placeholder": "选择目标科目",
+      "confirm": "确认迁移",
+      "moving": "迁移中…",
+      "no_targets": "暂无可用的目标科目",
+      "notifications": {
+        "success": "聊天记录已迁移到新科目",
+        "error": "迁移失败：{{error}}"
+      },
+      "errors": {
+        "unsupported_mode": "当前模式不支持迁移",
+        "missing_id": "缺少业务会话ID",
+        "same_subject": "请选择不同的科目",
+        "generic": "{{error}}"
+      }
+    }
+  },
+  "input": {
+    "placeholder": {
+      "default": "请输入问题...",
+      "generating": "正在生成...",
+      "ocr": "OCR进行中"
+    },
+    "defaults": {
+      "question": "请分析此问题"
+    },
+    "edit_placeholder": "请输入修改后的内容..."
+  },
+  "roles": {
+    "assistant": "助手",
+    "user": "用户"
+  },
+  "edit_dialog": {
+    "title": "编辑消息",
+    "close": "关闭",
+    "hint": "将从这条用户消息开始，重新继续对话。",
+    "confirm": "重发",
+    "placeholder": "输入新的消息内容..."
+  },
+  "rag": {
+    "panel": {
+      "subtitle": "选择参与检索的分库（{{selected}}/{{total}}）",
+      "title_with_counts": "选择参与检索的分库（{{selected}}/{{total}}）",
+      "toggle_other_subjects": "显示其他科目笔记库",
+      "empty": "暂无可选分库",
+      "doc_count": "文档 {{count}}",
+      "chunk_count": "分段 {{count}}",
+      "topk_label": "检索条数 (Top-K)",
+      "topk_helper": "控制本次检索返回的文档数量，范围 {{min}}-{{max}}",
+      "topk_disabled_hint": "等待文档解析完成或停止生成后，可再次调整检索条数",
+      "rerank_helper": "开启后对检索结果进行语义重排序，提高相关性",
+      "create_library": "新增知识库",
+      "vfs_subtitle": "基于虚拟文件系统的知识库检索",
+      "multimodal_label": "多模态检索",
+      "multimodal_helper": "开启后检索结果将包含图片等多模态内容，需要多模态模型支持。",
+      "topk_helper_short": "每次检索返回的文档数量"
+    }
+  },
+  "advanced": {
+    "notice": "仅影响下一次发起的新对话，发送后自动清空",
+    "temperature": {
+      "label": "温度",
+      "reset": "重置",
+      "conservative": "更保守",
+      "creative": "更创意",
+      "description": "较高温度产生更多样化的输出"
+    },
+    "top_p": {
+      "label": "Top-P",
+      "description": "核采样参数，控制输出多样性"
+    },
+    "frequency_penalty": {
+      "label": "频率惩罚",
+      "description": "减少重复词汇的使用"
+    },
+    "presence_penalty": {
+      "label": "存在惩罚",
+      "description": "鼓励讨论新话题"
+    },
+    "context": {
+      "label": "上下文长度",
+      "includes_first": "包含首条消息",
+      "description": "控制 AI 记忆的对话长度",
+      "reset_auto": "自动",
+      "auto_hint": "模型窗口 {{window}}，自动预算 {{budget}}",
+      "manual_hint": "手动设置为 {{value}}"
+    },
+    "max_tokens": {
+      "label": "最大输出",
+      "placeholder": "默认",
+      "description": "控制 AI 回复的最大长度"
+    },
+    "thinking": {
+      "label": "思维链",
+      "description": "显示 AI 的推理过程"
+    },
+    "disable_tools": {
+      "label": "禁用工具",
+      "helper": "启用后，本次请求不会附加知识库检索（RAG）、图谱RAG、MCP 等工具。",
+      "description": "禁用所有工具调用"
+    },
+    "send_shortcut": {
+      "label": "发送快捷键",
+      "enter": "Enter 发送",
+      "mod_enter": "Cmd/Ctrl+Enter 发送",
+      "helper": "中文输入法合成状态下按下 Enter 仅用于确认候选，不会触发发送。"
+    },
+    "model": {
+      "label": "对话模型",
+      "follow_system": "遵循系统设置",
+      "tag_multimodal": "· 多模态",
+      "tag_text": "· 纯文本",
+      "tag_reasoning": "· 推理",
+      "description": "为当前任务挑选备用模型，支持多模态与纯文本引擎。"
+    },
+    "graph_toggle": {
+      "label": "本次开启图谱RAG",
+      "helper": "仅影响本次对话，对应通道为 *_graph_sources，默认开启可从设置里更改。"
+    },
+    "enable_thinking": {
+      "label": "打开推理",
+      "helper": "为支持的模型启用推理模式"
+    },
+    "thinking_mode_notice": "推理模式下，温度参数可能被模型忽略。"
+  },
+  "token_estimate": {
+    "approx": "约 ",
+    "context": "上下文"
+  },
+  "model_panel": {
+    "title": "选择模型",
+    "subtitle": "仅影响下一次发起的新对话，发送后将自动恢复系统默认。",
+    "search_placeholder": "搜索名称或模型 ID…",
+    "follow_system_hint": "沿用系统默认（当前：{{model}}）",
+    "unassigned_label": "尚未配置",
+    "empty": "暂未检测到可用模型，请前往“设置 → 模型设置”启用至少一个文本模型。",
+    "no_match": "没有匹配的模型，请尝试其他关键词。",
+    "no_matches": "没有匹配的模型",
+    "missing_default_hint": "尚未配置默认对话模型，建议前往设置选择一个。",
+    "go_config_model2": "前往配置",
+    "set_as_default": "设为默认模型",
+    "set_default_success": "已将 {{model}} 设为默认模型",
+    "set_default_error": "设置默认模型失败",
+    "badges": {
+      "system_default": "系统默认",
+      "system_default_tooltip": "此模型已设为系统默认的对话模型"
+    }
+  },
+  "graph_status": {
+    "started": "图谱检索中…",
+    "completed": "图谱检索完成（{{total}} 条，{{ms}}ms）",
+    "empty": "未命中图谱来源"
+  },
+  "summary": {
+    "notifications": {
+      "success": "学习总结已更新",
+      "in_progress": "正在生成学习总结，请稍候",
+      "unsupported": "请先保存错题后再生成学习总结",
+      "missing_id": "缺少错题ID",
+      "no_history": "暂无可用对话记录",
+      "no_content": "模型未返回总结内容"
+    }
+  },
+  "token_pill": {
+    "precise_noctx": "Tokens {{total}}",
+    "precise_withctx": "Tokens {{total}} / 上下文 {{ctx}} tokens",
+    "approx_noctx": "约 {{total}} tokens",
+    "approx_withctx": "约 {{total}} / 上下文 {{ctx}} tokens"
+  },
+  "anki_mode": {
+    "button_label": "Anki 制卡",
+    "tooltip_enabled": "Anki 制卡模式已启用",
+    "tooltip_disabled": "启用 Anki 制卡模式",
+    "template_not_ready": "模板尚未就绪，请稍候",
+    "badge": {
+      "parsing": {
+        "title": "正在生成卡片",
+        "desc": "模型仍在解析 JSON"
+      },
+      "ready": {
+        "title": "已生成 {{count}} 张卡片",
+        "desc": "点击打开制卡面板",
+        "desc_with_time": "最近更新时间 {{time}}"
+      },
+      "error": {
+        "title": "卡片解析失败",
+        "desc": "点击查看错误详情"
+      },
+      "partial_error": {
+        "title": "已生成 {{count}} 张卡片（部分解析失败）"
+      },
+      "template_label": "模板 {{id}}",
+      "stored": {
+        "title": "卡片已保存"
+      },
+      "exported": {
+        "title": "卡片已导出"
+      },
+      "discarded": {
+        "title": "卡片已丢弃"
+      }
+    },
+    "stack_preview": {
+      "click_to_view": "点击查看详情",
+      "click_to_expand": "点击展开查看全部卡片"
+    },
+    "form": {
+      "toggle_label": "制卡模式",
+      "toggle_tooltip": "向本轮对话附加所选模板与生成参数，使模型按模板输出卡片 JSON。",
+      "placeholder": "描述你想生成的卡片内容…",
+      "template_label": "制卡模板",
+      "templates_empty": "尚未检测到可用模板，请先在模板管理器中创建。",
+      "options": {
+        "max_cards": "每轮最多生成卡片数",
+        "temperature": "温度"
+      },
+      "custom_requirements_label": "附加要求",
+      "custom_requirements_placeholder": "例如：优先挖空、包含标签、突出错因…"
+    },
+    "panel": {
+      "title": "制卡模式",
+      "template_label": "模板 {{id}}",
+      "status_parsing": "解析中",
+      "status_ready": "已解析 {{count}} 张卡片",
+      "status_error": "解析失败",
+      "updated": "更新 {{time}}",
+      "parsing": "模型正在生成卡片…",
+      "empty": "暂无可展示的卡片",
+      "front": "正面",
+      "back": "背面"
+    },
+    "actions": {
+      "preview": "预览",
+      "queue": "加入素材",
+      "import": "导入 Anki",
+      "retry": "重试解析",
+      "queue_all": "推送到制卡页",
+      "import_all": "一键导入 Anki",
+      "open_panel_cta": "打开制卡面板"
+    },
+    "messages": {
+      "queue_success": "已加入制卡素材队列",
+      "queue_failed": "加入素材队列失败：{{error}}",
+      "queue_missing_options": "模板或配置尚未准备好，请等待解析完成后再推送。",
+      "queue_after_unavailable": "AnkiConnect 离线，已自动改为加入素材队列。",
+      "import_missing_options": "请先在制卡配置中选择牌组与笔记类型",
+      "import_config_missing": "请先配置 Deck 名称和 Note Type（在制卡模式设置中）",
+      "anki_unavailable": "未检测到 AnkiConnect，已取消导入",
+      "import_success": "已发送至 AnkiConnect",
+      "import_success_detailed": "导入完成（成功 {{success}} 条 / 跳过 {{failed}} 条）",
+      "import_duplicate": "Anki 返回重复或无效的卡片",
+      "import_failed": "导入失败：{{error}}",
+      "preview_template_failed": "加载模板失败：{{error}}",
+      "retry_failed": "触发重试失败：{{error}}",
+      "open_panel_failed": "无法打开制卡面板：{{error}}",
+      "attachment_trimmed": "模板附件超过 50KB，制卡模式已自动关闭，请精简模板或附加要求后重试。",
+      "force_disabled": "制卡模式已自动关闭：{{reason}}",
+      "no_cards": "模型尚未生成结构化卡片",
+      "error_title": "卡片解析异常",
+      "error_generic": "模型返回的 JSON 不符合制卡格式。"
+    },
+    "defaults": {
+      "card_title": "聊天卡片 {{index}}",
+      "empty_preview": "（无内容）"
+    },
+    "force_reasons": {
+      "attachment_trimmed": "模板附件超过限制",
+      "anki_connect_unavailable": "AnkiConnect 不可用",
+      "autosave_conflict": "自动保存冲突",
+      "missing_meta": "未捕获卡片数据",
+      "consecutive_parse_failures": "模型多次返回非法 JSON",
+      "unknown": "未知原因"
+    },
+    "queue_export_title": "聊天 × 制卡导出"
+  },
+  "anki_panel": {
+    "badge": {
+      "label": "CHAT · ANKI"
+    },
+    "source_modes": {
+      "current": "承接区",
+      "library": "卡片库",
+      "template": "模板库"
+    },
+    "flip_to_front": "翻到正面",
+    "flip_to_back": "翻到背面",
+    "title": "聊天制卡面板",
+    "status": {
+      "parsing": "正在生成（{{count}} 张）",
+      "ready": "已生成 {{count}} 张卡片",
+      "error": "解析失败",
+      "empty": "暂无卡片状态"
+    },
+    "meta": {
+      "template": "模板 {{id}}",
+      "updated": "刷新于 {{time}}",
+      "last_action": "最近操作：{{action}}"
+    },
+    "library": {
+      "loading": "正在加载卡片…",
+      "export_failed": "导出失败：{{error}}",
+      "delete_failed": "删除失败：{{error}}",
+      "missing_id": "缺少卡片 ID，请刷新后重试。",
+      "delete_button": "删除卡片",
+      "export_button": "导出卡片",
+      "page_info": "第 {{current}} 页 / 共 {{total}} 页",
+      "total_cards": "共 {{count}} 张卡片",
+      "selection_count": "已选 {{count}} 张",
+      "selection_required": "请先选择至少一张卡片",
+      "batch_delete_success": "已删除 {{count}} 张卡片",
+      "batch_delete_failed": "删除失败：{{error}}",
+      "batch_export_success": "已导出 {{count}} 张卡片：{{path}}",
+      "select_card": "选择卡片",
+      "deselect_card": "取消选择"
+    },
+    "search": {
+      "placeholder": "搜索卡片或模板…",
+      "no_results": "无匹配结果"
+    },
+    "editor": {
+      "enter_edit": "进入编辑",
+      "resume_edit": "继续编辑",
+      "preview": "预览",
+      "tags_label": "标签",
+      "tags_placeholder": "使用逗号分隔多个标签",
+      "extra_fields": "额外字段",
+      "no_fields": "暂时没有额外字段",
+      "empty_placeholder": "（空）",
+      "save_success": "卡片已更新",
+      "discard_title": "丢弃草稿？",
+      "discard_confirm": "存在尚未保存的修改，确定要丢弃这些草稿吗？",
+      "saving_block": "卡片正在保存，请稍候",
+      "status": {
+        "editing": "编辑中",
+        "dirty": "待保存",
+        "saving": "保存中",
+        "synced": "已同步"
+      }
+    },
+    "handshake": {
+      "sync_failed": "制卡面板状态刷新失败，请稍后重试"
+    }
+  },
+  "sidebar": {
+    "title": "会话",
+    "expand": "展开侧栏",
+    "collapse": "折叠侧栏",
+    "new_session": "新建会话",
+    "session_count": "{{count}} 个会话",
+    "empty": "暂无会话",
+    "start_new": "开始新会话",
+    "close_session": "关闭会话",
+    "close_confirm": "确定关闭此会话吗？未保存的更改将丢失。",
+    "loading": "加载中...",
+    "general_chat": "常规聊天",
+    "new_analysis": "新分析"
+  }
+}

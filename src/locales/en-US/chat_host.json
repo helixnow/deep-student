@@ -1,0 +1,404 @@
+{
+  "error": {
+    "model_not_multimodal": "The selected model does not support image understanding. Image content may not be processed correctly.",
+    "model_warning_title": "Model Notice",
+    "stream_failed": "Streaming response failed"
+  },
+  "actions": {
+    "copy_summary": "Copy summary",
+    "export_chat": "Export chat",
+    "import_chat": "Import chat",
+    "move_subject": "Move conversation",
+    "view_exam_sheet": "View question set"
+  },
+  "session_status": {
+    "generating": "AI is generating and auto-saving the first reply. Some actions will unlock shortly."
+  },
+  "import": {
+    "dialog_title": "Import Conversation",
+    "select_file": "Select exported conversation file",
+    "file_placeholder": "Please select a .json file",
+    "choose_file": "Choose File",
+    "importing": "Importing...",
+    "import_button": "Import",
+    "cancel": "Cancel",
+    "success_title": "Import Successful",
+    "success_message": "Conversation has been imported to your mistake library",
+    "error_title": "Import Failed",
+    "invalid_file": "Invalid file format",
+    "parse_error": "JSON parse error",
+    "version_mismatch": "File version incompatible",
+    "warnings_title": "Import Warnings",
+    "view_imported": "View Imported Conversation",
+    "format_hint": "Please select a JSON file exported via the Export Chat feature",
+    "close_button": "Close",
+    "file_filter_json": "JSON"
+  },
+  "notifications": {
+    "view_exam_sheet_missing": "No linked question set was found.",
+    "view_exam_sheet_navigating": "Opening the linked question set and focusing on the related question…"
+  },
+  "move_subject": {
+    "dialog": {
+      "title": "Move conversation",
+      "description": "Select a new subject. The conversation will be re-filed and detached from the insight graph.",
+      "current_subject_label": "Current subject:",
+      "current_subject_unknown": "Not set",
+      "target_label": "Target subject",
+      "select_placeholder": "Choose a subject",
+      "confirm": "Move",
+      "moving": "Moving…",
+      "no_targets": "No available target subjects",
+      "notifications": {
+        "success": "Conversation moved to the new subject",
+        "error": "Move failed: {{error}}"
+      },
+      "errors": {
+        "unsupported_mode": "Move is only available in mistake detail mode",
+        "missing_id": "Business session ID is missing",
+        "same_subject": "Please select a different subject",
+        "generic": "{{error}}"
+      }
+    }
+  },
+  "input": {
+    "placeholder": {
+      "default": "Ask a question...",
+      "generating": "Generating...",
+      "ocr": "Running OCR..."
+    },
+    "defaults": {
+      "question": "Please analyze this question"
+    },
+    "edit_placeholder": "Update the message and resend..."
+  },
+  "roles": {
+    "assistant": "Assistant",
+    "user": "User"
+  },
+  "edit_dialog": {
+    "title": "Edit Message",
+    "close": "Close",
+    "hint": "Resend the conversation starting from this user message.",
+    "confirm": "Resend",
+    "placeholder": "Enter new message content..."
+  },
+  "rag": {
+    "panel": {
+      "subtitle": "Select libraries for retrieval ({{selected}}/{{total}})",
+      "title_with_counts": "Select libraries for retrieval ({{selected}}/{{total}})",
+      "toggle_other_subjects": "Show note libraries from other subjects",
+      "empty": "No libraries available",
+      "doc_count": "Docs {{count}}",
+      "chunk_count": "Chunks {{count}}",
+      "topk_label": "Retrieval Size (Top-K)",
+      "topk_helper": "Controls how many documents are retrieved per query ({{min}}-{{max}})",
+      "topk_disabled_hint": "Adjust Top-K after document parsing completes or streaming stops",
+      "rerank_helper": "When enabled, retrieved results are semantically re-ranked to improve relevance",
+      "create_library": "Create Library",
+      "vfs_subtitle": "VFS-based library retrieval",
+      "multimodal_label": "Multimodal Retrieval",
+      "multimodal_helper": "When enabled, retrieval results include images and other multimodal content. Requires a multimodal model.",
+      "topk_helper_short": "Number of documents returned per query"
+    }
+  },
+  "advanced": {
+    "notice": "Applies to the next conversation only and resets after sending.",
+    "temperature": {
+      "label": "Temperature",
+      "reset": "Reset",
+      "conservative": "More Focused",
+      "creative": "More Creative",
+      "description": "Higher temperature produces more diverse outputs"
+    },
+    "top_p": {
+      "label": "Top-P",
+      "description": "Nucleus sampling, controls output diversity"
+    },
+    "frequency_penalty": {
+      "label": "Frequency Penalty",
+      "description": "Reduces repetition of frequent tokens"
+    },
+    "presence_penalty": {
+      "label": "Presence Penalty",
+      "description": "Encourages discussing new topics"
+    },
+    "context": {
+      "label": "Context Length",
+      "includes_first": "Includes the first message",
+      "description": "Controls how much conversation AI remembers",
+      "reset_auto": "Auto",
+      "auto_hint": "Model window {{window}}, auto budget {{budget}}",
+      "manual_hint": "Manually set to {{value}}"
+    },
+    "max_tokens": {
+      "label": "Max Output",
+      "placeholder": "Default",
+      "description": "Controls the maximum response length"
+    },
+    "thinking": {
+      "label": "Chain of Thought",
+      "description": "Show AI's reasoning process"
+    },
+    "disable_tools": {
+      "label": "Disable Tools",
+      "helper": "When enabled, this turn will not attach RAG, MCP, or user memory tools.",
+      "description": "Disable all tool calls"
+    },
+    "send_shortcut": {
+      "label": "Send shortcut",
+      "enter": "Enter to send",
+      "mod_enter": "Cmd/Ctrl+Enter to send",
+      "helper": "While using an IME (e.g. Chinese input), pressing Enter to confirm candidates will not send messages."
+    },
+    "model": {
+      "label": "Secondary model",
+      "follow_system": "Follow system setting",
+      "tag_multimodal": "· Multimodal",
+      "tag_text": "· Text only",
+      "tag_reasoning": "· Reasoning",
+      "description": "Choose an alternate model for this turn. Supports multimodal and text-only engines."
+    },
+    "graph_toggle": {
+      "label": "Enable Graph RAG for this turn",
+      "helper": "Affects only this conversation. Listens on *_graph_sources channel."
+    },
+    "enable_thinking": {
+      "label": "Enable Thinking",
+      "helper": "Enable reasoning mode for supported models"
+    },
+    "thinking_mode_notice": "In reasoning mode, the temperature parameter may be ignored by the model."
+  },
+  "token_estimate": {
+    "approx": "~",
+    "context": "context"
+  },
+  "model_panel": {
+    "title": "Second Model",
+    "subtitle": "Only affects the next newly started conversation and resets after you send.",
+    "search_placeholder": "Search by name or model ID...",
+    "follow_system_hint": "Use system default (current: {{model}})",
+    "unassigned_label": "Not configured",
+    "empty": "No available models detected. Enable at least one text model under Settings → Model Setup.",
+    "no_match": "No models matched your keywords.",
+    "no_matches": "No matching models",
+    "missing_default_hint": "No default chat model configured. Go to Settings to choose one.",
+    "go_config_model2": "Go to Settings",
+    "set_as_default": "Set as Default Model",
+    "set_default_success": "Set {{model}} as default model",
+    "set_default_error": "Failed to set default model",
+    "badges": {
+      "system_default": "System Default",
+      "system_default_tooltip": "This model is set as the system default chat model"
+    }
+  },
+  "graph_status": {
+    "started": "Graph retrieval in progress…",
+    "completed": "Graph retrieval completed ({{total}} items, {{ms}}ms)",
+    "empty": "No graph sources found"
+  },
+  "summary": {
+    "notifications": {
+      "success": "Study summary updated",
+      "in_progress": "Generating study summary, please wait…",
+      "unsupported": "Please save the mistake before generating a study summary",
+      "missing_id": "Missing mistake ID",
+      "no_history": "No conversation history available",
+      "no_content": "The model returned no summary content"
+    }
+  },
+  "token_pill": {
+    "precise_noctx": "Tokens {{total}}",
+    "precise_withctx": "Tokens {{total}} / context {{ctx}}",
+    "approx_noctx": "~{{total}} tokens",
+    "approx_withctx": "~{{total}} / context {{ctx}}"
+  },
+  "anki_mode": {
+    "button_label": "Anki Cards",
+    "tooltip_enabled": "Anki card mode enabled",
+    "tooltip_disabled": "Enable Anki card mode",
+    "template_not_ready": "Template not ready, please wait",
+    "badge": {
+      "parsing": {
+        "title": "Cards are streaming",
+        "desc": "Model is still parsing the JSON payload"
+      },
+      "ready": {
+        "title": "Generated {{count}} cards",
+        "desc": "Open the panel to preview",
+        "desc_with_time": "Last updated at {{time}}"
+      },
+      "error": {
+        "title": "Card parsing failed",
+        "desc": "Click to inspect the error"
+      },
+      "partial_error": {
+        "title": "Generated {{count}} cards (partial failure)"
+      },
+      "template_label": "Template {{id}}",
+      "stored": {
+        "title": "Cards saved"
+      },
+      "exported": {
+        "title": "Cards exported"
+      },
+      "discarded": {
+        "title": "Cards discarded"
+      }
+    },
+    "stack_preview": {
+      "click_to_view": "Click to view details",
+      "click_to_expand": "Click to expand and view all cards"
+    },
+    "form": {
+      "toggle_label": "Card mode",
+      "toggle_tooltip": "Attach the selected card template and generation options to the next turn.",
+      "placeholder": "Describe the cards you want to generate…",
+      "template_label": "Card template",
+      "templates_empty": "No templates available. Please create one in the template manager.",
+      "options": {
+        "max_cards": "Max cards per turn",
+        "temperature": "Temperature"
+      },
+      "custom_requirements_label": "Additional requirements",
+      "custom_requirements_placeholder": "e.g. Prefer cloze deletions, include tags, highlight mistakes…"
+    },
+    "panel": {
+      "title": "Card mode",
+      "template_label": "Template {{id}}",
+      "status_parsing": "Parsing",
+      "status_ready": "{{count}} cards ready",
+      "status_error": "Parse failed",
+      "updated": "Updated {{time}}",
+      "parsing": "The model is still generating cards…",
+      "empty": "No cards available yet",
+      "front": "Front",
+      "back": "Back"
+    },
+    "actions": {
+      "preview": "Preview",
+      "queue": "Add to queue",
+      "import": "Import to Anki",
+      "retry": "Retry parse",
+      "queue_all": "Send to Card Studio",
+      "import_all": "Import via AnkiConnect",
+      "open_panel_cta": "Open card panel"
+    },
+    "messages": {
+      "queue_success": "Pushed to the card queue",
+      "queue_failed": "Failed to queue card: {{error}}",
+      "queue_missing_options": "Template info is missing. Please wait for the parser to finish before pushing.",
+      "queue_after_unavailable": "AnkiConnect is offline. Cards have been saved to the material queue.",
+      "import_missing_options": "Please select a deck and note type before importing",
+      "anki_unavailable": "AnkiConnect is unavailable, import canceled",
+      "import_success": "Sent to AnkiConnect",
+      "import_success_detailed": "Import completed ({{success}} success / {{failed}} skipped)",
+      "import_duplicate": "Anki reported duplicates or skipped notes",
+      "import_failed": "Import failed: {{error}}",
+      "preview_template_failed": "Failed to load template: {{error}}",
+      "retry_failed": "Could not trigger retry: {{error}}",
+      "open_panel_failed": "Unable to open the Anki panel: {{error}}",
+      "attachment_trimmed": "Template attachment exceeded 50KB. Card mode has been disabled until you simplify the template or requirements.",
+      "force_disabled": "Card mode was disabled automatically: {{reason}}",
+      "no_cards": "No structured cards available yet",
+      "error_title": "Card parse error",
+      "error_generic": "Model output does not match the expected card JSON.",
+      "import_config_missing": "Please configure Deck Name and Note Type in the Anki mode settings first"
+    },
+    "defaults": {
+      "card_title": "Chat card {{index}}",
+      "empty_preview": "(No content)"
+    },
+    "force_reasons": {
+      "attachment_trimmed": "Template attachment exceeded the limit",
+      "anki_connect_unavailable": "AnkiConnect unavailable",
+      "autosave_conflict": "Autosave conflict",
+      "missing_meta": "Missing card metadata",
+      "consecutive_parse_failures": "Model returned invalid JSON repeatedly",
+      "unknown": "Unknown reason"
+    },
+    "queue_export_title": "Chat × Card export"
+  },
+  "anki_panel": {
+    "badge": {
+      "label": "CHAT · ANKI"
+    },
+    "source_modes": {
+      "current": "Current",
+      "library": "Library",
+      "template": "Templates"
+    },
+    "flip_to_front": "Flip to front",
+    "flip_to_back": "Flip to back",
+    "title": "Chat × Anki Panel",
+    "status": {
+      "parsing": "Streaming cards ({{count}})",
+      "ready": "{{count}} cards ready",
+      "error": "Parsing failed",
+      "empty": "No card status yet"
+    },
+    "meta": {
+      "template": "Template {{id}}",
+      "updated": "Updated at {{time}}",
+      "last_action": "Last action: {{action}}"
+    },
+    "library": {
+      "loading": "Loading library cards…",
+      "export_failed": "Export failed: {{error}}",
+      "delete_failed": "Delete failed: {{error}}",
+      "missing_id": "Card id is missing. Please refresh and try again.",
+      "delete_button": "Delete card",
+      "export_button": "Export cards",
+      "page_info": "Page {{current}} / {{total}}",
+      "total_cards": "{{count}} cards total",
+      "selection_count": "{{count}} selected",
+      "selection_required": "Select at least one card first",
+      "batch_delete_success": "Deleted {{count}} cards",
+      "batch_delete_failed": "Failed to delete cards: {{error}}",
+      "batch_export_success": "Exported {{count}} cards: {{path}}",
+      "select_card": "Select card",
+      "deselect_card": "Deselect card"
+    },
+    "search": {
+      "placeholder": "Search cards or templates…",
+      "no_results": "No matching results"
+    },
+    "editor": {
+      "enter_edit": "Inline edit",
+      "resume_edit": "Resume editing",
+      "preview": "Preview",
+      "tags_label": "Tags",
+      "tags_placeholder": "Separate tags with commas",
+      "extra_fields": "Extra fields",
+      "no_fields": "No extra fields yet",
+      "empty_placeholder": "(empty)",
+      "save_success": "Card updated",
+      "discard_title": "Discard drafts?",
+      "discard_confirm": "You have unsaved edits. Discard them before leaving?",
+      "saving_block": "A card is still saving. Please wait.",
+      "status": {
+        "editing": "Editing",
+        "dirty": "Unsaved",
+        "saving": "Saving",
+        "synced": "Synced"
+      }
+    },
+    "handshake": {
+      "sync_failed": "Failed to refresh the card panel state. Please try again."
+    }
+  },
+  "sidebar": {
+    "title": "Sessions",
+    "expand": "Expand sidebar",
+    "collapse": "Collapse sidebar",
+    "new_session": "New session",
+    "session_count": "{{count}} sessions",
+    "empty": "No sessions",
+    "start_new": "Start a new session",
+    "close_session": "Close session",
+    "close_confirm": "Close this session? Unsaved changes will be lost.",
+    "loading": "Loading...",
+    "general_chat": "General Chat",
+    "new_analysis": "New Analysis"
+  }
+}

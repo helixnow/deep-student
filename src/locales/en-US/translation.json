@@ -1,0 +1,170 @@
+{
+  "source": "Source Text",
+  "translated": "Translation",
+  "model_label": "Model",
+  "model_auto": "Auto",
+  "sync_scroll": "Sync Scroll",
+  "auto_mode": "Auto",
+  "options_title": "Translation Options",
+  "page_title": "Translation Workbench",
+  "tabs": {
+    "translate": "Text Translation",
+    "history": "History",
+    "ocr": "OCR Recognition",
+    "ocr_hint": "Upload images or documents for recognition, results will be auto-filled into input",
+    "comparison": "Comparison View",
+    "comparison_hint": "Paragraph-level bilingual comparison",
+    "comparison_description": "Side-by-side comparison of source and translation at paragraph level",
+    "no_translation": "No corresponding translation"
+  },
+  "target_section": {
+    "title": "Translation Result",
+    "placeholder": "Translation result will appear here",
+    "copy": "Copy",
+    "export": "Export",
+    "copied": "Copied to clipboard",
+    "exported": "Translation exported",
+    "edit": "Edit Translation",
+    "edit_saved": "Translation edits saved",
+    "listen": "Listen",
+    "stop_listen": "Stop Listening",
+    "maximize": "Maximize Translation Result",
+    "restore": "Restore Split View"
+  },
+  "source_section": {
+    "title": "Text to Translate",
+    "placeholder": "Type or drag & drop content to translate...",
+    "drag_hint": "Drag images, PDF, DOCX, TXT, MD files here",
+    "manual_input": "Manual Input",
+    "upload_file": "Upload File",
+    "collapsed": "Text to Translate (Collapsed)"
+  },
+  "languages": {
+    "source_lang": "Source Language",
+    "target_lang": "Target Language",
+    "auto": "Auto Detect",
+    "zh": "Chinese",
+    "en": "English",
+    "ja": "Japanese",
+    "ko": "Korean",
+    "fr": "French",
+    "de": "German",
+    "es": "Spanish",
+    "ru": "Russian",
+    "ar": "Arabic",
+    "pt": "Portuguese",
+    "it": "Italian"
+  },
+  "actions": {
+    "translate": "Translate",
+    "clear": "Clear",
+    "translating": "Translating...",
+    "swap_languages": "Swap Languages"
+  },
+  "stats": {
+    "characters": "Characters",
+    "words": "Words"
+  },
+  "shortcuts": {
+    "translate": "Ctrl/Cmd + Enter",
+    "clear": "Ctrl/Cmd + K",
+    "swap": "Ctrl/Cmd + Shift + S"
+  },
+  "progress": {
+    "translating": "Translating"
+  },
+  "quality": {
+    "title": "Translation Quality",
+    "stars": "stars",
+    "rated": "Rating saved"
+  },
+  "batch": {
+    "mode": "Batch Mode",
+    "hint": "Translate multiple texts line by line",
+    "source_title": "Batch Translation Text",
+    "source_hint": "One text per line, will be translated line by line",
+    "translate": "Batch Translate",
+    "translating": "Batch translating...",
+    "success": "Successfully translated {{count}} items",
+    "no_lines": "No content to translate"
+  },
+  "prompt_editor": {
+    "title": "Custom Translation Prompt",
+    "placeholder": "Enter custom translation prompt (optional)",
+    "restore_default": "Restore Default",
+    "save": "Save",
+    "saved": "Prompt saved",
+    "default_prompt": "You are a professional translator. Translate the given text accurately while preserving its tone, style, and formatting. Do not add explanations or notes. Only output the translated text.",
+    "formality": "Tone",
+    "formality_auto": "Auto",
+    "formality_formal": "Formal",
+    "formality_casual": "Casual"
+  },
+  "history": {
+    "title": "Translation History",
+    "description": "Browse and restore your translation records",
+    "empty": "No translation history yet",
+    "empty_hint": "Your translation records will appear here once you start translating",
+    "records": "records",
+    "search_placeholder": "Search history...",
+    "load_more": "Load More",
+    "delete": "Delete",
+    "deleted": "Deleted",
+    "restore": "Restore",
+    "clear_all": "Clear All",
+    "clear_confirm": "Are you sure you want to clear all translation history?",
+    "source_preview": "Source Preview",
+    "result_preview": "Translation Preview",
+    "favorite": "Favorite",
+    "unfavorite": "Unfavorite",
+    "favorited": "Favorited",
+    "unfavorited": "Unfavorited",
+    "show_all": "Show All",
+    "show_favorites_only": "Show Favorites Only",
+    "no_favorites": "No Favorites Yet",
+    "no_favorites_hint": "Click the star button on history items to add favorites"
+  },
+  "errors": {
+    "ocr_failed": "OCR recognition failed",
+    "parse_failed": "Document parsing failed",
+    "translate_failed": "Translation failed",
+    "model_not_configured": "Translation model or Model2 not configured",
+    "file_too_large": "File too large (max 50MB)",
+    "unsupported_format": "Unsupported file format",
+    "empty_text": "Please enter text to translate",
+    "network_error": "Network error, please check connection",
+    "cannot_swap_auto": "Cannot swap languages in auto-detect mode",
+    "tts_not_supported": "Text-to-speech not supported in current browser",
+    "no_text_to_speak": "No text to speak",
+    "tts_failed": "Speech synthesis failed: {{error}}",
+    "load_failed": "Failed to load translation: {{error}}",
+    "offline": "Network disconnected, please check your connection and try again",
+    "offline_save": "Cannot save while offline, please check your connection",
+    "offline_rate": "Cannot rate while offline, please check your connection",
+    "copy_failed": "Copy failed: {{error}}",
+    "export_failed": "Export failed: {{error}}",
+    "timeout": "Translation timed out, please try again"
+  },
+  "confirm": {
+    "clear": "Are you sure you want to clear all content?"
+  },
+  "toast": {
+    "translate_success": "Translation successful",
+    "translate_failed": "Translation failed: {{error}}",
+    "translate_cancelled": "Translation cancelled",
+    "update_failed": "Update failed: {{error}}",
+    "ocr_processing": "Recognizing image...",
+    "ocr_success": "OCR recognition successful",
+    "parse_processing": "Parsing document...",
+    "ocr_failed": "OCR recognition failed: {{error}}",
+    "parse_success": "Document parsed successfully",
+    "parse_failed": "Document parsing failed: {{error}}",
+    "saved": "Saved",
+    "updated": "Updated",
+    "deleted": "Deleted",
+    "cleared": "Cleared",
+    "translating_already": "Translation is already in progress, ignoring duplicate call",
+    "save_failed": "Save failed: {{error}}"
+  }
+}
+

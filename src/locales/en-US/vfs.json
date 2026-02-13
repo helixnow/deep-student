@@ -1,0 +1,20 @@
+{
+  "errors": {
+    "notFound": "Resource not found",
+    "network": "Network error, unable to connect to backend service",
+    "parse": "Data format error, unable to parse resource information",
+    "permission": "Insufficient permissions to access the resource",
+    "validation": "Parameter validation failed",
+    "unknown": "Unknown error",
+    "resourceLoadFailed": "Failed to load resource",
+    "fileLoadFailed": "Failed to load file",
+    "imageLoadFailed": "Failed to load image",
+    "partialResourcesNotFound": "Some resources not found",
+    "partialFilesNotFound": "Some file resources not found",
+    "partialImagesNotFound": "Some image resources not found",
+    "getRefsFailed": "Failed to get resource references",
+    "resolveFailed": "Failed to resolve resource references",
+    "pathFailed": "Failed to get resource path",
+    "cacheFailed": "Failed to update path cache"
+  }
+}

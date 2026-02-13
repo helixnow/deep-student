@@ -1,0 +1,1341 @@
+{
+  "canvas": {
+    "untitled": "Untitled Note",
+    "error": {
+      "operation_failed": "Operation failed"
+    }
+  },
+  "sidebar": {
+    "title": "Sidebar",
+    "expand": "Expand sidebar",
+    "collapse": "Collapse sidebar",
+    "trash": "Trash",
+    "actions": {
+      "new_folder": "New folder",
+      "new_note": "New note",
+      "refresh": "Refresh",
+      "assistant": "Floating assistant",
+      "assistant_welcome": "How can I help you with your notes?",
+      "assistant_placeholder": "Ask a question...",
+      "vector_manager": "Vector manager",
+      "favorites_filter_on": "Show favorites only",
+      "favorites_filter_off": "Show all notes",
+      "sort": "Sort",
+      "sort_manual": "Manual",
+      "sort_name_asc": "Name ↑",
+      "sort_name_desc": "Name ↓",
+      "sort_modified_desc": "Modified ↓",
+      "sort_modified_asc": "Modified ↑",
+      "sort_created_desc": "Created ↓",
+      "sort_created_asc": "Created ↑"
+    },
+    "search": {
+      "placeholder": "Search",
+      "search_placeholder": "Search...",
+      "mode_label": "Mode",
+      "mode_notes": "Notes mode",
+      "mode_graph": "Graph mode",
+      "modes": {
+        "keyword": "Keyword",
+        "semantic": "Semantic",
+        "hybrid": "Hybrid"
+      },
+      "filter_by_tag": "Filter by tag",
+      "loading_tags": "Loading tags...",
+      "no_tags": "No tags"
+    },
+    "vector_status": {
+      "heading": "Vector status",
+      "none": "Not generated",
+      "pending": "Needs update",
+      "fresh": "Up to date",
+      "tooltip": {
+        "none": "Embedding has not been generated",
+        "pending": "Content changed, waiting to regenerate embedding",
+        "fresh": "Embedding is in sync with the note"
+      }
+    },
+    "favorites": {
+      "title": "Starred Notes",
+      "empty": "No starred notes",
+      "empty_hint": "Right-click a note to add to favorites",
+      "filter_empty": "No starred notes available. Toggle the star again to return to all notes.",
+      "show_all": "Show all notes"
+    }
+  },
+  "summary": {
+    "code_block": "Code block",
+    "image": "Image"
+  },
+  "aiDiff": {
+    "title": "AI Edit Suggestions",
+    "operation_append": "Append content",
+    "operation_replace": "Replace content",
+    "operation_set": "Set content",
+    "accept": "Accept",
+    "reject": "Reject",
+    "no_changes": "No changes detected"
+  },
+  "errors": {
+    "noteNotFound": "Note not found",
+    "search_notes": "Search notes",
+    "load_notes_list": "Load notes list",
+    "load_note_content": "Load note content",
+    "save_note_content": "Save note content",
+    "update_note_title": "Update note title",
+    "force_refresh_content": "Force refresh content",
+    "update_note_tags": "Update note tags",
+    "get_updated_note": "Get updated note",
+    "create_note": "Create note",
+    "create_canvas_note": "Create Canvas note",
+    "delete_notes": "Delete notes",
+    "rename_note": "Rename note",
+    "get_renamed_note": "Get renamed note",
+    "toggle_favorite": "Toggle favorite",
+    "list_directory": "List directory",
+    "get_resource": "Get resource",
+    "create_resource": "Create resource",
+    "update_resource": "Update resource",
+    "delete_resource": "Delete resource",
+    "move_resource": "Move resource",
+    "copy_resource": "Copy resource",
+    "search_resource": "Search resource",
+    "get_content": "Get content",
+    "set_metadata": "Set metadata",
+    "load_tags_failed": "Failed to load tags",
+    "title_save_failed": "Failed to save title"
+  },
+  "error": {
+    "notFound": "Note not found"
+  },
+  "learningHub": {
+    "share_success_title": "Share success",
+    "share_success_message": "Resource path copied, you can send it to others",
+    "share_failed_title": "Share failed",
+    "share_failed_message": "Failed to copy share link. Please check clipboard permissions."
+  },
+  "mistakeReferenceCard": {
+    "title": "Mistake Reference",
+    "loading": "Loading question content...",
+    "empty": "No question content available",
+    "error": "Failed to load question content. Please try again later.",
+    "viewDetail": "View mistake details",
+    "untitled": "Untitled mistake"
+  },
+  "favorites": {
+    "toast_marked": "Added to favorites",
+    "toast_unmarked": "Removed from favorites",
+    "toast_error_title": "Favorite action failed",
+    "context_mark": "Add to favorites",
+    "context_unmark": "Remove from favorites",
+    "toolbar_mark": "Favorite this note",
+    "toolbar_unmark": "Unfavorite this note",
+    "open_note": "Open \"{{title}}\""
+  },
+  "common": {
+    "no_selection": "No Note Selected",
+    "select_or_create_intro": "Select a note from the sidebar or create a new one to start.",
+    "untitled": "Untitled",
+    "untitledNote": "Untitled note",
+    "noSubject": "No subject selected",
+    "noteRoot": "Notes",
+    "subjectFallback": "General",
+    "saving": "Saving...",
+    "saved_at": "Saved {{time}}",
+    "auto_save_enabled": "Auto save enabled",
+    "deleted_at": "Deleted at"
+  },
+  "versions": {
+    "title": "Version History",
+    "empty": "No versions",
+    "revert": "Revert",
+    "revert_as_new": "Revert as new",
+    "compare": "Compare",
+    "load_failed": "Failed to load versions",
+    "revert_success": "Reverted to selected version",
+    "revert_failed": "Revert failed"
+  },
+  "graph_notes": {
+    "mode_label": "Mode",
+    "mode_notes": "Notes",
+    "mode_graph": "Knowledge Graph Notes",
+    "switch_to_graph": "Switch to Knowledge Graph mode",
+    "switch_to_notes": "Switch to Notes mode",
+    "load_error": "Failed to load graph data",
+    "created": "Graph note created",
+    "create_error": "Failed to create graph note",
+    "renamed": "Graph note renamed",
+    "rename_error": "Failed to rename graph note",
+    "deleted": "Graph note deleted",
+    "delete_error": "Failed to delete graph note",
+    "search_error": "Search failed",
+    "tag_added": "Tag added",
+    "tag_error": "Failed to update tag",
+    "feature_disabled": "This feature is not available in Knowledge Graph mode",
+    "root_title": "Graph Notes Root"
+  },
+  "notifications": {
+    "defaultSuccess": "Operation completed",
+    "createFailed": "Failed to create note",
+    "preferenceSaveFailed": "Failed to save preference",
+    "noActiveNote": "No note selected",
+    "editorUnavailable": "Editor unavailable",
+    "vectorCleared": "Vector index cleared ({{title}} content empty)",
+    "vectorQueued": "Vector rebuild queued",
+    "vectorUpdated": "Vector updated",
+    "vectorUpdateFailed": "Failed to update vector",
+    "vectorRemoved": "Vector index removed",
+    "vectorRemoveFailed": "Failed to remove vector",
+    "reindexingProgress": "Rebuilding: {{title}}",
+    "noPendingVectors": "No notes pending vector sync",
+    "copySuccess": "Copied to clipboard",
+    "importSingle": "Imported file: {{name}}",
+    "importMultiple": "{{count}} files imported",
+    "importFailed": "Import failed: {{error}}",
+    "wordCountTitle": "Word count",
+    "wordCountDescription": "The document contains {{count}} characters",
+    "noteLocated": "Navigated to note",
+    "noteNotFound": "Related note not found",
+    "jumpFailed": "Navigation failed",
+    "tagStateSaveFailed": "Failed to save tag state",
+    "folderStateSaveFailed": "Failed to save folder structure",
+    "renameFailed": "Failed to rename item",
+    "treeStateSaveFailed": "Failed to save tree state",
+    "ragConfigSaved": "Configuration saved",
+    "ragConfigSaveFailed": "Failed to save configuration",
+    "reembedTriggered": "Re-embedding started",
+    "reembedFailed": "Re-embedding failed",
+    "fontSaved": "Font preferences saved",
+    "fontSaveFailed": "Failed to save font preferences",
+    "treeStateReset": {
+      "title": "Tree state reset",
+      "description": "Detected corrupted tree preferences. Default expansion has been restored."
+    },
+    "vectorStatusPersistFailed": "Failed to persist vector status.",
+    "reindexingRunning": "Refreshing vector index…",
+    "reindexingQueued": "Queuing vector rebuild…",
+    "unknownFile": "Unnamed file",
+    "importFailedWithName": "Failed to import {{name}}",
+    "importParseFailed": "Parsing failed: {{error}}",
+    "retryLater": "Please try again later.",
+    "localBackupFailed": "Local backup failed",
+    "storageInsufficient": "Browser storage is full. Please save the note manually.",
+    "backupRestored": "Local backup restored",
+    "backupSaveFailed": "Failed to save after restoring.",
+    "retryOrManualSave": "Try again later or save manually.",
+    "reembedStart": "Re-embedding started",
+    "reindexingCompleted": "Vector refresh completed ({{count}} notes)",
+    "reindexingQueuedDone": "Queued vector rebuild for {{count}} notes",
+    "reindexingFailed": "Vector refresh failed",
+    "backfillSuccess": "Backfilled missing indexes ({{count}})",
+    "backfillFailed": "Backfill failed",
+    "backupRestoredDescription": "{{title}} has been saved successfully.",
+    "exportPdfSuccess": "PDF exported: {{name}}",
+    "exportPdfFailed": "Failed to export PDF: {{error}}",
+    "exportSuccessTitle": "Export ready",
+    "exportSuccess": "Exported {{note_count}} notes across {{subject_count}} subjects to {{path}}.",
+    "exportFailedTitle": "Export failed",
+    "exportFailed": "Failed to export notes: {{error}}",
+    "exportNeedSelection": "Select at least one subject before exporting.",
+    "conflictTitle": "Detected conflicting changes",
+    "conflictBody": "This note was saved in another window or device. We backed up your current edits locally—please review the latest version before restoring your local draft.",
+    "loadFailed": "Load failed"
+  },
+  "find": {
+    "placeholder": "Find…"
+  },
+  "vector": {
+    "status": {
+      "none": "No note selected",
+      "missing": "Index not generated",
+      "stale": "Needs update",
+      "fresh": "Up to date"
+    }
+  },
+  "findReplace": {
+    "inputRequired": "Enter content to search",
+    "editorNotReady": "Editor not ready yet",
+    "findUnsupported": "Current editor does not support find",
+    "noMatch": "No matches found",
+    "replaceUnsupported": "Current editor does not support replace",
+    "replaceOne": "Replaced 1 occurrence",
+    "replaceFailed": "Replace failed",
+    "editorUnavailable": "Editor not available",
+    "replaceMany": "Replaced {{count}} occurrences",
+    "replaceNone": "Nothing to replace"
+  },
+  "mentions": {
+    "loading": "Loading...",
+    "result_title": "Reference matches",
+    "hint": "Type keywords to reference",
+    "empty": "No matches found",
+    "type_to_search": "Type to search for references",
+    "irec_group": "Inspiration graph cards",
+    "untitled_card": "Untitled card",
+    "irec_prefix": "@Inspiration",
+    "no_insight": "No insights yet"
+  },
+  "toolbar": {
+    "new_note": "New note",
+    "new_folder": "New folder",
+    "refresh": "Refresh",
+    "import": "Import",
+    "import_md": "Import Markdown",
+    "import_pdf": "Import PDF",
+    "import_docx": "Import Word document",
+    "export": "Export",
+    "export_md": "Export as Markdown",
+    "export_library": "Library Manager",
+    "export_all": "Export all",
+    "trash": "Trash",
+    "font_preferences": "Font preferences",
+    "theme_preferences": "Theme preferences",
+    "assistant": "AI floating assistant",
+    "assistant_welcome": "How can I help you with your notes?",
+    "assistant_placeholder": "Ask a question...",
+    "crepe_demo": "Open Crepe demo",
+    "upload": "Upload",
+    "save": "Save",
+    "undo": "Undo",
+    "redo": "Redo",
+    "copy": "Copy",
+    "paste": "Paste",
+    "print": "Print",
+    "fullscreen": "Fullscreen",
+    "bold": "Bold",
+    "italic": "Italic",
+    "strikethrough": "Strikethrough",
+    "code": "Inline Code",
+    "heading1": "Heading 1",
+    "heading2": "Heading 2",
+    "heading3": "Heading 3",
+    "bulletList": "Bullet List",
+    "orderedList": "Ordered List",
+    "taskList": "Task List",
+    "quote": "Quote",
+    "horizontalRule": "Horizontal Rule",
+    "codeBlock": "Code Block",
+    "link": "Link",
+    "image": "Image",
+    "table": "Table",
+    "math": "Math Formula"
+  },
+  "search": {
+    "placeholder": "Search notes...",
+    "semantic_search": "Semantic search",
+    "search_current_only": "Search current note only",
+    "no_results": "No matching notes found",
+    "searching": "Searching...",
+    "search_button": "Search",
+    "clear_search": "Clear search",
+    "advanced_search": "Advanced search",
+    "results_count": "{{count}} results found",
+    "show": "Show:",
+    "auto_search_hint": "Auto-search enabled, results will appear below the editor",
+    "fts": {
+      "heading": "Keyword results (click to jump)",
+      "prev": "Previous",
+      "next": "Next",
+      "shortcutHint": "Use ↑/↓ to select · Enter to open · Esc to close · Tab to switch"
+    },
+    "rag": {
+      "inspectTitle": "Subject index inspection",
+      "inspectSummary": "Notes {{total}}, missing mapping {{missing_mapping}}, wrong library {{wrong_library}}, no vectors {{no_vectors}}",
+      "inspectLoading": "Scanning…",
+      "inspectCopy": "Copy JSON",
+      "inspectEmpty": "No issues found",
+      "problemsOnly": "Problems only",
+      "heading": "Semantic results (link to related notes)",
+      "perDocument": "Per document",
+      "prevChunk": "Previous chunk",
+      "nextChunk": "Next chunk"
+    },
+    "collapse": "Collapse",
+    "expand": "Expand"
+  },
+  "rag": {
+    "loading": "Loading configuration…",
+    "currentNote": "Current note",
+    "vectorUpdatedAt": "Vector updated at {{time}}",
+    "vectorNotIndexed": "Vector index not created yet.",
+    "vectorLatest": "Latest: {{time}}",
+    "vectorLatestEmpty": "Latest: —",
+    "manualRefreshHint": "Content changes do not auto-update vectors; refresh when needed.",
+    "pendingHint": "When a note's content is newer than its vector timestamp it is marked pending. Vectors are refreshed asynchronously.",
+    "pendingCount": "{{count}} notes pending update",
+    "pendingMore": "… plus {{count}} more pending",
+    "statusLabel": "Status:",
+    "actions": {
+      "backfillMissing": "Backfill missing",
+      "backfillSuccess": "Backfill completed",
+      "reembedSubject": "Rebuild subject vectors",
+      "updateCurrent": "Update current vector",
+      "clearCurrent": "Clear current vector"
+    },
+    "backfillStart": "Backfilling missing vectors…",
+    "backfillSuccess": "Backfill completed",
+    "backfillFailed": "Backfill failed: {{error}}",
+    "backfillDone": "Backfilled: {{count}}",
+    "indexManager": {
+      "title": "Index & vector manager",
+      "description": "Saving only writes note content. Refresh or clear vector indexes when the content is stable."
+    },
+    "statusSummary": "{{documents}} documents / {{chunks}} chunks",
+    "noteCount": "Notes: {{count}}",
+    "concurrency": "Concurrency",
+    "inspectTitle": "Subject index inspection",
+    "inspectSummary": "Notes {{total}}, missing mapping {{missing_mapping}}, wrong library {{wrong_library}}, no vectors {{no_vectors}}",
+    "inspectLoading": "Scanning…",
+    "inspectCopy": "Copy JSON",
+    "inspectEmpty": "No issues found",
+    "problemsOnly": "Problems only",
+    "configDialog": {
+      "title": "RAG settings ({{subject}})"
+    },
+    "config": {
+      "chunkSize": "Chunk size",
+      "chunkOverlap": "Chunk overlap",
+      "minChunkSize": "Min chunk size",
+      "enableRerank": "Enable rerank"
+    }
+  },
+  "editor": {
+    "toolbar": {
+      "bold": "Bold",
+      "italic": "Italic",
+      "underline": "Underline",
+      "strikethrough": "Strikethrough",
+      "heading": "Heading",
+      "code": "Code",
+      "code_block": "Code block",
+      "link": "Link",
+      "image": "Image",
+      "table": "Table",
+      "list": "List",
+      "ordered_list": "Ordered list",
+      "unordered_list": "Unordered list",
+      "quote": "Quote",
+      "divider": "Divider"
+    },
+    "table": {
+      "add_row_before": "Insert row above",
+      "add_row_after": "Insert row below",
+      "delete_row": "Delete row",
+      "add_col_before": "Insert column to the left",
+      "add_col_after": "Insert column to the right",
+      "delete_col": "Delete column",
+      "toggle_header_row": "Toggle header row",
+      "toggle_header_col": "Toggle header column",
+      "merge_cells": "Merge cells",
+      "split_cell": "Split cell",
+      "delete_table": "Delete table",
+      "cell_bg_label": "Cell background",
+      "set_cell_bg": "Apply cell background"
+    },
+    "image_upload": {
+      "save_failed": "Could not save the image to this note: {{error}}",
+      "drop_failed": "Drag-and-drop image insertion failed: {{error}}",
+      "paste_failed": "Pasted image processing failed: {{error}}",
+      "success": "Image inserted",
+      "command_failed": "Slash image upload failed: {{error}}",
+      "placeholder": "Click or drag to upload image",
+      "caption_placeholder": "Add image caption...",
+      "inline_placeholder": "Paste image link or upload",
+      "drop_overlay_title": "Drop to insert image",
+      "drop_overlay_hint": "Supports PNG, JPG, GIF, WebP and more"
+    },
+    "save_status": {
+      "saved": "Saved",
+      "saving": "Saving...",
+      "saved_at": "Saved at {{time}}",
+      "unsaved": "Unsaved",
+      "save_failed": "Save failed",
+      "conflict": "Conflict detected, please review the latest version",
+      "auto_save": "Auto save"
+    },
+    "placeholder": {
+      "default": "Start writing...",
+      "body": "Type '/' to open command menu..."
+    },
+    "find_replace": "Find & replace",
+    "find": "Find",
+    "replace": "Replace",
+    "replace_all": "Replace all",
+    "case_sensitive": "Case sensitive",
+    "whole_word": "Match whole word",
+    "regex": "Regular expression",
+    "next": "Next",
+    "previous": "Previous",
+    "no_matches": "No matches",
+    "matches_count": "{{current}}/{{total}}",
+    "importedNoteTitle": "Imported note",
+    "buttons": {},
+    "empty_state": {
+      "title": "No Note Selected",
+      "description": "Select a note from the sidebar or create a new one to start.",
+      "actions": {
+        "new_folder": "New folder",
+        "search_note": "Search notes",
+        "open_assistant": "Open AI assistant"
+      }
+    },
+    "font": {
+      "size_label": "Font size",
+      "size_placeholder": "Font size",
+      "family_label": "Font family",
+      "family_placeholder": "Font family",
+      "line_height_label": "Line height",
+      "line_height_placeholder": "Line height",
+      "reset": "Reset"
+    },
+    "bubble": {
+      "ask_ai": "Ask AI",
+      "reset": "Reset",
+      "apply": "Apply"
+    },
+    "placeholder_hints": {
+      "heading": "Heading {{level}}",
+      "body": "Press '/' for commands, or '++' for AI autocomplete..."
+    },
+    "image": {
+      "alt_prompt": "Image alt text",
+      "title_prompt": "Caption / title",
+      "menu_title": "Image Settings",
+      "width": "Width",
+      "align": "Alignment",
+      "align_left": "Left",
+      "align_center": "Center",
+      "align_right": "Right",
+      "alt_text": "Alt Text",
+      "alt_placeholder": "Describe the image...",
+      "caption": "Caption",
+      "caption_placeholder": "Add a caption...",
+      "click_to_edit": "Click to edit...",
+      "reset": "Reset"
+    },
+    "slash": {
+      "link_title_prompt": "Link title",
+      "youtube_url_prompt": "YouTube URL",
+      "video_url_prompt": "Video URL"
+    },
+    "math": {
+      "title_block": "Insert Block Formula",
+      "title_inline": "Insert Inline Formula",
+      "title_edit": "Edit Formula",
+      "insert": "Insert",
+      "update": "Update",
+      "code": "Code",
+      "preview": "Preview",
+      "shortcut_hint": "Tip: Ctrl/⌘ + Enter to insert quickly",
+      "invalid_latex": "Invalid LaTeX syntax",
+      "presets": {
+        "fraction": "Fraction",
+        "sqrt": "Square Root",
+        "power": "Power",
+        "subscript": "Subscript",
+        "summation": "Summation",
+        "product": "Product",
+        "integral": "Integral",
+        "limit": "Limit",
+        "derivative": "Derivative",
+        "partial": "Partial Derivative",
+        "matrix2x2": "2×2 Matrix",
+        "matrix3x3": "3×3 Matrix",
+        "vector": "Vector",
+        "greek_alpha": "Greek α",
+        "greek_theta": "Greek θ",
+        "infinity": "Infinity",
+        "neq": "Inequalities"
+      },
+      "presets_label": "Templates",
+      "category": {
+        "basic": "Basic",
+        "calculus": "Calculus",
+        "matrix": "Matrix",
+        "symbols": "Symbols"
+      }
+    },
+    "image_resizer": {
+      "title": "Resize image",
+      "width_label": "Width",
+      "reset": "Reset width"
+    },
+    "node_selector": {
+      "placeholder": "Block type",
+      "paragraph": "Paragraph",
+      "heading1": "Heading 1",
+      "heading2": "Heading 2",
+      "heading3": "Heading 3",
+      "bullet": "Bullet list",
+      "ordered": "Numbered list",
+      "task": "Task list",
+      "quote": "Quote"
+    },
+    "generative": {
+      "label": "AI mode",
+      "enabled": "Generating · {{mode}}",
+      "disabled": "Generative off",
+      "profile_placeholder": "Select style",
+      "badge": "AI · {{mode}}",
+      "modes": {
+        "balanced": "Balanced",
+        "precise": "Precise",
+        "creative": "Creative"
+      }
+    },
+    "link_selector": {
+      "title": "Link to note",
+      "matching": "Matching '{{query}}'",
+      "hint": "Type [[ to search notes",
+      "loading": "Searching...",
+      "empty": "No matching notes",
+      "instructions": "↑↓ navigate · Enter insert · Esc close",
+      "create": "Link to '{{query}}'",
+      "error": "Link search failed: {{message}}"
+    },
+    "annotation": {
+      "prompt_text": "Annotation text",
+      "prompt_author": "Author"
+    },
+    "ai_stop": "Stop generating",
+    "portaled_to_canvas": "Editor is open in canvas",
+    "portaled_hint": "Edit this note in the canvas"
+  },
+  "tree": {
+    "root": "My notes",
+    "all_notes": "All notes",
+    "context_menu": {
+      "rename": "Rename",
+      "delete": "Delete",
+      "new_note": "New note",
+      "new_folder": "New folder",
+      "move": "Move",
+      "duplicate": "Duplicate",
+      "add_to_favorites": "Add to favorites",
+      "remove_from_favorites": "Remove from favorites",
+      "copy_path": "Copy path",
+      "properties": "Properties",
+      "open": "Open"
+    },
+    "rename_dialog": {
+      "title": "Rename",
+      "title_note": "Rename note",
+      "title_folder": "Rename folder",
+      "placeholder": "Enter new name...",
+      "confirm": "Confirm",
+      "cancel": "Cancel"
+    },
+    "delete_confirm": {
+      "title": "Confirm deletion",
+      "description": "This will move the item to trash",
+      "description_note": "Are you sure you want to delete note \"{{name}}\"?",
+      "description_folder": "Are you sure you want to delete folder \"{{name}}\"? All contents will also be deleted.",
+      "confirm": "Delete",
+      "cancel": "Cancel"
+    },
+    "create_note": {
+      "title": "New note",
+      "placeholder": "Enter note name..."
+    },
+    "create_folder": {
+      "title": "New folder",
+      "placeholder": "Enter folder name..."
+    },
+    "aria": {
+      "expand": "Expand folder",
+      "collapse": "Collapse folder",
+      "tree": "Notes tree"
+    },
+    "filter": {
+      "placeholder": "Filter notes tree",
+      "empty": "No nodes match the filter"
+    },
+    "vectorStatus": {
+      "fresh": "Vector: up to date",
+      "pending": "Vector: pending update",
+      "none": "Vector: not generated"
+    },
+    "empty": "No data"
+  },
+  "trash": {
+    "title": "Trash",
+    "empty": "Trash is empty",
+    "empty_message": "No items in trash",
+    "restore": "Restore",
+    "delete_permanently": "Delete permanently",
+    "empty_trash": "Empty trash",
+    "confirm_empty": "Are you sure you want to empty the trash? This action cannot be undone.",
+    "confirm_hard_delete": "Are you sure you want to permanently delete \"{{name}}\"? This action cannot be undone.",
+    "confirm_empty_title": "Confirm empty",
+    "confirm_delete_title": "Confirm deletion",
+    "restored_success": "Restored",
+    "deleted_success": "Permanently deleted",
+    "emptied_success": "Trash emptied",
+    "items_count": "{{count}} items",
+    "load_failed": "Failed to load trash",
+    "restore_success": "Restored successfully",
+    "restore_failed": "Restore failed",
+    "empty_success": "Trash emptied",
+    "delete_success": "Permanently deleted",
+    "delete_failed": "Delete failed",
+    "empty_placeholder": "Trash is empty",
+    "confirm_empty_desc": "Are you sure you want to empty the trash? This action cannot be undone.",
+    "confirm_delete_desc": "Are you sure you want to permanently delete this item? This action cannot be undone."
+  },
+  "assets": {
+    "title": "Asset management",
+    "upload": "Upload asset",
+    "delete": "Delete asset",
+    "orphan_scan": "Scan orphaned files",
+    "orphan_clean": "Clean orphaned files",
+    "total_size": "Total size",
+    "orphan_count": "Orphaned files",
+    "scanning": "Scanning...",
+    "cleaning": "Cleaning...",
+    "scan_complete": "Scan complete",
+    "clean_complete": "Cleanup complete",
+    "no_orphans": "No orphaned files found"
+  },
+  "preferences": {
+    "title": "Preferences",
+    "font_family": "Font family",
+    "font_size": "Font size",
+    "theme": "Theme",
+    "system_default": "System default",
+    "sans_serif": "Sans serif",
+    "serif": "Serif",
+    "monospace": "Monospace",
+    "theme_light": "Light",
+    "theme_dark": "Dark",
+    "theme_auto": "Auto",
+    "editor_settings": "Editor settings",
+    "line_height": "Line height",
+    "indent_size": "Indent size"
+  },
+  "tabs": {
+    "close": "Close tab",
+    "scrollLeft": "Scroll tab list left",
+    "scrollRight": "Scroll tab list right",
+    "close_others": "Close other tabs",
+    "close_right": "Close tabs to the right",
+    "close_all": "Close all tabs",
+    "pin": "Pin tab",
+    "unpin": "Unpin tab"
+  },
+  "library_manager": {
+    "title": "Notes Library Manager",
+    "description": "Export notes as Markdown ZIP or full backup, or import previously exported notes library",
+    "tabs": {
+      "export": "Export",
+      "import": "Import"
+    }
+  },
+  "import": {
+    "title": "Import Notes",
+    "errorTitle": "Import Error",
+    "select_file": "Select file",
+    "importing": "Importing...",
+    "success": "Successfully imported {{note_count}} notes ({{subject_count}} subjects), skipped {{skipped}} existing notes",
+    "success_with_overwrite": "Successfully imported {{note_count}} notes ({{subject_count}} subjects), skipped {{skipped}}, overwritten {{overwritten}}",
+    "successTitle": "Import Successful",
+    "failed": "Import failed",
+    "unsupported_format": "Unsupported file format",
+    "not_implemented": "Import feature is under development, stay tuned",
+    "file": {
+      "label": "Select import file",
+      "placeholder": "Select .zip backup file",
+      "choose": "Choose file",
+      "clear": "Clear",
+      "help": "Supports unified ZIP format (Markdown + metadata), also compatible with legacy AIMN format",
+      "dialog_title": "Select notes library backup file"
+    },
+    "conflict_strategy": {
+      "label": "Conflict Strategy",
+      "placeholder": "Select conflict handling",
+      "skip": "Skip existing notes",
+      "overwrite": "Overwrite existing notes",
+      "merge_keep_newer": "Keep the newer version",
+      "help": "How to handle imported notes that have the same ID as local notes"
+    },
+    "progress": {
+      "stage": {
+        "parsing": "Parsing archive file...",
+        "importing_notes": "Importing notes...",
+        "importing_attachments": "Importing attachments...",
+        "importing_preferences": "Importing preferences...",
+        "done": "Import complete"
+      },
+      "processed": "Processed {{processed}}/{{total}}"
+    },
+    "instructions": {
+      "title": "Import Instructions",
+      "step1": "Select a previously exported backup file (.zip)",
+      "step2": "The system will automatically detect the file format and import notes, attachments, and settings",
+      "step3": "Existing notes (same ID) will be handled according to the conflict strategy"
+    },
+    "restore_warning": "Importing a backup will also revive notes that were soft-deleted and moved to the trash. Those notes will overwrite the trashed copies, so double-check the backup before continuing.",
+    "filter_name": "Notes Archive",
+    "actions": {
+      "import": "Import",
+      "importing": "Importing..."
+    }
+  },
+  "export": {
+    "title": "Export notes library",
+    "description": "Bundle notes, attachments, and preferences into a portable archive.",
+    "errorTitle": "Export error",
+    "exporting": "Exporting...",
+    "success": "Export successful",
+    "success_desc": "Exported {{count}} notes to: {{path}}",
+    "failed": "Export failed",
+    "select_format": "Select format",
+    "format": {
+      "label": "Export format",
+      "markdown": "Unified ZIP Format",
+      "markdown_desc": "Markdown files + complete metadata, compatible with other apps",
+      "markdown_help": "Each note exported as a separate .md file (with YAML frontmatter), including attachments, version history, and preferences. Can be opened directly in standard Markdown editors."
+    },
+    "scope": {
+      "label": "Export scope",
+      "placeholder": "Choose subjects",
+      "current": "Current subject",
+      "all": "All subjects",
+      "custom": "Select subjects…",
+      "help": "Custom exports let you combine multiple subjects into one archive."
+    },
+    "subjects": {
+      "label": "Subjects to export",
+      "help": "Only enabled subjects with notes will be included.",
+      "empty": "No subjects available to export."
+    },
+    "versions": {
+      "label": "Include version history",
+      "help": "Adds note snapshots; archives will be slightly larger."
+    },
+    "destination": {
+      "label": "Export location",
+      "placeholder": "Use default exports folder",
+      "choose": "Choose…",
+      "clear": "Clear",
+      "help": "If no location is selected the archive is stored in the app exports directory."
+    },
+    "filter_name": "Notes Backup",
+    "actions": {
+      "export": "Export",
+      "exporting": "Exporting…"
+    }
+  },
+  "dialogs": {
+    "close": "Close",
+    "confirm": "Confirm",
+    "cancel": "Cancel",
+    "save": "Save",
+    "discard": "Discard",
+    "apply": "Apply"
+  },
+  "upload": {
+    "uploading": "Uploading...",
+    "success": "Upload successful",
+    "failed": "Upload failed",
+    "image_too_large": "Image too large, exceeds {{limit}}MB",
+    "unsupported_format": "Unsupported image format"
+  },
+  "fontPresets": {
+    "body": {
+      "systemSans": {
+        "label": "System default (sans-serif)",
+        "description": "Matches the system sans-serif stack for consistent UI text."
+      },
+      "roundedSans": {
+        "label": "Rounded sans-serif (Nunito / PingFang)",
+        "description": "Rounded, friendly sans-serif combination with good CJK coverage."
+      },
+      "serifSong": {
+        "label": "Serif style (Source Han Serif)",
+        "description": "Traditional serif typeface, suitable for long-form reading."
+      },
+      "kaiti": {
+        "label": "Cursive style (WenKai / KaiTi)",
+        "description": "Handwriting inspired font that works well for note-taking."
+      }
+    },
+    "code": {
+      "jetbrains": {
+        "label": "JetBrains Mono",
+        "description": "Modern developer font with ligature support."
+      },
+      "fira": {
+        "label": "Fira Code",
+        "description": "Popular programming font featuring ligatures."
+      },
+      "consolas": {
+        "label": "Consolas",
+        "description": "Classic Windows monospace typeface."
+      },
+      "menlo": {
+        "label": "Menlo",
+        "description": "Common macOS monospace typeface."
+      }
+    }
+  },
+  "validation": {
+    "folder": {
+      "empty": "Name cannot be empty.",
+      "invalidChars": "Name cannot contain reserved characters {{chars}}.",
+      "tooLong": "Name is too long (max 120 characters)."
+    }
+  },
+  "confirmations": {
+    "leaveWithUnsaved": "You have unsaved changes. Leave anyway?",
+    "closeTabWithUnsaved": "This tab has unsaved changes. Close it anyway?",
+    "renameMayUpdateTitle": "Unsaved changes may update the heading. Continue renaming?"
+  },
+  "actions": {
+    "restore": "Restore",
+    "dismiss": "Dismiss",
+    "saveConfig": "Save configuration",
+    "exportMarkdown": "Export Markdown",
+    "save": "Save",
+    "settings": "Settings",
+    "delete_success": "Deleted successfully",
+    "delete_failed": "Delete failed",
+    "create_failed": "Create failed",
+    "save_success": "Saved successfully",
+    "save_failed": "Save failed",
+    "title_save_failed": "Content saved, but title update failed",
+    "update_failed": "Update failed",
+    "rename_failed": "Rename failed",
+    "conflict": "Content updated elsewhere",
+    "conflict_hint": "Please refresh and try saving again, or revert to a previous version"
+  },
+  "status": {
+    "wordCount": "{{count}} characters",
+    "saving": "Saving…",
+    "error": "Save failed",
+    "savedAt": "Saved {{time}}"
+  },
+  "tooltips": {
+    "save": "Save ({{shortcut}})",
+    "copyMarkdown": "Copy Markdown",
+    "print": "Print ({{shortcut}})",
+    "exportPdf": "Export as PDF ({{shortcut}})",
+    "fullscreen": "Toggle fullscreen ({{shortcut}})"
+  },
+  "font": {
+    "bodyPlaceholder": "e.g. 'LXGW WenKai', 'KaiTi', serif",
+    "codePlaceholder": "e.g. 'Fira Code', 'JetBrains Mono', monospace",
+    "bodyCustomHint": "Ensure the custom font family is installed on your system.",
+    "codeCustomHint": "Ensure the custom monospace font is installed.",
+    "codeExample": "const preview = \"Sample code\"; // Ensure the font shows monospaced text",
+    "customFallbackHint": "Leaving the custom field empty reverts to the default stack.",
+    "customOption": "Custom (CSS font-family)",
+    "previewSample": "Example text / Sample text",
+    "sizeHint": "Adjust the base body size ({{min}}-{{max}} px). The change applies immediately to the notes view."
+  },
+  "contextPanel": {
+    "title": "Properties"
+  },
+  "context": {
+    "open": "Open",
+    "outline": "OUTLINE",
+    "select_hint": "Select a note to view context",
+    "typography_title": "Typography",
+    "typography_description": "Adjust size, line height, and font",
+    "typography_default": "Default",
+    "typography_markdown_hint": "Markdown editor uses default styling. Rich text formatting (fonts, sizes) is not supported.",
+    "created": "Created",
+    "updated": "Updated",
+    "tags": "Tags",
+    "add_tag": "Add tag",
+    "tag_add_failed": "Failed to add tag",
+    "tag_remove_failed": "Failed to remove tag",
+    "no_headings": "No headings",
+    "outgoing": "OUTGOING LINKS",
+    "no_outgoing": "No outgoing links",
+    "assets": "ATTACHMENTS",
+    "no_assets": "No attachments",
+    "external_links": "External links",
+    "link_not_found": "Linked note not found",
+    "link_open_failed": "Failed to open link",
+    "external_open_failed": "Failed to open external link",
+    "external_open_confirm": "You are opening an external link. Continue?",
+    "unresolved_link": "Unresolved",
+    "open_asset_failed": "Failed to open attachment",
+    "delete_asset_failed": "Failed to delete attachment",
+    "load_failed": "Failed to load links: {{message}}",
+    "retry": "Retry",
+    "truncated_outgoing": "Showing first 200 outgoing links",
+    "truncated_external": "Showing first 200 external links"
+  },
+  "outlineMindmap": {
+    "empty": "Nothing here yet",
+    "focusLabel": "Current node",
+    "untitled": "Untitled",
+    "childrenCount": "{{count}} direct children",
+    "descCount": "{{count}} descendants",
+    "depthLabel": "Depth {{depth}}",
+    "hasNote": "Note attached",
+    "search": {
+      "matches": "{{count}} matches",
+      "empty": "No matching nodes",
+      "listTitle": "Matches",
+      "jump": "Jump",
+      "more": "{{count}} more results"
+    },
+    "stats": {
+      "title": "Outline Insight",
+      "nodes": "Total nodes",
+      "maxDepth": "Max depth",
+      "collapsed": "{{count}} collapsed",
+      "focusedDepth": "Focused depth {{depth}}"
+    },
+    "actions": {
+      "addChild": "Add child",
+      "addSibling": "Add sibling",
+      "expand": "Expand",
+      "collapse": "Collapse",
+      "focus": "Focus here",
+      "delete": "Delete node"
+    },
+    "zoom": {
+      "label": "Zoom",
+      "in": "Zoom in",
+      "out": "Zoom out",
+      "reset": "Reset view"
+    },
+    "hints": {
+      "title": "Interaction tips",
+      "drag": "Drag blank space to pan the canvas",
+      "wheel": "Use the scroll wheel to zoom or shift horizontally",
+      "doubleClick": "Double-click a node to edit it"
+    }
+  },
+  "outlineEditor": {
+    "title": "My Notes",
+    "search_placeholder": "Search nodes (Cmd+K)",
+    "view": {
+      "outline": "Outline",
+      "mindmap": "Mindmap"
+    },
+    "undo": "Undo",
+    "redo": "Redo",
+    "syncing": "Syncing...",
+    "refresh": "Refresh",
+    "export": "Export",
+    "close": "Close",
+    "loading": "Loading tag tree...",
+    "root_title_placeholder": "Knowledge graph outline",
+    "root_desc_placeholder": "Edit root description in subject settings",
+    "new_node": "New node",
+    "node_placeholder": "Enter content...",
+    "note_placeholder": "Add note (Markdown supported)",
+    "focus_mode": "Focus",
+    "complete": "Done",
+    "delete": "Delete",
+    "delete_confirm_title": "Confirm Deletion",
+    "delete_confirm_desc": "Are you sure you want to delete this node? This action cannot be undone.",
+    "cancel": "Cancel",
+    "confirm": "Confirm",
+    "cannot_move_to_child": "Cannot move a node to its own child",
+    "delete_success": "Tag deleted",
+    "delete_failed": "Delete failed: {{error}}",
+    "create_success": "Tag created",
+    "create_child_success": "Child tag created",
+    "create_failed": "Create failed: {{error}}",
+    "indent_success": "Indented",
+    "indent_failed": "Indent failed: {{error}}",
+    "outdent_success": "Outdented",
+    "outdent_failed": "Outdent failed: {{error}}",
+    "order_updated": "Tag order updated",
+    "drag_failed": "Drag sync failed: {{error}}",
+    "sync_name_failed": "Sync failed: {{error}}",
+    "sync_desc_failed": "Description sync failed: {{error}}",
+    "load_failed": "Failed to load tag tree: {{error}}",
+    "root_note": "Bi-directional tag tree editor",
+    "create_default_name": "New tag",
+    "create_child_name": "New child tag",
+    "export_title": "Export outline",
+    "export_png": "Export as image (PNG)",
+    "export_png_desc": "Share to social platforms",
+    "export_md": "Export as Markdown",
+    "export_md_desc": "Portable text format for migration",
+    "export_json": "Backup (JSON)",
+    "export_json_desc": "Save full structure for restore",
+    "export_coming": "Export is in development, stay tuned",
+    "shortcuts": {
+      "title": "Keyboard shortcuts",
+      "sibling": "Add sibling node",
+      "indent": "Indent / add child",
+      "outdent": "Outdent",
+      "move": "Move / navigate",
+      "move_hint": "Drag / arrow keys",
+      "edit": "Edit content",
+      "edit_hint": "Double click or Enter on selection",
+      "undo_redo": "Undo / Redo",
+      "view": "Toggle view",
+      "view_hint": "Use top toggles"
+    }
+  },
+  "assistant": {
+    "title": "AI Assistant",
+    "reset_chat": "Reset Chat",
+    "welcome": "How can I help you with your notes?",
+    "thinking": "Thinking...",
+    "placeholder": "Ask a question..."
+  },
+  "header": {
+    "add_tags": "Add tags...",
+    "manage_tags": "Manage tags",
+    "tags": "Tags",
+    "no_tags": "No tags assigned",
+    "tag_placeholder": "Type new tag...",
+    "suggestions": "Suggestions",
+    "load_tags_failed": "Failed to load tags",
+    "tag_exists": "Tag already exists",
+    "rename_tag": "Rename tag",
+    "rename_tag_success": "Tag updated",
+    "rename_tag_count": "Updated {{count}} notes",
+    "rename_failed": "Failed to rename tag",
+    "remove_tag": "Remove tag",
+    "print_failed": "Print failed: No content to print",
+    "close_details": "Close Details",
+    "open_details": "Open Details",
+    "versions": "Version History",
+    "export": "Export current subject",
+    "exporting": "Exporting...",
+    "export_failed": "Export failed",
+    "export_success": "Exported to: {{path}}",
+    "export_single": "Export current note (with assets)",
+    "export_single_title": "Export single note",
+    "export_single_success": "Exported to: {{path}}",
+    "export_single_failed": "Export failed: {{error}}",
+    "export_single_mobile_hint": "On mobile we will use the default export directory. Please check it in your file manager later.",
+    "exporting_single": "Exporting current note...",
+    "export_filter_name": "Markdown Note Export"
+  },
+  "slashMenu": {
+    "textGroup": {
+      "label": "Text",
+      "text": "Text",
+      "h1": "Heading 1",
+      "h2": "Heading 2",
+      "h3": "Heading 3",
+      "h4": "Heading 4",
+      "h5": "Heading 5",
+      "h6": "Heading 6",
+      "quote": "Quote",
+      "divider": "Divider"
+    },
+    "listGroup": {
+      "label": "List",
+      "bulletList": "Bullet List",
+      "orderedList": "Ordered List",
+      "taskList": "Task List"
+    },
+    "advancedGroup": {
+      "label": "Advanced",
+      "image": "Image",
+      "codeBlock": "Code Block",
+      "table": "Table",
+      "math": "Math"
+    }
+  },
+  "menu": {
+    "page_actions": "Page Actions",
+    "copy_link": "Copy Link",
+    "link_copied": "Link Copied",
+    "reveal_in_sidebar": "Reveal in Sidebar",
+    "move_to_trash": "Move to Trash",
+    "export_import": "Export/Import",
+    "history": "History",
+    "itemCount": "{{count}} items",
+    "referencedCount": "{{count}} referenced",
+    "confirm": "Confirm",
+    "alreadyReferenced": "Already referenced",
+    "addTextbook": "Add textbook reference",
+    "addMistake": "Add mistake reference"
+  },
+  "reference": {
+    "selectTextbook": "Select Textbook",
+    "selectMistake": "Select Mistake",
+    "selectExamSession": "Select Question Set",
+    "searchPlaceholder": "Search resources...",
+    "noTextbooks": "No textbooks available",
+    "noMistakes": "No mistakes available",
+    "noExamSessions": "No question sets available",
+    "examSessionFallbackTitle": "Question Set",
+    "noSubjectForMistakes": "Please select a subject first",
+    "itemCount": "{{count}} items",
+    "referencedCount": "{{count}} referenced",
+    "confirm": "Confirm",
+    "alreadyReferenced": "Already referenced",
+    "addTextbook": "Add textbook reference",
+    "addMistake": "Add mistake reference",
+    "time": {
+      "just_now": "Just now",
+      "minutes_ago": "{{count}} min ago",
+      "hours_ago": "{{count}} hr ago",
+      "days_ago": "{{count}} days ago"
+    },
+    "invalid": "Original resource has been deleted",
+    "validating": "Validating...",
+    "remove": "Remove reference",
+    "refreshTitle": "Refresh title",
+    "cleanupInvalid": "Cleanup invalid references",
+    "cleanupSuccess": "Cleaned up {{count}} invalid references",
+    "cleanupNone": "No invalid references",
+    "refreshSuccess": "Title updated",
+    "refreshFailed": "Refresh failed: {{error}}",
+    "cannotPreview": "Invalid reference cannot be previewed",
+    "cannotAddToChat": "Invalid reference cannot be added to chat",
+    "source_db": {
+      "textbooks": "Textbook",
+      "mistakes": "Mistake",
+      "chat_v2": "Attachment",
+      "exam_sessions": "Question Set"
+    },
+    "preview_type": {
+      "markdown": "Markdown",
+      "pdf": "PDF Document",
+      "card": "Card",
+      "image": "Image",
+      "exam": "Question Set Preview",
+      "none": "No Preview"
+    },
+    "context_menu": {
+      "open": "Open Reference",
+      "open_source": "Open Original Resource",
+      "copy_link": "Copy Reference Link",
+      "remove": "Remove Reference",
+      "move": "Move to",
+      "properties": "Properties"
+    },
+    "tooltip": {
+      "source": "Source: {{source}}",
+      "created_at": "Referenced at: {{time}}",
+      "invalid_hint": "Original resource deleted. Right-click to remove this reference."
+    },
+    "aria": {
+      "reference_icon": "Reference icon",
+      "reference_badge": "Reference badge"
+    },
+    "empty_id": "Please enter a valid ID",
+    "add_failed": "Failed to add reference",
+    "add_reference": "Add Reference",
+    "add_textbook": "Add Textbook Reference",
+    "add_mistake": "Add Mistake Reference",
+    "already_exists": "Reference already exists",
+    "add_success": "Reference added",
+    "remove_success": "Reference removed",
+    "add_to_folder": "Will be added to current folder",
+    "add_to_root": "Will be added to root",
+    "enter_textbook_id": "Enter textbook ID (selector coming soon)",
+    "enter_mistake_id": "Enter mistake ID (selector coming soon)",
+    "to_chat_pending": "Feature in development",
+    "open_source": "Open Original Content",
+    "send_to_chat": "Send to Conversation",
+    "textbook": "Textbook",
+    "mistake": "Mistake",
+    "no_active_session": "No active conversation",
+    "no_active_session_desc": "Please open a conversation window first",
+    "session_not_found": "Session not found",
+    "node_not_found": "Node not found",
+    "to_chat_success": "Added to conversation",
+    "to_chat_created_new": "Created new context reference",
+    "to_chat_reused": "Reused existing context reference",
+    "to_chat_failed": "Failed to add to conversation",
+    "resource_not_found": "Resource not found",
+    "textbook_ref_fallback": "Textbook ref {{id}}",
+    "mistake_ref_fallback": "Mistake ref {{id}}",
+    "invalid_cannot_refresh": "Reference is invalid, cannot refresh title"
+  },
+  "previewPanel": {
+    "emptyContent": "No content",
+    "empty": {
+      "title": "Nothing Selected",
+      "description": "Select a note or reference from the sidebar to preview"
+    },
+    "folder": {
+      "title": "Folder",
+      "description": "Folders cannot be previewed. Expand to select specific content."
+    },
+    "note": {
+      "title": "Note",
+      "description": "Notes open in the editor. Double-click from the sidebar to open."
+    },
+    "unsupported": {
+      "title": "Preview Unavailable",
+      "description": "This type of content cannot be previewed"
+    },
+    "error": {
+      "title": "Load Failed",
+      "unknownError": "Unknown error, please try again later",
+      "resourceNotFound": "Resource not found",
+      "noReferenceData": "Reference data not found",
+      "noMistakeData": "Mistake data not found"
+    },
+    "pdf": {
+      "type": "PDF Document",
+      "unknownFile": "Unknown file",
+      "noFile": "No PDF file specified",
+      "opening": "Opening...",
+      "openButton": "Open PDF",
+      "openInline": "Preview in App",
+      "openSystem": "Open with System",
+      "hint": "Click to open the PDF with your system's default application",
+      "inlineHint": "Preview in app or open with the system default",
+      "tooLarge": "File is too large to preview"
+    },
+    "mistake": {
+      "noData": "No mistake data available",
+      "defaultType": "Mistake",
+      "statusCompleted": "Completed",
+      "statusPending": "Pending",
+      "userQuestion": "User Question",
+      "questionContent": "Question Content",
+      "questionImage": "Question Image",
+      "summary": "Summary",
+      "viewDetail": "View Details"
+    },
+    "video": {
+      "noVideo": "Unable to load video",
+      "loadError": "Video failed to load"
+    },
+    "audio": {
+      "noAudio": "Unable to load audio",
+      "loadError": "Audio failed to load",
+      "skipBack": "Rewind 10s",
+      "pause": "Pause",
+      "play": "Play",
+      "skipForward": "Forward 10s",
+      "unmute": "Unmute",
+      "mute": "Mute"
+    },
+    "image": {
+      "preview": "Image Preview",
+      "noImage": "No image available",
+      "loadError": "Failed to load image",
+      "zoomIn": "Zoom In",
+      "zoomOut": "Zoom Out",
+      "fullscreen": "Fullscreen"
+    },
+    "exam": {
+      "noData": "No question set data available",
+      "untitled": "Untitled Question Set",
+      "pageLabel": "Page {{index}}",
+      "pageImage": "Question set page {{index}} image",
+      "pageCount": "{{count}} pages",
+      "totalQuestions": "{{count}} questions",
+      "questionCount": "{{count}} questions",
+      "unknownQuestion": "Unknown question",
+      "ocrText": "Recognized text",
+      "noOcrText": "No recognized text",
+      "linked": "Linked",
+      "viewCardDetail": "View question details",
+      "viewDetail": "View question set details"
+    }
+  },
+  "tips": {
+    "versionHistory": "Version history is available in the Notes panel"
+  }
+}

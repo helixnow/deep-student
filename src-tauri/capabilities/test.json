@@ -1,0 +1,36 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "test",
+  "description": "Test mode capability - includes all permissions needed for automated testing",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "core:event:default",
+    "core:window:default",
+    "core:webview:allow-print",
+    "core:webview:allow-set-webview-zoom",
+    "core:webview:allow-internal-toggle-devtools",
+    "dialog:default",
+    "dialog:allow-open",
+    "dialog:allow-save",
+    "dialog:allow-message",
+    "dialog:allow-ask",
+    "dialog:allow-confirm",
+    "fs:default",
+    "fs:allow-app-read-recursive",
+    "fs:allow-app-write-recursive",
+    "fs:allow-appdata-read-recursive",
+    "fs:allow-appdata-write-recursive",
+    "fs:allow-temp-read-recursive",
+    "fs:allow-temp-write-recursive",
+    {
+      "identifier": "http:default",
+      "allow": [
+        { "url": "https://*/*" },
+        { "url": "http://*/*" },
+        { "url": "http://127.0.0.1:*/*" },
+        { "url": "http://localhost:*/*" }
+      ]
+    }
+  ]
+}

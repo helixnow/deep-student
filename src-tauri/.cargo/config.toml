@@ -1,0 +1,35 @@
+[build]
+# rustc-wrapper = "sccache"  # Windows 开发环境临时禁用
+
+# Windows 本地编译链接器配置 - 解决内存不足问题
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "link-arg=/INCREMENTAL:NO", "-C", "link-arg=/STACK:16777216"]
+# 注意：macOS 交叉编译时 cargo-xwin 会自动配置链接器，无需手动设置 linker
+
+[target.x86_64-unknown-linux-gnu]
+linker = "clang"
+rustflags = ["-C","link-arg=-fuse-ld=lld"]
+
+# macOS: uncomment to speed up link & debug info handling
+# [target.x86_64-apple-darwin]
+# rustflags = ["-C","link-arg=-Wl,-dead_strip"]
+# [target.aarch64-apple-darwin]
+# rustflags = ["-C","link-arg=-Wl,-dead_strip"]
+
+[profile.dev]
+opt-level = 0
+debug = true
+incremental = true
+codegen-units = 256
+lto = false
+
+[profile.dev.package."*"]
+opt-level = 0
+
+
+# Android NDK 配置请通过环境变量注入（见 scripts/build_android.sh）
+
+# Android NDK 配置（由 build_android.sh 自动添加）
+[target.aarch64-linux-android]
+linker = "/Users/houxuefei/Library/Android/sdk/ndk/27.2.12479018/toolchains/llvm/prebuilt/darwin-x86_64/bin/aarch64-linux-android21-clang"
+ar = "/Users/houxuefei/Library/Android/sdk/ndk/27.2.12479018/toolchains/llvm/prebuilt/darwin-x86_64/bin/llvm-ar"

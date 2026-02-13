@@ -1,0 +1,504 @@
+/* 实时预览编辑器样式 */
+.realtime-template-editor {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: #1e1e1e;
+  color: #d4d4d4;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+/* 工具栏 */
+.editor-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px;
+  background: #2d2d30;
+  border-bottom: 1px solid #3e3e42;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.toolbar-left h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 500;
+  color: #ffffff;
+}
+
+.dirty-indicator {
+  color: #f48771;
+  font-size: 14px;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+/* 视图模式选择器 */
+.view-mode-selector {
+  display: flex;
+  background: #1e1e1e;
+  border-radius: 6px;
+  padding: 2px;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.view-mode-selector button {
+  padding: 6px 16px;
+  border: none;
+  background: transparent;
+  color: #8b8b8b;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: all 0.2s;
+  font-size: 13px;
+}
+
+.view-mode-selector button:hover {
+  color: #cccccc;
+}
+
+.view-mode-selector button.active {
+  background: #094771;
+  color: #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+/* 工具栏按钮 */
+.toolbar-right {
+  display: flex;
+  gap: 8px;
+}
+
+.btn-primary,
+.btn-secondary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: 4px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s;
+  border: none;
+}
+
+.btn-primary {
+  background: #007acc;
+  color: white;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: #005a9e;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0, 122, 204, 0.3);
+}
+
+.btn-secondary {
+  background: transparent;
+  color: #cccccc;
+  border: 1px solid #3e3e42;
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: #2d2d30;
+  border-color: #464647;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* 主编辑区 */
+.editor-main {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+.editor-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid #3e3e42;
+  min-width: 0;
+}
+
+/* 编辑器标签 */
+.editor-tabs {
+  display: flex;
+  background: #252526;
+  border-bottom: 1px solid #3e3e42;
+  overflow-x: auto;
+}
+
+.editor-tabs .tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 20px;
+  border: none;
+  background: transparent;
+  color: #8b8b8b;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: all 0.2s;
+  position: relative;
+  white-space: nowrap;
+  font-size: 13px;
+}
+
+.editor-tabs .tab:hover {
+  color: #cccccc;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.editor-tabs .tab.active {
+  color: #ffffff;
+  border-bottom-color: #007acc;
+  background: rgba(0, 122, 204, 0.1);
+}
+
+.error-badge {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  background: #f44336;
+  color: white;
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 10px;
+  font-weight: bold;
+  min-width: 18px;
+  text-align: center;
+}
+
+/* 代码编辑器容器 */
+.code-editor-container {
+  flex: 1;
+  overflow: hidden;
+  background: #1e1e1e;
+}
+
+/* CodeMirror覆盖样式 */
+.code-editor-container .cm-editor {
+  height: 100%;
+}
+
+.code-editor-container .cm-scroller {
+  font-family: 'Fira Code', 'Consolas', 'Monaco', monospace;
+  font-size: 14px;
+}
+
+/* 错误面板 */
+.error-panel {
+  max-height: 200px;
+  overflow-y: auto;
+  background: #252526;
+  border-top: 1px solid #3e3e42;
+}
+
+.error-panel.no-errors {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 16px;
+  color: #4ec9b0;
+}
+
+.error-item {
+  display: flex;
+  gap: 8px;
+  padding: 8px 16px;
+  border-bottom: 1px solid #3e3e42;
+  transition: background 0.2s;
+}
+
+.error-item:hover {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.error-item.error {
+  background: rgba(244, 67, 54, 0.1);
+}
+
+.error-item.warning {
+  background: rgba(255, 152, 0, 0.1);
+}
+
+.error-icon {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.error-item.error .error-icon {
+  color: #f44336;
+}
+
+.error-item.warning .error-icon {
+  color: #ff9800;
+}
+
+.error-content {
+  flex: 1;
+}
+
+.error-message {
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.error-location {
+  font-size: 12px;
+  color: #8b8b8b;
+  margin-top: 2px;
+}
+
+.error-suggestion {
+  font-size: 12px;
+  color: #4fc3f7;
+  margin-top: 4px;
+}
+
+/* 预览面板 */
+.preview-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: #1e1e1e;
+  min-width: 0;
+}
+
+.preview-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px;
+  border-bottom: 1px solid #3e3e42;
+  background: #252526;
+}
+
+.preview-header h4 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #cccccc;
+}
+
+.compiling-indicator {
+  font-size: 12px;
+  color: #4fc3f7;
+  animation: blink 1.5s infinite;
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* 预览数据编辑器 */
+.preview-data-editor {
+  background: #252526;
+  border-bottom: 1px solid #3e3e42;
+  transition: all 0.3s;
+}
+
+.preview-data-editor .editor-header {
+  padding: 8px 16px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  user-select: none;
+  font-size: 13px;
+  color: #cccccc;
+}
+
+.preview-data-editor .editor-header:hover {
+  background: #2d2d30;
+}
+
+.toggle-icon {
+  font-size: 12px;
+  color: #8b8b8b;
+  transition: transform 0.2s;
+}
+
+.preview-data-editor.expanded .toggle-icon {
+  transform: rotate(180deg);
+}
+
+.editor-fields {
+  padding: 12px 16px;
+  display: grid;
+  gap: 12px;
+  background: #1e1e1e;
+  border-top: 1px solid #3e3e42;
+}
+
+.field-editor {
+  display: grid;
+  grid-template-columns: 100px 1fr;
+  align-items: center;
+  gap: 8px;
+}
+
+.field-editor label {
+  font-size: 13px;
+  color: #cccccc;
+  text-align: right;
+}
+
+.field-editor input {
+  background: #3c3c3c;
+  border: 1px solid #3e3e42;
+  color: #cccccc;
+  padding: 6px 10px;
+  border-radius: 4px;
+  font-size: 13px;
+  transition: all 0.2s;
+}
+
+.field-editor input:hover {
+  background: #464647;
+  border-color: #464647;
+}
+
+.field-editor input:focus {
+  outline: none;
+  border-color: #007acc;
+  background: #3c3c3c;
+  box-shadow: 0 0 0 1px #007acc;
+}
+
+/* 卡片预览 */
+.card-previews {
+  flex: 1;
+  padding: 20px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.preview-card {
+  background: #252526;
+  border: 1px solid #3e3e42;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  transition: all 0.2s;
+}
+
+.preview-card:hover {
+  border-color: #464647;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.preview-card h5 {
+  margin: 0;
+  padding: 12px 16px;
+  background: #2d2d30;
+  border-bottom: 1px solid #3e3e42;
+  font-size: 13px;
+  font-weight: 500;
+  color: #cccccc;
+}
+
+.preview-card iframe {
+  background: white;
+  min-height: 100px;
+}
+
+/* 滚动条样式 */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #1e1e1e;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #424242;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #4f4f4f;
+}
+
+/* 响应式设计 */
+@media (max-width: 1200px) {
+  .editor-main {
+    flex-direction: column;
+  }
+  
+  .editor-panel {
+    border-right: none;
+    border-bottom: 1px solid #3e3e42;
+    max-height: 50vh;
+  }
+  
+  .preview-panel {
+    min-height: 50vh;
+  }
+}
+
+@media (max-width: 768px) {
+  .editor-toolbar {
+    padding: 8px 12px;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  
+  .toolbar-left h3 {
+    font-size: 14px;
+  }
+  
+  .view-mode-selector {
+    order: 3;
+    width: 100%;
+    justify-content: center;
+  }
+  
+  .editor-tabs .tab {
+    padding: 8px 12px;
+    font-size: 12px;
+  }
+  
+  .field-editor {
+    grid-template-columns: 1fr;
+  }
+  
+  .field-editor label {
+    text-align: left;
+  }
+}
+
+/* 渲染错误样式 */
+.render-error {
+  color: #f44336;
+  padding: 16px;
+  text-align: center;
+  font-size: 14px;
+  background: rgba(244, 67, 54, 0.1);
+  border: 1px dashed #f44336;
+  border-radius: 4px;
+  margin: 16px;
+}

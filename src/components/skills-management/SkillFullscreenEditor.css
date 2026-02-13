@@ -1,0 +1,140 @@
+/**
+ * Skills Fullscreen Editor Styles
+ */
+
+/* CodeMirror 编辑器样式 */
+.skill-codemirror-editor {
+  height: 100%;
+  font-family: 'SF Mono', 'Menlo', 'Monaco', 'Consolas', 'Liberation Mono', 'Courier New', monospace;
+  font-size: 14px;
+}
+
+.skill-codemirror-editor .cm-editor {
+  height: 100%;
+  background: transparent;
+}
+
+.skill-codemirror-editor .cm-scroller {
+  overflow: auto;
+  font-family: inherit;
+}
+
+.skill-codemirror-editor .cm-content {
+  padding: 16px 0;
+}
+
+.skill-codemirror-editor .cm-line {
+  padding: 0 16px;
+}
+
+.skill-codemirror-editor .cm-gutters {
+  background: transparent;
+  border-right: 1px solid hsl(var(--border) / 0.3);
+  padding-right: 8px;
+}
+
+.skill-codemirror-editor .cm-gutter-lint {
+  width: 0;
+}
+
+.skill-codemirror-editor .cm-activeLineGutter {
+  background: hsl(var(--primary) / 0.1);
+}
+
+.skill-codemirror-editor .cm-activeLine {
+  background: hsl(var(--primary) / 0.05);
+}
+
+/* 选中高亮 */
+.skill-codemirror-editor .cm-selectionBackground {
+  background: hsl(var(--primary) / 0.2) !important;
+}
+
+.skill-codemirror-editor .cm-focused .cm-selectionBackground {
+  background: hsl(var(--primary) / 0.25) !important;
+}
+
+/* 光标样式 */
+.skill-codemirror-editor .cm-cursor {
+  border-left-color: hsl(var(--primary));
+  border-left-width: 2px;
+}
+
+/* 行号样式 */
+.skill-codemirror-editor .cm-lineNumbers .cm-gutterElement {
+  padding: 0 12px 0 8px;
+  min-width: 40px;
+  color: hsl(var(--muted-foreground) / 0.5);
+  font-size: 12px;
+}
+
+/* 折叠标记 */
+.skill-codemirror-editor .cm-foldGutter .cm-gutterElement {
+  padding: 0 4px;
+  cursor: pointer;
+  color: hsl(var(--muted-foreground) / 0.4);
+  transition: color 0.15s ease;
+}
+
+.skill-codemirror-editor .cm-foldGutter .cm-gutterElement:hover {
+  color: hsl(var(--foreground));
+}
+
+/* 滚动条样式 */
+.skill-codemirror-editor .cm-scroller::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.skill-codemirror-editor .cm-scroller::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.skill-codemirror-editor .cm-scroller::-webkit-scrollbar-thumb {
+  background: hsl(var(--muted-foreground) / 0.2);
+  border-radius: 4px;
+}
+
+.skill-codemirror-editor .cm-scroller::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground) / 0.3);
+}
+
+/* 搜索高亮 */
+.skill-codemirror-editor .cm-searchMatch {
+  background: hsl(50 100% 50% / 0.3);
+  border-radius: 2px;
+}
+
+.skill-codemirror-editor .cm-searchMatch-selected {
+  background: hsl(50 100% 50% / 0.5);
+}
+
+/* Markdown 语法高亮增强 */
+.skill-codemirror-editor .cm-header {
+  color: hsl(var(--primary));
+  font-weight: 600;
+}
+
+.skill-codemirror-editor .cm-strong {
+  font-weight: 700;
+}
+
+.skill-codemirror-editor .cm-em {
+  font-style: italic;
+}
+
+.skill-codemirror-editor .cm-link {
+  color: hsl(210 100% 50%);
+  text-decoration: underline;
+}
+
+.skill-codemirror-editor .cm-url {
+  color: hsl(var(--muted-foreground));
+}
+
+.skill-codemirror-editor .cm-monospace {
+  font-family: inherit;
+  background: hsl(var(--muted) / 0.5);
+  padding: 1px 4px;
+  border-radius: 3px;
+}

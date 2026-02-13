@@ -1,0 +1,12 @@
+# Pdfium 动态库目录（桌面版 PDF 后端渲染）
+# 
+# 此目录存放各平台的 pdfium 动态库，构建时自动打包。
+# 
+# 库文件命名:
+# - macOS: libpdfium.dylib
+# - Windows: pdfium.dll  
+# - Linux: libpdfium.so
+#
+# 下载源: https://github.com/bblanchon/pdfium-binaries/releases
+# 
+# 注意: 移动端（iOS/Android）不使用此功能，使用前端 pdfjs 渲染。

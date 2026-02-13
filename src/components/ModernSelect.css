@@ -1,0 +1,95 @@
+.modern-select {
+  position: relative;
+  font-size: 0.9rem;
+  user-select: none;
+}
+
+.modern-select.full-width {
+  width: 100%;
+}
+
+.select-trigger {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  border: 2px solid #e2e8f0;
+  border-radius: 10px;
+  background: #f9fafb;
+  font-weight: 500;
+  color: #2d3748;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.select-trigger:hover {
+  border-color: #3b82f6;
+}
+
+.select-trigger:focus-visible {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.15);
+}
+
+.select-trigger .arrow {
+  font-size: 0.75rem;
+  color: #3b82f6;
+  transition: transform 0.2s ease;
+}
+
+.modern-select.open .arrow {
+  transform: rotate(180deg);
+}
+
+.options-list {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  width: 100%;
+  max-height: 240px;
+  overflow-y: auto;
+  background: #ffffff;
+  border: 2px solid #e2e8f0;
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+  z-index: 1000;
+  padding: 0.25rem 0;
+  animation: fadeInScale 0.15s ease;
+}
+
+@keyframes fadeInScale {
+  0% {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.options-list li {
+  padding: 0.625rem 1rem;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+  white-space: nowrap;
+}
+
+.options-list li:hover {
+  background: #f0f4ff;
+  color: #4c51bf;
+}
+
+.options-list li.selected {
+  background: #3b82f6;
+  color: #ffffff;
+}
+
+.modern-select.disabled .select-trigger {
+  background: #edf2f7;
+  cursor: not-allowed;
+  opacity: 0.6;
+} 

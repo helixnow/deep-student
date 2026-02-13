@@ -1,0 +1,23 @@
+/**
+ * Shad Progress 组件样式
+ * 全局 [role="progressbar"] 保护已在 DeepStudent.css 中定义
+ * 此文件仅补充组件特定样式
+ */
+
+/* 不确定进度动画 */
+.progress-indeterminate > div,
+.progress-indeterminate .bar {
+  animation: progress-indeterminate 1.5s ease-in-out infinite;
+}
+
+@keyframes progress-indeterminate {
+  0% {
+    transform: translateX(-100%);
+  }
+  50% {
+    transform: translateX(0%);
+  }
+  100% {
+    transform: translateX(200%);
+  }
+}

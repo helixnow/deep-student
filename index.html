@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/png" href="./public/dslogo2.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <title>Deep Student</title>
+    <!-- ★ 2026-02-04: 最早的全局错误过滤器 - 过滤 Tauri HTTP 插件的已知 bug -->
+    <script>
+      (function() {
+        window.addEventListener('unhandledrejection', function(event) {
+          var reason = event.reason;
+          var message = '';
+          if (reason instanceof Error) {
+            message = reason.message || '';
+          } else if (typeof reason === 'string') {
+            message = reason;
+          } else if (reason && typeof reason === 'object' && reason.message) {
+            message = String(reason.message);
+          }
+          // 过滤 Tauri HTTP 插件的 fetch_cancel_body 错误
+          if (message.indexOf('fetch_cancel_body') !== -1 || message.indexOf('http.fetch_cancel_body') !== -1) {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+          }
+        }, true);
+      })();
+    </script>
+  </head>
+
+  <body>
+    <div id="root"></div>
+    <!-- Shared portal root to stabilize overlays and prevent DOM reparenting issues -->
+    <div id="unified-modal-root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html> 

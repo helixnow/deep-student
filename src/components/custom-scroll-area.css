@@ -1,0 +1,160 @@
+.scroll-area {
+  position: relative;
+  width: 100%;
+  min-height: 0;
+  /* 使用 flex 布局确保 viewport 填满容器 */
+  display: flex;
+  flex-direction: column;
+  --scroll-area-track-thickness: 6px;
+  --scroll-area-thumb-min-length: 36px;
+  --scroll-area-thumb-bg: hsl(var(--muted-foreground) / 0.35);
+  --scroll-area-thumb-bg-hover: hsl(var(--muted-foreground) / 0.55);
+  --scroll-area-thumb-bg-active: hsl(var(--muted-foreground) / 0.7);
+  --scroll-area-track-offset-right: 0px;
+}
+
+.scroll-area[data-full-height="true"] {
+  height: 100%;
+  /* 防止外层容器出现滚动条，滚动完全由 viewport 处理 */
+  overflow: hidden;
+}
+
+.scroll-area[data-full-height="false"] {
+  /* 当作为 flex 子项时，使用绝对定位让 viewport 填充容器 */
+  position: relative;
+  overflow: hidden;
+}
+
+.scroll-area[data-full-height="false"] > .scroll-area__viewport {
+  position: absolute;
+  inset: 0;
+  height: auto;
+}
+
+.scroll-area[data-variant="dense"] {
+  --scroll-area-track-thickness: 4px;
+}
+
+.scroll-area__viewport {
+  width: 100%;
+  height: 100%;
+  /* 确保在 flex 布局中也能填满父容器 */
+  min-height: 0;
+  flex: 1;
+  overflow: auto;
+  /* 允许移动端（特别是 iOS）使用惯性滚动，改善长文档体验 */
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+}
+
+.scroll-area__viewport::-webkit-scrollbar {
+  display: none !important;
+}
+
+.scroll-area__track {
+  position: absolute;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  z-index: 60;
+}
+
+.scroll-area__track--vertical {
+  top: var(--scroll-area-track-offset-top, 6px);
+  bottom: var(--scroll-area-track-offset-bottom, 6px);
+  right: var(--scroll-area-track-offset-right, 6px);
+  width: var(--scroll-area-track-thickness);
+  border-radius: 9999px;
+  background: transparent;
+}
+
+.scroll-area__track--horizontal {
+  left: var(--scroll-area-track-offset-left, 6px);
+  right: var(--scroll-area-track-offset-right, 6px);
+  bottom: var(--scroll-area-track-offset-bottom, 6px);
+  height: var(--scroll-area-track-thickness);
+  border-radius: 9999px;
+  background: transparent;
+}
+
+.scroll-area__track[data-visible="true"] {
+  opacity: 1;
+}
+
+.scroll-area[data-force-track="true"] .scroll-area__track {
+  opacity: 1;
+}
+
+.scroll-area__thumb {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  border-radius: 9999px;
+  background: var(--scroll-area-thumb-bg);
+  box-shadow: inset 0 0 0 1px hsl(var(--background) / 0.25);
+  pointer-events: auto;
+  transition: background-color 0.15s ease;
+  min-height: 36px;
+}
+
+.scroll-area:hover .scroll-area__thumb {
+  background: var(--scroll-area-thumb-bg-hover);
+}
+
+.scroll-area__thumb:active {
+  background: var(--scroll-area-thumb-bg-active);
+}
+
+.scroll-area__thumb {
+  position: absolute;
+  top: 0;
+  left: 0;
+  border-radius: 9999px;
+  background: var(--scroll-area-thumb-bg);
+  box-shadow: inset 0 0 0 1px hsl(var(--background) / 0.25);
+  pointer-events: auto;
+  transition: background-color 0.15s ease;
+}
+
+.scroll-area__thumb--vertical {
+  width: 100%;
+  min-height: var(--scroll-area-thumb-min-length);
+}
+
+.scroll-area__thumb--horizontal {
+  height: 100%;
+  min-width: var(--scroll-area-thumb-min-length);
+}
+
+.dark .scroll-area {
+  --scroll-area-thumb-bg: hsl(var(--muted-foreground) / 0.4);
+  --scroll-area-thumb-bg-hover: hsl(var(--muted-foreground) / 0.6);
+  --scroll-area-thumb-bg-active: hsl(var(--muted-foreground) / 0.75);
+}
+
+/* ===== 打印样式 ===== */
+@media print {
+  .scroll-area {
+    position: static !important;
+    overflow: visible !important;
+    height: auto !important;
+    min-height: auto !important;
+  }
+  
+  .scroll-area__viewport {
+    position: static !important;
+    overflow: visible !important;
+    height: auto !important;
+    max-height: none !important;
+  }
+  
+  .scroll-area__track {
+    display: none !important;
+  }
+}
+
+/* 强制隐藏滚动条（如输入框最小高度时） */
+.scroll-area[data-hide-scrollbar="true"] .scroll-area__track {
+  display: none !important;
+}

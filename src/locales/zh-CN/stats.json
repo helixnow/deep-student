@@ -1,0 +1,94 @@
+{
+  "heatmap": {
+    "title": "学习热力图",
+    "loading": "加载中...",
+    "error": "加载失败：{{error}}",
+    "retry": "重试",
+    "refresh": "刷新",
+    "totalActivities": "共 {{count}} 次学习活动",
+    "noActivity": "无活动记录",
+    "stats": {
+      "totalActivities": "总活动次数",
+      "activeDays": "活跃天数",
+      "maxDaily": "单日最高"
+    },
+    "legend": {
+      "less": "少",
+      "more": "多"
+    },
+    "details": {
+      "chatSessions": "对话会话：{{count}} 次",
+      "chatMessages": "发送消息：{{count}} 条",
+      "notesEdited": "编辑笔记：{{count}} 篇",
+      "textbooksOpened": "打开教材：{{count}} 次",
+      "examsCreated": "整卷识别：{{count}} 份",
+      "translationsCreated": "翻译：{{count}} 次",
+      "essaysCreated": "作文批改：{{count}} 篇",
+      "ankiCardsCreated": "创建卡片：{{count}} 张",
+      "questionsAnswered": "做题：{{count}} 道"
+    }
+  },
+  "calendar": {
+    "weekMon": "一",
+    "weekWed": "三",
+    "weekFri": "五",
+    "month1": "1月",
+    "month2": "2月",
+    "month3": "3月",
+    "month4": "4月",
+    "month5": "5月",
+    "month6": "6月",
+    "month7": "7月",
+    "month8": "8月",
+    "month9": "9月",
+    "month10": "10月",
+    "month11": "11月",
+    "month12": "12月"
+  },
+  "heatmapChart": {
+    "title": "学习活跃度",
+    "totalQuestions": "总做题数",
+    "activeDays": "活跃天数",
+    "streak": "连续学习",
+    "streakDays": "{{count}} 天",
+    "questionCount": "做题数",
+    "correctCount": "正确数",
+    "correctRate": "正确率",
+    "questionUnit": "{{count}} 题",
+    "noRecord": "暂无学习记录",
+    "legendLess": "少",
+    "legendMore": "多"
+  },
+  "trendChart": {
+    "title": "学习趋势",
+    "today": "今日",
+    "week": "本周",
+    "month": "本月",
+    "all": "全部",
+    "questionCount": "做题数",
+    "correctCount": "正确数",
+    "correctRate": "正确率",
+    "questionUnit": "{{count}} 题",
+    "totalQuestions": "总做题数",
+    "avgCorrectRate": "平均正确率",
+    "activeDays": "活跃天数",
+    "noRecord": "暂无学习记录",
+    "refreshData": "刷新数据"
+  },
+  "knowledgeRadar": {
+    "title": "知识点掌握度",
+    "mastery": "掌握度",
+    "correctRate": "正确率",
+    "avgMastery": "平均掌握度",
+    "avgCorrectRate": "平均正确率",
+    "knowledgePoints": "知识点数",
+    "details": "知识点详情",
+    "questionCount": "题目数",
+    "mastered": "已掌握",
+    "questionUnit": "{{count}} 题",
+    "itemDetail": "{{total}} 题 · 已掌握 {{mastered}} 题",
+    "noData": "暂无知识点数据",
+    "noDataHint": "完成更多题目后，将展示知识点掌握情况",
+    "refreshData": "刷新数据"
+  }
+}

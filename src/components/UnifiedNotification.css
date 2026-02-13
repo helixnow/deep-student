@@ -1,0 +1,206 @@
+/* 通知容器 */
+.notification-container {
+  position: fixed;
+  top: calc(80px + env(safe-area-inset-top, 0px));
+  right: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  z-index: 9999;
+}
+
+/* 统一通知样式 */
+.unified-notification {
+  /* Accent stripe + icon background use this variable (set by variant). */
+  --notif-accent: var(--border);
+
+  position: relative;
+  padding: 12px 14px;
+  border-radius: 12px;
+  box-shadow: var(--shadow-notion-lg);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  z-index: 9999;
+  color: hsl(var(--foreground));
+  background: hsl(var(--card));
+  border: 1px solid hsl(var(--border) / 0.5);
+
+  opacity: 1;
+  transform: translateX(0);
+  transition: transform 180ms ease-out, opacity 180ms ease-out;
+
+  max-width: min(420px, calc(100vw - 48px));
+  min-width: 260px;
+}
+
+.unified-notification.show {
+  animation: notificationIn 200ms ease-out;
+}
+
+.unified-notification.hide {
+  opacity: 0;
+  transform: translateX(12px);
+  transition-timing-function: ease-in;
+}
+
+@keyframes notificationIn {
+  from { opacity: 0; transform: translateX(12px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+/* 移动端：从顶部滑入 */
+@keyframes notificationSlideDown {
+  0% { transform: translateY(-100%) scale(0.95); opacity: 0; }
+  100% { transform: translateY(0) scale(1); opacity: 1; }
+}
+
+.unified-notification-success {
+  --notif-accent: var(--success);
+}
+
+.unified-notification-error {
+  --notif-accent: var(--danger);
+}
+
+.unified-notification-info {
+  --notif-accent: var(--info);
+}
+
+.unified-notification-warning {
+  --notif-accent: var(--warning);
+}
+
+.unified-notification-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  background: hsl(var(--notif-accent) / 0.12);
+  color: hsl(var(--notif-accent));
+}
+
+.unified-notification-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.unified-notification-title {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 2px;
+  line-height: 1.25;
+}
+
+.unified-notification-message {
+  font-size: 13px;
+  line-height: 1.4;
+  color: hsl(var(--muted-foreground));
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.unified-notification-close {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  color: hsl(var(--muted-foreground));
+  padding: 4px;
+  border-radius: 6px;
+  transition: background-color 150ms ease-out, opacity 150ms ease-out, color 150ms ease-out;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  outline: none;
+  box-shadow: none;
+  flex-shrink: 0;
+  opacity: 0.7;
+  min-width: 28px;
+  min-height: 28px;
+}
+
+.unified-notification-close:hover {
+  background-color: hsl(var(--muted) / 0.6);
+  color: hsl(var(--foreground));
+  opacity: 1;
+}
+
+.unified-notification-close:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px hsl(var(--ring) / 0.35);
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .unified-notification.show,
+  .unified-notification.hide {
+    animation: none !important;
+    transition: none !important;
+  }
+  .unified-notification-close {
+    transition: none !important;
+  }
+}
+
+/* 响应式设计 - 移动端优化 */
+@media (max-width: 640px) {
+  .notification-container {
+    top: calc(56px + env(safe-area-inset-top, 0px));
+    right: 12px;
+    left: 12px;
+    align-items: stretch;
+  }
+
+  .unified-notification {
+    max-width: none;
+    min-width: 0;
+    width: 100%;
+    padding: 10px 12px;
+    gap: 10px;
+    border-radius: 12px;
+    border-width: 1px;
+    box-shadow: var(--shadow-notion-lg);
+  }
+
+  .unified-notification.show {
+    animation: notificationSlideDown 200ms ease-out;
+  }
+
+  .unified-notification.hide {
+    transform: translateY(-10px);
+    transition-timing-function: ease-in;
+  }
+
+  .unified-notification-icon svg {
+    width: 18px;
+    height: 18px;
+  }
+
+  .unified-notification-title {
+    font-size: 13px;
+    margin-bottom: 1px;
+  }
+
+  .unified-notification-message {
+    font-size: 12px;
+  }
+
+  .unified-notification-close {
+    padding: 2px;
+    min-width: 32px;
+    min-height: 32px;
+  }
+
+  .unified-notification-close svg {
+    width: 14px;
+    height: 14px;
+  }
+}

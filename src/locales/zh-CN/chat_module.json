@@ -1,0 +1,74 @@
+{
+  "sidebar": {
+    "loading": "加载中...",
+    "error": "加载失败",
+    "retry": "重试",
+    "empty_search": "未找到匹配的会话",
+    "no_sessions": "暂无会话",
+    "search_placeholder": "搜索会话...",
+    "sort": {
+      "label": "排序",
+      "recent": "最近更新",
+      "created": "创建时间",
+      "title": "标题"
+    },
+    "batch": {
+      "select_mode": "多选模式",
+      "selected_count": "已选择 {{count}} 项",
+      "close_selected": "关闭选中",
+      "delete_selected": "删除选中",
+      "cancel": "取消"
+    },
+    "confirm_delete": {
+      "title": "确认删除",
+      "message": "确定要删除选中的 {{count}} 个会话吗？此操作不可撤销。",
+      "confirm": "删除",
+      "cancel": "取消"
+    }
+  },
+  "error": {
+    "boundary_title": "出现了一些问题",
+    "boundary_description": "聊天组件发生错误，请尝试重试或忽略此错误。",
+    "retry": "重试",
+    "ignore": "忽略",
+    "report": "报告问题",
+    "session_id": "会话 ID",
+    "load_failed": "加载会话失败",
+    "save_failed": "保存会话失败",
+    "stream_failed": "流式响应失败",
+    "unknown": "发生未知错误"
+  },
+  "toast": {
+    "save_failed": "保存失败：{{error}}",
+    "save_success": "保存成功",
+    "delete_success": "删除成功",
+    "load_error": "加载失败：{{error}}",
+    "stream_error": "流式响应出错：{{error}}"
+  },
+  "message": {
+    "load_more": "加载更多消息",
+    "loading_more": "正在加载...",
+    "no_more": "没有更多消息了",
+    "placeholder": "消息内容",
+    "empty_conversation": "开始新对话"
+  },
+  "thinking": {
+    "expand": "展开思考过程",
+    "collapse": "收起思考过程",
+    "copy_all": "复制全部",
+    "copied": "已复制",
+    "summary": "{{length}} 字符",
+    "load_more": "滚动加载更多..."
+  },
+  "debug": {
+    "panel_title": "聊天模块调试",
+    "session_count": "会话数量",
+    "active_streams": "活跃流式",
+    "logs_count": "日志数量",
+    "clear_logs": "清除日志"
+  },
+  "virtual_list": {
+    "scroll_to_bottom": "滚动到底部",
+    "new_messages": "有新消息"
+  }
+}

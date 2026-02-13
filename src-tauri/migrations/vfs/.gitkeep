@@ -1,0 +1,9 @@
+# VFS 数据库迁移目录
+# 
+# 迁移文件命名规范：V{version}__{description}.sql
+# 示例：V001__init.sql, V002__add_sync_fields.sql
+#
+# 注意：
+# - 版本号必须连续
+# - 文件名必须与版本号一致
+# - 已应用的迁移不可修改（会导致 checksum 验证失败）

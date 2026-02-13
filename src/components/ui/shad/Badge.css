@@ -1,0 +1,21 @@
+/**
+ * Shad Badge 组件样式
+ * 仅针对 data-shad-badge 属性的元素，避免误伤其他组件
+ */
+
+/* Badge 根元素 - 仅匹配带有 data 属性的元素 */
+[data-shad-badge] {
+  display: inline-flex;
+  align-items: center;
+  /* 固定最小高度 - 确保 Android WebView 正确渲染 */
+  min-height: 20px;
+  flex-shrink: 0;
+  white-space: nowrap;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+/* 小型 Badge */
+[data-shad-badge][data-size="sm"] {
+  min-height: 18px;
+}

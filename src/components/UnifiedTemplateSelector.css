@@ -1,0 +1,113 @@
+/* 统一模板选择器样式 */
+.unified-template-selector {
+  margin-bottom: 24px;
+}
+
+.current-template-display {
+  margin-bottom: 16px;
+}
+
+.current-template-card {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 20px;
+  transition: all 0.2s ease;
+}
+
+.current-template-card:hover {
+  border-color: #cbd5e0;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+}
+
+.template-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 12px;
+}
+
+.template-info h6.template-name {
+  margin: 0 0 4px 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #1a202c;
+}
+
+.template-info .template-description {
+  margin: 0;
+  font-size: 14px;
+  color: #718096;
+  line-height: 1.4;
+}
+
+.template-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.template-quick-info {
+  display: flex;
+  gap: 16px;
+  font-size: 13px;
+  color: #4a5568;
+}
+
+.field-count, .note-type {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* 按钮样式增强 */
+.btn.btn-outline {
+  background: white;
+  border: 1px solid #d1d5db;
+  color: #374151;
+  transition: all 0.2s ease;
+}
+
+.btn.btn-outline:hover {
+  background: #f9fafb;
+  border-color: #9ca3af;
+  color: #1f2937;
+}
+
+.btn.btn-primary {
+  background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+  border: none;
+  color: white;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.btn.btn-primary:hover {
+  background: linear-gradient(135deg, #5a67d8 0%, #6b46c1 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+}
+
+.btn.btn-sm {
+  padding: 8px 16px;
+  font-size: 14px;
+  border-radius: 8px;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .template-header {
+    flex-direction: column;
+    gap: 12px;
+    align-items: stretch;
+  }
+  
+  .template-actions {
+    justify-content: flex-end;
+  }
+  
+  .template-quick-info {
+    flex-direction: column;
+    gap: 8px;
+  }
+}

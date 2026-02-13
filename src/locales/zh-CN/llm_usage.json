@@ -1,0 +1,94 @@
+{
+  "title": "LLM 使用统计",
+  "description": "查看 LLM API 调用的 Token 使用量和成本统计",
+  "activity_trend": "活动趋势",
+  "model_distribution": "模型分布",
+  "module_stats": "模块统计",
+  "no_data": "暂无数据",
+  "no_data_or_load_failed": "暂无数据或加载失败",
+  "sessions": "会话",
+  "unknown_model": "未知模型",
+  "custom_config": "自定义配置",
+  "summary": {
+    "title": "总览",
+    "totalCalls": "总调用次数",
+    "totalTokens": "总 Token 数",
+    "promptTokens": "输入 Token",
+    "completionTokens": "输出 Token",
+    "reasoningTokens": "思维链 Token",
+    "cachedTokens": "缓存命中 Token",
+    "successRate": "成功率",
+    "avgDuration": "平均耗时",
+    "estimatedCost": "估算成本",
+    "tokenBreakdown": "输入: {{prompt}} / 输出: {{completion}}",
+    "cumulativeRequests": "累计请求",
+    "perRequestAvg": "每请求平均"
+  },
+  "trends": {
+    "title": "使用趋势",
+    "last7Days": "最近 7 天",
+    "last30Days": "最近 30 天",
+    "last90Days": "最近 90 天",
+    "granularity": {
+      "hour": "按小时",
+      "day": "按天",
+      "week": "按周",
+      "month": "按月"
+    }
+  },
+  "byModel": {
+    "title": "按模型统计",
+    "model": "模型",
+    "calls": "调用次数",
+    "tokens": "Token 数",
+    "cost": "成本"
+  },
+  "byCaller": {
+    "title": "按模块统计",
+    "caller": "模块",
+    "calls": "调用次数",
+    "tokens": "Token 数",
+    "cost": "成本"
+  },
+  "callerTypes": {
+    "chat_v2": "对话系统",
+    "translation": "智能翻译",
+    "anki": "Anki 制卡",
+    "analysis": "错题分析",
+    "exam_sheet": "整卷识别",
+    "memory": "智能记忆",
+    "vfs_indexing": "文件索引",
+    "embedding": "向量嵌入",
+    "reranker": "重排序",
+    "other": "其他"
+  },
+  "recent": {
+    "title": "最近调用",
+    "time": "时间",
+    "model": "模型",
+    "caller": "模块",
+    "tokens": "Token",
+    "duration": "耗时",
+    "status": "状态"
+  },
+  "status": {
+    "success": "成功",
+    "error": "失败",
+    "timeout": "超时",
+    "cancelled": "已取消"
+  },
+  "actions": {
+    "refresh": "刷新",
+    "retry": "重试",
+    "export": "导出",
+    "cleanup": "清理旧数据"
+  },
+  "empty": {
+    "title": "暂无数据",
+    "description": "还没有 LLM 调用记录"
+  },
+  "error": {
+    "loadFailed": "加载统计数据失败",
+    "cleanupFailed": "清理数据失败"
+  }
+}

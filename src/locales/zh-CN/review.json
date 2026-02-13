@@ -1,0 +1,171 @@
+{
+  "title": "复习计划",
+  "subtitle": "间隔重复，高效记忆",
+  "unknownQuestion": "未知题目",
+  "interval": "间隔",
+  "days": "天",
+  "times": "次",
+  "accuracy": "正确率",
+  "totalReviews": "已复习",
+  "startReview": "开始复习",
+
+  "status": {
+    "new": "新建",
+    "learning": "学习中",
+    "reviewing": "复习中",
+    "graduated": "已掌握",
+    "suspended": "已暂停",
+    "overdue": "已逾期",
+    "difficult": "困难"
+  },
+
+  "stats": {
+    "dueToday": "今日待复习",
+    "totalDue": "全部待复习",
+    "mastered": "已掌握",
+    "accuracy": "平均正确率",
+    "overdueHint": "含 {{count}} 个逾期",
+    "difficultHint": "含 {{count}} 个困难",
+    "ofTotal": "掌握率",
+    "totalReviews": "次复习"
+  },
+
+  "todayReview": {
+    "title": "今日复习",
+    "hasDue": "你有 {{count}} 个题目需要复习",
+    "noDue": "太棒了！今天没有需要复习的内容"
+  },
+
+  "progress": {
+    "label": "学习进度"
+  },
+
+  "queue": {
+    "title": "复习队列",
+    "sortedByDue": "按到期时间排序",
+    "andMore": "还有 {{count}} 个..."
+  },
+
+  "empty": {
+    "title": "全部完成！",
+    "description": "你已经完成了所有的复习任务。继续保持，明天还有新的复习内容等着你！"
+  },
+
+  "session": {
+    "noItems": "没有需要复习的内容"
+  },
+
+  "card": {
+    "question": "题目",
+    "answer": "答案",
+    "explanation": "解析"
+  },
+
+  "action": {
+    "skip": "跳过",
+    "showAnswer": "显示答案"
+  },
+
+  "rating": {
+    "prompt": "你对这道题的掌握程度如何？",
+    "again": "重来",
+    "againDesc": "<1分钟",
+    "hard": "困难",
+    "hardDesc": "<6分钟",
+    "good": "良好",
+    "goodDesc": "<10分钟",
+    "easy": "简单",
+    "easyDesc": ">4天"
+  },
+
+  "complete": {
+    "excellent": "太棒了！",
+    "excellentMsg": "你的表现非常出色，继续保持！",
+    "good": "做得不错！",
+    "goodMsg": "继续努力，你正在进步！",
+    "keepGoing": "继续加油！",
+    "keepGoingMsg": "多复习几次，你会越来越好的！",
+    "needsPractice": "需要更多练习",
+    "needsPracticeMsg": "别灰心，熟能生巧！",
+    "correct": "正确",
+    "accuracy": "正确率",
+    "time": "用时",
+    "reviewAgain": "再复习一次",
+    "finish": "完成"
+  },
+
+  "calendar": {
+    "title": "复习日历",
+    "subtitle": "追踪你的复习记录",
+    "today": "今天",
+    "totalReviews": "复习总数",
+    "passed": "通过",
+    "accuracy": "正确率",
+    "history": "复习记录",
+    "noData": "当日无复习记录",
+    "less": "少",
+    "more": "多",
+    "currentStreak": "当前连续",
+    "longestStreak": "最长连续",
+    "totalDays": "学习天数",
+    "weekdaysShort": ["日", "一", "二", "三", "四", "五", "六"],
+    "monthsFull": ["一月", "二月", "三月", "四月", "五月", "六月", "七月", "八月", "九月", "十月", "十一月", "十二月"],
+    "monthYearFormat": "{{year}}年{{monthName}}"
+  },
+
+  "questions": {
+    "difficulty": {
+      "easy": "简单",
+      "medium": "中等",
+      "hard": "困难",
+      "very_hard": "极难"
+    },
+    "neverPracticed": "从未练习",
+    "today": "今天",
+    "yesterday": "昨天",
+    "daysAgo": "{{count}}天前",
+    "weeksAgo": "{{count}}周前",
+    "monthsAgo": "{{count}}月前",
+    "noContent": "暂无内容",
+    "selectAll": "全选",
+    "cancel": "取消",
+    "reset": "重置",
+    "delete": "删除",
+    "toReview": "待复习",
+    "mastered": "已掌握",
+    "avgAttempts": "平均 <bold>{{count}}</bold> 次尝试",
+    "masteryRate": "掌握率",
+    "startReview": "开始复习 ({{count}})",
+    "attemptCount": "{{count}}次",
+    "emptyTitle": "太棒了！没有错题",
+    "emptyDesc": "你已经掌握了所有题目，继续保持！<br/>可以尝试挑战更难的题目。",
+    "masteryTip": "连续答对 <highlight>2 次</highlight> 自动标记为已掌握"
+  },
+
+  "actions": {
+    "createPlan": "创建复习计划",
+    "createPlanDesc": "为选中的题目创建复习计划",
+    "createForAll": "全部创建",
+    "createForAllDesc": "为所有题目创建复习计划",
+    "suspend": "暂停复习",
+    "resume": "恢复复习",
+    "delete": "删除计划"
+  },
+
+  "toast": {
+    "createSuccess": "成功创建 {{count}} 个复习计划",
+    "createFailed": "创建复习计划失败",
+    "processSuccess": "复习记录已保存",
+    "processFailed": "保存复习记录失败",
+    "suspendSuccess": "复习计划已暂停",
+    "resumeSuccess": "复习计划已恢复",
+    "deleteSuccess": "复习计划已删除"
+  },
+
+  "tips": {
+    "sm2Title": "什么是间隔重复？",
+    "sm2Desc": "间隔重复是一种科学的记忆方法，通过在最佳时间点复习来加强长期记忆。系统会根据你的表现自动调整下次复习时间。",
+    "ratingTitle": "如何评分？",
+    "ratingDesc": "根据你回忆答案的难易程度选择：重来（完全忘记）、困难（勉强想起）、良好（稍加思考想起）、简单（立刻想起）。"
+  }
+}

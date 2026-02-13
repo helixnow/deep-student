@@ -1,0 +1,242 @@
+# Logs
+logs
+logs/
+*.log
+*.log.*
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Additional log files
+**/*.log
+**/*.log.*
+**/logs/
+**/log/
+log71.md
+log*.md
+error*.md
+debug*.log
+trace*.log
+app*.log
+server*.log
+tauri*.log
+rust*.log
+workflow_*.log
+error_check.log
+deps_check.log
+*.stackdump
+
+# Database and CozoDB log files
+LOG
+LOG.*
+LOG.old.*
+**/LOG
+**/LOG.*
+**/LOG.old.*
+**/cozo/data/
+MANIFEST-*
+OPTIONS-*
+**/MANIFEST-*
+**/OPTIONS-*
+CURRENT
+**/CURRENT
+
+# App data directories
+app_data/
+**/app_data/
+
+# Temporary and backup files
+*.tmp
+*.temp
+*.bak
+*.backup
+ai_mistakes.db.backup_*
+.env
+.env.*
+!.env.example
+
+*.swp
+*.swo
+*~
+.#*
+#*#
+
+# Auto-generated version file
+src/version.ts
+
+node_modules
+/dist
+dist-ssr
+*.local
+
+# Archive bucket (cleaned-up legacy/tests/logs)
+archive/
+.deep-agent/
+# Development security directory (sensitive files and build artifacts)
+devsec/
+
+# Root directory build artifacts
+/build-android/
+/build-ios/
+/build-windows/
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Android SDK and build files
+AndroidSDK/
+android-sdk/
+java/
+gen/
+src-tauri/gen/
+
+# Build outputs
+target/
+src-tauri/target/
+.target-local/
+src-tauri/.target-local/
+**/.target-local/
+*.apk
+*.aab
+
+# Cargo build logs and outputs (should not be versioned)
+/cargo-full.txt
+/cargo-check.txt
+/cargo-check-output.json
+**/cargo-full.txt
+**/cargo-check.txt
+**/cargo-check-output.json
+
+# Temporary files
+/tmp/
+temp_*/
+*_temp/
+temp_apkg/
+temp_clean_sqlite.rs
+temp_restore/
+
+# Additional Node.js dependencies
+**/node_modules/
+**/dist/
+**/target/
+**/build/
+
+# Package manager lock files
+yarn.lock
+pnpm-lock.yaml
+
+# Cache directories
+.cache/
+.parcel-cache/
+.next/
+.nuxt/
+
+# Claude settings files
+**/.claude/
+.claude/
+
+# PWA build artifacts and dependencies
+**/PWA/
+PWA/
+
+# Additional frontend dependencies
+**/refactored/
+deepstudent-refactored/
+
+# 忽略 Tauri 构建过程中解压的临时库
+src-tauri/*_temp/
+
+# Additional temporary files
+
+# 忽略临时编译产物和依赖目录
+/android-sdk/
+/AndroidSDK/
+/gradle-deps/
+/tmp-lib/
+/libc++_temp/
+/libc++18_temp/
+/libc++abi18_temp/
+/libunwind_temp/
+/libxml2_temp/
+
+# 忽略所有大文件（超过100MB）
+*.zip
+*.tar.gz
+*.tar.bz2
+*.7z
+*.rar
+android-*.zip
+commandlinetools-*.zip
+OpenJDK*.tar.gz
+wasi-*.tar.gz
+
+# 忽略根目录下的大文件
+/android-*.zip
+/commandlinetools-*.zip
+/OpenJDK*.tar.gz
+/wasi-*.tar.gz
+
+# Auto Claude data directory
+.auto-claude/
+
+# Git worktrees (local)
+.worktrees/
+
+# pnpm store
+.pnpm-store/
+
+# Local tool/editor state
+.windsurf/
+.cursor/
+.serena/
+.codex/
+.claude/
+.recovery/
+
+# Rust local build cache variant
+src-tauri/.cargo-target/
+
+# Internal planning/review docs (not for OSS repo)
+/PLAN.md
+/todo.md
+/CHATANKI_REVIEW_FIX.md
+/CRITICAL_CODE_REVIEW_REPORT.md
+/LEARNING_RESOURCE_CRITICAL_REVIEW_FIXES.md
+/SECURITY_AUDIT_TYPESCRIPT_FIXES.md
+/docs/plans/
+/docs/review/results/
+/docs/design/notes/
+/docs/design/research/
+/docs/design/review/
+
+# Additional internal docs generated during development/review
+/docs/review/
+/docs/*report*.md
+/docs/*audit*.md
+/docs/*review*.md
+/docs/*debug*.md
+/docs/*checklist*.md
+/docs/*进度*.md
+/docs/*调研报告*.md
+/docs/*审计报告*.md
+/docs/*批判性检查*.md
+/docs/*修复记录*.md
+/docs/*任务拆解*.md
+/docs/*改造总结*.md
+/docs/FIX-STRATEGIES-*.md
+/docs/VERIFIED-RISKS-*.md
+/docs/design/*report*.md
+/docs/design/*review*.md
+/docs/design/*checklist*.md
+/docs/design/code-review-prompts/
+/docs/design/**/*code-review*.md

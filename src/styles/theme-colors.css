@@ -1,0 +1,59 @@
+/* Theme color tokens bridging shadcn variables to semantic surfaces/text/brand */
+:where(:root) {
+  /* Surface layers (gradient: nav < root < elevated < muted) */
+  --surface-nav: hsl(var(--nav-background));  /* 侧边栏/标题栏最深层 */
+  --surface-root: hsl(var(--background));
+  --surface-root-strong: color-mix(in hsl, hsl(var(--background)) 80%, hsl(var(--foreground)) 20%);
+  --surface-elevated: hsl(var(--card));
+  --surface-muted: color-mix(in hsl, hsl(var(--background)) 92%, hsl(var(--card)) 8%);
+  --surface-overlay: color-mix(in hsl, hsl(var(--card)) 80%, transparent 20%);
+  --surface-overlay-strong: color-mix(in hsl, hsl(var(--card)) 65%, hsl(var(--background)) 35%);
+  --surface-divider: color-mix(in hsl, hsl(var(--border)) 55%, transparent 45%);
+
+  /* Borders */
+  --border-default: hsl(var(--border));
+  --border-soft: color-mix(in hsl, hsl(var(--border)) 70%, transparent 30%);
+  --border-strong: color-mix(in hsl, hsl(var(--border)) 90%, hsl(var(--foreground)) 10%);
+
+  /* Glassmorphism helpers */
+  --glass-bg: hsl(var(--card) / 0.75);
+  --glass-border: color-mix(in hsl, hsl(var(--border)) 60%, transparent 40%);
+  --glass-overlay: color-mix(in hsl, hsl(var(--card)) 55%, transparent 45%);
+
+  /* Scrollbar colors */
+  --scrollbar-track: color-mix(in hsl, hsl(var(--muted)) 70%, transparent 30%);
+  --scrollbar-thumb: color-mix(in hsl, hsl(var(--muted-foreground)) 85%, hsl(var(--foreground)) 15%);
+  --scrollbar-thumb-hover: color-mix(in hsl, hsl(var(--muted-foreground)) 95%, hsl(var(--foreground)) 5%);
+
+  /* Text semantics */
+  --text-primary: hsl(var(--foreground));
+  --text-secondary: color-mix(in hsl, hsl(var(--foreground)) 70%, hsl(var(--muted-foreground)) 30%);
+  --text-muted: hsl(var(--muted-foreground));
+  --text-inverse: hsl(var(--primary-foreground));
+
+  /* Brand palette + gradients */
+  --brand-gradient: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(var(--info)) 100%);
+  --brand-gradient-hover: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(var(--info)) 80%, hsl(var(--primary)) 100%);
+  --brand-primary-light: color-mix(in hsl, hsl(var(--primary)) 25%, hsl(var(--background)) 75%);
+  --brand-50: color-mix(in hsl, hsl(var(--primary)) 8%, hsl(var(--background)) 92%);
+  --brand-100: color-mix(in hsl, hsl(var(--primary)) 15%, hsl(var(--background)) 85%);
+  --brand-200: color-mix(in hsl, hsl(var(--primary)) 25%, hsl(var(--background)) 75%);
+  --brand-300: color-mix(in hsl, hsl(var(--primary)) 35%, hsl(var(--background)) 65%);
+  --brand-600: color-mix(in hsl, hsl(var(--primary)) 80%, hsl(var(--foreground)) 20%);
+  --brand-outline: color-mix(in hsl, hsl(var(--primary)) 35%, transparent 65%);
+
+  /* Status tokens */
+  --success-muted: var(--success) / 0.45;
+  --success-bg: var(--success) / 0.14;
+  --warning-muted: var(--warning) / 0.45;
+  --warning-bg: var(--warning) / 0.16;
+  --info-muted: var(--info) / 0.45;
+  --info-bg: var(--info) / 0.16;
+  --danger-muted: var(--danger) / 0.45;
+  --danger-bg: var(--danger) / 0.16;
+  --neutral: var(--muted-foreground);
+  --neutral-foreground: var(--background);
+  --neutral-muted: var(--neutral) / 0.35;
+  --neutral-bg: var(--neutral) / 0.14;
+}
+

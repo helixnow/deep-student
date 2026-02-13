@@ -1,0 +1,373 @@
+{
+  "crepe_demo": {
+    "title": "Crepe 编辑器性能示例",
+    "intro": "通过下方选择器逐步接近笔记模块的完整实现，观察在哪个阶段出现卡顿，即可定位性能瓶颈。",
+    "mode_picker": {
+      "label": "选择功能层级："
+    },
+    "status": {
+      "loading": "正在加载编辑器…",
+      "error": "初始化失败：{{message}}"
+    },
+    "stats": {
+      "change": "内容变更次数：{{count}}",
+      "events": "事件统计：keydown {{keydown}} · input {{input}} · compositionend {{compositionend}}"
+    },
+    "base_markdown": "# Crepe Minimal Demo\n\n在这里尝试输入、选中、拖拽文本，以排查编辑器本体的性能问题。\n\n## 功能说明\n- 无自动保存\n- 无笔记引用、Slash 菜单等扩展\n- 仅关注 Milkdown/Crepe 自身的交互表现\n",
+    "modes": {
+      "bare": {
+        "label": "步骤 1：原生 Crepe",
+        "description": "不加载任何笔记模块扩展，只保留 Crepe 官方默认能力，用于验证编辑器内核性能。"
+      },
+      "listener": {
+        "label": "步骤 2：加入监听器",
+        "description": "在原生 Crepe 基础上添加 Milkdown listener 插件，模拟笔记模块的 onChange 监听与状态刷新。"
+      },
+      "notes-css": {
+        "label": "步骤 3：应用笔记样式",
+        "description": "保留监听器并加载笔记页面的 CSS 与字体，排查样式层是否带来性能影响。"
+      },
+      "notes-css-events": {
+        "label": "步骤 4：绑定键盘事件",
+        "description": "模拟笔记模块绑定的 keydown/input/composition 事件并统计触发次数，估算事件监听的开销。"
+      },
+      "milkdown-core": {
+        "label": "步骤 5：挂载 Milkdown 核心",
+        "description": "切换为 MilkdownMarkdownEditor 的基础渲染，仅保留编辑器内核，不注册 listener、DOM 事件与业务扩展。"
+      },
+      "milkdown-dom": {
+        "label": "步骤 6：开启 DOM 同步",
+        "description": "在 Milkdown 核心基础上启用 listener 与 DOM 事件同步，仍禁用 Mentions、Slash、错题引用等业务插件。"
+      },
+      "milkdown-extensions": {
+        "label": "步骤 7：加载 Mentions/Slash",
+        "description": "进一步启用 Mentions、Slash 命令等交互扩展，仅禁用错题引用与 AI 预览相关扩展。"
+      },
+      "full-notes-editor": {
+        "label": "步骤 8：笔记模块同款",
+        "description": "挂载当前笔记模块完整实现，包含 Mentions、Slash、错题引用、AI 预览及所有业务事件，作为最终对照组。"
+      }
+    }
+  },
+  "save_test": {
+    "title": "聊天保存功能测试",
+    "context": {
+      "mode": "模式",
+      "mistake_id": "错题ID"
+    },
+    "scenario_selector": {
+      "title": "选择测试场景"
+    },
+    "scenarios": {
+      "complete_flow": {
+        "name": "完整流程测试",
+        "description": "测试从首页开始的完整对话流程：多轮对话→编辑重发→一次性入库→继续对话→删除→验证（需Playwright或手动配合）"
+      },
+      "delete": {
+        "name": "删除消息保存",
+        "description": "测试删除聊天消息后是否正确保存到数据库"
+      },
+      "stream_complete": {
+        "name": "流式完成保存",
+        "description": "测试流式对话完成后是否自动保存"
+      },
+      "manual_stop": {
+        "name": "手动停止保存",
+        "description": "测试手动停止流式对话后是否正确保存"
+      },
+      "edit_resend": {
+        "name": "编辑重发保存",
+        "description": "测试编辑消息并重新发送后是否正确保存"
+      },
+      "manual_save": {
+        "name": "手动触发保存",
+        "description": "测试手动保存按钮是否正常工作"
+      }
+    },
+    "steps": {
+      "preflight_check": "前置条件检查",
+      "load_data": "加载数据",
+      "verify_initial": "验证初始状态",
+      "delete_message": "执行删除操作",
+      "send_message": "发送消息",
+      "wait_stream": "等待流式完成",
+      "manual_stop": "手动停止",
+      "edit_message": "编辑消息",
+      "resend_message": "重新发送",
+      "trigger_save": "触发保存",
+      "verify_save": "验证保存完成",
+      "reload_verify": "重新加载验证",
+      "integrity_check": "完整性检查"
+    },
+    "buttons": {
+      "start": "开始测试",
+      "running": "测试运行中...",
+      "auto_test": "全自动测试",
+      "auto_testing": "自动测试中..."
+    },
+    "steps_section": {
+      "title": "测试步骤"
+    },
+    "logs_section": {
+      "title": "测试日志"
+    },
+    "logs": {
+      "copied": "日志已复制到剪贴板",
+      "copy_failed": "复制失败: {{error}}",
+      "test_start": "测试开始: {{scenario}}",
+      "no_report": "没有可导出的测试报告",
+      "auto_test_start": "========== 全自动测试开始 ==========",
+      "auto_test_count": "测试场景数: {{count}}",
+      "auto_test_scenario_header": "========== 场景 {{index}}/{{total}}: {{scenario}} ==========",
+      "test_end": "测试结束: {{scenario}}",
+      "test_failed": "测试失败: {{scenario}}",
+      "test_passed": "测试通过: {{scenario}}",
+      "test_skipped": "测试跳过: {{scenario}}",
+      "test_step_start": "步骤开始: {{step}}",
+      "test_step_end": "步骤结束: {{step}}",
+      "test_step_failed": "步骤失败: {{step}}",
+      "test_step_passed": "步骤通过: {{step}}",
+      "test_step_skipped": "步骤跳过: {{step}}",
+      "test_step_error": "步骤错误: {{step}}",
+      "test_step_warning": "步骤警告: {{step}}",
+      "test_step_info": "步骤信息: {{step}}",
+      "test_step_debug": "步骤调试: {{step}}",
+      "test_step_trace": "步骤追踪: {{step}}",
+      "test_step_log": "步骤日志: {{step}}",
+      "test_step_result": "步骤结果: {{step}}",
+      "test_step_duration": "步骤耗时: {{step}}",
+      "test_step_error_message": "步骤错误信息: {{step}}",
+      "test_step_warning_message": "步骤警告信息: {{step}}",
+      "test_step_info_message": "步骤信息信息: {{step}}",
+      "test_step_debug_message": "步骤调试信息: {{step}}",
+      "test_step_trace_message": "步骤追踪信息: {{step}}",
+      "test_step_log_message": "步骤日志信息: {{step}}",
+      "test_step_result_message": "步骤结果信息: {{step}}",
+      "test_step_duration_message": "步骤耗时信息: {{step}}",
+      "auto_test_failed": "场景失败: {{scenario}} ({{duration}}ms)",
+      "auto_test_skipped": "场景跳过: {{scenario}} (未实现)",
+      "auto_test_success": "场景成功: {{scenario}} ({{duration}}ms)",
+      "element_clicked": "已点击元素: {{testid}}",
+      "element_input": "已输入元素: {{testid}}",
+      "element_timeout": "元素超时未出现: {{testid}} ({{timeout}}ms)",
+      "auto_mode": "完全自动化模式（程序化操作）",
+      "test_env_warning": "注意：测试会产生真实数据，建议在测试环境运行",
+      "start": "完整流程测试开始",
+      "complete_flow": {
+        "start": "完整流程测试开始",
+        "auto_mode": "完全自动化模式（程序化操作）",
+        "test_env_warning": "注意：测试会产生真实数据，建议在测试环境运行"
+      }
+    },
+    "results": {
+      "success": "测试通过",
+      "failed": "测试失败",
+      "loaded": "数据已加载，消息数: {{count}}",
+      "verified": "初始状态验证通过，消息数: {{count}}",
+      "deleted": "消息已删除: {{stableId}}",
+      "save_verified": "保存已验证完成",
+      "verified_final": "最终验证通过: {{from}} → {{to}}"
+    },
+    "error": {
+      "no_mistake": "缺少错题ID",
+      "load_failed": "无法加载错题数据",
+      "insufficient_messages": "消息数量不足，需要至少2条消息才能测试删除，当前: {{count}}",
+      "no_assistant_message": "未找到可删除的助手消息",
+      "no_stable_id": "目标消息没有 stable_id",
+      "delete_timeout": "删除超时（5秒），可能监听器未注册或删除失败",
+      "delete_failed": "删除失败",
+      "reload_failed": "重新加载失败",
+      "count_mismatch": "消息数量不匹配！期望: {{expected}}，实际: {{actual}}\n初始: {{initial}}条 → 删除1条 → 期望: {{expected}}条",
+      "missing_navigate_callback": "缺少导航回调 onNavigate",
+      "no_user_message_dom": "未找到用户消息 DOM 元素",
+      "msg5_not_found": "未找到消息5对应的 DOM 元素",
+      "delete_button_missing": "未找到删除按钮",
+      "missing_saved_mistake": "未记录保存的题目ID",
+      "msg5_exists": "消息5仍然存在！stableId: {{stableId}}",
+      "count_unexpected": "消息数量异常：{{actual}}，期望至少{{expected}}",
+      "stream_timeout": "流式超时（30秒），可能网络问题或模型响应慢",
+      "save_timeout": "保存超时（10秒），可能数据库问题",
+      "msg_count_increased": "消息数量未增加，停止后保存可能失败",
+      "no_edit_resend_button": "未找到编辑重发确认按钮",
+      "no_delete_button": "未找到删除按钮",
+      "no_msg5_dom": "未找到消息5的DOM元素",
+      "save_id_missing": "未记录保存的题目ID",
+      "reload_failed_detail": "重新加载失败",
+      "insufficient_user_messages": "需要至少1条用户消息才能测试编辑重发",
+      "edited_message_not_found": "编辑后的消息未找到，保存可能失败",
+      "test_message_not_found": "测试消息未找到，保存可能失败",
+      "data_load_failed": "数据加载失败",
+      "missing_mistake_id": "缺少错题ID",
+      "cannot_load_mistake": "无法加载错题数据",
+      "runtime_not_initialized": "Runtime 未初始化或缺少 stableId",
+      "test_failed": "测试失败"
+    },
+    "warning": {
+      "scenario_not_implemented": "场景「{{scenario}}」尚未实现"
+    },
+    "integrity": {
+      "start": "开始数据完整性验证...",
+      "pass": "数据完整性验证通过",
+      "fail": "发现 {{count}} 个完整性问题",
+      "count_mismatch": "消息数量不匹配: 期望{{expected}}, 实际{{actual}}",
+      "deleted_still_exists": "被删除的消息仍然存在: {{stableId}}",
+      "content_changed": "消息内容被篡改 [{{index}}]: {{stableId}}",
+      "role_changed": "消息角色被改变 [{{index}}]: {{from}} → {{to}}",
+      "thinking_lost": "思维链数据丢失 [{{index}}]: {{stableId}}",
+      "sources_lost": "来源信息丢失 [{{index}}]: {{stableId}}",
+      "order_wrong": "消息顺序错乱 [{{index}}]: 期望{{expected}}, 实际{{actual}}",
+      "duplicate_id": "检测到重复的 stable_id"
+    },
+    "polling": {
+      "attempt": "轮询尝试 #{{attempt}}/{{max}}, 间隔{{interval}}ms",
+      "timeout": "保存验证超时（{{timeout}}ms），轮询次数: {{count}}"
+    },
+    "instructions": {
+      "title": "使用说明",
+      "step1": "打开一个包含多条消息的错题详情页",
+      "step2": "选择要测试的场景",
+      "step3": "点击「开始测试」或「全自动测试」按钮",
+      "step4": "观察测试步骤执行过程和最终结果",
+      "selected_scenario": "当前选择"
+    },
+    "duration": "耗时: {{ms}}ms",
+    "footer": {
+      "shortcut": "快捷键"
+    },
+    "complete_flow": {
+      "steps": {
+        "nav_home": "1. 导航到首页",
+        "send1": "2. 发送消息1",
+        "wait1": "3. 等待回复1",
+        "edit": "4. 编辑消息1",
+        "send2": "5. 重发消息2",
+        "wait2": "6. 等待回复2",
+        "send3": "7. 发送消息3",
+        "wait3": "8. 等待回复3",
+        "save_once": "9. 一次性入库保存",
+        "nav_library": "10. 导航到分析库",
+        "open_detail": "11. 进入题目详情",
+        "send4": "12. 发送消息4",
+        "send5": "13. 发送消息5",
+        "send6": "14. 发送消息6",
+        "delete5": "15. 删除消息5",
+        "reload": "16. 重新加载验证",
+        "verify": "17. 验证最终状态"
+      },
+      "inputs": {
+        "message1": "这是自动化测试消息1，请简短回复",
+        "message2": "这是编辑后的消息2，请简短回复",
+        "message3": "这是自动化测试消息3，请简短回复",
+        "message4": "这是自动化测试消息4，请简短回复",
+        "message5": "这是自动化测试消息5，请简短回复",
+        "message6": "这是自动化测试消息6，请简短回复",
+        "message_generic": "这是自动化测试消息{{index}}，请简短回复",
+        "message5_preview": "自动化测试消息5"
+      },
+      "logs": {
+        "start": "完整流程测试开始",
+        "auto_mode": "完全自动化模式（程序化操作）",
+        "test_env_warning": "注意：测试会产生真实数据，建议在测试环境运行",
+        "nav_home": "导航到首页...",
+        "send_message": "发送消息{{index}}...",
+        "reply_done": "消息{{index}}回复完成",
+        "edit_message": "编辑消息{{index}}...",
+        "save_once": "一次性入库保存...",
+        "nav_library": "导航到分析库...",
+        "open_detail": "进入题目详情...",
+        "delete_msg5": "删除消息5...",
+        "delete_done": "删除完成",
+        "count_before_reload": "删除前消息数: {{count}}",
+        "reload_verify": "后台重新加载验证...",
+        "final_verify": "最终状态验证",
+        "record_stable_id": "记录消息5的stableId: {{stableId}}",
+        "missing_msg5_dom": "未找到消息5的DOM元素（可能文本不匹配）",
+        "verify_delete_pass": "消息5已被正确删除",
+        "skip_delete_verify": "跳过删除验证（未记录stableId）",
+        "verify_count_pass": "消息数量验证通过: {{count}}条",
+        "finish": "完整流程测试完成！总耗时: {{seconds}}秒"
+      }
+    }
+  },
+  "backendTest": {
+    "title": "🔧 后端 API 测试（统一流）",
+    "envStatus": "环境状态：",
+    "available": "可用",
+    "unavailable": "不可用",
+    "runInDesktop": "请在 Tauri 桌面应用中运行此页面",
+    "tauriUnavailable": "Tauri 环境不可用，请在桌面应用内运行",
+    "testContext": "测试上下文",
+    "running": "测试进行中…",
+    "runAll": "运行所有测试",
+    "clearResults": "清空结果",
+    "clearContext": "清空上下文",
+    "runSingle": "单独测试",
+    "testing": "测试中...",
+    "success": "成功",
+    "failed": "失败",
+    "statistics": "统计",
+    "total": "总数",
+    "inProgress": "进行中"
+  },
+  "mistake_chat_inspector": {
+    "input": {
+      "label": "错题 ID",
+      "placeholder": "输入错题 ID（如 d6b9...）以加载数据库记录",
+      "observed": "最近捕获: {{id}}"
+    },
+    "actions": {
+      "load": "加载",
+      "loading": "加载中...",
+      "use_observed": "使用最新",
+      "reload": "重新加载",
+      "copy_json": "复制 JSON"
+    },
+    "summary": {
+      "title": "错题概览",
+      "status": "状态",
+      "category": "类别",
+      "tags": "标签",
+      "total": "消息总数",
+      "user": "用户",
+      "assistant": "助手",
+      "missing_thinking": "缺思维链"
+    },
+    "message": {
+      "meta": {
+        "sources": "RAG {{rag}} · Graph {{graph}} · Memory {{memory}} · Web {{web}}",
+        "thinking_ready": "思维链已保存",
+        "thinking_missing": "缺少思维链",
+        "attachments": "文档附件：{{count}} 个",
+        "empty_content": "（内容为空）",
+        "thinking_title": "查看思维链"
+      }
+    },
+    "copy": {
+      "success": "聊天 JSON 已复制",
+      "failed": "复制失败：{{message}}"
+    },
+    "layers": {
+      "title": "多层历史对比（当前页面快照）",
+      "db_projected": "DB→渲染前投影",
+      "runtime": "Runtime.store",
+      "host": "宿主 chatHistory",
+      "visible": "渲染层 visibleHistory",
+      "count": "条数：{{count}}",
+      "hint": "说明：上表分别对应 DB 投影、CompatRuntime.store 投影、UniversalAppChatHost 的 chatHistory 与最终传入 VirtualizedChatList 的 visibleChatHistory，用于排查“哪一层开始丢失消息”。",
+      "diagnostic_unknown": "诊断：尚未捕获宿主快照，无法自动判断出错位置。",
+      "diagnostic_runtime": "诊断：从 Runtime.store 层开始，消息条数与 DB 投影不一致（DB={{db}}, Runtime={{runtime}}），后续层会继承这一结果，请重点检查 CompatRuntime.loadHistory 与 RuntimeStore.apply 的逻辑。",
+      "diagnostic_host": "诊断：Runtime.store 与 DB 一致，但宿主 chatHistory 条数与 DB 不一致（DB={{db}}, Host={{host}}），请检查 UniversalAppChatHost 内部对 chatHistory 的二次覆盖/过滤逻辑。",
+      "diagnostic_visible": "诊断：Runtime.store 与宿主 chatHistory 均与 DB 一致，但渲染层 visibleHistory 条数不同（DB={{db}}, Visible={{visible}}），请检查 VirtualizedChatList/MessageWithThinking 的过滤或索引逻辑。",
+      "diagnostic_ok": "诊断：四层消息条数均与 DB 投影一致，若仍有显示异常，请进一步对比角色序列与 stableId。"
+    },
+    "empty": {
+      "state": "尚未加载任何错题，请先输入 ID。",
+      "messages": "该错题没有聊天记录。"
+    },
+    "error": {
+      "missing_id": "请先输入错题 ID",
+      "not_found": "未找到 ID 为 {{id}} 的错题",
+      "load_failed": "加载失败：{{message}}"
+    }
+  }
+}

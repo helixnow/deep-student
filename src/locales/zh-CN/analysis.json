@@ -1,0 +1,137 @@
+{
+  "input_bar": {
+    "placeholder": "请输入问题...",
+    "placeholder_analyzing": "分析中...",
+    "placeholder_generating": "正在生成...",
+    "placeholder_ocr": "OCR进行中",
+    "aria_label": "消息输入框",
+    "send": {
+      "disabled_empty": "请输入内容或添加附件",
+      "disabled_busy": "正在处理中...",
+      "disabled_parsing": "文档正在解析中...",
+      "disabled_anki": "Anki 模板未就绪"
+    },
+    "attachments": {
+      "title": "附件",
+      "add": "添加附件",
+      "remove": "移除",
+      "image": "图片",
+      "document": "文档",
+      "parsing": "解析中...",
+      "parse_success": "解析完成",
+      "parsed": "解析完成",
+      "pending": "等待解析",
+      "parse_failed": "解析失败",
+      "drag_hint": "拖拽文件到此处",
+      "button_label": "附件",
+      "tooltip": "添加附件",
+      "images_label": "图片",
+      "docs_label": "文档",
+      "add_more": "添加附件",
+      "drop_hint": "拖拽文件到此处或点击添加",
+      "image_alt": "附件图片 {{index}}",
+      "doc_parsing_start": "文档解析开始",
+      "doc_parsing_complete": "文档解析完成",
+      "doc_parsing_failed": "文档解析失败",
+      "empty": "暂无附件，点击\"添加附件\"或拖拽文件到此处",
+      "reference": "引用",
+      "attachment_panel": "附件面板",
+      "clear_all": "清空",
+      "upload_failed": "附件上传失败",
+      "load_failed": "文件读取失败",
+      "file_too_large": "文件过大（最大 {{size}}）",
+      "limit_reached": "最多添加 {{count}} 个附件",
+      "status": {
+        "processing": "解析中…",
+        "success": "解析完成",
+        "error": "解析失败",
+        "pending": "待解析"
+      },
+      "errors": {
+        "unsupported_type": "不支持的附件类型：{{name}}（{{ext}}）。请上传支持的图片或文档格式。",
+        "size_limit_image": "文件过大：{{name}}（图片限制 {{limit}}）",
+        "size_limit_document": "文件过大：{{name}}（文档限制 {{limit}}）",
+        "heic_convert_failed": "HEIC 转换失败：{{error}}",
+        "parse_failed_with_details": "{{name}} 解析失败：{{error}}"
+      },
+      "item_aria_label": "附件：{{name}}，大小：{{size}} KB，类型：{{type}}，状态：{{status}}"
+    },
+    "rag": {
+      "title": "知识库",
+      "select_libraries": "选择知识库",
+      "selected_count": "已选 {{count}} 个库",
+      "top_k": "TopK",
+      "enable_rerank": "重排",
+      "toggle": "切换知识库面板",
+      "button_label": "知识库",
+      "tooltip_enabled": "知识库检索已启用",
+      "tooltip_disabled": "启用知识库检索"
+    },
+    "mcp": {
+      "title": "MCP工具",
+      "select_tools": "选择要启用的 MCP 服务器",
+      "selected_count": "已选 {{count}} 个工具",
+      "toggle": "切换MCP工具面板",
+      "search_placeholder": "搜索服务器或工具...",
+      "empty_hint": "暂无可用的 MCP 服务器",
+      "selected_group": "已选择",
+      "selected_badge": "已选",
+      "online_group": "在线工具",
+      "online_badge": "在线",
+      "cached_group": "缓存/静态",
+      "cached_badge": "缓存",
+      "server": "服务器",
+      "no_tools": "暂无工具",
+      "builtin_hint": "在设置 → MCP 中管理"
+    },
+    "search_engine": {
+      "title": "网络搜索",
+      "select": "选择引擎",
+      "selected_count": "已选 {{count}} 个",
+      "toggle": "切换搜索引擎面板",
+      "hint": "启用网络搜索后，AI 将自动联网获取最新信息"
+    },
+    "graph": {
+      "title": "知识图谱",
+      "select_graphs": "选择图谱",
+      "selected_count": "已选 {{count}} 个图谱",
+      "toggle": "切换知识图谱面板",
+      "button_label": "知识图谱",
+      "tooltip_enabled": "知识图谱已启用",
+      "tooltip_disabled": "启用知识图谱召回"
+    },
+    "learn_mode": {
+      "button_label": "学习模式",
+      "tooltip_enabled": "学习模式已启用",
+      "tooltip_disabled": "启用学习模式"
+    },
+    "learning_mode": {
+      "title": "学习模式",
+      "enable": "启用学习模式",
+      "disable": "禁用学习模式",
+      "custom_prompt": "自定义导师提示",
+      "toggle": "切换学习模式面板",
+      "description": "该模式会引导你循序渐进地理解概念、完成练习，并在关键步骤提供检查与回顾建议。"
+    },
+    "user_preferences": {
+      "title": "启用用户偏好提示",
+      "disable": "停用用户偏好提示",
+      "empty": "尚未配置用户偏好，请在设置页填写背景与偏好后再试。",
+      "button_label": "用户偏好",
+      "tooltip_enabled": "用户偏好已启用",
+      "tooltip_disabled": "启用用户偏好"
+    },
+    "actions": {
+      "send": "发送",
+      "analyze": "开始分析",
+      "stop": "停止",
+      "reset": "重置",
+      "toggle_attachment": "切换附件面板",
+      "upload_file": "上传文件"
+    },
+    "notifications": {
+      "panel_state_saved": "面板状态已保存",
+      "panel_closed": "面板已关闭"
+    }
+  }
+}

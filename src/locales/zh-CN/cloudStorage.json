@@ -1,0 +1,136 @@
+{
+  "title": "云存储",
+  "description": "配置云端备份存储，支持 WebDAV 和 S3 兼容存储",
+  
+  "provider": {
+    "label": "存储类型",
+    "webdav": "WebDAV",
+    "webdavDesc": "坚果云、Nextcloud、自建 WebDAV 等",
+    "s3": "S3 兼容存储",
+    "s3Desc": "AWS S3、Cloudflare R2、阿里云 OSS、MinIO 等",
+    "s3Disabled": "未启用（需编译时启用 S3 feature）"
+  },
+  
+  "webdav": {
+    "endpoint": "服务器地址",
+    "endpointPlaceholder": "https://dav.jianguoyun.com/dav/",
+    "endpointHint": "WebDAV 服务器的完整 URL",
+    "username": "用户名",
+    "usernamePlaceholder": "your@email.com",
+    "password": "密码",
+    "passwordPlaceholder": "应用专用密码",
+    "passwordHint": "建议使用应用专用密码而非登录密码"
+  },
+  
+  "s3": {
+    "endpoint": "Endpoint URL",
+    "endpointPlaceholder": "https://s3.amazonaws.com",
+    "endpointHint": "S3 兼容服务的 endpoint 地址",
+    "bucket": "存储桶",
+    "bucketPlaceholder": "my-backup-bucket",
+    "accessKeyId": "Access Key ID",
+    "accessKeyIdPlaceholder": "AKIAIOSFODNN7EXAMPLE",
+    "secretAccessKey": "Secret Access Key",
+    "secretAccessKeyPlaceholder": "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+    "region": "区域（可选）",
+    "regionPlaceholder": "us-east-1",
+    "regionHint": "某些 S3 兼容服务可能不需要",
+    "pathStyle": "使用 Path Style",
+    "pathStyleHint": "MinIO 等自建服务需要启用"
+  },
+  
+  "root": {
+    "label": "根目录",
+    "placeholder": "deep-student-sync",
+    "hint": "云端存储的根目录路径"
+  },
+  
+  "actions": {
+    "testConnection": "测试连接",
+    "testing": "测试中...",
+    "save": "保存配置",
+    "saving": "保存中...",
+    "uploadNow": "立即备份到云端",
+    "uploading": "上传中...",
+    "downloadLatest": "从云端恢复最新版本",
+    "downloading": "下载中...",
+    "viewHistory": "查看历史版本",
+    "clearConfig": "清除配置"
+  },
+  
+  "status": {
+    "title": "同步状态",
+    "connected": "已连接",
+    "disconnected": "未连接",
+    "notConfigured": "未配置",
+    "lastSync": "最后同步",
+    "cloudVersions": "云端版本数",
+    "latestVersion": "最新版本",
+    "deviceId": "设备 ID",
+    "never": "从未同步"
+  },
+  
+  "history": {
+    "title": "历史版本",
+    "empty": "暂无云端备份",
+    "version": "版本",
+    "size": "大小",
+    "device": "设备",
+    "time": "时间",
+    "checksum": "校验和",
+    "note": "备注",
+    "restore": "恢复此版本",
+    "delete": "删除",
+    "deleteConfirm": "确定要删除此版本吗？此操作不可撤销。",
+    "current": "当前设备"
+  },
+  
+  "upload": {
+    "title": "备份到云端",
+    "description": "将当前数据备份到云端存储",
+    "note": "备注（可选）",
+    "notePlaceholder": "例如：重大更新前备份",
+    "confirm": "开始备份",
+    "success": "备份成功",
+    "successDetail": "版本 {{version}} 已上传到云端",
+    "pruned": "已自动清理 {{count}} 个旧版本"
+  },
+  
+  "download": {
+    "title": "从云端恢复",
+    "description": "下载云端备份并恢复数据",
+    "warning": "警告：恢复操作将覆盖本地数据！",
+    "warningDetail": "建议先导出当前数据作为备份",
+    "selectVersion": "选择要恢复的版本",
+    "latest": "最新版本",
+    "confirm": "开始恢复",
+    "confirmTitle": "确认恢复",
+    "cancel": "取消",
+    "success": "恢复成功",
+    "successDetail": "版本 {{version}} 已下载到本地",
+    "successRestart": "数据恢复成功！",
+    "restartWhenReady": "请手动重启应用以加载恢复的数据。",
+    "checksumFailed": "校验和不匹配，文件可能已损坏"
+  },
+  
+  "errors": {
+    "connectionFailed": "连接失败",
+    "uploadFailed": "上传失败",
+    "downloadFailed": "下载失败",
+    "deleteFailed": "删除失败",
+    "configInvalid": "配置无效",
+    "networkError": "网络错误",
+    "permissionDenied": "权限不足",
+    "notFound": "文件不存在",
+    "noBackupAvailable": "没有可用的备份文件",
+    "unknown": "未知错误"
+  },
+  
+  "messages": {
+    "connectionSuccess": "连接成功！",
+    "configSaved": "配置已保存",
+    "configSavedButCredentialsFailed": "配置已保存（凭据存储失败）",
+    "configCleared": "配置已清除",
+    "versionDeleted": "版本已删除"
+  }
+}

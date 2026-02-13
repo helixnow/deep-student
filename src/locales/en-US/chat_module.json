@@ -1,0 +1,74 @@
+{
+  "sidebar": {
+    "loading": "Loading...",
+    "error": "Failed to load",
+    "retry": "Retry",
+    "empty_search": "No matching sessions found",
+    "no_sessions": "No sessions yet",
+    "search_placeholder": "Search sessions...",
+    "sort": {
+      "label": "Sort",
+      "recent": "Recently Updated",
+      "created": "Created Time",
+      "title": "Title"
+    },
+    "batch": {
+      "select_mode": "Select Mode",
+      "selected_count": "{{count}} selected",
+      "close_selected": "Close Selected",
+      "delete_selected": "Delete Selected",
+      "cancel": "Cancel"
+    },
+    "confirm_delete": {
+      "title": "Confirm Delete",
+      "message": "Are you sure you want to delete {{count}} session(s)? This action cannot be undone.",
+      "confirm": "Delete",
+      "cancel": "Cancel"
+    }
+  },
+  "error": {
+    "boundary_title": "Something went wrong",
+    "boundary_description": "An error occurred in the chat component. Please try again or ignore this error.",
+    "retry": "Retry",
+    "ignore": "Ignore",
+    "report": "Report Issue",
+    "session_id": "Session ID",
+    "load_failed": "Failed to load session",
+    "save_failed": "Failed to save session",
+    "stream_failed": "Streaming response failed",
+    "unknown": "An unknown error occurred"
+  },
+  "toast": {
+    "save_failed": "Save failed: {{error}}",
+    "save_success": "Saved successfully",
+    "delete_success": "Deleted successfully",
+    "load_error": "Load failed: {{error}}",
+    "stream_error": "Streaming error: {{error}}"
+  },
+  "message": {
+    "load_more": "Load more messages",
+    "loading_more": "Loading...",
+    "no_more": "No more messages",
+    "placeholder": "Message content",
+    "empty_conversation": "Start a new conversation"
+  },
+  "thinking": {
+    "expand": "Expand thinking process",
+    "collapse": "Collapse thinking process",
+    "copy_all": "Copy all",
+    "copied": "Copied",
+    "summary": "{{length}} characters",
+    "load_more": "Scroll to load more..."
+  },
+  "debug": {
+    "panel_title": "Chat Module Debug",
+    "session_count": "Session Count",
+    "active_streams": "Active Streams",
+    "logs_count": "Logs Count",
+    "clear_logs": "Clear Logs"
+  },
+  "virtual_list": {
+    "scroll_to_bottom": "Scroll to bottom",
+    "new_messages": "New messages"
+  }
+}

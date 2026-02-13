@@ -1,0 +1,1395 @@
+/**
+ * Chat Core Styles - 聊天界面核心样式
+ * 
+ * 作用域：所有样式限定在 .chat-v2 内
+ * 暗色模式：使用 :root.dark .chat-v2 或 .dark .chat-v2 选择器
+ */
+
+/* ============================================================================
+   CSS变量定义 - Design Tokens (作用域限定在 .chat-v2)
+   ============================================================================ */
+.chat-v2 {
+  /* 颜色系统 - 使用shadcn变量 */
+  --chat-primary-color: hsl(var(--primary));
+  --chat-primary-hover: hsl(var(--primary) / 0.9);
+  --chat-secondary-color: hsl(var(--secondary));
+  --chat-text-primary: hsl(var(--foreground));
+  --chat-text-secondary: hsl(var(--muted-foreground));
+  --chat-text-inverse: hsl(var(--primary-foreground));
+  --chat-bg-primary: hsl(var(--card));
+  --chat-bg-secondary: hsl(var(--muted));
+  --chat-border-color: hsl(var(--border));
+  --chat-user-message-text: #ffffff;
+
+  /* 间距系统 */
+  --chat-spacing-xs: 0.25rem;
+  --chat-spacing-sm: 0.5rem;
+  --chat-spacing-md: 1rem;
+  --chat-spacing-lg: 1.5rem;
+
+  /* 边框圆角 */
+  --chat-radius-sm: 8px;
+  --chat-radius-md: 12px;
+  --chat-radius-lg: 16px;
+  --chat-radius-pill: 24px;
+
+  /* 动画 */
+  --chat-transition-speed: 0.2s;
+  --chat-transition-timing: cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* 触摸目标最小尺寸 */
+  --chat-touch-target: 44px;
+}
+
+/* ============================================================================
+   工具类 - Utilities
+   ============================================================================ */
+
+/* 隐藏滚动条但保留滚动功能（用于移动端横向滚动） */
+.chat-v2 .scrollbar-hide {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
+}
+
+.chat-v2 .scrollbar-hide::-webkit-scrollbar {
+  display: none;  /* Chrome, Safari, Opera */
+}
+
+/* ============================================================================
+   聊天容器 - Chat Container
+   ============================================================================ */
+
+.chat-v2 .chat-container {
+  --app-message-content-bg: transparent;
+  --app-user-message-bg: linear-gradient(135deg, var(--chat-primary-color) 0%, var(--chat-primary-hover) 100%);
+  --app-user-message-fg: var(--chat-text-inverse);
+  --chat-assistant-surface: transparent;
+  --chat-assistant-border: transparent;
+  --chat-assistant-shadow: none;
+  --chat-history-bg: transparent;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  /* min-height: 500px; 移除固定最小高度限制 */
+  background: transparent;
+  border-radius: 0;
+  box-shadow: none;
+  overflow: hidden;
+  transition: all var(--chat-transition-speed) var(--chat-transition-timing);
+  flex: 1;
+}
+
+:root.dark .chat-v2 .chat-container,
+.dark .chat-v2 .chat-container {
+  --app-message-content-bg: transparent;
+  --chat-assistant-surface: transparent;
+  --chat-assistant-shadow: none;
+}
+
+/* 暗色模式下用户消息文字使用深色，与亮色背景形成对比 */
+:root.dark .chat-v2,
+html.dark .chat-v2,
+.dark .chat-v2 {
+  --chat-user-message-text: #0f172a;
+}
+
+.chat-v2 .chat-container.chat-fullscreen {
+  position: fixed;
+  top: 0;
+  /* 修复：使用CSS变量确保始终从侧边栏右边缘开始 */
+  left: var(--sidebar-width, 160px);
+  /* 移除right: 0，否则width设置会被忽略 */
+  bottom: 0;
+  z-index: 1000;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+  /* 🎯 修复：计算实际宽度以防止超出 */
+  width: calc(100vw - var(--sidebar-width, 160px));
+  min-width: 0;
+  max-width: calc(100vw - var(--sidebar-width, 160px));
+}
+
+/* 非全屏模式：在分析页面右侧面板中居中显示聊天容器并限制最大宽度 */
+.chat-v2 .right-panel .chat-container:not(.chat-fullscreen) {
+  max-width: 100%;
+  margin-left: 0;
+  margin-right: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: 0;
+  border: none;
+  box-shadow: none;
+  background: transparent;
+  flex: 1;
+}
+
+/* 侧边栏收起时的全屏聊天窗口 */
+.sidebar-collapsed ~ main .chat-v2 .chat-container.chat-fullscreen,
+body.sidebar-collapsed .chat-v2 .chat-container.chat-fullscreen {
+  left: var(--sidebar-collapsed-width, 63px);
+}
+
+.chat-v2 .chat-header {
+  padding: 0;
+  border-bottom: none;
+  background: transparent;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  min-height: 60px;
+  flex-shrink: 0; /* 防止压缩 */
+}
+
+.chat-v2 .chat-header h3,
+.chat-v2 .chat-header h4 {
+  margin: 0;
+  font-size: 1.1rem;
+  color: hsl(var(--foreground));
+  font-weight: 600;
+}
+
+.chat-v2 .chat-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.chat-v2 .chat-fullscreen-toggle {
+  background: none;
+  border: none;
+  font-size: 1.2rem;
+  cursor: pointer;
+  color: hsl(var(--muted-foreground));
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+.chat-v2 .chat-fullscreen-toggle:hover {
+  background-color: hsl(var(--muted));
+  color: hsl(var(--foreground));
+}
+
+.chat-v2 .chain-indicator {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+  color: hsl(var(--muted-foreground));
+  background: hsl(var(--accent));
+  padding: 0.25rem 0.75rem;
+  border-radius: 12px;
+  border: 1px solid hsl(var(--border));
+}
+
+/* ============================================================================
+   聊天历史 - Chat History
+   ============================================================================ */
+
+.chat-v2 .chat-history {
+  flex: 1;
+  overflow: hidden; /* 改为 hidden，因为使用 CustomScrollArea */
+  padding: 0; /* padding 移到 viewport */
+  display: flex;
+  flex-direction: column;
+  background: var(--chat-history-bg);
+  height: 100%; /* 确保高度填满 */
+}
+
+.chat-v2 .chat-history-viewport {
+  padding: 1rem 1.5rem;
+  /* 底部预留空间给吸底输入框，使用 CSS 变量动态响应输入框高度 */
+  padding-bottom: calc(var(--unified-input-docked-height, 120px) + 1rem);
+  display: flex;
+  flex-direction: column;
+  gap: var(--chat-spacing-md);
+  scroll-behavior: smooth;
+  /* 优化滚动性能 */
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
+/* 分析页微调消息间距，提升节奏感 */
+.chat-v2 .analysis-result .chat-history-viewport {
+  gap: 1.25rem;
+}
+
+/* 底部留白已通过 .chat-history-viewport 的 padding-bottom 实现，此处伪元素仅作为兜底 */
+.chat-v2 .analysis-result .chat-history-viewport::after,
+.chat-v2 .chat-container .chat-history-viewport::after,
+.chat-v2 .chat-container.chat-fullscreen .chat-history-viewport::after,
+.chat-v2 .batch-detail-page .chat-history-viewport::after,
+.chat-v2 .review-analysis .analysis-result .chat-history-viewport::after,
+.chat-v2 .chat-history-viewport::after {
+  content: '';
+  display: block;
+  height: 0; /* padding-bottom 已处理留白，此处不再额外添加 */
+  width: 100%;
+  flex-shrink: 0;
+  pointer-events: none;
+}
+
+.chat-v2 .chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--chat-spacing-md);
+  background: transparent;
+}
+
+.chat-v2 .empty-chat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  color: hsl(var(--muted-foreground));
+  text-align: center;
+}
+
+.chat-v2 .empty-chat p {
+  margin: 0.5rem 0;
+  line-height: 1.5;
+}
+
+/* ============================================================================
+   消息样式 - Message Styles
+   ============================================================================ */
+
+.chat-v2 .message {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 1.5rem;
+  opacity: 1;
+  transition: opacity 0.3s ease;
+  width: 100%;
+  position: relative; /* 确保每条消息有独立的定位上下文 */
+  overflow: visible; /* 允许工具详情区域完整显示 */
+}
+
+.chat-v2 .message.user {
+  align-items: flex-end;
+  margin-bottom: 0;
+}
+
+.chat-v2 .chat-container .message.assistant {
+  align-items: stretch; /* 改为stretch让内容占满宽度 */
+  width: 100%;
+  max-width: 100%;
+  border: none;
+  background: transparent;
+}
+
+.chat-v2 .message-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.chat-v2 .chat-container .message-actions button {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 0;
+  min-width: 32px;
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0;
+  color: hsl(var(--muted-foreground));
+  transition: color var(--chat-transition-speed) var(--chat-transition-timing);
+}
+
+.chat-v2 .chat-container .message-action-btn {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 0;
+  min-width: 32px;
+  min-height: 32px;
+  width: auto;
+  height: auto;
+  border-radius: 0;
+}
+
+.chat-v2 .message-actions button svg {
+  color: inherit;
+  opacity: 1;
+  transition: color var(--chat-transition-speed) var(--chat-transition-timing);
+}
+
+.chat-v2 .chat-container .summary-action-btn {
+  background: transparent;
+  border: none;
+  padding: 0;
+  font-size: 0.85rem;
+  font-weight: 500;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.chat-v2 .chat-container .summary-action-btn:hover,
+.chat-v2 .chat-container .summary-action-btn:focus-visible {
+  background: transparent;
+}
+
+.chat-v2 .chat-container .icon-ghost-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  min-width: 32px;
+  min-height: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.chat-v2 .icon-ghost-btn svg {
+  width: 18px;
+  height: 18px;
+}
+
+.chat-v2 .chat-container .message-actions button:hover,
+.chat-v2 .chat-container .message-actions button:focus-visible {
+  color: hsl(var(--foreground));
+  background: transparent;
+}
+
+.chat-v2 .message.streaming {
+  opacity: 1;
+}
+
+.chat-v2 .chat-container .message-content {
+  width: 100%; /* 占满父容器宽度 */
+  max-width: none; /* 移除最大宽度限制 */
+  padding: 0;
+  border-radius: 0;
+  word-wrap: break-word;
+  line-height: 1.6; /* 提升可读性 */
+  font-size: 0.95rem;
+  position: relative;
+  transition: none; /* 全局禁止过渡以避免闪动 */
+  overflow: visible; /* 改为visible，避免不必要的滚动条 */
+  box-sizing: border-box;
+  /* 防御：任何伪元素装饰不得拦截点击 */
+  pointer-events: auto;
+}
+
+/* 确保消息内容中的预格式文本正常显示 */
+.chat-v2 .message-content pre {
+  overflow-x: auto;
+  max-width: 100%;
+  white-space: pre;
+}
+
+/* 防止内部容器产生不必要的滚动条 */
+.chat-v2 .chat-container .message-content > div {
+  overflow: visible;
+}
+
+/* 特别处理可能包含数学公式的区域 */
+.chat-v2 .chat-container .message-content .math,
+.chat-v2 .chat-container .message-content .katex,
+.chat-v2 .chat-container .message-content .MathJax {
+  overflow: visible;
+  max-width: 100%;
+}
+
+/* 修复 katex-html 的 overflow 问题 */
+.chat-v2 .chat-container .message-content .katex-html {
+  overflow-x: visible;
+  overflow-y: visible;
+  overflow: visible;
+}
+
+/* 🎯 用户消息：去掉气泡，文字颜色与助手一致 */
+.chat-v2 .message.user .message-content {
+  background: transparent;
+  color: hsl(var(--foreground));
+  border-radius: 0;
+  padding: 0;
+  font-size: 0.9375rem;
+  line-height: 1.65;
+  width: auto;
+  max-width: 100%;
+}
+
+.chat-v2 .chat-container .message.assistant .message-content {
+  background: var(--chat-assistant-surface);
+  color: hsl(var(--foreground));
+  border: none;
+  border-radius: 0;
+  width: 100%;
+  max-width: 100%;
+  padding: 0;
+  box-shadow: none;
+  outline: none;
+}
+
+.chat-v2 .chat-container .message.assistant .message-content::before,
+.chat-v2 .chat-container .message.assistant .message-content::after {
+  display: none;
+}
+
+.chat-v2 .chat-container .message.assistant .message-content > .markdown-content {
+  border: none;
+  box-shadow: none;
+  background: transparent;
+  width: 100%;
+  max-width: 100%;
+}
+
+.chat-v2 .chat-container .message.assistant .message-content > div,
+.chat-v2 .chat-container .message.assistant .message-content > section,
+.chat-v2 .chat-container .message.assistant .message-content > article {
+  width: 100%;
+  max-width: 100%;
+}
+
+.chat-v2 .message-time {
+  font-size: 0.75rem;
+  color: hsl(var(--muted-foreground));
+  margin-top: 0.5rem;
+  padding: 0 0.5rem;
+}
+
+.chat-v2 .message.user .message-time {
+  text-align: right;
+}
+
+.chat-v2 .message.assistant .message-time {
+  text-align: left;
+}
+
+/* ============================================================================
+   Notion 风格折叠容器 - Notion-inspired collapsible sections
+   ============================================================================ */
+
+.chat-v2 .notion-collapsible {
+  margin-top: 12px;
+  margin-bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  position: relative; /* 确保折叠区域有独立的堆叠上下文 */
+  z-index: 1; /* 防止展开内容被后续消息覆盖 */
+}
+
+.chat-v2 .notion-collapsible-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.chat-v2 .notion-collapsible-trigger {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 6px;
+  border: none;
+  background: transparent;
+  padding: 0;
+  border-radius: 0;
+  cursor: pointer;
+  color: inherit;
+  transition: color 0.2s ease;
+}
+
+.chat-v2 .notion-collapsible-trigger:hover,
+.chat-v2 .notion-collapsible-trigger:focus-visible {
+  outline: none;
+  color: hsl(var(--foreground));
+}
+
+.chat-v2 .notion-collapsible-left {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-secondary, #334155);
+}
+
+.chat-v2 .notion-collapsible-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted, #94a3b8);
+}
+
+.chat-v2 .notion-collapsible-badge {
+  display: inline-flex;
+  align-items: center;
+}
+
+.chat-v2 .notion-collapsible-arrow {
+  transition: transform 0.2s ease;
+  color: var(--text-muted, #94a3b8);
+}
+
+.chat-v2 .notion-collapsible-arrow.expanded {
+  transform: rotate(90deg);
+}
+
+.chat-v2 .notion-collapsible-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.chat-v2 .notion-collapsible-body {
+  padding: 16px;
+  overflow: visible; /* 允许展开内容完整显示 */
+  min-height: 0; /* 允许 flex 子元素收缩 */
+}
+
+.chat-v2 .notion-collapsible-collapsed {
+  padding: 12px;
+}
+
+.chat-v2 .notion-scroll-area {
+  max-height: 360px;
+  padding-right: 6px;
+}
+
+.chat-v2 .notion-section-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  /* 确保列表能正确撑开父容器 */
+  min-height: 0;
+  flex: 1;
+}
+
+.chat-v2 .tool-event-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 8px;
+  position: relative; /* 确保卡片内容不会脱离文档流 */
+  z-index: auto; /* 使用默认堆叠顺序 */
+  /* 确保展开内容能正确撑开卡片 */
+  min-height: 0;
+  overflow: visible; /* 允许展开的详情内容完整显示 */
+}
+
+.chat-v2 .tool-event-bubble {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  background: var(--surface-elevated, rgba(255, 255, 255, 0.92));
+  box-shadow: none;
+  transition: border-color 0.2s ease, transform 0.2s ease;
+}
+
+.chat-v2 .tool-event-bubble:hover {
+  border-color: rgba(59, 130, 246, 0.32);
+  transform: translateY(-1px);
+}
+
+.chat-v2 .tool-event-bubble__icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(148, 163, 184, 0.16);
+  color: rgba(71, 85, 105, 0.88);
+  flex-shrink: 0;
+}
+
+.chat-v2 .tool-event-bubble--success .tool-event-bubble__icon {
+  background: rgba(34, 197, 94, 0.15);
+  color: rgba(22, 163, 74, 0.9);
+}
+
+.chat-v2 .tool-event-bubble--failed .tool-event-bubble__icon {
+  background: rgba(248, 113, 113, 0.18);
+  color: rgba(220, 38, 38, 0.92);
+}
+
+.chat-v2 .tool-event-bubble--running .tool-event-bubble__icon {
+  background: rgba(96, 165, 250, 0.2);
+  color: rgba(37, 99, 235, 0.95);
+}
+
+.chat-v2 .tool-event-bubble__spinner {
+  animation: tool-event-spin 1s linear infinite;
+}
+
+@keyframes tool-event-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+
+.chat-v2 .tool-event-bubble__meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+
+.chat-v2 .tool-event-bubble__title {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-secondary, #334155);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-v2 .tool-event-bubble__controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.chat-v2 .tool-event-bubble__badge {
+  height: 20px;
+  font-size: 0.7rem;
+  padding-left: 8px;
+  padding-right: 8px;
+  display: inline-flex;
+  align-items: center;
+}
+
+.chat-v2 .tool-event-bubble__details-trigger {
+  height: 20px;
+  font-size: 0.7rem;
+  padding-left: 6px;
+  padding-right: 6px;
+  color: rgba(37, 99, 235, 0.9);
+}
+
+.chat-v2 .tool-event-bubble__hint {
+  font-size: 0.7rem;
+  color: var(--text-muted, #64748b);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-v2 .tool-event-details {
+  margin-top: 4px;
+  margin-left: calc(12px + 28px + 8px);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-radius: 12px;
+  background: var(--surface-elevated, rgba(248, 250, 252, 0.92));
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  position: relative; /* 保持在正常文档流中 */
+  z-index: auto; /* 不提升z-index，避免覆盖后续内容 */
+  clear: both; /* 清除浮动影响 */
+}
+
+.chat-v2 .tool-event-detail-block {
+  font-size: 0.78rem;
+  color: hsl(var(--muted-foreground));
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.chat-v2 .tool-event-detail-title {
+  font-weight: 600;
+  color: hsl(var(--foreground));
+}
+
+.chat-v2 .tool-event-detail-block pre {
+  margin: 0;
+  padding: 6px 8px;
+  background: rgba(241, 245, 249, 0.85);
+  border-radius: 8px;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-x: auto;
+  font-size: 0.74rem;
+  line-height: 1.5;
+}
+
+.chat-v2 .tool-event-detail-block.error {
+  color: hsl(var(--danger));
+}
+
+.chat-v2 .tool-event-detail-block.error .tool-event-detail-title {
+  color: hsl(var(--danger));
+}
+
+.chat-v2 .tool-event-detail-block.error pre {
+  background: rgba(254, 242, 242, 0.95);
+  border-color: rgba(248, 113, 113, 0.55);
+}
+
+.chat-v2 .summary-panel .summary-content {
+  font-size: 0.85rem;
+  color: var(--text-secondary, #334155);
+  line-height: 1.7;
+  padding: 0;
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  background: var(--surface-elevated, #ffffff);
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.06);
+  overflow: hidden;
+}
+
+[data-theme="dark"] .chat-v2 .summary-panel .summary-content {
+  background: hsl(var(--muted) / 0.3);
+  border-color: hsl(var(--border));
+  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.4);
+  color: hsl(var(--muted-foreground));
+}
+
+.chat-v2 .summary-panel .summary-empty {
+  font-size: 0.78rem;
+  color: var(--text-muted, #94a3b8);
+  padding: 12px 16px;
+}
+
+/* ============================================================================
+   思维链样式 - Thinking Chain Styles
+   ============================================================================ */
+
+/* ============================================================================
+   流式处理样式 - Streaming Styles
+   ============================================================================ */
+
+.chat-v2 .streaming-indicator {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--brand-primary);
+  font-size: 0.9rem;
+  margin: 0.5rem 0;
+}
+
+.chat-v2 .streaming-text {
+  position: relative;
+}
+
+.chat-v2 .streaming-cursor {
+  display: inline-block;
+  width: 2px;
+  height: 1.2em;
+  background-color: var(--brand-primary);
+  animation: none;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+}
+.chat-v2 .streaming-cursor[data-active="false"] {
+  visibility: hidden;
+}
+
+@keyframes blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
+
+.chat-v2 .typing-indicator {
+  display: inline-flex;
+  gap: 4px;
+  margin-right: 8px;
+}
+
+.chat-v2 .typing-indicator span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: hsl(var(--muted-foreground));
+  animation: typing 1.4s infinite ease-in-out;
+}
+
+.chat-v2 .typing-indicator span:nth-child(1) { animation-delay: -0.32s; }
+.chat-v2 .typing-indicator span:nth-child(2) { animation-delay: -0.16s; }
+
+@keyframes typing {
+  0%, 80%, 100% {
+    transform: scale(0.8);
+    opacity: 0.5;
+  }
+  40% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.chat-v2 .partial-math-indicator {
+  display: inline-block;
+  margin-left: 4px;
+  opacity: 0.7;
+  animation: pulse 1s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 0.7; }
+  50% { opacity: 1; }
+}
+
+/* 用户记忆摘要 美化与折叠 */
+.chat-v2 .memory-summary {
+  border: 1px solid hsl(var(--border));
+  background: hsl(var(--muted));
+  border-radius: 8px;
+  overflow: hidden;
+  margin: 8px 0;
+}
+.chat-v2 .memory-summary-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  background: hsl(var(--accent));
+  border-bottom: 1px solid hsl(var(--border));
+  cursor: pointer;
+  user-select: none;
+}
+.chat-v2 .memory-summary-title { font-size: 0.85rem; color: hsl(var(--foreground)); font-weight: 600; }
+.chat-v2 .memory-summary-toggle { font-size: 0.78rem; color: hsl(var(--muted-foreground)); }
+.chat-v2 .memory-summary-body { padding: 6px 10px; }
+.chat-v2 .memory-summary-item {
+  font-size: 0.8rem; /* 小于正文两号 */
+  color: hsl(var(--foreground));
+  padding: 4px 0;
+  border-bottom: 1px dashed #e5e7eb;
+}
+.chat-v2 .memory-summary-item:last-child { border-bottom: none; }
+
+/* ============================================================================
+   聊天输入 - Chat Input
+   ============================================================================ */
+
+.chat-v2 .chat-input {
+  padding: 0;
+  border-top: none; /* remove hard top border */
+  background: hsl(var(--card));
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.chat-v2 .input-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.5rem;
+}
+
+.chat-v2 .chat-input input[type="text"] {
+  flex: 1;
+  padding: 0.75rem 1rem;
+  border: 1px solid hsl(var(--border)); /* keep input border */
+  border-radius: 20px;
+  font-size: 0.95rem;
+  outline: none;
+  transition: border-color 0.2s;
+  resize: none;
+  min-height: 44px;
+  max-height: 120px;
+}
+
+.chat-v2 .chat-input input[type="text"]:focus {
+  border-color: var(--brand-primary);
+  box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
+}
+
+.chat-v2 .chat-input input[type="text"]:disabled {
+  background-color: hsl(var(--muted));
+  color: hsl(var(--muted-foreground));
+  cursor: not-allowed;
+}
+
+.chat-v2 .send-button {
+  background: hsl(var(--card));
+  color: hsl(var(--foreground));
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: var(--chat-radius-sm);
+  min-width: var(--chat-touch-target); /* 确保触摸目标足够大 */
+  min-height: var(--chat-touch-target);
+  width: 44px;
+  height: 44px;
+  cursor: pointer;
+  transition: all var(--chat-transition-speed);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.chat-v2 .send-button:hover:not(:disabled) {
+  background: hsl(var(--secondary));
+  transform: scale(1.05);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+}
+
+.chat-v2 .send-button:disabled {
+  background: hsl(var(--muted));
+  cursor: not-allowed;
+  transform: none;
+  opacity: 0.6;
+  color: hsl(var(--muted-foreground));
+  border-color: rgba(0, 0, 0, 0.05);
+}
+
+/* 确保发送按钮中的图标颜色 */
+.chat-v2 .send-button svg {
+  color: currentColor;
+  stroke: currentColor;
+  fill: none;
+}
+
+.chat-v2 .image-upload-btn {
+  background: var(--chat-bg-secondary);
+  color: var(--chat-text-secondary);
+  border: 1px solid var(--chat-border-color);
+  border-radius: 50%;
+  min-width: var(--chat-touch-target); /* 确保触摸目标足够大 */
+  min-height: var(--chat-touch-target);
+  width: 44px;
+  height: 44px;
+  cursor: pointer;
+  transition: all var(--chat-transition-speed);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+  flex-shrink: 0;
+}
+
+.chat-v2 .image-upload-btn:hover:not(:disabled) {
+  background: hsl(var(--muted));
+  color: hsl(var(--foreground));
+  transform: scale(1.05);
+}
+
+.chat-v2 .image-upload-btn:disabled {
+  background: hsl(var(--muted));
+  color: hsl(var(--muted-foreground));
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* ============================================================================
+   图片预览 - Image Preview
+   ============================================================================ */
+
+.chat-v2 .image-preview-container {
+  border: 1px solid hsl(var(--border));
+  border-radius: 8px;
+  padding: 0;
+  background: hsl(var(--muted));
+}
+
+.chat-v2 .image-preview-header {
+  font-size: 0.85rem;
+  color: hsl(var(--muted-foreground));
+  margin-bottom: 0.5rem;
+  font-weight: 500;
+}
+
+.chat-v2 .image-preview-grid {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.chat-v2 .image-preview-item {
+  position: relative;
+  width: 60px;
+  height: 60px;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid hsl(var(--border));
+}
+
+.chat-v2 .image-preview-item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.chat-v2 .image-preview-info {
+  position: absolute;
+  top: 0;
+  right: 0;
+  background: rgba(0, 0, 0, 0.7);
+  color: white;
+  padding: 2px;
+  border-radius: 0 0 0 4px;
+}
+
+.chat-v2 .remove-image-btn {
+  background: rgba(220, 53, 69, 0.9);
+  color: white;
+  border: none;
+  border-radius: 50%;
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+  font-size: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.2s;
+  padding: 0;
+}
+
+.chat-v2 .remove-image-btn:hover {
+  background: rgba(220, 53, 69, 1);
+}
+
+/* ============================================================================
+   多模态内容 - Multimodal Content
+   ============================================================================ */
+
+.chat-v2 .content-text-part {
+  margin-bottom: 0.5rem;
+}
+
+.chat-v2 .content-text-part:last-child {
+  margin-bottom: 0;
+}
+
+.chat-v2 .content-image-part {
+  margin: 0.5rem 0;
+}
+
+.chat-v2 .content-image-part img {
+  max-width: 100%;
+  max-height: 300px;
+  display: block;
+  margin: 0 auto;
+  border-radius: 8px;
+  border: 1px solid hsl(var(--border));
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.chat-v2 .content-unknown {
+  padding: 0;
+  background: hsl(var(--warning-bg));
+  color: hsl(var(--warning));
+  border: 1px solid #ffeaa7;
+  border-radius: 6px;
+  font-style: italic;
+}
+
+/* ============================================================================
+   保存按钮 - Save Buttons
+   ============================================================================ */
+
+.chat-v2 .save-buttons-row {
+  margin-top: 0.75rem;
+  padding: 0;
+  border-top: 1px solid hsl(var(--border));
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.chat-v2 .save-button-inline,
+.chat-v2 .save-button-primary,
+.chat-v2 .save-button-secondary {
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.chat-v2 .save-button-inline {
+  background: hsl(var(--success));
+  color: white;
+}
+
+.chat-v2 .save-button-inline:hover:not(:disabled) {
+  background: hsl(var(--success-muted));
+}
+
+.chat-v2 .save-button-primary {
+  background: var(--brand-primary);
+  color: white;
+}
+
+.chat-v2 .save-button-primary:hover:not(:disabled) {
+  background: var(--brand-primary-dark);
+}
+
+.chat-v2 .save-button-secondary {
+  background: hsl(var(--neutral));
+  color: white;
+}
+
+.chat-v2 .save-button-secondary:hover:not(:disabled) {
+  background: hsl(var(--neutral-muted));
+}
+
+.chat-v2 .save-buttons-group {
+  display: flex;
+  gap: 0.5rem;
+}
+
+/* ============================================================================
+   响应式设计 - Responsive Design
+   ============================================================================ */
+
+@media (max-width: 768px) {
+  .chat-v2 .chat-container {
+    border-radius: 0;
+    /* 移动端：由父容器（absolute inset-0）控制尺寸，此处 100% 填满 */
+    height: 100%;
+  }
+  
+  .chat-v2 .chat-header {
+    padding: 0.75rem 1rem;
+  }
+  
+  .chat-v2 .chat-history {
+    padding: 0.75rem 1rem;
+  }
+  
+  .chat-v2 .message-content {
+    max-width: 90%;
+    padding: 0;
+    font-size: 1.0rem;
+  }
+  
+  .chat-v2 .chat-input {
+    padding: 0.75rem 1rem;
+  }
+  
+  .chat-v2 .input-row {
+    gap: 0.5rem;
+  }
+  
+  .chat-v2 .send-button,
+  .chat-v2 .image-upload-btn {
+    width: 40px;
+    height: 40px;
+    font-size: 1rem;
+  }
+  
+  .chat-v2 .chat-input input[type="text"] {
+    font-size: 16px; /* 防止iOS缩放 */
+  }
+}
+
+@media (max-width: 480px) {
+  .chat-v2 .message-content {
+    max-width: 95%;
+    padding: 0;
+    font-size: 0.85rem;
+  }
+  
+}
+
+/* ============================================================================
+   滚动条美化 - Scrollbar Styling
+   ============================================================================ */
+
+.chat-v2 .chat-history::-webkit-scrollbar,
+.chat-v2 .chat-messages::-webkit-scrollbar {
+  width: 8px;
+}
+
+.chat-v2 .chat-history::-webkit-scrollbar-track,
+.chat-v2 .chat-messages::-webkit-scrollbar-track {
+  background: hsl(var(--muted)); /* 浅灰色背景 */
+  border-radius: 4px;
+}
+
+.chat-v2 .chat-history::-webkit-scrollbar-thumb,
+.chat-v2 .chat-messages::-webkit-scrollbar-thumb {
+  background: hsl(var(--muted)); /* 中灰色滑块 */
+  border-radius: 4px;
+  transition: background var(--chat-transition-speed);
+}
+
+.chat-v2 .chat-history::-webkit-scrollbar-thumb:hover,
+.chat-v2 .chat-messages::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted)); /* 悬停时深灰色 */
+}
+
+/* ============================================================================
+   性能优化 - Performance Optimizations
+   ============================================================================ */
+
+/* 减少重绘 */
+.chat-v2 .message-content {
+  will-change: transform;
+}
+
+/* GPU加速 */
+.chat-v2 .chat-container,
+.chat-v2 .message {
+  transform: translateZ(0);
+}
+
+/* 优化动画性能 */
+@media (prefers-reduced-motion: reduce) {
+  .chat-v2 * {
+    animation-duration: 0.01ms;
+    animation-iteration-count: 1;
+    transition-duration: 0.01ms;
+  }
+}
+
+/* ============================================================================
+   可访问性增强 - Accessibility Enhancements
+   ============================================================================ */
+
+/* 焦点样式 */
+.chat-v2 .send-button:focus-visible,
+.chat-v2 .image-upload-btn:focus-visible,
+.chat-v2 .chat-fullscreen-toggle:focus-visible {
+  outline: 2px solid var(--chat-primary-color);
+  outline-offset: 2px;
+}
+
+/* 高对比度模式 */
+@media (prefers-contrast: high) {
+  :root {
+    --chat-text-secondary: #444444;
+    --chat-border-color: hsl(var(--border));
+  }
+  
+  .message-content {
+    border: 2px solid currentColor;
+  }
+}
+
+/* ============================================================================
+   暗色主题支持 - Dark Mode Support (暂时禁用)
+   ============================================================================ */
+
+/* 暂时禁用暗色模式，保持白色背景
+@media (prefers-color-scheme: dark) {
+  :root {
+    --chat-text-primary: #f0f0f0;
+    --chat-text-secondary: #b0b0b0;
+    --chat-bg-primary: #1a1a1a;
+    --chat-bg-secondary: #2d2d2d;
+    --chat-border-color: hsl(var(--border));
+  }
+}
+*/
+
+/* ============================================================================
+   额外修复 - Additional Fixes
+   ============================================================================ */
+
+/* 确保聊天容器正确显示 */
+.chat-v2 .analysis-result > .chat-container {
+  flex: 1;
+  margin: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+  min-height: 100%;
+  height: 100%;
+}
+
+/* 修复聊天输入布局 */
+.chat-v2 .chat-container .chat-input {
+  background: transparent;
+  flex-direction: row;
+  align-items: center;
+  border-top: none; /* ensure hard border removed */
+  box-shadow: none;  /* remove any inset/outset line */
+}
+
+/* 修复发送按钮样式 */
+.chat-v2 .chat-container .send-button {
+  background: #007bff;
+  color: hsl(var(--primary-foreground));
+}
+
+.chat-v2 .chat-container .send-button:hover:not(:disabled) {
+  background: #0056b3;
+}
+
+.chat-v2 .chat-container .send-button:disabled {
+  background: hsl(var(--muted));
+  opacity: 0.6;
+}
+
+/* 修复全屏按钮样式 */
+.chat-v2 .chat-header .chat-fullscreen-toggle {
+  background: hsl(var(--muted));
+  color: hsl(var(--foreground));
+  border: 1px solid #ddd;
+}
+
+.chat-v2 .chat-header .chat-fullscreen-toggle:hover {
+  background: hsl(var(--accent));
+}
+
+/* 确保右侧面板正确显示 */
+.chat-v2 .analysis-result .right-panel {
+  background: transparent;
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 100%;
+}
+
+/* 修复分析结果区域 */
+.chat-v2 main .analysis-result {
+  height: 100%;
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: transparent;
+  flex: 1;
+}
+
+/* 🔧 安卓 WebView 修复：safe-area-inset-bottom 可能不工作 */
+/*
+ * 修复策略：
+ * 1. 使用 .is-android 类（由 platform.ts 添加）进行精确检测
+ * 2. 使用 CSS 变量 --android-safe-area-bottom（由 platform.ts 设置）
+ * 3. 避免使用 @supports 检测（Android 可能声称支持但返回错误值）
+ * 4. 移除了基于媒体查询的 hack（会影响所有触摸设备）
+ *
+ * ★ 2026-02: InputBarUI 现在通过 inline paddingBottom (= safe-area + tabBar) 统一处理底部间距，
+ *   不再需要 CSS bottom 偏移。此处仅保留 chat-history-viewport 的 Android padding 修复。
+ */
+html.is-android .chat-v2 .chat-history-viewport {
+  padding-bottom: calc(var(--unified-input-docked-height, 120px) + var(--android-safe-area-bottom, 15px) + 56px + 16px) !important;
+}
+
+/* 旧版 @supports 检测作为最后防线 - 仅在完全不支持 env() 时生效 */
+@supports not (padding: env(safe-area-inset-bottom)) {
+  .chat-v2 .chat-history-viewport {
+    padding-bottom: calc(var(--unified-input-docked-height, 120px) + var(--android-safe-area-bottom, 15px) + 56px + 16px) !important;
+  }
+}

@@ -1,0 +1,71 @@
+/* =========================================
+   Global Typography (Notion-inspired)
+   ========================================= */
+
+/* 
+ * 设计原则:
+ * 1. 系统字体优先 - 原生感、性能好
+ * 2. 适中行高 (1.5) - Notion 标准
+ * 3. 无额外字间距 - 干净简洁
+ * 4. 中文优化 - 自动 fallback
+ */
+
+html, body, #root {
+	font-family: var(--font-family);
+	font-size: var(--font-size-base);
+	line-height: var(--line-height-normal);
+	font-weight: var(--font-weight-normal);
+	letter-spacing: var(--letter-spacing-normal);
+	-webkit-font-smoothing: antialiased;
+	-moz-osx-font-smoothing: grayscale;
+	text-rendering: optimizeLegibility;
+}
+
+/* 中文环境优化 */
+:lang(zh), :lang(zh-CN), :lang(zh-Hans) {
+	font-family: var(--font-family-cn);
+}
+
+/* 表单元素继承字体 */
+button, input, select, textarea {
+	font-family: inherit;
+	font-size: inherit;
+}
+
+/* 标题系统 - Notion 风格 */
+h1, h2, h3, h4, h5, h6 {
+	font-weight: var(--font-weight-semibold);
+	letter-spacing: var(--letter-spacing-normal);
+	line-height: var(--line-height-tight);
+}
+
+h1 { font-size: var(--font-size-3xl); }
+h2 { font-size: var(--font-size-2xl); }
+h3 { font-size: var(--font-size-xl); }
+h4 { font-size: var(--font-size-lg); }
+h5 { font-size: var(--font-size-base); }
+h6 { font-size: var(--font-size-sm); color: hsl(var(--muted-foreground)); }
+
+/* 代码字体 */
+code, pre, kbd, samp {
+	font-family: var(--font-mono);
+	font-size: 0.9em;
+}
+
+/* 小号文本 */
+small, .text-sm {
+	font-size: var(--font-size-sm);
+}
+
+/* 辅助文本 */
+.text-muted {
+	color: hsl(var(--muted-foreground));
+	font-size: var(--font-size-sm);
+}
+
+/* UI 文本 - 侧边栏、菜单等 */
+.text-ui {
+	font-size: var(--font-size-sm);
+	font-weight: var(--font-weight-medium);
+	letter-spacing: var(--letter-spacing-normal);
+} 

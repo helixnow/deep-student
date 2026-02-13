@@ -1,0 +1,103 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Deep Student",
+  "version": "0.9.2",
+  "identifier": "com.deepstudent.app",
+  "build": {
+    "frontendDist": "../dist",
+    "devUrl": "http://localhost:1422",
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build",
+    "features": [
+      "sqlite",
+      "lance",
+      "mcp"
+    ]
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Deep Student",
+        "width": 1000,
+        "height": 760,
+        "minWidth": 100,
+        "minHeight": 100,
+        "resizable": true,
+        "fullscreen": false,
+        "center": true,
+        "decorations": false,
+        "transparent": false,
+        "skipTaskbar": false,
+        "alwaysOnTop": false,
+        "visible": true,
+        "dragDropEnabled": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self' tauri: asset:; connect-src 'self' data: blob: tauri: ipc: http://ipc.localhost pdfstream: ws: wss: https:; font-src 'self' data:; img-src 'self' data: blob: asset: pdfstream: https:; script-src 'self' 'unsafe-inline' blob:; style-src 'self' 'unsafe-inline'; worker-src 'self' blob: data:;",
+      "assetProtocol": {
+        "enable": true,
+        "scope": [
+          "$APPDATA/**",
+          "$RESOURCE/**",
+          "$DOCUMENT/**",
+          "$DOWNLOAD/**",
+          "$PICTURE/**"
+        ]
+      }
+    },
+    "withGlobalTauri": false
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "category": "Education",
+    "resources": {
+      "resources/pdfium/*": "./"
+    },
+    "copyright": "",
+    "shortDescription": "AI驱动的智能学习助手",
+    "longDescription": "Deep Student 是一款专为学生设计的AI驱动的智能学习助手。它利用先进的人工智能技术，帮助用户进行错题分析、知识点梳理和个性化学习，从而实现深度理解和高效学习。",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico",
+      "icons/icon.png"
+    ],
+    "iOS": {
+      "developmentTeam": ""
+    },
+    "macOS": {
+      "signingIdentity": "-",
+      "hardenedRuntime": true,
+      "entitlements": null
+    },
+    "windows": {
+      "nsis": {
+        "minimumWebview2Version": "110.0.1531.0",
+        "installMode": "both",
+        "compression": "lzma"
+      },
+      "wix": null,
+      "webviewInstallMode": {
+        "type": "embedBootstrapper"
+      }
+    },
+    "android": {
+      "versionCode": 11803
+    }
+  },
+  "plugins": {
+    "dialog": null,
+    "opener": null,
+    "http": null,
+    "updater": {
+      "endpoints": [
+        "https://github.com/000haoji/deep-student/releases/latest/download/latest.json"
+      ],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDkxREY0RkI0Qjk5NEQ5MjQKUldRazJaUzV0RS9ma2JqbmNwNGNKT1FGc1BWcjRXa2J6K0psVDZFT05YUkc3OTIxYXNPR3FMcEsK"
+    }
+  }
+}

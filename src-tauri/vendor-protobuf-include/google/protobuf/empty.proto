@@ -1,0 +1,5 @@
+syntax = "proto3";
+package google.protobuf;
+
+// Minimal well-known type for build-time dependency resolution.
+message Empty {}

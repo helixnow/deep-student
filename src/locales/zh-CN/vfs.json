@@ -1,0 +1,20 @@
+{
+  "errors": {
+    "notFound": "资源未找到",
+    "network": "网络错误，无法连接到后端服务",
+    "parse": "数据格式错误，无法解析资源信息",
+    "permission": "权限不足，无法访问该资源",
+    "validation": "参数验证失败",
+    "unknown": "未知错误",
+    "resourceLoadFailed": "资源加载失败",
+    "fileLoadFailed": "文件加载失败",
+    "imageLoadFailed": "图片加载失败",
+    "partialResourcesNotFound": "部分资源未找到",
+    "partialFilesNotFound": "部分文件资源未找到",
+    "partialImagesNotFound": "部分图片资源未找到",
+    "getRefsFailed": "获取资源引用失败",
+    "resolveFailed": "解析资源引用失败",
+    "pathFailed": "获取资源路径失败",
+    "cacheFailed": "更新路径缓存失败"
+  }
+}

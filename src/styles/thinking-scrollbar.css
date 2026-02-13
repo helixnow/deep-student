@@ -1,0 +1,49 @@
+/* 思维链滚动条通用样式 */
+
+:root {
+  --thinking-scrollbar-thumb: rgba(148, 163, 184, 0.45);
+  --thinking-scrollbar-thumb-hover: rgba(148, 163, 184, 0.7);
+  --thinking-scrollbar-track: rgba(226, 232, 240, 0.16);
+}
+
+/* 暗色模式滚动条 - 所有暗色palette通用 */
+[data-theme="dark"], .dark {
+  --thinking-scrollbar-thumb: rgba(148, 163, 184, 0.45);
+  --thinking-scrollbar-thumb-hover: rgba(165, 180, 252, 0.75);
+  --thinking-scrollbar-track: rgba(15, 23, 42, 0.25);
+}
+
+/* 思维链滚动容器快捷类 */
+.thinking-content-box,
+.thinking-scrollbar,
+[data-thinking-scrollbar="true"] {
+  scrollbar-width: thin;
+  scrollbar-color: var(--thinking-scrollbar-thumb) transparent !important;
+}
+
+.thinking-content-box::-webkit-scrollbar,
+.thinking-scrollbar::-webkit-scrollbar,
+[data-thinking-scrollbar="true"]::-webkit-scrollbar {
+  width: 6px;
+}
+
+.thinking-content-box::-webkit-scrollbar-track,
+.thinking-scrollbar::-webkit-scrollbar-track,
+[data-thinking-scrollbar="true"]::-webkit-scrollbar-track {
+  background: var(--thinking-scrollbar-track) !important;
+  border-radius: 999px;
+}
+
+.thinking-content-box::-webkit-scrollbar-thumb,
+.thinking-scrollbar::-webkit-scrollbar-thumb,
+[data-thinking-scrollbar="true"]::-webkit-scrollbar-thumb {
+  background: var(--thinking-scrollbar-thumb) !important;
+  border-radius: 999px;
+  transition: background var(--chat-animation-fast, 0.2s) ease;
+}
+
+.thinking-content-box::-webkit-scrollbar-thumb:hover,
+.thinking-scrollbar::-webkit-scrollbar-thumb:hover,
+[data-thinking-scrollbar="true"]::-webkit-scrollbar-thumb:hover {
+  background: var(--thinking-scrollbar-thumb-hover) !important;
+}

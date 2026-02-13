@@ -1,0 +1,5 @@
+/* shadcn overrides: ensure icon size in buttons/inputs */
+.shad-icon { width: 18px !important; height: 18px !important; display: inline-block; flex-shrink: 0; }
+
+/* 适配更小按钮 */
+.shad-icon.sm { width: 14px !important; height: 14px !important; } 

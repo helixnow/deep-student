@@ -1,0 +1,435 @@
+/**
+ * DeepStudent 动画系统 - CSS 动画和过渡
+ *
+ * 参考 deep-agent_new 的设计系统
+ */
+
+/* ============================================================================
+   动画时间和缓动曲线变量
+   ============================================================================ */
+
+:root {
+  /* 时间配置 */
+  --duration-fast: 100ms;
+  --duration-normal: 200ms;
+  --duration-slow: 300ms;
+  --duration-emphasis: 400ms;
+
+  /* Spring-like 缓动曲线 */
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-smooth: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-out-back: cubic-bezier(0.34, 1.3, 0.64, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* 微妙阴影系统 - Light Mode */
+  --shadow-subtle: 0 1px 2px rgba(0, 0, 0, 0.03), 0 1px 3px rgba(0, 0, 0, 0.02);
+  --shadow-soft: 0 2px 4px rgba(0, 0, 0, 0.04), 0 4px 8px rgba(0, 0, 0, 0.03);
+  --shadow-medium: 0 4px 8px rgba(0, 0, 0, 0.06), 0 8px 16px rgba(0, 0, 0, 0.04);
+  --shadow-elevated: 0 8px 16px rgba(0, 0, 0, 0.08), 0 16px 32px rgba(0, 0, 0, 0.06);
+  --shadow-ds: 0 1px 3px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-ds-lg: 0 4px 12px rgba(0, 0, 0, 0.1), 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+:root.dark {
+  /* 微妙阴影系统 - Dark Mode */
+  --shadow-subtle: 0 1px 2px rgba(0, 0, 0, 0.1), 0 1px 3px rgba(0, 0, 0, 0.08);
+  --shadow-soft: 0 2px 4px rgba(0, 0, 0, 0.12), 0 4px 8px rgba(0, 0, 0, 0.1);
+  --shadow-medium: 0 4px 8px rgba(0, 0, 0, 0.16), 0 8px 16px rgba(0, 0, 0, 0.12);
+  --shadow-elevated: 0 8px 16px rgba(0, 0, 0, 0.2), 0 16px 32px rgba(0, 0, 0, 0.16);
+  --shadow-ds: 0 1px 3px rgba(0, 0, 0, 0.16), 0 1px 2px rgba(0, 0, 0, 0.12);
+  --shadow-ds-lg: 0 4px 12px rgba(0, 0, 0, 0.2), 0 2px 4px rgba(0, 0, 0, 0.12);
+}
+
+/* ============================================================================
+   关键帧动画
+   ============================================================================ */
+
+/* 菜单入场 - 从上方缩放淡入 */
+@keyframes menu-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+/* 菜单入场 - 从下方 */
+@keyframes menu-in-bottom {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+/* 淡入上滑 */
+@keyframes fade-slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 淡入下滑 */
+@keyframes fade-slide-down {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 缩放淡入 */
+@keyframes scale-fade-in {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* 弹性缩放入场 */
+@keyframes pop-in {
+  0% {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  70% {
+    transform: scale(1.02);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Tooltip 滑入 */
+@keyframes tooltip-slide-in {
+  from {
+    opacity: 0;
+    transform: translateY(-50%) translateX(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(-50%) translateX(0);
+  }
+}
+
+/* 脉冲动画 */
+@keyframes pulse-soft {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+/* 旋转加载 */
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* 骨架屏闪烁 */
+@keyframes skeleton-shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+/* 数值跳动 */
+@keyframes number-pop {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.1);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+/* ============================================================================
+   DeepStudent 通用过渡类
+   ============================================================================ */
+
+/* 基础过渡 */
+.ds-transition {
+  transition: all var(--duration-normal) var(--ease-smooth);
+}
+
+.ds-transition-fast {
+  transition: all var(--duration-fast) var(--ease-smooth);
+}
+
+.ds-transition-slow {
+  transition: all var(--duration-slow) var(--ease-smooth);
+}
+
+/* 颜色过渡 */
+.ds-color-transition {
+  transition: color var(--duration-fast) var(--ease-smooth),
+              background-color var(--duration-fast) var(--ease-smooth),
+              border-color var(--duration-fast) var(--ease-smooth);
+}
+
+/* 变换过渡 */
+.ds-transform-transition {
+  transition: transform var(--duration-normal) var(--ease-spring);
+}
+
+/* ============================================================================
+   卡片悬停效果
+   ============================================================================ */
+
+.ds-card-hover {
+  transition: box-shadow var(--duration-normal) var(--ease-smooth),
+              border-color var(--duration-normal) var(--ease-smooth),
+              transform var(--duration-normal) var(--ease-spring);
+}
+
+.ds-card-hover:hover {
+  box-shadow: var(--shadow-medium);
+  border-color: hsl(var(--border) / 0.8);
+}
+
+/* 卡片悬停提升效果 */
+.ds-card-lift {
+  transition: box-shadow var(--duration-normal) var(--ease-smooth),
+              transform var(--duration-normal) var(--ease-spring);
+}
+
+.ds-card-lift:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-elevated);
+}
+
+/* ============================================================================
+   按钮交互效果
+   ============================================================================ */
+
+/* 按钮按压效果 */
+.ds-btn-press {
+  transition: transform var(--duration-fast) var(--ease-smooth),
+              background-color var(--duration-fast) var(--ease-smooth);
+}
+
+.ds-btn-press:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+/* 图标按钮悬停 */
+.ds-icon-btn {
+  transition: color var(--duration-fast) var(--ease-smooth),
+              background-color var(--duration-fast) var(--ease-smooth);
+}
+
+.ds-icon-btn:hover:not(:disabled) {
+  color: hsl(var(--foreground));
+  background-color: hsl(var(--muted) / 0.6);
+}
+
+/* ============================================================================
+   菜单/下拉框动画
+   ============================================================================ */
+
+.ds-menu-content {
+  animation: menu-in 0.12s var(--ease-spring);
+  transform-origin: top left;
+}
+
+.ds-menu-content[data-side="bottom"] {
+  animation-name: menu-in-bottom;
+  transform-origin: top left;
+}
+
+.ds-menu-content[data-side="top"] {
+  transform-origin: bottom left;
+}
+
+/* 菜单项交互 */
+.ds-menu-item {
+  transition: background-color var(--duration-fast) var(--ease-smooth),
+              color var(--duration-fast) var(--ease-smooth);
+}
+
+.ds-menu-item:hover {
+  background-color: hsl(var(--muted) / 0.6);
+}
+
+.ds-menu-item:active {
+  transform: scale(0.98);
+}
+
+/* ============================================================================
+   入场动画类
+   ============================================================================ */
+
+.animate-fade-in {
+  animation: scale-fade-in var(--duration-normal) var(--ease-smooth) forwards;
+}
+
+.animate-fade-slide-up {
+  animation: fade-slide-up var(--duration-normal) var(--ease-smooth) forwards;
+}
+
+.animate-fade-slide-down {
+  animation: fade-slide-down var(--duration-normal) var(--ease-smooth) forwards;
+}
+
+.animate-pop-in {
+  animation: pop-in var(--duration-slow) var(--ease-spring) forwards;
+}
+
+.animate-menu-in {
+  animation: menu-in 0.12s var(--ease-spring) forwards;
+}
+
+/* ============================================================================
+   骨架屏动画
+   ============================================================================ */
+
+.ds-skeleton {
+  background: linear-gradient(
+    90deg,
+    hsl(var(--muted)) 0%,
+    hsl(var(--muted) / 0.5) 50%,
+    hsl(var(--muted)) 100%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.5s infinite;
+}
+
+/* ============================================================================
+   加载动画
+   ============================================================================ */
+
+.ds-spinner {
+  animation: spin 1s linear infinite;
+}
+
+.ds-pulse {
+  animation: pulse-soft 2s ease-in-out infinite;
+}
+
+/* ============================================================================
+   数值动画
+   ============================================================================ */
+
+.ds-number-pop {
+  animation: number-pop 0.3s var(--ease-spring);
+}
+
+/* ============================================================================
+   响应式动画减弱
+   ============================================================================ */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ============================================================================
+   统计卡片专用样式
+   ============================================================================ */
+
+.stat-card {
+  transition: box-shadow var(--duration-normal) var(--ease-smooth),
+              border-color var(--duration-normal) var(--ease-smooth);
+}
+
+.stat-card:hover {
+  box-shadow: var(--shadow-medium);
+  border-color: hsl(var(--border) / 0.8);
+}
+
+.stat-card-value {
+  transition: transform var(--duration-fast) var(--ease-spring);
+}
+
+.stat-card:hover .stat-card-value {
+  transform: scale(1.02);
+}
+
+/* 图标容器动画 */
+.stat-card-icon {
+  transition: transform var(--duration-normal) var(--ease-spring),
+              background-color var(--duration-normal) var(--ease-smooth);
+}
+
+.stat-card:hover .stat-card-icon {
+  transform: scale(1.05) rotate(-3deg);
+}
+
+/* ============================================================================
+   图表容器样式
+   ============================================================================ */
+
+.chart-container {
+  transition: box-shadow var(--duration-normal) var(--ease-smooth);
+}
+
+.chart-container:hover {
+  box-shadow: var(--shadow-soft);
+}
+
+/* ============================================================================
+   标签页切换动画
+   ============================================================================ */
+
+.tab-indicator {
+  transition: transform var(--duration-normal) var(--ease-spring),
+              width var(--duration-normal) var(--ease-spring);
+}
+
+.tab-content {
+  animation: fade-slide-up var(--duration-normal) var(--ease-smooth);
+}
+
+/* ============================================================================
+   进度条动画
+   ============================================================================ */
+
+.progress-bar-fill {
+  transition: width var(--duration-slow) var(--ease-out-expo);
+}
+
+/* ============================================================================
+   徽章动画
+   ============================================================================ */
+
+.badge-pulse {
+  animation: pulse-soft 2s ease-in-out infinite;
+}
+
+.badge-pop {
+  animation: pop-in var(--duration-normal) var(--ease-spring);
+}

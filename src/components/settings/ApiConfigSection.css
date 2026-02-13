@@ -1,0 +1,476 @@
+/* API配置管理区域样式 - 参考Irec管理器风格 */
+
+/* CSS变量定义 */
+.api-config-section {
+  --section-bg: hsl(var(--background));
+  --card-bg: hsl(var(--card));
+  --card-border: hsl(var(--border));
+  --card-hover-border: hsl(var(--border));
+  --disabled-bg: hsl(var(--muted));
+  --text-primary: hsl(var(--foreground));
+  --text-secondary: hsl(var(--muted-foreground));
+  --text-muted: hsl(var(--muted-foreground));
+  --primary-color: hsl(var(--primary));
+  --primary-hover: hsl(var(--primary));
+  --primary-light: hsl(var(--accent));
+  --success-color: hsl(var(--success));
+  --error-color: hsl(var(--danger));
+  --warning-color: hsl(var(--warning));
+  --border-radius: 12px;
+  --border-radius-sm: 8px;
+  --transition: 0.2s ease;
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.1);
+  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.1);
+  --shadow-hover: 0 8px 16px rgba(0, 0, 0, 0.12);
+}
+
+/* 主容器 */
+.api-config-section {
+  width: 100%;
+  padding: 1.5rem;
+  background: var(--section-bg);
+  border-radius: var(--border-radius);
+}
+
+/* 区域头部 */
+.api-config-section .section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1.5rem;
+  padding: 1.5rem;
+  background: var(--card-bg);
+  border-radius: var(--border-radius);
+  box-shadow: var(--shadow-sm);
+}
+
+.api-config-section .header-left {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.api-config-section .header-left h3 {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+/* 主按钮样式 */
+.api-config-section .btn-primary {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.625rem 1.25rem;
+  background: var(--primary-color);
+  color: white;
+  border: none;
+  border-radius: var(--border-radius-sm);
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition);
+  box-shadow: var(--shadow-sm);
+}
+
+.api-config-section .btn-primary:hover:not(:disabled) {
+  background: var(--primary-hover);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+
+.api-config-section .btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* API配置列表 */
+.api-config-section .api-configs-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+
+/* API配置卡片 */
+.api-config-section .api-config-item {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--border-radius);
+  padding: 1.5rem;
+  transition: all var(--transition);
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1.5rem;
+}
+
+.api-config-section .api-config-item:hover {
+  border-color: var(--card-hover-border);
+  box-shadow: var(--shadow-hover);
+  transform: translateY(-2px);
+}
+
+.api-config-section .api-config-item.disabled {
+  background: var(--disabled-bg);
+  opacity: 0.7;
+}
+
+.api-config-section .api-config-item.disabled:hover {
+  transform: none;
+  box-shadow: var(--shadow-sm);
+}
+
+/* 配置信息区域 */
+.api-config-section .config-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.api-config-section .config-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+}
+
+.api-config-section .config-header h4 {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+/* 配置徽章 */
+.api-config-section .config-badges {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.api-config-section .badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.25rem 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  border-radius: 9999px;
+  transition: all var(--transition);
+}
+
+.api-config-section .badge.multimodal {
+  background: hsl(var(--info-bg));
+  color: hsl(var(--info));
+}
+
+.api-config-section .badge.reasoning {
+  background: hsl(var(--warning-bg));
+  color: hsl(var(--warning));
+}
+
+.api-config-section .badge.disabled {
+  background: hsl(var(--muted));
+  color: hsl(var(--muted-foreground));
+}
+
+/* 配置详情 */
+.api-config-section .config-details {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.api-config-section .config-details p {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  display: flex;
+  gap: 0.5rem;
+}
+
+.api-config-section .config-details strong {
+  color: var(--text-muted);
+  font-weight: 500;
+  min-width: 80px;
+}
+
+/* 配置操作按钮组 */
+.api-config-section .config-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.api-config-section .btn-test,
+.api-config-section .btn-edit,
+.api-config-section .btn-delete {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  padding: 0.5rem 1rem;
+  border-radius: var(--border-radius-sm);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all var(--transition);
+  white-space: nowrap;
+}
+
+.api-config-section .btn-test {
+  background: var(--primary-light);
+  color: var(--primary-color);
+  border-color: hsl(var(--info));
+}
+
+.api-config-section .btn-test:hover:not(:disabled) {
+  background: var(--primary-color);
+  color: white;
+  transform: translateX(2px);
+}
+
+.api-config-section .btn-edit {
+  background: hsl(var(--success-bg));
+  color: var(--success-color);
+  border-color: hsl(var(--success));
+}
+
+.api-config-section .btn-edit:hover {
+  background: var(--success-color);
+  color: white;
+  transform: translateX(2px);
+}
+
+.api-config-section .btn-delete {
+  background: hsl(var(--danger-bg));
+  color: var(--error-color);
+  border-color: hsl(var(--danger));
+}
+
+.api-config-section .btn-delete:hover:not(:disabled) {
+  background: var(--error-color);
+  color: white;
+  transform: translateX(2px);
+}
+
+.api-config-section button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none !important;
+}
+
+/* 空状态 */
+.api-config-section .empty-state {
+  text-align: center;
+  padding: 3rem;
+  background: var(--card-bg);
+  border: 2px dashed var(--card-border);
+  border-radius: var(--border-radius);
+  color: var(--text-muted);
+}
+
+.api-config-section .empty-state p {
+  margin: 0;
+  font-size: 0.875rem;
+}
+
+/* 模型分配区域 */
+.api-config-section .model-assignments {
+  background: var(--card-bg);
+  border-radius: var(--border-radius);
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+  box-shadow: var(--shadow-sm);
+}
+
+.api-config-section .model-assignments h4 {
+  margin: 0 0 1.5rem 0;
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.api-config-section .model-assignments h4::before {
+  content: '🎯';
+}
+
+.api-config-section .assignment-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 1.5rem;
+}
+
+.api-config-section .assignment-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.api-config-section .assignment-item label {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.api-config-section .assignment-item select {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  background: var(--section-bg);
+  border: 2px solid var(--card-border);
+  border-radius: var(--border-radius-sm);
+  font-size: 0.875rem;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.api-config-section .assignment-item select:hover:not(:disabled) {
+  border-color: var(--card-hover-border);
+  background: var(--card-bg);
+}
+
+.api-config-section .assignment-item select:focus {
+  outline: none;
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.api-config-section .assignment-item select:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.api-config-section .help-text {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+/* 底部操作区域 */
+.api-config-section .section-actions {
+  display: flex;
+  gap: 1rem;
+  justify-content: flex-end;
+  padding: 1.5rem;
+  background: var(--card-bg);
+  border-radius: var(--border-radius);
+  box-shadow: var(--shadow-sm);
+}
+
+.api-config-section .btn-secondary {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.625rem 1.25rem;
+  background: var(--section-bg);
+  color: var(--text-secondary);
+  border: 1px solid var(--card-border);
+  border-radius: var(--border-radius-sm);
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.api-config-section .btn-secondary:hover:not(:disabled) {
+  background: var(--card-bg);
+  border-color: var(--card-hover-border);
+  color: var(--text-primary);
+}
+
+/* 加载状态 */
+.api-config-section .loading {
+  text-align: center;
+  padding: 3rem;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .api-config-section {
+    padding: 1rem;
+  }
+
+  .api-config-section .section-header {
+    flex-direction: column;
+    gap: 1rem;
+    align-items: stretch;
+  }
+
+  .api-config-section .btn-primary {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .api-config-section .api-config-item {
+    flex-direction: column;
+  }
+
+  .api-config-section .config-actions {
+    flex-direction: row;
+    width: 100%;
+  }
+
+  .api-config-section .config-actions button {
+    flex: 1;
+  }
+
+  .api-config-section .assignment-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .api-config-section .section-actions {
+    flex-direction: column;
+  }
+
+  .api-config-section .section-actions button {
+    width: 100%;
+  }
+}
+
+/* 深色主题支持 */
+@media (prefers-color-scheme: dark) {
+  .api-config-section {
+    --section-bg: hsl(var(--background));
+    --card-bg: hsl(var(--card));
+    --card-border: hsl(var(--border));
+    --card-hover-border: hsl(var(--border));
+    --disabled-bg: hsl(var(--muted));
+    --text-primary: hsl(var(--foreground));
+    --text-secondary: hsl(var(--muted-foreground));
+    --text-muted: hsl(var(--muted-foreground));
+    --primary-light: hsl(var(--accent));
+  }
+
+  .api-config-section .badge.multimodal {
+    background: hsl(var(--info-bg));
+    color: hsl(var(--info));
+  }
+
+  .api-config-section .badge.reasoning {
+    background: hsl(var(--warning-bg));
+    color: hsl(var(--warning));
+  }
+
+  .api-config-section .btn-test {
+    background: hsl(var(--info-bg));
+    border-color: hsl(var(--info));
+  }
+
+  .api-config-section .btn-edit {
+    background: hsl(var(--success-bg));
+    border-color: hsl(var(--success));
+  }
+
+  .api-config-section .btn-delete {
+    background: hsl(var(--danger-bg));
+    border-color: hsl(var(--danger));
+  }
+}

@@ -1,0 +1,52 @@
+/**
+ * Shad Switch 组件样式
+ * 使用 !important 确保 Android WebView 正确渲染
+ */
+
+/* Switch 根元素 */
+[data-shad-switch] {
+  position: relative;
+  /* 固定尺寸 - 使用 !important 确保 Android WebView 正确渲染 */
+  width: 44px !important;
+  min-width: 44px !important;
+  max-width: 44px !important;
+  height: 24px !important;
+  min-height: 24px !important;
+  max-height: 24px !important;
+  padding: 2px !important;
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  flex-shrink: 0 !important;
+  flex-grow: 0 !important;
+  box-sizing: border-box !important;
+  display: inline-flex !important;
+  align-items: center !important;
+}
+
+/* Switch Thumb */
+[data-shad-switch] > span {
+  position: relative;
+  display: block;
+  /* 固定尺寸 - 确保 Android WebView 正确渲染 */
+  width: 20px !important;
+  min-width: 20px !important;
+  max-width: 20px !important;
+  height: 20px !important;
+  min-height: 20px !important;
+  max-height: 20px !important;
+  border-radius: 50% !important;
+  flex-shrink: 0 !important;
+  flex-grow: 0 !important;
+  box-sizing: border-box !important;
+  pointer-events: none;
+}
+
+/* Checked state - thumb position */
+[data-shad-switch][data-state="checked"] > span {
+  transform: translateX(20px) !important;
+}
+
+[data-shad-switch][data-state="unchecked"] > span {
+  transform: translateX(0px) !important;
+}

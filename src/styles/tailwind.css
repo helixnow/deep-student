@@ -1,0 +1,26 @@
+@import './thinking-scrollbar.css';
+@import './notion-animations.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* shadcn/ui 基础样式：设置默认边框颜色 */
+@layer base {
+  * {
+    border-color: hsl(var(--border));
+  }
+  html {
+    font-size: calc(16px * var(--font-size-scale));
+  }
+  /* 全局字体：覆盖 Tailwind preflight 的默认字体 */
+  body {
+    font-family: var(--font-family);
+  }
+}
+
+/* Custom utilities to match template helpers */
+@layer utilities {
+	.line-clamp-1 { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 1; overflow: hidden; }
+	.line-clamp-2 { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+}

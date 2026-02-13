@@ -1,0 +1,136 @@
+{
+  "title": "Cloud Storage",
+  "description": "Configure cloud backup storage, supporting WebDAV and S3-compatible storage",
+  
+  "provider": {
+    "label": "Storage Type",
+    "webdav": "WebDAV",
+    "webdavDesc": "Jianguoyun, Nextcloud, self-hosted WebDAV, etc.",
+    "s3": "S3 Compatible",
+    "s3Desc": "AWS S3, Cloudflare R2, Aliyun OSS, MinIO, etc.",
+    "s3Disabled": "Not enabled (requires S3 feature at compile time)"
+  },
+  
+  "webdav": {
+    "endpoint": "Server URL",
+    "endpointPlaceholder": "https://dav.jianguoyun.com/dav/",
+    "endpointHint": "Full URL of the WebDAV server",
+    "username": "Username",
+    "usernamePlaceholder": "your@email.com",
+    "password": "Password",
+    "passwordPlaceholder": "App-specific password",
+    "passwordHint": "Recommended to use app-specific password instead of login password"
+  },
+  
+  "s3": {
+    "endpoint": "Endpoint URL",
+    "endpointPlaceholder": "https://s3.amazonaws.com",
+    "endpointHint": "Endpoint URL of the S3-compatible service",
+    "bucket": "Bucket",
+    "bucketPlaceholder": "my-backup-bucket",
+    "accessKeyId": "Access Key ID",
+    "accessKeyIdPlaceholder": "AKIAIOSFODNN7EXAMPLE",
+    "secretAccessKey": "Secret Access Key",
+    "secretAccessKeyPlaceholder": "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+    "region": "Region (Optional)",
+    "regionPlaceholder": "us-east-1",
+    "regionHint": "Some S3-compatible services may not require this",
+    "pathStyle": "Use Path Style",
+    "pathStyleHint": "Required for self-hosted services like MinIO"
+  },
+  
+  "root": {
+    "label": "Root Directory",
+    "placeholder": "deep-student-sync",
+    "hint": "Root directory path for cloud storage"
+  },
+  
+  "actions": {
+    "testConnection": "Test Connection",
+    "testing": "Testing...",
+    "save": "Save Configuration",
+    "saving": "Saving...",
+    "uploadNow": "Backup to Cloud Now",
+    "uploading": "Uploading...",
+    "downloadLatest": "Restore Latest from Cloud",
+    "downloading": "Downloading...",
+    "viewHistory": "View History",
+    "clearConfig": "Clear Configuration"
+  },
+  
+  "status": {
+    "title": "Sync Status",
+    "connected": "Connected",
+    "disconnected": "Disconnected",
+    "notConfigured": "Not Configured",
+    "lastSync": "Last Sync",
+    "cloudVersions": "Cloud Versions",
+    "latestVersion": "Latest Version",
+    "deviceId": "Device ID",
+    "never": "Never synced"
+  },
+  
+  "history": {
+    "title": "Version History",
+    "empty": "No cloud backups yet",
+    "version": "Version",
+    "size": "Size",
+    "device": "Device",
+    "time": "Time",
+    "checksum": "Checksum",
+    "note": "Note",
+    "restore": "Restore this version",
+    "delete": "Delete",
+    "deleteConfirm": "Are you sure you want to delete this version? This action cannot be undone.",
+    "current": "Current device"
+  },
+  
+  "upload": {
+    "title": "Backup to Cloud",
+    "description": "Back up current data to cloud storage",
+    "note": "Note (Optional)",
+    "notePlaceholder": "e.g., Backup before major update",
+    "confirm": "Start Backup",
+    "success": "Backup Successful",
+    "successDetail": "Version {{version}} has been uploaded to cloud",
+    "pruned": "Automatically cleaned up {{count}} old version(s)"
+  },
+  
+  "download": {
+    "title": "Restore from Cloud",
+    "description": "Download cloud backup and restore data",
+    "warning": "Warning: Restore will overwrite local data!",
+    "warningDetail": "Recommend exporting current data as backup first",
+    "selectVersion": "Select version to restore",
+    "latest": "Latest version",
+    "confirm": "Start Restore",
+    "confirmTitle": "Confirm Restore",
+    "cancel": "Cancel",
+    "success": "Restore Successful",
+    "successDetail": "Version {{version}} has been downloaded",
+    "successRestart": "Data restored successfully!",
+    "restartWhenReady": "Please restart the app to apply the restored data.",
+    "checksumFailed": "Checksum mismatch, file may be corrupted"
+  },
+  
+  "errors": {
+    "connectionFailed": "Connection failed",
+    "uploadFailed": "Upload failed",
+    "downloadFailed": "Download failed",
+    "deleteFailed": "Delete failed",
+    "configInvalid": "Invalid configuration",
+    "networkError": "Network error",
+    "permissionDenied": "Permission denied",
+    "notFound": "File not found",
+    "noBackupAvailable": "No backup file available",
+    "unknown": "Unknown error"
+  },
+  
+  "messages": {
+    "connectionSuccess": "Connection successful!",
+    "configSaved": "Configuration saved",
+    "configSavedButCredentialsFailed": "Configuration saved (credentials storage failed)",
+    "configCleared": "Configuration cleared",
+    "versionDeleted": "Version deleted"
+  }
+}

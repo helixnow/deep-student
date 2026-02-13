@@ -1,0 +1,9 @@
+syntax = "proto3";
+package google.protobuf;
+
+// Minimal Duration type.
+message Duration {
+  int64 seconds = 1;
+  int32 nanos = 2;
+}
+

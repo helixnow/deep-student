@@ -1,0 +1,184 @@
+{
+  "types": {
+    "folder": "文件夹",
+    "note": "笔记",
+    "textbook": "教材",
+    "exam": "题目集",
+    "translation": "翻译",
+    "essay": "作文",
+    "image": "图片",
+    "file": "文件"
+  },
+  "menu": {
+    "open": "打开",
+    "edit": "编辑",
+    "view": "查看",
+    "referenceToChat": "引用到对话",
+    "copy": "复制",
+    "moveTo": "移动到...",
+    "rename": "重命名",
+    "versionHistory": "版本历史",
+    "delete": "删除",
+    "share": "分享",
+    "properties": "属性",
+    "batchReferenceToChat": "批量引用到对话",
+    "batchMoveTo": "批量移动到...",
+    "batchDelete": "批量删除"
+  },
+  "actions": {
+    "create": "新建",
+    "createNote": "新建笔记",
+    "createMindMap": "创建知识导图",
+    "mindMapCreated": "知识导图已创建",
+    "createFolder": "新建文件夹",
+    "import": "导入",
+    "export": "导出",
+    "refresh": "刷新",
+    "search": "搜索",
+    "filter": "筛选",
+    "sort": "排序"
+  },
+  "sort": {
+    "name": "名称",
+    "createdAt": "创建时间",
+    "updatedAt": "更新时间",
+    "asc": "升序",
+    "desc": "降序"
+  },
+  "preview": {
+    "title": "预览",
+    "noPreview": "无法预览此文件",
+    "downloadUnavailable": "该文件暂不支持下载",
+    "loading": "加载中...",
+    "error": "加载失败",
+    "examPreview": "题目集预览",
+    "examHint": "请使用专用题目集编辑器查看完整内容",
+    "pdfPreview": "PDF 预览",
+    "noImage": "无法加载图片"
+  },
+  "errors": {
+    "notFound": "资源未找到",
+    "invalidPath": "无效的路径",
+    "permissionDenied": "权限被拒绝",
+    "conflict": "资源冲突",
+    "internal": "内部错误",
+    "essayParseError": "作文数据格式错误，已降级为纯文本模式",
+    "loadFailed": "加载失败",
+    "saveFailed": "保存失败",
+    "deleteFailed": "删除失败",
+    "moveFailed": "移动失败",
+    "copyFailed": "复制失败"
+  },
+  "confirmations": {
+    "deleteTitle": "确认删除",
+    "deleteMessage": "确定要删除「{{name}}」吗？此操作不可恢复。",
+    "deleteMultipleMessage": "确定要删除选中的 {{count}} 个项目吗？此操作不可恢复。"
+  },
+  "empty": {
+    "title": "暂无内容",
+    "description": "此文件夹为空",
+    "searchNoResults": "未找到匹配的结果",
+    "searchTip": "尝试使用其他关键词搜索"
+  },
+  "status": {
+    "saving": "保存中...",
+    "saved": "已保存",
+    "modified": "已修改",
+    "syncing": "同步中...",
+    "synced": "已同步"
+  },
+  "api": {
+    "folder": {
+      "createFailed": "创建文件夹失败",
+      "notFound": "文件夹未找到",
+      "getFailed": "获取文件夹失败",
+      "renameFailed": "重命名文件夹失败",
+      "deleteFailed": "删除文件夹失败",
+      "moveFailed": "移动文件夹失败",
+      "setExpandedFailed": "设置文件夹展开状态失败",
+      "addItemFailed": "添加内容到文件夹失败",
+      "removeItemFailed": "从文件夹移除内容失败",
+      "moveItemFailed": "移动内容失败",
+      "listFailed": "列出文件夹失败",
+      "getTreeFailed": "获取文件夹树失败",
+      "getItemsFailed": "获取文件夹内容项失败",
+      "getResourcesFailed": "获取文件夹资源失败",
+      "reorderFailed": "重新排序文件夹失败",
+      "getBreadcrumbsFailed": "获取文件夹面包屑失败",
+      "reorderItemsFailed": "重新排序文件夹内容项失败"
+    },
+    "trash": {
+      "softDeleteFailed": "删除到回收站失败",
+      "restoreFailed": "恢复项目失败",
+      "listFailed": "获取回收站列表失败",
+      "emptyFailed": "清空回收站失败",
+      "permanentlyDeleteFailed": "永久删除失败"
+    }
+  },
+  "resource": {
+    "getContent": "获取内容",
+    "getResource": "获取资源",
+    "saveResource": "保存资源",
+    "deleteResource": "删除资源",
+    "createResource": "创建资源",
+    "searchResource": "搜索资源"
+  },
+  "adapters": {
+    "essay": {
+      "untitledEssay": "未命名作文",
+      "listSessions": "列出作文批改会话",
+      "getSessionDetail": "获取作文会话详情",
+      "deleteSession": "删除作文会话",
+      "getSession": "获取作文会话",
+      "toggleFavorite": "切换收藏状态",
+      "setFavorite": "设置收藏状态",
+      "createSession": "创建作文会话",
+      "updateSessionMeta": "更新会话元数据",
+      "getFullSession": "获取作文会话"
+    },
+    "exam": {
+      "listExams": "列出题目集",
+      "getExamDetail": "获取题目集详情",
+      "deleteExam": "删除题目集",
+      "getSessionDetail": "获取题目集会话详情"
+    },
+    "translation": {
+      "listHistory": "列出翻译历史",
+      "getDetail": "获取翻译详情",
+      "deleteTranslation": "删除翻译",
+      "getTranslation": "获取翻译",
+      "toggleFavorite": "切换收藏状态",
+      "setFavorite": "设置收藏状态",
+      "createRecord": "创建翻译记录",
+      "updateRecord": "更新翻译记录"
+    },
+    "notes": {
+      "listNotes": "列出笔记",
+      "getNoteDetail": "获取笔记详情",
+      "getNoteContent": "获取笔记内容",
+      "createNote": "创建笔记",
+      "updateNoteContent": "更新笔记内容",
+      "updateNoteMetadata": "更新笔记元数据",
+      "getUpdatedNote": "获取更新后的笔记",
+      "noteNotFound": "笔记未找到",
+      "deleteNote": "删除笔记",
+      "searchNotes": "搜索笔记",
+      "untitled": "无标题"
+    },
+    "attachment": {
+      "listAttachments": "列出附件",
+      "listImageAttachments": "列出图片附件",
+      "listFileAttachments": "列出文件附件",
+      "getDetail": "获取附件详情",
+      "deleteAttachment": "删除附件",
+      "createAttachment": "创建附件",
+      "updateMetadata": "更新附件元数据",
+      "getUpdatedAttachment": "获取更新后的附件",
+      "attachmentNotFound": "附件未找到",
+      "setFavorite": "设置附件收藏状态",
+      "searchAttachments": "搜索附件",
+      "searchImageAttachments": "搜索图片附件",
+      "searchFileAttachments": "搜索文件附件"
+    }
+  }
+}

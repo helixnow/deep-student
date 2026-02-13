@@ -1,0 +1,18 @@
+/**
+ * Shad Button 组件样式
+ * 使用 !important 确保 Android WebView 正确渲染
+ */
+
+/* Icon 按钮 - 确保最小尺寸 */
+[data-shad-button][data-size="icon"] {
+  min-width: 32px !important;
+  min-height: 32px !important;
+  flex-shrink: 0 !important;
+}
+
+/* 按钮内的图标 - 确保可见 */
+[data-shad-button] svg {
+  min-width: 14px !important;
+  min-height: 14px !important;
+  flex-shrink: 0 !important;
+}

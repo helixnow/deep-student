@@ -1,0 +1,255 @@
+{
+  "page_title": "AI Essay Grading",
+  "tabs": {
+    "grading": "Essay Grading",
+    "history": "Grading History"
+  },
+  "input_section": {
+    "title": "Student Essay",
+    "placeholder": "Enter or paste the essay to be graded...",
+    "drag_hint": "Drag and drop images for OCR recognition"
+  },
+  "result_section": {
+    "title": "Grading Result",
+    "placeholder": "Grading result will appear here",
+    "copy": "Copy",
+    "export": "Export",
+    "copied": "Copied to clipboard",
+    "exported": "Grading result exported"
+  },
+  "essay_type": {
+    "label": "Essay Type",
+    "narrative": "Narrative",
+    "argumentative": "Argumentative",
+    "expository": "Expository",
+    "other": "Other"
+  },
+  "grade_level": {
+    "label": "Grade Level",
+    "middle_school": "Middle School",
+    "high_school": "High School",
+    "college": "College"
+  },
+  "session": {
+    "new": "New Session",
+    "title": "Session Title",
+    "title_placeholder": "Enter session title...",
+    "default_title": "Essay Grading {{date}}"
+  },
+  "round": {
+    "label": "Round {{number}}",
+    "current": "Current Round",
+    "previous": "Previous",
+    "next": "Next",
+    "new": "Submit Next Round",
+    "total": "{{count}} rounds total"
+  },
+  "actions": {
+    "grade": "Start Grading",
+    "grading": "Grading...",
+    "cancel": "Cancel",
+    "clear": "Clear",
+    "next_round": "Submit Revision",
+    "view_history": "View History",
+    "retry": "Retry",
+    "cancel_confirm_title": "Cancel Grading",
+    "cancel_confirm_message": "Are you sure you want to cancel? Generated content will not be saved."
+  },
+  "stats": {
+    "characters": "Characters"
+  },
+  "prompt_editor": {
+    "title": "Custom Grading Prompt",
+    "placeholder": "Enter custom grading prompt (optional)",
+    "restore_default": "Restore Default",
+    "save": "Save",
+    "saved": "Prompt saved",
+    "default_prompt": "You are a professional essay grading teacher with extensive teaching experience. Please thoroughly and carefully grade the student's essay.\n\nGrading requirements:\n1. Overall evaluation: Give an evaluation of the overall quality\n2. Highlights: Point out excellent aspects\n3. Issues: Mark existing problems\n4. Suggestions: Give specific revision suggestions\n5. Example revisions: Provide rewritten examples for problematic paragraphs\n\nPlease output the grading result in Markdown format."
+  },
+  "history": {
+    "title": "Grading History",
+    "description": "Browse and restore your grading records",
+    "empty": "No grading records yet",
+    "empty_hint": "Your grading records will appear here after grading",
+    "records": "records",
+    "search_placeholder": "Search history...",
+    "load_more": "Load More",
+    "delete": "Delete",
+    "deleted": "Deleted",
+    "restore": "Restore",
+    "favorite": "Favorite",
+    "unfavorite": "Unfavorite",
+    "favorited": "Favorited",
+    "unfavorited": "Unfavorited",
+    "show_all": "Show All",
+    "show_favorites_only": "Show Favorites Only",
+    "no_favorites": "No favorites yet",
+    "no_favorites_hint": "Click the star button to favorite",
+    "rounds_count": "{{count}} rounds"
+  },
+  "progress": {
+    "grading": "Grading"
+  },
+  "errors": {
+    "empty_text": "Please enter the essay to be graded",
+    "grading_failed": "Grading failed",
+    "session_not_found": "Session not found",
+    "create_session_failed": "Failed to create session",
+    "timeout": "Grading timed out, please try again",
+    "missing_session_id": "Missing session ID",
+    "load_models_failed": "Failed to load model list, please check your settings",
+    "load_modes_failed": "Failed to load grading modes",
+    "offline": "Cannot grade while offline. Please check your network connection."
+  },
+  "toast": {
+    "grading_success": "Grading completed",
+    "grading_failed": "Grading failed: {{error}}",
+    "grading_cancelled": "Grading cancelled",
+    "grading_already": "Grading already in progress",
+    "session_created": "Session created",
+    "session_deleted": "Session deleted",
+    "saved": "Saved",
+    "deleted": "Deleted",
+    "ocr_processing": "Recognizing image...",
+    "ocr_success": "OCR recognition successful",
+    "ocr_success_multi": "Successfully recognized {{count}} images",
+    "ocr_empty": "No text recognized by OCR",
+    "ocr_failed": "OCR recognition failed: {{error}}",
+    "suggestions_in_result": "Improvement suggestions are included in the grading result"
+  },
+  "round_navigation": {
+    "title": "Round Navigation",
+    "go_to_round": "Go to round {{number}}"
+  },
+  "view": {
+    "annotated": "Annotated View",
+    "raw": "Raw Content"
+  },
+  "settings": {
+    "title": "Grading Settings"
+  },
+  "mode": {
+    "select": "Select Mode",
+    "max_score": "Max {{score}} pts",
+    "manage": "Manage Modes",
+    "current": "Current Mode",
+    "total_score": "Total Score",
+    "dimensions": "Score Dimensions",
+    "create": "Create",
+    "edit": "Edit Mode",
+    "quick_switch": "Quick Switch"
+  },
+  "model": {
+    "select": "Select Model",
+    "default": "Default",
+    "title": "Model Selection"
+  },
+  "fields": {
+    "title": "Title",
+    "titlePlaceholder": "Enter essay title",
+    "content": "Content",
+    "contentPlaceholder": "Enter essay content",
+    "feedback": "Grading Feedback"
+  },
+  "score": {
+    "points": "{{score}} pts",
+    "total": "Total Score",
+    "dimensions": "Score Breakdown",
+    "grade": {
+      "excellent": "Excellent",
+      "good": "Good",
+      "pass": "Pass",
+      "fail": "Fail"
+    }
+  },
+  "markers": {
+    "delete": "Suggest deletion",
+    "insert": "Suggest insertion",
+    "replace": "Suggest replacement",
+    "note": "Note",
+    "good": "Highlight",
+    "error": {
+      "grammar": "Grammar error",
+      "spelling": "Spelling error",
+      "logic": "Logic issue",
+      "expression": "Expression issue"
+    }
+  },
+  "legend": {
+    "title": "Annotation Guide",
+    "collapse": "Collapse",
+    "expand": "Show Guide",
+    "filter_all": "All",
+    "filter_errors": "Errors",
+    "filter_suggestions": "Suggestions",
+    "filter_highlights": "Highlights",
+    "del_desc": "Red strikethrough: suggested deletions",
+    "ins_desc": "Green underline: suggested insertions",
+    "replace_desc": "Orange arrow: suggested replacements",
+    "note_desc": "Blue dashed: annotation notes",
+    "good_desc": "Gold highlight: well-written highlights",
+    "err_desc": "Red wavy: grammar/spelling errors",
+    "example": "Example",
+    "example_old": "Old",
+    "example_new": "New"
+  },
+  "empty_state": {
+    "title": "Start Grading an Essay",
+    "description": "Enter or paste essay content below, or import images for OCR recognition",
+    "paste_hint": "Paste or type essay",
+    "ocr_hint": "Import images",
+    "ocr_supported": "Supports PNG/JPG/WEBP, up to {{max}} images"
+  },
+  "next_round_confirm": {
+    "title": "Start New Round",
+    "message": "This will clear the input area for your revised essay. Current content is saved in the previous round.",
+    "confirm": "Start New Round"
+  },
+  "clear_confirm": {
+    "title": "Clear Content",
+    "message": "Are you sure you want to clear the current input and grading result? This action cannot be undone.",
+    "confirm": "Confirm Clear"
+  },
+  "save_status": {
+    "saved": "Saved",
+    "saving": "Saving...",
+    "unsaved": "Unsaved"
+  },
+  "char_limit": {
+    "reached": "Character limit reached ({{max}} characters)",
+    "warning": "Approaching character limit"
+  },
+  "partial_result": {
+    "label": "Partial Result",
+    "hint": "Grading was not completed. Below is the content generated so far."
+  },
+  "system_prompt_label": "System Prompt",
+  "score_generating": "Generating score...",
+  "api_errors": {
+    "create_session_failed": "Failed to create session: {{error}}",
+    "get_session_failed": "Failed to get session: {{error}}",
+    "update_session_failed": "Failed to update session: {{error}}",
+    "delete_session_failed": "Failed to delete session: {{error}}",
+    "list_sessions_failed": "Failed to list sessions: {{error}}",
+    "toggle_favorite_failed": "Failed to toggle favorite: {{error}}",
+    "get_rounds_failed": "Failed to get rounds: {{error}}",
+    "get_round_failed": "Failed to get round: {{error}}",
+    "get_round_number_failed": "Failed to get round number: {{error}}",
+    "get_modes_failed": "Failed to get grading modes: {{error}}",
+    "get_mode_failed": "Failed to get grading mode: {{error}}",
+    "create_mode_failed": "Failed to create grading mode: {{error}}",
+    "update_mode_failed": "Failed to update grading mode: {{error}}",
+    "delete_mode_failed": "Failed to delete grading mode: {{error}}",
+    "list_custom_modes_failed": "Failed to list custom modes: {{error}}",
+    "save_override_failed": "Failed to save mode override: {{error}}",
+    "reset_mode_failed": "Failed to reset mode: {{error}}",
+    "check_override_failed": "Failed to check mode override: {{error}}",
+    "get_models_failed": "Failed to get model list: {{error}}"
+  },
+  "import_images": {
+    "button": "Import Images",
+    "hint": "Supports PNG/JPG/WEBP, up to {{max}} images",
+    "processing": "Recognizing image {{current}}/{{total}}...",
+    "per_image_failed": "Image {{index}} recognition failed"
+  }
+}

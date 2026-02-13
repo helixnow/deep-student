@@ -1,0 +1,168 @@
+import type {
+  AttachmentMeta,
+  AttachmentInjectModes,
+  ImageInjectMode,
+  PdfInjectMode,
+  PdfProcessingStatus,
+} from '../../core/types/common';
+
+type AttachmentMediaType = 'pdf' | 'image';
+type MediaInjectMode = 'text' | 'ocr' | 'image';
+
+function getAttachmentMediaType(attachment: AttachmentMeta): AttachmentMediaType | null {
+  const isPdf = attachment.mimeType === 'application/pdf' || attachment.name.toLowerCase().endsWith('.pdf');
+  if (isPdf) {
+    return 'pdf';
+  }
+
+  const isImage = attachment.mimeType?.startsWith('image/') || false;
+  if (isImage) {
+    return 'image';
+  }
+
+  return null;
+}
+
+function getSelectedInjectModes(
+  attachment: AttachmentMeta,
+  mediaType: AttachmentMediaType
+): MediaInjectMode[] {
+  if (mediaType === 'pdf') {
+    return (attachment.injectModes?.pdf || ['text']) as MediaInjectMode[];
+  }
+  return (attachment.injectModes?.image || ['image']) as MediaInjectMode[];
+}
+
+function getEffectiveReadyModes(
+  attachment: AttachmentMeta,
+  mediaType: AttachmentMediaType,
+  status?: PdfProcessingStatus
+): MediaInjectMode[] | undefined {
+  const effectiveStatus = status || attachment.processingStatus;
+
+  // 图片在 processing 阶段默认允许 image 模式发送：
+  // 压缩/OCR 走后台优化，不应阻塞“仅按图片发送”。
+  if (
+    mediaType === 'image' &&
+    attachment.status === 'processing'
+  ) {
+    const stage = effectiveStatus?.stage;
+    if (
+      !stage ||
+      stage === 'pending' ||
+      stage === 'image_compression' ||
+      stage === 'ocr_processing' ||
+      stage === 'vector_indexing'
+    ) {
+      const merged = new Set<MediaInjectMode>(['image']);
+      for (const mode of (effectiveStatus?.readyModes || []) as MediaInjectMode[]) {
+        merged.add(mode);
+      }
+      return Array.from(merged);
+    }
+  }
+
+  if (effectiveStatus?.readyModes?.length) {
+    return effectiveStatus.readyModes as MediaInjectMode[];
+  }
+
+  if (effectiveStatus?.stage === 'completed') {
+    return mediaType === 'pdf' ? ['text'] : ['image'];
+  }
+
+  if (attachment.status === 'ready' && !effectiveStatus) {
+    return mediaType === 'pdf' ? ['text'] : ['image'];
+  }
+
+  return undefined;
+}
+
+export function getMissingInjectModesForAttachment(
+  attachment: AttachmentMeta,
+  status?: PdfProcessingStatus
+): MediaInjectMode[] {
+  const mediaType = getAttachmentMediaType(attachment);
+  if (!mediaType) {
+    return [];
+  }
+
+  const selectedModes = getSelectedInjectModes(attachment, mediaType);
+  if (selectedModes.length === 0) {
+    return [];
+  }
+
+  const readyModes = getEffectiveReadyModes(attachment, mediaType, status);
+  if (!readyModes) {
+    return selectedModes;
+  }
+
+  const readySet = new Set(readyModes);
+  return selectedModes.filter((mode) => !readySet.has(mode));
+}
+
+export function areAttachmentInjectModesReady(
+  attachment: AttachmentMeta,
+  status?: PdfProcessingStatus
+): boolean {
+  return getMissingInjectModesForAttachment(attachment, status).length === 0;
+}
+
+export function hasAnySelectedInjectModeReady(
+  attachment: AttachmentMeta,
+  status?: PdfProcessingStatus
+): boolean {
+  const mediaType = getAttachmentMediaType(attachment);
+  if (!mediaType) {
+    return true;
+  }
+
+  const selectedModes = getSelectedInjectModes(attachment, mediaType);
+  if (selectedModes.length === 0) {
+    return true;
+  }
+
+  const readyModes = getEffectiveReadyModes(attachment, mediaType, status);
+  if (!readyModes || readyModes.length === 0) {
+    return false;
+  }
+
+  const readySet = new Set(readyModes);
+  return selectedModes.some((mode) => readySet.has(mode));
+}
+
+export function downgradeInjectModesForNonMultimodal(
+  attachment: AttachmentMeta
+): AttachmentInjectModes | null {
+  const mediaType = getAttachmentMediaType(attachment);
+
+  if (!mediaType) {
+    return null;
+  }
+
+  if (mediaType === 'pdf') {
+    const currentModes = (attachment.injectModes?.pdf || ['text']) as PdfInjectMode[];
+    if (!currentModes.includes('image')) {
+      return null;
+    }
+
+    const nextModes = currentModes.filter((mode): mode is PdfInjectMode => mode !== 'image');
+    const safeModes: PdfInjectMode[] = nextModes.length > 0 ? nextModes : ['text'];
+    return {
+      ...attachment.injectModes,
+      pdf: safeModes,
+    };
+  }
+
+  const currentModes = (attachment.injectModes?.image || ['image']) as ImageInjectMode[];
+  if (!currentModes.includes('image')) {
+    return null;
+  }
+
+  const nextModes = currentModes.filter((mode): mode is ImageInjectMode => mode !== 'image');
+  const safeModes: ImageInjectMode[] = nextModes.length > 0 ? nextModes : ['ocr'];
+
+  return {
+    ...attachment.injectModes,
+    image: safeModes,
+  };
+}

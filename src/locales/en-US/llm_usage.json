@@ -1,0 +1,94 @@
+{
+  "title": "LLM Usage Statistics",
+  "description": "View token usage and cost statistics for LLM API calls",
+  "activity_trend": "Activity Trends",
+  "model_distribution": "Model Distribution",
+  "module_stats": "Module Statistics",
+  "no_data": "No Data",
+  "no_data_or_load_failed": "No data or failed to load",
+  "sessions": "Sessions",
+  "unknown_model": "Unknown Model",
+  "custom_config": "Custom Config",
+  "summary": {
+    "title": "Overview",
+    "totalCalls": "Total Calls",
+    "totalTokens": "Total Tokens",
+    "promptTokens": "Prompt Tokens",
+    "completionTokens": "Completion Tokens",
+    "reasoningTokens": "Reasoning Tokens",
+    "cachedTokens": "Cached Tokens",
+    "successRate": "Success Rate",
+    "avgDuration": "Avg Duration",
+    "estimatedCost": "Estimated Cost",
+    "tokenBreakdown": "Prompt: {{prompt}} / Compl: {{completion}}",
+    "cumulativeRequests": "Cumulative requests",
+    "perRequestAvg": "Per request average"
+  },
+  "trends": {
+    "title": "Usage Trends",
+    "last7Days": "Last 7 Days",
+    "last30Days": "Last 30 Days",
+    "last90Days": "Last 90 Days",
+    "granularity": {
+      "hour": "Hourly",
+      "day": "Daily",
+      "week": "Weekly",
+      "month": "Monthly"
+    }
+  },
+  "byModel": {
+    "title": "By Model",
+    "model": "Model",
+    "calls": "Calls",
+    "tokens": "Tokens",
+    "cost": "Cost"
+  },
+  "byCaller": {
+    "title": "By Module",
+    "caller": "Module",
+    "calls": "Calls",
+    "tokens": "Tokens",
+    "cost": "Cost"
+  },
+  "callerTypes": {
+    "chat_v2": "Chat System",
+    "translation": "Translation",
+    "anki": "Anki Cards",
+    "analysis": "Analysis",
+    "exam_sheet": "Exam Sheet",
+    "memory": "Memory",
+    "vfs_indexing": "File Indexing",
+    "embedding": "Embedding",
+    "reranker": "Reranker",
+    "other": "Other"
+  },
+  "recent": {
+    "title": "Recent Calls",
+    "time": "Time",
+    "model": "Model",
+    "caller": "Module",
+    "tokens": "Tokens",
+    "duration": "Duration",
+    "status": "Status"
+  },
+  "status": {
+    "success": "Success",
+    "error": "Error",
+    "timeout": "Timeout",
+    "cancelled": "Cancelled"
+  },
+  "actions": {
+    "refresh": "Refresh",
+    "retry": "Retry",
+    "export": "Export",
+    "cleanup": "Cleanup Old Data"
+  },
+  "empty": {
+    "title": "No Data",
+    "description": "No LLM call records yet"
+  },
+  "error": {
+    "loadFailed": "Failed to load statistics",
+    "cleanupFailed": "Failed to cleanup data"
+  }
+}

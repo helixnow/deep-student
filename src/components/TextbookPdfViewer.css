@@ -1,0 +1,263 @@
+.textbook-pdf-viewer {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+}
+
+.textbook-error-message {
+  padding: 16px;
+  margin: 16px;
+  background: hsl(var(--destructive) / 0.1);
+  border: 1px solid hsl(var(--destructive) / 0.3);
+  border-radius: 6px;
+  color: hsl(var(--destructive));
+  text-align: center;
+}
+
+.textbook-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 32px;
+  text-align: center;
+  color: hsl(var(--muted-foreground));
+  gap: 16px;
+}
+
+.textbook-empty-icon {
+  color: hsl(var(--muted-foreground));
+  opacity: 0.5;
+}
+
+.textbook-empty-title {
+  font-size: 16px;
+  font-weight: 500;
+  margin: 0;
+  color: hsl(var(--foreground));
+}
+
+.textbook-empty-hint {
+  font-size: 14px;
+  margin: 0;
+  color: hsl(var(--muted-foreground));
+}
+
+.textbook-library-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  margin-top: 8px;
+  border: 1px solid hsl(var(--primary));
+  border-radius: 8px;
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.textbook-library-btn:hover {
+  opacity: 0.9;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.textbook-library-btn:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.textbook-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  border: none; /* 去除工具栏边框 */
+  background: hsl(var(--muted) / 0.3);
+  flex-shrink: 0;
+}
+
+.textbook-toolbar-section {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.textbook-tool-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 12px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 6px;
+  background: transparent;
+  color: hsl(var(--foreground));
+  cursor: pointer;
+  transition: all 0.2s;
+  font-size: 14px;
+}
+
+.textbook-tool-btn:hover:not(:disabled) {
+  opacity: 0.8;
+}
+
+.textbook-tool-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.textbook-page-info {
+  padding: 0 12px;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.textbook-zoom-level {
+  min-width: 50px;
+  text-align: center;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.textbook-viewer-container {
+  flex: 1;
+  overflow: auto;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 16px;
+}
+
+.textbook-document {
+  display: flex;
+  justify-content: center;
+}
+
+.textbook-page {
+  /* 移除阴影和边框，保持简洁 */
+  box-shadow: none;
+  border: none;
+  border-radius: 0;
+}
+
+.textbook-loading,
+.textbook-page-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+}
+
+.textbook-loading-spinner {
+  width: 40px;
+  height: 40px;
+  border: 4px solid hsl(var(--border));
+  border-left-color: hsl(var(--primary));
+  border-radius: 50%;
+  animation: textbook-spin 1s linear infinite;
+}
+
+@keyframes textbook-spin {
+  to { transform: rotate(360deg); }
+}
+
+.textbook-action-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border: none; /* 去除操作栏边框 */
+  background: hsl(var(--muted) / 0.3);
+  flex-shrink: 0;
+}
+
+.textbook-select-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border: 1px solid hsl(var(--primary));
+  border-radius: 6px;
+  background: transparent;
+  color: hsl(var(--primary));
+  cursor: pointer;
+  transition: all 0.2s;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.textbook-select-btn.selected {
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+  border-color: hsl(var(--primary));
+}
+
+.textbook-select-btn:hover:not(:disabled) {
+  opacity: 0.8;
+}
+
+.textbook-select-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.textbook-selection-info {
+  flex: 1;
+  font-size: 14px;
+  font-weight: 500;
+  text-align: center;
+}
+
+.textbook-clear-btn {
+  padding: 8px 16px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 6px;
+  background: transparent;
+  color: hsl(var(--muted-foreground));
+  cursor: pointer;
+  transition: all 0.2s;
+  font-size: 14px;
+}
+
+.textbook-clear-btn:hover {
+  opacity: 0.7;
+}
+
+.textbook-send-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border: none;
+  border-radius: 6px;
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+  cursor: pointer;
+  transition: all 0.2s;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.textbook-send-btn:hover:not(:disabled) {
+  background: hsl(var(--primary) / 0.9);
+}
+
+.textbook-send-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+
+
+
+
+

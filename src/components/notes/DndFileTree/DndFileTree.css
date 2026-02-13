@@ -1,0 +1,376 @@
+/* DnD File Tree Styles - 极简风格 */
+
+.rct-tree {
+  /* 使用 CSS 变量实现自动暗色模式适配 */
+  --tree-hover-bg: hsl(var(--muted));
+  --tree-selected-bg: hsl(var(--primary) / 0.15);
+  --tree-selected-bg-hover: hsl(var(--primary) / 0.2);
+  --tree-selected-text: hsl(var(--primary));
+  --tree-focus-ring: hsl(var(--ring));
+  
+  /* 拖拽颜色 */
+  --tree-drop-bg: hsl(var(--primary) / 0.1);
+  --tree-drop-bg-strong: hsl(var(--primary) / 0.2);
+  --tree-drop-indicator: hsl(var(--primary));
+
+  width: 100%;
+  height: 100%;
+  position: relative;
+  font-size: 14px;
+  line-height: 1.5;
+  color: hsl(var(--foreground));
+  font-family: var(--notes-font-sans, system-ui, -apple-system, sans-serif);
+  padding: 4px 8px 8px;
+  box-sizing: border-box;
+}
+
+/* 树节点项 */
+.rct-tree-item-li {
+  position: relative;
+  user-select: none;
+  transition: background-color 0.1s ease;
+  will-change: auto;
+  contain: layout style;
+  transform: translateZ(0);
+}
+
+.rct-tree-item-button {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: 28px;
+  min-height: 28px;
+  padding: 0 8px 0 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  outline: none;
+  transition: all 0.1s ease;
+  position: relative;
+  border-radius: 6px;
+  box-sizing: border-box;
+  gap: 4px;
+  color: hsl(var(--muted-foreground));
+}
+
+.rct-tree-item-button:hover {
+  background-color: hsl(var(--foreground) / 0.08);
+  color: hsl(var(--foreground));
+}
+
+/* 暗色模式悬浮 */
+.dark .rct-tree-item-button:hover {
+  background-color: hsl(var(--foreground) / 0.1);
+}
+
+/* 选中状态 */
+.rct-tree-item-li-selected .rct-tree-item-button {
+  background-color: var(--tree-selected-bg);
+  color: var(--tree-selected-text);
+  font-weight: 500;
+}
+
+.rct-tree-item-li-selected .rct-tree-item-button:hover {
+  background-color: var(--tree-selected-bg-hover);
+}
+
+/* 聚焦状态 */
+.rct-tree-item-li-focused .rct-tree-item-button {
+  /* Optional: add focus ring if needed for accessibility */
+}
+
+/* 拖拽悬停状态 */
+.rct-tree-item-li-isOver .rct-tree-item-button {
+  background-color: var(--tree-drop-bg);
+}
+
+.rct-tree-item-li-over-inside .rct-tree-item-button {
+  background-color: var(--tree-drop-bg-strong);
+}
+
+/* 拖拽中状态 */
+.rct-tree-item-li-isDragging {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+/* 修复拖拽时高度变化问题 */
+[data-dragging="true"] {
+  position: relative !important;
+  z-index: 9999 !important;
+  box-sizing: border-box !important;
+  transform-style: preserve-3d !important;
+  backface-visibility: hidden !important;
+  -webkit-backface-visibility: hidden !important;
+  user-select: none !important;
+  -webkit-user-select: none !important;
+}
+
+[data-dragging="true"] .rct-tree-item-button {
+  height: 28px !important;
+  min-height: 28px !important;
+  max-height: 28px !important;
+  box-sizing: border-box !important;
+  overflow: hidden !important;
+}
+
+/* 展开/折叠箭头 */
+.rct-tree-item-arrow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  margin-right: 6px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+  transition: transform 0.2s cubic-bezier(0.25, 0.1, 0.25, 1), color 0.15s ease, background-color 0.15s ease;
+  color: hsl(var(--muted-foreground) / 0.7);
+  border-radius: 4px;
+}
+
+.rct-tree-item-arrow[aria-expanded="true"] {
+  transform: rotate(90deg);
+}
+
+.rct-tree-item-arrow:hover {
+  background-color: var(--tree-hover-bg);
+  color: hsl(var(--foreground));
+}
+
+.rct-tree-item-arrow-placeholder {
+  width: 20px;
+  height: 20px;
+  margin-right: 6px;
+  flex-shrink: 0;
+}
+
+/* 标题 */
+.rct-tree-item-title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.rct-tree-item-title[data-highlight="true"] mark,
+.rct-tree-item-title mark {
+  background-color: hsl(var(--primary) / 0.2);
+  color: hsl(var(--primary));
+  border-radius: 2px;
+  padding: 0 2px;
+}
+
+/* 重命名输入框 */
+.rct-tree-item-rename-input {
+  width: 100%;
+  padding: 2px 4px;
+  border: 1px solid hsl(var(--ring));
+  border-radius: 4px;
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font-size: 13px;
+  font-family: inherit;
+  outline: none;
+}
+
+/* 拖放指示器线 */
+.dnd-drop-indicator {
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  height: 2px;
+  background: var(--tree-drop-indicator);
+  pointer-events: none;
+  z-index: 10;
+  border-radius: 1px;
+  transition: top 0.1s cubic-bezier(0.2, 0, 0, 1);
+  box-shadow: 0 0 4px var(--tree-drop-indicator);
+}
+
+.dnd-drop-indicator::before {
+  content: '';
+  position: absolute;
+  left: -2px;
+  top: -3px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--tree-drop-indicator);
+  border: 2px solid hsl(var(--background));
+  box-shadow: 0 0 2px var(--tree-drop-indicator);
+}
+
+/* 拖拽覆盖层 - Notion 风格 */
+.dnd-drag-overlay {
+  padding: 0 12px;
+  background: hsl(var(--background));
+  border: 1px solid hsl(var(--border));
+  border-radius: 8px;
+  box-shadow: 0 4px 16px -2px hsl(var(--foreground) / 0.12),
+              0 2px 6px -1px hsl(var(--foreground) / 0.08);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: grabbing;
+  pointer-events: none;
+  height: 34px;
+  max-width: 260px;
+  opacity: 0.96;
+  transform: scale(1.01);
+  backdrop-filter: blur(8px);
+}
+
+.dnd-drag-overlay-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+}
+
+.dnd-drag-overlay-title {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 500;
+  color: hsl(var(--foreground));
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.4;
+}
+
+.dnd-drag-overlay-badge {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 10px;
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.dnd-drag-overlay svg {
+  flex-shrink: 0;
+}
+
+/* 禁用拖拽的项 */
+.rct-tree-item-button[data-draggable="false"] {
+  cursor: default;
+}
+
+/* 文件夹样式 */
+.rct-tree-item-li[data-tree-folder="true"] .rct-tree-item-title {
+  font-weight: 500;
+  color: hsl(var(--foreground));
+}
+
+/* Tauri 拖拽修复 */
+.rct-tree,
+.rct-tree * {
+  -webkit-app-region: no-drag !important;
+  -webkit-user-drag: none !important;
+}
+
+/* ============================================================================
+ * 引用节点样式
+ * 根据文档18《统一学习资源管理器架构设计》实现
+ * ============================================================================ */
+
+/* 引用节点基础样式 */
+.rct-tree-item-li-reference .rct-tree-item-button {
+  /* 引用节点稍微降低颜色饱和度，区分于笔记 */
+  color: hsl(var(--muted-foreground) / 0.9);
+}
+
+.rct-tree-item-li-reference .rct-tree-item-title {
+  /* 引用节点标题不加粗 */
+  font-weight: 400;
+}
+
+/* 引用节点悬停样式 */
+.rct-tree-item-li-reference .rct-tree-item-button:hover {
+  background-color: hsl(var(--foreground) / 0.06);
+  color: hsl(var(--foreground) / 0.9);
+}
+
+/* 暗色模式引用节点悬停 */
+.dark .rct-tree-item-li-reference .rct-tree-item-button:hover {
+  background-color: hsl(var(--foreground) / 0.08);
+}
+
+/* 引用节点选中状态 */
+.rct-tree-item-li-reference.rct-tree-item-li-selected .rct-tree-item-button {
+  background-color: hsl(var(--primary) / 0.12);
+  color: hsl(var(--primary) / 0.9);
+}
+
+/* 失效引用节点样式 */
+.rct-tree-item-li-invalid .rct-tree-item-button {
+  opacity: 0.6;
+  color: hsl(var(--muted-foreground) / 0.7);
+}
+
+.rct-tree-item-li-invalid .rct-tree-item-title {
+  /* 失效引用的标题由组件内联样式处理删除线 */
+  color: hsl(var(--muted-foreground) / 0.6);
+}
+
+/* 失效引用悬停仍可操作（删除等） */
+.rct-tree-item-li-invalid .rct-tree-item-button:hover {
+  background-color: hsl(var(--destructive) / 0.1);
+  color: hsl(var(--muted-foreground) / 0.8);
+}
+
+/* 暗色模式失效引用 */
+.dark .rct-tree-item-li-invalid .rct-tree-item-button:hover {
+  background-color: hsl(var(--destructive) / 0.15);
+}
+
+/* 引用节点图标容器 */
+.rct-tree-item-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+}
+
+/* 引用节点不可接收拖入（只有文件夹可以） */
+.rct-tree-item-li-reference[data-drop-position="inside"] .rct-tree-item-button {
+  /* 不显示 inside 拖放高亮 */
+  background-color: transparent;
+}
+
+/* 但引用节点可以显示 before/after 拖放指示 */
+.rct-tree-item-li-reference[data-drop-position="before"] .rct-tree-item-button,
+.rct-tree-item-li-reference[data-drop-position="after"] .rct-tree-item-button {
+  background-color: var(--tree-drop-bg);
+}
+
+/* 根据来源数据库类型的特殊样式（可选扩展） */
+.rct-tree-item-li[data-source-db="textbooks"] .rct-tree-item-icon {
+  /* 教材引用可以添加额外样式 */
+}
+
+.rct-tree-item-li[data-source-db="mistakes"] .rct-tree-item-icon {
+  /* 错题引用可以添加额外样式 */
+}
+
+.rct-tree-item-li[data-source-db="chat_v2"] .rct-tree-item-icon {
+  /* 附件引用可以添加额外样式 */
+}

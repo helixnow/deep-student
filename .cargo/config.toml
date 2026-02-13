@@ -1,0 +1,61 @@
+[build]
+# 使用 sccache 作为 rustc 缓存加速器（已安装则自动生效）
+# rustc-wrapper = "sccache"
+# 并行编译任务数：建议设置为物理/性能核数（可被 -j 覆盖）
+jobs = 14
+# 使用 RAM Disk 加速编译（需要先创建 R: 盘的 RAM Disk）
+# 注意：重启后 target 会清空，需要重新编译
+# target-dir = "R:/rust-target/deep-student"
+
+# macOS 下使用更快的链接器 zld（若未安装将回退系统 ld，无功能性变化）
+# 可选：zld（更快链接器）。如需启用，请安装后将以下两段取消注释
+# brew install michaeleisel/zld/zld
+# [target.aarch64-apple-darwin]
+# rustflags = ["-C", "link-arg=-fuse-ld=/opt/homebrew/bin/zld"]
+# [target.x86_64-apple-darwin]
+# rustflags = ["-C", "link-arg=-fuse-ld=/usr/local/bin/zld"]
+
+# Cargo配置文件 - Windows编译优化
+
+# Windows编译优化
+# 注意：交叉编译时不能使用 target-cpu=native，因为它会使用主机 CPU (如 M4) 的特性
+# 使用 x86-64 基线或 x86-64-v2 (支持 SSE4.2) 以保证兼容性
+[target.x86_64-pc-windows-msvc]
+rustflags = [
+    "-C", "target-cpu=x86-64",
+]
+
+# 替代GNU工具链配置（如果MSVC不可用）
+[target.x86_64-pc-windows-gnu]
+rustflags = [
+    "-C", "target-cpu=x86-64",
+]
+
+# Android NDK 配置
+# 注意：Cargo config.toml 不支持环境变量替换，需要在构建脚本中通过环境变量设置
+# 或者使用以下方式，但需要确保 NDK_HOME 在构建时可用
+# 更好的方法是在构建脚本中设置 CC_aarch64-linux-android 和 AR_aarch64-linux-android
+
+# 网络配置
+[net]
+git-fetch-with-cli = true
+
+# 构建配置
+## 已在顶部 [build] 设置 jobs，无需重复定义
+
+# [Optional] Uncomment to use a crates.io mirror for faster downloads in China:
+# [source.crates-io]
+# replace-with = 'ustc'
+#
+# [source.ustc]
+# registry = "sparse+https://mirrors.ustc.edu.cn/crates.io-index/"
+#
+# [registries.ustc]
+# index = "sparse+https://mirrors.ustc.edu.cn/crates.io-index/"
+
+# 为依赖的 build.rs 提供 Protobuf well-known types 的 include 目录
+# 这样像 `lance-encoding` 之类在构建阶段需要 `google/protobuf/empty.proto` 的依赖
+# 可以通过 PROTOC_INCLUDE 找到我们随项目一起提供的最小头文件集。
+[env]
+# 相对路径基于当前配置文件所在目录（项目根目录）
+PROTOC_INCLUDE = { value = "src-tauri/vendor-protobuf-include", relative = true }

@@ -1,0 +1,68 @@
+{
+  "title": "数据迁移",
+  "description": "将旧版对话数据迁移到 Chat V2 架构",
+  "status": {
+    "notStarted": "未开始",
+    "inProgress": "迁移中",
+    "completed": "已完成",
+    "rolledBack": "已回滚",
+    "failed": "迁移失败"
+  },
+  "check": {
+    "title": "迁移状态检查",
+    "loading": "正在检查...",
+    "needsMigration": "发现待迁移数据",
+    "noNeedsMigration": "没有待迁移数据",
+    "pendingMessages": "待迁移消息",
+    "pendingSessions": "待迁移会话",
+    "migratedMessages": "已迁移消息",
+    "lastMigrationAt": "上次迁移时间",
+    "canRollback": "可回滚"
+  },
+  "actions": {
+    "checkStatus": "检查状态",
+    "startMigration": "开始迁移",
+    "rollback": "回滚迁移",
+    "cancel": "取消"
+  },
+  "progress": {
+    "title": "迁移进度",
+    "currentStep": "当前步骤",
+    "messages": "消息",
+    "sessions": "会话",
+    "percent": "进度"
+  },
+  "steps": {
+    "checkLegacyData": "检查旧版数据",
+    "groupByMistakeId": "按错题分组",
+    "createSession": "创建会话",
+    "migrateMessages": "迁移消息",
+    "createBlocks": "创建内容块",
+    "createAttachments": "创建附件",
+    "markMigrated": "标记已迁移",
+    "finished": "完成"
+  },
+  "report": {
+    "title": "迁移报告",
+    "sessionsCreated": "创建会话数",
+    "messagesMigrated": "迁移消息数",
+    "blocksCreated": "创建块数",
+    "attachmentsCreated": "创建附件数",
+    "messagesSkipped": "跳过消息数",
+    "duration": "耗时",
+    "errors": "错误"
+  },
+  "confirm": {
+    "migrate": "确定要开始迁移吗？迁移过程中请勿关闭应用。",
+    "rollback": "确定要回滚迁移吗？这将删除所有迁移的会话数据。"
+  },
+  "toast": {
+    "migrationStarted": "迁移已开始",
+    "migrationCompleted": "迁移完成",
+    "migrationFailed": "迁移失败",
+    "rollbackStarted": "回滚已开始",
+    "rollbackCompleted": "回滚完成",
+    "rollbackFailed": "回滚失败",
+    "checkFailed": "检查状态失败"
+  }
+}

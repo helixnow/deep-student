@@ -1,0 +1,68 @@
+{
+  "title": "Data Migration",
+  "description": "Migrate legacy chat data to Chat V2 architecture",
+  "status": {
+    "notStarted": "Not Started",
+    "inProgress": "In Progress",
+    "completed": "Completed",
+    "rolledBack": "Rolled Back",
+    "failed": "Failed"
+  },
+  "check": {
+    "title": "Migration Status Check",
+    "loading": "Checking...",
+    "needsMigration": "Found data to migrate",
+    "noNeedsMigration": "No data to migrate",
+    "pendingMessages": "Pending Messages",
+    "pendingSessions": "Pending Sessions",
+    "migratedMessages": "Migrated Messages",
+    "lastMigrationAt": "Last Migration",
+    "canRollback": "Can Rollback"
+  },
+  "actions": {
+    "checkStatus": "Check Status",
+    "startMigration": "Start Migration",
+    "rollback": "Rollback",
+    "cancel": "Cancel"
+  },
+  "progress": {
+    "title": "Migration Progress",
+    "currentStep": "Current Step",
+    "messages": "Messages",
+    "sessions": "Sessions",
+    "percent": "Progress"
+  },
+  "steps": {
+    "checkLegacyData": "Checking legacy data",
+    "groupByMistakeId": "Grouping by mistake ID",
+    "createSession": "Creating session",
+    "migrateMessages": "Migrating messages",
+    "createBlocks": "Creating content blocks",
+    "createAttachments": "Creating attachments",
+    "markMigrated": "Marking as migrated",
+    "finished": "Finished"
+  },
+  "report": {
+    "title": "Migration Report",
+    "sessionsCreated": "Sessions Created",
+    "messagesMigrated": "Messages Migrated",
+    "blocksCreated": "Blocks Created",
+    "attachmentsCreated": "Attachments Created",
+    "messagesSkipped": "Messages Skipped",
+    "duration": "Duration",
+    "errors": "Errors"
+  },
+  "confirm": {
+    "migrate": "Are you sure you want to start migration? Do not close the app during migration.",
+    "rollback": "Are you sure you want to rollback? This will delete all migrated session data."
+  },
+  "toast": {
+    "migrationStarted": "Migration started",
+    "migrationCompleted": "Migration completed",
+    "migrationFailed": "Migration failed",
+    "rollbackStarted": "Rollback started",
+    "rollbackCompleted": "Rollback completed",
+    "rollbackFailed": "Rollback failed",
+    "checkFailed": "Status check failed"
+  }
+}

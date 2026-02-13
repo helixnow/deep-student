@@ -1,0 +1,10 @@
+syntax = "proto3";
+package google.protobuf;
+
+// Minimal Timestamp type used by many libraries.
+// Represents seconds and nanoseconds since Unix epoch.
+message Timestamp {
+  int64 seconds = 1;
+  int32 nanos = 2;
+}
+

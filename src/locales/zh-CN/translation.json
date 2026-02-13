@@ -1,0 +1,170 @@
+{
+  "source": "原文",
+  "translated": "译文",
+  "model_label": "模型",
+  "model_auto": "自动",
+  "sync_scroll": "同步滚动",
+  "auto_mode": "自动",
+  "options_title": "翻译选项",
+  "page_title": "翻译工作台",
+  "tabs": {
+    "translate": "文本翻译",
+    "history": "历史记录",
+    "ocr": "OCR识别",
+    "ocr_hint": "上传图片或文档进行识别，识别结果将自动填入输入框",
+    "comparison": "对照视图",
+    "comparison_hint": "段落级别的双语对照显示",
+    "comparison_description": "源文本与译文段落级别对照，方便对比和校对",
+    "no_translation": "无对应翻译"
+  },
+  "target_section": {
+    "title": "翻译结果",
+    "placeholder": "翻译结果将显示在这里",
+    "copy": "复制",
+    "export": "导出",
+    "copied": "已复制到剪贴板",
+    "exported": "翻译结果已导出",
+    "edit": "编辑译文",
+    "edit_saved": "译文修改已保存",
+    "listen": "朗读",
+    "stop_listen": "停止朗读",
+    "maximize": "最大化翻译结果",
+    "restore": "恢复双栏布局"
+  },
+  "source_section": {
+    "title": "待翻译文本",
+    "placeholder": "输入或拖拽上传需要翻译的内容...",
+    "drag_hint": "拖拽图片、PDF、DOCX、TXT、MD文档到此处",
+    "manual_input": "手动输入",
+    "upload_file": "上传文件",
+    "collapsed": "待翻译文本（已折叠）"
+  },
+  "languages": {
+    "source_lang": "源语言",
+    "target_lang": "目标语言",
+    "auto": "自动检测",
+    "zh": "中文",
+    "en": "英语",
+    "ja": "日语",
+    "ko": "韩语",
+    "fr": "法语",
+    "de": "德语",
+    "es": "西班牙语",
+    "ru": "俄语",
+    "ar": "阿拉伯语",
+    "pt": "葡萄牙语",
+    "it": "意大利语"
+  },
+  "actions": {
+    "translate": "翻译",
+    "clear": "清空",
+    "translating": "翻译中...",
+    "swap_languages": "交换语言"
+  },
+  "stats": {
+    "characters": "字符数",
+    "words": "单词数"
+  },
+  "shortcuts": {
+    "translate": "Ctrl/Cmd + Enter",
+    "clear": "Ctrl/Cmd + K",
+    "swap": "Ctrl/Cmd + Shift + S"
+  },
+  "progress": {
+    "translating": "翻译中"
+  },
+  "quality": {
+    "title": "翻译质量",
+    "stars": "星",
+    "rated": "评分已保存"
+  },
+  "batch": {
+    "mode": "批量模式",
+    "hint": "逐行翻译多段文本",
+    "source_title": "批量翻译文本",
+    "source_hint": "每行一条文本，将逐行翻译",
+    "translate": "批量翻译",
+    "translating": "批量翻译中...",
+    "success": "已成功翻译 {{count}} 条",
+    "no_lines": "没有可翻译的内容"
+  },
+  "prompt_editor": {
+    "title": "自定义翻译提示词",
+    "placeholder": "输入自定义翻译提示词（可选）",
+    "restore_default": "恢复默认",
+    "save": "保存",
+    "saved": "提示词已保存",
+    "default_prompt": "You are a professional translator. Translate the given text accurately while preserving its tone, style, and formatting. Do not add explanations or notes. Only output the translated text.",
+    "formality": "语气",
+    "formality_auto": "自动",
+    "formality_formal": "正式",
+    "formality_casual": "非正式"
+  },
+  "history": {
+    "title": "翻译历史",
+    "description": "浏览和恢复您的翻译历史记录",
+    "empty": "暂无翻译历史",
+    "empty_hint": "开始翻译后，您的翻译记录将显示在这里",
+    "records": "条记录",
+    "search_placeholder": "搜索历史记录...",
+    "load_more": "加载更多",
+    "delete": "删除",
+    "deleted": "已删除",
+    "restore": "恢复",
+    "clear_all": "清空全部",
+    "clear_confirm": "确定要清空全部翻译历史吗？",
+    "source_preview": "原文预览",
+    "result_preview": "译文预览",
+    "favorite": "收藏",
+    "unfavorite": "取消收藏",
+    "favorited": "已收藏",
+    "unfavorited": "已取消收藏",
+    "show_all": "显示全部",
+    "show_favorites_only": "仅显示收藏",
+    "no_favorites": "暂无收藏",
+    "no_favorites_hint": "点击历史记录中的星标按钮来收藏翻译"
+  },
+  "errors": {
+    "ocr_failed": "OCR识别失败",
+    "parse_failed": "文档解析失败",
+    "translate_failed": "翻译失败",
+    "model_not_configured": "未配置翻译模型或Model2",
+    "file_too_large": "文件过大（最大50MB）",
+    "unsupported_format": "不支持的文件格式",
+    "empty_text": "请输入待翻译文本",
+    "network_error": "网络错误，请检查连接",
+    "cannot_swap_auto": "自动检测模式下无法交换语言",
+    "tts_not_supported": "当前浏览器不支持语音合成",
+    "no_text_to_speak": "没有可朗读的文本",
+    "tts_failed": "语音合成失败：{{error}}",
+    "load_failed": "加载翻译记录失败：{{error}}",
+    "offline": "网络连接已断开，请检查网络后重试",
+    "offline_save": "离线状态下无法保存，请检查网络连接",
+    "offline_rate": "离线状态下无法评分，请检查网络连接",
+    "copy_failed": "复制失败：{{error}}",
+    "export_failed": "导出失败：{{error}}",
+    "timeout": "翻译超时，请重试"
+  },
+  "confirm": {
+    "clear": "确定清空所有内容？"
+  },
+  "toast": {
+    "translate_success": "翻译成功",
+    "translate_failed": "翻译失败：{{error}}",
+    "translate_cancelled": "已取消翻译",
+    "update_failed": "更新失败：{{error}}",
+    "ocr_processing": "正在识别图片...",
+    "ocr_success": "OCR识别成功",
+    "parse_processing": "正在解析文档...",
+    "ocr_failed": "OCR识别失败：{{error}}",
+    "parse_success": "文档解析成功",
+    "parse_failed": "文档解析失败：{{error}}",
+    "saved": "已保存",
+    "updated": "已更新",
+    "deleted": "已删除",
+    "cleared": "已清空",
+    "translating_already": "翻译已在执行中，忽略重复调用",
+    "save_failed": "保存失败：{{error}}"
+  }
+}
+
