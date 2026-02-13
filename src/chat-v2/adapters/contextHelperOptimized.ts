@@ -123,7 +123,8 @@ export async function buildSendContextRefsOptimized(
           }
 
           // 2.2 VFS 引用预解析
-          const resolvedResource = await resolveVfsRefs(resource, ref.typeId, options);
+          // ★ 2026-02-13 修复：传递 injectModes，确保 resolveVfsRefs 能为文本模型补全 OCR
+          const resolvedResource = await resolveVfsRefs(resource, ref.typeId, options, ref.injectModes);
 
           // 2.3 调用 formatToBlocks 格式化
           const formattedBlocks = contextTypeRegistry.formatResource(

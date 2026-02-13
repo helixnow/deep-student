@@ -120,34 +120,23 @@ export const imageDefinition: ContextTypeDefinition = {
       const imageModes = injectModes?.image;
       
       // 确定要注入的内容类型
-      // ★ 2026-02 修复：用户选择即生效，后端处理模型能力
+      // ★ 2026-02-13 修复：纯文本模型不注入 image 块，强制回退到 OCR 文本
       // 空数组视为未设置，使用默认值（默认注入图片）
       const hasImageModes = imageModes && imageModes.length > 0;
-      const includeImage = hasImageModes ? imageModes.includes('image') : true; // 默认包含图片
-      const includeOcr = hasImageModes ? imageModes.includes('ocr') : false;
+      const isMultimodal = options?.isMultimodal !== false;
+      const includeImage = isMultimodal
+        ? (hasImageModes ? imageModes.includes('image') : true)
+        : false; // 纯文本模型：绝不注入 image 块
+      const includeOcr = !isMultimodal
+        ? true // 纯文本模型：始终注入 OCR 文本作为回退
+        : (hasImageModes ? imageModes.includes('ocr') : false);
       
-      console.debug('[ImageDefinition] Image inject modes:', { includeImage, includeOcr });
-
       const blocks: ContentBlock[] = [];
       const name = (resolved.metadata as ImageMetadata | undefined)?.name || resolved.name || 'image';
 
-      // ★ OCR 诊断日志：打印后端返回的完整数据
-      console.log('[OCR_DIAG_FE] formatToBlocks called:', {
-        sourceId: resolved.sourceId,
-        found: resolved.found,
-        hasContent: !!resolved.content,
-        contentLen: resolved.content?.length ?? 0,
-        contentPreview: resolved.content?.substring(0, 300),
-        hasMultimodalBlocks: !!resolved.multimodalBlocks,
-        multimodalBlocksCount: resolved.multimodalBlocks?.length ?? 0,
-        multimodalBlockTypes: resolved.multimodalBlocks?.map(b => b.type),
-        injectModes,
-        imageModes,
-        includeImage,
-        includeOcr,
-      });
+      console.debug('[ImageDef]', resolved.sourceId, { isMultimodal, includeImage, includeOcr, contentLen: resolved.content?.length ?? 0 });
 
-      // 1. 图片模式：注入原始图片（用户选择即使用，后端处理模型能力）
+      // 1. 图片模式：注入原始图片（仅多模态模型）
       if (includeImage) {
         const content = resolved.content || '';
         if (content && isBase64(content)) {
@@ -155,31 +144,19 @@ export const imageDefinition: ContextTypeDefinition = {
           const resolvedMimeType = (resolved.metadata as ImageMetadata | undefined)?.mimeType;
           const mediaType = extractedMediaType || getMediaType(resolvedMimeType);
           blocks.push(createImageBlock(mediaType, base64));
-          console.log('[OCR_DIAG_FE] Image block added: mediaType=' + mediaType + ', base64Len=' + base64.length);
         } else {
-          console.warn('[OCR_DIAG_FE] Image mode selected but content is not valid base64', {
-            hasContent: !!content,
-            contentPrefix: content?.substring(0, 50),
-          });
+          console.warn('[ImageDef] Image mode but invalid base64:', resolved.sourceId);
         }
       }
 
       // 2. OCR 模式：注入 OCR 文本
-      // 后端返回 OCR 文本的两种可能位置：
-      // - resolved.content 中包含 <image_ocr>...</image_ocr> XML 标签
-      // - multimodalBlocks 中的 text 类型块
+      // 来源优先级：content 中 <image_ocr> 标签 > multimodalBlocks 中的 text 块
       if (includeOcr) {
         let ocrText = '';
 
-        // 方式 1：从 resolved.content 中提取 <image_ocr> 标签内容（新后端格式）
+        // 方式 1：从 resolved.content 中提取 <image_ocr> 标签内容
         const ocrContent = resolved.content || '';
         const ocrMatch = ocrContent.match(/<image_ocr[^>]*>([\s\S]*?)<\/image_ocr>/);
-        console.log('[OCR_DIAG_FE] OCR extraction attempt 1 (image_ocr tag):', {
-          contentLen: ocrContent.length,
-          hasOcrTag: ocrContent.includes('<image_ocr'),
-          ocrMatchFound: !!ocrMatch,
-          ocrMatchText: ocrMatch?.[1]?.substring(0, 100),
-        });
         if (ocrMatch && ocrMatch[1]) {
           ocrText = ocrMatch[1].trim();
         }
@@ -187,26 +164,22 @@ export const imageDefinition: ContextTypeDefinition = {
         // 方式 2：从 multimodalBlocks 获取 OCR 文本（兼容旧格式）
         if (!ocrText) {
           const ocrBlocks = resolved.multimodalBlocks?.filter(b => b.type === 'text');
-          console.log('[OCR_DIAG_FE] OCR extraction attempt 2 (multimodalBlocks):', {
-            hasMultimodalBlocks: !!resolved.multimodalBlocks,
-            totalBlocks: resolved.multimodalBlocks?.length ?? 0,
-            textBlocks: ocrBlocks?.length ?? 0,
-            textContent: ocrBlocks?.map(b => b.text?.substring(0, 50)),
-          });
           if (ocrBlocks && ocrBlocks.length > 0) {
             ocrText = ocrBlocks.map(b => b.text || '').join('\n').trim();
           }
         }
 
         if (ocrText) {
-          console.log('[OCR_DIAG_FE] OCR text FOUND, injecting: len=' + ocrText.length + ', preview="' + ocrText.substring(0, 100) + '"');
+          console.debug('[ImageDef] OCR injected:', resolved.sourceId, 'len=' + ocrText.length);
           blocks.push(createXmlTextBlock('image_ocr', ocrText, { name }));
         } else if (!includeImage) {
-          // 如果没有 OCR 且不注入图片，返回占位符
-          console.warn('[OCR_DIAG_FE] OCR text NOT FOUND and image not included -> showing placeholder. sourceId=' + resolved.sourceId + '. Possible causes: (1) OCR pipeline not yet completed, (2) OCR failed, (3) backend did not return OCR text in content or multimodalBlocks');
-          blocks.push(createTextBlock(`<image name="${name}">[图片内容无法显示]</image>`));
+          // OCR 不可用且无图片 → 告知模型，同时提示可能原因
+          console.warn('[ImageDef] OCR unavailable, no image fallback:', resolved.sourceId);
+          blocks.push(createTextBlock(
+            `<image name="${name}">[用户上传了一张图片「${name}」，但图片文字识别（OCR）尚未完成或失败，暂时无法获取图片中的文字内容。请告知用户稍后重试。]</image>`
+          ));
         } else {
-          console.warn('[OCR_DIAG_FE] OCR text NOT FOUND but image is included, no placeholder needed. sourceId=' + resolved.sourceId);
+          console.debug('[ImageDef] OCR unavailable but image block present, skipping:', resolved.sourceId);
         }
       }
       

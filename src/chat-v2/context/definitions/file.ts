@@ -210,12 +210,7 @@ export const fileDefinition: ContextTypeDefinition = {
     const metadata = resource.metadata as FileMetadata | undefined;
     const injectModes = options?.injectModes;
 
-    // ★ PDF 多模态调试日志
-    console.log('[FileDefinition] formatToBlocks START', {
-      resourceId: resource.id,
-      injectModes,
-      hasResolvedResources: !!resource._resolvedResources?.length,
-    });
+    console.debug('[FileDef] formatToBlocks:', resource.id, { typeId: 'file', hasResolved: !!resource._resolvedResources?.length });
 
     // ★ VFS 引用模式：优先使用 _resolvedResources
     const resolved = resource._resolvedResources?.[0];
@@ -237,22 +232,19 @@ export const fileDefinition: ContextTypeDefinition = {
         const pdfModes = injectModes?.pdf;
         
         // 确定要注入的内容类型
+        // ★ 2026-02-13 修复：纯文本模型不注入 image 块，强制回退到 OCR/文本
         // 空数组视为未设置，使用默认值
         const hasPdfModes = pdfModes && pdfModes.length > 0;
-        let includeImage = hasPdfModes ? pdfModes.includes('image') : false;
-        let includeOcr = hasPdfModes ? pdfModes.includes('ocr') : false;
+        const isMultimodal = options?.isMultimodal !== false;
+        let includeImage = isMultimodal
+          ? (hasPdfModes ? pdfModes.includes('image') : false)
+          : false; // 纯文本模型：绝不注入 image 块
+        let includeOcr = !isMultimodal
+          ? true // 纯文本模型：始终注入 OCR 文本作为回退
+          : (hasPdfModes ? pdfModes.includes('ocr') : false);
         let includeText = hasPdfModes ? pdfModes.includes('text') : true; // 默认包含文本
         
-        // ★ 2026-02 修复：移除前端 isMultimodal 判断，用户选择了图片就用图片
-        // 后端在实际调用 LLM 时会根据模型能力处理（非多模态模型会忽略图片）
-        
-        console.log('[FileDefinition] PDF inject modes DECISION:', { 
-          includeImage, 
-          includeOcr, 
-          includeText, 
-          hasMultimodalBlocks: !!resolved.multimodalBlocks,
-          multimodalBlocksCount: resolved.multimodalBlocks?.length ?? 0,
-        });
+        console.debug('[FileDef] PDF:', sourceId, { isMultimodal, includeImage, includeOcr, includeText });
         
         const blocks: ContentBlock[] = [];
         
@@ -266,7 +258,7 @@ export const fileDefinition: ContextTypeDefinition = {
             block => block.type === 'text' && block.text?.trim().startsWith('<pdf_page')
           );
           const imageOnlyBlocks = multimodalBlocks.filter(b => b.type === 'image');
-          console.log('[FileDefinition] ✅ USING IMAGE BLOCKS:', imageOnlyBlocks.length, '/', multimodalBlocks.length);
+          console.debug('[FileDef] PDF image blocks:', imageOnlyBlocks.length, '/', multimodalBlocks.length);
           if (hasPdfPageLabels) {
             multimodalBlocks.forEach((block) => {
               if (block.type === 'image') {
@@ -283,7 +275,7 @@ export const fileDefinition: ContextTypeDefinition = {
             });
           }
         } else if (includeImage) {
-          console.warn('[FileDefinition] ❌ Image mode requested but no multimodal blocks available');
+          console.warn('[FileDef] PDF image mode but no multimodal blocks:', sourceId);
         }
         
         // 2. OCR 模式：从 multimodalBlocks 中获取 OCR 文本块
@@ -358,14 +350,7 @@ export const fileDefinition: ContextTypeDefinition = {
         // 如果没有任何内容，返回占位符
         const hasPdfContent = blocks.length > 1;
         if (!hasPdfContent) {
-          console.warn('[FileDefinition] PDF returned empty blocks', {
-            name,
-            includeImage,
-            includeOcr,
-            includeText,
-            hasContent: !!resolved.content,
-            hasMultimodalBlocks: !!(resolved.multimodalBlocks && resolved.multimodalBlocks.length > 0),
-          });
+          console.warn('[FileDef] PDF empty blocks:', sourceId, { includeImage, includeOcr, includeText });
           return [createTextBlock(`<attachment name="${name}">${t('contextDef.file.invalid', {}, 'chatV2')}</attachment>`)];
         }
         

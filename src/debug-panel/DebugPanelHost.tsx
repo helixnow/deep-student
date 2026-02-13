@@ -42,6 +42,7 @@ import ThinkingBlockDebugPlugin from './plugins/ThinkingBlockDebugPlugin';
 import { debugMasterSwitch } from './debugMasterSwitch';
 import DstuDebugPlugin from './plugins/DstuDebugPlugin';
 import AttachmentInjectionDebugPlugin from './plugins/AttachmentInjectionDebugPlugin';
+import AttachmentOcrRequestAuditPlugin from './plugins/AttachmentOcrRequestAuditPlugin';
 import MediaProcessingDebugPlugin from './plugins/MediaProcessingDebugPlugin';
 // ★ 多模态索引已禁用，暂时隐藏调试插件入口。恢复时取消注释即可。
 // import PdfMultimodalDebugPlugin from './plugins/PdfMultimodalDebugPlugin';
@@ -194,6 +195,15 @@ const PLUGINS: DebugPanelPluginEntry[] = [
     Component: AttachmentInjectionDebugPlugin,
     labelDefault: '附件注入调试',
     descriptionDefault: '追踪附件上传到消息发送的完整数据流，包括 VFS 上传、资源创建、引用解析、内容格式化等关键阶段。',
+    groupId: 'chat-timeline',
+  },
+  {
+    id: 'attachment-ocr-request-audit',
+    labelKey: 'debug_panel.plugin_attachment_ocr_request_audit',
+    descriptionKey: 'debug_panel.plugin_attachment_ocr_request_audit_desc',
+    Component: AttachmentOcrRequestAuditPlugin,
+    labelDefault: '附件/OCR 请求体审计',
+    descriptionDefault: '监听 PDF/图片上传、OCR 流水线、注入模式选择，以及前端构造和后端接收的请求体摘要，校验多模态/文本模型是否收到预期内容。',
     groupId: 'chat-timeline',
   },
   // ★ 多模态索引已禁用，暂时隐藏 PDF 多模态调试插件。恢复时取消注释即可。

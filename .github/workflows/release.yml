@@ -71,6 +71,20 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: npx tauri build --target ${{ matrix.target }}
 
+      - name: Rename updater artifacts with arch suffix
+        run: |
+          BUNDLE_DIR="src-tauri/target/${{ matrix.target }}/release/bundle/macos"
+          # 提取架构简称: aarch64-apple-darwin → aarch64, x86_64-apple-darwin → x86_64
+          ARCH=$(echo "${{ matrix.target }}" | cut -d'-' -f1)
+          for f in "$BUNDLE_DIR"/*.app.tar.gz; do
+            [ -f "$f" ] || continue
+            BASE=$(basename "$f" .app.tar.gz)
+            mv "$f" "$BUNDLE_DIR/${BASE}_${ARCH}.app.tar.gz"
+            [ -f "$f.sig" ] && mv "$f.sig" "$BUNDLE_DIR/${BASE}_${ARCH}.app.tar.gz.sig"
+          done
+          echo "📦 Renamed updater artifacts:"
+          ls -la "$BUNDLE_DIR"/
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -282,8 +296,8 @@ jobs:
           # ── macOS aarch64 ──
           MACOS_ARM_DIR="artifacts/macos-aarch64-apple-darwin"
           if [ -d "$MACOS_ARM_DIR" ]; then
-            TAR=$(find "$MACOS_ARM_DIR" -name "*.app.tar.gz" ! -name "*.sig" | head -1)
-            SIG=$(find "$MACOS_ARM_DIR" -name "*.app.tar.gz.sig" | head -1)
+            TAR=$(find "$MACOS_ARM_DIR" -name "*_aarch64.app.tar.gz" ! -name "*.sig" | head -1)
+            SIG=$(find "$MACOS_ARM_DIR" -name "*_aarch64.app.tar.gz.sig" | head -1)
             if [ -n "$TAR" ] && [ -n "$SIG" ]; then
               TAR_NAME=$(basename "$TAR")
               SIGNATURE=$(cat "$SIG")
@@ -296,8 +310,8 @@ jobs:
           # ── macOS x86_64 ──
           MACOS_X64_DIR="artifacts/macos-x86_64-apple-darwin"
           if [ -d "$MACOS_X64_DIR" ]; then
-            TAR=$(find "$MACOS_X64_DIR" -name "*.app.tar.gz" ! -name "*.sig" | head -1)
-            SIG=$(find "$MACOS_X64_DIR" -name "*.app.tar.gz.sig" | head -1)
+            TAR=$(find "$MACOS_X64_DIR" -name "*_x86_64.app.tar.gz" ! -name "*.sig" | head -1)
+            SIG=$(find "$MACOS_X64_DIR" -name "*_x86_64.app.tar.gz.sig" | head -1)
             if [ -n "$TAR" ] && [ -n "$SIG" ]; then
               TAR_NAME=$(basename "$TAR")
               SIGNATURE=$(cat "$SIG")

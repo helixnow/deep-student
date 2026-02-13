@@ -874,11 +874,13 @@ fn resolve_single_ref_with_conn(
 fn get_resource_path_with_conn(
     conn: &Connection,
     source_id: &str,
-    resource_type: &VfsResourceType,
+    _resource_type: &VfsResourceType,
 ) -> VfsResult<String> {
-    // 获取资源标题
-    let title = get_resource_title_with_conn(conn, source_id, resource_type)?
-        .unwrap_or_else(|| source_id.to_string());
+    // ★ FIX: 使用 source_id 作为路径末段而非标题
+    // 之前使用标题（如 "有机合成完整笔记"）会导致前端 dstu.get(path) 时
+    // extract_resource_info 无法从中提取 resource ID，报错：
+    // "Invalid DSTU path: Path must contain a resource ID: {title}"
+    // node.name 已包含人类可读标题用于显示，path 应包含可解析的 resource ID
 
     // 查找资源所在的文件夹
     let folder_id: Option<String> = conn
@@ -894,11 +896,11 @@ fn get_resource_path_with_conn(
         Some(fid) => {
             // 构建文件夹路径
             let folder_path = build_folder_path_with_conn(conn, &fid)?;
-            Ok(format!("{}/{}", folder_path, title))
+            Ok(format!("{}/{}", folder_path, source_id))
         }
         None => {
             // 资源在根级
-            Ok(title)
+            Ok(source_id.to_string())
         }
     }
 }
@@ -1816,7 +1818,7 @@ fn escape_xml_content(s: &str) -> String {
 /// - `source_id`: 资源 ID（note_xxx, tb_xxx 等）
 ///
 /// ## 返回
-/// - `Ok(String)`: 完整路径，如 "高考复习/函数/笔记标题"
+/// - `Ok(String)`: 完整路径，如 "高考复习/函数/note_abc123"（末段是 source_id，非标题）
 /// - `Err(VfsError)`: 错误信息
 pub fn get_resource_path_internal(vfs_db: &Arc<VfsDatabase>, source_id: &str) -> VfsResult<String> {
     let conn = vfs_db.get_conn_safe()?;

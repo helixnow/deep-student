@@ -5,7 +5,8 @@
 use std::sync::Arc;
 
 use serde::Serialize;
-use tauri::{State, Window};
+use serde_json::{json, Value};
+use tauri::{Emitter, State, Window};
 
 use crate::chat_v2::database::ChatV2Database;
 use crate::chat_v2::error::ChatV2Error;
@@ -23,7 +24,7 @@ use crate::chat_v2::user_message_builder::create_user_refs_snapshot;
 use crate::llm_manager::LLMManager;
 use crate::vfs::database::VfsDatabase;
 use crate::vfs::repos::VfsResourceRepo;
-use crate::vfs::types::VfsContextRefData;
+use crate::vfs::types::{ImageInjectMode, PdfInjectMode, ResourceInjectModes, VfsContextRefData};
 
 /// ★ 2026-01-26：根据模型 ID 判断是否支持多模态
 ///
@@ -74,6 +75,154 @@ pub struct EditAndResendResult {
     pub new_variant_id: Option<String>,
 }
 
+fn mode_selected_image(inject_modes: &Option<ResourceInjectModes>) -> bool {
+    inject_modes
+        .as_ref()
+        .map(|m| {
+            m.image
+                .as_ref()
+                .map(|modes| modes.contains(&ImageInjectMode::Image))
+                .unwrap_or(false)
+                || m.pdf
+                    .as_ref()
+                    .map(|modes| modes.contains(&PdfInjectMode::Image))
+                    .unwrap_or(false)
+        })
+        .unwrap_or(false)
+}
+
+fn mode_selected_ocr(inject_modes: &Option<ResourceInjectModes>) -> bool {
+    inject_modes
+        .as_ref()
+        .map(|m| {
+            m.image
+                .as_ref()
+                .map(|modes| modes.contains(&ImageInjectMode::Ocr))
+                .unwrap_or(false)
+                || m.pdf
+                    .as_ref()
+                    .map(|modes| modes.contains(&PdfInjectMode::Ocr))
+                    .unwrap_or(false)
+        })
+        .unwrap_or(false)
+}
+
+fn image_modes_to_strings(inject_modes: &Option<ResourceInjectModes>) -> Vec<&'static str> {
+    inject_modes
+        .as_ref()
+        .and_then(|m| m.image.as_ref())
+        .map(|modes| {
+            modes
+                .iter()
+                .map(|mode| match mode {
+                    ImageInjectMode::Image => "image",
+                    ImageInjectMode::Ocr => "ocr",
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn pdf_modes_to_strings(inject_modes: &Option<ResourceInjectModes>) -> Vec<&'static str> {
+    inject_modes
+        .as_ref()
+        .and_then(|m| m.pdf.as_ref())
+        .map(|modes| {
+            modes
+                .iter()
+                .map(|mode| match mode {
+                    PdfInjectMode::Text => "text",
+                    PdfInjectMode::Ocr => "ocr",
+                    PdfInjectMode::Image => "image",
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn build_backend_request_audit_payload(
+    request: &SendMessageRequest,
+    model_id: Option<&str>,
+    is_multimodal_model: bool,
+) -> Value {
+    let refs = request.user_context_refs.as_deref().unwrap_or(&[]);
+    let mut total_text_blocks = 0usize;
+    let mut total_image_blocks = 0usize;
+    let mut has_image_mode = false;
+    let mut has_ocr_mode = false;
+    let mut ref_items: Vec<Value> = Vec::with_capacity(refs.len());
+
+    for r in refs {
+        let mut text_blocks = 0usize;
+        let mut image_blocks = 0usize;
+        for block in &r.formatted_blocks {
+            match block {
+                ContentBlock::Text { .. } => text_blocks += 1,
+                ContentBlock::Image { .. } => image_blocks += 1,
+            }
+        }
+        total_text_blocks += text_blocks;
+        total_image_blocks += image_blocks;
+
+        if mode_selected_image(&r.inject_modes) {
+            has_image_mode = true;
+        }
+        if mode_selected_ocr(&r.inject_modes) {
+            has_ocr_mode = true;
+        }
+
+        ref_items.push(json!({
+            "resourceId": r.resource_id,
+            "typeId": r.type_id,
+            "displayName": r.display_name,
+            "injectModes": {
+                "image": image_modes_to_strings(&r.inject_modes),
+                "pdf": pdf_modes_to_strings(&r.inject_modes),
+            },
+            "blocks": {
+                "total": r.formatted_blocks.len(),
+                "text": text_blocks,
+                "image": image_blocks,
+            },
+        }));
+    }
+
+    let expected_image_blocks = is_multimodal_model && has_image_mode;
+    let expected_ocr_text = has_ocr_mode;
+    let mut mismatch_reasons: Vec<&str> = Vec::new();
+    if expected_image_blocks && total_image_blocks == 0 {
+        mismatch_reasons.push("selected_image_mode_but_no_image_blocks");
+    }
+    if expected_ocr_text && total_text_blocks == 0 {
+        mismatch_reasons.push("selected_ocr_mode_but_no_text_blocks");
+    }
+    if !is_multimodal_model && has_image_mode && total_image_blocks > 0 {
+        mismatch_reasons.push("text_model_received_image_blocks");
+    }
+
+    json!({
+        "source": "backend",
+        "sessionId": request.session_id,
+        "modelId": model_id,
+        "isMultimodalModel": is_multimodal_model,
+        "contentLength": request.content.chars().count(),
+        "refCount": refs.len(),
+        "pathMapCount": request.path_map.as_ref().map(|m| m.len()).unwrap_or(0),
+        "blockTotals": {
+            "total": total_text_blocks + total_image_blocks,
+            "text": total_text_blocks,
+            "image": total_image_blocks,
+        },
+        "refs": ref_items,
+        "expectation": {
+            "expectedImageBlocks": expected_image_blocks,
+            "expectedOcrText": expected_ocr_text,
+            "expectationMet": mismatch_reasons.is_empty(),
+            "mismatchReasons": mismatch_reasons,
+        },
+    })
+}
+
 /// 发送消息并启动流式生成
 ///
 /// 该命令会立即返回 assistant_message_id，然后在后台异步执行流水线。
@@ -99,6 +248,7 @@ pub async fn chat_v2_send_message(
     window: Window,
     chat_v2_state: State<'_, Arc<ChatV2State>>,
     pipeline: State<'_, Arc<ChatV2Pipeline>>,
+    llm_manager: State<'_, Arc<LLMManager>>,
 ) -> Result<String, String> {
     log::info!(
         "[ChatV2::handlers] chat_v2_send_message: session_id={}, content_len={}",
@@ -146,6 +296,17 @@ pub async fn chat_v2_send_message(
             "Message content or context refs required".to_string(),
         )
         .into());
+    }
+
+    let model_id = request.options.as_ref().and_then(|o| o.model_id.as_deref());
+    let is_multimodal_model = is_model_multimodal(&llm_manager, model_id).await;
+    let request_audit_payload =
+        build_backend_request_audit_payload(&request, model_id, is_multimodal_model);
+    if let Err(e) = window.emit("chat_v2_request_audit", &request_audit_payload) {
+        log::warn!(
+            "[ChatV2::handlers] Failed to emit chat_v2_request_audit event: {}",
+            e
+        );
     }
 
     // 确保 assistant_message_id 存在，如果前端没有提供则由 Handler 生成

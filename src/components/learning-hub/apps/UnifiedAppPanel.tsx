@@ -97,8 +97,10 @@ export const UnifiedAppPanel: React.FC<UnifiedAppPanelProps> = ({
       setIsLoading(true);
       setError(null);
 
-      // M-007 fix: 优先使用 dstuPath（保留完整路径语义），fallback 到 resourceId
-      const path = dstuPath || (resourceId.startsWith('/') ? resourceId : `/${resourceId}`);
+      // ★ FIX: 始终使用 resourceId 获取资源（resourceId 总是包含合法的 DSTU ID 如 note_xxx）
+      // dstuPath 可能是人类可读路径（如 "高考复习/笔记标题"），不包含 resource ID，
+      // 传给 dstu.get() 会导致 "Invalid DSTU path: Path must contain a resource ID" 错误
+      const path = resourceId.startsWith('/') ? resourceId : `/${resourceId}`;
       const result = await dstu.get(path);
 
       if (!result.ok) {

@@ -79,6 +79,7 @@ import {
   emitTemplateDesignerToolEvent,
   isTemplateDesignerToolName,
 } from '../debug/templateDesignerDebug';
+import { buildAttachmentRequestAudit } from '../debug/attachmentRequestAudit';
 
 // ============================================================================
 // 日志前缀
@@ -1555,10 +1556,12 @@ export class ChatV2TauriAdapter {
       // ★ 文档28 Prompt10：使用 buildSendContextRefsWithPaths 获取 pathMap
       let userContextRefs = undefined;
       let contextPathMap: Record<string, string> | undefined;
+      let isMultimodalModel = false;
       if (pendingContextRefs.length > 0) {
         const currentModelId = this.getCurrentState().chatParams.modelId;
         // ★ 2026-02 修复：使用异步版本确保模型缓存已加载
         const isMultimodal = await isModelMultimodalAsync(currentModelId);
+        isMultimodalModel = isMultimodal;
         const { sendRefs, pathMap } = await buildSendContextRefsWithPaths(pendingContextRefs, { isMultimodal });
 
         // Token 预估和截断（防止上下文过长）
@@ -1603,6 +1606,13 @@ export class ChatV2TauriAdapter {
         pathMap: contextPathMap, // ★ 文档28 Prompt10：传递路径映射给后端保存
         workspaceId: currentWorkspaceId ?? undefined, // 🆕 工作区 ID（多 Agent 协作）
       };
+
+      const requestAudit = buildAttachmentRequestAudit(request, {
+        source: 'frontend',
+        modelId: options.modelId,
+        isMultimodalModel,
+      });
+      logAttachment('adapter', 'send_request_audit_frontend', requestAudit, requestAudit.expectation.expectationMet ? 'success' : 'warning');
 
       const returnedAssistantMessageId = await invoke<string>('chat_v2_send_message', {
         request,
@@ -1720,14 +1730,14 @@ export class ChatV2TauriAdapter {
       // ★ 文档28 Prompt10：使用 buildSendContextRefsWithPaths 获取 pathMap
       let userContextRefs = undefined;
       let contextPathMap: Record<string, string> | undefined;
+      let isMultimodalModel = false;
       if (pendingContextRefs.length > 0) {
         console.log(LOG_PREFIX, 'Building SendContextRefs for', pendingContextRefs.length, 'refs');
         const currentModelId = this.getCurrentState().chatParams.modelId;
-        // ★ PDF 多模态调试日志
-        console.log('[PDF_DEBUG_FE] TauriAdapter.send: currentModelId =', currentModelId);
         // ★ 2026-02 修复：使用异步版本确保模型缓存已加载
         const isMultimodal = await isModelMultimodalAsync(currentModelId);
-        console.log('[PDF_DEBUG_FE] TauriAdapter.send: isMultimodal =', isMultimodal);
+        isMultimodalModel = isMultimodal;
+        console.debug('[TauriAdapter] send: model =', currentModelId, 'isMultimodal =', isMultimodal);
         const { sendRefs, pathMap } = await buildSendContextRefsWithPaths(pendingContextRefs, { isMultimodal });
 
         // 3.1 Token 预估和截断（基于模型预算，防止上下文过长）
@@ -1815,6 +1825,13 @@ export class ChatV2TauriAdapter {
         pathMap: contextPathMap, // ★ 文档28 Prompt10：传递路径映射给后端保存
         workspaceId: currentWorkspaceId ?? undefined, // 🆕 工作区 ID（多 Agent 协作）
       };
+
+      const requestAudit = buildAttachmentRequestAudit(request, {
+        source: 'frontend',
+        modelId: options.modelId,
+        isMultimodalModel,
+      });
+      logAttachment('adapter', 'send_request_audit_frontend', requestAudit, requestAudit.expectation.expectationMet ? 'success' : 'warning');
 
       const returnedAssistantMessageId = await invoke<string>('chat_v2_send_message', {
         request,

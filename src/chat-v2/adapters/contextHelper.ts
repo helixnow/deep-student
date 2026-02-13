@@ -356,17 +356,10 @@ export async function buildSendContextRefsWithPaths(
 
   const startTime = performance.now();
 
-  // ★ PDF 多模态调试日志 - 检查传入的 isMultimodal
-  console.log('[PDF_DEBUG_FE] buildSendContextRefsWithPaths START:', {
-    contextRefsCount: contextRefs.length,
-    isMultimodal: options?.isMultimodal,
-    typeIds: contextRefs.map(r => r.typeId),
-    injectModes: contextRefs.map(r => ({ resourceId: r.resourceId, injectModes: r.injectModes })),
-  });
-
   logAttachment('adapter', 'build_send_context_refs_with_paths_start', {
     count: contextRefs.length,
     typeIds: contextRefs.map(r => r.typeId),
+    isMultimodal: options?.isMultimodal,
   });
 
   // 1. 按 priority 排序
@@ -434,26 +427,7 @@ export async function buildSendContextRefsWithPaths(
             ? { ...options, injectModes: ref.injectModes }
             : options;
           
-          // ★ PDF 多模态调试日志
-          console.log('[PDF_DEBUG_FE] Before formatResource:', {
-            resourceId: ref.resourceId,
-            typeId: ref.typeId,
-            isMultimodal: formatOptions?.isMultimodal,
-            injectModes: formatOptions?.injectModes,
-            hasMultimodalBlocks: !!resolved?.multimodalBlocks,
-            multimodalBlocksCount: resolved?.multimodalBlocks?.length ?? 0,
-          });
-          
           const formattedBlocks = contextTypeRegistry.formatResource(ref.typeId, resolvedResource, formatOptions);
-          
-          // ★ 调试输出
-          const imageBlocksCount = formattedBlocks.filter(b => b.type === 'image').length;
-          console.log('[PDF_DEBUG_FE] After formatResource:', {
-            resourceId: ref.resourceId,
-            totalBlocks: formattedBlocks.length,
-            imageBlocks: imageBlocksCount,
-            textBlocks: formattedBlocks.filter(b => b.type === 'text').length,
-          });
 
           logAttachment('adapter', 'format_resource_with_path_done', {
             resourceId: ref.resourceId,
@@ -1153,23 +1127,7 @@ export async function resolveVfsRefs(
   options?: FormatOptions,
   injectModes?: import('../context/vfsRefTypes').ResourceInjectModes
 ): Promise<Resource> {
-  // ★ 详细调试日志
-  console.log('[PDF_DEBUG_FE] resolveVfsRefs START:', {
-    resourceId: resource.id,
-    typeId,
-    hasData: !!resource.data,
-    dataLen: resource.data?.length ?? 0,
-    dataPreview: resource.data?.slice(0, 500),
-    sourceId: resource.sourceId,
-    metadata: resource.metadata,
-  });
-  logAttachment('adapter', 'resolve_vfs_refs_input', {
-    resourceId: resource.id,
-    typeId,
-    hasData: !!resource.data,
-    dataLen: resource.data?.length ?? 0,
-    dataPreview: resource.data?.slice(0, 300),
-  });
+  console.debug('[resolveVfsRefs]', resource.id, typeId, { dataLen: resource.data?.length ?? 0 });
 
   // 非 VFS 类型，直接返回
   if (!isVfsRefType(typeId)) {
@@ -1242,40 +1200,53 @@ export async function resolveVfsRefs(
     };
   }
 
+  // ★ 2026-02-13 修复：纯文本模型 → 确保 injectModes 始终包含 OCR
+  // 后端根据 injectModes 决定返回内容；若缺少 OCR，后端不会返回 OCR 文本，
+  // 导致 formatToBlocks 找不到 OCR 数据、只能输出无用占位符。
+  //
+  // 边缘情况覆盖：
+  //   - injectModes 未设置 (undefined)          → 补全为 {image:['ocr'], pdf:['ocr','text']}
+  //   - injectModes.image = []                   → 补全为 ['ocr']
+  //   - injectModes.image = ['image'] (无 'ocr') → 追加 'ocr'
+  //   - injectModes.image = ['ocr'] 或包含 'ocr' → 不变
+  //   - pdf 同理
+  let effectiveInjectModes = injectModes;
+  if (options?.isMultimodal === false) {
+    type ImgMode = import('../context/vfsRefTypes').ImageInjectMode;
+    type PdfMode = import('../context/vfsRefTypes').PdfInjectMode;
+    const imgModes = injectModes?.image;
+    const pdfModes = injectModes?.pdf;
+    const imgNeedsOcr = !imgModes || !imgModes.includes('ocr');
+    const pdfNeedsOcr = !pdfModes || !pdfModes.includes('ocr');
+    if (imgNeedsOcr || pdfNeedsOcr) {
+      const normalizedImg: ImgMode[] = imgNeedsOcr
+        ? [...(imgModes ?? []), 'ocr']
+        : imgModes!;
+      const normalizedPdf: PdfMode[] = pdfNeedsOcr
+        ? [...(pdfModes ?? []), 'ocr', ...(!pdfModes?.includes('text') ? ['text' as PdfMode] : [])]
+        : pdfModes!;
+      effectiveInjectModes = { image: normalizedImg, pdf: normalizedPdf };
+      console.debug('[resolveVfsRefs] Text-only model: ensured OCR in injectModes', effectiveInjectModes);
+    }
+  }
+
   // ★ 将 injectModes 添加到每个引用中
   const refsWithInjectModes = refData.refs.map(ref => ({
     ...ref,
-    injectModes: injectModes ?? undefined,
+    injectModes: effectiveInjectModes ?? undefined,
   }));
 
-  console.log('[PDF_DEBUG_FE] resolveVfsRefs refData:', {
-    refsCount: refsWithInjectModes.length,
-    refs: refsWithInjectModes.map(r => ({ 
-      sourceId: r.sourceId, 
-      type: r.type, 
-      name: r.name, 
-      resourceHash: r.resourceHash,
-      injectModes: r.injectModes,
-    })),
-  });
   logAttachment('adapter', 'resolve_vfs_refs_start', {
     resourceId: resource.id,
     typeId,
     refsCount: refsWithInjectModes.length,
-    refs: refsWithInjectModes.map(r => ({ sourceId: r.sourceId, type: r.type, name: r.name, injectModes: r.injectModes })),
+    isMultimodal: options?.isMultimodal,
+    effectiveInjectModes: effectiveInjectModes,
   });
 
   // 调用后端解析（已移除 Mock 实现）
   const resolvedResources = await invokeVfsResolve(refsWithInjectModes);
 
-  console.log('[PDF_DEBUG_FE] resolveVfsRefs RESULT:', resolvedResources.map(r => ({
-    sourceId: r.sourceId,
-    found: r.found,
-    contentLen: r.content?.length ?? 0,
-    contentPreview: r.content?.slice(0, 200),
-    type: r.type,
-    multimodalBlocksCount: r.multimodalBlocks?.length ?? 0,
-  })));
   logAttachment('adapter', 'resolve_vfs_refs_done', {
     resourceId: resource.id,
     resolvedCount: resolvedResources.length,
@@ -1284,8 +1255,6 @@ export async function resolveVfsRefs(
       sourceId: r.sourceId,
       found: r.found,
       contentLen: r.content?.length ?? 0,
-      type: r.type,
-      // ★ 多模态内容块（exam 类型由后端统一填充）
       multimodalBlocksCount: r.multimodalBlocks?.length ?? 0,
     })),
   }, resolvedResources.some(r => r.found) ? 'success' : 'warning');
