@@ -39,6 +39,8 @@ import { useDevShowRawRequest } from '../hooks/useDevShowRawRequest';
 // 🆕 AI 内容标识（合规）
 import { AiContentLabel } from '@/components/shared/AiContentLabel';
 import { dispatchContextRefPreview } from '../utils/contextRefPreview';
+import { notesDstuAdapter } from '@/dstu/adapters/notesDstuAdapter';
+import { fileManager } from '@/utils/fileManager';
 
 // ============================================================================
 // 辅助函数
@@ -256,20 +258,13 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
   const singleVariantUsage = singleVariantDisplay.resolvedUsage;
   const singleVariantModelId = singleVariantDisplay.resolvedModelId;
 
-  // 复制消息内容
-  // 默认只复制 content 块（向后兼容）；当 content 为空时，回退包含 thinking / tool 结果
-  const handleCopy = useCallback(async () => {
-    if (!message) return;
+  // 🆕 提取消息内容文本（content 块优先；为空时回退 thinking + mcp_tool）
+  const extractMessageContent = useCallback((): string => {
     const blocks = getDisplayBlocks();
-
-    // 1. 优先使用 content 块
     const contentBlocks = blocks.filter(b => b.type === 'content');
     let text = contentBlocks.map(b => b.content || '').join('\n').trim();
-
-    // 2. 若 content 为空，回退收集 thinking + mcp_tool(结果) 块
     if (!text) {
       const parts: string[] = [];
-
       for (const b of blocks) {
         if (b.type === 'thinking' && b.content) {
           parts.push(`<thinking>\n${b.content}\n</thinking>`);
@@ -277,10 +272,26 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
           parts.push(b.content);
         }
       }
-
       text = parts.join('\n\n').trim();
     }
+    return text;
+  }, [getDisplayBlocks]);
 
+  // 🆕 从内容中提取笔记标题（剥离 XML 标签，防止 <thinking> 作为标题）
+  const extractNoteTitle = useCallback((content: string): string => {
+    const headingMatch = content.match(/^#\s+(.+)$/m);
+    if (headingMatch) return headingMatch[1].trim().slice(0, 100);
+    const firstLine = content.split('\n')[0].replace(/<\/?[^>]+>/g, '').trim();
+    if (firstLine.length > 0) return firstLine.slice(0, 60) + (firstLine.length > 60 ? '...' : '');
+    return `Chat Note ${new Date().toLocaleDateString()}`;
+  }, []);
+
+  // 复制消息内容
+  // 默认只复制 content 块（向后兼容）；当 content 为空时，回退包含 thinking / tool 结果
+  // 🔧 重构：复用 extractMessageContent 避免逻辑重复
+  const handleCopy = useCallback(async () => {
+    if (!message) return;
+    const text = extractMessageContent();
     if (!text) return; // 仍为空则不做任何操作
 
     try {
@@ -290,7 +301,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
       console.error('[MessageItem] Copy failed:', error);
       showGlobalNotification('error', getErrorMessage(error), t('messageItem.actions.copyFailed'));
     }
-  }, [message, getDisplayBlocks, t]);
+  }, [message, extractMessageContent, t]);
 
   // 🆕 复制调试信息（思维链 + 工具调用 + 内容 + 工作区日志）
   const handleCopyDebug = useCallback(async () => {
@@ -527,6 +538,53 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
       showGlobalNotification('error', getErrorMessage(error), t('messageItem.actions.continueFailed'));
     }
   }, [isLocked, store, messageId, activeVariant?.id, t]);
+
+  // 🆕 保存为 VFS 笔记
+  const handleSaveAsNote = useCallback(async () => {
+    if (!message) return;
+    const text = extractMessageContent();
+    if (!text) {
+      showGlobalNotification('error', t('messageItem.actions.noContentToExport'));
+      return;
+    }
+    const title = extractNoteTitle(text);
+    try {
+      const result = await notesDstuAdapter.createNote(title, text);
+      if (result.ok) {
+        showGlobalNotification('success', t('messageItem.actions.saveAsNoteSuccess', { title }));
+      } else {
+        showGlobalNotification('error', result.error.toUserMessage(), t('messageItem.actions.saveAsNoteFailed'));
+      }
+    } catch (error: unknown) {
+      console.error('[MessageItem] Save as note failed:', error);
+      showGlobalNotification('error', getErrorMessage(error), t('messageItem.actions.saveAsNoteFailed'));
+    }
+  }, [message, extractMessageContent, extractNoteTitle, t]);
+
+  // 🆕 导出为 Markdown 文件
+  const handleExportMarkdown = useCallback(async () => {
+    if (!message) return;
+    const text = extractMessageContent();
+    if (!text) {
+      showGlobalNotification('error', t('messageItem.actions.noContentToExport'));
+      return;
+    }
+    const title = extractNoteTitle(text);
+    const safeFileName = title.replace(/[<>:"/\\|?*]/g, '_').slice(0, 80);
+    try {
+      const result = await fileManager.saveTextFile({
+        content: text,
+        title: t('messageItem.actions.exportMarkdown'),
+        defaultFileName: `${safeFileName}.md`,
+        filters: [{ name: 'Markdown', extensions: ['md'] }],
+      });
+      if (result.canceled) return;
+      showGlobalNotification('success', t('messageItem.actions.exportMarkdownSuccess'));
+    } catch (error: unknown) {
+      console.error('[MessageItem] Export markdown failed:', error);
+      showGlobalNotification('error', getErrorMessage(error), t('messageItem.actions.exportMarkdownFailed'));
+    }
+  }, [message, extractMessageContent, extractNoteTitle, t]);
 
   // 🆕 打开笔记（笔记工具预览点击时触发，在右侧 DSTU 面板中打开）
   const handleOpenNote = useCallback((noteId: string) => {
@@ -906,6 +964,8 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                         onResend={isUser ? handleResend : undefined}
                         onEdit={isUser ? handleEdit : undefined}
                         onDelete={handleDelete}
+                        onSaveAsNote={!isUser ? handleSaveAsNote : undefined}
+                        onExportMarkdown={!isUser ? handleExportMarkdown : undefined}
                       />
                     )}
                     {message.timestamp && (
@@ -935,6 +995,8 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                         onResend={isUser ? handleResend : undefined}
                         onEdit={isUser ? handleEdit : undefined}
                         onDelete={handleDelete}
+                        onSaveAsNote={!isUser ? handleSaveAsNote : undefined}
+                        onExportMarkdown={!isUser ? handleExportMarkdown : undefined}
                       />
                     )}
                     {/* 移动端用户消息的时间显示（AI 消息时间在第二行渲染） */}

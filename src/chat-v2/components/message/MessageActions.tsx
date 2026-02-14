@@ -2,7 +2,7 @@
  * MessageActions - 消息操作按钮组件
  */
 import React, { useCallback, useState } from 'react';
-import { Copy, Check, RotateCcw, Trash2, Edit3, Bug } from 'lucide-react';
+import { Copy, Check, RotateCcw, Trash2, Edit3, Bug, BookmarkPlus, Download } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
 import {
@@ -30,6 +30,10 @@ export interface MessageActionsProps {
   onDelete: () => Promise<void>;
   /** 🆕 复制调试信息回调 */
   onCopyDebug?: () => Promise<void>;
+  /** 🆕 保存为 VFS 笔记 */
+  onSaveAsNote?: () => Promise<void>;
+  /** 🆕 导出为 Markdown 文件 */
+  onExportMarkdown?: () => Promise<void>;
   className?: string;
 }
 
@@ -44,6 +48,8 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
   onResend,
   onEdit,
   onDelete,
+  onSaveAsNote,
+  onExportMarkdown,
   onCopyDebug,
   className,
 }) => {
@@ -53,6 +59,7 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
   const [isRetrying, setIsRetrying] = useState(false);
   const [isResending, setIsResending] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isSavingNote, setIsSavingNote] = useState(false);
 
   const handleCopy = useCallback(async () => {
     if (copied) return;
@@ -60,6 +67,23 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   }, [copied, onCopy]);
+
+  // 🆕 保存为笔记
+  const handleSaveAsNote = useCallback(async () => {
+    if (!onSaveAsNote || isSavingNote) return;
+    setIsSavingNote(true);
+    try {
+      await onSaveAsNote();
+    } finally {
+      setIsSavingNote(false);
+    }
+  }, [onSaveAsNote, isSavingNote]);
+
+  // 🆕 导出为 Markdown
+  const handleExportMarkdown = useCallback(async () => {
+    if (!onExportMarkdown) return;
+    await onExportMarkdown();
+  }, [onExportMarkdown]);
 
   // 🆕 复制调试信息
   const handleCopyDebug = useCallback(async () => {
@@ -109,6 +133,34 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
       >
         {copied ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
       </button>
+
+      {/* 🆕 保存为笔记按钮（仅助手消息） */}
+      {onSaveAsNote && (
+        <button
+          onClick={handleSaveAsNote}
+          disabled={isSavingNote}
+          className={cn(
+            'p-1.5 rounded-md transition-colors',
+            isSavingNote
+              ? 'opacity-50 cursor-not-allowed text-muted-foreground'
+              : 'hover:bg-muted text-muted-foreground hover:text-foreground'
+          )}
+          title={t('messageItem.actions.saveAsNote')}
+        >
+          <BookmarkPlus className={cn('w-4 h-4', isSavingNote && 'animate-pulse')} />
+        </button>
+      )}
+
+      {/* 🆕 导出为 Markdown 文件按钮（仅助手消息） */}
+      {onExportMarkdown && (
+        <button
+          onClick={handleExportMarkdown}
+          className="p-1.5 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+          title={t('messageItem.actions.exportMarkdown')}
+        >
+          <Download className="w-4 h-4" />
+        </button>
+      )}
 
       {/* 🆕 复制调试信息按钮 */}
       {onCopyDebug && (

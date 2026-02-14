@@ -94,7 +94,14 @@
       "continueFailed": "Continue failed",
       "contentUnchanged": "Content unchanged",
       "retryDeleteConfirm": "Retrying will delete {{count}} subsequent message(s). Continue?",
-      "retryDeletingSubsequent": "{{count}} subsequent message(s) removed due to retry"
+      "retryDeletingSubsequent": "{{count}} subsequent message(s) removed due to retry",
+      "saveAsNote": "Save as Note",
+      "saveAsNoteSuccess": "Saved as note: {{title}}",
+      "saveAsNoteFailed": "Failed to save note",
+      "exportMarkdown": "Export as Markdown",
+      "exportMarkdownSuccess": "Markdown file exported",
+      "exportMarkdownFailed": "Export failed",
+      "noContentToExport": "No content to export"
     },
     "modelRetry": {
       "clickToRetry": "Click to select model and retry",

@@ -54,37 +54,65 @@ pub async fn chat_v2_perform_ocr(
         return Err(ChatV2Error::Validation("At least one image is required".to_string()).into());
     }
 
-    // 构建 OCR 引擎请求 — 使用适配器官方 prompt
-    // DeepSeek-OCR → "Free OCR.", PaddleOCR-VL → "OCR:" 等
-    // 不要追加自定义中文指令，专用 OCR 模型只接受其官方 prompt 格式
+    // 获取当前 OCR 引擎适配器
     let adapter = state.llm_manager.get_ocr_adapter().await;
-    let prompt = adapter.build_prompt(crate::ocr_adapters::OcrMode::FreeOcr);
 
-    let mut image_payloads = Vec::new();
-    for (index, base64_data) in request.images.iter().enumerate() {
-        use base64::Engine;
-        let image_bytes = parse_base64_image(base64_data).map_err(|e| {
-            ChatV2Error::Validation(format!("Failed to parse image {}: {}", index, e)).to_string()
-        })?;
-        let mime = infer_mime_from_data_url(base64_data);
-        let normalized_base64 = base64::engine::general_purpose::STANDARD.encode(&image_bytes);
-        image_payloads.push(crate::llm_manager::ImagePayload {
-            mime: mime.to_string(),
-            base64: normalized_base64,
-        });
-    }
+    let ocr_text = if adapter.engine_type().is_native_ocr() {
+        // ===== 系统原生 OCR 路径 =====
+        // 直接调用操作系统内置 OCR 引擎，不经过 LLM 云端
+        log::info!("[ChatV2::OCR] Using system native OCR engine");
 
-    // 调用 OCR 引擎（使用当前选择的引擎）
-    let ocr_raw = state
-        .llm_manager
-        .call_ocr_model_raw_prompt(prompt.as_str(), Some(image_payloads))
-        .await
-        .map_err(|e| {
-            log::error!("[ChatV2::OCR] OCR failed: {}", e);
-            ChatV2Error::Llm(format!("OCR failed: {}", e)).to_string()
-        })?;
+        let mut all_text = String::new();
+        for (index, base64_data) in request.images.iter().enumerate() {
+            let image_bytes = parse_base64_image(base64_data).map_err(|e| {
+                ChatV2Error::Validation(format!("Failed to parse image {}: {}", index, e))
+                    .to_string()
+            })?;
 
-    let ocr_text = ocr_raw.assistant_message.trim().to_string();
+            let text = crate::ocr_adapters::system_ocr::perform_system_ocr(&image_bytes)
+                .await
+                .map_err(|e| {
+                    log::error!("[ChatV2::OCR] System OCR failed for image {}: {}", index, e);
+                    ChatV2Error::Llm(format!("System OCR failed: {}", e)).to_string()
+                })?;
+
+            if !all_text.is_empty() && !text.is_empty() {
+                all_text.push_str("\n\n");
+            }
+            all_text.push_str(&text);
+        }
+        all_text
+    } else {
+        // ===== VLM 云端 OCR 路径（现有逻辑，完全不变）=====
+        let prompt = adapter.build_prompt(crate::ocr_adapters::OcrMode::FreeOcr);
+
+        let mut image_payloads = Vec::new();
+        for (index, base64_data) in request.images.iter().enumerate() {
+            use base64::Engine;
+            let image_bytes = parse_base64_image(base64_data).map_err(|e| {
+                ChatV2Error::Validation(format!("Failed to parse image {}: {}", index, e))
+                    .to_string()
+            })?;
+            let mime = infer_mime_from_data_url(base64_data);
+            let normalized_base64 =
+                base64::engine::general_purpose::STANDARD.encode(&image_bytes);
+            image_payloads.push(crate::llm_manager::ImagePayload {
+                mime: mime.to_string(),
+                base64: normalized_base64,
+            });
+        }
+
+        let ocr_raw = state
+            .llm_manager
+            .call_ocr_model_raw_prompt(prompt.as_str(), Some(image_payloads))
+            .await
+            .map_err(|e| {
+                log::error!("[ChatV2::OCR] OCR failed: {}", e);
+                ChatV2Error::Llm(format!("OCR failed: {}", e)).to_string()
+            })?;
+
+        ocr_raw.assistant_message.trim().to_string()
+    };
 
     // OCR 分类已废弃：仅返回 OCR 结果
     let final_text = ocr_text;

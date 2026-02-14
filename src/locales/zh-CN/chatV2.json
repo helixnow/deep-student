@@ -94,7 +94,14 @@
       "continueFailed": "继续执行失败",
       "contentUnchanged": "内容未修改",
       "retryDeleteConfirm": "重试将删除后续 {{count}} 条消息，是否继续？",
-      "retryDeletingSubsequent": "因重试已移除后续 {{count}} 条消息"
+      "retryDeletingSubsequent": "因重试已移除后续 {{count}} 条消息",
+      "saveAsNote": "保存为笔记",
+      "saveAsNoteSuccess": "已保存为笔记：{{title}}",
+      "saveAsNoteFailed": "保存笔记失败",
+      "exportMarkdown": "导出为 Markdown",
+      "exportMarkdownSuccess": "已导出 Markdown 文件",
+      "exportMarkdownFailed": "导出失败",
+      "noContentToExport": "无可导出的内容"
     },
     "modelRetry": {
       "clickToRetry": "点击选择模型重试",

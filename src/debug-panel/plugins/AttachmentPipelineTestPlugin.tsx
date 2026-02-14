@@ -37,7 +37,7 @@ import {
   runAllTests,
   requestAbort,
   resetAbort,
-  cleanupTestSessions,
+  cleanupTestData,
   runPdfExtractionDiag,
   PIPELINE_TEST_EVENT,
   type AttachmentType,
@@ -273,17 +273,22 @@ const AttachmentPipelineTestPlugin: React.FC<DebugPanelPluginProps> = ({
   const [isDiagRunning, setIsDiagRunning] = useState(false);
   const [diagResult, setDiagResult] = useState<PdfExtractionDiagResult | null>(null);
   const [diagLogs, setDiagLogs] = useState<string[]>([]);
+  const [cleanupLog, setCleanupLog] = useState<string[]>([]);
   const handleCleanup = useCallback(async () => {
     setIsCleaningUp(true);
+    setCleanupLog([]);
     try {
-      const { deleted, errors } = await cleanupTestSessions();
-      if (errors.length > 0) {
-        console.warn('[PipelineTest] 清理部分失败:', errors);
+      const result = await cleanupTestData((msg) => {
+        setCleanupLog(prev => [...prev, msg]);
+      });
+      if (result.errors.length > 0) {
+        console.warn('[PipelineTest] 清理部分失败:', result.errors);
       }
-      alert(`已清理 ${deleted} 个测试会话${errors.length > 0 ? `，${errors.length} 个失败` : ''}`);
+      const summary = `已清理 ${result.deletedSessions} 个会话、${result.deletedAttachments} 个附件${result.errors.length > 0 ? `，${result.errors.length} 个失败` : ''}`;
+      setCleanupLog(prev => [...prev, `✅ ${summary}`]);
     } catch (err) {
       console.error('[PipelineTest] 清理失败:', err);
-      alert(`清理失败: ${err instanceof Error ? err.message : String(err)}`);
+      setCleanupLog(prev => [...prev, `❌ 清理失败: ${err instanceof Error ? err.message : String(err)}`]);
     } finally {
       setIsCleaningUp(false);
     }
@@ -439,8 +444,9 @@ const AttachmentPipelineTestPlugin: React.FC<DebugPanelPluginProps> = ({
                 <Copy className="w-4 h-4" />
               </Button>
               <Button size="sm" variant="outline" onClick={handleCleanup} disabled={isCleaningUp || status === 'running'}
-                title="清理所有 [PipelineTest] 测试会话">
+                title="批量清理测试会话和关联附件">
                 {isCleaningUp ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                {isCleaningUp && <span className="ml-1 text-xs">清理中...</span>}
               </Button>
             </div>
           </div>
@@ -456,6 +462,14 @@ const AttachmentPipelineTestPlugin: React.FC<DebugPanelPluginProps> = ({
                 <div className="h-full bg-primary transition-all duration-300 rounded-full"
                   style={{ width: `${currentIndex / totalCases * 100}%` }} />
               </div>
+            </div>
+          )}
+          {/* 清理进度日志 */}
+          {cleanupLog.length > 0 && (
+            <div className="text-xs space-y-0.5 bg-muted/30 rounded p-2 max-h-24 overflow-auto">
+              {cleanupLog.map((msg, i) => (
+                <div key={i} className="font-mono">{msg}</div>
+              ))}
             </div>
           )}
         </CardContent>

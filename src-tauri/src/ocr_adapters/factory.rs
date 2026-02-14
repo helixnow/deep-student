@@ -2,7 +2,7 @@
 //!
 //! 提供统一的适配器创建和管理功能。
 
-use super::{DeepSeekOcrAdapter, GenericVlmAdapter, OcrAdapter, OcrEngineType, PaddleOcrVlAdapter};
+use super::{DeepSeekOcrAdapter, GenericVlmAdapter, OcrAdapter, OcrEngineType, PaddleOcrVlAdapter, SystemOcrAdapter};
 use std::sync::Arc;
 
 /// OCR 适配器工厂
@@ -17,6 +17,7 @@ impl OcrAdapterFactory {
             OcrEngineType::DeepSeekOcr => Arc::new(DeepSeekOcrAdapter::new()),
             OcrEngineType::PaddleOcrVl => Arc::new(PaddleOcrVlAdapter::new()),
             OcrEngineType::GenericVlm => Arc::new(GenericVlmAdapter::new()),
+            OcrEngineType::SystemOcr => Arc::new(SystemOcrAdapter::new()),
         }
     }
 
@@ -27,16 +28,21 @@ impl OcrAdapterFactory {
 
     /// 获取所有可用的引擎类型
     pub fn available_engines() -> Vec<OcrEngineType> {
-        vec![
+        let mut engines = vec![
             OcrEngineType::DeepSeekOcr,
             OcrEngineType::PaddleOcrVl,
             OcrEngineType::GenericVlm,
-        ]
+        ];
+        // 仅在支持的平台上展示系统 OCR 选项
+        if super::system_ocr::is_platform_supported() {
+            engines.push(OcrEngineType::SystemOcr);
+        }
+        engines
     }
 
     /// 获取引擎信息列表（用于 UI 展示）
     pub fn engine_info_list() -> Vec<OcrEngineInfo> {
-        vec![
+        let mut list = vec![
             OcrEngineInfo {
                 engine_type: OcrEngineType::DeepSeekOcr,
                 name: "DeepSeek-OCR",
@@ -62,7 +68,19 @@ impl OcrAdapterFactory {
                 supports_grounding: false,
                 is_free: false,
             },
-        ]
+        ];
+        // 仅在支持的平台上展示系统 OCR
+        if super::system_ocr::is_platform_supported() {
+            list.push(OcrEngineInfo {
+                engine_type: OcrEngineType::SystemOcr,
+                name: "系统 OCR",
+                description: "调用操作系统内置 OCR 引擎，免费离线，无需 API Key",
+                recommended_model: "system",
+                supports_grounding: false,
+                is_free: true,
+            });
+        }
+        list
     }
 
     /// L5 fix: 验证模型是否适合指定的引擎类型（收紧匹配规则）
@@ -81,6 +99,10 @@ impl OcrAdapterFactory {
                 // 通用 VLM 接受任何多模态模型
                 true
             }
+            OcrEngineType::SystemOcr => {
+                // 系统 OCR 不使用模型名称
+                model_lower == "system" || model_lower.is_empty()
+            }
         }
     }
 
@@ -88,7 +110,9 @@ impl OcrAdapterFactory {
     pub fn infer_engine_from_model(model: &str) -> OcrEngineType {
         let model_lower = model.to_lowercase();
 
-        if model_lower.contains("deepseek") && model_lower.contains("ocr") {
+        if model_lower == "system" {
+            OcrEngineType::SystemOcr
+        } else if model_lower.contains("deepseek") && model_lower.contains("ocr") {
             OcrEngineType::DeepSeekOcr
         } else if model_lower.contains("paddle") || model_lower.contains("paddleocr") {
             OcrEngineType::PaddleOcrVl

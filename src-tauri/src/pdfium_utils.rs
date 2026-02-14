@@ -70,6 +70,20 @@ fn init_pdfium() -> Result<SyncPdfium, String> {
         }
     }
 
+    // Android: 尝试直接 dlopen 库名（jniLibs 中的 .so 在 linker 搜索路径上）
+    #[cfg(target_os = "android")]
+    {
+        match Pdfium::bind_to_library("libpdfium.so") {
+            Ok(bindings) => {
+                info!("[Pdfium] Loaded via dlopen(\"libpdfium.so\") on Android");
+                return Ok(SyncPdfium(Pdfium::new(bindings)));
+            }
+            Err(e) => {
+                debug!("[Pdfium] Android dlopen(\"libpdfium.so\") failed: {:?}", e);
+            }
+        }
+    }
+
     // 最后回退到系统库（dlopen 搜索）
     match Pdfium::bind_to_system_library() {
         Ok(bindings) => {
@@ -206,11 +220,12 @@ pub fn test_pdfium_status() -> Result<std::collections::HashMap<String, String>,
 
 /// 获取所有候选 pdfium 库路径（按优先级排列）
 ///
-/// 搜索顺序：
-/// 1. 可执行文件同目录（dev 模式：target/debug/libpdfium.dylib）
-/// 2. ../Resources/（Tauri release bundle 的资源目录）
-/// 3. ../Frameworks/（旧路径，保持兼容）
-/// 4. Android/iOS 返回空（由系统加载）
+/// 搜索顺序（因平台而异）：
+/// - macOS: exe 同目录 → ../Resources/ → ../Frameworks/
+/// - Windows: exe 同目录 → ../Resources/
+/// - Linux: exe 同目录 → lib/ → ../Resources/
+/// - Android: exe 同目录 → /proc/self/maps 推断 native lib 目录
+/// - iOS: 空（由系统加载）
 fn get_pdfium_candidate_paths() -> Vec<std::path::PathBuf> {
     let mut paths = Vec::new();
 
@@ -245,7 +260,32 @@ fn get_pdfium_candidate_paths() -> Vec<std::path::PathBuf> {
         paths.push(exe_dir.join("../Resources/libpdfium.so"));
     }
 
-    // Android/iOS: 由系统加载，不添加候选路径
+    #[cfg(target_os = "android")]
+    {
+        // Android: .so 通过 jniLibs 打包到 APK，运行时解压到 nativeLibraryDir
+        // 典型路径: /data/app/~~xxx==/com.example.app-xxx==/lib/arm64/libpdfium.so
+        // 也尝试 exe 同目录（某些设备）
+        paths.push(exe_dir.join("libpdfium.so"));
+
+        // 尝试从 /proc/self/maps 推断 native lib 目录
+        if let Ok(maps) = std::fs::read_to_string("/proc/self/maps") {
+            for line in maps.lines() {
+                if line.contains("libdeep_student") || line.contains("libapp") {
+                    // 从映射行提取目录路径
+                    if let Some(path_start) = line.rfind('/') {
+                        let dir = &line[line.find('/').unwrap_or(0)..path_start];
+                        let candidate = std::path::PathBuf::from(dir).join("libpdfium.so");
+                        if !paths.contains(&candidate) {
+                            paths.push(candidate);
+                        }
+                    }
+                    break;
+                }
+            }
+        }
+    }
+
+    // iOS: 由系统加载，不添加候选路径
 
     paths
 }

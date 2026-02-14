@@ -1117,20 +1117,44 @@ export async function runAllTests(
 }
 
 // =============================================================================
-// 测试会话清理
+// 测试数据清理（会话 + 附件 + 资源）
 // =============================================================================
+
+export interface CleanupResult {
+  deletedSessions: number;
+  deletedAttachments: number;
+  errors: string[];
+}
 
 /**
  * 清理所有 [PipelineTest] 标记的测试会话。
  * 返回删除的会话数量。
+ * @deprecated 使用 cleanupTestData 代替
  */
 export async function cleanupTestSessions(): Promise<{ deleted: number; errors: string[] }> {
+  const result = await cleanupTestData();
+  return { deleted: result.deletedSessions, errors: result.errors };
+}
+
+/**
+ * 批量清理测试产生的所有废弃数据：
+ * 1. 查找所有 [PipelineTest] 标记的测试会话
+ * 2. 从会话消息中提取关联的附件 ID
+ * 3. 软删除会话
+ * 4. 软删除关联附件（VFS files 表中 att_ 开头的记录）
+ */
+export async function cleanupTestData(
+  onProgress?: (msg: string) => void,
+): Promise<CleanupResult> {
   const { invoke } = await import('@tauri-apps/api/core');
   const sm = await getSessionManager();
   const errors: string[] = [];
-  let deleted = 0;
+  let deletedSessions = 0;
+  let deletedAttachments = 0;
+  const log = (msg: string) => { console.log(`[PipelineTest:cleanup] ${msg}`); onProgress?.(msg); };
 
-  // 后端分页加载所有 active 会话
+  // 1. 后端分页加载所有 active 会话，筛选测试会话
+  log('查找测试会话...');
   const PAGE = 100;
   let offset = 0;
   const testSessionIds: string[] = [];
@@ -1148,25 +1172,80 @@ export async function cleanupTestSessions(): Promise<{ deleted: number; errors: 
     if (batch.length < PAGE) break;
     offset += PAGE;
   }
+  // 也查找已删除的测试会话（回收站中的）
+  offset = 0;
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    const batch = await invoke<Array<{ id: string; title?: string }>>('chat_v2_list_sessions', {
+      status: 'deleted', limit: PAGE, offset,
+    });
+    for (const s of batch) {
+      if (s.title && s.title.startsWith(PIPELINE_TEST_SESSION_PREFIX)) {
+        testSessionIds.push(s.id);
+      }
+    }
+    if (batch.length < PAGE) break;
+    offset += PAGE;
+  }
+  log(`找到 ${testSessionIds.length} 个测试会话`);
 
-  if (testSessionIds.length === 0) return { deleted: 0, errors: [] };
-
-  // 逐个删除
+  // 2. 从测试会话消息中提取附件 ID
+  const attachmentIds = new Set<string>();
   for (const sid of testSessionIds) {
     try {
-      // 先从 sessionManager 销毁（清理 store/adapter）
+      const sessionData = await invoke<{
+        messages?: Array<{
+          attachments?: Array<{ id: string }>;
+        }>;
+      }>('chat_v2_load_session', { sessionId: sid });
+      if (sessionData?.messages) {
+        for (const msg of sessionData.messages) {
+          if (msg.attachments) {
+            for (const att of msg.attachments) {
+              if (att.id && att.id.startsWith('att_')) {
+                attachmentIds.add(att.id);
+              }
+            }
+          }
+        }
+      }
+    } catch {
+      // 会话可能已无法加载，跳过
+    }
+  }
+  log(`找到 ${attachmentIds.size} 个关联附件`);
+
+  // 3. 删除测试会话
+  log('删除测试会话...');
+  for (const sid of testSessionIds) {
+    try {
       if (sm.has(sid)) {
         await sm.destroy(sid);
       }
-      // 后端软删除
       await invoke('chat_v2_soft_delete_session', { sessionId: sid });
-      deleted++;
+      deletedSessions++;
     } catch (err) {
-      errors.push(`${sid}: ${err instanceof Error ? err.message : String(err)}`);
+      errors.push(`session ${sid}: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
+  log(`已删除 ${deletedSessions} 个会话`);
 
-  return { deleted, errors };
+  // 4. 删除关联附件
+  if (attachmentIds.size > 0) {
+    log('删除关联附件...');
+    for (const attId of attachmentIds) {
+      try {
+        await invoke('vfs_delete_attachment', { attachmentId: attId });
+        deletedAttachments++;
+      } catch (err) {
+        errors.push(`attachment ${attId}: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+    log(`已删除 ${deletedAttachments} 个附件`);
+  }
+
+  log(`清理完成: ${deletedSessions} 会话, ${deletedAttachments} 附件, ${errors.length} 错误`);
+  return { deletedSessions, deletedAttachments, errors };
 }
 
 // =============================================================================

@@ -653,15 +653,17 @@ fn build_pdf_meta_block(vfs_ref: &VfsResourceRef, total_pages: Option<usize>) ->
     let total_hint = total_pages
         .map(|count| format!(" total_pages=\"{}\"", count))
         .unwrap_or_default();
-    let example_tag = build_pdf_ref_tag(&vfs_ref.source_id, 1);
+    let example_tag_1 = build_pdf_ref_tag(&vfs_ref.source_id, 1);
+    let example_tag_2 = build_pdf_ref_tag(&vfs_ref.source_id, 2);
     ContentBlock::Text {
         text: format!(
-            "<pdf_meta name=\"{}\" source_id=\"{}\"{}>引用该 PDF 请使用格式：{}（示例：{}）。输出时必须包含页码。</pdf_meta>",
+            "<pdf_meta name=\"{}\" source_id=\"{}\"{}>引用该 PDF 请使用格式：{}（每页单独引用）。引用多页时逐页标注，如 {}{}。禁止合并为范围格式。输出时必须包含页码。</pdf_meta>",
             escape_xml_attr(&vfs_ref.name),
             escape_xml_attr(&vfs_ref.source_id),
             total_hint,
-            example_tag,
-            example_tag
+            example_tag_1,
+            example_tag_1,
+            example_tag_2
         ),
     }
 }

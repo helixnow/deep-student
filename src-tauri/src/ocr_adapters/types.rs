@@ -15,6 +15,8 @@ pub enum OcrEngineType {
     PaddleOcrVl,
     /// 通用多模态模型 - 使用标准 VLM 进行 OCR
     GenericVlm,
+    /// 系统 OCR - 调用操作系统内置 OCR 引擎（macOS Vision / Windows.Media.Ocr / iOS Vision）
+    SystemOcr,
 }
 
 impl OcrEngineType {
@@ -29,6 +31,7 @@ impl OcrEngineType {
             "deepseek_ocr" | "deepseek-ocr" | "deepseek" => Some(Self::DeepSeekOcr),
             "paddle_ocr_vl" | "paddleocr-vl" | "paddleocr_vl" | "paddle" => Some(Self::PaddleOcrVl),
             "generic_vlm" | "generic" | "vlm" => Some(Self::GenericVlm),
+            "system_ocr" | "system" | "native" => Some(Self::SystemOcr),
             _ => None,
         }
     }
@@ -39,6 +42,7 @@ impl OcrEngineType {
             Self::DeepSeekOcr => "deepseek_ocr",
             Self::PaddleOcrVl => "paddle_ocr_vl",
             Self::GenericVlm => "generic_vlm",
+            Self::SystemOcr => "system_ocr",
         }
     }
 
@@ -48,6 +52,7 @@ impl OcrEngineType {
             Self::DeepSeekOcr => "DeepSeek-OCR",
             Self::PaddleOcrVl => "PaddleOCR-VL-1.5",
             Self::GenericVlm => "通用多模态模型",
+            Self::SystemOcr => "系统 OCR",
         }
     }
 
@@ -57,6 +62,7 @@ impl OcrEngineType {
             Self::DeepSeekOcr => true,
             Self::PaddleOcrVl => true, // PaddleOCR-VL 也支持坐标输出
             Self::GenericVlm => false,
+            Self::SystemOcr => false,
         }
     }
 
@@ -66,7 +72,13 @@ impl OcrEngineType {
             Self::DeepSeekOcr => "deepseek-ai/DeepSeek-OCR",
             Self::PaddleOcrVl => "PaddlePaddle/PaddleOCR-VL-1.5",
             Self::GenericVlm => "Qwen/Qwen2.5-VL-7B-Instruct",
+            Self::SystemOcr => "system",
         }
+    }
+
+    /// 是否为系统原生 OCR（不通过 LLM 云端调用）
+    pub fn is_native_ocr(&self) -> bool {
+        matches!(self, Self::SystemOcr)
     }
 }
 
@@ -332,8 +344,12 @@ mod tests {
             OcrEngineType::PaddleOcrVl
         );
         assert_eq!(
+            OcrEngineType::from_str("system_ocr"),
+            OcrEngineType::SystemOcr
+        );
+        assert_eq!(
             OcrEngineType::from_str("unknown"),
-            OcrEngineType::DeepSeekOcr
+            OcrEngineType::PaddleOcrVl
         );
     }
 

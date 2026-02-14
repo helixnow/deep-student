@@ -76,7 +76,7 @@ jobs:
   # ─── macOS 构建 ──────────────────────────────────────────
   build-macos:
     needs: [prepare]
-    if: needs.prepare.outputs.should_build == 'true'
+    if: always() && needs.prepare.outputs.should_build == 'true'
     runs-on: macos-latest
     env:
       NODE_OPTIONS: '--max-old-space-size=4096'
@@ -149,7 +149,7 @@ jobs:
   # ─── Windows 构建 ─────────────────────────────────────────
   build-windows:
     needs: [prepare]
-    if: needs.prepare.outputs.should_build == 'true'
+    if: always() && needs.prepare.outputs.should_build == 'true'
     runs-on: windows-latest
     env:
       NODE_OPTIONS: '--max-old-space-size=4096'
@@ -201,7 +201,7 @@ jobs:
   # ─── Android 构建 ──────────────────────────────────────────
   build-android:
     needs: [prepare]
-    if: needs.prepare.outputs.should_build == 'true'
+    if: always() && needs.prepare.outputs.should_build == 'true'
     runs-on: ubuntu-latest
     env:
       NODE_OPTIONS: '--max-old-space-size=4096'
@@ -257,6 +257,20 @@ jobs:
 
       - name: Initialize Android project
         run: npx tauri android init
+
+      - name: Bundle pdfium for Android
+        run: |
+          JNILIBS_DIR="src-tauri/gen/android/app/src/main/jniLibs/arm64-v8a"
+          mkdir -p "$JNILIBS_DIR"
+          if [ -f "src-tauri/resources/pdfium/libpdfium_android_arm64.so" ]; then
+            cp src-tauri/resources/pdfium/libpdfium_android_arm64.so "$JNILIBS_DIR/libpdfium.so"
+            echo "✅ Bundled pdfium for arm64: $(ls -lh "$JNILIBS_DIR/libpdfium.so" | awk '{print $5}')"
+          else
+            echo "⚠️ Android pdfium .so not found, downloading..."
+            bash scripts/download-pdfium.sh android-arm64
+            cp src-tauri/resources/pdfium/libpdfium_android_arm64.so "$JNILIBS_DIR/libpdfium.so"
+            echo "✅ Downloaded and bundled pdfium for arm64"
+          fi
 
       - name: Configure NDK toolchain
         run: |

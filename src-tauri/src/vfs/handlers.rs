@@ -1681,6 +1681,27 @@ pub async fn vfs_get_attachment(
     VfsAttachmentRepo::get_by_id(&vfs_db, &attachment_id).map_err(|e| e.to_string())
 }
 
+/// 软删除附件
+///
+/// 将附件标记为已删除（可恢复），同时清理相关索引。
+/// 用于清理测试产生的废弃附件等场景。
+#[tauri::command]
+pub async fn vfs_delete_attachment(
+    attachment_id: String,
+    vfs_db: State<'_, Arc<VfsDatabase>>,
+) -> Result<(), String> {
+    log::info!(
+        "[VFS::handlers] vfs_delete_attachment: id={}",
+        attachment_id
+    );
+
+    if !attachment_id.starts_with("att_") {
+        return Err(format!("Invalid attachment ID format: {}", attachment_id));
+    }
+
+    VfsAttachmentRepo::delete_attachment(&vfs_db, &attachment_id).map_err(|e| e.to_string())
+}
+
 // ============================================================================
 // 统一文件操作命令（files 表）
 // ============================================================================

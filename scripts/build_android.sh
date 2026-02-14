@@ -483,6 +483,25 @@ fi
 # 6. Android APK 构建
 # ============================================================================
 if [[ -z "${SKIP_ANDROID_BUILD:-}" ]]; then
+    # 打包 pdfium 动态库到 Android APK
+    say "打包 pdfium 动态库..."
+    ensure_android_project
+    JNILIBS_DIR="$REPO_ROOT/src-tauri/gen/android/app/src/main/jniLibs/arm64-v8a"
+    mkdir -p "$JNILIBS_DIR"
+    PDFIUM_ANDROID_SO="$REPO_ROOT/src-tauri/resources/pdfium/libpdfium_android_arm64.so"
+    if [[ -f "$PDFIUM_ANDROID_SO" ]]; then
+        cp "$PDFIUM_ANDROID_SO" "$JNILIBS_DIR/libpdfium.so"
+        say "✓ pdfium 已打包: $(ls -lh "$JNILIBS_DIR/libpdfium.so" | awk '{print $5}')"
+    else
+        warn "未找到 Android pdfium: $PDFIUM_ANDROID_SO"
+        say "  尝试下载..."
+        bash "$REPO_ROOT/scripts/download-pdfium.sh" android-arm64 || warn "pdfium 下载失败，PDF 功能将不可用"
+        if [[ -f "$PDFIUM_ANDROID_SO" ]]; then
+            cp "$PDFIUM_ANDROID_SO" "$JNILIBS_DIR/libpdfium.so"
+            say "✓ pdfium 已下载并打包"
+        fi
+    fi
+
     say "开始构建 Android APK（ARM64 架构）..."
     say "这可能需要几分钟时间，请耐心等待..."
 

@@ -64,6 +64,18 @@ else
   echo "[warn] Skip icon generation (SKIP_ICON_GENERATION=true)"
 fi
 
+echo "\n[3.8/6] Checking pdfium binaries..."
+PDFIUM_DIR="src-tauri/resources/pdfium"
+PDFIUM_OK=true
+if [[ ! -f "$PDFIUM_DIR/libpdfium.dylib" ]]; then
+  echo "[warn] Missing pdfium for macOS: $PDFIUM_DIR/libpdfium.dylib"
+  PDFIUM_OK=false
+fi
+if [[ "$PDFIUM_OK" == "false" ]]; then
+  echo "[info] Downloading missing pdfium binaries..."
+  bash scripts/download-pdfium.sh "$(uname -m | sed 's/arm64/macos-arm64/' | sed 's/x86_64/macos-x64/')" || echo "[warn] pdfium download failed, PDF features may not work"
+fi
+
 echo "\n[4/6] Building frontend..."
 npm run build
 

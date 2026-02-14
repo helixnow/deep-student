@@ -45,12 +45,14 @@
 mod deepseek;
 mod factory;
 mod paddle;
+pub mod system_ocr;
 pub mod types;
 
 // 重新导出核心类型
 pub use deepseek::DeepSeekOcrAdapter;
 pub use factory::OcrAdapterFactory;
 pub use paddle::PaddleOcrVlAdapter;
+pub use system_ocr::SystemOcrAdapter;
 pub use types::*;
 
 use async_trait::async_trait;

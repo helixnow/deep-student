@@ -1223,6 +1223,7 @@ pub fn run() {
             ,crate::vfs::handlers::vfs_upload_attachment
             ,crate::vfs::handlers::vfs_get_attachment_content
             ,crate::vfs::handlers::vfs_get_attachment
+            ,crate::vfs::handlers::vfs_delete_attachment
             ,crate::vfs::handlers::vfs_get_attachment_config
             ,crate::vfs::handlers::vfs_set_attachment_root_folder
             ,crate::vfs::handlers::vfs_create_attachment_root_folder
