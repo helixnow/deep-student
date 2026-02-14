@@ -769,6 +769,7 @@
     "operation_backup": "备份",
     "operation_restore": "恢复",
     "operation_sync": "同步",
+    "operation_maintenance": "维护",
     "time": "时间",
     "operation": "操作",
     "target": "目标",

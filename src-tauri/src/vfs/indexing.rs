@@ -15,7 +15,7 @@ use crate::vfs::index_service::VfsIndexService;
 use crate::vfs::lance_store::VfsLanceStore;
 use crate::vfs::ocr_utils::{join_ocr_pages_text, parse_ocr_pages_json};
 use crate::vfs::repos::{
-    embedding_dim_repo, index_segment_repo, index_unit_repo, VfsDimensionRepo, VfsEmbedding,
+    embedding_dim_repo, index_segment_repo, index_unit_repo, VfsEmbedding,
     VfsIndexStateRepo, VfsIndexingConfigRepo, VfsNoteRepo, VfsResourceRepo, INDEX_STATE_DISABLED,
     INDEX_STATE_FAILED, INDEX_STATE_INDEXED, INDEX_STATE_INDEXING, INDEX_STATE_PENDING,
     MODALITY_MULTIMODAL, MODALITY_TEXT, VFS_EMB_TABLE_PREFIX,
@@ -1665,6 +1665,8 @@ pub struct VfsFullIndexingService {
     db: Arc<VfsDatabase>,
     llm_manager: Arc<LLMManager>,
     pipeline: VfsEmbeddingPipeline,
+    /// ★ 审计修复：持有 lance_store 引用，避免 delete_resource_index 每次新建实例
+    lance_store: Arc<VfsLanceStore>,
     chunking_config: ChunkingConfig,
 }
 
@@ -1677,12 +1679,13 @@ impl VfsFullIndexingService {
     ) -> VfsResult<Self> {
         let basic_service = VfsIndexingService::new(db.clone());
         let chunking_config = basic_service.get_chunking_config()?;
-        let pipeline = VfsEmbeddingPipeline::new(llm_manager.clone(), lance_store);
+        let pipeline = VfsEmbeddingPipeline::new(llm_manager.clone(), Arc::clone(&lance_store));
 
         Ok(Self {
             db,
             llm_manager,
             pipeline,
+            lance_store,
             chunking_config,
         })
     }
@@ -1694,11 +1697,12 @@ impl VfsFullIndexingService {
         lance_store: Arc<VfsLanceStore>,
         chunking_config: ChunkingConfig,
     ) -> Self {
-        let pipeline = VfsEmbeddingPipeline::new(llm_manager.clone(), lance_store);
+        let pipeline = VfsEmbeddingPipeline::new(llm_manager.clone(), Arc::clone(&lance_store));
         Self {
             db,
             llm_manager,
             pipeline,
+            lance_store,
             chunking_config,
         }
     }
@@ -2051,14 +2055,16 @@ impl VfsFullIndexingService {
                 let embedding_ids = index_result.embedding_ids;
 
                 let metadata_sync_result: VfsResult<()> = (|| {
-                    // 6. 注册维度信息（不绑定模型，模型分配是独立的配置）
-                    // 模型分配由用户在维度管理界面手动配置，用于跨维度检索时选择模型
-                    VfsDimensionRepo::register_dimension(
-                        &self.db,
-                        dim as i32,
-                        MODALITY_TEXT,
-                        None, // 不自动绑定模型
-                    )?;
+                    // 6. ★ 审计修复：维度范围校验
+                    if dim > 0 {
+                        let dim_i32 = dim as i32;
+                        if dim_i32 < embedding_dim_repo::MIN_DIMENSION || dim_i32 > embedding_dim_repo::MAX_DIMENSION {
+                            warn!(
+                                "[VfsFullIndexingService] Embedding dimension {} is outside valid range [{}, {}] for resource {}",
+                                dim, embedding_dim_repo::MIN_DIMENSION, embedding_dim_repo::MAX_DIMENSION, resource_id
+                            );
+                        }
+                    }
 
                     // 7. 写入 SQLite 元数据到 vfs_index_segments（新架构）
                     // ★ 2026-02 修复：统一 lance_row_id 生成逻辑
@@ -2574,6 +2580,11 @@ impl VfsFullIndexingService {
     ///
     /// ## 返回
     /// (索引的块数, 嵌入维度)
+    ///
+    /// ## 注意
+    /// 此方法**不刷新** `vfs_embedding_dims.record_count`。
+    /// 调用方须在批量完成后调用 `embedding_dim_repo::refresh_counts_from_segments`。
+    /// `index_exam_questions` 已在尾部统一刷新。
     pub async fn index_question(
         &self,
         question_id: &str,
@@ -2673,18 +2684,82 @@ impl VfsFullIndexingService {
             Ok(index_result) => {
                 let count = index_result.count;
                 let dim = index_result.dim;
+                let embedding_ids = index_result.embedding_ids;
 
-                // 新架构：segments 已在 pipeline.index_chunks 中写入 LanceDB
-                // M12 fix: 确保维度记录存在后再更新计数
+                // ★ 审计修复：写入 SQLite unit + segments，与主 index_resource 路径保持一致
+                // pipeline.index_chunks 只写 LanceDB，SQLite 元数据须由调用方写入
+                // ★ C3-P1 修复：用闭包包裹 SQLite 写入，失败时回滚 LanceDB 向量
                 if count > 0 {
-                    let conn = self.db.get_conn()?;
-                    embedding_dim_repo::register(&conn, dim as i32, MODALITY_TEXT)?;
-                    embedding_dim_repo::increment_count(
-                        &conn,
-                        dim as i32,
-                        MODALITY_TEXT,
-                        count as i64,
-                    )?;
+                    let metadata_sync_result: VfsResult<()> = (|| {
+                        let conn = self.db.get_conn()?;
+                        let now = chrono::Utc::now().timestamp_millis();
+
+                        // 注册维度（幂等）
+                        embedding_dim_repo::register(&conn, dim as i32, MODALITY_TEXT)?;
+
+                        // 获取或创建 unit（question 作为独立资源）
+                        let unit_id: String = conn.query_row(
+                            "SELECT id FROM vfs_index_units WHERE resource_id = ?1 AND unit_index = 0",
+                            rusqlite::params![question_id],
+                            |row| row.get(0),
+                        ).unwrap_or_else(|_| {
+                            let new_unit_id = format!("unit_{}", nanoid::nanoid!(10));
+                            let _ = conn.execute(
+                                r#"INSERT INTO vfs_index_units (id, resource_id, unit_index, text_content, text_required, text_state, mm_required, mm_state, created_at, updated_at)
+                                VALUES (?1, ?2, 0, '', 1, 'indexing', 0, 'disabled', ?3, ?3)"#,
+                                rusqlite::params![new_unit_id, question_id, now],
+                            );
+                            new_unit_id
+                        });
+
+                        // 删除该 unit 的旧 text segments
+                        index_segment_repo::delete_by_unit_and_modality(
+                            &conn,
+                            &unit_id,
+                            MODALITY_TEXT,
+                        )?;
+
+                        // 为每个 chunk 创建 segment
+                        for (i, chunk) in chunks.iter().enumerate() {
+                            let seg_id = format!("seg_{}", nanoid::nanoid!(10));
+                            let lance_row_id = embedding_ids.get(i).cloned().unwrap_or_else(|| {
+                                let fallback_id = VfsEmbedding::generate_id();
+                                warn!(
+                                    "[VfsFullIndexingService] Missing embedding_id at index {} for question {}, using fallback: {}",
+                                    i, question_id, fallback_id
+                                );
+                                fallback_id
+                            });
+                            conn.execute(
+                                r#"INSERT INTO vfs_index_segments (id, unit_id, segment_index, modality, embedding_dim, lance_row_id, content_text, start_pos, end_pos, metadata_json, created_at, updated_at)
+                                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)"#,
+                                rusqlite::params![seg_id, unit_id, chunk.index, MODALITY_TEXT, dim, lance_row_id, chunk.text, chunk.start_pos, chunk.end_pos, Option::<String>::None, now, now],
+                            )?;
+                        }
+
+                        // 更新 unit 状态
+                        conn.execute(
+                            "UPDATE vfs_index_units SET text_state = 'indexed', text_indexed_at = ?1, text_chunk_count = ?2, text_embedding_dim = ?3, updated_at = ?1 WHERE id = ?4",
+                            rusqlite::params![now, count as i32, dim, unit_id],
+                        )?;
+
+                        Ok(())
+                    })();
+
+                    if let Err(sync_err) = metadata_sync_result {
+                        // ★ C3-P1 修复：SQLite 写入失败时回滚 LanceDB 向量
+                        error!(
+                            "[VfsFullIndexingService] SQLite metadata sync failed for question {}: {}. Rolling back Lance vectors...",
+                            question_id, sync_err
+                        );
+                        if let Err(rollback_err) = self.pipeline.delete_resource_index(question_id).await {
+                            error!(
+                                "[VfsFullIndexingService] Lance rollback also failed for question {}: {}",
+                                question_id, rollback_err
+                            );
+                        }
+                        return Err(sync_err);
+                    }
                 }
 
                 info!(
@@ -2764,6 +2839,18 @@ impl VfsFullIndexingService {
             }
         }
 
+        // ★ C3-P2 修复：批量索引完成后统一刷新 record_count（而非每题刷新）
+        if success > 0 {
+            if let Ok(conn) = self.db.get_conn() {
+                if let Err(e) = embedding_dim_repo::refresh_counts_from_segments(&conn) {
+                    warn!(
+                        "[VfsFullIndexingService] Failed to refresh counts after batch indexing exam {}: {}",
+                        exam_id, e
+                    );
+                }
+            }
+        }
+
         info!(
             "[VfsFullIndexingService] Indexed exam {} questions: {} success, {} failed",
             exam_id, success, failed
@@ -2793,14 +2880,14 @@ impl VfsFullIndexingService {
     ///
     /// ★ C-3/M-12 修复：同时删除 text 和 multimodal 两种 modality 的 LanceDB 向量，
     /// 确保软删除后的资源不会在 RAG 检索中被错误返回。
+    /// ★ 审计修复：复用 self.lance_store，删除后刷新 record_count
     pub async fn delete_resource_index(&self, resource_id: &str) -> VfsResult<()> {
         // 1. 删除 text modality 的 Lance 向量（通过 pipeline）
         self.pipeline.delete_resource_index(resource_id).await?;
 
         // 2. 删除 multimodal modality 的 Lance 向量
-        // ★ C-3 修复：确保所有 modality 的向量都被删除，避免孤立向量
-        let lance_store = VfsLanceStore::new(Arc::clone(&self.db))?;
-        lance_store
+        // ★ 审计修复：复用 self.lance_store 而非每次创建新实例
+        self.lance_store
             .delete_by_resource(MODALITY_MULTIMODAL, resource_id)
             .await
             .map_err(|e| {
@@ -2813,6 +2900,14 @@ impl VfsFullIndexingService {
         // 3. 删除 SQLite 中的元数据（新架构：Units + Segments 级联删除）
         let conn = self.db.get_conn()?;
         index_unit_repo::delete_by_resource(&conn, resource_id)?;
+
+        // ★ 审计修复：刷新 record_count，防止删除后计数漂移
+        if let Err(e) = embedding_dim_repo::refresh_counts_from_segments(&conn) {
+            warn!(
+                "[VfsFullIndexingService] Failed to refresh embedding_dim counts after deleting {}: {}",
+                resource_id, e
+            );
+        }
 
         // 4. 重置索引状态
         VfsIndexStateRepo::mark_pending(&self.db, resource_id)?;
@@ -2963,7 +3058,8 @@ pub struct VfsEmbeddingStats {
 pub struct VfsDimensionStat {
     pub dimension: i32,
     pub modality: String,
-    pub record_count: i32,
+    /// ★ 审计修复：统一为 i64
+    pub record_count: i64,
     pub table_name: String,
 }
 
@@ -3023,7 +3119,8 @@ impl VfsSearchService {
             |row| row.get(0),
         )?;
 
-        let dimensions = VfsDimensionRepo::list_dimensions(&self.db)?;
+        // ★ 审计修复：统一使用 embedding_dim_repo（替代已废弃的 VfsDimensionRepo）
+        let dimensions = embedding_dim_repo::list_all(&conn)?;
         let dimension_stats: Vec<VfsDimensionStat> = dimensions
             .into_iter()
             .map(|d| VfsDimensionStat {
@@ -3442,7 +3539,10 @@ impl VfsFullSearchService {
         params: &VfsSearchParams,
     ) -> VfsResult<Vec<VfsSearchResult>> {
         // 1. 获取所有有数据的维度
-        let all_dimensions = VfsDimensionRepo::list_dimensions(&self.db)?;
+        // ★ 审计修复：统一使用 embedding_dim_repo（替代已废弃的 VfsDimensionRepo）
+        let conn = self.db.get_conn()?;
+        let all_dimensions = embedding_dim_repo::list_all(&conn)?;
+        drop(conn);
         let dimensions: Vec<_> = all_dimensions
             .into_iter()
             .filter(|d| d.record_count > 0 && d.modality == params.modality)
@@ -3464,6 +3564,12 @@ impl VfsFullSearchService {
             dimensions.len(),
             default_model_id
         );
+
+        // ★ 审计修复：读取搜索配置，跨维度搜索也尊重 hybrid 设置
+        let enable_hybrid = VfsIndexingService::new(self.db.clone())
+            .get_search_config()
+            .map(|c| c.enable_hybrid)
+            .unwrap_or(false);
 
         let mut all_results: Vec<VfsSearchResult> = Vec::new();
         let folder_ids: Option<Vec<String>> = params.folder_ids.clone();
@@ -3533,26 +3639,73 @@ impl VfsFullSearchService {
                 continue;
             }
 
-            // 执行向量搜索（LanceDB 表已按维度分表，查询向量维度即决定搜索的表）
-            let lance_results = match self
-                .lance_store
-                .vector_search_full(
-                    &params.modality,
-                    &query_embedding,
-                    params.top_k as usize,
-                    folder_ids.as_deref(),
-                    resource_ids.as_deref(),
-                    resource_types.as_deref(),
-                )
-                .await
-            {
-                Ok(results) => results,
-                Err(e) => {
-                    warn!(
-                        "[VfsFullSearchService] Vector search failed for dimension {}: {}",
-                        dim.dimension, e
-                    );
-                    continue;
+            // ★ 审计修复：根据搜索配置选择 vector 或 hybrid 模式
+            // 跨维度搜索应与普通搜索使用相同的搜索模式，避免搜索质量降级
+            let lance_results = if enable_hybrid {
+                match self
+                    .lance_store
+                    .hybrid_search_full(
+                        &params.modality,
+                        query,
+                        &query_embedding,
+                        params.top_k as usize,
+                        folder_ids.as_deref(),
+                        resource_ids.as_deref(),
+                        resource_types.as_deref(),
+                    )
+                    .await
+                {
+                    Ok(results) => results,
+                    Err(e) => {
+                        warn!(
+                            "[VfsFullSearchService] Hybrid search failed for dimension {}: {}, falling back to vector",
+                            dim.dimension, e
+                        );
+                        // 回退到纯向量搜索
+                        match self
+                            .lance_store
+                            .vector_search_full(
+                                &params.modality,
+                                &query_embedding,
+                                params.top_k as usize,
+                                folder_ids.as_deref(),
+                                resource_ids.as_deref(),
+                                resource_types.as_deref(),
+                            )
+                            .await
+                        {
+                            Ok(results) => results,
+                            Err(e2) => {
+                                warn!(
+                                    "[VfsFullSearchService] Vector search also failed for dimension {}: {}",
+                                    dim.dimension, e2
+                                );
+                                continue;
+                            }
+                        }
+                    }
+                }
+            } else {
+                match self
+                    .lance_store
+                    .vector_search_full(
+                        &params.modality,
+                        &query_embedding,
+                        params.top_k as usize,
+                        folder_ids.as_deref(),
+                        resource_ids.as_deref(),
+                        resource_types.as_deref(),
+                    )
+                    .await
+                {
+                    Ok(results) => results,
+                    Err(e) => {
+                        warn!(
+                            "[VfsFullSearchService] Vector search failed for dimension {}: {}",
+                            dim.dimension, e
+                        );
+                        continue;
+                    }
                 }
             };
 

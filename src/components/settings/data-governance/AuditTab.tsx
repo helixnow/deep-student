@@ -110,6 +110,8 @@ export const AuditTab: React.FC<AuditTabProps> = ({
         return t('data:governance.operation_restore');
       case 'Sync':
         return t('data:governance.operation_sync');
+      case 'Maintenance':
+        return t('data:governance.operation_maintenance');
       default:
         return type;
     }
@@ -152,6 +154,7 @@ export const AuditTab: React.FC<AuditTabProps> = ({
               { value: 'Backup', label: t('data:governance.operation_backup') },
               { value: 'Restore', label: t('data:governance.operation_restore') },
               { value: 'Sync', label: t('data:governance.operation_sync') },
+              { value: 'Maintenance', label: t('data:governance.operation_maintenance') },
             ]}
             size="sm"
             variant="outline"

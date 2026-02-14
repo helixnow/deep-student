@@ -177,7 +177,7 @@ export interface AuditLogResponse {
 }
 
 /** 审计操作类型 */
-export type AuditOperationType = 'Migration' | 'Backup' | 'Restore' | 'Sync';
+export type AuditOperationType = 'Migration' | 'Backup' | 'Restore' | 'Sync' | 'Maintenance';
 
 /** 审计状态 */
 export type AuditStatus = 'Started' | 'Completed' | 'Failed' | 'Partial';

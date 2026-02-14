@@ -56,6 +56,7 @@ import ChatAnkiWorkflowDebugPlugin from './plugins/ChatAnkiWorkflowDebugPlugin';
 import TemplateDesignerWorkflowDebugPlugin from './plugins/TemplateDesignerWorkflowDebugPlugin';
 import MindMapBlurHoverDebugPlugin from './plugins/MindMapBlurHoverDebugPlugin';
 import AttachmentPipelineTestPlugin from './plugins/AttachmentPipelineTestPlugin';
+import ChatInteractionTestPlugin from './plugins/ChatInteractionTestPlugin';
 
 export interface DebugPanelHostProps {
   visible: boolean;
@@ -462,6 +463,15 @@ const PLUGINS: DebugPanelPluginEntry[] = [
     Component: AttachmentPipelineTestPlugin,
     labelDefault: '附件流水线自动化测试',
     descriptionDefault: '自动测试所有 附件类型×注入模式×模型类型 排列组合（24用例），通过 DOM 模拟真实上传流程，捕获前后端管线日志，验证注入模式规范化和多模态检测。',
+    groupId: 'chat-timeline',
+  },
+  {
+    id: 'chat-interaction-test',
+    labelKey: 'debug_panel.plugin_chat_interaction_test',
+    descriptionKey: 'debug_panel.plugin_chat_interaction_test_desc',
+    Component: ChatInteractionTestPlugin,
+    labelDefault: '聊天交互自动化测试',
+    descriptionDefault: '通过 DOM 模拟用户点击，自动测试 发送→流式中断→重试→换模型重试→编辑重发→重新发送→多变体 全链路（7步），验证请求体变化和 model icon 完整性。',
     groupId: 'chat-timeline',
   },
 ];

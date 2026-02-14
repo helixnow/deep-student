@@ -11,6 +11,9 @@ use tauri::State;
 
 type Result<T> = std::result::Result<T, AppError>;
 
+/// 系统 OCR 的合成 config_id（不对应真实 API 配置）
+pub const SYSTEM_OCR_CONFIG_ID: &str = "__system_ocr__";
+
 /// M14 fix: PaddleOCR-VL 自动迁移到 1.5 版本（共享函数）
 ///
 /// 返回 true 表示有变更需要保存
@@ -168,11 +171,14 @@ pub async fn get_available_ocr_models(
 
         // 交叉验证：过滤掉 config_id 对应的 API 配置已被删除的孤儿引擎
         // 注意：仅在成功获取 API 配置时才执行清理，避免临时 DB 错误导致误删全部引擎
+        // SystemOcr 使用合成 config_id，跳过验证
         if let Ok(api_configs) = state.llm_manager.get_api_configs().await {
             let valid_config_ids: std::collections::HashSet<String> =
                 api_configs.iter().map(|c| c.id.clone()).collect();
             let before_len = models.len();
-            models.retain(|m| valid_config_ids.contains(&m.config_id));
+            models.retain(|m| {
+                m.config_id == SYSTEM_OCR_CONFIG_ID || valid_config_ids.contains(&m.config_id)
+            });
             if models.len() < before_len {
                 needs_save = true;
                 // 重新编号优先级
@@ -184,6 +190,24 @@ pub async fn get_available_ocr_models(
                     before_len - models.len()
                 );
             }
+        }
+
+        // 自动注入系统 OCR（平台支持且列表中不存在时）
+        if crate::ocr_adapters::system_ocr::is_platform_supported()
+            && !models.iter().any(|m| m.config_id == SYSTEM_OCR_CONFIG_ID)
+        {
+            let max_priority = models.iter().map(|m| m.priority).max().unwrap_or(0);
+            models.push(OcrModelConfig {
+                config_id: SYSTEM_OCR_CONFIG_ID.to_string(),
+                model: "system".to_string(),
+                engine_type: "system_ocr".to_string(),
+                name: system_ocr_display_name(),
+                is_free: true,
+                enabled: true,
+                priority: max_priority + 1,
+            });
+            needs_save = true;
+            println!("[OCR] 已自动注入系统 OCR 引擎");
         }
 
         if needs_save {
@@ -223,7 +247,33 @@ pub async fn get_available_ocr_models(
         return Ok(result);
     }
 
-    // 如果没有配置，返回空列表
+    // 如果没有配置，检查是否需要自动注入系统 OCR
+    if crate::ocr_adapters::system_ocr::is_platform_supported() {
+        let system_entry = OcrModelConfig {
+            config_id: SYSTEM_OCR_CONFIG_ID.to_string(),
+            model: "system".to_string(),
+            engine_type: "system_ocr".to_string(),
+            name: system_ocr_display_name(),
+            is_free: true,
+            enabled: true,
+            priority: 0,
+        };
+        // 持久化以便后续优先级调整生效
+        if let Ok(json) = serde_json::to_string(&vec![&system_entry]) {
+            let _ = db.save_setting("ocr.available_models", &json);
+        }
+        return Ok(vec![AvailableOcrModelResponse {
+            config_id: system_entry.config_id,
+            model: system_entry.model,
+            engine_type: system_entry.engine_type,
+            name: system_entry.name,
+            is_free: true,
+            description: Some("调用操作系统内置 OCR 引擎，免费离线，无需 API Key".to_string()),
+            supports_grounding: false,
+            enabled: true,
+            priority: 0,
+        }]);
+    }
     Ok(vec![])
 }
 
@@ -361,6 +411,11 @@ pub async fn add_ocr_engine(
     let mut models: Vec<OcrModelConfig> = serde_json::from_str(&models_json)
         .map_err(|e| AppError::database(format!("解析 OCR 模型配置失败: {}", e)))?;
 
+    // 系统 OCR 不支持通过此接口添加（自动注入）
+    if config_id == SYSTEM_OCR_CONFIG_ID {
+        return Err(AppError::validation("系统 OCR 引擎由系统自动管理，无需手动添加".to_string()));
+    }
+
     // 检查是否已存在
     if models.iter().any(|m| m.config_id == config_id) {
         return Err(AppError::validation("该模型已在 OCR 引擎列表中".to_string()));
@@ -413,6 +468,11 @@ pub async fn remove_ocr_engine(
 
     let mut models: Vec<OcrModelConfig> = serde_json::from_str(&models_json)
         .map_err(|e| AppError::database(format!("解析 OCR 模型配置失败: {}", e)))?;
+
+    // 系统 OCR 不支持删除（自动管理）
+    if config_id == SYSTEM_OCR_CONFIG_ID {
+        return Err(AppError::validation("系统 OCR 引擎由系统自动管理，无法删除".to_string()));
+    }
 
     let original_len = models.len();
     models.retain(|m| m.config_id != config_id);
@@ -540,15 +600,33 @@ pub async fn test_ocr_engine(
     }
     let _cleanup_guard = TempFileGuard(temp_path.clone());
 
-    // 调用 LLM 进行 OCR（优先使用 config_id 精确查找）
-    let ocr_result = state
-        .llm_manager
-        .test_ocr_with_engine(
-            temp_path.to_string_lossy().to_string(),
-            engine_type,
-            request.config_id.as_deref(),
-        )
-        .await;
+    // 系统 OCR 直接调用原生 API，不走 LLM 通道
+    let ocr_result = if engine_type.is_native_ocr() {
+        match crate::ocr_adapters::system_ocr::perform_system_ocr(&image_bytes).await {
+            Ok(text) => {
+                let regions = vec![crate::ocr_adapters::OcrRegion {
+                    label: "document".to_string(),
+                    text: text.clone(),
+                    bbox_normalized: None,
+                    bbox_pixels: None,
+                    confidence: None,
+                    raw_output: None,
+                }];
+                Ok((text, regions))
+            }
+            Err(e) => Err(e.into()),
+        }
+    } else {
+        // 调用 LLM 进行 OCR（优先使用 config_id 精确查找）
+        state
+            .llm_manager
+            .test_ocr_with_engine(
+                temp_path.to_string_lossy().to_string(),
+                engine_type,
+                request.config_id.as_deref(),
+            )
+            .await
+    };
 
     let elapsed_ms = start.elapsed().as_millis() as u64;
 
@@ -606,6 +684,26 @@ fn parse_base64_image(data: &str) -> std::result::Result<Vec<u8>, String> {
     base64::engine::general_purpose::STANDARD
         .decode(base64_data)
         .map_err(|e| format!("Base64 decode error: {}", e))
+}
+
+/// 获取系统 OCR 的平台特定显示名称
+fn system_ocr_display_name() -> String {
+    #[cfg(target_os = "macos")]
+    {
+        "系统 OCR (macOS Vision)".to_string()
+    }
+    #[cfg(windows)]
+    {
+        "系统 OCR (Windows OCR)".to_string()
+    }
+    #[cfg(target_os = "ios")]
+    {
+        "系统 OCR (iOS Vision)".to_string()
+    }
+    #[cfg(not(any(target_os = "macos", windows, target_os = "ios")))]
+    {
+        "系统 OCR".to_string()
+    }
 }
 
 /// 从 data URL 中推断文件扩展名

@@ -65,6 +65,10 @@ pub enum AuditOperation {
         direction: SyncDirection,
         records_affected: usize,
     },
+    /// 维护操作（审计清理、缓存清理等）
+    Maintenance {
+        action: String,
+    },
 }
 
 /// 备份类型
@@ -770,6 +774,7 @@ impl AuditRepository {
             AuditOperation::Backup { .. } => "Backup",
             AuditOperation::Restore { .. } => "Restore",
             AuditOperation::Sync { .. } => "Sync",
+            AuditOperation::Maintenance { .. } => "Maintenance",
         }
     }
 

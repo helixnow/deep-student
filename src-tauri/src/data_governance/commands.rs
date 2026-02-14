@@ -580,10 +580,8 @@ pub fn data_governance_cleanup_audit_logs(
         try_save_audit_log(
             &app,
             AuditLog::new(
-                AuditOperation::Backup {
-                    backup_type: super::audit::BackupType::Full,
-                    file_count: 0,
-                    total_size: 0,
+                AuditOperation::Maintenance {
+                    action: "cleanup_audit_logs".to_string(),
                 },
                 "cleanup_audit_logs_initiated".to_string(),
             )
@@ -606,10 +604,8 @@ pub fn data_governance_cleanup_audit_logs(
                 try_save_audit_log(
                     &app,
                     AuditLog::new(
-                        AuditOperation::Backup {
-                            backup_type: super::audit::BackupType::Full,
-                            file_count: 0,
-                            total_size: 0,
+                        AuditOperation::Maintenance {
+                            action: "cleanup_audit_logs".to_string(),
                         },
                         "cleanup_audit_logs".to_string(),
                     )
@@ -626,10 +622,8 @@ pub fn data_governance_cleanup_audit_logs(
                 try_save_audit_log(
                     &app,
                     AuditLog::new(
-                        AuditOperation::Backup {
-                            backup_type: super::audit::BackupType::Full,
-                            file_count: 0,
-                            total_size: 0,
+                        AuditOperation::Maintenance {
+                            action: "cleanup_audit_logs".to_string(),
                         },
                         "cleanup_audit_logs".to_string(),
                     )
@@ -647,10 +641,8 @@ pub fn data_governance_cleanup_audit_logs(
         try_save_audit_log(
             &app,
             AuditLog::new(
-                AuditOperation::Backup {
-                    backup_type: super::audit::BackupType::Full,
-                    file_count: 0,
-                    total_size: deleted as u64,
+                AuditOperation::Maintenance {
+                    action: "cleanup_audit_logs".to_string(),
                 },
                 "cleanup_audit_logs".to_string(),
             )
@@ -1240,6 +1232,7 @@ impl From<AuditLog> for AuditLogResponse {
             super::audit::AuditOperation::Backup { .. } => "Backup",
             super::audit::AuditOperation::Restore { .. } => "Restore",
             super::audit::AuditOperation::Sync { .. } => "Sync",
+            super::audit::AuditOperation::Maintenance { .. } => "Maintenance",
         };
 
         let status = match &log.status {

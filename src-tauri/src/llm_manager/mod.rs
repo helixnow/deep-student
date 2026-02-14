@@ -2482,10 +2482,22 @@ impl LLMManager {
 
     /// 获取当前配置的 OCR 引擎类型
     ///
-    /// 从数据库读取 `ocr.engine_type` 设置，默认返回 PaddleOCR-VL-1.5
+    /// 优先从 `ocr.available_models` 优先级列表中获取第一个已启用引擎的类型，
+    /// 回退到 `ocr.engine_type` 设置，最终默认 PaddleOCR-VL-1.5。
     pub async fn get_ocr_engine_type(&self) -> crate::ocr_adapters::OcrEngineType {
         use crate::ocr_adapters::OcrEngineType;
 
+        // 优先从优先级列表获取
+        let available = self.get_available_ocr_models().await;
+        let mut enabled: Vec<&OcrModelConfig> =
+            available.iter().filter(|m| m.enabled).collect();
+        enabled.sort_by_key(|m| m.priority);
+
+        if let Some(first) = enabled.first() {
+            return OcrEngineType::from_str(&first.engine_type);
+        }
+
+        // 回退到 legacy 设置
         let engine_str = self
             .db
             .get_setting("ocr.engine_type")

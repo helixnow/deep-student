@@ -27,7 +27,7 @@ use crate::vfs::database::VfsDatabase;
 use crate::vfs::error::{VfsError, VfsResult};
 use crate::vfs::lance_store::{VfsLanceRow, VfsLanceSearchResult, VfsLanceStore};
 use crate::vfs::repos::{
-    VfsBlobRepo, VfsDimensionRepo, VfsExamRepo, VfsFileRepo, VfsResourceRepo, VfsTextbookRepo,
+    embedding_dim_repo, VfsBlobRepo, VfsExamRepo, VfsFileRepo, VfsResourceRepo, VfsTextbookRepo,
     MODALITY_MULTIMODAL,
 };
 
@@ -326,18 +326,17 @@ impl VfsMultimodalService {
         let count = rows.len();
 
         // 6. 更新维度统计
-        VfsDimensionRepo::register_dimension(
-            &self.vfs_db,
-            dimension as i32,
-            MODALITY_MULTIMODAL,
-            None,
-        )?;
-        VfsDimensionRepo::increment_record_count(
-            &self.vfs_db,
-            dimension as i32,
-            MODALITY_MULTIMODAL,
-            count as i32,
-        )?;
+        // ★ 审计修复：统一使用 embedding_dim_repo（替代已废弃的 VfsDimensionRepo）
+        {
+            let conn = self.vfs_db.get_conn()?;
+            embedding_dim_repo::register(&conn, dimension as i32, MODALITY_MULTIMODAL)?;
+            embedding_dim_repo::increment_count(
+                &conn,
+                dimension as i32,
+                MODALITY_MULTIMODAL,
+                count as i64,
+            )?;
+        }
 
         info!(
             "[VfsMultimodalService] Successfully indexed {} pages for resource {} (dim={})",
@@ -432,10 +431,22 @@ impl VfsMultimodalService {
     }
 
     /// 删除资源的多模态索引
+    ///
+    /// ★ 审计修复：删除后刷新 record_count
     pub async fn delete_resource_index(&self, resource_id: &str) -> VfsResult<()> {
         self.lance_store
             .delete_by_resource(MODALITY_MULTIMODAL, resource_id)
             .await?;
+
+        // ★ 审计修复：刷新 record_count，防止删除后计数漂移
+        if let Ok(conn) = self.vfs_db.get_conn() {
+            if let Err(e) = embedding_dim_repo::refresh_counts_from_segments(&conn) {
+                warn!(
+                    "[VfsMultimodalService] Failed to refresh counts after deleting {}: {}",
+                    resource_id, e
+                );
+            }
+        }
 
         info!(
             "[VfsMultimodalService] Deleted multimodal index for resource {}",
@@ -447,14 +458,14 @@ impl VfsMultimodalService {
 
     /// 获取多模态索引统计信息
     pub async fn get_stats(&self) -> VfsResult<VfsMultimodalStats> {
-        let dims = VfsDimensionRepo::list_dimensions(&self.vfs_db)?;
+        // ★ 审计修复：统一使用 embedding_dim_repo（替代已废弃的 VfsDimensionRepo）
+        let conn = self.vfs_db.get_conn()?;
+        let dims = embedding_dim_repo::list_by_modality(&conn, MODALITY_MULTIMODAL)?;
+        drop(conn);
 
-        let mm_dims: Vec<_> = dims
-            .into_iter()
-            .filter(|d| d.modality == MODALITY_MULTIMODAL)
-            .collect();
+        let mm_dims = &dims;
 
-        let total_records: i32 = mm_dims.iter().map(|d| d.record_count).sum();
+        let total_records: i64 = mm_dims.iter().map(|d| d.record_count).sum();
         let dimensions: Vec<i32> = mm_dims.iter().map(|d| d.dimension).collect();
 
         Ok(VfsMultimodalStats {

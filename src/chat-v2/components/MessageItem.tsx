@@ -965,7 +965,6 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                         onEdit={isUser ? handleEdit : undefined}
                         onDelete={handleDelete}
                         onSaveAsNote={!isUser ? handleSaveAsNote : undefined}
-                        onExportMarkdown={!isUser ? handleExportMarkdown : undefined}
                       />
                     )}
                     {message.timestamp && (
@@ -996,7 +995,6 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                         onEdit={isUser ? handleEdit : undefined}
                         onDelete={handleDelete}
                         onSaveAsNote={!isUser ? handleSaveAsNote : undefined}
-                        onExportMarkdown={!isUser ? handleExportMarkdown : undefined}
                       />
                     )}
                     {/* 移动端用户消息的时间显示（AI 消息时间在第二行渲染） */}

@@ -244,9 +244,11 @@ pub fn create_dimension(
 ///
 /// 删除顺序：
 /// 1. vfs_index_segments 中该维度的所有记录
-/// 2. vfs_embedding_dims 中的维度记录
+/// 2. 重置受影响的 vfs_index_units 状态（避免孤儿 units）
+/// 3. vfs_embedding_dims 中的维度记录
 ///
 /// S3 fix: 使用事务包裹，确保原子性
+/// ★ 审计修复：删除 segments 后重置受影响 units 的状态，防止孤儿 units
 ///
 /// 返回删除的 segment 数量
 pub fn delete_dimension_cascade(
@@ -260,6 +262,38 @@ pub fn delete_dimension_cascade(
         "DELETE FROM vfs_index_segments WHERE embedding_dim = ?1 AND modality = ?2",
         params![dimension, modality],
     )?;
+
+    // ★ 审计修复：重置受影响 units 的状态，防止孤儿 units
+    // 找到不再有任何同模态 segments 的 units，重置其状态为 pending
+    let now = now_ms();
+    if modality == "multimodal" {
+        tx.execute(
+            "UPDATE vfs_index_units SET
+                mm_state = 'pending',
+                mm_embedding_dim = NULL,
+                mm_error = NULL,
+                updated_at = ?1
+            WHERE mm_embedding_dim = ?2
+            AND id NOT IN (
+                SELECT DISTINCT unit_id FROM vfs_index_segments WHERE modality = 'multimodal'
+            )",
+            params![now, dimension],
+        )?;
+    } else {
+        tx.execute(
+            "UPDATE vfs_index_units SET
+                text_state = 'pending',
+                text_embedding_dim = NULL,
+                text_chunk_count = 0,
+                text_error = NULL,
+                updated_at = ?1
+            WHERE text_embedding_dim = ?2
+            AND id NOT IN (
+                SELECT DISTINCT unit_id FROM vfs_index_segments WHERE modality = 'text'
+            )",
+            params![now, dimension],
+        )?;
+    }
 
     tx.execute(
         "DELETE FROM vfs_embedding_dims WHERE dimension = ?1 AND modality = ?2",
@@ -401,10 +435,13 @@ pub fn list_with_model_binding(conn: &Connection) -> Result<Vec<VfsEmbeddingDim>
 }
 
 /// 根据资源从 Segments 统计并更新所有维度的 record_count
+///
+/// ★ 审计修复：仅在 record_count > 0 时更新 last_used_at，
+/// 避免空维度的 last_used_at 被无意义地刷新
 pub fn refresh_counts_from_segments(conn: &Connection) -> Result<(), VfsError> {
     let now = now_ms();
 
-    // 更新所有维度的 record_count
+    // 更新所有维度的 record_count，仅在有数据时更新 last_used_at
     conn.execute(
         "UPDATE vfs_embedding_dims SET
             record_count = (
@@ -412,7 +449,14 @@ pub fn refresh_counts_from_segments(conn: &Connection) -> Result<(), VfsError> {
                 WHERE vfs_index_segments.modality = vfs_embedding_dims.modality
                 AND vfs_index_segments.embedding_dim = vfs_embedding_dims.dimension
             ),
-            last_used_at = ?1",
+            last_used_at = CASE
+                WHEN (
+                    SELECT COUNT(*) FROM vfs_index_segments
+                    WHERE vfs_index_segments.modality = vfs_embedding_dims.modality
+                    AND vfs_index_segments.embedding_dim = vfs_embedding_dims.dimension
+                ) > 0 THEN ?1
+                ELSE last_used_at
+            END",
         params![now],
     )?;
 

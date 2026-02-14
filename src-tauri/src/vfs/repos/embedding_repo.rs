@@ -61,7 +61,8 @@ impl VfsEmbedding {
 pub struct VfsEmbeddingDimension {
     pub dimension: i32,
     pub modality: String,
-    pub record_count: i32,
+    /// ★ 审计修复：统一为 i64，与 embedding_dim_repo::VfsEmbeddingDim 保持一致
+    pub record_count: i64,
     pub lance_table_name: String,
     pub created_at: i64,
     pub last_used_at: i64,

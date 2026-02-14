@@ -2630,7 +2630,7 @@ use crate::vfs::indexing::{
     VfsSearchResult, VfsSearchService,
 };
 use crate::vfs::lance_store::VfsLanceStore;
-use crate::vfs::repos::{VfsDimensionRepo, VfsIndexingConfigRepo};
+use crate::vfs::repos::VfsIndexingConfigRepo;
 
 #[tauri::command]
 pub async fn vfs_search(
@@ -2828,7 +2828,24 @@ pub async fn vfs_list_dimensions(
     vfs_db: State<'_, Arc<VfsDatabase>>,
 ) -> Result<Vec<crate::vfs::repos::VfsEmbeddingDimension>, String> {
     log::debug!("[VFS::handlers] vfs_list_dimensions");
-    VfsDimensionRepo::list_dimensions(&vfs_db).map_err(|e| e.to_string())
+    // ★ 审计修复：统一使用 embedding_dim_repo（替代已废弃的 VfsDimensionRepo）
+    // 返回类型仍为 VfsEmbeddingDimension 以保持 API 兼容
+    let conn = vfs_db.get_conn().map_err(|e| e.to_string())?;
+    let dims = crate::vfs::repos::embedding_dim_repo::list_all(&conn)
+        .map_err(|e| e.to_string())?;
+    Ok(dims
+        .into_iter()
+        .map(|d| crate::vfs::repos::VfsEmbeddingDimension {
+            dimension: d.dimension,
+            modality: d.modality,
+            record_count: d.record_count,
+            lance_table_name: d.lance_table_name,
+            created_at: d.created_at,
+            last_used_at: d.last_used_at,
+            model_config_id: d.model_config_id,
+            model_name: d.model_name,
+        })
+        .collect())
 }
 
 #[tauri::command]
@@ -2864,18 +2881,22 @@ pub async fn vfs_assign_dimension_model(
         model_config_id
     );
 
-    // 更新维度的模型绑定
-    let updated = VfsDimensionRepo::update_model_assignment(
-        &vfs_db,
-        dimension,
-        &modality,
-        &model_config_id,
-        &model_name,
-    )
-    .map_err(|e| e.to_string())?;
-    if !updated {
+    // ★ 审计修复：统一使用 embedding_dim_repo（替代已废弃的 VfsDimensionRepo）
+    let conn = vfs_db.get_conn().map_err(|e| e.to_string())?;
+    let existing = crate::vfs::repos::embedding_dim_repo::get_by_key(&conn, dimension, &modality)
+        .map_err(|e| e.to_string())?;
+    if existing.is_none() {
         return Err(format!("维度 {}:{} 不存在", dimension, modality));
     }
+    crate::vfs::repos::embedding_dim_repo::register_with_model(
+        &conn,
+        dimension,
+        &modality,
+        Some(&model_config_id),
+        Some(&model_name),
+    )
+    .map_err(|e| e.to_string())?;
+    drop(conn);
 
     // 检查该维度是否是当前的默认嵌入维度，如果是则同步更新 settings 中的模型配置ID
     let (dim_key, model_key) = match modality.as_str() {
@@ -3074,6 +3095,14 @@ pub async fn vfs_set_default_embedding_dimension(
     let dim_info = crate::vfs::repos::embedding_dim_repo::get_by_key(&conn, dimension, &modality)
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("维度 {}:{} 不存在", dimension, modality))?;
+
+    // ★ 审计修复：后端也校验模型绑定，与前端保持一致
+    if dim_info.model_config_id.is_none() {
+        log::warn!(
+            "[VFS::handlers] Dimension {}:{} has no model binding, allowing set_default but clearing model config",
+            dimension, modality
+        );
+    }
 
     // 保存维度值和模型配置ID到 settings
     let (dim_key, model_key) = match modality.as_str() {
@@ -4708,8 +4737,9 @@ pub struct SegmentsStats {
 pub struct DimensionStats {
     pub dimension: i32,
     pub modality: String,
-    pub record_count: i32,
-    pub actual_count: i32,
+    /// ★ 审计修复：统一为 i64
+    pub record_count: i64,
+    pub actual_count: i64,
 }
 
 #[derive(Debug, Clone, Serialize)]

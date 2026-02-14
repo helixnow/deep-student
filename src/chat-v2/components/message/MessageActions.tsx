@@ -2,7 +2,7 @@
  * MessageActions - 消息操作按钮组件
  */
 import React, { useCallback, useState } from 'react';
-import { Copy, Check, RotateCcw, Trash2, Edit3, Bug, BookmarkPlus, Download } from 'lucide-react';
+import { Copy, Check, RotateCcw, Trash2, Edit3, Bug, BookmarkPlus } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
 import {
@@ -32,8 +32,6 @@ export interface MessageActionsProps {
   onCopyDebug?: () => Promise<void>;
   /** 🆕 保存为 VFS 笔记 */
   onSaveAsNote?: () => Promise<void>;
-  /** 🆕 导出为 Markdown 文件 */
-  onExportMarkdown?: () => Promise<void>;
   className?: string;
 }
 
@@ -49,7 +47,6 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
   onEdit,
   onDelete,
   onSaveAsNote,
-  onExportMarkdown,
   onCopyDebug,
   className,
 }) => {
@@ -78,12 +75,6 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
       setIsSavingNote(false);
     }
   }, [onSaveAsNote, isSavingNote]);
-
-  // 🆕 导出为 Markdown
-  const handleExportMarkdown = useCallback(async () => {
-    if (!onExportMarkdown) return;
-    await onExportMarkdown();
-  }, [onExportMarkdown]);
 
   // 🆕 复制调试信息
   const handleCopyDebug = useCallback(async () => {
@@ -148,17 +139,6 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
           title={t('messageItem.actions.saveAsNote')}
         >
           <BookmarkPlus className={cn('w-4 h-4', isSavingNote && 'animate-pulse')} />
-        </button>
-      )}
-
-      {/* 🆕 导出为 Markdown 文件按钮（仅助手消息） */}
-      {onExportMarkdown && (
-        <button
-          onClick={handleExportMarkdown}
-          className="p-1.5 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-          title={t('messageItem.actions.exportMarkdown')}
-        >
-          <Download className="w-4 h-4" />
         </button>
       )}
 

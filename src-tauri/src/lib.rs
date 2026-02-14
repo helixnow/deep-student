@@ -1488,6 +1488,7 @@ pub fn run() {
             ,crate::data_governance::commands::data_governance_get_database_status
             ,crate::data_governance::commands::data_governance_run_health_check
             ,crate::data_governance::commands::data_governance_get_audit_logs
+            ,crate::data_governance::commands::data_governance_cleanup_audit_logs
             ,crate::data_governance::commands::data_governance_run_backup
             ,crate::data_governance::commands::data_governance_cancel_backup
             ,crate::data_governance::commands::data_governance_get_backup_job

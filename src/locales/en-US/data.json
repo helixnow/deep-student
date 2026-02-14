@@ -769,6 +769,7 @@
     "operation_backup": "Backup",
     "operation_restore": "Restore",
     "operation_sync": "Sync",
+    "operation_maintenance": "Maintenance",
     "time": "Time",
     "operation": "Operation",
     "target": "Target",

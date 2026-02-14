@@ -285,6 +285,12 @@ export const OcrEngineCard: React.FC<OcrEngineCardProps> = ({ className, apiConf
                         {t('settings:ocr.free')}
                       </span>
                     )}
+
+                    {engine.engineType === 'system_ocr' && (
+                      <span className="text-[10px] text-purple-600/80 dark:text-purple-400/80 shrink-0">
+                        {t('settings:ocr.offline', '离线')}
+                      </span>
+                    )}
                     
                     {engine.supportsGrounding && (
                       <span className="text-[10px] text-blue-600/80 dark:text-blue-400/80 shrink-0">
@@ -300,7 +306,11 @@ export const OcrEngineCard: React.FC<OcrEngineCardProps> = ({ className, apiConf
                   </div>
                   
                   <p className="text-[10px] text-muted-foreground/50 leading-relaxed line-clamp-1">
-                    {engine.engineType === 'generic_vlm' ? engine.model : (engine.description || engine.model)}
+                    {engine.engineType === 'system_ocr'
+                      ? (engine.description || '调用操作系统内置 OCR 引擎')
+                      : engine.engineType === 'generic_vlm'
+                        ? engine.model
+                        : (engine.description || engine.model)}
                   </p>
                 </div>
 
@@ -322,18 +332,20 @@ export const OcrEngineCard: React.FC<OcrEngineCardProps> = ({ className, apiConf
                   >
                     <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 9L3 5H9L6 9Z" fill="currentColor"/></svg>
                   </button>
-                  <button
-                    onClick={() => {
-                      if (window.confirm(t('settings:ocr.confirm_remove', { name: engine.name }))) {
-                        handleRemoveEngine(engine.configId);
-                      }
-                    }}
-                    disabled={saving}
-                    className="p-0.5 text-muted-foreground/30 hover:text-red-500 transition-colors ml-0.5"
-                    title={t('common:delete')}
-                  >
-                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M3 3L9 9M9 3L3 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
-                  </button>
+                  {engine.engineType !== 'system_ocr' && (
+                    <button
+                      onClick={() => {
+                        if (window.confirm(t('settings:ocr.confirm_remove', { name: engine.name }))) {
+                          handleRemoveEngine(engine.configId);
+                        }
+                      }}
+                      disabled={saving}
+                      className="p-0.5 text-muted-foreground/30 hover:text-red-500 transition-colors ml-0.5"
+                      title={t('common:delete')}
+                    >
+                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M3 3L9 9M9 3L3 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
+                    </button>
+                  )}
                 </div>
               </div>
             ))
