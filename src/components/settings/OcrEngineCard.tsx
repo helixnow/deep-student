@@ -205,6 +205,7 @@ export const OcrEngineCard: React.FC<OcrEngineCardProps> = ({ className, apiConf
   }, [loadEngines, t]);
 
   const enabledCount = engines.filter((e) => e.enabled).length;
+  const firstEnabledIndex = engines.findIndex((e) => e.enabled);
 
   return (
     <div className={cn("text-left overflow-hidden min-w-0", className)}>
@@ -291,7 +292,7 @@ export const OcrEngineCard: React.FC<OcrEngineCardProps> = ({ className, apiConf
                       </span>
                     )}
 
-                    {index === 0 && engine.enabled && (
+                    {index === firstEnabledIndex && engine.enabled && (
                       <span className="text-[10px] text-amber-600/80 dark:text-amber-400/80 shrink-0">
                         {t('settings:ocr.primary')}
                       </span>
@@ -299,7 +300,7 @@ export const OcrEngineCard: React.FC<OcrEngineCardProps> = ({ className, apiConf
                   </div>
                   
                   <p className="text-[10px] text-muted-foreground/50 leading-relaxed line-clamp-1">
-                    {engine.description || engine.model}
+                    {engine.engineType === 'generic_vlm' ? engine.model : (engine.description || engine.model)}
                   </p>
                 </div>
 
@@ -322,7 +323,11 @@ export const OcrEngineCard: React.FC<OcrEngineCardProps> = ({ className, apiConf
                     <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 9L3 5H9L6 9Z" fill="currentColor"/></svg>
                   </button>
                   <button
-                    onClick={() => handleRemoveEngine(engine.configId)}
+                    onClick={() => {
+                      if (window.confirm(t('settings:ocr.confirm_remove', { name: engine.name }))) {
+                        handleRemoveEngine(engine.configId);
+                      }
+                    }}
                     disabled={saving}
                     className="p-0.5 text-muted-foreground/30 hover:text-red-500 transition-colors ml-0.5"
                     title={t('common:delete')}
@@ -359,12 +364,12 @@ export const OcrEngineCard: React.FC<OcrEngineCardProps> = ({ className, apiConf
               )}
             </div>
 
-            {engines.length >= 2 && (
+            {engines.length >= 1 && (
               <button
                 onClick={() => setShowTestPanel(!showTestPanel)}
                 className="text-[11px] text-muted-foreground/60 hover:text-foreground transition-colors"
               >
-                {showTestPanel ? t('settings:ocr.collapse_test') : t('settings:ocr.engine_comparison_test')}
+                {showTestPanel ? t('settings:ocr.collapse_test') : (engines.length >= 2 ? t('settings:ocr.engine_comparison_test') : t('settings:ocr.engine_test'))}
               </button>
             )}
           </div>
@@ -400,7 +405,7 @@ export const OcrEngineCard: React.FC<OcrEngineCardProps> = ({ className, apiConf
         )}
 
         {/* 引擎对比测试 */}
-        {showTestPanel && engines.length >= 2 && (
+        {showTestPanel && engines.length >= 1 && (
           <div className="pt-2">
             <OcrEngineTestPanel
               availableModels={engines}

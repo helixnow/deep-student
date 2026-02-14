@@ -176,7 +176,7 @@ export const PdfReader: React.FC<PdfReaderProps> = () => {
         }
         // 通过后端读取文件字节
         const bytes = await TauriAPI.readFileAsBytes(selected);
-        const blob = new Blob([new Uint8Array(bytes)], { type: 'application/pdf' });
+        const blob = new Blob([bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer], { type: 'application/pdf' });
         const name = selected.split(/[/\\]/).pop() || 'document.pdf';
         const pdfFile = new File([blob], name, { type: 'application/pdf' });
         setFile(pdfFile);

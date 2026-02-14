@@ -50,6 +50,7 @@ interface AvailableOcrModel {
   isFree: boolean;
   description?: string;
   supportsGrounding: boolean;
+  enabled: boolean;
 }
 
 interface OcrEngineTestPanelProps {
@@ -64,14 +65,8 @@ export const OcrEngineTestPanel: React.FC<OcrEngineTestPanelProps> = ({
   const { t } = useTranslation(['settings', 'common']);
   const clickInputRef = useRef<HTMLInputElement>(null);
   const maxImageSize = 10 * 1024 * 1024;
-  const engineModels = useMemo(() => {
-    const seen = new Set<string>();
-    return availableModels.filter((model) => {
-      if (seen.has(model.engineType)) return false;
-      seen.add(model.engineType);
-      return true;
-    });
-  }, [availableModels]);
+  // 测试所有已配置的引擎（不按 engineType 去重，支持同类型多引擎对比）
+  const engineModels = availableModels;
   
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
@@ -129,6 +124,7 @@ export const OcrEngineTestPanel: React.FC<OcrEngineTestPanelProps> = ({
             request: {
               imageBase64: selectedImage,
               engineType: model.engineType,
+              configId: model.configId,
             },
           });
         } catch (error: unknown) {
@@ -262,7 +258,7 @@ export const OcrEngineTestPanel: React.FC<OcrEngineTestPanelProps> = ({
           <div className="grid gap-3">
             {results.map((result, index) => (
               <div
-                key={result.engineType}
+                key={`${result.engineType}-${index}`}
                 className={`
                   border rounded-lg p-3
                   ${result.success ? 'border-border' : 'border-red-300 bg-red-50 dark:bg-red-900/10'}
@@ -277,6 +273,11 @@ export const OcrEngineTestPanel: React.FC<OcrEngineTestPanelProps> = ({
                       <XCircle size={16} className="text-red-500" />
                     )}
                     <span className="font-medium text-sm">{result.engineName}</span>
+                    {!engineModels[index]?.enabled && (
+                      <span className="text-xs px-1.5 py-0.5 bg-muted text-muted-foreground rounded">
+                        {t('settings:ocr.disabled')}
+                      </span>
+                    )}
                     {engineModels[index]?.isFree && (
                       <span className="text-xs px-1.5 py-0.5 bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 rounded">
                         {t('settings:ocr.free')}

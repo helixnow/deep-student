@@ -437,32 +437,14 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
       const content = `${t('translation:languages.source_lang')} (${srcLang}):\n${sourceText}\n\n${t('translation:languages.target_lang')} (${tgtLang}):\n${translatedText}\n\nDate: ${new Date().toLocaleString()}`;
 
       // Prefer Tauri native save dialog (works reliably in desktop app)
-      const isTauri = Boolean(
-        (window as any).__TAURI_INTERNALS__
-      );
-
-      if (isTauri) {
-        const result = await fileManager.saveTextFile({
-          title: t('translation:target_section.export_title', { defaultValue: 'Export Translation' }),
-          defaultFileName: `translation_${new Date().getTime()}.txt`,
-          filters: [{ name: 'Text', extensions: ['txt'] }],
-          content,
-        });
-        if (result.canceled) return;
-        showGlobalNotification('success', t('translation:target_section.exported'));
-      } else {
-        // Fallback: browser Blob URL download (for non-Tauri environments)
-        const blob = new Blob([content], { type: 'text/plain' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `translation_${new Date().getTime()}.txt`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-        showGlobalNotification('success', t('translation:target_section.exported'));
-      }
+      const result = await fileManager.saveTextFile({
+        title: t('translation:target_section.export_title', { defaultValue: 'Export Translation' }),
+        defaultFileName: `translation_${new Date().getTime()}.txt`,
+        filters: [{ name: 'Text', extensions: ['txt'] }],
+        content,
+      });
+      if (result.canceled) return;
+      showGlobalNotification('success', t('translation:target_section.exported'));
     } catch (error: unknown) {
       console.error('[Translation] Failed to export:', error);
       showGlobalNotification('error', t('translation:errors.export_failed', { error: getErrorMessage(error) }));

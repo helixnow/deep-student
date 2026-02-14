@@ -916,16 +916,7 @@ ${resolvedPath}`);
     }
 
     if (!saved) {
-      try {
-        await fileManager.saveTextFile({
-          title: t('export_stats_title'),
-          defaultFileName,
-          content: json,
-          filters: [{ name: t('data:file_filter_json'), extensions: ['json'] }],
-        });
-      } catch (fallbackErr) {
-        debugLog.error('[DataImportExport] Fallback save also failed:', fallbackErr);
-      }
+      debugLog.warn('[DataImportExport] Export stats was not saved (user canceled or error occurred)');
     }
   }, [statsData, t]);
 

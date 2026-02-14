@@ -4,6 +4,7 @@ import { X, ExternalLink, Download, ZoomIn, ZoomOut, Home, Copy, Search, WrapTex
 import { openUrl } from '@/utils/urlOpener';
 import { useTranslation } from 'react-i18next';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
+import { fileManager } from '@/utils/fileManager';
 
 interface DocumentViewerProps {
   isOpen: boolean;
@@ -112,31 +113,22 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({
     openUrl(url);
   };
 
-  const handleDownload = () => {
+  const handleDownload = async () => {
     if (textContent) {
-      // 文本内容下载
       try {
-        const blob = new Blob([textContent], { type: 'text/plain;charset=utf-8' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = fileName || title || 'document.txt';
-        a.rel = 'noopener noreferrer';
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+        const defaultName = fileName || title || 'document.txt';
+        await fileManager.saveTextFile({
+          title: defaultName,
+          defaultFileName: defaultName,
+          content: textContent,
+          filters: [{ name: 'Text', extensions: ['txt'] }],
+        });
       } catch (e: unknown) {
         console.error('下载失败:', e);
         showGlobalNotification('error', t('document_viewer.download_failed'));
       }
     } else if (url) {
-      // URL下载
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = fileName || title || 'document';
-      a.rel = 'noopener noreferrer';
-      a.click();
+      openUrl(url);
     }
   };
 

@@ -17,6 +17,7 @@ import {
 import { useEssayGradingStream } from '../essay-grading/useEssayGradingStream';
 import { ocrExtractText, TauriAPI } from '../utils/tauriApi';
 import { getErrorMessage } from '../utils/errorUtils';
+import { fileManager } from '../utils/fileManager';
 import { showGlobalNotification } from './UnifiedNotification';
 import { CustomScrollArea } from './custom-scroll-area';
 import { MacTopSafeDragZone } from './layout/MacTopSafeDragZone';
@@ -561,7 +562,7 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({ on
   }, [gradingResult, t]);
 
   // 导出结果
-  const handleExportResult = useCallback(() => {
+  const handleExportResult = useCallback(async () => {
     const safeInput = inputText ?? '';
     const safeResult = gradingResult ?? '';
     const now = new Date();
@@ -573,16 +574,20 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({ on
     content += `## ${t('essay_grading:input_section.title')}\n\n${safeInput}\n\n`;
     content += `## ${t('essay_grading:result_section.title')}\n\n${safeResult}\n`;
 
-    const blob = new Blob([content], { type: 'text/markdown' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `essay_grading_${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}.md`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    showGlobalNotification('success', t('essay_grading:result_section.exported'));
+    const defaultName = `essay_grading_${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}.md`;
+    try {
+      const result = await fileManager.saveTextFile({
+        title: defaultName,
+        defaultFileName: defaultName,
+        content,
+        filters: [{ name: 'Markdown', extensions: ['md'] }],
+      });
+      if (!result.canceled) {
+        showGlobalNotification('success', t('essay_grading:result_section.exported'));
+      }
+    } catch (e) {
+      console.error('[EssayGradingWorkbench] Export failed:', e);
+    }
   }, [inputText, gradingResult, currentRoundNumber, t]);
 
   // 清空（有内容时弹出确认）

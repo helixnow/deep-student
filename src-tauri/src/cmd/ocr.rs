@@ -161,10 +161,34 @@ pub async fn get_available_ocr_models(
             .map_err(|e| AppError::database(format!("解析 OCR 模型配置失败: {}", e)))?;
 
         // M14 fix: 使用共享迁移函数
-        if migrate_paddle_ocr_models(&mut models) {
+        let mut needs_save = migrate_paddle_ocr_models(&mut models);
+        if needs_save {
+            println!("[OCR] 已自动迁移 PaddleOCR-VL 配置到 1.5 版本");
+        }
+
+        // 交叉验证：过滤掉 config_id 对应的 API 配置已被删除的孤儿引擎
+        // 注意：仅在成功获取 API 配置时才执行清理，避免临时 DB 错误导致误删全部引擎
+        if let Ok(api_configs) = state.llm_manager.get_api_configs().await {
+            let valid_config_ids: std::collections::HashSet<String> =
+                api_configs.iter().map(|c| c.id.clone()).collect();
+            let before_len = models.len();
+            models.retain(|m| valid_config_ids.contains(&m.config_id));
+            if models.len() < before_len {
+                needs_save = true;
+                // 重新编号优先级
+                for (i, model) in models.iter_mut().enumerate() {
+                    model.priority = i as u32;
+                }
+                println!(
+                    "[OCR] 已清理 {} 个孤儿 OCR 引擎（对应 API 配置已删除）",
+                    before_len - models.len()
+                );
+            }
+        }
+
+        if needs_save {
             if let Ok(updated_json) = serde_json::to_string(&models) {
                 let _ = db.save_setting("ocr.available_models", &updated_json);
-                println!("[OCR] 已自动迁移 PaddleOCR-VL 配置到 1.5 版本");
             }
         }
 
@@ -349,12 +373,19 @@ pub async fn add_ocr_engine(
 
     let max_priority = models.iter().map(|m| m.priority).max().unwrap_or(0);
 
+    // 推断 is_free：匹配内置引擎信息
+    let is_free = OcrAdapterFactory::engine_info_list()
+        .iter()
+        .find(|e| e.engine_type == OcrEngineType::from_str(&effective_engine_type))
+        .map(|e| e.is_free)
+        .unwrap_or(false);
+
     models.push(OcrModelConfig {
         config_id,
         model,
         engine_type: effective_engine_type,
         name,
-        is_free: false,
+        is_free,
         enabled: true,
         priority: max_priority + 1,
     });
@@ -413,6 +444,8 @@ pub struct OcrTestRequest {
     pub image_base64: String,
     /// 要测试的引擎类型
     pub engine_type: String,
+    /// 可选：精确指定的模型配置 ID（优先于 engine_type）
+    pub config_id: Option<String>,
 }
 
 /// OCR 测试响应
@@ -457,11 +490,25 @@ pub async fn test_ocr_engine(
 
     let engine_type = OcrEngineType::from_str(&request.engine_type);
     let adapter = OcrAdapterFactory::create(engine_type);
-    let engine_info = OcrAdapterFactory::engine_info_list()
-        .into_iter()
-        .find(|e| e.engine_type == engine_type)
-        .map(|e| e.name.to_string())
-        .unwrap_or_else(|| engine_type.as_str().to_string());
+    // 优先使用用户配置的名称（通过 config_id 查找），回退到适配器名称
+    let engine_info = if let Some(ref cid) = request.config_id {
+        let db = &state.database;
+        db.get_setting("ocr.available_models")
+            .ok()
+            .flatten()
+            .and_then(|json| serde_json::from_str::<Vec<OcrModelConfig>>(&json).ok())
+            .and_then(|models| models.into_iter().find(|m| m.config_id == *cid))
+            .map(|m| m.name)
+    } else {
+        None
+    }
+    .unwrap_or_else(|| {
+        OcrAdapterFactory::engine_info_list()
+            .into_iter()
+            .find(|e| e.engine_type == engine_type)
+            .map(|e| e.name.to_string())
+            .unwrap_or_else(|| engine_type.as_str().to_string())
+    });
 
     let start = Instant::now();
 
@@ -493,10 +540,14 @@ pub async fn test_ocr_engine(
     }
     let _cleanup_guard = TempFileGuard(temp_path.clone());
 
-    // 调用 LLM 进行 OCR
+    // 调用 LLM 进行 OCR（优先使用 config_id 精确查找）
     let ocr_result = state
         .llm_manager
-        .test_ocr_with_engine(temp_path.to_string_lossy().to_string(), engine_type)
+        .test_ocr_with_engine(
+            temp_path.to_string_lossy().to_string(),
+            engine_type,
+            request.config_id.as_deref(),
+        )
         .await;
 
     let elapsed_ms = start.elapsed().as_millis() as u64;

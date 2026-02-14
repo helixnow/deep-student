@@ -1402,7 +1402,13 @@ export class TauriAPI {
             if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
             const blob = await resp.blob();
             const arr = await blob.arrayBuffer();
-            const base64 = btoa(String.fromCharCode(...new Uint8Array(arr)));
+            const bytes = new Uint8Array(arr);
+            let binary = '';
+            const chunkSize = 8192;
+            for (let i = 0; i < bytes.length; i += chunkSize) {
+              binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+            }
+            const base64 = btoa(binary);
             return base64;
           } catch (e3) {
             throw e2; // 抛出原始 Tauri 错误，方便定位命令问题

@@ -769,20 +769,41 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
           // 不阻止整体流程
         }
 
-        // M6 fix: 通过 invoke 命令保存 OCR 模型配置（统一入口，避免格式不一致）
-        // 现在支持优先级列表：所有引擎默认启用，按数组顺序分配优先级
+        // M6 fix: 合并模式 — 保留用户已有的自定义 OCR 引擎，仅补充预设引擎
         try {
-          const ocrModelConfigs = PRESET_OCR_MODELS.map((ocrModel, idx) => ({
-            configId: idMap[ocrConfigIds[idx]] || ocrConfigIds[idx],
-            model: ocrModel.model,
-            engineType: ocrModel.engineType,
-            name: ocrModel.name,
-            isFree: ocrModel.isFree,
-            enabled: true,
-            priority: idx,
-          }));
-          await invoke('save_available_ocr_models', { models: ocrModelConfigs });
-          console.log('📝 已保存 OCR 模型配置（优先级列表）:', ocrModelConfigs);
+          // 先读取现有引擎列表
+          let existingEngines: Array<{ configId: string; model: string; engineType: string; name: string; isFree: boolean; enabled: boolean; priority: number }> = [];
+          try {
+            existingEngines = await invoke<typeof existingEngines>('get_available_ocr_models');
+          } catch { /* 首次使用，列表为空 */ }
+
+          // 合并逻辑：预设引擎排在前面，已有自定义引擎追加在后
+          // 对于每个预设：若已存在则保留（保持 enabled 状态）并更新 configId，否则新增
+          const merged = [
+            ...PRESET_OCR_MODELS.map((ocrModel, idx) => {
+              const existing = existingEngines.find(e => e.model === ocrModel.model);
+              const newConfigId = idMap[ocrConfigIds[idx]] || ocrConfigIds[idx];
+              if (existing) {
+                // 已存在：保留用户的 enabled 状态，更新 configId（可能因重分配而变化）
+                return { ...existing, configId: newConfigId };
+              }
+              // 新增预设引擎
+              return {
+                configId: newConfigId,
+                model: ocrModel.model,
+                engineType: ocrModel.engineType,
+                name: ocrModel.name,
+                isFree: ocrModel.isFree,
+                enabled: true,
+                priority: idx,
+              };
+            }),
+            // 保留用户自定义引擎（非预设的）
+            ...existingEngines.filter(e => !PRESET_OCR_MODELS.some(p => p.model === e.model)),
+          ].map((e, i) => ({ ...e, priority: i }));
+
+          await invoke('save_available_ocr_models', { models: merged });
+          console.log('📝 已合并保存 OCR 模型配置（保留自定义引擎）:', merged);
         } catch (e: unknown) {
           console.warn('保存 OCR 模型配置失败:', e);
         }

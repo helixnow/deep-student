@@ -2241,6 +2241,7 @@ impl LLMManager {
         &self,
         image_path: String,
         engine_type: crate::ocr_adapters::OcrEngineType,
+        config_id: Option<&str>,
     ) -> Result<(String, Vec<crate::ocr_adapters::OcrRegion>)> {
         use crate::ocr_adapters::{OcrAdapterFactory, OcrMode, OcrRegion};
         use crate::providers::ProviderAdapter;
@@ -2251,8 +2252,16 @@ impl LLMManager {
         let engine_name = adapter.display_name();
         let ocr_mode = OcrMode::Grounding;
 
-        // 查找该引擎对应的模型配置
-        let config = self.get_ocr_model_config_for_engine(engine_type).await?;
+        // 优先通过 config_id 精确查找，回退到 engine_type 查找
+        let config = if let Some(cid) = config_id {
+            let configs = self.get_api_configs().await?;
+            configs
+                .into_iter()
+                .find(|c| c.id == cid)
+                .ok_or_else(|| AppError::configuration(format!("找不到配置 ID: {}", cid)))?
+        } else {
+            self.get_ocr_model_config_for_engine(engine_type).await?
+        };
 
         debug!(
             "[OCR Test] 使用引擎 {} 测试，模型: {}",

@@ -35,6 +35,7 @@ import { showGlobalNotification } from '../UnifiedNotification';
 import { useMobileHeader, MobileSlidingLayout, ScreenPosition } from '@/components/layout';
 import { MOBILE_LAYOUT } from '@/config/mobileLayout';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
+import { fileManager } from '@/utils/fileManager';
 
 // Skills 模块
 import {
@@ -390,7 +391,7 @@ export const SkillsManagementPage: React.FC<SkillsManagementPageProps> = ({
   }, []);
 
   // 导出技能为 SKILL.md 文件
-  const handleExport = useCallback((skill: SkillDefinition) => {
+  const handleExport = useCallback(async (skill: SkillDefinition) => {
     const content = serializeSkillToMarkdown(
       {
         name: skill.name,
@@ -408,23 +409,26 @@ export const SkillsManagementPage: React.FC<SkillsManagementPageProps> = ({
       skill.content
     );
 
-    const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${skill.id}.SKILL.md`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-
-    showGlobalNotification(
-      'success',
-      t('skills:management.export_success', '技能已导出')
-    );
+    try {
+      const defaultName = `${skill.id}.SKILL.md`;
+      const result = await fileManager.saveTextFile({
+        title: defaultName,
+        defaultFileName: defaultName,
+        content,
+        filters: [{ name: 'Markdown', extensions: ['md'] }],
+      });
+      if (!result.canceled) {
+        showGlobalNotification(
+          'success',
+          t('skills:management.export_success', '技能已导出')
+        );
+      }
+    } catch (e) {
+      console.error('[SkillsManagement] Export failed:', e);
+    }
   }, [t]);
 
-  // 🔧 批量导出：顺序延迟下载避免浏览器拦截多次 programmatic download
+  // 批量导出：逐个弹出保存对话框
   const handleExportAll = useCallback(async () => {
     const userSkills = allSkills.filter(s => !s.isBuiltin);
     if (userSkills.length === 0) {
@@ -432,8 +436,8 @@ export const SkillsManagementPage: React.FC<SkillsManagementPageProps> = ({
       return;
     }
 
-    for (let i = 0; i < userSkills.length; i++) {
-      const skill = userSkills[i];
+    let exportedCount = 0;
+    for (const skill of userSkills) {
       const content = serializeSkillToMarkdown(
         {
           name: skill.name,
@@ -451,26 +455,28 @@ export const SkillsManagementPage: React.FC<SkillsManagementPageProps> = ({
         skill.content
       );
 
-      const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${skill.id}.SKILL.md`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-
-      // 延迟 300ms 避免浏览器拦截连续下载
-      if (i < userSkills.length - 1) {
-        await new Promise(resolve => setTimeout(resolve, 300));
+      try {
+        const defaultName = `${skill.id}.SKILL.md`;
+        const result = await fileManager.saveTextFile({
+          title: defaultName,
+          defaultFileName: defaultName,
+          content,
+          filters: [{ name: 'Markdown', extensions: ['md'] }],
+        });
+        if (!result.canceled) {
+          exportedCount++;
+        }
+      } catch (e) {
+        console.error(`[SkillsManagement] Export ${skill.id} failed:`, e);
       }
     }
 
-    showGlobalNotification(
-      'success',
-      t('skills:management.export_all_success', '已导出 {{count}} 个技能', { count: userSkills.length })
-    );
+    if (exportedCount > 0) {
+      showGlobalNotification(
+        'success',
+        t('skills:management.export_all_success', '已导出 {{count}} 个技能', { count: exportedCount })
+      );
+    }
   }, [allSkills, t]);
 
   // 导入技能文件

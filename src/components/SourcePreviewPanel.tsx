@@ -8,6 +8,7 @@ import { X, Copy, ExternalLink, FileText, Download } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { MarkdownRenderer } from '../chat-v2/components/renderers';
 import { CustomScrollArea } from './custom-scroll-area';
+import { fileManager } from '@/utils/fileManager';
 
 interface SourceInfo {
   document_id: string;
@@ -61,17 +62,15 @@ export const SourcePreviewPanel: React.FC<SourcePreviewPanelProps> = ({
     }
   };
 
-  const handleDownload = () => {
+  const handleDownload = async () => {
     try {
-      const blob = new Blob([source.chunk_text], { type: 'text/plain' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${source.file_name}_chunk_${source.chunk_index}.txt`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      const defaultName = `${source.file_name}_chunk_${source.chunk_index}.txt`;
+      await fileManager.saveTextFile({
+        title: defaultName,
+        defaultFileName: defaultName,
+        content: source.chunk_text,
+        filters: [{ name: 'Text', extensions: ['txt'] }],
+      });
       console.log('💾 [来源预览] 已下载片段内容');
     } catch (e: unknown) {
       console.warn('下载失败:', e);

@@ -21,6 +21,7 @@ import {
   Download,
   Check,
 } from 'lucide-react';
+import { fileManager } from '@/utils/fileManager';
 
 // ============================================================================
 // 类型定义
@@ -151,18 +152,16 @@ export const InlineDocumentViewer: React.FC<InlineDocumentViewerProps> = ({
   }, [textContent]);
 
   // 下载
-  const handleDownload = useCallback(() => {
+  const handleDownload = useCallback(async () => {
     if (!textContent) return;
     try {
-      const blob = new Blob([textContent], { type: 'text/plain;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = fileName || title || 'document.txt';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      const defaultName = fileName || title || 'document.txt';
+      await fileManager.saveTextFile({
+        title: defaultName,
+        defaultFileName: defaultName,
+        content: textContent,
+        filters: [{ name: 'Text', extensions: ['txt'] }],
+      });
     } catch (e: unknown) {
       console.error('Download failed:', e);
     }

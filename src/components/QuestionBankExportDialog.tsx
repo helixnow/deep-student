@@ -407,43 +407,20 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
           throw new Error(t('exam_sheet:questionBank.export.unknownFormat'));
       }
 
-      // 尝试使用 Tauri 文件保存对话框
-      try {
-        const result = await fileManager.saveTextFile({
-          title: t('exam_sheet:questionBank.export.selectPath', '选择导出位置'),
-          defaultFileName: filename,
-          filters: [{ name: format.toUpperCase(), extensions: [format === 'txt' ? 'md' : format] }],
-          content,
-        });
+      const result = await fileManager.saveTextFile({
+        title: t('exam_sheet:questionBank.export.selectPath', '选择导出位置'),
+        defaultFileName: filename,
+        filters: [{ name: format.toUpperCase(), extensions: [format === 'txt' ? 'md' : format] }],
+        content,
+      });
 
-        if (!result.canceled) {
-          setExportSuccess(true);
-          setTimeout(() => {
-            onOpenChange(false);
-            setExportSuccess(false);
-          }, 1500);
-          return;
-        }
-      } catch (saveError: unknown) {
-        console.warn('[QuestionBankExportDialog] Tauri save failed, fallback to browser download:', saveError);
+      if (!result.canceled) {
+        setExportSuccess(true);
+        setTimeout(() => {
+          onOpenChange(false);
+          setExportSuccess(false);
+        }, 1500);
       }
-
-      // 回退到浏览器下载
-      const blob = new Blob([content], { type: `${mimeType};charset=utf-8` });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-
-      setExportSuccess(true);
-      setTimeout(() => {
-        onOpenChange(false);
-        setExportSuccess(false);
-      }, 1500);
     } catch (err: unknown) {
       console.error('[QuestionBankExportDialog] Export failed:', err);
       showGlobalNotification('error', t('exam_sheet:questionBank.export.failed', '导出失败'));

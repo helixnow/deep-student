@@ -330,7 +330,7 @@ export const ChatV2Page: React.FC = () => {
       const images: string[] = [];
       for (const path of imagePaths) {
         try {
-          const bytes = new Uint8Array(await TauriAPI.readFileAsBytes(path));
+          const bytes = await TauriAPI.readFileAsBytes(path);
           // 🔒 审计修复: 分块编码 base64，避免 String.fromCharCode(...bytes) 对大文件栈溢出
           // 原代码对 >1MB 文件触发 RangeError: Maximum call stack size exceeded
           const CHUNK_SIZE = 0x8000; // 32KB chunks
