@@ -112,13 +112,10 @@ impl Transport for HttpTransport {
         if let Some(session_id) = self.session_id.read().await.as_ref() {
             request = request.header("Mcp-Session-Id", session_id);
         }
-        if let Some(protocol) = self
-            .protocol_version
-            .read()
-            .unwrap_or_else(|e| e.into_inner())
-            .clone()
-        {
-            request = request.header("Mcp-Protocol-Version", protocol);
+        if let Ok(guard) = self.protocol_version.read() {
+            if let Some(protocol) = guard.clone() {
+                request = request.header("Mcp-Protocol-Version", protocol);
+            }
         }
 
         let response = request
@@ -216,6 +213,11 @@ impl HttpTransport {
         // 添加session_id头（如果有的话）
         if let Some(session_id) = self.session_id.read().await.as_ref() {
             request = request.header("Mcp-Session-Id", session_id);
+        }
+        if let Ok(guard) = self.protocol_version.read() {
+            if let Some(protocol) = guard.clone() {
+                request = request.header("Mcp-Protocol-Version", protocol);
+            }
         }
 
         let response = request

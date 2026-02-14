@@ -1200,40 +1200,43 @@ export async function resolveVfsRefs(
     };
   }
 
-  // ★ 2026-02-13 修复：纯文本模型 → 确保 injectModes 始终包含 OCR
+  // ★ 2026-02-13 修复：纯文本模型 → 确保 injectModes 始终包含 OCR，并移除 image
   // 后端根据 injectModes 决定返回内容；若缺少 OCR，后端不会返回 OCR 文本，
   // 导致 formatToBlocks 找不到 OCR 数据、只能输出无用占位符。
   //
-  // 边缘情况覆盖：
-  //   - injectModes 未设置 (undefined)          → 补全为 {image:['ocr'], pdf:['ocr','text']}
-  //   - injectModes.image = []                   → 补全为 ['ocr']
-  //   - injectModes.image = ['image'] (无 'ocr') → 追加 'ocr'
-  //   - injectModes.image = ['ocr'] 或包含 'ocr' → 不变
-  //   - pdf 同理
-  let effectiveInjectModes = injectModes;
+  // ★ P0/P1 修复（二轮审阅）：
+  //   1. 同时移除 'image' 模式，避免后端为文本模型准备无用的 base64 数据
+  //   2. 仅对 Image/File/Textbook 类型 ref 注入 effectiveInjectModes，
+  //      避免给 Note/Essay 等不相关类型污染缓存键
+  let effectiveInjectModes: import('../context/vfsRefTypes').ResourceInjectModes | undefined = injectModes;
   if (options?.isMultimodal === false) {
     type ImgMode = import('../context/vfsRefTypes').ImageInjectMode;
     type PdfMode = import('../context/vfsRefTypes').PdfInjectMode;
     const imgModes = injectModes?.image;
     const pdfModes = injectModes?.pdf;
-    const imgNeedsOcr = !imgModes || !imgModes.includes('ocr');
-    const pdfNeedsOcr = !pdfModes || !pdfModes.includes('ocr');
-    if (imgNeedsOcr || pdfNeedsOcr) {
-      const normalizedImg: ImgMode[] = imgNeedsOcr
-        ? [...(imgModes ?? []), 'ocr']
-        : imgModes!;
-      const normalizedPdf: PdfMode[] = pdfNeedsOcr
-        ? [...(pdfModes ?? []), 'ocr', ...(!pdfModes?.includes('text') ? ['text' as PdfMode] : [])]
-        : pdfModes!;
-      effectiveInjectModes = { image: normalizedImg, pdf: normalizedPdf };
-      console.debug('[resolveVfsRefs] Text-only model: ensured OCR in injectModes', effectiveInjectModes);
-    }
+    // 确保包含 OCR，同时移除 image（文本模型无法使用图片）
+    const normalizedImg: ImgMode[] = [
+      ...(imgModes ?? []).filter((m): m is ImgMode => m !== 'image'),
+      ...(!imgModes?.includes('ocr') ? ['ocr' as ImgMode] : []),
+    ];
+    const normalizedPdf: PdfMode[] = [
+      ...(pdfModes ?? []).filter((m): m is PdfMode => m !== 'image'),
+      ...(!pdfModes?.includes('ocr') ? ['ocr' as PdfMode] : []),
+      ...(!pdfModes?.includes('text') ? ['text' as PdfMode] : []),
+    ];
+    effectiveInjectModes = { image: normalizedImg, pdf: normalizedPdf };
+    console.debug('[resolveVfsRefs] Text-only model: normalized injectModes', effectiveInjectModes);
   }
 
   // ★ 将 injectModes 添加到每个引用中
+  // ★ NEW-P0 修复：仅对 Image/File/Textbook 类型注入 effectiveInjectModes，
+  //   避免给 Note/Essay/Exam 等不相关类型附加无意义的 image/pdf 模式（会污染缓存键）
+  const MEDIA_REF_TYPES = new Set(['Image', 'File', 'Textbook']);
   const refsWithInjectModes = refData.refs.map(ref => ({
     ...ref,
-    injectModes: effectiveInjectModes ?? undefined,
+    injectModes: MEDIA_REF_TYPES.has(ref.type)
+      ? (effectiveInjectModes ?? undefined)
+      : ref.injectModes,
   }));
 
   logAttachment('adapter', 'resolve_vfs_refs_start', {
@@ -1247,15 +1250,34 @@ export async function resolveVfsRefs(
   // 调用后端解析（已移除 Mock 实现）
   const resolvedResources = await invokeVfsResolve(refsWithInjectModes);
 
+  // ★ 补强：收集后端返回的 warning，通知用户内容质量降级
+  // ★ P1-2 修复（二轮审阅）：去重并限制数量，避免多资源场景下通知洪水
+  const warnings = resolvedResources
+    .filter(r => r.found && r.warning)
+    .map(r => r.warning as string);
+  if (warnings.length > 0) {
+    console.warn(LOG_PREFIX, `Backend warnings for ${resource.id}:`, warnings);
+    const uniqueWarnings = [...new Set(warnings)];
+    const MAX_DISPLAY_WARNINGS = 3;
+    const displayWarnings = uniqueWarnings.slice(0, MAX_DISPLAY_WARNINGS);
+    const remaining = uniqueWarnings.length - displayWarnings.length;
+    const message = remaining > 0
+      ? displayWarnings.join('；') + i18n.t('chatV2:context.more_warnings', { count: remaining, defaultValue: `；等 ${remaining} 条警告` })
+      : displayWarnings.join('；');
+    showGlobalNotification('warning', message);
+  }
+
   logAttachment('adapter', 'resolve_vfs_refs_done', {
     resourceId: resource.id,
     resolvedCount: resolvedResources.length,
     foundCount: resolvedResources.filter((r) => r.found).length,
+    warningCount: warnings.length,
     results: resolvedResources.map(r => ({
       sourceId: r.sourceId,
       found: r.found,
       contentLen: r.content?.length ?? 0,
       multimodalBlocksCount: r.multimodalBlocks?.length ?? 0,
+      warning: r.warning,
     })),
   }, resolvedResources.some(r => r.found) ? 'success' : 'warning');
 

@@ -232,16 +232,17 @@ export const fileDefinition: ContextTypeDefinition = {
         const pdfModes = injectModes?.pdf;
         
         // 确定要注入的内容类型
-        // ★ 2026-02-13 修复：纯文本模型不注入 image 块，强制回退到 OCR/文本
+        // ★ 与后端 SSOT resolve_pdf_inject_modes 对齐：
+        //   默认最大化 (text + ocr + image)；非多模态模型自动降级移除 image。
         // 空数组视为未设置，使用默认值
         const hasPdfModes = pdfModes && pdfModes.length > 0;
         const isMultimodal = options?.isMultimodal !== false;
         let includeImage = isMultimodal
-          ? (hasPdfModes ? pdfModes.includes('image') : false)
+          ? (hasPdfModes ? pdfModes.includes('image') : true) // ★ P0-2 修复：默认注入 image（与后端 SSOT 对齐）
           : false; // 纯文本模型：绝不注入 image 块
         let includeOcr = !isMultimodal
           ? true // 纯文本模型：始终注入 OCR 文本作为回退
-          : (hasPdfModes ? pdfModes.includes('ocr') : false);
+          : (hasPdfModes ? pdfModes.includes('ocr') : true); // ★ P0-2 修复：默认注入 OCR（与后端 SSOT 对齐）
         let includeText = hasPdfModes ? pdfModes.includes('text') : true; // 默认包含文本
         
         console.debug('[FileDef] PDF:', sourceId, { isMultimodal, includeImage, includeOcr, includeText });
@@ -314,6 +315,22 @@ export const fileDefinition: ContextTypeDefinition = {
               const ocrAttrs: Record<string, string | undefined> = { name, source_id: sourceId };
               if (mimeType) ocrAttrs.type = mimeType;
               blocks.push(createXmlTextBlock('pdf_ocr', formatted, ocrAttrs));
+            } else {
+              // ★ N2 修复：OCR 不可用时插入占位提示，不再静默丢弃
+              // ★ P1-5 + P1-4 修复（二轮审阅）：
+              //   1. 使用 <ocr_status> 标签，避免模型误解为实际 OCR 结果
+              //   2. 覆盖 text+image 同时可用的场景
+              console.warn('[FileDef] PDF OCR unavailable, adding placeholder:', sourceId);
+              const fallbackHint = includeText && includeImage
+                ? '已提供解析文本和页面图片作为替代。'
+                : includeText
+                  ? '已提供解析文本作为替代。'
+                  : includeImage
+                    ? '已提供页面图片供直接分析。'
+                    : '请稍后重试。';
+              blocks.push(createTextBlock(
+                `<ocr_status name="${name}" source_id="${sourceId}" status="unavailable">[文档「${name}」的 OCR 文字识别尚未完成或失败，暂无 OCR 文本可用。${fallbackHint}]</ocr_status>`
+              ));
             }
           }
         }

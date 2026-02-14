@@ -1966,6 +1966,63 @@ pub struct ResourceInjectModes {
     pub pdf: Option<Vec<PdfInjectMode>>,
 }
 
+// ============================================================================
+// ★ 3.3 修复：统一默认注入模式策略（SSOT）
+//
+// ref_handlers.rs 和 vfs_resolver.rs 共享同一默认值，
+// 确保首次发送与编辑重发的行为一致。
+// 默认最大化策略：给模型尽可能多的信息。
+// ============================================================================
+
+/// 解析图片注入模式，返回 (include_image, include_ocr, downgraded_non_multimodal)
+///
+/// 当用户未显式选择模式时，使用最大化默认值 (image + ocr)。
+/// 非多模态模型自动降级：移除 image 模式。
+pub fn resolve_image_inject_modes(
+    image_modes: Option<&Vec<ImageInjectMode>>,
+    is_multimodal: bool,
+) -> (bool, bool, bool) {
+    let (mut include_image, include_ocr) = match image_modes {
+        Some(modes) if !modes.is_empty() => (
+            modes.contains(&ImageInjectMode::Image),
+            modes.contains(&ImageInjectMode::Ocr),
+        ),
+        // 默认最大化：图片 + OCR 同时注入
+        _ => (true, true),
+    };
+
+    let downgraded_non_multimodal = !is_multimodal && include_image;
+    if downgraded_non_multimodal {
+        include_image = false;
+    }
+    (include_image, include_ocr, downgraded_non_multimodal)
+}
+
+/// 解析 PDF 注入模式，返回 (include_text, include_ocr, include_image, downgraded_non_multimodal)
+///
+/// 当用户未显式选择模式时，使用最大化默认值 (text + ocr + image)。
+/// 非多模态模型自动降级：移除 image 模式。
+pub fn resolve_pdf_inject_modes(
+    pdf_modes: Option<&Vec<PdfInjectMode>>,
+    is_multimodal: bool,
+) -> (bool, bool, bool, bool) {
+    let (include_text, include_ocr, mut include_image) = match pdf_modes {
+        Some(modes) if !modes.is_empty() => (
+            modes.contains(&PdfInjectMode::Text),
+            modes.contains(&PdfInjectMode::Ocr),
+            modes.contains(&PdfInjectMode::Image),
+        ),
+        // 默认最大化：text + ocr + image
+        _ => (true, true, true),
+    };
+
+    let downgraded_non_multimodal = !is_multimodal && include_image;
+    if downgraded_non_multimodal {
+        include_image = false;
+    }
+    (include_text, include_ocr, include_image, downgraded_non_multimodal)
+}
+
 /// VFS 资源引用（用于引用模式上下文注入）
 ///
 /// 存储 sourceId + resourceHash 的轻量级引用，发送时动态解析。

@@ -124,12 +124,14 @@ export const imageDefinition: ContextTypeDefinition = {
       // 空数组视为未设置，使用默认值（默认注入图片）
       const hasImageModes = imageModes && imageModes.length > 0;
       const isMultimodal = options?.isMultimodal !== false;
+      // ★ 与后端 SSOT resolve_image_inject_modes 对齐：
+      //   默认最大化 (image + ocr)；非多模态模型自动降级移除 image。
       const includeImage = isMultimodal
         ? (hasImageModes ? imageModes.includes('image') : true)
         : false; // 纯文本模型：绝不注入 image 块
       const includeOcr = !isMultimodal
         ? true // 纯文本模型：始终注入 OCR 文本作为回退
-        : (hasImageModes ? imageModes.includes('ocr') : false);
+        : (hasImageModes ? imageModes.includes('ocr') : true); // ★ P0-1 修复：默认注入 OCR（与后端 SSOT 对齐）
       
       const blocks: ContentBlock[] = [];
       const name = (resolved.metadata as ImageMetadata | undefined)?.name || resolved.name || 'image';
@@ -175,11 +177,18 @@ export const imageDefinition: ContextTypeDefinition = {
         } else if (!includeImage) {
           // OCR 不可用且无图片 → 告知模型，同时提示可能原因
           console.warn('[ImageDef] OCR unavailable, no image fallback:', resolved.sourceId);
+          // ★ P1-4 修复（二轮审阅）：使用 <ocr_status> 标签而非 <image>，避免模型误解为实际图片内容
           blocks.push(createTextBlock(
-            `<image name="${name}">[用户上传了一张图片「${name}」，但图片文字识别（OCR）尚未完成或失败，暂时无法获取图片中的文字内容。请告知用户稍后重试。]</image>`
+            `<ocr_status name="${name}" status="unavailable">[用户上传了一张图片「${name}」，但图片文字识别（OCR）尚未完成或失败，暂时无法获取图片中的文字内容。请告知用户稍后重试。]</ocr_status>`
           ));
         } else {
-          console.debug('[ImageDef] OCR unavailable but image block present, skipping:', resolved.sourceId);
+          // ★ N2 修复：OCR 不可用但有图片 → 仍插入占位提示，不再静默丢弃
+          // 用户显式选择了 OCR 模式，应告知模型 OCR 尚未就绪
+          console.warn('[ImageDef] OCR unavailable but image block present, adding placeholder:', resolved.sourceId);
+          // ★ P1-4 修复（二轮审阅）：使用 <ocr_status> 标签而非 <image_ocr>，避免模型将状态信息当作实际 OCR 结果
+          blocks.push(createTextBlock(
+            `<ocr_status name="${name}" status="pending">[图片「${name}」的文字识别（OCR）尚未完成，上方已提供图片原图供直接分析。]</ocr_status>`
+          ));
         }
       }
       

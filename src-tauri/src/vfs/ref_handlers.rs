@@ -22,8 +22,9 @@ use crate::vfs::indexing::VfsContentExtractor;
 use crate::vfs::ocr_utils::{join_ocr_pages_text, parse_ocr_pages_json};
 use crate::vfs::repos::{VfsFileRepo, VfsFolderRepo};
 use crate::vfs::types::{
-    GetResourceRefsInput, ImageInjectMode, MultimodalContentBlock, PdfInjectMode, ResolvedResource,
+    GetResourceRefsInput, MultimodalContentBlock, ResolvedResource,
     VfsContextRefData, VfsFolderItem, VfsResourceRef, VfsResourceType,
+    resolve_image_inject_modes, resolve_pdf_inject_modes,
 };
 
 /// 最大批量处理资源数（契约 F）
@@ -557,6 +558,22 @@ fn resolve_single_ref_with_conn(
 
     let is_pdf = title.to_lowercase().ends_with(".pdf");
 
+    // ★ P2-1 修复（二轮审阅）：提前解析 PDF inject_modes，避免在 content 和 multimodal_blocks 阶段重复调用
+    let pdf_resolved_modes = if is_pdf && matches!(r.resource_type, VfsResourceType::File | VfsResourceType::Textbook) {
+        let pdf_modes = r
+            .inject_modes
+            .as_ref()
+            .and_then(|m| m.pdf.as_ref())
+            .cloned();
+        // is_multimodal=true 因为 ref_handlers 路径不知道目标模型类型，
+        // 由前端 formatToBlocks 根据实际模型类型做最终裁剪
+        let (include_text, include_ocr, include_image, downgraded) =
+            resolve_pdf_inject_modes(pdf_modes.as_ref(), true);
+        Some((include_text, include_ocr, include_image, downgraded))
+    } else {
+        None
+    };
+
     let (content, warning) = match &r.resource_type {
         VfsResourceType::Image => {
             // ★ 图片：根据 inject_modes 决定返回内容
@@ -571,25 +588,16 @@ fn resolve_single_ref_with_conn(
                 r.source_id, r.inject_modes, image_modes
             );
 
-            // 如果用户选择了模式，使用用户选择；否则使用默认行为（返回图片）
-            let (include_image, include_ocr) = match image_modes {
-                Some(modes) if !modes.is_empty() => {
-                    let has_image = modes.contains(&ImageInjectMode::Image);
-                    let has_ocr = modes.contains(&ImageInjectMode::Ocr);
-                    info!(
-                        "[OCR_DIAG] Image: user-selected modes: modes={:?}, has_image={}, has_ocr={}",
-                        modes, has_image, has_ocr
-                    );
-                    (has_image, has_ocr)
-                }
-                _ => {
-                    // 默认行为：返回 base64 图片
-                    info!(
-                        "[OCR_DIAG] Image: no user-selected modes, using defaults (image=true, ocr=false)"
-                    );
-                    (true, false)
-                }
-            };
+            // ★ 3.3 修复：使用统一的 SSOT 默认模式策略
+            // is_multimodal=true 因为 ref_handlers 路径不知道目标模型类型，
+            // 由前端 formatToBlocks 根据实际模型类型做最终裁剪
+            let (include_image, include_ocr, _downgraded) =
+                resolve_image_inject_modes(image_modes.as_ref(), true);
+
+            info!(
+                "[OCR_DIAG] Image: resolved modes: include_image={}, include_ocr={}",
+                include_image, include_ocr
+            );
 
             info!(
                 "[OCR_DIAG] Image type: include_image={}, include_ocr={}, source_id={}",
@@ -621,13 +629,8 @@ fn resolve_single_ref_with_conn(
                         escape_xml_attr(&title),
                         escape_xml_content(&ocr_text)
                     );
-                    // 如果同时有图片，OCR 文本单独追加；否则替换
-                    if include_image && !content_parts.is_empty() {
-                        // 在已有 base64 后追加 OCR（通过分隔符）
-                        content_parts.push(formatted_ocr);
-                    } else {
-                        content_parts.push(formatted_ocr);
-                    }
+                    // ★ NEW-P1b 修复（二轮审阅）：移除死代码分支，两个分支操作相同
+                    content_parts.push(formatted_ocr);
                 } else {
                     info!("[PDF_DEBUG] Image type: no OCR text available");
                 }
@@ -650,25 +653,9 @@ fn resolve_single_ref_with_conn(
             // ★ 文件/教材：根据是否是 PDF 和 inject_modes 决定返回内容
             if is_pdf {
                 // PDF 文件：根据 inject_modes.pdf 决定返回内容
-                let pdf_modes = r
-                    .inject_modes
-                    .as_ref()
-                    .and_then(|m| m.pdf.as_ref())
-                    .cloned();
-
-                // 如果用户选择了模式，使用用户选择；否则使用默认行为
-                let (include_text, include_ocr, _include_image) = match pdf_modes {
-                    Some(modes) if !modes.is_empty() => {
-                        let has_text = modes.contains(&PdfInjectMode::Text);
-                        let has_ocr = modes.contains(&PdfInjectMode::Ocr);
-                        let has_image = modes.contains(&PdfInjectMode::Image);
-                        (has_text, has_ocr, has_image)
-                    }
-                    _ => {
-                        // 默认行为：返回解析文本（与原行为一致）
-                        (true, false, false)
-                    }
-                };
+                // ★ P2-1 修复（二轮审阅）：复用提前解析的 pdf_resolved_modes
+                let (include_text, include_ocr, _include_image, _downgraded) =
+                    pdf_resolved_modes.unwrap_or((true, true, true, false));
 
                 info!(
                     "[PDF_DEBUG] PDF file: include_text={}, include_ocr={}",
@@ -812,21 +799,8 @@ fn resolve_single_ref_with_conn(
         VfsResourceType::File | VfsResourceType::Textbook => {
             // PDF 文件：根据 inject_modes.pdf 是否包含 Image 决定是否返回多模态块
             if is_pdf {
-                let pdf_modes = r
-                    .inject_modes
-                    .as_ref()
-                    .and_then(|m| m.pdf.as_ref())
-                    .cloned();
-
-                let include_image = match pdf_modes {
-                    Some(modes) if !modes.is_empty() => modes.contains(&PdfInjectMode::Image),
-                    _ => {
-                        // 默认行为：不返回图片块（与原行为一致）
-                        // ★ 2026-02 修复：原代码默认返回了 multimodal_blocks，现在根据 inject_modes 决定
-                        // 为保持向后兼容，如果没有设置 inject_modes，仍然返回图片块
-                        true
-                    }
-                };
+                // ★ P2-1 修复（二轮审阅）：复用提前解析的 pdf_resolved_modes，不再重复调用
+                let include_image = pdf_resolved_modes.map(|(_, _, img, _)| img).unwrap_or(true);
 
                 if include_image {
                     let blocks =

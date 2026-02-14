@@ -73,6 +73,12 @@ import { MobileBottomSheet } from './MobileBottomSheet';
 import { MobileSheetHeader } from './MobileSheetHeader';
 import { AttachmentInjectModeSelector } from './AttachmentInjectModeSelector';
 import type { AttachmentInjectModes } from '../../core/types/common';
+import {
+  type MediaInjectMode,
+  getAttachmentMediaType,
+  getSelectedInjectModes as ssotGetSelectedModes,
+  getEffectiveReadyModes as ssotGetEffectiveReadyModes,
+} from './injectModeUtils';
 import { COMMAND_EVENTS } from '@/command-palette/hooks/useCommandEvents';
 
 // ============================================================================
@@ -219,54 +225,28 @@ function getDisplayPercent(
   return percent;
 }
 
-type MediaInjectMode = 'text' | 'ocr' | 'image';
+// ★ N3 修复：getEffectiveReadyModes / getSelectedModes 等已统一到 injectModeUtils（SSOT）
+// 以下为适配 InputBarUI 调用签名的薄层委托函数
 
 function getSelectedModes(
   attachment: AttachmentMeta,
   isPdf: boolean,
   isImage: boolean
 ): MediaInjectMode[] {
-  if (isPdf) {
-    return (attachment.injectModes?.pdf || ['text']) as MediaInjectMode[];
-  }
-  if (isImage) {
-    return (attachment.injectModes?.image || ['image']) as MediaInjectMode[];
-  }
-  return [];
+  const mediaType = isPdf ? 'pdf' : isImage ? 'image' : null;
+  if (!mediaType) return [];
+  return ssotGetSelectedModes(attachment, mediaType);
 }
 
+/**
+ * InputBarUI 专用适配器：将 (attachment, status, mediaType) 委托给 SSOT
+ */
 function getEffectiveReadyModes(
   status: PdfProcessingStatus | undefined,
   mediaType: 'pdf' | 'image',
-  allowSafeDefaults: boolean
+  attachment: AttachmentMeta
 ): MediaInjectMode[] | undefined {
-  // 图片在处理中时，默认允许 image 模式发送；
-  // OCR/向量索引继续后台执行，不阻塞发送按钮。
-  if (
-    mediaType === 'image' &&
-    status &&
-    (status.stage === 'pending'
-      || status.stage === 'image_compression'
-      || status.stage === 'ocr_processing'
-      || status.stage === 'vector_indexing')
-  ) {
-    const merged = new Set<MediaInjectMode>(['image']);
-    for (const mode of (status.readyModes || []) as MediaInjectMode[]) {
-      merged.add(mode);
-    }
-    return Array.from(merged);
-  }
-
-  if (status?.readyModes?.length) {
-    return status.readyModes as MediaInjectMode[];
-  }
-  if (status?.stage === 'completed') {
-    return mediaType === 'pdf' ? ['text'] : ['image'];
-  }
-  if (allowSafeDefaults && !status) {
-    return mediaType === 'pdf' ? ['text'] : ['image'];
-  }
-  return undefined;
+  return ssotGetEffectiveReadyModes(attachment, mediaType, status);
 }
 
 function getMissingModes(
@@ -960,13 +940,13 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
       const mediaType = isPdf ? 'pdf' : 'image';
 
       if (att.status === 'ready') {
-        const readyModes = getEffectiveReadyModes(att.processingStatus, mediaType, true);
+        const readyModes = getEffectiveReadyModes(att.processingStatus, mediaType, att);
         return hasAnyReadyMode(selectedModes, readyModes);
       }
 
       if (att.status !== 'processing') return false;
       const status = att.sourceId ? (pdfStatusMap.get(att.sourceId) || att.processingStatus) : att.processingStatus;
-      const readyModes = getEffectiveReadyModes(status, mediaType, false);
+      const readyModes = getEffectiveReadyModes(status, mediaType, att);
       return hasAnyReadyMode(selectedModes, readyModes);
     });
   }, [attachments, pdfStatusMap]);
@@ -988,7 +968,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
       const status = att.status === 'ready'
         ? att.processingStatus
         : (att.sourceId ? (pdfStatusMap.get(att.sourceId) || att.processingStatus) : att.processingStatus);
-      const readyModes = getEffectiveReadyModes(status, mediaType, att.status === 'ready');
+      const readyModes = getEffectiveReadyModes(status, mediaType, att);
       return !hasAnyReadyMode(selectedModes, readyModes);
     });
   }, [attachments, pdfStatusMap]);
@@ -1003,7 +983,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
       const status = att.status === 'ready'
         ? att.processingStatus
         : (att.sourceId ? (pdfStatusMap.get(att.sourceId) || att.processingStatus) : att.processingStatus);
-      const readyModes = getEffectiveReadyModes(status, mediaType, att.status === 'ready');
+      const readyModes = getEffectiveReadyModes(status, mediaType, att);
       if (!hasAnyReadyMode(selectedModes, readyModes)) {
         const missingModes = getMissingModes(selectedModes, readyModes);
         return {
@@ -2226,7 +2206,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                     const statusForModes = attachment.status === 'ready'
                       ? attachment.processingStatus
                       : mediaProgress;
-                    const readyModes = getEffectiveReadyModes(statusForModes, mediaType, attachment.status === 'ready');
+                    const readyModes = getEffectiveReadyModes(statusForModes, mediaType, attachment);
                     const missingModes = getMissingModes(selectedModes, readyModes);
                     const missingModesLabel = missingModes.length > 0 ? formatModeList(missingModes) : '';
                     const displayPercent = getDisplayPercent(mediaProgress, isPdf);

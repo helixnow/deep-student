@@ -28,8 +28,9 @@ use crate::document_parser::DocumentParser;
 use crate::vfs::ocr_utils::parse_ocr_pages_json;
 use crate::vfs::repos::VfsFileRepo;
 use crate::vfs::types::{
-    ImageInjectMode, PdfInjectMode, PdfPreviewJson, ResourceInjectModes, VfsContextRefData,
+    PdfPreviewJson, ResourceInjectModes, VfsContextRefData,
     VfsResourceRef, VfsResourceType,
+    resolve_image_inject_modes, resolve_pdf_inject_modes,
 };
 
 // ★ 使用已有的 ContentBlock 类型，避免重复定义
@@ -227,7 +228,7 @@ fn resolve_image(
 ) -> Vec<ContentBlock> {
     let image_modes = vfs_ref.inject_modes.as_ref().and_then(|m| m.image.as_ref());
     let (include_image, include_ocr, downgraded_non_multimodal) =
-        resolve_image_mode_policy(image_modes, is_multimodal);
+        resolve_image_inject_modes(image_modes, is_multimodal);
 
     log::info!(
         "[OCR_DIAG] resolve_image ENTER: source_id={}, name={}, is_multimodal={}, inject_modes={:?}, image_modes={:?} -> include_image={}, include_ocr={}, downgraded={}",
@@ -465,52 +466,6 @@ fn get_image_ocr_text(conn: &Connection, vfs_ref: &VfsResourceRef) -> Option<Str
     }
 }
 
-fn resolve_image_mode_policy(
-    image_modes: Option<&Vec<ImageInjectMode>>,
-    is_multimodal: bool,
-) -> (bool, bool, bool) {
-    let (mut include_image, include_ocr) = match image_modes {
-        Some(modes) if !modes.is_empty() => (
-            modes.contains(&ImageInjectMode::Image),
-            modes.contains(&ImageInjectMode::Ocr),
-        ),
-        // 默认最大化：图片 + OCR 同时注入
-        _ => (true, true),
-    };
-
-    let downgraded_non_multimodal = !is_multimodal && include_image;
-    if downgraded_non_multimodal {
-        include_image = false;
-    }
-    (include_image, include_ocr, downgraded_non_multimodal)
-}
-
-fn resolve_pdf_mode_policy(
-    pdf_modes: Option<&Vec<PdfInjectMode>>,
-    is_multimodal: bool,
-) -> (bool, bool, bool, bool) {
-    let (include_text, include_ocr, mut include_image) = match pdf_modes {
-        Some(modes) if !modes.is_empty() => (
-            modes.contains(&PdfInjectMode::Text),
-            modes.contains(&PdfInjectMode::Ocr),
-            modes.contains(&PdfInjectMode::Image),
-        ),
-        // 默认最大化：text + ocr + image
-        _ => (true, true, true),
-    };
-
-    let downgraded_non_multimodal = !is_multimodal && include_image;
-    if downgraded_non_multimodal {
-        include_image = false;
-    }
-    (
-        include_text,
-        include_ocr,
-        include_image,
-        downgraded_non_multimodal,
-    )
-}
-
 /// 解析文档附件（支持双模式）
 ///
 /// ## 双模式支持（迁移 015）
@@ -733,7 +688,7 @@ fn resolve_pdf(
 ) -> Vec<ContentBlock> {
     let pdf_modes = vfs_ref.inject_modes.as_ref().and_then(|m| m.pdf.as_ref());
     let (include_text, include_ocr, include_image, downgraded_non_multimodal) =
-        resolve_pdf_mode_policy(pdf_modes, is_multimodal);
+        resolve_pdf_inject_modes(pdf_modes, is_multimodal);
 
     log::debug!(
         "[VfsResolver] resolve_pdf {}: include_text={}, include_ocr={}, include_image={}",
@@ -2646,7 +2601,7 @@ mod tests {
 
     #[test]
     fn test_default_image_mode_is_maximized() {
-        let (include_image, include_ocr, downgraded) = resolve_image_mode_policy(None, true);
+        let (include_image, include_ocr, downgraded) = resolve_image_inject_modes(None, true);
         assert!(include_image);
         assert!(include_ocr);
         assert!(!downgraded);
@@ -2654,11 +2609,11 @@ mod tests {
 
     #[test]
     fn test_default_pdf_mode_is_maximized_and_downgraded_for_text_model() {
-        let (t, o, i, downgraded) = resolve_pdf_mode_policy(None, true);
+        let (t, o, i, downgraded) = resolve_pdf_inject_modes(None, true);
         assert!(t && o && i);
         assert!(!downgraded);
 
-        let (t2, o2, i2, downgraded2) = resolve_pdf_mode_policy(None, false);
+        let (t2, o2, i2, downgraded2) = resolve_pdf_inject_modes(None, false);
         assert!(t2 && o2);
         assert!(!i2);
         assert!(downgraded2);

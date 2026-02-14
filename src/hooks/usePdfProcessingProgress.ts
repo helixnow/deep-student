@@ -10,6 +10,7 @@
 import { useEffect } from 'react';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { usePdfProcessingStore, type MediaType, type ProcessingStage } from '@/stores/pdfProcessingStore';
+import { invalidateResourceCache } from '@/chat-v2/context/vfsRefApiEnhancements';
 import { debugLog } from '../debug-panel/debugMasterSwitch';
 
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
@@ -90,14 +91,27 @@ export function usePdfProcessingProgress(): void {
       // ★ 检查 Store 更新前后状态
       const beforeState = usePdfProcessingStore.getState().get(fileId);
       
+      // ★ N1 修复：当 readyModes 新增时，失效旧的 resolveCache
+      const prevModes = new Set(beforeState?.readyModes || []);
+      const nextModes = (status.readyModes || []) as Array<'text' | 'ocr' | 'image'>;
+      const hasNewModes = nextModes.some(m => !prevModes.has(m));
+
+      // ★ P1-1 修复（二轮审阅）：先更新 Store，再失效缓存
+      // 避免竞态窗口：invalidation 和 store.update 之间若有 resolveVfsRefs 调用，
+      // 会用旧的 readyModes 重新缓存过期结果。
       usePdfProcessingStore.getState().update(fileId, {
         stage: status.stage,
         currentPage: status.currentPage,
         totalPages: status.totalPages,
         percent: status.percent,
-        readyModes: status.readyModes as Array<'text' | 'ocr' | 'image'>,
+        readyModes: nextModes,
         mediaType: mediaType || status.mediaType,
       });
+
+      if (hasNewModes) {
+        const invalidated = invalidateResourceCache(fileId);
+        console.log(`[MediaProcessing] 🗑️ New readyModes detected, cache invalidated for ${fileId}: ${invalidated} entries (new: ${nextModes.join(',')})`);
+      }
       
       const afterState = usePdfProcessingStore.getState().get(fileId);
       console.log(`[MediaProcessing] 📊 Store 更新:`, {
@@ -119,6 +133,10 @@ export function usePdfProcessingProgress(): void {
       });
       
       usePdfProcessingStore.getState().setCompleted(fileId, readyModes);
+
+      // ★ N1 修复：处理完成时失效 resolveCache，防止后续发送使用旧的无 OCR/text 缓存
+      const invalidated = invalidateResourceCache(fileId);
+      console.log(`[MediaProcessing] 🗑️ Cache invalidated for ${fileId}: ${invalidated} entries`);
       
       console.log(`[MediaProcessing] 📊 Store 完成状态:`, {
         fileId,

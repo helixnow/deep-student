@@ -21,9 +21,11 @@ function sanitizeToolResultContent(content: any): any {
   if (!content) return content;
   if (!Array.isArray(content)) return content;
   let totalSize = 0;
-  return content.map((item: any) => {
-    if (!item || typeof item !== 'object') return item;
+  const result: any[] = [];
+  for (const item of content) {
+    if (!item || typeof item !== 'object') { result.push(item); continue; }
     const sanitized = { ...item };
+    let itemSize = 0;
     // 清洗 text 类型内容
     if (sanitized.type === 'text' && typeof sanitized.text === 'string') {
       // 移除 NUL 字节和其他不可见控制字符（保留换行、制表符）
@@ -32,11 +34,11 @@ function sanitizeToolResultContent(content: any): any {
       if (sanitized.text.length > MCP_RESULT_MAX_TEXT_LENGTH) {
         sanitized.text = sanitized.text.slice(0, MCP_RESULT_MAX_TEXT_LENGTH) + '\n[...truncated]';
       }
-      totalSize += sanitized.text.length;
+      itemSize = sanitized.text.length;
     }
     // 清洗 image 类型内容（base64 大小限制）
     if (sanitized.type === 'image' && typeof sanitized.data === 'string') {
-      totalSize += sanitized.data.length;
+      itemSize = sanitized.data.length;
     }
     // 清洗 resource 类型嵌入内容
     if (sanitized.type === 'resource' && sanitized.resource) {
@@ -46,14 +48,15 @@ function sanitizeToolResultContent(content: any): any {
         if (sanitized.resource.text.length > MCP_RESULT_MAX_TEXT_LENGTH) {
           sanitized.resource.text = sanitized.resource.text.slice(0, MCP_RESULT_MAX_TEXT_LENGTH) + '\n[...truncated]';
         }
-        totalSize += sanitized.resource.text.length;
+        itemSize = sanitized.resource.text.length;
       }
     }
-    return sanitized;
-  }).filter((_: any, idx: number) => {
-    // 如果总大小超限，丢弃后续内容
-    return totalSize <= MCP_RESULT_MAX_TOTAL_SIZE || idx === 0;
-  });
+    // 逐项累计总大小：超限后丢弃后续内容（至少保留第一项）
+    totalSize += itemSize;
+    if (totalSize > MCP_RESULT_MAX_TOTAL_SIZE && result.length > 0) break;
+    result.push(sanitized);
+  }
+  return result;
 }
 
 function clampJsonDepth(obj: any, maxDepth: number, currentDepth = 0): any {
@@ -361,7 +364,8 @@ class McpServiceImpl {
             tools: {
               autoRefresh: true,
               debounceMs: 200,
-              onChanged: (_error: any, tools: any) => {
+              onChanged: (error: any, tools: any) => {
+                if (error) { console.warn(`[MCP] listChanged tools refresh error for ${serverId}:`, error); }
                 if (tools && Array.isArray(tools)) {
                   const toolsForServer: ToolInfo[] = tools.map((t: any) => ({
                     name: self.withNamespace(t.name, rt.cfg.namespace),
@@ -377,7 +381,8 @@ class McpServiceImpl {
             prompts: {
               autoRefresh: true,
               debounceMs: 200,
-              onChanged: (_error: any, prompts: any) => {
+              onChanged: (error: any, prompts: any) => {
+                if (error) { console.warn(`[MCP] listChanged prompts refresh error for ${serverId}:`, error); }
                 if (prompts && Array.isArray(prompts)) {
                   const promptsForServer: PromptInfo[] = prompts.map((p: any) => ({
                     name: self.withNamespace(p.name, rt.cfg.namespace),
@@ -393,7 +398,8 @@ class McpServiceImpl {
             resources: {
               autoRefresh: true,
               debounceMs: 200,
-              onChanged: (_error: any, resources: any) => {
+              onChanged: (error: any, resources: any) => {
+                if (error) { console.warn(`[MCP] listChanged resources refresh error for ${serverId}:`, error); }
                 if (resources && Array.isArray(resources)) {
                   const resourcesForServer: ResourceInfo[] = resources.map((r: any) => ({
                     uri: r.uri || r.id || '',
@@ -891,13 +897,15 @@ class McpServiceImpl {
       // 行业标准：不做 capabilities 预检，直接尝试 listTools()，
       // 依赖 -32601 错误处理作为真正的 fallback（官方 SDK 示例模式）
       try {
-        // MCP 规范：支持 pagination cursor，循环获取所有页
+        // MCP 规范：支持 pagination cursor，循环获取所有页（安全上限 100 页防止异常服务器死循环）
         const allTools: any[] = [];
         let cursor: string | undefined;
+        let pageCount = 0;
         do {
           const list = await rt.client.listTools(cursor ? { cursor } : undefined);
           if (list.tools) allTools.push(...list.tools);
           cursor = (list as any).nextCursor;
+          if (++pageCount >= 100) { cursor = undefined; break; }
         } while (cursor);
         const toolsForServer: ToolInfo[] = allTools.map((t: any) => ({
           name: this.withNamespace(t.name, rt.cfg.namespace),
@@ -950,9 +958,17 @@ class McpServiceImpl {
     await this.connectServerById(serverId).catch((err) => { debugLog.error('[MCP] connectServerById failed for tools fetch:', err); });
     if (!rt.connected) return [];
     try {
-      const list = await rt.client.listTools();
+      const allTools: any[] = [];
+      let cursor: string | undefined;
+      let pageCount = 0;
+      do {
+        const list = await rt.client.listTools(cursor ? { cursor } : undefined);
+        if (list.tools) allTools.push(...list.tools);
+        cursor = (list as any).nextCursor;
+        if (++pageCount >= 100) { cursor = undefined; break; }
+      } while (cursor);
       const now = Date.now();
-      const tools = list.tools.map((t: any) => ({ name: this.withNamespace(t.name, rt.cfg.namespace), description: t.description || '', input_schema: t.inputSchema }));
+      const tools = allTools.map((t: any) => ({ name: this.withNamespace(t.name, rt.cfg.namespace), description: t.description || '', input_schema: t.inputSchema }));
       this.toolCacheByServer.set(serverId, { at: now, tools });
       this.saveCacheToStorage();
       this.emitStatus();
@@ -1025,9 +1041,16 @@ class McpServiceImpl {
     await this.connectServerById(serverId).catch((err) => { debugLog.error('[MCP] connectServerById failed for prompts fetch:', err); });
     if (!rt.connected) return [];
     try {
-      const resp = (await (rt.client as any).listPrompts?.()) || (await (rt.client as any).request?.({ method: 'prompts/list', params: {} }));
-      const arr = resp?.prompts || resp || [];
-      return arr.map((p: any) => ({ name: this.withNamespace(p.name, rt.cfg.namespace), description: p.description || '', arguments: p.arguments }));
+      const allPrompts: any[] = [];
+      let cursor: string | undefined;
+      let pageCount = 0;
+      do {
+        const resp = await rt.client.listPrompts(cursor ? { cursor } : undefined);
+        if (resp?.prompts) allPrompts.push(...resp.prompts);
+        cursor = (resp as any)?.nextCursor;
+        if (++pageCount >= 100) { cursor = undefined; break; }
+      } while (cursor);
+      return allPrompts.map((p: any) => ({ name: this.withNamespace(p.name, rt.cfg.namespace), description: p.description || '', arguments: p.arguments }));
     } catch (e: unknown) {
       console.warn(`[MCP] fetchServerPrompts failed for ${serverId}:`, e);
       return [];
@@ -1040,9 +1063,16 @@ class McpServiceImpl {
     await this.connectServerById(serverId).catch((err) => { debugLog.error('[MCP] connectServerById failed for resources fetch:', err); });
     if (!rt.connected) return [];
     try {
-      const resp = (await (rt.client as any).listResources?.()) || (await (rt.client as any).request?.({ method: 'resources/list', params: {} }));
-      const arr = resp?.resources || resp || [];
-      return arr.map((r: any) => {
+      const allResources: any[] = [];
+      let cursor: string | undefined;
+      let pageCount = 0;
+      do {
+        const resp = await rt.client.listResources(cursor ? { cursor } : undefined);
+        if (resp?.resources) allResources.push(...resp.resources);
+        cursor = (resp as any)?.nextCursor;
+        if (++pageCount >= 100) { cursor = undefined; break; }
+      } while (cursor);
+      return allResources.map((r: any) => {
         const baseName = r.name || '';
         return {
           uri: r.uri || r.id || '',
@@ -1074,13 +1104,15 @@ class McpServiceImpl {
         continue;
       }
       try {
-        // MCP 规范：支持 pagination cursor
+        // MCP 规范：支持 pagination cursor（安全上限 100 页）
         const allPrompts: any[] = [];
         let cursor: string | undefined;
+        let pageCount = 0;
         do {
           const resp = await rt.client.listPrompts(cursor ? { cursor } : undefined);
           if (resp?.prompts) allPrompts.push(...resp.prompts);
           cursor = (resp as any)?.nextCursor;
+          if (++pageCount >= 100) { cursor = undefined; break; }
         } while (cursor);
         const promptsForServer: PromptInfo[] = allPrompts.map((p: any) => ({
           name: this.withNamespace(p.name, rt.cfg.namespace),
@@ -1133,13 +1165,15 @@ class McpServiceImpl {
         continue;
       }
       try {
-        // MCP 规范：支持 pagination cursor
+        // MCP 规范：支持 pagination cursor（安全上限 100 页）
         const allResources: any[] = [];
         let cursor: string | undefined;
+        let pageCount = 0;
         do {
           const resp = await rt.client.listResources(cursor ? { cursor } : undefined);
           if (resp?.resources) allResources.push(...resp.resources);
           cursor = (resp as any)?.nextCursor;
+          if (++pageCount >= 100) { cursor = undefined; break; }
         } while (cursor);
         const resourcesForServer: ResourceInfo[] = allResources.map((r: any) => {
           const baseName = r.name || '';
@@ -1271,25 +1305,14 @@ class McpServiceImpl {
     });
 
     // MCP 规范要求：超时或取消时客户端 SHOULD 发送 notifications/cancelled
-    const sendCancellationNotification = async (requestId: string, reason: string) => {
-      try {
-        await rt.client.notification({
-          method: 'notifications/cancelled',
-          params: { requestId, reason },
-        });
-      } catch {
-        // best-effort: 服务器可能不支持此通知
-      }
-    };
+    // SDK v1.17+ 内部已在 AbortSignal 触发时自动发送 notifications/cancelled（使用正确的 JSON-RPC request ID），
+    // 无需手动发送（手动发送会使用错误的 ID 导致服务端无法匹配）。
 
     // 内部执行函数，支持重试
     const executeCall = async (): Promise<{ ok: boolean; data?: any; error?: string; usage?: any }> => {
       const controller = new AbortController();
-      const currentCallId = callId; // 用于取消通知
       const to = setTimeout(() => {
-        controller.abort();
-        // MCP 规范：超时时发送取消通知
-        sendCancellationNotification(currentCallId, 'timeout');
+        controller.abort('timeout');
       }, timeoutMs);
       try {
         const result = await rt.client.callTool(

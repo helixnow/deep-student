@@ -286,50 +286,16 @@ impl SSETransport {
 
     /// 执行OAuth 2.1认证流程（支持PKCE）
     /// Android 平台不支持 OAuth2（需要 native-tls），请使用 API Key 认证
+    ///
+    /// NOTE: OAuth 2.1 interactive flow 尚未完整实现（需要打开浏览器 + 处理回调）。
+    /// 当前直接返回错误，引导用户使用 API Key 认证。
     #[cfg(not(target_os = "android"))]
-    pub async fn perform_oauth_authentication(oauth: &OAuthConfig) -> McpResult<String> {
-        use oauth2::{
-            basic::BasicClient, AuthUrl, ClientId, CsrfToken, PkceCodeChallenge, RedirectUrl,
-            Scope, TokenUrl,
-        };
-
-        // 创建OAuth客户端
-        let client = BasicClient::new(
-            ClientId::new(oauth.client_id.clone()),
-            None, // client_secret可选
-            AuthUrl::new(oauth.auth_url.clone())
-                .map_err(|e| McpError::AuthenticationError(e.to_string()))?,
-            Some(
-                TokenUrl::new(oauth.token_url.clone())
-                    .map_err(|e| McpError::AuthenticationError(e.to_string()))?,
-            ),
-        )
-        .set_redirect_uri(
-            RedirectUrl::new(oauth.redirect_uri.clone())
-                .map_err(|e| McpError::AuthenticationError(e.to_string()))?,
-        );
-
-        // 生成PKCE challenge（2025强制要求）
-        let (pkce_challenge, _pkce_verifier) = PkceCodeChallenge::new_random_sha256();
-
-        // 构建授权URL
-        let (auth_url, csrf_token) = client
-            .authorize_url(CsrfToken::new_random)
-            .add_scopes(oauth.scopes.iter().map(|s| Scope::new(s.clone())))
-            .set_pkce_challenge(pkce_challenge)
-            .url();
-
-        info!("OAuth authorization URL: {}", auth_url);
-
-        // OAuth 2.1 流程需要用户交互来获取授权码
-        // 实际实现中需要打开浏览器并处理回调
-        // SECURITY: 不返回 mock token，防止使用虚假凭据访问受保护资源
-        error!(
-            "OAuth 2.1 authentication flow is not yet fully implemented. \
-             Authorization URL: {}. CSRF token: {:?}. \
-             Please use API Key authentication instead.",
-            auth_url, csrf_token
-        );
+    pub async fn perform_oauth_authentication(_oauth: &OAuthConfig) -> McpResult<String> {
+        // SECURITY: 不返回 mock token，防止使用虚假凭据访问受保护资源。
+        // 完整 OAuth 2.1 流程需要：1) 打开浏览器跳转授权 URL  2) 处理 redirect_uri 回调
+        // 3) 用 authorization code + PKCE verifier 换取 access_token。
+        // 此功能待后续版本实现。
+        error!("OAuth 2.1 authentication flow is not yet implemented. Please use API Key authentication.");
         Err(McpError::AuthenticationError(
             "OAuth 2.1 interactive flow is not yet implemented. Please configure an API Key instead.".to_string()
         ))

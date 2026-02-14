@@ -6,10 +6,10 @@ import type {
   PdfProcessingStatus,
 } from '../../core/types/common';
 
-type AttachmentMediaType = 'pdf' | 'image';
-type MediaInjectMode = 'text' | 'ocr' | 'image';
+export type AttachmentMediaType = 'pdf' | 'image';
+export type MediaInjectMode = 'text' | 'ocr' | 'image';
 
-function getAttachmentMediaType(attachment: AttachmentMeta): AttachmentMediaType | null {
+export function getAttachmentMediaType(attachment: AttachmentMeta): AttachmentMediaType | null {
   const isPdf = attachment.mimeType === 'application/pdf' || attachment.name.toLowerCase().endsWith('.pdf');
   if (isPdf) {
     return 'pdf';
@@ -23,7 +23,7 @@ function getAttachmentMediaType(attachment: AttachmentMeta): AttachmentMediaType
   return null;
 }
 
-function getSelectedInjectModes(
+export function getSelectedInjectModes(
   attachment: AttachmentMeta,
   mediaType: AttachmentMediaType
 ): MediaInjectMode[] {
@@ -33,7 +33,7 @@ function getSelectedInjectModes(
   return (attachment.injectModes?.image || ['image']) as MediaInjectMode[];
 }
 
-function getEffectiveReadyModes(
+export function getEffectiveReadyModes(
   attachment: AttachmentMeta,
   mediaType: AttachmentMediaType,
   status?: PdfProcessingStatus

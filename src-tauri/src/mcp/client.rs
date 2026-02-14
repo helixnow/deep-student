@@ -1145,10 +1145,13 @@ impl McpClient {
     // ==================== 工具操作 ====================
 
     pub async fn list_tools(&self) -> McpResult<Vec<Tool>> {
-        // MCP 规范：支持 pagination cursor，循环获取所有页
+        // MCP 规范：支持 pagination cursor，循环获取所有页（安全上限 100 页防止异常服务器死循环）
         let mut all_tools: Vec<Tool> = Vec::new();
         let mut cursor: Option<String> = None;
+        let mut page_count = 0u32;
         loop {
+            page_count += 1;
+            if page_count > 100 { break; }
             let params = if let Some(ref c) = cursor {
                 Some(json!({ "cursor": c }))
             } else {
@@ -1220,10 +1223,13 @@ impl McpClient {
     // ==================== 资源操作 ====================
 
     pub async fn list_resources(&self) -> McpResult<Vec<Resource>> {
-        // MCP 规范：支持 pagination cursor
+        // MCP 规范：支持 pagination cursor（安全上限 100 页）
         let mut all_resources: Vec<Resource> = Vec::new();
         let mut cursor: Option<String> = None;
+        let mut page_count = 0u32;
         loop {
+            page_count += 1;
+            if page_count > 100 { break; }
             let params = if let Some(ref c) = cursor {
                 Some(json!({ "cursor": c }))
             } else {
@@ -1254,21 +1260,44 @@ impl McpClient {
     }
 
     pub async fn list_resource_templates(&self) -> McpResult<Vec<ResourceTemplate>> {
-        let response = self.send_request("resources/templates/list", None).await?;
-
-        if let Some(result) = response.result {
-            let templates: Vec<ResourceTemplate> = serde_json::from_value(
-                result
-                    .get("resourceTemplates")
-                    .unwrap_or(&json!([]))
-                    .clone(),
-            )?;
-            Ok(templates)
-        } else {
-            Err(McpError::ProtocolError(
-                "Failed to list resource templates".to_string(),
-            ))
+        // MCP 规范：支持 pagination cursor（安全上限 100 页）
+        let mut all_templates: Vec<ResourceTemplate> = Vec::new();
+        let mut cursor: Option<String> = None;
+        let mut page_count = 0u32;
+        loop {
+            page_count += 1;
+            if page_count > 100 { break; }
+            let params = if let Some(ref c) = cursor {
+                Some(json!({ "cursor": c }))
+            } else {
+                None
+            };
+            let response = self.send_request("resources/templates/list", params).await?;
+            if let Some(result) = response.result {
+                let templates: Vec<ResourceTemplate> = serde_json::from_value(
+                    result
+                        .get("resourceTemplates")
+                        .unwrap_or(&json!([]))
+                        .clone(),
+                )?;
+                all_templates.extend(templates);
+                cursor = result
+                    .get("nextCursor")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+                if cursor.is_none() {
+                    break;
+                }
+            } else {
+                if all_templates.is_empty() {
+                    return Err(McpError::ProtocolError(
+                        "Failed to list resource templates".to_string(),
+                    ));
+                }
+                break;
+            }
         }
+        Ok(all_templates)
     }
 
     pub async fn read_resource(&self, uri: &str) -> McpResult<ResourceContent> {
@@ -1344,10 +1373,13 @@ impl McpClient {
     // ==================== 提示操作 ====================
 
     pub async fn list_prompts(&self) -> McpResult<Vec<Prompt>> {
-        // MCP 规范：支持 pagination cursor
+        // MCP 规范：支持 pagination cursor（安全上限 100 页）
         let mut all_prompts: Vec<Prompt> = Vec::new();
         let mut cursor: Option<String> = None;
+        let mut page_count = 0u32;
         loop {
+            page_count += 1;
+            if page_count > 100 { break; }
             let params = if let Some(ref c) = cursor {
                 Some(json!({ "cursor": c }))
             } else {
