@@ -401,7 +401,7 @@ DeepStudent 起源于 2025 年 3 月的一个 Python demo 原型，经过近一�
 | 时间 | 里程碑 |
 |------|--------|
 | **2025.03** | 🌱 项目萌芽 — Python demo 原型，验证 AI 辅助学习的核心想法 |
-| **2025.07** | 🔄 技术栈迁移 — 以 `ai-mistake-manager` 为名，切换至 **Tauri + React + Rust** 架构，首次提交 Anki 制卡功能 |
+| **2025.05** | 🔄 技术栈迁移 — 以 `ai-mistake-manager` 为名，开始切换至 **Tauri + React + Rust** 架构 |
 | **2025.08** | 🎨 大规模 UI 重构 — 迁移至 shadcn-ui 体系，引入 Chat 对话架构、知识库向量化 |
 | **2025.09** | 📝 笔记系统与模板管理 — Milkdown 编辑器集成、Anki 模板批量导入 |
 | **2025.10** | 🌐 国际化与 E2E 测试 — i18n 全覆盖、Playwright 端到端测试、Lance 向量存储迁移 |
