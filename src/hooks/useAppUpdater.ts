@@ -9,6 +9,19 @@
 import { useState, useCallback, useEffect } from 'react';
 import { isMobilePlatform } from '../utils/platform';
 
+/** semver 大于比较（不引入额外依赖） */
+function isNewerVersion(latest: string, current: string): boolean {
+  const l = latest.split('.').map(Number);
+  const c = current.split('.').map(Number);
+  for (let i = 0; i < Math.max(l.length, c.length); i++) {
+    const lv = l[i] || 0;
+    const cv = c[i] || 0;
+    if (lv > cv) return true;
+    if (lv < cv) return false;
+  }
+  return false;
+}
+
 interface UpdateInfo {
   version: string;
   date?: string;
@@ -59,7 +72,7 @@ export function useAppUpdater() {
         const latestVersion = (data.tag_name ?? '').replace(/^v/, '');
         const { default: VERSION_INFO } = await import('../version');
         const currentVersion = VERSION_INFO.APP_VERSION;
-        if (latestVersion && latestVersion !== currentVersion) {
+        if (latestVersion && isNewerVersion(latestVersion, currentVersion)) {
           setState(prev => ({
             ...prev,
             checking: false,
@@ -78,6 +91,7 @@ export function useAppUpdater() {
           setState(prev => ({ ...prev, checking: false, error: err?.message || String(err) }));
         } else {
           setState(prev => ({ ...prev, checking: false }));
+          console.warn('[Updater] Mobile silent check failed:', err?.message || String(err));
         }
       }
       return;
