@@ -5,7 +5,7 @@
  * 轻量级实现，使用 dstu_list / dstu_search API。
  */
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { createPortal } from 'react-dom';
 import {
@@ -90,14 +90,14 @@ export const MindMapResourcePicker: React.FC<MindMapResourcePickerProps> = ({
   const inputRef = useRef<HTMLInputElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
 
-  const existingIds = new Set(existingRefs?.map(r => r.sourceId) ?? []);
+  const existingIds = useMemo(() => new Set(existingRefs?.map(r => r.sourceId) ?? []), [existingRefs]);
 
   // 加载根目录资源
   const loadRootResources = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const result = await dstuApi.list('/', { recursive: false });
+      const result = await dstuApi.list('/', { recursive: true });
       if (result.ok) {
         // 过滤掉文件夹，只保留资源
         setResources(result.value.filter(n => n.type !== 'folder'));
@@ -144,9 +144,9 @@ export const MindMapResourcePicker: React.FC<MindMapResourcePickerProps> = ({
     }
   }, [isOpen, loadRootResources]);
 
-  // 搜索防抖
+  // 搜索防抖（仅在用户实际输入时触发，避免与初始加载重复）
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen || !query) return;
     const timer = setTimeout(() => {
       searchResources(query);
     }, 300);
@@ -174,7 +174,7 @@ export const MindMapResourcePicker: React.FC<MindMapResourcePickerProps> = ({
       window.removeEventListener('mousedown', handleClick);
       window.removeEventListener('keydown', handleEscape);
     };
-  }, [isOpen, onClose]);
+  }, [isOpen]); // eslint-disable-line react-hooks/exhaustive-deps -- onClose 引用稳定性由 useCallback 在父组件保证
 
   const handleSelect = useCallback((node: DstuNode) => {
     const ref: MindMapNodeRef = {

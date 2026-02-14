@@ -37,7 +37,9 @@ import {
   runAllTests,
   requestAbort,
   resetAbort,
+  cleanupTestSessions,
   PIPELINE_TEST_EVENT,
+  type AttachmentType,
   type TestConfig,
   type TestCase,
   type TestCaseResult,
@@ -171,7 +173,7 @@ const AttachmentPipelineTestPlugin: React.FC<DebugPanelPluginProps> = ({
     if (!isActivated) return;
     const handler = (e: Event) => {
       const entry = (e as CustomEvent<PipelineLogEntry>).detail;
-      setLiveLogs(prev => [...prev.slice(-200), entry]);
+      setLiveLogs(prev => [...prev, entry]);
     };
     window.addEventListener(PIPELINE_TEST_EVENT, handler);
     return () => window.removeEventListener(PIPELINE_TEST_EVENT, handler);
@@ -182,18 +184,26 @@ const AttachmentPipelineTestPlugin: React.FC<DebugPanelPluginProps> = ({
     logScrollRef.current?.scrollTo({ top: logScrollRef.current.scrollHeight });
   }, [liveLogs]);
 
-  // 测试矩阵预览
-  const matrix = useMemo(() => {
-    if (!textModelId || !multimodalModelId) return [];
-    return generateTestMatrix(textModelId, multimodalModelId);
+  // 测试矩阵预览（分类型计数）
+  const imageMatrixCount = useMemo(() => {
+    if (!textModelId || !multimodalModelId) return 0;
+    return generateTestMatrix(textModelId, multimodalModelId, 'image').length;
+  }, [textModelId, multimodalModelId]);
+  const pdfMatrixCount = useMemo(() => {
+    if (!textModelId || !multimodalModelId) return 0;
+    return generateTestMatrix(textModelId, multimodalModelId, 'pdf').length;
   }, [textModelId, multimodalModelId]);
 
-  // 是否可以开始
-  const canStart = imageFile && pdfFile && textModelId && multimodalModelId && status !== 'running';
+  // 是否可以开始（按类型独立判断）
+  const canStartImage = !!imageFile && !!textModelId && !!multimodalModelId && status !== 'running';
+  const canStartPdf = !!pdfFile && !!textModelId && !!multimodalModelId && status !== 'running';
 
   // --- 事件处理 ---
-  const handleStart = useCallback(async () => {
-    if (!imageFile || !pdfFile || !textModelId || !multimodalModelId) return;
+  const handleStart = useCallback(async (filter?: AttachmentType) => {
+    if (!textModelId || !multimodalModelId) return;
+    if (filter === 'image' && !imageFile) return;
+    if (filter === 'pdf' && !pdfFile) return;
+    if (!filter && (!imageFile || !pdfFile)) return;
     setStatus('running');
     setResults([]);
     setLiveLogs([]);
@@ -202,11 +212,14 @@ const AttachmentPipelineTestPlugin: React.FC<DebugPanelPluginProps> = ({
     resetAbort();
 
     const config: TestConfig = {
-      imageFile, pdfFile, textModelId, multimodalModelId, skipSend,
+      imageFile: imageFile ?? undefined,
+      pdfFile: pdfFile ?? undefined,
+      textModelId, multimodalModelId, skipSend,
       intervalMs: 2000,
       roundTimeoutMs: 120000,
+      attachmentTypeFilter: filter,
     };
-    setTotalCases(generateTestMatrix(textModelId, multimodalModelId).length);
+    setTotalCases(generateTestMatrix(textModelId, multimodalModelId, filter).length);
 
     try {
       const allResults = await runAllTests(
@@ -253,6 +266,23 @@ const AttachmentPipelineTestPlugin: React.FC<DebugPanelPluginProps> = ({
     const text = liveLogs.map(l => `[${fmtTime(l.timestamp)}][${l.phase}] ${l.message}`).join('\n');
     navigator.clipboard.writeText(text);
   }, [liveLogs]);
+
+  const [isCleaningUp, setIsCleaningUp] = useState(false);
+  const handleCleanup = useCallback(async () => {
+    setIsCleaningUp(true);
+    try {
+      const { deleted, errors } = await cleanupTestSessions();
+      if (errors.length > 0) {
+        console.warn('[PipelineTest] 清理部分失败:', errors);
+      }
+      alert(`已清理 ${deleted} 个测试会话${errors.length > 0 ? `，${errors.length} 个失败` : ''}`);
+    } catch (err) {
+      console.error('[PipelineTest] 清理失败:', err);
+      alert(`清理失败: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setIsCleaningUp(false);
+    }
+  }, []);
 
   // --- 统计 ---
   const passed = results.filter(r => r.status === 'passed').length;
@@ -365,15 +395,24 @@ const AttachmentPipelineTestPlugin: React.FC<DebugPanelPluginProps> = ({
                   <Square className="w-4 h-4 mr-1" /> 中止
                 </Button>
               ) : (
-                <Button size="sm" onClick={handleStart} disabled={!canStart}>
-                  <Play className="w-4 h-4 mr-1" /> 开始测试 ({matrix.length})
-                </Button>
+                <>
+                  <Button size="sm" onClick={() => handleStart('image')} disabled={!canStartImage}>
+                    <FileImage className="w-4 h-4 mr-1" /> 图片测试 ({imageMatrixCount})
+                  </Button>
+                  <Button size="sm" onClick={() => handleStart('pdf')} disabled={!canStartPdf}>
+                    <FileText className="w-4 h-4 mr-1" /> PDF 测试 ({pdfMatrixCount})
+                  </Button>
+                </>
               )}
               <Button size="sm" variant="outline" onClick={handleDownload} disabled={results.length === 0}>
                 <Download className="w-4 h-4" />
               </Button>
               <Button size="sm" variant="outline" onClick={handleCopyLogs} disabled={liveLogs.length === 0}>
                 <Copy className="w-4 h-4" />
+              </Button>
+              <Button size="sm" variant="outline" onClick={handleCleanup} disabled={isCleaningUp || status === 'running'}
+                title="清理所有 [PipelineTest] 测试会话">
+                {isCleaningUp ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
               </Button>
             </div>
           </div>
@@ -525,7 +564,7 @@ const AttachmentPipelineTestPlugin: React.FC<DebugPanelPluginProps> = ({
       </Card>
 
       {/* ===== 实时日志 ===== */}
-      {status === 'running' && liveLogs.length > 0 && (
+      {liveLogs.length > 0 && (
         <Card className="h-32 flex-shrink-0 overflow-hidden">
           <div className="px-3 py-1 border-b flex items-center justify-between">
             <span className="text-xs font-medium text-muted-foreground">实时日志</span>
@@ -535,7 +574,7 @@ const AttachmentPipelineTestPlugin: React.FC<DebugPanelPluginProps> = ({
           </div>
           <ScrollArea className="h-[calc(100%-28px)]" ref={logScrollRef}>
             <div className="p-2 space-y-0.5">
-              {liveLogs.slice(-50).map(l => (
+              {liveLogs.slice(-100).map(l => (
                 <div key={l.id} className="text-xs font-mono flex gap-1">
                   <span className="text-muted-foreground w-20 flex-shrink-0">{fmtTime(l.timestamp)}</span>
                   <span className={

@@ -37,6 +37,11 @@ function nodeToOpmlOutline(node: MindMapNode, indent: number): string {
     attrs.push(`_note="${escapeXml(node.note)}"`);
   }
 
+  if (node.refs && node.refs.length > 0) {
+    const refsStr = node.refs.map(r => `${r.name}(${r.sourceId})`).join('; ');
+    attrs.push(`_refs="${escapeXml(refsStr)}"`);
+  }
+
   const children = node.children || [];
   if (children.length === 0) {
     return `${indentStr}<outline ${attrs.join(' ')} />\n`;

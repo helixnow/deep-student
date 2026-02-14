@@ -10,7 +10,7 @@
  *   - 文件上传：DOM <input type="file"> change 事件 → processFilesToAttachments 全流程
  *   - 注入模式：store.updateAttachment + updateContextRefInjectModes（与 UI 面板回调路径一致）
  *   - 模型切换：store.setChatParams（与模型选择面板回调路径一致）
- *   - 发送消息：store.sendMessage（与发送按钮 onClick 回调路径一致）
+ *   - 发送消息：点击真实发送按钮 [data-testid="btn-send"]（走完整 useInputBarV2 路径：降级/守卫/过滤）
  */
 
 import { CHATV2_LOG_EVENT, type ChatV2LogEntry } from './chatV2Logger';
@@ -27,14 +27,16 @@ export type ImageInjectMode = 'image' | 'ocr';
 export type PdfInjectMode = 'text' | 'ocr' | 'image';
 
 export interface TestConfig {
-  imageFile: File;
-  pdfFile: File;
+  imageFile?: File;
+  pdfFile?: File;
   textModelId: string;
   multimodalModelId: string;
   testPrompt?: string;
   intervalMs?: number;
   roundTimeoutMs?: number;
   skipSend?: boolean;
+  /** 仅运行指定附件类型的用例 */
+  attachmentTypeFilter?: AttachmentType;
 }
 
 export interface TestCase {
@@ -171,23 +173,27 @@ const PDF_MODE_COMBOS: (PdfInjectMode[] | undefined)[] = [
   ['text', 'ocr'], ['text', 'image'], ['ocr', 'image'], ['text', 'ocr', 'image'],
 ];
 
-export function generateTestMatrix(textModelId: string, multimodalModelId: string): TestCase[] {
+export function generateTestMatrix(textModelId: string, multimodalModelId: string, attachmentTypeFilter?: AttachmentType): TestCase[] {
   const cases: TestCase[] = [];
   let idx = 0;
   const models: { type: ModelType; id: string }[] = [
     { type: 'text', id: textModelId },
     { type: 'multimodal', id: multimodalModelId },
   ];
-  for (const m of models) {
-    for (const modes of IMAGE_MODE_COMBOS) {
-      const ml = modes ? `[${modes.join(',')}]` : 'default';
-      cases.push({ id: `img_${m.type}_${ml}_${idx}`, index: idx++, attachmentType: 'image', modelType: m.type, modelId: m.id, injectModes: modes, label: `Image | ${m.type} | ${ml}` });
+  if (!attachmentTypeFilter || attachmentTypeFilter === 'image') {
+    for (const m of models) {
+      for (const modes of IMAGE_MODE_COMBOS) {
+        const ml = modes ? `[${modes.join(',')}]` : 'default';
+        cases.push({ id: `img_${m.type}_${ml}_${idx}`, index: idx++, attachmentType: 'image', modelType: m.type, modelId: m.id, injectModes: modes, label: `Image | ${m.type} | ${ml}` });
+      }
     }
   }
-  for (const m of models) {
-    for (const modes of PDF_MODE_COMBOS) {
-      const ml = modes ? `[${modes.join(',')}]` : 'default';
-      cases.push({ id: `pdf_${m.type}_${ml}_${idx}`, index: idx++, attachmentType: 'pdf', modelType: m.type, modelId: m.id, injectModes: modes, label: `PDF | ${m.type} | ${ml}` });
+  if (!attachmentTypeFilter || attachmentTypeFilter === 'pdf') {
+    for (const m of models) {
+      for (const modes of PDF_MODE_COMBOS) {
+        const ml = modes ? `[${modes.join(',')}]` : 'default';
+        cases.push({ id: `pdf_${m.type}_${ml}_${idx}`, index: idx++, attachmentType: 'pdf', modelType: m.type, modelId: m.id, injectModes: modes, label: `PDF | ${m.type} | ${ml}` });
+      }
     }
   }
   return cases;
@@ -443,64 +449,76 @@ function verifyRequestBody(tc: TestCase, body: any): VerificationCheck[] {
   }
 
   const content = lastUser.content;
-  // 附件注入后 content 应为数组格式（包含 text/image_url 块）
-  if (!Array.isArray(content)) {
-    checks.push({
-      name: 'content 为数组格式',
-      passed: false,
-      detail: `content 是 ${typeof content}，非数组 — 附件内容可能未注入`,
-    });
-    return checks;
-  }
-  checks.push({ name: 'content 为数组格式', passed: true, detail: `${content.length} 个内容块` });
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const blocks = content as any[];
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const hasImageUrl = blocks.some((b: any) => b.type === 'image_url');
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const textLen = blocks.filter((b: any) => b.type === 'text').reduce((sum: number, b: any) => sum + (b.text?.length || 0), 0);
+  // ========================================================================
+  // 后端请求体 content 格式说明：
+  //   多模态模型 + 有 image 注入 → content 是数组 [{type:"text",...}, {type:"image_url",...}]
+  //   文本模型 / 无 image 注入   → content 是字符串（附件文本拼入字符串）
+  // ========================================================================
 
-  // 文本模型：绝不应有 image_url
-  if (tc.modelType === 'text') {
-    checks.push({
-      name: '文本模型无 image_url',
-      passed: !hasImageUrl,
-      detail: hasImageUrl ? '❌ 文本模型请求体包含 image_url 块！' : '✓ 文本模型正确无 image_url',
-    });
-  }
+  const modes = tc.attachmentType === 'image'
+    ? (tc.injectModes as ImageInjectMode[] | undefined)
+    : (tc.injectModes as PdfInjectMode[] | undefined);
+  const expectImageBlocks = tc.modelType === 'multimodal' && (!modes || modes.includes('image'));
 
-  // 多模态模型：根据注入模式检查 image_url 是否应存在
-  if (tc.modelType === 'multimodal') {
-    const modes = tc.attachmentType === 'image'
-      ? (tc.injectModes as ImageInjectMode[] | undefined)
-      : (tc.injectModes as PdfInjectMode[] | undefined);
-    const expectImage = !modes || modes.includes('image');
-    if (expectImage) {
-      checks.push({
-        name: '多模态请求含 image_url',
-        passed: hasImageUrl,
-        detail: hasImageUrl ? '✓ 多模态模型正确包含 image_url' : '❌ 多模态模型缺少 image_url 块',
-      });
-    } else {
-      // 明确指定了模式且不包含 image：应无 image_url
-      checks.push({
-        name: '多模态 ocr-only 无 image_url',
-        passed: !hasImageUrl,
-        detail: hasImageUrl ? '❌ 注入模式未包含 image 但请求体有 image_url' : '✓ 正确：仅 ocr/text 模式，无 image_url',
-      });
+  if (Array.isArray(content)) {
+    // content 是数组 — 多模态 + image 模式
+    checks.push({ name: 'content 格式', passed: true, detail: `数组: ${content.length} 个内容块` });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const blocks = content as any[];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const hasImageUrl = blocks.some((b: any) => b.type === 'image_url');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const textLen = blocks.filter((b: any) => b.type === 'text').reduce((sum: number, b: any) => sum + (b.text?.length || 0), 0);
+
+    if (tc.modelType === 'text') {
+      // 文本模型不应出现数组 content（意味着有 image_url 泄漏）
+      checks.push({ name: '文本模型无 image_url', passed: !hasImageUrl,
+        detail: hasImageUrl ? '❌ 文本模型请求体包含 image_url 块' : '✓ 文本模型正确无 image_url' });
     }
-  }
 
-  // 附件内容应被注入（image_url 或文本内容 > 阈值）
-  const hasContent = hasImageUrl || textLen > 50;
-  checks.push({
-    name: '附件内容已注入请求体',
-    passed: hasContent,
-    detail: hasContent
-      ? (hasImageUrl ? `image_url + ${textLen} 字符文本` : `${textLen} 字符文本内容`)
-      : `仅 ${textLen} 字符文本，附件内容可能未注入`,
-  });
+    if (tc.modelType === 'multimodal') {
+      if (expectImageBlocks) {
+        checks.push({ name: '多模态请求含 image_url', passed: hasImageUrl,
+          detail: hasImageUrl ? `✓ 包含 image_url + ${textLen}字符文本` : '❌ 多模态模型缺少 image_url' });
+      } else {
+        checks.push({ name: '多模态 ocr-only 无 image_url', passed: !hasImageUrl,
+          detail: hasImageUrl ? '❌ 注入模式不含 image 但有 image_url' : '✓ 仅文本模式，无 image_url' });
+      }
+    }
+
+    const hasAnyContent = hasImageUrl || textLen > 50;
+    checks.push({ name: '附件内容已注入', passed: hasAnyContent,
+      detail: hasAnyContent
+        ? (hasImageUrl ? `image_url + ${textLen}字符文本` : `${textLen}字符文本`)
+        : `仅 ${textLen}字符文本，附件可能未注入` });
+
+  } else if (typeof content === 'string') {
+    // content 是字符串 — 文本模型 或 多模态无 image 模式
+    const strLen = content.length;
+    if (expectImageBlocks) {
+      // 多模态 + image 模式应该是数组，但拿到了字符串 → 图片未注入
+      checks.push({ name: 'content 格式', passed: false,
+        detail: `期望数组(多模态+image)，实际是字符串(${strLen}字符) — 图片可能未注入` });
+    } else {
+      // 文本模型 或 多模态纯文本模式：字符串是正确的
+      checks.push({ name: 'content 格式', passed: true,
+        detail: `字符串: ${strLen}字符 (文本模型/纯文本模式)` });
+    }
+
+    // 检查字符串中是否包含附件内容（应有实质性文本被注入）
+    // 用户发送的 prompt 约 15 字符，如果 content 远超这个长度说明有附件文本注入
+    const promptBaseLen = 30; // "请简要描述这个附件的内容。" 约 15 字 + 余量
+    const hasInjectedText = strLen > promptBaseLen + 50;
+    checks.push({ name: '附件文本已注入', passed: hasInjectedText,
+      detail: hasInjectedText
+        ? `✓ content ${strLen}字符，含注入文本 (超出基础 ${promptBaseLen}+50)`
+        : `content 仅 ${strLen}字符，附件文本可能未注入` });
+
+  } else {
+    checks.push({ name: 'content 格式', passed: false,
+      detail: `未知类型: ${typeof content}` });
+  }
 
   return checks;
 }
@@ -656,23 +674,31 @@ export async function runSingleTestCase(
     }
 
     // 等待处理就绪（OCR/PDF 预处理）
-    const curStatus = store.getState().attachments.find(x => x.id === att.id)?.status;
-    if (curStatus !== 'processing' && curStatus !== 'ready') {
-      log('info', 'processing', `跳过处理等待 (status=${curStatus})`);
-    }
-    if (curStatus === 'processing' || curStatus === 'ready') {
-      log('info', 'wait', '等待预处理完全就绪...');
-      const ready = await waitFor(() => {
-        const a = store.getState().attachments.find(x => x.id === att.id);
-        if (!a) return false;
-        if (a.status === 'ready') return true;
-        const rm = a.processingStatus?.readyModes || [];
-        return rm.length > 0;
-      }, 60000, 500);
-      const cur = store.getState().attachments.find(x => x.id === att.id);
-      log(ready ? 'success' : 'warn', 'processing',
-        ready ? '处理就绪' : '处理超时，继续',
-        { status: cur?.status, readyModes: cur?.processingStatus?.readyModes });
+    // ★ 模拟真实用户行为：用户会等到附件状态变为 ready（进度条消失）后才发送
+    //   不检查 readyModes，因为用户看不到 readyModes，只看进度条
+    log('info', 'wait', '等待附件 status=ready (模拟用户等待进度条完成)...');
+    const ready = await waitFor(() => {
+      const a = store.getState().attachments.find(x => x.id === att.id);
+      return !!a && a.status === 'ready';
+    }, 60000, 500);
+    const cur = store.getState().attachments.find(x => x.id === att.id);
+    log(ready ? 'success' : 'warn', 'processing',
+      ready ? '处理就绪 (status=ready)' : '处理超时 (60s)，继续发送',
+      { status: cur?.status, readyModes: cur?.processingStatus?.readyModes });
+
+    // ★ 发送前完整状态 dump
+    {
+      const refs = store.getState().pendingContextRefs;
+      log('info', 'preSend:contextRefs', JSON.stringify(refs.map(r => ({
+        resourceId: r.resourceId, typeId: r.typeId, hash: r.hash,
+        injectModes: r.injectModes, displayName: r.displayName,
+      })), null, 2));
+      const atts = store.getState().attachments;
+      log('info', 'preSend:attachments', JSON.stringify(atts.map(a => ({
+        id: a.id, name: a.name, status: a.status, resourceId: a.resourceId,
+        sourceId: a.sourceId, processingStatus: a.processingStatus,
+        injectModes: a.injectModes, mimeType: a.mimeType, size: a.size,
+      })), null, 2));
     }
 
     // 发送
@@ -680,19 +706,41 @@ export async function runSingleTestCase(
       log('info', 'send', 'skipSend=true，跳过');
       result.status = 'passed';
     } else {
+      // ★ 模拟真实用户操作：在输入框打字 → 点击发送按钮
+      // 发送按钮的 onClick 会走完整的 useInputBarV2.sendMessage 路径：
+      //   降级检查 → blockingMode 守卫 → 附件过滤 → store.sendMessage
       const prompt = config.testPrompt || '请简要描述这个附件的内容。';
       store.getState().setInputValue(prompt);
-      await sleep(100);
-      log('info', 'send', `发送: "${prompt.slice(0, 40)}..."`);
-      const p = store.getState().sendMessage(prompt);
-      await sleep(500);
+      await sleep(200);
+
+      const sendBtn = document.querySelector('[data-testid="btn-send"]') as HTMLButtonElement | null;
+      if (!sendBtn) {
+        throw new Error('未找到发送按钮 [data-testid="btn-send"]');
+      }
+      if (sendBtn.disabled) {
+        log('warn', 'send', '发送按钮被禁用 (disabled)，真实用户无法点击');
+        // dump 按钮禁用原因的上下文
+        const finalAtts = store.getState().attachments;
+        log('info', 'send:disabled:attachments', JSON.stringify(finalAtts.map(a => ({
+          id: a.id, status: a.status, injectModes: a.injectModes,
+          processingStatus: a.processingStatus,
+        })), null, 2));
+        throw new Error('发送按钮被禁用，模拟用户无法发送');
+      }
+      log('info', 'send', `点击发送按钮: "${prompt.slice(0, 40)}..."`);
+      sendBtn.click();
+
+      // 先等状态离开 idle（发送开始），再等回到 idle（发送完成）
+      await waitFor(
+        () => store.getState().sessionStatus !== 'idle',
+        10000, 100,
+      );
+      log('info', 'send', `发送已开始 (status=${store.getState().sessionStatus})`);
 
       const done = await waitFor(
         () => store.getState().sessionStatus === 'idle',
         config.roundTimeoutMs || 120000, 500,
       );
-      try { await Promise.race([p, sleep(2000)]); } catch { /* ignore */ }
-
       if (done) {
         log('success', 'send', '流式完成');
         // ★ 提取 LLM 响应内容
@@ -712,30 +760,39 @@ export async function runSingleTestCase(
           result.responseContent = textContent;
           log('info', 'response', `块: ${result.responseBlocksSummary.join(', ')}`);
           if (textContent.length > 0) {
-            log('info', 'response', `LLM 回复 (${textContent.length}字): ${textContent.slice(0, 150).replace(/\n/g, ' ')}${textContent.length > 150 ? '...' : ''}`);
+            log('info', 'response', `LLM 回复 (${textContent.length}字):`);
+            log('info', 'response:full', textContent);
           } else {
             log('warn', 'response', 'LLM content 块无文本内容');
           }
         }
-        // ★ 保存捕获的请求体 + 详细摘要
+        // ★ 保存捕获的完整请求体到日志（不做任何判断，原样记录）
         result.capturedRequestBody = reqCapture?.body ?? null;
         if (reqCapture?.body) {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const rb = reqCapture.body as any;
-          const msgs = rb?.messages as Array<{ role: string; content: unknown }> | undefined;
-          const lastU = msgs ? [...msgs].reverse().find(m => m.role === 'user') : null;
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const blocks = Array.isArray(lastU?.content) ? lastU.content as any[] : [];
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const imgCount = blocks.filter((b: any) => b.type === 'image_url').length;
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const txtLen = blocks.filter((b: any) => b.type === 'text').reduce((s: number, b: any) => s + (b.text?.length || 0), 0);
           const totalReqs = reqCapture.count;
-          log('info', 'requestBody',
-            `已捕获第1轮 (共${totalReqs}轮) | messages=${msgs?.length || 0} | user.content: ${blocks.length} 块 (image_url=${imgCount}, text=${txtLen}字符)`,
-            { model: rb?.model });
-          if (totalReqs > 1) {
-            log('info', 'requestBody', `模型使用了 tool_call: 共 ${totalReqs} 轮 LLM 请求`);
+          log('info', 'requestBody', `已捕获 (共${totalReqs}轮LLM请求)`);
+          // 完整 dump 请求体：去掉 base64 图片数据 + system prompt（与注入无关），只保留关键内容
+          try {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const sanitized = JSON.parse(JSON.stringify(reqCapture.body, (key: string, val: any) => {
+              if (key === 'url' && typeof val === 'string' && val.startsWith('data:')) {
+                return `[base64:${val.length}bytes]`;
+              }
+              return val;
+            }));
+            // 去掉 system 消息的 content（太长且与附件注入无关）
+            if (Array.isArray(sanitized.messages)) {
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              sanitized.messages = sanitized.messages.map((m: any) => {
+                if (m.role === 'system') {
+                  return { role: 'system', content: `[system prompt: ${(m.content?.length || 0)}字符, 已省略]` };
+                }
+                return m;
+              });
+            }
+            log('info', 'requestBody:dump', JSON.stringify(sanitized, null, 2));
+          } catch {
+            log('warn', 'requestBody:dump', '序列化失败');
           }
         } else {
           log('warn', 'requestBody', '未捕获到后端请求体');
@@ -803,10 +860,14 @@ export async function runAllTests(
 ): Promise<TestCaseResult[]> {
   _abortRequested = false;
   globalLogId = 0;
-  const matrix = generateTestMatrix(config.textModelId, config.multimodalModelId);
+  const matrix = generateTestMatrix(config.textModelId, config.multimodalModelId, config.attachmentTypeFilter);
+  const needImage = matrix.some(tc => tc.attachmentType === 'image');
+  const needPdf = matrix.some(tc => tc.attachmentType === 'pdf');
+  if (needImage && !config.imageFile) throw new Error('测试矩阵包含图片用例但未提供图片文件');
+  if (needPdf && !config.pdfFile) throw new Error('测试矩阵包含 PDF 用例但未提供 PDF 文件');
   const [imgBuf, pdfBuf] = await Promise.all([
-    readFileAsArrayBuffer(config.imageFile),
-    readFileAsArrayBuffer(config.pdfFile),
+    needImage && config.imageFile ? readFileAsArrayBuffer(config.imageFile) : Promise.resolve(new ArrayBuffer(0)),
+    needPdf && config.pdfFile ? readFileAsArrayBuffer(config.pdfFile) : Promise.resolve(new ArrayBuffer(0)),
   ]);
   const results: TestCaseResult[] = [];
   const interval = config.intervalMs ?? 3000;
@@ -825,7 +886,7 @@ export async function runAllTests(
     }
     let r: TestCaseResult;
     try {
-      r = await runSingleTestCase(tc, imgBuf, pdfBuf, config.imageFile, config.pdfFile, config, onLog);
+      r = await runSingleTestCase(tc, imgBuf, pdfBuf, config.imageFile!, config.pdfFile!, config, onLog);
     } catch (err) {
       // 防止单个用例的未预期异常中断整个测试
       r = {
@@ -842,4 +903,57 @@ export async function runAllTests(
     if (tc.index < matrix.length - 1 && !_abortRequested) await sleep(interval);
   }
   return results;
+}
+
+// =============================================================================
+// 测试会话清理
+// =============================================================================
+
+/**
+ * 清理所有 [PipelineTest] 标记的测试会话。
+ * 返回删除的会话数量。
+ */
+export async function cleanupTestSessions(): Promise<{ deleted: number; errors: string[] }> {
+  const { invoke } = await import('@tauri-apps/api/core');
+  const sm = await getSessionManager();
+  const errors: string[] = [];
+  let deleted = 0;
+
+  // 后端分页加载所有 active 会话
+  const PAGE = 100;
+  let offset = 0;
+  const testSessionIds: string[] = [];
+
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    const batch = await invoke<Array<{ id: string; title?: string }>>('chat_v2_list_sessions', {
+      status: 'active', limit: PAGE, offset,
+    });
+    for (const s of batch) {
+      if (s.title && s.title.startsWith(PIPELINE_TEST_SESSION_PREFIX)) {
+        testSessionIds.push(s.id);
+      }
+    }
+    if (batch.length < PAGE) break;
+    offset += PAGE;
+  }
+
+  if (testSessionIds.length === 0) return { deleted: 0, errors: [] };
+
+  // 逐个删除
+  for (const sid of testSessionIds) {
+    try {
+      // 先从 sessionManager 销毁（清理 store/adapter）
+      if (sm.has(sid)) {
+        await sm.destroy(sid);
+      }
+      // 后端软删除
+      await invoke('chat_v2_soft_delete_session', { sessionId: sid });
+      deleted++;
+    } catch (err) {
+      errors.push(`${sid}: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  return { deleted, errors };
 }

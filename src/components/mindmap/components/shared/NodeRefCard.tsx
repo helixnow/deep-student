@@ -111,7 +111,7 @@ export const NodeRefCard: React.FC<NodeRefCardProps> = ({
   return (
     <div
       className={cn(
-        'nopan nodrag',
+        'group/ref nopan nodrag',
         'inline-flex items-center gap-1 px-1.5 py-0.5 rounded',
         'text-[11px] leading-tight',
         'bg-[var(--mm-bg-elevated)] hover:bg-accent/50',
@@ -162,14 +162,13 @@ export const NodeRefList: React.FC<NodeRefListProps> = ({
   return (
     <div className={cn('flex flex-col gap-0.5 mt-1', className)}>
       {refs.map((ref) => (
-        <div key={ref.sourceId} className="group/ref">
-          <NodeRefCard
-            ref_={ref}
-            onRemove={onRemove}
-            onClick={onClick}
-            readonly={readonly}
-          />
-        </div>
+        <NodeRefCard
+          key={ref.sourceId}
+          ref_={ref}
+          onRemove={onRemove}
+          onClick={onClick}
+          readonly={readonly}
+        />
       ))}
     </div>
   );

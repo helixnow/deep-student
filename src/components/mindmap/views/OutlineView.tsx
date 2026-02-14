@@ -57,6 +57,7 @@ import {
   AppMenuSeparator,
 } from '@/components/ui/app-menu';
 import type { MindMapNode, BlankRange } from '../types';
+import { NodeRefList } from '../components/shared/NodeRefCard';
 import { findNodeById, isDescendantOf } from '../utils/node/find';
 import { BlankedText } from '../components/shared/BlankedText';
 import { InlineLatex } from '../components/shared/InlineLatex';
@@ -141,6 +142,7 @@ const SortableOutlineNode: React.FC<{
   const revealBlank = useMindMapStore(state => state.revealBlank);
   const addBlankRange = useMindMapStore(state => state.addBlankRange);
   const removeBlankRange = useMindMapStore(state => state.removeBlankRange);
+  const removeNodeRef = useMindMapStore(state => state.removeNodeRef);
   
   const inputRef = useRef<HTMLInputElement>(null);
   const noteRef = useRef<HTMLTextAreaElement>(null);
@@ -525,6 +527,19 @@ const SortableOutlineNode: React.FC<{
               setIsEditingNote(false);
             }}
             placeholder={t('placeholder.note')}
+          />
+        )}
+        {node.refs && node.refs.length > 0 && (
+          <NodeRefList
+            refs={node.refs}
+            onRemove={reciteMode ? undefined : (sourceId) => removeNodeRef(node.id, sourceId)}
+            onClick={(sourceId) => {
+              const dstuPath = sourceId.startsWith('/') ? sourceId : `/${sourceId}`;
+              window.dispatchEvent(new CustomEvent('NAVIGATE_TO_VIEW', {
+                detail: { view: 'learning-hub', openResource: dstuPath },
+              }));
+            }}
+            readonly={reciteMode}
           />
         )}
       </div>

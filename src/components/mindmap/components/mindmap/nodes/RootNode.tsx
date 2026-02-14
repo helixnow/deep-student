@@ -154,8 +154,8 @@ export const RootNode: React.FC<NodeProps<Node<RootNodeData>>> = ({
         onRevealBlank={(rangeIndex) => revealBlank(data.nodeId, rangeIndex)}
         onAddBlank={(range) => addBlankRange(data.nodeId, range)}
         onRemoveBlank={(rangeIndex) => removeBlankRange(data.nodeId, rangeIndex)}
-        onRemoveRef={(sourceId) => removeNodeRef(data.nodeId, sourceId)}
-        onClickRef={(sourceId) => {
+        onRemoveRef={isEmbed ? undefined : (sourceId) => removeNodeRef(data.nodeId, sourceId)}
+        onClickRef={isEmbed ? undefined : (sourceId) => {
           const dstuPath = sourceId.startsWith('/') ? sourceId : `/${sourceId}`;
           window.dispatchEvent(new CustomEvent('NAVIGATE_TO_VIEW', {
             detail: { view: 'learning-hub', openResource: dstuPath },

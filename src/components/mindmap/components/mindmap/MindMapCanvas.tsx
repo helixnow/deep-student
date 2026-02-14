@@ -76,6 +76,16 @@ const MindMapCanvasInner: React.FC = () => {
 
   const [resourcePickerNodeId, setResourcePickerNodeId] = useState<string | null>(null);
 
+  const handleResourcePickerSelect = useCallback((ref: import('../../types').MindMapNodeRef) => {
+    if (resourcePickerNodeId) {
+      addNodeRef(resourcePickerNodeId, ref);
+    }
+  }, [resourcePickerNodeId, addNodeRef]);
+
+  const handleResourcePickerClose = useCallback(() => {
+    setResourcePickerNodeId(null);
+  }, []);
+
   const [dropTargetId, setDropTargetId] = useState<string | null>(null);
   const [dropMode, setDropMode] = useState<DropMode>('child');
   const [isDragging, setIsDragging] = useState(false);
@@ -584,12 +594,8 @@ const MindMapCanvasInner: React.FC = () => {
         isOpen={!!resourcePickerNodeId}
         nodeId={resourcePickerNodeId || ''}
         existingRefs={resourcePickerNodeId ? findNodeById(document.root, resourcePickerNodeId)?.refs : undefined}
-        onSelect={(ref) => {
-          if (resourcePickerNodeId) {
-            addNodeRef(resourcePickerNodeId, ref);
-          }
-        }}
-        onClose={() => setResourcePickerNodeId(null)}
+        onSelect={handleResourcePickerSelect}
+        onClose={handleResourcePickerClose}
       />
       {document.root.children.length === 0 && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none select-none">

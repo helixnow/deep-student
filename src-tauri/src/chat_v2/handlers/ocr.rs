@@ -54,14 +54,11 @@ pub async fn chat_v2_perform_ocr(
         return Err(ChatV2Error::Validation("At least one image is required".to_string()).into());
     }
 
-    // 构建 OCR 引擎请求
+    // 构建 OCR 引擎请求 — 使用适配器官方 prompt
+    // DeepSeek-OCR → "Free OCR.", PaddleOCR-VL → "OCR:" 等
+    // 不要追加自定义中文指令，专用 OCR 模型只接受其官方 prompt 格式
     let adapter = state.llm_manager.get_ocr_adapter().await;
-    let base_prompt = adapter.build_prompt(crate::ocr_adapters::OcrMode::FreeOcr);
-    let prompt = format!(
-        "{}\n\n{}",
-        base_prompt,
-        "请仔细识别这张图片中的所有文字内容，包括印刷文字和手写文字。输出识别结果，保持原有的格式和结构。如果图片中没有文字，请输出'无文字内容'。"
-    );
+    let prompt = adapter.build_prompt(crate::ocr_adapters::OcrMode::FreeOcr);
 
     let mut image_payloads = Vec::new();
     for (index, base64_data) in request.images.iter().enumerate() {
