@@ -33,6 +33,8 @@ interface UpdateState {
   checking: boolean;
   /** 是否有可用更新 */
   available: boolean;
+  /** 已是最新版本（检查完成但无更新） */
+  upToDate: boolean;
   /** 更新信息 */
   info: UpdateInfo | null;
   /** 是否正在下载安装 */
@@ -46,6 +48,7 @@ interface UpdateState {
 const initialState: UpdateState = {
   checking: false,
   available: false,
+  upToDate: false,
   info: null,
   downloading: false,
   progress: 0,
@@ -61,7 +64,7 @@ export function useAppUpdater() {
   const checkForUpdate = useCallback(async (silent = false) => {
     // 移动端使用 GitHub API 检查最新版本
     if (mobile) {
-      setState(prev => ({ ...prev, checking: true, error: null }));
+      setState(prev => ({ ...prev, checking: true, error: null, upToDate: false }));
       try {
         const resp = await fetch('https://api.github.com/repos/000haoji/deep-student/releases/latest', {
           headers: { Accept: 'application/vnd.github+json' },
@@ -84,7 +87,7 @@ export function useAppUpdater() {
             },
           }));
         } else {
-          setState(prev => ({ ...prev, checking: false, available: false, info: null }));
+          setState(prev => ({ ...prev, checking: false, available: false, upToDate: !silent, info: null }));
         }
       } catch (err: any) {
         if (!silent) {
@@ -98,7 +101,7 @@ export function useAppUpdater() {
     }
 
     // 桌面端使用 Tauri updater 插件
-    setState(prev => ({ ...prev, checking: true, error: null }));
+    setState(prev => ({ ...prev, checking: true, error: null, upToDate: false }));
 
     try {
       const { check } = await import('@tauri-apps/plugin-updater');
@@ -120,6 +123,7 @@ export function useAppUpdater() {
           ...prev,
           checking: false,
           available: false,
+          upToDate: !silent,
           info: null,
         }));
       }

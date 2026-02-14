@@ -116,6 +116,15 @@ export const AboutTab: React.FC = () => {
               </div>
             </SettingRow>
 
+            {/* 已是最新版本提示 */}
+            {updater.upToDate && !updater.available && (
+              <div className="mx-1 p-2 rounded-lg bg-green-500/5 border border-green-500/20">
+                <p className="text-xs text-green-600 dark:text-green-400">
+                  ✓ {t('about.update.upToDate', '已是最新版本')}
+                </p>
+              </div>
+            )}
+
             {/* 更新可用提示 */}
             {updater.available && updater.info && (
               <div className="mx-1 p-3 rounded-lg bg-primary/5 border border-primary/20">
