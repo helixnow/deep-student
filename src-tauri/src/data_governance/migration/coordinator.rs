@@ -254,11 +254,38 @@ impl MigrationCoordinator {
             MigrationError::Database(format!("创建备份数据库失败 {}: {}", dst.display(), e))
         })?;
 
-        let backup = rusqlite::backup::Backup::new(&src_conn, &mut dst_conn)
-            .map_err(|e| MigrationError::Database(format!("初始化 SQLite backup 失败: {}", e)))?;
-        backup
-            .run_to_completion(50, Duration::from_millis(20), None)
-            .map_err(|e| MigrationError::Database(format!("执行 SQLite backup 失败: {}", e)))?;
+        {
+            let backup = rusqlite::backup::Backup::new(&src_conn, &mut dst_conn)
+                .map_err(|e| {
+                    MigrationError::Database(format!("初始化 SQLite backup 失败: {}", e))
+                })?;
+            backup
+                .run_to_completion(50, Duration::from_millis(20), None)
+                .map_err(|e| {
+                    MigrationError::Database(format!("执行 SQLite backup 失败: {}", e))
+                })?;
+        } // drop backup，释放 dst_conn 的可变借用
+
+        // P1-3 修复：备份完成后验证目标数据库完整性
+        // 使用 quick_check 而非 integrity_check：跳过索引验证，速度快 5-10x，
+        // 仍能检测 B-tree 结构损坏和行格式错误。对启动时间影响更小。
+        let integrity: String = dst_conn
+            .query_row("PRAGMA quick_check", [], |row| row.get(0))
+            .map_err(|e| {
+                MigrationError::Database(format!(
+                    "备份完整性检查失败 {}: {}",
+                    dst.display(),
+                    e
+                ))
+            })?;
+        if integrity != "ok" {
+            return Err(MigrationError::Database(format!(
+                "备份完整性校验不通过 {}: {}",
+                dst.display(),
+                integrity
+            )));
+        }
+
         Ok(())
     }
 
@@ -342,10 +369,27 @@ impl MigrationCoordinator {
             copied_files.push(relative.to_string());
         }
 
+        // P1-2 修复：记录各数据库的 schema 版本，便于手动恢复时判断备份对应的版本
+        let mut schema_versions = serde_json::Map::new();
+        for relative in &copied_files {
+            let db_path = self.app_data_dir.join(relative);
+            if let Ok(conn) = rusqlite::Connection::open(&db_path) {
+                if let Ok(version) = self.get_current_version(&conn) {
+                    let db_name = std::path::Path::new(relative)
+                        .file_stem()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or(relative);
+                    schema_versions
+                        .insert(db_name.to_string(), serde_json::Value::from(version));
+                }
+            }
+        }
+
         let metadata = serde_json::json!({
             "created_at": chrono::Utc::now().to_rfc3339(),
             "source_dir": self.app_data_dir.display().to_string(),
             "copied_files": copied_files,
+            "schema_versions": schema_versions,
             "purpose": "pre-migration core databases snapshot",
         });
         std::fs::write(
@@ -1709,6 +1753,22 @@ impl MigrationCoordinator {
             conn.execute(sql, []).map_err(|e| {
                 MigrationError::Database(format!("VFS V20260204 索引创建失败: {} ({})", sql, e))
             })?;
+        }
+
+        // P1-1 修复：执行 V20260204 中的 UPDATE 回填语句（幂等，WHERE 条件确保不重复更新）
+        // 如果不执行，已有 PDF 的 processing_status 会保持 'pending' 而非根据实际内容设为 'completed'
+        let backfill_sqls: &[&str] = &[
+            "UPDATE files SET processing_status = 'completed', processing_progress = '{\"stage\":\"completed\",\"percent\":100,\"ready_modes\":[\"text\",\"image\"]}', processing_completed_at = (strftime('%s', 'now') * 1000) WHERE mime_type = 'application/pdf' AND processing_status = 'pending' AND (preview_json IS NOT NULL OR extracted_text IS NOT NULL)",
+            "UPDATE files SET processing_progress = '{\"stage\":\"completed\",\"percent\":100,\"ready_modes\":[\"text\",\"image\",\"ocr\"]}' WHERE mime_type = 'application/pdf' AND processing_status = 'completed' AND ocr_pages_json IS NOT NULL",
+        ];
+        for sql in backfill_sqls {
+            if let Err(e) = conn.execute(sql, []) {
+                tracing::warn!(
+                    "VFS V20260204 回填 PDF 处理状态失败（继续）: {} ({})",
+                    sql,
+                    e
+                );
+            }
         }
 
         self.ensure_refinery_history_table(conn)?;

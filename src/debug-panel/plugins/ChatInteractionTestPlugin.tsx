@@ -159,16 +159,8 @@ const ChatInteractionTestPlugin: React.FC<DebugPanelPluginProps> = ({
     }).catch(console.error);
   }, [isActivated]);
 
-  // 监听实时日志
-  useEffect(() => {
-    if (!isActivated) return;
-    const handler = (e: Event) => {
-      const entry = (e as CustomEvent<LogEntry>).detail;
-      setLiveLogs(prev => [...prev.slice(-499), entry]);
-    };
-    window.addEventListener(INTERACTION_TEST_EVENT, handler);
-    return () => window.removeEventListener(INTERACTION_TEST_EVENT, handler);
-  }, [isActivated]);
+  // 实时日志通过 runAllInteractionTests 的 onLog 回调获取（handleStart 中传入）
+  // 不再额外监听 INTERACTION_TEST_EVENT，避免每条日志出现两次
 
   // 自动滚动日志
   useEffect(() => {

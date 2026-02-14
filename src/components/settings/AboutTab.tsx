@@ -171,8 +171,21 @@ export const AboutTab: React.FC = () => {
 
             {/* 更新错误提示 */}
             {updater.error && (
-              <div className="mx-1 p-2 rounded-lg bg-destructive/5 border border-destructive/20">
-                <p className="text-xs text-destructive">{updater.error}</p>
+              <div className={`mx-1 p-2 rounded-lg border ${
+                updater.error.phase === 'relaunch'
+                  ? 'bg-amber-500/5 border-amber-500/20'
+                  : 'bg-destructive/5 border-destructive/20'
+              }`}>
+                <p className={`text-xs ${
+                  updater.error.phase === 'relaunch' ? 'text-amber-600 dark:text-amber-400' : 'text-destructive'
+                }`}>
+                  {updater.error.phase === 'check' && `${t('about.update.error.check', '检查更新失败')}：`}
+                  {updater.error.phase === 'download' && `${t('about.update.error.download', '下载失败')}：`}
+                  {updater.error.phase === 'install' && `${t('about.update.error.install', '安装失败')}：`}
+                  {updater.error.phase === 'unavailable' && `${t('about.update.error.unavailable', '更新不可用')}：`}
+                  {updater.error.phase !== 'relaunch' && updater.error.message}
+                  {updater.error.phase === 'relaunch' && t('about.update.error.relaunch', '更新已安装，请手动重启应用以完成更新')}
+                </p>
               </div>
             )}
             <SettingRow title={t('acknowledgements.developer.fields.license', '许可证')}>

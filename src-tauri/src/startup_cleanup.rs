@@ -41,7 +41,7 @@ pub fn purge_active_data_dir(active_app_data_dir: &Path) -> Result<String, AppEr
     let mut deleted_entries = Vec::new();
     let mut errors = Vec::new();
 
-    let keep_names = ["backups", "temp_restore"]; // 保留目录
+    let keep_names = ["backups", "temp_restore", "migration_core_backups"]; // 保留目录
 
     let entries = fs::read_dir(active_app_data_dir).map_err(|e| {
         AppError::file_system(format!(

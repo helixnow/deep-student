@@ -22,8 +22,7 @@
 </div>
 
 <p align="center">
-  <img src="./example/主页面.png" width="68%" alt="桌面端主界面" />
-  <img src="./example/移动端主页面.png" width="28%" alt="移动端主界面" />
+  <img src="./example/软件主页图.png" width="90%" alt="DeepStudent 主界面" />
 </p>
 
 ---

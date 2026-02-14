@@ -40,6 +40,19 @@ interface UpdateInfo {
   body?: string;
 }
 
+/** 更新失败的阶段 */
+export type UpdateErrorPhase =
+  | 'check'           // 检查更新失败（网络/端点不可用）
+  | 'download'        // 下载失败（网络中断/文件不存在）
+  | 'install'         // 安装失败（签名验证/磁盘空间/权限）
+  | 'relaunch'        // 重启失败（更新已安装，需手动重启）
+  | 'unavailable';    // 更新源已不可用
+
+export interface UpdateError {
+  phase: UpdateErrorPhase;
+  message: string;
+}
+
 interface UpdateState {
   /** 是否正在检查 */
   checking: boolean;
@@ -53,8 +66,8 @@ interface UpdateState {
   downloading: boolean;
   /** 下载进度 (0-100) */
   progress: number;
-  /** 错误信息 */
-  error: string | null;
+  /** 错误信息（细粒度） */
+  error: UpdateError | null;
 }
 
 const initialState: UpdateState = {
@@ -66,6 +79,37 @@ const initialState: UpdateState = {
   progress: 0,
   error: null,
 };
+
+/** 根据 downloadAndInstall 抛出的原始错误推断失败阶段 */
+function classifyDownloadInstallError(err: any): UpdateErrorPhase {
+  const msg = (err?.message || String(err)).toLowerCase();
+  // 网络 / 下载阶段关键词
+  if (
+    msg.includes('network') ||
+    msg.includes('fetch') ||
+    msg.includes('timeout') ||
+    msg.includes('dns') ||
+    msg.includes('connect') ||
+    msg.includes('download') ||
+    msg.includes('status code')
+  ) {
+    return 'download';
+  }
+  // 签名验证 / 权限 / 磁盘空间 → 安装阶段
+  if (
+    msg.includes('signature') ||
+    msg.includes('verify') ||
+    msg.includes('permission') ||
+    msg.includes('disk') ||
+    msg.includes('space') ||
+    msg.includes('extract') ||
+    msg.includes('io error')
+  ) {
+    return 'install';
+  }
+  // 默认归为安装阶段（下载成功但后续失败的概率更高）
+  return 'install';
+}
 
 export function useAppUpdater() {
   const [state, setState] = useState<UpdateState>(initialState);
@@ -106,7 +150,7 @@ export function useAppUpdater() {
         }
       } catch (err: any) {
         if (!silent) {
-          setState(prev => ({ ...prev, checking: false, error: err?.message || String(err) }));
+          setState(prev => ({ ...prev, checking: false, error: { phase: 'check', message: err?.message || String(err) } }));
         } else {
           setState(prev => ({ ...prev, checking: false }));
           console.warn('[Updater] Mobile silent check failed:', err?.message || String(err));
@@ -151,7 +195,7 @@ export function useAppUpdater() {
         setState(prev => ({
           ...prev,
           checking: false,
-          error: errorMsg,
+          error: { phase: 'check', message: errorMsg },
         }));
       } else {
         setState(prev => ({ ...prev, checking: false }));
@@ -174,7 +218,7 @@ export function useAppUpdater() {
       }
 
       if (!update) {
-        setState(prev => ({ ...prev, downloading: false, error: '更新已不可用' }));
+        setState(prev => ({ ...prev, downloading: false, error: { phase: 'unavailable', message: '更新已不可用，请稍后重试' } }));
         return;
       }
       pendingUpdateRef.current = null;
@@ -212,19 +256,41 @@ export function useAppUpdater() {
         console.error('[Updater] Relaunch failed:', relaunchErr);
         setState(prev => ({
           ...prev,
+          available: false,
           downloading: false,
           progress: 100,
-          error: '更新已安装，请手动重启应用',
+          error: {
+            phase: 'relaunch',
+            message: '更新已安装，请手动重启应用以完成更新',
+          },
         }));
       }
     } catch (err: any) {
-      const errorMsg = err?.message || String(err) || '更新下载失败';
-      console.error('[Updater] Download/install failed:', errorMsg, err);
-      setState(prev => ({
-        ...prev,
-        downloading: false,
-        error: errorMsg,
-      }));
+      const errorMsg = err?.message || String(err) || 'Unknown error';
+      setState(prev => {
+        // 如果 Finished 事件已触发（progress >= 100），说明下载完成、
+        // 更新大概率已写入磁盘（macOS .app 替换后抛异常的典型场景）。
+        // 此时归为 relaunch 阶段，避免误报"安装失败"。
+        if (prev.progress >= 100) {
+          console.warn('[Updater] Post-install error (update likely applied):', errorMsg, err);
+          return {
+            ...prev,
+            available: false,
+            downloading: false,
+            error: {
+              phase: 'relaunch' as UpdateErrorPhase,
+              message: '更新已安装，请手动重启应用以完成更新',
+            },
+          };
+        }
+        const phase = classifyDownloadInstallError(err);
+        console.error(`[Updater] ${phase} failed:`, errorMsg, err);
+        return {
+          ...prev,
+          downloading: false,
+          error: { phase, message: errorMsg },
+        };
+      });
     }
   }, [mobile]);
 
