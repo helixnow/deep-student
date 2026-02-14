@@ -51,34 +51,41 @@ pub fn load_pdfium() -> Result<&'static Pdfium, String> {
 
 /// 内部初始化函数（只调用一次）
 fn init_pdfium() -> Result<SyncPdfium, String> {
-    // 1. 尝试从应用资源目录加载（移动端/沙盒环境）
-    if let Some(lib_path) = get_bundled_pdfium_path() {
-        if lib_path.exists() {
-            match Pdfium::bind_to_library(&lib_path) {
+    // 收集所有候选路径，逐一尝试
+    let candidates = get_pdfium_candidate_paths();
+
+    for path in &candidates {
+        if path.exists() {
+            match Pdfium::bind_to_library(path) {
                 Ok(bindings) => {
-                    info!("[Pdfium] Using app-bundled library: {:?}", lib_path);
+                    info!("[Pdfium] Loaded library from: {:?}", path);
                     return Ok(SyncPdfium(Pdfium::new(bindings)));
                 }
                 Err(e) => {
-                    debug!("[Pdfium] App-bundled library failed: {:?}", e);
+                    debug!("[Pdfium] Failed to bind {:?}: {:?}", path, e);
                 }
             }
+        } else {
+            debug!("[Pdfium] Candidate not found: {:?}", path);
         }
     }
 
-    // 2. 回退到系统库（桌面端）
+    // 最后回退到系统库（dlopen 搜索）
     match Pdfium::bind_to_system_library() {
         Ok(bindings) => {
             info!("[Pdfium] Using system library");
             Ok(SyncPdfium(Pdfium::new(bindings)))
         }
         Err(e) => {
-            error!("[Pdfium] No pdfium library available: {:?}", e);
+            error!(
+                "[Pdfium] No pdfium library available. Tried {} paths: {:?}. System fallback error: {:?}",
+                candidates.len(), candidates, e
+            );
             Err(format!(
                 "PDF 功能不可用：未找到 pdfium 库。\
-                 桌面端请确保 libpdfium 在系统路径中。\
-                 移动端需在应用包中内嵌 pdfium 库。错误: {:?}",
-                e
+                 搜索了 {} 个路径均未找到。\
+                 桌面端请确保 libpdfium 在系统路径或应用目录中。错误: {:?}",
+                candidates.len(), e
             ))
         }
     }
@@ -151,59 +158,94 @@ fn extract_text_from_document(document: &PdfDocument) -> Result<String, String> 
     Ok(all_text)
 }
 
-/// 获取应用捆绑的 pdfium 库路径
+/// Tauri 命令：测试 pdfium 加载状态，返回诊断信息
+#[tauri::command]
+pub fn test_pdfium_status() -> Result<std::collections::HashMap<String, String>, String> {
+    let mut info = std::collections::HashMap::new();
+
+    // 1. 报告 exe 路径
+    if let Ok(exe) = std::env::current_exe() {
+        info.insert("exe_path".into(), format!("{:?}", exe));
+        if let Some(dir) = exe.parent() {
+            info.insert("exe_dir".into(), format!("{:?}", dir));
+        }
+    }
+
+    // 2. 报告候选路径
+    let candidates = get_pdfium_candidate_paths();
+    for (i, p) in candidates.iter().enumerate() {
+        let exists = p.exists();
+        info.insert(
+            format!("candidate_{}", i),
+            format!("{:?} (exists={})", p, exists),
+        );
+    }
+
+    // 3. 尝试加载
+    match load_pdfium() {
+        Ok(pdfium) => {
+            info.insert("load_result".into(), "OK".into());
+            // 4. 尝试解析一个最小 PDF
+            let minimal_pdf = b"%PDF-1.0\n1 0 obj<</Pages 2 0 R>>endobj 2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj 3 0 obj<</Type/Page/MediaBox[0 0 612 792]/Parent 2 0 R>>endobj\nxref\n0 4\n0000000000 65535 f \n0000000009 00000 n \n0000000043 00000 n \n0000000098 00000 n \ntrailer<</Size 4/Root 1 0 R>>\nstartxref\n167\n%%EOF";
+            match pdfium.load_pdf_from_byte_slice(minimal_pdf, None) {
+                Ok(doc) => {
+                    info.insert("parse_test".into(), format!("OK, pages={}", doc.pages().len()));
+                }
+                Err(e) => {
+                    info.insert("parse_test".into(), format!("FAIL: {:?}", e));
+                }
+            }
+        }
+        Err(e) => {
+            info.insert("load_result".into(), format!("FAIL: {}", e));
+        }
+    }
+
+    Ok(info)
+}
+
+/// 获取所有候选 pdfium 库路径（按优先级排列）
 ///
-/// 各平台路径约定：
-/// - macOS: App.app/Contents/Frameworks/libpdfium.dylib
-/// - Windows: App/pdfium.dll
-/// - Linux: App/lib/libpdfium.so
-/// - Android: 由系统 JNI 加载，返回 None
-/// - iOS: 由框架内嵌加载，返回 None
-fn get_bundled_pdfium_path() -> Option<std::path::PathBuf> {
+/// 搜索顺序：
+/// 1. 可执行文件同目录（dev 模式：target/debug/libpdfium.dylib）
+/// 2. ../Resources/（Tauri release bundle 的资源目录）
+/// 3. ../Frameworks/（旧路径，保持兼容）
+/// 4. Android/iOS 返回空（由系统加载）
+fn get_pdfium_candidate_paths() -> Vec<std::path::PathBuf> {
+    let mut paths = Vec::new();
+
+    let exe_dir = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|p| p.to_path_buf()));
+
+    let Some(exe_dir) = exe_dir else {
+        return paths;
+    };
+
     #[cfg(target_os = "macos")]
     {
-        return std::env::current_exe()
-            .ok()
-            .and_then(|p| p.parent().map(|p| p.to_path_buf()))
-            .map(|p| p.join("../Frameworks/libpdfium.dylib"));
+        // 1. 可执行文件同目录（dev: target/debug/libpdfium.dylib）
+        paths.push(exe_dir.join("libpdfium.dylib"));
+        // 2. Tauri bundle Resources 目录（release: Contents/Resources/libpdfium.dylib）
+        paths.push(exe_dir.join("../Resources/libpdfium.dylib"));
+        // 3. Frameworks 目录（旧路径，保持兼容）
+        paths.push(exe_dir.join("../Frameworks/libpdfium.dylib"));
     }
 
     #[cfg(target_os = "windows")]
     {
-        return std::env::current_exe()
-            .ok()
-            .and_then(|p| p.parent().map(|p| p.to_path_buf()))
-            .map(|p| p.join("pdfium.dll"));
+        paths.push(exe_dir.join("pdfium.dll"));
+        paths.push(exe_dir.join("../Resources/pdfium.dll"));
     }
 
     #[cfg(target_os = "linux")]
     {
-        return std::env::current_exe()
-            .ok()
-            .and_then(|p| p.parent().map(|p| p.to_path_buf()))
-            .map(|p| p.join("lib/libpdfium.so"));
+        paths.push(exe_dir.join("libpdfium.so"));
+        paths.push(exe_dir.join("lib/libpdfium.so"));
+        paths.push(exe_dir.join("../Resources/libpdfium.so"));
     }
 
-    #[cfg(target_os = "android")]
-    {
-        // Android 通过 System.loadLibrary 加载，由 pdfium-render 的 Android 支持处理
-        return None;
-    }
+    // Android/iOS: 由系统加载，不添加候选路径
 
-    #[cfg(target_os = "ios")]
-    {
-        // iOS 通过 framework 加载，路径需要根据实际打包方式调整
-        return None;
-    }
-
-    #[cfg(not(any(
-        target_os = "macos",
-        target_os = "windows",
-        target_os = "linux",
-        target_os = "android",
-        target_os = "ios"
-    )))]
-    {
-        None
-    }
+    paths
 }

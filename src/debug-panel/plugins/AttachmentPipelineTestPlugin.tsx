@@ -38,6 +38,7 @@ import {
   requestAbort,
   resetAbort,
   cleanupTestSessions,
+  runPdfExtractionDiag,
   PIPELINE_TEST_EVENT,
   type AttachmentType,
   type TestConfig,
@@ -45,6 +46,7 @@ import {
   type TestCaseResult,
   type PipelineLogEntry,
   type OverallStatus,
+  type PdfExtractionDiagResult,
 } from '../../chat-v2/debug/attachmentPipelineTestPlugin';
 import { ensureModelsCacheLoaded } from '../../chat-v2/hooks/useAvailableModels';
 import type { ModelInfo } from '../../chat-v2/utils/parseModelMentions';
@@ -268,6 +270,9 @@ const AttachmentPipelineTestPlugin: React.FC<DebugPanelPluginProps> = ({
   }, [liveLogs]);
 
   const [isCleaningUp, setIsCleaningUp] = useState(false);
+  const [isDiagRunning, setIsDiagRunning] = useState(false);
+  const [diagResult, setDiagResult] = useState<PdfExtractionDiagResult | null>(null);
+  const [diagLogs, setDiagLogs] = useState<string[]>([]);
   const handleCleanup = useCallback(async () => {
     setIsCleaningUp(true);
     try {
@@ -283,6 +288,23 @@ const AttachmentPipelineTestPlugin: React.FC<DebugPanelPluginProps> = ({
       setIsCleaningUp(false);
     }
   }, []);
+
+  const handlePdfDiag = useCallback(async () => {
+    if (!pdfFile) return;
+    setIsDiagRunning(true);
+    setDiagResult(null);
+    setDiagLogs([]);
+    try {
+      const result = await runPdfExtractionDiag(pdfFile, (msg) => {
+        setDiagLogs(prev => [...prev, msg]);
+      });
+      setDiagResult(result);
+    } catch (err) {
+      setDiagLogs(prev => [...prev, `❌ 诊断异常: ${err instanceof Error ? err.message : String(err)}`]);
+    } finally {
+      setIsDiagRunning(false);
+    }
+  }, [pdfFile]);
 
   // --- 统计 ---
   const passed = results.filter(r => r.status === 'passed').length;
@@ -401,6 +423,12 @@ const AttachmentPipelineTestPlugin: React.FC<DebugPanelPluginProps> = ({
                   </Button>
                   <Button size="sm" onClick={() => handleStart('pdf')} disabled={!canStartPdf}>
                     <FileText className="w-4 h-4 mr-1" /> PDF 测试 ({pdfMatrixCount})
+                  </Button>
+                  <Button size="sm" variant="secondary" onClick={handlePdfDiag}
+                    disabled={!pdfFile || isDiagRunning}
+                    title="PDF 提取诊断：对比不加盐/加盐的文本提取结果">
+                    {isDiagRunning ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <AlertTriangle className="w-4 h-4 mr-1" />}
+                    提取诊断
                   </Button>
                 </>
               )}
@@ -562,6 +590,52 @@ const AttachmentPipelineTestPlugin: React.FC<DebugPanelPluginProps> = ({
           </div>
         </ScrollArea>
       </Card>
+
+      {/* ===== PDF 提取诊断结果 ===== */}
+      {(diagResult || diagLogs.length > 0) && (
+        <Card className="flex-shrink-0 overflow-hidden">
+          <div className="px-3 py-1 border-b flex items-center justify-between">
+            <span className="text-xs font-medium text-muted-foreground">PDF 提取诊断（不加盐 vs 加盐）</span>
+            <Button size="sm" variant="ghost" className="h-5 px-1" onClick={() => { setDiagResult(null); setDiagLogs([]); }}>
+              <Trash2 className="w-3 h-3" />
+            </Button>
+          </div>
+          <div className="p-3 space-y-2">
+            {diagResult && (
+              <div className="space-y-2">
+                <div className={`text-sm font-medium ${
+                  diagResult.conclusion.startsWith('✅') ? 'text-green-600' :
+                  diagResult.conclusion.startsWith('❌') ? 'text-red-500' : 'text-yellow-600'
+                }`}>{diagResult.conclusion}</div>
+                <div className="grid grid-cols-2 gap-2">
+                  {(['original', 'salted'] as const).map(key => {
+                    const d = diagResult[key];
+                    return (
+                      <div key={key} className="text-xs bg-muted/30 rounded p-2 space-y-1">
+                        <div className="font-medium">{key === 'original' ? '原始 PDF' : '加盐 PDF'}</div>
+                        <div>sourceId: <span className="font-mono">{d.sourceId}</span></div>
+                        <div>isNew: {d.isNew ? '✅ 新建' : '♻️ 复用'}</div>
+                        <div>size: {d.size} bytes</div>
+                        <div>pageCount: <span className={d.pageCount ? 'text-green-600' : 'text-red-500'}>{d.pageCount ?? 'null'}</span></div>
+                        <div>extractedText: <span className={d.extractedTextLen > 100 ? 'text-green-600' : 'text-red-500'}>{d.extractedTextLen} 字符</span></div>
+                        <div>readyModes: <span className="font-mono">{JSON.stringify(d.readyModes)}</span></div>
+                        <div>status: {d.processingStatus}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+            {diagLogs.length > 0 && (
+              <div className="max-h-32 overflow-auto bg-muted/30 rounded p-1 space-y-0.5">
+                {diagLogs.map((l, i) => (
+                  <div key={i} className="text-xs font-mono">{l}</div>
+                ))}
+              </div>
+            )}
+          </div>
+        </Card>
+      )}
 
       {/* ===== 实时日志 ===== */}
       {liveLogs.length > 0 && (

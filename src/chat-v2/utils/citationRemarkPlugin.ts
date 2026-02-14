@@ -22,9 +22,13 @@ const CITATION_PATTERN = /\[(知识库|记忆|搜索|图片|knowledge|Knowledge 
 
 /**
  * PDF 页面引用正则表达式（全局匹配）
- * 匹配格式：[PDF@sourceId:pageNumber]
+ * 匹配格式：
+ * - [PDF@sourceId:pageNumber]     单页，如 [PDF@id:3]
+ * - [PDF@sourceId:start-end]      页码范围，如 [PDF@id:2-3]
+ * - [PDF@sourceId:p1,p2,p3]       逗号分隔，如 [PDF@id:1,3,5]
+ * LLM 可能自行合并为范围格式，前端必须兼容渲染。
  */
-const PDF_REF_PATTERN = /\[PDF@([a-zA-Z0-9_-]+):(\d+)\]/gi;
+const PDF_REF_PATTERN = /\[PDF@([a-zA-Z0-9_-]+):\s*(\d+(?:[-,]\d+)*)\]/gi;
 
 /**
  * PDF 页面引用简写正则表达式（全局匹配）
@@ -47,6 +51,20 @@ const MINDMAP_CITATION_PATTERN = /\[(思维导图|导图|脑图|MindMap|mindmap)
  * 支持 UUID 和 exam_ 前缀的 ID 格式
  */
 const QBANK_CITATION_PATTERN = /\[(题目集|题库|练习册|QuestionBank|question[_ ]?bank|qbank):([\w-]+)(?::([^\]]+))?\]/gi;
+
+// ============================================================================
+// PDF 页码显示辅助函数
+// ============================================================================
+
+/**
+ * 将页码字符串转换为中文显示标签
+ * - "3"     → "第3页"
+ * - "2-3"   → "第2-3页"
+ * - "1,3,5" → "第1,3,5页"
+ */
+function formatPdfPageLabel(pageStr: string): string {
+  return `第${pageStr}页`;
+}
 
 // ============================================================================
 // Remark 插件
@@ -155,17 +173,18 @@ export function makeCitationRemarkPlugin() {
             });
           }
 
-          // 收集 PDF 页面引用
+          // 收集 PDF 页面引用（支持单页、范围、逗号分隔）
           PDF_REF_PATTERN.lastIndex = 0;
           while ((match = PDF_REF_PATTERN.exec(value)) !== null) {
             const sourceId = match[1];
-            const pageNumber = parseInt(match[2], 10);
-            if (sourceId && Number.isFinite(pageNumber) && pageNumber > 0) {
+            const pageStr = match[2]; // 可能是 "2"、"2-3"、"1,3,5"
+            const firstPage = parseInt(pageStr, 10); // 取第一个页码用于点击跳转
+            if (sourceId && Number.isFinite(firstPage) && firstPage > 0) {
               matches.push({
                 type: 'pdf_ref',
                 index: match.index,
                 length: match[0].length,
-                data: { sourceId, pageNumber },
+                data: { sourceId, pageNumber: firstPage, pageLabel: pageStr },
               });
             }
           }
@@ -229,11 +248,12 @@ export function makeCitationRemarkPlugin() {
                 value: `<span data-qbank-citation="true" data-qbank-session-id="${sessionId}"${titleAttr} class="qbank-citation-placeholder">[题目集]</span>`,
               });
             } else if (m.type === 'pdf_ref') {
-              // PDF 页面引用节点
-              const { sourceId, pageNumber } = m.data;
+              // PDF 页面引用节点（支持单页 "3"、范围 "2-3"、逗号 "1,3,5"）
+              const { sourceId, pageNumber, pageLabel } = m.data;
+              const displayLabel = formatPdfPageLabel(pageLabel || String(pageNumber));
               parts.push({
                 type: 'html',
-                value: `<span data-pdf-ref="true"${sourceId ? ` data-pdf-source="${sourceId}"` : ''} data-pdf-page="${pageNumber}" class="pdf-ref-badge-placeholder"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" style="flex-shrink:0;vertical-align:-1px"><path d="M4 1h5.5L13 4.5V13a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V3a2 2 0 0 1 2-2Z" stroke="currentColor" stroke-width="1.3" fill="currentColor" fill-opacity="0.1"/><path d="M9.5 1v3.5H13" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/><path d="M6 9h4M6 11.5h2.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>第${pageNumber}页</span>`,
+                value: `<span data-pdf-ref="true"${sourceId ? ` data-pdf-source="${sourceId}"` : ''} data-pdf-page="${pageNumber}" class="pdf-ref-badge-placeholder"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" style="flex-shrink:0;vertical-align:-1px"><path d="M4 1h5.5L13 4.5V13a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V3a2 2 0 0 1 2-2Z" stroke="currentColor" stroke-width="1.3" fill="currentColor" fill-opacity="0.1"/><path d="M9.5 1v3.5H13" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/><path d="M6 9h4M6 11.5h2.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>${displayLabel}</span>`,
               });
             }
 

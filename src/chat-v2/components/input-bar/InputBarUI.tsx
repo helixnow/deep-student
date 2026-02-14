@@ -658,7 +658,9 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
             // ★ P0 架构改造：默认 stage 改为 page_compression，默认 readyModes 只有 text
             const stage = uploadResult.processingStatus || 'page_compression';
             const percent = uploadResult.processingPercent ?? 25;
-            const readyModes = (uploadResult.readyModes || ['text']) as ('text' | 'image' | 'ocr')[];
+            const VALID_MODES = new Set(['text', 'ocr', 'image']);
+            const rawModes = (uploadResult.readyModes || []).filter(m => VALID_MODES.has(m));
+            const readyModes = (rawModes.length > 0 ? rawModes : ['text']) as ('text' | 'image' | 'ocr')[];
             const isCompleted = stage === 'completed';
 
             onUpdateAttachment(attachmentId, {
@@ -699,7 +701,8 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
             // ★ P0 架构改造：默认 readyModes 为空，image 需要等压缩完成
             const stage = uploadResult.processingStatus || 'image_compression';
             const percent = uploadResult.processingPercent ?? 10;
-            const readyModes = (uploadResult.readyModes || []) as ('text' | 'image' | 'ocr')[];
+            const VALID_IMG_MODES = new Set(['text', 'ocr', 'image']);
+            const readyModes = (uploadResult.readyModes || []).filter(m => VALID_IMG_MODES.has(m)) as ('text' | 'image' | 'ocr')[];
             const isCompleted = stage === 'completed';
 
             onUpdateAttachment(attachmentId, {
@@ -939,12 +942,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
       const selectedModes = getSelectedModes(att, isPdf, isImage);
       const mediaType = isPdf ? 'pdf' : 'image';
 
-      if (att.status === 'ready') {
-        const readyModes = getEffectiveReadyModes(att.processingStatus, mediaType, att);
-        return hasAnyReadyMode(selectedModes, readyModes);
-      }
-
-      if (att.status !== 'processing') return false;
+      if (att.status !== 'ready' && att.status !== 'processing') return false;
       const status = att.sourceId ? (pdfStatusMap.get(att.sourceId) || att.processingStatus) : att.processingStatus;
       const readyModes = getEffectiveReadyModes(status, mediaType, att);
       return hasAnyReadyMode(selectedModes, readyModes);
@@ -965,9 +963,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
       // 获取选中的注入模式和媒体类型
       const selectedModes = getSelectedModes(att, isPdf, isImage);
       const mediaType = isPdf ? 'pdf' : 'image';
-      const status = att.status === 'ready'
-        ? att.processingStatus
-        : (att.sourceId ? (pdfStatusMap.get(att.sourceId) || att.processingStatus) : att.processingStatus);
+      const status = att.sourceId ? (pdfStatusMap.get(att.sourceId) || att.processingStatus) : att.processingStatus;
       const readyModes = getEffectiveReadyModes(status, mediaType, att);
       return !hasAnyReadyMode(selectedModes, readyModes);
     });
@@ -980,9 +976,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
       if (!isPdf && !isImage) continue;
       const selectedModes = getSelectedModes(att, isPdf, isImage);
       const mediaType = isPdf ? 'pdf' : 'image';
-      const status = att.status === 'ready'
-        ? att.processingStatus
-        : (att.sourceId ? (pdfStatusMap.get(att.sourceId) || att.processingStatus) : att.processingStatus);
+      const status = att.sourceId ? (pdfStatusMap.get(att.sourceId) || att.processingStatus) : att.processingStatus;
       const readyModes = getEffectiveReadyModes(status, mediaType, att);
       if (!hasAnyReadyMode(selectedModes, readyModes)) {
         const missingModes = getMissingModes(selectedModes, readyModes);

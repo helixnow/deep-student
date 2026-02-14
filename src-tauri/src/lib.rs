@@ -742,6 +742,7 @@ pub fn run() {
             // =================================================
             // commands.rs
             // =================================================
+            crate::pdfium_utils::test_pdfium_status,
             crate::commands::get_app_version,
             crate::commands::get_app_data_dir,
             // ★ analyze_new_mistake_stream 已移除（错题模块废弃）

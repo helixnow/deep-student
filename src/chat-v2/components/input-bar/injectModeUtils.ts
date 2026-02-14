@@ -63,7 +63,11 @@ export function getEffectiveReadyModes(
   }
 
   if (effectiveStatus?.readyModes?.length) {
-    return effectiveStatus.readyModes as MediaInjectMode[];
+    const VALID_INJECT_MODES: Set<string> = new Set(['text', 'ocr', 'image']);
+    const filtered = effectiveStatus.readyModes.filter(m => VALID_INJECT_MODES.has(m)) as MediaInjectMode[];
+    if (filtered.length) {
+      return filtered;
+    }
   }
 
   if (effectiveStatus?.stage === 'completed') {

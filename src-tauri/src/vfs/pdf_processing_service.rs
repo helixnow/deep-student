@@ -171,19 +171,20 @@ pub struct ProcessingProgress {
     /// 当前阶段
     pub stage: String,
     /// 当前处理的页码（PDF 渲染/OCR 时使用，图片始终为 1）
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", alias = "current_page")]
     pub current_page: Option<usize>,
     /// 总页数（PDF 专用，图片始终为 1）
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", alias = "total_pages")]
     pub total_pages: Option<usize>,
     /// 总进度百分比 (0-100)
     pub percent: f32,
     /// 已就绪的注入模式
     /// - PDF: ["text", "image", "ocr"]
     /// - 图片: ["image", "ocr"]
+    #[serde(alias = "ready_modes")]
     pub ready_modes: Vec<String>,
     /// 媒体类型（v2.0 新增）
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", alias = "media_type")]
     pub media_type: Option<String>,
 }
 
@@ -2474,10 +2475,12 @@ impl PdfProcessingService {
                     file_id, chunk_count
                 );
 
-                // 添加 indexed 到就绪模式
-                if !ready_modes.contains(&"indexed".to_string()) {
-                    ready_modes.push("indexed".to_string());
-                }
+                // ★ 注意：不将 "indexed" 加入 ready_modes
+                // ready_modes 仅用于注入模式（text/ocr/image），索引状态通过 stage 跟踪
+                log::debug!(
+                    "[PdfProcessingService] Vector indexing completed for file {}, {} chunks (not added to ready_modes)",
+                    file_id, chunk_count
+                );
             }
             Err(e) => {
                 warn!(

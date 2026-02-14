@@ -6335,8 +6335,9 @@ pub async fn vfs_clear_media_cache(
         for (file_id, progress_json) in files_to_update {
             // 解析 processing_progress JSON
             if let Ok(mut progress) = serde_json::from_str::<serde_json::Value>(&progress_json) {
+                let modes_key = if progress.get("readyModes").is_some() { "readyModes" } else { "ready_modes" };
                 if let Some(ready_modes) = progress
-                    .get_mut("ready_modes")
+                    .get_mut(modes_key)
                     .and_then(|v| v.as_array_mut())
                 {
                     // 根据清理类型移除对应的 ready_mode

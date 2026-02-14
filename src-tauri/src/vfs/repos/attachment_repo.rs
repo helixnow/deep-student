@@ -352,10 +352,67 @@ impl VfsAttachmentRepo {
 
         // 3.5 检查是否已存在相同 hash 的附件
         // ★ P0 修复：区分未删除和已删除附件的处理逻辑
-        if let Some(existing) = Self::get_by_hash_with_conn(conn, &content_hash)? {
+        if let Some(mut existing) = Self::get_by_hash_with_conn(conn, &content_hash)? {
             if existing.deleted_at.is_none() {
                 // 未删除的附件，直接复用
                 // ★ P0 修复：查询并返回已有的处理状态，让前端正确显示进度
+
+                // ★ 2026-02-14 修复：修复因 pdfium 曾经故障导致的缓存坏数据
+                // 如果是 PDF 且 page_count=0（或 None）且无 extracted_text，说明之前提取失败
+                // 重新运行 render_pdf_preview 修复数据
+                let is_existing_pdf = existing.mime_type == "application/pdf"
+                    || existing.name.to_lowercase().ends_with(".pdf");
+                let needs_repair = is_existing_pdf
+                    && existing.page_count.unwrap_or(0) == 0
+                    && existing.extracted_text.as_ref().map(|t| t.trim().is_empty()).unwrap_or(true);
+
+                if needs_repair {
+                    use super::pdf_preview::{render_pdf_preview, PdfPreviewConfig};
+                    info!(
+                        "[VFS::AttachmentRepo] Repairing stale PDF data for {}: page_count=0, re-extracting",
+                        existing.id
+                    );
+                    if let Ok(result) = render_pdf_preview(conn, blobs_dir, &data, &PdfPreviewConfig::default()) {
+                        let preview_str = result
+                            .preview_json
+                            .as_ref()
+                            .and_then(|p| serde_json::to_string(p).ok());
+                        let extracted = result.extracted_text.clone();
+                        let pc = result.page_count as i32;
+
+                        let has_text = extracted.as_ref().map(|t| !t.trim().is_empty()).unwrap_or(false);
+                        let mut modes = vec![];
+                        if has_text {
+                            modes.push("text".to_string());
+                        }
+                        let progress = serde_json::json!({
+                            "stage": "page_rendering",
+                            "percent": 25.0,
+                            "readyModes": modes
+                        });
+
+                        if let Err(e) = conn.execute(
+                            r#"UPDATE files SET
+                                preview_json = ?1, extracted_text = ?2, page_count = ?3,
+                                processing_status = 'page_rendering',
+                                processing_progress = ?4
+                            WHERE id = ?5"#,
+                            params![preview_str, extracted, pc, progress.to_string(), existing.id],
+                        ) {
+                            warn!("[VFS::AttachmentRepo] Failed to repair PDF {}: {}", existing.id, e);
+                        } else {
+                            info!(
+                                "[VFS::AttachmentRepo] Repaired PDF {}: pages={}, text_len={}",
+                                existing.id, pc, extracted.as_ref().map(|t| t.len()).unwrap_or(0)
+                            );
+                            // 更新返回的 existing 对象
+                            existing.preview_json = preview_str;
+                            existing.extracted_text = extracted;
+                            existing.page_count = Some(pc);
+                        }
+                    }
+                }
+
                 let (processing_status, processing_progress, ready_modes) =
                     Self::get_processing_status_with_conn(conn, &existing.id)?;
 
@@ -542,7 +599,7 @@ impl VfsAttachmentRepo {
             let progress = serde_json::json!({
                 "stage": "page_rendering",
                 "percent": 25.0,
-                "ready_modes": ready_modes
+                "readyModes": ready_modes
             });
 
             (
@@ -979,7 +1036,8 @@ impl VfsAttachmentRepo {
                     if let Ok(progress) = serde_json::from_str::<serde_json::Value>(json_str) {
                         let percent = progress.get("percent").and_then(|v| v.as_f64());
                         let ready_modes = progress
-                            .get("ready_modes")
+                            .get("readyModes")
+                            .or_else(|| progress.get("ready_modes"))
                             .and_then(|v| v.as_array())
                             .map(|arr| {
                                 arr.iter()

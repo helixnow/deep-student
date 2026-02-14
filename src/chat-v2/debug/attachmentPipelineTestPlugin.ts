@@ -14,8 +14,11 @@
  */
 
 import { CHATV2_LOG_EVENT, type ChatV2LogEntry } from './chatV2Logger';
-import { listen } from '@tauri-apps/api/event';
+import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { createSessionWithDefaults } from '../core/session/createSessionWithDefaults';
+import { usePdfProcessingStore } from '../../stores/pdfProcessingStore';
+import { getEffectiveReadyModes, getSelectedInjectModes } from '../components/input-bar/injectModeUtils';
+import type { AttachmentMediaType } from '../components/input-bar/injectModeUtils';
 
 // =============================================================================
 // 类型定义
@@ -144,10 +147,27 @@ export async function readFileAsArrayBuffer(file: File): Promise<ArrayBuffer> {
 }
 
 export function createMutatedFile(originalBuffer: ArrayBuffer, originalFile: File, salt: string): File {
-  // 使用随机二进制字节而非文本追加，对任何文件格式都安全改变 hash
+  const isPdf = originalFile.type === 'application/pdf' || originalFile.name.toLowerCase().endsWith('.pdf');
+
+  if (isPdf) {
+    // ★ PDF-safe mutation: 仅追加 PDF 注释行（% 开头）
+    // PDF 解析器从文件末尾向前扫描 %%EOF，会忽略 %%EOF 之后的数据。
+    // 之前的做法是追加 32 字节随机二进制数据，这会破坏 PDF 尾部结构
+    // (startxref / xref) 导致解析器无法解析 → totalPages=0 → readyModes=[]
+    const encoder = new TextEncoder();
+    const comment = encoder.encode(`\n%%pipeline-test-salt:${salt}\n`);
+    const combined = new Uint8Array(originalBuffer.byteLength + comment.byteLength);
+    combined.set(new Uint8Array(originalBuffer), 0);
+    combined.set(comment, originalBuffer.byteLength);
+    return new File([combined.buffer], originalFile.name, {
+      type: originalFile.type,
+      lastModified: Date.now(),
+    });
+  }
+
+  // 非 PDF（图片等）：追加随机字节（PNG/JPEG 有自己的 EOF 标记，追加数据安全）
   const saltBytes = new Uint8Array(32);
   crypto.getRandomValues(saltBytes);
-  // 额外追加 salt 文本以便调试追溯
   const encoder = new TextEncoder();
   const textBytes = encoder.encode(`\n%pipeline-test:${salt}\n`);
   const combined = new Uint8Array(originalBuffer.byteLength + saltBytes.byteLength + textBytes.byteLength);
@@ -207,6 +227,8 @@ const CAPTURE_PREFIXES = [
   '[resolveVfsRefs]', '[TauriAdapter]', '[PDF_DEBUG',
   '[FileDef]', '[ImageDef]', '[InputBarUI]', '[MediaProcessing]',
   '[ChatV2]', '[PDF_DEBUG_FE]', 'isMultimodal', '[ChatStore]',
+  '[PdfProcessingService]', '[VFS', '[AttachmentUploader]',
+  '[injectModeUtils]', 'readyModes', '[ResourceStore]',
 ];
 
 function shouldCapture(args: unknown[]): boolean {
@@ -242,6 +264,75 @@ function createConsoleCapture() {
       console.debug = orig.debug;
     },
     captured,
+  };
+}
+
+// =============================================================================
+// 媒体处理事件捕获（Tauri events）
+// =============================================================================
+
+interface MediaProcessingEvent {
+  type: 'progress' | 'completed' | 'error';
+  timestamp: string;
+  fileId: string;
+  mediaType?: string;
+  stage?: string;
+  percent?: number;
+  readyModes?: string[];
+  error?: string;
+}
+
+function createMediaProcessingCapture(
+  logFn: (level: PipelineLogLevel, phase: string, msg: string, data?: Record<string, unknown>) => void,
+) {
+  const events: MediaProcessingEvent[] = [];
+  const unlisteners: UnlistenFn[] = [];
+
+  async function start() {
+    const ul1 = await listen<{ fileId: string; status: { stage: string; percent: number; readyModes: string[]; currentPage?: number; totalPages?: number }; mediaType: string }>(
+      'media-processing-progress', (event) => {
+        const { fileId, status, mediaType } = event.payload;
+        events.push({ type: 'progress', timestamp: new Date().toISOString(), fileId, mediaType, stage: status.stage, percent: status.percent, readyModes: status.readyModes });
+        logFn('info', 'mediaEvent:progress', `${mediaType} ${fileId}: ${status.stage} ${Math.round(status.percent)}%`, {
+          readyModes: status.readyModes, page: status.currentPage && status.totalPages ? `${status.currentPage}/${status.totalPages}` : undefined,
+        });
+      },
+    );
+    unlisteners.push(ul1);
+
+    const ul2 = await listen<{ fileId: string; readyModes: string[]; mediaType: string }>(
+      'media-processing-completed', (event) => {
+        const { fileId, readyModes, mediaType } = event.payload;
+        events.push({ type: 'completed', timestamp: new Date().toISOString(), fileId, mediaType, readyModes });
+        logFn('success', 'mediaEvent:completed', `${mediaType} ${fileId} 完成`, { readyModes });
+      },
+    );
+    unlisteners.push(ul2);
+
+    const ul3 = await listen<{ fileId: string; error: string; stage: string; mediaType: string }>(
+      'media-processing-error', (event) => {
+        const { fileId, error, stage, mediaType } = event.payload;
+        events.push({ type: 'error', timestamp: new Date().toISOString(), fileId, mediaType, stage, error });
+        logFn('error', 'mediaEvent:error', `${mediaType} ${fileId} 错误: ${error}`, { stage });
+      },
+    );
+    unlisteners.push(ul3);
+  }
+
+  return {
+    start,
+    stop: () => unlisteners.forEach(u => u()),
+    events,
+    /** 检查指定 fileId 是否收到过任何事件 */
+    hasEventsFor: (fileId: string) => events.some(e => e.fileId === fileId),
+    /** 获取指定 fileId 的最终 readyModes */
+    getFinalReadyModes: (fileId: string): string[] | undefined => {
+      const completed = events.filter(e => e.fileId === fileId && e.type === 'completed');
+      if (completed.length > 0) return completed[completed.length - 1].readyModes;
+      const progress = events.filter(e => e.fileId === fileId && e.type === 'progress');
+      if (progress.length > 0) return progress[progress.length - 1].readyModes;
+      return undefined;
+    },
   };
 }
 
@@ -520,6 +611,43 @@ function verifyRequestBody(tc: TestCase, body: any): VerificationCheck[] {
       detail: `未知类型: ${typeof content}` });
   }
 
+  // ★ 内容质量检查：检测占位符注入
+  const contentStr = typeof content === 'string' ? content
+    : Array.isArray(content)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ? content.filter((b: any) => b.type === 'text').map((b: any) => b.text || '').join('\n')
+      : '';
+  if (contentStr) {
+    checks.push(...checkContentQuality(contentStr, tc));
+  }
+
+  return checks;
+}
+
+/** 检测注入内容是否为占位符（无实质内容）*/
+function checkContentQuality(content: string, tc: TestCase): VerificationCheck[] {
+  const checks: VerificationCheck[] = [];
+  // 占位符特征：只有文件名和页码，无实际文本
+  const PLACEHOLDER_PATTERNS = [
+    /\[PDF@\w+:\d+\]\s+.*第\d+页\s*\n\[文档:.*\]/,
+    /ocr_status.*status="unavailable"/,
+  ];
+  const hasPlaceholder = PLACEHOLDER_PATTERNS.some(p => p.test(content));
+  const hasOcrUnavailable = content.includes('status="unavailable"');
+  const hasExtractedText = content.includes('<extracted_text>') || content.includes('<ocr_text>');
+  // injected_context 内的实质文本长度（排除 XML 标签和元数据）
+  const injectedMatch = content.match(/<injected_context>([\s\S]*?)<\/injected_context>/);
+  const injectedLen = injectedMatch ? injectedMatch[1].replace(/<[^>]+>/g, '').trim().length : 0;
+
+  if (tc.attachmentType === 'pdf') {
+    checks.push({
+      name: '注入内容质量',
+      passed: !hasPlaceholder || hasExtractedText || injectedLen > 200,
+      detail: hasPlaceholder && !hasExtractedText && injectedLen < 200
+        ? `⚠️ 注入内容为占位符 (净文本${injectedLen}字符, OCR=${hasOcrUnavailable ? '不可用' : '可用'})，后端文本提取/OCR 可能失败`
+        : `✓ 注入内容${injectedLen}字符 (提取文本=${hasExtractedText}, OCR=${!hasOcrUnavailable})`,
+    });
+  }
   return checks;
 }
 
@@ -580,9 +708,11 @@ export async function runSingleTestCase(
 
   let hasContextRef = false;
   let reqCapture: Awaited<ReturnType<typeof createRequestBodyCapture>> | null = null;
+  const mediaCapture = createMediaProcessingCapture(log);
 
   chatV2Capture.start();
   consoleCapture.start();
+  await mediaCapture.start();
 
   try {
     log('info', 'init', `开始测试: ${testCase.label}`);
@@ -675,7 +805,6 @@ export async function runSingleTestCase(
 
     // 等待处理就绪（OCR/PDF 预处理）
     // ★ 模拟真实用户行为：用户会等到附件状态变为 ready（进度条消失）后才发送
-    //   不检查 readyModes，因为用户看不到 readyModes，只看进度条
     log('info', 'wait', '等待附件 status=ready (模拟用户等待进度条完成)...');
     const ready = await waitFor(() => {
       const a = store.getState().attachments.find(x => x.id === att.id);
@@ -685,6 +814,41 @@ export async function runSingleTestCase(
     log(ready ? 'success' : 'warn', 'processing',
       ready ? '处理就绪 (status=ready)' : '处理超时 (60s)，继续发送',
       { status: cur?.status, readyModes: cur?.processingStatus?.readyModes });
+
+    // ★ 等待后端媒体处理流水线完成（OCR、页面压缩等需要更长时间）
+    const sourceId = cur?.sourceId;
+    if (sourceId && isImage === false) {
+      // PDF 需要等待后端 pipeline 产出 text/ocr/image 模式
+      const hasMediaEvents = mediaCapture.hasEventsFor(sourceId);
+      if (!hasMediaEvents) {
+        log('info', 'wait:media', `等待后端媒体处理事件 (sourceId=${sourceId})...`);
+        const gotEvents = await waitFor(() => mediaCapture.hasEventsFor(sourceId), 15000, 500);
+        if (gotEvents) {
+          log('success', 'wait:media', '收到媒体处理事件');
+          // 继续等待完成
+          const mediaCompleted = await waitFor(() => {
+            return mediaCapture.events.some(e => e.fileId === sourceId && (e.type === 'completed' || e.type === 'error'));
+          }, 45000, 500);
+          if (mediaCompleted) {
+            const finalModes = mediaCapture.getFinalReadyModes(sourceId);
+            log('success', 'wait:media', `媒体处理完成`, { readyModes: finalModes });
+          } else {
+            log('warn', 'wait:media', '媒体处理 45s 未完成，继续发送');
+          }
+        } else {
+          log('warn', 'wait:media', `15s 内无媒体处理事件 (sourceId=${sourceId})，后端 pipeline 可能未启动`);
+        }
+      } else {
+        // 已有事件，等完成
+        const mediaCompleted = await waitFor(() => {
+          return mediaCapture.events.some(e => e.fileId === sourceId && (e.type === 'completed' || e.type === 'error'));
+        }, 45000, 500);
+        const finalModes = mediaCapture.getFinalReadyModes(sourceId);
+        log(mediaCompleted ? 'success' : 'warn', 'wait:media',
+          mediaCompleted ? `媒体处理完成` : '媒体处理 45s 未完成',
+          { readyModes: finalModes, eventCount: mediaCapture.events.filter(e => e.fileId === sourceId).length });
+      }
+    }
 
     // ★ 发送前完整状态 dump
     {
@@ -699,6 +863,34 @@ export async function runSingleTestCase(
         sourceId: a.sourceId, processingStatus: a.processingStatus,
         injectModes: a.injectModes, mimeType: a.mimeType, size: a.size,
       })), null, 2));
+
+      // ★ pdfProcessingStore 状态 dump（最新的后端处理状态）
+      const latestAtt = atts[atts.length - 1];
+      if (latestAtt?.sourceId) {
+        const storeStatus = usePdfProcessingStore.getState().get(latestAtt.sourceId);
+        log('info', 'preSend:pdfStore', storeStatus
+          ? JSON.stringify(storeStatus)
+          : `sourceId=${latestAtt.sourceId} 在 pdfProcessingStore 中无记录`);
+      }
+
+      // ★ readyModes 缺口分析
+      if (latestAtt) {
+        const isPdf = latestAtt.mimeType === 'application/pdf' || latestAtt.name.toLowerCase().endsWith('.pdf');
+        const mediaType: AttachmentMediaType = isPdf ? 'pdf' : 'image';
+        const selectedModes = getSelectedInjectModes(latestAtt, mediaType);
+        const pdfStoreStatus = latestAtt.sourceId ? usePdfProcessingStore.getState().get(latestAtt.sourceId) : undefined;
+        const effectiveStatus = pdfStoreStatus || latestAtt.processingStatus;
+        const effectiveReady = getEffectiveReadyModes(latestAtt, mediaType, effectiveStatus);
+        const missingModes = selectedModes.filter(m => !effectiveReady?.includes(m));
+        log('info', 'preSend:modeAnalysis', `选中=${JSON.stringify(selectedModes)} 就绪=${JSON.stringify(effectiveReady)} 缺失=${JSON.stringify(missingModes)}`, {
+          canSend: missingModes.length === 0,
+          effectiveStatusSource: pdfStoreStatus ? 'pdfProcessingStore' : 'att.processingStatus',
+        });
+      }
+
+      // ★ 媒体处理事件汇总
+      log('info', 'preSend:mediaEvents', `共收到 ${mediaCapture.events.length} 个媒体处理事件`,
+        mediaCapture.events.length > 0 ? { events: mediaCapture.events.map(e => `${e.type}:${e.fileId}:${e.stage || e.readyModes?.join(',')}`) } : undefined);
     }
 
     // 发送
@@ -713,19 +905,37 @@ export async function runSingleTestCase(
       store.getState().setInputValue(prompt);
       await sleep(200);
 
-      const sendBtn = document.querySelector('[data-testid="btn-send"]') as HTMLButtonElement | null;
+      let sendBtn = document.querySelector('[data-testid="btn-send"]') as HTMLButtonElement | null;
       if (!sendBtn) {
         throw new Error('未找到发送按钮 [data-testid="btn-send"]');
       }
       if (sendBtn.disabled) {
-        log('warn', 'send', '发送按钮被禁用 (disabled)，真实用户无法点击');
-        // dump 按钮禁用原因的上下文
-        const finalAtts = store.getState().attachments;
-        log('info', 'send:disabled:attachments', JSON.stringify(finalAtts.map(a => ({
-          id: a.id, status: a.status, injectModes: a.injectModes,
-          processingStatus: a.processingStatus,
-        })), null, 2));
-        throw new Error('发送按钮被禁用，模拟用户无法发送');
+        log('info', 'send', '发送按钮暂时禁用，等待媒体处理完成...');
+        const btnReady = await waitFor(() => {
+          sendBtn = document.querySelector('[data-testid="btn-send"]') as HTMLButtonElement | null;
+          return !!sendBtn && !sendBtn.disabled;
+        }, 30000, 500);
+        if (!btnReady || !sendBtn || sendBtn.disabled) {
+          log('warn', 'send', '发送按钮被禁用 (disabled)，真实用户无法点击');
+          const finalAtts = store.getState().attachments;
+          for (const a of finalAtts) {
+            const isPdf = a.mimeType === 'application/pdf' || a.name.toLowerCase().endsWith('.pdf');
+            const mediaType: AttachmentMediaType = isPdf ? 'pdf' : 'image';
+            const selected = getSelectedInjectModes(a, mediaType);
+            const storeStatus = a.sourceId ? usePdfProcessingStore.getState().get(a.sourceId) : undefined;
+            const effective = getEffectiveReadyModes(a, mediaType, storeStatus || a.processingStatus);
+            const missing = selected.filter(m => !effective?.includes(m));
+            log('info', 'send:disabled:detail', JSON.stringify({
+              id: a.id, status: a.status, sourceId: a.sourceId,
+              selectedModes: selected, effectiveReady: effective, missingModes: missing,
+              attProcessingStatus: a.processingStatus,
+              pdfStoreStatus: storeStatus || null,
+              mediaEventsReceived: a.sourceId ? mediaCapture.events.filter(e => e.fileId === a.sourceId).length : 0,
+            }, null, 2));
+          }
+          throw new Error('发送按钮被禁用，模拟用户无法发送');
+        }
+        log('success', 'send', '发送按钮已就绪');
       }
       log('info', 'send', `点击发送按钮: "${prompt.slice(0, 40)}..."`);
       sendBtn.click();
@@ -813,6 +1023,7 @@ export async function runSingleTestCase(
     result.error = msg;
   } finally {
     reqCapture?.stop();
+    mediaCapture.stop();
     consoleCapture.stop();
     chatV2Capture.stop();
     result.verification = verifyTestCase(testCase, consoleCapture.captured, {
@@ -956,4 +1167,183 @@ export async function cleanupTestSessions(): Promise<{ deleted: number; errors: 
   }
 
   return { deleted, errors };
+}
+
+// =============================================================================
+// ★ PDF 文本提取诊断测试（不加盐 vs 加盐）
+// =============================================================================
+
+export interface PdfExtractionDiagResult {
+  original: {
+    sourceId: string;
+    isNew: boolean;
+    size: number;
+    processingStatus?: string;
+    readyModes?: string[];
+    processingPercent?: number;
+    hasExtractedText: boolean;
+    extractedTextLen: number;
+    pageCount: number | null;
+  };
+  salted: {
+    sourceId: string;
+    isNew: boolean;
+    size: number;
+    processingStatus?: string;
+    readyModes?: string[];
+    processingPercent?: number;
+    hasExtractedText: boolean;
+    extractedTextLen: number;
+    pageCount: number | null;
+  };
+  conclusion: string;
+}
+
+/**
+ * 独立 PDF 文本提取诊断：对比不加盐 / 加盐上传后的后端处理结果。
+ * 用于隔离 "盐变异是否破坏 PDF 解析" 这一问题。
+ *
+ * 使用方法（浏览器控制台）：
+ *   import { runPdfExtractionDiag } from '@/chat-v2/debug/attachmentPipelineTestPlugin';
+ *   const file = document.querySelector('input[type=file]')?.files?.[0];
+ *   runPdfExtractionDiag(file).then(r => console.table([r.original, r.salted]));
+ */
+export async function runPdfExtractionDiag(
+  pdfFile: File,
+  onLog?: (msg: string) => void,
+): Promise<PdfExtractionDiagResult> {
+  const log = (msg: string) => {
+    const ts = new Date().toISOString().slice(11, 23);
+    const line = `[${ts}][pdfDiag] ${msg}`;
+    console.log(line);
+    onLog?.(line);
+  };
+
+  const { invoke } = await import('@tauri-apps/api/core');
+
+  if (!pdfFile || pdfFile.size === 0) throw new Error('请提供有效的 PDF 文件');
+  log(`文件: ${pdfFile.name} (${pdfFile.size} bytes)`);
+
+  // ──────────── 0. 检查 pdfium 加载状态 ────────────
+  log('── 检查 pdfium 状态 ──');
+  try {
+    const pdfiumStatus = await invoke<Record<string, string>>('test_pdfium_status');
+    for (const [k, v] of Object.entries(pdfiumStatus).sort()) {
+      log(`  ${k}: ${v}`);
+    }
+  } catch (err) {
+    log(`  ❌ test_pdfium_status 调用失败: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
+  const originalBuf = await readFileAsArrayBuffer(pdfFile);
+
+  // ──────────── 1. 不加盐：直接上传原始 PDF ────────────
+  log('── 上传原始 PDF（不加盐）──');
+  const origBase64 = arrayBufferToBase64(new Uint8Array(originalBuf));
+  const origResult = await invoke<{
+    sourceId: string; isNew: boolean; resourceHash: string;
+    attachment: { size: number; pageCount?: number; extractedText?: string };
+    processingStatus?: string; processingPercent?: number; readyModes?: string[];
+  }>('vfs_upload_attachment', {
+    params: {
+      name: pdfFile.name,
+      mimeType: 'application/pdf',
+      base64Content: origBase64,
+      attachmentType: 'file',
+    },
+  });
+  const origText = origResult.attachment.extractedText || '';
+  log(`  sourceId: ${origResult.sourceId}`);
+  log(`  isNew: ${origResult.isNew}`);
+  log(`  processingStatus: ${origResult.processingStatus}`);
+  log(`  readyModes: ${JSON.stringify(origResult.readyModes)}`);
+  log(`  pageCount: ${origResult.attachment.pageCount ?? 'null'}`);
+  log(`  extractedText: ${origText.length} 字符`);
+  if (origText.length > 0) {
+    log(`  textPreview: "${origText.slice(0, 200).replace(/\n/g, '\\n')}..."`);
+  }
+
+  // ──────────── 2. 加盐：使用当前变异策略 ────────────
+  log('── 上传加盐 PDF ──');
+  const salt = `diag_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const saltedFile = createMutatedFile(originalBuf, pdfFile, salt);
+  const saltedBuf = await readFileAsArrayBuffer(saltedFile);
+  const saltedBase64 = arrayBufferToBase64(new Uint8Array(saltedBuf));
+  log(`  salt: ${salt}`);
+  log(`  saltedSize: ${saltedFile.size} bytes (原始 ${pdfFile.size}, 差 ${saltedFile.size - pdfFile.size} bytes)`);
+
+  const saltResult = await invoke<{
+    sourceId: string; isNew: boolean; resourceHash: string;
+    attachment: { size: number; pageCount?: number; extractedText?: string };
+    processingStatus?: string; processingPercent?: number; readyModes?: string[];
+  }>('vfs_upload_attachment', {
+    params: {
+      name: pdfFile.name,
+      mimeType: 'application/pdf',
+      base64Content: saltedBase64,
+      attachmentType: 'file',
+    },
+  });
+  const saltText = saltResult.attachment.extractedText || '';
+  log(`  sourceId: ${saltResult.sourceId}`);
+  log(`  isNew: ${saltResult.isNew}`);
+  log(`  processingStatus: ${saltResult.processingStatus}`);
+  log(`  readyModes: ${JSON.stringify(saltResult.readyModes)}`);
+  log(`  pageCount: ${saltResult.attachment.pageCount ?? 'null'}`);
+  log(`  extractedText: ${saltText.length} 字符`);
+  if (saltText.length > 0) {
+    log(`  textPreview: "${saltText.slice(0, 200).replace(/\n/g, '\\n')}..."`);
+  }
+
+  // ──────────── 3. 对比结论 ────────────
+  const origOk = origText.length > 100;
+  const saltOk = saltText.length > 100;
+  let conclusion: string;
+  if (origOk && saltOk) {
+    conclusion = '✅ 原始和加盐 PDF 均成功提取文本 → 盐变异安全';
+  } else if (origOk && !saltOk) {
+    conclusion = '❌ 原始 PDF 能提取文本，加盐后失败 → 盐变异破坏了 PDF 结构';
+  } else if (!origOk && !saltOk) {
+    conclusion = '❌ 原始 PDF 也无法提取文本 → pdfium 本身有问题（与盐无关）';
+  } else {
+    conclusion = '⚠️ 异常：原始无法提取但加盐可以 → 可能是缓存/去重问题';
+  }
+  log(`\n结论: ${conclusion}`);
+  log(`  原始: ${origText.length} 字符, pageCount=${origResult.attachment.pageCount ?? 'null'}, readyModes=${JSON.stringify(origResult.readyModes)}`);
+  log(`  加盐: ${saltText.length} 字符, pageCount=${saltResult.attachment.pageCount ?? 'null'}, readyModes=${JSON.stringify(saltResult.readyModes)}`);
+
+  return {
+    original: {
+      sourceId: origResult.sourceId,
+      isNew: origResult.isNew,
+      size: pdfFile.size,
+      processingStatus: origResult.processingStatus,
+      readyModes: origResult.readyModes,
+      processingPercent: origResult.processingPercent,
+      hasExtractedText: origText.length > 0,
+      extractedTextLen: origText.length,
+      pageCount: origResult.attachment.pageCount ?? null,
+    },
+    salted: {
+      sourceId: saltResult.sourceId,
+      isNew: saltResult.isNew,
+      size: saltedFile.size,
+      processingStatus: saltResult.processingStatus,
+      readyModes: saltResult.readyModes,
+      processingPercent: saltResult.processingPercent,
+      hasExtractedText: saltText.length > 0,
+      extractedTextLen: saltText.length,
+      pageCount: saltResult.attachment.pageCount ?? null,
+    },
+    conclusion,
+  };
+}
+
+/** Uint8Array → base64 字符串 */
+function arrayBufferToBase64(bytes: Uint8Array): string {
+  let binary = '';
+  for (let i = 0; i < bytes.byteLength; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
 }

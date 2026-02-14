@@ -404,7 +404,7 @@ impl VfsFileRepo {
                 let progress = serde_json::json!({
                     "stage": "page_rendering",
                     "percent": 25.0,
-                    "ready_modes": ready_modes
+                    "readyModes": ready_modes
                 });
 
                 (
