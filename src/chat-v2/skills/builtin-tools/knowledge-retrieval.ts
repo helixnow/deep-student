@@ -55,6 +55,15 @@ export const knowledgeRetrievalSkill: SkillDefinition = {
 2. resource_read(resource_id: "note_abc123") → 完整文档内容
 \`\`\`
 
+### 按页读取（PDF/教材/文件）
+
+对于多页文档，首次全量读取会返回 **totalPages**。后续可用 **page_start/page_end** 按需读取特定页，节省 token：
+
+\`\`\`
+1. resource_read(resource_id: "tb_xxx") → 全文 + totalPages: 118
+2. resource_read(resource_id: "tb_xxx", page_start: 56, page_end: 57) → 只返回第 56-57 页
+\`\`\`
+
 ## 图片引用指南（必读）
 
 检索结果可能包含来自 PDF/教材的页面图片（resourceId + pageIndex 字段），展示时请遵循以下规则：

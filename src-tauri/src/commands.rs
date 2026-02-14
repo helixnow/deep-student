@@ -3184,8 +3184,14 @@ pub async fn open_log_file(log_path: String, state: tauri::State<'_, AppState>) 
     let full_path = state.file_manager.get_app_data_dir().join(&log_path);
 
     // 规范化路径并检查前缀
-    let canonical_path = full_path.canonicalize().map_err(|_| AppError::not_found(format!("日志文件不存在: {}", log_path)))?;
-    let app_data_dir = state.file_manager.get_app_data_dir().canonicalize().unwrap_or_else(|_| state.file_manager.get_app_data_dir().to_path_buf());
+    let canonical_path = full_path
+        .canonicalize()
+        .map_err(|_| AppError::not_found(format!("日志文件不存在: {}", log_path)))?;
+    let app_data_dir = state
+        .file_manager
+        .get_app_data_dir()
+        .canonicalize()
+        .unwrap_or_else(|_| state.file_manager.get_app_data_dir().to_path_buf());
 
     if !canonical_path.starts_with(&app_data_dir) {
         return Err(AppError::validation("非法的文件路径访问"));
@@ -3240,15 +3246,24 @@ pub async fn open_logs_folder(log_type: String, state: tauri::State<'_, AppState
 
     // 规范化路径并检查前缀
     let canonical_path = if log_dir.exists() {
-        log_dir.canonicalize().map_err(|_| AppError::not_found("日志目录路径无效"))?
+        log_dir
+            .canonicalize()
+            .map_err(|_| AppError::not_found("日志目录路径无效"))?
     } else {
         // 如果目录不存在，我们先不canonicalize，而是检查其逻辑路径
         // 但为了安全，我们最好先创建它，然后再 canonicalize
-        std::fs::create_dir_all(&log_dir).map_err(|_| AppError::file_system("创建日志目录失败".to_string()))?;
-        log_dir.canonicalize().map_err(|_| AppError::not_found("日志目录路径无效"))?
+        std::fs::create_dir_all(&log_dir)
+            .map_err(|_| AppError::file_system("创建日志目录失败".to_string()))?;
+        log_dir
+            .canonicalize()
+            .map_err(|_| AppError::not_found("日志目录路径无效"))?
     };
 
-    let app_data_dir = state.file_manager.get_app_data_dir().canonicalize().unwrap_or_else(|_| state.file_manager.get_app_data_dir().to_path_buf());
+    let app_data_dir = state
+        .file_manager
+        .get_app_data_dir()
+        .canonicalize()
+        .unwrap_or_else(|_| state.file_manager.get_app_data_dir().to_path_buf());
 
     if !canonical_path.starts_with(&app_data_dir) {
         return Err(AppError::validation("非法的文件路径访问"));

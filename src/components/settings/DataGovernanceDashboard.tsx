@@ -42,6 +42,7 @@ import {
 } from '../../api/dataGovernance';
 import { listen } from '@tauri-apps/api/event';
 import { MediaCacheSection } from './MediaCacheSection';
+import { LanceOptimizationPanel } from './IndexMaintenanceSection';
 import { useSystemStatusStore } from '@/stores/systemStatusStore';
 import { useBackupJobListener } from '../../hooks/useBackupJobListener';
 import type {
@@ -1427,7 +1428,11 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
       </TabsContent>
 
       <TabsContent value="cache">
-        <MediaCacheSection />
+        <div className="space-y-8">
+          <MediaCacheSection />
+          <div className="border-t border-border/40" />
+          <LanceOptimizationPanel />
+        </div>
       </TabsContent>
 
       {import.meta.env.DEV && (

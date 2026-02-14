@@ -15,10 +15,10 @@ use crate::vfs::index_service::VfsIndexService;
 use crate::vfs::lance_store::VfsLanceStore;
 use crate::vfs::ocr_utils::{join_ocr_pages_text, parse_ocr_pages_json};
 use crate::vfs::repos::{
-    embedding_dim_repo, index_segment_repo, index_unit_repo, VfsEmbedding,
-    VfsIndexStateRepo, VfsIndexingConfigRepo, VfsNoteRepo, VfsResourceRepo, INDEX_STATE_DISABLED,
-    INDEX_STATE_FAILED, INDEX_STATE_INDEXED, INDEX_STATE_INDEXING, INDEX_STATE_PENDING,
-    MODALITY_MULTIMODAL, MODALITY_TEXT, VFS_EMB_TABLE_PREFIX,
+    embedding_dim_repo, index_segment_repo, index_unit_repo, VfsEmbedding, VfsIndexStateRepo,
+    VfsIndexingConfigRepo, VfsNoteRepo, VfsResourceRepo, INDEX_STATE_DISABLED, INDEX_STATE_FAILED,
+    INDEX_STATE_INDEXED, INDEX_STATE_INDEXING, INDEX_STATE_PENDING, MODALITY_MULTIMODAL,
+    MODALITY_TEXT, VFS_EMB_TABLE_PREFIX,
 };
 use crate::vfs::types::{VfsResource, VfsResourceType};
 use crate::vfs::unit_builder::UnitBuildInput;
@@ -2058,7 +2058,9 @@ impl VfsFullIndexingService {
                     // 6. ★ 审计修复：维度范围校验
                     if dim > 0 {
                         let dim_i32 = dim as i32;
-                        if dim_i32 < embedding_dim_repo::MIN_DIMENSION || dim_i32 > embedding_dim_repo::MAX_DIMENSION {
+                        if dim_i32 < embedding_dim_repo::MIN_DIMENSION
+                            || dim_i32 > embedding_dim_repo::MAX_DIMENSION
+                        {
                             warn!(
                                 "[VfsFullIndexingService] Embedding dimension {} is outside valid range [{}, {}] for resource {}",
                                 dim, embedding_dim_repo::MIN_DIMENSION, embedding_dim_repo::MAX_DIMENSION, resource_id
@@ -2752,7 +2754,9 @@ impl VfsFullIndexingService {
                             "[VfsFullIndexingService] SQLite metadata sync failed for question {}: {}. Rolling back Lance vectors...",
                             question_id, sync_err
                         );
-                        if let Err(rollback_err) = self.pipeline.delete_resource_index(question_id).await {
+                        if let Err(rollback_err) =
+                            self.pipeline.delete_resource_index(question_id).await
+                        {
                             error!(
                                 "[VfsFullIndexingService] Lance rollback also failed for question {}: {}",
                                 question_id, rollback_err

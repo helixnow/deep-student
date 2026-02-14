@@ -1,10 +1,10 @@
 // PDF 文件流式加载协议
 // 提供 pdfstream:// 自定义协议，支持 HTTP Range Request，用于高效加载大型 PDF 文件
 
+use log::{error, info, warn};
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::PathBuf;
-use log::{info, warn, error};
 
 /// 处理 pdfstream:// 协议请求
 ///
@@ -31,8 +31,7 @@ pub fn handle_asset_protocol(
     // 解码后直接是平台原生路径，无需额外转换
     info!(
         "[pdfstream] raw_uri={}, decoded_path={}",
-        raw_uri,
-        decoded_path
+        raw_uri, decoded_path
     );
 
     let requested_path = PathBuf::from(decoded_path.as_ref());

@@ -1486,6 +1486,7 @@
     "kb_table": "知识库表",
     "kg_table": "知识图谱表",
     "notes_table": "笔记表",
+    "vfs_table": "文件系统表",
     "optimize_all": "优化所有表",
     "optimize": "优化",
     "optimizing": "优化中...",

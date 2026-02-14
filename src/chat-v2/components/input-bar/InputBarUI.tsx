@@ -750,9 +750,10 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
 
 
         } catch (error) {
+          const errorDetail = getErrorMessage(error);
           logAttachment('ui', 'vfs_upload_error', {
             fileName: file.name,
-            error: getErrorMessage(error),
+            error: errorDetail,
           }, 'error');
 
           // 🔧 P0-15 修复：VFS 上传失败时标记为 error，而不是 ready
@@ -761,9 +762,9 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
           onUpdateAttachment(attachmentId, {
             status: 'error',
             previewUrl: blobPreviewUrl,
-            error: t('chatV2:input.attachmentUploadFailed'),
+            error: `${t('chatV2:input.attachmentUploadFailed')}${errorDetail ? ` (${errorDetail})` : ''}`,
           });
-          console.error('[InputBarUI] VFS upload failed:', getErrorMessage(error));
+          console.error('[InputBarUI] VFS upload failed:', errorDetail);
         }
       };
       reader.onerror = () => {

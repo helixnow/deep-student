@@ -396,8 +396,9 @@ export const BUILTIN_TOOLS: BuiltinToolSchema[] = [
     name: `${BUILTIN_NAMESPACE}resource_read`,
     displayNameKey: 'mcp.tools.resource_read',
     description:
-      '读取指定学习资源的完整内容。支持笔记（Markdown）、教材页面、整卷题目、作文批改、翻译结果。' +
-      '当用户询问某个具体笔记/教材/整卷的内容，或需要分析用户的学习材料时使用。',
+      '读取指定学习资源的内容。支持笔记（Markdown）、教材页面、整卷题目、作文批改、翻译结果、知识导图。' +
+      '对于 PDF/教材类多页文档，支持通过 page_start/page_end 按页读取，避免一次加载全部内容。' +
+      '首次读取时不指定页码可获取全文和总页数（totalPages），后续可按需读取特定页。',
     inputSchema: {
       type: 'object',
       properties: {
@@ -409,6 +410,16 @@ export const BUILTIN_TOOLS: BuiltinToolSchema[] = [
           type: 'boolean',
           default: true,
           description: '是否包含元数据（标题、创建时间、文件夹路径等）',
+        },
+        page_start: {
+          type: 'integer',
+          minimum: 1,
+          description: '可选：起始页码（1-based），仅对 PDF/教材/文件类型有效。指定后只返回该页范围的内容。',
+        },
+        page_end: {
+          type: 'integer',
+          minimum: 1,
+          description: '可选：结束页码（1-based，包含），仅对 PDF/教材/文件类型有效。未指定时默认等于 page_start（只读单页）。',
         },
       },
       required: ['resource_id'],

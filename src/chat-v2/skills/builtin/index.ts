@@ -445,11 +445,14 @@ export const literatureReviewSkill: SkillDefinition = {
   isBuiltin: true,
   skillType: 'composite',
   // 关联的工具技能组（必需 + 可选）
-  relatedSkills: ['knowledge-retrieval', 'todo-tools', 'canvas-note', 'web-fetch', 'learning-resource', 'vfs-memory'],
+  relatedSkills: ['knowledge-retrieval', 'academic-search', 'todo-tools', 'canvas-note', 'web-fetch', 'learning-resource', 'vfs-memory'],
   allowedTools: [
     // knowledge-retrieval
     'builtin-unified_search',
     'builtin-web_search',
+    // academic-search
+    'builtin-arxiv_search',
+    'builtin-scholar_search',
     // todo-tools
     'builtin-todo_init',
     'builtin-todo_update',
@@ -488,7 +491,7 @@ export const literatureReviewSkill: SkillDefinition = {
 
 \`\`\`json
 {
-  "skills": ["knowledge-retrieval", "todo-tools", "canvas-note", "web-fetch", "learning-resource"]
+  "skills": ["knowledge-retrieval", "academic-search", "todo-tools", "canvas-note", "web-fetch", "learning-resource"]
 }
 \`\`\`
 
@@ -496,7 +499,8 @@ export const literatureReviewSkill: SkillDefinition = {
 
 | 技能组 ID | 提供的工具 | 用途 |
 |-----------|------------|------|
-| \`knowledge-retrieval\` | builtin-unified_search, builtin-web_search | **联网搜索**学术资源 + 检索本地知识库（含文本/图片/记忆） |
+| \`knowledge-retrieval\` | builtin-unified_search, builtin-web_search | 检索本地知识库（含文本/图片/记忆）+ 通用网络搜索 |
+| \`academic-search\` | builtin-arxiv_search, builtin-scholar_search | **学术论文搜索**（arXiv 预印本 + OpenAlex 2.4 亿篇论文，国内可直连） |
 | \`todo-tools\` | builtin-todo_init, builtin-todo_update, builtin-todo_add, builtin-todo_get | 综述任务分解与进度管理 |
 | \`canvas-note\` | builtin-note_read, builtin-note_append, builtin-note_replace, builtin-note_set, builtin-note_create, builtin-note_list, builtin-note_search | 综述报告撰写与编辑 |
 | \`web-fetch\` | builtin-web_fetch | 抓取学术网页完整内容 |
@@ -529,18 +533,21 @@ export const literatureReviewSkill: SkillDefinition = {
 
 ### 第二阶段：文献检索与收集
 
-1. **多源检索**
-   - 使用 \`builtin-web_search\` 搜索学术资源
-   - 使用 \`builtin-unified_search\` 检索本地已有文献（含文本/图片/记忆）
-   - 建议的学术搜索关键词格式：
-     - 中文：\`"关键词1" AND "关键词2" site:cnki.net\`
-     - 英文：\`"keyword1" AND "keyword2" site:scholar.google.com\`
+1. **学术论文搜索（优先使用）**
+   - 使用 \`builtin-arxiv_search\` 搜索 STEM 领域最新预印本（支持 arXiv 分类过滤）
+   - 使用 \`builtin-scholar_search\` 搜索跨学科学术论文（覆盖 2.4 亿+ 篇，支持引用数过滤）
+   - 搜索高引经典论文：\`scholar_search(query="...", min_citation_count=50, sort_by="citations")\`
+   - 搜索最新进展：\`arxiv_search(query="...", sort_by="date", categories=["cs.AI"])\`
 
-2. **滚雪球检索**
+2. **本地 + 通用搜索（补充）**
+   - 使用 \`builtin-unified_search\` 检索本地已有文献（含文本/图片/记忆）
+   - 使用 \`builtin-web_search\` 搜索通用网络资源（如中文学术数据库 CNKI 等）
+
+3. **滚雪球检索**
    - 从核心文献的参考文献中发现更多相关研究
    - 追踪引用该文献的后续研究
 
-3. **记录检索过程**
+4. **记录检索过程**
    - 使用 \`builtin-todo_init\` 记录检索计划
    - 每完成一个数据库检索，更新进度
 

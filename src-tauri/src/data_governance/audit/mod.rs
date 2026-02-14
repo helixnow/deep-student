@@ -66,9 +66,7 @@ pub enum AuditOperation {
         records_affected: usize,
     },
     /// 维护操作（审计清理、缓存清理等）
-    Maintenance {
-        action: String,
-    },
+    Maintenance { action: String },
 }
 
 /// 备份类型

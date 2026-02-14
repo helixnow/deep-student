@@ -22,9 +22,9 @@ use crate::vfs::indexing::VfsContentExtractor;
 use crate::vfs::ocr_utils::{join_ocr_pages_text, parse_ocr_pages_json};
 use crate::vfs::repos::{VfsFileRepo, VfsFolderRepo};
 use crate::vfs::types::{
-    GetResourceRefsInput, MultimodalContentBlock, ResolvedResource,
-    VfsContextRefData, VfsFolderItem, VfsResourceRef, VfsResourceType,
-    resolve_image_inject_modes, resolve_pdf_inject_modes,
+    resolve_image_inject_modes, resolve_pdf_inject_modes, GetResourceRefsInput,
+    MultimodalContentBlock, ResolvedResource, VfsContextRefData, VfsFolderItem, VfsResourceRef,
+    VfsResourceType,
 };
 
 /// 最大批量处理资源数（契约 F）
@@ -559,7 +559,11 @@ fn resolve_single_ref_with_conn(
     let is_pdf = title.to_lowercase().ends_with(".pdf");
 
     // ★ P2-1 修复（二轮审阅）：提前解析 PDF inject_modes，避免在 content 和 multimodal_blocks 阶段重复调用
-    let pdf_resolved_modes = if is_pdf && matches!(r.resource_type, VfsResourceType::File | VfsResourceType::Textbook) {
+    let pdf_resolved_modes = if is_pdf
+        && matches!(
+            r.resource_type,
+            VfsResourceType::File | VfsResourceType::Textbook
+        ) {
         let pdf_modes = r
             .inject_modes
             .as_ref()

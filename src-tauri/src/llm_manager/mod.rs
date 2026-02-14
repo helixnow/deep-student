@@ -2219,7 +2219,10 @@ impl LLMManager {
                             model.priority = i as u32;
                         }
                         needs_save = true;
-                        info!("[OCR] 已从旧 ocr.engine_type='{}' 迁移到优先级列表", old_engine);
+                        info!(
+                            "[OCR] 已从旧 ocr.engine_type='{}' 迁移到优先级列表",
+                            old_engine
+                        );
                     }
                 }
 
@@ -2489,8 +2492,7 @@ impl LLMManager {
 
         // 优先从优先级列表获取
         let available = self.get_available_ocr_models().await;
-        let mut enabled: Vec<&OcrModelConfig> =
-            available.iter().filter(|m| m.enabled).collect();
+        let mut enabled: Vec<&OcrModelConfig> = available.iter().filter(|m| m.enabled).collect();
         enabled.sort_by_key(|m| m.priority);
 
         if let Some(first) = enabled.first() {
@@ -2532,18 +2534,19 @@ impl LLMManager {
 
         // 从 available_models 中查找该 config_id 对应的引擎类型
         let available = self.get_available_ocr_models().await;
-        let effective_engine = if let Some(ocr_model) = available.iter().find(|m| m.config_id == config.id) {
-            let declared = OcrEngineType::from_str(&ocr_model.engine_type);
-            // 验证声明的引擎类型是否匹配实际模型
-            if OcrAdapterFactory::validate_model_for_engine(&config.model, declared) {
-                declared
+        let effective_engine =
+            if let Some(ocr_model) = available.iter().find(|m| m.config_id == config.id) {
+                let declared = OcrEngineType::from_str(&ocr_model.engine_type);
+                // 验证声明的引擎类型是否匹配实际模型
+                if OcrAdapterFactory::validate_model_for_engine(&config.model, declared) {
+                    declared
+                } else {
+                    OcrAdapterFactory::infer_engine_from_model(&config.model)
+                }
             } else {
+                // 回退配置，根据模型推断
                 OcrAdapterFactory::infer_engine_from_model(&config.model)
-            }
-        } else {
-            // 回退配置，根据模型推断
-            OcrAdapterFactory::infer_engine_from_model(&config.model)
-        };
+            };
 
         debug!(
             "[OCR] effective engine={}, model={}",

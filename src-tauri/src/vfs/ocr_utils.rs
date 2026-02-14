@@ -128,6 +128,19 @@ pub fn join_ocr_pages_text(
     header_prefix: &str,
     header_suffix: &str,
 ) -> Option<String> {
+    join_ocr_pages_text_with_offset(pages, 0, header_prefix, header_suffix)
+}
+
+/// Join OCR pages into a single text block with page headers, starting from a given offset.
+///
+/// `start_offset` is the 0-based index of the first page in the slice,
+/// used to compute correct 1-based page numbers in headers.
+pub fn join_ocr_pages_text_with_offset(
+    pages: &[Option<String>],
+    start_offset: usize,
+    header_prefix: &str,
+    header_suffix: &str,
+) -> Option<String> {
     let mut result = String::new();
     for (i, page_text) in pages.iter().enumerate() {
         if let Some(text) = page_text {
@@ -141,7 +154,7 @@ pub fn join_ocr_pages_text(
             result.push_str(&format!(
                 "--- {} {} {} ---\n{}",
                 header_prefix,
-                i + 1,
+                start_offset + i + 1,
                 header_suffix,
                 trimmed
             ));

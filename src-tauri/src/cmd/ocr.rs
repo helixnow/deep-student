@@ -413,17 +413,23 @@ pub async fn add_ocr_engine(
 
     // 系统 OCR 不支持通过此接口添加（自动注入）
     if config_id == SYSTEM_OCR_CONFIG_ID {
-        return Err(AppError::validation("系统 OCR 引擎由系统自动管理，无需手动添加".to_string()));
+        return Err(AppError::validation(
+            "系统 OCR 引擎由系统自动管理，无需手动添加".to_string(),
+        ));
     }
 
     // 检查是否已存在
     if models.iter().any(|m| m.config_id == config_id) {
-        return Err(AppError::validation("该模型已在 OCR 引擎列表中".to_string()));
+        return Err(AppError::validation(
+            "该模型已在 OCR 引擎列表中".to_string(),
+        ));
     }
 
     // 推断引擎类型
     let effective_engine_type = engine_type.unwrap_or_else(|| {
-        OcrAdapterFactory::infer_engine_from_model(&model).as_str().to_string()
+        OcrAdapterFactory::infer_engine_from_model(&model)
+            .as_str()
+            .to_string()
     });
 
     let max_priority = models.iter().map(|m| m.priority).max().unwrap_or(0);
@@ -455,10 +461,7 @@ pub async fn add_ocr_engine(
 
 /// 移除一个 OCR 引擎
 #[tauri::command]
-pub async fn remove_ocr_engine(
-    config_id: String,
-    state: State<'_, AppState>,
-) -> Result<bool> {
+pub async fn remove_ocr_engine(config_id: String, state: State<'_, AppState>) -> Result<bool> {
     let db = &state.database;
 
     let models_json = db
@@ -471,7 +474,9 @@ pub async fn remove_ocr_engine(
 
     // 系统 OCR 不支持删除（自动管理）
     if config_id == SYSTEM_OCR_CONFIG_ID {
-        return Err(AppError::validation("系统 OCR 引擎由系统自动管理，无法删除".to_string()));
+        return Err(AppError::validation(
+            "系统 OCR 引擎由系统自动管理，无法删除".to_string(),
+        ));
     }
 
     let original_len = models.len();

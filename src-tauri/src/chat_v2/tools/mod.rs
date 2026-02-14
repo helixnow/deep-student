@@ -35,6 +35,7 @@
 //!
 //! 详见 `executor.rs` 中 `ToolExecutor` trait 文档。
 
+pub mod academic_search_executor; // 🆕 学术论文搜索执行器（arXiv + OpenAlex）
 pub mod anki_executor;
 pub mod ask_user_executor; // 🆕 用户提问工具执行器（轻量级问答交互） // Anki 工具执行器（桥接到前端 CardAgent）
                            // ★ 2026-01 改造：anki_tools 已删除，Anki 工具定义迁移到前端 builtinMcpServer.ts
@@ -78,6 +79,7 @@ pub use injector::inject_tool_schemas;
 pub use types::{ToolCategory, ToolDefinition, ToolExecutionContext, ToolExecutionResult};
 
 // 重导出执行器（文档 29 P0-1）
+pub use academic_search_executor::AcademicSearchExecutor; // 🆕 学术论文搜索执行器
 pub use anki_executor::AnkiToolExecutor; // 🆕 Anki 工具执行器
 pub use ask_user_executor::AskUserExecutor; // 🆕 用户提问工具执行器
 pub use attachment_executor::AttachmentToolExecutor; // 🆕 附件工具执行器

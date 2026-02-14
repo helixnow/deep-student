@@ -23,8 +23,9 @@ use crate::chat_v2::events::event_types;
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
 use crate::dstu::handler_utils::{
     emit_watch_event, essay_to_dstu_node, exam_to_dstu_node, file_to_dstu_node,
-    get_content_by_type, mindmap_to_dstu_node, note_to_dstu_node, search_all, session_to_dstu_node,
-    textbook_to_dstu_node, translation_to_dstu_node,
+    get_content_by_type, get_content_by_type_paged, get_file_total_pages, mindmap_to_dstu_node,
+    note_to_dstu_node, search_all, session_to_dstu_node, textbook_to_dstu_node,
+    translation_to_dstu_node,
 };
 use crate::dstu::types::{DstuListOptions, DstuNode, DstuNodeType, DstuWatchEvent};
 use crate::utils::text::safe_truncate_chars;
@@ -1128,8 +1129,37 @@ impl BuiltinResourceExecutor {
             (None, None)
         };
 
-        // 获取资源内容
-        let content = get_content_by_type(vfs_db, resolved.resource_type, &resolved.read_id)?;
+        // ★ 按页读取参数（可选，仅对 textbook/file 类型有效）
+        let page_start = call
+            .arguments
+            .get("page_start")
+            .and_then(|v| v.as_u64())
+            .map(|v| v.max(1) as usize);
+        let page_end = call
+            .arguments
+            .get("page_end")
+            .and_then(|v| v.as_u64())
+            .map(|v| v.max(1) as usize);
+
+        // 获取资源内容（按页或全量）
+        let (content, paged_total_pages) = if let Some(ps) = page_start {
+            let pe = page_end.unwrap_or(ps); // 未指定 page_end 则只读单页
+            let pe = pe.max(ps); // 确保 page_end >= page_start
+            log::debug!(
+                "[BuiltinResourceExecutor] resource_read paged: pages={}-{}, type={}",
+                ps,
+                pe,
+                resolved.resource_type
+            );
+            get_content_by_type_paged(vfs_db, resolved.resource_type, &resolved.read_id, ps, pe)?
+        } else {
+            let content = get_content_by_type(vfs_db, resolved.resource_type, &resolved.read_id)?;
+            // 即使没有指定页码，也尝试获取总页数（用于告知 LLM 可以按页读取）
+            let total = get_file_total_pages(vfs_db, resolved.resource_type, &resolved.read_id)
+                .unwrap_or(0);
+            (content, total)
+        };
+
         let availability =
             Self::collect_read_availability(resolved.resource_type, &content, metadata.as_ref());
         let degradation = Self::build_degradation_info(
@@ -1147,10 +1177,11 @@ impl BuiltinResourceExecutor {
         let duration = start_time.elapsed().as_millis() as u64;
 
         log::debug!(
-            "[BuiltinResourceExecutor] resource_read completed: requested_id={}, resolved_id={}, content_len={}, {}ms",
+            "[BuiltinResourceExecutor] resource_read completed: requested_id={}, resolved_id={}, content_len={}, total_pages={}, {}ms",
             resolved.requested_id,
             resolved.read_id,
             content.len(),
+            paged_total_pages,
             duration
         );
 
@@ -1178,6 +1209,25 @@ impl BuiltinResourceExecutor {
             },
             "durationMs": duration,
         });
+
+        // ★ 按页读取信息：让 LLM 知道总页数和当前读取的范围
+        if paged_total_pages > 0 {
+            result["totalPages"] = json!(paged_total_pages);
+            if let Some(ps) = page_start {
+                let pe = page_end.unwrap_or(ps).max(ps).min(paged_total_pages);
+                result["pageStart"] = json!(ps);
+                result["pageEnd"] = json!(pe);
+                result["hint"] = json!(format!(
+                    "当前返回第 {}-{} 页（共 {} 页）。可通过 page_start/page_end 参数读取其他页。",
+                    ps, pe, paged_total_pages
+                ));
+            } else {
+                result["hint"] = json!(format!(
+                    "本文档共 {} 页。可通过 page_start/page_end 参数按页读取，避免一次加载全部内容。",
+                    paged_total_pages
+                ));
+            }
+        }
 
         if let Some(ref meta) = metadata {
             result["metadata"] = meta.clone();

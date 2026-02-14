@@ -27,7 +27,7 @@ export const learningResourceSkill: SkillDefinition = {
 ## 工具选择指南
 
 - **builtin-resource_list**: 列出学习资源，可按类型和文件夹筛选
-- **builtin-resource_read**: 读取指定资源的完整内容
+- **builtin-resource_read**: 读取指定资源的内容（支持按页读取 PDF/教材）
 - **builtin-resource_search**: 在资源中全文搜索
 - **builtin-folder_list**: 列出文件夹结构，了解资源组织方式
 
@@ -53,6 +53,16 @@ type 可选：note/textbook/file/image/exam/essay/translation/mindmap/all
 }
 \`\`\`
 **注意**：\`resource_id\` 是必需参数。可通过 resource_list、resource_search，或 unified_search 返回的 \`readResourceId\`（优先）/\`sourceId\`/\`resourceId\` 获取。
+
+**按页读取**（PDF/教材/文件类型）：
+\`\`\`json
+{
+  "resource_id": "tb_xxx",
+  "page_start": 56,
+  "page_end": 57
+}
+\`\`\`
+首次全量读取会返回 \`totalPages\`，后续可用 page_start/page_end 按需读取特定页，节省 token。
 
 ### builtin-resource_search
 搜索资源，参数格式：
@@ -109,12 +119,14 @@ parent_id 为空或 "root" 时列出根目录下的文件夹
     },
     {
       name: 'builtin-resource_read',
-      description: '读取指定学习资源的完整内容。支持笔记、教材页面、整卷题目、作文批改、翻译结果、知识导图。当检索结果片段不够完整、需要查看完整文档时使用。',
+      description: '读取指定学习资源的内容。支持笔记、教材页面、整卷题目、作文批改、翻译结果、知识导图。对于 PDF/教材类多页文档，支持通过 page_start/page_end 按页读取，避免一次加载全部内容。首次读取时不指定页码可获取全文和总页数（totalPages），后续可按需读取特定页。',
       inputSchema: {
         type: 'object',
         properties: {
           resource_id: { type: 'string', description: '【必填】资源 ID（如 note_xxx, tb_xxx, exam_xxx 或 res_xxx）。可通过 resource_list、resource_search，或 unified_search 返回的 readResourceId（优先）/sourceId/resourceId 获取。' },
           include_metadata: { type: 'boolean', description: '是否包含元数据（标题、创建时间等），默认true' },
+          page_start: { type: 'integer', description: '可选：起始页码（1-based），仅对 PDF/教材/文件类型有效。指定后只返回该页范围的内容。', minimum: 1 },
+          page_end: { type: 'integer', description: '可选：结束页码（1-based，包含），仅对 PDF/教材/文件类型有效。未指定时默认等于 page_start（只读单页）。', minimum: 1 },
         },
         required: ['resource_id'],
       },

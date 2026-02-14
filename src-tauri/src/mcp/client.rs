@@ -1151,7 +1151,9 @@ impl McpClient {
         let mut page_count = 0u32;
         loop {
             page_count += 1;
-            if page_count > 100 { break; }
+            if page_count > 100 {
+                break;
+            }
             let params = if let Some(ref c) = cursor {
                 Some(json!({ "cursor": c }))
             } else {
@@ -1229,7 +1231,9 @@ impl McpClient {
         let mut page_count = 0u32;
         loop {
             page_count += 1;
-            if page_count > 100 { break; }
+            if page_count > 100 {
+                break;
+            }
             let params = if let Some(ref c) = cursor {
                 Some(json!({ "cursor": c }))
             } else {
@@ -1266,13 +1270,17 @@ impl McpClient {
         let mut page_count = 0u32;
         loop {
             page_count += 1;
-            if page_count > 100 { break; }
+            if page_count > 100 {
+                break;
+            }
             let params = if let Some(ref c) = cursor {
                 Some(json!({ "cursor": c }))
             } else {
                 None
             };
-            let response = self.send_request("resources/templates/list", params).await?;
+            let response = self
+                .send_request("resources/templates/list", params)
+                .await?;
             if let Some(result) = response.result {
                 let templates: Vec<ResourceTemplate> = serde_json::from_value(
                     result
@@ -1379,7 +1387,9 @@ impl McpClient {
         let mut page_count = 0u32;
         loop {
             page_count += 1;
-            if page_count > 100 { break; }
+            if page_count > 100 {
+                break;
+            }
             let params = if let Some(ref c) = cursor {
                 Some(json!({ "cursor": c }))
             } else {

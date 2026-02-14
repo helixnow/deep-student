@@ -28,9 +28,8 @@ use crate::document_parser::DocumentParser;
 use crate::vfs::ocr_utils::parse_ocr_pages_json;
 use crate::vfs::repos::VfsFileRepo;
 use crate::vfs::types::{
-    PdfPreviewJson, ResourceInjectModes, VfsContextRefData,
-    VfsResourceRef, VfsResourceType,
-    resolve_image_inject_modes, resolve_pdf_inject_modes,
+    resolve_image_inject_modes, resolve_pdf_inject_modes, PdfPreviewJson, ResourceInjectModes,
+    VfsContextRefData, VfsResourceRef, VfsResourceType,
 };
 
 // ★ 使用已有的 ContentBlock 类型，避免重复定义

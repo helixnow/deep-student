@@ -406,6 +406,118 @@ pub fn get_content_by_type(
     }
 }
 
+/// 获取文件类资源的总页数
+///
+/// 只对 textbooks/files 类型有效（基于 ocr_pages_json）。
+/// 其他类型返回 None。
+pub fn get_file_total_pages(
+    vfs_db: &Arc<VfsDatabase>,
+    resource_type: &str,
+    id: &str,
+) -> Option<usize> {
+    match resource_type {
+        "textbooks" | "textbook" | "files" | "file" => {
+            let conn = vfs_db.get_conn_safe().ok()?;
+            let resolved_file_id =
+                resolve_file_id_for_read(&conn, id).unwrap_or_else(|| id.to_string());
+            let ocr_json: Option<String> = conn
+                .query_row(
+                    "SELECT ocr_pages_json FROM files WHERE id = ?1 OR resource_id = ?1 ORDER BY CASE WHEN id = ?1 THEN 0 ELSE 1 END LIMIT 1",
+                    params![resolved_file_id],
+                    |row| row.get(0),
+                )
+                .ok()
+                .flatten();
+            let ocr_json = ocr_json?;
+            if ocr_json.trim().is_empty() {
+                return None;
+            }
+            let pages = crate::vfs::ocr_utils::parse_ocr_pages_json(&ocr_json);
+            if pages.is_empty() {
+                None
+            } else {
+                Some(pages.len())
+            }
+        }
+        _ => None,
+    }
+}
+
+/// 按页范围获取文件类资源的文本内容
+///
+/// ## 参数
+/// - `page_start`: 起始页码（1-based，包含）
+/// - `page_end`: 结束页码（1-based，包含）
+///
+/// ## 返回
+/// `Ok((content, total_pages))` 或 `Err`
+///
+/// 只对 textbooks/files 类型有效。如果没有 OCR 页级数据，回退到全量返回。
+pub fn get_content_by_type_paged(
+    vfs_db: &Arc<VfsDatabase>,
+    resource_type: &str,
+    id: &str,
+    page_start: usize,
+    page_end: usize,
+) -> Result<(String, usize), String> {
+    match resource_type {
+        "textbooks" | "textbook" | "files" | "file" => {
+            let conn = vfs_db.get_conn_safe().map_err(|e| e.to_string())?;
+            let resolved_file_id =
+                resolve_file_id_for_read(&conn, id).unwrap_or_else(|| id.to_string());
+
+            // 尝试从 ocr_pages_json 获取页级数据
+            let ocr_json: Option<String> = conn
+                .query_row(
+                    "SELECT ocr_pages_json FROM files WHERE id = ?1 OR resource_id = ?1 ORDER BY CASE WHEN id = ?1 THEN 0 ELSE 1 END LIMIT 1",
+                    params![resolved_file_id],
+                    |row| row.get(0),
+                )
+                .ok()
+                .flatten();
+
+            if let Some(ref json_str) = ocr_json {
+                if !json_str.trim().is_empty() {
+                    let pages = crate::vfs::ocr_utils::parse_ocr_pages_json(json_str);
+                    let total_pages = pages.len();
+                    if total_pages > 0 {
+                        // clamp 页码范围（1-based → 0-based）
+                        let start_idx =
+                            (page_start.saturating_sub(1)).min(total_pages.saturating_sub(1));
+                        let end_idx = page_end.min(total_pages); // page_end is inclusive, so slice up to end_idx
+                        let sliced = &pages[start_idx..end_idx];
+
+                        let text = crate::vfs::ocr_utils::join_ocr_pages_text_with_offset(
+                            sliced, start_idx, "第", "页",
+                        );
+
+                        if let Some(content) = text {
+                            log::info!(
+                                "[DSTU::content_helpers] get_content_by_type_paged: SUCCESS - type={}, id={}, pages={}-{}/{}",
+                                resource_type, id, page_start, page_end, total_pages
+                            );
+                            return Ok((content, total_pages));
+                        }
+                    }
+                }
+            }
+
+            // 回退：没有 OCR 页级数据，返回全量内容
+            log::info!(
+                "[DSTU::content_helpers] get_content_by_type_paged: no OCR pages, fallback to full content for id={}",
+                id
+            );
+            let content = get_content_by_type(vfs_db, resource_type, id)?;
+            Ok((content, 0))
+        }
+        _ => {
+            // 非文件类资源不支持按页读取，返回全量
+            let content = get_content_by_type(vfs_db, resource_type, id)?;
+            Ok((content, 0))
+        }
+    }
+}
+
 /// 根据资源类型更新内容
 pub fn update_content_by_type(
     vfs_db: &Arc<VfsDatabase>,

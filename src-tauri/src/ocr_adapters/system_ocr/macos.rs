@@ -77,7 +77,8 @@ unsafe fn recognize_text_inner(image_data: &[u8]) -> Result<String, OcrError> {
     let _: () = msg_send![request, setRecognitionLevel: 1_i64];
 
     // 设置识别语言：中文 + 英文
-    let zh_hans: *mut Object = msg_send![class!(NSString), stringWithUTF8String: b"zh-Hans\0".as_ptr()];
+    let zh_hans: *mut Object =
+        msg_send![class!(NSString), stringWithUTF8String: b"zh-Hans\0".as_ptr()];
     let en_us: *mut Object = msg_send![class!(NSString), stringWithUTF8String: b"en-US\0".as_ptr()];
     let lang_array: *mut Object = msg_send![
         class!(NSArray),

@@ -6,7 +6,7 @@
 
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import { Loader2, FileText, Zap, MessageSquare, Info, ChevronDown, ChevronUp, Database, HelpCircle, BookOpen, Network, InfoIcon } from 'lucide-react';
+import { Loader2, FileText, Zap, MessageSquare, Info, ChevronDown, ChevronUp, Database, HelpCircle, BookOpen, Network, InfoIcon, FolderSearch } from 'lucide-react';
 import { AlertTitle } from '../ui/shad/Alert';
 import { NotionButton } from '../ui/NotionButton';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../ui/shad/Card';
@@ -137,6 +137,7 @@ export const LanceOptimizationPanel: React.FC = () => {
       { type: 'kb', command: 'optimize_kb_embeddings_table' },
       { type: 'kg', command: 'optimize_kg_embeddings_table' },
       { type: 'notes', command: 'optimize_notes_embeddings_table' },
+      { type: 'vfs', command: 'vfs_optimize_lance' },
     ];
 
     for (const table of tables) {
@@ -232,7 +233,7 @@ export const LanceOptimizationPanel: React.FC = () => {
         </div>
 
         {/* 优化按钮组 */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
           <NotionButton
             variant="outline"
             disabled={optimizing.chat}
@@ -287,6 +288,20 @@ export const LanceOptimizationPanel: React.FC = () => {
               <FileText className="h-4 w-4" />
             )}
             <span className="text-xs">{t('lance_optimization.notes_table')}</span>
+          </NotionButton>
+
+          <NotionButton
+            variant="outline"
+            disabled={optimizing.vfs}
+            onClick={() => optimizeTable('vfs', 'vfs_optimize_lance')}
+            className="flex flex-col items-center gap-1 h-auto py-3"
+          >
+            {optimizing.vfs ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <FolderSearch className="h-4 w-4" />
+            )}
+            <span className="text-xs">{t('lance_optimization.vfs_table')}</span>
           </NotionButton>
         </div>
 

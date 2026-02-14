@@ -99,7 +99,8 @@ fn init_pdfium() -> Result<SyncPdfium, String> {
                 "PDF 功能不可用：未找到 pdfium 库。\
                  搜索了 {} 个路径均未找到。\
                  桌面端请确保 libpdfium 在系统路径或应用目录中。错误: {:?}",
-                candidates.len(), e
+                candidates.len(),
+                e
             ))
         }
     }
@@ -203,7 +204,10 @@ pub fn test_pdfium_status() -> Result<std::collections::HashMap<String, String>,
             let minimal_pdf = b"%PDF-1.0\n1 0 obj<</Pages 2 0 R>>endobj 2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj 3 0 obj<</Type/Page/MediaBox[0 0 612 792]/Parent 2 0 R>>endobj\nxref\n0 4\n0000000000 65535 f \n0000000009 00000 n \n0000000043 00000 n \n0000000098 00000 n \ntrailer<</Size 4/Root 1 0 R>>\nstartxref\n167\n%%EOF";
             match pdfium.load_pdf_from_byte_slice(minimal_pdf, None) {
                 Ok(doc) => {
-                    info.insert("parse_test".into(), format!("OK, pages={}", doc.pages().len()));
+                    info.insert(
+                        "parse_test".into(),
+                        format!("OK, pages={}", doc.pages().len()),
+                    );
                 }
                 Err(e) => {
                     info.insert("parse_test".into(), format!("FAIL: {:?}", e));

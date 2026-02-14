@@ -94,8 +94,7 @@ pub async fn chat_v2_perform_ocr(
                     .to_string()
             })?;
             let mime = infer_mime_from_data_url(base64_data);
-            let normalized_base64 =
-                base64::engine::general_purpose::STANDARD.encode(&image_bytes);
+            let normalized_base64 = base64::engine::general_purpose::STANDARD.encode(&image_bytes);
             image_payloads.push(crate::llm_manager::ImagePayload {
                 mime: mime.to_string(),
                 base64: normalized_base64,

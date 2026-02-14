@@ -57,6 +57,7 @@ import TemplateDesignerWorkflowDebugPlugin from './plugins/TemplateDesignerWorkf
 import MindMapBlurHoverDebugPlugin from './plugins/MindMapBlurHoverDebugPlugin';
 import AttachmentPipelineTestPlugin from './plugins/AttachmentPipelineTestPlugin';
 import ChatInteractionTestPlugin from './plugins/ChatInteractionTestPlugin';
+import CitationTestPlugin from './plugins/CitationTestPlugin';
 
 export interface DebugPanelHostProps {
   visible: boolean;
@@ -472,6 +473,15 @@ const PLUGINS: DebugPanelPluginEntry[] = [
     Component: ChatInteractionTestPlugin,
     labelDefault: '聊天交互自动化测试',
     descriptionDefault: '通过 DOM 模拟用户点击，自动测试 发送→流式中断→重试→换模型重试→编辑重发→重新发送→多变体 全链路（7步），验证请求体变化和 model icon 完整性。',
+    groupId: 'chat-timeline',
+  },
+  {
+    id: 'citation-test',
+    labelKey: 'debug_panel.plugin_citation_test',
+    descriptionKey: 'debug_panel.plugin_citation_test_desc',
+    Component: CitationTestPlugin,
+    labelDefault: '引用生成与解引用测试',
+    descriptionDefault: '自动测试引用解析全格式覆盖（中/英文类型名/图片后缀/边界）、Source Adapter 数据桥接（citations/toolOutput/混合块）、DOM 渲染验证和持久化往返完整性，共 5 步。',
     groupId: 'chat-timeline',
   },
 ];

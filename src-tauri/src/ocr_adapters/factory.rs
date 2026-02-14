@@ -2,7 +2,10 @@
 //!
 //! 提供统一的适配器创建和管理功能。
 
-use super::{DeepSeekOcrAdapter, GenericVlmAdapter, OcrAdapter, OcrEngineType, PaddleOcrVlAdapter, SystemOcrAdapter};
+use super::{
+    DeepSeekOcrAdapter, GenericVlmAdapter, OcrAdapter, OcrEngineType, PaddleOcrVlAdapter,
+    SystemOcrAdapter,
+};
 use std::sync::Arc;
 
 /// OCR 适配器工厂

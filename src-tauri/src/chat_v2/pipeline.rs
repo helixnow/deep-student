@@ -34,10 +34,11 @@ use super::approval_manager::{ApprovalManager, ApprovalRequest};
 use super::database::ChatV2Database;
 use super::tools::builtin_retrieval_executor::BUILTIN_NAMESPACE;
 use super::tools::{
-    AttemptCompletionExecutor, BuiltinResourceExecutor, BuiltinRetrievalExecutor,
-    CanvasToolExecutor, ChatAnkiToolExecutor, ExecutionContext, FetchExecutor, GeneralToolExecutor,
-    KnowledgeExecutor, MemoryToolExecutor, TemplateDesignerExecutor, ToolExecutor,
-    ToolExecutorRegistry, ToolSensitivity, WorkspaceToolExecutor,
+    AcademicSearchExecutor, AttemptCompletionExecutor, BuiltinResourceExecutor,
+    BuiltinRetrievalExecutor, CanvasToolExecutor, ChatAnkiToolExecutor, ExecutionContext,
+    FetchExecutor, GeneralToolExecutor, KnowledgeExecutor, MemoryToolExecutor,
+    TemplateDesignerExecutor, ToolExecutor, ToolExecutorRegistry, ToolSensitivity,
+    WorkspaceToolExecutor,
 };
 use crate::database::Database as MainDatabase;
 use crate::models::{ChatMessage as LegacyChatMessage, MultimodalContentPart, RagSourceInfo};
@@ -1203,6 +1204,7 @@ impl ChatV2Pipeline {
         registry.register(Arc::new(BuiltinResourceExecutor::new()));
         registry.register(Arc::new(super::tools::AttachmentToolExecutor::new())); // 🆕 附件工具执行器（解决 P0 断裂点）
         registry.register(Arc::new(FetchExecutor::new())); // 🆕 内置 Web Fetch 工具
+        registry.register(Arc::new(AcademicSearchExecutor::new())); // 🆕 学术论文搜索工具（arXiv + OpenAlex）
         registry.register(Arc::new(KnowledgeExecutor::new()));
         registry.register(Arc::new(super::tools::TodoListExecutor::new()));
         registry.register(Arc::new(super::tools::qbank_executor::QBankExecutor::new()));

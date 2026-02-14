@@ -5,6 +5,7 @@ import { convertFileSrc } from '@tauri-apps/api/core';
 import { guardedListen } from '../../utils/guardedListen';
 import { getErrorMessage } from '../../utils/errorUtils';
 import { showGlobalNotification } from '../UnifiedNotification';
+import { ensureGlobalDragHandlers, markNativeDrop, isNativeDropRecent } from '../../hooks/useTauriDragAndDrop';
 
 /**
  * 扩展名到 MIME 类型的统一映射表
@@ -530,6 +531,10 @@ export const UnifiedDragDropZone: React.FC<UnifiedDragDropZoneProps> = ({
 
   useEffect(() => {
     if (!enabled) return;
+
+    // 🔧 Windows WebView2 兼容：确保全局 dragover/drop 处理器已安装
+    ensureGlobalDragHandlers();
+
     let unlisten: undefined | (() => void);
     const unlisteners: Array<() => void> = [];
 
@@ -570,6 +575,7 @@ export const UnifiedDragDropZone: React.FC<UnifiedDragDropZoneProps> = ({
               break;
             case 'drop':
               updateDragState(false);
+              markNativeDrop(); // 标记原生 drop 已处理
               if (payload.paths?.length) void processFilePaths(payload.paths);
               break;
           }
@@ -595,6 +601,7 @@ export const UnifiedDragDropZone: React.FC<UnifiedDragDropZoneProps> = ({
             if (!isDropZoneVisible()) return;
             const paths = event?.payload?.paths;
             updateDragState(false);
+            markNativeDrop(); // 标记原生 drop 已处理
             if (paths?.length) void processFilePaths(paths);
           })
         );
@@ -618,6 +625,7 @@ export const UnifiedDragDropZone: React.FC<UnifiedDragDropZoneProps> = ({
             if (!isDropZoneVisible()) return;
             const paths = Array.isArray(event?.payload) ? event.payload : event?.payload?.paths;
             updateDragState(false);
+            markNativeDrop(); // 标记原生 drop 已处理
             if (paths?.length) void processFilePaths(paths);
           })
         );
@@ -656,7 +664,8 @@ export const UnifiedDragDropZone: React.FC<UnifiedDragDropZoneProps> = ({
     e.preventDefault();
     e.stopPropagation();
     updateDragState(false);
-    if ((window as any).__TAURI_INTERNALS__) return; // native will handle
+    // 🔧 Windows 兼容：用时间戳去重替代 __TAURI_INTERNALS__ 硬判断
+    if (isNativeDropRecent()) return;
     if (enabled && !isProcessing) {
       const files = Array.from(e.dataTransfer.files);
       void onFilesDroppedRef.current(files);

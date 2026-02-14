@@ -1216,9 +1216,7 @@ impl LLMManager {
             }
         }
 
-        Err(last_err.unwrap_or_else(|| {
-            AppError::configuration("所有 OCR 引擎均失败")
-        }))
+        Err(last_err.unwrap_or_else(|| AppError::configuration("所有 OCR 引擎均失败")))
     }
 
     pub async fn call_deepseek_ocr_page_raw(

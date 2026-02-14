@@ -9,6 +9,35 @@ import {
 } from '@/chat-v2/core/constants';
 import i18n from '@/i18n';
 
+// ============================================================================
+// 🔧 Windows WebView2 兼容：全局 dragover/drop 事件 preventDefault
+// WebView2 需要 document 级别的 dragover preventDefault 才会允许 drop 事件触发。
+// macOS WebKit 的 Tauri 原生处理绕过了 web 层，但 Windows 必须 web 层也"接受"。
+// ============================================================================
+let _globalDragHandlersInstalled = false;
+export function ensureGlobalDragHandlers() {
+  if (_globalDragHandlersInstalled) return;
+  _globalDragHandlersInstalled = true;
+  document.addEventListener('dragover', (e) => {
+    // 只对文件拖拽生效，不影响内部 drag-and-drop（如列表排序）
+    if (e.dataTransfer?.types?.includes('Files')) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'copy';
+    }
+  });
+  document.addEventListener('drop', (e) => {
+    // 防止浏览器打开拖入的文件
+    if (e.dataTransfer?.types?.includes('Files')) {
+      e.preventDefault();
+    }
+  });
+}
+
+// 原生 drop 事件去重时间戳（用于避免 native + web 双重处理）
+let _lastNativeDropTs = 0;
+export function markNativeDrop() { _lastNativeDropTs = Date.now(); }
+export function isNativeDropRecent() { return Date.now() - _lastNativeDropTs < 500; }
+
 // 调试事件发射器（与 UnifiedDragDropZone 保持一致）
 const emitDebugEvent = (
   zoneId: string,
@@ -186,7 +215,6 @@ export const useTauriDragAndDrop = ({
           const assetUrl = convertFileSrc(path);
           const response = await fetch(assetUrl);
           if (!response.ok) {
-            rejectedFiles.push(`${fileName}: HTTP ${response.status}`);
             emitDebugEvent(zoneId, 'file_processing', 'error', `文件读取失败: ${fileName}`, {
               fileName,
               httpStatus: response.status,
@@ -228,6 +256,7 @@ export const useTauriDragAndDrop = ({
           });
         } catch (error: unknown) {
           console.error('[useTauriDragAndDrop] 处理拖拽文件失败:', path, error);
+          rejectedFiles.push(`${fileName}: ${String(error)}`);
           emitDebugEvent(zoneId, 'file_processing', 'error', `文件处理失败: ${fileName}`, {
             fileName,
             error: String(error),
@@ -275,7 +304,17 @@ export const useTauriDragAndDrop = ({
           overLimitCount,
           processingTime: `${(performance.now() - startTime).toFixed(2)}ms`,
         });
-      } else if (rejectedFiles.length === 0) {
+      } else if (rejectedFiles.length > 0) {
+        // 所有文件都失败了，通知用户
+        showGlobalNotification('error', i18n.t('drag_drop:errors.all_files_failed', {
+          defaultValue: '文件处理失败：{{reason}}',
+          reason: rejectedFiles[0],
+        }));
+        emitDebugEvent(zoneId, 'complete', 'error', `所有文件处理失败: ${rejectedFiles.length} 个`, {
+          rejectedFiles: rejectedFiles.slice(0, 5),
+          processingTime: `${(performance.now() - startTime).toFixed(2)}ms`,
+        });
+      } else {
         emitDebugEvent(zoneId, 'complete', 'warning', '没有可处理的文件', {
           processingTime: `${(performance.now() - startTime).toFixed(2)}ms`,
         });
@@ -288,6 +327,9 @@ export const useTauriDragAndDrop = ({
     if (!isEnabled) {
       return;
     }
+
+    // 🔧 Windows WebView2 兼容：确保全局 dragover/drop 处理器已安装
+    ensureGlobalDragHandlers();
 
     let unlisten: (() => void) | undefined;
     let unlisteners: Array<() => void> = [];
@@ -321,6 +363,7 @@ export const useTauriDragAndDrop = ({
               break;
             case 'drop':
               setIsDragging(false);
+              markNativeDrop(); // 标记原生 drop 已处理
               // feedbackOnly 模式下不处理文件
               if (feedbackOnly) {
                 emitDebugEvent(zoneId, 'drop_received', 'debug', 'feedbackOnly 模式，跳过文件处理', {});
@@ -366,6 +409,7 @@ export const useTauriDragAndDrop = ({
               if (!isEnabled || !isDropZoneVisible()) return;
               const paths = event.payload?.paths;
               setIsDragging(false);
+              markNativeDrop(); // 标记原生 drop 已处理
               // feedbackOnly 模式下不处理文件
               if (feedbackOnly) return;
               if (paths?.length) processFilePaths(paths);
@@ -398,6 +442,7 @@ export const useTauriDragAndDrop = ({
               if (!isEnabled || !isDropZoneVisible()) return;
               const paths = Array.isArray(event?.payload) ? event.payload : event?.payload?.paths;
               setIsDragging(false);
+              markNativeDrop(); // 标记原生 drop 已处理
               // feedbackOnly 模式下不处理文件
               if (feedbackOnly) return;
               if (paths?.length) {
@@ -455,33 +500,43 @@ export const useTauriDragAndDrop = ({
       e.preventDefault();
       e.stopPropagation();
       setIsDragging(false);
-      if ((window as any).__TAURI_INTERNALS__) return; // Native listener already handles it
-      if (isEnabled) {
+      // 🔧 Windows 兼容：用时间戳去重替代 __TAURI_INTERNALS__ 硬判断
+      // 如果原生 drop 事件刚刚（500ms 内）已处理过，跳过 web 层避免双重处理
+      // 如果原生 drop 没触发（Windows WebView2 场景），web 层作为后备
+      if (isNativeDropRecent()) {
+        emitDebugEvent(zoneId, 'drop_received', 'debug', '原生 drop 已处理，跳过 Web 后备', {});
+        return;
+      }
+      if (isEnabled && !feedbackOnly) {
         const allFiles = Array.from(e.dataTransfer.files);
-        emitDebugEvent(zoneId, 'drop_received', 'info', `接收到 ${allFiles.length} 个文件 (Web API)`, {
+        emitDebugEvent(zoneId, 'drop_received', 'info', `接收到 ${allFiles.length} 个文件 (Web fallback)`, {
           fileCount: allFiles.length,
           fileNames: allFiles.map(f => f.name),
         });
         
+        const imageRegex = new RegExp(`\\.(${ATTACHMENT_IMAGE_EXTENSIONS.join('|')})$`, 'i');
+        const documentRegex = new RegExp(`\\.(${ATTACHMENT_DOCUMENT_EXTENSIONS.join('|')})$`, 'i');
         const files = allFiles.filter(
-          (f) => f.type.startsWith('image/') || /\.(pdf|doc|docx|txt|md|csv|json|xml)$/i.test(f.name)
+          (f) => f.type.startsWith('image/') || imageRegex.test(f.name) || documentRegex.test(f.name)
         );
         
         const rejectedCount = allFiles.length - files.length;
         if (rejectedCount > 0) {
-          emitDebugEvent(zoneId, 'validation_failed', 'warning', `${rejectedCount} 个文件类型不支持 (Web API)`, {
+          emitDebugEvent(zoneId, 'validation_failed', 'warning', `${rejectedCount} 个文件类型不支持 (Web fallback)`, {
             rejectedCount,
           });
         }
         
         if (files.length > 0) {
-          emitDebugEvent(zoneId, 'callback_invoked', 'debug', `调用 onDropFiles (${files.length} 个文件, Web API)`, {
+          emitDebugEvent(zoneId, 'callback_invoked', 'debug', `调用 onDropFiles (${files.length} 个文件, Web fallback)`, {
             fileNames: files.map(f => f.name),
           });
           onDropFilesRef.current(files as any);
-          emitDebugEvent(zoneId, 'complete', 'info', `文件处理完成 (Web API): ${files.length} 个`, {
+          emitDebugEvent(zoneId, 'complete', 'info', `文件处理完成 (Web fallback): ${files.length} 个`, {
             successCount: files.length,
           });
+        } else if (allFiles.length > 0) {
+          showGlobalNotification('warning', i18n.t('drag_drop:errors.unsupported_type', { defaultValue: '不支持的文件类型' }));
         }
       }
     },

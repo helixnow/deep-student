@@ -2831,8 +2831,7 @@ pub async fn vfs_list_dimensions(
     // ★ 审计修复：统一使用 embedding_dim_repo（替代已废弃的 VfsDimensionRepo）
     // 返回类型仍为 VfsEmbeddingDimension 以保持 API 兼容
     let conn = vfs_db.get_conn().map_err(|e| e.to_string())?;
-    let dims = crate::vfs::repos::embedding_dim_repo::list_all(&conn)
-        .map_err(|e| e.to_string())?;
+    let dims = crate::vfs::repos::embedding_dim_repo::list_all(&conn).map_err(|e| e.to_string())?;
     Ok(dims
         .into_iter()
         .map(|d| crate::vfs::repos::VfsEmbeddingDimension {
@@ -6386,10 +6385,13 @@ pub async fn vfs_clear_media_cache(
         for (file_id, progress_json) in files_to_update {
             // 解析 processing_progress JSON
             if let Ok(mut progress) = serde_json::from_str::<serde_json::Value>(&progress_json) {
-                let modes_key = if progress.get("readyModes").is_some() { "readyModes" } else { "ready_modes" };
-                if let Some(ready_modes) = progress
-                    .get_mut(modes_key)
-                    .and_then(|v| v.as_array_mut())
+                let modes_key = if progress.get("readyModes").is_some() {
+                    "readyModes"
+                } else {
+                    "ready_modes"
+                };
+                if let Some(ready_modes) =
+                    progress.get_mut(modes_key).and_then(|v| v.as_array_mut())
                 {
                     // 根据清理类型移除对应的 ready_mode
                     if params.clear_pdf_preview {

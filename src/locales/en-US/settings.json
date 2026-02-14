@@ -1486,6 +1486,7 @@
     "kb_table": "Knowledge Base Table",
     "kg_table": "Knowledge Graph Table",
     "notes_table": "Notes Table",
+    "vfs_table": "VFS Table",
     "optimize_all": "Optimize All Tables",
     "optimize": "Optimize",
     "optimizing": "Optimizing...",

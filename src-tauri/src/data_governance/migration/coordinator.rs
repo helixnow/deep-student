@@ -255,15 +255,12 @@ impl MigrationCoordinator {
         })?;
 
         {
-            let backup = rusqlite::backup::Backup::new(&src_conn, &mut dst_conn)
-                .map_err(|e| {
-                    MigrationError::Database(format!("初始化 SQLite backup 失败: {}", e))
-                })?;
+            let backup = rusqlite::backup::Backup::new(&src_conn, &mut dst_conn).map_err(|e| {
+                MigrationError::Database(format!("初始化 SQLite backup 失败: {}", e))
+            })?;
             backup
                 .run_to_completion(50, Duration::from_millis(20), None)
-                .map_err(|e| {
-                    MigrationError::Database(format!("执行 SQLite backup 失败: {}", e))
-                })?;
+                .map_err(|e| MigrationError::Database(format!("执行 SQLite backup 失败: {}", e)))?;
         } // drop backup，释放 dst_conn 的可变借用
 
         // P1-3 修复：备份完成后验证目标数据库完整性
@@ -272,11 +269,7 @@ impl MigrationCoordinator {
         let integrity: String = dst_conn
             .query_row("PRAGMA quick_check", [], |row| row.get(0))
             .map_err(|e| {
-                MigrationError::Database(format!(
-                    "备份完整性检查失败 {}: {}",
-                    dst.display(),
-                    e
-                ))
+                MigrationError::Database(format!("备份完整性检查失败 {}: {}", dst.display(), e))
             })?;
         if integrity != "ok" {
             return Err(MigrationError::Database(format!(
@@ -379,8 +372,7 @@ impl MigrationCoordinator {
                         .file_stem()
                         .and_then(|s| s.to_str())
                         .unwrap_or(relative);
-                    schema_versions
-                        .insert(db_name.to_string(), serde_json::Value::from(version));
+                    schema_versions.insert(db_name.to_string(), serde_json::Value::from(version));
                 }
             }
         }

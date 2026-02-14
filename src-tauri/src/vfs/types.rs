@@ -2020,7 +2020,12 @@ pub fn resolve_pdf_inject_modes(
     if downgraded_non_multimodal {
         include_image = false;
     }
-    (include_text, include_ocr, include_image, downgraded_non_multimodal)
+    (
+        include_text,
+        include_ocr,
+        include_image,
+        downgraded_non_multimodal,
+    )
 }
 
 /// VFS 资源引用（用于引用模式上下文注入）
