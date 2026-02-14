@@ -106,6 +106,11 @@ jobs:
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+
       - name: Install dependencies
         run: npm ci
 
@@ -124,7 +129,8 @@ jobs:
           ARCH=$(echo "${{ matrix.target }}" | cut -d'-' -f1)
           for f in "$BUNDLE_DIR"/*.app.tar.gz; do
             [ -f "$f" ] || continue
-            BASE=$(basename "$f" .app.tar.gz)
+            # 空格→点号，避免 URL 解析失败
+            BASE=$(basename "$f" .app.tar.gz | tr ' ' '.')
             mv "$f" "$BUNDLE_DIR/${BASE}_${ARCH}.app.tar.gz"
             [ -f "$f.sig" ] && mv "$f.sig" "$BUNDLE_DIR/${BASE}_${ARCH}.app.tar.gz.sig"
           done
@@ -167,6 +173,11 @@ jobs:
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+
       - name: Install dependencies
         run: npm ci
 
@@ -177,15 +188,15 @@ jobs:
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        run: npx tauri build
+        run: npx tauri build --target x86_64-pc-windows-msvc
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: windows-x86_64
           path: |
-            src-tauri/target/release/bundle/nsis/*.exe
-            src-tauri/target/release/bundle/nsis/*.exe.sig
+            src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
+            src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe.sig
 
   # ─── Android 构建 ──────────────────────────────────────────
   build-android:
@@ -232,6 +243,11 @@ jobs:
         uses: arduino/setup-protoc@v3
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
 
       - name: Install dependencies
         run: npm ci
@@ -308,7 +324,13 @@ jobs:
   # ─── 发布 ────────────────────────────────────────────────
   publish:
     needs: [prepare, build-macos, build-windows, build-android]
-    if: needs.prepare.outputs.should_build == 'true'
+    # 桌面端构建必须成功；Android 允许失败（不阻塞桌面发布）
+    if: |
+      always() &&
+      needs.prepare.outputs.should_build == 'true' &&
+      needs.build-macos.result == 'success' &&
+      needs.build-windows.result == 'success' &&
+      !cancelled()
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -322,6 +344,17 @@ jobs:
 
       - name: Display artifact structure
         run: find artifacts -type f | head -50
+
+      - name: Normalize artifact filenames
+        run: |
+          # 将所有产物文件名中的空格替换为点号，避免 URL 解析失败
+          find artifacts -type f -name '* *' | while IFS= read -r f; do
+            DIR=$(dirname "$f")
+            OLD=$(basename "$f")
+            NEW=$(echo "$OLD" | tr ' ' '.')
+            mv "$f" "$DIR/$NEW"
+            echo "  Renamed: $OLD → $NEW"
+          done
 
       - name: Generate latest.json
         run: |
