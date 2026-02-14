@@ -551,15 +551,26 @@ impl RequestManager {
         let pending = Arc::new(Mutex::new(HashMap::<String, PendingRequest>::new()));
         let pending_clone = pending.clone();
 
-        // 启动超时清理任务
+        // 启动超时清理任务：主动通知等待方请求已超时，而非仅静默移除
         tokio::spawn(async move {
             loop {
                 sleep(Duration::from_secs(30)).await;
                 let mut pending = pending_clone.lock().await;
                 let now = SystemTime::now();
-                pending.retain(|_, req| {
-                    now.duration_since(req.created_at).unwrap_or_default() < timeout_duration
-                });
+                let expired_keys: Vec<String> = pending
+                    .iter()
+                    .filter(|(_, req)| {
+                        now.duration_since(req.created_at).unwrap_or_default() >= timeout_duration
+                    })
+                    .map(|(k, _)| k.clone())
+                    .collect();
+                for key in expired_keys {
+                    if let Some(req) = pending.remove(&key) {
+                        let _ = req.tx.send(Err(McpError::TimeoutError(
+                            "Request expired during periodic cleanup".to_string(),
+                        )));
+                    }
+                }
             }
         });
 
@@ -1134,15 +1145,35 @@ impl McpClient {
     // ==================== 工具操作 ====================
 
     pub async fn list_tools(&self) -> McpResult<Vec<Tool>> {
-        let response = self.send_request("tools/list", None).await?;
-
-        if let Some(result) = response.result {
-            let tools: Vec<Tool> =
-                serde_json::from_value(result.get("tools").unwrap_or(&json!([])).clone())?;
-            Ok(tools)
-        } else {
-            Err(McpError::ProtocolError("Failed to list tools".to_string()))
+        // MCP 规范：支持 pagination cursor，循环获取所有页
+        let mut all_tools: Vec<Tool> = Vec::new();
+        let mut cursor: Option<String> = None;
+        loop {
+            let params = if let Some(ref c) = cursor {
+                Some(json!({ "cursor": c }))
+            } else {
+                None
+            };
+            let response = self.send_request("tools/list", params).await?;
+            if let Some(result) = response.result {
+                let tools: Vec<Tool> =
+                    serde_json::from_value(result.get("tools").unwrap_or(&json!([])).clone())?;
+                all_tools.extend(tools);
+                cursor = result
+                    .get("nextCursor")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+                if cursor.is_none() {
+                    break;
+                }
+            } else {
+                if all_tools.is_empty() {
+                    return Err(McpError::ProtocolError("Failed to list tools".to_string()));
+                }
+                break;
+            }
         }
+        Ok(all_tools)
     }
 
     pub async fn call_tool(&self, name: &str, arguments: Option<Value>) -> McpResult<ToolResult> {
@@ -1189,17 +1220,37 @@ impl McpClient {
     // ==================== 资源操作 ====================
 
     pub async fn list_resources(&self) -> McpResult<Vec<Resource>> {
-        let response = self.send_request("resources/list", None).await?;
-
-        if let Some(result) = response.result {
-            let resources: Vec<Resource> =
-                serde_json::from_value(result.get("resources").unwrap_or(&json!([])).clone())?;
-            Ok(resources)
-        } else {
-            Err(McpError::ProtocolError(
-                "Failed to list resources".to_string(),
-            ))
+        // MCP 规范：支持 pagination cursor
+        let mut all_resources: Vec<Resource> = Vec::new();
+        let mut cursor: Option<String> = None;
+        loop {
+            let params = if let Some(ref c) = cursor {
+                Some(json!({ "cursor": c }))
+            } else {
+                None
+            };
+            let response = self.send_request("resources/list", params).await?;
+            if let Some(result) = response.result {
+                let resources: Vec<Resource> =
+                    serde_json::from_value(result.get("resources").unwrap_or(&json!([])).clone())?;
+                all_resources.extend(resources);
+                cursor = result
+                    .get("nextCursor")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+                if cursor.is_none() {
+                    break;
+                }
+            } else {
+                if all_resources.is_empty() {
+                    return Err(McpError::ProtocolError(
+                        "Failed to list resources".to_string(),
+                    ));
+                }
+                break;
+            }
         }
+        Ok(all_resources)
     }
 
     pub async fn list_resource_templates(&self) -> McpResult<Vec<ResourceTemplate>> {
@@ -1293,17 +1344,37 @@ impl McpClient {
     // ==================== 提示操作 ====================
 
     pub async fn list_prompts(&self) -> McpResult<Vec<Prompt>> {
-        let response = self.send_request("prompts/list", None).await?;
-
-        if let Some(result) = response.result {
-            let prompts: Vec<Prompt> =
-                serde_json::from_value(result.get("prompts").unwrap_or(&json!([])).clone())?;
-            Ok(prompts)
-        } else {
-            Err(McpError::ProtocolError(
-                "Failed to list prompts".to_string(),
-            ))
+        // MCP 规范：支持 pagination cursor
+        let mut all_prompts: Vec<Prompt> = Vec::new();
+        let mut cursor: Option<String> = None;
+        loop {
+            let params = if let Some(ref c) = cursor {
+                Some(json!({ "cursor": c }))
+            } else {
+                None
+            };
+            let response = self.send_request("prompts/list", params).await?;
+            if let Some(result) = response.result {
+                let prompts: Vec<Prompt> =
+                    serde_json::from_value(result.get("prompts").unwrap_or(&json!([])).clone())?;
+                all_prompts.extend(prompts);
+                cursor = result
+                    .get("nextCursor")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+                if cursor.is_none() {
+                    break;
+                }
+            } else {
+                if all_prompts.is_empty() {
+                    return Err(McpError::ProtocolError(
+                        "Failed to list prompts".to_string(),
+                    ));
+                }
+                break;
+            }
         }
+        Ok(all_prompts)
     }
 
     pub async fn get_prompt(

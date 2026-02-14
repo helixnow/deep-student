@@ -544,15 +544,63 @@ impl super::transport::Transport for ProcessStdioTransport {
 
     async fn close(&self) -> McpResult<()> {
         self.connected.store(false, Ordering::SeqCst);
-        // 终止子进程，避免孤儿进程
+        // MCP 规范要求的优雅关闭：先关闭 stdin → 等待退出 → SIGTERM → SIGKILL
         if let Some(mut child) = self.child.lock().await.take() {
+            // Step 1: 尝试等待子进程自行退出（关闭 stdin 后子进程应检测到 EOF）
+            // drop send_tx 已在外层处理（channel 关闭等价于关闭 stdin）
+            match tokio::time::timeout(std::time::Duration::from_secs(3), child.wait()).await {
+                Ok(Ok(status)) => {
+                    log::info!(
+                        "MCP child process exited gracefully on close() with status: {:?}",
+                        status
+                    );
+                    return Ok(());
+                }
+                Ok(Err(e)) => {
+                    log::warn!("MCP child process wait error: {}", e);
+                }
+                Err(_) => {
+                    log::info!("MCP child process did not exit within 3s, sending SIGTERM");
+                }
+            }
+
+            // Step 2: 发送 SIGTERM（Unix）或直接 kill（Windows）
+            #[cfg(unix)]
+            {
+                if let Some(pid) = child.id() {
+                    unsafe {
+                        libc::kill(pid as i32, libc::SIGTERM);
+                    }
+                    log::info!("Sent SIGTERM to MCP child process (pid={})", pid);
+                }
+                // 等待 SIGTERM 生效
+                match tokio::time::timeout(std::time::Duration::from_secs(5), child.wait()).await {
+                    Ok(Ok(status)) => {
+                        log::info!(
+                            "MCP child process exited after SIGTERM with status: {:?}",
+                            status
+                        );
+                        return Ok(());
+                    }
+                    Ok(Err(e)) => {
+                        log::warn!("MCP child process wait after SIGTERM error: {}", e);
+                    }
+                    Err(_) => {
+                        log::warn!(
+                            "MCP child process did not exit after SIGTERM within 5s, sending SIGKILL"
+                        );
+                    }
+                }
+            }
+
+            // Step 3: 强制终止（SIGKILL / TerminateProcess）
             if let Err(e) = child.kill().await {
                 log::warn!("Failed to kill MCP child process: {}", e);
             }
             if let Err(e) = child.wait().await {
-                log::warn!("Failed to wait MCP child process: {}", e);
+                log::warn!("Failed to wait MCP child process after kill: {}", e);
             }
-            log::info!("MCP child process terminated on close()");
+            log::info!("MCP child process terminated (forced) on close()");
         }
         Ok(())
     }

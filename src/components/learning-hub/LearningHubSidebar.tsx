@@ -95,6 +95,9 @@ import type { VfsResourceType } from '@/chat-v2/context/types';
 import { MOBILE_LAYOUT } from '@/config/mobileLayout';
 import { consumePathsDropHandledFlag, isDragDropBlockedView } from './dragDropRouting';
 
+/** ★ Bug4: canvas 模式下不应显示的特殊视图 folderId 集合 */
+const CANVAS_BLOCKED_VIEW_IDS = new Set(['indexStatus', 'memory', 'desktop']);
+
 export function LearningHubSidebar({
   mode,
   onOpenApp,
@@ -146,6 +149,16 @@ export function LearningHubSidebar({
     quickAccessNavigate,
     setCurrentPathWithoutHistory,
   } = useFinderStore();
+
+  // ★ Bug4 修复：canvas 模式下，如果 currentPath 是特殊视图（indexStatus/memory/desktop），
+  // 自动重置到 root，避免从 LearningHubPage 泄露的特殊视图状态影响聊天侧边栏
+  // 使用 setCurrentPathWithoutHistory 避免污染共享的导航历史栈
+  useEffect(() => {
+    if (mode === 'canvas' && currentPath.folderId && CANVAS_BLOCKED_VIEW_IDS.has(currentPath.folderId)) {
+      debugLog.log('[LearningHub] canvas 模式检测到特殊视图，重置到 root:', currentPath.folderId);
+      setCurrentPathWithoutHistory('root');
+    }
+  }, [mode]); // 仅在组件挂载/mode 变化时检查，避免循环
 
   // ★ 搜索防抖处理：延迟 300ms 触发 API 调用，避免快速输入导致频繁请求
   const debouncedSearchQuery = useDebounce(searchQuery, 300);

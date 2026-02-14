@@ -118,7 +118,7 @@ export const ContextRefChips: React.FC<ContextRefChipsProps> = memo(
   ({ refs, onRemove, onClearAll, disabled = false, className }) => {
     const { t } = useTranslation(['chatV2', 'common']);
 
-    const vfsResourceTypes = new Set(['note', 'textbook', 'exam', 'essay', 'translation', 'image', 'file']);
+    const vfsResourceTypes = new Set(['note', 'textbook', 'exam', 'essay', 'translation', 'image', 'file', 'mindmap']);
     
     const displayRefs = useMemo(() => {
       return refs.filter((ref) => !vfsResourceTypes.has(ref.typeId));

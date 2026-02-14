@@ -103,16 +103,14 @@ export function PopoverContent({ className, align = 'center', side = 'bottom', s
   };
 
   // 计算位置并处理边界碰撞
-  React.useLayoutEffect(() => {
-    if (!ctx?.open || !portal || typeof window === 'undefined' || !ctx.containerRef.current) {
-      setPosition(null);
-      return;
-    }
+  const updatePosition = React.useCallback(() => {
+    if (!ctx?.containerRef.current || !localContentRef.current) return;
 
     const rect = ctx.containerRef.current.getBoundingClientRect();
     const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
 
-    // 初始计算水平对齐
+    // 水平对齐
     let left = rect.left;
     let translateX = 0;
     if (align === 'center') {
@@ -122,39 +120,76 @@ export function PopoverContent({ className, align = 'center', side = 'bottom', s
       left = rect.right;
       translateX = -100;
     }
-    // 根据 side 计算垂直位置（初始值，后续会根据内容高度调整）
-    const top = side === 'top' ? rect.top - sideOffset : rect.bottom + sideOffset;
 
-    // 需要等内容渲染后检测边界碰撞
-    requestAnimationFrame(() => {
-      if (!localContentRef.current) return;
-      const contentRect = localContentRef.current.getBoundingClientRect();
-      const contentWidth = contentRect.width;
+    const contentRect = localContentRef.current.getBoundingClientRect();
+    const contentWidth = contentRect.width;
+    const contentHeight = contentRect.height;
 
-      // 计算实际的 left 位置（考虑 translateX）
-      let actualLeft = left + (contentWidth * translateX / 100);
+    // 水平碰撞检测
+    const actualLeft = left + (contentWidth * translateX / 100);
+    if (actualLeft < collisionPadding) {
+      left = collisionPadding;
+      translateX = 0;
+    } else if (actualLeft + contentWidth > viewportWidth - collisionPadding) {
+      left = viewportWidth - collisionPadding;
+      translateX = -100;
+    }
 
-      // 边界碰撞检测
-      if (actualLeft < collisionPadding) {
-        // 超出左边界，调整到左边距位置
-        left = collisionPadding;
-        translateX = 0;
-      } else if (actualLeft + contentWidth > viewportWidth - collisionPadding) {
-        // 超出右边界，调整到右边距位置
-        left = viewportWidth - collisionPadding;
-        translateX = -100;
+    // 垂直碰撞检测：自动翻转方向
+    let finalTop: number;
+    if (side === 'bottom') {
+      finalTop = rect.bottom + sideOffset;
+      if (finalTop + contentHeight > viewportHeight - collisionPadding) {
+        const flippedTop = rect.top - contentHeight - sideOffset;
+        if (flippedTop >= collisionPadding) {
+          finalTop = flippedTop;
+        }
       }
-
-      // 对于 side="top"，需要根据内容高度调整 top 值
-      let finalTop = top;
-      if (side === 'top') {
-        const contentHeight = contentRect.height;
-        finalTop = rect.top - contentHeight - sideOffset;
+    } else {
+      finalTop = rect.top - contentHeight - sideOffset;
+      if (finalTop < collisionPadding) {
+        const flippedTop = rect.bottom + sideOffset;
+        if (flippedTop + contentHeight <= viewportHeight - collisionPadding) {
+          finalTop = flippedTop;
+        }
       }
+    }
 
-      setPosition({ left, top: finalTop, translateX });
-    });
-  }, [ctx?.open, portal, align, side, sideOffset, collisionPadding]);
+    setPosition({ left, top: finalTop, translateX });
+  }, [ctx?.containerRef, align, side, sideOffset, collisionPadding]);
+
+  // 初始定位 + 滚动/resize 跟随
+  React.useLayoutEffect(() => {
+    if (!ctx?.open || !portal || typeof window === 'undefined' || !ctx.containerRef.current) {
+      setPosition(null);
+      return;
+    }
+
+    // 等内容渲染后计算初始位置
+    requestAnimationFrame(updatePosition);
+
+    // 监听滚动和 resize，让 popover 跟随触发器
+    const handleScroll = () => updatePosition();
+    const handleResize = () => updatePosition();
+
+    // 监听所有可滚动祖先
+    const scrollParents: EventTarget[] = [window];
+    let el: HTMLElement | null = ctx.containerRef.current;
+    while (el) {
+      if (el.scrollHeight > el.clientHeight || el.scrollWidth > el.clientWidth) {
+        scrollParents.push(el);
+      }
+      el = el.parentElement;
+    }
+
+    scrollParents.forEach((p) => p.addEventListener('scroll', handleScroll, { passive: true }));
+    window.addEventListener('resize', handleResize, { passive: true });
+
+    return () => {
+      scrollParents.forEach((p) => p.removeEventListener('scroll', handleScroll));
+      window.removeEventListener('resize', handleResize);
+    };
+  }, [ctx?.open, portal, updatePosition]);
 
   if (!ctx || !ctx.open) return null;
 

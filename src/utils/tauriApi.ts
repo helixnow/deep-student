@@ -760,7 +760,9 @@ export class TauriAPI {
     static async copyIntoTextbooksDir(sourcePath: string): Promise<string> {
       const root = await this.getAppDataDir();
       const fileName = sourcePath.split(/[/\\]/).pop() || `textbook_${Date.now()}.pdf`;
-      const destPath = `${root}/textbooks/${fileName}`;
+      // 使用与 root 一致的路径分隔符，避免 Windows 上产生混合分隔符
+      const sep = root.includes('\\') ? '\\' : '/';
+      const destPath = [root, 'textbooks', fileName].join(sep);
       try {
         // copy_file 的写入端会自动创建父目录（后端 open_writer 中实现）
         await this.copyFile(sourcePath, destPath);

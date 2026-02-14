@@ -237,8 +237,8 @@ impl HttpTransport {
             .map_err(|e| McpError::TransportError(format!("Failed to read response: {}", e)))?;
 
         debug!("HTTP MCP response: {}", body);
-        // 也路由给通用 receive 队列，便于统一处理
-        let _ = self.inbound_tx.send(body.clone());
+        // 注意：不再推送到 inbound_tx，避免 receive() 读到重复消息。
+        // send_and_receive 的调用方直接使用返回值即可。
         Ok(body)
     }
 }

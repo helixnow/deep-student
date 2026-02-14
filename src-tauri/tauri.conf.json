@@ -34,7 +34,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self' tauri: asset:; connect-src 'self' data: blob: tauri: ipc: http://ipc.localhost pdfstream: ws: wss: https:; font-src 'self' data:; img-src 'self' data: blob: asset: pdfstream: https:; script-src 'self' 'unsafe-inline' blob:; style-src 'self' 'unsafe-inline'; worker-src 'self' blob: data:;",
+      "csp": "default-src 'self' tauri: asset:; connect-src 'self' data: blob: tauri: ipc: http://ipc.localhost pdfstream: http://pdfstream.localhost ws: wss: https:; font-src 'self' data:; img-src 'self' data: blob: asset: pdfstream: http://pdfstream.localhost https:; script-src 'self' 'unsafe-inline' blob:; style-src 'self' 'unsafe-inline'; worker-src 'self' blob: data:;",
       "assetProtocol": {
         "enable": true,
         "scope": [
@@ -83,7 +83,7 @@
       }
     },
     "android": {
-      "versionCode": 13132
+      "versionCode": 13136
     }
   },
   "plugins": {

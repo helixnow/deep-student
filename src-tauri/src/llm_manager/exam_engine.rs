@@ -1165,6 +1165,62 @@ impl LLMManager {
         Ok(content)
     }
 
+    /// 优先级熔断重试：按优先级依次尝试已启用的 OCR 引擎，
+    /// 某个引擎失败时自动切换到下一个。
+    pub async fn call_ocr_page_with_fallback(
+        &self,
+        page_path: &str,
+        page_index: usize,
+    ) -> Result<Vec<ExamSegmentationCard>> {
+        let engines = self.get_ocr_configs_by_priority().await.unwrap_or_default();
+
+        if engines.is_empty() {
+            return Err(AppError::configuration(
+                "没有已启用的 OCR 引擎，请在设置中配置",
+            ));
+        }
+
+        let mut last_err = None;
+        for (idx, (config, engine_type)) in engines.iter().enumerate() {
+            debug!(
+                "[OCR] Trying engine #{} ({}, model={})",
+                idx,
+                engine_type.as_str(),
+                config.model
+            );
+            match self
+                .call_deepseek_ocr_page_raw(config, page_path, page_index)
+                .await
+            {
+                Ok(cards) => {
+                    if idx > 0 {
+                        info!(
+                            "[OCR] Fallback succeeded: engine #{} ({}) for page {}",
+                            idx,
+                            engine_type.as_str(),
+                            page_index
+                        );
+                    }
+                    return Ok(cards);
+                }
+                Err(e) => {
+                    warn!(
+                        "[OCR] Engine #{} ({}) failed for page {}: {}",
+                        idx,
+                        engine_type.as_str(),
+                        page_index,
+                        e
+                    );
+                    last_err = Some(e);
+                }
+            }
+        }
+
+        Err(last_err.unwrap_or_else(|| {
+            AppError::configuration("所有 OCR 引擎均失败")
+        }))
+    }
+
     pub async fn call_deepseek_ocr_page_raw(
         &self,
         config: &ApiConfig,

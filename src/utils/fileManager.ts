@@ -37,6 +37,15 @@ export interface PickDirectoryOptions {
 
 const isMobilePlatform = (): boolean => {
   if (typeof navigator === 'undefined') return false;
+  // 1. Tauri 内部 API 检测（最可靠）
+  try {
+    const tauriInternals = (window as any).__TAURI_INTERNALS__;
+    if (tauriInternals?.metadata?.currentDevice) {
+      const device = tauriInternals.metadata.currentDevice;
+      if (device === 'android' || device === 'ios') return true;
+    }
+  } catch {}
+  // 2. UA + platform 检测（兼容回退）
   const userAgent = navigator.userAgent.toLowerCase();
   const platform = (navigator.platform || '').toLowerCase();
   const uaMatch =
@@ -49,7 +58,9 @@ const isMobilePlatform = (): boolean => {
     platform.includes('ipad') ||
     platform.includes('ipod') ||
     platform.includes('android');
-  return uaMatch || platformMatch;
+  // 3. iPad 在 iPadOS 13+ 的 UA 中伪装为 macOS，用 maxTouchPoints 补充检测
+  const isIPadOS = platform === 'macintel' && navigator.maxTouchPoints > 1;
+  return uaMatch || platformMatch || isIPadOS;
 };
 
 const DIRECTORY_PICKER_UNSUPPORTED_ERROR = 'DIRECTORY_PICKER_UNSUPPORTED_ON_MOBILE';

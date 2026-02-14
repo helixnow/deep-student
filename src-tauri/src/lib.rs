@@ -837,6 +837,9 @@ pub fn run() {
             crate::commands::get_available_ocr_models,
             crate::commands::save_available_ocr_models,
             crate::commands::test_ocr_engine,
+            crate::commands::update_ocr_engine_priority,
+            crate::commands::add_ocr_engine,
+            crate::commands::remove_ocr_engine,
             // Lance 向量表优化命令
             crate::commands::optimize_chat_embeddings_table,
             crate::commands::optimize_kb_embeddings_table,
@@ -1522,13 +1525,15 @@ pub fn run() {
             match crate::pdf_protocol::handle_asset_protocol(&request) {
                 Ok(response) => response,
                 Err(e) => {
-                    error!("asset:// 协议处理失败: {}", e);
+                    error!("pdfstream:// 协议处理失败: {}", e);
                     tauri::http::Response::builder()
                         .status(500)
+                        .header("Access-Control-Allow-Origin", "*")
                         .body(format!("Internal Server Error: {}", e).into_bytes())
                         .unwrap_or_else(|_| {
                             tauri::http::Response::builder()
                                 .status(500)
+                                .header("Access-Control-Allow-Origin", "*")
                                 .body(b"Internal Server Error".to_vec())
                                 .unwrap_or_else(|_| {
                                     tauri::http::Response::new(b"Internal Server Error".to_vec())

@@ -290,7 +290,7 @@ impl SSETransport {
     pub async fn perform_oauth_authentication(oauth: &OAuthConfig) -> McpResult<String> {
         use oauth2::{
             basic::BasicClient, AuthUrl, ClientId, CsrfToken, PkceCodeChallenge, RedirectUrl,
-            Scope, TokenResponse, TokenUrl,
+            Scope, TokenUrl,
         };
 
         // 创建OAuth客户端
@@ -310,7 +310,7 @@ impl SSETransport {
         );
 
         // 生成PKCE challenge（2025强制要求）
-        let (pkce_challenge, pkce_verifier) = PkceCodeChallenge::new_random_sha256();
+        let (pkce_challenge, _pkce_verifier) = PkceCodeChallenge::new_random_sha256();
 
         // 构建授权URL
         let (auth_url, csrf_token) = client
@@ -321,11 +321,18 @@ impl SSETransport {
 
         info!("OAuth authorization URL: {}", auth_url);
 
-        // 这里需要用户交互来获取授权码
-        // 实际实现中，需要打开浏览器或显示WebView
-        // 暂时返回模拟token
-        warn!("OAuth flow requires user interaction - returning mock token");
-        Ok("mock_oauth_token".to_string())
+        // OAuth 2.1 流程需要用户交互来获取授权码
+        // 实际实现中需要打开浏览器并处理回调
+        // SECURITY: 不返回 mock token，防止使用虚假凭据访问受保护资源
+        error!(
+            "OAuth 2.1 authentication flow is not yet fully implemented. \
+             Authorization URL: {}. CSRF token: {:?}. \
+             Please use API Key authentication instead.",
+            auth_url, csrf_token
+        );
+        Err(McpError::AuthenticationError(
+            "OAuth 2.1 interactive flow is not yet implemented. Please configure an API Key instead.".to_string()
+        ))
     }
 
     /// Android 平台的 OAuth 替代实现：返回错误提示使用 API Key

@@ -212,22 +212,24 @@ export function exportMindMap(
 }
 
 /**
- * 触发文件下载
+ * 触发文件下载（使用原生保存对话框，跨平台兼容）
  */
-export function downloadAsFile(
+export async function downloadAsFile(
   content: string,
   filename: string,
   mimeType: string
-): void {
-  const blob = new Blob([content], { type: mimeType });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+): Promise<void> {
+  const ext = filename.split('.').pop() || 'txt';
+  try {
+    await fileManager.saveTextFile({
+      title: filename,
+      defaultFileName: filename,
+      content,
+      filters: [{ name: ext.toUpperCase(), extensions: [ext] }],
+    });
+  } catch (error) {
+    console.error('[exporters] downloadAsFile failed:', error);
+  }
 }
 
 // ============================================================================

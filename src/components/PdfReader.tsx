@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useRef } from 'react';
+import { convertFileSrc } from '@tauri-apps/api/core';
 // 临时保留 react-pdf 实现，后续将迁移到 BasePdfViewer（react-pdf-viewer）
 import { useTranslation } from 'react-i18next';
 import { 
@@ -13,6 +14,7 @@ import {
 } from 'lucide-react';
 import useTheme from '../hooks/useTheme';
 import { TauriAPI } from '../utils/tauriApi';
+import { fileManager } from '../utils/fileManager';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
 import './PdfReader.css';
@@ -158,8 +160,36 @@ export const PdfReader: React.FC<PdfReaderProps> = () => {
     setNumPages(n);
   }, []);
 
-  const handleSelectFile = useCallback(() => {
-    fileInputRef.current?.click();
+  const handleSelectFile = useCallback(async () => {
+    try {
+      const { open: dialogOpen } = await import('@tauri-apps/plugin-dialog');
+      const selected = await dialogOpen({
+        multiple: false,
+        directory: false,
+        filters: [{ name: 'PDF', extensions: ['pdf'] }],
+      });
+      if (selected && typeof selected === 'string') {
+        // 清理旧的 blob URL
+        if (fileBlobUrlRef.current) {
+          URL.revokeObjectURL(fileBlobUrlRef.current);
+          fileBlobUrlRef.current = null;
+        }
+        // 通过后端读取文件字节
+        const bytes = await TauriAPI.readFileAsBytes(selected);
+        const blob = new Blob([new Uint8Array(bytes)], { type: 'application/pdf' });
+        const name = selected.split(/[/\\]/).pop() || 'document.pdf';
+        const pdfFile = new File([blob], name, { type: 'application/pdf' });
+        setFile(pdfFile);
+        setExternalUrl(null);
+        setPageNumber(1);
+        setScale(1.0);
+        setRotation(0);
+        setError(null);
+      }
+    } catch (err) {
+      console.warn('[PdfReader] Tauri dialog failed, falling back to file input:', err);
+      fileInputRef.current?.click();
+    }
   }, []);
 
   const handleClearFile = useCallback(() => {
@@ -212,12 +242,10 @@ export const PdfReader: React.FC<PdfReaderProps> = () => {
 
         // 2) 仅提供路径时，转为 pdfstream:// 协议 URL（支持 Range Request 流式加载）
         if (path) {
-          // 分段编码路径：保留 / 作为分隔符，只编码每段中的特殊字符
-          const encodedPath = path
-            .split('/')
-            .map(segment => encodeURIComponent(segment))
-            .join('/');
-          const pdfstreamUrl = `pdfstream://localhost/${encodedPath}`;
+          // 使用 Tauri 官方 API 构建跨平台协议 URL
+          // Windows WebView2: http://pdfstream.localhost/<encoded_path>
+          // macOS/Linux:      pdfstream://localhost/<encoded_path>
+          const pdfstreamUrl = convertFileSrc(path, 'pdfstream');
           
           setFile(null);
           setExternalUrl(pdfstreamUrl);
@@ -235,14 +263,20 @@ export const PdfReader: React.FC<PdfReaderProps> = () => {
     return () => { try { window.removeEventListener('OPEN_PDF_FILE' as any, handler as any); } catch {} };
   }, [t]);
 
-  const handleDownload = useCallback(() => {
+  const handleDownload = useCallback(async () => {
     if (!file) return;
-    const url = URL.createObjectURL(file);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = file.name;
-    link.click();
-    URL.revokeObjectURL(url);
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const ext = file.name.split('.').pop() || 'pdf';
+      await fileManager.saveBinaryFile({
+        title: file.name,
+        defaultFileName: file.name,
+        data: new Uint8Array(arrayBuffer),
+        filters: [{ name: 'PDF', extensions: [ext] }],
+      });
+    } catch (error) {
+      console.error('[PdfReader] Download failed:', error);
+    }
   }, [file]);
 
   return (

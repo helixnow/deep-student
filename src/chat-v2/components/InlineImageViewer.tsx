@@ -21,6 +21,7 @@ import {
   Download,
   ExternalLink,
 } from 'lucide-react';
+import { fileManager } from '@/utils/fileManager';
 
 // ============================================================================
 // 类型定义
@@ -196,16 +197,25 @@ export const InlineImageViewer: React.FC<InlineImageViewerProps> = ({
   }, []);
 
   // 下载图片
-  const handleDownload = useCallback(() => {
+  const handleDownload = useCallback(async () => {
     const currentImage = images[currentIndex];
     if (!currentImage) return;
 
-    const link = document.createElement('a');
-    link.href = currentImage;
-    link.download = `image-${currentIndex + 1}`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    try {
+      const response = await fetch(currentImage);
+      const blob = await response.blob();
+      const arrayBuffer = await blob.arrayBuffer();
+      const ext = blob.type.split('/')[1]?.replace('jpeg', 'jpg') || 'png';
+      const fileName = `image-${currentIndex + 1}.${ext}`;
+      await fileManager.saveBinaryFile({
+        title: fileName,
+        defaultFileName: fileName,
+        data: new Uint8Array(arrayBuffer),
+        filters: [{ name: 'Images', extensions: [ext] }],
+      });
+    } catch (error) {
+      console.error('[InlineImageViewer] Download failed:', error);
+    }
   }, [images, currentIndex]);
 
   // 新标签页打开

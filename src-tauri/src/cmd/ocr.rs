@@ -175,6 +175,9 @@ pub async fn get_available_ocr_models(
                 .map(|e| (e.engine_type.as_str().to_string(), e))
                 .collect();
 
+        // 按优先级排序
+        models.sort_by_key(|m| m.priority);
+
         let result: Vec<AvailableOcrModelResponse> = models
             .into_iter()
             .map(|m| {
@@ -187,6 +190,8 @@ pub async fn get_available_ocr_models(
                     is_free: m.is_free,
                     description: engine_info.map(|e| e.description.to_string()),
                     supports_grounding: engine_info.map(|e| e.supports_grounding).unwrap_or(false),
+                    enabled: m.enabled,
+                    priority: m.priority,
                 }
             })
             .collect();
@@ -216,6 +221,10 @@ pub struct AvailableOcrModelResponse {
     pub description: Option<String>,
     /// 是否支持坐标定位
     pub supports_grounding: bool,
+    /// 是否启用
+    pub enabled: bool,
+    /// 优先级（数字越小越优先）
+    pub priority: u32,
 }
 
 /// 保存 OCR 模型配置列表
@@ -228,12 +237,15 @@ pub async fn save_available_ocr_models(
 
     let configs: Vec<OcrModelConfig> = models
         .into_iter()
-        .map(|m| OcrModelConfig {
+        .enumerate()
+        .map(|(i, m)| OcrModelConfig {
             config_id: m.config_id,
             model: m.model,
             engine_type: m.engine_type,
             name: m.name,
             is_free: m.is_free,
+            enabled: m.enabled.unwrap_or(true),
+            priority: m.priority.unwrap_or(i as u32),
         })
         .collect();
 
@@ -256,6 +268,139 @@ pub struct SaveOcrModelRequest {
     pub name: String,
     #[serde(default)]
     pub is_free: bool,
+    pub enabled: Option<bool>,
+    pub priority: Option<u32>,
+}
+
+/// 更新 OCR 引擎优先级列表（前端拖拽排序后调用）
+///
+/// 接收完整的有序列表，按数组顺序重新编号 priority
+#[tauri::command]
+pub async fn update_ocr_engine_priority(
+    engine_list: Vec<UpdateOcrPriorityItem>,
+    state: State<'_, AppState>,
+) -> Result<bool> {
+    let db = &state.database;
+
+    // 读取当前配置
+    let models_json = db
+        .get_setting("ocr.available_models")
+        .map_err(|e| AppError::database(format!("读取 OCR 模型配置失败: {}", e)))?
+        .unwrap_or_else(|| "[]".to_string());
+
+    let mut models: Vec<OcrModelConfig> = serde_json::from_str(&models_json)
+        .map_err(|e| AppError::database(format!("解析 OCR 模型配置失败: {}", e)))?;
+
+    // 按前端传来的顺序更新 priority 和 enabled
+    for (i, item) in engine_list.iter().enumerate() {
+        if let Some(model) = models.iter_mut().find(|m| m.config_id == item.config_id) {
+            model.priority = i as u32;
+            model.enabled = item.enabled;
+        }
+    }
+
+    // 按 priority 排序
+    models.sort_by_key(|m| m.priority);
+
+    let json = serde_json::to_string(&models)
+        .map_err(|e| AppError::database(format!("序列化 OCR 模型配置失败: {}", e)))?;
+    db.save_setting("ocr.available_models", &json)
+        .map_err(|e| AppError::database(format!("保存 OCR 模型配置失败: {}", e)))?;
+
+    Ok(true)
+}
+
+/// 优先级更新项
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateOcrPriorityItem {
+    pub config_id: String,
+    pub enabled: bool,
+}
+
+/// 添加一个多模态模型作为 OCR 引擎
+#[tauri::command]
+pub async fn add_ocr_engine(
+    config_id: String,
+    model: String,
+    name: String,
+    engine_type: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<bool> {
+    let db = &state.database;
+
+    let models_json = db
+        .get_setting("ocr.available_models")
+        .map_err(|e| AppError::database(format!("读取 OCR 模型配置失败: {}", e)))?
+        .unwrap_or_else(|| "[]".to_string());
+
+    let mut models: Vec<OcrModelConfig> = serde_json::from_str(&models_json)
+        .map_err(|e| AppError::database(format!("解析 OCR 模型配置失败: {}", e)))?;
+
+    // 检查是否已存在
+    if models.iter().any(|m| m.config_id == config_id) {
+        return Err(AppError::validation("该模型已在 OCR 引擎列表中".to_string()));
+    }
+
+    // 推断引擎类型
+    let effective_engine_type = engine_type.unwrap_or_else(|| {
+        OcrAdapterFactory::infer_engine_from_model(&model).as_str().to_string()
+    });
+
+    let max_priority = models.iter().map(|m| m.priority).max().unwrap_or(0);
+
+    models.push(OcrModelConfig {
+        config_id,
+        model,
+        engine_type: effective_engine_type,
+        name,
+        is_free: false,
+        enabled: true,
+        priority: max_priority + 1,
+    });
+
+    let json = serde_json::to_string(&models)
+        .map_err(|e| AppError::database(format!("序列化 OCR 模型配置失败: {}", e)))?;
+    db.save_setting("ocr.available_models", &json)
+        .map_err(|e| AppError::database(format!("保存 OCR 模型配置失败: {}", e)))?;
+
+    Ok(true)
+}
+
+/// 移除一个 OCR 引擎
+#[tauri::command]
+pub async fn remove_ocr_engine(
+    config_id: String,
+    state: State<'_, AppState>,
+) -> Result<bool> {
+    let db = &state.database;
+
+    let models_json = db
+        .get_setting("ocr.available_models")
+        .map_err(|e| AppError::database(format!("读取 OCR 模型配置失败: {}", e)))?
+        .unwrap_or_else(|| "[]".to_string());
+
+    let mut models: Vec<OcrModelConfig> = serde_json::from_str(&models_json)
+        .map_err(|e| AppError::database(format!("解析 OCR 模型配置失败: {}", e)))?;
+
+    let original_len = models.len();
+    models.retain(|m| m.config_id != config_id);
+
+    if models.len() == original_len {
+        return Err(AppError::validation("未找到该 OCR 引擎".to_string()));
+    }
+
+    // 重新编号优先级
+    for (i, model) in models.iter_mut().enumerate() {
+        model.priority = i as u32;
+    }
+
+    let json = serde_json::to_string(&models)
+        .map_err(|e| AppError::database(format!("序列化 OCR 模型配置失败: {}", e)))?;
+    db.save_setting("ocr.available_models", &json)
+        .map_err(|e| AppError::database(format!("保存 OCR 模型配置失败: {}", e)))?;
+
+    Ok(true)
 }
 
 // ==================== OCR 引擎测试功能 ====================

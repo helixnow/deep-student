@@ -68,7 +68,12 @@
         { "path": "$APPCACHE/**" },
         { "path": "$APPLOCALDATA/**" },
         { "path": "$DOCUMENT/**" },
-        { "path": "$DOWNLOAD/**" }
+        { "path": "$DOWNLOAD/**" },
+        { "path": "$HOME/**" },
+        { "path": "$TEMP/**" },
+        { "path": "$PICTURE/**" },
+        { "path": "$RESOURCE/**" },
+        { "path": "$DESKTOP/**" }
       ]
     },
     {

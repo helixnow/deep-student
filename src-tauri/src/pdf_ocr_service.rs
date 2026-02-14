@@ -622,7 +622,7 @@ impl PdfOcrService {
                             }
 
                             match llm
-                                .call_deepseek_ocr_page_raw(&config, &image_abs_path, page_index)
+                                .call_ocr_page_with_fallback(&image_abs_path, page_index)
                                 .await
                             {
                                 Ok(cards) => {
@@ -1009,7 +1009,7 @@ impl PdfOcrService {
                                 loop {
                                     if *cancel_rx.borrow() { return; }
 
-                                    match llm.call_deepseek_ocr_page_raw(&config, &page.image_rel_path, page_index).await {
+                                    match llm.call_ocr_page_with_fallback(&page.image_rel_path, page_index).await {
                                         Ok(cards) => {
                                             let completed = counter.fetch_add(1, Ordering::SeqCst) + 1;
                                             let blocks: Vec<PdfOcrTextBlock> = cards.iter().map(|c| PdfOcrTextBlock {

@@ -563,9 +563,16 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
     { model: 'tencent/Hunyuan-MT-7B', name: 'SiliconFlow - tencent/Hunyuan-MT-7B', assignmentKey: t('settings:mapping_keys.translation_configured') },
   ];
 
-  // OCR 专用模型预设（支持多引擎，默认使用第一个）
+  // OCR 专用模型预设（支持多引擎，按优先级排列，全部默认启用）
   // 注意：这些模型会自动根据名称推断适配器类型
   const PRESET_OCR_MODELS = [
+    { 
+      model: 'PaddlePaddle/PaddleOCR-VL-1.5', 
+      name: 'SiliconFlow - PaddleOCR-VL-1.5',
+      engineType: 'paddle_ocr_vl',
+      description: '免费开源 OCR 1.5 版，支持 109 种语言，精度达 94.5%',
+      isFree: true,
+    },
     { 
       model: 'deepseek-ai/DeepSeek-OCR', 
       name: 'SiliconFlow - DeepSeek-OCR',
@@ -573,12 +580,12 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
       description: '专业 OCR 模型，支持坐标定位',
       isFree: false,
     },
-    { 
-      model: 'PaddlePaddle/PaddleOCR-VL-1.5', 
-      name: 'SiliconFlow - PaddleOCR-VL-1.5',
-      engineType: 'paddle_ocr_vl',
-      description: '免费开源 OCR 1.5 版，支持 109 种语言，精度达 94.5%',
-      isFree: true,
+    {
+      model: 'Qwen/Qwen2.5-VL-7B-Instruct',
+      name: 'SiliconFlow - Qwen2.5-VL-7B',
+      engineType: 'generic_vlm',
+      description: '通用多模态模型，适合简单文档识别（备用）',
+      isFree: false,
     },
   ];
  
@@ -763,6 +770,7 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
         }
 
         // M6 fix: 通过 invoke 命令保存 OCR 模型配置（统一入口，避免格式不一致）
+        // 现在支持优先级列表：所有引擎默认启用，按数组顺序分配优先级
         try {
           const ocrModelConfigs = PRESET_OCR_MODELS.map((ocrModel, idx) => ({
             configId: idMap[ocrConfigIds[idx]] || ocrConfigIds[idx],
@@ -770,11 +778,11 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
             engineType: ocrModel.engineType,
             name: ocrModel.name,
             isFree: ocrModel.isFree,
+            enabled: true,
+            priority: idx,
           }));
           await invoke('save_available_ocr_models', { models: ocrModelConfigs });
-          // 默认使用第一个 OCR 引擎
-          await invoke('set_ocr_engine_type', { engineType: PRESET_OCR_MODELS[0].engineType });
-          console.log('📝 已保存 OCR 模型配置:', ocrModelConfigs);
+          console.log('📝 已保存 OCR 模型配置（优先级列表）:', ocrModelConfigs);
         } catch (e: unknown) {
           console.warn('保存 OCR 模型配置失败:', e);
         }

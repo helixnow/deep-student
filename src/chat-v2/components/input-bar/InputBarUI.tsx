@@ -1301,6 +1301,17 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
     return () => document.removeEventListener('keydown', handleGlobalKeyDown);
   }, [onToggleThinking, renderRagPanel, renderMcpPanel, togglePanel]);
 
+  // ★ Bug2 修复：监听资源库注入事件，自动打开附件面板
+  useEffect(() => {
+    const handleOpenAttachmentPanel = () => {
+      if (!panelStatesRef.current.attachment) {
+        onSetPanelState('attachment', true);
+      }
+    };
+    window.addEventListener('CHAT_V2_OPEN_ATTACHMENT_PANEL', handleOpenAttachmentPanel);
+    return () => window.removeEventListener('CHAT_V2_OPEN_ATTACHMENT_PANEL', handleOpenAttachmentPanel);
+  }, [onSetPanelState]);
+
   // 🔧 首帧轻量化 + 会话切换重置
   // 会话切换时重置 isReady，延迟 HEAVY_UI_DELAY_MS (400ms) 再启动重 UI/计算
   useEffect(() => {

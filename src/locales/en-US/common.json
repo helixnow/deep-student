@@ -116,7 +116,8 @@
     "creating": "Creating...",
     "expandAll": "Expand All",
     "scrollLeft": "Scroll Left",
-    "scrollRight": "Scroll Right"
+    "scrollRight": "Scroll Right",
+    "clear_all": "Clear All"
   },
   "labels": {
     "optional": "Optional",

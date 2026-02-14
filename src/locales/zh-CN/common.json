@@ -120,7 +120,8 @@
     "creating": "创建中...",
     "expandAll": "展开全部",
     "scrollLeft": "向左滚动",
-    "scrollRight": "向右滚动"
+    "scrollRight": "向右滚动",
+    "clear_all": "清空全部"
   },
   "labels": {
     "optional": "选填",

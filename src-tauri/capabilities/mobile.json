@@ -55,9 +55,24 @@
     "fs:allow-resource-write-recursive",
     "fs:allow-temp-read-recursive",
     "fs:allow-temp-write-recursive",
+    "core:webview:allow-print",
+    "core:webview:allow-set-webview-zoom",
     "opener:default",
     "opener:allow-open-url",
     "opener:allow-default-urls",
+    {
+      "identifier": "opener:allow-open-path",
+      "allow": [
+        { "path": "$APPDATA/**" },
+        { "path": "$APPCACHE/**" },
+        { "path": "$APPLOCALDATA/**" },
+        { "path": "$DOCUMENT/**" },
+        { "path": "$DOWNLOAD/**" },
+        { "path": "$TEMP/**" },
+        { "path": "$PICTURE/**" },
+        { "path": "$RESOURCE/**" }
+      ]
+    },
     {
       "identifier": "http:default",
       "allow": [

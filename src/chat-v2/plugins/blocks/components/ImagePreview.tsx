@@ -8,6 +8,7 @@ import React, { useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
 import { openUrl } from '@/utils/urlOpener';
+import { fileManager } from '@/utils/fileManager';
 import {
   Loader2,
   Maximize2,
@@ -55,13 +56,22 @@ const FullscreenModal: React.FC<FullscreenModalProps> = ({
 }) => {
   const { t } = useTranslation('chatV2');
 
-  const handleDownload = useCallback(() => {
-    const link = document.createElement('a');
-    link.href = src;
-    link.download = alt || 'image';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  const handleDownload = useCallback(async () => {
+    try {
+      const response = await fetch(src);
+      const blob = await response.blob();
+      const arrayBuffer = await blob.arrayBuffer();
+      const ext = blob.type.split('/')[1]?.replace('jpeg', 'jpg') || 'png';
+      const fileName = `${alt || 'image'}.${ext}`;
+      await fileManager.saveBinaryFile({
+        title: fileName,
+        defaultFileName: fileName,
+        data: new Uint8Array(arrayBuffer),
+        filters: [{ name: 'Images', extensions: [ext] }],
+      });
+    } catch (error) {
+      console.error('[ImagePreview] Download failed:', error);
+    }
   }, [src, alt]);
 
   const handleOpenInNewTab = useCallback(() => {

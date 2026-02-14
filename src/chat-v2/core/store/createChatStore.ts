@@ -1837,9 +1837,17 @@ export function createChatStore(sessionId: string): StoreApi<ChatStore> {
         },
 
         addAttachment: (attachment: AttachmentMeta): void => {
-          set((s) => ({
-            attachments: [...s.attachments, attachment],
-          }));
+          set((s) => {
+            // ★ Bug3 修复：按 resourceId 去重，避免从资源库重复引用时附件列表重复
+            if (attachment.resourceId) {
+              const exists = s.attachments.some(a => a.resourceId === attachment.resourceId);
+              if (exists) {
+                console.log('[ChatStore] addAttachment: 相同 resourceId 已存在（跳过）', attachment.resourceId);
+                return {};
+              }
+            }
+            return { attachments: [...s.attachments, attachment] };
+          });
         },
 
         updateAttachment: (attachmentId: string, updates: Partial<AttachmentMeta>): void => {

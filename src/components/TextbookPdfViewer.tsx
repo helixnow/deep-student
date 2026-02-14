@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useRef, useMemo, useEffect } from 'react';
+import { convertFileSrc } from '@tauri-apps/api/core';
 import { useTranslation } from 'react-i18next';
 import './TextbookPdfViewer.css';
 import { EnhancedPdfViewer, type Bookmark } from './pdf/EnhancedPdfViewer';
@@ -97,12 +98,10 @@ export const TextbookPdfViewer: React.FC<TextbookPdfViewerProps> = ({
     }
     // 如果有 filePath，转换为 pdfstream:// 协议 URL
     if (filePath) {
-      // 分段编码路径：保留 / 作为分隔符，只编码每段中的特殊字符
-      const encodedPath = filePath
-        .split('/')
-        .map(segment => encodeURIComponent(segment))
-        .join('/');
-      return `pdfstream://localhost/${encodedPath}`;
+      // 使用 Tauri 官方 API 构建跨平台协议 URL
+      // Windows WebView2: http://pdfstream.localhost/<encoded_path>
+      // macOS/Linux:      pdfstream://localhost/<encoded_path>
+      return convertFileSrc(filePath, 'pdfstream');
     }
     return '';
   }, [file, filePath]);

@@ -2806,7 +2806,7 @@ impl PdfProcessingService {
             }
 
             match llm_manager
-                .call_deepseek_ocr_page_raw(config, &path_str, page_index)
+                .call_ocr_page_with_fallback(&path_str, page_index)
                 .await
             {
                 Ok(cards) => {

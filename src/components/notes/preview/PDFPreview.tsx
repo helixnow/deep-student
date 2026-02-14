@@ -5,6 +5,7 @@
  */
 
 import React, { useCallback, useMemo, useState } from 'react';
+import { convertFileSrc } from '@tauri-apps/api/core';
 import { useTranslation } from 'react-i18next';
 import { cn } from '../../../lib/utils';
 import { Skeleton } from '../../ui/shad/Skeleton';
@@ -63,11 +64,10 @@ export const PDFPreview: React.FC<PDFPreviewProps> = ({
   const pdfUrl = useMemo(() => {
     if (!normalizedFilePath) return '';
     if (isRemoteUrl) return normalizedFilePath;
-    const encodedPath = normalizedFilePath
-      .split('/')
-      .map(segment => encodeURIComponent(segment))
-      .join('/');
-    return `pdfstream://localhost/${encodedPath}`;
+    // 使用 Tauri 官方 API 构建跨平台协议 URL
+    // Windows WebView2: http://pdfstream.localhost/<encoded_path>
+    // macOS/Linux:      pdfstream://localhost/<encoded_path>
+    return convertFileSrc(normalizedFilePath, 'pdfstream');
   }, [normalizedFilePath, isRemoteUrl]);
 
   const dataUrlBase64 = useMemo(() => {

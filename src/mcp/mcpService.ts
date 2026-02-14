@@ -11,6 +11,65 @@ const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'in
 
 type TransportType = 'sse' | 'websocket' | 'streamable-http' | 'streamable_http' | 'stdio';
 
+// MCP 规范安全要求：Clients SHOULD validate tool results before passing to LLM
+// 清洗工具返回结果，防止过大 payload、控制字符注入、深层嵌套
+const MCP_RESULT_MAX_TEXT_LENGTH = 512_000; // 单个 text content 最大 512KB
+const MCP_RESULT_MAX_TOTAL_SIZE = 2_000_000; // 总结果最大 2MB
+const MCP_RESULT_MAX_DEPTH = 20; // JSON 嵌套最大深度
+
+function sanitizeToolResultContent(content: any): any {
+  if (!content) return content;
+  if (!Array.isArray(content)) return content;
+  let totalSize = 0;
+  return content.map((item: any) => {
+    if (!item || typeof item !== 'object') return item;
+    const sanitized = { ...item };
+    // 清洗 text 类型内容
+    if (sanitized.type === 'text' && typeof sanitized.text === 'string') {
+      // 移除 NUL 字节和其他不可见控制字符（保留换行、制表符）
+      sanitized.text = sanitized.text.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
+      // 截断过长文本
+      if (sanitized.text.length > MCP_RESULT_MAX_TEXT_LENGTH) {
+        sanitized.text = sanitized.text.slice(0, MCP_RESULT_MAX_TEXT_LENGTH) + '\n[...truncated]';
+      }
+      totalSize += sanitized.text.length;
+    }
+    // 清洗 image 类型内容（base64 大小限制）
+    if (sanitized.type === 'image' && typeof sanitized.data === 'string') {
+      totalSize += sanitized.data.length;
+    }
+    // 清洗 resource 类型嵌入内容
+    if (sanitized.type === 'resource' && sanitized.resource) {
+      if (typeof sanitized.resource.text === 'string') {
+        sanitized.resource = { ...sanitized.resource };
+        sanitized.resource.text = sanitized.resource.text.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
+        if (sanitized.resource.text.length > MCP_RESULT_MAX_TEXT_LENGTH) {
+          sanitized.resource.text = sanitized.resource.text.slice(0, MCP_RESULT_MAX_TEXT_LENGTH) + '\n[...truncated]';
+        }
+        totalSize += sanitized.resource.text.length;
+      }
+    }
+    return sanitized;
+  }).filter((_: any, idx: number) => {
+    // 如果总大小超限，丢弃后续内容
+    return totalSize <= MCP_RESULT_MAX_TOTAL_SIZE || idx === 0;
+  });
+}
+
+function clampJsonDepth(obj: any, maxDepth: number, currentDepth = 0): any {
+  if (currentDepth >= maxDepth) return typeof obj === 'string' ? obj : '[depth limit]';
+  if (obj === null || obj === undefined) return obj;
+  if (typeof obj !== 'object') return obj;
+  if (Array.isArray(obj)) {
+    return obj.map((item: any) => clampJsonDepth(item, maxDepth, currentDepth + 1));
+  }
+  const result: Record<string, any> = {};
+  for (const [k, v] of Object.entries(obj)) {
+    result[k] = clampJsonDepth(v, maxDepth, currentDepth + 1);
+  }
+  return result;
+}
+
 const isWindowsPlatform = () => {
   if (typeof navigator === 'undefined') return false;
   return /windows/i.test(navigator.userAgent);
@@ -288,7 +347,69 @@ class McpServiceImpl {
         rt.keepaliveTimer = undefined;
       }
       // 每次连接都创建新 Client，确保 Protocol 状态干净
-      rt.client = new Client({ name: 'dstu-frontend-mcp', version: '1.0.0' });
+      // MCP SDK v2: 启用 listChanged autoRefresh，当服务器发送 notifications/tools/list_changed 等通知时自动刷新
+      const self = this;
+      const serverId = rt.cfg.id;
+      rt.client = new Client(
+        { name: 'dstu-frontend-mcp', version: '1.0.0' },
+        {
+          capabilities: {
+            roots: { listChanged: true },
+            sampling: {},
+          },
+          listChanged: {
+            tools: {
+              autoRefresh: true,
+              debounceMs: 200,
+              onChanged: (_error: any, tools: any) => {
+                if (tools && Array.isArray(tools)) {
+                  const toolsForServer: ToolInfo[] = tools.map((t: any) => ({
+                    name: self.withNamespace(t.name, rt.cfg.namespace),
+                    description: t.description || '',
+                    input_schema: t.inputSchema,
+                  }));
+                  self.toolCacheByServer.set(serverId, { at: Date.now(), tools: toolsForServer });
+                  self.saveCacheToStorage();
+                  self.emitStatus();
+                }
+              },
+            },
+            prompts: {
+              autoRefresh: true,
+              debounceMs: 200,
+              onChanged: (_error: any, prompts: any) => {
+                if (prompts && Array.isArray(prompts)) {
+                  const promptsForServer: PromptInfo[] = prompts.map((p: any) => ({
+                    name: self.withNamespace(p.name, rt.cfg.namespace),
+                    description: p.description || '',
+                    arguments: p.arguments,
+                  }));
+                  self.promptCacheByServer.set(serverId, { at: Date.now(), prompts: promptsForServer });
+                  self.saveCacheToStorage();
+                  self.emitStatus();
+                }
+              },
+            },
+            resources: {
+              autoRefresh: true,
+              debounceMs: 200,
+              onChanged: (_error: any, resources: any) => {
+                if (resources && Array.isArray(resources)) {
+                  const resourcesForServer: ResourceInfo[] = resources.map((r: any) => ({
+                    uri: r.uri || r.id || '',
+                    name: r.name ? self.withNamespace(r.name, rt.cfg.namespace) : undefined,
+                    description: r.description,
+                    mime_type: r.mimeType || r.mime_type,
+                  }));
+                  self.resourceCacheByServer.set(serverId, { at: Date.now(), resources: resourcesForServer });
+                  self.saveCacheToStorage();
+                  self.emitStatus();
+                }
+              },
+            },
+          },
+        },
+      );
 
       const { cfg, client } = rt;
       const headers = cfg.headers ?? {};
@@ -770,8 +891,15 @@ class McpServiceImpl {
       // 行业标准：不做 capabilities 预检，直接尝试 listTools()，
       // 依赖 -32601 错误处理作为真正的 fallback（官方 SDK 示例模式）
       try {
-        const list = await rt.client.listTools();
-        const toolsForServer: ToolInfo[] = (list.tools || []).map((t: any) => ({
+        // MCP 规范：支持 pagination cursor，循环获取所有页
+        const allTools: any[] = [];
+        let cursor: string | undefined;
+        do {
+          const list = await rt.client.listTools(cursor ? { cursor } : undefined);
+          if (list.tools) allTools.push(...list.tools);
+          cursor = (list as any).nextCursor;
+        } while (cursor);
+        const toolsForServer: ToolInfo[] = allTools.map((t: any) => ({
           name: this.withNamespace(t.name, rt.cfg.namespace),
           description: t.description || '',
           input_schema: t.inputSchema,
@@ -946,9 +1074,15 @@ class McpServiceImpl {
         continue;
       }
       try {
-        const resp = await rt.client.listPrompts();
-        const list = resp?.prompts || [];
-        const promptsForServer: PromptInfo[] = list.map((p: any) => ({
+        // MCP 规范：支持 pagination cursor
+        const allPrompts: any[] = [];
+        let cursor: string | undefined;
+        do {
+          const resp = await rt.client.listPrompts(cursor ? { cursor } : undefined);
+          if (resp?.prompts) allPrompts.push(...resp.prompts);
+          cursor = (resp as any)?.nextCursor;
+        } while (cursor);
+        const promptsForServer: PromptInfo[] = allPrompts.map((p: any) => ({
           name: this.withNamespace(p.name, rt.cfg.namespace),
           description: p.description || '',
           arguments: p.arguments,
@@ -999,9 +1133,15 @@ class McpServiceImpl {
         continue;
       }
       try {
-        const resp = await rt.client.listResources();
-        const list = resp?.resources || [];
-        const resourcesForServer: ResourceInfo[] = list.map((r: any) => {
+        // MCP 规范：支持 pagination cursor
+        const allResources: any[] = [];
+        let cursor: string | undefined;
+        do {
+          const resp = await rt.client.listResources(cursor ? { cursor } : undefined);
+          if (resp?.resources) allResources.push(...resp.resources);
+          cursor = (resp as any)?.nextCursor;
+        } while (cursor);
+        const resourcesForServer: ResourceInfo[] = allResources.map((r: any) => {
           const baseName = r.name || '';
           return {
             uri: r.uri || r.id || '',
@@ -1130,10 +1270,27 @@ class McpServiceImpl {
       callId,
     });
 
+    // MCP 规范要求：超时或取消时客户端 SHOULD 发送 notifications/cancelled
+    const sendCancellationNotification = async (requestId: string, reason: string) => {
+      try {
+        await rt.client.notification({
+          method: 'notifications/cancelled',
+          params: { requestId, reason },
+        });
+      } catch {
+        // best-effort: 服务器可能不支持此通知
+      }
+    };
+
     // 内部执行函数，支持重试
     const executeCall = async (): Promise<{ ok: boolean; data?: any; error?: string; usage?: any }> => {
       const controller = new AbortController();
-      const to = setTimeout(() => controller.abort(), timeoutMs);
+      const currentCallId = callId; // 用于取消通知
+      const to = setTimeout(() => {
+        controller.abort();
+        // MCP 规范：超时时发送取消通知
+        sendCancellationNotification(currentCallId, 'timeout');
+      }, timeoutMs);
       try {
         const result = await rt.client.callTool(
           { name: rawName, arguments: args ?? {} },
@@ -1153,6 +1310,12 @@ class McpServiceImpl {
           return i18next.t('mcp:service.tool_returned_error');
         };
 
+        // MCP 规范安全：清洗工具返回结果
+        const rawData = result.content ?? (result as any).data ?? null;
+        const sanitizedData = Array.isArray(rawData)
+          ? sanitizeToolResultContent(clampJsonDepth(rawData, MCP_RESULT_MAX_DEPTH))
+          : rawData != null ? clampJsonDepth(rawData, MCP_RESULT_MAX_DEPTH) : null;
+
         if (result.isError) {
           const errorMsg = extractErrorMessage();
           emitMcpDebugEvent('mcp-tool-call-error', {
@@ -1160,17 +1323,17 @@ class McpServiceImpl {
           });
           return {
             ok: false,
-            data: result.content ?? (result as any).data ?? null,
+            data: sanitizedData,
             error: errorMsg,
             usage: { elapsed_ms: elapsed, tool_name: toolName, source: 'mcp-frontend', trace_id: callId }
           };
         } else {
           emitMcpDebugEvent('mcp-tool-call-success', {
-            serverId: rt.cfg.id, toolName, result: result.content ?? (result as any).data, duration: elapsed, callId,
+            serverId: rt.cfg.id, toolName, result: sanitizedData, duration: elapsed, callId,
           });
           return {
             ok: true,
-            data: result.content ?? (result as any).data ?? null,
+            data: sanitizedData,
             error: undefined,
             usage: { elapsed_ms: elapsed, tool_name: toolName, source: 'mcp-frontend', trace_id: callId }
           };

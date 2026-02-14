@@ -313,6 +313,16 @@ pub struct OcrModelConfig {
     /// 是否免费
     #[serde(default)]
     pub is_free: bool,
+    /// 是否启用（默认 true，向后兼容旧数据）
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    /// 优先级（数字越小越优先，默认 0）
+    #[serde(default)]
+    pub priority: u32,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -2070,55 +2080,44 @@ impl LLMManager {
 
     /// 获取 OCR 模型配置（公开方法，供多模态索引使用）
     ///
-    /// 优先级：
-    /// 1. 根据当前选择的 OCR 引擎类型，从 `ocr.available_models` 中查找对应配置
-    /// 2. 使用 `exam_sheet_ocr_model_config_id`
+    /// 按优先级返回第一个可用的已启用 OCR 引擎对应的模型配置。
+    /// 回退链：已启用的 OCR 引擎（按 priority 排序）→ exam_sheet_ocr_model_config_id
     pub async fn get_ocr_model_config(&self) -> Result<ApiConfig> {
-        let engine_type = self.get_ocr_engine_type().await;
         let configs = self.get_api_configs().await?;
+        let available = self.get_available_ocr_models().await;
 
-        // 尝试从 ocr.available_models 中查找对应引擎的配置 ID
-        if let Ok(Some(available_models_json)) = self.db.get_setting("ocr.available_models") {
-            if let Ok(available_models) =
-                serde_json::from_str::<Vec<OcrModelConfig>>(&available_models_json)
-            {
-                // 查找当前引擎类型对应的配置
-                if let Some(ocr_config) = available_models
-                    .iter()
-                    .find(|m| m.engine_type == engine_type.as_str())
-                {
-                    if let Some(config) = configs.iter().find(|c| c.id == ocr_config.config_id) {
-                        // 验证模型是否支持多模态
-                        if !config.is_multimodal {
-                            warn!(
-                                "[OCR] 引擎 {} 对应的模型 {} 不支持多模态，将尝试回退",
-                                engine_type.as_str(),
-                                config.model
-                            );
-                        } else {
-                            debug!(
-                                "[OCR] 使用引擎 {} 对应的模型配置: id={}, model={}",
-                                engine_type.as_str(),
-                                config.id,
-                                config.model
-                            );
-                            return Ok(config.clone());
-                        }
-                    } else {
-                        warn!(
-                            "[OCR] 引擎 {} 对应的配置 ID {} 不存在，将尝试回退",
-                            engine_type.as_str(),
-                            ocr_config.config_id
-                        );
-                    }
+        // 按优先级排序，只保留已启用的
+        let mut enabled_models: Vec<&OcrModelConfig> =
+            available.iter().filter(|m| m.enabled).collect();
+        enabled_models.sort_by_key(|m| m.priority);
+
+        // 尝试按优先级找到第一个有效的配置
+        for ocr_config in &enabled_models {
+            if let Some(config) = configs.iter().find(|c| c.id == ocr_config.config_id) {
+                if config.is_multimodal {
+                    debug!(
+                        "[OCR] 使用引擎 {} 对应的模型配置: id={}, model={} (priority={})",
+                        ocr_config.engine_type, config.id, config.model, ocr_config.priority
+                    );
+                    return Ok(config.clone());
+                } else {
+                    warn!(
+                        "[OCR] 引擎 {} 对应的模型 {} 不支持多模态，跳过",
+                        ocr_config.engine_type, config.model
+                    );
                 }
+            } else {
+                warn!(
+                    "[OCR] 引擎 {} 对应的配置 ID {} 不存在，跳过",
+                    ocr_config.engine_type, ocr_config.config_id
+                );
             }
         }
 
         // 回退：使用 exam_sheet_ocr_model_config_id
         let assignments = self.get_model_assignments().await?;
         let model_id = assignments.exam_sheet_ocr_model_config_id.ok_or_else(|| {
-            AppError::configuration("OCR 模型未配置，请在模型分配中绑定题目集OCR模型")
+            AppError::configuration("OCR 模型未配置，请在模型分配中添加 OCR 引擎")
         })?;
 
         let config = configs
@@ -2142,18 +2141,91 @@ impl LLMManager {
         Ok(config)
     }
 
+    /// 按优先级获取所有已启用的 OCR 引擎配置列表（用于熔断重试）
+    ///
+    /// 返回 `(ApiConfig, OcrEngineType)` 的有序列表，调用方可按顺序尝试。
+    pub async fn get_ocr_configs_by_priority(
+        &self,
+    ) -> Result<Vec<(ApiConfig, crate::ocr_adapters::OcrEngineType)>> {
+        use crate::ocr_adapters::{OcrAdapterFactory, OcrEngineType};
+
+        let configs = self.get_api_configs().await?;
+        let available = self.get_available_ocr_models().await;
+
+        let mut enabled_models: Vec<&OcrModelConfig> =
+            available.iter().filter(|m| m.enabled).collect();
+        enabled_models.sort_by_key(|m| m.priority);
+
+        let mut result = Vec::new();
+        for ocr_config in &enabled_models {
+            if let Some(config) = configs.iter().find(|c| c.id == ocr_config.config_id) {
+                if !config.is_multimodal {
+                    continue;
+                }
+                let engine = OcrEngineType::from_str(&ocr_config.engine_type);
+                // 验证模型是否匹配引擎，不匹配则推断
+                let effective_engine =
+                    if OcrAdapterFactory::validate_model_for_engine(&config.model, engine) {
+                        engine
+                    } else {
+                        OcrAdapterFactory::infer_engine_from_model(&config.model)
+                    };
+                result.push((config.clone(), effective_engine));
+            }
+        }
+
+        if result.is_empty() {
+            // 回退到 exam_sheet_ocr_model_config_id
+            if let Ok(config) = self.get_ocr_model_config().await {
+                let engine = OcrAdapterFactory::infer_engine_from_model(&config.model);
+                result.push((config, engine));
+            }
+        }
+
+        if result.is_empty() {
+            return Err(AppError::configuration(
+                "没有可用的 OCR 引擎配置，请在设置中添加 OCR 引擎",
+            ));
+        }
+
+        Ok(result)
+    }
+
     /// 获取所有已配置的 OCR 模型列表
     ///
-    /// 包含自动迁移逻辑：将旧版本 PaddleOCR-VL 模型名称自动更新为 1.5 版本
+    /// 包含自动迁移逻辑：
+    /// 1. 将旧版本 PaddleOCR-VL 模型名称自动更新为 1.5 版本
+    /// 2. 从旧 ocr.engine_type 单选迁移到新优先级列表
     pub async fn get_available_ocr_models(&self) -> Vec<OcrModelConfig> {
         if let Ok(Some(json)) = self.db.get_setting("ocr.available_models") {
             if let Ok(mut models) = serde_json::from_str::<Vec<OcrModelConfig>>(&json) {
-                // M14 fix: 使用共享迁移函数
-                let needs_save = crate::cmd::ocr::migrate_paddle_ocr_models(&mut models);
+                let mut needs_save = crate::cmd::ocr::migrate_paddle_ocr_models(&mut models);
+
+                // 迁移：如果所有 priority 都是 0 且存在旧 ocr.engine_type 设置，
+                // 则根据旧单选设置调整优先级
+                if models.len() > 1 && models.iter().all(|m| m.priority == 0) {
+                    if let Ok(Some(old_engine)) = self.db.get_setting("ocr.engine_type") {
+                        for (i, model) in models.iter_mut().enumerate() {
+                            if model.engine_type == old_engine {
+                                model.priority = 0; // 旧选中的排第一
+                            } else {
+                                model.priority = (i as u32) + 1;
+                            }
+                        }
+                        // 重新按 priority 排序确保一致
+                        models.sort_by_key(|m| m.priority);
+                        // 重新编号
+                        for (i, model) in models.iter_mut().enumerate() {
+                            model.priority = i as u32;
+                        }
+                        needs_save = true;
+                        info!("[OCR] 已从旧 ocr.engine_type='{}' 迁移到优先级列表", old_engine);
+                    }
+                }
+
                 if needs_save {
                     if let Ok(updated_json) = serde_json::to_string(&models) {
                         let _ = self.db.save_setting("ocr.available_models", &updated_json);
-                        info!("[OCR] 已自动迁移 PaddleOCR-VL 配置到 1.5 版本");
                     }
                 }
                 return models;
@@ -2427,31 +2499,36 @@ impl LLMManager {
 
     /// S4/S7 fix: 获取 OCR 模型配置及其有效引擎类型
     ///
-    /// 当回退到非原始引擎的模型时，根据实际模型推断引擎类型，
+    /// 优先从 available_models 中查找匹配的引擎类型，
+    /// 找不到时根据实际模型推断引擎类型，
     /// 确保 adapter/prompt/parser 三者始终与实际模型匹配。
     pub async fn get_ocr_config_with_effective_engine(
         &self,
     ) -> Result<(ApiConfig, crate::ocr_adapters::OcrEngineType)> {
-        use crate::ocr_adapters::OcrAdapterFactory;
+        use crate::ocr_adapters::{OcrAdapterFactory, OcrEngineType};
 
-        let requested_engine = self.get_ocr_engine_type().await;
         let config = self.get_ocr_model_config().await?;
 
-        // 检查实际模型是否匹配请求的引擎
-        let effective_engine =
-            if OcrAdapterFactory::validate_model_for_engine(&config.model, requested_engine) {
-                requested_engine
+        // 从 available_models 中查找该 config_id 对应的引擎类型
+        let available = self.get_available_ocr_models().await;
+        let effective_engine = if let Some(ocr_model) = available.iter().find(|m| m.config_id == config.id) {
+            let declared = OcrEngineType::from_str(&ocr_model.engine_type);
+            // 验证声明的引擎类型是否匹配实际模型
+            if OcrAdapterFactory::validate_model_for_engine(&config.model, declared) {
+                declared
             } else {
-                // 模型不匹配请求的引擎（发生了回退），根据实际模型推断引擎
-                let inferred = OcrAdapterFactory::infer_engine_from_model(&config.model);
-                warn!(
-                    "[OCR] Engine mismatch: requested={}, model={}, inferred={}",
-                    requested_engine.as_str(),
-                    config.model,
-                    inferred.as_str()
-                );
-                inferred
-            };
+                OcrAdapterFactory::infer_engine_from_model(&config.model)
+            }
+        } else {
+            // 回退配置，根据模型推断
+            OcrAdapterFactory::infer_engine_from_model(&config.model)
+        };
+
+        debug!(
+            "[OCR] effective engine={}, model={}",
+            effective_engine.as_str(),
+            config.model
+        );
 
         Ok((config, effective_engine))
     }

@@ -65,7 +65,6 @@ import { useUIStore } from '@/stores/uiStore';
 // P1-06: 导入 Tauri 文件对话框，用于创建分析会话时选择图片
 import { open as dialogOpen } from '@tauri-apps/plugin-dialog';
 import { convertFileSrc } from '@tauri-apps/api/core';
-import { readFile } from '@tauri-apps/plugin-fs';
 
 // 懒加载统一应用面板
 const UnifiedAppPanel = lazy(() => import('@/components/learning-hub/apps/UnifiedAppPanel'));
@@ -331,7 +330,7 @@ export const ChatV2Page: React.FC = () => {
       const images: string[] = [];
       for (const path of imagePaths) {
         try {
-          const bytes = await readFile(path);
+          const bytes = new Uint8Array(await TauriAPI.readFileAsBytes(path));
           // 🔒 审计修复: 分块编码 base64，避免 String.fromCharCode(...bytes) 对大文件栈溢出
           // 原代码对 >1MB 文件触发 RangeError: Maximum call stack size exceeded
           const CHUNK_SIZE = 0x8000; // 32KB chunks

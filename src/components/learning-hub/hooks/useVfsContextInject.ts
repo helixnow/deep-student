@@ -211,6 +211,7 @@ export function useVfsContextInject(): UseVfsContextInjectReturn {
           essay: 'text/markdown',
           image: 'image/*',
           file: 'application/octet-stream',
+          mindmap: 'application/json',
         };
 
         const attachmentMeta: AttachmentMeta = {
@@ -228,6 +229,10 @@ export function useVfsContextInject(): UseVfsContextInjectReturn {
           ? t('notes:reference.to_chat_created_new')
           : t('notes:reference.to_chat_reused');
         showGlobalNotification('success', t('notes:reference.to_chat_success'), message);
+
+        // ★ Bug2 修复：通知 InputBar 打开附件面板，让用户看到已添加的资源
+        // 注意：批量注入时由调用方统一派发一次，避免 N 次事件
+        window.dispatchEvent(new CustomEvent('CHAT_V2_OPEN_ATTACHMENT_PANEL'));
 
         debugLog.log(LOG_PREFIX, 'Context ref added:', contextRef);
 

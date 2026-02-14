@@ -4,6 +4,7 @@
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::PathBuf;
+use log::{info, warn, error};
 
 /// 处理 pdfstream:// 协议请求
 ///
@@ -18,19 +19,36 @@ pub fn handle_asset_protocol(
     // 解析请求路径 pdfstream://localhost/xxx -> xxx
     // 注意：路径可能是 //Users/... (macOS 绝对路径) 或 /Users/...
     // 使用 strip_prefix 仅移除一个前导斜杠，保留绝对路径的第二个斜杠
+    let raw_uri = request.uri().to_string();
     let path = request.uri().path();
     let path = path.strip_prefix('/').unwrap_or(path);
 
     // 解码 URL 编码的路径
+    // 前端使用 convertFileSrc(filePath, 'pdfstream') 对整个路径做 encodeURIComponent
     let decoded_path = urlencoding::decode(path)?;
+
+    // Windows 兼容：前端 convertFileSrc 会对整个路径编码（包括 \ 和 :）
+    // 解码后直接是平台原生路径，无需额外转换
+    info!(
+        "[pdfstream] raw_uri={}, decoded_path={}",
+        raw_uri,
+        decoded_path
+    );
+
     let requested_path = PathBuf::from(decoded_path.as_ref());
 
     // 通过 canonicalize 获取规范路径（消除路径遍历、符号链接、. 和 ..）
     let canonical_path = match std::fs::canonicalize(&requested_path) {
         Ok(path) => path,
-        Err(_) => {
+        Err(e) => {
+            warn!(
+                "[pdfstream] canonicalize 失败: path={}, error={}",
+                requested_path.display(),
+                e
+            );
             return Ok(tauri::http::Response::builder()
                 .status(404)
+                .header("Access-Control-Allow-Origin", "*")
                 .body(Vec::new())?);
         }
     };
@@ -40,19 +58,25 @@ pub fn handle_asset_protocol(
     // 保留 .pdf 扩展名检查作为基本安全措施
     let extension = canonical_path.extension().and_then(|s| s.to_str());
     if extension != Some("pdf") {
-        eprintln!(
+        warn!(
             "[pdfstream] 拒绝访问非 PDF 文件: {}",
             canonical_path.display()
         );
         return Ok(tauri::http::Response::builder()
             .status(403)
+            .header("Access-Control-Allow-Origin", "*")
             .body(Vec::new())?);
     }
 
     // 安全检查：确保路径存在且可读
     if !canonical_path.exists() || !canonical_path.is_file() {
+        warn!(
+            "[pdfstream] 文件不存在或非文件: {}",
+            canonical_path.display()
+        );
         return Ok(tauri::http::Response::builder()
             .status(404)
+            .header("Access-Control-Allow-Origin", "*")
             .body(Vec::new())?);
     }
 
@@ -101,6 +125,7 @@ pub fn handle_asset_protocol(
                 Ok(tauri::http::Response::builder()
                     .status(416)
                     .header("Content-Range", format!("bytes */{}", file_size))
+                    .header("Access-Control-Allow-Origin", "*")
                     .body(Vec::new())?)
             }
         }
@@ -146,9 +171,11 @@ fn parse_range_header(range_str: &str, file_size: u64) -> Option<(u64, u64)> {
             // bytes=0-1023
             let start: u64 = start_str.parse().ok()?;
             let end: u64 = end_str.parse().ok()?;
-            if start > end || end >= file_size {
+            if start > end || start >= file_size {
                 return None;
             }
+            // Clamp end to file_size - 1 (PDF.js may request beyond file size)
+            let end = end.min(file_size - 1);
             Some((start, end))
         }
         (false, true) => {
@@ -161,6 +188,9 @@ fn parse_range_header(range_str: &str, file_size: u64) -> Option<(u64, u64)> {
         }
         (true, false) => {
             // bytes=-1024 (最后1024字节)
+            if file_size == 0 {
+                return None;
+            }
             let suffix_len: u64 = end_str.parse().ok()?;
             let start = file_size.saturating_sub(suffix_len);
             Some((start, file_size - 1))
@@ -198,10 +228,16 @@ mod tests {
         assert_eq!(parse_range_header("bytes=1024-", 10000), Some((1024, 9999)));
         // 最后N字节
         assert_eq!(parse_range_header("bytes=-1024", 10000), Some((8976, 9999)));
-        // 超出范围
-        assert_eq!(parse_range_header("bytes=0-20000", 10000), None);
+        // end 超出文件大小 → clamp 到 file_size-1
+        assert_eq!(parse_range_header("bytes=0-20000", 10000), Some((0, 9999)));
+        // start 超出文件大小 → None
+        assert_eq!(parse_range_header("bytes=20000-30000", 10000), None);
         // 无效格式
         assert_eq!(parse_range_header("bytes=abc-def", 10000), None);
+        // file_size==0 时所有 Range 都应返回 None
+        assert_eq!(parse_range_header("bytes=0-1023", 0), None);
+        assert_eq!(parse_range_header("bytes=0-", 0), None);
+        assert_eq!(parse_range_header("bytes=-1024", 0), None);
     }
 
     #[test]

@@ -256,7 +256,11 @@ export const ModelsTab: React.FC<ModelsTabProps> = ({
 
         {/* 4. 其他配置 */}
         <div className="mt-8">
-           <OcrEngineCard />
+           <OcrEngineCard
+             apiConfigs={apiConfigs}
+             toUnifiedModelInfo={toUnifiedModelInfo}
+             getAllEnabledApis={getAllEnabledApis}
+           />
         </div>
 
         {/* 配置状态概览 */}
