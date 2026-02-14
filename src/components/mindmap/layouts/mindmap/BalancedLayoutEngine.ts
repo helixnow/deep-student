@@ -143,6 +143,7 @@ export class BalancedLayoutEngine extends BaseLayoutEngine {
       data: {
         label: root.text || '',
         note: root.note,
+        refs: root.refs,
         isRoot: true,
         level: 0,
         collapsed: false,
@@ -240,6 +241,7 @@ export class BalancedLayoutEngine extends BaseLayoutEngine {
         data: {
           label: node.text || '',
           note: node.note,
+          refs: node.refs,
           isRoot: false,
           level,
           collapsed: !!node.collapsed,

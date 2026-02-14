@@ -18,6 +18,7 @@ import {
   ClipboardPaste,
   StickyNote,
   X,
+  Link2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
@@ -30,6 +31,7 @@ interface CanvasContextMenuProps {
   position: { x: number; y: number };
   nodeId: string | null;
   onClose: () => void;
+  onOpenResourcePicker?: (nodeId: string) => void;
 }
 
 interface MenuItemProps {
@@ -103,6 +105,7 @@ export const CanvasContextMenu: React.FC<CanvasContextMenuProps> = ({
   position,
   nodeId,
   onClose,
+  onOpenResourcePicker,
 }) => {
   const { t } = useTranslation('mindmap');
   const menuRef = useRef<HTMLDivElement>(null);
@@ -220,6 +223,14 @@ export const CanvasContextMenu: React.FC<CanvasContextMenuProps> = ({
         shortcut="⇧Enter"
         onClick={() => exec(() => {
           setEditingNoteNodeId(nodeId);
+        })}
+      />
+
+      <MenuItem
+        icon={<Link2 className="w-4 h-4" />}
+        label={t('contextMenu.linkResource', '关联资源')}
+        onClick={() => exec(() => {
+          if (nodeId) onOpenResourcePicker?.(nodeId);
         })}
       />
 

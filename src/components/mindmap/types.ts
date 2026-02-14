@@ -38,6 +38,18 @@ export interface NodeStyle {
 // 兼容别名
 export type MindMapNodeStyle = NodeStyle;
 
+/** 节点关联的 VFS 资源引用（轻量级，只存引用信息） */
+export interface MindMapNodeRef {
+  /** 稳定的业务 ID（note_abc, tb_xyz, mm_xxx 等） */
+  sourceId: string;
+  /** 资源类型 */
+  type: string;
+  /** 显示名称（快照，用于离线/加载前显示） */
+  name: string;
+  /** 资源内容 hash（可选，用于失效检测） */
+  resourceHash?: string;
+}
+
 /** 思维导图节点 */
 export interface MindMapNode {
   id: NodeId;
@@ -49,6 +61,8 @@ export interface MindMapNode {
   style?: NodeStyle;
   /** 挖空区间（背诵模式） */
   blankedRanges?: BlankRange[];
+  /** 关联的 VFS 资源引用列表 */
+  refs?: MindMapNodeRef[];
   // 运行时注入属性
   branchColor?: string;
 }
@@ -68,6 +82,7 @@ export interface UpdateNodeParams {
   completed?: boolean;
   style?: NodeStyle;
   blankedRanges?: BlankRange[];
+  refs?: MindMapNodeRef[];
 }
 
 /** 节点路径（从根到当前节点的 ID 数组） */

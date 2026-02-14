@@ -6,11 +6,12 @@ import { Plus } from 'lucide-react';
 import { NodeContent } from './NodeContent';
 import { useMindMapStore } from '../../../store';
 import { StyleRegistry } from '../../../registry';
-import type { NodeStyle, BlankRange } from '../../../types';
+import type { NodeStyle, BlankRange, MindMapNodeRef } from '../../../types';
 
 export interface RootNodeData extends Record<string, unknown> {
   label: string;
   note?: string;
+  refs?: MindMapNodeRef[];
   nodeId: string;
   completed: boolean;
   hasChildren: boolean;
@@ -41,6 +42,7 @@ export const RootNode: React.FC<NodeProps<Node<RootNodeData>>> = ({
   const revealBlank = useMindMapStore(state => state.revealBlank);
   const addBlankRange = useMindMapStore(state => state.addBlankRange);
   const removeBlankRange = useMindMapStore(state => state.removeBlankRange);
+  const removeNodeRef = useMindMapStore(state => state.removeNodeRef);
   const nodeRef = useRef<HTMLDivElement>(null);
   
   const isEditing = editingNodeId === data.nodeId;
@@ -136,6 +138,7 @@ export const RootNode: React.FC<NodeProps<Node<RootNodeData>>> = ({
       <NodeContent
         text={data.label}
         note={data.note}
+        refs={data.refs}
         isRoot
         isCompleted={data.completed}
         isEditing={isEditing}
@@ -151,6 +154,13 @@ export const RootNode: React.FC<NodeProps<Node<RootNodeData>>> = ({
         onRevealBlank={(rangeIndex) => revealBlank(data.nodeId, rangeIndex)}
         onAddBlank={(range) => addBlankRange(data.nodeId, range)}
         onRemoveBlank={(rangeIndex) => removeBlankRange(data.nodeId, rangeIndex)}
+        onRemoveRef={(sourceId) => removeNodeRef(data.nodeId, sourceId)}
+        onClickRef={(sourceId) => {
+          const dstuPath = sourceId.startsWith('/') ? sourceId : `/${sourceId}`;
+          window.dispatchEvent(new CustomEvent('NAVIGATE_TO_VIEW', {
+            detail: { view: 'learning-hub', openResource: dstuPath },
+          }));
+        }}
       />
 
       {/* Action Buttons Container - hidden in recite mode */}

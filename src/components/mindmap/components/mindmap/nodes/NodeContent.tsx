@@ -4,11 +4,13 @@ import { cn } from '@/lib/utils';
 import { BlankedText } from '../../shared/BlankedText';
 import { InlineLatex } from '../../shared/InlineLatex';
 import { containsLatex } from '../../../utils/renderLatex';
-import type { BlankRange } from '../../../types';
+import type { BlankRange, MindMapNodeRef } from '../../../types';
+import { NodeRefList } from '../../shared/NodeRefCard';
 
 export interface NodeContentProps {
   text: string;
   note?: string;
+  refs?: MindMapNodeRef[];
   isRoot?: boolean;
   isCompleted?: boolean;
   isEditing?: boolean;
@@ -24,12 +26,15 @@ export interface NodeContentProps {
   onRevealBlank?: (rangeIndex: number) => void;
   onAddBlank?: (range: BlankRange) => void;
   onRemoveBlank?: (rangeIndex: number) => void;
+  onRemoveRef?: (sourceId: string) => void;
+  onClickRef?: (sourceId: string) => void;
   className?: string;
 }
 
 export const NodeContent: React.FC<NodeContentProps> = ({
   text,
   note,
+  refs,
   isRoot = false,
   isCompleted = false,
   isEditing = false,
@@ -45,6 +50,8 @@ export const NodeContent: React.FC<NodeContentProps> = ({
   onRevealBlank,
   onAddBlank,
   onRemoveBlank,
+  onRemoveRef,
+  onClickRef,
   className,
 }) => {
   const { t } = useTranslation('mindmap');
@@ -288,6 +295,16 @@ export const NodeContent: React.FC<NodeContentProps> = ({
           )}
         />
       ) : null}
+
+      {/* Refs Row */}
+      {refs && refs.length > 0 && (
+        <NodeRefList
+          refs={refs}
+          onRemove={onRemoveRef}
+          onClick={onClickRef}
+          readonly={reciteMode}
+        />
+      )}
     </div>
   );
 };

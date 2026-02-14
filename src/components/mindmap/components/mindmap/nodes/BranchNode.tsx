@@ -7,11 +7,12 @@ import { NodeContent } from './NodeContent';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { useMindMapStore } from '../../../store';
 import { StyleRegistry } from '../../../registry';
-import type { NodeStyle, BlankRange } from '../../../types';
+import type { NodeStyle, BlankRange, MindMapNodeRef } from '../../../types';
 
 export interface BranchNodeData extends Record<string, unknown> {
   label: string;
   note?: string;
+  refs?: MindMapNodeRef[];
   nodeId: string;
   level: number;
   collapsed: boolean;
@@ -49,6 +50,7 @@ export const BranchNode: React.FC<NodeProps<Node<BranchNodeData>>> = ({
   const revealBlank = useMindMapStore(state => state.revealBlank);
   const addBlankRange = useMindMapStore(state => state.addBlankRange);
   const removeBlankRange = useMindMapStore(state => state.removeBlankRange);
+  const removeNodeRef = useMindMapStore(state => state.removeNodeRef);
   const nodeRef = useRef<HTMLDivElement>(null);
 
   const isEditing = editingNodeId === data.nodeId;
@@ -293,6 +295,7 @@ export const BranchNode: React.FC<NodeProps<Node<BranchNodeData>>> = ({
         <NodeContent
           text={data.label}
           note={data.note}
+          refs={data.refs}
           isCompleted={data.completed}
           isEditing={isEditing}
           isEditingNote={isEditingNote}
@@ -307,6 +310,13 @@ export const BranchNode: React.FC<NodeProps<Node<BranchNodeData>>> = ({
           onRevealBlank={(rangeIndex) => revealBlank(data.nodeId, rangeIndex)}
           onAddBlank={(range) => addBlankRange(data.nodeId, range)}
           onRemoveBlank={(rangeIndex) => removeBlankRange(data.nodeId, rangeIndex)}
+          onRemoveRef={(sourceId) => removeNodeRef(data.nodeId, sourceId)}
+          onClickRef={(sourceId) => {
+            const dstuPath = sourceId.startsWith('/') ? sourceId : `/${sourceId}`;
+            window.dispatchEvent(new CustomEvent('NAVIGATE_TO_VIEW', {
+              detail: { view: 'learning-hub', openResource: dstuPath },
+            }));
+          }}
         />
       </div>
 

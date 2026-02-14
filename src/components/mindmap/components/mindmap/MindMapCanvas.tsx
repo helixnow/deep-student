@@ -23,6 +23,7 @@ import { edgeTypes as defaultEdgeTypes } from './edges';
 import { useMindMapKeyboard } from '../../hooks/useMindMapKeyboard';
 import { useMindMapClipboard } from '../../hooks/useMindMapClipboard';
 import { CanvasContextMenu } from './CanvasContextMenu';
+import { MindMapResourcePicker } from './MindMapResourcePicker';
 import { findNodeById, findParentNode, isDescendantOf } from '../../utils/node/find';
 import { useTranslation } from 'react-i18next';
 import type { LayoutDirection, MindMapNode } from '../../types';
@@ -65,11 +66,15 @@ const MindMapCanvasInner: React.FC = () => {
     return () => setReactFlowGetter(null);
   }, [reactFlowInstance, setReactFlowGetter]);
 
+  const addNodeRef = useMindMapStore(s => s.addNodeRef);
+
   const [contextMenu, setContextMenu] = useState<{
     isOpen: boolean;
     position: { x: number; y: number };
     nodeId: string | null;
   }>({ isOpen: false, position: { x: 0, y: 0 }, nodeId: null });
+
+  const [resourcePickerNodeId, setResourcePickerNodeId] = useState<string | null>(null);
 
   const [dropTargetId, setDropTargetId] = useState<string | null>(null);
   const [dropMode, setDropMode] = useState<DropMode>('child');
@@ -573,6 +578,18 @@ const MindMapCanvasInner: React.FC = () => {
         position={contextMenu.position}
         nodeId={contextMenu.nodeId}
         onClose={() => setContextMenu(prev => ({ ...prev, isOpen: false }))}
+        onOpenResourcePicker={(nid) => setResourcePickerNodeId(nid)}
+      />
+      <MindMapResourcePicker
+        isOpen={!!resourcePickerNodeId}
+        nodeId={resourcePickerNodeId || ''}
+        existingRefs={resourcePickerNodeId ? findNodeById(document.root, resourcePickerNodeId)?.refs : undefined}
+        onSelect={(ref) => {
+          if (resourcePickerNodeId) {
+            addNodeRef(resourcePickerNodeId, ref);
+          }
+        }}
+        onClose={() => setResourcePickerNodeId(null)}
       />
       {document.root.children.length === 0 && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none select-none">

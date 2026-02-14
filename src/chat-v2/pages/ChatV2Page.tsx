@@ -922,6 +922,19 @@ export const ChatV2Page: React.FC = () => {
     }
   }, [isInitialLoading, currentSessionId, createSession]);
 
+  // ★ 调试插件：允许程序化切换会话（附件流水线测试插件使用）
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const sid = (e as CustomEvent)?.detail?.sessionId;
+      if (sid && typeof sid === 'string') {
+        console.log('[ChatV2Page] PIPELINE_TEST_SWITCH_SESSION:', sid);
+        setCurrentSessionId(sid);
+      }
+    };
+    window.addEventListener('PIPELINE_TEST_SWITCH_SESSION', handler);
+    return () => window.removeEventListener('PIPELINE_TEST_SWITCH_SESSION', handler);
+  }, [setCurrentSessionId]);
+
   // ★ 注册 OpenResourceHandler，让 openResource() 可以在 Chat V2 中工作
   useEffect(() => {
     const handler = {

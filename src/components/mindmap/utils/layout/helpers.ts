@@ -85,22 +85,30 @@ export function calculateNodeHeight(
 
   const totalHeight = baseHeight + extraTextHeight;
 
-  if (!node.note) {
+  if (!node.note && !node.refs?.length) {
     return totalHeight;
   }
 
   // Estimate note height (whitespace-pre-wrap)
-  const nodeWidth = calculateNodeWidth(node, config, isRoot);
-  // Approximate width available for text (minus padding)
-  const contentWidth = nodeWidth - 16;
-  // Note font size approx 12px
-  const noteFontSize = 12;
-  const noteLines = estimateWrappedLines(node.note, noteFontSize, contentWidth);
-  // Line height approx 1.25 (text-xs leading-tight)
-  const noteLineHeight = Math.ceil(noteFontSize * 1.25);
-  const noteHeight = noteLines * noteLineHeight + 4; // +4 for margin-top
+  let extraHeight = 0;
+  if (node.note) {
+    const nodeWidth = calculateNodeWidth(node, config, isRoot);
+    // Approximate width available for text (minus padding)
+    const contentWidth = nodeWidth - 16;
+    // Note font size approx 12px
+    const noteFontSize = 12;
+    const noteLines = estimateWrappedLines(node.note, noteFontSize, contentWidth);
+    // Line height approx 1.25 (text-xs leading-tight)
+    const noteLineHeight = Math.ceil(noteFontSize * 1.25);
+    extraHeight += noteLines * noteLineHeight + 4; // +4 for margin-top
+  }
 
-  return totalHeight + noteHeight;
+  // Estimate refs height: each ref card ≈ 24px (icon + text + padding) + 4px gap
+  if (node.refs && node.refs.length > 0) {
+    extraHeight += node.refs.length * 24 + 4; // +4 for margin-top
+  }
+
+  return totalHeight + extraHeight;
 }
 
 /** 计算子树高度（递归）

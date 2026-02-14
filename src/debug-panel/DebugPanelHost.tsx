@@ -55,6 +55,7 @@ import EditRetryDebugPlugin from './plugins/EditRetryDebugPlugin';
 import ChatAnkiWorkflowDebugPlugin from './plugins/ChatAnkiWorkflowDebugPlugin';
 import TemplateDesignerWorkflowDebugPlugin from './plugins/TemplateDesignerWorkflowDebugPlugin';
 import MindMapBlurHoverDebugPlugin from './plugins/MindMapBlurHoverDebugPlugin';
+import AttachmentPipelineTestPlugin from './plugins/AttachmentPipelineTestPlugin';
 
 export interface DebugPanelHostProps {
   visible: boolean;
@@ -453,6 +454,15 @@ const PLUGINS: DebugPanelPluginEntry[] = [
     labelDefault: '思维导图悬浮模糊监听',
     descriptionDefault: '监听思维导图节点 hover 时的样式与坐标状态，采集可复制日志（viewport transform、边透明度、节点小数坐标等）用于复现与定位文字模糊根因。',
     groupId: 'infra-quality',
+  },
+  {
+    id: 'attachment-pipeline-test',
+    labelKey: 'debug_panel.plugin_attachment_pipeline_test',
+    descriptionKey: 'debug_panel.plugin_attachment_pipeline_test_desc',
+    Component: AttachmentPipelineTestPlugin,
+    labelDefault: '附件流水线自动化测试',
+    descriptionDefault: '自动测试所有 附件类型×注入模式×模型类型 排列组合（24用例），通过 DOM 模拟真实上传流程，捕获前后端管线日志，验证注入模式规范化和多模态检测。',
+    groupId: 'chat-timeline',
   },
 ];
 

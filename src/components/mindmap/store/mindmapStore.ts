@@ -8,7 +8,7 @@ import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 import { nanoid } from 'nanoid';
 import i18next from 'i18next';
-import type { MindMapDocument, MindMapNode, LayoutDirection, EdgeType, MindMapRenderConfig, LayoutConfig, UpdateNodeParams, BlankRange } from '../types';
+import type { MindMapDocument, MindMapNode, MindMapNodeRef, LayoutDirection, EdgeType, MindMapRenderConfig, LayoutConfig, UpdateNodeParams, BlankRange } from '../types';
 import * as api from '../api/mindmapApi';
 import type { VfsMindMap, MindMapViewType } from '../types';
 import { PresetRegistry } from '../registry';
@@ -193,6 +193,10 @@ interface MindMapStoreState {
   ) => void;
   indentNode: (nodeId: string) => void;
   outdentNode: (nodeId: string) => void;
+
+  // 节点资源引用
+  addNodeRef: (nodeId: string, ref: MindMapNodeRef) => void;
+  removeNodeRef: (nodeId: string, sourceId: string) => void;
 
   // Undo/Redo
   undo: () => void;
@@ -869,6 +873,31 @@ export const useMindMapStore = create<MindMapStoreState>()(
 
         const parentIdx = grandParent.children.findIndex((c) => c.id === parent.id);
         get().moveNode(nodeId, grandParent.id, parentIdx + 1);
+      },
+
+      // 节点资源引用
+      addNodeRef: (nodeId: string, ref: MindMapNodeRef) => {
+        applyMutation((state) => {
+          const node = findNodeById(state.document.root, nodeId);
+          if (!node) return;
+          if (!node.refs) {
+            node.refs = [];
+          }
+          // 去重：同一 sourceId 不重复添加
+          if (node.refs.some((r) => r.sourceId === ref.sourceId)) return;
+          node.refs.push(ref);
+        });
+      },
+
+      removeNodeRef: (nodeId: string, sourceId: string) => {
+        applyMutation((state) => {
+          const node = findNodeById(state.document.root, nodeId);
+          if (!node?.refs) return;
+          node.refs = node.refs.filter((r) => r.sourceId !== sourceId);
+          if (node.refs.length === 0) {
+            delete node.refs;
+          }
+        });
       },
 
       // Undo

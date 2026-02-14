@@ -195,7 +195,15 @@
     "highlight": "Highlight",
     "copy": "Copy",
     "cut": "Cut",
-    "pasteAsChild": "Paste as Child"
+    "pasteAsChild": "Paste as Child",
+    "linkResource": "Link Resource"
+  },
+  "refs": {
+    "pickerTitle": "Link Resource",
+    "searchPlaceholder": "Search resources...",
+    "loading": "Loading...",
+    "noResults": "No matching resources",
+    "empty": "No resources"
   },
   "node": {
     "unnamed": "Unnamed",

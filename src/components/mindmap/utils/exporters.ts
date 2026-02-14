@@ -100,6 +100,15 @@ function nodeToMarkdown(node: MindMapNode, level: number): string {
     }
   }
 
+  // 添加关联资源引用
+  if (node.refs && node.refs.length > 0) {
+    const indent = level === 0 ? '' : '  '.repeat(level);
+    for (const ref of node.refs) {
+      result += `${indent}> 📎 [${ref.name}](${ref.sourceId})\n`;
+    }
+    if (level === 0) result += '\n';
+  }
+
   // 处理子节点
   const children = node.children || [];
   for (const child of children) {

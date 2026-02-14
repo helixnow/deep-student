@@ -121,6 +121,7 @@ export class VerticalOrgChartEngine extends BaseLayoutEngine {
         data: {
           label: node.text || '',
           note: node.note,
+          refs: node.refs,
           isRoot: level === 0,
           level,
           collapsed: !!node.collapsed,

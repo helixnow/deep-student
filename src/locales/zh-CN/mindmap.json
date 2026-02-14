@@ -192,7 +192,15 @@
     "highlight": "高亮",
     "copy": "复制",
     "cut": "剪切",
-    "pasteAsChild": "粘贴为子节点"
+    "pasteAsChild": "粘贴为子节点",
+    "linkResource": "关联资源"
+  },
+  "refs": {
+    "pickerTitle": "关联资源",
+    "searchPlaceholder": "搜索资源...",
+    "loading": "加载中...",
+    "noResults": "未找到匹配资源",
+    "empty": "暂无资源"
   },
   "node": {
     "unnamed": "未命名",
