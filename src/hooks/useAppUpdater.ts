@@ -6,7 +6,7 @@
  * - 提供手动检查更新功能
  * - Android/iOS 走应用商店，不使用此机制
  */
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { isMobilePlatform } from '../utils/platform';
 
 /** semver 大于比较（不引入额外依赖） */
@@ -69,6 +69,7 @@ const initialState: UpdateState = {
 
 export function useAppUpdater() {
   const [state, setState] = useState<UpdateState>(initialState);
+  const pendingUpdateRef = useRef<any>(null);
 
   const mobile = isMobilePlatform();
 
@@ -78,10 +79,12 @@ export function useAppUpdater() {
     if (mobile) {
       setState(prev => ({ ...prev, checking: true, error: null, upToDate: false }));
       try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000);
         const resp = await fetch('https://api.github.com/repos/000haoji/deep-student/releases/latest', {
           headers: { Accept: 'application/vnd.github+json' },
-          signal: AbortSignal.timeout(10000),
-        });
+          signal: controller.signal,
+        }).finally(() => clearTimeout(timeoutId));
         if (!resp.ok) throw new Error(`GitHub API ${resp.status}`);
         const data = await resp.json();
         const latestVersion = (data.tag_name ?? '').replace(/^v/, '');
@@ -120,6 +123,7 @@ export function useAppUpdater() {
       const update = await check();
 
       if (update) {
+        pendingUpdateRef.current = update;
         setState(prev => ({
           ...prev,
           checking: false,
@@ -131,6 +135,7 @@ export function useAppUpdater() {
           },
         }));
       } else {
+        pendingUpdateRef.current = null;
         setState(prev => ({
           ...prev,
           checking: false,
@@ -140,6 +145,7 @@ export function useAppUpdater() {
         }));
       }
     } catch (err: any) {
+      pendingUpdateRef.current = null;
       const errorMsg = err?.message || String(err);
       if (!silent) {
         setState(prev => ({
@@ -161,13 +167,17 @@ export function useAppUpdater() {
     setState(prev => ({ ...prev, downloading: true, progress: 0, error: null }));
 
     try {
-      const { check } = await import('@tauri-apps/plugin-updater');
-      const update = await check();
+      let update = pendingUpdateRef.current;
+      if (!update) {
+        const { check } = await import('@tauri-apps/plugin-updater');
+        update = await check();
+      }
 
       if (!update) {
         setState(prev => ({ ...prev, downloading: false, error: '更新已不可用' }));
         return;
       }
+      pendingUpdateRef.current = null;
 
       // 下载并安装（官方推荐：用 downloaded/contentLength 计算真实进度）
       let downloaded = 0;
@@ -195,13 +205,25 @@ export function useAppUpdater() {
       });
 
       // 安装完成后需要重启
-      const { relaunch } = await import('@tauri-apps/plugin-process');
-      await relaunch();
+      try {
+        const { relaunch } = await import('@tauri-apps/plugin-process');
+        await relaunch();
+      } catch (relaunchErr: any) {
+        console.error('[Updater] Relaunch failed:', relaunchErr);
+        setState(prev => ({
+          ...prev,
+          downloading: false,
+          progress: 100,
+          error: '更新已安装，请手动重启应用',
+        }));
+      }
     } catch (err: any) {
+      const errorMsg = err?.message || String(err) || '更新下载失败';
+      console.error('[Updater] Download/install failed:', errorMsg, err);
       setState(prev => ({
         ...prev,
         downloading: false,
-        error: err?.message || '更新下载失败',
+        error: errorMsg,
       }));
     }
   }, [mobile]);

@@ -85,7 +85,7 @@ DeepStudent 旨在构建一个**完全 AI 原生**的学习闭环，解决碎片
 │                      DeepStudent                        │
 │                                                         │
 │  ┌──────────┐  ┌───────────┐  ┌──────────┐             │
-│  │  Chat V2 │  │ Learning  │  │ CardForge│   ...Apps   │
+│  │  Chat V2 │  │ Learning  │  │ ChatAnki │   ...Apps   │
 │  │  (对话)  │  │    Hub    │  │  (制卡)  │             │
 │  └────┬─────┘  └─────┬─────┘  └────┬─────┘             │
 │       └───────────────┼─────────────┘                   │
@@ -136,7 +136,7 @@ DeepStudent 的对话引擎专为学习场景打造，支持多模态输入、�
 
 - **全格式支持**：笔记、PDF 教材、题目集、翻译练习、作文批改、知识导图一站式管理。
 - **向量化索引**：资源导入后进入待索引队列，支持批量触发 OCR 与向量化，状态实时可视。
-- **全能阅读器**：内置 PDF/Office/Markdown 阅读器，支持双页阅读与书签标注。
+- **文档阅读器**：内置 PDF / DOCX 阅读器，支持双页阅读与书签标注。
 
 <details>
 <summary>📸 查看截图</summary>
@@ -233,7 +233,7 @@ AI 驱动的知识结构化工具。
 将教材一键转化为可练习的题库。
 
 - **一键出题**：上传教材/试卷，AI 自动提取或生成题目集。
-- **多种练习模式**：支持每日练习、限时练习、模拟考试等多种做题模式，实时判分。
+- **多种练习模式**：支持每日练习、限时练习、模拟考试等多种做题模式，自动判分。
 - **模拟考试配置**：支持按题型/难度分布配置组卷参数。
 - **AI 解析**：支持对题目触发 AI 深度解析，分析知识点与解题思路。
 - **知识点视图**：按知识点分类统计题目分布和掌握率，精准定位薄弱环节。
@@ -251,7 +251,7 @@ AI 驱动的知识结构化工具。
 
 让 AI 拥有长期记忆，越用越懂你。
 
-- **主动记忆（默认策略）**：在深度学者技能默认策略下，AI 会主动回忆并按需保存高复用信息。
+- **主动记忆**：AI 在对话中自动识别并保存高复用信息（如学习偏好、知识背景），后续会话自动调用。
 - **记忆管理**：可视化的记忆管理面板，支持编辑、整理记忆条目。
 - **上下文延续**：后续对话中按需调用记忆检索工具，保持上下文连续性。
 
@@ -298,7 +298,7 @@ AI 驱动的知识结构化工具。
 
 完善的数据管理与安全机制：
 
-- **备份与恢复**：支持全量/增量备份，数据导入导出。
+- **备份与恢复**：支持全量备份与恢复，数据导入导出（增量备份试验性支持）。
 - **审计日志**：记录所有数据操作，可追溯。
 - **数据库状态**：实时查看 SQLite 和 LanceDB 的运行状态。
 
@@ -339,16 +339,24 @@ npm run dev:tauri
 DeepStudent
 ├── src/                    # React 前端
 │   ├── chat-v2/            #   Chat V2 对话引擎（适配器、插件、技能）
+│   ├── components/         #   UI 组件（含各功能模块）
 │   ├── stores/             #   Zustand 状态管理
-│   ├── components/         #   UI 组件
-│   └── api/                #   前端 API 层
+│   ├── mcp/                #   MCP 客户端 & 内置工具定义
+│   ├── essay-grading/      #   作文批改前端
+│   ├── dstu/               #   DSTU 资源协议 & VFS API
+│   ├── api/                #   前端 API 层
+│   └── locales/            #   i18n 国际化（中 / 英）
 ├── src-tauri/              # Tauri / Rust 后端
 │   └── src/
 │       ├── chat_v2/        #   对话 pipeline & 工具执行器
 │       ├── llm_manager/    #   多模型管理 & 适配
-│       ├── tools/          #   联网搜索、RAG、文件处理
-│       ├── vfs/            #   虚拟文件系统
-│       └── question_bank_service.rs
+│       ├── vfs/            #   虚拟文件系统 & 向量化索引
+│       ├── tools/          #   联网搜索引擎适配
+│       ├── data_governance/ #  备份、审计、迁移
+│       ├── memory/         #   智能记忆后端
+│       ├── ocr_adapters/   #   OCR 适配器（DeepSeek VL / PaddleOCR）
+│       ├── essay_grading/  #   作文批改后端
+│       └── mcp/            #   MCP 协议实现
 ├── docs/                   # 用户文档 & 设计文档
 ├── tests/                  # Vitest 单元测试 & Playwright CT
 └── .github/workflows/      # CI / Release 自动化
@@ -361,12 +369,12 @@ DeepStudent
 | 领域 | 技术方案 |
 |------|----------|
 | **前端框架** | React 18 + TypeScript + Vite 6 |
-| **UI 组件** | Tailwind CSS + Ant Design 5 + Radix UI |
+| **UI 组件** | Tailwind CSS + Radix UI + Lucide Icons |
 | **桌面 / 移动** | Tauri 2 (Rust) — macOS · Windows · Android · iOS |
 | **数据存储** | SQLite (Rusqlite) + LanceDB (向量检索) + 本地 Blob |
 | **状态管理** | Zustand 5 + Immer |
 | **编辑器** | Milkdown (Markdown) + CodeMirror (代码) |
-| **文档处理** | PDF.js + OCR (DeepSeek / Paddle) |
+| **文档处理** | PDF.js + OCR 远程适配（DeepSeek VL / PaddleOCR API） |
 | **搜索引擎** | Google CSE · SerpAPI · Tavily · Brave · SearXNG · 智谱 · 博查 |
 | **CI / CD** | GitHub Actions — lint · type-check · build · Release Please |
 
@@ -408,7 +416,7 @@ DeepStudent 起源于 2025 年 3 月的一个 Python demo 原型，经过近一�
 | **2025.11** | 💬 Chat V2 架构 — 全新对话引擎（Variant 多模型对比、工具事件系统、快照健康监控） |
 | **2025.12** | ⚡ 性能优化 — 会话加载并行化、配置缓存、输入框单例架构、DSTU 资源协议 |
 | **2026.01** | 🧩 技能系统与 VFS — 文件式技能加载、统一虚拟文件系统（VFS）、遗留模块清理 |
-| **2026.02** | 🚀 开源发布 — 更名为 **DeepStudent**，发布 **v0.9.2**，配置 CI/CD、release-please 自动发版 |
+| **2026.02** | 🚀 开源发布 — 更名为 **DeepStudent**，发布 **v0.9.0**，配置 CI/CD、release-please 自动发版 |
 
 ---
 
