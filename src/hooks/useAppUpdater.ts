@@ -11,11 +11,23 @@ import { isMobilePlatform } from '../utils/platform';
 
 /** semver 大于比较（不引入额外依赖） */
 function isNewerVersion(latest: string, current: string): boolean {
-  const l = latest.split('.').map(Number);
-  const c = current.split('.').map(Number);
-  for (let i = 0; i < Math.max(l.length, c.length); i++) {
-    const lv = l[i] || 0;
-    const cv = c[i] || 0;
+  // 仅比较 core semver（major.minor.patch），忽略 prerelease/build metadata
+  const normalize = (v: string): [number, number, number] => {
+    const core = v.trim().replace(/^v/i, '').split(/[+-]/, 1)[0] || '';
+    const [major, minor, patch] = core.split('.');
+    const toInt = (s?: string) => {
+      const n = Number.parseInt(s ?? '0', 10);
+      return Number.isFinite(n) ? n : 0;
+    };
+    return [toInt(major), toInt(minor), toInt(patch)];
+  };
+
+  const l = normalize(latest);
+  const c = normalize(current);
+
+  for (let i = 0; i < 3; i++) {
+    const lv = l[i];
+    const cv = c[i];
     if (lv > cv) return true;
     if (lv < cv) return false;
   }

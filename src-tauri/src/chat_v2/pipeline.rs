@@ -479,7 +479,9 @@ impl ChatV2LLMAdapter {
             .content_block_id
             .lock()
             .unwrap_or_else(|e| e.into_inner());
-        if guard.is_none() {
+        if let Some(existing) = guard.clone() {
+            existing
+        } else {
             let block_id = Self::generate_block_id();
             self.emitter.emit_start(
                 event_types::CONTENT,
@@ -489,8 +491,8 @@ impl ChatV2LLMAdapter {
                 None, // variant_id
             );
             *guard = Some(block_id.clone());
+            block_id
         }
-        guard.clone().unwrap()
     }
 
     /// 结束 thinking 块

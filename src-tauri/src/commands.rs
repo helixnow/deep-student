@@ -3176,19 +3176,28 @@ pub async fn get_test_logs(
 pub async fn open_log_file(log_path: String, state: tauri::State<'_, AppState>) -> Result<()> {
     use std::process::Command;
 
-    let full_path = state.file_manager.get_app_data_dir().join(&log_path);
-
-    if !full_path.exists() {
-        return Err(AppError::not_found(format!("日志文件不存在: {}", log_path)));
+    // 防止路径遍历
+    if log_path.contains("..") || log_path.starts_with("/") || log_path.starts_with("\\") {
+        return Err(AppError::validation("非法的文件路径"));
     }
 
-    // 根据操作系统选择合适的命令打开文件
+    let full_path = state.file_manager.get_app_data_dir().join(&log_path);
+
+    // 规范化路径并检查前缀
+    let canonical_path = full_path.canonicalize().map_err(|_| AppError::not_found(format!("日志文件不存在: {}", log_path)))?;
+    let app_data_dir = state.file_manager.get_app_data_dir().canonicalize().unwrap_or_else(|_| state.file_manager.get_app_data_dir().to_path_buf());
+
+    if !canonical_path.starts_with(&app_data_dir) {
+        return Err(AppError::validation("非法的文件路径访问"));
+    }
+
+    // 根据操作系统选择合适的命令打开文件（使用规范化路径）
     #[cfg(target_os = "windows")]
     {
-        if let Err(e) = Command::new("notepad").arg(&full_path).spawn() {
+        if let Err(e) = Command::new("notepad").arg(&canonical_path).spawn() {
             // 如果notepad失败，尝试默认程序
             if let Err(e2) = Command::new("cmd")
-                .args(&["/C", "start", "", full_path.to_str().unwrap_or("")])
+                .args(&["/C", "start", "", canonical_path.to_str().unwrap_or("")])
                 .spawn()
             {
                 return Err(AppError::file_system(format!(
@@ -3201,14 +3210,14 @@ pub async fn open_log_file(log_path: String, state: tauri::State<'_, AppState>) 
 
     #[cfg(target_os = "macos")]
     {
-        if let Err(e) = Command::new("open").arg(&full_path).spawn() {
+        if let Err(e) = Command::new("open").arg(&canonical_path).spawn() {
             return Err(AppError::file_system(format!("打开日志文件失败: {}", e)));
         }
     }
 
     #[cfg(target_os = "linux")]
     {
-        if let Err(e) = Command::new("xdg-open").arg(&full_path).spawn() {
+        if let Err(e) = Command::new("xdg-open").arg(&canonical_path).spawn() {
             return Err(AppError::file_system(format!("打开日志文件失败: {}", e)));
         }
     }
@@ -3220,33 +3229,52 @@ pub async fn open_log_file(log_path: String, state: tauri::State<'_, AppState>) 
 pub async fn open_logs_folder(log_type: String, state: tauri::State<'_, AppState>) -> Result<()> {
     use std::process::Command;
 
+    // 防止路径遍历
+    if log_type.contains("..") || log_type.starts_with("/") || log_type.starts_with("\\") {
+        return Err(AppError::validation("非法的文件路径"));
+    }
+
     let mut log_dir = state.file_manager.get_app_data_dir().to_path_buf();
     log_dir.push("logs");
     log_dir.push(&log_type);
 
-    // 确保目录存在
-    if let Err(_) = std::fs::create_dir_all(&log_dir) {
-        return Err(AppError::file_system("创建日志目录失败".to_string()));
+    // 规范化路径并检查前缀
+    let canonical_path = if log_dir.exists() {
+        log_dir.canonicalize().map_err(|_| AppError::not_found("日志目录路径无效"))?
+    } else {
+        // 如果目录不存在，我们先不canonicalize，而是检查其逻辑路径
+        // 但为了安全，我们最好先创建它，然后再 canonicalize
+        std::fs::create_dir_all(&log_dir).map_err(|_| AppError::file_system("创建日志目录失败".to_string()))?;
+        log_dir.canonicalize().map_err(|_| AppError::not_found("日志目录路径无效"))?
+    };
+
+    let app_data_dir = state.file_manager.get_app_data_dir().canonicalize().unwrap_or_else(|_| state.file_manager.get_app_data_dir().to_path_buf());
+
+    if !canonical_path.starts_with(&app_data_dir) {
+        return Err(AppError::validation("非法的文件路径访问"));
     }
+
+    // 使用规范化后的路径
+    let target_dir = canonical_path;
 
     // 根据操作系统选择合适的命令打开文件夹
     #[cfg(target_os = "windows")]
     {
-        if let Err(e) = Command::new("explorer").arg(&log_dir).spawn() {
+        if let Err(e) = Command::new("explorer").arg(&target_dir).spawn() {
             return Err(AppError::file_system(format!("打开日志文件夹失败: {}", e)));
         }
     }
 
     #[cfg(target_os = "macos")]
     {
-        if let Err(e) = Command::new("open").arg(&log_dir).spawn() {
+        if let Err(e) = Command::new("open").arg(&target_dir).spawn() {
             return Err(AppError::file_system(format!("打开日志文件夹失败: {}", e)));
         }
     }
 
     #[cfg(target_os = "linux")]
     {
-        if let Err(e) = Command::new("xdg-open").arg(&log_dir).spawn() {
+        if let Err(e) = Command::new("xdg-open").arg(&target_dir).spawn() {
             return Err(AppError::file_system(format!("打开日志文件夹失败: {}", e)));
         }
     }
