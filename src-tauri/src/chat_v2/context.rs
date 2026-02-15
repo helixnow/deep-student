@@ -567,6 +567,7 @@ impl PipelineContext {
             "rag_search" | "multimodal_search" | "unified_search" => block_types::RAG.to_string(),
             "memory_search" => block_types::MEMORY.to_string(),
             "web_search" => block_types::WEB_SEARCH.to_string(),
+            "arxiv_search" | "scholar_search" => block_types::ACADEMIC_SEARCH.to_string(),
             "coordinator_sleep" => block_types::SLEEP.to_string(),
             "subagent_call" => block_types::SUBAGENT_EMBED.to_string(),
             "ask_user" => block_types::ASK_USER.to_string(),

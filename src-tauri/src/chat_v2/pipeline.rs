@@ -102,6 +102,27 @@ pub(crate) const LLM_STREAM_TIMEOUT_SECS: u64 = 600;
 /// 用于摘要生成等简单调用，设置为 2 分钟
 pub(crate) const LLM_NON_STREAM_TIMEOUT_SECS: u64 = 120;
 
+/// 判断一个字符串是否是 API 配置 ID 格式（而非模型显示名称）
+///
+/// 配置 ID 有两种已知格式：
+/// 1. `builtin-*` — 内置模型配置（如 "builtin-deepseek-chat"）
+/// 2. UUID v4 — 用户自建模型配置（如 "a1b2c3d4-e5f6-7890-abcd-ef1234567890"，36字符 8-4-4-4-12）
+///
+/// 不属于以上格式的字符串被认为是模型显示名称（如 "Qwen/Qwen3-8B"、"deepseek-chat"）。
+fn is_config_id_format(id: &str) -> bool {
+    if id.is_empty() {
+        return false;
+    }
+    // 1. 内置配置 ID
+    if id.starts_with("builtin-") {
+        return true;
+    }
+    // 2. UUID v4 格式: 8-4-4-4-12 hex digits (total 36 chars with 4 hyphens)
+    id.len() == 36
+        && id.chars().filter(|c| *c == '-').count() == 4
+        && id.chars().all(|c| c.is_ascii_hexdigit() || c == '-')
+}
+
 /// 截断预览文本到指定字符数（用于笔记工具 diff 预览）
 fn truncate_preview(text: &str, max_chars: usize) -> String {
     let chars: Vec<char> = text.chars().collect();
@@ -1422,21 +1443,24 @@ impl ChatV2Pipeline {
                                     .map(|c| c.model.clone())
                             })
                             .or_else(|| {
-                                // 🔧 最后的回退：如果 config_id 看起来像模型名称（包含 / 或常见模型前缀），直接使用它
-                                // 这处理了模型名称不在 configs 列表中的情况（如删除了配置但重试旧消息）
-                                if config_id.contains('/')
-                                    || config_id.starts_with("gpt-")
-                                    || config_id.starts_with("claude")
-                                    || config_id.starts_with("o1-")
-                                    || config_id.starts_with("o3-")
-                                {
-                                    log::info!(
-                                    "[ChatV2::pipeline] Using config_id as model_name directly: {}",
-                                    config_id
-                                );
-                                    Some(config_id.clone())
-                                } else {
+                                // 🔧 最后的回退：判断 config_id 是否是 API 配置 ID（不可作为显示名称）
+                                // 配置 ID 有两种已知格式：
+                                //   1. builtin-* （内置模型，如 "builtin-deepseek-chat"）
+                                //   2. UUID 格式 （用户自建模型，如 "a1b2c3d4-e5f6-7890-abcd-ef1234567890"）
+                                // 如果 config_id 不属于这两种格式，则认为它本身就是模型显示名称
+                                // （例如删除了配置后重试旧消息，config_id 中保存的可能是旧的模型名）
+                                if is_config_id_format(config_id) {
+                                    log::warn!(
+                                        "[ChatV2::pipeline] config_id is a config UUID/builtin ID, not usable as display name: {}",
+                                        config_id
+                                    );
                                     None
+                                } else {
+                                    log::info!(
+                                        "[ChatV2::pipeline] Using config_id as model_name directly (not a config ID pattern): {}",
+                                        config_id
+                                    );
+                                    Some(config_id.clone())
                                 }
                             });
                         log::info!("[ChatV2::pipeline] Resolved model_name: {:?}", found);
@@ -5840,7 +5864,18 @@ impl ChatV2Pipeline {
             model_id: ctx
                 .model_display_name
                 .clone()
-                .or_else(|| ctx.options.model_id.clone()),
+                .or_else(|| {
+                    // 🔧 P0-2 修复：优先尝试 model2_override_id（实际使用的模型）
+                    // 过滤配置 ID 格式，避免保存前端无法识别的值
+                    ctx.options.model2_override_id.as_ref()
+                        .filter(|id| !is_config_id_format(id))
+                        .cloned()
+                })
+                .or_else(|| {
+                    ctx.options.model_id.as_ref()
+                        .filter(|id| !is_config_id_format(id))
+                        .cloned()
+                }),
             chat_params: Some(chat_params_snapshot),
             sources: if ctx.retrieved_sources.rag.is_some()
                 || ctx.retrieved_sources.memory.is_some()
@@ -8019,21 +8054,54 @@ impl ChatV2Pipeline {
         // 创建共享上下文的 Arc
         let shared_context_arc = Arc::new(shared_context);
 
+        // 🔧 P1-4 修复：将 config_id 解析为模型显示名称
+        // model_id 可能是 API 配置 UUID（如 "builtin-siliconflow"），需要解析为显示名称（如 "Qwen/Qwen3-8B"）
+        // 用于 variant_start 事件和 variant.model_id 存储，确保前端能正确显示供应商图标
+        let display_model_id = match self.llm_manager.get_api_configs().await {
+            Ok(configs) => {
+                configs
+                    .iter()
+                    .find(|c| c.id == model_id)
+                    .map(|c| c.model.clone())
+                    .or_else(|| {
+                        // 通过 model 名称匹配（config_id 本身可能就是模型名）
+                        configs.iter().find(|c| c.model == model_id).map(|c| c.model.clone())
+                    })
+                    .unwrap_or_else(|| {
+                        // 无法从 configs 解析时，判断是否为配置 ID 格式
+                        if is_config_id_format(&model_id) {
+                            log::warn!(
+                                "[ChatV2::pipeline] variant retry: config_id is not a display name: {}",
+                                model_id
+                            );
+                            // 回退到空字符串，前端会显示 generic 图标
+                            // 优于显示无法识别的 UUID
+                            String::new()
+                        } else {
+                            model_id.clone()
+                        }
+                    })
+            }
+            Err(_) => model_id.clone(),
+        };
+
         // 创建并行执行管理器（单变体）
         let manager = super::variant_context::ParallelExecutionManager::with_cancel_token(
             cancel_token.clone(),
         );
 
         // 创建变体执行上下文（使用已有的 variant_id）
+        // 使用 display_model_id 作为变体的模型标识（用于前端图标显示）
         let ctx = manager.create_variant(
             variant_id.clone(),
-            model_id.clone(),
+            display_model_id,
             message_id.clone(),
             Arc::clone(&shared_context_arc),
             Arc::clone(&emitter),
         );
 
         // 执行变体（使用完整工具循环路径，与多变体主流程保持一致）
+        // 注意：model_id（原始 config_id）传递给 execute_single_variant_with_config 用于 LLM 调用
         let result = self
             .execute_single_variant_with_config(
                 ctx.clone(),

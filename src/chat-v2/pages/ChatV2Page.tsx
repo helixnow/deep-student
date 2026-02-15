@@ -541,23 +541,36 @@ export const ChatV2Page: React.FC = () => {
 
   // 加载会话列表（根据全局科目过滤）
   // 🔧 修复：不依赖 currentSessionId，避免与 useEffect 中的 setCurrentSessionId 形成循环
+  // 🔧 分组懒加载修复：分别加载已分组会话（全量）和未分组会话（分页），确保每个分组都能显示其会话
   const loadSessions = useCallback(async () => {
     try {
-      // 并行获取会话列表和总数
-      const [result, totalCount, ungroupedCount] = await Promise.all([
+      // 并行获取：所有已分组会话 + 未分组首页 + 计数
+      const [groupedResult, ungroupedResult, totalCount, ungroupedCount] = await Promise.all([
+        // groupId="*" 表示 group_id IS NOT NULL，一次性加载所有已分组会话
         invoke<ChatSession[]>('chat_v2_list_sessions', {
           status: 'active',
+          groupId: '*',
+          limit: 10000,
+          offset: 0,
+        }),
+        // 未分组会话分页加载
+        invoke<ChatSession[]>('chat_v2_list_sessions', {
+          status: 'active',
+          groupId: '',
           limit: PAGE_SIZE,
           offset: 0,
         }),
         invoke<number>('chat_v2_count_sessions', { status: 'active' }),
         invoke<number>('chat_v2_count_sessions', { status: 'active', groupId: '' }),
       ]);
-      setSessions(result);
+
+      const allSessions = [...groupedResult, ...ungroupedResult]
+        .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+      setSessions(allSessions);
       setTotalSessionCount(totalCount);
       setUngroupedSessionCount(ungroupedCount);
-      // P1-22: 如果返回数量小于 PAGE_SIZE，说明没有更多数据
-      setHasMoreSessions(result.length >= PAGE_SIZE);
+      // "加载更多"只针对未分组会话
+      setHasMoreSessions(ungroupedResult.length >= PAGE_SIZE);
 
       // 🔧 P1-28: 优先恢复上次打开的会话
       let sessionToSelect: string | null = null;
@@ -567,7 +580,7 @@ export const ChatV2Page: React.FC = () => {
         const lastSessionId = localStorage.getItem(LAST_SESSION_KEY);
         if (lastSessionId) {
           // 检查该会话是否仍然存在于列表中
-          const sessionExists = result.some(s => s.id === lastSessionId);
+          const sessionExists = allSessions.some(s => s.id === lastSessionId);
           if (sessionExists) {
             sessionToSelect = lastSessionId;
             console.log('[ChatV2Page] Restoring last session:', lastSessionId);
@@ -597,12 +610,12 @@ export const ChatV2Page: React.FC = () => {
       }
 
       // 如果没有恢复的会话，回退到第一条
-      if (!sessionToSelect && result.length > 0) {
-        sessionToSelect = result[0].id;
+      if (!sessionToSelect && allSessions.length > 0) {
+        sessionToSelect = allSessions[0].id;
       }
 
       // 🔧 优化空态体验：当没有任何会话时，自动创建一个空会话
-      if (!sessionToSelect && result.length === 0) {
+      if (!sessionToSelect && allSessions.length === 0) {
         try {
           const newSession = await createSessionWithDefaults({
             mode: 'chat',
@@ -627,15 +640,20 @@ export const ChatV2Page: React.FC = () => {
   }, []);
 
   // P1-22: 加载更多会话（无限滚动分页）
+  // 🔧 分组懒加载修复：只加载更多未分组会话，已分组会话在初始加载时已全量获取
+  // 🔧 批判性修复：使用 sessionsRef 动态计算 offset，避免删除/移动会话后 ref 漂移导致跳过会话
   const loadMoreSessions = useCallback(async () => {
     if (isLoadingMore || !hasMoreSessions) return;
 
     setIsLoadingMore(true);
     try {
+      // 动态计算当前已加载的未分组会话数量作为 offset
+      const currentUngroupedLoaded = sessionsRef.current.filter(s => !s.groupId).length;
       const result = await invoke<ChatSession[]>('chat_v2_list_sessions', {
         status: 'active',
+        groupId: '',
         limit: PAGE_SIZE,
-        offset: sessions.length,
+        offset: currentUngroupedLoaded,
       });
 
       if (result.length > 0) {
@@ -648,7 +666,7 @@ export const ChatV2Page: React.FC = () => {
     } finally {
       setIsLoadingMore(false);
     }
-  }, [sessions.length, isLoadingMore, hasMoreSessions]);
+  }, [isLoadingMore, hasMoreSessions]);
 
   // ========== 🔧 P1修复：基于消息数量判断是否为空对话 ==========
   // 问题：原逻辑基于标题判断，但标题是后端异步生成的，导致有消息也不能新建

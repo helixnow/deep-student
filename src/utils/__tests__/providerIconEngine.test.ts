@@ -161,8 +161,8 @@ describe('ProviderIconEngine', () => {
       expect(getProviderIcon('deepseek-v3.1')).toBe('/icons/providers/deepseek.svg');
     });
 
-    it('未识别的模型应该返回空字符串', () => {
-      expect(getProviderIcon('unknown-model-xyz')).toBe('');
+    it('未识别的模型应该返回 generic 图标路径', () => {
+      expect(getProviderIcon('unknown-model-xyz')).toBe('/icons/providers/generic.svg');
     });
   });
 

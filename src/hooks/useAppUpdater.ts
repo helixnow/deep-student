@@ -114,6 +114,7 @@ function classifyDownloadInstallError(err: any): UpdateErrorPhase {
 export function useAppUpdater() {
   const [state, setState] = useState<UpdateState>(initialState);
   const pendingUpdateRef = useRef<any>(null);
+  const downloadingRef = useRef(false);
 
   const mobile = isMobilePlatform();
 
@@ -207,6 +208,8 @@ export function useAppUpdater() {
   /** 下载并安装更新（仅桌面端） */
   const downloadAndInstall = useCallback(async () => {
     if (mobile) return; // 移动端不支持 in-app 安装
+    if (downloadingRef.current) return; // 防止并发下载
+    downloadingRef.current = true;
 
     setState(prev => ({ ...prev, downloading: true, progress: 0, error: null }));
 
@@ -254,6 +257,7 @@ export function useAppUpdater() {
         await relaunch();
       } catch (relaunchErr: any) {
         console.error('[Updater] Relaunch failed:', relaunchErr);
+        downloadingRef.current = false;
         setState(prev => ({
           ...prev,
           available: false,
@@ -266,6 +270,7 @@ export function useAppUpdater() {
         }));
       }
     } catch (err: any) {
+      downloadingRef.current = false;
       const errorMsg = err?.message || String(err) || 'Unknown error';
       setState(prev => {
         // 如果 Finished 事件已触发（progress >= 100），说明下载完成、
@@ -278,7 +283,7 @@ export function useAppUpdater() {
             available: false,
             downloading: false,
             error: {
-              phase: 'relaunch' as UpdateErrorPhase,
+              phase: 'relaunch',
               message: '更新已安装，请手动重启应用以完成更新',
             },
           };

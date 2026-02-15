@@ -78,6 +78,7 @@ pub mod block_types {
     pub const WEB_SEARCH: &str = "web_search";
     pub const MULTIMODAL_RAG: &str = "multimodal_rag";
 
+    pub const ACADEMIC_SEARCH: &str = "academic_search";
     pub const MCP_TOOL: &str = "mcp_tool";
     pub const IMAGE_GEN: &str = "image_gen";
 

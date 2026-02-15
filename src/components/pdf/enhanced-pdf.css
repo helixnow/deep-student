@@ -88,12 +88,15 @@
 .ds-pdf__toolbar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 10px 14px;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 10px;
   background: hsl(var(--card));
   border-bottom: 1px solid hsl(var(--border));
   flex-shrink: 0;
+  flex-wrap: nowrap;
+  overflow: visible;
+  min-height: 44px;
 }
 
 .ds-pdf__toolbar-left,
@@ -101,7 +104,68 @@
 .ds-pdf__toolbar-right {
   display: flex;
   align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.ds-pdf__toolbar-center {
+  flex-shrink: 1;
+  min-width: 0;
+}
+
+/* 更多菜单容器 */
+.ds-pdf__toolbar-more {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.ds-more-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  min-width: 180px;
+  padding: 4px;
+  border-radius: 8px;
+  background: hsl(var(--popover));
+  border: 1px solid hsl(var(--border));
+  box-shadow: 0 4px 16px hsl(var(--ring) / 0.12);
+  z-index: 200;
+}
+
+.ds-more-item {
+  display: flex;
+  align-items: center;
   gap: 8px;
+  width: 100%;
+  padding: 7px 10px;
+  font-size: 13px;
+  border: none;
+  background: transparent;
+  color: hsl(var(--popover-foreground));
+  cursor: pointer;
+  border-radius: 5px;
+  transition: background .12s ease, color .12s ease;
+  white-space: nowrap;
+}
+
+.ds-more-item:hover {
+  background: hsl(var(--accent));
+  color: hsl(var(--accent-foreground));
+}
+
+.ds-more-item.active {
+  color: hsl(var(--primary));
+}
+
+.ds-more-item svg {
+  flex-shrink: 0;
+  color: inherit;
+}
+
+.ds-more-divider {
+  height: 1px;
+  margin: 3px 6px;
+  background: hsl(var(--border));
 }
 
 .ds-pdf__toolbar-spacer {
@@ -857,100 +921,8 @@
    移动端响应式样式
    ============================================================================ */
 
-@container (max-width: 1100px) {
-  .ds-pdf__toolbar {
-    padding: 8px 10px;
-    gap: 8px;
-    flex-wrap: wrap;
-    justify-content: center;
-  }
-
-  .ds-pdf__toolbar-left,
-  .ds-pdf__toolbar-center,
-  .ds-pdf__toolbar-right {
-    flex-wrap: wrap;
-    justify-content: center;
-    gap: 6px;
-  }
-
-  .ds-toolbar-divider {
-    margin: 0 2px;
-    height: 16px;
-  }
-}
-
-@container (max-width: 860px) {
-  .ds-btn {
-    min-width: 28px;
-    height: 28px;
-    padding: 0 6px;
-  }
-
-  .ds-btn svg {
-    width: 14px;
-    height: 14px;
-  }
-
-  .ds-input {
-    width: 48px;
-    height: 28px;
-    font-size: 11px;
-    padding: 0 4px;
-  }
-
-  .ds-page-total {
-    font-size: 11px;
-  }
-
-  .ds-zoom-readout {
-    min-width: 40px;
-    font-size: 11px;
-  }
-}
-
+/* 响应式：紧凑模式由 JS ResizeObserver 控制，无需 flex-wrap */
 @media (max-width: 640px) {
-  /* 工具栏两行布局 */
-  .ds-pdf__toolbar {
-    padding: 6px 8px !important;
-    gap: 6px !important;
-    flex-wrap: wrap !important;
-    justify-content: center !important;
-  }
-
-  .ds-pdf__toolbar-left,
-  .ds-pdf__toolbar-center,
-  .ds-pdf__toolbar-right {
-    gap: 4px !important;
-  }
-
-  .ds-btn {
-    min-width: 28px !important;
-    height: 28px !important;
-    padding: 0 6px !important;
-    font-size: 11px !important;
-  }
-
-  .ds-btn svg {
-    width: 14px !important;
-    height: 14px !important;
-  }
-
-  .ds-input {
-    width: 48px !important;
-    height: 28px !important;
-    font-size: 11px !important;
-    padding: 0 4px !important;
-  }
-
-  .ds-page-total {
-    font-size: 11px !important;
-  }
-
-  .ds-zoom-readout {
-    min-width: 40px !important;
-    font-size: 11px !important;
-  }
-
   /* 侧边栏默认隐藏 */
   .ds-pdf__sidebar {
     position: absolute;

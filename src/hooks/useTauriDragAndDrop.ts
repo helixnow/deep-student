@@ -181,6 +181,7 @@ export const useTauriDragAndDrop = ({
     async (paths: string[]) => {
       const startTime = performance.now();
       
+      try {
       // ⚠️ 可见性检查已在监听器入口完成，这里可以直接处理
       emitDebugEvent(zoneId, 'drop_received', 'info', `接收到 ${paths.length} 个文件路径`, { 
         filePaths: paths,
@@ -335,6 +336,17 @@ export const useTauriDragAndDrop = ({
         });
       } else {
         emitDebugEvent(zoneId, 'complete', 'warning', '没有可处理的文件', {
+          processingTime: `${(performance.now() - startTime).toFixed(2)}ms`,
+        });
+      }
+      } catch (fatalError: unknown) {
+        console.error('[useTauriDragAndDrop] processFilePaths fatal error:', fatalError);
+        showGlobalNotification('error', i18n.t('drag_drop:errors.all_files_failed', {
+          defaultValue: '文件处理失败：{{reason}}',
+          reason: String(fatalError),
+        }));
+        emitDebugEvent(zoneId, 'callback_error', 'error', `processFilePaths 致命错误: ${String(fatalError)}`, {
+          error: String(fatalError),
           processingTime: `${(performance.now() - startTime).toFixed(2)}ms`,
         });
       }

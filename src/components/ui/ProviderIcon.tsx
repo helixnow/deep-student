@@ -5,7 +5,7 @@
  * 用于在UI中显示AI模型供应商的品牌图标
  */
 
-import React from 'react';
+import React, { useState } from 'react';
 import { getProviderInfo, type ProviderBrand } from '../../utils/providerIconEngine';
 
 export interface ProviderIconProps {
@@ -90,6 +90,8 @@ export const ProviderIcon: React.FC<ProviderIconProps> = ({
 }) => {
   const providerInfo = getProviderInfo(modelId);
   const hasIcon = !!providerInfo.iconPath;
+  // 🔧 P2-2 修复：图标加载失败时回退到 GenericFallbackIcon（而非留白）
+  const [iconLoadFailed, setIconLoadFailed] = useState(false);
   
   // 容器样式
   const containerStyle: React.CSSProperties = {
@@ -102,7 +104,7 @@ export const ProviderIcon: React.FC<ProviderIconProps> = ({
   };
   
   // 图标元素
-  const iconElement = hasIcon ? (
+  const iconElement = (hasIcon && !iconLoadFailed) ? (
     <img
       src={providerInfo.iconPath}
       alt={providerInfo.displayName}
@@ -112,10 +114,10 @@ export const ProviderIcon: React.FC<ProviderIconProps> = ({
         objectFit: 'contain',
         flexShrink: 0,
       }}
-      onError={(e) => {
-        // 图片加载失败时的处理
+      onError={() => {
+        // 🔧 P2-2 修复：图标加载失败时触发 state 更新，回退到 GenericFallbackIcon
         console.warn(`Failed to load provider icon: ${providerInfo.iconPath}`);
-        e.currentTarget.style.display = 'none';
+        setIconLoadFailed(true);
       }}
     />
   ) : (

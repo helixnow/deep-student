@@ -668,7 +668,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                 </svg>
               ) : (
                 <ProviderIcon
-                  modelId={message._meta?.modelId || ''}
+                  modelId={singleVariantModelId || message._meta?.modelId || ''}
                   size={32}
                   showTooltip={true}
                 />

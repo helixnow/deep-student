@@ -31,7 +31,8 @@ import {
   BookmarkPlus,
   BookmarkCheck,
   Pencil,
-  Trash2
+  Trash2,
+  MoreHorizontal
 } from 'lucide-react';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
@@ -196,6 +197,12 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
   const [editingBookmarkId, setEditingBookmarkId] = useState<string | null>(null);
   const [editingBookmarkTitle, setEditingBookmarkTitle] = useState<string>('');
 
+  // 工具栏响应式：宽度不足时收折次要按钮到"更多"菜单
+  const [isToolbarCompact, setIsToolbarCompact] = useState<boolean>(false);
+  const [showMoreMenu, setShowMoreMenu] = useState<boolean>(false);
+  const toolbarRef = useRef<HTMLDivElement>(null);
+  const moreMenuRef = useRef<HTMLDivElement>(null);
+
   const containerRef = useRef<HTMLDivElement>(null);
   const pageContainerRef = useRef<HTMLDivElement>(null);
   const zoomMenuRef = useRef<HTMLDivElement>(null);
@@ -223,6 +230,33 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
       }
     };
   }, []);
+
+  // 工具栏响应式：ResizeObserver 检测宽度，窄时切换紧凑模式
+  const TOOLBAR_COMPACT_THRESHOLD = 520;
+  useEffect(() => {
+    const el = toolbarRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const w = entry.contentRect.width;
+        setIsToolbarCompact(w < TOOLBAR_COMPACT_THRESHOLD);
+      }
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  // 点击外部关闭"更多"菜单
+  useEffect(() => {
+    if (!showMoreMenu) return;
+    const handleClick = (e: MouseEvent) => {
+      if (moreMenuRef.current && !moreMenuRef.current.contains(e.target as Node)) {
+        setShowMoreMenu(false);
+      }
+    };
+    setTimeout(() => document.addEventListener('click', handleClick), 10);
+    return () => document.removeEventListener('click', handleClick);
+  }, [showMoreMenu]);
 
   // 稳定的文件源 - 使用 useMemo 确保引用稳定
   const file = useMemo(() => {
@@ -1263,67 +1297,67 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
       ref={containerRef}
       tabIndex={0}
     >
-      {/* 工具栏 */}
-      <div className="ds-pdf__toolbar">
-        {/* 左侧：侧边栏控制 */}
-        <div className="ds-pdf__toolbar-left">
-          {outline && outline.length > 0 && (
+      {/* 工具栏 - 始终单行 */}
+      <div className="ds-pdf__toolbar" ref={toolbarRef}>
+        {/* 非紧凑模式：左侧侧边栏控制 */}
+        {!isToolbarCompact && (
+          <div className="ds-pdf__toolbar-left">
+            {outline && outline.length > 0 && (
+              <button
+                className={`ds-btn ${sidebarMode === 'outline' ? 'active' : ''}`}
+                onClick={() => toggleSidebar('outline')}
+                title={t('pdf:toolbar.outline', '目录')}
+              >
+                <List size={18} />
+              </button>
+            )}
+            
             <button
-              className={`ds-btn ${sidebarMode === 'outline' ? 'active' : ''}`}
-              onClick={() => toggleSidebar('outline')}
-              title={t('pdf:toolbar.outline', '目录')}
+              className={`ds-btn ${sidebarMode === 'thumbnails' ? 'active' : ''}`}
+              onClick={() => toggleSidebar('thumbnails')}
+              title={t('pdf:toolbar.thumbnails', '缩略图')}
             >
-              <List size={18} />
+              <LayoutGrid size={18} />
             </button>
-          )}
-          
-          <button
-            className={`ds-btn ${sidebarMode === 'thumbnails' ? 'active' : ''}`}
-            onClick={() => toggleSidebar('thumbnails')}
-            title={t('pdf:toolbar.thumbnails', '缩略图')}
-          >
-            <LayoutGrid size={18} />
-          </button>
-          
-          <button
-            className="ds-btn"
-            onClick={() => {
-              setShowSearch(true);
-              setTimeout(() => searchInputRef.current?.focus(), 100);
-            }}
-            title={t('pdf:toolbar.search', '搜索')}
-          >
-            <Search size={18} />
-          </button>
-          
-          <div className="ds-toolbar-divider" />
-          
-          {/* 书签按钮 */}
-          <button
-            className={`ds-btn ${currentPageBookmark ? 'active' : ''}`}
-            onClick={addBookmark}
-            title={currentPageBookmark 
-              ? t('pdf:bookmark.editBookmark', '编辑书签') 
-              : t('pdf:bookmark.addBookmark', '添加书签')}
-          >
-            {currentPageBookmark ? <BookmarkCheck size={18} /> : <BookmarkPlus size={18} />}
-          </button>
-          
-          {bookmarks.length > 0 && (
+            
             <button
-              className={`ds-btn ${showBookmarkList ? 'active' : ''}`}
-              onClick={() => setShowBookmarkList(!showBookmarkList)}
-              title={t('pdf:bookmark.showBookmarks', '查看书签')}
+              className="ds-btn"
+              onClick={() => {
+                setShowSearch(true);
+                setTimeout(() => searchInputRef.current?.focus(), 100);
+              }}
+              title={t('pdf:toolbar.search', '搜索')}
             >
-              <Bookmark size={18} />
-              <span className="ds-bookmark-count">{bookmarks.length}</span>
+              <Search size={18} />
             </button>
-          )}
-        </div>
+            
+            <div className="ds-toolbar-divider" />
+            
+            <button
+              className={`ds-btn ${currentPageBookmark ? 'active' : ''}`}
+              onClick={addBookmark}
+              title={currentPageBookmark 
+                ? t('pdf:bookmark.editBookmark', '编辑书签') 
+                : t('pdf:bookmark.addBookmark', '添加书签')}
+            >
+              {currentPageBookmark ? <BookmarkCheck size={18} /> : <BookmarkPlus size={18} />}
+            </button>
+            
+            {bookmarks.length > 0 && (
+              <button
+                className={`ds-btn ${showBookmarkList ? 'active' : ''}`}
+                onClick={() => setShowBookmarkList(!showBookmarkList)}
+                title={t('pdf:bookmark.showBookmarks', '查看书签')}
+              >
+                <Bookmark size={18} />
+                <span className="ds-bookmark-count">{bookmarks.length}</span>
+              </button>
+            )}
+          </div>
+        )}
 
-        {/* 中间：缩放和页面导航 */}
+        {/* 核心控制：缩放 + 页面导航（始终显示） */}
         <div className="ds-pdf__toolbar-center">
-          {/* 缩放 */}
           <button className="ds-btn" onClick={handleZoomOut} title={t('pdf:toolbar.zoom_out', '缩小')}>
             <ZoomOut size={18} />
           </button>
@@ -1354,7 +1388,6 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
 
           <div className="ds-toolbar-divider" />
 
-          {/* 页面导航 */}
           <button
             className="ds-btn"
             onClick={handlePrevPage}
@@ -1385,32 +1418,123 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
           </button>
         </div>
 
-        {/* 右侧：视图控制 */}
-        <div className="ds-pdf__toolbar-right">
-          <button
-            className="ds-btn"
-            onClick={handleRotate}
-            title={t('pdf:toolbar.rotate_cw', '顺时针旋转 90°')}
-          >
-            <RotateCw size={18} />
-          </button>
+        {/* 非紧凑模式：右侧视图控制 */}
+        {!isToolbarCompact && (
+          <div className="ds-pdf__toolbar-right">
+            <button
+              className="ds-btn"
+              onClick={handleRotate}
+              title={t('pdf:toolbar.rotate_cw', '顺时针旋转 90°')}
+            >
+              <RotateCw size={18} />
+            </button>
 
-          <button
-            className={`ds-btn ${viewMode === 'dual' ? 'active' : ''}`}
-            onClick={handleToggleViewMode}
-            title={viewMode === 'single' ? t('pdf:toolbar.dual_page', '双页视图') : t('pdf:toolbar.single_page', '单页视图')}
-          >
-            {viewMode === 'single' ? <Book size={18} /> : <BookOpen size={18} />}
-          </button>
+            <button
+              className={`ds-btn ${viewMode === 'dual' ? 'active' : ''}`}
+              onClick={handleToggleViewMode}
+              title={viewMode === 'single' ? t('pdf:toolbar.dual_page', '双页视图') : t('pdf:toolbar.single_page', '单页视图')}
+            >
+              {viewMode === 'single' ? <Book size={18} /> : <BookOpen size={18} />}
+            </button>
 
-          <button
-            className="ds-btn"
-            onClick={handleToggleFullscreen}
-            title={isFullscreen ? t('pdf:toolbar.exit_fullscreen', '退出全屏') : t('pdf:toolbar.fullscreen', '全屏')}
-          >
-            {isFullscreen ? <Minimize size={18} /> : <Maximize size={18} />}
-          </button>
-        </div>
+            <button
+              className="ds-btn"
+              onClick={handleToggleFullscreen}
+              title={isFullscreen ? t('pdf:toolbar.exit_fullscreen', '退出全屏') : t('pdf:toolbar.fullscreen', '全屏')}
+            >
+              {isFullscreen ? <Minimize size={18} /> : <Maximize size={18} />}
+            </button>
+          </div>
+        )}
+
+        {/* 紧凑模式：更多菜单 */}
+        {isToolbarCompact && (
+          <div className="ds-pdf__toolbar-more" ref={moreMenuRef}>
+            <button
+              className={`ds-btn ${showMoreMenu ? 'active' : ''}`}
+              onClick={() => setShowMoreMenu(!showMoreMenu)}
+              title={t('pdf:toolbar.more', '更多')}
+            >
+              <MoreHorizontal size={18} />
+            </button>
+            {showMoreMenu && (
+              <div className="ds-more-dropdown">
+                {outline && outline.length > 0 && (
+                  <button
+                    className={`ds-more-item ${sidebarMode === 'outline' ? 'active' : ''}`}
+                    onClick={() => { toggleSidebar('outline'); setShowMoreMenu(false); }}
+                  >
+                    <List size={16} />
+                    <span>{t('pdf:toolbar.outline', '目录')}</span>
+                  </button>
+                )}
+                <button
+                  className={`ds-more-item ${sidebarMode === 'thumbnails' ? 'active' : ''}`}
+                  onClick={() => { toggleSidebar('thumbnails'); setShowMoreMenu(false); }}
+                >
+                  <LayoutGrid size={16} />
+                  <span>{t('pdf:toolbar.thumbnails', '缩略图')}</span>
+                </button>
+                <button
+                  className="ds-more-item"
+                  onClick={() => {
+                    setShowSearch(true);
+                    setShowMoreMenu(false);
+                    setTimeout(() => searchInputRef.current?.focus(), 100);
+                  }}
+                >
+                  <Search size={16} />
+                  <span>{t('pdf:toolbar.search', '搜索')}</span>
+                </button>
+
+                <div className="ds-more-divider" />
+
+                <button
+                  className={`ds-more-item ${currentPageBookmark ? 'active' : ''}`}
+                  onClick={() => { addBookmark(); setShowMoreMenu(false); }}
+                >
+                  {currentPageBookmark ? <BookmarkCheck size={16} /> : <BookmarkPlus size={16} />}
+                  <span>{currentPageBookmark
+                    ? t('pdf:bookmark.editBookmark', '编辑书签')
+                    : t('pdf:bookmark.addBookmark', '添加书签')}</span>
+                </button>
+                {bookmarks.length > 0 && (
+                  <button
+                    className={`ds-more-item ${showBookmarkList ? 'active' : ''}`}
+                    onClick={() => { setShowBookmarkList(!showBookmarkList); setShowMoreMenu(false); }}
+                  >
+                    <Bookmark size={16} />
+                    <span>{t('pdf:bookmark.showBookmarks', '查看书签')} ({bookmarks.length})</span>
+                  </button>
+                )}
+
+                <div className="ds-more-divider" />
+
+                <button
+                  className="ds-more-item"
+                  onClick={() => { handleRotate(); setShowMoreMenu(false); }}
+                >
+                  <RotateCw size={16} />
+                  <span>{t('pdf:toolbar.rotate_cw', '顺时针旋转 90°')}</span>
+                </button>
+                <button
+                  className={`ds-more-item ${viewMode === 'dual' ? 'active' : ''}`}
+                  onClick={() => { handleToggleViewMode(); setShowMoreMenu(false); }}
+                >
+                  {viewMode === 'single' ? <Book size={16} /> : <BookOpen size={16} />}
+                  <span>{viewMode === 'single' ? t('pdf:toolbar.dual_page', '双页视图') : t('pdf:toolbar.single_page', '单页视图')}</span>
+                </button>
+                <button
+                  className="ds-more-item"
+                  onClick={() => { handleToggleFullscreen(); setShowMoreMenu(false); }}
+                >
+                  {isFullscreen ? <Minimize size={16} /> : <Maximize size={16} />}
+                  <span>{isFullscreen ? t('pdf:toolbar.exit_fullscreen', '退出全屏') : t('pdf:toolbar.fullscreen', '全屏')}</span>
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* 搜索栏 */}

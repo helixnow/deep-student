@@ -1231,6 +1231,7 @@ pub fn run() {
             ,crate::vfs::handlers::vfs_get_or_create_attachment_root_folder
             // 统一文件操作命令（files 表）
             ,crate::vfs::handlers::vfs_upload_file
+            ,crate::vfs::handlers::vfs_download_paper
             ,crate::vfs::handlers::vfs_get_file
             ,crate::vfs::handlers::vfs_list_files
             ,crate::vfs::handlers::vfs_delete_file

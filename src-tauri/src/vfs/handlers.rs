@@ -6459,6 +6459,206 @@ fn calculate_dir_size(path: &std::path::Path) -> std::io::Result<u64> {
     Ok(size)
 }
 
+// ============================================================================
+// 论文下载重试命令
+// ============================================================================
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VfsDownloadPaperParams {
+    /// PDF 下载 URL
+    pub url: String,
+    /// 论文标题（用作文件名）
+    pub title: String,
+    /// 目标文件夹 ID（可选，默认根目录）
+    pub folder_id: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VfsDownloadPaperResult {
+    pub success: bool,
+    pub file_id: Option<String>,
+    pub file_name: Option<String>,
+    pub size_bytes: Option<u64>,
+    pub page_count: Option<i32>,
+    pub error: Option<String>,
+}
+
+/// 独立下载论文 PDF 并保存到 VFS（用于前端重试）
+///
+/// 不依赖 chat pipeline，直接下载 + 保存。
+#[tauri::command]
+pub async fn vfs_download_paper(
+    params: VfsDownloadPaperParams,
+    vfs_db: State<'_, Arc<VfsDatabase>>,
+    pdf_processing_service: State<'_, Arc<PdfProcessingService>>,
+) -> Result<VfsDownloadPaperResult, String> {
+    use crate::vfs::repos::pdf_preview::{render_pdf_preview, PdfPreviewConfig};
+    use crate::vfs::repos::VfsFileRepo;
+    use sha2::{Digest, Sha256};
+
+    log::info!(
+        "[VFS::download_paper] Downloading '{}' from: {}",
+        params.title,
+        params.url
+    );
+
+    // 安全检查
+    if !params.url.starts_with("https://") {
+        return Err("Only HTTPS URLs are allowed".to_string());
+    }
+
+    // 下载 PDF
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(90))
+        .build()
+        .map_err(|e| format!("HTTP client error: {}", e))?;
+
+    let response = client
+        .get(&params.url)
+        .header("User-Agent", "DeepStudent/1.0 (Academic Paper Save)")
+        .send()
+        .await
+        .map_err(|e| format!("Download failed: {}", e))?;
+
+    if !response.status().is_success() {
+        return Err(format!("HTTP {}", response.status().as_u16()));
+    }
+
+    let pdf_bytes = response
+        .bytes()
+        .await
+        .map_err(|e| format!("Read failed: {}", e))?
+        .to_vec();
+
+    // PDF 签名验证
+    if pdf_bytes.len() < 4 || &pdf_bytes[..4] != b"%PDF" {
+        return Err("Downloaded file is not a valid PDF".to_string());
+    }
+
+    // SHA256 去重
+    let mut hasher = Sha256::new();
+    hasher.update(&pdf_bytes);
+    let sha256 = format!("{:x}", hasher.finalize());
+
+    let conn = vfs_db.get_conn_safe().map_err(|e| e.to_string())?;
+
+    if let Ok(Some(existing)) = VfsFileRepo::get_by_sha256_with_conn(&conn, &sha256) {
+        if existing.status == "active" {
+            return Ok(VfsDownloadPaperResult {
+                success: true,
+                file_id: Some(existing.id),
+                file_name: None,
+                size_bytes: Some(pdf_bytes.len() as u64),
+                page_count: existing.page_count,
+                error: None,
+            });
+        }
+    }
+
+    // Blob 存储
+    use crate::vfs::VfsBlobRepo;
+    let blobs_dir = vfs_db.blobs_dir();
+    let blob_hash = VfsBlobRepo::store_blob_with_conn(
+        &conn,
+        &blobs_dir,
+        &pdf_bytes,
+        Some("application/pdf"),
+        None,
+    )
+    .map_err(|e| format!("Blob storage failed: {}", e))?
+    .hash;
+
+    // PDF 预览 + 文本提取
+    let (preview_json, extracted_text, page_count) =
+        match render_pdf_preview(&conn, &blobs_dir, &pdf_bytes, &PdfPreviewConfig::default()) {
+            Ok(result) => {
+                let preview_str = result
+                    .preview_json
+                    .as_ref()
+                    .and_then(|p| serde_json::to_string(p).ok());
+                (
+                    preview_str,
+                    result.extracted_text,
+                    Some(result.page_count as i32),
+                )
+            }
+            Err(e) => {
+                log::warn!("[VFS::download_paper] PDF preview failed: {}", e);
+                (None, None, None)
+            }
+        };
+
+    // 文件名
+    let safe_title = params
+        .title
+        .replace(['/', '\\', ':', '*', '?', '"', '<', '>', '|', '\0'], "_");
+    let file_name = if safe_title.to_lowercase().ends_with(".pdf") {
+        safe_title
+    } else {
+        format!("{}.pdf", safe_title)
+    };
+
+    let folder_id = params.folder_id.as_deref().filter(|s| !s.is_empty());
+
+    let file = VfsFileRepo::create_file_with_doc_data_in_folder(
+        &conn,
+        &sha256,
+        &file_name,
+        pdf_bytes.len() as i64,
+        "pdf",
+        Some("application/pdf"),
+        Some(&blob_hash),
+        None,
+        folder_id,
+        preview_json.as_deref(),
+        extracted_text.as_deref(),
+        page_count,
+    )
+    .map_err(|e| format!("File creation failed: {}", e))?;
+
+    // 索引
+    if let Some(ref resource_id) = file.resource_id {
+        use crate::vfs::index_service::VfsIndexService;
+        use crate::vfs::unit_builder::UnitBuildInput;
+        let index_service = VfsIndexService::new((*vfs_db).clone());
+        let input = UnitBuildInput {
+            resource_id: resource_id.clone(),
+            resource_type: "file".to_string(),
+            data: None,
+            ocr_text: None,
+            ocr_pages_json: None,
+            blob_hash: Some(blob_hash.clone()),
+            page_count: file.page_count,
+            extracted_text: file.extracted_text.clone(),
+            preview_json: file.preview_json.clone(),
+        };
+        let _ = index_service.sync_resource_units(input);
+    }
+
+    // 异步 PDF Pipeline
+    {
+        use crate::vfs::pdf_processing_service::ProcessingStage;
+        let file_id = file.id.clone();
+        let service = (*pdf_processing_service).clone();
+        tokio::spawn(async move {
+            let _ = service
+                .start_pipeline(&file_id, Some(ProcessingStage::OcrProcessing))
+                .await;
+        });
+    }
+
+    Ok(VfsDownloadPaperResult {
+        success: true,
+        file_id: Some(file.id),
+        file_name: Some(file_name),
+        size_bytes: Some(pdf_bytes.len() as u64),
+        page_count,
+        error: None,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

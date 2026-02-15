@@ -9,7 +9,7 @@
  * {"papers":[{"i":0,"t":"Title","s":"downloading","pct":45,"dl":2300000,"total":5100000}]}
  */
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useCallback } from 'react';
 import { cn } from '@/utils/cn';
 import {
   FileDown,
@@ -21,12 +21,20 @@ import {
   FileText,
   Database,
   Copy,
+  RotateCcw,
+  ChevronDown,
 } from 'lucide-react';
+import { invoke } from '@tauri-apps/api/core';
 import type { BlockComponentProps } from '../../registry';
 
 // ============================================================================
 // 类型
 // ============================================================================
+
+interface SourceCandidate {
+  label: string;
+  url: string;
+}
 
 interface PaperProgressItem {
   i: number;
@@ -38,6 +46,8 @@ interface PaperProgressItem {
   fid?: string;
   dedup?: boolean;
   err?: string;
+  src?: string;
+  srcs?: SourceCandidate[];
 }
 
 interface ProgressSnapshot {
@@ -106,6 +116,33 @@ const PaperRow: React.FC<{ paper: PaperProgressItem }> = ({ paper }) => {
   const isDownloading = paper.s === 'downloading';
   const isActive = !isDone && !isError;
 
+  const [retryState, setRetryState] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+  const [retryError, setRetryError] = useState<string | null>(null);
+  const [showSources, setShowSources] = useState(false);
+  const [selectedSourceIdx, setSelectedSourceIdx] = useState<number | null>(null);
+
+  const sources = paper.srcs ?? [];
+  const hasMultipleSources = sources.length > 1;
+
+  const handleRetry = useCallback(async (sourceUrl?: string) => {
+    const url = sourceUrl ?? sources[0]?.url;
+    if (!url) return;
+
+    setRetryState('loading');
+    setRetryError(null);
+    setShowSources(false);
+
+    try {
+      await invoke('vfs_download_paper', {
+        params: { url, title: paper.t },
+      });
+      setRetryState('success');
+    } catch (e) {
+      setRetryState('error');
+      setRetryError(typeof e === 'string' ? e : (e as Error)?.message ?? '下载失败');
+    }
+  }, [sources, paper.t]);
+
   return (
     <div className="flex flex-col gap-1.5 py-2 first:pt-0 last:pb-0">
       {/* 标题行 */}
@@ -118,6 +155,7 @@ const PaperRow: React.FC<{ paper: PaperProgressItem }> = ({ paper }) => {
               isError && 'text-destructive',
               isActive && 'text-primary',
               isActive && paper.s !== 'downloading' && 'animate-pulse',
+              retryState === 'success' && 'text-green-500',
             )}
           />
           <span
@@ -126,6 +164,7 @@ const PaperRow: React.FC<{ paper: PaperProgressItem }> = ({ paper }) => {
               isDone && 'text-muted-foreground',
               isError && 'text-destructive',
               isActive && 'text-foreground',
+              retryState === 'success' && 'text-muted-foreground',
             )}
             title={paper.t}
           >
@@ -134,6 +173,13 @@ const PaperRow: React.FC<{ paper: PaperProgressItem }> = ({ paper }) => {
         </div>
 
         <div className="flex items-center gap-1.5 shrink-0 text-xs text-muted-foreground">
+          {/* 当前源标签 */}
+          {isActive && paper.src && (
+            <span className="text-muted-foreground/60" title={`下载源: ${paper.src}`}>
+              {paper.src}
+            </span>
+          )}
+
           {/* 去重标识 */}
           {paper.dedup && (
             <span className="text-amber-500" title="已存在于资料库">
@@ -155,34 +201,90 @@ const PaperRow: React.FC<{ paper: PaperProgressItem }> = ({ paper }) => {
           )}
 
           {/* 完成 */}
-          {isDone && (
+          {(isDone || retryState === 'success') && (
             <span className="text-green-500">已保存</span>
           )}
 
-          {/* 错误 */}
-          {isError && (
-            <span className="text-destructive truncate max-w-[120px]" title={paper.err}>
-              {paper.err || '失败'}
-            </span>
+          {/* 错误 + 重试按钮 */}
+          {isError && retryState !== 'success' && (
+            <>
+              <span className="text-destructive truncate max-w-[100px]" title={paper.err}>
+                {paper.err || '失败'}
+              </span>
+              {retryState === 'loading' ? (
+                <Loader2 className="w-3 h-3 animate-spin text-primary" />
+              ) : (
+                <div className="relative flex items-center gap-0.5">
+                  <button
+                    onClick={() => handleRetry()}
+                    className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-primary hover:bg-primary/10 transition-colors"
+                    title="重试下载"
+                    disabled={sources.length === 0}
+                  >
+                    <RotateCcw className="w-3 h-3" />
+                    <span>重试</span>
+                  </button>
+                  {hasMultipleSources && (
+                    <button
+                      onClick={() => setShowSources(v => !v)}
+                      className="flex items-center px-0.5 py-0.5 rounded text-muted-foreground hover:bg-muted/60 transition-colors"
+                      title="切换下载源"
+                    >
+                      <ChevronDown className={cn('w-3 h-3 transition-transform', showSources && 'rotate-180')} />
+                    </button>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+
+          {/* 重试失败 */}
+          {retryState === 'error' && (
+            <span className="text-destructive" title={retryError ?? undefined}>重试失败</span>
           )}
         </div>
       </div>
+
+      {/* 源切换下拉 */}
+      {showSources && sources.length > 0 && (
+        <div className="ml-5 flex flex-wrap gap-1">
+          {sources.map((src, si) => (
+            <button
+              key={si}
+              onClick={() => {
+                setSelectedSourceIdx(si);
+                handleRetry(src.url);
+              }}
+              className={cn(
+                'px-2 py-0.5 text-xs rounded border transition-colors',
+                selectedSourceIdx === si
+                  ? 'border-primary text-primary bg-primary/10'
+                  : 'border-border/50 text-muted-foreground hover:border-primary/50 hover:text-foreground',
+              )}
+              title={src.url}
+            >
+              {src.label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* 进度条 */}
       <div
         className={cn(
           'h-1.5 rounded-full overflow-hidden',
-          isError ? 'bg-destructive/20' : 'bg-muted/40',
+          isError && retryState !== 'success' ? 'bg-destructive/20' : 'bg-muted/40',
         )}
       >
         <div
           className={cn(
             'h-full rounded-full transition-all duration-500 ease-out',
-            isDone && 'bg-green-500',
-            isError && 'bg-destructive',
+            (isDone || retryState === 'success') && 'bg-green-500',
+            isError && retryState !== 'success' && 'bg-destructive',
             isActive && 'bg-primary',
+            retryState === 'loading' && 'bg-primary animate-pulse',
           )}
-          style={{ width: `${isDone ? 100 : isError ? 100 : overallPct}%` }}
+          style={{ width: `${isDone || retryState === 'success' ? 100 : isError ? 100 : overallPct}%` }}
         />
       </div>
     </div>

@@ -182,8 +182,8 @@ export const AboutTab: React.FC = () => {
                   {updater.error.phase === 'check' && `${t('about.update.error.check', '检查更新失败')}：`}
                   {updater.error.phase === 'download' && `${t('about.update.error.download', '下载失败')}：`}
                   {updater.error.phase === 'install' && `${t('about.update.error.install', '安装失败')}：`}
-                  {updater.error.phase === 'unavailable' && `${t('about.update.error.unavailable', '更新不可用')}：`}
-                  {updater.error.phase !== 'relaunch' && updater.error.message}
+                  {updater.error.phase === 'unavailable' && t('about.update.error.unavailable', '更新已不可用，请稍后重试')}
+                  {updater.error.phase !== 'relaunch' && updater.error.phase !== 'unavailable' && updater.error.message}
                   {updater.error.phase === 'relaunch' && t('about.update.error.relaunch', '更新已安装，请手动重启应用以完成更新')}
                 </p>
               </div>

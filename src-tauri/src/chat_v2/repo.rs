@@ -293,6 +293,8 @@ impl ChatV2Repo {
         if let Some(gid) = group_id {
             if gid.is_empty() {
                 sql.push_str(" AND group_id IS NULL");
+            } else if gid == "*" {
+                sql.push_str(" AND group_id IS NOT NULL");
             } else {
                 sql.push_str(" AND group_id = ?");
                 params_vec.push(Box::new(gid.to_string()));
@@ -343,6 +345,8 @@ impl ChatV2Repo {
         if let Some(gid) = group_id {
             if gid.is_empty() {
                 sql.push_str(" AND group_id IS NULL");
+            } else if gid == "*" {
+                sql.push_str(" AND group_id IS NOT NULL");
             } else {
                 sql.push_str(" AND group_id = ?");
                 params_vec.push(Box::new(gid.to_string()));

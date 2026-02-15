@@ -3584,6 +3584,15 @@ export function createChatStore(sessionId: string): StoreApi<ChatStore> {
               // 如果当前激活的是此变体且变成了 error，需要切换到其他可用变体
               if (msg.activeVariantId === variantId && status === 'error') {
                 msg.activeVariantId = determineActiveVariantId(msg.variants ?? []);
+                // 🔧 P1-3 修复：切换活跃变体时同步更新 _meta.modelId
+                // 与 handleVariantStart / deleteVariant 保持一致
+                const newActiveVariant = msg.variants?.find(v => v.id === msg.activeVariantId);
+                if (newActiveVariant?.modelId) {
+                  if (!msg._meta) {
+                    msg._meta = {};
+                  }
+                  msg._meta.modelId = newActiveVariant.modelId;
+                }
               }
 
               // 在 draft 内部更新 streamingVariantIds

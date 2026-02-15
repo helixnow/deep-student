@@ -1248,8 +1248,8 @@ export class ChatV2TauriAdapter {
           }, payload.modelId ? 'success' : 'warning');
 
           const fallbackModelId =
-            this.getCurrentState().chatParams.modelId ||
             this.getCurrentState().chatParams.modelDisplayName ||
+            this.getCurrentState().chatParams.modelId ||
             undefined;
           
           // 🔧 P29 修复：子代理场景下消息可能不存在（后端创建，前端未同步）

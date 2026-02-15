@@ -836,6 +836,57 @@ impl Default for AcademicSearchExecutor {
     }
 }
 
+/// 将论文结果数组转换为 SourceInfo 兼容的 sources 数组
+/// 供前端 sourceAdapter 提取并显示在统一来源面板中
+fn papers_to_sources(papers: &[Value], search_source: &str) -> Vec<Value> {
+    papers
+        .iter()
+        .map(|paper| {
+            let title = paper.get("title").and_then(|v| v.as_str()).unwrap_or("");
+            // 优先使用 arxivUrl，回退到 DOI URL，最后回退到 pdfUrl
+            let url = paper
+                .get("arxivUrl")
+                .and_then(|v| v.as_str())
+                .or_else(|| {
+                    paper
+                        .get("doi")
+                        .and_then(|v| v.as_str())
+                        .filter(|d| !d.is_empty())
+                })
+                .or_else(|| paper.get("pdfUrl").and_then(|v| v.as_str()))
+                .unwrap_or("");
+            let snippet = paper
+                .get("abstract")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            // 截断摘要到 300 字符
+            let snippet_truncated = if snippet.chars().count() > 300 {
+                format!("{}…", snippet.chars().take(300).collect::<String>())
+            } else {
+                snippet.to_string()
+            };
+
+            json!({
+                "title": title,
+                "url": url,
+                "snippet": snippet_truncated,
+                "metadata": {
+                    "sourceType": "academic_search",
+                    "searchSource": search_source,
+                    "authors": paper.get("authors"),
+                    "year": paper.get("year").or_else(|| paper.get("published")),
+                    "citationCount": paper.get("citationCount"),
+                    "pdfUrl": paper.get("pdfUrl"),
+                    "doi": paper.get("doi"),
+                    "venue": paper.get("venue"),
+                    "arxivId": paper.get("id"),
+                    "categories": paper.get("categories"),
+                }
+            })
+        })
+        .collect()
+}
+
 #[async_trait]
 impl ToolExecutor for AcademicSearchExecutor {
     fn can_handle(&self, tool_name: &str) -> bool {
@@ -876,7 +927,20 @@ impl ToolExecutor for AcademicSearchExecutor {
         let duration = start_time.elapsed().as_millis() as u64;
 
         match result {
-            Ok(output) => {
+            Ok(mut output) => {
+                // 🆕 将论文结果转换为 sources 数组，供前端 sourceAdapter 提取
+                // 这使学术搜索结果能像网络搜索一样在统一来源面板中显示
+                if let Some(papers) = output.get("papers").and_then(|v| v.as_array()).cloned() {
+                    let search_source = output
+                        .get("source")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("unknown");
+                    let sources = papers_to_sources(&papers, search_source);
+                    if let Some(obj) = output.as_object_mut() {
+                        obj.insert("sources".to_string(), json!(sources));
+                    }
+                }
+
                 ctx.emitter.emit_end(
                     event_types::TOOL_CALL,
                     &ctx.block_id,

@@ -430,33 +430,43 @@ export const UnifiedDragDropZone: React.FC<UnifiedDragDropZoneProps> = ({
           }
           
           // 🔧 使用 Tauri IPC 读取文件，避免 asset protocol 在 Windows 上对含中文/空格路径的 fetch 失败
-          // 先检查文件大小（避免读入超大文件到内存）
-          const fileSize = await invoke<number>('get_file_size', { path: p });
-          if (!validateFileSize(fileSize)) {
-            const sizeMB = (maxFileSize / (1024 * 1024)).toFixed(1);
-            const reason = `${name}: ${t('drag_drop:errors.file_too_large', { size: sizeMB })}`;
-            rejected.push(reason as any);
-            emitDebugEvent(zoneId, 'validation_failed', 'warning', `文件过大: ${name}`, {
-              fileName: name,
-              fileSize: `${(fileSize / (1024 * 1024)).toFixed(2)}MB`,
-              maxSize: `${sizeMB}MB`,
-            });
-            continue;
-          }
+          try {
+            // 先检查文件大小（避免读入超大文件到内存）
+            const fileSize = await invoke<number>('get_file_size', { path: p });
+            if (!validateFileSize(fileSize)) {
+              const sizeMB = (maxFileSize / (1024 * 1024)).toFixed(1);
+              const reason = `${name}: ${t('drag_drop:errors.file_too_large', { size: sizeMB })}`;
+              rejected.push(reason as any);
+              emitDebugEvent(zoneId, 'validation_failed', 'warning', `文件过大: ${name}`, {
+                fileName: name,
+                fileSize: `${(fileSize / (1024 * 1024)).toFixed(2)}MB`,
+                maxSize: `${sizeMB}MB`,
+              });
+              continue;
+            }
 
-          const rawBytes = await invoke<number[]>('read_file_bytes', { path: p });
-          const bytes = new Uint8Array(rawBytes);
-          
-          // 验证通过，添加到有效路径列表
-          validPaths.push(p);
-          const mime = getMimeType(name);
-          files.push(new File([bytes], name, { type: mime }));
-          
-          emitDebugEvent(zoneId, 'file_converted', 'debug', `文件转换成功: ${name}`, {
-            fileName: name,
-            fileSize: `${(bytes.length / (1024 * 1024)).toFixed(2)}MB`,
-            mimeType: mime,
-          });
+            const rawBytes = await invoke<number[]>('read_file_bytes', { path: p });
+            const bytes = new Uint8Array(rawBytes);
+            
+            // 验证通过，添加到有效路径列表
+            validPaths.push(p);
+            const mime = getMimeType(name);
+            files.push(new File([bytes], name, { type: mime }));
+            
+            emitDebugEvent(zoneId, 'file_converted', 'debug', `文件转换成功: ${name}`, {
+              fileName: name,
+              fileSize: `${(bytes.length / (1024 * 1024)).toFixed(2)}MB`,
+              mimeType: mime,
+            });
+          } catch (fileError: unknown) {
+            const errMsg = getErrorMessage(fileError);
+            rejected.push(`${name}: ${errMsg}`);
+            emitDebugEvent(zoneId, 'file_processing', 'error', `文件处理失败: ${name}`, {
+              fileName: name,
+              path: p,
+              error: errMsg,
+            });
+          }
         }
 
         if (rejected.length) {

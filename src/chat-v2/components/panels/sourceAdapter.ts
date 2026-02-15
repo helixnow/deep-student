@@ -41,7 +41,7 @@ const CITATION_TYPE_TO_GROUP: Record<Citation['type'], string> = {
 /**
  * 知识检索块类型列表
  */
-const KNOWLEDGE_RETRIEVAL_BLOCK_TYPES = ['rag', 'memory', 'web_search', 'multimodal_rag'] as const;
+const KNOWLEDGE_RETRIEVAL_BLOCK_TYPES = ['rag', 'memory', 'web_search', 'multimodal_rag', 'academic_search'] as const;
 
 /**
  * 检查是否为知识检索块类型
@@ -61,6 +61,7 @@ export const PROVIDER_LABEL_I18N_KEYS: Record<string, string> = {
   mcp_tool: 'common:chat.sources.providers.mcpTool',
   multimodal_rag: 'common:chat.sources.providers.multimodalRag',
   unified_search: 'common:chat.sources.providers.unifiedSearch',
+  academic_search: 'common:chat.sources.providers.academicSearch',
 };
 
 // ============================================================================

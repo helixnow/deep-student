@@ -99,6 +99,21 @@ struct PaperProgressItem {
     /// 错误信息
     #[serde(rename = "err", skip_serializing_if = "Option::is_none")]
     error: Option<String>,
+    /// 当前下载源标签
+    #[serde(rename = "src", skip_serializing_if = "Option::is_none")]
+    source: Option<String>,
+    /// 可用的下载源列表（供前端手动切换）
+    #[serde(rename = "srcs", skip_serializing_if = "Option::is_none")]
+    sources: Option<Vec<SourceCandidate>>,
+}
+
+/// 下载源候选
+#[derive(Clone, serde::Serialize)]
+struct SourceCandidate {
+    /// 源标签（如 "arXiv", "arXiv Mirror", "Unpaywall"）
+    label: String,
+    /// 下载 URL
+    url: String,
 }
 
 impl PaperProgressItem {
@@ -113,6 +128,8 @@ impl PaperProgressItem {
             file_id: None,
             deduplicated: false,
             error: None,
+            source: None,
+            sources: None,
         }
     }
 }
@@ -196,44 +213,98 @@ impl PaperSaveExecutor {
         // 健壮化参数提取：处理多种 arguments 格式
         let papers_owned: Vec<Value>;
 
-        if let Some(arr) = call.arguments.get("papers").and_then(|v| v.as_array()) {
-            // 正常情况：{"papers": [...]}
+        // 截断错误检查（优先）
+        if call.arguments.get("_truncation_error").is_some() {
+            return Err(
+                "Tool call arguments were truncated by LLM max_tokens limit. Please retry with a shorter prompt."
+                    .to_string(),
+            );
+        }
+
+        // 辅助函数：从 Value 中提取 papers 数组（处理 "papers" 值可能是 array / string / object 等各种类型）
+        fn extract_papers_from_value(val: &Value) -> Option<Vec<Value>> {
+            // 尝试从 "papers" key 提取
+            if let Some(papers_val) = val.get("papers") {
+                let val_type = if papers_val.is_array() { "array" }
+                    else if papers_val.is_string() { "string" }
+                    else if papers_val.is_object() { "object" }
+                    else if papers_val.is_null() { "null" }
+                    else { "other" };
+                log::info!("[PaperSave] Found 'papers' key, value type={}, preview={}", val_type, {
+                    let s = papers_val.to_string();
+                    s[..s.len().min(200)].to_string()
+                });
+                if let Some(arr) = papers_val.as_array() {
+                    // 正常：{"papers": [...]}
+                    return Some(arr.clone());
+                }
+                if let Some(s) = papers_val.as_str() {
+                    // 双重编码：{"papers": "[{...}]"} — papers 值是 JSON 字符串
+                    log::warn!("[PaperSave] 'papers' value is a JSON string (len={}), double-decoding", s.len());
+                    if let Ok(inner) = serde_json::from_str::<Value>(s) {
+                        if let Some(arr) = inner.as_array() {
+                            return Some(arr.clone());
+                        }
+                        // 解析出来是单个对象
+                        if inner.is_object() {
+                            return Some(vec![inner]);
+                        }
+                    }
+                }
+                if papers_val.is_object() {
+                    // 单篇论文直接放在 papers key 下：{"papers": {"title": "..."}}
+                    log::warn!("[PaperSave] 'papers' value is a single object, wrapping in array");
+                    return Some(vec![papers_val.clone()]);
+                }
+            }
+            // 尝试从 "paper" (单数) key 提取
+            if let Some(paper_val) = val.get("paper") {
+                log::warn!("[PaperSave] LLM used 'paper' (singular) instead of 'papers', auto-correcting");
+                if let Some(arr) = paper_val.as_array() {
+                    return Some(arr.clone());
+                }
+                if let Some(s) = paper_val.as_str() {
+                    if let Ok(inner) = serde_json::from_str::<Value>(s) {
+                        if let Some(arr) = inner.as_array() {
+                            return Some(arr.clone());
+                        }
+                        if inner.is_object() {
+                            return Some(vec![inner]);
+                        }
+                    }
+                }
+                if paper_val.is_object() {
+                    return Some(vec![paper_val.clone()]);
+                }
+            }
+            // 如果对象自身是单篇论文 {"title": "...", "doi": "..."}
+            if val.is_object() && val.get("title").is_some() {
+                log::warn!("[PaperSave] LLM sent a single paper object without 'papers' wrapper, auto-wrapping");
+                return Some(vec![val.clone()]);
+            }
+            None
+        }
+
+        if let Some(arr) = call.arguments.as_array() {
+            // LLM 直接传了裸数组而非 {"papers": [...]}
+            log::warn!("[PaperSave] arguments is a bare array, wrapping as papers");
             papers_owned = arr.clone();
+        } else if let Some(extracted) = extract_papers_from_value(&call.arguments) {
+            papers_owned = extracted;
         } else if let Some(s) = call.arguments.as_str() {
-            // 双重编码：arguments 是 JSON 字符串
+            // 整个 arguments 是 JSON 字符串（双重编码）
             log::warn!(
                 "[PaperSave] arguments is a JSON string (len={}), attempting double-decode",
                 s.len()
             );
             let parsed: Value =
                 serde_json::from_str(s).map_err(|e| format!("Failed to parse arguments string: {}", e))?;
-            papers_owned = parsed
-                .get("papers")
-                .and_then(|v| v.as_array())
-                .ok_or_else(|| {
-                    format!(
-                        "After double-decode, still missing 'papers' (array). Parsed keys: {:?}",
-                        parsed.as_object().map(|o| o.keys().collect::<Vec<_>>())
-                    )
-                })?
-                .clone();
-        } else if call.arguments.is_array() {
-            // LLM 直接传了裸数组而非 {"papers": [...]}
-            log::warn!("[PaperSave] arguments is a bare array, wrapping as papers");
-            papers_owned = call.arguments.as_array().unwrap().clone();
-        } else if call.arguments.get("_truncation_error").is_some() {
-            return Err(
-                "Tool call arguments were truncated by LLM max_tokens limit. Please retry with a shorter prompt."
-                    .to_string(),
-            );
-        } else if let Some(arr) = call.arguments.get("paper").and_then(|v| v.as_array()) {
-            // LLM 用了 "paper" (单数) 而非 "papers" (复数)
-            log::warn!("[PaperSave] LLM used 'paper' (singular) instead of 'papers', auto-correcting");
-            papers_owned = arr.clone();
-        } else if call.arguments.is_object() && call.arguments.get("title").is_some() {
-            // LLM 直接传了单篇论文对象 {"title": "...", "doi": "..."} 而非 {"papers": [{...}]}
-            log::warn!("[PaperSave] LLM sent a single paper object without 'papers' wrapper, auto-wrapping");
-            papers_owned = vec![call.arguments.clone()];
+            papers_owned = extract_papers_from_value(&parsed).ok_or_else(|| {
+                format!(
+                    "After double-decode, still missing 'papers' (array). Parsed keys: {:?}",
+                    parsed.as_object().map(|o| o.keys().collect::<Vec<_>>())
+                )
+            })?;
         } else {
             // 诊断日志：打印实际 arguments 结构
             let keys: Vec<String> = call
@@ -361,7 +432,7 @@ impl PaperSaveExecutor {
         }))
     }
 
-    /// 保存单篇论文（带进度发射）
+    /// 保存单篇论文（带进度发射 + 多源自动回退）
     async fn save_single_paper(
         &self,
         paper: &Value,
@@ -383,17 +454,76 @@ impl PaperSaveExecutor {
         progress[idx].stage = PaperStage::Resolving;
         emit_progress(ctx, progress);
 
-        let pdf_url = self.resolve_pdf_url(url, doi, arxiv_id).await?;
+        let candidates = self.resolve_all_pdf_urls(url, doi, arxiv_id).await;
+        if candidates.is_empty() {
+            return Err("No URL, arXiv ID, or DOI provided. At least one is required.".to_string());
+        }
 
-        log::info!("[PaperSave] Downloading '{}' from: {}", title, pdf_url);
+        // 将可用源列表写入进度（供前端手动切换）
+        progress[idx].sources = Some(
+            candidates
+                .iter()
+                .map(|(u, label)| SourceCandidate {
+                    label: label.clone(),
+                    url: u.clone(),
+                })
+                .collect(),
+        );
 
-        // ── Stage: Downloading ──
-        progress[idx].stage = PaperStage::Downloading;
-        emit_progress(ctx, progress);
+        // ── 多源自动回退下载 ──
+        let mut pdf_bytes: Option<Vec<u8>> = None;
+        let mut last_error = String::new();
 
-        let pdf_bytes = self
-            .download_pdf_with_progress(&pdf_url, ctx, progress, idx)
-            .await?;
+        for (candidate_url, source_label) in &candidates {
+            if ctx.is_cancelled() {
+                return Err("Download cancelled".to_string());
+            }
+
+            log::info!(
+                "[PaperSave] Trying '{}' source={} url={}",
+                title,
+                source_label,
+                candidate_url
+            );
+
+            progress[idx].stage = PaperStage::Downloading;
+            progress[idx].source = Some(source_label.clone());
+            progress[idx].percent = 0;
+            progress[idx].downloaded = None;
+            progress[idx].total_bytes = None;
+            emit_progress(ctx, progress);
+
+            match self
+                .download_pdf_with_progress(candidate_url, ctx, progress, idx)
+                .await
+            {
+                Ok(bytes) => {
+                    pdf_bytes = Some(bytes);
+                    break;
+                }
+                Err(e) => {
+                    log::warn!(
+                        "[PaperSave] Source '{}' failed for '{}': {}",
+                        source_label,
+                        title,
+                        e
+                    );
+                    last_error = format!("[{}] {}", source_label, e);
+                    // 继续尝试下一个源
+                }
+            }
+        }
+
+        let pdf_bytes = match pdf_bytes {
+            Some(b) => b,
+            None => {
+                return Err(format!(
+                    "All {} sources failed. Last error: {}",
+                    candidates.len(),
+                    last_error
+                ));
+            }
+        };
 
         log::info!(
             "[PaperSave] Downloaded {} bytes for '{}'",
@@ -589,44 +719,82 @@ impl PaperSaveExecutor {
         }))
     }
 
-    /// 解析 PDF 下载 URL：支持直接 URL、arXiv ID、DOI（通过 Unpaywall）
-    async fn resolve_pdf_url(
+    /// 解析所有可用的 PDF 下载源（支持多源自动回退）
+    ///
+    /// 返回 `Vec<(url, source_label)>`，按优先级排序：
+    /// - 直接 URL（最高优先级）
+    /// - arXiv 主站 + 镜像站
+    /// - DOI → Unpaywall 开放获取
+    async fn resolve_all_pdf_urls(
         &self,
         url: Option<&str>,
         doi: Option<&str>,
         arxiv_id: Option<&str>,
-    ) -> Result<String, String> {
-        // 优先级：直接 URL > arXiv ID > DOI
+    ) -> Vec<(String, String)> {
+        let mut candidates: Vec<(String, String)> = Vec::new();
+
+        // 1. 直接 URL
         if let Some(u) = url {
             if !u.is_empty() {
-                return Ok(u.to_string());
+                candidates.push((u.to_string(), "Direct".to_string()));
             }
         }
 
+        // 2. arXiv 主站 + 镜像
         if let Some(id) = arxiv_id {
             if !id.is_empty() {
-                // arXiv ID → PDF URL
                 let clean_id = id
                     .trim()
                     .strip_prefix("arXiv:")
                     .or_else(|| id.strip_prefix("arxiv:"))
                     .unwrap_or(id);
-                return Ok(format!("https://arxiv.org/pdf/{}", clean_id));
+                // 主站
+                let main_url = format!("https://arxiv.org/pdf/{}", clean_id);
+                if !candidates.iter().any(|(u, _)| u == &main_url) {
+                    candidates.push((main_url, "arXiv".to_string()));
+                }
+                // 镜像站（export 子域，不同 CDN）
+                candidates.push((
+                    format!("https://export.arxiv.org/pdf/{}", clean_id),
+                    "arXiv Export".to_string(),
+                ));
             }
         }
 
+        // 3. DOI → Unpaywall 开放获取
         if let Some(d) = doi {
             if !d.is_empty() {
-                // DOI → Unpaywall → OA PDF URL
                 let clean_doi = d
                     .trim()
                     .strip_prefix("https://doi.org/")
                     .unwrap_or(d);
-                return self.resolve_doi_to_pdf(clean_doi).await;
+                match self.resolve_doi_to_pdf(clean_doi).await {
+                    Ok(pdf_url) => {
+                        if !candidates.iter().any(|(u, _)| u == &pdf_url) {
+                            candidates.push((pdf_url, "Unpaywall".to_string()));
+                        }
+                    }
+                    Err(e) => {
+                        log::debug!("[PaperSave] Unpaywall resolve failed for DOI '{}': {}", d, e);
+                    }
+                }
             }
         }
 
-        Err("No URL, arXiv ID, or DOI provided. At least one is required.".to_string())
+        // 4. 如果直接 URL 看起来像 arXiv，补充镜像源
+        if let Some(u) = url {
+            if u.contains("arxiv.org/pdf/") {
+                if let Some(id_part) = u.split("arxiv.org/pdf/").nth(1) {
+                    let clean = id_part.trim_end_matches(".pdf").trim_end_matches('/');
+                    let export_url = format!("https://export.arxiv.org/pdf/{}", clean);
+                    if !candidates.iter().any(|(existing, _)| existing == &export_url) {
+                        candidates.push((export_url, "arXiv Export".to_string()));
+                    }
+                }
+            }
+        }
+
+        candidates
     }
 
     /// 通过 Unpaywall API 将 DOI 解析为开放获取 PDF URL

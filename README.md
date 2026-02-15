@@ -33,13 +33,9 @@
 |:---:|---|---|
 | 💬 | **智能对话** | 多模态输入、深度推理（思维链）、多模型对比、RAG 知识检索 |
 | 📚 | **学习资源中心** | VFS 统一管理笔记/教材/题库，批量 OCR 与向量化索引 |
-| 🃏 | **Anki 智能制卡** | 对话式批量制卡，可视化模板编辑，断点续传，一键同步 Anki |
-| 🔬 | **深度调研** | 多步骤 Agent，联网搜索（7 引擎），生成结构化报告并保存笔记 |
-| 🧠 | **知识导图** | AI 对话生成知识体系，多轮编辑，大纲/导图视图切换，背诵模式 |
+| 🧩 | **技能系统** | 按需加载 AI 能力，内置 8 项专业技能：制卡 · 调研 · 论文 · 导图 · 题库 · 记忆 · 导师 · 文献综述，支持自定义扩展 |
 | 📖 | **智能阅读器** | PDF / DOCX 分屏阅读，页面引用注入对话上下文 |
-| 📝 | **题库与练习** | 一键出题，每日 / 限时 / 模拟考试（按题型难度配置），AI 深度解析 |
 | ✍️ | **作文批改** | 多场景评分（高考 / 雅思 / 托福 / 四六级），修改建议与高亮标注 |
-| 🧩 | **技能系统** | 按需加载 AI 能力，内置导师 / 调研 / 文献综述等技能，支持自定义 |
 | 🔌 | **MCP 扩展** | 兼容 Model Context Protocol，连接 Arxiv、Context7 等外部工具 |
 | 🏠 | **本地优先** | 全部数据本地存储（SQLite + LanceDB + Blob），完整审计与备份 |
 
@@ -63,10 +59,8 @@
 
 - [核心理念](#核心理念)
 - [功能详解](#功能详解)
-  - [AI 智能对话](#1-ai-智能对话-chat-v2) · [学习资源中心](#2-学习资源中心-learning-hub) · [Anki 智能制卡](#3-anki-智能制卡-chatanki)
-  - [技能系统](#4-技能系统-skills) · [深度调研](#5-深度调研-research-agent) · [知识导图](#6-知识导图-mindmap)
-  - [智能阅读器](#7-pdfdocx-智能阅读) · [题库与练习](#8-题目集与-ai-解析-qbank) · [智能记忆](#9-智能记忆-ai-memory)
-  - [作文批改](#10-ai-作文批改-essay) · [MCP 与模型配置](#11-mcp-扩展与模型配置) · [数据治理](#12-数据治理)
+  - [AI 智能对话](#1-ai-智能对话-chat-v2) · [学习资源中心](#2-学习资源中心-learning-hub) · [技能系统](#3-技能系统-skills)
+  - [智能阅读器](#4-pdfdocx-智能阅读) · [作文批改](#5-ai-作文批改-essay) · [MCP 与模型配置](#6-mcp-扩展与模型配置) · [数据治理](#7-数据治理)
 - [快速上手（开发）](#快速上手)
 - [架构概览](#架构概览)
 - [技术栈](#技术栈)
@@ -144,75 +138,151 @@ DeepStudent 的对话引擎专为学习场景打造，支持多模态输入与�
 <p align="center"><img src="./example/向量化状态.png" width="90%" alt="向量化状态" /></p>
 </details>
 
-### 3. Anki 智能制卡 (ChatAnki)
+### 3. 技能系统 (Skills)
 
-打通从"输入"到"内化"的最后一步。
+通过技能（Skills）按需扩展 AI 能力，避免 System Prompt 臃肿。每个技能封装了特定场景的指令与工具集，激活即用。
 
-- **对话式制卡**：在 Chat 中通过自然语言（如"把这个文档做成卡片"）触发制卡，支持批量生成。
-- **可视化模板**：集成 **模板设计师 (Template Designer Skill)**，支持通过自然语言或 GUI 编辑器修改 HTML/CSS/Mustache 代码并实时预览。
-- **任务管理**：提供任务看板，实时监控批量制卡进度，支持断点续传。
-- **3D 预览与同步**：生成结果支持 3D 翻转预览，确认无误后一键同步至 Anki。
+- **默认策略（深度学者）**：始终开启，主动回忆用户记忆、本地优先检索、个性化回答，无需手动激活。
+- **场景化能力**：内置 8 项专业技能，覆盖制卡、调研、论文、导图、题库、记忆等核心学习场景。
+- **工具按需加载**：激活技能时才加载对应工具，节省 Token 开销。
+- **技能管理**：可视化的技能管理面板，支持设为默认（新会话自动激活）、导入/导出自定义技能。
+- **三级加载**：内置 → 全局 → 项目级，用户可通过 SKILL.md 格式编写自定义技能。
 
 <details>
 <summary>📸 查看截图</summary>
+<p align="center"><img src="./example/技能管理.png" width="90%" alt="技能管理" /></p>
+</details>
+
+#### 内置技能一览
+
+| 技能 | 类型 | 说明 |
+|------|------|------|
+| 🃏 **ChatAnki 智能制卡** | 整合型 | 端到端制卡闭环，批量生成 + 预览 + 同步 Anki |
+| 🔬 **深度调研** | 整合型 | 多步骤 Agent，联网搜索 + 本地检索 + 结构化报告 |
+| 📚 **文献综述助手** | 整合型 | 学术文献系统化调研、整理与综述撰写 |
+| 🎯 **导师模式** | 独立型 | 苏格拉底式教学，引导式提问辅导 |
+| 📄 **学术论文** | 工具组 | arXiv / OpenAlex 搜索，批量下载，引用格式化 |
+| 🧠 **知识导图** | 工具组 | AI 生成知识体系，多轮编辑，大纲/导图切换 |
+| 📝 **题目集与练习** | 工具组 | 一键出题，多种练习模式，AI 深度解析 |
+| 💾 **智能记忆** | 工具组 | AI 自动识别并保存高复用信息，长期记忆 |
+
+---
+
+<details>
+<summary><strong>🃏 ChatAnki 智能制卡</strong> — 打通从"输入"到"内化"的最后一步</summary>
+
+- **对话式制卡**：在 Chat 中通过自然语言（如"把这个文档做成卡片"）触发制卡，支持批量生成。
+- **可视化模板**：集成模板设计师，支持通过自然语言或 GUI 编辑器修改 HTML/CSS/Mustache 代码并实时预览。
+- **任务管理**：提供任务看板，实时监控批量制卡进度，支持断点续传。
+- **3D 预览与同步**：生成结果支持 3D 翻转预览，确认无误后一键同步至 Anki。
+
 <p align="center"><img src="./example/anki-制卡1.png" width="90%" alt="对话生成" /></p>
 <p align="center"><img src="./example/制卡任务.png" width="90%" alt="任务看板" /></p>
 <p align="center"><img src="./example/模板管理.png" width="90%" alt="模板管理" /></p>
 <p align="center"><img src="./example/anki-制卡2.png" width="90%" alt="3D预览" /></p>
 <p align="center"><img src="./example/anki-制卡3.png" width="90%" alt="Anki同步" /></p>
+
 </details>
-
-### 4. 技能系统 (Skills)
-
-通过技能（Skills）按需扩展 AI 能力，避免 System Prompt 臃肿。
-
-- **场景化能力**：内置导师模式（苏格拉底式教学）、调研模式（联网深度搜索）、文献综述助手等。
-- **工具按需加载**：激活"知识导图"技能时才加载绘图工具，节省 Token。
-- **技能管理**：可视化的技能管理面板，支持导入/导出自定义技能。
 
 <details>
-<summary>📸 查看截图</summary>
-<p align="center"><img src="./example/技能管理.png" width="90%" alt="技能管理" /></p>
-<p align="center"><img src="./example/调研-1.png" width="90%" alt="调研模式" /></p>
-</details>
-
-### 5. 深度调研 (Research Agent)
-
-多步骤、长链路的深度调研 Agent。通过 `todo-tools` 跟踪进度，`web_search` 联网检索，`note_create` 保存笔记。
+<summary><strong>🔬 深度调研</strong> — 多步骤、长链路的深度调研 Agent</summary>
 
 - **交互式引导**：调研开始前通过 `ask_user` 工具向用户确认调研深度和输出格式偏好。
 - **多步执行**：自动拆解任务（明确目标 → 网络搜索 → 本地检索 → 整理分析 → 生成报告），实时显示步骤进度。
 - **联网搜索**：支持配置并切换 7 种搜索引擎（Google CSE / SerpAPI / Tavily / Brave / SearXNG / 智谱 / 博查）。
-- **结构化成文**：按调研技能工作流生成结构化报告，并通过 `note_create` 保存为笔记。
+- **结构化成文**：生成结构化报告，并通过 `note_create` 自动保存为笔记。
 
-<details>
-<summary>📸 查看截图</summary>
+<p align="center"><img src="./example/调研-1.png" width="90%" alt="调研模式" /></p>
 <p align="center"><img src="./example/调研-2.png" width="90%" alt="多步执行" /></p>
 <p align="center"><img src="./example/调研-3.png" width="90%" alt="执行进度" /></p>
 <p align="center"><img src="./example/调研-5.png" width="90%" alt="自动保存笔记" /></p>
 <p align="center"><img src="./example/调研-4.png" width="90%" alt="最终报告" /></p>
+
 </details>
 
-### 6. 知识导图 (MindMap)
+<details>
+<summary><strong>📄 学术论文搜索与管理</strong> — 一站式学术论文检索、下载与引用</summary>
 
-AI 驱动的知识结构化工具。
+- **智能搜索**：通过 arXiv API 和 OpenAlex API 搜索学术论文，返回标题、作者、摘要、引用数等结构化元数据。
+- **批量下载**：支持批量下载 PDF（单次最多 5 篇），自动存入 VFS，支持 arXiv ID、DOI、直接 URL 三种输入方式。
+- **多源自动回退**：下载失败时自动切换备用源（arXiv → Export 镜像 → Unpaywall），最大化成功率。
+- **实时进度**：每篇论文独立显示下载进度条，支持手动重试与源切换。
+- **SHA256 去重**：已存在的论文自动识别并跳过，避免重复导入。
+- **引用格式化**：支持 BibTeX、GB/T 7714、APA 三种标准引用格式，一键生成引用文本。
+- **DOI 解析**：通过 Unpaywall API 自动将 DOI 解析为开放获取 PDF 链接。
+
+</details>
+
+<details>
+<summary><strong>📚 文献综述助手</strong> — 系统化的学术文献综述工作流</summary>
+
+- **全流程覆盖**：选题 → 检索 → 筛选 → 提取 → 撰写，五阶段完整工作流。
+- **多源检索**：学术搜索（arXiv + OpenAlex）+ 本地知识库 + 通用网络搜索。
+- **自动输出**：按学术规范生成结构化综述报告并保存为笔记。
+- **适用场景**：毕业论文、学术研究、课题申报、开题报告等。
+
+</details>
+
+<details>
+<summary><strong>🎯 导师模式</strong> — 苏格拉底式学习导师</summary>
+
+- **引导式教学**：不直接给答案，用提示、微步骤和追问让学习者自己发现解法。
+- **单题规则**：每回合最多只问一个细分问题，避免信息过载。
+- **两次尝试规则**：练习时让学习者最多尝试两次，再给出正确答案与简要理由。
+- **学术诚信**：拒绝直接输出作业答案，提供平行示例和引导。
+- **适用场景**：学习辅导、概念理解、作业指导、考试复习。
+
+</details>
+
+<details>
+<summary><strong>🧠 知识导图</strong> — AI 驱动的知识结构化工具</summary>
 
 - **对话生成**：一句话生成完整学科知识体系（如"生成高中生物导图"）。
 - **多轮编辑**：支持通过对话持续修正、扩展导图节点。
 - **视图切换**：支持大纲视图和导图视图，右键菜单提供丰富编辑功能。
 - **背诵模式**：支持节点遮挡背诵，辅助记忆。
 
-<details>
-<summary>📸 查看截图</summary>
 <p align="center"><img src="./example/知识导图-1.png" width="90%" alt="对话生成" /></p>
 <p align="center"><img src="./example/知识导图-2.png" width="90%" alt="多轮编辑" /></p>
 <p align="center"><img src="./example/知识导图-3.png" width="90%" alt="完整导图" /></p>
 <p align="center"><img src="./example/知识导图-4.png" width="90%" alt="导图编辑" /></p>
 <p align="center"><img src="./example/知识导图-5.png" width="90%" alt="大纲视图" /></p>
 <p align="center"><img src="./example/知识导图-6.png" width="90%" alt="背诵模式" /></p>
+
 </details>
 
-### 7. PDF/DOCX 智能阅读
+<details>
+<summary><strong>📝 题目集与 AI 解析</strong> — 将教材一键转化为可练习的题库</summary>
+
+- **一键出题**：上传教材/试卷，AI 自动提取或生成题目集。
+- **多种练习模式**：支持每日练习、限时练习、模拟考试等多种做题模式，自动判分。
+- **模拟考试配置**：支持按题型/难度分布配置组卷参数。
+- **AI 解析**：支持对题目触发 AI 深度解析，分析知识点与解题思路。
+- **知识点视图**：按知识点分类统计题目分布和掌握率，精准定位薄弱环节。
+
+<p align="center"><img src="./example/题目集-1.png" width="90%" alt="一键出题" /></p>
+<p align="center"><img src="./example/题目集-2.png" width="90%" alt="题库视图" /></p>
+<p align="center"><img src="./example/题目集-5.png" width="90%" alt="知识点统计" /></p>
+<p align="center"><img src="./example/题目集-3.png" width="90%" alt="做题界面" /></p>
+<p align="center"><img src="./example/题目集-4.png" width="90%" alt="深度解析" /></p>
+
+</details>
+
+<details>
+<summary><strong>💾 智能记忆</strong> — 让 AI 拥有长期记忆，越用越懂你</summary>
+
+- **主动记忆**：AI 在对话中自动识别并保存高复用信息（如学习偏好、知识背景），后续会话自动调用。
+- **记忆管理**：可视化的记忆管理面板，支持编辑、整理记忆条目。
+- **上下文延续**：后续对话中按需调用记忆检索工具，保持上下文连续性。
+
+<p align="center"><img src="./example/记忆-1.png" width="90%" alt="记忆提取" /></p>
+<p align="center"><img src="./example/记忆-2.png" width="90%" alt="记忆列表" /></p>
+<p align="center"><img src="./example/记忆-4.png" width="90%" alt="记忆视图" /></p>
+<p align="center"><img src="./example/记忆-3.png" width="90%" alt="记忆编辑" /></p>
+
+</details>
+
+### 4. PDF/DOCX 智能阅读
 
 不仅仅是阅读，更是与知识的对话。
 
@@ -228,42 +298,7 @@ AI 驱动的知识结构化工具。
 <p align="center"><img src="./example/docx阅读-1.png" width="90%" alt="DOCX阅读" /></p>
 </details>
 
-### 8. 题目集与 AI 解析 (QBank)
-
-将教材一键转化为可练习的题库。
-
-- **一键出题**：上传教材/试卷，AI 自动提取或生成题目集。
-- **多种练习模式**：支持每日练习、限时练习、模拟考试等多种做题模式，自动判分。
-- **模拟考试配置**：支持按题型/难度分布配置组卷参数。
-- **AI 解析**：支持对题目触发 AI 深度解析，分析知识点与解题思路。
-- **知识点视图**：按知识点分类统计题目分布和掌握率，精准定位薄弱环节。
-
-<details>
-<summary>📸 查看截图</summary>
-<p align="center"><img src="./example/题目集-1.png" width="90%" alt="一键出题" /></p>
-<p align="center"><img src="./example/题目集-2.png" width="90%" alt="题库视图" /></p>
-<p align="center"><img src="./example/题目集-5.png" width="90%" alt="知识点统计" /></p>
-<p align="center"><img src="./example/题目集-3.png" width="90%" alt="做题界面" /></p>
-<p align="center"><img src="./example/题目集-4.png" width="90%" alt="深度解析" /></p>
-</details>
-
-### 9. 智能记忆 (AI Memory)
-
-让 AI 拥有长期记忆，越用越懂你。
-
-- **主动记忆**：AI 在对话中自动识别并保存高复用信息（如学习偏好、知识背景），后续会话自动调用。
-- **记忆管理**：可视化的记忆管理面板，支持编辑、整理记忆条目。
-- **上下文延续**：后续对话中按需调用记忆检索工具，保持上下文连续性。
-
-<details>
-<summary>📸 查看截图</summary>
-<p align="center"><img src="./example/记忆-1.png" width="90%" alt="记忆提取" /></p>
-<p align="center"><img src="./example/记忆-2.png" width="90%" alt="记忆列表" /></p>
-<p align="center"><img src="./example/记忆-4.png" width="90%" alt="记忆视图" /></p>
-<p align="center"><img src="./example/记忆-3.png" width="90%" alt="记忆编辑" /></p>
-</details>
-
-### 10. AI 作文批改 (Essay)
+### 5. AI 作文批改 (Essay)
 
 全自动的中英文作文批改与润色。
 
@@ -278,7 +313,7 @@ AI 驱动的知识结构化工具。
 <p align="center"><img src="./example/作文-2.png" width="90%" alt="详细建议" /></p>
 </details>
 
-### 11. MCP 扩展与模型配置
+### 6. MCP 扩展与模型配置
 
 拥抱开放生态，高度可定制。
 
@@ -294,7 +329,7 @@ AI 驱动的知识结构化工具。
 <p align="center"><img src="./example/mcp-4.png" width="90%" alt="搜索详情" /></p>
 </details>
 
-### 12. 数据治理
+### 7. 数据治理
 
 完善的数据管理与安全机制：
 
