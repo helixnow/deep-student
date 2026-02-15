@@ -229,10 +229,12 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
                             <div className="absolute bottom-4 left-4 right-4 flex items-center justify-between pointer-events-none opacity-0 group-hover/target:opacity-100 transition-opacity duration-200">
                                 <div className="pointer-events-auto bg-background/80 backdrop-blur-sm border rounded-full shadow-sm px-1 py-0.5 flex items-center">
                                     {[1, 2, 3, 4, 5].map((rating) => (
-                                        <button
+                                        <NotionButton
                                             key={rating}
+                                            variant="ghost"
+                                            size="icon"
                                             onClick={() => onRateTranslation(rating)}
-                                            className="p-1.5 hover:bg-muted rounded-full transition-colors"
+                                            className="h-7 w-7 p-1.5 hover:bg-muted rounded-full"
                                         >
                                             <Star
                                                 className={`w-3.5 h-3.5 transition-colors ${translationQuality && rating <= translationQuality
@@ -240,7 +242,7 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
                                                     : 'text-muted-foreground hover:text-yellow-400'
                                                     }`}
                                             />
-                                        </button>
+                                        </NotionButton>
                                     ))}
                                 </div>
                                 <div className="bg-background/80 backdrop-blur-sm border rounded-lg px-2 py-1 text-xs text-muted-foreground shadow-sm">

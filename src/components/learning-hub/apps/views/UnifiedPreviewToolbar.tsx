@@ -132,9 +132,9 @@ export const UnifiedPreviewToolbar: React.FC<UnifiedPreviewToolbarProps> = React
   return (
     <div
       className={`
-        flex items-center justify-center gap-1
-        h-10 px-2
-        bg-muted/50 border-b
+        flex items-center justify-center gap-0.5
+        h-9 px-2
+        bg-muted/50 border-t
         ${className}
       `}
     >

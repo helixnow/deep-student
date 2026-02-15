@@ -2198,14 +2198,16 @@
         "webSearch": "网络搜索",
         "mcpTool": "MCP 工具",
         "multimodalRag": "多模态知识库",
-        "unifiedSearch": "统一检索"
+        "unifiedSearch": "统一检索",
+        "academicSearch": "学术搜索"
       },
       "defaultTitles": {
         "document": "文档",
         "graphNode": "图谱节点",
         "memory": "记忆",
         "searchResult": "搜索结果",
-        "multimodalPage": "页面"
+        "multimodalPage": "页面",
+        "paper": "论文"
       },
       "multimodal": {
         "sourceTypes": {

@@ -57,6 +57,7 @@ import './askUserBlock';
 import './rag';
 import './memory';
 import './webSearch';
+import './academicSearch';
 
 // ============================================================================
 // 导出组件（可选，用于测试）
@@ -100,6 +101,7 @@ export { TemplatePreviewBlock } from './templatePreview';
 export { RagBlock } from './rag';
 export { MemoryBlock } from './memory';
 export { WebSearchBlock } from './webSearch';
+export { AcademicSearchBlock } from './academicSearch';
 
 // 通用组件
 export * from './components';

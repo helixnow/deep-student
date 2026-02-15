@@ -182,163 +182,162 @@ export const useTauriDragAndDrop = ({
       const startTime = performance.now();
       
       try {
-      // ⚠️ 可见性检查已在监听器入口完成，这里可以直接处理
-      emitDebugEvent(zoneId, 'drop_received', 'info', `接收到 ${paths.length} 个文件路径`, { 
-        filePaths: paths,
-        maxFiles: maxFiles || '无限制',
-        maxFileSize: maxFileSize ? `${(maxFileSize / (1024 * 1024)).toFixed(1)}MB` : '无限制',
-      });
-
-      const acceptedFiles: File[] = [];
-      const rejectedFiles: string[] = [];
-      let oversizeCount = 0;
-      let overLimitCount = 0;
-      
-      // 数量限制检查
-      const pathsToProcess = maxFiles && paths.length > maxFiles 
-        ? (overLimitCount = paths.length - maxFiles, paths.slice(0, maxFiles))
-        : paths;
-      
-      if (overLimitCount > 0) {
-        emitDebugEvent(zoneId, 'validation_failed', 'warning', `文件数量超限: ${paths.length} > ${maxFiles}`, {
-          totalFiles: paths.length,
-          maxFiles,
-          rejectedCount: overLimitCount,
+        // ⚠️ 可见性检查已在监听器入口完成，这里可以直接处理
+        emitDebugEvent(zoneId, 'drop_received', 'info', `接收到 ${paths.length} 个文件路径`, { 
+          filePaths: paths,
+          maxFiles: maxFiles || '无限制',
+          maxFileSize: maxFileSize ? `${(maxFileSize / (1024 * 1024)).toFixed(1)}MB` : '无限制',
         });
-        showGlobalNotification('warning', i18n.t('drag_drop:errors.file_count_exceeded', { max: maxFiles, defaultValue: 'File count exceeds limit. Only processing the first {{max}} files.' }));
-      }
-      
-      const supportedTypesText = `图片: ${ATTACHMENT_IMAGE_EXTENSIONS.join('/')}, 文档: ${ATTACHMENT_DOCUMENT_EXTENSIONS.join('/')}`;
-      emitDebugEvent(zoneId, 'validation_start', 'debug', `开始验证 ${pathsToProcess.length} 个文件`, {
-        supportedTypes: supportedTypesText,
-      });
-      
-      // 🔧 使用 Tauri IPC 读取文件，避免 asset protocol 在 Windows 上对含中文/空格路径的 fetch 失败
-      const { invoke } = await import('@tauri-apps/api/core');
-      const imageRegex = new RegExp(`\\.(${ATTACHMENT_IMAGE_EXTENSIONS.join('|')})$`, 'i');
-      const documentRegex = new RegExp(`\\.(${ATTACHMENT_DOCUMENT_EXTENSIONS.join('|')})$`, 'i');
 
-      for (const path of pathsToProcess) {
-        const fileName = path.split(/[/\\]/).pop() || 'file';
-        const isImage = imageRegex.test(path);
-        const isDocument = documentRegex.test(path);
+        const acceptedFiles: File[] = [];
+        const rejectedFiles: string[] = [];
+        let oversizeCount = 0;
+        let overLimitCount = 0;
         
-        if (!(isImage || isDocument)) {
-          rejectedFiles.push(`${fileName}: 不支持的文件类型`);
-          emitDebugEvent(zoneId, 'validation_failed', 'warning', `文件类型不支持: ${fileName}`, {
-            fileName,
-            path,
+        // 数量限制检查
+        const pathsToProcess = maxFiles && paths.length > maxFiles 
+          ? (overLimitCount = paths.length - maxFiles, paths.slice(0, maxFiles))
+          : paths;
+        
+        if (overLimitCount > 0) {
+          emitDebugEvent(zoneId, 'validation_failed', 'warning', `文件数量超限: ${paths.length} > ${maxFiles}`, {
+            totalFiles: paths.length,
+            maxFiles,
+            rejectedCount: overLimitCount,
           });
-          continue;
+          showGlobalNotification('warning', i18n.t('drag_drop:errors.file_count_exceeded', { max: maxFiles, defaultValue: 'File count exceeds limit. Only processing the first {{max}} files.' }));
         }
         
-        try {
+        const supportedTypesText = `图片: ${ATTACHMENT_IMAGE_EXTENSIONS.join('/')}, 文档: ${ATTACHMENT_DOCUMENT_EXTENSIONS.join('/')}`;
+        emitDebugEvent(zoneId, 'validation_start', 'debug', `开始验证 ${pathsToProcess.length} 个文件`, {
+          supportedTypes: supportedTypesText,
+        });
+        
+        // 🔧 使用 Tauri IPC 读取文件，避免 asset protocol 在 Windows 上对含中文/空格路径的 fetch 失败
+        const { invoke } = await import('@tauri-apps/api/core');
+        const imageRegex = new RegExp(`\\.(${ATTACHMENT_IMAGE_EXTENSIONS.join('|')})$`, 'i');
+        const documentRegex = new RegExp(`\\.(${ATTACHMENT_DOCUMENT_EXTENSIONS.join('|')})$`, 'i');
 
-          // 先检查文件大小（避免读入超大文件到内存）
-          if (maxFileSize) {
-            const fileSize = await invoke<number>('get_file_size', { path });
-            if (fileSize > maxFileSize) {
-              oversizeCount++;
-              const sizeMB = (maxFileSize / (1024 * 1024)).toFixed(1);
-              rejectedFiles.push(`${fileName}: 文件过大 (${(fileSize / (1024 * 1024)).toFixed(2)}MB > ${sizeMB}MB)`);
-              emitDebugEvent(zoneId, 'validation_failed', 'warning', `文件过大: ${fileName}`, {
-                fileName,
-                fileSize: `${(fileSize / (1024 * 1024)).toFixed(2)}MB`,
-                maxSize: `${sizeMB}MB`,
-              });
-              continue;
+        for (const path of pathsToProcess) {
+          const fileName = path.split(/[/\\]/).pop() || 'file';
+          const isImage = imageRegex.test(path);
+          const isDocument = documentRegex.test(path);
+          
+          if (!(isImage || isDocument)) {
+            rejectedFiles.push(`${fileName}: 不支持的文件类型`);
+            emitDebugEvent(zoneId, 'validation_failed', 'warning', `文件类型不支持: ${fileName}`, {
+              fileName,
+              path,
+            });
+            continue;
+          }
+          
+          try {
+            // 先检查文件大小（避免读入超大文件到内存）
+            if (maxFileSize) {
+              const fileSize = await invoke<number>('get_file_size', { path });
+              if (fileSize > maxFileSize) {
+                oversizeCount++;
+                const sizeMB = (maxFileSize / (1024 * 1024)).toFixed(1);
+                rejectedFiles.push(`${fileName}: 文件过大 (${(fileSize / (1024 * 1024)).toFixed(2)}MB > ${sizeMB}MB)`);
+                emitDebugEvent(zoneId, 'validation_failed', 'warning', `文件过大: ${fileName}`, {
+                  fileName,
+                  fileSize: `${(fileSize / (1024 * 1024)).toFixed(2)}MB`,
+                  maxSize: `${sizeMB}MB`,
+                });
+                continue;
+              }
             }
+
+            const rawBytes = await invoke<number[]>('read_file_bytes', { path });
+            const bytes = new Uint8Array(rawBytes);
+            
+            // 推断 MIME 类型（使用完整映射表，与 UnifiedDragDropZone 保持一致）
+            const ext = fileName.split('.').pop()?.toLowerCase() || '';
+            const mimeType = EXTENSION_TO_MIME[ext] || 'application/octet-stream';
+            
+            let finalFileName = fileName;
+            if (!finalFileName.includes('.')) {
+              const fallbackExt = isImage ? 'jpg' : 'bin';
+              finalFileName = `${finalFileName}.${fallbackExt}`;
+            }
+            
+            const file = new File([bytes], finalFileName, {
+              type: mimeType,
+              lastModified: Date.now(),
+            });
+            
+            acceptedFiles.push(file);
+            emitDebugEvent(zoneId, 'file_converted', 'debug', `文件转换成功: ${finalFileName}`, {
+              fileName: finalFileName,
+              fileSize: `${(bytes.length / (1024 * 1024)).toFixed(2)}MB`,
+              mimeType: file.type,
+            });
+          } catch (error: unknown) {
+            console.error('[useTauriDragAndDrop] 处理拖拽文件失败:', path, error);
+            rejectedFiles.push(`${fileName}: ${String(error)}`);
+            emitDebugEvent(zoneId, 'file_processing', 'error', `文件处理失败: ${fileName}`, {
+              fileName,
+              error: String(error),
+            });
           }
+        }
 
-          const rawBytes = await invoke<number[]>('read_file_bytes', { path });
-          const bytes = new Uint8Array(rawBytes);
-          
-          // 推断 MIME 类型（使用完整映射表，与 UnifiedDragDropZone 保持一致）
-          const ext = fileName.split('.').pop()?.toLowerCase() || '';
-          const mimeType = EXTENSION_TO_MIME[ext] || 'application/octet-stream';
-          
-          let finalFileName = fileName;
-          if (!finalFileName.includes('.')) {
-            const fallbackExt = isImage ? 'jpg' : 'bin';
-            finalFileName = `${finalFileName}.${fallbackExt}`;
+        if (rejectedFiles.length > 0) {
+          emitDebugEvent(zoneId, 'validation_failed', 'warning', `${rejectedFiles.length} 个文件被拒绝`, {
+            rejectedCount: rejectedFiles.length,
+            rejectedFiles: rejectedFiles.slice(0, 5),
+          });
+        }
+
+        if (acceptedFiles.length > 0) {
+          // 去重：同一批次内部按 name+size 去重
+          const keyOf = (f: File) => `${f.name}_${f.size}_${f.type}`;
+          const uniqMap = new Map<string, File>();
+          for (const f of acceptedFiles) {
+            const k = keyOf(f);
+            if (!uniqMap.has(k)) uniqMap.set(k, f);
           }
           
-          const file = new File([bytes], finalFileName, {
-            type: mimeType,
-            lastModified: Date.now(),
+          const uniqueFiles = Array.from(uniqMap.values());
+          const duplicateCount = acceptedFiles.length - uniqueFiles.length;
+          
+          if (duplicateCount > 0) {
+            emitDebugEvent(zoneId, 'validation_start', 'debug', `去重：移除 ${duplicateCount} 个重复文件`, {
+              totalFiles: acceptedFiles.length,
+              uniqueFiles: uniqueFiles.length,
+              duplicateCount,
+            });
+          }
+          
+          emitDebugEvent(zoneId, 'callback_invoked', 'debug', `调用 onDropFiles (${uniqueFiles.length} 个文件)`, {
+            fileNames: uniqueFiles.map(f => f.name),
           });
           
-          acceptedFiles.push(file);
-          emitDebugEvent(zoneId, 'file_converted', 'debug', `文件转换成功: ${finalFileName}`, {
-            fileName: finalFileName,
-            fileSize: `${(bytes.length / (1024 * 1024)).toFixed(2)}MB`,
-            mimeType: file.type,
+          onDropFilesRef.current(uniqueFiles);
+          
+          emitDebugEvent(zoneId, 'complete', 'info', `文件处理完成: ${uniqueFiles.length} 个成功, ${rejectedFiles.length} 个失败`, {
+            successCount: uniqueFiles.length,
+            rejectedCount: rejectedFiles.length,
+            oversizeCount,
+            overLimitCount,
+            processingTime: `${(performance.now() - startTime).toFixed(2)}ms`,
           });
-        } catch (error: unknown) {
-          console.error('[useTauriDragAndDrop] 处理拖拽文件失败:', path, error);
-          rejectedFiles.push(`${fileName}: ${String(error)}`);
-          emitDebugEvent(zoneId, 'file_processing', 'error', `文件处理失败: ${fileName}`, {
-            fileName,
-            error: String(error),
+        } else if (rejectedFiles.length > 0) {
+          // 所有文件都失败了，通知用户
+          showGlobalNotification('error', i18n.t('drag_drop:errors.all_files_failed', {
+            defaultValue: '文件处理失败：{{reason}}',
+            reason: rejectedFiles[0],
+          }));
+          emitDebugEvent(zoneId, 'complete', 'error', `所有文件处理失败: ${rejectedFiles.length} 个`, {
+            rejectedFiles: rejectedFiles.slice(0, 5),
+            processingTime: `${(performance.now() - startTime).toFixed(2)}ms`,
           });
-        }
-      }
-
-      if (rejectedFiles.length > 0) {
-        emitDebugEvent(zoneId, 'validation_failed', 'warning', `${rejectedFiles.length} 个文件被拒绝`, {
-          rejectedCount: rejectedFiles.length,
-          rejectedFiles: rejectedFiles.slice(0, 5),
-        });
-      }
-
-      if (acceptedFiles.length > 0) {
-        // 去重：同一批次内部按 name+size 去重
-        const keyOf = (f: File) => `${f.name}_${f.size}_${f.type}`;
-        const uniqMap = new Map<string, File>();
-        for (const f of acceptedFiles) {
-          const k = keyOf(f);
-          if (!uniqMap.has(k)) uniqMap.set(k, f);
-        }
-        
-        const uniqueFiles = Array.from(uniqMap.values());
-        const duplicateCount = acceptedFiles.length - uniqueFiles.length;
-        
-        if (duplicateCount > 0) {
-          emitDebugEvent(zoneId, 'validation_start', 'debug', `去重：移除 ${duplicateCount} 个重复文件`, {
-            totalFiles: acceptedFiles.length,
-            uniqueFiles: uniqueFiles.length,
-            duplicateCount,
+        } else {
+          emitDebugEvent(zoneId, 'complete', 'warning', '没有可处理的文件', {
+            processingTime: `${(performance.now() - startTime).toFixed(2)}ms`,
           });
         }
-        
-        emitDebugEvent(zoneId, 'callback_invoked', 'debug', `调用 onDropFiles (${uniqueFiles.length} 个文件)`, {
-          fileNames: uniqueFiles.map(f => f.name),
-        });
-        
-        onDropFilesRef.current(uniqueFiles);
-        
-        emitDebugEvent(zoneId, 'complete', 'info', `文件处理完成: ${uniqueFiles.length} 个成功, ${rejectedFiles.length} 个失败`, {
-          successCount: uniqueFiles.length,
-          rejectedCount: rejectedFiles.length,
-          oversizeCount,
-          overLimitCount,
-          processingTime: `${(performance.now() - startTime).toFixed(2)}ms`,
-        });
-      } else if (rejectedFiles.length > 0) {
-        // 所有文件都失败了，通知用户
-        showGlobalNotification('error', i18n.t('drag_drop:errors.all_files_failed', {
-          defaultValue: '文件处理失败：{{reason}}',
-          reason: rejectedFiles[0],
-        }));
-        emitDebugEvent(zoneId, 'complete', 'error', `所有文件处理失败: ${rejectedFiles.length} 个`, {
-          rejectedFiles: rejectedFiles.slice(0, 5),
-          processingTime: `${(performance.now() - startTime).toFixed(2)}ms`,
-        });
-      } else {
-        emitDebugEvent(zoneId, 'complete', 'warning', '没有可处理的文件', {
-          processingTime: `${(performance.now() - startTime).toFixed(2)}ms`,
-        });
-      }
       } catch (fatalError: unknown) {
         console.error('[useTauriDragAndDrop] processFilePaths fatal error:', fatalError);
         showGlobalNotification('error', i18n.t('drag_drop:errors.all_files_failed', {

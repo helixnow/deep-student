@@ -78,7 +78,7 @@ export interface ThinkingStats {
 /**
  * 检索块类型列表
  */
-export const RETRIEVAL_BLOCK_TYPES: BlockType[] = ['rag', 'memory', 'web_search', 'multimodal_rag'];
+export const RETRIEVAL_BLOCK_TYPES: BlockType[] = ['rag', 'memory', 'web_search', 'multimodal_rag', 'academic_search'];
 
 /**
  * 判断是否为检索块类型

@@ -7,15 +7,13 @@ import { Switch } from '../ui/shad/Switch';
 import { Label } from '../ui/shad/Label';
 import { CommonTooltip } from '../shared/CommonTooltip';
 import {
-    FileText,
-    ChevronDown,
     ArrowLeftRight,
     RotateCcw,
     Trash2,
     Sparkles,
+    Settings2,
 } from 'lucide-react';
 import UnifiedDragDropZone, { FILE_TYPES } from '../shared/UnifiedDragDropZone';
-import { PromptPanel } from './PromptPanel';
 
 interface SourcePanelProps {
     isMaximized: boolean;
@@ -34,18 +32,7 @@ interface SourcePanelProps {
     setIsAutoTranslate: (val: boolean) => void;
     onSwapLanguages: () => void;
     onFilesDropped: (files: File[]) => void;
-    customPrompt: string;
-    setCustomPrompt: (prompt: string) => void;
-    showPromptEditor: boolean;
     setShowPromptEditor: (show: boolean) => void;
-    formality: 'formal' | 'casual' | 'auto';
-    setFormality: (formality: 'formal' | 'casual' | 'auto') => void;
-    domain?: string;
-    setDomain?: (domain: string) => void;
-    glossary?: Array<[string, string]>;
-    setGlossary?: (glossary: Array<[string, string]>) => void;
-    onSavePrompt: () => void;
-    onRestoreDefaultPrompt: () => void;
     onClear: () => void;
     onTranslate: () => void;
     onCancelTranslation: () => void;
@@ -73,18 +60,7 @@ export const SourcePanel = React.forwardRef<HTMLTextAreaElement, SourcePanelProp
     setIsAutoTranslate,
     onSwapLanguages,
     onFilesDropped,
-    customPrompt,
-    setCustomPrompt,
-    showPromptEditor,
     setShowPromptEditor,
-    formality,
-    setFormality,
-    domain,
-    setDomain,
-    glossary,
-    setGlossary,
-    onSavePrompt,
-    onRestoreDefaultPrompt,
     onClear,
     onTranslate,
     onCancelTranslation,
@@ -203,22 +179,17 @@ export const SourcePanel = React.forwardRef<HTMLTextAreaElement, SourcePanelProp
 
                 {/* Floating Bottom Controls (Source) - 仅桌面端显示 */}
                 <div className="absolute bottom-4 left-4 right-4 hidden sm:flex items-center justify-between pointer-events-none">
-                    {/* 桌面端：提示词面板触发按钮 */}
-                    <div className="pointer-events-auto items-center gap-2 opacity-0 group-hover/source:opacity-100 transition-opacity duration-200 w-full max-w-2xl">
-                        <PromptPanel
-                            customPrompt={customPrompt}
-                            setCustomPrompt={setCustomPrompt}
-                            onSavePrompt={onSavePrompt}
-                            onRestoreDefaultPrompt={onRestoreDefaultPrompt}
-                            isOpen={showPromptEditor}
-                            setIsOpen={setShowPromptEditor}
-                            formality={formality}
-                            setFormality={setFormality}
-                            domain={domain}
-                            setDomain={setDomain}
-                            glossary={glossary}
-                            setGlossary={setGlossary}
-                        />
+                    {/* 桌面端：翻译设置触发按钮 */}
+                    <div className="pointer-events-auto opacity-0 group-hover/source:opacity-100 transition-opacity duration-200">
+                        <NotionButton
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setShowPromptEditor(true)}
+                            className="bg-background/80 backdrop-blur-sm border shadow-sm"
+                        >
+                            <Settings2 className="w-3.5 h-3.5 mr-1.5" />
+                            {t('translation:prompt_editor.title')}
+                        </NotionButton>
                     </div>
 
                     {/* 桌面端：字数统计和清除按钮 */}
@@ -251,18 +222,19 @@ export const SourcePanel = React.forwardRef<HTMLTextAreaElement, SourcePanelProp
             <div className="hidden sm:flex p-3 border-t bg-background/50 backdrop-blur items-center justify-end">
                 {isTranslating ? (
                     <NotionButton
-                        variant="secondary"
+                        variant="default"
                         onClick={onCancelTranslation}
-                        className="min-w-[120px] shadow-sm bg-secondary/80 hover:bg-secondary"
+                        className="min-w-[120px]"
                     >
                         <RotateCcw className="w-3.5 h-3.5 mr-2 animate-spin" />
                         {t('common:cancel')}
                     </NotionButton>
                 ) : (
                     <NotionButton
+                        variant="primary"
                         onClick={onTranslate}
                         disabled={!sourceText.trim()}
-                        className="min-w-[120px] shadow-sm bg-primary hover:bg-primary/90 text-primary-foreground transition-all active:scale-95"
+                        className="min-w-[120px]"
                     >
                         <Sparkles className="w-3.5 h-3.5 mr-2" />
                         {t('translation:actions.translate')}

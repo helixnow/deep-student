@@ -127,12 +127,14 @@ const GlossaryEditor: React.FC<{
               <span className="flex-1 text-sm truncate font-mono">{src}</span>
               <span className="text-muted-foreground/40 text-xs shrink-0">→</span>
               <span className="flex-1 text-sm truncate font-mono text-primary/80">{tgt}</span>
-              <button
+              <NotionButton
+                variant="ghost"
+                size="icon"
                 onClick={() => handleRemove(index)}
-                className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-destructive/10 hover:text-destructive transition-all shrink-0"
+                className="h-6 w-6 opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-destructive/10 hover:text-destructive transition-all shrink-0"
               >
                 <X className="w-3.5 h-3.5" />
-              </button>
+              </NotionButton>
             </div>
           ))}
         </div>
@@ -331,35 +333,80 @@ export const PromptPanel: React.FC<PromptPanelProps> = ({
     );
   }
 
-  // 桌面端：折叠/展开样式
+  // 桌面端：抽屉式渲染（参考作文批改 SettingsDrawer）
   return (
-    <div className="space-y-2 w-full">
-      <NotionButton
-        variant="ghost"
-        size="sm"
-        onClick={() => setIsOpen(!isOpen)}
-        className="w-full justify-start bg-background/80 backdrop-blur-sm border shadow-sm"
-      >
-        {isOpen ? <ChevronDown className="w-4 h-4 mr-2" /> : <ChevronRight className="w-4 h-4 mr-2" />}
-        <Sparkles className="w-4 h-4 mr-2" />
-        {t('translation:prompt_editor.title')}
-      </NotionButton>
-      {isOpen && (
-        <div className="space-y-3 p-3 bg-background/95 backdrop-blur-sm border rounded-lg shadow-lg w-full">
-          <PromptEditorContent
-            customPrompt={customPrompt}
-            setCustomPrompt={setCustomPrompt}
-            onSavePrompt={onSavePrompt}
-            onRestoreDefaultPrompt={onRestoreDefaultPrompt}
-            formality={formality}
-            setFormality={setFormality}
-            domain={domain}
-            setDomain={setDomain}
-            glossary={glossary}
-            setGlossary={setGlossary}
-          />
+    <div className="h-full flex flex-col bg-background border-l border-border/40">
+      {/* 头部 */}
+      <div className="flex items-center justify-between px-4 py-2.5 border-b border-border/30 shrink-0">
+        <div className="flex items-center gap-2 text-sm font-medium text-foreground/80">
+          <Sparkles className="w-4 h-4" />
+          <span>{t('translation:prompt_editor.title')}</span>
         </div>
-      )}
+        <NotionButton
+          variant="ghost"
+          size="icon"
+          onClick={() => setIsOpen(false)}
+          className="h-7 w-7 text-muted-foreground/60 hover:text-foreground"
+        >
+          <X className="w-4 h-4" />
+        </NotionButton>
+      </div>
+
+      {/* 内容区 */}
+      <CustomScrollArea className="flex-1" viewportClassName="p-4">
+        {/* 翻译选项开关 */}
+        {(setIsAutoTranslate || setIsSyncScroll) && (
+          <div className="space-y-4 mb-6 pb-4 border-b border-border/30">
+            <h3 className="text-xs font-medium text-muted-foreground/70 uppercase tracking-wide">
+              {t('translation:options_title')}
+            </h3>
+
+            {setIsAutoTranslate && (
+              <div className="flex items-center justify-between">
+                <Label htmlFor="auto-translate-drawer" className="text-sm cursor-pointer">
+                  {t('translation:auto_mode')}
+                </Label>
+                <Switch
+                  id="auto-translate-drawer"
+                  checked={isAutoTranslate}
+                  onCheckedChange={setIsAutoTranslate}
+                  className="data-[state=checked]:bg-primary"
+                />
+              </div>
+            )}
+
+            {setIsSyncScroll && (
+              <div className="flex items-center justify-between">
+                <Label htmlFor="sync-scroll-drawer" className="text-sm cursor-pointer">
+                  {t('translation:sync_scroll')}
+                </Label>
+                <Switch
+                  id="sync-scroll-drawer"
+                  checked={isSyncScroll}
+                  onCheckedChange={setIsSyncScroll}
+                  className="data-[state=checked]:bg-primary"
+                />
+              </div>
+            )}
+          </div>
+        )}
+
+        <PromptEditorContent
+          customPrompt={customPrompt}
+          setCustomPrompt={setCustomPrompt}
+          onSavePrompt={() => {
+            onSavePrompt();
+            setIsOpen(false);
+          }}
+          onRestoreDefaultPrompt={onRestoreDefaultPrompt}
+          formality={formality}
+          setFormality={setFormality}
+          domain={domain}
+          setDomain={setDomain}
+          glossary={glossary}
+          setGlossary={setGlossary}
+        />
+      </CustomScrollArea>
     </div>
   );
 };

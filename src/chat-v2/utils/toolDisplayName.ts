@@ -94,6 +94,11 @@ const ZH_TOKEN_MAP: Record<string, string> = {
   notes: '笔记',
   ask: '提问',
   user: '用户',
+  arxiv: 'arXiv',
+  scholar: '学术',
+  paper: '论文',
+  cite: '引用',
+  format: '格式化',
 };
 
 /**

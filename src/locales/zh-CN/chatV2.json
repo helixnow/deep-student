@@ -245,6 +245,16 @@
       "stats": "显示 {{shown}} / {{total}} 条结果",
       "statsSimple": "{{count}} 条结果"
     },
+    "academicSearch": {
+      "title": "学术搜索",
+      "searching": "检索论文中...",
+      "loading": "正在搜索学术论文...",
+      "error": "搜索失败",
+      "errorMessage": "学术搜索失败，请重试",
+      "noResults": "未找到相关论文",
+      "stats": "显示 {{shown}} / {{total}} 篇论文",
+      "statsSimple": "{{count}} 篇论文"
+    },
     "mcpTool": {
       "title": "工具调用",
       "unknownTool": "未知工具",

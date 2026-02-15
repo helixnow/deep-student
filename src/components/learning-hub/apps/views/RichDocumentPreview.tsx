@@ -45,17 +45,6 @@ export const RichDocumentPreview: React.FC<RichDocumentPreviewProps> = ({
 }) => {
   return (
     <div className={cn('flex flex-col h-full overflow-hidden', rootClassName)}>
-      {showToolbar && (
-        <UnifiedPreviewToolbar
-          previewType={previewType}
-          zoomScale={zoomScale}
-          fontScale={fontScale}
-          onZoomChange={onZoomChange}
-          onFontChange={onFontChange}
-          onZoomReset={onZoomReset}
-          onFontReset={onFontReset}
-        />
-      )}
       <div className={cn('flex-1 overflow-hidden', bodyClassName)}>
         <Suspense fallback={fallback}>
           {kind === 'docx' && (
@@ -86,6 +75,17 @@ export const RichDocumentPreview: React.FC<RichDocumentPreviewProps> = ({
           )}
         </Suspense>
       </div>
+      {showToolbar && (
+        <UnifiedPreviewToolbar
+          previewType={previewType}
+          zoomScale={zoomScale}
+          fontScale={fontScale}
+          onZoomChange={onZoomChange}
+          onFontChange={onFontChange}
+          onZoomReset={onZoomReset}
+          onFontReset={onFontReset}
+        />
+      )}
     </div>
   );
 };

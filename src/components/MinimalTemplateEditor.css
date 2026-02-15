@@ -122,6 +122,7 @@
 /* 内容区域 */
 .editor-content {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   padding: 24px;
 }
@@ -684,4 +685,130 @@
 /* 水平滚动条样式 */
 .prompt-preview .preview-content::-webkit-scrollbar:horizontal {
   height: 12px;
+}
+
+/* ============================================================
+ * 模板代码分栏布局 - 参考技能编辑器 (SkillFullscreenEditor)
+ * ============================================================ */
+.template-code-split-panel {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* 当 editor-content 包含分栏面板时，去掉 padding、禁止外部滚动 */
+.editor-content:has(.template-code-split-panel) {
+  padding: 0 !important;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.minimal-template-editor.no-sidebar .editor-content:has(.template-code-split-panel) {
+  padding: 0 !important;
+}
+
+/* CodeMirror 编辑器样式 - 参考 skill-codemirror-editor */
+.template-codemirror-editor {
+  height: 100%;
+  font-family: 'SF Mono', 'Menlo', 'Monaco', 'Consolas', 'Liberation Mono', 'Courier New', monospace;
+  font-size: 14px;
+}
+
+.template-codemirror-editor .cm-editor {
+  height: 100%;
+  background: transparent;
+}
+
+.template-codemirror-editor .cm-scroller {
+  overflow: auto;
+  font-family: inherit;
+}
+
+.template-codemirror-editor .cm-content {
+  padding: 16px 0;
+}
+
+.template-codemirror-editor .cm-line {
+  padding: 0 16px;
+}
+
+.template-codemirror-editor .cm-gutters {
+  background: transparent;
+  border-right: 1px solid hsl(var(--border) / 0.3);
+  padding-right: 8px;
+}
+
+.template-codemirror-editor .cm-gutter-lint {
+  width: 0;
+}
+
+.template-codemirror-editor .cm-activeLineGutter {
+  background: hsl(var(--primary) / 0.1);
+}
+
+.template-codemirror-editor .cm-activeLine {
+  background: hsl(var(--primary) / 0.05);
+}
+
+/* 选中高亮 */
+.template-codemirror-editor .cm-selectionBackground {
+  background: hsl(var(--primary) / 0.2) !important;
+}
+
+.template-codemirror-editor .cm-focused .cm-selectionBackground {
+  background: hsl(var(--primary) / 0.25) !important;
+}
+
+/* 光标样式 */
+.template-codemirror-editor .cm-cursor {
+  border-left-color: hsl(var(--primary));
+  border-left-width: 2px;
+}
+
+/* 行号样式 */
+.template-codemirror-editor .cm-lineNumbers .cm-gutterElement {
+  padding: 0 12px 0 8px;
+  min-width: 40px;
+  color: hsl(var(--muted-foreground) / 0.5);
+  font-size: 12px;
+}
+
+/* 折叠标记 */
+.template-codemirror-editor .cm-foldGutter .cm-gutterElement {
+  padding: 0 4px;
+  cursor: pointer;
+  color: hsl(var(--muted-foreground) / 0.4);
+  transition: color 0.15s ease;
+}
+
+.template-codemirror-editor .cm-foldGutter .cm-gutterElement:hover {
+  color: hsl(var(--foreground));
+}
+
+/* 隐藏原生滚动条，使用自研滚动条覆盖 */
+.template-codemirror-editor .cm-scroller {
+  scrollbar-width: none;
+}
+
+.template-codemirror-editor .cm-scroller::-webkit-scrollbar {
+  display: none;
+}
+
+/* 搜索高亮 */
+.template-codemirror-editor .cm-searchMatch {
+  background: hsl(50 100% 50% / 0.3);
+  border-radius: 2px;
+}
+
+.template-codemirror-editor .cm-searchMatch-selected {
+  background: hsl(50 100% 50% / 0.5);
+}
+
+/* 移动端：分栏面板回退为垂直布局 */
+@media (max-width: 768px) {
+  .template-code-split-panel {
+    height: auto;
+    min-height: 400px;
+  }
 }

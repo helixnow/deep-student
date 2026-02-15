@@ -17,8 +17,10 @@ export function resolveSingleVariantDisplayMeta(
   const fallbackVariant =
     variants.find((v) => v.id === message.activeVariantId) ?? variants[0];
 
+  // 🔧 三轮修复：优先使用变体的 modelId（来自后端 variant_start，已解析为显示名称），
+  // 再回退到 _meta.modelId（可能在消息创建时被设为配置 UUID，后由 stream_start 更新）
   return {
-    resolvedModelId: message._meta?.modelId ?? fallbackVariant?.modelId,
-    resolvedUsage: message._meta?.usage ?? fallbackVariant?.usage,
+    resolvedModelId: fallbackVariant?.modelId || message._meta?.modelId,
+    resolvedUsage: fallbackVariant?.usage ?? message._meta?.usage,
   };
 }

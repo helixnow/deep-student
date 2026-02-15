@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   FileText, Code, Database, Settings, Eye, EyeOff,
@@ -13,6 +13,14 @@ import { Textarea } from './ui/shad/Textarea';
 import { Label } from './ui/shad/Label';
 import { Switch } from './ui/shad/Switch';
 import { UnifiedCodeEditor } from './shared/UnifiedCodeEditor';
+import CodeMirror from '@uiw/react-codemirror';
+import { html } from '@codemirror/lang-html';
+import { css as cssLang } from '@codemirror/lang-css';
+import { EditorView } from '@codemirror/view';
+import { vscodeDark, vscodeLight } from '@uiw/codemirror-theme-vscode';
+import { HorizontalResizable } from './shared/Resizable';
+import { CodeMirrorScrollOverlay } from './skills-management/CodeMirrorScrollOverlay';
+import { CustomScrollArea } from './custom-scroll-area';
 import './MinimalTemplateEditor.css';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 
@@ -109,6 +117,62 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
   const [validationErrors, setValidationErrors] = useState<ValidationError[]>([]);
   const [previewMode, setPreviewMode] = useState<'front' | 'back'>('front');
   const [showPromptPreview, setShowPromptPreview] = useState(false);
+
+  // 代码编辑器子 tab 状态（参考技能编辑器分栏布局）
+  type CodeSubTab = 'front' | 'back' | 'css';
+  const [codeSubTab, setCodeSubTab] = useState<CodeSubTab>('front');
+  const cmContainerRef = useRef<HTMLDivElement>(null);
+
+  // 暗色模式检测
+  const [isDarkMode, setIsDarkMode] = useState(() => {
+    if (typeof document !== 'undefined') {
+      return document.documentElement.classList.contains('dark');
+    }
+    return false;
+  });
+
+  useEffect(() => {
+    const observer = new MutationObserver(() => {
+      setIsDarkMode(document.documentElement.classList.contains('dark'));
+    });
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['class'],
+    });
+    return () => observer.disconnect();
+  }, []);
+
+  // CodeMirror 扩展 - 根据子 tab 切换语言
+  const cmExtensions = useMemo(() => {
+    const lang = codeSubTab === 'css' ? cssLang() : html();
+    return [lang, EditorView.lineWrapping];
+  }, [codeSubTab]);
+
+  const cmTheme = isDarkMode ? vscodeDark : vscodeLight;
+
+  // 获取当前代码子 tab 对应的值
+  const codeValue = useMemo(() => {
+    switch (codeSubTab) {
+      case 'front': return formData.front_template;
+      case 'back': return formData.back_template;
+      case 'css': return formData.css_style;
+    }
+  }, [codeSubTab, formData.front_template, formData.back_template, formData.css_style]);
+
+  // 更新当前代码子 tab 的值
+  const handleCodeChange = useCallback((value: string) => {
+    switch (codeSubTab) {
+      case 'front':
+        setFormData(prev => ({ ...prev, front_template: value }));
+        break;
+      case 'back':
+        setFormData(prev => ({ ...prev, back_template: value }));
+        break;
+      case 'css':
+        setFormData(prev => ({ ...prev, css_style: value }));
+        break;
+    }
+  }, [codeSubTab]);
 
   // 验证JSON
   const validateJson = (jsonString: string): boolean => {
@@ -305,18 +369,11 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
               {t('basic_info')}
             </button>
             <button
-              className={`nav-item ${activeTab === 'templates' ? 'active' : ''}`}
-              onClick={() => setActiveTab('templates')}
+              className={`nav-item ${activeTab === 'templates' || activeTab === 'styles' ? 'active' : ''}`}
+              onClick={() => { setActiveTab('templates'); setCodeSubTab('front'); }}
             >
               <Code size={18} />
               {t('template_code', '模板代码')}
-            </button>
-            <button
-              className={`nav-item ${activeTab === 'styles' ? 'active' : ''}`}
-              onClick={() => setActiveTab('styles')}
-            >
-              <Code size={18} />
-              {t('styles_design')}
             </button>
             <button
               className={`nav-item ${activeTab === 'data' ? 'active' : ''}`}
@@ -516,93 +573,161 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
             </div>
           )}
 
-          {/* 模板代码 */}
-          {activeTab === 'templates' && (
-            <>
-              <div className="setting-section">
-                <div className="setting-section-header">
-                  <h2 className="setting-section-title">{t('front_template_title')}</h2>
-                  <p className="setting-section-desc">{t('front_template_desc')}</p>
-                </div>
-                  <UnifiedCodeEditor
-                    value={formData.front_template}
-                    onChange={(value) => setFormData({...formData, front_template: value})}
-                    language="html"
-                    height="300px"
-                    placeholder="{{Front}}"
-                  />
-              </div>
+          {/* 模板代码（含样式） - 参考技能编辑器分栏布局 */}
+          {(activeTab === 'templates' || activeTab === 'styles') && (
+            <div className="template-code-split-panel">
+              <HorizontalResizable
+                initial={0.35}
+                minLeft={0.25}
+                minRight={0.4}
+                className="h-full"
+                left={
+                  <div className="h-full w-full flex flex-col">
+                    <CustomScrollArea className="flex-1" viewportClassName="p-4">
+                      <div className="space-y-4">
+                        {/* 代码子 tab 切换 */}
+                        <div className="flex gap-1 p-1 bg-muted/30 rounded-lg">
+                          <button
+                            type="button"
+                            className={`flex-1 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                              codeSubTab === 'front'
+                                ? 'bg-background shadow-sm text-foreground'
+                                : 'text-muted-foreground hover:text-foreground'
+                            }`}
+                            onClick={() => setCodeSubTab('front')}
+                          >
+                            {t('front_template_title', '正面模板')}
+                          </button>
+                          <button
+                            type="button"
+                            className={`flex-1 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                              codeSubTab === 'back'
+                                ? 'bg-background shadow-sm text-foreground'
+                                : 'text-muted-foreground hover:text-foreground'
+                            }`}
+                            onClick={() => setCodeSubTab('back')}
+                          >
+                            {t('back_template_title', '背面模板')}
+                          </button>
+                          <button
+                            type="button"
+                            className={`flex-1 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                              codeSubTab === 'css'
+                                ? 'bg-background shadow-sm text-foreground'
+                                : 'text-muted-foreground hover:text-foreground'
+                            }`}
+                            onClick={() => setCodeSubTab('css')}
+                          >
+                            {t('css_style_title', 'CSS 样式')}
+                          </button>
+                        </div>
 
-              <div className="setting-section">
-                <div className="setting-section-header">
-                  <h2 className="setting-section-title">{t('back_template_title')}</h2>
-                  <p className="setting-section-desc">{t('back_template_desc')}</p>
-                </div>
-                  <UnifiedCodeEditor
-                    value={formData.back_template}
-                    onChange={(value) => setFormData({...formData, back_template: value})}
-                    language="html"
-                    height="300px"
-                    placeholder="{{FrontSide}}<hr>{{Back}}"
-                  />
-              </div>
+                        {/* 描述提示 */}
+                        <p className="text-xs text-muted-foreground/70">
+                          {codeSubTab === 'front' && t('front_template_desc', '使用 Mustache 语法编写卡片正面模板')}
+                          {codeSubTab === 'back' && t('back_template_desc', '使用 Mustache 语法编写卡片背面模板')}
+                          {codeSubTab === 'css' && t('css_style_desc', '自定义卡片的视觉样式')}
+                        </p>
 
-              {/* 预览 */}
-              <div className="setting-section">
-                <div className="setting-section-header flex items-center justify-between">
-                  <div>
-                    <h2 className="setting-section-title">{t('template_preview', '模板预览')}</h2>
-                  </div>
-                  <div className="flex gap-2">
-                    <NotionButton
-                      type="button"
-                      variant={previewMode === 'front' ? 'default' : 'outline'}
-                      size="sm"
-                      onClick={() => setPreviewMode('front')}
-                    >
-                      {t('front_label', '正面')}
-                    </NotionButton>
-                    <NotionButton
-                      type="button"
-                      variant={previewMode === 'back' ? 'default' : 'outline'}
-                      size="sm"
-                      onClick={() => setPreviewMode('back')}
-                    >
-                      {t('back_label', '背面')}
-                    </NotionButton>
-                  </div>
-                </div>
-                  <div className="preview-section">
-                    <div className="preview-content">
-                      <IframePreview
-                        htmlContent={renderCardPreview(
-                          previewMode === 'front' ? formData.front_template : formData.back_template,
-                          formData as any,
-                          validateJson(previewDataJson) ? JSON.parse(previewDataJson) : {},
-                          previewMode === 'back'
+                        {/* 实时预览 */}
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-medium text-muted-foreground/80 uppercase tracking-wider">
+                              {t('template_preview', '模板预览')}
+                            </span>
+                            <div className="flex gap-1">
+                              <button
+                                type="button"
+                                className={`px-2 py-1 rounded text-[11px] font-medium transition-all ${
+                                  previewMode === 'front'
+                                    ? 'bg-primary/10 text-primary'
+                                    : 'text-muted-foreground hover:text-foreground'
+                                }`}
+                                onClick={() => setPreviewMode('front')}
+                              >
+                                {t('front_label', '正面')}
+                              </button>
+                              <button
+                                type="button"
+                                className={`px-2 py-1 rounded text-[11px] font-medium transition-all ${
+                                  previewMode === 'back'
+                                    ? 'bg-primary/10 text-primary'
+                                    : 'text-muted-foreground hover:text-foreground'
+                                }`}
+                                onClick={() => setPreviewMode('back')}
+                              >
+                                {t('back_label', '背面')}
+                              </button>
+                            </div>
+                          </div>
+                          <div className="border border-border/40 rounded-lg overflow-hidden">
+                            <IframePreview
+                              htmlContent={renderCardPreview(
+                                previewMode === 'front' ? formData.front_template : formData.back_template,
+                                formData as any,
+                                validateJson(previewDataJson) ? JSON.parse(previewDataJson) : {},
+                                previewMode === 'back'
+                              )}
+                              cssContent={formData.css_style}
+                            />
+                          </div>
+                        </div>
+
+                        {/* Mustache 字段提示 */}
+                        {codeSubTab !== 'css' && (
+                          <div className="text-[10px] text-muted-foreground/60 space-y-1">
+                            <p>{t('use_mustache_hint', '使用 {{字段名}} 来引用字段值')}</p>
+                            <div className="flex flex-wrap gap-1">
+                              {formData.fields.map(field => (
+                                <code
+                                  key={field}
+                                  className="px-1.5 py-0.5 bg-muted/50 rounded text-[10px] font-mono cursor-pointer hover:bg-muted transition-colors"
+                                  onClick={() => {
+                                    navigator.clipboard.writeText(`{{${field}}}`);
+                                  }}
+                                  title={t('click_to_copy', '点击复制')}
+                                >
+                                  {`{{${field}}}`}
+                                </code>
+                              ))}
+                            </div>
+                          </div>
                         )}
-                        cssContent={formData.css_style}
+                      </div>
+                    </CustomScrollArea>
+                  </div>
+                }
+                right={
+                  <div className="h-full w-full flex flex-col min-w-0">
+                    <div ref={cmContainerRef} className="flex-1 min-h-0 overflow-hidden relative">
+                      <CodeMirror
+                        value={codeValue}
+                        onChange={handleCodeChange}
+                        extensions={cmExtensions}
+                        theme={cmTheme}
+                        height="100%"
+                        className="h-full template-codemirror-editor"
+                        basicSetup={{
+                          lineNumbers: true,
+                          highlightActiveLineGutter: true,
+                          highlightActiveLine: true,
+                          foldGutter: true,
+                          dropCursor: true,
+                          allowMultipleSelections: true,
+                          indentOnInput: true,
+                          bracketMatching: true,
+                          closeBrackets: true,
+                          autocompletion: true,
+                          rectangularSelection: true,
+                          crosshairCursor: false,
+                          highlightSelectionMatches: true,
+                        }}
                       />
+                      <CodeMirrorScrollOverlay containerRef={cmContainerRef} />
                     </div>
                   </div>
-              </div>
-            </>
-          )}
-
-          {/* 样式设计 */}
-          {activeTab === 'styles' && (
-            <div className="setting-section">
-              <div className="setting-section-header">
-                <h2 className="setting-section-title">{t('css_style_title')}</h2>
-                <p className="setting-section-desc">{t('css_style_desc')}</p>
-              </div>
-                <UnifiedCodeEditor
-                  value={formData.css_style}
-                  onChange={(value) => setFormData({...formData, css_style: value})}
-                  language="css"
-                  height="500px"
-                  placeholder=".card { ... }"
-                />
+                }
+              />
             </div>
           )}
 

@@ -89,14 +89,18 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  padding: 8px 10px;
+  gap: 4px;
+  padding: 4px 8px;
   background: hsl(var(--card));
-  border-bottom: 1px solid hsl(var(--border));
+  border-top: 1px solid hsl(var(--border));
   flex-shrink: 0;
   flex-wrap: nowrap;
   overflow: visible;
-  min-height: 44px;
+  min-height: 36px;
+}
+
+.ds-pdf__toolbar--bottom {
+  order: 999;
 }
 
 .ds-pdf__toolbar-left,
@@ -104,7 +108,7 @@
 .ds-pdf__toolbar-right {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 2px;
   flex-shrink: 0;
 }
 
@@ -130,6 +134,16 @@
   border: 1px solid hsl(var(--border));
   box-shadow: 0 4px 16px hsl(var(--ring) / 0.12);
   z-index: 200;
+}
+
+.ds-more-dropdown--up {
+  top: auto;
+  bottom: calc(100% + 4px);
+}
+
+.ds-zoom-dropdown--up {
+  top: auto;
+  bottom: calc(100% + 4px);
 }
 
 .ds-more-item {
@@ -174,9 +188,9 @@
 
 .ds-toolbar-divider {
   width: 1px;
-  height: 20px;
+  height: 16px;
   background: hsl(var(--border));
-  margin: 0 4px;
+  margin: 0 2px;
 }
 
 /* 通用按钮 - 无容器化，仅图标 */
@@ -184,9 +198,9 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 28px;
-  height: 28px;
-  padding: 4px;
+  min-width: 26px;
+  height: 26px;
+  padding: 3px;
   border-radius: 6px;
   border: none;
   background: transparent;

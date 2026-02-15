@@ -631,17 +631,10 @@ const TemplateManagementPage: React.FC<TemplateManagementPageProps> = ({
                 />
                 <UnifiedSidebarItem
                   id="editor-templates"
-                  isSelected={editorTab === 'templates'}
+                  isSelected={editorTab === 'templates' || editorTab === 'styles'}
                   onClick={() => setEditorTab('templates')}
                   icon={Code}
                   title={t('template_code')}
-                />
-                <UnifiedSidebarItem
-                  id="editor-styles"
-                  isSelected={editorTab === 'styles'}
-                  onClick={() => setEditorTab('styles')}
-                  icon={Brush}
-                  title={t('styles_design')}
                 />
                 <UnifiedSidebarItem
                   id="editor-data"

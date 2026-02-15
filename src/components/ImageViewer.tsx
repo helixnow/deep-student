@@ -220,76 +220,11 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
         ref={focusTrapRef}
         style={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100vw' }}
       >
-        {/* 工具栏 - 固定高度 */}
-        <div className="modern-viewer-toolbar flex items-center justify-between px-6 py-4 backdrop-blur-md" style={{ height: '60px', flexShrink: 0 }}>
-          <div className="flex items-center gap-3">
-            <span className="text-foreground font-medium text-sm">
-              {currentIndex + 1} / {images.length}
-            </span>
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <span>{t('common:imageViewer.blurLabel', 'Background blur')}</span>
-              <Switch
-                checked={isBlurEnabled}
-                onCheckedChange={(checked) => setIsBlurEnabled(Boolean(checked))}
-                aria-label={blurToggleTitle}
-              />
-            </div>
-          </div>
-          
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setScale(prev => Math.max(prev / 1.2, 0.1))}
-              className="modern-viewer-icon-button rounded-lg p-2"
-              title={t('common:imageViewer.zoom_out')}
-            >
-              <ZoomOut size={18} />
-            </button>
-            <span className="px-3 py-1 rounded-md text-sm font-medium min-w-[60px] text-center border border-[hsl(var(--border) / 0.45)] bg-[hsl(var(--card) / 0.55)] text-[hsl(var(--foreground))]">
-              {Math.round(scale * 100)}%
-            </span>
-            <button
-              onClick={() => setScale(prev => Math.min(prev * 1.2, 5))}
-              className="modern-viewer-icon-button rounded-lg p-2"
-              title={t('common:imageViewer.zoom_in')}
-            >
-              <ZoomIn size={18} />
-            </button>
-            <button
-              onClick={() => setRotation(prev => (prev + 90) % 360)}
-              className="modern-viewer-icon-button rounded-lg p-2"
-              title={t('common:imageViewer.rotate_title')}
-            >
-              <RotateCw size={18} />
-            </button>
-            <button
-              onClick={() => {
-                setScale(1);
-                setRotation(0);
-                setPosition({ x: 0, y: 0 });
-              }}
-              className="modern-viewer-icon-button rounded-lg p-2"
-              title={t('common:imageViewer.reset_title')}
-            >
-              <Home size={18} />
-            </button>
-          </div>
-          
-          <div className="flex items-center">
-            <button
-              onClick={onClose}
-              className="modern-viewer-icon-button modern-viewer-icon-button--danger rounded-lg p-2"
-              title={t('common:imageViewer.close')}
-            >
-              <X size={20} />
-            </button>
-          </div>
-        </div>
-
-        {/* 图片容器 - 使用 calc 计算高度，根据是否有缩略图栏调整 */}
+        {/* 图片容器 - 使用 calc 计算高度，根据是否有缩略图栏和底部工具栏调整 */}
         <div 
           ref={zoomContainerRef}
           className="flex items-center justify-center overflow-hidden bg-[hsl(var(--card) / 0.5)]"
-          style={{ height: images.length > 1 ? 'calc(100vh - 60px - 88px)' : 'calc(100vh - 60px)', overflow: 'hidden' }}
+          style={{ height: images.length > 1 ? 'calc(100vh - 40px - 88px)' : 'calc(100vh - 40px)', overflow: 'hidden' }}
           onMouseDown={handleMouseDown}
         >
           <img
@@ -381,14 +316,65 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
           </CustomScrollArea>
         )}
 
-        {/* 快捷键提示 */}
-        <div className="modern-viewer-hint absolute bottom-4 right-4 rounded-lg p-3 text-xs space-y-1">
-          <div className="font-medium mb-1 text-[hsl(var(--background))]">{t('common:imageViewer.shortcuts')}</div>
-          <div>{t('common:imageViewer.shortcut_close')}</div>
-          <div>{t('common:imageViewer.shortcut_switch')}</div>
-          <div>{t('common:imageViewer.shortcut_zoom')}</div>
-          <div>{t('common:imageViewer.shortcut_rotate')}</div>
-          <div>{t('common:imageViewer.shortcut_reset')}</div>
+        {/* 底部工具栏 */}
+        <div className="modern-viewer-toolbar flex items-center justify-center gap-1 px-3 py-1 backdrop-blur-md" style={{ height: '40px', flexShrink: 0 }}>
+          <span className="text-foreground font-medium text-xs mr-1">
+            {currentIndex + 1} / {images.length}
+          </span>
+          <div className="w-px h-4 bg-[hsl(var(--border)/0.45)] mx-1" />
+          <button
+            onClick={() => setScale(prev => Math.max(prev / 1.2, 0.1))}
+            className="modern-viewer-icon-button rounded-md p-1"
+            title={t('common:imageViewer.zoom_out')}
+          >
+            <ZoomOut size={16} />
+          </button>
+          <span className="px-1.5 py-0.5 rounded text-xs font-medium min-w-[44px] text-center border border-[hsl(var(--border)/0.45)] bg-[hsl(var(--card)/0.55)] text-[hsl(var(--foreground))]">
+            {Math.round(scale * 100)}%
+          </span>
+          <button
+            onClick={() => setScale(prev => Math.min(prev * 1.2, 5))}
+            className="modern-viewer-icon-button rounded-md p-1"
+            title={t('common:imageViewer.zoom_in')}
+          >
+            <ZoomIn size={16} />
+          </button>
+          <div className="w-px h-4 bg-[hsl(var(--border)/0.45)] mx-1" />
+          <button
+            onClick={() => setRotation(prev => (prev + 90) % 360)}
+            className="modern-viewer-icon-button rounded-md p-1"
+            title={t('common:imageViewer.rotate_title')}
+          >
+            <RotateCw size={16} />
+          </button>
+          <button
+            onClick={() => {
+              setScale(1);
+              setRotation(0);
+              setPosition({ x: 0, y: 0 });
+            }}
+            className="modern-viewer-icon-button rounded-md p-1"
+            title={t('common:imageViewer.reset_title')}
+          >
+            <Home size={16} />
+          </button>
+          <div className="w-px h-4 bg-[hsl(var(--border)/0.45)] mx-1" />
+          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+            <span>{t('common:imageViewer.blurLabel', 'Blur')}</span>
+            <Switch
+              checked={isBlurEnabled}
+              onCheckedChange={(checked) => setIsBlurEnabled(Boolean(checked))}
+              aria-label={blurToggleTitle}
+            />
+          </div>
+          <div className="w-px h-4 bg-[hsl(var(--border)/0.45)] mx-1" />
+          <button
+            onClick={onClose}
+            className="modern-viewer-icon-button modern-viewer-icon-button--danger rounded-md p-1"
+            title={t('common:imageViewer.close')}
+          >
+            <X size={16} />
+          </button>
         </div>
       </div>
     </div>

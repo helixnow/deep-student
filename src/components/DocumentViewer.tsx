@@ -160,148 +160,6 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({
   const overlay = (
     <div className="modern-image-viewer-overlay" onClick={onClose}>
       <div className="modern-image-viewer-container" onClick={(e) => e.stopPropagation()}>
-        {/* 顶部工具栏 */}
-        <div className="modern-viewer-toolbar flex items-center justify-between px-6 py-4 backdrop-blur-md">
-          <div className="flex items-center gap-3">
-            <span className="text-foreground font-medium text-sm" title={displayTitle}>{displayTitle}</span>
-            {sizeBytes && (
-              <span className="text-xs text-muted-foreground">({Math.round(sizeBytes/1024)}KB)</span>
-            )}
-          </div>
-          <div className="flex items-center gap-2">
-            {/* 预览/下载按钮（仅在需要时显示） */}
-            {showPreviewDownload && textContent && (
-              <>
-                <button
-                  onClick={handlePreview}
-                  className="modern-viewer-icon-button modern-viewer-icon-button--primary rounded-lg p-2"
-                  title={t('document_viewer.preview_in_new_window')}
-                  aria-label={t('document_viewer.aria_preview')}
-                >
-                  <ExternalLink size={18} />
-                </button>
-                <button
-                  onClick={handleDownload}
-                  className="modern-viewer-icon-button modern-viewer-icon-button--success rounded-lg p-2"
-                  title={t('document_viewer.download_document')}
-                  aria-label={t('document_viewer.aria_download')}
-                >
-                  <Download size={18} />
-                </button>
-              </>
-            )}
-            {/* 文本模式工具 */}
-            {textContent != null && (
-              <>
-                <button
-                  title={t('document_viewer.copy_all')}
-                  aria-label={t('document_viewer.aria_copy')}
-                  onClick={applyCopy}
-                  className="modern-viewer-icon-button rounded-lg p-2"
-                >
-                  <Copy size={18} />
-                </button>
-                <button
-                  title={t('document_viewer.decrease_font')}
-                  aria-label={t('document_viewer.aria_decrease_font')}
-                  onClick={() => setFontScale(v => Math.max(0.75, v / 1.1))}
-                  className="modern-viewer-icon-button rounded-lg p-2"
-                >
-                  <ZoomOut size={18} />
-                </button>
-                <button
-                  title={t('document_viewer.increase_font')}
-                  aria-label={t('document_viewer.aria_increase_font')}
-                  onClick={() => setFontScale(v => Math.min(2, v * 1.1))}
-                  className="modern-viewer-icon-button rounded-lg p-2"
-                >
-                  <ZoomIn size={18} />
-                </button>
-                <button
-                  title={t('document_viewer.reset_font')}
-                  aria-label={t('document_viewer.aria_reset_font')}
-                  onClick={() => setFontScale(1)}
-                  className="modern-viewer-icon-button rounded-lg p-2"
-                >
-                  <Home size={18} />
-                </button>
-                <div className="flex items-center gap-1 px-2 py-1 rounded-lg border border-[hsl(var(--border) / 0.45)] bg-[hsl(var(--card) / 0.6)]">
-                  <Search size={16} className="text-[hsl(var(--muted-foreground))]" />
-                  <input
-                    placeholder={t('document_viewer.search_placeholder')}
-                    value={query}
-                    onChange={(e) => setQuery(e.target.value)}
-                    className="text-sm bg-transparent outline-none min-w-[120px] text-[hsl(var(--foreground))] placeholder:text-[hsl(var(--muted-foreground))]"
-                  />
-                </div>
-                <button
-                  title={wrap ? t('document_viewer.toggle_nowrap') : t('document_viewer.toggle_wrap')}
-                  aria-label={wrap ? t('document_viewer.aria_toggle_nowrap') : t('document_viewer.aria_toggle_wrap')}
-                  onClick={() => setWrap(w => !w)}
-                  className="modern-viewer-icon-button rounded-lg p-2"
-                >
-                  <WrapText size={18} />
-                </button>
-              </>
-            )}
-            {/* URL模式工具：缩放与重置 */}
-            {url && (
-              <>
-                <button
-                  title={t('document_viewer.zoom_out')}
-                  aria-label={t('document_viewer.aria_zoom_out')}
-                  onClick={() => setScale(s => Math.max(0.5, s / 1.1))}
-                  className="modern-viewer-icon-button rounded-lg p-2"
-                >
-                  <ZoomOut size={18} />
-                </button>
-                <span className="px-3 py-1 rounded-md text-sm font-medium min-w-[60px] text-center border border-[hsl(var(--border) / 0.45)] bg-[hsl(var(--card) / 0.55)] text-[hsl(var(--foreground))]" role="status" aria-label={t('document_viewer.aria_zoom_level', { level: Math.round(scale * 100) })}>{Math.round(scale * 100)}%</span>
-                <button
-                  title={t('document_viewer.zoom_in')}
-                  aria-label={t('document_viewer.aria_zoom_in')}
-                  onClick={() => setScale(s => Math.min(3, s * 1.1))}
-                  className="modern-viewer-icon-button rounded-lg p-2"
-                >
-                  <ZoomIn size={18} />
-                </button>
-                <button
-                  title={t('document_viewer.reset')}
-                  aria-label={t('document_viewer.aria_reset')}
-                  onClick={() => { setScale(1); setPosition({ x: 0, y: 0 }); }}
-                  className="modern-viewer-icon-button rounded-lg p-2"
-                >
-                  <Home size={18} />
-                </button>
-              </>
-            )}
-            {url && (
-              <>
-                <button
-                  onClick={handleOpenExternal}
-                  className="modern-viewer-icon-button rounded-lg p-2"
-                  title={t('document_viewer.open_in_new_tab')}
-                >
-                  <ExternalLink size={18} />
-                </button>
-                <button
-                  onClick={handleDownload}
-                  className="modern-viewer-icon-button rounded-lg p-2"
-                  title={t('document_viewer.download')}
-                >
-                  <Download size={18} />
-                </button>
-              </>
-            )}
-            <button
-              onClick={onClose}
-              className="modern-viewer-icon-button modern-viewer-icon-button--danger rounded-lg p-2"
-              title={t('document_viewer.close')}
-            >
-              <X size={20} />
-            </button>
-          </div>
-        </div>
-
         {/* 内容区域 */}
         <div className="modern-viewer-content flex-1 overflow-hidden">
           {textContent != null ? (
@@ -347,17 +205,142 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({
           ) : null}
         </div>
 
-        {/* 底部提示 */}
-        <div className="modern-viewer-footer px-6 py-3 text-[12px]">
-          {showPreviewDownload ? (
+        {/* 底部工具栏 */}
+        <div className="modern-viewer-toolbar flex items-center justify-center gap-1 px-3 py-1 backdrop-blur-md" style={{ height: '40px', flexShrink: 0 }}>
+          <span className="text-foreground font-medium text-xs truncate max-w-[140px]" title={displayTitle}>{displayTitle}</span>
+          {sizeBytes && (
+            <span className="text-[11px] text-muted-foreground">({Math.round(sizeBytes/1024)}KB)</span>
+          )}
+          <div className="w-px h-4 bg-[hsl(var(--border)/0.45)] mx-1" />
+          {/* 预览/下载按钮 */}
+          {showPreviewDownload && textContent && (
             <>
-              {t('document_viewer.hint_preview_download')}
-            </>
-          ) : (
-            <>
-              {t('document_viewer.hint_default')}
+              <button
+                onClick={handlePreview}
+                className="modern-viewer-icon-button modern-viewer-icon-button--primary rounded-md p-1"
+                title={t('document_viewer.preview_in_new_window')}
+                aria-label={t('document_viewer.aria_preview')}
+              >
+                <ExternalLink size={16} />
+              </button>
+              <button
+                onClick={handleDownload}
+                className="modern-viewer-icon-button modern-viewer-icon-button--success rounded-md p-1"
+                title={t('document_viewer.download_document')}
+                aria-label={t('document_viewer.aria_download')}
+              >
+                <Download size={16} />
+              </button>
+              <div className="w-px h-4 bg-[hsl(var(--border)/0.45)] mx-1" />
             </>
           )}
+          {/* 文本模式工具 */}
+          {textContent != null && (
+            <>
+              <button
+                title={t('document_viewer.copy_all')}
+                aria-label={t('document_viewer.aria_copy')}
+                onClick={applyCopy}
+                className="modern-viewer-icon-button rounded-md p-1"
+              >
+                <Copy size={16} />
+              </button>
+              <button
+                title={t('document_viewer.decrease_font')}
+                aria-label={t('document_viewer.aria_decrease_font')}
+                onClick={() => setFontScale(v => Math.max(0.75, v / 1.1))}
+                className="modern-viewer-icon-button rounded-md p-1"
+              >
+                <ZoomOut size={16} />
+              </button>
+              <button
+                title={t('document_viewer.increase_font')}
+                aria-label={t('document_viewer.aria_increase_font')}
+                onClick={() => setFontScale(v => Math.min(2, v * 1.1))}
+                className="modern-viewer-icon-button rounded-md p-1"
+              >
+                <ZoomIn size={16} />
+              </button>
+              <button
+                title={t('document_viewer.reset_font')}
+                aria-label={t('document_viewer.aria_reset_font')}
+                onClick={() => setFontScale(1)}
+                className="modern-viewer-icon-button rounded-md p-1"
+              >
+                <Home size={16} />
+              </button>
+              <div className="flex items-center gap-0.5 px-1.5 py-0.5 rounded border border-[hsl(var(--border)/0.45)] bg-[hsl(var(--card)/0.6)]">
+                <Search size={14} className="text-[hsl(var(--muted-foreground))]" />
+                <input
+                  placeholder={t('document_viewer.search_placeholder')}
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  className="text-xs bg-transparent outline-none min-w-[80px] text-[hsl(var(--foreground))] placeholder:text-[hsl(var(--muted-foreground))]"
+                />
+              </div>
+              <button
+                title={wrap ? t('document_viewer.toggle_nowrap') : t('document_viewer.toggle_wrap')}
+                aria-label={wrap ? t('document_viewer.aria_toggle_nowrap') : t('document_viewer.aria_toggle_wrap')}
+                onClick={() => setWrap(w => !w)}
+                className="modern-viewer-icon-button rounded-md p-1"
+              >
+                <WrapText size={16} />
+              </button>
+            </>
+          )}
+          {/* URL模式工具 */}
+          {url && (
+            <>
+              <button
+                title={t('document_viewer.zoom_out')}
+                aria-label={t('document_viewer.aria_zoom_out')}
+                onClick={() => setScale(s => Math.max(0.5, s / 1.1))}
+                className="modern-viewer-icon-button rounded-md p-1"
+              >
+                <ZoomOut size={16} />
+              </button>
+              <span className="px-1.5 py-0.5 rounded text-xs font-medium min-w-[44px] text-center border border-[hsl(var(--border)/0.45)] bg-[hsl(var(--card)/0.55)] text-[hsl(var(--foreground))]" role="status" aria-label={t('document_viewer.aria_zoom_level', { level: Math.round(scale * 100) })}>{Math.round(scale * 100)}%</span>
+              <button
+                title={t('document_viewer.zoom_in')}
+                aria-label={t('document_viewer.aria_zoom_in')}
+                onClick={() => setScale(s => Math.min(3, s * 1.1))}
+                className="modern-viewer-icon-button rounded-md p-1"
+              >
+                <ZoomIn size={16} />
+              </button>
+              <button
+                title={t('document_viewer.reset')}
+                aria-label={t('document_viewer.aria_reset')}
+                onClick={() => { setScale(1); setPosition({ x: 0, y: 0 }); }}
+                className="modern-viewer-icon-button rounded-md p-1"
+              >
+                <Home size={16} />
+              </button>
+              <div className="w-px h-4 bg-[hsl(var(--border)/0.45)] mx-1" />
+              <button
+                onClick={handleOpenExternal}
+                className="modern-viewer-icon-button rounded-md p-1"
+                title={t('document_viewer.open_in_new_tab')}
+              >
+                <ExternalLink size={16} />
+              </button>
+              <button
+                onClick={handleDownload}
+                className="modern-viewer-icon-button rounded-md p-1"
+                title={t('document_viewer.download')}
+              >
+                <Download size={16} />
+              </button>
+            </>
+          )}
+          <div className="w-px h-4 bg-[hsl(var(--border)/0.45)] mx-1" />
+          <button
+            onClick={onClose}
+            className="modern-viewer-icon-button modern-viewer-icon-button--danger rounded-md p-1"
+            title={t('document_viewer.close')}
+          >
+            <X size={16} />
+          </button>
         </div>
       </div>
     </div>

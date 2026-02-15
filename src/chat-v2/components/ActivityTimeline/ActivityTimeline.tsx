@@ -46,6 +46,7 @@ export const TIMELINE_BLOCK_TYPES = [
   'rag',
   'memory',
   'web_search',
+  'academic_search', // 🆕 学术搜索块（arXiv / OpenAlex）
   'multimodal_rag',
   'mcp_tool',
   'ask_user', // 🆕 用户提问块（轻量级问答交互）
@@ -125,6 +126,7 @@ const RETRIEVAL_TOOL_NAMES: Record<string, string> = {
   memory: 'builtin-memory_search',
   web_search: 'builtin-web_search',
   multimodal_rag: 'builtin-unified_search',
+  academic_search: 'builtin-arxiv_search',
 };
 
 /**

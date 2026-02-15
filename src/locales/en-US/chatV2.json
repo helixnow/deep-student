@@ -245,6 +245,16 @@
       "stats": "Showing {{shown}} / {{total}} results",
       "statsSimple": "{{count}} results"
     },
+    "academicSearch": {
+      "title": "Academic Search",
+      "searching": "Searching papers...",
+      "loading": "Searching academic papers...",
+      "error": "Search failed",
+      "errorMessage": "Academic search failed, please retry",
+      "noResults": "No papers found",
+      "stats": "Showing {{shown}} / {{total}} papers",
+      "statsSimple": "{{count}} papers"
+    },
     "mcpTool": {
       "title": "Tool Call",
       "unknownTool": "Unknown Tool",

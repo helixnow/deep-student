@@ -5,6 +5,7 @@ import { TargetPanel } from './TargetPanel';
 import { PromptPanel } from './PromptPanel';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { HorizontalResizable, VerticalResizable } from '../shared/Resizable';
+import { cn } from '@/utils/cn';
 
 interface TranslationMainProps {
   isMaximized: boolean;
@@ -402,18 +403,7 @@ export const TranslationMain: React.FC<TranslationMainProps> = ({
                   setIsAutoTranslate={setIsAutoTranslate}
                   onSwapLanguages={onSwapLanguages}
                   onFilesDropped={onFilesDropped}
-                  customPrompt={customPrompt}
-                  setCustomPrompt={setCustomPrompt}
-                  showPromptEditor={showPromptEditor}
                   setShowPromptEditor={setShowPromptEditor}
-                  formality={formality}
-                  setFormality={setFormality}
-                  domain={domain}
-                  setDomain={setDomain}
-                  glossary={glossary}
-                  setGlossary={setGlossary}
-                  onSavePrompt={onSavePrompt}
-                  onRestoreDefaultPrompt={onRestoreDefaultPrompt}
                   onClear={onClear}
                   onTranslate={onTranslate}
                   onCancelTranslation={onCancelTranslation}
@@ -509,18 +499,7 @@ export const TranslationMain: React.FC<TranslationMainProps> = ({
       setIsAutoTranslate={setIsAutoTranslate}
       onSwapLanguages={onSwapLanguages}
       onFilesDropped={onFilesDropped}
-      customPrompt={customPrompt}
-      setCustomPrompt={setCustomPrompt}
-      showPromptEditor={showPromptEditor}
       setShowPromptEditor={setShowPromptEditor}
-      formality={formality}
-      setFormality={setFormality}
-      domain={domain}
-      setDomain={setDomain}
-      glossary={glossary}
-      setGlossary={setGlossary}
-      onSavePrompt={onSavePrompt}
-      onRestoreDefaultPrompt={onRestoreDefaultPrompt}
       onClear={onClear}
       onTranslate={onTranslate}
       onCancelTranslation={onCancelTranslation}
@@ -564,7 +543,7 @@ export const TranslationMain: React.FC<TranslationMainProps> = ({
 
   // ========== 桌面端：根据容器宽度自适应布局 ==========
   return (
-    <div ref={desktopContainerRef} className="h-full w-full">
+    <div ref={desktopContainerRef} className="h-full w-full relative overflow-hidden">
       {isDesktopNarrow ? (
         // 窄屏时使用上下布局
         <VerticalResizable
@@ -586,6 +565,41 @@ export const TranslationMain: React.FC<TranslationMainProps> = ({
           right={desktopTargetPanel}
         />
       )}
+
+      {/* 设置抽屉遮罩（参考作文批改 GradingMain） */}
+      {showPromptEditor && (
+        <div
+          className="absolute inset-0 bg-black/20 z-10"
+          onClick={() => setShowPromptEditor(false)}
+        />
+      )}
+
+      {/* 设置抽屉 */}
+      <div
+        className={cn(
+          "absolute top-0 right-0 h-full w-[320px] z-20 transition-transform duration-300 ease-out",
+          showPromptEditor ? "translate-x-0" : "translate-x-full"
+        )}
+      >
+        <PromptPanel
+          customPrompt={customPrompt}
+          setCustomPrompt={setCustomPrompt}
+          onSavePrompt={onSavePrompt}
+          onRestoreDefaultPrompt={onRestoreDefaultPrompt}
+          isOpen={showPromptEditor}
+          setIsOpen={setShowPromptEditor}
+          formality={formality}
+          setFormality={setFormality}
+          domain={domain}
+          setDomain={setDomain}
+          glossary={glossary}
+          setGlossary={setGlossary}
+          isAutoTranslate={isAutoTranslate}
+          setIsAutoTranslate={setIsAutoTranslate}
+          isSyncScroll={isSyncScroll}
+          setIsSyncScroll={setIsSyncScroll}
+        />
+      </div>
     </div>
   );
 };

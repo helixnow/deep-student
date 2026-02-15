@@ -7649,7 +7649,7 @@ body {
 
 .modern-viewer-toolbar {
   background: hsl(var(--popover) / 0.85);
-  border-bottom: 1px solid hsl(var(--border) / 0.5);
+  border-top: 1px solid hsl(var(--border) / 0.5);
   color: hsl(var(--foreground));
 }
 

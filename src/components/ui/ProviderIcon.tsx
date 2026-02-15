@@ -5,7 +5,7 @@
  * 用于在UI中显示AI模型供应商的品牌图标
  */
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { getProviderInfo, type ProviderBrand } from '../../utils/providerIconEngine';
 
 export interface ProviderIconProps {
@@ -92,6 +92,11 @@ export const ProviderIcon: React.FC<ProviderIconProps> = ({
   const hasIcon = !!providerInfo.iconPath;
   // 🔧 P2-2 修复：图标加载失败时回退到 GenericFallbackIcon（而非留白）
   const [iconLoadFailed, setIconLoadFailed] = useState(false);
+  // 🔧 三轮修复：modelId 变化时重置加载失败状态
+  // 场景：UUID→显示名 切换后，新的 iconPath 可能有效，需要重新尝试加载
+  useEffect(() => {
+    setIconLoadFailed(false);
+  }, [providerInfo.iconPath]);
   
   // 容器样式
   const containerStyle: React.CSSProperties = {

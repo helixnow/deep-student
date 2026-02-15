@@ -6441,12 +6441,20 @@ impl ChatV2Pipeline {
             .iter()
             .filter_map(|config_id| {
                 config_map.get(config_id).cloned().or_else(|| {
-                    log::warn!(
-                        "[ChatV2::pipeline] Config not found for id: {}, using as-is",
-                        config_id
-                    );
-                    // 如果找不到配置，假设传入的就是模型名称（向后兼容）
-                    Some((config_id.clone(), config_id.clone()))
+                    // 🔧 三轮修复：如果 config_id 是配置 UUID，不应作为模型显示名称
+                    if is_config_id_format(config_id) {
+                        log::warn!(
+                            "[ChatV2::pipeline] Config not found for id and id is a config format, using empty display name: {}",
+                            config_id
+                        );
+                        Some((String::new(), config_id.clone()))
+                    } else {
+                        log::warn!(
+                            "[ChatV2::pipeline] Config not found for id: {}, using as model name",
+                            config_id
+                        );
+                        Some((config_id.clone(), config_id.clone()))
+                    }
                 })
             })
             .collect();

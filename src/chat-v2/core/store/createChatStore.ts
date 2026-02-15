@@ -399,13 +399,15 @@ export function createChatStore(sessionId: string): StoreApi<ChatStore> {
           };
 
           // 创建助手消息（带参数快照）
+          // 🔧 三轮修复：_meta.modelId 优先使用 modelDisplayName（可识别的模型显示名称），
+          // 避免初始化为配置 UUID（前端 ProviderIcon 无法识别）
           const assistantMessage = {
             id: assistantMessageId,
             role: 'assistant' as const,
             blockIds: [] as string[],
             timestamp: Date.now(),
             _meta: {
-              modelId: state.chatParams.modelId,
+              modelId: state.chatParams.modelDisplayName || state.chatParams.modelId,
               modelDisplayName: state.chatParams.modelDisplayName,
               chatParams: { ...state.chatParams },
             },
@@ -763,13 +765,14 @@ export function createChatStore(sessionId: string): StoreApi<ChatStore> {
               // 后端返回的 newMessageId 是新的助手消息 ID
               // 需要创建空消息以便后续的块事件能够关联到它
               const currentChatParams = getState().chatParams;
+              // 🔧 三轮修复：_meta.modelId 优先使用 modelDisplayName
               const newAssistantMessage = {
                 id: newMessageId,
                 role: 'assistant' as const,
                 blockIds: [] as string[],
                 timestamp: Date.now(),
                 _meta: {
-                  modelId: currentChatParams.modelId,
+                  modelId: currentChatParams.modelDisplayName || currentChatParams.modelId,
                   modelDisplayName: currentChatParams.modelDisplayName,
                   chatParams: { ...currentChatParams },
                 },
@@ -1050,10 +1053,12 @@ export function createChatStore(sessionId: string): StoreApi<ChatStore> {
             const currentState = getState();
             const originalBlockIds = message.blockIds || [];
             const resolvedModelId = modelOverride || currentState.chatParams.modelId;
+            // 🔧 三轮修复：resolvedModelDisplayName 用于 _meta.modelId（前端图标显示）
+            // modelOverride 来自前端传入，可能是配置 UUID 也可能是显示名称
             const resolvedModelDisplayName =
               modelOverride && modelOverride !== currentState.chatParams.modelId
-                ? undefined
-                : currentState.chatParams.modelDisplayName;
+                ? modelOverride // modelOverride 作为 displayName 的最佳猜测
+                : (currentState.chatParams.modelDisplayName || currentState.chatParams.modelId);
 
             // 🔧 P1补充修复：保存状态快照，失败时回滚（与 editAndResend 保持一致）
             snapshot = {
@@ -1130,8 +1135,9 @@ export function createChatStore(sessionId: string): StoreApi<ChatStore> {
                   blockIds: [], // 清空块列表，准备接收新内容
                   _meta: {
                     ...originalMessage._meta,
-                  // 如果有模型覆盖，更新模型 ID
-                  modelId: resolvedModelId,
+                  // 🔧 三轮修复：_meta.modelId 使用 resolvedModelDisplayName 而非 resolvedModelId
+                  // resolvedModelId 可能是配置 UUID，resolvedModelDisplayName 是可显示的模型名称
+                  modelId: resolvedModelDisplayName || resolvedModelId,
                   modelDisplayName: resolvedModelDisplayName,
                     chatParams: { ...currentState.chatParams },
                   },

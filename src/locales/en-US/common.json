@@ -2140,14 +2140,16 @@
         "webSearch": "Web Search",
         "mcpTool": "MCP Tool",
         "multimodalRag": "Multimodal Knowledge Base",
-        "unifiedSearch": "Unified Search"
+        "unifiedSearch": "Unified Search",
+        "academicSearch": "Academic Search"
       },
       "defaultTitles": {
         "document": "Document",
         "graphNode": "Graph Node",
         "memory": "Memory",
         "searchResult": "Search Result",
-        "multimodalPage": "Page"
+        "multimodalPage": "Page",
+        "paper": "Paper"
       },
       "multimodal": {
         "sourceTypes": {

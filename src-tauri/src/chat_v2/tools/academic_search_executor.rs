@@ -874,7 +874,14 @@ fn papers_to_sources(papers: &[Value], search_source: &str) -> Vec<Value> {
                     "sourceType": "academic_search",
                     "searchSource": search_source,
                     "authors": paper.get("authors"),
-                    "year": paper.get("year").or_else(|| paper.get("published")),
+                    // year: OpenAlex has integer year; arXiv has "published" datetime string
+                    // Extract first 4 chars from published as year fallback
+                    "year": paper.get("year").cloned().or_else(|| {
+                        paper.get("published")
+                            .and_then(|v| v.as_str())
+                            .and_then(|s| s.get(..4))
+                            .map(|y| Value::String(y.to_string()))
+                    }),
                     "citationCount": paper.get("citationCount"),
                     "pdfUrl": paper.get("pdfUrl"),
                     "doi": paper.get("doi"),

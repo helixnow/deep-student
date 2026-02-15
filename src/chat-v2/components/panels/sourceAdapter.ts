@@ -510,6 +510,7 @@ const DEFAULT_TITLE_I18N_KEYS: Record<string, string> = {
   memory: 'common:chat.sources.defaultTitles.memory',
   web_search: 'common:chat.sources.defaultTitles.searchResult',
   multimodal_rag: 'common:chat.sources.defaultTitles.multimodalPage',
+  academic_search: 'common:chat.sources.defaultTitles.paper',
 };
 
 /**
@@ -524,6 +525,7 @@ function getDefaultTitleKey(blockType: string, index: number): string {
     memory: 'Memory',
     web_search: 'Search Result',
     multimodal_rag: 'Page',
+    academic_search: 'Paper',
   };
   const label = fallbackLabels[blockType] || 'Source';
   return `${label} ${index + 1}`;
