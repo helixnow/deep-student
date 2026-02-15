@@ -195,7 +195,8 @@ Extend AI capabilities on demand through Skills, avoiding bloated System Prompts
 
 <p align="center"><img src="./example/anki-制卡1.png" width="90%" alt="Conversational Generation" /></p>
 <p align="center"><img src="./example/制卡任务.png" width="90%" alt="Task Board" /></p>
-<p align="center"><img src="./example/模板管理.png" width="90%" alt="Template Management" /></p>
+<p align="center"><img src="./example/模板库-1.png" width="90%" alt="Template Library" /></p>
+<p align="center"><img src="./example/模板库-2.png" width="90%" alt="Template Editor" /></p>
 <p align="center"><img src="./example/anki-制卡2.png" width="90%" alt="3D Preview" /></p>
 <p align="center"><img src="./example/anki-制卡3.png" width="90%" alt="Anki Sync" /></p>
 

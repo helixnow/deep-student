@@ -193,7 +193,8 @@ DeepStudent 的对话引擎专为学习场景打造，支持多模态输入与�
 
 <p align="center"><img src="./example/anki-制卡1.png" width="90%" alt="对话生成" /></p>
 <p align="center"><img src="./example/制卡任务.png" width="90%" alt="任务看板" /></p>
-<p align="center"><img src="./example/模板管理.png" width="90%" alt="模板管理" /></p>
+<p align="center"><img src="./example/模板库-1.png" width="90%" alt="模板库" /></p>
+<p align="center"><img src="./example/模板库-2.png" width="90%" alt="模板编辑器" /></p>
 <p align="center"><img src="./example/anki-制卡2.png" width="90%" alt="3D预览" /></p>
 <p align="center"><img src="./example/anki-制卡3.png" width="90%" alt="Anki同步" /></p>
 
