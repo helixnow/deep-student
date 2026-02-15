@@ -9,6 +9,7 @@
  */
 
 import React, { useRef, useLayoutEffect, useState, useCallback } from 'react';
+import { NotionButton } from '@/components/ui/NotionButton';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import { save as dialogSave } from '@tauri-apps/plugin-dialog';
@@ -516,13 +517,9 @@ export const AnkiCardStackPreview: React.FC<AnkiCardStackPreviewProps> = ({
           )}
         </div>
         {cards.length > 0 && !disabled && (
-          <button
-            type="button"
-            className="text-[10px] sm:text-[11px] text-muted-foreground/50 hover:text-muted-foreground transition-colors whitespace-nowrap flex-shrink-0"
-            onClick={onClick}
-          >
+          <NotionButton variant="ghost" size="sm" onClick={onClick} className="!h-auto !p-0 text-[10px] sm:text-[11px] text-muted-foreground/50 hover:text-muted-foreground">
             {t('chatV2.clickToEdit')} →
-          </button>
+          </NotionButton>
         )}
       </div>
     </div>

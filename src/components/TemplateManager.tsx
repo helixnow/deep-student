@@ -507,9 +507,9 @@ const TemplateManager: React.FC<TemplateManagerProps> = ({ onClose, onSelectTemp
               <AlertTriangle size={16} />
               {error}
             </span>
-            <button onClick={() => setError(null)} className="text-amber-700 hover:text-amber-900 dark:text-amber-300 dark:hover:text-amber-100">
+            <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setError(null)} className="text-amber-700 hover:text-amber-900 dark:text-amber-300 dark:hover:text-amber-100" aria-label="close">
               <X size={14} />
-            </button>
+            </NotionButton>
           </div>
         )}
 
@@ -730,14 +730,16 @@ const TemplateBrowser: React.FC<TemplateBrowserProps> = ({
         </div>
         <div className="toolbar-actions">
           {selectedTemplate && (
-            <button
+            <NotionButton
+              variant="ghost"
+              size="sm"
               className="btn-analysis"
               onClick={onToggleComplexityAnalysis}
               title={t('template.complexity_analysis')}
             >
               <Settings size={16} />
               {t('template.analyze_complexity')}
-            </button>
+            </NotionButton>
           )}
           <div className="toolbar-info">
             {t('template.total_templates', { count: templates.length })}
@@ -923,7 +925,7 @@ const TemplateCard: React.FC<TemplateCardProps> = ({
 
       {/* 操作按钮 */}
       <div className="card-actions">
-        <button className="btn-select" onClick={onSelect} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+        <NotionButton variant={isSelected ? 'primary' : 'default'} size="sm" onClick={onSelect} className="btn-select" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
           {isSelected ? (
             <>
               <CheckCircle size={16} />
@@ -932,17 +934,17 @@ const TemplateCard: React.FC<TemplateCardProps> = ({
           ) : (
             t('template.select_button')
           )}
-        </button>
+        </NotionButton>
         <div className="action-menu">
-          <button className="btn-action" onClick={onEdit}>
+          <NotionButton variant="ghost" size="icon" iconOnly onClick={onEdit} className="btn-action" aria-label="edit">
             <Edit size={16} />
-          </button>
-          <button className="btn-action" onClick={onDuplicate}>
+          </NotionButton>
+          <NotionButton variant="ghost" size="icon" iconOnly onClick={onDuplicate} className="btn-action" aria-label="duplicate">
             <Copy size={16} />
-          </button>
-          <button className="btn-action danger" onClick={onDelete}>
+          </NotionButton>
+          <NotionButton variant="ghost" size="icon" iconOnly onClick={onDelete} className="btn-action danger" aria-label="delete">
             <Trash2 size={16} />
-          </button>
+          </NotionButton>
         </div>
       </div>
     </div>
@@ -1039,38 +1041,22 @@ const TemplateEditor: React.FC<TemplateEditorProps> = ({
 
       {/* 编辑器标签页 */}
       <div className="editor-tabs">
-        <button 
-          className={`editor-tab ${activeEditorTab === 'basic' ? 'active' : ''}`}
-          onClick={() => setActiveEditorTab('basic')}
-          style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
-        >
+        <NotionButton variant="ghost" size="sm" className={`editor-tab ${activeEditorTab === 'basic' ? 'active' : ''}`} onClick={() => setActiveEditorTab('basic')} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
           <FileText size={16} />
           {t('template.editor_tab_basic')}
-        </button>
-        <button 
-          className={`editor-tab ${activeEditorTab === 'templates' ? 'active' : ''}`}
-          onClick={() => setActiveEditorTab('templates')}
-          style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
-        >
+        </NotionButton>
+        <NotionButton variant="ghost" size="sm" className={`editor-tab ${activeEditorTab === 'templates' ? 'active' : ''}`} onClick={() => setActiveEditorTab('templates')} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
           <Palette size={16} />
           {t('template.editor_tab_templates')}
-        </button>
-        <button 
-          className={`editor-tab ${activeEditorTab === 'styles' ? 'active' : ''}`}
-          onClick={() => setActiveEditorTab('styles')}
-          style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
-        >
+        </NotionButton>
+        <NotionButton variant="ghost" size="sm" className={`editor-tab ${activeEditorTab === 'styles' ? 'active' : ''}`} onClick={() => setActiveEditorTab('styles')} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
           <Paintbrush size={16} />
           {t('template.editor_tab_styles')}
-        </button>
-        <button 
-          className={`editor-tab ${activeEditorTab === 'advanced' ? 'active' : ''}`}
-          onClick={() => setActiveEditorTab('advanced')}
-          style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
-        >
+        </NotionButton>
+        <NotionButton variant="ghost" size="sm" className={`editor-tab ${activeEditorTab === 'advanced' ? 'active' : ''}`} onClick={() => setActiveEditorTab('advanced')} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
           <Settings size={16} />
           {t('template.editor_tab_advanced')}
-        </button>
+        </NotionButton>
       </div>
 
       <form onSubmit={handleSubmit} className="editor-form">
@@ -1252,14 +1238,9 @@ const TemplateEditor: React.FC<TemplateEditorProps> = ({
                     
                     {/* 可选的JSON编辑模式 */}
                     <div style={{ marginTop: '16px', textAlign: 'right' }}>
-                      <button
-                        type="button"
-                        onClick={() => setShowJsonEditor(!showJsonEditor)}
-                        className="json-toggle-btn"
-                        style={{ fontSize: '12px', padding: '4px 8px' }}
-                      >
+                      <NotionButton variant="ghost" size="sm" onClick={() => setShowJsonEditor(!showJsonEditor)} className="json-toggle-btn" style={{ fontSize: '12px' }}>
                         {showJsonEditor ? t('template.hide_json_editor') : t('template.show_json_editor')}
-                      </button>
+                      </NotionButton>
                     </div>
                     
                     {showJsonEditor ? (
@@ -1311,20 +1292,12 @@ const TemplateEditor: React.FC<TemplateEditorProps> = ({
 
         {/* 操作按钮 */}
         <div className="editor-actions">
-          <button 
-            type="submit" 
-            disabled={isSubmitting}
-            className="btn-primary"
-          >
+          <NotionButton variant="primary" size="sm" type="submit" disabled={isSubmitting} className="btn-primary">
             {isSubmitting ? t('template.submit_creating') : mode === 'create' ? t('template.submit_create') : t('template.submit_save')}
-          </button>
-          <button 
-            type="button" 
-            onClick={onCancel}
-            className="btn-secondary"
-          >
+          </NotionButton>
+          <NotionButton variant="default" size="sm" onClick={onCancel} className="btn-secondary">
             {t('template.cancel_button')}
-          </button>
+          </NotionButton>
         </div>
       </form>
     </div>
@@ -1378,9 +1351,9 @@ const ComplexityAnalysisPanel: React.FC<ComplexityAnalysisPanelProps> = ({
     <div className="complexity-analysis-panel">
       <div className="panel-header">
         <h3>{t('template.complexity_analysis_title')}: {templateName}</h3>
-        <button className="close-btn" onClick={onClose}>
+        <NotionButton variant="ghost" size="icon" iconOnly onClick={onClose} className="close-btn" aria-label="close">
           <X size={16} />
-        </button>
+        </NotionButton>
       </div>
       
       <div className="panel-content">

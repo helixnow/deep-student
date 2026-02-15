@@ -10,6 +10,7 @@
 import React, { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
+import { NotionButton } from '@/components/ui/NotionButton';
 import { Network } from 'lucide-react';
 import { MindMapEmbed } from '@/components/mindmap/components/mindmap/MindMapEmbed';
 
@@ -111,22 +112,23 @@ export const MindmapCitationBadge: React.FC<MindmapCitationBadgeProps> = ({
   }, [mindmapId, title, onClick]);
 
   return (
-    <button
+    <NotionButton
+      variant="ghost"
+      size="sm"
       onClick={handleClick}
       className={cn(
-        'inline-flex items-center gap-1 px-1.5 py-0.5 mx-0.5 rounded',
+        '!inline-flex !h-auto !px-1.5 !py-0.5 mx-0.5',
         'bg-violet-500/10 hover:bg-violet-500/20',
         'text-violet-600 dark:text-violet-400',
         'text-sm font-medium',
         'border border-violet-500/20 hover:border-violet-500/40',
-        'transition-colors cursor-pointer',
         className
       )}
       title={t('mindmapCitation.mindmapTitle', { title: title || mindmapId })}
     >
       <Network className="w-3 h-3" />
       <span className="truncate max-w-[120px]">{title || t('mindmapCitation.mindmap')}</span>
-    </button>
+    </NotionButton>
   );
 };
 

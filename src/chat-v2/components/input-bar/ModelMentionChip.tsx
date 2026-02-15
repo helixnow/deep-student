@@ -11,6 +11,7 @@
 import React, { useCallback } from 'react';
 import { X } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { NotionButton } from '@/components/ui/NotionButton';
 import type { ModelInfo } from '../../utils/parseModelMentions';
 
 // ============================================================================
@@ -98,19 +99,9 @@ export const ModelMentionChip: React.FC<ModelMentionChipProps> = ({
       {/* 🔧 样式统一：与技能标签保持一致 */}
       <span className="truncate max-w-[80px]">{displayName}</span>
       {!disabled && (
-        <button
-          type="button"
-          onClick={handleRemove}
-          className={cn(
-            'ml-1 -mr-1 p-0.5 rounded-full opacity-60 hover:opacity-100',
-            'hover:bg-black/5 dark:hover:bg-white/10',
-            'focus:outline-none',
-            'transition-all duration-200'
-          )}
-          aria-label={`Remove ${model.name}`}
-        >
+        <NotionButton variant="ghost" size="icon" iconOnly onClick={handleRemove} className="ml-1 -mr-1 !h-4 !w-4 !p-0 !rounded-full opacity-60 hover:opacity-100 hover:bg-black/5 dark:hover:bg-white/10" aria-label={`Remove ${model.name}`}>
           <X size={10} />
-        </button>
+        </NotionButton>
       )}
     </span>
   );

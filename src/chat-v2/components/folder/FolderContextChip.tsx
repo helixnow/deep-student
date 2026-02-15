@@ -18,6 +18,7 @@ import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { Folder, X } from 'lucide-react';
 import { cn } from '@/utils/cn';
+import { NotionButton } from '@/components/ui/NotionButton';
 import type { VfsFolder } from '@/dstu/types/folder';
 
 // ============================================================================
@@ -97,24 +98,9 @@ export const FolderContextChip: React.FC<FolderContextChipProps> = ({
       )}
 
       {/* 删除按钮 */}
-      <button
-        type="button"
-        onClick={(e) => {
-          e.stopPropagation();
-          if (!disabled) {
-            onRemove();
-          }
-        }}
-        disabled={disabled}
-        className={cn(
-          'p-0.5 rounded-full transition-colors',
-          'hover:bg-amber-500/20',
-          disabled && 'cursor-not-allowed'
-        )}
-        aria-label={t('common.remove', '移除')}
-      >
+      <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); if (!disabled) onRemove(); }} disabled={disabled} className="!h-5 !w-5 !p-0 !rounded-full hover:bg-amber-500/20" aria-label={t('common.remove', '移除')}>
         <X className="w-3.5 h-3.5 text-muted-foreground hover:text-foreground" />
-      </button>
+      </NotionButton>
     </div>
   );
 };

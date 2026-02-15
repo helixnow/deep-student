@@ -8,6 +8,7 @@
  */
 
 import React from 'react';
+import { NotionButton } from '@/components/ui/NotionButton';
 import { useTranslation } from 'react-i18next';
 import { ZoomIn, ZoomOut, RefreshCw, Minus, Plus, Type, ChevronLeft, ChevronRight } from 'lucide-react';
 import {
@@ -143,15 +144,9 @@ export const UnifiedPreviewToolbar: React.FC<UnifiedPreviewToolbarProps> = React
       className={`modern-viewer-toolbar ${className}`}
     >
       {/* 缩放控制区域 */}
-      <button
-        className="modern-viewer-icon-button"
-        onClick={handleZoomOut}
-        disabled={zoomScale <= ZOOM_MIN}
-        title={t('learningHub:previewToolbar.zoomOut')}
-        aria-label={t('learningHub:previewToolbar.zoomOut')}
-      >
+      <NotionButton variant="ghost" size="icon" iconOnly className="modern-viewer-icon-button" onClick={handleZoomOut} disabled={zoomScale <= ZOOM_MIN} title={t('learningHub:previewToolbar.zoomOut')} aria-label={t('learningHub:previewToolbar.zoomOut')}>
         <ZoomOut size={16} />
-      </button>
+      </NotionButton>
 
       <span
         className="modern-viewer-zoom-readout"
@@ -160,53 +155,30 @@ export const UnifiedPreviewToolbar: React.FC<UnifiedPreviewToolbarProps> = React
         {formatPercent(zoomScale)}
       </span>
 
-      <button
-        className="modern-viewer-icon-button"
-        onClick={handleZoomIn}
-        disabled={zoomScale >= ZOOM_MAX}
-        title={t('learningHub:previewToolbar.zoomIn')}
-        aria-label={t('learningHub:previewToolbar.zoomIn')}
-      >
+      <NotionButton variant="ghost" size="icon" iconOnly className="modern-viewer-icon-button" onClick={handleZoomIn} disabled={zoomScale >= ZOOM_MAX} title={t('learningHub:previewToolbar.zoomIn')} aria-label={t('learningHub:previewToolbar.zoomIn')}>
         <ZoomIn size={16} />
-      </button>
+      </NotionButton>
 
-      <button
-        className="modern-viewer-icon-button"
-        onClick={onZoomReset}
-        title={t('learningHub:previewToolbar.resetZoom')}
-        aria-label={t('learningHub:previewToolbar.resetZoom')}
-      >
+      <NotionButton variant="ghost" size="icon" iconOnly className="modern-viewer-icon-button" onClick={onZoomReset} title={t('learningHub:previewToolbar.resetZoom')} aria-label={t('learningHub:previewToolbar.resetZoom')}>
         <RefreshCw size={14} />
-      </button>
+      </NotionButton>
 
       {/* 幻灯片页码控制区域（仅 pptx） */}
       {previewType === 'pptx' && slideNav && slideNav.total > 0 && (
         <>
           <div className="modern-viewer-divider" />
 
-          <button
-            className="modern-viewer-icon-button"
-            onClick={() => slideNav.navigateTo(Math.max(0, slideNav.current - 1))}
-            disabled={slideNav.current === 0}
-            title={t('learningHub:previewToolbar.prevSlide', '上一页')}
-            aria-label={t('learningHub:previewToolbar.prevSlide', '上一页')}
-          >
+          <NotionButton variant="ghost" size="icon" iconOnly className="modern-viewer-icon-button" onClick={() => slideNav.navigateTo(Math.max(0, slideNav.current - 1))} disabled={slideNav.current === 0} title={t('learningHub:previewToolbar.prevSlide', '上一页')} aria-label={t('learningHub:previewToolbar.prevSlide', '上一页')}>
             <ChevronLeft size={16} />
-          </button>
+          </NotionButton>
 
           <span className="modern-viewer-zoom-readout">
             {t('learningHub:docPreview.slideNav', { current: slideNav.current + 1, total: slideNav.total })}
           </span>
 
-          <button
-            className="modern-viewer-icon-button"
-            onClick={() => slideNav.navigateTo(Math.min(slideNav.total - 1, slideNav.current + 1))}
-            disabled={slideNav.current === slideNav.total - 1}
-            title={t('learningHub:previewToolbar.nextSlide', '下一页')}
-            aria-label={t('learningHub:previewToolbar.nextSlide', '下一页')}
-          >
+          <NotionButton variant="ghost" size="icon" iconOnly className="modern-viewer-icon-button" onClick={() => slideNav.navigateTo(Math.min(slideNav.total - 1, slideNav.current + 1))} disabled={slideNav.current === slideNav.total - 1} title={t('learningHub:previewToolbar.nextSlide', '下一页')} aria-label={t('learningHub:previewToolbar.nextSlide', '下一页')}>
             <ChevronRight size={16} />
-          </button>
+          </NotionButton>
         </>
       )}
 
@@ -217,15 +189,9 @@ export const UnifiedPreviewToolbar: React.FC<UnifiedPreviewToolbarProps> = React
 
           <Type size={14} className="text-muted-foreground" />
 
-          <button
-            className="modern-viewer-icon-button"
-            onClick={handleFontDecrease}
-            disabled={fontScale <= FONT_MIN}
-            title={t('learningHub:previewToolbar.fontDecrease')}
-            aria-label={t('learningHub:previewToolbar.fontDecrease')}
-          >
+          <NotionButton variant="ghost" size="icon" iconOnly className="modern-viewer-icon-button" onClick={handleFontDecrease} disabled={fontScale <= FONT_MIN} title={t('learningHub:previewToolbar.fontDecrease')} aria-label={t('learningHub:previewToolbar.fontDecrease')}>
             <Minus size={14} />
-          </button>
+          </NotionButton>
 
           <span
             className="modern-viewer-zoom-readout"
@@ -234,25 +200,14 @@ export const UnifiedPreviewToolbar: React.FC<UnifiedPreviewToolbarProps> = React
             {formatPercent(fontScale)}
           </span>
 
-          <button
-            className="modern-viewer-icon-button"
-            onClick={handleFontIncrease}
-            disabled={fontScale >= FONT_MAX}
-            title={t('learningHub:previewToolbar.fontIncrease')}
-            aria-label={t('learningHub:previewToolbar.fontIncrease')}
-          >
+          <NotionButton variant="ghost" size="icon" iconOnly className="modern-viewer-icon-button" onClick={handleFontIncrease} disabled={fontScale >= FONT_MAX} title={t('learningHub:previewToolbar.fontIncrease')} aria-label={t('learningHub:previewToolbar.fontIncrease')}>
             <Plus size={14} />
-          </button>
+          </NotionButton>
 
           {onFontReset && (
-            <button
-              className="modern-viewer-icon-button"
-              onClick={onFontReset}
-              title={t('learningHub:previewToolbar.resetFont')}
-              aria-label={t('learningHub:previewToolbar.resetFont')}
-            >
+            <NotionButton variant="ghost" size="icon" iconOnly className="modern-viewer-icon-button" onClick={onFontReset} title={t('learningHub:previewToolbar.resetFont')} aria-label={t('learningHub:previewToolbar.resetFont')}>
               <RefreshCw size={14} />
-            </button>
+            </NotionButton>
           )}
         </>
       )}

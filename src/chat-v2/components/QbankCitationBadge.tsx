@@ -12,6 +12,7 @@
 import React, { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
+import { NotionButton } from '@/components/ui/NotionButton';
 import { BookOpen } from 'lucide-react';
 
 // ============================================================================
@@ -69,15 +70,16 @@ export const QbankCitationBadge: React.FC<QbankCitationBadgeProps> = ({
   }, [sessionId, title, onClick]);
 
   return (
-    <button
+    <NotionButton
+      variant="ghost"
+      size="sm"
       onClick={handleClick}
       className={cn(
-        'inline-flex items-center gap-1 px-1.5 py-0.5 mx-0.5 rounded',
+        '!inline-flex !h-auto !px-1.5 !py-0.5 mx-0.5',
         'bg-emerald-500/10 hover:bg-emerald-500/20',
         'text-emerald-600 dark:text-emerald-400',
         'text-sm font-medium',
         'border border-emerald-500/20 hover:border-emerald-500/40',
-        'transition-colors cursor-pointer',
         className
       )}
       title={t('qbankCitation.openTitle', {
@@ -89,7 +91,7 @@ export const QbankCitationBadge: React.FC<QbankCitationBadgeProps> = ({
       <span className="truncate max-w-[150px]">
         {title || t('qbankCitation.qbank', { defaultValue: '题目集' })}
       </span>
-    </button>
+    </NotionButton>
   );
 };
 

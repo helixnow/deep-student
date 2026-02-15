@@ -191,12 +191,9 @@ export const OcrEngineTestPanel: React.FC<OcrEngineTestPanelProps> = ({
               alt={t('settings:ocr.test_image')}
               className="max-h-48 mx-auto rounded-lg shadow-sm"
             />
-            <button
-              onClick={handleClear}
-              className="absolute top-2 right-2 p-1 bg-black/50 rounded-full text-white hover:bg-black/70 transition-colors"
-            >
+            <NotionButton variant="ghost" size="icon" iconOnly onClick={handleClear} className="absolute top-2 right-2 !p-1 !rounded-full bg-black/50 text-white hover:bg-black/70" aria-label="clear">
               <X size={14} />
-            </button>
+            </NotionButton>
           </div>
           <div className="flex justify-center gap-2">
             <NotionButton

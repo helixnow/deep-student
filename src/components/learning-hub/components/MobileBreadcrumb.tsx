@@ -10,6 +10,7 @@
 
 import React, { useRef, useState, useLayoutEffect, useCallback } from 'react';
 import { cn } from '@/lib/utils';
+import { NotionButton } from '@/components/ui/NotionButton';
 import { ChevronRight } from 'lucide-react';
 import type { BreadcrumbItem } from '../stores/finderStore';
 
@@ -109,12 +110,9 @@ export const MobileBreadcrumb: React.FC<MobileBreadcrumbProps> = React.memo(({
         aria-hidden={displayMode !== 'full'}
       >
         {/* 根目录 */}
-        <button
-          onClick={() => onNavigate?.(-1)}
-          className="hover:text-primary transition-colors truncate max-w-[120px]"
-        >
+        <NotionButton variant="ghost" size="sm" onClick={() => onNavigate?.(-1)} className="!h-auto !p-0 hover:text-primary truncate max-w-[120px]">
           {rootTitle}
-        </button>
+        </NotionButton>
 
         {/* 面包屑路径 */}
         {breadcrumbs.map((item, index) => (
@@ -125,12 +123,9 @@ export const MobileBreadcrumb: React.FC<MobileBreadcrumbProps> = React.memo(({
               <span className="truncate max-w-[120px]">{item.name}</span>
             ) : (
               // 中间层级（可点击）
-              <button
-                onClick={() => onNavigate?.(index)}
-                className="hover:text-primary transition-colors truncate max-w-[120px]"
-              >
+              <NotionButton variant="ghost" size="sm" onClick={() => onNavigate?.(index)} className="!h-auto !p-0 hover:text-primary truncate max-w-[120px]">
                 {item.name}
-              </button>
+              </NotionButton>
             )}
           </React.Fragment>
         ))}
@@ -146,12 +141,9 @@ export const MobileBreadcrumb: React.FC<MobileBreadcrumbProps> = React.memo(({
           )}
           aria-hidden={displayMode !== 'collapsed'}
         >
-          <button
-            onClick={() => onNavigate?.(-1)}
-            className="hover:text-primary transition-colors truncate max-w-[80px]"
-          >
+          <NotionButton variant="ghost" size="sm" onClick={() => onNavigate?.(-1)} className="!h-auto !p-0 hover:text-primary truncate max-w-[80px]">
             {rootTitle}
-          </button>
+          </NotionButton>
           <ChevronRight className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
           <span className="text-muted-foreground">…</span>
           <ChevronRight className="h-4 w-4 flex-shrink-0 text-muted-foreground" />

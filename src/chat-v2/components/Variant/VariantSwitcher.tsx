@@ -10,6 +10,7 @@
 import React, { useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
+import { NotionButton } from '@/components/ui/NotionButton';
 import { VariantStatusIcon } from './VariantStatusIcon';
 import type { Variant, VariantStatus } from '../../core/types/message';
 
@@ -151,16 +152,16 @@ export const VariantSwitcher: React.FC<VariantSwitcherProps> = ({
         const isDisabled = disabled || !isSwitchable;
 
         return (
-          <button
+          <NotionButton
             key={variant.id}
+            variant="ghost"
+            size="sm"
             role="tab"
             aria-selected={isActive}
             aria-disabled={isDisabled}
             tabIndex={isActive ? 0 : -1}
             className={cn(
-              'flex items-center gap-1.5 px-3 py-1.5 rounded-md',
-              'text-sm font-medium transition-colors',
-              'focus:outline-none focus-visible:ring-2 focus-visible:ring-primary',
+              'gap-1.5',
               isActive
                 ? 'bg-background text-foreground shadow-sm'
                 : isDisabled
@@ -169,6 +170,7 @@ export const VariantSwitcher: React.FC<VariantSwitcherProps> = ({
             )}
             onClick={() => handleSwitch(variant)}
             onKeyDown={(e) => handleKeyDown(e, index)}
+            disabled={isDisabled}
             title={
               !isSwitchable
                 ? t('variant.cannotActivateFailed')
@@ -181,7 +183,7 @@ export const VariantSwitcher: React.FC<VariantSwitcherProps> = ({
             <span className="truncate max-w-[100px]">
               {getModelDisplayName(variant.modelId)}
             </span>
-          </button>
+          </NotionButton>
         );
       })}
     </div>

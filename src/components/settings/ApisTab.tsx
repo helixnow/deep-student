@@ -242,10 +242,10 @@ export const ApisTab: React.FC<ApisTabProps> = ({
                     const modelCount = profileCountByVendor.get(vendor.id) ?? 0;
                     const providerLabel = getProviderDisplayName(vendor.providerType);
                     return (
-                      <button type="button" key={vendor.id} onClick={() => setSelectedVendorId(vendor.id)}
-                        className={cn('rounded-lg px-3 py-2 text-left transition-all w-full group relative',
+                      <NotionButton variant="ghost" size="sm" key={vendor.id} onClick={() => setSelectedVendorId(vendor.id)}
+                        className={cn('!rounded-lg !px-3 !py-2 text-left w-full !justify-start group relative',
                           isActive ? 'bg-muted text-foreground font-medium' : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground')}>
-                        <div className="flex flex-wrap items-center justify-between gap-1.5">
+                        <div className="flex flex-wrap items-center justify-between gap-1.5 w-full">
                           <div className="flex items-center gap-2 min-w-0 flex-1">
                             <SiliconFlowLogo className="h-3.5 shrink-0" />
                           </div>
@@ -253,7 +253,7 @@ export const ApisTab: React.FC<ApisTabProps> = ({
                             {modelCount > 0 && <span className="text-[10px] text-muted-foreground/60 bg-muted/50 px-1.5 py-0.5 rounded-full">{modelCount}</span>}
                           </div>
                         </div>
-                      </button>
+                      </NotionButton>
                     );
                   })}
                   {/* 其他供应商可拖拽排序 */}

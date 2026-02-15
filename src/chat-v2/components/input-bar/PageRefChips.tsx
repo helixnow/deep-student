@@ -10,6 +10,7 @@ import React, { memo, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { X, BookOpen } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { NotionButton } from '@/components/ui/NotionButton';
 import type { PdfPageRefsState } from './usePdfPageRefs';
 
 // ============================================================================
@@ -98,20 +99,9 @@ export const PageRefChips: React.FC<PageRefChipsProps> = memo(
           <span className="opacity-60">·</span>
           <span className="whitespace-nowrap">{label}</span>
           {!disabled && (
-            <button
-              type="button"
-              onClick={onClearAll}
-              className={cn(
-                '-mr-0.5 p-0.5 rounded-full opacity-60 hover:opacity-100',
-                'hover:bg-black/5 dark:hover:bg-white/10',
-                'focus:outline-none',
-                'transition-all duration-200'
-              )}
-              title={t('chatV2:pageRef.clearAll', { defaultValue: '清空页码引用' })}
-              aria-label={t('chatV2:pageRef.clearAll', { defaultValue: '清空页码引用' })}
-            >
+            <NotionButton variant="ghost" size="icon" iconOnly onClick={onClearAll} className="-mr-0.5 !h-4 !w-4 !p-0 !rounded-full opacity-60 hover:opacity-100 hover:bg-black/5 dark:hover:bg-white/10" aria-label={t('chatV2:pageRef.clearAll', { defaultValue: '清空页码引用' })} title={t('chatV2:pageRef.clearAll', { defaultValue: '清空页码引用' })}>
               <X size={10} />
-            </button>
+            </NotionButton>
           )}
         </div>
       </div>

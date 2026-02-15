@@ -68,11 +68,7 @@ const ArgumentsPreview: React.FC<{
         {displayText}
       </pre>
       {needsTruncation && (
-        <button
-          type="button"
-          onClick={onToggle}
-          className="mt-1 flex items-center gap-1 text-xs text-primary hover:underline"
-        >
+        <NotionButton variant="ghost" size="sm" onClick={onToggle} className="mt-1 text-primary hover:underline">
           {isExpanded ? (
             <>
               <ChevronUp className="h-3 w-3" />
@@ -84,7 +80,7 @@ const ArgumentsPreview: React.FC<{
               {t('approval.expandArgs')}
             </>
           )}
-        </button>
+        </NotionButton>
       )}
     </>
   );

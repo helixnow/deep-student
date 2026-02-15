@@ -8,6 +8,7 @@
 import React, { useState, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
+import { NotionButton } from '@/components/ui/NotionButton';
 import { ChevronDown, ChevronRight, Layers } from 'lucide-react';
 import { SourceCard } from './SourceCard';
 import type { RetrievalSource } from './types';
@@ -105,15 +106,7 @@ export const SourceList: React.FC<SourceListProps> = ({
 
       {/* 展开/折叠按钮 */}
       {hasMore && (
-        <button
-          onClick={toggleExpanded}
-          className={cn(
-            'w-full flex items-center justify-center gap-1',
-            'py-2 rounded-lg text-sm',
-            'text-muted-foreground hover:text-foreground',
-            'hover:bg-muted/50 transition-colors'
-          )}
-        >
+        <NotionButton variant="ghost" size="sm" onClick={toggleExpanded} className="w-full !justify-center">
           {isExpanded ? (
             <>
               <ChevronDown className="w-4 h-4" />
@@ -127,7 +120,7 @@ export const SourceList: React.FC<SourceListProps> = ({
               </span>
             </>
           )}
-        </button>
+        </NotionButton>
       )}
     </div>
   );

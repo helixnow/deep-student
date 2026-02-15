@@ -135,16 +135,9 @@ export const VendorApiKeySection: React.FC<VendorApiKeySectionProps> = ({
           className="pr-10 font-mono"
           disabled={saving}
         />
-        <button
-          type="button"
-          className="absolute inset-y-0 right-0 flex items-center px-3 text-muted-foreground hover:text-foreground transition-colors"
-          onClick={() => setShowApiKey(v => !v)}
-          title={showApiKey ? t('common:hide') : t('common:show')}
-          aria-label={showApiKey ? t('settings:vendor_panel.hide_api_key') : t('settings:vendor_panel.show_api_key')}
-          disabled={saving}
-        >
+        <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setShowApiKey(v => !v)} disabled={saving} className="absolute inset-y-0 right-0 !rounded-none" title={showApiKey ? t('common:hide') : t('common:show')} aria-label={showApiKey ? t('settings:vendor_panel.hide_api_key') : t('settings:vendor_panel.show_api_key')}>
           {showApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-        </button>
+        </NotionButton>
       </div>
       <div className="flex flex-wrap gap-2 pt-1">
         <NotionButton 

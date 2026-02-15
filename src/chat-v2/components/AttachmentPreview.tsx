@@ -16,6 +16,7 @@ import React, { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { StoreApi } from 'zustand';
 import { cn } from '@/utils/cn';
+import { NotionButton } from '@/components/ui/NotionButton';
 import {
   X,
   Loader2,
@@ -262,24 +263,24 @@ const AttachmentItem: React.FC<AttachmentItemProps> = ({
 
       {/* 删除按钮 (悬浮在右上角) */}
       {!readonly && onRemove && (
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onRemove();
-          }}
+        <NotionButton
+          variant="ghost"
+          size="icon"
+          iconOnly
+          onClick={(e) => { e.stopPropagation(); onRemove(); }}
           className={cn(
-            'absolute top-0.5 right-0.5 z-20',
-            'bg-black/40 hover:bg-destructive text-white', // 增强对比度
+            'absolute top-0.5 right-0.5 z-20 !rounded-full !p-0.5',
+            'bg-black/40 hover:bg-destructive text-white',
             'backdrop-blur-sm',
-            'rounded-full p-0.5',
             'opacity-0 group-hover:opacity-100 transition-all duration-200',
             'transform scale-90 group-hover:scale-100',
             config.closeBtnPadding
           )}
+          aria-label={t('attachmentPreview.remove')}
           title={t('attachmentPreview.remove')}
         >
           <X className={config.closeBtn} />
-        </button>
+        </NotionButton>
       )}
 
       {/* 文件大小（大尺寸显示，非图片） */}

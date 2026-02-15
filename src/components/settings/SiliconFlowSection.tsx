@@ -834,44 +834,21 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
           placeholder={t('common:siliconflow.api_key_placeholder_local')}
           className="pr-10"
         />
-        <button
-          type="button"
-          className="absolute inset-y-0 right-0 flex items-center px-3 text-muted-foreground hover:text-foreground transition-colors"
-          onClick={() => setShowApiKey(v => !v)}
-          title={showApiKey ? t('common:siliconflow.hide') : t('common:siliconflow.show')}
-          aria-label={showApiKey ? t('common:siliconflow.hide_api_key') : t('common:siliconflow.show_api_key')}
-        >
+        <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setShowApiKey(v => !v)} className="absolute inset-y-0 right-0 !rounded-none" title={showApiKey ? t('common:siliconflow.hide') : t('common:siliconflow.show')} aria-label={showApiKey ? t('common:siliconflow.hide_api_key') : t('common:siliconflow.show_api_key')}>
           {showApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-        </button>
+        </NotionButton>
       </div>
       <div className="flex items-center justify-between pt-2">
         {/* Notion 风格按钮 - 一键分配 */}
-        <button
-          onClick={handleOneClickAssign}
-          disabled={loading || !apiKey.trim()}
-          className={cn(
-            "inline-flex items-center gap-2 h-8 px-3 rounded-lg text-[13px] font-medium transition-colors duration-150",
-            "text-blue-600 dark:text-blue-400 bg-blue-500/10 hover:bg-blue-500/20",
-            "disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-blue-500/10"
-          )}
-        >
+        <NotionButton variant="ghost" size="sm" onClick={handleOneClickAssign} disabled={loading || !apiKey.trim()} className="text-blue-600 dark:text-blue-400 bg-blue-500/10 hover:bg-blue-500/20">
           <Zap className="h-3.5 w-3.5" />
           {t('common:siliconflow.one_click_assign')}
-        </button>
+        </NotionButton>
         {/* Notion 风格按钮 - 清除 (右对齐) */}
-        <button
-          onClick={clearSavedApiKey}
-          disabled={loading || !apiKey}
-          title={t('common:siliconflow.clear_api_key_title')}
-          className={cn(
-            "inline-flex items-center gap-2 h-8 px-3 rounded-lg text-[13px] font-medium transition-colors duration-150",
-            "text-red-600 dark:text-red-400 bg-red-500/10 hover:bg-red-500/20",
-            "disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-red-500/10"
-          )}
-        >
+        <NotionButton variant="ghost" size="sm" onClick={clearSavedApiKey} disabled={loading || !apiKey} title={t('common:siliconflow.clear_api_key_title')} className="text-red-600 dark:text-red-400 bg-red-500/10 hover:bg-red-500/20">
           <Trash2 className="h-3.5 w-3.5" />
           {t('common:siliconflow.clear_button')}
-        </button>
+        </NotionButton>
       </div>
     </div>
   );

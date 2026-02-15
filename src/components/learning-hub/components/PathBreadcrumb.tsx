@@ -13,6 +13,7 @@ import React, { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ChevronRight, Home, FolderOpen } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { NotionButton } from '@/components/ui/NotionButton';
 import type { RealPathBreadcrumbItem } from '../hooks/useFolderNavigation';
 
 // ============================================================================
@@ -100,20 +101,10 @@ export const PathBreadcrumb = React.memo(function PathBreadcrumb({
       aria-label={t('breadcrumb.ariaLabel', '路径导航')}
     >
       {/* 根目录 */}
-      <button
-        type="button"
-        onClick={() => onNavigate(-1)}
-        className={cn(
-          'flex items-center gap-1 px-1.5 py-0.5 rounded-md transition-colors',
-          'hover:bg-muted/50 hover:text-foreground',
-          'focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1',
-          breadcrumbs.length === 0 && 'text-foreground font-medium'
-        )}
-        title={rootText}
-      >
+      <NotionButton variant="ghost" size="sm" onClick={() => onNavigate(-1)} className={cn('!h-auto !px-1.5 !py-0.5', breadcrumbs.length === 0 && 'text-foreground font-medium')} title={rootText}>
         {showRootIcon && <Home className="h-3.5 w-3.5" />}
         {breadcrumbs.length === 0 && <span>{rootText}</span>}
-      </button>
+      </NotionButton>
 
       {/* 面包屑项 */}
       {visibleItems.items.map((item, displayIndex) => {
@@ -145,21 +136,10 @@ export const PathBreadcrumb = React.memo(function PathBreadcrumb({
             )}
 
             {/* 面包屑按钮 */}
-            <button
-              type="button"
-              onClick={() => !isLast && onNavigate(actualIndex)}
-              disabled={isLast}
-              className={cn(
-                'flex items-center gap-1 px-1.5 py-0.5 rounded-md transition-colors truncate max-w-[120px]',
-                isLast
-                  ? 'text-foreground font-medium cursor-default'
-                  : 'hover:bg-muted/50 hover:text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1'
-              )}
-              title={item.name}
-            >
+            <NotionButton variant="ghost" size="sm" onClick={() => !isLast && onNavigate(actualIndex)} disabled={isLast} className={cn('!h-auto !px-1.5 !py-0.5 truncate max-w-[120px]', isLast ? 'text-foreground font-medium cursor-default' : '')} title={item.name}>
               {isLast && <FolderOpen className="h-3.5 w-3.5 flex-shrink-0" />}
               <span className="truncate">{item.name}</span>
-            </button>
+            </NotionButton>
           </React.Fragment>
         );
       })}
@@ -187,19 +167,9 @@ const DropdownEllipsis = React.memo(function DropdownEllipsis({ items, onNavigat
 
   return (
     <div className="relative">
-      <button
-        type="button"
-        onClick={() => setIsOpen(!isOpen)}
-        onBlur={() => setTimeout(() => setIsOpen(false), 150)}
-        className={cn(
-          'px-1.5 py-0.5 rounded-md transition-colors',
-          'hover:bg-muted/50 hover:text-foreground',
-          'focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1'
-        )}
-        title={t('breadcrumb.hiddenFolders', '{{count}} 个隐藏文件夹', { count: items.length })}
-      >
+      <NotionButton variant="ghost" size="sm" onClick={() => setIsOpen(!isOpen)} onBlur={() => setTimeout(() => setIsOpen(false), 150)} className="!h-auto !px-1.5 !py-0.5" title={t('breadcrumb.hiddenFolders', '{{count}} 个隐藏文件夹', { count: items.length })}>
         <span className="text-muted-foreground">...</span>
-      </button>
+      </NotionButton>
 
       {isOpen && (
         <div
@@ -211,21 +181,9 @@ const DropdownEllipsis = React.memo(function DropdownEllipsis({ items, onNavigat
           )}
         >
           {items.map((item, index) => (
-            <button
-              key={item.fullPath}
-              type="button"
-              onClick={() => {
-                onNavigate(index);
-                setIsOpen(false);
-              }}
-              className={cn(
-                'w-full px-3 py-1.5 text-left text-sm truncate',
-                'hover:bg-muted/50 transition-colors'
-              )}
-              title={item.name}
-            >
+            <NotionButton key={item.fullPath} variant="ghost" size="sm" onClick={() => { onNavigate(index); setIsOpen(false); }} className="w-full !justify-start !px-3 !py-1.5 truncate" title={item.name}>
               {item.name}
-            </button>
+            </NotionButton>
           ))}
         </div>
       )}

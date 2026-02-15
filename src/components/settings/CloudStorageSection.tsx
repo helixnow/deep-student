@@ -474,10 +474,11 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     <div className={isDialog ? 'space-y-4' : 'space-y-6'}>
       {/* 存储类型选择 - 卡片式单选 */}
       <div className="grid grid-cols-2 gap-3">
-        <button
-          type="button"
+        <NotionButton
+          variant="ghost"
+          size="sm"
           onClick={() => setProvider('webdav')}
-          className={`relative flex flex-col items-start gap-1 rounded-lg border-2 p-3 text-left transition-all hover:bg-accent/50 ${
+          className={`relative !h-auto !justify-start flex-col items-start gap-1 !rounded-lg border-2 !p-3 text-left ${
             provider === 'webdav'
               ? 'border-primary bg-primary/5'
               : 'border-border bg-transparent'
@@ -492,14 +493,15 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
           <span className="text-xs text-muted-foreground line-clamp-2">
             {t('cloudStorage:provider.webdavDesc')}
           </span>
-        </button>
-        <button
-          type="button"
+        </NotionButton>
+        <NotionButton
+          variant="ghost"
+          size="sm"
           onClick={() => s3Enabled !== false && setProvider('s3')}
           disabled={s3Enabled === false}
-          className={`relative flex flex-col items-start gap-1 rounded-lg border-2 p-3 text-left transition-all ${
+          className={`relative !h-auto !justify-start flex-col items-start gap-1 !rounded-lg border-2 !p-3 text-left ${
             s3Enabled === false
-              ? 'cursor-not-allowed opacity-50 border-border'
+              ? 'opacity-50 border-border'
               : provider === 's3'
                 ? 'border-primary bg-primary/5 hover:bg-primary/10'
                 : 'border-border bg-transparent hover:bg-accent/50'
@@ -518,7 +520,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
               ? t('cloudStorage:provider.s3Disabled')
               : t('cloudStorage:provider.s3Desc')}
           </span>
-        </button>
+        </NotionButton>
       </div>
 
       <Tabs value={provider} onValueChange={(v) => setProvider(v as cloudApi.StorageProvider)}>

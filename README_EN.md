@@ -37,6 +37,7 @@ Smart Chat · Knowledge Management · Anki Card Making · Universal Reader · De
 | 📚 | **Learning Hub** | VFS-based unified management for notes/textbooks/question banks, batch OCR & vectorized indexing |
 | 🧩 | **Skill System** | On-demand AI capabilities with 8 built-in professional skills: Card Making · Research · Paper · Mind Map · Question Bank · Memory · Tutor · Literature Review, plus custom extensions |
 | 📖 | **Smart Reader** | PDF / DOCX split-screen reading with page reference injection into chat context |
+| 🌐 | **Translation Workbench** | Full-text translation, paragraph-level bilingual comparison, domain presets (Academic/Technical/Literary/Legal/Medical) & custom prompts |
 | ✍️ | **Essay Grading** | Multi-scenario scoring (Gaokao / IELTS / TOEFL / CET-4/6), revision suggestions with highlights |
 | 🔌 | **MCP Extensions** | Model Context Protocol compatible, connecting external tools like Arxiv, Context7, etc. |
 | 🏠 | **Local-First** | All data stored locally (SQLite + LanceDB + Blob), full audit trail & backup |
@@ -62,7 +63,7 @@ Download the latest version from [GitHub Releases](https://github.com/000haoji/d
 - [Core Philosophy](#core-philosophy)
 - [Feature Details](#feature-details)
   - [AI Smart Chat](#1-ai-smart-chat-chat-v2) · [Learning Hub](#2-learning-hub) · [Skill System](#3-skill-system)
-  - [Smart Reader](#4-pdfdocx-smart-reader) · [Essay Grading](#5-ai-essay-grading) · [MCP & Model Configuration](#6-mcp-extensions--model-configuration) · [Data Governance](#7-data-governance)
+  - [Smart Reader](#4-pdfdocx-smart-reader) · [Translation Workbench](#5-translation-workbench) · [Essay Grading](#6-ai-essay-grading) · [MCP & Model Configuration](#7-mcp-extensions--model-configuration) · [Data Governance](#8-data-governance)
 - [Getting Started (Development)](#getting-started)
 - [Architecture Overview](#architecture-overview)
 - [Tech Stack](#tech-stack)
@@ -149,6 +150,7 @@ Manage all your learning assets like Finder/Explorer.
 
 <details>
 <summary>📸 View Screenshots</summary>
+<p align="center"><img src="./example/学习资源管理器.png" width="90%" alt="Learning Resource Manager" /></p>
 <p align="center"><img src="./example/笔记-1.png" width="90%" alt="Note Editing" /></p>
 <p align="center"><img src="./example/向量化状态.png" width="90%" alt="Vectorization Status" /></p>
 </details>
@@ -225,6 +227,10 @@ Extend AI capabilities on demand through Skills, avoiding bloated System Prompts
 - **SHA256 Deduplication**: Existing papers are automatically identified and skipped to avoid duplicate imports.
 - **Citation Formatting**: Supports BibTeX, GB/T 7714, and APA citation formats with one-click generation.
 - **DOI Resolution**: Automatically resolves DOIs to open-access PDF links via the Unpaywall API.
+
+<p align="center"><img src="./example/论文搜索-1.png" width="90%" alt="Paper Search" /></p>
+<p align="center"><img src="./example/论文搜索-2.png" width="90%" alt="Paper Download" /></p>
+<p align="center"><img src="./example/论文搜索-3.png" width="90%" alt="Paper Reading" /></p>
 
 </details>
 
@@ -313,7 +319,23 @@ Not just reading — it's a conversation with knowledge.
 <p align="center"><img src="./example/docx阅读-1.png" width="90%" alt="DOCX Reading" /></p>
 </details>
 
-### 5. AI Essay Grading
+### 5. Translation Workbench
+
+Smart translation — more than just sentence-by-sentence comparison.
+
+- **Full-Text Translation**: Supports whole-document translation with synchronized left-right split-screen scrolling for clear source-to-translation viewing.
+- **Paragraph-Level Bilingual Comparison**: Paragraph-by-paragraph alignment for precise comparison of source and translated text, ideal for intensive reading practice.
+- **Domain Presets**: Built-in presets for academic papers, technical documentation, literary works, legal documents, medical literature, and more — switch translation style with one click.
+- **Custom Prompts**: Supports custom translation prompts for precise control over translation tone and terminology preferences.
+
+<details>
+<summary>📸 View Screenshots</summary>
+<p align="center"><img src="./example/翻译-1.png" width="90%" alt="Full-Text Translation" /></p>
+<p align="center"><img src="./example/翻译-2.png" width="90%" alt="Bilingual Comparison" /></p>
+<p align="center"><img src="./example/翻译-3.png" width="90%" alt="Translation Settings" /></p>
+</details>
+
+### 6. AI Essay Grading
 
 Fully automated Chinese and English essay grading and polishing.
 
@@ -328,7 +350,7 @@ Fully automated Chinese and English essay grading and polishing.
 <p align="center"><img src="./example/作文-2.png" width="90%" alt="Detailed Suggestions" /></p>
 </details>
 
-### 6. MCP Extensions & Model Configuration
+### 7. MCP Extensions & Model Configuration
 
 Embracing open ecosystems with high customizability.
 
@@ -344,7 +366,7 @@ Embracing open ecosystems with high customizability.
 <p align="center"><img src="./example/mcp-4.png" width="90%" alt="Search Details" /></p>
 </details>
 
-### 7. Data Governance
+### 8. Data Governance
 
 Comprehensive data management and security mechanisms:
 

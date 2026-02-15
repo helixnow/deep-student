@@ -76,30 +76,12 @@ export const FinderBatchToolbar = React.memo(function FinderBatchToolbar({
         {/* 视图切换按钮组 - 在有选中项时可能被隐藏 */}
         {onViewModeChange && !hasSelection && (
           <div className="flex items-center bg-muted/50 rounded p-0.5 gap-0.5 shrink-0">
-            <button
-              className={cn(
-                "p-1 rounded transition-colors",
-                viewMode === 'grid' 
-                  ? "bg-background shadow-sm text-foreground" 
-                  : "text-muted-foreground hover:text-foreground"
-              )}
-              onClick={() => onViewModeChange('grid')}
-              title={t('finder.viewMode.grid')}
-            >
+            <NotionButton variant="ghost" size="icon" iconOnly onClick={() => onViewModeChange('grid')} className={cn('!h-6 !w-6 !p-1', viewMode === 'grid' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground')} title={t('finder.viewMode.grid')} aria-label="grid">
               <LayoutGrid className="h-3.5 w-3.5" />
-            </button>
-            <button
-              className={cn(
-                "p-1 rounded transition-colors",
-                viewMode === 'list' 
-                  ? "bg-background shadow-sm text-foreground" 
-                  : "text-muted-foreground hover:text-foreground"
-              )}
-              onClick={() => onViewModeChange('list')}
-              title={t('finder.viewMode.list')}
-            >
+            </NotionButton>
+            <NotionButton variant="ghost" size="icon" iconOnly onClick={() => onViewModeChange('list')} className={cn('!h-6 !w-6 !p-1', viewMode === 'list' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground')} title={t('finder.viewMode.list')} aria-label="list">
               <List className="h-3.5 w-3.5" />
-            </button>
+            </NotionButton>
           </div>
         )}
       </div>
@@ -108,17 +90,13 @@ export const FinderBatchToolbar = React.memo(function FinderBatchToolbar({
       {hasSelection && (
         <div className="flex items-center gap-1 text-accent-foreground min-w-0 ml-2 overflow-hidden">
           <span className="text-muted-foreground/60 shrink-0">|</span>
-          <button
-            className="p-1 hover:bg-accent rounded shrink-0"
-            onClick={allSelected ? onClearSelection : onSelectAll}
-            title={allSelected ? t('finder.batch.deselectAll') : t('finder.batch.selectAll')}
-          >
+          <NotionButton variant="ghost" size="icon" iconOnly onClick={allSelected ? onClearSelection : onSelectAll} className="!h-6 !w-6 !p-1 shrink-0" title={allSelected ? t('finder.batch.deselectAll') : t('finder.batch.selectAll')} aria-label="toggle select">
             {allSelected ? (
               <CheckSquare className="h-4 w-4" />
             ) : (
               <Square className="h-4 w-4" />
             )}
-          </button>
+          </NotionButton>
           <span className="font-medium whitespace-nowrap text-xs truncate">
             {t('finder.multiSelect.selected', { count: selectedCount })}
           </span>
@@ -166,18 +144,9 @@ export const FinderBatchToolbar = React.memo(function FinderBatchToolbar({
             </NotionButton>
 
             {/* 清除选择/关闭按钮 - 放在删除按钮后面，使用明显的样式 */}
-            <button
-              className="p-1.5 hover:bg-accent-foreground/10 rounded ml-0.5"
-              onClick={() => {
-                onClearSelection();
-                if (hasOpenApp && onCloseApp) {
-                  onCloseApp();
-                }
-              }}
-              title={hasOpenApp ? t('finder.appPanel.close') : t('common:close')}
-            >
+            <NotionButton variant="ghost" size="icon" iconOnly onClick={() => { onClearSelection(); if (hasOpenApp && onCloseApp) { onCloseApp(); } }} className="!h-7 !w-7 !p-1.5 hover:bg-accent-foreground/10 ml-0.5" title={hasOpenApp ? t('finder.appPanel.close') : t('common:close')} aria-label="close">
               <X className="h-4 w-4 text-accent-foreground" />
-            </button>
+            </NotionButton>
           </>
         )}
 

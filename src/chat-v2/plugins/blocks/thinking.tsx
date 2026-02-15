@@ -8,6 +8,7 @@
 import React, { useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
+import { NotionButton } from '@/components/ui/NotionButton';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { blockRegistry, type BlockComponentProps } from '../../registry';
 import { StreamingMarkdownRenderer } from '../../components/renderers';
@@ -50,33 +51,21 @@ const ThinkingBlock: React.FC<BlockComponentProps> = ({ block, isStreaming }) =>
       )}
     >
       {/* 折叠头部 */}
-      <button
+      <NotionButton
+        variant="ghost"
+        size="sm"
         onClick={toggleExpanded}
-        className={cn(
-          'w-full flex items-center gap-2 px-3 py-2',
-          'text-sm text-muted-foreground',
-          'hover:bg-muted/50 transition-colors',
-          'rounded-lg'
-        )}
+        className="w-full !justify-start gap-2 !px-3 !py-2 !rounded-lg text-muted-foreground"
       >
-        {/* 展开/折叠图标 */}
-        {isExpanded ? (
-          <ChevronDown className="w-4 h-4" />
-        ) : (
-          <ChevronRight className="w-4 h-4" />
-        )}
-
-        {/* 标题 */}
+        {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
         <span className="font-medium">{t('blocks.thinking.title')}</span>
-
-        {/* 流式指示器 */}
         {isStreaming && (
           <span className="flex items-center gap-1 ml-auto">
             <span className="w-1.5 h-1.5 bg-primary rounded-full animate-pulse" />
             <span className="text-xs">{t('blocks.thinking.streaming')}</span>
           </span>
         )}
-      </button>
+      </NotionButton>
 
       {/* 内容区域 */}
       {isExpanded && (

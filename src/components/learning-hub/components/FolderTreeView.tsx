@@ -699,8 +699,8 @@ export const FolderTreeView: React.FC<FolderTreeViewProps> = ({
                     key={node.folder.id}
                     className="flex justify-center h-[68px] overflow-hidden"
                   >
-                    <button
-                      type="button"
+                    <NotionButton
+                      variant="ghost" size="sm"
                       onClick={(e) => {
                         e.stopPropagation();
                         onSelect(node.folder.id, 'folder');
@@ -710,7 +710,7 @@ export const FolderTreeView: React.FC<FolderTreeViewProps> = ({
                         handleDoubleClickFolder(node.folder.id);
                       }}
                       onContextMenu={(e) => handleFolderContextMenu(e, node)}
-                      className="group relative flex flex-col items-center w-full max-w-[60px] h-full focus:outline-none"
+                      className="group relative !h-full !p-0 flex-col items-center w-full max-w-[60px]"
                     >
                       {/* 图标 */}
                       <div className="relative w-8 h-8 shrink-0 flex items-center justify-center transition-transform duration-200 group-hover:scale-105">
@@ -732,7 +732,7 @@ export const FolderTreeView: React.FC<FolderTreeViewProps> = ({
                           {node.folder.title}
                         </span>
                       </div>
-                    </button>
+                    </NotionButton>
                   </div>
                 );
               })}
@@ -763,8 +763,8 @@ export const FolderTreeView: React.FC<FolderTreeViewProps> = ({
                     key={item.id}
                     className="flex justify-center h-[68px] overflow-hidden"
                   >
-                    <button
-                      type="button"
+                    <NotionButton
+                      variant="ghost" size="sm"
                       onClick={(e) => {
                         e.stopPropagation();
                         onSelect(item.id, 'item');
@@ -774,7 +774,7 @@ export const FolderTreeView: React.FC<FolderTreeViewProps> = ({
                         handleDoubleClickItem(item);
                       }}
                       onContextMenu={(e) => handleItemContextMenu(e, item)}
-                      className="group relative flex flex-col items-center w-full max-w-[60px] h-full focus:outline-none"
+                      className="group relative !h-full !p-0 flex-col items-center w-full max-w-[60px]"
                     >
                       {/* 图标 */}
                       <div className="relative w-8 h-8 shrink-0 flex items-center justify-center transition-transform duration-200 group-hover:scale-105">
@@ -796,7 +796,7 @@ export const FolderTreeView: React.FC<FolderTreeViewProps> = ({
                           {displayTitle}
                         </span>
                       </div>
-                    </button>
+                    </NotionButton>
                   </div>
                 );
               })}
@@ -890,17 +890,16 @@ export const FolderTreeView: React.FC<FolderTreeViewProps> = ({
                                 {...dragProvided.draggableProps}
                                 {...dragProvided.dragHandleProps}
                               >
-                                <button
-                                  type="button"
+                                <NotionButton
+                                  variant="ghost" size="sm"
                                   onClick={() => {
                                     onSelect(node.folder.id, 'folder');
-                                    // 点击时切换展开/折叠
                                     onToggleExpand(node.folder.id, !isExpanded);
                                   }}
                                   onDoubleClick={() => handleDoubleClickFolder(node.folder.id)}
                                   onContextMenu={(e) => handleFolderContextMenu(e, node)}
                                   className={cn(
-                                    'group flex items-center px-4 h-[34px] text-left w-full transition-colors',
+                                    'group !justify-start !px-4 !h-[34px] w-full',
                                     isSelected 
                                       ? 'bg-primary/10' 
                                       : isEven ? 'bg-transparent' : 'bg-muted/20',
@@ -952,7 +951,7 @@ export const FolderTreeView: React.FC<FolderTreeViewProps> = ({
                                   <div className="w-16 shrink-0 text-xs text-muted-foreground">
                                     {t('folder.label', '文件夹')}
                                   </div>
-                                </button>
+                                </NotionButton>
                               </div>
                             )}
                           </Draggable>
@@ -977,14 +976,14 @@ export const FolderTreeView: React.FC<FolderTreeViewProps> = ({
                             }
                             
                             return (
-                              <button
+                              <NotionButton
                                 key={item.id}
-                                type="button"
+                                variant="ghost" size="sm"
                                 onClick={() => onSelect(item.id, 'item')}
                                 onDoubleClick={() => handleDoubleClickItem(item)}
                                 onContextMenu={(e) => handleItemContextMenu(e, item)}
                                 className={cn(
-                                  'group flex items-center px-4 pl-9 h-[34px] text-left w-full transition-colors',
+                                  'group !justify-start !px-4 !pl-9 !h-[34px] w-full',
                                     itemSelected 
                                     ? 'bg-primary/10' 
                                     : itemIsEven ? 'bg-transparent' : 'bg-muted/20',
@@ -1015,7 +1014,7 @@ export const FolderTreeView: React.FC<FolderTreeViewProps> = ({
                                 <div className="w-16 shrink-0 text-xs text-muted-foreground">
                                   {typeLabel}
                                 </div>
-                              </button>
+                              </NotionButton>
                             );
                           })}
                         </React.Fragment>

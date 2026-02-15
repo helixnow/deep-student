@@ -512,16 +512,9 @@ const InlineCardItem: React.FC<InlineCardItemProps> = ({
         </div>
         {/* 编辑按钮 */}
         {!disabled && (
-          <button
-            type="button"
-            className="absolute top-2 right-2 z-10 w-6 h-6 rounded-md bg-background/80 backdrop-blur flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity border hover:bg-accent"
-            onClick={(e) => {
-              e.stopPropagation();
-              onToggleEdit(index);
-            }}
-          >
+          <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); onToggleEdit(index); }} className="absolute top-2 right-2 z-10 !w-6 !h-6 bg-background/80 backdrop-blur opacity-0 group-hover:opacity-100 border hover:bg-accent" aria-label="edit">
             <Edit3 className="w-3 h-3 text-muted-foreground" />
-          </button>
+          </NotionButton>
         )}
         {/* 模板渲染预览 */}
         <RenderedAnkiCard

@@ -1,4 +1,5 @@
 import { unifiedAlert, unifiedConfirm } from '@/utils/unifiedDialogs';
+import { NotionButton } from '@/components/ui/NotionButton';
 import { pLimit } from '@/utils/concurrency';
 /**
  * 向量化状态视图
@@ -881,21 +882,11 @@ export const IndexStatusView: React.FC = () => {
     const Icon = config.icon;
     
     return (
-      <button
-        onClick={onClick}
-        className={cn(
-          'flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all',
-          config.bgColor,
-          config.color,
-          isActive && 'ring-2 ring-offset-2 ring-offset-background',
-          isActive && config.ringColor.replace('stroke-', 'ring-'),
-          'hover:opacity-80'
-        )}
-      >
+      <NotionButton variant="ghost" size="sm" onClick={onClick} className={cn('!rounded-full !px-3 !py-1.5 text-xs font-medium', config.bgColor, config.color, isActive && 'ring-2 ring-offset-2 ring-offset-background', isActive && config.ringColor.replace('stroke-', 'ring-'))}>
         <Icon className="h-3.5 w-3.5" />
         <span>{t(config.labelKey)}</span>
         <span className="ml-0.5 tabular-nums font-bold">{count}</span>
-      </button>
+      </NotionButton>
     );
   };
 
@@ -1028,18 +1019,13 @@ export const IndexStatusView: React.FC = () => {
           {/* 操作按钮 - Notion 风格 */}
           <div className="flex-shrink-0 w-8 flex justify-end" onClick={(e) => e.stopPropagation()}>
             {needsReindex && (
-              <button
-                onClick={() => handleReindex(resource.resourceId)}
-                disabled={isReindexing}
-                className="flex items-center justify-center h-8 w-8 rounded-md text-muted-foreground hover:text-primary hover:bg-primary/10 transition-all opacity-0 group-hover:opacity-100 disabled:opacity-50"
-                title={isStale ? t('indexStatus.action.update') : t('indexStatus.action.reindex')}
-              >
+              <NotionButton variant="ghost" size="icon" iconOnly onClick={() => handleReindex(resource.resourceId)} disabled={isReindexing} className="opacity-0 group-hover:opacity-100 hover:text-primary hover:bg-primary/10" title={isStale ? t('indexStatus.action.update') : t('indexStatus.action.reindex')} aria-label="reindex">
                 {isReindexing ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
                 ) : (
                   <RefreshCw className="h-4 w-4" />
                 )}
-              </button>
+              </NotionButton>
             )}
           </div>
         </div>
@@ -1290,12 +1276,9 @@ export const IndexStatusView: React.FC = () => {
         {isDbError && (
           <p className="text-xs text-amber-600 dark:text-amber-400">{t('indexStatus.notification.checkDb', { defaultValue: '数据库可能正忙，请稍后重试' })}</p>
         )}
-        <button 
-          onClick={() => { loadData(); }}
-          className="px-4 py-1.5 text-sm text-primary hover:bg-primary/10 rounded-md transition-colors"
-        >
+        <NotionButton variant="ghost" size="sm" onClick={() => { loadData(); }} className="text-primary hover:bg-primary/10">
           {t('indexStatus.action.retry')}
-        </button>
+        </NotionButton>
       </div>
     );
   }
@@ -1486,61 +1469,34 @@ export const IndexStatusView: React.FC = () => {
 
         {/* 右侧操作按钮 - 纵向排列 */}
         <div className="flex flex-col gap-2 shrink-0 w-full md:w-auto min-w-[140px]">
-          <button
-            onClick={handleUnifiedIndex}
-            disabled={batchIndexing || mmIndexing}
-            className={cn(
-              'flex items-center justify-center gap-2 h-8 px-3 text-xs font-medium rounded shadow-none transition-colors',
-              batchIndexing || mmIndexing
-                ? 'bg-muted text-muted-foreground cursor-not-allowed'
-                : 'bg-foreground text-background hover:bg-foreground/90'
-            )}
-          >
+          <NotionButton variant="primary" size="sm" onClick={handleUnifiedIndex} disabled={batchIndexing || mmIndexing} className={cn(batchIndexing || mmIndexing ? 'bg-muted text-muted-foreground' : 'bg-foreground text-background hover:bg-foreground/90')}>
             {(batchIndexing || mmIndexing) ? (
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
             ) : (
               <Zap className="h-3.5 w-3.5 fill-current" />
             )}
             {batchIndexing ? t('indexStatus.action.ocrIndexing') : mmIndexing ? t('indexStatus.action.mmIndexing') : t('indexStatus.action.oneClickIndex')}
-          </button>
+          </NotionButton>
           
           <div className="grid grid-cols-2 gap-2">
-            <button
-              onClick={() => { loadData(); }}
-              disabled={isLoading || batchIndexing}
-              title={t('indexStatus.action.refreshTitle', { defaultValue: '刷新向量化状态' })}
-              className="flex items-center justify-center gap-1.5 h-8 px-2 text-xs font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground rounded transition-colors disabled:opacity-50"
-            >
+            <NotionButton variant="default" size="sm" onClick={() => { loadData(); }} disabled={isLoading || batchIndexing} title={t('indexStatus.action.refreshTitle', { defaultValue: '刷新向量化状态' })}>
               <RefreshCw className={cn('h-3.5 w-3.5', isLoading && 'animate-spin')} />
               {t('indexStatus.action.refresh')}
-            </button>
-            <button
-              onClick={() => setShowTestPanel(!showTestPanel)}
-              className={cn(
-                'flex items-center justify-center gap-1.5 h-8 px-2 text-xs font-medium border border-input rounded transition-colors',
-                showTestPanel
-                  ? 'bg-accent text-accent-foreground border-accent'
-                  : 'bg-background hover:bg-accent hover:text-accent-foreground'
-              )}
-            >
+            </NotionButton>
+            <NotionButton variant="default" size="sm" onClick={() => setShowTestPanel(!showTestPanel)} className={cn(showTestPanel && 'bg-accent text-accent-foreground')}>
               <TestTube className="h-3.5 w-3.5" />
               {t('indexStatus.action.recallTest')}
-            </button>
+            </NotionButton>
           </div>
           
-          <button
-            onClick={handleResetAllIndexState}
-            disabled={resetting || batchIndexing || mmIndexing}
-            title={t('indexStatus.action.resetStateTitle')}
-            className="flex items-center justify-center gap-1.5 h-8 px-3 text-xs text-muted-foreground hover:text-destructive hover:bg-destructive/5 rounded transition-colors disabled:opacity-50"
-          >
+          <NotionButton variant="ghost" size="sm" onClick={handleResetAllIndexState} disabled={resetting || batchIndexing || mmIndexing} title={t('indexStatus.action.resetStateTitle')} className="text-muted-foreground hover:text-destructive hover:bg-destructive/5">
             {resetting ? (
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
             ) : (
               <RotateCcw className="h-3.5 w-3.5" />
             )}
             {t('indexStatus.action.resetState')}
-          </button>
+          </NotionButton>
         </div>
       </div>
 
@@ -1557,12 +1513,9 @@ export const IndexStatusView: React.FC = () => {
                 <p className="text-xs text-muted-foreground">{t('indexStatus.test.description')}</p>
               </div>
             </div>
-            <button
-              onClick={() => setShowTestPanel(false)}
-              className="p-1.5 hover:bg-muted rounded-md transition-colors text-muted-foreground hover:text-foreground"
-            >
+            <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setShowTestPanel(false)} aria-label="close">
               <X className="h-4 w-4" />
-            </button>
+            </NotionButton>
           </div>
           
           {/* 搜索输入 - Notion 风格 */}
@@ -1579,16 +1532,7 @@ export const IndexStatusView: React.FC = () => {
                 autoFocus
               />
             </div>
-            <button
-              onClick={handleTestSearch}
-              disabled={testLoading || !testQuery.trim()}
-              className={cn(
-                'flex items-center gap-2 h-10 px-6 text-sm font-medium rounded-md transition-all',
-                testQuery.trim() && !testLoading
-                  ? 'bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm'
-                  : 'bg-muted text-muted-foreground cursor-not-allowed'
-              )}
-            >
+            <NotionButton variant="primary" size="sm" onClick={handleTestSearch} disabled={testLoading || !testQuery.trim()} className="!h-10 !px-6">
               {testLoading ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
@@ -1597,7 +1541,7 @@ export const IndexStatusView: React.FC = () => {
                   {t('indexStatus.action.search')}
                 </>
               )}
-            </button>
+            </NotionButton>
           </div>
 
           {/* 测试结果 */}
@@ -1667,18 +1611,9 @@ export const IndexStatusView: React.FC = () => {
               const isActive = selectedType === type;
               const label = type === 'all' ? t('indexStatus.filter.all') : (RESOURCE_TYPE_CONFIG[type]?.labelKey ? t(RESOURCE_TYPE_CONFIG[type].labelKey) : type);
               return (
-                <button
-                  key={type}
-                  onClick={() => setSelectedType(type)}
-                  className={cn(
-                    'px-3 py-1 text-xs font-medium rounded-full transition-all border',
-                    isActive
-                      ? 'bg-primary text-primary-foreground border-primary shadow-sm'
-                      : 'bg-background text-muted-foreground border-transparent hover:bg-muted hover:text-foreground'
-                  )}
-                >
+                <NotionButton key={type} variant="ghost" size="sm" onClick={() => setSelectedType(type)} className={cn('!rounded-full !px-3 !py-1 text-xs font-medium border', isActive ? 'bg-primary text-primary-foreground border-primary shadow-sm' : 'bg-background text-muted-foreground border-transparent hover:bg-muted hover:text-foreground')}>
                   {label}
-                </button>
+                </NotionButton>
               );
             })}
           </div>
@@ -1712,14 +1647,7 @@ export const IndexStatusView: React.FC = () => {
               return (
                 <div key={state}>
                   {/* 分组标题 */}
-                  <button
-                    onClick={() => toggleGroup(state)}
-                    className={cn(
-                      'w-full flex items-center gap-2 px-4 py-2.5 text-sm font-medium',
-                      'hover:bg-accent/30 transition-colors',
-                      config.bgColor
-                    )}
-                  >
+                  <NotionButton variant="ghost" size="sm" onClick={() => toggleGroup(state)} className={cn('w-full !justify-start !px-4 !py-2.5', config.bgColor)}>
                     {isExpanded ? (
                       <ChevronDown className="h-4 w-4 text-muted-foreground" />
                     ) : (
@@ -1728,7 +1656,7 @@ export const IndexStatusView: React.FC = () => {
                     <Icon className={cn('h-4 w-4', config.color)} />
                     <span className={config.color}>{t(config.labelKey)}</span>
                     <span className="text-muted-foreground font-normal">({resources.length})</span>
-                  </button>
+                  </NotionButton>
                   
                   {/* 分组内容 */}
                   {isExpanded && (

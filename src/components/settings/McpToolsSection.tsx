@@ -332,49 +332,26 @@ function ServerListItem({
               'transition-opacity duration-100',
               showActions || isExpanded ? 'opacity-100' : 'opacity-0'
             )}>
-              <button
-                onClick={(e) => { e.stopPropagation(); onToggleExpand(expandedPanel === 'preview' ? null : 'preview'); }}
-                className={cn(
-                  'p-1.5 rounded text-muted-foreground hover:text-foreground hover:bg-background/80 transition-colors',
-                  expandedPanel === 'preview' && 'text-primary bg-primary/10'
-                )}
-                title={t('settings:mcp_descriptions.action_preview')}
-              >
+              <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); onToggleExpand(expandedPanel === 'preview' ? null : 'preview'); }} className={cn('!h-7 !w-7', expandedPanel === 'preview' && 'text-primary bg-primary/10')} title={t('settings:mcp_descriptions.action_preview')} aria-label="preview">
                 <Eye className="w-3.5 h-3.5" />
-              </button>
+              </NotionButton>
               {!isBuiltin && (
-                <button
-                  onClick={(e) => { e.stopPropagation(); onTest(); }}
-                  disabled={disableTest || isTesting}
-                  className="p-1.5 rounded text-muted-foreground hover:text-foreground hover:bg-background/80 transition-colors disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
-                  title={t('settings:mcp_descriptions.action_test')}
-                >
+                <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); onTest(); }} disabled={disableTest || isTesting} className="!h-7 !w-7" title={t('settings:mcp_descriptions.action_test')} aria-label="test">
                   {isTesting ? (
                     <RefreshCw className="w-3.5 h-3.5 animate-spin" />
                   ) : (
                     <FlaskConical className="w-3.5 h-3.5" />
                   )}
-                </button>
+                </NotionButton>
               )}
               {!isBuiltin && (
                 <>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); onToggleExpand(expandedPanel === 'edit' ? null : 'edit'); }}
-                    className={cn(
-                      'p-1.5 rounded text-muted-foreground hover:text-foreground hover:bg-background/80 transition-colors',
-                      expandedPanel === 'edit' && 'text-primary bg-primary/10'
-                    )}
-                    title={t('settings:mcp_descriptions.action_edit')}
-                  >
+                  <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); onToggleExpand(expandedPanel === 'edit' ? null : 'edit'); }} className={cn('!h-7 !w-7', expandedPanel === 'edit' && 'text-primary bg-primary/10')} title={t('settings:mcp_descriptions.action_edit')} aria-label="edit">
                     <Edit3 className="w-3.5 h-3.5" />
-                  </button>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); setConfirmingDelete(true); }}
-                    className="p-1.5 rounded text-muted-foreground hover:text-destructive hover:bg-background/80 transition-colors"
-                    title={t('settings:mcp_descriptions.action_delete')}
-                  >
+                  </NotionButton>
+                  <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); setConfirmingDelete(true); }} className="!h-7 !w-7 hover:text-destructive" title={t('settings:mcp_descriptions.action_delete')} aria-label="delete">
                     <Trash2 className="w-3.5 h-3.5" />
-                  </button>
+                  </NotionButton>
                 </>
               )}
             </div>
@@ -694,32 +671,14 @@ function ServerEditPanel({
     <div className="p-4 space-y-6">
       {/* 模式切换标签 */}
       <div className="flex items-center gap-1 p-1 bg-muted/30 rounded-lg w-fit border border-border/40">
-        <button
-          type="button"
-          onClick={() => handleModeSwitch('form')}
-          className={cn(
-            'flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all',
-            editMode === 'form'
-              ? 'bg-background text-foreground shadow-sm'
-              : 'text-muted-foreground hover:text-foreground'
-          )}
-        >
+        <NotionButton variant="ghost" size="sm" onClick={() => handleModeSwitch('form')} className={cn(editMode === 'form' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground')}>
           <FileCode className="w-3.5 h-3.5" />
           {t('settings:mcp_server_edit.form_mode')}
-        </button>
-        <button
-          type="button"
-          onClick={() => handleModeSwitch('json')}
-          className={cn(
-            'flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all',
-            editMode === 'json'
-              ? 'bg-background text-foreground shadow-sm'
-              : 'text-muted-foreground hover:text-foreground'
-          )}
-        >
+        </NotionButton>
+        <NotionButton variant="ghost" size="sm" onClick={() => handleModeSwitch('json')} className={cn(editMode === 'json' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground')}>
           <Code2 className="w-3.5 h-3.5" />
           {t('settings:mcp_server_edit.json_config')}
-        </button>
+        </NotionButton>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
@@ -821,14 +780,10 @@ function ServerEditPanel({
 
             {/* 高级配置折叠区 */}
             <div className="border border-border/40 rounded-lg overflow-hidden">
-              <button
-                type="button"
-                onClick={() => setShowAdvanced(!showAdvanced)}
-                className="w-full flex items-center justify-between px-4 py-3 text-sm text-muted-foreground hover:text-foreground hover:bg-muted/30 transition-colors"
-              >
+              <NotionButton variant="ghost" size="sm" onClick={() => setShowAdvanced(!showAdvanced)} className="w-full !justify-between !px-4 !py-3 !rounded-none">
                 <span>{t('settings:mcp_server_edit.advanced_config')}</span>
                 {showAdvanced ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-              </button>
+              </NotionButton>
 
               {showAdvanced && (
                 <div className="px-4 pb-4 space-y-6 border-t border-border/40 pt-4 bg-muted/10">
@@ -852,13 +807,9 @@ function ServerEditPanel({
                       <label className="text-[10px] text-muted-foreground uppercase tracking-wider">
                         {t('settings:mcp_server_edit.env_vars')}
                       </label>
-                      <button
-                        type="button"
-                        onClick={addEnvRow}
-                        className="text-xs text-primary hover:text-primary/80 transition-colors font-medium"
-                      >
+                      <NotionButton variant="ghost" size="sm" onClick={addEnvRow} className="text-primary hover:text-primary/80 !h-auto !p-0">
                         + {t('settings:mcp_server_edit.add')}
-                      </button>
+                      </NotionButton>
                     </div>
                     {envEntries.length === 0 ? (
                       <div className="text-xs text-muted-foreground py-2 italic">{t('settings:mcp_server_edit.no_env_vars')}</div>
@@ -881,13 +832,9 @@ function ServerEditPanel({
                               className="flex-1 px-2 py-1.5 bg-background border border-border/60 rounded text-xs font-mono focus:outline-none focus:ring-1 focus:ring-primary/30"
                               placeholder="value"
                             />
-                            <button
-                              type="button"
-                              onClick={() => removeEnvRow(key)}
-                              className="p-1 text-muted-foreground hover:text-destructive transition-colors"
-                            >
+                            <NotionButton variant="ghost" size="icon" iconOnly onClick={() => removeEnvRow(key)} className="!h-6 !w-6 hover:text-destructive" aria-label="remove">
                               <Trash2 className="w-3.5 h-3.5" />
-                            </button>
+                            </NotionButton>
                           </div>
                         ))}
                       </div>
@@ -1181,32 +1128,14 @@ function NewServerEditItem({
       <div className="p-4 space-y-6">
         {/* 模式切换标签 */}
         <div className="flex items-center gap-1 p-1 bg-muted/30 rounded-lg w-fit border border-border/40">
-          <button
-            type="button"
-            onClick={() => handleModeSwitch('form')}
-            className={cn(
-              'flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all',
-              editMode === 'form'
-                ? 'bg-background text-foreground shadow-sm'
-                : 'text-muted-foreground hover:text-foreground'
-            )}
-          >
+          <NotionButton variant="ghost" size="sm" onClick={() => handleModeSwitch('form')} className={cn(editMode === 'form' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground')}>
             <FileCode className="w-3.5 h-3.5" />
             {t('settings:mcp_server_edit.form_mode')}
-          </button>
-          <button
-            type="button"
-            onClick={() => handleModeSwitch('json')}
-            className={cn(
-              'flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all',
-              editMode === 'json'
-                ? 'bg-background text-foreground shadow-sm'
-                : 'text-muted-foreground hover:text-foreground'
-            )}
-          >
+          </NotionButton>
+          <NotionButton variant="ghost" size="sm" onClick={() => handleModeSwitch('json')} className={cn(editMode === 'json' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground')}>
             <Code2 className="w-3.5 h-3.5" />
             JSON
-          </button>
+          </NotionButton>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
@@ -1308,14 +1237,10 @@ function NewServerEditItem({
 
               {/* 高级配置折叠区 */}
               <div className="border border-border/40 rounded-lg overflow-hidden">
-                <button
-                  type="button"
-                  onClick={() => setShowAdvanced(!showAdvanced)}
-                  className="w-full flex items-center justify-between px-4 py-3 text-sm text-muted-foreground hover:text-foreground hover:bg-muted/30 transition-colors"
-                >
+                <NotionButton variant="ghost" size="sm" onClick={() => setShowAdvanced(!showAdvanced)} className="w-full !justify-between !px-4 !py-3 !rounded-none">
                   <span>{t('settings:mcp_server_edit.advanced_config')}</span>
                   {showAdvanced ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                </button>
+                </NotionButton>
 
                 {showAdvanced && (
                   <div className="px-4 pb-4 space-y-6 border-t border-border/40 pt-4 bg-muted/10">
@@ -1353,13 +1278,9 @@ function NewServerEditItem({
                         <label className="text-[10px] text-muted-foreground uppercase tracking-wider">
                           {t('settings:mcp_server_edit.env_vars')}
                         </label>
-                        <button
-                          type="button"
-                          onClick={addEnvRow}
-                          className="text-xs text-primary hover:text-primary/80 transition-colors font-medium"
-                        >
+                        <NotionButton variant="ghost" size="sm" onClick={addEnvRow} className="text-primary hover:text-primary/80 !h-auto !p-0">
                           + {t('settings:mcp_server_edit.add')}
-                        </button>
+                        </NotionButton>
                       </div>
                       {envEntries.length === 0 ? (
                         <div className="text-xs text-muted-foreground py-2 italic">{t('settings:mcp_server_edit.no_env_vars')}</div>
@@ -1382,13 +1303,9 @@ function NewServerEditItem({
                                 className="flex-1 px-2 py-1.5 bg-background border border-border/60 rounded text-xs font-mono focus:outline-none focus:ring-1 focus:ring-primary/30"
                                 placeholder="value"
                               />
-                              <button
-                                type="button"
-                                onClick={() => removeEnvRow(key)}
-                                className="p-1 text-muted-foreground hover:text-destructive transition-colors"
-                              >
+                              <NotionButton variant="ghost" size="icon" iconOnly onClick={() => removeEnvRow(key)} className="!h-6 !w-6 hover:text-destructive" aria-label="remove">
                                 <Trash2 className="w-3.5 h-3.5" />
-                              </button>
+                              </NotionButton>
                             </div>
                           ))}
                         </div>
@@ -1502,13 +1419,10 @@ function ActionMenu({
 
   return (
     <div className="relative">
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-1.5 px-3 py-1.5 bg-muted/50 hover:bg-muted rounded-md text-sm transition-colors text-muted-foreground hover:text-foreground"
-      >
+      <NotionButton variant="ghost" size="sm" onClick={() => setIsOpen(!isOpen)} className="bg-muted/50 hover:bg-muted">
         <Ellipsis className="w-4 h-4" />
         {t('settings:mcp_descriptions.quick_actions')}
-      </button>
+      </NotionButton>
 
       {isOpen && (
         <>
@@ -1517,42 +1431,27 @@ function ActionMenu({
             onClick={() => setIsOpen(false)}
           />
           <div className="absolute top-full right-0 mt-1 z-50 min-w-[180px] p-1.5 bg-popover border border-border rounded-lg shadow-lg animate-in fade-in zoom-in-95 duration-100">
-            <button
-              onClick={() => { onReconnect(); setIsOpen(false); }}
-              className="w-full flex items-center gap-2 px-2.5 py-2 rounded-md text-sm text-foreground hover:bg-accent transition-colors"
-            >
+            <NotionButton variant="ghost" size="sm" onClick={() => { onReconnect(); setIsOpen(false); }} className="w-full !justify-start">
               <RefreshCw className="w-3.5 h-3.5 text-muted-foreground" />
               {t('settings:mcp.reconnect')}
-            </button>
-            <button
-              onClick={() => { onRefresh(); setIsOpen(false); }}
-              className="w-full flex items-center gap-2 px-2.5 py-2 rounded-md text-sm text-foreground hover:bg-accent transition-colors"
-            >
+            </NotionButton>
+            <NotionButton variant="ghost" size="sm" onClick={() => { onRefresh(); setIsOpen(false); }} className="w-full !justify-start">
               <Sparkles className="w-3.5 h-3.5 text-muted-foreground" />
               {t('settings:mcp.refresh_list')}
-            </button>
-            <button
-              onClick={() => { onHealthCheck(); setIsOpen(false); }}
-              className="w-full flex items-center gap-2 px-2.5 py-2 rounded-md text-sm text-foreground hover:bg-accent transition-colors"
-            >
+            </NotionButton>
+            <NotionButton variant="ghost" size="sm" onClick={() => { onHealthCheck(); setIsOpen(false); }} className="w-full !justify-start">
               <FlaskConical className="w-3.5 h-3.5 text-muted-foreground" />
               {t('settings:mcp.health_check')}
-            </button>
-            <button
-              onClick={() => { onClearCache(); setIsOpen(false); }}
-              className="w-full flex items-center gap-2 px-2.5 py-2 rounded-md text-sm text-foreground hover:bg-accent transition-colors"
-            >
+            </NotionButton>
+            <NotionButton variant="ghost" size="sm" onClick={() => { onClearCache(); setIsOpen(false); }} className="w-full !justify-start">
               <Sparkles className="w-3.5 h-3.5 text-muted-foreground rotate-45" />
               {t('settings:mcp.clear_cache')}
-            </button>
+            </NotionButton>
             <div className="my-1 border-t border-border/50" />
-            <button
-              onClick={() => { onOpenPolicy(); setIsOpen(false); }}
-              className="w-full flex items-center gap-2 px-2.5 py-2 rounded-md text-sm text-foreground hover:bg-accent transition-colors"
-            >
+            <NotionButton variant="ghost" size="sm" onClick={() => { onOpenPolicy(); setIsOpen(false); }} className="w-full !justify-start">
               <Key className="w-3.5 h-3.5 text-muted-foreground" />
               {t('settings:mcp.security_policy')}
-            </button>
+            </NotionButton>
           </div>
         </>
       )}
@@ -1623,8 +1522,10 @@ function PresetServerSelector({
                   {presets.map((preset) => {
                     const isAdded = isPresetAdded(preset.id);
                     return (
-                      <button
+                      <NotionButton
                         key={preset.id}
+                        variant="ghost"
+                        size="sm"
                         onClick={() => {
                           if (!isAdded) {
                             onAddPreset(preset);
@@ -1633,10 +1534,8 @@ function PresetServerSelector({
                         }}
                         disabled={isAdded}
                         className={cn(
-                          'w-full flex items-start gap-3 px-2.5 py-2 rounded-md text-left transition-colors',
-                          isAdded 
-                            ? 'opacity-50 cursor-not-allowed bg-muted/30' 
-                            : 'hover:bg-accent'
+                          'w-full !justify-start !h-auto !py-2 text-left',
+                          isAdded && 'opacity-50 bg-muted/30'
                         )}
                       >
                         <span className={cn(
@@ -1677,7 +1576,7 @@ function PresetServerSelector({
                             </a>
                           )}
                         </div>
-                      </button>
+                      </NotionButton>
                     );
                   })}
                 </div>
@@ -1870,9 +1769,10 @@ function ToolPermissionsSection({ toolsByServer }: {
           const isActive = currentLevel === level;
           const config = SENSITIVITY_CONFIG[level];
           return (
-            <button
+            <NotionButton
               key={level}
-              type="button"
+              variant="ghost"
+              size="sm"
               onClick={() => {
                 if (isActive) {
                   handleRemoveOverride(toolName);
@@ -1881,7 +1781,7 @@ function ToolPermissionsSection({ toolsByServer }: {
                 }
               }}
               className={cn(
-                'px-2 py-0.5 rounded text-xs font-medium transition-all',
+                '!h-auto !px-2 !py-0.5 text-xs font-medium',
                 isActive
                   ? config.badge
                   : 'text-muted-foreground hover:text-foreground hover:bg-muted/60'
@@ -1891,7 +1791,7 @@ function ToolPermissionsSection({ toolsByServer }: {
                 : t(`settings:tool_permissions.set_to_${level}`)}
             >
               {t(`settings:tool_permissions.level_${level}`)}
-            </button>
+            </NotionButton>
           );
         })}
       </div>
@@ -1931,18 +1831,13 @@ function ToolPermissionsSection({ toolsByServer }: {
                   {t('settings:tool_permissions.global_bypass_desc')}
                 </p>
               </div>
-              <button
-                type="button"
-                onClick={handleToggleGlobalBypass}
-                className="flex-shrink-0 transition-colors"
-                title={t('settings:tool_permissions.global_bypass_title')}
-              >
+              <NotionButton variant="ghost" size="icon" iconOnly onClick={handleToggleGlobalBypass} className="!h-auto !w-auto" title={t('settings:tool_permissions.global_bypass_title')} aria-label="toggle bypass">
                 {globalBypass ? (
                   <ToggleRight className="h-8 w-8 text-green-500" />
                 ) : (
                   <ToggleLeft className="h-8 w-8 text-muted-foreground" />
                 )}
-              </button>
+              </NotionButton>
             </div>
           </div>
 
@@ -2009,14 +1904,9 @@ function ToolPermissionsSection({ toolsByServer }: {
                             {display}
                           </span>
                           {override && (
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveOverride(name)}
-                              className="text-xs text-muted-foreground hover:text-foreground transition-colors flex-shrink-0"
-                              title={t('settings:tool_permissions.reset_to_default')}
-                            >
+                            <NotionButton variant="ghost" size="icon" iconOnly onClick={() => handleRemoveOverride(name)} className="!h-5 !w-5 !p-0 text-muted-foreground hover:text-foreground" title={t('settings:tool_permissions.reset_to_default')} aria-label="reset">
                               ✕
-                            </button>
+                            </NotionButton>
                           )}
                         </div>
                         <LevelSelector toolName={name} currentLevel={override} />

@@ -273,46 +273,40 @@ export const SystemSettingsSection: React.FC = () => {
               >
                 <div className="flex items-center gap-3">
                   {/* 主题切换器 - 使用shadcn样式 */}
-                  <button
+                  <NotionButton
+                    variant={themeMode === 'light' ? 'primary' : 'default'}
+                    size="sm"
                     onClick={() => setThemeMode('light')}
-                    className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-all ${
-                      themeMode === 'light' 
-                        ? 'bg-primary text-primary-foreground border-2 border-primary shadow-sm' 
-                        : 'bg-secondary text-secondary-foreground border border-border hover:bg-accent hover:text-accent-foreground'
-                    }`}
+                    className={themeMode === 'light' ? 'border-2 border-primary shadow-sm' : 'border border-border'}
                     title={t('settings:system_settings.general.theme_light')}
                   >
                     <Sun size={16} />
                     <span className="text-sm font-medium">{t('settings:system_settings.general.theme_light_button')}</span>
-                  </button>
+                  </NotionButton>
                   
-                  <button
+                  <NotionButton
+                    variant={themeMode === 'dark' ? 'primary' : 'default'}
+                    size="sm"
                     onClick={() => setThemeMode('dark')}
-                    className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-all ${
-                      themeMode === 'dark' 
-                        ? 'bg-primary text-primary-foreground border-2 border-primary shadow-sm' 
-                        : 'bg-secondary text-secondary-foreground border border-border hover:bg-accent hover:text-accent-foreground'
-                    }`}
+                    className={themeMode === 'dark' ? 'border-2 border-primary shadow-sm' : 'border border-border'}
                     title={t('settings:system_settings.general.theme_dark')}
                   >
                     <Moon size={16} />
                     <span className="text-sm font-medium">{t('settings:system_settings.general.theme_dark_button')}</span>
-                  </button>
+                  </NotionButton>
                   
-                  <button
+                  <NotionButton
+                    variant={themeMode === 'auto' ? 'primary' : 'default'}
+                    size="sm"
                     onClick={() => setThemeMode('auto')}
-                    className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-all ${
-                      themeMode === 'auto' 
-                        ? 'bg-primary text-primary-foreground border-2 border-primary shadow-sm' 
-                        : 'bg-secondary text-secondary-foreground border border-border hover:bg-accent hover:text-accent-foreground'
-                    }`}
+                    className={themeMode === 'auto' ? 'border-2 border-primary shadow-sm' : 'border border-border'}
                     title={t('settings:system_settings.general.theme_follow_title', { 
                       system: isSystemDark ? t('settings:system_settings.general.theme_dark') : t('settings:system_settings.general.theme_light')
                     })}
                   >
                     <Monitor size={16} />
                     <span className="text-sm font-medium">{t('settings:system_settings.general.theme_follow_button')}</span>
-                  </button>
+                  </NotionButton>
                 </div>
               </SettingItem>
             </div>

@@ -8,6 +8,7 @@ import {
   DialogTitle,
 } from '@/components/ui/shad/Dialog';
 import { cn } from '@/lib/utils';
+import { NotionButton } from '@/components/ui/NotionButton';
 import { folderApi } from '@/dstu';
 import type { FolderTreeNode } from '@/dstu/types/folder';
 import { isErr } from '@/shared/result';
@@ -77,20 +78,14 @@ function FolderNode({
         onClick={() => !isExcluded && onSelect(node.folder.id)}
       >
         {hasChildren ? (
-          <button
-            className="p-0.5 text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded transition-all duration-150"
-            onClick={(e) => {
-              e.stopPropagation();
-              onToggleExpand(node.folder.id);
-            }}
-          >
+          <NotionButton variant="ghost" size="icon" iconOnly className="!h-5 !w-5 !p-0.5" onClick={(e) => { e.stopPropagation(); onToggleExpand(node.folder.id); }} aria-label="toggle">
             <ChevronRight 
               className={cn(
                 'w-3.5 h-3.5 transition-transform duration-200 ease-out',
                 isExpanded && 'rotate-90'
               )} 
             />
-          </button>
+          </NotionButton>
         ) : (
           <span className="w-4" />
         )}
@@ -246,32 +241,12 @@ export function FolderPickerDialog({
 
         {/* 底部操作区 */}
         <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-border/40">
-          <button
-            type="button"
-            onClick={() => onOpenChange(false)}
-            className={cn(
-              'px-3 py-1.5 text-sm text-muted-foreground rounded-md',
-              'transition-all duration-150 ease-out',
-              'hover:text-foreground hover:bg-muted/50',
-              'active:scale-[0.97]'
-            )}
-          >
+          <NotionButton variant="ghost" size="sm" onClick={() => onOpenChange(false)}>
             {t('common:cancel')}
-          </button>
-          <button
-            type="button"
-            onClick={handleConfirm}
-            disabled={isLoading}
-            className={cn(
-              'px-3 py-1.5 text-sm font-medium rounded-md',
-              'transition-all duration-150 ease-out',
-              !isLoading
-                ? 'text-primary bg-primary/10 hover:bg-primary/20 hover:shadow-sm active:scale-[0.97]'
-                : 'text-muted-foreground bg-muted/50 cursor-not-allowed'
-            )}
-          >
+          </NotionButton>
+          <NotionButton variant="primary" size="sm" onClick={handleConfirm} disabled={isLoading}>
             {t('finder.folderPicker.confirm')}
-          </button>
+          </NotionButton>
         </div>
       </DialogContent>
     </Dialog>

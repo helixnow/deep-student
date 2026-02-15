@@ -221,20 +221,10 @@ function DesktopContextMenu({
     onClick: () => void;
     danger?: boolean;
   }) => (
-    <button
-      className={cn(
-        'w-full flex items-center gap-2.5 px-3 py-2 text-sm rounded-md transition-colors',
-        'hover:bg-accent',
-        danger && 'text-red-500 hover:text-red-500'
-      )}
-      onClick={() => {
-        onClick();
-        onClose();
-      }}
-    >
+    <NotionButton variant="ghost" size="sm" className={cn('w-full !justify-start !px-3 !py-2', danger && 'text-red-500 hover:text-red-500')} onClick={() => { onClick(); onClose(); }}>
       {icon}
       <span>{label}</span>
-    </button>
+    </NotionButton>
   );
 
   const Separator = () => <div className="h-px bg-border my-1" />;
@@ -375,24 +365,12 @@ function ShortcutCard({
             className="h-6 w-24 text-xs text-center px-1"
             autoFocus
           />
-          <button
-            className="p-0.5 hover:bg-accent rounded"
-            onClick={() => {
-              if (editName.trim() && editName !== shortcut.name) {
-                onEditConfirm(editName.trim());
-              } else {
-                onEditCancel();
-              }
-            }}
-          >
+          <NotionButton variant="ghost" size="icon" iconOnly className="!h-5 !w-5 !p-0.5" onClick={() => { if (editName.trim() && editName !== shortcut.name) { onEditConfirm(editName.trim()); } else { onEditCancel(); } }} aria-label="confirm">
             <Check className="w-3.5 h-3.5 text-green-600" />
-          </button>
-          <button
-            className="p-0.5 hover:bg-accent rounded"
-            onClick={onEditCancel}
-          >
+          </NotionButton>
+          <NotionButton variant="ghost" size="icon" iconOnly className="!h-5 !w-5 !p-0.5" onClick={onEditCancel} aria-label="cancel">
             <X className="w-3.5 h-3.5 text-red-500" />
-          </button>
+          </NotionButton>
         </div>
       ) : (
         <span className="text-xs text-center font-medium text-foreground/80 group-hover:text-foreground line-clamp-2 max-w-[80px]">
@@ -451,13 +429,14 @@ function AddShortcutDialog({
             const added = isPresetAdded(preset);
 
             return (
-              <button
+              <NotionButton
                 key={index}
+                variant="ghost" size="sm"
                 className={cn(
-                  'flex flex-col items-center gap-2 p-3 rounded-lg border transition-all',
+                  '!h-auto flex-col items-center gap-2 !p-3 !rounded-lg border',
                   added
                     ? 'border-green-500/50 bg-green-50/50 dark:bg-green-900/20 cursor-not-allowed opacity-60'
-                    : 'border-border hover:border-primary hover:bg-accent cursor-pointer'
+                    : 'border-border hover:border-primary hover:bg-accent'
                 )}
                 onClick={() => !added && handleAddPreset(index)}
                 disabled={added}
@@ -467,7 +446,7 @@ function AddShortcutDialog({
                 {added && (
                   <span className="text-[10px] text-green-600">{t('desktop.added', '已添加')}</span>
                 )}
-              </button>
+              </NotionButton>
             );
           })}
         </div>

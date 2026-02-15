@@ -16,6 +16,7 @@
 import React, { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
+import { NotionButton } from '@/components/ui/NotionButton';
 import {
   Loader2,
   AlertCircle,
@@ -209,19 +210,10 @@ const ImageGenError: React.FC<ImageGenErrorProps> = ({
 
       {/* 重试按钮 */}
       {onRetry && (
-        <button
-          type="button"
-          onClick={onRetry}
-          className={cn(
-            'mt-3 flex items-center gap-1.5',
-            'px-3 py-1.5 rounded-md',
-            'text-sm text-primary',
-            'hover:bg-primary/10 transition-colors'
-          )}
-        >
+        <NotionButton variant="ghost" size="sm" onClick={onRetry} className="mt-3 text-primary hover:bg-primary/10">
           <RotateCcw className="w-3.5 h-3.5" />
           <span>{t('blocks.imageGen.retry')}</span>
-        </button>
+        </NotionButton>
       )}
     </div>
   );

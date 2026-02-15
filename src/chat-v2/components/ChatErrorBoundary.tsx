@@ -2,6 +2,7 @@ import React, { Component, type ErrorInfo, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { NotionButton } from '@/components/ui/NotionButton';
 
 interface ChatErrorBoundaryProps {
   children: ReactNode;
@@ -37,13 +38,10 @@ const ErrorFallback: React.FC<ErrorFallbackProps> = ({ error, onRetry, className
         {error?.message || t('errorBoundary.unknownErrorRefresh')}
       </p>
       {onRetry && (
-        <button
-          onClick={onRetry}
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
-        >
+        <NotionButton variant="primary" size="sm" onClick={onRetry} className="bg-primary text-primary-foreground hover:bg-primary/90">
           <RefreshCw className="w-4 h-4" />
           {t('errorBoundary.retry')}
-        </button>
+        </NotionButton>
       )}
       {import.meta.env.DEV && error && (
         <details className="mt-4 text-left w-full max-w-lg">

@@ -37,6 +37,7 @@
 | 📚 | **学习资源中心** | VFS 统一管理笔记/教材/题库，批量 OCR 与向量化索引 |
 | 🧩 | **技能系统** | 按需加载 AI 能力，内置 8 项专业技能：制卡 · 调研 · 论文 · 导图 · 题库 · 记忆 · 导师 · 文献综述，支持自定义扩展 |
 | 📖 | **智能阅读器** | PDF / DOCX 分屏阅读，页面引用注入对话上下文 |
+| 🌐 | **翻译工作台** | 全文翻译、逐段双语对照、领域预设（学术/技术/文学/法律/医学）与自定义提示词 |
 | ✍️ | **作文批改** | 多场景评分（高考 / 雅思 / 托福 / 四六级），修改建议与高亮标注 |
 | 🔌 | **MCP 扩展** | 兼容 Model Context Protocol，连接 Arxiv、Context7 等外部工具 |
 | 🏠 | **本地优先** | 全部数据本地存储（SQLite + LanceDB + Blob），完整审计与备份 |
@@ -62,7 +63,7 @@
 - [核心理念](#核心理念)
 - [功能详解](#功能详解)
   - [AI 智能对话](#1-ai-智能对话-chat-v2) · [学习资源中心](#2-学习资源中心-learning-hub) · [技能系统](#3-技能系统-skills)
-  - [智能阅读器](#4-pdfdocx-智能阅读) · [作文批改](#5-ai-作文批改-essay) · [MCP 与模型配置](#6-mcp-扩展与模型配置) · [数据治理](#7-数据治理)
+  - [智能阅读器](#4-pdfdocx-智能阅读) · [翻译工作台](#5-翻译工作台) · [作文批改](#6-ai-作文批改-essay) · [MCP 与模型配置](#7-mcp-扩展与模型配置) · [数据治理](#8-数据治理)
 - [快速上手（开发）](#快速上手)
 - [架构概览](#架构概览)
 - [技术栈](#技术栈)
@@ -147,6 +148,7 @@ DeepStudent 的对话引擎专为学习场景打造，支持多模态输入与�
 
 <details>
 <summary>📸 查看截图</summary>
+<p align="center"><img src="./example/学习资源管理器.png" width="90%" alt="学习资源管理器" /></p>
 <p align="center"><img src="./example/笔记-1.png" width="90%" alt="笔记编辑" /></p>
 <p align="center"><img src="./example/向量化状态.png" width="90%" alt="向量化状态" /></p>
 </details>
@@ -223,6 +225,10 @@ DeepStudent 的对话引擎专为学习场景打造，支持多模态输入与�
 - **SHA256 去重**：已存在的论文自动识别并跳过，避免重复导入。
 - **引用格式化**：支持 BibTeX、GB/T 7714、APA 三种标准引用格式，一键生成引用文本。
 - **DOI 解析**：通过 Unpaywall API 自动将 DOI 解析为开放获取 PDF 链接。
+
+<p align="center"><img src="./example/论文搜索-1.png" width="90%" alt="论文搜索" /></p>
+<p align="center"><img src="./example/论文搜索-2.png" width="90%" alt="论文下载" /></p>
+<p align="center"><img src="./example/论文搜索-3.png" width="90%" alt="论文阅读" /></p>
 
 </details>
 
@@ -311,7 +317,23 @@ DeepStudent 的对话引擎专为学习场景打造，支持多模态输入与�
 <p align="center"><img src="./example/docx阅读-1.png" width="90%" alt="DOCX阅读" /></p>
 </details>
 
-### 5. AI 作文批改 (Essay)
+### 5. 翻译工作台
+
+智能翻译，不止是逐句对照。
+
+- **全文翻译**：支持整篇文档翻译，左右分栏同步滚动，原文与译文一目了然。
+- **逐段双语对照**：逐段落拆分对齐，精确对比原文与译文差异，适合精读学习。
+- **领域预设**：内置学术论文、技术文档、文学作品、法律文书、医学文献等多种翻译领域预设，一键切换翻译风格。
+- **自定义提示词**：支持自定义翻译提示词，精准控制翻译语气与术语偏好。
+
+<details>
+<summary>📸 查看截图</summary>
+<p align="center"><img src="./example/翻译-1.png" width="90%" alt="全文翻译" /></p>
+<p align="center"><img src="./example/翻译-2.png" width="90%" alt="逐段双语对照" /></p>
+<p align="center"><img src="./example/翻译-3.png" width="90%" alt="翻译设置" /></p>
+</details>
+
+### 6. AI 作文批改 (Essay)
 
 全自动的中英文作文批改与润色。
 
@@ -326,7 +348,7 @@ DeepStudent 的对话引擎专为学习场景打造，支持多模态输入与�
 <p align="center"><img src="./example/作文-2.png" width="90%" alt="详细建议" /></p>
 </details>
 
-### 6. MCP 扩展与模型配置
+### 7. MCP 扩展与模型配置
 
 拥抱开放生态，高度可定制。
 
@@ -342,7 +364,7 @@ DeepStudent 的对话引擎专为学习场景打造，支持多模态输入与�
 <p align="center"><img src="./example/mcp-4.png" width="90%" alt="搜索详情" /></p>
 </details>
 
-### 7. 数据治理
+### 8. 数据治理
 
 完善的数据管理与安全机制：
 

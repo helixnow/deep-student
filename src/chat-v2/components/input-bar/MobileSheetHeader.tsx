@@ -10,6 +10,7 @@
 import React from 'react';
 import { X } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { NotionButton } from '@/components/ui/NotionButton';
 
 export interface MobileSheetHeaderProps {
   /** 左侧图标 */
@@ -85,8 +86,10 @@ export const MobileSheetHeader: React.FC<MobileSheetHeaderProps> = ({
         {actions}
 
         {onClose && (
-          <button
-            type="button"
+          <NotionButton
+            variant="ghost"
+            size="icon"
+            iconOnly
             onClick={(e) => {
               e.stopPropagation();
               e.preventDefault();
@@ -96,17 +99,12 @@ export const MobileSheetHeader: React.FC<MobileSheetHeaderProps> = ({
               e.stopPropagation();
               onClose();
             }}
-            className={cn(
-              'p-2.5 -m-1 rounded-md text-muted-foreground',
-              'hover:bg-accent hover:text-foreground active:bg-accent/80',
-              'transition-colors focus:outline-none focus:ring-1 focus:ring-primary/50',
-              'touch-manipulation'
-            )}
+            className="-m-1 touch-manipulation"
             aria-label="Close"
             style={{ touchAction: 'manipulation' }}
           >
             <X size={20} />
-          </button>
+          </NotionButton>
         )}
       </div>
     </div>

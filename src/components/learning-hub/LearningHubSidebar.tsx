@@ -2083,25 +2083,18 @@ export function LearningHubSidebar({
             </NotionButton>
             {/* 面包屑路径 */}
             <div className="flex items-center gap-0.5 min-w-0 overflow-hidden text-xs">
-              <button
-                onClick={() => jumpToBreadcrumb(-1)}
-                className="shrink-0 text-muted-foreground hover:text-foreground transition-colors px-0.5"
-                title={t('learningHub:title', '资源库')}
-              >
+              <NotionButton variant="ghost" size="icon" iconOnly onClick={() => jumpToBreadcrumb(-1)} className="shrink-0 !h-4 !w-4 !p-0" title={t('learningHub:title', '资源库')} aria-label="home">
                 <Home className="w-3 h-3" />
-              </button>
+              </NotionButton>
               {currentPath.breadcrumbs.map((crumb, index) => (
                 <React.Fragment key={crumb.id}>
                   <span className="text-muted-foreground/50 shrink-0">/</span>
                   {index === currentPath.breadcrumbs.length - 1 ? (
                     <span className="truncate text-foreground font-medium">{crumb.name}</span>
                   ) : (
-                    <button
-                      onClick={() => jumpToBreadcrumb(index)}
-                      className="truncate text-muted-foreground hover:text-foreground transition-colors"
-                    >
+                    <NotionButton variant="ghost" size="sm" onClick={() => jumpToBreadcrumb(index)} className="!h-auto !p-0 truncate text-muted-foreground hover:text-foreground">
                       {crumb.name}
-                    </button>
+                    </NotionButton>
                   )}
                 </React.Fragment>
               ))}
@@ -2435,28 +2428,13 @@ export function LearningHubSidebar({
           </div>
           {/* 底部操作区 */}
           <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-border/40">
-            <button
-              type="button"
-              onClick={() => setCreateDialogOpen(false)}
-              disabled={isCreating}
-              className="px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-md transition-colors disabled:opacity-50"
-            >
+            <NotionButton variant="ghost" size="sm" onClick={() => setCreateDialogOpen(false)} disabled={isCreating}>
               {t('common:cancel')}
-            </button>
-            <button
-              type="button"
-              onClick={handleCreate}
-              disabled={!createDialogName.trim() || isCreating}
-              className={cn(
-                'px-3 py-1.5 text-sm font-medium rounded-md transition-colors',
-                createDialogName.trim() && !isCreating
-                  ? 'text-primary bg-primary/10 hover:bg-primary/15'
-                  : 'text-muted-foreground bg-muted/50 cursor-not-allowed'
-              )}
-            >
+            </NotionButton>
+            <NotionButton variant="primary" size="sm" onClick={handleCreate} disabled={!createDialogName.trim() || isCreating}>
               {isCreating && <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin inline" />}
               {isCreating ? t('common:actions.creating') : t('common:actions.create')}
-            </button>
+            </NotionButton>
           </div>
         </DialogContent>
       </Dialog>

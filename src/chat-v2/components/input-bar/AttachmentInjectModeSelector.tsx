@@ -13,6 +13,7 @@ import React, { memo, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Image, FileText, ScanText, Images, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { NotionButton } from '@/components/ui/NotionButton';
 import type { AttachmentMeta, ImageInjectMode, PdfInjectMode, AttachmentInjectModes, PdfProcessingStatus } from '../../core/types/common';
 import { DEFAULT_IMAGE_INJECT_MODES, DEFAULT_PDF_INJECT_MODES } from '../../core/types/common';
 import { logAttachment } from '../../debug/chatV2Logger';
@@ -93,20 +94,21 @@ const ToggleTag: React.FC<ToggleTagProps> = memo(({
   const processingNotReady = isProcessing && !isReady;
   
   return (
-    <button
-      type="button"
+    <NotionButton
+      variant="ghost"
+      size="sm"
       onClick={onToggle}
       disabled={disabled || processingNotReady}
       title={processingNotReady ? `${label}...` : title}
       className={cn(
-        'inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] rounded transition-all',
+        '!h-auto !px-1.5 !py-0.5 text-[10px] !rounded',
         'border',
         processingNotReady
           ? 'bg-blue-50/50 text-blue-500/70 border-blue-200/40 dark:bg-blue-900/20 dark:text-blue-400/70 dark:border-blue-700/40 cursor-wait'
           : selected
             ? 'bg-primary/15 text-primary border-primary/40 dark:bg-primary/20 dark:border-primary/50'
             : 'bg-muted/30 text-muted-foreground/70 border-transparent hover:bg-muted/50 hover:text-muted-foreground',
-        (disabled && !processingNotReady) && 'opacity-40 cursor-not-allowed',
+        (disabled && !processingNotReady) && 'opacity-40',
         className
       )}
     >
@@ -116,7 +118,7 @@ const ToggleTag: React.FC<ToggleTagProps> = memo(({
         <Icon size={11} />
       )}
       <span>{label}</span>
-    </button>
+    </NotionButton>
   );
 });
 

@@ -324,13 +324,13 @@ export const AppTab: React.FC<AppTabProps> = ({
                   const isSelected = themePalette === paletteKey;
                   const previewColor = PALETTE_PREVIEW_COLORS[paletteKey];
                   return (
-                    <button 
+                    <NotionButton 
                       key={paletteKey} 
-                      type="button" 
+                      variant="ghost"
+                      size="sm"
                       onClick={() => setThemePalette(paletteKey)} 
                       className={cn(
-                        'group/palette relative flex flex-col items-center gap-1.5 rounded-lg p-2 transition-all duration-200',
-                        'hover:bg-muted/50 focus:outline-none',
+                        'group/palette relative !h-auto flex-col items-center gap-1.5 !rounded-lg !p-2',
                         isSelected && 'bg-muted'
                       )} 
                       title={t(`settings:theme.palettes.${paletteKey}_desc`)}
@@ -349,15 +349,15 @@ export const AppTab: React.FC<AppTabProps> = ({
                       )}>
                         {t(`settings:theme.palettes.${paletteKey}_name`)}
                       </span>
-                    </button>
+                    </NotionButton>
                   );
                 })}
-                <button
-                  type="button"
+                <NotionButton
+                  variant="ghost"
+                  size="sm"
                   onClick={() => setCustomColor(customColor)}
                   className={cn(
-                    'group/palette relative flex flex-col items-center gap-1.5 rounded-lg p-2 transition-all duration-200',
-                    'hover:bg-muted/50 focus:outline-none',
+                    'group/palette relative !h-auto flex-col items-center gap-1.5 !rounded-lg !p-2',
                     themePalette === 'custom' && 'bg-muted'
                   )}
                   title={t('settings:theme.palettes.custom_desc')}
@@ -389,7 +389,7 @@ export const AppTab: React.FC<AppTabProps> = ({
                   )}>
                     {t('settings:theme.palettes.custom_name')}
                   </span>
-                </button>
+                </NotionButton>
               </div>
             </div>
           </div>

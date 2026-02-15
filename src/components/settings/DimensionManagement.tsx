@@ -674,18 +674,20 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                                     <div className="space-y-2">
                                       <div className="flex flex-wrap gap-1.5">
                                         {embeddingModels.map((model) => (
-                                          <button
+                                          <NotionButton
                                             key={model.id}
+                                            variant="ghost"
+                                            size="sm"
                                             onClick={() => setSelectedModelId(model.id)}
                                             className={cn(
-                                              "px-2.5 py-1 rounded text-xs transition-colors",
+                                              "!h-auto !px-2.5 !py-1 text-xs",
                                               model.id === selectedModelId
                                                 ? "bg-primary/10 text-primary border border-primary/30"
                                                 : "bg-muted/50 text-foreground/70 hover:bg-muted hover:text-foreground border border-transparent"
                                             )}
                                           >
                                             {model.name}
-                                          </button>
+                                          </NotionButton>
                                         ))}
                                       </div>
 

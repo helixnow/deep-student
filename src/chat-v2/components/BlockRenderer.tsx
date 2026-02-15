@@ -12,6 +12,7 @@ import { useTranslation } from 'react-i18next';
 import { AlertTriangle, RotateCcw } from 'lucide-react';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { cn } from '@/utils/cn';
+import { NotionButton } from '@/components/ui/NotionButton';
 import { blockRegistry } from '../registry';
 import type { Block, ChatStore } from '../core/types';
 import { useBlock, useIsBlockActive } from '../hooks/useChatStore';
@@ -125,13 +126,10 @@ const BlockErrorFallbackUI: React.FC<BlockErrorFallbackUIProps> = ({
         <span className="text-xs text-muted-foreground font-mono">
           [{block.type}]
         </span>
-        <button
-          onClick={onReset}
-          className="ml-auto flex items-center gap-1 px-2 py-1 text-xs rounded hover:bg-destructive/10 text-destructive transition-colors"
-        >
+        <NotionButton variant="ghost" size="sm" onClick={onReset} className="ml-auto text-destructive hover:bg-destructive/10">
           <RotateCcw className="w-3 h-3" />
           {t('error.retry', '重试')}
-        </button>
+        </NotionButton>
       </div>
       <div className="text-xs text-muted-foreground bg-background/50 rounded p-2 font-mono break-all">
         {error || t('error.unknownError', '未知错误')}

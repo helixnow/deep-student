@@ -89,11 +89,12 @@ interface EngineCardProps {
 
 export const EngineCard: React.FC<EngineCardProps> = React.memo(({ id, name, body, enabled, expanded, onToggle, configuredLabel, notConfiguredLabel }) => (
   <div className="rounded-lg overflow-hidden">
-    <button
-      type="button"
+    <NotionButton
+      variant="ghost"
+      size="sm"
       onClick={onToggle}
       className={cn(
-        "w-full flex items-center justify-between py-2.5 px-3 hover:bg-muted/30 rounded transition-colors text-left",
+        "w-full !justify-between !py-2.5 !px-3",
         expanded && "bg-muted/20"
       )}
     >
@@ -117,7 +118,7 @@ export const EngineCard: React.FC<EngineCardProps> = React.memo(({ id, name, bod
       >
         <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 10.94l3.71-3.71a.75.75 0 111.06 1.06l-4.24 4.24a.75.75 0 01-1.06 0L5.21 8.29a.75.75 0 01.02-1.08z" clipRule="evenodd" />
       </svg>
-    </button>
+    </NotionButton>
     {expanded && (
       <div className="px-3 pb-4 pt-2 space-y-4 animate-in slide-in-from-top-2 duration-200">
         {body}

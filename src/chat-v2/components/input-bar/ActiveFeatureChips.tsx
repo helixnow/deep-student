@@ -8,6 +8,7 @@
 import React from 'react';
 import { X, Brain, Layers, Network, BookOpen, GraduationCap, Wrench, Globe, CreditCard, Zap } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { NotionButton } from '@/components/ui/NotionButton';
 import { useTranslation } from 'react-i18next';
 
 // ============================================================================
@@ -72,22 +73,9 @@ const FeatureChip: React.FC<FeatureChipProps> = ({ feature, disabled }) => {
         {feature.icon}
       </span>
       <span className="truncate max-w-[120px]">{feature.label}</span>
-      <button
-        type="button"
-        onClick={(e) => {
-          e.stopPropagation();
-          feature.onClose();
-        }}
-        disabled={disabled}
-        className={cn(
-          'flex-shrink-0 w-4 h-4 flex items-center justify-center rounded',
-          'hover:bg-foreground/10 transition-colors',
-          'focus:outline-none'
-        )}
-        aria-label={`Close ${feature.label}`}
-      >
+      <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); feature.onClose(); }} disabled={disabled} className="!w-4 !h-4 !p-0 hover:bg-foreground/10" aria-label={`Close ${feature.label}`}>
         <X size={10} strokeWidth={2.5} />
-      </button>
+      </NotionButton>
     </div>
   );
 };

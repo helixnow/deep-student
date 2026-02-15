@@ -93,12 +93,9 @@ const TemplateManagementPage: React.FC<TemplateManagementPageProps> = ({
     // 正常模式：显示面包屑导航
     return (
       <div className="flex items-center justify-center gap-1 text-base font-semibold whitespace-nowrap min-w-0">
-        <button
-          onClick={() => onBackToAnki?.()}
-          className="hover:text-primary transition-colors truncate max-w-[100px]"
-        >
+        <NotionButton variant="ghost" size="sm" onClick={() => onBackToAnki?.()} className="hover:text-primary !p-0 !h-auto truncate max-w-[100px]">
           {tAnki('page_title')}
-        </button>
+        </NotionButton>
         <ChevronRight className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
         <span className="truncate max-w-[120px]">
           {t('manager_title')}
@@ -757,9 +754,9 @@ const TemplateManagementPage: React.FC<TemplateManagementPageProps> = ({
               <AlertTriangle size={16} />
               {error}
             </span>
-            <button onClick={() => setError(null)} className="text-amber-700 hover:text-amber-900 dark:text-amber-300 dark:hover:text-amber-100">
+            <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setError(null)} className="text-amber-700 hover:text-amber-900 dark:text-amber-300 dark:hover:text-amber-100" aria-label="close">
               <X size={14} />
-            </button>
+            </NotionButton>
           </div>
         )}
 

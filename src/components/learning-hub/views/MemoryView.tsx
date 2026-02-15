@@ -406,42 +406,36 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
             <CustomScrollArea className="rounded-lg bg-muted/30 max-h-40">
               <div className="p-1">
                 {folderList.map((folder) => (
-                  <button
+                  <NotionButton
                     key={folder.id}
-                    className="w-full px-3 py-2 text-left hover:bg-muted/50 flex items-center gap-2 text-sm rounded-md transition-colors"
+                    variant="ghost" size="sm"
+                    className="w-full !justify-start !px-3 !py-2"
                     onClick={() => handleSelectRootFolder(folder.id)}
                   >
                     <FolderOpen className="w-3.5 h-3.5 text-muted-foreground" />
                     <span className="truncate">{folder.title}</span>
-                  </button>
+                  </NotionButton>
                 ))}
               </div>
             </CustomScrollArea>
           </div>
         ) : (
-          <button 
-            onClick={loadFolders} 
-            disabled={loadingFolders}
-            className="flex items-center gap-2 px-4 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-md transition-colors mb-4 disabled:opacity-50"
-          >
+          <NotionButton variant="ghost" size="sm" onClick={loadFolders} disabled={loadingFolders} className="mb-4">
             {loadingFolders ? (
               <Loader2 className="w-4 h-4 animate-spin" />
             ) : (
               <FolderOpen className="w-4 h-4" />
             )}
             {t('memory.select_folder', '选择现有文件夹')}
-          </button>
+          </NotionButton>
         )}
         
         <div className="text-xs text-muted-foreground/60 mb-3">{t('common:or', '或')}</div>
         
-        <button 
-          onClick={() => setShowCreateRootDialog(true)}
-          className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-primary hover:bg-primary/10 rounded-md transition-colors"
-        >
+        <NotionButton variant="ghost" size="sm" onClick={() => setShowCreateRootDialog(true)} className="text-primary hover:bg-primary/10">
           <Plus className="w-4 h-4" />
           {t('memory.create_folder', '创建新文件夹')}
-        </button>
+        </NotionButton>
 
         {/* 创建根文件夹对话框 - Notion 风格 */}
         <Dialog open={showCreateRootDialog} onOpenChange={setShowCreateRootDialog}>
@@ -461,25 +455,13 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
               />
             </div>
             <div className="flex gap-2 px-5 py-3 border-t border-border/40 bg-muted/20">
-              <button 
-                onClick={() => setShowCreateRootDialog(false)}
-                className="flex-1 h-9 text-sm text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-md transition-colors"
-              >
+              <NotionButton variant="ghost" size="sm" onClick={() => setShowCreateRootDialog(false)} className="flex-1 !h-9">
                 {t('common:cancel', '取消')}
-              </button>
-              <button 
-                onClick={handleCreateRootFolder} 
-                disabled={isLoading || !newRootFolderTitle.trim()}
-                className={cn(
-                  'flex-1 h-9 flex items-center justify-center gap-2 text-sm font-medium rounded-md transition-all',
-                  newRootFolderTitle.trim() && !isLoading
-                    ? 'text-primary bg-primary/10 hover:bg-primary/15'
-                    : 'text-muted-foreground bg-muted/50 cursor-not-allowed'
-                )}
-              >
+              </NotionButton>
+              <NotionButton variant="primary" size="sm" onClick={handleCreateRootFolder} disabled={isLoading || !newRootFolderTitle.trim()} className="flex-1 !h-9">
                 {isLoading && <Loader2 className="w-4 h-4 animate-spin" />}
                 {t('common:create', '创建')}
-              </button>
+              </NotionButton>
             </div>
           </DialogContent>
         </Dialog>
@@ -503,31 +485,21 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
             className="w-full h-9 pl-9 pr-8 text-sm bg-muted/30 border-transparent rounded-md focus:border-border focus:bg-background focus:outline-none transition-colors"
           />
           {searchQuery && (
-            <button
-              onClick={handleClearSearch}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground/60 hover:text-foreground transition-colors"
-            >
+            <NotionButton variant="ghost" size="icon" iconOnly onClick={handleClearSearch} className="absolute right-3 top-1/2 -translate-y-1/2 !h-5 !w-5 !p-0 text-muted-foreground/60 hover:text-foreground" aria-label="clear">
               ×
-            </button>
+            </NotionButton>
           )}
         </div>
 
         {/* 操作按钮 - Notion 风格 */}
-        <button
-          onClick={loadMemories}
-          disabled={isLoading}
-          className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-md transition-colors disabled:opacity-50"
-        >
+        <NotionButton variant="ghost" size="icon" iconOnly onClick={loadMemories} disabled={isLoading} aria-label="refresh">
           <RefreshCw className={cn('w-4 h-4', isLoading && 'animate-spin')} />
-        </button>
+        </NotionButton>
         {!isCreatingInline && (
-          <button
-            onClick={() => setIsCreatingInline(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-primary hover:bg-primary/10 rounded-md transition-colors"
-          >
+          <NotionButton variant="ghost" size="sm" onClick={() => setIsCreatingInline(true)} className="text-primary hover:bg-primary/10">
             <Plus className="w-4 h-4" />
             {t('memory.new', '新建')}
-          </button>
+          </NotionButton>
         )}
       </div>
 
@@ -536,18 +508,14 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
         <FolderOpen className="w-3.5 h-3.5" />
         <span>{t('memory.root_folder', '根文件夹')}:</span>
         <span className="font-medium text-foreground">{config.memoryRootFolderTitle || t('memory.defaultRootTitle', '记忆')}</span>
-        <button
-          onClick={loadFolders}
-          disabled={loadingFolders}
-          className="ml-auto flex items-center gap-1 px-1.5 py-0.5 hover:bg-muted/50 rounded transition-colors disabled:opacity-50"
-        >
+        <NotionButton variant="ghost" size="sm" onClick={loadFolders} disabled={loadingFolders} className="ml-auto !h-auto !px-1.5 !py-0.5">
           {loadingFolders ? (
             <Loader2 className="w-3 h-3 animate-spin" />
           ) : (
             <Settings className="w-3 h-3" />
           )}
           {t('memory.change', '更改')}
-        </button>
+        </NotionButton>
       </div>
 
       {/* 记忆列表 */}
@@ -561,13 +529,9 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                   <MemoryIcon size={16} />
                   <span className="text-sm font-medium">{t('memory.create_title', '创建新记忆')}</span>
                 </div>
-                <button
-                  onClick={handleCancelCreate}
-                  disabled={isLoading}
-                  className="p-1 text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded transition-colors"
-                >
+                <NotionButton variant="ghost" size="icon" iconOnly onClick={handleCancelCreate} disabled={isLoading} aria-label="cancel">
                   <Plus className="w-4 h-4 rotate-45" />
-                </button>
+                </NotionButton>
               </div>
 
               <input
@@ -586,26 +550,13 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
               />
 
               <div className="flex gap-2 pt-1">
-                <button
-                  onClick={handleCancelCreate}
-                  disabled={isLoading}
-                  className="flex-1 h-9 text-sm text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-md transition-colors disabled:opacity-50"
-                >
+                <NotionButton variant="ghost" size="sm" onClick={handleCancelCreate} disabled={isLoading} className="flex-1 !h-9">
                   {t('common:cancel', '取消')}
-                </button>
-                <button
-                  onClick={handleCreateMemory}
-                  disabled={isLoading || !newMemoryTitle.trim() || !newMemoryContent.trim()}
-                  className={cn(
-                    'flex-1 h-9 flex items-center justify-center gap-2 text-sm font-medium rounded-md transition-all',
-                    newMemoryTitle.trim() && newMemoryContent.trim() && !isLoading
-                      ? 'text-primary bg-primary/10 hover:bg-primary/15'
-                      : 'text-muted-foreground bg-muted/50 cursor-not-allowed'
-                  )}
-                >
+                </NotionButton>
+                <NotionButton variant="primary" size="sm" onClick={handleCreateMemory} disabled={isLoading || !newMemoryTitle.trim() || !newMemoryContent.trim()} className="flex-1 !h-9">
                   {isLoading && <Loader2 className="w-4 h-4 animate-spin" />}
                   {t('common:create', '创建')}
-                </button>
+                </NotionButton>
               </div>
             </div>
           )}
@@ -645,9 +596,9 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                   const isExpanded = expandedMemoryId === result.noteId;
                   return (
                     <div key={result.noteId} className="rounded-lg transition-colors">
-                      <button
+                      <NotionButton variant="ghost" size="sm"
                         className={cn(
-                          'w-full px-3 py-2.5 text-left rounded-lg transition-colors',
+                          'w-full !justify-start !px-3 !py-2.5 !h-auto text-left',
                           isExpanded ? 'bg-muted/50' : 'hover:bg-muted/40'
                         )}
                         onClick={() => handleToggleExpand(result.noteId)}
@@ -668,7 +619,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                             {result.chunkText}
                           </p>
                         )}
-                      </button>
+                      </NotionButton>
                       {/* 内联展开预览 */}
                       {isExpanded && (
                         <div className="mx-3 mb-2 rounded-md border border-border/40 bg-card/50 overflow-hidden">
@@ -682,26 +633,14 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                                 {expandedContent.content || t('memory.no_content', '（无内容）')}
                               </div>
                               <div className="flex items-center justify-between px-3 py-2 border-t border-border/30 bg-muted/20">
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleDeleteMemory(result.noteId);
-                                  }}
-                                  className="flex items-center gap-1 px-2 py-1 text-xs text-rose-500 hover:bg-rose-500/10 rounded transition-colors"
-                                >
+                                <NotionButton variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); handleDeleteMemory(result.noteId); }} className="text-rose-500 hover:bg-rose-500/10 !h-auto !px-2 !py-1 text-xs">
                                   <Trash2 className="w-3 h-3" />
                                   {t('common:delete', '删除')}
-                                </button>
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleOpenInEditor(result.noteId, result.noteTitle);
-                                  }}
-                                  className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-primary bg-primary/10 hover:bg-primary/15 rounded transition-colors"
-                                >
+                                </NotionButton>
+                                <NotionButton variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); handleOpenInEditor(result.noteId, result.noteTitle); }} className="text-primary bg-primary/10 hover:bg-primary/15 !h-auto !px-2.5 !py-1 text-xs font-medium">
                                   <ExternalLink className="w-3 h-3" />
                                   {t('memory.open_in_editor', '在编辑器中打开')}
-                                </button>
+                                </NotionButton>
                               </div>
                             </>
                           ) : null}
@@ -717,12 +656,9 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
             <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
               <MemoryIcon size={40} className="mb-3 opacity-40" />
               <span className="text-sm mb-2">{t('memory.empty', '暂无记忆')}</span>
-              <button
-                onClick={() => setIsCreatingInline(true)}
-                className="text-sm text-primary hover:underline"
-              >
+              <NotionButton variant="ghost" size="sm" onClick={() => setIsCreatingInline(true)} className="text-primary hover:underline !p-0 !h-auto">
                 {t('memory.create_first', '创建第一条记忆')}
-              </button>
+              </NotionButton>
             </div>
           ) : (
             // 记忆列表 - 内联展开布局
@@ -749,15 +685,9 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                           {new Date(memory.updatedAt).toLocaleDateString()}
                         </div>
                       </div>
-                      <button
-                        className="p-1.5 text-muted-foreground/0 group-hover:text-muted-foreground hover:text-rose-500 hover:bg-rose-500/10 rounded transition-all"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          handleDeleteMemory(memory.id);
-                        }}
-                      >
+                      <NotionButton variant="ghost" size="icon" iconOnly className="!p-1.5 text-muted-foreground/0 group-hover:text-muted-foreground hover:text-rose-500 hover:bg-rose-500/10" onClick={(event) => { event.stopPropagation(); handleDeleteMemory(memory.id); }} aria-label="delete">
                         <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                      </NotionButton>
                     </div>
                     {/* 内联展开预览 */}
                     {isExpanded && (
@@ -772,26 +702,14 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                               {expandedContent.content || t('memory.no_content', '（无内容）')}
                             </div>
                             <div className="flex items-center justify-between px-3 py-2 border-t border-border/30 bg-muted/20">
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleDeleteMemory(memory.id);
-                                }}
-                                className="flex items-center gap-1 px-2 py-1 text-xs text-rose-500 hover:bg-rose-500/10 rounded transition-colors"
-                              >
+                              <NotionButton variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); handleDeleteMemory(memory.id); }} className="text-rose-500 hover:bg-rose-500/10 !h-auto !px-2 !py-1 text-xs">
                                 <Trash2 className="w-3 h-3" />
                                 {t('common:delete', '删除')}
-                              </button>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleOpenInEditor(memory.id, memory.title);
-                                }}
-                                className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-primary bg-primary/10 hover:bg-primary/15 rounded transition-colors"
-                              >
+                              </NotionButton>
+                              <NotionButton variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); handleOpenInEditor(memory.id, memory.title); }} className="text-primary bg-primary/10 hover:bg-primary/15 !h-auto !px-2.5 !py-1 text-xs font-medium">
                                 <ExternalLink className="w-3 h-3" />
                                 {t('memory.open_in_editor', '在编辑器中打开')}
-                              </button>
+                              </NotionButton>
                             </div>
                           </>
                         ) : null}
@@ -821,13 +739,10 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
               <CustomScrollArea className="h-full" fullHeight>
                 <div className="py-1 px-5">
                   {folderList.map((folder) => (
-                    <button
+                    <NotionButton
                       key={folder.id}
-                      className={cn(
-                        'w-full px-3 py-2 text-left flex items-center gap-2 text-sm rounded-md',
-                        'transition-all duration-150 ease-out',
-                        'hover:bg-muted/50 active:scale-[0.99]'
-                      )}
+                      variant="ghost" size="sm"
+                      className="w-full !justify-start !px-3 !py-2"
                       onClick={() => {
                         handleSelectRootFolder(folder.id);
                         setFolderList([]);
@@ -835,7 +750,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                     >
                       <FolderOpen className="w-4 h-4 text-amber-500 shrink-0" />
                       <span className="truncate">{folder.title}</span>
-                    </button>
+                    </NotionButton>
                   ))}
                 </div>
               </CustomScrollArea>
@@ -843,17 +758,9 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
             
             {/* 底部操作区 */}
             <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-border/40">
-              <button 
-                onClick={() => setFolderList([])}
-                className={cn(
-                  'px-3 py-1.5 text-sm text-muted-foreground rounded-md',
-                  'transition-all duration-150 ease-out',
-                  'hover:text-foreground hover:bg-muted/50',
-                  'active:scale-[0.97]'
-                )}
-              >
+              <NotionButton variant="ghost" size="sm" onClick={() => setFolderList([])}>
                 {t('common:cancel', '取消')}
-              </button>
+              </NotionButton>
             </div>
           </DialogContent>
         </Dialog>

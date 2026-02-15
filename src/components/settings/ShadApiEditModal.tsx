@@ -648,9 +648,10 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                         {modelAdapterOptions.map(option => {
                           const isSelected = formData.modelAdapter === option.value;
                           return (
-                            <button
+                            <NotionButton
                               key={option.value}
-                              type="button"
+                              variant="ghost"
+                              size="sm"
                               onClick={() => {
                                 setFormData(prev => {
                                   const nextDefault = ADAPTER_DEFAULT_BASE_URL[option.value] ?? prev.baseUrl;
@@ -666,14 +667,14 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                                 });
                               }}
                               className={cn(
-                                'flex flex-col items-center justify-center gap-1 p-3 rounded-lg border text-center transition-all duration-150',
+                                '!h-auto flex-col items-center justify-center gap-1 !p-3 !rounded-lg border text-center',
                                 isSelected
                                   ? 'border-primary bg-primary/10 text-foreground'
                                   : 'border-border/40 bg-muted/20 text-muted-foreground hover:border-border hover:bg-muted/40 hover:text-foreground'
                               )}
                             >
                               <span className={cn('text-sm', isSelected && 'font-medium')}>{option.label}</span>
-                            </button>
+                            </NotionButton>
                           );
                         })}
                       </div>

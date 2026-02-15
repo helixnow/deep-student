@@ -218,13 +218,9 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
     // 供应商配置面板：显示保存按钮
     if (screenPosition === 'right' && rightPanelType === 'vendorConfig') {
       return (
-        <button
-          onClick={() => vendorConfigModalRef.current?.save()}
-          className="p-1.5 rounded-md hover:bg-accent text-primary transition-colors"
-          title={t('common:actions.save')}
-        >
+        <NotionButton variant="ghost" size="icon" iconOnly onClick={() => vendorConfigModalRef.current?.save()} title={t('common:actions.save')} aria-label="save" className="text-primary">
           <Check className="w-5 h-5" />
-        </button>
+        </NotionButton>
       );
     }
     return undefined;
@@ -4323,34 +4319,11 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
                 marginBottom: '16px'
               }}>
                 <h3 style={{ margin: '0', fontSize: '18px', fontWeight: '600' }}>{t('settings:mcp.security_policy')}</h3>
-                <button
-                  onClick={() => setMcpPolicyModal(prev => ({ ...prev, open: false }))}
-                  style={{
-                    width: '32px',
-                    height: '32px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    background: 'transparent',
-                    border: 'none',
-                    borderRadius: '6px',
-                    color: 'hsl(var(--muted-foreground))',
-                    cursor: 'pointer',
-                    transition: 'all 0.2s ease'
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.backgroundColor = 'hsl(var(--muted))';
-                    e.currentTarget.style.color = 'hsl(var(--foreground))';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.backgroundColor = 'transparent';
-                    e.currentTarget.style.color = 'hsl(var(--muted-foreground))';
-                  }}
-                >
+                <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setMcpPolicyModal(prev => ({ ...prev, open: false }))} aria-label="close">
                   <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
                     <path d="M15 5L5 15M5 5L15 15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                   </svg>
-                </button>
+                </NotionButton>
               </div>
               <div style={{ display: 'grid', gap: 12 }}>
                 <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>

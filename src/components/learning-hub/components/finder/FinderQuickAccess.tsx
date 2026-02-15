@@ -155,10 +155,10 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
   ) => {
     const isActive = normalizedActiveType === type;
     const button = (
-      <button
+      <NotionButton variant="ghost" size="sm"
         className={cn(
-          'group relative w-full flex items-center transition-all duration-150 ease-out rounded-md',
-          collapsed ? 'justify-center px-2 py-2.5' : 'gap-2.5 px-2.5 py-2',
+          'group relative w-full !rounded-md',
+          collapsed ? 'justify-center !px-2 !py-2.5' : '!justify-start gap-2.5 !px-2.5 !py-2',
           isActive 
             ? 'bg-accent dark:bg-accent/70 text-foreground' 
             : 'text-muted-foreground hover:bg-accent/50 dark:hover:bg-accent/30 hover:text-foreground'
@@ -202,7 +202,7 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
             )}
           </>
         )}
-      </button>
+      </NotionButton>
     );
 
     if (collapsed) {
@@ -266,12 +266,9 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
                   )}
                 />
                 {searchQuery && (
-                  <button
-                    onClick={() => onSearchChange?.('')}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 rounded-md hover:bg-muted/60 transition-colors"
-                  >
+                  <NotionButton variant="ghost" size="icon" iconOnly onClick={() => onSearchChange?.('')} className="absolute right-2 top-1/2 -translate-y-1/2 !h-5 !w-5 !p-0.5 hover:bg-muted/60" aria-label="clear">
                     <X className="h-3.5 w-3.5 text-muted-foreground/60" />
-                  </button>
+                  </NotionButton>
                 )}
               </div>
               <AppMenu>
@@ -462,24 +459,13 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
 
         {onToggleCollapse && (
           <div className="shrink-0 h-11 flex items-center px-2 border-t border-border">
-            <button
-              onClick={onToggleCollapse}
-              className={cn(
-                'w-full flex items-center justify-center py-1.5 rounded-md',
-                'text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted/40',
-                'transition-all duration-150'
-              )}
-              title={collapsed 
-                ? t('finder.quickAccess.expand') 
-                : t('finder.quickAccess.collapse')
-              }
-            >
+            <NotionButton variant="ghost" size="sm" onClick={onToggleCollapse} className="w-full justify-center !py-1.5 text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted/40" title={collapsed ? t('finder.quickAccess.expand') : t('finder.quickAccess.collapse')}>
               {collapsed ? (
                 <ChevronRight className="h-4 w-4" />
               ) : (
                 <ChevronLeft className="h-4 w-4" />
               )}
-            </button>
+            </NotionButton>
           </div>
         )}
       </div>

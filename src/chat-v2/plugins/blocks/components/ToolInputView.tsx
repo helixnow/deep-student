@@ -8,6 +8,7 @@
 import React, { useState, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
+import { NotionButton } from '@/components/ui/NotionButton';
 import { ChevronDown, ChevronRight, Code2 } from 'lucide-react';
 
 // ============================================================================
@@ -140,25 +141,12 @@ export const ToolInputView: React.FC<ToolInputViewProps> = ({
   return (
     <div className={cn('tool-input-view', className)}>
       {/* 折叠头部 */}
-      <button
-        type="button"
-        onClick={toggleExpanded}
-        className={cn(
-          'flex items-center gap-1.5 w-full text-left',
-          'text-xs text-muted-foreground',
-          'hover:text-foreground transition-colors',
-          'py-1'
-        )}
-      >
-        {isExpanded ? (
-          <ChevronDown className="w-3 h-3" />
-        ) : (
-          <ChevronRight className="w-3 h-3" />
-        )}
+      <NotionButton variant="ghost" size="sm" onClick={toggleExpanded} className="w-full !justify-start gap-1.5 !py-1 text-muted-foreground hover:text-foreground">
+        {isExpanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
         <Code2 className="w-3 h-3" />
         <span>{t('blocks.mcpTool.input')}</span>
         <span className="text-muted-foreground/60">({paramKeys.length})</span>
-      </button>
+      </NotionButton>
 
       {/* 内容区域 */}
       {isExpanded && (

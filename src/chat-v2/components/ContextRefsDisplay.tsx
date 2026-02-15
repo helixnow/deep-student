@@ -20,6 +20,7 @@
  */
 
 import React, { useCallback, useMemo, useState } from 'react';
+import { NotionButton } from '@/components/ui/NotionButton';
 import { useTranslation } from 'react-i18next';  // 用于 ContextRefItem 获取 locale
 import {
   FileText,
@@ -451,23 +452,18 @@ export const ContextRefsDisplay: React.FC<ContextRefsDisplayProps> = ({
       
       {/* 展开/折叠按钮 */}
       {needsCollapse && (
-        <button
-          type="button"
+        <NotionButton
+          variant="ghost"
+          size="sm"
           onClick={() => setIsExpanded(!isExpanded)}
-          className={cn(
-            'inline-flex items-center gap-1 rounded-md border transition-colors',
-            'bg-muted/50 hover:bg-muted border-border/50 hover:border-border',
-            'text-xs text-muted-foreground hover:text-foreground font-medium',
-            'px-2 py-0.5',
-            'cursor-pointer'
-          )}
+          className="!h-auto !px-2 !py-0.5 border border-border/50 hover:border-border bg-muted/50 hover:bg-muted text-muted-foreground hover:text-foreground"
         >
           {isExpanded ? (
             <span>{t('contextRefs.collapse')}</span>
           ) : (
             <span>{t('contextRefs.showMore', { count: hiddenCount })}</span>
           )}
-        </button>
+        </NotionButton>
       )}
 
       {/* ★ 图片预览器 */}

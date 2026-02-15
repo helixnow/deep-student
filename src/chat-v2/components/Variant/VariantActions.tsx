@@ -10,6 +10,7 @@
 import React, { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
+import { NotionButton } from '@/components/ui/NotionButton';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
 import {
@@ -145,19 +146,9 @@ export const VariantActions: React.FC<VariantActionsProps> = ({
   return (
     <AppMenu>
       <AppMenuTrigger asChild>
-        <button
-          className={cn(
-            'p-1.5 rounded-md transition-colors',
-            'hover:bg-muted text-muted-foreground hover:text-foreground',
-            'focus:outline-none focus-visible:ring-2 focus-visible:ring-primary',
-            isLoading && 'opacity-50 cursor-not-allowed',
-            className
-          )}
-          disabled={isLoading}
-          aria-label={t('variant.actions')}
-        >
+        <NotionButton variant="ghost" size="icon" iconOnly disabled={isLoading} className={cn(isLoading && 'opacity-50', className)} aria-label={t('variant.actions')}>
           <MoreHorizontal className="w-4 h-4" />
-        </button>
+        </NotionButton>
       </AppMenuTrigger>
       <AppMenuContent align="end" width={160}>
         {/* 取消 */}
