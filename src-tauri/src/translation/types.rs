@@ -26,6 +26,11 @@ pub struct TranslationRequest {
     /// 术语表（可选，键值对：源词 -> 目标词）
     #[serde(default)]
     pub glossary: Option<Vec<(String, String)>>,
+
+    /// 翻译领域/场景（可选）
+    /// "academic" | "technical" | "literary" | "casual" | "legal" | "medical"
+    #[serde(default)]
+    pub domain: Option<String>,
 }
 
 /// 翻译响应

@@ -1055,9 +1055,26 @@ impl VfsFolderRepo {
             )?;
 
             if affected == 0 {
-                return Err(VfsError::FolderNotFound {
-                    folder_id: folder_id.to_string(),
-                });
+                // ★ P0 修复：幂等处理 - 检查文件夹是否已被软删除
+                let already_deleted: bool = conn
+                    .query_row(
+                        "SELECT EXISTS(SELECT 1 FROM folders WHERE id = ?1 AND deleted_at IS NOT NULL)",
+                        params![folder_id],
+                        |row| row.get(0),
+                    )
+                    .unwrap_or(false);
+
+                if already_deleted {
+                    info!(
+                        "[VFS::FolderRepo] Folder already deleted (idempotent): {}",
+                        folder_id
+                    );
+                    return Ok(());
+                } else {
+                    return Err(VfsError::FolderNotFound {
+                        folder_id: folder_id.to_string(),
+                    });
+                }
             }
 
             // 2. 递归软删除所有子文件夹

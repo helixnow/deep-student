@@ -849,11 +849,11 @@ export const useQuestionBankStore = create<QuestionBankState>()(
           
           const questionsMap = new Map(get().questions);
           const existingOrder = get().questionOrder;
+          const existingIdSet = new Set(existingOrder);
           const newIds: string[] = [];
           result.questions.forEach((q) => {
             questionsMap.set(q.id, q);
-            // 仅追加尚未存在于 order 中的 ID
-            if (!existingOrder.includes(q.id)) {
+            if (!existingIdSet.has(q.id)) {
               newIds.push(q.id);
             }
           });
@@ -980,9 +980,16 @@ export const useQuestionBankStore = create<QuestionBankState>()(
             if (state.pagination.total > 0) {
               updates.pagination = { ...state.pagination, total: state.pagination.total - 1 };
             }
-            // 如果删除的是当前题目，切换到下一题或置空
+            // 如果删除的是当前题目，切换到下一题（而非第一题）或置空
             if (state.currentQuestionId === questionId) {
-              updates.currentQuestionId = newOrder.length > 0 ? newOrder[0] : null;
+              const deletedIndex = state.questionOrder.indexOf(questionId);
+              if (newOrder.length === 0) {
+                updates.currentQuestionId = null;
+              } else if (deletedIndex >= newOrder.length) {
+                updates.currentQuestionId = newOrder[newOrder.length - 1];
+              } else {
+                updates.currentQuestionId = newOrder[deletedIndex];
+              }
             }
             return updates;
           });
@@ -1091,28 +1098,32 @@ export const useQuestionBankStore = create<QuestionBankState>()(
           const now = new Date();
           const range = get().selectedDateRange;
           let defaultStartDate: string;
-          let defaultEndDate = now.toISOString().split('T')[0];
+          const toLocalDateStr = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+          let defaultEndDate = toLocalDateStr(now);
           
           switch (range) {
             case 'today':
               defaultStartDate = defaultEndDate;
               break;
-            case 'week':
+            case 'week': {
               const weekAgo = new Date(now);
               weekAgo.setDate(weekAgo.getDate() - 7);
-              defaultStartDate = weekAgo.toISOString().split('T')[0];
+              defaultStartDate = toLocalDateStr(weekAgo);
               break;
-            case 'month':
+            }
+            case 'month': {
               const monthAgo = new Date(now);
               monthAgo.setMonth(monthAgo.getMonth() - 1);
-              defaultStartDate = monthAgo.toISOString().split('T')[0];
+              defaultStartDate = toLocalDateStr(monthAgo);
               break;
+            }
             case 'all':
-            default:
+            default: {
               const yearAgo = new Date(now);
               yearAgo.setFullYear(yearAgo.getFullYear() - 1);
-              defaultStartDate = yearAgo.toISOString().split('T')[0];
+              defaultStartDate = toLocalDateStr(yearAgo);
               break;
+            }
           }
 
           const result = await invoke<LearningTrendPoint[]>('qbank_get_learning_trend', {

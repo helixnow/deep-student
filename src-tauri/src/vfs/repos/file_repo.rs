@@ -772,10 +772,27 @@ impl VfsFileRepo {
         )?;
 
         if updated == 0 {
-            return Err(VfsError::NotFound {
-                resource_type: "File".to_string(),
-                id: file_id.to_string(),
-            });
+            // ★ P0 修复：幂等处理 - 检查文件是否已被软删除
+            // 如果文件已 status='deleted'，视为幂等成功，避免批量删除事务回滚
+            let already_deleted: bool = conn
+                .query_row(
+                    "SELECT EXISTS(SELECT 1 FROM files WHERE id = ?1 AND status = 'deleted')",
+                    params![file_id],
+                    |row| row.get(0),
+                )
+                .unwrap_or(false);
+
+            if already_deleted {
+                info!(
+                    "[VFS::FileRepo] File already deleted (idempotent): {}",
+                    file_id
+                );
+            } else {
+                return Err(VfsError::NotFound {
+                    resource_type: "File".to_string(),
+                    id: file_id.to_string(),
+                });
+            }
         }
 
         // ★ CONC-02 修复：软删除 folder_items 中的关联记录

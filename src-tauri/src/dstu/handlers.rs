@@ -75,6 +75,8 @@ use super::handler_utils::{
     update_content_by_type,
 };
 
+use super::trash_handlers::is_resource_in_trash;
+
 use crate::vfs::{
     lance_store::VfsLanceStore,
     repos::VfsMindMapRepo, VfsBlobRepo, VfsCreateEssaySessionParams, VfsCreateExamSheetParams,
@@ -4076,6 +4078,31 @@ pub async fn dstu_purge(
             return Err(e.to_string());
         }
     };
+
+    // ★ P1 防护：验证资源已在回收站，防止对活跃资源执行永久删除
+    {
+        let trash_check_type = match resource_type.as_str() {
+            "notes" | "note" => "note",
+            "textbooks" | "textbook" => "textbook",
+            "images" | "image" | "files" | "file" | "attachments" | "attachment" => "file",
+            "exams" | "exam" => "exam",
+            "translations" | "translation" => "translation",
+            "essays" | "essay" => "essay",
+            "folders" | "folder" => "folder",
+            "mindmaps" | "mindmap" => "mindmap",
+            _ => "",
+        };
+        if !trash_check_type.is_empty() && !is_resource_in_trash(&vfs_db, trash_check_type, &id) {
+            log::warn!(
+                "[DSTU::handlers] dstu_purge: REJECTED - resource not in trash, type={}, id={}",
+                resource_type, id
+            );
+            return Err(format!(
+                "资源 {} (type={}) 不在回收站中，无法永久删除。请先将其移到回收站。",
+                id, resource_type
+            ));
+        }
+    }
 
     // ★ P1 修复：在 purge 之前查找 resource_id（purge 会删除数据库记录）
     let resource_id: Option<String> = vfs_db.get_conn_safe().ok().and_then(|conn| {

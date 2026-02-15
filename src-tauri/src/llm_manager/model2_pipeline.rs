@@ -1326,18 +1326,30 @@ impl LLMManager {
                                                 .and_then(|f| f.get("name"))
                                                 .and_then(|n| n.as_str())
                                                 .unwrap_or("unknown");
+                                            // 🔧 修复：某些 OpenAI 兼容 API 返回 arguments 为 JSON 对象而非字符串
+                                            // 此时 as_str() 返回 None，导致参数被静默丢弃为 ""
                                             let args = tool_call_value
                                                 .get("function")
                                                 .and_then(|f| f.get("arguments"))
-                                                .and_then(|a| a.as_str())
-                                                .unwrap_or("");
+                                                .map(|a| {
+                                                    if let Some(s) = a.as_str() {
+                                                        s.to_string()
+                                                    } else if a.is_null() {
+                                                        String::new()
+                                                    } else {
+                                                        // arguments 是 JSON 对象/数组，序列化为字符串
+                                                        warn!("[llm_manager] 工具调用 arguments 不是字符串而是 JSON 值 (tool={}), 自动序列化", name);
+                                                        serde_json::to_string(a).unwrap_or_default()
+                                                    }
+                                                })
+                                                .unwrap_or_default();
 
                                             pending_tool_calls.insert(
                                                 index,
                                                 (
                                                     id.to_string(),
                                                     name.to_string(),
-                                                    args.to_string(),
+                                                    args,
                                                 ),
                                             );
                                             // 🆕 2026-01-15: 工具调用参数开始累积时通知前端
@@ -1353,12 +1365,21 @@ impl LLMManager {
                                             pending_tool_calls.get(&index).cloned()
                                         {
                                             // 这是工具调用的后续块（没有id，只有arguments片段）
-                                            if let Some(args_fragment) = tool_call_value
+                                            // 🔧 修复：同样处理 arguments 为 JSON 对象的情况
+                                            let args_fragment_opt = tool_call_value
                                                 .get("function")
                                                 .and_then(|f| f.get("arguments"))
-                                                .and_then(|a| a.as_str())
-                                            {
-                                                accumulated_args.push_str(args_fragment);
+                                                .and_then(|a| {
+                                                    if let Some(s) = a.as_str() {
+                                                        Some(s.to_string())
+                                                    } else if a.is_null() {
+                                                        None
+                                                    } else {
+                                                        Some(serde_json::to_string(a).unwrap_or_default())
+                                                    }
+                                                });
+                                            if let Some(args_fragment) = args_fragment_opt {
+                                                accumulated_args.push_str(&args_fragment);
                                                 pending_tool_calls.insert(
                                                     index,
                                                     (id, name, accumulated_args.clone()),
@@ -2377,25 +2398,30 @@ impl LLMManager {
                                                 .and_then(|f| f.get("name"))
                                                 .and_then(|n| n.as_str())
                                                 .unwrap_or("unknown");
+                                            // 🔧 修复：某些 OpenAI 兼容 API 返回 arguments 为 JSON 对象而非字符串
                                             let args = tool_call_value
                                                 .get("function")
                                                 .and_then(|f| f.get("arguments"))
-                                                .and_then(|a| a.as_str())
-                                                .unwrap_or("");
+                                                .map(|a| {
+                                                    if let Some(s) = a.as_str() {
+                                                        s.to_string()
+                                                    } else if a.is_null() {
+                                                        String::new()
+                                                    } else {
+                                                        warn!("[llm_manager] 工具调用 arguments 不是字符串而是 JSON 值 (tool={}), 自动序列化", name);
+                                                        serde_json::to_string(a).unwrap_or_default()
+                                                    }
+                                                })
+                                                .unwrap_or_default();
 
                                             pending_tool_calls.insert(
                                                 index,
                                                 (
                                                     id.to_string(),
                                                     name.to_string(),
-                                                    args.to_string(),
+                                                    args,
                                                 ),
                                             );
-                                            // 🆕 2026-01-15: 工具调用参数开始累积时通知前端
-                                            // 让前端立即显示"正在准备工具调用"状态
-                                            if let Some(h) = self.get_hook(stream_event).await {
-                                                h.on_tool_call_start(id, name);
-                                            }
                                             // 简化日志：工具调用开始时输出一次
                                             print!("🔧");
                                             use std::io::Write;
@@ -2404,12 +2430,21 @@ impl LLMManager {
                                             pending_tool_calls.get(&index).cloned()
                                         {
                                             // 这是工具调用的后续块（没有id，只有arguments片段）
-                                            if let Some(args_fragment) = tool_call_value
+                                            // 🔧 修复：同样处理 arguments 为 JSON 对象的情况
+                                            let args_fragment_opt = tool_call_value
                                                 .get("function")
                                                 .and_then(|f| f.get("arguments"))
-                                                .and_then(|a| a.as_str())
-                                            {
-                                                accumulated_args.push_str(args_fragment);
+                                                .and_then(|a| {
+                                                    if let Some(s) = a.as_str() {
+                                                        Some(s.to_string())
+                                                    } else if a.is_null() {
+                                                        None
+                                                    } else {
+                                                        Some(serde_json::to_string(a).unwrap_or_default())
+                                                    }
+                                                });
+                                            if let Some(args_fragment) = args_fragment_opt {
+                                                accumulated_args.push_str(&args_fragment);
                                                 pending_tool_calls.insert(
                                                     index,
                                                     (id, name, accumulated_args.clone()),
@@ -2427,9 +2462,8 @@ impl LLMManager {
                                     }
                                 }
                                 crate::providers::StreamEvent::Usage(usage_value) => {
-                                    // 存储 usage 数据以便最终记录到数据库
+                                    // 存储 usage 数据
                                     captured_usage = Some(usage_value.clone());
-                                    // emit usage 事件
                                     if let Err(e) = window
                                         .emit(&format!("{}_usage", stream_event), &usage_value)
                                     {

@@ -26,6 +26,21 @@ const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'in
 /** Maximum characters allowed for source text input */
 const TRANSLATION_MAX_CHARS = 50000;
 
+/** Clean up common OCR artifacts before filling source text */
+function cleanOcrText(text: string): string {
+  const CJK = /[\u4e00-\u9fff\u3400-\u4dbf\u3000-\u303f\uff00-\uffef]/;
+  return text
+    .replace(/(\S)-\n(\S)/g, '$1$2')       // merge hyphenated line breaks
+    .replace(/([^\n])\n([^\n])/g, (_m, before: string, after: string) => {
+      // CJK↔CJK: join directly; otherwise insert a space (Latin text needs word separator)
+      if (CJK.test(before) && CJK.test(after)) return `${before}${after}`;
+      return `${before} ${after}`;
+    })
+    .replace(/[ \t]+/g, ' ')               // collapse multiple spaces/tabs
+    .replace(/\n{3,}/g, '\n\n')            // limit consecutive blank lines
+    .trim();
+}
+
 /**
  * 翻译工作台 Props
  *
@@ -69,10 +84,12 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
   // 左栏状态（从 session 初始化）
   const [sourceText, setSourceText] = useState(initialSession?.sourceText || '');
   const [srcLang, setSrcLang] = useState(initialSession?.srcLang || 'auto');
-  const [tgtLang, setTgtLang] = useState(initialSession?.tgtLang || 'en');
+  const [tgtLang, setTgtLang] = useState(initialSession?.tgtLang || 'zh-CN');
   const [customPrompt, setCustomPrompt] = useState('');
   const [showPromptEditor, setShowPromptEditor] = useState(false);
   const [formality, setFormality] = useState<'formal' | 'casual' | 'auto'>(initialSession?.formality || 'auto');
+  const [domain, setDomain] = useState<string>(initialSession?.domain || 'general');
+  const [glossary, setGlossary] = useState<Array<[string, string]>>(initialSession?.glossary || []);
 
   // 右栏状态
   const [isEditingTranslation, setIsEditingTranslation] = useState(false);
@@ -156,6 +173,10 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
       if (initialSession.formality) {
         setFormality(initialSession.formality);
       }
+      // 同步领域
+      setDomain(initialSession.domain || 'general');
+      // 同步术语表
+      setGlossary(initialSession.glossary || []);
       // 同步质量评分
       if (initialSession.quality !== undefined) {
         setTranslationQuality(initialSession.quality);
@@ -218,7 +239,7 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
             const dataUrl = e.target?.result as string;
             const base64Content = dataUrl.split(',')[1];
             const extracted = await ocrExtractText({ imageBase64: base64Content });
-            handleSetSourceText(extracted);
+            handleSetSourceText(cleanOcrText(extracted));
             showGlobalNotification('success', t('translation:toast.ocr_success'));
           } catch (error: unknown) {
             showGlobalNotification('error', t('translation:toast.ocr_failed', { error: getErrorMessage(error) }));
@@ -283,6 +304,8 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
         tgt_lang: tgtLang,
         prompt_override: customPrompt || undefined,
         formality: formality,
+        glossary: glossary.length > 0 ? glossary : undefined,
+        domain: domain !== 'general' ? domain : undefined,
       });
 
       if (outcome === 'completed') {
@@ -302,6 +325,8 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
               tgtLang,
               formality,
               customPrompt: customPrompt || undefined,
+              domain: domain !== 'general' ? domain : undefined,
+              glossary: glossary.length > 0 ? glossary : undefined,
               createdAt: initialSession?.createdAt || now,
               updatedAt: now,
             };
@@ -328,7 +353,7 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
     } finally {
       setIsRetrying(false);
     }
-  }, [sourceText, srcLang, tgtLang, customPrompt, formality, t, translationStream.startTranslation, isTranslating, dstuMode, initialSession, isOnline]);
+  }, [sourceText, srcLang, tgtLang, customPrompt, formality, domain, glossary, t, translationStream.startTranslation, isTranslating, dstuMode, initialSession, isOnline]);
 
   // 重试翻译
   const handleRetryTranslation = useCallback(() => {
@@ -378,16 +403,18 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
     setTranslatedText(tempText);
   }, [srcLang, tgtLang, sourceText, translatedText, t, setTranslatedText]);
 
-  // 自动翻译逻辑
+  // 自动翻译逻辑（智能 debounce：短文本快速触发，长文本延迟触发）
+  // deps 包含所有影响翻译结果的参数，修改设置时也会重新触发
   useEffect(() => {
-    // 添加 translationError 检查，失败后不自动重试，避免无限循环
     if (isAutoTranslate && sourceText.trim() && !isTranslating && !translationError) {
+      const len = sourceText.length;
+      const delay = len < 200 ? 1500 : len < 1000 ? 2500 : 4000;
       const timer = setTimeout(() => {
         handleTranslate();
-      }, 1000);
+      }, delay);
       return () => clearTimeout(timer);
     }
-  }, [sourceText, isAutoTranslate, isTranslating, translationError, handleTranslate]);
+  }, [sourceText, srcLang, tgtLang, formality, domain, glossary, isAutoTranslate, isTranslating, translationError, handleTranslate]);
 
   // 编辑译文
   const handleEditTranslation = useCallback(() => {
@@ -416,6 +443,8 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
           tgtLang,
           formality,
           customPrompt: customPrompt || undefined,
+          domain: domain !== 'general' ? domain : undefined,
+          glossary: glossary.length > 0 ? glossary : undefined,
           quality: translationQuality ?? undefined,
           createdAt: initialSession?.createdAt || now,
           updatedAt: now,
@@ -425,7 +454,7 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
     } catch (error: unknown) {
       showGlobalNotification('error', t('translation:toast.update_failed', { error: getErrorMessage(error) }));
     }
-  }, [editedTranslation, t, setTranslatedText, dstuMode, sourceText, srcLang, tgtLang, formality, customPrompt, translationQuality, initialSession]);
+  }, [editedTranslation, t, setTranslatedText, dstuMode, sourceText, srcLang, tgtLang, formality, domain, glossary, customPrompt, translationQuality, initialSession]);
 
   const handleCancelEdit = useCallback(() => {
     setIsEditingTranslation(false);
@@ -434,13 +463,46 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
 
   const handleExportTranslation = useCallback(async () => {
     try {
-      const content = `${t('translation:languages.source_lang')} (${srcLang}):\n${sourceText}\n\n${t('translation:languages.target_lang')} (${tgtLang}):\n${translatedText}\n\nDate: ${new Date().toLocaleString()}`;
+      const date = new Date().toLocaleString();
+      const srcName = t(`translation:languages.${srcLang}`, { defaultValue: srcLang });
+      const tgtName = t(`translation:languages.${tgtLang}`, { defaultValue: tgtLang });
+      const domainName = domain !== 'general' ? t(`translation:prompt_editor.domain_${domain}`, { defaultValue: domain }) : '';
 
-      // Prefer Tauri native save dialog (works reliably in desktop app)
+      // Markdown bilingual format
+      const lines: string[] = [
+        `# Translation`,
+        ``,
+        `| | |`,
+        `|---|---|`,
+        `| **${t('translation:languages.source_lang')}** | ${srcName} |`,
+        `| **${t('translation:languages.target_lang')}** | ${tgtName} |`,
+      ];
+      if (domainName) lines.push(`| **${t('translation:prompt_editor.domain')}** | ${domainName} |`);
+      lines.push(`| **Date** | ${date} |`, ``);
+
+      if (glossary.length > 0) {
+        lines.push(`## ${t('translation:prompt_editor.glossary_title')}`, ``);
+        lines.push(`| ${t('translation:prompt_editor.glossary_source')} | ${t('translation:prompt_editor.glossary_target')} |`);
+        lines.push(`|---|---|`);
+        for (const [src, tgt] of glossary) {
+          lines.push(`| ${src.replace(/\|/g, '\\|')} | ${tgt.replace(/\|/g, '\\|')} |`);
+        }
+        lines.push(``);
+      }
+
+      lines.push(
+        `## ${srcName}`, ``,
+        sourceText, ``,
+        `## ${tgtName}`, ``,
+        translatedText, ``,
+      );
+
+      const content = lines.join('\n');
+
       const result = await fileManager.saveTextFile({
         title: t('translation:target_section.export_title', { defaultValue: 'Export Translation' }),
-        defaultFileName: `translation_${new Date().getTime()}.txt`,
-        filters: [{ name: 'Text', extensions: ['txt'] }],
+        defaultFileName: `translation_${new Date().getTime()}.md`,
+        filters: [{ name: 'Markdown', extensions: ['md'] }, { name: 'Text', extensions: ['txt'] }],
         content,
       });
       if (result.canceled) return;
@@ -449,7 +511,7 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
       console.error('[Translation] Failed to export:', error);
       showGlobalNotification('error', t('translation:errors.export_failed', { error: getErrorMessage(error) }));
     }
-  }, [sourceText, translatedText, srcLang, tgtLang, t]);
+  }, [sourceText, translatedText, srcLang, tgtLang, domain, glossary, t]);
 
   // 朗读译文
   const handleSpeak = useCallback(async () => {
@@ -514,6 +576,8 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
           tgtLang,
           formality,
           customPrompt: customPrompt || undefined,
+          domain: domain !== 'general' ? domain : undefined,
+          glossary: glossary.length > 0 ? glossary : undefined,
           quality: rating,
           createdAt: initialSession?.createdAt || now,
           updatedAt: now,
@@ -523,7 +587,7 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
         showGlobalNotification('error', getErrorMessage(error));
       }
     }
-  }, [t, dstuMode, sourceText, translatedText, srcLang, tgtLang, formality, customPrompt, initialSession]);
+  }, [t, dstuMode, sourceText, translatedText, srcLang, tgtLang, formality, domain, glossary, customPrompt, initialSession]);
 
   // 快捷键支持（注册在 document 上，处理后 stopPropagation 阻止冒泡到命令系统）
   useEffect(() => {
@@ -618,6 +682,10 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
               setShowPromptEditor={setShowPromptEditor}
               formality={formality}
               setFormality={setFormality}
+              domain={domain}
+              setDomain={setDomain}
+              glossary={glossary}
+              setGlossary={setGlossary}
               isEditingTranslation={isEditingTranslation}
               editedTranslation={editedTranslation}
               setEditedTranslation={setEditedTranslation}

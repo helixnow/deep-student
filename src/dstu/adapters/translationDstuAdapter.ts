@@ -37,6 +37,10 @@ export interface TranslationSession {
   formality: 'formal' | 'casual' | 'auto';
   /** 自定义提示词 */
   customPrompt?: string;
+  /** 翻译领域 */
+  domain?: string;
+  /** 术语表 */
+  glossary?: Array<[string, string]>;
   /** 翻译质量评分 (1-5) */
   quality?: number;
   /** 是否收藏 */
@@ -65,6 +69,14 @@ const LOG_PREFIX = '[TranslationDSTU]';
 // ============================================================================
 
 /**
+ * 向后兼容：旧版 'zh' 代码映射为 'zh-CN'
+ */
+function normalizeLangCode(code: string): string {
+  if (code === 'zh') return 'zh-CN';
+  return code;
+}
+
+/**
  * 将 DstuNode 转换为 TranslationSession
  */
 export function dstuNodeToTranslationSession(node: DstuNode): TranslationSession {
@@ -73,10 +85,12 @@ export function dstuNodeToTranslationSession(node: DstuNode): TranslationSession
     id: node.id,
     sourceText: (meta.sourceText as string) || '',
     translatedText: (meta.translatedText as string) || '',
-    srcLang: (meta.srcLang as string) || 'auto',
-    tgtLang: (meta.tgtLang as string) || 'zh',
+    srcLang: normalizeLangCode((meta.srcLang as string) || 'auto'),
+    tgtLang: normalizeLangCode((meta.tgtLang as string) || 'zh-CN'),
     formality: (meta.formality as 'formal' | 'casual' | 'auto') || 'auto',
     customPrompt: meta.customPrompt as string | undefined,
+    domain: meta.domain as string | undefined,
+    glossary: meta.glossary as Array<[string, string]> | undefined,
     quality: meta.qualityRating as number | undefined,
     isFavorite: Boolean(meta.isFavorite),
     createdAt: node.createdAt,

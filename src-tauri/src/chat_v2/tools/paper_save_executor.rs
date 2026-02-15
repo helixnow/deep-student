@@ -178,6 +178,21 @@ impl PaperSaveExecutor {
         call: &ToolCall,
         ctx: &ExecutionContext,
     ) -> Result<Value, String> {
+        // 🔧 诊断日志：在入口处记录 arguments 的原始类型和内容预览
+        {
+            let raw = call.arguments.to_string();
+            log::info!(
+                "[PaperSave] execute_paper_save called. args_type={}, args_len={}, preview={}",
+                if call.arguments.is_object() { "object" }
+                else if call.arguments.is_array() { "array" }
+                else if call.arguments.is_string() { "string" }
+                else if call.arguments.is_null() { "null" }
+                else { "other" },
+                raw.len(),
+                &raw[..raw.len().min(300)]
+            );
+        }
+
         // 健壮化参数提取：处理多种 arguments 格式
         let papers_owned: Vec<Value>;
 
@@ -211,6 +226,14 @@ impl PaperSaveExecutor {
                 "Tool call arguments were truncated by LLM max_tokens limit. Please retry with a shorter prompt."
                     .to_string(),
             );
+        } else if let Some(arr) = call.arguments.get("paper").and_then(|v| v.as_array()) {
+            // LLM 用了 "paper" (单数) 而非 "papers" (复数)
+            log::warn!("[PaperSave] LLM used 'paper' (singular) instead of 'papers', auto-correcting");
+            papers_owned = arr.clone();
+        } else if call.arguments.is_object() && call.arguments.get("title").is_some() {
+            // LLM 直接传了单篇论文对象 {"title": "...", "doi": "..."} 而非 {"papers": [{...}]}
+            log::warn!("[PaperSave] LLM sent a single paper object without 'papers' wrapper, auto-wrapping");
+            papers_owned = vec![call.arguments.clone()];
         } else {
             // 诊断日志：打印实际 arguments 结构
             let keys: Vec<String> = call
@@ -229,11 +252,12 @@ impl PaperSaveExecutor {
             } else {
                 "other"
             };
+            let raw = call.arguments.to_string();
             log::error!(
                 "[PaperSave] Cannot extract 'papers' from arguments. type={}, keys={:?}, raw_preview={}",
                 type_name,
                 keys,
-                &call.arguments.to_string()[..call.arguments.to_string().len().min(500)]
+                &raw[..raw.len().min(500)]
             );
             return Err(format!(
                 "Missing required parameter 'papers' (array). Got arguments type={}, keys={:?}",
@@ -458,17 +482,13 @@ impl PaperSaveExecutor {
             format!("{}.pdf", safe_title)
         };
 
+        // 🔧 修复：不指定 folder_id 时存到根目录（None），
+        // 使论文直接出现在学习资源"全部文件"视图中。
+        // 之前错误地使用 AttachmentConfig::get_or_create_root_folder()
+        // 导致论文被存到"附件"隐藏文件夹中。
         let target_folder_id = match folder_id {
             Some(id) if !id.is_empty() => Some(id.to_string()),
-            _ => {
-                use crate::vfs::attachment_config::AttachmentConfig;
-                let config = AttachmentConfig::new(vfs_db.clone());
-                Some(
-                    config
-                        .get_or_create_root_folder()
-                        .map_err(|e| e.to_string())?,
-                )
-            }
+            _ => None, // 根目录
         };
 
         let file = VfsFileRepo::create_file_with_doc_data_in_folder(

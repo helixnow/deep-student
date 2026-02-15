@@ -1844,7 +1844,7 @@ impl VfsAttachmentRepo {
             .to_string();
 
         let updated = conn.execute(
-            "UPDATE files SET deleted_at = ?1, updated_at = ?1 WHERE id = ?2 AND deleted_at IS NULL",
+            "UPDATE files SET status = 'deleted', deleted_at = ?1, updated_at = ?1 WHERE id = ?2 AND deleted_at IS NULL AND status = 'active'",
             params![now, id],
         )?;
 
@@ -1882,7 +1882,7 @@ impl VfsAttachmentRepo {
             .to_string();
 
         let updated = conn.execute(
-            "UPDATE files SET deleted_at = NULL, updated_at = ?1 WHERE id = ?2 AND deleted_at IS NOT NULL",
+            "UPDATE files SET deleted_at = NULL, status = 'active', updated_at = ?1 WHERE id = ?2 AND deleted_at IS NOT NULL",
             params![now, id],
         )?;
 
@@ -1917,7 +1917,7 @@ impl VfsAttachmentRepo {
             .to_string();
 
         let updated = conn.execute(
-            "UPDATE files SET deleted_at = NULL, name = ?1, updated_at = ?2 WHERE id = ?3 AND deleted_at IS NOT NULL",
+            "UPDATE files SET deleted_at = NULL, status = 'active', name = ?1, updated_at = ?2 WHERE id = ?3 AND deleted_at IS NOT NULL",
             params![new_name, now, id],
         )?;
 

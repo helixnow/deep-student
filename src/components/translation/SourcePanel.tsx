@@ -40,6 +40,10 @@ interface SourcePanelProps {
     setShowPromptEditor: (show: boolean) => void;
     formality: 'formal' | 'casual' | 'auto';
     setFormality: (formality: 'formal' | 'casual' | 'auto') => void;
+    domain?: string;
+    setDomain?: (domain: string) => void;
+    glossary?: Array<[string, string]>;
+    setGlossary?: (glossary: Array<[string, string]>) => void;
     onSavePrompt: () => void;
     onRestoreDefaultPrompt: () => void;
     onClear: () => void;
@@ -75,6 +79,10 @@ export const SourcePanel = React.forwardRef<HTMLTextAreaElement, SourcePanelProp
     setShowPromptEditor,
     formality,
     setFormality,
+    domain,
+    setDomain,
+    glossary,
+    setGlossary,
     onSavePrompt,
     onRestoreDefaultPrompt,
     onClear,
@@ -206,6 +214,10 @@ export const SourcePanel = React.forwardRef<HTMLTextAreaElement, SourcePanelProp
                             setIsOpen={setShowPromptEditor}
                             formality={formality}
                             setFormality={setFormality}
+                            domain={domain}
+                            setDomain={setDomain}
+                            glossary={glossary}
+                            setGlossary={setGlossary}
                         />
                     </div>
 

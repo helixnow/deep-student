@@ -3108,10 +3108,33 @@ impl LLMManager {
             .ok_or("Missing 'function.name' field")?
             .to_string();
 
-        let arguments_str = function
+        // 🔧 修复：某些 OpenAI 兼容 API 的 arguments 已是 JSON 对象而非字符串
+        let arguments_value = function
             .get("arguments")
-            .and_then(|v| v.as_str())
             .ok_or("Missing 'function.arguments' field")?;
+
+        // 如果 arguments 已经是 JSON 对象/数组，直接使用
+        if !arguments_value.is_string() {
+            if arguments_value.is_object() || arguments_value.is_array() {
+                log::debug!(
+                    "[llm_manager] convert_openai_tool_call: arguments 已是 JSON 值 (tool={})",
+                    tool_name
+                );
+                return Ok(crate::models::ToolCall {
+                    id,
+                    tool_name,
+                    args_json: arguments_value.clone(),
+                });
+            }
+            // null 或其他类型 → 空对象
+            return Ok(crate::models::ToolCall {
+                id,
+                tool_name,
+                args_json: Value::Object(serde_json::Map::new()),
+            });
+        }
+
+        let arguments_str = arguments_value.as_str().unwrap_or("{}");
 
         // 解析 arguments 字符串为 JSON
         // 如果解析失败（常见于 LLM 输出被 max_tokens 截断），尝试修复截断的 JSON

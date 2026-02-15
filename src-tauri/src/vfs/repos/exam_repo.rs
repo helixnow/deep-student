@@ -616,10 +616,26 @@ impl VfsExamRepo {
         )?;
 
         if updated == 0 {
-            return Err(VfsError::NotFound {
-                resource_type: "ExamSheet".to_string(),
-                id: exam_id.to_string(),
-            });
+            // ★ P0 修复：幂等处理 - 检查是否已被软删除
+            let already_deleted: bool = conn
+                .query_row(
+                    "SELECT EXISTS(SELECT 1 FROM exam_sheets WHERE id = ?1 AND deleted_at IS NOT NULL)",
+                    params![exam_id],
+                    |row| row.get(0),
+                )
+                .unwrap_or(false);
+
+            if already_deleted {
+                info!(
+                    "[VFS::ExamRepo] Exam already deleted (idempotent): {}",
+                    exam_id
+                );
+            } else {
+                return Err(VfsError::NotFound {
+                    resource_type: "ExamSheet".to_string(),
+                    id: exam_id.to_string(),
+                });
+            }
         }
 
         info!("[VFS::ExamRepo] Soft deleted exam: {}", exam_id);

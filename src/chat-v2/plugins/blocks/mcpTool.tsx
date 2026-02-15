@@ -304,10 +304,17 @@ const TODO_TOOLS = [
 ];
 
 /**
- * PaperSave 工具名常量
- * 使用专用 PaperSaveBlock 显示细粒度下载进度
+ * 检测是否为 PaperSave 工具
+ * 去除所有已知前缀后匹配基础名称，使用专用 PaperSaveBlock 显示细粒度下载进度
  */
-const PAPER_SAVE_TOOLS = ['paper_save', 'builtin-paper_save'];
+function isPaperSaveTool(name: string): boolean {
+  const stripped = name
+    .replace(/^builtin[-:]/, '')
+    .replace(/^mcp_/, '')
+    .replace(/^mcp\.tools\./, '')
+    .replace(/^.*\./, '');
+  return stripped === 'paper_save';
+}
 
 // 笔记编辑工具列表
 const NOTE_TOOLS = [
@@ -403,7 +410,11 @@ const McpToolBlockComponent: React.FC<BlockComponentProps> = ({
   }
 
   // 🆕 如果是 PaperSave 工具，使用专用进度组件渲染
-  if (PAPER_SAVE_TOOLS.includes(toolName)) {
+  const _isPaperSave = isPaperSaveTool(toolName);
+  if (process.env.NODE_ENV === 'development' && toolName.toLowerCase().includes('paper')) {
+    console.log('[McpTool] paper tool check:', { toolName, isPaperSave: _isPaperSave, blockStatus: block.status, hasContent: !!block.content });
+  }
+  if (_isPaperSave) {
     return <PaperSaveBlock block={block} isStreaming={isStreaming} />;
   }
 

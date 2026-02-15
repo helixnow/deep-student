@@ -627,35 +627,42 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
     let cancelled = false;
     if (currentQuestion?.images && currentQuestion.images.length > 0) {
       const loadImages = async () => {
-        const urls: Record<string, string> = {};
-        for (const img of currentQuestion.images!) {
-          if (cancelled) return;
+        const imagesToLoad = currentQuestion.images!.filter(
+          img => !questionImageUrls[img.id] || questionImageUrls[img.id] === 'error'
+        );
+        const cachedUrls: Record<string, string> = {};
+        currentQuestion.images!.forEach(img => {
           if (questionImageUrls[img.id] && questionImageUrls[img.id] !== 'error') {
-            urls[img.id] = questionImageUrls[img.id];
-            continue;
+            cachedUrls[img.id] = questionImageUrls[img.id];
           }
-          try {
+        });
+        const results = await Promise.allSettled(
+          imagesToLoad.map(async (img) => {
             const result = await invoke<{ content: string | null; found: boolean }>('vfs_get_attachment_content', {
               attachmentId: img.id,
             });
-            if (cancelled) return;
             if (result.found && result.content) {
-              urls[img.id] = `data:${img.mime};base64,${result.content}`;
+              return { id: img.id, url: `data:${img.mime};base64,${result.content}` };
             }
-          } catch { /* skip failed images */ }
-        }
-        if (!cancelled) {
-          setQuestionImageUrls(prev => {
-            const merged = { ...prev, ...urls };
-            // 缓存控制：保留最近 50 张图片
-            const keys = Object.keys(merged);
-            if (keys.length > 50) {
-              const toRemove = keys.slice(0, keys.length - 50);
-              toRemove.forEach(k => delete merged[k]);
-            }
-            return merged;
-          });
-        }
+            return null;
+          })
+        );
+        if (cancelled) return;
+        const urls: Record<string, string> = { ...cachedUrls };
+        results.forEach(r => {
+          if (r.status === 'fulfilled' && r.value) {
+            urls[r.value.id] = r.value.url;
+          }
+        });
+        setQuestionImageUrls(prev => {
+          const merged = { ...prev, ...urls };
+          const keys = Object.keys(merged);
+          if (keys.length > 50) {
+            const toRemove = keys.slice(0, keys.length - 50);
+            toRemove.forEach(k => delete merged[k]);
+          }
+          return merged;
+        });
       };
       loadImages();
     }
@@ -768,11 +775,11 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
         setStreakCount(0);
       }
 
-      // 检查是否完成所有题目（最后一题提交后）
-      if (currentIndex === totalQuestions - 1) {
-        const answeredCount = Object.keys(questionTimes).length + 1;
-        // 使用 totalCorrectCount 而非 streakCount（streakCount 是连续正确数，不是总正确数）
-        const finalCorrectCount = totalCorrectCount + (result.isCorrect ? 1 : 0);
+      // 检查是否完成所有题目：基于已作答题目数，而非当前索引
+      const answeredCount = Object.keys(questionTimes).length + 1; // +1 for current question
+      if (answeredCount >= totalQuestions && totalQuestions > 0) {
+        // result.isCorrect 可能为 null（主观题），null 不计为正确也不计为错误
+        const finalCorrectCount = totalCorrectCount + (result.isCorrect === true ? 1 : 0);
         setCompletionStats({
           totalAnswered: answeredCount,
           correctCount: finalCorrectCount,
@@ -915,8 +922,8 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
         handleNavigate('next');
       }
       
-      // R 键重做（答错后）
-      if (e.key === 'r' && submitResult && !submitResult.isCorrect) {
+      // R 键重做（仅明确答错后，不含主观题 null 状态）
+      if (e.key === 'r' && submitResult && submitResult.isCorrect === false) {
         e.preventDefault();
         handleRetry();
       }
@@ -1473,63 +1480,104 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                         {submitResult && !editMode && (
                           <div className={cn(
                             'p-3 rounded-md mt-1 space-y-3',
-                            submitResult.isCorrect 
-                              ? 'bg-emerald-600/[0.08] dark:bg-emerald-600/[0.15]' 
-                              : 'bg-destructive/[0.08] dark:bg-destructive/[0.15]'
+                            submitResult.needsManualGrading
+                              ? 'bg-warning/[0.08] dark:bg-warning/[0.15]'
+                              : submitResult.isCorrect 
+                                ? 'bg-emerald-600/[0.08] dark:bg-emerald-600/[0.15]' 
+                                : 'bg-destructive/[0.08] dark:bg-destructive/[0.15]'
                           )}>
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-2.5">
-                                <div className={cn(
-                                  'w-5 h-5 rounded-full flex items-center justify-center',
-                                  submitResult.isCorrect ? 'bg-emerald-600 dark:bg-emerald-500' : 'bg-destructive'
-                                )}>
-                                  {submitResult.isCorrect 
-                                    ? <Check className="w-3 h-3 text-white" /> 
-                                    : <X className="w-3 h-3 text-white" />
-                                  }
+                            {submitResult.needsManualGrading ? (
+                              <div className="space-y-2">
+                                <div className="flex items-center gap-2.5">
+                                  <div className="w-5 h-5 rounded-full bg-warning flex items-center justify-center">
+                                    <Lightbulb className="w-3 h-3 text-white" />
+                                  </div>
+                                  <div>
+                                    <span className="text-sm font-medium text-amber-600 dark:text-amber-400">{t('editor.subjectiveSubmitted')}</span>
+                                    <span className="text-xs text-muted-foreground ml-2">{t('editor.judgeSelf')}</span>
+                                  </div>
                                 </div>
-                                <span className={cn(
-                                  'text-sm font-medium',
-                                  submitResult.isCorrect ? 'text-emerald-600 dark:text-emerald-400' : 'text-destructive'
-                                )}>
-                                  {submitResult.isCorrect ? t('editor.answerCorrect') : t('editor.answerWrong')}
-                                </span>
-                              </div>
-                              {/* 重做按钮 */}
-                              {!submitResult.isCorrect && (
-                                <button
-                                  onClick={handleRetry}
-                                  className="flex items-center gap-1 px-2 py-1 text-xs rounded hover:bg-foreground/5 text-muted-foreground"
-                                >
-                                  <RefreshCw className="w-3 h-3" />
-                                  {t('editor.retry')}
-                                </button>
-                              )}
-                            </div>
-                            {submitResult.correctAnswer && !submitResult.isCorrect && (
-                              <p className="text-sm text-muted-foreground pl-7.5">
-                                {t('editor.correctAnswerLabel')}<span className="font-medium text-foreground">{submitResult.correctAnswer}</span>
-                              </p>
-                            )}
-                            {/* 解析折叠 */}
-                            {submitResult.explanation && (
-                              <div className="pt-2 border-t border-foreground/[0.06]">
-                                <button
-                                  onClick={() => setExplanationExpanded(!explanationExpanded)}
-                                  className="flex items-center gap-1.5 text-sm text-warning hover:underline"
-                                >
-                                  <Lightbulb className="w-4 h-4" />
-                                  {t('editor.viewExplanation')}
-                                  {explanationExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-                                </button>
-                                {explanationExpanded && (
-                                  <div className="text-sm text-muted-foreground mt-2 leading-relaxed">
-                                    <MarkdownRenderer
-                                      content={submitResult.explanation}
-                                    />
+                                {submitResult.correctAnswer && (
+                                  <p className="text-sm text-muted-foreground pl-7.5">
+                                    {t('editor.referenceAnswerLabel')}<span className="font-medium text-foreground">{submitResult.correctAnswer}</span>
+                                  </p>
+                                )}
+                                {onMarkCorrect && (
+                                  <div className="flex gap-2 pt-1">
+                                    <button
+                                      onClick={() => handleManualGrade(true)}
+                                      className="flex-1 h-8 flex items-center justify-center gap-1.5 text-sm font-medium rounded text-emerald-600 dark:text-emerald-400 bg-emerald-600/10 hover:bg-emerald-600/[0.15] transition-colors"
+                                    >
+                                      <Check className="w-3.5 h-3.5" />
+                                      {t('editor.iGotItRight')}
+                                    </button>
+                                    <button
+                                      onClick={() => handleManualGrade(false)}
+                                      className="flex-1 h-8 flex items-center justify-center gap-1.5 text-sm font-medium rounded text-destructive bg-destructive/10 hover:bg-destructive/[0.15] transition-colors"
+                                    >
+                                      <X className="w-3.5 h-3.5" />
+                                      {t('editor.iGotItWrong')}
+                                    </button>
                                   </div>
                                 )}
                               </div>
+                            ) : (
+                              <>
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-2.5">
+                                    <div className={cn(
+                                      'w-5 h-5 rounded-full flex items-center justify-center',
+                                      submitResult.isCorrect ? 'bg-emerald-600 dark:bg-emerald-500' : 'bg-destructive'
+                                    )}>
+                                      {submitResult.isCorrect 
+                                        ? <Check className="w-3 h-3 text-white" /> 
+                                        : <X className="w-3 h-3 text-white" />
+                                      }
+                                    </div>
+                                    <span className={cn(
+                                      'text-sm font-medium',
+                                      submitResult.isCorrect ? 'text-emerald-600 dark:text-emerald-400' : 'text-destructive'
+                                    )}>
+                                      {submitResult.isCorrect ? t('editor.answerCorrect') : t('editor.answerWrong')}
+                                    </span>
+                                  </div>
+                                  {/* 重做按钮 */}
+                                  {!submitResult.isCorrect && (
+                                    <button
+                                      onClick={handleRetry}
+                                      className="flex items-center gap-1 px-2 py-1 text-xs rounded hover:bg-foreground/5 text-muted-foreground"
+                                    >
+                                      <RefreshCw className="w-3 h-3" />
+                                      {t('editor.retry')}
+                                    </button>
+                                  )}
+                                </div>
+                                {submitResult.correctAnswer && !submitResult.isCorrect && (
+                                  <p className="text-sm text-muted-foreground pl-7.5">
+                                    {t('editor.correctAnswerLabel')}<span className="font-medium text-foreground">{submitResult.correctAnswer}</span>
+                                  </p>
+                                )}
+                                {/* 解析折叠 */}
+                                {submitResult.explanation && (
+                                  <div className="pt-2 border-t border-foreground/[0.06]">
+                                    <button
+                                      onClick={() => setExplanationExpanded(!explanationExpanded)}
+                                      className="flex items-center gap-1.5 text-sm text-warning hover:underline"
+                                    >
+                                      <Lightbulb className="w-4 h-4" />
+                                      {t('editor.viewExplanation')}
+                                      {explanationExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                                    </button>
+                                    {explanationExpanded && (
+                                      <div className="text-sm text-muted-foreground mt-2 leading-relaxed">
+                                        <MarkdownRenderer
+                                          content={submitResult.explanation}
+                                        />
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </>
                             )}
                           </div>
                         )}
@@ -1696,9 +1744,9 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
 
             <CardContent className="space-y-6">
               <div className="prose prose-sm dark:prose-invert max-w-none">
-                <p className="text-base leading-relaxed whitespace-pre-wrap">
-                  {currentQuestion.content || currentQuestion.ocrText || t('editor.noContent')}
-                </p>
+                <MarkdownRenderer
+                  content={currentQuestion.content || currentQuestion.ocrText || t('editor.noContent')}
+                />
               </div>
 
               {/* 题目图片 */}
@@ -1913,7 +1961,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                               <Sparkles className="w-3 h-3 text-white" />
                             </div>
                             <span className="text-sm font-medium text-blue-600 dark:text-blue-400">
-                              AI 评判中...
+                              {t('editor.aiGrading')}
                             </span>
                             <button
                               onClick={() => aiGrading.cancelGrading()}
@@ -1939,7 +1987,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                               <AlertCircle className="w-3 h-3 text-white" />
                             </div>
                             <span className="text-sm text-amber-600 dark:text-amber-400">
-                              AI 评判失败，请自行评判
+                              {t('editor.aiGradingFailed')}
                             </span>
                           </div>
                           {submitResult.correctAnswer && (
@@ -2015,11 +2063,11 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                                 aiGrading.state.verdict === 'partial' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' :
                                 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
                               )}>
-                                {aiGrading.state.verdict === 'correct' ? '正确' : aiGrading.state.verdict === 'partial' ? '部分正确' : '错误'}
+                                {aiGrading.state.verdict === 'correct' ? t('editor.verdictCorrect') : aiGrading.state.verdict === 'partial' ? t('editor.verdictPartial') : t('editor.verdictIncorrect')}
                               </span>
                               {aiGrading.state.score != null && (
                                 <span className="text-xs text-muted-foreground">
-                                  AI 评分：{aiGrading.state.score}/100
+                                  {t('editor.aiScore', { score: aiGrading.state.score })}
                                 </span>
                               )}
                             </div>
@@ -2099,7 +2147,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                           <div className="space-y-2">
                             <div className="flex items-center gap-2">
                               <DsAnalysisIconMuted className="w-4 h-4 text-blue-500 animate-pulse" />
-                              <span className="text-sm text-blue-600 dark:text-blue-400">AI 解析中...</span>
+                              <span className="text-sm text-blue-600 dark:text-blue-400">{t('editor.aiAnalyzing')}</span>
                               <button
                                 onClick={() => aiGrading.cancelGrading()}
                                 className="ml-auto text-xs text-muted-foreground hover:text-foreground"
@@ -2120,7 +2168,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                           <div className="space-y-1">
                             <div className="flex items-center gap-1.5 text-sm text-blue-600 dark:text-blue-400">
                               <DsAnalysisIconMuted className="w-4 h-4" />
-                              AI 解析
+                              {t('editor.aiAnalysis')}
                             </div>
                             <div className="text-sm text-muted-foreground leading-relaxed">
                               <StreamingMarkdownRenderer
@@ -2134,7 +2182,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                           <div className="space-y-1">
                             <div className="flex items-center gap-1.5 text-sm text-blue-600 dark:text-blue-400">
                               <DsAnalysisIconMuted className="w-4 h-4" />
-                              AI 解析
+                              {t('editor.aiAnalysis')}
                             </div>
                             <div className="text-sm text-muted-foreground leading-relaxed">
                               <StreamingMarkdownRenderer
@@ -2163,7 +2211,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                             className="flex items-center gap-1.5 text-sm text-blue-600 dark:text-blue-400 hover:underline"
                           >
                             <DsAnalysisIconMuted className="w-4 h-4" />
-                            AI 解析
+                            {t('editor.aiAnalysis')}
                           </button>
                         )}
                       </div>

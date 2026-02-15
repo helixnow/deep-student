@@ -496,15 +496,31 @@ impl VfsTranslationRepo {
             .to_string();
 
         let updated = conn.execute(
-            "UPDATE translations SET deleted_at = ?1 WHERE id = ?2 AND deleted_at IS NULL",
+            "UPDATE translations SET deleted_at = ?1, updated_at = ?1 WHERE id = ?2 AND deleted_at IS NULL",
             params![now, translation_id],
         )?;
 
         if updated == 0 {
-            return Err(VfsError::NotFound {
-                resource_type: "Translation".to_string(),
-                id: translation_id.to_string(),
-            });
+            // ★ P0 修复：幂等处理 - 检查是否已被软删除
+            let already_deleted: bool = conn
+                .query_row(
+                    "SELECT EXISTS(SELECT 1 FROM translations WHERE id = ?1 AND deleted_at IS NOT NULL)",
+                    params![translation_id],
+                    |row| row.get(0),
+                )
+                .unwrap_or(false);
+
+            if already_deleted {
+                info!(
+                    "[VFS::TranslationRepo] Translation already deleted (idempotent): {}",
+                    translation_id
+                );
+            } else {
+                return Err(VfsError::NotFound {
+                    resource_type: "Translation".to_string(),
+                    id: translation_id.to_string(),
+                });
+            }
         }
 
         info!(

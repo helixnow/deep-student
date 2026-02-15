@@ -315,7 +315,13 @@ const VariantCard: React.FC<VariantCardProps> = ({
               let currentTimelineBlockIds: string[] = [];
 
               for (const block of blocks) {
-                if (isTimelineBlockType(block.type)) {
+                // 🔧 paper_save 工具不进时间线分组，使用专用 PaperSaveBlock 渲染
+                const isPaperSaveBlock = block.type === 'mcp_tool' && (
+                  block.toolName === 'paper_save' ||
+                  block.toolName === 'builtin-paper_save' ||
+                  block.toolName?.replace(/^builtin[-:]/, '').replace(/^mcp_/, '') === 'paper_save'
+                );
+                if (isTimelineBlockType(block.type) && !isPaperSaveBlock) {
                   // 时间线类型块，累积
                   currentTimelineBlockIds.push(block.id);
                 } else {

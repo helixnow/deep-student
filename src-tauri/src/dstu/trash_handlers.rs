@@ -22,6 +22,36 @@ use super::types::{DstuNode, DstuNodeType, DstuWatchEvent};
 // 向量索引清理辅助函数
 // ============================================================================
 
+/// ★ P1 防护：检查资源是否已在回收站（deleted_at IS NOT NULL）
+///
+/// 防止对活跃资源执行永久删除，确保软删除/硬删除的操作隔离。
+/// 返回 true 表示资源已软删除（可以 purge），false 表示资源仍活跃或不存在。
+pub(crate) fn is_resource_in_trash(db: &VfsDatabase, item_type: &str, item_id: &str) -> bool {
+    let conn = match db.get_conn_safe() {
+        Ok(c) => c,
+        Err(_) => return false,
+    };
+    let sql = match item_type {
+        "note" => "SELECT COUNT(*) FROM notes WHERE id = ?1 AND deleted_at IS NOT NULL",
+        "textbook" | "image" | "file" => "SELECT COUNT(*) FROM files WHERE id = ?1 AND deleted_at IS NOT NULL",
+        "exam" => "SELECT COUNT(*) FROM exam_sheets WHERE id = ?1 AND deleted_at IS NOT NULL",
+        "translation" => "SELECT COUNT(*) FROM translations WHERE id = ?1 AND deleted_at IS NOT NULL",
+        "essay" => {
+            if item_id.starts_with("essay_session_") {
+                "SELECT COUNT(*) FROM essay_sessions WHERE id = ?1 AND deleted_at IS NOT NULL"
+            } else {
+                "SELECT COUNT(*) FROM essays WHERE id = ?1 AND deleted_at IS NOT NULL"
+            }
+        }
+        "folder" => "SELECT COUNT(*) FROM folders WHERE id = ?1 AND deleted_at IS NOT NULL",
+        "mindmap" => "SELECT COUNT(*) FROM mindmaps WHERE id = ?1 AND deleted_at IS NOT NULL",
+        _ => return false,
+    };
+    conn.query_row(sql, params![item_id], |row| row.get::<_, i64>(0))
+        .map(|count| count > 0)
+        .unwrap_or(false)
+}
+
 /// 根据类型和 ID 查找 resource_id（用于向量索引清理）
 ///
 /// 文件夹没有 resource_id，返回 None。
@@ -684,6 +714,18 @@ pub async fn dstu_permanently_delete(
         "[DSTU::trash] dstu_permanently_delete: id={}, type={}",
         id, item_type
     );
+
+    // ★ P1 防护：验证资源已在回收站，防止对活跃资源执行永久删除
+    if !is_resource_in_trash(&db, &item_type, &id) {
+        warn!(
+            "[DSTU::trash] dstu_permanently_delete: REJECTED - resource not in trash, type={}, id={}",
+            item_type, id
+        );
+        return Err(DstuError::VfsError(format!(
+            "资源 {} (type={}) 不在回收站中，无法永久删除。请先将其移到回收站。",
+            id, item_type
+        )));
+    }
 
     // ★ P1 修复：在 purge 之前查找 resource_id（purge 会删除数据库记录）
     // ★ P1 修复：essay_session 需要收集子 essays 的 resource_ids

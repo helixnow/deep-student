@@ -56,9 +56,12 @@ const MAX_IMAGES = 10;
 const MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10MB
 const ALLOWED_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
 
+const MAX_OPTIONS = 26; // A-Z
+
 const questionTypeKeys: { value: QuestionType; labelKey: string }[] = [
   { value: 'single_choice', labelKey: 'exam_sheet:questionBank.edit.questionTypes.single_choice' },
   { value: 'multiple_choice', labelKey: 'exam_sheet:questionBank.edit.questionTypes.multiple_choice' },
+  { value: 'indefinite_choice', labelKey: 'exam_sheet:questionBank.edit.questionTypes.indefinite_choice' },
   { value: 'fill_blank', labelKey: 'exam_sheet:questionBank.edit.questionTypes.fill_blank' },
   { value: 'short_answer', labelKey: 'exam_sheet:questionBank.edit.questionTypes.short_answer' },
   { value: 'essay', labelKey: 'exam_sheet:questionBank.edit.questionTypes.essay' },
@@ -262,6 +265,7 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
   }, []);
 
   const handleAddOption = useCallback(() => {
+    if (editData.options.length >= MAX_OPTIONS) return;
     const nextKey = String.fromCharCode(65 + editData.options.length);
     setEditData(prev => ({
       ...prev,
@@ -326,7 +330,8 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
         };
         const raw = await invoke<Record<string, unknown>>('qbank_create_question', { params });
         const newQuestion: Question = {
-          id: raw.id as string,
+          id: (raw.id ?? raw.question_id ?? '') as string,
+          cardId: (raw.card_id as string) || undefined,
           questionLabel: (raw.question_label as string) || '',
           content: (raw.content as string) || '',
           questionType: (raw.question_type as QuestionType) || 'other',
@@ -341,6 +346,11 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
           correctCount: (raw.correct_count as number) || 0,
           isFavorite: (raw.is_favorite as boolean) || false,
           images: (raw.images as QuestionImage[]) || [],
+          lastAttemptAt: raw.last_attempt_at as string | undefined,
+          ocrText: raw.ocr_text as string | undefined,
+          ai_feedback: raw.ai_feedback as string | undefined,
+          ai_score: raw.ai_score as number | undefined,
+          ai_graded_at: raw.ai_graded_at as string | undefined,
         };
         await onCreate?.(newQuestion);
         onCancel();
@@ -353,17 +363,17 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
         request: {
           question_id: question.id,
           params: {
-            content: editData.content || undefined,
-            question_type: editData.questionType || undefined,
-            options: editData.options.length > 0 ? editData.options : undefined,
-            answer: editData.answer || undefined,
-            explanation: editData.explanation || undefined,
-            difficulty: editData.difficulty || undefined,
-            tags: editData.tags.length > 0 ? editData.tags : undefined,
-            user_note: editData.userNote || undefined,
+            content: editData.content,
+            question_type: editData.questionType || null,
+            options: editData.options.length > 0 ? editData.options : null,
+            answer: editData.answer || null,
+            explanation: editData.explanation || null,
+            difficulty: editData.difficulty || null,
+            tags: editData.tags.length > 0 ? editData.tags : null,
+            user_note: editData.userNote || null,
             images: editData.images.length > 0
               ? editData.images
-              : (question?.images?.length ? [] : undefined),
+              : (question?.images?.length ? [] : null),
           },
           record_history: true,
         },
@@ -374,11 +384,11 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
         content: editData.content,
         questionType: editData.questionType,
         options: editData.options,
-        answer: editData.answer,
-        explanation: editData.explanation,
+        answer: editData.answer || undefined,
+        explanation: editData.explanation || undefined,
         difficulty: editData.difficulty || undefined,
         tags: editData.tags,
-        userNote: editData.userNote,
+        userNote: editData.userNote || undefined,
         images: editData.images,
       };
 
@@ -392,7 +402,7 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
     }
   }, [question, editData, onSave, onCancel, mode, examId, onCreate, t]);
 
-  const isChoiceType = editData.questionType === 'single_choice' || editData.questionType === 'multiple_choice';
+  const isChoiceType = editData.questionType === 'single_choice' || editData.questionType === 'multiple_choice' || editData.questionType === 'indefinite_choice';
 
   return (
     <div
@@ -459,7 +469,7 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
               <Label className="text-xs">{t('exam_sheet:questionBank.edit.options')}</Label>
-              <NotionButton variant="ghost" size="sm" onClick={handleAddOption} className="h-5 text-[10px] px-1.5">
+              <NotionButton variant="ghost" size="sm" onClick={handleAddOption} disabled={editData.options.length >= MAX_OPTIONS} className="h-5 text-[10px] px-1.5">
                 <Plus className="w-2.5 h-2.5 mr-0.5" />
                 {t('common:actions.add')}
               </NotionButton>

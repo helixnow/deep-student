@@ -776,8 +776,9 @@ impl VfsMindMapRepo {
     ///
     /// ★ P0 修复：使用事务保护，防止 mindmaps 删除成功但 folder_items 删除失败导致数据不一致
     pub fn delete_mindmap_with_conn(conn: &Connection, mindmap_id: &str) -> VfsResult<()> {
-        // 开始事务
-        conn.execute("BEGIN IMMEDIATE", [])?;
+        // ★ P0 修复：使用 SAVEPOINT 替代 BEGIN IMMEDIATE，支持在外层事务中嵌套调用
+        // （如 dstu_delete_many 批量删除场景）
+        conn.execute("SAVEPOINT delete_mindmap", [])?;
 
         let result = (|| -> VfsResult<()> {
             let now = chrono::Utc::now()
@@ -825,17 +826,17 @@ impl VfsMindMapRepo {
 
         match result {
             Ok(_) => {
-                // 修复：COMMIT 失败时也需要回滚
-                if let Err(commit_err) = conn.execute("COMMIT", []) {
-                    let _ = conn.execute("ROLLBACK", []);
+                if let Err(commit_err) = conn.execute("RELEASE SAVEPOINT delete_mindmap", []) {
+                    let _ = conn.execute("ROLLBACK TO SAVEPOINT delete_mindmap", []);
                     return Err(commit_err.into());
                 }
                 info!("[VFS::MindMapRepo] Soft deleted mindmap: {}", mindmap_id);
                 Ok(())
             }
             Err(e) => {
-                // 回滚事务，忽略回滚本身的错误
-                let _ = conn.execute("ROLLBACK", []);
+                // 回滚 SAVEPOINT，忽略回滚本身的错误
+                let _ = conn.execute("ROLLBACK TO SAVEPOINT delete_mindmap", []);
+                let _ = conn.execute("RELEASE SAVEPOINT delete_mindmap", []);
                 Err(e)
             }
         }

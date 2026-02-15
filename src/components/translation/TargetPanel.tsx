@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { Textarea } from '../ui/shad/Textarea';
@@ -14,13 +14,18 @@ import {
     Download,
     CheckCircle2,
     Star,
+    Columns2,
 } from 'lucide-react';
 import { TranslationStreamRenderer } from '../../translation/TranslationStreamRenderer';
+import { ComparisonView } from './ComparisonView';
 
 interface TargetPanelProps {
     isMaximized: boolean;
     setIsMaximized: (maximized: boolean) => void;
     setIsSourceCollapsed: (collapsed: boolean) => void;
+    sourceText: string;
+    srcLang: string;
+    tgtLang: string;
     translatedText: string;
     isTranslating: boolean;
     isSyncScroll: boolean;
@@ -46,6 +51,9 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
     isMaximized,
     setIsMaximized,
     setIsSourceCollapsed,
+    sourceText,
+    srcLang,
+    tgtLang,
     translatedText,
     isTranslating,
     isSyncScroll,
@@ -67,6 +75,7 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
     wordCount,
 }, ref) => {
     const { t } = useTranslation(['translation', 'common']);
+    const [showComparison, setShowComparison] = useState(false);
 
     return (
         <div className="flex flex-col h-full min-h-0 flex-1 basis-1/2 min-w-0 transition-all duration-300 bg-muted/10 group/target">
@@ -80,6 +89,19 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
                 </div>
 
                 <div className="flex items-center gap-1">
+                    {/* Comparison View Toggle */}
+                    <CommonTooltip content={t('translation:comparison.toggle', { defaultValue: '段落对照' })}>
+                        <NotionButton
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => setShowComparison(!showComparison)}
+                            disabled={isEditingTranslation}
+                            className={`h-8 w-8 ${showComparison ? 'text-primary bg-primary/10' : 'text-muted-foreground hover:text-foreground'}`}
+                        >
+                            <Columns2 className="w-4 h-4" />
+                        </NotionButton>
+                    </CommonTooltip>
+
                     {/* Sync Scroll Toggle */}
                     <div className="flex items-center gap-2 mr-3 px-2 py-1 rounded-md hover:bg-muted/50 transition-colors">
                         <Switch
@@ -177,6 +199,16 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
                                 </NotionButton>
                             </div>
                         </div>
+                    </div>
+                ) : showComparison ? (
+                    <div className="flex-1 min-h-0 flex flex-col" ref={ref}>
+                        <ComparisonView
+                            sourceText={sourceText}
+                            translatedText={translatedText}
+                            srcLang={srcLang}
+                            tgtLang={tgtLang}
+                            isTranslating={isTranslating}
+                        />
                     </div>
                 ) : (
                     <div className="flex-1 min-h-0 flex flex-col" ref={ref}>

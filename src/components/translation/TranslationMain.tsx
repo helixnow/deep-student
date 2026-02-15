@@ -29,6 +29,10 @@ interface TranslationMainProps {
   setShowPromptEditor: (show: boolean) => void;
   formality: 'formal' | 'casual' | 'auto';
   setFormality: (formality: 'formal' | 'casual' | 'auto') => void;
+  domain: string;
+  setDomain: (domain: string) => void;
+  glossary: Array<[string, string]>;
+  setGlossary: (glossary: Array<[string, string]>) => void;
   isEditingTranslation: boolean;
   editedTranslation: string;
   setEditedTranslation: (text: string) => void;
@@ -62,7 +66,8 @@ interface TranslationMainProps {
 
 const LANGUAGES = [
   { code: 'auto', label: 'translation:languages.auto' },
-  { code: 'zh', label: 'translation:languages.zh' },
+  { code: 'zh-CN', label: 'translation:languages.zh-CN' },
+  { code: 'zh-TW', label: 'translation:languages.zh-TW' },
   { code: 'en', label: 'translation:languages.en' },
   { code: 'ja', label: 'translation:languages.ja' },
   { code: 'ko', label: 'translation:languages.ko' },
@@ -72,7 +77,20 @@ const LANGUAGES = [
   { code: 'ru', label: 'translation:languages.ru' },
   { code: 'ar', label: 'translation:languages.ar' },
   { code: 'pt', label: 'translation:languages.pt' },
+  { code: 'pt-BR', label: 'translation:languages.pt-BR' },
   { code: 'it', label: 'translation:languages.it' },
+  { code: 'vi', label: 'translation:languages.vi' },
+  { code: 'th', label: 'translation:languages.th' },
+  { code: 'hi', label: 'translation:languages.hi' },
+  { code: 'tr', label: 'translation:languages.tr' },
+  { code: 'pl', label: 'translation:languages.pl' },
+  { code: 'nl', label: 'translation:languages.nl' },
+  { code: 'sv', label: 'translation:languages.sv' },
+  { code: 'la', label: 'translation:languages.la' },
+  { code: 'el', label: 'translation:languages.el' },
+  { code: 'uk', label: 'translation:languages.uk' },
+  { code: 'id', label: 'translation:languages.id' },
+  { code: 'ms', label: 'translation:languages.ms' },
 ];
 
 export const TranslationMain: React.FC<TranslationMainProps> = ({
@@ -98,6 +116,10 @@ export const TranslationMain: React.FC<TranslationMainProps> = ({
   setShowPromptEditor,
   formality,
   setFormality,
+  domain,
+  setDomain,
+  glossary,
+  setGlossary,
   isEditingTranslation,
   editedTranslation,
   setEditedTranslation,
@@ -386,6 +408,10 @@ export const TranslationMain: React.FC<TranslationMainProps> = ({
                   setShowPromptEditor={setShowPromptEditor}
                   formality={formality}
                   setFormality={setFormality}
+                  domain={domain}
+                  setDomain={setDomain}
+                  glossary={glossary}
+                  setGlossary={setGlossary}
                   onSavePrompt={onSavePrompt}
                   onRestoreDefaultPrompt={onRestoreDefaultPrompt}
                   onClear={onClear}
@@ -403,6 +429,9 @@ export const TranslationMain: React.FC<TranslationMainProps> = ({
                   isMaximized={isMaximized}
                   setIsMaximized={setIsMaximized}
                   setIsSourceCollapsed={setIsSourceCollapsed}
+                  sourceText={sourceText}
+                  srcLang={srcLang}
+                  tgtLang={tgtLang}
                   translatedText={translatedText}
                   isTranslating={isTranslating}
                   isSyncScroll={isSyncScroll}
@@ -444,6 +473,10 @@ export const TranslationMain: React.FC<TranslationMainProps> = ({
               setIsOpen={setShowPromptEditor}
               formality={formality}
               setFormality={setFormality}
+              domain={domain}
+              setDomain={setDomain}
+              glossary={glossary}
+              setGlossary={setGlossary}
               mobileFullscreen={true}
               isAutoTranslate={isAutoTranslate}
               setIsAutoTranslate={setIsAutoTranslate}
@@ -482,6 +515,10 @@ export const TranslationMain: React.FC<TranslationMainProps> = ({
       setShowPromptEditor={setShowPromptEditor}
       formality={formality}
       setFormality={setFormality}
+      domain={domain}
+      setDomain={setDomain}
+      glossary={glossary}
+      setGlossary={setGlossary}
       onSavePrompt={onSavePrompt}
       onRestoreDefaultPrompt={onRestoreDefaultPrompt}
       onClear={onClear}
@@ -500,6 +537,9 @@ export const TranslationMain: React.FC<TranslationMainProps> = ({
       isMaximized={isMaximized}
       setIsMaximized={setIsMaximized}
       setIsSourceCollapsed={setIsSourceCollapsed}
+      sourceText={sourceText}
+      srcLang={srcLang}
+      tgtLang={tgtLang}
       translatedText={translatedText}
       isTranslating={isTranslating}
       isSyncScroll={isSyncScroll}

@@ -30,6 +30,7 @@ export interface TranslationRequest {
   prompt_override?: string;
   formality?: 'formal' | 'casual' | 'auto' | null;
   glossary?: Array<[string, string]>;
+  domain?: string;
 }
 
 /**
@@ -264,6 +265,7 @@ export function useTranslationStream() {
             session_id: sessionId,
             formality: request.formality || null,
             glossary: request.glossary || null,
+            domain: request.domain || null,
           },
         });
       } catch (error: unknown) {

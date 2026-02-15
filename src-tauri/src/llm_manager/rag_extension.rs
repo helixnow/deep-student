@@ -492,22 +492,19 @@ impl LLMManager {
         let config = self.get_translation_model_config().await?;
         let api_key = self.decrypt_api_key_if_needed(&config.api_key)?;
 
-        // 构造翻译prompt
-        let system_prompt = custom_prompt.unwrap_or(
-            "You are a professional translator. Translate the given text accurately while preserving its tone, style, and formatting. Do not add explanations or notes. Only output the translated text."
-        );
-
-        let user_prompt = if src_lang == "auto" {
-            format!(
-                "Please translate the following text to {}:\n\n{}",
-                tgt_lang, text
-            )
-        } else {
-            format!(
-                "Please translate the following text from {} to {}:\n\n{}",
-                src_lang, tgt_lang, text
-            )
+        // 复用翻译管线的 prompt 构建（统一语言全名映射和领域预设）
+        let translate_req = crate::translation::types::TranslationRequest {
+            text: text.to_string(),
+            src_lang: src_lang.to_string(),
+            tgt_lang: tgt_lang.to_string(),
+            prompt_override: custom_prompt.map(|s| s.to_string()),
+            session_id: String::new(),
+            formality: None,
+            glossary: None,
+            domain: None,
         };
+        let (system_prompt, user_prompt) =
+            crate::translation::pipeline::build_translation_prompts(&translate_req)?;
 
         let messages = vec![
             json!({

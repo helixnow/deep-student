@@ -7,6 +7,10 @@
   "auto_mode": "自动",
   "options_title": "翻译选项",
   "page_title": "翻译工作台",
+  "comparison": {
+    "toggle": "段落对照",
+    "empty": "输入文本并翻译后，将在此显示逐段对照"
+  },
   "tabs": {
     "translate": "文本翻译",
     "history": "历史记录",
@@ -43,7 +47,8 @@
     "source_lang": "源语言",
     "target_lang": "目标语言",
     "auto": "自动检测",
-    "zh": "中文",
+    "zh-CN": "简体中文",
+    "zh-TW": "繁体中文",
     "en": "英语",
     "ja": "日语",
     "ko": "韩语",
@@ -53,7 +58,20 @@
     "ru": "俄语",
     "ar": "阿拉伯语",
     "pt": "葡萄牙语",
-    "it": "意大利语"
+    "pt-BR": "巴西葡萄牙语",
+    "it": "意大利语",
+    "vi": "越南语",
+    "th": "泰语",
+    "hi": "印地语",
+    "tr": "土耳其语",
+    "pl": "波兰语",
+    "nl": "荷兰语",
+    "sv": "瑞典语",
+    "la": "拉丁语",
+    "el": "希腊语",
+    "uk": "乌克兰语",
+    "id": "印尼语",
+    "ms": "马来语"
   },
   "actions": {
     "translate": "翻译",
@@ -89,7 +107,7 @@
     "no_lines": "没有可翻译的内容"
   },
   "prompt_editor": {
-    "title": "自定义翻译提示词",
+    "title": "翻译设置",
     "placeholder": "输入自定义翻译提示词（可选）",
     "restore_default": "恢复默认",
     "save": "保存",
@@ -98,7 +116,22 @@
     "formality": "语气",
     "formality_auto": "自动",
     "formality_formal": "正式",
-    "formality_casual": "非正式"
+    "formality_casual": "非正式",
+    "custom_prompt_label": "自定义提示词",
+    "domain": "翻译领域",
+    "domain_general": "通用",
+    "domain_academic": "学术论文",
+    "domain_technical": "技术文档",
+    "domain_literary": "文学作品",
+    "domain_legal": "法律文书",
+    "domain_medical": "医学文献",
+    "domain_casual": "日常对话",
+    "glossary_title": "术语表",
+    "glossary_hint": "指定术语的固定译法，翻译时将严格遵守",
+    "glossary_source": "原文术语",
+    "glossary_target": "目标译法",
+    "glossary_add": "添加术语",
+    "glossary_empty": "暂无术语，点击上方按钮添加"
   },
   "history": {
     "title": "翻译历史",

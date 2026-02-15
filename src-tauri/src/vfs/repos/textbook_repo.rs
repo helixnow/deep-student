@@ -122,7 +122,7 @@ impl VfsTextbookRepo {
                     .format("%Y-%m-%dT%H:%M:%S%.3fZ")
                     .to_string();
                 conn.execute(
-                    "UPDATE files SET status = 'active', updated_at = ?1 WHERE id = ?2",
+                    "UPDATE files SET status = 'active', deleted_at = NULL, updated_at = ?1 WHERE id = ?2",
                     params![now, existing.id],
                 )?;
                 // 返回更新后的记录
@@ -567,15 +567,31 @@ impl VfsTextbookRepo {
             .to_string();
 
         let updated = conn.execute(
-            "UPDATE files SET status = 'deleted', updated_at = ?1 WHERE id = ?2 AND status = 'active'",
+            "UPDATE files SET status = 'deleted', deleted_at = ?1, updated_at = ?1 WHERE id = ?2 AND status = 'active'",
             params![now, textbook_id],
         )?;
 
         if updated == 0 {
-            return Err(VfsError::NotFound {
-                resource_type: "Textbook".to_string(),
-                id: textbook_id.to_string(),
-            });
+            // ★ P0 修复：幂等处理 - 检查是否已被软删除
+            let already_deleted: bool = conn
+                .query_row(
+                    "SELECT EXISTS(SELECT 1 FROM files WHERE id = ?1 AND status = 'deleted')",
+                    params![textbook_id],
+                    |row| row.get(0),
+                )
+                .unwrap_or(false);
+
+            if already_deleted {
+                info!(
+                    "[VFS::TextbookRepo] Textbook already deleted (idempotent): {}",
+                    textbook_id
+                );
+            } else {
+                return Err(VfsError::NotFound {
+                    resource_type: "Textbook".to_string(),
+                    id: textbook_id.to_string(),
+                });
+            }
         }
 
         info!("[VFS::TextbookRepo] Soft deleted textbook: {}", textbook_id);
@@ -600,7 +616,7 @@ impl VfsTextbookRepo {
 
         // 1. 恢复教材
         let updated = conn.execute(
-            "UPDATE files SET status = 'active', updated_at = ?1 WHERE id = ?2 AND status = 'deleted'",
+            "UPDATE files SET status = 'active', deleted_at = NULL, updated_at = ?1 WHERE id = ?2 AND status = 'deleted'",
             params![now, textbook_id],
         )?;
 

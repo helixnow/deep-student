@@ -498,10 +498,26 @@ impl VfsEssayRepo {
         )?;
 
         if updated == 0 {
-            return Err(VfsError::NotFound {
-                resource_type: "Essay".to_string(),
-                id: essay_id.to_string(),
-            });
+            // ★ P0 修复：幂等处理 - 检查是否已被软删除
+            let already_deleted: bool = conn
+                .query_row(
+                    "SELECT EXISTS(SELECT 1 FROM essays WHERE id = ?1 AND deleted_at IS NOT NULL)",
+                    params![essay_id],
+                    |row| row.get(0),
+                )
+                .unwrap_or(false);
+
+            if already_deleted {
+                info!(
+                    "[VFS::EssayRepo] Essay already deleted (idempotent): {}",
+                    essay_id
+                );
+            } else {
+                return Err(VfsError::NotFound {
+                    resource_type: "Essay".to_string(),
+                    id: essay_id.to_string(),
+                });
+            }
         }
 
         info!("[VFS::EssayRepo] Soft deleted essay: {}", essay_id);
@@ -1066,10 +1082,26 @@ impl VfsEssayRepo {
             params![now, session_id],
         )?;
         if updated == 0 {
-            return Err(VfsError::NotFound {
-                resource_type: "EssaySession".to_string(),
-                id: session_id.to_string(),
-            });
+            // ★ P0 修复：幂等处理 - 检查是否已被软删除
+            let already_deleted: bool = conn
+                .query_row(
+                    "SELECT EXISTS(SELECT 1 FROM essay_sessions WHERE id = ?1 AND deleted_at IS NOT NULL)",
+                    params![session_id],
+                    |row| row.get(0),
+                )
+                .unwrap_or(false);
+
+            if already_deleted {
+                info!(
+                    "[VFS::EssayRepo] Essay session already deleted (idempotent): {}",
+                    session_id
+                );
+            } else {
+                return Err(VfsError::NotFound {
+                    resource_type: "EssaySession".to_string(),
+                    id: session_id.to_string(),
+                });
+            }
         }
         info!(
             "[VFS::EssayRepo] Soft deleted essay session: {}",

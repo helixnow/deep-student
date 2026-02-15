@@ -7,6 +7,10 @@
   "auto_mode": "Auto",
   "options_title": "Translation Options",
   "page_title": "Translation Workbench",
+  "comparison": {
+    "toggle": "Paragraph Comparison",
+    "empty": "Enter text and translate to see paragraph-level comparison here"
+  },
   "tabs": {
     "translate": "Text Translation",
     "history": "History",
@@ -43,7 +47,8 @@
     "source_lang": "Source Language",
     "target_lang": "Target Language",
     "auto": "Auto Detect",
-    "zh": "Chinese",
+    "zh-CN": "Simplified Chinese",
+    "zh-TW": "Traditional Chinese",
     "en": "English",
     "ja": "Japanese",
     "ko": "Korean",
@@ -53,7 +58,20 @@
     "ru": "Russian",
     "ar": "Arabic",
     "pt": "Portuguese",
-    "it": "Italian"
+    "pt-BR": "Brazilian Portuguese",
+    "it": "Italian",
+    "vi": "Vietnamese",
+    "th": "Thai",
+    "hi": "Hindi",
+    "tr": "Turkish",
+    "pl": "Polish",
+    "nl": "Dutch",
+    "sv": "Swedish",
+    "la": "Latin",
+    "el": "Greek",
+    "uk": "Ukrainian",
+    "id": "Indonesian",
+    "ms": "Malay"
   },
   "actions": {
     "translate": "Translate",
@@ -89,7 +107,7 @@
     "no_lines": "No content to translate"
   },
   "prompt_editor": {
-    "title": "Custom Translation Prompt",
+    "title": "Translation Settings",
     "placeholder": "Enter custom translation prompt (optional)",
     "restore_default": "Restore Default",
     "save": "Save",
@@ -98,7 +116,22 @@
     "formality": "Tone",
     "formality_auto": "Auto",
     "formality_formal": "Formal",
-    "formality_casual": "Casual"
+    "formality_casual": "Casual",
+    "custom_prompt_label": "Custom Prompt",
+    "domain": "Domain",
+    "domain_general": "General",
+    "domain_academic": "Academic",
+    "domain_technical": "Technical",
+    "domain_literary": "Literary",
+    "domain_legal": "Legal",
+    "domain_medical": "Medical",
+    "domain_casual": "Casual",
+    "glossary_title": "Glossary",
+    "glossary_hint": "Specify fixed translations for terms",
+    "glossary_source": "Source Term",
+    "glossary_target": "Target Translation",
+    "glossary_add": "Add Term",
+    "glossary_empty": "No terms yet, click above to add"
   },
   "history": {
     "title": "Translation History",
