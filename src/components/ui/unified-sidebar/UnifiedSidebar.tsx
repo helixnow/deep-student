@@ -202,8 +202,8 @@ export const UnifiedSidebar: React.FC<UnifiedSidebarProps> = ({
     return (
       <div
         className={cn(
-          'flex flex-col transition-all duration-200',
-          'bg-muted/30',
+          'flex flex-col transition-all duration-200 pt-[5px]',
+          'bg-background',
           // 全宽模式或 drawer/sheet 模式下，使用 w-full + h-full 填满容器
           shouldFillContainer ? 'w-full h-full overflow-hidden' : 'h-full flex-shrink-0',
           effectiveMode === 'panel' && !isFullWidth && 'border-r border-border',

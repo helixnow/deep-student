@@ -3950,7 +3950,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
         <MacTopSafeDragZone className="settings-top-safe-drag-zone" />
         
         {/* 骨架屏侧边栏 */}
-        <div className="h-full flex flex-col bg-card/50 dark:bg-card/30 border-r border-border/40 w-52">
+        <div className="h-full flex flex-col bg-background pt-[5px] border-r border-border/40 w-52">
           <nav className="flex-1 overflow-y-auto py-2 px-2">
             {/* 骨架屏导航项 */}
             {[1, 2, 3, 4, 5, 6].map((i) => (

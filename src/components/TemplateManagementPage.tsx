@@ -32,7 +32,7 @@ import './TemplateManagementPage.css';
 import { CustomScrollArea } from './custom-scroll-area';
 import { fileManager } from '../utils/fileManager';
 import { usePageMount, pageLifecycleTracker } from '@/debug-panel/hooks/usePageLifecycle';
-import { useMobileHeader, MobileSlidingLayout } from '@/components/layout';
+import { useMobileHeader, MobileSlidingLayout, type ScreenPosition } from '@/components/layout';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { MOBILE_LAYOUT } from '@/config/mobileLayout';
 import { showGlobalNotification } from './UnifiedNotification';
@@ -74,7 +74,10 @@ const TemplateManagementPage: React.FC<TemplateManagementPageProps> = ({
   const { t } = useTranslation('template');
   const { t: tAnki } = useTranslation('anki');
   const { isSmallScreen } = useBreakpoint();
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [screenPosition, setScreenPosition] = useState<ScreenPosition>('center');
+  const sidebarOpen = screenPosition === 'left';
+  const setSidebarOpen = useCallback((open: boolean) => setScreenPosition(open ? 'left' : 'center'), []);
+  const [editorPortalTarget, setEditorPortalTarget] = useState<HTMLDivElement | null>(null);
   const globalLeftPanelCollapsed = useUIStore((state) => state.leftPanelCollapsed);
 
   // 面包屑导航组件（移动端显示 "Anki 制卡 > 卡片模板管理"）
@@ -108,7 +111,7 @@ const TemplateManagementPage: React.FC<TemplateManagementPageProps> = ({
   useMobileHeader('template-management', {
     titleNode: BreadcrumbNav,
     showMenu: true,
-    onMenuClick: () => setSidebarOpen(prev => !prev),
+    onMenuClick: () => setScreenPosition(prev => prev === 'left' ? 'center' : 'left'),
   }, [BreadcrumbNav]);
 
   // ========== 页面生命周期监控 ==========
@@ -120,6 +123,14 @@ const TemplateManagementPage: React.FC<TemplateManagementPageProps> = ({
   const [editingTemplate, setEditingTemplate] = useState<CustomAnkiTemplate | null>(null);
   // 编辑器内部 tab 状态（集成到左侧栏）
   const [editorTab, setEditorTab] = useState<EditorTabType>('basic');
+  const isCodeMode = !isSelectingMode && (editorTab === 'templates' || editorTab === 'styles') && (activeTab === 'create' || activeTab === 'edit');
+
+  // 离开代码编辑模式时，若停留在右屏则回到中屏
+  useEffect(() => {
+    if (!isCodeMode && screenPosition === 'right') {
+      setScreenPosition('center');
+    }
+  }, [isCodeMode, screenPosition]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -762,6 +773,7 @@ const TemplateManagementPage: React.FC<TemplateManagementPageProps> = ({
                 externalActiveTab={editorTab}
                 onExternalTabChange={setEditorTab}
                 hideSidebar={true}
+                mobileEditorPortalTarget={editorPortalTarget}
                 onSave={async (templateData) => {
                   try {
                     await templateManager.createTemplate(templateData);
@@ -788,6 +800,7 @@ const TemplateManagementPage: React.FC<TemplateManagementPageProps> = ({
                 externalActiveTab={editorTab}
                 onExternalTabChange={setEditorTab}
                 hideSidebar={true}
+                mobileEditorPortalTarget={editorPortalTarget}
                 onSave={async (templateData) => {
                   try {
                     setIsLoading(true);
@@ -923,8 +936,16 @@ const TemplateManagementPage: React.FC<TemplateManagementPageProps> = ({
                     {sidebarContent}
                   </div>
                 }
+                rightPanel={
+                  isCodeMode ? (
+                    <div ref={setEditorPortalTarget} className="h-full w-full" />
+                  ) : undefined
+                }
+                rightPanelEnabled={isCodeMode}
                 sidebarOpen={sidebarOpen}
                 onSidebarOpenChange={setSidebarOpen}
+                screenPosition={screenPosition}
+                onScreenPositionChange={setScreenPosition}
                 enableGesture={true}
                 threshold={0.3}
                 className="flex-1"

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import {
   FileText, Code, Database, Settings, Eye, EyeOff,
@@ -37,6 +38,8 @@ interface MinimalTemplateEditorProps {
   onExternalTabChange?: (tab: EditorTabType) => void;
   // 是否隐藏内置侧边栏
   hideSidebar?: boolean;
+  // 移动端：编辑器 portal 目标容器（由 MobileSlidingLayout 的 rightPanel 提供）
+  mobileEditorPortalTarget?: HTMLDivElement | null;
 }
 
 interface ValidationError {
@@ -51,7 +54,8 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
   onCancel,
   externalActiveTab,
   onExternalTabChange,
-  hideSidebar = false
+  hideSidebar = false,
+  mobileEditorPortalTarget,
 }) => {
   const { t } = useTranslation('template');
   const { isSmallScreen } = useBreakpoint();
@@ -599,56 +603,11 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
           {/* 模板代码（含样式） - 桌面分栏 / 移动端上下布局 */}
           {(activeTab === 'templates' || activeTab === 'styles') && (
             <div className="template-code-split-panel">
-              {/* 子 tab 切换栏 - 桌面端在左栏内，移动端在顶部 */}
-              {isSmallScreen && (
-                <div className="flex-none px-3 py-2 border-b border-border/30">
-                  <div className="flex gap-1 p-1 bg-muted/30 rounded-lg">
-                    <button
-                      type="button"
-                      className={`flex-1 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
-                        codeSubTab === 'front'
-                          ? 'bg-background shadow-sm text-foreground'
-                          : 'text-muted-foreground hover:text-foreground'
-                      }`}
-                      onClick={() => setCodeSubTab('front')}
-                    >
-                      {t('front_template_title', '正面模板')}
-                    </button>
-                    <button
-                      type="button"
-                      className={`flex-1 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
-                        codeSubTab === 'back'
-                          ? 'bg-background shadow-sm text-foreground'
-                          : 'text-muted-foreground hover:text-foreground'
-                      }`}
-                      onClick={() => setCodeSubTab('back')}
-                    >
-                      {t('back_template_title', '背面模板')}
-                    </button>
-                    <button
-                      type="button"
-                      className={`flex-1 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
-                        codeSubTab === 'css'
-                          ? 'bg-background shadow-sm text-foreground'
-                          : 'text-muted-foreground hover:text-foreground'
-                      }`}
-                      onClick={() => setCodeSubTab('css')}
-                    >
-                      {t('css_style_title', 'CSS 样式')}
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* 移动端：横向滚动双屏，左屏预览 / 右屏编辑器 */}
+              {/* 移动端：预览作为中屏，编辑器 portal 到 MobileSlidingLayout 的右屏 */}
               {isSmallScreen ? (
-                <div
-                  ref={mobileScrollRef}
-                  className="flex flex-1 min-h-0 overflow-x-auto snap-x snap-mandatory"
-                  style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
-                >
-                  {/* 屏 1：模板预览 */}
-                  <div className="w-full shrink-0 snap-start flex flex-col h-full overflow-y-auto">
+                <>
+                  {/* 中屏：模板预览 */}
+                  <div className="flex-1 min-h-0 overflow-y-auto">
                     <div className="p-3 space-y-3">
                       <div className="flex items-center justify-between">
                         <span className="text-xs font-medium text-muted-foreground/80 uppercase tracking-wider">
@@ -711,21 +670,63 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
                       )}
                     </div>
                   </div>
-                  {/* 屏 2：代码编辑器 */}
-                  <div className="w-full shrink-0 snap-start flex flex-col h-full">
-                    <div className="flex-1 min-h-0 overflow-hidden relative">
-                      <CodeMirror
-                        value={codeValue}
-                        onChange={handleCodeChange}
-                        extensions={cmExtensions}
-                        theme={cmTheme}
-                        height="100%"
-                        className="h-full template-codemirror-editor"
-                        basicSetup={{ lineNumbers: true, highlightActiveLine: true, foldGutter: true, bracketMatching: true, closeBrackets: true, autocompletion: true }}
-                      />
-                    </div>
-                  </div>
-                </div>
+                  {/* 右屏：代码编辑器（portal 到 MobileSlidingLayout 的 rightPanel） */}
+                  {mobileEditorPortalTarget && createPortal(
+                    <div className="h-full flex flex-col">
+                      {/* 代码子 tab 切换栏 */}
+                      <div className="flex-none px-3 py-2 border-b border-border/30">
+                        <div className="flex gap-1 p-1 bg-muted/30 rounded-lg">
+                          <button
+                            type="button"
+                            className={`flex-1 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                              codeSubTab === 'front'
+                                ? 'bg-background shadow-sm text-foreground'
+                                : 'text-muted-foreground hover:text-foreground'
+                            }`}
+                            onClick={() => setCodeSubTab('front')}
+                          >
+                            {t('front_template_title', '正面模板')}
+                          </button>
+                          <button
+                            type="button"
+                            className={`flex-1 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                              codeSubTab === 'back'
+                                ? 'bg-background shadow-sm text-foreground'
+                                : 'text-muted-foreground hover:text-foreground'
+                            }`}
+                            onClick={() => setCodeSubTab('back')}
+                          >
+                            {t('back_template_title', '背面模板')}
+                          </button>
+                          <button
+                            type="button"
+                            className={`flex-1 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                              codeSubTab === 'css'
+                                ? 'bg-background shadow-sm text-foreground'
+                                : 'text-muted-foreground hover:text-foreground'
+                            }`}
+                            onClick={() => setCodeSubTab('css')}
+                          >
+                            {t('css_style_title', 'CSS 样式')}
+                          </button>
+                        </div>
+                      </div>
+                      {/* 代码编辑器 */}
+                      <div className="flex-1 min-h-0 overflow-hidden relative">
+                        <CodeMirror
+                          value={codeValue}
+                          onChange={handleCodeChange}
+                          extensions={cmExtensions}
+                          theme={cmTheme}
+                          height="100%"
+                          className="h-full template-codemirror-editor"
+                          basicSetup={{ lineNumbers: true, highlightActiveLine: true, foldGutter: true, bracketMatching: true, closeBrackets: true, autocompletion: true }}
+                        />
+                      </div>
+                    </div>,
+                    mobileEditorPortalTarget
+                  )}
+                </>
               ) : (
               /* 桌面端：左右分栏 */
               <HorizontalResizable

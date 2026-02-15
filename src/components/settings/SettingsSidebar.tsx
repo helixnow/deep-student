@@ -72,7 +72,7 @@ export const SettingsSidebar: React.FC<SettingsSidebarProps> = ({
   // 侧边栏内容
   const sidebarContent = (
     <div className={cn(
-      'h-full flex flex-col bg-card/50 dark:bg-card/30',
+      'h-full flex flex-col bg-background pt-[5px]',
       !isSmallScreen && 'border-r border-border/40'
     )}>
       {/* 顶部搜索栏 - 仿照学习资源侧栏设计 */}
