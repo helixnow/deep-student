@@ -566,17 +566,22 @@ impl AcademicSearchExecutor {
             .unwrap_or(DEFAULT_MAX_RESULTS)
             .min(OPENALEX_MAX_RESULTS_LIMIT);
 
-        let year_from_val = call.arguments.get("year_from").and_then(|v| {
-            v.as_str()
-                .map(|s| s.to_string())
-                .or_else(|| v.as_u64().map(|n| n.to_string()))
-        });
+        // 支持 year_from/year_to（正式参数）和 date_from/date_to（LLM 混用 arxiv_search 参数名时的容错）
+        let year_from_val = call.arguments.get("year_from")
+            .or_else(|| call.arguments.get("date_from"))
+            .and_then(|v| {
+                v.as_str()
+                    .map(|s| s.chars().take(4).collect::<String>()) // "2024-01-15" → "2024"
+                    .or_else(|| v.as_u64().map(|n| n.to_string()))
+            });
 
-        let year_to_val = call.arguments.get("year_to").and_then(|v| {
-            v.as_str()
-                .map(|s| s.to_string())
-                .or_else(|| v.as_u64().map(|n| n.to_string()))
-        });
+        let year_to_val = call.arguments.get("year_to")
+            .or_else(|| call.arguments.get("date_to"))
+            .and_then(|v| {
+                v.as_str()
+                    .map(|s| s.chars().take(4).collect::<String>()) // "2024-12-31" → "2024"
+                    .or_else(|| v.as_u64().map(|n| n.to_string()))
+            });
 
         let open_access_only = call
             .arguments

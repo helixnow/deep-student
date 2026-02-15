@@ -109,10 +109,10 @@ parent_id 为空或 "root" 时列出根目录下的文件夹
       inputSchema: {
         type: 'object',
         properties: {
-          type: { type: 'string', description: '资源类型，默认all', enum: ['note', 'textbook', 'file', 'image', 'exam', 'essay', 'translation', 'mindmap', 'all'], default: 'all' },
+          type: { type: 'string', description: '资源类型（可选，默认 "all" 返回所有类型）', enum: ['note', 'textbook', 'file', 'image', 'exam', 'essay', 'translation', 'mindmap', 'all'], default: 'all' },
           folder_id: { type: 'string', description: '可选：文件夹 ID，只列出该文件夹下的资源' },
           search: { type: 'string', description: '可选：搜索关键词，按标题/名称过滤' },
-          limit: { type: 'integer', description: '返回数量限制，默认20条，最多100条', default: 20, minimum: 1, maximum: 100 },
+          limit: { type: 'integer', description: '返回数量限制（可选，默认 20，最多 100）。注意：此参数名为 limit，不是 max_results 或 top_k。', default: 20, minimum: 1, maximum: 100 },
           favorites_only: { type: 'boolean', description: '可选：是否只返回收藏的资源' },
         },
       },
@@ -123,7 +123,7 @@ parent_id 为空或 "root" 时列出根目录下的文件夹
       inputSchema: {
         type: 'object',
         properties: {
-          resource_id: { type: 'string', description: '【必填】资源 ID（如 note_xxx, tb_xxx, exam_xxx 或 res_xxx）。可通过 resource_list、resource_search，或 unified_search 返回的 readResourceId（优先）/sourceId/resourceId 获取。' },
+          resource_id: { type: 'string', description: '【必填】资源 ID（DSTU 格式，如 note_xxx, tb_xxx, exam_xxx, mm_xxx, file_xxx）。获取方式：从 resource_list/resource_search 返回的 id 字段，或从 unified_search 返回的 readResourceId（优先）/sourceId 字段。注意：不要传 VFS UUID（res_xxx 格式），应传 DSTU 格式 ID。' },
           include_metadata: { type: 'boolean', description: '是否包含元数据（标题、创建时间等），默认true' },
           page_start: { type: 'integer', description: '可选：起始页码（1-based），仅对 PDF/教材/文件类型有效。指定后只返回该页范围的内容。', minimum: 1 },
           page_end: { type: 'integer', description: '可选：结束页码（1-based，包含），仅对 PDF/教材/文件类型有效。未指定时默认等于 page_start（只读单页）。', minimum: 1 },
@@ -147,7 +147,7 @@ parent_id 为空或 "root" 时列出根目录下的文件夹
             description: '可选：限制搜索的资源类型',
           },
           folder_id: { type: 'string', description: '可选：限制搜索范围到指定文件夹' },
-          top_k: { type: 'integer', description: '返回结果数量，默认10条，最多50条', default: 10, minimum: 1, maximum: 50 },
+          top_k: { type: 'integer', description: '返回结果数量（可选，默认 10，最多 50）。注意：此参数名为 top_k，不是 limit 或 max_results。', default: 10, minimum: 1, maximum: 50 },
         },
         required: ['query'],
       },

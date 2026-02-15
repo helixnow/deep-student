@@ -108,7 +108,7 @@ export const knowledgeRetrievalSkill: SkillDefinition = {
   embeddedTools: [
     {
       name: 'builtin-unified_search',
-      description: '统一搜索：同时搜索知识库文档、图片/PDF、用户记忆，合并返回最相关结果。这是默认的搜索工具，一次调用即可获取所有本地知识。结果包含 readResourceId/sourceId/resourceId，可用于 builtin-resource_read 读取完整文档（优先 readResourceId）。引用方式：[知识库-N] 引用文本，[图片-N] 引用图片，[记忆-N] 引用记忆。pageIndex 不为空时可用 [知识库-N:图片]/[图片-N:图片] 渲染页面图片。',
+      description: '统一搜索：同时搜索知识库文档、图片/PDF、用户记忆，合并返回最相关结果。这是默认的搜索工具，一次调用即可获取所有本地知识。\n\n**返回的 ID 字段说明**：每条结果包含 readResourceId（DSTU 格式，如 note_xxx/tb_xxx）、sourceId、resourceId（VFS UUID）。调用 resource_read 时传 readResourceId（优先）或 sourceId，不要传 resourceId（VFS UUID 格式）。调用 memory_read 时传记忆结果的 noteId 字段。\n\n引用方式：[知识库-N] 引用文本，[图片-N] 引用图片，[记忆-N] 引用记忆。pageIndex 不为空时可用 [知识库-N:图片]/[图片-N:图片] 渲染页面图片。',
       inputSchema: {
         type: 'object',
         properties: {
@@ -136,7 +136,7 @@ export const knowledgeRetrievalSkill: SkillDefinition = {
           },
           top_k: {
             type: 'integer',
-            description: '每种搜索源返回的最大结果数，默认10',
+            description: '每种搜索源返回的最大结果数（可选，默认 10）。注意：此参数名为 top_k，不是 limit 或 max_results。',
             default: 10,
             minimum: 1,
             maximum: 30,
@@ -164,7 +164,7 @@ export const knowledgeRetrievalSkill: SkillDefinition = {
         properties: {
           query: { type: 'string', description: '【必填】搜索查询文本' },
           engine: { type: 'string', description: '搜索引擎', enum: ['google_cse', 'serpapi', 'tavily', 'brave', 'searxng', 'zhipu', 'bocha'], default: 'google_cse' },
-          top_k: { type: 'integer', description: '返回的结果数量，默认5条', default: 5, minimum: 1, maximum: 20 },
+          top_k: { type: 'integer', description: '返回的结果数量（可选，默认 5）。注意：此参数名为 top_k，不是 limit 或 max_results。', default: 5, minimum: 1, maximum: 20 },
         },
         required: ['query'],
       },

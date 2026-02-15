@@ -70,8 +70,9 @@ arxiv_search(query="...", sort_by="date", categories=["cs.AI"])
 
 ### 2. 找高引用经典论文
 \`\`\`
-scholar_search(query="...", min_citation_count=100)
+scholar_search(query="...", min_citation_count=100, year_from=2020)
 \`\`\`
+**注意**：arxiv_search 使用 \`date_from/date_to\`（YYYY-MM-DD 日期），scholar_search 使用 \`year_from/year_to\`（年份整数），不要混用。
 
 ### 3. 综合搜索（推荐）
 1. 先用 \`arxiv_search\` 搜最新预印本
@@ -138,11 +139,11 @@ cite_format(papers=[{title: "...", authors: ["..."], year: 2024, doi: "...", ven
           },
           date_from: {
             type: 'string',
-            description: '起始日期（YYYY-MM-DD 格式），用于筛选提交日期',
+            description: '起始日期（YYYY-MM-DD 格式），用于筛选提交日期。注意：此参数是日期字符串，不同于 scholar_search 的 year_from（年份整数）。',
           },
           date_to: {
             type: 'string',
-            description: '截止日期（YYYY-MM-DD 格式），用于筛选提交日期',
+            description: '截止日期（YYYY-MM-DD 格式），用于筛选提交日期。注意：此参数是日期字符串，不同于 scholar_search 的 year_to（年份整数）。',
           },
           categories: {
             type: 'array',
@@ -179,12 +180,12 @@ cite_format(papers=[{title: "...", authors: ["..."], year: 2024, doi: "...", ven
             maximum: 50,
           },
           year_from: {
-            type: 'string',
-            description: '起始年份（如 "2020"），筛选发表年份',
+            type: 'integer',
+            description: '起始发表年份（如 2020）。注意：此参数是年份整数，不同于 arxiv_search 的 date_from（YYYY-MM-DD 日期字符串）。',
           },
           year_to: {
-            type: 'string',
-            description: '截止年份（如 "2024"），筛选发表年份',
+            type: 'integer',
+            description: '截止发表年份（如 2024）。注意：此参数是年份整数，不同于 arxiv_search 的 date_to（YYYY-MM-DD 日期字符串）。',
           },
           sort_by: {
             type: 'string',
@@ -216,7 +217,7 @@ cite_format(papers=[{title: "...", authors: ["..."], year: 2024, doi: "...", ven
           papers: {
             type: 'array',
             description:
-              '【必填】论文列表（最多 5 篇）。每篇论文至少提供 url/doi/arxiv_id 之一。',
+              '【必填】论文列表（最多 5 篇）。每篇论文必须提供 title，并至少提供 url/doi/arxiv_id 之一作为下载来源。',
             items: {
               type: 'object',
               properties: {
@@ -240,6 +241,7 @@ cite_format(papers=[{title: "...", authors: ["..."], year: 2024, doi: "...", ven
                   description: '论文标题（用作文件名）',
                 },
               },
+              required: ['title'],
             },
             minItems: 1,
             maxItems: 5,
@@ -287,6 +289,7 @@ cite_format(papers=[{title: "...", authors: ["..."], year: 2024, doi: "...", ven
                   description: '发表期刊或会议名称',
                 },
               },
+              required: ['title'],
             },
           },
           format: {
