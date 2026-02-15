@@ -58,6 +58,7 @@ import { SidebarDrawer } from '@/components/ui/unified-sidebar/SidebarDrawer';
 import { useCommandEvents, COMMAND_EVENTS } from '@/command-palette/hooks/useCommandEvents';
 // P1-07: 导入 sessionManager 以访问当前会话 store
 import { sessionManager } from '../core/session/sessionManager';
+import { groupCache } from '../core/store/groupCache';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { useUIStore } from '@/stores/uiStore';
@@ -429,7 +430,7 @@ export const ChatV2Page: React.FC = () => {
     deleteGroup,
     reorderGroups,
   } = useGroupManagement();
-  const { collapsedMap, toggleGroupCollapse, expandGroup } = useGroupCollapse();
+  const { collapsedMap, toggleGroupCollapse, expandGroup, pruneDeletedGroups } = useGroupCollapse();
   const [groupEditorOpen, setGroupEditorOpen] = useState(false);
   const [editingGroup, setEditingGroup] = useState<SessionGroup | null>(null);
   const [pendingDeleteGroup, setPendingDeleteGroup] = useState<SessionGroup | null>(null);
@@ -505,6 +506,13 @@ export const ChatV2Page: React.FC = () => {
   useEffect(() => {
     loadGroups();
   }, [loadGroups]);
+
+  // P2-4 fix: Prune stale collapsed state when groups change
+  useEffect(() => {
+    if (groups.length > 0) {
+      pruneDeletedGroups(groups.map((g) => g.id));
+    }
+  }, [groups, pruneDeletedGroups]);
   
   // 时间分组标签映射
   const timeGroupLabels: Record<TimeGroup, string> = {
@@ -1567,22 +1575,61 @@ export const ChatV2Page: React.FC = () => {
     );
     const store = sessionManager.get(sessionId);
     if (store) {
-      store.setState({ groupId: groupId ?? null });
+      // Update groupId in store
+      const storeUpdate: Record<string, unknown> = { groupId: groupId ?? null };
+
+      // P0-3 fix: Update groupSystemPromptSnapshot in metadata when moving between groups
+      const currentMetadata = store.getState().sessionMetadata;
+      if (groupId) {
+        const group = groupCache.get(groupId);
+        if (group?.systemPrompt) {
+          storeUpdate.sessionMetadata = {
+            ...(currentMetadata ?? {}),
+            groupSystemPromptSnapshot: group.systemPrompt,
+          };
+        } else {
+          // New group has no systemPrompt — remove stale snapshot
+          if (currentMetadata?.groupSystemPromptSnapshot) {
+            const { groupSystemPromptSnapshot: _, ...rest } = currentMetadata;
+            storeUpdate.sessionMetadata = Object.keys(rest).length > 0 ? rest : null;
+          }
+        }
+      } else {
+        // Moved to ungrouped — remove stale snapshot
+        if (currentMetadata?.groupSystemPromptSnapshot) {
+          const { groupSystemPromptSnapshot: _, ...rest } = currentMetadata;
+          storeUpdate.sessionMetadata = Object.keys(rest).length > 0 ? rest : null;
+        }
+      }
+
+      store.setState(storeUpdate);
     }
   }, []);
 
   const removeGroupFromSessions = useCallback((groupId: string) => {
+    // P1 fix: Move side-effects out of setSessions updater
+    const affectedSessionIds: string[] = [];
     setSessions((prev) => {
       prev.forEach((s) => {
         if (s.groupId === groupId) {
-          const store = sessionManager.get(s.id);
-          if (store) {
-            store.setState({ groupId: null });
-          }
+          affectedSessionIds.push(s.id);
         }
       });
       return prev.map((s) => (s.groupId === groupId ? { ...s, groupId: undefined } : s));
     });
+    // Apply store updates outside of setState updater
+    for (const sid of affectedSessionIds) {
+      const store = sessionManager.get(sid);
+      if (store) {
+        const meta = store.getState().sessionMetadata;
+        const storeUpdate: Record<string, unknown> = { groupId: null };
+        if (meta?.groupSystemPromptSnapshot) {
+          const { groupSystemPromptSnapshot: _, ...rest } = meta;
+          storeUpdate.sessionMetadata = Object.keys(rest).length > 0 ? rest : null;
+        }
+        store.setState(storeUpdate);
+      }
+    }
   }, []);
 
   const confirmDeleteGroup = useCallback(async () => {

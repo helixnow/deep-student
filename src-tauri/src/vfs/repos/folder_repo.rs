@@ -296,6 +296,8 @@ impl VfsFolderRepo {
     }
 
     /// 获取文件夹（使用现有连接）
+    /// ★ P0 修复：使用 CASE typeof() 兼容处理 updated_at/created_at 可能存储为 TEXT 的历史数据
+    /// 此函数可能读取已软删除的文件夹（如 restore 路径），需要兼容旧版本写入的 TEXT 类型
     pub fn get_folder_with_conn(
         conn: &Connection,
         folder_id: &str,
@@ -303,7 +305,9 @@ impl VfsFolderRepo {
         let folder = conn
             .query_row(
                 r#"
-                SELECT id, parent_id, title, icon, color, is_expanded, is_favorite, sort_order, created_at, updated_at
+                SELECT id, parent_id, title, icon, color, is_expanded, is_favorite, sort_order,
+                       CASE typeof(created_at) WHEN 'text' THEN CAST(strftime('%s', created_at) AS INTEGER) * 1000 ELSE created_at END,
+                       CASE typeof(updated_at) WHEN 'text' THEN CAST(strftime('%s', updated_at) AS INTEGER) * 1000 ELSE updated_at END
                 FROM folders
                 WHERE id = ?1
                 "#,
@@ -407,7 +411,9 @@ impl VfsFolderRepo {
     pub fn list_all_folders_with_conn(conn: &Connection) -> VfsResult<Vec<VfsFolder>> {
         let mut stmt = conn.prepare(
             r#"
-            SELECT id, parent_id, title, icon, color, is_expanded, is_favorite, sort_order, created_at, updated_at
+            SELECT id, parent_id, title, icon, color, is_expanded, is_favorite, sort_order,
+                   CASE typeof(created_at) WHEN 'text' THEN CAST(strftime('%s', created_at) AS INTEGER) * 1000 ELSE created_at END,
+                   CASE typeof(updated_at) WHEN 'text' THEN CAST(strftime('%s', updated_at) AS INTEGER) * 1000 ELSE updated_at END
             FROM folders
             WHERE deleted_at IS NULL
             ORDER BY sort_order ASC, created_at ASC
@@ -456,7 +462,9 @@ impl VfsFolderRepo {
     ) -> VfsResult<Vec<VfsFolder>> {
         let mut stmt = conn.prepare(
             r#"
-            SELECT id, parent_id, title, icon, color, is_expanded, is_favorite, sort_order, created_at, updated_at
+            SELECT id, parent_id, title, icon, color, is_expanded, is_favorite, sort_order,
+                   CASE typeof(created_at) WHEN 'text' THEN CAST(strftime('%s', created_at) AS INTEGER) * 1000 ELSE created_at END,
+                   CASE typeof(updated_at) WHEN 'text' THEN CAST(strftime('%s', updated_at) AS INTEGER) * 1000 ELSE updated_at END
             FROM folders
             WHERE parent_id IS ?1 AND deleted_at IS NULL
             ORDER BY sort_order ASC, created_at ASC
@@ -1034,14 +1042,16 @@ impl VfsFolderRepo {
         conn.execute_batch("SAVEPOINT vfs_folder_delete_tx")?;
 
         let result: VfsResult<()> = (|| {
-            let now = chrono::Utc::now()
+            // ★ P0 修复：deleted_at 是 TEXT 列，updated_at 是 INTEGER 列，必须分开处理
+            let now_str = chrono::Utc::now()
                 .format("%Y-%m-%dT%H:%M:%S%.3fZ")
                 .to_string();
+            let now_ms = chrono::Utc::now().timestamp_millis();
 
             // 1. 软删除文件夹本身
             let affected = conn.execute(
-                "UPDATE folders SET deleted_at = ?1, updated_at = ?1 WHERE id = ?2 AND deleted_at IS NULL",
-                params![now, folder_id],
+                "UPDATE folders SET deleted_at = ?1, updated_at = ?2 WHERE id = ?3 AND deleted_at IS NULL",
+                params![now_str, now_ms, folder_id],
             )?;
 
             if affected == 0 {
@@ -1060,10 +1070,10 @@ impl VfsFolderRepo {
                     INNER JOIN descendants d ON f.parent_id = d.id
                     WHERE f.deleted_at IS NULL
                 )
-                UPDATE folders SET deleted_at = ?2, updated_at = ?2
+                UPDATE folders SET deleted_at = ?2, updated_at = ?3
                 WHERE id IN (SELECT id FROM descendants)
                 "#,
-                params![folder_id, now],
+                params![folder_id, now_str, now_ms],
             )?;
 
             // 3. 软删除该文件夹及其所有子文件夹中的内容项（folder_items）
@@ -1075,10 +1085,10 @@ impl VfsFolderRepo {
                     SELECT f.id FROM folders f
                     INNER JOIN all_folders af ON f.parent_id = af.id
                 )
-                UPDATE folder_items SET deleted_at = ?2, updated_at = ?2
+                UPDATE folder_items SET deleted_at = ?2, updated_at = ?3
                 WHERE folder_id IN (SELECT id FROM all_folders) AND deleted_at IS NULL
                 "#,
-                params![folder_id, now],
+                params![folder_id, now_str, now_ms],
             )?;
 
             Ok(())
@@ -1160,9 +1170,6 @@ impl VfsFolderRepo {
         conn.execute_batch("SAVEPOINT vfs_folder_restore_tx")?;
 
         let result: VfsResult<()> = (|| {
-            let now = chrono::Utc::now()
-                .format("%Y-%m-%dT%H:%M:%S%.3fZ")
-                .to_string();
             let now_ts = chrono::Utc::now().timestamp_millis();
 
             // 1. 获取要恢复的文件夹信息
@@ -1205,9 +1212,10 @@ impl VfsFolderRepo {
             )?;
 
             // 4. 恢复当前文件夹（同时更新标题和 parent_id 如果需要）
+            // ★ P0 修复：updated_at 是 INTEGER 列，使用 now_ts（毫秒时间戳）
             let affected = conn.execute(
                 "UPDATE folders SET deleted_at = NULL, title = ?1, parent_id = ?2, updated_at = ?3 WHERE id = ?4 AND deleted_at IS NOT NULL",
-                params![new_title, target_parent_id, now, folder_id],
+                params![new_title, target_parent_id, now_ts, folder_id],
             )?;
 
             if affected == 0 {
@@ -1217,6 +1225,7 @@ impl VfsFolderRepo {
             }
 
             // 5. 级联恢复所有子文件夹
+            // ★ P0 修复：updated_at 是 INTEGER 列，使用 now_ts
             conn.execute(
                 r#"
                 WITH RECURSIVE descendants AS (
@@ -1229,7 +1238,7 @@ impl VfsFolderRepo {
                 UPDATE folders SET deleted_at = NULL, updated_at = ?2
                 WHERE id IN (SELECT id FROM descendants)
                 "#,
-                params![folder_id, now],
+                params![folder_id, now_ts],
             )?;
 
             // 6. 级联恢复该文件夹及其子文件夹中的内容项
@@ -1354,6 +1363,8 @@ impl VfsFolderRepo {
     }
 
     /// 列出已删除的文件夹（使用现有连接）
+    ///
+    /// ★ P0 修复：使用 CASE typeof() 兼容处理 updated_at/created_at 可能存储为 TEXT 的历史数据
     pub fn list_deleted_folders_with_conn(
         conn: &Connection,
         limit: u32,
@@ -1361,7 +1372,9 @@ impl VfsFolderRepo {
     ) -> VfsResult<Vec<VfsFolder>> {
         let mut stmt = conn.prepare(
             r#"
-            SELECT id, parent_id, title, icon, color, is_expanded, is_favorite, sort_order, created_at, updated_at
+            SELECT id, parent_id, title, icon, color, is_expanded, is_favorite, sort_order,
+                   CASE typeof(created_at) WHEN 'text' THEN CAST(strftime('%s', created_at) AS INTEGER) * 1000 ELSE created_at END,
+                   CASE typeof(updated_at) WHEN 'text' THEN CAST(strftime('%s', updated_at) AS INTEGER) * 1000 ELSE updated_at END
             FROM folders
             WHERE deleted_at IS NOT NULL
             ORDER BY deleted_at DESC LIMIT ?1 OFFSET ?2

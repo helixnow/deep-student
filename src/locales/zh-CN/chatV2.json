@@ -135,6 +135,11 @@
     "completedMissingModes": "完成（{{modes}}未就绪）",
     "modesNotReady": "未就绪：{{modes}}",
     "nonMultimodalImageFallback": "当前模型不支持图片输入，已自动将 {{count}} 个附件切换为文本/OCR 模式。可切换到多模态模型后再启用图片模式。",
+    "uploadStage": {
+      "reading": "读取文件",
+      "uploading": "上传中",
+      "creating": "创建引用"
+    },
     "modeSeparator": "、",
     "thinkingEnabled": "推理模式已开启",
     "thinkingDisabled": "点击开启推理模式",

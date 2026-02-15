@@ -58,17 +58,30 @@ pub async fn chat_v2_update_group(
         .ok_or_else(|| ChatV2Error::GroupNotFound(group_id.clone()).to_string())?;
 
     let now = chrono::Utc::now();
+
+    // Helper: None => keep existing, Some("") => clear to None, Some(val) => set new value
+    fn merge_optional_string(
+        request_val: Option<String>,
+        existing_val: Option<String>,
+    ) -> Option<String> {
+        match request_val {
+            None => existing_val,
+            Some(s) if s.trim().is_empty() => None,
+            Some(s) => Some(s),
+        }
+    }
+
     let updated = SessionGroup {
         id: existing.id,
         name: request.name.unwrap_or(existing.name),
-        description: request.description.or(existing.description),
-        icon: request.icon.or(existing.icon),
-        color: request.color.or(existing.color),
-        system_prompt: request.system_prompt.or(existing.system_prompt),
+        description: merge_optional_string(request.description, existing.description),
+        icon: merge_optional_string(request.icon, existing.icon),
+        color: merge_optional_string(request.color, existing.color),
+        system_prompt: merge_optional_string(request.system_prompt, existing.system_prompt),
         default_skill_ids: request
             .default_skill_ids
             .unwrap_or(existing.default_skill_ids),
-        workspace_id: request.workspace_id.or(existing.workspace_id),
+        workspace_id: merge_optional_string(request.workspace_id, existing.workspace_id),
         sort_order: request.sort_order.unwrap_or(existing.sort_order),
         persist_status: request.persist_status.unwrap_or(existing.persist_status),
         created_at: existing.created_at,
@@ -136,6 +149,22 @@ pub async fn chat_v2_move_session_to_group(
     let conn = db.get_conn_safe().map_err(|e| e.to_string())?;
     let normalized_group_id =
         group_id.and_then(|g| if g.trim().is_empty() { None } else { Some(g) });
+
+    // P1-5/P1-6 fix: Validate target group exists and is active
+    if let Some(ref gid) = normalized_group_id {
+        let group = ChatV2Repo::get_group_with_conn(&conn, gid)
+            .map_err(|e| e.to_string())?;
+        match group {
+            Some(g) if g.persist_status != PersistStatus::Active => {
+                return Err(ChatV2Error::GroupNotFound(gid.clone()).to_string());
+            }
+            None => {
+                return Err(ChatV2Error::GroupNotFound(gid.clone()).to_string());
+            }
+            _ => {}
+        }
+    }
+
     ChatV2Repo::update_session_group_with_conn(&conn, &session_id, normalized_group_id.as_deref())
         .map_err(|e| e.to_string())?;
     Ok(())

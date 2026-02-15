@@ -982,9 +982,10 @@ impl VfsExamRepo {
             Self::delete_exam_sheet_with_conn(conn, exam_id)?;
 
             // 3. 软删除 folder_items 记录（而不是硬删除）
+            // ★ P0 修复：deleted_at 是 TEXT 列，updated_at 是 INTEGER 列，必须分开处理
             conn.execute(
-                "UPDATE folder_items SET deleted_at = ?1, updated_at = ?1 WHERE item_type = 'exam' AND item_id = ?2 AND deleted_at IS NULL",
-                params![now_ms, exam_id],
+                "UPDATE folder_items SET deleted_at = ?1, updated_at = ?2 WHERE item_type = 'exam' AND item_id = ?3 AND deleted_at IS NULL",
+                params![now_str, now_ms, exam_id],
             )?;
 
             Ok(questions_deleted)

@@ -128,9 +128,14 @@ export const SyncTab: React.FC<SyncTabProps> = ({
       {/* 数据库同步状态 */}
       <div className="space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <h3 className="text-base font-medium text-foreground">
-            {t('data:governance.database_sync_status')}
-          </h3>
+          <div className="flex items-center gap-2">
+            <h3 className="text-base font-medium text-foreground">
+              {t('data:governance.database_sync_status')}
+            </h3>
+            <span className="inline-flex items-center rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-600 dark:text-amber-400 ring-1 ring-inset ring-amber-500/20">
+              {t('data:governance.experimental_badge')}
+            </span>
+          </div>
           <div className="flex gap-2">
             <NotionButton variant="ghost" size="sm" onClick={onRefresh} disabled={loading} className="h-8">
               <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${loading ? 'animate-spin' : ''}`} />
@@ -202,9 +207,14 @@ export const SyncTab: React.FC<SyncTabProps> = ({
       {/* 云端同步 */}
       <div className="space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <h3 className="text-base font-medium text-foreground">
-            {t('data:governance.cloud_sync_title')}
-          </h3>
+          <div className="flex items-center gap-2">
+            <h3 className="text-base font-medium text-foreground">
+              {t('data:governance.cloud_sync_title')}
+            </h3>
+            <span className="inline-flex items-center rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-600 dark:text-amber-400 ring-1 ring-inset ring-amber-500/20">
+              {t('data:governance.experimental_badge')}
+            </span>
+          </div>
           <NotionButton
             variant="ghost"
             size="sm"

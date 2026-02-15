@@ -144,18 +144,25 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
     if (!name.trim()) return;
     setIsSaving(true);
     try {
-      const payload = {
-        name: name.trim(),
-        description: description.trim() || undefined,
-        icon: icon.trim() || undefined,
-        systemPrompt: systemPrompt.trim() || undefined,
-        defaultSkillIds,
-      };
-      
       if (mode === 'create') {
-        await onSubmit(payload as CreateGroupRequest);
+        const payload: CreateGroupRequest = {
+          name: name.trim(),
+          description: description.trim() || undefined,
+          icon: icon.trim() || undefined,
+          systemPrompt: systemPrompt.trim() || undefined,
+          defaultSkillIds,
+        };
+        await onSubmit(payload);
       } else {
-        await onSubmit(payload as UpdateGroupRequest);
+        // Edit mode: send "" to clear fields (backend treats Some("") as clear-to-None)
+        const payload: UpdateGroupRequest = {
+          name: name.trim(),
+          description: description.trim(),
+          icon: icon.trim(),
+          systemPrompt: systemPrompt.trim(),
+          defaultSkillIds,
+        };
+        await onSubmit(payload);
       }
     } catch (error: unknown) {
       console.error('[GroupEditorPanel] Failed to save group:', error);

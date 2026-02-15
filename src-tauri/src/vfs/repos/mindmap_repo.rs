@@ -813,9 +813,11 @@ impl VfsMindMapRepo {
             }
 
             // 同时软删除 folder_items 记录
+            // ★ P0 修复：deleted_at 是 TEXT 列（用 now），updated_at 是 INTEGER 列（用毫秒时间戳）
+            let now_ms = chrono::Utc::now().timestamp_millis();
             conn.execute(
                 "UPDATE folder_items SET deleted_at = ?1, updated_at = ?2 WHERE item_id = ?3 AND item_type = 'mindmap' AND deleted_at IS NULL",
-                params![now, now, mindmap_id],
+                params![now, now_ms, mindmap_id],
             )?;
 
             Ok(())

@@ -273,6 +273,10 @@ export interface AttachmentMeta {
   injectModes?: AttachmentInjectModes;
   /** 🆕 PDF 处理状态（仅 PDF 文件使用） */
   processingStatus?: PdfProcessingStatus;
+  /** 上传进度 (0-100)，仅在 uploading 状态有效 */
+  uploadProgress?: number;
+  /** 上传阶段，仅在 uploading 状态有效 */
+  uploadStage?: 'reading' | 'uploading' | 'creating';
 }
 
 // ========== Token 使用统计 ==========

@@ -550,6 +550,8 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
         mimeType: file.type || 'application/octet-stream',
         size: file.size,
         status: 'uploading', // 标记为上传中
+        uploadProgress: 0,
+        uploadStage: 'reading',
       };
       onAddAttachment(pendingAttachment);
 
@@ -559,6 +561,21 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
 
       // 异步读取文件内容并上传到 VFS
       const reader = new FileReader();
+      let lastReportedPercent = 0;
+      reader.onprogress = (e) => {
+        if (e.lengthComputable) {
+          // 统一进度条：文件读取阶段占 0-20%
+          const readPercent = Math.round((e.loaded / e.total) * 20);
+          // ★ P2 节流：变化 >= 3% 才更新，避免大文件频繁触发 React 重渲染
+          if (readPercent - lastReportedPercent >= 3 || readPercent >= 20) {
+            lastReportedPercent = readPercent;
+            onUpdateAttachment(attachmentId, {
+              uploadProgress: readPercent,
+              uploadStage: 'reading',
+            });
+          }
+        }
+      };
       reader.onload = async () => {
         const base64Result = reader.result as string;
 
@@ -578,6 +595,12 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
             typeId,
           });
 
+          // ★ 统一进度条：文件读取完成 → 进入 VFS 上传阶段 (20-40%)
+          onUpdateAttachment(attachmentId, {
+            uploadProgress: 20,
+            uploadStage: 'uploading',
+          });
+
           // 1. 上传到 VFS
           const uploadResult = await vfsRefApi.uploadAttachment({
             name: file.name,
@@ -591,6 +614,12 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
             resourceHash: uploadResult.resourceHash,
             isNew: uploadResult.isNew,
           }, 'success');
+
+          // ★ 统一进度条：VFS 上传完成 → 进入创建引用阶段 (40-50%)
+          onUpdateAttachment(attachmentId, {
+            uploadProgress: 40,
+            uploadStage: 'creating',
+          });
 
           // 2. 创建资源引用
           const refData = JSON.stringify({
@@ -668,6 +697,8 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
               previewUrl: blobPreviewUrl,
               resourceId: result.resourceId,
               sourceId: uploadResult.sourceId, // ★ P0 修复：保存 sourceId 用于重试
+              uploadProgress: undefined,
+              uploadStage: undefined,
               processingStatus: {
                 stage: stage as 'page_rendering' | 'page_compression' | 'ocr_processing' | 'vector_indexing' | 'completed',
                 percent,
@@ -710,6 +741,8 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
               previewUrl: blobPreviewUrl,
               resourceId: result.resourceId,
               sourceId: uploadResult.sourceId, // ★ P0 修复：保存 sourceId 用于重试
+              uploadProgress: undefined,
+              uploadStage: undefined,
               processingStatus: {
                 stage: stage as 'image_compression' | 'ocr_processing' | 'vector_indexing' | 'completed',
                 percent,
@@ -744,6 +777,8 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
               previewUrl: blobPreviewUrl,
               resourceId: result.resourceId,
               sourceId: uploadResult.sourceId, // ★ P0 修复：保存 sourceId
+              uploadProgress: undefined,
+              uploadStage: undefined,
             });
           }
 
@@ -763,6 +798,8 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
             status: 'error',
             previewUrl: blobPreviewUrl,
             error: `${t('chatV2:input.attachmentUploadFailed')}${errorDetail ? ` (${errorDetail})` : ''}`,
+            uploadProgress: undefined,
+            uploadStage: undefined,
           });
           console.error('[InputBarUI] VFS upload failed:', errorDetail);
         }
@@ -776,6 +813,8 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
         onUpdateAttachment(attachmentId, {
           status: 'error',
           error: t('analysis:input_bar.attachments.load_failed'),
+          uploadProgress: undefined,
+          uploadStage: undefined,
         });
       };
       reader.readAsDataURL(file);
@@ -961,6 +1000,10 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
       // 只处理 PDF 和图片
       if (!isPdf && !isImage) return false;
 
+      // ★ 跳过上传中的附件，避免误显示"部分模式未就绪"
+      // 上传中的附件由 hasUploadingAttachments 处理
+      if (att.status === 'uploading' || att.status === 'pending') return false;
+
       // 获取选中的注入模式和媒体类型
       const selectedModes = getSelectedModes(att, isPdf, isImage);
       const mediaType = isPdf ? 'pdf' : 'image';
@@ -975,6 +1018,8 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
       const isPdf = att.mimeType === 'application/pdf' || att.name.toLowerCase().endsWith('.pdf');
       const isImage = att.mimeType?.startsWith('image/') || false;
       if (!isPdf && !isImage) continue;
+      // ★ 跳过上传中的附件，由 hasUploadingAttachments 处理
+      if (att.status === 'uploading' || att.status === 'pending') continue;
       const selectedModes = getSelectedModes(att, isPdf, isImage);
       const mediaType = isPdf ? 'pdf' : 'image';
       const status = att.sourceId ? (pdfStatusMap.get(att.sourceId) || att.processingStatus) : att.processingStatus;
@@ -2215,12 +2260,13 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                       ? (displayPercent > 0 ? `${stageLabel} · ${displayPercent}%` : stageLabel)
                       : `${displayPercent}%`;
 
+                    const isUploading = attachment.status === 'uploading' || attachment.status === 'pending';
                     const statusIcon =
                       attachment.status === 'ready' && missingModes.length > 0
                         ? <AlertTriangle size={12} className="text-amber-600" />
                         : attachment.status === 'ready' ? <CheckCircle2 size={12} className="text-green-600" />
                           : attachment.status === 'error' ? <XCircle size={12} className="text-red-600" />
-                            : isMediaProcessing ? <Loader2 size={12} className="text-blue-500 animate-spin" />
+                            : (isMediaProcessing || isUploading) ? <Loader2 size={12} className="text-blue-500 animate-spin" />
                               : <Clock size={12} className="text-muted-foreground" />;
                     const toneClass = isVfsRef
                       ? 'border-blue-200/60 bg-blue-50/70 dark:border-blue-800/50 dark:bg-blue-900/20'
@@ -2228,7 +2274,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                         : attachment.status === 'ready' && missingModes.length > 0
                           ? 'border-amber-200/60 bg-amber-50/70 dark:border-amber-800/50 dark:bg-amber-900/20'
                           : attachment.status === 'ready' ? 'border-emerald-200/60 bg-emerald-50/70 dark:border-emerald-800/50 dark:bg-emerald-900/20'
-                            : isMediaProcessing ? 'border-blue-200/60 bg-blue-50/70 dark:border-blue-800/50 dark:bg-blue-900/20'
+                            : (isMediaProcessing || isUploading) ? 'border-blue-200/60 bg-blue-50/70 dark:border-blue-800/50 dark:bg-blue-900/20'
                               : 'border-slate-200/70 bg-card/90 dark:border-slate-700/50';
 
                     // 判断是否为图片或 PDF（需要显示注入模式选择器）
@@ -2241,21 +2287,39 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                           <div className="flex-1 min-w-0">
                             <span className="text-[13px] text-foreground truncate block">{attachment.name}</span>
                             {attachment.status === 'error' && attachment.error && <span className="text-[11px] text-red-600 truncate block">{attachment.error}</span>}
-                            {/* 🆕 PDF 处理进度显示 */}
-                            {isMediaProcessing && mediaProgress && (
-                              <div className="flex items-center gap-2 mt-0.5">
-                                <div className="flex-1 h-1 bg-muted rounded-full overflow-hidden">
-                                  <div
-                                    className="h-full bg-blue-500 transition-all duration-300"
-                                    style={{ width: `${displayPercent}%` }}
-                                  />
+                            {/* 🆕 统一进度条：上传(0-50%) + 处理(50-100%) */}
+                            {(() => {
+                              // 计算统一进度百分比和阶段标签
+                              let unifiedPercent: number | null = null;
+                              let unifiedLabel = '';
+
+                              if (isUploading && attachment.uploadProgress != null) {
+                                // 上传阶段：直接使用 uploadProgress (0-50%)
+                                unifiedPercent = attachment.uploadProgress;
+                                unifiedLabel = t(`chatV2:inputBar.uploadStage.${attachment.uploadStage || 'reading'}`);
+                              } else if (isMediaProcessing && mediaProgress) {
+                                // 处理阶段：后端 0-100% 映射到 50-100%
+                                unifiedPercent = 50 + Math.round(displayPercent * 0.5);
+                                unifiedLabel = stageLabel || '';
+                              }
+
+                              if (unifiedPercent == null) return null;
+
+                              return (
+                                <div className="flex items-center gap-2 mt-0.5">
+                                  <div className="flex-1 h-1 bg-muted rounded-full overflow-hidden">
+                                    <div
+                                      className="h-full bg-blue-500 transition-all duration-300"
+                                      style={{ width: `${unifiedPercent}%` }}
+                                    />
+                                  </div>
+                                  <span className="text-[10px] text-blue-600 dark:text-blue-400 whitespace-nowrap">
+                                    {unifiedLabel}{unifiedPercent > 0 ? ` · ${unifiedPercent}%` : ''}
+                                  </span>
                                 </div>
-                                <span className="text-[10px] text-blue-600 dark:text-blue-400 whitespace-nowrap">
-                                  {progressLabel}
-                                </span>
-                              </div>
-                            )}
-                            {missingModesLabel && (
+                              );
+                            })()}
+                            {missingModesLabel && !isUploading && (
                               <div className="mt-0.5 text-[10px] text-amber-600 dark:text-amber-400">
                                 {t('chatV2:inputBar.modesNotReady', { modes: missingModesLabel })}
                               </div>

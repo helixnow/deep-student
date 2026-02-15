@@ -558,6 +558,7 @@
     "asset_type_filter_unsupported": "Select asset types to back up. Leave empty to include all assets in the selected tiers.",
     "asset_type_filter_unsupported_hint": "Select asset types to back up. Leave empty to include all assets in the selected tiers.",
     "tiered_backup_select_tier_first": "Select at least one backup tier",
+    "experimental_badge": "Experimental",
     "cloud_sync_title": "Cloud sync",
     "open_cloud_settings": "Open cloud storage settings",
     "cloud_sync_not_configured": "Cloud storage not configured",

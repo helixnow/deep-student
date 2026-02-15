@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
-import { convertFileSrc } from '@tauri-apps/api/core';
+import { invoke } from '@tauri-apps/api/core';
 import { guardedListen } from '../../utils/guardedListen';
 import { getErrorMessage } from '../../utils/errorUtils';
 import { showGlobalNotification } from '../UnifiedNotification';
@@ -429,41 +429,32 @@ export const UnifiedDragDropZone: React.FC<UnifiedDragDropZoneProps> = ({
             continue;
           }
           
-          // 读取文件内容并验证大小
-          const url = convertFileSrc(p);
-          const res = await fetch(url);
-          if (!res.ok) {
-            const reason = `${name}: HTTP ${res.status}`;
-            rejected.push(reason);
-            emitDebugEvent(zoneId, 'file_processing', 'error', `文件读取失败: ${name}`, {
-              fileName: name,
-              path: p,
-              httpStatus: res.status,
-            });
-            continue;
-          }
-          
-          const blob = await res.blob();
-          if (!validateFileSize(blob.size)) {
+          // 🔧 使用 Tauri IPC 读取文件，避免 asset protocol 在 Windows 上对含中文/空格路径的 fetch 失败
+          // 先检查文件大小（避免读入超大文件到内存）
+          const fileSize = await invoke<number>('get_file_size', { path: p });
+          if (!validateFileSize(fileSize)) {
             const sizeMB = (maxFileSize / (1024 * 1024)).toFixed(1);
             const reason = `${name}: ${t('drag_drop:errors.file_too_large', { size: sizeMB })}`;
             rejected.push(reason as any);
             emitDebugEvent(zoneId, 'validation_failed', 'warning', `文件过大: ${name}`, {
               fileName: name,
-              fileSize: `${(blob.size / (1024 * 1024)).toFixed(2)}MB`,
+              fileSize: `${(fileSize / (1024 * 1024)).toFixed(2)}MB`,
               maxSize: `${sizeMB}MB`,
             });
             continue;
           }
+
+          const rawBytes = await invoke<number[]>('read_file_bytes', { path: p });
+          const bytes = new Uint8Array(rawBytes);
           
           // 验证通过，添加到有效路径列表
           validPaths.push(p);
           const mime = getMimeType(name);
-          files.push(new File([blob], name, { type: mime }));
+          files.push(new File([bytes], name, { type: mime }));
           
           emitDebugEvent(zoneId, 'file_converted', 'debug', `文件转换成功: ${name}`, {
             fileName: name,
-            fileSize: `${(blob.size / (1024 * 1024)).toFixed(2)}MB`,
+            fileSize: `${(bytes.length / (1024 * 1024)).toFixed(2)}MB`,
             mimeType: mime,
           });
         }

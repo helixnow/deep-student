@@ -3,10 +3,12 @@
 //! 提供统一的软删除、恢复、列表和永久删除命令。
 
 use std::sync::Arc;
+use rusqlite::params;
 use tauri::{State, Window};
 use tracing::{error, info, warn};
 
 use crate::vfs::database::VfsDatabase;
+use crate::vfs::lance_store::VfsLanceStore;
 use crate::vfs::repos::{
     VfsEssayRepo, VfsExamRepo, VfsFileRepo, VfsFolderRepo, VfsMindMapRepo, VfsNoteRepo,
     VfsTextbookRepo, VfsTranslationRepo,
@@ -15,6 +17,67 @@ use crate::vfs::repos::{
 use super::error::DstuError;
 use super::handler_utils::{emit_watch_event, parse_timestamp};
 use super::types::{DstuNode, DstuNodeType, DstuWatchEvent};
+
+// ============================================================================
+// 向量索引清理辅助函数
+// ============================================================================
+
+/// 根据类型和 ID 查找 resource_id（用于向量索引清理）
+///
+/// 文件夹没有 resource_id，返回 None。
+fn lookup_resource_id(db: &VfsDatabase, item_type: &str, item_id: &str) -> Option<String> {
+    let conn = db.get_conn_safe().ok()?;
+    let sql = match item_type {
+        "note" => "SELECT resource_id FROM notes WHERE id = ?1",
+        "textbook" | "image" | "file" => "SELECT resource_id FROM files WHERE id = ?1",
+        "exam" => "SELECT resource_id FROM exam_sheets WHERE id = ?1",
+        "translation" => "SELECT resource_id FROM translations WHERE id = ?1",
+        "essay" => {
+            if item_id.starts_with("essay_session_") {
+                // essay_session 没有直接的 resource_id
+                return None;
+            }
+            "SELECT resource_id FROM essays WHERE id = ?1"
+        }
+        "mindmap" => "SELECT resource_id FROM mindmaps WHERE id = ?1",
+        _ => return None,
+    };
+    conn.query_row(sql, params![item_id], |row| row.get::<_, Option<String>>(0))
+        .ok()
+        .flatten()
+}
+
+/// 异步清理资源的向量索引（text + multimodal）
+///
+/// 失败仅记录警告，不阻塞删除流程。
+async fn cleanup_vector_index(db: &Arc<VfsDatabase>, resource_id: &str) {
+    match VfsLanceStore::new(Arc::clone(db)) {
+        Ok(lance_store) => {
+            if let Err(e) = lance_store.delete_by_resource("text", resource_id).await {
+                warn!(
+                    "[DSTU::trash] Failed to delete text vectors for {}: {}",
+                    resource_id, e
+                );
+            }
+            if let Err(e) = lance_store.delete_by_resource("multimodal", resource_id).await {
+                warn!(
+                    "[DSTU::trash] Failed to delete multimodal vectors for {}: {}",
+                    resource_id, e
+                );
+            }
+            info!(
+                "[DSTU::trash] Cleaned up vector index for resource {}",
+                resource_id
+            );
+        }
+        Err(e) => {
+            warn!(
+                "[DSTU::trash] LanceStore init failed, skipping vector cleanup for {}: {}",
+                resource_id, e
+            );
+        }
+    }
+}
 
 /// 软删除资源或文件夹
 ///
@@ -62,6 +125,12 @@ pub async fn dstu_soft_delete(
                 "[DSTU::trash] dstu_soft_delete: SUCCESS - type={}, id={}",
                 item_type, id
             );
+
+            // ★ P1 修复：软删除后清理向量索引，防止已删除资源仍可通过 RAG 检索到
+            if let Some(resource_id) = lookup_resource_id(&db, &item_type, &id) {
+                cleanup_vector_index(db.inner(), &resource_id).await;
+            }
+
             // 发射删除事件
             let path = format!("/{}s/{}", item_type, id);
             emit_watch_event(&window, DstuWatchEvent::deleted(&path));
@@ -408,6 +477,32 @@ pub async fn dstu_empty_trash(
 ) -> Result<usize, DstuError> {
     info!("[DSTU::trash] dstu_empty_trash");
 
+    // ★ P1 修复：在 purge 之前收集所有待清理的 resource_ids
+    let resource_ids_to_cleanup: Vec<String> = {
+        if let Ok(conn) = db.get_conn_safe() {
+            let mut ids = Vec::new();
+            // 收集已删除的 notes, files, exam_sheets, translations, mindmaps 的 resource_id
+            for sql in &[
+                "SELECT resource_id FROM notes WHERE deleted_at IS NOT NULL AND resource_id IS NOT NULL",
+                "SELECT resource_id FROM files WHERE deleted_at IS NOT NULL AND resource_id IS NOT NULL",
+                "SELECT resource_id FROM exam_sheets WHERE deleted_at IS NOT NULL AND resource_id IS NOT NULL",
+                "SELECT resource_id FROM translations WHERE deleted_at IS NOT NULL AND resource_id IS NOT NULL",
+                "SELECT resource_id FROM mindmaps WHERE deleted_at IS NOT NULL AND resource_id IS NOT NULL",
+            ] {
+                if let Ok(mut stmt) = conn.prepare(sql) {
+                    if let Ok(rows) = stmt.query_map([], |row| row.get::<_, String>(0)) {
+                        for rid in rows.flatten() {
+                            ids.push(rid);
+                        }
+                    }
+                }
+            }
+            ids
+        } else {
+            Vec::new()
+        }
+    };
+
     let mut total_deleted = 0;
 
     // 永久删除各类资源
@@ -546,6 +641,31 @@ pub async fn dstu_empty_trash(
         emit_watch_event(&window, DstuWatchEvent::purged("/_trash"));
     }
 
+    // ★ P1 修复：purge 成功后异步清理所有向量索引
+    if !resource_ids_to_cleanup.is_empty() {
+        let db_clone = db.inner().clone();
+        tokio::spawn(async move {
+            match VfsLanceStore::new(db_clone) {
+                Ok(lance_store) => {
+                    for rid in &resource_ids_to_cleanup {
+                        let _ = lance_store.delete_by_resource("text", rid).await;
+                        let _ = lance_store.delete_by_resource("multimodal", rid).await;
+                    }
+                    info!(
+                        "[DSTU::trash] dstu_empty_trash: cleaned up vectors for {} resources",
+                        resource_ids_to_cleanup.len()
+                    );
+                }
+                Err(e) => {
+                    warn!(
+                        "[DSTU::trash] dstu_empty_trash: LanceStore init failed, skipping vector cleanup: {}",
+                        e
+                    );
+                }
+            }
+        });
+    }
+
     Ok(total_deleted)
 }
 
@@ -561,6 +681,9 @@ pub async fn dstu_permanently_delete(
         "[DSTU::trash] dstu_permanently_delete: id={}, type={}",
         id, item_type
     );
+
+    // ★ P1 修复：在 purge 之前查找 resource_id（purge 会删除数据库记录）
+    let resource_id = lookup_resource_id(&db, &item_type, &id);
 
     // 统一使用 purge 方法进行永久删除
     let result = match item_type.as_str() {
@@ -593,6 +716,12 @@ pub async fn dstu_permanently_delete(
                 "[DSTU::trash] dstu_permanently_delete: SUCCESS - type={}, id={}",
                 item_type, id
             );
+
+            // ★ P1 修复：永久删除后清理向量索引（如果软删除时未清理）
+            if let Some(ref rid) = resource_id {
+                cleanup_vector_index(db.inner(), rid).await;
+            }
+
             // 发射永久删除事件
             let path = format!("/_trash/{}", id);
             emit_watch_event(&window, DstuWatchEvent::purged(&path));

@@ -80,23 +80,13 @@
   color: hsl(var(--foreground));
 }
 
-/* 滚动条样式 */
+/* 隐藏原生滚动条，使用自研滚动条覆盖 */
+.skill-codemirror-editor .cm-scroller {
+  scrollbar-width: none;
+}
+
 .skill-codemirror-editor .cm-scroller::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-
-.skill-codemirror-editor .cm-scroller::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.skill-codemirror-editor .cm-scroller::-webkit-scrollbar-thumb {
-  background: hsl(var(--muted-foreground) / 0.2);
-  border-radius: 4px;
-}
-
-.skill-codemirror-editor .cm-scroller::-webkit-scrollbar-thumb:hover {
-  background: hsl(var(--muted-foreground) / 0.3);
+  display: none;
 }
 
 /* 搜索高亮 */

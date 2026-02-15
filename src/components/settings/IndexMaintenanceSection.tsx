@@ -6,14 +6,9 @@
 
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import { Loader2, FileText, Zap, MessageSquare, Info, ChevronDown, ChevronUp, Database, HelpCircle, BookOpen, Network, InfoIcon, FolderSearch } from 'lucide-react';
-import { AlertTitle } from '../ui/shad/Alert';
+import { Loader2, FileText, Zap, MessageSquare, Database, HelpCircle, BookOpen, Network, FolderSearch } from 'lucide-react';
 import { NotionButton } from '../ui/NotionButton';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../ui/shad/Card';
-import { Alert, AlertDescription } from '../ui/shad/Alert';
-import { Input } from '../ui/shad/Input';
 import { Switch } from '../ui/shad/Switch';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '../ui/shad/Collapsible';
 import { TauriAPI } from '../../utils/tauriApi';
 import { showGlobalNotification } from '../UnifiedNotification';
 import { getErrorMessage } from '../../utils/errorUtils';
@@ -164,54 +159,53 @@ export const LanceOptimizationPanel: React.FC = () => {
   }, [parseSettingBoolean]);
 
   return (
-    <Card className="p-2 text-left h-full flex flex-col overflow-hidden min-w-0">
-      <CardHeader className="p-0 mb-3 text-left w-full">
-        <div className="flex flex-row items-center justify-between gap-2">
+    <div className="space-y-6">
+      {/* 标题区 */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="space-y-1">
           <div className="flex items-center gap-2">
-            <Database className="h-5 w-5 text-primary" />
-            <CardTitle className="text-base text-left">{t('lance_optimization.title')}</CardTitle>
+            <Database className="h-4 w-4 text-muted-foreground" />
+            <h3 className="text-base font-medium text-foreground">{t('lance_optimization.title')}</h3>
           </div>
-          <NotionButton
-            variant="ghost"
-            size="sm"
-            onClick={() => setShowInfo(!showInfo)}
-          >
-            <HelpCircle className="h-4 w-4" />
-          </NotionButton>
+          <p className="text-sm text-muted-foreground">
+            {t('lance_optimization.description')}
+          </p>
         </div>
-        <CardDescription className="mt-1 text-sm text-muted-foreground">
-          {t('lance_optimization.description')}
-        </CardDescription>
-      </CardHeader>
+        <NotionButton
+          variant="ghost"
+          size="sm"
+          onClick={() => setShowInfo(!showInfo)}
+          className="h-8"
+        >
+          <HelpCircle className="h-3.5 w-3.5" />
+        </NotionButton>
+      </div>
 
-      <CardContent className="p-0 space-y-4 flex-1 flex flex-col">
-        {/* 信息面板 */}
-        {showInfo && (
-          <Alert>
-            <InfoIcon className="h-4 w-4" />
-            <AlertTitle>{t('lance_optimization.info.what')}</AlertTitle>
-            <AlertDescription className="text-xs space-y-2">
-              <p><strong>{t('lance_optimization.info.why')}</strong> {t('lance_optimization.info.why_answer')}</p>
-              <p><strong>{t('lance_optimization.info.when')}</strong> {t('lance_optimization.info.when_answer')}</p>
-            </AlertDescription>
-          </Alert>
-        )}
+      {/* 信息面板 */}
+      {showInfo && (
+        <div className="rounded-lg border border-border/40 p-4 text-xs text-muted-foreground space-y-2">
+          <p className="font-medium text-sm text-foreground">{t('lance_optimization.info.what')}</p>
+          <p><strong>{t('lance_optimization.info.why')}</strong> {t('lance_optimization.info.why_answer')}</p>
+          <p><strong>{t('lance_optimization.info.when')}</strong> {t('lance_optimization.info.when_answer')}</p>
+        </div>
+      )}
 
-        {/* 参数配置 */}
-        <div className="grid md:grid-cols-2 gap-4">
+      {/* 参数配置 */}
+      <div className="rounded-lg border border-border/40 p-4">
+        <div className="grid md:grid-cols-2 gap-6">
           <div>
-            <label className="block text-sm font-medium mb-1 text-foreground">
+            <label className="block text-sm font-medium mb-1.5 text-foreground">
               {t('lance_optimization.older_than_days')}
             </label>
-            <Input
+            <input
               type="number"
               min={1}
               max={365}
               value={olderThanDays}
               onChange={(e) => setOlderThanDays(e.target.value)}
-              className="w-full"
+              className="w-full h-8 rounded-md border border-border/40 bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
             />
-            <p className="mt-1 text-xs text-muted-foreground">
+            <p className="mt-1.5 text-xs text-muted-foreground">
               {t('lance_optimization.older_than_days_hint')}
             </p>
           </div>
@@ -231,100 +225,100 @@ export const LanceOptimizationPanel: React.FC = () => {
             </p>
           </div>
         </div>
+      </div>
 
-        {/* 优化按钮组 */}
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-          <NotionButton
-            variant="outline"
-            disabled={optimizing.chat}
-            onClick={() => optimizeTable('chat', 'optimize_chat_embeddings_table')}
-            className="flex flex-col items-center gap-1 h-auto py-3"
-          >
-            {optimizing.chat ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <MessageSquare className="h-4 w-4" />
-            )}
-            <span className="text-xs">{t('lance_optimization.chat_table')}</span>
-          </NotionButton>
-
-          <NotionButton
-            variant="outline"
-            disabled={optimizing.kb}
-            onClick={() => optimizeTable('kb', 'optimize_kb_embeddings_table')}
-            className="flex flex-col items-center gap-1 h-auto py-3"
-          >
-            {optimizing.kb ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <BookOpen className="h-4 w-4" />
-            )}
-            <span className="text-xs">{t('lance_optimization.kb_table')}</span>
-          </NotionButton>
-
-          <NotionButton
-            variant="outline"
-            disabled={optimizing.kg}
-            onClick={() => optimizeTable('kg', 'optimize_kg_embeddings_table')}
-            className="flex flex-col items-center gap-1 h-auto py-3"
-          >
-            {optimizing.kg ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Network className="h-4 w-4" />
-            )}
-            <span className="text-xs">{t('lance_optimization.kg_table')}</span>
-          </NotionButton>
-
-          <NotionButton
-            variant="outline"
-            disabled={optimizing.notes}
-            onClick={() => optimizeTable('notes', 'optimize_notes_embeddings_table')}
-            className="flex flex-col items-center gap-1 h-auto py-3"
-          >
-            {optimizing.notes ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <FileText className="h-4 w-4" />
-            )}
-            <span className="text-xs">{t('lance_optimization.notes_table')}</span>
-          </NotionButton>
-
-          <NotionButton
-            variant="outline"
-            disabled={optimizing.vfs}
-            onClick={() => optimizeTable('vfs', 'vfs_optimize_lance')}
-            className="flex flex-col items-center gap-1 h-auto py-3"
-          >
-            {optimizing.vfs ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <FolderSearch className="h-4 w-4" />
-            )}
-            <span className="text-xs">{t('lance_optimization.vfs_table')}</span>
-          </NotionButton>
-        </div>
-
-        {/* 一键优化所有表 */}
+      {/* 优化按钮组 */}
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         <NotionButton
-          variant="default"
-          disabled={Object.values(optimizing).some(v => v)}
-          onClick={optimizeAll}
-          className="w-full"
+          variant="ghost"
+          disabled={optimizing.chat}
+          onClick={() => optimizeTable('chat', 'optimize_chat_embeddings_table')}
+          className="flex flex-col items-center gap-1 h-auto py-3 rounded-lg border border-border/40 hover:bg-muted/30"
         >
-          {Object.values(optimizing).some(v => v) ? (
-            <>
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              {t('lance_optimization.optimizing')}
-            </>
+          {optimizing.chat ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
           ) : (
-            <>
-              <Zap className="h-4 w-4 mr-2" />
-              {t('lance_optimization.optimize_all')}
-            </>
+            <MessageSquare className="h-4 w-4" />
           )}
+          <span className="text-xs">{t('lance_optimization.chat_table')}</span>
         </NotionButton>
-      </CardContent>
-    </Card>
+
+        <NotionButton
+          variant="ghost"
+          disabled={optimizing.kb}
+          onClick={() => optimizeTable('kb', 'optimize_kb_embeddings_table')}
+          className="flex flex-col items-center gap-1 h-auto py-3 rounded-lg border border-border/40 hover:bg-muted/30"
+        >
+          {optimizing.kb ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <BookOpen className="h-4 w-4" />
+          )}
+          <span className="text-xs">{t('lance_optimization.kb_table')}</span>
+        </NotionButton>
+
+        <NotionButton
+          variant="ghost"
+          disabled={optimizing.kg}
+          onClick={() => optimizeTable('kg', 'optimize_kg_embeddings_table')}
+          className="flex flex-col items-center gap-1 h-auto py-3 rounded-lg border border-border/40 hover:bg-muted/30"
+        >
+          {optimizing.kg ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Network className="h-4 w-4" />
+          )}
+          <span className="text-xs">{t('lance_optimization.kg_table')}</span>
+        </NotionButton>
+
+        <NotionButton
+          variant="ghost"
+          disabled={optimizing.notes}
+          onClick={() => optimizeTable('notes', 'optimize_notes_embeddings_table')}
+          className="flex flex-col items-center gap-1 h-auto py-3 rounded-lg border border-border/40 hover:bg-muted/30"
+        >
+          {optimizing.notes ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <FileText className="h-4 w-4" />
+          )}
+          <span className="text-xs">{t('lance_optimization.notes_table')}</span>
+        </NotionButton>
+
+        <NotionButton
+          variant="ghost"
+          disabled={optimizing.vfs}
+          onClick={() => optimizeTable('vfs', 'vfs_optimize_lance')}
+          className="flex flex-col items-center gap-1 h-auto py-3 rounded-lg border border-border/40 hover:bg-muted/30"
+        >
+          {optimizing.vfs ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <FolderSearch className="h-4 w-4" />
+          )}
+          <span className="text-xs">{t('lance_optimization.vfs_table')}</span>
+        </NotionButton>
+      </div>
+
+      {/* 一键优化所有表 */}
+      <NotionButton
+        variant="default"
+        disabled={Object.values(optimizing).some(v => v)}
+        onClick={optimizeAll}
+        className="w-full"
+      >
+        {Object.values(optimizing).some(v => v) ? (
+          <>
+            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            {t('lance_optimization.optimizing')}
+          </>
+        ) : (
+          <>
+            <Zap className="h-4 w-4 mr-2" />
+            {t('lance_optimization.optimize_all')}
+          </>
+        )}
+      </NotionButton>
+    </div>
   );
 };

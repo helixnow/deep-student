@@ -1,13 +1,30 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { guardedListen } from '../utils/guardedListen';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
-import { convertFileSrc } from '@tauri-apps/api/core';
 import { showGlobalNotification } from '../components/UnifiedNotification';
 import {
   ATTACHMENT_IMAGE_EXTENSIONS,
   ATTACHMENT_DOCUMENT_EXTENSIONS,
 } from '@/chat-v2/core/constants';
 import i18n from '@/i18n';
+
+// 扩展名到 MIME 类型映射表（与 UnifiedDragDropZone EXTENSION_TO_MIME 保持一致）
+const EXTENSION_TO_MIME: Record<string, string> = {
+  jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif',
+  bmp: 'image/bmp', webp: 'image/webp', svg: 'image/svg+xml',
+  heic: 'image/heic', heif: 'image/heif',
+  pdf: 'application/pdf',
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  xls: 'application/vnd.ms-excel',
+  xlsb: 'application/vnd.ms-excel.sheet.binary.macroEnabled.12',
+  ods: 'application/vnd.oasis.opendocument.spreadsheet',
+  pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  txt: 'text/plain', md: 'text/markdown', csv: 'text/csv',
+  json: 'application/json', xml: 'application/xml',
+  html: 'text/html', htm: 'text/html',
+  epub: 'application/epub+zip', rtf: 'application/rtf',
+};
 
 // ============================================================================
 // 🔧 Windows WebView2 兼容：全局 dragover/drop 事件 preventDefault
@@ -195,10 +212,13 @@ export const useTauriDragAndDrop = ({
         supportedTypes: supportedTypesText,
       });
       
+      // 🔧 使用 Tauri IPC 读取文件，避免 asset protocol 在 Windows 上对含中文/空格路径的 fetch 失败
+      const { invoke } = await import('@tauri-apps/api/core');
+      const imageRegex = new RegExp(`\\.(${ATTACHMENT_IMAGE_EXTENSIONS.join('|')})$`, 'i');
+      const documentRegex = new RegExp(`\\.(${ATTACHMENT_DOCUMENT_EXTENSIONS.join('|')})$`, 'i');
+
       for (const path of pathsToProcess) {
         const fileName = path.split(/[/\\]/).pop() || 'file';
-        const imageRegex = new RegExp(`\\.(${ATTACHMENT_IMAGE_EXTENSIONS.join('|')})$`, 'i');
-        const documentRegex = new RegExp(`\\.(${ATTACHMENT_DOCUMENT_EXTENSIONS.join('|')})$`, 'i');
         const isImage = imageRegex.test(path);
         const isDocument = documentRegex.test(path);
         
@@ -212,46 +232,45 @@ export const useTauriDragAndDrop = ({
         }
         
         try {
-          const assetUrl = convertFileSrc(path);
-          const response = await fetch(assetUrl);
-          if (!response.ok) {
-            emitDebugEvent(zoneId, 'file_processing', 'error', `文件读取失败: ${fileName}`, {
-              fileName,
-              httpStatus: response.status,
-            });
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+
+          // 先检查文件大小（避免读入超大文件到内存）
+          if (maxFileSize) {
+            const fileSize = await invoke<number>('get_file_size', { path });
+            if (fileSize > maxFileSize) {
+              oversizeCount++;
+              const sizeMB = (maxFileSize / (1024 * 1024)).toFixed(1);
+              rejectedFiles.push(`${fileName}: 文件过大 (${(fileSize / (1024 * 1024)).toFixed(2)}MB > ${sizeMB}MB)`);
+              emitDebugEvent(zoneId, 'validation_failed', 'warning', `文件过大: ${fileName}`, {
+                fileName,
+                fileSize: `${(fileSize / (1024 * 1024)).toFixed(2)}MB`,
+                maxSize: `${sizeMB}MB`,
+              });
+              continue;
+            }
           }
+
+          const rawBytes = await invoke<number[]>('read_file_bytes', { path });
+          const bytes = new Uint8Array(rawBytes);
           
-          const blob = await response.blob();
-          
-          // 大小验证
-          if (maxFileSize && blob.size > maxFileSize) {
-            oversizeCount++;
-            const sizeMB = (maxFileSize / (1024 * 1024)).toFixed(1);
-            rejectedFiles.push(`${fileName}: 文件过大 (${(blob.size / (1024 * 1024)).toFixed(2)}MB > ${sizeMB}MB)`);
-            emitDebugEvent(zoneId, 'validation_failed', 'warning', `文件过大: ${fileName}`, {
-              fileName,
-              fileSize: `${(blob.size / (1024 * 1024)).toFixed(2)}MB`,
-              maxSize: `${sizeMB}MB`,
-            });
-            continue;
-          }
+          // 推断 MIME 类型（使用完整映射表，与 UnifiedDragDropZone 保持一致）
+          const ext = fileName.split('.').pop()?.toLowerCase() || '';
+          const mimeType = EXTENSION_TO_MIME[ext] || 'application/octet-stream';
           
           let finalFileName = fileName;
           if (!finalFileName.includes('.')) {
-            const ext = (blob.type || (isImage ? 'image/jpeg' : 'application/octet-stream')).split('/')[1] || (isImage ? 'jpg' : 'bin');
-            finalFileName = `${finalFileName}.${ext}`;
+            const fallbackExt = isImage ? 'jpg' : 'bin';
+            finalFileName = `${finalFileName}.${fallbackExt}`;
           }
           
-          const file = new File([blob], finalFileName, {
-            type: blob.type || (isImage ? 'image/jpeg' : 'application/octet-stream'),
+          const file = new File([bytes], finalFileName, {
+            type: mimeType,
             lastModified: Date.now(),
           });
           
           acceptedFiles.push(file);
           emitDebugEvent(zoneId, 'file_converted', 'debug', `文件转换成功: ${finalFileName}`, {
             fileName: finalFileName,
-            fileSize: `${(blob.size / (1024 * 1024)).toFixed(2)}MB`,
+            fileSize: `${(bytes.length / (1024 * 1024)).toFixed(2)}MB`,
             mimeType: file.type,
           });
         } catch (error: unknown) {

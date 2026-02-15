@@ -76,6 +76,7 @@ use super::handler_utils::{
 };
 
 use crate::vfs::{
+    lance_store::VfsLanceStore,
     repos::VfsMindMapRepo, VfsBlobRepo, VfsCreateEssaySessionParams, VfsCreateExamSheetParams,
     VfsCreateMindMapParams, VfsCreateNoteParams, VfsDatabase, VfsEssay, VfsEssayRepo,
     VfsEssaySession, VfsExamRepo, VfsExamSheet, VfsFileRepo, VfsFolderItem, VfsFolderRepo,
@@ -1365,11 +1366,41 @@ pub async fn dstu_delete(
         }
     }
 
+    // ★ P1 修复：在删除前查找 resource_id，用于删除后清理向量索引
+    let resource_id: Option<String> = vfs_db.get_conn_safe().ok().and_then(|conn| {
+        let sql = match resource_type.as_str() {
+            "notes" | "note" => Some("SELECT resource_id FROM notes WHERE id = ?1"),
+            "textbooks" | "textbook" | "images" | "image" | "files" | "file" | "attachments" | "attachment" =>
+                Some("SELECT resource_id FROM files WHERE id = ?1"),
+            "exams" | "exam" => Some("SELECT resource_id FROM exam_sheets WHERE id = ?1"),
+            "translations" | "translation" => Some("SELECT resource_id FROM translations WHERE id = ?1"),
+            "mindmaps" | "mindmap" => Some("SELECT resource_id FROM mindmaps WHERE id = ?1"),
+            _ => None,
+        };
+        sql.and_then(|s| {
+            conn.query_row(s, rusqlite::params![id], |row| row.get::<_, Option<String>>(0))
+                .ok()
+                .flatten()
+        })
+    });
+
     // 使用辅助函数执行删除
     delete_resource_by_type(&vfs_db, &resource_type, &id)?;
 
     // 发射删除事件
     emit_watch_event(&window, DstuWatchEvent::deleted(&path));
+
+    // ★ P1 修复：删除成功后异步清理向量索引
+    if let Some(rid) = resource_id {
+        let db_clone = vfs_db.inner().clone();
+        tokio::spawn(async move {
+            if let Ok(lance_store) = VfsLanceStore::new(db_clone) {
+                let _ = lance_store.delete_by_resource("text", &rid).await;
+                let _ = lance_store.delete_by_resource("multimodal", &rid).await;
+                log::info!("[DSTU::handlers] dstu_delete: cleaned up vectors for {}", rid);
+            }
+        });
+    }
 
     log::info!(
         "[DSTU::handlers] dstu_delete: deleted type={}, id={}",
@@ -4046,6 +4077,24 @@ pub async fn dstu_purge(
         }
     };
 
+    // ★ P1 修复：在 purge 之前查找 resource_id（purge 会删除数据库记录）
+    let resource_id: Option<String> = vfs_db.get_conn_safe().ok().and_then(|conn| {
+        let sql = match resource_type.as_str() {
+            "notes" | "note" => Some("SELECT resource_id FROM notes WHERE id = ?1"),
+            "textbooks" | "textbook" | "images" | "image" | "files" | "file" | "attachments" | "attachment" =>
+                Some("SELECT resource_id FROM files WHERE id = ?1"),
+            "exams" | "exam" => Some("SELECT resource_id FROM exam_sheets WHERE id = ?1"),
+            "translations" | "translation" => Some("SELECT resource_id FROM translations WHERE id = ?1"),
+            "mindmaps" | "mindmap" => Some("SELECT resource_id FROM mindmaps WHERE id = ?1"),
+            _ => None,
+        };
+        sql.and_then(|s| {
+            conn.query_row(s, rusqlite::params![id], |row| row.get::<_, Option<String>>(0))
+                .ok()
+                .flatten()
+        })
+    });
+
     // 使用统一的 purge_resource_by_type 处理所有类型
     if let Err(e) = purge_resource_by_type(&vfs_db, &resource_type, &id) {
         log::error!(
@@ -4059,6 +4108,18 @@ pub async fn dstu_purge(
 
     // 发射永久删除事件
     emit_watch_event(&window, DstuWatchEvent::purged(&path));
+
+    // ★ P1 修复：purge 成功后异步清理向量索引
+    if let Some(rid) = resource_id {
+        let db_clone = vfs_db.inner().clone();
+        tokio::spawn(async move {
+            if let Ok(lance_store) = VfsLanceStore::new(db_clone) {
+                let _ = lance_store.delete_by_resource("text", &rid).await;
+                let _ = lance_store.delete_by_resource("multimodal", &rid).await;
+                log::info!("[DSTU::handlers] dstu_purge: cleaned up vectors for {}", rid);
+            }
+        });
+    }
 
     log::info!("[DSTU::handlers] dstu_purge: permanently deleted {}", path);
     Ok(())
@@ -4677,6 +4738,30 @@ pub async fn dstu_purge_all(
 ) -> Result<usize, String> {
     log::info!("[DSTU::handlers] dstu_purge_all: type={}", resource_type);
 
+    // ★ P1 修复：在 purge 之前收集所有待清理的 resource_ids
+    let resource_ids_to_cleanup: Vec<String> = {
+        if let Ok(conn) = vfs_db.get_conn_safe() {
+            let sql = match resource_type.as_str() {
+                "notes" => Some("SELECT resource_id FROM notes WHERE deleted_at IS NOT NULL AND resource_id IS NOT NULL"),
+                "textbooks" => Some("SELECT resource_id FROM files WHERE deleted_at IS NOT NULL AND resource_id IS NOT NULL AND \"type\" IN ('textbook', 'pdf')"),
+                _ => None,
+            };
+            if let Some(sql) = sql {
+                if let Ok(mut stmt) = conn.prepare(sql) {
+                    stmt.query_map([], |row| row.get::<_, String>(0))
+                        .map(|rows| rows.flatten().collect())
+                        .unwrap_or_default()
+                } else {
+                    Vec::new()
+                }
+            } else {
+                Vec::new()
+            }
+        } else {
+            Vec::new()
+        }
+    };
+
     let count = match resource_type.as_str() {
         "notes" => match VfsNoteRepo::purge_deleted_notes(&vfs_db) {
             Ok(c) => {
@@ -4724,6 +4809,23 @@ pub async fn dstu_purge_all(
     // 发射批量清除事件
     let path = format!("/{}/_trash", resource_type);
     emit_watch_event(&window, DstuWatchEvent::purged(&path));
+
+    // ★ P1 修复：purge 成功后异步清理向量索引
+    if !resource_ids_to_cleanup.is_empty() {
+        let db_clone = vfs_db.inner().clone();
+        tokio::spawn(async move {
+            if let Ok(lance_store) = VfsLanceStore::new(db_clone) {
+                for rid in &resource_ids_to_cleanup {
+                    let _ = lance_store.delete_by_resource("text", rid).await;
+                    let _ = lance_store.delete_by_resource("multimodal", rid).await;
+                }
+                log::info!(
+                    "[DSTU::handlers] dstu_purge_all: cleaned up vectors for {} resources",
+                    resource_ids_to_cleanup.len()
+                );
+            }
+        });
+    }
 
     log::info!(
         "[DSTU::handlers] dstu_purge_all: purged {} {} resources",
@@ -4783,6 +4885,30 @@ pub async fn dstu_delete_many(
         parsed_items.push((path.clone(), resource_type, id));
     }
 
+    // ★ P1 修复：在删除前收集 resource_ids，用于事务成功后清理向量索引
+    let resource_ids_to_cleanup: Vec<String> = {
+        if let Ok(conn) = vfs_db.get_conn_safe() {
+            parsed_items.iter().filter_map(|(_, resource_type, id)| {
+                let sql = match resource_type.as_str() {
+                    "notes" | "note" => Some("SELECT resource_id FROM notes WHERE id = ?1"),
+                    "textbooks" | "textbook" | "images" | "image" | "files" | "file" | "attachments" | "attachment" =>
+                        Some("SELECT resource_id FROM files WHERE id = ?1"),
+                    "exams" | "exam" => Some("SELECT resource_id FROM exam_sheets WHERE id = ?1"),
+                    "translations" | "translation" => Some("SELECT resource_id FROM translations WHERE id = ?1"),
+                    "mindmaps" | "mindmap" => Some("SELECT resource_id FROM mindmaps WHERE id = ?1"),
+                    _ => None,
+                };
+                sql.and_then(|s| {
+                    conn.query_row(s, rusqlite::params![id], |row| row.get::<_, Option<String>>(0))
+                        .ok()
+                        .flatten()
+                })
+            }).collect()
+        } else {
+            Vec::new()
+        }
+    };
+
     let vfs_db_clone = vfs_db.inner().clone();
     let items_for_delete = parsed_items.clone();
 
@@ -4830,6 +4956,31 @@ pub async fn dstu_delete_many(
     let success_count = deleted_paths.len();
     for path in deleted_paths {
         emit_watch_event(&window, DstuWatchEvent::deleted(&path));
+    }
+
+    // ★ P1 修复：事务成功后，异步清理向量索引（不阻塞返回）
+    if !resource_ids_to_cleanup.is_empty() {
+        let db_for_cleanup = vfs_db.inner().clone();
+        tokio::spawn(async move {
+            match VfsLanceStore::new(db_for_cleanup) {
+                Ok(lance_store) => {
+                    for rid in &resource_ids_to_cleanup {
+                        let _ = lance_store.delete_by_resource("text", rid).await;
+                        let _ = lance_store.delete_by_resource("multimodal", rid).await;
+                    }
+                    log::info!(
+                        "[DSTU::handlers] dstu_delete_many: cleaned up vectors for {} resources",
+                        resource_ids_to_cleanup.len()
+                    );
+                }
+                Err(e) => {
+                    log::warn!(
+                        "[DSTU::handlers] dstu_delete_many: LanceStore init failed, skipping vector cleanup: {}",
+                        e
+                    );
+                }
+            }
+        });
     }
 
     log::info!(

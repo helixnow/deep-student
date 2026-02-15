@@ -9,22 +9,23 @@ import { useTranslation } from 'react-i18next';
 import { motion, AnimatePresence, LayoutGroup } from 'framer-motion';
 import CodeMirror from '@uiw/react-codemirror';
 import { markdown } from '@codemirror/lang-markdown';
+import { EditorView } from '@codemirror/view';
 import { vscodeDark, vscodeLight } from '@uiw/codemirror-theme-vscode';
 import { Input } from '../ui/shad/Input';
 import { NotionButton } from '@/components/ui/NotionButton';
-import { Switch } from '../ui/shad/Switch';
 import { Label } from '../ui/shad/Label';
 import { Textarea } from '../ui/shad/Textarea';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../ui/shad/Tabs';
 import TagInput from '../ui/shad/TagInput';
 import { CustomScrollArea } from '../custom-scroll-area';
-import { FileText, Settings, X, ArrowLeft } from 'lucide-react';
+import { X } from 'lucide-react';
 import { Z_INDEX } from '@/config/zIndex';
 import { HorizontalResizable } from '../shared/Resizable';
 import { cn } from '@/lib/utils';
 import type { SkillDefinition, SkillLocation, SkillType, ToolSchema } from '@/chat-v2/skills/types';
 import { SKILL_DEFAULT_PRIORITY } from '@/chat-v2/skills/types';
 import { EmbeddedToolsEditor } from './EmbeddedToolsEditor';
+import { CodeMirrorScrollOverlay } from './CodeMirrorScrollOverlay';
 
 // ============================================================================
 // 类型定义
@@ -145,6 +146,7 @@ export const SkillFullscreenEditor: React.FC<SkillFullscreenEditorProps> = ({
   const { t } = useTranslation(['skills', 'common']);
   const isEdit = Boolean(skill);
   const containerRef = useRef<HTMLDivElement>(null);
+  const cmContainerRef = useRef<HTMLDivElement>(null);
   const descriptionRef = useRef<HTMLTextAreaElement>(null);
 
   // 表单状态
@@ -278,7 +280,7 @@ export const SkillFullscreenEditor: React.FC<SkillFullscreenEditorProps> = ({
   const layoutId = skill?.id ? `skill-card-${skill.id}` : undefined
 
   // CodeMirror 扩展
-  const extensions = useMemo(() => [markdown()], []);
+  const extensions = useMemo(() => [markdown(), EditorView.lineWrapping], []);
   const editorTheme = theme === 'dark' ? vscodeDark : vscodeLight;
 
   return (
@@ -311,29 +313,6 @@ export const SkillFullscreenEditor: React.FC<SkillFullscreenEditorProps> = ({
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: 0.1 }}
               >
-                {/* 左侧顶部：返回按钮 + 标题（与右栏对齐） */}
-                <div className="h-14 px-4 border-b border-border/20 flex items-center gap-3 flex-shrink-0">
-                  <NotionButton
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    onClick={onClose}
-                    className="h-7 w-7 rounded-full text-muted-foreground hover:text-foreground hover:bg-muted/50 flex-shrink-0"
-                  >
-                    <ArrowLeft size={16} />
-                  </NotionButton>
-                  <h3 className="text-sm font-medium text-foreground flex items-center gap-2 min-w-0">
-                    <Settings size={16} className="flex-shrink-0" />
-                    <span className="truncate">
-                      {isEdit
-                        ? t('skills:management.edit', '编辑技能')
-                        : t('skills:management.create', '新建技能')}
-                      {skill?.name && (
-                        <span className="text-muted-foreground font-normal"> · {skill.name}</span>
-                      )}
-                    </span>
-                  </h3>
-                </div>
                 <CustomScrollArea className="flex-1" viewportClassName="p-4">
                   <div className="space-y-4">
                     {/* ID 字段（仅创建模式） */}
@@ -429,31 +408,29 @@ export const SkillFullscreenEditor: React.FC<SkillFullscreenEditorProps> = ({
                       </div>
                     </div>
 
-                    {/* 优先级 */}
-                    <div className="space-y-2">
-                      <Label className="text-xs font-medium text-muted-foreground/80 uppercase tracking-wider">
-                        {t('skills:editor.priority', '优先级')}
-                      </Label>
-                      <Input
-                        type="number"
-                        min={1}
-                        max={10}
-                        value={formData.priority}
-                        onChange={(e) => {
-                          const value = parseInt((e.target as HTMLInputElement).value, 10);
-                          if (!isNaN(value)) {
-                            updateField('priority', Math.max(1, Math.min(10, value)));
-                          }
-                        }}
-                        className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-background transition-all h-10 w-24"
-                      />
-                      <p className="text-[10px] text-muted-foreground/60">
-                        {t('skills:editor.priority_hint', '1-10，数字越小优先级越高')}
-                      </p>
-                    </div>
-
-                    {/* 组合关系 */}
+                    {/* 优先级 + 技能类型 */}
                     <div className="grid gap-4 grid-cols-2">
+                      <div className="space-y-2">
+                        <Label className="text-xs font-medium text-muted-foreground/80 uppercase tracking-wider">
+                          {t('skills:editor.priority', '优先级')}
+                        </Label>
+                        <Input
+                          type="number"
+                          min={1}
+                          max={10}
+                          value={formData.priority}
+                          onChange={(e) => {
+                            const value = parseInt((e.target as HTMLInputElement).value, 10);
+                            if (!isNaN(value)) {
+                              updateField('priority', Math.max(1, Math.min(10, value)));
+                            }
+                          }}
+                          className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-background transition-all h-10 w-24"
+                        />
+                        <p className="text-[10px] text-muted-foreground/60">
+                          {t('skills:editor.priority_hint', '1-10，数字越小优先级越高')}
+                        </p>
+                      </div>
                       <div className="space-y-2">
                         <Label className="text-xs font-medium text-muted-foreground/80 uppercase tracking-wider">
                           {t('skills:editor.skill_type', '技能类型')}
@@ -480,19 +457,21 @@ export const SkillFullscreenEditor: React.FC<SkillFullscreenEditorProps> = ({
                           {t('skills:editor.skill_type_hint', 'standalone=独立技能，composite=组合技能')}
                         </p>
                       </div>
-                      <div className="space-y-2">
-                        <Label className="text-xs font-medium text-muted-foreground/80 uppercase tracking-wider">
-                          {t('skills:editor.dependencies', '依赖技能')}
-                        </Label>
-                        <TagInput
-                          value={formData.dependencies ?? []}
-                          onChange={(next) => updateField('dependencies', next)}
-                          placeholder={t('skills:editor.skill_list_placeholder', '用逗号分隔，例如 knowledge-retrieval, vfs-memory')}
-                        />
-                        <p className="text-[10px] text-muted-foreground/60">
-                          {t('skills:editor.dependencies_hint', '硬依赖：激活此技能时自动加载')}
-                        </p>
-                      </div>
+                    </div>
+
+                    {/* 依赖技能 */}
+                    <div className="space-y-2">
+                      <Label className="text-xs font-medium text-muted-foreground/80 uppercase tracking-wider">
+                        {t('skills:editor.dependencies', '依赖技能')}
+                      </Label>
+                      <TagInput
+                        value={formData.dependencies ?? []}
+                        onChange={(next) => updateField('dependencies', next)}
+                        placeholder={t('skills:editor.skill_list_placeholder', '用逗号分隔，例如 knowledge-retrieval, vfs-memory')}
+                      />
+                      <p className="text-[10px] text-muted-foreground/60">
+                        {t('skills:editor.dependencies_hint', '硬依赖：激活此技能时自动加载')}
+                      </p>
                     </div>
 
                     <div className="space-y-2">
@@ -509,21 +488,6 @@ export const SkillFullscreenEditor: React.FC<SkillFullscreenEditorProps> = ({
                       </p>
                     </div>
 
-                    {/* 禁用自动激活 */}
-                    <div className="flex items-center justify-between p-4 rounded-xl border border-border/40 hover:border-border/60 transition-all">
-                      <div className="space-y-1">
-                        <Label className="text-sm font-medium cursor-pointer">
-                          {t('skills:editor.disable_auto_invoke', '禁用自动激活')}
-                        </Label>
-                        <p className="text-xs text-muted-foreground/70">
-                          {t('skills:editor.disable_auto_invoke_hint', '开启后需手动激活此技能')}
-                        </p>
-                      </div>
-                      <Switch
-                        checked={formData.disableAutoInvoke}
-                        onCheckedChange={(checked) => updateField('disableAutoInvoke', checked)}
-                      />
-                    </div>
 
                     {/* 绑定工具 */}
                     <div className="pt-4 border-t border-border/20">
@@ -565,40 +529,34 @@ export const SkillFullscreenEditor: React.FC<SkillFullscreenEditorProps> = ({
                 animate={{ opacity: 1 }}
                 transition={{ delay: 0.15 }}
               >
-                <div className="h-14 px-4 border-b border-border/20 flex items-center justify-between flex-shrink-0">
-                  <h3 className="text-sm font-medium text-foreground flex items-center gap-2">
-                    <FileText size={16} />
-                    {t('skills:editor.content', '指令内容')}
-                  </h3>
-                  <p className="text-[10px] text-muted-foreground/60">
-                    {t('skills:editor.content_hint', '使用 Markdown 格式编写技能指令')}
-                  </p>
-                </div>
-                <div className="flex-1 min-h-0 overflow-hidden">
+                <div ref={cmContainerRef} className="flex-1 min-h-0 overflow-hidden relative">
                   {isAnimationComplete ? (
-                    <CodeMirror
-                      value={formData.content}
-                      onChange={(value) => updateField('content', value)}
-                      extensions={extensions}
-                      theme={editorTheme}
-                      height="100%"
-                      className="h-full skill-codemirror-editor"
-                      basicSetup={{
-                        lineNumbers: true,
-                        highlightActiveLineGutter: true,
-                        highlightActiveLine: true,
-                        foldGutter: true,
-                        dropCursor: true,
-                        allowMultipleSelections: true,
-                        indentOnInput: true,
-                        bracketMatching: true,
-                        closeBrackets: true,
-                        autocompletion: true,
-                        rectangularSelection: true,
-                        crosshairCursor: false,
-                        highlightSelectionMatches: true,
-                      }}
-                    />
+                    <>
+                      <CodeMirror
+                        value={formData.content}
+                        onChange={(value) => updateField('content', value)}
+                        extensions={extensions}
+                        theme={editorTheme}
+                        height="100%"
+                        className="h-full skill-codemirror-editor"
+                        basicSetup={{
+                          lineNumbers: true,
+                          highlightActiveLineGutter: true,
+                          highlightActiveLine: true,
+                          foldGutter: true,
+                          dropCursor: true,
+                          allowMultipleSelections: true,
+                          indentOnInput: true,
+                          bracketMatching: true,
+                          closeBrackets: true,
+                          autocompletion: true,
+                          rectangularSelection: true,
+                          crosshairCursor: false,
+                          highlightSelectionMatches: true,
+                        }}
+                      />
+                      <CodeMirrorScrollOverlay containerRef={cmContainerRef} />
+                    </>
                   ) : (
                     // 动画期间显示轻量占位符
                     <div className="h-full flex items-center justify-center bg-muted/20">

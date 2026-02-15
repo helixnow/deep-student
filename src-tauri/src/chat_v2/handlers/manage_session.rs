@@ -63,6 +63,25 @@ pub async fn chat_v2_create_session(
     // 创建会话并写入数据库
     let normalized_group_id =
         group_id.and_then(|g| if g.trim().is_empty() { None } else { Some(g) });
+
+    // P1-5 fix: Validate target group exists and is active
+    if let Some(ref gid) = normalized_group_id {
+        let conn = db.get_conn_safe().map_err(|e| e.to_string())?;
+        let group = ChatV2Repo::get_group_with_conn(&conn, gid)
+            .map_err(|e| e.to_string())?;
+        match group {
+            Some(g) if g.persist_status != PersistStatus::Active => {
+                log::warn!("[ChatV2::handlers] Ignoring deleted/archived group_id: {}", gid);
+                return Err(format!("Group not found or inactive: {}", gid));
+            }
+            None => {
+                log::warn!("[ChatV2::handlers] Ignoring non-existent group_id: {}", gid);
+                return Err(format!("Group not found: {}", gid));
+            }
+            _ => {}
+        }
+    }
+
     let session = create_session_in_db(&mode, title, metadata, normalized_group_id, &db)?;
 
     log::info!(

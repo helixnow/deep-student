@@ -41,5 +41,30 @@ export function useGroupCollapse() {
     });
   }, []);
 
-  return { collapsedMap, toggleGroupCollapse, expandGroup };
+  // P2-4 fix: Clean up collapsed state for groups that no longer exist
+  const pruneDeletedGroups = useCallback((activeGroupIds: string[]) => {
+    setCollapsedMap((prev) => {
+      const activeSet = new Set(activeGroupIds);
+      // Always keep 'ungrouped' key
+      activeSet.add('ungrouped');
+      const pruned: Record<string, boolean> = {};
+      let changed = false;
+      for (const [key, value] of Object.entries(prev)) {
+        if (activeSet.has(key)) {
+          pruned[key] = value;
+        } else {
+          changed = true;
+        }
+      }
+      if (!changed) return prev;
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(pruned));
+      } catch {
+        // ignore storage errors
+      }
+      return pruned;
+    });
+  }, []);
+
+  return { collapsedMap, toggleGroupCollapse, expandGroup, pruneDeletedGroups };
 }

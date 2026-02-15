@@ -558,6 +558,7 @@
     "asset_type_filter_unsupported": "选择要备份的资产类型，不选则备份当前层级的全部资产",
     "asset_type_filter_unsupported_hint": "选择要备份的资产类型，不选则备份当前层级的全部资产。",
     "tiered_backup_select_tier_first": "请至少选择一个备份层级",
+    "experimental_badge": "实验版",
     "cloud_sync_title": "云端同步",
     "open_cloud_settings": "打开云存储设置",
     "cloud_sync_not_configured": "尚未配置云存储",

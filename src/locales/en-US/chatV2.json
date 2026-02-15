@@ -135,6 +135,11 @@
     "completedMissingModes": "Completed ({{modes}} not ready)",
     "modesNotReady": "Not ready: {{modes}}",
     "nonMultimodalImageFallback": "The current model does not support image input. {{count}} attachments were switched to text/OCR mode automatically. Switch to a multimodal model to re-enable image mode.",
+    "uploadStage": {
+      "reading": "Reading file",
+      "uploading": "Uploading",
+      "creating": "Creating reference"
+    },
     "modeSeparator": ", ",
     "thinkingEnabled": "Reasoning mode enabled",
     "thinkingDisabled": "Click to enable reasoning mode",
