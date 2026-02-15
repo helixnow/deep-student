@@ -23,6 +23,8 @@ import {
   Trash2,
   Square,
   MoreHorizontal,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import { ProviderIcon } from '@/components/ui/ProviderIcon';
 import {
@@ -257,7 +259,7 @@ const VariantCard: React.FC<VariantCardProps> = ({
         // 移动端：固定宽度 + snap 对齐
         isMobile
           ? 'w-[85vw] min-w-[280px] max-w-[320px] shrink-0 snap-start'
-          : 'flex-1 min-w-[300px]'
+          : 'w-[320px] min-w-[280px] shrink-0'
       )}
       data-variant-index={variantIndex}
       onClick={onSwitch}
@@ -629,9 +631,9 @@ export const ParallelVariantView: React.FC<ParallelVariantViewProps> = ({
   const { isSmallScreen } = useBreakpoint();
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
-  // 📱 移动端滚动到指定变体卡片
+  // 滚动到指定变体卡片
   const scrollToVariant = useCallback((index: number, smooth: boolean = true) => {
-    if (!isSmallScreen || !scrollContainerRef.current) return;
+    if (!scrollContainerRef.current) return;
 
     const container = scrollContainerRef.current;
     const card = container.querySelector(
@@ -654,7 +656,7 @@ export const ParallelVariantView: React.FC<ParallelVariantViewProps> = ({
         behavior: smooth ? 'smooth' : 'instant',
       });
     }
-  }, [isSmallScreen]);
+  }, []);
 
   // 🔧 修复：初始加载时滚动到 activeVariantId 对应的变体位置
   // 使用 ref 追踪是否已完成首次滚动，避免每次 variants 更新都触发滚动
@@ -663,7 +665,7 @@ export const ParallelVariantView: React.FC<ParallelVariantViewProps> = ({
   useEffect(() => {
     // 只在首次加载时执行滚动
     if (initialScrollDoneRef.current) return;
-    if (!isSmallScreen || !activeVariantId || variants.length < 2) return;
+    if (!activeVariantId || variants.length < 2) return;
 
     // 找到 activeVariantId 对应的索引
     const activeIndex = variants.findIndex(v => v.id === activeVariantId);
@@ -691,51 +693,96 @@ export const ParallelVariantView: React.FC<ParallelVariantViewProps> = ({
 
   return (
     <div className={cn('w-full', className)}>
-      {/* 移动端：变体指示器 - 使用固定像素值确保 Android WebView 正确渲染 */}
-      {isSmallScreen && variants.length > 1 && (
-        <div className="flex items-center justify-center gap-1.5 mb-3">
-          {variants.map((variant, index) => {
-            const isActive = variant.id === activeVariantId;
-            return (
-              <NotionButton
-                key={variant.id}
-                variant="ghost"
-                size="icon"
-                iconOnly
-                onClick={() => {
-                  scrollToVariant(index);
-                  if (onSwitchVariant && !isActive) {
-                    onSwitchVariant(variant.id);
-                  }
-                }}
-                className={cn(
-                  '!rounded-full flex-shrink-0 !p-0',
-                  isActive
-                    ? 'variant-indicator-dot-active bg-primary'
-                    : 'variant-indicator-dot bg-muted-foreground/30 hover:bg-muted-foreground/50'
-                )}
-                aria-label={t('variant.switchToVariant', { index: index + 1, defaultValue: `Switch to variant ${index + 1}` })}
-              />
-            );
-          })}
-        </div>
-      )}
+      {/* 变体导航栏：左箭头 + 指示器圆点 + 右箭头 */}
+      {variants.length > 1 && (() => {
+        const activeIndex = variants.findIndex(v => v.id === activeVariantId);
+        const hasPrev = activeIndex > 0;
+        const hasNext = activeIndex < variants.length - 1;
+        return (
+          <div className="flex items-center justify-center gap-2 mb-3">
+            {/* 左箭头 */}
+            <button
+              onClick={() => {
+                if (hasPrev) {
+                  scrollToVariant(activeIndex - 1);
+                  onSwitchVariant?.(variants[activeIndex - 1].id);
+                }
+              }}
+              disabled={!hasPrev}
+              className={cn(
+                'p-1 rounded-md transition-colors',
+                hasPrev
+                  ? 'text-muted-foreground hover:text-foreground hover:bg-muted cursor-pointer'
+                  : 'text-muted-foreground/20 cursor-default'
+              )}
+              aria-label="Previous variant"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+
+            {/* 指示器圆点 */}
+            <div className="flex items-center gap-2">
+              {variants.map((variant, index) => {
+                const isActive = variant.id === activeVariantId;
+                return (
+                  <NotionButton
+                    key={variant.id}
+                    variant="ghost"
+                    size="icon"
+                    iconOnly
+                    onClick={() => {
+                      scrollToVariant(index);
+                      if (onSwitchVariant && !isActive) {
+                        onSwitchVariant(variant.id);
+                      }
+                    }}
+                    className={cn(
+                      '!rounded-full flex-shrink-0 !p-0',
+                      isActive
+                        ? 'variant-indicator-dot-active bg-primary'
+                        : 'variant-indicator-dot bg-muted-foreground/30 hover:bg-muted-foreground/50'
+                    )}
+                    aria-label={t('variant.switchToVariant', { index: index + 1, defaultValue: `Switch to variant ${index + 1}` })}
+                  />
+                );
+              })}
+            </div>
+
+            {/* 右箭头 */}
+            <button
+              onClick={() => {
+                if (hasNext) {
+                  scrollToVariant(activeIndex + 1);
+                  onSwitchVariant?.(variants[activeIndex + 1].id);
+                }
+              }}
+              disabled={!hasNext}
+              className={cn(
+                'p-1 rounded-md transition-colors',
+                hasNext
+                  ? 'text-muted-foreground hover:text-foreground hover:bg-muted cursor-pointer'
+                  : 'text-muted-foreground/20 cursor-default'
+              )}
+              aria-label="Next variant"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+        );
+      })()}
 
       {/* 变体卡片容器 */}
       <div
         ref={scrollContainerRef}
         className={cn(
-          'flex gap-4',
-          // 移动端：横向滚动 + snap
-          isSmallScreen
-            ? 'overflow-x-auto snap-x snap-mandatory scrollbar-hide pb-2 -mx-4 px-4'
-            : 'flex-wrap'
+          'flex gap-4 overflow-x-auto scrollbar-hide pb-2',
+          // 移动端：snap 对齐 + 突破容器边距
+          isSmallScreen && 'snap-x snap-mandatory -mx-4 px-4'
         )}
-        style={isSmallScreen ? {
-          // 隐藏滚动条但保留功能
+        style={{
           scrollbarWidth: 'none',
           msOverflowStyle: 'none',
-        } : undefined}
+        } as React.CSSProperties}
       >
         {/* 🚀 P0修复：传递 blockIds 而非 blocks */}
         {variants.map((variant, index) => {

@@ -3,14 +3,14 @@
  * 使用 !important 确保 Android WebView 正确渲染
  */
 
-/* 变体指示器圆点 - 非激活状态 8px */
+/* 变体指示器圆点 - 非激活状态 10px */
 .variant-indicator-dot {
-  width: 8px !important;
-  min-width: 8px !important;
-  max-width: 8px !important;
-  height: 8px !important;
-  min-height: 8px !important;
-  max-height: 8px !important;
+  width: 10px !important;
+  min-width: 10px !important;
+  max-width: 10px !important;
+  height: 10px !important;
+  min-height: 10px !important;
+  max-height: 10px !important;
   padding: 0 !important;
   border: none !important;
   flex-shrink: 0 !important;
@@ -18,14 +18,14 @@
   box-sizing: border-box !important;
 }
 
-/* 变体指示器圆点 - 激活状态 16x8px */
+/* 变体指示器圆点 - 激活状态 24x10px */
 .variant-indicator-dot-active {
-  width: 16px !important;
-  min-width: 16px !important;
-  max-width: 16px !important;
-  height: 8px !important;
-  min-height: 8px !important;
-  max-height: 8px !important;
+  width: 24px !important;
+  min-width: 24px !important;
+  max-width: 24px !important;
+  height: 10px !important;
+  min-height: 10px !important;
+  max-height: 10px !important;
   padding: 0 !important;
   border: none !important;
   flex-shrink: 0 !important;

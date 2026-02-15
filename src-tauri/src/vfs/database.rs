@@ -250,6 +250,49 @@ impl VfsDatabase {
         &self.blobs_dir
     }
 
+    /// 进入维护模式：将连接池切换为内存数据库，释放对磁盘文件的占用
+    ///
+    /// 用于恢复流程中替换实际数据库文件，避免 Windows 上文件锁定（os error 32）。
+    pub fn enter_maintenance_mode(&self) -> VfsResult<()> {
+        // 先尝试 WAL checkpoint
+        if let Ok(conn) = self.get_conn() {
+            let _ = conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);");
+        }
+
+        let mem_manager = SqliteConnectionManager::memory();
+        let mem_pool = Pool::builder()
+            .max_size(1)
+            .build(mem_manager)
+            .map_err(|e| VfsError::Pool(format!("创建内存连接池失败: {}", e)))?;
+
+        {
+            let mut guard = self
+                .pool
+                .write()
+                .map_err(|e| VfsError::Pool(format!("Pool lock poisoned: {}", e)))?;
+            *guard = mem_pool;
+        }
+
+        info!("[VFS::Database] 已进入维护模式，文件连接已释放");
+        Ok(())
+    }
+
+    /// 退出维护模式：重新打开磁盘数据库文件的连接池
+    pub fn exit_maintenance_mode(&self) -> VfsResult<()> {
+        let new_pool = Self::build_pool(&self.db_path)?;
+
+        {
+            let mut guard = self
+                .pool
+                .write()
+                .map_err(|e| VfsError::Pool(format!("Pool lock poisoned: {}", e)))?;
+            *guard = new_pool;
+        }
+
+        info!("[VFS::Database] 已退出维护模式，文件连接已恢复");
+        Ok(())
+    }
+
     /// 重新初始化数据库连接池
     ///
     /// 用于备份恢复后刷新连接，确保连接指向新的数据库文件。

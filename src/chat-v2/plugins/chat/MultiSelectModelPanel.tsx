@@ -268,16 +268,14 @@ export const MultiSelectModelPanel: React.FC<MultiSelectModelPanelProps> = ({
           disabled && 'opacity-60'
         )}
       >
-        <NotionButton
-          variant={isSelected ? 'primary' : 'ghost'}
-          size="icon"
-          iconOnly
+        <button
+          type="button"
           onClick={() => handleToggleModel(option)}
           disabled={disabled}
           className={cn(indicatorClass, 'mt-0.5', disabled && 'cursor-not-allowed')}
         >
           {isSelected && <Check size={12} />}
-        </NotionButton>
+        </button>
         <NotionButton
           variant="ghost"
           size="sm"

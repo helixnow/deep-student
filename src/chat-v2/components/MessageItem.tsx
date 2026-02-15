@@ -641,8 +641,9 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
         /* 💻 桌面端/非多变体：使用标准水平布局（头像+内容同行） */
         <div
           className={cn(
-            'max-w-3xl mx-auto',
-            // 多变体模式不显示头像，使用居中布局
+            'mx-auto',
+            // 多变体模式使用更宽的容器，让卡片并排显示
+            isMultiVariant ? 'max-w-5xl' : 'max-w-3xl',
             // items-start 防止头像列拉伸到消息全高
             isUser ? 'flex flex-row-reverse gap-4 items-start' : (isMultiVariant ? '' : 'flex gap-4 items-start')
           )}

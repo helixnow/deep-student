@@ -6559,6 +6559,65 @@ impl ChatV2Pipeline {
             variant_contexts.push((ctx, config_id.clone())); // 保存配置ID用于LLM调用
         }
 
+        // === 6.5 防闪退：持久化助手消息骨架（含 pending 变体列表）===
+        // 在变体执行前写入 DB，确保刷新/崩溃后仍能识别为多变体消息。
+        // save_multi_variant_results 使用 INSERT OR REPLACE 在完成后覆盖此骨架。
+        {
+            let skeleton_variants: Vec<Variant> = variant_contexts
+                .iter()
+                .map(|(ctx, _)| {
+                    Variant::new_with_id_and_config(
+                        ctx.variant_id().to_string(),
+                        ctx.model_id().to_string(),
+                        ctx.get_config_id().unwrap_or_default(),
+                    )
+                })
+                .collect();
+
+            let first_variant_id = skeleton_variants.first().map(|v| v.id.clone());
+
+            let skeleton_msg = ChatMessage {
+                id: assistant_message_id.clone(),
+                session_id: session_id.clone(),
+                role: MessageRole::Assistant,
+                block_ids: Vec::new(),
+                timestamp: chrono::Utc::now().timestamp_millis(),
+                persistent_stable_id: None,
+                parent_id: None,
+                supersedes: None,
+                meta: Some(MessageMeta {
+                    model_id: None,
+                    chat_params: Some(serde_json::json!({
+                        "multiVariantMode": true,
+                    })),
+                    sources: None,
+                    tool_results: None,
+                    anki_cards: None,
+                    usage: None,
+                    context_snapshot: None,
+                }),
+                attachments: None,
+                active_variant_id: first_variant_id,
+                variants: Some(skeleton_variants),
+                shared_context: Some((*shared_context).clone()),
+            };
+
+            if let Ok(conn) = self.db.get_conn_safe() {
+                if let Err(e) = ChatV2Repo::create_message_with_conn(&conn, &skeleton_msg) {
+                    log::warn!(
+                        "[ChatV2::pipeline] Failed to persist skeleton assistant message (non-fatal): {}",
+                        e
+                    );
+                } else {
+                    log::info!(
+                        "[ChatV2::pipeline] Persisted skeleton assistant message: id={}, variants={}",
+                        assistant_message_id,
+                        variant_contexts.len()
+                    );
+                }
+            }
+        }
+
         // === 7. 并行执行所有变体 ===
         let self_clone = self.clone();
         let options_arc = Arc::new(options.clone());
@@ -7112,42 +7171,60 @@ impl ChatV2Pipeline {
                 options.max_tokens,
             );
 
-            let call_result = match timeout(
-                Duration::from_secs(LLM_STREAM_TIMEOUT_SECS),
-                llm_future,
-            )
-            .await
-            {
-                Ok(result) => result,
-                Err(_) => {
-                    log::error!(
-                        "[ChatV2::VariantPipeline] LLM stream call timeout after {}s, variant={}, round={}",
-                        LLM_STREAM_TIMEOUT_SECS,
+            // 使用 tokio::select! 支持取消（与单变体 pipeline 对齐）
+            let call_result = tokio::select! {
+                result = timeout(
+                    Duration::from_secs(LLM_STREAM_TIMEOUT_SECS),
+                    llm_future,
+                ) => {
+                    match result {
+                        Ok(r) => Some(r),
+                        Err(_) => {
+                            log::error!(
+                                "[ChatV2::VariantPipeline] LLM stream call timeout after {}s, variant={}, round={}",
+                                LLM_STREAM_TIMEOUT_SECS,
+                                ctx.variant_id(),
+                                tool_round
+                            );
+                            self.llm_manager
+                                .unregister_stream_hooks(&stream_event)
+                                .await;
+                            ctx.fail(&format!(
+                                "LLM stream call timed out after {}s",
+                                LLM_STREAM_TIMEOUT_SECS
+                            ));
+                            return Err(ChatV2Error::Timeout(format!(
+                                "LLM stream call timed out after {}s",
+                                LLM_STREAM_TIMEOUT_SECS
+                            )));
+                        }
+                    }
+                }
+                _ = ctx.cancel_token().cancelled() => {
+                    log::info!(
+                        "[ChatV2::VariantPipeline] LLM call cancelled via token, variant={}, round={}",
                         ctx.variant_id(),
                         tool_round
                     );
-                    self.llm_manager
-                        .unregister_stream_hooks(&stream_event)
-                        .await;
-                    ctx.fail(&format!(
-                        "LLM stream call timed out after {}s",
-                        LLM_STREAM_TIMEOUT_SECS
-                    ));
-                    return Err(ChatV2Error::Timeout(format!(
-                        "LLM stream call timed out after {}s",
-                        LLM_STREAM_TIMEOUT_SECS
-                    )));
+                    // 同时通知 LLM 层停止 HTTP 流
+                    self.llm_manager.request_cancel_stream(&stream_event).await;
+                    None
                 }
             };
 
             match call_result {
-                Ok(output) => {
+                None => {
+                    // cancel_token 触发的取消
+                    ctx.cancel();
+                    break;
+                }
+                Some(Ok(output)) => {
                     if output.cancelled {
                         ctx.cancel();
                         break;
                     }
                 }
-                Err(e) => {
+                Some(Err(e)) => {
                     self.llm_manager
                         .unregister_stream_hooks(&stream_event)
                         .await;

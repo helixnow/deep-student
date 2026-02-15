@@ -4810,15 +4810,44 @@ async fn execute_restore_with_progress(
     use super::schema_registry::DatabaseId;
     use std::time::Instant;
 
+    /// 恢复维护模式守卫：进入时释放所有数据库文件句柄，退出时恢复连接池。
+    ///
+    /// 修复 Windows OS error 32：旧实现仅释放 legacy Database 的单连接，
+    /// 但 DatabaseManager / VfsDatabase / ChatV2Database / LlmUsageDatabase
+    /// 各自持有 r2d2 连接池（含 memory-mapped SHM 文件），在 Windows 上
+    /// 导致 restore_single_database 无法写入或删除 WAL/SHM 文件。
     struct RestoreMaintenanceGuard {
         database: Arc<crate::database::Database>,
+        database_manager: Arc<crate::database::DatabaseManager>,
+        vfs_db: Option<Arc<crate::vfs::database::VfsDatabase>>,
+        chat_v2_db: Option<Arc<crate::chat_v2::database::ChatV2Database>>,
+        llm_usage_db: Option<Arc<crate::llm_usage::database::LlmUsageDatabase>>,
     }
 
     impl Drop for RestoreMaintenanceGuard {
         fn drop(&mut self) {
             if let Err(e) = self.database.exit_maintenance_mode() {
-                tracing::warn!("[data_governance] 退出维护模式失败: {}", e);
+                tracing::warn!("[data_governance] 退出 Database 维护模式失败: {}", e);
             }
+            if let Err(e) = self.database_manager.exit_maintenance_mode() {
+                tracing::warn!("[data_governance] 退出 DatabaseManager 维护模式失败: {}", e);
+            }
+            if let Some(ref vfs) = self.vfs_db {
+                if let Err(e) = vfs.exit_maintenance_mode() {
+                    tracing::warn!("[data_governance] 退出 VfsDatabase 维护模式失败: {}", e);
+                }
+            }
+            if let Some(ref chat) = self.chat_v2_db {
+                if let Err(e) = chat.exit_maintenance_mode() {
+                    tracing::warn!("[data_governance] 退出 ChatV2Database 维护模式失败: {}", e);
+                }
+            }
+            if let Some(ref llm) = self.llm_usage_db {
+                if let Err(e) = llm.exit_maintenance_mode() {
+                    tracing::warn!("[data_governance] 退出 LlmUsageDatabase 维护模式失败: {}", e);
+                }
+            }
+            tracing::info!("[data_governance] 所有数据库连接池已退出维护模式");
         }
     }
 
@@ -4937,15 +4966,59 @@ async fn execute_restore_with_progress(
         total_databases,
     );
 
-    // 进入维护模式，确保恢复期间无并发写入
+    // 进入维护模式：释放所有数据库文件句柄，避免 Windows OS error 32
     let app_state = app.state::<crate::commands::AppState>();
     let database = app_state.database.clone();
+    let database_manager = app_state.database_manager.clone();
+    let vfs_db = app_state.vfs_db.clone();
+
+    // 从 Tauri managed state 获取 ChatV2Database 和 LlmUsageDatabase
+    let chat_v2_db: Option<Arc<crate::chat_v2::database::ChatV2Database>> =
+        app.try_state::<Arc<crate::chat_v2::database::ChatV2Database>>()
+            .map(|s| s.inner().clone());
+    let llm_usage_db: Option<Arc<crate::llm_usage::database::LlmUsageDatabase>> =
+        app.try_state::<Arc<crate::llm_usage::database::LlmUsageDatabase>>()
+            .map(|s| s.inner().clone());
+
+    // 1) Legacy Database（单连接 Mutex<Connection>）
     if let Err(e) = database.enter_maintenance_mode() {
-        error!("[data_governance] 进入维护模式失败，终止恢复: {}", e);
+        error!("[data_governance] 进入 Database 维护模式失败，终止恢复: {}", e);
         job_ctx.fail(format!("进入维护模式失败: {}", e));
         return;
     }
-    let _maintenance_guard = RestoreMaintenanceGuard { database };
+    // 2) DatabaseManager（r2d2 连接池 → mistakes.db）
+    if let Err(e) = database_manager.enter_maintenance_mode() {
+        error!("[data_governance] 进入 DatabaseManager 维护模式失败: {}", e);
+        // 不终止，继续尝试
+    }
+    // 3) VfsDatabase（r2d2 连接池 → vfs.db）
+    if let Some(ref vfs) = vfs_db {
+        if let Err(e) = vfs.enter_maintenance_mode() {
+            error!("[data_governance] 进入 VfsDatabase 维护模式失败: {}", e);
+        }
+    }
+    // 4) ChatV2Database（r2d2 连接池 → chat_v2.db）
+    if let Some(ref chat) = chat_v2_db {
+        if let Err(e) = chat.enter_maintenance_mode() {
+            error!("[data_governance] 进入 ChatV2Database 维护模式失败: {}", e);
+        }
+    }
+    // 5) LlmUsageDatabase（r2d2 连接池 → llm_usage.db）
+    if let Some(ref llm) = llm_usage_db {
+        if let Err(e) = llm.enter_maintenance_mode() {
+            error!("[data_governance] 进入 LlmUsageDatabase 维护模式失败: {}", e);
+        }
+    }
+
+    info!("[data_governance] 所有数据库连接池已进入维护模式，文件句柄已释放");
+
+    let _maintenance_guard = RestoreMaintenanceGuard {
+        database,
+        database_manager,
+        vfs_db,
+        chat_v2_db,
+        llm_usage_db,
+    };
 
     // 执行恢复（包含资产）
     //
@@ -5763,25 +5836,83 @@ pub async fn data_governance_restore_with_assets(
     let manifest_dir = backup_dir.join(&manifest.backup_id);
     ensure_existing_path_within_backup_dir(&manifest_dir, &backup_dir)?;
 
-    // 进入维护模式，确保恢复期间无并发写入，并释放数据库文件句柄（Windows 兼容）
-    struct RestoreMaintenanceGuard {
+    // 进入维护模式：释放所有数据库文件句柄，避免 Windows OS error 32
+    struct RestoreMaintenanceGuard2 {
         database: Arc<crate::database::Database>,
+        database_manager: Arc<crate::database::DatabaseManager>,
+        vfs_db: Option<Arc<crate::vfs::database::VfsDatabase>>,
+        chat_v2_db: Option<Arc<crate::chat_v2::database::ChatV2Database>>,
+        llm_usage_db: Option<Arc<crate::llm_usage::database::LlmUsageDatabase>>,
     }
 
-    impl Drop for RestoreMaintenanceGuard {
+    impl Drop for RestoreMaintenanceGuard2 {
         fn drop(&mut self) {
             if let Err(e) = self.database.exit_maintenance_mode() {
-                tracing::warn!("[data_governance] 退出维护模式失败: {}", e);
+                tracing::warn!("[data_governance] 退出 Database 维护模式失败: {}", e);
             }
+            if let Err(e) = self.database_manager.exit_maintenance_mode() {
+                tracing::warn!("[data_governance] 退出 DatabaseManager 维护模式失败: {}", e);
+            }
+            if let Some(ref vfs) = self.vfs_db {
+                if let Err(e) = vfs.exit_maintenance_mode() {
+                    tracing::warn!("[data_governance] 退出 VfsDatabase 维护模式失败: {}", e);
+                }
+            }
+            if let Some(ref chat) = self.chat_v2_db {
+                if let Err(e) = chat.exit_maintenance_mode() {
+                    tracing::warn!("[data_governance] 退出 ChatV2Database 维护模式失败: {}", e);
+                }
+            }
+            if let Some(ref llm) = self.llm_usage_db {
+                if let Err(e) = llm.exit_maintenance_mode() {
+                    tracing::warn!("[data_governance] 退出 LlmUsageDatabase 维护模式失败: {}", e);
+                }
+            }
+            tracing::info!("[data_governance] 所有数据库连接池已退出维护模式");
         }
     }
 
     let app_state = app.state::<crate::commands::AppState>();
     let database = app_state.database.clone();
+    let database_manager = app_state.database_manager.clone();
+    let vfs_db = app_state.vfs_db.clone();
+    let chat_v2_db: Option<Arc<crate::chat_v2::database::ChatV2Database>> =
+        app.try_state::<Arc<crate::chat_v2::database::ChatV2Database>>()
+            .map(|s| s.inner().clone());
+    let llm_usage_db: Option<Arc<crate::llm_usage::database::LlmUsageDatabase>> =
+        app.try_state::<Arc<crate::llm_usage::database::LlmUsageDatabase>>()
+            .map(|s| s.inner().clone());
+
     database
         .enter_maintenance_mode()
         .map_err(|e| format!("进入维护模式失败: {}", e))?;
-    let _maintenance_guard = RestoreMaintenanceGuard { database };
+    if let Err(e) = database_manager.enter_maintenance_mode() {
+        error!("[data_governance] 进入 DatabaseManager 维护模式失败: {}", e);
+    }
+    if let Some(ref vfs) = vfs_db {
+        if let Err(e) = vfs.enter_maintenance_mode() {
+            error!("[data_governance] 进入 VfsDatabase 维护模式失败: {}", e);
+        }
+    }
+    if let Some(ref chat) = chat_v2_db {
+        if let Err(e) = chat.enter_maintenance_mode() {
+            error!("[data_governance] 进入 ChatV2Database 维护模式失败: {}", e);
+        }
+    }
+    if let Some(ref llm) = llm_usage_db {
+        if let Err(e) = llm.enter_maintenance_mode() {
+            error!("[data_governance] 进入 LlmUsageDatabase 维护模式失败: {}", e);
+        }
+    }
+    info!("[data_governance] 所有数据库连接池已进入维护模式，文件句柄已释放");
+
+    let _maintenance_guard = RestoreMaintenanceGuard2 {
+        database,
+        database_manager,
+        vfs_db,
+        chat_v2_db,
+        llm_usage_db,
+    };
 
     // 执行恢复
     let result = manager.restore_with_assets(manifest, restore_assets);

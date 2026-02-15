@@ -28,6 +28,7 @@ use crate::chat_v2::types::{
     variant_status, AttachmentInput, ChatMessage, MessageRole, SendOptions, SharedContext,
 };
 use crate::chat_v2::vfs_resolver::{resolve_context_ref_data_to_content, ResolvedContent};
+use crate::llm_manager::LLMManager;
 use crate::vfs::database::VfsDatabase;
 use crate::vfs::repos::VfsResourceRepo;
 use crate::vfs::types::VfsContextRefData;
@@ -937,6 +938,7 @@ async fn retry_variants_impl(
 #[tauri::command]
 pub async fn chat_v2_cancel_variant(
     state: State<'_, Arc<ChatV2State>>,
+    llm_manager: State<'_, Arc<LLMManager>>,
     session_id: String,
     variant_id: String,
 ) -> Result<(), String> {
@@ -945,40 +947,40 @@ pub async fn chat_v2_cancel_variant(
         session_id, variant_id
     );
 
-    cancel_variant_impl(&state, &session_id, &variant_id)
+    cancel_variant_impl(&state, &llm_manager, &session_id, &variant_id)
         .await
         .map_err(|e| e.to_string())
 }
 
 async fn cancel_variant_impl(
     state: &ChatV2State,
+    llm_manager: &LLMManager,
     session_id: &str,
     variant_id: &str,
 ) -> ChatV2Result<()> {
-    // 尝试取消会话级别的流式生成
-    // 注意：当前 ChatV2State 是按 session_id 管理取消令牌的
-    // 在完整的多变体实现中，需要按 variant_id 管理取消令牌
-    // 这里先使用 session_id 级别的取消
-
-    // 构造一个复合键（session_id + variant_id）用于查找
-    // 或者直接使用 session_id（如果每个会话同一时间只有一个活跃流）
     let cancel_key = format!("{}:{}", session_id, variant_id);
 
-    // 先尝试用复合键取消
-    if state.cancel_stream(&cancel_key) {
+    // 层 1：取消 CancellationToken（通知 pipeline 层）
+    let token_cancelled = state.cancel_stream(&cancel_key);
+    if token_cancelled {
         info!(
-            "[ChatV2::VariantHandler] Variant cancelled: session_id={}, variant_id={}",
+            "[ChatV2::VariantHandler] CancellationToken cancelled: session_id={}, variant_id={}",
             session_id, variant_id
         );
-        return Ok(());
+    } else {
+        debug!(
+            "[ChatV2::VariantHandler] No active CancellationToken for session_id={}, variant_id={}",
+            session_id, variant_id
+        );
     }
 
-    // 不再回退取消整个 session，避免误取消同会话其他并行变体
-    // 如果没有找到活跃流，记录调试日志但不报错（可能已自然结束）
-    // 因为流可能已经完成或被取消
-    debug!(
-        "[ChatV2::VariantHandler] No active stream found for session_id={}, variant_id={}",
-        session_id, variant_id
+    // 层 2：通知 LLM 流式循环停止（通过 cancel_rx/cancel_registry）
+    // stream_event 格式与 pipeline.rs execute_single_variant_with_config 中一致
+    let stream_event = format!("chat_v2_event_{}_{}", session_id, variant_id);
+    llm_manager.request_cancel_stream(&stream_event).await;
+    info!(
+        "[ChatV2::VariantHandler] LLM stream cancel requested: stream_event={}",
+        stream_event
     );
 
     Ok(())

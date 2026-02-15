@@ -1391,7 +1391,12 @@ impl LLMManager {
                 } else {
                     String::new()
                 };
-                if vendors.iter().any(|v| v.id == vendor.id) {
+                if let Some(existing) = vendors.iter_mut().find(|v| v.id == vendor.id) {
+                    // 同步内置供应商的信息字段，保留用户自定义的 base_url/headers 等
+                    existing.notes = vendor.notes.clone();
+                    existing.name = vendor.name.clone();
+                    existing.website_url = vendor.website_url.clone();
+                    existing.is_builtin = true;
                     continue;
                 }
                 vendors.push(vendor);
@@ -1595,11 +1600,13 @@ impl LLMManager {
         self.bootstrap_vendor_model_config().await?;
         let mut profiles = self.read_user_model_profiles().await?;
         if let Ok((_, builtin_profiles)) = self.load_builtin_vendor_profiles() {
-            for profile in builtin_profiles {
-                if profiles.iter().any(|p| p.id == profile.id) {
-                    continue;
+            for builtin_profile in builtin_profiles {
+                if let Some(existing) = profiles.iter_mut().find(|p| p.id == builtin_profile.id) {
+                    // 已有同 ID 的用户配置：同步内置模型的核心字段
+                    Self::sync_builtin_profile_fields(existing, &builtin_profile);
+                } else {
+                    profiles.push(builtin_profile);
                 }
-                profiles.push(profile);
             }
         }
         Ok(profiles)
@@ -1621,27 +1628,35 @@ impl LLMManager {
         let mut profiles = self.read_user_model_profiles().await?;
         if let Ok((_, builtin_profiles)) = self.load_builtin_vendor_profiles() {
             for builtin_profile in builtin_profiles {
-                // 查找是否已有同 ID 的用户配置
                 if let Some(user_profile) = profiles.iter_mut().find(|p| p.id == builtin_profile.id)
                 {
-                    // 模型粒度合并：如果用户配置没有 max_tokens_limit，使用内置模型的值
-                    if user_profile.max_tokens_limit.is_none() {
-                        user_profile.max_tokens_limit = builtin_profile.max_tokens_limit;
-                    }
-                    // 兼容历史默认命名：仅在仍为旧默认值时，跟随内置名称更新
-                    if (user_profile.id == "builtin-deepseek-chat"
-                        && user_profile.label == "DeepSeek Chat V3")
-                        || (user_profile.id == "builtin-deepseek-reasoner"
-                            && user_profile.label == "DeepSeek Reasoner R1")
-                    {
-                        user_profile.label = builtin_profile.label.clone();
-                    }
+                    Self::sync_builtin_profile_fields(user_profile, &builtin_profile);
                 } else {
                     profiles.push(builtin_profile);
                 }
             }
         }
         Ok(profiles)
+    }
+
+    /// 将内置模型定义的核心字段同步到已有的用户配置中。
+    /// 保留用户的个性化设置（收藏、温度、思考预算等），
+    /// 仅更新由代码定义、不应由用户长期持有旧值的字段。
+    fn sync_builtin_profile_fields(user_profile: &mut ModelProfile, builtin: &ModelProfile) {
+        user_profile.label = builtin.label.clone();
+        user_profile.model = builtin.model.clone();
+        user_profile.vendor_id = builtin.vendor_id.clone();
+        user_profile.model_adapter = builtin.model_adapter.clone();
+        user_profile.is_multimodal = builtin.is_multimodal;
+        user_profile.is_reasoning = builtin.is_reasoning;
+        user_profile.is_embedding = builtin.is_embedding;
+        user_profile.is_reranker = builtin.is_reranker;
+        user_profile.supports_tools = builtin.supports_tools;
+        user_profile.supports_reasoning = builtin.supports_reasoning;
+        user_profile.gemini_api_version = builtin.gemini_api_version.clone();
+        if user_profile.max_tokens_limit.is_none() {
+            user_profile.max_tokens_limit = builtin.max_tokens_limit;
+        }
     }
 
     pub async fn save_model_profiles(&self, profiles: &[ModelProfile]) -> Result<()> {

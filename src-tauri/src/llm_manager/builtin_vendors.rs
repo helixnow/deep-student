@@ -136,7 +136,7 @@ pub const BUILTIN_MODELS: &[BuiltinModel] = &[
     BuiltinModel {
         id: "builtin-deepseek-chat",
         vendor_id: "builtin-deepseek",
-        label: "DeepSeek Chat",
+        label: "DeepSeek Chat (对话)",
         model: "deepseek-chat",
         is_multimodal: false,
         is_reasoning: false,
@@ -147,7 +147,7 @@ pub const BUILTIN_MODELS: &[BuiltinModel] = &[
     BuiltinModel {
         id: "builtin-deepseek-reasoner",
         vendor_id: "builtin-deepseek",
-        label: "DeepSeek Reasoner",
+        label: "DeepSeek Reasoner (深度推理)",
         model: "deepseek-reasoner",
         is_multimodal: false,
         is_reasoning: true,
@@ -159,7 +159,7 @@ pub const BUILTIN_MODELS: &[BuiltinModel] = &[
     BuiltinModel {
         id: "builtin-qwen3-max",
         vendor_id: "builtin-qwen",
-        label: "Qwen3 Max",
+        label: "Qwen3 Max (旗舰)",
         model: "qwen3-max",
         is_multimodal: false,
         is_reasoning: false,
@@ -205,7 +205,7 @@ pub const BUILTIN_MODELS: &[BuiltinModel] = &[
     BuiltinModel {
         id: "builtin-glm-4.7",
         vendor_id: "builtin-zhipu",
-        label: "GLM-4.7",
+        label: "GLM-4.7 (高性价比)",
         model: "glm-4.7",
         is_multimodal: false,
         is_reasoning: true,
@@ -216,7 +216,7 @@ pub const BUILTIN_MODELS: &[BuiltinModel] = &[
     BuiltinModel {
         id: "builtin-glm-4.6",
         vendor_id: "builtin-zhipu",
-        label: "GLM-4.6",
+        label: "GLM-4.6 (上一代)",
         model: "glm-4.6",
         is_multimodal: false,
         is_reasoning: true,
@@ -309,7 +309,7 @@ pub const BUILTIN_MODELS: &[BuiltinModel] = &[
     BuiltinModel {
         id: "builtin-minimax-m2.5-highspeed",
         vendor_id: "builtin-minimax",
-        label: "MiniMax M2.5 Highspeed (快速)",
+        label: "MiniMax M2.5 Highspeed (极速)",
         model: "MiniMax-M2.5-highspeed",
         is_multimodal: false,
         is_reasoning: false,
@@ -321,7 +321,7 @@ pub const BUILTIN_MODELS: &[BuiltinModel] = &[
     BuiltinModel {
         id: "builtin-minimax-m2.1",
         vendor_id: "builtin-minimax",
-        label: "MiniMax M2.1",
+        label: "MiniMax M2.1 (上一代)",
         model: "MiniMax-M2.1",
         is_multimodal: false,
         is_reasoning: true,
@@ -345,7 +345,7 @@ pub const BUILTIN_MODELS: &[BuiltinModel] = &[
     BuiltinModel {
         id: "builtin-kimi-k2",
         vendor_id: "builtin-moonshot",
-        label: "Kimi K2 (旗舰 1T参数)",
+        label: "Kimi K2 (1T参数)",
         model: "kimi-k2",
         is_multimodal: false,
         is_reasoning: false,
@@ -367,7 +367,7 @@ pub const BUILTIN_MODELS: &[BuiltinModel] = &[
     BuiltinModel {
         id: "builtin-kimi-latest",
         vendor_id: "builtin-moonshot",
-        label: "Kimi Latest",
+        label: "Kimi Latest (自动更新)",
         model: "kimi-latest",
         is_multimodal: false,
         is_reasoning: false,
@@ -378,7 +378,7 @@ pub const BUILTIN_MODELS: &[BuiltinModel] = &[
     BuiltinModel {
         id: "builtin-moonshot-v1-128k",
         vendor_id: "builtin-moonshot",
-        label: "Moonshot V1 128K",
+        label: "Moonshot V1 (旧版)",
         model: "moonshot-v1-128k",
         is_multimodal: false,
         is_reasoning: false,
@@ -402,7 +402,7 @@ pub const BUILTIN_MODELS: &[BuiltinModel] = &[
     BuiltinModel {
         id: "builtin-gpt-5.2-pro",
         vendor_id: "builtin-openai",
-        label: "GPT-5.2 Pro (更精准)",
+        label: "GPT-5.2 Pro (深度推理)",
         model: "gpt-5.2-pro",
         is_multimodal: true,
         is_reasoning: true,
@@ -414,7 +414,7 @@ pub const BUILTIN_MODELS: &[BuiltinModel] = &[
     BuiltinModel {
         id: "builtin-gpt-5.1",
         vendor_id: "builtin-openai",
-        label: "GPT-5.1",
+        label: "GPT-5.1 (Codex优化)",
         model: "gpt-5.1",
         is_multimodal: true,
         is_reasoning: true,
@@ -426,7 +426,7 @@ pub const BUILTIN_MODELS: &[BuiltinModel] = &[
     BuiltinModel {
         id: "builtin-gpt-5",
         vendor_id: "builtin-openai",
-        label: "GPT-5",
+        label: "GPT-5 (标准)",
         model: "gpt-5",
         is_multimodal: true,
         is_reasoning: true,
@@ -437,7 +437,7 @@ pub const BUILTIN_MODELS: &[BuiltinModel] = &[
     BuiltinModel {
         id: "builtin-gpt-5-mini",
         vendor_id: "builtin-openai",
-        label: "GPT-5 Mini",
+        label: "GPT-5 Mini (轻量)",
         model: "gpt-5-mini",
         is_multimodal: true,
         is_reasoning: true,
@@ -471,7 +471,7 @@ pub const BUILTIN_MODELS: &[BuiltinModel] = &[
     BuiltinModel {
         id: "builtin-o3",
         vendor_id: "builtin-openai",
-        label: "o3 (推理旗舰)",
+        label: "o3 (推理)",
         model: "o3",
         is_multimodal: true,
         is_reasoning: true,
@@ -482,7 +482,7 @@ pub const BUILTIN_MODELS: &[BuiltinModel] = &[
     BuiltinModel {
         id: "builtin-o3-mini",
         vendor_id: "builtin-openai",
-        label: "o3-mini (推理)",
+        label: "o3-mini (推理轻量)",
         model: "o3-mini",
         is_multimodal: true,
         is_reasoning: true,
@@ -493,7 +493,7 @@ pub const BUILTIN_MODELS: &[BuiltinModel] = &[
     BuiltinModel {
         id: "builtin-o4-mini",
         vendor_id: "builtin-openai",
-        label: "o4-mini (推理)",
+        label: "o4-mini (最新推理)",
         model: "o4-mini",
         is_multimodal: true,
         is_reasoning: true,
@@ -506,7 +506,7 @@ pub const BUILTIN_MODELS: &[BuiltinModel] = &[
     BuiltinModel {
         id: "builtin-gemini-3-pro",
         vendor_id: "builtin-gemini",
-        label: "Gemini 3 Pro (最强多模态)",
+        label: "Gemini 3 Pro (最新旗舰)",
         model: "gemini-3-pro-preview",
         is_multimodal: true,
         is_reasoning: true,
@@ -540,7 +540,7 @@ pub const BUILTIN_MODELS: &[BuiltinModel] = &[
     BuiltinModel {
         id: "builtin-gemini-2.5-flash",
         vendor_id: "builtin-gemini",
-        label: "Gemini 2.5 Flash",
+        label: "Gemini 2.5 Flash (高速)",
         model: "gemini-2.5-flash",
         is_multimodal: true,
         is_reasoning: true,

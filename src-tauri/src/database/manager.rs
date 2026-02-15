@@ -145,6 +145,58 @@ impl DatabaseManager {
         Ok(())
     }
 
+    /// 进入维护模式：将连接池切换为内存数据库，释放对磁盘文件的占用
+    ///
+    /// 用于恢复流程中替换实际数据库文件，避免 Windows 上文件锁定（os error 32）。
+    /// 维护模式下，所有通过此 Manager 获取的连接都将指向内存数据库。
+    pub fn enter_maintenance_mode(&self) -> Result<()> {
+        // 先尝试 WAL checkpoint
+        if let Ok(conn) = self.get_conn() {
+            let _ = conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);");
+        }
+
+        // 构建指向 :memory: 的连接池，替换原有池（旧池 drop 时关闭所有文件连接）
+        let mem_manager = SqliteConnectionManager::memory();
+        let mem_pool = Pool::builder()
+            .max_size(1)
+            .build(mem_manager)
+            .with_context(|| "创建内存连接池失败")?;
+
+        {
+            let mut guard = match self.pool.write() {
+                Ok(g) => g,
+                Err(poisoned) => {
+                    log::error!("[DatabaseManager] Pool RwLock poisoned during enter_maintenance_mode! Forcing recovery");
+                    poisoned.into_inner()
+                }
+            };
+            *guard = mem_pool;
+        }
+
+        log::info!("[DatabaseManager] 已进入维护模式，文件连接已释放");
+        Ok(())
+    }
+
+    /// 退出维护模式：重新打开磁盘数据库文件的连接池
+    pub fn exit_maintenance_mode(&self) -> Result<()> {
+        let path = self.current_db_path();
+        let new_pool = Self::build_pool(&path)?;
+
+        {
+            let mut guard = match self.pool.write() {
+                Ok(g) => g,
+                Err(poisoned) => {
+                    log::error!("[DatabaseManager] Pool RwLock poisoned during exit_maintenance_mode! Forcing recovery");
+                    poisoned.into_inner()
+                }
+            };
+            *guard = new_pool;
+        }
+
+        log::info!("[DatabaseManager] 已退出维护模式，文件连接已恢复");
+        Ok(())
+    }
+
     /// 从现有连接池创建 DatabaseManager（用于兼容性）
     pub fn from_pool(pool: SqlitePool, db_path: PathBuf) -> Self {
         DatabaseManager {
