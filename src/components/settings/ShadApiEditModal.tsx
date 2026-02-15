@@ -1525,7 +1525,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
   // 嵌入模式：直接返回表单内容，不使用 Dialog 包裹
   if (embeddedMode) {
     return (
-      <div className="h-full flex flex-col pb-6">
+      <div className="h-full flex flex-col">
         {formContent}
       </div>
     );

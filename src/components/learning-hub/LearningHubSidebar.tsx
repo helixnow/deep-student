@@ -109,6 +109,7 @@ export function LearningHubSidebar({
   mobileBottomPadding = false,
   hasOpenApp = false,
   onCloseApp,
+  hideToolbarAndNav = false,
 }: LearningHubSidebarProps) {
   const { t } = useTranslation('learningHub');
 
@@ -1976,7 +1977,7 @@ export function LearningHubSidebar({
         className="flex-1 flex flex-col min-w-0 min-h-0"
       >
         {/* P1-20: 移动端顶部工具栏（搜索 + 新建文件夹 + 新建笔记 + 清空回收站） */}
-        {isSmallScreen && (
+        {isSmallScreen && !hideToolbarAndNav && (
           <div 
             className="flex items-center gap-1 px-2 py-1.5 border-b border-border/40 bg-background/95 backdrop-blur-lg shrink-0"
             style={{ marginTop: 3 }}
@@ -2057,7 +2058,7 @@ export function LearningHubSidebar({
         )}
 
 {/* ★ Canvas 模式导航栏：返回/前进 + 面包屑 */}
-        {mode === 'canvas' && (
+        {mode === 'canvas' && !hideToolbarAndNav && (
           <div className="flex items-center gap-1 px-1.5 py-1 border-b border-border/40 bg-muted/30 shrink-0 min-w-0">
             {/* 返回/前进按钮 */}
             <NotionButton

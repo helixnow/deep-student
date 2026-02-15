@@ -663,7 +663,16 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
           setScreenPosition('center');
         }
       : undefined,
-  }, [headerTitle, headerSubtitle, isEditorView]);
+    rightActions: !isEditorView ? (
+      <button
+        onClick={handleCreate}
+        className="p-1.5 rounded-md hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
+        title={t('skills:management.create', '新建技能')}
+      >
+        <Plus className="w-5 h-5" />
+      </button>
+    ) : undefined,
+  }, [headerTitle, headerSubtitle, isEditorView, handleCreate, t]);
 
   // ========== 位置筛选标签 ==========
   const locationTabs = useMemo(() => [
@@ -701,14 +710,14 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
   const renderMainContent = () => (
     <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden bg-background">
       <div className="flex-shrink-0 px-4 sm:px-6 py-3 border-b border-border/20 bg-background/50 backdrop-blur-sm sticky top-0 z-10 space-y-3">
-        <div className={cn("flex items-center gap-4", isSmallScreen ? "flex-col items-stretch" : "justify-between")}>
+        <div className={cn("flex items-center gap-4", isSmallScreen ? "justify-between" : "justify-between")}>
           <div className="flex items-center gap-2 text-sm text-muted-foreground min-w-0">
             <span className="font-medium text-foreground truncate">{t('skills:management.all_skills', '所有技能')}</span>
             <span className="text-muted-foreground/40">/</span>
             <span className="flex-shrink-0">{t('skills:management.skills_count', { count: filteredSkills.length })}</span>
           </div>
 
-          <div className={cn("flex items-center gap-1 flex-shrink-0", isSmallScreen && "flex-wrap justify-start")}>
+          <div className="flex items-center gap-1 flex-shrink-0">
             <input
               ref={fileInputRef}
               type="file"
@@ -718,17 +727,21 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
               className="hidden"
             />
             
-            <NotionButton
-              variant="primary"
-              size="sm"
-              onClick={handleCreate}
-              className="h-7 text-xs px-2.5 shadow-sm"
-            >
-              <Plus size={14} className="mr-1.5" />
-              {t('skills:management.create', '新建')}
-            </NotionButton>
-
-            <div className="w-px h-4 bg-border/40 mx-1.5" />
+            {/* 新建按钮：移动端在应用顶栏，桌面端保留在此 */}
+            {!isSmallScreen && (
+              <>
+                <NotionButton
+                  variant="primary"
+                  size="sm"
+                  onClick={handleCreate}
+                  className="h-7 text-xs px-2.5 shadow-sm"
+                >
+                  <Plus size={14} className="mr-1.5" />
+                  {t('skills:management.create', '新建')}
+                </NotionButton>
+                <div className="w-px h-4 bg-border/40 mx-1.5" />
+              </>
+            )}
 
             <NotionButton
               variant="ghost"
@@ -751,15 +764,6 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
               {t('skills:management.export_all_short', '导出')}
             </NotionButton>
 
-            <NotionButton
-              variant="ghost"
-              size="sm"
-              onClick={handleRefresh}
-              className="h-7 w-7 px-0 text-muted-foreground"
-              title={t('common:actions.refresh', '刷新列表')}
-            >
-              <RotateCcw size={14} />
-            </NotionButton>
           </div>
         </div>
 

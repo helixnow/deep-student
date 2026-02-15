@@ -828,10 +828,9 @@
   background: hsl(50 100% 50% / 0.5);
 }
 
-/* 移动端：分栏面板回退为垂直布局 */
+/* 移动端：分栏面板保持弹性高度 */
 @media (max-width: 768px) {
   .template-code-split-panel {
-    height: auto;
-    min-height: 400px;
+    min-height: 0;
   }
 }

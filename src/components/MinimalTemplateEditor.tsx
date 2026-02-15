@@ -610,7 +610,7 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
                           ? 'bg-background shadow-sm text-foreground'
                           : 'text-muted-foreground hover:text-foreground'
                       }`}
-                      onClick={() => { setCodeSubTab('front'); scrollToScreen(0); }}
+                      onClick={() => setCodeSubTab('front')}
                     >
                       {t('front_template_title', '正面模板')}
                     </button>
@@ -621,7 +621,7 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
                           ? 'bg-background shadow-sm text-foreground'
                           : 'text-muted-foreground hover:text-foreground'
                       }`}
-                      onClick={() => { setCodeSubTab('back'); scrollToScreen(1); }}
+                      onClick={() => setCodeSubTab('back')}
                     >
                       {t('back_template_title', '背面模板')}
                     </button>
@@ -632,7 +632,7 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
                           ? 'bg-background shadow-sm text-foreground'
                           : 'text-muted-foreground hover:text-foreground'
                       }`}
-                      onClick={() => { setCodeSubTab('css'); scrollToScreen(2); }}
+                      onClick={() => setCodeSubTab('css')}
                     >
                       {t('css_style_title', 'CSS 样式')}
                     </button>
@@ -640,70 +640,84 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
                 </div>
               )}
 
-              {/* 移动端：横向滚动屏，左右滑动切换 front / back / css */}
+              {/* 移动端：横向滚动双屏，左屏预览 / 右屏编辑器 */}
               {isSmallScreen ? (
                 <div
                   ref={mobileScrollRef}
                   className="flex flex-1 min-h-0 overflow-x-auto snap-x snap-mandatory"
                   style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
-                  onScroll={handleMobileScroll}
                 >
-                  {/* 屏 1：正面模板 */}
-                  <div className="w-full shrink-0 snap-start flex flex-col h-full">
-                    <div className="flex-none border-b border-border/30">
-                      <div className="px-3 py-1.5 text-[11px] text-muted-foreground/60">{t('template_preview', '模板预览')}</div>
-                      <div className="h-[100px] overflow-hidden">
+                  {/* 屏 1：模板预览 */}
+                  <div className="w-full shrink-0 snap-start flex flex-col h-full overflow-y-auto">
+                    <div className="p-3 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-medium text-muted-foreground/80 uppercase tracking-wider">
+                          {t('template_preview', '模板预览')}
+                        </span>
+                        <div className="flex gap-1">
+                          <button
+                            type="button"
+                            className={`px-2 py-1 rounded text-[11px] font-medium transition-all ${
+                              previewMode === 'front'
+                                ? 'bg-primary/10 text-primary'
+                                : 'text-muted-foreground hover:text-foreground'
+                            }`}
+                            onClick={() => setPreviewMode('front')}
+                          >
+                            {t('front_label', '正面')}
+                          </button>
+                          <button
+                            type="button"
+                            className={`px-2 py-1 rounded text-[11px] font-medium transition-all ${
+                              previewMode === 'back'
+                                ? 'bg-primary/10 text-primary'
+                                : 'text-muted-foreground hover:text-foreground'
+                            }`}
+                            onClick={() => setPreviewMode('back')}
+                          >
+                            {t('back_label', '背面')}
+                          </button>
+                        </div>
+                      </div>
+                      <div className="border border-border/40 rounded-lg overflow-hidden">
                         <IframePreview
-                          htmlContent={renderCardPreview(formData.front_template, formData as any, validateJson(previewDataJson) ? JSON.parse(previewDataJson) : {}, false)}
+                          htmlContent={renderCardPreview(
+                            previewMode === 'front' ? formData.front_template : formData.back_template,
+                            formData as any,
+                            validateJson(previewDataJson) ? JSON.parse(previewDataJson) : {},
+                            previewMode === 'back'
+                          )}
                           cssContent={formData.css_style}
                         />
                       </div>
-                    </div>
-                    <div className="flex-1 min-h-0 overflow-hidden relative">
-                      <CodeMirror
-                        value={formData.front_template}
-                        onChange={handleFrontChange}
-                        extensions={htmlExtensions}
-                        theme={cmTheme}
-                        height="100%"
-                        className="h-full template-codemirror-editor"
-                        basicSetup={{ lineNumbers: true, highlightActiveLine: true, foldGutter: true, bracketMatching: true, closeBrackets: true, autocompletion: true }}
-                      />
-                    </div>
-                  </div>
-                  {/* 屏 2：背面模板 */}
-                  <div className="w-full shrink-0 snap-start flex flex-col h-full">
-                    <div className="flex-none border-b border-border/30">
-                      <div className="px-3 py-1.5 text-[11px] text-muted-foreground/60">{t('template_preview', '模板预览')}</div>
-                      <div className="h-[100px] overflow-hidden">
-                        <IframePreview
-                          htmlContent={renderCardPreview(formData.back_template, formData as any, validateJson(previewDataJson) ? JSON.parse(previewDataJson) : {}, true)}
-                          cssContent={formData.css_style}
-                        />
-                      </div>
-                    </div>
-                    <div className="flex-1 min-h-0 overflow-hidden relative">
-                      <CodeMirror
-                        value={formData.back_template}
-                        onChange={handleBackChange}
-                        extensions={htmlExtensions}
-                        theme={cmTheme}
-                        height="100%"
-                        className="h-full template-codemirror-editor"
-                        basicSetup={{ lineNumbers: true, highlightActiveLine: true, foldGutter: true, bracketMatching: true, closeBrackets: true, autocompletion: true }}
-                      />
+                      {codeSubTab !== 'css' && (
+                        <div className="text-[10px] text-muted-foreground/60 space-y-1">
+                          <p>{t('use_mustache_hint', '使用 {{字段名}} 来引用字段值')}</p>
+                          <div className="flex flex-wrap gap-1">
+                            {formData.fields.map(field => (
+                              <code
+                                key={field}
+                                className="px-1.5 py-0.5 bg-muted/50 rounded text-[10px] font-mono cursor-pointer hover:bg-muted transition-colors"
+                                onClick={() => {
+                                  navigator.clipboard.writeText(`{{${field}}}`);
+                                }}
+                                title={t('click_to_copy', '点击复制')}
+                              >
+                                {`{{${field}}}`}
+                              </code>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
-                  {/* 屏 3：CSS 样式 */}
+                  {/* 屏 2：代码编辑器 */}
                   <div className="w-full shrink-0 snap-start flex flex-col h-full">
-                    <div className="flex-none px-3 py-1.5 border-b border-border/30">
-                      <span className="text-[11px] text-muted-foreground/60">{t('css_style_title', 'CSS 样式')}</span>
-                    </div>
                     <div className="flex-1 min-h-0 overflow-hidden relative">
                       <CodeMirror
-                        value={formData.css_style}
-                        onChange={handleCssChange}
-                        extensions={cssExtensions}
+                        value={codeValue}
+                        onChange={handleCodeChange}
+                        extensions={cmExtensions}
                         theme={cmTheme}
                         height="100%"
                         className="h-full template-codemirror-editor"

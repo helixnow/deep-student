@@ -132,6 +132,8 @@ export interface LearningHubSidebarProps {
   hasOpenApp?: boolean;
   /** ★ 关闭应用面板回调 */
   onCloseApp?: () => void;
+  /** ★ 隐藏顶部工具栏和导航栏（移动端聊天内嵌模式使用，由外部容器提供面包屑） */
+  hideToolbarAndNav?: boolean;
 }
 
 /**

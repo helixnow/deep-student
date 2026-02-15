@@ -1227,35 +1227,37 @@ const TemplateCard: React.FC<TemplateCardProps> = ({
   const renderActions = () => (
     <div className="notion-card-actions" onClick={e => e.stopPropagation()}>
       {isSelectingMode ? (
-        <button
-          className="notion-primary-btn"
+        <NotionButton
+          variant="primary"
+          size="sm"
           onClick={() => onTemplateSelected?.(template)}
         >
           {t('use_template')}
-        </button>
+        </NotionButton>
       ) : (
         <>
-          <button
-            className="notion-primary-btn"
+          <NotionButton
+            variant="primary"
+            size="sm"
+            className="w-full"
             onClick={isDefault ? undefined : onSetDefaultTemplate}
             disabled={isDefault}
-            style={isDefault ? { opacity: 0.6, cursor: 'default' } : {}}
           >
             {isDefault ? t('default_template') : t('set_default')}
-          </button>
+          </NotionButton>
           <div className="notion-action-buttons">
-            <button className="notion-action-btn" onClick={onEdit} title={t('edit_tooltip')}>
+            <NotionButton variant="ghost" size="icon" iconOnly onClick={onEdit} aria-label={t('edit_tooltip')} title={t('edit_tooltip')}>
               <Edit2 size={16} />
-            </button>
-            <button className="notion-action-btn" onClick={onDuplicate} title={t('duplicate_tooltip')}>
+            </NotionButton>
+            <NotionButton variant="ghost" size="icon" iconOnly onClick={onDuplicate} aria-label={t('duplicate_tooltip')} title={t('duplicate_tooltip')}>
               <Copy size={16} />
-            </button>
-            <button className="notion-action-btn" onClick={onExportTemplate} title={t('export_tooltip')}>
+            </NotionButton>
+            <NotionButton variant="ghost" size="icon" iconOnly onClick={onExportTemplate} aria-label={t('export_tooltip')} title={t('export_tooltip')}>
               <Download size={16} />
-            </button>
-            <button className="notion-action-btn danger" onClick={onDelete} title={t('delete_tooltip')}>
+            </NotionButton>
+            <NotionButton variant="danger" size="icon" iconOnly onClick={onDelete} aria-label={t('delete_tooltip')} title={t('delete_tooltip')}>
               <Trash2 size={16} />
-            </button>
+            </NotionButton>
           </div>
         </>
       )}

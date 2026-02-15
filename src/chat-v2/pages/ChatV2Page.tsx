@@ -26,6 +26,8 @@ import { TauriAPI } from '@/utils/tauriApi';
 // Learning Hub 学习资源侧边栏
 import { LearningHubSidebar } from '@/components/learning-hub';
 import type { ResourceListItem, ResourceType } from '@/components/learning-hub/types';
+import { useFinderStore } from '@/components/learning-hub/stores/finderStore';
+import { MobileBreadcrumb } from '@/components/learning-hub/components/MobileBreadcrumb';
 import { useNotesOptional } from '@/components/notes/NotesContext';
 import { registerOpenResourceHandler } from '@/dstu/openResource';
 import type { DstuNode } from '@/dstu/types';
@@ -195,6 +197,10 @@ export const ChatV2Page: React.FC = () => {
   const [sessionSheetOpen, setSessionSheetOpen] = useState(false);
   // 移动端：资源库右侧滑屏状态
   const [mobileResourcePanelOpen, setMobileResourcePanelOpen] = useState(false);
+  // 📱 移动端资源库面包屑导航（用于应用顶栏）
+  const finderCurrentPath = useFinderStore(state => state.currentPath);
+  const finderJumpToBreadcrumb = useFinderStore(state => state.jumpToBreadcrumb);
+  const finderBreadcrumbs = finderCurrentPath.breadcrumbs;
   const [isLoading, setIsLoading] = useState(false);
   // 🔧 防闪烁：首次加载会话列表期间为 true，避免短暂显示全空状态
   const [isInitialLoading, setIsInitialLoading] = useState(true);
@@ -772,7 +778,23 @@ export const ChatV2Page: React.FC = () => {
     );
   }, [viewMode, browserRefreshing, handleBrowserRefresh, createSession, isLoading, isEmptyNewChat, t]);
 
-  useMobileHeader('chat-v2', {
+  // 📱 移动端资源库面包屑导航回调
+  const handleFinderBreadcrumbNavigate = useCallback((index: number) => {
+    finderJumpToBreadcrumb(index);
+  }, [finderJumpToBreadcrumb]);
+
+  useMobileHeader('chat-v2', mobileResourcePanelOpen ? {
+    // 📱 资源库打开时：顶栏显示面包屑导航
+    titleNode: (
+      <MobileBreadcrumb
+        rootTitle={t('learningHub:title')}
+        breadcrumbs={finderBreadcrumbs}
+        onNavigate={handleFinderBreadcrumbNavigate}
+      />
+    ),
+    showBackArrow: true,
+    onMenuClick: () => setMobileResourcePanelOpen(false),
+  } : {
     title: headerTitle,
     showMenu: viewMode !== 'browser',
     showBackArrow: viewMode === 'browser',
@@ -783,7 +805,7 @@ export const ChatV2Page: React.FC = () => {
         }
       : () => setSessionSheetOpen(prev => !prev),
     rightActions: headerRightActions,
-  }, [headerTitle, viewMode, headerRightActions, t]);
+  }, [headerTitle, viewMode, headerRightActions, mobileResourcePanelOpen, finderBreadcrumbs, handleFinderBreadcrumbNavigate, t]);
 
   // P1-23: 软删除会话（移动到回收站）
   // 🔧 P1-005 修复：使用 ref 获取最新状态，避免闭包竞态条件
@@ -2518,7 +2540,7 @@ export const ChatV2Page: React.FC = () => {
               {openApp ? (
                 <div className="h-full flex flex-col">
                   {/* 附件/资源预览标题栏 */}
-                  <div className="flex items-center justify-between px-3 py-2 border-b border-border bg-muted/30 shrink-0">
+                  <div className="flex items-center justify-between px-3 py-2 border-b border-border bg-background/95 backdrop-blur-lg shrink-0">
                     <div className="flex items-center gap-2 min-w-0">
                       {(() => {
                         const AppIcon = getAppIcon(openApp.type);
@@ -2578,6 +2600,7 @@ export const ChatV2Page: React.FC = () => {
                   onClose={() => setMobileResourcePanelOpen(false)}
                   onOpenApp={handleOpenApp}
                   className="h-full"
+                  hideToolbarAndNav
                 />
               )}
             </div>

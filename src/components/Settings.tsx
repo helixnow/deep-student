@@ -2076,7 +2076,12 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
     };
 
     return (
-      <div className="h-full flex flex-col bg-background safe-area-bottom">
+      <div
+        className="h-full flex flex-col bg-background"
+        style={{
+          paddingBottom: `calc(var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px)) + ${MOBILE_LAYOUT.bottomTabBar.defaultHeight}px)`,
+        }}
+      >
         <div className="px-4 pt-4 pb-2 border-b border-border flex-shrink-0">
           <h2 className="text-lg font-semibold">{isEditing ? t('settings:mcp_descriptions.edit_tool_title') : t('settings:mcp_descriptions.add_tool_title')}</h2>
           <p className="text-sm text-muted-foreground mt-1">{t('settings:mcp_descriptions.tool_modal_hint')}</p>
@@ -2307,7 +2312,12 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
     };
 
     return (
-      <div className="h-full flex flex-col bg-background safe-area-bottom">
+      <div
+        className="h-full flex flex-col bg-background"
+        style={{
+          paddingBottom: `calc(var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px)) + ${MOBILE_LAYOUT.bottomTabBar.defaultHeight}px)`,
+        }}
+      >
         <div className="px-4 pt-4 pb-2 border-b border-border flex-shrink-0">
           <h2 className="text-lg font-semibold">{t('settings:mcp_descriptions.policy_title')}</h2>
           <p className="text-sm text-muted-foreground mt-1">{t('settings:mcp_descriptions.policy_subtitle')}</p>
@@ -2431,7 +2441,12 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
     };
 
     return (
-      <div className="h-full flex flex-col bg-background safe-area-bottom">
+      <div
+        className="h-full flex flex-col bg-background"
+        style={{
+          paddingBottom: `calc(var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px)) + ${MOBILE_LAYOUT.bottomTabBar.defaultHeight}px)`,
+        }}
+      >
         <VendorConfigModal
           ref={vendorConfigModalRef}
           open={vendorModalOpen}
@@ -4503,7 +4518,12 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
           );
         }
         return (
-          <div className="h-full flex flex-col bg-background safe-area-bottom">
+          <div
+            className="h-full flex flex-col bg-background"
+            style={{
+              paddingBottom: `calc(var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px)) + ${MOBILE_LAYOUT.bottomTabBar.defaultHeight}px)`,
+            }}
+          >
             <ShadApiEditModal
               api={modelEditor.api}
               onSave={handleSaveModelProfileAndClose}
