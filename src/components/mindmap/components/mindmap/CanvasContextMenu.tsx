@@ -81,22 +81,20 @@ const ColorPalette: React.FC<{
 }> = ({ colors, activeColor, onSelect }) => (
   <div className="flex items-center gap-1 px-2 py-1.5">
     {colors.map(color => (
-      <button
+      <NotionButton
         key={color}
+        variant="ghost" size="icon" iconOnly
         className={cn(
-          "w-[18px] h-[18px] rounded-full border-2 transition-transform hover:scale-125 flex-shrink-0",
+          "!w-[18px] !h-[18px] !min-w-0 !p-0 !rounded-full border-2 hover:scale-125 flex-shrink-0",
           activeColor === color ? "border-primary scale-110" : "border-transparent"
         )}
         style={{ backgroundColor: color }}
         onClick={(e) => { e.stopPropagation(); onSelect(color); }}
       />
     ))}
-    <button
-      className="w-[18px] h-[18px] rounded-full border border-border flex items-center justify-center text-muted-foreground hover:bg-accent flex-shrink-0"
-      onClick={(e) => { e.stopPropagation(); onSelect(undefined); }}
-    >
+    <NotionButton variant="ghost" size="icon" iconOnly className="!w-[18px] !h-[18px] !min-w-0 !p-0 !rounded-full border border-border text-muted-foreground hover:bg-accent flex-shrink-0" onClick={(e) => { e.stopPropagation(); onSelect(undefined); }} aria-label="clear color">
       <X className="w-2.5 h-2.5" />
-    </button>
+    </NotionButton>
   </div>
 );
 

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { NotionButton } from '@/components/ui/NotionButton';
 import { Shield, AlertTriangle, CheckCircle, RefreshCw, Settings } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { useTranslation } from 'react-i18next';
@@ -109,14 +110,9 @@ export const SecurityStatusIndicator: React.FC<SecurityStatusIndicatorProps> = (
             <h3 className={`text-sm font-medium ${textClass}`}>
               {t('securityStatus.title', '安全存储状态')}
             </h3>
-            <button
-              onClick={loadSecurityStatus}
-              disabled={loading}
-              className="p-1 rounded hover:bg-white/50 transition-colors"
-              title={t('securityStatus.refresh', '刷新状态')}
-            >
+            <NotionButton variant="ghost" size="icon" iconOnly onClick={loadSecurityStatus} disabled={loading} className="!p-1 hover:bg-white/50" title={t('securityStatus.refresh', '刷新状态')} aria-label="refresh">
               <RefreshCw className={`w-3 h-3 ${loading ? 'animate-spin' : ''} ${textClass}`} />
-            </button>
+            </NotionButton>
           </div>
           
           <div className={`mt-1 text-xs ${textClass} space-y-1`}>

@@ -4,6 +4,7 @@
  */
 
 import React, { useCallback } from 'react';
+import { NotionButton } from '@/components/ui/NotionButton';
 import { useTranslation } from 'react-i18next';
 import type { CrepeEditorApi } from '@/components/crepe/types';
 import {
@@ -57,8 +58,8 @@ const ToolbarButton: React.FC<ToolbarButtonProps> = ({
 
   return (
     <CommonTooltip content={tooltipContent} disabled={!tooltipContent}>
-      <button
-        type="button"
+      <NotionButton
+        variant="ghost" size="icon" iconOnly
         onMouseDown={handleMouseDown}
         disabled={disabled}
         className={active ? 'active' : ''}
@@ -66,7 +67,7 @@ const ToolbarButton: React.FC<ToolbarButtonProps> = ({
         tabIndex={-1}
       >
         {icon}
-      </button>
+      </NotionButton>
     </CommonTooltip>
   );
 };

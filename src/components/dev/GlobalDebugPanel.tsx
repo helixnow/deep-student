@@ -1,4 +1,5 @@
 import { createPortal } from 'react-dom';
+import { NotionButton } from '@/components/ui/NotionButton';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Bug } from 'lucide-react';
@@ -218,9 +219,9 @@ const GlobalDebugPanel = () => {
     <TooltipProvider>
       <Tooltip>
         <TooltipTrigger asChild>
-          <button
+          <NotionButton
             ref={toggleBtnRef}
-            type="button"
+            variant="ghost" size="icon" iconOnly
             className={clsx(
               'dstu-debug-toggle',
               visible && 'dstu-debug-toggle--open',
@@ -240,7 +241,7 @@ const GlobalDebugPanel = () => {
                   'dstu-debug-toggle__status--active',
               )}
             />
-          </button>
+          </NotionButton>
         </TooltipTrigger>
         <TooltipContent className="dstu-debug-toggle__tooltip">
           <div className="dstu-debug-toggle__tooltip-label">

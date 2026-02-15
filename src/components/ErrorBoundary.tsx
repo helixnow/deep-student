@@ -1,4 +1,5 @@
 import React from 'react';
+import { NotionButton } from '@/components/ui/NotionButton';
 import i18n from '@/i18n';
 
 type ErrorBoundaryProps = {
@@ -36,12 +37,9 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
           <p className="text-sm text-muted-foreground mb-3">
             {i18n.t('common:errorBoundary.title', 'Something went wrong')}
           </p>
-          <button
-            onClick={() => this.setState({ hasError: false })}
-            className="text-xs px-3 py-1.5 rounded bg-primary text-primary-foreground hover:opacity-90"
-          >
+          <NotionButton variant="primary" size="sm" onClick={() => this.setState({ hasError: false })} className="text-xs !px-3 !py-1.5 bg-primary text-primary-foreground hover:opacity-90">
             {i18n.t('common:errorBoundary.retry', 'Try again')}
-          </button>
+          </NotionButton>
         </div>
       );
     }

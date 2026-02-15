@@ -86,12 +86,13 @@ const RatingButton: React.FC<RatingButtonProps> = ({
   onClick,
   disabled,
 }) => (
-  <button
+  <NotionButton
+    variant="ghost" size="sm"
     onClick={onClick}
     disabled={disabled}
     className={cn(
-      'flex flex-col items-center gap-1.5 p-3 rounded-xl',
-      'border-2 transition-all duration-200',
+      '!p-3 !h-auto !rounded-xl flex-col !items-center !gap-1.5',
+      'border-2',
       'hover:scale-105 active:scale-95',
       'disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100',
       color
@@ -100,7 +101,7 @@ const RatingButton: React.FC<RatingButtonProps> = ({
     <div className="text-current">{icon}</div>
     <span className="text-sm font-semibold">{label}</span>
     <span className="text-[10px] opacity-70">{sublabel}</span>
-  </button>
+  </NotionButton>
 );
 
 // ============================================================================

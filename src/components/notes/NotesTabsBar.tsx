@@ -1,4 +1,5 @@
 import React from "react";
+import { NotionButton } from '@/components/ui/NotionButton';
 import { Tabs, TabsList, TabsTrigger } from "../ui/shad/Tabs";
 import { cn } from "../../lib/utils";
 import {
@@ -281,24 +282,14 @@ const NotesTabsBar: React.FC<NotesTabsBarProps> = ({
         }}
       >
         {canLeft && (
-          <button
-            type="button"
-            aria-label="scroll-left"
-            className="notes-tabs-scroll-btn left-0"
-            onClick={() => scrollByDirection('left')}
-          >
+          <NotionButton variant="ghost" size="icon" iconOnly aria-label="scroll-left" className="notes-tabs-scroll-btn left-0" onClick={() => scrollByDirection('left')}>
             <ChevronLeft className="h-4 w-4" />
-          </button>
+          </NotionButton>
         )}
         {canRight && (
-          <button
-            type="button"
-            aria-label="scroll-right"
-            className="notes-tabs-scroll-btn right-0"
-            onClick={() => scrollByDirection('right')}
-          >
+          <NotionButton variant="ghost" size="icon" iconOnly aria-label="scroll-right" className="notes-tabs-scroll-btn right-0" onClick={() => scrollByDirection('right')}>
             <ChevronRight className="h-4 w-4" />
-          </button>
+          </NotionButton>
         )}
         <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
           <SortableContext items={items} strategy={horizontalListSortingStrategy}>

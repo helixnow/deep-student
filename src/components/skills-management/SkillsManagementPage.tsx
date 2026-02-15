@@ -664,13 +664,9 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
         }
       : undefined,
     rightActions: !isEditorView ? (
-      <button
-        onClick={handleCreate}
-        className="p-1.5 rounded-md hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
-        title={t('skills:management.create', '新建技能')}
-      >
+      <NotionButton variant="ghost" size="icon" iconOnly onClick={handleCreate} className="!p-1.5 hover:bg-accent text-muted-foreground hover:text-foreground" title={t('skills:management.create', '新建技能')} aria-label="create">
         <Plus className="w-5 h-5" />
-      </button>
+      </NotionButton>
     ) : undefined,
   }, [headerTitle, headerSubtitle, isEditorView, handleCreate, t]);
 
@@ -785,12 +781,12 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
               const isActiveTab = locationFilter === tab.id;
               if (tab.id !== 'all' && count === 0) return null;
               return (
-                <button
+                <NotionButton
                   key={tab.id}
-                  type="button"
+                  variant="ghost" size="sm"
                   onClick={() => setLocationFilter(tab.id)}
                   className={cn(
-                    'flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-medium transition-all duration-200 whitespace-nowrap',
+                    '!px-2.5 !py-1 !h-auto text-[11px] font-medium whitespace-nowrap',
                     isActiveTab
                       ? 'bg-secondary text-secondary-foreground shadow-sm'
                       : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
@@ -804,7 +800,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
                   )}>
                     {count}
                   </span>
-                </button>
+                </NotionButton>
               );
             })}
           </div>

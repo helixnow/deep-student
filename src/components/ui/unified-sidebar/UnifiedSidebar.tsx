@@ -304,13 +304,9 @@ export const UnifiedSidebarHeader: React.FC<UnifiedSidebarHeaderProps> = ({
     return (
       <div className={cn('flex flex-col', className)}>
         <div className="flex items-center justify-center px-1" style={{ height: '40px' }}>
-          <button
-            onClick={() => setCollapsed(false)}
-            className="p-1.5 rounded-md hover:bg-accent text-muted-foreground hover:text-foreground transition-all duration-150"
-            title={expandTitle || t('expand')}
-          >
+          <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setCollapsed(false)} className="!p-1.5 hover:bg-accent text-muted-foreground hover:text-foreground" title={expandTitle || t('expand')} aria-label="expand">
             <ChevronRight className="w-4 h-4" />
-          </button>
+          </NotionButton>
         </div>
       </div>
     );
@@ -321,13 +317,9 @@ export const UnifiedSidebarHeader: React.FC<UnifiedSidebarHeaderProps> = ({
       {/* 移动端模式：显示关闭按钮行（但移动滑动模式下不显示，因为顶栏已有切换按钮） */}
       {isMobileMode && !isMobileSlidingMode && (
         <div className="flex items-center gap-3 px-3 py-3 border-b border-border/50">
-          <button
-            onClick={closeMobile}
-            className="flex items-center justify-center w-9 h-9 rounded-full hover:bg-accent/80 active:bg-accent transition-colors shrink-0"
-            aria-label={t('close')}
-          >
+          <NotionButton variant="ghost" size="icon" iconOnly onClick={closeMobile} className="!w-9 !h-9 !rounded-full hover:bg-accent/80 active:bg-accent shrink-0" aria-label={t('close')}>
             <X className="w-5 h-5 text-muted-foreground" />
-          </button>
+          </NotionButton>
           {title && (
             <div className="flex items-center gap-2 flex-1 min-w-0">
               {Icon && <Icon className="w-5 h-5 text-primary shrink-0" />}
@@ -380,46 +372,24 @@ export const UnifiedSidebarHeader: React.FC<UnifiedSidebarHeaderProps> = ({
           {extraActions}
 
           {showRefresh && (
-            <button
-              onClick={onRefreshClick}
-              disabled={isRefreshing}
-              className={cn(
-                'rounded-md transition-all duration-150',
-                'hover:bg-accent text-muted-foreground hover:text-foreground',
-                'disabled:opacity-50 disabled:cursor-not-allowed',
-                styles.button.padding
-              )}
-              title={refreshTitle || t('refresh')}
-            >
+            <NotionButton variant="ghost" size="icon" iconOnly onClick={onRefreshClick} disabled={isRefreshing} className={cn('hover:bg-accent text-muted-foreground hover:text-foreground disabled:opacity-50', styles.button.padding)} title={refreshTitle || t('refresh')} aria-label="refresh">
               <RefreshCw className={cn(styles.button.iconSize, isRefreshing && 'animate-spin')} />
-            </button>
+            </NotionButton>
           )}
 
           {showCreate && (
-            <button
-              onClick={onCreateClick}
-              className={cn(
-                'rounded-md transition-all duration-150',
-                'hover:bg-accent text-muted-foreground hover:text-foreground',
-                styles.button.padding
-              )}
-              title={createTitle || t('create')}
-            >
+            <NotionButton variant="ghost" size="icon" iconOnly onClick={onCreateClick} className={cn('hover:bg-accent text-muted-foreground hover:text-foreground', styles.button.padding)} title={createTitle || t('create')} aria-label="create">
               <Plus className={styles.button.iconSize} />
-            </button>
+            </NotionButton>
           )}
 
           {rightActions}
 
           {/* 只在 panel 模式下显示折叠按钮，但在移动滑动模式下不显示（使用关闭按钮代替） */}
           {showCollapse && displayMode === 'panel' && !isMobileSlidingMode && (
-            <button
-              onClick={() => setCollapsed(true)}
-              className="p-1.5 rounded-md hover:bg-accent text-muted-foreground hover:text-foreground transition-all duration-150"
-              title={collapseTitle || t('collapse')}
-            >
+            <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setCollapsed(true)} className="!p-1.5 hover:bg-accent text-muted-foreground hover:text-foreground" title={collapseTitle || t('collapse')} aria-label="collapse">
               <ChevronLeft className="w-4 h-4" />
-            </button>
+            </NotionButton>
           )}
         </div>
         </div>
@@ -509,15 +479,9 @@ export const UnifiedSidebarContent: React.FC<UnifiedSidebarContentProps> = ({
           )}>{emptyDescription}</p>
         )}
         {emptyActionText && onEmptyAction && (
-          <button
-            onClick={onEmptyAction}
-            className={cn(
-              'text-primary hover:text-primary/80 hover:underline transition-colors',
-              isMobileMode ? 'text-base py-2 px-4' : 'text-xs'
-            )}
-          >
+          <NotionButton variant="ghost" size="sm" onClick={onEmptyAction} className={cn('text-primary hover:text-primary/80 hover:underline', isMobileMode ? 'text-base py-2 px-4' : 'text-xs')}>
             {emptyActionText}
-          </button>
+          </NotionButton>
         )}
       </div>
     );
@@ -678,32 +642,20 @@ export const UnifiedSidebarItem: React.FC<UnifiedSidebarItemProps> = ({
         <div className={cn('flex transition-opacity', styles.actions.gap, styles.actions.opacity)}>
           {extraActions}
           {showEdit && onEditClick && (
-            <button
-              onClick={onEditClick}
-              className={cn(
-                'rounded hover:bg-muted text-muted-foreground hover:text-foreground',
-                styles.actions.btnPadding
-              )}
-            >
+            <NotionButton variant="ghost" size="icon" iconOnly onClick={onEditClick} className={cn('hover:bg-muted text-muted-foreground hover:text-foreground', styles.actions.btnPadding)} aria-label="edit">
               <svg className={styles.actions.iconSize} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
                 <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
               </svg>
-            </button>
+            </NotionButton>
           )}
           {showDelete && onDeleteClick && (
-            <button
-              onClick={onDeleteClick}
-              className={cn(
-                'rounded hover:bg-destructive/20 text-muted-foreground hover:text-destructive',
-                styles.actions.btnPadding
-              )}
-            >
+            <NotionButton variant="ghost" size="icon" iconOnly onClick={onDeleteClick} className={cn('hover:bg-destructive/20 text-muted-foreground hover:text-destructive', styles.actions.btnPadding)} aria-label="delete">
               <svg className={styles.actions.iconSize} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <polyline points="3,6 5,6 21,6" />
                 <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
               </svg>
-            </button>
+            </NotionButton>
           )}
         </div>
       )}

@@ -246,14 +246,13 @@ export const MindMapResourcePicker: React.FC<MindMapResourcePickerProps> = ({
             const badgeClass = getTypeBadgeClass(node.type);
 
             return (
-              <button
+              <NotionButton
                 key={node.id}
-                type="button"
+                variant="ghost" size="sm"
                 disabled={isAdded}
                 onClick={() => handleSelect(node)}
                 className={cn(
-                  'flex items-center gap-2 w-full px-2 py-1.5 rounded-md text-left',
-                  'transition-colors duration-100',
+                  '!w-full !justify-start !px-2 !py-1.5 !h-auto !rounded-md !text-left',
                   isAdded
                     ? 'opacity-50 cursor-not-allowed'
                     : 'hover:bg-accent cursor-pointer',
@@ -266,7 +265,7 @@ export const MindMapResourcePicker: React.FC<MindMapResourcePickerProps> = ({
                 {isAdded && (
                   <Check className="w-3.5 h-3.5 text-primary shrink-0" />
                 )}
-              </button>
+              </NotionButton>
             );
           })
         )}

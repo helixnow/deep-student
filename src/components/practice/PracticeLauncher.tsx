@@ -233,11 +233,12 @@ export const PracticeLauncher: React.FC<PracticeLauncherProps> = ({
           {modes.map(({ key, icon: Icon, label, desc, colorText, colorBg, isAdvanced }) => {
             const isActive = activeAdvanced === key;
             return (
-              <button
+              <NotionButton
                 key={key}
+                variant="ghost" size="sm"
                 onClick={() => handleModeClick(key, isAdvanced)}
                 className={cn(
-                  'group relative flex flex-col items-start gap-3 p-4 rounded-xl text-left transition-all duration-200',
+                  '!h-auto !p-4 !rounded-xl !text-left !justify-start !items-start flex-col',
                   'border border-transparent hover:border-border/60 hover:bg-muted/30',
                   'hover:shadow-[var(--shadow-notion)]',
                   isActive && 'ring-2 ring-primary/50 bg-primary/5 border-primary/30'
@@ -260,7 +261,7 @@ export const PracticeLauncher: React.FC<PracticeLauncherProps> = ({
                 {isAdvanced && !isActive && (
                   <Sparkles className="absolute top-3 right-3 w-3 h-3 text-muted-foreground/40" />
                 )}
-              </button>
+              </NotionButton>
             );
           })}
         </div>

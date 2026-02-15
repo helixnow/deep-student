@@ -239,18 +239,19 @@ export const LearningTrendChart: React.FC<LearningTrendChartProps> = ({
           {showDateRangeSelector && (
             <div className="flex items-center gap-1 p-1 rounded-lg bg-muted/50">
               {DATE_RANGE_OPTIONS.map((value) => (
-                <button
+                <NotionButton
                   key={value}
+                  variant="ghost" size="sm"
                   onClick={() => handleDateRangeChange(value)}
                   className={cn(
-                    'px-3 py-1.5 text-xs font-medium rounded-md transition-colors',
+                    '!px-3 !py-1.5 !h-auto text-xs font-medium !rounded-md',
                     selectedRange === value
                       ? 'bg-background text-foreground shadow-sm'
                       : 'text-muted-foreground hover:text-foreground'
                   )}
                 >
                   {dateRangeLabels[value]}
-                </button>
+                </NotionButton>
               ))}
             </div>
           )}

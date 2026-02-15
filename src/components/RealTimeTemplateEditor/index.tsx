@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { NotionButton } from '@/components/ui/NotionButton';
 import { CustomAnkiTemplate } from '../../types';
 import { IframePreview } from '../SharedPreview';
 import { UnifiedCodeEditor, CodeLanguage } from '../shared/UnifiedCodeEditor';
@@ -207,49 +208,27 @@ export const RealTimeTemplateEditor: React.FC<RealTimeTemplateEditorProps> = ({
         
         <div className="toolbar-center">
           <div className="view-mode-selector">
-            <button 
-              className={previewSide === 'front' ? 'active' : ''}
-              onClick={() => setPreviewSide('front')}
-              title={t('preview_front')}
-            >
+            <NotionButton variant="ghost" size="sm" className={previewSide === 'front' ? 'active' : ''} onClick={() => setPreviewSide('front')} title={t('preview_front')}>
               {t('front')}
-            </button>
-            <button 
-              className={previewSide === 'back' ? 'active' : ''}
-              onClick={() => setPreviewSide('back')}
-              title={t('preview_back')}
-            >
+            </NotionButton>
+            <NotionButton variant="ghost" size="sm" className={previewSide === 'back' ? 'active' : ''} onClick={() => setPreviewSide('back')} title={t('preview_back')}>
               {t('back')}
-            </button>
-            <button 
-              className={previewSide === 'both' ? 'active' : ''}
-              onClick={() => setPreviewSide('both')}
-              title={t('preview_both')}
-            >
+            </NotionButton>
+            <NotionButton variant="ghost" size="sm" className={previewSide === 'both' ? 'active' : ''} onClick={() => setPreviewSide('both')} title={t('preview_both')}>
               {t('both')}
-            </button>
+            </NotionButton>
           </div>
         </div>
         
         <div className="toolbar-right">
-          <button 
-            className="btn-secondary"
-            onClick={onCancel}
-            disabled={isSaving}
-            title={t('cancel_edit')}
-          >
+          <NotionButton variant="default" size="sm" className="btn-secondary" onClick={onCancel} disabled={isSaving} title={t('cancel_edit')}>
             <X size={16} />
             {t('cancel')}
-          </button>
-          <button 
-            className="btn-primary"
-            onClick={handleSave}
-            disabled={isSaving}
-            title={t('save_template')}
-          >
+          </NotionButton>
+          <NotionButton variant="primary" size="sm" className="btn-primary" onClick={handleSave} disabled={isSaving} title={t('save_template')}>
             <Save size={16} />
             {t('save')} {isDirty && '*'}
-          </button>
+          </NotionButton>
         </div>
       </div>
 
@@ -258,36 +237,27 @@ export const RealTimeTemplateEditor: React.FC<RealTimeTemplateEditorProps> = ({
         {/* 左侧：代码编辑器 */}
         <div className="editor-panel">
           <div className="editor-tabs">
-            <button 
-              className={`tab ${activeTab === 'front' ? 'active' : ''}`}
-              onClick={() => setActiveTab('front')}
-            >
+            <NotionButton variant="ghost" size="sm" className={`tab ${activeTab === 'front' ? 'active' : ''}`} onClick={() => setActiveTab('front')}>
               <Code size={16} />
               {t('front_template')}
               {errors.get('front')?.length > 0 && (
                 <span className="error-badge">{errors.get('front')!.length}</span>
               )}
-            </button>
-            <button 
-              className={`tab ${activeTab === 'back' ? 'active' : ''}`}
-              onClick={() => setActiveTab('back')}
-            >
+            </NotionButton>
+            <NotionButton variant="ghost" size="sm" className={`tab ${activeTab === 'back' ? 'active' : ''}`} onClick={() => setActiveTab('back')}>
               <Code size={16} />
               {t('back_template')}
               {errors.get('back')?.length > 0 && (
                 <span className="error-badge">{errors.get('back')!.length}</span>
               )}
-            </button>
-            <button 
-              className={`tab ${activeTab === 'css' ? 'active' : ''}`}
-              onClick={() => setActiveTab('css')}
-            >
+            </NotionButton>
+            <NotionButton variant="ghost" size="sm" className={`tab ${activeTab === 'css' ? 'active' : ''}`} onClick={() => setActiveTab('css')}>
               <Palette size={16} />
               {t('style')}
               {errors.get('css')?.length > 0 && (
                 <span className="error-badge">{errors.get('css')!.length}</span>
               )}
-            </button>
+            </NotionButton>
           </div>
 
           <div className="code-editor-container">

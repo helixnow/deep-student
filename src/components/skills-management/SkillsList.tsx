@@ -188,25 +188,13 @@ export const SkillsList: React.FC<SkillsListProps> = ({
                     {getLocalizedSkillName(skill.id, skill.name, t)}
                   </h3>
                   {/* 收藏按钮 - 仅在 hover 或已收藏时显示 */}
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      toggleFavorite(skill.id);
-                    }}
-                    className={cn(
-                      'flex-shrink-0 transition-opacity duration-200',
-                      'focus:outline-none',
-                      isFavorite(skill.id)
-                        ? 'opacity-100 text-amber-500 hover:text-amber-600'
-                        : 'opacity-0 group-hover:opacity-100 text-muted-foreground/40 hover:text-amber-500'
-                    )}
+                  <NotionButton variant="ghost" size="icon" iconOnly
+                    onClick={(e) => { e.stopPropagation(); toggleFavorite(skill.id); }}
+                    className={cn('!h-auto !w-auto !p-0 flex-shrink-0 transition-opacity duration-200', isFavorite(skill.id) ? 'opacity-100 text-amber-500 hover:text-amber-600' : 'opacity-0 group-hover:opacity-100 text-muted-foreground/40 hover:text-amber-500')}
+                    aria-label="favorite"
                   >
-                    <Star
-                      size={14}
-                      className={isFavorite(skill.id) ? 'fill-current' : ''}
-                    />
-                  </button>
+                    <Star size={14} className={isFavorite(skill.id) ? 'fill-current' : ''} />
+                  </NotionButton>
                 </div>
                 
                 {/* 元信息行：版本与作者 */}
@@ -282,52 +270,22 @@ export const SkillsList: React.FC<SkillsListProps> = ({
 
               {/* 右下角操作按钮 */}
               <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                <button
-                  className="p-1.5 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-muted transition-colors"
-                  onClick={() => {
-                    const cardEl = cardRefs.current[skill.id];
-                    const rect = cardEl?.getBoundingClientRect();
-                    onEdit(skill, rect);
-                  }}
-                  title={t('common:actions.edit', '编辑')}
-                >
+                <NotionButton variant="ghost" size="icon" iconOnly className="!p-1.5 text-muted-foreground/60 hover:text-foreground hover:bg-muted" onClick={() => { const cardEl = cardRefs.current[skill.id]; const rect = cardEl?.getBoundingClientRect(); onEdit(skill, rect); }} title={t('common:actions.edit', '编辑')} aria-label="edit">
                   <Pencil size={14} />
-                </button>
+                </NotionButton>
                 
-                <button
-                  className={cn(
-                    "p-1.5 rounded-md transition-colors",
-                    isDefaultEnabled 
-                      ? "text-primary hover:bg-primary/10" 
-                      : "text-muted-foreground/60 hover:text-foreground hover:bg-muted"
-                  )}
-                  onClick={() => onToggleDefault(skill)}
-                  title={isDefaultEnabled ? t('skills:management.unset_default', '取消默认') : t('skills:management.set_default', '设为默认')}
-                >
+                <NotionButton variant="ghost" size="icon" iconOnly className={cn('!p-1.5', isDefaultEnabled ? 'text-primary hover:bg-primary/10' : 'text-muted-foreground/60 hover:text-foreground hover:bg-muted')} onClick={() => onToggleDefault(skill)} title={isDefaultEnabled ? t('skills:management.unset_default', '取消默认') : t('skills:management.set_default', '设为默认')} aria-label="toggle default">
                   <Check size={14} />
-                </button>
+                </NotionButton>
 
-                <button
-                  className={cn(
-                    "p-1.5 rounded-md transition-colors",
-                    isFavorite(skill.id)
-                      ? "text-amber-500 hover:bg-amber-500/10"
-                      : "text-muted-foreground/60 hover:text-amber-500 hover:bg-muted"
-                  )}
-                  onClick={() => toggleFavorite(skill.id)}
-                  title={isFavorite(skill.id) ? t('skills:favorite.remove', '取消收藏') : t('skills:favorite.add', '收藏')}
-                >
+                <NotionButton variant="ghost" size="icon" iconOnly className={cn('!p-1.5', isFavorite(skill.id) ? 'text-amber-500 hover:bg-amber-500/10' : 'text-muted-foreground/60 hover:text-amber-500 hover:bg-muted')} onClick={() => toggleFavorite(skill.id)} title={isFavorite(skill.id) ? t('skills:favorite.remove', '取消收藏') : t('skills:favorite.add', '收藏')} aria-label="favorite">
                   <Star size={14} className={isFavorite(skill.id) ? 'fill-current' : ''} />
-                </button>
+                </NotionButton>
 
                 {onExport && (
-                  <button
-                    className="p-1.5 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-muted transition-colors"
-                    onClick={() => onExport(skill)}
-                    title={t('skills:management.export', '导出')}
-                  >
+                  <NotionButton variant="ghost" size="icon" iconOnly className="!p-1.5 text-muted-foreground/60 hover:text-foreground hover:bg-muted" onClick={() => onExport(skill)} title={t('skills:management.export', '导出')} aria-label="export">
                     <Download size={14} />
-                  </button>
+                  </NotionButton>
                 )}
               </div>
             </div>

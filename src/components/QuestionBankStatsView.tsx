@@ -13,6 +13,7 @@
 
 import React, { useMemo, useState } from 'react';
 import { cn } from '@/lib/utils';
+import { NotionButton } from '@/components/ui/NotionButton';
 import {
   BookOpen,
   CheckCircle,
@@ -263,10 +264,7 @@ export const QuestionBankStatsView: React.FC<QuestionBankStatsViewProps> = ({
       {showDetailCharts && !compact && (
         <>
           {/* 展开/收起按钮 */}
-          <button
-            onClick={() => setExpandedCharts(!expandedCharts)}
-            className="w-full flex items-center justify-center gap-2 py-2 text-sm text-muted-foreground hover:text-foreground transition-colors border-t border-border/50"
-          >
+          <NotionButton variant="ghost" size="sm" onClick={() => setExpandedCharts(!expandedCharts)} className="w-full justify-center !py-2 text-muted-foreground hover:text-foreground border-t border-border/50">
             <BarChart3 className="w-4 h-4" />
             <span>{expandedCharts ? t('exam_sheet:questionBank.stats.collapseCharts') : t('exam_sheet:questionBank.stats.expandCharts')}</span>
             {expandedCharts ? (
@@ -274,7 +272,7 @@ export const QuestionBankStatsView: React.FC<QuestionBankStatsViewProps> = ({
             ) : (
               <ChevronDown className="w-4 h-4" />
             )}
-          </button>
+          </NotionButton>
 
           {/* 图表内容 */}
           {expandedCharts && (

@@ -212,40 +212,24 @@ export const NoteTagsEditor: React.FC<NoteTagsEditorProps> = ({
                                                 className="h-5 text-[10px] px-1 py-0 w-24"
                                                 autoFocus
                                             />
-                                            <button
-                                                onClick={handleRenameTag}
-                                                disabled={isRenaming}
-                                                className="opacity-70 hover:opacity-100 disabled:opacity-50"
-                                            >
+                                            <NotionButton variant="ghost" size="icon" iconOnly onClick={handleRenameTag} disabled={isRenaming} className="!h-auto !w-auto !p-0 opacity-70 hover:opacity-100 disabled:opacity-50" aria-label="confirm">
                                                 <Check className="h-3 w-3" />
-                                            </button>
-                                            <button
-                                                onClick={handleCancelRename}
-                                                disabled={isRenaming}
-                                                className="opacity-70 hover:opacity-100 disabled:opacity-50"
-                                            >
+                                            </NotionButton>
+                                            <NotionButton variant="ghost" size="icon" iconOnly onClick={handleCancelRename} disabled={isRenaming} className="!h-auto !w-auto !p-0 opacity-70 hover:opacity-100 disabled:opacity-50" aria-label="cancel">
                                                 <X className="h-3 w-3" />
-                                            </button>
+                                            </NotionButton>
                                         </div>
                                     ) : (
                                         <>
                                             <span onClick={() => !readonly && handleStartRename(tag)} className="cursor-pointer">{tag}</span>
                                             {!readonly && (
                                                 <>
-                                                    <button
-                                                        onClick={() => handleStartRename(tag)}
-                                                        className="opacity-0 group-hover:opacity-70 hover:opacity-100 transition-opacity"
-                                                        title={t('notes:header.rename_tag')}
-                                                    >
+                                                    <NotionButton variant="ghost" size="icon" iconOnly onClick={() => handleStartRename(tag)} className="!h-auto !w-auto !p-0 opacity-0 group-hover:opacity-70 hover:opacity-100 transition-opacity" title={t('notes:header.rename_tag')} aria-label="rename">
                                                         <Edit2 className="h-3 w-3" />
-                                                    </button>
-                                                    <button
-                                                        onClick={() => handleRemoveTag(tag)}
-                                                        className="opacity-0 group-hover:opacity-100 hover:text-destructive transition-opacity"
-                                                        title={t('notes:header.remove_tag')}
-                                                    >
+                                                    </NotionButton>
+                                                    <NotionButton variant="ghost" size="icon" iconOnly onClick={() => handleRemoveTag(tag)} className="!h-auto !w-auto !p-0 opacity-0 group-hover:opacity-100 hover:text-destructive transition-opacity" title={t('notes:header.remove_tag')} aria-label="remove">
                                                         <X className="h-3 w-3" />
-                                                    </button>
+                                                    </NotionButton>
                                                 </>
                                             )}
                                         </>

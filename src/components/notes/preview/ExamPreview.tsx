@@ -99,15 +99,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
       )}
     >
       {/* 卡片头部 */}
-      <button
-        type="button"
-        onClick={onToggle}
-        className={cn(
-          'flex w-full items-center gap-2 px-3 py-2 text-left',
-          'hover:bg-muted/50 transition-colors rounded-t-lg',
-          !isExpanded && 'rounded-b-lg'
-        )}
-      >
+      <NotionButton variant="ghost" size="sm" onClick={onToggle} className={cn('!w-full !justify-start !px-3 !py-2 !h-auto !text-left', 'hover:bg-muted/50 !rounded-t-lg', !isExpanded && '!rounded-b-lg')}>
         {isExpanded ? (
           <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
         ) : (
@@ -122,7 +114,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
             {t('notes:previewPanel.exam.linked')}
           </Badge>
         )}
-      </button>
+      </NotionButton>
 
       {/* 展开内容 */}
       {isExpanded && (
@@ -211,15 +203,7 @@ const PageSection: React.FC<PageSectionProps> = ({
     <div className="space-y-2">
       {/* 页面缩略图 */}
       <div className="relative">
-        <button
-          type="button"
-          onClick={() => setShowImage(!showImage)}
-          className={cn(
-            'w-full overflow-hidden rounded-lg border border-border',
-            'bg-muted/30 hover:border-primary/30 transition-colors',
-            'dark:bg-muted/20 dark:hover:border-primary/40'
-          )}
-        >
+        <NotionButton variant="ghost" size="sm" onClick={() => setShowImage(!showImage)} className={cn('!w-full !p-0 !h-auto overflow-hidden !rounded-lg border border-border', 'bg-muted/30 hover:border-primary/30', 'dark:bg-muted/20 dark:hover:border-primary/40')}>
           {showImage && page.originalImagePath ? (
             <img
               src={convertFileSrc(page.originalImagePath)}
@@ -238,7 +222,7 @@ const PageSection: React.FC<PageSectionProps> = ({
               </Badge>
             </div>
           )}
-        </button>
+        </NotionButton>
       </div>
 
       {/* 题目卡片列表 */}

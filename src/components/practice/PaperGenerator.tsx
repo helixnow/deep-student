@@ -201,10 +201,7 @@ export const PaperGenerator: React.FC<PaperGeneratorProps> = ({
           <div className="space-y-4 pr-4">
             {generatedPaper.questions.map((question, idx) => (
               <Card key={question.id} className="overflow-hidden">
-                <button
-                  className="w-full text-left p-4 hover:bg-muted/30 transition-colors"
-                  onClick={() => toggleQuestion(question.id)}
-                >
+                <NotionButton variant="ghost" size="sm" className="!w-full !text-left !p-4 !h-auto !rounded-none hover:bg-muted/30" onClick={() => toggleQuestion(question.id)}>
                   <div className="flex items-start gap-3">
                     <Badge variant="outline" className="flex-shrink-0 font-mono">
                       {idx + 1}
@@ -218,7 +215,7 @@ export const PaperGenerator: React.FC<PaperGeneratorProps> = ({
                       <ChevronDown className="w-4 h-4 text-muted-foreground flex-shrink-0" />
                     )}
                   </div>
-                </button>
+                </NotionButton>
                 
                 {expandedQuestions.has(question.id) && (
                   <CardContent className="pt-0 space-y-3">
@@ -321,18 +318,19 @@ export const PaperGenerator: React.FC<PaperGeneratorProps> = ({
           </Label>
           <div className="flex flex-wrap gap-2">
             {DIFFICULTY_KEYS.map(({ key, color }) => (
-              <button
+              <NotionButton
                 key={key}
+                variant="ghost" size="sm"
                 onClick={() => toggleDifficulty(key)}
                 className={cn(
-                  'px-3 py-1.5 rounded-full text-sm font-medium transition-colors',
+                  '!px-3 !py-1.5 !rounded-full !h-auto text-sm font-medium',
                   selectedDifficulties.includes(key)
                     ? color
                     : 'bg-muted text-muted-foreground hover:bg-muted/80'
                 )}
               >
                 {t(`difficultyLevel.${key}`)}
-              </button>
+              </NotionButton>
             ))}
           </div>
         </div>
@@ -347,18 +345,19 @@ export const PaperGenerator: React.FC<PaperGeneratorProps> = ({
             </Label>
             <div className="flex flex-wrap gap-2">
               {availableTags.map((tag) => (
-                <button
+                <NotionButton
                   key={tag}
+                  variant="ghost" size="sm"
                   onClick={() => toggleTag(tag)}
                   className={cn(
-                    'px-3 py-1.5 rounded-full text-sm transition-colors',
+                    '!px-3 !py-1.5 !rounded-full !h-auto text-sm',
                     selectedTags.includes(tag)
                       ? 'bg-sky-500/20 text-sky-600'
                       : 'bg-muted text-muted-foreground hover:bg-muted/80'
                   )}
                 >
                   {tag}
-                </button>
+                </NotionButton>
               ))}
             </div>
           </div>
@@ -385,11 +384,12 @@ export const PaperGenerator: React.FC<PaperGeneratorProps> = ({
           <Label>{t('paper.exportFormat', '导出格式')}</Label>
           <div className="grid grid-cols-4 gap-2">
             {EXPORT_FORMAT_KEYS.map(({ key, icon }) => (
-              <button
+              <NotionButton
                 key={key}
+                variant="ghost" size="sm"
                 onClick={() => setExportFormat(key)}
                 className={cn(
-                  'flex flex-col items-center gap-1 p-3 rounded-lg border transition-colors',
+                  '!flex !flex-col !items-center !gap-1 !p-3 !h-auto !rounded-lg border',
                   exportFormat === key
                     ? 'border-sky-500 bg-sky-500/10 text-sky-600'
                     : 'border-border hover:bg-muted/50'
@@ -397,7 +397,7 @@ export const PaperGenerator: React.FC<PaperGeneratorProps> = ({
               >
                 {icon}
                 <span className="text-xs">{t(`paper.format.${key}`)}</span>
-              </button>
+              </NotionButton>
             ))}
           </div>
         </div>

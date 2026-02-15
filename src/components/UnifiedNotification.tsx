@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
+import { NotionButton } from '@/components/ui/NotionButton';
 import { useTranslation } from 'react-i18next';
 import { CheckCircle, XCircle, Info, AlertTriangle, X } from 'lucide-react';
 import './UnifiedNotification.css';
@@ -184,14 +185,9 @@ export const UnifiedNotification: React.FC<NotificationProps> = ({
           {notification.message}
         </div>
       </div>
-      <button 
-        type="button"
-        className="unified-notification-close" 
-        onClick={handleClose}
-        aria-label={t('common:close_notification', 'Close notification')}
-      >
+      <NotionButton variant="ghost" size="icon" iconOnly className="unified-notification-close" onClick={handleClose} aria-label={t('common:close_notification', 'Close notification')}>
         <X size={16} aria-hidden="true" />
-      </button>
+      </NotionButton>
     </div>
   );
 };

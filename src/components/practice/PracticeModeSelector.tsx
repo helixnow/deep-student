@@ -5,6 +5,7 @@
  */
 
 import React, { useCallback } from 'react';
+import { NotionButton } from '@/components/ui/NotionButton';
 import { cn } from '@/lib/utils';
 import { Card, CardContent } from '@/components/ui/shad/Card';
 import {
@@ -116,11 +117,12 @@ export const PracticeModeSelector: React.FC<PracticeModeSelectorProps> = ({
   return (
     <div className={cn('grid grid-cols-2 sm:grid-cols-4 gap-3', className)}>
       {modes.map(({ key, icon: Icon, label, desc, color, bgColor }) => (
-        <button
+        <NotionButton
           key={key}
+          variant="ghost" size="sm"
           onClick={() => handleSelect(key)}
           className={cn(
-            'group relative p-4 rounded-xl border transition-all duration-200 text-left',
+            '!p-4 !h-auto !rounded-xl border !text-left !justify-start !items-start flex-col',
             'hover:shadow-md hover:scale-[1.02]',
             currentMode === key
               ? 'border-sky-500 bg-sky-500/5 shadow-sm'
@@ -155,7 +157,7 @@ export const PracticeModeSelector: React.FC<PracticeModeSelectorProps> = ({
           <div className="text-xs text-muted-foreground line-clamp-2">
             {desc}
           </div>
-        </button>
+        </NotionButton>
       ))}
     </div>
   );

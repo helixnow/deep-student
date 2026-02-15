@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { NotionButton } from '@/components/ui/NotionButton';
 import { invoke } from '@tauri-apps/api/core';
 import { unifiedAlert, unifiedConfirm } from '@/utils/unifiedDialogs';
 import { useTranslation } from 'react-i18next';
@@ -273,14 +274,14 @@ export default function BackendTest() {
       )}
 
       <div style={{ margin: '12px 0' }}>
-        <button style={btn('#3b82f6', busy || !tauriOk)} disabled={busy || !tauriOk} onClick={runAll}>
+        <NotionButton variant="primary" size="sm" style={btn('#3b82f6', busy || !tauriOk)} disabled={busy || !tauriOk} onClick={runAll}>
           {busy ? t('backendTest.running') : t('backendTest.runAll')}
-        </button>
-        <button style={{ ...btn('#6b7280'), marginLeft: 8 }} disabled={busy} onClick={() => setResults([])}>
+        </NotionButton>
+        <NotionButton variant="default" size="sm" style={{ ...btn('#6b7280'), marginLeft: 8 }} disabled={busy} onClick={() => setResults([])}>
           {t('backendTest.clearResults')}
-        </button>
+        </NotionButton>
         {(ctx.mistakeId || ctx.savedImagePath || ctx.generationId) && (
-          <button style={{ ...btn('#f59e0b'), marginLeft: 8 }} disabled={busy} onClick={() => setCtx({})}>{t('backendTest.clearContext')}</button>
+          <NotionButton variant="default" size="sm" style={{ ...btn('#f59e0b'), marginLeft: 8 }} disabled={busy} onClick={() => setCtx({})}>{t('backendTest.clearContext')}</NotionButton>
         )}
       </div>
 
@@ -298,7 +299,7 @@ export default function BackendTest() {
                       <div style={{ color: '#6b7280', fontSize: 13 }}>{testItem.description}</div>
                     </div>
                     <div>
-                      <button style={btn('#10b981', busy || !tauriOk)} disabled={busy || !tauriOk} onClick={() => run(testItem)}>{t('backendTest.runSingle')}</button>
+                      <NotionButton variant="default" size="sm" style={btn('#10b981', busy || !tauriOk)} disabled={busy || !tauriOk} onClick={() => run(testItem)}>{t('backendTest.runSingle')}</NotionButton>
                     </div>
                   </div>
                   {r && (

@@ -387,22 +387,22 @@ export const FolderTreeItem: React.FC<FolderTreeItemProps> = React.memo(({
         onDrop={handleDropOnFolder}
       >
         {/* 展开/收起按钮 */}
-        <button
-          type="button"
+        <NotionButton
+          variant="ghost" size="icon" iconOnly
           className={cn(
-            'flex-shrink-0 w-4 h-4 flex items-center justify-center',
-            'text-muted-foreground hover:text-foreground transition-colors',
+            '!h-4 !w-4 !p-0',
             (children.length === 0 && items.length === 0) && 'invisible'
           )}
           onClick={handleToggle}
           tabIndex={-1}
+          aria-label="toggle"
         >
           {isExpanded ? (
             <ChevronDown className="w-3.5 h-3.5" />
           ) : (
             <ChevronRight className="w-3.5 h-3.5" />
           )}
-        </button>
+        </NotionButton>
 
         {/* 文件夹图标 */}
         <span className={cn(

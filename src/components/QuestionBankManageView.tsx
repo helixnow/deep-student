@@ -265,40 +265,24 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
           {showCsvActions && (
             <div className="flex items-center gap-1">
               {onCsvImport && (
-                <button
-                  onClick={onCsvImport}
-                  className="flex items-center gap-1 px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded transition-colors"
-                  title={t('exam_sheet:csv.import_title', 'CSV 导入')}
-                >
+                <NotionButton variant="ghost" size="sm" onClick={onCsvImport} className="!h-auto !px-2.5 !py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/50" title={t('exam_sheet:csv.import_title', 'CSV 导入')}>
                   <Upload className="w-3.5 h-3.5" />
                   <span className="hidden sm:inline">{t('exam_sheet:csv.import_title', 'CSV 导入')}</span>
-                </button>
+                </NotionButton>
               )}
               {onCsvExport && (
-                <button
-                  onClick={onCsvExport}
-                  className="flex items-center gap-1 px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded transition-colors"
-                  title={t('exam_sheet:questionBank.export.title', '导出')}
-                >
+                <NotionButton variant="ghost" size="sm" onClick={onCsvExport} className="!h-auto !px-2.5 !py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/50" title={t('exam_sheet:questionBank.export.title', '导出')}>
                   <Download className="w-3.5 h-3.5" />
                   <span className="hidden sm:inline">{t('exam_sheet:questionBank.export.title', '导出')}</span>
-                </button>
+                </NotionButton>
               )}
             </div>
           )}
           
-          <button
-            onClick={() => setShowFilters(!showFilters)}
-            className={cn(
-              'flex items-center gap-1 px-2.5 py-1.5 text-xs rounded transition-colors',
-              showFilters 
-                ? 'bg-foreground text-background' 
-                : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
-            )}
-          >
+          <NotionButton variant="ghost" size="sm" onClick={() => setShowFilters(!showFilters)} className={cn('!h-auto !px-2.5 !py-1.5 text-xs', showFilters ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground hover:bg-muted/50')}>
             <Filter className="w-3.5 h-3.5" />
             {t('common:filter', '筛选')}
-          </button>
+          </NotionButton>
         </div>
 
         {/* 筛选器 - Notion 风格按钮组 */}
@@ -307,36 +291,18 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
             {/* 状态筛选 */}
             <div className="flex items-center gap-0.5 p-0.5 rounded-md bg-muted/30">
               {(['all', 'new', 'in_progress', 'mastered', 'review'] as const).map((status) => (
-                <button
-                  key={status}
-                  onClick={() => handleFilterChange('status', status === 'all' ? undefined : [status as QuestionStatus])}
-                  className={cn(
-                    'px-2 py-1 text-xs rounded transition-colors',
-                    (status === 'all' && !filters.status) || filters.status?.[0] === status
-                      ? 'bg-background shadow-sm font-medium'
-                      : 'text-muted-foreground hover:text-foreground'
-                  )}
-                >
+                <NotionButton key={status} variant="ghost" size="sm" onClick={() => handleFilterChange('status', status === 'all' ? undefined : [status as QuestionStatus])} className={cn('!h-auto !px-2 !py-1 text-xs', (status === 'all' && !filters.status) || filters.status?.[0] === status ? 'bg-background shadow-sm font-medium' : 'text-muted-foreground hover:text-foreground')}>
                   {status === 'all' ? t('practice:questionBank.all') : t(statusLabelKeys[status])}
-                </button>
+                </NotionButton>
               ))}
             </div>
             
             {/* 难度筛选 */}
             <div className="flex items-center gap-0.5 p-0.5 rounded-md bg-muted/30">
               {(['all', 'easy', 'medium', 'hard', 'very_hard'] as const).map((diff) => (
-                <button
-                  key={diff}
-                  onClick={() => handleFilterChange('difficulty', diff === 'all' ? undefined : [diff as Difficulty])}
-                  className={cn(
-                    'px-2 py-1 text-xs rounded transition-colors',
-                    (diff === 'all' && !filters.difficulty) || filters.difficulty?.[0] === diff
-                      ? 'bg-background shadow-sm font-medium'
-                      : 'text-muted-foreground hover:text-foreground'
-                  )}
-                >
+                <NotionButton key={diff} variant="ghost" size="sm" onClick={() => handleFilterChange('difficulty', diff === 'all' ? undefined : [diff as Difficulty])} className={cn('!h-auto !px-2 !py-1 text-xs', (diff === 'all' && !filters.difficulty) || filters.difficulty?.[0] === diff ? 'bg-background shadow-sm font-medium' : 'text-muted-foreground hover:text-foreground')}>
                   {diff === 'all' ? t('practice:questionBank.all') : t(difficultyLabelKeys[diff])}
-                </button>
+                </NotionButton>
               ))}
             </div>
           </div>
@@ -348,22 +314,14 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
             <span className="text-xs text-muted-foreground">
               {t('practice:questionBank.selectedCount', { count: selectedIds.size })}
             </span>
-            <button
-              onClick={() => handleBatchActionClick('reset')}
-              disabled={actionLoading === 'reset'}
-              className="flex items-center gap-1 px-2 py-1 text-xs text-sky-600 hover:bg-sky-500/10 rounded transition-colors disabled:opacity-50"
-            >
+            <NotionButton variant="ghost" size="sm" onClick={() => handleBatchActionClick('reset')} disabled={actionLoading === 'reset'} className="!h-auto !px-2 !py-1 text-xs text-sky-600 hover:bg-sky-500/10">
               <RotateCcw className={cn('w-3 h-3', actionLoading === 'reset' && 'animate-spin')} />
               {t('practice:questionBank.reset')}
-            </button>
-            <button
-              onClick={() => handleBatchActionClick('delete')}
-              disabled={actionLoading === 'delete'}
-              className="flex items-center gap-1 px-2 py-1 text-xs text-rose-600 hover:bg-rose-500/10 rounded transition-colors disabled:opacity-50"
-            >
+            </NotionButton>
+            <NotionButton variant="ghost" size="sm" onClick={() => handleBatchActionClick('delete')} disabled={actionLoading === 'delete'} className="!h-auto !px-2 !py-1 text-xs text-rose-600 hover:bg-rose-500/10">
               <Trash2 className="w-3 h-3" />
               {t('common:delete')}
-            </button>
+            </NotionButton>
           </div>
         )}
       </div>

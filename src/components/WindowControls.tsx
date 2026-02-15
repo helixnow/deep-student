@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { NotionButton } from '@/components/ui/NotionButton';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { guardedListen } from '../utils/guardedListen';
 import { useTranslation } from 'react-i18next';
@@ -104,23 +105,13 @@ export const WindowControls: React.FC = () => {
 
   return (
     <div className="window-controls">
-      <button 
-        className="window-button minimize"
-        onClick={handleMinimize}
-        onMouseDown={(e) => e.stopPropagation()}
-        title={t('window_controls.minimize')}
-      >
+      <NotionButton variant="ghost" size="icon" iconOnly className="window-button minimize" onClick={handleMinimize} onMouseDown={(e) => e.stopPropagation()} title={t('window_controls.minimize')} aria-label="minimize">
         <svg width="12" height="12" viewBox="0 0 12 12">
           <path d="M2 6h8" stroke="currentColor" strokeWidth="1" />
         </svg>
-      </button>
+      </NotionButton>
       
-      <button 
-        className="window-button maximize"
-        onClick={handleMaximize}
-        onMouseDown={(e) => e.stopPropagation()}
-        title={isMaximized ? t('window_controls.restore') : t('window_controls.maximize')}
-      >
+      <NotionButton variant="ghost" size="icon" iconOnly className="window-button maximize" onClick={handleMaximize} onMouseDown={(e) => e.stopPropagation()} title={isMaximized ? t('window_controls.restore') : t('window_controls.maximize')} aria-label="maximize">
         {isMaximized ? (
           <svg width="12" height="12" viewBox="0 0 12 12">
             <path d="M3 3h6v6H3V3z M1 1h6v2H3v4H1V1z" stroke="currentColor" strokeWidth="1" fill="none" />
@@ -130,18 +121,13 @@ export const WindowControls: React.FC = () => {
             <path d="M2 2h8v8H2V2z" stroke="currentColor" strokeWidth="1" fill="none" />
           </svg>
         )}
-      </button>
+      </NotionButton>
       
-      <button 
-        className="window-button close"
-        onClick={handleClose}
-        onMouseDown={(e) => e.stopPropagation()}
-        title={t('window_controls.close')}
-      >
+      <NotionButton variant="ghost" size="icon" iconOnly className="window-button close" onClick={handleClose} onMouseDown={(e) => e.stopPropagation()} title={t('window_controls.close')} aria-label="close">
         <svg width="12" height="12" viewBox="0 0 12 12">
           <path d="M3 3l6 6M9 3l-6 6" stroke="currentColor" strokeWidth="1" />
         </svg>
-      </button>
+      </NotionButton>
     </div>
   );
 };

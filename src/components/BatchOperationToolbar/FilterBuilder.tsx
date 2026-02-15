@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { NotionButton } from '@/components/ui/NotionButton';
 import { useTranslation } from 'react-i18next';
 import { X, Plus, Filter as FilterIcon } from 'lucide-react';
 import { generateId } from '../../utils/common';
@@ -86,9 +87,9 @@ const FilterBuilder: React.FC<FilterBuilderProps> = ({ filters, onApply, onClose
             <FilterIcon size={20} />
             {t('filter_builder_title')}
           </h3>
-          <button className="close-btn" onClick={onClose}>
+          <NotionButton variant="ghost" size="icon" iconOnly className="close-btn" onClick={onClose} aria-label="close">
             <X size={20} />
-          </button>
+          </NotionButton>
         </div>
         
         <div className="filter-builder-body">
@@ -159,32 +160,28 @@ const FilterBuilder: React.FC<FilterBuilderProps> = ({ filters, onApply, onClose
                       </>
                     )}
                     
-                    <button
-                      onClick={() => removeFilter(filter.id)}
-                      className="filter-remove-btn"
-                      title={t('remove_filter')}
-                    >
+                    <NotionButton variant="ghost" size="icon" iconOnly onClick={() => removeFilter(filter.id)} className="filter-remove-btn" title={t('remove_filter')} aria-label="remove">
                       <X size={16} />
-                    </button>
+                    </NotionButton>
                   </div>
                 </div>
               ))}
             </div>
           )}
           
-          <button onClick={addFilter} className="add-filter-btn">
+          <NotionButton variant="ghost" size="sm" onClick={addFilter} className="add-filter-btn">
             <Plus size={16} />
             {t('add_filter')}
-          </button>
+          </NotionButton>
         </div>
         
         <div className="filter-builder-footer">
-          <button className="btn-secondary" onClick={onClose}>
+          <NotionButton variant="default" size="sm" className="btn-secondary" onClick={onClose}>
             {t('cancel')}
-          </button>
-          <button className="btn-primary" onClick={handleApply}>
+          </NotionButton>
+          <NotionButton variant="primary" size="sm" className="btn-primary" onClick={handleApply}>
             {t('apply_filters')}
-          </button>
+          </NotionButton>
         </div>
       </div>
     </div>

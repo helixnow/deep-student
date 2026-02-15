@@ -580,20 +580,12 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
                           })}
                         </span>
                         <div className="flex gap-2">
-                          <button
-                            type="button"
-                            className="text-primary hover:underline"
-                            onClick={() => handleSelectAllCsvFields(true)}
-                          >
+                          <NotionButton variant="ghost" size="sm" onClick={() => handleSelectAllCsvFields(true)} className="!h-auto !p-0 text-primary hover:underline">
                             {t('common:selectAll', '全选')}
-                          </button>
-                          <button
-                            type="button"
-                            className="text-muted-foreground hover:text-foreground"
-                            onClick={() => handleSelectAllCsvFields(false)}
-                          >
+                          </NotionButton>
+                          <NotionButton variant="ghost" size="sm" onClick={() => handleSelectAllCsvFields(false)} className="!h-auto !p-0 text-muted-foreground hover:text-foreground">
                             {t('common:deselectAll', '重置')}
-                          </button>
+                          </NotionButton>
                         </div>
                       </div>
                       {/* 字段列表 */}

@@ -220,10 +220,11 @@ const CalendarCell: React.FC<CalendarCellProps> = ({
   const count = data?.count || 0;
 
   return (
-    <button
+    <NotionButton
+      variant="ghost" size="sm"
       onClick={onClick}
       className={cn(
-        'relative aspect-square p-1 rounded-lg transition-all duration-200',
+        '!p-1 !h-auto !rounded-lg aspect-square relative',
         'hover:ring-2 hover:ring-primary/30',
         isCurrentMonth ? 'opacity-100' : 'opacity-30',
         isToday && 'ring-2 ring-primary',
@@ -244,7 +245,7 @@ const CalendarCell: React.FC<CalendarCellProps> = ({
           {count}
         </span>
       )}
-    </button>
+    </NotionButton>
   );
 };
 

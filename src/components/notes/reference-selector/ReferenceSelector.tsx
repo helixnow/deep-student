@@ -14,6 +14,7 @@
  */
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { NotionButton } from '@/components/ui/NotionButton';
 import { useTranslation } from 'react-i18next';
 import { Search, X, BookOpen, FileSpreadsheet, Loader2, AlertCircle } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../../ui/shad/Dialog';
@@ -216,13 +217,9 @@ export const ReferenceSelector: React.FC<ReferenceSelectorProps> = ({
               )}
               {dialogTitle}
             </DialogTitle>
-            <button
-              type="button"
-              onClick={() => onOpenChange(false)}
-              className="rounded-full p-1 hover:bg-accent transition-colors"
-            >
+            <NotionButton variant="ghost" size="icon" iconOnly onClick={() => onOpenChange(false)} className="!rounded-full !p-1 hover:bg-accent" aria-label="close">
               <X className="h-4 w-4 text-muted-foreground" />
-            </button>
+            </NotionButton>
           </div>
         </DialogHeader>
 
@@ -244,13 +241,9 @@ export const ReferenceSelector: React.FC<ReferenceSelectorProps> = ({
               )}
             />
             {searchQuery && (
-              <button
-                type="button"
-                onClick={() => setSearchQuery('')}
-                className="absolute right-3 top-1/2 -translate-y-1/2 p-0.5 rounded-full hover:bg-accent"
-              >
+              <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setSearchQuery('')} className="absolute right-3 top-1/2 -translate-y-1/2 !p-0.5 !rounded-full hover:bg-accent" aria-label="clear">
                 <X className="h-3.5 w-3.5 text-muted-foreground" />
-              </button>
+              </NotionButton>
             )}
           </div>
         </div>
@@ -274,13 +267,9 @@ export const ReferenceSelector: React.FC<ReferenceSelectorProps> = ({
               <div className="flex flex-col items-center justify-center h-full py-12">
                 <AlertCircle className="h-8 w-8 text-destructive" />
                 <p className="mt-2 text-sm text-destructive">{error}</p>
-                <button
-                  type="button"
-                  onClick={loadData}
-                  className="mt-3 text-sm text-primary hover:underline"
-                >
+                <NotionButton variant="ghost" size="sm" onClick={loadData} className="mt-3 text-sm text-primary hover:underline">
                   {t('common:actions.retry')}
-                </button>
+                </NotionButton>
               </div>
             ) : items.length === 0 ? (
               // 空状态
@@ -325,30 +314,12 @@ export const ReferenceSelector: React.FC<ReferenceSelectorProps> = ({
             )}
           </div>
           <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => onOpenChange(false)}
-              className={cn(
-                'px-4 py-1.5 rounded-lg text-sm',
-                'text-muted-foreground hover:text-foreground',
-                'hover:bg-accent transition-colors'
-              )}
-            >
+            <NotionButton variant="default" size="sm" onClick={() => onOpenChange(false)} className="text-muted-foreground hover:text-foreground hover:bg-accent">
               {t('common:cancel')}
-            </button>
-            <button
-              type="button"
-              onClick={handleConfirm}
-              disabled={!selectedId}
-              className={cn(
-                'px-4 py-1.5 rounded-lg text-sm font-medium',
-                'bg-primary text-primary-foreground',
-                'hover:bg-primary/90 transition-colors',
-                'disabled:opacity-50 disabled:cursor-not-allowed'
-              )}
-            >
+            </NotionButton>
+            <NotionButton variant="primary" size="sm" onClick={handleConfirm} disabled={!selectedId} className="font-medium">
               {t('notes:reference.confirm')}
-            </button>
+            </NotionButton>
           </div>
         </div>
       </DialogContent>

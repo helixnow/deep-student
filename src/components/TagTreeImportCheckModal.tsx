@@ -1,4 +1,5 @@
 import React from 'react';
+import { NotionButton } from '@/components/ui/NotionButton';
 import { useTranslation } from 'react-i18next';
 import './TagTreeImportCheckModal.css';
 import UnifiedModal from './UnifiedModal';
@@ -69,15 +70,16 @@ const TagTreeImportCheckModal: React.FC<Props> = ({ open, result, onConfirm, onC
         )}
 
         <div className="actions">
-          <button onClick={onCancel}>{t('actions.cancel')}</button>
-          <button
+          <NotionButton variant="default" size="sm" onClick={onCancel}>{t('actions.cancel')}</NotionButton>
+          <NotionButton
+            variant="primary" size="sm"
             className="confirm-btn"
             onClick={onConfirm}
             disabled={!canImport}
             title={canImport ? '' : t('tag_tree.import_blocked_hint')}
           >
             {t('actions.import')}
-          </button>
+          </NotionButton>
         </div>
     </UnifiedModal>
   );

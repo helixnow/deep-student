@@ -602,8 +602,9 @@ const NotesSidebarContent: React.FC = () => {
                 return <div key={item.id} className="app-menu-separator" />;
               }
               return (
-                <button
+                <NotionButton
                   key={item.id}
+                  variant="ghost" size="sm"
                   className="app-menu-item"
                   onClick={async () => {
                     if (item.action) await item.action();
@@ -611,7 +612,7 @@ const NotesSidebarContent: React.FC = () => {
                   }}
                 >
                   <span className="app-menu-item-content">{t(item.label, item.label)}</span>
-                </button>
+                </NotionButton>
               );
             })}
             
@@ -620,75 +621,45 @@ const NotesSidebarContent: React.FC = () => {
               const note = notes.find(n => n.id === contextMenu.id);
               if (!note) return null;
               return (
-                <button
-                  className="app-menu-item"
-                  onClick={() => {
-                    toggleFavorite(contextMenu.id);
-                    setContextMenu(null);
-                  }}
-                >
+                <NotionButton variant="ghost" size="sm" className="app-menu-item" onClick={() => { toggleFavorite(contextMenu.id); setContextMenu(null); }}>
                   <span className="app-menu-item-icon">
                     <Star className={cn("h-4 w-4", note.is_favorite && "fill-warning text-warning")} />
                   </span>
                   <span className="app-menu-item-content">
                     {note.is_favorite ? t('notes:favorites.context_unmark') : t('notes:favorites.context_mark')}
                   </span>
-                </button>
+                </NotionButton>
               );
             })()}
             
             {treeData[contextMenu.id]?.canRename !== false && (
-              <button
-                className="app-menu-item"
-                onClick={() => {
-                  setRenamingId(contextMenu.id);
-                  setContextMenu(null);
-                }}
-              >
+              <NotionButton variant="ghost" size="sm" className="app-menu-item" onClick={() => { setRenamingId(contextMenu.id); setContextMenu(null); }}>
                 <span className="app-menu-item-content">{t('notes:tree.context_menu.rename')}</span>
-              </button>
+              </NotionButton>
             )}
             
             {/* 引用操作 */}
             {treeData[contextMenu.id]?.isFolder && (
               <>
                 <div className="app-menu-separator" />
-                <button
-                  className="app-menu-item"
-                  onClick={() => {
-                    openReferenceDialog('textbook', contextMenu.id);
-                    setContextMenu(null);
-                  }}
-                >
+                <NotionButton variant="ghost" size="sm" className="app-menu-item" onClick={() => { openReferenceDialog('textbook', contextMenu.id); setContextMenu(null); }}>
                   <span className="app-menu-item-icon"><BookOpen className="h-4 w-4" /></span>
                   <span className="app-menu-item-content">{t('notes:reference.add_textbook')}</span>
-                </button>
+                </NotionButton>
               </>
             )}
             
             {/* 删除 */}
             {isReferenceId(contextMenu.id) ? (
-              <button
-                className="app-menu-item app-menu-item-destructive"
-                onClick={() => {
-                  removeRef(contextMenu.id);
-                  setContextMenu(null);
-                }}
-              >
+              <NotionButton variant="ghost" size="sm" className="app-menu-item app-menu-item-destructive" onClick={() => { removeRef(contextMenu.id); setContextMenu(null); }}>
                 <span className="app-menu-item-icon"><Link className="h-4 w-4" /></span>
                 <span className="app-menu-item-content">{t('notes:reference.remove')}</span>
-              </button>
+              </NotionButton>
             ) : (
-              <button
-                className="app-menu-item app-menu-item-destructive"
-                onClick={() => {
-                  deleteItems([contextMenu.id]);
-                  setContextMenu(null);
-                }}
-              >
+              <NotionButton variant="ghost" size="sm" className="app-menu-item app-menu-item-destructive" onClick={() => { deleteItems([contextMenu.id]); setContextMenu(null); }}>
                 <span className="app-menu-item-icon"><Trash2 className="h-4 w-4" /></span>
                 <span className="app-menu-item-content">{t('notes:tree.context_menu.delete')}</span>
-              </button>
+              </NotionButton>
             )}
           </div>
         </>,

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { NotionButton } from '@/components/ui/NotionButton';
 import { useTranslation } from 'react-i18next';
 import {
   EnhancedFieldType,
@@ -137,9 +138,9 @@ const FieldTypeConfigurator: React.FC<FieldTypeConfiguratorProps> = ({
                     <span className="required-badge">{t('required')}</span>
                   )}
                 </div>
-                <button className="expand-button">
+                <NotionButton variant="ghost" size="icon" iconOnly className="expand-button" aria-label="toggle">
                   {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                </button>
+                </NotionButton>
               </div>
 
               {isExpanded && (

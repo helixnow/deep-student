@@ -7,6 +7,7 @@
  * - 统一的底部（可选操作区）
  * - 统一的样式和间距
  */
+import { NotionButton } from '@/components/ui/NotionButton';
 
 import React, { type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -63,13 +64,9 @@ export const MobileSidebarLayout: React.FC<MobileSidebarLayoutProps> = ({
           )}
         >
           {/* 关闭按钮 */}
-          <button
-            onClick={onClose}
-            className="flex items-center justify-center w-8 h-8 rounded-full hover:bg-accent/80 active:bg-accent transition-colors -ml-1"
-            aria-label={t('common:sidebar.close')}
-          >
+          <NotionButton variant="ghost" size="icon" iconOnly onClick={onClose} className="!w-8 !h-8 !rounded-full hover:bg-accent/80 active:bg-accent -ml-1" aria-label={t('common:sidebar.close')}>
             <X className="w-5 h-5 text-muted-foreground" />
-          </button>
+          </NotionButton>
 
           {/* 标题区域 */}
           {(title || subtitle) && (
@@ -182,11 +179,12 @@ export const MobileSidebarItem: React.FC<MobileSidebarItemProps> = ({
   className,
 }) => {
   return (
-    <button
+    <NotionButton
+      variant="ghost" size="sm"
       onClick={onClick}
       disabled={disabled}
       className={cn(
-        'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors',
+        '!w-full !justify-start !px-3 !py-2.5 !h-auto !rounded-lg !text-left',
         'hover:bg-accent/50 active:bg-accent',
         selected && 'bg-accent text-accent-foreground',
         disabled && 'opacity-50 cursor-not-allowed',
@@ -224,7 +222,7 @@ export const MobileSidebarItem: React.FC<MobileSidebarItemProps> = ({
           {trailing}
         </span>
       )}
-    </button>
+    </NotionButton>
   );
 };
 

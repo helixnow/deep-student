@@ -230,22 +230,16 @@ const OptionButton: React.FC<OptionButtonProps> = ({
   const showCorrect = isSubmitted && isThisCorrect;
   
   return (
-    <button
+    <NotionButton
+      variant="ghost" size="sm"
       onClick={onClick}
       disabled={isSubmitted}
       className={cn(
-        'group w-full text-left rounded-md transition-colors duration-100',
-        // 默认状态 - Notion 风格：极淡边框，悬停时淡灰背景
-        !isSubmitted && !isSelected && [
-          'hover:bg-foreground/[0.04]',
-        ],
-        // 选中状态 - 淡蓝背景
+        'group w-full !justify-start !h-auto !p-0 !rounded-md',
+        !isSubmitted && !isSelected && 'hover:bg-foreground/[0.04]',
         !isSubmitted && isSelected && 'bg-primary/[0.07] dark:bg-primary/[0.15]',
-        // 正确答案 - 淡绿背景
         showCorrect && 'bg-emerald-600/[0.08] dark:bg-emerald-600/[0.15]',
-        // 错误答案 - 淡红背景
         isWrong && 'bg-destructive/[0.08] dark:bg-destructive/[0.15]',
-        // 已提交但非选中非正确
         isSubmitted && !isSelected && !isThisCorrect && 'opacity-50',
         'disabled:cursor-default'
       )}
@@ -300,7 +294,7 @@ const OptionButton: React.FC<OptionButtonProps> = ({
           </span>
         )}
       </div>
-    </button>
+    </NotionButton>
   );
 };
 
@@ -1398,13 +1392,10 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                       <>
                         {/* 暗记模式遮罩 */}
                         {hideAnswerMode && !answerRevealed && !submitResult && (
-                          <button
-                            onClick={() => setAnswerRevealed(true)}
-                            className="w-full p-8 rounded-lg border-2 border-dashed border-muted-foreground/30 bg-muted/30 flex flex-col items-center justify-center gap-2 hover:bg-muted/50 transition-colors"
-                          >
+                          <NotionButton variant="ghost" size="sm" onClick={() => setAnswerRevealed(true)} className="w-full !h-auto !p-8 !rounded-lg border-2 border-dashed border-muted-foreground/30 bg-muted/30 flex-col items-center justify-center gap-2 hover:bg-muted/50">
                             <Eye className="w-8 h-8 text-muted-foreground" />
                             <span className="text-sm text-muted-foreground">{t('editor.clickToReveal')}</span>
-                          </button>
+                          </NotionButton>
                         )}
 
                         {/* 正常答题区域 */}
@@ -1504,20 +1495,14 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                                 )}
                                 {onMarkCorrect && (
                                   <div className="flex gap-2 pt-1">
-                                    <button
-                                      onClick={() => handleManualGrade(true)}
-                                      className="flex-1 h-8 flex items-center justify-center gap-1.5 text-sm font-medium rounded text-emerald-600 dark:text-emerald-400 bg-emerald-600/10 hover:bg-emerald-600/[0.15] transition-colors"
-                                    >
+                                    <NotionButton variant="ghost" size="sm" onClick={() => handleManualGrade(true)} className="flex-1 !h-8 text-emerald-600 dark:text-emerald-400 bg-emerald-600/10 hover:bg-emerald-600/[0.15]">
                                       <Check className="w-3.5 h-3.5" />
                                       {t('editor.iGotItRight')}
-                                    </button>
-                                    <button
-                                      onClick={() => handleManualGrade(false)}
-                                      className="flex-1 h-8 flex items-center justify-center gap-1.5 text-sm font-medium rounded text-destructive bg-destructive/10 hover:bg-destructive/[0.15] transition-colors"
-                                    >
+                                    </NotionButton>
+                                    <NotionButton variant="ghost" size="sm" onClick={() => handleManualGrade(false)} className="flex-1 !h-8 text-destructive bg-destructive/10 hover:bg-destructive/[0.15]">
                                       <X className="w-3.5 h-3.5" />
                                       {t('editor.iGotItWrong')}
-                                    </button>
+                                    </NotionButton>
                                   </div>
                                 )}
                               </div>
@@ -1543,13 +1528,10 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                                   </div>
                                   {/* 重做按钮 */}
                                   {!submitResult.isCorrect && (
-                                    <button
-                                      onClick={handleRetry}
-                                      className="flex items-center gap-1 px-2 py-1 text-xs rounded hover:bg-foreground/5 text-muted-foreground"
-                                    >
+                                    <NotionButton variant="ghost" size="sm" onClick={handleRetry} className="!h-auto !px-2 !py-1 text-xs text-muted-foreground hover:bg-foreground/5">
                                       <RefreshCw className="w-3 h-3" />
                                       {t('editor.retry')}
-                                    </button>
+                                    </NotionButton>
                                   )}
                                 </div>
                                 {submitResult.correctAnswer && !submitResult.isCorrect && (
@@ -1560,14 +1542,11 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                                 {/* 解析折叠 */}
                                 {submitResult.explanation && (
                                   <div className="pt-2 border-t border-foreground/[0.06]">
-                                    <button
-                                      onClick={() => setExplanationExpanded(!explanationExpanded)}
-                                      className="flex items-center gap-1.5 text-sm text-warning hover:underline"
-                                    >
+                                    <NotionButton variant="ghost" size="sm" onClick={() => setExplanationExpanded(!explanationExpanded)} className="!h-auto !p-0 text-warning hover:underline">
                                       <Lightbulb className="w-4 h-4" />
                                       {t('editor.viewExplanation')}
                                       {explanationExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-                                    </button>
+                                    </NotionButton>
                                     {explanationExpanded && (
                                       <div className="text-sm text-muted-foreground mt-2 leading-relaxed">
                                         <MarkdownRenderer
@@ -1845,13 +1824,10 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                 <>
                   {/* 暗记模式遮罩 */}
                   {hideAnswerMode && !answerRevealed && !submitResult && (
-                    <button
-                      onClick={() => setAnswerRevealed(true)}
-                      className="w-full p-12 rounded-lg border-2 border-dashed border-muted-foreground/30 bg-muted/30 flex flex-col items-center justify-center gap-3 hover:bg-muted/50 transition-colors"
-                    >
+                    <NotionButton variant="ghost" size="sm" onClick={() => setAnswerRevealed(true)} className="w-full !h-auto !p-12 !rounded-lg border-2 border-dashed border-muted-foreground/30 bg-muted/30 flex-col items-center justify-center gap-3 hover:bg-muted/50">
                       <Eye className="w-10 h-10 text-muted-foreground" />
                       <span className="text-muted-foreground">{t('editor.clickToRevealWithKey')}</span>
-                    </button>
+                    </NotionButton>
                   )}
 
                   {/* 正常答题区域 */}
@@ -1963,12 +1939,9 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                             <span className="text-sm font-medium text-blue-600 dark:text-blue-400">
                               {t('editor.aiGrading')}
                             </span>
-                            <button
-                              onClick={() => aiGrading.cancelGrading()}
-                              className="ml-auto text-xs text-muted-foreground hover:text-foreground"
-                            >
+                            <NotionButton variant="ghost" size="sm" onClick={() => aiGrading.cancelGrading()} className="ml-auto !h-auto !p-0 text-xs text-muted-foreground hover:text-foreground">
                               {t('common:cancel', '取消')}
-                            </button>
+                            </NotionButton>
                           </div>
                           {aiGrading.state.feedback && (
                             <div className="pl-7.5 text-sm text-muted-foreground leading-relaxed max-h-48 overflow-y-auto">
@@ -1997,20 +1970,14 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                           )}
                           {onMarkCorrect && (
                             <div className="flex gap-2 pt-1">
-                              <button
-                                onClick={() => handleManualGrade(true)}
-                                className="flex-1 h-8 flex items-center justify-center gap-1.5 text-sm font-medium rounded text-emerald-600 dark:text-emerald-400 bg-emerald-600/10 hover:bg-emerald-600/[0.15] transition-colors"
-                              >
+                              <NotionButton variant="ghost" size="sm" onClick={() => handleManualGrade(true)} className="flex-1 !h-8 text-emerald-600 dark:text-emerald-400 bg-emerald-600/10 hover:bg-emerald-600/[0.15]">
                                 <Check className="w-3.5 h-3.5" />
                                 {t('editor.iGotItRight')}
-                              </button>
-                              <button
-                                onClick={() => handleManualGrade(false)}
-                                className="flex-1 h-8 flex items-center justify-center gap-1.5 text-sm font-medium rounded text-destructive bg-destructive/10 hover:bg-destructive/[0.15] transition-colors"
-                              >
+                              </NotionButton>
+                              <NotionButton variant="ghost" size="sm" onClick={() => handleManualGrade(false)} className="flex-1 !h-8 text-destructive bg-destructive/10 hover:bg-destructive/[0.15]">
                                 <X className="w-3.5 h-3.5" />
                                 {t('editor.iGotItWrong')}
-                              </button>
+                              </NotionButton>
                             </div>
                           )}
                         </div>
@@ -2033,20 +2000,14 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                           )}
                           {onMarkCorrect && (
                             <div className="flex gap-2 pt-1">
-                              <button
-                                onClick={() => handleManualGrade(true)}
-                                className="flex-1 h-8 flex items-center justify-center gap-1.5 text-sm font-medium rounded text-emerald-600 dark:text-emerald-400 bg-emerald-600/10 hover:bg-emerald-600/[0.15] transition-colors"
-                              >
+                              <NotionButton variant="ghost" size="sm" onClick={() => handleManualGrade(true)} className="flex-1 !h-8 text-emerald-600 dark:text-emerald-400 bg-emerald-600/10 hover:bg-emerald-600/[0.15]">
                                 <Check className="w-3.5 h-3.5" />
                                 {t('editor.iGotItRight')}
-                              </button>
-                              <button
-                                onClick={() => handleManualGrade(false)}
-                                className="flex-1 h-8 flex items-center justify-center gap-1.5 text-sm font-medium rounded text-destructive bg-destructive/10 hover:bg-destructive/[0.15] transition-colors"
-                              >
+                              </NotionButton>
+                              <NotionButton variant="ghost" size="sm" onClick={() => handleManualGrade(false)} className="flex-1 !h-8 text-destructive bg-destructive/10 hover:bg-destructive/[0.15]">
                                 <X className="w-3.5 h-3.5" />
                                 {t('editor.iGotItWrong')}
-                              </button>
+                              </NotionButton>
                             </div>
                           )}
                         </div>
@@ -2109,28 +2070,21 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                         </div>
                         {/* 重做按钮 */}
                         {!submitResult.isCorrect && (
-                          <button
-                            onClick={handleRetry}
-                            className="flex items-center gap-1.5 px-2.5 py-1 text-xs rounded hover:bg-foreground/5 text-muted-foreground"
-                            title={t('editor.retryTitle')}
-                          >
+                          <NotionButton variant="ghost" size="sm" onClick={handleRetry} className="!h-auto !px-2.5 !py-1 text-xs text-muted-foreground hover:bg-foreground/5" title={t('editor.retryTitle')}>
                             <RefreshCw className="w-3.5 h-3.5" />
                             {t('editor.retry')}
-                          </button>
+                          </NotionButton>
                         )}
                       </div>
 
                       {/* 解析折叠 */}
                       {submitResult.explanation && (
                         <div className="pt-2 border-t border-foreground/[0.06]">
-                          <button
-                            onClick={() => setExplanationExpanded(!explanationExpanded)}
-                            className="flex items-center gap-1.5 text-sm text-warning hover:underline"
-                          >
+                          <NotionButton variant="ghost" size="sm" onClick={() => setExplanationExpanded(!explanationExpanded)} className="!h-auto !p-0 text-warning hover:underline">
                             <Lightbulb className="w-4 h-4" />
                             {explanationExpanded ? t('editor.collapseExplanation') : t('editor.viewExplanation')}
                             {explanationExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-                          </button>
+                          </NotionButton>
                           {explanationExpanded && (
                             <div className="mt-2 text-sm text-muted-foreground leading-relaxed">
                               <MarkdownRenderer
@@ -2148,12 +2102,9 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                             <div className="flex items-center gap-2">
                               <DsAnalysisIconMuted className="w-4 h-4 text-blue-500 animate-pulse" />
                               <span className="text-sm text-blue-600 dark:text-blue-400">{t('editor.aiAnalyzing')}</span>
-                              <button
-                                onClick={() => aiGrading.cancelGrading()}
-                                className="ml-auto text-xs text-muted-foreground hover:text-foreground"
-                              >
+                              <NotionButton variant="ghost" size="sm" onClick={() => aiGrading.cancelGrading()} className="ml-auto !h-auto !p-0 text-xs text-muted-foreground hover:text-foreground">
                                 {t('common:cancel', '取消')}
-                              </button>
+                              </NotionButton>
                             </div>
                             {aiGrading.state.feedback && (
                               <div className="text-sm text-muted-foreground leading-relaxed">
@@ -2192,8 +2143,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                             </div>
                           </div>
                         ) : (
-                          <button
-                            onClick={() => {
+                          <NotionButton variant="ghost" size="sm" onClick={() => {
                               if (!currentQuestion || !submitResult.submissionId) return;
                               const qId = currentQuestion.id;
                               aiGrading.resetState();
@@ -2202,17 +2152,14 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                                 submitResult.submissionId,
                                 'analyze',
                                 undefined,
-                                // 完成后缓存到本地 ref（从回调参数获取最新 feedback，避免闭包过时值）
                                 (_verdict, _score, feedback) => {
                                   if (feedback) aiFeedbackCacheRef.current.set(qId, feedback);
                                 },
                               ).catch((err) => { debugLog.error('[QBankEditor] AI analyze failed:', err); });
-                            }}
-                            className="flex items-center gap-1.5 text-sm text-blue-600 dark:text-blue-400 hover:underline"
-                          >
+                            }} className="!h-auto !p-0 text-blue-600 dark:text-blue-400 hover:underline">
                             <DsAnalysisIconMuted className="w-4 h-4" />
                             {t('editor.aiAnalysis')}
-                          </button>
+                          </NotionButton>
                         )}
                       </div>
                     </>
@@ -2259,11 +2206,8 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                       />
                     </div>
                   ) : (
-                    <button
-                      onClick={() => setIsEditingNote(true)}
-                      className="w-full text-left p-3 rounded-lg border border-dashed border-border/50 hover:border-border hover:bg-muted/30 transition-colors group"
-                    >
-                      <div className="flex items-center gap-2 text-sm">
+                    <NotionButton variant="ghost" size="sm" onClick={() => setIsEditingNote(true)} className="w-full !justify-start !h-auto !p-3 !rounded-lg border border-dashed border-border/50 hover:border-border hover:bg-muted/30 group">
+                      <div className="flex items-center gap-2 text-sm w-full">
                         <StickyNote className="w-4 h-4 text-amber-500" />
                         <span className="font-medium">{t('editor.myNotes')}</span>
                         {!currentQuestion?.userNote && (
@@ -2271,11 +2215,11 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                         )}
                       </div>
                       {currentQuestion?.userNote && (
-                        <p className="mt-1.5 text-sm text-muted-foreground line-clamp-2">
+                        <p className="mt-1.5 text-sm text-muted-foreground line-clamp-2 text-left w-full">
                           {currentQuestion.userNote}
                         </p>
                       )}
-                    </button>
+                    </NotionButton>
                   )}
                 </div>
               )}
@@ -2299,11 +2243,11 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
 
             <Popover>
               <PopoverTrigger asChild>
-                <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-md hover:bg-muted/50 transition-colors text-sm">
+                <NotionButton variant="ghost" size="sm" className="!px-3 !py-1.5 hover:bg-muted/50">
                   <span className="font-medium">{currentIndex + 1}</span>
                   <span className="text-muted-foreground">/ {totalQuestions}</span>
                   <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
-                </button>
+                </NotionButton>
               </PopoverTrigger>
               <PopoverContent className="w-80 p-3" align="center" side="top" sideOffset={8}>
                 {/* 搜索框 */}
@@ -2326,23 +2270,9 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                     const q = questions[idx];
                     const status = q.status || 'new';
                     return (
-                      <button
-                        key={q.id}
-                        onClick={() => {
-                          onNavigate?.(idx);
-                          setSearchQuery('');
-                        }}
-                        className={cn(
-                          'w-7 h-7 rounded text-xs font-medium transition-colors',
-                          idx === currentIndex && 'bg-primary text-primary-foreground',
-                          idx !== currentIndex && status === 'mastered' && 'bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500/20',
-                          idx !== currentIndex && status === 'review' && 'bg-amber-500/10 text-amber-600 hover:bg-amber-500/20',
-                          idx !== currentIndex && status === 'new' && 'bg-muted/50 text-muted-foreground hover:bg-muted',
-                          idx !== currentIndex && status === 'in_progress' && 'bg-blue-500/10 text-blue-600 hover:bg-blue-500/20'
-                        )}
-                      >
+                      <NotionButton key={q.id} variant="ghost" size="icon" iconOnly onClick={() => { onNavigate?.(idx); setSearchQuery(''); }} className={cn('!w-7 !h-7 text-xs font-medium', idx === currentIndex && 'bg-primary text-primary-foreground', idx !== currentIndex && status === 'mastered' && 'bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500/20', idx !== currentIndex && status === 'review' && 'bg-amber-500/10 text-amber-600 hover:bg-amber-500/20', idx !== currentIndex && status === 'new' && 'bg-muted/50 text-muted-foreground hover:bg-muted', idx !== currentIndex && status === 'in_progress' && 'bg-blue-500/10 text-blue-600 hover:bg-blue-500/20')}>
                         {idx + 1}
-                      </button>
+                      </NotionButton>
                     );
                   })}
                 </div>

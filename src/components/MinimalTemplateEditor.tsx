@@ -393,41 +393,26 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
       {!hideSidebar && (
         <div className="editor-sidebar">
           <nav className="editor-nav">
-            <button
-              className={`nav-item ${activeTab === 'basic' ? 'active' : ''}`}
-              onClick={() => setActiveTab('basic')}
-            >
+            <NotionButton variant="ghost" size="sm" className={`nav-item ${activeTab === 'basic' ? 'active' : ''}`} onClick={() => setActiveTab('basic')}>
               <FileText size={18} />
               {t('basic_info')}
-            </button>
-            <button
-              className={`nav-item ${activeTab === 'templates' || activeTab === 'styles' ? 'active' : ''}`}
-              onClick={() => { setActiveTab('templates'); setCodeSubTab('front'); }}
-            >
+            </NotionButton>
+            <NotionButton variant="ghost" size="sm" className={`nav-item ${activeTab === 'templates' || activeTab === 'styles' ? 'active' : ''}`} onClick={() => { setActiveTab('templates'); setCodeSubTab('front'); }}>
               <Code size={18} />
               {t('template_code', '模板代码')}
-            </button>
-            <button
-              className={`nav-item ${activeTab === 'data' ? 'active' : ''}`}
-              onClick={() => setActiveTab('data')}
-            >
+            </NotionButton>
+            <NotionButton variant="ghost" size="sm" className={`nav-item ${activeTab === 'data' ? 'active' : ''}`} onClick={() => setActiveTab('data')}>
               <Database size={18} />
               {t('preview_data', '预览数据')}
-            </button>
-            <button
-              className={`nav-item ${activeTab === 'rules' ? 'active' : ''}`}
-              onClick={() => setActiveTab('rules')}
-            >
+            </NotionButton>
+            <NotionButton variant="ghost" size="sm" className={`nav-item ${activeTab === 'rules' ? 'active' : ''}`} onClick={() => setActiveTab('rules')}>
               <Settings size={18} />
               {t('extraction_rules')}
-            </button>
-            <button
-              className={`nav-item ${activeTab === 'advanced' ? 'active' : ''}`}
-              onClick={() => setActiveTab('advanced')}
-            >
+            </NotionButton>
+            <NotionButton variant="ghost" size="sm" className={`nav-item ${activeTab === 'advanced' ? 'active' : ''}`} onClick={() => setActiveTab('advanced')}>
               <Settings size={18} />
               {t('advanced_settings', '高级设置')}
-            </button>
+            </NotionButton>
           </nav>
         </div>
       )}
@@ -614,28 +599,12 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
                           {t('template_preview', '模板预览')}
                         </span>
                         <div className="flex gap-1">
-                          <button
-                            type="button"
-                            className={`px-2 py-1 rounded text-[11px] font-medium transition-all ${
-                              previewMode === 'front'
-                                ? 'bg-primary/10 text-primary'
-                                : 'text-muted-foreground hover:text-foreground'
-                            }`}
-                            onClick={() => setPreviewMode('front')}
-                          >
+                          <NotionButton variant="ghost" size="sm" className={`!h-auto !px-2 !py-1 text-[11px] font-medium ${previewMode === 'front' ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:text-foreground'}`} onClick={() => setPreviewMode('front')}>
                             {t('front_label', '正面')}
-                          </button>
-                          <button
-                            type="button"
-                            className={`px-2 py-1 rounded text-[11px] font-medium transition-all ${
-                              previewMode === 'back'
-                                ? 'bg-primary/10 text-primary'
-                                : 'text-muted-foreground hover:text-foreground'
-                            }`}
-                            onClick={() => setPreviewMode('back')}
-                          >
+                          </NotionButton>
+                          <NotionButton variant="ghost" size="sm" className={`!h-auto !px-2 !py-1 text-[11px] font-medium ${previewMode === 'back' ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:text-foreground'}`} onClick={() => setPreviewMode('back')}>
                             {t('back_label', '背面')}
-                          </button>
+                          </NotionButton>
                         </div>
                       </div>
                       <div className="border border-border/40 rounded-lg overflow-hidden">
@@ -676,39 +645,15 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
                       {/* 代码子 tab 切换栏 */}
                       <div className="flex-none px-3 py-2 border-b border-border/30">
                         <div className="flex gap-1 p-1 bg-muted/30 rounded-lg">
-                          <button
-                            type="button"
-                            className={`flex-1 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
-                              codeSubTab === 'front'
-                                ? 'bg-background shadow-sm text-foreground'
-                                : 'text-muted-foreground hover:text-foreground'
-                            }`}
-                            onClick={() => setCodeSubTab('front')}
-                          >
+                          <NotionButton variant="ghost" size="sm" className={`flex-1 !px-3 !py-1.5 !rounded-md text-xs font-medium ${codeSubTab === 'front' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`} onClick={() => setCodeSubTab('front')}>
                             {t('front_template_title', '正面模板')}
-                          </button>
-                          <button
-                            type="button"
-                            className={`flex-1 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
-                              codeSubTab === 'back'
-                                ? 'bg-background shadow-sm text-foreground'
-                                : 'text-muted-foreground hover:text-foreground'
-                            }`}
-                            onClick={() => setCodeSubTab('back')}
-                          >
+                          </NotionButton>
+                          <NotionButton variant="ghost" size="sm" className={`flex-1 !px-3 !py-1.5 !rounded-md text-xs font-medium ${codeSubTab === 'back' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`} onClick={() => setCodeSubTab('back')}>
                             {t('back_template_title', '背面模板')}
-                          </button>
-                          <button
-                            type="button"
-                            className={`flex-1 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
-                              codeSubTab === 'css'
-                                ? 'bg-background shadow-sm text-foreground'
-                                : 'text-muted-foreground hover:text-foreground'
-                            }`}
-                            onClick={() => setCodeSubTab('css')}
-                          >
+                          </NotionButton>
+                          <NotionButton variant="ghost" size="sm" className={`flex-1 !px-3 !py-1.5 !rounded-md text-xs font-medium ${codeSubTab === 'css' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`} onClick={() => setCodeSubTab('css')}>
                             {t('css_style_title', 'CSS 样式')}
-                          </button>
+                          </NotionButton>
                         </div>
                       </div>
                       {/* 代码编辑器 */}
@@ -740,39 +685,15 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
                       <div className="space-y-4">
                         {/* 代码子 tab 切换 */}
                         <div className="flex gap-1 p-1 bg-muted/30 rounded-lg">
-                          <button
-                            type="button"
-                            className={`flex-1 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
-                              codeSubTab === 'front'
-                                ? 'bg-background shadow-sm text-foreground'
-                                : 'text-muted-foreground hover:text-foreground'
-                            }`}
-                            onClick={() => setCodeSubTab('front')}
-                          >
+                          <NotionButton variant="ghost" size="sm" className={`flex-1 !px-3 !py-1.5 !rounded-md text-xs font-medium ${codeSubTab === 'front' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`} onClick={() => setCodeSubTab('front')}>
                             {t('front_template_title', '正面模板')}
-                          </button>
-                          <button
-                            type="button"
-                            className={`flex-1 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
-                              codeSubTab === 'back'
-                                ? 'bg-background shadow-sm text-foreground'
-                                : 'text-muted-foreground hover:text-foreground'
-                            }`}
-                            onClick={() => setCodeSubTab('back')}
-                          >
+                          </NotionButton>
+                          <NotionButton variant="ghost" size="sm" className={`flex-1 !px-3 !py-1.5 !rounded-md text-xs font-medium ${codeSubTab === 'back' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`} onClick={() => setCodeSubTab('back')}>
                             {t('back_template_title', '背面模板')}
-                          </button>
-                          <button
-                            type="button"
-                            className={`flex-1 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
-                              codeSubTab === 'css'
-                                ? 'bg-background shadow-sm text-foreground'
-                                : 'text-muted-foreground hover:text-foreground'
-                            }`}
-                            onClick={() => setCodeSubTab('css')}
-                          >
+                          </NotionButton>
+                          <NotionButton variant="ghost" size="sm" className={`flex-1 !px-3 !py-1.5 !rounded-md text-xs font-medium ${codeSubTab === 'css' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`} onClick={() => setCodeSubTab('css')}>
                             {t('css_style_title', 'CSS 样式')}
-                          </button>
+                          </NotionButton>
                         </div>
 
                         {/* 描述提示 */}
@@ -789,28 +710,12 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
                               {t('template_preview', '模板预览')}
                             </span>
                             <div className="flex gap-1">
-                              <button
-                                type="button"
-                                className={`px-2 py-1 rounded text-[11px] font-medium transition-all ${
-                                  previewMode === 'front'
-                                    ? 'bg-primary/10 text-primary'
-                                    : 'text-muted-foreground hover:text-foreground'
-                                }`}
-                                onClick={() => setPreviewMode('front')}
-                              >
+                              <NotionButton variant="ghost" size="sm" className={`!h-auto !px-2 !py-1 text-[11px] font-medium ${previewMode === 'front' ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:text-foreground'}`} onClick={() => setPreviewMode('front')}>
                                 {t('front_label', '正面')}
-                              </button>
-                              <button
-                                type="button"
-                                className={`px-2 py-1 rounded text-[11px] font-medium transition-all ${
-                                  previewMode === 'back'
-                                    ? 'bg-primary/10 text-primary'
-                                    : 'text-muted-foreground hover:text-foreground'
-                                }`}
-                                onClick={() => setPreviewMode('back')}
-                              >
+                              </NotionButton>
+                              <NotionButton variant="ghost" size="sm" className={`!h-auto !px-2 !py-1 text-[11px] font-medium ${previewMode === 'back' ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:text-foreground'}`} onClick={() => setPreviewMode('back')}>
                                 {t('back_label', '背面')}
-                              </button>
+                              </NotionButton>
                             </div>
                           </div>
                           <div className="border border-border/40 rounded-lg overflow-hidden">

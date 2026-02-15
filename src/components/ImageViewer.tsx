@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { NotionButton } from '@/components/ui/NotionButton';
 import { createPortal } from 'react-dom';
 import { X, ZoomIn, ZoomOut, RotateCw, Home, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useFocusTrap } from '../hooks/useFocusTrap';
@@ -258,22 +259,12 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
         {/* 导航按钮 */}
         {images.length > 1 && (
           <>
-            <button
-              onClick={() => goTo(internalIndex - 1)}
-              className="modern-viewer-icon-button absolute left-4 top-1/2 -translate-y-1/2 rounded-full p-3 z-10"
-              disabled={internalIndex === 0}
-              title={t('common:imageViewer.previous')}
-            >
+            <NotionButton variant="ghost" size="icon" iconOnly onClick={() => goTo(internalIndex - 1)} className="modern-viewer-icon-button absolute left-4 top-1/2 -translate-y-1/2 !rounded-full !p-3 z-10" disabled={internalIndex === 0} title={t('common:imageViewer.previous')} aria-label="prev">
               <ChevronLeft size={24} />
-            </button>
-            <button
-              onClick={() => goTo(internalIndex + 1)}
-              className="modern-viewer-icon-button absolute right-4 top-1/2 -translate-y-1/2 rounded-full p-3 z-10"
-              disabled={internalIndex === images.length - 1}
-              title={t('common:imageViewer.next_title')}
-            >
+            </NotionButton>
+            <NotionButton variant="ghost" size="icon" iconOnly onClick={() => goTo(internalIndex + 1)} className="modern-viewer-icon-button absolute right-4 top-1/2 -translate-y-1/2 !rounded-full !p-3 z-10" disabled={internalIndex === images.length - 1} title={t('common:imageViewer.next_title')} aria-label="next">
               <ChevronRight size={24} />
-            </button>
+            </NotionButton>
           </>
         )}
 
@@ -322,42 +313,22 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
             {currentIndex + 1} / {images.length}
           </span>
           <div className="modern-viewer-divider" />
-          <button
-            onClick={() => setScale(prev => Math.max(prev / 1.2, 0.1))}
-            className="modern-viewer-icon-button"
-            title={t('common:imageViewer.zoom_out')}
-          >
+          <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setScale(prev => Math.max(prev / 1.2, 0.1))} className="modern-viewer-icon-button" title={t('common:imageViewer.zoom_out')} aria-label="zoom out">
             <ZoomOut size={16} />
-          </button>
+          </NotionButton>
           <span className="modern-viewer-zoom-readout">
             {Math.round(scale * 100)}%
           </span>
-          <button
-            onClick={() => setScale(prev => Math.min(prev * 1.2, 5))}
-            className="modern-viewer-icon-button"
-            title={t('common:imageViewer.zoom_in')}
-          >
+          <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setScale(prev => Math.min(prev * 1.2, 5))} className="modern-viewer-icon-button" title={t('common:imageViewer.zoom_in')} aria-label="zoom in">
             <ZoomIn size={16} />
-          </button>
+          </NotionButton>
           <div className="modern-viewer-divider" />
-          <button
-            onClick={() => setRotation(prev => (prev + 90) % 360)}
-            className="modern-viewer-icon-button"
-            title={t('common:imageViewer.rotate_title')}
-          >
+          <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setRotation(prev => (prev + 90) % 360)} className="modern-viewer-icon-button" title={t('common:imageViewer.rotate_title')} aria-label="rotate">
             <RotateCw size={16} />
-          </button>
-          <button
-            onClick={() => {
-              setScale(1);
-              setRotation(0);
-              setPosition({ x: 0, y: 0 });
-            }}
-            className="modern-viewer-icon-button"
-            title={t('common:imageViewer.reset_title')}
-          >
+          </NotionButton>
+          <NotionButton variant="ghost" size="icon" iconOnly onClick={() => { setScale(1); setRotation(0); setPosition({ x: 0, y: 0 }); }} className="modern-viewer-icon-button" title={t('common:imageViewer.reset_title')} aria-label="reset">
             <Home size={16} />
-          </button>
+          </NotionButton>
           <div className="modern-viewer-divider" />
           <div className="flex items-center gap-1 text-xs text-muted-foreground">
             <span>{t('common:imageViewer.blurLabel', 'Blur')}</span>
@@ -368,13 +339,9 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
             />
           </div>
           <div className="modern-viewer-divider" />
-          <button
-            onClick={onClose}
-            className="modern-viewer-icon-button modern-viewer-icon-button--danger"
-            title={t('common:imageViewer.close')}
-          >
+          <NotionButton variant="ghost" size="icon" iconOnly onClick={onClose} className="modern-viewer-icon-button modern-viewer-icon-button--danger" title={t('common:imageViewer.close')} aria-label="close">
             <X size={16} />
-          </button>
+          </NotionButton>
         </div>
       </div>
     </div>

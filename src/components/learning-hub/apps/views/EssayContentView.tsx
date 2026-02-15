@@ -12,6 +12,7 @@
 import React, { lazy, Suspense, useState, useEffect, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Loader2 } from 'lucide-react';
+import { NotionButton } from '@/components/ui/NotionButton';
 import type { ContentViewProps } from '../UnifiedAppPanel';
 import {
   essayDstuAdapter,
@@ -137,19 +138,13 @@ const EssayContentView: React.FC<ContentViewProps> = ({
       <div className="flex flex-col items-center justify-center h-full gap-4">
         <p className="text-destructive text-center">{error}</p>
         <div className="flex gap-2">
-          <button
-            onClick={loadSession}
-            className="px-4 py-2 text-sm bg-primary text-primary-foreground hover:bg-primary/90 rounded-md transition-colors"
-          >
+          <NotionButton variant="primary" size="sm" onClick={loadSession}>
             {t('common:retry', '重试')}
-          </button>
+          </NotionButton>
           {onClose && (
-            <button
-              onClick={onClose}
-              className="px-4 py-2 text-sm bg-muted hover:bg-muted/80 rounded-md transition-colors"
-            >
+            <NotionButton variant="default" size="sm" onClick={onClose}>
               {t('common:close', '关闭')}
-            </button>
+            </NotionButton>
           )}
         </div>
       </div>

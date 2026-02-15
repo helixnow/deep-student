@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
+import { NotionButton } from '@/components/ui/NotionButton';
 import { AnkiCard } from '../../types';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { invoke } from '@tauri-apps/api/core';
@@ -286,47 +287,32 @@ export const BatchOperationToolbar: React.FC<BatchOperationToolbarProps> = ({
               className="search-input"
             />
             {searchQuery && (
-              <button 
-                className="clear-search"
-                onClick={() => setSearchQuery('')}
-              >
+              <NotionButton variant="ghost" size="icon" iconOnly className="clear-search" onClick={() => setSearchQuery('')} aria-label="clear">
                 <X size={14} />
-              </button>
+              </NotionButton>
             )}
           </div>
           
-          <button 
-            className="filter-button"
-            onClick={() => setShowFilterBuilder(true)}
-          >
+          <NotionButton variant="ghost" size="sm" className="filter-button" onClick={() => setShowFilterBuilder(true)}>
             <Filter size={18} />
             {t('filter')}
             {activeFilters.length > 0 && (
               <span className="filter-count">{activeFilters.length}</span>
             )}
-          </button>
+          </NotionButton>
         </div>
         
         {/* 快速筛选 */}
         <div className="toolbar-section quick-filters">
-          <button 
-            className="filter-chip"
-            onClick={() => addQuickFilter('has_image')}
-          >
+          <NotionButton variant="ghost" size="sm" className="filter-chip" onClick={() => addQuickFilter('has_image')}>
             {t('has_image')}
-          </button>
-          <button 
-            className="filter-chip"
-            onClick={() => addQuickFilter('no_tags')}
-          >
+          </NotionButton>
+          <NotionButton variant="ghost" size="sm" className="filter-chip" onClick={() => addQuickFilter('no_tags')}>
             {t('no_tags')}
-          </button>
-          <button 
-            className="filter-chip"
-            onClick={() => addQuickFilter('created_today')}
-          >
+          </NotionButton>
+          <NotionButton variant="ghost" size="sm" className="filter-chip" onClick={() => addQuickFilter('created_today')}>
             {t('created_today')}
-          </button>
+          </NotionButton>
         </div>
         
         {/* 选择信息 */}
@@ -334,10 +320,7 @@ export const BatchOperationToolbar: React.FC<BatchOperationToolbarProps> = ({
           <span className="selection-count">
             {selectedIds.size} / {filteredCards.length} {t('selected')}
           </span>
-          <button 
-            className="select-all-btn"
-            onClick={toggleSelectAll}
-          >
+          <NotionButton variant="ghost" size="sm" className="select-all-btn" onClick={toggleSelectAll}>
             {selectedIds.size === filteredCards.length && filteredCards.length > 0 ? (
               <>
                 <Square size={16} />
@@ -349,75 +332,52 @@ export const BatchOperationToolbar: React.FC<BatchOperationToolbarProps> = ({
                 {t('select_all')}
               </>
             )}
-          </button>
+          </NotionButton>
         </div>
         
         {/* 批量操作按钮 */}
         <div className="toolbar-section batch-actions">
-          <button
-            className="action-btn"
-            onClick={() => setShowBatchEdit(true)}
-            disabled={selectedIds.size === 0 || isProcessing}
-          >
+          <NotionButton variant="ghost" size="sm" className="action-btn" onClick={() => setShowBatchEdit(true)} disabled={selectedIds.size === 0 || isProcessing}>
             <Edit size={18} />
             {t('edit')}
-          </button>
+          </NotionButton>
           
-          <button
-            className="action-btn"
-            onClick={handleBatchAddTags}
-            disabled={selectedIds.size === 0 || isProcessing}
-          >
+          <NotionButton variant="ghost" size="sm" className="action-btn" onClick={handleBatchAddTags} disabled={selectedIds.size === 0 || isProcessing}>
             <Tags size={18} />
             {t('tags')}
-          </button>
+          </NotionButton>
           
-          <button
-            className="action-btn"
-            onClick={() => handleBatchExport()}
-            disabled={selectedIds.size === 0 || isProcessing}
-          >
+          <NotionButton variant="ghost" size="sm" className="action-btn" onClick={() => handleBatchExport()} disabled={selectedIds.size === 0 || isProcessing}>
             <Download size={18} />
             {t('export')}
-          </button>
+          </NotionButton>
           
-          <button
-            className="action-btn"
-            onClick={handleBatchDuplicate}
-            disabled={selectedIds.size === 0 || isProcessing}
-          >
+          <NotionButton variant="ghost" size="sm" className="action-btn" onClick={handleBatchDuplicate} disabled={selectedIds.size === 0 || isProcessing}>
             <Copy size={18} />
             {t('duplicate')}
-          </button>
+          </NotionButton>
           
-          <button
-            className="action-btn danger"
-            onClick={handleBatchDelete}
-            disabled={selectedIds.size === 0 || isProcessing}
-          >
+          <NotionButton variant="danger" size="sm" className="action-btn danger" onClick={handleBatchDelete} disabled={selectedIds.size === 0 || isProcessing}>
             <Trash2 size={18} />
             {t('delete')}
-          </button>
+          </NotionButton>
           
           <div className="dropdown-container">
-            <button 
-              className="action-btn more"
-              onClick={() => setShowMoreMenu(!showMoreMenu)}
-            >
+            <NotionButton variant="ghost" size="icon" iconOnly className="action-btn more" onClick={() => setShowMoreMenu(!showMoreMenu)} aria-label="more">
               <MoreVertical size={18} />
-            </button>
+            </NotionButton>
             
             {showMoreMenu && (
               <div className="dropdown-menu">
-                <button onClick={() => handleBatchExport('csv')}>
+                <NotionButton variant="ghost" size="sm" onClick={() => handleBatchExport('csv')}>
                   {t('export_as_csv')}
-                </button>
-                <button onClick={() => handleBatchExport('json')}>
+                </NotionButton>
+                <NotionButton variant="ghost" size="sm" onClick={() => handleBatchExport('json')}>
                   {t('export_as_json')}
-                </button>
-                <button onClick={() => handleBatchExport('markdown')}>
+                </NotionButton>
+                <NotionButton variant="ghost" size="sm" onClick={() => handleBatchExport('markdown')}>
                   {t('export_as_markdown')}
-                </button>
+                </NotionButton>
               </div>
             )}
           </div>

@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useCallback } from 'react';
+import { NotionButton } from '@/components/ui/NotionButton';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { EyeOff, Eye } from 'lucide-react';
@@ -55,27 +56,15 @@ export const BlankActionPopup: React.FC<BlankActionPopupProps> = ({
       }}
     >
       {isAlreadyBlanked ? (
-        <button
-          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-full bg-zinc-700/90 text-zinc-200 hover:bg-zinc-600 transition-colors whitespace-nowrap"
-          onClick={(e) => {
-            e.stopPropagation();
-            onUnblank();
-          }}
-        >
+        <NotionButton variant="ghost" size="sm" className="!px-3 !py-1.5 !h-auto !rounded-full bg-zinc-700/90 text-zinc-200 hover:bg-zinc-600 text-xs font-medium whitespace-nowrap" onClick={(e) => { e.stopPropagation(); onUnblank(); }}>
           <Eye className="w-3 h-3" />
           {t('recite.unblank')}
-        </button>
+        </NotionButton>
       ) : (
-        <button
-          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-full bg-amber-500/90 text-white hover:bg-amber-500 transition-colors whitespace-nowrap"
-          onClick={(e) => {
-            e.stopPropagation();
-            onBlank();
-          }}
-        >
+        <NotionButton variant="ghost" size="sm" className="!px-3 !py-1.5 !h-auto !rounded-full bg-amber-500/90 text-white hover:bg-amber-500 text-xs font-medium whitespace-nowrap" onClick={(e) => { e.stopPropagation(); onBlank(); }}>
           <EyeOff className="w-3 h-3" />
           {t('recite.blank')}
-        </button>
+        </NotionButton>
       )}
     </div>,
     document.body,

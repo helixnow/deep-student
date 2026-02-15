@@ -146,10 +146,7 @@ const TagGroupCard: React.FC<{
   return (
     <div className="group">
       {/* 标签头部 - 紧凑行 */}
-      <button
-        onClick={onToggle}
-        className="w-full flex items-center gap-2 px-2 py-2 text-left rounded-lg hover:bg-muted/40 transition-colors"
-      >
+      <NotionButton variant="ghost" size="sm" onClick={onToggle} className="!w-full !justify-start !px-2 !py-2 !h-auto !text-left !rounded-lg hover:bg-muted/40">
         {/* 展开/收起图标 */}
         <div className="flex-shrink-0 text-muted-foreground/60">
           {isExpanded ? (
@@ -193,23 +190,17 @@ const TagGroupCard: React.FC<{
             {Math.round(group.progressPercent)}%
           </span>
         </div>
-      </button>
+      </NotionButton>
 
       {/* 展开内容 */}
       {isExpanded && (
         <div className="ml-5 mt-1 mb-2 pl-3 border-l-2 border-border/40">
           {/* 操作按钮 - 内联式 */}
           <div className="flex items-center gap-2 py-1.5 mb-1">
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onStartPractice();
-              }}
-              className="flex items-center gap-1 px-2 py-1 text-xs text-violet-600 dark:text-violet-400 hover:bg-violet-500/10 rounded transition-colors"
-            >
+            <NotionButton variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); onStartPractice(); }} className="!px-2 !py-1 !h-auto text-xs text-violet-600 dark:text-violet-400 hover:bg-violet-500/10">
               <Play className="w-3 h-3" />
               {t('tagNav.practice', '练习')}
-            </button>
+            </NotionButton>
             <span className="text-[11px] text-muted-foreground">
               {t('tagNav.toMaster', '{{count}} 待掌握', { count: group.totalCount - group.masteredCount })}
             </span>
@@ -223,10 +214,11 @@ const TagGroupCard: React.FC<{
               const originalIndex = originalIndexMap.get(q.id) || 0;
 
               return (
-                <button
+                <NotionButton
                   key={q.id}
+                  variant="ghost" size="sm"
                   onClick={() => onQuestionClick(q.id)}
-                  className="w-full flex items-center gap-2 px-2 py-1.5 text-left rounded hover:bg-muted/30 transition-colors"
+                  className="!w-full !justify-start !px-2 !py-1.5 !h-auto !text-left !rounded hover:bg-muted/30"
                 >
                   {/* 状态指示器 */}
                   <div className={cn('w-1.5 h-1.5 rounded-full flex-shrink-0', statusConfig.bg)} />
@@ -247,7 +239,7 @@ const TagGroupCard: React.FC<{
                       {t(`tagNav.difficultyShort.${q.difficulty}`)}
                     </span>
                   )}
-                </button>
+                </NotionButton>
               );
             })}
           </div>

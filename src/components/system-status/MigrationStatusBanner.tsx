@@ -156,16 +156,9 @@ export const MigrationStatusBanner: React.FC = () => {
           </div>
 
           {/* 关闭按钮 */}
-          <button
-            onClick={dismiss}
-            className={cn(
-              'shrink-0 p-1 rounded-md',
-              'text-muted-foreground/60 hover:text-foreground hover:bg-muted/60',
-              'transition-colors duration-150',
-            )}
-          >
+          <NotionButton variant="ghost" size="icon" iconOnly onClick={dismiss} className={cn('shrink-0 !p-1', 'text-muted-foreground/60 hover:text-foreground hover:bg-muted/60')} aria-label="dismiss">
             <X className="h-3.5 w-3.5" />
-          </button>
+          </NotionButton>
         </div>
 
         {/* 操作区 */}

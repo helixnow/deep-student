@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
+import { NotionButton } from '@/components/ui/NotionButton';
 import { useTranslation } from "react-i18next";
 import { AlignLeft, Calendar, Tag, Clock, X } from "lucide-react";
 import { useNotesOptional } from "./NotesContext";
@@ -389,23 +390,23 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
                     <div className="p-3 pt-0 space-y-0.5">
                         {headings.length > 0 ? (
                             headings.map((heading) => (
-                                <button
+                                <NotionButton
                                     key={heading.id}
+                                    variant="ghost" size="sm"
                                     className={cn(
-                                        "w-full text-left py-1 px-2 rounded-md hover:bg-muted/60 transition-colors truncate text-[11px]",
-                                        // 1-6 级标题样式
+                                        "!w-full !text-left !py-1 !px-2 !h-auto !rounded-md hover:bg-muted/60 truncate text-[11px]",
                                         heading.level === 1 && "font-medium text-foreground",
-                                        heading.level === 2 && "pl-4 text-muted-foreground",
-                                        heading.level === 3 && "pl-6 text-muted-foreground/80",
-                                        heading.level === 4 && "pl-8 text-muted-foreground/70 text-[10px]",
-                                        heading.level === 5 && "pl-10 text-muted-foreground/60 text-[10px]",
-                                        heading.level === 6 && "pl-12 text-muted-foreground/50 text-[10px]"
+                                        heading.level === 2 && "!pl-4 text-muted-foreground",
+                                        heading.level === 3 && "!pl-6 text-muted-foreground/80",
+                                        heading.level === 4 && "!pl-8 text-muted-foreground/70 text-[10px]",
+                                        heading.level === 5 && "!pl-10 text-muted-foreground/60 text-[10px]",
+                                        heading.level === 6 && "!pl-12 text-muted-foreground/50 text-[10px]"
                                     )}
                                     onClick={() => handleHeadingClick(heading)}
                                     title={heading.text}
                                 >
                                     {heading.text}
-                                </button>
+                                </NotionButton>
                             ))
                         ) : (
                             <div className="py-4 text-center text-muted-foreground/40 italic">

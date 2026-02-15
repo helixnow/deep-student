@@ -360,12 +360,9 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({
           <Settings2 className="w-4 h-4" />
           <span>{t('essay_grading:settings.title')}</span>
         </div>
-        <button
-          onClick={onClose}
-          className="h-7 w-7 flex items-center justify-center rounded text-muted-foreground/60 hover:text-foreground hover:bg-muted/50 transition-colors"
-        >
+        <NotionButton variant="ghost" size="icon" iconOnly onClick={onClose} className="h-7 w-7 text-muted-foreground/60 hover:text-foreground hover:bg-muted/50" aria-label="close">
           <X className="w-4 h-4" />
-        </button>
+        </NotionButton>
       </div>
 
       {/* 内容区 */}
@@ -400,12 +397,9 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({
               {isEditing ? (
                 /* 编辑态：取消 + 完成 */
                 <>
-                  <button
-                    onClick={handleCancelEdit}
-                    className="h-7 px-2 text-xs text-muted-foreground/70 hover:text-foreground hover:bg-muted/50 rounded transition-colors"
-                  >
+                  <NotionButton variant="ghost" size="sm" onClick={handleCancelEdit} className="h-7 px-2 text-xs text-muted-foreground/70 hover:text-foreground hover:bg-muted/50">
                     {t('essay_grading:actions.cancel')}
-                  </button>
+                  </NotionButton>
                   <NotionButton
                     variant="ghost"
                     size="sm"
@@ -420,20 +414,17 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({
                 /* 查看态：编辑 + 更多操作 */
                 <>
                   {currentMode && (
-                    <button
-                      onClick={() => handleStartEdit(currentMode)}
-                      className="h-7 px-2 flex items-center gap-1 text-xs text-muted-foreground/70 hover:text-foreground hover:bg-muted/50 rounded transition-colors"
-                    >
+                    <NotionButton variant="ghost" size="sm" onClick={() => handleStartEdit(currentMode)} className="h-7 px-2 text-xs text-muted-foreground/70 hover:text-foreground hover:bg-muted/50">
                       <Pencil className="w-3 h-3" />
                       {t('settings:gradingMode.menuEdit')}
-                    </button>
+                    </NotionButton>
                   )}
                   {currentMode && (
                     <AppMenu>
                       <AppMenuTrigger asChild>
-                        <button className="h-7 w-7 flex items-center justify-center rounded text-muted-foreground/50 hover:text-foreground hover:bg-muted/50 transition-colors">
+                        <NotionButton variant="ghost" size="icon" iconOnly className="h-7 w-7 text-muted-foreground/50 hover:text-foreground hover:bg-muted/50" aria-label="more">
                           <MoreHorizontal className="w-4 h-4" />
-                        </button>
+                        </NotionButton>
                       </AppMenuTrigger>
                       <AppMenuContent align="end" width={128}>
                         <AppMenuItem icon={<Copy className="w-4 h-4" />} onClick={() => handleCopyMode(currentMode)}>
@@ -465,27 +456,25 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({
           {/* 模式快速切换按钮 + 新建 */}
           <div className="flex flex-wrap gap-1.5 mb-4">
             {modes.map((mode) => (
-              <button
+              <NotionButton
                 key={mode.id}
+                variant="ghost" size="sm"
                 onClick={() => handleModeSwitch(mode.id)}
                 className={cn(
-                  "px-2.5 py-1 rounded text-xs transition-colors",
+                  "!px-2.5 !py-1 !h-auto text-xs",
                   mode.id === modeId
                     ? "bg-primary/10 text-primary border border-primary/30"
                     : "bg-muted/50 text-foreground/70 hover:bg-muted hover:text-foreground"
                 )}
               >
                 {mode.name}
-              </button>
+              </NotionButton>
             ))}
             {!isEditing && (
-              <button
-                onClick={handleStartCreate}
-                className="px-2 py-1 rounded text-xs text-muted-foreground/50 hover:text-primary hover:bg-primary/5 border border-dashed border-muted-foreground/30 hover:border-primary/30 transition-colors flex items-center gap-1"
-              >
+              <NotionButton variant="ghost" size="sm" onClick={handleStartCreate} className="!px-2 !py-1 !h-auto text-xs text-muted-foreground/50 hover:text-primary hover:bg-primary/5 border border-dashed border-muted-foreground/30 hover:border-primary/30">
                 <Plus className="w-3 h-3" />
                 {t('essay_grading:mode.create')}
-              </button>
+              </NotionButton>
             )}
           </div>
 
@@ -546,24 +535,18 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({
                           style={{ maxWidth: '3.5rem' }}
                         />
                       </div>
-                      <button
-                        onClick={() => handleRemoveDimension(index)}
-                        className="h-6 w-6 flex items-center justify-center rounded-sm text-muted-foreground/30 hover:text-destructive hover:bg-destructive/10 transition-colors opacity-0 group-hover:opacity-100 flex-shrink-0"
-                      >
+                      <NotionButton variant="ghost" size="icon" iconOnly onClick={() => handleRemoveDimension(index)} className="!h-6 !w-6 text-muted-foreground/30 hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100 flex-shrink-0" aria-label="remove">
                         <Trash2 className="w-3 h-3" />
-                      </button>
+                      </NotionButton>
                     </div>
                   ))}
                 </div>
-                <button
-                  onClick={handleAddDimension}
-                  className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-primary px-1 py-1.5 transition-colors w-full group"
-                >
+                <NotionButton variant="ghost" size="sm" onClick={handleAddDimension} className="!justify-start !px-1 !py-1.5 !h-auto text-xs text-muted-foreground hover:text-primary w-full group">
                   <div className="h-4 w-4 rounded-full border border-dashed border-muted-foreground/50 group-hover:border-primary flex items-center justify-center">
                     <Plus className="w-2.5 h-2.5" />
                   </div>
                   {t('settings:gradingMode.addDimension')}
-                </button>
+                </NotionButton>
               </div>
 
               {/* 总分设置 */}
@@ -589,15 +572,9 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({
                       style={{ maxWidth: '4rem' }}
                     />
                     {formData.total_max_score !== calculatedTotal && (
-                      <button
-                        onClick={() => setFormData(prev => ({
-                          ...prev,
-                          total_max_score: calculatedTotal
-                        }))}
-                        className="text-[10px] text-primary hover:underline whitespace-nowrap"
-                      >
+                      <NotionButton variant="ghost" size="sm" onClick={() => setFormData(prev => ({ ...prev, total_max_score: calculatedTotal }))} className="!h-auto !p-0 text-[10px] text-primary hover:underline whitespace-nowrap">
                         {t('settings:gradingMode.useCalculatedTotal', { total: calculatedTotal })}
-                      </button>
+                      </NotionButton>
                     )}
                   </div>
                 </div>
@@ -703,23 +680,14 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({
                 className="flex-1 min-h-[240px] resize-none w-full text-sm border-border/40 focus:border-border/60"
               />
               <div className="flex gap-2 justify-end">
-                <button
-                  onClick={onRestoreDefaultPrompt}
-                  className="px-3 py-1.5 text-sm text-muted-foreground/70 hover:text-foreground hover:bg-muted/50 rounded transition-colors flex items-center gap-1.5"
-                >
+                <NotionButton variant="ghost" size="sm" onClick={onRestoreDefaultPrompt} className="text-sm text-muted-foreground/70 hover:text-foreground hover:bg-muted/50">
                   <RotateCcw className="w-3.5 h-3.5" />
                   {t('essay_grading:prompt_editor.restore_default')}
-                </button>
-                <button
-                  onClick={() => {
-                    onSavePrompt();
-                    onClose();
-                  }}
-                  className="px-3 py-1.5 text-sm bg-primary/10 text-primary hover:bg-primary/20 rounded transition-colors flex items-center gap-1.5"
-                >
+                </NotionButton>
+                <NotionButton variant="primary" size="sm" onClick={() => { onSavePrompt(); onClose(); }} className="text-sm bg-primary/10 text-primary hover:bg-primary/20">
                   <Save className="w-3.5 h-3.5" />
                   {t('essay_grading:prompt_editor.save')}
-                </button>
+                </NotionButton>
               </div>
             </div>
           </div>
@@ -746,10 +714,11 @@ export const SettingsButton: React.FC<SettingsButtonProps> = ({
   const { t } = useTranslation(['essay_grading']);
 
   return (
-    <button
+    <NotionButton
+      variant="ghost" size="sm"
       onClick={onClick}
       className={cn(
-        "h-8 px-3 flex items-center gap-2 rounded text-sm transition-colors",
+        "h-8 px-3 text-sm",
         isOpen
           ? "bg-primary/10 text-primary"
           : "text-muted-foreground/70 hover:text-foreground hover:bg-muted/50",
@@ -762,6 +731,6 @@ export const SettingsButton: React.FC<SettingsButtonProps> = ({
         "w-3.5 h-3.5 transition-transform",
         isOpen && "rotate-180"
       )} />
-    </button>
+    </NotionButton>
   );
 };

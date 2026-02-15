@@ -138,53 +138,26 @@ export function ExportPanel({
           >
             {/* 🔧 P1-48: 选中级导出（优先显示） */}
             {selectedCardCount > 0 && (
-              <button
-                className="btn btn-primary"
-                style={{
-                  padding: '8px 16px',
-                  width: '100%',
-                  fontSize: '14px',
-                }}
-                disabled={!canExportSelection}
-                onClick={() => onExportApkg('selection')}
-              >
+              <NotionButton variant="primary" size="sm" className="btn btn-primary w-full" style={{ padding: '8px 16px', fontSize: '14px' }} disabled={!canExportSelection} onClick={() => onExportApkg('selection')}>
                 {t('export_selection')} ({selectedExportableCount}/{selectedCardCount}
                 {t('cards_unit')})
-              </button>
+              </NotionButton>
             )}
 
             {/* 🔧 P1-48: 任务级导出 */}
             {taskCardCount > 0 && (
-              <button
-                className="btn btn-info"
-                style={{
-                  padding: '8px 16px',
-                  width: '100%',
-                  fontSize: '14px',
-                }}
-                disabled={!canExportTask}
-                onClick={() => onExportApkg('task')}
-              >
+              <NotionButton variant="default" size="sm" className="btn btn-info w-full" style={{ padding: '8px 16px', fontSize: '14px' }} disabled={!canExportTask} onClick={() => onExportApkg('task')}>
                 {t('export_task')} ({taskExportableCount}/{taskCardCount}
                 {t('cards_unit')})
-              </button>
+              </NotionButton>
             )}
 
             {/* 文档级导出 */}
             {hasDocument && (
-              <button
-                className="btn btn-success"
-                style={{
-                  padding: '8px 16px',
-                  width: '100%',
-                  fontSize: '14px',
-                }}
-                disabled={!canExportDocument}
-                onClick={() => onExportApkg('document')}
-              >
+              <NotionButton variant="default" size="sm" className="btn btn-success w-full" style={{ padding: '8px 16px', fontSize: '14px' }} disabled={!canExportDocument} onClick={() => onExportApkg('document')}>
                 {t('export_document')} ({exportableCount}/{totalCards}
                 {t('cards_unit')})
-              </button>
+              </NotionButton>
             )}
 
             {/* 仅有错误卡片提示 */}
@@ -250,55 +223,28 @@ export function ExportPanel({
 
             {/* 🔧 P1-48: 选中级导出到 Anki */}
             {selectedCardCount > 0 && (
-              <button
-                className="btn btn-primary"
-                style={{
-                  padding: '8px 16px',
-                  width: '100%',
-                  fontSize: '14px',
-                }}
-                disabled={!canExportSelectionToAnki}
-                onClick={() => onExportToAnki('selection')}
-              >
+              <NotionButton variant="primary" size="sm" className="btn btn-primary w-full" style={{ padding: '8px 16px', fontSize: '14px' }} disabled={!canExportSelectionToAnki} onClick={() => onExportToAnki('selection')}>
                 {t('actions.export_selection_to_anki')} ({selectedExportableCount}/
                 {selectedCardCount}
                 {t('cards_unit')})
-              </button>
+              </NotionButton>
             )}
 
             {/* 🔧 P1-48: 任务级导出到 Anki */}
             {taskCardCount > 0 && (
-              <button
-                className="btn btn-info"
-                style={{
-                  padding: '8px 16px',
-                  width: '100%',
-                  fontSize: '14px',
-                }}
-                disabled={!canExportTaskToAnki}
-                onClick={() => onExportToAnki('task')}
-              >
+              <NotionButton variant="default" size="sm" className="btn btn-info w-full" style={{ padding: '8px 16px', fontSize: '14px' }} disabled={!canExportTaskToAnki} onClick={() => onExportToAnki('task')}>
                 {t('actions.export_task_to_anki')} ({taskExportableCount}/
                 {taskCardCount}
                 {t('cards_unit')})
-              </button>
+              </NotionButton>
             )}
 
             {/* 导出到 Anki 按钮 */}
-            <button
-              className="btn btn-success"
-              style={{
-                padding: '8px 16px',
-                width: '100%',
-                fontSize: '14px',
-              }}
-              disabled={!canExportToAnki}
-              onClick={() => onExportToAnki('document')}
-            >
+            <NotionButton variant="default" size="sm" className="btn btn-success w-full" style={{ padding: '8px 16px', fontSize: '14px' }} disabled={!canExportToAnki} onClick={() => onExportToAnki('document')}>
               {t('actions.export_document_to_anki')} ({exportableCount}/
               {totalCards}
               {t('cards_unit')})
-            </button>
+            </NotionButton>
           </div>
         </div>
       )}

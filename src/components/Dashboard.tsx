@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { NotionButton } from '@/components/ui/NotionButton';
 import { TauriAPI } from '../utils/tauriApi';
 import { BarChart3, Settings, AlertTriangle, FileText, Search, BookOpen, Tag, PieChart, RefreshCw } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
@@ -122,28 +123,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ onBack }) => {
                 <div><strong>{t('component_render')}:</strong> <span className="text-emerald-500">{t('normal')}</span></div>
               </div>
               <div className="flex gap-3 mt-4">
-                <button
-                  onClick={async () => {
-                    try {
-                      console.log(t('manual_test'));
-                      const result = await TauriAPI.getStatistics();
-                      console.log(t('manual_test_result'), result);
-                      unifiedAlert(t('api_call_success'));
-                    } catch (err: unknown) {
-                      console.error(t('manual_test_result'), err);
-                      unifiedAlert(`${t('api_call_failed')}: ${err}`);
-                    }
-                  }}
-                  className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-sm font-medium transition-colors"
-                >
+                <NotionButton variant="primary" size="sm" onClick={async () => { try { console.log(t('manual_test')); const result = await TauriAPI.getStatistics(); console.log(t('manual_test_result'), result); unifiedAlert(t('api_call_success')); } catch (err: unknown) { console.error(t('manual_test_result'), err); unifiedAlert(`${t('api_call_failed')}: ${err}`); } }} className="!px-4 !py-2 bg-blue-500 hover:bg-blue-600 text-white !rounded-lg text-sm font-medium">
                   {t('test_api')}
-                </button>
-                <button
-                  onClick={() => loadStatistics()}
-                  className="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-sm font-medium transition-colors"
-                >
+                </NotionButton>
+                <NotionButton variant="primary" size="sm" onClick={() => loadStatistics()} className="!px-4 !py-2 bg-emerald-500 hover:bg-emerald-600 text-white !rounded-lg text-sm font-medium">
                   {t('reload')}
-                </button>
+                </NotionButton>
               </div>
             </div>
           )}

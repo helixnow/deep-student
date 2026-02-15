@@ -161,13 +161,12 @@ const CardSelector: React.FC<CardSelectorProps> = ({
       {cards.map((card, index) => {
         const isSelected = card.id === selectedCardId;
         return (
-          <button
+          <NotionButton
             key={card.id}
+            variant="ghost" size="icon" iconOnly
             onClick={() => onSelect(card.id)}
             className={cn(
-              'flex items-center justify-center shrink-0',
-              'w-10 h-10 rounded-full text-sm font-semibold',
-              'transition-all duration-200',
+              '!w-10 !h-10 !rounded-full text-sm font-semibold shrink-0',
               'border-2',
               isSelected
                 ? 'bg-primary text-primary-foreground border-primary scale-110 shadow-lg'
@@ -175,7 +174,7 @@ const CardSelector: React.FC<CardSelectorProps> = ({
             )}
           >
             {index + 1}
-          </button>
+          </NotionButton>
         );
       })}
     </div>

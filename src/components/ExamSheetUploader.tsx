@@ -637,15 +637,9 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                           alt={fileInfo.file.name}
                           className="w-full h-full object-cover"
                         />
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleRemoveFile(index);
-                          }}
-                          className="absolute top-1 right-1 w-6 h-6 rounded-full bg-black/60 text-white opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
-                        >
+                        <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); handleRemoveFile(index); }} className="absolute top-1 right-1 !w-6 !h-6 !rounded-full bg-black/60 text-white opacity-0 group-hover:opacity-100" aria-label="remove">
                           <X className="w-3 h-3" />
-                        </button>
+                        </NotionButton>
                       </div>
                     ))}
                   </div>

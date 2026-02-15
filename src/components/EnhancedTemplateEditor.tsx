@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { NotionButton } from '@/components/ui/NotionButton';
 import { useTranslation } from 'react-i18next';
 import {
   FileText, Code, Database, Settings, Eye, EyeOff,
@@ -282,48 +283,30 @@ const EnhancedTemplateEditor: React.FC<EnhancedTemplateEditorProps> = ({
           </h3>
         </div>
         <nav className="editor-nav">
-          <button
-            className={`nav-item ${activeTab === 'basic' ? 'active' : ''}`}
-            onClick={() => setActiveTab('basic')}
-          >
+          <NotionButton variant="ghost" size="sm" className={`nav-item ${activeTab === 'basic' ? 'active' : ''}`} onClick={() => setActiveTab('basic')}>
             <FileText size={18} />
             {t('basic_info', '基本信息')}
-          </button>
-          <button
-            className={`nav-item ${activeTab === 'templates' ? 'active' : ''}`}
-            onClick={() => setActiveTab('templates')}
-          >
+          </NotionButton>
+          <NotionButton variant="ghost" size="sm" className={`nav-item ${activeTab === 'templates' ? 'active' : ''}`} onClick={() => setActiveTab('templates')}>
             <Code size={18} />
             {t('template_code', '模板代码')}
-          </button>
-          <button
-            className={`nav-item ${activeTab === 'styles' ? 'active' : ''}`}
-            onClick={() => setActiveTab('styles')}
-          >
+          </NotionButton>
+          <NotionButton variant="ghost" size="sm" className={`nav-item ${activeTab === 'styles' ? 'active' : ''}`} onClick={() => setActiveTab('styles')}>
             <Database size={18} />
             {t('styles_design', '样式设计')}
-          </button>
-          <button
-            className={`nav-item ${activeTab === 'data' ? 'active' : ''}`}
-            onClick={() => setActiveTab('data')}
-          >
+          </NotionButton>
+          <NotionButton variant="ghost" size="sm" className={`nav-item ${activeTab === 'data' ? 'active' : ''}`} onClick={() => setActiveTab('data')}>
             <Database size={18} />
             {t('preview_data')}
-          </button>
-          <button
-            className={`nav-item ${activeTab === 'rules' ? 'active' : ''}`}
-            onClick={() => setActiveTab('rules')}
-          >
+          </NotionButton>
+          <NotionButton variant="ghost" size="sm" className={`nav-item ${activeTab === 'rules' ? 'active' : ''}`} onClick={() => setActiveTab('rules')}>
             <Settings size={18} />
             {t('extraction_rules', '提取规则')}
-          </button>
-          <button
-            className={`nav-item ${activeTab === 'advanced' ? 'active' : ''}`}
-            onClick={() => setActiveTab('advanced')}
-          >
+          </NotionButton>
+          <NotionButton variant="ghost" size="sm" className={`nav-item ${activeTab === 'advanced' ? 'active' : ''}`} onClick={() => setActiveTab('advanced')}>
             <Settings size={18} />
             {t('advanced_settings', '高级设置')}
-          </button>
+          </NotionButton>
         </nav>
       </div>
 
@@ -341,18 +324,13 @@ const EnhancedTemplateEditor: React.FC<EnhancedTemplateEditorProps> = ({
             )}
           </h4>
           <div className="topbar-actions">
-            <button type="button" onClick={onCancel} className="btn btn-secondary">
+            <NotionButton variant="default" size="sm" onClick={onCancel} className="btn btn-secondary">
               {t('cancel_button')}
-            </button>
-            <button
-              type="button"
-              onClick={handleSubmit}
-              disabled={isSubmitting}
-              className="btn btn-primary"
-            >
+            </NotionButton>
+            <NotionButton variant="primary" size="sm" onClick={handleSubmit} disabled={isSubmitting} className="btn btn-primary">
               {isSubmitting && <div className="loading-spinner" />}
               {mode === 'create' ? t('submit_create') : t('submit_save')}
-            </button>
+            </NotionButton>
           </div>
         </div>
 
@@ -415,14 +393,9 @@ const EnhancedTemplateEditor: React.FC<EnhancedTemplateEditorProps> = ({
                     placeholder="1.0.0"
                   />
                   {mode === 'edit' && (
-                    <button
-                      type="button"
-                      onClick={incrementVersion}
-                      className="version-increment"
-                      title={t('increment_version', '增加版本号')}
-                    >
+                    <NotionButton variant="ghost" size="icon" iconOnly onClick={incrementVersion} className="version-increment" title={t('increment_version', '增加版本号')} aria-label="increment">
                       <Plus size={16} />
-                    </button>
+                    </NotionButton>
                   )}
                 </div>
               </div>
@@ -430,11 +403,7 @@ const EnhancedTemplateEditor: React.FC<EnhancedTemplateEditorProps> = ({
               <div className="form-group">
                 <label className="form-label">{t('active_status')}</label>
                 <div className="toggle-wrapper">
-                  <button
-                    type="button"
-                    onClick={() => setFormData({...formData, is_active: !formData.is_active})}
-                    className={`toggle-button ${formData.is_active ? 'active' : ''}`}
-                  >
+                  <NotionButton variant="ghost" size="sm" onClick={() => setFormData({...formData, is_active: !formData.is_active})} className={`toggle-button ${formData.is_active ? 'active' : ''}`}>
                     {formData.is_active ? (
                       <>
                         <Check size={16} />
@@ -446,7 +415,7 @@ const EnhancedTemplateEditor: React.FC<EnhancedTemplateEditorProps> = ({
                         <span>{t('inactive')}</span>
                       </>
                     )}
-                  </button>
+                  </NotionButton>
                 </div>
               </div>
 
@@ -515,14 +484,10 @@ const EnhancedTemplateEditor: React.FC<EnhancedTemplateEditorProps> = ({
               <div className="fields-manager">
                 <div className="section-header">
                   <h4>{t('field_management', '字段管理')}</h4>
-                  <button
-                    type="button"
-                    onClick={addField}
-                    className="btn-add-field"
-                  >
+                  <NotionButton variant="ghost" size="sm" onClick={addField} className="btn-add-field">
                     <Plus size={16} />
                     {t('add_field', '添加字段')}
-                  </button>
+                  </NotionButton>
                 </div>
                 <div className="fields-list">
                   {formData.fields.map((field, index) => (
@@ -533,14 +498,9 @@ const EnhancedTemplateEditor: React.FC<EnhancedTemplateEditorProps> = ({
                         onChange={(e) => updateFieldName(index, e.target.value)}
                         className="field-input"
                       />
-                      <button
-                        type="button"
-                        onClick={() => removeField(index)}
-                        className="btn-remove-field"
-                        disabled={formData.fields.length <= 1}
-                      >
+                      <NotionButton variant="ghost" size="icon" iconOnly onClick={() => removeField(index)} className="btn-remove-field" disabled={formData.fields.length <= 1} aria-label="remove">
                         <Trash2 size={16} />
-                      </button>
+                      </NotionButton>
                     </div>
                   ))}
                 </div>
@@ -590,20 +550,12 @@ const EnhancedTemplateEditor: React.FC<EnhancedTemplateEditorProps> = ({
                 <div className="preview-header">
                   <h4>{t('live_preview', '实时预览')}</h4>
                   <div className="preview-toggle">
-                    <button
-                      type="button"
-                      onClick={() => setPreviewMode('front')}
-                      className={previewMode === 'front' ? 'active' : ''}
-                    >
+                    <NotionButton variant="ghost" size="sm" onClick={() => setPreviewMode('front')} className={previewMode === 'front' ? 'active' : ''}>
                       {t('front_label', '正面')}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setPreviewMode('back')}
-                      className={previewMode === 'back' ? 'active' : ''}
-                    >
+                    </NotionButton>
+                    <NotionButton variant="ghost" size="sm" onClick={() => setPreviewMode('back')} className={previewMode === 'back' ? 'active' : ''}>
                       {t('back_label', '背面')}
-                    </button>
+                    </NotionButton>
                   </div>
                 </div>
                 <div className="preview-content">
@@ -656,21 +608,13 @@ const EnhancedTemplateEditor: React.FC<EnhancedTemplateEditorProps> = ({
               <div className="section-header">
                 <label className="form-label">{t('preview_data_label')}</label>
                 <div className="header-actions">
-                  <button
-                    type="button"
-                    onClick={() => setShowPreviewDataHelp(!showPreviewDataHelp)}
-                    className="btn-help"
-                  >
+                  <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setShowPreviewDataHelp(!showPreviewDataHelp)} className="btn-help" aria-label="help">
                     <Info size={16} />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={copyJsonTemplate}
-                    className="btn-copy"
-                  >
+                  </NotionButton>
+                  <NotionButton variant="ghost" size="sm" onClick={copyJsonTemplate} className="btn-copy">
                     <Copy size={16} />
                     {t('generate_template', '生成模板')}
-                  </button>
+                  </NotionButton>
                 </div>
               </div>
 
@@ -822,14 +766,10 @@ const EnhancedTemplateEditor: React.FC<EnhancedTemplateEditorProps> = ({
               <div className="form-group">
                 <div className="section-header">
                   <label className="form-label">{t('core_requirements')}</label>
-                  <button
-                    type="button"
-                    onClick={() => setShowPromptPreview(!showPromptPreview)}
-                    className="btn-preview"
-                  >
+                  <NotionButton variant="ghost" size="sm" onClick={() => setShowPromptPreview(!showPromptPreview)} className="btn-preview">
                     {showPromptPreview ? <EyeOff size={16} /> : <Eye size={16} />}
                     {showPromptPreview ? t('hide') : t('preview')}{t('full_prompt')}
-                  </button>
+                  </NotionButton>
                 </div>
                 <textarea
                   value={formData.generation_prompt}
@@ -877,20 +817,12 @@ const EnhancedTemplateEditor: React.FC<EnhancedTemplateEditorProps> = ({
 
           {/* 操作按钮 */}
           <div className="editor-actions">
-            <button 
-              type="submit" 
-              disabled={isSubmitting}
-              className="btn-primary"
-            >
+            <NotionButton variant="primary" size="sm" disabled={isSubmitting} className="btn-primary">
               {isSubmitting ? t('submit_creating') : (mode === 'create' ? t('submit_create') : t('submit_save'))}
-            </button>
-            <button 
-              type="button" 
-              onClick={onCancel}
-              className="btn-secondary"
-            >
+            </NotionButton>
+            <NotionButton variant="default" size="sm" onClick={onCancel} className="btn-secondary">
               {t('cancel_button')}
-            </button>
+            </NotionButton>
           </div>
         </div>
       </div>

@@ -792,15 +792,11 @@ const SessionRow: React.FC<{
                 ))}
               </CustomScrollArea>
               {hasMoreCards && (
-                <button
-                  type="button"
-                  onClick={() => setShowAllCards(v => !v)}
-                  className="w-full py-1.5 text-[12px] text-muted-foreground/50 hover:text-muted-foreground transition-colors"
-                >
+                <NotionButton variant="ghost" size="sm" onClick={() => setShowAllCards(v => !v)} className="w-full !py-1.5 text-[12px] text-muted-foreground/50 hover:text-muted-foreground">
                   {showAllCards
                     ? t('taskDashboard.showLessCards')
                     : t('taskDashboard.showMoreCards', { remaining: normalCards.length - CARDS_PAGE_SIZE })}
-                </button>
+                </NotionButton>
               )}
             </div>
           ) : session.totalCards === 0 ? (
@@ -1207,12 +1203,12 @@ export const TaskDashboardPage: React.FC<TaskDashboardPageProps> = ({
           <div className="flex items-center gap-3 mb-2 flex-wrap">
             <div className="flex items-center gap-0.5 flex-shrink-0">
               {(['all', 'active', 'attention', 'completed'] as FilterTab[]).map(tab => (
-                <button
+                <NotionButton
                   key={tab}
-                  type="button"
+                  variant="ghost" size="sm"
                   onClick={() => setFilter(tab)}
                   className={`
-                    px-2.5 py-1 text-[12px] rounded-sm transition-colors duration-100 whitespace-nowrap
+                    !px-2.5 !py-1 !h-auto text-[12px] !rounded-sm whitespace-nowrap
                     ${filter === tab
                       ? 'text-foreground font-medium bg-muted/60'
                       : 'text-muted-foreground/60 hover:text-muted-foreground hover:bg-muted/30'}
@@ -1230,7 +1226,7 @@ export const TaskDashboardPage: React.FC<TaskDashboardPageProps> = ({
                       {tabCounts[tab]}
                     </span>
                   )}
-                </button>
+                </NotionButton>
               ))}
             </div>
 
@@ -1250,13 +1246,9 @@ export const TaskDashboardPage: React.FC<TaskDashboardPageProps> = ({
                   transition-all duration-150"
               />
               {search && (
-                <button
-                  type="button"
-                  onClick={() => setSearch('')}
-                  className="absolute right-1.5 top-1/2 -translate-y-1/2 text-muted-foreground/40 hover:text-muted-foreground"
-                >
+                <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setSearch('')} className="absolute right-1.5 top-1/2 -translate-y-1/2 !h-auto !w-auto !p-0 text-muted-foreground/40 hover:text-muted-foreground" aria-label="clear">
                   <X className="h-3 w-3" />
-                </button>
+                </NotionButton>
               )}
             </div>
           </div>

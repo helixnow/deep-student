@@ -1,4 +1,5 @@
 import React, { useCallback } from 'react';
+import { NotionButton } from '@/components/ui/NotionButton';
 import { format, formatDistanceToNow } from 'date-fns';
 import { zhCN } from 'date-fns/locale';
 import { Star, MoreHorizontal } from 'lucide-react';
@@ -185,15 +186,9 @@ export const FinderFileItem = React.memo(function FinderFileItem({
               {item.type === 'folder' ? '' : formatSize(item.size)}
             </span>
             {/* 更多操作按钮 - 悬停时显示 */}
-            <button 
-              className="p-1 rounded-md hover:bg-muted/60 transition-colors"
-              onClick={(e) => {
-                e.stopPropagation();
-                onContextMenu(e);
-              }}
-            >
+            <NotionButton variant="ghost" size="icon" iconOnly className="!h-6 !w-6 !p-1 hover:bg-muted/60" onClick={(e) => { e.stopPropagation(); onContextMenu(e); }} aria-label="more">
               <MoreHorizontal className="h-4 w-4 text-muted-foreground/60" />
-            </button>
+            </NotionButton>
           </div>
         )}
       </div>

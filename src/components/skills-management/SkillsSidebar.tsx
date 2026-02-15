@@ -160,12 +160,12 @@ const SidebarContentComponent: React.FC<SidebarContentProps> = React.memo(({
             }
 
             return (
-              <button
+              <NotionButton
                 key={tab.id}
-                type="button"
+                variant="ghost" size="sm"
                 onClick={() => setLocationFilter(tab.id)}
                 className={cn(
-                  'flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-medium transition-all duration-200 whitespace-nowrap',
+                  '!px-2.5 !py-1 !h-auto text-[11px] font-medium whitespace-nowrap',
                   isActiveTab
                     ? 'bg-secondary text-secondary-foreground shadow-sm'
                     : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
@@ -179,7 +179,7 @@ const SidebarContentComponent: React.FC<SidebarContentProps> = React.memo(({
                 )}>
                   {count}
                 </span>
-              </button>
+              </NotionButton>
             );
           })}
         </div>

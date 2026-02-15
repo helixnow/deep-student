@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useRef, useMemo, useEffect } from 'react';
+import { NotionButton } from '@/components/ui/NotionButton';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { useTranslation } from 'react-i18next';
 import './TextbookPdfViewer.css';
@@ -284,21 +285,10 @@ export const TextbookPdfViewer: React.FC<TextbookPdfViewerProps> = ({
           <BookOpen size={48} className="textbook-empty-icon" />
           <p className="textbook-empty-title">{t('textbook:no_textbook_loaded')}</p>
           <p className="textbook-empty-hint">{t('textbook:select_textbook_hint')}</p>
-          <button
-            className="textbook-library-btn"
-            onClick={() => {
-              try {
-                window.dispatchEvent(new CustomEvent('NAVIGATE_TO_VIEW', { 
-                  detail: { view: 'learning-hub' } 
-                }));
-              } catch (err: unknown) {
-                console.error('导航到教材库失败:', getErrorMessage(err));
-              }
-            }}
-          >
+          <NotionButton variant="primary" size="sm" className="textbook-library-btn" onClick={() => { try { window.dispatchEvent(new CustomEvent('NAVIGATE_TO_VIEW', { detail: { view: 'learning-hub' } })); } catch (err: unknown) { console.error('导航到教材库失败:', getErrorMessage(err)); } }}>
             <BookOpen size={18} />
             <span>{t('textbook:go_to_library')}</span>
-          </button>
+          </NotionButton>
         </div>
       )}
 

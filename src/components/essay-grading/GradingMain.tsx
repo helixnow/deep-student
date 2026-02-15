@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
+import { NotionButton } from '@/components/ui/NotionButton';
 import { useTranslation } from 'react-i18next';
 import { InputPanel } from './InputPanel';
 import { ResultPanel } from './ResultPanel';
@@ -371,13 +372,10 @@ export const GradingMain: React.FC<GradingMainProps> = ({
                         <h3 className="text-xs font-medium text-muted-foreground/70 uppercase tracking-wide">
                           {t('essay_grading:mode.current')}
                         </h3>
-                        <button
-                          onClick={() => setShowModeManager(true)}
-                          className="h-7 px-2 flex items-center gap-1 text-xs text-muted-foreground/70 hover:text-foreground hover:bg-muted/50 rounded transition-colors"
-                        >
+                        <NotionButton variant="ghost" size="sm" onClick={() => setShowModeManager(true)} className="h-7 px-2 text-xs text-muted-foreground/70 hover:text-foreground hover:bg-muted/50">
                           <Settings2 className="w-3 h-3" />
                           {t('essay_grading:mode.manage')}
-                        </button>
+                        </NotionButton>
                       </div>
                       <div className="space-y-3">
                         <div>
@@ -438,23 +436,14 @@ export const GradingMain: React.FC<GradingMainProps> = ({
                       className="flex-1 min-h-[320px] resize-none w-full text-sm border-border/40 focus:border-border/60"
                     />
                     <div className="flex gap-2 justify-end">
-                      <button
-                        onClick={onRestoreDefaultPrompt}
-                        className="px-3 py-1.5 text-sm text-muted-foreground/70 hover:text-foreground hover:bg-muted/50 rounded transition-colors flex items-center gap-1.5"
-                      >
+                      <NotionButton variant="ghost" size="sm" onClick={onRestoreDefaultPrompt} className="text-sm text-muted-foreground/70 hover:text-foreground hover:bg-muted/50">
                         <RotateCcw className="w-3.5 h-3.5" />
                         {t('essay_grading:prompt_editor.restore_default')}
-                      </button>
-                      <button
-                        onClick={() => {
-                          onSavePrompt();
-                          setShowPromptEditor(false);
-                        }}
-                        className="px-3 py-1.5 text-sm bg-primary/10 text-primary hover:bg-primary/20 rounded transition-colors flex items-center gap-1.5"
-                      >
+                      </NotionButton>
+                      <NotionButton variant="primary" size="sm" onClick={() => { onSavePrompt(); setShowPromptEditor(false); }} className="text-sm bg-primary/10 text-primary hover:bg-primary/20">
                         <Save className="w-3.5 h-3.5" />
                         {t('essay_grading:prompt_editor.save')}
-                      </button>
+                      </NotionButton>
                     </div>
                   </div>
                 </CustomScrollArea>

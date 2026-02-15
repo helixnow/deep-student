@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { NotionButton } from '@/components/ui/NotionButton';
 import { AnkiCard } from '../../types';
 import { useTranslation } from 'react-i18next';
 import { X, ChevronLeft, ChevronRight } from 'lucide-react';
@@ -165,9 +166,9 @@ const BatchEditDialog: React.FC<BatchEditDialogProps> = ({ cards, onSave, onClos
       <div className="batch-edit-dialog" onClick={(e) => e.stopPropagation()}>
         <div className="dialog-header">
           <h3>{t('batch_edit_title', { count: cards.length })}</h3>
-          <button className="close-btn" onClick={onClose}>
+          <NotionButton variant="ghost" size="icon" iconOnly className="close-btn" onClick={onClose} aria-label="close">
             <X size={20} />
-          </button>
+          </NotionButton>
         </div>
         
         <div className="dialog-body">
@@ -335,12 +336,9 @@ const BatchEditDialog: React.FC<BatchEditDialogProps> = ({ cards, onSave, onClos
                       {changes.tags!.value.map((tag, index) => (
                         <span key={index} className="tag">
                           {tag}
-                          <button
-                            onClick={() => handleRemoveTag(index)}
-                            className="tag-remove"
-                          >
+                          <NotionButton variant="ghost" size="icon" iconOnly onClick={() => handleRemoveTag(index)} className="tag-remove" aria-label="remove">
                             <X size={14} />
-                          </button>
+                          </NotionButton>
                         </span>
                       ))}
                     </div>
@@ -357,21 +355,13 @@ const BatchEditDialog: React.FC<BatchEditDialogProps> = ({ cards, onSave, onClos
                 <h4>{t('preview_changes')}</h4>
                 {cards.length > 1 && (
                   <div className="preview-nav">
-                    <button
-                      onClick={() => setPreviewIndex(Math.max(0, previewIndex - 1))}
-                      disabled={previewIndex === 0}
-                      className="nav-btn"
-                    >
+                    <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setPreviewIndex(Math.max(0, previewIndex - 1))} disabled={previewIndex === 0} className="nav-btn" aria-label="prev">
                       <ChevronLeft size={16} />
-                    </button>
+                    </NotionButton>
                     <span className="nav-info">{previewIndex + 1} / {cards.length}</span>
-                    <button
-                      onClick={() => setPreviewIndex(Math.min(cards.length - 1, previewIndex + 1))}
-                      disabled={previewIndex === cards.length - 1}
-                      className="nav-btn"
-                    >
+                    <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setPreviewIndex(Math.min(cards.length - 1, previewIndex + 1))} disabled={previewIndex === cards.length - 1} className="nav-btn" aria-label="next">
                       <ChevronRight size={16} />
-                    </button>
+                    </NotionButton>
                   </div>
                 )}
               </div>
@@ -434,16 +424,12 @@ const BatchEditDialog: React.FC<BatchEditDialogProps> = ({ cards, onSave, onClos
         </div>
         
         <div className="dialog-footer">
-          <button className="btn-secondary" onClick={onClose}>
+          <NotionButton variant="default" size="sm" className="btn-secondary" onClick={onClose}>
             {t('cancel')}
-          </button>
-          <button 
-            className="btn-primary"
-            onClick={() => onSave(changes)}
-            disabled={!hasChanges}
-          >
+          </NotionButton>
+          <NotionButton variant="primary" size="sm" className="btn-primary" onClick={() => onSave(changes)} disabled={!hasChanges}>
             {t('apply_to_cards', { count: cards.length })}
-          </button>
+          </NotionButton>
         </div>
       </div>
     </div>

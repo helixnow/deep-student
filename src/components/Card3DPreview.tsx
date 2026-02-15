@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo, CSSProperties } from 'react';
+import { NotionButton } from '@/components/ui/NotionButton';
 import { useTranslation } from 'react-i18next';
 import { AnkiCard, AnkiCardTemplate, CustomAnkiTemplate } from '../types';
 import { TemplateRenderService } from '../services/templateRenderService';
@@ -466,20 +467,12 @@ export const Card3DPreview: React.FC<Card3DPreviewProps> = ({ cards, template, t
       onTouchEnd={handleTouchEnd}
     >
       <div className="card-3d-controls">
-        <button
-          className="control-btn"
-          onClick={() => setIsAutoPlay(!isAutoPlay)}
-          title={isAutoPlay ? "Pause" : "Play"}
-        >
+        <NotionButton variant="ghost" size="sm" className="control-btn" onClick={() => setIsAutoPlay(!isAutoPlay)} title={isAutoPlay ? "Pause" : "Play"}>
           {isAutoPlay ? '⏸' : '▶'}
-        </button>
-        <button
-          className={`control-btn${flippedCards.has(currentIndex) ? ' control-btn-active' : ''}`}
-          onClick={handleFlipCurrent}
-          title={t('card3DPreview.flipCard')}
-        >
+        </NotionButton>
+        <NotionButton variant="ghost" size="sm" className={`control-btn${flippedCards.has(currentIndex) ? ' control-btn-active' : ''}`} onClick={handleFlipCurrent} title={t('card3DPreview.flipCard')}>
           🔄
-        </button>
+        </NotionButton>
         <div className="card-counter">
           {currentIndex + 1} / {cards.length}
         </div>
@@ -529,30 +522,23 @@ export const Card3DPreview: React.FC<Card3DPreviewProps> = ({ cards, template, t
       </div>
 
       <div className="card-3d-navigation">
-        <button 
-          className="nav-btn nav-prev"
-          onClick={handlePrevious}
-          disabled={cards.length <= 1}
-        >
+        <NotionButton variant="ghost" size="sm" className="nav-btn nav-prev" onClick={handlePrevious} disabled={cards.length <= 1}>
           ‹
-        </button>
+        </NotionButton>
         <div className="nav-dots">
           {cards.map((_, index) => (
-            <button
+            <NotionButton
               key={index}
+              variant="ghost" size="icon" iconOnly
               className={`nav-dot ${index === currentIndex ? 'active' : ''}`}
               onClick={() => setCurrentIndex(index)}
               aria-label={`Go to card ${index + 1}`}
             />
           ))}
         </div>
-        <button 
-          className="nav-btn nav-next"
-          onClick={handleNext}
-          disabled={cards.length <= 1}
-        >
+        <NotionButton variant="ghost" size="sm" className="nav-btn nav-next" onClick={handleNext} disabled={cards.length <= 1}>
           ›
-        </button>
+        </NotionButton>
       </div>
 
       <div className="card-3d-instructions">

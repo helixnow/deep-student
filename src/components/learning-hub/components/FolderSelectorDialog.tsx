@@ -70,10 +70,10 @@ const FolderTreeItem: React.FC<FolderTreeItemProps> = ({
 
   return (
     <>
-      <button
-        type="button"
+      <NotionButton
+        variant="ghost" size="sm"
         className={cn(
-          'flex items-center w-full px-2 py-1.5 text-sm text-left rounded-md transition-colors',
+          'w-full !justify-start !px-2 !py-1.5',
           isSelected
             ? 'bg-primary text-primary-foreground'
             : 'hover:bg-muted text-foreground',
@@ -83,20 +83,21 @@ const FolderTreeItem: React.FC<FolderTreeItemProps> = ({
       >
         {/* 展开/折叠按钮 */}
         {hasChildren ? (
-          <button
-            type="button"
-            className="shrink-0 p-0.5 mr-1 rounded hover:bg-muted/50"
+          <NotionButton
+            variant="ghost" size="icon" iconOnly
+            className="shrink-0 !h-5 !w-5 !p-0.5 mr-1"
             onClick={(e) => {
               e.stopPropagation();
               onToggleExpand(node.folder.id);
             }}
+            aria-label="toggle"
           >
             {isExpanded ? (
               <ChevronDown className="w-3.5 h-3.5" />
             ) : (
               <ChevronRight className="w-3.5 h-3.5" />
             )}
-          </button>
+          </NotionButton>
         ) : (
           <span className="w-5 shrink-0" />
         )}
@@ -110,7 +111,7 @@ const FolderTreeItem: React.FC<FolderTreeItemProps> = ({
 
         {/* 标题 */}
         <span className="truncate">{node.folder.title}</span>
-      </button>
+      </NotionButton>
 
       {/* 子节点 */}
       {hasChildren && isExpanded && (
@@ -205,20 +206,11 @@ export function FolderSelectorDialog({
               ) : (
                 <>
                   {/* 根目录选项 */}
-                  <button
-                    type="button"
-                    className={cn(
-                      'flex items-center w-full px-2 py-1.5 text-sm text-left rounded-md transition-colors mb-1',
-                      selectedId === null
-                        ? 'bg-primary text-primary-foreground'
-                        : 'hover:bg-muted text-foreground',
-                    )}
-                    onClick={() => setSelectedId(null)}
-                  >
+                  <NotionButton variant="ghost" size="sm" className={cn('w-full !justify-start !px-2 !py-1.5 mb-1', selectedId === null ? 'bg-primary text-primary-foreground' : 'hover:bg-muted text-foreground')} onClick={() => setSelectedId(null)}>
                     <span className="w-5 shrink-0" />
                     <Folder className="w-4 h-4 mr-2 shrink-0 text-muted-foreground" />
                     <span className="truncate">{t('folder.root')}</span>
-                  </button>
+                  </NotionButton>
 
                   {/* 文件夹树 */}
                   {userFolders.map((node) => (

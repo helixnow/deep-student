@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { NotionButton } from '@/components/ui/NotionButton';
 import { useTranslation } from 'react-i18next';
 import { X, CreditCard, Eye, Edit2, Save } from 'lucide-react';
 import { AnkiCard, CustomAnkiTemplate } from '../types';
@@ -126,28 +127,22 @@ const AnkiCardPreviewModal: React.FC<AnkiCardPreviewModalProps> = ({
             <h3 className={cn(isSmallScreen && "text-base")}>{t('anki:anki_card_preview')}</h3>
           </div>
           <div className="header-right">
-            <button className="close-button" onClick={onClose}>
+            <NotionButton variant="ghost" size="icon" iconOnly className="close-button" onClick={onClose} aria-label="close">
               <X size={isSmallScreen ? 18 : 20} />
-            </button>
+            </NotionButton>
           </div>
         </div>
 
         {/* 侧边切换 */}
         <div className={cn("preview-side-toggle", isSmallScreen && "px-4 py-2")}>
-          <button
-            className={cn("side-button", showFront && "active", isSmallScreen && "text-sm")}
-            onClick={() => setShowFront(true)}
-          >
+          <NotionButton variant="ghost" size="sm" className={cn("side-button", showFront && "active", isSmallScreen && "text-sm")} onClick={() => setShowFront(true)}>
             <Eye size={14} />
             {t('anki:card_front')}
-          </button>
-          <button
-            className={cn("side-button", !showFront && "active", isSmallScreen && "text-sm")}
-            onClick={() => setShowFront(false)}
-          >
+          </NotionButton>
+          <NotionButton variant="ghost" size="sm" className={cn("side-button", !showFront && "active", isSmallScreen && "text-sm")} onClick={() => setShowFront(false)}>
             <Eye size={14} />
             {t('anki:card_back')}
-          </button>
+          </NotionButton>
         </div>
 
         {/* 卡片内容 */}

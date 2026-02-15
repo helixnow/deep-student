@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { NotionButton } from '@/components/ui/NotionButton';
 import { createPortal } from 'react-dom';
 import { ChevronsLeft, ChevronsRight, Pin, PinOff, Beaker, Minus, Square, X, Command, ChevronRight, Home } from 'lucide-react';
 import { useFinderStore } from '@/components/learning-hub/stores/finderStore';
@@ -35,16 +36,12 @@ function CommandPaletteButton() {
   
   return (
     <CommonTooltip content={`${t('command_palette:title', '命令面板')} (${isMac ? '⌘' : 'Ctrl'}+K)`} position="bottom">
-      <button
-        onClick={open}
-        className="inline-flex items-center justify-center h-8 px-2 rounded-md hover:bg-[hsl(var(--accent))] text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] transition-colors gap-1.5"
-        aria-label={t('command_palette:title', '命令面板')}
-      >
+      <NotionButton variant="ghost" size="sm" onClick={open} className="h-8 px-2 hover:bg-[hsl(var(--accent))] text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]" aria-label={t('command_palette:title', '命令面板')}>
         <Command className="h-4 w-4" />
         <span className="text-xs font-medium hidden sm:inline">
           {isMac ? '⌘K' : 'Ctrl+K'}
         </span>
-      </button>
+      </NotionButton>
     </CommonTooltip>
   );
 }
@@ -95,13 +92,10 @@ function LearningHubBreadcrumb() {
   if (currentTitle && breadcrumbs.length === 0) {
     return (
       <div className="flex items-center gap-1 text-sm" data-no-drag>
-        <button
-          onClick={() => quickAccessNavigate('allFiles')}
-          className="flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors"
-        >
+        <NotionButton variant="ghost" size="sm" onClick={() => quickAccessNavigate('allFiles')} className="!h-auto !p-0 text-muted-foreground hover:text-foreground">
           <Home className="h-4 w-4" />
           <span>{rootTitle}</span>
-        </button>
+        </NotionButton>
         <ChevronRight className="h-4 w-4 text-muted-foreground" />
         <span className="font-medium text-foreground">{currentTitle}</span>
       </div>
@@ -111,13 +105,10 @@ function LearningHubBreadcrumb() {
   // 文件夹导航模式：学习资源 > 文件夹1 > 文件夹2
   return (
     <div className="flex items-center gap-1 text-sm overflow-hidden" data-no-drag>
-      <button
-        onClick={() => quickAccessNavigate('allFiles')}
-        className="flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors shrink-0"
-      >
+      <NotionButton variant="ghost" size="sm" onClick={() => quickAccessNavigate('allFiles')} className="!h-auto !p-0 text-muted-foreground hover:text-foreground shrink-0">
         <Home className="h-4 w-4" />
         <span className="hidden sm:inline">{rootTitle}</span>
-      </button>
+      </NotionButton>
       {breadcrumbs.map((crumb, index) => {
         const isLast = index === breadcrumbs.length - 1;
         return (
@@ -126,12 +117,9 @@ function LearningHubBreadcrumb() {
             {isLast ? (
               <span className="font-medium text-foreground truncate max-w-[150px]">{crumb.name}</span>
             ) : (
-              <button
-                onClick={() => jumpToBreadcrumb(index)}
-                className="text-muted-foreground hover:text-foreground transition-colors truncate max-w-[100px]"
-              >
+              <NotionButton variant="ghost" size="sm" onClick={() => jumpToBreadcrumb(index)} className="!h-auto !p-0 text-muted-foreground hover:text-foreground truncate max-w-[100px]">
                 {crumb.name}
-              </button>
+              </NotionButton>
             )}
           </React.Fragment>
         );
@@ -834,19 +822,13 @@ export default function Topbar({ currentView, onNavigate, sidebarCollapsed, onTo
       
       {/* 左侧：侧边栏折叠按钮 */}
       <div className="flex-shrink-0 flex items-center gap-2 pl-3" data-no-drag>
-        <button
-          onClick={onToggleSidebar}
-          className="inline-flex items-center justify-center rounded-md hover:bg-[hsl(var(--accent))] text-[hsl(var(--foreground))] transition-colors"
-          style={{ width: 32, height: 32, minWidth: 32, minHeight: 32, flexShrink: 0 }}
-          title={sidebarCollapsed ? t('sidebar:expand', '展开侧边栏') : t('sidebar:collapse', '收起侧边栏')}
-          aria-label={sidebarCollapsed ? t('sidebar:expand', '展开侧边栏') : t('sidebar:collapse', '收起侧边栏')}
-        >
+        <NotionButton variant="ghost" size="icon" iconOnly onClick={onToggleSidebar} className="hover:bg-[hsl(var(--accent))] text-[hsl(var(--foreground))]" style={{ width: 32, height: 32, minWidth: 32, minHeight: 32, flexShrink: 0 }} title={sidebarCollapsed ? t('sidebar:expand', '展开侧边栏') : t('sidebar:collapse', '收起侧边栏')} aria-label={sidebarCollapsed ? t('sidebar:expand', '展开侧边栏') : t('sidebar:collapse', '收起侧边栏')}>
           {sidebarCollapsed ? (
             <ChevronsRight style={{ width: 16, height: 16, minWidth: 16, minHeight: 16 }} />
           ) : (
             <ChevronsLeft style={{ width: 16, height: 16, minWidth: 16, minHeight: 16 }} />
           )}
-        </button>
+        </NotionButton>
       </div>
       
       {/* 中间：应用标题/面包屑导航 */}
@@ -867,30 +849,15 @@ export default function Topbar({ currentView, onNavigate, sidebarCollapsed, onTo
         
         {platform === 'windows' && (
           <div className="flex items-center ml-2">
-            <button
-              onClick={handleMinimize}
-              className="inline-flex items-center justify-center h-8 w-10 hover:bg-[hsl(var(--accent))] text-[hsl(var(--foreground))] transition-colors"
-              title={t('common:topbar.minimize')}
-              aria-label={t('common:topbar.minimize')}
-            >
+            <NotionButton variant="ghost" size="icon" iconOnly onClick={handleMinimize} className="!h-8 !w-10 !rounded-none hover:bg-[hsl(var(--accent))] text-[hsl(var(--foreground))]" title={t('common:topbar.minimize')} aria-label={t('common:topbar.minimize')}>
               <Minus className="h-3.5 w-3.5" />
-            </button>
-            <button
-              onClick={handleMaximize}
-              className="inline-flex items-center justify-center h-8 w-10 hover:bg-[hsl(var(--accent))] text-[hsl(var(--foreground))] transition-colors"
-              title={t('common:topbar.maximize_restore')}
-              aria-label={t('common:topbar.maximize_restore')}
-            >
+            </NotionButton>
+            <NotionButton variant="ghost" size="icon" iconOnly onClick={handleMaximize} className="!h-8 !w-10 !rounded-none hover:bg-[hsl(var(--accent))] text-[hsl(var(--foreground))]" title={t('common:topbar.maximize_restore')} aria-label={t('common:topbar.maximize_restore')}>
               <Square className="h-3.5 w-3.5" />
-            </button>
-            <button
-              onClick={handleClose}
-              className="inline-flex items-center justify-center h-8 w-10 hover:bg-red-500 hover:text-white text-[hsl(var(--foreground))] transition-colors"
-              title={t('common:topbar.close')}
-              aria-label={t('common:topbar.close')}
-            >
+            </NotionButton>
+            <NotionButton variant="ghost" size="icon" iconOnly onClick={handleClose} className="!h-8 !w-10 !rounded-none hover:bg-red-500 hover:text-white text-[hsl(var(--foreground))]" title={t('common:topbar.close')} aria-label={t('common:topbar.close')}>
               <X className="h-3.5 w-3.5" />
-            </button>
+            </NotionButton>
           </div>
         )}
       </div>

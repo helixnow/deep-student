@@ -4,6 +4,7 @@
  */
 
 import React, { useMemo, useCallback } from 'react';
+import { NotionButton } from '@/components/ui/NotionButton';
 import { useTranslation } from 'react-i18next';
 import { Check, ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -189,14 +190,13 @@ export function AppSelect({
   return (
     <AppMenu onOpenChange={onOpenChange}>
       <AppMenuTrigger asChild>
-        <button
-          type="button"
+        <NotionButton
+          variant="ghost"
           disabled={disabled}
           aria-haspopup="listbox"
           aria-label={t('app_menu.select_app')}
           className={cn(
-            'inline-flex items-center justify-between gap-2 rounded-md font-medium transition-colors',
-            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+            '!inline-flex !justify-between !gap-2 !rounded-md font-medium',
             'disabled:pointer-events-none disabled:opacity-50',
             sizeClasses[size],
             variantClasses[variant],
@@ -214,7 +214,7 @@ export function AppSelect({
             </span>
           </span>
           <ChevronDown className="h-4 w-4 shrink-0 opacity-50" />
-        </button>
+        </NotionButton>
       </AppMenuTrigger>
 
       <AppMenuContent align={align} width={width} maxHeight={360}>

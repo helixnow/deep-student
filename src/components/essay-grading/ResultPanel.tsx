@@ -1,4 +1,5 @@
 import React from 'react';
+import { NotionButton } from '@/components/ui/NotionButton';
 import { useTranslation } from 'react-i18next';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
 import {
@@ -71,20 +72,14 @@ export const ResultPanel = React.forwardRef<HTMLDivElement, ResultPanelProps>(({
           {gradingResult && (
             <>
               <CommonTooltip content={t('essay_grading:result_section.copy')}>
-                <button
-                  onClick={onCopyResult}
-                  className="h-7 w-7 flex items-center justify-center rounded text-muted-foreground/60 hover:text-foreground hover:bg-muted/50 transition-colors"
-                >
+                <NotionButton variant="ghost" size="icon" iconOnly onClick={onCopyResult} className="!h-7 !w-7 text-muted-foreground/60 hover:text-foreground hover:bg-muted/50" aria-label="copy">
                   <Copy className="w-3.5 h-3.5" />
-                </button>
+                </NotionButton>
               </CommonTooltip>
               <CommonTooltip content={t('essay_grading:result_section.export')}>
-                <button
-                  onClick={onExportResult}
-                  className="h-7 w-7 flex items-center justify-center rounded text-muted-foreground/60 hover:text-foreground hover:bg-muted/50 transition-colors"
-                >
+                <NotionButton variant="ghost" size="icon" iconOnly onClick={onExportResult} className="!h-7 !w-7 text-muted-foreground/60 hover:text-foreground hover:bg-muted/50" aria-label="export">
                   <Download className="w-3.5 h-3.5" />
-                </button>
+                </NotionButton>
               </CommonTooltip>
             </>
           )}
@@ -121,13 +116,10 @@ export const ResultPanel = React.forwardRef<HTMLDivElement, ResultPanelProps>(({
                   {error}
                 </div>
                 {canRetry && onRetry && (
-                  <button
-                    onClick={onRetry}
-                    className="mt-3 px-3 py-1.5 text-xs text-foreground/80 hover:text-foreground border border-border/50 hover:bg-muted/50 rounded transition-colors flex items-center gap-1.5"
-                  >
+                  <NotionButton variant="default" size="sm" onClick={onRetry} className="mt-3 text-xs text-foreground/80 hover:text-foreground border border-border/50 hover:bg-muted/50">
                     <RefreshCw className="w-3 h-3" />
                     {t('essay_grading:actions.retry')}
-                  </button>
+                  </NotionButton>
                 )}
               </div>
             </div>

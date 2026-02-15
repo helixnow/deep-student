@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { NotionButton } from '@/components/ui/NotionButton';
 import { useTranslation } from 'react-i18next';
 import './ModernSelect.css';
 
@@ -41,15 +42,15 @@ const ModernSelect: React.FC<ModernSelectProps> = ({
       className={`modern-select ${fullWidth ? 'full-width' : ''} ${disabled ? 'disabled' : ''}`}
       ref={containerRef}
     >
-      <button
-        type="button"
+      <NotionButton
+        variant="ghost"
         className="select-trigger"
         onClick={() => !disabled && setOpen((prev) => !prev)}
         disabled={disabled}
       >
         <span className="selected-text">{value || displayPlaceholder}</span>
         <span className="arrow">▾</span>
-      </button>
+      </NotionButton>
       {open && (
         <ul className="options-list">
           {options.map((opt) => (

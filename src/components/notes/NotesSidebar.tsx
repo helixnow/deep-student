@@ -699,8 +699,9 @@ export const NotesSidebar: React.FC<NotesSidebarProps> = ({ isCollapsed, onToggl
                                 return <div key={item.id} className="app-menu-separator" />;
                             }
                             return (
-                                <button
+                                <NotionButton
                                     key={item.id}
+                                    variant="ghost" size="sm"
                                     className="app-menu-item"
                                     onClick={async () => {
                                         if (item.action) await item.action();
@@ -710,7 +711,7 @@ export const NotesSidebar: React.FC<NotesSidebarProps> = ({ isCollapsed, onToggl
                                     <span className="app-menu-item-content">
                                         {t(item.label, item.label)}
                                     </span>
-                                </button>
+                                </NotionButton>
                             );
                         })}
                         
@@ -719,13 +720,7 @@ export const NotesSidebar: React.FC<NotesSidebarProps> = ({ isCollapsed, onToggl
                             const note = notes.find(n => n.id === contextMenu.id);
                             if (!note) return null;
                             return (
-                                <button
-                                    className="app-menu-item"
-                                    onClick={() => {
-                                        toggleFavorite(contextMenu.id);
-                                        setContextMenu(null);
-                                    }}
-                                >
+                                <NotionButton variant="ghost" size="sm" className="app-menu-item" onClick={() => { toggleFavorite(contextMenu.id); setContextMenu(null); }}>
                                     <span className="app-menu-item-icon">
                                         <Star className={cn("h-4 w-4", note.is_favorite && "fill-warning text-warning")} />
                                     </span>
@@ -735,75 +730,51 @@ export const NotesSidebar: React.FC<NotesSidebarProps> = ({ isCollapsed, onToggl
                                             : t('notes:favorites.context_mark')
                                         }
                                     </span>
-                                </button>
+                                </NotionButton>
                             );
                         })()}
                         {treeData[contextMenu.id]?.canRename !== false && (
-                            <button
-                                className="app-menu-item"
-                                onClick={() => {
-                                    setRenamingId(contextMenu.id);
-                                    setContextMenu(null);
-                                }}
-                            >
+                            <NotionButton variant="ghost" size="sm" className="app-menu-item" onClick={() => { setRenamingId(contextMenu.id); setContextMenu(null); }}>
                                 <span className="app-menu-item-content">
                                     {t('notes:tree.context_menu.rename')}
                                 </span>
-                            </button>
+                            </NotionButton>
                         )}
                         
                         {/* ★ 引用操作（Prompt 6）- 仅对文件夹显示添加引用选项 */}
                         {treeData[contextMenu.id]?.isFolder && (
                             <>
                                 <div className="app-menu-separator" />
-                                <button
-                                    className="app-menu-item"
-                                    onClick={() => {
-                                        openReferenceDialog('textbook', contextMenu.id);
-                                        setContextMenu(null);
-                                    }}
-                                >
+                                <NotionButton variant="ghost" size="sm" className="app-menu-item" onClick={() => { openReferenceDialog('textbook', contextMenu.id); setContextMenu(null); }}>
                                     <span className="app-menu-item-icon">
                                         <BookOpen className="h-4 w-4" />
                                     </span>
                                     <span className="app-menu-item-content">
                                         {t('notes:reference.add_textbook')}
                                     </span>
-                                </button>
+                                </NotionButton>
                             </>
                         )}
                         
                         {/* ★ 引用节点的删除选项 - 使用 removeRef 而不是 deleteItems */}
                         {isReferenceId(contextMenu.id) ? (
-                            <button
-                                className="app-menu-item app-menu-item-destructive"
-                                onClick={() => {
-                                    removeRef(contextMenu.id);
-                                    setContextMenu(null);
-                                }}
-                            >
+                            <NotionButton variant="ghost" size="sm" className="app-menu-item app-menu-item-destructive" onClick={() => { removeRef(contextMenu.id); setContextMenu(null); }}>
                                 <span className="app-menu-item-icon">
                                     <Link className="h-4 w-4" />
                                 </span>
                                 <span className="app-menu-item-content">
                                     {t('notes:reference.remove')}
                                 </span>
-                            </button>
+                            </NotionButton>
                         ) : (
-                            <button
-                                className="app-menu-item app-menu-item-destructive"
-                                onClick={() => {
-                                    deleteItems([contextMenu.id]);
-                                    setContextMenu(null);
-                                }}
-                            >
+                            <NotionButton variant="ghost" size="sm" className="app-menu-item app-menu-item-destructive" onClick={() => { deleteItems([contextMenu.id]); setContextMenu(null); }}>
                                 <span className="app-menu-item-icon">
                                     <Trash2 className="h-4 w-4" />
                                 </span>
                                 <span className="app-menu-item-content">
                                     {t('notes:tree.context_menu.delete')}
                                 </span>
-                            </button>
+                            </NotionButton>
                         )}
                     </div>
                 </>,

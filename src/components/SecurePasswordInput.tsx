@@ -1,4 +1,5 @@
 import React, { useState, useCallback } from 'react';
+import { NotionButton } from '@/components/ui/NotionButton';
 import { Eye, EyeOff, Shield, Copy, Check } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
@@ -87,43 +88,24 @@ export const SecurePasswordInput: React.FC<SecurePasswordInputProps> = ({
         <div className="absolute inset-y-0 right-0 flex items-center space-x-1 pr-2">
           {/* 复制按钮 */}
           {value && (
-            <button
-              type="button"
-              onClick={handleCopy}
-              disabled={disabled || (isSensitive && !showPassword)}
-              className={`
-                p-1 rounded hover:bg-gray-100 transition-colors
-                ${(isSensitive && !showPassword) ? 'opacity-30 cursor-not-allowed' : 'hover:text-blue-600'}
-              `}
-              title={
-                isSensitive && !showPassword 
-                  ? t('securePassword.showToCopy')
-                  : copied ? t('securePassword.copied') : t('actions.copy')
-              }
-            >
+            <NotionButton variant="ghost" size="icon" iconOnly onClick={handleCopy} disabled={disabled || (isSensitive && !showPassword)} className={`!p-1 ${(isSensitive && !showPassword) ? 'opacity-30 cursor-not-allowed' : 'hover:text-blue-600'}`} title={isSensitive && !showPassword ? t('securePassword.showToCopy') : copied ? t('securePassword.copied') : t('actions.copy')} aria-label="copy">
               {copied ? (
                 <Check className="w-4 h-4 text-green-600" />
               ) : (
                 <Copy className="w-4 h-4" />
               )}
-            </button>
+            </NotionButton>
           )}
           
           {/* 显示/隐藏按钮 */}
           {value && (
-            <button
-              type="button"
-              onClick={toggleVisibility}
-              disabled={disabled}
-              className="p-1 rounded hover:bg-gray-100 hover:text-blue-600 transition-colors"
-              title={showPassword ? t('securePassword.hidePassword') : t('securePassword.showPassword')}
-            >
+            <NotionButton variant="ghost" size="icon" iconOnly onClick={toggleVisibility} disabled={disabled} className="!p-1 hover:text-blue-600" title={showPassword ? t('securePassword.hidePassword') : t('securePassword.showPassword')} aria-label="toggle visibility">
               {showPassword ? (
                 <EyeOff className="w-4 h-4" />
               ) : (
                 <Eye className="w-4 h-4" />
               )}
-            </button>
+            </NotionButton>
           )}
         </div>
       </div>

@@ -9,6 +9,7 @@
  */
 
 import React, { useMemo, useState, useEffect } from 'react';
+import { NotionButton } from '@/components/ui/NotionButton';
 import HeatMap from '@uiw/react-heat-map';
 import { CommonTooltip } from '../shared/CommonTooltip';
 import { useTranslation } from 'react-i18next';
@@ -230,10 +231,10 @@ export function LearningHeatmap({
     return (
       <div className={cn("py-8 flex flex-col items-center justify-center text-muted-foreground/50", className)}>
         <span className="text-xs mb-3">{t('heatmap.error', { error })}</span>
-        <button onClick={refresh} className="flex items-center gap-2 px-3 py-1.5 rounded-sm hover:bg-muted/40 transition-colors text-xs font-medium">
+        <NotionButton variant="ghost" size="sm" onClick={refresh} className="!px-3 !py-1.5 !h-auto text-xs font-medium hover:bg-muted/40">
           <RefreshCw size={12} />
           {t('heatmap.retry', '重试')}
-        </button>
+        </NotionButton>
       </div>
     );
   }

@@ -484,12 +484,9 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
                     className="flex-1 min-w-0 bg-transparent text-xs outline-none placeholder:text-muted-foreground/50"
                     placeholder={`${opt.key} ...`}
                   />
-                  <button
-                    onClick={() => handleRemoveOption(index)}
-                    className="flex-shrink-0 w-4 h-4 flex items-center justify-center rounded opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-opacity"
-                  >
+                  <NotionButton variant="ghost" size="icon" iconOnly onClick={() => handleRemoveOption(index)} className="flex-shrink-0 !w-4 !h-4 !p-0 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive" aria-label="remove">
                     <X className="w-2.5 h-2.5" />
-                  </button>
+                  </NotionButton>
                 </div>
               ))}
             </div>
@@ -632,17 +629,12 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
           )}
 
           {editData.images.length === 0 && (
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              className="w-full p-4 rounded-md border border-dashed border-border/50 hover:border-border bg-muted/10 hover:bg-muted/20 transition-colors flex items-center justify-center gap-2 cursor-pointer"
-              disabled={isUploadingImage}
-            >
+            <NotionButton variant="ghost" size="sm" onClick={() => fileInputRef.current?.click()} disabled={isUploadingImage} className="w-full !h-auto !p-4 !rounded-md border border-dashed border-border/50 hover:border-border bg-muted/10 hover:bg-muted/20 flex-col items-center justify-center gap-2">
               <ImagePlus className="w-4 h-4 text-muted-foreground" />
               <span className="text-xs text-muted-foreground">
                 {t('exam_sheet:questionBank.edit.imagePlaceholder', '点击添加题目图片')}
               </span>
-            </button>
+            </NotionButton>
           )}
         </div>
 

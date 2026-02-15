@@ -8,6 +8,7 @@
  */
 
 import React, { useRef, useEffect, useState, useCallback, type ReactNode } from 'react';
+import { NotionButton } from '@/components/ui/NotionButton';
 import { useTranslation } from 'react-i18next';
 import { Sheet, SheetContent } from '@/components/ui/shad/Sheet';
 import { X } from 'lucide-react';
@@ -133,13 +134,9 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
           {showHeader && (
             <div className="flex items-center gap-3 px-4 py-3 shrink-0 border-b border-border/50">
               {/* 关闭按钮 */}
-              <button
-                onClick={() => onOpenChange(false)}
-                className="flex items-center justify-center w-8 h-8 rounded-full hover:bg-accent/80 active:bg-accent transition-colors -ml-1"
-                aria-label={t('common:sidebar.close')}
-              >
+              <NotionButton variant="ghost" size="icon" iconOnly onClick={() => onOpenChange(false)} className="!w-8 !h-8 !rounded-full hover:bg-accent/80 active:bg-accent -ml-1" aria-label={t('common:sidebar.close')}>
                 <X className="w-5 h-5 text-muted-foreground" />
-              </button>
+              </NotionButton>
 
               {/* 标题区域 */}
               {(headerTitle || headerSubtitle) && (

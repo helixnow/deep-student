@@ -6,6 +6,7 @@
  */
 
 import React, { useCallback } from 'react';
+import { NotionButton } from '@/components/ui/NotionButton';
 import {
   FileText,
   BookOpen,
@@ -126,13 +127,9 @@ export const NodeRefCard: React.FC<NodeRefCardProps> = ({
       <Icon className={cn('w-3 h-3 shrink-0', colorClass)} />
       <span className="truncate">{ref_.name}</span>
       {!readonly && onRemove && (
-        <button
-          type="button"
-          onClick={handleRemove}
-          className="ml-0.5 -mr-0.5 p-0.5 rounded-sm opacity-0 group-hover/ref:opacity-60 hover:!opacity-100 hover:bg-destructive/10 transition-opacity"
-        >
+        <NotionButton variant="ghost" size="icon" iconOnly onClick={handleRemove} className="!ml-0.5 !-mr-0.5 !p-0.5 !h-auto !w-auto !min-w-0 !rounded-sm opacity-0 group-hover/ref:opacity-60 hover:!opacity-100 hover:bg-destructive/10" aria-label="remove">
           <X className="w-2.5 h-2.5" />
-        </button>
+        </NotionButton>
       )}
     </div>
   );

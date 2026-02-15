@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { NotionButton } from '@/components/ui/NotionButton';
 import { invoke } from '@tauri-apps/api/core';
 import { useTranslation } from 'react-i18next';
 
@@ -91,24 +92,13 @@ const ApiConfigRecovery: React.FC = () => {
       </div>
 
       <div className="flex flex-col gap-3">
-        <button
-          onClick={handleRestore}
-          disabled={isRecovering}
-          className={`px-4 py-2 rounded font-semibold text-white transition-colors ${
-            isRecovering 
-              ? 'bg-gray-400 cursor-not-allowed' 
-              : 'bg-orange-600 hover:bg-orange-700'
-          }`}
-        >
+        <NotionButton variant="primary" size="sm" onClick={handleRestore} disabled={isRecovering} className={`!px-4 !py-2 font-semibold text-white ${isRecovering ? 'bg-gray-400 cursor-not-allowed' : 'bg-orange-600 hover:bg-orange-700'}`}>
           {isRecovering ? t('restoring') : t('restore_default_config')}
-        </button>
+        </NotionButton>
         
-        <button
-          onClick={checkStatus}
-          className="px-4 py-2 rounded border border-orange-300 text-orange-700 hover:bg-orange-100 transition-colors"
-        >
+        <NotionButton variant="default" size="sm" onClick={checkStatus} className="!px-4 !py-2 border border-orange-300 text-orange-700 hover:bg-orange-100">
           {t('recheck_status')}
-        </button>
+        </NotionButton>
       </div>
 
       {message && (

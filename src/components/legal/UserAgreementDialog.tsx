@@ -94,16 +94,7 @@ const ToggleBlock: React.FC<ToggleBlockProps> = ({
   return (
     <div className="select-none">
       {/* Toggle 触发行 —— Notion 风格：无边框，hover 浅色背景 */}
-      <button
-        type="button"
-        className={cn(
-          'w-full flex items-center gap-2 px-2 py-1.5 -mx-2 rounded-[4px] text-left',
-          'text-[14px] font-medium text-foreground/90',
-          'hover:bg-foreground/[0.04] active:bg-foreground/[0.06]',
-          'transition-colors duration-100'
-        )}
-        onClick={() => setIsOpen(!isOpen)}
-      >
+      <NotionButton variant="ghost" size="sm" onClick={() => setIsOpen(!isOpen)} className={cn('!w-full !justify-start !px-2 !py-1.5 !h-auto -mx-2 !rounded-[4px] !text-left', 'text-[14px] font-medium text-foreground/90', 'hover:bg-foreground/[0.04] active:bg-foreground/[0.06]')}>
         {/* 展开箭头 —— Notion 三角形风格 */}
         <ChevronRight
           className={cn(
@@ -113,7 +104,7 @@ const ToggleBlock: React.FC<ToggleBlockProps> = ({
           )}
         />
         <span className="flex-1 min-w-0 truncate">{title}</span>
-      </button>
+      </NotionButton>
 
       {/* 展开内容 —— 带左侧缩进，模拟 Notion toggle 嵌套 */}
       {isOpen && (

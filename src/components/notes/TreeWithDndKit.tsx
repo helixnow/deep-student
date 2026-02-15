@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { NotionButton } from '@/components/ui/NotionButton';
 import {
   DndContext,
   closestCenter,
@@ -108,19 +109,13 @@ function SortableTreeNode({
       >
         {/* 展开/折叠箭头 */}
         {item.isFolder && (
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onToggle();
-            }}
-            className="p-0.5 hover:bg-accent rounded"
-          >
+          <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); onToggle(); }} className="!p-0.5 !h-auto !w-auto hover:bg-accent" aria-label="toggle">
             {isExpanded ? (
               <ChevronDown className="w-3 h-3" />
             ) : (
               <ChevronRight className="w-3 h-3" />
             )}
-          </button>
+          </NotionButton>
         )}
         
         {/* 图标 */}

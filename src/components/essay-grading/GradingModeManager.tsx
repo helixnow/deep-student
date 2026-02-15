@@ -303,13 +303,10 @@ export const GradingModeManager: React.FC<GradingModeManagerProps> = ({
       <div className="h-full flex flex-col animate-in fade-in slide-in-from-right-4 duration-300">
         {/* 头部 */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-border/30">
-          <button
-            onClick={onClose}
-            className="flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
-          >
+          <NotionButton variant="ghost" size="sm" onClick={onClose} className="text-sm font-medium text-muted-foreground hover:text-foreground">
             <ChevronLeft className="w-4 h-4" />
             <span>{t('settings:gradingMode.backToSettings')}</span>
-          </button>
+          </NotionButton>
         </div>
 
         <div className="flex items-center justify-between px-4 py-4">
@@ -390,9 +387,9 @@ export const GradingModeManager: React.FC<GradingModeManagerProps> = ({
                 <div className="absolute right-2 top-3 opacity-0 group-hover:opacity-100 transition-opacity focus-within:opacity-100">
                   <AppMenu>
                     <AppMenuTrigger asChild>
-                      <button className="h-6 w-6 flex items-center justify-center rounded-sm hover:bg-muted text-muted-foreground/50 hover:text-foreground transition-colors">
+                      <NotionButton variant="ghost" size="icon" iconOnly className="!h-6 !w-6 text-muted-foreground/50 hover:text-foreground hover:bg-muted" aria-label="more">
                         <MoreHorizontal className="w-4 h-4" />
-                      </button>
+                      </NotionButton>
                     </AppMenuTrigger>
                     <AppMenuContent align="end" width={128}>
                       <AppMenuItem icon={<Settings2 className="w-4 h-4" />} onClick={() => handleStartEdit(mode)}>
@@ -432,12 +429,9 @@ export const GradingModeManager: React.FC<GradingModeManagerProps> = ({
     <div className="h-full flex flex-col animate-in fade-in slide-in-from-right-4 duration-300">
       {/* 头部 */}
       <div className="flex items-center gap-2 px-4 py-3 border-b border-border/30">
-        <button
-          onClick={() => setViewMode('list')}
-          className="h-8 w-8 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors -ml-2"
-        >
+        <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setViewMode('list')} className="!h-8 !w-8 text-muted-foreground hover:text-foreground hover:bg-muted/50 -ml-2" aria-label="back">
           <ChevronLeft className="w-4 h-4" />
-        </button>
+        </NotionButton>
         <h2 className="text-base font-medium">
           {viewMode === 'create'
             ? t('essay_grading:mode.create')
@@ -523,25 +517,19 @@ export const GradingModeManager: React.FC<GradingModeManagerProps> = ({
                     style={{ maxWidth: '3.5rem' }}
                   />
                 </div>
-                <button
-                  onClick={() => handleRemoveDimension(index)}
-                  className="h-7 w-7 flex items-center justify-center rounded-sm text-muted-foreground/30 hover:text-destructive hover:bg-destructive/10 transition-colors opacity-0 group-hover:opacity-100"
-                >
+                <NotionButton variant="ghost" size="icon" iconOnly onClick={() => handleRemoveDimension(index)} className="!h-7 !w-7 text-muted-foreground/30 hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100" aria-label="remove">
                   <Trash2 className="w-3.5 h-3.5" />
-                </button>
+                </NotionButton>
               </div>
             ))}
           </div>
 
-          <button
-            onClick={handleAddDimension}
-            className="flex items-center gap-2 text-sm text-muted-foreground hover:text-primary px-1 py-2 transition-colors w-full group"
-          >
+          <NotionButton variant="ghost" size="sm" onClick={handleAddDimension} className="!justify-start !px-1 !py-2 !h-auto text-sm text-muted-foreground hover:text-primary w-full group">
             <div className="h-5 w-5 rounded-full border border-dashed border-muted-foreground/50 group-hover:border-primary flex items-center justify-center">
               <Plus className="w-3 h-3" />
             </div>
             {t('settings:gradingMode.addDimension')}
-          </button>
+          </NotionButton>
         </div>
 
         {/* 总分设置 */}
@@ -566,15 +554,9 @@ export const GradingModeManager: React.FC<GradingModeManagerProps> = ({
                 min={1}
               />
               {formData.total_max_score !== calculatedTotal && (
-                <button
-                  onClick={() => setFormData(prev => ({
-                    ...prev,
-                    total_max_score: calculatedTotal
-                  }))}
-                  className="text-[10px] text-primary hover:underline whitespace-nowrap"
-                >
+                <NotionButton variant="ghost" size="sm" onClick={() => setFormData(prev => ({ ...prev, total_max_score: calculatedTotal }))} className="!h-auto !p-0 text-[10px] text-primary hover:underline whitespace-nowrap">
                   {t('settings:gradingMode.useCalculatedTotal', { total: calculatedTotal })}
-                </button>
+                </NotionButton>
               )}
             </div>
           </div>

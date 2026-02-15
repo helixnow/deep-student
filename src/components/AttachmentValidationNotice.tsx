@@ -4,6 +4,7 @@
  */
 
 import React from 'react';
+import { NotionButton } from '@/components/ui/NotionButton';
 import { AlertTriangle, Info, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
@@ -78,13 +79,9 @@ export const AttachmentValidationNotice: React.FC<AttachmentValidationNoticeProp
         </div>
         
         {onClose && (
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 flex-shrink-0"
-            aria-label={t('attachmentValidation.close_notice', '关闭通知')}
-          >
+          <NotionButton variant="ghost" size="icon" iconOnly onClick={onClose} className="text-gray-400 hover:text-gray-600 flex-shrink-0" aria-label={t('attachmentValidation.close_notice', '关闭通知')}>
             <X size={16} />
-          </button>
+          </NotionButton>
         )}
       </div>
     </div>

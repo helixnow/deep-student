@@ -1,4 +1,5 @@
 import React from 'react';
+import { NotionButton } from '@/components/ui/NotionButton';
 import { useTranslation } from 'react-i18next';
 import { Plug, CheckCircle, XCircle, RefreshCcw, Wrench } from 'lucide-react';
 import { TauriAPI } from '../utils/tauriApi';
@@ -75,11 +76,7 @@ const McpStatusIndicator: React.FC<{ compact?: boolean }> = ({ compact }) => {
 
   if (compact) {
     return (
-      <button
-        onClick={load}
-        title={t('mcpStatus.refreshStatus')}
-        className={`inline-flex items-center gap-1.5 text-xs transition-colors ${textClass} hover:text-foreground`}
-      >
+      <NotionButton variant="ghost" size="sm" onClick={load} title={t('mcpStatus.refreshStatus')} className={`!h-auto text-xs ${textClass} hover:text-foreground`}>
         <Plug size={14} className="shrink-0" />
         <Icon size={14} className="shrink-0" />
         <span className="text-left">
@@ -87,7 +84,7 @@ const McpStatusIndicator: React.FC<{ compact?: boolean }> = ({ compact }) => {
             ? (isConnected ? t('mcpStatus.connected') : `${t('mcpStatus.disconnected')}${status?.last_error ? '：' + String(status.last_error).slice(0, 60) : ''}`)
             : (status?.available ? (status?.enabled_reason || t('mcpStatus.notEnabledInSession')) : `${t('mcpStatus.disconnected')}${status?.last_error ? '：' + String(status.last_error).slice(0, 60) : ''}`)}
         </span>
-      </button>
+      </NotionButton>
     );
   }
 
@@ -99,13 +96,9 @@ const McpStatusIndicator: React.FC<{ compact?: boolean }> = ({ compact }) => {
           ? (isConnected ? t('mcpStatus.connectedOk') : `${t('mcpStatus.initFailed')}${status?.last_error ? '：' + String(status.last_error).slice(0, 120) : ''}`)
           : (status?.available ? (status?.enabled_reason || t('mcpStatus.notEnabledMcpTools')) : `${t('mcpStatus.initFailed')}${status?.last_error ? '：' + String(status.last_error).slice(0, 120) : ''}`)}
       </span>
-      <button
-        onClick={() => { McpService.connectAll().catch((err) => { debugLog.warn('[MCP] Connect failed:', err); }); load(); }}
-        title={t('actions.refresh')}
-        className="px-2 py-1 text-xs rounded border border-border text-muted-foreground hover:bg-muted/80 transition-colors inline-flex items-center gap-1"
-      >
+      <NotionButton variant="ghost" size="sm" onClick={() => { McpService.connectAll().catch((err) => { debugLog.warn('[MCP] Connect failed:', err); }); load(); }} title={t('actions.refresh')} className="!px-2 !py-1 !h-auto text-xs border border-border text-muted-foreground hover:bg-muted/80">
         <RefreshCcw size={12} /> {t('actions.refresh')}
-      </button>
+      </NotionButton>
       {status?.server_info && (
         <span className="text-xs text-muted-foreground">{status.server_info.name} v{status.server_info.version}</span>
       )}

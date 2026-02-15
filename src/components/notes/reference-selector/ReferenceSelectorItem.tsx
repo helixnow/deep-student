@@ -3,6 +3,7 @@
  */
 
 import React from 'react';
+import { NotionButton } from '@/components/ui/NotionButton';
 import { useTranslation } from 'react-i18next';
 import { BookOpen, Check, Ban } from 'lucide-react';
 import { cn } from '../../../lib/utils';
@@ -63,13 +64,12 @@ export const ReferenceSelectorItem: React.FC<ReferenceSelectorItemProps> = ({
   const formatRelativeTime = useFormatRelativeTime();
   
   return (
-    <button
-      type="button"
+    <NotionButton
+      variant="ghost" size="sm"
       disabled={isReferenced}
       onClick={onClick}
       className={cn(
-        'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors',
-        'focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50',
+        '!w-full !justify-start !px-3 !py-2.5 !h-auto !rounded-lg !text-left',
         isReferenced
           ? 'opacity-50 cursor-not-allowed bg-muted/30'
           : isSelected
@@ -105,7 +105,7 @@ export const ReferenceSelectorItem: React.FC<ReferenceSelectorItemProps> = ({
           <Check className="h-4 w-4 text-primary" />
         ) : null}
       </div>
-    </button>
+    </NotionButton>
   );
 };
 

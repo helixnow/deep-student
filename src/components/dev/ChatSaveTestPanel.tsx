@@ -1,3 +1,4 @@
+import { NotionButton } from '@/components/ui/NotionButton';
 /**
  * SOTA级别聊天保存功能综合测试面板 - 模块化重构版 v3.0
  * 
@@ -1035,12 +1036,9 @@ export const ChatSaveTestPanel: React.FC<ChatSaveTestPanelProps> = ({
             模块化重构版 v3.1 - 可拖动
           </p>
         </div>
-        <button
-          onClick={onClose}
-          className="p-1 hover:bg-[hsl(var(--accent))] rounded transition-colors"
-        >
+        <NotionButton variant="ghost" size="icon" iconOnly onClick={onClose} className="!p-1 hover:bg-[hsl(var(--accent))]" aria-label="close">
           <X size={20} className="text-[hsl(var(--muted-foreground))]" />
-        </button>
+        </NotionButton>
       </div>
 
       {/* Body */}
@@ -1069,17 +1067,14 @@ export const ChatSaveTestPanel: React.FC<ChatSaveTestPanelProps> = ({
 
         {/* 场景选择 */}
         <div className="p-4 border-b border-[hsl(var(--border))]">
-          <button
-            onClick={() => toggleSection('scenario')}
-            className="flex items-center justify-between w-full mb-3 text-sm font-medium text-[hsl(var(--foreground))]"
-          >
+          <NotionButton variant="ghost" size="sm" onClick={() => toggleSection('scenario')} className="!w-full !justify-between !h-auto mb-3 text-sm font-medium text-[hsl(var(--foreground))]">
             <span>{t('dev:save_test.scenario_selector.title')}</span>
             {expandedSections.has('scenario') ? (
               <ChevronDown size={16} />
             ) : (
               <ChevronRight size={16} />
             )}
-          </button>
+          </NotionButton>
           
           {expandedSections.has('scenario') && (
             <div className="space-y-2">
@@ -1087,12 +1082,13 @@ export const ChatSaveTestPanel: React.FC<ChatSaveTestPanelProps> = ({
                 const Icon = scenario.icon;
                 const isSelected = selectedScenario === scenario.id;
                 return (
-                  <button
+                  <NotionButton
                     key={scenario.id}
+                    variant="ghost" size="sm"
                     data-testid={`scenario-${scenario.id}`}
                     onClick={() => setSelectedScenario(scenario.id)}
                     disabled={isRunning}
-                    className={`w-full text-left p-3 rounded border-2 transition-all ${
+                    className={`!w-full !text-left !p-3 !h-auto !rounded border-2 ${
                       isSelected
                         ? 'border-[hsl(var(--primary))] bg-[hsl(var(--primary)/0.1)]'
                         : 'border-[hsl(var(--border))] hover:border-[hsl(var(--primary)/0.5)] hover:bg-[hsl(var(--accent))]'
@@ -1116,7 +1112,7 @@ export const ChatSaveTestPanel: React.FC<ChatSaveTestPanelProps> = ({
                         <CheckCircle2 size={16} className="text-[hsl(var(--primary))] flex-shrink-0 mt-1" />
                       )}
                     </div>
-                  </button>
+                  </NotionButton>
                 );
               })}
             </div>
@@ -1126,50 +1122,32 @@ export const ChatSaveTestPanel: React.FC<ChatSaveTestPanelProps> = ({
         {/* 控制按钮 */}
         <div className="p-4 border-b border-[hsl(var(--border))]">
           <div className="flex gap-2 mb-2">
-            <button
-              data-testid="btn-start-test"
-              onClick={runTest}
-              disabled={isRunning || isAutoTesting || !currentMistakeId}
-              className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))] rounded hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity font-medium"
-            >
+            <NotionButton variant="primary" size="sm" data-testid="btn-start-test" onClick={runTest} disabled={isRunning || isAutoTesting || !currentMistakeId} className="flex-1 !px-4 !py-2 bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))] hover:opacity-90 disabled:opacity-50 font-medium">
               <Play size={16} />
               {isRunning ? t('dev:save_test.buttons.running') : t('dev:save_test.buttons.start')}
-            </button>
-            <button
-              data-testid="btn-reset-test"
-              onClick={resetTest}
-              disabled={isRunning || isAutoTesting}
-              className="flex items-center justify-center gap-2 px-4 py-2 bg-[hsl(var(--muted))] text-[hsl(var(--foreground))] rounded hover:bg-[hsl(var(--accent))] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
+            </NotionButton>
+            <NotionButton variant="default" size="sm" data-testid="btn-reset-test" onClick={resetTest} disabled={isRunning || isAutoTesting} className="!px-4 !py-2 bg-[hsl(var(--muted))] text-[hsl(var(--foreground))] hover:bg-[hsl(var(--accent))] disabled:opacity-50">
               <RotateCcw size={16} />
-            </button>
+            </NotionButton>
           </div>
           
-          <button
-            data-testid="btn-auto-test"
-            onClick={runAutoTest}
-            disabled={isRunning || isAutoTesting || !currentMistakeId}
-            className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-gradient-to-r from-[hsl(var(--success))] to-[hsl(var(--info))] text-white rounded hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity font-medium"
-          >
+          <NotionButton variant="primary" size="sm" data-testid="btn-auto-test" onClick={runAutoTest} disabled={isRunning || isAutoTesting || !currentMistakeId} className="!w-full !px-4 !py-2 bg-gradient-to-r from-[hsl(var(--success))] to-[hsl(var(--info))] text-white hover:opacity-90 disabled:opacity-50 font-medium">
             <Save size={16} />
             {isAutoTesting ? `自动测试中... (${currentAutoTestIndex + 1}/${SCENARIO_CONFIGS.length})` : '全自动测试'}
-          </button>
+          </NotionButton>
         </div>
 
         {/* 测试步骤 */}
         {testSteps.length > 0 && (
           <div className="p-4 border-b border-[hsl(var(--border))]">
-            <button
-              onClick={() => toggleSection('steps')}
-              className="flex items-center justify-between w-full mb-3 text-sm font-medium text-[hsl(var(--foreground))]"
-            >
+            <NotionButton variant="ghost" size="sm" onClick={() => toggleSection('steps')} className="!w-full !justify-between !h-auto mb-3 text-sm font-medium text-[hsl(var(--foreground))]">
               <span>{t('dev:save_test.steps_section.title')}</span>
               {expandedSections.has('steps') ? (
                 <ChevronDown size={16} />
               ) : (
                 <ChevronRight size={16} />
               )}
-            </button>
+            </NotionButton>
             
             {expandedSections.has('steps') && (
               <div className="space-y-2">
@@ -1342,34 +1320,23 @@ export const ChatSaveTestPanel: React.FC<ChatSaveTestPanelProps> = ({
         {testLogs.length > 0 && (
           <div className="p-4">
             <div className="flex items-center justify-between mb-3">
-              <button
-                onClick={() => toggleSection('logs')}
-                className="flex items-center gap-2 text-sm font-medium text-[hsl(var(--foreground))]"
-              >
+              <NotionButton variant="ghost" size="sm" onClick={() => toggleSection('logs')} className="!h-auto text-sm font-medium text-[hsl(var(--foreground))]">
                 <span>{t('dev:save_test.logs_section.title')} ({testLogs.length}/{MAX_LOGS})</span>
                 {expandedSections.has('logs') ? (
                   <ChevronDown size={16} />
                 ) : (
                   <ChevronRight size={16} />
                 )}
-              </button>
+              </NotionButton>
               <div className="flex items-center gap-2">
-                <button
-                  data-testid="btn-copy-logs"
-                  onClick={copyLogs}
-                  className="flex items-center gap-1 px-2 py-1 text-xs bg-[hsl(var(--muted))] hover:bg-[hsl(var(--accent))] text-[hsl(var(--foreground))] rounded transition-colors"
-                >
+                <NotionButton variant="ghost" size="sm" data-testid="btn-copy-logs" onClick={copyLogs} className="!px-2 !py-1 !h-auto text-xs bg-[hsl(var(--muted))] hover:bg-[hsl(var(--accent))] text-[hsl(var(--foreground))]">
                   <Copy size={12} />
                   {t('common:copy')}
-                </button>
-                <button
-                  data-testid="btn-export-report"
-                  onClick={exportReport}
-                  className="flex items-center gap-1 px-2 py-1 text-xs bg-[hsl(var(--primary))] hover:opacity-90 text-[hsl(var(--primary-foreground))] rounded transition-opacity"
-                >
+                </NotionButton>
+                <NotionButton variant="primary" size="sm" data-testid="btn-export-report" onClick={exportReport} className="!px-2 !py-1 !h-auto text-xs bg-[hsl(var(--primary))] hover:opacity-90 text-[hsl(var(--primary-foreground))]">
                   <Save size={12} />
                   导出JSON
-                </button>
+                </NotionButton>
               </div>
             </div>
             
@@ -1411,17 +1378,14 @@ export const ChatSaveTestPanel: React.FC<ChatSaveTestPanelProps> = ({
 
         {/* 诊断日志显示 */}
         <div className="p-4 border-t border-[hsl(var(--border))]">
-          <button
-            onClick={() => toggleSection('diagnostics')}
-            className="flex items-center justify-between w-full mb-3 text-sm font-medium text-[hsl(var(--foreground))]"
-          >
+          <NotionButton variant="ghost" size="sm" onClick={() => toggleSection('diagnostics')} className="!w-full !justify-between !h-auto mb-3 text-sm font-medium text-[hsl(var(--foreground))]">
             <span>诊断日志（聊天事件与保存链路） ({diagLogs.length}/500)</span>
             {expandedSections.has('diagnostics') ? (
               <ChevronDown size={16} />
             ) : (
               <ChevronRight size={16} />
             )}
-          </button>
+          </NotionButton>
           {expandedSections.has('diagnostics') && (
             <div className="max-h-60 overflow-y-auto bg-[hsl(var(--muted))] rounded p-2 space-y-1 font-mono text-xs">
               {diagLogs.length === 0 ? (
