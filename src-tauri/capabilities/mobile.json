@@ -2,6 +2,7 @@
   "$schema": "../gen/schemas/mobile-schema.json",
   "identifier": "mobile",
   "description": "Capability for mobile platforms",
+  "platforms": ["android", "iOS"],
   "windows": ["main"],
   "permissions": [
     "core:default",

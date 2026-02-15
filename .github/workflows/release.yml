@@ -279,6 +279,9 @@ jobs:
               mkdir -p "$RES_DST/values"
               cp -f "$ICONS_SRC/values/ic_launcher_background.xml" "$RES_DST/values/"
             fi
+            # remove default Tauri vector drawables that could override custom PNGs
+            rm -f "$RES_DST/drawable-v24/ic_launcher_foreground.xml"
+            rm -f "$RES_DST/drawable/ic_launcher_background.xml"
             echo "✅ Custom Android icons copied from $ICONS_SRC"
             find "$RES_DST" -name "ic_launcher*" -type f | head -20
           else
