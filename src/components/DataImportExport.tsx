@@ -41,6 +41,7 @@ import { useViewVisibility } from '@/hooks/useViewVisibility';
 import { ChatV2StatsSection } from './ChatV2StatsSection';
 import { LlmUsageStatsSection } from './llm-usage/LlmUsageStatsSection';
 import { useChatV2Stats } from '../hooks/useChatV2Stats';
+import { LearningHeatmap } from './LearningHeatmap';
 import { Progress as ShadProgress } from './ui/shad/Progress';
 import {
   AreaChart,
@@ -1537,11 +1538,19 @@ ${resolvedPath}`);
               className="overflow-visible"
               hideHeader
             >
-              <ChatV2StatsSection />
-              {/* LLM 使用统计 */}
-              <div className="border-t border-border">
-                <LlmUsageStatsSection days={30} sessionTrends={chatStats.dailyActivity} />
+              {/* 左右两栏：会话统计 | LLM 统计 */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-10">
+                <ChatV2StatsSection statsOnly />
+                <LlmUsageStatsSection statsOnly days={30} />
               </div>
+
+              {/* 学习热力图 */}
+              <div className="mb-10 p-1">
+                <LearningHeatmap months={12} showStats={false} showLegend={true} />
+              </div>
+
+              {/* LLM 图表 */}
+              <LlmUsageStatsSection chartsOnly days={30} sessionTrends={chatStats.dailyActivity} />
             </SettingSection>
           ) : (
             // all 模式：使用原有的标题样式

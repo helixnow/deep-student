@@ -152,11 +152,23 @@ export function getModelDefaultParameters(modelId: string): ModelDefaultParams {
     'deepseek-ai/deepseek-v3': { enableThinking: true, thinkingBudget: 8192, includeThoughts: true, temperature: 0.6 },
     'deepseek-ai/deepseek-v3.2-exp': { enableThinking: true, thinkingBudget: 8192, includeThoughts: true, temperature: 0.6 },
     'deepseek-ai/deepseek-v3.2': { enableThinking: true, thinkingBudget: 8192, includeThoughts: true, temperature: 0.6 },
+    // Doubao Seed 2.0 系列
+    'doubao-seed-2-0-pro-260215': { enableThinking: true, thinkingBudget: 16384, includeThoughts: true, temperature: 0.7 },
+    'doubao-seed-2-0-lite-260215': { enableThinking: true, thinkingBudget: 8192, includeThoughts: true, temperature: 0.7 },
+    'doubao-seed-2-0-mini-260215': { enableThinking: true, thinkingBudget: 4096, includeThoughts: true, temperature: 0.7 },
+    'doubao-seed-2-0-code-preview-260215': { enableThinking: true, thinkingBudget: 16384, includeThoughts: true, temperature: 0.7 },
+    // GLM-5
+    'glm-5': { enableThinking: true, thinkingBudget: 8192, includeThoughts: true, temperature: 0.7 },
+    'glm-4.7': { enableThinking: true, thinkingBudget: 8192, includeThoughts: true, temperature: 0.7 },
   };
   const lower = toLower(modelId);
   if (map[lower]) return map[lower];
   if (lower.includes('qwq')) return { enableThinking: true, thinkingBudget: 4096, includeThoughts: true, temperature: 0.7 };
   if (lower.includes('deepseek')) return { enableThinking: true, thinkingBudget: 8192, includeThoughts: true, temperature: 0.6 };
+  if (lower.includes('doubao-seed-2')) return { enableThinking: true, thinkingBudget: 16384, includeThoughts: true, temperature: 0.7 };
+  if (lower.includes('doubao-seed-1')) return { enableThinking: true, thinkingBudget: 8192, includeThoughts: true, temperature: 0.7 };
+  if ((lower.includes('glm-5') || lower.includes('glm-4.7')) && !lower.includes('-flash')) return { enableThinking: true, thinkingBudget: 8192, includeThoughts: true, temperature: 0.7 };
+  if (lower.includes('minimax-m2')) return { temperature: 1.0 };
   return {};
 }
 

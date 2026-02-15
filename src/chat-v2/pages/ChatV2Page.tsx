@@ -1804,7 +1804,7 @@ export const ChatV2Page: React.FC = () => {
         drag?.snapshot.isDragging && 'shadow-lg ring-1 ring-border bg-card z-50'
       )}
     >
-      <div className="flex-1 min-w-0 overflow-visible">
+      <div className="flex-1 min-w-0 overflow-hidden">
         {editingSessionId === session.id ? (
           <div className="flex flex-col gap-1.5 w-full">
             <input
@@ -1875,10 +1875,10 @@ export const ChatV2Page: React.FC = () => {
           </div>
         ) : (
           <div className={cn(
-            'text-sm line-clamp-2 break-words transition-colors',
+            'text-sm transition-colors',
             currentSessionId === session.id
-              ? 'text-foreground font-bold'
-              : 'text-foreground/80 font-semibold'
+              ? 'text-foreground font-bold line-clamp-2 break-words'
+              : 'text-foreground/80 font-semibold truncate'
           )}>
             {session.title || t('page.untitled')}
           </div>

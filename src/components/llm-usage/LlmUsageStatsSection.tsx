@@ -73,39 +73,28 @@ const formatModelName = (modelId: string, t: (key: string) => string): string =>
 };
 
 // ============================================================================
-// StatCard - Notion风格极简统计卡片
+// PropRow - 制卡任务风格 property 行
 // ============================================================================
 
-interface StatCardProps {
-  title: string;
-  value: number | string;
-  description?: string;
-  icon: React.ElementType;
-}
-
-const StatCard: React.FC<StatCardProps> = ({
-  title,
-  value,
-  description,
-  icon: Icon,
-}) => {
-  return (
-    <div className="flex flex-col gap-1 p-3 rounded-md hover:bg-muted/30 transition-colors">
-      <div className="flex items-center gap-2 text-muted-foreground">
-        <Icon className="w-4 h-4 opacity-70" />
-        <span className="text-xs font-medium">{title}</span>
-      </div>
-      <div className="text-2xl font-semibold tracking-tight text-foreground font-mono tabular-nums">
-        {typeof value === 'number' ? value.toLocaleString() : value}
-      </div>
-      {description && (
-        <div className="text-[10px] text-muted-foreground/50 truncate">
-          {description}
-        </div>
-      )}
+const PropRow: React.FC<{
+  icon: React.ReactNode;
+  label: string;
+  children: React.ReactNode;
+}> = ({ icon, label, children }) => (
+  <div className="grid grid-cols-[120px_1fr] sm:grid-cols-[150px_1fr] items-center py-[5px] group">
+    <div className="flex items-center gap-2 min-w-0">
+      <span className="text-muted-foreground/40 group-hover:text-muted-foreground/60 transition-colors flex-shrink-0">
+        {icon}
+      </span>
+      <span className="text-[13px] text-muted-foreground truncate">
+        {label}
+      </span>
     </div>
-  );
-};
+    <div className="flex items-center gap-1 text-[13px] text-foreground min-w-0 flex-wrap">
+      {children}
+    </div>
+  </div>
+);
 
 // ============================================================================
 // 合并趋势图（会话趋势 + Token 趋势）
@@ -503,12 +492,16 @@ interface LlmUsageStatsSectionProps {
   className?: string;
   days?: number;
   sessionTrends?: { date: string; displayDate: string; sessions: number }[];
+  statsOnly?: boolean;
+  chartsOnly?: boolean;
 }
 
 export const LlmUsageStatsSection: React.FC<LlmUsageStatsSectionProps> = ({
   className,
   days = 30,
   sessionTrends,
+  statsOnly,
+  chartsOnly,
 }) => {
   const { t } = useTranslation('llm_usage');
   const [loading, setLoading] = useState(true);
@@ -566,16 +559,20 @@ export const LlmUsageStatsSection: React.FC<LlmUsageStatsSectionProps> = ({
 
   if (loading) {
     return (
-      <div className={cn('w-full space-y-8', className)}>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <Skeleton key={i} className="h-24 rounded-md bg-muted/10" />
-          ))}
-        </div>
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 pt-4">
-          <Skeleton className="h-64 rounded-md bg-muted/10" />
-          <Skeleton className="h-64 rounded-md bg-muted/10" />
-        </div>
+      <div className={cn('w-full', (statsOnly || chartsOnly) ? '' : 'space-y-8', className)}>
+        {!chartsOnly && (
+          <div className="space-y-1">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <Skeleton key={i} className="h-7 w-full max-w-md rounded bg-muted/10" />
+            ))}
+          </div>
+        )}
+        {!statsOnly && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 pt-4">
+            <Skeleton className="h-64 rounded-md bg-muted/10" />
+            <Skeleton className="h-64 rounded-md bg-muted/10" />
+          </div>
+        )}
       </div>
     );
   }
@@ -604,59 +601,65 @@ export const LlmUsageStatsSection: React.FC<LlmUsageStatsSectionProps> = ({
   return (
     <div className={cn('w-full', className)}>
       {/* 刷新按钮 */}
-      <div className="flex justify-end mb-4">
-        <NotionButton variant="ghost" size="sm" onClick={loadData} className="text-muted-foreground hover:text-foreground h-8 px-2">
-          <RefreshCw className="w-3.5 h-3.5" />
-        </NotionButton>
-      </div>
+      {!statsOnly && (
+        <div className="flex justify-end mb-4">
+          <NotionButton variant="ghost" size="sm" onClick={loadData} className="text-muted-foreground hover:text-foreground h-8 px-2">
+            <RefreshCw className="w-3.5 h-3.5" />
+          </NotionButton>
+        </div>
+      )}
 
-      {/* 统计卡片网格 */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
-        <StatCard
-          icon={Activity}
-          title={t('summary.totalCalls')}
-          value={formatNumber(Number(summary?.totalRequests || 0))}
-          description={t('summary.cumulativeRequests')}
-        />
-        <StatCard
-          icon={Zap}
-          title={t('summary.totalTokens')}
-          value={formatNumber(Number(summary?.totalTokens || 0))}
-          description={t('summary.tokenBreakdown', {
-            prompt: formatNumber(Number(summary?.totalPromptTokens || 0)),
-            completion: formatNumber(Number(summary?.totalCompletionTokens || 0)),
-          })}
-        />
-        <StatCard
-          icon={CheckCircle}
-          title={t('summary.successRate')}
-          value={`${successRate}%`}
-          description={`${summary?.successRequests || 0} / ${summary?.totalRequests || 0}`}
-        />
-        <StatCard
-          icon={Clock}
-          title={t('summary.avgDuration')}
-          value={formatDuration(summary?.avgDurationMs)}
-          description={t('summary.perRequestAvg')}
-        />
-      </div>
+      {/* 统计属性列表 */}
+      {!chartsOnly && (
+        <div className={statsOnly ? 'space-y-0' : 'space-y-0 mb-8'}>
+          <PropRow icon={<Activity className="h-3.5 w-3.5" />} label={t('summary.totalCalls')}>
+            <span className="font-semibold tabular-nums">{formatNumber(Number(summary?.totalRequests || 0))}</span>
+            <span className="text-muted-foreground/50 ml-1 text-[12px]">
+              {t('summary.cumulativeRequests')}
+            </span>
+          </PropRow>
+          <PropRow icon={<Zap className="h-3.5 w-3.5" />} label={t('summary.totalTokens')}>
+            <span className="font-semibold tabular-nums">{formatNumber(Number(summary?.totalTokens || 0))}</span>
+            <span className="text-muted-foreground/50 ml-1 text-[12px]">
+              {t('summary.tokenBreakdown', {
+                prompt: formatNumber(Number(summary?.totalPromptTokens || 0)),
+                completion: formatNumber(Number(summary?.totalCompletionTokens || 0)),
+              })}
+            </span>
+          </PropRow>
+          <PropRow icon={<CheckCircle className="h-3.5 w-3.5" />} label={t('summary.successRate')}>
+            <span className="font-semibold tabular-nums">{successRate}%</span>
+            <span className="text-muted-foreground/50 ml-1 text-[12px]">
+              {summary?.successRequests || 0} / {summary?.totalRequests || 0}
+            </span>
+          </PropRow>
+          <PropRow icon={<Clock className="h-3.5 w-3.5" />} label={t('summary.avgDuration')}>
+            <span className="tabular-nums">{formatDuration(summary?.avgDurationMs)}</span>
+            <span className="text-muted-foreground/50 ml-1 text-[12px]">
+              {t('summary.perRequestAvg')}
+            </span>
+          </PropRow>
+        </div>
+      )}
 
       {/* 图表区域 */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        <div className="min-h-[280px]">
-          <CombinedTrend tokenData={trends} sessionData={sessionTrends} />
+      {!statsOnly && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          <div className="min-h-[280px]">
+            <CombinedTrend tokenData={trends} sessionData={sessionTrends} />
+          </div>
+          <div className="min-h-[280px]">
+            <ModelDistribution data={byModel} />
+          </div>
+          
+          {/* 单独一行显示模块分布，如果有数据 */}
+          {byCaller.length > 0 && (
+             <div className="lg:col-span-2 min-h-[280px]">
+               <CallerDistribution data={byCaller} />
+             </div>
+          )}
         </div>
-        <div className="min-h-[280px]">
-          <ModelDistribution data={byModel} />
-        </div>
-        
-        {/* 单独一行显示模块分布，如果有数据 */}
-        {byCaller.length > 0 && (
-           <div className="lg:col-span-2 min-h-[280px]">
-             <CallerDistribution data={byCaller} />
-           </div>
-        )}
-      </div>
+      )}
     </div>
   );
 };

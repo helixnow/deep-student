@@ -81,6 +81,8 @@ const PROVIDER_PATTERNS: Record<ProviderBrand, (string | RegExp)[]> = {
     /\bgpt-[345]/i,
     /\bgpt-4o/i,
     /\bgpt-5/i,
+    /\bgpt-oss/i,
+    /\bcodex-mini/i,
     /dall-e/i,
     /text-embedding-/i,
     'chatgpt',

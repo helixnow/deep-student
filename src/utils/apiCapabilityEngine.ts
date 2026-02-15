@@ -65,9 +65,9 @@ const IMAGE_MODEL_ID_SET = new Set(
 );
 
 // 推理模型正则：o系列、gpt-5系列（除gpt-5-chat）、gpt-oss、codex-mini、各厂商推理模型
-// Grok 系列：3-mini, 4, 4-fast, 4-1-fast, code-fast 都是推理模型（排除 -non-reasoning 变体）
+// Grok 系列：3-mini, 4, 4-fast, 4.1, 4-1-fast, code-fast 都是推理模型（排除 -non-reasoning 变体）
 // Mistral Magistral 系列：magistral-small/medium 是推理模型
-const REASONING_REGEX = /^(?!.*-non-reasoning\b)(?:o\d+(?:-[\w-]+)?|gpt-5(?!-chat)[\w.-]*|gpt-oss|codex-mini|.*\b(?:reasoning|reasoner|thinking)\b.*|.*-[rR]\d+.*|.*\bqwq(?:-[\w-]+)?\b.*|.*\bhunyuan-t1(?:-[\w-]+)?\b.*|.*\bglm-zero-preview\b.*|.*\bgrok-(?:3-mini|4(?:-1)?(?:-fast)?|code-fast)(?:-[\w-]+)?\b.*|.*\bmagistral(?:-[\w-]+)?\b.*)$/i;
+const REASONING_REGEX = /^(?!.*-non-reasoning\b)(?:o\d+(?:-[\w-]+)?|gpt-5(?!-chat)[\w.-]*|gpt-oss|codex-mini|.*\b(?:reasoning|reasoner|thinking)\b.*|.*-[rR]\d+.*|.*\bqwq(?:-[\w-]+)?\b.*|.*\bhunyuan-t1(?:-[\w-]+)?\b.*|.*\bglm-zero-preview\b.*|.*\bgrok-(?:3-mini|4(?:[.-]1)?(?:-fast)?|code-fast)(?:-[\w-]+)?\b.*|.*\bmagistral(?:-[\w-]+)?\b.*)$/i;
 
 const VISION_ALLOWED_PATTERNS: (string | RegExp)[] = [
   // OCR 专用模型（DeepSeek-OCR、PaddleOCR-VL 等）
@@ -114,7 +114,9 @@ const VISION_ALLOWED_PATTERNS: (string | RegExp)[] = [
   'grok-vision-beta',
   'grok-4',
   'grok-4-fast',
+  'grok-4-1',
   'grok-4-1-fast',
+  'grok-4.1',
   'grok-3',
   'pixtral',
   'gpt-4',
@@ -140,6 +142,8 @@ const VISION_ALLOWED_PATTERNS: (string | RegExp)[] = [
   'doubao-seed-1-6',
   'doubao-seed-1.8',
   'doubao-seed-1-8',
+  'doubao-seed-2.0',
+  'doubao-seed-2-0',
   'kimi-vl-a3b-thinking',
   'llama-guard-4',
   'llama-4',
@@ -163,12 +167,12 @@ const VISION_EXCLUDED_REGEXES: RegExp[] = [
   /gpt-5-chat/i, // gpt-5-chat 仅支持文本输出
   /grok-code-fast/i, // grok-code-fast 专为代码优化，不支持视觉
   /grok-3-mini/i, // grok-3-mini 为纯文本推理模型，不支持视觉
+  /doubao-seed-.*code/i, // doubao-seed-2-0-code 为纯文本编程模型
 ];
 
 // 函数调用支持白名单：OpenAI GPT系列、o系列、各厂商主流模型
-// 2026-01: 添加 kimi-k2.5/k2-5 支持
-// 2026-01: 添加 doubao-seed-1.8 支持
-const FUNCTION_CALLING_WHITELIST_REGEX = /(gpt-4o-mini|gpt-4o|gpt-4\.1|gpt-4\.5|gpt-4(?!-\d)|gpt-oss|gpt-5|o[134]\b|o3-pro|codex-mini|computer-use|claude|qwen3?|hunyuan|deepseek|glm-(?:4(?:\.[5-7])?|5(?:\.\d+)?)|learnlm|gemini(?!.*embedding)|grok-[34]|doubao-seed-1(?:\.[68]|-[68])|kimi-(?:k2(?:\.5|-5)?|latest|vl)|ling-[\w-]+|ring-[\w-]+|minimax-m2|devstral)/i;
+// 2026-02: 添加 doubao-seed-2.0, MiniMax-M2.5, GLM-5, grok-4.1 支持
+const FUNCTION_CALLING_WHITELIST_REGEX = /(gpt-4o-mini|gpt-4o|gpt-4\.1|gpt-4\.5|gpt-4(?!-\d)|gpt-oss|gpt-5|o[134]\b|o3-pro|codex-mini|computer-use|claude|qwen3?|hunyuan|deepseek|glm-(?:4(?:\.[5-7])?|5(?:\.\d+)?)|learnlm|gemini(?!.*embedding)|grok-[34]|doubao-seed-(?:1(?:\.[68]|-[68])|2(?:\.0|-0))|kimi-(?:k2(?:\.5|-5)?|latest|vl)|ling-[\w-]+|ring-[\w-]+|minimax-m2(?:\.\d)?|devstral)/i;
 
 const FUNCTION_CALLING_EXCLUDED_REGEXES: RegExp[] = [
   /\baqa\b/i,
@@ -243,7 +247,8 @@ const DOUBAO_THINKING_REGEXES: RegExp[] = [
 // Gemini 排除 image/tts/audio 专用模型的 thinking 能力
 const GEMINI_IMAGE_EXCLUDE_REGEX = /(image|tts|audio)/i;
 // GLM 4.5/4.6/4.7/5 支持思维链 (Preserved Thinking / Interleaved Thinking)
-const ZHIPU_GLM_THINKING_REGEX = /glm-(?:4\.[5-7]|5(?:\.\d+)?)/i;
+// 排除 flash/flashx 变体（免费/快速模型不支持 thinking）
+const ZHIPU_GLM_THINKING_REGEX = /glm-(?:4\.[5-7]|5(?:\.\d+)?)(?!-flash)/i;
 // 通用匹配所有 GLM 视觉模型（以 v 结尾的版本号，如 glm-4.5v, glm-4.6v, glm-5v, glm-5.1v）
 const ZHIPU_GLM_VISION_REGEX = /glm-(?:4(?:\.\d+)?|5(?:\.\d+)?)v/i;
 
@@ -253,7 +258,7 @@ const ZHIPU_GLM_VISION_REGEX = /glm-(?:4(?:\.\d+)?|5(?:\.\d+)?)v/i;
 // - kimi-thinking-preview, kimi-vl-a3b-thinking 等预览/VL 版本
 const KIMI_K2_THINKING_REGEX = /kimi-(?:k2(?:\.5|-5)?(?:-[\w-]*)?thinking|k2\.5|k2-5|thinking-preview|vl-[\w-]*thinking)/i;
 
-// MiniMax M2/M2.1 系列支持思维链回传 (不回传性能降 3-40%)
+// MiniMax M2/M2.1/M2.5 系列支持思维链回传 (不回传性能降 3-40%)
 const MINIMAX_THINKING_REGEXES: RegExp[] = [
   /minimax-m2(?:\.\d)?/i,
   /abab7/i,
@@ -300,6 +305,10 @@ const CONTEXT_WINDOW_RULES: Array<{ pattern: RegExp; window: number }> = [
   // GPT-5 / GPT-5.2 系列：400K tokens（OpenAI 官方 2025）
   { pattern: /gpt-5/i, window: 400_000 },
 
+  // --- 1M 级 ---
+  // Qwen-Plus：1,000,000 tokens（阿里云官方 2026-02，思考+非思考双模式）
+  { pattern: /qwen-plus/i, window: 1_000_000 },
+
   // --- 256K 级 ---
   // Kimi K2.5：262,144 tokens（Moonshot 官方 2026-01）; K2: 128-256K
   { pattern: /kimi|moonshot/i, window: 256_000 },
@@ -317,8 +326,8 @@ const CONTEXT_WINDOW_RULES: Array<{ pattern: RegExp; window: number }> = [
   { pattern: /claude|anthropic/i, window: 200_000 },
   // OpenAI o 系列：o1/o3/o4-mini 200K tokens; codex-mini 200K（OpenAI 官方 2025）
   { pattern: /\bo[1-4]\b|\bo1-|\bo3-|\bo4-|codex-mini/i, window: 200_000 },
-  // MiniMax M2 / abab6.5：200K tokens（MiniMax 官方）
-  { pattern: /minimax|abab/i, window: 200_000 },
+  // MiniMax M2/M2.1/M2.5：205K tokens（MiniMax 官方 2026-02）
+  { pattern: /minimax|abab/i, window: 205_000 },
   // GLM-4.5/4.6/4.7/5：200K tokens（智谱官方）
   { pattern: /glm-(?:4\.[5-9]|5(?:\.\d+)?)/i, window: 200_000 },
 
@@ -479,10 +488,11 @@ export function inferApiCapabilities(descriptor: ApiModelDescriptor): InferredAp
 
   const isClaudeThinking = CLAUDE_THINKING_PATTERNS.some(pattern => id.includes(pattern));
 
-  // Doubao Seed 1.6/1.8 全系列支持 thinking 模式（包括带 -thinking 后缀和不带的）
+  // Doubao Seed 1.6/1.8/2.0 全系列支持 thinking 模式（包括带 -thinking 后缀和不带的）
   const isDoubaoSeedThinking =
     id.includes('doubao-seed-1.6') || id.includes('doubao-seed-1-6') ||
-    id.includes('doubao-seed-1.8') || id.includes('doubao-seed-1-8');
+    id.includes('doubao-seed-1.8') || id.includes('doubao-seed-1-8') ||
+    id.includes('doubao-seed-2.0') || id.includes('doubao-seed-2-0');
 
   const isDoubaoThinking = matchesRegexList(id, DOUBAO_THINKING_REGEXES) || isDoubaoSeedThinking;
 
@@ -493,7 +503,7 @@ export function inferApiCapabilities(descriptor: ApiModelDescriptor): InferredAp
   // Kimi K2 Thinking 系列
   const isKimiK2Thinking = KIMI_K2_THINKING_REGEX.test(id);
 
-  // MiniMax M2/M2.1 系列（思维链必须回传，否则性能下降 3-40%）
+  // MiniMax M2/M2.1/M2.5 系列（思维链必须回传，否则性能下降 3-40%）
   const isMinimaxThinking = matchesRegexList(id, MINIMAX_THINKING_REGEXES);
 
   // Gemini 3 系列（工具调用时 thoughtSignature 必须回传）

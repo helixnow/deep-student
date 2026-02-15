@@ -1,16 +1,16 @@
 /**
  * 🚀 性能优化：页面组件懒加载
  *
- * 将非首屏页面组件改为 React.lazy() 动态导入，
+ * 将页面组件改为 React.lazy() 动态导入，
  * 减少初始 bundle 大小，加快首帧渲染。
  *
  * 清理说明（2026-01）：
  * - 移除废弃组件：MathWorkflowManager、BridgeToIrec、IrecInsightRecall、
  *   IrecServiceSwitcher、MemoryIntakeDashboard（旧版）
  * - ★ 2026-01 移除：IrecGraphFlow、IrecGraphPage、IrecGraphFlowDemo（图谱模块已废弃）
+ * - ★ 2026-02 优化：ChatV2Page 改为懒加载，大幅减少初始 bundle（含 DnD/framer-motion/chat-v2 init 等）
  *
  * 首屏必需（保持同步）：
- * - ChatV2Page（默认视图）
  * - ModernSidebar（侧边栏）
  * - 基础 UI 组件
  */
@@ -118,4 +118,10 @@ export const LazyChatV2IntegrationTest = React.lazy(() =>
 // 图片查看器
 export const LazyImageViewer = React.lazy(() =>
   import('./components/ImageViewer').then(m => ({ default: m.ImageViewer }))
+);
+
+// 🚀 Chat V2 主页面（默认视图，改为懒加载以减少初始 bundle）
+// 其依赖链包含 @hello-pangea/dnd、framer-motion、chat-v2/init 等重量级模块
+export const LazyChatV2Page = React.lazy(() =>
+  import('./chat-v2/pages').then(m => ({ default: m.ChatV2Page }))
 );

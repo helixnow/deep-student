@@ -27,7 +27,7 @@ import { MobileLayoutProvider, BottomTabBar, MobileHeaderProvider, UnifiedMobile
 import { TauriAPI } from './utils/tauriApi';
 // ★ MistakeItem 类型导入已废弃（2026-01 清理）
 import { isWindows, isAndroid, isMacOS } from './utils/platform';
-import { ChatV2Page } from './chat-v2/pages';
+// 🚀 性能优化：ChatV2Page 改为懒加载，见 lazyComponents.tsx
 import { NoteEditorPortal } from './components/notes/NoteEditorPortal';
 // 🚀 性能优化：TreeDragTest, PdfReader, LearningHubPage 改为懒加载
 import {
@@ -106,6 +106,7 @@ import {
   LazyCrepeDemoPage,
   LazyChatV2IntegrationTest,
   LazyImageViewer,
+  LazyChatV2Page,
 } from './lazyComponents';
 
 // ★ debugLog 别名：将本文件中的 console 调用路由到调试面板，受 debugMasterSwitch 控制
@@ -784,10 +785,20 @@ function App() {
   // const [irecAnalysisData, setIrecAnalysisData] = useState<any>(null);
   const [chatCategory, setChatCategory] = useState<'analysis' | 'general_chat'>('general_chat');
 
+  // 🐛 BUG-1 修复: 追踪是否通过页面级 back/forward 抵达 Learning Hub
+  // 当通过页面级导航抵达 LH 时，前进按钮应优先使用页面级前进（如有），
+  // 避免 LH 内部残留的前进历史遮蔽页面级前进。
+  const arrivedAtLHViaPageNavRef = useRef(false);
+  const pageNavInProgressRef = useRef(false);
+
   // ⚙️ 视图历史：使用新的导航历史 Hook
   const navigationHistory = useNavigationHistory({
     currentView,
     onViewChange: (view, _params) => {
+      // 🐛 BUG-1: 页面级导航（back/forward）抵达 LH 时设置标记
+      if (pageNavInProgressRef.current && view === 'learning-hub') {
+        arrivedAtLHViaPageNavRef.current = true;
+      }
       setCurrentView(view);
     },
   });
@@ -809,26 +820,59 @@ function App() {
     return unsubscribe;
   }, []);
 
+  // 🐛 BUG-1: 离开 Learning Hub 时清除页面级抵达标记
+  useEffect(() => {
+    if (!isInLearningHub) {
+      arrivedAtLHViaPageNavRef.current = false;
+    }
+  }, [isInLearningHub]);
+
   // 统一的导航处理：Learning Hub 内部优先，否则使用页面级导航
+  // 🐛 BUG-1: 通过页面级导航抵达 LH 时，前进优先使用页面级（如有），
+  //   避免 LH 残留的内部前进历史遮蔽页面级前进目标。
   const unifiedCanGoBack = isInLearningHub && learningHubNav?.canGoBack
     ? true
     : navigationHistory.canGoBack;
-  const unifiedCanGoForward = isInLearningHub && learningHubNav?.canGoForward
-    ? true
-    : navigationHistory.canGoForward;
+  const unifiedCanGoForward = (() => {
+    if (isInLearningHub) {
+      // 通过页面级导航抵达 LH 且页面级有前进 → 页面级前进优先
+      if (arrivedAtLHViaPageNavRef.current && navigationHistory.canGoForward) {
+        return true;
+      }
+      // LH 内部有前进（用户主动 LH 后退产生的，或页面级前进已耗尽）
+      if (learningHubNav?.canGoForward) {
+        return true;
+      }
+    }
+    return navigationHistory.canGoForward;
+  })();
   const unifiedGoBack = useCallback(() => {
     if (isInLearningHub && learningHubNav?.canGoBack) {
       learningHubNav.goBack();
+      // 🐛 BUG-1: 用户主动使用 LH 内部后退，清除页面级抵达标记
+      arrivedAtLHViaPageNavRef.current = false;
     } else {
+      pageNavInProgressRef.current = true;
       navigationHistory.goBack();
+      pageNavInProgressRef.current = false;
     }
   }, [isInLearningHub, learningHubNav, navigationHistory]);
   const unifiedGoForward = useCallback(() => {
-    if (isInLearningHub && learningHubNav?.canGoForward) {
-      learningHubNav.goForward();
-    } else {
-      navigationHistory.goForward();
+    if (isInLearningHub) {
+      // 🐛 BUG-1: 通过页面级导航抵达 LH 且页面级有前进 → 页面级前进优先
+      if (arrivedAtLHViaPageNavRef.current && navigationHistory.canGoForward) {
+        pageNavInProgressRef.current = true;
+        navigationHistory.goForward();
+        pageNavInProgressRef.current = false;
+        return;
+      }
+      // LH 内部有前进（正常 LH 浏览，或页面级前进已耗尽）
+      if (learningHubNav?.canGoForward) {
+        learningHubNav.goForward();
+        return;
+      }
     }
+    navigationHistory.goForward();
   }, [isInLearningHub, learningHubNav, navigationHistory]);
   
   // ⌨️ 键盘和鼠标快捷键支持
@@ -1736,7 +1780,7 @@ function App() {
               {renderViewLayer('chat-v2-test', <Suspense fallback={<PageLoadingFallback />}><LazyChatV2IntegrationTest /></Suspense>)}
 
               {/* Chat V2 正式入口 */}
-              {renderViewLayer('chat-v2', <ChatV2Page />)}
+              {renderViewLayer('chat-v2', <Suspense fallback={<PageLoadingFallback />}><LazyChatV2Page /></Suspense>)}
 
               {/* ★ 废弃视图已移除（2026-01 清理）：bridge-to-irec */}
 

@@ -589,7 +589,7 @@ const SessionRow: React.FC<{
 
         {/* P1+P7: 操作按钮（触屏常驻低透明度，桌面 hover 加强） */}
         <div
-          className="flex items-center justify-end gap-0 flex-shrink-0 w-[96px]
+          className="flex items-center justify-end gap-0 flex-shrink-0 w-[48px] sm:w-[96px]
             opacity-40 group-hover/row:opacity-100
             transition-opacity duration-150"
           onClick={e => e.stopPropagation()}
@@ -748,49 +748,54 @@ const SessionRow: React.FC<{
                   <span className="text-foreground/70 font-medium">{templateName}</span>
                 </div>
               )}
-              {/* 表头 — 根据模板字段动态生成列 */}
-              <div className="flex items-center gap-3 px-2 py-1.5 text-[11px] font-medium text-muted-foreground/50 uppercase tracking-wider">
-                <span className="w-6 text-right">#</span>
-                {isFallback ? (
-                  <>
-                    <span className="flex-1">{t('taskDashboard.cardFront')}</span>
-                    <span className="flex-1">{t('taskDashboard.cardBack')}</span>
-                  </>
-                ) : (
-                  columns.map(col => (
-                    <span key={col} className="flex-1 truncate">{col}</span>
-                  ))
-                )}
-              </div>
-              {/* P2: show-more 分页 — 展开后解除高度限制 */}
-              <CustomScrollArea className={showAllCards ? 'max-h-[600px]' : 'max-h-[280px]'}>
-                {visibleCards.map((c, i) => (
-                  <div key={c.id || i} className="flex items-start gap-3 px-2 py-2 hover:bg-muted/10 transition-colors">
-                    <span className="text-[10px] text-muted-foreground/30 mt-0.5 w-6 text-right flex-shrink-0 tabular-nums">
-                      {i + 1}
-                    </span>
+              {/* 表头+卡片列表 — 可水平滚动，避免移动端多列时列宽坍缩 */}
+              <div className="overflow-x-auto">
+                <div style={!isFallback && columns.length > 2 ? { minWidth: `${columns.length * 120 + 36}px` } : undefined}>
+                  {/* 表头 — 根据模板字段动态生成列 */}
+                  <div className="flex items-center gap-3 px-2 py-1.5 text-[11px] font-medium text-muted-foreground/50 uppercase tracking-wider">
+                    <span className="w-6 text-right flex-shrink-0">#</span>
                     {isFallback ? (
                       <>
-                        <div className="flex-1 min-w-0 text-[13px] text-foreground/90 truncate">
-                          {c.front || '—'}
-                        </div>
-                        <div className="flex-1 min-w-0 text-[13px] text-muted-foreground truncate">
-                          {c.back || '—'}
-                        </div>
+                        <span className="flex-1 min-w-[100px]">{t('taskDashboard.cardFront')}</span>
+                        <span className="flex-1 min-w-[100px]">{t('taskDashboard.cardBack')}</span>
                       </>
                     ) : (
-                      columns.map((col, ci) => (
-                        <div
-                          key={col}
-                          className={`flex-1 min-w-0 text-[13px] truncate ${ci === 0 ? 'text-foreground/90' : 'text-muted-foreground'}`}
-                        >
-                          {getCardFieldValue(c, col)}
-                        </div>
+                      columns.map(col => (
+                        <span key={col} className="flex-1 min-w-[100px] truncate">{col}</span>
                       ))
                     )}
                   </div>
-                ))}
-              </CustomScrollArea>
+                  {/* P2: show-more 分页 — 展开后解除高度限制 */}
+                  <CustomScrollArea className={showAllCards ? 'max-h-[600px]' : 'max-h-[280px]'}>
+                    {visibleCards.map((c, i) => (
+                      <div key={c.id || i} className="flex items-start gap-3 px-2 py-2 hover:bg-muted/10 transition-colors">
+                        <span className="text-[10px] text-muted-foreground/30 mt-0.5 w-6 text-right flex-shrink-0 tabular-nums">
+                          {i + 1}
+                        </span>
+                        {isFallback ? (
+                          <>
+                            <div className="flex-1 min-w-[100px] text-[13px] text-foreground/90 truncate">
+                              {c.front || '—'}
+                            </div>
+                            <div className="flex-1 min-w-[100px] text-[13px] text-muted-foreground truncate">
+                              {c.back || '—'}
+                            </div>
+                          </>
+                        ) : (
+                          columns.map((col, ci) => (
+                            <div
+                              key={col}
+                              className={`flex-1 min-w-[100px] text-[13px] truncate ${ci === 0 ? 'text-foreground/90' : 'text-muted-foreground'}`}
+                            >
+                              {getCardFieldValue(c, col)}
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    ))}
+                  </CustomScrollArea>
+                </div>
+              </div>
               {hasMoreCards && (
                 <NotionButton variant="ghost" size="sm" onClick={() => setShowAllCards(v => !v)} className="w-full !py-1.5 text-[12px] text-muted-foreground/50 hover:text-muted-foreground">
                   {showAllCards
@@ -1048,7 +1053,7 @@ export const TaskDashboardPage: React.FC<TaskDashboardPageProps> = ({
 
   return (
     <CustomScrollArea className="h-full bg-background">
-      <div className="max-w-[860px] mx-auto px-4 sm:px-6 py-6 sm:py-10">
+      <div className={`max-w-[860px] mx-auto px-4 sm:px-6 py-6 sm:py-10 ${isSmallScreen ? 'pb-20' : ''}`}>
         {/* ======== 页面标题 ======== */}
         {!isSmallScreen && (
           <div className="mb-8">
