@@ -12,6 +12,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { NotionButton } from '@/components/ui/NotionButton';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ChevronDown,
@@ -331,18 +332,21 @@ const TimelineNode: React.FC<TimelineNodeProps> = ({
         />
         {/* 节点圆点 - 使用 CSS 类确保 Android WebView 正确渲染 */}
         {isClickable ? (
-          <button
-            type="button"
+          <NotionButton
+            variant="ghost"
+            size="icon"
+            iconOnly
             onClick={onToggle}
             className={cn(
-              'timeline-node-dot rounded-full flex-shrink-0 z-10 transition-all',
-              'hover:scale-125 cursor-pointer',
+              'timeline-node-dot !rounded-full flex-shrink-0 z-10 !p-0',
+              'hover:scale-125',
               isActive
                 ? 'bg-primary ring-2 ring-primary/30'
                 : isExpanded
                   ? 'bg-primary/70 ring-2 ring-primary/20'
                   : 'bg-muted-foreground/50 hover:bg-muted-foreground/70'
             )}
+            aria-label={isExpanded ? t('activityTimeline.collapse') : t('activityTimeline.expand')}
             title={isExpanded ? t('activityTimeline.collapse') : t('activityTimeline.expand')}
           />
         ) : (
@@ -421,15 +425,16 @@ const ThinkingNodeContent: React.FC<ThinkingNodeContentProps> = ({ node, isFirst
       onToggle={toggleExpanded}
     >
       {/* 🔧 统一交互：文字区域也可以点击展开 */}
-      <button
-        type="button"
+      <NotionButton
+        variant="ghost"
+        size="sm"
         onClick={hasContent ? toggleExpanded : undefined}
         disabled={!hasContent}
         className={cn(
-          'inline-flex items-center gap-1.5',
+          '!justify-start !px-0',
           'text-muted-foreground',
           hasContent && 'hover:text-foreground cursor-pointer',
-          'disabled:cursor-default transition-colors text-left'
+          'disabled:cursor-default'
         )}
       >
         {node.isThinking && (
@@ -441,7 +446,7 @@ const ThinkingNodeContent: React.FC<ThinkingNodeContentProps> = ({ node, isFirst
             ? t('timeline.thinking.inProgress')
             : t('timeline.thinking.completed', { seconds: node.durationSeconds })}
         </span>
-      </button>
+      </NotionButton>
 
       <AnimatePresence initial={false}>
         {isExpanded && node.content && (
@@ -635,14 +640,14 @@ const ToolNodeContent: React.FC<ToolNodeContentProps> = ({ node, isFirst, isLast
     >
       <div className="flex flex-col gap-1">
         {/* 工具头部 - 🔧 统一交互：文字区域也可以点击展开 */}
-        <button
-          type="button"
+        <NotionButton
+          variant="ghost"
+          size="sm"
           onClick={toggleExpanded}
           disabled={!hasDetails}
           className={cn(
-            'inline-flex items-center gap-1.5 -mt-0.5',
+            '!justify-start !px-0 -mt-0.5',
             'text-muted-foreground hover:text-foreground',
-            'transition-colors cursor-pointer text-left',
             'disabled:cursor-default disabled:hover:text-muted-foreground'
           )}
         >
@@ -662,7 +667,7 @@ const ToolNodeContent: React.FC<ToolNodeContentProps> = ({ node, isFirst, isLast
           <span className={cn('text-xs', statusColor)}>
             {statusText}
           </span>
-        </button>
+        </NotionButton>
 
         {/* 展开的详细信息 */}
         <AnimatePresence initial={false}>
@@ -820,19 +825,15 @@ const ToolLimitNodeContent: React.FC<ToolLimitNodeContentProps> = ({ node, isFir
 
         {/* 🔧 继续按钮 */}
         {onContinue && (
-          <button
-            type="button"
+          <NotionButton
+            variant="outline"
+            size="sm"
             onClick={onContinue}
-            className={cn(
-              'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md',
-              'bg-primary/10 hover:bg-primary/20 text-primary',
-              'transition-colors text-sm font-medium',
-              'border border-primary/20 hover:border-primary/30'
-            )}
+            className="bg-primary/10 hover:bg-primary/20 text-primary border-primary/20 hover:border-primary/30"
           >
             <ChevronRight size={14} className="flex-shrink-0" />
             <span>{t('timeline.limit.continue')}</span>
-          </button>
+          </NotionButton>
         )}
       </div>
     </TimelineNode>

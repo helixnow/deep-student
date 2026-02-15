@@ -108,12 +108,9 @@ export const RagPanel: React.FC<RagPanelProps> = ({ store, onClose }) => {
               {t('chat_host:rag.panel.vfs_subtitle')}
             </span>
           </div>
-          <button
-            onClick={onClose}
-            className="rounded-md p-1 text-muted-foreground hover:bg-accent/40 hover:text-foreground shrink-0"
-          >
+          <NotionButton variant="ghost" size="icon" iconOnly onClick={onClose} aria-label={t('common:actions.cancel')}>
             <X size={16} />
-          </button>
+          </NotionButton>
         </div>
       )}
 

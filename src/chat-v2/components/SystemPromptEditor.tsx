@@ -12,6 +12,7 @@
  */
 
 import React, { useCallback, useState, useMemo, useRef } from 'react';
+import { NotionButton } from '@/components/ui/NotionButton';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
 import {
@@ -141,16 +142,11 @@ const TemplateSelector: React.FC<TemplateSelectorProps> = ({
 
   return (
     <div className="relative">
-      <button
+      <NotionButton
+        variant="outline"
+        size="sm"
         onClick={() => !disabled && setIsOpen(!isOpen)}
         disabled={disabled}
-        className={cn(
-          'flex items-center gap-2 px-3 py-1.5',
-          'text-sm text-muted-foreground',
-          'rounded-md border border-border/50',
-          'hover:bg-muted/50 transition-colors',
-          'disabled:opacity-50 disabled:cursor-not-allowed'
-        )}
       >
         <FileText className="w-4 h-4" />
         <span>{t('systemPrompt.templates')}</span>
@@ -160,7 +156,7 @@ const TemplateSelector: React.FC<TemplateSelectorProps> = ({
             isOpen && 'rotate-180'
           )}
         />
-      </button>
+      </NotionButton>
 
       {isOpen && (
         <>
@@ -203,15 +199,9 @@ const TemplateSelector: React.FC<TemplateSelectorProps> = ({
                   )}
                 </div>
                 {!template.builtin && onDelete && (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onDelete(template.id);
-                    }}
-                    className="p-1 hover:bg-destructive/10 rounded text-muted-foreground hover:text-destructive"
-                  >
+                  <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); onDelete(template.id); }} className="!h-6 !w-6 hover:text-destructive hover:bg-destructive/10" aria-label="delete">
                     <Trash2 className="w-3.5 h-3.5" />
-                  </button>
+                  </NotionButton>
                 )}
               </div>
             ))}
@@ -242,16 +232,11 @@ const VariableInserter: React.FC<VariableInserterProps> = ({
 
   return (
     <div className="relative">
-      <button
+      <NotionButton
+        variant="outline"
+        size="sm"
         onClick={() => !disabled && setIsOpen(!isOpen)}
         disabled={disabled}
-        className={cn(
-          'flex items-center gap-2 px-3 py-1.5',
-          'text-sm text-muted-foreground',
-          'rounded-md border border-border/50',
-          'hover:bg-muted/50 transition-colors',
-          'disabled:opacity-50 disabled:cursor-not-allowed'
-        )}
       >
         <Variable className="w-4 h-4" />
         <span>{t('systemPrompt.insertVariable')}</span>
@@ -261,7 +246,7 @@ const VariableInserter: React.FC<VariableInserterProps> = ({
             isOpen && 'rotate-180'
           )}
         />
-      </button>
+      </NotionButton>
 
       {isOpen && (
         <>
@@ -442,38 +427,14 @@ export const SystemPromptEditor: React.FC<SystemPromptEditorProps> = ({
 
         <div className="flex items-center gap-1">
           {/* 复制按钮 */}
-          <button
-            onClick={handleCopy}
-            disabled={!value || disabled}
-            className={cn(
-              'p-1.5 rounded-md',
-              'text-muted-foreground hover:text-foreground',
-              'hover:bg-muted/50 transition-colors',
-              'disabled:opacity-50 disabled:cursor-not-allowed'
-            )}
-            title={t('systemPrompt.copy')}
-          >
-            {copied ? (
-              <Check className="w-4 h-4 text-green-500" />
-            ) : (
-              <Copy className="w-4 h-4" />
-            )}
-          </button>
+          <NotionButton variant="ghost" size="icon" iconOnly onClick={handleCopy} disabled={!value || disabled} aria-label={t('systemPrompt.copy')} title={t('systemPrompt.copy')}>
+            {copied ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
+          </NotionButton>
 
           {/* 清空按钮 */}
-          <button
-            onClick={handleClear}
-            disabled={!value || disabled}
-            className={cn(
-              'p-1.5 rounded-md',
-              'text-muted-foreground hover:text-foreground',
-              'hover:bg-muted/50 transition-colors',
-              'disabled:opacity-50 disabled:cursor-not-allowed'
-            )}
-            title={t('systemPrompt.clear')}
-          >
+          <NotionButton variant="ghost" size="icon" iconOnly onClick={handleClear} disabled={!value || disabled} aria-label={t('systemPrompt.clear')} title={t('systemPrompt.clear')}>
             <RotateCcw className="w-4 h-4" />
-          </button>
+          </NotionButton>
         </div>
       </div>
 
@@ -514,7 +475,9 @@ export const SystemPromptEditor: React.FC<SystemPromptEditorProps> = ({
         <div className="flex items-center gap-2">
           {/* 保存为模板 */}
           {onSaveTemplate && value.trim() && (
-            <button
+            <NotionButton
+              variant="outline"
+              size="sm"
               onClick={() =>
                 onSaveTemplate({
                   name: t('systemPrompt.newTemplateName'),
@@ -522,16 +485,10 @@ export const SystemPromptEditor: React.FC<SystemPromptEditorProps> = ({
                 })
               }
               disabled={disabled}
-              className={cn(
-                'flex items-center gap-1 px-2 py-1',
-                'rounded border border-border/50',
-                'hover:bg-muted/50 transition-colors',
-                'disabled:opacity-50 disabled:cursor-not-allowed'
-              )}
             >
               <Plus className="w-3 h-3" />
               <span>{t('systemPrompt.saveAsTemplate')}</span>
-            </button>
+            </NotionButton>
           )}
         </div>
 

@@ -268,17 +268,22 @@ export const MultiSelectModelPanel: React.FC<MultiSelectModelPanelProps> = ({
           disabled && 'opacity-60'
         )}
       >
-        <button
+        <NotionButton
+          variant={isSelected ? 'primary' : 'ghost'}
+          size="icon"
+          iconOnly
           onClick={() => handleToggleModel(option)}
           disabled={disabled}
           className={cn(indicatorClass, 'mt-0.5', disabled && 'cursor-not-allowed')}
         >
           {isSelected && <Check size={12} />}
-        </button>
-        <button
+        </NotionButton>
+        <NotionButton
+          variant="ghost"
+          size="sm"
           onClick={() => handleToggleModel(option)}
           disabled={disabled}
-          className={cn('min-w-0 flex-1 space-y-0.5 text-left', disabled && 'cursor-not-allowed')}
+          className={cn('min-w-0 flex-1 space-y-0.5 !justify-start text-left', disabled && 'cursor-not-allowed')}
         >
           <div className="flex items-center gap-1 flex-wrap">
             <ProviderIcon
@@ -323,24 +328,28 @@ export const MultiSelectModelPanel: React.FC<MultiSelectModelPanelProps> = ({
           <div className="text-xs text-foreground break-words">
             {option.model || option.name}
           </div>
-        </button>
+        </NotionButton>
         {/* 设为默认按钮 - 仅对非默认模型显示，hover 时显示 */}
         {!isDefault && (
           <CommonTooltip content={t('chat_host:model_panel.set_as_default')} position="left">
-            <button
+            <NotionButton
+              variant="ghost"
+              size="icon"
+              iconOnly
               onClick={(e) => {
                 e.stopPropagation();
                 handleSetAsDefault(option.id);
               }}
               disabled={disabled || savingDefault}
               className={cn(
-                'mt-0.5 p-1 rounded-md opacity-0 group-hover:opacity-100 transition-opacity',
+                'mt-0.5 !h-6 !w-6 opacity-0 group-hover:opacity-100 transition-opacity',
                 'text-muted-foreground hover:text-primary hover:bg-primary/10',
                 (disabled || savingDefault) && 'cursor-not-allowed opacity-40'
               )}
+              aria-label={t('chat_host:model_panel.set_as_default')}
             >
               <Pin size={12} />
-            </button>
+            </NotionButton>
           </CommonTooltip>
         )}
       </div>
@@ -408,13 +417,9 @@ export const MultiSelectModelPanel: React.FC<MultiSelectModelPanelProps> = ({
                   {t('chatV2:modelRetry.retry')}
                 </NotionButton>
               )}
-              <button
-                onClick={onClose}
-                className="rounded-md p-1 text-muted-foreground hover:bg-accent/40 hover:text-foreground"
-                title={t('common:actions.cancel')}
-              >
+              <NotionButton variant="ghost" size="icon" iconOnly onClick={onClose} aria-label={t('common:actions.cancel')} title={t('common:actions.cancel')}>
                 <X size={16} />
-              </button>
+              </NotionButton>
             </div>
           </div>
 

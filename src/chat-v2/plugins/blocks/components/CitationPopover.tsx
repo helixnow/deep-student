@@ -8,6 +8,7 @@
 import React, { useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
+import { NotionButton } from '@/components/ui/NotionButton';
 import {
   FileText,
   Globe,
@@ -161,17 +162,9 @@ export const CitationPopover: React.FC<CitationPopoverProps> = ({
           </div>
 
           {/* 关闭按钮 */}
-          <button
-            onClick={onClose}
-            className={cn(
-              'flex-shrink-0 p-1 rounded',
-              'text-muted-foreground hover:text-foreground',
-              'hover:bg-muted/50 transition-colors'
-            )}
-            aria-label={t('common.close')}
-          >
+          <NotionButton variant="ghost" size="icon" iconOnly onClick={onClose} aria-label={t('common.close')} className="!h-6 !w-6">
             <X className="w-4 h-4" />
-          </button>
+          </NotionButton>
         </div>
 
         {/* 内容区域 */}
@@ -184,18 +177,10 @@ export const CitationPopover: React.FC<CitationPopoverProps> = ({
         {/* 底部操作 */}
         {hasUrl && (
           <div className="p-3 border-t border-border/50">
-            <button
-              onClick={handleOpenUrl}
-              className={cn(
-                'w-full flex items-center justify-center gap-2',
-                'py-2 rounded-lg text-sm',
-                'bg-primary text-primary-foreground',
-                'hover:bg-primary/90 transition-colors'
-              )}
-            >
+            <NotionButton variant="primary" size="md" onClick={handleOpenUrl} className="w-full">
               <ExternalLink className="w-4 h-4" />
               <span>{t('blocks.retrieval.openSource')}</span>
-            </button>
+            </NotionButton>
           </div>
         )}
       </div>
@@ -227,19 +212,19 @@ export const CitationBadge: React.FC<CitationBadgeProps> = ({
   className,
 }) => {
   return (
-    <button
+    <NotionButton
+      variant="ghost"
+      size="sm"
       onClick={onClick}
       className={cn(
-        'inline-flex items-center justify-center',
-        'min-w-[1.25rem] h-5 px-1 mx-0.5',
-        'text-xs font-medium rounded',
+        '!inline-flex !min-w-[1.25rem] !h-5 !px-1 mx-0.5',
+        'text-xs font-medium',
         'bg-primary/10 text-primary',
-        'hover:bg-primary/20 transition-colors',
-        'cursor-pointer',
+        'hover:bg-primary/20',
         className
       )}
     >
       [{index + 1}]
-    </button>
+    </NotionButton>
   );
 };

@@ -9,6 +9,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
+import { NotionButton } from '@/components/ui/NotionButton';
 import {
   X,
   ZoomIn,
@@ -247,41 +248,22 @@ export const InlineDocumentViewer: React.FC<InlineDocumentViewerProps> = ({
 
         {/* 中间：工具 */}
         <div className="flex items-center gap-1.5">
-          <button
-            onClick={() => setFontScale((prev) => Math.max(prev / 1.1, 0.75))}
-            className="p-1.5 rounded-md bg-muted hover:bg-muted/80 text-muted-foreground hover:text-foreground transition-colors"
-            title={t('common:imageViewer.zoomOut')}
-          >
+          <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setFontScale((prev) => Math.max(prev / 1.1, 0.75))} className="bg-muted hover:bg-muted/80" aria-label={t('common:imageViewer.zoomOut')} title={t('common:imageViewer.zoomOut')}>
             <ZoomOut className="w-4 h-4" />
-          </button>
+          </NotionButton>
           <span className="px-2 py-1 rounded-md text-xs font-medium min-w-[45px] text-center bg-muted text-muted-foreground">
             {Math.round(fontScale * 100)}%
           </span>
-          <button
-            onClick={() => setFontScale((prev) => Math.min(prev * 1.1, 2))}
-            className="p-1.5 rounded-md bg-muted hover:bg-muted/80 text-muted-foreground hover:text-foreground transition-colors"
-            title={t('common:imageViewer.zoomIn')}
-          >
+          <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setFontScale((prev) => Math.min(prev * 1.1, 2))} className="bg-muted hover:bg-muted/80" aria-label={t('common:imageViewer.zoomIn')} title={t('common:imageViewer.zoomIn')}>
             <ZoomIn className="w-4 h-4" />
-          </button>
+          </NotionButton>
           <div className="w-px h-4 bg-border mx-1" />
-          <button
-            onClick={() => setFontScale(1)}
-            className="p-1.5 rounded-md bg-muted hover:bg-muted/80 text-muted-foreground hover:text-foreground transition-colors"
-            title={t('common:imageViewer.reset')}
-          >
+          <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setFontScale(1)} className="bg-muted hover:bg-muted/80" aria-label={t('common:imageViewer.reset')} title={t('common:imageViewer.reset')}>
             <Home className="w-4 h-4" />
-          </button>
-          <button
-            onClick={() => setWrap((w) => !w)}
-            className={cn(
-              'p-1.5 rounded-md transition-colors',
-              wrap ? 'bg-primary/20 text-primary' : 'bg-muted hover:bg-muted/80 text-muted-foreground hover:text-foreground'
-            )}
-            title={wrap ? t('common:noWrap') : t('common:wrap')}
-          >
+          </NotionButton>
+          <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setWrap((w) => !w)} className={cn(wrap ? 'bg-primary/20 text-primary' : 'bg-muted hover:bg-muted/80')} aria-label={wrap ? t('common:noWrap') : t('common:wrap')} title={wrap ? t('common:noWrap') : t('common:wrap')}>
             <WrapText className="w-4 h-4" />
-          </button>
+          </NotionButton>
           <div className="w-px h-4 bg-border mx-1" />
           <div className="flex items-center gap-1 px-2 py-1 rounded-md border border-border bg-background">
             <Search size={14} className="text-muted-foreground" />
@@ -296,35 +278,19 @@ export const InlineDocumentViewer: React.FC<InlineDocumentViewerProps> = ({
 
         {/* 右侧：操作按钮 */}
         <div className="flex items-center gap-1.5">
-          <button
-            onClick={handleCopy}
-            className="p-1.5 rounded-md bg-muted hover:bg-muted/80 text-muted-foreground hover:text-foreground transition-colors"
-            title={t('common:copy')}
-          >
+          <NotionButton variant="ghost" size="icon" iconOnly onClick={handleCopy} className="bg-muted hover:bg-muted/80" aria-label={t('common:copy')} title={t('common:copy')}>
             {copied ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
-          </button>
-          <button
-            onClick={handleOpenExternal}
-            className="p-1.5 rounded-md bg-muted hover:bg-muted/80 text-muted-foreground hover:text-foreground transition-colors"
-            title={t('common:openInNewTab')}
-          >
+          </NotionButton>
+          <NotionButton variant="ghost" size="icon" iconOnly onClick={handleOpenExternal} className="bg-muted hover:bg-muted/80" aria-label={t('common:openInNewTab')} title={t('common:openInNewTab')}>
             <ExternalLink className="w-4 h-4" />
-          </button>
-          <button
-            onClick={handleDownload}
-            className="p-1.5 rounded-md bg-muted hover:bg-muted/80 text-muted-foreground hover:text-foreground transition-colors"
-            title={t('common:download')}
-          >
+          </NotionButton>
+          <NotionButton variant="ghost" size="icon" iconOnly onClick={handleDownload} className="bg-muted hover:bg-muted/80" aria-label={t('common:download')} title={t('common:download')}>
             <Download className="w-4 h-4" />
-          </button>
+          </NotionButton>
           <div className="w-px h-4 bg-border mx-1" />
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-md hover:bg-destructive/20 text-muted-foreground hover:text-destructive transition-colors"
-            title={t('common:close')}
-          >
+          <NotionButton variant="ghost" size="icon" iconOnly onClick={onClose} className="hover:bg-destructive/20 hover:text-destructive" aria-label={t('common:close')} title={t('common:close')}>
             <X className="w-4 h-4" />
-          </button>
+          </NotionButton>
         </div>
       </div>
 

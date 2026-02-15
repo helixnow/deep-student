@@ -5,6 +5,7 @@ import React, { useCallback, useState } from 'react';
 import { Copy, Check, RotateCcw, Trash2, Edit3, Bug, BookmarkPlus } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
+import { NotionButton } from '@/components/ui/NotionButton';
 import {
   AlertDialog,
   AlertDialogTrigger,
@@ -117,108 +118,51 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
   return (
     <div className={cn('flex items-center gap-1', className)}>
       {/* 复制按钮 */}
-      <button
-        onClick={handleCopy}
-        className="p-1.5 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-        title={t('messageItem.actions.copy')}
-      >
+      <NotionButton variant="ghost" size="icon" iconOnly onClick={handleCopy} aria-label={t('messageItem.actions.copy')} title={t('messageItem.actions.copy')}>
         {copied ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
-      </button>
+      </NotionButton>
 
       {/* 🆕 保存为笔记按钮（仅助手消息） */}
       {onSaveAsNote && (
-        <button
-          onClick={handleSaveAsNote}
-          disabled={isSavingNote}
-          className={cn(
-            'p-1.5 rounded-md transition-colors',
-            isSavingNote
-              ? 'opacity-50 cursor-not-allowed text-muted-foreground'
-              : 'hover:bg-muted text-muted-foreground hover:text-foreground'
-          )}
-          title={t('messageItem.actions.saveAsNote')}
-        >
+        <NotionButton variant="ghost" size="icon" iconOnly onClick={handleSaveAsNote} disabled={isSavingNote} aria-label={t('messageItem.actions.saveAsNote')} title={t('messageItem.actions.saveAsNote')}>
           <BookmarkPlus className={cn('w-4 h-4', isSavingNote && 'animate-pulse')} />
-        </button>
+        </NotionButton>
       )}
 
       {/* 🆕 复制调试信息按钮 */}
       {onCopyDebug && (
-        <button
-          onClick={handleCopyDebug}
-          className="p-1.5 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-          title={t('debug.copyDebugInfo', '复制调试信息')}
-        >
+        <NotionButton variant="ghost" size="icon" iconOnly onClick={handleCopyDebug} aria-label={t('debug.copyDebugInfo', '复制调试信息')} title={t('debug.copyDebugInfo', '复制调试信息')}>
           {debugCopied ? <Check className="w-4 h-4 text-green-500" /> : <Bug className="w-4 h-4" />}
-        </button>
+        </NotionButton>
       )}
 
       {/* 重试按钮（仅助手消息） */}
       {!isUser && onRetry && (
-        <button
-          onClick={handleRetry}
-          disabled={isLocked || isRetrying}
-          className={cn(
-            'p-1.5 rounded-md transition-colors',
-            (isLocked || isRetrying)
-              ? 'opacity-50 cursor-not-allowed text-muted-foreground'
-              : 'hover:bg-muted text-muted-foreground hover:text-foreground'
-          )}
-          title={t('messageItem.actions.retry')}
-        >
+        <NotionButton variant="ghost" size="icon" iconOnly onClick={handleRetry} disabled={isLocked || isRetrying} aria-label={t('messageItem.actions.retry')} title={t('messageItem.actions.retry')}>
           <RotateCcw className={cn('w-4 h-4', isRetrying && 'animate-spin')} />
-        </button>
+        </NotionButton>
       )}
 
       {/* 重新发送按钮（仅用户消息） */}
       {isUser && onResend && (
-        <button
-          onClick={handleResend}
-          disabled={isLocked || isResending}
-          className={cn(
-            'p-1.5 rounded-md transition-colors',
-            (isLocked || isResending)
-              ? 'opacity-50 cursor-not-allowed text-muted-foreground'
-              : 'hover:bg-muted text-muted-foreground hover:text-foreground'
-          )}
-          title={t('messageItem.actions.resend')}
-        >
+        <NotionButton variant="ghost" size="icon" iconOnly onClick={handleResend} disabled={isLocked || isResending} aria-label={t('messageItem.actions.resend')} title={t('messageItem.actions.resend')}>
           <RotateCcw className={cn('w-4 h-4', isResending && 'animate-spin')} />
-        </button>
+        </NotionButton>
       )}
 
       {/* 编辑按钮（仅用户消息） */}
       {isUser && onEdit && (
-        <button
-          onClick={onEdit}
-          disabled={!canEdit}
-          className={cn(
-            'p-1.5 rounded-md transition-colors',
-            !canEdit
-              ? 'opacity-50 cursor-not-allowed text-muted-foreground'
-              : 'hover:bg-muted text-muted-foreground hover:text-foreground'
-          )}
-          title={t('messageItem.actions.edit')}
-        >
+        <NotionButton variant="ghost" size="icon" iconOnly onClick={onEdit} disabled={!canEdit} aria-label={t('messageItem.actions.edit')} title={t('messageItem.actions.edit')}>
           <Edit3 className="w-4 h-4" />
-        </button>
+        </NotionButton>
       )}
 
       {/* 删除按钮 - 带二次确认 */}
       <AlertDialog>
         <AlertDialogTrigger asChild>
-          <button
-            disabled={!canDelete || isDeleting}
-            className={cn(
-              'p-1.5 rounded-md transition-colors',
-              (!canDelete || isDeleting)
-                ? 'opacity-50 cursor-not-allowed text-muted-foreground'
-                : 'hover:bg-muted text-muted-foreground hover:text-destructive'
-            )}
-            title={t('messageItem.actions.delete')}
-          >
+          <NotionButton variant="ghost" size="icon" iconOnly disabled={!canDelete || isDeleting} className={cn(!canDelete || isDeleting ? '' : 'hover:text-destructive')} aria-label={t('messageItem.actions.delete')} title={t('messageItem.actions.delete')}>
             <Trash2 className={cn('w-4 h-4', isDeleting && 'animate-pulse')} />
-          </button>
+          </NotionButton>
         </AlertDialogTrigger>
         <AlertDialogContent>
           <AlertDialogHeader>

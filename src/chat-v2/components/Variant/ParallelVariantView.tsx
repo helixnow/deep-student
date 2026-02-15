@@ -11,6 +11,7 @@ import React, { useMemo, useCallback, useState, useRef, useEffect } from 'react'
 import { useTranslation } from 'react-i18next';
 import i18n from 'i18next';
 import { cn } from '@/utils/cn';
+import { NotionButton } from '@/components/ui/NotionButton';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
@@ -408,90 +409,37 @@ const VariantCard: React.FC<VariantCardProps> = ({
         {/* 操作按钮 */}
         <div className="flex items-center gap-0.5">
           {/* 复制 */}
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              handleCopy();
-            }}
-            className="p-1.5 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-            title={t('messageItem.actions.copy', '复制')}
-          >
-            {copied ? (
-              <Check className="w-4 h-4 text-green-500" />
-            ) : (
-              <Copy className="w-4 h-4" />
-            )}
-          </button>
+          <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); handleCopy(); }} aria-label={t('messageItem.actions.copy', '复制')} title={t('messageItem.actions.copy', '复制')}>
+            {copied ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
+          </NotionButton>
 
           {/* 重试（可重试状态） */}
           {canRetry && onRetry && (
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                handleRetry();
-              }}
-              disabled={isOperating}
-              className={cn(
-                'p-1.5 rounded-md transition-colors',
-                isOperating
-                  ? 'opacity-50 cursor-not-allowed text-muted-foreground'
-                  : 'hover:bg-muted text-muted-foreground hover:text-foreground'
-              )}
-              title={t('variant.retry', '重试')}
-            >
+            <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); handleRetry(); }} disabled={isOperating} aria-label={t('variant.retry', '重试')} title={t('variant.retry', '重试')}>
               <RotateCcw className={cn('w-4 h-4', isOperating && 'animate-spin')} />
-            </button>
+            </NotionButton>
           )}
 
           {/* 取消（流式中） */}
           {canCancel && onCancel && (
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                handleCancel();
-              }}
-              disabled={isOperating}
-              className={cn(
-                'p-1.5 rounded-md transition-colors',
-                isOperating
-                  ? 'opacity-50 cursor-not-allowed text-muted-foreground'
-                  : 'hover:bg-muted text-muted-foreground hover:text-foreground'
-              )}
-              title={t('variant.cancel', '取消')}
-            >
+            <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); handleCancel(); }} disabled={isOperating} aria-label={t('variant.cancel', '取消')} title={t('variant.cancel', '取消')}>
               <Square className="w-4 h-4" />
-            </button>
+            </NotionButton>
           )}
 
           {/* 删除（非最后一个） */}
           {canDelete && onDelete && (
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                handleDelete();
-              }}
-              disabled={isOperating}
-              className={cn(
-                'p-1.5 rounded-md transition-colors',
-                isOperating
-                  ? 'opacity-50 cursor-not-allowed text-muted-foreground'
-                  : 'hover:bg-muted text-muted-foreground hover:text-destructive'
-              )}
-              title={t('variant.delete', '删除')}
-            >
+            <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); handleDelete(); }} disabled={isOperating} className={cn(isOperating ? '' : 'hover:text-destructive')} aria-label={t('variant.delete', '删除')} title={t('variant.delete', '删除')}>
               <Trash2 className="w-4 h-4" />
-            </button>
+            </NotionButton>
           )}
 
           {/* 更多操作菜单 */}
           <AppMenu>
             <AppMenuTrigger asChild>
-              <button
-                onClick={(e) => e.stopPropagation()}
-                className="p-1.5 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-              >
+              <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => e.stopPropagation()} aria-label="more">
                 <MoreHorizontal className="w-4 h-4" />
-              </button>
+              </NotionButton>
             </AppMenuTrigger>
             <AppMenuContent align="start" width={160}>
               <AppMenuItem onClick={handleCopy} icon={<Copy className="w-4 h-4" />}>
@@ -609,52 +557,25 @@ const MessageLevelActions: React.FC<MessageLevelActionsProps> = ({
       <div className="flex items-center gap-1">
         {/* 复制按钮 */}
         {onCopy && (
-          <button
-            onClick={handleCopy}
-            className="p-1.5 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-            title={t('messageItem.actions.copy', '复制')}
-          >
-            {copied ? (
-              <Check className="w-4 h-4 text-green-500" />
-            ) : (
-              <Copy className="w-4 h-4" />
-            )}
-          </button>
+          <NotionButton variant="ghost" size="icon" iconOnly onClick={handleCopy} aria-label={t('messageItem.actions.copy', '复制')} title={t('messageItem.actions.copy', '复制')}>
+            {copied ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
+          </NotionButton>
         )}
 
         {/* 全部重试按钮 */}
         {onRetryAll && (
-          <button
-            onClick={handleRetryAll}
-            disabled={!canRetryAll || isRetryingAll}
-            className={cn(
-              'p-1.5 rounded-md transition-colors',
-              (!canRetryAll || isRetryingAll)
-                ? 'opacity-50 cursor-not-allowed text-muted-foreground'
-                : 'hover:bg-muted text-muted-foreground hover:text-foreground'
-            )}
-            title={t('variant.retryAll', '全部重试')}
-          >
+          <NotionButton variant="ghost" size="icon" iconOnly onClick={handleRetryAll} disabled={!canRetryAll || isRetryingAll} aria-label={t('variant.retryAll', '全部重试')} title={t('variant.retryAll', '全部重试')}>
             <RotateCcw className={cn('w-4 h-4', isRetryingAll && 'animate-spin')} />
-          </button>
+          </NotionButton>
         )}
 
         {/* 删除消息按钮（带确认） */}
         {onDeleteMessage && (
           <AppMenu>
             <AppMenuTrigger asChild>
-              <button
-                disabled={!canDelete || isDeleting}
-                className={cn(
-                  'p-1.5 rounded-md transition-colors',
-                  (!canDelete || isDeleting)
-                    ? 'opacity-50 cursor-not-allowed text-muted-foreground'
-                    : 'hover:bg-muted text-muted-foreground hover:text-destructive'
-                )}
-                title={t('messageItem.actions.delete', '删除')}
-              >
+              <NotionButton variant="ghost" size="icon" iconOnly disabled={!canDelete || isDeleting} className={cn(!canDelete || isDeleting ? '' : 'hover:text-destructive')} aria-label={t('messageItem.actions.delete', '删除')} title={t('messageItem.actions.delete', '删除')}>
                 <Trash2 className={cn('w-4 h-4', isDeleting && 'animate-pulse')} />
-              </button>
+              </NotionButton>
             </AppMenuTrigger>
             <AppMenuContent align="start" width={180}>
               <AppMenuItem
@@ -776,18 +697,19 @@ export const ParallelVariantView: React.FC<ParallelVariantViewProps> = ({
           {variants.map((variant, index) => {
             const isActive = variant.id === activeVariantId;
             return (
-              <button
+              <NotionButton
                 key={variant.id}
+                variant="ghost"
+                size="icon"
+                iconOnly
                 onClick={() => {
-                  // 滚动到对应卡片
                   scrollToVariant(index);
-                  // 切换变体
                   if (onSwitchVariant && !isActive) {
                     onSwitchVariant(variant.id);
                   }
                 }}
                 className={cn(
-                  'rounded-full transition-all flex-shrink-0',
+                  '!rounded-full flex-shrink-0 !p-0',
                   isActive
                     ? 'variant-indicator-dot-active bg-primary'
                     : 'variant-indicator-dot bg-muted-foreground/30 hover:bg-muted-foreground/50'

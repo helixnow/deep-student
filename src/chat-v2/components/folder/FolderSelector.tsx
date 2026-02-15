@@ -13,6 +13,7 @@
  */
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { NotionButton } from '@/components/ui/NotionButton';
 import { useTranslation } from 'react-i18next';
 import {
   Folder,
@@ -138,20 +139,9 @@ const FolderTreeItem: React.FC<FolderTreeItemProps> = ({
       >
         {/* 展开/收起按钮 */}
         {hasChildren ? (
-          <button
-            type="button"
-            className="p-0.5 hover:bg-muted rounded"
-            onClick={(e) => {
-              e.stopPropagation();
-              onToggleExpand(folder.id);
-            }}
-          >
-            {isExpanded ? (
-              <ChevronDown className="w-4 h-4 text-muted-foreground" />
-            ) : (
-              <ChevronRight className="w-4 h-4 text-muted-foreground" />
-            )}
-          </button>
+          <NotionButton variant="ghost" size="icon" iconOnly className="!h-5 !w-5" onClick={(e) => { e.stopPropagation(); onToggleExpand(folder.id); }} aria-label="toggle">
+            {isExpanded ? <ChevronDown className="w-4 h-4 text-muted-foreground" /> : <ChevronRight className="w-4 h-4 text-muted-foreground" />}
+          </NotionButton>
         ) : (
           <span className="w-5" />
         )}
@@ -363,13 +353,9 @@ export const FolderSelector: React.FC<FolderSelectorProps> = ({
           <h3 className="text-base font-medium text-foreground">
             {t('context.selectFolder', '选择文件夹')}
           </h3>
-          <button
-            type="button"
-            className="p-1 rounded hover:bg-muted transition-colors"
-            onClick={onClose}
-          >
+          <NotionButton variant="ghost" size="icon" iconOnly onClick={onClose} aria-label={t('common:actions.close')}>
             <X className="w-5 h-5 text-muted-foreground" />
-          </button>
+          </NotionButton>
         </div>
 
         {/* 搜索框 */}
@@ -413,13 +399,9 @@ export const FolderSelector: React.FC<FolderSelectorProps> = ({
             // 错误状态
             <div className="flex flex-col items-center justify-center py-8 gap-2 text-destructive">
               <span className="text-sm">{error}</span>
-              <button
-                type="button"
-                className="text-sm text-primary hover:underline"
-                onClick={loadFolderTree}
-              >
+              <NotionButton variant="ghost" size="sm" onClick={loadFolderTree} className="text-primary hover:underline">
                 {t('common:actions.retry', '重试')}
-              </button>
+              </NotionButton>
             </div>
           ) : filteredTree.length === 0 ? (
             // 空状态

@@ -8,6 +8,7 @@
  */
 
 import React, { useMemo, useState, useCallback } from 'react';
+import { NotionButton } from '@/components/ui/NotionButton';
 import { useTranslation } from 'react-i18next';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -308,13 +309,13 @@ export const NoteToolPreview: React.FC<NoteToolPreviewProps> = ({
   return (
     <div className={cn('rounded-lg border border-border bg-card/50', className)}>
       {/* 头部 */}
-      <button
-        type="button"
+      <NotionButton
+        variant="ghost"
+        size="sm"
         onClick={() => setIsExpanded(!isExpanded)}
         className={cn(
-          'w-full flex items-center justify-between gap-2 px-3 py-2',
-          'hover:bg-muted/50 transition-colors',
-          'text-left rounded-t-lg',
+          'w-full !justify-between gap-2 !px-3 !py-2',
+          'text-left !rounded-t-lg !rounded-b-none',
           isExpanded && 'border-b border-border'
         )}
       >
@@ -359,7 +360,7 @@ export const NoteToolPreview: React.FC<NoteToolPreviewProps> = ({
             isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />
           )}
         </div>
-      </button>
+      </NotionButton>
 
       {/* 展开内容 */}
       <AnimatePresence initial={false}>
@@ -383,32 +384,24 @@ export const NoteToolPreview: React.FC<NoteToolPreviewProps> = ({
               {/* 视图切换（仅在有 before/after 时显示） */}
               {output?.beforePreview && output?.afterPreview && toolType !== 'note_read' && (
                 <div className="flex items-center gap-1 p-0.5 rounded-md bg-muted/50 w-fit">
-                  <button
-                    type="button"
+                  <NotionButton
+                    variant={viewMode === 'diff' ? 'default' : 'ghost'}
+                    size="sm"
                     onClick={() => setViewMode('diff')}
-                    className={cn(
-                      'flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors',
-                      viewMode === 'diff'
-                        ? 'bg-background text-foreground shadow-sm'
-                        : 'text-muted-foreground hover:text-foreground'
-                    )}
+                    className={cn(viewMode === 'diff' && 'shadow-sm')}
                   >
                     <Diff size={12} />
                     {t('timeline.noteTool.diffView', '对比')}
-                  </button>
-                  <button
-                    type="button"
+                  </NotionButton>
+                  <NotionButton
+                    variant={viewMode === 'preview' ? 'default' : 'ghost'}
+                    size="sm"
                     onClick={() => setViewMode('preview')}
-                    className={cn(
-                      'flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors',
-                      viewMode === 'preview'
-                        ? 'bg-background text-foreground shadow-sm'
-                        : 'text-muted-foreground hover:text-foreground'
-                    )}
+                    className={cn(viewMode === 'preview' && 'shadow-sm')}
                   >
                     <Eye size={12} />
                     {t('timeline.noteTool.previewView', '预览')}
-                  </button>
+                  </NotionButton>
                 </div>
               )}
 

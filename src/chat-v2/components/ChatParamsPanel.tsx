@@ -17,6 +17,7 @@ import React, { useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { StoreApi } from 'zustand';
 import { cn } from '@/utils/cn';
+import { NotionButton } from '@/components/ui/NotionButton';
 import {
   Bot,
   Thermometer,
@@ -295,16 +296,9 @@ export const ChatParamsPanel: React.FC<ChatParamsPanelProps> = ({
           <span className="font-medium">{t('chatParams.title')}</span>
         </div>
         <div className="flex items-center gap-2">
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              handleReset();
-            }}
-            className="p-1 hover:bg-muted rounded transition-colors"
-            title={t('chatParams.reset')}
-          >
+          <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); handleReset(); }} aria-label={t('chatParams.reset')} title={t('chatParams.reset')}>
             <RotateCcw className="w-4 h-4 text-muted-foreground" />
-          </button>
+          </NotionButton>
           {onExpandedChange && (
             <ChevronDown
               className={cn(

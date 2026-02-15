@@ -13,6 +13,7 @@ import React, { memo, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { X, FileText, BookOpen, ClipboardList, Languages, Pencil, Folder, Zap } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { NotionButton } from '@/components/ui/NotionButton';
 import type { ContextRef } from '../../resources/types';
 
 // ============================================================================
@@ -162,20 +163,9 @@ export const ContextRefChips: React.FC<ContextRefChipsProps> = memo(
               <Icon size={12} className="shrink-0" />
               <span className="truncate max-w-[80px]">{label}</span>
               {!disabled && (
-                <button
-                  type="button"
-                  onClick={() => onRemove(ref.resourceId)}
-                  className={cn(
-                    'ml-1 -mr-1 p-0.5 rounded-full opacity-60 hover:opacity-100',
-                    'hover:bg-black/5 dark:hover:bg-white/10',
-                    'focus:outline-none',
-                    'transition-all duration-200'
-                  )}
-                  title={t('common:actions.remove')}
-                  aria-label={`${t('common:actions.remove')} ${label}`}
-                >
+                <NotionButton variant="ghost" size="icon" iconOnly onClick={() => onRemove(ref.resourceId)} className="ml-1 -mr-1 !h-4 !w-4 !p-0 !rounded-full opacity-60 hover:opacity-100 hover:bg-black/5 dark:hover:bg-white/10" aria-label={`${t('common:actions.remove')} ${label}`} title={t('common:actions.remove')}>
                   <X size={10} />
-                </button>
+                </NotionButton>
               )}
             </div>
           );
@@ -183,18 +173,9 @@ export const ContextRefChips: React.FC<ContextRefChipsProps> = memo(
 
         {/* 清空所有按钮 */}
         {displayRefs.length > 1 && !disabled && (
-          <button
-            type="button"
-            onClick={onClearAll}
-            className={cn(
-              'text-xs text-muted-foreground hover:text-destructive',
-              'px-1.5 py-0.5 rounded',
-              'hover:bg-destructive/10 transition-colors'
-            )}
-            title={t('chatV2:contextRef.clearAll')}
-          >
+          <NotionButton variant="ghost" size="sm" onClick={onClearAll} className="text-muted-foreground hover:text-destructive hover:bg-destructive/10" title={t('chatV2:contextRef.clearAll')}>
             {t('common:actions.clear_all')}
-          </button>
+          </NotionButton>
         )}
       </div>
     );

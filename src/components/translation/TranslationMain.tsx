@@ -314,7 +314,7 @@ export const TranslationMain: React.FC<TranslationMainProps> = ({
 
     const source = sourceRef.current;
     const targetWrapper = targetRef.current;
-    const target = targetWrapper?.querySelector('.translation-content') as HTMLElement;
+    const target = targetWrapper?.querySelector('.translation-content .scroll-area__viewport') as HTMLElement;
 
     if (!source || !target) return;
 

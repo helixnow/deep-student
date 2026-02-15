@@ -12,7 +12,7 @@ import {
   Calendar,
   Clock,
   Archive,
-  Sparkles,
+  Activity,
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { Skeleton } from './ui/shad/Skeleton';
@@ -106,7 +106,7 @@ export const ChatV2StatsSection: React.FC<ChatV2StatsProps> = ({ className }) =>
           description={t('chat_stats.total_sessions_desc')}
         />
         <StatCard
-          icon={Sparkles}
+          icon={Activity}
           title={t('chat_stats.active_sessions')}
           value={stats.activeSessions}
           description={t('chat_stats.active_sessions_desc')}

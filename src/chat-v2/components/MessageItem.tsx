@@ -11,6 +11,7 @@ import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
 import type { StoreApi } from 'zustand';
 import { cn } from '@/utils/cn';
+import { NotionButton } from '@/components/ui/NotionButton';
 import { BlockRendererWithStore } from './BlockRenderer';
 import { ContextRefsDisplay, hasContextRefs } from './ContextRefsDisplay';
 import type { ContextRef } from '../context/types';
@@ -941,22 +942,23 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                 {!isSmallScreen && (
                   <div className="flex items-center gap-1 min-w-0">
                     {!isUser && !isMultiVariant && singleVariantModelId && (
-                      <button
+                      <NotionButton
+                        variant="ghost"
+                        size="sm"
                         onClick={() => {
                           store.getState().setModelRetryTarget(messageId);
                           store.getState().setPanelState('model', true);
                         }}
                         disabled={isLocked}
                         className={cn(
-                          'inline-flex items-center gap-1 px-1.5 py-0.5 rounded mr-1',
+                          '!h-auto !px-1.5 !py-0.5 mr-1',
                           'text-[11px] text-muted-foreground/70',
-                          'hover:bg-muted hover:text-foreground transition-colors cursor-pointer',
-                          isLocked && 'opacity-50 cursor-not-allowed'
+                          'hover:text-foreground'
                         )}
                         title={t('messageItem.modelRetry.clickToRetry')}
                       >
                         {getModelDisplayName(message._meta?.modelDisplayName || singleVariantModelId)}
-                      </button>
+                      </NotionButton>
                     )}
                     {!isMultiVariant && (
                       <MessageActions
@@ -1037,22 +1039,23 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
               {isSmallScreen && !isUser && (
                 <div className="mt-1 flex items-center justify-between">
                   {!isMultiVariant && singleVariantModelId ? (
-                    <button
+                    <NotionButton
+                      variant="ghost"
+                      size="sm"
                       onClick={() => {
                         store.getState().setModelRetryTarget(messageId);
                         store.getState().setPanelState('model', true);
                       }}
                       disabled={isLocked}
                       className={cn(
-                        'inline-flex items-center gap-1 px-1.5 py-0.5 rounded',
+                        '!h-auto !px-1.5 !py-0.5',
                         'text-[11px] text-muted-foreground/70',
-                        'hover:bg-muted hover:text-foreground transition-colors cursor-pointer',
-                        isLocked && 'opacity-50 cursor-not-allowed'
+                        'hover:text-foreground'
                       )}
                       title={t('messageItem.modelRetry.clickToRetry')}
                     >
                       {getModelDisplayName(message._meta?.modelDisplayName || singleVariantModelId)}
-                    </button>
+                    </NotionButton>
                   ) : <span />}
                   <div className="flex items-center gap-2">
                     {message.timestamp && (
@@ -1087,7 +1090,9 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                     ? `${t('messageItem.rawRequest.title')} — ${raw.model ?? ''}`
                     : t('messageItem.rawRequest.title')}
                 </div>
-                <button
+                <NotionButton
+                  variant="ghost"
+                  size="sm"
                   onClick={async () => {
                     try {
                       await navigator.clipboard.writeText(copyText);
@@ -1096,14 +1101,13 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                       showGlobalNotification('error', getErrorMessage(error), t('messageItem.rawRequest.copyFailed'));
                     }
                   }}
-                  className="flex items-center gap-1 px-2 py-1 rounded text-xs hover:bg-muted transition-colors"
                   title={t('messageItem.rawRequest.copy')}
                 >
                   <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
                   </svg>
                   {t('messageItem.rawRequest.copy')}
-                </button>
+                </NotionButton>
               </div>
               {isBackendLlm && raw.url && (
                 <div className="mb-1.5 text-[11px] text-muted-foreground/70 font-mono truncate" title={raw.url}>

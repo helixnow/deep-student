@@ -30,7 +30,7 @@ import { useBreakpoint } from '@/hooks/useBreakpoint';
 import {
   RefreshCw, ChevronDown, ChevronRight, Play, Pause, RotateCcw,
   Trash2, Download, ExternalLink, AlertTriangle, CheckCircle2,
-  Loader2, FileText, Sparkles, Hash, TrendingUp,
+  Loader2, FileText, Hash, TrendingUp,
   BarChart3, Circle, Search, X, ArrowUpDown, MessageSquarePlus,
 } from 'lucide-react';
 import type { AnkiCard, CustomAnkiTemplate } from '@/types';
@@ -744,7 +744,6 @@ const SessionRow: React.FC<{
               {/* 模板标签 */}
               {templateName && (
                 <div className="flex items-center gap-1.5 px-2 py-1.5 text-[11px]">
-                  <Sparkles className="h-3 w-3 text-primary/50" />
                   <span className="text-muted-foreground/50">{t('taskDashboard.templateLabel')}</span>
                   <span className="text-foreground/70 font-medium">{templateName}</span>
                 </div>
@@ -1104,7 +1103,7 @@ export const TaskDashboardPage: React.FC<TaskDashboardPageProps> = ({
                 </span>
               )}
             </PropRow>
-            <PropRow icon={<Sparkles className="h-3.5 w-3.5" />} label={t('taskDashboard.propTemplates')}>
+            <PropRow icon={<FileText className="h-3.5 w-3.5" />} label={t('taskDashboard.propTemplates')}>
               <span className="tabular-nums">{stats?.templateCount ?? 0}</span>
               <NotionButton size="sm" variant="ghost" onClick={onOpenTemplateManagement} className="ml-2 h-6 text-[12px]">
                 {t('taskDashboard.openTemplateLib')}

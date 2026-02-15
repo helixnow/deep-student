@@ -10,6 +10,7 @@ import React, { useCallback, useState } from 'react';
 import { AlertTriangle, Play, Loader2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
+import { NotionButton } from '@/components/ui/NotionButton';
 import { blockRegistry, type BlockComponentProps } from '../../registry';
 
 // ============================================================================
@@ -96,15 +97,12 @@ const ToolLimitBlock: React.FC<BlockComponentProps> = ({ block, onContinue }) =>
         </p>
         
         {onContinue && (
-          <button
+          <NotionButton
+            variant="primary"
+            size="sm"
             onClick={handleContinue}
             disabled={isContinuing}
-            className={cn(
-              'flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium',
-              'bg-amber-500 hover:bg-amber-600 text-white',
-              'transition-colors duration-150',
-              isContinuing && 'opacity-50 cursor-not-allowed'
-            )}
+            className="bg-amber-500 hover:bg-amber-600 text-white"
           >
             {isContinuing ? (
               <>
@@ -117,7 +115,7 @@ const ToolLimitBlock: React.FC<BlockComponentProps> = ({ block, onContinue }) =>
                 {t('chatV2:tool_limit.continue')}
               </>
             )}
-          </button>
+          </NotionButton>
         )}
       </div>
     </div>

@@ -1,8 +1,8 @@
-import React, { Suspense, lazy } from 'react';
+import React, { Suspense, lazy, useCallback, useState } from 'react';
 
 import { cn } from '@/lib/utils';
 
-import { UnifiedPreviewToolbar, type ToolbarPreviewType } from './UnifiedPreviewToolbar';
+import { UnifiedPreviewToolbar, type ToolbarPreviewType, type SlideNavInfo } from './UnifiedPreviewToolbar';
 
 const DocxPreview = lazy(() => import('./DocxPreview'));
 const XlsxPreview = lazy(() => import('./XlsxPreview'));
@@ -27,6 +27,8 @@ interface RichDocumentPreviewProps {
   bodyClassName?: string;
 }
 
+type SlideNavState = SlideNavInfo | null;
+
 export const RichDocumentPreview: React.FC<RichDocumentPreviewProps> = ({
   kind,
   base64Content,
@@ -43,6 +45,11 @@ export const RichDocumentPreview: React.FC<RichDocumentPreviewProps> = ({
   rootClassName,
   bodyClassName,
 }) => {
+  const [slideNav, setSlideNav] = useState<SlideNavState>(null);
+  const handleSlideInfoChange = useCallback((info: SlideNavState) => {
+    setSlideNav(info);
+  }, []);
+
   return (
     <div className={cn('flex flex-col h-full overflow-hidden', rootClassName)}>
       <div className={cn('flex-1 overflow-hidden', bodyClassName)}>
@@ -71,6 +78,7 @@ export const RichDocumentPreview: React.FC<RichDocumentPreviewProps> = ({
               fileName={fileName}
               className="h-full"
               zoomScale={zoomScale}
+              onSlideInfoChange={handleSlideInfoChange}
             />
           )}
         </Suspense>
@@ -84,6 +92,7 @@ export const RichDocumentPreview: React.FC<RichDocumentPreviewProps> = ({
           onFontChange={onFontChange}
           onZoomReset={onZoomReset}
           onFontReset={onFontReset}
+          slideNav={slideNav}
         />
       )}
     </div>

@@ -11,6 +11,7 @@
  */
 
 import React, { useState, useCallback, useMemo } from 'react';
+import { NotionButton } from '@/components/ui/NotionButton';
 import { useTranslation } from 'react-i18next';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Check, Circle, Loader2, X, SkipForward, ChevronDown } from 'lucide-react';
@@ -194,14 +195,11 @@ export const TodoListPanel: React.FC<TodoListPanelProps> = ({
   return (
     <div className={cn('todo-list-panel', className)}>
       {/* 可折叠头部 - 显示摘要或 diff */}
-      <button
-        type="button"
+      <NotionButton
+        variant="ghost"
+        size="sm"
         onClick={toggleExpanded}
-        className={cn(
-          'flex items-center gap-1.5 w-full text-left',
-          'text-xs text-muted-foreground hover:text-foreground',
-          'transition-colors cursor-pointer py-0.5'
-        )}
+        className="w-full !justify-start gap-1.5 !py-0.5 text-left text-muted-foreground hover:text-foreground"
       >
         <ChevronDown
           className={cn(
@@ -217,7 +215,7 @@ export const TodoListPanel: React.FC<TodoListPanelProps> = ({
         )}>
           {getCollapsedSummary()}
         </span>
-      </button>
+      </NotionButton>
 
       {/* 任务列表 - 可折叠 */}
       <AnimatePresence initial={false}>

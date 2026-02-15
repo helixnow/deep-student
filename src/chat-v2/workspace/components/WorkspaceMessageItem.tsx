@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { NotionButton } from '@/components/ui/NotionButton';
 import { useTranslation } from 'react-i18next';
 import { listen } from '@tauri-apps/api/event';
 import {
@@ -175,9 +176,11 @@ export const WorkspaceMessageItem: React.FC<WorkspaceMessageItemProps> = ({
           subagentStatus === 'running' && "ring-2 ring-blue-500/30"
         )}>
           {/* 头部：可点击折叠 */}
-          <button
+          <NotionButton
+            variant="ghost"
+            size="sm"
             onClick={() => setIsSubagentCollapsed(!isSubagentCollapsed)}
-            className="w-full flex items-center gap-2 p-2 hover:bg-muted/30 transition-colors text-left"
+            className="w-full !justify-start gap-2 !p-2 text-left"
           >
             {isSubagentCollapsed ? (
               <ChevronRight className="w-4 h-4 text-muted-foreground flex-shrink-0" />
@@ -196,12 +199,16 @@ export const WorkspaceMessageItem: React.FC<WorkspaceMessageItemProps> = ({
             {/* 高度切换 + 查看完整会话按钮 */}
             {!isSubagentCollapsed && (
               <div className="flex items-center gap-1">
-                <button
+                <NotionButton
+                  variant="ghost"
+                  size="icon"
+                  iconOnly
                   onClick={(e) => {
                     e.stopPropagation();
                     setIsSubagentFullHeight(!isSubagentFullHeight);
                   }}
-                  className="p-1 hover:bg-muted rounded transition-colors"
+                  className="!h-6 !w-6"
+                  aria-label={isSubagentFullHeight ? t('subagent.collapse') : t('subagent.expand')}
                   title={isSubagentFullHeight ? t('subagent.collapse') : t('subagent.expand')}
                 >
                   {isSubagentFullHeight ? (
@@ -209,22 +216,26 @@ export const WorkspaceMessageItem: React.FC<WorkspaceMessageItemProps> = ({
                   ) : (
                     <Maximize2 className="w-3.5 h-3.5 text-muted-foreground" />
                   )}
-                </button>
+                </NotionButton>
                 {onViewFullSession && (
-                  <button
+                  <NotionButton
+                    variant="ghost"
+                    size="icon"
+                    iconOnly
                     onClick={(e) => {
                       e.stopPropagation();
                       onViewFullSession(subagentSessionId);
                     }}
-                    className="p-1 hover:bg-muted rounded transition-colors"
+                    className="!h-6 !w-6"
+                    aria-label={t('subagent.viewFull')}
                     title={t('subagent.viewFull')}
                   >
                     <ExternalLink className="w-3.5 h-3.5 text-muted-foreground" />
-                  </button>
+                  </NotionButton>
                 )}
               </div>
             )}
-          </button>
+          </NotionButton>
 
           {/* 🆕 核心复用：使用 ChatContainer 渲染子代理的完整聊天视图 */}
           {!isSubagentCollapsed && (

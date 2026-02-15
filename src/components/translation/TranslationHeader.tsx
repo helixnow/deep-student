@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { Badge } from '../ui/shad/Badge';
 import { Tabs, TabsList, TabsTrigger } from '../ui/shad/Tabs';
-import { Languages, RefreshCw, History, Sparkles } from 'lucide-react';
+import { Languages, RefreshCw, History } from 'lucide-react';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
 
 interface TranslationHeaderProps {
@@ -32,7 +32,7 @@ export const TranslationHeader: React.FC<TranslationHeaderProps> = ({
         {hideHistoryTab ? (
           // DSTU 模式：只显示翻译标题，无 Tab 切换
           <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-            <Sparkles className="h-4 w-4 text-primary" />
+            <Languages className="h-4 w-4 text-primary" />
             {t('translation:tabs.translate')}
           </div>
         ) : (
@@ -47,7 +47,7 @@ export const TranslationHeader: React.FC<TranslationHeaderProps> = ({
                 value="translate"
                 className="text-[12px] leading-none px-3 py-1 h-7 gap-1.5 rounded-full border border-transparent data-[state=active]:bg-primary/10 data-[state=active]:text-primary"
               >
-                <Sparkles className="h-3.5 w-3.5" />
+                <Languages className="h-3.5 w-3.5" />
                 {t('translation:tabs.translate')}
               </TabsTrigger>
               <TabsTrigger

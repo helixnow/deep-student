@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import {
   Edit2, Copy, Trash2, Search, FileText, Plus,
   Edit, AlertTriangle, X, Lightbulb, User,
-  Target, Settings, Sparkles, Palette, Brush, Upload, Download,
+  Target, Settings, Palette, Brush, Upload, Download,
   RefreshCw, Loader2, ArrowLeft, LayoutGrid, List, Eye, BookOpen,
   Code, Database, ChevronRight
 } from 'lucide-react';

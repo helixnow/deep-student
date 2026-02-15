@@ -9,6 +9,7 @@ import React, { useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useStore, type StoreApi } from 'zustand';
 import { cn } from '@/utils/cn';
+import { NotionButton } from '@/components/ui/NotionButton';
 import {
   ChevronDown,
   ChevronRight,
@@ -91,14 +92,11 @@ export const OcrResultHeader: React.FC<OcrResultHeaderProps> = ({ store }) => {
       )}
     >
       {/* 折叠头部 */}
-      <button
+      <NotionButton
+        variant="ghost"
+        size="sm"
         onClick={toggleExpanded}
-        className={cn(
-          'w-full flex items-center gap-2 px-3 py-2',
-          'text-sm',
-          'hover:bg-muted/50 transition-colors',
-          'rounded-lg'
-        )}
+        className="w-full !justify-start gap-2 !px-3 !py-2 !rounded-lg"
       >
         {/* 展开/折叠图标 */}
         {isExpanded ? (
@@ -126,23 +124,13 @@ export const OcrResultHeader: React.FC<OcrResultHeaderProps> = ({ store }) => {
         ) : (
           <div className="flex items-center gap-2 ml-auto">
             <AlertCircle className="w-4 h-4 text-destructive" />
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                handleRetry();
-              }}
-              className={cn(
-                'flex items-center gap-1 px-2 py-1 rounded',
-                'text-xs text-primary hover:bg-primary/10',
-                'transition-colors'
-              )}
-            >
+            <NotionButton variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); handleRetry(); }} className="text-primary hover:bg-primary/10">
               <RefreshCw className="w-3 h-3" />
               {t('analysis.ocrResult.retry')}
-            </button>
+            </NotionButton>
           </div>
         )}
-      </button>
+      </NotionButton>
 
       {/* 内容区域 */}
       {isExpanded && (

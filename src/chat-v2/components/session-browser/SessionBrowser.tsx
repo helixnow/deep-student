@@ -5,6 +5,7 @@
  */
 
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
+import { NotionButton } from '@/components/ui/NotionButton';
 import { useTranslation } from 'react-i18next';
 import {
   MessageSquare,
@@ -212,33 +213,12 @@ const SessionCard: React.FC<SessionCardProps> = ({
       {/* 操作按钮 - 悬停显示 (右上角) */}
       {!isEditing && (
         <div className="absolute top-2 right-2 flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity z-10">
-          <button
-            onClick={handleEditClick}
-            className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-md transition-colors"
-            title={t('page.renameSession')}
-          >
+          <NotionButton variant="ghost" size="icon" iconOnly onClick={handleEditClick} aria-label={t('page.renameSession')} title={t('page.renameSession')} className="!h-7 !w-7">
             <Edit2 className="w-3.5 h-3.5" />
-          </button>
-          <button
-            onClick={handleDeleteClick}
-            className={cn(
-              'p-1.5 rounded-md transition-colors',
-              confirmingDelete
-                ? 'text-rose-500 bg-rose-500/10'
-                : 'text-muted-foreground hover:text-rose-500 hover:bg-rose-500/10'
-            )}
-            title={
-              confirmingDelete
-                ? t('common:confirm_delete')
-                : t('page.deleteSession')
-            }
-          >
-            {confirmingDelete ? (
-              <Trash2 className="w-3.5 h-3.5" />
-            ) : (
-              <X className="w-3.5 h-3.5" />
-            )}
-          </button>
+          </NotionButton>
+          <NotionButton variant="ghost" size="icon" iconOnly onClick={handleDeleteClick} className={cn('!h-7 !w-7', confirmingDelete ? 'text-rose-500 bg-rose-500/10' : 'hover:text-rose-500 hover:bg-rose-500/10')} aria-label={confirmingDelete ? t('common:confirm_delete') : t('page.deleteSession')} title={confirmingDelete ? t('common:confirm_delete') : t('page.deleteSession')}>
+            {confirmingDelete ? <Trash2 className="w-3.5 h-3.5" /> : <X className="w-3.5 h-3.5" />}
+          </NotionButton>
         </div>
       )}
 
@@ -262,24 +242,12 @@ const SessionCard: React.FC<SessionCardProps> = ({
               className="flex-1 h-8 px-2 text-sm bg-muted/30 border-transparent rounded-md focus:border-border focus:bg-background focus:outline-none transition-colors"
               placeholder={t('page.sessionNamePlaceholder')}
             />
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onSaveEdit();
-              }}
-              className="p-1.5 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 rounded-md transition-colors"
-            >
+            <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); onSaveEdit(); }} className="text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10" aria-label="save">
               <Check className="w-4 h-4" />
-            </button>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onCancelEdit();
-              }}
-              className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-md transition-colors"
-            >
+            </NotionButton>
+            <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); onCancelEdit(); }} aria-label="cancel">
               <X className="w-4 h-4" />
-            </button>
+            </NotionButton>
           </div>
         ) : (
           <div className="flex flex-col gap-1.5">
@@ -435,13 +403,10 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
           {/* 主行：返回、标题、操作按钮 */}
           <div className="flex items-center h-12 sm:h-14 gap-2 sm:gap-4">
             {/* 返回按钮 */}
-            <button
-              onClick={onBack}
-              className="flex items-center gap-1 px-2 py-1.5 text-sm text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-md transition-colors -ml-1"
-            >
+            <NotionButton variant="ghost" size="sm" onClick={onBack} className="-ml-1">
               <ArrowLeft className="w-4 h-4" />
               <span className="hidden sm:inline">{t('browser.back')}</span>
-            </button>
+            </NotionButton>
 
             <div className="hidden sm:block h-4 w-px bg-border/40" />
 
@@ -471,27 +436,16 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
 
             {/* 刷新按钮 */}
             {onRefresh && (
-              <button
-                onClick={handleRefresh}
-                disabled={refreshing}
-                className={cn(
-                  'p-2 text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-md transition-colors shrink-0',
-                  refreshing && 'cursor-not-allowed opacity-50'
-                )}
-                title={t('browser.refresh')}
-              >
+              <NotionButton variant="ghost" size="icon" iconOnly onClick={handleRefresh} disabled={refreshing} aria-label={t('browser.refresh')} title={t('browser.refresh')}>
                 <RefreshCw className={cn('w-4 h-4', refreshing && 'animate-spin')} />
-              </button>
+              </NotionButton>
             )}
 
             {/* 新建按钮 - Notion 风格主操作 */}
-            <button
-              onClick={onCreateSession}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-primary hover:bg-primary/10 rounded-md transition-colors shrink-0"
-            >
+            <NotionButton variant="ghost" size="sm" onClick={onCreateSession} className="text-primary hover:bg-primary/10 shrink-0">
               <Plus className="w-4 h-4" />
               <span className="hidden xs:inline">{t('page.newSession')}</span>
-            </button>
+            </NotionButton>
           </div>
 
           {/* 移动端搜索框 - 单独一行 */}
@@ -550,12 +504,9 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
                 : t('page.selectOrCreate')}
             </span>
             {!searchQuery && (
-              <button
-                onClick={onCreateSession}
-                className="text-sm text-primary hover:underline"
-              >
+              <NotionButton variant="ghost" size="sm" onClick={onCreateSession} className="text-primary hover:underline">
                 {t('page.createFirst')}
-              </button>
+              </NotionButton>
             )}
           </div>
         ) : (

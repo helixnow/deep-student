@@ -9,6 +9,7 @@ import React, { useState, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useStore, type StoreApi } from 'zustand';
 import { cn } from '@/utils/cn';
+import { NotionButton } from '@/components/ui/NotionButton';
 import {
   ChevronLeft,
   ChevronRight,
@@ -145,17 +146,10 @@ export const PageNavigator: React.FC<PageNavigatorProps> = ({ store }) => {
             {loadingError || t('textbook.loadError')}
           </span>
         </div>
-        <button
-          onClick={handleRetry}
-          className={cn(
-            'flex items-center gap-1 px-2 py-1 rounded',
-            'text-xs text-primary hover:bg-primary/10',
-            'transition-colors'
-          )}
-        >
+        <NotionButton variant="ghost" size="sm" onClick={handleRetry} className="text-primary hover:bg-primary/10">
           <RefreshCw className="w-3 h-3" />
           {t('textbook.retry')}
-        </button>
+        </NotionButton>
       </div>
     );
   }
@@ -255,18 +249,10 @@ export const PageNavigator: React.FC<PageNavigatorProps> = ({ store }) => {
         </div>
 
         {/* 右侧：缩略图切换 */}
-        <button
-          onClick={() => setIsThumbExpanded((prev) => !prev)}
-          className={cn(
-            'flex items-center gap-1 px-2 py-1 rounded',
-            'text-xs text-muted-foreground hover:text-foreground',
-            'hover:bg-muted/50 transition-colors',
-            isThumbExpanded && 'bg-muted/50 text-foreground'
-          )}
-        >
+        <NotionButton variant="ghost" size="sm" onClick={() => setIsThumbExpanded((prev) => !prev)} className={cn(isThumbExpanded && 'bg-muted/50 text-foreground')}>
           <Image className="w-3 h-3" />
           {t('textbook.preview')}
-        </button>
+        </NotionButton>
       </div>
 
       {/* 缩略图预览区域 */}
@@ -318,19 +304,17 @@ const NavigationButton: React.FC<NavigationButtonProps> = ({
   children,
 }) => {
   return (
-    <button
+    <NotionButton
+      variant="ghost"
+      size="icon"
+      iconOnly
       onClick={onClick}
       disabled={disabled}
+      aria-label={title}
       title={title}
-      className={cn(
-        'flex items-center justify-center w-7 h-7 rounded',
-        'transition-colors',
-        disabled
-          ? 'text-muted-foreground/50 cursor-not-allowed'
-          : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
-      )}
+      className="!w-7 !h-7"
     >
       {children}
-    </button>
+    </NotionButton>
   );
 };

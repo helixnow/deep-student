@@ -8,6 +8,7 @@
 import React, { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
+import { NotionButton } from '@/components/ui/NotionButton';
 import { Square, Loader2 } from 'lucide-react';
 import { VariantStatusIcon } from './VariantStatusIcon';
 import type { Variant } from '../../core/types/message';
@@ -127,17 +128,9 @@ const VariantCard: React.FC<VariantCardProps> = ({
           </span>
         </div>
         {isStreaming && onStop && (
-          <button
-            onClick={onStop}
-            className={cn(
-              'p-1 rounded text-xs',
-              'text-muted-foreground hover:text-foreground',
-              'hover:bg-muted transition-colors'
-            )}
-            title={t('variant.cancel')}
-          >
+          <NotionButton variant="ghost" size="icon" iconOnly onClick={onStop} className="!h-6 !w-6" aria-label={t('variant.cancel')} title={t('variant.cancel')}>
             <Square className="w-3 h-3" />
-          </button>
+          </NotionButton>
         )}
       </div>
 
@@ -225,16 +218,10 @@ export const ParallelStreamingView: React.FC<ParallelStreamingViewProps> = ({
           </span>
         </div>
         {onStopAll && streamingCount > 0 && (
-          <button
-            onClick={onStopAll}
-            className={cn(
-              'flex items-center gap-1 px-2 py-1 rounded text-xs',
-              'text-destructive hover:bg-destructive/10 transition-colors'
-            )}
-          >
+          <NotionButton variant="ghost" size="sm" onClick={onStopAll} className="text-destructive hover:bg-destructive/10">
             <Square className="w-3 h-3" />
             <span>{t('variant.stopAll')}</span>
-          </button>
+          </NotionButton>
         )}
       </div>
 

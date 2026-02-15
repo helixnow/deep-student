@@ -8,7 +8,6 @@ import {
     ArrowLeftRight,
     RotateCcw,
     Trash2,
-    Sparkles,
     Settings2,
 } from 'lucide-react';
 import UnifiedDragDropZone, { FILE_TYPES } from '../shared/UnifiedDragDropZone';
@@ -128,7 +127,6 @@ export const SourcePanel = React.forwardRef<HTMLTextAreaElement, SourcePanelProp
                                 disabled={!sourceText.trim()}
                                 className="h-8 px-2 text-primary font-medium"
                             >
-                                <Sparkles className="w-4 h-4 mr-1" />
                                 {t('translation:actions.translate')}
                             </NotionButton>
                         )}
@@ -166,7 +164,7 @@ export const SourcePanel = React.forwardRef<HTMLTextAreaElement, SourcePanelProp
                         onChange={(e) => setSourceText(e.target.value)}
                         placeholder={t('translation:source_section.placeholder')}
                         maxLength={sourceMaxChars}
-                        className="flex-1 min-h-0 resize-none font-mono px-4 pt-6 pb-16 text-base leading-relaxed !border-0 !shadow-none !rounded-none !bg-transparent focus:!ring-0 focus:!ring-offset-0 focus-visible:!ring-0 focus-visible:!ring-offset-0 focus:!outline-none focus-visible:!outline-none selection:bg-primary/20"
+                        className="flex-1 min-h-0 resize-none font-mono px-4 pt-6 pb-16 text-base leading-relaxed !border-0 !shadow-none !rounded-none !bg-transparent focus:!ring-0 focus:!ring-offset-0 focus-visible:!ring-0 focus-visible:!ring-offset-0 focus:!outline-none focus-visible:!outline-none selection:bg-primary/20 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
                     />
                 </UnifiedDragDropZone>
 
@@ -216,7 +214,6 @@ export const SourcePanel = React.forwardRef<HTMLTextAreaElement, SourcePanelProp
                         disabled={!sourceText.trim()}
                         className="min-w-[120px]"
                     >
-                        <Sparkles className="w-3.5 h-3.5 mr-2" />
                         {t('translation:actions.translate')}
                     </NotionButton>
                 )}

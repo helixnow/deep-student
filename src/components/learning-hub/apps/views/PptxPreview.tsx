@@ -3,20 +3,20 @@
  * 使用 pptx-preview 库将 PPTX 文档渲染为 HTML
  * 
  * 工具栏已移至 FileContentView 统一管理
- * 本组件保留底部幻灯片导航栏
+ * 幻灯片导航已移至底部 UnifiedPreviewToolbar
  */
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { init as initPptxPreview } from 'pptx-preview';
-import { Loader2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
-import { NotionButton } from '@/components/ui/NotionButton';
 import {
   normalizeBase64,
   decodeBase64ToArrayBuffer,
 } from './previewUtils';
 import { sanitizeRenderedDom } from './sanitizeRenderedDom';
+import type { SlideNavInfo } from './UnifiedPreviewToolbar';
 
 // PPTX 幻灯片选择器（pptx-preview 库生成的结构）
 const PPTX_SLIDE_SELECTOR = '.pptx-preview-slide-wrapper';
@@ -30,6 +30,8 @@ interface PptxPreviewProps {
   className?: string;
   /** 外部控制：缩放比例（由 FileContentView 管理） */
   zoomScale?: number;
+  /** 幻灯片导航信息变更回调（用于底部工具栏显示页码控制） */
+  onSlideInfoChange?: (info: SlideNavInfo | null) => void;
 }
 
 /**
@@ -41,6 +43,7 @@ export const PptxPreview: React.FC<PptxPreviewProps> = ({
   fileName,
   className = '',
   zoomScale: externalZoomScale,
+  onSlideInfoChange,
 }) => {
   const { t } = useTranslation(['learningHub']);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -212,14 +215,24 @@ export const PptxPreview: React.FC<PptxPreviewProps> = ({
   }, [totalSlides]);
 
   // 导航到指定幻灯片
-  const navigateToSlide = (index: number) => {
+  const navigateToSlide = useCallback((index: number) => {
     if (!containerRef.current) return;
     const slides = containerRef.current.querySelectorAll(PPTX_SLIDE_SELECTOR);
     if (slides[index]) {
       slides[index].scrollIntoView({ behavior: 'smooth', block: 'start' });
       setCurrentSlide(index);
     }
-  };
+  }, []);
+
+  // 向父组件报告幻灯片导航信息（用于底部工具栏页码控制）
+  useEffect(() => {
+    if (!onSlideInfoChange) return;
+    if (totalSlides > 0) {
+      onSlideInfoChange({ current: currentSlide, total: totalSlides, navigateTo: navigateToSlide });
+    } else {
+      onSlideInfoChange(null);
+    }
+  }, [currentSlide, totalSlides, navigateToSlide, onSlideInfoChange]);
 
   if (error) {
     return (
@@ -237,33 +250,6 @@ export const PptxPreview: React.FC<PptxPreviewProps> = ({
         </div>
       )}
 
-      {/* 底部幻灯片导航栏 */}
-      {totalSlides > 0 && (
-        <div className="flex items-center justify-center gap-2 py-2 px-3 border-b bg-card shadow-sm flex-shrink-0">
-          <NotionButton
-            variant="ghost"
-            size="sm"
-            onClick={() => navigateToSlide(Math.max(0, currentSlide - 1))}
-            disabled={currentSlide === 0}
-            className="h-7 w-7 p-0"
-          >
-            <ChevronLeft className="h-4 w-4" />
-          </NotionButton>
-          <span className="text-xs font-medium text-foreground whitespace-nowrap">
-            {t('learningHub:docPreview.slideNav', { current: currentSlide + 1, total: totalSlides })}
-          </span>
-          <NotionButton
-            variant="ghost"
-            size="sm"
-            onClick={() => navigateToSlide(Math.min(totalSlides - 1, currentSlide + 1))}
-            disabled={currentSlide === totalSlides - 1}
-            className="h-7 w-7 p-0"
-          >
-            <ChevronRight className="h-4 w-4" />
-          </NotionButton>
-        </div>
-      )}
-      
       <CustomScrollArea
         className="pptx-container flex-1"
         viewportRef={viewportRef}

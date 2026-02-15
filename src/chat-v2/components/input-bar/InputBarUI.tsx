@@ -47,6 +47,7 @@ import {
   AppMenuSwitchItem,
 } from '@/components/ui/app-menu/AppMenu';
 import { cn } from '@/lib/utils';
+import { NotionButton } from '@/components/ui/NotionButton';
 import { useTauriDragAndDrop } from '@/hooks/useTauriDragAndDrop';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { useSystemStatusStore } from '@/stores/systemStatusStore';
@@ -1931,8 +1932,11 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                 position={tooltipPosition}
                 disabled={tooltipDisabled}
               >
-                <button
+                <NotionButton
                   data-testid="btn-toggle-thinking"
+                  variant="ghost"
+                  size="icon"
+                  iconOnly
                   onClick={onToggleThinking}
                   className={cn(
                     iconButtonClass,
@@ -1946,19 +1950,21 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                 >
                   <span className="relative inline-flex items-center justify-center">
                     <Atom size={18} />
-                    {/* 激活时显示小圆点 */}
                     {enableThinking && (
                       <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-purple-500 rounded-full animate-pulse" />
                     )}
                   </span>
-                </button>
+                </NotionButton>
               </CommonTooltip>
             )}
 
             {/* 模型选择按钮 */}
             <CommonTooltip content={t('chat_host:model_panel.title')} position={tooltipPosition} disabled={tooltipDisabled}>
-              <button
+              <NotionButton
                 data-testid="btn-toggle-model"
+                variant="ghost"
+                size="icon"
+                iconOnly
                 onClick={() => togglePanel('model')}
                 className={cn(
                   iconButtonClass,
@@ -1972,7 +1978,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                 <span className="relative inline-flex items-center justify-center">
                   <DsAnalysisIconMuted className="w-[18px] h-[18px]" />
                 </span>
-              </button>
+              </NotionButton>
             </CommonTooltip>
 
             {/* 🔧 P0: 技能选择独立按钮 */}
@@ -1988,8 +1994,11 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                 position={tooltipPosition}
                 disabled={tooltipDisabled}
               >
-                <button
+                <NotionButton
                   data-testid="btn-toggle-skill"
+                  variant="ghost"
+                  size="icon"
+                  iconOnly
                   onClick={() => togglePanel('skill')}
                   className={cn(
                     iconButtonClass,
@@ -2011,7 +2020,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                       <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-amber-400/70 rounded-full" />
                     ) : null}
                   </span>
-                </button>
+                </NotionButton>
               </CommonTooltip>
             )}
 
@@ -2027,8 +2036,11 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                 position={tooltipPosition}
                 disabled={tooltipDisabled}
               >
-                <button
+                <NotionButton
                   data-testid="btn-toggle-mcp"
+                  variant="ghost"
+                  size="icon"
+                  iconOnly
                   onClick={() => togglePanel('mcp')}
                   className={cn(
                     iconButtonClass,
@@ -2042,14 +2054,13 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                 >
                   <span className="relative inline-flex items-center justify-center">
                     <Wrench size={18} />
-                    {/* 🔧 有选中的非内置 MCP 服务器时才显示数量徽章 */}
                     {selectedMcpServerCount > 0 && (
                       <span className="absolute -top-1.5 -right-2 min-w-[16px] h-4 px-1 flex items-center justify-center text-[10px] font-semibold bg-emerald-500 text-white rounded-full shadow-sm">
                         {selectedMcpServerCount > 9 ? '9+' : selectedMcpServerCount}
                       </span>
                     )}
                   </span>
-                </button>
+                </NotionButton>
               </CommonTooltip>
             )}
 
@@ -2072,8 +2083,11 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
               position={tooltipPosition}
               disabled={tooltipDisabled}
             >
-              <button
+              <NotionButton
                 data-testid="btn-toggle-attachments"
+                variant="ghost"
+                size="icon"
+                iconOnly
                 onClick={toggleAttachmentPanel}
                 className={cn(
                   iconButtonClass,
@@ -2089,7 +2103,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                     </span>
                   )}
                 </span>
-              </button>
+              </NotionButton>
             </CommonTooltip>
 
             {/* 🆕 媒体处理中提示 */}
@@ -2104,41 +2118,38 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
 
             {/* 发送/停止按钮 - 极简圆形风格 */}
             {showStop ? (
-              <button
+              <NotionButton
                 data-testid="btn-stop"
+                variant="danger"
+                size="icon"
+                iconOnly
                 onClick={handleStop}
                 disabled={!canAbort}
-                className={cn(
-                  'flex items-center justify-center w-8 h-8 rounded-full',
-                  'bg-destructive text-destructive-foreground',
-                  'hover:opacity-90 transition-all duration-200 shadow-sm',
-                  'disabled:opacity-50 disabled:cursor-not-allowed'
-                )}
+                className="!w-8 !h-8 !rounded-full shadow-sm"
                 aria-label={t('analysis:input_bar.actions.stop')}
               >
                 <Square size={12} fill="currentColor" />
-              </button>
+              </NotionButton>
             ) : (
               <CommonTooltip
                 content={disabledSend ? sendBlockedReason : undefined}
                 disabled={!disabledSend || isMobile || !sendBlockedReason}
               >
-                <button
+                <NotionButton
                   data-testid="btn-send"
+                  variant="primary"
+                  size="icon"
+                  iconOnly
                   onClick={handleSend}
                   disabled={disabledSend}
                   className={cn(
-                    'flex items-center justify-center w-8 h-8 rounded-full',
-                    'transition-all duration-200 shadow-sm',
-                    // 不可发送状态：灰色背景
-                    disabledSend
-                      ? 'bg-muted text-muted-foreground cursor-not-allowed opacity-50'
-                      : 'bg-primary text-primary-foreground hover:scale-105 active:scale-95 shadow-md shadow-primary/20'
+                    '!w-8 !h-8 !rounded-full shadow-sm',
+                    !disabledSend && 'hover:scale-105 active:scale-95 shadow-md shadow-primary/20'
                   )}
                   aria-label={t('analysis:input_bar.actions.send')}
                 >
                   <ArrowUp size={16} strokeWidth={2.5} />
-                </button>
+                </NotionButton>
               </CommonTooltip>
             )}
           </div>
@@ -2172,41 +2183,41 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                   <span>{t('analysis:input_bar.attachments.title')} ({attachments.length})</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <button onClick={() => fileInputRef.current?.click()} className="rounded-md px-2 py-1 text-xs text-primary hover:bg-accent/40 border">
+                  <NotionButton variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
                     + {t('analysis:input_bar.attachments.add')}
-                  </button>
+                  </NotionButton>
                   {/* 资源库按钮 - 桌面端在右侧打开 Learning Hub 面板，移动端打开右侧滑屏 */}
-                  <button
+                  <NotionButton
+                    variant="outline"
+                    size="sm"
                     onClick={() => {
                       window.dispatchEvent(new CustomEvent(COMMAND_EVENTS.CHAT_TOGGLE_PANEL));
                     }}
-                    className="rounded-md px-2 py-1 text-xs text-primary hover:bg-accent/40 border flex items-center gap-1"
                   >
                     <FolderOpen size={12} />
                     {t('chatV2:inputBar.resourceLibrary')}
-                  </button>
+                  </NotionButton>
                   {isMobileEnv && (
-                    <button onClick={handleCameraClick} className="rounded-md px-2 py-1 text-xs text-primary hover:bg-accent/40 border flex items-center gap-1">
+                    <NotionButton variant="outline" size="sm" onClick={handleCameraClick}>
                       <Camera size={12} />
                       {t('chatV2:inputBar.camera')}
-                    </button>
+                    </NotionButton>
                   )}
                   {attachments.length > 0 && (
-                    <button onClick={() => {
-                      // 🔧 P1-25: 释放所有 Blob URL，避免内存泄漏
+                    <NotionButton variant="danger" size="sm" onClick={() => {
                       attachments.forEach(att => {
                         if (att.previewUrl?.startsWith('blob:')) {
                           URL.revokeObjectURL(att.previewUrl);
                         }
                       });
                       onClearAttachments();
-                    }} className="rounded-md px-2 py-1 text-xs text-destructive hover:bg-destructive/10">
+                    }}>
                       {t('analysis:input_bar.attachments.clear_all')}
-                    </button>
+                    </NotionButton>
                   )}
-                  <button onClick={toggleAttachmentPanel} className="rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-accent/40">
+                  <NotionButton variant="ghost" size="sm" onClick={toggleAttachmentPanel}>
                     {t('common:actions.close')}
-                  </button>
+                  </NotionButton>
                 </div>
               </div>
 
@@ -2329,22 +2340,19 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                           <span className="flex items-center gap-1">{statusIcon}</span>
                           {/* ★ P0 修复：错误状态时显示重试按钮（使用正确的 sourceId） */}
                           {attachment.status === 'error' && attachment.sourceId && (
-                            <button
+                            <NotionButton
+                              variant="outline"
+                              size="sm"
                               onClick={async () => {
                                 try {
-                                  // ★ P0 修复：使用 sourceId (att_xxx) 而不是 resourceId (res_xxx)
                                   const fileId = attachment.sourceId!;
                                   const isPdf = attachment.mimeType === 'application/pdf' || attachment.name.toLowerCase().endsWith('.pdf');
-
-                                  // ★ 调试日志：记录重试操作
                                   logAttachment('ui', 'retry_processing_start', {
                                     attachmentId: attachment.id,
                                     sourceId: fileId,
                                     mediaType: isPdf ? 'pdf' : 'image',
                                     previousError: attachment.error,
                                   });
-
-                                  // 先更新状态为 processing
                                   onUpdateAttachment(attachment.id, {
                                     status: 'processing',
                                     error: undefined,
@@ -2356,20 +2364,16 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                                     },
                                   });
                                   await retryPdfProcessing(fileId);
-
-                                  // ★ 调试日志：重试成功
                                   logAttachment('ui', 'retry_processing_triggered', {
                                     attachmentId: attachment.id,
                                     sourceId: fileId,
                                   }, 'success');
                                   showGlobalNotification('success', t('chatV2:inputBar.retryStarted'));
                                 } catch (error) {
-                                  // ★ 调试日志：重试失败
                                   logAttachment('ui', 'retry_processing_failed', {
                                     attachmentId: attachment.id,
                                     error: getErrorMessage(error),
                                   }, 'error');
-                                  // 重试失败，恢复错误状态
                                   const retryErrorMsg = t('chatV2:inputBar.retryFailed', { error: getErrorMessage(error) });
                                   onUpdateAttachment(attachment.id, {
                                     status: 'error',
@@ -2378,27 +2382,25 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                                   showGlobalNotification('error', retryErrorMsg);
                                 }
                               }}
-                              className="rounded-md px-2 py-1 text-xs text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30"
+                              className="text-blue-600"
                             >
                               {t('common:retry')}
-                            </button>
+                            </NotionButton>
                           )}
-                          <button onClick={() => {
-                            // ★ 调试日志：记录移除操作
+                          <NotionButton variant="danger" size="sm" onClick={() => {
                             logAttachment('ui', 'attachment_remove', {
                               attachmentId: attachment.id,
                               sourceId: attachment.sourceId,
                               fileName: attachment.name,
                               status: attachment.status,
                             });
-                            // 🔧 P1-25: 释放 Blob URL，避免内存泄漏
                             if (attachment.previewUrl?.startsWith('blob:')) {
                               URL.revokeObjectURL(attachment.previewUrl);
                             }
                             onRemoveAttachment(attachment.id);
-                          }} className="rounded-md px-2 py-1 text-xs text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30">
+                          }}>
                             {t('analysis:input_bar.attachments.remove')}
-                          </button>
+                          </NotionButton>
                         </div>
                         {/* 第二行：注入模式选择器（仅图片和 PDF 显示，PDF 在处理中也显示） */}
                         {showInjectModeSelector && (attachment.status === 'ready' || isMediaProcessing) && (

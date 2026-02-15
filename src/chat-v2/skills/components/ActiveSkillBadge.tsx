@@ -8,6 +8,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Zap, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { NotionButton } from '@/components/ui/NotionButton';
 import { skillRegistry, subscribeToSkillRegistry } from '../registry';
 import { getLocalizedSkillName } from '../utils';
 import type { SkillDefinition } from '../types';
@@ -102,20 +103,9 @@ const SingleBadge: React.FC<SingleBadgeProps> = ({
         {getLocalizedSkillName(skill.id, skill.name, t)}
       </span>
       {showCloseButton && onClose && (
-        <button
-          type="button"
-          onClick={onClose}
-          disabled={disabled}
-          className={cn(
-            'flex-shrink-0 rounded p-0.5 ml-0.5',
-            'hover:bg-foreground/10 transition-colors',
-            'focus:outline-none',
-            disabled && 'pointer-events-none'
-          )}
-          aria-label={t('skills:deactivate')}
-        >
+        <NotionButton variant="ghost" size="icon" iconOnly onClick={onClose} disabled={disabled} className="!h-4 !w-4 !p-0 ml-0.5 hover:bg-foreground/10" aria-label={t('skills:deactivate')}>
           <X size={iconSize - 2} />
-        </button>
+        </NotionButton>
       )}
     </div>
   );
@@ -254,17 +244,15 @@ export const NoActiveSkillButton: React.FC<NoActiveSkillProps> = ({
   const iconSize = size === 'sm' ? 12 : 14;
 
   return (
-    <button
-      type="button"
+    <NotionButton
+      variant="ghost"
+      size="sm"
       onClick={onClick}
       disabled={disabled}
       className={cn(
-        'inline-flex items-center rounded-full',
+        '!rounded-full',
         'bg-muted text-muted-foreground border border-border',
-        'transition-all duration-200',
         'hover:bg-accent hover:text-accent-foreground hover:border-primary/30',
-        'focus:outline-none focus:ring-2 focus:ring-primary/20',
-        disabled && 'opacity-50 cursor-not-allowed pointer-events-none',
         sizeClasses[size],
         className
       )}
@@ -274,7 +262,7 @@ export const NoActiveSkillButton: React.FC<NoActiveSkillProps> = ({
       <span className="font-medium">
         {t('skills:selectSkill')}
       </span>
-    </button>
+    </NotionButton>
   );
 };
 

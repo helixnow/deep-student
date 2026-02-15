@@ -10,6 +10,7 @@ import { useStore, type StoreApi } from 'zustand';
 import { Wrench, X, Search, Loader2, Server, Check, AlertCircle, Lock, Settings } from 'lucide-react';
 import { useMobileLayoutSafe } from '@/components/layout/MobileLayoutContext';
 import { cn } from '@/lib/utils';
+import { NotionButton } from '@/components/ui/NotionButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { useDialogControl } from '@/contexts/DialogControlContext';
 import { isBuiltinServer, BUILTIN_NAMESPACE } from '@/mcp/builtinMcpServer';
@@ -276,19 +277,12 @@ export const McpPanel: React.FC<McpPanelProps> = ({ store, onClose }) => {
             )}
           </div>
           <div className="flex items-center gap-1">
-            <button
-              onClick={handleRefresh}
-              disabled={loading}
-              className="rounded-md p-1 text-muted-foreground hover:bg-accent/40 hover:text-foreground disabled:opacity-50"
-            >
+            <NotionButton variant="ghost" size="icon" iconOnly onClick={handleRefresh} disabled={loading} aria-label="refresh">
               {loading ? <Loader2 size={16} className="animate-spin" /> : <Wrench size={16} />}
-            </button>
-            <button
-              onClick={onClose}
-              className="rounded-md p-1 text-muted-foreground hover:bg-accent/40 hover:text-foreground"
-            >
+            </NotionButton>
+            <NotionButton variant="ghost" size="icon" iconOnly onClick={onClose} aria-label={t('common:actions.cancel')}>
               <X size={16} />
-            </button>
+            </NotionButton>
           </div>
         </div>
       )}

@@ -23,7 +23,6 @@ import {
   AlertCircle,
   BookOpen,
   RotateCcw,
-  Sparkles,
   Play,
   Loader2,
   ChevronLeft,
@@ -166,7 +165,6 @@ export const DailyPracticeMode: React.FC<DailyPracticeModeProps> = ({
           {/* 智能推荐说明 */}
           <div className="p-4 rounded-lg bg-sky-500/5 border border-sky-500/20">
             <div className="flex items-start gap-3">
-              <Sparkles className="w-5 h-5 text-sky-500 mt-0.5" />
               <div className="space-y-2">
                 <div className="font-medium text-sky-700 dark:text-sky-400">
                   {t('daily.smartRecommend', '智能推荐')}

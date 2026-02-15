@@ -2379,14 +2379,28 @@ export function LearningHubSidebar({
         onRefresh={handleRefresh}
         onOpenFolder={handleOpenFolder}
         onRenameFolder={handleOpenRenameDialog}
-        onDeleteFolder={handleDeleteFolder}
+        onDeleteFolder={(folderId) => {
+          // ★ BUG FIX: 如果右键的文件夹属于多选集合且选中数量 > 1，走批量删除路径
+          if (selectedIds.size > 1 && selectedIds.has(folderId)) {
+            handleBatchDelete();
+          } else {
+            handleDeleteFolder(folderId);
+          }
+        }}
         onOpenResource={(resource) => {
           if (onOpenApp && 'id' in resource) {
             onOpenApp(resource as ResourceListItem);
           }
         }}
         onRenameResource={handleOpenRenameResourceDialog}
-        onDeleteResource={handleDeleteResource}
+        onDeleteResource={(resource) => {
+          // ★ BUG FIX: 如果右键的资源属于多选集合且选中数量 > 1，走批量删除路径
+          if (selectedIds.size > 1 && selectedIds.has(resource.id)) {
+            handleBatchDelete();
+          } else {
+            handleDeleteResource(resource);
+          }
+        }}
         onToggleFavorite={handleToggleFavorite}
         onRestoreItem={handleRestoreItem}
         onPermanentDeleteItem={handlePermanentDeleteItem}

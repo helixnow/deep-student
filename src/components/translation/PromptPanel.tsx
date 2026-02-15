@@ -5,7 +5,7 @@ import { Textarea } from '../ui/shad/Textarea';
 import { AppSelect } from '../ui/app-menu';
 import { Switch } from '../ui/shad/Switch';
 import { Label } from '../ui/shad/Label';
-import { Sparkles, Save, RotateCcw, Plus, X, BookOpen } from 'lucide-react';
+import { Save, RotateCcw, Plus, X, BookOpen } from 'lucide-react';
 import { CustomScrollArea } from '../custom-scroll-area';
 
 interface PromptPanelProps {
@@ -85,13 +85,13 @@ const GlossaryEditor: React.FC<{
       </p>
 
       {/* 新增行 */}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 min-w-0">
         <input
           value={newSrc}
           onChange={(e) => setNewSrc(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder={t('translation:prompt_editor.glossary_source')}
-          className="flex-1 h-8 px-2.5 text-sm bg-muted/30 border border-transparent rounded-md focus:border-primary/50 focus:bg-background focus:outline-none transition-colors placeholder:text-muted-foreground/40"
+          className="flex-1 min-w-0 h-8 px-2.5 text-sm bg-muted/30 border border-transparent rounded-md focus:border-primary/50 focus:bg-background focus:outline-none transition-colors placeholder:text-muted-foreground/40"
         />
         <span className="text-muted-foreground/40 text-xs shrink-0">→</span>
         <input
@@ -99,7 +99,7 @@ const GlossaryEditor: React.FC<{
           onChange={(e) => setNewTgt(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder={t('translation:prompt_editor.glossary_target')}
-          className="flex-1 h-8 px-2.5 text-sm bg-muted/30 border border-transparent rounded-md focus:border-primary/50 focus:bg-background focus:outline-none transition-colors placeholder:text-muted-foreground/40"
+          className="flex-1 min-w-0 h-8 px-2.5 text-sm bg-muted/30 border border-transparent rounded-md focus:border-primary/50 focus:bg-background focus:outline-none transition-colors placeholder:text-muted-foreground/40"
         />
         <NotionButton
           variant="ghost"
@@ -337,11 +337,10 @@ export const PromptPanel: React.FC<PromptPanelProps> = ({
   return (
     <div className="h-full flex flex-col bg-background border-l border-border/40">
       {/* 头部 */}
-      <div className="flex items-center justify-between px-4 py-2.5 border-b border-border/30 shrink-0">
-        <div className="flex items-center gap-2 text-sm font-medium text-foreground/80">
-          <Sparkles className="w-4 h-4" />
-          <span>{t('translation:prompt_editor.title')}</span>
-        </div>
+      <div className="flex items-center justify-between px-4 h-12 border-b border-border/30 shrink-0">
+        <span className="text-sm font-medium text-foreground/80">
+          {t('translation:prompt_editor.title')}
+        </span>
         <NotionButton
           variant="ghost"
           size="icon"

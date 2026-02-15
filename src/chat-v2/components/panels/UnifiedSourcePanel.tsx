@@ -9,6 +9,7 @@ import { openUrl } from '@/utils/urlOpener';
 import { citationEvents, type CitationHighlightEvent } from '../../utils/citationEvents';
 import type { RetrievalSourceType } from '../../plugins/blocks/components/types';
 import { useIsMobile } from '@/hooks/useBreakpoint';
+import { NotionButton } from '@/components/ui/NotionButton';
 import { setPendingMemoryLocate } from '@/utils/pendingMemoryLocate';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/shad/Sheet';
 import { getReadableToolName } from '@/chat-v2/utils/toolDisplayName';
@@ -522,41 +523,25 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
         <div className="flex items-center justify-between pt-2 border-t border-border/50">
           <span className="text-xs text-muted-foreground uppercase tracking-wider opacity-70">{entry.item.origin}</span>
           {entry.item.origin === 'graph' ? (
-            <button
-              type="button"
-              className="text-sm text-primary hover:underline flex items-center gap-1"
-              onClick={() => handleLocateGraph(entry.item)}
-            >
+            <NotionButton variant="ghost" size="sm" onClick={() => handleLocateGraph(entry.item)} className="text-primary">
               <ExternalLink size={14} />
               {t('common:chat.sources.locateGraph')}
-            </button>
+            </NotionButton>
           ) : entry.item.origin === 'memory' && getMemoryLocateId(entry.item) ? (
-            <button
-              type="button"
-              className="text-sm text-primary hover:underline flex items-center gap-1"
-              onClick={() => handleLocateMemory(entry.item)}
-            >
+            <NotionButton variant="ghost" size="sm" onClick={() => handleLocateMemory(entry.item)} className="text-primary">
               <ExternalLink size={14} />
               {t('common:chat.sources.locateMemory')}
-            </button>
+            </NotionButton>
           ) : entry.item.origin === 'rag' && entry.item.raw?.document_id ? (
-            <button
-              type="button"
-              className="text-sm text-primary hover:underline flex items-center gap-1"
-              onClick={() => handleLocateRagDocument(entry.item)}
-            >
+            <NotionButton variant="ghost" size="sm" onClick={() => handleLocateRagDocument(entry.item)} className="text-primary">
               <ExternalLink size={14} />
               {t('common:chat.sources.locateKb')}
-            </button>
+            </NotionButton>
           ) : entry.item.link && isHttpUrl(entry.item.link) ? (
-            <button
-              type="button"
-              className="text-sm text-primary hover:underline flex items-center gap-1"
-              onClick={() => handleOpenLink(entry.item)}
-            >
+            <NotionButton variant="ghost" size="sm" onClick={() => handleOpenLink(entry.item)} className="text-primary">
               <ExternalLink size={14} />
               {t('common:actions.open')}
-            </button>
+            </NotionButton>
           ) : null}
         </div>
       </div>
@@ -573,9 +558,10 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
       >
         {/* 头部 */}
         <div className="usp-header">
-          <button
+          <NotionButton
             data-testid="btn-toggle-source-panel"
-            type="button"
+            variant="ghost"
+            size="sm"
             className="usp-header-left"
             onClick={() => setOpen(prev => !prev)}
             aria-expanded={open}
@@ -583,7 +569,7 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
             <Search size={16} className="panel-header-icon" />
             <span className="usp-header-title">{totalLabel}</span>
             <ChevronRight size={16} className={cn('usp-header-arrow', open && 'expanded')} />
-          </button>
+          </NotionButton>
         </div>
 
         {/* 可折叠的内容区 */}
@@ -603,9 +589,10 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
                     const isActive = category.group === activeCategory;
                     const label = t(`common:chat.sources.groupLabels.${category.group}`, { defaultValue: category.group });
                     return (
-                      <button
+                      <NotionButton
                         key={`category-${category.group}`}
-                        type="button"
+                        variant="ghost"
+                        size="sm"
                         className={cn('usp-category-pill', isActive && 'active')}
                         onClick={() => setActiveCategory(category.group)}
                         aria-pressed={isActive}
@@ -613,20 +600,21 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
                         <span className="usp-pill-icon">{groupIcon(category.group)}</span>
                         <span className="usp-pill-label">{label}</span>
                         <span className="usp-pill-count">{category.count}</span>
-                      </button>
+                      </NotionButton>
                     );
                   })}
                   {/* 展开按钮 → 打开抽屉 */}
                   {flatEntries.filter(e => e.type === 'item').length > 2 && (
-                    <button
-                      type="button"
-                      className="usp-expand-btn ml-auto flex items-center gap-1 px-2 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-accent/50 rounded transition-colors"
+                    <NotionButton
+                      variant="ghost"
+                      size="sm"
+                      className="usp-expand-btn ml-auto"
                       onClick={() => setIsExpanded(true)}
                       title={t('common:actions.expandAll')}
                     >
                       <Maximize2 size={14} />
                       <span>{t('common:actions.expandAll')}</span>
-                    </button>
+                    </NotionButton>
                   )}
                 </div>
 
@@ -634,24 +622,30 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
                 <div className="usp-sources-wrapper relative">
                   {/* 左翻页按钮 */}
                   {canScrollLeft && (
-                    <button
-                      type="button"
-                      className="usp-scroll-btn usp-scroll-left absolute left-0 top-1/2 -translate-y-1/2 z-10 w-7 h-7 flex items-center justify-center rounded-full bg-background/90 border shadow-md hover:bg-accent transition-colors"
+                    <NotionButton
+                      variant="ghost"
+                      size="icon"
+                      iconOnly
+                      className="usp-scroll-btn usp-scroll-left absolute left-0 top-1/2 -translate-y-1/2 z-10 !w-7 !h-7 rounded-full bg-background/90 border shadow-md"
                       onClick={() => scrollByAmount('left')}
+                      aria-label="scroll left"
                     >
                       <ChevronLeft size={16} />
-                    </button>
+                    </NotionButton>
                   )}
 
                   {/* 右翻页按钮 */}
                   {canScrollRight && (
-                    <button
-                      type="button"
-                      className="usp-scroll-btn usp-scroll-right absolute right-0 top-1/2 -translate-y-1/2 z-10 w-7 h-7 flex items-center justify-center rounded-full bg-background/90 border shadow-md hover:bg-accent transition-colors"
+                    <NotionButton
+                      variant="ghost"
+                      size="icon"
+                      iconOnly
+                      className="usp-scroll-btn usp-scroll-right absolute right-0 top-1/2 -translate-y-1/2 z-10 !w-7 !h-7 rounded-full bg-background/90 border shadow-md"
                       onClick={() => scrollByAmount('right')}
+                      aria-label="scroll right"
                     >
                       <ChevronRight size={16} />
-                    </button>
+                    </NotionButton>
                   )}
 
                   <div
@@ -728,15 +722,11 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
                 const isActive = category.group === activeCategory;
                 const label = t(`common:chat.sources.groupLabels.${category.group}`, { defaultValue: category.group });
                 return (
-                  <button
+                  <NotionButton
                     key={`category-${category.group}`}
-                    type="button"
-                    className={cn(
-                      'flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm whitespace-nowrap transition-colors',
-                      isActive 
-                        ? 'bg-primary text-primary-foreground' 
-                        : 'bg-background border hover:bg-muted'
-                    )}
+                    variant={isActive ? 'primary' : 'outline'}
+                    size="sm"
+                    className="rounded-full whitespace-nowrap"
                     onClick={() => setActiveCategory(category.group)}
                   >
                     <span className="opacity-80">{groupIcon(category.group)}</span>
@@ -747,7 +737,7 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
                     )}>
                       {category.count}
                     </span>
-                  </button>
+                  </NotionButton>
                 );
               })}
             </div>
@@ -784,9 +774,10 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
       data-testid="unified-source-panel"
     >
       <div className="usp-header">
-        <button
+        <NotionButton
           data-testid="btn-toggle-source-panel"
-          type="button"
+          variant="ghost"
+          size="sm"
           className="usp-header-left"
           onClick={() => setOpen(prev => !prev)}
           aria-expanded={open}
@@ -795,7 +786,7 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
           <Search size={16} className="panel-header-icon" />
           <span className="usp-header-title">{totalLabel}</span>
           <ChevronRight size={16} className={cn('usp-header-arrow', open && 'expanded')} />
-        </button>
+        </NotionButton>
         {data.stage && (
           <span className="usp-header-stage">{data.stage}</span>
         )}
@@ -822,10 +813,11 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
                   const isActive = category.group === activeCategory;
                   const label = t(`common:chat.sources.groupLabels.${category.group}`, { defaultValue: category.group });
                   return (
-                    <button
+                    <NotionButton
                       key={`category-${category.group}`}
                       data-testid={`source-category-${category.group}`}
-                      type="button"
+                      variant="ghost"
+                      size="sm"
                       className={cn('usp-category-pill', isActive && 'active')}
                       onClick={() => setActiveCategory(category.group)}
                       aria-pressed={isActive}
@@ -833,20 +825,21 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
                       <span className="usp-pill-icon">{groupIcon(category.group)}</span>
                       <span className="usp-pill-label">{label}</span>
                       <span className="usp-pill-count">{category.count}</span>
-                    </button>
+                    </NotionButton>
                   );
                 })}
                 {/* 展开/收起按钮 */}
                 {flatEntries.filter(e => e.type === 'item').length > 3 && (
-                  <button
-                    type="button"
-                    className="usp-expand-btn ml-auto flex items-center gap-1 px-2 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-accent/50 rounded transition-colors"
+                  <NotionButton
+                    variant="ghost"
+                    size="sm"
+                    className="usp-expand-btn ml-auto"
                     onClick={() => setIsExpanded(prev => !prev)}
                     title={isExpanded ? t('common:actions.collapse') : t('common:actions.expand')}
                   >
                     {isExpanded ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
                     <span>{isExpanded ? t('common:actions.collapse') : t('common:actions.expandAll')}</span>
-                  </button>
+                  </NotionButton>
                 )}
               </div>
 
@@ -854,26 +847,30 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
               <div className="usp-sources-wrapper relative">
                 {/* 左翻页按钮 */}
                 {!isExpanded && canScrollLeft && (
-                  <button
-                    type="button"
-                    className="usp-scroll-btn usp-scroll-left absolute left-0 top-1/2 -translate-y-1/2 z-10 w-8 h-8 flex items-center justify-center rounded-full bg-background/90 border shadow-md hover:bg-accent transition-colors"
+                  <NotionButton
+                    variant="ghost"
+                    size="icon"
+                    iconOnly
+                    className="usp-scroll-btn usp-scroll-left absolute left-0 top-1/2 -translate-y-1/2 z-10 !w-8 !h-8 rounded-full bg-background/90 border shadow-md"
                     onClick={() => scrollByAmount('left')}
                     aria-label={t('common:actions.scrollLeft')}
                   >
                     <ChevronLeft size={18} />
-                  </button>
+                  </NotionButton>
                 )}
 
                 {/* 右翻页按钮 */}
                 {!isExpanded && canScrollRight && (
-                  <button
-                    type="button"
-                    className="usp-scroll-btn usp-scroll-right absolute right-0 top-1/2 -translate-y-1/2 z-10 w-8 h-8 flex items-center justify-center rounded-full bg-background/90 border shadow-md hover:bg-accent transition-colors"
+                  <NotionButton
+                    variant="ghost"
+                    size="icon"
+                    iconOnly
+                    className="usp-scroll-btn usp-scroll-right absolute right-0 top-1/2 -translate-y-1/2 z-10 !w-8 !h-8 rounded-full bg-background/90 border shadow-md"
                     onClick={() => scrollByAmount('right')}
                     aria-label={t('common:actions.scrollRight')}
                   >
                     <ChevronRight size={18} />
-                  </button>
+                  </NotionButton>
                 )}
 
                 <div
@@ -943,42 +940,26 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
                       <div className="flex items-center justify-between mt-auto pt-1.5 border-t border-border/50">
                         <span className="text-[10px] text-muted-foreground uppercase tracking-wider opacity-70">{entry.item.origin}</span>
                         {entry.item.origin === 'graph' ? (
-                          <button
-                            type="button"
-                            className="text-xs text-primary hover:underline flex items-center gap-1"
-                            onClick={() => handleLocateGraph(entry.item)}
-                          >
+                          <NotionButton variant="ghost" size="sm" onClick={() => handleLocateGraph(entry.item)} className="text-primary !h-6 text-xs">
                             <ExternalLink size={12} />
                             {t('common:chat.sources.locateGraph')}
-                          </button>
+                          </NotionButton>
                         ) : entry.item.origin === 'memory' && getMemoryLocateId(entry.item) ? (
-                          <button
-                            type="button"
-                            className="text-xs text-primary hover:underline flex items-center gap-1"
-                            onClick={() => handleLocateMemory(entry.item)}
-                          >
+                          <NotionButton variant="ghost" size="sm" onClick={() => handleLocateMemory(entry.item)} className="text-primary !h-6 text-xs">
                             <ExternalLink size={12} />
                             {t('common:chat.sources.locateMemory')}
-                          </button>
+                          </NotionButton>
                         ) : entry.item.origin === 'rag' && entry.item.raw?.document_id ? (
-                          /* 🔧 P1-34: RAG 来源添加"在知识库中打开"按钮 */
-                          <button
-                            type="button"
-                            className="text-xs text-primary hover:underline flex items-center gap-1"
-                            onClick={() => handleLocateRagDocument(entry.item)}
-                          >
+                          /* 🔧 P1-34: RAG 来源添加“在知识库中打开”按钮 */
+                          <NotionButton variant="ghost" size="sm" onClick={() => handleLocateRagDocument(entry.item)} className="text-primary !h-6 text-xs">
                             <ExternalLink size={12} />
                             {t('common:chat.sources.locateKb')}
-                          </button>
+                          </NotionButton>
                         ) : entry.item.link && isHttpUrl(entry.item.link) ? (
-                          <button
-                            type="button"
-                            className="text-xs text-primary hover:underline flex items-center gap-1"
-                            onClick={() => handleOpenLink(entry.item)}
-                          >
+                          <NotionButton variant="ghost" size="sm" onClick={() => handleOpenLink(entry.item)} className="text-primary !h-6 text-xs">
                             <ExternalLink size={12} />
                             {t('common:actions.open')}
-                          </button>
+                          </NotionButton>
                         ) : null}
                       </div>
                     </div>

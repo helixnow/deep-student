@@ -13,9 +13,10 @@
  * 6. 暗色/亮色主题支持
  */
 
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
+import { NotionButton } from '@/components/ui/NotionButton';
 import {
   Loader2,
   CheckCircle,
@@ -180,18 +181,10 @@ const ToolProgress: React.FC<ToolProgressProps> = ({ content }) => {
       {/* 流式输出（如 stdout） */}
       {content && (
         <div className="mt-2">
-          <button
-            type="button"
-            onClick={() => setIsExpanded(!isExpanded)}
-            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
-          >
-            {isExpanded ? (
-              <ChevronDown className="w-3 h-3" />
-            ) : (
-              <ChevronRight className="w-3 h-3" />
-            )}
+          <NotionButton variant="ghost" size="sm" onClick={() => setIsExpanded(!isExpanded)}>
+            {isExpanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
             <span>{t('blocks.mcpTool.streamingOutput')}</span>
-          </button>
+          </NotionButton>
 
           {isExpanded && (
             <pre
@@ -258,22 +251,16 @@ const ToolError: React.FC<ToolErrorProps> = ({ error, onRetry, retryDisabledReas
       {/* 重试按钮 */}
       {showRetry && (
         <div className="mt-2">
-          <button
-            type="button"
+          <NotionButton
+            variant={isRetryDisabled ? 'default' : 'outline'}
+            size="sm"
             onClick={onRetry}
             disabled={isRetryDisabled}
-            className={cn(
-              'flex items-center gap-1.5',
-              'px-3 py-1.5 rounded-md',
-              'text-sm',
-              isRetryDisabled
-                ? 'cursor-not-allowed text-muted-foreground bg-muted/40'
-                : 'text-primary hover:bg-primary/10 transition-colors'
-            )}
+            className={cn(isRetryDisabled ? 'bg-muted/40' : 'text-primary hover:bg-primary/10')}
           >
             <RotateCcw className="w-3.5 h-3.5" />
             <span>{t('blocks.mcpTool.retry')}</span>
-          </button>
+          </NotionButton>
           {isRetryDisabled && (
             <div className="mt-1 text-xs text-muted-foreground">
               {retryDisabledText}
@@ -548,22 +535,19 @@ const McpToolBlockComponent: React.FC<BlockComponentProps> = ({
             const noteId = extractNoteId(toolOutput, toolInput);
             if (!noteId) return null;
             return (
-              <button
+              <NotionButton
+                variant="outline"
+                size="sm"
                 onClick={() => {
                   window.dispatchEvent(new CustomEvent('DSTU_OPEN_NOTE', {
                     detail: { noteId, source: 'mcp_tool_block' }
                   }));
                 }}
-                className={cn(
-                  'mt-2 flex items-center gap-1.5 px-2.5 py-1.5 text-xs',
-                  'rounded-md border border-border/50',
-                  'bg-muted/30 hover:bg-muted/60 transition-colors',
-                  'text-muted-foreground hover:text-foreground'
-                )}
+                className="mt-2 bg-muted/30 hover:bg-muted/60"
               >
                 <ExternalLink size={12} />
                 {t('timeline.noteTool.openNote')}
-              </button>
+              </NotionButton>
             );
           })()}
         </div>

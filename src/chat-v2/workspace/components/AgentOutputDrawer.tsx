@@ -189,9 +189,11 @@ export const AgentOutputDrawer: React.FC<AgentOutputDrawerProps> = ({
       status === 'running' && "ring-2 ring-blue-500/30"
     )}>
       {/* 头部（可点击展开/收起） */}
-      <button
+      <NotionButton
+        variant="ghost"
+        size="sm"
         onClick={onToggle}
-        className="w-full flex items-center justify-between p-2.5 hover:bg-muted/50 transition-colors"
+        className="w-full !justify-between !p-2.5"
       >
         <div className="flex items-center gap-2 min-w-0">
           {isExpanded ? (
@@ -243,20 +245,9 @@ export const AgentOutputDrawer: React.FC<AgentOutputDrawerProps> = ({
 
           {/* 高度切换按钮（仅展开时显示） */}
           {isExpanded && (
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                setIsFullHeight(!isFullHeight);
-              }}
-              className="p-1 hover:bg-muted rounded transition-colors"
-              title={isFullHeight ? t('subagent.collapse') : t('subagent.expand')}
-            >
-              {isFullHeight ? (
-                <Minimize2 className="w-3.5 h-3.5 text-muted-foreground" />
-              ) : (
-                <Maximize2 className="w-3.5 h-3.5 text-muted-foreground" />
-              )}
-            </button>
+            <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); setIsFullHeight(!isFullHeight); }} className="!h-6 !w-6" aria-label={isFullHeight ? t('subagent.collapse') : t('subagent.expand')} title={isFullHeight ? t('subagent.collapse') : t('subagent.expand')}>
+              {isFullHeight ? <Minimize2 className="w-3.5 h-3.5 text-muted-foreground" /> : <Maximize2 className="w-3.5 h-3.5 text-muted-foreground" />}
+            </NotionButton>
           )}
           
           {/* 查看完整会话按钮 */}
@@ -275,7 +266,7 @@ export const AgentOutputDrawer: React.FC<AgentOutputDrawerProps> = ({
             </NotionButton>
           )}
         </div>
-      </button>
+      </NotionButton>
 
       {/* 🔧 核心修复：使用 ChatContainer 渲染完整聊天视图（与主代理完全相同） */}
       {isExpanded && (

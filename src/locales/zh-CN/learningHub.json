@@ -192,7 +192,9 @@
     "fontIncrease": "增大字号",
     "resetFont": "重置字号",
     "currentZoom": "当前缩放: {{value}}",
-    "currentFont": "当前字号: {{value}}"
+    "currentFont": "当前字号: {{value}}",
+    "prevSlide": "上一页",
+    "nextSlide": "下一页"
   },
   "docPreview": {
     "emptyContent": "文件内容为空，无法预览",

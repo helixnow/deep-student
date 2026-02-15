@@ -10,6 +10,7 @@ import { useStore, type StoreApi } from 'zustand';
 import { Globe, X, Check } from 'lucide-react';
 import { useMobileLayoutSafe } from '@/components/layout/MobileLayoutContext';
 import { cn } from '@/lib/utils';
+import { NotionButton } from '@/components/ui/NotionButton';
 import { useDialogControl } from '@/contexts/DialogControlContext';
 import type { ChatStore } from '../../core/types';
 
@@ -134,12 +135,9 @@ export const SearchPanel: React.FC<SearchPanelProps> = ({ store, onClose }) => {
               </span>
             )}
           </div>
-          <button
-            onClick={onClose}
-            className="rounded-md p-1 text-muted-foreground hover:bg-accent/40 hover:text-foreground"
-          >
+          <NotionButton variant="ghost" size="icon" iconOnly onClick={onClose} aria-label={t('common:actions.cancel')}>
             <X size={16} />
-          </button>
+          </NotionButton>
         </div>
       )}
 
@@ -162,12 +160,14 @@ export const SearchPanel: React.FC<SearchPanelProps> = ({ store, onClose }) => {
           availableSearchEngines.map((engine) => {
             const isSelected = selectedEngineSet.has(engine.id);
             return (
-              <button
+              <NotionButton
                 key={engine.id}
+                variant="ghost"
+                size="sm"
                 onClick={() => handleToggleEngine(engine.id)}
                 disabled={!ready || isStreaming}
                 className={cn(
-                  'w-full flex items-center gap-3 rounded-lg border p-3 text-left transition-colors',
+                  'w-full !justify-start gap-3 !rounded-lg border !p-3 text-left',
                   isSelected
                     ? 'border-primary bg-primary/5'
                     : 'border-border hover:border-primary/50 hover:bg-accent/30',
@@ -190,7 +190,7 @@ export const SearchPanel: React.FC<SearchPanelProps> = ({ store, onClose }) => {
                 <div className="flex-1 min-w-0">
                   <span className="font-medium text-sm">{engine.label}</span>
                 </div>
-              </button>
+              </NotionButton>
             );
           })
         )}
@@ -199,13 +199,9 @@ export const SearchPanel: React.FC<SearchPanelProps> = ({ store, onClose }) => {
       {/* 底部操作 */}
       {availableSearchEngines.length > 0 && (
         <div className="flex items-center justify-between">
-          <button
-            className="text-xs text-muted-foreground hover:underline disabled:opacity-40 disabled:hover:no-underline"
-            onClick={handleToggleAll}
-            disabled={!ready || isStreaming}
-          >
+          <NotionButton variant="ghost" size="sm" onClick={handleToggleAll} disabled={!ready || isStreaming} className="text-muted-foreground hover:underline">
             {allSelected ? t('common:deselect_all') : t('common:select_all')}
-          </button>
+          </NotionButton>
         </div>
       )}
 

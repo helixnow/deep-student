@@ -13,6 +13,7 @@
  */
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { NotionButton } from '@/components/ui/NotionButton';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import {
@@ -253,17 +254,19 @@ const AskUserBlockComponent: React.FC<BlockComponentProps> = ({ block }) => {
         {options.map((option, index) => {
           const isRecommended = index === recommended;
           return (
-            <button
+            <NotionButton
               key={index}
+              variant="ghost"
+              size="sm"
               onClick={() => handleSelect(index, option, 'user_click')}
               disabled={isResponding}
               className={cn(
-                'w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm text-left transition-all',
+                'w-full !justify-start gap-2 !px-3 !py-2 text-left',
                 'border',
                 isRecommended
                   ? 'border-blue-300 dark:border-blue-600 bg-blue-100/60 dark:bg-blue-900/30 hover:bg-blue-200/60 dark:hover:bg-blue-800/40'
                   : 'border-border/50 bg-card hover:bg-muted/50',
-                isResponding && 'opacity-50 cursor-not-allowed'
+                isResponding && 'opacity-50'
               )}
             >
               <span className="flex-1">{option}</span>
@@ -273,7 +276,7 @@ const AskUserBlockComponent: React.FC<BlockComponentProps> = ({ block }) => {
                   {t('askUser.recommended', { defaultValue: '推荐' })}
                 </span>
               )}
-            </button>
+            </NotionButton>
           );
         })}
       </div>
@@ -299,17 +302,17 @@ const AskUserBlockComponent: React.FC<BlockComponentProps> = ({ block }) => {
             isResponding && 'opacity-50 cursor-not-allowed'
           )}
         />
-        <button
+        <NotionButton
+          variant="primary"
+          size="sm"
           onClick={handleCustomSubmit}
           disabled={isResponding || !customInput.trim()}
-          className={cn(
-            'px-3 py-1.5 rounded-md text-sm transition-colors',
-            'bg-blue-600 hover:bg-blue-700 text-white',
-            'disabled:opacity-50 disabled:cursor-not-allowed'
-          )}
+          iconOnly
+          className="bg-blue-600 hover:bg-blue-700 text-white"
+          aria-label="send"
         >
           <Send className="w-3.5 h-3.5" />
-        </button>
+        </NotionButton>
       </div>
     </div>
   );

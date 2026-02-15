@@ -140,15 +140,16 @@ export const CreateAgentDialog: React.FC<CreateAgentDialogProps> = ({
             <CustomScrollArea className="h-48 border rounded-md p-2">
               <div className="space-y-1">
                 {builtinSkills.map((skill) => (
-                  <button
+                  <NotionButton
                     key={skill.id}
+                    variant="ghost"
+                    size="sm"
                     onClick={() => !creating && setSelectedSkillId(skill.id)}
                     disabled={creating}
                     className={cn(
-                      'w-full text-left p-2 rounded-md transition-colors flex items-start gap-2',
-                      'hover:bg-muted/50',
+                      'w-full !justify-start !p-2 text-left !h-auto',
                       selectedSkillId === skill.id && 'bg-primary/10 border border-primary',
-                      creating && 'opacity-50 cursor-not-allowed'
+                      creating && 'opacity-50'
                     )}
                   >
                     <div className="flex-1 min-w-0">
@@ -163,7 +164,7 @@ export const CreateAgentDialog: React.FC<CreateAgentDialogProps> = ({
                         {getLocalizedSkillDescription(skill.id, skill.description, t)}
                       </p>
                     </div>
-                  </button>
+                  </NotionButton>
                 ))}
                 {builtinSkills.length === 0 && (
                   <p className="text-sm text-muted-foreground text-center py-4">

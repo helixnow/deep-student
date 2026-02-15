@@ -9,7 +9,7 @@
 
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import { ZoomIn, ZoomOut, RefreshCw, Minus, Plus, Type } from 'lucide-react';
+import { ZoomIn, ZoomOut, RefreshCw, Minus, Plus, Type, ChevronLeft, ChevronRight } from 'lucide-react';
 import {
   ZOOM_MIN,
   ZOOM_MAX,
@@ -27,6 +27,13 @@ import {
 /** 支持工具栏的预览类型 */
 export type ToolbarPreviewType = 'docx' | 'xlsx' | 'pptx' | 'image' | 'text' | 'other';
 
+/** 幻灯片导航信息 */
+export interface SlideNavInfo {
+  current: number;
+  total: number;
+  navigateTo: (index: number) => void;
+}
+
 /** 工具栏 Props 类型 */
 export interface UnifiedPreviewToolbarProps {
   /** 预览类型 */
@@ -43,6 +50,8 @@ export interface UnifiedPreviewToolbarProps {
   onZoomReset: () => void;
   /** 字号重置回调（仅 docx/xlsx 使用） */
   onFontReset?: () => void;
+  /** 幻灯片导航信息（仅 pptx 使用） */
+  slideNav?: SlideNavInfo | null;
   /** 自定义类名 */
   className?: string;
 }
@@ -91,6 +100,7 @@ export const UnifiedPreviewToolbar: React.FC<UnifiedPreviewToolbarProps> = React
   onZoomReset,
   onFontReset,
   className = '',
+  slideNav,
 }) => {
   const { t } = useTranslation(['learningHub']);
 
@@ -168,6 +178,37 @@ export const UnifiedPreviewToolbar: React.FC<UnifiedPreviewToolbarProps> = React
       >
         <RefreshCw size={14} />
       </button>
+
+      {/* 幻灯片页码控制区域（仅 pptx） */}
+      {previewType === 'pptx' && slideNav && slideNav.total > 0 && (
+        <>
+          <div className="modern-viewer-divider" />
+
+          <button
+            className="modern-viewer-icon-button"
+            onClick={() => slideNav.navigateTo(Math.max(0, slideNav.current - 1))}
+            disabled={slideNav.current === 0}
+            title={t('learningHub:previewToolbar.prevSlide', '上一页')}
+            aria-label={t('learningHub:previewToolbar.prevSlide', '上一页')}
+          >
+            <ChevronLeft size={16} />
+          </button>
+
+          <span className="modern-viewer-zoom-readout">
+            {t('learningHub:docPreview.slideNav', { current: slideNav.current + 1, total: slideNav.total })}
+          </span>
+
+          <button
+            className="modern-viewer-icon-button"
+            onClick={() => slideNav.navigateTo(Math.min(slideNav.total - 1, slideNav.current + 1))}
+            disabled={slideNav.current === slideNav.total - 1}
+            title={t('learningHub:previewToolbar.nextSlide', '下一页')}
+            aria-label={t('learningHub:previewToolbar.nextSlide', '下一页')}
+          >
+            <ChevronRight size={16} />
+          </button>
+        </>
+      )}
 
       {/* 字号控制区域（仅 docx/xlsx） */}
       {showFontControl && (

@@ -747,34 +747,43 @@ export const ChatV2Page: React.FC = () => {
     if (viewMode === 'browser') {
       return (
         <div className="flex items-center gap-1">
-          <button
+          <NotionButton
+            variant="ghost"
+            size="icon"
+            iconOnly
             onClick={handleBrowserRefresh}
             disabled={browserRefreshing}
-            className="p-1.5 rounded-md hover:bg-accent text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+            aria-label={t('browser.refresh')}
             title={t('browser.refresh')}
           >
             <RefreshCw className={cn('w-5 h-5', browserRefreshing && 'animate-spin')} />
-          </button>
-          <button
+          </NotionButton>
+          <NotionButton
+            variant="primary"
+            size="icon"
+            iconOnly
             onClick={() => createSession()}
             disabled={isLoading}
-            className="p-1.5 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
+            aria-label={t('page.newSession')}
             title={t('page.newSession')}
           >
             <Plus className="w-5 h-5" />
-          </button>
+          </NotionButton>
         </div>
       );
     }
     return (
-      <button
+      <NotionButton
+        variant="ghost"
+        size="icon"
+        iconOnly
         onClick={() => createSession()}
         disabled={isLoading || isEmptyNewChat}
-        className="p-1.5 rounded-md hover:bg-accent text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+        aria-label={t('page.newSession')}
         title={t('page.newSession')}
       >
         <Plus className="w-5 h-5" />
-      </button>
+      </NotionButton>
     );
   }, [viewMode, browserRefreshing, handleBrowserRefresh, createSession, isLoading, isEmptyNewChat, t]);
 
@@ -1817,29 +1826,27 @@ export const ChatV2Page: React.FC = () => {
               placeholder={t('page.sessionNamePlaceholder')}
             />
             <div className="flex items-center justify-end gap-1.5">
-              <button
+              <NotionButton
+                variant="ghost"
+                size="sm"
                 onClick={(e) => {
                   e.stopPropagation();
                   cancelEditSession();
                 }}
                 disabled={renamingSessionId === session.id}
-                className="inline-flex items-center gap-1 h-7 px-2.5 rounded-md text-xs font-medium bg-muted text-muted-foreground hover:bg-muted/80 disabled:opacity-60"
                 title={t('page.cancelEdit')}
               >
                 <X className="w-3.5 h-3.5" />
                 <span>{t('page.cancelEdit')}</span>
-              </button>
-              <button
+              </NotionButton>
+              <NotionButton
+                variant="primary"
+                size="sm"
                 onClick={(e) => {
                   e.stopPropagation();
                   saveSessionTitle(session.id);
                 }}
                 disabled={renamingSessionId === session.id}
-                className={cn(
-                  'inline-flex items-center gap-1 h-7 px-2.5 rounded-md text-xs font-medium transition-colors',
-                  'bg-primary text-primary-foreground hover:bg-primary/90',
-                  renamingSessionId === session.id && 'bg-primary/90 shadow-inner'
-                )}
                 title={t('page.saveSessionName')}
               >
                 {renamingSessionId === session.id ? (
@@ -1853,7 +1860,7 @@ export const ChatV2Page: React.FC = () => {
                     <span>{t('page.saveSessionName')}</span>
                   </>
                 )}
-              </button>
+              </NotionButton>
             </div>
             <div className="flex items-center justify-between text-[11px] leading-none">
               <span className="text-muted-foreground/80">
@@ -1879,37 +1886,47 @@ export const ChatV2Page: React.FC = () => {
       </div>
       {showActionButtons && (
         <div className="flex gap-1 transition-opacity">
-          <button
+          <NotionButton
+            variant="ghost"
+            size="icon"
+            iconOnly
             onClick={(e) => startEditSession(session, e)}
-            className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground"
+            aria-label={t('page.renameSession')}
             title={t('page.renameSession')}
+            className="!h-6 !w-6"
           >
             <Edit2 className="w-3 h-3" />
-          </button>
+          </NotionButton>
           <Popover>
             <PopoverTrigger asChild>
-              <button
+              <NotionButton
+                variant="ghost"
+                size="icon"
+                iconOnly
                 onClick={(e) => e.stopPropagation()}
-                className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground"
+                aria-label={t('page.moveToGroup')}
                 title={t('page.moveToGroup')}
+                className="!h-6 !w-6"
               >
                 <Folder className="w-3 h-3" />
-              </button>
+              </NotionButton>
             </PopoverTrigger>
             <PopoverContent align="end" className="w-44 p-1">
-              <button
+              <NotionButton
+                variant="ghost"
+                size="sm"
                 onClick={(e) => {
                   e.stopPropagation();
                   moveSessionToGroup(session.id, undefined);
                 }}
                 className={cn(
-                  'w-full flex items-center justify-between px-2 py-1.5 rounded text-sm hover:bg-muted',
+                  'w-full justify-between',
                   !session.groupId && 'text-primary'
                 )}
               >
                 <span>{t('page.ungrouped')}</span>
                 {!session.groupId && <Check className="w-3 h-3" />}
-              </button>
+              </NotionButton>
               <div className="my-1 border-t border-border/60" />
               {groups.length === 0 ? (
                 <div className="px-2 py-1.5 text-xs text-muted-foreground">
@@ -1922,20 +1939,22 @@ export const ChatV2Page: React.FC = () => {
                   const presetIcon = group.icon ? PRESET_ICONS.find(p => p.name === group.icon) : null;
                   const label = (group.icon && !presetIcon) ? `${group.icon} ${group.name}` : group.name;
                   return (
-                    <button
+                    <NotionButton
                       key={group.id}
+                      variant="ghost"
+                      size="sm"
                       onClick={(e) => {
                         e.stopPropagation();
                         moveSessionToGroup(session.id, group.id);
                       }}
                       className={cn(
-                        'w-full flex items-center justify-between px-2 py-1.5 rounded text-sm hover:bg-muted',
+                        'w-full justify-between',
                         active && 'text-primary'
                       )}
                     >
                       <span className="truncate">{label}</span>
                       {active && <Check className="w-3 h-3" />}
-                    </button>
+                    </NotionButton>
                   );
                 })
               )}
@@ -1943,7 +1962,10 @@ export const ChatV2Page: React.FC = () => {
           </Popover>
           {/* 🔧 全局最后一个会话不允许删除 */}
           {(totalSessionCount ?? sessions.length) > 1 && (
-          <button
+          <NotionButton
+            variant="ghost"
+            size="icon"
+            iconOnly
             onClick={(e) => {
               e.stopPropagation();
               if (pendingDeleteSessionId === session.id) {
@@ -1959,9 +1981,14 @@ export const ChatV2Page: React.FC = () => {
               }, 2500);
             }}
             className={cn(
-              'p-1 rounded hover:bg-destructive/20 text-muted-foreground hover:text-destructive',
+              '!h-6 !w-6 hover:bg-destructive/20 text-muted-foreground hover:text-destructive',
               pendingDeleteSessionId === session.id && 'text-destructive'
             )}
+            aria-label={
+              pendingDeleteSessionId === session.id
+                ? t('common:confirm_delete')
+                : t('page.deleteSession')
+            }
             title={
               pendingDeleteSessionId === session.id
                 ? t('common:confirm_delete')
@@ -1973,7 +2000,7 @@ export const ChatV2Page: React.FC = () => {
             ) : (
               <X className="w-3 h-3" />
             )}
-          </button>
+          </NotionButton>
           )}
         </div>
       )}
@@ -2021,14 +2048,15 @@ export const ChatV2Page: React.FC = () => {
 
       {/* 浏览所有对话入口 + 回收站入口 */}
       <div className="px-3 py-2 shrink-0 space-y-1">
-        <button
+        <NotionButton
+          variant="ghost"
+          size="md"
           onClick={() => {
-            // 立即切换视图，同时关闭侧栏
             setShowTrash(false);
             setViewMode(viewMode === 'browser' ? 'sidebar' : 'browser');
             setSessionSheetOpen(false);
           }}
-          className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg bg-muted/50 hover:bg-muted transition-colors group"
+          className="w-full justify-between px-3 py-2.5 bg-muted/50 hover:bg-muted group"
         >
           <div className="flex items-center gap-2">
             <LayoutGrid className="w-4 h-4 text-muted-foreground group-hover:text-foreground" />
@@ -2036,13 +2064,15 @@ export const ChatV2Page: React.FC = () => {
             <span className="text-xs text-muted-foreground">{totalSessionCount ?? sessions.length}</span>
           </div>
           <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-foreground" />
-        </button>
+        </NotionButton>
 
         {/* 🔧 P1-29: 回收站入口（移动端）- 与桌面端一致，不关闭侧边栏 */}
-        <button
+        <NotionButton
+          variant="ghost"
+          size="md"
           onClick={toggleTrash}
           className={cn(
-            'w-full flex items-center justify-between px-3 py-2 rounded-lg transition-colors group',
+            'w-full justify-between px-3 py-2 group',
             showTrash ? 'bg-muted' : 'hover:bg-muted/50'
           )}
         >
@@ -2062,13 +2092,15 @@ export const ChatV2Page: React.FC = () => {
             'w-4 h-4 transition-transform',
             showTrash ? 'rotate-90 text-foreground' : 'text-muted-foreground group-hover:text-foreground'
           )} />
-        </button>
+        </NotionButton>
 
         {/* 🆕 对话控制入口（移动端） */}
-        <button
+        <NotionButton
+          variant="ghost"
+          size="md"
           onClick={toggleChatControl}
           className={cn(
-            'w-full flex items-center justify-between px-3 py-2 rounded-lg transition-colors group',
+            'w-full justify-between px-3 py-2 group',
             showChatControl ? 'bg-muted' : 'hover:bg-muted/50'
           )}
         >
@@ -2085,7 +2117,7 @@ export const ChatV2Page: React.FC = () => {
             'w-4 h-4 transition-transform',
             showChatControl ? 'rotate-90 text-foreground' : 'text-muted-foreground group-hover:text-foreground'
           )} />
-        </button>
+        </NotionButton>
 
       </div>
 
@@ -2115,13 +2147,14 @@ export const ChatV2Page: React.FC = () => {
                 {t('page.trashTitle')}
               </span>
               {deletedSessions.length > 0 && (
-                <button
+                <NotionButton
+                  variant="danger"
+                  size="sm"
                   onClick={() => setShowEmptyTrashConfirm(true)}
-                  className="text-xs text-destructive hover:text-destructive/80 transition-colors"
                   title={t('page.emptyTrash')}
                 >
                   {t('page.emptyTrash')}
-                </button>
+                </NotionButton>
               )}
             </div>
 
@@ -2151,15 +2184,21 @@ export const ChatV2Page: React.FC = () => {
                     </div>
                     <div className="flex items-center gap-1">
                       {/* 恢复按钮 */}
-                      <button
+                      <NotionButton
+                        variant="success"
+                        size="icon"
+                        iconOnly
                         onClick={() => restoreSession(session.id)}
-                        className="p-1.5 rounded hover:bg-green-500/20 text-green-600 dark:text-green-400"
+                        aria-label={t('page.restoreSession')}
                         title={t('page.restoreSession')}
                       >
                         <RefreshCw className="w-4 h-4" />
-                      </button>
+                      </NotionButton>
                       {/* 永久删除按钮 */}
-                      <button
+                      <NotionButton
+                        variant="ghost"
+                        size="icon"
+                        iconOnly
                         onClick={() => {
                           if (pendingDeleteSessionId === session.id) {
                             resetDeleteConfirmation();
@@ -2173,9 +2212,14 @@ export const ChatV2Page: React.FC = () => {
                           }
                         }}
                         className={cn(
-                          'p-1.5 rounded hover:bg-destructive/20 text-muted-foreground hover:text-destructive',
+                          'hover:bg-destructive/20 text-muted-foreground hover:text-destructive',
                           pendingDeleteSessionId === session.id && 'text-destructive bg-destructive/10'
                         )}
+                        aria-label={
+                          pendingDeleteSessionId === session.id
+                            ? t('common:confirm_delete')
+                            : t('page.permanentDelete')
+                        }
                         title={
                           pendingDeleteSessionId === session.id
                             ? t('common:confirm_delete')
@@ -2187,7 +2231,7 @@ export const ChatV2Page: React.FC = () => {
                         ) : (
                           <X className="w-4 h-4" />
                         )}
-                      </button>
+                      </NotionButton>
                     </div>
                   </div>
                 ))}
@@ -2200,12 +2244,13 @@ export const ChatV2Page: React.FC = () => {
             <p className="text-sm text-muted-foreground mb-3">
               {t('page.noSessions')}
             </p>
-            <button
+            <NotionButton
+              variant="primary"
+              size="sm"
               onClick={() => createSession()}
-              className="text-sm text-primary hover:underline"
             >
               {t('page.createFirst')}
-            </button>
+            </NotionButton>
           </div>
         ) : (
           <div className="py-1 space-y-2">
@@ -2284,26 +2329,12 @@ export const ChatV2Page: React.FC = () => {
                                 dragHandleProps={provided.dragHandleProps ?? undefined}
                                 quickAction={
                                   <>
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        openEditGroup(group);
-                                      }}
-                                      className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground"
-                                      title={t('page.editGroup')}
-                                    >
+                                    <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); openEditGroup(group); }} aria-label={t('page.editGroup')} title={t('page.editGroup')} className="!h-6 !w-6">
                                       <Settings className="w-3.5 h-3.5" />
-                                    </button>
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        createSession(group.id);
-                                      }}
-                                      className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground"
-                                      title={t('page.newSession')}
-                                    >
+                                    </NotionButton>
+                                    <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); createSession(group.id); }} aria-label={t('page.newSession')} title={t('page.newSession')} className="!h-6 !w-6">
                                       <Plus className="w-3.5 h-3.5" />
-                                    </button>
+                                    </NotionButton>
                                   </>
                                 }
                               >
@@ -2359,16 +2390,9 @@ export const ChatV2Page: React.FC = () => {
                         onOpenChange={() => toggleGroupCollapse('ungrouped')}
                         twoLineLayout
                         quickAction={
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              createSession();
-                            }}
-                            className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground"
-                            title={t('page.newSession')}
-                          >
+                          <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); createSession(); }} aria-label={t('page.newSession')} title={t('page.newSession')} className="!h-6 !w-6">
                             <Plus className="w-3.5 h-3.5" />
-                          </button>
+                          </NotionButton>
                         }
                       >
                       {(ungroupedSessionCount ?? ungroupedSessions.length) === 0 ? (
@@ -2425,15 +2449,12 @@ export const ChatV2Page: React.FC = () => {
             {/* P1-22: 加载更多按钮（移动端 - 列表内滚动） */}
             {hasMoreSessions && sessions.length > 0 && (
               <div className="px-3 py-2">
-                <button
+                <NotionButton
+                  variant="ghost"
+                  size="sm"
                   onClick={loadMoreSessions}
                   disabled={isLoadingMore}
-                  className={cn(
-                    'w-full py-2 text-xs text-muted-foreground hover:text-foreground',
-                    'hover:bg-accent rounded-md transition-colors',
-                    'flex items-center justify-center gap-2',
-                    isLoadingMore && 'opacity-50 cursor-not-allowed'
-                  )}
+                  className="w-full"
                 >
                   {isLoadingMore ? (
                     <>
@@ -2443,7 +2464,7 @@ export const ChatV2Page: React.FC = () => {
                   ) : (
                     t('page.loadMore')
                   )}
-                </button>
+                </NotionButton>
               </div>
             )}
           </div>
@@ -2551,23 +2572,12 @@ export const ChatV2Page: React.FC = () => {
                       </span>
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
-                      <button
-                        onClick={handleOpenInLearningHub}
-                        className="p-1 rounded-md hover:bg-muted transition-colors"
-                        title="在学习中心打开"
-                      >
+                      <NotionButton variant="ghost" size="icon" iconOnly onClick={handleOpenInLearningHub} aria-label="在学习中心打开" title="在学习中心打开" className="!h-7 !w-7">
                         <ExternalLink className="w-3.5 h-3.5 text-muted-foreground" />
-                      </button>
-                      <button
-                        onClick={() => {
-                          handleCloseApp();
-                          setMobileResourcePanelOpen(false);
-                        }}
-                        className="p-1 rounded-md hover:bg-muted transition-colors"
-                        title={t('common:close')}
-                      >
+                      </NotionButton>
+                      <NotionButton variant="ghost" size="icon" iconOnly onClick={() => { handleCloseApp(); setMobileResourcePanelOpen(false); }} aria-label={t('common:close')} title={t('common:close')} className="!h-7 !w-7">
                         <X className="w-4 h-4 text-muted-foreground" />
-                      </button>
+                      </NotionButton>
                     </div>
                   </div>
                   {/* 应用内容 */}
@@ -2667,10 +2677,12 @@ export const ChatV2Page: React.FC = () => {
             {/* 浏览所有对话入口 */}
             {!sidebarCollapsed && (
               <div className="px-3 py-2 shrink-0 space-y-1">
-                <button
+                <NotionButton
+                  variant="ghost"
+                  size="md"
                   onClick={() => { setShowTrash(false); setViewMode(viewMode === 'browser' ? 'sidebar' : 'browser'); }}
                   className={cn(
-                    "w-full flex items-center justify-between px-3 py-2.5 rounded-lg transition-colors group",
+                    'w-full justify-between px-3 py-2.5 group',
                     viewMode === 'browser' ? 'bg-muted' : 'bg-muted/50 hover:bg-muted'
                   )}
                 >
@@ -2680,13 +2692,15 @@ export const ChatV2Page: React.FC = () => {
                     <span className="text-xs text-muted-foreground">{totalSessionCount ?? sessions.length}</span>
                   </div>
                   <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-foreground" />
-                </button>
+                </NotionButton>
 
                 {/* 🔧 P1-29: 回收站入口 */}
-                <button
+                <NotionButton
+                  variant="ghost"
+                  size="md"
                   onClick={toggleTrash}
                   className={cn(
-                    'w-full flex items-center justify-between px-3 py-2 rounded-lg transition-colors group',
+                    'w-full justify-between px-3 py-2 group',
                     showTrash ? 'bg-muted' : 'hover:bg-muted/50'
                   )}
                 >
@@ -2706,13 +2720,15 @@ export const ChatV2Page: React.FC = () => {
                     'w-4 h-4 transition-transform',
                     showTrash ? 'rotate-90 text-foreground' : 'text-muted-foreground group-hover:text-foreground'
                   )} />
-                </button>
+                </NotionButton>
 
                 {/* 🆕 对话控制入口 */}
-                <button
+                <NotionButton
+                  variant="ghost"
+                  size="md"
                   onClick={toggleChatControl}
                   className={cn(
-                    'w-full flex items-center justify-between px-3 py-2 rounded-lg transition-colors group',
+                    'w-full justify-between px-3 py-2 group',
                     showChatControl ? 'bg-muted' : 'hover:bg-muted/50'
                   )}
                 >
@@ -2729,7 +2745,7 @@ export const ChatV2Page: React.FC = () => {
                     'w-4 h-4 transition-transform',
                     showChatControl ? 'rotate-90 text-foreground' : 'text-muted-foreground group-hover:text-foreground'
                   )} />
-                </button>
+                </NotionButton>
 
               </div>
             )}
@@ -2765,13 +2781,14 @@ export const ChatV2Page: React.FC = () => {
                       {t('page.trashTitle')}
                     </span>
                     {deletedSessions.length > 0 && (
-                      <button
+                      <NotionButton
+                        variant="danger"
+                        size="sm"
                         onClick={() => setShowEmptyTrashConfirm(true)}
-                        className="text-xs text-destructive hover:text-destructive/80 transition-colors"
                         title={t('page.emptyTrash')}
                       >
                         {t('page.emptyTrash')}
-                      </button>
+                      </NotionButton>
                     )}
                   </div>
 
@@ -2799,15 +2816,14 @@ export const ChatV2Page: React.FC = () => {
                           </div>
                           <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                             {/* 恢复按钮 */}
-                            <button
-                              onClick={() => restoreSession(session.id)}
-                              className="p-1 rounded hover:bg-green-500/20 text-green-600 dark:text-green-400"
-                              title={t('page.restoreSession')}
-                            >
+                            <NotionButton variant="success" size="icon" iconOnly onClick={() => restoreSession(session.id)} aria-label={t('page.restoreSession')} title={t('page.restoreSession')} className="!h-6 !w-6">
                               <RefreshCw className="w-3.5 h-3.5" />
-                            </button>
+                            </NotionButton>
                             {/* 永久删除按钮 - 二次确认 */}
-                            <button
+                            <NotionButton
+                              variant="ghost"
+                              size="icon"
+                              iconOnly
                               onClick={(e) => {
                                 e.stopPropagation();
                                 if (pendingDeleteSessionId === session.id) {
@@ -2822,9 +2838,14 @@ export const ChatV2Page: React.FC = () => {
                                 }, 2500);
                               }}
                               className={cn(
-                                'p-1 rounded hover:bg-destructive/20 text-muted-foreground hover:text-destructive',
+                                '!h-6 !w-6 hover:bg-destructive/20 text-muted-foreground hover:text-destructive',
                                 pendingDeleteSessionId === session.id && 'text-destructive'
                               )}
+                              aria-label={
+                                pendingDeleteSessionId === session.id
+                                  ? t('common:confirm_delete')
+                                  : t('page.permanentDelete')
+                              }
                               title={
                                 pendingDeleteSessionId === session.id
                                   ? t('common:confirm_delete')
@@ -2836,7 +2857,7 @@ export const ChatV2Page: React.FC = () => {
                               ) : (
                                 <X className="w-3.5 h-3.5" />
                               )}
-                            </button>
+                            </NotionButton>
                           </div>
                         </div>
                       ))}
@@ -2921,26 +2942,12 @@ export const ChatV2Page: React.FC = () => {
                                                 dragHandleProps={provided.dragHandleProps ?? undefined}
                                                 quickAction={
                                                   <>
-                                                    <button
-                                                      onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        openEditGroup(group);
-                                                      }}
-                                                      className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground"
-                                                      title={t('page.editGroup')}
-                                                    >
+                                                    <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); openEditGroup(group); }} aria-label={t('page.editGroup')} title={t('page.editGroup')} className="!h-6 !w-6">
                                                       <Settings className="w-3.5 h-3.5" />
-                                                    </button>
-                                                    <button
-                                                      onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        createSession(group.id);
-                                                      }}
-                                                      className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground"
-                                                      title={t('page.newSession')}
-                                                    >
+                                                    </NotionButton>
+                                                    <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); createSession(group.id); }} aria-label={t('page.newSession')} title={t('page.newSession')} className="!h-6 !w-6">
                                                       <Plus className="w-3.5 h-3.5" />
-                                                    </button>
+                                                    </NotionButton>
                                                   </>
                                                 }
                                               >
@@ -2996,16 +3003,9 @@ export const ChatV2Page: React.FC = () => {
                                 onOpenChange={() => toggleGroupCollapse('ungrouped')}
                                 twoLineLayout
                                 quickAction={
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      createSession();
-                                    }}
-                                    className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground"
-                                    title={t('page.newSession')}
-                                  >
+                                  <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); createSession(); }} aria-label={t('page.newSession')} title={t('page.newSession')} className="!h-6 !w-6">
                                     <Plus className="w-3.5 h-3.5" />
-                                  </button>
+                                  </NotionButton>
                                 }
                               >
                                 {(ungroupedSessionCount ?? ungroupedSessions.length) === 0 ? (
@@ -3063,15 +3063,12 @@ export const ChatV2Page: React.FC = () => {
                   {/* P1-22: 加载更多按钮（无限滚动分页） */}
                   {hasMoreSessions && sessions.length > 0 && (
                     <div className="px-3 py-2">
-                      <button
+                      <NotionButton
+                        variant="ghost"
+                        size="sm"
                         onClick={loadMoreSessions}
                         disabled={isLoadingMore}
-                        className={cn(
-                          'w-full py-2 text-xs text-muted-foreground hover:text-foreground',
-                          'hover:bg-accent rounded-md transition-colors',
-                          'flex items-center justify-center gap-2',
-                          isLoadingMore && 'opacity-50 cursor-not-allowed'
-                        )}
+                        className="w-full"
                       >
                         {isLoadingMore ? (
                           <>
@@ -3081,7 +3078,7 @@ export const ChatV2Page: React.FC = () => {
                         ) : (
                           t('page.loadMore')
                         )}
-                      </button>
+                      </NotionButton>
                     </div>
                   )}
                 </>
@@ -3092,18 +3089,9 @@ export const ChatV2Page: React.FC = () => {
             {/* 折叠状态下的新建按钮 */}
             {sidebarCollapsed && (
               <div className="p-2 flex flex-col items-center gap-1 border-t border-border">
-                <button
-                  onClick={() => createSession()}
-                  disabled={isLoading}
-                  className={cn(
-                    'w-8 h-8 flex items-center justify-center rounded-md transition-all duration-150',
-                    'hover:bg-accent text-muted-foreground hover:text-foreground',
-                    isLoading && 'opacity-50 cursor-not-allowed'
-                  )}
-                  title={t('page.newSession')}
-                >
+                <NotionButton variant="ghost" size="icon" iconOnly onClick={() => createSession()} disabled={isLoading} aria-label={t('page.newSession')} title={t('page.newSession')}>
                   <Plus className="w-4 h-4" />
-                </button>
+                </NotionButton>
               </div>
             )}
           </UnifiedSidebar>
@@ -3159,20 +3147,12 @@ export const ChatV2Page: React.FC = () => {
                       </span>
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
-                      <button
-                        onClick={handleOpenInLearningHub}
-                        className="p-1 rounded-md hover:bg-muted transition-colors"
-                        title="在学习中心打开"
-                      >
+                      <NotionButton variant="ghost" size="icon" iconOnly onClick={handleOpenInLearningHub} aria-label="在学习中心打开" title="在学习中心打开" className="!h-7 !w-7">
                         <ExternalLink className="w-3.5 h-3.5 text-muted-foreground" />
-                      </button>
-                      <button
-                        onClick={handleCloseApp}
-                        className="p-1 rounded-md hover:bg-muted transition-colors"
-                        title={t('common:close')}
-                      >
+                      </NotionButton>
+                      <NotionButton variant="ghost" size="icon" iconOnly onClick={handleCloseApp} aria-label={t('common:close')} title={t('common:close')} className="!h-7 !w-7">
                         <X className="w-4 h-4 text-muted-foreground" />
-                      </button>
+                      </NotionButton>
                     </div>
                   </div>
 
@@ -3242,20 +3222,12 @@ export const ChatV2Page: React.FC = () => {
                               </span>
                             </div>
                             <div className="flex items-center gap-1 shrink-0">
-                              <button
-                                onClick={handleOpenInLearningHub}
-                                className="p-1 rounded-md hover:bg-muted transition-colors"
-                                title="在学习中心打开"
-                              >
+                              <NotionButton variant="ghost" size="icon" iconOnly onClick={handleOpenInLearningHub} aria-label="在学习中心打开" title="在学习中心打开" className="!h-7 !w-7">
                                 <ExternalLink className="w-3.5 h-3.5 text-muted-foreground" />
-                              </button>
-                              <button
-                                onClick={handleCloseApp}
-                                className="p-1 rounded-md hover:bg-muted transition-colors"
-                                title={t('common:close')}
-                              >
+                              </NotionButton>
+                              <NotionButton variant="ghost" size="icon" iconOnly onClick={handleCloseApp} aria-label={t('common:close')} title={t('common:close')} className="!h-7 !w-7">
                                 <X className="w-4 h-4 text-muted-foreground" />
-                              </button>
+                              </NotionButton>
                             </div>
                           </div>
 
@@ -3305,13 +3277,9 @@ export const ChatV2Page: React.FC = () => {
             {/* 标题栏 */}
             <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-muted/30 shrink-0">
               <span className="font-medium">{t('learningHub:title')}</span>
-              <button
-                onClick={() => setLearningHubSheetOpen(false)}
-                className="p-1 rounded-md hover:bg-muted transition-colors"
-                title={t('common:close')}
-              >
+              <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setLearningHubSheetOpen(false)} aria-label={t('common:close')} title={t('common:close')} className="!h-7 !w-7">
                 <X className="w-4 h-4 text-muted-foreground" />
-              </button>
+              </NotionButton>
             </div>
             <div className="flex-1 overflow-hidden">
               {openApp ? (
@@ -3331,20 +3299,12 @@ export const ChatV2Page: React.FC = () => {
                       </span>
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
-                      <button
-                        onClick={handleOpenInLearningHub}
-                        className="p-1 rounded-md hover:bg-muted transition-colors"
-                        title="在学习中心打开"
-                      >
+                      <NotionButton variant="ghost" size="icon" iconOnly onClick={handleOpenInLearningHub} aria-label="在学习中心打开" title="在学习中心打开" className="!h-7 !w-7">
                         <ExternalLink className="w-3.5 h-3.5 text-muted-foreground" />
-                      </button>
-                      <button
-                        onClick={handleCloseApp}
-                        className="p-1 rounded-md hover:bg-muted transition-colors"
-                        title={t('common:close')}
-                      >
+                      </NotionButton>
+                      <NotionButton variant="ghost" size="icon" iconOnly onClick={handleCloseApp} aria-label={t('common:close')} title={t('common:close')} className="!h-7 !w-7">
                         <X className="w-4 h-4 text-muted-foreground" />
-                      </button>
+                      </NotionButton>
                     </div>
                   </div>
 

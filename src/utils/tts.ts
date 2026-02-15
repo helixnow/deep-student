@@ -74,9 +74,7 @@ export async function speak(text: string, options: TTSOptions = {}): Promise<voi
 function speakWithWebAPI(text: string, options: TTSOptions): Promise<void> {
   return new Promise((resolve, reject) => {
     // 停止当前的朗读
-    if (currentUtterance) {
-      window.speechSynthesis.cancel();
-    }
+    window.speechSynthesis.cancel();
 
     const utterance = new SpeechSynthesisUtterance(text);
     
@@ -88,13 +86,22 @@ function speakWithWebAPI(text: string, options: TTSOptions): Promise<void> {
 
     // 事件监听
     utterance.onend = () => {
-      currentUtterance = null;
+      if (currentUtterance === utterance) {
+        currentUtterance = null;
+      }
       resolve();
     };
 
     utterance.onerror = (event) => {
-      currentUtterance = null;
-      reject(new Error(`Web Speech API failed: ${event.error}`));
+      if (currentUtterance === utterance) {
+        currentUtterance = null;
+      }
+      // 'canceled' 是主动停止，不视为错误
+      if (event.error === 'canceled') {
+        resolve();
+      } else {
+        reject(new Error(`Web Speech API failed: ${event.error}`));
+      }
     };
 
     currentUtterance = utterance;

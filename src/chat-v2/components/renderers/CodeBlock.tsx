@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef, Component } from 'react';
 import type { ReactNode, ErrorInfo } from 'react';
 import { Copy, Check, Plus, Minus, RotateCcw, AlertTriangle } from 'lucide-react';
+import { NotionButton } from '@/components/ui/NotionButton';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { useTranslation } from 'react-i18next';
@@ -162,9 +163,9 @@ const MermaidErrorFallbackUI: React.FC<MermaidErrorFallbackUIProps> = ({
         <span className="mermaid-error-title">
           {t('codeBlock.renderFailed', '渲染失败')}
         </span>
-        <button className="mermaid-error-reset" onClick={onReset}>
+        <NotionButton variant="ghost" size="sm" className="mermaid-error-reset" onClick={onReset}>
           {t('codeBlock.retry', '重试')}
-        </button>
+        </NotionButton>
       </div>
       <div className="mermaid-error-message">
         {error || t('codeBlock.unknownError', '未知错误')}
@@ -623,23 +624,27 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ children, className, isStr
       <div className="code-block-header">
         <span className="code-block-lang">{language}</span>
         <div className="code-block-actions">
-          <button className="code-block-copy" onClick={handleCopy}>
+          <NotionButton variant="ghost" size="sm" className="code-block-copy" onClick={handleCopy}>
             {copied ? <Check size={14} /> : <Copy size={14} />}
             <span>{copied ? t('codeBlock.copied', '已复制') : t('codeBlock.copy', '复制')}</span>
-          </button>
+          </NotionButton>
 
           {(canRunMermaid || canRenderSvg || canRenderHtml || canRenderXml) && (
             renderedSvg ? (
-              <button
+              <NotionButton
+                variant="ghost"
+                size="sm"
                 className="code-block-copy"
                 onClick={() => setShowRendered(v => !v)}
                 title={showRendered ? t('codeBlock.viewSource', '查看源码') : t('codeBlock.viewRender', '查看渲染')}
               >
                 <span style={{ marginRight: 4 }}>{showRendered ? '</>' : '◎'}</span>
                 <span>{showRendered ? t('codeBlock.source', '源码') : t('codeBlock.render', '渲染')}</span>
-              </button>
+              </NotionButton>
             ) : (
-              <button 
+              <NotionButton 
+                variant="ghost"
+                size="sm"
                 className="code-block-copy" 
                 onClick={
                   canRunMermaid ? handleRunMermaid :
@@ -657,24 +662,24 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ children, className, isStr
               >
                 <span style={{ marginRight: 4 }}>{running && canRunMermaid ? '…' : '▶'}</span>
                 <span>{running && canRunMermaid ? t('codeBlock.running', '运行中') : t('codeBlock.render', '渲染')}</span>
-              </button>
+              </NotionButton>
             )
           )}
 
           {(renderedSvg && showRendered) && (
             <>
-              <button className="code-block-copy" onClick={handleZoomOut} title={t('codeBlock.zoomOut', '缩小')}>
+              <NotionButton variant="ghost" size="icon" iconOnly className="code-block-copy" onClick={handleZoomOut} aria-label={t('codeBlock.zoomOut', '缩小')} title={t('codeBlock.zoomOut', '缩小')}>
                 <Minus size={14} />
-              </button>
-              <button className="code-block-copy" onClick={handleZoomIn} title={t('codeBlock.zoomIn', '放大')}>
+              </NotionButton>
+              <NotionButton variant="ghost" size="icon" iconOnly className="code-block-copy" onClick={handleZoomIn} aria-label={t('codeBlock.zoomIn', '放大')} title={t('codeBlock.zoomIn', '放大')}>
                 <Plus size={14} />
-              </button>
-              <button className="code-block-copy" onClick={handleFitView} title={t('codeBlock.fitView', '适配视图')}>
+              </NotionButton>
+              <NotionButton variant="ghost" size="icon" iconOnly className="code-block-copy" onClick={handleFitView} aria-label={t('codeBlock.fitView', '适配视图')} title={t('codeBlock.fitView', '适配视图')}>
                 <span style={{ fontSize: 12 }}>⤢</span>
-              </button>
-              <button className="code-block-copy" onClick={handleResetView} title={t('codeBlock.resetView', '重置视图')}>
+              </NotionButton>
+              <NotionButton variant="ghost" size="icon" iconOnly className="code-block-copy" onClick={handleResetView} aria-label={t('codeBlock.resetView', '重置视图')} title={t('codeBlock.resetView', '重置视图')}>
                 <RotateCcw size={14} />
-              </button>
+              </NotionButton>
             </>
           )}
         </div>

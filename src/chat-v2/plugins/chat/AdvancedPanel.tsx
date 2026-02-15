@@ -10,6 +10,7 @@ import { useStore, type StoreApi } from 'zustand';
 import { SlidersHorizontal, X, MessageSquare, Thermometer, Layers, Image } from 'lucide-react';
 import { useMobileLayoutSafe } from '@/components/layout/MobileLayoutContext';
 import { cn } from '@/lib/utils';
+import { NotionButton } from '@/components/ui/NotionButton';
 import { SnappySlider } from '@/components/ui/SnappySlider';
 import { Switch } from '@/components/ui/shad/Switch';
 import { Label } from '@/components/ui/shad/Label';
@@ -194,12 +195,9 @@ export const AdvancedPanel: React.FC<AdvancedPanelProps> = ({ store, onClose, si
               {t('chat_host:advanced.notice')}
             </span>
           </div>
-          <button
-            onClick={onClose}
-            className="rounded-md p-1 text-muted-foreground hover:bg-accent/40 hover:text-foreground shrink-0"
-          >
+          <NotionButton variant="ghost" size="icon" iconOnly onClick={onClose} aria-label={t('common:actions.cancel')}>
             <X size={16} />
-          </button>
+          </NotionButton>
         </div>
       )}
 
@@ -284,10 +282,11 @@ export const AdvancedPanel: React.FC<AdvancedPanelProps> = ({ store, onClose, si
             <span className="text-[10px] text-muted-foreground line-clamp-2">
               {t('chat_host:advanced.context.description')}
             </span>
-            <button
-              type="button"
+            <NotionButton
+              variant="ghost"
+              size="sm"
               className={cn(
-                'ml-auto rounded px-1.5 py-0.5 text-[10px] text-muted-foreground hover:text-foreground',
+                'ml-auto !h-auto !px-1.5 !py-0.5 text-[10px]',
                 isStreaming && 'pointer-events-none opacity-60'
               )}
               onClick={() => {
@@ -297,7 +296,7 @@ export const AdvancedPanel: React.FC<AdvancedPanelProps> = ({ store, onClose, si
               }}
             >
               {t('chat_host:advanced.context.reset_auto')}
-            </button>
+            </NotionButton>
           </div>
           <SnappySlider
             className={cn(isStreaming && 'pointer-events-none opacity-60')}

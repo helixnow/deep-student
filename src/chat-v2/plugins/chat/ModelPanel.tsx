@@ -11,12 +11,12 @@ import { invoke } from '@tauri-apps/api/core';
 import { X, Star, Pin } from 'lucide-react';
 import { useMobileLayoutSafe } from '@/components/layout/MobileLayoutContext';
 import { cn } from '@/lib/utils';
+import { NotionButton } from '@/components/ui/NotionButton';
 import { Input } from '@/components/ui/shad/Input';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { Badge } from '@/components/ui/shad/Badge';
 import { ProviderIcon } from '@/components/ui/ProviderIcon';
 import DsAnalysisIconMuted from '@/components/icons/DsAnalysisIconMuted';
-import { NotionButton } from '@/components/ui/NotionButton';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
 import type { ChatStore } from '../../core/types';
@@ -246,11 +246,13 @@ export const ModelPanel: React.FC<ModelPanelProps> = ({ store, onClose }) => {
       isSelected ? 'border-primary bg-primary text-primary-foreground shadow-sm' : 'border text-muted-foreground'
     );
     return (
-      <button
+      <NotionButton
         key="system-default"
+        variant="ghost"
+        size="sm"
         onClick={() => handleSelectModel(null)}
         className={cn(
-          'flex w-full items-center gap-3 rounded-xl border px-3 py-2 text-left transition',
+          'w-full !justify-start gap-3 !rounded-xl border !px-3 !py-2 text-left',
           isSelected
             ? 'border-primary/80 bg-primary/5 shadow-sm'
             : 'border-transparent bg-card/80 hover:border hover:bg-muted/70'
@@ -261,7 +263,7 @@ export const ModelPanel: React.FC<ModelPanelProps> = ({ store, onClose }) => {
           <span className="text-sm font-medium text-foreground">{followSystemLabel}</span>
           <span className="text-xs text-muted-foreground shrink-0">{followSystemHint}</span>
         </div>
-      </button>
+      </NotionButton>
     );
   };
 
@@ -273,11 +275,13 @@ export const ModelPanel: React.FC<ModelPanelProps> = ({ store, onClose }) => {
       isSelected ? 'border-primary bg-primary text-primary-foreground shadow-sm' : 'border text-muted-foreground'
     );
     return (
-      <button
+      <NotionButton
         key={option.id}
+        variant="ghost"
+        size="sm"
         onClick={() => handleSelectModel(option.id)}
         className={cn(
-          'flex w-full items-center gap-3 rounded-xl border px-3 py-2 text-left transition',
+          'w-full !justify-start gap-3 !rounded-xl border !px-3 !py-2 text-left',
           isSelected
             ? 'border-primary/80 bg-primary/5 shadow-sm'
             : 'border-transparent bg-card/80 hover:border hover:bg-muted/70'
@@ -309,7 +313,7 @@ export const ModelPanel: React.FC<ModelPanelProps> = ({ store, onClose }) => {
             </Badge>
           </div>
         </div>
-      </button>
+      </NotionButton>
     );
   };
 
@@ -324,12 +328,9 @@ export const ModelPanel: React.FC<ModelPanelProps> = ({ store, onClose }) => {
           </div>
           <span className="text-xs text-muted-foreground">{subtitle}</span>
         </div>
-        <button
-          onClick={onClose}
-          className="rounded-md p-1 text-muted-foreground hover:bg-accent/40 hover:text-foreground"
-        >
+        <NotionButton variant="ghost" size="icon" iconOnly onClick={onClose} aria-label={t('common:actions.cancel')}>
           <X size={16} />
-        </button>
+        </NotionButton>
       </div>
 
       {/* 搜索框 */}

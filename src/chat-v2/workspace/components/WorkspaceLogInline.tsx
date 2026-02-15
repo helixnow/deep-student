@@ -8,6 +8,7 @@
  */
 
 import React, { useState, useMemo } from 'react';
+import { NotionButton } from '@/components/ui/NotionButton';
 import { useTranslation } from 'react-i18next';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -287,36 +288,14 @@ export const WorkspaceLogInline: React.FC<WorkspaceLogInlineProps> = ({
         <div className="flex items-center gap-1">
           {/* 🆕 复制完整调试信息按钮 */}
           {store && (
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                handleCopyDebugInfo();
-              }}
-              className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-              title={t('debug.copyDebugInfo')}
-            >
-              {debugCopied ? (
-                <Check className="w-3.5 h-3.5 text-green-500" />
-              ) : (
-                <Bug className="w-3.5 h-3.5" />
-              )}
-            </button>
+            <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); handleCopyDebugInfo(); }} aria-label={t('debug.copyDebugInfo')} title={t('debug.copyDebugInfo')}>
+              {debugCopied ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Bug className="w-3.5 h-3.5" />}
+            </NotionButton>
           )}
           {/* 复制日志按钮 */}
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              handleCopyLog();
-            }}
-            className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-            title={t('workspace.log.copy')}
-          >
-            {copied ? (
-              <Check className="w-3.5 h-3.5 text-green-500" />
-            ) : (
-              <Copy className="w-3.5 h-3.5" />
-            )}
-          </button>
+          <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); handleCopyLog(); }} aria-label={t('workspace.log.copy')} title={t('workspace.log.copy')}>
+            {copied ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
+          </NotionButton>
           {isExpanded ? (
             <ChevronUp className="w-4 h-4 text-muted-foreground" />
           ) : (

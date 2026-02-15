@@ -1,5 +1,7 @@
 <div align="center">
 
+**简体中文** | [English](./README_EN.md)
+
 <img src="./public/logo.svg" alt="DeepStudent" width="100" />
 
 # DeepStudent

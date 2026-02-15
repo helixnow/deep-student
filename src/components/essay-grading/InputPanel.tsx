@@ -16,7 +16,6 @@ import {
 } from '../ui/shad/AlertDialog';
 import {
   Trash2,
-  Sparkles,
   Bot,
   GraduationCap,
   Loader2,
@@ -323,7 +322,6 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
                 onClick={onGrade}
                 disabled={!safeInputText.trim()}
               >
-                <Sparkles className="w-3.5 h-3.5" />
                 {t('essay_grading:actions.grade')}
               </NotionButton>
             )}

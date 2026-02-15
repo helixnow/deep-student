@@ -8,6 +8,7 @@ import React, { useCallback, useRef, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { StoreApi } from 'zustand';
 import { cn } from '@/utils/cn';
+import { NotionButton } from '@/components/ui/NotionButton';
 import { Send, Square, Loader2, Paperclip } from 'lucide-react';
 import { useSessionStatus, useInputValue, useCanSend, useAttachments } from '../hooks/useChatStore';
 import type { ChatStore } from '../core/types';
@@ -172,20 +173,22 @@ export const InputBar: React.FC<InputBarProps> = ({
             // 使用 children 模式，不显示 DropZone
             className="flex-shrink-0"
           >
-            <button
-              type="button" // 防止表单提交
+            <NotionButton
+              variant="ghost"
+              size="icon"
+              iconOnly
               disabled={attachments.length >= maxAttachments}
               className={cn(
-                'p-2.5 rounded-full transition-all duration-200', // 圆形按钮
-                'bg-muted/50 hover:bg-muted active:scale-95', // 微交互
+                '!rounded-full bg-muted/50 hover:bg-muted active:scale-95',
                 attachments.length >= maxAttachments
-                  ? 'opacity-50 cursor-not-allowed text-muted-foreground'
+                  ? 'opacity-50 text-muted-foreground'
                   : 'text-muted-foreground hover:text-foreground'
               )}
+              aria-label={t('inputBar.addAttachment')}
               title={t('inputBar.addAttachment')}
             >
               <Paperclip className="w-5 h-5" />
-            </button>
+            </NotionButton>
           </AttachmentUploader>
         )}
 
@@ -213,27 +216,31 @@ export const InputBar: React.FC<InputBarProps> = ({
         </div>
 
         {/* 发送/停止按钮 */}
-        <button
+        <NotionButton
+          variant={isStreaming ? 'danger' : 'primary'}
+          size="icon"
+          iconOnly
           onClick={isStreaming ? handleStop : handleSend}
           disabled={isAborting || (!isStreaming && !canSend)}
           className={cn(
-            'p-2.5 rounded-full transition-all duration-200 shadow-sm', // 圆形按钮，加阴影
+            '!rounded-full shadow-sm hover:shadow-md active:scale-95',
             isStreaming
-              ? 'bg-destructive text-destructive-foreground hover:bg-destructive/90 hover:shadow-md active:scale-95'
-              : 'bg-primary text-primary-foreground hover:bg-primary/90 hover:shadow-md active:scale-95',
+              ? 'bg-destructive text-destructive-foreground hover:bg-destructive/90'
+              : 'bg-primary text-primary-foreground hover:bg-primary/90',
             (isAborting || (!isStreaming && !canSend)) &&
-              'opacity-50 cursor-not-allowed shadow-none'
+              'opacity-50 shadow-none'
           )}
+          aria-label={isStreaming ? t('inputBar.stop') : t('inputBar.send')}
           title={isStreaming ? t('inputBar.stop') : t('inputBar.send')}
         >
           {isAborting ? (
             <Loader2 className="w-5 h-5 animate-spin" />
           ) : isStreaming ? (
-            <Square className="w-5 h-5 fill-current" /> // 实心停止图标
+            <Square className="w-5 h-5 fill-current" />
           ) : (
-            <Send className="w-5 h-5 ml-0.5" /> // 微调发送图标位置
+            <Send className="w-5 h-5 ml-0.5" />
           )}
-        </button>
+        </NotionButton>
       </div>
 
       {/* 快捷键提示 */}

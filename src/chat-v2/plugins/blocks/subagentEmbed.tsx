@@ -11,6 +11,7 @@
  */
 
 import React, { useState, useMemo, useEffect } from 'react';
+import { NotionButton } from '@/components/ui/NotionButton';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
@@ -211,9 +212,11 @@ const SubagentEmbedBlockComponent: React.FC<BlockComponentProps> = ({ block, sto
       status === 'running' && "ring-2 ring-blue-500/30"
     )}>
       {/* 头部：可点击折叠 */}
-      <button
+      <NotionButton
+        variant="ghost"
+        size="sm"
         onClick={() => setIsCollapsed(!isCollapsed)}
-        className="w-full flex items-center gap-2 p-3 hover:bg-muted/30 transition-colors text-left"
+        className="w-full !justify-start gap-2 !p-3 text-left"
       >
         {/* 折叠图标 */}
         {isCollapsed ? (
@@ -236,22 +239,11 @@ const SubagentEmbedBlockComponent: React.FC<BlockComponentProps> = ({ block, sto
 
         {/* 高度切换按钮（仅展开时显示） */}
         {!isCollapsed && (
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              setIsFullHeight(!isFullHeight);
-            }}
-            className="p-1 hover:bg-muted rounded transition-colors"
-            title={isFullHeight ? t('subagent.collapse') : t('subagent.expand')}
-          >
-            {isFullHeight ? (
-              <Minimize2 className="w-3.5 h-3.5 text-muted-foreground" />
-            ) : (
-              <Maximize2 className="w-3.5 h-3.5 text-muted-foreground" />
-            )}
-          </button>
+          <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); setIsFullHeight(!isFullHeight); }} className="!h-6 !w-6" aria-label={isFullHeight ? t('subagent.collapse') : t('subagent.expand')} title={isFullHeight ? t('subagent.collapse') : t('subagent.expand')}>
+            {isFullHeight ? <Minimize2 className="w-3.5 h-3.5 text-muted-foreground" /> : <Maximize2 className="w-3.5 h-3.5 text-muted-foreground" />}
+          </NotionButton>
         )}
-      </button>
+      </NotionButton>
 
       {/* 任务摘要（折叠时显示） */}
       {isCollapsed && taskSummary && (

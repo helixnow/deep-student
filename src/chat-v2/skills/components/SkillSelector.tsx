@@ -8,6 +8,7 @@ import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Search, Zap, RefreshCw, X, Check, User, Wrench, Star, ChevronLeft } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { NotionButton } from '@/components/ui/NotionButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { useMobileLayoutSafe } from '@/components/layout/MobileLayoutContext';
 import { skillRegistry, subscribeToSkillRegistry } from '../registry';
@@ -192,36 +193,16 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
         <div className="flex items-center gap-2">
           {/* 刷新按钮 */}
           {onRefresh && (
-            <button
-              type="button"
-              onClick={handleRefresh}
-              disabled={isRefreshing}
-              className={cn(
-                'p-1.5 rounded-md text-muted-foreground',
-                'hover:bg-accent hover:text-foreground',
-                'transition-colors focus:outline-none focus:ring-1 focus:ring-primary/50',
-                isRefreshing && 'animate-spin'
-              )}
-              title={t('skills:selector.refresh')}
-            >
+            <NotionButton variant="ghost" size="icon" iconOnly onClick={handleRefresh} disabled={isRefreshing} aria-label={t('skills:selector.refresh')} title={t('skills:selector.refresh')} className={cn(isRefreshing && 'animate-spin')}>
               <RefreshCw size={16} />
-            </button>
+            </NotionButton>
           )}
 
           {/* 关闭按钮 */}
           {onClose && (
-            <button
-              type="button"
-              onClick={onClose}
-              className={cn(
-                'p-1.5 rounded-md text-muted-foreground',
-                'hover:bg-accent hover:text-foreground',
-                'transition-colors focus:outline-none focus:ring-1 focus:ring-primary/50'
-              )}
-              title={t('common:actions.close')}
-            >
+            <NotionButton variant="ghost" size="icon" iconOnly onClick={onClose} aria-label={t('common:actions.close')} title={t('common:actions.close')}>
               <X size={16} />
-            </button>
+            </NotionButton>
           )}
         </div>
       </div>
@@ -241,13 +222,9 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
           className="w-full rounded-md border border-border bg-background py-1.5 pl-7 pr-2 text-xs placeholder:text-muted-foreground focus:border-primary focus:outline-none"
         />
         {searchTerm && (
-          <button
-            type="button"
-            onClick={() => setSearchTerm('')}
-            className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-          >
+          <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setSearchTerm('')} aria-label="clear" className="absolute right-2 top-1/2 -translate-y-1/2 !h-5 !w-5">
             <X size={12} />
-          </button>
+          </NotionButton>
         )}
       </div>
 
@@ -309,44 +286,48 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                         </span>
                       ) : (
                         // 手动激活的技能：显示 checkbox
-                        <button
-                          type="button"
+                        <NotionButton
+                          variant={isActiveSkill ? 'primary' : 'ghost'}
+                          size="icon"
+                          iconOnly
                           onClick={(e) => {
                             e.stopPropagation();
                             if (!disabled) handleToggleActivate(skill.id);
                           }}
                           disabled={disabled}
                           className={cn(
-                            'flex-shrink-0 w-4 h-4 rounded border transition-all duration-150',
-                            'flex items-center justify-center',
-                            'focus:outline-none focus:ring-1 focus:ring-primary/50',
+                            'flex-shrink-0 !w-4 !h-4 !rounded border',
                             isActiveSkill
-                              ? 'bg-primary border-primary text-primary-foreground'
+                              ? 'border-primary'
                               : 'border-muted-foreground/40 hover:border-primary/60',
                             disabled && 'cursor-not-allowed'
                           )}
+                          aria-label={isActiveSkill 
+                            ? t('skills:card.clickToDeactivate') 
+                            : t('skills:card.clickToActivate')
+                          }
                           title={isActiveSkill 
                             ? t('skills:card.clickToDeactivate') 
                             : t('skills:card.clickToActivate')
                           }
                         >
                           {isActiveSkill && <Check size={10} strokeWidth={3} />}
-                        </button>
+                        </NotionButton>
                       )}
                       {/* 技能名称（可点击选中查看详情） */}
-                      <button
-                        type="button"
+                      <NotionButton
+                        variant="ghost"
+                        size="sm"
                         onClick={() => handleSelect(skill.id)}
                         disabled={disabled}
                         className={cn(
-                          'font-medium text-sm truncate flex-1 text-left',
-                          'focus:outline-none',
+                          'font-medium text-sm truncate flex-1 !justify-start !px-0',
                           isActiveSkill ? 'text-primary' : isToolLoaded ? 'text-amber-600 dark:text-amber-400' : 'text-foreground',
                           !disabled && 'hover:underline cursor-pointer'
                         )}
                       >
                         {getLocalizedSkillName(skill.id, skill.name, t)}
-                      </button>
+                      </NotionButton>
                       {/* 默认标记 - 使用绿色系以区分蓝色的"全局"位置标签 */}
                       {isDefaultSkill && (
                         <span
@@ -358,29 +339,25 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                         </span>
                       )}
                       {/* 收藏按钮 */}
-                      <button
-                        type="button"
+                      <NotionButton
+                        variant="ghost"
+                        size="icon"
+                        iconOnly
                         onClick={(e) => {
                           e.stopPropagation();
                           toggleFavorite(skill.id);
                         }}
                         className={cn(
-                          'flex-shrink-0 p-0.5 rounded transition-colors',
-                          'focus:outline-none focus:ring-1 focus:ring-primary/50',
+                          'flex-shrink-0 !w-5 !h-5',
                           isFavorite(skill.id)
                             ? 'text-amber-500 hover:text-amber-600'
                             : 'text-muted-foreground/40 hover:text-amber-500'
                         )}
-                        title={isFavorite(skill.id)
-                          ? t('skills:favorite.remove')
-                          : t('skills:favorite.add')
-                        }
+                        aria-label={isFavorite(skill.id) ? t('skills:favorite.remove') : t('skills:favorite.add')}
+                        title={isFavorite(skill.id) ? t('skills:favorite.remove') : t('skills:favorite.add')}
                       >
-                        <Star
-                          size={12}
-                          className={isFavorite(skill.id) ? 'fill-current' : ''}
-                        />
-                      </button>
+                        <Star size={12} className={isFavorite(skill.id) ? 'fill-current' : ''} />
+                      </NotionButton>
                       {/* 位置标签 */}
                       <span
                         className={cn(
@@ -412,14 +389,10 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
             <>
               {/* 📱 移动端：返回按钮 */}
               {isMobile && (
-                <button
-                  type="button"
-                  onClick={() => setSelectedSkillId(null)}
-                  className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground mb-2 flex-shrink-0"
-                >
+                <NotionButton variant="ghost" size="sm" onClick={() => setSelectedSkillId(null)} className="mb-2 flex-shrink-0">
                   <ChevronLeft size={14} />
-                      <span>{t('common:actions.back')}</span>
-                </button>
+                  <span>{t('common:actions.back')}</span>
+                </NotionButton>
               )}
               {/* 内容区域（可滚动） */}
               <CustomScrollArea className="flex-1 min-h-0" viewportClassName="pr-1">
@@ -431,26 +404,22 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                         {getLocalizedSkillName(selectedSkill.id, selectedSkill.name, t)}
                       </h3>
                       {/* 收藏按钮 */}
-                      <button
-                        type="button"
+                      <NotionButton
+                        variant="ghost"
+                        size="icon"
+                        iconOnly
                         onClick={() => toggleFavorite(selectedSkill.id)}
                         className={cn(
-                          'flex-shrink-0 p-1 rounded transition-colors',
-                          'focus:outline-none focus:ring-1 focus:ring-primary/50',
+                          'flex-shrink-0 !w-6 !h-6',
                           isFavorite(selectedSkill.id)
                             ? 'text-amber-500 hover:text-amber-600'
                             : 'text-muted-foreground/40 hover:text-amber-500'
                         )}
-                        title={isFavorite(selectedSkill.id)
-                          ? t('skills:favorite.remove')
-                          : t('skills:favorite.add')
-                        }
+                        aria-label={isFavorite(selectedSkill.id) ? t('skills:favorite.remove') : t('skills:favorite.add')}
+                        title={isFavorite(selectedSkill.id) ? t('skills:favorite.remove') : t('skills:favorite.add')}
                       >
-                        <Star
-                          size={14}
-                          className={isFavorite(selectedSkill.id) ? 'fill-current' : ''}
-                        />
-                      </button>
+                        <Star size={14} className={isFavorite(selectedSkill.id) ? 'fill-current' : ''} />
+                      </NotionButton>
                     </div>
                     <div className="flex items-center gap-2 mt-0.5">
                       {selectedSkill.version && (
@@ -504,15 +473,11 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
               {/* 底部操作按钮（固定在底部） */}
               <div className="flex-shrink-0 pt-3 border-t border-border/50 space-y-2">
                 {/* 默认状态切换按钮 - 使用绿色系与激活按钮区分 */}
-                <button
-                  type="button"
+                <NotionButton
+                  variant={isDefault(selectedSkill.id) ? 'success' : 'default'}
+                  size="md"
                   onClick={() => toggleDefault(selectedSkill.id)}
-                  className={cn(
-                    'w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors',
-                    isDefault(selectedSkill.id)
-                      ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/20'
-                      : 'bg-muted/50 text-muted-foreground border border-border hover:bg-muted hover:text-foreground'
-                  )}
+                  className="w-full"
                 >
                   <Check size={14} className={cn('transition-opacity', !isDefault(selectedSkill.id) && 'opacity-50')} />
                   <span>
@@ -521,7 +486,7 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                       : t('skills:default.setDefault')
                     }
                   </span>
-                </button>
+                </NotionButton>
 
                 {/* 工具加载的技能：显示状态提示，禁止手动操作 */}
                 {isSkillLoaded(selectedSkill.id) ? (
@@ -530,17 +495,12 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                     <span>{t('skills:card.loadedByTool')}</span>
                   </div>
                 ) : (
-                  <button
-                    type="button"
+                  <NotionButton
+                    variant={isSkillActive(selectedSkill.id) ? 'primary' : 'default'}
+                    size="md"
                     onClick={() => handleToggleActivate(selectedSkill.id)}
                     disabled={disabled}
-                    className={cn(
-                      'w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors',
-                      isSkillActive(selectedSkill.id)
-                        ? 'bg-primary text-primary-foreground hover:bg-primary/90'
-                        : 'bg-muted text-foreground hover:bg-accent',
-                      disabled && 'opacity-50 cursor-not-allowed'
-                    )}
+                    className="w-full"
                   >
                     {isSkillActive(selectedSkill.id) ? (
                       <>
@@ -553,7 +513,7 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                         <span>{t('skills:card.activateSkill')}</span>
                       </>
                     )}
-                  </button>
+                  </NotionButton>
                 )}
               </div>
             </>

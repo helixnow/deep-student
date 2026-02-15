@@ -12,6 +12,7 @@
  */
 
 import React, { useState, useCallback } from 'react';
+import { NotionButton } from '@/components/ui/NotionButton';
 import { useTranslation } from 'react-i18next';
 import {
   FileText,
@@ -162,16 +163,9 @@ export const MultimodalSourceCard: React.FC<MultimodalSourceCardProps> = ({
           />
           {/* 查看原图按钮 */}
           {multimodal?.blobHash && (
-            <button
-              className={cn(
-                'absolute inset-0 flex items-center justify-center',
-                'bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity'
-              )}
-              onClick={handleViewOriginal}
-              title={t('common:chat.sources.multimodal.viewOriginal')}
-            >
-              <ZoomIn className="h-5 w-5 text-white" />
-            </button>
+            <NotionButton variant="ghost" size="icon" iconOnly onClick={handleViewOriginal} className="absolute inset-0 !w-full !h-full !rounded-none bg-black/50 opacity-0 group-hover:opacity-100 text-white" aria-label={t('common:chat.sources.multimodal.viewOriginal')} title={t('common:chat.sources.multimodal.viewOriginal')}>
+              <ZoomIn className="h-5 w-5" />
+            </NotionButton>
           )}
         </div>
       )}
@@ -217,14 +211,10 @@ export const MultimodalSourceCard: React.FC<MultimodalSourceCardProps> = ({
           {t('common:chat.sources.groupLabels.multimodal')}
         </span>
         {multimodal?.blobHash && (
-          <button
-            type="button"
-            className="text-xs text-primary hover:underline flex items-center gap-1"
-            onClick={handleViewOriginal}
-          >
+          <NotionButton variant="ghost" size="sm" onClick={handleViewOriginal} className="text-primary hover:underline">
             <ExternalLink size={12} />
             {t('common:chat.sources.multimodal.viewOriginal')}
-          </button>
+          </NotionButton>
         )}
       </div>
     </div>

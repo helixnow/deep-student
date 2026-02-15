@@ -282,7 +282,9 @@ export const SubagentContainer: React.FC<SubagentContainerProps> = ({
   return (
     <div className="mt-2 border rounded-lg overflow-hidden bg-card/50">
       {/* 头部 - 可点击展开/收起 */}
-      <button
+      <NotionButton
+        variant="ghost"
+        size="sm"
         onClick={() => {
           const newExpanded = !isExpanded;
           setIsExpanded(newExpanded);
@@ -293,7 +295,7 @@ export const SubagentContainer: React.FC<SubagentContainerProps> = ({
             logContainerCollapse(subagentSessionId);
           }
         }}
-        className="w-full flex items-center gap-2 p-2.5 hover:bg-muted/50 transition-colors text-left"
+        className="w-full !justify-start gap-2 !p-2.5 text-left"
       >
         {/* 折叠图标 */}
         {isExpanded ? (
@@ -332,7 +334,7 @@ export const SubagentContainer: React.FC<SubagentContainerProps> = ({
             {t('workspace.viewFull', '查看完整')}
           </NotionButton>
         )}
-      </button>
+      </NotionButton>
 
       {/* 展开的内容区域 */}
       {isExpanded && (

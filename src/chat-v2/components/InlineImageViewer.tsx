@@ -9,6 +9,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
+import { NotionButton } from '@/components/ui/NotionButton';
 import { openUrl } from '@/utils/urlOpener';
 import {
   X,
@@ -274,68 +275,36 @@ export const InlineImageViewer: React.FC<InlineImageViewerProps> = ({
 
         {/* 中间：缩放控制 */}
         <div className="flex items-center gap-1.5">
-          <button
-            onClick={() => setScale((prev) => Math.max(prev / 1.2, 0.1))}
-            className="p-1.5 rounded-md bg-white/10 hover:bg-white/20 text-white/80 hover:text-white transition-colors"
-            title={t('common:imageViewer.zoomOut')}
-          >
+          <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setScale((prev) => Math.max(prev / 1.2, 0.1))} className="bg-white/10 hover:bg-white/20 text-white/80 hover:text-white" aria-label={t('common:imageViewer.zoomOut')} title={t('common:imageViewer.zoomOut')}>
             <ZoomOut className="w-4 h-4" />
-          </button>
+          </NotionButton>
           <span className="px-2 py-1 rounded-md text-xs font-medium min-w-[45px] text-center bg-white/10 text-white/80">
             {Math.round(scale * 100)}%
           </span>
-          <button
-            onClick={() => setScale((prev) => Math.min(prev * 1.2, 5))}
-            className="p-1.5 rounded-md bg-white/10 hover:bg-white/20 text-white/80 hover:text-white transition-colors"
-            title={t('common:imageViewer.zoomIn')}
-          >
+          <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setScale((prev) => Math.min(prev * 1.2, 5))} className="bg-white/10 hover:bg-white/20 text-white/80 hover:text-white" aria-label={t('common:imageViewer.zoomIn')} title={t('common:imageViewer.zoomIn')}>
             <ZoomIn className="w-4 h-4" />
-          </button>
+          </NotionButton>
           <div className="w-px h-4 bg-white/20 mx-1" />
-          <button
-            onClick={() => setRotation((prev) => (prev + 90) % 360)}
-            className="p-1.5 rounded-md bg-white/10 hover:bg-white/20 text-white/80 hover:text-white transition-colors"
-            title={t('common:imageViewer.rotate')}
-          >
+          <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setRotation((prev) => (prev + 90) % 360)} className="bg-white/10 hover:bg-white/20 text-white/80 hover:text-white" aria-label={t('common:imageViewer.rotate')} title={t('common:imageViewer.rotate')}>
             <RotateCw className="w-4 h-4" />
-          </button>
-          <button
-            onClick={() => {
-              setScale(1);
-              setRotation(0);
-              setPosition({ x: 0, y: 0 });
-            }}
-            className="p-1.5 rounded-md bg-white/10 hover:bg-white/20 text-white/80 hover:text-white transition-colors"
-            title={t('common:imageViewer.reset')}
-          >
+          </NotionButton>
+          <NotionButton variant="ghost" size="icon" iconOnly onClick={() => { setScale(1); setRotation(0); setPosition({ x: 0, y: 0 }); }} className="bg-white/10 hover:bg-white/20 text-white/80 hover:text-white" aria-label={t('common:imageViewer.reset')} title={t('common:imageViewer.reset')}>
             <Home className="w-4 h-4" />
-          </button>
+          </NotionButton>
         </div>
 
         {/* 右侧：操作按钮 */}
         <div className="flex items-center gap-1.5">
-          <button
-            onClick={handleDownload}
-            className="p-1.5 rounded-md bg-white/10 hover:bg-white/20 text-white/80 hover:text-white transition-colors"
-            title={t('chatV2:blocks.imageGen.download')}
-          >
+          <NotionButton variant="ghost" size="icon" iconOnly onClick={handleDownload} className="bg-white/10 hover:bg-white/20 text-white/80 hover:text-white" aria-label={t('chatV2:blocks.imageGen.download')} title={t('chatV2:blocks.imageGen.download')}>
             <Download className="w-4 h-4" />
-          </button>
-          <button
-            onClick={handleOpenInNewTab}
-            className="p-1.5 rounded-md bg-white/10 hover:bg-white/20 text-white/80 hover:text-white transition-colors"
-            title={t('chatV2:blocks.imageGen.openInNewTab')}
-          >
+          </NotionButton>
+          <NotionButton variant="ghost" size="icon" iconOnly onClick={handleOpenInNewTab} className="bg-white/10 hover:bg-white/20 text-white/80 hover:text-white" aria-label={t('chatV2:blocks.imageGen.openInNewTab')} title={t('chatV2:blocks.imageGen.openInNewTab')}>
             <ExternalLink className="w-4 h-4" />
-          </button>
+          </NotionButton>
           <div className="w-px h-4 bg-white/20 mx-1" />
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-md hover:bg-red-500/20 text-white/80 hover:text-red-400 transition-colors"
-            title={t('chatV2:blocks.imageGen.close')}
-          >
+          <NotionButton variant="ghost" size="icon" iconOnly onClick={onClose} className="hover:bg-red-500/20 text-white/80 hover:text-red-400" aria-label={t('chatV2:blocks.imageGen.close')} title={t('chatV2:blocks.imageGen.close')}>
             <X className="w-4 h-4" />
-          </button>
+          </NotionButton>
         </div>
       </div>
 
@@ -359,38 +328,12 @@ export const InlineImageViewer: React.FC<InlineImageViewerProps> = ({
         {/* 导航按钮 */}
         {images.length > 1 && (
           <>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onPrev?.();
-              }}
-              className={cn(
-                'absolute left-4 top-1/2 -translate-y-1/2',
-                'p-2.5 rounded-full bg-black/40 hover:bg-black/60 border border-white/10 shadow-lg backdrop-blur-sm',
-                'text-white/80 hover:text-white transition-all',
-                currentIndex === 0 && 'opacity-40 cursor-not-allowed'
-              )}
-              disabled={currentIndex === 0}
-              title={t('common:imageViewer.prev')}
-            >
+            <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); onPrev?.(); }} disabled={currentIndex === 0} className={cn('absolute left-4 top-1/2 -translate-y-1/2 !rounded-full bg-black/40 hover:bg-black/60 border border-white/10 shadow-lg backdrop-blur-sm text-white/80 hover:text-white', currentIndex === 0 && 'opacity-40')} aria-label={t('common:imageViewer.prev')} title={t('common:imageViewer.prev')}>
               <ChevronLeft className="w-6 h-6" />
-            </button>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onNext?.();
-              }}
-              className={cn(
-                'absolute right-4 top-1/2 -translate-y-1/2',
-                'p-2.5 rounded-full bg-black/40 hover:bg-black/60 border border-white/10 shadow-lg backdrop-blur-sm',
-                'text-white/80 hover:text-white transition-all',
-                currentIndex === images.length - 1 && 'opacity-40 cursor-not-allowed'
-              )}
-              disabled={currentIndex === images.length - 1}
-              title={t('common:imageViewer.next')}
-            >
+            </NotionButton>
+            <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); onNext?.(); }} disabled={currentIndex === images.length - 1} className={cn('absolute right-4 top-1/2 -translate-y-1/2 !rounded-full bg-black/40 hover:bg-black/60 border border-white/10 shadow-lg backdrop-blur-sm text-white/80 hover:text-white', currentIndex === images.length - 1 && 'opacity-40')} aria-label={t('common:imageViewer.next')} title={t('common:imageViewer.next')}>
               <ChevronRight className="w-6 h-6" />
-            </button>
+            </NotionButton>
           </>
         )}
       </div>

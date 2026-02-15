@@ -8,6 +8,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
+import { NotionButton } from '@/components/ui/NotionButton';
 import { ShadowDomPreview } from '@/components/ShadowDomPreview';
 import { renderCardPreview } from '@/components/SharedPreview';
 import type { AnkiCardTemplate } from '@/types';
@@ -214,30 +215,12 @@ const DiffView: React.FC<DiffViewProps> = ({ before, after, sampleData }) => {
     <div>
       {/* 正面/背面切换 */}
       <div className="flex gap-1 mb-2">
-        <button
-          type="button"
-          onClick={() => setSide('front')}
-          className={cn(
-            'px-2 py-0.5 text-xs rounded',
-            side === 'front'
-              ? 'bg-primary/15 text-primary font-medium'
-              : 'text-muted-foreground hover:bg-muted/50'
-          )}
-        >
+        <NotionButton variant={side === 'front' ? 'default' : 'ghost'} size="sm" onClick={() => setSide('front')} className={cn(side === 'front' && 'bg-primary/15 text-primary')}>
           {t('templateTool.front', { defaultValue: '正面' })}
-        </button>
-        <button
-          type="button"
-          onClick={() => setSide('back')}
-          className={cn(
-            'px-2 py-0.5 text-xs rounded',
-            side === 'back'
-              ? 'bg-primary/15 text-primary font-medium'
-              : 'text-muted-foreground hover:bg-muted/50'
-          )}
-        >
+        </NotionButton>
+        <NotionButton variant={side === 'back' ? 'default' : 'ghost'} size="sm" onClick={() => setSide('back')} className={cn(side === 'back' && 'bg-primary/15 text-primary')}>
           {t('templateTool.back', { defaultValue: '背面' })}
-        </button>
+        </NotionButton>
       </div>
 
       {/* Before / After 并排 */}
@@ -368,20 +351,12 @@ export const TemplateToolOutput: React.FC<TemplateToolOutputProps> = ({
         </div>
 
         {/* 切换原始 JSON */}
-        <button
-          type="button"
-          onClick={() => setShowRawJson(!showRawJson)}
-          className={cn(
-            'flex items-center gap-1 px-1.5 py-0.5 text-xs rounded',
-            'text-muted-foreground hover:text-foreground hover:bg-muted/50',
-            'transition-colors'
-          )}
-        >
+        <NotionButton variant="ghost" size="sm" onClick={() => setShowRawJson(!showRawJson)}>
           <FileJson className="w-3 h-3" />
           {showRawJson
             ? t('templateTool.hideJson', { defaultValue: '视图' })
             : t('templateTool.showJson', { defaultValue: 'JSON' })}
-        </button>
+        </NotionButton>
       </div>
 
       {/* 模板元数据摘要 */}

@@ -13,7 +13,7 @@
 
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import { StreamingMarkdownRenderer } from '../chat-v2/components/renderers';
+import { CustomScrollArea } from '../components/custom-scroll-area';
 import { Loader2 } from 'lucide-react';
 
 interface TranslationStreamRendererProps {
@@ -55,18 +55,23 @@ export const TranslationStreamRenderer: React.FC<TranslationStreamRendererProps 
       )}
 
       {/* 译文内容 */}
-      <div className="translation-content flex-1 min-h-0 px-4 pt-6 pb-16 overflow-y-auto">
+      <CustomScrollArea
+        className="translation-content flex-1 min-h-0"
+        hideTrackWhenIdle={true}
+        trackOffsetTop={4}
+        trackOffsetBottom={4}
+        trackOffsetRight={2}
+      >
         {content ? (
-          <StreamingMarkdownRenderer
-            content={content}
-            isStreaming={isStreaming}
-          />
+          <div className="px-4 pt-6 pb-16 font-mono text-base leading-relaxed whitespace-pre-wrap break-words">
+            {content}
+          </div>
         ) : (
-          <div className="h-full flex items-center justify-center text-muted-foreground/50 italic select-none">
+          <div className="h-full flex items-center justify-center text-muted-foreground/50 italic select-none px-4 pt-6 pb-16">
             {displayPlaceholder}
           </div>
         )}
-      </div>
+      </CustomScrollArea>
 
       {/* 字符统计 */}
       {showStats && content && (

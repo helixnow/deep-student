@@ -11,6 +11,7 @@
 
 import React, { useMemo, useState, useCallback } from 'react';
 import { cn } from '@/utils/cn';
+import { NotionButton } from '@/components/ui/NotionButton';
 import {
   FileDown,
   CheckCircle,
@@ -215,23 +216,14 @@ const PaperRow: React.FC<{ paper: PaperProgressItem }> = ({ paper }) => {
                 <Loader2 className="w-3 h-3 animate-spin text-primary" />
               ) : (
                 <div className="relative flex items-center gap-0.5">
-                  <button
-                    onClick={() => handleRetry()}
-                    className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-primary hover:bg-primary/10 transition-colors"
-                    title="重试下载"
-                    disabled={sources.length === 0}
-                  >
+                  <NotionButton variant="ghost" size="sm" onClick={() => handleRetry()} disabled={sources.length === 0} className="text-primary hover:bg-primary/10" title="重试下载">
                     <RotateCcw className="w-3 h-3" />
                     <span>重试</span>
-                  </button>
+                  </NotionButton>
                   {hasMultipleSources && (
-                    <button
-                      onClick={() => setShowSources(v => !v)}
-                      className="flex items-center px-0.5 py-0.5 rounded text-muted-foreground hover:bg-muted/60 transition-colors"
-                      title="切换下载源"
-                    >
+                    <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setShowSources(v => !v)} className="!h-5 !w-5" aria-label="切换下载源" title="切换下载源">
                       <ChevronDown className={cn('w-3 h-3 transition-transform', showSources && 'rotate-180')} />
-                    </button>
+                    </NotionButton>
                   )}
                 </div>
               )}
@@ -249,22 +241,23 @@ const PaperRow: React.FC<{ paper: PaperProgressItem }> = ({ paper }) => {
       {showSources && sources.length > 0 && (
         <div className="ml-5 flex flex-wrap gap-1">
           {sources.map((src, si) => (
-            <button
+            <NotionButton
               key={si}
+              variant={selectedSourceIdx === si ? 'outline' : 'ghost'}
+              size="sm"
               onClick={() => {
                 setSelectedSourceIdx(si);
                 handleRetry(src.url);
               }}
               className={cn(
-                'px-2 py-0.5 text-xs rounded border transition-colors',
                 selectedSourceIdx === si
                   ? 'border-primary text-primary bg-primary/10'
-                  : 'border-border/50 text-muted-foreground hover:border-primary/50 hover:text-foreground',
+                  : 'border-border/50 hover:border-primary/50',
               )}
               title={src.url}
             >
               {src.label}
-            </button>
+            </NotionButton>
           ))}
         </div>
       )}
@@ -315,6 +308,18 @@ const PaperSaveBlock: React.FC<BlockComponentProps> = ({ block }) => {
     return null;
   }, [block.content]);
 
+  // 🔧 修复：当 block.content 为空（如页面刷新后从数据库加载，后端保存 content: None），
+  // 从 block.toolOutput 中提取论文计数信息作为回退
+  const toolOutputFallback = useMemo<{ doneCount: number; errorCount: number; totalCount: number } | null>(() => {
+    if (snapshot) return null; // 有 NDJSON 快照时不需要回退
+    const output = block.toolOutput as { total?: number; success_count?: number; failed_count?: number; results?: Array<{ success?: boolean }> } | undefined;
+    if (!output) return null;
+    const totalCount = output.total ?? output.results?.length ?? 0;
+    const doneCount = output.success_count ?? output.results?.filter(r => r.success)?.length ?? 0;
+    const errorCount = output.failed_count ?? (totalCount - doneCount);
+    return { doneCount, errorCount, totalCount };
+  }, [snapshot, block.toolOutput]);
+
   // 完成后显示 toolOutput 中的最终结果
   const isComplete = block.status === 'success';
   const isError = block.status === 'error';
@@ -330,9 +335,9 @@ const PaperSaveBlock: React.FC<BlockComponentProps> = ({ block }) => {
   }
 
   const papers = snapshot?.papers ?? [];
-  const doneCount = papers.filter(p => p.s === 'done').length;
-  const errorCount = papers.filter(p => p.s === 'error').length;
-  const totalCount = papers.length;
+  const doneCount = toolOutputFallback?.doneCount ?? papers.filter(p => p.s === 'done').length;
+  const errorCount = toolOutputFallback?.errorCount ?? papers.filter(p => p.s === 'error').length;
+  const totalCount = toolOutputFallback?.totalCount ?? papers.length;
 
   return (
     <div

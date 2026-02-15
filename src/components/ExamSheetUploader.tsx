@@ -19,7 +19,6 @@ import {
   FileText,
   AlertCircle,
   CheckCircle2,
-  Sparkles,
   File,
   Info,
   Bot,
@@ -779,7 +778,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
               {/* 空状态 */}
               {parsedQuestions.length === 0 && llmProgress.percent > 5 && (
                 <div className="text-center py-8 text-muted-foreground text-sm">
-                  <Sparkles className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                  <Loader2 className="w-8 h-8 mx-auto mb-2 opacity-50 animate-spin" />
                   {t('exam_sheet:uploader.waiting_ai')}
                 </div>
               )}

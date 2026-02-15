@@ -192,7 +192,9 @@
     "fontIncrease": "Increase Font Size",
     "resetFont": "Reset Font Size",
     "currentZoom": "Current zoom: {{value}}",
-    "currentFont": "Current font size: {{value}}"
+    "currentFont": "Current font size: {{value}}",
+    "prevSlide": "Previous Slide",
+    "nextSlide": "Next Slide"
   },
   "docPreview": {
     "emptyContent": "File content is empty",

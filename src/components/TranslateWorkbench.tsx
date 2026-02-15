@@ -96,6 +96,8 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
   const [editedTranslation, setEditedTranslation] = useState('');
   const [translationQuality, setTranslationQuality] = useState<number | null>(initialSession?.quality || null);
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const isSpeakingRef = useRef(false);
+  const speakIdRef = useRef(0);
 
   const [isSyncScroll, setIsSyncScroll] = useState(true);
   const [isAutoTranslate, setIsAutoTranslate] = useState(false);
@@ -520,8 +522,10 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
       return;
     }
 
-    if (isSpeaking) {
+    // 使用 ref 避免 stale closure，防止多次点击重复播放
+    if (isSpeakingRef.current) {
       TTS.stop();
+      isSpeakingRef.current = false;
       setIsSpeaking(false);
       return;
     }
@@ -531,16 +535,22 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
       return;
     }
 
+    const myId = ++speakIdRef.current;
     try {
+      isSpeakingRef.current = true;
       setIsSpeaking(true);
       const langCode = TTS.getFullLanguageCode(tgtLang);
       await TTS.speak(translatedText, { lang: langCode });
-      setIsSpeaking(false);
     } catch (error: unknown) {
-      setIsSpeaking(false);
       showGlobalNotification('error', t('translation:errors.tts_failed', { error: getErrorMessage(error) }));
+    } finally {
+      // 只有当前活跃的播放会话才更新状态，防止旧 promise 覆盖新会话
+      if (speakIdRef.current === myId) {
+        isSpeakingRef.current = false;
+        setIsSpeaking(false);
+      }
     }
-  }, [translatedText, tgtLang, isSpeaking, t]);
+  }, [translatedText, tgtLang, t]);
 
   // 停止朗读
   useEffect(() => {

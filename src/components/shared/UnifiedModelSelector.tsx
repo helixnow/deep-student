@@ -8,7 +8,7 @@
 
 import React, { useState, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Check, ChevronDown, Search, Ban, Star, Sparkles, Box } from 'lucide-react';
+import { Check, ChevronDown, Search, Ban, Star, Box } from 'lucide-react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/shad/Input';
@@ -269,7 +269,6 @@ export const UnifiedModelSelector: React.FC<UnifiedModelSelectorProps> = ({
                    )}
                    {option.isReasoning && (
                       <span className="flex items-center gap-0.5 text-amber-600/80 dark:text-amber-400/80 ml-1">
-                        <Sparkles className="h-2.5 w-2.5" />
                         {t('common:reasoning', 'Reasoning')}
                       </span>
                    )}

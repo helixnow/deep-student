@@ -7,6 +7,7 @@
 import React, { useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
+import { NotionButton } from '@/components/ui/NotionButton';
 import { openUrl } from '@/utils/urlOpener';
 import { fileManager } from '@/utils/fileManager';
 import {
@@ -111,42 +112,15 @@ const FullscreenModal: React.FC<FullscreenModalProps> = ({
     >
       {/* 操作按钮 */}
       <div className="absolute top-4 right-4 flex gap-2">
-        <button
-          type="button"
-          onClick={handleDownload}
-          className={cn(
-            'p-2 rounded-full',
-            'bg-white/10 hover:bg-white/20',
-            'text-white transition-colors'
-          )}
-          title={t('blocks.imageGen.download')}
-        >
+        <NotionButton variant="ghost" size="icon" iconOnly onClick={handleDownload} className="!rounded-full bg-white/10 hover:bg-white/20 text-white" aria-label={t('blocks.imageGen.download')} title={t('blocks.imageGen.download')}>
           <Download className="w-5 h-5" />
-        </button>
-        <button
-          type="button"
-          onClick={handleOpenInNewTab}
-          className={cn(
-            'p-2 rounded-full',
-            'bg-white/10 hover:bg-white/20',
-            'text-white transition-colors'
-          )}
-          title={t('blocks.imageGen.openInNewTab')}
-        >
+        </NotionButton>
+        <NotionButton variant="ghost" size="icon" iconOnly onClick={handleOpenInNewTab} className="!rounded-full bg-white/10 hover:bg-white/20 text-white" aria-label={t('blocks.imageGen.openInNewTab')} title={t('blocks.imageGen.openInNewTab')}>
           <ExternalLink className="w-5 h-5" />
-        </button>
-        <button
-          type="button"
-          onClick={onClose}
-          className={cn(
-            'p-2 rounded-full',
-            'bg-white/10 hover:bg-white/20',
-            'text-white transition-colors'
-          )}
-          title={t('blocks.imageGen.close')}
-        >
+        </NotionButton>
+        <NotionButton variant="ghost" size="icon" iconOnly onClick={onClose} className="!rounded-full bg-white/10 hover:bg-white/20 text-white" aria-label={t('blocks.imageGen.close')} title={t('blocks.imageGen.close')}>
           <X className="w-5 h-5" />
-        </button>
+        </NotionButton>
       </div>
 
       {/* 图片 */}
@@ -273,18 +247,9 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({
             )}
           >
             <div className="flex items-center gap-2 text-white pointer-events-auto">
-              <button
-                type="button"
-                onClick={handleClick}
-                className={cn(
-                  'p-2 rounded-full',
-                  'bg-white/20 hover:bg-white/30',
-                  'transition-colors'
-                )}
-                title={t('blocks.imageGen.fullscreen')}
-              >
+              <NotionButton variant="ghost" size="icon" iconOnly onClick={handleClick} className="!rounded-full bg-white/20 hover:bg-white/30 text-white" aria-label={t('blocks.imageGen.fullscreen')} title={t('blocks.imageGen.fullscreen')}>
                 <Maximize2 className="w-5 h-5" />
-              </button>
+              </NotionButton>
             </div>
           </div>
         )}
