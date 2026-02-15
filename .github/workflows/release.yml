@@ -258,6 +258,33 @@ jobs:
       - name: Initialize Android project
         run: npx tauri android init
 
+      - name: Copy custom Android icons
+        run: |
+          ICONS_SRC="src-tauri/icons/android"
+          RES_DST="src-tauri/gen/android/app/src/main/res"
+          if [ -d "$ICONS_SRC" ]; then
+            for density in mipmap-mdpi mipmap-hdpi mipmap-xhdpi mipmap-xxhdpi mipmap-xxxhdpi; do
+              if [ -d "$ICONS_SRC/$density" ]; then
+                mkdir -p "$RES_DST/$density"
+                cp -f "$ICONS_SRC/$density/"* "$RES_DST/$density/"
+              fi
+            done
+            # adaptive icon xml
+            if [ -d "$ICONS_SRC/mipmap-anydpi-v26" ]; then
+              mkdir -p "$RES_DST/mipmap-anydpi-v26"
+              cp -f "$ICONS_SRC/mipmap-anydpi-v26/"* "$RES_DST/mipmap-anydpi-v26/"
+            fi
+            # background color
+            if [ -f "$ICONS_SRC/values/ic_launcher_background.xml" ]; then
+              mkdir -p "$RES_DST/values"
+              cp -f "$ICONS_SRC/values/ic_launcher_background.xml" "$RES_DST/values/"
+            fi
+            echo "✅ Custom Android icons copied from $ICONS_SRC"
+            find "$RES_DST" -name "ic_launcher*" -type f | head -20
+          else
+            echo "⚠️ No custom Android icons found at $ICONS_SRC, using defaults"
+          fi
+
       - name: Bundle pdfium for Android
         run: |
           JNILIBS_DIR="src-tauri/gen/android/app/src/main/jniLibs/arm64-v8a"
