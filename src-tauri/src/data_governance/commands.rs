@@ -4810,47 +4810,6 @@ async fn execute_restore_with_progress(
     use super::schema_registry::DatabaseId;
     use std::time::Instant;
 
-    /// 恢复维护模式守卫：进入时释放所有数据库文件句柄，退出时恢复连接池。
-    ///
-    /// 修复 Windows OS error 32：旧实现仅释放 legacy Database 的单连接，
-    /// 但 DatabaseManager / VfsDatabase / ChatV2Database / LlmUsageDatabase
-    /// 各自持有 r2d2 连接池（含 memory-mapped SHM 文件），在 Windows 上
-    /// 导致 restore_single_database 无法写入或删除 WAL/SHM 文件。
-    struct RestoreMaintenanceGuard {
-        database: Arc<crate::database::Database>,
-        database_manager: Arc<crate::database::DatabaseManager>,
-        vfs_db: Option<Arc<crate::vfs::database::VfsDatabase>>,
-        chat_v2_db: Option<Arc<crate::chat_v2::database::ChatV2Database>>,
-        llm_usage_db: Option<Arc<crate::llm_usage::database::LlmUsageDatabase>>,
-    }
-
-    impl Drop for RestoreMaintenanceGuard {
-        fn drop(&mut self) {
-            if let Err(e) = self.database.exit_maintenance_mode() {
-                tracing::warn!("[data_governance] 退出 Database 维护模式失败: {}", e);
-            }
-            if let Err(e) = self.database_manager.exit_maintenance_mode() {
-                tracing::warn!("[data_governance] 退出 DatabaseManager 维护模式失败: {}", e);
-            }
-            if let Some(ref vfs) = self.vfs_db {
-                if let Err(e) = vfs.exit_maintenance_mode() {
-                    tracing::warn!("[data_governance] 退出 VfsDatabase 维护模式失败: {}", e);
-                }
-            }
-            if let Some(ref chat) = self.chat_v2_db {
-                if let Err(e) = chat.exit_maintenance_mode() {
-                    tracing::warn!("[data_governance] 退出 ChatV2Database 维护模式失败: {}", e);
-                }
-            }
-            if let Some(ref llm) = self.llm_usage_db {
-                if let Err(e) = llm.exit_maintenance_mode() {
-                    tracing::warn!("[data_governance] 退出 LlmUsageDatabase 维护模式失败: {}", e);
-                }
-            }
-            tracing::info!("[data_governance] 所有数据库连接池已退出维护模式");
-        }
-    }
-
     let start = Instant::now();
 
     // 全局互斥：避免备份/恢复/ZIP 导入导出并发
@@ -4966,65 +4925,51 @@ async fn execute_restore_with_progress(
         total_databases,
     );
 
-    // 进入维护模式：释放所有数据库文件句柄，避免 Windows OS error 32
-    let app_state = app.state::<crate::commands::AppState>();
-    let database = app_state.database.clone();
-    let database_manager = app_state.database_manager.clone();
-    let vfs_db = app_state.vfs_db.clone();
-
-    // 从 Tauri managed state 获取 ChatV2Database 和 LlmUsageDatabase
-    let chat_v2_db: Option<Arc<crate::chat_v2::database::ChatV2Database>> =
-        app.try_state::<Arc<crate::chat_v2::database::ChatV2Database>>()
-            .map(|s| s.inner().clone());
-    let llm_usage_db: Option<Arc<crate::llm_usage::database::LlmUsageDatabase>> =
-        app.try_state::<Arc<crate::llm_usage::database::LlmUsageDatabase>>()
-            .map(|s| s.inner().clone());
-
-    // 1) Legacy Database（单连接 Mutex<Connection>）
-    if let Err(e) = database.enter_maintenance_mode() {
-        error!("[data_governance] 进入 Database 维护模式失败，终止恢复: {}", e);
-        job_ctx.fail(format!("进入维护模式失败: {}", e));
-        return;
-    }
-    // 2) DatabaseManager（r2d2 连接池 → mistakes.db）
-    if let Err(e) = database_manager.enter_maintenance_mode() {
-        error!("[data_governance] 进入 DatabaseManager 维护模式失败: {}", e);
-        // 不终止，继续尝试
-    }
-    // 3) VfsDatabase（r2d2 连接池 → vfs.db）
-    if let Some(ref vfs) = vfs_db {
-        if let Err(e) = vfs.enter_maintenance_mode() {
-            error!("[data_governance] 进入 VfsDatabase 维护模式失败: {}", e);
+    // 获取非活跃插槽目录：恢复写入非活跃插槽，避免 Windows OS error 32
+    // （活跃插槽的数据库文件被连接池持有，Windows 上无法写入/删除）
+    let (inactive_dir, inactive_slot) = match crate::data_space::get_data_space_manager() {
+        Some(mgr) => {
+            let slot = mgr.inactive_slot();
+            let dir = mgr.slot_dir(slot);
+            info!(
+                "[data_governance] 恢复目标: 非活跃插槽 {} ({})",
+                slot.name(),
+                dir.display()
+            );
+            (dir, Some(slot))
         }
-    }
-    // 4) ChatV2Database（r2d2 连接池 → chat_v2.db）
-    if let Some(ref chat) = chat_v2_db {
-        if let Err(e) = chat.enter_maintenance_mode() {
-            error!("[data_governance] 进入 ChatV2Database 维护模式失败: {}", e);
+        None => {
+            // 未启用双空间模式，回退到 slots/slotB
+            let dir = app_data_dir.join("slots").join("slotB");
+            warn!("[data_governance] DataSpaceManager 未初始化，回退到 slotB");
+            (dir, None)
         }
-    }
-    // 5) LlmUsageDatabase（r2d2 连接池 → llm_usage.db）
-    if let Some(ref llm) = llm_usage_db {
-        if let Err(e) = llm.enter_maintenance_mode() {
-            error!("[data_governance] 进入 LlmUsageDatabase 维护模式失败: {}", e);
-        }
-    }
-
-    info!("[data_governance] 所有数据库连接池已进入维护模式，文件句柄已释放");
-
-    let _maintenance_guard = RestoreMaintenanceGuard {
-        database,
-        database_manager,
-        vfs_db,
-        chat_v2_db,
-        llm_usage_db,
     };
 
-    // 执行恢复（包含资产）
-    //
-    // 说明：
-    // - 过去的后台恢复仅调用 `BackupManager::restore`（仅数据库），会导致“备份含资产但恢复后缺失资产”的危险假象。
-    // - 这里统一切换为 `restore_with_assets`，并在未显式指定时：若备份清单包含资产，则默认恢复资产。
+    // 磁盘空间预检查：备份大小 × 2 作为安全余量（Android 设备存储较紧张）
+    {
+        let db_size: u64 = manifest.files.iter().map(|f| f.size).sum();
+        let asset_size: u64 = manifest.assets.as_ref().map(|a| a.total_size).unwrap_or(0);
+        let required = (db_size + asset_size).saturating_mul(2);
+        match crate::backup_common::get_available_disk_space(&app_data_dir) {
+            Ok(available) if available < required => {
+                let msg = format!(
+                    "磁盘空间不足：需要 {:.1} MB，仅剩 {:.1} MB。请清理存储空间后重试",
+                    required as f64 / 1024.0 / 1024.0,
+                    available as f64 / 1024.0 / 1024.0
+                );
+                error!("[data_governance] {}", msg);
+                job_ctx.fail(msg);
+                return;
+            }
+            Err(e) => {
+                warn!("[data_governance] 磁盘空间检查失败（继续恢复）: {}", e);
+            }
+            _ => {}
+        }
+    }
+
+    // 确定是否恢复资产
     let should_restore_assets = restore_assets.unwrap_or_else(|| {
         manifest
             .assets
@@ -5033,8 +4978,8 @@ async fn execute_restore_with_progress(
             .unwrap_or(false)
     });
 
-    // 注意：当前 restore_with_assets 是同步的，不提供细粒度进度回调
-    let result = manager.restore_with_assets(&manifest, should_restore_assets);
+    // 恢复到非活跃插槽（不需要维护模式，不涉及活跃文件）
+    let result = manager.restore_with_assets_to_dir(&manifest, should_restore_assets, &inactive_dir);
 
     let duration_ms = start.elapsed().as_millis() as u64;
 
@@ -5056,16 +5001,36 @@ async fn execute_restore_with_progress(
                 .filter_map(|f| f.database_id.clone())
                 .collect();
 
-            let pre_restore_path = app_data_dir
-                .join("backups")
-                .join(".pre_restore")
-                .to_string_lossy()
-                .to_string();
+            let restore_target_path = inactive_dir.to_string_lossy().to_string();
 
             info!(
-                "[data_governance] 恢复成功: id={}, databases={:?}, restored_assets={}, duration={}ms",
-                backup_id, databases_restored, restored_assets, duration_ms
+                "[data_governance] 恢复成功: id={}, databases={:?}, restored_assets={}, duration={}ms, target={}",
+                backup_id, databases_restored, restored_assets, duration_ms, inactive_dir.display()
             );
+
+            // 标记下次重启时切换到恢复目标插槽
+            let switch_warning: Option<String> = if let Some(slot) = inactive_slot {
+                if let Some(mgr) = crate::data_space::get_data_space_manager() {
+                    match mgr.mark_pending_switch(slot) {
+                        Ok(()) => {
+                            info!("[data_governance] 已标记下次重启切换到 {}", slot.name());
+                            None
+                        }
+                        Err(e) => {
+                            let warn_msg = format!(
+                                "恢复成功但标记插槽切换失败: {}。恢复的数据在 {} 中，请手动重启后重试",
+                                e, inactive_dir.display()
+                            );
+                            error!("[data_governance] {}", warn_msg);
+                            Some(warn_msg)
+                        }
+                    }
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
 
             #[cfg(feature = "data_governance")]
             {
@@ -5102,8 +5067,8 @@ async fn execute_restore_with_progress(
                 total_databases,
                 BackupJobResultPayload {
                     success: true,
-                    output_path: Some(pre_restore_path.clone()),
-                    resolved_path: Some(pre_restore_path),
+                    output_path: Some(restore_target_path.clone()),
+                    resolved_path: Some(restore_target_path.clone()),
                     message: Some(if should_restore_assets {
                         format!(
                             "已恢复数据库: {}；资产文件: {}",
@@ -5113,7 +5078,7 @@ async fn execute_restore_with_progress(
                     } else {
                         format!("已恢复数据库: {}", databases_restored.join(", "))
                     }),
-                    error: None,
+                    error: switch_warning,
                     duration_ms: Some(duration_ms),
                     stats: Some(serde_json::json!({
                         "backup_id": backup_id,
@@ -5121,8 +5086,9 @@ async fn execute_restore_with_progress(
                         "database_count": databases_restored.len(),
                         "restore_assets": should_restore_assets,
                         "restored_assets": restored_assets,
+                        "restore_target": restore_target_path,
                     })),
-                    // 恢复完成后通常需要重启以刷新数据库连接
+                    // 恢复完成后需要重启以切换到恢复的数据插槽
                     requires_restart: true,
                     checkpoint_path: None,
                     resumable_job_id: None,
@@ -5836,86 +5802,47 @@ pub async fn data_governance_restore_with_assets(
     let manifest_dir = backup_dir.join(&manifest.backup_id);
     ensure_existing_path_within_backup_dir(&manifest_dir, &backup_dir)?;
 
-    // 进入维护模式：释放所有数据库文件句柄，避免 Windows OS error 32
-    struct RestoreMaintenanceGuard2 {
-        database: Arc<crate::database::Database>,
-        database_manager: Arc<crate::database::DatabaseManager>,
-        vfs_db: Option<Arc<crate::vfs::database::VfsDatabase>>,
-        chat_v2_db: Option<Arc<crate::chat_v2::database::ChatV2Database>>,
-        llm_usage_db: Option<Arc<crate::llm_usage::database::LlmUsageDatabase>>,
-    }
-
-    impl Drop for RestoreMaintenanceGuard2 {
-        fn drop(&mut self) {
-            if let Err(e) = self.database.exit_maintenance_mode() {
-                tracing::warn!("[data_governance] 退出 Database 维护模式失败: {}", e);
-            }
-            if let Err(e) = self.database_manager.exit_maintenance_mode() {
-                tracing::warn!("[data_governance] 退出 DatabaseManager 维护模式失败: {}", e);
-            }
-            if let Some(ref vfs) = self.vfs_db {
-                if let Err(e) = vfs.exit_maintenance_mode() {
-                    tracing::warn!("[data_governance] 退出 VfsDatabase 维护模式失败: {}", e);
-                }
-            }
-            if let Some(ref chat) = self.chat_v2_db {
-                if let Err(e) = chat.exit_maintenance_mode() {
-                    tracing::warn!("[data_governance] 退出 ChatV2Database 维护模式失败: {}", e);
-                }
-            }
-            if let Some(ref llm) = self.llm_usage_db {
-                if let Err(e) = llm.exit_maintenance_mode() {
-                    tracing::warn!("[data_governance] 退出 LlmUsageDatabase 维护模式失败: {}", e);
-                }
-            }
-            tracing::info!("[data_governance] 所有数据库连接池已退出维护模式");
+    // 恢复到非活跃插槽，避免 Windows OS error 32（活跃插槽文件被连接池持有）
+    let (inactive_dir, inactive_slot) = match crate::data_space::get_data_space_manager() {
+        Some(mgr) => {
+            let slot = mgr.inactive_slot();
+            let dir = mgr.slot_dir(slot);
+            info!(
+                "[data_governance] 恢复目标: 非活跃插槽 {} ({})",
+                slot.name(),
+                dir.display()
+            );
+            (dir, Some(slot))
         }
-    }
-
-    let app_state = app.state::<crate::commands::AppState>();
-    let database = app_state.database.clone();
-    let database_manager = app_state.database_manager.clone();
-    let vfs_db = app_state.vfs_db.clone();
-    let chat_v2_db: Option<Arc<crate::chat_v2::database::ChatV2Database>> =
-        app.try_state::<Arc<crate::chat_v2::database::ChatV2Database>>()
-            .map(|s| s.inner().clone());
-    let llm_usage_db: Option<Arc<crate::llm_usage::database::LlmUsageDatabase>> =
-        app.try_state::<Arc<crate::llm_usage::database::LlmUsageDatabase>>()
-            .map(|s| s.inner().clone());
-
-    database
-        .enter_maintenance_mode()
-        .map_err(|e| format!("进入维护模式失败: {}", e))?;
-    if let Err(e) = database_manager.enter_maintenance_mode() {
-        error!("[data_governance] 进入 DatabaseManager 维护模式失败: {}", e);
-    }
-    if let Some(ref vfs) = vfs_db {
-        if let Err(e) = vfs.enter_maintenance_mode() {
-            error!("[data_governance] 进入 VfsDatabase 维护模式失败: {}", e);
+        None => {
+            let dir = app_data_dir.join("slots").join("slotB");
+            warn!("[data_governance] DataSpaceManager 未初始化，回退到 slotB");
+            (dir, None)
         }
-    }
-    if let Some(ref chat) = chat_v2_db {
-        if let Err(e) = chat.enter_maintenance_mode() {
-            error!("[data_governance] 进入 ChatV2Database 维护模式失败: {}", e);
-        }
-    }
-    if let Some(ref llm) = llm_usage_db {
-        if let Err(e) = llm.enter_maintenance_mode() {
-            error!("[data_governance] 进入 LlmUsageDatabase 维护模式失败: {}", e);
-        }
-    }
-    info!("[data_governance] 所有数据库连接池已进入维护模式，文件句柄已释放");
-
-    let _maintenance_guard = RestoreMaintenanceGuard2 {
-        database,
-        database_manager,
-        vfs_db,
-        chat_v2_db,
-        llm_usage_db,
     };
 
-    // 执行恢复
-    let result = manager.restore_with_assets(manifest, restore_assets);
+    // 磁盘空间预检查
+    {
+        let db_size: u64 = manifest.files.iter().map(|f| f.size).sum();
+        let asset_size: u64 = manifest.assets.as_ref().map(|a| a.total_size).unwrap_or(0);
+        let required = (db_size + asset_size).saturating_mul(2);
+        match crate::backup_common::get_available_disk_space(&app_data_dir) {
+            Ok(available) if available < required => {
+                return Err(format!(
+                    "磁盘空间不足：需要 {:.1} MB，仅剩 {:.1} MB。请清理存储空间后重试",
+                    required as f64 / 1024.0 / 1024.0,
+                    available as f64 / 1024.0 / 1024.0
+                ));
+            }
+            Err(e) => {
+                warn!("[data_governance] 磁盘空间检查失败（继续恢复）: {}", e);
+            }
+            _ => {}
+        }
+    }
+
+    // 执行恢复到非活跃插槽（不需要维护模式，不涉及活跃文件）
+    let result = manager.restore_with_assets_to_dir(manifest, restore_assets, &inactive_dir);
     let duration_ms = start.elapsed().as_millis() as u64;
 
     match result {
@@ -5927,9 +5854,20 @@ pub async fn data_governance_restore_with_assets(
                 .collect();
 
             info!(
-                "[data_governance] 恢复成功: id={}, databases={:?}, assets={}, duration={}ms",
-                validated_backup_id, databases_restored, restored_assets, duration_ms
+                "[data_governance] 恢复成功: id={}, databases={:?}, assets={}, duration={}ms, target={}",
+                validated_backup_id, databases_restored, restored_assets, duration_ms, inactive_dir.display()
             );
+
+            // 标记下次重启时切换到恢复目标插槽
+            if let Some(slot) = inactive_slot {
+                if let Some(mgr) = crate::data_space::get_data_space_manager() {
+                    if let Err(e) = mgr.mark_pending_switch(slot) {
+                        error!("[data_governance] 标记插槽切换失败: {}，恢复的数据在 {} 中，需手动切换", e, inactive_dir.display());
+                    } else {
+                        info!("[data_governance] 已标记下次重启切换到 {}", slot.name());
+                    }
+                }
+            }
 
             Ok(RestoreResultResponse {
                 success: true,
@@ -5937,10 +5875,7 @@ pub async fn data_governance_restore_with_assets(
                 duration_ms,
                 databases_restored,
                 pre_restore_backup_path: Some(
-                    backup_dir
-                        .join(".pre_restore")
-                        .to_string_lossy()
-                        .to_string(),
+                    inactive_dir.to_string_lossy().to_string(),
                 ),
                 error_message: None,
                 assets_restored: if restore_assets {
@@ -5952,18 +5887,9 @@ pub async fn data_governance_restore_with_assets(
         }
         Err(e) => {
             error!("[data_governance] 恢复失败: {}", e);
-            let pre_restore = backup_dir.join(".pre_restore");
-            let pre_restore_hint = if pre_restore.exists() {
-                format!(
-                    "。预恢复备份位于 {}，可用于手动回滚",
-                    sanitize_path_for_user(&pre_restore)
-                )
-            } else {
-                String::new()
-            };
             Err(format!(
-                "恢复备份失败: {}{}。请前往「设置 > 数据治理」查看备份状态或重试",
-                e, pre_restore_hint
+                "恢复备份失败: {}。请前往「设置 > 数据治理」查看备份状态或重试",
+                e
             ))
         }
     }

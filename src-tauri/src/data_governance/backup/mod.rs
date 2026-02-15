@@ -753,15 +753,22 @@ impl BackupManager {
             .map(|mgr| mgr.active_dir())
             .unwrap_or_else(|| self.app_data_dir.join("slots").join("slotA"));
 
+        Self::resolve_database_path_in_dir(&active_dir, id)
+    }
+
+    /// 在指定目录下解析数据库文件路径（不依赖 active slot）
+    ///
+    /// 用于恢复到非活跃插槽等场景。
+    pub(crate) fn resolve_database_path_in_dir(base_dir: &Path, id: &DatabaseId) -> PathBuf {
         match id {
             // VFS 数据库在 databases 子目录
-            DatabaseId::Vfs => active_dir.join("databases").join("vfs.db"),
-            // ChatV2 数据库直接在活动空间根目录
-            DatabaseId::ChatV2 => active_dir.join("chat_v2.db"),
-            // Mistakes 数据库直接在活动空间根目录
-            DatabaseId::Mistakes => active_dir.join("mistakes.db"),
-            // LLM Usage 数据库直接在活动空间根目录
-            DatabaseId::LlmUsage => active_dir.join("llm_usage.db"),
+            DatabaseId::Vfs => base_dir.join("databases").join("vfs.db"),
+            // ChatV2 数据库直接在空间根目录
+            DatabaseId::ChatV2 => base_dir.join("chat_v2.db"),
+            // Mistakes 数据库直接在空间根目录
+            DatabaseId::Mistakes => base_dir.join("mistakes.db"),
+            // LLM Usage 数据库直接在空间根目录
+            DatabaseId::LlmUsage => base_dir.join("llm_usage.db"),
         }
     }
 
@@ -1078,6 +1085,138 @@ impl BackupManager {
             manifest.files.len(),
             restored_assets,
             pre_restore_dir
+        );
+
+        Ok(restored_assets)
+    }
+
+    /// 恢复备份到指定目标目录（用于恢复到非活跃插槽，零文件冲突）
+    ///
+    /// 与 `restore_with_assets` 的区别：
+    /// - 数据库和资产写入 `target_dir` 而非 `active_dir`
+    /// - 不创建预恢复备份（目标是空的非活跃插槽，无需回滚）
+    /// - 不需要维护模式（不涉及正在使用的文件）
+    ///
+    /// ## 返回
+    ///
+    /// 成功时返回恢复的资产数量
+    pub fn restore_with_assets_to_dir(
+        &self,
+        manifest: &BackupManifest,
+        restore_assets: bool,
+        target_dir: &Path,
+    ) -> Result<usize, BackupError> {
+        info!(
+            "开始恢复备份到目标目录: {}, backup_id={}, restore_assets={}",
+            target_dir.display(),
+            manifest.backup_id,
+            restore_assets
+        );
+
+        // 0. 版本兼容性检查
+        self.check_manifest_compatibility(manifest)?;
+
+        // 1. 获取备份目录
+        let backup_subdir = self.backup_dir.join(&manifest.backup_id);
+        if !backup_subdir.exists() {
+            return Err(BackupError::FileNotFound(format!(
+                "备份目录不存在: {:?}",
+                backup_subdir
+            )));
+        }
+
+        // 2. 验证备份完整性
+        self.verify_internal(manifest, &backup_subdir)?;
+
+        // 3. 确保目标目录存在
+        fs::create_dir_all(target_dir)?;
+
+        // 4. 恢复每个数据库到目标目录
+        let mut restore_errors: Vec<String> = Vec::new();
+
+        for backup_file in &manifest.files {
+            if !backup_file.path.ends_with(".db") {
+                continue;
+            }
+
+            let db_id_str = backup_file.database_id.as_ref().ok_or_else(|| {
+                BackupError::Manifest(format!("备份文件缺少 database_id: {}", backup_file.path))
+            })?;
+
+            let db_id = match db_id_str.as_str() {
+                "vfs" => DatabaseId::Vfs,
+                "chat_v2" => DatabaseId::ChatV2,
+                "mistakes" => DatabaseId::Mistakes,
+                "llm_usage" => DatabaseId::LlmUsage,
+                _ => {
+                    let msg = format!("备份中包含未知的数据库 ID: {}", db_id_str);
+                    error!("{}", msg);
+                    restore_errors.push(msg);
+                    continue;
+                }
+            };
+
+            match self.restore_single_database_to_dir(&db_id, &backup_subdir, target_dir) {
+                Ok(()) => {
+                    info!("恢复数据库成功: {:?} -> {}", db_id, target_dir.display());
+                }
+                Err(e) => {
+                    error!("恢复数据库失败: {:?}, 错误: {}", db_id, e);
+                    restore_errors.push(format!("{:?}: {}", db_id, e));
+                }
+            }
+        }
+
+        // 5. 恢复资产文件到目标目录
+        let mut restored_assets = 0;
+        if restore_assets {
+            if let Some(asset_result) = &manifest.assets {
+                info!("开始恢复资产文件到目标目录: {} 个", asset_result.total_files);
+                match assets::restore_assets(
+                    &backup_subdir,
+                    target_dir,
+                    &asset_result.files,
+                ) {
+                    Ok(count) => {
+                        restored_assets = count;
+                        info!("资产恢复完成: {} 个文件", count);
+                    }
+                    Err(e) => {
+                        error!("资产恢复失败: {}", e);
+                        restore_errors.push(format!("资产恢复: {}", e));
+                    }
+                }
+            } else {
+                let assets_dir = backup_subdir.join("assets");
+                if assets_dir.exists() && assets_dir.is_dir() {
+                    info!("manifest.assets 为空，尝试从 assets/ 目录直接恢复");
+                    match assets::restore_assets_from_dir(&assets_dir, target_dir) {
+                        Ok(count) => {
+                            restored_assets = count;
+                            info!("资产目录直接恢复完成: {} 个文件", count);
+                        }
+                        Err(e) => {
+                            error!("资产目录直接恢复失败: {}", e);
+                            restore_errors.push(format!("资产目录恢复: {}", e));
+                        }
+                    }
+                }
+            }
+        }
+
+        // 6. 检查是否有错误（非活跃插槽恢复失败不回滚，直接报错）
+        if !restore_errors.is_empty() {
+            return Err(BackupError::RestoreFailed(format!(
+                "恢复到目标目录失败: {:?}",
+                restore_errors
+            )));
+        }
+
+        info!(
+            "恢复到目标目录完成: 数据库={}, 资产={}, 目标={}",
+            manifest.files.iter().filter(|f| f.path.ends_with(".db")).count(),
+            restored_assets,
+            target_dir.display()
         );
 
         Ok(restored_assets)
@@ -1642,14 +1781,35 @@ impl BackupManager {
         Ok(())
     }
 
-    /// 恢复单个数据库
+    /// 恢复单个数据库（写入活跃插槽，旧接口保留兼容）
     pub(crate) fn restore_single_database(
         &self,
         db_id: &DatabaseId,
         backup_dir: &Path,
     ) -> Result<(), BackupError> {
-        let backup_path = self.get_backup_database_path(backup_dir, db_id);
         let target_path = self.get_database_path(db_id);
+        self.restore_single_database_to_path(db_id, backup_dir, &target_path)
+    }
+
+    /// 恢复单个数据库到指定目标目录（用于恢复到非活跃插槽）
+    pub(crate) fn restore_single_database_to_dir(
+        &self,
+        db_id: &DatabaseId,
+        backup_dir: &Path,
+        target_dir: &Path,
+    ) -> Result<(), BackupError> {
+        let target_path = Self::resolve_database_path_in_dir(target_dir, db_id);
+        self.restore_single_database_to_path(db_id, backup_dir, &target_path)
+    }
+
+    /// 恢复单个数据库到指定路径（内部实现）
+    fn restore_single_database_to_path(
+        &self,
+        db_id: &DatabaseId,
+        backup_dir: &Path,
+        target_path: &Path,
+    ) -> Result<(), BackupError> {
+        let backup_path = self.get_backup_database_path(backup_dir, db_id);
 
         if !backup_path.exists() {
             return Err(BackupError::FileNotFound(format!(
