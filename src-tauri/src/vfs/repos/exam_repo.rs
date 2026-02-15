@@ -639,7 +639,61 @@ impl VfsExamRepo {
     }
 
     /// 永久删除题目集识别记录（使用现有连接）
+    ///
+    /// ★ P0 修复：同时清理 folder_items、questions、review 相关表和 resources
+    /// 注意：questions FK 对 exam_sheets 没有 ON DELETE CASCADE，必须手动删除
     pub fn purge_exam_sheet_with_conn(conn: &Connection, exam_id: &str) -> VfsResult<()> {
+        // 1. 获取 resource_id（purge 后无法再查）
+        let resource_id: Option<String> = conn
+            .query_row(
+                "SELECT resource_id FROM exam_sheets WHERE id = ?1",
+                params![exam_id],
+                |row| row.get(0),
+            )
+            .optional()?
+            .flatten();
+
+        // 2. 删除 folder_items（防止孤儿记录）
+        conn.execute(
+            "DELETE FROM folder_items WHERE item_type = 'exam' AND item_id = ?1",
+            params![exam_id],
+        )?;
+
+        // 3. 删除关联的 review_history（FK → review_plans → questions）
+        conn.execute(
+            "DELETE FROM review_history WHERE plan_id IN (SELECT id FROM review_plans WHERE exam_id = ?1)",
+            params![exam_id],
+        )?;
+
+        // 4. 删除关联的 review_plans
+        conn.execute(
+            "DELETE FROM review_plans WHERE exam_id = ?1",
+            params![exam_id],
+        )?;
+
+        // 5. 删除关联的 exam_stats
+        conn.execute(
+            "DELETE FROM exam_stats WHERE exam_id = ?1",
+            params![exam_id],
+        )?;
+
+        // 6. 删除关联的同步记录
+        conn.execute(
+            "DELETE FROM question_sync_conflicts WHERE exam_id = ?1",
+            params![exam_id],
+        )?;
+        conn.execute(
+            "DELETE FROM question_sync_logs WHERE exam_id = ?1",
+            params![exam_id],
+        )?;
+
+        // 7. 删除关联的 questions
+        conn.execute(
+            "DELETE FROM questions WHERE exam_id = ?1",
+            params![exam_id],
+        )?;
+
+        // 8. 删除 exam_sheets 记录
         let deleted = conn.execute("DELETE FROM exam_sheets WHERE id = ?1", params![exam_id])?;
 
         if deleted == 0 {
@@ -649,7 +703,12 @@ impl VfsExamRepo {
             });
         }
 
-        info!("[VFS::ExamRepo] Purged exam sheet: {}", exam_id);
+        // 9. 清理关联的 resource（如果存在）
+        if let Some(rid) = resource_id {
+            conn.execute("DELETE FROM resources WHERE id = ?1", params![rid])?;
+        }
+
+        info!("[VFS::ExamRepo] Purged exam sheet: {} (with questions, reviews, folder_items, resources)", exam_id);
         Ok(())
     }
 

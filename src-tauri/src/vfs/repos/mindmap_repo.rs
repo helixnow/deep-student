@@ -884,9 +884,11 @@ impl VfsMindMapRepo {
             }
 
             // 同时恢复 folder_items 记录
+            // ★ P0 修复：folder_items.updated_at 是 INTEGER 列，必须用 i64 毫秒时间戳
+            let now_ms = chrono::Utc::now().timestamp_millis();
             conn.execute(
                 "UPDATE folder_items SET deleted_at = NULL, updated_at = ?1 WHERE item_id = ?2 AND item_type = 'mindmap'",
-                params![now, mindmap_id],
+                params![now_ms, mindmap_id],
             )?;
 
             Ok(())

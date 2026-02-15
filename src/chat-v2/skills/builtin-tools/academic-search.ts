@@ -12,7 +12,7 @@ export const academicSearchSkill: SkillDefinition = {
   id: 'academic-search',
   name: '学术论文搜索',
   description:
-    '学术论文搜索能力组，支持 arXiv 预印本搜索和 OpenAlex 学术搜索（覆盖 2.4 亿+ 篇论文，国内可直连）。当用户需要查找学术论文、科研文献、引用信息时使用。',
+    '学术论文搜索与管理能力组，支持 arXiv 预印本搜索、OpenAlex 学术搜索（覆盖 2.4 亿+ 篇论文，国内可直连）、论文 PDF 下载保存到资料库、引用格式化（BibTeX/GB/T 7714/APA）。当用户需要查找、下载、引用学术论文时使用。',
   version: '1.0.0',
   author: 'Deep Student',
   priority: 5,
@@ -78,10 +78,22 @@ scholar_search(query="...", min_citation_count=100)
 2. 再用 \`scholar_search\` 搜已发表的高引论文
 3. 结合两者结果给出全面回答
 
-### 4. 获取论文全文
-搜索到感兴趣的论文后：
-- arXiv 论文：使用 \`web_fetch\` 工具抓取 pdfUrl 或 arxivUrl 页面
-- 有 DOI 的论文：使用 \`web_fetch\` 抓取 \`https://doi.org/{doi}\`
+### 4. 保存论文到资料库
+搜索到感兴趣的论文后，直接下载 PDF 并保存到用户资料库：
+\`\`\`
+paper_save(papers=[
+  {url: "https://arxiv.org/pdf/2401.xxxxx", title: "论文标题"},
+  {doi: "10.xxxx/xxxxx", title: "另一篇论文"},
+  {arxiv_id: "2401.xxxxx", title: "第三篇"},
+])
+\`\`\`
+保存后可用 \`resource_read\` 按页阅读，或用 \`unified_search\` RAG 检索。
+
+### 5. 生成引用格式
+\`\`\`
+cite_format(papers=[{title: "...", authors: ["..."], year: 2024, doi: "...", venue: "..."}], format="gbt7714")
+\`\`\`
+支持格式：\`bibtex\`、\`gbt7714\`（国标）、\`apa\`
 
 ## 输出格式建议
 
@@ -101,6 +113,8 @@ scholar_search(query="...", min_citation_count=100)
 3. 搜索词建议使用英文以获得最佳结果
 4. 对于中文学术论文，建议配合 \`web_search\` 搜索中文学术数据库
 5. arXiv API 在国内可能不稳定，系统会自动回退到 OpenAlex 搜索 arXiv 论文
+6. \`paper_save\` 支持通过 DOI 自动解析开放获取 PDF（基于 Unpaywall），付费论文可能无法下载
+7. \`paper_save\` 自动去重：已存在的论文直接返回现有文件 ID
 `,
   embeddedTools: [
     {
@@ -190,6 +204,100 @@ scholar_search(query="...", min_citation_count=100)
           },
         },
         required: ['query'],
+      },
+    },
+    {
+      name: 'builtin-paper_save',
+      description:
+        '下载学术论文 PDF 并保存到用户资料库（VFS）。支持批量下载（最多 5 篇）。支持三种输入方式：直接 PDF URL、arXiv ID、DOI（自动通过 Unpaywall 解析开放获取 PDF）。保存后可用 resource_read 按页阅读、unified_search RAG 检索。自动 SHA256 去重，已存在的论文直接返回文件 ID。',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          papers: {
+            type: 'array',
+            description:
+              '【必填】论文列表（最多 5 篇）。每篇论文至少提供 url/doi/arxiv_id 之一。',
+            items: {
+              type: 'object',
+              properties: {
+                url: {
+                  type: 'string',
+                  description:
+                    'PDF 下载地址（优先使用，来自搜索结果的 pdfUrl 字段）',
+                },
+                doi: {
+                  type: 'string',
+                  description:
+                    '论文 DOI（如 "10.xxxx/xxxxx"），系统会通过 Unpaywall 自动查找开放获取 PDF',
+                },
+                arxiv_id: {
+                  type: 'string',
+                  description:
+                    'arXiv 论文 ID（如 "2401.12345"），自动转换为 PDF 下载链接',
+                },
+                title: {
+                  type: 'string',
+                  description: '论文标题（用作文件名）',
+                },
+              },
+            },
+            minItems: 1,
+            maxItems: 5,
+          },
+          folder_id: {
+            type: 'string',
+            description: '保存到指定 VFS 文件夹 ID（可选，默认保存到根目录）',
+          },
+        },
+        required: ['papers'],
+      },
+    },
+    {
+      name: 'builtin-cite_format',
+      description:
+        '将论文元数据格式化为标准学术引用格式。支持 BibTeX、GB/T 7714（中国国标）、APA 三种格式。输入论文的标题、作者、年份、DOI、期刊等信息，输出格式化的引用文本。',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          papers: {
+            type: 'array',
+            description: '【必填】论文元数据列表',
+            items: {
+              type: 'object',
+              properties: {
+                title: {
+                  type: 'string',
+                  description: '论文标题',
+                },
+                authors: {
+                  type: 'array',
+                  items: { type: 'string' },
+                  description: '作者列表（如 ["张三", "李四"]）',
+                },
+                year: {
+                  type: 'integer',
+                  description: '发表年份',
+                },
+                doi: {
+                  type: 'string',
+                  description: 'DOI 标识符',
+                },
+                venue: {
+                  type: 'string',
+                  description: '发表期刊或会议名称',
+                },
+              },
+            },
+          },
+          format: {
+            type: 'string',
+            enum: ['bibtex', 'gbt7714', 'apa'],
+            description:
+              '引用格式："bibtex"（BibTeX，默认）、"gbt7714"（GB/T 7714 中国国标）、"apa"（APA 格式）',
+            default: 'bibtex',
+          },
+        },
+        required: ['papers'],
       },
     },
   ],

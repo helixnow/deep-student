@@ -1122,6 +1122,8 @@ pub struct ChatV2Pipeline {
     workspace_coordinator: Option<Arc<WorkspaceCoordinator>>,
     /// 🆕 智能题目集服务（用于 qbank_* MCP 工具，2026-01）
     question_bank_service: Option<Arc<crate::question_bank_service::QuestionBankService>>,
+    /// 🆕 PDF 处理服务（用于论文保存后触发 OCR/压缩 Pipeline）
+    pdf_processing_service: Option<Arc<crate::vfs::pdf_processing_service::PdfProcessingService>>,
 }
 
 impl ChatV2Pipeline {
@@ -1159,6 +1161,7 @@ impl ChatV2Pipeline {
             approval_manager: None,
             workspace_coordinator: None,
             question_bank_service: None,
+            pdf_processing_service: None,
         }
     }
 
@@ -1187,6 +1190,15 @@ impl ChatV2Pipeline {
         self
     }
 
+    /// 🆕 设置 PDF 处理服务（用于论文保存后触发 OCR/压缩 Pipeline）
+    pub fn with_pdf_processing_service(
+        mut self,
+        service: Option<Arc<crate::vfs::pdf_processing_service::PdfProcessingService>>,
+    ) -> Self {
+        self.pdf_processing_service = service;
+        self
+    }
+
     fn create_executor_registry() -> Arc<ToolExecutorRegistry> {
         Self::create_executor_registry_with_workspace(None)
     }
@@ -1205,6 +1217,7 @@ impl ChatV2Pipeline {
         registry.register(Arc::new(super::tools::AttachmentToolExecutor::new())); // 🆕 附件工具执行器（解决 P0 断裂点）
         registry.register(Arc::new(FetchExecutor::new())); // 🆕 内置 Web Fetch 工具
         registry.register(Arc::new(AcademicSearchExecutor::new())); // 🆕 学术论文搜索工具（arXiv + OpenAlex）
+        registry.register(Arc::new(super::tools::PaperSaveExecutor::new())); // 🆕 论文保存+引用格式化工具
         registry.register(Arc::new(KnowledgeExecutor::new()));
         registry.register(Arc::new(super::tools::TodoListExecutor::new()));
         registry.register(Arc::new(super::tools::qbank_executor::QBankExecutor::new()));
@@ -4356,6 +4369,7 @@ impl ChatV2Pipeline {
         // ★ with_user_memory_db 已移除（2026-01），改用 Memory-as-VFS
         .with_chat_v2_db(Some(self.db.clone())) // 🆕 工具块防闪退保存
         .with_question_bank_service(self.question_bank_service.clone()) // 🆕 智能题目集工具
+        .with_pdf_processing_service(self.pdf_processing_service.clone()) // 🆕 论文保存触发 Pipeline
         .with_rag_config(rag_top_k, rag_enable_reranking);
 
         // 🆕 渐进披露：传递 skill_contents

@@ -27,6 +27,7 @@ use crate::database::Database;
 use crate::notes_manager::NotesManager;
 // ★ rag_manager 已移除（2026-01 清理：VFS RAG 完全替代）
 use crate::tools::ToolRegistry;
+use crate::vfs::pdf_processing_service::PdfProcessingService;
 // ★ UserMemoryDatabase 已移除（2026-01），改用 Memory-as-VFS
 use crate::vfs::database::VfsDatabase;
 use crate::vfs::lance_store::VfsLanceStore;
@@ -111,6 +112,8 @@ pub struct ExecutionContext {
     pub rag_top_k: Option<u32>,
     /// 🆕 RAG 启用重排序设置（从 UI chatParams 传递）
     pub rag_enable_reranking: Option<bool>,
+    /// 🆕 PDF 处理服务（用于论文保存后触发 OCR/压缩 Pipeline）
+    pub pdf_processing_service: Option<Arc<PdfProcessingService>>,
 }
 
 impl ExecutionContext {
@@ -146,6 +149,7 @@ impl ExecutionContext {
             cancellation_token: None,
             rag_top_k: None,
             rag_enable_reranking: None,
+            pdf_processing_service: None,
         }
     }
 
@@ -229,6 +233,15 @@ impl ExecutionContext {
         service: Option<Arc<crate::question_bank_service::QuestionBankService>>,
     ) -> Self {
         self.question_bank_service = service;
+        self
+    }
+
+    /// 🆕 设置 PDF 处理服务（用于论文保存后触发 OCR/压缩 Pipeline）
+    pub fn with_pdf_processing_service(
+        mut self,
+        service: Option<Arc<PdfProcessingService>>,
+    ) -> Self {
+        self.pdf_processing_service = service;
         self
     }
 

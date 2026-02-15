@@ -527,7 +527,26 @@ impl VfsTranslationRepo {
     }
 
     /// 永久删除翻译记录（使用现有连接）
+    ///
+    /// ★ P0 修复：同时清理 folder_items 和 resources 记录
     pub fn purge_translation_with_conn(conn: &Connection, translation_id: &str) -> VfsResult<()> {
+        // 1. 获取 resource_id（purge 后无法再查）
+        let resource_id: Option<String> = conn
+            .query_row(
+                "SELECT resource_id FROM translations WHERE id = ?1",
+                params![translation_id],
+                |row| row.get::<_, Option<String>>(0),
+            )
+            .optional()?
+            .flatten();
+
+        // 2. ★ P0 修复：删除 folder_items（防止孤儿记录）
+        conn.execute(
+            "DELETE FROM folder_items WHERE item_type = 'translation' AND item_id = ?1",
+            params![translation_id],
+        )?;
+
+        // 3. 删除 translations 记录
         let deleted = conn.execute(
             "DELETE FROM translations WHERE id = ?1",
             params![translation_id],
@@ -540,8 +559,13 @@ impl VfsTranslationRepo {
             });
         }
 
+        // 4. ★ P0 修复：清理关联的 resource（如果存在）
+        if let Some(rid) = resource_id {
+            conn.execute("DELETE FROM resources WHERE id = ?1", params![rid])?;
+        }
+
         info!(
-            "[VFS::TranslationRepo] Purged translation: {}",
+            "[VFS::TranslationRepo] Purged translation: {} (with folder_items, resources)",
             translation_id
         );
         Ok(())

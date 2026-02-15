@@ -1084,13 +1084,21 @@ impl VfsEssayRepo {
         Self::delete_session_with_folder_item_with_conn(&conn, session_id)
     }
 
-    /// 软删除作文会话，并清理 folder_items 记录（使用现有连接）
+    /// 软删除作文会话，并软删除 folder_items 记录（使用现有连接）
+    ///
+    /// ★ P0 修复：改为软删除 folder_items（而非硬删除），确保恢复时能同步恢复
     pub fn delete_session_with_folder_item_with_conn(
         conn: &Connection,
         session_id: &str,
     ) -> VfsResult<()> {
         Self::delete_session_with_conn(conn, session_id)?;
-        VfsFolderRepo::remove_item_by_item_id_with_conn(conn, "essay", session_id)?;
+        // ★ P0 修复：deleted_at 是 TEXT 列，updated_at 是 INTEGER 列，必须分开处理
+        let now_str = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
+        let now_ms = chrono::Utc::now().timestamp_millis();
+        conn.execute(
+            "UPDATE folder_items SET deleted_at = ?1, updated_at = ?2 WHERE item_type = 'essay' AND item_id = ?3 AND deleted_at IS NULL",
+            params![now_str, now_ms, session_id],
+        )?;
         Ok(())
     }
 
@@ -1101,6 +1109,8 @@ impl VfsEssayRepo {
     }
 
     /// 恢复作文会话（使用现有连接）
+    ///
+    /// ★ P0 修复：同时恢复 folder_items 记录（配合软删除修复）
     pub fn restore_session_with_conn(conn: &Connection, session_id: &str) -> VfsResult<()> {
         let updated = conn.execute(
             "UPDATE essay_sessions SET deleted_at = NULL WHERE id = ?1 AND deleted_at IS NOT NULL",
@@ -1112,6 +1122,14 @@ impl VfsEssayRepo {
                 id: session_id.to_string(),
             });
         }
+
+        // ★ P0 修复：恢复 folder_items 中的关联记录
+        let now_ms = chrono::Utc::now().timestamp_millis();
+        conn.execute(
+            "UPDATE folder_items SET deleted_at = NULL, updated_at = ?1 WHERE item_type = 'essay' AND item_id = ?2 AND deleted_at IS NOT NULL",
+            params![now_ms, session_id],
+        )?;
+
         info!("[VFS::EssayRepo] Restored essay session: {}", session_id);
         Ok(())
     }

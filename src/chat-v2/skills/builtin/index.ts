@@ -453,6 +453,8 @@ export const literatureReviewSkill: SkillDefinition = {
     // academic-search
     'builtin-arxiv_search',
     'builtin-scholar_search',
+    'builtin-paper_save',
+    'builtin-cite_format',
     // todo-tools
     'builtin-todo_init',
     'builtin-todo_update',
@@ -500,7 +502,7 @@ export const literatureReviewSkill: SkillDefinition = {
 | 技能组 ID | 提供的工具 | 用途 |
 |-----------|------------|------|
 | \`knowledge-retrieval\` | builtin-unified_search, builtin-web_search | 检索本地知识库（含文本/图片/记忆）+ 通用网络搜索 |
-| \`academic-search\` | builtin-arxiv_search, builtin-scholar_search | **学术论文搜索**（arXiv 预印本 + OpenAlex 2.4 亿篇论文，国内可直连） |
+| \`academic-search\` | builtin-arxiv_search, builtin-scholar_search, builtin-paper_save, builtin-cite_format | **学术论文搜索与管理**（搜索 + 下载保存 + 引用格式化） |
 | \`todo-tools\` | builtin-todo_init, builtin-todo_update, builtin-todo_add, builtin-todo_get | 综述任务分解与进度管理 |
 | \`canvas-note\` | builtin-note_read, builtin-note_append, builtin-note_replace, builtin-note_set, builtin-note_create, builtin-note_list, builtin-note_search | 综述报告撰写与编辑 |
 | \`web-fetch\` | builtin-web_fetch | 抓取学术网页完整内容 |

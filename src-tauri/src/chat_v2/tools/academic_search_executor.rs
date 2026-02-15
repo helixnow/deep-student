@@ -290,7 +290,7 @@ impl AcademicSearchExecutor {
             _ => "relevance",
         };
 
-        let encoded_query = final_query.replace(' ', "+");
+        let encoded_query = urlencoding::encode(&final_query);
         let url = format!(
             "{}?search_query={}&max_results={}&sortBy={}&sortOrder=descending",
             ARXIV_API_URL, encoded_query, max_results, sort_param

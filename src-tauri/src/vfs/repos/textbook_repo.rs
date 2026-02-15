@@ -733,7 +733,13 @@ impl VfsTextbookRepo {
                 }
             }
 
-            // 4. 删除教材记录
+            // 4. ★ P0 修复：删除 folder_items 中的关联记录（防止孤儿记录）
+            conn.execute(
+                "DELETE FROM folder_items WHERE item_id = ?1",
+                params![textbook_id],
+            )?;
+
+            // 5. 删除教材记录
             let deleted = conn.execute("DELETE FROM files WHERE id = ?1", params![textbook_id])?;
 
             if deleted == 0 {

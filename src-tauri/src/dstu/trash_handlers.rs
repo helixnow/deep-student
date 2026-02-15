@@ -481,13 +481,16 @@ pub async fn dstu_empty_trash(
     let resource_ids_to_cleanup: Vec<String> = {
         if let Ok(conn) = db.get_conn_safe() {
             let mut ids = Vec::new();
-            // 收集已删除的 notes, files, exam_sheets, translations, mindmaps 的 resource_id
+            // 收集已删除的 notes, files, exam_sheets, translations, mindmaps, essays 的 resource_id
+            // ★ P1 修复：补充 essays 表（包括已删除的独立 essay 和被删除 session 下的子 essay）
             for sql in &[
                 "SELECT resource_id FROM notes WHERE deleted_at IS NOT NULL AND resource_id IS NOT NULL",
                 "SELECT resource_id FROM files WHERE deleted_at IS NOT NULL AND resource_id IS NOT NULL",
                 "SELECT resource_id FROM exam_sheets WHERE deleted_at IS NOT NULL AND resource_id IS NOT NULL",
                 "SELECT resource_id FROM translations WHERE deleted_at IS NOT NULL AND resource_id IS NOT NULL",
                 "SELECT resource_id FROM mindmaps WHERE deleted_at IS NOT NULL AND resource_id IS NOT NULL",
+                // 被删除 session 下的子 essay 的 resource_id
+                "SELECT e.resource_id FROM essays e INNER JOIN essay_sessions s ON e.session_id = s.id WHERE s.deleted_at IS NOT NULL AND e.resource_id IS NOT NULL",
             ] {
                 if let Ok(mut stmt) = conn.prepare(sql) {
                     if let Ok(rows) = stmt.query_map([], |row| row.get::<_, String>(0)) {
@@ -683,7 +686,22 @@ pub async fn dstu_permanently_delete(
     );
 
     // ★ P1 修复：在 purge 之前查找 resource_id（purge 会删除数据库记录）
+    // ★ P1 修复：essay_session 需要收集子 essays 的 resource_ids
     let resource_id = lookup_resource_id(&db, &item_type, &id);
+    let session_essay_resource_ids: Vec<String> = if item_type == "essay" && id.starts_with("essay_session_") {
+        if let Ok(conn) = db.get_conn_safe() {
+            conn.prepare("SELECT resource_id FROM essays WHERE session_id = ?1 AND resource_id IS NOT NULL")
+                .and_then(|mut stmt| {
+                    stmt.query_map(params![&id], |row| row.get::<_, String>(0))
+                        .map(|rows| rows.flatten().collect())
+                })
+                .unwrap_or_default()
+        } else {
+            Vec::new()
+        }
+    } else {
+        Vec::new()
+    };
 
     // 统一使用 purge 方法进行永久删除
     let result = match item_type.as_str() {
@@ -720,6 +738,23 @@ pub async fn dstu_permanently_delete(
             // ★ P1 修复：永久删除后清理向量索引（如果软删除时未清理）
             if let Some(ref rid) = resource_id {
                 cleanup_vector_index(db.inner(), rid).await;
+            }
+
+            // ★ P1 修复：essay_session 的子 essays 向量清理
+            if !session_essay_resource_ids.is_empty() {
+                let db_clone = db.inner().clone();
+                tokio::spawn(async move {
+                    if let Ok(lance_store) = VfsLanceStore::new(db_clone) {
+                        for rid in &session_essay_resource_ids {
+                            let _ = lance_store.delete_by_resource("text", rid).await;
+                            let _ = lance_store.delete_by_resource("multimodal", rid).await;
+                        }
+                        log::info!(
+                            "[DSTU::trash] dstu_permanently_delete: cleaned up vectors for {} child essays",
+                            session_essay_resource_ids.len()
+                        );
+                    }
+                });
             }
 
             // 发射永久删除事件

@@ -153,7 +153,10 @@ export const MindMapContentView: React.FC<MindMapContentViewProps> = ({
       try {
         // ★ 修复：使用当前主题的背景色；传入容器 ref 避免多实例导出错误
         const backgroundColor = currentTheme?.canvas?.background || '#ffffff';
-        await exportToImage({ format: format as 'png' | 'svg', filename, backgroundColor, container: containerRef.current });
+        const result = await exportToImage({ format: format as 'png' | 'svg', filename, backgroundColor, container: containerRef.current });
+        if (result.saved) {
+          showGlobalNotification('success', t('mindmap:export.success'));
+        }
       } catch (error: unknown) {
         console.error('Image export failed:', error);
         showGlobalNotification(

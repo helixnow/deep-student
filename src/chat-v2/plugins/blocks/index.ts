@@ -77,6 +77,9 @@ export { ToolLimitBlock } from './toolLimit';
 // 🆕 TodoList 任务列表块组件
 export { TodoListBlock } from './todoList';
 
+// 🆕 PaperSave 论文下载进度块组件
+export { PaperSaveBlock } from './paperSave';
+
 // 🆕 工作区状态块组件
 export { WorkspaceStatusBlockComponent } from './workspaceStatus';
 

@@ -265,6 +265,29 @@ export interface ImageExportOptions {
 // 互斥锁：防止并发调用导致 viewport 状态竞态
 let _exportLock = false;
 
+// 额外 padding 用于防止 bezier 曲线等 edge 被裁剪
+const EDGE_PADDING = 20;
+
+// 等待所有节点完成 measured（DOM 渲染 + 尺寸测量），最长等待 maxMs
+async function waitForNodesMeasured(rfInstance: { getNodes: () => unknown[] }, maxMs = 2000): Promise<void> {
+  // 先让出控制权，确保 React 有机会处理 setIsExporting(true) 引起的重渲染
+  // （Zustand 同步更新 store，但 React re-render 是异步调度的）
+  await new Promise<void>(resolve => {
+    setTimeout(resolve, 200); // 兜底：如果 rAF 因窗口不可见等原因不触发
+    requestAnimationFrame(() => setTimeout(resolve, 0));
+  });
+
+  const start = Date.now();
+  while (Date.now() - start < maxMs) {
+    const nodes = rfInstance.getNodes() as Node[];
+    const allMeasured = nodes.every(n => n.measured?.width && n.measured?.height);
+    if (allMeasured) return;
+    await new Promise(resolve => setTimeout(resolve, 50));
+  }
+  // 超时仍有未 measured 的节点，继续导出但可能不完整
+  console.warn('[Export] waitForNodesMeasured timed out after %dms, some nodes may lack measured dimensions', maxMs);
+}
+
 /**
  * 将 ReactFlow 画布导出为图片
  *
@@ -273,20 +296,24 @@ let _exportLock = false;
  */
 export async function exportToImage(
   options: ImageExportOptions = { format: 'png' }
-): Promise<void> {
+): Promise<{ saved: boolean }> {
   // [问题1修复] 互斥锁防止并发调用导致 viewport 状态竞态
   if (_exportLock) {
     throw new Error('Export already in progress');
   }
   _exportLock = true;
 
+  try {
   const { format, filename = 'mindmap', scale = 2, backgroundColor = '#ffffff', padding = 40, container } = options;
 
-  // 从 store 获取 ReactFlow 实例，用于精确计算节点边界
+  // SVG 是矢量格式，不需要像素缩放
+  const effectiveScale = format === 'svg' ? 1 : scale;
+
+  // 从 store 获取 ReactFlow 实例
   const rfGetter = useMindMapStore.getState()._reactFlowGetter;
   const rfInstance = rfGetter?.();
-  const nodes = rfInstance?.getNodes() ?? [];
-  if (nodes.length === 0) {
+  const initialNodes = rfInstance?.getNodes() ?? [];
+  if (initialNodes.length === 0) {
     _exportLock = false;
     throw new Error('No nodes to export');
   }
@@ -295,44 +322,56 @@ export async function exportToImage(
   useMindMapStore.getState().setIsExporting(true);
   useMindMapStore.getState().setExportProgress(10);
   
-  // 等待 ReactFlow 重绘（移除虚拟化）- 增加到 500ms 确保大图渲染完成
-  await new Promise(resolve => setTimeout(resolve, 500));
+  // 等待所有节点 DOM 渲染并完成尺寸测量（替代固定 500ms 延迟）
+  if (rfInstance) {
+    await waitForNodesMeasured(rfInstance);
+  }
   
   useMindMapStore.getState().setExportProgress(40);
   // 让 UI 有机会刷新
   await new Promise(resolve => setTimeout(resolve, 50));
 
-  // 计算所有节点的精确边界
-  const nodesBounds = getNodesBounds(nodes as Node[]);
+  // 重新获取节点数据，确保拿到虚拟化禁用后最新的 measured 尺寸
+  const freshNodes = (rfInstance?.getNodes() ?? []) as Node[];
+  if (freshNodes.length === 0) {
+    _exportLock = false;
+    useMindMapStore.getState().setIsExporting(false);
+    useMindMapStore.getState().setExportProgress(0);
+    throw new Error('No nodes to export after rendering');
+  }
 
-  // 内容实际尺寸 + padding
-  const contentWidth = nodesBounds.width + padding * 2;
-  const contentHeight = nodesBounds.height + padding * 2;
+  // 计算所有节点的精确边界
+  const nodesBounds = getNodesBounds(freshNodes);
+
+  // 内容实际尺寸 + padding + edge 安全余量
+  const totalPadding = padding + EDGE_PADDING;
+  const contentWidth = nodesBounds.width + totalPadding * 2;
+  const contentHeight = nodesBounds.height + totalPadding * 2;
 
   // 计算使内容完美适配的 viewport transform
-  // 注意：contentWidth/Height 已含 padding，getViewportForBounds 的 padding 参数
-  // 会在其内部再从 width/height 中扣除 2*padding 作为有效区域，
-  // 所以有效区域 = nodesBounds 自身尺寸，zoom 结果为 1.0，padding 通过 translate 偏移实现。
+  // 注意：contentWidth/Height 已含 totalPadding，getViewportForBounds 的 padding 参数
+  // 会在其内部再从 width/height 中扣除 2*totalPadding 作为有效区域，
+  // 所以有效区域 = nodesBounds 自身尺寸，zoom 结果为 1.0，totalPadding 通过 translate 偏移实现。
   const viewport = getViewportForBounds(
     nodesBounds,
     contentWidth,
     contentHeight,
     0.5,   // minZoom
     2,     // maxZoom
-    padding,
+    totalPadding,
   );
 
   // [安全修复] 检查 Canvas 尺寸限制 (浏览器通常限制 ~268MP)
   // 如果尺寸过大，强制降低缩放比例
   const MAX_CANVAS_AREA = 268_000_000; // 安全余量
-  let safeScale = scale;
-  const estimatedArea = (contentWidth * scale) * (contentHeight * scale);
+  let safeScale = effectiveScale;
+  const estimatedArea = (contentWidth * effectiveScale) * (contentHeight * effectiveScale);
   
   if (estimatedArea > MAX_CANVAS_AREA) {
     safeScale = Math.sqrt(MAX_CANVAS_AREA / (contentWidth * contentHeight));
     // 向下取整保留2位小数，防止精度问题溢出
     safeScale = Math.floor(safeScale * 100) / 100;
-    console.warn(`Export size exceeds limit, downsizing scale from ${scale} to ${safeScale}`);
+    console.warn(`Export size exceeds limit, downsizing scale from ${effectiveScale} to ${safeScale}`);
     
     // 如果缩放后甚至小于 0.1，说明图太大无法导出清晰图，抛出错误让用户拆分
     if (safeScale < 0.1) {
@@ -348,12 +387,16 @@ export async function exportToImage(
   const reactFlowContainer = scopeRoot?.querySelector('.react-flow') as HTMLElement;
   if (!reactFlowContainer) {
     _exportLock = false;
+    useMindMapStore.getState().setIsExporting(false);
+    useMindMapStore.getState().setExportProgress(0);
     throw new Error('ReactFlow container not found');
   }
 
   const viewportEl = reactFlowContainer.querySelector('.react-flow__viewport') as HTMLElement;
   if (!viewportEl) {
     _exportLock = false;
+    useMindMapStore.getState().setIsExporting(false);
+    useMindMapStore.getState().setExportProgress(0);
     throw new Error('ReactFlow viewport not found');
   }
 
@@ -370,7 +413,7 @@ export async function exportToImage(
   reactFlowContainer.style.height = `${contentHeight}px`;
 
   // [问题5优化] 自动降级重试逻辑
-  const tryExport = async (currentScale: number, attempt = 1): Promise<void> => {
+  const tryExport = async (currentScale: number, attempt = 1): Promise<{ saved: boolean }> => {
     const sanitizedFilename = sanitizeFilename(filename);
     try {
       if (attempt > 1) {
@@ -383,7 +426,7 @@ export async function exportToImage(
       const result = await snapdom(reactFlowContainer, {
         scale: currentScale,
         backgroundColor,
-        embedFonts: false,
+        embedFonts: format === 'svg',
         outerTransforms: true,
         exclude: [
           '.react-flow__background',
@@ -407,7 +450,7 @@ export async function exportToImage(
           content: svgContent,
           filters: [{ name: i18n.t('mindmap:export.filterSvg'), extensions: ['svg'] }],
         });
-        if (saveResult.canceled) return;
+        if (saveResult.canceled) return { saved: false };
       } else {
         const blob = await result.toBlob({ type: 'png' });
         if (!blob) throw new Error('Failed to generate PNG blob');
@@ -423,8 +466,9 @@ export async function exportToImage(
           data: imageData,
           filters: [{ name: i18n.t('mindmap:export.filterPng'), extensions: ['png'] }],
         });
-        if (saveResult.canceled) return;
+        if (saveResult.canceled) return { saved: false };
       }
+      return { saved: true };
     } catch (error) {
       // 如果是因为尺寸过大导致的错误，尝试降级
       const isSizeError = error instanceof Error && (
@@ -435,7 +479,7 @@ export async function exportToImage(
       if (isSizeError && currentScale > 0.5) {
         // 降级策略：每次减半，最低 0.5
         const nextScale = Math.max(0.5, currentScale * 0.5);
-        await tryExport(nextScale, attempt + 1);
+        return await tryExport(nextScale, attempt + 1);
       } else {
         throw error;
       }
@@ -448,7 +492,8 @@ export async function exportToImage(
     await new Promise(resolve => setTimeout(resolve, 50));
     
     // 开始尝试导出，初始使用计算出的安全比例
-    await tryExport(safeScale);
+    const exportResult = await tryExport(safeScale);
+    return exportResult;
 
   } catch (error) {
     console.error('Image export failed:', error);
@@ -466,6 +511,15 @@ export async function exportToImage(
     useMindMapStore.getState().setIsExporting(false);
     useMindMapStore.getState().setExportProgress(0);
     _exportLock = false;
+  }
+
+  } catch (unexpectedError) {
+    // 防御性兜底：捕获 setup 阶段（如 getNodesBounds / waitForNodesMeasured 等）的意外异常
+    // 内层 finally 可能已执行清理，此处调用为幂等安全
+    useMindMapStore.getState().setIsExporting(false);
+    useMindMapStore.getState().setExportProgress(0);
+    _exportLock = false;
+    throw unexpectedError;
   }
 }
 

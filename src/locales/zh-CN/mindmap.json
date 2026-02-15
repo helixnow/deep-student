@@ -59,6 +59,7 @@
     "filterPng": "PNG 图片",
     "switchToMindMapView": "请切换到思维导图视图后导出图片",
     "failed": "导出失败，请重试",
+    "success": "导出成功",
     "processing": "正在导出..."
   },
   "import": {

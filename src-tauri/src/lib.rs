@@ -583,6 +583,7 @@ pub fn run() {
                         )
                         .with_approval_manager(approval_manager) // 🆕 关联审批管理器
                         .with_workspace_coordinator(workspace_coordinator) // 🆕 关联工作区协调器
+                        .with_pdf_processing_service(app_state.inner().pdf_processing_service.clone()) // 🆕 论文保存触发 Pipeline
                     );
                     app.manage(chat_v2_pipeline);
                     info!("✅ Chat V2 Pipeline 初始化成功（已启用敏感工具审批、工作区协作）");

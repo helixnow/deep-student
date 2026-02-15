@@ -53,6 +53,7 @@ pub mod general_executor;
 pub mod injector;
 pub mod knowledge_executor; // 🆕 知识工具执行器（内化/提取）
 pub mod memory_executor;
+pub mod paper_save_executor; // 🆕 论文保存+引用格式化工具执行器
 pub mod qbank_executor; // 🆕 智能题目集工具执行器
 pub mod registry;
 pub mod skills_executor; // 🆕 Skills 工具执行器（渐进披露架构）
@@ -94,6 +95,7 @@ pub use fetch_executor::FetchExecutor; // 🆕 内置 Web Fetch 工具执行器
 pub use general_executor::GeneralToolExecutor;
 pub use knowledge_executor::KnowledgeExecutor; // 🆕 知识工具执行器
 pub use memory_executor::MemoryToolExecutor;
+pub use paper_save_executor::PaperSaveExecutor; // 🆕 论文保存+引用格式化工具执行器
 pub use skills_executor::SkillsExecutor; // 🆕 Skills 工具执行器
 pub use sleep_executor::{get_coordinator_sleep_tool_schema, CoordinatorSleepExecutor};
 pub use subagent_executor::{get_subagent_tool_schema, SubagentExecutor, SUBAGENT_TOOL_NAME};

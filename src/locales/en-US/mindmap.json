@@ -59,6 +59,7 @@
     "filterPng": "PNG Image",
     "switchToMindMapView": "Please switch to mind map view to export images",
     "failed": "Export failed, please try again",
+    "success": "Export successful",
     "processing": "Exporting..."
   },
   "import": {

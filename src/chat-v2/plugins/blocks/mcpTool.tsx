@@ -31,6 +31,7 @@ import { blockRegistry, type BlockComponentProps } from '../../registry';
 import { ToolInputView, ToolOutputView, isTemplateVisualOutput } from './components';
 import { CompletionCard } from '../../components/CompletionCard';
 import { TodoListBlock } from './todoList';
+import { PaperSaveBlock } from './paperSave';
 import { getReadableToolName } from '@/chat-v2/utils/toolDisplayName';
 import {
   emitTemplateDesignerLifecycle,
@@ -302,6 +303,12 @@ const TODO_TOOLS = [
   'builtin-todo_init', 'builtin-todo_update', 'builtin-todo_add', 'builtin-todo_get',
 ];
 
+/**
+ * PaperSave 工具名常量
+ * 使用专用 PaperSaveBlock 显示细粒度下载进度
+ */
+const PAPER_SAVE_TOOLS = ['paper_save', 'builtin-paper_save'];
+
 // 笔记编辑工具列表
 const NOTE_TOOLS = [
   'note_create', 'note_read', 'note_append', 'note_replace', 'note_set', 'note_list', 'note_search',
@@ -393,6 +400,11 @@ const McpToolBlockComponent: React.FC<BlockComponentProps> = ({
     };
     
     return <TodoListBlock block={todoBlock} isStreaming={isStreaming} />;
+  }
+
+  // 🆕 如果是 PaperSave 工具，使用专用进度组件渲染
+  if (PAPER_SAVE_TOOLS.includes(toolName)) {
+    return <PaperSaveBlock block={block} isStreaming={isStreaming} />;
   }
 
   // 如果是 attempt_completion 工具且已完成，显示 CompletionCard

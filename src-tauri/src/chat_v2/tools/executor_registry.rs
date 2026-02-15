@@ -35,6 +35,10 @@ fn get_tool_timeout_secs(tool_name: &str) -> u64 {
         "builtin-web_search" => 180, // 3 分钟
         // 学术论文搜索工具（arXiv / OpenAlex API）
         "builtin-arxiv_search" | "builtin-scholar_search" => 180, // 3 分钟
+        // 论文保存工具（下载 PDF + VFS 存储，批量最多 5 篇）
+        "builtin-paper_save" => 600, // 10 分钟（批量下载+处理）
+        // 引用格式化工具（纯计算，无网络）
+        "builtin-cite_format" => 30, // 30 秒
         // 网络请求和 HTML 解析工具（涉及网络请求和 HTML 解析）
         "builtin-web_fetch" => 180, // 3 分钟
         // RAG 检索工具（可能涉及大量数据）
