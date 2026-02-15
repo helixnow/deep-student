@@ -689,8 +689,8 @@ const TemplateManagementPage: React.FC<TemplateManagementPageProps> = ({
             </div>
           )}
 
-          {/* 视图切换 - 仅浏览模式显示 */}
-          {activeTab === 'browse' && (
+          {/* 视图切换 - 仅浏览模式 + 桌面端显示 */}
+          {activeTab === 'browse' && !isSmallScreen && (
             <div className="px-2 py-1 mt-2">
               <div className="text-xs text-muted-foreground px-2 py-1 font-semibold">
                 {t('view_mode_section')}
@@ -752,7 +752,68 @@ const TemplateManagementPage: React.FC<TemplateManagementPageProps> = ({
           </div>
         )}
 
-        {/* 主内容 */}
+        {/* 主内容 - 代码编辑模式直接填满，其他模式用 ScrollArea */}
+        {(editorTab === 'templates' || editorTab === 'styles') && !isSelectingMode && (activeTab === 'create' || activeTab === 'edit') ? (
+          <div className="flex-1 min-h-0 overflow-hidden">
+            {activeTab === 'create' && (
+              <MinimalTemplateEditor
+                template={editingTemplate}
+                mode="create"
+                externalActiveTab={editorTab}
+                onExternalTabChange={setEditorTab}
+                hideSidebar={true}
+                onSave={async (templateData) => {
+                  try {
+                    await templateManager.createTemplate(templateData);
+                    setActiveTab('browse');
+                    setEditingTemplate(null);
+                    setEditorTab('basic');
+                    setError(null);
+                  } catch (err: unknown) {
+                    logError('创建模板失败', err);
+                    setError(formatErrorMessage(t('create_failed'), err));
+                  }
+                }}
+                onCancel={() => {
+                  setActiveTab('browse');
+                  setEditingTemplate(null);
+                  setEditorTab('basic');
+                }}
+              />
+            )}
+            {activeTab === 'edit' && editingTemplate && (
+              <MinimalTemplateEditor
+                template={editingTemplate}
+                mode="edit"
+                externalActiveTab={editorTab}
+                onExternalTabChange={setEditorTab}
+                hideSidebar={true}
+                onSave={async (templateData) => {
+                  try {
+                    setIsLoading(true);
+                    await templateManager.updateTemplate(editingTemplate.id, templateData);
+                    setActiveTab('browse');
+                    setEditingTemplate(null);
+                    setEditorTab('basic');
+                    setError(null);
+                    const templates = templateManager.getAllTemplates();
+                    setTemplates(templates);
+                  } catch (err: unknown) {
+                    logError('更新模板失败', err);
+                    setError(formatErrorMessage(t('update_failed'), err));
+                  } finally {
+                    setIsLoading(false);
+                  }
+                }}
+                onCancel={() => {
+                  setActiveTab('browse');
+                  setEditingTemplate(null);
+                  setEditorTab('basic');
+                }}
+              />
+            )}
+          </div>
+        ) : (
         <CustomScrollArea
           className="flex-1 min-h-0"
           viewportClassName={isSmallScreen ? 'py-2 px-0 pb-20' : 'p-4'}
@@ -843,6 +904,7 @@ const TemplateManagementPage: React.FC<TemplateManagementPageProps> = ({
           </div>
         )}
         </CustomScrollArea>
+        )}
           </div>
         );
 

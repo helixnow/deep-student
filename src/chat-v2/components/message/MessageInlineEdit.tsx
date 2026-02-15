@@ -3,6 +3,7 @@
  */
 import React, { useRef, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
+import { NotionButton } from '@/components/ui/NotionButton';
 
 export interface MessageInlineEditProps {
   value: string;
@@ -55,20 +56,22 @@ export const MessageInlineEdit: React.FC<MessageInlineEditProps> = ({
         disabled={isSubmitting}
       />
       <div className="flex gap-2">
-        <button
-          className="px-3 py-1.5 text-xs rounded border border-border text-foreground hover:bg-muted transition-colors disabled:opacity-50"
+        <NotionButton
+          variant="ghost"
+          size="sm"
           onClick={onCancel}
           disabled={isSubmitting}
         >
           {t('common:actions.cancel', '取消')}
-        </button>
-        <button
-          className="px-3 py-1.5 text-xs rounded bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
+        </NotionButton>
+        <NotionButton
+          variant="primary"
+          size="sm"
           onClick={onConfirm}
           disabled={isSubmitting}
         >
           {t('chatV2:messageItem.actions.editAndResend', '编辑并重发')}
-        </button>
+        </NotionButton>
       </div>
     </div>
   );

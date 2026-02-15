@@ -10,7 +10,6 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { ZoomIn, ZoomOut, RefreshCw, Minus, Plus, Type } from 'lucide-react';
-import { NotionButton } from '@/components/ui/NotionButton';
 import {
   ZOOM_MIN,
   ZOOM_MAX,
@@ -131,120 +130,89 @@ export const UnifiedPreviewToolbar: React.FC<UnifiedPreviewToolbarProps> = React
 
   return (
     <div
-      className={`
-        flex items-center justify-center gap-0.5
-        h-9 px-2
-        bg-muted/50 border-t
-        ${className}
-      `}
+      className={`modern-viewer-toolbar ${className}`}
     >
       {/* 缩放控制区域 */}
-      <div className="flex items-center gap-0.5">
-        {/* 缩小按钮 */}
-        <NotionButton
-          variant="ghost"
-          size="icon"
-          className="h-7 w-7"
-          onClick={handleZoomOut}
-          disabled={zoomScale <= ZOOM_MIN}
-          title={t('learningHub:previewToolbar.zoomOut')}
-          aria-label={t('learningHub:previewToolbar.zoomOut')}
-        >
-          <ZoomOut className="h-4 w-4" />
-        </NotionButton>
+      <button
+        className="modern-viewer-icon-button"
+        onClick={handleZoomOut}
+        disabled={zoomScale <= ZOOM_MIN}
+        title={t('learningHub:previewToolbar.zoomOut')}
+        aria-label={t('learningHub:previewToolbar.zoomOut')}
+      >
+        <ZoomOut size={16} />
+      </button>
 
-        {/* 缩放比例显示 */}
-        <span
-          className="min-w-[3.5rem] text-center text-xs text-muted-foreground tabular-nums"
-          title={t('learningHub:previewToolbar.currentZoom', { value: formatPercent(zoomScale) })}
-        >
-          {formatPercent(zoomScale)}
-        </span>
+      <span
+        className="modern-viewer-zoom-readout"
+        title={t('learningHub:previewToolbar.currentZoom', { value: formatPercent(zoomScale) })}
+      >
+        {formatPercent(zoomScale)}
+      </span>
 
-        {/* 放大按钮 */}
-        <NotionButton
-          variant="ghost"
-          size="icon"
-          className="h-7 w-7"
-          onClick={handleZoomIn}
-          disabled={zoomScale >= ZOOM_MAX}
-          title={t('learningHub:previewToolbar.zoomIn')}
-          aria-label={t('learningHub:previewToolbar.zoomIn')}
-        >
-          <ZoomIn className="h-4 w-4" />
-        </NotionButton>
+      <button
+        className="modern-viewer-icon-button"
+        onClick={handleZoomIn}
+        disabled={zoomScale >= ZOOM_MAX}
+        title={t('learningHub:previewToolbar.zoomIn')}
+        aria-label={t('learningHub:previewToolbar.zoomIn')}
+      >
+        <ZoomIn size={16} />
+      </button>
 
-        {/* 重置缩放按钮 */}
-        <NotionButton
-          variant="ghost"
-          size="icon"
-          className="h-7 w-7"
-          onClick={onZoomReset}
-          title={t('learningHub:previewToolbar.resetZoom')}
-          aria-label={t('learningHub:previewToolbar.resetZoom')}
-        >
-          <RefreshCw className="h-3.5 w-3.5" />
-        </NotionButton>
-      </div>
+      <button
+        className="modern-viewer-icon-button"
+        onClick={onZoomReset}
+        title={t('learningHub:previewToolbar.resetZoom')}
+        aria-label={t('learningHub:previewToolbar.resetZoom')}
+      >
+        <RefreshCw size={14} />
+      </button>
 
       {/* 字号控制区域（仅 docx/xlsx） */}
       {showFontControl && (
         <>
-          {/* 分隔线 */}
-          <div className="h-5 w-px bg-border mx-1" />
+          <div className="modern-viewer-divider" />
 
-          <div className="flex items-center gap-0.5">
-            {/* 字号图标 */}
-            <Type className="h-3.5 w-3.5 text-muted-foreground mr-0.5" />
+          <Type size={14} className="text-muted-foreground" />
 
-            {/* 减小字号按钮 */}
-            <NotionButton
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7"
-              onClick={handleFontDecrease}
-              disabled={fontScale <= FONT_MIN}
-              title={t('learningHub:previewToolbar.fontDecrease')}
-              aria-label={t('learningHub:previewToolbar.fontDecrease')}
+          <button
+            className="modern-viewer-icon-button"
+            onClick={handleFontDecrease}
+            disabled={fontScale <= FONT_MIN}
+            title={t('learningHub:previewToolbar.fontDecrease')}
+            aria-label={t('learningHub:previewToolbar.fontDecrease')}
+          >
+            <Minus size={14} />
+          </button>
+
+          <span
+            className="modern-viewer-zoom-readout"
+            title={t('learningHub:previewToolbar.currentFont', { value: formatPercent(fontScale) })}
+          >
+            {formatPercent(fontScale)}
+          </span>
+
+          <button
+            className="modern-viewer-icon-button"
+            onClick={handleFontIncrease}
+            disabled={fontScale >= FONT_MAX}
+            title={t('learningHub:previewToolbar.fontIncrease')}
+            aria-label={t('learningHub:previewToolbar.fontIncrease')}
+          >
+            <Plus size={14} />
+          </button>
+
+          {onFontReset && (
+            <button
+              className="modern-viewer-icon-button"
+              onClick={onFontReset}
+              title={t('learningHub:previewToolbar.resetFont')}
+              aria-label={t('learningHub:previewToolbar.resetFont')}
             >
-              <Minus className="h-3.5 w-3.5" />
-            </NotionButton>
-
-            {/* 字号比例显示 */}
-            <span
-              className="min-w-[3rem] text-center text-xs text-muted-foreground tabular-nums"
-              title={t('learningHub:previewToolbar.currentFont', { value: formatPercent(fontScale) })}
-            >
-              {formatPercent(fontScale)}
-            </span>
-
-            {/* 增大字号按钮 */}
-            <NotionButton
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7"
-              onClick={handleFontIncrease}
-              disabled={fontScale >= FONT_MAX}
-              title={t('learningHub:previewToolbar.fontIncrease')}
-              aria-label={t('learningHub:previewToolbar.fontIncrease')}
-            >
-              <Plus className="h-3.5 w-3.5" />
-            </NotionButton>
-
-            {/* 重置字号按钮 */}
-            {onFontReset && (
-              <NotionButton
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7"
-                onClick={onFontReset}
-                title={t('learningHub:previewToolbar.resetFont')}
-                aria-label={t('learningHub:previewToolbar.resetFont')}
-              >
-                <RefreshCw className="h-3.5 w-3.5" />
-              </NotionButton>
-            )}
-          </div>
+              <RefreshCw size={14} />
+            </button>
+          )}
         </>
       )}
     </div>

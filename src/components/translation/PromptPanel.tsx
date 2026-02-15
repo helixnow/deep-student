@@ -5,7 +5,7 @@ import { Textarea } from '../ui/shad/Textarea';
 import { AppSelect } from '../ui/app-menu';
 import { Switch } from '../ui/shad/Switch';
 import { Label } from '../ui/shad/Label';
-import { ChevronDown, ChevronRight, Sparkles, Save, RotateCcw, Plus, X, BookOpen } from 'lucide-react';
+import { Sparkles, Save, RotateCcw, Plus, X, BookOpen } from 'lucide-react';
 import { CustomScrollArea } from '../custom-scroll-area';
 
 interface PromptPanelProps {

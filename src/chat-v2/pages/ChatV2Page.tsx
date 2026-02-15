@@ -1084,8 +1084,13 @@ export const ChatV2Page: React.FC = () => {
       title,
     });
 
-    setAttachmentPreviewOpen(true);
-  }, []);
+    if (isSmallScreen) {
+      // 📱 移动端：向右滑动打开附件预览（MobileSlidingLayout rightPanel）
+      setMobileResourcePanelOpen(true);
+    } else {
+      setAttachmentPreviewOpen(true);
+    }
+  }, [isSmallScreen]);
 
   useEventRegistry([
     {
@@ -2510,12 +2515,71 @@ export const ChatV2Page: React.FC = () => {
                 paddingBottom: `calc(var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px)) + ${MOBILE_LAYOUT.bottomTabBar.defaultHeight}px)`,
               }}
             >
-              <LearningHubSidebar
-                mode="canvas"
-                onClose={() => setMobileResourcePanelOpen(false)}
-                onOpenApp={handleOpenApp}
-                className="h-full"
-              />
+              {openApp ? (
+                <div className="h-full flex flex-col">
+                  {/* 附件/资源预览标题栏 */}
+                  <div className="flex items-center justify-between px-3 py-2 border-b border-border bg-muted/30 shrink-0">
+                    <div className="flex items-center gap-2 min-w-0">
+                      {(() => {
+                        const AppIcon = getAppIcon(openApp.type);
+                        return <AppIcon className="w-4 h-4 text-muted-foreground shrink-0" />;
+                      })()}
+                      <span className="text-sm font-medium truncate">
+                        {openApp.title || t('common:untitled')}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button
+                        onClick={handleOpenInLearningHub}
+                        className="p-1 rounded-md hover:bg-muted transition-colors"
+                        title="在学习中心打开"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5 text-muted-foreground" />
+                      </button>
+                      <button
+                        onClick={() => {
+                          handleCloseApp();
+                          setMobileResourcePanelOpen(false);
+                        }}
+                        className="p-1 rounded-md hover:bg-muted transition-colors"
+                        title={t('common:close')}
+                      >
+                        <X className="w-4 h-4 text-muted-foreground" />
+                      </button>
+                    </div>
+                  </div>
+                  {/* 应用内容 */}
+                  <div className="flex-1 overflow-hidden">
+                    <Suspense
+                      fallback={
+                        <div className="flex items-center justify-center h-full">
+                          <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+                          <span className="ml-2 text-muted-foreground">{t('common:loading')}</span>
+                        </div>
+                      }
+                    >
+                      <UnifiedAppPanel
+                        type={openApp.type}
+                        resourceId={openApp.id}
+                        dstuPath={openApp.filePath || `/${openApp.id}`}
+                        onClose={() => {
+                          handleCloseApp();
+                          setMobileResourcePanelOpen(false);
+                        }}
+                        onTitleChange={handleTitleChange}
+                        className="h-full"
+                      />
+                    </Suspense>
+                  </div>
+                </div>
+              ) : (
+                <LearningHubSidebar
+                  mode="canvas"
+                  onClose={() => setMobileResourcePanelOpen(false)}
+                  onOpenApp={handleOpenApp}
+                  className="h-full"
+                />
+              )}
             </div>
           }
           screenPosition={

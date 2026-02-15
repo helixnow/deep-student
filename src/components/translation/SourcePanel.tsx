@@ -3,8 +3,6 @@ import { useTranslation } from 'react-i18next';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { Textarea } from '../ui/shad/Textarea';
 import { AppSelect } from '../ui/app-menu';
-import { Switch } from '../ui/shad/Switch';
-import { Label } from '../ui/shad/Label';
 import { CommonTooltip } from '../shared/CommonTooltip';
 import {
     ArrowLeftRight,
@@ -28,8 +26,6 @@ interface SourcePanelProps {
     sourceMaxChars?: number;
     isSourceOverLimit?: boolean;
     isTranslating: boolean;
-    isAutoTranslate: boolean;
-    setIsAutoTranslate: (val: boolean) => void;
     onSwapLanguages: () => void;
     onFilesDropped: (files: File[]) => void;
     setShowPromptEditor: (show: boolean) => void;
@@ -56,8 +52,6 @@ export const SourcePanel = React.forwardRef<HTMLTextAreaElement, SourcePanelProp
     sourceMaxChars,
     isSourceOverLimit,
     isTranslating,
-    isAutoTranslate,
-    setIsAutoTranslate,
     onSwapLanguages,
     onFilesDropped,
     setShowPromptEditor,
@@ -140,19 +134,18 @@ export const SourcePanel = React.forwardRef<HTMLTextAreaElement, SourcePanelProp
                         )}
                     </div>
 
-                    {/* 桌面端：自动翻译开关 */}
+                    {/* 桌面端：设置按钮 */}
                     {!isSourceCollapsed && (
-                        <div className="hidden sm:flex items-center gap-2 shrink-0">
-                            <Switch
-                                id="auto-translate-desktop"
-                                checked={isAutoTranslate}
-                                onCheckedChange={setIsAutoTranslate}
-                                className="scale-75 data-[state=checked]:bg-primary"
-                            />
-                            <Label htmlFor="auto-translate-desktop" className="text-xs font-medium text-muted-foreground cursor-pointer whitespace-nowrap">
-                                {t('translation:auto_mode')}
-                            </Label>
-                        </div>
+                        <CommonTooltip content={t('translation:prompt_editor.title')}>
+                            <NotionButton
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => setShowPromptEditor(true)}
+                                className="hidden sm:flex h-7 w-7 text-muted-foreground/60 hover:text-foreground"
+                            >
+                                <Settings2 className="w-3.5 h-3.5" />
+                            </NotionButton>
+                        </CommonTooltip>
                     )}
                 </div>
             </div>
@@ -178,22 +171,9 @@ export const SourcePanel = React.forwardRef<HTMLTextAreaElement, SourcePanelProp
                 </UnifiedDragDropZone>
 
                 {/* Floating Bottom Controls (Source) - 仅桌面端显示 */}
-                <div className="absolute bottom-4 left-4 right-4 hidden sm:flex items-center justify-between pointer-events-none">
-                    {/* 桌面端：翻译设置触发按钮 */}
-                    <div className="pointer-events-auto opacity-0 group-hover/source:opacity-100 transition-opacity duration-200">
-                        <NotionButton
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setShowPromptEditor(true)}
-                            className="bg-background/80 backdrop-blur-sm border shadow-sm"
-                        >
-                            <Settings2 className="w-3.5 h-3.5 mr-1.5" />
-                            {t('translation:prompt_editor.title')}
-                        </NotionButton>
-                    </div>
-
+                <div className="absolute bottom-4 right-4 hidden sm:flex items-center pointer-events-none">
                     {/* 桌面端：字数统计和清除按钮 */}
-                    <div className="pointer-events-auto flex items-center gap-3 bg-background/80 backdrop-blur-sm p-1.5 rounded-lg border shadow-sm opacity-0 group-hover/source:opacity-100 transition-opacity duration-200 shrink-0 ml-2">
+                    <div className="pointer-events-auto flex items-center gap-3 bg-background/80 backdrop-blur-sm p-1.5 rounded-lg border shadow-sm opacity-0 group-hover/source:opacity-100 transition-opacity duration-200 shrink-0">
                         <span className={`text-xs px-2 border-r ${
                           isSourceOverLimit
                             ? 'text-destructive font-medium'

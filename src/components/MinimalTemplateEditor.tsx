@@ -123,6 +123,34 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
   const [codeSubTab, setCodeSubTab] = useState<CodeSubTab>('front');
   const cmContainerRef = useRef<HTMLDivElement>(null);
 
+  // 移动端横向滚动屏
+  const mobileScrollRef = useRef<HTMLDivElement>(null);
+  const scrollToScreen = useCallback((index: number) => {
+    const container = mobileScrollRef.current;
+    if (!container) return;
+    container.scrollTo({ left: index * container.clientWidth, behavior: 'smooth' });
+  }, []);
+  const handleMobileScroll = useCallback(() => {
+    const container = mobileScrollRef.current;
+    if (!container) return;
+    const w = container.clientWidth;
+    if (w === 0) return;
+    const index = Math.round(container.scrollLeft / w);
+    const tabs: CodeSubTab[] = ['front', 'back', 'css'];
+    if (tabs[index] && tabs[index] !== codeSubTab) {
+      setCodeSubTab(tabs[index]);
+    }
+  }, [codeSubTab]);
+
+  // 移动端每屏独立的 CodeMirror 扩展
+  const htmlExtensions = useMemo(() => [html(), EditorView.lineWrapping], []);
+  const cssExtensions = useMemo(() => [cssLang(), EditorView.lineWrapping], []);
+
+  // 移动端每屏独立的 onChange
+  const handleFrontChange = useCallback((v: string) => setFormData(prev => ({ ...prev, front_template: v })), []);
+  const handleBackChange = useCallback((v: string) => setFormData(prev => ({ ...prev, back_template: v })), []);
+  const handleCssChange = useCallback((v: string) => setFormData(prev => ({ ...prev, css_style: v })), []);
+
   // 暗色模式检测
   const [isDarkMode, setIsDarkMode] = useState(() => {
     if (typeof document !== 'undefined') {
@@ -356,7 +384,7 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
   };
 
   return (
-    <div className={`minimal-template-editor ${hideSidebar ? 'no-sidebar' : ''}`}>
+    <div className={`minimal-template-editor ${hideSidebar ? 'no-sidebar' : ''} ${(activeTab === 'templates' || activeTab === 'styles') ? 'code-mode' : ''}`}>
       {/* 侧边栏导航 - 可隐藏 */}
       {!hideSidebar && (
         <div className="editor-sidebar">
@@ -403,7 +431,7 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
       {/* 主内容区 */}
       <div className="editor-main">
         {/* 内容区域 */}
-        <div className="editor-content">
+        <div className={`editor-content ${(activeTab === 'templates' || activeTab === 'styles') ? 'editor-content-code' : ''}`}>
           {/* 错误提示 */}
           {validationErrors.length > 0 && (
             <div className="validation-alert">
@@ -420,10 +448,10 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
 
           {/* 基本信息 */}
           {activeTab === 'basic' && (
-            <div className="setting-section">
-              <div className="setting-section-header">
-                <h2 className="setting-section-title">{t('basic_info')}</h2>
-                <p className="setting-section-desc">{t('basic_info_desc')}</p>
+            <div className="space-y-6">
+              <div>
+                <h2 className="text-base font-semibold text-foreground">{t('basic_info')}</h2>
+                <p className="text-xs text-muted-foreground mt-0.5">{t('basic_info_desc')}</p>
               </div>
                 <div className="form-grid">
                   <div className="form-field">
@@ -524,15 +552,10 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
                     />
                   </div>
                 </div>
-            </div>
-          )}
 
-          {/* 字段管理 */}
-          {activeTab === 'basic' && (
-            <div className="setting-section">
-              <div className="setting-section-header">
-                <h2 className="setting-section-title">{t('field_management', '字段管理')}</h2>
-                <p className="setting-section-desc">{t('field_management_desc', '定义卡片所需的字段')}</p>
+              <div className="border-t border-border/30 pt-5">
+                <h2 className="text-base font-semibold text-foreground">{t('field_management', '字段管理')}</h2>
+                <p className="text-xs text-muted-foreground mt-0.5 mb-4">{t('field_management_desc', '定义卡片所需的字段')}</p>
               </div>
                 <div className="fields-manager">
                   <div className="field-list">
@@ -573,9 +596,124 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
             </div>
           )}
 
-          {/* 模板代码（含样式） - 参考技能编辑器分栏布局 */}
+          {/* 模板代码（含样式） - 桌面分栏 / 移动端上下布局 */}
           {(activeTab === 'templates' || activeTab === 'styles') && (
             <div className="template-code-split-panel">
+              {/* 子 tab 切换栏 - 桌面端在左栏内，移动端在顶部 */}
+              {isSmallScreen && (
+                <div className="flex-none px-3 py-2 border-b border-border/30">
+                  <div className="flex gap-1 p-1 bg-muted/30 rounded-lg">
+                    <button
+                      type="button"
+                      className={`flex-1 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                        codeSubTab === 'front'
+                          ? 'bg-background shadow-sm text-foreground'
+                          : 'text-muted-foreground hover:text-foreground'
+                      }`}
+                      onClick={() => { setCodeSubTab('front'); scrollToScreen(0); }}
+                    >
+                      {t('front_template_title', '正面模板')}
+                    </button>
+                    <button
+                      type="button"
+                      className={`flex-1 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                        codeSubTab === 'back'
+                          ? 'bg-background shadow-sm text-foreground'
+                          : 'text-muted-foreground hover:text-foreground'
+                      }`}
+                      onClick={() => { setCodeSubTab('back'); scrollToScreen(1); }}
+                    >
+                      {t('back_template_title', '背面模板')}
+                    </button>
+                    <button
+                      type="button"
+                      className={`flex-1 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                        codeSubTab === 'css'
+                          ? 'bg-background shadow-sm text-foreground'
+                          : 'text-muted-foreground hover:text-foreground'
+                      }`}
+                      onClick={() => { setCodeSubTab('css'); scrollToScreen(2); }}
+                    >
+                      {t('css_style_title', 'CSS 样式')}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* 移动端：横向滚动屏，左右滑动切换 front / back / css */}
+              {isSmallScreen ? (
+                <div
+                  ref={mobileScrollRef}
+                  className="flex flex-1 min-h-0 overflow-x-auto snap-x snap-mandatory"
+                  style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+                  onScroll={handleMobileScroll}
+                >
+                  {/* 屏 1：正面模板 */}
+                  <div className="w-full shrink-0 snap-start flex flex-col h-full">
+                    <div className="flex-none border-b border-border/30">
+                      <div className="px-3 py-1.5 text-[11px] text-muted-foreground/60">{t('template_preview', '模板预览')}</div>
+                      <div className="h-[100px] overflow-hidden">
+                        <IframePreview
+                          htmlContent={renderCardPreview(formData.front_template, formData as any, validateJson(previewDataJson) ? JSON.parse(previewDataJson) : {}, false)}
+                          cssContent={formData.css_style}
+                        />
+                      </div>
+                    </div>
+                    <div className="flex-1 min-h-0 overflow-hidden relative">
+                      <CodeMirror
+                        value={formData.front_template}
+                        onChange={handleFrontChange}
+                        extensions={htmlExtensions}
+                        theme={cmTheme}
+                        height="100%"
+                        className="h-full template-codemirror-editor"
+                        basicSetup={{ lineNumbers: true, highlightActiveLine: true, foldGutter: true, bracketMatching: true, closeBrackets: true, autocompletion: true }}
+                      />
+                    </div>
+                  </div>
+                  {/* 屏 2：背面模板 */}
+                  <div className="w-full shrink-0 snap-start flex flex-col h-full">
+                    <div className="flex-none border-b border-border/30">
+                      <div className="px-3 py-1.5 text-[11px] text-muted-foreground/60">{t('template_preview', '模板预览')}</div>
+                      <div className="h-[100px] overflow-hidden">
+                        <IframePreview
+                          htmlContent={renderCardPreview(formData.back_template, formData as any, validateJson(previewDataJson) ? JSON.parse(previewDataJson) : {}, true)}
+                          cssContent={formData.css_style}
+                        />
+                      </div>
+                    </div>
+                    <div className="flex-1 min-h-0 overflow-hidden relative">
+                      <CodeMirror
+                        value={formData.back_template}
+                        onChange={handleBackChange}
+                        extensions={htmlExtensions}
+                        theme={cmTheme}
+                        height="100%"
+                        className="h-full template-codemirror-editor"
+                        basicSetup={{ lineNumbers: true, highlightActiveLine: true, foldGutter: true, bracketMatching: true, closeBrackets: true, autocompletion: true }}
+                      />
+                    </div>
+                  </div>
+                  {/* 屏 3：CSS 样式 */}
+                  <div className="w-full shrink-0 snap-start flex flex-col h-full">
+                    <div className="flex-none px-3 py-1.5 border-b border-border/30">
+                      <span className="text-[11px] text-muted-foreground/60">{t('css_style_title', 'CSS 样式')}</span>
+                    </div>
+                    <div className="flex-1 min-h-0 overflow-hidden relative">
+                      <CodeMirror
+                        value={formData.css_style}
+                        onChange={handleCssChange}
+                        extensions={cssExtensions}
+                        theme={cmTheme}
+                        height="100%"
+                        className="h-full template-codemirror-editor"
+                        basicSetup={{ lineNumbers: true, highlightActiveLine: true, foldGutter: true, bracketMatching: true, closeBrackets: true, autocompletion: true }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              ) : (
+              /* 桌面端：左右分栏 */
               <HorizontalResizable
                 initial={0.35}
                 minLeft={0.25}
@@ -728,15 +866,16 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
                   </div>
                 }
               />
+              )}
             </div>
           )}
 
           {/* 预览数据 */}
           {activeTab === 'data' && (
-            <div className="setting-section">
-              <div className="setting-section-header">
-                <h2 className="setting-section-title">{t('preview_data', '预览数据')}</h2>
-                <p className="setting-section-desc">{t('preview_data_desc', '定义预览时使用的示例数据')}</p>
+            <div className="space-y-4">
+              <div>
+                <h2 className="text-base font-semibold text-foreground">{t('preview_data', '预览数据')}</h2>
+                <p className="text-xs text-muted-foreground mt-0.5">{t('preview_data_desc', '定义预览时使用的示例数据')}</p>
               </div>
                 <div className="mb-3">
                   <NotionButton
@@ -765,10 +904,10 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
 
           {/* 提取规则 */}
           {activeTab === 'rules' && (
-            <div className="setting-section">
-              <div className="setting-section-header">
-                <h2 className="setting-section-title">{t('field_extraction_rules')}</h2>
-                <p className="setting-section-desc">{t('extraction_rules_desc', '定义AI如何提取和生成各个字段的内容')}</p>
+            <div className="space-y-4">
+              <div>
+                <h2 className="text-base font-semibold text-foreground">{t('field_extraction_rules')}</h2>
+                <p className="text-xs text-muted-foreground mt-0.5">{t('extraction_rules_desc', '定义AI如何提取和生成各个字段的内容')}</p>
               </div>
                 <div className="rules-editor">
                   {Object.entries(fieldExtractionRules).map(([fieldName, rule]) => (
@@ -853,10 +992,10 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
           {/* 高级设置 */}
           {activeTab === 'advanced' && (
             <>
-              <div className="setting-section">
-                <div className="setting-section-header">
-                  <h2 className="setting-section-title">{t('advanced_settings', '高级设置')}</h2>
-                  <p className="setting-section-desc">{t('advanced_settings_desc', '配置AI生成提示词和其他高级选项')}</p>
+              <div className="space-y-4">
+                <div>
+                  <h2 className="text-base font-semibold text-foreground">{t('advanced_settings', '高级设置')}</h2>
+                  <p className="text-xs text-muted-foreground mt-0.5">{t('advanced_settings_desc', '配置AI生成提示词和其他高级选项')}</p>
                 </div>
                   <div className="form-field">
                     <div className="flex items-center justify-between mb-2">
@@ -883,10 +1022,10 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
               
               {/* 完整提示词预览 */}
               {showPromptPreview && (
-                <div className="setting-section">
-                  <div className="setting-section-header">
-                    <h2 className="setting-section-title">{t('full_prompt_preview')}</h2>
-                    <p className="setting-section-desc">{t('full_prompt_preview_desc')}</p>
+                <div className="space-y-4 mt-4">
+                  <div>
+                    <h2 className="text-base font-semibold text-foreground">{t('full_prompt_preview')}</h2>
+                    <p className="text-xs text-muted-foreground mt-0.5">{t('full_prompt_preview_desc')}</p>
                   </div>
                     <div className="preview-content font-mono text-sm bg-muted p-4 rounded-md">
                       {templateService.generatePrompt(formData as any)}
@@ -896,31 +1035,30 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
             </>
           )}
 
-          {/* 底部操作栏 - 参考设置页面风格 */}
-          <div className="setting-section">
-          <div className="flex items-center justify-between">
-            <div className="footer-info">
-              {mode === 'edit' && template && (
-                <span className="text-sm text-muted-foreground">
-                  {t('created_at_label', '创建于 {{date}}', { date: new Date(template.created_at).toLocaleDateString() })} · 
-                  {t('updated_at_label', '更新于 {{date}}', { date: new Date(template.updated_at).toLocaleDateString() })}
-                </span>
-              )}
-            </div>
-            <div className="flex gap-3">
-              <NotionButton type="button" variant="ghost" onClick={onCancel}>
-                {t('cancel_button', '取消')}
-              </NotionButton>
-              <NotionButton
-                type="button"
-                onClick={handleSubmit}
-                disabled={isSubmitting}
-              >
-                {isSubmitting && <div className="loading-spinner mr-2" />}
-                {mode === 'create' ? t('submit_create', '创建模板') : t('submit_save', '保存更改')}
-              </NotionButton>
-            </div>
+        </div>
+
+        {/* 底部操作栏 - 固定在 editor-main 底部，不参与滚动 */}
+        <div className="flex-none px-4 py-1.5 border-t border-border/40 flex items-center justify-between">
+          <div className="footer-info">
+            {mode === 'edit' && template && (
+              <span className="text-sm text-muted-foreground">
+                {t('created_at_label', '创建于 {{date}}', { date: new Date(template.created_at).toLocaleDateString() })} · 
+                {t('updated_at_label', '更新于 {{date}}', { date: new Date(template.updated_at).toLocaleDateString() })}
+              </span>
+            )}
           </div>
+          <div className="flex gap-3">
+            <NotionButton type="button" variant="ghost" onClick={onCancel}>
+              {t('cancel_button', '取消')}
+            </NotionButton>
+            <NotionButton
+              type="button"
+              onClick={handleSubmit}
+              disabled={isSubmitting}
+            >
+              {isSubmitting && <div className="loading-spinner mr-2" />}
+              {mode === 'create' ? t('submit_create', '创建模板') : t('submit_save', '保存更改')}
+            </NotionButton>
           </div>
         </div>
       </div>

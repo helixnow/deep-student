@@ -10,6 +10,22 @@
   margin-bottom: -200px;
 }
 
+/* 代码编辑模式：撑满父容器，禁止外部滚动 */
+.minimal-template-editor.code-mode {
+  height: 100%;
+  margin-bottom: 0;
+  padding: 0;
+  gap: 0;
+  overflow: hidden;
+}
+
+.minimal-template-editor.code-mode .editor-main {
+  width: 100%;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+}
+
 /* 无侧边栏模式 - 内容区占满宽度，参考设置页面风格 */
 .minimal-template-editor.no-sidebar {
   padding: 0;
@@ -687,6 +703,11 @@
   height: 12px;
 }
 
+/* 移动端横向滚动屏 - 隐藏滚动条 */
+.template-code-split-panel > .snap-x::-webkit-scrollbar {
+  display: none;
+}
+
 /* ============================================================
  * 模板代码分栏布局 - 参考技能编辑器 (SkillFullscreenEditor)
  * ============================================================ */
@@ -694,17 +715,19 @@
   flex: 1;
   min-height: 0;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
-/* 当 editor-content 包含分栏面板时，去掉 padding、禁止外部滚动 */
-.editor-content:has(.template-code-split-panel) {
+/* 代码编辑模式：去掉 padding、禁止外部滚动，面板撑满 */
+.editor-content.editor-content-code {
   padding: 0 !important;
   display: flex;
   flex-direction: column;
   overflow: hidden;
 }
 
-.minimal-template-editor.no-sidebar .editor-content:has(.template-code-split-panel) {
+.minimal-template-editor.no-sidebar .editor-content.editor-content-code {
   padding: 0 !important;
 }
 

@@ -1157,6 +1157,19 @@ export const TaskDashboardPage: React.FC<TaskDashboardPageProps> = ({
           )}
         </div>
 
+        {/* ======== 移动端模板库入口 ======== */}
+        {isSmallScreen && onOpenTemplateManagement && (
+          <div className="mb-6">
+            <NotionButton
+              variant="outline"
+              onClick={onOpenTemplateManagement}
+              className="w-full justify-center h-9"
+            >
+              {t('taskDashboard.openTemplateLib')}
+            </NotionButton>
+          </div>
+        )}
+
         {/* ======== 数据库视图 ======== */}
         <div>
           {/* 标题 + 操作 */}
@@ -1287,17 +1300,17 @@ export const TaskDashboardPage: React.FC<TaskDashboardPageProps> = ({
           ) : (
             <>
               {/* 表头 */}
-              <div className="overflow-x-auto">
-                <div className={isSmallScreen ? 'min-w-[680px]' : undefined}>
+              <div className={isSmallScreen ? '' : 'overflow-x-auto'}>
+                <div>
                   <div className="flex items-center gap-3 px-3 py-2 text-[11px] font-medium text-muted-foreground/40 uppercase tracking-wider select-none">
                     <span className="w-4 flex-shrink-0" />
                     <span className="w-[15px] flex-shrink-0" />
-                    <span className="flex-1">{t('taskDashboard.colName')}</span>
-                    <span className="w-[72px] flex-shrink-0">{t('taskDashboard.colStatus')}</span>
-                    <span className="w-[48px] flex-shrink-0 text-right">{t('taskDashboard.chartCards')}</span>
+                    <span className="flex-1 min-w-0">{t('taskDashboard.colName')}</span>
+                    <span className="w-[60px] sm:w-[72px] flex-shrink-0">{t('taskDashboard.colStatus')}</span>
+                    <span className="w-[40px] sm:w-[48px] flex-shrink-0 text-right">{t('taskDashboard.chartCards')}</span>
                     <span className="w-[140px] flex-shrink-0 hidden md:block">{t('taskDashboard.progressLabel')}</span>
                     <span className="w-[80px] flex-shrink-0 text-right hidden sm:block">{t('taskDashboard.colTime')}</span>
-                    <span className="w-[96px] flex-shrink-0" />
+                    <span className="w-[48px] sm:w-[96px] flex-shrink-0" />
                   </div>
 
                   <div className="h-px bg-border/20" />

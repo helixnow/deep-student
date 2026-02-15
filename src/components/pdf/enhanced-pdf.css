@@ -89,14 +89,14 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 4px;
-  padding: 4px 8px;
+  gap: 2px;
+  height: 36px;
+  padding: 0 8px;
   background: hsl(var(--card));
-  border-top: 1px solid hsl(var(--border));
+  border-top: 1px solid hsl(var(--border) / 0.5);
   flex-shrink: 0;
   flex-wrap: nowrap;
   overflow: visible;
-  min-height: 36px;
 }
 
 .ds-pdf__toolbar--bottom {
@@ -189,8 +189,9 @@
 .ds-toolbar-divider {
   width: 1px;
   height: 16px;
-  background: hsl(var(--border));
+  background: hsl(var(--border) / 0.4);
   margin: 0 2px;
+  flex-shrink: 0;
 }
 
 /* 通用按钮 - 无容器化，仅图标 */
@@ -266,11 +267,12 @@
 
 /* 缩放读数 */
 .ds-zoom-readout {
-  min-width: 40px;
+  min-width: 3rem;
   text-align: center;
   color: hsl(var(--muted-foreground));
   font-size: 12px;
-  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
 }
 
 /* 缩放菜单 */

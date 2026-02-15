@@ -7648,9 +7648,24 @@ body {
 }
 
 .modern-viewer-toolbar {
-  background: hsl(var(--popover) / 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  height: 36px;
+  padding: 0 8px;
+  background: hsl(var(--card));
   border-top: 1px solid hsl(var(--border) / 0.5);
   color: hsl(var(--foreground));
+  flex-shrink: 0;
+}
+
+.modern-viewer-divider {
+  width: 1px;
+  height: 16px;
+  background: hsl(var(--border) / 0.4);
+  margin: 0 2px;
+  flex-shrink: 0;
 }
 
 .modern-viewer-footer {
@@ -7673,54 +7688,56 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: hsl(var(--card) / 0.7);
-  color: hsl(var(--foreground));
-  border: 1px solid hsl(var(--border) / 0.55);
-  transition: background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, color 0.2s ease;
+  min-width: 26px;
+  height: 26px;
+  padding: 3px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: hsl(var(--muted-foreground));
+  cursor: pointer;
+  transition: color .15s ease, background .15s ease;
 }
 
 .modern-viewer-icon-button:hover:not([disabled]) {
-  background: hsl(var(--card) / 0.85);
-  border-color: hsl(var(--border) / 0.7);
-  box-shadow: 0 10px 26px -16px hsl(var(--foreground) / 0.22);
+  color: hsl(var(--foreground));
+  background: hsl(var(--accent));
 }
 
 .modern-viewer-icon-button:disabled {
-  opacity: 0.45;
+  opacity: 0.4;
   cursor: not-allowed;
-  box-shadow: none;
 }
 
 .modern-viewer-icon-button--primary {
-  background: hsl(var(--primary) / 0.22);
-  border-color: hsl(var(--primary) / 0.45);
   color: hsl(var(--primary));
 }
 
 .modern-viewer-icon-button--primary:hover:not([disabled]) {
-  background: hsl(var(--primary) / 0.3);
+  background: hsl(var(--primary) / 0.15);
+  color: hsl(var(--primary));
 }
 
 .modern-viewer-icon-button--success {
-  background: hsl(var(--success) / 0.22);
-  border-color: hsl(var(--success) / 0.45);
-  color: hsl(var(--success));
+  color: hsl(142 71% 45%);
 }
 
 .modern-viewer-icon-button--danger {
-  background: hsl(var(--destructive) / 0.22);
-  border-color: hsl(var(--destructive) / 0.45);
   color: hsl(var(--destructive));
 }
 
-.modern-viewer-icon-button--ghost {
-  background: hsl(var(--muted) / 0.45);
-  border-color: hsl(var(--border) / 0.4);
-  color: hsl(var(--muted-foreground));
+.modern-viewer-icon-button--danger:hover:not([disabled]) {
+  background: hsl(var(--destructive) / 0.15);
+  color: hsl(var(--destructive));
 }
 
-.modern-viewer-icon-button--ghost:hover:not([disabled]) {
-  background: hsl(var(--muted) / 0.58);
+.modern-viewer-zoom-readout {
+  min-width: 3rem;
+  text-align: center;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: hsl(var(--muted-foreground));
+  line-height: 1;
 }
 
 .modern-viewer-hint {

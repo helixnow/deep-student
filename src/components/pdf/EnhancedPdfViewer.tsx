@@ -1225,9 +1225,11 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
               onClick={() => handleTogglePageSelect(pageNum)}
             >
               {isSelected ? <CheckSquare size={16} /> : <Square size={16} />}
-              <span className="ds-pdf__select-btn-text">
-                {isSelected ? t('pdf:toolbar.selected', '已选择') : t('pdf:toolbar.select', '选择')}
-              </span>
+              {typeof maxSelections === 'number' && selectedPages && (
+                <span className="ds-pdf__select-btn-text">
+                  {selectedPages.size}/{maxSelections}
+                </span>
+              )}
             </button>
           </div>
         )}
@@ -1243,6 +1245,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
     pdfSettings.enableAnnotationLayerByDefault,
     getPageHighlights,
     handleTogglePageSelect,
+    maxSelections,
     pageWidth,
     renderDpr,
     rotation,
@@ -1757,15 +1760,6 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
         )}
       </div>
 
-      {/* 选择计数 */}
-      {enableStudyControls && typeof maxSelections === 'number' && selectedPages && (
-        <div className="ds-pdf__floating-counter">
-          {t('textbook:selection_count', '已选择 {{count}} / {{max}} 页', {
-            count: selectedPages.size,
-            max: maxSelections
-          })}
-        </div>
-      )}
 
       {/* 阅读进度条 */}
       {numPages > 0 && (

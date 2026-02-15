@@ -399,8 +399,6 @@ export const TranslationMain: React.FC<TranslationMainProps> = ({
                   sourceMaxChars={sourceMaxChars}
                   isSourceOverLimit={isSourceOverLimit}
                   isTranslating={isTranslating}
-                  isAutoTranslate={isAutoTranslate}
-                  setIsAutoTranslate={setIsAutoTranslate}
                   onSwapLanguages={onSwapLanguages}
                   onFilesDropped={onFilesDropped}
                   setShowPromptEditor={setShowPromptEditor}
@@ -495,8 +493,6 @@ export const TranslationMain: React.FC<TranslationMainProps> = ({
       sourceMaxChars={sourceMaxChars}
       isSourceOverLimit={isSourceOverLimit}
       isTranslating={isTranslating}
-      isAutoTranslate={isAutoTranslate}
-      setIsAutoTranslate={setIsAutoTranslate}
       onSwapLanguages={onSwapLanguages}
       onFilesDropped={onFilesDropped}
       setShowPromptEditor={setShowPromptEditor}
@@ -542,44 +538,45 @@ export const TranslationMain: React.FC<TranslationMainProps> = ({
   );
 
   // ========== 桌面端：根据容器宽度自适应布局 ==========
-  return (
-    <div ref={desktopContainerRef} className="h-full w-full relative overflow-hidden">
-      {isDesktopNarrow ? (
-        // 窄屏时使用上下布局
-        <VerticalResizable
-          initial={0.4}
-          minTop={0.2}
-          minBottom={0.3}
-          className="bg-background"
-          top={desktopSourcePanel}
-          bottom={desktopTargetPanel}
-        />
-      ) : (
-        // 正常宽度使用左右布局
-        <HorizontalResizable
-          initial={0.5}
-          minLeft={0.3}
-          minRight={0.3}
-          className="bg-background"
-          left={desktopSourcePanel}
-          right={desktopTargetPanel}
-        />
-      )}
+  const settingsDrawerWidth = 320;
 
-      {/* 设置抽屉遮罩（参考作文批改 GradingMain） */}
-      {showPromptEditor && (
-        <div
-          className="absolute inset-0 bg-black/20 z-10"
-          onClick={() => setShowPromptEditor(false)}
-        />
-      )}
+  return (
+    <div ref={desktopContainerRef} className="relative h-full overflow-hidden bg-background flex">
+      {/* 主内容区：通过 marginRight 推挤让位给抽屉 */}
+      <div
+        className="flex-1 min-w-0 h-full transition-all duration-300 ease-out"
+        style={{ marginRight: showPromptEditor ? settingsDrawerWidth : 0 }}
+      >
+        {isDesktopNarrow ? (
+          // 窄屏时使用上下布局
+          <VerticalResizable
+            initial={0.4}
+            minTop={0.2}
+            minBottom={0.3}
+            className="bg-background"
+            top={desktopSourcePanel}
+            bottom={desktopTargetPanel}
+          />
+        ) : (
+          // 正常宽度使用左右布局
+          <HorizontalResizable
+            initial={0.5}
+            minLeft={0.3}
+            minRight={0.3}
+            className="bg-background"
+            left={desktopSourcePanel}
+            right={desktopTargetPanel}
+          />
+        )}
+      </div>
 
       {/* 设置抽屉 */}
       <div
         className={cn(
-          "absolute top-0 right-0 h-full w-[320px] z-20 transition-transform duration-300 ease-out",
+          "absolute top-0 right-0 h-full transition-transform duration-300 ease-out shadow-lg",
           showPromptEditor ? "translate-x-0" : "translate-x-full"
         )}
+        style={{ width: settingsDrawerWidth }}
       >
         <PromptPanel
           customPrompt={customPrompt}

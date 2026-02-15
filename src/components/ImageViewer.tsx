@@ -224,7 +224,7 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
         <div 
           ref={zoomContainerRef}
           className="flex items-center justify-center overflow-hidden bg-[hsl(var(--card) / 0.5)]"
-          style={{ height: images.length > 1 ? 'calc(100vh - 40px - 88px)' : 'calc(100vh - 40px)', overflow: 'hidden' }}
+          style={{ height: images.length > 1 ? 'calc(100vh - 36px - 88px)' : 'calc(100vh - 36px)', overflow: 'hidden' }}
           onMouseDown={handleMouseDown}
         >
           <img
@@ -317,32 +317,32 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
         )}
 
         {/* 底部工具栏 */}
-        <div className="modern-viewer-toolbar flex items-center justify-center gap-1 px-3 py-1 backdrop-blur-md" style={{ height: '40px', flexShrink: 0 }}>
-          <span className="text-foreground font-medium text-xs mr-1">
+        <div className="modern-viewer-toolbar">
+          <span className="modern-viewer-zoom-readout">
             {currentIndex + 1} / {images.length}
           </span>
-          <div className="w-px h-4 bg-[hsl(var(--border)/0.45)] mx-1" />
+          <div className="modern-viewer-divider" />
           <button
             onClick={() => setScale(prev => Math.max(prev / 1.2, 0.1))}
-            className="modern-viewer-icon-button rounded-md p-1"
+            className="modern-viewer-icon-button"
             title={t('common:imageViewer.zoom_out')}
           >
             <ZoomOut size={16} />
           </button>
-          <span className="px-1.5 py-0.5 rounded text-xs font-medium min-w-[44px] text-center border border-[hsl(var(--border)/0.45)] bg-[hsl(var(--card)/0.55)] text-[hsl(var(--foreground))]">
+          <span className="modern-viewer-zoom-readout">
             {Math.round(scale * 100)}%
           </span>
           <button
             onClick={() => setScale(prev => Math.min(prev * 1.2, 5))}
-            className="modern-viewer-icon-button rounded-md p-1"
+            className="modern-viewer-icon-button"
             title={t('common:imageViewer.zoom_in')}
           >
             <ZoomIn size={16} />
           </button>
-          <div className="w-px h-4 bg-[hsl(var(--border)/0.45)] mx-1" />
+          <div className="modern-viewer-divider" />
           <button
             onClick={() => setRotation(prev => (prev + 90) % 360)}
-            className="modern-viewer-icon-button rounded-md p-1"
+            className="modern-viewer-icon-button"
             title={t('common:imageViewer.rotate_title')}
           >
             <RotateCw size={16} />
@@ -353,12 +353,12 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
               setRotation(0);
               setPosition({ x: 0, y: 0 });
             }}
-            className="modern-viewer-icon-button rounded-md p-1"
+            className="modern-viewer-icon-button"
             title={t('common:imageViewer.reset_title')}
           >
             <Home size={16} />
           </button>
-          <div className="w-px h-4 bg-[hsl(var(--border)/0.45)] mx-1" />
+          <div className="modern-viewer-divider" />
           <div className="flex items-center gap-1 text-xs text-muted-foreground">
             <span>{t('common:imageViewer.blurLabel', 'Blur')}</span>
             <Switch
@@ -367,10 +367,10 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
               aria-label={blurToggleTitle}
             />
           </div>
-          <div className="w-px h-4 bg-[hsl(var(--border)/0.45)] mx-1" />
+          <div className="modern-viewer-divider" />
           <button
             onClick={onClose}
-            className="modern-viewer-icon-button modern-viewer-icon-button--danger rounded-md p-1"
+            className="modern-viewer-icon-button modern-viewer-icon-button--danger"
             title={t('common:imageViewer.close')}
           >
             <X size={16} />
