@@ -54,7 +54,7 @@ nanoid = "0.4"
 ulid = "1.1"
 tracing = { version = "0.1", features = ["log"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
-jsonschema = "0.18"
+jsonschema = "0.42"
 # blake3 = "1.5"  # 临时禁用避免C编译问题
 # keyring = "2.0"  # 已禁用：改用加密文件存储，避免 Keychain 弹窗
 zip = { version = "0.6", default-features = false, features = ["deflate"] }
