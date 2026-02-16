@@ -581,6 +581,9 @@ impl ExamSheetService {
                     };
 
                     // ★ 追加模式：保留现有页面，追加新识别的页面
+                    // 注意：aggregated_pages 是累积的（包含所有已完成 chunk 的页面），
+                    // 因此每次迭代需要重建 preview.pages，而非 extend（否则会重复追加）
+                    preview.pages.truncate(existing_page_count);
                     preview.pages.extend(aggregated_pages.clone());
                     preview.raw_model_response = raw_value.clone();
 
@@ -632,6 +635,8 @@ impl ExamSheetService {
                         summary.updated_at = chrono::Utc::now();
 
                         // ★ 追加模式：保留现有页面，追加新识别的页面
+                        // 注意：truncate 后 extend，避免重复追加
+                        preview.pages.truncate(existing_page_count);
                         preview.pages.extend(aggregated_pages.clone());
 
                         // ★ 追加模式：计算总卡片数（现有 + 新增）

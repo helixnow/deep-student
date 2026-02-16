@@ -828,17 +828,37 @@ impl LLMManager {
 
         let results = join_all(tasks).await;
         let mut all_pages: Vec<ExamSegmentationPage> = Vec::new();
+        let mut failed_pages: Vec<(usize, String)> = Vec::new();
         for (idx, res) in results.into_iter().enumerate() {
             match res {
                 Ok(page) => all_pages.push(page),
                 Err(e) => {
-                    return Err(AppError::llm(format!(
-                        "页面 {} 识别失败: {}",
-                        page_offset + idx,
-                        e
-                    )));
+                    let page_idx = page_offset + idx;
+                    warn!(
+                        "[DeepSeek-OCR] 页面 {} 识别失败（保留其余已成功页面）: {}",
+                        page_idx, e
+                    );
+                    failed_pages.push((page_idx, e.to_string()));
                 }
             }
+        }
+        // 全部失败时才返回错误；部分失败时保留已成功的页面
+        if all_pages.is_empty() && !failed_pages.is_empty() {
+            let first_err = &failed_pages[0];
+            return Err(AppError::llm(format!(
+                "所有 {} 页均识别失败，首个错误（页面 {}）: {}",
+                failed_pages.len(),
+                first_err.0,
+                first_err.1
+            )));
+        }
+        if !failed_pages.is_empty() {
+            warn!(
+                "[DeepSeek-OCR] {} 页识别失败（已跳过）: {:?}，成功 {} 页",
+                failed_pages.len(),
+                failed_pages.iter().map(|(idx, _)| *idx).collect::<Vec<_>>(),
+                all_pages.len()
+            );
         }
 
         // 按页面索引排序（并行可能乱序）
@@ -883,23 +903,33 @@ impl LLMManager {
             {
                 Ok(page) => return Ok(page),
                 Err(e) => {
-                    // 判断是否为速率限制错误
-                    let is_rate_limit = e.to_string().contains("429")
-                        || e.to_string().contains("rate limit")
-                        || e.to_string().contains("too many requests");
+                    let err_str = e.to_string();
+                    // 判断是否为可重试错误（速率限制 + 超时 + 网络错误）
+                    let is_rate_limit = err_str.contains("429")
+                        || err_str.contains("rate limit")
+                        || err_str.contains("too many requests");
+                    let is_timeout = err_str.contains("timed out")
+                        || err_str.contains("timeout")
+                        || err_str.contains("deadline has elapsed");
+                    let is_network = err_str.contains("connection")
+                        || err_str.contains("broken pipe")
+                        || err_str.contains("reset by peer")
+                        || err_str.contains("error sending request");
+                    let is_retryable = is_rate_limit || is_timeout || is_network;
 
-                    if is_rate_limit && retry_count < MAX_RETRIES {
+                    if is_retryable && retry_count < MAX_RETRIES {
                         retry_count += 1;
+                        let reason = if is_rate_limit { "速率限制" } else if is_timeout { "请求超时" } else { "网络错误" };
                         warn!(
-                            "[DeepSeek-OCR] 页面 {} 遇到速率限制，等待 {}ms 后重试 ({}/{})",
-                            page_index, backoff_ms, retry_count, MAX_RETRIES
+                            "[DeepSeek-OCR] 页面 {} 遇到{}，等待 {}ms 后重试 ({}/{})",
+                            page_index, reason, backoff_ms, retry_count, MAX_RETRIES
                         );
 
                         tokio::time::sleep(tokio::time::Duration::from_millis(backoff_ms)).await;
                         backoff_ms *= 2; // 指数回退
                         continue;
                     } else {
-                        // 非速率限制错误，或重试次数耗尽
+                        // 不可重试错误，或重试次数耗尽
                         if retry_count > 0 {
                             error!(
                                 "[DeepSeek-OCR] 页面 {} 重试 {} 次后仍失败: {}",

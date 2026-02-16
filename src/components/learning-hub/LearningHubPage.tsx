@@ -387,6 +387,15 @@ export const LearningHubPage: React.FC = () => {
   const globalLeftPanelCollapsed = useUIStore((state) => state.leftPanelCollapsed);
   const [localSidebarCollapsed, setLocalSidebarCollapsed] = useState(false);
   const sidebarCollapsed = globalLeftPanelCollapsed || localSidebarCollapsed;
+
+  // ★ 当 Topbar 按钮将 globalLeftPanelCollapsed 切换为 false（展开）时，
+  // 同步重置 localSidebarCollapsed，否则 OR 条件会导致侧边栏无法展开
+  useEffect(() => {
+    if (!globalLeftPanelCollapsed) {
+      setLocalSidebarCollapsed(false);
+    }
+  }, [globalLeftPanelCollapsed]);
+
   const handleSidebarCollapsedChange = useCallback((collapsed: boolean) => {
     setLocalSidebarCollapsed(collapsed);
     if (!collapsed && globalLeftPanelCollapsed) {

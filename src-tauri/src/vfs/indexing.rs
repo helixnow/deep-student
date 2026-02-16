@@ -123,11 +123,127 @@ pub struct PageText {
 pub struct VfsChunker;
 
 impl VfsChunker {
+    /// 检查文本质量是否可接受（过滤 PDF 乱码等不可读文本）
+    ///
+    /// 返回 false 表示文本质量过低，不应被索引。
+    /// 主要检测 PDF 解析产生的乱码——自定义字体编码会将 glyph ID 映射到错误的
+    /// Unicode 码位，产出 ∂、∀、ℤ、Ⅳ、₃、⁰ 等技术上合法但无意义的符号。
+    /// 这些字符会通过 `is_alphanumeric()` 检查，因此需要更严格的"常用文本字符"定义。
+    pub fn is_text_quality_acceptable(text: &str) -> bool {
+        let chars: Vec<char> = text.chars().collect();
+        let total = chars.len();
+        if total == 0 {
+            return false;
+        }
+
+        let mut common_count = 0usize;      // 常用文本字符（ASCII字母数字、CJK、常见标点）
+        let mut replacement_count = 0usize;  // Unicode 替换字符 U+FFFD
+        let mut control_count = 0usize;      // 控制字符（非空白）
+
+        for &ch in &chars {
+            if ch == '\u{FFFD}' {
+                replacement_count += 1;
+            } else if ch.is_control() && !ch.is_whitespace() {
+                control_count += 1;
+            } else if Self::is_common_text_char(ch) {
+                common_count += 1;
+            }
+            // 其余字符（数学符号、罕见 Unicode 等）不计入 common
+        }
+
+        let common_ratio = common_count as f64 / total as f64;
+        let replacement_ratio = replacement_count as f64 / total as f64;
+        let control_ratio = control_count as f64 / total as f64;
+
+        // 拒绝条件：
+        // 1. 替换字符超过 5%
+        // 2. 控制字符超过 10%
+        // 3. 常用文本字符低于 40%（大量罕见 Unicode 符号 = PDF 字体乱码）
+        if replacement_ratio > 0.05 {
+            debug!(
+                "[VfsChunker] Text quality rejected: replacement_ratio={:.2}% ({}/{})",
+                replacement_ratio * 100.0, replacement_count, total
+            );
+            return false;
+        }
+        if control_ratio > 0.10 {
+            debug!(
+                "[VfsChunker] Text quality rejected: control_ratio={:.2}% ({}/{})",
+                control_ratio * 100.0, control_count, total
+            );
+            return false;
+        }
+        if common_ratio < 0.40 {
+            debug!(
+                "[VfsChunker] Text quality rejected: common_ratio={:.2}% ({}/{})",
+                common_ratio * 100.0, common_count, total
+            );
+            return false;
+        }
+
+        true
+    }
+
+    /// 判断字符是否为"常用文本字符"
+    ///
+    /// 仅包含正常文本中频繁出现的字符类别，排除 PDF 字体乱码常见的
+    /// 数学符号(∂∀∃)、罗马数字(Ⅳ)、上下标(₃⁰)、letterlike 符号(ℤℓ℮)等。
+    #[inline]
+    fn is_common_text_char(ch: char) -> bool {
+        // ASCII 字母、数字、标点
+        ch.is_ascii_alphanumeric()
+        || ch.is_ascii_punctuation()
+        || ch.is_ascii_whitespace()
+        // 非 ASCII 空白（如全角空格 U+3000）
+        || ch.is_whitespace()
+        // CJK 统一汉字（基本 + 扩展 A + 兼容）
+        || ('\u{4E00}'..='\u{9FFF}').contains(&ch)
+        || ('\u{3400}'..='\u{4DBF}').contains(&ch)
+        || ('\u{F900}'..='\u{FAFF}').contains(&ch)
+        // CJK 标点和符号
+        || ('\u{3000}'..='\u{303F}').contains(&ch)
+        // 全角 ASCII（常见于中日韩文本）
+        || ('\u{FF01}'..='\u{FF5E}').contains(&ch)
+        // 日文假名
+        || ('\u{3040}'..='\u{309F}').contains(&ch)  // 平假名
+        || ('\u{30A0}'..='\u{30FF}').contains(&ch)  // 片假名
+        // 韩文音节
+        || ('\u{AC00}'..='\u{D7AF}').contains(&ch)
+        // 常用 CJK 标点（非 ASCII）
+        || matches!(ch,
+            '，' | '。' | '；' | '：' | '！' | '？'
+            | '\u{201C}' | '\u{201D}' | '\u{2018}' | '\u{2019}' // ""''
+            | '（' | '）' | '【' | '】' | '《' | '》' | '、'
+            | '…' | '—' | '～' | '·' | '「' | '」' | '『' | '』' | '〈' | '〉'
+        )
+        // 拉丁扩展（含重音字母：àáâãéèêëíìîïóòôõúùûü 等）
+        || ('\u{00C0}'..='\u{024F}').contains(&ch)
+    }
+
     pub fn chunk_text(text: &str, config: &ChunkingConfig) -> Vec<TextChunk> {
-        match config.strategy.as_str() {
+        let chunks = match config.strategy.as_str() {
             "semantic" => Self::chunk_semantic(text, config),
             _ => Self::chunk_fixed_size(text, config),
+        };
+
+        // 过滤掉乱码/不可读的 chunk（PDF 解析失败时可能产生大量乱码文本）
+        let before_count = chunks.len();
+        let mut chunks: Vec<TextChunk> = chunks
+            .into_iter()
+            .filter(|c| Self::is_text_quality_acceptable(&c.text))
+            .collect();
+        let filtered = before_count - chunks.len();
+        if filtered > 0 {
+            warn!(
+                "[VfsChunker] Filtered {} garbled chunks out of {} (text quality check)",
+                filtered, before_count
+            );
+            // 重新编号 index，避免下游 index_segments 出现断裂
+            for (i, chunk) in chunks.iter_mut().enumerate() {
+                chunk.index = i as i32;
+            }
         }
+        chunks
     }
 
     /// 按页分块文本，保留页码信息

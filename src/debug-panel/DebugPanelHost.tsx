@@ -58,6 +58,7 @@ import MindMapBlurHoverDebugPlugin from './plugins/MindMapBlurHoverDebugPlugin';
 import AttachmentPipelineTestPlugin from './plugins/AttachmentPipelineTestPlugin';
 import ChatInteractionTestPlugin from './plugins/ChatInteractionTestPlugin';
 import CitationTestPlugin from './plugins/CitationTestPlugin';
+import MultiVariantTestPlugin from './plugins/MultiVariantTestPlugin';
 
 export interface DebugPanelHostProps {
   visible: boolean;
@@ -482,6 +483,15 @@ const PLUGINS: DebugPanelPluginEntry[] = [
     Component: CitationTestPlugin,
     labelDefault: '引用生成与解引用测试',
     descriptionDefault: '自动测试引用解析全格式覆盖（中/英文类型名/图片后缀/边界）、Source Adapter 数据桥接（citations/toolOutput/混合块）、DOM 渲染验证和持久化往返完整性，共 5 步。',
+    groupId: 'chat-timeline',
+  },
+  {
+    id: 'multi-variant-test',
+    labelKey: 'debug_panel.plugin_multi_variant_test',
+    descriptionKey: 'debug_panel.plugin_multi_variant_test_desc',
+    Component: MultiVariantTestPlugin,
+    labelDefault: '多变体自动化测试',
+    descriptionDefault: '3 变体并行的 18 步全自动边缘测试：发送/取消/重试/切换/删除/持久化/DOM/Icon，通过 DOM 模拟真实用户操作。',
     groupId: 'chat-timeline',
   },
 ];

@@ -12,6 +12,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] | 未发布
 
+---
+
+## [0.9.7] - 2026-02-16
+
+### Fixed | 修复
+- 修复 v0.9.6 发布构建产物版本号错误的问题（版本文件未正确 bump）
+
+### Changed | 变更
+- 规范 release 流程：版本 bump 必须通过 release-please PR 合并，禁止手动 tag
+
+---
+
+## [0.9.6] - 2026-02-15
+
+### Added | 新增
+- 数据库维护模式，支持备份恢复期间自动切换
+- 英文 README 及双语导航链接
+- 翻译工作台功能及截图文档
+- Anki 模板截图文档更新 + 最新 LLM 模型（GLM-5, Seed 2.0, M2.5, GPT-5.2 Pro）
+
+### Fixed | 修复
+- 修复恢复备份写入非活跃插槽，避免 Windows OS error 32 文件锁问题
+
+### Changed | 变更
+- CI 移除 cargo fmt 检查 + 按钮迁移到 NotionButton 组件
+
+---
+
+## [0.9.5] - 2026-02-13
+
 ### Added | 新增
 - 安全政策文档 (`SECURITY.md`)
 - 环境变量示例 (`.env.example`)
@@ -24,9 +54,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed | 修复
 - 修复 `test:e2e` 脚本缺失问题
-
-### Removed | 移除
-- 无
 
 ---
 
@@ -95,7 +122,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-[Unreleased]: https://github.com/000haoji/deep-student/compare/v0.9.1...HEAD
+[Unreleased]: https://github.com/000haoji/deep-student/compare/v0.9.7...HEAD
+[0.9.7]: https://github.com/000haoji/deep-student/compare/v0.9.6...v0.9.7
+[0.9.6]: https://github.com/000haoji/deep-student/compare/v0.9.5...v0.9.6
+[0.9.5]: https://github.com/000haoji/deep-student/compare/v0.9.1...v0.9.5
 [0.9.1]: https://github.com/000haoji/deep-student/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/000haoji/deep-student/compare/v0.8.9...v0.9.0
 [0.8.9]: https://github.com/000haoji/deep-student/releases/tag/v0.8.9
