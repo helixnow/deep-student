@@ -5,7 +5,7 @@
 
 import React, { useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '../ui/shad/Dialog';
+import { NotionDialog, NotionDialogHeader, NotionDialogTitle, NotionDialogDescription, NotionDialogBody, NotionDialogFooter } from '../ui/NotionDialog';
 import { NotionButton } from '../ui/NotionButton';
 import { Input } from '../ui/shad/Input';
 import { Label } from '../ui/shad/Label';
@@ -177,12 +177,12 @@ export const McpToolEditorModal: React.FC<McpToolEditorModalProps> = ({
   };
 
   return (
-    <Dialog open={mcpToolModal.open} onOpenChange={(open) => !open && handleClose()}>
-      <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col">
-        <DialogHeader>
-          <DialogTitle>{isEditing ? t('settings:mcp_descriptions.edit_tool_title', '编辑 MCP 工具') : t('settings:mcp_descriptions.add_tool_title', '新增 MCP 工具')}</DialogTitle>
-          <DialogDescription>{t('settings:mcp_descriptions.tool_modal_hint', '配置 MCP 服务器连接信息，可在输入栏灵活启用。')}</DialogDescription>
-        </DialogHeader>
+    <NotionDialog open={mcpToolModal.open} onOpenChange={(open) => !open && handleClose()} maxWidth="max-w-2xl">
+        <NotionDialogHeader>
+          <NotionDialogTitle>{isEditing ? t('settings:mcp_descriptions.edit_tool_title', '编辑 MCP 工具') : t('settings:mcp_descriptions.add_tool_title', '新增 MCP 工具')}</NotionDialogTitle>
+          <NotionDialogDescription>{t('settings:mcp_descriptions.tool_modal_hint', '配置 MCP 服务器连接信息，可在输入栏灵活启用。')}</NotionDialogDescription>
+        </NotionDialogHeader>
+        <NotionDialogBody nativeScroll>
         <Tabs value={mcpToolModal.mode} onValueChange={handleModeChange} className="mt-1.5 flex flex-1 flex-col justify-start px-3 pb-0 min-h-0">
           <TabsList className="grid w-full grid-cols-2 rounded-lg bg-muted p-1 flex-shrink-0">
             <TabsTrigger value="form" className="data-[state=active]:bg-background data-[state=active]:shadow-sm">{t('settings:mcp_descriptions.form_mode', '图形表单')}</TabsTrigger>
@@ -307,16 +307,16 @@ export const McpToolEditorModal: React.FC<McpToolEditorModalProps> = ({
           </div>
         )}
 
-        <DialogFooter className="mt-4">
-          <NotionButton variant="ghost" onClick={handleClose}>
+        </NotionDialogBody>
+        <NotionDialogFooter>
+          <NotionButton variant="ghost" size="sm" onClick={handleClose}>
             {t('common:cancel')}
           </NotionButton>
-          <NotionButton variant="primary" onClick={handleSubmit}>
+          <NotionButton variant="primary" size="sm" onClick={handleSubmit}>
             {t('common:save')}
           </NotionButton>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </NotionDialogFooter>
+    </NotionDialog>
   );
 };
 

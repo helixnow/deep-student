@@ -7,7 +7,7 @@ import './TemplateManager.css';
 import { IframePreview, renderCardPreview } from './SharedPreview';
 import RealTimeTemplateEditor from './RealTimeTemplateEditor';
 import { NotionButton } from './ui/NotionButton';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './ui/shad/Dialog';
+import { NotionDialog, NotionDialogHeader, NotionDialogTitle, NotionDialogDescription, NotionDialogBody, NotionDialogFooter } from './ui/NotionDialog';
 import { Checkbox } from './ui/shad/Checkbox';
 import { ErrorBoundary } from './ErrorBoundary';
 import { ComplexityReport, ComplexityLevel, EnhancedFieldExtractionRule } from '../types/enhanced-field-types';
@@ -321,28 +321,21 @@ const TemplateManager: React.FC<TemplateManagerProps> = ({ onClose, onSelectTemp
   };
 
   const importExternalDialog = (
-    <Dialog
+    <NotionDialog
       open={showImportExternalDialog}
       onOpenChange={(open) => {
         if (!isImporting) setShowImportExternalDialog(open);
       }}
+      maxWidth="max-w-3xl"
     >
-      <DialogContent className="flex w-[min(92vw,960px)] max-w-3xl max-h-[85vh] flex-col overflow-hidden p-0">
-        <div className="sticky top-0 z-10 border-b border-border bg-white px-6 py-5 dark:border-border dark:bg-card">
-          <DialogHeader>
-            <DialogTitle>{t('template.import_external_dialog_title')}</DialogTitle>
-            <DialogDescription>
-              {t('template.import_external_dialog_desc')}
-            </DialogDescription>
-          </DialogHeader>
-        </div>
-        <CustomScrollArea
-          className="flex-1 min-h-0 -mr-6 pl-6"
-          viewportClassName="space-y-3 pr-6 py-6 text-sm text-foreground dark:text-foreground"
-          trackOffsetTop={12}
-          trackOffsetBottom={12}
-          trackOffsetRight={0}
-        >
+      <NotionDialogHeader>
+        <NotionDialogTitle>{t('template.import_external_dialog_title')}</NotionDialogTitle>
+        <NotionDialogDescription>
+          {t('template.import_external_dialog_desc')}
+        </NotionDialogDescription>
+      </NotionDialogHeader>
+      <NotionDialogBody>
+        <div className="space-y-3 text-sm text-foreground">
           <ul className="list-disc pl-5 space-y-1">
             <li>{t('template.import_external_rule_1')}</li>
             <li>{t('template.import_external_rule_2')}</li>
@@ -374,25 +367,27 @@ const TemplateManager: React.FC<TemplateManagerProps> = ({ onClose, onSelectTemp
               </div>
             )}
           </div>
-        </CustomScrollArea>
-        <DialogFooter className="border-t border-border bg-white px-6 py-4 dark:border-border dark:bg-card">
-          <NotionButton
-            variant="default"
-            onClick={() => setShowImportExternalDialog(false)}
-            disabled={isImporting}
-          >
-            {t('template.cancel_button')}
-          </NotionButton>
-          <NotionButton
-            variant="primary"
-            onClick={handleConfirmImportExternal}
-            disabled={!selectedImportFile || isImporting}
-          >
-            {isImporting ? t('template.importing') : t('template.start_import_button')}
-          </NotionButton>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </div>
+      </NotionDialogBody>
+      <NotionDialogFooter>
+        <NotionButton
+          variant="default"
+          size="sm"
+          onClick={() => setShowImportExternalDialog(false)}
+          disabled={isImporting}
+        >
+          {t('template.cancel_button')}
+        </NotionButton>
+        <NotionButton
+          variant="primary"
+          size="sm"
+          onClick={handleConfirmImportExternal}
+          disabled={!selectedImportFile || isImporting}
+        >
+          {isImporting ? t('template.importing') : t('template.start_import_button')}
+        </NotionButton>
+      </NotionDialogFooter>
+    </NotionDialog>
   );
 
   // 渲染侧边栏

@@ -1,9 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import {
-  Dialog,
-  DialogContent,
-} from '../ui/shad/Dialog';
+import { NotionDialog } from '../ui/NotionDialog';
 import { Input } from '../ui/shad/Input';
 import { NotionButton } from '../ui/NotionButton';
 import { Checkbox } from '../ui/shad/Checkbox';
@@ -1535,15 +1532,16 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
   // 模态框模式：使用 Dialog 包裹
   // containerSelector 限制遮罩和居中区域在主内容区域（不包含左侧边栏）
   return (
-    <Dialog open={true} onOpenChange={() => {}}>
-      <DialogContent
-        closeOnOverlayClick={false}
-        containerSelector="#settings-main-content"
-        className="w-[min(95vw,672px)] max-h-[min(85vh,700px)] p-0 overflow-hidden bg-background flex flex-col border shadow-2xl rounded-xl sm:rounded-2xl"
-      >
-        {formContent}
-      </DialogContent>
-    </Dialog>
+    <NotionDialog
+      open={true}
+      onOpenChange={() => {}}
+      closeOnOverlay={false}
+      showClose={false}
+      maxWidth="max-w-[672px]"
+      className="p-0 overflow-hidden"
+    >
+      {formContent}
+    </NotionDialog>
   );
 };
 

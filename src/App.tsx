@@ -14,7 +14,7 @@ import { useUIStore } from '@/stores/uiStore';
 
 // 🚀 性能优化：DataImportExport, ImportConversationDialog 改为懒加载
 import { CloudStorageSection } from './components/settings/CloudStorageSection';
-import { Dialog, DialogContent } from './components/ui/shad/Dialog';
+import { NotionDialog, NotionDialogBody } from './components/ui/NotionDialog';
 // 🚀 性能优化：Template*, IrecInsightRecall 等页面组件改为懒加载
 import { TaskDashboardPage } from '@/components/anki/TaskDashboardPage';
 import { useWindowDrag } from './hooks/useWindowDrag';
@@ -1852,11 +1852,11 @@ function App() {
       <NotificationContainer />
       
       {/* 云存储配置弹窗 - 移到全局位置避免被 renderViewLayer 的 visibility 影响 */}
-      <Dialog open={showCloudStorageSettings} onOpenChange={setShowCloudStorageSettings}>
-        <DialogContent className="max-w-[560px]">
+      <NotionDialog open={showCloudStorageSettings} onOpenChange={setShowCloudStorageSettings} maxWidth="max-w-[560px]">
+        <NotionDialogBody nativeScroll>
           <CloudStorageSection isDialog />
-        </DialogContent>
-      </Dialog>
+        </NotionDialogBody>
+      </NotionDialog>
       {/* 全局悬浮调试面板（按需懒加载，避免生产首包引入调试模块） */}
       {shouldRenderDebugPanel && (
         <Suspense fallback={null}>

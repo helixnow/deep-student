@@ -1,13 +1,6 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/shad/Dialog';
+import { NotionDialog, NotionDialogHeader, NotionDialogTitle, NotionDialogDescription, NotionDialogBody, NotionDialogFooter } from '@/components/ui/NotionDialog';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { Textarea } from '@/components/ui/shad/Textarea';
 import { Label } from '@/components/ui/shad/Label';
@@ -123,16 +116,16 @@ export const CreateAgentDialog: React.FC<CreateAgentDialogProps> = ({
   };
 
   return (
-    <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-[500px]">
-        <DialogHeader>
-          <DialogTitle>
+    <NotionDialog open={open} onOpenChange={handleClose} maxWidth="max-w-[500px]">
+        <NotionDialogHeader>
+          <NotionDialogTitle>
             {t('chatV2:workspace.createAgent.title')}
-          </DialogTitle>
-          <DialogDescription>
+          </NotionDialogTitle>
+          <NotionDialogDescription>
             {t('chatV2:workspace.createAgent.description')}
-          </DialogDescription>
-        </DialogHeader>
+          </NotionDialogDescription>
+        </NotionDialogHeader>
+        <NotionDialogBody nativeScroll>
 
         <div className="grid gap-4 py-4">
           <div className="space-y-2">
@@ -203,7 +196,8 @@ export const CreateAgentDialog: React.FC<CreateAgentDialogProps> = ({
           )}
         </div>
 
-        <DialogFooter>
+        </NotionDialogBody>
+        <NotionDialogFooter>
           <NotionButton variant="ghost" onClick={handleClose} disabled={creating}>
             {t('chatV2:workspace.createAgent.cancel')}
           </NotionButton>
@@ -212,8 +206,7 @@ export const CreateAgentDialog: React.FC<CreateAgentDialogProps> = ({
               ? t('chatV2:workspace.createAgent.creating')
               : t('chatV2:workspace.createAgent.create')}
           </NotionButton>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </NotionDialogFooter>
+    </NotionDialog>
   );
 };

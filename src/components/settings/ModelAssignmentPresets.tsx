@@ -16,7 +16,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../ui
 import { NotionButton } from '../ui/NotionButton';
 import { Badge } from '../ui/shad/Badge';
 import { Input } from '../ui/shad/Input';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../ui/shad/Dialog';
+import { NotionDialog, NotionDialogHeader, NotionDialogTitle, NotionDialogDescription, NotionDialogBody, NotionDialogFooter } from '../ui/NotionDialog';
 import { TauriAPI } from '../../utils/tauriApi';
 
 interface ModelAssignmentPreset {
@@ -388,26 +388,24 @@ export const ModelAssignmentPresets: React.FC<ModelAssignmentPresetsProps> = ({
           </div>
         )}
 
-        <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
-          <DialogContent className="max-w-md p-6">
-            <DialogHeader>
-              <DialogTitle>{t('settings:model_presets.create_dialog_title')}</DialogTitle>
-              <DialogDescription>{t('settings:model_presets.create_dialog_description')}</DialogDescription>
-            </DialogHeader>
-            <div className="mt-2">
-              <Input
-                value={newPresetName}
-                onChange={(e) => setNewPresetName(e.target.value)}
-                placeholder={t('settings:model_presets.preset_name_placeholder')}
-                onKeyDown={(e) => e.key === 'Enter' && handleCreatePreset()}
-              />
-            </div>
-            <DialogFooter>
-              <NotionButton size="sm" onClick={handleCreatePreset}>{t('common:actions.add')}</NotionButton>
-              <NotionButton size="sm" variant="default" onClick={() => { setShowCreateDialog(false); setNewPresetName(''); }}>{t('common:actions.cancel')}</NotionButton>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+        <NotionDialog open={showCreateDialog} onOpenChange={setShowCreateDialog} maxWidth="max-w-md">
+          <NotionDialogHeader>
+            <NotionDialogTitle>{t('settings:model_presets.create_dialog_title')}</NotionDialogTitle>
+            <NotionDialogDescription>{t('settings:model_presets.create_dialog_description')}</NotionDialogDescription>
+          </NotionDialogHeader>
+          <NotionDialogBody nativeScroll>
+            <Input
+              value={newPresetName}
+              onChange={(e) => setNewPresetName(e.target.value)}
+              placeholder={t('settings:model_presets.preset_name_placeholder')}
+              onKeyDown={(e) => e.key === 'Enter' && handleCreatePreset()}
+            />
+          </NotionDialogBody>
+          <NotionDialogFooter>
+            <NotionButton size="sm" variant="default" onClick={() => { setShowCreateDialog(false); setNewPresetName(''); }}>{t('common:actions.cancel')}</NotionButton>
+            <NotionButton size="sm" variant="primary" onClick={handleCreatePreset}>{t('common:actions.add')}</NotionButton>
+          </NotionDialogFooter>
+        </NotionDialog>
       </CardContent>
     </Card>
   );

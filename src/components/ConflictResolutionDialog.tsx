@@ -10,14 +10,7 @@
 
 import React, { useState, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from '@/components/ui/shad/Dialog';
+import { NotionDialog, NotionDialogHeader, NotionDialogTitle, NotionDialogDescription, NotionDialogBody, NotionDialogFooter } from '@/components/ui/NotionDialog';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { Badge } from '@/components/ui/shad/Badge';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
@@ -850,10 +843,9 @@ export function ConflictResolutionDialog({
     conflicts.database_conflicts.length + recordConflictDisplayCount;
 
   return (
-    <Dialog open={open} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
+    <NotionDialog open={open} onOpenChange={(open) => !open && onClose()} maxWidth="max-w-4xl">
+        <NotionDialogHeader>
+          <NotionDialogTitle className="flex items-center gap-2">
             <AlertCircle className="h-5 w-5 text-amber-500" />
             {t('conflict_resolution', '同步冲突解决')}
             {hasConflicts && (
@@ -861,16 +853,17 @@ export function ConflictResolutionDialog({
                 {totalConflicts}
               </Badge>
             )}
-          </DialogTitle>
-          <DialogDescription>
+          </NotionDialogTitle>
+          <NotionDialogDescription>
             {hasConflicts
               ? t(
                   'conflict_description',
                   '检测到本地和云端数据存在冲突，请选择解决策略。'
                 )
               : t('no_conflicts', '没有检测到数据冲突。')}
-          </DialogDescription>
-        </DialogHeader>
+          </NotionDialogDescription>
+        </NotionDialogHeader>
+        <NotionDialogBody nativeScroll>
 
         {hasConflicts ? (
           <div className="flex-1 min-h-0 flex flex-col gap-4">
@@ -992,7 +985,8 @@ export function ConflictResolutionDialog({
           </Alert>
         )}
 
-        <DialogFooter className="flex items-center justify-between mt-4">
+        </NotionDialogBody>
+        <NotionDialogFooter className="flex items-center justify-between">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             {hasConflicts && (
               <>
@@ -1024,9 +1018,8 @@ export function ConflictResolutionDialog({
               </NotionButton>
             )}
           </div>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </NotionDialogFooter>
+    </NotionDialog>
   );
 }
 

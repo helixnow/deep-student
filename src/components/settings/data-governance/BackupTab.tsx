@@ -34,15 +34,7 @@ import { Badge } from '../../ui/shad/Badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../ui/shad/Table';
 import { AppSelect } from '../../ui/app-menu';
 import { showGlobalNotification } from '../../UnifiedNotification';
-import { NotionAlertDialog } from '../../ui/NotionDialog';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '../../ui/shad/Dialog';
+import { NotionAlertDialog, NotionDialog, NotionDialogHeader, NotionDialogTitle, NotionDialogDescription, NotionDialogBody, NotionDialogFooter } from '../../ui/NotionDialog';
 import { Checkbox } from '../../ui/shad/Checkbox';
 import { Label } from '../../ui/shad/Label';
 import { Switch } from '../../ui/shad/Switch';
@@ -958,77 +950,65 @@ export const BackupTab: React.FC<BackupTabProps> = ({
       />
 
       {/* Task 3: 恢复完成后重启提示对话框 */}
-      <Dialog open={showRestartDialog} onOpenChange={(open) => { if (!open) onRestartLater?.(); }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <CheckCircle2 className="h-5 w-5 text-green-500" />
-              {t('data:governance.restore_complete_title')}
-            </DialogTitle>
-            <DialogDescription className="space-y-2">
-              <p>
-                {t('data:governance.restore_complete_desc')}
-              </p>
-              <p className="text-amber-600 dark:text-amber-400 font-medium">
-                {t('data:governance.restore_save_work_warning')}
-              </p>
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter className="flex gap-2 sm:justify-end">
-            <NotionButton variant="ghost" onClick={onRestartLater}>
-              {t('data:governance.restart_later')}
-            </NotionButton>
-            <NotionButton variant="primary" onClick={onRestartNow}>
-              <RotateCcw className="h-4 w-4 mr-2" />
-              {t('data:governance.restart_now')}
-            </NotionButton>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <NotionDialog open={showRestartDialog} onOpenChange={(open) => { if (!open) onRestartLater?.(); }}>
+        <NotionDialogHeader>
+          <NotionDialogTitle className="flex items-center gap-2">
+            <CheckCircle2 className="h-5 w-5 text-green-500" />
+            {t('data:governance.restore_complete_title')}
+          </NotionDialogTitle>
+          <NotionDialogDescription>
+            <p>{t('data:governance.restore_complete_desc')}</p>
+            <p className="text-amber-600 dark:text-amber-400 font-medium mt-1">{t('data:governance.restore_save_work_warning')}</p>
+          </NotionDialogDescription>
+        </NotionDialogHeader>
+        <NotionDialogFooter>
+          <NotionButton variant="ghost" size="sm" onClick={onRestartLater}>
+            {t('data:governance.restart_later')}
+          </NotionButton>
+          <NotionButton variant="primary" size="sm" onClick={onRestartNow}>
+            <RotateCcw className="h-4 w-4 mr-2" />
+            {t('data:governance.restart_now')}
+          </NotionButton>
+        </NotionDialogFooter>
+      </NotionDialog>
 
       {/* 导入完成后提示恢复对话框 */}
-      <Dialog open={showRestorePromptDialog} onOpenChange={(open) => { if (!open) onRestoreLater?.(); }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Archive className="h-5 w-5 text-primary" />
-              {t('data:governance.import_complete_title', '备份导入完成')}
-            </DialogTitle>
-            <DialogDescription className="space-y-2">
-              <p>
-                {t('data:governance.import_complete_desc', '备份文件已成功导入。是否立即恢复此备份？恢复将替换当前所有数据。')}
-              </p>
-              <p className="text-amber-600 dark:text-amber-400 font-medium">
-                {t('data:governance.restore_save_work_warning')}
-              </p>
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter className="flex gap-2 sm:justify-end">
-            <NotionButton variant="ghost" onClick={onRestoreLater}>
-              {t('data:governance.restore_later', '稍后恢复')}
-            </NotionButton>
-            <NotionButton variant="primary" onClick={onRestoreNow}>
-              <RotateCcw className="h-4 w-4 mr-2" />
-              {t('data:governance.restore_now', '立即恢复')}
-            </NotionButton>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <NotionDialog open={showRestorePromptDialog} onOpenChange={(open) => { if (!open) onRestoreLater?.(); }}>
+        <NotionDialogHeader>
+          <NotionDialogTitle className="flex items-center gap-2">
+            <Archive className="h-5 w-5 text-primary" />
+            {t('data:governance.import_complete_title', '备份导入完成')}
+          </NotionDialogTitle>
+          <NotionDialogDescription>
+            <p>{t('data:governance.import_complete_desc', '备份文件已成功导入。是否立即恢复此备份？恢复将替换当前所有数据。')}</p>
+            <p className="text-amber-600 dark:text-amber-400 font-medium mt-1">{t('data:governance.restore_save_work_warning')}</p>
+          </NotionDialogDescription>
+        </NotionDialogHeader>
+        <NotionDialogFooter>
+          <NotionButton variant="ghost" size="sm" onClick={onRestoreLater}>
+            {t('data:governance.restore_later', '稍后恢复')}
+          </NotionButton>
+          <NotionButton variant="primary" size="sm" onClick={onRestoreNow}>
+            <RotateCcw className="h-4 w-4 mr-2" />
+            {t('data:governance.restore_now', '立即恢复')}
+          </NotionButton>
+        </NotionDialogFooter>
+      </NotionDialog>
 
       {/* Task 4: 备份验证结果详细对话框 */}
-      <Dialog open={showVerifyDialog} onOpenChange={(open) => { if (!open) onCloseVerifyDialog?.(); }}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Shield className="h-5 w-5" />
-              {t('data:governance.verify_result_title')}
-            </DialogTitle>
-            <DialogDescription>
-              {verifyResult?.is_valid
-                ? t('data:governance.verify_result_passed')
-                : t('data:governance.verify_result_failed')}
-            </DialogDescription>
-          </DialogHeader>
+      <NotionDialog open={showVerifyDialog} onOpenChange={(open) => { if (!open) onCloseVerifyDialog?.(); }} maxWidth="max-w-md">
+        <NotionDialogHeader>
+          <NotionDialogTitle className="flex items-center gap-2">
+            <Shield className="h-5 w-5" />
+            {t('data:governance.verify_result_title')}
+          </NotionDialogTitle>
+          <NotionDialogDescription>
+            {verifyResult?.is_valid
+              ? t('data:governance.verify_result_passed')
+              : t('data:governance.verify_result_failed')}
+          </NotionDialogDescription>
+        </NotionDialogHeader>
+        <NotionDialogBody nativeScroll>
 
           {verifyResult && (
             <div className="space-y-3">
@@ -1130,13 +1110,13 @@ export const BackupTab: React.FC<BackupTabProps> = ({
             </div>
           )}
 
-          <DialogFooter>
-            <NotionButton variant="default" onClick={onCloseVerifyDialog}>
-              {t('common:actions.close')}
-            </NotionButton>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        </NotionDialogBody>
+        <NotionDialogFooter>
+          <NotionButton variant="default" size="sm" onClick={onCloseVerifyDialog}>
+            {t('common:actions.close')}
+          </NotionButton>
+        </NotionDialogFooter>
+      </NotionDialog>
     </div>
   );
 };

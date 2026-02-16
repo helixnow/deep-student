@@ -560,6 +560,7 @@ const ToolCallLifecycleDebugPlugin: React.FC<DebugPanelPluginProps> = ({
           <option value="frontend:">前端状态</option>
           <option value="bridge:">事件桥接</option>
           <option value="anomaly:">⚠ 异常检测</option>
+          <option value="system">📊 系统/汇总</option>
         </select>
         <span style={{ color: '#6b7280', fontSize: 11 }}>({filteredLogs.length})</span>
       </div>

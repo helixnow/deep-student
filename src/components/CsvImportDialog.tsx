@@ -18,14 +18,7 @@ import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from '@/components/ui/shad/Dialog';
+import { NotionDialog, NotionDialogHeader, NotionDialogTitle, NotionDialogDescription, NotionDialogBody, NotionDialogFooter } from '@/components/ui/NotionDialog';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { Label } from '@/components/ui/shad/Label';
 import { Progress } from '@/components/ui/shad/Progress';
@@ -747,7 +740,7 @@ export const CsvImportDialog: React.FC<CsvImportDialogProps> = ({
     const showResult = currentStep === 'progress' && (importResult || importError || isCancelled);
 
     return (
-      <DialogFooter className="gap-2">
+      <NotionDialogFooter>
         {/* 取消/关闭按钮 */}
         <NotionButton
           variant="outline"
@@ -796,22 +789,22 @@ export const CsvImportDialog: React.FC<CsvImportDialogProps> = ({
             )}
           </>
         )}
-      </DialogFooter>
+      </NotionDialogFooter>
     );
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
+    <NotionDialog open={open} onOpenChange={onOpenChange} maxWidth="max-w-2xl">
+        <NotionDialogHeader>
+          <NotionDialogTitle className="flex items-center gap-2">
             <FileSpreadsheet className="w-5 h-5" />
             {t('exam_sheet:csv.import_title', 'CSV 导入')}
-          </DialogTitle>
-          <DialogDescription>
+          </NotionDialogTitle>
+          <NotionDialogDescription>
             {t('exam_sheet:csv.import_description', '从 CSV 文件批量导入题目到题目集')}
-          </DialogDescription>
-        </DialogHeader>
+          </NotionDialogDescription>
+        </NotionDialogHeader>
+        <NotionDialogBody nativeScroll>
 
         {/* 步骤指示器 */}
         {renderStepIndicator()}
@@ -821,8 +814,8 @@ export const CsvImportDialog: React.FC<CsvImportDialogProps> = ({
 
         {/* 底部按钮 */}
         {renderFooter()}
-      </DialogContent>
-    </Dialog>
+        </NotionDialogBody>
+    </NotionDialog>
   );
 };
 

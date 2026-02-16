@@ -278,7 +278,8 @@
         "running": "Running",
         "success": "Completed",
         "error": "Failed"
-      }
+      },
+      "viewSourceFile": "View Source File"
     },
     "imageGen": {
       "title": "Image Generation",

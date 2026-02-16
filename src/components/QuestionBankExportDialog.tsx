@@ -10,14 +10,7 @@
 import React, { useState, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from '@/components/ui/shad/Dialog';
+import { NotionDialog, NotionDialogHeader, NotionDialogTitle, NotionDialogDescription, NotionDialogBody, NotionDialogFooter } from '@/components/ui/NotionDialog';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { Label } from '@/components/ui/shad/Label';
 import { Checkbox } from '@/components/ui/shad/Checkbox';
@@ -430,19 +423,19 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
   }, [format, examName, examId, generateJsonExport, generateTxtExport, generateCsvExport, handleCsvBackendExport, onOpenChange, t]);
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
+    <NotionDialog open={open} onOpenChange={onOpenChange} maxWidth="max-w-md">
+        <NotionDialogHeader>
+          <NotionDialogTitle className="flex items-center gap-2">
             <Download className="w-5 h-5" />
             {t('exam_sheet:questionBank.export.title', '导出题目')}
-          </DialogTitle>
-          <DialogDescription>
+          </NotionDialogTitle>
+          <NotionDialogDescription>
             {t('exam_sheet:questionBank.export.description', '将 {{count}} 道题目导出为文件', {
               count: questions.length,
             })}
-          </DialogDescription>
-        </DialogHeader>
+          </NotionDialogDescription>
+        </NotionDialogHeader>
+        <NotionDialogBody nativeScroll>
 
         <div className="space-y-6 py-4">
           {/* 格式选择 */}
@@ -664,7 +657,8 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
           </div>
         </div>
 
-        <DialogFooter>
+        </NotionDialogBody>
+        <NotionDialogFooter>
           <NotionButton variant="ghost" onClick={() => onOpenChange(false)} disabled={isExporting}>
             {t('common:cancel', '取消')}
           </NotionButton>
@@ -680,9 +674,8 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
               ? t('exam_sheet:questionBank.export.success', '导出成功')
               : t('exam_sheet:questionBank.export.button', '导出')}
           </NotionButton>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </NotionDialogFooter>
+    </NotionDialog>
   );
 };
 

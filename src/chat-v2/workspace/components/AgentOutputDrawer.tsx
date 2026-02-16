@@ -14,14 +14,7 @@ import { useTranslation } from 'react-i18next';
 import { ChevronDown, ChevronUp, ExternalLink, Loader2, Bot, Maximize2, Minimize2, Send } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/shad/Dialog';
+import { NotionDialog, NotionDialogHeader, NotionDialogTitle, NotionDialogDescription, NotionDialogBody, NotionDialogFooter } from '@/components/ui/NotionDialog';
 import { Textarea } from '@/components/ui/shad/Textarea';
 import { Label } from '@/components/ui/shad/Label';
 import type { AgentStatus } from '../types';
@@ -291,7 +284,7 @@ export const AgentOutputDrawer: React.FC<AgentOutputDrawerProps> = ({
       </div>
 
       {/* 派发任务对话框 */}
-      <Dialog
+      <NotionDialog
         open={isDispatchOpen}
         onOpenChange={(open) => {
           if (dispatching) return;
@@ -301,14 +294,15 @@ export const AgentOutputDrawer: React.FC<AgentOutputDrawerProps> = ({
             setDispatchContent('');
           }
         }}
+        maxWidth="max-w-[520px]"
       >
-        <DialogContent className="sm:max-w-[520px]">
-          <DialogHeader>
-            <DialogTitle>{t('chatV2:workspace.dispatch.title')}</DialogTitle>
-            <DialogDescription>
-              {t('chatV2:workspace.dispatch.desc')}
-            </DialogDescription>
-          </DialogHeader>
+        <NotionDialogHeader>
+          <NotionDialogTitle>{t('chatV2:workspace.dispatch.title')}</NotionDialogTitle>
+          <NotionDialogDescription>
+            {t('chatV2:workspace.dispatch.desc')}
+          </NotionDialogDescription>
+        </NotionDialogHeader>
+        <NotionDialogBody nativeScroll>
           <div className="grid gap-3 py-2">
             <div className="text-sm text-muted-foreground">
               {t('chatV2:workspace.dispatch.target')}:
@@ -331,7 +325,8 @@ export const AgentOutputDrawer: React.FC<AgentOutputDrawerProps> = ({
               )}
             </div>
           </div>
-          <DialogFooter>
+          </NotionDialogBody>
+          <NotionDialogFooter>
             <NotionButton
               variant="ghost"
               size="sm"
@@ -353,9 +348,8 @@ export const AgentOutputDrawer: React.FC<AgentOutputDrawerProps> = ({
               )}
               {t('chatV2:workspace.dispatch.send')}
             </NotionButton>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </NotionDialogFooter>
+      </NotionDialog>
     </div>
   );
 };

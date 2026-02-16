@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { Dialog, DialogContent } from './ui/shad/Dialog';
+import { NotionDialog } from './ui/NotionDialog';
 
 export interface UnifiedModalProps {
   isOpen: boolean;
@@ -36,21 +36,18 @@ export const UnifiedModal: React.FC<UnifiedModalProps> = ({
   }, [isOpen, disableBodyScroll]);
 
   return (
-    <Dialog
+    <NotionDialog
       open={isOpen}
       onOpenChange={(next) => {
         if (!next && onClose) {
           onClose();
         }
       }}
+      closeOnOverlay={closeOnOverlayClick}
+      className={contentClassName}
     >
-      <DialogContent
-        closeOnOverlayClick={closeOnOverlayClick}
-        className={contentClassName}
-      >
-        {children}
-      </DialogContent>
-    </Dialog>
+      {children}
+    </NotionDialog>
   );
 };
 

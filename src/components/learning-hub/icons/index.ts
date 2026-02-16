@@ -13,6 +13,10 @@ export {
   FolderIcon,
   ImageFileIcon,
   GenericFileIcon,
+  PdfFileIcon,
+  DocxFileIcon,
+  PptxFileIcon,
+  XlsxFileIcon,
   AudioFileIcon,
   VideoFileIcon,
   MemoryIcon,
@@ -28,6 +32,7 @@ export {
   // 工具函数和类型
   ResourceIconMap,
   getResourceIcon,
+  getFileTypeIconByMime,
   type ResourceIconProps,
   type ResourceIconType,
 } from './ResourceIcons';

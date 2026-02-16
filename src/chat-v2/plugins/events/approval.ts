@@ -13,6 +13,8 @@ import { eventRegistry } from '../../registry/eventRegistry';
 import type { ChatStore } from '../../core/types';
 import { showGlobalNotification } from '../../../components/UnifiedNotification';
 import i18n from 'i18next';
+// 🆕 2026-02-17: 工具调用生命周期追踪
+import { emitToolCallDebug, trackStart, trackEnd } from '../../../debug-panel/plugins/ToolCallLifecycleDebugPlugin';
 
 // ============================================================================
 // 审批请求数据类型
@@ -155,6 +157,13 @@ export const approvalEventHandler: EventHandler = {
       sensitivity: request.sensitivity,
     });
 
+    // 🆕 2026-02-17: 生命周期追踪
+    emitToolCallDebug('info', 'backend:start', `审批请求: ${request.toolName}`, {
+      toolName: request.toolName, toolCallId: request.toolCallId,
+      detail: { sensitivity: request.sensitivity, timeoutSeconds: request.timeoutSeconds },
+    });
+    if (request.toolCallId) trackStart(request.toolCallId, undefined, `approval:${request.toolName}`);
+
     const normalized = toStoreApproval(request);
 
     // 已有待审批请求时进入队列，避免覆盖
@@ -178,6 +187,8 @@ export const approvalEventHandler: EventHandler = {
     console.log('[ApprovalEventHandler] Approval completed, processing next request if exists');
     const result = _result as ApprovalResultPayload | undefined;
     const toolCallId = result?.toolCallId ?? extractToolCallId(_blockId);
+    // 🆕 2026-02-17: 生命周期追踪
+    if (toolCallId) trackEnd(toolCallId, true);
     if (!shouldResolveApproval(store, toolCallId)) {
       return;
     }
@@ -203,6 +214,8 @@ export const approvalEventHandler: EventHandler = {
   onError: (store: ChatStore, _blockId: string, error: string): void => {
     console.log('[ApprovalEventHandler] Approval error:', error);
     const toolCallId = extractToolCallId(_blockId);
+    // 🆕 2026-02-17: 生命周期追踪
+    if (toolCallId) trackEnd(toolCallId, false);
     if (!shouldResolveApproval(store, toolCallId)) {
       return;
     }

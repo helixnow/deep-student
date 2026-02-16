@@ -10,14 +10,7 @@
 
 import React, { useState, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from '@/components/ui/shad/Dialog';
+import { NotionDialog, NotionDialogHeader, NotionDialogTitle, NotionDialogDescription, NotionDialogBody, NotionDialogFooter } from '@/components/ui/NotionDialog';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { Badge } from '@/components/ui/shad/Badge';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
@@ -438,18 +431,18 @@ export function SyncConflictDialog({
   );
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
+    <NotionDialog open={open} onOpenChange={onOpenChange} maxWidth="max-w-4xl">
+        <NotionDialogHeader>
+          <NotionDialogTitle className="flex items-center gap-2">
             <AlertCircle className="h-5 w-5 text-amber-500" />
             {t('syncConflicts', '同步冲突')}
             <Badge variant="secondary">{pendingConflicts.length}</Badge>
-          </DialogTitle>
-          <DialogDescription>
+          </NotionDialogTitle>
+          <NotionDialogDescription>
             {t('conflictDescription', '以下题目在本地和远程存在冲突，请选择解决策略。')}
-          </DialogDescription>
-        </DialogHeader>
+          </NotionDialogDescription>
+        </NotionDialogHeader>
+        <NotionDialogBody nativeScroll>
 
         {pendingConflicts.length === 0 ? (
           <Alert>
@@ -534,13 +527,13 @@ export function SyncConflictDialog({
           </>
         )}
 
-        <DialogFooter>
-          <NotionButton variant="ghost" onClick={() => onOpenChange(false)}>
+        </NotionDialogBody>
+        <NotionDialogFooter>
+          <NotionButton variant="ghost" size="sm" onClick={() => onOpenChange(false)}>
             {t('close', '关闭')}
           </NotionButton>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </NotionDialogFooter>
+    </NotionDialog>
   );
 }
 

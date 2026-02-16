@@ -129,7 +129,7 @@ const toolCallEventHandler: EventHandler = {
       toolName, toolCallId, blockId: backendBlockId,
       detail: { toolInput, preparingBlockFound: false /* updated below */ },
     });
-    if (toolCallId) trackStart(toolCallId, backendBlockId);
+    if (toolCallId) trackStart(toolCallId, backendBlockId, toolName);
 
     // 🆕 2026-01-21: 判断是否是 coordinator_sleep 工具，需要创建 sleep 类型块
     // 这样 SleepBlockComponent 才能渲染，展示嵌入的子代理 ChatContainer
@@ -224,13 +224,8 @@ const toolCallEventHandler: EventHandler = {
    * 设置工具执行结果
    */
   onEnd: (store: ChatStore, blockId: string, result?: unknown): void => {
-    // 🆕 调试：工具执行完成
+    // 🔧 2026-02-17: trackEnd 已输出带完整计时的汇总日志，此处不再重复 emitToolCallDebug
     const endBlock = store.blocks.get(blockId);
-    const durationMs = endBlock?.startedAt ? Date.now() - endBlock.startedAt : undefined;
-    emitToolCallDebug('success', 'backend:end', `${endBlock?.toolName || '?'} 执行完成`, {
-      toolName: endBlock?.toolName, toolCallId: endBlock?.toolCallId, blockId, durationMs,
-      detail: { resultType: result && typeof result === 'object' ? Object.keys(result as object) : typeof result },
-    });
     if (endBlock?.toolCallId) trackEnd(endBlock.toolCallId, true);
 
     // 设置结果（会自动更新状态为 success）
@@ -630,12 +625,8 @@ const toolCallEventHandler: EventHandler = {
    * 标记工具执行失败
    */
   onError: (store: ChatStore, blockId: string, error: string): void => {
-    // 🆕 调试：工具执行失败
+    // 🔧 2026-02-17: trackEnd 已输出带完整计时的汇总日志，此处不再重复 emitToolCallDebug
     const errBlock = store.blocks.get(blockId);
-    emitToolCallDebug('error', 'backend:error', `${errBlock?.toolName || '?'} 执行失败: ${error.slice(0, 120)}`, {
-      toolName: errBlock?.toolName, toolCallId: errBlock?.toolCallId, blockId,
-      detail: { error },
-    });
     if (errBlock?.toolCallId) trackEnd(errBlock.toolCallId, false);
 
     store.setBlockError(blockId, error);
@@ -668,6 +659,14 @@ const imageGenEventHandler: EventHandler = {
   ): string => {
     const { prompt, width, height, model } = payload as ImageGenStartPayload;
 
+    // 🆕 2026-02-17: 生命周期追踪 — image_gen 无 preparing 阶段，trackStart 会自动回填
+    const syntheticToolCallId = backendBlockId || `img_${Date.now()}`;
+    emitToolCallDebug('info', 'backend:start', `image_gen 开始执行`, {
+      toolName: 'image_gen', toolCallId: syntheticToolCallId, blockId: backendBlockId,
+      detail: { prompt: prompt?.slice(0, 80), width, height, model },
+    });
+    trackStart(syntheticToolCallId, backendBlockId, 'image_gen');
+
     // 如果后端传了 blockId，使用它；否则由前端生成
     const blockId = backendBlockId
       ? store.createBlockWithId(messageId, 'image_gen', backendBlockId)
@@ -676,6 +675,7 @@ const imageGenEventHandler: EventHandler = {
     // 设置输入信息（使用 toolInput 字段）
     store.updateBlock(blockId, {
       toolInput: { prompt, width, height, model },
+      toolCallId: syntheticToolCallId, // 🆕 关联 toolCallId 以便 onEnd/onError 追踪
     });
 
     // 🔧 修复：立即将状态更新为 running，让前端显示生成中状态
@@ -698,6 +698,10 @@ const imageGenEventHandler: EventHandler = {
    * 设置生成的图片
    */
   onEnd: (store: ChatStore, blockId: string, result?: unknown): void => {
+    // 🆕 2026-02-17: 生命周期追踪
+    const block = store.blocks.get(blockId);
+    if (block?.toolCallId) trackEnd(block.toolCallId, true);
+
     // 设置结果（会自动更新状态为 success）
     store.setBlockResult(blockId, result);
   },
@@ -707,6 +711,10 @@ const imageGenEventHandler: EventHandler = {
    * 标记图片生成失败
    */
   onError: (store: ChatStore, blockId: string, error: string): void => {
+    // 🆕 2026-02-17: 生命周期追踪
+    const block = store.blocks.get(blockId);
+    if (block?.toolCallId) trackEnd(block.toolCallId, false);
+
     store.setBlockError(blockId, error);
   },
 };

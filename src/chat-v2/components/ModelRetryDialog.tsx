@@ -9,13 +9,7 @@ import React, { useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { RotateCcw } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from '@/components/ui/shad/Dialog';
+import { NotionDialog, NotionDialogHeader, NotionDialogTitle, NotionDialogBody, NotionDialogFooter } from '@/components/ui/NotionDialog';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { MultiSelectModelPanel } from '../plugins/chat/MultiSelectModelPanel';
 import type { ModelInfo } from '../utils/parseModelMentions';
@@ -86,14 +80,14 @@ export const ModelRetryDialog: React.FC<ModelRetryDialogProps> = ({
   }, [selectedModels, onRetry, handleClose]);
 
   return (
-    <Dialog open={open} onOpenChange={(isOpen) => !isOpen && handleClose()}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
+    <NotionDialog open={open} onOpenChange={(isOpen) => !isOpen && handleClose()} maxWidth="max-w-md">
+        <NotionDialogHeader>
+          <NotionDialogTitle className="flex items-center gap-2">
             <RotateCcw className="h-5 w-5 text-primary" />
             {t('chatV2:messageItem.modelRetry.dialogTitle')}
-          </DialogTitle>
-        </DialogHeader>
+          </NotionDialogTitle>
+        </NotionDialogHeader>
+        <NotionDialogBody nativeScroll>
 
         {/* 复用现有的多选模型面板 */}
         <MultiSelectModelPanel
@@ -104,7 +98,8 @@ export const ModelRetryDialog: React.FC<ModelRetryDialogProps> = ({
           disabled={disabled}
         />
 
-        <DialogFooter className="gap-2 sm:gap-0">
+        </NotionDialogBody>
+        <NotionDialogFooter>
           <NotionButton variant="ghost" onClick={handleClose}>
             {t('chatV2:common.cancel')}
           </NotionButton>
@@ -118,9 +113,8 @@ export const ModelRetryDialog: React.FC<ModelRetryDialogProps> = ({
               ? t('chatV2:messageItem.modelRetry.retryParallel', { count: selectedModels.length })
               : t('chatV2:messageItem.modelRetry.retry')}
           </NotionButton>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </NotionDialogFooter>
+    </NotionDialog>
   );
 };
 

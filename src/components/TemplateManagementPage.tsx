@@ -22,7 +22,7 @@ import MinimalTemplateEditor, { EditorTabType } from './MinimalTemplateEditor';
 import { NotionButton } from './ui/NotionButton';
 import { Input as ShadInput } from './ui/shad/Input';
 import { Separator } from './ui/shad/Separator';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './ui/shad/Dialog';
+import { NotionDialog, NotionDialogHeader, NotionDialogTitle, NotionDialogDescription, NotionDialogBody, NotionDialogFooter } from './ui/NotionDialog';
 import { Checkbox } from './ui/shad/Checkbox';
 import { getErrorMessage, formatErrorMessage, logError } from '../utils/errorUtils';
 import { templateService } from '../services/templateService';
@@ -965,17 +965,15 @@ const TemplateManagementPage: React.FC<TemplateManagementPageProps> = ({
       })()}
 
       {/* 导入外部模板 - 模态框 */}
-      <Dialog open={showImportExternalDialog} onOpenChange={(o) => { if (!isImporting) setShowImportExternalDialog(o); }}>
-        <DialogContent className="flex w-[min(92vw,960px)] max-w-3xl max-h-[85vh] flex-col overflow-hidden p-0">
-          <div className="sticky top-0 z-10 border-b border-border bg-white px-6 py-5 dark:border-border dark:bg-card">
-            <DialogHeader>
-              <DialogTitle>{t('import_external_dialog_title')}</DialogTitle>
-              <DialogDescription>
-                {t('import_external_dialog_desc')}
-              </DialogDescription>
-            </DialogHeader>
-          </div>
-          <CustomScrollArea className="flex-1 min-h-0 -mr-6 pl-6" viewportClassName="space-y-3 pr-6 py-6 text-sm text-foreground dark:text-foreground" trackOffsetTop={12} trackOffsetBottom={12} trackOffsetRight={0}>
+      <NotionDialog open={showImportExternalDialog} onOpenChange={(o) => { if (!isImporting) setShowImportExternalDialog(o); }} maxWidth="max-w-3xl">
+          <NotionDialogHeader>
+            <NotionDialogTitle>{t('import_external_dialog_title')}</NotionDialogTitle>
+            <NotionDialogDescription>
+              {t('import_external_dialog_desc')}
+            </NotionDialogDescription>
+          </NotionDialogHeader>
+          <NotionDialogBody>
+          <div className="space-y-3 text-sm text-foreground">
             <ul className="list-disc pl-5 space-y-1">
               <li>{t('import_external_rule_1')}</li>
               <li>{t('import_external_rule_2')}</li>
@@ -994,17 +992,17 @@ const TemplateManagementPage: React.FC<TemplateManagementPageProps> = ({
                 <div className="mt-1 text-xs text-muted-foreground dark:text-muted-foreground">{t('file_selected_prefix')}{selectedImportFile.name}</div>
               )}
             </div>
-          </CustomScrollArea>
-          <DialogFooter className="border-t border-border bg-white px-6 py-4 dark:border-border dark:bg-card">
-            <NotionButton variant="default" onClick={() => setShowImportExternalDialog(false)} disabled={isImporting}>{t('cancel_button')}</NotionButton>
-            <NotionButton variant="primary" onClick={handleConfirmImportExternal} disabled={!selectedImportFile || isImporting}>
+          </div>
+          </NotionDialogBody>
+          <NotionDialogFooter>
+            <NotionButton variant="default" size="sm" onClick={() => setShowImportExternalDialog(false)} disabled={isImporting}>{t('cancel_button')}</NotionButton>
+            <NotionButton variant="primary" size="sm" onClick={handleConfirmImportExternal} disabled={!selectedImportFile || isImporting}>
               {isImporting ? t('importing') : t('start_import_button')}
             </NotionButton>
-          </DialogFooter>
-      </DialogContent>
-    </Dialog>
+          </NotionDialogFooter>
+    </NotionDialog>
 
-    <Dialog
+    <NotionDialog
       open={showBatchExportDialog}
       onOpenChange={(open) => {
         if (isExporting) return;
@@ -1013,17 +1011,17 @@ const TemplateManagementPage: React.FC<TemplateManagementPageProps> = ({
           setBatchExportSelection(new Set());
         }
       }}
+      maxWidth="max-w-xl"
     >
-      <DialogContent className="max-w-xl p-6">
-      <DialogHeader>
-        <DialogTitle>
+      <NotionDialogHeader>
+        <NotionDialogTitle>
           <Download className="h-4 w-4 mr-2 inline" /> {t('export_templates_sidebar')}
-        </DialogTitle>
-        <DialogDescription>
+        </NotionDialogTitle>
+        <NotionDialogDescription>
           {t('export_dialog_desc')}
-        </DialogDescription>
-      </DialogHeader>
-      <CustomScrollArea className="mt-2 max-h-72 -mr-6 pl-6" viewportClassName="space-y-2 pr-6" trackOffsetTop={12} trackOffsetBottom={12} trackOffsetRight={0}>
+        </NotionDialogDescription>
+      </NotionDialogHeader>
+      <NotionDialogBody>
         {templates.length === 0 && (
           <div className="text-sm text-muted-foreground">{t('no_exportable_templates')}</div>
         )}
@@ -1048,8 +1046,8 @@ const TemplateManagementPage: React.FC<TemplateManagementPageProps> = ({
             </div>
           </label>
         ))}
-      </CustomScrollArea>
-        <DialogFooter className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      </NotionDialogBody>
+        <NotionDialogFooter className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-2">
             <NotionButton variant="ghost" size="sm" onClick={handleSelectAllBatch} disabled={isExporting || templates.length === 0}>
               {t('select_all_button')}
@@ -1066,9 +1064,8 @@ const TemplateManagementPage: React.FC<TemplateManagementPageProps> = ({
               {isExporting ? t('exporting') : t('export_count_button', { count: batchExportSelection.size })}
             </NotionButton>
           </div>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </NotionDialogFooter>
+    </NotionDialog>
   </>
 );
 };

@@ -1,6 +1,6 @@
 import React, { useEffect, useState, forwardRef, useImperativeHandle } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogDescription } from '../ui/shad/Dialog';
+import { NotionDialog, NotionDialogHeader, NotionDialogTitle, NotionDialogDescription, NotionDialogBody, NotionDialogFooter } from '../ui/NotionDialog';
 import { Input } from '../ui/shad/Input';
 import { Textarea } from '../ui/shad/Textarea';
 import { NotionButton } from '../ui/NotionButton';
@@ -224,23 +224,23 @@ export const VendorConfigModal = forwardRef<VendorConfigModalRef, VendorConfigMo
 
   // 模态框模式
   return (
-    <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>
+    <NotionDialog open={open} onOpenChange={onClose} maxWidth="max-w-lg">
+        <NotionDialogHeader>
+          <NotionDialogTitle>
             {vendor ? t('settings:vendor_modal.title_edit') : t('settings:vendor_modal.title_new')}
-          </DialogTitle>
-          <DialogDescription>{t('settings:vendor_modal.subtitle')}</DialogDescription>
-        </DialogHeader>
-        {formContent}
-        <DialogFooter className="mt-4">
-          <NotionButton variant="ghost" onClick={onClose}>
+          </NotionDialogTitle>
+          <NotionDialogDescription>{t('settings:vendor_modal.subtitle')}</NotionDialogDescription>
+        </NotionDialogHeader>
+        <NotionDialogBody nativeScroll>
+          {formContent}
+        </NotionDialogBody>
+        <NotionDialogFooter>
+          <NotionButton variant="ghost" size="sm" onClick={onClose}>
             {t('common:actions.cancel')}
           </NotionButton>
-          <NotionButton variant="primary" onClick={handleSave}>{t('common:actions.save')}</NotionButton>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+          <NotionButton variant="primary" size="sm" onClick={handleSave}>{t('common:actions.save')}</NotionButton>
+        </NotionDialogFooter>
+    </NotionDialog>
   );
 });
 

@@ -278,7 +278,8 @@
         "running": "执行中",
         "success": "执行完成",
         "error": "执行失败"
-      }
+      },
+      "viewSourceFile": "查看源文件"
     },
     "imageGen": {
       "title": "图片生成",

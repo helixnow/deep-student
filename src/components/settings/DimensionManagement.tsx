@@ -34,14 +34,7 @@ import {
   TableRow,
 } from '../ui/shad/Table';
 import { AppSelect } from '../ui/app-menu';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '../ui/shad/Dialog';
+import { NotionAlertDialog } from '../ui/NotionDialog';
 import { showGlobalNotification } from '../UnifiedNotification';
 import { vfsUnifiedIndexApi, type VfsEmbeddingDimension } from '../../api/vfsUnifiedIndexApi';
 import { ApiConfig } from '../../types';
@@ -861,22 +854,23 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
 
         {/* 新建维度对话框 (已改为内联编辑) */}
 
-        <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-          <DialogContent className="sm:max-w-[400px]">
-            <DialogHeader>
-              <DialogTitle className="text-base">
-                {t('settings:dimension_management.delete_dimension_title')}
-              </DialogTitle>
-              <DialogDescription className="text-xs">
-                {t('settings:dimension_management.delete_dimension_description', {
-                  dimension: dimensionToDelete?.dimension,
-                  count: dimensionToDelete?.recordCount ?? 0,
-                })}
-              </DialogDescription>
-            </DialogHeader>
-
-            {dimensionToDelete && dimensionToDelete.recordCount > 0 && (
-              <div className="p-3 bg-destructive/5 border border-destructive/10 rounded-md">
+        <NotionAlertDialog
+          open={showDeleteDialog}
+          onOpenChange={setShowDeleteDialog}
+          title={t('settings:dimension_management.delete_dimension_title')}
+          description={t('settings:dimension_management.delete_dimension_description', {
+            dimension: dimensionToDelete?.dimension,
+            count: dimensionToDelete?.recordCount ?? 0,
+          })}
+          confirmText={t('common:delete')}
+          cancelText={t('common:cancel')}
+          confirmVariant="danger"
+          loading={deleting}
+          disabled={deleting}
+          onConfirm={handleDeleteDimension}
+        >
+          {dimensionToDelete && dimensionToDelete.recordCount > 0 && (
+            <div className="p-3 bg-destructive/5 border border-destructive/10 rounded-md">
                 <div className="flex items-start gap-2">
                   <AlertTriangle className="h-4 w-4 text-destructive flex-shrink-0 mt-0.5" />
                   <p className="text-xs text-destructive/80 leading-relaxed">
@@ -887,28 +881,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                 </div>
               </div>
             )}
-
-            <DialogFooter className="gap-2 sm:gap-0">
-              <NotionButton
-                variant="ghost"
-                onClick={() => setShowDeleteDialog(false)}
-                disabled={deleting}
-                className="h-8 text-xs"
-              >
-                {t('common:cancel')}
-              </NotionButton>
-              <NotionButton
-                variant="danger"
-                onClick={handleDeleteDimension}
-                disabled={deleting}
-                className="h-8 text-xs"
-              >
-                {deleting && <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />}
-                {t('common:delete')}
-              </NotionButton>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+        </NotionAlertDialog>
       </div>
     </div>
   );

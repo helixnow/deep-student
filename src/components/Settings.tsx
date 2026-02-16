@@ -7,12 +7,11 @@ import { debugLog } from '../debug-panel/debugMasterSwitch';
 import { AppSelect } from './ui/app-menu';
 import { CustomScrollArea } from './custom-scroll-area';
 import UnifiedModal from './UnifiedModal';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './ui/shad/Dialog';
+import { NotionDialog, NotionDialogHeader, NotionDialogTitle, NotionDialogDescription, NotionDialogBody, NotionDialogFooter, NotionAlertDialog } from './ui/NotionDialog';
 import { ShadApiEditModal, GENERAL_DEFAULT_MIN_P, GENERAL_DEFAULT_TOP_K } from './settings/ShadApiEditModal';
 import { VendorConfigModal, type VendorConfigModalRef } from './settings/VendorConfigModal';
 import { Input } from './ui/shad/Input';
 import { NotionButton } from '@/components/ui/NotionButton';
-import { NotionAlertDialog } from './ui/NotionDialog';
 import { TauriAPI } from '../utils/tauriApi';
 import { ModelAssignments, VendorConfig, ModelProfile, ApiConfig } from '../types';
 import { Alert, AlertDescription, AlertTitle } from './ui/shad/Alert';
@@ -1698,10 +1697,10 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
     return (
       <UnifiedModal isOpen={true} onClose={handleClose} closeOnOverlayClick={false} contentClassName={modalContentClassName}>
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-          <DialogHeader className="space-y-0.5 px-3 pt-3">
-            <DialogTitle>{isEditing ? t('settings:mcp_descriptions.edit_tool_title') : t('settings:mcp_descriptions.add_tool_title')}</DialogTitle>
-            <DialogDescription>{t('settings:mcp_descriptions.tool_modal_hint')}</DialogDescription>
-          </DialogHeader>
+          <NotionDialogHeader>
+            <NotionDialogTitle>{isEditing ? t('settings:mcp_descriptions.edit_tool_title') : t('settings:mcp_descriptions.add_tool_title')}</NotionDialogTitle>
+            <NotionDialogDescription>{t('settings:mcp_descriptions.tool_modal_hint')}</NotionDialogDescription>
+          </NotionDialogHeader>
           <Tabs value={mcpToolModal.mode} onValueChange={handleModeChange} className="mt-1.5 flex flex-1 flex-col justify-start px-3 pb-0 min-h-0">
             <TabsList className="grid w-full grid-cols-2 rounded-lg bg-muted p-1 flex-shrink-0">
             <TabsTrigger value="form" className="data-[state=active]:bg-background data-[state=active]:shadow-sm">{t('settings:mcp_descriptions.form_mode')}</TabsTrigger>
@@ -1902,10 +1901,10 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
             </Alert>
           )}
 
-          <DialogFooter className="mt-2 gap-2 px-3 pb-3 flex-shrink-0">
-            <NotionButton variant="ghost" onClick={handleClose}>{t('common:actions.cancel')}</NotionButton>
-            <NotionButton onClick={handleSubmit}>{isEditing ? t('common:actions.save') : t('common:actions.create')}</NotionButton>
-          </DialogFooter>
+          <NotionDialogFooter>
+            <NotionButton variant="ghost" size="sm" onClick={handleClose}>{t('common:actions.cancel')}</NotionButton>
+            <NotionButton size="sm" onClick={handleSubmit}>{isEditing ? t('common:actions.save') : t('common:actions.create')}</NotionButton>
+          </NotionDialogFooter>
         </div>
       </UnifiedModal>
     );
@@ -4075,17 +4074,15 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
           />
         )}
 
-        <Dialog open={mcpPreview.open} onOpenChange={(open) => { if (!open) handleClosePreview(); }}>
-          <DialogContent className="flex w-[min(92vw,960px)] max-w-3xl max-h-[85vh] flex-col overflow-hidden p-0">
-            <div className="sticky top-0 z-10 border-b bg-card px-6 py-5">
-              <DialogHeader>
-                <DialogTitle>{mcpPreview.serverName || t('settings:mcp.preview.default_title')}</DialogTitle>
-                <DialogDescription>{t('settings:mcp.preview.description')}</DialogDescription>
-                {mcpPreview.serverId && (
-                  <div className="mt-1 text-xs text-muted-foreground break-all">{t('settings:mcp.preview.id_label')}：{mcpPreview.serverId}</div>
-                )}
-              </DialogHeader>
-            </div>
+        <NotionDialog open={mcpPreview.open} onOpenChange={(open) => { if (!open) handleClosePreview(); }} maxWidth="max-w-3xl">
+          <NotionDialogHeader>
+            <NotionDialogTitle>{mcpPreview.serverName || t('settings:mcp.preview.default_title')}</NotionDialogTitle>
+            <NotionDialogDescription>{t('settings:mcp.preview.description')}</NotionDialogDescription>
+            {mcpPreview.serverId && (
+              <div className="mt-1 text-xs text-muted-foreground break-all">{t('settings:mcp.preview.id_label')}：{mcpPreview.serverId}</div>
+            )}
+          </NotionDialogHeader>
+          <NotionDialogBody nativeScroll>
             <CustomScrollArea
               className="flex-1 min-h-0 px-6 py-6"
               viewportClassName="px-6 py-6"
@@ -4194,11 +4191,11 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
                 </div>
               )}
             </CustomScrollArea>
-            <DialogFooter className="border-t bg-card px-6 py-4">
-              <NotionButton variant="default" onClick={handleClosePreview}>{t('common:close')}</NotionButton>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+          </NotionDialogBody>
+          <NotionDialogFooter>
+            <NotionButton variant="default" size="sm" onClick={handleClosePreview}>{t('common:close')}</NotionButton>
+          </NotionDialogFooter>
+        </NotionDialog>
         {/* 外部搜索设置 */}
         {activeTab === 'search' && (
           <ExternalSearchTab config={config} setConfig={setConfig} />
@@ -4594,20 +4591,20 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
         </NotionAlertDialog>
 
         {/* 现代化菜单演示对话框 */}
-        <Dialog open={showAppMenuDemo} onOpenChange={setShowAppMenuDemo}>
-          <DialogContent className="max-w-4xl max-h-[90vh] overflow-auto p-0">
-            <DialogHeader className="p-6 pb-0">
-              <DialogTitle className="flex items-center gap-2">
-                <Layers className="h-5 w-5" />
-                {t('acknowledgements.ui_components.app_menu')}
-              </DialogTitle>
-              <DialogDescription>
-                {t('acknowledgements.ui_components.app_menu_desc')}
-              </DialogDescription>
-            </DialogHeader>
+        <NotionDialog open={showAppMenuDemo} onOpenChange={setShowAppMenuDemo} maxWidth="max-w-4xl">
+          <NotionDialogHeader>
+            <NotionDialogTitle className="flex items-center gap-2">
+              <Layers className="h-5 w-5" />
+              {t('acknowledgements.ui_components.app_menu')}
+            </NotionDialogTitle>
+            <NotionDialogDescription>
+              {t('acknowledgements.ui_components.app_menu_desc')}
+            </NotionDialogDescription>
+          </NotionDialogHeader>
+          <NotionDialogBody nativeScroll>
             <AppMenuDemo />
-          </DialogContent>
-        </Dialog>
+          </NotionDialogBody>
+        </NotionDialog>
       </div>
     );
   }
@@ -4682,20 +4679,20 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
       </NotionAlertDialog>
 
       {/* 现代化菜单演示对话框 */}
-      <Dialog open={showAppMenuDemo} onOpenChange={setShowAppMenuDemo}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-auto p-0">
-          <DialogHeader className="p-6 pb-0">
-            <DialogTitle className="flex items-center gap-2">
-              <Layers className="h-5 w-5" />
-              {t('acknowledgements.ui_components.app_menu')}
-            </DialogTitle>
-            <DialogDescription>
-              {t('acknowledgements.ui_components.app_menu_desc')}
-            </DialogDescription>
-          </DialogHeader>
+      <NotionDialog open={showAppMenuDemo} onOpenChange={setShowAppMenuDemo} maxWidth="max-w-4xl">
+        <NotionDialogHeader>
+          <NotionDialogTitle className="flex items-center gap-2">
+            <Layers className="h-5 w-5" />
+            {t('acknowledgements.ui_components.app_menu')}
+          </NotionDialogTitle>
+          <NotionDialogDescription>
+            {t('acknowledgements.ui_components.app_menu_desc')}
+          </NotionDialogDescription>
+        </NotionDialogHeader>
+        <NotionDialogBody nativeScroll>
           <AppMenuDemo />
-        </DialogContent>
-      </Dialog>
+        </NotionDialogBody>
+      </NotionDialog>
     </div>
   );
 };

@@ -7,10 +7,7 @@
 
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import {
-  Dialog,
-  DialogContent,
-} from '../ui/shad/Dialog';
+import { NotionDialog } from '../ui/NotionDialog';
 import { Input } from '../ui/shad/Input';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { Switch } from '../ui/shad/Switch';
@@ -647,18 +644,16 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
 
   // 模态框模式：使用 Dialog 包裹
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent
-        closeOnOverlayClick={false}
-        className="w-[min(95vw,640px)] p-0 overflow-hidden bg-background flex flex-col border shadow-2xl rounded-xl sm:rounded-2xl"
-        style={{
-          height: dialogHeight,
-          maxHeight: dialogMaxHeight,
-        }}
-      >
-        {formContent}
-      </DialogContent>
-    </Dialog>
+    <NotionDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      closeOnOverlay={false}
+      showClose={false}
+      maxWidth="max-w-[640px]"
+      className="p-0 overflow-hidden"
+    >
+      {formContent}
+    </NotionDialog>
   );
 };
 

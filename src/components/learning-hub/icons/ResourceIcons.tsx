@@ -720,6 +720,8 @@ export type ResourceIconType =
   | 'file'
   | 'pdf'
   | 'docx'
+  | 'pptx'
+  | 'xlsx'
   | 'audio'
   | 'video'
   | 'memory'
@@ -742,6 +744,8 @@ export const ResourceIconMap: Record<ResourceIconType, React.FC<ResourceIconProp
   file: GenericFileIcon,
   pdf: PdfFileIcon,
   docx: DocxFileIcon,
+  pptx: PptxFileIcon,
+  xlsx: XlsxFileIcon,
   audio: AudioFileIcon,
   video: VideoFileIcon,
   memory: MemoryIcon,
