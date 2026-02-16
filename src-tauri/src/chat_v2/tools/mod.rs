@@ -47,6 +47,8 @@ pub mod canvas_executor;
 pub mod canvas_tools;
 pub mod chatanki_executor; // 🆕 ChatAnki 工具执行器（文件→卡片闭环）
 pub mod docx_executor; // 🆕 DOCX 文档读写工具执行器（docx-rs 完整能力）
+pub mod pptx_executor; // 🆕 PPTX 演示文稿读写工具执行器（ppt-rs）
+pub mod xlsx_executor; // 🆕 XLSX 电子表格读写工具执行器（umya-spreadsheet）
 pub mod executor;
 pub mod executor_registry;
 pub mod fetch_executor; // 🆕 内置 Web Fetch 工具执行器（参考 @anthropic/mcp-fetch）
@@ -91,6 +93,8 @@ pub use builtin_retrieval_executor::BuiltinRetrievalExecutor; // 🆕 内置检�
 pub use canvas_executor::CanvasToolExecutor;
 pub use chatanki_executor::ChatAnkiToolExecutor; // 🆕 ChatAnki 工具执行器
 pub use docx_executor::DocxToolExecutor; // 🆕 DOCX 文档读写工具执行器
+pub use pptx_executor::PptxToolExecutor; // 🆕 PPTX 演示文稿读写工具执行器
+pub use xlsx_executor::XlsxToolExecutor; // 🆕 XLSX 电子表格读写工具执行器
 pub use executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
 pub use executor_registry::ToolExecutorRegistry;
 pub use fetch_executor::FetchExecutor; // 🆕 内置 Web Fetch 工具执行器

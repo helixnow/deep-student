@@ -402,6 +402,7 @@ describe('预定义类型 formatToBlocks', () => {
       const text = (blocks[0] as { type: 'text'; text: string }).text;
       expect(text).toContain('<attachment');
       expect(text).toContain('name="test.txt"');
+      expect(text).toContain('source_id="file_1"');
       expect(text).toContain('type="text/plain"');
       expect(text).toContain('size="1.0 KB"');
       expect(text).toContain('File content here');

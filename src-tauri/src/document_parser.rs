@@ -1811,6 +1811,513 @@ impl DocumentParser {
     }
 
     // ========================================================================
+    // PPTX 写入/编辑（使用 ppt-rs）
+    // ========================================================================
+
+    /// 从 JSON spec 生成 PPTX 文件
+    ///
+    /// spec 格式：
+    /// ```json
+    /// {
+    ///   "title": "演示文稿标题",
+    ///   "theme": "corporate",
+    ///   "slides": [
+    ///     { "type": "title", "title": "标题", "subtitle": "副标题" },
+    ///     { "type": "content", "title": "内容页标题", "bullets": ["要点1","要点2"] },
+    ///     { "type": "table", "title": "表格页", "headers": ["列1","列2"], "rows": [["a","b"],["c","d"]] },
+    ///     { "type": "blank", "title": "自由页" }
+    ///   ]
+    /// }
+    /// ```
+    pub fn generate_pptx_from_spec(spec: &serde_json::Value) -> Result<Vec<u8>, ParsingError> {
+        use ppt_rs::generator::{
+            create_pptx_with_content, SlideContent, TableBuilder,
+        };
+
+        let title = spec
+            .get("title")
+            .and_then(|v| v.as_str())
+            .unwrap_or("Presentation");
+
+        let slides_data = spec
+            .get("slides")
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default();
+
+        let mut slides: Vec<SlideContent> = Vec::new();
+
+        for slide_data in &slides_data {
+            let slide_type = slide_data
+                .get("type")
+                .and_then(|v| v.as_str())
+                .unwrap_or("content");
+            let slide_title = slide_data
+                .get("title")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+
+            match slide_type {
+                "title" => {
+                    let subtitle = slide_data
+                        .get("subtitle")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("");
+                    let mut sc = SlideContent::new(slide_title);
+                    if !subtitle.is_empty() {
+                        sc = sc.add_bullet(subtitle);
+                    }
+                    slides.push(sc);
+                }
+                "content" => {
+                    let bullets = slide_data
+                        .get("bullets")
+                        .and_then(|v| v.as_array())
+                        .cloned()
+                        .unwrap_or_default();
+                    let mut sc = SlideContent::new(slide_title);
+                    for bullet in &bullets {
+                        if let Some(text) = bullet.as_str() {
+                            sc = sc.add_bullet(text);
+                        }
+                    }
+                    slides.push(sc);
+                }
+                "table" => {
+                    let headers = slide_data
+                        .get("headers")
+                        .and_then(|v| v.as_array())
+                        .cloned()
+                        .unwrap_or_default();
+                    let rows = slide_data
+                        .get("rows")
+                        .and_then(|v| v.as_array())
+                        .cloned()
+                        .unwrap_or_default();
+
+                    // 计算列数和列宽
+                    let col_count = headers.len().max(
+                        rows.first()
+                            .and_then(|r| r.as_array())
+                            .map(|a| a.len())
+                            .unwrap_or(0),
+                    )
+                    .max(1);
+                    let col_width = 8000000u32 / col_count as u32; // 平分幻灯片宽度
+                    let col_widths: Vec<u32> = vec![col_width; col_count];
+
+                    let mut tb = TableBuilder::new(col_widths);
+
+                    // 添加表头行
+                    if !headers.is_empty() {
+                        let header_strs: Vec<&str> = headers
+                            .iter()
+                            .map(|h| h.as_str().unwrap_or(""))
+                            .collect();
+                        tb = tb.add_simple_row(header_strs);
+                    }
+
+                    // 添加数据行
+                    for row in &rows {
+                        if let Some(cells) = row.as_array() {
+                            let cell_strs: Vec<&str> = cells
+                                .iter()
+                                .map(|c| c.as_str().unwrap_or(""))
+                                .collect();
+                            tb = tb.add_simple_row(cell_strs);
+                        }
+                    }
+
+                    let table = tb.build();
+                    let sc = SlideContent::new(slide_title).table(table);
+                    slides.push(sc);
+                }
+                // "blank" or unknown → 空白幻灯片
+                _ => {
+                    slides.push(SlideContent::new(slide_title));
+                }
+            }
+        }
+
+        // 如果没有任何幻灯片，添加一张标题页
+        if slides.is_empty() {
+            slides.push(SlideContent::new(title));
+        }
+
+        let pptx_bytes = create_pptx_with_content(title, slides)
+            .map_err(|e| ParsingError::PptxParsingError(format!("PPTX 生成失败: {}", e)))?;
+
+        Ok(pptx_bytes)
+    }
+
+    /// 从 PPTX 字节提取结构化 JSON spec（用于 round-trip 编辑）
+    ///
+    /// 读取现有 PPTX → 提取幻灯片结构 → 输出 JSON spec
+    /// LLM 可修改 spec 后使用 generate_pptx_from_spec 重新生成
+    pub fn extract_pptx_as_spec(&self, bytes: &[u8]) -> Result<serde_json::Value, ParsingError> {
+        // 先提取为 Markdown（复用 pptx-to-md），然后转换为 spec 格式
+        let markdown = self.extract_pptx_from_bytes(bytes.to_vec())?;
+
+        // 将 Markdown 解析为幻灯片结构
+        let mut slides = Vec::new();
+        let mut current_title = String::new();
+        let mut current_bullets: Vec<String> = Vec::new();
+
+        for line in markdown.lines() {
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+
+            if trimmed.starts_with("# ") || trimmed.starts_with("## ") {
+                // 保存前一张幻灯片
+                if !current_title.is_empty() || !current_bullets.is_empty() {
+                    slides.push(serde_json::json!({
+                        "type": "content",
+                        "title": current_title,
+                        "bullets": current_bullets,
+                    }));
+                }
+                current_title = trimmed
+                    .trim_start_matches('#')
+                    .trim()
+                    .to_string();
+                current_bullets = Vec::new();
+            } else if trimmed.starts_with("- ") || trimmed.starts_with("* ") || trimmed.starts_with("• ") {
+                let bullet_text = trimmed
+                    .trim_start_matches("- ")
+                    .trim_start_matches("* ")
+                    .trim_start_matches("• ")
+                    .to_string();
+                current_bullets.push(bullet_text);
+            } else if !trimmed.is_empty() {
+                current_bullets.push(trimmed.to_string());
+            }
+        }
+
+        // 保存最后一张幻灯片
+        if !current_title.is_empty() || !current_bullets.is_empty() {
+            slides.push(serde_json::json!({
+                "type": "content",
+                "title": current_title,
+                "bullets": current_bullets,
+            }));
+        }
+
+        Ok(serde_json::json!({
+            "title": slides.first()
+                .and_then(|s| s.get("title"))
+                .and_then(|t| t.as_str())
+                .unwrap_or("Presentation"),
+            "slides": slides,
+        }))
+    }
+
+    // ========================================================================
+    // XLSX 写入/编辑（使用 umya-spreadsheet）
+    // ========================================================================
+
+    /// 从 JSON spec 生成 XLSX 文件
+    ///
+    /// spec 格式：
+    /// ```json
+    /// {
+    ///   "sheets": [
+    ///     {
+    ///       "name": "Sheet1",
+    ///       "headers": ["姓名", "年龄", "城市"],
+    ///       "rows": [
+    ///         ["张三", "25", "北京"],
+    ///         ["李四", "30", "上海"]
+    ///       ]
+    ///     }
+    ///   ]
+    /// }
+    /// ```
+    pub fn generate_xlsx_from_spec(spec: &serde_json::Value) -> Result<Vec<u8>, ParsingError> {
+        let mut book = umya_spreadsheet::new_file();
+
+        let sheets_data = spec
+            .get("sheets")
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default();
+
+        // 如果没有 sheets，尝试顶层 headers/rows（单工作表简写）
+        let sheets_to_process = if sheets_data.is_empty() {
+            vec![spec.clone()]
+        } else {
+            sheets_data
+        };
+
+        for (sheet_idx, sheet_data) in sheets_to_process.iter().enumerate() {
+            let sheet_name = sheet_data
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or(if sheet_idx == 0 { "Sheet1" } else { "" });
+
+            // 获取或创建工作表
+            let sheet = if sheet_idx == 0 {
+                // 第一个工作表：重命名默认的 Sheet1
+                let ws = book.get_sheet_mut(&0).unwrap();
+                ws.set_name(sheet_name);
+                ws
+            } else {
+                let name = if sheet_name.is_empty() {
+                    format!("Sheet{}", sheet_idx + 1)
+                } else {
+                    sheet_name.to_string()
+                };
+                book.new_sheet(&name)
+                    .map_err(|e| ParsingError::ExcelParsingError(format!("创建工作表失败: {}", e)))?
+            };
+
+            let mut row_num: u32 = 1;
+
+            // 写入表头
+            if let Some(headers) = sheet_data.get("headers").and_then(|v| v.as_array()) {
+                for (col_idx, header) in headers.iter().enumerate() {
+                    let cell_text = header.as_str().unwrap_or("");
+                    let cell = sheet.get_cell_mut(((col_idx as u32) + 1, row_num));
+                    cell.set_value(cell_text);
+                    // 表头加粗
+                    cell.get_style_mut().get_font_mut().set_bold(true);
+                }
+                row_num += 1;
+            }
+
+            // 写入数据行
+            if let Some(rows) = sheet_data.get("rows").and_then(|v| v.as_array()) {
+                for row_data in rows {
+                    if let Some(cells) = row_data.as_array() {
+                        for (col_idx, cell_val) in cells.iter().enumerate() {
+                            let fallback = cell_val.to_string().trim_matches('"').to_string();
+                            let cell_text = cell_val.as_str().unwrap_or(&fallback);
+                            let cell = sheet.get_cell_mut(((col_idx as u32) + 1, row_num));
+                            // 尝试作为数字写入
+                            if let Ok(num) = cell_text.parse::<f64>() {
+                                cell.set_value_number(num);
+                            } else {
+                                cell.set_value(cell_text);
+                            }
+                        }
+                    }
+                    row_num += 1;
+                }
+            }
+        }
+
+        // 序列化为 XLSX 字节
+        let mut buf = Cursor::new(Vec::new());
+        umya_spreadsheet::writer::xlsx::write_writer(&book, &mut buf)
+            .map_err(|e| ParsingError::ExcelParsingError(format!("XLSX 生成失败: {}", e)))?;
+
+        Ok(buf.into_inner())
+    }
+
+    /// 从 XLSX 字节提取结构化 JSON spec（用于 round-trip 编辑）
+    pub fn extract_xlsx_as_spec(&self, bytes: &[u8]) -> Result<serde_json::Value, ParsingError> {
+        let cursor = Cursor::new(bytes.to_vec());
+        let book = umya_spreadsheet::reader::xlsx::read_reader(cursor, false)
+            .map_err(|e| ParsingError::ExcelParsingError(format!("XLSX 读取失败: {}", e)))?;
+
+        let mut sheets_json = Vec::new();
+
+        for (_sheet_idx, sheet_name) in book.get_sheet_collection().iter().enumerate() {
+            let ws_name = sheet_name.get_name().to_string();
+            let ws = book.get_sheet_by_name(&ws_name);
+            if ws.is_none() {
+                continue;
+            }
+            let ws = ws.unwrap();
+
+            let (max_col, max_row) = ws.get_highest_column_and_row();
+            if max_row == 0 || max_col == 0 {
+                sheets_json.push(serde_json::json!({
+                    "name": ws_name,
+                    "headers": [],
+                    "rows": [],
+                }));
+                continue;
+            }
+
+            // 第一行作为表头
+            let mut headers = Vec::new();
+            for col in 1..=max_col {
+                let val = ws
+                    .get_cell((col, 1))
+                    .map(|c| c.get_value().to_string())
+                    .unwrap_or_default();
+                headers.push(val);
+            }
+
+            // 其余行作为数据
+            let mut rows = Vec::new();
+            for row in 2..=max_row {
+                let mut row_data = Vec::new();
+                for col in 1..=max_col {
+                    let val = ws
+                        .get_cell((col, row))
+                        .map(|c| c.get_value().to_string())
+                        .unwrap_or_default();
+                    row_data.push(val);
+                }
+                rows.push(row_data);
+            }
+
+            sheets_json.push(serde_json::json!({
+                "name": ws_name,
+                "headers": headers,
+                "rows": rows,
+            }));
+        }
+
+        Ok(serde_json::json!({
+            "title": sheets_json.first()
+                .and_then(|s| s.get("name"))
+                .and_then(|t| t.as_str())
+                .unwrap_or("Workbook"),
+            "sheets": sheets_json,
+        }))
+    }
+
+    /// 在 XLSX 中编辑指定单元格，保存为新文件
+    ///
+    /// edits 格式：[{sheet: "Sheet1", cell: "A1", value: "新值"}, ...]
+    pub fn edit_xlsx_cells(
+        &self,
+        bytes: &[u8],
+        edits: &[(String, String, String)], // (sheet_name, cell_ref, value)
+    ) -> Result<(Vec<u8>, usize), ParsingError> {
+        let cursor = Cursor::new(bytes.to_vec());
+        let mut book = umya_spreadsheet::reader::xlsx::read_reader(cursor, false)
+            .map_err(|e| ParsingError::ExcelParsingError(format!("XLSX 读取失败: {}", e)))?;
+
+        let mut edit_count = 0usize;
+
+        for (sheet_name, cell_ref, value) in edits {
+            let ws = book.get_sheet_by_name_mut(sheet_name);
+            if ws.is_none() {
+                log::warn!("[DocumentParser] XLSX 编辑：工作表 '{}' 不存在，跳过", sheet_name);
+                continue;
+            }
+            let ws = ws.unwrap();
+            let cell = ws.get_cell_mut(cell_ref.as_str());
+            // 尝试作为数字写入
+            if let Ok(num) = value.parse::<f64>() {
+                cell.set_value_number(num);
+            } else {
+                cell.set_value(value.as_str());
+            }
+            edit_count += 1;
+        }
+
+        // 序列化为新 XLSX
+        let mut buf = Cursor::new(Vec::new());
+        umya_spreadsheet::writer::xlsx::write_writer(&book, &mut buf)
+            .map_err(|e| ParsingError::ExcelParsingError(format!("XLSX 保存失败: {}", e)))?;
+
+        Ok((buf.into_inner(), edit_count))
+    }
+
+    /// 在 XLSX 中执行文本查找替换
+    pub fn replace_text_in_xlsx(
+        &self,
+        bytes: &[u8],
+        replacements: &[(String, String)],
+    ) -> Result<(Vec<u8>, usize), ParsingError> {
+        let cursor = Cursor::new(bytes.to_vec());
+        let mut book = umya_spreadsheet::reader::xlsx::read_reader(cursor, false)
+            .map_err(|e| ParsingError::ExcelParsingError(format!("XLSX 读取失败: {}", e)))?;
+
+        let mut total_count = 0usize;
+
+        // 收集工作表名称
+        let sheet_names: Vec<String> = book
+            .get_sheet_collection()
+            .iter()
+            .map(|ws| ws.get_name().to_string())
+            .collect();
+
+        for sheet_name in &sheet_names {
+            let ws = book.get_sheet_by_name_mut(sheet_name);
+            if ws.is_none() {
+                continue;
+            }
+            let ws = ws.unwrap();
+            let (max_col, max_row) = ws.get_highest_column_and_row();
+
+            for row in 1..=max_row {
+                for col in 1..=max_col {
+                    if let Some(cell) = ws.get_cell((col, row)) {
+                        let old_val = cell.get_value().to_string();
+                        let mut new_val = old_val.clone();
+                        for (find, replace) in replacements {
+                            if new_val.contains(find.as_str()) {
+                                new_val = new_val.replace(find.as_str(), replace.as_str());
+                            }
+                        }
+                        if new_val != old_val {
+                            let cell_mut = ws.get_cell_mut((col, row));
+                            cell_mut.set_value(new_val.as_str());
+                            total_count += 1;
+                        }
+                    }
+                }
+            }
+        }
+
+        // 序列化
+        let mut buf = Cursor::new(Vec::new());
+        umya_spreadsheet::writer::xlsx::write_writer(&book, &mut buf)
+            .map_err(|e| ParsingError::ExcelParsingError(format!("XLSX 保存失败: {}", e)))?;
+
+        Ok((buf.into_inner(), total_count))
+    }
+
+    /// 从 XLSX 字节提取所有工作表的结构化表格数据
+    pub fn extract_xlsx_tables(
+        &self,
+        bytes: &[u8],
+    ) -> Result<Vec<serde_json::Value>, ParsingError> {
+        let cursor = Cursor::new(bytes.to_vec());
+        let book = umya_spreadsheet::reader::xlsx::read_reader(cursor, false)
+            .map_err(|e| ParsingError::ExcelParsingError(format!("XLSX 读取失败: {}", e)))?;
+
+        let mut tables = Vec::new();
+
+        for sheet in book.get_sheet_collection() {
+            let ws_name = sheet.get_name().to_string();
+            let (max_col, max_row) = sheet.get_highest_column_and_row();
+            if max_row == 0 || max_col == 0 {
+                continue;
+            }
+
+            let mut rows_data = Vec::new();
+            for row in 1..=max_row {
+                let mut row_data = Vec::new();
+                for col in 1..=max_col {
+                    let val = sheet
+                        .get_cell((col, row))
+                        .map(|c| c.get_value().to_string())
+                        .unwrap_or_default();
+                    row_data.push(val);
+                }
+                rows_data.push(row_data);
+            }
+
+            tables.push(serde_json::json!({
+                "sheet_name": ws_name,
+                "row_count": max_row,
+                "col_count": max_col,
+                "rows": rows_data,
+            }));
+        }
+
+        Ok(tables)
+    }
+
+    // ========================================================================
     // EPUB 解析（纯 Rust，使用 epub crate）
     // ========================================================================
 

@@ -203,8 +203,8 @@ export const fileDefinition: ContextTypeDefinition = {
 
   // System Prompt 中的标签格式说明
   systemPromptHint:
-    '<attachment name="..." type="..." size="...">文件内容</attachment> - ' +
-    '用户上传的文件附件，包含文件名、类型和文本内容',
+    '<attachment name="..." source_id="..." type="..." size="...">文件内容</attachment> - ' +
+    '用户上传的文件附件，source_id 可作为 DOCX 工具的 resource_id 参数',
 
   formatToBlocks(resource: Resource, options?: FormatOptions): ContentBlock[] {
     const metadata = resource.metadata as FileMetadata | undefined;

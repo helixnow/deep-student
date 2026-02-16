@@ -22,6 +22,8 @@ export { templateDesignerSkill } from './template-designer';
 export { askUserSkill } from './ask-user';
 export { academicSearchSkill } from './academic-search';
 export { docxToolsSkill } from './docx-tools';
+export { pptxToolsSkill } from './pptx-tools';
+export { xlsxToolsSkill } from './xlsx-tools';
 
 import { knowledgeRetrievalSkill } from './knowledge-retrieval';
 import { canvasNoteSkill } from './canvas-note';
@@ -38,6 +40,8 @@ import { templateDesignerSkill } from './template-designer';
 import { askUserSkill } from './ask-user';
 import { academicSearchSkill } from './academic-search';
 import { docxToolsSkill } from './docx-tools';
+import { pptxToolsSkill } from './pptx-tools';
+import { xlsxToolsSkill } from './xlsx-tools';
 import type { SkillDefinition } from '../types';
 
 /**
@@ -62,6 +66,8 @@ export const builtinToolSkills: SkillDefinition[] = [
   askUserSkill,
   academicSearchSkill,
   docxToolsSkill,
+  pptxToolsSkill,
+  xlsxToolsSkill,
 ];
 
 /**
