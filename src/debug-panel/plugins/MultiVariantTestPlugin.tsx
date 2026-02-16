@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 import type { DebugPanelPluginProps } from '../DebugPanelHost';
 import {
-  ALL_STEPS, STEP_LABELS, GROUP_A, GROUP_B, GROUP_C, GROUP_D, GROUP_E,
+  ALL_STEPS, STEP_LABELS, GROUP_A, GROUP_B, GROUP_C, GROUP_D, GROUP_E, GROUP_F,
   runAllMultiVariantTests, requestAbort, resetAbort, cleanupMultiVariantTestData,
   type StepName, type MultiVariantTestConfig, type StepResult, type LogEntry, type OverallStatus,
 } from '../../chat-v2/debug/multiVariantTestPlugin';
@@ -67,6 +67,9 @@ const STEP_DESCRIPTIONS: Record<StepName, string> = {
   mv_persist_complete: '完成后持久化校验',
   mv_skeleton_check: '流式中骨架验证',
   mv_icon_and_dom: 'Icon + DOM 全检',
+  mv_mixed_single_multi: '单变体→多变体 + 持久化校验',
+  mv_mixed_multi_single: '多变体→单变体 + 状态机校验',
+  mv_mixed_alternating_persist: '单→多→单 交替3轮 + 全量持久化',
 };
 
 const GROUP_LABELS: Array<{ label: string; steps: StepName[] }> = [
@@ -75,6 +78,7 @@ const GROUP_LABELS: Array<{ label: string; steps: StepName[] }> = [
   { label: 'C 切换与删除', steps: GROUP_C },
   { label: 'D 打断矩阵', steps: GROUP_D },
   { label: 'E 持久化+DOM', steps: GROUP_E },
+  { label: 'F 模式交替', steps: GROUP_F },
 ];
 
 // =============================================================================

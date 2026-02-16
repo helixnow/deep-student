@@ -27,6 +27,7 @@ import {
   ChevronRight,
   Clock,
   ExternalLink,
+  FileText,
 } from 'lucide-react';
 import { blockRegistry, type BlockComponentProps } from '../../registry';
 import { ToolInputView, ToolOutputView, isTemplateVisualOutput } from './components';
@@ -309,6 +310,27 @@ const NOTE_TOOLS = [
   'builtin-note_create', 'builtin-note_read', 'builtin-note_append', 'builtin-note_replace', 'builtin-note_set', 'builtin-note_list', 'builtin-note_search',
 ];
 
+// DOCX 写入/编辑工具列表（生成文件的工具）
+const DOCX_WRITE_TOOLS = [
+  'docx_create', 'docx_replace_text',
+  'builtin-docx_create', 'builtin-docx_replace_text',
+];
+
+/**
+ * 从 DOCX 工具输出中提取 file_id 和 file_name
+ */
+function extractDocxFileInfo(toolOutput: unknown): { fileId: string; fileName: string } | null {
+  if (toolOutput && typeof toolOutput === 'object') {
+    const output = toolOutput as Record<string, unknown>;
+    const fileId = (output.file_id || output.new_file_id) as string | undefined;
+    const fileName = (output.file_name || 'document.docx') as string;
+    if (fileId) {
+      return { fileId, fileName };
+    }
+  }
+  return null;
+}
+
 /**
  * 从工具输出中提取 note_id
  */
@@ -530,6 +552,25 @@ const McpToolBlockComponent: React.FC<BlockComponentProps> = ({
         <div className="p-3">
           <ToolOutputView output={toolOutput} />
           
+          {/* DOCX 写入工具跳转按钮 */}
+          {DOCX_WRITE_TOOLS.includes(toolName) && (() => {
+            const fileInfo = extractDocxFileInfo(toolOutput);
+            if (!fileInfo) return null;
+            return (
+              <NotionButton
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  window.dispatchEvent(new CustomEvent('OPEN_NOTES'));
+                }}
+                className="mt-2 bg-muted/30 hover:bg-muted/60"
+              >
+                <FileText size={12} />
+                {t('blocks.mcpTool.viewInLearningHub', { defaultValue: '在学习资源中查看' })}
+              </NotionButton>
+            );
+          })()}
+
           {/* 笔记工具跳转按钮 */}
           {NOTE_TOOLS.includes(toolName) && (() => {
             const noteId = extractNoteId(toolOutput, toolInput);

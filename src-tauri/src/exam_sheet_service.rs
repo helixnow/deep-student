@@ -2561,46 +2561,21 @@ impl ExamSheetService {
     }
 
     /// 从 DOCX 文件提取纯文本
+    ///
+    /// ★ 2026-02 统一：使用 DocumentParser (docx-rs) 替代原 ZIP + regex 方案，
+    /// 与 attachment_read / resource_read 等路径共享同一解析逻辑，
+    /// 支持表格、超链接、标题等完整内容提取。
     fn extract_docx_text(&self, bytes: &[u8]) -> Result<String, AppError> {
-        use std::io::{Cursor, Read};
-        use zip::ZipArchive;
+        let parser = crate::document_parser::DocumentParser::new();
+        let text = parser
+            .extract_text_from_bytes("document.docx", bytes.to_vec())
+            .map_err(|e| AppError::validation(format!("DOCX 解析失败: {}", e)))?;
 
-        let cursor = Cursor::new(bytes);
-        let mut archive = ZipArchive::new(cursor)
-            .map_err(|e| AppError::validation(format!("无法打开 DOCX 文件: {}", e)))?;
-
-        let mut all_text = String::new();
-
-        // DOCX 是 ZIP 格式，文本内容在 word/document.xml 中
-        if let Ok(mut file) = archive.by_name("word/document.xml") {
-            let mut xml_content = String::new();
-            file.read_to_string(&mut xml_content)
-                .map_err(|e| AppError::validation(format!("读取 DOCX 内容失败: {}", e)))?;
-
-            // 提取 <w:t> 标签中的文本，按段落分隔
-            let re_text = regex::Regex::new(r"<w:t[^>]*>([^<]*)</w:t>").unwrap();
-            let re_para_end = regex::Regex::new(r"</w:p>").unwrap();
-
-            // 按段落分割
-            for part in re_para_end.split(&xml_content) {
-                let mut para_text = String::new();
-                for cap in re_text.captures_iter(part) {
-                    if let Some(text) = cap.get(1) {
-                        para_text.push_str(text.as_str());
-                    }
-                }
-                if !para_text.trim().is_empty() {
-                    all_text.push_str(&para_text);
-                    all_text.push('\n');
-                }
-            }
-        }
-
-        if all_text.trim().is_empty() {
+        if text.trim().is_empty() {
             return Err(AppError::validation("DOCX 文件内容为空或无法解析"));
         }
 
-        Ok(all_text)
+        Ok(text)
     }
 
     /// 使用 LLM 解析文档/文本内容为题目（支持超长文档分块处理）

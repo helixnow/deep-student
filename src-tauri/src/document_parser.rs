@@ -662,44 +662,841 @@ impl DocumentParser {
         Ok(self.extract_docx_text(&docx))
     }
 
-    /// 从DOCX文档对象提取文本内容（优化版本）
+    /// 从DOCX文档对象提取文本内容（增强版：支持表格/超链接/标题/列表）
     fn extract_docx_text(&self, docx: &docx_rs::Docx) -> String {
-        // 预估容量以减少重新分配
         let mut text_content = String::with_capacity(8192);
 
-        // 遍历文档的所有子元素
         for child in &docx.document.children {
             match child {
                 docx_rs::DocumentChild::Paragraph(para) => {
-                    let mut has_content = false;
+                    let line = Self::extract_paragraph_text(para);
+                    if !line.trim().is_empty() {
+                        text_content.push_str(&line);
+                        text_content.push('\n');
+                    }
+                }
+                docx_rs::DocumentChild::Table(table) => {
+                    Self::extract_table_text(table, &mut text_content);
+                    text_content.push('\n');
+                }
+                docx_rs::DocumentChild::BookmarkStart(_)
+                | docx_rs::DocumentChild::BookmarkEnd(_) => {}
+                docx_rs::DocumentChild::TableOfContents(toc) => {
+                    for item in &toc.items {
+                        if !item.text.is_empty() {
+                            text_content.push_str(&format!("{}\n", item.text));
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
 
-                    // 提取段落中的所有文本
-                    for child in &para.children {
-                        if let docx_rs::ParagraphChild::Run(run) = child {
-                            for run_child in &run.children {
-                                if let docx_rs::RunChild::Text(text) = run_child {
-                                    if !text.text.trim().is_empty() {
-                                        text_content.push_str(&text.text);
-                                        has_content = true;
+        text_content.trim().to_string()
+    }
+
+    /// 从段落中提取纯文本（包括 Run / Hyperlink / Insert / Delete 子元素）
+    fn extract_paragraph_text(para: &docx_rs::Paragraph) -> String {
+        let mut line = String::new();
+        for child in &para.children {
+            match child {
+                docx_rs::ParagraphChild::Run(run) => {
+                    Self::extract_run_text(run, &mut line);
+                }
+                docx_rs::ParagraphChild::Hyperlink(hyperlink) => {
+                    for run in &hyperlink.children {
+                        if let docx_rs::ParagraphChild::Run(r) = run {
+                            Self::extract_run_text(r, &mut line);
+                        }
+                    }
+                }
+                docx_rs::ParagraphChild::Insert(ins) => {
+                    for ic in &ins.children {
+                        if let docx_rs::InsertChild::Run(r) = ic {
+                            Self::extract_run_text(r, &mut line);
+                        }
+                    }
+                }
+                docx_rs::ParagraphChild::Delete(del) => {
+                    for dc in &del.children {
+                        if let docx_rs::DeleteChild::Run(r) = dc {
+                            Self::extract_run_text(r, &mut line);
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        line
+    }
+
+    /// 从 Run 中提取文本（Text / Tab / Break / DeleteText）
+    fn extract_run_text(run: &docx_rs::Run, out: &mut String) {
+        for rc in &run.children {
+            match rc {
+                docx_rs::RunChild::Text(t) => {
+                    out.push_str(&t.text);
+                }
+                docx_rs::RunChild::DeleteText(dt) => {
+                    if let Ok(v) = serde_json::to_value(dt) {
+                        if let Some(t) = v.get("text").and_then(|t| t.as_str()) {
+                            out.push_str(t);
+                        }
+                    }
+                }
+                docx_rs::RunChild::Tab(_) => {
+                    out.push('\t');
+                }
+                docx_rs::RunChild::Break(_) => {
+                    out.push('\n');
+                }
+                _ => {}
+            }
+        }
+    }
+
+    /// 从表格中提取文本（Markdown 表格格式）
+    fn extract_table_text(table: &docx_rs::Table, out: &mut String) {
+        let mut rows: Vec<Vec<String>> = Vec::new();
+
+        for tc in &table.rows {
+            if let docx_rs::TableChild::TableRow(row) = tc {
+                let mut cells: Vec<String> = Vec::new();
+                for rc in &row.cells {
+                    if let docx_rs::TableRowChild::TableCell(cell) = rc {
+                        let mut cell_text = String::new();
+                        for cc in &cell.children {
+                            if let docx_rs::TableCellContent::Paragraph(para) = cc {
+                                let t = Self::extract_paragraph_text(para);
+                                if !t.trim().is_empty() {
+                                    if !cell_text.is_empty() {
+                                        cell_text.push(' ');
+                                    }
+                                    cell_text.push_str(t.trim());
+                                }
+                            }
+                        }
+                        cells.push(cell_text);
+                    }
+                }
+                rows.push(cells);
+            }
+        }
+
+        if rows.is_empty() {
+            return;
+        }
+
+        // 计算列数
+        let col_count = rows.iter().map(|r| r.len()).max().unwrap_or(0);
+        if col_count == 0 {
+            return;
+        }
+
+        // 输出 Markdown 表格
+        for (i, row) in rows.iter().enumerate() {
+            out.push('|');
+            for j in 0..col_count {
+                let cell = row.get(j).map(|s| s.as_str()).unwrap_or("");
+                out.push_str(&format!(" {} |", cell));
+            }
+            out.push('\n');
+
+            // 在第一行后添加分隔行
+            if i == 0 {
+                out.push('|');
+                for _ in 0..col_count {
+                    out.push_str(" --- |");
+                }
+                out.push('\n');
+            }
+        }
+    }
+
+    /// ★ 结构化 DOCX 提取：输出富 Markdown（保留标题/表格/列表/超链接/格式/图片占位）
+    ///
+    /// 与 `extract_docx_text` 不同，此方法保留文档结构信息，
+    /// 供 LLM 工具 `docx_read_structured` 使用。
+    pub fn extract_docx_structured(&self, bytes: &[u8]) -> Result<String, ParsingError> {
+        let docx = docx_rs::read_docx(bytes)
+            .map_err(|e| ParsingError::DocxParsingError(e.to_string()))?;
+
+        let mut md = String::with_capacity(16384);
+
+        for child in &docx.document.children {
+            match child {
+                docx_rs::DocumentChild::Paragraph(para) => {
+                    Self::paragraph_to_markdown(para, &docx, &mut md);
+                }
+                docx_rs::DocumentChild::Table(table) => {
+                    Self::extract_table_text(table, &mut md);
+                    md.push('\n');
+                }
+                docx_rs::DocumentChild::TableOfContents(toc) => {
+                    md.push_str("**[目录]**\n");
+                    for item in &toc.items {
+                        if !item.text.is_empty() {
+                            md.push_str(&format!("- {}\n", item.text));
+                        }
+                    }
+                    md.push('\n');
+                }
+                _ => {}
+            }
+        }
+
+        Ok(md.trim().to_string())
+    }
+
+    /// 将段落转换为 Markdown（含标题/列表/超链接/粗体/斜体/图片占位）
+    fn paragraph_to_markdown(
+        para: &docx_rs::Paragraph,
+        docx: &docx_rs::Docx,
+        out: &mut String,
+    ) {
+        // 检测标题样式
+        let heading_level = Self::detect_heading_level(para, docx);
+
+        // 检测列表（编号属性）
+        let list_prefix = Self::detect_list_prefix(para);
+
+        // 构建段落内容（含格式标记）
+        let mut line = String::new();
+        for child in &para.children {
+            match child {
+                docx_rs::ParagraphChild::Run(run) => {
+                    Self::run_to_markdown(run, &mut line);
+                }
+                docx_rs::ParagraphChild::Hyperlink(hyperlink) => {
+                    let mut link_text = String::new();
+                    for hc in &hyperlink.children {
+                        if let docx_rs::ParagraphChild::Run(r) = hc {
+                            Self::extract_run_text(r, &mut link_text);
+                        }
+                    }
+                    if !link_text.is_empty() {
+                        // 从 HyperlinkData 提取 URL
+                        let url_opt = match &hyperlink.link {
+                            docx_rs::HyperlinkData::External { rid, .. } => Some(rid.clone()),
+                            docx_rs::HyperlinkData::Anchor { anchor, .. } => Some(format!("#{}", anchor)),
+                        };
+                        if let Some(url) = url_opt {
+                            line.push_str(&format!("[{}]({})", link_text, url));
+                        } else {
+                            line.push_str(&link_text);
+                        }
+                    }
+                }
+                docx_rs::ParagraphChild::Insert(ins) => {
+                    for ic in &ins.children {
+                        if let docx_rs::InsertChild::Run(r) = ic {
+                            Self::run_to_markdown(r, &mut line);
+                        }
+                    }
+                }
+                docx_rs::ParagraphChild::Delete(del) => {
+                    for dc in &del.children {
+                        if let docx_rs::DeleteChild::Run(r) = dc {
+                            line.push_str("~~");
+                            Self::extract_run_text(r, &mut line);
+                            line.push_str("~~");
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        if line.trim().is_empty() {
+            return;
+        }
+
+        // 组装输出
+        if let Some(level) = heading_level {
+            let hashes = "#".repeat(level as usize);
+            out.push_str(&format!("{} {}\n\n", hashes, line.trim()));
+        } else if let Some(ref prefix) = list_prefix {
+            out.push_str(&format!("{}{}\n", prefix, line.trim()));
+        } else {
+            out.push_str(line.trim());
+            out.push_str("\n\n");
+        }
+    }
+
+    /// Run 转 Markdown（含粗体/斜体/删除线/图片占位）
+    fn run_to_markdown(run: &docx_rs::Run, out: &mut String) {
+        // Bold/Italic .val is private in docx-rs 0.4;
+        // Bold::Serialize 输出裸 bool（serialize_bool(self.val)），
+        // 因此 to_value(&bold) → Value::Bool(true/false)
+        let is_bold = run.run_property.bold.as_ref().map_or(false, |b| {
+            serde_json::to_value(b).ok().and_then(|v| v.as_bool()).unwrap_or(true)
+        });
+        let is_italic = run.run_property.italic.as_ref().map_or(false, |i| {
+            serde_json::to_value(i).ok().and_then(|v| v.as_bool()).unwrap_or(true)
+        });
+        let is_strike = run.run_property.strike.as_ref().map(|s| s.val).unwrap_or(false);
+
+        for rc in &run.children {
+            match rc {
+                docx_rs::RunChild::Text(t) => {
+                    let text = &t.text;
+                    if text.trim().is_empty() && text.contains(' ') {
+                        out.push(' ');
+                        continue;
+                    }
+                    if is_bold && is_italic {
+                        out.push_str(&format!("***{}***", text));
+                    } else if is_bold {
+                        out.push_str(&format!("**{}**", text));
+                    } else if is_italic {
+                        out.push_str(&format!("*{}*", text));
+                    } else if is_strike {
+                        out.push_str(&format!("~~{}~~", text));
+                    } else {
+                        out.push_str(text);
+                    }
+                }
+                docx_rs::RunChild::DeleteText(dt) => {
+                    if let Ok(v) = serde_json::to_value(dt) {
+                        if let Some(t) = v.get("text").and_then(|t| t.as_str()) {
+                            out.push_str(&format!("~~{}~~", t));
+                        }
+                    }
+                }
+                docx_rs::RunChild::Tab(_) => {
+                    out.push('\t');
+                }
+                docx_rs::RunChild::Break(_) => {
+                    out.push_str("  \n");
+                }
+                docx_rs::RunChild::Drawing(_) => {
+                    out.push_str("![图片](embedded-image)");
+                }
+                _ => {}
+            }
+        }
+    }
+
+    /// 检测段落标题级别（通过样式名或 outline_lvl）
+    fn detect_heading_level(
+        para: &docx_rs::Paragraph,
+        _docx: &docx_rs::Docx,
+    ) -> Option<u8> {
+        // 方式1：通过样式名检测（Heading1-9, 标题 1-9）
+        if let Some(ref style) = para.property.style {
+            let style_id = &style.val;
+            // 英文: Heading1, Heading2 ...
+            if style_id.starts_with("Heading") || style_id.starts_with("heading") {
+                if let Ok(lvl) = style_id.trim_start_matches(|c: char| !c.is_ascii_digit()).parse::<u8>() {
+                    if (1..=6).contains(&lvl) {
+                        return Some(lvl);
+                    }
+                }
+            }
+            // 中文样式：标题 1, 标题 2 ...
+            if style_id.contains("标题") || style_id.contains("Title") {
+                // 提取数字
+                let digits: String = style_id.chars().filter(|c| c.is_ascii_digit()).collect();
+                if let Ok(lvl) = digits.parse::<u8>() {
+                    if (1..=6).contains(&lvl) {
+                        return Some(lvl);
+                    }
+                }
+                // "Title" 没有数字 → 视为 h1
+                if style_id == "Title" {
+                    return Some(1);
+                }
+            }
+            // Subtitle → h2
+            if style_id == "Subtitle" {
+                return Some(2);
+            }
+        }
+
+        // 方式2：通过 outline_lvl
+        if let Some(ref outline) = para.property.outline_lvl {
+            let lvl = outline.v + 1; // outline_lvl 0-based
+            if (1..=6).contains(&(lvl as u8)) {
+                return Some(lvl as u8);
+            }
+        }
+
+        None
+    }
+
+    /// 检测段落列表前缀（编号/项目符号）
+    fn detect_list_prefix(para: &docx_rs::Paragraph) -> Option<String> {
+        if let Some(ref numbering) = para.property.numbering_property {
+            let indent_level = numbering
+                .level
+                .as_ref()
+                .map(|l| l.val as usize)
+                .unwrap_or(0);
+            let indent = "  ".repeat(indent_level);
+
+            // 有编号 ID → 有序列表；否则 → 无序列表
+            if numbering.id.is_some() {
+                return Some(format!("{}1. ", indent));
+            }
+            return Some(format!("{}- ", indent));
+        }
+        None
+    }
+
+    /// ★ 提取 DOCX 文档中的所有表格为结构化 JSON
+    pub fn extract_docx_tables(&self, bytes: &[u8]) -> Result<Vec<Vec<Vec<String>>>, ParsingError> {
+        let docx = docx_rs::read_docx(bytes)
+            .map_err(|e| ParsingError::DocxParsingError(e.to_string()))?;
+
+        let mut tables = Vec::new();
+        for child in &docx.document.children {
+            if let docx_rs::DocumentChild::Table(table) = child {
+                let mut rows: Vec<Vec<String>> = Vec::new();
+                for tc in &table.rows {
+                    if let docx_rs::TableChild::TableRow(row) = tc {
+                        let mut cells: Vec<String> = Vec::new();
+                        for rc in &row.cells {
+                            if let docx_rs::TableRowChild::TableCell(cell) = rc {
+                                let mut cell_text = String::new();
+                                for cc in &cell.children {
+                                    if let docx_rs::TableCellContent::Paragraph(para) = cc {
+                                        let t = Self::extract_paragraph_text(para);
+                                        if !t.trim().is_empty() {
+                                            if !cell_text.is_empty() {
+                                                cell_text.push(' ');
+                                            }
+                                            cell_text.push_str(t.trim());
+                                        }
+                                    }
+                                }
+                                cells.push(cell_text);
+                            }
+                        }
+                        rows.push(cells);
+                    }
+                }
+                tables.push(rows);
+            }
+        }
+
+        Ok(tables)
+    }
+
+    /// ★ 提取 DOCX 文档属性（标题/作者/描述/关键词/创建时间/修改时间）
+    pub fn extract_docx_metadata(&self, bytes: &[u8]) -> Result<serde_json::Value, ParsingError> {
+        let docx = docx_rs::read_docx(bytes)
+            .map_err(|e| ParsingError::DocxParsingError(e.to_string()))?;
+
+        // DocProps.core.config is private; serialize to JSON to access fields
+        let props_json = serde_json::to_value(&docx.doc_props)
+            .unwrap_or_else(|_| serde_json::json!({}));
+        let core = props_json.get("core").and_then(|c| c.get("config")).cloned()
+            .unwrap_or_else(|| serde_json::json!({}));
+
+        Ok(serde_json::json!({
+            "title": core.get("title").and_then(|v| v.as_str()).unwrap_or(""),
+            "subject": core.get("subject").and_then(|v| v.as_str()).unwrap_or(""),
+            "creator": core.get("creator").and_then(|v| v.as_str()).unwrap_or(""),
+            "description": core.get("description").and_then(|v| v.as_str()).unwrap_or(""),
+            "lastModifiedBy": core.get("lastModifiedBy").and_then(|v| v.as_str()).unwrap_or(""),
+            "created": core.get("created").and_then(|v| v.as_str()).unwrap_or(""),
+            "modified": core.get("modified").and_then(|v| v.as_str()).unwrap_or(""),
+        }))
+    }
+
+    /// ★ 将 DOCX 转换为 JSON spec（与 generate_docx_from_spec 互逆，支持 round-trip 编辑）
+    ///
+    /// LLM 可通过 docx_to_spec → 修改 spec → docx_create 完成编辑闭环。
+    pub fn extract_docx_as_spec(&self, bytes: &[u8]) -> Result<serde_json::Value, ParsingError> {
+        let docx = docx_rs::read_docx(bytes)
+            .map_err(|e| ParsingError::DocxParsingError(e.to_string()))?;
+
+        let mut blocks: Vec<serde_json::Value> = Vec::new();
+
+        for child in &docx.document.children {
+            match child {
+                docx_rs::DocumentChild::Paragraph(para) => {
+                    // 检测标题
+                    let heading_level = Self::detect_heading_level(para, &docx);
+                    let list_prefix = Self::detect_list_prefix(para);
+
+                    // 提取完整文本（含 Hyperlink / Insert / Delete 子元素）
+                    let text = Self::extract_paragraph_text(para);
+
+                    // 仅从 Run 子元素检测 bold/italic 格式
+                    let mut has_bold = false;
+                    let mut has_italic = false;
+                    for pc in &para.children {
+                        if let docx_rs::ParagraphChild::Run(run) = pc {
+                            if run.run_property.bold.as_ref().map_or(false, |b| {
+                                serde_json::to_value(b).ok().and_then(|v| v.as_bool()).unwrap_or(true)
+                            }) {
+                                has_bold = true;
+                            }
+                            if run.run_property.italic.as_ref().map_or(false, |i| {
+                                serde_json::to_value(i).ok().and_then(|v| v.as_bool()).unwrap_or(true)
+                            }) {
+                                has_italic = true;
+                            }
+                        }
+                    }
+
+                    let text = text.trim().to_string();
+                    if text.is_empty() {
+                        continue;
+                    }
+
+                    if let Some(level) = heading_level {
+                        blocks.push(serde_json::json!({
+                            "type": "heading",
+                            "level": level,
+                            "text": text,
+                        }));
+                    } else if list_prefix.is_some() {
+                        // 收集连续列表项时，单条作为 paragraph 输出
+                        // （完整列表合并在 LLM 侧处理更灵活）
+                        blocks.push(serde_json::json!({
+                            "type": "paragraph",
+                            "text": text,
+                            "bold": has_bold,
+                            "italic": has_italic,
+                        }));
+                    } else {
+                        blocks.push(serde_json::json!({
+                            "type": "paragraph",
+                            "text": text,
+                            "bold": has_bold,
+                            "italic": has_italic,
+                        }));
+                    }
+                }
+                docx_rs::DocumentChild::Table(table) => {
+                    let mut rows_data: Vec<Vec<String>> = Vec::new();
+                    for tc in &table.rows {
+                        if let docx_rs::TableChild::TableRow(row) = tc {
+                            let mut cells: Vec<String> = Vec::new();
+                            for rc in &row.cells {
+                                if let docx_rs::TableRowChild::TableCell(cell) = rc {
+                                    let mut cell_text = String::new();
+                                    for cc in &cell.children {
+                                        if let docx_rs::TableCellContent::Paragraph(para) = cc {
+                                            let t = Self::extract_paragraph_text(para);
+                                            if !t.trim().is_empty() {
+                                                if !cell_text.is_empty() {
+                                                    cell_text.push(' ');
+                                                }
+                                                cell_text.push_str(t.trim());
+                                            }
+                                        }
+                                    }
+                                    cells.push(cell_text);
+                                }
+                            }
+                            rows_data.push(cells);
+                        }
+                    }
+                    if !rows_data.is_empty() {
+                        blocks.push(serde_json::json!({
+                            "type": "table",
+                            "rows": rows_data,
+                        }));
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        // 提取标题（从 CoreProps）
+        let props_json = serde_json::to_value(&docx.doc_props).unwrap_or_default();
+        let title = props_json
+            .get("core")
+            .and_then(|c| c.get("config"))
+            .and_then(|c| c.get("title"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+
+        Ok(serde_json::json!({
+            "title": title,
+            "blocks": blocks,
+            "block_count": blocks.len(),
+        }))
+    }
+
+    /// ★ 在 DOCX 中执行文本替换（返回新的 DOCX 字节）
+    ///
+    /// 通过 read → extract_as_spec → 修改 spec → generate 实现原地替换。
+    /// 适用于简单的文本查找替换场景。
+    pub fn replace_text_in_docx(
+        &self,
+        bytes: &[u8],
+        replacements: &[(String, String)],
+    ) -> Result<(Vec<u8>, usize), ParsingError> {
+        let mut spec = self.extract_docx_as_spec(bytes)?;
+        let mut total_replacements = 0usize;
+
+        // 过滤掉空的 find 字符串（防止无限匹配）
+        let replacements: Vec<&(String, String)> = replacements
+            .iter()
+            .filter(|(find, _)| !find.is_empty())
+            .collect();
+
+        if replacements.is_empty() {
+            let new_bytes = Self::generate_docx_from_spec(&spec)?;
+            return Ok((new_bytes, 0));
+        }
+
+        // 在 blocks 中执行替换
+        if let Some(blocks) = spec.get_mut("blocks").and_then(|b| b.as_array_mut()) {
+            for block in blocks.iter_mut() {
+                // 替换 text 字段
+                if let Some(text) = block.get("text").and_then(|v| v.as_str()).map(|s| s.to_string()) {
+                    let mut new_text = text.clone();
+                    for (find, replace) in &replacements {
+                        let count = new_text.matches(find.as_str()).count();
+                        if count > 0 {
+                            new_text = new_text.replace(find.as_str(), replace.as_str());
+                            total_replacements += count;
+                        }
+                    }
+                    if new_text != text {
+                        block["text"] = serde_json::Value::String(new_text);
+                    }
+                }
+                // 替换 table rows 中的文本
+                if let Some(rows) = block.get_mut("rows").and_then(|r| r.as_array_mut()) {
+                    for row in rows.iter_mut() {
+                        if let Some(cells) = row.as_array_mut() {
+                            for cell in cells.iter_mut() {
+                                if let Some(cell_text) = cell.as_str().map(|s| s.to_string()) {
+                                    let mut new_text = cell_text.clone();
+                                    for (find, replace) in &replacements {
+                                        let count = new_text.matches(find.as_str()).count();
+                                        if count > 0 {
+                                            new_text = new_text.replace(find.as_str(), replace.as_str());
+                                            total_replacements += count;
+                                        }
+                                    }
+                                    if new_text != cell_text {
+                                        *cell = serde_json::Value::String(new_text);
                                     }
                                 }
                             }
                         }
                     }
-
-                    // 如果段落有内容，添加换行符
-                    if has_content {
-                        text_content.push('\n');
-                    }
-                }
-                _ => {
-                    // 处理其他类型的文档子元素，如表格等
-                    // 这里简化处理，只处理段落
                 }
             }
         }
 
-        text_content.trim().to_string()
+        // 替换 title
+        if let Some(title) = spec.get("title").and_then(|v| v.as_str()).map(|s| s.to_string()) {
+            let mut new_title = title.clone();
+            for (find, replace) in &replacements {
+                let count = new_title.matches(find.as_str()).count();
+                if count > 0 {
+                    new_title = new_title.replace(find.as_str(), replace.as_str());
+                    total_replacements += count;
+                }
+            }
+            if new_title != title {
+                spec["title"] = serde_json::Value::String(new_title);
+            }
+        }
+
+        let new_bytes = Self::generate_docx_from_spec(&spec)?;
+        Ok((new_bytes, total_replacements))
+    }
+
+    /// ★ 从 JSON spec 生成 DOCX 文件（docx-rs 写入 API）
+    ///
+    /// spec 格式：
+    /// ```json
+    /// {
+    ///   "title": "文档标题",
+    ///   "blocks": [
+    ///     { "type": "heading", "level": 1, "text": "标题" },
+    ///     { "type": "paragraph", "text": "正文", "bold": false, "italic": false },
+    ///     { "type": "table", "rows": [["A1","B1"],["A2","B2"]] },
+    ///     { "type": "list", "ordered": true, "items": ["项1","项2"] },
+    ///     { "type": "code", "text": "代码块" },
+    ///     { "type": "pagebreak" }
+    ///   ]
+    /// }
+    /// ```
+    pub fn generate_docx_from_spec(spec: &serde_json::Value) -> Result<Vec<u8>, ParsingError> {
+        let mut docx = docx_rs::Docx::new();
+
+        // 设置文档标题
+        if let Some(title) = spec.get("title").and_then(|v| v.as_str()) {
+            docx = docx.add_paragraph(
+                docx_rs::Paragraph::new()
+                    .add_run(
+                        docx_rs::Run::new()
+                            .add_text(title)
+                            .bold()
+                            .size(48) // 24pt = 48 half-points
+                    )
+                    .style("Heading1"),
+            );
+        }
+
+        let blocks = spec
+            .get("blocks")
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default();
+
+        for block in &blocks {
+            let block_type = block.get("type").and_then(|v| v.as_str()).unwrap_or("");
+
+            match block_type {
+                "heading" => {
+                    let level = block
+                        .get("level")
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(1) as usize;
+                    let text = block.get("text").and_then(|v| v.as_str()).unwrap_or("");
+                    let style_name = format!("Heading{}", level.min(6));
+                    let font_size = match level {
+                        1 => 48, // 24pt
+                        2 => 36, // 18pt
+                        3 => 32, // 16pt
+                        4 => 28, // 14pt
+                        _ => 24, // 12pt
+                    };
+                    docx = docx.add_paragraph(
+                        docx_rs::Paragraph::new()
+                            .add_run(
+                                docx_rs::Run::new()
+                                    .add_text(text)
+                                    .bold()
+                                    .size(font_size),
+                            )
+                            .style(&style_name),
+                    );
+                }
+                "paragraph" => {
+                    let text = block.get("text").and_then(|v| v.as_str()).unwrap_or("");
+                    let is_bold = block
+                        .get("bold")
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(false);
+                    let is_italic = block
+                        .get("italic")
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(false);
+                    let alignment = block.get("alignment").and_then(|v| v.as_str());
+
+                    let mut run = docx_rs::Run::new().add_text(text).size(24); // 12pt
+                    if is_bold {
+                        run = run.bold();
+                    }
+                    if is_italic {
+                        run = run.italic();
+                    }
+
+                    let mut para = docx_rs::Paragraph::new().add_run(run);
+                    if let Some(align) = alignment {
+                        para = para.align(match align {
+                            "center" => docx_rs::AlignmentType::Center,
+                            "right" => docx_rs::AlignmentType::Right,
+                            "both" | "justify" => docx_rs::AlignmentType::Both,
+                            _ => docx_rs::AlignmentType::Left,
+                        });
+                    }
+
+                    docx = docx.add_paragraph(para);
+                }
+                "table" => {
+                    let rows_data = block
+                        .get("rows")
+                        .and_then(|v| v.as_array())
+                        .cloned()
+                        .unwrap_or_default();
+
+                    let mut table_rows = Vec::new();
+                    for row_data in &rows_data {
+                        let cells_data = row_data.as_array().cloned().unwrap_or_default();
+                        let mut cells = Vec::new();
+                        for cell_data in &cells_data {
+                            let cell_text = cell_data.as_str().unwrap_or("");
+                            let cell = docx_rs::TableCell::new().add_paragraph(
+                                docx_rs::Paragraph::new()
+                                    .add_run(docx_rs::Run::new().add_text(cell_text).size(24)),
+                            );
+                            cells.push(cell);
+                        }
+                        table_rows.push(docx_rs::TableRow::new(cells));
+                    }
+
+                    let table = docx_rs::Table::new(table_rows);
+                    docx = docx.add_table(table);
+                }
+                "list" => {
+                    let ordered = block
+                        .get("ordered")
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(false);
+                    let items = block
+                        .get("items")
+                        .and_then(|v| v.as_array())
+                        .cloned()
+                        .unwrap_or_default();
+
+                    for (i, item) in items.iter().enumerate() {
+                        let text = item.as_str().unwrap_or("");
+                        let prefix = if ordered {
+                            format!("{}. ", i + 1)
+                        } else {
+                            "• ".to_string()
+                        };
+                        docx = docx.add_paragraph(
+                            docx_rs::Paragraph::new().add_run(
+                                docx_rs::Run::new()
+                                    .add_text(&format!("{}{}", prefix, text))
+                                    .size(24),
+                            ),
+                        );
+                    }
+                }
+                "code" => {
+                    let text = block.get("text").and_then(|v| v.as_str()).unwrap_or("");
+                    docx = docx.add_paragraph(
+                        docx_rs::Paragraph::new()
+                            .add_run(
+                                docx_rs::Run::new()
+                                    .add_text(text)
+                                    .size(20) // 10pt
+                                    .fonts(docx_rs::RunFonts::new().ascii("Courier New")),
+                            ),
+                    );
+                }
+                "pagebreak" => {
+                    docx = docx.add_paragraph(
+                        docx_rs::Paragraph::new().add_run(
+                            docx_rs::Run::new().add_break(docx_rs::BreakType::Page),
+                        ),
+                    );
+                }
+                _ => {
+                    // 未知类型，当段落处理
+                    if let Some(text) = block.get("text").and_then(|v| v.as_str()) {
+                        docx = docx.add_paragraph(
+                            docx_rs::Paragraph::new()
+                                .add_run(docx_rs::Run::new().add_text(text).size(24)),
+                        );
+                    }
+                }
+            }
+        }
+
+        // 序列化为 DOCX 字节
+        let mut buf = Cursor::new(Vec::new());
+        docx.build()
+            .pack(&mut buf)
+            .map_err(|e| ParsingError::DocxParsingError(format!("DOCX 生成失败: {}", e)))?;
+
+        Ok(buf.into_inner())
     }
 
     /// 从PDF文件路径提取文本（使用 pdfium 引擎，直接从路径加载，避免大文件内存压力）

@@ -1235,6 +1235,66 @@ impl QBankExecutor {
                 }));
             }
 
+            // ★ 2026-02 新增：DOCX 格式导出（使用 docx-rs 写入 API）
+            if format == "docx" {
+                use crate::document_parser::DocumentParser;
+
+                let mut blocks: Vec<Value> = Vec::new();
+                for (i, q) in questions.iter().enumerate() {
+                    // 题目标题
+                    blocks.push(json!({
+                        "type": "heading",
+                        "level": 2,
+                        "text": format!("题目 {}", i + 1)
+                    }));
+                    // 题干
+                    if let Some(content) = q.get("content").and_then(|v| v.as_str()) {
+                        blocks.push(json!({
+                            "type": "paragraph",
+                            "text": content
+                        }));
+                    }
+                    // 答案
+                    if let Some(answer) = q.get("answer").and_then(|v| v.as_str()) {
+                        blocks.push(json!({
+                            "type": "paragraph",
+                            "text": format!("答案：{}", answer),
+                            "bold": true
+                        }));
+                    }
+                    // 解析
+                    if let Some(explanation) = q.get("explanation").and_then(|v| v.as_str()) {
+                        blocks.push(json!({
+                            "type": "paragraph",
+                            "text": format!("解析：{}", explanation),
+                            "italic": true
+                        }));
+                    }
+                }
+
+                let spec = json!({
+                    "title": exam_name,
+                    "blocks": blocks
+                });
+
+                let docx_bytes = DocumentParser::generate_docx_from_spec(&spec)
+                    .map_err(|e| format!("DOCX 生成失败: {}", e))?;
+
+                use base64::Engine;
+                let base64_content =
+                    base64::engine::general_purpose::STANDARD.encode(&docx_bytes);
+
+                return Ok(json!({
+                    "format": "docx",
+                    "content_base64": base64_content,
+                    "file_name": format!("{}.docx", exam_name),
+                    "file_size": docx_bytes.len(),
+                    "question_count": questions.len(),
+                    "source": "questions_table",
+                    "message": format!("已生成 DOCX 文件「{}.docx」({}KB, {} 道题目)", exam_name, docx_bytes.len() / 1024, questions.len())
+                }));
+            }
+
             let mut result = json!({
                 "name": exam_name,
                 "questions": questions,

@@ -266,12 +266,12 @@ export const qbankToolsSkill: SkillDefinition = {
     },
     {
       name: 'builtin-qbank_export',
-      description: '导出题目集为 JSON 或 Markdown 格式。必须提供 session_id。',
+      description: '导出题目集为 JSON、Markdown 或 DOCX 格式。必须提供 session_id。DOCX 格式会生成格式化的 Word 文档（含标题/粗体/斜体）。',
       inputSchema: {
         type: 'object',
         properties: {
           session_id: { type: 'string', description: '【必填】题目集 ID' },
-          format: { type: 'string', enum: ['json', 'markdown'], default: 'json', description: '导出格式' },
+          format: { type: 'string', enum: ['json', 'markdown', 'docx'], default: 'json', description: '导出格式。docx 会生成 Word 文档。' },
           include_stats: { type: 'boolean', default: true, description: '是否包含学习统计' },
           filter_status: { type: 'string', enum: ['new', 'in_progress', 'mastered', 'review'], description: '只导出指定状态的题目' },
         },

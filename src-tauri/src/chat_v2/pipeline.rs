@@ -1246,6 +1246,7 @@ impl ChatV2Pipeline {
         registry.register(Arc::new(super::tools::SkillsExecutor::new())); // 🆕 Skills 工具执行器（渐进披露架构）
         registry.register(Arc::new(TemplateDesignerExecutor::new())); // 🆕 模板设计师工具执行器
         registry.register(Arc::new(super::tools::AskUserExecutor::new())); // 🆕 用户提问工具执行器
+        registry.register(Arc::new(super::tools::DocxToolExecutor::new())); // 🆕 DOCX 文档读写工具执行器
 
         if let Some(coordinator) = workspace_coordinator {
             registry.register(Arc::new(WorkspaceToolExecutor::new(coordinator.clone())));

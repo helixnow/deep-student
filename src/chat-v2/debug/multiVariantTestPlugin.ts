@@ -1,7 +1,7 @@
 /**
  * 多变体自动化测试 — 核心逻辑模块
  *
- * 测试链路（5 组，18 步），详见 docs/design/multi-variant-automated-test-plugin-v2.md
+ * 测试链路（6 组，21 步），详见 docs/design/multi-variant-automated-test-plugin-v2.md
  *
  * 覆盖范围：
  *   ✅ pendingParallelModelIds → TauriAdapter → 后端多变体 pipeline
@@ -27,7 +27,8 @@ export type StepName =
   | 'mv_switch_setup' | 'mv_switch_nav' | 'mv_delete_one' | 'mv_delete_to_single'
   | 'mv_cancel_first' | 'mv_cancel_last' | 'mv_cancel_two'
   | 'mv_cancel_then_delete' | 'mv_switch_during_stream'
-  | 'mv_persist_complete' | 'mv_skeleton_check' | 'mv_icon_and_dom';
+  | 'mv_persist_complete' | 'mv_skeleton_check' | 'mv_icon_and_dom'
+  | 'mv_mixed_single_multi' | 'mv_mixed_multi_single' | 'mv_mixed_alternating_persist';
 
 export const ALL_STEPS: StepName[] = [
   'mv_send_3', 'mv_cancel_middle', 'mv_cancel_all',
@@ -36,6 +37,7 @@ export const ALL_STEPS: StepName[] = [
   'mv_cancel_first', 'mv_cancel_last', 'mv_cancel_two',
   'mv_cancel_then_delete', 'mv_switch_during_stream',
   'mv_persist_complete', 'mv_skeleton_check', 'mv_icon_and_dom',
+  'mv_mixed_single_multi', 'mv_mixed_multi_single', 'mv_mixed_alternating_persist',
 ];
 
 export const STEP_LABELS: Record<StepName, string> = {
@@ -45,6 +47,7 @@ export const STEP_LABELS: Record<StepName, string> = {
   mv_cancel_first: 'D⑪ 取消首个', mv_cancel_last: 'D⑫ 取消末尾', mv_cancel_two: 'D⑬ 连续取消2个',
   mv_cancel_then_delete: 'D⑭ 取消后删除', mv_switch_during_stream: 'D⑮ 流式中切换',
   mv_persist_complete: 'E⑯ 持久化', mv_skeleton_check: 'E⑰ 骨架验证', mv_icon_and_dom: 'E⑱ Icon+DOM',
+  mv_mixed_single_multi: 'F⑲ 单→多混合', mv_mixed_multi_single: 'F⑳ 多→单混合', mv_mixed_alternating_persist: 'F㉑ 交替持久化',
 };
 
 export const GROUP_A: StepName[] = ['mv_send_3', 'mv_cancel_middle', 'mv_cancel_all'];
@@ -52,6 +55,7 @@ export const GROUP_B: StepName[] = ['mv_retry_one', 'mv_retry_all', 'mv_fast_can
 export const GROUP_C: StepName[] = ['mv_switch_setup', 'mv_switch_nav', 'mv_delete_one', 'mv_delete_to_single'];
 export const GROUP_D: StepName[] = ['mv_cancel_first', 'mv_cancel_last', 'mv_cancel_two', 'mv_cancel_then_delete', 'mv_switch_during_stream'];
 export const GROUP_E: StepName[] = ['mv_persist_complete', 'mv_skeleton_check', 'mv_icon_and_dom'];
+export const GROUP_F: StepName[] = ['mv_mixed_single_multi', 'mv_mixed_multi_single', 'mv_mixed_alternating_persist'];
 
 export interface MultiVariantTestConfig {
   modelA: string; modelB: string; modelC: string;
@@ -263,7 +267,20 @@ function isNavArrowDisabled(direction: 'prev' | 'next'): boolean {
 
 async function waitForStreaming(store: StoreApi<ChatStore>, ms: number) { return waitFor(() => store.getState().sessionStatus !== 'idle', ms, 100); }
 async function waitForIdle(store: StoreApi<ChatStore>, ms: number) { return waitFor(() => store.getState().sessionStatus === 'idle', ms, 300); }
-async function waitAllDone(store: StoreApi<ChatStore>, ms: number) { return waitFor(() => { const s = store.getState(); return s.sessionStatus === 'idle' && s.streamingVariantIds.size === 0; }, ms, 300); }
+async function waitAllDone(store: StoreApi<ChatStore>, ms: number) {
+  return waitFor(() => {
+    const s = store.getState();
+    if (s.sessionStatus !== 'idle' || s.streamingVariantIds.size > 0) return false;
+    // 额外检查：最后一条助手消息的所有变体都不在 streaming/pending 状态
+    for (let i = s.messageOrder.length - 1; i >= 0; i--) {
+      const m = s.messageMap.get(s.messageOrder[i]);
+      if (m?.role === 'assistant') {
+        return (m.variants ?? []).every(v => v.status !== 'streaming' && v.status !== 'pending');
+      }
+    }
+    return true;
+  }, ms, 300);
+}
 
 function getLastMsgId(store: StoreApi<ChatStore>, role: 'user' | 'assistant'): string | null {
   const s = store.getState();
@@ -271,8 +288,26 @@ function getLastMsgId(store: StoreApi<ChatStore>, role: 'user' | 'assistant'): s
   return null;
 }
 
-function findVarIdxByModel(store: StoreApi<ChatStore>, msgId: string, modelId: string): number {
-  return (store.getState().messageMap.get(msgId)?.variants ?? []).findIndex(v => v.modelId === modelId);
+function findVarIdxByModel(store: StoreApi<ChatStore>, msgId: string, modelId: string, resolveMap?: Map<string, string>): number {
+  const resolved = resolveMap?.get(modelId) ?? modelId;
+  return (store.getState().messageMap.get(msgId)?.variants ?? []).findIndex(v => v.modelId === resolved);
+}
+
+async function waitForVariants(store: StoreApi<ChatStore>, count: number, timeoutMs: number): Promise<boolean> {
+  return waitFor(() => {
+    const aId = getLastMsgId(store, 'assistant');
+    if (!aId) return false;
+    return (store.getState().messageMap.get(aId)?.variants?.length ?? 0) >= count;
+  }, timeoutMs, 200);
+}
+
+function buildModelResolveMap(configIds: string[], reqBodies: Array<{ model: string }>, log?: LogFn): Map<string, string> {
+  const map = new Map<string, string>();
+  for (let i = 0; i < configIds.length && i < reqBodies.length; i++) {
+    map.set(configIds[i], reqBodies[i].model);
+  }
+  log?.('info', 'resolve', `模型映射: ${[...map.entries()].map(([k, v]) => `${k}→${v}`).join(', ')}`);
+  return map;
 }
 
 // =============================================================================
@@ -300,6 +335,21 @@ async function sendMultiVariant(store: StoreApi<ChatStore>, modelIds: string[], 
     }
     log('success', 'send', 'monkey-patch 已恢复');
   }
+}
+
+/** 发送单变体（普通）消息 — 不设置 pendingParallelModelIds */
+async function sendSingleVariant(store: StoreApi<ChatStore>, prompt: string, log: LogFn): Promise<void> {
+  // 确保 pendingParallelModelIds 为空
+  const pIds = store.getState().pendingParallelModelIds;
+  if (pIds && pIds.length > 0) {
+    log('warn', 'send', `pendingParallelModelIds 残留: [${pIds.join(',')}], 强制清空`);
+    store.getState().setPendingParallelModelIds(null);
+  }
+  if (!simulateTyping(prompt)) throw new Error('无法输入');
+  await sleep(500);
+  if (!await clickSend(log)) { await sleep(1000); if (!await clickSend(log)) throw new Error('发送按钮不可用'); }
+  if (!await waitForStreaming(store, 15000)) throw new Error('流式未开始');
+  log('success', 'send', '单变体消息已发送');
 }
 
 // =============================================================================
@@ -334,6 +384,47 @@ async function verifyPersistence(sessionId: string, expectedVariants: number): P
       for (const v of vs) { checks.push({ name: `blocks ${v.modelId?.slice(0,12)}`, passed: (v.blockIds?.length??0)>0 || v.status==='cancelled', detail: `blocks=${v.blockIds?.length??0} status=${v.status}` }); }
     }
   } catch (e) { checks.push({ name: '持久化', passed: false, detail: `${e}` }); }
+  return checks;
+}
+
+/**
+ * 验证混合会话持久化：检查每条助手消息的变体数是否符合预期
+ * @param expectedVariantCounts 按消息顺序，每条助手消息期望的变体数（0=单变体，3=多变体）
+ */
+async function verifyMixedPersistence(sessionId: string, expectedVariantCounts: number[], log: LogFn): Promise<VerificationCheck[]> {
+  const checks: VerificationCheck[] = [];
+  try {
+    const { invoke } = await import('@tauri-apps/api/core');
+    await sleep(1000);
+    type PersistMsg = { id: string; role: string; blockIds?: string[]; variants?: Array<{ id: string; modelId?: string; status?: string; blockIds?: string[] }>; activeVariantId?: string };
+    const data = await invoke<{ messages?: PersistMsg[] }>('chat_v2_load_session', { sessionId });
+    const msgs = data?.messages || [];
+    const assistants = msgs.filter(m => m.role === 'assistant');
+
+    checks.push({ name: `助手消息数=${expectedVariantCounts.length}`, passed: assistants.length === expectedVariantCounts.length, detail: `actual=${assistants.length}` });
+
+    for (let i = 0; i < expectedVariantCounts.length; i++) {
+      const expected = expectedVariantCounts[i];
+      const ast = assistants[i];
+      const label = `msg[${i}]`;
+      if (!ast) { checks.push({ name: `${label} 缺失`, passed: false, detail: '❌' }); continue; }
+
+      const vs = ast.variants || [];
+      if (expected === 0) {
+        // 单变体消息：variants 应为空或不存在，blockIds 应非空
+        checks.push({ name: `${label} 单变体`, passed: vs.length === 0, detail: `variants=${vs.length}` });
+        checks.push({ name: `${label} blocks`, passed: (ast.blockIds?.length ?? 0) > 0, detail: `blocks=${ast.blockIds?.length ?? 0}` });
+      } else {
+        // 多变体消息
+        checks.push({ name: `${label} 变体=${expected}`, passed: vs.length === expected, detail: `actual=${vs.length}` });
+        checks.push({ name: `${label} activeId`, passed: !!ast.activeVariantId && vs.some(v => v.id === ast.activeVariantId), detail: `${ast.activeVariantId?.slice(0, 12)}` });
+        for (const v of vs) {
+          checks.push({ name: `${label} ${v.modelId?.slice(0, 10)} blocks`, passed: (v.blockIds?.length ?? 0) > 0 || v.status === 'cancelled', detail: `blocks=${v.blockIds?.length ?? 0}` });
+        }
+      }
+    }
+    log('info', 'persist', `混合持久化验证: ${assistants.length} 条助手消息, 期望 [${expectedVariantCounts.join(',')}]`);
+  } catch (e) { checks.push({ name: '混合持久化', passed: false, detail: `${e}` }); }
   return checks;
 }
 
@@ -439,14 +530,18 @@ async function stepSend3(config: MultiVariantTestConfig, onLog?: (e: LogEntry) =
 }
 
 async function stepCancelMiddle(config: MultiVariantTestConfig, onLog?: (e: LogEntry) => void): Promise<StepResult> {
-  return runIndependentStep('mv_cancel_middle', config, onLog, async (ctx, log, checks) => {
+  return runIndependentStep('mv_cancel_middle', config, onLog, async (ctx, log, checks, req) => {
     const { store, config: c } = ctx;
-    await sendMultiVariant(store, [c.modelA, c.modelB, c.modelC], c.longPrompt, log);
+    const configIds = [c.modelA, c.modelB, c.modelC];
+    await sendMultiVariant(store, configIds, c.longPrompt, log);
+    await waitFor(() => req.count >= 3, 15000, 200);
+    const resolveMap = buildModelResolveMap(configIds, req.bodies, log);
+    await waitForVariants(store, 3, 15000);
     await sleep(c.cancelDelayMs);
 
     const aId = getLastMsgId(store, 'assistant')!;
-    const bIdx = findVarIdxByModel(store, aId, c.modelB);
-    if (bIdx < 0) throw new Error(`modelB(${c.modelB}) 变体未找到`);
+    const bIdx = findVarIdxByModel(store, aId, c.modelB, resolveMap);
+    if (bIdx < 0) throw new Error(`modelB(${c.modelB}) 变体未找到 (resolved: ${resolveMap.get(c.modelB)})`);
     await clickVariantButton(bIdx, 'cancel', log);
 
     const bDone = await waitFor(() => { const v = store.getState().messageMap.get(aId)?.variants?.[bIdx]; return !!v && v.status !== 'streaming' && v.status !== 'pending'; }, 10000, 200);
@@ -455,9 +550,10 @@ async function stepCancelMiddle(config: MultiVariantTestConfig, onLog?: (e: LogE
     const done = await waitAllDone(store, c.roundTimeoutMs);
     checks.push({ name: '全部结束', passed: done, detail: done ? '✓' : '❌' });
 
+    const resolvedB = resolveMap.get(c.modelB) ?? c.modelB;
     const vars = store.getState().messageMap.get(aId)?.variants || [];
     for (const v of vars) {
-      const isB = v.modelId === c.modelB;
+      const isB = v.modelId === resolvedB;
       checks.push({ name: `${isB?'B':v.modelId?.slice(0,10)}`, passed: isB ? ['cancelled','success'].includes(v.status) : v.status === 'success', detail: `status=${v.status}` });
     }
     checks.push({ name: '无僵尸', passed: store.getState().streamingVariantIds.size === 0, detail: `${store.getState().streamingVariantIds.size}` });
@@ -490,12 +586,16 @@ async function stepCancelAll(config: MultiVariantTestConfig, onLog?: (e: LogEntr
 // =============================================================================
 
 async function stepRetryOne(config: MultiVariantTestConfig, onLog?: (e: LogEntry) => void): Promise<StepResult> {
-  return runIndependentStep('mv_retry_one', config, onLog, async (ctx, log, checks) => {
+  return runIndependentStep('mv_retry_one', config, onLog, async (ctx, log, checks, req) => {
     const { store, config: c } = ctx;
-    await sendMultiVariant(store, [c.modelA, c.modelB, c.modelC], c.longPrompt, log);
+    const configIds = [c.modelA, c.modelB, c.modelC];
+    await sendMultiVariant(store, configIds, c.longPrompt, log);
+    await waitFor(() => req.count >= 3, 15000, 200);
+    const resolveMap = buildModelResolveMap(configIds, req.bodies, log);
+    await waitForVariants(store, 3, 15000);
     await sleep(c.cancelDelayMs);
     const aId = getLastMsgId(store, 'assistant')!;
-    const bIdx = findVarIdxByModel(store, aId, c.modelB);
+    const bIdx = findVarIdxByModel(store, aId, c.modelB, resolveMap);
     if (bIdx < 0) throw new Error('modelB 变体未找到');
     await clickVariantButton(bIdx, 'cancel', log);
     await waitAllDone(store, c.roundTimeoutMs);
@@ -536,13 +636,17 @@ async function stepRetryAll(config: MultiVariantTestConfig, onLog?: (e: LogEntry
 }
 
 async function stepFastCancelRetry(config: MultiVariantTestConfig, onLog?: (e: LogEntry) => void): Promise<StepResult> {
-  return runIndependentStep('mv_fast_cancel_retry', config, onLog, async (ctx, log, checks) => {
+  return runIndependentStep('mv_fast_cancel_retry', config, onLog, async (ctx, log, checks, req) => {
     const { store, config: c } = ctx;
-    await sendMultiVariant(store, [c.modelA, c.modelB, c.modelC], c.longPrompt, log);
+    const configIds = [c.modelA, c.modelB, c.modelC];
+    await sendMultiVariant(store, configIds, c.longPrompt, log);
+    await waitFor(() => req.count >= 3, 15000, 200);
+    const resolveMap = buildModelResolveMap(configIds, req.bodies, log);
+    await waitForVariants(store, 3, 15000);
     await sleep(c.fastCancelDelayMs);
 
     const aId = getLastMsgId(store, 'assistant')!;
-    const aIdx = findVarIdxByModel(store, aId, c.modelA);
+    const aIdx = findVarIdxByModel(store, aId, c.modelA, resolveMap);
     if (aIdx < 0) throw new Error('modelA 变体未找到');
     await clickVariantButton(aIdx, 'cancel', log);
     await waitFor(() => { const v = store.getState().messageMap.get(aId)?.variants?.[aIdx]; return !!v && v.status !== 'streaming' && v.status !== 'pending'; }, 10000, 200);
@@ -684,53 +788,69 @@ async function stepCancelFirst(c: MultiVariantTestConfig, onLog?: (e: LogEntry) 
 async function stepCancelLast(c: MultiVariantTestConfig, onLog?: (e: LogEntry) => void) { return runCancelAtIndex(c, onLog, 'mv_cancel_last', c.modelC); }
 
 async function runCancelAtIndex(config: MultiVariantTestConfig, onLog: ((e: LogEntry) => void)|undefined, step: StepName, targetModel: string): Promise<StepResult> {
-  return runIndependentStep(step, config, onLog, async (ctx, log, checks) => {
+  return runIndependentStep(step, config, onLog, async (ctx, log, checks, req) => {
     const { store, config: c } = ctx;
-    await sendMultiVariant(store, [c.modelA, c.modelB, c.modelC], c.longPrompt, log);
+    const configIds = [c.modelA, c.modelB, c.modelC];
+    await sendMultiVariant(store, configIds, c.longPrompt, log);
+    await waitFor(() => req.count >= 3, 15000, 200);
+    const resolveMap = buildModelResolveMap(configIds, req.bodies, log);
+    await waitForVariants(store, 3, 15000);
     await sleep(c.cancelDelayMs);
     const aId = getLastMsgId(store, 'assistant')!;
-    const idx = findVarIdxByModel(store, aId, targetModel);
-    if (idx < 0) throw new Error(`${targetModel} 变体未找到`);
+    const idx = findVarIdxByModel(store, aId, targetModel, resolveMap);
+    if (idx < 0) throw new Error(`${targetModel} 变体未找到 (resolved: ${resolveMap.get(targetModel)})`);
     await clickVariantButton(idx, 'cancel', log);
     const done = await waitAllDone(store, c.roundTimeoutMs);
     checks.push({ name: '完成', passed: done, detail: done ? '✓' : '❌' });
+    const resolvedTarget = resolveMap.get(targetModel) ?? targetModel;
     const vars = store.getState().messageMap.get(aId)?.variants || [];
-    for (const v of vars) { const isT = v.modelId===targetModel; checks.push({ name: `${v.modelId?.slice(0,10)}`, passed: isT ? ['cancelled','success'].includes(v.status) : v.status==='success', detail: `status=${v.status}` }); }
+    for (const v of vars) { const isT = v.modelId===resolvedTarget; checks.push({ name: `${v.modelId?.slice(0,10)}`, passed: isT ? ['cancelled','success'].includes(v.status) : v.status==='success', detail: `status=${v.status}` }); }
     checks.push({ name: '无僵尸', passed: store.getState().streamingVariantIds.size===0, detail: `${store.getState().streamingVariantIds.size}` });
   });
 }
 
 async function stepCancelTwo(config: MultiVariantTestConfig, onLog?: (e: LogEntry) => void): Promise<StepResult> {
-  return runIndependentStep('mv_cancel_two', config, onLog, async (ctx, log, checks) => {
+  return runIndependentStep('mv_cancel_two', config, onLog, async (ctx, log, checks, req) => {
     const { store, config: c } = ctx;
-    await sendMultiVariant(store, [c.modelA, c.modelB, c.modelC], c.longPrompt, log);
+    const configIds = [c.modelA, c.modelB, c.modelC];
+    await sendMultiVariant(store, configIds, c.longPrompt, log);
+    await waitFor(() => req.count >= 3, 15000, 200);
+    const resolveMap = buildModelResolveMap(configIds, req.bodies, log);
+    await waitForVariants(store, 3, 15000);
     await sleep(c.cancelDelayMs);
     const aId = getLastMsgId(store, 'assistant')!;
     for (const m of [c.modelA, c.modelB]) {
-      const idx = findVarIdxByModel(store, aId, m);
-      try { await clickVariantButton(idx >= 0 ? idx : 0, 'cancel', log); } catch (e) { log('warn', 'cancel', `${m}: ${e}`); }
+      const idx = findVarIdxByModel(store, aId, m, resolveMap);
+      if (idx < 0) throw new Error(`${m} 变体未找到 (resolved: ${resolveMap.get(m)})`);
+      try { await clickVariantButton(idx, 'cancel', log); } catch (e) { log('warn', 'cancel', `${m}: ${e}`); }
       await sleep(500);
     }
     const done = await waitAllDone(store, c.roundTimeoutMs);
     checks.push({ name: '完成', passed: done, detail: done ? '✓' : '❌' });
+    const resolvedC = resolveMap.get(c.modelC) ?? c.modelC;
     const vars = store.getState().messageMap.get(aId)?.variants || [];
-    checks.push({ name: 'C=success', passed: vars.some(v => v.modelId===c.modelC && v.status==='success'), detail: vars.find(v=>v.modelId===c.modelC)?.status??'?' });
+    checks.push({ name: 'C=success', passed: vars.some(v => v.modelId===resolvedC && v.status==='success'), detail: vars.find(v=>v.modelId===resolvedC)?.status??'?' });
     checks.push({ name: '无僵尸', passed: store.getState().streamingVariantIds.size===0, detail: `${store.getState().streamingVariantIds.size}` });
   });
 }
 
 async function stepCancelThenDelete(config: MultiVariantTestConfig, onLog?: (e: LogEntry) => void): Promise<StepResult> {
-  return runIndependentStep('mv_cancel_then_delete', config, onLog, async (ctx, log, checks) => {
+  return runIndependentStep('mv_cancel_then_delete', config, onLog, async (ctx, log, checks, req) => {
     const { store, config: c } = ctx;
-    await sendMultiVariant(store, [c.modelA, c.modelB, c.modelC], c.longPrompt, log);
+    const configIds = [c.modelA, c.modelB, c.modelC];
+    await sendMultiVariant(store, configIds, c.longPrompt, log);
+    await waitFor(() => req.count >= 3, 15000, 200);
+    const resolveMap = buildModelResolveMap(configIds, req.bodies, log);
+    await waitForVariants(store, 3, 15000);
     await sleep(c.cancelDelayMs);
     const aId = getLastMsgId(store, 'assistant')!;
-    const bIdx = findVarIdxByModel(store, aId, c.modelB);
+    const bIdx = findVarIdxByModel(store, aId, c.modelB, resolveMap);
     if (bIdx < 0) throw new Error('modelB 未找到');
     await clickVariantButton(bIdx, 'cancel', log);
-    await waitFor(() => { const v = store.getState().messageMap.get(aId)?.variants?.find(x=>x.modelId===c.modelB); return !!v && v.status!=='streaming' && v.status!=='pending'; }, 10000, 200);
+    const resolvedB = resolveMap.get(c.modelB) ?? c.modelB;
+    await waitFor(() => { const v = store.getState().messageMap.get(aId)?.variants?.find(x=>x.modelId===resolvedB); return !!v && v.status!=='streaming' && v.status!=='pending'; }, 10000, 200);
     await sleep(500);
-    const bIdx2 = findVarIdxByModel(store, aId, c.modelB);
+    const bIdx2 = findVarIdxByModel(store, aId, c.modelB, resolveMap);
     await clickVariantButton(bIdx2 >= 0 ? bIdx2 : bIdx, 'delete', log);
     await waitFor(() => (store.getState().messageMap.get(aId)?.variants?.length??3)===2, 5000, 200);
     const done = await waitAllDone(store, c.roundTimeoutMs);
@@ -826,6 +946,184 @@ async function stepIconDom(config: MultiVariantTestConfig, onLog?: (e: LogEntry)
 }
 
 // =============================================================================
+// Group F — 模式交替与历史完整性（共享会话）
+// =============================================================================
+
+async function runGroupF(config: MultiVariantTestConfig, onLog: ((e: LogEntry) => void) | undefined, onStep: (r: StepResult, i: number) => void, baseIdx: number): Promise<StepResult[]> {
+  const results: StepResult[] = [];
+  const skip = new Set(config.skipSteps || []);
+
+  // ── Step 19: mv_mixed_single_multi — 单变体→多变体，持久化验证 ──
+  if (!_abortRequested && !skip.has('mv_mixed_single_multi')) {
+    const { logs, log } = createLogger('mv_mixed_single_multi', onLog);
+    const st = new Date().toISOString(); const caps = startCaptures(); const t0 = Date.now();
+    const checks: VerificationCheck[] = []; let status: 'passed'|'failed' = 'passed'; let err: string|undefined; let v: VerificationResult = { passed: false, checks: [] };
+    let sid = '';
+    let reqCap: Awaited<ReturnType<typeof createRequestBodyCapture>> | null = null;
+    try {
+      const sess = await createAndSwitchSession(log, 'GroupF-S→M');
+      sid = sess.sessionId;
+      reqCap = await createRequestBodyCapture(sid);
+      const { store } = sess;
+
+      // 1) 发送单变体消息
+      log('info', 'phase', '发送单变体消息...');
+      await sendSingleVariant(store, config.prompt, log);
+      const done1 = await waitAllDone(store, config.roundTimeoutMs);
+      checks.push({ name: '单变体完成', passed: done1, detail: done1 ? '✓' : '❌' });
+
+      // 验证 pendingParallelModelIds 状态
+      const pIds1 = store.getState().pendingParallelModelIds;
+      checks.push({ name: 'pIds 为空', passed: !pIds1 || pIds1.length === 0, detail: `${JSON.stringify(pIds1)}` });
+
+      await sleep(config.intervalMs);
+
+      // 2) 发送多变体消息
+      log('info', 'phase', '发送多变体消息...');
+      await sendMultiVariant(store, [config.modelA, config.modelB, config.modelC], config.prompt, log);
+      const done2 = await waitAllDone(store, config.roundTimeoutMs);
+      checks.push({ name: '多变体完成', passed: done2, detail: done2 ? '✓' : '❌' });
+
+      // Store 内验证
+      const s = store.getState();
+      const assistantMsgs = s.messageOrder.filter(id => s.messageMap.get(id)?.role === 'assistant');
+      checks.push({ name: 'Store 2条助手', passed: assistantMsgs.length === 2, detail: `${assistantMsgs.length}` });
+
+      if (assistantMsgs.length >= 2) {
+        const msg1 = s.messageMap.get(assistantMsgs[0]);
+        const msg2 = s.messageMap.get(assistantMsgs[1]);
+        checks.push({ name: 'msg[0] 无变体', passed: !msg1?.variants || msg1.variants.length === 0, detail: `variants=${msg1?.variants?.length ?? 0}` });
+        checks.push({ name: 'msg[1] 3变体', passed: msg2?.variants?.length === 3, detail: `variants=${msg2?.variants?.length ?? 0}` });
+      }
+
+      // 3) 持久化验证
+      checks.push(...await verifyMixedPersistence(sid, [0, 3], log));
+    } catch (e2) { err = e2 instanceof Error ? e2.message : String(e2); log('error', 'fatal', err); status = 'failed'; }
+    finally { reqCap?.stop(); stopCaptures(caps); const f = finalizeChecks(log, checks, status, err, t0); status = f.status; err = f.error; v = f.verification; }
+    const r = mkResult('mv_mixed_single_multi', { status, startTime: st, t0, bodies: reqCap?.bodies ?? [], v, logs, c2: caps.chatV2.logs, cc: caps.console.captured, sid, err });
+    results.push(r); onStep(r, baseIdx);
+    await sleep(config.intervalMs);
+  }
+
+  // ── Step 20: mv_mixed_multi_single — 多变体→单变体，状态机验证 ──
+  if (!_abortRequested && !skip.has('mv_mixed_multi_single')) {
+    const { logs, log } = createLogger('mv_mixed_multi_single', onLog);
+    const st = new Date().toISOString(); const caps = startCaptures(); const t0 = Date.now();
+    const checks: VerificationCheck[] = []; let status: 'passed'|'failed' = 'passed'; let err: string|undefined; let v: VerificationResult = { passed: false, checks: [] };
+    let sid = '';
+    let reqCap: Awaited<ReturnType<typeof createRequestBodyCapture>> | null = null;
+    try {
+      const sess = await createAndSwitchSession(log, 'GroupF-M→S');
+      sid = sess.sessionId;
+      reqCap = await createRequestBodyCapture(sid);
+      const { store } = sess;
+
+      // 1) 发送多变体消息
+      log('info', 'phase', '发送多变体消息...');
+      await sendMultiVariant(store, [config.modelA, config.modelB, config.modelC], config.prompt, log);
+      const done1 = await waitAllDone(store, config.roundTimeoutMs);
+      checks.push({ name: '多变体完成', passed: done1, detail: done1 ? '✓' : '❌' });
+
+      // ★ 核心验证：pendingParallelModelIds 在多变体发送后应已恢复
+      // sendMultiVariant 恢复了 monkey-patch，但 pendingParallelModelIds 值可能残留
+      const pIdsAfterMulti = store.getState().pendingParallelModelIds;
+      checks.push({ name: '多变体后 pIds 状态', passed: true, detail: `pIds=${JSON.stringify(pIdsAfterMulti)}` });
+
+      await sleep(config.intervalMs);
+
+      // 2) 发送单变体消息 — 验证不会意外走多变体路径
+      log('info', 'phase', '发送单变体消息...');
+      await sendSingleVariant(store, config.prompt, log);
+      const done2 = await waitAllDone(store, config.roundTimeoutMs);
+      checks.push({ name: '单变体完成', passed: done2, detail: done2 ? '✓' : '❌' });
+
+      // Store 内验证
+      const s = store.getState();
+      const assistantMsgs = s.messageOrder.filter(id => s.messageMap.get(id)?.role === 'assistant');
+      checks.push({ name: 'Store 2条助手', passed: assistantMsgs.length === 2, detail: `${assistantMsgs.length}` });
+
+      if (assistantMsgs.length >= 2) {
+        const msg1 = s.messageMap.get(assistantMsgs[0]);
+        const msg2 = s.messageMap.get(assistantMsgs[1]);
+        checks.push({ name: 'msg[0] 3变体', passed: msg1?.variants?.length === 3, detail: `variants=${msg1?.variants?.length ?? 0}` });
+        checks.push({ name: 'msg[1] 无变体', passed: !msg2?.variants || msg2.variants.length === 0, detail: `variants=${msg2?.variants?.length ?? 0}` });
+        // 确认第二条消息有 blockIds（非空内容）
+        checks.push({ name: 'msg[1] 有blocks', passed: (msg2?.blockIds?.length ?? 0) > 0, detail: `blocks=${msg2?.blockIds?.length ?? 0}` });
+      }
+
+      // 3) 持久化验证
+      checks.push(...await verifyMixedPersistence(sid, [3, 0], log));
+    } catch (e2) { err = e2 instanceof Error ? e2.message : String(e2); log('error', 'fatal', err); status = 'failed'; }
+    finally { reqCap?.stop(); stopCaptures(caps); const f = finalizeChecks(log, checks, status, err, t0); status = f.status; err = f.error; v = f.verification; }
+    const r = mkResult('mv_mixed_multi_single', { status, startTime: st, t0, bodies: reqCap?.bodies ?? [], v, logs, c2: caps.chatV2.logs, cc: caps.console.captured, sid, err });
+    results.push(r); onStep(r, baseIdx + 1);
+    await sleep(config.intervalMs);
+  }
+
+  // ── Step 21: mv_mixed_alternating_persist — 3轮交替 + 全量持久化 ──
+  if (!_abortRequested && !skip.has('mv_mixed_alternating_persist')) {
+    const { logs, log } = createLogger('mv_mixed_alternating_persist', onLog);
+    const st = new Date().toISOString(); const caps = startCaptures(); const t0 = Date.now();
+    const checks: VerificationCheck[] = []; let status: 'passed'|'failed' = 'passed'; let err: string|undefined; let v: VerificationResult = { passed: false, checks: [] };
+    let sid = '';
+    let reqCap: Awaited<ReturnType<typeof createRequestBodyCapture>> | null = null;
+    try {
+      const sess = await createAndSwitchSession(log, 'GroupF-Alt');
+      sid = sess.sessionId;
+      reqCap = await createRequestBodyCapture(sid);
+      const { store } = sess;
+
+      // 轮次 1: 单变体
+      log('info', 'phase', '轮次1: 单变体...');
+      await sendSingleVariant(store, config.prompt, log);
+      const d1 = await waitAllDone(store, config.roundTimeoutMs);
+      checks.push({ name: '轮次1完成', passed: d1, detail: d1 ? '✓' : '❌' });
+      await sleep(config.intervalMs);
+
+      // 轮次 2: 多变体
+      log('info', 'phase', '轮次2: 多变体...');
+      await sendMultiVariant(store, [config.modelA, config.modelB, config.modelC], config.prompt, log);
+      const d2 = await waitAllDone(store, config.roundTimeoutMs);
+      checks.push({ name: '轮次2完成', passed: d2, detail: d2 ? '✓' : '❌' });
+      await sleep(config.intervalMs);
+
+      // 轮次 3: 单变体
+      log('info', 'phase', '轮次3: 单变体...');
+      await sendSingleVariant(store, config.prompt, log);
+      const d3 = await waitAllDone(store, config.roundTimeoutMs);
+      checks.push({ name: '轮次3完成', passed: d3, detail: d3 ? '✓' : '❌' });
+
+      // Store 内验证
+      const s = store.getState();
+      const assistantMsgs = s.messageOrder.filter(id => s.messageMap.get(id)?.role === 'assistant');
+      checks.push({ name: 'Store 3条助手', passed: assistantMsgs.length === 3, detail: `${assistantMsgs.length}` });
+
+      if (assistantMsgs.length >= 3) {
+        const m0 = s.messageMap.get(assistantMsgs[0]);
+        const m1 = s.messageMap.get(assistantMsgs[1]);
+        const m2 = s.messageMap.get(assistantMsgs[2]);
+        checks.push({ name: 'msg[0] 单变体', passed: !m0?.variants || m0.variants.length === 0, detail: `v=${m0?.variants?.length ?? 0}` });
+        checks.push({ name: 'msg[1] 3变体', passed: m1?.variants?.length === 3, detail: `v=${m1?.variants?.length ?? 0}` });
+        checks.push({ name: 'msg[2] 单变体', passed: !m2?.variants || m2.variants.length === 0, detail: `v=${m2?.variants?.length ?? 0}` });
+      }
+
+      // 全量持久化验证
+      checks.push(...await verifyMixedPersistence(sid, [0, 3, 0], log));
+
+      // 最终状态验证
+      checks.push({ name: '无僵尸', passed: store.getState().streamingVariantIds.size === 0, detail: `${store.getState().streamingVariantIds.size}` });
+      const finalPIds = store.getState().pendingParallelModelIds;
+      checks.push({ name: '最终 pIds 干净', passed: !finalPIds || finalPIds.length === 0, detail: `${JSON.stringify(finalPIds)}` });
+    } catch (e2) { err = e2 instanceof Error ? e2.message : String(e2); log('error', 'fatal', err); status = 'failed'; }
+    finally { reqCap?.stop(); stopCaptures(caps); const f = finalizeChecks(log, checks, status, err, t0); status = f.status; err = f.error; v = f.verification; }
+    const r = mkResult('mv_mixed_alternating_persist', { status, startTime: st, t0, bodies: reqCap?.bodies ?? [], v, logs, c2: caps.chatV2.logs, cc: caps.console.captured, sid, err });
+    results.push(r); onStep(r, baseIdx + 2);
+  }
+
+  return results;
+}
+
+// =============================================================================
 // 全量运行器
 // =============================================================================
 
@@ -889,6 +1187,18 @@ export async function runAllMultiVariantTests(
   for (const [step, fn] of [['mv_persist_complete', stepPersist], ['mv_skeleton_check', stepSkeleton], ['mv_icon_and_dom', stepIconDom]] as const) {
     if (_abortRequested || skip.has(step)) { push(skipped(step)); continue; }
     push(await fn(config, onLog)); await sleep(config.intervalMs);
+  }
+
+  // ── Group F (shared session per step) ──
+  if (!_abortRequested && GROUP_F.some(s => !skip.has(s))) {
+    try {
+      const fResults = await runGroupF(config, onLog, (r, i) => onStepComplete?.(r, idx + i, total), idx);
+      for (const r of fResults) { results.push(r); idx++; }
+    } catch (e) {
+      for (const s of GROUP_F) { if (!results.some(r => r.step === s)) push({ ...skipped(s), status: 'failed', error: `GroupF 初始化失败: ${e}` }); }
+    }
+  } else {
+    for (const s of GROUP_F) push(skipped(s));
   }
 
   return results;

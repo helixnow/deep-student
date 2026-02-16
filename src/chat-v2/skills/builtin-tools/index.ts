@@ -21,6 +21,7 @@ export { subagentWorkerSkill, SUBAGENT_WORKER_SYSTEM_PROMPT } from './subagent-w
 export { templateDesignerSkill } from './template-designer';
 export { askUserSkill } from './ask-user';
 export { academicSearchSkill } from './academic-search';
+export { docxToolsSkill } from './docx-tools';
 
 import { knowledgeRetrievalSkill } from './knowledge-retrieval';
 import { canvasNoteSkill } from './canvas-note';
@@ -36,6 +37,7 @@ import { subagentWorkerSkill } from './subagent-worker';
 import { templateDesignerSkill } from './template-designer';
 import { askUserSkill } from './ask-user';
 import { academicSearchSkill } from './academic-search';
+import { docxToolsSkill } from './docx-tools';
 import type { SkillDefinition } from '../types';
 
 /**
@@ -59,6 +61,7 @@ export const builtinToolSkills: SkillDefinition[] = [
   templateDesignerSkill,
   askUserSkill,
   academicSearchSkill,
+  docxToolsSkill,
 ];
 
 /**

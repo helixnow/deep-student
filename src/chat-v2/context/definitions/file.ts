@@ -375,8 +375,8 @@ export const fileDefinition: ContextTypeDefinition = {
       }
 
       // 非 PDF 文件：使用原有逻辑
-      // 构建属性
-      const attrs: Record<string, string | undefined> = { name };
+      // 构建属性（★ 2026-02 修复：添加 source_id，使 LLM 可通过 DOCX 工具操作文件）
+      const attrs: Record<string, string | undefined> = { name, source_id: sourceId };
       if (mimeType) attrs.type = mimeType;
       if (size) attrs.size = formatFileSize(size);
 
