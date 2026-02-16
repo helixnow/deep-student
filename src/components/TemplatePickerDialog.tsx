@@ -51,7 +51,7 @@ const TemplatePickerDialog: React.FC<TemplatePickerDialogProps> = ({ open, onClo
 
   return (
     <NotionDialog open={open} onOpenChange={(v)=> { if (!v) onClose(); }} maxWidth="max-w-4xl">
-      <NotionDialogBody>
+      <NotionDialogBody nativeScroll>
         <CustomScrollArea className="flex-1 min-h-0 overflow-hidden" viewportClassName="px-6 py-6">
           <div className="mb-4">
             <h2 className="text-lg font-semibold">{t('select_template_title')}</h2>

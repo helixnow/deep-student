@@ -358,22 +358,30 @@ function extractDocWriteFileInfo(toolOutput: unknown): { fileId: string; fileNam
 }
 
 /**
- * 从读取类工具的输出/输入中提取 resource_id
+ * 从读取类工具的输出/输入中提取 resource_id 和显示标题
  */
-function extractDocReadResourceId(toolOutput: unknown, toolInput: Record<string, unknown>): string | null {
+function extractDocReadInfo(toolOutput: unknown, toolInput: Record<string, unknown>): { resourceId: string; title: string } | null {
+  let resourceId: string | undefined;
+  let title: string | undefined;
+
   // 优先从 output 中取（后端返回的 resource_id）
   if (toolOutput && typeof toolOutput === 'object') {
     const output = toolOutput as Record<string, unknown>;
     // output 可能被包裹在 result 中
     const inner = (output.result && typeof output.result === 'object') ? output.result as Record<string, unknown> : output;
-    const resourceId = inner.resource_id as string | undefined;
-    if (resourceId) return resourceId;
+    resourceId = inner.resource_id as string | undefined;
+    // 尝试从 metadata 中提取文件名
+    if (inner.metadata && typeof inner.metadata === 'object') {
+      const meta = inner.metadata as Record<string, unknown>;
+      title = (meta.title || meta.file_name || meta.name) as string | undefined;
+    }
   }
   // 回退到 input 参数中的 resource_id
-  if (typeof toolInput.resource_id === 'string' && toolInput.resource_id) {
-    return toolInput.resource_id;
+  if (!resourceId && typeof toolInput.resource_id === 'string' && toolInput.resource_id) {
+    resourceId = toolInput.resource_id;
   }
-  return null;
+  if (!resourceId) return null;
+  return { resourceId, title: title || resourceId };
 }
 
 /**
@@ -628,8 +636,8 @@ const McpToolBlockComponent: React.FC<BlockComponentProps> = ({
 
           {/* DOCX/PPTX/XLSX 读取工具：源文件引用按钮 */}
           {DOC_READ_TOOLS.includes(toolName) && (() => {
-            const resourceId = extractDocReadResourceId(toolOutput, toolInput);
-            if (!resourceId) return null;
+            const readInfo = extractDocReadInfo(toolOutput, toolInput);
+            if (!readInfo) return null;
             const DocIcon = getDocToolFileIcon(toolName);
             return (
               <NotionButton
@@ -638,9 +646,9 @@ const McpToolBlockComponent: React.FC<BlockComponentProps> = ({
                 onClick={() => {
                   window.dispatchEvent(new CustomEvent('CHAT_OPEN_ATTACHMENT_PREVIEW', {
                     detail: {
-                      id: resourceId,
+                      id: readInfo.resourceId,
                       type: 'file',
-                      title: resourceId,
+                      title: readInfo.title,
                     }
                   }));
                 }}

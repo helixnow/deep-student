@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { ChevronDown, Check, Search } from 'lucide-react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { Input } from './Input';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from './Dialog';
+import { NotionDialog, NotionDialogHeader, NotionDialogTitle, NotionDialogBody } from '../NotionDialog';
 import { CustomScrollArea } from '../../custom-scroll-area';
 import { cn } from '../../../lib/utils';
 
@@ -57,33 +57,32 @@ export function Combobox({
 
   return (
     <div className={cn('w-full', className)}>
-      <Dialog open={open} onOpenChange={setOpen}>
-        <NotionButton
-          type="button"
-          variant="outline"
-          className={cn('w-full justify-between', buttonClassName)}
-          disabled={disabled}
-          onClick={() => setOpen(true)}
-        >
-          <span className="flex items-center gap-2 truncate text-left">
-            {selectedOption?.icon && (
-              <img 
-                src={selectedOption.icon} 
-                alt="" 
-                className="h-4 w-4 flex-shrink-0 rounded object-contain"
-                style={{ opacity: selectedOption.icon.includes('generic.svg') ? 0.5 : 1 }}
-              />
-            )}
-            <span className="truncate">{buttonLabel}</span>
-          </span>
-          <ChevronDown className="h-4 w-4 opacity-70" />
-        </NotionButton>
+      <NotionButton
+        type="button"
+        variant="outline"
+        className={cn('w-full justify-between', buttonClassName)}
+        disabled={disabled}
+        onClick={() => setOpen(true)}
+      >
+        <span className="flex items-center gap-2 truncate text-left">
+          {selectedOption?.icon && (
+            <img 
+              src={selectedOption.icon} 
+              alt="" 
+              className="h-4 w-4 flex-shrink-0 rounded object-contain"
+              style={{ opacity: selectedOption.icon.includes('generic.svg') ? 0.5 : 1 }}
+            />
+          )}
+          <span className="truncate">{buttonLabel}</span>
+        </span>
+        <ChevronDown className="h-4 w-4 opacity-70" />
+      </NotionButton>
 
-        <DialogContent className="p-0 w-[92vw] max-w-lg max-h-[85vh]">
-          <div className="p-4 pb-2">
-            <DialogHeader>
-              <DialogTitle className="text-base">{resolvedTitle}</DialogTitle>
-            </DialogHeader>
+      <NotionDialog open={open} onOpenChange={setOpen} maxWidth="max-w-lg" className="p-0">
+        <NotionDialogHeader>
+          <NotionDialogTitle className="text-base">{resolvedTitle}</NotionDialogTitle>
+        </NotionDialogHeader>
+        <div className="px-5 pb-2">
             <div className="mt-2 relative">
               <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground">
                 <Search className="h-4 w-4" />
@@ -96,10 +95,10 @@ export function Combobox({
                 className="pl-8"
               />
             </div>
-          </div>
+        </div>
 
-          <div className="h-[min(320px,50vh)]">
-          <CustomScrollArea className="h-full" viewportClassName="px-2 pb-2">
+        <NotionDialogBody nativeScroll>
+          <CustomScrollArea className="h-[min(320px,50vh)]" viewportClassName="px-2 pb-2">
             {filtered.length === 0 ? (
               <div className="px-2 py-6 text-sm text-muted-foreground text-center">{resolvedEmptyText}</div>
             ) : (
@@ -137,9 +136,8 @@ export function Combobox({
               </ul>
             )}
           </CustomScrollArea>
-          </div>
-        </DialogContent>
-      </Dialog>
+        </NotionDialogBody>
+      </NotionDialog>
     </div>
   );
 }

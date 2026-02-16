@@ -812,9 +812,9 @@ export const CsvImportDialog: React.FC<CsvImportDialogProps> = ({
         {/* 步骤内容 */}
         <div className="min-h-[300px]">{renderStepContent()}</div>
 
+        </NotionDialogBody>
         {/* 底部按钮 */}
         {renderFooter()}
-        </NotionDialogBody>
     </NotionDialog>
   );
 };
