@@ -2310,7 +2310,7 @@ impl DocumentParser {
     /// 从 XLSX 字节提取结构化 JSON spec（用于 round-trip 编辑）
     pub fn extract_xlsx_as_spec(&self, bytes: &[u8]) -> Result<serde_json::Value, ParsingError> {
         let cursor = Cursor::new(bytes.to_vec());
-        let book = umya_spreadsheet::reader::xlsx::read_reader(cursor, false)
+        let book = umya_spreadsheet::reader::xlsx::read_reader(cursor, true)
             .map_err(|e| ParsingError::ExcelParsingError(format!("XLSX 读取失败: {}", e)))?;
 
         let mut sheets_json = Vec::new();
@@ -2373,7 +2373,7 @@ impl DocumentParser {
         edits: &[(String, String, String)], // (sheet_name, cell_ref, value)
     ) -> Result<(Vec<u8>, usize), ParsingError> {
         let cursor = Cursor::new(bytes.to_vec());
-        let mut book = umya_spreadsheet::reader::xlsx::read_reader(cursor, false)
+        let mut book = umya_spreadsheet::reader::xlsx::read_reader(cursor, true)
             .map_err(|e| ParsingError::ExcelParsingError(format!("XLSX 读取失败: {}", e)))?;
 
         let mut edit_count = 0usize;
@@ -2410,7 +2410,7 @@ impl DocumentParser {
         replacements: &[(String, String)],
     ) -> Result<(Vec<u8>, usize), ParsingError> {
         let cursor = Cursor::new(bytes.to_vec());
-        let mut book = umya_spreadsheet::reader::xlsx::read_reader(cursor, false)
+        let mut book = umya_spreadsheet::reader::xlsx::read_reader(cursor, true)
             .map_err(|e| ParsingError::ExcelParsingError(format!("XLSX 读取失败: {}", e)))?;
 
         let mut total_count = 0usize;
@@ -2464,7 +2464,7 @@ impl DocumentParser {
         bytes: &[u8],
     ) -> Result<Vec<serde_json::Value>, ParsingError> {
         let cursor = Cursor::new(bytes.to_vec());
-        let book = umya_spreadsheet::reader::xlsx::read_reader(cursor, false)
+        let book = umya_spreadsheet::reader::xlsx::read_reader(cursor, true)
             .map_err(|e| ParsingError::ExcelParsingError(format!("XLSX 读取失败: {}", e)))?;
 
         let mut tables = Vec::new();
@@ -2503,7 +2503,7 @@ impl DocumentParser {
     /// ★ GAP-4 修复：提取 XLSX 文件元数据（工作表数量/名称/行列数）
     pub fn extract_xlsx_metadata(&self, bytes: &[u8]) -> Result<serde_json::Value, ParsingError> {
         let cursor = Cursor::new(bytes.to_vec());
-        let book = umya_spreadsheet::reader::xlsx::read_reader(cursor, false)
+        let book = umya_spreadsheet::reader::xlsx::read_reader(cursor, true)
             .map_err(|e| ParsingError::ExcelParsingError(format!("XLSX 读取失败: {}", e)))?;
 
         let sheets = book.get_sheet_collection();

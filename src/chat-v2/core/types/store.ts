@@ -375,6 +375,9 @@ export interface ChatStore {
   /** 🆕 2026-01-17: 删除块（从 blocks Map、消息 blockIds、activeBlockIds 中移除） */
   deleteBlock?(blockId: string): void;
 
+  /** 🆕 2026-02-16: 原地替换块 ID（保持 blockIds 顺序不变，用于 preparing→执行块转换） */
+  replaceBlockId?(oldBlockId: string, newBlockId: string): void;
+
   /** 🆕 2026-01-15: 设置工具调用准备中状态（LLM 正在生成工具调用参数） */
   setPreparingToolCall?(
     messageId: string,

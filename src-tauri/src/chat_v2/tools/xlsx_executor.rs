@@ -63,10 +63,14 @@ impl XlsxToolExecutor {
         }
 
         // 使用 calamine 提取文本（已有实现）
-        let parser = DocumentParser::new();
-        let content = parser
-            .extract_text_from_bytes("spreadsheet.xlsx", bytes)
-            .map_err(|e| format!("XLSX 结构化提取失败: {}", e))?;
+        // 🔧 2026-02-16: spawn_blocking 防止同步解析阻塞 tokio 线程
+        let content = tokio::task::spawn_blocking(move || {
+            let parser = DocumentParser::new();
+            parser.extract_text_from_bytes("spreadsheet.xlsx", bytes)
+        })
+        .await
+        .map_err(|e| format!("XLSX 解析任务异常: {}", e))?
+        .map_err(|e| format!("XLSX 结构化提取失败: {}", e))?;
 
         Ok(json!({
             "success": true,
@@ -91,10 +95,14 @@ impl XlsxToolExecutor {
 
         let bytes = self.load_file_bytes(ctx, resource_id)?;
 
-        let parser = DocumentParser::new();
-        let tables = parser
-            .extract_xlsx_tables(&bytes)
-            .map_err(|e| format!("XLSX 表格提取失败: {}", e))?;
+        // 🔧 2026-02-16: spawn_blocking 防止同步解析阻塞 tokio 线程
+        let tables = tokio::task::spawn_blocking(move || {
+            let parser = DocumentParser::new();
+            parser.extract_xlsx_tables(&bytes)
+        })
+        .await
+        .map_err(|e| format!("XLSX 解析任务异常: {}", e))?
+        .map_err(|e| format!("XLSX 表格提取失败: {}", e))?;
 
         Ok(json!({
             "success": true,
@@ -118,10 +126,14 @@ impl XlsxToolExecutor {
 
         let bytes = self.load_file_bytes(ctx, resource_id)?;
 
-        let parser = DocumentParser::new();
-        let metadata = parser
-            .extract_xlsx_metadata(&bytes)
-            .map_err(|e| format!("XLSX 元数据读取失败: {}", e))?;
+        // 🔧 2026-02-16: spawn_blocking 防止同步解析阻塞 tokio 线程
+        let metadata = tokio::task::spawn_blocking(move || {
+            let parser = DocumentParser::new();
+            parser.extract_xlsx_metadata(&bytes)
+        })
+        .await
+        .map_err(|e| format!("XLSX 解析任务异常: {}", e))?
+        .map_err(|e| format!("XLSX 元数据读取失败: {}", e))?;
 
         Ok(json!({
             "success": true,
@@ -144,10 +156,14 @@ impl XlsxToolExecutor {
 
         let bytes = self.load_file_bytes(ctx, resource_id)?;
 
-        let parser = DocumentParser::new();
-        let spec = parser
-            .extract_xlsx_as_spec(&bytes)
-            .map_err(|e| format!("XLSX → spec 转换失败: {}", e))?;
+        // 🔧 2026-02-16: spawn_blocking 防止同步解析阻塞 tokio 线程
+        let spec = tokio::task::spawn_blocking(move || {
+            let parser = DocumentParser::new();
+            parser.extract_xlsx_as_spec(&bytes)
+        })
+        .await
+        .map_err(|e| format!("XLSX 解析任务异常: {}", e))?
+        .map_err(|e| format!("XLSX → spec 转换失败: {}", e))?;
 
         Ok(json!({
             "success": true,
@@ -199,10 +215,14 @@ impl XlsxToolExecutor {
 
         let bytes = self.load_file_bytes(ctx, resource_id)?;
 
-        let parser = DocumentParser::new();
-        let (new_bytes, edit_count) = parser
-            .edit_xlsx_cells(&bytes, &edits)
-            .map_err(|e| format!("XLSX 编辑失败: {}", e))?;
+        // 🔧 2026-02-16: spawn_blocking 防止同步解析阻塞 tokio 线程
+        let (new_bytes, edit_count) = tokio::task::spawn_blocking(move || {
+            let parser = DocumentParser::new();
+            parser.edit_xlsx_cells(&bytes, &edits)
+        })
+        .await
+        .map_err(|e| format!("XLSX 解析任务异常: {}", e))?
+        .map_err(|e| format!("XLSX 编辑失败: {}", e))?;
 
         if edit_count == 0 {
             return Ok(json!({
@@ -286,10 +306,14 @@ impl XlsxToolExecutor {
 
         let bytes = self.load_file_bytes(ctx, resource_id)?;
 
-        let parser = DocumentParser::new();
-        let (new_bytes, total_count) = parser
-            .replace_text_in_xlsx(&bytes, &replacements)
-            .map_err(|e| format!("XLSX 替换失败: {}", e))?;
+        // 🔧 2026-02-16: spawn_blocking 防止同步解析阻塞 tokio 线程
+        let (new_bytes, total_count) = tokio::task::spawn_blocking(move || {
+            let parser = DocumentParser::new();
+            parser.replace_text_in_xlsx(&bytes, &replacements)
+        })
+        .await
+        .map_err(|e| format!("XLSX 解析任务异常: {}", e))?
+        .map_err(|e| format!("XLSX 替换失败: {}", e))?;
 
         if total_count == 0 {
             return Ok(json!({
@@ -356,8 +380,14 @@ impl XlsxToolExecutor {
             .get("folder_id")
             .and_then(|v| v.as_str());
 
-        let xlsx_bytes = DocumentParser::generate_xlsx_from_spec(spec)
-            .map_err(|e| format!("XLSX 生成失败: {}", e))?;
+        // 🔧 2026-02-16: spawn_blocking 防止同步生成阻塞 tokio 线程
+        let spec = spec.clone();
+        let xlsx_bytes = tokio::task::spawn_blocking(move || {
+            DocumentParser::generate_xlsx_from_spec(&spec)
+        })
+        .await
+        .map_err(|e| format!("XLSX 生成任务异常: {}", e))?
+        .map_err(|e| format!("XLSX 生成失败: {}", e))?;
 
         let file_size = xlsx_bytes.len();
 

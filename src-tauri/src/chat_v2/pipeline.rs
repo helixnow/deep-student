@@ -3931,51 +3931,112 @@ impl ChatV2Pipeline {
     ///
     /// ## 返回
     /// 工具调用结果列表
+    /// 对工具调用列表进行依赖感知排序
+    ///
+    /// 规则（按优先级从高到低）：
+    /// 1. chatanki: run/start → control → status/analyze → wait → export/sync
+    /// 2. pptx/xlsx/docx: _create 必须在 _read/_extract/_get/_replace/_edit/_to_spec 之前
+    /// 3. 同优先级内保持原始顺序（stable sort）
     fn ordered_tool_calls_for_execution(&self, tool_calls: &[ToolCall]) -> Vec<ToolCall> {
-        fn chatanki_priority(tool_name: &str) -> Option<u8> {
-            let short_name = if let Some(name) = tool_name.strip_prefix(BUILTIN_NAMESPACE) {
-                name
-            } else if let Some(name) = tool_name.strip_prefix("mcp_") {
-                name
-            } else {
-                tool_name
-            };
+        /// 剥离工具名前缀，返回短名
+        fn strip_tool_prefix(tool_name: &str) -> &str {
+            // builtin-xxx, mcp_xxx, mcp.tools.xxx, namespace.xxx
+            tool_name
+                .strip_prefix(BUILTIN_NAMESPACE)
+                .or_else(|| tool_name.strip_prefix("mcp_"))
+                .or_else(|| tool_name.strip_prefix("mcp.tools."))
+                .unwrap_or(tool_name)
+        }
 
+        /// ChatAnki 工具优先级
+        fn chatanki_priority(short_name: &str) -> Option<u8> {
             if !short_name.starts_with("chatanki_") {
                 return None;
             }
-
-            let priority = match short_name {
-                // start/run 必须先执行，后续 wait/status/export 依赖其 documentId/ankiBlockId
+            let p = match short_name {
                 "chatanki_run" | "chatanki_start" => 0,
-                // 控制命令（resume/retry）需要早于 wait/status 生效
                 "chatanki_control" => 1,
                 "chatanki_status"
                 | "chatanki_list_templates"
                 | "chatanki_analyze"
                 | "chatanki_check_anki_connect" => 2,
-                // wait 不能早于 start/run，否则会长时间阻塞
                 "chatanki_wait" => 3,
-                // export/sync 应放在 wait 之后
                 "chatanki_export" | "chatanki_sync" => 4,
                 _ => 2,
             };
-
-            Some(priority)
+            Some(p)
         }
 
-        let has_chatanki = tool_calls
-            .iter()
-            .any(|call| chatanki_priority(&call.name).is_some());
-        if !has_chatanki {
+        /// 文档工具优先级（pptx/xlsx/docx）
+        /// _create = 0, 其余 = 1, 不匹配 = None
+        fn document_tool_priority(short_name: &str) -> Option<u8> {
+            // 检测是否属于文档工具族
+            let prefixes = ["pptx_", "xlsx_", "docx_"];
+            let matched_prefix = prefixes.iter().find(|p| short_name.starts_with(**p));
+            let prefix = match matched_prefix {
+                Some(p) => *p,
+                None => return None,
+            };
+
+            let action = &short_name[prefix.len()..];
+            let p = match action {
+                "create" => 0,                       // 创建文件 — 必须最先
+                "read_structured" | "get_metadata"   // 只读操作
+                | "extract_tables" => 1,
+                "edit_cells" | "replace_text" => 2,  // 写操作（依赖文件存在）
+                "to_spec" => 3,                      // 转换操作（依赖文件存在）
+                _ => 1,                              // 未知动作，按只读对待
+            };
+            Some(p)
+        }
+
+        /// 综合优先级：(group_priority, action_priority)
+        /// group 0 = chatanki, 1 = document, 99 = other
+        fn tool_priority(tool_name: &str) -> (u8, u8) {
+            let short = strip_tool_prefix(tool_name);
+            if let Some(p) = chatanki_priority(short) {
+                return (0, p);
+            }
+            if let Some(p) = document_tool_priority(short) {
+                return (1, p);
+            }
+            (99, 0)
+        }
+
+        // 快速路径：如果没有需要排序的工具，直接返回原始顺序
+        let needs_sort = tool_calls.iter().any(|call| {
+            let short = strip_tool_prefix(&call.name);
+            chatanki_priority(short).is_some() || document_tool_priority(short).is_some()
+        });
+        if !needs_sort {
             return tool_calls.to_vec();
         }
 
         let mut indexed_calls: Vec<(usize, ToolCall)> =
             tool_calls.iter().cloned().enumerate().collect();
-        indexed_calls
-            .sort_by_key(|(idx, call)| (chatanki_priority(&call.name).unwrap_or(99), *idx));
-        indexed_calls.into_iter().map(|(_, call)| call).collect()
+        // stable sort: 先按 tool_priority，同优先级保持原始顺序（idx）
+        indexed_calls.sort_by_key(|(idx, call)| {
+            let (group, action) = tool_priority(&call.name);
+            (group, action, *idx)
+        });
+
+        let reordered: Vec<ToolCall> =
+            indexed_calls.into_iter().map(|(_, call)| call).collect();
+
+        // 日志：如果顺序发生变化，记录重排结果
+        if reordered
+            .iter()
+            .zip(tool_calls.iter())
+            .any(|(a, b)| a.id != b.id)
+        {
+            let names: Vec<&str> = reordered.iter().map(|c| c.name.as_str()).collect();
+            log::info!(
+                "[ChatV2::pipeline] Tool calls reordered for dependency safety: {:?}",
+                names
+            );
+        }
+
+        reordered
     }
 
     async fn execute_tool_calls(
@@ -3997,6 +4058,14 @@ impl ChatV2Pipeline {
             "[ChatV2::pipeline] Executing {} tool calls sequentially",
             ordered_tool_calls.len()
         );
+
+        // 🔧 2026-02-16: 追踪本批次 _create 工具返回的 file_id，用于修正依赖工具中
+        // LLM 凭空捏造的 resource_id（LLM 在同一批次生成 create + read/edit 时，
+        // 无法提前知道 create 返回的实际 file_id）
+        // key: 文档类型前缀 ("xlsx" / "pptx" / "docx")
+        // value: create 工具返回的实际 file_id
+        let mut created_file_ids: std::collections::HashMap<String, String> =
+            std::collections::HashMap::new();
 
         // 顺序执行工具调用，避免非幂等工具并发导致的数据竞态
         let mut tool_results = Vec::new();
@@ -4076,9 +4145,16 @@ impl ChatV2Pipeline {
                 continue;
             }
 
+            // 🔧 2026-02-16: 修正依赖工具的 resource_id
+            // 当 LLM 在同一批次生成 create + 依赖工具时，依赖工具的 resource_id
+            // 是 LLM 捏造的（因为 create 还没返回真实 ID）。
+            // 这里检测并替换为本批次 create 返回的实际 file_id。
+            let tc_to_execute = self.fixup_document_tool_resource_id(tc, &created_file_ids);
+            let tc_ref = tc_to_execute.as_ref().unwrap_or(tc);
+
             match self
                 .execute_single_tool(
-                    tc,
+                    tc_ref,
                     emitter,
                     session_id,
                     message_id,
@@ -4092,7 +4168,13 @@ impl ChatV2Pipeline {
                 )
                 .await
             {
-                Ok(info) => tool_results.push(info),
+                Ok(info) => {
+                    // 🔧 捕获 _create 工具返回的 file_id，供后续依赖工具使用
+                    if info.success {
+                        self.capture_created_file_id(&tc_ref.name, &info.output, &mut created_file_ids);
+                    }
+                    tool_results.push(info);
+                }
                 Err(e) => {
                     log::error!(
                         "[ChatV2::pipeline] Unexpected tool call error for {}: {}",
@@ -4115,6 +4197,142 @@ impl ChatV2Pipeline {
         }
 
         Ok(tool_results)
+    }
+
+    /// 🔧 2026-02-16: 修正依赖工具的 resource_id
+    ///
+    /// 当 LLM 在同一批次同时生成 `_create` 和 `_read/_edit` 等依赖工具时，
+    /// 依赖工具的 `resource_id` 是 LLM 凭空捏造的（因为 create 尚未返回真实 ID）。
+    /// 此方法检测这种情况并替换为本批次 _create 工具返回的实际 file_id。
+    ///
+    /// 替换条件（全部满足才替换）：
+    /// 1. 工具是文档类型的非 _create 工具（如 xlsx_read_structured）
+    /// 2. 参数中有 resource_id
+    /// 3. 本批次有对应文档类型的 _create 结果
+    /// 4. 当前 resource_id 与 _create 返回的不同
+    /// 5. 当前 resource_id 在 VFS 中不存在（确认是捏造的）
+    fn fixup_document_tool_resource_id(
+        &self,
+        tc: &ToolCall,
+        created_file_ids: &std::collections::HashMap<String, String>,
+    ) -> Option<ToolCall> {
+        if created_file_ids.is_empty() {
+            return None;
+        }
+
+        // 剥离前缀
+        let short_name = tc
+            .name
+            .strip_prefix(super::tools::builtin_retrieval_executor::BUILTIN_NAMESPACE)
+            .or_else(|| tc.name.strip_prefix("mcp_"))
+            .unwrap_or(&tc.name);
+
+        // 检测文档工具族
+        let doc_type = if short_name.starts_with("pptx_") {
+            "pptx"
+        } else if short_name.starts_with("xlsx_") {
+            "xlsx"
+        } else if short_name.starts_with("docx_") {
+            "docx"
+        } else {
+            return None;
+        };
+
+        // _create 工具本身不需要 fixup
+        let action = &short_name[doc_type.len() + 1..]; // skip "xlsx_"
+        if action == "create" {
+            return None;
+        }
+
+        // 获取参数中的 resource_id
+        let resource_id = tc.arguments.get("resource_id").and_then(|v| v.as_str())?;
+
+        // 获取本批次 _create 返回的实际 file_id
+        let actual_id = created_file_ids.get(doc_type)?;
+
+        // 如果已经一致，无需替换
+        if resource_id == actual_id.as_str() {
+            return None;
+        }
+
+        // 检查原始 resource_id 是否在 VFS 中存在
+        // 如果存在，说明 LLM 引用的是之前的文件，不应替换
+        if let Some(ref vfs_db) = self.vfs_db {
+            use crate::vfs::repos::VfsFileRepo;
+            if let Ok(conn) = vfs_db.get_conn_safe() {
+                if VfsFileRepo::get_file_with_conn(&conn, resource_id)
+                    .ok()
+                    .flatten()
+                    .is_some()
+                {
+                    return None; // 原始 ID 有效，不替换
+                }
+            }
+        }
+
+        // 替换 resource_id
+        let mut fixed_tc = tc.clone();
+        if let Some(obj) = fixed_tc.arguments.as_object_mut() {
+            obj.insert(
+                "resource_id".to_string(),
+                serde_json::Value::String(actual_id.clone()),
+            );
+        }
+
+        log::info!(
+            "[ChatV2::pipeline] 🔧 资源ID修正: {} 的 resource_id '{}' → '{}' (同批次 {}_create 返回)",
+            tc.name, resource_id, actual_id, doc_type
+        );
+
+        Some(fixed_tc)
+    }
+
+    /// 🔧 2026-02-16: 捕获 _create 工具返回的 file_id
+    fn capture_created_file_id(
+        &self,
+        tool_name: &str,
+        output: &serde_json::Value,
+        created_file_ids: &mut std::collections::HashMap<String, String>,
+    ) {
+        let short_name = tool_name
+            .strip_prefix(super::tools::builtin_retrieval_executor::BUILTIN_NAMESPACE)
+            .or_else(|| tool_name.strip_prefix("mcp_"))
+            .unwrap_or(tool_name);
+
+        let doc_type = if short_name.starts_with("pptx_") {
+            "pptx"
+        } else if short_name.starts_with("xlsx_") {
+            "xlsx"
+        } else if short_name.starts_with("docx_") {
+            "docx"
+        } else {
+            return;
+        };
+
+        let action = &short_name[doc_type.len() + 1..];
+        if action != "create" {
+            return;
+        }
+
+        // 从输出中提取 file_id（可能嵌套在 result 内）
+        let file_id = output
+            .get("file_id")
+            .and_then(|v| v.as_str())
+            .or_else(|| {
+                output
+                    .get("result")
+                    .and_then(|r| r.get("file_id"))
+                    .and_then(|v| v.as_str())
+            });
+
+        if let Some(id) = file_id {
+            log::info!(
+                "[ChatV2::pipeline] 📦 捕获 {}_create 返回的 file_id: {}",
+                doc_type,
+                id
+            );
+            created_file_ids.insert(doc_type.to_string(), id.to_string());
+        }
     }
 
     /// 执行单个工具调用

@@ -80,6 +80,8 @@ import {
   isTemplateDesignerToolName,
 } from '../debug/templateDesignerDebug';
 import { buildAttachmentRequestAudit } from '../debug/attachmentRequestAudit';
+// 🆕 2026-02-16: 工具调用生命周期调试
+import { resetRound as resetToolCallRound } from '../../debug-panel/plugins/ToolCallLifecycleDebugPlugin';
 
 // ============================================================================
 // 日志前缀
@@ -1239,6 +1241,11 @@ export class ChatV2TauriAdapter {
       switch (payload.eventType) {
         case 'stream_start': {
           // 流式开始
+          // 🆕 2026-02-16: 重置工具调用生命周期追踪器的轮次计数器
+          try {
+            resetToolCallRound();
+          } catch { /* debug only */ }
+
           // 🔧 调试打点：记录 stream_start 事件中的模型名称
           logMultiVariant('adapter', 'stream_start_received', {
             messageId: payload.messageId,

@@ -26,6 +26,13 @@ import {
   LOAD_SKILLS_TOOL_NAME,
   handleLoadSkillsToolCall,
 } from '../../skills/progressiveDisclosure';
+// 🆕 2026-02-16: 工具调用生命周期调试插件
+import {
+  emitToolCallDebug,
+  trackPreparing,
+  trackStart,
+  trackEnd,
+} from '../../../debug-panel/plugins/ToolCallLifecycleDebugPlugin';
 
 // ============================================================================
 // 辅助函数
@@ -117,6 +124,13 @@ const toolCallEventHandler: EventHandler = {
   ): string => {
     const { toolName, toolInput, toolCallId } = payload as ToolCallStartPayload & { toolCallId?: string };
 
+    // 🆕 调试：工具调用开始执行
+    emitToolCallDebug('info', 'backend:start', `${toolName} 开始执行`, {
+      toolName, toolCallId, blockId: backendBlockId,
+      detail: { toolInput, preparingBlockFound: false /* updated below */ },
+    });
+    if (toolCallId) trackStart(toolCallId, backendBlockId);
+
     // 🆕 2026-01-21: 判断是否是 coordinator_sleep 工具，需要创建 sleep 类型块
     // 这样 SleepBlockComponent 才能渲染，展示嵌入的子代理 ChatContainer
     const strippedToolName = (toolName || '')
@@ -139,16 +153,23 @@ const toolCallEventHandler: EventHandler = {
       }
     }
 
-    // 🔧 2026-01-17 修复：关键问题 - preparing 块和 backendBlockId 不匹配
-    // 当存在 preparing 块时，需要删除它并使用后端的 block_id 创建新块
-    // 这样 end 事件才能正确匹配到块
+    // 🔧 2026-02-16 修复：preparing 块 → 执行块转换时保持 blockIds 顺序
+    // 旧方案 deleteBlock+createBlockWithId 会把新块 push 到 blockIds 末尾，
+    // 导致多工具并发时 UI 顺序错乱（preparing 块在前，完成块在后）。
+    // 新方案使用 replaceBlockId 原地替换，保持原始顺序。
     let blockId: string;
     
     if (preparingBlockId && backendBlockId) {
       // 情况 1: 有 preparing 块 + 有后端 block_id
-      // 删除 preparing 块，使用后端 block_id 创建新块（end 事件使用后端的 block_id）
-      store.deleteBlock?.(preparingBlockId);
-      blockId = store.createBlockWithId(messageId, blockType, backendBlockId);
+      // 原地替换块 ID，保持在 blockIds 中的位置不变
+      if (store.replaceBlockId) {
+        store.replaceBlockId(preparingBlockId, backendBlockId);
+        blockId = backendBlockId;
+      } else {
+        // 降级：replaceBlockId 不可用时回退到旧方案
+        store.deleteBlock?.(preparingBlockId);
+        blockId = store.createBlockWithId(messageId, blockType, backendBlockId);
+      }
     } else if (preparingBlockId) {
       // 情况 2: 有 preparing 块 + 无后端 block_id，直接复用
       // 🆕 2026-01-21: 如果是 sleep 工具，需要更新块类型
@@ -180,6 +201,12 @@ const toolCallEventHandler: EventHandler = {
     // 清除消息级别的 preparingToolCall 状态
     store.clearPreparingToolCall?.(messageId);
 
+    // 🆕 调试：记录 blockId 映射
+    emitToolCallDebug('debug', 'frontend:blockUpdate', `${toolName} 块 → running`, {
+      toolName, toolCallId, blockId,
+      detail: { hadPreparingBlock: !!preparingBlockId, usedReplaceBlockId: !!(preparingBlockId && backendBlockId && store.replaceBlockId) },
+    });
+
     return blockId;
   },
 
@@ -197,6 +224,15 @@ const toolCallEventHandler: EventHandler = {
    * 设置工具执行结果
    */
   onEnd: (store: ChatStore, blockId: string, result?: unknown): void => {
+    // 🆕 调试：工具执行完成
+    const endBlock = store.blocks.get(blockId);
+    const durationMs = endBlock?.startedAt ? Date.now() - endBlock.startedAt : undefined;
+    emitToolCallDebug('success', 'backend:end', `${endBlock?.toolName || '?'} 执行完成`, {
+      toolName: endBlock?.toolName, toolCallId: endBlock?.toolCallId, blockId, durationMs,
+      detail: { resultType: result && typeof result === 'object' ? Object.keys(result as object) : typeof result },
+    });
+    if (endBlock?.toolCallId) trackEnd(endBlock.toolCallId, true);
+
     // 设置结果（会自动更新状态为 success）
     store.setBlockResult(blockId, result);
 
@@ -594,6 +630,14 @@ const toolCallEventHandler: EventHandler = {
    * 标记工具执行失败
    */
   onError: (store: ChatStore, blockId: string, error: string): void => {
+    // 🆕 调试：工具执行失败
+    const errBlock = store.blocks.get(blockId);
+    emitToolCallDebug('error', 'backend:error', `${errBlock?.toolName || '?'} 执行失败: ${error.slice(0, 120)}`, {
+      toolName: errBlock?.toolName, toolCallId: errBlock?.toolCallId, blockId,
+      detail: { error },
+    });
+    if (errBlock?.toolCallId) trackEnd(errBlock.toolCallId, false);
+
     store.setBlockError(blockId, error);
   },
 };
@@ -707,6 +751,12 @@ const toolCallPreparingEventHandler: EventHandler = {
     console.log(
       `[ToolCallPreparing] Creating preparing block: ${toolName} (toolCallId=${toolCallId})`
     );
+
+    // 🆕 调试：工具准备中
+    emitToolCallDebug('info', 'frontend:preparing', `${toolName} 准备中`, {
+      toolName, toolCallId,
+    });
+    if (toolCallId) trackPreparing(toolCallId, toolName);
 
     // 🆕 2026-01-21: 判断是否是 coordinator_sleep 工具，需要创建 sleep 类型块
     const strippedToolName = (toolName || '')

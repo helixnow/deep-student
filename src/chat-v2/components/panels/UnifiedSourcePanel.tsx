@@ -10,6 +10,7 @@ import { citationEvents, type CitationHighlightEvent } from '../../utils/citatio
 import type { RetrievalSourceType } from '../../plugins/blocks/components/types';
 import { useIsMobile } from '@/hooks/useBreakpoint';
 import { NotionButton } from '@/components/ui/NotionButton';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { setPendingMemoryLocate } from '@/utils/pendingMemoryLocate';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/shad/Sheet';
 import { getReadableToolName } from '@/chat-v2/utils/toolDisplayName';
@@ -742,24 +743,26 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
               })}
             </div>
 
-            {/* 来源列表（垂直滚动） */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-3">
-              {flatEntries.length === 0 && (
-                <div className="text-center py-8 text-muted-foreground">
-                  {t('common:chat.sources.empty')}
-                </div>
-              )}
-              {flatEntries.map(entry => {
-                if (entry.type === 'header') {
-                  return (
-                    <div key={entry.key} className="text-xs font-medium text-muted-foreground uppercase tracking-wider pt-2">
-                      {entry.label}
-                    </div>
-                  );
-                }
-                return renderMobileSourceItem(entry);
-              })}
-            </div>
+            {/* 来源列表（垂直滚动 - 使用自研滚动条） */}
+            <CustomScrollArea className="flex-1" viewportClassName="p-4">
+              <div className="space-y-3">
+                {flatEntries.length === 0 && (
+                  <div className="text-center py-8 text-muted-foreground">
+                    {t('common:chat.sources.empty')}
+                  </div>
+                )}
+                {flatEntries.map(entry => {
+                  if (entry.type === 'header') {
+                    return (
+                      <div key={entry.key} className="text-xs font-medium text-muted-foreground uppercase tracking-wider pt-2">
+                        {entry.label}
+                      </div>
+                    );
+                  }
+                  return renderMobileSourceItem(entry);
+                })}
+              </div>
+            </CustomScrollArea>
           </SheetContent>
         </Sheet>
       </div>

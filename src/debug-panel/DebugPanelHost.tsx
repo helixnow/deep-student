@@ -59,6 +59,7 @@ import AttachmentPipelineTestPlugin from './plugins/AttachmentPipelineTestPlugin
 import ChatInteractionTestPlugin from './plugins/ChatInteractionTestPlugin';
 import CitationTestPlugin from './plugins/CitationTestPlugin';
 import MultiVariantTestPlugin from './plugins/MultiVariantTestPlugin';
+import ToolCallLifecycleDebugPlugin from './plugins/ToolCallLifecycleDebugPlugin';
 
 export interface DebugPanelHostProps {
   visible: boolean;
@@ -492,6 +493,15 @@ const PLUGINS: DebugPanelPluginEntry[] = [
     Component: MultiVariantTestPlugin,
     labelDefault: '多变体自动化测试',
     descriptionDefault: '3 变体并行的 18 步全自动边缘测试：发送/取消/重试/切换/删除/持久化/DOM/Icon，通过 DOM 模拟真实用户操作。',
+    groupId: 'chat-timeline',
+  },
+  {
+    id: 'tool-call-lifecycle-debug',
+    labelKey: 'debug_panel.plugin_tool_call_lifecycle',
+    descriptionKey: 'debug_panel.plugin_tool_call_lifecycle_desc',
+    Component: ToolCallLifecycleDebugPlugin,
+    labelDefault: '工具调用生命周期',
+    descriptionDefault: '监控工具调用前后端完整链路：preparing→start→chunk→end/error，检测顺序异常和超时，可复制完整时序日志。',
     groupId: 'chat-timeline',
   },
 ];

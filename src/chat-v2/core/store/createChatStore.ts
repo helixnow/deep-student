@@ -1540,6 +1540,70 @@ export function createChatStore(sessionId: string): StoreApi<ChatStore> {
           });
         },
 
+        // 🆕 2026-02-16: 原地替换块 ID（保持 blockIds 顺序不变）
+        // 用于 preparing 块 → 执行块的转换，避免 deleteBlock+createBlock 破坏顺序
+        replaceBlockId: (oldBlockId: string, newBlockId: string): void => {
+          const state = getState();
+          const block = state.blocks.get(oldBlockId);
+          if (!block) {
+            console.warn(`[ChatStore] replaceBlockId: old block ${oldBlockId} not found`);
+            return;
+          }
+
+          console.log(`[ChatStore] replaceBlockId: ${oldBlockId} → ${newBlockId} (in-place)`);
+
+          set((s) => {
+            // 1. blocks Map: 删除旧 key，插入新 key（保留块数据）
+            const newBlocks = new Map(s.blocks);
+            const blockData = newBlocks.get(oldBlockId);
+            if (!blockData) return {};
+
+            // 防御：newBlockId 不应已存在（UUID 碰撞极罕见，但避免静默覆盖）
+            if (newBlocks.has(newBlockId) && newBlockId !== oldBlockId) {
+              console.warn(`[ChatStore] replaceBlockId: newBlockId ${newBlockId} already exists, overwriting`);
+            }
+
+            newBlocks.delete(oldBlockId);
+            newBlocks.set(newBlockId, { ...blockData, id: newBlockId });
+
+            // 2. message.blockIds: 原地替换，保持顺序
+            const newMessageMap = new Map(s.messageMap);
+            const message = newMessageMap.get(blockData.messageId);
+            if (message) {
+              // 2a. 替换 message.blockIds 中的旧 ID
+              const newBlockIds = message.blockIds.map((id) => (id === oldBlockId ? newBlockId : id));
+
+              // 2b. 替换 variant.blockIds 中的旧 ID（preparing 块可能在变体中）
+              const newVariants = message.variants?.map((v) => {
+                if (!v.blockIds.includes(oldBlockId)) return v;
+                return {
+                  ...v,
+                  blockIds: v.blockIds.map((id) => (id === oldBlockId ? newBlockId : id)),
+                };
+              });
+
+              newMessageMap.set(blockData.messageId, {
+                ...message,
+                blockIds: newBlockIds,
+                ...(newVariants ? { variants: newVariants } : {}),
+              });
+            }
+
+            // 3. activeBlockIds: 替换
+            const newActiveBlockIds = new Set(s.activeBlockIds);
+            if (newActiveBlockIds.has(oldBlockId)) {
+              newActiveBlockIds.delete(oldBlockId);
+              newActiveBlockIds.add(newBlockId);
+            }
+
+            return {
+              blocks: newBlocks,
+              messageMap: newMessageMap,
+              activeBlockIds: newActiveBlockIds,
+            };
+          });
+        },
+
         // 🆕 2026-01-15: 设置工具调用准备中状态
         setPreparingToolCall: (
           messageId: string,

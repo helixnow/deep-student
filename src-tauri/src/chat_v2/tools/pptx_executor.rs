@@ -63,10 +63,14 @@ impl PptxToolExecutor {
             ));
         }
 
-        let parser = DocumentParser::new();
-        let markdown = parser
-            .extract_text_from_bytes("presentation.pptx", bytes)
-            .map_err(|e| format!("PPTX 结构化提取失败: {}", e))?;
+        // 🔧 2026-02-16: spawn_blocking 防止同步解析阻塞 tokio 线程
+        let markdown = tokio::task::spawn_blocking(move || {
+            let parser = DocumentParser::new();
+            parser.extract_text_from_bytes("presentation.pptx", bytes)
+        })
+        .await
+        .map_err(|e| format!("PPTX 解析任务异常: {}", e))?
+        .map_err(|e| format!("PPTX 结构化提取失败: {}", e))?;
 
         Ok(json!({
             "success": true,
@@ -91,10 +95,14 @@ impl PptxToolExecutor {
 
         let bytes = self.load_file_bytes(ctx, resource_id)?;
 
-        let parser = DocumentParser::new();
-        let metadata = parser
-            .extract_pptx_metadata(&bytes)
-            .map_err(|e| format!("PPTX 元数据读取失败: {}", e))?;
+        // 🔧 2026-02-16: spawn_blocking 防止同步解析阻塞 tokio 线程
+        let metadata = tokio::task::spawn_blocking(move || {
+            let parser = DocumentParser::new();
+            parser.extract_pptx_metadata(&bytes)
+        })
+        .await
+        .map_err(|e| format!("PPTX 解析任务异常: {}", e))?
+        .map_err(|e| format!("PPTX 元数据读取失败: {}", e))?;
 
         Ok(json!({
             "success": true,
@@ -117,10 +125,14 @@ impl PptxToolExecutor {
 
         let bytes = self.load_file_bytes(ctx, resource_id)?;
 
-        let parser = DocumentParser::new();
-        let tables = parser
-            .extract_pptx_tables(&bytes)
-            .map_err(|e| format!("PPTX 表格提取失败: {}", e))?;
+        // 🔧 2026-02-16: spawn_blocking 防止同步解析阻塞 tokio 线程
+        let tables = tokio::task::spawn_blocking(move || {
+            let parser = DocumentParser::new();
+            parser.extract_pptx_tables(&bytes)
+        })
+        .await
+        .map_err(|e| format!("PPTX 解析任务异常: {}", e))?
+        .map_err(|e| format!("PPTX 表格提取失败: {}", e))?;
 
         Ok(json!({
             "success": true,
@@ -144,10 +156,14 @@ impl PptxToolExecutor {
 
         let bytes = self.load_file_bytes(ctx, resource_id)?;
 
-        let parser = DocumentParser::new();
-        let spec = parser
-            .extract_pptx_as_spec(&bytes)
-            .map_err(|e| format!("PPTX → spec 转换失败: {}", e))?;
+        // 🔧 2026-02-16: spawn_blocking 防止同步解析阻塞 tokio 线程
+        let spec = tokio::task::spawn_blocking(move || {
+            let parser = DocumentParser::new();
+            parser.extract_pptx_as_spec(&bytes)
+        })
+        .await
+        .map_err(|e| format!("PPTX 解析任务异常: {}", e))?
+        .map_err(|e| format!("PPTX → spec 转换失败: {}", e))?;
 
         Ok(json!({
             "success": true,
@@ -196,10 +212,14 @@ impl PptxToolExecutor {
         let bytes = self.load_file_bytes(ctx, resource_id)?;
 
         // 通过 spec round-trip 实现替换
-        let parser = DocumentParser::new();
-        let mut spec = parser
-            .extract_pptx_as_spec(&bytes)
-            .map_err(|e| format!("PPTX 读取失败: {}", e))?;
+        // 🔧 2026-02-16: spawn_blocking 防止同步解析阻塞 tokio 线程
+        let mut spec = tokio::task::spawn_blocking(move || {
+            let parser = DocumentParser::new();
+            parser.extract_pptx_as_spec(&bytes)
+        })
+        .await
+        .map_err(|e| format!("PPTX 解析任务异常: {}", e))?
+        .map_err(|e| format!("PPTX 读取失败: {}", e))?;
 
         let mut total_count = 0usize;
 
@@ -298,8 +318,13 @@ impl PptxToolExecutor {
         }
 
         // 重新生成 PPTX
-        let new_bytes = DocumentParser::generate_pptx_from_spec(&spec)
-            .map_err(|e| format!("PPTX 重新生成失败: {}", e))?;
+        // 🔧 2026-02-16: spawn_blocking 防止同步生成阻塞 tokio 线程
+        let new_bytes = tokio::task::spawn_blocking(move || {
+            DocumentParser::generate_pptx_from_spec(&spec)
+        })
+        .await
+        .map_err(|e| format!("PPTX 生成任务异常: {}", e))?
+        .map_err(|e| format!("PPTX 重新生成失败: {}", e))?;
 
         // 保存到 VFS
         let vfs_db = ctx.vfs_db.as_ref().ok_or("VFS database not available")?;
@@ -358,8 +383,14 @@ impl PptxToolExecutor {
             .and_then(|v| v.as_str());
 
         // 生成 PPTX 字节
-        let pptx_bytes = DocumentParser::generate_pptx_from_spec(spec)
-            .map_err(|e| format!("PPTX 生成失败: {}", e))?;
+        // 🔧 2026-02-16: spawn_blocking 防止同步生成阻塞 tokio 线程
+        let spec = spec.clone();
+        let pptx_bytes = tokio::task::spawn_blocking(move || {
+            DocumentParser::generate_pptx_from_spec(&spec)
+        })
+        .await
+        .map_err(|e| format!("PPTX 生成任务异常: {}", e))?
+        .map_err(|e| format!("PPTX 生成失败: {}", e))?;
 
         let file_size = pptx_bytes.len();
 
