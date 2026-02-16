@@ -19,16 +19,14 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Alert, AlertDescription } from './ui/shad/Alert';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { Checkbox } from './ui/shad/Checkbox';
-import { 
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from './ui/shad/AlertDialog';
+import {
+  NotionDialog,
+  NotionDialogHeader,
+  NotionDialogTitle,
+  NotionDialogDescription,
+  NotionDialogBody,
+  NotionDialogFooter,
+} from './ui/NotionDialog';
 import { Badge } from './ui/shad/Badge';
 import { Tabs, TabsList, TabsTrigger } from './ui/shad/Tabs';
 import { Input } from './ui/shad/Input';
@@ -2024,75 +2022,75 @@ ${resolvedPath}`);
       </div>
     </div>
 
-        {/* 清空数据确认对话框（shadcn AlertDialog） */}
-        <AlertDialog open={showClearDataDialog} onOpenChange={setShowClearDataDialog}>
-          <AlertDialogContent className="max-w-md">
+        {/* 清空数据确认对话框 */}
+        <NotionDialog open={showClearDataDialog} onOpenChange={setShowClearDataDialog} maxWidth="max-w-md" closeOnOverlay={false} showClose={false}>
             {clearDataStep === 0 && (
               <>
-                <AlertDialogHeader>
-                  <div className="flex items-center gap-3">
+                <NotionDialogHeader>
+                  <NotionDialogTitle className="flex items-center gap-3">
                     <AlertTriangle className={DATA_CENTER_ICON_LG_CLASS} />
-                    <AlertDialogTitle>{t('data:clear_dialog.step0_title')}</AlertDialogTitle>
-                  </div>
-                  <AlertDialogDescription>
+                    {t('data:clear_dialog.step0_title')}
+                  </NotionDialogTitle>
+                  <NotionDialogDescription>
                     {t('data:clear_dialog.step0_desc_prefix')}<strong>{t('data:clear_dialog.step0_desc_bold')}</strong>{'\n'}{t('data:clear_dialog.step0_desc_items').split('\n').map((line, i) => (<span key={i}><br />{line}</span>))}
                     <br />
                     <strong>{t('data:clear_dialog.step0_desc_warning')}</strong>{'\u3001'}{t('data:clear_dialog.step0_desc_advice')}
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel onClick={() => setShowClearDataDialog(false)}>{t('data:clear_dialog.step0_cancel')}</AlertDialogCancel>
-                  <AlertDialogAction onClick={handleNextStep}>{t('data:clear_dialog.step0_confirm')}</AlertDialogAction>
-                </AlertDialogFooter>
+                  </NotionDialogDescription>
+                </NotionDialogHeader>
+                <NotionDialogFooter>
+                  <NotionButton variant="ghost" size="sm" onClick={() => setShowClearDataDialog(false)}>{t('data:clear_dialog.step0_cancel')}</NotionButton>
+                  <NotionButton variant="danger" size="sm" onClick={handleNextStep}>{t('data:clear_dialog.step0_confirm')}</NotionButton>
+                </NotionDialogFooter>
               </>
             )}
 
             {clearDataStep === 1 && (
               <>
-                <AlertDialogHeader>
-                  <div className="flex items-center gap-3">
+                <NotionDialogHeader>
+                  <NotionDialogTitle className="flex items-center gap-3">
                     <Clock className={DATA_CENTER_ICON_LG_CLASS} />
-                    <AlertDialogTitle>{t('data:clear_dialog.step1_title')}</AlertDialogTitle>
-                  </div>
-                  <AlertDialogDescription>
+                    {t('data:clear_dialog.step1_title')}
+                  </NotionDialogTitle>
+                  <NotionDialogDescription>
                     {t('data:clear_dialog.step1_wait')} <strong className="text-base">{countdown}</strong> {t('data:clear_dialog.step1_seconds')}
                     <br />{t('data:clear_dialog.step1_hint')}
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel onClick={() => setShowClearDataDialog(false)}>{t('data:clear_dialog.step1_cancel')}</AlertDialogCancel>
-                </AlertDialogFooter>
+                  </NotionDialogDescription>
+                </NotionDialogHeader>
+                <NotionDialogFooter>
+                  <NotionButton variant="ghost" size="sm" onClick={() => setShowClearDataDialog(false)}>{t('data:clear_dialog.step1_cancel')}</NotionButton>
+                </NotionDialogFooter>
               </>
             )}
 
             {clearDataStep === 2 && (
               <>
-                <AlertDialogHeader>
-                  <div className="flex items-center gap-3">
+                <NotionDialogHeader>
+                  <NotionDialogTitle className="flex items-center gap-3">
                     <Trash2 className={DATA_CENTER_ICON_LG_CLASS} />
-                    <AlertDialogTitle>{t('data:clear_dialog.step2_title')}</AlertDialogTitle>
-                  </div>
-                  <AlertDialogDescription>{t('data:clear_dialog.step2_description')}</AlertDialogDescription>
-                </AlertDialogHeader>
-                <p className="text-base font-semibold text-foreground bg-muted p-3 rounded-md text-center mb-4">
-                  {t('data:clear_dialog.step2_confirm_text')}
-                </p>
-                <Input
-                  type="text"
-                  value={confirmText}
-                  onChange={handleConfirmTextChange}
-                  placeholder={t('data:clear_dialog.step2_placeholder')}
-                />
-                <AlertDialogFooter>
-                  <AlertDialogCancel onClick={() => setShowClearDataDialog(false)}>{t('data:clear_dialog.step2_cancel')}</AlertDialogCancel>
-                  <AlertDialogAction onClick={handleNextStep} disabled={confirmText !== t('data:clear_dialog.step2_confirm_text')}>
+                    {t('data:clear_dialog.step2_title')}
+                  </NotionDialogTitle>
+                  <NotionDialogDescription>{t('data:clear_dialog.step2_description')}</NotionDialogDescription>
+                </NotionDialogHeader>
+                <NotionDialogBody nativeScroll>
+                  <p className="text-base font-semibold text-foreground bg-muted p-3 rounded-md text-center mb-4">
+                    {t('data:clear_dialog.step2_confirm_text')}
+                  </p>
+                  <Input
+                    type="text"
+                    value={confirmText}
+                    onChange={handleConfirmTextChange}
+                    placeholder={t('data:clear_dialog.step2_placeholder')}
+                  />
+                </NotionDialogBody>
+                <NotionDialogFooter>
+                  <NotionButton variant="ghost" size="sm" onClick={() => setShowClearDataDialog(false)}>{t('data:clear_dialog.step2_cancel')}</NotionButton>
+                  <NotionButton variant="danger" size="sm" onClick={handleNextStep} disabled={confirmText !== t('data:clear_dialog.step2_confirm_text')}>
                     {t('data:clear_dialog.step2_confirm_button')}
-                  </AlertDialogAction>
-                </AlertDialogFooter>
+                  </NotionButton>
+                </NotionDialogFooter>
               </>
             )}
-          </AlertDialogContent>
-        </AlertDialog>
+        </NotionDialog>
       </div>
     </>
   );

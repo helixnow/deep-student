@@ -33,12 +33,7 @@ import {
 } from 'lucide-react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { MemoryIcon } from '../icons/ResourceIcons';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/shad/Dialog';
+import { NotionDialog, NotionDialogHeader, NotionDialogTitle, NotionDialogBody, NotionDialogFooter } from '@/components/ui/NotionDialog';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import {
   getMemoryConfig,
@@ -438,33 +433,31 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
         </NotionButton>
 
         {/* 创建根文件夹对话框 - Notion 风格 */}
-        <Dialog open={showCreateRootDialog} onOpenChange={setShowCreateRootDialog}>
-          <DialogContent className="max-w-sm p-0 gap-0 overflow-hidden">
-            <DialogHeader className="px-5 pt-5 pb-3">
-              <DialogTitle className="flex items-center gap-2 text-base font-medium">
-                <FolderOpen className="w-4 h-4 text-muted-foreground" />
-                {t('memory.create_root_title', '创建记忆文件夹')}
-              </DialogTitle>
-            </DialogHeader>
-            <div className="px-5 pb-4">
-              <input
-                placeholder={t('memory.folder_name_placeholder', '输入文件夹名称')}
-                value={newRootFolderTitle}
-                onChange={(e) => setNewRootFolderTitle(e.target.value)}
-                className="w-full h-9 px-3 text-sm bg-muted/30 border-transparent rounded-md focus:border-border focus:bg-background focus:outline-none transition-colors"
-              />
-            </div>
-            <div className="flex gap-2 px-5 py-3 border-t border-border/40 bg-muted/20">
-              <NotionButton variant="ghost" size="sm" onClick={() => setShowCreateRootDialog(false)} className="flex-1 !h-9">
-                {t('common:cancel', '取消')}
-              </NotionButton>
-              <NotionButton variant="primary" size="sm" onClick={handleCreateRootFolder} disabled={isLoading || !newRootFolderTitle.trim()} className="flex-1 !h-9">
-                {isLoading && <Loader2 className="w-4 h-4 animate-spin" />}
-                {t('common:create', '创建')}
-              </NotionButton>
-            </div>
-          </DialogContent>
-        </Dialog>
+        <NotionDialog open={showCreateRootDialog} onOpenChange={setShowCreateRootDialog} maxWidth="max-w-sm">
+          <NotionDialogHeader>
+            <NotionDialogTitle className="flex items-center gap-2">
+              <FolderOpen className="w-4 h-4 text-muted-foreground" />
+              {t('memory.create_root_title', '创建记忆文件夹')}
+            </NotionDialogTitle>
+          </NotionDialogHeader>
+          <NotionDialogBody nativeScroll>
+            <input
+              placeholder={t('memory.folder_name_placeholder', '输入文件夹名称')}
+              value={newRootFolderTitle}
+              onChange={(e) => setNewRootFolderTitle(e.target.value)}
+              className="w-full h-9 px-3 text-sm bg-muted/30 border-transparent rounded-md focus:border-border focus:bg-background focus:outline-none transition-colors"
+            />
+          </NotionDialogBody>
+          <NotionDialogFooter>
+            <NotionButton variant="ghost" size="sm" onClick={() => setShowCreateRootDialog(false)}>
+              {t('common:cancel', '取消')}
+            </NotionButton>
+            <NotionButton variant="primary" size="sm" onClick={handleCreateRootFolder} disabled={isLoading || !newRootFolderTitle.trim()}>
+              {isLoading && <Loader2 className="w-4 h-4 animate-spin" />}
+              {t('common:create', '创建')}
+            </NotionButton>
+          </NotionDialogFooter>
+        </NotionDialog>
       </div>
     );
   }
@@ -725,45 +718,37 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
 
       {/* 文件夹选择弹出框 - 参考 FolderPickerDialog 设计 */}
       {folderList.length > 0 && (
-        <Dialog open={folderList.length > 0} onOpenChange={() => setFolderList([])}>
-          <DialogContent className="sm:max-w-md !p-2.5 gap-0 overflow-hidden">
-            <DialogHeader className="px-5 pt-5 pb-3">
-              <DialogTitle className="flex items-center gap-2 text-base font-medium">
-                <FolderOpen className="w-4 h-4 text-muted-foreground" />
-                {t('memory.select_root_folder', '选择记忆根文件夹')}
-              </DialogTitle>
-            </DialogHeader>
-            
-            {/* 固定高度内容区 */}
-            <div className="h-[280px] overflow-hidden mb-3">
-              <CustomScrollArea className="h-full" fullHeight>
-                <div className="py-1 px-5">
-                  {folderList.map((folder) => (
-                    <NotionButton
-                      key={folder.id}
-                      variant="ghost" size="sm"
-                      className="w-full !justify-start !px-3 !py-2"
-                      onClick={() => {
-                        handleSelectRootFolder(folder.id);
-                        setFolderList([]);
-                      }}
-                    >
-                      <FolderOpen className="w-4 h-4 text-amber-500 shrink-0" />
-                      <span className="truncate">{folder.title}</span>
-                    </NotionButton>
-                  ))}
-                </div>
-              </CustomScrollArea>
+        <NotionDialog open={folderList.length > 0} onOpenChange={() => setFolderList([])} maxWidth="max-w-md">
+          <NotionDialogHeader>
+            <NotionDialogTitle className="flex items-center gap-2">
+              <FolderOpen className="w-4 h-4 text-muted-foreground" />
+              {t('memory.select_root_folder', '选择记忆根文件夹')}
+            </NotionDialogTitle>
+          </NotionDialogHeader>
+          <NotionDialogBody>
+            <div className="py-1">
+              {folderList.map((folder) => (
+                <NotionButton
+                  key={folder.id}
+                  variant="ghost" size="sm"
+                  className="w-full !justify-start !px-3 !py-2"
+                  onClick={() => {
+                    handleSelectRootFolder(folder.id);
+                    setFolderList([]);
+                  }}
+                >
+                  <FolderOpen className="w-4 h-4 text-amber-500 shrink-0" />
+                  <span className="truncate">{folder.title}</span>
+                </NotionButton>
+              ))}
             </div>
-            
-            {/* 底部操作区 */}
-            <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-border/40">
-              <NotionButton variant="ghost" size="sm" onClick={() => setFolderList([])}>
-                {t('common:cancel', '取消')}
-              </NotionButton>
-            </div>
-          </DialogContent>
-        </Dialog>
+          </NotionDialogBody>
+          <NotionDialogFooter>
+            <NotionButton variant="ghost" size="sm" onClick={() => setFolderList([])}>
+              {t('common:cancel', '取消')}
+            </NotionButton>
+          </NotionDialogFooter>
+        </NotionDialog>
       )}
     </div>
   );

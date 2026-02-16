@@ -99,6 +99,18 @@ const ZH_TOKEN_MAP: Record<string, string> = {
   paper: '论文',
   cite: '引用',
   format: '格式化',
+  pptx: '演示文稿',
+  xlsx: '电子表格',
+  docx: '文档',
+  structured: '结构化',
+  tables: '表格',
+  table: '表格',
+  metadata: '信息',
+  cells: '单元格',
+  cell: '单元格',
+  spec: '规格',
+  text: '文本',
+  to: '转',
 };
 
 /**

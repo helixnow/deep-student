@@ -40,13 +40,7 @@ import {
   getPresetAppShortcuts,
 } from '../../stores/desktopStore';
 import type { QuickAccessType } from '../../stores/finderStore';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from '@/components/ui/shad/Dialog';
+import { NotionDialog, NotionDialogHeader, NotionDialogTitle, NotionDialogDescription, NotionDialogBody, NotionDialogFooter } from '@/components/ui/NotionDialog';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { Input } from '@/components/ui/shad/Input';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
@@ -410,14 +404,14 @@ function AddShortcutDialog({
   }, [hasAppShortcut, hasQuickAccessShortcut]);
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[500px]">
-        <DialogHeader>
-          <DialogTitle>{t('desktop.addShortcut', '添加快捷方式')}</DialogTitle>
-          <DialogDescription>
+    <NotionDialog open={open} onOpenChange={onOpenChange} maxWidth="max-w-[500px]">
+        <NotionDialogHeader>
+          <NotionDialogTitle>{t('desktop.addShortcut', '添加快捷方式')}</NotionDialogTitle>
+          <NotionDialogDescription>
             {t('desktop.addShortcutDesc', '选择要添加到桌面的快捷方式')}
-          </DialogDescription>
-        </DialogHeader>
+          </NotionDialogDescription>
+        </NotionDialogHeader>
+        <NotionDialogBody nativeScroll>
 
         <div className="grid grid-cols-3 gap-3 py-4">
           {getPresetAppShortcuts().map((preset, index) => {
@@ -451,13 +445,13 @@ function AddShortcutDialog({
           })}
         </div>
 
-        <div className="flex justify-end">
-          <NotionButton variant="default" onClick={() => onOpenChange(false)}>
+        </NotionDialogBody>
+        <NotionDialogFooter>
+          <NotionButton variant="default" size="sm" onClick={() => onOpenChange(false)}>
             {t('common.close', '关闭')}
           </NotionButton>
-        </div>
-      </DialogContent>
-    </Dialog>
+        </NotionDialogFooter>
+    </NotionDialog>
   );
 }
 

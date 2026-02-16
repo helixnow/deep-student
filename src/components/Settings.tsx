@@ -12,16 +12,7 @@ import { ShadApiEditModal, GENERAL_DEFAULT_MIN_P, GENERAL_DEFAULT_TOP_K } from '
 import { VendorConfigModal, type VendorConfigModalRef } from './settings/VendorConfigModal';
 import { Input } from './ui/shad/Input';
 import { NotionButton } from '@/components/ui/NotionButton';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from './ui/shad/AlertDialog';
+import { NotionAlertDialog } from './ui/NotionDialog';
 import { TauriAPI } from '../utils/tauriApi';
 import { ModelAssignments, VendorConfig, ModelProfile, ApiConfig } from '../types';
 import { Alert, AlertDescription, AlertTitle } from './ui/shad/Alert';
@@ -4567,54 +4558,40 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
           {renderSettingsMainContent()}
         </MobileSlidingLayout>
         {/* VendorConfigModal 在移动端已通过右侧滑动面板渲染，这里不再重复渲染 */}
-        <AlertDialog open={Boolean(modelDeleteDialog)} onOpenChange={open => { if (!open) setModelDeleteDialog(null); }}>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>{t('settings:vendor_panel.delete_model_title')}</AlertDialogTitle>
-              <AlertDialogDescription className="space-y-2">
-                <p>{t('settings:vendor_panel.delete_model_desc')}</p>
-                {modelDeleteDialog?.referencingKeys.length ? (
-                  <p>
-                    {t('settings:common_labels.confirm_delete_api_with_assignments', {
-                      count: modelDeleteDialog.referencingKeys.length,
-                    })}
-                  </p>
-                ) : (
-                  <p>{t('settings:common_labels.confirm_delete_api')}</p>
-                )}
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel onClick={() => setModelDeleteDialog(null)}>
-                {t('common:actions.cancel')}
-              </AlertDialogCancel>
-              <AlertDialogAction onClick={confirmDeleteModelProfile}>
-                {t('common:actions.delete')}
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
-        <AlertDialog open={Boolean(vendorDeleteDialog)} onOpenChange={open => { if (!open) setVendorDeleteDialog(null); }}>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>{t('settings:vendor_panel.delete_vendor_title')}</AlertDialogTitle>
-              <AlertDialogDescription className="space-y-2">
-                <p>{t('settings:vendor_panel.delete_vendor_desc')}</p>
-                {vendorDeleteDialog && (
-                  <p>{t('settings:vendor_panel.confirm_delete', { name: vendorDeleteDialog.name })}</p>
-                )}
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel onClick={() => setVendorDeleteDialog(null)}>
-                {t('common:actions.cancel')}
-              </AlertDialogCancel>
-              <AlertDialogAction onClick={confirmDeleteVendor}>
-                {t('common:actions.delete')}
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
+        <NotionAlertDialog
+          open={Boolean(modelDeleteDialog)}
+          onOpenChange={open => { if (!open) setModelDeleteDialog(null); }}
+          title={t('settings:vendor_panel.delete_model_title')}
+          description={t('settings:vendor_panel.delete_model_desc')}
+          confirmText={t('common:actions.delete')}
+          cancelText={t('common:actions.cancel')}
+          confirmVariant="danger"
+          onConfirm={confirmDeleteModelProfile}
+        >
+          {modelDeleteDialog?.referencingKeys.length ? (
+            <p className="text-sm text-muted-foreground">
+              {t('settings:common_labels.confirm_delete_api_with_assignments', {
+                count: modelDeleteDialog.referencingKeys.length,
+              })}
+            </p>
+          ) : (
+            <p className="text-sm text-muted-foreground">{t('settings:common_labels.confirm_delete_api')}</p>
+          )}
+        </NotionAlertDialog>
+        <NotionAlertDialog
+          open={Boolean(vendorDeleteDialog)}
+          onOpenChange={open => { if (!open) setVendorDeleteDialog(null); }}
+          title={t('settings:vendor_panel.delete_vendor_title')}
+          description={t('settings:vendor_panel.delete_vendor_desc')}
+          confirmText={t('common:actions.delete')}
+          cancelText={t('common:actions.cancel')}
+          confirmVariant="danger"
+          onConfirm={confirmDeleteVendor}
+        >
+          {vendorDeleteDialog && (
+            <p className="text-sm text-muted-foreground">{t('settings:vendor_panel.confirm_delete', { name: vendorDeleteDialog.name })}</p>
+          )}
+        </NotionAlertDialog>
 
         {/* 现代化菜单演示对话框 */}
         <Dialog open={showAppMenuDemo} onOpenChange={setShowAppMenuDemo}>
@@ -4669,54 +4646,40 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
         }}
         onSave={handleSaveVendorModal}
       />
-      <AlertDialog open={Boolean(modelDeleteDialog)} onOpenChange={open => { if (!open) setModelDeleteDialog(null); }}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t('settings:vendor_panel.delete_model_title')}</AlertDialogTitle>
-            <AlertDialogDescription className="space-y-2">
-              <p>{t('settings:vendor_panel.delete_model_desc')}</p>
-              {modelDeleteDialog?.referencingKeys.length ? (
-                <p>
-                  {t('settings:common_labels.confirm_delete_api_with_assignments', {
-                    count: modelDeleteDialog.referencingKeys.length,
-                  })}
-                </p>
-              ) : (
-                <p>{t('settings:common_labels.confirm_delete_api')}</p>
-              )}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setModelDeleteDialog(null)}>
-              {t('common:actions.cancel')}
-            </AlertDialogCancel>
-            <AlertDialogAction onClick={confirmDeleteModelProfile}>
-              {t('common:actions.delete')}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-      <AlertDialog open={Boolean(vendorDeleteDialog)} onOpenChange={open => { if (!open) setVendorDeleteDialog(null); }}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t('settings:vendor_panel.delete_vendor_title')}</AlertDialogTitle>
-            <AlertDialogDescription className="space-y-2">
-              <p>{t('settings:vendor_panel.delete_vendor_desc')}</p>
-              {vendorDeleteDialog && (
-                <p>{t('settings:vendor_panel.confirm_delete', { name: vendorDeleteDialog.name })}</p>
-              )}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setVendorDeleteDialog(null)}>
-              {t('common:actions.cancel')}
-            </AlertDialogCancel>
-            <AlertDialogAction onClick={confirmDeleteVendor}>
-              {t('common:actions.delete')}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <NotionAlertDialog
+        open={Boolean(modelDeleteDialog)}
+        onOpenChange={open => { if (!open) setModelDeleteDialog(null); }}
+        title={t('settings:vendor_panel.delete_model_title')}
+        description={t('settings:vendor_panel.delete_model_desc')}
+        confirmText={t('common:actions.delete')}
+        cancelText={t('common:actions.cancel')}
+        confirmVariant="danger"
+        onConfirm={confirmDeleteModelProfile}
+      >
+        {modelDeleteDialog?.referencingKeys.length ? (
+          <p className="text-sm text-muted-foreground">
+            {t('settings:common_labels.confirm_delete_api_with_assignments', {
+              count: modelDeleteDialog.referencingKeys.length,
+            })}
+          </p>
+        ) : (
+          <p className="text-sm text-muted-foreground">{t('settings:common_labels.confirm_delete_api')}</p>
+        )}
+      </NotionAlertDialog>
+      <NotionAlertDialog
+        open={Boolean(vendorDeleteDialog)}
+        onOpenChange={open => { if (!open) setVendorDeleteDialog(null); }}
+        title={t('settings:vendor_panel.delete_vendor_title')}
+        description={t('settings:vendor_panel.delete_vendor_desc')}
+        confirmText={t('common:actions.delete')}
+        cancelText={t('common:actions.cancel')}
+        confirmVariant="danger"
+        onConfirm={confirmDeleteVendor}
+      >
+        {vendorDeleteDialog && (
+          <p className="text-sm text-muted-foreground">{t('settings:vendor_panel.confirm_delete', { name: vendorDeleteDialog.name })}</p>
+        )}
+      </NotionAlertDialog>
 
       {/* 现代化菜单演示对话框 */}
       <Dialog open={showAppMenuDemo} onOpenChange={setShowAppMenuDemo}>

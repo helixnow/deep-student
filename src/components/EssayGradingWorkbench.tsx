@@ -21,16 +21,7 @@ import { fileManager } from '../utils/fileManager';
 import { showGlobalNotification } from './UnifiedNotification';
 import { CustomScrollArea } from './custom-scroll-area';
 import { MacTopSafeDragZone } from './layout/MacTopSafeDragZone';
-import {
-  AlertDialog,
-  AlertDialogContent,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogCancel,
-  AlertDialogAction,
-} from './ui/shad/AlertDialog';
+import { NotionAlertDialog } from './ui/NotionDialog';
 
 import { debugLog } from '../debug-panel/debugMasterSwitch';
 
@@ -669,45 +660,27 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({ on
         />
       </div>
 
-      <AlertDialog open={showNextRoundConfirm} onOpenChange={setShowNextRoundConfirm}>
-        <AlertDialogContent className="border-border/50">
-          <AlertDialogHeader>
-            <AlertDialogTitle className="text-base font-medium">{t('essay_grading:next_round_confirm.title')}</AlertDialogTitle>
-            <AlertDialogDescription className="text-sm text-muted-foreground">
-              {t('essay_grading:next_round_confirm.message')}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter className="gap-2">
-            <AlertDialogCancel className="border-border/50 hover:bg-muted/50">{t('common:cancel')}</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleConfirmNextRound}
-              className="bg-primary hover:bg-primary/90"
-            >
-              {t('essay_grading:next_round_confirm.confirm')}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <NotionAlertDialog
+        open={showNextRoundConfirm}
+        onOpenChange={setShowNextRoundConfirm}
+        title={t('essay_grading:next_round_confirm.title')}
+        description={t('essay_grading:next_round_confirm.message')}
+        confirmText={t('essay_grading:next_round_confirm.confirm')}
+        cancelText={t('common:cancel')}
+        confirmVariant="primary"
+        onConfirm={handleConfirmNextRound}
+      />
 
-      <AlertDialog open={showClearConfirm} onOpenChange={setShowClearConfirm}>
-        <AlertDialogContent className="border-border/50">
-          <AlertDialogHeader>
-            <AlertDialogTitle className="text-base font-medium">{t('essay_grading:clear_confirm.title')}</AlertDialogTitle>
-            <AlertDialogDescription className="text-sm text-muted-foreground">
-              {t('essay_grading:clear_confirm.message')}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter className="gap-2">
-            <AlertDialogCancel className="border-border/50 hover:bg-muted/50">{t('common:cancel')}</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleConfirmClear}
-              className="bg-destructive hover:bg-destructive/90 text-destructive-foreground"
-            >
-              {t('essay_grading:clear_confirm.confirm')}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <NotionAlertDialog
+        open={showClearConfirm}
+        onOpenChange={setShowClearConfirm}
+        title={t('essay_grading:clear_confirm.title')}
+        description={t('essay_grading:clear_confirm.message')}
+        confirmText={t('essay_grading:clear_confirm.confirm')}
+        cancelText={t('common:cancel')}
+        confirmVariant="danger"
+        onConfirm={handleConfirmClear}
+      />
     </div>
   );
 };

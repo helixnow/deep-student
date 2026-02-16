@@ -14,16 +14,7 @@ import { CustomScrollArea } from './custom-scroll-area';
 import { Badge } from '@/components/ui/shad/Badge';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { Input } from '@/components/ui/shad/Input';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/shad/AlertDialog';
+import { NotionAlertDialog } from '@/components/ui/NotionDialog';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import {
   BookOpen,
@@ -687,52 +678,30 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
       )}
       
       {/* 删除确认对话框 */}
-      <AlertDialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle className="flex items-center gap-2">
-              <AlertTriangle className="w-5 h-5 text-rose-500" />
-              {t('practice:questionBank.confirmDeleteTitle')}
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              {t('practice:questionBank.confirmDeleteDesc', { count: selectedIds.size })}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{t('common:cancel')}</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleBatchDeleteConfirm}
-              className="bg-rose-600 hover:bg-rose-700 text-white"
-            >
-              {t('common:delete')}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <NotionAlertDialog
+        open={deleteConfirmOpen}
+        onOpenChange={setDeleteConfirmOpen}
+        icon={<AlertTriangle className="w-5 h-5 text-rose-500" />}
+        title={t('practice:questionBank.confirmDeleteTitle')}
+        description={t('practice:questionBank.confirmDeleteDesc', { count: selectedIds.size })}
+        confirmText={t('common:delete')}
+        cancelText={t('common:cancel')}
+        confirmVariant="danger"
+        onConfirm={handleBatchDeleteConfirm}
+      />
       
       {/* 重置进度确认对话框 */}
-      <AlertDialog open={resetConfirmOpen} onOpenChange={setResetConfirmOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle className="flex items-center gap-2">
-              <AlertTriangle className="w-5 h-5 text-amber-500" />
-              {t('practice:questionBank.confirmResetTitle')}
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              {t('practice:questionBank.confirmResetDesc', { count: selectedIds.size })}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{t('common:cancel')}</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleBatchResetConfirm}
-              className="bg-amber-600 hover:bg-amber-700 text-white"
-            >
-              {t('practice:questionBank.resetProgress')}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <NotionAlertDialog
+        open={resetConfirmOpen}
+        onOpenChange={setResetConfirmOpen}
+        icon={<AlertTriangle className="w-5 h-5 text-amber-500" />}
+        title={t('practice:questionBank.confirmResetTitle')}
+        description={t('practice:questionBank.confirmResetDesc', { count: selectedIds.size })}
+        confirmText={t('practice:questionBank.resetProgress')}
+        cancelText={t('common:cancel')}
+        confirmVariant="warning"
+        onConfirm={handleBatchResetConfirm}
+      />
     </div>
   );
 };

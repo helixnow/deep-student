@@ -6,17 +6,7 @@ import { Copy, Check, RotateCcw, Trash2, Edit3, Bug, BookmarkPlus } from 'lucide
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
 import { NotionButton } from '@/components/ui/NotionButton';
-import {
-  AlertDialog,
-  AlertDialogTrigger,
-  AlertDialogContent,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogCancel,
-  AlertDialogAction,
-} from '@/components/ui/shad/AlertDialog';
+import { NotionAlertDialog } from '@/components/ui/NotionDialog';
 
 export interface MessageActionsProps {
   messageId: string;
@@ -57,6 +47,7 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
   const [isRetrying, setIsRetrying] = useState(false);
   const [isResending, setIsResending] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [isSavingNote, setIsSavingNote] = useState(false);
 
   const handleCopy = useCallback(async () => {
@@ -158,27 +149,20 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
       )}
 
       {/* 删除按钮 - 带二次确认 */}
-      <AlertDialog>
-        <AlertDialogTrigger asChild>
-          <NotionButton variant="ghost" size="icon" iconOnly disabled={!canDelete || isDeleting} className={cn(!canDelete || isDeleting ? '' : 'hover:text-destructive')} aria-label={t('messageItem.actions.delete')} title={t('messageItem.actions.delete')}>
-            <Trash2 className={cn('w-4 h-4', isDeleting && 'animate-pulse')} />
-          </NotionButton>
-        </AlertDialogTrigger>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t('messageItem.actions.deleteConfirmTitle', '确认删除')}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {t('messageItem.actions.deleteConfirmDesc', '确定要删除这条消息吗？此操作无法撤销。')}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{t('common.cancel', '取消')}</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete}>
-              {t('messageItem.actions.delete', '删除')}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <NotionButton variant="ghost" size="icon" iconOnly disabled={!canDelete || isDeleting} className={cn(!canDelete || isDeleting ? '' : 'hover:text-destructive')} aria-label={t('messageItem.actions.delete')} title={t('messageItem.actions.delete')} onClick={() => setDeleteConfirmOpen(true)}>
+        <Trash2 className={cn('w-4 h-4', isDeleting && 'animate-pulse')} />
+      </NotionButton>
+      <NotionAlertDialog
+        open={deleteConfirmOpen}
+        onOpenChange={setDeleteConfirmOpen}
+        title={t('messageItem.actions.deleteConfirmTitle', '确认删除')}
+        description={t('messageItem.actions.deleteConfirmDesc', '确定要删除这条消息吗？此操作无法撤销。')}
+        icon={<Trash2 className="h-5 w-5 text-red-500" />}
+        confirmText={t('messageItem.actions.delete', '删除')}
+        cancelText={t('common.cancel', '取消')}
+        confirmVariant="danger"
+        onConfirm={() => { setDeleteConfirmOpen(false); handleDelete(); }}
+      />
     </div>
   );
 };

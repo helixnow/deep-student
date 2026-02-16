@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Dialog, DialogContent } from './ui/shad/Dialog';
+import { NotionDialog, NotionDialogBody } from './ui/NotionDialog';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/shad/Card';
 import { Input } from './ui/shad/Input';
 import { NotionButton } from '@/components/ui/NotionButton';
@@ -50,8 +50,8 @@ const TemplatePickerDialog: React.FC<TemplatePickerDialogProps> = ({ open, onClo
 
 
   return (
-    <Dialog open={open} onOpenChange={(v)=> { if (!v) onClose(); }}>
-      <DialogContent className="flex w-[92vw] max-w-4xl h-[85vh] max-h-[85vh] flex-col overflow-hidden p-0">
+    <NotionDialog open={open} onOpenChange={(v)=> { if (!v) onClose(); }} maxWidth="max-w-4xl">
+      <NotionDialogBody>
         <CustomScrollArea className="flex-1 min-h-0 overflow-hidden" viewportClassName="px-6 py-6">
           <div className="mb-4">
             <h2 className="text-lg font-semibold">{t('select_template_title')}</h2>
@@ -140,8 +140,8 @@ const TemplatePickerDialog: React.FC<TemplatePickerDialogProps> = ({ open, onClo
             </CustomScrollArea>
           </div>
         )}
-      </DialogContent>
-    </Dialog>
+      </NotionDialogBody>
+    </NotionDialog>
   );
 };
 

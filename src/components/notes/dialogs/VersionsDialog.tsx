@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "../../ui/shad/Dialog";
+import { NotionDialog, NotionDialogHeader, NotionDialogTitle, NotionDialogBody, NotionDialogFooter } from '../../ui/NotionDialog';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { useNotes } from "../NotesContext";
@@ -90,15 +90,14 @@ export default function VersionsDialog() {
   };
 
   return (
-    <Dialog open={versionsOpen} onOpenChange={setVersionsOpen}>
-      <DialogContent className="max-w-2xl h-[70vh] flex flex-col p-0 gap-0">
-        <DialogHeader className="p-4 border-b border-border/40">
-          <DialogTitle className="flex items-center gap-2">
+    <NotionDialog open={versionsOpen} onOpenChange={setVersionsOpen} maxWidth="max-w-2xl">
+        <NotionDialogHeader>
+          <NotionDialogTitle className="flex items-center gap-2">
             <History className="h-5 w-5" />
             {t('notes:versions.title', '版本历史')}
-          </DialogTitle>
-        </DialogHeader>
-        <CustomScrollArea className="flex-1 p-4">
+          </NotionDialogTitle>
+        </NotionDialogHeader>
+        <NotionDialogBody>
           {loading ? (
             <div className="flex justify-center py-8"><span className="loading loading-spinner loading-md" /></div>
           ) : versions.length === 0 ? (
@@ -128,9 +127,9 @@ export default function VersionsDialog() {
               ))}
             </div>
           )}
-        </CustomScrollArea>
+        </NotionDialogBody>
         {compare && (
-          <div className="p-4 border-t">
+          <div className="px-5 py-4 border-t border-border/40">
             <div className="flex items-center gap-2 mb-2 text-sm text-muted-foreground">
               <Diff className="h-4 w-4" />
               {t('notes:versions.compare', '对比')}
@@ -138,10 +137,9 @@ export default function VersionsDialog() {
             {renderDiff()}
           </div>
         )}
-        <DialogFooter className="p-4 border-t border-border/40">
-          <NotionButton variant="ghost" onClick={() => setVersionsOpen(false)}>{t('common:actions.close')}</NotionButton>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        <NotionDialogFooter>
+          <NotionButton variant="ghost" size="sm" onClick={() => setVersionsOpen(false)}>{t('common:actions.close')}</NotionButton>
+        </NotionDialogFooter>
+    </NotionDialog>
   );
 }

@@ -9,12 +9,7 @@
 
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/shad/Dialog';
+import { NotionDialog, NotionDialogHeader, NotionDialogTitle, NotionDialogBody } from '@/components/ui/NotionDialog';
 import { Progress } from '@/components/ui/shad/Progress';
 import { Loader2, CheckCircle, XCircle, FileText } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -97,25 +92,24 @@ export const ImportProgressModal: React.FC<ImportProgressModalProps> = ({
   const canClose = stage === 'done' || stage === 'error';
 
   return (
-    <Dialog 
-      open={isImporting} 
+    <NotionDialog
+      open={isImporting}
       onOpenChange={(open) => {
         if (!open && canClose && onClose) {
           onClose();
         }
       }}
+      maxWidth="max-w-[400px]"
+      closeOnOverlay={canClose}
+      showClose={canClose}
     >
-      <DialogContent 
-        className="sm:max-w-[400px]"
-        // 导入中不允许通过遮罩关闭
-        closeOnOverlayClick={canClose}
-      >
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
+        <NotionDialogHeader>
+          <NotionDialogTitle className="flex items-center gap-2">
             <FileText className="h-5 w-5" />
             {t('import.title')}
-          </DialogTitle>
-        </DialogHeader>
+          </NotionDialogTitle>
+        </NotionDialogHeader>
+        <NotionDialogBody nativeScroll>
 
         <div className="space-y-4 py-4">
           {/* 文件名 */}
@@ -149,8 +143,8 @@ export const ImportProgressModal: React.FC<ImportProgressModalProps> = ({
             </div>
           )}
         </div>
-      </DialogContent>
-    </Dialog>
+        </NotionDialogBody>
+    </NotionDialog>
   );
 };
 

@@ -28,6 +28,8 @@ import {
   Clock,
   ExternalLink,
   FileText,
+  FileSpreadsheet,
+  Eye,
 } from 'lucide-react';
 import { blockRegistry, type BlockComponentProps } from '../../registry';
 import { ToolInputView, ToolOutputView, isTemplateVisualOutput } from './components';
@@ -320,6 +322,26 @@ const DOC_WRITE_TOOLS = [
   'builtin-xlsx_create', 'builtin-xlsx_replace_text', 'builtin-xlsx_edit_cells',
 ];
 
+// DOCX/PPTX/XLSX 读取工具列表（读取已有文件的工具）
+const DOC_READ_TOOLS = [
+  'docx_read_structured', 'docx_extract_tables', 'docx_get_metadata', 'docx_to_spec',
+  'builtin-docx_read_structured', 'builtin-docx_extract_tables', 'builtin-docx_get_metadata', 'builtin-docx_to_spec',
+  'pptx_read_structured', 'pptx_get_metadata', 'pptx_extract_tables', 'pptx_to_spec',
+  'builtin-pptx_read_structured', 'builtin-pptx_get_metadata', 'builtin-pptx_extract_tables', 'builtin-pptx_to_spec',
+  'xlsx_read_structured', 'xlsx_extract_tables', 'xlsx_get_metadata', 'xlsx_to_spec',
+  'builtin-xlsx_read_structured', 'builtin-xlsx_extract_tables', 'builtin-xlsx_get_metadata', 'builtin-xlsx_to_spec',
+];
+
+/**
+ * 根据工具名称获取对应的文件类型图标
+ */
+function getDocToolFileIcon(toolName: string): typeof FileText {
+  const stripped = toolName.replace(/^builtin[-:]/, '').replace(/^mcp_/, '');
+  if (stripped.startsWith('xlsx')) return FileSpreadsheet;
+  // DOCX 和 PPTX 都用 FileText（lucide 无专用 PPTX 图标）
+  return FileText;
+}
+
 /**
  * 从 DOCX/PPTX/XLSX 工具输出中提取 file_id 和 file_name
  */
@@ -331,6 +353,25 @@ function extractDocWriteFileInfo(toolOutput: unknown): { fileId: string; fileNam
     if (fileId) {
       return { fileId, fileName };
     }
+  }
+  return null;
+}
+
+/**
+ * 从读取类工具的输出/输入中提取 resource_id
+ */
+function extractDocReadResourceId(toolOutput: unknown, toolInput: Record<string, unknown>): string | null {
+  // 优先从 output 中取（后端返回的 resource_id）
+  if (toolOutput && typeof toolOutput === 'object') {
+    const output = toolOutput as Record<string, unknown>;
+    // output 可能被包裹在 result 中
+    const inner = (output.result && typeof output.result === 'object') ? output.result as Record<string, unknown> : output;
+    const resourceId = inner.resource_id as string | undefined;
+    if (resourceId) return resourceId;
+  }
+  // 回退到 input 参数中的 resource_id
+  if (typeof toolInput.resource_id === 'string' && toolInput.resource_id) {
+    return toolInput.resource_id;
   }
   return null;
 }
@@ -556,21 +597,58 @@ const McpToolBlockComponent: React.FC<BlockComponentProps> = ({
         <div className="p-3">
           <ToolOutputView output={toolOutput} />
           
-          {/* DOCX/PPTX/XLSX 写入工具跳转按钮 */}
+          {/* DOCX/PPTX/XLSX 写入工具：文件引用卡片 + 跳转按钮 */}
           {DOC_WRITE_TOOLS.includes(toolName) && (() => {
             const fileInfo = extractDocWriteFileInfo(toolOutput);
             if (!fileInfo) return null;
+            const DocIcon = getDocToolFileIcon(toolName);
+            return (
+              <div className="mt-2 flex items-center gap-2">
+                <NotionButton
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    window.dispatchEvent(new CustomEvent('CHAT_OPEN_ATTACHMENT_PREVIEW', {
+                      detail: {
+                        id: fileInfo.fileId,
+                        type: 'file',
+                        title: fileInfo.fileName,
+                      }
+                    }));
+                  }}
+                  className="bg-muted/30 hover:bg-muted/60 gap-1.5"
+                >
+                  <DocIcon size={12} />
+                  <span className="truncate max-w-[200px]">{fileInfo.fileName}</span>
+                  <ExternalLink size={10} className="text-muted-foreground shrink-0" />
+                </NotionButton>
+              </div>
+            );
+          })()}
+
+          {/* DOCX/PPTX/XLSX 读取工具：源文件引用按钮 */}
+          {DOC_READ_TOOLS.includes(toolName) && (() => {
+            const resourceId = extractDocReadResourceId(toolOutput, toolInput);
+            if (!resourceId) return null;
+            const DocIcon = getDocToolFileIcon(toolName);
             return (
               <NotionButton
                 variant="outline"
                 size="sm"
                 onClick={() => {
-                  window.dispatchEvent(new CustomEvent('OPEN_NOTES'));
+                  window.dispatchEvent(new CustomEvent('CHAT_OPEN_ATTACHMENT_PREVIEW', {
+                    detail: {
+                      id: resourceId,
+                      type: 'file',
+                      title: resourceId,
+                    }
+                  }));
                 }}
-                className="mt-2 bg-muted/30 hover:bg-muted/60"
+                className="mt-2 bg-muted/30 hover:bg-muted/60 gap-1.5"
               >
-                <FileText size={12} />
-                {t('blocks.mcpTool.viewInLearningHub', { defaultValue: '在学习资源中查看' })}
+                <DocIcon size={12} />
+                <Eye size={10} />
+                {t('blocks.mcpTool.viewSourceFile', { defaultValue: '查看源文件' })}
               </NotionButton>
             );
           })()}

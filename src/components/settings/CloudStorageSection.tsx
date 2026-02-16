@@ -13,16 +13,7 @@ import { Input } from '../ui/shad/Input';
 import { Label } from '../ui/shad/Label';
 import { Switch } from '../ui/shad/Switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/shad/Tabs';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '../ui/shad/AlertDialog';
+import { NotionAlertDialog } from '../ui/NotionDialog';
 import { showGlobalNotification } from '../UnifiedNotification';
 import { getErrorMessage } from '../../utils/errorUtils';
 import { debugLog } from '../../debug-panel/debugMasterSwitch';
@@ -813,43 +804,32 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
 
   // 恢复确认对话框
   const restoreConfirmDialog = (
-    <AlertDialog open={restoreConfirmOpen} onOpenChange={setRestoreConfirmOpen}>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>{t('cloudStorage:download.confirmTitle')}</AlertDialogTitle>
-          <AlertDialogDescription className="space-y-2">
-            <p className="font-medium text-destructive">{t('cloudStorage:download.warning')}</p>
-            <p>{t('cloudStorage:download.warningDetail')}</p>
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel>{t('cloudStorage:download.cancel')}</AlertDialogCancel>
-          <AlertDialogAction onClick={handleRestore}>
-            {t('cloudStorage:download.confirm')}
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+    <NotionAlertDialog
+      open={restoreConfirmOpen}
+      onOpenChange={setRestoreConfirmOpen}
+      title={t('cloudStorage:download.confirmTitle')}
+      description={t('cloudStorage:download.warningDetail')}
+      confirmText={t('cloudStorage:download.confirm')}
+      cancelText={t('cloudStorage:download.cancel')}
+      confirmVariant="warning"
+      onConfirm={handleRestore}
+    >
+      <p className="text-sm font-medium text-destructive">{t('cloudStorage:download.warning')}</p>
+    </NotionAlertDialog>
   );
 
   // 删除确认对话框
   const deleteConfirmDialog = (
-    <AlertDialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>{t('cloudStorage:history.delete')}</AlertDialogTitle>
-          <AlertDialogDescription>
-            {t('cloudStorage:history.deleteConfirm')}
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel>{t('common:actions.cancel')}</AlertDialogCancel>
-          <AlertDialogAction onClick={handleDeleteVersion} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-            {t('cloudStorage:history.delete')}
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+    <NotionAlertDialog
+      open={deleteConfirmOpen}
+      onOpenChange={setDeleteConfirmOpen}
+      title={t('cloudStorage:history.delete')}
+      description={t('cloudStorage:history.deleteConfirm')}
+      confirmText={t('cloudStorage:history.delete')}
+      cancelText={t('common:actions.cancel')}
+      confirmVariant="danger"
+      onConfirm={handleDeleteVersion}
+    />
   );
 
   // Dialog 模式下直接渲染内容

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Upload, FileText, AlertCircle, CheckCircle2, X } from 'lucide-react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from './ui/shad/Dialog';
+import { NotionDialog, NotionDialogHeader, NotionDialogTitle, NotionDialogDescription, NotionDialogBody, NotionDialogFooter } from './ui/NotionDialog';
 import { NotionButton } from './ui/NotionButton';
 import { Input } from './ui/shad/Input';
 import { TauriAPI } from '../utils/tauriApi';
@@ -107,18 +107,17 @@ export const ImportConversationDialog: React.FC<ImportConversationDialogProps> =
   };
 
   return (
-    <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-[480px]">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
+    <NotionDialog open={open} onOpenChange={handleClose} maxWidth="max-w-[480px]">
+        <NotionDialogHeader>
+          <NotionDialogTitle className="flex items-center gap-2">
             <Upload className="h-5 w-5" />
             {t('import.dialog_title')}
-          </DialogTitle>
-          <DialogDescription>
+          </NotionDialogTitle>
+          <NotionDialogDescription>
             {t('import.format_hint')}
-          </DialogDescription>
-        </DialogHeader>
-
+          </NotionDialogDescription>
+        </NotionDialogHeader>
+        <NotionDialogBody nativeScroll>
         <div className="space-y-4">
           {/* 文件选择 */}
           <div className="space-y-2">
@@ -188,8 +187,9 @@ export const ImportConversationDialog: React.FC<ImportConversationDialogProps> =
             </div>
           )}
         </div>
+        </NotionDialogBody>
 
-        <DialogFooter className="gap-2">
+        <NotionDialogFooter>
           <NotionButton
             type="button"
             variant="default"
@@ -231,9 +231,8 @@ export const ImportConversationDialog: React.FC<ImportConversationDialogProps> =
               {importing ? t('import.importing') : t('import.import_button')}
             </NotionButton>
           )}
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </NotionDialogFooter>
+    </NotionDialog>
   );
 };
 

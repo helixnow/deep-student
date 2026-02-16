@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Globe, Github, Bug, Shield, ExternalLink, RefreshCw, Download } from 'lucide-react';
+import { Globe, Github, Bug, Shield, ExternalLink, RefreshCw, Download, Layers } from 'lucide-react';
 import { OpenSourceAcknowledgementsSection } from './OpenSourceAcknowledgementsSection';
 import { SiliconFlowLogo } from '../ui/SiliconFlowLogo';
 import { NotionButton } from '../ui/NotionButton';
@@ -9,6 +9,8 @@ import { SettingSection } from './SettingsCommon';
 import { PrivacyPolicyDialog } from '../legal/PrivacyPolicyDialog';
 import VERSION_INFO from '../../version';
 import { useAppUpdater } from '../../hooks/useAppUpdater';
+import { NotionDialogDemo } from '../ui/NotionDialogDemo';
+import { NotionDialog, NotionDialogHeader, NotionDialogTitle, NotionDialogDescription, NotionDialogBody } from '../ui/NotionDialog';
 
 const GroupTitle = ({ title }: { title: string }) => (
   <div className="px-1 mb-3 mt-0">
@@ -64,6 +66,7 @@ const LinkRow = ({
 export const AboutTab: React.FC = () => {
   const { t } = useTranslation(['common', 'settings']);
   const [showPrivacyPolicy, setShowPrivacyPolicy] = useState(false);
+  const [showNotionDialogDemo, setShowNotionDialogDemo] = useState(false);
   const updater = useAppUpdater();
 
   return (
@@ -220,12 +223,39 @@ export const AboutTab: React.FC = () => {
                 {t('legal.settingsSection.viewPrivacyPolicy', '查看隐私政策')}
               </span>
             </NotionButton>
+            {/* Notion 模态框组件预览 */}
+            <NotionButton
+              variant="ghost"
+              onClick={() => setShowNotionDialogDemo(true)}
+              className="group flex h-auto w-full items-center gap-3 py-2.5 px-1 text-left hover:bg-muted/30 rounded"
+            >
+              <Layers className="h-4 w-4 text-muted-foreground/70 group-hover:text-primary transition-colors flex-shrink-0" />
+              <span className="text-sm text-foreground/90 group-hover:text-primary transition-colors">
+                Notion 模态框组件预览
+              </span>
+            </NotionButton>
           </div>
         </div>
       </SettingSection>
 
       {/* 隐私政策弹窗 */}
       <PrivacyPolicyDialog open={showPrivacyPolicy} onOpenChange={setShowPrivacyPolicy} />
+
+      {/* Notion 模态框组件预览 */}
+      <NotionDialog open={showNotionDialogDemo} onOpenChange={setShowNotionDialogDemo} maxWidth="max-w-3xl">
+        <NotionDialogHeader>
+          <NotionDialogTitle className="flex items-center gap-2">
+            <Layers className="h-5 w-5" />
+            Notion 模态框组件预览
+          </NotionDialogTitle>
+          <NotionDialogDescription>
+            NotionDialog（通用）与 NotionAlertDialog（确认）组件演示，默认使用 NotionButton + 自研滚动条
+          </NotionDialogDescription>
+        </NotionDialogHeader>
+        <NotionDialogBody>
+          <NotionDialogDemo />
+        </NotionDialogBody>
+      </NotionDialog>
     </div>
   );
 };

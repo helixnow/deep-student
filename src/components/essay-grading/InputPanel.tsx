@@ -4,16 +4,7 @@ import { Textarea } from '../ui/shad/Textarea';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { AppSelect } from '../ui/app-menu';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
-import {
-  AlertDialog,
-  AlertDialogContent,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogCancel,
-  AlertDialogAction,
-} from '../ui/shad/AlertDialog';
+import { NotionAlertDialog } from '../ui/NotionDialog';
 import {
   Trash2,
   Bot,
@@ -84,32 +75,22 @@ const CancelConfirmButton: React.FC<{ onCancel: () => void }> = ({ onCancel }) =
   const [showConfirm, setShowConfirm] = useState(false);
 
   return (
-    <AlertDialog open={showConfirm} onOpenChange={setShowConfirm}>
+    <>
       <NotionButton variant="ghost" size="sm" onClick={() => setShowConfirm(true)} className="text-sm text-muted-foreground hover:text-foreground hover:bg-muted/50">
         <Loader2 className="w-3.5 h-3.5 animate-spin" />
         {t('common:cancel')}
       </NotionButton>
-      <AlertDialogContent className="border-border/50">
-        <AlertDialogHeader>
-          <AlertDialogTitle className="text-base font-medium">{t('essay_grading:actions.cancel_confirm_title')}</AlertDialogTitle>
-          <AlertDialogDescription className="text-sm text-muted-foreground">
-            {t('essay_grading:actions.cancel_confirm_message')}
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter className="gap-2">
-          <AlertDialogCancel className="border-border/50 hover:bg-muted/50">{t('common:cancel')}</AlertDialogCancel>
-          <AlertDialogAction
-            onClick={() => {
-              setShowConfirm(false);
-              onCancel();
-            }}
-            className="bg-primary hover:bg-primary/90"
-          >
-            {t('common:confirm')}
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+      <NotionAlertDialog
+        open={showConfirm}
+        onOpenChange={setShowConfirm}
+        title={t('essay_grading:actions.cancel_confirm_title')}
+        description={t('essay_grading:actions.cancel_confirm_message')}
+        confirmText={t('common:confirm')}
+        cancelText={t('common:cancel')}
+        confirmVariant="primary"
+        onConfirm={() => { setShowConfirm(false); onCancel(); }}
+      />
+    </>
   );
 };
 

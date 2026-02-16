@@ -9,7 +9,7 @@ import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/shad/Dialog';
+import { NotionDialog, NotionDialogHeader, NotionDialogTitle, NotionDialogBody, NotionDialogFooter } from '@/components/ui/NotionDialog';
 import {
   HardDrive,
   Cloud,
@@ -101,18 +101,15 @@ export const PrivacyPolicyDialog: React.FC<PrivacyPolicyDialogProps> = ({ open, 
   ];
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[600px] h-[80vh] max-h-[80vh] flex flex-col p-0">
-        <div className="px-6 pt-6 pb-2">
-          <DialogHeader>
-            <DialogTitle>{t('legal.privacyPolicy.title')}</DialogTitle>
-          </DialogHeader>
+    <NotionDialog open={open} onOpenChange={onOpenChange} maxWidth="max-w-[600px]">
+        <NotionDialogHeader>
+          <NotionDialogTitle>{t('legal.privacyPolicy.title')}</NotionDialogTitle>
           <p className="text-xs text-muted-foreground mt-1">
             {t('legal.privacyPolicy.lastUpdated')}
           </p>
-        </div>
+        </NotionDialogHeader>
 
-        <CustomScrollArea className="flex-1 min-h-0" viewportClassName="px-6 pb-6">
+        <NotionDialogBody>
           <div className="divide-y divide-border/40">
             {sections.map((section) => (
               <PolicySection
@@ -123,20 +120,19 @@ export const PrivacyPolicyDialog: React.FC<PrivacyPolicyDialogProps> = ({ open, 
               />
             ))}
           </div>
-        </CustomScrollArea>
+        </NotionDialogBody>
 
-        <div className="px-6 py-3 border-t border-border/40">
+        <NotionDialogFooter>
           <NotionButton
             variant="default"
-            size="md"
+            size="sm"
             className="w-full justify-center"
             onClick={() => onOpenChange(false)}
           >
             {t('actions.close')}
           </NotionButton>
-        </div>
-      </DialogContent>
-    </Dialog>
+        </NotionDialogFooter>
+    </NotionDialog>
   );
 };
 

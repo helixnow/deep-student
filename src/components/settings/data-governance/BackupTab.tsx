@@ -34,16 +34,7 @@ import { Badge } from '../../ui/shad/Badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../ui/shad/Table';
 import { AppSelect } from '../../ui/app-menu';
 import { showGlobalNotification } from '../../UnifiedNotification';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '../../ui/shad/AlertDialog';
+import { NotionAlertDialog } from '../../ui/NotionDialog';
 import {
   Dialog,
   DialogContent,
@@ -934,45 +925,37 @@ export const BackupTab: React.FC<BackupTabProps> = ({
       </div>
 
       {/* 确认对话框 */}
-      <AlertDialog
+      <NotionAlertDialog
         open={selectedBackup !== null && actionType !== null}
         onOpenChange={() => {
           setSelectedBackup(null);
           setActionType(null);
         }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              {actionType === 'delete'
-                ? t('data:governance.confirm_delete')
-                : actionType === 'export'
-                ? t('data:governance.confirm_export')
-                : t('data:governance.confirm_restore')}
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              {actionType === 'delete'
-                ? t('data:governance.delete_warning')
-                : actionType === 'export'
-                ? t('data:governance.export_warning', { level: compressionLevel })
-                : t('data:governance.restore_warning')}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{t('common:actions.cancel')}</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleAction}
-              className={actionType === 'delete' ? 'bg-destructive hover:bg-destructive/90' : ''}
-            >
-              {actionType === 'delete'
-                ? t('common:actions.delete')
-                : actionType === 'export'
-                ? t('data:governance.export')
-                : t('data:governance.restore')}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+        title={
+          actionType === 'delete'
+            ? t('data:governance.confirm_delete')
+            : actionType === 'export'
+            ? t('data:governance.confirm_export')
+            : t('data:governance.confirm_restore')
+        }
+        description={
+          actionType === 'delete'
+            ? t('data:governance.delete_warning')
+            : actionType === 'export'
+            ? t('data:governance.export_warning', { level: compressionLevel })
+            : t('data:governance.restore_warning')
+        }
+        confirmText={
+          actionType === 'delete'
+            ? t('common:actions.delete')
+            : actionType === 'export'
+            ? t('data:governance.export')
+            : t('data:governance.restore')
+        }
+        cancelText={t('common:actions.cancel')}
+        confirmVariant={actionType === 'delete' ? 'danger' : 'primary'}
+        onConfirm={handleAction}
+      />
 
       {/* Task 3: 恢复完成后重启提示对话框 */}
       <Dialog open={showRestartDialog} onOpenChange={(open) => { if (!open) onRestartLater?.(); }}>

@@ -80,24 +80,7 @@ import type { LearningHubSidebarProps, ResourceListItem } from './types';
 import type { FolderItemType, FolderTreeNode } from '@/dstu/types/folder';
 import { VfsError, VfsErrorCode, err, ok, reportError } from '@/shared/result';
 import { LearningHubContextMenu, type ContextMenuTarget } from './components/LearningHubContextMenu';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-  DialogDescription,
-} from '@/components/ui/shad/Dialog';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/shad/AlertDialog';
+import { NotionDialog, NotionDialogHeader, NotionDialogTitle, NotionDialogBody, NotionDialogFooter, NotionAlertDialog } from '@/components/ui/NotionDialog';
 import { Input } from '@/components/ui/shad/Input';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
@@ -2454,43 +2437,38 @@ export function LearningHubSidebar({
       />
       
       {/* Create Folder Dialog - Notion 风格 */}
-      <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
-        <DialogContent className="sm:max-w-[400px] p-2.5 gap-0 overflow-hidden">
-          {/* 标题区 */}
-          <DialogHeader className="px-5 pt-5 pb-3">
-            <DialogTitle className="flex items-center gap-2 text-base font-medium">
-              <FolderPlus className="w-4 h-4 text-muted-foreground" />
-              {t('finder.create.folderTitle')}
-            </DialogTitle>
-          </DialogHeader>
-          {/* 内容区 */}
-          <div className="px-5 pb-4">
-            <input
-              type="text"
-              placeholder={t('finder.create.folderPlaceholder')}
-              value={createDialogName}
-              onChange={(e) => setCreateDialogName(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !isCreating) {
-                  handleCreate();
-                }
-              }}
-              autoFocus
-              className="w-full h-9 px-3 text-sm bg-muted/30 border-transparent rounded-md focus:border-border focus:bg-background focus:outline-none transition-colors"
-            />
-          </div>
-          {/* 底部操作区 */}
-          <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-border/40">
-            <NotionButton variant="ghost" size="sm" onClick={() => setCreateDialogOpen(false)} disabled={isCreating}>
-              {t('common:cancel')}
-            </NotionButton>
-            <NotionButton variant="primary" size="sm" onClick={handleCreate} disabled={!createDialogName.trim() || isCreating}>
-              {isCreating && <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin inline" />}
-              {isCreating ? t('common:actions.creating') : t('common:actions.create')}
-            </NotionButton>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <NotionDialog open={createDialogOpen} onOpenChange={setCreateDialogOpen} maxWidth="max-w-[400px]">
+        <NotionDialogHeader>
+          <NotionDialogTitle className="flex items-center gap-2">
+            <FolderPlus className="w-4 h-4 text-muted-foreground" />
+            {t('finder.create.folderTitle')}
+          </NotionDialogTitle>
+        </NotionDialogHeader>
+        <NotionDialogBody nativeScroll>
+          <input
+            type="text"
+            placeholder={t('finder.create.folderPlaceholder')}
+            value={createDialogName}
+            onChange={(e) => setCreateDialogName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !isCreating) {
+                handleCreate();
+              }
+            }}
+            autoFocus
+            className="w-full h-9 px-3 text-sm bg-muted/30 border-transparent rounded-md focus:border-border focus:bg-background focus:outline-none transition-colors"
+          />
+        </NotionDialogBody>
+        <NotionDialogFooter>
+          <NotionButton variant="ghost" size="sm" onClick={() => setCreateDialogOpen(false)} disabled={isCreating}>
+            {t('common:cancel')}
+          </NotionButton>
+          <NotionButton variant="primary" size="sm" onClick={handleCreate} disabled={!createDialogName.trim() || isCreating}>
+            {isCreating && <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin inline" />}
+            {isCreating ? t('common:actions.creating') : t('common:actions.create')}
+          </NotionButton>
+        </NotionDialogFooter>
+      </NotionDialog>
       
       {/* Folder Picker Dialog for Batch Move */}
       <FolderPickerDialog
@@ -2504,37 +2482,27 @@ export function LearningHubSidebar({
       />
 
       {/* ★ 删除确认对话框 - 替代原生 window.confirm */}
-      <AlertDialog open={deleteConfirmOpen} onOpenChange={(open) => {
-        if (!open && !isDeleting) {
-          setDeleteConfirmOpen(false);
-          setDeleteTarget(null);
+      <NotionAlertDialog
+        open={deleteConfirmOpen}
+        onOpenChange={(open) => {
+          if (!open && !isDeleting) {
+            setDeleteConfirmOpen(false);
+            setDeleteTarget(null);
+          }
+        }}
+        title={
+          deleteTarget?.type === 'emptyTrash'
+            ? t('finder.trash.emptyTitle', '清空回收站')
+            : t('contextMenu.deleteTitle', '确认删除')
         }
-      }}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              {deleteTarget?.type === 'emptyTrash'
-                ? t('finder.trash.emptyTitle', '清空回收站')
-                : t('contextMenu.deleteTitle', '确认删除')}
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              {deleteTarget?.message}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={isDeleting}>
-              {t('common:cancel', '取消')}
-            </AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleConfirmDelete}
-              disabled={isDeleting}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              {isDeleting ? t('common:deleting', '删除中...') : t('common:delete', '删除')}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+        description={deleteTarget?.message}
+        confirmText={isDeleting ? t('common:deleting', '删除中...') : t('common:delete', '删除')}
+        cancelText={t('common:cancel', '取消')}
+        confirmVariant="danger"
+        loading={isDeleting}
+        disabled={isDeleting}
+        onConfirm={handleConfirmDelete}
+      />
 
       {/* Rename Dialog - Replaced with Inline Editing */}
 

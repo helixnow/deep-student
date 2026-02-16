@@ -11,8 +11,6 @@ import {
   ChevronRight,
   ZoomIn,
   ZoomOut,
-  CheckSquare,
-  Square,
   ChevronDown,
   RotateCw,
   Maximize,
@@ -1216,14 +1214,19 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
 
         {enableStudyControls && (
           <div className="ds-pdf__page-overlay">
-            <NotionButton variant="ghost" size="icon" iconOnly className={`ds-pdf__select-btn ${isSelected ? 'selected' : ''}`} onClick={() => handleTogglePageSelect(pageNum)}>
-              {isSelected ? <CheckSquare size={16} /> : <Square size={16} />}
+            <button
+              type="button"
+              className={`ds-pdf__select-btn ${isSelected ? 'selected' : ''}`}
+              onClick={() => handleTogglePageSelect(pageNum)}
+              aria-label={isSelected ? t('textbook:deselect_page', '取消选择此页') : t('textbook:select_page', '选择此页')}
+            >
+              <span className="ds-pdf__select-checkbox" />
               {typeof maxSelections === 'number' && selectedPages && (
                 <span className="ds-pdf__select-btn-text">
                   {selectedPages.size}/{maxSelections}
                 </span>
               )}
-            </NotionButton>
+            </button>
           </div>
         )}
 

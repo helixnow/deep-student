@@ -18,14 +18,7 @@ import { Input } from '@/components/ui/shad/Input';
 import { Label } from '@/components/ui/shad/Label';
 import { Switch } from '@/components/ui/shad/Switch';
 import { Slider } from '@/components/ui/shad/Slider';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/shad/Dialog';
+import { NotionAlertDialog } from '@/components/ui/NotionDialog';
 import {
   FileText,
   Clock,
@@ -399,32 +392,22 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
       </Card>
       
       {/* 交卷确认对话框 */}
-      <Dialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{t('mockExam.confirmTitle', '确认交卷')}</DialogTitle>
-            <DialogDescription>
-              {Object.keys(mockExamSession.answers).length < mockExamSession.question_ids.length ? (
-                <span className="text-amber-600">
-                  {t('mockExam.confirmWarning', '您还有 {{count}} 道题未作答，确定要交卷吗？', {
-                    count: mockExamSession.question_ids.length - Object.keys(mockExamSession.answers).length,
-                  })}
-                </span>
-              ) : (
-                t('mockExam.confirmMessage', '确定要提交考试吗？')
-              )}
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <NotionButton variant="ghost" onClick={() => setShowConfirmDialog(false)}>
-              {t('mockExam.cancel', '取消')}
-            </NotionButton>
-            <NotionButton onClick={handleSubmit}>
-              {t('mockExam.confirmSubmit', '确认交卷')}
-            </NotionButton>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <NotionAlertDialog
+        open={showConfirmDialog}
+        onOpenChange={setShowConfirmDialog}
+        title={t('mockExam.confirmTitle', '确认交卷')}
+        description={
+          Object.keys(mockExamSession.answers).length < mockExamSession.question_ids.length
+            ? t('mockExam.confirmWarning', '您还有 {{count}} 道题未作答，确定要交卷吗？', {
+                count: mockExamSession.question_ids.length - Object.keys(mockExamSession.answers).length,
+              })
+            : t('mockExam.confirmMessage', '确定要提交考试吗？')
+        }
+        confirmText={t('mockExam.confirmSubmit', '确认交卷')}
+        cancelText={t('mockExam.cancel', '取消')}
+        confirmVariant="primary"
+        onConfirm={handleSubmit}
+      />
     </>
   );
 };

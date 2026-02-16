@@ -19,7 +19,7 @@ import {
 import { NotionButton } from '@/components/ui/NotionButton';
 import { Z_INDEX } from '@/config/zIndex';
 import { Input } from "../ui/shad/Input";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "../ui/shad/Dialog";
+import { NotionDialog, NotionDialogHeader, NotionDialogTitle, NotionDialogBody, NotionDialogFooter } from '../ui/NotionDialog';
 import {
     AppMenu,
     AppMenuContent,
@@ -640,16 +640,17 @@ export const NotesSidebar: React.FC<NotesSidebarProps> = ({ isCollapsed, onToggl
             </div>
 
             {/* Context Menu - 使用 Portal 渲染到 body，避免父元素样式影响定位 */}
-            <Dialog
+            <NotionDialog
                 open={referenceDialog.open}
                 onOpenChange={(open) => {
                     if (!open) closeReferenceDialog();
                 }}
+                maxWidth="max-w-md"
             >
-                <DialogContent className="sm:max-w-md">
-                    <DialogHeader>
-                        <DialogTitle>{referenceDialogTitle}</DialogTitle>
-                    </DialogHeader>
+                <NotionDialogHeader>
+                    <NotionDialogTitle>{referenceDialogTitle}</NotionDialogTitle>
+                </NotionDialogHeader>
+                <NotionDialogBody nativeScroll>
                     <div className="space-y-2">
                         <Input
                             value={referenceValue}
@@ -659,26 +660,28 @@ export const NotesSidebar: React.FC<NotesSidebarProps> = ({ isCollapsed, onToggl
                             autoFocus
                         />
                     </div>
-                    <DialogFooter className="gap-2 sm:gap-2">
-                        <NotionButton
-                            type="button"
-                            variant="ghost"
-                            onClick={closeReferenceDialog}
-                            disabled={referenceSubmitting}
-                        >
-                            {t('common:actions.cancel')}
-                        </NotionButton>
-                        <NotionButton
-                            type="button"
-                            variant="primary"
-                            onClick={submitReference}
-                            disabled={referenceSubmitting || referenceValue.trim().length === 0}
-                        >
-                            {t('common:actions.confirm')}
-                        </NotionButton>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
+                </NotionDialogBody>
+                <NotionDialogFooter>
+                    <NotionButton
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={closeReferenceDialog}
+                        disabled={referenceSubmitting}
+                    >
+                        {t('common:actions.cancel')}
+                    </NotionButton>
+                    <NotionButton
+                        type="button"
+                        variant="primary"
+                        size="sm"
+                        onClick={submitReference}
+                        disabled={referenceSubmitting || referenceValue.trim().length === 0}
+                    >
+                        {t('common:actions.confirm')}
+                    </NotionButton>
+                </NotionDialogFooter>
+            </NotionDialog>
 
             {contextMenu && createPortal(
                 <>

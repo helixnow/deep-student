@@ -1,22 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import {
-    Dialog,
-    DialogContent,
-    DialogHeader,
-    DialogTitle,
-    DialogFooter
-} from "../../ui/shad/Dialog";
-import {
-    AlertDialog,
-    AlertDialogAction,
-    AlertDialogCancel,
-    AlertDialogContent,
-    AlertDialogDescription,
-    AlertDialogFooter,
-    AlertDialogHeader,
-    AlertDialogTitle,
-} from "../../ui/shad/AlertDialog";
+import { NotionDialog, NotionDialogHeader, NotionDialogTitle, NotionDialogBody, NotionAlertDialog } from '../../ui/NotionDialog';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { NotesAPI, type NoteItem } from "../../../utils/notesApi";
@@ -96,14 +80,13 @@ export function TrashDialog() {
 
     return (
         <>
-            <Dialog open={trashOpen} onOpenChange={setTrashOpen}>
-                <DialogContent className="max-w-3xl h-[80vh] flex flex-col p-0 gap-0">
-                    <DialogHeader className="p-4 border-b border-border/40">
+            <NotionDialog open={trashOpen} onOpenChange={setTrashOpen} maxWidth="max-w-3xl">
+                    <NotionDialogHeader>
                         <div className="flex items-center justify-between">
-                            <DialogTitle className="flex items-center gap-2">
+                            <NotionDialogTitle className="flex items-center gap-2">
                                 <Trash2 className="h-5 w-5 text-destructive" />
                                 {t('notes:trash.title')}
-                            </DialogTitle>
+                            </NotionDialogTitle>
                             <div className="flex items-center gap-2">
                                 <NotionButton
                                     variant="outline"
@@ -116,9 +99,9 @@ export function TrashDialog() {
                                 </NotionButton>
                             </div>
                         </div>
-                    </DialogHeader>
+                    </NotionDialogHeader>
 
-                    <CustomScrollArea className="flex-1 p-4">
+                    <NotionDialogBody>
                         {loading ? (
                             <div className="flex justify-center py-8">
                                 <span className="loading loading-spinner loading-md" />
@@ -160,31 +143,20 @@ export function TrashDialog() {
                                 ))}
                             </div>
                         )}
-                    </CustomScrollArea>
-                </DialogContent>
-            </Dialog>
+                    </NotionDialogBody>
+            </NotionDialog>
 
-            <AlertDialog open={confirmState.open} onOpenChange={(open) => setConfirmState(s => ({ ...s, open }))}>
-                <AlertDialogContent>
-                    <AlertDialogHeader>
-                        <AlertDialogTitle>
-                            {confirmState.type === 'empty' ? t('notes:trash.confirm_empty_title', 'Confirm Empty') : t('notes:trash.confirm_delete_title', 'Confirm Deletion')}
-                        </AlertDialogTitle>
-                        <AlertDialogDescription>
-                            {confirmState.type === 'empty' ? t('notes:trash.confirm_empty_desc', 'Are you sure you want to empty the trash?') : t('notes:trash.confirm_delete_desc', 'Are you sure you want to permanently delete this item?')}
-                        </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                        <AlertDialogCancel>{t('common:actions.cancel')}</AlertDialogCancel>
-                        <AlertDialogAction
-                            onClick={handleHardDelete}
-                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                        >
-                            {t('common:actions.confirm')}
-                        </AlertDialogAction>
-                    </AlertDialogFooter>
-                </AlertDialogContent>
-            </AlertDialog>
+            <NotionAlertDialog
+                open={confirmState.open}
+                onOpenChange={(open) => setConfirmState(s => ({ ...s, open }))}
+                icon={<Trash2 className="h-5 w-5 text-red-500" />}
+                title={confirmState.type === 'empty' ? t('notes:trash.confirm_empty_title', 'Confirm Empty') : t('notes:trash.confirm_delete_title', 'Confirm Deletion')}
+                description={confirmState.type === 'empty' ? t('notes:trash.confirm_empty_desc', 'Are you sure you want to empty the trash?') : t('notes:trash.confirm_delete_desc', 'Are you sure you want to permanently delete this item?')}
+                confirmText={t('common:actions.confirm')}
+                cancelText={t('common:actions.cancel')}
+                confirmVariant="danger"
+                onConfirm={handleHardDelete}
+            />
         </>
     );
 }

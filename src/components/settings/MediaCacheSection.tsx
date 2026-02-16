@@ -34,16 +34,7 @@ import { showGlobalNotification } from '../UnifiedNotification';
 import { getErrorMessage } from '../../utils/errorUtils';
 import { formatBytes } from '@/types/dataGovernance';
 import { debugLog } from '../../debug-panel/debugMasterSwitch';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '../ui/shad/AlertDialog';
+import { NotionAlertDialog } from '../ui/NotionDialog';
 
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
 
@@ -315,67 +306,58 @@ export const MediaCacheSection: React.FC = () => {
       </div>
 
       {/* 确认对话框 */}
-      <AlertDialog open={showConfirm} onOpenChange={setShowConfirm}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              {t('data:governance.cache.confirm_title')}
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              <div className="space-y-2">
-                <p>{t('data:governance.cache.confirm_desc')}</p>
-                <ul className="list-disc list-inside text-sm space-y-1">
-                  {clearOptions.clearPdfPreview && (
-                    <li>
-                      {t('data:governance.cache.stats.pdf_preview')} ({stats?.pdfPreviewCount ?? 0}{' '}
-                      {t('data:governance.cache.unit_items')})
-                    </li>
-                  )}
-                  {clearOptions.clearCompressedImages && (
-                    <li>
-                      {t('data:governance.cache.options.compressed_images')} ({stats?.compressedImageCount ?? 0}{' '}
-                      {t('data:governance.cache.unit_items')})
-                    </li>
-                  )}
-                  {clearOptions.clearOcrText && (
-                    <li>
-                      {t('data:governance.cache.options.ocr_text')} ({stats?.ocrTextCount ?? 0}{' '}
-                      {t('data:governance.cache.unit_items')})
-                    </li>
-                  )}
-                  {clearOptions.clearVectorIndex && (
-                    <li className="text-destructive">
-                      {t('data:governance.cache.options.vector_index')} ({stats?.vectorIndexCount ?? 0}{' '}
-                      {t('data:governance.cache.unit_items')})
-                    </li>
-                  )}
-                </ul>
-                {clearOptions.clearVectorIndex && (
-                  <div className="flex items-start gap-2 p-3 mt-3 rounded-md bg-destructive/10 text-destructive">
-                    <AlertTriangle className="h-5 w-5 flex-shrink-0 mt-0.5" />
-                    <div className="text-sm">
-                      {t('data:governance.cache.vector_index_warning')}
-                    </div>
-                  </div>
-                )}
-                <p className="mt-3">
-                  {t('data:governance.cache.estimated_free_space')}:{' '}
-                  <strong>{formatBytes(selectedSize)}</strong>
-                </p>
+      <NotionAlertDialog
+        open={showConfirm}
+        onOpenChange={setShowConfirm}
+        icon={<Trash2 className="h-5 w-5 text-red-500" />}
+        title={t('data:governance.cache.confirm_title')}
+        description={t('data:governance.cache.confirm_desc')}
+        confirmText={t('data:governance.cache.confirm_clear')}
+        cancelText={t('common:actions.cancel')}
+        confirmVariant="danger"
+        onConfirm={handleClear}
+      >
+        <div className="space-y-2">
+          <ul className="list-disc list-inside text-sm space-y-1 text-muted-foreground">
+            {clearOptions.clearPdfPreview && (
+              <li>
+                {t('data:governance.cache.stats.pdf_preview')} ({stats?.pdfPreviewCount ?? 0}{' '}
+                {t('data:governance.cache.unit_items')})
+              </li>
+            )}
+            {clearOptions.clearCompressedImages && (
+              <li>
+                {t('data:governance.cache.options.compressed_images')} ({stats?.compressedImageCount ?? 0}{' '}
+                {t('data:governance.cache.unit_items')})
+              </li>
+            )}
+            {clearOptions.clearOcrText && (
+              <li>
+                {t('data:governance.cache.options.ocr_text')} ({stats?.ocrTextCount ?? 0}{' '}
+                {t('data:governance.cache.unit_items')})
+              </li>
+            )}
+            {clearOptions.clearVectorIndex && (
+              <li className="text-destructive">
+                {t('data:governance.cache.options.vector_index')} ({stats?.vectorIndexCount ?? 0}{' '}
+                {t('data:governance.cache.unit_items')})
+              </li>
+            )}
+          </ul>
+          {clearOptions.clearVectorIndex && (
+            <div className="flex items-start gap-2 p-3 mt-3 rounded-md bg-destructive/10 text-destructive">
+              <AlertTriangle className="h-5 w-5 flex-shrink-0 mt-0.5" />
+              <div className="text-sm">
+                {t('data:governance.cache.vector_index_warning')}
               </div>
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{t('common:actions.cancel')}</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleClear}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              {t('data:governance.cache.confirm_clear')}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+            </div>
+          )}
+          <p className="mt-3 text-sm text-muted-foreground">
+            {t('data:governance.cache.estimated_free_space')}:{' '}
+            <strong>{formatBytes(selectedSize)}</strong>
+          </p>
+        </div>
+      </NotionAlertDialog>
     </div>
   );
 };

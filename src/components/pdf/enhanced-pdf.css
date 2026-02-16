@@ -26,34 +26,87 @@
   right: 12px;
   display: flex;
   z-index: 10;
+  opacity: 0;
+  transition: opacity .2s ease;
+}
+
+/* 悬停页面或已选中时显示 */
+.ds-pdf__page-wrapper:hover .ds-pdf__page-overlay,
+.ds-pdf__page-overlay:has(.selected) {
+  opacity: 1;
 }
 
 .ds-pdf__select-btn {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 10px;
+  padding: 5px 10px;
   font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
   border-radius: 8px;
-  border: 1px solid hsl(var(--border));
-  background: hsl(var(--card));
-  color: hsl(var(--foreground));
+  border: 1px solid hsl(var(--border) / 0.6);
+  background: hsl(var(--card) / 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  color: hsl(var(--muted-foreground));
   cursor: pointer;
-  transition: background .2s ease, opacity .2s ease;
+  transition: all .2s ease;
+  box-shadow: 0 1px 4px hsl(var(--ring) / 0.08);
 }
 
 .ds-pdf__select-btn:hover {
-  background: hsl(var(--accent));
+  background: hsl(var(--accent) / 0.9);
+  border-color: hsl(var(--border));
+  color: hsl(var(--foreground));
+  box-shadow: 0 2px 8px hsl(var(--ring) / 0.12);
 }
 
 .ds-pdf__select-btn.selected {
   background: hsl(var(--primary));
   border-color: hsl(var(--primary));
   color: hsl(var(--primary-foreground));
+  box-shadow: 0 2px 8px hsl(var(--primary) / 0.3);
+}
+
+/* 复选框指示器 */
+.ds-pdf__select-checkbox {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  border: 1.5px solid hsl(var(--muted-foreground) / 0.5);
+  background: transparent;
+  flex-shrink: 0;
+  transition: all .15s ease;
+  position: relative;
+}
+
+.ds-pdf__select-btn:hover .ds-pdf__select-checkbox {
+  border-color: hsl(var(--primary) / 0.6);
+}
+
+.ds-pdf__select-btn.selected .ds-pdf__select-checkbox {
+  background: hsl(var(--primary-foreground));
+  border-color: hsl(var(--primary-foreground));
+}
+
+/* 勾选标记 - 仅选中时显示 */
+.ds-pdf__select-btn.selected .ds-pdf__select-checkbox::after {
+  content: '';
+  position: absolute;
+  width: 4px;
+  height: 7px;
+  border-right: 1.5px solid hsl(var(--primary));
+  border-bottom: 1.5px solid hsl(var(--primary));
+  transform: rotate(45deg) translate(-0.5px, -0.5px);
 }
 
 .ds-pdf__select-btn-text {
   white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 
 /* 右下角计数悬浮 */
@@ -240,18 +293,19 @@
 .ds-page-input {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
 }
 
 .ds-input {
-  width: 64px;
-  height: 32px;
-  padding: 0 8px;
-  border-radius: 8px;
+  width: 40px;
+  height: 24px;
+  padding: 0 4px;
+  border-radius: 6px;
   border: 1px solid hsl(var(--border));
   background: hsl(var(--muted) / .3);
   color: hsl(var(--foreground));
   text-align: center;
+  font-size: 12px;
 }
 
 .ds-input:focus {
@@ -962,9 +1016,9 @@
     gap: 4px !important;
   }
 
-  .ds-pdf__select-btn svg {
-    width: 14px !important;
-    height: 14px !important;
+  .ds-pdf__select-checkbox {
+    width: 12px !important;
+    height: 12px !important;
   }
 
   /* 浮动计数器位置调整 */

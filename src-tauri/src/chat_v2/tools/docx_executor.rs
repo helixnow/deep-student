@@ -64,10 +64,14 @@ impl DocxToolExecutor {
             ));
         }
 
-        let parser = DocumentParser::new();
-        let structured = parser
-            .extract_docx_structured(&bytes)
-            .map_err(|e| format!("DOCX 结构化提取失败: {}", e))?;
+        // spawn_blocking 防止同步解析阻塞 tokio 线程（与 PPTX/XLSX 对齐）
+        let structured = tokio::task::spawn_blocking(move || {
+            let parser = DocumentParser::new();
+            parser.extract_docx_structured(&bytes)
+        })
+        .await
+        .map_err(|e| format!("DOCX 解析任务异常: {}", e))?
+        .map_err(|e| format!("DOCX 结构化提取失败: {}", e))?;
 
         Ok(json!({
             "success": true,
@@ -92,10 +96,14 @@ impl DocxToolExecutor {
 
         let bytes = self.load_docx_bytes(ctx, resource_id)?;
 
-        let parser = DocumentParser::new();
-        let tables = parser
-            .extract_docx_tables(&bytes)
-            .map_err(|e| format!("DOCX 表格提取失败: {}", e))?;
+        // spawn_blocking 防止同步解析阻塞 tokio 线程
+        let tables = tokio::task::spawn_blocking(move || {
+            let parser = DocumentParser::new();
+            parser.extract_docx_tables(&bytes)
+        })
+        .await
+        .map_err(|e| format!("DOCX 解析任务异常: {}", e))?
+        .map_err(|e| format!("DOCX 表格提取失败: {}", e))?;
 
         Ok(json!({
             "success": true,
@@ -119,10 +127,14 @@ impl DocxToolExecutor {
 
         let bytes = self.load_docx_bytes(ctx, resource_id)?;
 
-        let parser = DocumentParser::new();
-        let metadata = parser
-            .extract_docx_metadata(&bytes)
-            .map_err(|e| format!("DOCX 元数据读取失败: {}", e))?;
+        // spawn_blocking 防止同步解析阻塞 tokio 线程
+        let metadata = tokio::task::spawn_blocking(move || {
+            let parser = DocumentParser::new();
+            parser.extract_docx_metadata(&bytes)
+        })
+        .await
+        .map_err(|e| format!("DOCX 解析任务异常: {}", e))?
+        .map_err(|e| format!("DOCX 元数据读取失败: {}", e))?;
 
         Ok(json!({
             "success": true,
@@ -145,10 +157,14 @@ impl DocxToolExecutor {
 
         let bytes = self.load_docx_bytes(ctx, resource_id)?;
 
-        let parser = DocumentParser::new();
-        let spec = parser
-            .extract_docx_as_spec(&bytes)
-            .map_err(|e| format!("DOCX → spec 转换失败: {}", e))?;
+        // spawn_blocking 防止同步解析阻塞 tokio 线程
+        let spec = tokio::task::spawn_blocking(move || {
+            let parser = DocumentParser::new();
+            parser.extract_docx_as_spec(&bytes)
+        })
+        .await
+        .map_err(|e| format!("DOCX 解析任务异常: {}", e))?
+        .map_err(|e| format!("DOCX → spec 转换失败: {}", e))?;
 
         Ok(json!({
             "success": true,
@@ -196,10 +212,14 @@ impl DocxToolExecutor {
 
         let bytes = self.load_docx_bytes(ctx, resource_id)?;
 
-        let parser = DocumentParser::new();
-        let (new_bytes, total_count) = parser
-            .replace_text_in_docx(&bytes, &replacements)
-            .map_err(|e| format!("DOCX 替换失败: {}", e))?;
+        // spawn_blocking 防止同步解析阻塞 tokio 线程
+        let (new_bytes, total_count) = tokio::task::spawn_blocking(move || {
+            let parser = DocumentParser::new();
+            parser.replace_text_in_docx(&bytes, &replacements)
+        })
+        .await
+        .map_err(|e| format!("DOCX 解析任务异常: {}", e))?
+        .map_err(|e| format!("DOCX 替换失败: {}", e))?;
 
         if total_count == 0 {
             return Ok(json!({
@@ -267,9 +287,14 @@ impl DocxToolExecutor {
             .get("folder_id")
             .and_then(|v| v.as_str());
 
-        // 生成 DOCX 字节
-        let docx_bytes = DocumentParser::generate_docx_from_spec(spec)
-            .map_err(|e| format!("DOCX 生成失败: {}", e))?;
+        // spawn_blocking 防止同步生成阻塞 tokio 线程
+        let spec = spec.clone();
+        let docx_bytes = tokio::task::spawn_blocking(move || {
+            DocumentParser::generate_docx_from_spec(&spec)
+        })
+        .await
+        .map_err(|e| format!("DOCX 生成任务异常: {}", e))?
+        .map_err(|e| format!("DOCX 生成失败: {}", e))?;
 
         let file_size = docx_bytes.len();
 

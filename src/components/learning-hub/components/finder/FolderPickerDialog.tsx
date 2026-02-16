@@ -1,12 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Folder, ChevronRight, Home, Loader2, FolderInput } from 'lucide-react';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/shad/Dialog';
+import { NotionDialog, NotionDialogHeader, NotionDialogTitle, NotionDialogBody, NotionDialogFooter } from '@/components/ui/NotionDialog';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { folderApi } from '@/dstu';
@@ -180,15 +175,13 @@ export function FolderPickerDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md !p-2.5 gap-0 overflow-hidden">
-        {/* 标题区 */}
-        <DialogHeader className="px-5 pt-5 pb-3">
-          <DialogTitle className="flex items-center gap-2 text-base font-medium">
+    <NotionDialog open={open} onOpenChange={onOpenChange} maxWidth="max-w-md">
+        <NotionDialogHeader>
+          <NotionDialogTitle className="flex items-center gap-2">
             <FolderInput className="w-4 h-4 text-muted-foreground" />
             {title || t('finder.folderPicker.title')}
-          </DialogTitle>
-        </DialogHeader>
+          </NotionDialogTitle>
+        </NotionDialogHeader>
 
         {/* 内容区 */}
         <div className="h-[320px] overflow-hidden mb-3">
@@ -239,16 +232,14 @@ export function FolderPickerDialog({
           </CustomScrollArea>
         </div>
 
-        {/* 底部操作区 */}
-        <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-border/40">
+        <NotionDialogFooter>
           <NotionButton variant="ghost" size="sm" onClick={() => onOpenChange(false)}>
             {t('common:cancel')}
           </NotionButton>
           <NotionButton variant="primary" size="sm" onClick={handleConfirm} disabled={isLoading}>
             {t('finder.folderPicker.confirm')}
           </NotionButton>
-        </div>
-      </DialogContent>
-    </Dialog>
+        </NotionDialogFooter>
+    </NotionDialog>
   );
 }

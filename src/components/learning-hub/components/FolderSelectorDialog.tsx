@@ -7,14 +7,7 @@
 import React, { useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Folder, FolderOpen, ChevronRight, ChevronDown, Loader2 } from 'lucide-react';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/shad/Dialog';
+import { NotionDialog, NotionDialogHeader, NotionDialogTitle, NotionDialogDescription, NotionDialogBody, NotionDialogFooter } from '@/components/ui/NotionDialog';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { cn } from '@/lib/utils';
@@ -175,16 +168,16 @@ export function FolderSelectorDialog({
   }, [folderTree]);
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[400px]">
-        <DialogHeader>
-          <DialogTitle>
+    <NotionDialog open={open} onOpenChange={onOpenChange} maxWidth="max-w-[400px]">
+        <NotionDialogHeader>
+          <NotionDialogTitle>
             {title || t('multiSelect.moveDialogTitle')}
-          </DialogTitle>
-          <DialogDescription>
+          </NotionDialogTitle>
+          <NotionDialogDescription>
             {description || t('multiSelect.moveDialogDesc')}
-          </DialogDescription>
-        </DialogHeader>
+          </NotionDialogDescription>
+        </NotionDialogHeader>
+        <NotionDialogBody nativeScroll>
 
         {/* 文件夹列表 */}
         <div className="min-h-[200px] max-h-[300px] border rounded-md">
@@ -230,7 +223,8 @@ export function FolderSelectorDialog({
           </CustomScrollArea>
         </div>
 
-        <DialogFooter>
+        </NotionDialogBody>
+        <NotionDialogFooter>
           <NotionButton
             variant="ghost"
             onClick={() => onOpenChange(false)}
@@ -251,8 +245,7 @@ export function FolderSelectorDialog({
               t('multiSelect.moveConfirm')
             )}
           </NotionButton>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </NotionDialogFooter>
+    </NotionDialog>
   );
 }

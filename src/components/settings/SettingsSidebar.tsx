@@ -96,7 +96,7 @@ export const SettingsSidebar: React.FC<SettingsSidebarProps> = ({
               onFocus={() => setSidebarSearchFocused(true)}
               onBlur={() => setSidebarSearchFocused(false)}
               className={cn(
-                isSmallScreen ? 'h-10 pl-9 pr-9 text-[16px] rounded-lg' : 'h-10 pl-9 pr-9 text-[16px] rounded-lg',
+                isSmallScreen ? 'h-10 pl-9 pr-9 text-[14.4px] rounded-lg' : 'h-10 pl-9 pr-9 text-[14.4px] rounded-lg',
                 'bg-muted/40 border-transparent',
                 'placeholder:text-muted-foreground/40',
                 'focus:bg-background focus:border-border/60 focus:ring-1 focus:ring-primary/20',
@@ -160,7 +160,7 @@ export const SettingsSidebar: React.FC<SettingsSidebarProps> = ({
                   {!isCollapsed && (
                     <span className={cn(
                       'truncate',
-                      isSmallScreen ? 'text-[16px]' : 'text-[16px]',
+                      isSmallScreen ? 'text-[14.4px]' : 'text-[14.4px]',
                       isActive ? 'font-bold' : 'font-semibold'
                     )}>
                       {item.label}

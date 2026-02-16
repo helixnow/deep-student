@@ -21,16 +21,7 @@ import {
 import { cn } from '@/lib/utils';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { NotionButton } from '@/components/ui/NotionButton';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '../ui/shad/AlertDialog';
+import { NotionAlertDialog } from '../ui/NotionDialog';
 import { showGlobalNotification } from '../UnifiedNotification';
 import { useMobileHeader, MobileSlidingLayout, ScreenPosition } from '@/components/layout';
 import { MOBILE_LAYOUT } from '@/config/mobileLayout';
@@ -883,30 +874,21 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
           onConfirm={handleConfirmDelete}
         />
 
-        <AlertDialog open={importOverwriteOpen} onOpenChange={setImportOverwriteOpen}>
-          <AlertDialogContent className="max-w-md">
-            <AlertDialogHeader>
-              <AlertDialogTitle>
-                {t('skills:management.import_overwrite_title', '技能已存在')}
-              </AlertDialogTitle>
-              <AlertDialogDescription>
-                {t(
-                  'skills:management.import_overwrite_confirm',
-                  '技能 "{{name}}" 已存在，是否覆盖？',
-                  { name: pendingImport?.skill.name }
-                )}
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel onClick={handleCancelOverwrite}>
-                {t('common:actions.cancel', '取消')}
-              </AlertDialogCancel>
-              <AlertDialogAction onClick={handleConfirmOverwrite}>
-                {t('skills:management.import_overwrite', '覆盖')}
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
+        <NotionAlertDialog
+          open={importOverwriteOpen}
+          onOpenChange={setImportOverwriteOpen}
+          title={t('skills:management.import_overwrite_title', '技能已存在')}
+          description={t(
+            'skills:management.import_overwrite_confirm',
+            '技能 "{{name}}" 已存在，是否覆盖？',
+            { name: pendingImport?.skill.name }
+          )}
+          confirmText={t('skills:management.import_overwrite', '覆盖')}
+          cancelText={t('common:actions.cancel', '取消')}
+          confirmVariant="warning"
+          onConfirm={handleConfirmOverwrite}
+          onCancel={handleCancelOverwrite}
+        />
       </div>
     );
   }
@@ -934,30 +916,21 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
           onConfirm={handleConfirmDelete}
         />
 
-        <AlertDialog open={importOverwriteOpen} onOpenChange={setImportOverwriteOpen}>
-          <AlertDialogContent className="max-w-md">
-            <AlertDialogHeader>
-              <AlertDialogTitle>
-                {t('skills:management.import_overwrite_title', '技能已存在')}
-              </AlertDialogTitle>
-              <AlertDialogDescription>
-                {t(
-                  'skills:management.import_overwrite_confirm',
-                  '技能 "{{name}}" 已存在，是否覆盖？',
-                  { name: pendingImport?.skill.name }
-                )}
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel onClick={handleCancelOverwrite}>
-                {t('common:actions.cancel', '取消')}
-              </AlertDialogCancel>
-              <AlertDialogAction onClick={handleConfirmOverwrite}>
-                {t('skills:management.import_overwrite', '覆盖')}
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
+        <NotionAlertDialog
+          open={importOverwriteOpen}
+          onOpenChange={setImportOverwriteOpen}
+          title={t('skills:management.import_overwrite_title', '技能已存在')}
+          description={t(
+            'skills:management.import_overwrite_confirm',
+            '技能 "{{name}}" 已存在，是否覆盖？',
+            { name: pendingImport?.skill.name }
+          )}
+          confirmText={t('skills:management.import_overwrite', '覆盖')}
+          cancelText={t('common:actions.cancel', '取消')}
+          confirmVariant="warning"
+          onConfirm={handleConfirmOverwrite}
+          onCancel={handleCancelOverwrite}
+        />
       </div>
     </LayoutGroup>
   );

@@ -218,12 +218,24 @@ export function trackPreparing(toolCallId: string, toolName: string): void {
   });
 }
 
-export function trackStart(toolCallId: string, blockId?: string): void {
-  const t = inflightTools.get(toolCallId);
+export function trackStart(toolCallId: string, blockId?: string, toolName?: string): void {
+  let t = inflightTools.get(toolCallId);
+  // 🔧 回填：如果没有 preparing 事件（如 image_gen、approval、直接调用），
+  // 创建一个补录的 InflightTool 条目，确保 trackEnd 能正常输出计时日志
+  if (!t && toolName) {
+    t = {
+      toolCallId,
+      toolName,
+      preparingAt: Date.now(),
+      preparingOrder: 0, // 0 表示无 preparing 阶段
+    };
+    inflightTools.set(toolCallId, t);
+  }
   if (t) {
     t.startedAt = Date.now();
     t.startOrder = ++startCounter;
     if (blockId) t.blockId = blockId;
+    if (toolName && !t.toolName) t.toolName = toolName;
   }
 }
 
@@ -272,6 +284,24 @@ export function trackEnd(toolCallId: string, success: boolean): void {
   }
 
   inflightTools.delete(toolCallId);
+
+  // 🆕 轮次汇总：当所有 inflight 工具都已完成时，输出本轮统计
+  if (inflightTools.size === 0 && completionCounter > 1) {
+    const roundLogs = globalLogs.filter(
+      (l) => l.phase === 'backend:end' || l.phase === 'backend:error'
+    );
+    // 取最近 completionCounter 条作为本轮
+    const roundEntries = roundLogs.slice(-completionCounter);
+    const successes = roundEntries.filter((l) => l.level === 'success').length;
+    const failures = roundEntries.filter((l) => l.level === 'error').length;
+    const durations = roundEntries.map((l) => l.durationMs).filter((d): d is number => d != null);
+    const avgMs = durations.length > 0 ? Math.round(durations.reduce((a, b) => a + b, 0) / durations.length) : 0;
+    const maxMs = durations.length > 0 ? Math.max(...durations) : 0;
+    pushToolCallLog('info', 'system',
+      `=== 轮次 #${currentRoundId} 汇总: ${completionCounter} 个工具 | ✓${successes} ✗${failures} | 平均=${avgMs}ms 最大=${maxMs}ms ===`,
+      { detail: { round: currentRoundId, total: completionCounter, successes, failures, avgMs, maxMs } },
+    );
+  }
 }
 
 // 定期检测超时（preparing 后迟迟未收到 start）

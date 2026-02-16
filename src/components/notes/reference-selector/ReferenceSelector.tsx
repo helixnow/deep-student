@@ -17,7 +17,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { useTranslation } from 'react-i18next';
 import { Search, X, BookOpen, FileSpreadsheet, Loader2, AlertCircle } from 'lucide-react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../../ui/shad/Dialog';
+import { NotionDialog, NotionDialogHeader, NotionDialogTitle, NotionDialogBody } from '../../ui/NotionDialog';
 import { CustomScrollArea } from '../../custom-scroll-area';
 import { cn } from '../../../lib/utils';
 import { getErrorMessage } from '../../../utils/errorUtils';
@@ -203,12 +203,11 @@ export const ReferenceSelector: React.FC<ReferenceSelectorProps> = ({
   }, [type, t]);
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg p-0 overflow-hidden">
+    <NotionDialog open={open} onOpenChange={onOpenChange} maxWidth="max-w-lg" showClose={false}>
         {/* 头部 */}
-        <DialogHeader className="px-4 pt-4 pb-2">
+        <NotionDialogHeader>
           <div className="flex items-center justify-between">
-            <DialogTitle className="flex items-center gap-2">
+            <NotionDialogTitle className="flex items-center gap-2">
               {type === 'textbook' && (
                 <BookOpen className="h-5 w-5 text-purple-500" />
               )}
@@ -216,12 +215,12 @@ export const ReferenceSelector: React.FC<ReferenceSelectorProps> = ({
                 <FileSpreadsheet className="h-5 w-5 text-green-500" />
               )}
               {dialogTitle}
-            </DialogTitle>
+            </NotionDialogTitle>
             <NotionButton variant="ghost" size="icon" iconOnly onClick={() => onOpenChange(false)} className="!rounded-full !p-1 hover:bg-accent" aria-label="close">
               <X className="h-4 w-4 text-muted-foreground" />
             </NotionButton>
           </div>
-        </DialogHeader>
+        </NotionDialogHeader>
 
         {/* 搜索框 */}
         <div className="px-4 pb-3">
@@ -322,8 +321,7 @@ export const ReferenceSelector: React.FC<ReferenceSelectorProps> = ({
             </NotionButton>
           </div>
         </div>
-      </DialogContent>
-    </Dialog>
+    </NotionDialog>
   );
 };
 

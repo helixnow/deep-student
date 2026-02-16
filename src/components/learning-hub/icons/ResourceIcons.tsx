@@ -471,6 +471,54 @@ export const DocxFileIcon: React.FC<ResourceIconProps> = ({
 );
 
 // ============================================================================
+// PowerPoint/PPTX 文件图标 - 橙色
+// ============================================================================
+export const PptxFileIcon: React.FC<ResourceIconProps> = ({
+  className,
+  size = defaultSize,
+}) => (
+  <DocBase size={size} color="orange" className={className}>
+    {/* P 字母标记 */}
+    <text
+      x="24"
+      y="32"
+      fontSize="18"
+      fontWeight="bold"
+      fill={palette.orange.fg}
+      textAnchor="middle"
+    >
+      P
+    </text>
+    {/* 下划线装饰 */}
+    <rect x="16" y="36" width="16" height="2" rx="1" fill={palette.orange.fg} opacity="0.5" />
+  </DocBase>
+);
+
+// ============================================================================
+// Excel/XLSX 文件图标 - 绿色
+// ============================================================================
+export const XlsxFileIcon: React.FC<ResourceIconProps> = ({
+  className,
+  size = defaultSize,
+}) => (
+  <DocBase size={size} color="green" className={className}>
+    {/* X 字母标记 */}
+    <text
+      x="24"
+      y="32"
+      fontSize="18"
+      fontWeight="bold"
+      fill={palette.green.fg}
+      textAnchor="middle"
+    >
+      X
+    </text>
+    {/* 下划线装饰 */}
+    <rect x="16" y="36" width="16" height="2" rx="1" fill={palette.green.fg} opacity="0.5" />
+  </DocBase>
+);
+
+// ============================================================================
 // 音频文件图标 - 绿色
 // ============================================================================
 export const AudioFileIcon: React.FC<ResourceIconProps> = ({
@@ -725,6 +773,16 @@ export function getFileTypeIconByMime(mimeType: string): React.FC<ResourceIconPr
   // Word 文档
   if (mimeType.includes('word') || mimeType.includes('msword') || mimeType.includes('wordprocessingml')) {
     return DocxFileIcon;
+  }
+  
+  // PowerPoint 演示文稿
+  if (mimeType.includes('presentationml') || mimeType.includes('powerpoint')) {
+    return PptxFileIcon;
+  }
+  
+  // Excel 电子表格
+  if (mimeType.includes('spreadsheet') || mimeType.includes('excel')) {
+    return XlsxFileIcon;
   }
   
   // 音频文件

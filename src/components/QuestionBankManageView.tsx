@@ -19,16 +19,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/shad/Table';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/shad/AlertDialog';
+import { NotionAlertDialog } from '@/components/ui/NotionDialog';
 import {
   AppMenu,
   AppMenuTrigger,
@@ -475,64 +466,44 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
       )}
       
       {/* 删除确认对话框 */}
-      <AlertDialog open={deleteConfirmOpen} onOpenChange={(open) => {
-        setDeleteConfirmOpen(open);
-        if (!open) setSingleDeleteId(null);  // 关闭时清理单个删除状态
-      }}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle className="flex items-center gap-2">
-              <AlertTriangle className="w-5 h-5 text-rose-500" />
-              {t('exam_sheet:questionBank.confirmDelete', '确认删除')}
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              {singleDeleteId 
-                ? t('exam_sheet:questionBank.confirmDeleteSingle', '确定要删除这道题目吗？此操作无法撤销。')
-                : t('exam_sheet:questionBank.confirmDeleteBatch', '确定要删除选中的 {{count}} 道题目吗？此操作无法撤销。', { count: selectedIds.size })
-              }
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{t('common:cancel', '取消')}</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDeleteConfirm}
-              className="bg-rose-600 hover:bg-rose-700 text-white"
-            >
-              {t('common:delete', '删除')}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <NotionAlertDialog
+        open={deleteConfirmOpen}
+        onOpenChange={(open) => {
+          setDeleteConfirmOpen(open);
+          if (!open) setSingleDeleteId(null);
+        }}
+        icon={<AlertTriangle className="w-5 h-5 text-rose-500" />}
+        title={t('exam_sheet:questionBank.confirmDelete', '确认删除')}
+        description={
+          singleDeleteId 
+            ? t('exam_sheet:questionBank.confirmDeleteSingle', '确定要删除这道题目吗？此操作无法撤销。')
+            : t('exam_sheet:questionBank.confirmDeleteBatch', '确定要删除选中的 {{count}} 道题目吗？此操作无法撤销。', { count: selectedIds.size })
+        }
+        confirmText={t('common:delete', '删除')}
+        cancelText={t('common:cancel', '取消')}
+        confirmVariant="danger"
+        onConfirm={handleDeleteConfirm}
+      />
       
       {/* 重置进度确认对话框 */}
-      <AlertDialog open={resetConfirmOpen} onOpenChange={(open) => {
-        setResetConfirmOpen(open);
-        if (!open) setSingleResetId(null);  // 关闭时清理单个重置状态
-      }}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle className="flex items-center gap-2">
-              <AlertTriangle className="w-5 h-5 text-amber-500" />
-              {t('exam_sheet:questionBank.confirmReset', '确认重置进度')}
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              {singleResetId
-                ? t('exam_sheet:questionBank.confirmResetSingle', '确定要重置这道题目的学习进度吗？这将清除所有答题记录、正确率统计，题目将恢复为"新题"状态。')
-                : t('exam_sheet:questionBank.confirmResetBatch', '确定要重置选中的 {{count}} 道题目的学习进度吗？这将清除所有答题记录、正确率统计，题目将恢复为"新题"状态。', { count: selectedIds.size })
-              }
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{t('common:cancel', '取消')}</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleResetConfirm}
-              className="bg-amber-600 hover:bg-amber-700 text-white"
-            >
-              {t('exam_sheet:questionBank.resetProgress', '重置进度')}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <NotionAlertDialog
+        open={resetConfirmOpen}
+        onOpenChange={(open) => {
+          setResetConfirmOpen(open);
+          if (!open) setSingleResetId(null);
+        }}
+        icon={<AlertTriangle className="w-5 h-5 text-amber-500" />}
+        title={t('exam_sheet:questionBank.confirmReset', '确认重置进度')}
+        description={
+          singleResetId
+            ? t('exam_sheet:questionBank.confirmResetSingle', '确定要重置这道题目的学习进度吗？这将清除所有答题记录、正确率统计，题目将恢复为“新题”状态。')
+            : t('exam_sheet:questionBank.confirmResetBatch', '确定要重置选中的 {{count}} 道题目的学习进度吗？这将清除所有答题记录、正确率统计，题目将恢复为“新题”状态。', { count: selectedIds.size })
+        }
+        confirmText={t('exam_sheet:questionBank.resetProgress', '重置进度')}
+        cancelText={t('common:cancel', '取消')}
+        confirmVariant="warning"
+        onConfirm={handleResetConfirm}
+      />
     </div>
   );
 };

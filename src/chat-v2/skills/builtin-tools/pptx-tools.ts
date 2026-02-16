@@ -15,7 +15,7 @@ export const pptxToolsSkill: SkillDefinition = {
   id: 'pptx-tools',
   name: 'pptx-tools',
   description:
-    'PPTX 演示文稿读写编辑能力组，支持结构化读取、PPTX 文件生成、round-trip 编辑和文本替换。' +
+    'PPTX 演示文稿读写编辑能力组，支持结构化读取、表格提取、元数据查询、PPTX 文件生成、round-trip 编辑和文本替换。' +
     '当用户需要分析/创建/编辑 PowerPoint 演示文稿时使用。',
   version: '1.0.0',
   author: 'Deep Student',

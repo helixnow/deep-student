@@ -1,13 +1,13 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '../ui/shad/Dialog';
+  NotionDialog,
+  NotionDialogHeader,
+  NotionDialogTitle,
+  NotionDialogDescription,
+  NotionDialogBody,
+  NotionDialogFooter,
+} from '../ui/NotionDialog';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { Input } from '../ui/shad/Input';
 import { AppSelect } from '../ui/app-menu';
@@ -74,14 +74,14 @@ export function NotesLibraryManager({
   const { t } = useTranslation(['notes', 'common']);
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-hidden p-0 flex flex-col">
-        <DialogHeader className="px-6 pt-6 pb-3 flex-shrink-0">
-          <DialogTitle>{t('notes:library_manager.title')}</DialogTitle>
-          <DialogDescription className="text-sm leading-relaxed text-muted-foreground">
+    <NotionDialog open={open} onOpenChange={onOpenChange} maxWidth="max-w-2xl">
+        <NotionDialogHeader>
+          <NotionDialogTitle>{t('notes:library_manager.title')}</NotionDialogTitle>
+          <NotionDialogDescription>
             {t('notes:library_manager.description')}
-          </DialogDescription>
-        </DialogHeader>
+          </NotionDialogDescription>
+        </NotionDialogHeader>
+        <NotionDialogBody nativeScroll>
 
         <Tabs value={activeTab} onValueChange={(v) => onTabChange(v as 'export' | 'import')} className="flex-1 flex flex-col min-h-0">
           <TabsList className="mx-6 grid w-auto grid-cols-2">
@@ -266,8 +266,9 @@ export function NotesLibraryManager({
             </CustomScrollArea>
           </TabsContent>
         </Tabs>
+        </NotionDialogBody>
 
-        <DialogFooter className="px-6 pb-6 pt-2 flex-shrink-0 border-t border-border/40">
+        <NotionDialogFooter>
           <NotionButton
             variant="ghost"
             onClick={() => onOpenChange(false)}
@@ -304,8 +305,7 @@ export function NotesLibraryManager({
               )}
             </NotionButton>
           )}
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </NotionDialogFooter>
+    </NotionDialog>
   );
 }

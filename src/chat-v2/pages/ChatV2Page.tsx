@@ -35,16 +35,7 @@ import { mapDstuNodeToLearningHubItem } from './openResourceMapping';
 import { RESOURCE_ID_PREFIX_MAP } from '@/dstu/types/path';
 import { lazy, Suspense } from 'react';
 
-import {
-  AlertDialog,
-  AlertDialogContent,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogCancel,
-  AlertDialogAction,
-} from '@/components/ui/shad/AlertDialog';
+import { NotionAlertDialog } from '@/components/ui/NotionDialog';
 import { GroupEditorPanel, PRESET_ICONS } from '../components/groups/GroupEditorDialog';
 import { createSessionWithDefaults } from '../core/session/createSessionWithDefaults';
 import { useGroupManagement } from '../hooks/useGroupManagement';
@@ -3348,49 +3339,28 @@ export const ChatV2Page: React.FC = () => {
       <AnkiPanelHost />
 
       {/* 删除分组确认对话框 */}
-      <AlertDialog open={!!pendingDeleteGroup} onOpenChange={(open) => !open && setPendingDeleteGroup(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t('page.deleteGroupTitle')}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {t('page.deleteGroupDesc', { name: pendingDeleteGroup?.name })}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{t('common:cancel')}</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => {
-                confirmDeleteGroup();
-              }}
-            >
-              {t('page.deleteGroupConfirm')}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <NotionAlertDialog
+        open={!!pendingDeleteGroup}
+        onOpenChange={(open) => !open && setPendingDeleteGroup(null)}
+        title={t('page.deleteGroupTitle')}
+        description={t('page.deleteGroupDesc', { name: pendingDeleteGroup?.name })}
+        confirmText={t('page.deleteGroupConfirm')}
+        cancelText={t('common:cancel')}
+        confirmVariant="danger"
+        onConfirm={confirmDeleteGroup}
+      />
 
       {/* 清空回收站确认对话框 */}
-      <AlertDialog open={showEmptyTrashConfirm} onOpenChange={setShowEmptyTrashConfirm}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t('page.emptyTrashConfirmTitle')}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {t('page.emptyTrashConfirmDesc', { count: deletedSessions.length })}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{t('common:cancel')}</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => {
-                emptyTrash();
-                setShowEmptyTrashConfirm(false);
-              }}
-            >
-              {t('page.emptyTrashConfirm')}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <NotionAlertDialog
+        open={showEmptyTrashConfirm}
+        onOpenChange={setShowEmptyTrashConfirm}
+        title={t('page.emptyTrashConfirmTitle')}
+        description={t('page.emptyTrashConfirmDesc', { count: deletedSessions.length })}
+        confirmText={t('page.emptyTrashConfirm')}
+        cancelText={t('common:cancel')}
+        confirmVariant="danger"
+        onConfirm={() => { emptyTrash(); setShowEmptyTrashConfirm(false); }}
+      />
     </div>
   );
 };
