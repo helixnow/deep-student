@@ -920,7 +920,7 @@ export const IndexStatusView: React.FC = () => {
       <div key={resource.resourceId} className="group border-b border-border/40 hover:bg-muted/30 transition-all">
         {/* 主行 - 可点击展开 */}
         <div
-          className="flex items-center gap-4 px-6 py-3 cursor-pointer"
+          className="flex items-center gap-2 md:gap-4 px-3 md:px-6 py-2.5 md:py-3 cursor-pointer"
           onClick={() => toggleResourceExpand(resource.resourceId)}
         >
           {/* 🆕 展开/折叠指示器 */}
@@ -1032,8 +1032,8 @@ export const IndexStatusView: React.FC = () => {
 
         {/* 🆕 展开的详情区域 */}
         {isExpanded && (
-          <div className="px-6 pb-6 ml-11 border-l border-border/40 space-y-4">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-6 text-xs">
+          <div className="px-3 md:px-6 pb-4 md:pb-6 ml-7 md:ml-11 border-l border-border/40 space-y-3 md:space-y-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-6 text-xs">
               {/* OCR 状态 - 只对教材和图片显示 */}
               {showOcrStatus && (
                 <div>
@@ -1291,9 +1291,9 @@ export const IndexStatusView: React.FC = () => {
   return (
     <div className="flex flex-col h-full">
       {/* 顶部概览区 */}
-      <div className="flex flex-col md:flex-row items-center gap-6 p-6 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+      <div className="flex flex-col md:flex-row items-center gap-3 md:gap-6 p-3 md:p-6 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         {/* ★ 2026-02 修复：环形进度图 - 多模态索引已禁用时只显示文本进度 */}
-        <div className="flex items-center gap-6 shrink-0">
+        <div className="flex items-center gap-4 md:gap-6 shrink-0">
           {/* 综合进度环（当有多模态资源时显示，且多模态已启用） */}
           {MULTIMODAL_INDEX_ENABLED && summary.mmTotalResources > 0 ? (
             <>
@@ -1355,20 +1355,20 @@ export const IndexStatusView: React.FC = () => {
         </div>
 
         {/* 中间信息区 */}
-        <div className="flex-1 min-w-0 w-full grid gap-6 content-center">
+        <div className="flex-1 min-w-0 w-full grid gap-3 md:gap-6 content-center">
           {/* 关键指标卡片 */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            <div className="bg-muted/30 p-3 rounded-md flex flex-col justify-between gap-1 group transition-colors">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 md:gap-3">
+            <div className="bg-muted/30 p-2 md:p-3 rounded-md flex flex-col justify-between gap-0.5 md:gap-1 group transition-colors">
               <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium flex items-center gap-1.5">
                 <Database className="h-3 w-3" />
                 {t('indexStatus.stats.totalVectors', { defaultValue: '总向量数' })}
               </span>
-              <span className="text-lg font-semibold tabular-nums text-foreground/90">
+              <span className="text-base md:text-lg font-semibold tabular-nums text-foreground/90">
                 {dimensions.reduce((acc, d) => acc + d.recordCount, 0).toLocaleString()}
               </span>
             </div>
             
-            <div className="bg-muted/30 p-3 rounded-md flex flex-col justify-between gap-1 group transition-colors">
+            <div className="bg-muted/30 p-2 md:p-3 rounded-md flex flex-col justify-between gap-0.5 md:gap-1 group transition-colors">
               <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium flex items-center gap-1.5">
                 <Workflow className="h-3 w-3" />
                 {t('indexStatus.stats.dimensions', { defaultValue: '向量维度' })}
@@ -1390,7 +1390,7 @@ export const IndexStatusView: React.FC = () => {
             </div>
 
             <div className={cn(
-              "p-3 rounded-md flex flex-col justify-between gap-1 group transition-colors",
+              "p-2 md:p-3 rounded-md flex flex-col justify-between gap-0.5 md:gap-1 group transition-colors",
               summary.failedCount + summary.mmFailedCount > 0 
                 ? "bg-red-500/5" 
                 : "bg-muted/30"
@@ -1403,7 +1403,7 @@ export const IndexStatusView: React.FC = () => {
                 {t('indexStatus.stats.errors', { defaultValue: '索引错误' })}
               </span>
               <span className={cn(
-                "text-lg font-semibold tabular-nums",
+                "text-base md:text-lg font-semibold tabular-nums",
                 summary.failedCount + summary.mmFailedCount > 0 ? "text-red-600 dark:text-red-400" : "text-foreground/90"
               )}>
                 {summary.failedCount + summary.mmFailedCount}
@@ -1411,7 +1411,7 @@ export const IndexStatusView: React.FC = () => {
             </div>
 
             <div className={cn(
-              "p-3 rounded-md flex flex-col justify-between gap-1 group transition-colors",
+              "p-2 md:p-3 rounded-md flex flex-col justify-between gap-0.5 md:gap-1 group transition-colors",
               summary.staleCount > 0 
                 ? "bg-amber-500/5" 
                 : "bg-muted/30"
@@ -1424,7 +1424,7 @@ export const IndexStatusView: React.FC = () => {
                 {t('indexStatus.stats.stale', { defaultValue: '待更新' })}
               </span>
               <span className={cn(
-                "text-lg font-semibold tabular-nums",
+                "text-base md:text-lg font-semibold tabular-nums",
                 summary.staleCount > 0 ? "text-amber-600 dark:text-amber-400" : "text-foreground/90"
               )}>
                 {summary.staleCount}
@@ -1468,7 +1468,7 @@ export const IndexStatusView: React.FC = () => {
         </div>
 
         {/* 右侧操作按钮 - 纵向排列 */}
-        <div className="flex flex-col gap-2 shrink-0 w-full md:w-auto min-w-[140px]">
+        <div className="flex flex-col gap-1.5 md:gap-2 shrink-0 w-full md:w-auto min-w-[140px]">
           <NotionButton variant="primary" size="sm" onClick={handleUnifiedIndex} disabled={batchIndexing || mmIndexing} className={cn(batchIndexing || mmIndexing ? 'bg-muted text-muted-foreground' : 'bg-foreground text-background hover:bg-foreground/90')}>
             {(batchIndexing || mmIndexing) ? (
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -1502,7 +1502,7 @@ export const IndexStatusView: React.FC = () => {
 
       {/* 召回测试面板 */}
       {showTestPanel && (
-        <div className="border-b bg-background/50 backdrop-blur p-6 animate-in slide-in-from-top-2 duration-200">
+        <div className="border-b bg-background/50 backdrop-blur p-3 md:p-6 animate-in slide-in-from-top-2 duration-200">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
               <div className="p-2 rounded-md bg-primary/10 text-primary">
@@ -1602,7 +1602,7 @@ export const IndexStatusView: React.FC = () => {
       )}
 
       {/* 筛选栏 */}
-      <div className="flex items-center justify-between px-6 py-3 border-b bg-background/50 backdrop-blur sticky top-0 z-10">
+      <div className="flex items-center justify-between px-3 md:px-6 py-2 md:py-3 border-b bg-background/50 backdrop-blur sticky top-0 z-10">
         <div className="flex items-center gap-3 overflow-x-auto no-scrollbar mask-gradient-r pr-4">
           <span className="text-xs font-medium text-muted-foreground shrink-0 uppercase tracking-wider">{t('indexStatus.filter.typeFilter')}</span>
           <div className="h-4 w-px bg-border/60 shrink-0" />
@@ -1647,7 +1647,7 @@ export const IndexStatusView: React.FC = () => {
               return (
                 <div key={state}>
                   {/* 分组标题 */}
-                  <NotionButton variant="ghost" size="sm" onClick={() => toggleGroup(state)} className={cn('w-full !justify-start !px-4 !py-2.5', config.bgColor)}>
+                  <NotionButton variant="ghost" size="sm" onClick={() => toggleGroup(state)} className={cn('w-full !justify-start !px-3 md:!px-4 !py-2 md:!py-2.5', config.bgColor)}>
                     {isExpanded ? (
                       <ChevronDown className="h-4 w-4 text-muted-foreground" />
                     ) : (

@@ -168,8 +168,8 @@ export const LearningHubPage: React.FC = () => {
     return () => ro.disconnect();
   }, [isSmallScreen]);
 
-  // 计算侧边栏宽度（移动端不再保留左侧露出，避免文件网格横向偏移）
-  const sidebarWidth = Math.max(containerWidth, 280);
+  // 计算侧边栏宽度（移动端与设置页面保持一致的半宽 × 1.15）
+  const sidebarWidth = Math.max(Math.round(containerWidth / 2 * 1.15), 200);
 
   // ========== 📱 导航上下文（用于移动端返回按钮） ==========
   const { setHasOpenApp, registerCloseAppCallback } = useLearningHubNavigation();

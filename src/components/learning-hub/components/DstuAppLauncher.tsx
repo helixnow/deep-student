@@ -181,7 +181,7 @@ export const DstuAppLauncher: React.FC<DstuAppLauncherProps> = React.memo(({
         variant="ghost" size="sm"
         onClick={() => handleNavigate(item.type as QuickAccessType)}
         className={cn(
-          "w-full !justify-start gap-2.5 !px-3 !py-2 group",
+          "w-full !justify-start gap-3 !px-3 !py-[9px] group",
           isActive 
             ? "bg-accent/80 text-foreground font-medium" 
             : "text-muted-foreground hover:bg-accent/40 hover:text-foreground"
@@ -189,14 +189,14 @@ export const DstuAppLauncher: React.FC<DstuAppLauncherProps> = React.memo(({
       >
         {Icon && (
           <Icon 
-            size={18} 
+            size={21} 
             className={cn(
               "shrink-0 transition-transform duration-200",
               isActive ? "scale-105" : "group-hover:scale-105 opacity-80 group-hover:opacity-100"
             )} 
           />
         )}
-        <span className="text-[14px] truncate flex-1 text-left">
+        <span className="text-[16px] truncate flex-1 text-left">
           {item.label}
         </span>
       </NotionButton>
@@ -206,7 +206,7 @@ export const DstuAppLauncher: React.FC<DstuAppLauncherProps> = React.memo(({
   // 渲染分组标题
   const renderSectionTitle = (title: string) => (
     <div className="px-3 pt-4 pb-1.5">
-      <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/50">
+      <span className="text-[13px] font-semibold uppercase tracking-wider text-muted-foreground/50">
         {title}
       </span>
     </div>
@@ -219,7 +219,7 @@ export const DstuAppLauncher: React.FC<DstuAppLauncherProps> = React.memo(({
         {/* 搜索框 */}
         <div className="flex-1 relative group">
           <Search className={cn(
-            "absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 transition-colors duration-150",
+            "absolute left-2.5 top-1/2 -translate-y-1/2 h-[18px] w-[18px] transition-colors duration-150",
             isSearchFocused ? "text-primary" : "text-muted-foreground/50"
           )} />
           <input
@@ -230,7 +230,7 @@ export const DstuAppLauncher: React.FC<DstuAppLauncherProps> = React.memo(({
             onFocus={() => setIsSearchFocused(true)}
             onBlur={() => setIsSearchFocused(false)}
             className={cn(
-              "w-full h-9 pl-8 pr-8 text-[14px] rounded-lg outline-none transition-all duration-150",
+              "w-full h-[41px] pl-9 pr-9 text-[16px] rounded-lg outline-none transition-all duration-150",
               "bg-muted/40 placeholder:text-muted-foreground/40",
               "focus:bg-background focus:ring-1 focus:ring-primary/20 focus:shadow-sm"
             )}
@@ -295,25 +295,25 @@ export const DstuAppLauncher: React.FC<DstuAppLauncherProps> = React.memo(({
       <CustomScrollArea className="flex-1 min-h-0">
         <div className="px-2 pb-6">
           {/* 快捷访问 */}
-          <div className="space-y-0.5 mt-1">
+          <div className="space-y-1 mt-1">
             {quickAccessItems.map(renderNavItem)}
           </div>
 
           {/* 资源类型 */}
           {renderSectionTitle(t('learningHub:apps.resourceTypes'))}
-          <div className="space-y-0.5">
+          <div className="space-y-1">
             {resourceTypeItems.map(renderNavItem)}
           </div>
 
           {/* 媒体文件 */}
           {renderSectionTitle(t('learningHub:finder.quickAccess.media'))}
-          <div className="space-y-0.5">
+          <div className="space-y-1">
             {mediaItems.map(renderNavItem)}
           </div>
 
           {/* 系统 */}
           {renderSectionTitle(t('learningHub:apps.system'))}
-          <div className="space-y-0.5">
+          <div className="space-y-1">
             {systemItems.map(renderNavItem)}
           </div>
         </div>

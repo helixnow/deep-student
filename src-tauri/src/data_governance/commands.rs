@@ -4805,9 +4805,7 @@ async fn execute_restore_with_progress(
     backup_id: String,
     restore_assets: Option<bool>,
 ) {
-    use super::backup::assets;
     use super::backup::BackupManager;
-    use super::schema_registry::DatabaseId;
     use std::time::Instant;
 
     let start = Instant::now();

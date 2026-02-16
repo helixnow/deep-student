@@ -104,6 +104,32 @@ impl XlsxToolExecutor {
         }))
     }
 
+    /// ★ GAP-4 修复：读取 XLSX 文件元数据（工作表数量/名称/行列数）
+    async fn execute_get_metadata(
+        &self,
+        call: &ToolCall,
+        ctx: &ExecutionContext,
+    ) -> Result<Value, String> {
+        let resource_id = call
+            .arguments
+            .get("resource_id")
+            .and_then(|v| v.as_str())
+            .ok_or("Missing 'resource_id' parameter")?;
+
+        let bytes = self.load_file_bytes(ctx, resource_id)?;
+
+        let parser = DocumentParser::new();
+        let metadata = parser
+            .extract_xlsx_metadata(&bytes)
+            .map_err(|e| format!("XLSX 元数据读取失败: {}", e))?;
+
+        Ok(json!({
+            "success": true,
+            "resource_id": resource_id,
+            "metadata": metadata,
+        }))
+    }
+
     /// 将 XLSX 转换为 JSON spec（round-trip 编辑的读取端）
     async fn execute_to_spec(
         &self,
@@ -425,6 +451,7 @@ impl ToolExecutor for XlsxToolExecutor {
             stripped,
             "xlsx_read_structured"
                 | "xlsx_extract_tables"
+                | "xlsx_get_metadata"
                 | "xlsx_create"
                 | "xlsx_to_spec"
                 | "xlsx_edit_cells"
@@ -458,6 +485,7 @@ impl ToolExecutor for XlsxToolExecutor {
         let result = match tool_name {
             "xlsx_read_structured" => self.execute_read_structured(call, ctx).await,
             "xlsx_extract_tables" => self.execute_extract_tables(call, ctx).await,
+            "xlsx_get_metadata" => self.execute_get_metadata(call, ctx).await,
             "xlsx_create" => self.execute_create(call, ctx).await,
             "xlsx_to_spec" => self.execute_to_spec(call, ctx).await,
             "xlsx_edit_cells" => self.execute_edit_cells(call, ctx).await,
@@ -519,9 +547,8 @@ impl ToolExecutor for XlsxToolExecutor {
     fn sensitivity_level(&self, tool_name: &str) -> ToolSensitivity {
         let stripped = Self::strip_namespace(tool_name);
         match stripped {
-            "xlsx_read_structured" | "xlsx_extract_tables" | "xlsx_to_spec" => {
-                ToolSensitivity::Low
-            }
+            "xlsx_read_structured" | "xlsx_extract_tables" | "xlsx_get_metadata"
+            | "xlsx_to_spec" => ToolSensitivity::Low,
             "xlsx_create" | "xlsx_edit_cells" | "xlsx_replace_text" => ToolSensitivity::Medium,
             _ => ToolSensitivity::Low,
         }
@@ -546,6 +573,7 @@ mod tests {
 
         assert!(executor.can_handle("builtin-xlsx_read_structured"));
         assert!(executor.can_handle("builtin-xlsx_extract_tables"));
+        assert!(executor.can_handle("builtin-xlsx_get_metadata"));
         assert!(executor.can_handle("builtin-xlsx_create"));
         assert!(executor.can_handle("builtin-xlsx_to_spec"));
         assert!(executor.can_handle("builtin-xlsx_edit_cells"));
@@ -564,6 +592,10 @@ mod tests {
         );
         assert_eq!(
             executor.sensitivity_level("builtin-xlsx_to_spec"),
+            ToolSensitivity::Low
+        );
+        assert_eq!(
+            executor.sensitivity_level("builtin-xlsx_get_metadata"),
             ToolSensitivity::Low
         );
         assert_eq!(

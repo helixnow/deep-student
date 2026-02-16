@@ -310,20 +310,24 @@ const NOTE_TOOLS = [
   'builtin-note_create', 'builtin-note_read', 'builtin-note_append', 'builtin-note_replace', 'builtin-note_set', 'builtin-note_list', 'builtin-note_search',
 ];
 
-// DOCX 写入/编辑工具列表（生成文件的工具）
-const DOCX_WRITE_TOOLS = [
+// DOCX/PPTX/XLSX 写入/编辑工具列表（生成文件的工具）
+const DOC_WRITE_TOOLS = [
   'docx_create', 'docx_replace_text',
   'builtin-docx_create', 'builtin-docx_replace_text',
+  'pptx_create', 'pptx_replace_text',
+  'builtin-pptx_create', 'builtin-pptx_replace_text',
+  'xlsx_create', 'xlsx_replace_text', 'xlsx_edit_cells',
+  'builtin-xlsx_create', 'builtin-xlsx_replace_text', 'builtin-xlsx_edit_cells',
 ];
 
 /**
- * 从 DOCX 工具输出中提取 file_id 和 file_name
+ * 从 DOCX/PPTX/XLSX 工具输出中提取 file_id 和 file_name
  */
-function extractDocxFileInfo(toolOutput: unknown): { fileId: string; fileName: string } | null {
+function extractDocWriteFileInfo(toolOutput: unknown): { fileId: string; fileName: string } | null {
   if (toolOutput && typeof toolOutput === 'object') {
     const output = toolOutput as Record<string, unknown>;
     const fileId = (output.file_id || output.new_file_id) as string | undefined;
-    const fileName = (output.file_name || 'document.docx') as string;
+    const fileName = (output.file_name || 'document') as string;
     if (fileId) {
       return { fileId, fileName };
     }
@@ -552,9 +556,9 @@ const McpToolBlockComponent: React.FC<BlockComponentProps> = ({
         <div className="p-3">
           <ToolOutputView output={toolOutput} />
           
-          {/* DOCX 写入工具跳转按钮 */}
-          {DOCX_WRITE_TOOLS.includes(toolName) && (() => {
-            const fileInfo = extractDocxFileInfo(toolOutput);
+          {/* DOCX/PPTX/XLSX 写入工具跳转按钮 */}
+          {DOC_WRITE_TOOLS.includes(toolName) && (() => {
+            const fileInfo = extractDocWriteFileInfo(toolOutput);
             if (!fileInfo) return null;
             return (
               <NotionButton

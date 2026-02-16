@@ -84,7 +84,8 @@ export const SettingsSidebar: React.FC<SettingsSidebarProps> = ({
         {!isCollapsed ? (
           <div className="relative">
             <Search className={cn(
-              "absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 transition-colors duration-150",
+              "absolute left-2.5 top-1/2 -translate-y-1/2 transition-colors duration-150",
+              isSmallScreen ? 'h-5 w-5' : 'h-5 w-5',
               sidebarSearchFocused ? "text-primary" : "text-muted-foreground/50"
             )} />
             <Input
@@ -95,7 +96,7 @@ export const SettingsSidebar: React.FC<SettingsSidebarProps> = ({
               onFocus={() => setSidebarSearchFocused(true)}
               onBlur={() => setSidebarSearchFocused(false)}
               className={cn(
-                'h-8 pl-8 pr-8 text-[13px] rounded-lg',
+                isSmallScreen ? 'h-10 pl-9 pr-9 text-[16px] rounded-lg' : 'h-10 pl-9 pr-9 text-[16px] rounded-lg',
                 'bg-muted/40 border-transparent',
                 'placeholder:text-muted-foreground/40',
                 'focus:bg-background focus:border-border/60 focus:ring-1 focus:ring-primary/20',
@@ -120,7 +121,7 @@ export const SettingsSidebar: React.FC<SettingsSidebarProps> = ({
         'flex-1 overflow-y-auto py-2',
         isCollapsed ? 'px-1.5' : 'px-2'
       )}>
-        <ul className="space-y-0.5">
+        <ul className={isSmallScreen ? 'space-y-2' : 'space-y-1'}>
           {filteredNavItems.map((item) => {
             const Icon = item.icon;
             const isActive = activeTab === item.value;
@@ -142,7 +143,9 @@ export const SettingsSidebar: React.FC<SettingsSidebarProps> = ({
                     'w-full !rounded-md',
                     isCollapsed 
                       ? '!justify-center !p-2' 
-                      : '!justify-start gap-2.5 !px-2.5 !py-1.5',
+                      : isSmallScreen
+                        ? '!justify-start gap-3 !px-3 !py-[7px]'
+                        : '!justify-start gap-3 !px-3 !py-[7px]',
                     isActive
                       ? 'bg-foreground/[0.08] text-foreground'
                       : 'text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04]'
@@ -151,12 +154,13 @@ export const SettingsSidebar: React.FC<SettingsSidebarProps> = ({
                 >
                   <Icon className={cn(
                     'flex-shrink-0 transition-colors',
-                    'w-4 h-4',
+                    isSmallScreen ? 'w-[19px] h-[19px]' : 'w-[19px] h-[19px]',
                     isActive && 'text-foreground'
                   )} />
                   {!isCollapsed && (
                     <span className={cn(
-                      'text-[13px] truncate',
+                      'truncate',
+                      isSmallScreen ? 'text-[16px]' : 'text-[16px]',
                       isActive ? 'font-bold' : 'font-semibold'
                     )}>
                       {item.label}

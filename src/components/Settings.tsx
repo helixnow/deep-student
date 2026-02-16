@@ -1236,6 +1236,10 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
         showGlobalNotification('warning', t('settings:mcp_descriptions.refresh_failed', { error: errMsg }));
       }
       showGlobalNotification('success', t('common:mcp_tool_saved'));
+
+      // 添加后自动运行一次连通性测试以获取工具列表
+      handleTestServer(toolToSave).catch(() => { /* 静默处理测试失败 */ });
+
       return true;
     } catch (error) {
       const message = getErrorMessage(error);
@@ -1381,6 +1385,10 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
         showGlobalNotification('warning', t('settings:mcp_descriptions.refresh_failed', { error: errMsg }));
       }
       showGlobalNotification('success', t('common:mcp_tool_saved'));
+
+      // 编辑保存后自动运行一次连通性测试以刷新工具列表
+      handleTestServer(updated).catch(() => { /* 静默处理测试失败 */ });
+
       return true;
     } catch (error) {
       const message = getErrorMessage(error);
@@ -4550,6 +4558,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
           rightPanel={renderRightPanel()}
           screenPosition={screenPosition}
           onScreenPositionChange={setScreenPosition}
+          sidebarWidth="half"
           rightPanelEnabled={rightPanelType !== 'none'}
           enableGesture={true}
           threshold={0.3}

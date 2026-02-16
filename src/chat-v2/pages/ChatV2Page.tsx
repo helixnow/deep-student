@@ -2040,14 +2040,14 @@ export const ChatV2Page: React.FC = () => {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder={t('page.searchPlaceholder')}
-            className="w-full h-8 px-3 text-sm rounded-md border border-border bg-background
+            className="w-full h-[37px] px-3 text-[16px] rounded-md border border-border bg-background
                        placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
           />
         </div>
       </div>
 
       {/* 浏览所有对话入口 + 回收站入口 */}
-      <div className="px-3 py-2 shrink-0 space-y-1">
+      <div className="px-3 py-2 shrink-0 space-y-1.5">
         <NotionButton
           variant="ghost"
           size="md"
@@ -2056,14 +2056,14 @@ export const ChatV2Page: React.FC = () => {
             setViewMode(viewMode === 'browser' ? 'sidebar' : 'browser');
             setSessionSheetOpen(false);
           }}
-          className="w-full justify-between px-3 py-2.5 bg-muted/50 hover:bg-muted group"
+          className="w-full justify-between px-3 py-[11px] bg-muted/50 hover:bg-muted group"
         >
-          <div className="flex items-center gap-2">
-            <LayoutGrid className="w-4 h-4 text-muted-foreground group-hover:text-foreground" />
-            <span className="text-sm font-semibold">{t('browser.allSessions')}</span>
+          <div className="flex items-center gap-2.5">
+            <LayoutGrid className="w-[18px] h-[18px] text-muted-foreground group-hover:text-foreground" />
+            <span className="text-[16px] font-semibold">{t('browser.allSessions')}</span>
             <span className="text-xs text-muted-foreground">{totalSessionCount ?? sessions.length}</span>
           </div>
-          <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-foreground" />
+          <ChevronRight className="w-[18px] h-[18px] text-muted-foreground group-hover:text-foreground" />
         </NotionButton>
 
         {/* 🔧 P1-29: 回收站入口（移动端）- 与桌面端一致，不关闭侧边栏 */}
@@ -2072,16 +2072,16 @@ export const ChatV2Page: React.FC = () => {
           size="md"
           onClick={toggleTrash}
           className={cn(
-            'w-full justify-between px-3 py-2 group',
+            'w-full justify-between px-3 py-[9px] group',
             showTrash ? 'bg-muted' : 'hover:bg-muted/50'
           )}
         >
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2.5">
             <Trash2 className={cn(
-              'w-4 h-4',
+              'w-[18px] h-[18px]',
               showTrash ? 'text-destructive' : 'text-muted-foreground group-hover:text-foreground'
             )} />
-            <span className="text-sm font-semibold">
+            <span className="text-[16px] font-semibold">
               {t('page.trash')}
             </span>
             {deletedSessions.length > 0 && (
@@ -2089,7 +2089,7 @@ export const ChatV2Page: React.FC = () => {
             )}
           </div>
           <ChevronRight className={cn(
-            'w-4 h-4 transition-transform',
+            'w-[18px] h-[18px] transition-transform',
             showTrash ? 'rotate-90 text-foreground' : 'text-muted-foreground group-hover:text-foreground'
           )} />
         </NotionButton>
@@ -2100,21 +2100,21 @@ export const ChatV2Page: React.FC = () => {
           size="md"
           onClick={toggleChatControl}
           className={cn(
-            'w-full justify-between px-3 py-2 group',
+            'w-full justify-between px-3 py-[9px] group',
             showChatControl ? 'bg-muted' : 'hover:bg-muted/50'
           )}
         >
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2.5">
             <SlidersHorizontal className={cn(
-              'w-4 h-4',
+              'w-[18px] h-[18px]',
               showChatControl ? 'text-primary' : 'text-muted-foreground group-hover:text-foreground'
             )} />
-            <span className="text-sm font-semibold">
+            <span className="text-[16px] font-semibold">
               {t('common:chat_controls')}
             </span>
           </div>
           <ChevronRight className={cn(
-            'w-4 h-4 transition-transform',
+            'w-[18px] h-[18px] transition-transform',
             showChatControl ? 'rotate-90 text-foreground' : 'text-muted-foreground group-hover:text-foreground'
           )} />
         </NotionButton>
@@ -2256,7 +2256,7 @@ export const ChatV2Page: React.FC = () => {
           <div className="py-1 space-y-2">
             {/* 分组区域 */}
             <div className="flex items-center justify-between px-3 py-1.5">
-              <span className="text-[11px] font-medium text-muted-foreground/60 uppercase tracking-wider">
+              <span className="text-[13px] font-medium text-muted-foreground/60 uppercase tracking-wider">
                 {t('page.groups')}
               </span>
               <NotionButton
@@ -2266,7 +2266,7 @@ export const ChatV2Page: React.FC = () => {
                 onClick={openCreateGroup}
                 title={t('page.createGroup')}
               >
-                <Plus className="w-3.5 h-3.5" />
+                <Plus className="w-4 h-4" />
               </NotionButton>
             </div>
 

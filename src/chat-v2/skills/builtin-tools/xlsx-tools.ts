@@ -35,6 +35,7 @@ export const xlsxToolsSkill: SkillDefinition = {
 ### 读取类
 - **builtin-xlsx_read_structured**: 结构化读取 XLSX，输出文本格式（按工作表分节，行数据制表符分隔）
 - **builtin-xlsx_extract_tables**: 提取所有工作表为结构化 JSON（含行列数据）
+- **builtin-xlsx_get_metadata**: 读取 XLSX 文件元数据（工作表数量/名称/行列数）
 
 ### 写入类
 - **builtin-xlsx_create**: 从 JSON spec 生成格式化 XLSX 文件并保存到用户的学习资源
@@ -52,11 +53,12 @@ export const xlsxToolsSkill: SkillDefinition = {
 ## 典型场景
 
 1. 用户说"分析这个 Excel 表格" → xlsx_read_structured 或 xlsx_extract_tables
-2. 用户说"帮我生成一个 Excel 表格" → xlsx_create
-3. 用户说"把成绩导出为 Excel" → xlsx_create
-4. 用户说"修改这个 Excel" → xlsx_to_spec → 修改 spec → xlsx_create
-5. 用户说"把 A1 单元格改为 100" → xlsx_edit_cells
-6. 用户说"把表格里的 XXX 替换为 YYY" → xlsx_replace_text
+2. 用户说"这个 Excel 有几个工作表" → xlsx_get_metadata
+3. 用户说"帮我生成一个 Excel 表格" → xlsx_create
+4. 用户说"把成绩导出为 Excel" → xlsx_create
+5. 用户说"修改这个 Excel" → xlsx_to_spec → 修改 spec → xlsx_create
+6. 用户说"把 A1 单元格改为 100" → xlsx_edit_cells
+7. 用户说"把表格里的 XXX 替换为 YYY" → xlsx_replace_text
 
 ## xlsx_create spec 格式说明
 
@@ -116,6 +118,23 @@ spec 是一个 JSON 对象，支持两种格式：
         '提取 XLSX 中所有工作表的结构化数据，返回 JSON 格式。' +
         '每个工作表包含 sheet_name、row_count、col_count 和 rows 二维数组。' +
         '当用户需要精确分析表格数据、进行数据处理时使用。',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          resource_id: {
+            type: 'string',
+            description:
+              '【必填】XLSX 文件的资源 ID（如 file_xxx）。',
+          },
+        },
+        required: ['resource_id'],
+      },
+    },
+    {
+      name: 'builtin-xlsx_get_metadata',
+      description:
+        '读取 XLSX 电子表格的元数据信息：工作表数量、各工作表名称及行列数。' +
+        '当用户询问"这个 Excel 有几个工作表"、"表格有多少行"时使用。',
       inputSchema: {
         type: 'object',
         properties: {

@@ -33,7 +33,8 @@ export const pptxToolsSkill: SkillDefinition = {
 
 ### 读取类
 - **builtin-pptx_read_structured**: 结构化读取 PPTX，输出 Markdown 格式（保留标题/要点/文本）
-- **builtin-pptx_get_metadata**: 读取演示文稿信息（幻灯片数量等）
+- **builtin-pptx_get_metadata**: 读取演示文稿信息（精确幻灯片数量、文本总长度）
+- **builtin-pptx_extract_tables**: 提取 PPTX 中所有表格为结构化 JSON
 
 ### 写入类
 - **builtin-pptx_create**: 从 JSON spec 生成格式化 PPTX 文件并保存到用户的学习资源
@@ -49,11 +50,12 @@ export const pptxToolsSkill: SkillDefinition = {
 
 ## 典型场景
 
-1. 用户说"分析这个 PPT 的内容" → pptx_read_structured
-2. 用户说"这个 PPT 有几页" → pptx_get_metadata
-3. 用户说"帮我做一份 PPT" → pptx_create（无需 resource_id）
-4. 用户说"修改这个 PPT" → pptx_to_spec → 修改 spec → pptx_create
-5. 用户说"把 PPT 里的 XXX 替换为 YYY" → pptx_replace_text
+1. 用户说“分析这个 PPT 的内容” → pptx_read_structured
+2. 用户说“这个 PPT 有几页” → pptx_get_metadata
+3. 用户说“提取 PPT 中的表格” → pptx_extract_tables
+4. 用户说“帮我做一份 PPT” → pptx_create（无需 resource_id）
+5. 用户说“修改这个 PPT” → pptx_to_spec → 修改 spec → pptx_create
+6. 用户说“把 PPT 里的 XXX 替换为 YYY” → pptx_replace_text
 
 ## pptx_create spec 格式说明
 
@@ -97,8 +99,26 @@ spec 是一个 JSON 对象，包含 title 和 slides 数组：
     {
       name: 'builtin-pptx_get_metadata',
       description:
-        '读取 PPTX 演示文稿的基本信息：幻灯片数量、内容长度等。' +
-        '当用户询问"这个 PPT 有几页"时使用。',
+        '读取 PPTX 演示文稿的基本信息：精确幻灯片数量、文本总长度。' +
+        '当用户询问“这个 PPT 有几页”时使用。',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          resource_id: {
+            type: 'string',
+            description:
+              '【必填】PPTX 文件的资源 ID（如 file_xxx）。',
+          },
+        },
+        required: ['resource_id'],
+      },
+    },
+    {
+      name: 'builtin-pptx_extract_tables',
+      description:
+        '提取 PPTX 演示文稿中的所有表格，返回结构化 JSON 数组。' +
+        '每个表格包含所在幻灯片标题、表头、数据行、行列数。' +
+        '当用户需要分析 PPT 中的表格数据时使用。',
       inputSchema: {
         type: 'object',
         properties: {

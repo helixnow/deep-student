@@ -41,8 +41,9 @@ interface MobileSlidingLayoutProps {
    * 侧边栏宽度
    * - 数字：固定像素宽度（默认 280px）
    * - 'auto'：自动计算为接近全屏宽度（100vw - mainContentPeekWidth）
+   * - 'half'：容器宽度的 50%
    */
-  sidebarWidth?: number | 'auto';
+  sidebarWidth?: number | 'auto' | 'half';
   /**
    * 主内容露出宽度（仅当 sidebarWidth='auto' 时生效）
    * 默认 60px，让主内容露出一小部分作为视觉提示
@@ -90,6 +91,8 @@ export const MobileSlidingLayout: React.FC<MobileSlidingLayoutProps> = ({
     currentTranslate: 0,
     axisLocked: null as 'horizontal' | 'vertical' | null,
     baseTranslate: 0,
+    /** 拖拽开始时的 baseTranslate 快照，拖拽过程中不会被渲染更新覆盖 */
+    dragStartBase: 0,
   });
 
   // 用于触发重渲染
@@ -122,7 +125,9 @@ export const MobileSlidingLayout: React.FC<MobileSlidingLayoutProps> = ({
   // 计算实际侧边栏宽度
   const sidebarWidth = sidebarWidthProp === 'auto'
     ? Math.max(containerWidth - mainContentPeekWidth, 280) // 最小 280px
-    : sidebarWidthProp;
+    : sidebarWidthProp === 'half'
+      ? Math.max(Math.round(containerWidth / 2), 180)
+      : sidebarWidthProp;
 
   // 计算当前偏移量（三屏模式）
   const getBaseTranslate = useCallback(() => {
@@ -135,7 +140,10 @@ export const MobileSlidingLayout: React.FC<MobileSlidingLayoutProps> = ({
   }, [screenPosition, sidebarWidth, containerWidth]);
 
   const baseTranslate = getBaseTranslate();
-  stateRef.current.baseTranslate = baseTranslate;
+  // 仅在未拖拽时同步 baseTranslate，防止拖拽中途被渲染更新覆盖
+  if (!stateRef.current.isDragging) {
+    stateRef.current.baseTranslate = baseTranslate;
+  }
 
   // 处理开始拖拽（触摸/鼠标）
   const handleDragStart = useCallback((clientX: number, clientY: number) => {
@@ -146,6 +154,8 @@ export const MobileSlidingLayout: React.FC<MobileSlidingLayoutProps> = ({
     stateRef.current.startY = clientY;
     stateRef.current.currentTranslate = baseTranslate;
     stateRef.current.axisLocked = null;
+    stateRef.current.dragStartBase = baseTranslate;
+    stateRef.current.baseTranslate = baseTranslate;
 
     setIsDragging(true);
     setCurrentTranslate(baseTranslate);
@@ -182,8 +192,13 @@ export const MobileSlidingLayout: React.FC<MobileSlidingLayoutProps> = ({
       preventDefault();
     }
 
-    // 计算新的偏移量
-    let newTranslate = stateRef.current.baseTranslate + deltaX;
+    // 轴向尚未确定时不更新位置，避免微小偏移
+    if (stateRef.current.axisLocked !== 'horizontal') {
+      return;
+    }
+
+    // 计算新的偏移量（使用拖拽开始时的快照，防止中途被渲染更新干扰）
+    let newTranslate = stateRef.current.dragStartBase + deltaX;
 
     // 限制范围：三屏模式下考虑右侧面板
     const minTranslate = isThreeScreenMode && rightPanelEnabled
@@ -203,7 +218,7 @@ export const MobileSlidingLayout: React.FC<MobileSlidingLayoutProps> = ({
       return;
     }
 
-    const deltaX = stateRef.current.currentTranslate - stateRef.current.baseTranslate;
+    const deltaX = stateRef.current.currentTranslate - stateRef.current.dragStartBase;
     const thresholdPx = sidebarWidth * threshold;
 
     // 三屏模式下的状态切换逻辑
@@ -276,6 +291,13 @@ export const MobileSlidingLayout: React.FC<MobileSlidingLayoutProps> = ({
       handleDragEnd();
     };
 
+    // 页面失焦 / 上下文菜单弹出时，强制结束拖拽，防止 isDragging 卡死
+    const onDragAbort = () => {
+      if (stateRef.current.isDragging) {
+        handleDragEnd();
+      }
+    };
+
     // 绑定触摸事件
     container.addEventListener('touchstart', onTouchStart, { passive: true });
     container.addEventListener('touchmove', onTouchMove, { passive: false });
@@ -288,6 +310,10 @@ export const MobileSlidingLayout: React.FC<MobileSlidingLayoutProps> = ({
     document.addEventListener('mousemove', onMouseMove);
     document.addEventListener('mouseup', onMouseUp);
 
+    // 安全兜底：页面不可见或弹出菜单时结束拖拽
+    document.addEventListener('visibilitychange', onDragAbort);
+    document.addEventListener('contextmenu', onDragAbort);
+
     return () => {
       container.removeEventListener('touchstart', onTouchStart);
       container.removeEventListener('touchmove', onTouchMove);
@@ -296,6 +322,8 @@ export const MobileSlidingLayout: React.FC<MobileSlidingLayoutProps> = ({
       container.removeEventListener('mousedown', onMouseDown);
       document.removeEventListener('mousemove', onMouseMove);
       document.removeEventListener('mouseup', onMouseUp);
+      document.removeEventListener('visibilitychange', onDragAbort);
+      document.removeEventListener('contextmenu', onDragAbort);
     };
   }, [handleDragStart, handleDragMove, handleDragEnd]);
 

@@ -209,7 +209,10 @@
     "deep-student": "Deep Scholar",
     "dstu-memory-orchestrator": "DSTU Memory Orchestrator",
     "mindmap-tools": "Mind Map",
-    "attachment-tools": "Attachment Parser"
+    "attachment-tools": "Attachment Parser",
+    "docx-tools": "Word Document Tools",
+    "pptx-tools": "PPT Presentation Tools",
+    "xlsx-tools": "Excel Spreadsheet Tools"
   },
   "builtinDescriptions": {
     "knowledge-retrieval": "Find and cite relevant knowledge from your library and external sources.",
@@ -230,7 +233,10 @@
     "deep-student": "Default learning strategy that combines memory production/consumption with lightweight user questioning.",
     "dstu-memory-orchestrator": "Default memory strategy: local-first unified retrieval, selective memory consumption, and gated long-term memory writes.",
     "mindmap-tools": "Create and organize mind maps from topics and notes.",
-    "attachment-tools": "Parse and extract text or metadata from uploaded files."
+    "attachment-tools": "Parse and extract text or metadata from uploaded files.",
+    "docx-tools": "Read, write, and edit DOCX documents with structured extraction, table parsing, metadata queries, file generation, round-trip editing, and text replacement.",
+    "pptx-tools": "Read, write, and edit PPTX presentations with structured extraction, file generation, round-trip editing, and text replacement.",
+    "xlsx-tools": "Read, write, and edit XLSX spreadsheets with structured extraction, table parsing, file generation, round-trip editing, cell editing, and text replacement."
   },
 
   "favorite": {

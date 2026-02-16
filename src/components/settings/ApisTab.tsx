@@ -510,8 +510,8 @@ export const ApisTab: React.FC<ApisTabProps> = ({
                                   <div className="flex-1 min-w-0 space-y-1">
                                     <div className="flex items-center gap-2">
                                       <span className="text-sm font-medium text-foreground truncate">{profile.label || api.name}</span>
-                                      {!profile.enabled && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">{t('settings:status.disabled')}</span>}
-                                      {profile.isBuiltin && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400">{t('settings:api_config.badge_builtin_free')}</span>}
+                                      {!profile.enabled && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground whitespace-nowrap shrink-0">{t('settings:status.disabled')}</span>}
+                                      {profile.isBuiltin && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400 whitespace-nowrap shrink-0">{t('settings:api_config.badge_builtin_free')}</span>}
                                     </div>
                                     <div className="font-mono text-xs text-muted-foreground truncate">{api.model}</div>
                                     

@@ -1954,55 +1954,148 @@ impl DocumentParser {
     ///
     /// 读取现有 PPTX → 提取幻灯片结构 → 输出 JSON spec
     /// LLM 可修改 spec 后使用 generate_pptx_from_spec 重新生成
+    ///
+    /// ★ GAP-5 修复：正确检测 subtitle / table / title 类型幻灯片
     pub fn extract_pptx_as_spec(&self, bytes: &[u8]) -> Result<serde_json::Value, ParsingError> {
-        // 先提取为 Markdown（复用 pptx-to-md），然后转换为 spec 格式
         let markdown = self.extract_pptx_from_bytes(bytes.to_vec())?;
 
-        // 将 Markdown 解析为幻灯片结构
-        let mut slides = Vec::new();
+        // 按幻灯片分割：每遇到 # 或 ## 开头表示新幻灯片
+        let mut slides: Vec<serde_json::Value> = Vec::new();
         let mut current_title = String::new();
         let mut current_bullets: Vec<String> = Vec::new();
+        let mut current_table_headers: Vec<String> = Vec::new();
+        let mut current_table_rows: Vec<Vec<String>> = Vec::new();
+        let mut in_table = false;
+
+        let flush_slide = |title: &str,
+                           bullets: &[String],
+                           table_headers: &[String],
+                           table_rows: &[Vec<String>],
+                           slides: &mut Vec<serde_json::Value>| {
+            if title.is_empty() && bullets.is_empty() && table_headers.is_empty() {
+                return;
+            }
+
+            let has_table = !table_headers.is_empty() || !table_rows.is_empty();
+            let has_bullets = !bullets.is_empty();
+
+            if has_table && has_bullets {
+                // ★ 同一幻灯片同时有文本要点和表格 → 拆为两张：content + table
+                slides.push(serde_json::json!({
+                    "type": "content",
+                    "title": title,
+                    "bullets": bullets,
+                }));
+                slides.push(serde_json::json!({
+                    "type": "table",
+                    "title": format!("{} - 表格", title),
+                    "headers": table_headers,
+                    "rows": table_rows,
+                }));
+            } else if has_table {
+                slides.push(serde_json::json!({
+                    "type": "table",
+                    "title": title,
+                    "headers": table_headers,
+                    "rows": table_rows,
+                }));
+            } else if !has_bullets {
+                // 无要点 → blank 页
+                slides.push(serde_json::json!({
+                    "type": "blank",
+                    "title": title,
+                }));
+            } else if slides.is_empty() && bullets.len() == 1 {
+                // 第一张幻灯片且只有一行文字 → 视为 title 页（title + subtitle）
+                slides.push(serde_json::json!({
+                    "type": "title",
+                    "title": title,
+                    "subtitle": bullets[0],
+                }));
+            } else {
+                slides.push(serde_json::json!({
+                    "type": "content",
+                    "title": title,
+                    "bullets": bullets,
+                }));
+            }
+        };
 
         for line in markdown.lines() {
             let trimmed = line.trim();
+
+            // 检测 Markdown 表格行（| col1 | col2 |）
+            // ★ 安全守卫：至少需要 "| x |"（5 字符），避免 "|" 或 "||" 导致切片越界
+            if trimmed.len() >= 5 && trimmed.starts_with('|') && trimmed.ends_with('|') {
+                let inner = &trimmed[1..trimmed.len() - 1];
+                // 跳过分隔行（|---|---|）
+                let is_separator = inner.chars().all(|c| c == '-' || c == '|' || c == ':' || c == ' ');
+                if is_separator {
+                    continue;
+                }
+
+                let cells: Vec<String> = inner
+                    .split('|')
+                    .map(|c| c.trim().to_string())
+                    .collect();
+
+                if !in_table {
+                    // 首次遇到表格行 → 作为表头
+                    in_table = true;
+                    current_table_headers = cells;
+                } else {
+                    current_table_rows.push(cells);
+                }
+                continue;
+            }
+
+            // 非表格行时，如果之前在表格中，保持表格状态（后续 flush 处理）
+            if in_table && !trimmed.is_empty() && !trimmed.starts_with('#') {
+                // 表格后的非标题非空行，视为当前幻灯片的 bullet
+                in_table = false;
+            }
+
             if trimmed.is_empty() {
                 continue;
             }
 
             if trimmed.starts_with("# ") || trimmed.starts_with("## ") {
                 // 保存前一张幻灯片
-                if !current_title.is_empty() || !current_bullets.is_empty() {
-                    slides.push(serde_json::json!({
-                        "type": "content",
-                        "title": current_title,
-                        "bullets": current_bullets,
-                    }));
-                }
-                current_title = trimmed
-                    .trim_start_matches('#')
-                    .trim()
-                    .to_string();
+                flush_slide(
+                    &current_title,
+                    &current_bullets,
+                    &current_table_headers,
+                    &current_table_rows,
+                    &mut slides,
+                );
+                current_title = trimmed.trim_start_matches('#').trim().to_string();
                 current_bullets = Vec::new();
-            } else if trimmed.starts_with("- ") || trimmed.starts_with("* ") || trimmed.starts_with("• ") {
+                current_table_headers = Vec::new();
+                current_table_rows = Vec::new();
+                in_table = false;
+            } else if trimmed.starts_with("- ")
+                || trimmed.starts_with("* ")
+                || trimmed.starts_with("• ")
+            {
                 let bullet_text = trimmed
                     .trim_start_matches("- ")
                     .trim_start_matches("* ")
                     .trim_start_matches("• ")
                     .to_string();
                 current_bullets.push(bullet_text);
-            } else if !trimmed.is_empty() {
+            } else if !in_table {
                 current_bullets.push(trimmed.to_string());
             }
         }
 
         // 保存最后一张幻灯片
-        if !current_title.is_empty() || !current_bullets.is_empty() {
-            slides.push(serde_json::json!({
-                "type": "content",
-                "title": current_title,
-                "bullets": current_bullets,
-            }));
-        }
+        flush_slide(
+            &current_title,
+            &current_bullets,
+            &current_table_headers,
+            &current_table_rows,
+            &mut slides,
+        );
 
         Ok(serde_json::json!({
             "title": slides.first()
@@ -2011,6 +2104,105 @@ impl DocumentParser {
                 .unwrap_or("Presentation"),
             "slides": slides,
         }))
+    }
+
+    /// ★ GAP-1 修复：精确获取 PPTX 元数据（幻灯片数量通过 pptx-to-md parse_all 精确计数）
+    pub fn extract_pptx_metadata(&self, bytes: &[u8]) -> Result<serde_json::Value, ParsingError> {
+        self.check_file_size(bytes.len())?;
+        self.check_office_encryption(bytes, "presentation.pptx")?;
+        self.check_zip_bomb(bytes, "presentation.pptx")?;
+
+        let temp_file = tempfile::Builder::new()
+            .suffix(".pptx")
+            .tempfile()
+            .map_err(|e| ParsingError::IoError(format!("创建临时文件失败: {}", e)))?;
+        fs::write(temp_file.path(), bytes)?;
+
+        let config = ParserConfig::builder().extract_images(false).build();
+        let mut container = PptxContainer::open(temp_file.path(), config)
+            .map_err(|e| ParsingError::PptxParsingError(format!("无法打开PPTX: {:?}", e)))?;
+
+        let slides = container
+            .parse_all()
+            .map_err(|e| ParsingError::PptxParsingError(format!("解析PPTX失败: {:?}", e)))?;
+
+        let slide_count = slides.len();
+        let mut total_text_len = 0usize;
+        for slide in &slides {
+            if let Some(md) = slide.convert_to_md() {
+                total_text_len += md.len();
+            }
+        }
+
+        Ok(serde_json::json!({
+            "slide_count": slide_count,
+            "total_text_length": total_text_len,
+            "format": "pptx",
+        }))
+    }
+
+    /// ★ GAP-3 修复：从 PPTX 中提取所有表格为结构化 JSON
+    pub fn extract_pptx_tables(&self, bytes: &[u8]) -> Result<Vec<serde_json::Value>, ParsingError> {
+        let markdown = self.extract_pptx_from_bytes(bytes.to_vec())?;
+
+        let mut tables: Vec<serde_json::Value> = Vec::new();
+        let mut current_slide_title = String::new();
+        let mut current_headers: Vec<String> = Vec::new();
+        let mut current_rows: Vec<Vec<String>> = Vec::new();
+        let mut in_table = false;
+
+        let flush_table = |title: &str,
+                           headers: &[String],
+                           rows: &[Vec<String>],
+                           tables: &mut Vec<serde_json::Value>| {
+            if headers.is_empty() && rows.is_empty() {
+                return;
+            }
+            tables.push(serde_json::json!({
+                "slide_title": title,
+                "headers": headers,
+                "rows": rows,
+                "row_count": rows.len(),
+                "col_count": headers.len().max(rows.first().map(|r| r.len()).unwrap_or(0)),
+            }));
+        };
+
+        for line in markdown.lines() {
+            let trimmed = line.trim();
+
+            if trimmed.starts_with("# ") || trimmed.starts_with("## ") {
+                // 新幻灯片 → 保存之前的表格
+                flush_table(&current_slide_title, &current_headers, &current_rows, &mut tables);
+                current_slide_title = trimmed.trim_start_matches('#').trim().to_string();
+                current_headers = Vec::new();
+                current_rows = Vec::new();
+                in_table = false;
+            } else if trimmed.len() >= 5 && trimmed.starts_with('|') && trimmed.ends_with('|') {
+                let inner = &trimmed[1..trimmed.len() - 1];
+                let is_separator = inner.chars().all(|c| c == '-' || c == '|' || c == ':' || c == ' ');
+                if is_separator {
+                    continue;
+                }
+                let cells: Vec<String> = inner.split('|').map(|c| c.trim().to_string()).collect();
+                if !in_table {
+                    in_table = true;
+                    current_headers = cells;
+                } else {
+                    current_rows.push(cells);
+                }
+            } else if in_table && (trimmed.is_empty() || !trimmed.starts_with('|')) {
+                // 表格结束
+                flush_table(&current_slide_title, &current_headers, &current_rows, &mut tables);
+                current_headers = Vec::new();
+                current_rows = Vec::new();
+                in_table = false;
+            }
+        }
+
+        // 保存最后一个表格
+        flush_table(&current_slide_title, &current_headers, &current_rows, &mut tables);
+
+        Ok(tables)
     }
 
     // ========================================================================
@@ -2123,15 +2315,10 @@ impl DocumentParser {
 
         let mut sheets_json = Vec::new();
 
-        for (_sheet_idx, sheet_name) in book.get_sheet_collection().iter().enumerate() {
-            let ws_name = sheet_name.get_name().to_string();
-            let ws = book.get_sheet_by_name(&ws_name);
-            if ws.is_none() {
-                continue;
-            }
-            let ws = ws.unwrap();
+        for sheet in book.get_sheet_collection() {
+            let ws_name = sheet.get_name().to_string();
 
-            let (max_col, max_row) = ws.get_highest_column_and_row();
+            let (max_col, max_row) = sheet.get_highest_column_and_row();
             if max_row == 0 || max_col == 0 {
                 sheets_json.push(serde_json::json!({
                     "name": ws_name,
@@ -2144,7 +2331,7 @@ impl DocumentParser {
             // 第一行作为表头
             let mut headers = Vec::new();
             for col in 1..=max_col {
-                let val = ws
+                let val = sheet
                     .get_cell((col, 1))
                     .map(|c| c.get_value().to_string())
                     .unwrap_or_default();
@@ -2156,7 +2343,7 @@ impl DocumentParser {
             for row in 2..=max_row {
                 let mut row_data = Vec::new();
                 for col in 1..=max_col {
-                    let val = ws
+                    let val = sheet
                         .get_cell((col, row))
                         .map(|c| c.get_value().to_string())
                         .unwrap_or_default();
@@ -2173,10 +2360,6 @@ impl DocumentParser {
         }
 
         Ok(serde_json::json!({
-            "title": sheets_json.first()
-                .and_then(|s| s.get("name"))
-                .and_then(|t| t.as_str())
-                .unwrap_or("Workbook"),
             "sheets": sheets_json,
         }))
     }
@@ -2315,6 +2498,39 @@ impl DocumentParser {
         }
 
         Ok(tables)
+    }
+
+    /// ★ GAP-4 修复：提取 XLSX 文件元数据（工作表数量/名称/行列数）
+    pub fn extract_xlsx_metadata(&self, bytes: &[u8]) -> Result<serde_json::Value, ParsingError> {
+        let cursor = Cursor::new(bytes.to_vec());
+        let book = umya_spreadsheet::reader::xlsx::read_reader(cursor, false)
+            .map_err(|e| ParsingError::ExcelParsingError(format!("XLSX 读取失败: {}", e)))?;
+
+        let sheets = book.get_sheet_collection();
+        let sheet_count = sheets.len();
+        let mut sheet_details: Vec<serde_json::Value> = Vec::new();
+        let mut total_rows = 0u32;
+        let mut total_cols = 0u32;
+
+        for sheet in sheets {
+            let name = sheet.get_name().to_string();
+            let (max_col, max_row) = sheet.get_highest_column_and_row();
+            total_rows += max_row;
+            total_cols = total_cols.max(max_col);
+            sheet_details.push(serde_json::json!({
+                "name": name,
+                "row_count": max_row,
+                "col_count": max_col,
+            }));
+        }
+
+        Ok(serde_json::json!({
+            "sheet_count": sheet_count,
+            "total_rows": total_rows,
+            "total_cols": total_cols,
+            "sheets": sheet_details,
+            "format": "xlsx",
+        }))
     }
 
     // ========================================================================

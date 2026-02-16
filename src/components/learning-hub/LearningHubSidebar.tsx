@@ -8,6 +8,21 @@ import { textbookDstuAdapter } from '@/dstu/adapters/textbookDstuAdapter';
 import { attachmentDstuAdapter } from '@/dstu/adapters/attachmentDstuAdapter';
 import { UnifiedDragDropZone, FILE_TYPES } from '@/components/shared/UnifiedDragDropZone';
 import { useDebounce } from '@/hooks/useDebounce';
+import {
+  AppMenu,
+  AppMenuContent,
+  AppMenuItem,
+  AppMenuTrigger,
+} from '@/components/ui/app-menu';
+import {
+  FolderIcon,
+  NoteIcon,
+  ExamIcon,
+  TextbookIcon,
+  TranslationIcon,
+  EssayIcon,
+  MindmapIcon,
+} from './icons';
 
 /** 教材导入进度事件类型 */
 interface TextbookImportProgress {
@@ -1979,8 +1994,8 @@ export function LearningHubSidebar({
         {/* P1-20: 移动端顶部工具栏（搜索 + 新建文件夹 + 新建笔记 + 清空回收站） */}
         {isSmallScreen && !hideToolbarAndNav && (
           <div 
-            className="flex items-center gap-1 px-2 py-1.5 border-b border-border/40 bg-background/95 backdrop-blur-lg shrink-0"
-            style={{ marginTop: 3 }}
+            className="flex items-center gap-1 px-2 pb-1.5 border-b border-border/40 bg-background/95 backdrop-blur-lg shrink-0"
+            style={{ marginTop: 3, paddingTop: 9 }}
           >
             {mobileSearchExpanded ? (
               // 搜索框展开态
@@ -2017,24 +2032,62 @@ export function LearningHubSidebar({
                 >
                   <Search className="w-4 h-4" />
                 </NotionButton>
-                <NotionButton
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 w-7 p-0"
-                  onClick={handleNewFolder}
-                  title={t('finder.actions.newFolder', '新建文件夹')}
-                >
-                  <FolderPlus className="w-4 h-4" />
-                </NotionButton>
-                <NotionButton
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 w-7 p-0"
-                  onClick={handleNewNote}
-                  title={t('finder.actions.newNote', '新建笔记')}
-                >
-                  <Plus className="w-4 h-4" />
-                </NotionButton>
+                <AppMenu>
+                  <AppMenuTrigger asChild>
+                    <NotionButton
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 w-7 p-0"
+                      title={t('finder.toolbar.new', '新建')}
+                    >
+                      <Plus className="w-4 h-4" />
+                    </NotionButton>
+                  </AppMenuTrigger>
+                  <AppMenuContent align="end" className="min-w-[180px]">
+                    <AppMenuItem
+                      icon={<FolderIcon size={16} />}
+                      onClick={handleNewFolder}
+                    >
+                      {t('finder.toolbar.newFolder', '新建文件夹')}
+                    </AppMenuItem>
+                    <AppMenuItem
+                      icon={<NoteIcon size={16} />}
+                      onClick={handleNewNote}
+                    >
+                      {t('finder.toolbar.newNote', '新建笔记')}
+                    </AppMenuItem>
+                    <AppMenuItem
+                      icon={<ExamIcon size={16} />}
+                      onClick={handleNewExam}
+                    >
+                      {t('finder.toolbar.newExam', '新建题目集')}
+                    </AppMenuItem>
+                    <AppMenuItem
+                      icon={<TextbookIcon size={16} />}
+                      onClick={handleNewTextbook}
+                    >
+                      {t('finder.toolbar.newTextbook', '导入教材')}
+                    </AppMenuItem>
+                    <AppMenuItem
+                      icon={<TranslationIcon size={16} />}
+                      onClick={handleNewTranslation}
+                    >
+                      {t('finder.toolbar.newTranslation', '新建翻译')}
+                    </AppMenuItem>
+                    <AppMenuItem
+                      icon={<EssayIcon size={16} />}
+                      onClick={handleNewEssay}
+                    >
+                      {t('finder.toolbar.newEssay', '新建作文')}
+                    </AppMenuItem>
+                    <AppMenuItem
+                      icon={<MindmapIcon size={16} />}
+                      onClick={handleNewMindMap}
+                    >
+                      {t('finder.toolbar.newMindMap', '新建导图')}
+                    </AppMenuItem>
+                  </AppMenuContent>
+                </AppMenu>
                 {/* 回收站视图显示清空按钮 */}
                 {isTrashView && (
                   <NotionButton

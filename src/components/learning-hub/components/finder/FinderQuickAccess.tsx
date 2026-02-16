@@ -5,16 +5,7 @@ import {
   ChevronRight,
   Search,
   Plus,
-  FolderPlus,
   X,
-  FileText,
-  BookOpen,
-  ClipboardList,
-  PenTool,
-  Languages,
-  Image,
-  File,
-  Workflow,
 } from 'lucide-react';
 import {
   NoteIcon,
@@ -23,6 +14,7 @@ import {
   EssayIcon,
   TranslationIcon,
   MindmapIcon,
+  FolderIcon,
   ImageFileIcon,
   GenericFileIcon,
   FavoriteIcon,
@@ -289,7 +281,7 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
                 <AppMenuContent align="end" className="min-w-[180px]">
                   {onNewFolder && (
                     <AppMenuItem 
-                      icon={<FolderPlus className="h-4 w-4 text-blue-500" />}
+                      icon={<FolderIcon size={16} />}
                       onClick={onNewFolder}
                     >
                       {t('finder.toolbar.newFolder')}
@@ -297,7 +289,7 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
                   )}
                   {onNewNote && (
                     <AppMenuItem 
-                      icon={<FileText className="h-4 w-4 text-emerald-500" />}
+                      icon={<NoteIcon size={16} />}
                       onClick={onNewNote}
                     >
                       {t('finder.toolbar.newNote')}
@@ -305,7 +297,7 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
                   )}
                   {onNewExam && (
                     <AppMenuItem 
-                      icon={<ClipboardList className="h-4 w-4 text-purple-500" />}
+                      icon={<ExamIcon size={16} />}
                       onClick={onNewExam}
                     >
                       {t('finder.toolbar.newExam')}
@@ -313,7 +305,7 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
                   )}
                   {onNewTextbook && (
                     <AppMenuItem 
-                      icon={<BookOpen className="h-4 w-4 text-orange-500" />}
+                      icon={<TextbookIcon size={16} />}
                       onClick={onNewTextbook}
                     >
                       {t('finder.toolbar.newTextbook')}
@@ -321,7 +313,7 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
                   )}
                   {onNewTranslation && (
                     <AppMenuItem 
-                      icon={<Languages className="h-4 w-4 text-indigo-500" />}
+                      icon={<TranslationIcon size={16} />}
                       onClick={onNewTranslation}
                     >
                       {t('finder.toolbar.newTranslation')}
@@ -329,7 +321,7 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
                   )}
                   {onNewEssay && (
                     <AppMenuItem 
-                      icon={<PenTool className="h-4 w-4 text-pink-500" />}
+                      icon={<EssayIcon size={16} />}
                       onClick={onNewEssay}
                     >
                       {t('finder.toolbar.newEssay')}
@@ -337,7 +329,7 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
                   )}
                   {onNewMindMap && (
                     <AppMenuItem 
-                      icon={<Workflow className="h-4 w-4 text-teal-500" />}
+                      icon={<MindmapIcon size={16} />}
                       onClick={onNewMindMap}
                     >
                       {t('finder.toolbar.newMindMap')}
@@ -361,7 +353,7 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
               <AppMenuContent align="start" className="min-w-[180px]">
                 {onNewFolder && (
                   <AppMenuItem 
-                    icon={<FolderPlus className="h-4 w-4 text-blue-500" />}
+                    icon={<FolderIcon size={16} />}
                     onClick={onNewFolder}
                   >
                     {t('finder.toolbar.newFolder')}
@@ -369,7 +361,7 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
                 )}
                 {onNewNote && (
                   <AppMenuItem 
-                    icon={<FileText className="h-4 w-4 text-emerald-500" />}
+                    icon={<NoteIcon size={16} />}
                     onClick={onNewNote}
                   >
                     {t('finder.toolbar.newNote')}
@@ -377,7 +369,7 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
                 )}
                 {onNewExam && (
                   <AppMenuItem 
-                    icon={<ClipboardList className="h-4 w-4 text-purple-500" />}
+                    icon={<ExamIcon size={16} />}
                     onClick={onNewExam}
                   >
                     {t('finder.toolbar.newExam')}
@@ -385,7 +377,7 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
                 )}
                 {onNewTextbook && (
                   <AppMenuItem 
-                    icon={<BookOpen className="h-4 w-4 text-orange-500" />}
+                    icon={<TextbookIcon size={16} />}
                     onClick={onNewTextbook}
                   >
                     {t('finder.toolbar.newTextbook')}
@@ -393,7 +385,7 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
                 )}
                 {onNewTranslation && (
                   <AppMenuItem 
-                    icon={<Languages className="h-4 w-4 text-indigo-500" />}
+                    icon={<TranslationIcon size={16} />}
                     onClick={onNewTranslation}
                   >
                     {t('finder.toolbar.newTranslation')}
@@ -401,7 +393,7 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
                 )}
                 {onNewEssay && (
                   <AppMenuItem 
-                    icon={<PenTool className="h-4 w-4 text-pink-500" />}
+                    icon={<EssayIcon size={16} />}
                     onClick={onNewEssay}
                   >
                     {t('finder.toolbar.newEssay')}
@@ -409,7 +401,7 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
                 )}
                 {onNewMindMap && (
                   <AppMenuItem 
-                    icon={<Workflow className="h-4 w-4 text-teal-500" />}
+                    icon={<MindmapIcon size={16} />}
                     onClick={onNewMindMap}
                   >
                     {t('finder.toolbar.newMindMap')}

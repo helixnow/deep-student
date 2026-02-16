@@ -2,7 +2,8 @@
 //!
 //! 提供完整的 PPTX 读写编辑能力给 LLM：
 //! - `builtin-pptx_read_structured` - 结构化读取 PPTX（输出 Markdown）
-//! - `builtin-pptx_get_metadata` - 读取演示文稿信息（幻灯片数量等）
+//! - `builtin-pptx_get_metadata` - 精确读取演示文稿元数据（幻灯片数量、文本总长度）
+//! - `builtin-pptx_extract_tables` - 提取 PPTX 中所有表格为结构化 JSON
 //! - `builtin-pptx_create` - 从 JSON spec 生成 PPTX 文件并保存到 VFS
 //! - `builtin-pptx_to_spec` - 将 PPTX 转换为 JSON spec（round-trip 编辑）
 //! - `builtin-pptx_replace_text` - 在 PPTX 中执行查找替换（通过 spec round-trip）
@@ -76,7 +77,7 @@ impl PptxToolExecutor {
         }))
     }
 
-    /// 读取 PPTX 演示文稿信息
+    /// ★ GAP-1 修复：精确读取 PPTX 演示文稿元数据
     async fn execute_get_metadata(
         &self,
         call: &ToolCall,
@@ -91,24 +92,41 @@ impl PptxToolExecutor {
         let bytes = self.load_file_bytes(ctx, resource_id)?;
 
         let parser = DocumentParser::new();
-        let markdown = parser
-            .extract_text_from_bytes("presentation.pptx", bytes)
-            .map_err(|e| format!("PPTX 读取失败: {}", e))?;
-
-        // 通过 Markdown 内容估算幻灯片数量（按 # 标题计数）
-        let slide_count = markdown
-            .lines()
-            .filter(|l| l.starts_with("# ") || l.starts_with("## "))
-            .count();
+        let metadata = parser
+            .extract_pptx_metadata(&bytes)
+            .map_err(|e| format!("PPTX 元数据读取失败: {}", e))?;
 
         Ok(json!({
             "success": true,
             "resource_id": resource_id,
-            "metadata": {
-                "estimated_slide_count": slide_count,
-                "content_length": markdown.len(),
-                "format": "pptx",
-            },
+            "metadata": metadata,
+        }))
+    }
+
+    /// ★ GAP-3 修复：提取 PPTX 中所有表格为结构化 JSON
+    async fn execute_extract_tables(
+        &self,
+        call: &ToolCall,
+        ctx: &ExecutionContext,
+    ) -> Result<Value, String> {
+        let resource_id = call
+            .arguments
+            .get("resource_id")
+            .and_then(|v| v.as_str())
+            .ok_or("Missing 'resource_id' parameter")?;
+
+        let bytes = self.load_file_bytes(ctx, resource_id)?;
+
+        let parser = DocumentParser::new();
+        let tables = parser
+            .extract_pptx_tables(&bytes)
+            .map_err(|e| format!("PPTX 表格提取失败: {}", e))?;
+
+        Ok(json!({
+            "success": true,
+            "resource_id": resource_id,
+            "table_count": tables.len(),
+            "tables": tables,
         }))
     }
 
@@ -139,7 +157,7 @@ impl PptxToolExecutor {
         }))
     }
 
-    /// 在 PPTX 中执行查找替换（通过 spec round-trip）
+    /// ★ GAP-2 修复：在 PPTX 中执行查找替换（通过 spec round-trip），覆盖 subtitle / table rows
     async fn execute_replace_text(
         &self,
         call: &ToolCall,
@@ -183,15 +201,90 @@ impl PptxToolExecutor {
             .extract_pptx_as_spec(&bytes)
             .map_err(|e| format!("PPTX 读取失败: {}", e))?;
 
-        // 在 spec 的文本字段中执行替换
         let mut total_count = 0usize;
-        let spec_str = serde_json::to_string(&spec).unwrap_or_default();
-        let mut new_spec_str = spec_str.clone();
-        for (find, replace) in &replacements {
-            let before_len = new_spec_str.len();
-            new_spec_str = new_spec_str.replace(find.as_str(), replace.as_str());
-            if new_spec_str.len() != before_len || new_spec_str != spec_str {
+
+        /// 辅助函数：对字符串应用所有替换对，返回是否有变化
+        fn apply_replacements(
+            original: &str,
+            replacements: &[(String, String)],
+        ) -> Option<String> {
+            let mut result = original.to_string();
+            for (find, replace) in replacements {
+                result = result.replace(find.as_str(), replace.as_str());
+            }
+            if result != original {
+                Some(result)
+            } else {
+                None
+            }
+        }
+
+        // 替换顶层 title
+        if let Some(title) = spec.get("title").and_then(|v| v.as_str()).map(|s| s.to_string()) {
+            if let Some(new_title) = apply_replacements(&title, &replacements) {
+                spec["title"] = serde_json::Value::String(new_title);
                 total_count += 1;
+            }
+        }
+
+        // 替换每张幻灯片的所有文本字段
+        if let Some(slides) = spec.get_mut("slides").and_then(|v| v.as_array_mut()) {
+            for slide in slides.iter_mut() {
+                // 替换幻灯片 title
+                if let Some(st) = slide.get("title").and_then(|v| v.as_str()).map(|s| s.to_string()) {
+                    if let Some(new_st) = apply_replacements(&st, &replacements) {
+                        slide["title"] = serde_json::Value::String(new_st);
+                        total_count += 1;
+                    }
+                }
+
+                // ★ GAP-2: 替换 subtitle（title 类型幻灯片）
+                if let Some(sub) = slide.get("subtitle").and_then(|v| v.as_str()).map(|s| s.to_string()) {
+                    if let Some(new_sub) = apply_replacements(&sub, &replacements) {
+                        slide["subtitle"] = serde_json::Value::String(new_sub);
+                        total_count += 1;
+                    }
+                }
+
+                // 替换 bullets 数组中的每一项
+                if let Some(bullets) = slide.get_mut("bullets").and_then(|v| v.as_array_mut()) {
+                    for bullet in bullets.iter_mut() {
+                        if let Some(bt) = bullet.as_str().map(|s| s.to_string()) {
+                            if let Some(new_bt) = apply_replacements(&bt, &replacements) {
+                                *bullet = serde_json::Value::String(new_bt);
+                                total_count += 1;
+                            }
+                        }
+                    }
+                }
+
+                // ★ GAP-2: 替换 table headers
+                if let Some(headers) = slide.get_mut("headers").and_then(|v| v.as_array_mut()) {
+                    for header in headers.iter_mut() {
+                        if let Some(ht) = header.as_str().map(|s| s.to_string()) {
+                            if let Some(new_ht) = apply_replacements(&ht, &replacements) {
+                                *header = serde_json::Value::String(new_ht);
+                                total_count += 1;
+                            }
+                        }
+                    }
+                }
+
+                // ★ GAP-2: 替换 table rows
+                if let Some(rows) = slide.get_mut("rows").and_then(|v| v.as_array_mut()) {
+                    for row in rows.iter_mut() {
+                        if let Some(cells) = row.as_array_mut() {
+                            for cell in cells.iter_mut() {
+                                if let Some(ct) = cell.as_str().map(|s| s.to_string()) {
+                                    if let Some(new_ct) = apply_replacements(&ct, &replacements) {
+                                        *cell = serde_json::Value::String(new_ct);
+                                        total_count += 1;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
 
@@ -203,10 +296,6 @@ impl PptxToolExecutor {
                 "message": "未找到任何匹配项，演示文稿未修改。",
             }));
         }
-
-        // 解析修改后的 spec
-        spec = serde_json::from_str(&new_spec_str)
-            .map_err(|e| format!("替换后 spec 解析失败: {}", e))?;
 
         // 重新生成 PPTX
         let new_bytes = DocumentParser::generate_pptx_from_spec(&spec)
@@ -365,6 +454,7 @@ impl ToolExecutor for PptxToolExecutor {
             stripped,
             "pptx_read_structured"
                 | "pptx_get_metadata"
+                | "pptx_extract_tables"
                 | "pptx_create"
                 | "pptx_to_spec"
                 | "pptx_replace_text"
@@ -397,6 +487,7 @@ impl ToolExecutor for PptxToolExecutor {
         let result = match tool_name {
             "pptx_read_structured" => self.execute_read_structured(call, ctx).await,
             "pptx_get_metadata" => self.execute_get_metadata(call, ctx).await,
+            "pptx_extract_tables" => self.execute_extract_tables(call, ctx).await,
             "pptx_create" => self.execute_create(call, ctx).await,
             "pptx_to_spec" => self.execute_to_spec(call, ctx).await,
             "pptx_replace_text" => self.execute_replace_text(call, ctx).await,
@@ -457,9 +548,8 @@ impl ToolExecutor for PptxToolExecutor {
     fn sensitivity_level(&self, tool_name: &str) -> ToolSensitivity {
         let stripped = Self::strip_namespace(tool_name);
         match stripped {
-            "pptx_read_structured" | "pptx_get_metadata" | "pptx_to_spec" => {
-                ToolSensitivity::Low
-            }
+            "pptx_read_structured" | "pptx_get_metadata" | "pptx_extract_tables"
+            | "pptx_to_spec" => ToolSensitivity::Low,
             "pptx_create" | "pptx_replace_text" => ToolSensitivity::Medium,
             _ => ToolSensitivity::Low,
         }
@@ -484,6 +574,7 @@ mod tests {
 
         assert!(executor.can_handle("builtin-pptx_read_structured"));
         assert!(executor.can_handle("builtin-pptx_get_metadata"));
+        assert!(executor.can_handle("builtin-pptx_extract_tables"));
         assert!(executor.can_handle("builtin-pptx_create"));
         assert!(executor.can_handle("builtin-pptx_to_spec"));
         assert!(executor.can_handle("builtin-pptx_replace_text"));
@@ -501,6 +592,10 @@ mod tests {
         );
         assert_eq!(
             executor.sensitivity_level("builtin-pptx_to_spec"),
+            ToolSensitivity::Low
+        );
+        assert_eq!(
+            executor.sensitivity_level("builtin-pptx_extract_tables"),
             ToolSensitivity::Low
         );
         assert_eq!(
