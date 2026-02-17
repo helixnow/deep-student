@@ -901,7 +901,10 @@
     "noResults": "未找到匹配的会话",
     "tryDifferentKeyword": "尝试其他搜索关键词",
     "updatedAt": "更新时间",
-    "createdAt": "创建时间"
+    "createdAt": "创建时间",
+    "groupByTime": "按时间分组",
+    "groupByGroup": "按分组浏览",
+    "ungrouped": "未分组"
   },
   "approval": {
     "title": "工具执行确认",

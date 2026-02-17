@@ -15,9 +15,11 @@ import {
   Edit2,
   Check,
   X,
-  ArrowLeft,
-  RefreshCw,
   Clock,
+  Layers,
+  CalendarDays,
+  Folder,
+  ChevronDown,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
@@ -40,9 +42,23 @@ export interface SessionItem {
   groupName?: string;
 }
 
+/** 分组信息（用于按分组浏览） */
+export interface BrowserGroupInfo {
+  id: string;
+  name: string;
+  icon?: string;
+  color?: string;
+  sortOrder: number;
+}
+
+/** 浏览视图分组模式 */
+export type BrowseGroupMode = 'time' | 'group';
+
 interface SessionBrowserProps {
   /** 会话列表 */
   sessions: SessionItem[];
+  /** 分组信息列表（用于按分组浏览） */
+  groups?: BrowserGroupInfo[];
   /** 是否加载中 */
   isLoading?: boolean;
   /** 选择会话 */
@@ -51,12 +67,8 @@ interface SessionBrowserProps {
   onDeleteSession: (sessionId: string) => void;
   /** 创建新会话 */
   onCreateSession: () => void;
-  /** 刷新会话列表 */
-  onRefresh?: () => void;
   /** 重命名会话 */
   onRenameSession?: (sessionId: string, newTitle: string) => void;
-  /** 返回侧边栏模式 */
-  onBack: () => void;
   /** 额外的 className */
   className?: string;
   /** 嵌入模式：不显示头部，由父组件控制顶栏（用于移动端） */
@@ -307,13 +319,12 @@ const SessionCardSkeleton: React.FC = () => (
 
 export const SessionBrowser: React.FC<SessionBrowserProps> = ({
   sessions,
+  groups = [],
   isLoading = false,
   onSelectSession,
   onDeleteSession,
   onCreateSession,
-  onRefresh,
   onRenameSession,
-  onBack,
   className,
   embeddedMode = false,
   externalSearchQuery,
@@ -330,8 +341,25 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState('');
 
-  // 刷新动画状态
-  const [refreshing, setRefreshing] = useState(false);
+  // 分组模式状态
+  const [groupMode, setGroupMode] = useState<BrowseGroupMode>(
+    groups.length > 0 ? 'group' : 'time'
+  );
+
+  // 分组折叠状态（key = groupId 或 '__ungrouped__'）
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+
+  const toggleGroupCollapse = useCallback((groupId: string) => {
+    setCollapsedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(groupId)) {
+        next.delete(groupId);
+      } else {
+        next.add(groupId);
+      }
+      return next;
+    });
+  }, []);
 
   // 时间分组标签
   const timeGroupLabels: Record<TimeGroup, string> = {
@@ -342,22 +370,50 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
     older: t('page.timeGroups.older'),
   };
 
-  // 过滤和分组会话
-  const groupedSessions = useMemo(() => {
-    const filtered = searchQuery.trim()
-      ? sessions.filter((s) =>
-          (s.title || '').toLowerCase().includes(searchQuery.toLowerCase())
-        )
-      : sessions;
-    return groupSessionsByTime(filtered);
+  // 搜索过滤
+  const filteredSessions = useMemo(() => {
+    if (!searchQuery.trim()) return sessions;
+    return sessions.filter((s) =>
+      (s.title || '').toLowerCase().includes(searchQuery.toLowerCase())
+    );
   }, [sessions, searchQuery]);
 
+  // 按时间分组会话
+  const timeGroupedSessions = useMemo(() => {
+    return groupSessionsByTime(filteredSessions);
+  }, [filteredSessions]);
+
+  // 按分组归类会话
+  const sessionGroupedByGroup = useMemo(() => {
+    const sortedGroups = [...groups].sort((a, b) => a.sortOrder - b.sortOrder);
+    const grouped: { group: BrowserGroupInfo; sessions: SessionItem[] }[] = [];
+    const groupMap = new Map<string, SessionItem[]>();
+
+    filteredSessions.forEach((session) => {
+      if (!session.groupId) return;
+      const list = groupMap.get(session.groupId) ?? [];
+      list.push(session);
+      groupMap.set(session.groupId, list);
+    });
+
+    sortedGroups.forEach((group) => {
+      const groupSessions = groupMap.get(group.id) ?? [];
+      // 组内按 updatedAt 降序排列
+      groupSessions.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+      grouped.push({ group, sessions: groupSessions });
+    });
+
+    // 未分组会话
+    const groupIdSet = new Set(groups.map((g) => g.id));
+    const ungrouped = filteredSessions
+      .filter((s) => !s.groupId || !groupIdSet.has(s.groupId))
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+
+    return { grouped, ungrouped };
+  }, [filteredSessions, groups]);
+
   // 计算过滤后的数量
-  const filteredCount = useMemo(() => {
-    let count = 0;
-    groupedSessions.forEach((group) => (count += group.length));
-    return count;
-  }, [groupedSessions]);
+  const filteredCount = filteredSessions.length;
 
   // 开始编辑
   const handleStartEdit = useCallback((session: SessionItem) => {
@@ -384,32 +440,13 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
     setEditingTitle('');
   }, []);
 
-  // 刷新
-  const handleRefresh = useCallback(async () => {
-    if (!onRefresh || refreshing) return;
-    setRefreshing(true);
-    try {
-      await onRefresh();
-    } finally {
-      setTimeout(() => setRefreshing(false), 500);
-    }
-  }, [onRefresh, refreshing]);
-
   return (
     <div className={cn('flex flex-col h-full bg-background/50', className)}>
       {/* 顶部工具栏 - Notion 风格，响应式布局（嵌入模式下不显示） */}
       {!embeddedMode && (
         <div className="flex-shrink-0 border-b border-border/40 bg-background/95 backdrop-blur-sm px-3 sm:px-6 sticky top-0 z-20">
-          {/* 主行：返回、标题、操作按钮 */}
+          {/* 主行：标题、操作按钮 */}
           <div className="flex items-center h-12 sm:h-14 gap-2 sm:gap-4">
-            {/* 返回按钮 */}
-            <NotionButton variant="ghost" size="sm" onClick={onBack} className="-ml-1">
-              <ArrowLeft className="w-4 h-4" />
-              <span className="hidden sm:inline">{t('browser.back')}</span>
-            </NotionButton>
-
-            <div className="hidden sm:block h-4 w-px bg-border/40" />
-
             {/* 标题 */}
             <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
               <h1 className="text-sm sm:text-base font-medium text-foreground whitespace-nowrap">
@@ -419,6 +456,42 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
                 {filteredCount}
               </span>
             </div>
+
+            {/* 分组模式滑块切换 */}
+            {groups.length > 0 && (
+              <div className="relative flex items-center h-8 rounded-lg bg-muted/50 p-0.5">
+                {/* 滑块背景 */}
+                <div
+                  className={cn(
+                    'absolute top-0.5 bottom-0.5 w-[calc(50%-2px)] rounded-md bg-background shadow-sm border border-border/50',
+                    'transition-transform duration-200 ease-out',
+                    groupMode === 'time' ? 'translate-x-0' : 'translate-x-full'
+                  )}
+                />
+                <button
+                  onClick={() => setGroupMode('time')}
+                  className={cn(
+                    'relative z-10 flex items-center gap-1.5 px-3 h-full rounded-md text-xs font-medium transition-colors',
+                    groupMode === 'time' ? 'text-foreground' : 'text-muted-foreground hover:text-foreground/70'
+                  )}
+                  title={t('browser.groupByTime')}
+                >
+                  <CalendarDays className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">{t('browser.groupByTime')}</span>
+                </button>
+                <button
+                  onClick={() => setGroupMode('group')}
+                  className={cn(
+                    'relative z-10 flex items-center gap-1.5 px-3 h-full rounded-md text-xs font-medium transition-colors',
+                    groupMode === 'group' ? 'text-foreground' : 'text-muted-foreground hover:text-foreground/70'
+                  )}
+                  title={t('browser.groupByGroup')}
+                >
+                  <Layers className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">{t('browser.groupByGroup')}</span>
+                </button>
+              </div>
+            )}
 
             <div className="flex-1 min-w-0" />
 
@@ -434,14 +507,7 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
               />
             </div>
 
-            {/* 刷新按钮 */}
-            {onRefresh && (
-              <NotionButton variant="ghost" size="icon" iconOnly onClick={handleRefresh} disabled={refreshing} aria-label={t('browser.refresh')} title={t('browser.refresh')}>
-                <RefreshCw className={cn('w-4 h-4', refreshing && 'animate-spin')} />
-              </NotionButton>
-            )}
-
-            {/* 新建按钮 - Notion 风格主操作 */}
+            {/* 新建按钮 */}
             <NotionButton variant="ghost" size="sm" onClick={onCreateSession} className="text-primary hover:bg-primary/10 shrink-0">
               <Plus className="w-4 h-4" />
               <span className="hidden xs:inline">{t('page.newSession')}</span>
@@ -464,18 +530,51 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
         </div>
       )}
 
-      {/* 嵌入模式下的搜索框 */}
+      {/* 嵌入模式下的搜索框 + 分组滑块切换 */}
       {embeddedMode && (
-        <div className="flex-shrink-0 px-3 pt-3 pb-2">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/60" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder={t('page.searchPlaceholder')}
-              className="w-full h-9 pl-9 pr-3 text-sm bg-muted/30 border-transparent rounded-md focus:border-border focus:bg-background focus:outline-none transition-colors"
-            />
+        <div className="flex-shrink-0 px-3 pt-3 pb-2 space-y-2">
+          <div className="flex items-center gap-2">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/60" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder={t('page.searchPlaceholder')}
+                className="w-full h-9 pl-9 pr-3 text-sm bg-muted/30 border-transparent rounded-md focus:border-border focus:bg-background focus:outline-none transition-colors"
+              />
+            </div>
+            {groups.length > 0 && (
+              <div className="relative flex items-center h-8 rounded-lg bg-muted/50 p-0.5 shrink-0">
+                <div
+                  className={cn(
+                    'absolute top-0.5 bottom-0.5 w-[calc(50%-2px)] rounded-md bg-background shadow-sm border border-border/50',
+                    'transition-transform duration-200 ease-out',
+                    groupMode === 'time' ? 'translate-x-0' : 'translate-x-full'
+                  )}
+                />
+                <button
+                  onClick={() => setGroupMode('time')}
+                  className={cn(
+                    'relative z-10 flex items-center gap-1 px-2 h-full rounded-md text-xs font-medium transition-colors',
+                    groupMode === 'time' ? 'text-foreground' : 'text-muted-foreground'
+                  )}
+                  title={t('browser.groupByTime')}
+                >
+                  <CalendarDays className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  onClick={() => setGroupMode('group')}
+                  className={cn(
+                    'relative z-10 flex items-center gap-1 px-2 h-full rounded-md text-xs font-medium transition-colors',
+                    groupMode === 'group' ? 'text-foreground' : 'text-muted-foreground'
+                  )}
+                  title={t('browser.groupByGroup')}
+                >
+                  <Layers className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -509,30 +608,30 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
               </NotionButton>
             )}
           </div>
-        ) : (
-          // 分组显示会话卡片
+        ) : groupMode === 'time' ? (
+          // 按时间分组显示会话卡片
           <div className="space-y-6 sm:space-y-8">
             {(['today', 'yesterday', 'previous7Days', 'previous30Days', 'older'] as TimeGroup[]).map(
-              (group) => {
-                const groupSessions = groupedSessions.get(group) || [];
-                if (groupSessions.length === 0) return null;
+              (timeGroup) => {
+                const timeSessions = timeGroupedSessions.get(timeGroup) || [];
+                if (timeSessions.length === 0) return null;
 
                 return (
-                  <div key={group}>
+                  <div key={timeGroup}>
                     {/* 分组标题 - 极简风格 */}
                     <div className="mb-4 flex items-center gap-2 group/header">
                       <span className="text-sm font-medium text-muted-foreground/80 group-hover/header:text-foreground transition-colors">
-                        {timeGroupLabels[group]}
+                        {timeGroupLabels[timeGroup]}
                       </span>
                       <span className="text-xs px-1.5 py-0.5 rounded bg-muted/50 text-muted-foreground/60">
-                        {groupSessions.length}
+                        {timeSessions.length}
                       </span>
                       <div className="flex-1 h-px bg-border/30 group-hover/header:bg-border/60 transition-colors" />
                     </div>
 
                     {/* 会话卡片网格 */}
                     <div className="grid grid-cols-1 xs:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-3 sm:gap-4">
-                      {groupSessions.map((session) => (
+                      {timeSessions.map((session) => (
                         <SessionCard
                           key={session.id}
                           session={session}
@@ -551,6 +650,109 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
                 );
               }
             )}
+          </div>
+        ) : (
+          // 按分组显示会话卡片
+          <div className="space-y-6 sm:space-y-8">
+            {sessionGroupedByGroup.grouped.map(({ group: sessionGroup, sessions: groupSessions }) => {
+              if (groupSessions.length === 0) return null;
+
+              // 分组标题带图标/emoji
+              const displayIcon = sessionGroup.icon;
+              const isEmoji = displayIcon && !/^[a-zA-Z]/.test(displayIcon);
+
+              const isCollapsed = collapsedGroups.has(sessionGroup.id);
+
+              return (
+                <div key={sessionGroup.id}>
+                  <div
+                    className="mb-4 flex items-center gap-2 group/header cursor-pointer select-none"
+                    onClick={() => toggleGroupCollapse(sessionGroup.id)}
+                  >
+                    <ChevronDown className={cn(
+                      'w-3.5 h-3.5 text-muted-foreground/60 transition-transform duration-200',
+                      isCollapsed && '-rotate-90'
+                    )} />
+                    {isEmoji ? (
+                      <span className="text-sm">{displayIcon}</span>
+                    ) : (
+                      <Folder className="w-4 h-4 text-muted-foreground/60 group-hover/header:text-foreground transition-colors" />
+                    )}
+                    <span className="text-sm font-medium text-muted-foreground/80 group-hover/header:text-foreground transition-colors">
+                      {sessionGroup.name}
+                    </span>
+                    <span className="text-xs px-1.5 py-0.5 rounded bg-muted/50 text-muted-foreground/60">
+                      {groupSessions.length}
+                    </span>
+                    <div className="flex-1 h-px bg-border/30 group-hover/header:bg-border/60 transition-colors" />
+                  </div>
+
+                  {!isCollapsed && (
+                    <div className="grid grid-cols-1 xs:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-3 sm:gap-4">
+                      {groupSessions.map((session) => (
+                        <SessionCard
+                          key={session.id}
+                          session={session}
+                          isEditing={editingSessionId === session.id}
+                          editingTitle={editingTitle}
+                          onSelect={() => onSelectSession(session.id)}
+                          onDelete={() => onDeleteSession(session.id)}
+                          onStartEdit={() => handleStartEdit(session)}
+                          onSaveEdit={() => handleSaveEdit(session.id)}
+                          onCancelEdit={handleCancelEdit}
+                          onEditTitleChange={setEditingTitle}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+
+            {/* 未分组会话 */}
+            {sessionGroupedByGroup.ungrouped.length > 0 && (() => {
+              const isUngroupedCollapsed = collapsedGroups.has('__ungrouped__');
+              return (
+                <div>
+                  <div
+                    className="mb-4 flex items-center gap-2 group/header cursor-pointer select-none"
+                    onClick={() => toggleGroupCollapse('__ungrouped__')}
+                  >
+                    <ChevronDown className={cn(
+                      'w-3.5 h-3.5 text-muted-foreground/60 transition-transform duration-200',
+                      isUngroupedCollapsed && '-rotate-90'
+                    )} />
+                    <Folder className="w-4 h-4 text-muted-foreground/60 group-hover/header:text-foreground transition-colors" />
+                    <span className="text-sm font-medium text-muted-foreground/80 group-hover/header:text-foreground transition-colors">
+                      {t('browser.ungrouped')}
+                    </span>
+                    <span className="text-xs px-1.5 py-0.5 rounded bg-muted/50 text-muted-foreground/60">
+                      {sessionGroupedByGroup.ungrouped.length}
+                    </span>
+                    <div className="flex-1 h-px bg-border/30 group-hover/header:bg-border/60 transition-colors" />
+                  </div>
+
+                  {!isUngroupedCollapsed && (
+                    <div className="grid grid-cols-1 xs:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-3 sm:gap-4">
+                      {sessionGroupedByGroup.ungrouped.map((session) => (
+                        <SessionCard
+                          key={session.id}
+                          session={session}
+                          isEditing={editingSessionId === session.id}
+                          editingTitle={editingTitle}
+                          onSelect={() => onSelectSession(session.id)}
+                          onDelete={() => onDeleteSession(session.id)}
+                          onStartEdit={() => handleStartEdit(session)}
+                          onSaveEdit={() => handleSaveEdit(session.id)}
+                          onCancelEdit={handleCancelEdit}
+                          onEditTitleChange={setEditingTitle}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
           </div>
         )}
       </CustomScrollArea>

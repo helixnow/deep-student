@@ -2362,13 +2362,13 @@ async fn execute_backup_with_progress(
                             file_count: 0,
                             total_size: 0,
                         },
-                        format!("zip_export/{}", job_ctx.job_id),
+                        format!("governance_backup/{}", job_ctx.job_id),
                     )
                     .fail(msg.clone())
                     .with_details(serde_json::json!({
                         "job_id": job_ctx.job_id.clone(),
                         "backup_id": job_ctx.job_id.clone(),
-                        "subtype": "zip_export",
+                        "subtype": "backup",
                     })),
                 );
             }
@@ -4099,6 +4099,7 @@ async fn execute_zip_export_with_progress(
 
     let mut compressed_files: usize = 0;
     let mut checksums: Vec<(String, String)> = Vec::new();
+    let mut skipped_files: Vec<String> = Vec::new();
 
     for (path, relative_path_str) in &files_to_compress {
         // 检查取消
@@ -4121,6 +4122,7 @@ async fn execute_zip_export_with_progress(
                 Ok(f) => f,
                 Err(e) => {
                     warn!("[zip_export] 打开文件失败: {:?} - {}", path, e);
+                    skipped_files.push(format!("{}: {}", relative_path_str, e));
                     continue;
                 }
             };
@@ -4138,11 +4140,13 @@ async fn execute_zip_export_with_progress(
                     "[zip_export] 开始写入文件失败: {} - {}",
                     relative_path_str, e
                 );
+                skipped_files.push(format!("{}: {}", relative_path_str, e));
                 continue;
             }
 
             if let Err(e) = std::io::copy(&mut file, &mut zip_writer) {
                 warn!("[zip_export] 写入 ZIP 失败: {} - {}", relative_path_str, e);
+                skipped_files.push(format!("{}: {}", relative_path_str, e));
                 continue;
             }
 
@@ -4339,17 +4343,40 @@ async fn execute_zip_export_with_progress(
         );
     }
 
-    // 构建结果 payload
+    // 构建结果 payload（如有跳过文件，标记 success=false 并附上错误详情）
+    let has_skipped = !skipped_files.is_empty();
+    if has_skipped {
+        warn!(
+            "[zip_export] 导出完成但有 {} 个文件被跳过: {:?}",
+            skipped_files.len(),
+            skipped_files
+        );
+    }
+    let export_error = if has_skipped {
+        Some(format!(
+            "导出完成但 {} 个文件被跳过: {}",
+            skipped_files.len(),
+            skipped_files.join("; ")
+        ))
+    } else {
+        None
+    };
+
     let result_payload = BackupJobResultPayload {
-        success: true,
+        success: !has_skipped,
         output_path: Some(zip_path.to_string_lossy().to_string()),
         resolved_path: Some(zip_path.to_string_lossy().to_string()),
         message: Some(format!(
-            "ZIP 导出完成: {} 个文件, 压缩率 {:.1}%",
+            "ZIP 导出完成: {} 个文件, 压缩率 {:.1}%{}",
             compressed_files,
-            compression_ratio * 100.0
+            compression_ratio * 100.0,
+            if has_skipped {
+                format!("（{} 个文件被跳过）", skipped_files.len())
+            } else {
+                "".to_string()
+            }
         )),
-        error: None,
+        error: export_error,
         duration_ms: Some(duration_ms),
         stats: Some(serde_json::json!({
             "file_count": compressed_files,
@@ -4357,6 +4384,7 @@ async fn execute_zip_export_with_progress(
             "compressed_size": compressed_size,
             "compression_ratio": compression_ratio,
             "zip_checksum": zip_checksum,
+            "skipped_files": skipped_files,
         })),
         requires_restart: false,
         checkpoint_path: None,
@@ -5271,8 +5299,9 @@ async fn execute_restore_with_progress(
         }
     }
 
-    // 资产恢复如果有非致命错误，记录但不阻塞
-    if !restore_errors.is_empty() {
+    // 收集所有非致命警告（资产错误 + 插槽切换警告）
+    let has_asset_errors = !restore_errors.is_empty();
+    if has_asset_errors {
         warn!(
             "[data_governance] 资产恢复有部分错误（数据库已成功恢复）: {:?}",
             restore_errors
@@ -5320,6 +5349,20 @@ async fn execute_restore_with_progress(
         None
     };
 
+    // 合并所有警告信息（资产错误 + 插槽切换警告），确保前端能看到
+    let combined_warnings: Vec<String> = {
+        let mut warnings = restore_errors.clone();
+        if let Some(ref sw) = switch_warning {
+            warnings.push(sw.clone());
+        }
+        warnings
+    };
+    let error_for_result = if combined_warnings.is_empty() {
+        None
+    } else {
+        Some(combined_warnings.join("; "))
+    };
+
     job_ctx.mark_running(
         BackupJobPhase::Cleanup,
         97.0,
@@ -5344,17 +5387,24 @@ async fn execute_restore_with_progress(
                 "restore_assets": should_restore_assets,
                 "restored_assets": restored_assets,
                 "databases_restored": databases_restored.clone(),
+                "asset_errors": restore_errors,
             })),
         );
     }
 
-    // 完成任务
+    // 完成任务（数据库恢复成功，但如果有资产错误则 success=false 以触发前端 warning）
+    let result_success = !has_asset_errors;
     job_ctx.complete(
         Some(format!(
-            "恢复完成，已恢复 {} 个数据库{}",
+            "恢复完成，已恢复 {} 个数据库{}{}",
             databases_restored.len(),
             if should_restore_assets {
                 format!("，资产文件 {} 个", restored_assets)
+            } else {
+                "".to_string()
+            },
+            if has_asset_errors {
+                format!("（{} 个资产恢复失败）", restore_errors.len())
             } else {
                 "".to_string()
             }
@@ -5362,7 +5412,7 @@ async fn execute_restore_with_progress(
         total_items,
         total_items,
         BackupJobResultPayload {
-            success: true,
+            success: result_success,
             output_path: Some(restore_target_path.clone()),
             resolved_path: Some(restore_target_path.clone()),
             message: Some(if should_restore_assets {
@@ -5374,7 +5424,7 @@ async fn execute_restore_with_progress(
             } else {
                 format!("已恢复数据库: {}", databases_restored.join(", "))
             }),
-            error: switch_warning,
+            error: error_for_result,
             duration_ms: Some(duration_ms),
             stats: Some(serde_json::json!({
                 "backup_id": backup_id,
@@ -5383,6 +5433,7 @@ async fn execute_restore_with_progress(
                 "restore_assets": should_restore_assets,
                 "restored_assets": restored_assets,
                 "restore_target": restore_target_path,
+                "asset_errors": restore_errors,
             })),
             // 恢复完成后需要重启以切换到恢复的数据插槽
             requires_restart: true,

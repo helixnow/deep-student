@@ -189,22 +189,53 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
         total_parsed?: number;
         questions_in_chunk?: number;
         total_questions?: number;
+        total_images?: number;
+        total_chars?: number;
+        image_index?: number;
         error?: string;
       }>('question_import_progress', (event) => {
         const payload = event.payload;
         
         switch (payload.type) {
-          case 'SessionCreated':
+          case 'OcrImageCompleted': {
+            // OCR 阶段占进度条 0~40%
+            const done = (payload.image_index || 0) + 1;
+            const total = payload.total_images || 1;
             setLlmProgress({
-              percent: 5,
-              message: t('exam_sheet:uploader.parsing_started', { chunks: payload.total_chunks }),
+              percent: Math.min(Math.round((done / total) * 40), 40),
+              message: t('exam_sheet:uploader.ocr_image_progress', {
+                current: done,
+                total,
+                defaultValue: '正在识别图片 {{current}}/{{total}}...',
+              }),
               parsedCount: 0,
             });
+            break;
+          }
+          case 'OcrPhaseCompleted':
+            setLlmProgress({
+              percent: 40,
+              message: t('exam_sheet:uploader.ocr_phase_done', {
+                total: payload.total_images,
+                chars: payload.total_chars,
+                defaultValue: '{{total}} 张图片识别完成，开始解析题目...',
+              }),
+              parsedCount: 0,
+            });
+            break;
+          case 'SessionCreated':
+            setLlmProgress(prev => ({
+              ...prev,
+              percent: Math.max(prev.percent, 42),
+              message: t('exam_sheet:uploader.parsing_started', { chunks: payload.total_chunks }),
+              parsedCount: 0,
+            }));
             break;
           case 'ChunkStart':
             setLlmProgress(prev => ({
               ...prev,
-              percent: Math.min(10 + ((payload.chunk_index || 0) / (payload.total_chunks || 1)) * 70, 80),
+              // LLM 解析阶段占 42~90%
+              percent: Math.min(42 + ((payload.chunk_index || 0) / (payload.total_chunks || 1)) * 48, 90),
               message: t('exam_sheet:uploader.parsing_chunk', { current: (payload.chunk_index || 0) + 1, total: payload.total_chunks }),
             }));
             break;
@@ -233,7 +264,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
           case 'ChunkCompleted':
             setLlmProgress(prev => ({
               ...prev,
-              percent: Math.min(10 + (((payload.chunk_index || 0) + 1) / (payload.total_chunks || 1)) * 80, 90),
+              percent: Math.min(42 + (((payload.chunk_index || 0) + 1) / (payload.total_chunks || 1)) * 48, 90),
               parsedCount: payload.total_parsed || 0,
               message: t('exam_sheet:uploader.chunk_completed', { current: (payload.chunk_index || 0) + 1, total: payload.total_chunks, count: payload.total_parsed }),
             }));

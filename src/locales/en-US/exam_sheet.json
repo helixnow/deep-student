@@ -449,7 +449,8 @@
     "upload_failed": "Image upload failed",
     "max_count": "Up to {{count}} images",
     "max_size": "Image size limit: {{size}}",
-    "confirm_delete": "Delete this image?"
+    "confirm_delete": "Delete this image?",
+    "source_images_bubble": "Original exam images ({{count}})"
   },
   "uploader": {
     "session_name_default": "Full Sheet Recognition",
@@ -500,6 +501,8 @@
     "parsing_chunk": "Parsing chunk {{current}}/{{total}}...",
     "parsed_count": "Parsed {{count}} questions...",
     "chunk_completed": "Chunk {{current}}/{{total}} done, {{count}} questions parsed",
+    "ocr_image_progress": "Recognizing image {{current}}/{{total}}...",
+    "ocr_phase_done": "{{total}} images recognized, starting question parsing...",
     "import_done": "Import complete! {{count}} questions total",
     "import_interrupted": "Import interrupted, {{count}} questions saved"
   },

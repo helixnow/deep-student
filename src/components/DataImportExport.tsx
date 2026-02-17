@@ -446,6 +446,10 @@ export const DataImportExport: React.FC<DataImportExportProps> = ({ onClose, emb
           : undefined,
       });
 
+      const isCompletedWithIssues = (payload: BackupJobEventPayload): boolean => (
+        payload.status === 'completed' && payload.result?.success === false
+      );
+
       const finish = (payload: BackupJobEventPayload, failed: boolean) => {
         if (done) return;
         done = true;
@@ -472,7 +476,9 @@ export const DataImportExport: React.FC<DataImportExportProps> = ({ onClose, emb
           const job = await DataGovernanceApi.getBackupJob(jobId);
           if (!job) return;
           const payload = toPayloadFromSummary(job);
-          if (payload.status === 'completed') {
+          if (isCompletedWithIssues(payload)) {
+            finish(payload, true);
+          } else if (payload.status === 'completed') {
             finish(payload, false);
           } else if (payload.status === 'failed' || payload.status === 'cancelled') {
             finish(payload, true);
@@ -511,7 +517,9 @@ export const DataImportExport: React.FC<DataImportExportProps> = ({ onClose, emb
 
         onProgress?.(payload);
 
-        if (payload.status === 'completed') {
+        if (isCompletedWithIssues(payload)) {
+          finish(payload, true);
+        } else if (payload.status === 'completed') {
           finish(payload, false);
         } else if (payload.status === 'failed' || payload.status === 'cancelled') {
           finish(payload, true);
@@ -700,6 +708,14 @@ export const DataImportExport: React.FC<DataImportExportProps> = ({ onClose, emb
         });
 
         if (p.status === 'completed') {
+          if (p.result?.success === false) {
+            const errMsg = p.result?.error || p.message || t('data:errors.export_fallback');
+            debugLog.error(t('export_failed'), errMsg);
+            showGlobalNotification('warning', `${t('export_failed')}: ${errMsg}`);
+            setExportError(errMsg);
+            finalizeExport(jobId, { status: 'failed', message: errMsg });
+            return;
+          }
           const resolvedPath =
             p.result?.resolvedPath ||
             p.result?.resolved_path ||

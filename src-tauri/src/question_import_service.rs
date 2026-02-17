@@ -43,6 +43,16 @@ use crate::vfs::types::VfsCreateExamSheetParams;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum QuestionImportProgress {
+    /// 单张图片 OCR 完成
+    OcrImageCompleted {
+        image_index: usize,
+        total_images: usize,
+    },
+    /// 所有图片 OCR 完成，开始 LLM 解析
+    OcrPhaseCompleted {
+        total_images: usize,
+        total_chars: usize,
+    },
     SessionCreated {
         session_id: String,
         name: String,
@@ -201,6 +211,7 @@ impl QuestionImportService {
         &self,
         content: &str,
         vfs_db: Option<&VfsDatabase>,
+        progress_tx: Option<&UnboundedSender<QuestionImportProgress>>,
     ) -> Result<(String, Vec<String>), AppError> {
         use base64::Engine;
 
@@ -272,6 +283,14 @@ impl QuestionImportService {
                     log::warn!("[QuestionImport] 图片 {} OCR 失败: {}", i + 1, e);
                 }
             }
+
+            // ★ 每张图片 OCR 完成后发送进度
+            if let Some(tx) = progress_tx {
+                let _ = tx.send(QuestionImportProgress::OcrImageCompleted {
+                    image_index: i,
+                    total_images: base64_images.len(),
+                });
+            }
         }
 
         // 清理临时目录
@@ -281,7 +300,17 @@ impl QuestionImportService {
             return Err(AppError::validation("所有图片 OCR 均失败，请检查图片清晰度"));
         }
 
-        Ok((all_texts.join("\n\n"), blob_hashes))
+        let joined = all_texts.join("\n\n");
+
+        // ★ OCR 阶段完成，发送汇总进度
+        if let Some(tx) = progress_tx {
+            let _ = tx.send(QuestionImportProgress::OcrPhaseCompleted {
+                total_images: base64_images.len(),
+                total_chars: joined.len(),
+            });
+        }
+
+        Ok((joined, blob_hashes))
     }
 
     /// 统一的文档导入入口
@@ -314,7 +343,7 @@ impl QuestionImportService {
             }
             fmt if Self::is_image_format(fmt) => {
                 // ★ 图片格式：OCR 提取文本 + 保存原图到 VFS Blob
-                let (text, hashes) = self.ocr_images_to_text_with_blobs(&request.content, Some(vfs_db)).await?;
+                let (text, hashes) = self.ocr_images_to_text_with_blobs(&request.content, Some(vfs_db), None).await?;
                 source_image_hashes = hashes;
                 text
             }
@@ -1139,8 +1168,10 @@ impl QuestionImportService {
                     .map_err(|e| AppError::validation(format!("文档解析失败: {}", e)))?
             }
             fmt if Self::is_image_format(fmt) => {
-                // ★ 图片格式：OCR 提取文本 + 保存原图到 VFS Blob
-                let (text, hashes) = self.ocr_images_to_text_with_blobs(&request.content, Some(vfs_db)).await?;
+                // ★ 图片格式：OCR 提取文本 + 保存原图到 VFS Blob（带进度反馈）
+                let (text, hashes) = self.ocr_images_to_text_with_blobs(
+                    &request.content, Some(vfs_db), progress_tx.as_ref(),
+                ).await?;
                 source_image_hashes = hashes;
                 text
             }

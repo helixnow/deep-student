@@ -184,6 +184,57 @@ const QUESTION_TYPE_I18N_KEY: Record<QuestionType, string> = {
   other: 'other',
 };
 
+/** 自动关联的原始图片折叠气泡 — 默认折叠，点击展开 */
+const SourceImagesBubble: React.FC<{
+  images: QuestionImage[];
+  imageUrls: Record<string, string>;
+}> = ({ images, imageUrls }) => {
+  const [expanded, setExpanded] = React.useState(false);
+  const { t } = useTranslation('exam_sheet');
+
+  return (
+    <div className="rounded-lg border border-border/40 bg-muted/10 overflow-hidden">
+      <button
+        type="button"
+        className="w-full flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground hover:bg-muted/30 transition-colors"
+        onClick={() => setExpanded(v => !v)}
+      >
+        <ImageIcon className="w-3.5 h-3.5 flex-shrink-0" />
+        <span className="flex-1 text-left">
+          {t('image.source_images_bubble', {
+            count: images.length,
+            defaultValue: '原始试卷图片 ({{count}} 张)',
+          })}
+        </span>
+        {expanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+      </button>
+      {expanded && (
+        <div className={cn(
+          'grid gap-2 p-2 pt-0',
+          images.length === 1 ? 'grid-cols-1' : 'grid-cols-2'
+        )}>
+          {images.map((img) => (
+            <div key={img.id} className="rounded-lg overflow-hidden border border-border/30 bg-muted/20">
+              {imageUrls[img.id] ? (
+                <img
+                  src={imageUrls[img.id]}
+                  alt={img.name}
+                  className="w-full object-contain max-h-64"
+                  loading="lazy"
+                />
+              ) : (
+                <div className="w-full h-24 flex items-center justify-center text-muted-foreground">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
 interface StatCardProps {
   icon: React.ElementType;
   label: string;
@@ -1322,29 +1373,45 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                     </div>
 
                     {/* 题目图片 */}
-                    {currentQuestion.images && currentQuestion.images.length > 0 && (
-                      <div className={cn(
-                        'grid gap-2',
-                        currentQuestion.images.length === 1 ? 'grid-cols-1' : 'grid-cols-2'
-                      )}>
-                        {currentQuestion.images.map((img) => (
-                          <div key={img.id} className="rounded-lg overflow-hidden border border-border/40 bg-muted/20">
-                            {questionImageUrls[img.id] ? (
-                              <img
-                                src={questionImageUrls[img.id]}
-                                alt={img.name}
-                                className="w-full object-contain max-h-48"
-                                loading="lazy"
-                              />
-                            ) : (
-                              <div className="w-full h-24 flex items-center justify-center text-muted-foreground">
-                                <Loader2 className="w-4 h-4 animate-spin" />
-                              </div>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    )}
+                    {currentQuestion.images && currentQuestion.images.length > 0 && (() => {
+                      const confirmedImages = currentQuestion.images!.filter(img => img.name.startsWith('crop_'));
+                      const sourceImages = currentQuestion.images!.filter(img => !img.name.startsWith('crop_'));
+                      return (
+                        <>
+                          {/* 用户确认的图片（裁剪/上传）正常显示 */}
+                          {confirmedImages.length > 0 && (
+                            <div className={cn(
+                              'grid gap-2',
+                              confirmedImages.length === 1 ? 'grid-cols-1' : 'grid-cols-2'
+                            )}>
+                              {confirmedImages.map((img) => (
+                                <div key={img.id} className="rounded-lg overflow-hidden border border-border/40 bg-muted/20">
+                                  {questionImageUrls[img.id] ? (
+                                    <img
+                                      src={questionImageUrls[img.id]}
+                                      alt={img.name}
+                                      className="w-full object-contain max-h-48"
+                                      loading="lazy"
+                                    />
+                                  ) : (
+                                    <div className="w-full h-24 flex items-center justify-center text-muted-foreground">
+                                      <Loader2 className="w-4 h-4 animate-spin" />
+                                    </div>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          {/* 自动关联的原始图片 — 折叠气泡，点击展开 */}
+                          {sourceImages.length > 0 && (
+                            <SourceImagesBubble
+                              images={sourceImages}
+                              imageUrls={questionImageUrls}
+                            />
+                          )}
+                        </>
+                      );
+                    })()}
 
                     {/* 原始图片裁剪入口 */}
                     <NotionButton
@@ -1749,29 +1816,40 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
               </div>
 
               {/* 题目图片 */}
-              {currentQuestion.images && currentQuestion.images.length > 0 && (
-                <div className={cn(
-                  'grid gap-2',
-                  currentQuestion.images.length === 1 ? 'grid-cols-1 max-w-md' : 'grid-cols-2'
-                )}>
-                  {currentQuestion.images.map((img) => (
-                    <div key={img.id} className="rounded-lg overflow-hidden border border-border/40 bg-muted/20">
-                      {questionImageUrls[img.id] ? (
-                        <img
-                          src={questionImageUrls[img.id]}
-                          alt={img.name}
-                          className="w-full object-contain max-h-64"
-                          loading="lazy"
-                        />
-                      ) : (
-                        <div className="w-full h-32 flex items-center justify-center text-muted-foreground">
-                          <Loader2 className="w-5 h-5 animate-spin" />
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
+              {currentQuestion.images && currentQuestion.images.length > 0 && (() => {
+                const confirmedImgs = currentQuestion.images!.filter(img => img.name.startsWith('crop_'));
+                const sourceImgs = currentQuestion.images!.filter(img => !img.name.startsWith('crop_'));
+                return (
+                  <>
+                    {confirmedImgs.length > 0 && (
+                      <div className={cn(
+                        'grid gap-2',
+                        confirmedImgs.length === 1 ? 'grid-cols-1 max-w-md' : 'grid-cols-2'
+                      )}>
+                        {confirmedImgs.map((img) => (
+                          <div key={img.id} className="rounded-lg overflow-hidden border border-border/40 bg-muted/20">
+                            {questionImageUrls[img.id] ? (
+                              <img
+                                src={questionImageUrls[img.id]}
+                                alt={img.name}
+                                className="w-full object-contain max-h-64"
+                                loading="lazy"
+                              />
+                            ) : (
+                              <div className="w-full h-32 flex items-center justify-center text-muted-foreground">
+                                <Loader2 className="w-5 h-5 animate-spin" />
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {sourceImgs.length > 0 && (
+                      <SourceImagesBubble images={sourceImgs} imageUrls={questionImageUrls} />
+                    )}
+                  </>
+                );
+              })()}
 
               {/* 编辑模式：直接显示答案和解析 */}
               {editMode ? (

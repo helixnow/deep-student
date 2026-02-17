@@ -166,9 +166,9 @@ export const RootNode: React.FC<NodeProps<Node<RootNodeData>>> = ({
       {!reciteMode && (
       <div
         className={cn(
-          "absolute flex items-center",
+          "absolute flex items-center justify-end w-8",
           "transition-opacity duration-200 ease-out",
-          showActions && !isEditing ? "opacity-100" : "opacity-0 pointer-events-none"
+          (showActions || selected) && !isEditing ? "opacity-100" : "opacity-0 pointer-events-none"
         )}
         style={{ right: '-32px', top: '50%', marginTop: '-12px' }}
       >

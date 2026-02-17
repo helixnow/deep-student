@@ -131,17 +131,17 @@ export const AboutTab: React.FC = () => {
             {/* 更新可用提示 */}
             {updater.available && updater.info && (
               <div className="mx-1 p-3 rounded-lg bg-primary/5 border border-primary/20">
-                <div className="flex items-center justify-between">
-                  <div>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium text-foreground">
                       {t('about.update.available', '发现新版本')}: v{updater.info.version}
                     </p>
                     {updater.info.body && (
-                      <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{updater.info.body}</p>
+                      <p className="text-xs text-muted-foreground mt-1 line-clamp-2 break-all">{updater.info.body}</p>
                     )}
                   </div>
                   {updater.isMobile ? (
-                    <div className="ml-3 flex-shrink-0 flex flex-col gap-1.5">
+                    <div className="w-full sm:w-auto sm:ml-3 flex-shrink-0 flex flex-col gap-1.5">
                       {updater.info?.apkUrl && (
                         <a
                           href={updater.info.apkUrl}

@@ -493,6 +493,17 @@ export const ChatV2Page: React.FC = () => {
     }));
   }, [groupNameMap, sessions]);
 
+  // 浏览模式的分组信息
+  const browserGroups = useMemo(() => {
+    return groups.map((g) => ({
+      id: g.id,
+      name: g.name,
+      icon: g.icon,
+      color: g.color,
+      sortOrder: g.sortOrder,
+    }));
+  }, [groups]);
+
   // 未分组会话（仍按时间分组展示，含未知分组）
   const ungroupedSessions = useMemo(
     () => filteredSessions.filter((s) => !s.groupId || !groupNameMap.has(s.groupId)),
@@ -714,18 +725,6 @@ export const ChatV2Page: React.FC = () => {
   // 有消息则可以新建对话，避免创建多个空对话
   const isEmptyNewChat = !currentSessionId || !currentSessionHasMessages;
 
-  // 刷新状态（用于会话浏览模式）
-  const [browserRefreshing, setBrowserRefreshing] = useState(false);
-  const handleBrowserRefresh = useCallback(async () => {
-    if (browserRefreshing) return;
-    setBrowserRefreshing(true);
-    try {
-      await loadSessions();
-    } finally {
-      setTimeout(() => setBrowserRefreshing(false), 500);
-    }
-  }, [browserRefreshing, loadSessions]);
-
   // 根据视图模式配置顶栏
   const headerTitle = useMemo(() => {
     if (viewMode === 'browser') {
@@ -737,30 +736,17 @@ export const ChatV2Page: React.FC = () => {
   const headerRightActions = useMemo(() => {
     if (viewMode === 'browser') {
       return (
-        <div className="flex items-center gap-1">
-          <NotionButton
-            variant="ghost"
-            size="icon"
-            iconOnly
-            onClick={handleBrowserRefresh}
-            disabled={browserRefreshing}
-            aria-label={t('browser.refresh')}
-            title={t('browser.refresh')}
-          >
-            <RefreshCw className={cn('w-5 h-5', browserRefreshing && 'animate-spin')} />
-          </NotionButton>
-          <NotionButton
-            variant="primary"
-            size="icon"
-            iconOnly
-            onClick={() => createSession()}
-            disabled={isLoading}
-            aria-label={t('page.newSession')}
-            title={t('page.newSession')}
-          >
-            <Plus className="w-5 h-5" />
-          </NotionButton>
-        </div>
+        <NotionButton
+          variant="primary"
+          size="icon"
+          iconOnly
+          onClick={() => createSession()}
+          disabled={isLoading}
+          aria-label={t('page.newSession')}
+          title={t('page.newSession')}
+        >
+          <Plus className="w-5 h-5" />
+        </NotionButton>
       );
     }
     return (
@@ -776,7 +762,7 @@ export const ChatV2Page: React.FC = () => {
         <Plus className="w-5 h-5" />
       </NotionButton>
     );
-  }, [viewMode, browserRefreshing, handleBrowserRefresh, createSession, isLoading, isEmptyNewChat, t]);
+  }, [viewMode, createSession, isLoading, isEmptyNewChat, t]);
 
   // 📱 移动端资源库面包屑导航回调
   const handleFinderBreadcrumbNavigate = useCallback((index: number) => {
@@ -2490,13 +2476,12 @@ export const ChatV2Page: React.FC = () => {
       {viewMode === 'browser' && !isSmallScreen ? (
         <SessionBrowser
           sessions={sessionsForBrowser}
+          groups={browserGroups}
           isLoading={isLoading}
           onSelectSession={handleBrowserSelectSession}
           onDeleteSession={deleteSession}
           onCreateSession={() => createSession()}
-          onRefresh={loadSessions}
           onRenameSession={handleBrowserRenameSession}
-          onBack={() => setViewMode('sidebar')}
           className="h-full flex-1"
         />
       ) : groupEditorOpen ? (
@@ -2624,16 +2609,12 @@ export const ChatV2Page: React.FC = () => {
           {viewMode === 'browser' ? (
             <SessionBrowser
               sessions={sessionsForBrowser}
+              groups={browserGroups}
               isLoading={isLoading}
               onSelectSession={handleBrowserSelectSession}
               onDeleteSession={deleteSession}
               onCreateSession={() => createSession()}
-              onRefresh={loadSessions}
               onRenameSession={handleBrowserRenameSession}
-              onBack={() => {
-                setViewMode('sidebar');
-                setSessionSheetOpen(true); // 退出时打开侧栏，有滑动动画
-              }}
               className="h-full"
               embeddedMode={true}
             />

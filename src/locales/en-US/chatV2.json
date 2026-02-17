@@ -901,7 +901,10 @@
     "noResults": "No matching sessions found",
     "tryDifferentKeyword": "Try a different keyword",
     "updatedAt": "Updated",
-    "createdAt": "Created"
+    "createdAt": "Created",
+    "groupByTime": "Group by time",
+    "groupByGroup": "Group by category",
+    "ungrouped": "Ungrouped"
   },
   "approval": {
     "title": "Tool Execution Confirmation",

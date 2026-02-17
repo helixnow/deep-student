@@ -580,20 +580,29 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
 
       // 根据任务操作类型显示不同消息（注意：后端 kind=export/import 过于粗粒度，不能直接区分备份 vs ZIP 导出）
       if (op === 'zip_export') {
-        showGlobalNotification('success', t('data:governance.export_success_simple'));
+        showGlobalNotification(
+          resultSuccess ? 'success' : 'warning',
+          resultSuccess ? t('data:governance.export_success_simple') : t('data:governance.backup_completed_with_issues')
+        );
       } else if (op === 'zip_import') {
-        showGlobalNotification('success', t('data:governance.import_success_simple'));
+        showGlobalNotification(
+          resultSuccess ? 'success' : 'warning',
+          resultSuccess ? t('data:governance.import_success_simple') : t('data:governance.backup_completed_with_issues')
+        );
         void loadBackups();
         // 导入完成后提示用户是否立即恢复
         const backupId = stats && typeof stats === 'object'
           ? (stats as Record<string, unknown>).backup_id as string | undefined
           : undefined;
-        if (backupId) {
+        if (backupId && resultSuccess) {
           setImportedBackupId(backupId);
           setShowRestorePromptDialog(true);
         }
       } else if (op === 'restore') {
-        showGlobalNotification('success', t('data:governance.restore_success_simple'));
+        showGlobalNotification(
+          resultSuccess ? 'success' : 'warning',
+          resultSuccess ? t('data:governance.restore_success_simple') : t('data:governance.backup_completed_with_issues')
+        );
         void loadBackups();
         void loadOverviewData(); // 恢复后刷新概览数据
       } else if (op === 'tiered_backup') {

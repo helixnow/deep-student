@@ -93,6 +93,7 @@ export const MultiSelectModelPanel: React.FC<MultiSelectModelPanelProps> = ({
   const { t } = useTranslation(['chatV2', 'chat_host', 'common']);
   // 移动端自动隐藏头部（如果未显式指定）
   const mobileLayout = useMobileLayoutSafe();
+  const isMobile = mobileLayout?.isMobile ?? false;
   const shouldHideHeader = hideHeader ?? mobileLayout?.isMobile ?? false;
 
   // 本地状态
@@ -251,7 +252,8 @@ export const MultiSelectModelPanel: React.FC<MultiSelectModelPanelProps> = ({
     const isSelected = selectedIds.has(option.id);
     const isDefault = option.id === defaultModelId;
     const indicatorClass = cn(
-      'flex h-5 w-5 shrink-0 items-center justify-center rounded-md border text-[11px] font-semibold transition',
+      'flex shrink-0 items-center justify-center rounded-md border text-[11px] font-semibold transition',
+      isMobile ? 'h-[18px] w-[18px]' : 'h-5 w-5',
       isSelected
         ? 'border-primary bg-primary text-primary-foreground shadow-sm'
         : 'border-muted-foreground/30 text-transparent hover:border-muted-foreground/50'
@@ -261,7 +263,8 @@ export const MultiSelectModelPanel: React.FC<MultiSelectModelPanelProps> = ({
       <div
         key={option.id}
         className={cn(
-          'flex w-full items-start gap-2 rounded-lg border px-2 py-1.5 text-left transition group',
+          'flex w-full items-start gap-2 rounded-lg border px-2 text-left transition group',
+          isMobile ? 'py-1.5' : 'py-2',
           isSelected
             ? 'border-primary/60 bg-primary/5'
             : 'border-transparent bg-card/80 hover:border-muted-foreground/20 hover:bg-muted/70',
@@ -281,9 +284,13 @@ export const MultiSelectModelPanel: React.FC<MultiSelectModelPanelProps> = ({
           size="sm"
           onClick={() => handleToggleModel(option)}
           disabled={disabled}
-          className={cn('min-w-0 flex-1 space-y-0.5 !justify-start text-left', disabled && 'cursor-not-allowed')}
+          className={cn(
+            'min-w-0 flex-1 !h-auto !flex-col !items-start !justify-start !gap-0.5 !whitespace-normal !px-0 !py-0 text-left',
+            isMobile && '!gap-0',
+            disabled && 'cursor-not-allowed'
+          )}
         >
-          <div className="flex items-center gap-1 flex-wrap">
+          <div className={cn('flex w-full min-w-0 items-center overflow-hidden', isMobile ? 'gap-1' : 'gap-1.5')}>
             <ProviderIcon
               modelId={option.model || option.name}
               size={14}
@@ -292,22 +299,27 @@ export const MultiSelectModelPanel: React.FC<MultiSelectModelPanelProps> = ({
             {option.isFavorite && (
               <Star size={12} className="text-warning fill-warning" />
             )}
-            <Badge
-              variant="outline"
-              className="h-[18px] px-1 py-0 text-[10px] font-medium"
-            >
-              {option.vendorName}
-            </Badge>
+            {option.vendorName && (
+              <Badge
+                variant="outline"
+                className={cn(
+                  'h-4 px-1 py-0 text-[10px] font-medium truncate shrink-0',
+                  isMobile ? 'max-w-[90px]' : 'max-w-[110px]'
+                )}
+              >
+                {option.vendorName}
+              </Badge>
+            )}
             <Badge
               variant="secondary"
-              className="h-[18px] px-1 py-0 text-[10px] font-medium"
+              className="h-4 px-1 py-0 text-[10px] font-medium shrink-0"
             >
               {option.isMultimodal ? multBadge : textBadge}
             </Badge>
             {option.isReasoning && (
               <Badge
                 variant="secondary"
-                className="h-[18px] px-1 py-0 text-[10px] font-medium bg-amber-500/10 text-amber-600 border-amber-500/20"
+                className="h-4 px-1 py-0 text-[10px] font-medium shrink-0 bg-amber-500/10 text-amber-600 border-amber-500/20"
               >
                 {t('chat_host:advanced.model.tag_reasoning')}
               </Badge>
@@ -316,14 +328,14 @@ export const MultiSelectModelPanel: React.FC<MultiSelectModelPanelProps> = ({
               <CommonTooltip content={systemBadgeTooltip} position="top">
                 <Badge 
                   variant="outline" 
-                  className="h-[18px] px-1 py-0 text-[10px] font-medium border-primary/50 bg-primary/10 text-primary cursor-help"
+                  className="hidden h-4 px-1 py-0 text-[10px] font-medium shrink-0 border-primary/50 bg-primary/10 text-primary cursor-help sm:inline-flex"
                 >
                   {systemBadge}
                 </Badge>
               </CommonTooltip>
             )}
           </div>
-          <div className="text-xs text-foreground break-words">
+          <div className={cn('w-full text-foreground break-all', isMobile ? 'text-[13px] leading-4' : 'text-xs leading-4')}>
             {option.model || option.name}
           </div>
         </NotionButton>

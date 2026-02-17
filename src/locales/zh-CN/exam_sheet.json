@@ -449,7 +449,8 @@
     "upload_failed": "图片上传失败",
     "max_count": "最多上传 {{count}} 张图片",
     "max_size": "图片大小不能超过 {{size}}",
-    "confirm_delete": "确定要删除这张图片吗？"
+    "confirm_delete": "确定要删除这张图片吗？",
+    "source_images_bubble": "原始试卷图片 ({{count}} 张)"
   },
   "uploader": {
     "session_name_default": "整卷识别",
@@ -500,6 +501,8 @@
     "parsing_chunk": "正在解析分块 {{current}}/{{total}}...",
     "parsed_count": "已解析 {{count}} 道题目...",
     "chunk_completed": "分块 {{current}}/{{total}} 完成，已解析 {{count}} 道题目",
+    "ocr_image_progress": "正在识别图片 {{current}}/{{total}}...",
+    "ocr_phase_done": "{{total}} 张图片识别完成，开始解析题目...",
     "import_done": "导入完成！共 {{count}} 道题目",
     "import_interrupted": "导入中断，已保存 {{count}} 道题目"
   },
