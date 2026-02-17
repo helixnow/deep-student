@@ -561,6 +561,7 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
     { model: 'BAAI/bge-reranker-v2-m3', name: 'SiliconFlow - BAAI/bge-reranker-v2-m3', assignmentKey: t('settings:mapping_keys.reranker_configured') },
     { model: 'inclusionAI/Ling-mini-2.0', name: 'SiliconFlow - inclusionAI/Ling-mini-2.0', assignmentKey: t('settings:mapping_keys.chat_title_configured') },
     { model: 'tencent/Hunyuan-MT-7B', name: 'SiliconFlow - tencent/Hunyuan-MT-7B', assignmentKey: t('settings:mapping_keys.translation_configured') },
+    { model: 'deepseek-ai/DeepSeek-V3.2', name: 'SiliconFlow - deepseek-ai/DeepSeek-V3.2', assignmentKey: t('settings:mapping_keys.question_parsing_configured') },
   ];
 
   // OCR 专用模型预设（支持多引擎，按优先级排列，全部默认启用）
@@ -571,6 +572,13 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
       name: 'SiliconFlow - PaddleOCR-VL-1.5',
       engineType: 'paddle_ocr_vl',
       description: '免费开源 OCR 1.5 版，支持 109 种语言，精度达 94.5%',
+      isFree: true,
+    },
+    { 
+      model: 'PaddlePaddle/PaddleOCR-VL', 
+      name: 'SiliconFlow - PaddleOCR-VL',
+      engineType: 'paddle_ocr_vl_v1',
+      description: '免费开源 OCR 旧版，支持坐标输出，作为 1.5 版的备用',
       isFree: true,
     },
     { 

@@ -476,6 +476,15 @@ pub struct ExamSheetPreviewPage {
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub original_image_path: String,
     pub cards: Vec<ExamCardPreview>,
+    /// ★ 两阶段可恢复：阶段一 OCR 原始文本（逐页持久化，恢复时跳过已完成的页）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub raw_ocr_text: Option<String>,
+    /// ★ 两阶段可恢复：阶段一完成标志
+    #[serde(default)]
+    pub ocr_completed: bool,
+    /// ★ 两阶段可恢复：阶段二完成标志
+    #[serde(default)]
+    pub parse_completed: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -590,12 +599,30 @@ pub struct PdfOcrResult {
 pub enum ExamSheetSegmentationProgress {
     SessionCreated {
         detail: ExamSheetSessionDetail,
-        total_chunks: usize,
+        total_pages: usize,
     },
+    // ★ 兼容旧前端：保留 ChunkCompleted（映射为 OcrPageCompleted 语义）
     ChunkCompleted {
         detail: ExamSheetSessionDetail,
         chunk_index: usize,
         total_chunks: usize,
+    },
+    // ★ 阶段一：单页 OCR 完成
+    OcrPageCompleted {
+        detail: ExamSheetSessionDetail,
+        page_index: usize,
+        total_pages: usize,
+    },
+    // ★ 阶段一全部完成
+    OcrPhaseCompleted {
+        detail: ExamSheetSessionDetail,
+        total_pages: usize,
+    },
+    // ★ 阶段二：单页题目解析完成
+    ParsePageCompleted {
+        detail: ExamSheetSessionDetail,
+        page_index: usize,
+        total_pages: usize,
     },
     Completed {
         detail: ExamSheetSessionDetail,
@@ -1157,6 +1184,9 @@ pub struct ModelAssignments {
     // ★ 多模态知识库模型配置（文档：multimodal-knowledge-base-design.md）
     pub vl_embedding_model_config_id: Option<String>, // 多模态嵌入模型（Qwen3-VL-Embedding）
     pub vl_reranker_model_config_id: Option<String>,  // 多模态重排序模型（Qwen3-VL-Reranker）
+    // ★ 两阶段题目集识别：专用题目解析模型（推荐快速文本模型，不要推理模型）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub question_parsing_model_config_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

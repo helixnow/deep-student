@@ -6,16 +6,14 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use crate::file_manager::FileManager;
 use crate::llm_manager::{ExamSegmentationPage, LLMManager};
 use crate::models::{
-    AppError, AppErrorType, Difficulty, ExamCardBBox, ExamCardPreview, ExamSheetCardUpdate,
+    AppError, Difficulty, ExamCardBBox, ExamCardPreview, ExamSheetCardUpdate,
     ExamSheetPreviewPage, ExamSheetPreviewResult, ExamSheetSegmentationOptions,
     ExamSheetSegmentationProgress, ExamSheetSessionDetail, ExamSheetSessionMetadata,
     ExamSheetSessionSummary, ImportSource, QuestionBankStats, QuestionType, SourceType,
     UpdateExamSheetCardsRequest,
 };
-use futures::stream::{self, StreamExt};
 use image::GenericImageView;
 use tokio::sync::mpsc::UnboundedSender;
-use tokio::time::sleep;
 
 /// 带时间戳的日志宏
 macro_rules! log_with_time {
@@ -282,10 +280,125 @@ impl ExamSheetService {
                 height: Some(img_height),   // ★ 新增：图片高度
                 original_image_path: String::new(), // ★ 不再使用文件系统路径
                 cards,
+                raw_ocr_text: None,
+                ocr_completed: false,
+                parse_completed: false,
             });
         }
 
         Ok((preview_pages, aggregated_tags))
+    }
+
+    /// ★ 两阶段流水线：为单页创建骨架（存储图片到 VFS blobs，返回含 blob_hash 但 cards 为空的 page）
+    async fn build_page_skeleton(
+        &self,
+        page_index: usize,
+        original_rel_path: &str,
+        temp_id: &str,
+    ) -> Result<ExamSheetPreviewPage, AppError> {
+        let original_abs = self.file_manager.resolve_image_path(original_rel_path);
+
+        // 读取原始图片文件
+        let original_abs_clone = original_abs.clone();
+        let image_bytes =
+            tokio::task::spawn_blocking(move || std::fs::read(&original_abs_clone))
+                .await
+                .map_err(|e| AppError::file_system(format!("读取试卷图片失败: {:?}", e)))?
+                .map_err(|e| AppError::file_system(format!("读取试卷图片失败: {}", e)))?;
+
+        // 存储到 VFS blobs
+        let extension = original_rel_path
+            .rsplit('.')
+            .next()
+            .unwrap_or("jpg")
+            .to_lowercase();
+        let mime_type = match extension.as_str() {
+            "png" => "image/png",
+            "gif" => "image/gif",
+            "webp" => "image/webp",
+            _ => "image/jpeg",
+        };
+        let blob = VfsBlobRepo::store_blob(
+            &self.vfs_db,
+            &image_bytes,
+            Some(mime_type),
+            Some(&extension),
+        )
+        .map_err(|e| AppError::file_system(format!("存储图片到 VFS blobs 失败: {}", e)))?;
+
+        // 获取图片尺寸
+        let (img_width, img_height) = tokio::task::spawn_blocking(move || {
+            image::image_dimensions(&original_abs)
+        })
+        .await
+        .map_err(|e| AppError::file_system(format!("获取图片尺寸失败: {:?}", e)))?
+        .map_err(|e| AppError::file_system(format!("获取图片尺寸失败: {}", e)))?;
+
+        Ok(ExamSheetPreviewPage {
+            page_index,
+            blob_hash: Some(blob.hash),
+            width: Some(img_width),
+            height: Some(img_height),
+            original_image_path: String::new(),
+            cards: Vec::new(),
+            raw_ocr_text: None,
+            ocr_completed: false,
+            parse_completed: false,
+        })
+    }
+
+    /// ★ 两阶段流水线：将 ExamSegmentationPage 的 cards 填充到 ExamSheetPreviewPage
+    fn fill_cards_on_page(
+        &self,
+        preview_page: &mut ExamSheetPreviewPage,
+        segmentation_cards: &[crate::llm_manager::ExamSegmentationCard],
+        temp_id: &str,
+    ) -> BTreeSet<String> {
+        let img_width = preview_page.width.unwrap_or(1);
+        let img_height = preview_page.height.unwrap_or(1);
+        let image_width_f = img_width.max(1) as f32;
+        let image_height_f = img_height.max(1) as f32;
+        let mut tags = BTreeSet::new();
+
+        let mut cards: Vec<ExamCardPreview> = Vec::new();
+        for card in segmentation_cards {
+            let bbox_pixels = clamp_bbox(&card.bbox, img_width, img_height);
+            let sanitized_tags: Vec<String> = card
+                .tags
+                .iter()
+                .map(|tag| tag.trim().to_string())
+                .filter(|tag| !tag.is_empty())
+                .collect();
+            for tag in &sanitized_tags {
+                tags.insert(tag.clone());
+            }
+            let normalized_bbox = ExamCardBBox {
+                x: (bbox_pixels.x as f32 / image_width_f).clamp(0.0, 1.0),
+                y: (bbox_pixels.y as f32 / image_height_f).clamp(0.0, 1.0),
+                width: (bbox_pixels.width as f32 / image_width_f).clamp(0.0, 1.0),
+                height: (bbox_pixels.height as f32 / image_height_f).clamp(0.0, 1.0),
+            };
+            cards.push(ExamCardPreview {
+                card_id: format!("{}-{}", temp_id, uuid::Uuid::new_v4()),
+                page_index: preview_page.page_index,
+                question_label: card.question_label.clone(),
+                bbox: normalized_bbox,
+                resolved_bbox: Some(ExamCardBBox {
+                    x: bbox_pixels.x as f32,
+                    y: bbox_pixels.y as f32,
+                    width: bbox_pixels.width as f32,
+                    height: bbox_pixels.height as f32,
+                }),
+                cropped_image_path: String::new(),
+                ocr_text: card.ocr_text.clone().unwrap_or_default(),
+                tags: sanitized_tags,
+                extra_metadata: card.extra_metadata.clone(),
+                linked_mistake_ids: None,
+                ..Default::default()
+            });
+        }
+        preview_page.cards = cards;
+        tags
     }
 
     /// ★ 追加模式：如果提供 existing_session_id，将新 pages 追加到现有会话
@@ -332,28 +445,7 @@ impl ExamSheetService {
             return Err(AppError::validation("请至少上传一张试卷图片"));
         }
 
-        const DEFAULT_CHUNK_SIZE: usize = 6;
-        const MAX_CHUNK_SIZE: usize = 36;
-        const MAX_CONCURRENCY: usize = 4;
-
-        let mut chunk_size = options.chunk_size.unwrap_or(DEFAULT_CHUNK_SIZE);
-        if chunk_size == 0 {
-            chunk_size = DEFAULT_CHUNK_SIZE;
-        }
-        chunk_size = chunk_size.min(MAX_CHUNK_SIZE).max(1);
-        chunk_size = chunk_size.min(total_pages);
-
-        let mut concurrency = options.concurrency.unwrap_or(1);
-        if concurrency == 0 {
-            concurrency = 1;
-        }
-        let total_chunks = (total_pages + chunk_size - 1) / chunk_size;
-        concurrency = concurrency.min(MAX_CONCURRENCY);
-        concurrency = concurrency.min(total_chunks.max(1));
-
         let instructions_string = instructions.map(|s| s.to_string());
-        let grouping_prompt = options.grouping_prompt.clone();
-        let grouping_focus = options.grouping_focus.clone();
 
         let now = chrono::Utc::now();
 
@@ -460,283 +552,202 @@ impl ExamSheetService {
         if let Some(tx) = progress.as_ref() {
             let _ = tx.send(ExamSheetSegmentationProgress::SessionCreated {
                 detail: detail.clone(),
-                total_chunks,
+                total_pages: total_pages,
             });
         }
 
-        let chunk_inputs: Vec<(usize, Vec<String>)> = original_paths
-            .chunks(chunk_size)
-            .enumerate()
-            .map(|(idx, slice)| (idx, slice.to_vec()))
-            .collect();
-
-        let mut aggregated_pages: Vec<ExamSheetPreviewPage> = Vec::new();
-        let mut aggregated_tags: BTreeSet<String> = BTreeSet::new();
-        let mut raw_segments: Vec<(usize, serde_json::Value)> = Vec::new();
-        let mut total_cards: usize = 0;
-
-        const MAX_RETRY_ATTEMPTS: usize = 3;
-        let retry_delay = Duration::from_millis(400);
-        let output_format_option = options.output_format.clone();
-
-        // ★ 追加模式：page_index 需要加上现有页数的偏移
+        let grouping_prompt = options.grouping_prompt.clone();
+        let grouping_focus = options.grouping_focus.clone();
         let page_index_offset = existing_page_count;
-        let mut chunk_stream =
-            stream::iter(chunk_inputs.into_iter().map(|(chunk_idx, chunk_paths)| {
-                let manager = Arc::clone(&self.llm_manager);
-                let instructions_owned = instructions_string.clone();
-                let format_option = output_format_option.clone();
-                let grouping_prompt_owned = grouping_prompt.clone();
-                let grouping_focus_owned = grouping_focus.clone();
-                async move {
-                    let mut attempt = 0usize;
-                    loop {
-                        // ★ 追加模式：offset 包含现有页数偏移
-                        let offset = page_index_offset + chunk_idx * chunk_size;
-                        let result = manager
-                            .call_exam_sheet_segmentation_chunk(
-                                &chunk_paths,
-                                instructions_owned.as_deref(),
-                                offset,
-                                format_option.clone(),
-                                grouping_prompt_owned.as_deref(),
-                                grouping_focus_owned.as_deref(),
-                            )
-                            .await;
+        let mut aggregated_tags: BTreeSet<String> = BTreeSet::new();
 
-                        match result {
-                            Ok(output) => return (chunk_idx, Ok(output)),
-                            Err(err) => {
-                                let error_type = err.error_type.clone();
-                                let retryable = matches!(
-                                    error_type,
-                                    AppErrorType::LLM
-                                        | AppErrorType::Network
-                                        | AppErrorType::Unknown
-                                );
+        // ====================================================================
+        // ★ 准备阶段：为每页创建骨架（存储图片到 VFS blobs）
+        // ====================================================================
+        let mut new_pages: Vec<ExamSheetPreviewPage> = Vec::with_capacity(total_pages);
+        for (local_idx, original_path) in original_paths.iter().enumerate() {
+            let page_index = page_index_offset + local_idx;
+            let skeleton = self
+                .build_page_skeleton(page_index, original_path, &temp_id)
+                .await?;
+            new_pages.push(skeleton);
+        }
+        preview.pages.extend(new_pages);
 
-                                if retryable && attempt + 1 < MAX_RETRY_ATTEMPTS {
-                                    let message = err.message.clone();
-                                    log_warn!(
-                                        "⚠️ 分片 {} 识别失败 (尝试 {}): {}，准备重试",
-                                        chunk_idx,
-                                        attempt + 1,
-                                        message
-                                    );
-                                    attempt += 1;
-                                    sleep(retry_delay).await;
-                                    continue;
-                                }
+        // 辅助宏：更新 summary/detail 并持久化
+        macro_rules! sync_detail {
+            () => {{
+                let card_count: usize = preview.pages.iter().map(|p| p.cards.len()).sum();
+                summary.updated_at = chrono::Utc::now();
+                summary.metadata = Some(ExamSheetSessionMetadata {
+                    instructions: instructions_string.clone(),
+                    tags: if aggregated_tags.is_empty() { None } else { Some(aggregated_tags.iter().cloned().collect()) },
+                    page_count: Some(preview.pages.len()),
+                    card_count: Some(card_count),
+                    raw_model_response: None,
+                    ..Default::default()
+                });
+                detail = ExamSheetSessionDetail { summary: summary.clone(), preview: preview.clone() };
+                let _ = self.save_to_vfs(&detail);
+            }};
+        }
 
-                                return (chunk_idx, Err(err));
-                            }
-                        }
-                    }
-                }
-            }))
-            .buffer_unordered(concurrency);
+        // ====================================================================
+        // ★ 阶段一：逐页 OCR（跳过已完成的页，每页完成后持久化）
+        // ====================================================================
+        log_info!("[exam-sheet] ★ 阶段一：开始 OCR {} 页", total_pages);
+        let mut ocr_failed_count = 0usize;
+        for local_idx in 0..total_pages {
+            let page_idx_in_preview = existing_page_count + local_idx;
+            let page = &preview.pages[page_idx_in_preview];
 
-        while let Some((chunk_idx, chunk_result)) = chunk_stream.next().await {
-            match chunk_result {
-                Ok(segmentation_output) => {
-                    let (mut chunk_preview_pages, chunk_tags) = self
-                        .build_preview_pages_for_chunk(
-                            &segmentation_output.pages,
-                            &original_paths,
-                            &timestamp_prefix,
-                            &temp_id,
-                            &subdir,
-                        )
-                        .await?;
+            // 可恢复：跳过已完成 OCR 的页
+            if page.ocr_completed {
+                log_info!("[exam-sheet] 页面 {} OCR 已完成，跳过", page.page_index);
+                continue;
+            }
 
-                    chunk_preview_pages.sort_by_key(|p| p.page_index);
-                    total_cards += chunk_preview_pages
-                        .iter()
-                        .map(|page| page.cards.len())
-                        .sum::<usize>();
-                    aggregated_tags.extend(chunk_tags);
+            let page_index = page.page_index;
+            let original_path = &original_paths[local_idx];
 
-                    for page in chunk_preview_pages.into_iter() {
-                        if let Some(existing) = aggregated_pages
-                            .iter_mut()
-                            .find(|existing| existing.page_index == page.page_index)
-                        {
-                            *existing = page;
-                        } else {
-                            aggregated_pages.push(page);
-                        }
-                    }
-                    aggregated_pages.sort_by_key(|p| p.page_index);
-
-                    if let Some(raw) = segmentation_output.raw.clone() {
-                        raw_segments.push((chunk_idx, raw));
-                    }
-                    raw_segments.sort_by_key(|(idx, _)| *idx);
-                    let raw_value = if raw_segments.is_empty() {
-                        None
-                    } else {
-                        Some(serde_json::Value::Array(
-                            raw_segments.iter().map(|(_, v)| v.clone()).collect(),
-                        ))
-                    };
-
-                    // ★ 追加模式：保留现有页面，追加新识别的页面
-                    // 注意：aggregated_pages 是累积的（包含所有已完成 chunk 的页面），
-                    // 因此每次迭代需要重建 preview.pages，而非 extend（否则会重复追加）
-                    preview.pages.truncate(existing_page_count);
-                    preview.pages.extend(aggregated_pages.clone());
-                    preview.raw_model_response = raw_value.clone();
-
-                    // ★ 追加模式：计算总卡片数（现有 + 新增）
-                    let existing_cards: usize = preview
-                        .pages
-                        .iter()
-                        .take(existing_page_count)
-                        .map(|p| p.cards.len())
-                        .sum();
-                    let total_cards_all = existing_cards + total_cards;
-
-                    summary.updated_at = chrono::Utc::now();
-                    summary.metadata = Some(ExamSheetSessionMetadata {
-                        instructions: instructions_string.clone(),
-                        tags: if aggregated_tags.is_empty() {
-                            None
-                        } else {
-                            Some(aggregated_tags.iter().cloned().collect())
-                        },
-                        page_count: Some(preview.pages.len()),
-                        card_count: Some(total_cards_all),
-                        raw_model_response: raw_value.clone(),
-                        ..Default::default()
-                    });
-
-                    detail = ExamSheetSessionDetail {
-                        summary: summary.clone(),
-                        preview: preview.clone(),
-                    };
-                    self.save_to_vfs(&detail)
-                        .map_err(|e| AppError::database(format!("保存整卷会话失败: {}", e)))?;
-
+            match self.llm_manager.ocr_single_page_with_retry(original_path, page_index).await {
+                Ok(raw_text) => {
+                    let page_mut = &mut preview.pages[page_idx_in_preview];
+                    page_mut.raw_ocr_text = Some(raw_text);
+                    page_mut.ocr_completed = true;
+                    sync_detail!();
                     if let Some(tx) = progress.as_ref() {
+                        let _ = tx.send(ExamSheetSegmentationProgress::OcrPageCompleted {
+                            detail: detail.clone(),
+                            page_index,
+                            total_pages,
+                        });
+                        // ★ 兼容旧前端：同时发送 ChunkCompleted
                         let _ = tx.send(ExamSheetSegmentationProgress::ChunkCompleted {
                             detail: detail.clone(),
-                            chunk_index: chunk_idx,
-                            total_chunks,
+                            chunk_index: local_idx,
+                            total_chunks: total_pages,
                         });
                     }
+                    log_info!("[exam-sheet] ✅ 页面 {} OCR 完成", page_index);
                 }
-                Err(err) => {
-                    // 若已有部分分片完成（存在题目或页面聚合），尽量保留已完成结果
-                    let has_partial = total_cards > 0 || !aggregated_pages.is_empty();
-
-                    if has_partial {
-                        // 将状态标记为 prepared，归档已完成资源，确保历史可见并可继续编辑
-                        summary.status = "prepared".to_string();
-                        summary.updated_at = chrono::Utc::now();
-
-                        // ★ 追加模式：保留现有页面，追加新识别的页面
-                        // 注意：truncate 后 extend，避免重复追加
-                        preview.pages.truncate(existing_page_count);
-                        preview.pages.extend(aggregated_pages.clone());
-
-                        // ★ 追加模式：计算总卡片数（现有 + 新增）
-                        let existing_cards: usize = preview
-                            .pages
-                            .iter()
-                            .take(existing_page_count)
-                            .map(|p| p.cards.len())
-                            .sum();
-                        let total_cards_all = existing_cards + total_cards;
-
-                        // 回填聚合的元数据
-                        summary.metadata = Some(ExamSheetSessionMetadata {
-                            instructions: instructions_string.clone(),
-                            tags: if aggregated_tags.is_empty() {
-                                None
-                            } else {
-                                Some(aggregated_tags.iter().cloned().collect())
-                            },
-                            page_count: Some(preview.pages.len()),
-                            card_count: Some(total_cards_all),
-                            raw_model_response: if raw_segments.is_empty() {
-                                None
-                            } else {
-                                Some(serde_json::Value::Array(
-                                    raw_segments.iter().map(|(_, v)| v.clone()).collect(),
-                                ))
-                            },
-                            ..Default::default()
-                        });
-
-                        // 归档临时资源，避免临时目录清理导致结果丢失
-                        let archive_res =
-                            self.archive_preview_assets(&mut preview, &session_id).await;
-                        if let Err(e) = &archive_res {
-                            log_warn!(
-                                "⚠️ 部分失败时归档资源出错: {}，将保留临时目录: {}",
-                                e,
-                                subdir.display()
-                            );
-                        }
-
-                        // 更新最终 detail 并持久化（无论归档是否成功）
-                        detail = ExamSheetSessionDetail {
-                            summary: summary.clone(),
-                            preview: preview.clone(),
-                        };
-                        let _ = self.save_to_vfs(&detail);
-
-                        if let Some(tx) = progress.as_ref() {
-                            // 仍发送 Failed 事件以告知用户任务未完整成功，但附带可用的部分结果
-                            let _ = tx.send(ExamSheetSegmentationProgress::Failed {
-                                session_id: Some(session_id.clone()),
-                                error: err.to_string(),
-                                detail: Some(detail.clone()),
-                            });
-                        }
-
-                        // 仅在归档成功时清理临时目录，归档失败则保留以便后续兜底逻辑处理
-                        if archive_res.is_ok() {
-                            if let Err(clean_err) = tokio::fs::remove_dir_all(&subdir).await {
-                                log_warn!(
-                                    "⚠️ 清理临时目录失败 {}: {}",
-                                    subdir.display(),
-                                    clean_err
-                                );
-                            }
-                        }
-                        return Err(err);
-                    } else {
-                        // 无任何可用结果，按失败处理并清理临时目录
-                        summary.status = "failed".to_string();
-                        summary.updated_at = chrono::Utc::now();
-                        detail = ExamSheetSessionDetail {
-                            summary: summary.clone(),
-                            preview: preview.clone(),
-                        };
-                        let _ = self.save_to_vfs(&detail);
-                        if let Some(tx) = progress.as_ref() {
-                            let _ = tx.send(ExamSheetSegmentationProgress::Failed {
-                                session_id: Some(session_id.clone()),
-                                error: err.to_string(),
-                                detail: Some(detail.clone()),
-                            });
-                        }
-                        let _ = tokio::fs::remove_dir_all(&subdir).await;
-                        return Err(err);
-                    }
+                Err(e) => {
+                    ocr_failed_count += 1;
+                    log_warn!("[exam-sheet] ⚠️ 页面 {} OCR 失败: {}", page_index, e);
+                    // OCR 失败不中断整体流程，该页在阶段二会被跳过
                 }
             }
         }
 
+        if let Some(tx) = progress.as_ref() {
+            let _ = tx.send(ExamSheetSegmentationProgress::OcrPhaseCompleted {
+                detail: detail.clone(),
+                total_pages,
+            });
+        }
+
+        let ocr_completed_count = total_pages - ocr_failed_count;
+        log_info!(
+            "[exam-sheet] ★ 阶段一完成：{}/{} 页 OCR 成功",
+            ocr_completed_count,
+            total_pages
+        );
+
+        // 全部 OCR 失败 → 终止
+        if ocr_completed_count == 0 {
+            summary.status = "failed".to_string();
+            sync_detail!();
+            if let Some(tx) = progress.as_ref() {
+                let _ = tx.send(ExamSheetSegmentationProgress::Failed {
+                    session_id: Some(session_id.clone()),
+                    error: "所有页面 OCR 均失败，请检查图片清晰度后重试。".to_string(),
+                    detail: Some(detail.clone()),
+                });
+            }
+            let _ = tokio::fs::remove_dir_all(&subdir).await;
+            return Err(AppError::validation("所有页面 OCR 均失败，请检查图片清晰度后重试。"));
+        }
+
+        // ====================================================================
+        // ★ 阶段二：逐页题目解析（跳过未完成 OCR 或已完成解析的页，失败降级）
+        // ====================================================================
+        log_info!("[exam-sheet] ★ 阶段二：开始题目解析 {} 页", ocr_completed_count);
+        for local_idx in 0..total_pages {
+            let page_idx_in_preview = existing_page_count + local_idx;
+            let page = &preview.pages[page_idx_in_preview];
+
+            // 跳过未完成 OCR 的页
+            if !page.ocr_completed {
+                continue;
+            }
+            // 可恢复：跳过已完成解析的页
+            if page.parse_completed {
+                log_info!("[exam-sheet] 页面 {} 解析已完成，跳过", page.page_index);
+                continue;
+            }
+
+            let page_index = page.page_index;
+            let raw_ocr_text = page.raw_ocr_text.clone().unwrap_or_default();
+            let original_path = &original_paths[local_idx];
+
+            // parse_ocr_to_questions 内部已有重试+降级逻辑
+            match self
+                .llm_manager
+                .parse_ocr_to_questions(
+                    &raw_ocr_text,
+                    original_path,
+                    page_index,
+                    grouping_prompt.as_deref(),
+                    grouping_focus.as_deref(),
+                )
+                .await
+            {
+                Ok(segmentation_page) => {
+                    let page_mut = &mut preview.pages[page_idx_in_preview];
+                    let page_tags = self.fill_cards_on_page(
+                        page_mut,
+                        &segmentation_page.cards,
+                        &temp_id,
+                    );
+                    page_mut.parse_completed = true;
+                    aggregated_tags.extend(page_tags);
+                    sync_detail!();
+                    if let Some(tx) = progress.as_ref() {
+                        let _ = tx.send(ExamSheetSegmentationProgress::ParsePageCompleted {
+                            detail: detail.clone(),
+                            page_index,
+                            total_pages,
+                        });
+                    }
+                    log_info!(
+                        "[exam-sheet] ✅ 页面 {} 解析完成: {} 个题目",
+                        page_index,
+                        segmentation_page.cards.len()
+                    );
+                }
+                Err(e) => {
+                    // 解析失败：标记完成（降级为无 cards），避免反复重试
+                    let page_mut = &mut preview.pages[page_idx_in_preview];
+                    page_mut.parse_completed = true;
+                    sync_detail!();
+                    log_warn!("[exam-sheet] ⚠️ 页面 {} 解析失败（已降级）: {}", page_index, e);
+                }
+            }
+        }
+
+        // ====================================================================
+        // ★ 完成：归档并发送 Completed
+        // ====================================================================
+        let total_cards: usize = preview.pages.iter().map(|p| p.cards.len()).sum();
+        log_info!(
+            "[exam-sheet] ★ 两阶段处理完成：{} 页，{} 个题目",
+            preview.pages.len(),
+            total_cards
+        );
+
         if total_cards == 0 {
             summary.status = "failed".to_string();
-            summary.updated_at = chrono::Utc::now();
-            detail = ExamSheetSessionDetail {
-                summary: summary.clone(),
-                preview: preview.clone(),
-            };
-            let _ = self.save_to_vfs(&detail);
+            sync_detail!();
             if let Some(tx) = progress.as_ref() {
                 let _ = tx.send(ExamSheetSegmentationProgress::Failed {
                     session_id: Some(session_id.clone()),
@@ -745,42 +756,19 @@ impl ExamSheetService {
                 });
             }
             let _ = tokio::fs::remove_dir_all(&subdir).await;
-            return Err(AppError::validation(
-                "未能识别出任何题目，请检查图片清晰度或试卷排版后重试。",
-            ));
+            return Err(AppError::validation("未能识别出任何题目，请检查图片清晰度或试卷排版后重试。"));
         }
 
         summary.status = "prepared".to_string();
-        summary.updated_at = chrono::Utc::now();
+        sync_detail!();
 
-        // 持久化资源到归档目录
+        // 归档临时资源到永久目录
         self.archive_preview_assets(&mut preview, &session_id)
             .await
             .map_err(|e| AppError::file_system(format!("持久化整卷资源失败: {}", e)))?;
 
-        // 更新归档后路径的 metadata
-        let page_count = preview.pages.len();
-        let card_count: usize = preview.pages.iter().map(|p| p.cards.len()).sum();
-        summary.metadata = Some(ExamSheetSessionMetadata {
-            instructions: instructions_string.clone(),
-            tags: if aggregated_tags.is_empty() {
-                None
-            } else {
-                Some(aggregated_tags.iter().cloned().collect())
-            },
-            page_count: Some(page_count),
-            card_count: Some(card_count),
-            raw_model_response: preview.raw_model_response.clone(),
-            ..Default::default()
-        });
-
-        detail = ExamSheetSessionDetail {
-            summary: summary.clone(),
-            preview: preview.clone(),
-        };
-
-        self.save_to_vfs(&detail)
-            .map_err(|e| AppError::database(format!("保存整卷会话失败: {}", e)))?;
+        // 归档后重新持久化（路径可能已更新）
+        sync_detail!();
 
         if let Some(tx) = progress.as_ref() {
             let _ = tx.send(ExamSheetSegmentationProgress::Completed {
@@ -788,13 +776,9 @@ impl ExamSheetService {
             });
         }
 
-        // 清理临时目录（忽略错误）
+        // 清理临时目录
         if let Err(clean_err) = tokio::fs::remove_dir_all(&subdir).await {
-            log_info!(
-                "⚠️ [exam-sheet] 清理临时目录失败 {}: {}",
-                subdir.display(),
-                clean_err
-            );
+            log_info!("⚠️ [exam-sheet] 清理临时目录失败 {}: {}", subdir.display(), clean_err);
         }
 
         Ok(preview)
@@ -918,85 +902,48 @@ impl ExamSheetService {
             return Err(AppError::validation("请至少上传一张试卷图片"));
         }
 
-        const DEFAULT_CHUNK_SIZE: usize = 6;
-        const MAX_CHUNK_SIZE: usize = 36;
-        const MAX_CONCURRENCY: usize = 4;
-
-        let mut chunk_size = options.chunk_size.unwrap_or(DEFAULT_CHUNK_SIZE);
-        if chunk_size == 0 {
-            chunk_size = DEFAULT_CHUNK_SIZE;
-        }
-        chunk_size = chunk_size.min(MAX_CHUNK_SIZE).max(1);
-        chunk_size = chunk_size.min(total_pages);
-
-        let mut concurrency = options.concurrency.unwrap_or(1);
-        if concurrency == 0 {
-            concurrency = 1;
-        }
-        let total_chunks = (total_pages + chunk_size - 1) / chunk_size;
-        concurrency = concurrency.min(MAX_CONCURRENCY).min(total_chunks.max(1));
-
         let now = chrono::Utc::now();
+        let inst_owned = instructions.map(|s| s.to_string());
+        let grouping_prompt = options.grouping_prompt.clone();
+        let grouping_focus = options.grouping_focus.clone();
 
         // ★ 使用现有会话或创建新会话
-        let (
-            session_id,
-            mut summary,
-            mut preview,
-            mut aggregated_pages,
-            mut aggregated_tags,
-            mut total_cards,
-        ) = if let Some(existing) = existing_detail {
-            let existing_pages = existing.preview.pages.clone();
-            let existing_tags: BTreeSet<String> = existing
-                .preview
-                .pages
-                .iter()
-                .flat_map(|p| p.cards.iter())
-                .flat_map(|c| c.tags.clone())
-                .collect();
-            let existing_cards: usize = existing.preview.pages.iter().map(|p| p.cards.len()).sum();
-            let mut sum = existing.summary.clone();
-            sum.status = "processing".to_string();
-            sum.updated_at = now;
-            let prev = existing.preview.clone();
-            (
-                existing.summary.id,
-                sum,
-                prev,
-                existing_pages,
-                existing_tags,
-                existing_cards,
-            )
-        } else {
-            let session_id = uuid::Uuid::new_v4().to_string();
-            let summary = ExamSheetSessionSummary {
-                id: session_id.clone(),
-                exam_name: exam_name.clone(),
-                temp_id: temp_id.clone(),
-                created_at: now,
-                updated_at: now,
-                status: "processing".to_string(),
-                metadata: Some(ExamSheetSessionMetadata {
-                    instructions: instructions.map(|s| s.to_string()),
-                    tags: None,
-                    page_count: Some(0),
-                    card_count: Some(0),
+        let (session_id, mut summary, mut preview, existing_page_count) =
+            if let Some(existing) = existing_detail {
+                let epc = existing.preview.pages.len();
+                let mut sum = existing.summary.clone();
+                sum.status = "processing".to_string();
+                sum.updated_at = now;
+                (existing.summary.id, sum, existing.preview.clone(), epc)
+            } else {
+                let sid = uuid::Uuid::new_v4().to_string();
+                let sum = ExamSheetSessionSummary {
+                    id: sid.clone(),
+                    exam_name: exam_name.clone(),
+                    temp_id: temp_id.clone(),
+                    created_at: now,
+                    updated_at: now,
+                    status: "processing".to_string(),
+                    metadata: Some(ExamSheetSessionMetadata {
+                        instructions: inst_owned.clone(),
+                        tags: None,
+                        page_count: Some(0),
+                        card_count: Some(0),
+                        raw_model_response: None,
+                        ..Default::default()
+                    }),
+                    linked_mistake_ids: None,
+                };
+                let prev = ExamSheetPreviewResult {
+                    temp_id: temp_id.clone(),
+                    exam_name: exam_name.clone(),
+                    pages: Vec::new(),
                     raw_model_response: None,
-                    ..Default::default()
-                }),
-                linked_mistake_ids: None,
+                    instructions: inst_owned.clone(),
+                    session_id: Some(sid.clone()),
+                };
+                (sid, sum, prev, 0)
             };
-            let preview = ExamSheetPreviewResult {
-                temp_id: temp_id.clone(),
-                exam_name: exam_name.clone(),
-                pages: Vec::new(),
-                raw_model_response: None,
-                instructions: instructions.map(|s| s.to_string()),
-                session_id: Some(session_id.clone()),
-            };
-            (session_id, summary, preview, Vec::new(), BTreeSet::new(), 0)
-        };
 
         let mut detail = ExamSheetSessionDetail {
             summary: summary.clone(),
@@ -1007,188 +954,142 @@ impl ExamSheetService {
         if let Some(tx) = progress.as_ref() {
             let _ = tx.send(ExamSheetSegmentationProgress::SessionCreated {
                 detail: detail.clone(),
-                total_chunks,
+                total_pages,
             });
         }
 
-        let chunk_inputs: Vec<(usize, Vec<String>)> = original_paths
-            .chunks(chunk_size)
-            .enumerate()
-            .map(|(i, s)| (i, s.to_vec()))
-            .collect();
-        let inst_owned = instructions.map(|s| s.to_string());
+        let mut aggregated_tags: BTreeSet<String> = BTreeSet::new();
 
-        let mut raw_segments: Vec<(usize, serde_json::Value)> = Vec::new();
+        // ====================================================================
+        // ★ 准备阶段：为每页创建骨架
+        // ====================================================================
+        let mut new_pages: Vec<ExamSheetPreviewPage> = Vec::with_capacity(total_pages);
+        for (local_idx, original_path) in original_paths.iter().enumerate() {
+            let page_index = page_index_offset + local_idx;
+            let skeleton = self
+                .build_page_skeleton(page_index, original_path, &temp_id)
+                .await?;
+            new_pages.push(skeleton);
+        }
+        preview.pages.extend(new_pages);
 
-        // 分片并发执行（每片内部是流式）
-        // ★ 追加模式：page_index 需要加上偏移量
-        let mut chunk_stream =
-            stream::iter(chunk_inputs.into_iter().map(|(chunk_idx, chunk_paths)| {
-                let manager = Arc::clone(&self.llm_manager);
-                let inst_owned = inst_owned.clone();
-                let window = window.clone();
-                let session_id = session_id.clone();
-                async move {
-                    // ★ offset 包含追加模式的页面偏移量
-                    let offset = page_index_offset + chunk_idx * chunk_size;
-                    let event_base = format!("exam_sheet_seg_stream_{}_{}", session_id, chunk_idx);
-                    manager
-                        .call_exam_sheet_segmentation_stream(
-                            &chunk_paths,
-                            inst_owned.as_deref(),
-                            offset,
-                            window,
-                            &event_base,
-                        )
-                        .await
-                        .map(|out| (chunk_idx, out))
-                }
-            }))
-            .buffer_unordered(concurrency);
+        // 辅助宏：更新 summary/detail 并持久化
+        macro_rules! sync_detail {
+            () => {{
+                let card_count: usize = preview.pages.iter().map(|p| p.cards.len()).sum();
+                summary.updated_at = chrono::Utc::now();
+                summary.metadata = Some(ExamSheetSessionMetadata {
+                    instructions: inst_owned.clone(),
+                    tags: if aggregated_tags.is_empty() { None } else { Some(aggregated_tags.iter().cloned().collect()) },
+                    page_count: Some(preview.pages.len()),
+                    card_count: Some(card_count),
+                    raw_model_response: None,
+                    ..Default::default()
+                });
+                detail = ExamSheetSessionDetail { summary: summary.clone(), preview: preview.clone() };
+                let _ = self.save_to_vfs(&detail);
+            }};
+        }
 
-        while let Some(item) = chunk_stream.next().await {
-            match item {
-                Ok((chunk_idx, segmentation_output)) => {
-                    let (mut chunk_preview_pages, chunk_tags) = self
-                        .build_preview_pages_for_chunk(
-                            &segmentation_output.pages,
-                            &original_paths,
-                            &timestamp_prefix,
-                            &temp_id,
-                            &subdir,
-                        )
-                        .await?;
+        // ====================================================================
+        // ★ 阶段一：逐页 OCR
+        // ====================================================================
+        log_info!("[exam-sheet-stream] ★ 阶段一：开始 OCR {} 页", total_pages);
+        let mut ocr_failed_count = 0usize;
+        for local_idx in 0..total_pages {
+            let pi = existing_page_count + local_idx;
+            let page = &preview.pages[pi];
+            if page.ocr_completed { continue; }
+            let page_index = page.page_index;
+            let original_path = &original_paths[local_idx];
 
-                    chunk_preview_pages.sort_by_key(|p| p.page_index);
-                    total_cards += chunk_preview_pages
-                        .iter()
-                        .map(|p| p.cards.len())
-                        .sum::<usize>();
-                    aggregated_tags.extend(chunk_tags);
-
-                    for page in chunk_preview_pages.into_iter() {
-                        if let Some(existing) = aggregated_pages
-                            .iter_mut()
-                            .find(|e| e.page_index == page.page_index)
-                        {
-                            *existing = page;
-                        } else {
-                            aggregated_pages.push(page);
-                        }
-                    }
-                    aggregated_pages.sort_by_key(|p| p.page_index);
-
-                    if let Some(raw) = segmentation_output.raw.clone() {
-                        raw_segments.push((chunk_idx, raw));
-                    }
-                    raw_segments.sort_by_key(|(i, _)| *i);
-                    let raw_value = if raw_segments.is_empty() {
-                        None
-                    } else {
-                        Some(serde_json::Value::Array(
-                            raw_segments.iter().map(|(_, v)| v.clone()).collect(),
-                        ))
-                    };
-
-                    preview.pages = aggregated_pages.clone();
-                    preview.raw_model_response = raw_value.clone();
-                    summary.updated_at = chrono::Utc::now();
-                    summary.metadata = Some(ExamSheetSessionMetadata {
-                        instructions: inst_owned.clone(),
-                        tags: if aggregated_tags.is_empty() {
-                            None
-                        } else {
-                            Some(aggregated_tags.iter().cloned().collect())
-                        },
-                        page_count: Some(preview.pages.len()),
-                        card_count: Some(total_cards),
-                        raw_model_response: raw_value.clone(),
-                        ..Default::default()
-                    });
-                    detail = ExamSheetSessionDetail {
-                        summary: summary.clone(),
-                        preview: preview.clone(),
-                    };
-                    self.save_to_vfs(&detail)
-                        .map_err(|e| AppError::database(format!("保存整卷会话失败: {}", e)))?;
+            match self.llm_manager.ocr_single_page_with_retry(original_path, page_index).await {
+                Ok(raw_text) => {
+                    let pm = &mut preview.pages[pi];
+                    pm.raw_ocr_text = Some(raw_text);
+                    pm.ocr_completed = true;
+                    sync_detail!();
                     if let Some(tx) = progress.as_ref() {
+                        let _ = tx.send(ExamSheetSegmentationProgress::OcrPageCompleted {
+                            detail: detail.clone(), page_index, total_pages,
+                        });
                         let _ = tx.send(ExamSheetSegmentationProgress::ChunkCompleted {
-                            detail: detail.clone(),
-                            chunk_index: chunk_idx,
-                            total_chunks,
+                            detail: detail.clone(), chunk_index: local_idx, total_chunks: total_pages,
                         });
                     }
                 }
-                Err(err) => {
-                    // 部分失败：沿用非流式的保留策略
-                    let has_partial = total_cards > 0 || !aggregated_pages.is_empty();
-                    if has_partial {
-                        summary.status = "prepared".to_string();
-                        summary.updated_at = chrono::Utc::now();
-                        let raw_value = if raw_segments.is_empty() {
-                            None
-                        } else {
-                            Some(serde_json::Value::Array(
-                                raw_segments.iter().map(|(_, v)| v.clone()).collect(),
-                            ))
-                        };
-                        summary.metadata = Some(ExamSheetSessionMetadata {
-                            instructions: inst_owned.clone(),
-                            tags: if aggregated_tags.is_empty() {
-                                None
-                            } else {
-                                Some(aggregated_tags.iter().cloned().collect())
-                            },
-                            page_count: Some(aggregated_pages.len()),
-                            card_count: Some(total_cards),
-                            raw_model_response: raw_value.clone(),
-                            ..Default::default()
-                        });
-                        // 归档
-                        let _ = self.archive_preview_assets(&mut preview, &session_id).await;
-                        detail = ExamSheetSessionDetail {
-                            summary: summary.clone(),
-                            preview: preview.clone(),
-                        };
-                        let _ = self.save_to_vfs(&detail);
-                        if let Some(tx) = progress.as_ref() {
-                            let _ = tx.send(ExamSheetSegmentationProgress::Failed {
-                                session_id: Some(session_id.clone()),
-                                error: err.to_string(),
-                                detail: Some(detail.clone()),
-                            });
-                        }
-                        return Err(err);
-                    } else {
-                        summary.status = "failed".to_string();
-                        summary.updated_at = chrono::Utc::now();
-                        detail = ExamSheetSessionDetail {
-                            summary: summary.clone(),
-                            preview: preview.clone(),
-                        };
-                        let _ = self.save_to_vfs(&detail);
-                        if let Some(tx) = progress.as_ref() {
-                            let _ = tx.send(ExamSheetSegmentationProgress::Failed {
-                                session_id: Some(session_id.clone()),
-                                error: err.to_string(),
-                                detail: Some(detail.clone()),
-                            });
-                        }
-                        let _ = tokio::fs::remove_dir_all(&subdir).await;
-                        return Err(err);
-                    }
+                Err(e) => {
+                    ocr_failed_count += 1;
+                    log_warn!("[exam-sheet-stream] ⚠️ 页面 {} OCR 失败: {}", page_index, e);
                 }
             }
         }
 
+        if let Some(tx) = progress.as_ref() {
+            let _ = tx.send(ExamSheetSegmentationProgress::OcrPhaseCompleted {
+                detail: detail.clone(), total_pages,
+            });
+        }
+
+        let ocr_ok = total_pages - ocr_failed_count;
+        if ocr_ok == 0 {
+            summary.status = "failed".to_string();
+            sync_detail!();
+            if let Some(tx) = progress.as_ref() {
+                let _ = tx.send(ExamSheetSegmentationProgress::Failed {
+                    session_id: Some(session_id.clone()),
+                    error: "所有页面 OCR 均失败".to_string(),
+                    detail: Some(detail.clone()),
+                });
+            }
+            let _ = tokio::fs::remove_dir_all(&subdir).await;
+            return Err(AppError::validation("所有页面 OCR 均失败"));
+        }
+
+        // ====================================================================
+        // ★ 阶段二：逐页题目解析
+        // ====================================================================
+        log_info!("[exam-sheet-stream] ★ 阶段二：开始题目解析 {} 页", ocr_ok);
+        for local_idx in 0..total_pages {
+            let pi = existing_page_count + local_idx;
+            let page = &preview.pages[pi];
+            if !page.ocr_completed || page.parse_completed { continue; }
+            let page_index = page.page_index;
+            let raw_ocr_text = page.raw_ocr_text.clone().unwrap_or_default();
+            let original_path = &original_paths[local_idx];
+
+            match self.llm_manager.parse_ocr_to_questions(
+                &raw_ocr_text, original_path, page_index,
+                grouping_prompt.as_deref(), grouping_focus.as_deref(),
+            ).await {
+                Ok(seg_page) => {
+                    let pm = &mut preview.pages[pi];
+                    let tags = self.fill_cards_on_page(pm, &seg_page.cards, &temp_id);
+                    pm.parse_completed = true;
+                    aggregated_tags.extend(tags);
+                    sync_detail!();
+                    if let Some(tx) = progress.as_ref() {
+                        let _ = tx.send(ExamSheetSegmentationProgress::ParsePageCompleted {
+                            detail: detail.clone(), page_index, total_pages,
+                        });
+                    }
+                }
+                Err(e) => {
+                    let pm = &mut preview.pages[pi];
+                    pm.parse_completed = true;
+                    sync_detail!();
+                    log_warn!("[exam-sheet-stream] ⚠️ 页面 {} 解析失败（已降级）: {}", page_index, e);
+                }
+            }
+        }
+
+        // ====================================================================
+        // ★ 完成
+        // ====================================================================
+        let total_cards: usize = preview.pages.iter().map(|p| p.cards.len()).sum();
         if total_cards == 0 {
             summary.status = "failed".to_string();
-            summary.updated_at = chrono::Utc::now();
-            detail = ExamSheetSessionDetail {
-                summary: summary.clone(),
-                preview: preview.clone(),
-            };
-            let _ = self.save_to_vfs(&detail);
+            sync_detail!();
             if let Some(tx) = progress.as_ref() {
                 let _ = tx.send(ExamSheetSegmentationProgress::Failed {
                     session_id: Some(session_id.clone()),
@@ -1197,47 +1098,23 @@ impl ExamSheetService {
                 });
             }
             let _ = tokio::fs::remove_dir_all(&subdir).await;
-            return Err(AppError::validation(
-                "未能识别出任何题目，请检查图片清晰度或试卷排版后重试。",
-            ));
+            return Err(AppError::validation("未能识别出任何题目，请检查图片清晰度或试卷排版后重试。"));
         }
 
         summary.status = "prepared".to_string();
-        summary.updated_at = chrono::Utc::now();
+        sync_detail!();
         self.archive_preview_assets(&mut preview, &session_id)
             .await
             .map_err(|e| AppError::file_system(format!("持久化整卷资源失败: {}", e)))?;
-        let page_count = preview.pages.len();
-        let card_count: usize = preview.pages.iter().map(|p| p.cards.len()).sum();
-        summary.metadata = Some(ExamSheetSessionMetadata {
-            instructions: inst_owned.clone(),
-            tags: if aggregated_tags.is_empty() {
-                None
-            } else {
-                Some(aggregated_tags.iter().cloned().collect())
-            },
-            page_count: Some(page_count),
-            card_count: Some(card_count),
-            raw_model_response: preview.raw_model_response.clone(),
-            ..Default::default()
-        });
-        detail = ExamSheetSessionDetail {
-            summary: summary.clone(),
-            preview: preview.clone(),
-        };
-        self.save_to_vfs(&detail)
-            .map_err(|e| AppError::database(format!("保存整卷会话失败: {}", e)))?;
+        sync_detail!();
+
         if let Some(tx) = progress.as_ref() {
             let _ = tx.send(ExamSheetSegmentationProgress::Completed {
                 detail: detail.clone(),
             });
         }
         if let Err(clean_err) = tokio::fs::remove_dir_all(&subdir).await {
-            log_info!(
-                "⚠️ [exam-sheet] 清理临时目录失败 {}: {}",
-                subdir.display(),
-                clean_err
-            );
+            log_info!("⚠️ [exam-sheet-stream] 清理临时目录失败 {}: {}", subdir.display(), clean_err);
         }
         Ok(preview)
     }
@@ -1796,16 +1673,22 @@ impl ExamSheetService {
         detail.summary.linked_mistake_ids = None;
 
         // 若历史记录仍引用临时目录，尝试在读取详情时自动归档到 archive 目录，避免刷新后资源丢失
+        // ★ 两阶段页面使用 blob_hash 存储图片，original_image_path 为空，无需归档
         let archive_prefix = format!("images/exam_sheet_archive/{session_id}");
         let needs_archive = detail
             .preview
             .pages
             .iter()
-            .any(|p| !p.original_image_path.starts_with(&archive_prefix))
+            .any(|p| {
+                // 有 blob_hash 的页面不需要归档（两阶段流水线）
+                p.blob_hash.is_none()
+                    && !p.original_image_path.is_empty()
+                    && !p.original_image_path.starts_with(&archive_prefix)
+            })
             || detail.preview.pages.iter().any(|p| {
                 p.cards
                     .iter()
-                    .any(|c| !c.cropped_image_path.starts_with(&archive_prefix))
+                    .any(|c| !c.cropped_image_path.is_empty() && !c.cropped_image_path.starts_with(&archive_prefix))
             });
 
         if needs_archive {
@@ -1829,26 +1712,38 @@ impl ExamSheetService {
         }
 
         for page in detail.preview.pages.iter_mut() {
-            let original_abs = self
-                .file_manager
-                .resolve_image_path(&page.original_image_path);
-            let dims_result = tokio::task::spawn_blocking({
-                let path = original_abs.clone();
-                move || image::image_dimensions(&path)
-            })
-            .await
-            .map_err(|e| AppError::file_system(format!("读取试卷图片尺寸失败: {:?}", e)))?;
-
-            let (img_width, img_height) = match dims_result {
-                Ok((w, h)) => (w, h),
-                Err(err) => {
-                    log_info!(
-                        "⚠️ [exam-sheet] 读取页面尺寸失败 {}: {}",
-                        original_abs.display(),
-                        err
-                    );
-                    (0, 0)
+            // ★ 两阶段页面已在 build_page_skeleton 中设置了 width/height，直接使用
+            let (img_width, img_height) = if let (Some(w), Some(h)) = (page.width, page.height) {
+                if w > 0 && h > 0 {
+                    (w, h)
+                } else {
+                    (0u32, 0u32)
                 }
+            } else if !page.original_image_path.is_empty() {
+                // 旧版页面：从文件系统读取尺寸
+                let original_abs = self
+                    .file_manager
+                    .resolve_image_path(&page.original_image_path);
+                let dims_result = tokio::task::spawn_blocking({
+                    let path = original_abs.clone();
+                    move || image::image_dimensions(&path)
+                })
+                .await
+                .map_err(|e| AppError::file_system(format!("读取试卷图片尺寸失败: {:?}", e)))?;
+
+                match dims_result {
+                    Ok((w, h)) => (w, h),
+                    Err(err) => {
+                        log_info!(
+                            "⚠️ [exam-sheet] 读取页面尺寸失败 {}: {}",
+                            original_abs.display(),
+                            err
+                        );
+                        (0, 0)
+                    }
+                }
+            } else {
+                (0, 0)
             };
 
             for card in page.cards.iter_mut() {
@@ -2430,6 +2325,9 @@ impl ExamSheetService {
             height: None,
             original_image_path: String::new(),
             cards,
+            raw_ocr_text: None,
+            ocr_completed: false,
+            parse_completed: false,
         };
 
         let preview = ExamSheetPreviewResult {

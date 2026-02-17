@@ -13,6 +13,8 @@ pub enum OcrEngineType {
     /// PaddleOCR-VL-1.5（默认）- 百度开源，免费，精度 94.5%
     #[default]
     PaddleOcrVl,
+    /// PaddleOCR-VL（旧版备用）- 百度开源，免费
+    PaddleOcrVlV1,
     /// 通用多模态模型 - 使用标准 VLM 进行 OCR
     GenericVlm,
     /// 系统 OCR - 调用操作系统内置 OCR 引擎（macOS Vision / Windows.Media.Ocr / iOS Vision）
@@ -30,6 +32,7 @@ impl OcrEngineType {
         match s.to_lowercase().as_str() {
             "deepseek_ocr" | "deepseek-ocr" | "deepseek" => Some(Self::DeepSeekOcr),
             "paddle_ocr_vl" | "paddleocr-vl" | "paddleocr_vl" | "paddle" => Some(Self::PaddleOcrVl),
+            "paddle_ocr_vl_v1" | "paddleocr-vl-v1" | "paddleocr_vl_v1" => Some(Self::PaddleOcrVlV1),
             "generic_vlm" | "generic" | "vlm" => Some(Self::GenericVlm),
             "system_ocr" | "system" | "native" => Some(Self::SystemOcr),
             _ => None,
@@ -41,6 +44,7 @@ impl OcrEngineType {
         match self {
             Self::DeepSeekOcr => "deepseek_ocr",
             Self::PaddleOcrVl => "paddle_ocr_vl",
+            Self::PaddleOcrVlV1 => "paddle_ocr_vl_v1",
             Self::GenericVlm => "generic_vlm",
             Self::SystemOcr => "system_ocr",
         }
@@ -51,6 +55,7 @@ impl OcrEngineType {
         match self {
             Self::DeepSeekOcr => "DeepSeek-OCR",
             Self::PaddleOcrVl => "PaddleOCR-VL-1.5",
+            Self::PaddleOcrVlV1 => "PaddleOCR-VL",
             Self::GenericVlm => "通用多模态模型",
             Self::SystemOcr => "系统 OCR",
         }
@@ -61,6 +66,7 @@ impl OcrEngineType {
         match self {
             Self::DeepSeekOcr => true,
             Self::PaddleOcrVl => true, // PaddleOCR-VL 也支持坐标输出
+            Self::PaddleOcrVlV1 => true,
             Self::GenericVlm => false,
             Self::SystemOcr => false,
         }
@@ -71,6 +77,7 @@ impl OcrEngineType {
         match self {
             Self::DeepSeekOcr => "deepseek-ai/DeepSeek-OCR",
             Self::PaddleOcrVl => "PaddlePaddle/PaddleOCR-VL-1.5",
+            Self::PaddleOcrVlV1 => "PaddlePaddle/PaddleOCR-VL",
             Self::GenericVlm => "Qwen/Qwen2.5-VL-7B-Instruct",
             Self::SystemOcr => "system",
         }
@@ -342,6 +349,14 @@ mod tests {
         assert_eq!(
             OcrEngineType::from_str("PaddleOCR-VL"),
             OcrEngineType::PaddleOcrVl
+        );
+        assert_eq!(
+            OcrEngineType::from_str("paddle_ocr_vl_v1"),
+            OcrEngineType::PaddleOcrVlV1
+        );
+        assert_eq!(
+            OcrEngineType::from_str("paddleocr-vl-v1"),
+            OcrEngineType::PaddleOcrVlV1
         );
         assert_eq!(
             OcrEngineType::from_str("system_ocr"),

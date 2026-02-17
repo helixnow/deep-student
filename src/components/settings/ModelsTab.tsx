@@ -36,6 +36,7 @@ interface ModelsTabProps {
     chat_title_model_config_id: string;
     exam_sheet_ocr_model_config_id: string;
     translation_model_config_id: string;
+    question_parsing_model_config_id: string;
   };
   setConfig: React.Dispatch<React.SetStateAction<any>>;
   apiConfigs: ApiConfig[];
@@ -214,6 +215,17 @@ export const ModelsTab: React.FC<ModelsTabProps> = ({
               models={toUnifiedModelInfo(getAllEnabledApis(config.translation_model_config_id))}
               placeholder={t('settings:api.select_model')}
               notificationKey={notify('translation_saved')}
+              onSave={handleSave}
+              setConfig={setConfig}
+            />
+            <ModelAssignmentRow
+              title={t('settings:cards.question_parsing_model_title', '题目解析模型')}
+              description={t('settings:descriptions.question_parsing_desc', '用于题目集识别的第二阶段（文本→结构化题目），推荐快速文本模型，避免推理模型。未配置时回退为对话模型。')}
+              value={config.question_parsing_model_config_id}
+              field="question_parsing_model_config_id"
+              models={toUnifiedModelInfo(getAllEnabledApis(config.question_parsing_model_config_id))}
+              placeholder={t('settings:placeholders.use_default_model', '使用对话模型')}
+              notificationKey={notify('question_parsing_saved')}
               onSave={handleSave}
               setConfig={setConfig}
             />

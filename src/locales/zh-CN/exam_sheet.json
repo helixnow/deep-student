@@ -483,6 +483,8 @@
     "ocr_uploading": "正在上传...",
     "ocr_encoding": "正在编码图片...",
     "ocr_recognizing": "正在识别 ({{current}}/{{total}})",
+    "ocr_phase": "OCR 识别中 ({{current}}/{{total}})",
+    "parse_phase": "题目解析中 ({{current}}/{{total}})",
     "ocr_completed": "识别完成！",
     "parsed_questions_label": "已解析题目（实时更新）",
     "waiting_ai": "正在等待 AI 解析题目...",

@@ -3,7 +3,7 @@
  * 统一移动端和桌面端的进度处理逻辑
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTauriEventListener } from './useTauriEventListener';
 import type { ExamSheetProgressEvent } from '../utils/tauriApi';
 import { showGlobalNotification } from '../components/UnifiedNotification';
@@ -38,8 +38,10 @@ async function triggerMultimodalIndex(resourceId: string) {
 
 export interface ExamSheetProgressState {
   isProcessing: boolean;
-  stage: 'idle' | 'uploading' | 'encoding' | 'recognizing' | 'completed';
+  stage: 'idle' | 'uploading' | 'ocr' | 'parsing' | 'completed';
   progress: { current: number; total: number };
+  ocrProgress: { current: number; total: number };
+  parseProgress: { current: number; total: number };
   error: string | null;
 }
 
@@ -57,10 +59,17 @@ export function useExamSheetProgress(options: UseExamSheetProgressOptions = {}) 
     isProcessing: false,
     stage: 'idle',
     progress: { current: 0, total: 0 },
+    ocrProgress: { current: 0, total: 0 },
+    parseProgress: { current: 0, total: 0 },
     error: null
   });
 
-  const { onSessionUpdate, onProgress } = options;
+  // ★ 使用 ref 持有回调，避免 handleProgress 因回调引用变化而重建
+  // 这防止了 useEffect 重挂载事件监听器时 Completed 事件被丢失的竞态
+  const onSessionUpdateRef = useRef(options.onSessionUpdate);
+  const onProgressRef = useRef(options.onProgress);
+  useEffect(() => { onSessionUpdateRef.current = options.onSessionUpdate; }, [options.onSessionUpdate]);
+  useEffect(() => { onProgressRef.current = options.onProgress; }, [options.onProgress]);
 
   const handleProgress = useCallback((payload: ExamSheetProgressEvent) => {
     if (!payload) return;
@@ -82,48 +91,104 @@ export function useExamSheetProgress(options: UseExamSheetProgressOptions = {}) 
 
     // 根据事件类型更新状态
     switch (payload.type) {
-      case 'SessionCreated':
+      case 'SessionCreated': {
+        const totalPages = (payload as any).total_pages ?? (payload as any).total_chunks ?? 0;
         setState(prev => ({
           ...prev,
           isProcessing: true,
-          stage: 'encoding',
-          progress: { current: 0, total: (payload as any).total_chunks ?? 0 },
+          stage: 'ocr',
+          progress: { current: 0, total: totalPages * 2 },
+          ocrProgress: { current: 0, total: totalPages },
+          parseProgress: { current: 0, total: totalPages },
           error: null
         }));
-        console.log('[ExamSheet] Session created, starting processing');
-        onProgress?.('encoding', 0, (payload as any).total_chunks ?? 0);
+        console.log('[ExamSheet] Session created, starting two-phase processing, pages:', totalPages);
+        onProgressRef.current?.('ocr', 0, totalPages);
         break;
+      }
 
-      case 'ChunkCompleted':
+      // ★ 阶段一：单页 OCR 完成
+      case 'OcrPageCompleted': {
+        const pageIdx = (payload as any).page_index ?? 0;
+        const totalPages = (payload as any).total_pages ?? 0;
         setState(prev => {
-          const newCurrent = prev.progress.current + 1;
-          const newTotal = prev.progress.total;
-          console.log('[ExamSheet] Chunk completed:', newCurrent, '/', newTotal);
-          onProgress?.('recognizing', newCurrent, newTotal);
+          const ocrCurrent = pageIdx + 1;
+          console.log('[ExamSheet] OCR page completed:', ocrCurrent, '/', totalPages);
+          onProgressRef.current?.('ocr', ocrCurrent, totalPages);
           return {
             ...prev,
-            stage: 'recognizing',
-            progress: { current: newCurrent, total: newTotal }
+            stage: 'ocr',
+            ocrProgress: { current: ocrCurrent, total: totalPages },
+            progress: { current: ocrCurrent, total: totalPages * 2 }
+          };
+        });
+        break;
+      }
+
+      // ★ 阶段一全部完成 → 切换到阶段二
+      case 'OcrPhaseCompleted': {
+        const totalPages = (payload as any).total_pages ?? 0;
+        setState(prev => ({
+          ...prev,
+          stage: 'parsing',
+          ocrProgress: { current: totalPages, total: totalPages },
+          parseProgress: { current: 0, total: totalPages },
+          progress: { current: totalPages, total: totalPages * 2 }
+        }));
+        console.log('[ExamSheet] OCR phase completed, starting parse phase');
+        break;
+      }
+
+      // ★ 阶段二：单页解析完成
+      case 'ParsePageCompleted': {
+        const pageIdx = (payload as any).page_index ?? 0;
+        const totalPages = (payload as any).total_pages ?? 0;
+        setState(prev => {
+          const parseCurrent = pageIdx + 1;
+          console.log('[ExamSheet] Parse page completed:', parseCurrent, '/', totalPages);
+          onProgressRef.current?.('parsing', parseCurrent, totalPages);
+          return {
+            ...prev,
+            stage: 'parsing',
+            parseProgress: { current: parseCurrent, total: totalPages },
+            progress: { current: totalPages + parseCurrent, total: totalPages * 2 }
+          };
+        });
+        break;
+      }
+
+      // ★ 兼容旧后端：ChunkCompleted 仍可正常工作
+      case 'ChunkCompleted':
+        setState(prev => {
+          const newCurrent = prev.ocrProgress.current + 1;
+          const newTotal = prev.ocrProgress.total;
+          console.log('[ExamSheet] Chunk completed:', newCurrent, '/', newTotal);
+          onProgressRef.current?.('ocr', newCurrent, newTotal);
+          return {
+            ...prev,
+            stage: 'ocr',
+            ocrProgress: { current: newCurrent, total: newTotal },
+            progress: { current: newCurrent, total: newTotal * 2 }
           };
         });
         break;
 
       case 'Completed':
+        console.log('[ExamSheet] ★ Processing complete');
         setState(prev => {
-          const newTotal = prev.progress.total;
-          console.log('[ExamSheet] Processing complete');
-          onProgress?.('completed', newTotal, newTotal);
+          const total = prev.progress.total;
+          onProgressRef.current?.('completed', total, total);
           return {
             ...prev,
             isProcessing: false,
             stage: 'completed',
-            progress: { current: newTotal, total: newTotal }
+            progress: { current: total, total }
           };
         });
 
         // 更新会话数据
-        if (onSessionUpdate) {
-          onSessionUpdate(detail);
+        if (onSessionUpdateRef.current) {
+          onSessionUpdateRef.current(detail);
           showGlobalNotification('success', i18n.t('exam_sheet:recognition_complete_notification', { defaultValue: 'Question set recognition completed!' }));
         }
 
@@ -133,7 +198,7 @@ export function useExamSheetProgress(options: UseExamSheetProgressOptions = {}) 
         }
         break;
     }
-  }, [onSessionUpdate, onProgress]);
+  }, []); // ★ 无依赖 — 回调通过 ref 访问，永不重建
 
   // 监听进度事件
   useEffect(() => {
@@ -158,6 +223,8 @@ export function useExamSheetProgress(options: UseExamSheetProgressOptions = {}) 
       isProcessing: false,
       stage: 'idle',
       progress: { current: 0, total: 0 },
+      ocrProgress: { current: 0, total: 0 },
+      parseProgress: { current: 0, total: 0 },
       error: null
     });
   }, []);
@@ -166,8 +233,10 @@ export function useExamSheetProgress(options: UseExamSheetProgressOptions = {}) 
   const startProcessing = useCallback(() => {
     setState({
       isProcessing: true,
-      stage: 'encoding',
+      stage: 'ocr',
       progress: { current: 0, total: 0 },
+      ocrProgress: { current: 0, total: 0 },
+      parseProgress: { current: 0, total: 0 },
       error: null
     });
   }, []);

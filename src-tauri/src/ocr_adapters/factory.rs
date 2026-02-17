@@ -19,6 +19,7 @@ impl OcrAdapterFactory {
         match engine_type {
             OcrEngineType::DeepSeekOcr => Arc::new(DeepSeekOcrAdapter::new()),
             OcrEngineType::PaddleOcrVl => Arc::new(PaddleOcrVlAdapter::new()),
+            OcrEngineType::PaddleOcrVlV1 => Arc::new(PaddleOcrVlAdapter::with_engine(OcrEngineType::PaddleOcrVlV1)),
             OcrEngineType::GenericVlm => Arc::new(GenericVlmAdapter::new()),
             OcrEngineType::SystemOcr => Arc::new(SystemOcrAdapter::new()),
         }
@@ -34,6 +35,7 @@ impl OcrAdapterFactory {
         let mut engines = vec![
             OcrEngineType::DeepSeekOcr,
             OcrEngineType::PaddleOcrVl,
+            OcrEngineType::PaddleOcrVlV1,
             OcrEngineType::GenericVlm,
         ];
         // 仅在支持的平台上展示系统 OCR 选项
@@ -60,6 +62,15 @@ impl OcrAdapterFactory {
                 description:
                     "百度开源 OCR 视觉语言模型 1.5 版，支持 109 种语言，精度 94.5%，完全免费",
                 recommended_model: "PaddlePaddle/PaddleOCR-VL-1.5",
+                supports_grounding: true,
+                is_free: true,
+            },
+            OcrEngineInfo {
+                engine_type: OcrEngineType::PaddleOcrVlV1,
+                name: "PaddleOCR-VL",
+                description:
+                    "百度开源 OCR 视觉语言模型旧版，支持坐标输出，完全免费，作为 1.5 版的备用",
+                recommended_model: "PaddlePaddle/PaddleOCR-VL",
                 supports_grounding: true,
                 is_free: true,
             },
@@ -94,7 +105,7 @@ impl OcrAdapterFactory {
             OcrEngineType::DeepSeekOcr => {
                 model_lower.contains("deepseek") && model_lower.contains("ocr")
             }
-            OcrEngineType::PaddleOcrVl => {
+            OcrEngineType::PaddleOcrVl | OcrEngineType::PaddleOcrVlV1 => {
                 // 收紧匹配：要求包含 "paddleocr" 或 "paddlepaddle" 而非单独的 "paddle"
                 model_lower.contains("paddleocr") || model_lower.contains("paddlepaddle")
             }
@@ -117,8 +128,11 @@ impl OcrAdapterFactory {
             OcrEngineType::SystemOcr
         } else if model_lower.contains("deepseek") && model_lower.contains("ocr") {
             OcrEngineType::DeepSeekOcr
-        } else if model_lower.contains("paddle") || model_lower.contains("paddleocr") {
+        } else if model_lower.contains("paddleocr-vl-1") || model_lower.contains("paddleocr_vl_1") {
             OcrEngineType::PaddleOcrVl
+        } else if model_lower.contains("paddle") || model_lower.contains("paddleocr") {
+            // 无版本后缀的 PaddleOCR 默认推断为旧版
+            OcrEngineType::PaddleOcrVlV1
         } else {
             OcrEngineType::GenericVlm
         }
@@ -171,6 +185,9 @@ mod tests {
         let paddle = OcrAdapterFactory::create(OcrEngineType::PaddleOcrVl);
         assert_eq!(paddle.engine_type(), OcrEngineType::PaddleOcrVl);
 
+        let paddle_v1 = OcrAdapterFactory::create(OcrEngineType::PaddleOcrVlV1);
+        assert_eq!(paddle_v1.engine_type(), OcrEngineType::PaddleOcrVlV1);
+
         let generic = OcrAdapterFactory::create(OcrEngineType::GenericVlm);
         assert_eq!(generic.engine_type(), OcrEngineType::GenericVlm);
     }
@@ -196,6 +213,11 @@ mod tests {
             OcrEngineType::PaddleOcrVl
         ));
 
+        assert!(OcrAdapterFactory::validate_model_for_engine(
+            "PaddlePaddle/PaddleOCR-VL",
+            OcrEngineType::PaddleOcrVlV1
+        ));
+
         assert!(!OcrAdapterFactory::validate_model_for_engine(
             "Qwen/Qwen2.5-VL",
             OcrEngineType::DeepSeekOcr
@@ -212,6 +234,11 @@ mod tests {
         assert_eq!(
             OcrAdapterFactory::infer_engine_from_model("PaddlePaddle/PaddleOCR-VL-1.5"),
             OcrEngineType::PaddleOcrVl
+        );
+
+        assert_eq!(
+            OcrAdapterFactory::infer_engine_from_model("PaddlePaddle/PaddleOCR-VL"),
+            OcrEngineType::PaddleOcrVlV1
         );
 
         assert_eq!(

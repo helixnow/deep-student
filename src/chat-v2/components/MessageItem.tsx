@@ -642,8 +642,8 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
         <div
           className={cn(
             'mx-auto',
-            // 多变体模式使用更宽的容器，让卡片并排显示
-            isMultiVariant ? 'max-w-5xl' : 'max-w-3xl',
+            // 多变体模式使用全宽容器，让卡片均分填满聊天区域
+            isMultiVariant ? 'max-w-full' : 'max-w-3xl',
             // items-start 防止头像列拉伸到消息全高
             isUser ? 'flex flex-row-reverse gap-4 items-start' : (isMultiVariant ? '' : 'flex gap-4 items-start')
           )}

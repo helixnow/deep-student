@@ -15,6 +15,8 @@ const DEFAULT_ASSIGNMENTS: ModelAssignments = {
   // 多模态知识库模型
   vl_embedding_model_config_id: null,
   vl_reranker_model_config_id: null,
+  // 两阶段题目集识别：专用题目解析模型
+  question_parsing_model_config_id: null,
 };
 
 const normalizeAssignments = (input?: Partial<ModelAssignments>): ModelAssignments => ({

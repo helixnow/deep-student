@@ -261,6 +261,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
     chat_title_model_config_id: '', // 新增：聊天标题生成模型配置ID
     // 多模态知识库模型配置（嵌入模型通过维度管理设置）
     vl_reranker_model_config_id: '', // 多模态重排序模型
+    question_parsing_model_config_id: '', // 两阶段题目集识别：专用题目解析模型
 
     // MCP 工具协议设置（默认保持可配置；启用与否由消息级选择决定）
     mcpCommand: 'npx',
@@ -445,6 +446,8 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
       chat_title_model_config_id: modelAssignments.chat_title_model_config_id || '',
       // 多模态知识库模型（嵌入模型通过维度管理设置）
       vl_reranker_model_config_id: modelAssignments.vl_reranker_model_config_id || '',
+      // 两阶段题目集识别
+      question_parsing_model_config_id: modelAssignments.question_parsing_model_config_id || '',
     }));
   }, [modelAssignments]);
 
@@ -3024,6 +3027,8 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
           webSearchBlacklist: webBlacklist || '',
           webSearchInjectSnippetMax: parseInt(webInjectSnippet || '180', 10) || 180,
           webSearchInjectTotalMax: parseInt(webInjectTotal || '1900', 10) || 1900,
+          // 两阶段题目集识别（从 modelAssignments 同步，此处占位）
+          question_parsing_model_config_id: '',
         };
         
         console.log('加载的配置:', {
@@ -3926,6 +3931,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
       chat_title_model_config_id: mapping[t('settings:mapping_keys.chat_title_configured')] || null,
       exam_sheet_ocr_model_config_id: mapping[t('settings:mapping_keys.exam_sheet_ocr_configured')] || null,
       translation_model_config_id: mapping[t('settings:mapping_keys.translation_configured')] || null,
+      question_parsing_model_config_id: mapping[t('settings:mapping_keys.question_parsing_configured')] || null,
       // 多模态知识库模型（嵌入模型通过维度管理设置）
       vl_embedding_model_config_id: null,
       vl_reranker_model_config_id: null,

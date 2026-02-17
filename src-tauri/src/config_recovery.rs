@@ -109,6 +109,8 @@ pub fn create_default_model_assignments() -> ModelAssignments {
         // 多模态知识库模型
         vl_embedding_model_config_id: None,
         vl_reranker_model_config_id: None,
+        // 两阶段题目集识别：专用题目解析模型
+        question_parsing_model_config_id: None,
     }
 }
 

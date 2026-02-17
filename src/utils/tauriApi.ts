@@ -3663,13 +3663,31 @@ export type ExamSheetProgressEvent =
   | {
       type: 'SessionCreated';
       detail: ExamSheetSessionDetail;
-      total_chunks: number;
+      total_pages?: number;
+      total_chunks?: number; // ★ 兼容旧后端
     }
   | {
       type: 'ChunkCompleted';
       detail: ExamSheetSessionDetail;
       chunk_index: number;
       total_chunks: number;
+    }
+  | {
+      type: 'OcrPageCompleted';
+      detail: ExamSheetSessionDetail;
+      page_index: number;
+      total_pages: number;
+    }
+  | {
+      type: 'OcrPhaseCompleted';
+      detail: ExamSheetSessionDetail;
+      total_pages: number;
+    }
+  | {
+      type: 'ParsePageCompleted';
+      detail: ExamSheetSessionDetail;
+      page_index: number;
+      total_pages: number;
     }
   | {
       type: 'Completed';

@@ -1649,6 +1649,9 @@ impl QBankExecutor {
                 width: None,
                 height: None,
                 original_image_path: String::new(),
+                raw_ocr_text: None,
+                ocr_completed: false,
+                parse_completed: false,
             });
         }
 

@@ -1175,7 +1175,8 @@
     "research_configured": "深度研究模型：已废弃",
     "exam_sheet_ocr_configured": "OCR引擎：已配置",
     "translation_configured": "翻译模型：已配置",
-    "qbank_ai_grading_configured": "题库AI批改模型：已配置"
+    "qbank_ai_grading_configured": "题库AI批改模型：已配置",
+    "question_parsing_configured": "题目解析模型：已配置"
   },
   "status_labels": {
     "summary_model": "总结生成模型（已废弃）",

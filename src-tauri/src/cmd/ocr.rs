@@ -87,7 +87,7 @@ pub async fn set_ocr_engine_type(engine_type: String, state: State<'_, AppState>
     // M5 fix: 严格验证引擎类型，拒绝非法输入
     let parsed = OcrEngineType::try_from_str(&engine_type).ok_or_else(|| {
         AppError::validation(format!(
-            "Unknown OCR engine type: '{}'. Valid types: deepseek_ocr, paddle_ocr_vl, generic_vlm",
+            "Unknown OCR engine type: '{}'. Valid types: deepseek_ocr, paddle_ocr_vl, paddle_ocr_vl_v1, generic_vlm",
             engine_type
         ))
     })?;

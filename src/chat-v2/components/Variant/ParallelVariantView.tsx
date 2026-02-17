@@ -256,10 +256,10 @@ const VariantCard: React.FC<VariantCardProps> = ({
           ? 'border-primary/50 shadow-sm'
           : 'border-border hover:border-border/80',
         isStreaming && 'border-primary/30',
-        // 移动端：固定宽度 + snap 对齐
+        // 移动端：固定宽度 + snap 对齐；桌面端：flex-1 自适应填满容器
         isMobile
           ? 'w-[85vw] min-w-[280px] max-w-[320px] shrink-0 snap-start'
-          : 'w-[320px] min-w-[280px] shrink-0'
+          : 'flex-1 min-w-[200px]'
       )}
       data-variant-index={variantIndex}
       onClick={onSwitch}
@@ -775,9 +775,11 @@ export const ParallelVariantView: React.FC<ParallelVariantViewProps> = ({
       <div
         ref={scrollContainerRef}
         className={cn(
-          'flex gap-4 overflow-x-auto scrollbar-hide pb-2',
-          // 移动端：snap 对齐 + 突破容器边距
-          isSmallScreen && 'snap-x snap-mandatory -mx-4 px-4'
+          'flex gap-4 pb-2',
+          // 移动端：横向滚动 + snap 对齐；桌面端：不溢出，卡片均分宽度
+          isSmallScreen
+            ? 'overflow-x-auto scrollbar-hide snap-x snap-mandatory -mx-4 px-4'
+            : 'w-full'
         )}
         style={{
           scrollbarWidth: 'none',

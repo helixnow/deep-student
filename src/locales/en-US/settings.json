@@ -1175,7 +1175,8 @@
     "research_configured": "Deep Research Model: Deprecated",
     "exam_sheet_ocr_configured": "OCR Engine: Configured",
     "translation_configured": "Translation Model: Configured",
-    "qbank_ai_grading_configured": "Question Bank AI Grading Model: Configured"
+    "qbank_ai_grading_configured": "Question Bank AI Grading Model: Configured",
+    "question_parsing_configured": "Question Parsing Model: Configured"
   },
   "status_labels": {
     "summary_model": "Summary Generation Model (Deprecated)",

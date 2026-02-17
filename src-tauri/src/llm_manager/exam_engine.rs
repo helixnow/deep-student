@@ -781,6 +781,167 @@ impl LLMManager {
         })
     }
 
+    // ====================================================================
+    // ★ 两阶段题目集识别：公开方法
+    // ====================================================================
+
+    /// ★ 阶段一：单页 OCR（仅识别文本，不做题目分组），带重试
+    ///
+    /// 返回原始 OCR 文本（如 DeepSeek grounding 标记格式）
+    pub async fn ocr_single_page_with_retry(
+        &self,
+        page_path: &str,
+        page_index: usize,
+    ) -> Result<String> {
+        let config = self.get_exam_segmentation_model_config().await?;
+
+        const MAX_RETRIES: u32 = 3;
+        const INITIAL_BACKOFF_MS: u64 = 1000;
+        let mut retry_count = 0;
+        let mut backoff_ms = INITIAL_BACKOFF_MS;
+
+        loop {
+            match self
+                .request_deepseek_ocr_content(&config, page_path, page_index)
+                .await
+            {
+                Ok(content) => return Ok(content),
+                Err(e) => {
+                    let err_str = e.to_string();
+                    let is_retryable = err_str.contains("429")
+                        || err_str.contains("rate limit")
+                        || err_str.contains("too many requests")
+                        || err_str.contains("timed out")
+                        || err_str.contains("timeout")
+                        || err_str.contains("deadline has elapsed")
+                        || err_str.contains("connection")
+                        || err_str.contains("broken pipe")
+                        || err_str.contains("reset by peer")
+                        || err_str.contains("error sending request");
+
+                    if is_retryable && retry_count < MAX_RETRIES {
+                        retry_count += 1;
+                        warn!(
+                            "[OCR-Phase1] 页面 {} OCR 失败，等待 {}ms 后重试 ({}/{}): {}",
+                            page_index, backoff_ms, retry_count, MAX_RETRIES, e
+                        );
+                        tokio::time::sleep(tokio::time::Duration::from_millis(backoff_ms)).await;
+                        backoff_ms *= 2;
+                        continue;
+                    }
+                    if retry_count > 0 {
+                        error!(
+                            "[OCR-Phase1] 页面 {} OCR 重试 {} 次后仍失败: {}",
+                            page_index, retry_count, e
+                        );
+                    }
+                    return Err(e);
+                }
+            }
+        }
+    }
+
+    /// ★ 阶段二：将 OCR 原始文本解析为结构化题目，带重试和降级
+    ///
+    /// 使用 `get_question_parsing_model_config()` 获取专用题目解析模型。
+    /// 失败时降级为原始 OCR 区域（非致命）。
+    pub async fn parse_ocr_to_questions(
+        &self,
+        raw_ocr_text: &str,
+        page_image_path: &str,
+        page_index: usize,
+        grouping_prompt: Option<&str>,
+        grouping_focus: Option<&str>,
+    ) -> Result<ExamSegmentationPage> {
+        use crate::exam_sheet_ocr_service::ExamSheetOcrService;
+
+        let ocr_service = ExamSheetOcrService::new(self.file_manager.clone());
+
+        // 第一步：解析 OCR 标记为原始区域（本地操作，不调用 LLM）
+        let raw_regions = self
+            .parse_ocr_regions_internal(&ocr_service, raw_ocr_text, page_image_path, page_index, None)
+            .await?;
+
+        if raw_regions.is_empty() {
+            return Ok(ExamSegmentationPage {
+                page_index,
+                cards: raw_regions,
+            });
+        }
+
+        // 第二步：调用题目解析模型进行分组（带重试 + 降级）
+        const MAX_RETRIES: u32 = 2;
+        const INITIAL_BACKOFF_MS: u64 = 500;
+        let mut retry_count = 0;
+        let mut backoff_ms = INITIAL_BACKOFF_MS;
+        let mut last_error: Option<AppError> = None;
+
+        loop {
+            match self
+                .group_regions_by_llm(
+                    &raw_regions,
+                    page_index,
+                    &ocr_service,
+                    grouping_prompt,
+                    grouping_focus,
+                )
+                .await
+            {
+                Ok(grouped_cards) => {
+                    info!(
+                        "[Parse-Phase2] 页面 {} 解析完成: {} 个原始区域 → {} 个题目",
+                        page_index,
+                        raw_regions.len(),
+                        grouped_cards.len()
+                    );
+                    return Ok(ExamSegmentationPage {
+                        page_index,
+                        cards: grouped_cards,
+                    });
+                }
+                Err(e) => {
+                    let err_str = e.to_string();
+                    let is_retryable = err_str.contains("429")
+                        || err_str.contains("rate limit")
+                        || err_str.contains("timed out")
+                        || err_str.contains("timeout")
+                        || err_str.contains("connection")
+                        || err_str.contains("error sending request");
+
+                    if is_retryable && retry_count < MAX_RETRIES {
+                        retry_count += 1;
+                        warn!(
+                            "[Parse-Phase2] 页面 {} 解析失败，等待 {}ms 后重试 ({}/{}): {}",
+                            page_index, backoff_ms, retry_count, MAX_RETRIES, e
+                        );
+                        tokio::time::sleep(tokio::time::Duration::from_millis(backoff_ms)).await;
+                        backoff_ms *= 2;
+                        last_error = Some(e);
+                        continue;
+                    }
+                    last_error = Some(e);
+                    break;
+                }
+            }
+        }
+
+        // 降级：返回原始 OCR 区域
+        warn!(
+            "[Parse-Phase2] 页面 {} 题目解析失败，降级为原始 OCR 区域 ({} 个): {}",
+            page_index,
+            raw_regions.len(),
+            last_error.as_ref().map(|e| e.to_string()).unwrap_or_default()
+        );
+        Ok(ExamSegmentationPage {
+            page_index,
+            cards: raw_regions,
+        })
+    }
+
+    // ====================================================================
+    // ★ 旧版单次调用（兼容现有 exam_sheet_service 旧路径）
+    // ====================================================================
+
     /// DeepSeek-OCR 题目集识别：并行单页调用，带指数回退重试
     async fn call_exam_sheet_deepseek_ocr(
         &self,
@@ -1315,6 +1476,7 @@ impl LLMManager {
         }
 
         // 🎯 第二步：使用对话模型（原 Irec 文本模型）整理区域，按题目分组
+        // ★ 分组失败时降级为原始 OCR 区域（非致命），避免推理模型超时导致整页丢失
         self.emit_deepseek_debug(
             "info",
             "grouping",
@@ -1322,7 +1484,7 @@ impl LLMManager {
             "开始调用对话模型进行题目分组",
             None,
         );
-        let grouped_cards = self
+        let final_cards = match self
             .group_regions_by_llm(
                 &raw_regions,
                 page_index,
@@ -1330,22 +1492,42 @@ impl LLMManager {
                 grouping_prompt,
                 grouping_focus,
             )
-            .await?;
-
-        self.emit_deepseek_debug(
-            "info",
-            "result",
-            page_index,
-            &format!("最终生成 {} 个题目", grouped_cards.len()),
-            Some(json!({
-                "original_regions": raw_regions.len(),
-                "grouped_questions": grouped_cards.len(),
-            })),
-        );
+            .await
+        {
+            Ok(grouped_cards) => {
+                self.emit_deepseek_debug(
+                    "info",
+                    "result",
+                    page_index,
+                    &format!("最终生成 {} 个题目", grouped_cards.len()),
+                    Some(json!({
+                        "original_regions": raw_regions.len(),
+                        "grouped_questions": grouped_cards.len(),
+                    })),
+                );
+                grouped_cards
+            }
+            Err(e) => {
+                warn!(
+                    "[DeepSeek-OCR] 页面 {} 题目分组失败，降级为原始 OCR 区域 ({} 个): {}",
+                    page_index,
+                    raw_regions.len(),
+                    e
+                );
+                self.emit_deepseek_debug(
+                    "warning",
+                    "grouping",
+                    page_index,
+                    &format!("分组失败，降级为原始区域: {}", e),
+                    None,
+                );
+                raw_regions
+            }
+        };
 
         Ok(ExamSegmentationPage {
             page_index,
-            cards: grouped_cards,
+            cards: final_cards,
         })
     }
 
@@ -1629,8 +1811,8 @@ impl LLMManager {
             })),
         );
 
-        // 切换为"对话模型"作为文本分组模型
-        let config = self.get_model2_config().await?;
+        // ★ 使用专用题目解析模型（回退到对话模型）
+        let config = self.get_question_parsing_model_config().await?;
         self.emit_deepseek_debug(
             "info",
             "grouping",
@@ -1669,15 +1851,28 @@ impl LLMManager {
             )
             .map_err(|e| Self::provider_error("DeepSeek-OCR 分组请求构建失败", e))?;
 
+        info!(
+            "[DeepSeek-OCR] 页面 {} 分组请求: model={}, url={}",
+            page_index, config.model, preq.url
+        );
+
         let mut request_builder = self.client.post(&preq.url);
         for (k, v) in preq.headers {
             request_builder = request_builder.header(k, v);
         }
+        // ★ 分组请求使用独立的短超时（60秒），避免推理模型在 stream:false 下长时间阻塞
         let response = request_builder
             .json(&preq.body)
+            .timeout(std::time::Duration::from_secs(60))
             .send()
             .await
             .map_err(|e| AppError::network(format!("DeepSeek-OCR 分组请求失败: {}", e)))?;
+
+        info!(
+            "[DeepSeek-OCR] 页面 {} 分组响应: status={}",
+            page_index,
+            response.status()
+        );
 
         if !response.status().is_success() {
             let status = response.status();

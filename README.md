@@ -136,6 +136,8 @@ DeepStudent 的对话引擎专为学习场景打造，支持多模态输入与�
 <p align="center"><img src="./example/会话浏览.png" width="90%" alt="会话管理" /></p>
 <p align="center"><img src="./example/分组.png" width="90%" alt="会话分组" /></p>
 <p align="center"><img src="./example/anki-发送.png" width="90%" alt="引用与发送" /></p>
+<p align="center"><img src="./example/并行-1.png" width="90%" alt="多模型并行选择" /></p>
+<p align="center"><img src="./example/并行-2.png" width="90%" alt="多模型对比回复" /></p>
 </details>
 
 ### 2. 学习资源中心 (Learning Hub)

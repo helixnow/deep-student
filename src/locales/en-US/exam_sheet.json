@@ -483,6 +483,8 @@
     "ocr_uploading": "Uploading...",
     "ocr_encoding": "Encoding images...",
     "ocr_recognizing": "Recognizing ({{current}}/{{total}})",
+    "ocr_phase": "OCR Recognition ({{current}}/{{total}})",
+    "parse_phase": "Parsing Questions ({{current}}/{{total}})",
     "ocr_completed": "Recognition complete!",
     "parsed_questions_label": "Parsed questions (live update)",
     "waiting_ai": "Waiting for AI to parse questions...",

@@ -29,11 +29,17 @@ use super::{OcrAdapter, OcrEngineType, OcrError, OcrMode, OcrPageResult, OcrRegi
 use async_trait::async_trait;
 
 /// PaddleOCR-VL 适配器
-pub struct PaddleOcrVlAdapter;
+pub struct PaddleOcrVlAdapter {
+    engine: OcrEngineType,
+}
 
 impl PaddleOcrVlAdapter {
     pub fn new() -> Self {
-        Self
+        Self { engine: OcrEngineType::PaddleOcrVl }
+    }
+
+    pub fn with_engine(engine: OcrEngineType) -> Self {
+        Self { engine }
     }
 }
 
@@ -46,7 +52,7 @@ impl Default for PaddleOcrVlAdapter {
 #[async_trait]
 impl OcrAdapter for PaddleOcrVlAdapter {
     fn engine_type(&self) -> OcrEngineType {
-        OcrEngineType::PaddleOcrVl
+        self.engine
     }
 
     fn supports_mode(&self, mode: OcrMode) -> bool {
@@ -108,7 +114,7 @@ impl OcrAdapter for PaddleOcrVlAdapter {
                         image_height,
                         regions: parsed.regions,
                         markdown_text: parsed.markdown,
-                        engine: OcrEngineType::PaddleOcrVl,
+                        engine: self.engine,
                         mode,
                         processing_time_ms: None,
                     });
@@ -124,6 +130,7 @@ impl OcrAdapter for PaddleOcrVlAdapter {
                         page_index,
                         image_path,
                         mode,
+                        self.engine,
                     );
                 }
 
@@ -142,7 +149,7 @@ impl OcrAdapter for PaddleOcrVlAdapter {
                         raw_output: Some(response.to_string()),
                     }],
                     markdown_text: Some(response.trim().to_string()),
-                    engine: OcrEngineType::PaddleOcrVl,
+                    engine: self.engine,
                     mode,
                     processing_time_ms: None,
                 })
@@ -169,7 +176,7 @@ impl OcrAdapter for PaddleOcrVlAdapter {
                         raw_output: Some(response.to_string()),
                     }],
                     markdown_text: Some(response.trim().to_string()),
-                    engine: OcrEngineType::PaddleOcrVl,
+                    engine: self.engine,
                     mode,
                     processing_time_ms: None,
                 })
@@ -373,6 +380,7 @@ fn parse_deepseek_style_response(
     page_index: usize,
     image_path: &str,
     mode: OcrMode,
+    engine: OcrEngineType,
 ) -> Result<OcrPageResult, OcrError> {
     // 复用 DeepSeek 适配器的解析逻辑
     let adapter = super::DeepSeekOcrAdapter::new();
@@ -386,7 +394,7 @@ fn parse_deepseek_style_response(
     )?;
 
     // 更新引擎类型
-    result.engine = OcrEngineType::PaddleOcrVl;
+    result.engine = engine;
 
     Ok(result)
 }

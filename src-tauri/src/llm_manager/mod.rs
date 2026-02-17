@@ -2093,6 +2093,37 @@ impl LLMManager {
         Ok(config)
     }
 
+    /// ★ 获取题目解析模型配置（两阶段题目集识别：阶段二）
+    ///
+    /// 回退链：question_parsing_model_config_id → model2_config_id（对话模型）
+    /// 推荐配置快速文本模型（如 Qwen2.5-72B-Instruct），避免推理模型导致超时
+    pub async fn get_question_parsing_model_config(&self) -> Result<ApiConfig> {
+        let assignments = self.get_model_assignments().await?;
+
+        // 优先使用专用题目解析模型
+        if let Some(ref parsing_id) = assignments.question_parsing_model_config_id {
+            let configs = self.get_api_configs().await?;
+            if let Some(config) = configs
+                .iter()
+                .find(|c| c.id == *parsing_id && !c.is_embedding && !c.is_reranker)
+            {
+                info!(
+                    "[QuestionParsing] 使用专用题目解析模型: id={}, model={}",
+                    config.id, config.model
+                );
+                return Ok(config.clone());
+            }
+            warn!(
+                "[QuestionParsing] 专用题目解析模型 {} 不存在或不可用，回退到对话模型",
+                parsing_id
+            );
+        }
+
+        // 回退：使用对话模型
+        info!("[QuestionParsing] 未配置专用模型，使用对话模型");
+        self.get_model2_config().await
+    }
+
     /// 获取 OCR 模型配置（公开方法，供多模态索引使用）
     ///
     /// 按优先级返回第一个可用的已启用 OCR 引擎对应的模型配置。

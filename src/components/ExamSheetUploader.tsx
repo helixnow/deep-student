@@ -271,6 +271,8 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
     isProcessing: isOCRProcessing,
     stage: ocrStage,
     progress: ocrProgress,
+    ocrProgress: ocrPhaseProgress,
+    parseProgress: parsePhaseProgress,
     error: ocrError,
     reset: resetOCRProgress,
     startProcessing: startOCRProcessing,
@@ -420,21 +422,38 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
       const imageFiles = selectedFiles.map(f => f.file);
       debugLog.info('[ExamSheetUploader] 开始 OCR 处理:', imageFiles.length, '个图片');
 
-      await TauriAPI.processExamSheetPreview({
+      const result = await TauriAPI.processExamSheetPreview({
         examName: resolvedSessionName,
         pageImages: imageFiles,
         outputFormat: 'deepseek_ocr',
         sessionId: sessionId,
       });
 
-      showGlobalNotification('info', t('exam_sheet:uploader.upload_success'));
+      // ★ invoke 成功返回 = 后端已完成，直接触发完成流程
+      // 不依赖 Completed 事件（事件可能因时序问题丢失）
+      resetOCRProgress();
+      if (result.session_id) {
+        try {
+          const detail = await TauriAPI.getExamSheetSessionDetail(result.session_id);
+          const summary = generateImportSummary(detail);
+          setImportSummary(summary);
+          setPendingDetail(detail);
+          setStep('summary');
+          showGlobalNotification('success', t('exam_sheet:recognition_complete_notification', { defaultValue: 'Question set recognition completed!' }));
+        } catch (detailErr) {
+          debugLog.warn('[ExamSheetUploader] 获取会话详情失败，回退到通知:', detailErr);
+          showGlobalNotification('info', t('exam_sheet:uploader.upload_success'));
+        }
+      } else {
+        showGlobalNotification('info', t('exam_sheet:uploader.upload_success'));
+      }
     } catch (err: unknown) {
       debugLog.error('[ExamSheetUploader] OCR 处理失败:', err);
       const errorMessage = err instanceof Error ? err.message : t('exam_sheet:error_processing', { error: '' });
       setOCRError(errorMessage);
       showGlobalNotification('error', errorMessage);
     }
-  }, [selectedFiles, sessionId, sessionName, startOCRProcessing, setOCRError]);
+  }, [selectedFiles, sessionId, sessionName, startOCRProcessing, setOCRError, resetOCRProgress, generateImportSummary]);
 
   // 文档直接导入（使用流式版本，支持实时进度）
   const handleDocumentImport = useCallback(async () => {
@@ -542,18 +561,35 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
   // 是否正在处理
   const isProcessing = isOCRProcessing || isLLMProcessing;
 
-  // OCR 进度
+  // OCR 进度（两阶段合并进度）
   const ocrProgressPercent = ocrProgress.total > 0 
     ? Math.round((ocrProgress.current / ocrProgress.total) * 100) 
     : 0;
 
-  const ocrStageText = {
-    idle: t('exam_sheet:uploader.ocr_idle'),
-    uploading: t('exam_sheet:uploader.ocr_uploading'),
-    encoding: t('exam_sheet:uploader.ocr_encoding'),
-    recognizing: t('exam_sheet:uploader.ocr_recognizing', { current: ocrProgress.current, total: ocrProgress.total }),
-    completed: t('exam_sheet:uploader.ocr_completed'),
-  }[ocrStage];
+  const ocrStageText = (() => {
+    switch (ocrStage) {
+      case 'ocr':
+        return ocrPhaseProgress.total > 0
+          ? t('exam_sheet:uploader.ocr_phase', {
+              current: ocrPhaseProgress.current,
+              total: ocrPhaseProgress.total,
+              defaultValue: 'OCR 识别中 ({{current}}/{{total}})'
+            })
+          : t('exam_sheet:uploader.ocr_encoding');
+      case 'parsing':
+        return parsePhaseProgress.total > 0
+          ? t('exam_sheet:uploader.parse_phase', {
+              current: parsePhaseProgress.current,
+              total: parsePhaseProgress.total,
+              defaultValue: '题目解析中 ({{current}}/{{total}})'
+            })
+          : t('exam_sheet:uploader.ocr_recognizing', { current: 0, total: 0 });
+      case 'completed':
+        return t('exam_sheet:uploader.ocr_completed');
+      default:
+        return t('exam_sheet:uploader.ocr_idle');
+    }
+  })();
 
   return (
     <div className={cn('flex flex-col h-full bg-background', className)}>
@@ -698,7 +734,11 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                     <div className="space-y-2">
                       <Progress value={ocrProgressPercent} className="h-2" />
                       <div className="flex justify-between text-xs text-muted-foreground">
-                        <span>{ocrProgress.current} / {ocrProgress.total}</span>
+                        <span>
+                          {ocrStage === 'parsing'
+                            ? `${parsePhaseProgress.current} / ${parsePhaseProgress.total}`
+                            : `${ocrPhaseProgress.current} / ${ocrPhaseProgress.total}`}
+                        </span>
                         <span>{ocrProgressPercent}%</span>
                       </div>
                     </div>

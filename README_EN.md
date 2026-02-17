@@ -138,6 +138,8 @@ DeepStudent's conversation engine is purpose-built for learning scenarios, suppo
 <p align="center"><img src="./example/会话浏览.png" width="90%" alt="Session Management" /></p>
 <p align="center"><img src="./example/分组.png" width="90%" alt="Session Grouping" /></p>
 <p align="center"><img src="./example/anki-发送.png" width="90%" alt="References & Sending" /></p>
+<p align="center"><img src="./example/并行-1.png" width="90%" alt="Multi-Model Selection" /></p>
+<p align="center"><img src="./example/并行-2.png" width="90%" alt="Multi-Model Comparison" /></p>
 </details>
 
 ### 2. Learning Hub
