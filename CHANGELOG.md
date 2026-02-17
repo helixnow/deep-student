@@ -10,6 +10,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.9.9](https://github.com/000haoji/deep-student/compare/deep-student-v0.9.8...deep-student-v0.9.9) (2026-02-17)
+
+
+### Bug Fixes
+
+* **android:** disable ppt-rs default features to avoid openssl-sys ([6a3acc7](https://github.com/000haoji/deep-student/commit/6a3acc7c278c3a839849e6d4b46a24895067c1ca))
+
 ## [0.9.8](https://github.com/000haoji/deep-student/compare/deep-student-v0.9.7...deep-student-v0.9.8) (2026-02-17)
 
 
