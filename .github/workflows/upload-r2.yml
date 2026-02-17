@@ -28,6 +28,8 @@ env:
 jobs:
   upload-to-r2:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - name: Resolve tag
         id: tag
@@ -68,44 +70,43 @@ jobs:
             npx wrangler r2 object put "${R2_BUCKET}/releases/${TAG}/${NAME}" \
               --file "$FILE" --content-type "application/octet-stream"
           done
-          echo "✅ Upload complete"
-          echo "📋 Listing uploaded files:"
-          npx wrangler r2 object list "${R2_BUCKET}" --prefix "releases/${TAG}/" \
-            | grep -o '"key":"[^"]*"' | sed 's/"key":"//;s/"//' | sed 's|^|  |'
+          echo "✅ Upload complete ($(ls dist/ | wc -l | tr -d ' ') files)"
 
       - name: Cleanup old versions (keep latest ${{ env.KEEP_VERSIONS }})
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           echo "🧹 Checking for old versions to clean up..."
 
-          # 列出所有版本前缀
-          ALL_VERSIONS=$(npx wrangler r2 object list "${R2_BUCKET}" --prefix "releases/" \
-            | grep -o '"key":"releases/[^/]*/' | sed 's/"key":"releases\///;s/\///' \
-            | sort -uV)
+          # 通过 GitHub API 获取所有 release tags（按发布时间倒序）
+          RELEASES=$(gh api repos/${{ github.repository }}/releases \
+            --paginate -q '.[].tag_name')
 
-          TOTAL=$(echo "$ALL_VERSIONS" | grep -c . || true)
-          echo "Found ${TOTAL} versions in R2"
+          TOTAL=$(echo "$RELEASES" | grep -c . || true)
+          echo "Found ${TOTAL} releases on GitHub"
 
           if [ "$TOTAL" -le "$KEEP_VERSIONS" ]; then
             echo "✅ No cleanup needed (${TOTAL} ≤ ${KEEP_VERSIONS})"
             exit 0
           fi
 
-          DELETE_COUNT=$((TOTAL - KEEP_VERSIONS))
-          TO_DELETE=$(echo "$ALL_VERSIONS" | head -n "$DELETE_COUNT")
+          # 跳过最新的 KEEP_VERSIONS 个，删除更旧的
+          TO_DELETE=$(echo "$RELEASES" | tail -n +$((KEEP_VERSIONS + 1)))
+          DELETE_COUNT=$(echo "$TO_DELETE" | grep -c . || true)
 
-          echo "🗑️ Deleting ${DELETE_COUNT} old versions:"
-          echo "$TO_DELETE" | while read -r VERSION; do
-            [ -z "$VERSION" ] && continue
-            echo "  Removing releases/${VERSION}/..."
-            # 列出该版本下的所有文件并逐个删除
-            npx wrangler r2 object list "${R2_BUCKET}" --prefix "releases/${VERSION}/" \
-              | grep -o '"key":"[^"]*"' | sed 's/"key":"//;s/"//' \
-              | while read -r KEY; do
-                npx wrangler r2 object delete "${R2_BUCKET}/${KEY}"
-              done
+          echo "🗑️ Deleting ${DELETE_COUNT} old versions from R2:"
+          echo "$TO_DELETE" | while read -r OLD_TAG; do
+            [ -z "$OLD_TAG" ] && continue
+            echo "  Removing releases/${OLD_TAG}/..."
+            # 获取该 release 的所有 asset 文件名，逐个从 R2 删除
+            ASSETS=$(gh api "repos/${{ github.repository }}/releases/tags/${OLD_TAG}" \
+              -q '.assets[].name' 2>/dev/null || true)
+            echo "$ASSETS" | while read -r NAME; do
+              [ -z "$NAME" ] && continue
+              npx wrangler r2 object delete "${R2_BUCKET}/releases/${OLD_TAG}/${NAME}" 2>/dev/null || true
+            done
           done
 
           echo "✅ Cleanup complete"
