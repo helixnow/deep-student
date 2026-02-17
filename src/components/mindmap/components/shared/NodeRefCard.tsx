@@ -60,14 +60,13 @@ export const NodeRefCard: React.FC<NodeRefCardProps> = ({
         'bg-[var(--mm-bg-elevated)] hover:bg-accent/50',
         'border border-border/30',
         'cursor-pointer transition-colors duration-150',
-        'max-w-full',
         className
       )}
       onClick={handleClick}
       title={`${ref_.name} (${ref_.sourceId})`}
     >
       <IconComp size={14} className="shrink-0" />
-      <span className="truncate">{ref_.name}</span>
+      <span className="whitespace-nowrap">{ref_.name}</span>
       {!readonly && onRemove && (
         <NotionButton variant="ghost" size="icon" iconOnly onClick={handleRemove} className="!ml-0.5 !-mr-0.5 !p-0.5 !h-auto !w-auto !min-w-0 !rounded-sm opacity-0 group-hover/ref:opacity-60 hover:!opacity-100 hover:bg-destructive/10" aria-label="remove">
           <X className="w-2.5 h-2.5" />
@@ -99,7 +98,7 @@ export const NodeRefList: React.FC<NodeRefListProps> = ({
   if (!refs || refs.length === 0) return null;
 
   return (
-    <div className={cn('flex flex-col gap-0.5 mt-1', className)}>
+    <div className={cn('flex flex-col gap-0.5 mt-1 whitespace-normal', className)}>
       {refs.map((ref) => (
         <NodeRefCard
           key={ref.sourceId}

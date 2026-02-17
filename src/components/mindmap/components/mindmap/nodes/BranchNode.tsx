@@ -191,7 +191,6 @@ export const BranchNode: React.FC<NodeProps<Node<BranchNodeData>>> = ({
     border: 'none',
     boxShadow: 'none',
     padding: '2px 4px', // 紧凑一点
-    whiteSpace: 'nowrap', // 防止文字竖排
     // 如果有彩虹分支色，覆盖底边颜色
     borderBottomColor: branchColor,
   } : {
@@ -202,7 +201,6 @@ export const BranchNode: React.FC<NodeProps<Node<BranchNodeData>>> = ({
     fontSize: nodeTheme?.fontSize ? `${nodeTheme.fontSize}px` : '14px',
     padding: nodeTheme?.padding || '6px 12px',
     boxShadow: nodeTheme?.shadow,
-    whiteSpace: 'nowrap', // 防止文字竖排
     // 自定义样式优先级更高
     ...customStyle,
     // 如果有彩虹分支色，且是 Level 1，覆盖边框色
@@ -291,7 +289,7 @@ export const BranchNode: React.FC<NodeProps<Node<BranchNodeData>>> = ({
         style={targetHandleStyle}
       />
 
-      <div className="flex items-center min-w-0">
+      <div className="flex items-center">
         <NodeContent
           text={data.label}
           note={data.note}

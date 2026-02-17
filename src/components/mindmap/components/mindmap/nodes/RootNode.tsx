@@ -114,7 +114,6 @@ export const RootNode: React.FC<NodeProps<Node<RootNodeData>>> = ({
     fontWeight: rootTheme?.fontWeight || 600,
     padding: rootTheme?.padding || '12px 24px',
     boxShadow: rootTheme?.shadow || '0 4px 12px -2px rgba(0, 0, 0, 0.12), 0 2px 6px -1px rgba(0, 0, 0, 0.08)',
-    whiteSpace: 'nowrap', // 防止文字竖排
     // 自定义样式优先级更高
     ...customStyle,
   };

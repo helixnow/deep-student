@@ -68,7 +68,7 @@ jobs:
             NAME=$(basename "$FILE")
             echo "  ⬆️ ${NAME}..."
             npx wrangler r2 object put "${R2_BUCKET}/releases/${TAG}/${NAME}" \
-              --file "$FILE" --content-type "application/octet-stream"
+              --file "$FILE" --content-type "application/octet-stream" --remote
           done
           echo "✅ Upload complete ($(ls dist/ | wc -l | tr -d ' ') files)"
 
@@ -105,7 +105,7 @@ jobs:
               -q '.assets[].name' 2>/dev/null || true)
             echo "$ASSETS" | while read -r NAME; do
               [ -z "$NAME" ] && continue
-              npx wrangler r2 object delete "${R2_BUCKET}/releases/${OLD_TAG}/${NAME}" 2>/dev/null || true
+              npx wrangler r2 object delete "${R2_BUCKET}/releases/${OLD_TAG}/${NAME}" --remote 2>/dev/null || true
             done
           done
 
