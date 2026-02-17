@@ -15,6 +15,10 @@ updates:
     labels:
       - "dependencies"
       - "javascript"
+    # 禁止 major 版本升级（破坏性变更需人工评估后手动更新）
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
     groups:
       # 将小型依赖更新分组
       minor-and-patch:
@@ -36,6 +40,10 @@ updates:
     labels:
       - "dependencies"
       - "rust"
+    # 禁止 major 版本升级（0.x→0.y 在 semver 中属于破坏性变更）
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
     groups:
       minor-and-patch:
         patterns:

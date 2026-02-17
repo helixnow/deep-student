@@ -66,8 +66,8 @@ jobs:
             echo "should_build=true" >> $GITHUB_OUTPUT
             TAG="${{ needs.release-please.outputs.tag_name }}"
             echo "tag_name=${TAG}" >> $GITHUB_OUTPUT
-            # 兼容 'v0.9.9' 和 'deep-student-v0.9.9' 两种 tag 格式
-            VERSION=$(echo "$TAG" | sed 's/.*v//')
+            # 兼容 'v0.9.9' 和 'deep-student-v0.9.9' 两种 tag 格式，精确提取 semver
+            VERSION=$(echo "$TAG" | sed 's/.*v\([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\).*/\1/')
             echo "version=${VERSION}" >> $GITHUB_OUTPUT
             echo "📦 Release created by release-please: ${TAG} (version=${VERSION})"
           else
