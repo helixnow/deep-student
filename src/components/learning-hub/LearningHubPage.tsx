@@ -137,6 +137,8 @@ export const LearningHubPage: React.FC = () => {
 
   // ========== 当前打开的应用 ==========
   const [openApp, setOpenApp] = useState<OpenApp | null>(null);
+  // ★ 应用级历史栈：支持从资源A跳转到资源B后后退回资源A
+  const appHistoryRef = useRef<OpenApp[]>([]);
 
   // ========== 三屏滑动布局状态（移动端） ==========
   const [screenPosition, setScreenPosition] = useState<ScreenPosition>('center');
@@ -410,13 +412,17 @@ export const LearningHubPage: React.FC = () => {
   useEffect(() => {
     const handler: OpenResourceHandler = {
       openInPanel: (path, node, mode) => {
-        // 从 DSTU node 创建 OpenApp（支持所有资源类型）
-        const appType = node.type as ResourceType;
-        setOpenApp({
-          type: appType,
-          id: node.id,
-          title: node.name,
-          dstuPath: path, // 使用传入的真实路径
+        // ★ 将当前打开的应用压入历史栈，以便后退恢复
+        setOpenApp(prev => {
+          if (prev) {
+            appHistoryRef.current.push(prev);
+          }
+          return {
+            type: node.type as ResourceType,
+            id: node.id,
+            title: node.name,
+            dstuPath: path,
+          };
         });
         if (isSmallScreen) {
           setScreenPosition('right');
@@ -586,11 +592,17 @@ export const LearningHubPage: React.FC = () => {
   // ========== 打开应用（从 ResourceListItem） ==========
   const handleOpenApp = useCallback((item: ResourceListItem) => {
     // item.path 是用户在 Learning Hub 中看到的文件夹路径，如 /1111/abc.pdf
-    setOpenApp({
-      type: item.type,
-      id: item.id,
-      title: item.title,
-      dstuPath: item.path || `/${item.id}`, // 真实路径，如果没有则使用 ID
+    // ★ 将当前打开的应用压入历史栈，以便后退恢复
+    setOpenApp(prev => {
+      if (prev) {
+        appHistoryRef.current.push(prev);
+      }
+      return {
+        type: item.type,
+        id: item.id,
+        title: item.title,
+        dstuPath: item.path || `/${item.id}`,
+      };
     });
     // 移动端：自动切换到右侧应用视图
     if (isSmallScreen) {
@@ -603,10 +615,16 @@ export const LearningHubPage: React.FC = () => {
     setOpenApp(prev => prev ? { ...prev, title } : null);
   }, []);
 
-  // ========== 关闭应用 ==========
+  // ========== 关闭应用（支持历史栈后退） ==========
   const handleCloseApp = useCallback(() => {
-    setOpenApp(null);
-    setLocalSidebarCollapsed(false);
+    const prev = appHistoryRef.current.pop();
+    if (prev) {
+      // 后退到上一个打开的资源
+      setOpenApp(prev);
+    } else {
+      setOpenApp(null);
+      setLocalSidebarCollapsed(false);
+    }
   }, []);
 
   // ========== 快捷创建并打开资源 ==========

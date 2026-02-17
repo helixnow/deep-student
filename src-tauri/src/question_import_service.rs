@@ -36,7 +36,7 @@ use crate::models::{
     ExamSheetSessionDetail, QuestionStatus, QuestionType, SourceType,
 };
 use crate::vfs::database::VfsDatabase;
-use crate::vfs::repos::{CreateQuestionParams, QuestionFilters, VfsExamRepo, VfsQuestionRepo};
+use crate::vfs::repos::{CreateQuestionParams, QuestionFilters, VfsBlobRepo, VfsExamRepo, VfsQuestionRepo};
 use crate::vfs::types::VfsCreateExamSheetParams;
 
 /// 流式导入进度事件
@@ -116,9 +116,14 @@ impl QuestionImportService {
         matches!(format, "png" | "jpg" | "jpeg" | "webp" | "bmp" | "gif" | "tiff" | "image")
     }
 
-    /// OCR 图片（base64）→ 纯文本
+    /// OCR 图片（base64）→ 纯文本 + VFS Blob 哈希列表
     /// 支持单张图片（裸 base64）或多张图片（JSON 数组 ["base64_1", "base64_2"]）
-    async fn ocr_images_to_text(&self, content: &str) -> Result<String, AppError> {
+    /// 返回 (ocr_text, blob_hashes) — blob_hashes 为每张图片在 VFS 中的 SHA-256 哈希
+    async fn ocr_images_to_text_with_blobs(
+        &self,
+        content: &str,
+        vfs_db: Option<&VfsDatabase>,
+    ) -> Result<(String, Vec<String>), AppError> {
         use base64::Engine;
 
         // 解析输入：可能是 JSON 数组或单个 base64 字符串
@@ -140,6 +145,7 @@ impl QuestionImportService {
             .map_err(|e| AppError::file_system(format!("创建临时目录失败: {}", e)))?;
 
         let mut all_texts = Vec::new();
+        let mut blob_hashes = Vec::new();
 
         for (i, b64) in base64_images.iter().enumerate() {
             // 去除可能的 data URL 前缀
@@ -153,7 +159,20 @@ impl QuestionImportService {
                 .decode(raw_b64)
                 .map_err(|e| AppError::validation(format!("图片 {} base64 解码失败: {}", i + 1, e)))?;
 
-            // 写入临时文件
+            // ★ 保存原始图片到 VFS Blob（持久化，用于后续裁剪配图）
+            if let Some(db) = vfs_db {
+                match VfsBlobRepo::store_blob(db, &bytes, Some("image/png"), Some("png")) {
+                    Ok(blob) => {
+                        log::info!("[QuestionImport] 图片 {} 已保存到 VFS Blob: {}", i + 1, blob.hash);
+                        blob_hashes.push(blob.hash);
+                    }
+                    Err(e) => {
+                        log::warn!("[QuestionImport] 图片 {} 保存到 VFS Blob 失败: {}", i + 1, e);
+                    }
+                }
+            }
+
+            // 写入临时文件（OCR 需要文件路径）
             let temp_path = temp_dir.join(format!("page_{}.png", i));
             tokio::fs::write(&temp_path, &bytes).await
                 .map_err(|e| AppError::file_system(format!("写入临时图片失败: {}", e)))?;
@@ -181,7 +200,7 @@ impl QuestionImportService {
             return Err(AppError::validation("所有图片 OCR 均失败，请检查图片清晰度"));
         }
 
-        Ok(all_texts.join("\n\n"))
+        Ok((all_texts.join("\n\n"), blob_hashes))
     }
 
     /// 统一的文档导入入口
@@ -192,6 +211,8 @@ impl QuestionImportService {
     ) -> Result<ImportResult, AppError> {
         // 1. 提取文本内容
         // 注意：前端对所有文件都使用 base64 编码
+        let mut source_image_hashes: Vec<String> = Vec::new();
+
         let text_content = match request.format.as_str() {
             "json" => {
                 // JSON 格式直接解析，不需要 LLM
@@ -211,8 +232,10 @@ impl QuestionImportService {
                     .map_err(|e| AppError::validation(format!("文档解析失败: {}", e)))?
             }
             fmt if Self::is_image_format(fmt) => {
-                // ★ 图片格式：OCR 提取文本，然后走统一解析流程
-                self.ocr_images_to_text(&request.content).await?
+                // ★ 图片格式：OCR 提取文本 + 保存原图到 VFS Blob
+                let (text, hashes) = self.ocr_images_to_text_with_blobs(&request.content, Some(vfs_db)).await?;
+                source_image_hashes = hashes;
+                text
             }
             _ => {
                 // 其他格式：尝试作为 base64 解码，失败则作为纯文本
@@ -233,7 +256,7 @@ impl QuestionImportService {
             return Err(AppError::validation("未能从文档中解析出题目"));
         }
 
-        self.save_questions_to_session(vfs_db, questions, &request)
+        self.save_questions_to_session_with_source_images(vfs_db, questions, &request, &source_image_hashes)
             .await
     }
 
@@ -520,6 +543,18 @@ impl QuestionImportService {
         questions: Vec<Value>,
         request: &ImportRequest,
     ) -> Result<ImportResult, AppError> {
+        self.save_questions_to_session_with_source_images(vfs_db, questions, request, &[])
+            .await
+    }
+
+    /// 保存题目到会话（带原始图片 blob 哈希）
+    async fn save_questions_to_session_with_source_images(
+        &self,
+        vfs_db: &VfsDatabase,
+        questions: Vec<Value>,
+        request: &ImportRequest,
+        source_image_hashes: &[String],
+    ) -> Result<ImportResult, AppError> {
         // 如果有 session_id，追加到现有题目集
         if let Some(sid) = &request.session_id {
             return self
@@ -527,8 +562,8 @@ impl QuestionImportService {
                 .await;
         }
 
-        // 创建新题目集
-        self.create_new_session(vfs_db, questions, request).await
+        // 创建新题目集（带原始图片信息）
+        self.create_new_session_with_images(vfs_db, questions, request, source_image_hashes).await
     }
 
     /// 追加到现有题目集
@@ -668,6 +703,20 @@ impl QuestionImportService {
         questions: Vec<Value>,
         request: &ImportRequest,
     ) -> Result<ImportResult, AppError> {
+        self.create_new_session_with_images(vfs_db, questions, request, &[]).await
+    }
+
+    /// 创建新题目集（带原始图片 blob 哈希）
+    ///
+    /// 当 source_image_hashes 非空时，将原始图片信息存入 metadata_json.source_image_hashes，
+    /// 并为每张图片创建一个 ExamSheetPreviewPage（带 blob_hash），方便后续查看和裁剪。
+    async fn create_new_session_with_images(
+        &self,
+        vfs_db: &VfsDatabase,
+        questions: Vec<Value>,
+        request: &ImportRequest,
+        source_image_hashes: &[String],
+    ) -> Result<ImportResult, AppError> {
         let temp_id = uuid::Uuid::new_v4().to_string();
         let qbank_name = request
             .name
@@ -689,10 +738,10 @@ impl QuestionImportService {
             valid_questions.push((i, q, card_id));
         }
 
-        let preview = ExamSheetPreviewResult {
-            temp_id: temp_id.clone(),
-            exam_name: Some(qbank_name.clone()),
-            pages: vec![ExamSheetPreviewPage {
+        // ★ 构建 pages：如果有原始图片，为每张图片创建一个 page（带 blob_hash）
+        // 所有 cards 放在第一个 page 上（与原有行为一致）
+        let pages = if source_image_hashes.is_empty() {
+            vec![ExamSheetPreviewPage {
                 page_index: 0,
                 cards,
                 blob_hash: None,
@@ -702,7 +751,30 @@ impl QuestionImportService {
                 raw_ocr_text: None,
                 ocr_completed: false,
                 parse_completed: false,
-            }],
+            }]
+        } else {
+            // 第一个 page 包含所有 cards + 第一张图片的 blob_hash
+            let mut pages = Vec::new();
+            for (idx, hash) in source_image_hashes.iter().enumerate() {
+                pages.push(ExamSheetPreviewPage {
+                    page_index: idx,
+                    cards: if idx == 0 { cards.clone() } else { Vec::new() },
+                    blob_hash: Some(hash.clone()),
+                    width: None,
+                    height: None,
+                    original_image_path: String::new(),
+                    raw_ocr_text: None,
+                    ocr_completed: true,
+                    parse_completed: true,
+                });
+            }
+            pages
+        };
+
+        let preview = ExamSheetPreviewResult {
+            temp_id: temp_id.clone(),
+            exam_name: Some(qbank_name.clone()),
+            pages,
             raw_model_response: None,
             instructions: None,
             session_id: Some(temp_id.clone()),
@@ -710,6 +782,13 @@ impl QuestionImportService {
 
         let preview_json = serde_json::to_value(&preview)
             .map_err(|e| AppError::validation(format!("序列化失败: {}", e)))?;
+
+        // ★ metadata_json 中记录原始图片 blob 哈希列表
+        let metadata_json = if source_image_hashes.is_empty() {
+            json!({})
+        } else {
+            json!({ "source_image_hashes": source_image_hashes })
+        };
 
         // 2. 获取连接（在 SAVEPOINT 外，减少事务持有时间）
         let conn = vfs_db
@@ -732,7 +811,7 @@ impl QuestionImportService {
             let create_params = VfsCreateExamSheetParams {
                 exam_name: Some(qbank_name.clone()),
                 temp_id: temp_id.clone(),
-                metadata_json: json!({}),
+                metadata_json,
                 preview_json,
                 status: "completed".to_string(),
                 folder_id: request.folder_id.clone(),
@@ -950,6 +1029,8 @@ impl QuestionImportService {
         request: ImportRequest,
         progress_tx: Option<UnboundedSender<QuestionImportProgress>>,
     ) -> Result<ImportResult, AppError> {
+        let mut source_image_hashes: Vec<String> = Vec::new();
+
         let text_content = match request.format.as_str() {
             "json" => {
                 return self.import_json_directly(vfs_db, &request).await;
@@ -963,8 +1044,10 @@ impl QuestionImportService {
                     .map_err(|e| AppError::validation(format!("文档解析失败: {}", e)))?
             }
             fmt if Self::is_image_format(fmt) => {
-                // ★ 图片格式：OCR 提取文本，然后走统一解析流程
-                self.ocr_images_to_text(&request.content).await?
+                // ★ 图片格式：OCR 提取文本 + 保存原图到 VFS Blob
+                let (text, hashes) = self.ocr_images_to_text_with_blobs(&request.content, Some(vfs_db)).await?;
+                source_image_hashes = hashes;
+                text
             }
             _ => self
                 .decode_text_content(&request.content)
@@ -997,10 +1080,10 @@ impl QuestionImportService {
             sid.clone()
         } else {
             let temp_id = uuid::Uuid::new_v4().to_string();
-            let empty_preview = ExamSheetPreviewResult {
-                temp_id: temp_id.clone(),
-                exam_name: Some(qbank_name.clone()),
-                pages: vec![ExamSheetPreviewPage {
+
+            // ★ 如果有原始图片，为每张图片创建一个 page（带 blob_hash）
+            let pages = if source_image_hashes.is_empty() {
+                vec![ExamSheetPreviewPage {
                     page_index: 0,
                     cards: Vec::new(),
                     blob_hash: None,
@@ -1010,7 +1093,27 @@ impl QuestionImportService {
                     raw_ocr_text: None,
                     ocr_completed: false,
                     parse_completed: false,
-                }],
+                }]
+            } else {
+                source_image_hashes.iter().enumerate().map(|(idx, hash)| {
+                    ExamSheetPreviewPage {
+                        page_index: idx,
+                        cards: Vec::new(),
+                        blob_hash: Some(hash.clone()),
+                        width: None,
+                        height: None,
+                        original_image_path: String::new(),
+                        raw_ocr_text: None,
+                        ocr_completed: true,
+                        parse_completed: false,
+                    }
+                }).collect()
+            };
+
+            let empty_preview = ExamSheetPreviewResult {
+                temp_id: temp_id.clone(),
+                exam_name: Some(qbank_name.clone()),
+                pages,
                 raw_model_response: None,
                 instructions: None,
                 session_id: Some(temp_id.clone()),
@@ -1018,10 +1121,17 @@ impl QuestionImportService {
             let preview_json = serde_json::to_value(&empty_preview)
                 .map_err(|e| AppError::validation(format!("序列化失败: {}", e)))?;
 
+            // ★ metadata_json 中记录原始图片 blob 哈希列表
+            let metadata_json = if source_image_hashes.is_empty() {
+                json!({})
+            } else {
+                json!({ "source_image_hashes": source_image_hashes })
+            };
+
             let params = VfsCreateExamSheetParams {
                 exam_name: Some(qbank_name.clone()),
                 temp_id,
-                metadata_json: json!({}),
+                metadata_json,
                 preview_json,
                 status: "importing".to_string(), // 标记为导入中
                 folder_id: request.folder_id.clone(),

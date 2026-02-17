@@ -802,7 +802,6 @@ function App() {
       setCurrentView(view);
     },
   });
-  
   // 📁 Learning Hub 内部导航（使用全局订阅，因为 App.tsx 在 Provider 外部）
   const [learningHubNav, setLearningHubNav] = useState(() => getGlobalLearningHubNavigation());
   const isInLearningHub = currentView === 'learning-hub';
