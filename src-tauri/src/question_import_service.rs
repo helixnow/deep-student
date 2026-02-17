@@ -116,6 +116,24 @@ impl QuestionImportService {
         matches!(format, "png" | "jpg" | "jpeg" | "webp" | "bmp" | "gif" | "tiff" | "image")
     }
 
+    /// 通过魔数字节头检测图片格式，返回 (mime_type, extension)
+    fn detect_image_format(data: &[u8]) -> (&'static str, &'static str) {
+        if data.starts_with(b"\x89PNG") {
+            ("image/png", "png")
+        } else if data.starts_with(b"\xFF\xD8\xFF") {
+            ("image/jpeg", "jpg")
+        } else if data.starts_with(b"RIFF") && data.len() > 12 && &data[8..12] == b"WEBP" {
+            ("image/webp", "webp")
+        } else if data.starts_with(b"GIF8") {
+            ("image/gif", "gif")
+        } else if data.starts_with(b"BM") {
+            ("image/bmp", "bmp")
+        } else {
+            // 默认 PNG（与原有行为一致）
+            ("image/png", "png")
+        }
+    }
+
     /// OCR 图片（base64）→ 纯文本 + VFS Blob 哈希列表
     /// 支持单张图片（裸 base64）或多张图片（JSON 数组 ["base64_1", "base64_2"]）
     /// 返回 (ocr_text, blob_hashes) — blob_hashes 为每张图片在 VFS 中的 SHA-256 哈希
@@ -159,11 +177,14 @@ impl QuestionImportService {
                 .decode(raw_b64)
                 .map_err(|e| AppError::validation(format!("图片 {} base64 解码失败: {}", i + 1, e)))?;
 
+            // 检测实际图片格式（通过魔数字节头）
+            let (mime, ext) = Self::detect_image_format(&bytes);
+
             // ★ 保存原始图片到 VFS Blob（持久化，用于后续裁剪配图）
             if let Some(db) = vfs_db {
-                match VfsBlobRepo::store_blob(db, &bytes, Some("image/png"), Some("png")) {
+                match VfsBlobRepo::store_blob(db, &bytes, Some(mime), Some(ext)) {
                     Ok(blob) => {
-                        log::info!("[QuestionImport] 图片 {} 已保存到 VFS Blob: {}", i + 1, blob.hash);
+                        log::info!("[QuestionImport] 图片 {} 已保存到 VFS Blob: {} ({})", i + 1, blob.hash, mime);
                         blob_hashes.push(blob.hash);
                     }
                     Err(e) => {
@@ -173,7 +194,7 @@ impl QuestionImportService {
             }
 
             // 写入临时文件（OCR 需要文件路径）
-            let temp_path = temp_dir.join(format!("page_{}.png", i));
+            let temp_path = temp_dir.join(format!("page_{}.{}", i, ext));
             tokio::fs::write(&temp_path, &bytes).await
                 .map_err(|e| AppError::file_system(format!("写入临时图片失败: {}", e)))?;
 
@@ -1323,10 +1344,20 @@ impl QuestionImportService {
             })
             .collect();
 
-        let preview = ExamSheetPreviewResult {
-            temp_id: session_id.to_string(),
-            exam_name: Some(qbank_name.to_string()),
-            pages: vec![ExamSheetPreviewPage {
+        // ★ BUG-1 修复：保留已有的原始图片页面信息（blob_hash），不要覆盖为空
+        // 从数据库读取现有 exam_sheet 的 metadata_json 中的 source_image_hashes
+        let existing_source_hashes: Vec<String> = VfsExamRepo::get_exam_sheet(vfs_db, session_id)
+            .ok()
+            .flatten()
+            .and_then(|exam| {
+                exam.metadata_json
+                    .get("source_image_hashes")
+                    .and_then(|v| serde_json::from_value::<Vec<String>>(v.clone()).ok())
+            })
+            .unwrap_or_default();
+
+        let pages = if existing_source_hashes.is_empty() {
+            vec![ExamSheetPreviewPage {
                 page_index: 0,
                 cards,
                 blob_hash: None,
@@ -1336,7 +1367,28 @@ impl QuestionImportService {
                 raw_ocr_text: None,
                 ocr_completed: false,
                 parse_completed: false,
-            }],
+            }]
+        } else {
+            // 保留原始图片页面结构，所有 cards 放在第一个 page
+            existing_source_hashes.iter().enumerate().map(|(idx, hash)| {
+                ExamSheetPreviewPage {
+                    page_index: idx,
+                    cards: if idx == 0 { cards.clone() } else { Vec::new() },
+                    blob_hash: Some(hash.clone()),
+                    width: None,
+                    height: None,
+                    original_image_path: String::new(),
+                    raw_ocr_text: None,
+                    ocr_completed: true,
+                    parse_completed: true,
+                }
+            }).collect()
+        };
+
+        let preview = ExamSheetPreviewResult {
+            temp_id: session_id.to_string(),
+            exam_name: Some(qbank_name.to_string()),
+            pages,
             raw_model_response: None,
             instructions: None,
             session_id: Some(session_id.to_string()),

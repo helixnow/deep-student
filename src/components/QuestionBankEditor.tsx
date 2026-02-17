@@ -19,6 +19,7 @@ import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import { formatTime } from '@/utils/formatUtils';
 import { MarkdownRenderer, StreamingMarkdownRenderer } from '@/chat-v2/components/renderers';
 import { LatexText } from '@/components/LatexText';
+import { ImageCropDialog } from '@/components/ImageCropDialog';
 import DsAnalysisIconMuted from '@/components/icons/DsAnalysisIconMuted';
 import {
   ChevronLeft,
@@ -54,6 +55,8 @@ import {
   Sparkles,
   PartyPopper,
   Keyboard,
+  Crop,
+  ImageIcon,
 } from 'lucide-react';
 
 import type {
@@ -301,6 +304,7 @@ const OptionButton: React.FC<OptionButtonProps> = ({
 };
 
 export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
+  sessionId,
   questions,
   stats,
   currentIndex = 0,
@@ -409,6 +413,9 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
 
   // 题目图片预览
   const [questionImageUrls, setQuestionImageUrls] = useState<Record<string, string>>({});
+  // 原始图片裁剪对话框
+  const [cropDialogOpen, setCropDialogOpen] = useState(false);
+  const [imageRefreshKey, setImageRefreshKey] = useState(0);
 
   // 响应式断点
   const { isSmallScreen } = useBreakpoint();
@@ -663,7 +670,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
       loadImages();
     }
     return () => { cancelled = true; };
-  }, [currentIndex, currentQuestion?.id, fillBlankCount]);
+  }, [currentIndex, currentQuestion?.id, fillBlankCount, imageRefreshKey]);
 
   // 题目搜索过滤
   const filteredQuestionIndices = useMemo(() => {
@@ -1338,6 +1345,17 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                         ))}
                       </div>
                     )}
+
+                    {/* 原始图片裁剪入口 */}
+                    <NotionButton
+                      variant="ghost"
+                      size="sm"
+                      className="text-muted-foreground hover:text-foreground"
+                      onClick={() => setCropDialogOpen(true)}
+                    >
+                      <Crop className="h-3.5 w-3.5 mr-1.5" />
+                      {t('question_bank.source_images_btn', '从原图裁剪配图')}
+                    </NotionButton>
 
                     {/* 答题区域 */}
                     {editMode ? (
@@ -2303,6 +2321,25 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
       {renderStreakAnimation()}
       {/* 完成庆祝 */}
       {renderCompletionCelebration()}
+      {/* 原始图片裁剪对话框 */}
+      {currentQuestion && (
+        <ImageCropDialog
+          open={cropDialogOpen}
+          onOpenChange={setCropDialogOpen}
+          examId={sessionId}
+          questionId={currentQuestion.id}
+          onImageAdded={() => {
+            // ★ BUG-6 修复：裁剪后需刷新 store 中的题目数据，否则 currentQuestion.images 不含新图片
+            if (currentQuestion?.id) {
+              useQuestionBankStore.getState().getQuestion(currentQuestion.id).then(() => {
+                // store 已更新后，清除图片缓存并触发重新加载
+                setQuestionImageUrls({});
+                setImageRefreshKey(k => k + 1);
+              });
+            }
+          }}
+        />
+      )}
     </div>
   );
 };

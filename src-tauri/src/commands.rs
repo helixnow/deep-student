@@ -5248,3 +5248,230 @@ pub async fn get_image_as_base64(
 ) -> Result<String> {
     state.file_manager.get_image_as_base64(&relative_path).await
 }
+
+// ============================================================================
+// 题目集原始图片管理
+// ============================================================================
+
+/// 源图片信息
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SourceImageInfo {
+    pub blob_hash: String,
+    pub data_url: String,
+    pub page_index: usize,
+}
+
+/// 获取题目集的原始导入图片列表（base64 data URL）
+#[tauri::command]
+pub async fn qbank_get_source_images(
+    examId: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<SourceImageInfo>> {
+    use crate::vfs::repos::VfsBlobRepo;
+
+    let vfs_db = state
+        .vfs_db
+        .as_ref()
+        .ok_or_else(|| AppError::validation("VFS 数据库未初始化"))?;
+
+    // 从 exam_sheet 的 metadata_json 中读取 source_image_hashes
+    let exam = crate::vfs::repos::VfsExamRepo::get_exam_sheet(vfs_db, &examId)
+        .map_err(|e| AppError::database(format!("获取题目集失败: {}", e)))?
+        .ok_or_else(|| AppError::not_found("题目集不存在"))?;
+
+    let source_hashes: Vec<String> = exam
+        .metadata_json
+        .get("source_image_hashes")
+        .and_then(|v| serde_json::from_value::<Vec<String>>(v.clone()).ok())
+        .unwrap_or_default();
+
+    if source_hashes.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let mut results = Vec::new();
+    for (idx, hash) in source_hashes.iter().enumerate() {
+        let blob_path = match VfsBlobRepo::get_blob_path(vfs_db, hash) {
+            Ok(Some(p)) => p,
+            _ => continue,
+        };
+        let data = match std::fs::read(&blob_path) {
+            Ok(d) => d,
+            Err(_) => continue,
+        };
+        let b64 = base64::engine::general_purpose::STANDARD.encode(&data);
+        // 检测实际 MIME 类型（通过魔数字节头）
+        let mime = if data.starts_with(b"\x89PNG") {
+            "image/png"
+        } else if data.starts_with(b"\xFF\xD8\xFF") {
+            "image/jpeg"
+        } else if data.starts_with(b"RIFF") && data.len() > 12 && &data[8..12] == b"WEBP" {
+            "image/webp"
+        } else {
+            "image/png"
+        };
+        let data_url = format!("data:{};base64,{}", mime, b64);
+        results.push(SourceImageInfo {
+            blob_hash: hash.clone(),
+            data_url,
+            page_index: idx,
+        });
+    }
+
+    Ok(results)
+}
+
+/// 裁剪请求参数
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CropSourceImageRequest {
+    /// 题目 ID
+    pub question_id: String,
+    /// 源图片 blob hash
+    pub blob_hash: String,
+    /// 裁剪区域（相对坐标 0.0~1.0）
+    pub crop_x: f64,
+    pub crop_y: f64,
+    pub crop_width: f64,
+    pub crop_height: f64,
+}
+
+/// 从原始图片裁剪一个区域，保存为新 blob，添加到题目的 images
+#[tauri::command]
+pub async fn qbank_crop_source_image(
+    request: CropSourceImageRequest,
+    state: State<'_, AppState>,
+) -> Result<crate::vfs::repos::QuestionImage> {
+    use crate::vfs::repos::{QuestionImage, UpdateQuestionParams, VfsBlobRepo, VfsFileRepo, VfsQuestionRepo};
+
+    let vfs_db = state
+        .vfs_db
+        .as_ref()
+        .ok_or_else(|| AppError::validation("VFS 数据库未初始化"))?;
+
+    // 1. 读取源图片 blob
+    let blob_path = VfsBlobRepo::get_blob_path(vfs_db, &request.blob_hash)
+        .map_err(|e| AppError::database(format!("获取 Blob 路径失败: {}", e)))?
+        .ok_or_else(|| AppError::not_found("源图片 Blob 不存在"))?;
+
+    let img_data = std::fs::read(&blob_path)
+        .map_err(|e| AppError::file_system(format!("读取源图片失败: {}", e)))?;
+
+    // 2. 解码图片并裁剪（使用 image::imageops::crop_imm 匹配项目 image 0.24 API）
+    let img = image::load_from_memory(&img_data)
+        .map_err(|e| AppError::validation(format!("图片解码失败: {}", e)))?;
+    let rgba = img.to_rgba8();
+
+    let (w, h) = (rgba.width(), rgba.height());
+    let crop_x = (request.crop_x * w as f64).round() as u32;
+    let crop_y = (request.crop_y * h as f64).round() as u32;
+    let crop_w = (request.crop_width * w as f64).round().max(1.0) as u32;
+    let crop_h = (request.crop_height * h as f64).round().max(1.0) as u32;
+
+    // 边界保护
+    let crop_x = crop_x.min(w.saturating_sub(1));
+    let crop_y = crop_y.min(h.saturating_sub(1));
+    let crop_w = crop_w.min(w - crop_x);
+    let crop_h = crop_h.min(h - crop_y);
+
+    let crop = image::imageops::crop_imm(&rgba, crop_x, crop_y, crop_w, crop_h);
+    let cropped = crop.to_image();
+
+    if cropped.width() == 0 || cropped.height() == 0 {
+        return Err(AppError::validation("裁剪区域无效"));
+    }
+
+    // 3. 编码为 PNG（写入内存缓冲区）
+    let dyn_img = image::DynamicImage::ImageRgba8(cropped);
+    let mut cursor = std::io::Cursor::new(Vec::new());
+    dyn_img
+        .write_to(&mut cursor, image::ImageOutputFormat::Png)
+        .map_err(|e| AppError::validation(format!("裁剪图片编码失败: {}", e)))?;
+    let buf = cursor.into_inner();
+
+    // 4. 存入 VFS Blob
+    let blob = VfsBlobRepo::store_blob(vfs_db, &buf, Some("image/png"), Some("png"))
+        .map_err(|e| AppError::database(format!("保存裁剪图片失败: {}", e)))?;
+
+    // 5. ★ BUG-5 修复：创建正式 VFS 文件条目（file_ 前缀），而非无效的 qimg_ 前缀
+    //    vfs_get_attachment_content 只接受 att_/file_/tb_ 前缀的 ID
+    let file_name = format!("crop_{}.png", &blob.hash[..8]);
+    let vfs_file = VfsFileRepo::create_file(
+        vfs_db,
+        &blob.hash,       // sha256（用于去重）
+        &file_name,        // file_name
+        buf.len() as i64,  // size
+        "image",           // file_type
+        Some("image/png"), // mime_type
+        Some(&blob.hash),  // blob_hash（链接到 Blob 存储）
+        None,              // original_path
+    )
+    .map_err(|e| AppError::database(format!("创建 VFS 文件条目失败: {}", e)))?;
+
+    // 6. 构建 QuestionImage 并更新题目
+    let question_image = QuestionImage {
+        id: vfs_file.id.clone(),
+        name: file_name,
+        mime: "image/png".to_string(),
+        hash: blob.hash.clone(),
+    };
+
+    // 读取现有题目的 images，追加新图片
+    let question = VfsQuestionRepo::get_question(vfs_db, &request.question_id)
+        .map_err(|e| AppError::database(format!("获取题目失败: {}", e)))?
+        .ok_or_else(|| AppError::not_found("题目不存在"))?;
+
+    let mut images = question.images;
+    images.push(question_image.clone());
+
+    let update_params = UpdateQuestionParams {
+        images: Some(images),
+        ..Default::default()
+    };
+
+    VfsQuestionRepo::update_question(vfs_db, &request.question_id, &update_params)
+        .map_err(|e| AppError::database(format!("更新题目图片失败: {}", e)))?;
+
+    info!(
+        "[QBank] 裁剪图片已添加到题目 {}: file_id={}, blob={}",
+        request.question_id, vfs_file.id, blob.hash
+    );
+
+    Ok(question_image)
+}
+
+/// 删除题目的某张配图
+#[tauri::command]
+pub async fn qbank_remove_question_image(
+    questionId: String,
+    imageId: String,
+    state: State<'_, AppState>,
+) -> Result<()> {
+    use crate::vfs::repos::{UpdateQuestionParams, VfsQuestionRepo};
+
+    let vfs_db = state
+        .vfs_db
+        .as_ref()
+        .ok_or_else(|| AppError::validation("VFS 数据库未初始化"))?;
+
+    let question = VfsQuestionRepo::get_question(vfs_db, &questionId)
+        .map_err(|e| AppError::database(format!("获取题目失败: {}", e)))?
+        .ok_or_else(|| AppError::not_found("题目不存在"))?;
+
+    let images: Vec<_> = question
+        .images
+        .into_iter()
+        .filter(|img| img.id != imageId)
+        .collect();
+
+    let update_params = UpdateQuestionParams {
+        images: Some(images),
+        ..Default::default()
+    };
+
+    VfsQuestionRepo::update_question(vfs_db, &questionId, &update_params)
+        .map_err(|e| AppError::database(format!("更新题目图片失败: {}", e)))?;
+
+    Ok(())
+}

@@ -10,8 +10,9 @@ use serde_json::Value;
 
 use crate::dstu::types::{DstuListOptions, DstuNode, DstuNodeType};
 use crate::vfs::{
-    VfsDatabase, VfsEssayRepo, VfsEssaySession, VfsExamRepo, VfsFile, VfsFolderRepo, VfsMindMap,
-    VfsNoteRepo, VfsTextbook, VfsTextbookRepo, VfsTranslationRepo,
+    VfsDatabase, VfsEssayRepo, VfsEssaySession, VfsExamRepo, VfsFile, VfsFileRepo, VfsFolderRepo,
+    VfsMindMap, VfsMindMapRepo, VfsNoteRepo, VfsResourceRepo, VfsTextbook, VfsTextbookRepo,
+    VfsTranslationRepo,
 };
 
 use super::{
@@ -605,6 +606,146 @@ pub fn search_mindmaps(
     Ok(results)
 }
 
+/// 索引内容召回搜索
+///
+/// 通过 vfs_index_segments 表搜索已索引的内容文本，
+/// 然后通过 resources 表的 source_id / source_table 反查原始资源，
+/// 转换为 DstuNode 返回。
+///
+/// 这使得搜索不仅能匹配文件名/标题，还能匹配文件内容。
+pub fn search_by_index(
+    vfs_db: &Arc<VfsDatabase>,
+    query: &str,
+    limit: u32,
+    existing_ids: &HashSet<String>,
+) -> Result<Vec<DstuNode>, String> {
+    let conn = vfs_db.get_conn_safe().map_err(|e| e.to_string())?;
+
+    // 1. 在 vfs_index_segments 中搜索内容匹配
+    //    使用 ESCAPE 防止 LIKE 注入
+    let escaped_query = escape_like_pattern(query);
+    let search_pattern = format!("%{}%", escaped_query);
+
+    // 查询索引段，按 resource_id 去重（只取每个资源最佳匹配的一段）
+    let mut stmt = conn
+        .prepare(
+            r#"
+            SELECT DISTINCT u.resource_id, s.content_text
+            FROM vfs_index_segments s
+            JOIN vfs_index_units u ON s.unit_id = u.id
+            WHERE s.content_text LIKE ?1 ESCAPE '\'
+            GROUP BY u.resource_id
+            LIMIT ?2
+            "#,
+        )
+        .map_err(|e| e.to_string())?;
+
+    let index_hits: Vec<(String, String)> = stmt
+        .query_map(params![search_pattern, limit], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })
+        .map_err(|e| e.to_string())?
+        .filter_map(log_and_skip_err)
+        .collect();
+
+    if index_hits.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    log::info!(
+        "[search_helpers] search_by_index: {} index hits for query='{}'",
+        index_hits.len(),
+        query
+    );
+
+    // 2. 通过 resource_id 查 resources 表获取 source_id + source_table
+    let mut results = Vec::new();
+    for (resource_id, content_text) in &index_hits {
+        let resource = match VfsResourceRepo::get_resource(vfs_db, resource_id) {
+            Ok(Some(r)) => r,
+            _ => continue,
+        };
+
+        let (source_id, source_table) = match (resource.source_id, resource.source_table) {
+            (Some(sid), Some(st)) => (sid, st),
+            // 无 source 映射时跳过
+            _ => continue,
+        };
+
+        // 跳过已在文件名搜索中命中的资源
+        if existing_ids.contains(&source_id) {
+            continue;
+        }
+
+        // 3. 根据 source_table 反查原始实体，转换为 DstuNode
+        let node = resolve_source_to_node(vfs_db, &source_id, &source_table);
+        if let Some(mut node) = node {
+            // 附加内容摘要 snippet
+            if let Some(snippet) = build_snippet(content_text, query, 160) {
+                let mut metadata = node.metadata.unwrap_or_else(|| serde_json::json!({}));
+                if let Some(map) = metadata.as_object_mut() {
+                    map.insert("snippet".to_string(), Value::String(snippet));
+                    map.insert("matchSource".to_string(), Value::String("index".to_string()));
+                }
+                node.metadata = Some(metadata);
+            }
+            results.push(node);
+        }
+    }
+
+    log::info!(
+        "[search_helpers] search_by_index: resolved {} nodes from index",
+        results.len()
+    );
+
+    Ok(results)
+}
+
+/// 根据 source_table + source_id 反查原始实体并转换为 DstuNode
+fn resolve_source_to_node(
+    vfs_db: &Arc<VfsDatabase>,
+    source_id: &str,
+    source_table: &str,
+) -> Option<DstuNode> {
+    match source_table {
+        "notes" => VfsNoteRepo::get_note(vfs_db, source_id)
+            .ok()
+            .flatten()
+            .map(|n| note_to_dstu_node(&n)),
+        "files" => VfsFileRepo::get_file(vfs_db, source_id)
+            .ok()
+            .flatten()
+            .map(|f| file_to_dstu_node(&f)),
+        "textbooks" => VfsTextbookRepo::get_textbook(vfs_db, source_id)
+            .ok()
+            .flatten()
+            .map(|t| textbook_to_dstu_node(&t)),
+        "translations" => VfsTranslationRepo::get_translation(vfs_db, source_id)
+            .ok()
+            .flatten()
+            .map(|t| translation_to_dstu_node(&t)),
+        "exam_sheets" => VfsExamRepo::get_exam_sheet(vfs_db, source_id)
+            .ok()
+            .flatten()
+            .map(|e| exam_to_dstu_node(&e)),
+        "essay_sessions" => VfsEssayRepo::get_session(vfs_db, source_id)
+            .ok()
+            .flatten()
+            .map(|s| session_to_dstu_node(&s)),
+        "mindmaps" => VfsMindMapRepo::get_mindmap(vfs_db, source_id)
+            .ok()
+            .flatten()
+            .map(|m| mindmap_to_dstu_node(&m)),
+        _ => {
+            log::debug!(
+                "[search_helpers] resolve_source_to_node: unknown source_table='{}'",
+                source_table
+            );
+            None
+        }
+    }
+}
+
 /// 全类型搜索
 pub fn search_all(
     vfs_db: &Arc<VfsDatabase>,
@@ -688,7 +829,18 @@ pub fn search_all(
         results.retain(|node| ids.contains(&node.id));
     }
 
-    // 按更新时间排序
+    // ★ 索引内容召回：在标题/文件名搜索基础上，追加内容匹配的结果
+    let existing_ids: HashSet<String> = results.iter().map(|n| n.id.clone()).collect();
+    let index_limit = options.get_limit().saturating_sub(results.len() as u32).max(20);
+    if let Ok(mut index_results) = search_by_index(vfs_db, query, index_limit, &existing_ids) {
+        // S-020: 索引召回结果也需要按 folder_id 过滤
+        if let Some(ref ids) = folder_item_ids {
+            index_results.retain(|node| ids.contains(&node.id));
+        }
+        results.extend(index_results);
+    }
+
+    // 按更新时间排序（标题命中和内容命中统一排序）
     results.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
 
     Ok(results)

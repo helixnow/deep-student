@@ -56,6 +56,6 @@ pub use content_helpers::{
 
 // 重导出搜索辅助函数
 pub use search_helpers::{
-    search_all, search_essays, search_exams, search_files, search_images, search_mindmaps,
-    search_notes, search_textbooks, search_translations,
+    search_all, search_by_index, search_essays, search_exams, search_files, search_images,
+    search_mindmaps, search_notes, search_textbooks, search_translations,
 };

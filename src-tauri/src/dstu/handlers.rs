@@ -68,6 +68,7 @@ use super::handler_utils::{
     restore_resource_by_type_with_conn,
     search_all,
     // 搜索辅助函数
+    search_by_index,
     search_notes,
     session_to_dstu_node,
     textbook_to_dstu_node,
@@ -5303,15 +5304,18 @@ pub async fn dstu_search_in_folder(
             }
         };
 
-        // 获取每个项的详细信息并过滤
+        // 获取文件夹内所有 item_id 集合（用于索引召回过滤）
+        let folder_item_ids: std::collections::HashSet<String> =
+            items.iter().map(|item| item.item_id.clone()).collect();
+
+        // 获取每个项的详细信息并按标题/文件名过滤
+        let query_lower = query.to_lowercase();
         let mut results = Vec::new();
         for item in items {
-            // 根据 item_type 获取详细信息
             let node = match item.item_type.as_str() {
                 "note" => {
                     if let Ok(Some(note)) = VfsNoteRepo::get_note(&vfs_db, &item.item_id) {
-                        // 搜索匹配
-                        if note.title.to_lowercase().contains(&query.to_lowercase()) {
+                        if note.title.to_lowercase().contains(&query_lower) {
                             Some(note_to_dstu_node(&note))
                         } else {
                             None
@@ -5322,8 +5326,52 @@ pub async fn dstu_search_in_folder(
                 }
                 "textbook" => {
                     if let Ok(Some(tb)) = VfsTextbookRepo::get_textbook(&vfs_db, &item.item_id) {
-                        if tb.file_name.to_lowercase().contains(&query.to_lowercase()) {
+                        if tb.file_name.to_lowercase().contains(&query_lower) {
                             Some(textbook_to_dstu_node(&tb))
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                }
+                "file" => {
+                    if let Ok(Some(f)) = VfsFileRepo::get_file(&vfs_db, &item.item_id) {
+                        if f.file_name.to_lowercase().contains(&query_lower) {
+                            Some(file_to_dstu_node(&f))
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                }
+                "translation" => {
+                    if let Ok(Some(t)) = VfsTranslationRepo::get_translation(&vfs_db, &item.item_id) {
+                        if t.title.as_deref().unwrap_or("").to_lowercase().contains(&query_lower) {
+                            Some(translation_to_dstu_node(&t))
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                }
+                "exam" => {
+                    if let Ok(Some(e)) = VfsExamRepo::get_exam_sheet(&vfs_db, &item.item_id) {
+                        if e.exam_name.as_deref().unwrap_or("").to_lowercase().contains(&query_lower) {
+                            Some(exam_to_dstu_node(&e))
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                }
+                "mindmap" => {
+                    if let Ok(Some(m)) = VfsMindMapRepo::get_mindmap(&vfs_db, &item.item_id) {
+                        if m.title.to_lowercase().contains(&query_lower) {
+                            Some(mindmap_to_dstu_node(&m))
                         } else {
                             None
                         }
@@ -5338,6 +5386,22 @@ pub async fn dstu_search_in_folder(
                 results.push(n);
             }
         }
+
+        // ★ 索引内容召回：追加内容匹配的结果，限定在当前文件夹范围内
+        let existing_ids: std::collections::HashSet<String> =
+            results.iter().map(|n| n.id.clone()).collect();
+        let index_limit = options.limit.unwrap_or(50);
+        if let Ok(index_results) = search_by_index(&vfs_db, &query, index_limit, &existing_ids) {
+            for node in index_results {
+                // 只保留属于当前文件夹的资源
+                if folder_item_ids.contains(&node.id) {
+                    results.push(node);
+                }
+            }
+        }
+
+        // 按更新时间排序
+        results.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
 
         // 限制结果数量
         if let Some(limit) = options.limit {

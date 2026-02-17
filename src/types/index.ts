@@ -384,8 +384,6 @@ export interface ModelAssignments {
   // 多模态知识库模型配置
   vl_embedding_model_config_id: string | null;  // 多模态嵌入模型（Qwen3-VL-Embedding）
   vl_reranker_model_config_id: string | null;   // 多模态重排序模型（Qwen3-VL-Reranker）
-  // 两阶段题目集识别：专用题目解析模型
-  question_parsing_model_config_id: string | null;
 }
 
 // 子适配器类型（与后端 ADAPTER_REGISTRY 保持一致）

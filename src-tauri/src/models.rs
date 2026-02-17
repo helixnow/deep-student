@@ -1184,9 +1184,6 @@ pub struct ModelAssignments {
     // ★ 多模态知识库模型配置（文档：multimodal-knowledge-base-design.md）
     pub vl_embedding_model_config_id: Option<String>, // 多模态嵌入模型（Qwen3-VL-Embedding）
     pub vl_reranker_model_config_id: Option<String>,  // 多模态重排序模型（Qwen3-VL-Reranker）
-    // ★ 两阶段题目集识别：专用题目解析模型（推荐快速文本模型，不要推理模型）
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub question_parsing_model_config_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

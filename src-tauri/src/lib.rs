@@ -764,6 +764,10 @@ pub fn run() {
             crate::commands::rename_exam_sheet_session,
             crate::commands::import_question_bank,
             crate::commands::import_question_bank_stream,
+            // 题目集原始图片管理
+            crate::commands::qbank_get_source_images,
+            crate::commands::qbank_crop_source_image,
+            crate::commands::qbank_remove_question_image,
             // CSV 导入导出命令
             crate::commands::import_questions_csv,
             crate::commands::export_questions_csv,

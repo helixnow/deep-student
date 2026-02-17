@@ -88,6 +88,8 @@ export const FinderFileItem = React.memo(function FinderFileItem({
 }: FinderFileItemProps) {
   const CustomIcon = TYPE_CUSTOM_ICONS[item.type] || GenericFileIcon;
   const isFavorite = Boolean(item.metadata?.isFavorite);
+  const snippet = item.metadata?.snippet as string | undefined;
+  const matchSource = item.metadata?.matchSource as string | undefined;
 
   const handleClick = useCallback((e: React.MouseEvent) => {
     // 编辑模式下不处理点击事件
@@ -177,6 +179,12 @@ export const FinderFileItem = React.memo(function FinderFileItem({
               {relativeTime}
             </span>
           )}
+          {/* ★ 索引召回：内容匹配摘要 */}
+          {snippet && (
+            <span className="text-[11px] text-muted-foreground/60 truncate italic">
+              {matchSource === 'index' ? '📄 ' : ''}{snippet}
+            </span>
+          )}
         </div>
         
         {/* 右侧信息 */}
@@ -218,7 +226,7 @@ export const FinderFileItem = React.memo(function FinderFileItem({
       onClick={handleClick}
       onDoubleClick={handleDoubleClick}
       onContextMenu={onContextMenu}
-      title={isEditing ? undefined : item.name}
+      title={isEditing ? undefined : (snippet ? `${item.name}\n📄 ${snippet}` : item.name)}
     >
       {/* 收藏星标 */}
       {isFavorite && (
