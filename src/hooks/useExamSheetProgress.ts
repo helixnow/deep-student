@@ -9,6 +9,7 @@ import type { ExamSheetProgressEvent } from '../utils/tauriApi';
 import { showGlobalNotification } from '../components/UnifiedNotification';
 import { multimodalRagService, MULTIMODAL_INDEX_ENABLED } from '../services/multimodalRagService';
 import i18n from '@/i18n';
+import { emitExamSheetDebug } from '../debug-panel/plugins/ExamSheetProcessingDebugPlugin';
 
 /**
  * 🆕 异步触发多模态索引（不阻塞主流程）
@@ -76,6 +77,7 @@ export function useExamSheetProgress(options: UseExamSheetProgressOptions = {}) 
 
     // 处理失败事件
     if (payload.type === 'Failed') {
+      emitExamSheetDebug('error', 'frontend:hook-state', `Hook 收到 Failed 事件: ${payload.error}`, { detail: { error: payload.error } });
       setState(prev => ({
         ...prev,
         isProcessing: false,
@@ -175,6 +177,7 @@ export function useExamSheetProgress(options: UseExamSheetProgressOptions = {}) 
 
       case 'Completed':
         console.log('[ExamSheet] ★ Processing complete');
+        emitExamSheetDebug('success', 'frontend:hook-state', 'Hook 收到 Completed 事件 → isProcessing=false, stage=completed');
         setState(prev => {
           const total = prev.progress.total;
           onProgressRef.current?.('completed', total, total);
@@ -188,8 +191,11 @@ export function useExamSheetProgress(options: UseExamSheetProgressOptions = {}) 
 
         // 更新会话数据
         if (onSessionUpdateRef.current) {
+          emitExamSheetDebug('info', 'frontend:hook-state', 'Hook 调用 onSessionUpdate 回调');
           onSessionUpdateRef.current(detail);
           showGlobalNotification('success', i18n.t('exam_sheet:recognition_complete_notification', { defaultValue: 'Question set recognition completed!' }));
+        } else {
+          emitExamSheetDebug('warn', 'frontend:hook-state', 'Hook onSessionUpdateRef.current 为空，无法触发导航');
         }
 
         // 🆕 自动触发多模态索引（异步，不阻塞主流程）

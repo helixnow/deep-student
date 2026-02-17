@@ -35,7 +35,7 @@ Smart Chat · Knowledge Management · Anki Card Making · Universal Reader · De
 |:---:|---|---|
 | 💬 | **Smart Chat** | Multi-modal input, deep reasoning (chain-of-thought), multi-model comparison, RAG knowledge retrieval |
 | 📚 | **Learning Hub** | VFS-based unified management for notes/textbooks/question banks, batch OCR & vectorized indexing |
-| 🧩 | **Skill System** | On-demand AI capabilities with 8 built-in professional skills: Card Making · Research · Paper · Mind Map · Question Bank · Memory · Tutor · Literature Review, plus custom extensions |
+| 🧩 | **Skill System** | On-demand AI capabilities with 11 built-in professional skills: Card Making · Research · Paper · Mind Map · Question Bank · Memory · Tutor · Literature Review · Office Suite, plus custom extensions |
 | 📖 | **Smart Reader** | PDF / DOCX split-screen reading with page reference injection into chat context |
 | 🌐 | **Translation Workbench** | Full-text translation, paragraph-level bilingual comparison, domain presets (Academic/Technical/Literary/Legal/Medical) & custom prompts |
 | ✍️ | **Essay Grading** | Multi-scenario scoring (Gaokao / IELTS / TOEFL / CET-4/6), revision suggestions with highlights |
@@ -162,7 +162,7 @@ Manage all your learning assets like Finder/Explorer.
 Extend AI capabilities on demand through Skills, avoiding bloated System Prompts. Each skill encapsulates scenario-specific instructions and tool sets — activate and use.
 
 - **Default Strategy (Deep Scholar)**: Always active — proactively recalls user memories, prioritizes local retrieval, and delivers personalized answers without manual activation.
-- **Scenario-Based Capabilities**: 8 built-in professional skills covering core learning scenarios: card making, research, paper, mind map, question bank, memory, and more.
+- **Scenario-Based Capabilities**: 11 built-in professional skills covering core learning scenarios: card making, research, paper, mind map, question bank, memory, Office suite, and more.
 - **On-Demand Tool Loading**: Tools are loaded only when their corresponding skill is activated, saving token costs.
 - **Skill Management**: Visual skill management panel supporting default settings (auto-activate for new sessions), import/export of custom skills.
 - **Three-Tier Loading**: Built-in → Global → Project-level. Users can write custom skills in SKILL.md format.
@@ -184,6 +184,9 @@ Extend AI capabilities on demand through Skills, avoiding bloated System Prompts
 | 🧠 **Knowledge Mind Map** | Tool Set | AI-generated knowledge structures, multi-round editing, outline/mind map toggle |
 | 📝 **Question Sets & Practice** | Tool Set | One-click question generation, multiple practice modes, AI deep analysis |
 | 💾 **Smart Memory** | Tool Set | AI auto-identifies and saves high-reuse information for long-term memory |
+| 📃 **Word Documents** | Tool Set | DOCX structured reading, table extraction, document generation, round-trip editing |
+| 📊 **Excel Sheets** | Tool Set | XLSX reading, table extraction, generation, cell editing, text replacement |
+| 🎬 **PPT Slides** | Tool Set | PPTX structured reading, presentation generation, round-trip editing, text replacement |
 
 ---
 

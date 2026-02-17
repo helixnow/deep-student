@@ -3461,46 +3461,7 @@ export class TauriAPI {
 
   // ★ 2026-01 清理：linkExamSheetSessionMistakes 和 unlinkExamSheetSessionMistake 已删除（错题关联功能废弃）
 
-  /**
-   * ★ 题目集识别预览（核心 API）
-   * 处理上传的试卷图片，进行 OCR 识别和题目分割
-   */
-  static async processExamSheetPreview(payload: ExamSheetPreviewRequestPayload): Promise<ExamSheetPreviewResult> {
-    try {
-      // 将 File 对象转换为 base64 字符串
-      const pageImages: string[] = await Promise.all(
-        payload.pageImages.map(async (img) => {
-          if (typeof img === 'string') {
-            return img; // 已经是字符串（路径或 base64）
-          }
-          // File 对象需要转换为 base64
-          return await fileToBase64(img);
-        })
-      );
-
-      // 将前端 payload 转换为后端期望的 request 格式
-      const request = {
-        exam_name: payload.examName ?? null,
-        page_images: pageImages,
-        instructions: payload.instructions ?? null,
-        grouping_prompt: payload.groupingPrompt ?? null,
-        grouping_focus: payload.groupingFocus ?? null,
-        chunk_size: payload.chunkSize ?? null,
-        concurrency: payload.concurrency ?? null,
-        output_format: payload.outputFormat ?? null,
-        session_id: payload.sessionId ?? null,
-      };
-      const response = await invokeWithDebug<ExamSheetPreviewResult>(
-        'process_exam_sheet_preview',
-        { request },
-        { tag: 'exam_sheet_preview' }
-      );
-      return response;
-    } catch (error) {
-      console.error('Exam sheet recognition preview failed:', error);
-      throw new Error(`Exam sheet recognition preview failed: ${getErrorMessage(error)}`);
-    }
-  }
+  // ★ processExamSheetPreview 已移除（整卷识别废弃，统一走 import_question_bank_stream）
 
   // =================================================
   // 包管理器检测和安装

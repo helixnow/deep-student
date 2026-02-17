@@ -35,7 +35,6 @@ pub mod document_processing_service;
 pub mod enhanced_anki_service;
 pub mod error_details;
 pub mod error_recovery;
-pub mod exam_sheet_ocr_service;
 pub mod exam_sheet_service;
 pub mod feature_flags;
 pub mod file_manager;
@@ -747,8 +746,7 @@ pub fn run() {
             crate::commands::get_app_version,
             crate::commands::get_app_data_dir,
             // ★ analyze_new_mistake_stream 已移除（错题模块废弃）
-            crate::commands::process_exam_sheet_preview,
-            crate::commands::process_exam_sheet_preview_stream,
+            // ★ process_exam_sheet_preview / process_exam_sheet_preview_stream 已移除（整卷识别废弃，统一走 import_question_bank_stream）
             crate::commands::process_pdf_ocr,
             crate::commands::init_pdf_ocr_session, // 🎯
             crate::commands::upload_pdf_ocr_page, // 🎯
@@ -760,7 +758,6 @@ pub fn run() {
             crate::commands::start_pdf_ocr_backend,
             crate::commands::get_pdf_ocr_temp_dir,
             crate::commands::save_pdf_to_temp,
-            crate::commands::cancel_exam_sheet_segmentation_session_streams,
             crate::commands::list_exam_sheet_sessions,
             crate::commands::get_exam_sheet_session_detail,
             crate::commands::update_exam_sheet_cards,

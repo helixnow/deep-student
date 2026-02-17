@@ -19,6 +19,7 @@ import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { AppSelect } from '@/components/ui/app-menu';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import { formatTime } from '@/utils/formatUtils';
+import { emitExamSheetDebug } from '@/debug-panel/plugins/ExamSheetProcessingDebugPlugin';
 
 const ExamSheetUploader = lazy(() => import('@/components/ExamSheetUploader'));
 const QuestionBankEditor = lazy(() => import('@/components/QuestionBankEditor'));
@@ -52,6 +53,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
   );
 
   const sessionId = node.id;
+  emitExamSheetDebug('info', 'frontend:hook-state', `[ExamContentView] 渲染: sessionId=${sessionId}, node.name=${node.name}`, { sessionId });
 
   // 🆕 2026-01 改造：使用 useQuestionBankSession Hook 管理题目状态
   const {
@@ -114,10 +116,13 @@ const ExamContentView: React.FC<ContentViewProps> = ({
   // 🆕 加载 sessionDetail（仅用于 ExamSheetUploader 等需要原始 preview 的组件）
   const loadSessionDetail = useCallback(async () => {
     if (!sessionId) return;
+    emitExamSheetDebug('info', 'frontend:hook-state', `[ExamContentView] loadSessionDetail 开始: ${sessionId}`, { sessionId });
     try {
       const detail = await TauriAPI.getExamSheetSessionDetail(sessionId);
+      emitExamSheetDebug('success', 'frontend:hook-state', `[ExamContentView] loadSessionDetail 成功: status=${detail.summary.status}, pages=${detail.preview.pages?.length ?? 0}`, { sessionId, detail: { status: detail.summary.status, pageCount: detail.preview.pages?.length, cardCount: detail.preview.pages?.reduce((s, p) => s + (p.cards?.length ?? 0), 0) } });
       setSessionDetail(detail);
     } catch (err: unknown) {
+      emitExamSheetDebug('error', 'frontend:hook-state', `[ExamContentView] loadSessionDetail 失败: ${err}`, { sessionId });
       console.error('[ExamContentView] Failed to load session detail:', err);
       setSessionDetail({
         summary: {
@@ -159,10 +164,12 @@ const ExamContentView: React.FC<ContentViewProps> = ({
   }, [sessionId, checkSyncStatus, t]);
 
   const handleSessionUpdate = useCallback(async (detail: ExamSheetSessionDetail) => {
+    emitExamSheetDebug('info', 'frontend:hook-state', `[ExamContentView] handleSessionUpdate: pages=${detail.preview.pages?.length}, cards=${detail.preview.pages?.reduce((s, p) => s + (p.cards?.length ?? 0), 0)}`, { sessionId });
     setSessionDetail(detail);
     // 🆕 刷新 Store 中的题目和统计
     await loadQuestions();
-  }, [loadQuestions]);
+    emitExamSheetDebug('info', 'frontend:hook-state', `[ExamContentView] handleSessionUpdate 完成, questions.length=${questions.length}`, { sessionId });
+  }, [loadQuestions, questions.length, sessionId]);
 
   // 🆕 使用 Hook 的 submitAnswer（已改名避免冲突）
   const handleSubmitAnswer = useCallback(async (questionId: string, answer: string, questionType?: QuestionType) => {
@@ -224,7 +231,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     async (ids: string[]) => {
       await executeMutation(
         async () => {
-          const result = await invoke<{ success_count: number; failed_count: number; errors: string[] }>('qbank_reset_questions_progress', { question_ids: ids });
+          const result = await invoke<{ success_count: number; failed_count: number; errors: string[] }>('qbank_reset_questions_progress', { questionIds: ids });
           if (result.failed_count > 0) {
             showGlobalNotification('warning', t('learningHub:exam.partialResetFailed', {
               success: result.success_count,
@@ -242,7 +249,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     async (ids: string[]) => {
       await executeMutation(
         async () => {
-          const result = await invoke<{ success_count: number; failed_count: number; errors: string[] }>('qbank_batch_delete_questions', { question_ids: ids });
+          const result = await invoke<{ success_count: number; failed_count: number; errors: string[] }>('qbank_batch_delete_questions', { questionIds: ids });
           if (result.failed_count > 0) {
             showGlobalNotification('warning', t('learningHub:exam.partialDeleteFailed', {
               success: result.success_count,
@@ -260,7 +267,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     async (id: string) => {
       await executeMutation(
         async () => {
-          await invoke('qbank_toggle_favorite', { question_id: id });
+          await invoke('qbank_toggle_favorite', { questionId: id });
         },
         t('learningHub:exam.error.toggleFavoriteFailed'),
         'questions'
@@ -298,7 +305,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     async (id: string) => {
       await executeMutation(
         async () => {
-          await invoke('qbank_delete_question', { question_id: id });
+          await invoke('qbank_delete_question', { questionId: id });
         },
         t('learningHub:exam.error.deleteQuestionFailed')
       );
@@ -311,12 +318,18 @@ const ExamContentView: React.FC<ContentViewProps> = ({
 
   const hasQuestions = questions.length > 0;
 
+  emitExamSheetDebug('debug', 'frontend:hook-state',
+    `[ExamContentView] 渲染决策: isEmptySession=${isEmptySession}, hasQuestions=${hasQuestions}(${questions.length}), viewMode=${viewMode}, isLoading=${isLoading}, sessionDetail.status=${sessionDetail?.summary?.status ?? 'null'}, error=${error ?? 'null'}`,
+    { sessionId },
+  );
+
   // 空会话自动进入上传模式（只读模式下不自动切换）
   useEffect(() => {
     if (isEmptySession && viewMode === 'list' && !readOnly) {
+      emitExamSheetDebug('info', 'frontend:hook-state', `[ExamContentView] 空会话自动切换到 upload 模式`, { sessionId });
       setViewMode('upload');
     }
-  }, [isEmptySession, viewMode, readOnly]);
+  }, [isEmptySession, viewMode, readOnly, sessionId]);
 
   // ========== 条件返回（早期退出） ==========
   
@@ -518,7 +531,9 @@ const ExamContentView: React.FC<ContentViewProps> = ({
               sessionId={sessionId}
               sessionName={sessionDetail?.summary?.exam_name || node.name}
               onUploadSuccess={async (detail) => {
+                emitExamSheetDebug('info', 'frontend:navigate', `[ExamContentView] onUploadSuccess 触发, pages=${detail.preview.pages?.length}`, { sessionId });
                 await handleSessionUpdate(detail);
+                emitExamSheetDebug('info', 'frontend:navigate', `[ExamContentView] onUploadSuccess 完成 → setViewMode('list'), questions=${questions.length}`, { sessionId });
                 setViewMode('list');
               }}
               onBack={() => hasQuestions ? setViewMode('list') : onClose?.()}

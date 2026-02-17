@@ -18,6 +18,7 @@ import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import { formatTime } from '@/utils/formatUtils';
 import { MarkdownRenderer, StreamingMarkdownRenderer } from '@/chat-v2/components/renderers';
+import { LatexText } from '@/components/LatexText';
 import DsAnalysisIconMuted from '@/components/icons/DsAnalysisIconMuted';
 import {
   ChevronLeft,
@@ -271,15 +272,16 @@ const OptionButton: React.FC<OptionButtonProps> = ({
         
         {/* 选项内容 */}
         <div className="flex-1 min-w-0 pt-0.5">
-          <span className={cn(
-            'text-sm leading-relaxed',
-            !isSubmitted && 'text-foreground',
-            showCorrect && 'text-emerald-600 dark:text-emerald-400',
-            isWrong && 'text-destructive',
-            isSubmitted && !isSelected && !isThisCorrect && 'text-foreground/50'
-          )}>
-            {content}
-          </span>
+          <LatexText
+            content={content}
+            className={cn(
+              'text-sm leading-relaxed',
+              !isSubmitted && 'text-foreground',
+              showCorrect && 'text-emerald-600 dark:text-emerald-400',
+              isWrong && 'text-destructive',
+              isSubmitted && !isSelected && !isThisCorrect && 'text-foreground/50'
+            )}
+          />
         </div>
         
         {/* 状态文字 - Notion 风格：简洁文字标识 */}
@@ -1360,7 +1362,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                                 )}>
                                   {opt.key}
                                 </span>
-                                <span className="text-sm flex-1">{opt.content}</span>
+                                <LatexText content={opt.content} className="text-sm flex-1" />
                               </div>
                             ))}
                           </div>

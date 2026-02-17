@@ -30,6 +30,7 @@ import { Progress } from '@/components/ui/shad/Progress';
 import { TauriAPI, type ExamSheetSessionDetail } from '@/utils/tauriApi';
 import { useExamSheetProgress } from '@/hooks/useExamSheetProgress';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
+import { emitExamSheetDebug } from '@/debug-panel/plugins/ExamSheetProcessingDebugPlugin';
 import { UnifiedModelSelector, type UnifiedModelInfo } from '@/components/shared/UnifiedModelSelector';
 import { UnifiedDragDropZone, FILE_TYPES, type FileTypeDefinition } from '@/components/shared/UnifiedDragDropZone';
 import type { ApiConfig } from '@/types';
@@ -412,48 +413,63 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
     };
   }, [selectedFiles]);
 
-  // 图片 OCR 处理
+  // 图片 OCR 处理（★ 统一走 import_question_bank_stream：OCR→文本→LLM解析）
   const handleImageOCR = useCallback(async () => {
-    // ★ 立即标记为处理中，消除按钮点击→SessionCreated 之间的竞态窗口
-    // 防止用户快速双击导致两个并行 OCR 请求（会触发速率限制/请求阻塞）
-    startOCRProcessing();
-    
-    try {
-      const imageFiles = selectedFiles.map(f => f.file);
-      debugLog.info('[ExamSheetUploader] 开始 OCR 处理:', imageFiles.length, '个图片');
+    setStep('processing');
+    setIsLLMProcessing(true);
+    setLlmProgress({ percent: 0, message: t('exam_sheet:uploader.reading_document'), parsedCount: 0 });
+    setParsedQuestions([]);
+    setError(null);
 
-      const result = await TauriAPI.processExamSheetPreview({
-        examName: resolvedSessionName,
-        pageImages: imageFiles,
-        outputFormat: 'deepseek_ocr',
-        sessionId: sessionId,
+    try {
+      // 将所有图片转为 base64 数组
+      const base64Images = await Promise.all(
+        selectedFiles.map(f => new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => {
+            const dataUrl = reader.result as string;
+            const base64 = dataUrl.split(',')[1] || dataUrl;
+            resolve(base64);
+          };
+          reader.onerror = () => reject(new Error('File read failed'));
+          reader.readAsDataURL(f.file);
+        }))
+      );
+
+      debugLog.info('[ExamSheetUploader] 开始图片导入:', base64Images.length, '张图片');
+      setLlmProgress({ percent: 5, message: t('exam_sheet:uploader.parsing_document'), parsedCount: 0 });
+
+      // ★ 统一调用 import_question_bank_stream，format='image'，content 为 JSON 数组
+      const response = await invoke<ExamSheetSessionDetail>('import_question_bank_stream', {
+        request: {
+          content: JSON.stringify(base64Images),
+          format: 'image',
+          name: resolvedSessionName || selectedFiles[0]?.file.name.replace(/\.[^/.]+$/, '') || '图片导入',
+          folder_id: undefined,
+          session_id: sessionId || undefined,
+          model_config_id: selectedModelId || undefined,
+        },
       });
 
-      // ★ invoke 成功返回 = 后端已完成，直接触发完成流程
-      // 不依赖 Completed 事件（事件可能因时序问题丢失）
-      resetOCRProgress();
-      if (result.session_id) {
-        try {
-          const detail = await TauriAPI.getExamSheetSessionDetail(result.session_id);
-          const summary = generateImportSummary(detail);
-          setImportSummary(summary);
-          setPendingDetail(detail);
-          setStep('summary');
-          showGlobalNotification('success', t('exam_sheet:recognition_complete_notification', { defaultValue: 'Question set recognition completed!' }));
-        } catch (detailErr) {
-          debugLog.warn('[ExamSheetUploader] 获取会话详情失败，回退到通知:', detailErr);
-          showGlobalNotification('info', t('exam_sheet:uploader.upload_success'));
-        }
-      } else {
-        showGlobalNotification('info', t('exam_sheet:uploader.upload_success'));
-      }
+      const summary = generateImportSummary(response);
+      setImportSummary(summary);
+      setPendingDetail(response);
+      setStep('summary');
+      showGlobalNotification('success', t('exam_sheet:recognition_complete_notification', { defaultValue: 'Question set recognition completed!' }));
     } catch (err: unknown) {
-      debugLog.error('[ExamSheetUploader] OCR 处理失败:', err);
-      const errorMessage = err instanceof Error ? err.message : t('exam_sheet:error_processing', { error: '' });
-      setOCRError(errorMessage);
+      debugLog.error('[ExamSheetUploader] 图片导入失败:', err);
+      const errorMessage = err instanceof Error
+        ? err.message
+        : (typeof err === 'object' && err !== null && 'message' in err)
+          ? (err as { message: string }).message
+          : String(err);
+      setError(t('exam_sheet:uploader.import_failed_prefix', { error: errorMessage }));
+      setStep('select');
       showGlobalNotification('error', errorMessage);
+    } finally {
+      setIsLLMProcessing(false);
     }
-  }, [selectedFiles, sessionId, sessionName, startOCRProcessing, setOCRError, resetOCRProgress, generateImportSummary]);
+  }, [selectedFiles, sessionId, resolvedSessionName, selectedModelId, generateImportSummary]);
 
   // 文档直接导入（使用流式版本，支持实时进度）
   const handleDocumentImport = useCallback(async () => {

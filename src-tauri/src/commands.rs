@@ -576,56 +576,6 @@ pub fn get_template_config(
     }
 }
 
-// 整卷识别预览
-#[tauri::command]
-pub async fn process_exam_sheet_preview(
-    request: ExamSheetPreviewRequest,
-    state: State<'_, AppState>,
-    app_handle: AppHandle,
-) -> Result<ExamSheetPreviewResult> {
-    if request.page_images.is_empty() {
-        return Err(AppError::validation("请至少上传一张试卷图片"));
-    }
-
-    let (progress_tx, mut progress_rx) =
-        tokio::sync::mpsc::unbounded_channel::<ExamSheetSegmentationProgress>();
-
-    let event_forwarder = {
-        let app_handle = app_handle.clone();
-        tokio::spawn(async move {
-            while let Some(payload) = progress_rx.recv().await {
-                if let Err(err) = app_handle.emit("exam_sheet_progress", payload) {
-                    error!("[exam_sheet_progress] emit failed: {}", err);
-                }
-            }
-        })
-    };
-
-    // ★ 追加模式：传递 session_id 用于更新现有会话
-    let result = state
-        .exam_sheet_service
-        .process_exam_sheet_preview(
-            request.exam_name.clone(),
-            &request.page_images,
-            request.instructions.as_deref(),
-            ExamSheetSegmentationOptions {
-                chunk_size: request.chunk_size,
-                concurrency: request.concurrency,
-                output_format: request.output_format.clone(),
-                grouping_prompt: request.grouping_prompt.clone(),
-                grouping_focus: request.grouping_focus.clone(),
-            },
-            Some(progress_tx),
-            request.session_id.clone(), // ★ 追加模式：传递 session_id
-        )
-        .await;
-
-    if let Err(err) = event_forwarder.await {
-        error!("[exam_sheet_progress] forwarder join failed: {:?}", err);
-    }
-
-    result
-}
 
 // PDF OCR 命令组
 #[tauri::command]
@@ -833,68 +783,6 @@ pub async fn save_pdf_to_temp(
     Ok(file_path.to_string_lossy().to_string())
 }
 
-/// 流式整卷识别预览（独立管线，不与聊天流式混用）
-#[tauri::command]
-pub async fn process_exam_sheet_preview_stream(
-    window: Window,
-    request: ExamSheetPreviewRequest,
-    state: State<'_, AppState>,
-    app_handle: AppHandle,
-) -> Result<ExamSheetPreviewResult> {
-    if request.page_images.is_empty() {
-        return Err(AppError::validation("请至少上传一张试卷图片"));
-    }
-
-    let (progress_tx, mut progress_rx) =
-        tokio::sync::mpsc::unbounded_channel::<ExamSheetSegmentationProgress>();
-
-    let event_forwarder = {
-        let app_handle = app_handle.clone();
-        tokio::spawn(async move {
-            while let Some(payload) = progress_rx.recv().await {
-                if let Err(err) = app_handle.emit("exam_sheet_progress", payload) {
-                    error!("[exam_sheet_progress] emit failed: {}", err);
-                }
-            }
-        })
-    };
-
-    let result = state
-        .exam_sheet_service
-        .process_exam_sheet_preview_stream(
-            window,
-            request.exam_name.clone(),
-            &request.page_images,
-            request.instructions.as_deref(),
-            ExamSheetSegmentationOptions {
-                chunk_size: request.chunk_size,
-                concurrency: request.concurrency,
-                output_format: request.output_format.clone(),
-                grouping_prompt: None,
-                grouping_focus: None,
-            },
-            Some(progress_tx),
-            request.session_id.as_deref(), // ★ 追加模式：传递现有会话 ID
-        )
-        .await;
-
-    if let Err(err) = event_forwarder.await {
-        error!("[exam_sheet_progress] forwarder join failed: {:?}", err);
-    }
-
-    result
-}
-
-/// 取消整卷分割流（按 session 级别）：会终止该会话下所有分片的流式请求
-#[tauri::command]
-pub async fn cancel_exam_sheet_segmentation_session_streams(
-    session_id: String,
-    state: State<'_, AppState>,
-) -> Result<bool> {
-    let prefix = format!("exam_sheet_seg_stream_{}_", session_id);
-    state.llm_manager.cancel_streams_by_prefix(&prefix).await;
-    Ok(true)
-}
 
 #[tauri::command]
 pub async fn list_exam_sheet_sessions(
@@ -1006,7 +894,7 @@ pub async fn import_question_bank(
         .ok_or_else(|| AppError::validation("VFS 数据库未初始化"))?;
 
     // 使用统一的 QuestionImportService
-    let import_service = QuestionImportService::new(state.llm_manager.clone());
+    let import_service = QuestionImportService::new(state.llm_manager.clone(), state.file_manager.clone());
 
     let import_request = ImportRequest {
         content: request.content,
@@ -1057,7 +945,7 @@ pub async fn import_question_bank_stream(
         })
     };
 
-    let import_service = QuestionImportService::new(state.llm_manager.clone());
+    let import_service = QuestionImportService::new(state.llm_manager.clone(), state.file_manager.clone());
 
     let import_request = ImportRequest {
         content: request.content,

@@ -60,6 +60,7 @@ import ChatInteractionTestPlugin from './plugins/ChatInteractionTestPlugin';
 import CitationTestPlugin from './plugins/CitationTestPlugin';
 import MultiVariantTestPlugin from './plugins/MultiVariantTestPlugin';
 import ToolCallLifecycleDebugPlugin from './plugins/ToolCallLifecycleDebugPlugin';
+import ExamSheetProcessingDebugPlugin from './plugins/ExamSheetProcessingDebugPlugin';
 
 export interface DebugPanelHostProps {
   visible: boolean;
@@ -503,6 +504,15 @@ const PLUGINS: DebugPanelPluginEntry[] = [
     labelDefault: '工具调用生命周期',
     descriptionDefault: '监控工具调用前后端完整链路：preparing→start→chunk→end/error，检测顺序异常和超时，可复制完整时序日志。',
     groupId: 'chat-timeline',
+  },
+  {
+    id: 'exam-sheet-processing-debug',
+    labelKey: 'debug_panel.plugin_exam_sheet_processing',
+    descriptionKey: 'debug_panel.plugin_exam_sheet_processing_desc',
+    Component: ExamSheetProcessingDebugPlugin,
+    labelDefault: '题目集识别生命周期',
+    descriptionDefault: '监控两阶段题目集识别全链路：invoke→SessionCreated→OCR逐页→OCR完成→解析逐页→Completed/Failed，检测事件丢失和卡住，可复制完整时序日志。',
+    groupId: 'exam-workflow',
   },
 ];
 

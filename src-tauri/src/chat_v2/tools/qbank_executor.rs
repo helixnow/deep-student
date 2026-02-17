@@ -1533,7 +1533,7 @@ impl QBankExecutor {
         let vfs_db = ctx.vfs_db.as_ref().ok_or("VFS database not available")?;
 
         // 使用统一的 QuestionImportService
-        let import_service = QuestionImportService::new(llm_manager.clone());
+        let import_service = QuestionImportService::new_without_file_manager(llm_manager.clone());
 
         let import_request = ImportRequest {
             content: content.to_string(),

@@ -12,7 +12,8 @@ import { create } from 'zustand';
 import { devtools, subscribeWithSelector } from 'zustand/middleware';
 import { useShallow } from 'zustand/react/shallow';
 import { invoke } from '@tauri-apps/api/core';
-import { debugLog } from '../debug-panel/debugMasterSwitch';
+import { debugLog } from '@/debug-panel/debugMasterSwitch';
+import { emitExamSheetDebug } from '@/debug-panel/plugins/ExamSheetProcessingDebugPlugin';
 import type {
   QuestionType,
   QuestionStatus,
@@ -745,6 +746,7 @@ export const useQuestionBankStore = create<QuestionBankState>()(
 
       // API Actions
       loadQuestions: async (examId, filters, page = 1) => {
+        emitExamSheetDebug('info', 'frontend:hook-state', `[Store] loadQuestions 开始: examId=${examId}, page=${page}`, { sessionId: examId });
         // 并发防护：递增请求 ID，确保只有最新请求的结果会被应用
         const requestId = get().loadRequestId + 1;
         const previousExamId = get().currentExamId;
@@ -801,6 +803,11 @@ export const useQuestionBankStore = create<QuestionBankState>()(
             order.push(q.id);
           });
           
+          emitExamSheetDebug('success', 'frontend:hook-state',
+            `[Store] loadQuestions 成功: ${result.questions.length} 题, total=${result.total}, page=${result.page}`,
+            { sessionId: examId, detail: { count: result.questions.length, total: result.total, page: result.page, hasMore: result.has_more, firstId: result.questions[0]?.id } },
+          );
+          
           set({
             questions: questionsMap,
             questionOrder: order,
@@ -819,6 +826,7 @@ export const useQuestionBankStore = create<QuestionBankState>()(
             return;
           }
           debugLog.error('[QuestionBankStore] loadQuestions failed:', err);
+          emitExamSheetDebug('error', 'frontend:hook-state', `[Store] loadQuestions 失败: ${String(err)}`, { sessionId: examId, detail: { error: String(err) } });
           set({ error: String(err), isLoading: false });
         }
       },
@@ -926,7 +934,7 @@ export const useQuestionBankStore = create<QuestionBankState>()(
       getQuestion: async (questionId) => {
         try {
           const question = await invoke<Question | null>('qbank_get_question', {
-            question_id: questionId,
+            questionId,
           });
           
           if (question) {
@@ -967,7 +975,7 @@ export const useQuestionBankStore = create<QuestionBankState>()(
 
       deleteQuestion: async (questionId) => {
         try {
-          await invoke('qbank_delete_question', { question_id: questionId });
+          await invoke('qbank_delete_question', { questionId });
           
           // 🔒 审计修复: 删除后同步更新 pagination、questionOrder、currentQuestionId 和 stats
           // 原代码只删除 Map 条目，不更新 pagination.total，不清除 currentQuestionId
@@ -1039,7 +1047,7 @@ export const useQuestionBankStore = create<QuestionBankState>()(
       toggleFavorite: async (questionId) => {
         try {
           const question = await invoke<Question>('qbank_toggle_favorite', {
-            question_id: questionId,
+            questionId,
           });
           
           set((state) => {
@@ -1056,17 +1064,19 @@ export const useQuestionBankStore = create<QuestionBankState>()(
       loadStats: async (examId) => {
         try {
           const stats = await invoke<QuestionBankStats | null>('qbank_get_stats', {
-            exam_id: examId,
+            examId,
           });
+          emitExamSheetDebug('info', 'frontend:hook-state', `[Store] loadStats 成功: total=${stats?.total_count ?? '?'}`, { sessionId: examId, detail: stats });
           set({ stats });
         } catch (err: unknown) {
           debugLog.error('[QuestionBankStore] loadStats failed:', err);
+          emitExamSheetDebug('error', 'frontend:hook-state', `[Store] loadStats 失败: ${String(err)}`, { sessionId: examId });
         }
       },
 
       refreshStats: async (examId) => {
         const stats = await invoke<QuestionBankStats>('qbank_refresh_stats', {
-          exam_id: examId,
+          examId,
         });
         set({ stats });
         return stats;
@@ -1076,7 +1086,7 @@ export const useQuestionBankStore = create<QuestionBankState>()(
         set({ isLoading: true });
         try {
           const stats = await invoke<QuestionBankStats>('qbank_reset_progress', {
-            exam_id: examId,
+            examId,
           });
 
           // 刷新题目列表
@@ -1403,7 +1413,7 @@ export const useQuestionBankStore = create<QuestionBankState>()(
         
         try {
           const status = await invoke<SyncStatusResult>('qbank_sync_check', {
-            exam_id: examId,
+            examId,
           });
           
           set({ syncStatus: status, isSyncing: false });
@@ -1420,7 +1430,7 @@ export const useQuestionBankStore = create<QuestionBankState>()(
         
         try {
           const conflicts = await invoke<SyncConflict[]>('qbank_get_sync_conflicts', {
-            exam_id: examId,
+            examId,
           });
           
           set({ syncConflicts: conflicts, isSyncing: false });
@@ -1437,7 +1447,7 @@ export const useQuestionBankStore = create<QuestionBankState>()(
         
         try {
           const question = await invoke<Question>('qbank_resolve_sync_conflict', {
-            conflict_id: conflictId,
+            conflictId,
             strategy,
           });
           
@@ -1463,7 +1473,7 @@ export const useQuestionBankStore = create<QuestionBankState>()(
         
         try {
           const questions = await invoke<Question[]>('qbank_batch_resolve_conflicts', {
-            exam_id: examId,
+            examId,
             strategy,
           });
           
@@ -1485,7 +1495,7 @@ export const useQuestionBankStore = create<QuestionBankState>()(
       setSyncEnabled: async (examId, enabled) => {
         try {
           await invoke('qbank_set_sync_enabled', {
-            exam_id: examId,
+            examId,
             enabled,
           });
           
@@ -1500,7 +1510,7 @@ export const useQuestionBankStore = create<QuestionBankState>()(
       updateSyncConfig: async (examId, config) => {
         try {
           await invoke('qbank_update_sync_config', {
-            exam_id: examId,
+            examId,
             config,
           });
           

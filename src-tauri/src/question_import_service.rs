@@ -29,6 +29,7 @@ use std::sync::Arc;
 use tokio::sync::mpsc::UnboundedSender;
 
 use crate::document_parser::DocumentParser;
+use crate::file_manager::FileManager;
 use crate::llm_manager::LLMManager;
 use crate::models::{
     AppError, Difficulty, ExamCardPreview, ExamSheetPreviewPage, ExamSheetPreviewResult,
@@ -77,6 +78,7 @@ pub enum QuestionImportProgress {
 /// 题目导入服务
 pub struct QuestionImportService {
     llm_manager: Arc<LLMManager>,
+    file_manager: Option<Arc<FileManager>>,
 }
 
 /// 导入请求参数
@@ -100,8 +102,86 @@ pub struct ImportResult {
 }
 
 impl QuestionImportService {
-    pub fn new(llm_manager: Arc<LLMManager>) -> Self {
-        Self { llm_manager }
+    pub fn new(llm_manager: Arc<LLMManager>, file_manager: Arc<FileManager>) -> Self {
+        Self { llm_manager, file_manager: Some(file_manager) }
+    }
+
+    /// 不带 file_manager 的构造（MCP 工具等不需要图片 OCR 的场景）
+    pub fn new_without_file_manager(llm_manager: Arc<LLMManager>) -> Self {
+        Self { llm_manager, file_manager: None }
+    }
+
+    /// 判断格式是否为图片
+    fn is_image_format(format: &str) -> bool {
+        matches!(format, "png" | "jpg" | "jpeg" | "webp" | "bmp" | "gif" | "tiff" | "image")
+    }
+
+    /// OCR 图片（base64）→ 纯文本
+    /// 支持单张图片（裸 base64）或多张图片（JSON 数组 ["base64_1", "base64_2"]）
+    async fn ocr_images_to_text(&self, content: &str) -> Result<String, AppError> {
+        use base64::Engine;
+
+        // 解析输入：可能是 JSON 数组或单个 base64 字符串
+        let base64_images: Vec<String> = if content.trim_start().starts_with('[') {
+            serde_json::from_str(content)
+                .map_err(|e| AppError::validation(format!("解析图片列表失败: {}", e)))?
+        } else {
+            vec![content.to_string()]
+        };
+
+        if base64_images.is_empty() {
+            return Err(AppError::validation("图片列表为空"));
+        }
+
+        let fm = self.file_manager.as_ref()
+            .ok_or_else(|| AppError::validation("图片导入需要 FileManager，当前上下文不支持"))?;
+        let temp_dir = fm.get_writable_app_data_dir().join("temp_ocr_import");
+        tokio::fs::create_dir_all(&temp_dir).await
+            .map_err(|e| AppError::file_system(format!("创建临时目录失败: {}", e)))?;
+
+        let mut all_texts = Vec::new();
+
+        for (i, b64) in base64_images.iter().enumerate() {
+            // 去除可能的 data URL 前缀
+            let raw_b64 = if let Some(pos) = b64.find(",") {
+                &b64[pos + 1..]
+            } else {
+                b64.as_str()
+            };
+
+            let bytes = base64::engine::general_purpose::STANDARD
+                .decode(raw_b64)
+                .map_err(|e| AppError::validation(format!("图片 {} base64 解码失败: {}", i + 1, e)))?;
+
+            // 写入临时文件
+            let temp_path = temp_dir.join(format!("page_{}.png", i));
+            tokio::fs::write(&temp_path, &bytes).await
+                .map_err(|e| AppError::file_system(format!("写入临时图片失败: {}", e)))?;
+
+            log::info!("[QuestionImport] OCR 图片 {}/{}: {}", i + 1, base64_images.len(), temp_path.display());
+
+            // 调用视觉模型做纯文本 OCR（FreeOcr 模式，不带坐标标记）
+            match self.llm_manager.convert_image_to_markdown(
+                temp_path.to_str().unwrap_or_default(),
+            ).await {
+                Ok(text) => {
+                    log::info!("[QuestionImport] 图片 {} OCR 成功: {} 字符", i + 1, text.len());
+                    all_texts.push(text);
+                }
+                Err(e) => {
+                    log::warn!("[QuestionImport] 图片 {} OCR 失败: {}", i + 1, e);
+                }
+            }
+        }
+
+        // 清理临时目录
+        let _ = tokio::fs::remove_dir_all(&temp_dir).await;
+
+        if all_texts.is_empty() {
+            return Err(AppError::validation("所有图片 OCR 均失败，请检查图片清晰度"));
+        }
+
+        Ok(all_texts.join("\n\n"))
     }
 
     /// 统一的文档导入入口
@@ -129,6 +209,10 @@ impl QuestionImportService {
                 parser
                     .extract_text_from_base64(&file_name, &request.content)
                     .map_err(|e| AppError::validation(format!("文档解析失败: {}", e)))?
+            }
+            fmt if Self::is_image_format(fmt) => {
+                // ★ 图片格式：OCR 提取文本，然后走统一解析流程
+                self.ocr_images_to_text(&request.content).await?
             }
             _ => {
                 // 其他格式：尝试作为 base64 解码，失败则作为纯文本
@@ -321,7 +405,16 @@ impl QuestionImportService {
 4. options 支持任意数量选项（A-Z），非选择题可省略
 5. answer 格式：单选填字母如"A"，多选填多个字母如"AB"或"A,B"
 6. difficulty 默认为 "medium"
-7. tags 根据题目知识点自动生成"#,
+7. tags 根据题目知识点自动生成
+
+**LaTeX 格式化（极其重要）**：
+- 所有数学公式、变量、符号必须用 LaTeX 格式输出
+- 行内公式用 $...$ 包裹，例如：$E_{{p}} = -\frac{{GMm}}{{r}}$
+- 独立公式（单独成行的长公式）用 $$...$$ 包裹
+- 下标用 $r_{{1}}$，上标用 $v^{{2}}$，分数用 $\frac{{a}}{{b}}$，根号用 $\sqrt{{x}}$
+- 希腊字母用 $\alpha$, $\beta$, $\pi$ 等
+- 度数符号用 $90^\circ$
+- 中文文本保持原样，只对数学部分添加 LaTeX 标记"#,
             chunk
         )
     }
@@ -868,6 +961,10 @@ impl QuestionImportService {
                 parser
                     .extract_text_from_base64(&file_name, &request.content)
                     .map_err(|e| AppError::validation(format!("文档解析失败: {}", e)))?
+            }
+            fmt if Self::is_image_format(fmt) => {
+                // ★ 图片格式：OCR 提取文本，然后走统一解析流程
+                self.ocr_images_to_text(&request.content).await?
             }
             _ => self
                 .decode_text_content(&request.content)

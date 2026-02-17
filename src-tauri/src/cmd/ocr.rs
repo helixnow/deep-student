@@ -20,7 +20,9 @@ pub const SYSTEM_OCR_CONFIG_ID: &str = "__system_ocr__";
 pub fn migrate_paddle_ocr_models(models: &mut [OcrModelConfig]) -> bool {
     let mut changed = false;
     for model in models.iter_mut() {
-        if model.model == "PaddlePaddle/PaddleOCR-VL" {
+        // 跳过显式配置为旧版的引擎（paddle_ocr_vl_v1 故意使用 PaddleOCR-VL）
+        if model.model == "PaddlePaddle/PaddleOCR-VL" && model.engine_type != "paddle_ocr_vl_v1"
+        {
             model.model = "PaddlePaddle/PaddleOCR-VL-1.5".to_string();
             if model.name.contains("PaddleOCR-VL") && !model.name.contains("1.5") {
                 model.name = model.name.replace("PaddleOCR-VL", "PaddleOCR-VL-1.5");

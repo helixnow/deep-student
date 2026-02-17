@@ -105,7 +105,7 @@ export const QuestionHistoryView: React.FC<QuestionHistoryViewProps> = ({
     
     try {
       const result = await invoke<RawQuestionHistory[]>('qbank_get_history', {
-        question_id: questionId,
+        questionId,
         limit: 50,
       });
       setHistory(result.map((item) => ({

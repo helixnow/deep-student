@@ -589,8 +589,8 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
       isFree: false,
     },
     {
-      model: 'Qwen/Qwen2.5-VL-7B-Instruct',
-      name: 'SiliconFlow - Qwen2.5-VL-7B',
+      model: 'Qwen/Qwen3-VL-8B-Instruct',
+      name: 'SiliconFlow - Qwen3-VL-8B',
       engineType: 'generic_vlm',
       description: '通用多模态模型，适合简单文档识别（备用）',
       isFree: false,

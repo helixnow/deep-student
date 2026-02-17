@@ -569,8 +569,8 @@ impl QuestionSyncService {
             r#"
             SELECT
                 COUNT(*) as total,
-                SUM(CASE WHEN sync_status = 'synced' THEN 1 ELSE 0 END) as synced,
-                SUM(CASE WHEN sync_status = 'modified' THEN 1 ELSE 0 END) as modified
+                COALESCE(SUM(CASE WHEN sync_status = 'synced' THEN 1 ELSE 0 END), 0) as synced,
+                COALESCE(SUM(CASE WHEN sync_status = 'modified' THEN 1 ELSE 0 END), 0) as modified
             FROM questions
             WHERE exam_id = ?1 AND deleted_at IS NULL
             "#,
