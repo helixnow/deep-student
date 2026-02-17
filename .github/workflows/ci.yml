@@ -34,6 +34,9 @@ jobs:
       - name: Type check
         run: npx tsc --noEmit
 
+      - name: Security audit
+        run: npm audit --omit=dev --audit-level=high || true
+
   # ============================================
   # 后端编译检查
   # ============================================
@@ -66,3 +69,19 @@ jobs:
       - name: Build check
         working-directory: src-tauri
         run: cargo check
+
+  # ============================================
+  # 供应链安全审计
+  # ============================================
+  security-audit:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+
+      - name: Cargo audit
+        working-directory: src-tauri
+        run: cargo audit

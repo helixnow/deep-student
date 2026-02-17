@@ -162,6 +162,16 @@ export function useExamSheetProgress(options: UseExamSheetProgressOptions = {}) 
     });
   }, []);
 
+  // ★ 立即标记为处理中（消除按钮点击→SessionCreated 之间的竞态窗口）
+  const startProcessing = useCallback(() => {
+    setState({
+      isProcessing: true,
+      stage: 'encoding',
+      progress: { current: 0, total: 0 },
+      error: null
+    });
+  }, []);
+
   // 设置错误
   const setError = useCallback((error: string) => {
     setState(prev => ({
@@ -175,6 +185,7 @@ export function useExamSheetProgress(options: UseExamSheetProgressOptions = {}) 
   return {
     ...state,
     reset,
+    startProcessing,
     setError
   };
 }

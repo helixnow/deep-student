@@ -560,10 +560,11 @@ export const UnifiedDragDropZone: React.FC<UnifiedDragDropZoneProps> = ({
           
           const payload = event.payload as DragDropPayload;
           
-          // 🔥 关键修复: leave/cancel 事件不需要检查鼠标位置
-          // 因为离开本身就意味着鼠标已经不在区域内了
-          const isLeaveEvent = payload.type === 'leave' || payload.type === 'cancel';
-          if (!isLeaveEvent && !isPointInsideDropZone(payload.position)) return;
+          // 🔥 关键修复: leave/cancel/drop 事件不需要检查鼠标位置
+          // leave/cancel: 离开本身就意味着鼠标已经不在区域内了
+          // drop: 拖拽操作已结束，必须无条件重置拖拽状态，否则当文件被放到其他面板时本区域 isDragging 永远卡住
+          const isEndEvent = payload.type === 'leave' || payload.type === 'cancel' || payload.type === 'drop';
+          if (!isEndEvent && !isPointInsideDropZone(payload.position)) return;
           
           switch (payload.type) {
             case 'enter':
@@ -577,7 +578,8 @@ export const UnifiedDragDropZone: React.FC<UnifiedDragDropZoneProps> = ({
             case 'drop':
               updateDragState(false);
               markNativeDrop(); // 标记原生 drop 已处理
-              if (payload.paths?.length) void processFilePaths(payload.paths);
+              // 只有当 drop 发生在本区域内时才处理文件
+              if (isPointInsideDropZone(payload.position) && payload.paths?.length) void processFilePaths(payload.paths);
               break;
           }
         });

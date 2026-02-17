@@ -490,7 +490,7 @@ jobs:
           ls -lh release-files/
 
       - name: Upload to GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2 pinned
         with:
           tag_name: ${{ needs.prepare.outputs.tag_name }}
           draft: false

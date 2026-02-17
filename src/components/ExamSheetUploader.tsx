@@ -273,6 +273,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
     progress: ocrProgress,
     error: ocrError,
     reset: resetOCRProgress,
+    startProcessing: startOCRProcessing,
     setError: setOCRError,
   } = useExamSheetProgress({
     onSessionUpdate: async (detail) => {
@@ -411,7 +412,9 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
 
   // 图片 OCR 处理
   const handleImageOCR = useCallback(async () => {
-    resetOCRProgress();
+    // ★ 立即标记为处理中，消除按钮点击→SessionCreated 之间的竞态窗口
+    // 防止用户快速双击导致两个并行 OCR 请求（会触发速率限制/请求阻塞）
+    startOCRProcessing();
     
     try {
       const imageFiles = selectedFiles.map(f => f.file);
@@ -431,7 +434,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
       setOCRError(errorMessage);
       showGlobalNotification('error', errorMessage);
     }
-  }, [selectedFiles, sessionId, sessionName, resetOCRProgress, setOCRError]);
+  }, [selectedFiles, sessionId, sessionName, startOCRProcessing, setOCRError]);
 
   // 文档直接导入（使用流式版本，支持实时进度）
   const handleDocumentImport = useCallback(async () => {

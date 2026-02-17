@@ -1,66 +1,29 @@
-# Dependabot 依赖安全更新配置
+# Dependabot 安全更新配置
+#
+# 策略：仅保留安全漏洞自动修复，关闭版本更新。
+# - 已知 CVE → Dependabot Security Updates 自动创建 PR（GitHub 内置，无需此文件配置）
+# - 版本升级 → 完全手动控制，避免供应链投毒风险
+#
+# 注意：此文件控制的是 "Version Updates"（主动拉新版本）。
+# "Security Updates"（CVE 修复）由 GitHub 仓库设置中的 Dependabot Security Updates 开关控制，
+# 即使此文件为空也会生效。
+#
 # https://docs.github.com/en/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
 
 version: 2
 updates:
-  # NPM 依赖
-  - package-ecosystem: "npm"
-    directory: "/"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-    open-pull-requests-limit: 10
-    commit-message:
-      prefix: "chore(deps)"
-    labels:
-      - "dependencies"
-      - "javascript"
-    # 禁止 major 版本升级（破坏性变更需人工评估后手动更新）
-    ignore:
-      - dependency-name: "*"
-        update-types: ["version-update:semver-major"]
-    groups:
-      # 将小型依赖更新分组
-      minor-and-patch:
-        patterns:
-          - "*"
-        update-types:
-          - "minor"
-          - "patch"
-
-  # Rust/Cargo 依赖
-  - package-ecosystem: "cargo"
-    directory: "/src-tauri"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-    open-pull-requests-limit: 10
-    commit-message:
-      prefix: "chore(deps)"
-    labels:
-      - "dependencies"
-      - "rust"
-    # 禁止 major 版本升级（0.x→0.y 在 semver 中属于破坏性变更）
-    ignore:
-      - dependency-name: "*"
-        update-types: ["version-update:semver-major"]
-    groups:
-      minor-and-patch:
-        patterns:
-          - "*"
-        update-types:
-          - "minor"
-          - "patch"
-
-  # GitHub Actions
+  # GitHub Actions — 保留自动更新（低风险，且 action 版本锁定为 SHA 后影响更小）
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
-      interval: "weekly"
+      interval: "monthly"
     commit-message:
       prefix: "chore(ci)"
     labels:
       - "ci"
       - "dependencies"
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
 
 

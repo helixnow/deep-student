@@ -1059,28 +1059,33 @@ impl LLMManager {
             )
             .map_err(|e| Self::provider_error("DeepSeek-OCR 请求构建失败", e))?;
 
-        let client = reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(300))
-            .build()
-            .map_err(|e| AppError::network(format!("创建 HTTP 客户端失败: {}", e)))?;
+        // 估算请求体大小（用于诊断日志）
+        let body_size_estimate = serde_json::to_string(&preq.body)
+            .map(|s| s.len())
+            .unwrap_or(0);
+        info!(
+            "[DeepSeek-OCR] 页面 {} 发送请求: url={}, body_size≈{}KB",
+            page_index,
+            preq.url,
+            body_size_estimate / 1024
+        );
 
-        let mut header_map = reqwest::header::HeaderMap::new();
+        let mut request_builder = self.client.post(&preq.url);
         for (k, v) in preq.headers.iter() {
-            if let (Ok(name), Ok(val)) = (
-                reqwest::header::HeaderName::from_bytes(k.as_bytes()),
-                reqwest::header::HeaderValue::from_str(v),
-            ) {
-                header_map.insert(name, val);
-            }
+            request_builder = request_builder.header(k.as_str(), v.as_str());
         }
 
-        let response = client
-            .post(&preq.url)
-            .headers(header_map)
+        let response = request_builder
             .json(&preq.body)
             .send()
             .await
             .map_err(|e| AppError::network(format!("DeepSeek-OCR 请求失败: {}", e)))?;
+
+        info!(
+            "[DeepSeek-OCR] 页面 {} 收到响应: status={}",
+            page_index,
+            response.status()
+        );
 
         let status = response.status();
         let retry_after_header = response
