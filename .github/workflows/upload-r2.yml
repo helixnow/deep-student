@@ -66,9 +66,18 @@ jobs:
           echo "📤 Uploading release ${TAG} to R2..."
           for FILE in dist/*; do
             NAME=$(basename "$FILE")
-            echo "  ⬆️ ${NAME}..."
+            # 根据扩展名设置 Content-Type
+            case "$NAME" in
+              *.json) CT="application/json" ;;
+              *.sig)  CT="application/pgp-signature" ;;
+              *.dmg)  CT="application/x-apple-diskimage" ;;
+              *.apk)  CT="application/vnd.android.package-archive" ;;
+              *)      CT="application/octet-stream" ;;
+            esac
+            echo "  ⬆️ ${NAME} (${CT})"
             npx wrangler r2 object put "${R2_BUCKET}/releases/${TAG}/${NAME}" \
-              --file "$FILE" --content-type "application/octet-stream" --remote
+              --file "$FILE" --content-type "$CT" \
+              --cache-control "public, max-age=31536000, immutable" --remote
           done
           echo "✅ Upload complete ($(ls dist/ | wc -l | tr -d ' ') files)"
 
