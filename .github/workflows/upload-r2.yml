@@ -57,25 +57,6 @@ jobs:
         with:
           node-version: 22
 
-      - name: Test Cloudflare API Token
-        env:
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-        run: |
-          echo "🔍 Testing API token (account: ${CLOUDFLARE_ACCOUNT_ID:0:8}...)"
-          RESP=$(curl -s "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/r2/buckets" \
-            -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}")
-          echo "$RESP" | head -c 500
-          SUCCESS=$(echo "$RESP" | grep -o '"success":[a-z]*' | head -1)
-          echo ""
-          echo "API response: ${SUCCESS}"
-          if echo "$RESP" | grep -q '"success":false'; then
-            echo "❌ API token verification failed!"
-            echo "$RESP" | grep -o '"message":"[^"]*"' | head -3
-            exit 1
-          fi
-          echo "✅ API token works"
-
       - name: Upload to R2
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
