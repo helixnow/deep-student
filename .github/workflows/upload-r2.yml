@@ -1,14 +1,13 @@
 # 自动同步 GitHub Release 产物到 Cloudflare R2
 #
-# 触发: Release 发布时自动运行
+# 触发: Release 发布时自动运行，也支持手动触发
 # 功能:
 #   1. 下载当前 Release 的所有附件并上传到 R2
-#   2. 清理旧版本，仅保留最近 10 个版本
+#   2. 清理旧版本，仅保留最近 KEEP_VERSIONS 个版本
 #
 # 需要在仓库 Settings → Secrets 中配置:
-#   R2_ACCOUNT_ID       - Cloudflare 账户 ID
-#   R2_ACCESS_KEY_ID    - R2 API Token 的 Access Key ID
-#   R2_SECRET_ACCESS_KEY - R2 API Token 的 Secret Access Key
+#   CLOUDFLARE_ACCOUNT_ID  - Cloudflare 账户 ID
+#   CLOUDFLARE_API_TOKEN   - Cloudflare API Token (需要 R2 Edit 权限)
 
 name: Release to R2
 
@@ -38,7 +37,7 @@ jobs:
           else
             echo "value=${{ github.event.inputs.tag }}" >> $GITHUB_OUTPUT
           fi
-          echo "📌 Tag: $(cat $GITHUB_OUTPUT | grep value | cut -d= -f2)"
+          echo "📌 Tag: $(grep value $GITHUB_OUTPUT | cut -d= -f2)"
 
       - name: Download Release Assets
         uses: robinraju/release-downloader@v1.10
@@ -51,49 +50,40 @@ jobs:
       - name: Show downloaded files
         run: ls -lh dist/
 
-      - name: Install and configure rclone
-        run: |
-          curl -sSL https://rclone.org/install.sh | sudo bash
-          mkdir -p ~/.config/rclone
-          cat > ~/.config/rclone/rclone.conf << EOF
-          [r2]
-          type = s3
-          provider = Cloudflare
-          access_key_id = ${{ secrets.R2_ACCESS_KEY_ID }}
-          secret_access_key = ${{ secrets.R2_SECRET_ACCESS_KEY }}
-          endpoint = https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
-          no_check_bucket = true
-          EOF
-          echo "✅ rclone configured"
-
-      - name: Test R2 connectivity
-        run: |
-          ENDPOINT="${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com"
-          echo "🔍 Testing endpoint: ${ENDPOINT}"
-          echo "--- DNS ---"
-          nslookup "${ENDPOINT}" || true
-          echo "--- TCP 443 ---"
-          timeout 5 bash -c "echo | openssl s_client -connect ${ENDPOINT}:443 2>&1 | head -20" || true
-          echo "--- rclone listremotes ---"
-          rclone listremotes
-          echo "--- rclone lsd (list buckets, 10s timeout) ---"
-          timeout 10 rclone lsd r2: -vv 2>&1 | tail -30 || echo "⚠️ Timed out listing buckets"
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
 
       - name: Upload to R2
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: |
           TAG="${{ steps.tag.outputs.value }}"
           echo "📤 Uploading release ${TAG} to R2..."
-          rclone copy dist/ "r2:${R2_BUCKET}/releases/${TAG}/" \
-            --progress --timeout 60s --retries 2 -v
+          for FILE in dist/*; do
+            NAME=$(basename "$FILE")
+            echo "  ⬆️ ${NAME}..."
+            npx wrangler r2 object put "${R2_BUCKET}/releases/${TAG}/${NAME}" \
+              --file "$FILE" --content-type "application/octet-stream"
+          done
           echo "✅ Upload complete"
-          rclone ls "r2:${R2_BUCKET}/releases/${TAG}/"
+          echo "📋 Listing uploaded files:"
+          npx wrangler r2 object list "${R2_BUCKET}" --prefix "releases/${TAG}/" \
+            | grep -o '"key":"[^"]*"' | sed 's/"key":"//;s/"//' | sed 's|^|  |'
 
       - name: Cleanup old versions (keep latest ${{ env.KEEP_VERSIONS }})
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: |
           echo "🧹 Checking for old versions to clean up..."
 
-          # 列出所有版本目录
-          ALL_VERSIONS=$(rclone lsf "r2:${R2_BUCKET}/releases/" --dirs-only | sed 's|/||' | sort -V)
+          # 列出所有版本前缀
+          ALL_VERSIONS=$(npx wrangler r2 object list "${R2_BUCKET}" --prefix "releases/" \
+            | grep -o '"key":"releases/[^/]*/' | sed 's/"key":"releases\///;s/\///' \
+            | sort -uV)
 
           TOTAL=$(echo "$ALL_VERSIONS" | grep -c . || true)
           echo "Found ${TOTAL} versions in R2"
@@ -103,7 +93,6 @@ jobs:
             exit 0
           fi
 
-          # 计算需要删除的版本数
           DELETE_COUNT=$((TOTAL - KEEP_VERSIONS))
           TO_DELETE=$(echo "$ALL_VERSIONS" | head -n "$DELETE_COUNT")
 
@@ -111,8 +100,12 @@ jobs:
           echo "$TO_DELETE" | while read -r VERSION; do
             [ -z "$VERSION" ] && continue
             echo "  Removing releases/${VERSION}/..."
-            rclone purge "r2:${R2_BUCKET}/releases/${VERSION}/"
+            # 列出该版本下的所有文件并逐个删除
+            npx wrangler r2 object list "${R2_BUCKET}" --prefix "releases/${VERSION}/" \
+              | grep -o '"key":"[^"]*"' | sed 's/"key":"//;s/"//' \
+              | while read -r KEY; do
+                npx wrangler r2 object delete "${R2_BUCKET}/${KEY}"
+              done
           done
 
-          echo "✅ Cleanup complete. Remaining versions:"
-          rclone lsf "r2:${R2_BUCKET}/releases/" --dirs-only | sort -V | sed 's|^|  |'
+          echo "✅ Cleanup complete"

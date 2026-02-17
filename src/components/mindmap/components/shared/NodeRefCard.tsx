@@ -7,68 +7,11 @@
 
 import React, { useCallback } from 'react';
 import { NotionButton } from '@/components/ui/NotionButton';
-import {
-  FileText,
-  BookOpen,
-  ClipboardList,
-  Languages,
-  Pencil,
-  Image as ImageIcon,
-  File,
-  Brain,
-  X,
-  Search,
-} from 'lucide-react';
+import { X } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { getResourceIcon, type ResourceIconType } from '@/components/learning-hub/icons';
 import type { MindMapNodeRef } from '../../types';
 
-// ============================================================================
-// 类型图标映射（与 Chat V2 ContextRefChips 保持一致）
-// ============================================================================
-
-const getRefIcon = (type: string): React.ElementType => {
-  switch (type) {
-    case 'note':
-      return FileText;
-    case 'textbook':
-      return BookOpen;
-    case 'exam':
-      return ClipboardList;
-    case 'essay':
-      return Pencil;
-    case 'translation':
-      return Languages;
-    case 'image':
-      return ImageIcon;
-    case 'file':
-      return File;
-    case 'mindmap':
-      return Brain;
-    case 'retrieval':
-      return Search;
-    default:
-      return FileText;
-  }
-};
-
-const getRefColorClass = (type: string): string => {
-  switch (type) {
-    case 'note':
-      return 'text-blue-600 dark:text-blue-400';
-    case 'textbook':
-      return 'text-purple-600 dark:text-purple-400';
-    case 'exam':
-      return 'text-orange-600 dark:text-orange-400';
-    case 'essay':
-      return 'text-green-600 dark:text-green-400';
-    case 'translation':
-      return 'text-cyan-600 dark:text-cyan-400';
-    case 'mindmap':
-      return 'text-indigo-600 dark:text-indigo-400';
-    default:
-      return 'text-muted-foreground';
-  }
-};
 
 // ============================================================================
 // 组件
@@ -89,8 +32,7 @@ export const NodeRefCard: React.FC<NodeRefCardProps> = ({
   readonly = false,
   className,
 }) => {
-  const Icon = getRefIcon(ref_.type);
-  const colorClass = getRefColorClass(ref_.type);
+  const IconComp = getResourceIcon(ref_.type as ResourceIconType);
 
   const handleClick = useCallback(
     (e: React.MouseEvent) => {
@@ -124,7 +66,7 @@ export const NodeRefCard: React.FC<NodeRefCardProps> = ({
       onClick={handleClick}
       title={`${ref_.name} (${ref_.sourceId})`}
     >
-      <Icon className={cn('w-3 h-3 shrink-0', colorClass)} />
+      <IconComp size={14} className="shrink-0" />
       <span className="truncate">{ref_.name}</span>
       {!readonly && onRemove && (
         <NotionButton variant="ghost" size="icon" iconOnly onClick={handleRemove} className="!ml-0.5 !-mr-0.5 !p-0.5 !h-auto !w-auto !min-w-0 !rounded-sm opacity-0 group-hover/ref:opacity-60 hover:!opacity-100 hover:bg-destructive/10" aria-label="remove">

@@ -11,20 +11,14 @@ import { createPortal } from 'react-dom';
 import {
   Search,
   X,
-  FileText,
-  BookOpen,
-  ClipboardList,
-  Languages,
-  Pencil,
-  Brain,
-  Image as ImageIcon,
-  File,
   Loader2,
   Check,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { Z_INDEX } from '@/config/zIndex';
+import { getResourceIcon, type ResourceIconType } from '@/components/learning-hub/icons';
 import * as dstuApi from '@/dstu/api';
 import type { DstuNode } from '@/dstu/types';
 import type { MindMapNodeRef } from '../../types';
@@ -41,35 +35,6 @@ export interface MindMapResourcePickerProps {
   onClose: () => void;
 }
 
-// ============================================================================
-// 图标映射
-// ============================================================================
-
-const getTypeIcon = (type: string): React.ElementType => {
-  switch (type) {
-    case 'note': return FileText;
-    case 'textbook': return BookOpen;
-    case 'exam': return ClipboardList;
-    case 'essay': return Pencil;
-    case 'translation': return Languages;
-    case 'mindmap': return Brain;
-    case 'image': return ImageIcon;
-    case 'file': return File;
-    default: return FileText;
-  }
-};
-
-const getTypeBadgeClass = (type: string): string => {
-  switch (type) {
-    case 'note': return 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300';
-    case 'textbook': return 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300';
-    case 'exam': return 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300';
-    case 'essay': return 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300';
-    case 'translation': return 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-300';
-    case 'mindmap': return 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300';
-    default: return 'bg-muted text-muted-foreground';
-  }
-};
 
 // ============================================================================
 // 组件
@@ -227,7 +192,7 @@ export const MindMapResourcePicker: React.FC<MindMapResourcePickerProps> = ({
       </div>
 
       {/* 资源列表 */}
-      <div className="flex-1 overflow-y-auto min-h-0 p-1">
+      <CustomScrollArea className="flex-1 min-h-0" viewportClassName="p-1" hideTrackWhenIdle>
         {loading ? (
           <div className="flex items-center justify-center py-8 text-muted-foreground">
             <Loader2 className="w-5 h-5 animate-spin mr-2" />
@@ -241,9 +206,8 @@ export const MindMapResourcePicker: React.FC<MindMapResourcePickerProps> = ({
           </div>
         ) : (
           resources.map((node) => {
-            const Icon = getTypeIcon(node.type);
+            const IconComp = getResourceIcon(node.type as ResourceIconType);
             const isAdded = existingIds.has(node.sourceId || node.id);
-            const badgeClass = getTypeBadgeClass(node.type);
 
             return (
               <NotionButton
@@ -258,9 +222,7 @@ export const MindMapResourcePicker: React.FC<MindMapResourcePickerProps> = ({
                     : 'hover:bg-accent cursor-pointer',
                 )}
               >
-                <span className={cn('w-5 h-5 rounded flex items-center justify-center shrink-0', badgeClass)}>
-                  <Icon className="w-3 h-3" />
-                </span>
+                <IconComp size={20} className="shrink-0" />
                 <span className="flex-1 min-w-0 text-sm truncate">{node.name}</span>
                 {isAdded && (
                   <Check className="w-3.5 h-3.5 text-primary shrink-0" />
@@ -269,7 +231,7 @@ export const MindMapResourcePicker: React.FC<MindMapResourcePickerProps> = ({
             );
           })
         )}
-      </div>
+      </CustomScrollArea>
     </div>,
     window.document.body
   );

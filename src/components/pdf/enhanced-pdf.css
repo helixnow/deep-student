@@ -194,11 +194,6 @@
   bottom: calc(100% + 4px);
 }
 
-.ds-zoom-dropdown--up {
-  top: auto;
-  bottom: calc(100% + 4px);
-}
-
 .ds-more-item {
   display: flex;
   align-items: center;
@@ -336,10 +331,18 @@
 
 .ds-zoom-dropdown {
   position: absolute;
-  top: 100%;
   left: 50%;
   transform: translateX(-50%);
+}
+
+.ds-zoom-dropdown:not(.ds-zoom-dropdown--up) {
+  top: 100%;
   margin-top: 4px;
+}
+
+.ds-zoom-dropdown--up {
+  bottom: 100%;
+  margin-bottom: 4px;
   min-width: 120px;
   padding: 4px;
   border-radius: 8px;
