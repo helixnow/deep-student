@@ -51,40 +51,37 @@ jobs:
       - name: Show downloaded files
         run: ls -lh dist/
 
-      - name: Configure AWS CLI for R2
-        env:
-          AWS_EC2_METADATA_DISABLED: true
+      - name: Install and configure rclone
         run: |
-          aws configure set aws_access_key_id "${{ secrets.R2_ACCESS_KEY_ID }}"
-          aws configure set aws_secret_access_key "${{ secrets.R2_SECRET_ACCESS_KEY }}"
-          aws configure set default.region auto
-          aws configure set default.s3.addressing_style path
+          curl -sSL https://rclone.org/install.sh | sudo bash
+          mkdir -p ~/.config/rclone
+          cat > ~/.config/rclone/rclone.conf << EOF
+          [r2]
+          type = s3
+          provider = Cloudflare
+          access_key_id = ${{ secrets.R2_ACCESS_KEY_ID }}
+          secret_access_key = ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          endpoint = https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
+          no_check_bucket = true
+          EOF
+          echo "✅ rclone configured"
 
       - name: Upload to R2
-        env:
-          R2_ENDPOINT: https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
         run: |
           TAG="${{ steps.tag.outputs.value }}"
           echo "📤 Uploading release ${TAG} to R2..."
-          aws s3 sync dist/ "s3://${R2_BUCKET}/releases/${TAG}/" \
-            --endpoint-url "${R2_ENDPOINT}" \
-            --no-progress
+          rclone copy dist/ "r2:${R2_BUCKET}/releases/${TAG}/" --progress
           echo "✅ Upload complete"
-          aws s3 ls "s3://${R2_BUCKET}/releases/${TAG}/" \
-            --endpoint-url "${R2_ENDPOINT}"
+          rclone ls "r2:${R2_BUCKET}/releases/${TAG}/"
 
       - name: Cleanup old versions (keep latest ${{ env.KEEP_VERSIONS }})
-        env:
-          R2_ENDPOINT: https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
         run: |
           echo "🧹 Checking for old versions to clean up..."
 
           # 列出所有版本目录
-          ALL_VERSIONS=$(aws s3 ls "s3://${R2_BUCKET}/releases/" \
-            --endpoint-url "${R2_ENDPOINT}" \
-            | awk '{print $2}' | sed 's|/||' | sort -V)
+          ALL_VERSIONS=$(rclone lsf "r2:${R2_BUCKET}/releases/" --dirs-only | sed 's|/||' | sort -V)
 
-          TOTAL=$(echo "$ALL_VERSIONS" | wc -l | tr -d ' ')
+          TOTAL=$(echo "$ALL_VERSIONS" | grep -c . || true)
           echo "Found ${TOTAL} versions in R2"
 
           if [ "$TOTAL" -le "$KEEP_VERSIONS" ]; then
@@ -100,12 +97,8 @@ jobs:
           echo "$TO_DELETE" | while read -r VERSION; do
             [ -z "$VERSION" ] && continue
             echo "  Removing releases/${VERSION}/..."
-            aws s3 rm "s3://${R2_BUCKET}/releases/${VERSION}/" \
-              --endpoint-url "${R2_ENDPOINT}" \
-              --recursive --quiet
+            rclone purge "r2:${R2_BUCKET}/releases/${VERSION}/"
           done
 
           echo "✅ Cleanup complete. Remaining versions:"
-          aws s3 ls "s3://${R2_BUCKET}/releases/" \
-            --endpoint-url "${R2_ENDPOINT}" \
-            | awk '{print "  " $2}'
+          rclone lsf "r2:${R2_BUCKET}/releases/" --dirs-only | sort -V | sed 's|^|  |'
