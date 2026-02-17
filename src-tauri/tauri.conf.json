@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Deep Student",
-  "version": "0.9.10",
+  "version": "0.9.11",
   "identifier": "com.deepstudent.app",
   "build": {
     "frontendDist": "../dist",
