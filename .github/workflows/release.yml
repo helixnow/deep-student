@@ -3,7 +3,6 @@
 # 触发方式:
 #   1. 推送到 main → release-please 自动管理 Release PR
 #   2. 合并 Release PR → 自动构建 + 发布全平台产物
-#   3. 推送 v* 标签 → 手动触发构建 + 发布（兼容旧方式）
 #
 # 需要在仓库 Settings → Secrets 中配置:
 #   TAURI_SIGNING_PRIVATE_KEY          - Tauri 更新签名私钥
@@ -23,7 +22,6 @@ name: Release
 on:
   push:
     branches: [main]
-    tags: ['v*']
 
 env:
   GITHUB_REPO: ${{ github.repository }}
@@ -59,12 +57,7 @@ jobs:
     steps:
       - id: check
         run: |
-          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
-            echo "should_build=true" >> $GITHUB_OUTPUT
-            echo "tag_name=${GITHUB_REF_NAME}" >> $GITHUB_OUTPUT
-            echo "version=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
-            echo "🏷️ Manual tag push: ${GITHUB_REF_NAME}"
-          elif [[ "${{ needs.release-please.outputs.release_created }}" == "true" ]]; then
+          if [[ "${{ needs.release-please.outputs.release_created }}" == "true" ]]; then
             echo "should_build=true" >> $GITHUB_OUTPUT
             TAG="${{ needs.release-please.outputs.tag_name }}"
             echo "tag_name=${TAG}" >> $GITHUB_OUTPUT
