@@ -1,5 +1,4 @@
 // 新增：按阶段动态 JSON 校验模块
-use jsonschema::JSONSchema;
 use serde_json::Value;
 use std::ops::Deref;
 use std::sync::LazyLock;
@@ -110,12 +109,11 @@ pub fn validate(stage: Stage, data: &Value) -> Result<(), Vec<String>> {
         Stage::AiRecommendation => AI_RECOMMEND_SCHEMA.deref(),
         Stage::ContentAnalysis => CONTENT_ANALYSIS_SCHEMA.deref(),
     };
-    let compiled = JSONSchema::compile(schema).map_err(|e| vec![e.to_string()])?;
-    let result = compiled.validate(data);
-    if let Err(errors) = result {
-        let msgs: Vec<String> = errors.map(|e| e.to_string()).collect();
-        Err(msgs)
-    } else {
+    let validator = jsonschema::validator_for(schema).map_err(|e| vec![e.to_string()])?;
+    let errors: Vec<String> = validator.iter_errors(data).map(|e| e.to_string()).collect();
+    if errors.is_empty() {
         Ok(())
+    } else {
+        Err(errors)
     }
 }
