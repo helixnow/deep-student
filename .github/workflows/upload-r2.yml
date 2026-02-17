@@ -66,11 +66,25 @@ jobs:
           EOF
           echo "✅ rclone configured"
 
+      - name: Test R2 connectivity
+        run: |
+          ENDPOINT="${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com"
+          echo "🔍 Testing endpoint: ${ENDPOINT}"
+          echo "--- DNS ---"
+          nslookup "${ENDPOINT}" || true
+          echo "--- TCP 443 ---"
+          timeout 5 bash -c "echo | openssl s_client -connect ${ENDPOINT}:443 2>&1 | head -20" || true
+          echo "--- rclone listremotes ---"
+          rclone listremotes
+          echo "--- rclone lsd (list buckets, 10s timeout) ---"
+          timeout 10 rclone lsd r2: -vv 2>&1 | tail -30 || echo "⚠️ Timed out listing buckets"
+
       - name: Upload to R2
         run: |
           TAG="${{ steps.tag.outputs.value }}"
           echo "📤 Uploading release ${TAG} to R2..."
-          rclone copy dist/ "r2:${R2_BUCKET}/releases/${TAG}/" --progress
+          rclone copy dist/ "r2:${R2_BUCKET}/releases/${TAG}/" \
+            --progress --timeout 60s --retries 2 -v
           echo "✅ Upload complete"
           rclone ls "r2:${R2_BUCKET}/releases/${TAG}/"
 
