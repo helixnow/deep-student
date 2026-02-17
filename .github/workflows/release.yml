@@ -501,7 +501,13 @@ jobs:
           files: release-files/*
 
       # ─── R2 镜像上传 ──────────────────────────────────────
+      - name: Setup Node.js for wrangler
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
       - name: Upload to Cloudflare R2
+        continue-on-error: true
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -510,8 +516,9 @@ jobs:
           echo "📤 Uploading release ${TAG} to R2..."
           for FILE in release-files/*; do
             NAME=$(basename "$FILE")
+            # 跳过 latest.json（GitHub URL 版本），后续会生成 R2 专用版
+            [ "$NAME" = "latest.json" ] && continue
             case "$NAME" in
-              *.json) CT="application/json" ;;
               *.sig)  CT="application/pgp-signature" ;;
               *.dmg)  CT="application/x-apple-diskimage" ;;
               *.apk)  CT="application/vnd.android.package-archive" ;;
@@ -525,6 +532,7 @@ jobs:
           echo "✅ R2 upload complete"
 
       - name: Generate R2 latest.json
+        continue-on-error: true
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -562,6 +570,7 @@ jobs:
           echo "✅ R2 latest.json uploaded"
 
       - name: Cleanup old R2 versions
+        continue-on-error: true
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
