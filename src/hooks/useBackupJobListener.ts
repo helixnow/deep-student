@@ -55,6 +55,30 @@ export function useBackupJobListener(
 
       setIsListening(true);
 
+      // Track whether a terminal event has already been dispatched
+      const terminalHandled = { current: false };
+
+      const handleEvent = (event: BackupJobEvent) => {
+        if (!mountedRef.current || terminalHandled.current) {
+          return;
+        }
+
+        optionsRef.current.onProgress?.(event);
+
+        if (isBackupJobTerminal(event.status)) {
+          terminalHandled.current = true;
+          if (event.status === 'completed') {
+            optionsRef.current.onComplete?.(event);
+          } else if (event.status === 'failed') {
+            optionsRef.current.onError?.(event);
+          } else if (event.status === 'cancelled') {
+            optionsRef.current.onCancelled?.(event);
+          }
+
+          stopListening();
+        }
+      };
+
       const unlisten = await DataGovernanceApi.listenBackupProgress(
         jobId,
         (event: BackupJobEvent) => {
@@ -62,20 +86,7 @@ export function useBackupJobListener(
             unlisten();
             return;
           }
-
-          optionsRef.current.onProgress?.(event);
-
-          if (isBackupJobTerminal(event.status)) {
-            if (event.status === 'completed') {
-              optionsRef.current.onComplete?.(event);
-            } else if (event.status === 'failed') {
-              optionsRef.current.onError?.(event);
-            } else if (event.status === 'cancelled') {
-              optionsRef.current.onCancelled?.(event);
-            }
-
-            stopListening();
-          }
+          handleEvent(event);
         }
       );
 
@@ -83,6 +94,34 @@ export function useBackupJobListener(
         unlistenRef.current = unlisten;
       } else {
         unlisten();
+        return;
+      }
+
+      // Polling fallback: check current job state once after listener setup.
+      // This catches terminal events emitted between job start and listener registration.
+      try {
+        const job = await DataGovernanceApi.getBackupJob(jobId);
+        if (job && mountedRef.current && !terminalHandled.current) {
+          if (isBackupJobTerminal(job.status as BackupJobEvent['status'])) {
+            handleEvent({
+              job_id: job.job_id,
+              kind: job.kind,
+              status: job.status,
+              phase: job.phase || '',
+              progress: job.progress ?? 0,
+              message: job.message,
+              processed_items: 0,
+              total_items: 0,
+              cancellable: false,
+              created_at: job.created_at,
+              started_at: job.started_at,
+              finished_at: job.finished_at,
+              result: job.result,
+            } as BackupJobEvent);
+          }
+        }
+      } catch {
+        // Polling fallback is best-effort; event listener is the primary mechanism
       }
     },
     [stopListening]

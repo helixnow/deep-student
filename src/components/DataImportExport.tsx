@@ -41,6 +41,7 @@ import { LlmUsageStatsSection } from './llm-usage/LlmUsageStatsSection';
 import { useChatV2Stats } from '../hooks/useChatV2Stats';
 import { LearningHeatmap } from './LearningHeatmap';
 import { Progress as ShadProgress } from './ui/shad/Progress';
+import { useSystemStatusStore } from '../stores/systemStatusStore';
 import {
   AreaChart,
   Area,
@@ -190,7 +191,7 @@ const StatCard = ({
   formatNumber?: (num: number) => string;
   index?: number;
 }) => {
-  const { t } = useTranslation(['data', 'common']);
+  const { t } = useTranslation(['data', 'common', 'settings', 'chat_host', 'cloudStorage']);
 
   const defaultFormatNumber = (num: number) => {
     if (num >= 1000000) return `${(num / 1000000).toFixed(1)}M`;
@@ -239,6 +240,7 @@ const StatCard = ({
 
 export const DataImportExport: React.FC<DataImportExportProps> = ({ onClose, embedded = false, mode = 'all' }) => {
   const { t } = useTranslation(['data', 'common']);
+  const { enterMaintenanceMode, exitMaintenanceMode } = useSystemStatusStore();
   const [activeTab, setActiveTab] = useState('backup');
   // 获取会话统计数据，用于合并趋势图
   const chatStats = useChatV2Stats(false);
@@ -302,6 +304,13 @@ export const DataImportExport: React.FC<DataImportExportProps> = ({ onClose, emb
     currentFile?: string;
   } | null>(null);
   const exportListenerRef = useRef<null | (() => void)>(null);
+  const [restoreProgress, setRestoreProgress] = useState<{
+    progress: number;
+    phase: string;
+    message?: string;
+    processedItems: number;
+    totalItems: number;
+  } | null>(null);
   const [backupList, setBackupList] = useState<GovernanceBackupInfo[]>([]);
   const [isLoadingBackups, setIsLoadingBackups] = useState(false);
   const [showClearDataDialog, setShowClearDataDialog] = useState(false);
@@ -408,6 +417,7 @@ export const DataImportExport: React.FC<DataImportExportProps> = ({ onClose, emb
     jobId: string,
     kind: 'export' | 'import',
     timeoutMs = 120000,
+    onProgress?: (payload: BackupJobEventPayload) => void,
   ): Promise<BackupJobEventPayload> => {
     const { listen } = await import('@tauri-apps/api/event');
 
@@ -466,6 +476,8 @@ export const DataImportExport: React.FC<DataImportExportProps> = ({ onClose, emb
             finish(payload, false);
           } else if (payload.status === 'failed' || payload.status === 'cancelled') {
             finish(payload, true);
+          } else {
+            onProgress?.(payload);
           }
         } catch {
           // ignore transient polling failures; event stream may still deliver terminal state
@@ -496,6 +508,8 @@ export const DataImportExport: React.FC<DataImportExportProps> = ({ onClose, emb
       listen<BackupJobEventPayload>('backup-job-progress', (event) => {
         const payload = event?.payload as BackupJobEventPayload;
         if (!payload || getEventJobId(payload) !== jobId) return;
+
+        onProgress?.(payload);
 
         if (payload.status === 'completed') {
           finish(payload, false);
@@ -595,16 +609,17 @@ export const DataImportExport: React.FC<DataImportExportProps> = ({ onClose, emb
   }) => {
     cleanupExportListener();
     setIsExporting(false);
-  setExportJob(prev => {
-    if (!prev || prev.jobId !== jobId) return prev;
-    return {
-      ...prev,
-      status: result.status,
-      progress: result.status === 'completed' ? 100 : prev.progress,
-      message: result.message || prev.message,
-    };
-  });
-  }, [cleanupExportListener]);
+    exitMaintenanceMode();
+    setExportJob(prev => {
+      if (!prev || prev.jobId !== jobId) return prev;
+      return {
+        ...prev,
+        status: result.status,
+        progress: result.status === 'completed' ? 100 : prev.progress,
+        message: result.message || prev.message,
+      };
+    });
+  }, [cleanupExportListener, exitMaintenanceMode]);
 
   const handleExport = async () => {
     cleanupExportListener();
@@ -630,6 +645,8 @@ export const DataImportExport: React.FC<DataImportExportProps> = ({ onClose, emb
         targetPath = picked;
       }
 
+      enterMaintenanceMode(t('data:governance.maintenance_backup'));
+
       // 备份前保存 WebView localStorage 设置，确保 UI 偏好进入备份。
       try {
         const localStorageData = TauriAPI.collectLocalStorageForBackup();
@@ -644,7 +661,7 @@ export const DataImportExport: React.FC<DataImportExportProps> = ({ onClose, emb
         undefined,
         false,
       );
-      const backupPayload = await waitForJobTerminal(backupJobResp.job_id, 'export');
+      const backupPayload = await waitForJobTerminal(backupJobResp.job_id, 'export', 600000);
       const backupId = resolveBackupIdFromEvent(backupPayload);
       if (!backupId) {
         throw new Error(t('data:errors.backup_id_not_resolved'));
@@ -718,6 +735,7 @@ ${resolvedPath}`);
       setExportJob(null);
       setExportError(errorMessage);
       setIsExporting(false);
+      exitMaintenanceMode();
     }
   };
 
@@ -745,18 +763,33 @@ ${resolvedPath}`);
     }
   };
 
+  // 恢复进度回调：更新 restoreProgress 状态
+  const handleRestoreProgress = useCallback((payload: BackupJobEventPayload) => {
+    setRestoreProgress({
+      progress: payload.progress ?? 0,
+      phase: payload.phase ?? '',
+      message: payload.message,
+      processedItems: payload.processedItems ?? payload.processed_items ?? 0,
+      totalItems: payload.totalItems ?? payload.total_items ?? 0,
+    });
+  }, []);
+
   // 从备份列表直接恢复
   const handleImportFromList = async (backupId: string) => {
     setIsExporting(true);
+    setRestoreProgress(null);
+    enterMaintenanceMode(t('data:governance.maintenance_restore'));
     try {
       const restoreJob = await DataGovernanceApi.restoreBackup(backupId);
-      await waitForJobTerminal(restoreJob.job_id, 'import');
+      await waitForJobTerminal(restoreJob.job_id, 'import', 600000, handleRestoreProgress);
       showGlobalNotification('success', t('data:restore_complete'));
     } catch (error) {
       const errorMessage = getErrorMessage(error);
       showGlobalNotification('error', `${t('data:restore_error')}: ${errorMessage}`);
     } finally {
       setIsExporting(false);
+      setRestoreProgress(null);
+      exitMaintenanceMode();
     }
   };
 
@@ -774,6 +807,8 @@ ${resolvedPath}`);
         showGlobalNotification('info', t('data:import_cancelled'));
         return;
       }
+
+      enterMaintenanceMode(t('data:governance.maintenance_import'));
 
       const isLikelyZipPath = (candidate: string) => {
         if (!candidate) return false;
@@ -807,8 +842,9 @@ ${resolvedPath}`);
         throw new Error(t('data:errors.zip_import_backup_id_not_resolved'));
       }
 
+      setRestoreProgress(null);
       const restoreJob = await DataGovernanceApi.restoreBackup(importedBackupId);
-      await waitForJobTerminal(restoreJob.job_id, 'import');
+      await waitForJobTerminal(restoreJob.job_id, 'import', 600000, handleRestoreProgress);
 
       showGlobalNotification('success', t('data:restore_complete'));
       await loadBackupList();
@@ -819,6 +855,8 @@ ${resolvedPath}`);
       showGlobalNotification('error', `${label}: ${errorMessage}`);
     } finally {
       setIsExporting(false);
+      setRestoreProgress(null);
+      exitMaintenanceMode();
     }
   };
 
@@ -1699,10 +1737,28 @@ ${resolvedPath}`);
               <CardDescription>{t('data:actions.import_description')}</CardDescription>
             </CardHeader>
             <CardFooter>
-              <NotionButton variant="ghost" size="sm" onClick={handleImportZipBackup}>
-                {t('data:actions.import_button')}
+              <NotionButton variant="ghost" size="sm" onClick={handleImportZipBackup} disabled={isExporting}>
+                {isExporting && restoreProgress ? (
+                  <><Loader2 className="mr-1.5 h-4 w-4 animate-spin" />{t('data:restore_in_progress')}</>
+                ) : (
+                  t('data:actions.import_button')
+                )}
               </NotionButton>
             </CardFooter>
+            {restoreProgress && (
+              <CardContent className="pt-0 pb-4 space-y-2">
+                <div className="flex items-center justify-between text-sm text-muted-foreground">
+                  <span className="font-medium text-foreground">{restoreProgress.message || restoreProgress.phase}</span>
+                  <span>{Math.round(restoreProgress.progress)}%</span>
+                </div>
+                <ShadProgress value={restoreProgress.progress} />
+                {restoreProgress.totalItems > 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    {restoreProgress.processedItems} / {restoreProgress.totalItems} {t('data:governance.items')}
+                  </p>
+                )}
+              </CardContent>
+            )}
           </Card>
 
           {/* 🎯 导入对话（新增）*/}

@@ -104,41 +104,42 @@ export interface BackupTabProps {
   lastAutoVerifyResult?: AutoVerifyResponse | null;
 }
 
-// Task 2: 恢复操作阶段指示器
+// Task 2: 恢复操作阶段指示器（细粒度：scan → verify → databases → assets → cleanup）
 interface RestorePhaseIndicatorProps {
   phase: string;
   progress: number;
+  message?: string;
   t: (key: string, options?: Record<string, unknown>) => string;
 }
 
-const RESTORE_PHASES = [
-  { key: 'pre_backup', minProgress: 0 },
-  { key: 'restoring', minProgress: 25 },
-  { key: 'verifying', minProgress: 70 },
-  { key: 'finalizing', minProgress: 95 },
-] as const;
-
-const RestorePhaseIndicator: React.FC<RestorePhaseIndicatorProps> = ({ phase, progress, t }) => {
-  // 根据 progress 和 phase 确定当前阶段
+const RestorePhaseIndicator: React.FC<RestorePhaseIndicatorProps> = ({ phase, progress, message, t }) => {
+  // 根据后端 phase + progress 确定当前阶段索引
+  // 后端阶段: scan(0-5%) → verify(5-15%) → replace/db(15-80%) → replace/assets(80-92%) → cleanup(92-100%)
   const getPhaseIndex = () => {
     const phaseLower = phase.toLowerCase();
-    if (phaseLower.includes('pre') || phaseLower.includes('backup') || phaseLower.includes('creating')) return 0;
-    if (phaseLower.includes('restor') || phaseLower.includes('database') || phaseLower.includes('copy')) return 1;
-    if (phaseLower.includes('verif') || phaseLower.includes('integrit') || phaseLower.includes('check')) return 2;
-    if (phaseLower.includes('done') || phaseLower.includes('final') || phaseLower.includes('complet') || phaseLower.includes('restart')) return 3;
+    if (phaseLower === 'scan' || phaseLower === 'queued') return 0;
+    if (phaseLower === 'verify') return 1;
+    if (phaseLower === 'replace' || phaseLower === 'extract') {
+      // replace 阶段内细分：数据库(15-80%) vs 资产(80-92%)
+      if (progress >= 80 || (message && message.includes('资产'))) return 3;
+      return 2;
+    }
+    if (phaseLower === 'cleanup' || phaseLower === 'completed') return 4;
     // 按进度 fallback
-    if (progress >= 95) return 3;
-    if (progress >= 70) return 2;
-    if (progress >= 25) return 1;
+    if (progress >= 92) return 4;
+    if (progress >= 80) return 3;
+    if (progress >= 15) return 2;
+    if (progress >= 5) return 1;
     return 0;
   };
 
   const currentPhaseIndex = getPhaseIndex();
 
   const phaseLabels = [
-    t('data:governance.restore_phase_pre_backup'),
-    t('data:governance.restore_phase_restoring'),
+    t('data:governance.restore_phase_scan'),
     t('data:governance.restore_phase_verifying'),
+    t('data:governance.restore_phase_restoring'),
+    t('data:governance.restore_phase_assets'),
     t('data:governance.restore_phase_finalizing'),
   ];
 
@@ -434,7 +435,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
           {/* Task 2: 恢复操作阶段详细信息 */}
           {currentJobOperation === 'restore' && (
             <div className="text-xs text-muted-foreground bg-background/50 rounded-md p-2 space-y-1">
-              <RestorePhaseIndicator phase={backupProgress.phase} progress={backupProgress.progress} t={t} />
+              <RestorePhaseIndicator phase={backupProgress.phase} progress={backupProgress.progress} message={backupProgress.message} t={t} />
             </div>
           )}
 

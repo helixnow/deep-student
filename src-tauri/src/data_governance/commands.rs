@@ -4792,13 +4792,14 @@ pub async fn data_governance_restore_backup(
     })
 }
 
-/// 执行恢复（内部函数，带进度回调）
+/// 执行恢复（内部函数，带细粒度进度回调）
 ///
-/// 进度阶段设计：
-/// - Scan (5%): 验证备份清单
-/// - Verify (5-15%): 验证备份文件校验和
-/// - Replace (15-90%): 恢复数据库（每个数据库更新一次进度）
-/// - Cleanup (90-100%): 清理和验证
+/// 进度阶段设计（细粒度，每个数据库/资产文件独立上报）：
+/// - Scan (0-5%): 验证备份清单、版本兼容性
+/// - Verify (5-15%): 逐文件验证校验和 + 完整性检查
+/// - Replace (15-80%): 逐数据库恢复（每完成一个数据库更新一次进度）
+/// - Replace (80-92%): 逐文件恢复资产（带 per-file 进度）
+/// - Cleanup (92-100%): 插槽切换标记、审计日志
 async fn execute_restore_with_progress(
     app: tauri::AppHandle,
     job_ctx: BackupJobContext,
@@ -4806,6 +4807,8 @@ async fn execute_restore_with_progress(
     restore_assets: Option<bool>,
 ) {
     use super::backup::BackupManager;
+    use super::backup::assets;
+    use super::schema_registry::DatabaseId;
     use std::time::Instant;
 
     let start = Instant::now();
@@ -4834,13 +4837,13 @@ async fn execute_restore_with_progress(
         return;
     }
 
-    // ============ 阶段 1: Scan (5%) - 验证备份清单 ============
+    // ============ 阶段 1: Scan (0-5%) - 验证备份清单 ============
     job_ctx.mark_running(
         BackupJobPhase::Scan,
-        5.0,
+        2.0,
         Some("正在验证备份清单...".to_string()),
         0,
-        4, // 估计 4 个数据库
+        0,
     );
 
     // 检查取消（安全点）
@@ -4850,7 +4853,7 @@ async fn execute_restore_with_progress(
     }
 
     // 创建备份管理器
-    let mut manager = BackupManager::new(backup_dir);
+    let mut manager = BackupManager::new(backup_dir.clone());
     manager.set_app_data_dir(app_data_dir.clone());
     manager.set_app_version(env!("CARGO_PKG_VERSION").to_string());
 
@@ -4881,27 +4884,49 @@ async fn execute_restore_with_progress(
         return;
     }
 
-    // 计算数据库数量
+    // 版本兼容性检查
+    if let Err(e) = manager.check_manifest_compatibility(&manifest) {
+        job_ctx.fail(format!("备份版本不兼容: {}", e));
+        return;
+    }
+
+    // 计算数据库文件列表和资产总数，用于精确的 total_items
     let database_files: Vec<_> = manifest
         .files
         .iter()
-        .filter(|f| f.database_id.is_some())
+        .filter(|f| f.path.ends_with(".db") && f.database_id.is_some())
         .collect();
     let total_databases = database_files.len() as u64;
+    let asset_file_count: u64 = manifest
+        .assets
+        .as_ref()
+        .map(|a| a.total_files as u64)
+        .unwrap_or(0);
+    // total_items = databases + asset files（用于前端显示 "X / Y 项"）
+    let total_items = total_databases + asset_file_count;
+
+    job_ctx.mark_running(
+        BackupJobPhase::Scan,
+        5.0,
+        Some(format!(
+            "备份清单验证通过: {} 个数据库, {} 个资产文件",
+            total_databases, asset_file_count
+        )),
+        0,
+        total_items,
+    );
 
     info!(
-        "[data_governance] 备份清单验证通过: backup_id={}, databases={}",
-        backup_id, total_databases
+        "[data_governance] 备份清单验证通过: backup_id={}, databases={}, assets={}",
+        backup_id, total_databases, asset_file_count
     );
 
-    // ============ 阶段 2: Verify (5-15%) - 验证备份文件校验和 ============
-    job_ctx.mark_running(
-        BackupJobPhase::Verify,
-        10.0,
-        Some("正在验证备份文件完整性...".to_string()),
-        0,
-        total_databases,
-    );
+    // ============ 阶段 2: Verify (5-15%) - 逐文件验证备份完整性 ============
+    let backup_subdir = backup_dir.join(&manifest.backup_id);
+    if !backup_subdir.exists() {
+        job_ctx.fail(format!("备份目录不存在: {:?}", backup_subdir));
+        return;
+    }
 
     // 检查取消（安全点 - 恢复前最后一次安全检查）
     if job_ctx.is_cancelled() {
@@ -4909,20 +4934,85 @@ async fn execute_restore_with_progress(
         return;
     }
 
-    // 验证备份文件（校验和检查）
-    // 注意：这里可以添加更详细的校验和验证，目前依赖 restore 内部的验证
-    // TODO: 如果 BackupManager 提供独立的 verify 方法，可以在此调用
+    // 逐文件验证校验和（细粒度进度：5% → 15%）
+    let verify_total = manifest.files.len();
+    for (idx, backup_file) in manifest.files.iter().enumerate() {
+        // 验证阶段允许取消（尚未修改任何数据）
+        if job_ctx.is_cancelled() {
+            job_ctx.cancelled(Some("用户取消恢复（验证阶段）".to_string()));
+            return;
+        }
 
-    // ============ 阶段 3: Replace (15-90%) - 恢复数据库 ============
-    // 注意：恢复操作风险较高，一旦开始就不应该中断
-    job_ctx.mark_running(
-        BackupJobPhase::Replace,
-        20.0,
-        Some("正在恢复数据库...".to_string()),
-        0,
-        total_databases,
-    );
+        let verify_progress = 5.0 + (idx as f32 / verify_total.max(1) as f32) * 10.0;
+        job_ctx.mark_running(
+            BackupJobPhase::Verify,
+            verify_progress,
+            Some(format!("正在验证: {} ({}/{})", backup_file.path, idx + 1, verify_total)),
+            0,
+            total_items,
+        );
 
+        let file_path = backup_subdir.join(&backup_file.path);
+        if !file_path.exists() {
+            job_ctx.fail(format!("备份文件不存在: {}", backup_file.path));
+            return;
+        }
+
+        // 验证 SHA256 校验和
+        match super::backup::calculate_file_sha256(&file_path) {
+            Ok(actual_sha256) => {
+                if actual_sha256 != backup_file.sha256 {
+                    job_ctx.fail(format!(
+                        "备份文件校验和不匹配: {} (expected={}, actual={})",
+                        backup_file.path, backup_file.sha256, actual_sha256
+                    ));
+                    return;
+                }
+            }
+            Err(e) => {
+                job_ctx.fail(format!("计算校验和失败 {}: {}", backup_file.path, e));
+                return;
+            }
+        }
+
+        // 对 .db 文件执行 PRAGMA integrity_check（与原 verify_internal 一致）
+        if backup_file.path.ends_with(".db") {
+            match rusqlite::Connection::open(&file_path) {
+                Ok(conn) => {
+                    match conn.query_row("PRAGMA integrity_check", [], |row| row.get::<_, String>(0)) {
+                        Ok(result) if result == "ok" => {
+                            debug!("[data_governance] 备份数据库完整性验证通过: {}", backup_file.path);
+                        }
+                        Ok(result) => {
+                            job_ctx.fail(format!(
+                                "备份数据库完整性检查失败: {} ({})",
+                                backup_file.path, result
+                            ));
+                            return;
+                        }
+                        Err(e) => {
+                            job_ctx.fail(format!(
+                                "备份数据库完整性检查执行失败: {} ({})",
+                                backup_file.path, e
+                            ));
+                            return;
+                        }
+                    }
+                }
+                Err(e) => {
+                    job_ctx.fail(format!(
+                        "无法打开备份数据库文件: {} ({})",
+                        backup_file.path, e
+                    ));
+                    return;
+                }
+            }
+        }
+    }
+
+    info!("[data_governance] 备份文件完整性验证通过: {} 个文件", verify_total);
+
+    // ============ 阶段 3: Replace (15-80%) - 逐数据库恢复 ============
     // 获取非活跃插槽目录：恢复写入非活跃插槽，避免 Windows OS error 32
     // （活跃插槽的数据库文件被连接池持有，Windows 上无法写入/删除）
     let (inactive_dir, inactive_slot) = match crate::data_space::get_data_space_manager() {
@@ -4967,7 +5057,102 @@ async fn execute_restore_with_progress(
         }
     }
 
-    // 确定是否恢复资产
+    // 确保目标目录存在
+    if let Err(e) = std::fs::create_dir_all(&inactive_dir) {
+        job_ctx.fail(format!("创建恢复目标目录失败: {}", e));
+        return;
+    }
+
+    // 逐数据库恢复（细粒度进度：15% → 80%）
+    let mut databases_restored: Vec<String> = Vec::new();
+    let mut restore_errors: Vec<String> = Vec::new();
+    let db_progress_range = 65.0; // 15% → 80%
+
+    for (idx, backup_file) in database_files.iter().enumerate() {
+        let db_id_str = match backup_file.database_id.as_ref() {
+            Some(id) => id,
+            None => continue,
+        };
+
+        let db_id = match db_id_str.as_str() {
+            "vfs" => DatabaseId::Vfs,
+            "chat_v2" => DatabaseId::ChatV2,
+            "mistakes" => DatabaseId::Mistakes,
+            "llm_usage" => DatabaseId::LlmUsage,
+            _ => {
+                let msg = format!("备份中包含未知的数据库 ID: {}", db_id_str);
+                error!("{}", msg);
+                restore_errors.push(msg);
+                continue;
+            }
+        };
+
+        let db_progress = 15.0 + (idx as f32 / total_databases.max(1) as f32) * db_progress_range;
+        job_ctx.mark_running(
+            BackupJobPhase::Replace,
+            db_progress,
+            Some(format!(
+                "正在恢复数据库: {} ({}/{})",
+                db_id_str,
+                idx + 1,
+                total_databases
+            )),
+            idx as u64,
+            total_items,
+        );
+
+        match manager.restore_single_database_to_dir(&db_id, &backup_subdir, &inactive_dir) {
+            Ok(()) => {
+                info!("[data_governance] 恢复数据库成功: {:?}", db_id);
+                databases_restored.push(db_id_str.clone());
+            }
+            Err(e) => {
+                error!("[data_governance] 恢复数据库失败: {:?}, 错误: {}", db_id, e);
+                restore_errors.push(format!("{}: {}", db_id_str, e));
+            }
+        }
+    }
+
+    // 数据库恢复完成后的进度
+    job_ctx.mark_running(
+        BackupJobPhase::Replace,
+        80.0,
+        Some(format!(
+            "数据库恢复完成: {}/{}",
+            databases_restored.len(),
+            total_databases
+        )),
+        total_databases,
+        total_items,
+    );
+
+    // 检查数据库恢复错误
+    if !restore_errors.is_empty() {
+        let err_msg = format!("部分数据库恢复失败: {}", restore_errors.join("; "));
+        error!("[data_governance] {}", err_msg);
+        #[cfg(feature = "data_governance")]
+        {
+            try_save_audit_log(
+                &app,
+                AuditLog::new(
+                    AuditOperation::Restore {
+                        backup_path: backup_id.clone(),
+                    },
+                    backup_id.clone(),
+                )
+                .fail(err_msg.clone())
+                .with_details(serde_json::json!({
+                    "job_id": job_ctx.job_id.clone(),
+                    "restore_assets": restore_assets,
+                    "errors": restore_errors,
+                })),
+            );
+        }
+        job_ctx.fail(err_msg);
+        return;
+    }
+
+    // ============ 阶段 3b: Replace/Assets (80-92%) - 恢复资产文件 ============
     let should_restore_assets = restore_assets.unwrap_or_else(|| {
         manifest
             .assets
@@ -4976,145 +5161,235 @@ async fn execute_restore_with_progress(
             .unwrap_or(false)
     });
 
-    // 恢复到非活跃插槽（不需要维护模式，不涉及活跃文件）
-    let result = manager.restore_with_assets_to_dir(&manifest, should_restore_assets, &inactive_dir);
+    let mut restored_assets: usize = 0;
 
-    let duration_ms = start.elapsed().as_millis() as u64;
+    if should_restore_assets {
+        let asset_progress_base = 80.0_f32;
+        let asset_progress_range = 12.0_f32; // 80% → 92%
 
-    match result {
-        Ok(restored_assets) => {
-            // ============ 阶段 4: Cleanup (90-100%) - 清理和验证 ============
-            job_ctx.mark_running(
-                BackupJobPhase::Cleanup,
-                95.0,
-                Some("正在验证恢复结果...".to_string()),
-                total_databases,
-                total_databases,
-            );
-
-            // 收集恢复的数据库列表
-            let databases_restored: Vec<String> = manifest
-                .files
-                .iter()
-                .filter_map(|f| f.database_id.clone())
-                .collect();
-
-            let restore_target_path = inactive_dir.to_string_lossy().to_string();
-
+        if let Some(asset_result) = &manifest.assets {
             info!(
-                "[data_governance] 恢复成功: id={}, databases={:?}, restored_assets={}, duration={}ms, target={}",
-                backup_id, databases_restored, restored_assets, duration_ms, inactive_dir.display()
+                "[data_governance] 开始恢复资产文件: {} 个",
+                asset_result.total_files
             );
 
-            // 标记下次重启时切换到恢复目标插槽
-            let switch_warning: Option<String> = if let Some(slot) = inactive_slot {
-                if let Some(mgr) = crate::data_space::get_data_space_manager() {
-                    match mgr.mark_pending_switch(slot) {
-                        Ok(()) => {
-                            info!("[data_governance] 已标记下次重启切换到 {}", slot.name());
-                            None
-                        }
-                        Err(e) => {
-                            let warn_msg = format!(
-                                "恢复成功但标记插槽切换失败: {}。恢复的数据在 {} 中，请手动重启后重试",
-                                e, inactive_dir.display()
-                            );
-                            error!("[data_governance] {}", warn_msg);
-                            Some(warn_msg)
-                        }
-                    }
-                } else {
-                    None
-                }
-            } else {
-                None
-            };
-
-            #[cfg(feature = "data_governance")]
-            {
-                try_save_audit_log(
-                    &app,
-                    AuditLog::new(
-                        AuditOperation::Restore {
-                            backup_path: backup_id.clone(),
-                        },
-                        backup_id.clone(),
-                    )
-                    .complete(duration_ms)
-                    .with_details(serde_json::json!({
-                        "job_id": job_ctx.job_id.clone(),
-                        "restore_assets": should_restore_assets,
-                        "restored_assets": restored_assets,
-                        "databases_restored": databases_restored.clone(),
-                    })),
-                );
-            }
-
-            // 完成任务
-            job_ctx.complete(
+            job_ctx.mark_running(
+                BackupJobPhase::Replace,
+                asset_progress_base,
                 Some(format!(
-                    "恢复完成，已恢复 {} 个数据库{}",
-                    databases_restored.len(),
-                    if should_restore_assets {
-                        format!("，资产文件 {} 个", restored_assets)
-                    } else {
-                        "".to_string()
-                    }
+                    "正在恢复资产文件: 0/{}",
+                    asset_result.total_files
                 )),
                 total_databases,
-                total_databases,
-                BackupJobResultPayload {
-                    success: true,
-                    output_path: Some(restore_target_path.clone()),
-                    resolved_path: Some(restore_target_path.clone()),
-                    message: Some(if should_restore_assets {
-                        format!(
-                            "已恢复数据库: {}；资产文件: {}",
-                            databases_restored.join(", "),
-                            restored_assets
-                        )
-                    } else {
-                        format!("已恢复数据库: {}", databases_restored.join(", "))
-                    }),
-                    error: switch_warning,
-                    duration_ms: Some(duration_ms),
-                    stats: Some(serde_json::json!({
-                        "backup_id": backup_id,
-                        "databases_restored": databases_restored,
-                        "database_count": databases_restored.len(),
-                        "restore_assets": should_restore_assets,
-                        "restored_assets": restored_assets,
-                        "restore_target": restore_target_path,
-                    })),
-                    // 恢复完成后需要重启以切换到恢复的数据插槽
-                    requires_restart: true,
-                    checkpoint_path: None,
-                    resumable_job_id: None,
-                },
+                total_items,
             );
-        }
-        Err(e) => {
-            error!("[data_governance] 恢复失败: {}", e);
-            #[cfg(feature = "data_governance")]
-            {
-                try_save_audit_log(
-                    &app,
-                    AuditLog::new(
-                        AuditOperation::Restore {
-                            backup_path: backup_id.clone(),
-                        },
-                        backup_id.clone(),
-                    )
-                    .fail(e.to_string())
-                    .with_details(serde_json::json!({
-                        "job_id": job_ctx.job_id.clone(),
-                        "restore_assets": restore_assets,
-                    })),
-                );
+
+            match assets::restore_assets_with_progress(
+                &backup_subdir,
+                &inactive_dir,
+                &asset_result.files,
+                |restored, total_asset| {
+                    let asset_pct = if total_asset > 0 {
+                        restored as f32 / total_asset as f32
+                    } else {
+                        1.0
+                    };
+                    let progress = asset_progress_base + asset_pct * asset_progress_range;
+                    job_ctx.mark_running(
+                        BackupJobPhase::Replace,
+                        progress,
+                        Some(format!(
+                            "正在恢复资产文件: {}/{}",
+                            restored, total_asset
+                        )),
+                        total_databases + restored as u64,
+                        total_items,
+                    );
+                },
+            ) {
+                Ok(count) => {
+                    restored_assets = count;
+                    info!("[data_governance] 资产恢复完成: {} 个文件", count);
+                }
+                Err(e) => {
+                    // 资产恢复失败不阻塞数据库恢复结果，记录警告
+                    error!("[data_governance] 资产恢复失败: {}", e);
+                    restore_errors.push(format!("资产恢复: {}", e));
+                }
             }
-            job_ctx.fail(format!("恢复失败: {}", e));
+        } else {
+            // manifest.assets 为 None 时，尝试直接扫描备份目录中的 assets/ 子目录
+            let assets_subdir = backup_subdir.join("assets");
+            if assets_subdir.exists() && assets_subdir.is_dir() {
+                info!(
+                    "[data_governance] manifest.assets 为空，尝试从 assets/ 目录直接恢复: {:?}",
+                    assets_subdir
+                );
+
+                job_ctx.mark_running(
+                    BackupJobPhase::Replace,
+                    asset_progress_base,
+                    Some("正在从目录恢复资产文件...".to_string()),
+                    total_databases,
+                    total_items,
+                );
+
+                match assets::restore_assets_from_dir_with_progress(
+                    &assets_subdir,
+                    &inactive_dir,
+                    |restored, total_asset| {
+                        let asset_pct = if total_asset > 0 {
+                            restored as f32 / total_asset as f32
+                        } else {
+                            1.0
+                        };
+                        let progress = asset_progress_base + asset_pct * asset_progress_range;
+                        job_ctx.mark_running(
+                            BackupJobPhase::Replace,
+                            progress,
+                            Some(format!(
+                                "正在恢复资产文件: {}/{}",
+                                restored, total_asset
+                            )),
+                            total_databases + restored as u64,
+                            total_items,
+                        );
+                    },
+                ) {
+                    Ok(count) => {
+                        restored_assets = count;
+                        info!("[data_governance] 资产目录直接恢复完成: {} 个文件", count);
+                    }
+                    Err(e) => {
+                        error!("[data_governance] 资产目录直接恢复失败: {}", e);
+                        restore_errors.push(format!("资产目录恢复: {}", e));
+                    }
+                }
+            } else {
+                warn!("[data_governance] 备份中无资产文件可恢复");
+            }
         }
     }
+
+    // 资产恢复如果有非致命错误，记录但不阻塞
+    if !restore_errors.is_empty() {
+        warn!(
+            "[data_governance] 资产恢复有部分错误（数据库已成功恢复）: {:?}",
+            restore_errors
+        );
+    }
+
+    // ============ 阶段 4: Cleanup (92-100%) - 插槽切换与审计 ============
+    job_ctx.mark_running(
+        BackupJobPhase::Cleanup,
+        93.0,
+        Some("正在标记插槽切换...".to_string()),
+        total_items,
+        total_items,
+    );
+
+    let duration_ms = start.elapsed().as_millis() as u64;
+    let restore_target_path = inactive_dir.to_string_lossy().to_string();
+
+    info!(
+        "[data_governance] 恢复成功: id={}, databases={:?}, restored_assets={}, duration={}ms, target={}",
+        backup_id, databases_restored, restored_assets, duration_ms, inactive_dir.display()
+    );
+
+    // 标记下次重启时切换到恢复目标插槽
+    let switch_warning: Option<String> = if let Some(slot) = inactive_slot {
+        if let Some(mgr) = crate::data_space::get_data_space_manager() {
+            match mgr.mark_pending_switch(slot) {
+                Ok(()) => {
+                    info!("[data_governance] 已标记下次重启切换到 {}", slot.name());
+                    None
+                }
+                Err(e) => {
+                    let warn_msg = format!(
+                        "恢复成功但标记插槽切换失败: {}。恢复的数据在 {} 中，请手动重启后重试",
+                        e, inactive_dir.display()
+                    );
+                    error!("[data_governance] {}", warn_msg);
+                    Some(warn_msg)
+                }
+            }
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    job_ctx.mark_running(
+        BackupJobPhase::Cleanup,
+        97.0,
+        Some("正在记录审计日志...".to_string()),
+        total_items,
+        total_items,
+    );
+
+    #[cfg(feature = "data_governance")]
+    {
+        try_save_audit_log(
+            &app,
+            AuditLog::new(
+                AuditOperation::Restore {
+                    backup_path: backup_id.clone(),
+                },
+                backup_id.clone(),
+            )
+            .complete(duration_ms)
+            .with_details(serde_json::json!({
+                "job_id": job_ctx.job_id.clone(),
+                "restore_assets": should_restore_assets,
+                "restored_assets": restored_assets,
+                "databases_restored": databases_restored.clone(),
+            })),
+        );
+    }
+
+    // 完成任务
+    job_ctx.complete(
+        Some(format!(
+            "恢复完成，已恢复 {} 个数据库{}",
+            databases_restored.len(),
+            if should_restore_assets {
+                format!("，资产文件 {} 个", restored_assets)
+            } else {
+                "".to_string()
+            }
+        )),
+        total_items,
+        total_items,
+        BackupJobResultPayload {
+            success: true,
+            output_path: Some(restore_target_path.clone()),
+            resolved_path: Some(restore_target_path.clone()),
+            message: Some(if should_restore_assets {
+                format!(
+                    "已恢复数据库: {}；资产文件: {}",
+                    databases_restored.join(", "),
+                    restored_assets
+                )
+            } else {
+                format!("已恢复数据库: {}", databases_restored.join(", "))
+            }),
+            error: switch_warning,
+            duration_ms: Some(duration_ms),
+            stats: Some(serde_json::json!({
+                "backup_id": backup_id,
+                "databases_restored": databases_restored,
+                "database_count": databases_restored.len(),
+                "restore_assets": should_restore_assets,
+                "restored_assets": restored_assets,
+                "restore_target": restore_target_path,
+            })),
+            // 恢复完成后需要重启以切换到恢复的数据插槽
+            requires_restart: true,
+            checkpoint_path: None,
+            resumable_job_id: None,
+        },
+    );
 }
 
 // ==================== 可恢复的执行函数 ====================

@@ -2166,6 +2166,7 @@ impl BuiltinResourceExecutor {
             "completed": node.get("completed"),
             "style": node.get("style"),
             "blankedRanges": node.get("blankedRanges"),
+            "refs": node.get("refs"),
         })
         .to_string();
 

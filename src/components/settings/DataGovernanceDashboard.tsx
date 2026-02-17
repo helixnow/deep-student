@@ -1281,6 +1281,13 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
             message: runningJob.message || '',
           } as BackupJobEvent);
 
+          // 恢复维护模式（防止导航切换后丢失）
+          enterMaintenanceMode(
+            runningJob.kind === 'import'
+              ? t('data:governance.maintenance_restore')
+              : t('data:governance.maintenance_backup')
+          );
+
           // 重新建立进度监听
           await startListening(runningJob.job_id);
         }

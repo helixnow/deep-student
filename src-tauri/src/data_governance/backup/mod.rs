@@ -2377,7 +2377,7 @@ struct ChangeLogEntry {
 }
 
 /// 计算文件的 SHA256 校验和
-fn calculate_file_sha256(path: &Path) -> Result<String, BackupError> {
+pub(crate) fn calculate_file_sha256(path: &Path) -> Result<String, BackupError> {
     let file = File::open(path)?;
     let mut reader = BufReader::new(file);
     let mut hasher = Sha256::new();

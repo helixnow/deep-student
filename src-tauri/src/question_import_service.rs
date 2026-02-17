@@ -36,7 +36,7 @@ use crate::models::{
     ExamSheetSessionDetail, QuestionStatus, QuestionType, SourceType,
 };
 use crate::vfs::database::VfsDatabase;
-use crate::vfs::repos::{CreateQuestionParams, QuestionFilters, VfsBlobRepo, VfsExamRepo, VfsQuestionRepo};
+use crate::vfs::repos::{CreateQuestionParams, QuestionFilters, QuestionImage, VfsBlobRepo, VfsExamRepo, VfsFileRepo, VfsQuestionRepo};
 use crate::vfs::types::VfsCreateExamSheetParams;
 
 /// 流式导入进度事件
@@ -114,6 +114,66 @@ impl QuestionImportService {
     /// 判断格式是否为图片
     fn is_image_format(format: &str) -> bool {
         matches!(format, "png" | "jpg" | "jpeg" | "webp" | "bmp" | "gif" | "tiff" | "image")
+    }
+
+    /// 将原始图片 blob 哈希列表转换为 QuestionImage 列表
+    ///
+    /// 为每个 blob hash 创建 VFS 文件条目（file_ 前缀），使得前端
+    /// 可通过 `vfs_get_attachment_content` 加载图片。
+    fn build_source_question_images(
+        vfs_db: &VfsDatabase,
+        source_image_hashes: &[String],
+    ) -> Vec<QuestionImage> {
+        if source_image_hashes.is_empty() {
+            return Vec::new();
+        }
+
+        let mut images = Vec::new();
+        for (idx, hash) in source_image_hashes.iter().enumerate() {
+            let blob_path = match VfsBlobRepo::get_blob_path(vfs_db, hash) {
+                Ok(Some(p)) => p,
+                _ => {
+                    log::warn!("[QuestionImport] 源图片 blob 不存在: {}", hash);
+                    continue;
+                }
+            };
+            let data = match std::fs::read(&blob_path) {
+                Ok(d) => d,
+                Err(e) => {
+                    log::warn!("[QuestionImport] 读取源图片 blob 失败: {} - {}", hash, e);
+                    continue;
+                }
+            };
+            let (mime, ext) = Self::detect_image_format(&data);
+            let file_name = format!("source_page_{}.{}", idx, ext);
+            let vfs_file = match VfsFileRepo::create_file(
+                vfs_db,
+                hash,               // sha256
+                &file_name,
+                data.len() as i64,
+                "image",
+                Some(mime),
+                Some(hash),         // blob_hash
+                None,               // original_path
+            ) {
+                Ok(f) => f,
+                Err(e) => {
+                    log::warn!("[QuestionImport] 创建 VFS 文件条目失败: {} - {}", hash, e);
+                    continue;
+                }
+            };
+            images.push(QuestionImage {
+                id: vfs_file.id,
+                name: file_name,
+                mime: mime.to_string(),
+                hash: hash.clone(),
+            });
+            log::info!(
+                "[QuestionImport] 源图片 {} 已关联为 QuestionImage: file_id={}",
+                idx, images.last().unwrap().id
+            );
+        }
+        images
     }
 
     /// 通过魔数字节头检测图片格式，返回 (mime_type, extension)
@@ -579,7 +639,7 @@ impl QuestionImportService {
         // 如果有 session_id，追加到现有题目集
         if let Some(sid) = &request.session_id {
             return self
-                .append_to_existing_session(vfs_db, questions, sid)
+                .append_to_existing_session(vfs_db, questions, sid, source_image_hashes)
                 .await;
         }
 
@@ -597,7 +657,11 @@ impl QuestionImportService {
         vfs_db: &VfsDatabase,
         questions: Vec<Value>,
         session_id: &str,
+        source_image_hashes: &[String],
     ) -> Result<ImportResult, AppError> {
+        // 0. ★ 将原始图片 blob 转为 QuestionImage（在 SAVEPOINT 外，避免连接竞争）
+        let source_question_images = Self::build_source_question_images(vfs_db, source_image_hashes);
+
         // 1. 获取连接（在 SAVEPOINT 外，减少事务持有时间）
         let conn = vfs_db
             .get_conn_safe()
@@ -643,12 +707,16 @@ impl QuestionImportService {
             }
             preview.pages[0].cards.push(card);
 
-            question_params_list.push(self.json_to_question_params(
+            let mut params = self.json_to_question_params(
                 q,
                 session_id,
                 &card_id,
                 imported_count,
-            ));
+            );
+            if !source_question_images.is_empty() {
+                params.images = Some(source_question_images.clone());
+            }
+            question_params_list.push(params);
             imported_count += 1;
         }
 
@@ -811,12 +879,15 @@ impl QuestionImportService {
             json!({ "source_image_hashes": source_image_hashes })
         };
 
-        // 2. 获取连接（在 SAVEPOINT 外，减少事务持有时间）
+        // 2. ★ 将原始图片 blob 转为 QuestionImage（在 SAVEPOINT 外，避免连接竞争）
+        let source_question_images = Self::build_source_question_images(vfs_db, source_image_hashes);
+
+        // 3. 获取连接（在 SAVEPOINT 外，减少事务持有时间）
         let conn = vfs_db
             .get_conn_safe()
             .map_err(|e| AppError::database(format!("获取数据库连接失败: {}", e)))?;
 
-        // 3. ★ SAVEPOINT 事务保护：包裹 create_exam_sheet + create_questions 两步操作
+        // 4. ★ SAVEPOINT 事务保护：包裹 create_exam_sheet + create_questions 两步操作
         //    不使用 batch_create_questions_with_conn 因为它内部会启动自己的 BEGIN IMMEDIATE，
         //    与 SAVEPOINT 冲突。改为直接循环调用 create_question_with_conn。
         conn.execute("SAVEPOINT create_session", []).map_err(|e| {
@@ -828,7 +899,7 @@ impl QuestionImportService {
         })?;
 
         let result = (|| -> Result<(String, usize), AppError> {
-            // 3a. 创建 exam_sheet 记录，获取真实的 exam_id（exam_ + nanoid 格式）
+            // 4a. 创建 exam_sheet 记录，获取真实的 exam_id（exam_ + nanoid 格式）
             let create_params = VfsCreateExamSheetParams {
                 exam_name: Some(qbank_name.clone()),
                 temp_id: temp_id.clone(),
@@ -842,9 +913,12 @@ impl QuestionImportService {
                 .map_err(|e| AppError::database(format!("创建题目集失败: {}", e)))?;
             let real_exam_id = exam_sheet.id;
 
-            // 3b. 使用真实 exam_id 逐条写入 questions 表
+            // 4b. 使用真实 exam_id 逐条写入 questions 表（关联原始图片）
             for (i, q, card_id) in &valid_questions {
-                let params = self.json_to_question_params(q, &real_exam_id, card_id, *i);
+                let mut params = self.json_to_question_params(q, &real_exam_id, card_id, *i);
+                if !source_question_images.is_empty() {
+                    params.images = Some(source_question_images.clone());
+                }
                 VfsQuestionRepo::create_question_with_conn(&conn, &params)
                     .map_err(|e| AppError::database(format!("写入题目表失败: {}", e)))?;
             }
@@ -1170,6 +1244,9 @@ impl QuestionImportService {
             });
         }
 
+        // ★ 将原始图片 blob 转为 QuestionImage（在流式解析前，避免连接竞争）
+        let source_question_images = Self::build_source_question_images(vfs_db, &source_image_hashes);
+
         let mut all_questions: Vec<Value> = Vec::new();
         let mut total_parsed = 0;
 
@@ -1191,8 +1268,11 @@ impl QuestionImportService {
                         // 立即保存题目到数据库
                         let card = self.question_to_card(&q, total_parsed);
                         let card_id = card.card_id.clone();
-                        let params =
+                        let mut params =
                             self.json_to_question_params(&q, &session_id, &card_id, total_parsed);
+                        if !source_question_images.is_empty() {
+                            params.images = Some(source_question_images.clone());
+                        }
 
                         if let Err(e) = VfsQuestionRepo::create_question(vfs_db, &params) {
                             log::warn!("[QuestionImport] 保存题目失败: {}", e);
@@ -1433,7 +1513,7 @@ impl QuestionImportService {
     ) -> Result<ImportResult, AppError> {
         if request.session_id.is_some() {
             return self
-                .append_to_existing_session(vfs_db, questions, session_id)
+                .append_to_existing_session(vfs_db, questions, session_id, &[])
                 .await;
         }
 

@@ -55,7 +55,7 @@ export const mindmapToolsSkill: SkillDefinition = {
 使用 \`builtin-mindmap_edit_nodes\`，**无需读取完整 JSON**，更高效：
 
 **操作类型**：
-- \`update_node\`: 修改节点属性（文本、样式、备注、完成状态、挖空区间等）
+- \`update_node\`: 修改节点属性（文本、样式、备注、完成状态、挖空区间、关联资源等）
 - \`add_node\`: 在指定父节点下添加子节点
 - \`delete_node\`: 删除节点
 - \`move_node\`: 移动节点到新父节点下
@@ -145,6 +145,37 @@ export const mindmapToolsSkill: SkillDefinition = {
   - \`fontWeight\`: "bold" 或 "normal" — **关键概念建议加粗**
   - \`fontSize\`: 字体大小（数字，像素值）
 - \`blankedRanges\`: 背诵挖空区间（可选），如 [{"start": 0, "end": 3}]
+- \`refs\`: 关联的 VFS 资源引用列表（可选），每项包含：
+  - \`sourceId\`: 资源业务 ID（如 note_xxx, file_xxx, mm_xxx 等，通过 resource_list/resource_search 获取）
+  - \`type\`: 资源类型（note / file / mindmap / table 等）
+  - \`name\`: 显示名称（快照，用于离线显示）
+
+### 关联资源到节点
+
+当用户要求将学习资源（笔记、文件、其他导图等）关联到某个节点时：
+
+1. **获取资源 ID**：先用 \`builtin-resource_list\` 或 \`builtin-resource_search\` 查找目标资源，获取其 \`id\` 和 \`type\`
+2. **通过 edit_nodes 关联**：使用 \`update_node\` 的 \`patch.refs\` 字段设置关联
+3. 传 \`refs: []\` 可清除节点上的所有关联
+
+**示例 — 给节点关联一个笔记和一个文件**：
+\`\`\`json
+{
+  "mindmap_id": "mm_xxx",
+  "operations": [
+    {
+      "type": "update_node",
+      "node_id": "n1",
+      "patch": {
+        "refs": [
+          { "sourceId": "note_abc", "type": "note", "name": "第一章笔记" },
+          { "sourceId": "file_xyz", "type": "file", "name": "参考资料.pdf" }
+        ]
+      }
+    }
+  ]
+}
+\`\`\`
 
 ### builtin-mindmap_update
 
@@ -196,6 +227,7 @@ export const mindmapToolsSkill: SkillDefinition = {
    - 推荐柔和色板：\`#4FC3F7\` \`#81C784\` \`#FFB74D\` \`#E57373\` \`#BA68C8\` \`#4DB6AC\` \`#FFD54F\`
 7. **局部修改用 edit_nodes**：修改颜色/备注/加粗等属性时，优先使用 edit_nodes 而非 update
 8. **整体重构用 update**：需要大幅调整结构时，使用 update 传入完整 JSON
+9. **关联资源**：当用户要求将笔记、文件等关联到某个节点时，先用 resource_list/resource_search 查找资源获取 ID，再用 edit_nodes 的 update_node 设置 refs
 `,
   allowedTools: [
     'builtin-mindmap_create',
@@ -253,6 +285,19 @@ export const mindmapToolsSkill: SkillDefinition = {
                       required: ['start', 'end'],
                     },
                   },
+                  refs: {
+                    type: 'array',
+                    description: '关联的 VFS 资源引用列表（可选）。先用 resource_list/resource_search 获取资源信息。',
+                    items: {
+                      type: 'object',
+                      properties: {
+                        sourceId: { type: 'string', description: '资源业务 ID（如 note_xxx, file_xxx, mm_xxx 等）' },
+                        type: { type: 'string', description: '资源类型（note / file / mindmap / table 等）' },
+                        name: { type: 'string', description: '显示名称（快照，用于离线显示）' },
+                      },
+                      required: ['sourceId', 'type', 'name'],
+                    },
+                  },
                   children: {
                     type: 'array',
                     description: '子节点数组',
@@ -287,6 +332,19 @@ export const mindmapToolsSkill: SkillDefinition = {
                               end: { type: 'number', description: '结束位置（不包含）' },
                             },
                             required: ['start', 'end'],
+                          },
+                        },
+                        refs: {
+                          type: 'array',
+                          description: '关联的 VFS 资源引用列表（可选）',
+                          items: {
+                            type: 'object',
+                            properties: {
+                              sourceId: { type: 'string', description: '资源业务 ID' },
+                              type: { type: 'string', description: '资源类型' },
+                              name: { type: 'string', description: '显示名称' },
+                            },
+                            required: ['sourceId', 'type', 'name'],
                           },
                         },
                         children: { type: 'array', description: '子节点数组' },
@@ -437,6 +495,19 @@ export const mindmapToolsSkill: SkillDefinition = {
                         required: ['start', 'end'],
                       },
                     },
+                    refs: {
+                      type: 'array',
+                      description: '关联的 VFS 资源引用列表。先用 resource_list/resource_search 获取资源信息。传 [] 可清除所有关联。',
+                      items: {
+                        type: 'object',
+                        properties: {
+                          sourceId: { type: 'string', description: '资源业务 ID（如 note_xxx, file_xxx, mm_xxx 等）' },
+                          type: { type: 'string', description: '资源类型（note / file / mindmap / table 等）' },
+                          name: { type: 'string', description: '显示名称（快照，用于离线显示）' },
+                        },
+                        required: ['sourceId', 'type', 'name'],
+                      },
+                    },
                   },
                 },
                 data: {
@@ -470,6 +541,19 @@ export const mindmapToolsSkill: SkillDefinition = {
                           end: { type: 'number' },
                         },
                         required: ['start', 'end'],
+                      },
+                    },
+                    refs: {
+                      type: 'array',
+                      description: '关联的 VFS 资源引用列表（可选）',
+                      items: {
+                        type: 'object',
+                        properties: {
+                          sourceId: { type: 'string', description: '资源业务 ID' },
+                          type: { type: 'string', description: '资源类型' },
+                          name: { type: 'string', description: '显示名称' },
+                        },
+                        required: ['sourceId', 'type', 'name'],
                       },
                     },
                     children: {
