@@ -10,6 +10,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.9.10](https://github.com/000haoji/deep-student/compare/v0.9.9...v0.9.10) (2026-02-17)
+
+
+### Features
+
+* mobile dual download links (R2 mirror + GitHub) ([c9c8f6d](https://github.com/000haoji/deep-student/commit/c9c8f6dc583cf01b652a6b0c5378dcbdc0e41125))
+* prioritize R2 mirror for auto-update source ([7e479c8](https://github.com/000haoji/deep-student/commit/7e479c8955bbc820afbfa424472a81cd48138185))
+* source image crop, search snippets, remove question_parsing_model ([d41f6c0](https://github.com/000haoji/deep-student/commit/d41f6c09ff6c503194264f6da3048397a4e9877f))
+
+
+### Bug Fixes
+
+* add --remote flag to wrangler r2 commands ([f7068ef](https://github.com/000haoji/deep-student/commit/f7068ef2911443a4325d98a1c7798cdbfd7b8cc2))
+* **backup:** configure git user for annotated snapshot tags in bare repo ([6bc2fb4](https://github.com/000haoji/deep-student/commit/6bc2fb4c6d7735623a2e0deaaf7c023b19b7c09d))
+* **ci:** prevent dependabot major bumps + precise semver extraction ([b6396bc](https://github.com/000haoji/deep-student/commit/b6396bc73d2a9c7a9d5d61d785d7934e34565bb4))
+* critical review fixes for R2 upload in release workflow ([5f616dc](https://github.com/000haoji/deep-student/commit/5f616dc69929005ca8d4a856f64347826501ac1d))
+* **release:** disable component-prefixed tags + robust version extraction ([f4bafa4](https://github.com/000haoji/deep-student/commit/f4bafa4822e19881f6c12167d7aa5df60b2cb0d6))
+* switch to rclone for R2 upload (native Cloudflare provider) ([d3aebda](https://github.com/000haoji/deep-student/commit/d3aebdab15fc33108c54e1d0ec46e50fdcfb59b6))
+* switch to wrangler CLI for R2 upload (bypass S3 TLS issue) ([0272c39](https://github.com/000haoji/deep-student/commit/0272c3963b7d012b3e8500b88f2b8271c8cb3961))
+* **updater:** robust version extraction from tag_name for Android ([4be6c1f](https://github.com/000haoji/deep-student/commit/4be6c1fde614fb44b0d9e3a2bad332e86dfacd80))
+* use GitHub API for R2 version cleanup (wrangler has no list command) ([41cedb4](https://github.com/000haoji/deep-student/commit/41cedb4c0d68d82e8dd425308194d6c78c8703f1))
+* use path-style addressing for R2 S3 compatibility ([c26433d](https://github.com/000haoji/deep-student/commit/c26433db37c04ae5ac7f1e13c542a9c3d5d7dfe1))
+
+
+### Performance Improvements
+
+* add cache-control headers and proper content-types for R2 uploads ([333d96d](https://github.com/000haoji/deep-student/commit/333d96dd73b903ead76a07182a43c94bda277617))
+
 ## [0.9.9](https://github.com/000haoji/deep-student/compare/deep-student-v0.9.8...deep-student-v0.9.9) (2026-02-17)
 
 
