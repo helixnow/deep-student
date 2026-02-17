@@ -1,6 +1,6 @@
 [package]
 name = "deep-student"
-version = "0.9.8"
+version = "0.9.9"
 description = "Deep Student - AI驱动的智能学习助手"
 authors = ["you"]
 edition = "2021"
