@@ -1,25 +1,20 @@
-# 自动同步 GitHub Release 产物到 Cloudflare R2
+# 手动同步 GitHub Release 产物到 Cloudflare R2（补传/恢复用）
 #
-# 触发: Release 发布时自动运行，也支持手动触发
-# 功能:
-#   1. 下载当前 Release 的所有附件并上传到 R2
-#   2. 清理旧版本，仅保留最近 KEEP_VERSIONS 个版本
+# 注意: 正常发布流程中 R2 上传已集成在 release.yml 中，
+#       此工作流仅用于手动补传某个版本或恢复 R2 数据。
 #
 # 需要在仓库 Settings → Secrets 中配置:
 #   CLOUDFLARE_ACCOUNT_ID  - Cloudflare 账户 ID
 #   CLOUDFLARE_API_TOKEN   - Cloudflare API Token (需要 R2 Edit 权限)
 
-name: Release to R2
+name: Sync Release to R2 (Manual)
 
 on:
-  release:
-    types: [published]
   workflow_dispatch:
     inputs:
       tag:
         description: '要同步的 Release tag（如 v0.9.9）'
         required: true
-        default: 'v0.9.9'
 
 env:
   R2_BUCKET: deepstudent
@@ -34,12 +29,8 @@ jobs:
       - name: Resolve tag
         id: tag
         run: |
-          if [ -n "${{ github.event.release.tag_name }}" ]; then
-            echo "value=${{ github.event.release.tag_name }}" >> $GITHUB_OUTPUT
-          else
-            echo "value=${{ github.event.inputs.tag }}" >> $GITHUB_OUTPUT
-          fi
-          echo "📌 Tag: $(grep value $GITHUB_OUTPUT | cut -d= -f2)"
+          echo "value=${{ github.event.inputs.tag }}" >> $GITHUB_OUTPUT
+          echo "📌 Tag: ${{ github.event.inputs.tag }}"
 
       - name: Download Release Assets
         uses: robinraju/release-downloader@v1.10
