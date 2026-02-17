@@ -90,6 +90,7 @@
     "http": null,
     "updater": {
       "endpoints": [
+        "https://download.deepstudent.cn/releases/latest.json",
         "https://github.com/000haoji/deep-student/releases/latest/download/latest.json"
       ],
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDkxREY0RkI0Qjk5NEQ5MjQKUldRazJaUzV0RS9ma2JqbmNwNGNKT1FGc1BWcjRXa2J6K0psVDZFT05YUkc3OTIxYXNPR3FMcEsK"

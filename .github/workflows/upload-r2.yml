@@ -81,6 +81,38 @@ jobs:
           done
           echo "✅ Upload complete ($(ls dist/ | wc -l | tr -d ' ') files)"
 
+      - name: Generate R2 latest.json for auto-updater
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          TAG="${{ steps.tag.outputs.value }}"
+          R2_BASE="https://download.deepstudent.cn/releases/${TAG}"
+
+          if [ ! -f dist/latest.json ]; then
+            echo "⚠️ No latest.json in release assets, skipping"
+            exit 0
+          fi
+
+          echo "📝 Rewriting latest.json URLs to R2..."
+          # 将 GitHub 下载 URL 替换为 R2 URL
+          jq --arg base "$R2_BASE" '
+            .platforms |= with_entries(
+              .value.url = ($base + "/" + (.value.url | split("/") | last))
+            )
+          ' dist/latest.json > r2-latest.json
+
+          echo "Original:"
+          jq -r '.platforms[].url' dist/latest.json
+          echo "R2 version:"
+          jq -r '.platforms[].url' r2-latest.json
+
+          # 上传到稳定路径 releases/latest.json（Tauri updater 端点）
+          npx wrangler r2 object put "${R2_BUCKET}/releases/latest.json" \
+            --file r2-latest.json --content-type "application/json" \
+            --cache-control "public, max-age=300" --remote
+          echo "✅ R2 latest.json uploaded to releases/latest.json"
+
       - name: Cleanup old versions (keep latest ${{ env.KEEP_VERSIONS }})
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

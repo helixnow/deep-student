@@ -120,23 +120,51 @@ export function useAppUpdater() {
 
   /** 检查更新 */
   const checkForUpdate = useCallback(async (silent = false) => {
-    // 移动端使用 GitHub API 检查最新版本
+    // 移动端：优先从 R2 检查最新版本，回退到 GitHub API
     if (mobile) {
       setState(prev => ({ ...prev, checking: true, error: null, upToDate: false }));
       try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 10000);
-        const resp = await fetch('https://api.github.com/repos/000haoji/deep-student/releases/latest', {
-          headers: { Accept: 'application/vnd.github+json' },
-          signal: controller.signal,
-        }).finally(() => clearTimeout(timeoutId));
-        if (!resp.ok) throw new Error(`GitHub API ${resp.status}`);
-        const data = await resp.json();
-        // 兼容 'v0.9.9' 和 'deep-student-v0.9.9' 两种 tag 格式
-        const tagName = data.tag_name ?? '';
-        const latestVersion = tagName.match(/v?(\d+\.\d+\.\d+)/)?.[1] ?? tagName.replace(/^v/, '');
         const { default: VERSION_INFO } = await import('../version');
         const currentVersion = VERSION_INFO.APP_VERSION;
+
+        let latestVersion = '';
+        let releaseBody: string | undefined;
+        let publishedAt: string | undefined;
+
+        // 优先尝试 R2 镜像（国内更快）
+        try {
+          const r2Controller = new AbortController();
+          const r2Timeout = setTimeout(() => r2Controller.abort(), 5000);
+          const r2Resp = await fetch('https://download.deepstudent.cn/releases/latest.json', {
+            signal: r2Controller.signal,
+          }).finally(() => clearTimeout(r2Timeout));
+          if (r2Resp.ok) {
+            const r2Data = await r2Resp.json();
+            latestVersion = r2Data.version ?? '';
+            releaseBody = r2Data.notes ?? undefined;
+            publishedAt = r2Data.pub_date ?? undefined;
+          }
+        } catch {
+          // R2 失败，静默回退
+        }
+
+        // R2 失败时回退到 GitHub API
+        if (!latestVersion) {
+          const ghController = new AbortController();
+          const ghTimeout = setTimeout(() => ghController.abort(), 10000);
+          const resp = await fetch('https://api.github.com/repos/000haoji/deep-student/releases/latest', {
+            headers: { Accept: 'application/vnd.github+json' },
+            signal: ghController.signal,
+          }).finally(() => clearTimeout(ghTimeout));
+          if (!resp.ok) throw new Error(`GitHub API ${resp.status}`);
+          const data = await resp.json();
+          // 兼容 'v0.9.9' 和 'deep-student-v0.9.9' 两种 tag 格式
+          const tagName = data.tag_name ?? '';
+          latestVersion = tagName.match(/v?(\d+\.\d+\.\d+)/)?.[1] ?? tagName.replace(/^v/, '');
+          releaseBody = data.body ?? undefined;
+          publishedAt = data.published_at ?? undefined;
+        }
+
         if (latestVersion && isNewerVersion(latestVersion, currentVersion)) {
           setState(prev => ({
             ...prev,
@@ -144,8 +172,8 @@ export function useAppUpdater() {
             available: true,
             info: {
               version: latestVersion,
-              date: data.published_at ?? undefined,
-              body: data.body ?? undefined,
+              date: publishedAt,
+              body: releaseBody,
             },
           }));
         } else {
