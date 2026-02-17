@@ -71,13 +71,10 @@ impl OcrAdapter for PaddleOcrVlAdapter {
         // PaddleOCR-VL 使用官方标准的任务前缀作为 prompt
         // 参考官方文档：https://paddlepaddle.github.io/PaddleOCR/main/en/version3.x/pipeline_usage/PaddleOCR-VL.html
         // 官方标准格式：OCR:, Table Recognition:, Formula Recognition:, Chart Recognition:
+        // 注意：PaddleOCR-VL 不原生支持 grounding/bbox 输出，Grounding 模式也使用标准 "OCR:" prompt
         match mode {
-            OcrMode::Grounding => {
-                // 结构化输出：要求 JSON blocks（包含 bbox）
-                "OCR: Please return JSON only with a top-level object {\"blocks\": [{\"type\": \"text\", \"content\": \"...\", \"bbox\": [x1,y1,x2,y2], \"score\": 0.0}], \"markdown\": \"...\"}.".to_string()
-            }
-            OcrMode::FreeOcr => {
-                // 官方标准 OCR 任务 prompt
+            OcrMode::Grounding | OcrMode::FreeOcr => {
+                // 官方标准 OCR 任务 prompt（PaddleOCR-VL 不支持 bbox grounding）
                 "OCR:".to_string()
             }
             OcrMode::Formula => "Formula Recognition:".to_string(),
@@ -412,7 +409,7 @@ mod tests {
         assert_eq!(prompt, "OCR:");
 
         let prompt = adapter.build_prompt(OcrMode::Grounding);
-        assert!(prompt.starts_with("OCR:"));
+        assert_eq!(prompt, "OCR:");
 
         let prompt = adapter.build_prompt(OcrMode::Formula);
         assert_eq!(prompt, "Formula Recognition:");

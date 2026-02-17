@@ -1,0 +1,108 @@
+# 自动同步 GitHub Release 产物到 Cloudflare R2
+#
+# 触发: Release 发布时自动运行
+# 功能:
+#   1. 下载当前 Release 的所有附件并上传到 R2
+#   2. 清理旧版本，仅保留最近 10 个版本
+#
+# 需要在仓库 Settings → Secrets 中配置:
+#   R2_ACCOUNT_ID       - Cloudflare 账户 ID
+#   R2_ACCESS_KEY_ID    - R2 API Token 的 Access Key ID
+#   R2_SECRET_ACCESS_KEY - R2 API Token 的 Secret Access Key
+
+name: Release to R2
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '要同步的 Release tag（如 v0.9.9）'
+        required: true
+        default: 'v0.9.9'
+
+env:
+  R2_BUCKET: deepstudent
+  KEEP_VERSIONS: 10
+
+jobs:
+  upload-to-r2:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve tag
+        id: tag
+        run: |
+          if [ -n "${{ github.event.release.tag_name }}" ]; then
+            echo "value=${{ github.event.release.tag_name }}" >> $GITHUB_OUTPUT
+          else
+            echo "value=${{ github.event.inputs.tag }}" >> $GITHUB_OUTPUT
+          fi
+          echo "📌 Tag: $(cat $GITHUB_OUTPUT | grep value | cut -d= -f2)"
+
+      - name: Download Release Assets
+        uses: robinraju/release-downloader@v1.10
+        with:
+          repository: ${{ github.repository }}
+          tag: ${{ steps.tag.outputs.value }}
+          fileName: "*"
+          out-file-path: "dist"
+
+      - name: Show downloaded files
+        run: ls -lh dist/
+
+      - name: Configure AWS CLI for R2
+        run: |
+          aws configure set aws_access_key_id "${{ secrets.R2_ACCESS_KEY_ID }}"
+          aws configure set aws_secret_access_key "${{ secrets.R2_SECRET_ACCESS_KEY }}"
+          aws configure set default.region auto
+
+      - name: Upload to R2
+        env:
+          R2_ENDPOINT: https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
+        run: |
+          TAG="${{ steps.tag.outputs.value }}"
+          echo "📤 Uploading release ${TAG} to R2..."
+          aws s3 sync dist/ "s3://${R2_BUCKET}/releases/${TAG}/" \
+            --endpoint-url "${R2_ENDPOINT}" \
+            --no-progress
+          echo "✅ Upload complete"
+          aws s3 ls "s3://${R2_BUCKET}/releases/${TAG}/" \
+            --endpoint-url "${R2_ENDPOINT}"
+
+      - name: Cleanup old versions (keep latest ${{ env.KEEP_VERSIONS }})
+        env:
+          R2_ENDPOINT: https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
+        run: |
+          echo "🧹 Checking for old versions to clean up..."
+
+          # 列出所有版本目录
+          ALL_VERSIONS=$(aws s3 ls "s3://${R2_BUCKET}/releases/" \
+            --endpoint-url "${R2_ENDPOINT}" \
+            | awk '{print $2}' | sed 's|/||' | sort -V)
+
+          TOTAL=$(echo "$ALL_VERSIONS" | wc -l | tr -d ' ')
+          echo "Found ${TOTAL} versions in R2"
+
+          if [ "$TOTAL" -le "$KEEP_VERSIONS" ]; then
+            echo "✅ No cleanup needed (${TOTAL} ≤ ${KEEP_VERSIONS})"
+            exit 0
+          fi
+
+          # 计算需要删除的版本数
+          DELETE_COUNT=$((TOTAL - KEEP_VERSIONS))
+          TO_DELETE=$(echo "$ALL_VERSIONS" | head -n "$DELETE_COUNT")
+
+          echo "🗑️ Deleting ${DELETE_COUNT} old versions:"
+          echo "$TO_DELETE" | while read -r VERSION; do
+            [ -z "$VERSION" ] && continue
+            echo "  Removing releases/${VERSION}/..."
+            aws s3 rm "s3://${R2_BUCKET}/releases/${VERSION}/" \
+              --endpoint-url "${R2_ENDPOINT}" \
+              --recursive --quiet
+          done
+
+          echo "✅ Cleanup complete. Remaining versions:"
+          aws s3 ls "s3://${R2_BUCKET}/releases/" \
+            --endpoint-url "${R2_ENDPOINT}" \
+            | awk '{print "  " $2}'
