@@ -132,7 +132,9 @@ export function useAppUpdater() {
         }).finally(() => clearTimeout(timeoutId));
         if (!resp.ok) throw new Error(`GitHub API ${resp.status}`);
         const data = await resp.json();
-        const latestVersion = (data.tag_name ?? '').replace(/^v/, '');
+        // 兼容 'v0.9.9' 和 'deep-student-v0.9.9' 两种 tag 格式
+        const tagName = data.tag_name ?? '';
+        const latestVersion = tagName.match(/v?(\d+\.\d+\.\d+)/)?.[1] ?? tagName.replace(/^v/, '');
         const { default: VERSION_INFO } = await import('../version');
         const currentVersion = VERSION_INFO.APP_VERSION;
         if (latestVersion && isNewerVersion(latestVersion, currentVersion)) {
