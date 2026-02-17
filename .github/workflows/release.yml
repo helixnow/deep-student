@@ -66,8 +66,10 @@ jobs:
             echo "should_build=true" >> $GITHUB_OUTPUT
             TAG="${{ needs.release-please.outputs.tag_name }}"
             echo "tag_name=${TAG}" >> $GITHUB_OUTPUT
-            echo "version=${TAG#v}" >> $GITHUB_OUTPUT
-            echo "📦 Release created by release-please: ${TAG}"
+            # 兼容 'v0.9.9' 和 'deep-student-v0.9.9' 两种 tag 格式
+            VERSION=$(echo "$TAG" | sed 's/.*v//')
+            echo "version=${VERSION}" >> $GITHUB_OUTPUT
+            echo "📦 Release created by release-please: ${TAG} (version=${VERSION})"
           else
             echo "should_build=false" >> $GITHUB_OUTPUT
             echo "⏭️ No release needed, skipping builds"
