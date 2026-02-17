@@ -38,6 +38,8 @@ interface UpdateInfo {
   version: string;
   date?: string;
   body?: string;
+  /** R2 镜像 APK 下载地址（仅移动端从 R2 latest.json 获取） */
+  apkUrl?: string;
 }
 
 /** 更新失败的阶段 */
@@ -130,6 +132,7 @@ export function useAppUpdater() {
         let latestVersion = '';
         let releaseBody: string | undefined;
         let publishedAt: string | undefined;
+        let apkUrl: string | undefined;
 
         // 优先尝试 R2 镜像（国内更快）
         try {
@@ -143,6 +146,7 @@ export function useAppUpdater() {
             latestVersion = r2Data.version ?? '';
             releaseBody = r2Data.notes ?? undefined;
             publishedAt = r2Data.pub_date ?? undefined;
+            apkUrl = r2Data.apk_url ?? undefined;
           }
         } catch {
           // R2 失败，静默回退
@@ -174,6 +178,7 @@ export function useAppUpdater() {
               version: latestVersion,
               date: publishedAt,
               body: releaseBody,
+              apkUrl,
             },
           }));
         } else {

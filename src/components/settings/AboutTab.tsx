@@ -141,15 +141,28 @@ export const AboutTab: React.FC = () => {
                     )}
                   </div>
                   {updater.isMobile ? (
-                    <a
-                      href={`https://github.com/000haoji/deep-student/releases/latest`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="ml-3 flex-shrink-0 inline-flex items-center gap-1 text-sm text-primary hover:underline"
-                    >
-                      <ExternalLink className="h-3.5 w-3.5" />
-                      {t('about.update.goToGithub', '前往下载')}
-                    </a>
+                    <div className="ml-3 flex-shrink-0 flex flex-col gap-1.5">
+                      {updater.info?.apkUrl && (
+                        <a
+                          href={updater.info.apkUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
+                        >
+                          <Download className="h-3.5 w-3.5" />
+                          {t('about.update.mirrorDownload', '镜像下载')}
+                        </a>
+                      )}
+                      <a
+                        href={`https://github.com/000haoji/deep-student/releases/latest`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-primary hover:underline"
+                      >
+                        <Github className="h-3.5 w-3.5" />
+                        {t('about.update.githubDownload', 'GitHub 下载')}
+                      </a>
+                    </div>
                   ) : (
                     <NotionButton
                       size="sm"

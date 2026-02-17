@@ -95,11 +95,20 @@ jobs:
           fi
 
           echo "📝 Rewriting latest.json URLs to R2..."
-          # 将 GitHub 下载 URL 替换为 R2 URL
-          jq --arg base "$R2_BASE" '
+          # 查找 APK 文件名
+          APK_NAME=$(ls dist/*.apk 2>/dev/null | head -1 | xargs basename 2>/dev/null || echo "")
+          APK_URL=""
+          if [ -n "$APK_NAME" ]; then
+            APK_URL="${R2_BASE}/${APK_NAME}"
+            echo "📱 APK found: ${APK_NAME} → ${APK_URL}"
+          fi
+
+          # 将 GitHub 下载 URL 替换为 R2 URL，并注入 apk_url
+          jq --arg base "$R2_BASE" --arg apk "$APK_URL" '
             .platforms |= with_entries(
               .value.url = ($base + "/" + (.value.url | split("/") | last))
             )
+            | if $apk != "" then .apk_url = $apk else . end
           ' dist/latest.json > r2-latest.json
 
           echo "Original:"
