@@ -317,6 +317,13 @@ export const IndexStatusView: React.FC = () => {
         failCount?: number;
         chunksProcessed?: number;
         chunksTotal?: number;
+        // ★ 2026-02-19：auto_ocr 事件字段
+        fileId?: string;
+        totalPages?: number;
+        currentPage?: number;
+        percent?: number;
+        textLength?: number;
+        success?: boolean;
       }>('vfs-index-progress', (event) => {
         const payload = event.payload;
         debugLog.log('[IndexStatusView] vfs-index-progress event:', payload);
@@ -337,6 +344,16 @@ export const IndexStatusView: React.FC = () => {
           case 'embedding_progress':
             setBatchProgress(payload.progress || 0);
             setBatchMessage(payload.message || '');
+            break;
+          // ★ 2026-02-19：自动 OCR 细粒度进度事件
+          case 'auto_ocr_started':
+            setBatchMessage(payload.message || t('indexStatus.notification.autoOcrStarting', { pages: payload.totalPages ?? '?' }));
+            break;
+          case 'auto_ocr_page':
+            setBatchMessage(payload.message || t('indexStatus.notification.autoOcrPage', { current: payload.currentPage ?? '?', total: payload.totalPages ?? '?' }));
+            break;
+          case 'auto_ocr_completed':
+            setBatchMessage(payload.message || t('indexStatus.notification.autoOcrCompleted'));
             break;
           case 'batch_completed':
             setBatchIndexing(false);

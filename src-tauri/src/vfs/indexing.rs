@@ -3,9 +3,11 @@ use rusqlite::OptionalExtension;
 use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use tauri::{AppHandle, Emitter};
 use tracing::{debug, error, info, warn};
 
 use crate::llm_manager::LLMManager;
+use crate::models::PdfOcrTextBlock;
 use crate::vfs::database::VfsDatabase;
 use crate::vfs::embedding_service::{
     EmbeddingProgressCallback, VfsEmbeddingPipeline, VfsEmbeddingService,
@@ -14,13 +16,14 @@ use crate::vfs::error::{VfsError, VfsResult};
 use crate::vfs::index_service::VfsIndexService;
 use crate::vfs::lance_store::VfsLanceStore;
 use crate::vfs::ocr_utils::{join_ocr_pages_text, parse_ocr_pages_json};
+use crate::vfs::pdf_processing_service::{OcrPageResult, OcrPagesJson};
 use crate::vfs::repos::{
-    embedding_dim_repo, index_segment_repo, index_unit_repo, VfsEmbedding, VfsIndexStateRepo,
-    VfsIndexingConfigRepo, VfsNoteRepo, VfsResourceRepo, INDEX_STATE_DISABLED, INDEX_STATE_FAILED,
-    INDEX_STATE_INDEXED, INDEX_STATE_INDEXING, INDEX_STATE_PENDING, MODALITY_MULTIMODAL,
-    MODALITY_TEXT, VFS_EMB_TABLE_PREFIX,
+    embedding_dim_repo, index_segment_repo, index_unit_repo, VfsBlobRepo, VfsEmbedding,
+    VfsIndexStateRepo, VfsIndexingConfigRepo, VfsNoteRepo, VfsResourceRepo, INDEX_STATE_DISABLED,
+    INDEX_STATE_FAILED, INDEX_STATE_INDEXED, INDEX_STATE_INDEXING, INDEX_STATE_PENDING,
+    MODALITY_MULTIMODAL, MODALITY_TEXT, VFS_EMB_TABLE_PREFIX,
 };
-use crate::vfs::types::{VfsResource, VfsResourceType};
+use crate::vfs::types::{PdfPreviewJson, VfsResource, VfsResourceType};
 use crate::vfs::unit_builder::UnitBuildInput;
 
 /// Log row-parse errors instead of silently discarding them.
@@ -1784,6 +1787,8 @@ pub struct VfsFullIndexingService {
     /// ★ 审计修复：持有 lance_store 引用，避免 delete_resource_index 每次新建实例
     lance_store: Arc<VfsLanceStore>,
     chunking_config: ChunkingConfig,
+    /// ★ 2026-02-19：可选 AppHandle，用于 try_auto_ocr 发送细粒度进度事件
+    app_handle: Option<AppHandle>,
 }
 
 impl VfsFullIndexingService {
@@ -1803,6 +1808,7 @@ impl VfsFullIndexingService {
             pipeline,
             lance_store,
             chunking_config,
+            app_handle: None,
         })
     }
 
@@ -1820,8 +1826,14 @@ impl VfsFullIndexingService {
             pipeline,
             lance_store,
             chunking_config,
+            app_handle: None,
         }
     }
+
+    /// ★ 2026-02-19：设置 AppHandle，用于 auto-OCR 期间发送细粒度进度事件
+    pub fn set_app_handle(&mut self, app_handle: AppHandle) {
+        self.app_handle = Some(app_handle);
+ }
 
     /// 同步资源到 vfs_index_units 表（VFS 统一索引架构）
     ///
@@ -2470,17 +2482,26 @@ impl VfsFullIndexingService {
         }
     }
 
-    /// 尝试自动 OCR（教材/图片）
+    /// 尝试自动 OCR（教材/图片/文件）
     ///
-    /// ## 教材处理
-    /// 从 blobs 表读取 PDF，渲染页面并调用 OCR 模型
+    /// ## ★ 2026-02-19 重写：完整支持 Textbook 和 File(PDF) 自动 OCR
+    ///
+    /// 复用上传时已渲染的 preview_json 页面图片（blob），逐页调用 OCR 模型，
+    /// 与 PdfProcessingService 的预处理管线效果一致。
+    ///
+    /// ## 教材/PDF 文件处理
+    /// 1. 从 files 表读取 preview_json（上传时已渲染的页面图片）
+    /// 2. 解析出每页 blob_hash → 获取 blob 文件路径
+    /// 3. 逐页调用 OCR 模型（call_ocr_page_with_fallback，与预处理管线一致）
+    /// 4. 存储 ocr_pages_json 到 files 表 + 合并文本到 resources.ocr_text
+    /// 5. 通过 app_handle 发送细粒度进度事件
     ///
     /// ## 图片处理
-    /// 从 attachments 表读取图片，调用 OCR 模型
+    /// 从 blobs 表读取图片数据，调用 OCR 模型
     ///
     /// ## 返回
     /// - `Ok(Some(text))`: OCR 成功，返回识别文本
-    /// - `Ok(None)`: 无法进行 OCR（如无图片数据）
+    /// - `Ok(None)`: 无法进行 OCR（如无图片数据、无预渲染页面）
     /// - `Err`: OCR 调用失败
     async fn try_auto_ocr(&self, resource: &VfsResource) -> VfsResult<Option<String>> {
         use crate::llm_manager::ImagePayload;
@@ -2567,114 +2588,10 @@ impl VfsFullIndexingService {
                 Ok(None)
             }
 
-            VfsResourceType::Textbook => {
-                // 教材 OCR：需要渲染 PDF 页面，这是一个复杂操作
-                // 当前仅记录日志，完整实现需要 PDF 渲染服务
-                info!(
-                    "[try_auto_ocr] Textbook {} requires PDF rendering for OCR, skipping auto-OCR",
-                    resource.id
-                );
-
-                // TODO: 集成 PDF 渲染和 OCR
-                // 教材 OCR 需要：
-                // 1. 从 textbooks 表获取 blob_hash
-                // 2. 从 blobs 表读取 PDF 数据
-                // 3. 渲染每一页为图片
-                // 4. 对每页调用 OCR
-                // 5. 合并结果并保存到 textbooks.ocr_pages_json
-                //
-                // 这个流程已经在前端的 PDF OCR 功能中实现，这里暂不重复
-                // 用户可以通过前端手动触发 OCR，索引会自动拾取结果
-
-                Ok(None)
-            }
-
-            VfsResourceType::File => {
-                // ★ 2026-02-10 新增：File 类型（可能是 PDF 或图片扫描件）auto-OCR
-                // 复用 Image 类型的 OCR 逻辑：从 files 表获取 blob_hash，读取 blob 数据并调用 OCR
-                let conn = self.db.get_conn_safe()?;
-
-                let file_data: Option<(String, String)> = if let Some(source_id) =
-                    resource.source_id.as_deref()
-                {
-                    if source_id.starts_with("att_") || source_id.starts_with("file_") {
-                        conn.query_row(
-                            "SELECT blob_hash, mime_type FROM files WHERE id = ?1",
-                            rusqlite::params![source_id],
-                            |row| {
-                                Ok((
-                                    row.get::<_, Option<String>>(0)?,
-                                    row.get::<_, Option<String>>(1)?,
-                                ))
-                            },
-                        )
-                        .ok()
-                        .and_then(|(hash, mime)| match (hash, mime) {
-                            (Some(h), Some(m)) => Some((h, m)),
-                            _ => None,
-                        })
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                };
-
-                // 仅对图片类 MIME 类型的文件进行 OCR（PDF 有专用的文本提取流程）
-                if let Some((blob_hash, mime_type)) = file_data {
-                    let is_image_mime = mime_type.starts_with("image/");
-                    if is_image_mime {
-                        let blob_data: Option<Vec<u8>> = conn
-                            .query_row(
-                                "SELECT data FROM blobs WHERE hash = ?1",
-                                rusqlite::params![blob_hash],
-                                |row| row.get(0),
-                            )
-                            .ok();
-
-                        if let Some(data) = blob_data {
-                            let base64 = base64::Engine::encode(
-                                &base64::engine::general_purpose::STANDARD,
-                                &data,
-                            );
-                            let image_payload = ImagePayload {
-                                mime: mime_type.clone(),
-                                base64,
-                            };
-
-                            info!(
-                                "[try_auto_ocr] Calling OCR for file {} ({})",
-                                resource.id, mime_type
-                            );
-
-                            let result = self
-                                .llm_manager
-                                .call_ocr_model_raw_prompt(
-                                    "Convert the document to markdown.",
-                                    Some(vec![image_payload]),
-                                )
-                                .await
-                                .map_err(|e| VfsError::Other(format!("OCR 调用失败: {}", e)))?;
-
-                            let ocr_text = result.assistant_message.trim().to_string();
-
-                            if !ocr_text.is_empty() {
-                                let _ = conn.execute(
-                                    "UPDATE resources SET ocr_text = ?1 WHERE id = ?2",
-                                    rusqlite::params![ocr_text, resource.id],
-                                );
-                                return Ok(Some(ocr_text));
-                            }
-                        }
-                    } else {
-                        info!(
-                            "[try_auto_ocr] File {} has non-image MIME type ({}), skipping OCR",
-                            resource.id, mime_type
-                        );
-                    }
-                }
-
-                Ok(None)
+            VfsResourceType::Textbook | VfsResourceType::File => {
+                // ★ 2026-02-19：Textbook 和 File(PDF) 统一 OCR 实现
+                // 复用上传时已渲染的 preview_json 页面图片
+                self.try_auto_ocr_pdf_pages(resource).await
             }
 
             // Note/Translation/Essay/Exam/MindMap/Retrieval：无需 OCR
@@ -2685,6 +2602,471 @@ impl VfsFullIndexingService {
             | VfsResourceType::MindMap
             | VfsResourceType::Retrieval => Ok(None),
         }
+    }
+
+    /// ★ 2026-02-19：对 Textbook/File(PDF) 执行自动 OCR
+    ///
+    /// 复用上传时渲染的 preview_json 页面图片（blob），逐页调用 OCR 模型。
+    /// 流程与 PdfProcessingService::stage_ocr_processing 一致：
+    /// 1. 查找关联的 file_id → 读取 preview_json
+    /// 2. 解析出每页 blob_hash → 获取 blob 文件路径
+    /// 3. 逐页调用 call_ocr_page_with_fallback（带重试，与预处理管线一致）
+    /// 4. 存储 OcrPagesJson 到 files.ocr_pages_json
+    /// 5. 合并所有页面文本 → 存储到 resources.ocr_text
+    /// 6. 通过 app_handle 发送细粒度进度事件（auto_ocr_started / auto_ocr_page / auto_ocr_completed）
+    ///
+    /// 对于 File 类型的图片 MIME（非 PDF），回退到单图 OCR。
+    async fn try_auto_ocr_pdf_pages(&self, resource: &VfsResource) -> VfsResult<Option<String>> {
+        let conn = self.db.get_conn_safe()?;
+
+        // 1. 查找关联的 file_id
+        let file_id: Option<String> = if let Some(source_id) = resource.source_id.as_deref() {
+            // source_id 可能直接是 file_id
+            if source_id.starts_with("file_") || source_id.starts_with("att_") || source_id.starts_with("tb_") {
+                // 检查 files 表中是否存在
+                let exists: bool = conn
+                    .query_row(
+                        "SELECT COUNT(*) FROM files WHERE id = ?1",
+                        rusqlite::params![source_id],
+                        |row| row.get::<_, i32>(0),
+                    )
+                    .unwrap_or(0)
+                    > 0;
+                if exists {
+                    Some(source_id.to_string())
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+        .or_else(|| {
+            // 回退：通过 resource_id 查找 file_id
+            conn.query_row(
+                "SELECT id FROM files WHERE resource_id = ?1",
+                rusqlite::params![resource.id],
+                |row| row.get(0),
+            )
+            .ok()
+        });
+
+        let file_id = match file_id {
+            Some(id) => id,
+            None => {
+                info!(
+                    "[try_auto_ocr_pdf_pages] No file_id found for resource {}, skipping",
+                    resource.id
+                );
+                return Ok(None);
+            }
+        };
+
+        // 2. 读取文件信息：preview_json, mime_type, ocr_pages_json
+        let file_info: Option<(Option<String>, Option<String>, Option<String>)> = conn
+            .query_row(
+                "SELECT preview_json, mime_type, ocr_pages_json FROM files WHERE id = ?1",
+                rusqlite::params![file_id],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .ok();
+
+        let (preview_json_opt, mime_type_opt, existing_ocr_json) = match file_info {
+            Some(info) => info,
+            None => {
+                info!(
+                    "[try_auto_ocr_pdf_pages] File {} not found in DB, skipping",
+                    file_id
+                );
+                return Ok(None);
+            }
+        };
+
+        // ★ 2026-02-19 防竞态：如果 ocr_pages_json 已存在（并发预处理管线已完成），
+        // 直接合并现有文本返回，避免重复调用 OCR API
+        if let Some(ref ocr_json) = existing_ocr_json {
+            if !ocr_json.trim().is_empty() {
+                info!(
+                    "[try_auto_ocr_pdf_pages] ocr_pages_json already exists for file {} (len={}), using existing OCR result",
+                    file_id, ocr_json.len()
+                );
+                // 尝试从 ocr_pages_json 合并文本
+                let pages = parse_ocr_pages_json(ocr_json);
+                if let Some(text) = join_ocr_pages_text(&pages, "第", "页") {
+                    if !text.is_empty() {
+                        // 缓存到 resources.ocr_text（如果还没有）
+                        let _ = conn.execute(
+                            "UPDATE resources SET ocr_text = ?1 WHERE id = ?2 AND (ocr_text IS NULL OR ocr_text = '')",
+                            rusqlite::params![text, resource.id],
+                        );
+                        return Ok(Some(text));
+                    }
+                }
+                // ocr_pages_json 存在但无法提取文本，继续尝试重新 OCR
+                info!(
+                    "[try_auto_ocr_pdf_pages] Existing ocr_pages_json for file {} could not be parsed into text, will re-OCR",
+                    file_id
+                );
+            }
+        }
+
+        let mime_type = mime_type_opt.unwrap_or_default();
+
+        // 3. 对于 File 类型，检查 MIME 类型
+        if resource.resource_type == VfsResourceType::File {
+            let is_pdf = mime_type == "application/pdf";
+            let is_image = mime_type.starts_with("image/");
+
+            if is_image {
+                // File 类型的图片：回退到单图 OCR（原有逻辑）
+                return self.try_auto_ocr_single_image(resource, &file_id).await;
+            }
+
+            if !is_pdf {
+                info!(
+                    "[try_auto_ocr_pdf_pages] File {} has unsupported MIME type ({}), skipping OCR",
+                    resource.id, mime_type
+                );
+                return Ok(None);
+            }
+        }
+
+        // 4. 解析 preview_json
+        let preview_json_str = match preview_json_opt {
+            Some(ref s) if !s.trim().is_empty() => s.clone(),
+            _ => {
+                info!(
+                    "[try_auto_ocr_pdf_pages] No preview_json for file {} (resource {}), cannot OCR without rendered pages",
+                    file_id, resource.id
+                );
+                return Ok(None);
+            }
+        };
+
+        let preview: PdfPreviewJson = serde_json::from_str(&preview_json_str).map_err(|e| {
+            VfsError::Other(format!(
+                "Failed to parse preview_json for file {}: {}",
+                file_id, e
+            ))
+        })?;
+
+        let total_pages = preview.pages.len();
+        if total_pages == 0 {
+            info!(
+                "[try_auto_ocr_pdf_pages] preview_json has 0 pages for file {}, skipping",
+                file_id
+            );
+            return Ok(None);
+        }
+
+        let blobs_dir = self.db.blobs_dir().to_path_buf();
+
+        info!(
+            "[try_auto_ocr_pdf_pages] Starting auto-OCR for resource {} (file={}, {} pages)",
+            resource.id, file_id, total_pages
+        );
+
+        // 5. 发送 auto_ocr_started 事件
+        if let Some(ref ah) = self.app_handle {
+            let _ = ah.emit(
+                "vfs-index-progress",
+                serde_json::json!({
+                    "type": "auto_ocr_started",
+                    "resourceId": resource.id,
+                    "fileId": file_id,
+                    "totalPages": total_pages,
+                    "message": format!("开始自动 OCR ({} 页)...", total_pages)
+                }),
+            );
+        }
+
+        // 6. 逐页 OCR（与 PdfProcessingService::stage_ocr_processing 一致）
+        let mut ocr_results: Vec<OcrPageResult> = Vec::with_capacity(total_pages);
+        let mut failed_count = 0usize;
+
+        for (idx, page) in preview.pages.iter().enumerate() {
+            // 获取 blob 文件路径
+            let blob_path = match VfsBlobRepo::get_blob_path_with_conn(&conn, &blobs_dir, &page.blob_hash)? {
+                Some(path) => path,
+                None => {
+                    warn!(
+                        "[try_auto_ocr_pdf_pages] Blob not found for page {} (hash={}), skipping",
+                        idx, page.blob_hash
+                    );
+                    failed_count += 1;
+                    continue;
+                }
+            };
+
+            // 调用 OCR（使用 call_ocr_page_with_fallback，与预处理管线一致）
+            let path_str = blob_path.to_string_lossy().to_string();
+            match self
+                .llm_manager
+                .call_ocr_page_with_fallback(&path_str, page.page_index)
+                .await
+            {
+                Ok(cards) => {
+                    let blocks: Vec<PdfOcrTextBlock> = cards
+                        .iter()
+                        .map(|c| PdfOcrTextBlock {
+                            text: c.ocr_text.clone().unwrap_or_default(),
+                            bbox: c.bbox.clone(),
+                        })
+                        .collect();
+
+                    ocr_results.push(OcrPageResult {
+                        page_index: page.page_index,
+                        blocks,
+                    });
+
+                    info!(
+                        "[try_auto_ocr_pdf_pages] OCR page {}/{} completed for resource {}",
+                        idx + 1,
+                        total_pages,
+                        resource.id
+                    );
+                }
+                Err(e) => {
+                    warn!(
+                        "[try_auto_ocr_pdf_pages] OCR failed for page {} of resource {}: {}",
+                        idx, resource.id, e
+                    );
+                    failed_count += 1;
+                }
+            }
+
+            // 发送逐页进度事件
+            if let Some(ref ah) = self.app_handle {
+                let completed = ocr_results.len() + failed_count;
+                let percent = if total_pages > 0 {
+                    (completed as f64 / total_pages as f64 * 100.0) as u32
+                } else {
+                    0
+                };
+                let _ = ah.emit(
+                    "vfs-index-progress",
+                    serde_json::json!({
+                        "type": "auto_ocr_page",
+                        "resourceId": resource.id,
+                        "fileId": file_id,
+                        "currentPage": idx + 1,
+                        "totalPages": total_pages,
+                        "successCount": ocr_results.len(),
+                        "failCount": failed_count,
+                        "percent": percent,
+                        "message": format!("自动 OCR 进度: {}/{} 页", idx + 1, total_pages)
+                    }),
+                );
+            }
+        }
+
+        // 7. 按页码排序
+        ocr_results.sort_by_key(|r| r.page_index);
+
+        let success_count = ocr_results.len();
+        info!(
+            "[try_auto_ocr_pdf_pages] OCR completed for resource {}: {} success, {} failed out of {} pages",
+            resource.id, success_count, failed_count, total_pages
+        );
+
+        if success_count == 0 {
+            // 发送完成事件（失败）
+            if let Some(ref ah) = self.app_handle {
+                let _ = ah.emit(
+                    "vfs-index-progress",
+                    serde_json::json!({
+                        "type": "auto_ocr_completed",
+                        "resourceId": resource.id,
+                        "fileId": file_id,
+                        "success": false,
+                        "successCount": 0,
+                        "failCount": failed_count,
+                        "totalPages": total_pages,
+                        "message": format!("自动 OCR 失败: 所有 {} 页均识别失败", total_pages)
+                    }),
+                );
+            }
+            return Ok(None);
+        }
+
+        // 8. 构建 OcrPagesJson 并存储到 files.ocr_pages_json
+        let ocr_json = OcrPagesJson {
+            total_pages,
+            pages: ocr_results.clone(),
+            completed_at: chrono::Utc::now().to_rfc3339(),
+        };
+
+        let ocr_json_str = serde_json::to_string(&ocr_json).map_err(|e| {
+            VfsError::Other(format!("Failed to serialize OCR result: {}", e))
+        })?;
+
+        conn.execute(
+            "UPDATE files SET ocr_pages_json = ?1, updated_at = datetime('now') WHERE id = ?2",
+            rusqlite::params![ocr_json_str, file_id],
+        )?;
+
+        // 9. 合并所有页面文本 → 存储到 resources.ocr_text
+        let combined_text: String = ocr_results
+            .iter()
+            .map(|page| {
+                page.blocks
+                    .iter()
+                    .map(|b| b.text.as_str())
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            })
+            .filter(|t| !t.trim().is_empty())
+            .collect::<Vec<_>>()
+            .join("\n\n");
+
+        if !combined_text.is_empty() {
+            let _ = conn.execute(
+                "UPDATE resources SET ocr_text = ?1, updated_at = datetime('now') WHERE id = ?2",
+                rusqlite::params![combined_text, resource.id],
+            );
+        }
+
+        // 10. 更新 processing_progress 中的 ready_modes（标记 ocr 已就绪）
+        let progress_json: Option<String> = conn
+            .query_row(
+                "SELECT processing_progress FROM files WHERE id = ?1",
+                rusqlite::params![file_id],
+                |row| row.get(0),
+            )
+            .optional()?;
+
+        if let Some(ref pj) = progress_json {
+            if let Ok(mut progress) =
+                serde_json::from_str::<crate::vfs::pdf_processing_service::ProcessingProgress>(pj)
+            {
+                if !progress.ready_modes.contains(&"ocr".to_string()) {
+                    progress.ready_modes.push("ocr".to_string());
+                    if let Ok(new_json) = serde_json::to_string(&progress) {
+                        let _ = conn.execute(
+                            "UPDATE files SET processing_progress = ?1, updated_at = datetime('now') WHERE id = ?2",
+                            rusqlite::params![new_json, file_id],
+                        );
+                    }
+                }
+            }
+        }
+
+        // 11. 发送 auto_ocr_completed 事件
+        if let Some(ref ah) = self.app_handle {
+            let _ = ah.emit(
+                "vfs-index-progress",
+                serde_json::json!({
+                    "type": "auto_ocr_completed",
+                    "resourceId": resource.id,
+                    "fileId": file_id,
+                    "success": true,
+                    "successCount": success_count,
+                    "failCount": failed_count,
+                    "totalPages": total_pages,
+                    "textLength": combined_text.len(),
+                    "message": format!("自动 OCR 完成: {}/{} 页成功", success_count, total_pages)
+                }),
+            );
+        }
+
+        if combined_text.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(combined_text))
+        }
+    }
+
+    /// File 类型的单图 OCR（非 PDF 图片文件）
+    ///
+    /// 从 files 表获取 blob_hash → 读取 blob 数据 → 调用 OCR 模型
+    ///
+    /// ★ 2026-02-19 修复：不接受 &rusqlite::Connection 参数（Connection 是 !Sync，
+    /// &Connection 是 !Send，跨 .await 会导致 future !Send）。
+    /// 改为内部获取独立连接，确保 future 是 Send。
+    async fn try_auto_ocr_single_image(
+        &self,
+        resource: &VfsResource,
+        file_id: &str,
+    ) -> VfsResult<Option<String>> {
+        use crate::llm_manager::ImagePayload;
+
+        // 在 .await 之前完成所有 DB 读取，然后 drop conn
+        let ocr_input: Option<(String, ImagePayload)> = {
+            let conn = self.db.get_conn_safe()?;
+            let file_data: Option<(String, String)> = conn
+                .query_row(
+                    "SELECT blob_hash, mime_type FROM files WHERE id = ?1",
+                    rusqlite::params![file_id],
+                    |row| {
+                        Ok((
+                            row.get::<_, Option<String>>(0)?,
+                            row.get::<_, Option<String>>(1)?,
+                        ))
+                    },
+                )
+                .ok()
+                .and_then(|(hash, mime)| match (hash, mime) {
+                    (Some(h), Some(m)) => Some((h, m)),
+                    _ => None,
+                });
+
+            if let Some((blob_hash, mime_type)) = file_data {
+                let blob_data: Option<Vec<u8>> = conn
+                    .query_row(
+                        "SELECT data FROM blobs WHERE hash = ?1",
+                        rusqlite::params![blob_hash],
+                        |row| row.get(0),
+                    )
+                    .ok();
+
+                if let Some(data) = blob_data {
+                    let base64 = base64::Engine::encode(
+                        &base64::engine::general_purpose::STANDARD,
+                        &data,
+                    );
+                    Some((mime_type.clone(), ImagePayload {
+                        mime: mime_type,
+                        base64,
+                    }))
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        }; // conn dropped here, before .await
+
+        if let Some((mime_type, image_payload)) = ocr_input {
+            info!(
+                "[try_auto_ocr_single_image] Calling OCR for file {} ({})",
+                resource.id, mime_type
+            );
+
+            let result = self
+                .llm_manager
+                .call_ocr_model_raw_prompt(
+                    "Convert the document to markdown.",
+                    Some(vec![image_payload]),
+                )
+                .await
+                .map_err(|e| VfsError::Other(format!("OCR 调用失败: {}", e)))?;
+
+            let ocr_text = result.assistant_message.trim().to_string();
+
+            if !ocr_text.is_empty() {
+                // .await 之后重新获取连接写入
+                let conn = self.db.get_conn_safe()?;
+                let _ = conn.execute(
+                    "UPDATE resources SET ocr_text = ?1 WHERE id = ?2",
+                    rusqlite::params![ocr_text, resource.id],
+                );
+                return Ok(Some(ocr_text));
+            }
+        }
+
+        Ok(None)
     }
 
     /// ★ 2026-01: 索引单个题目（Question 独立索引）

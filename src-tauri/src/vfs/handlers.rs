@@ -2703,9 +2703,11 @@ pub async fn vfs_reindex_resource(
     }
 
     let lance_store = Arc::new(VfsLanceStore::new(Arc::clone(&vfs_db)).map_err(|e| e.to_string())?);
-    let indexing_service =
+    let mut indexing_service =
         VfsFullIndexingService::new(Arc::clone(&vfs_db), Arc::clone(&llm_manager), lance_store)
             .map_err(|e| e.to_string())?;
+    // ★ 2026-02-19：传递 AppHandle，使 try_auto_ocr 能发送细粒度进度事件
+    indexing_service.set_app_handle(app_handle.clone());
 
     // ★ 构造嵌入进度回调，上报单资源索引的嵌入批次进度
     let cb_handle = app_handle.clone();
@@ -3314,7 +3316,11 @@ pub async fn vfs_batch_index_pending(
         Arc::clone(&llm_manager),
         lance_store,
     ) {
-        Ok(svc) => svc,
+        Ok(mut svc) => {
+            // ★ 2026-02-19：传递 AppHandle，使 try_auto_ocr 能发送细粒度进度事件
+            svc.set_app_handle(app_handle.clone());
+            svc
+        }
         Err(e) => {
             log::error!(
                 "[VFS::handlers] vfs_batch_index_pending: IndexingService 初始化失败，回退 {} 个已 claim 的资源",
@@ -4020,37 +4026,38 @@ pub async fn vfs_get_all_index_status(
             ,COALESCE(SUM(CASE WHEN r.type IN ('textbook', 'file', 'exam', 'image')
                 AND COALESCE(
                     CASE WHEN r.type IN ('textbook', 'file', 'image') THEN COALESCE(fm.mm_index_state, fs_mm.mm_index_state) END,
-                    CASE WHEN r.type = 'exam' THEN em.mm_index_state END,
+                    CASE WHEN r.type = 'exam' THEN COALESCE(em.mm_index_state, es_mm.mm_index_state) END,
                     COALESCE(r.mm_index_state, 'pending')
                 ) = 'indexed' THEN 1 ELSE 0 END), 0) as mm_indexed
             ,COALESCE(SUM(CASE WHEN r.type IN ('textbook', 'file', 'exam', 'image')
                 AND COALESCE(
                     CASE WHEN r.type IN ('textbook', 'file', 'image') THEN COALESCE(fm.mm_index_state, fs_mm.mm_index_state) END,
-                    CASE WHEN r.type = 'exam' THEN em.mm_index_state END,
+                    CASE WHEN r.type = 'exam' THEN COALESCE(em.mm_index_state, es_mm.mm_index_state) END,
                     COALESCE(r.mm_index_state, 'pending')
                 ) = 'pending' THEN 1 ELSE 0 END), 0) as mm_pending
             ,COALESCE(SUM(CASE WHEN r.type IN ('textbook', 'file', 'exam', 'image')
                 AND COALESCE(
                     CASE WHEN r.type IN ('textbook', 'file', 'image') THEN COALESCE(fm.mm_index_state, fs_mm.mm_index_state) END,
-                    CASE WHEN r.type = 'exam' THEN em.mm_index_state END,
+                    CASE WHEN r.type = 'exam' THEN COALESCE(em.mm_index_state, es_mm.mm_index_state) END,
                     COALESCE(r.mm_index_state, 'pending')
                 ) = 'indexing' THEN 1 ELSE 0 END), 0) as mm_indexing
             ,COALESCE(SUM(CASE WHEN r.type IN ('textbook', 'file', 'exam', 'image')
                 AND COALESCE(
                     CASE WHEN r.type IN ('textbook', 'file', 'image') THEN COALESCE(fm.mm_index_state, fs_mm.mm_index_state) END,
-                    CASE WHEN r.type = 'exam' THEN em.mm_index_state END,
+                    CASE WHEN r.type = 'exam' THEN COALESCE(em.mm_index_state, es_mm.mm_index_state) END,
                     COALESCE(r.mm_index_state, 'pending')
                 ) = 'failed' THEN 1 ELSE 0 END), 0) as mm_failed
             ,COALESCE(SUM(CASE WHEN r.type IN ('textbook', 'file', 'exam', 'image')
                 AND COALESCE(
                     CASE WHEN r.type IN ('textbook', 'file', 'image') THEN COALESCE(fm.mm_index_state, fs_mm.mm_index_state) END,
-                    CASE WHEN r.type = 'exam' THEN em.mm_index_state END,
+                    CASE WHEN r.type = 'exam' THEN COALESCE(em.mm_index_state, es_mm.mm_index_state) END,
                     COALESCE(r.mm_index_state, 'pending')
                 ) = 'disabled' THEN 1 ELSE 0 END), 0) as mm_disabled
         FROM resources r
         LEFT JOIN file_mm fm ON fm.resource_id = r.id
         LEFT JOIN files fs_mm ON fs_mm.id = r.source_id
         LEFT JOIN exam_mm em ON em.resource_id = r.id
+        LEFT JOIN exam_sheets es_mm ON es_mm.id = r.source_id
         {0}
         WHERE {1}
         "#,
