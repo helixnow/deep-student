@@ -72,14 +72,19 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({ on
   //       (e.g. useAppEvent or EventBus) so that the event source and consumer are
   //       co-located in a single registry rather than scattered across files.
   useEffect(() => {
-    const handleToggleSettings = () => {
+    const handleToggleSettings = (evt: Event) => {
+      // ★ 标签页：检查 targetResourceId 是否匹配（无 targetResourceId 时兼容旧调用）
+      const detail = (evt as CustomEvent<{ targetResourceId?: string }>).detail;
+      if (detail?.targetResourceId && dstuMode.resourceId && detail.targetResourceId !== dstuMode.resourceId) {
+        return;
+      }
       setShowPromptEditor(prev => !prev);
     };
     window.addEventListener('essay:openSettings', handleToggleSettings);
     return () => {
       window.removeEventListener('essay:openSettings', handleToggleSettings);
     };
-  }, []);
+  }, [dstuMode.resourceId]);
 
   // 批阅模式状态
   const [modes, setModes] = useState<GradingMode[]>([]);
@@ -479,27 +484,30 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({ on
   // 'LEARNING_GRADE_ESSAY' — dispatched by CommandPalette to trigger essay grading.
   // TODO: Migrate to a centralised event hook/registry (e.g. useAppEvent or EventBus).
   useEffect(() => {
-    const handleGradeEvent = () => {
+    const handleGradeEvent = (evt: Event) => {
+      const detail = (evt as CustomEvent<{ targetResourceId?: string }>).detail;
+      if (detail?.targetResourceId && dstuMode.resourceId && detail.targetResourceId !== dstuMode.resourceId) return;
       handleGrade();
     };
     window.addEventListener('LEARNING_GRADE_ESSAY', handleGradeEvent);
     return () => {
       window.removeEventListener('LEARNING_GRADE_ESSAY', handleGradeEvent);
     };
-  }, [handleGrade]);
+  }, [handleGrade, dstuMode.resourceId]);
 
   // P1-19: 监听命令面板 LEARNING_ESSAY_SUGGESTIONS 事件
   // 当用户请求改进建议时，如果已有批改结果则显示提示，否则触发批改
   // 'LEARNING_ESSAY_SUGGESTIONS' — dispatched by CommandPalette to request improvement suggestions.
   // TODO: Migrate to a centralised event hook/registry (e.g. useAppEvent or EventBus).
   useEffect(() => {
-    const handleSuggestionsEvent = () => {
+    const handleSuggestionsEvent = (evt: Event) => {
+      const detail = (evt as CustomEvent<{ targetResourceId?: string }>).detail;
+      if (detail?.targetResourceId && dstuMode.resourceId && detail.targetResourceId !== dstuMode.resourceId) return;
       const currentText = inputText ?? '';
       const hasResultForInput = Boolean(gradingResult) && lastGradedInputRef.current === currentText;
       if (hasResultForInput) {
         showGlobalNotification('info', t('essay_grading:toast.suggestions_in_result'));
       } else {
-        // 如果没有批改结果，先进行批改
         handleGrade();
       }
     };
@@ -507,7 +515,7 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({ on
     return () => {
       window.removeEventListener('LEARNING_ESSAY_SUGGESTIONS', handleSuggestionsEvent);
     };
-  }, [gradingResult, handleGrade, inputText, t]);
+  }, [gradingResult, handleGrade, inputText, t, dstuMode.resourceId]);
 
   const handleNextRoundSubmit = useCallback(() => {
     setShowNextRoundConfirm(true);

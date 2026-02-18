@@ -83,6 +83,8 @@ export interface EssayDstuModeConfig {
   onSessionSave?: (session: EssayGradingSession) => Promise<void>;
   /** 新轮次添加回调 */
   onRoundAdd?: (round: DstuGradingRound) => Promise<void>;
+  /** ★ 标签页：资源 ID，用于事件定向过滤 */
+  resourceId?: string;
 }
 
 // ============================================================================

@@ -47,6 +47,8 @@ export interface ExamSheetProgressState {
 }
 
 export interface UseExamSheetProgressOptions {
+  /** ★ 标签页：当前 session ID，用于过滤非当前 session 的进度事件 */
+  sessionId?: string | null;
   onSessionUpdate?: (detail: any) => Promise<void>;
   onProgress?: (stage: string, current: number, total: number) => void;
 }
@@ -72,8 +74,18 @@ export function useExamSheetProgress(options: UseExamSheetProgressOptions = {}) 
   useEffect(() => { onSessionUpdateRef.current = options.onSessionUpdate; }, [options.onSessionUpdate]);
   useEffect(() => { onProgressRef.current = options.onProgress; }, [options.onProgress]);
 
+  // ★ 标签页：用 ref 持有 sessionId 以便在 handleProgress 中引用
+  const sessionIdRef = useRef(options.sessionId);
+  useEffect(() => { sessionIdRef.current = options.sessionId; }, [options.sessionId]);
+
   const handleProgress = useCallback((payload: ExamSheetProgressEvent) => {
     if (!payload) return;
+
+    // ★ 标签页：过滤非当前 session 的事件
+    const targetSessionId = sessionIdRef.current;
+    if (targetSessionId && payload.detail?.summary?.id && payload.detail.summary.id !== targetSessionId) {
+      return; // 忽略其他 session 的事件
+    }
 
     // 处理失败事件
     if (payload.type === 'Failed') {

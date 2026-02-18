@@ -15,19 +15,18 @@
  * - 打开资源时自动切换到右侧应用视图
  */
 
-import React, { useState, useCallback, useEffect, lazy, Suspense, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { PanelGroup, Panel, PanelResizeHandle, type ImperativePanelHandle } from 'react-resizable-panels';
 import { registerOpenResourceHandler, type OpenResourceHandler } from '@/dstu/openResource';
-import type { DstuNode, DstuNodeType } from '@/dstu/types';
+import type { DstuNode } from '@/dstu/types';
 import { createEmpty, type CreatableResourceType } from '@/dstu';
-import { dstuNodeToResourceListItem } from './types';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { setPendingMemoryLocate } from '@/utils/pendingMemoryLocate';
 import { LearningHubSidebar } from './LearningHubSidebar';
 import type { ResourceListItem, ResourceType } from './types';
 import { cn } from '@/lib/utils';
-import { FileText, BookOpen, ClipboardList, Loader2, GripVertical, LayoutGrid, Settings } from 'lucide-react';
+import { GripVertical, LayoutGrid, Settings } from 'lucide-react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { useUIStore } from '@/stores/uiStore';
 import { useMobileHeader } from '@/components/layout';
@@ -49,9 +48,10 @@ import { useLearningHubNavigation } from './LearningHubNavigationContext';
 import { useFinderStore } from './stores/finderStore';
 import { useQuestionBankStore } from '@/stores/questionBankStore';
 import { DstuAppLauncher } from './components/DstuAppLauncher';
-
-// 懒加载统一应用面板
-const UnifiedAppPanel = lazy(() => import('./apps/UnifiedAppPanel'));
+import { type OpenTab, MAX_TABS, createTab } from './types/tabs';
+import { TabBar } from './components/TabBar';
+import { TabPanelContainer } from './apps/TabPanelContainer';
+import { setActiveTabForExternal } from './activeTabAccessor';
 
 // ============================================================================
 // 三屏滑动布局类型和常量
@@ -59,36 +59,6 @@ const UnifiedAppPanel = lazy(() => import('./apps/UnifiedAppPanel'));
 
 /** 三屏位置枚举 */
 type ScreenPosition = 'left' | 'center' | 'right';
-
-/**
- * 当前打开的应用信息
- */
-interface OpenApp {
-  /** 应用类型 */
-  type: ResourceType;
-  /** 资源 ID */
-  id: string;
-  /** 资源标题 */
-  title: string;
-  /** DSTU 真实路径（用户在 Learning Hub 中看到的文件夹路径，如 /1111/abc.pdf） */
-  dstuPath: string;
-}
-
-/**
- * 获取应用类型对应的图标
- */
-const getAppIcon = (type: ResourceType) => {
-  switch (type) {
-    case 'note':
-      return FileText;
-    case 'textbook':
-      return BookOpen;
-    case 'exam':
-      return ClipboardList;
-    default:
-      return FileText;
-  }
-};
 
 /**
  * 根据文件名推断资源类型
@@ -135,10 +105,58 @@ export const LearningHubPage: React.FC = () => {
   // ========== 响应式布局 ==========
   const { isSmallScreen } = useBreakpoint();
 
-  // ========== 当前打开的应用 ==========
-  const [openApp, setOpenApp] = useState<OpenApp | null>(null);
-  // ★ 应用级历史栈：支持从资源A跳转到资源B后后退回资源A
-  const appHistoryRef = useRef<OpenApp[]>([]);
+  // ========== ★ 标签页状态 ==========
+  const [tabs, setTabs] = useState<OpenTab[]>([]);
+  const [activeTabId, setActiveTabId] = useState<string | null>(null);
+
+  // 派生状态
+  const activeTab = tabs.find(t => t.tabId === activeTabId) ?? null;
+  const hasOpenApp = tabs.length > 0;
+
+  // ========== 标签页操作函数 ==========
+  const openTab = useCallback((app: Omit<OpenTab, 'tabId' | 'openedAt'>) => {
+    setTabs(prev => {
+      // 1. 已存在同 resourceId 的 tab → 直接激活
+      const existing = prev.find(t => t.resourceId === app.resourceId);
+      if (existing) {
+        setActiveTabId(existing.tabId);
+        return prev;
+      }
+      // 2. 超出上限时 LRU 淘汰最旧的非固定 tab
+      let next = [...prev];
+      if (next.length >= MAX_TABS) {
+        const toEvict = [...next]
+          .filter(t => !t.isPinned)
+          .sort((a, b) => a.openedAt - b.openedAt)[0];
+        if (toEvict) {
+          next = next.filter(t => t.tabId !== toEvict.tabId);
+        }
+      }
+      // 3. 新建 tab
+      const newTab = createTab(app);
+      setActiveTabId(newTab.tabId);
+      return [...next, newTab];
+    });
+  }, []);
+
+  const closeTab = useCallback((tabId: string) => {
+    setTabs(prev => {
+      const idx = prev.findIndex(t => t.tabId === tabId);
+      if (idx === -1) return prev;
+      const next = prev.filter(t => t.tabId !== tabId);
+      // 激活相邻 tab
+      setActiveTabId(currentId => {
+        if (currentId !== tabId) return currentId;
+        const newActive = next[idx] ?? next[idx - 1] ?? null;
+        return newActive?.tabId ?? null;
+      });
+      return next;
+    });
+  }, []);
+
+  const updateTabTitle = useCallback((tabId: string, title: string) => {
+    setTabs(prev => prev.map(t => t.tabId === tabId ? { ...t, title } : t));
+  }, []);
 
   // ========== 三屏滑动布局状态（移动端） ==========
   const [screenPosition, setScreenPosition] = useState<ScreenPosition>('center');
@@ -266,7 +284,7 @@ export const LearningHubPage: React.FC = () => {
         // 向左滑动
         if (screenPosition === 'center') {
           // 只有在有打开的应用时才能滑动到右侧
-          if (openApp) {
+          if (activeTab) {
             setScreenPosition('right');
           }
         } else if (screenPosition === 'left') {
@@ -279,7 +297,7 @@ export const LearningHubPage: React.FC = () => {
     stateRef.current.axisLocked = null;
     setIsDragging(false);
     setDragOffset(0);
-  }, [dragOffset, screenPosition, sidebarWidth, openApp]);
+  }, [dragOffset, screenPosition, sidebarWidth, activeTab]);
 
   // ========== 三屏滑动：绑定触摸事件 ==========
   useEffect(() => {
@@ -329,17 +347,13 @@ export const LearningHubPage: React.FC = () => {
   // 根目录标题
   const rootTitle = t('learningHub:title');
 
-  // 移动端统一顶栏配置 - 根据屏幕位置、openApp 和文件夹层级动态变化
+  // 移动端统一顶栏配置 - 根据屏幕位置、activeTab 和文件夹层级动态变化
   useMobileHeader('learning-hub', {
-    // 左侧应用入口界面：显示 "应用" 标题
-    // 右侧应用面板界面：显示应用标题
-    // 中间文件视图界面：显示面包屑导航（使用 titleNode）
     title: screenPosition === 'left'
       ? t('learningHub:apps.title')
-      : screenPosition === 'right' && openApp
-        ? (openApp.title || t('common:untitled'))
+      : screenPosition === 'right' && activeTab
+        ? (activeTab.title || t('common:untitled'))
         : undefined,
-    // 文件视图界面：使用响应式面包屑组件
     titleNode: screenPosition === 'center' ? (
       <MobileBreadcrumb
         rootTitle={rootTitle}
@@ -348,34 +362,29 @@ export const LearningHubPage: React.FC = () => {
       />
     ) : undefined,
     showMenu: true,
-    // 左上角按钮逻辑：
-    // 1. 应用面板界面 → 返回文件视图
-    // 2. 文件视图且在子文件夹 → 返回上级文件夹
-    // 3. 文件视图且在根目录 → 切换左侧栏
     onMenuClick: screenPosition === 'right'
       ? () => setScreenPosition('center')
       : screenPosition === 'center' && isInSubfolder
         ? () => finderGoBack()
         : () => setScreenPosition(prev => prev === 'left' ? 'center' : 'left'),
-    // 显示返回箭头的条件：应用面板界面 或 在子文件夹中
     showBackArrow: screenPosition === 'right' || (screenPosition === 'center' && isInSubfolder),
-    // 翻译/作文/题目集应用：右侧显示设置按钮
-    rightActions: screenPosition === 'right' && (openApp?.type === 'translation' || openApp?.type === 'essay' || openApp?.type === 'exam') ? (
+    rightActions: screenPosition === 'right' && (activeTab?.type === 'translation' || activeTab?.type === 'essay' || activeTab?.type === 'exam') ? (
       <NotionButton
         variant="ghost"
         size="icon"
         onClick={() => {
-          const eventName = openApp?.type === 'translation' 
+          const eventName = activeTab?.type === 'translation' 
             ? 'translation:openSettings' 
-            : openApp?.type === 'essay'
+            : activeTab?.type === 'essay'
               ? 'essay:openSettings'
               : 'exam:openSettings';
           if (eventName === 'exam:openSettings') {
-            // 使用 Store 而非 window event（规范化跨模块事件）
             const { toggleSettingsPanel } = useQuestionBankStore.getState();
             toggleSettingsPanel();
           } else {
-            window.dispatchEvent(new CustomEvent(eventName));
+            window.dispatchEvent(new CustomEvent(eventName, {
+              detail: { targetResourceId: activeTab?.resourceId },
+            }));
           }
         }}
         className="h-9 w-9"
@@ -383,7 +392,7 @@ export const LearningHubPage: React.FC = () => {
         <Settings className="h-5 w-5" />
       </NotionButton>
     ) : undefined,
-  }, [screenPosition, openApp, t, isInSubfolder, finderBreadcrumbs, finderGoBack, rootTitle, handleBreadcrumbNavigate]);
+  }, [screenPosition, activeTab, t, isInSubfolder, finderBreadcrumbs, finderGoBack, rootTitle, handleBreadcrumbNavigate]);
 
   // ========== 侧边栏收缩状态 ==========
   const globalLeftPanelCollapsed = useUIStore((state) => state.leftPanelCollapsed);
@@ -412,32 +421,23 @@ export const LearningHubPage: React.FC = () => {
   useEffect(() => {
     const handler: OpenResourceHandler = {
       openInPanel: (path, node, mode) => {
-        // ★ 将当前打开的应用压入历史栈，以便后退恢复
-        setOpenApp(prev => {
-          if (prev) {
-            appHistoryRef.current.push(prev);
-          }
-          return {
-            type: node.type as ResourceType,
-            id: node.id,
-            title: node.name,
-            dstuPath: path,
-          };
+        openTab({
+          type: node.type as ResourceType,
+          resourceId: node.id,
+          title: node.name,
+          dstuPath: path,
         });
         if (isSmallScreen) {
           setScreenPosition('right');
         }
       },
       openInPage: (path, node, mode) => {
-        // 当前默认使用面板
         handler.openInPanel(path, node, mode);
       },
       openInFullscreen: (path, node, mode) => {
-        // 当前默认使用面板
         handler.openInPanel(path, node, mode);
       },
       openInModal: (path, node, mode) => {
-        // 当前默认使用面板
         handler.openInPanel(path, node, mode);
       },
     };
@@ -445,7 +445,7 @@ export const LearningHubPage: React.FC = () => {
     // 🔧 P0-28 修复：使用命名空间注册，避免覆盖其他处理器
     const unregister = registerOpenResourceHandler(handler, 'learning-hub');
     return unregister;
-  }, [isSmallScreen]);
+  }, [isSmallScreen, openTab]);
 
   // ========== 统一事件监听（使用 useLearningHubEvents hook） ==========
   // 定义事件处理回调
@@ -453,24 +453,24 @@ export const LearningHubPage: React.FC = () => {
     const { sessionId } = detail;
     if (!sessionId) return;
 
-    setOpenApp({
+    openTab({
       type: 'exam',
-      id: sessionId,
+      resourceId: sessionId,
       title: t('learningHub:examSheet'),
       dstuPath: `/${sessionId}`,
     });
     if (isSmallScreen) {
       setScreenPosition('right');
     }
-  }, [t, isSmallScreen]);
+  }, [t, isSmallScreen, openTab]);
 
   const handleOpenTranslationEvent = useCallback((detail: OpenTranslationEventDetail) => {
     const { translationId, title } = detail;
     if (!translationId) return;
 
-    setOpenApp({
+    openTab({
       type: 'translation',
-      id: translationId,
+      resourceId: translationId,
       title: title || t('learningHub:translation'),
       dstuPath: `/${translationId}`,
     });
@@ -478,15 +478,15 @@ export const LearningHubPage: React.FC = () => {
     if (isSmallScreen) {
       setScreenPosition('right');
     }
-  }, [t, isSmallScreen]);
+  }, [t, isSmallScreen, openTab]);
 
   const handleOpenEssayEvent = useCallback((detail: OpenEssayEventDetail) => {
     const { essayId, title } = detail;
     if (!essayId) return;
 
-    setOpenApp({
+    openTab({
       type: 'essay',
-      id: essayId,
+      resourceId: essayId,
       title: title || t('learningHub:essay'),
       dstuPath: `/${essayId}`,
     });
@@ -494,15 +494,15 @@ export const LearningHubPage: React.FC = () => {
     if (isSmallScreen) {
       setScreenPosition('right');
     }
-  }, [t, isSmallScreen]);
+  }, [t, isSmallScreen, openTab]);
 
   const handleOpenNoteEvent = useCallback((detail: OpenNoteEventDetail) => {
     const { noteId } = detail;
     if (!noteId) return;
 
-    setOpenApp({
+    openTab({
       type: 'note',
-      id: noteId,
+      resourceId: noteId,
       title: t('learningHub:note'),
       dstuPath: `/${noteId}`,
     });
@@ -510,7 +510,7 @@ export const LearningHubPage: React.FC = () => {
     if (isSmallScreen) {
       setScreenPosition('right');
     }
-  }, [t, isSmallScreen]);
+  }, [t, isSmallScreen, openTab]);
 
   const handleOpenResourceEvent = useCallback(async (detail: OpenResourceEventDetail) => {
     const { dstuPath } = detail;
@@ -570,62 +570,48 @@ export const LearningHubPage: React.FC = () => {
       // RAG 文档 - 直接打开文档预览器
       // 优先使用后端返回的 resourceType，回退到从文件名推断
       const appType = (resourceType as ResourceType) || inferResourceTypeFromFileName(fileName || '');
-      setOpenApp({
+      openTab({
         type: appType,
-        id: finalDocumentId,
+        resourceId: finalDocumentId,
         title: fileName || t('learningHub:document'),
         dstuPath: `/${finalDocumentId}`,
       });
-      // 移动端：切换到右侧应用视图
       if (isSmallScreen) {
         setScreenPosition('right');
       }
     } else {
-      // 默认导航到记忆视图
       finderQuickAccessNavigate('memory');
       if (isSmallScreen) {
         setScreenPosition('center');
       }
     }
-  }, [finderQuickAccessNavigate, isSmallScreen, t]);
+  }, [finderQuickAccessNavigate, isSmallScreen, t, openTab]);
 
   // ========== 打开应用（从 ResourceListItem） ==========
   const handleOpenApp = useCallback((item: ResourceListItem) => {
-    // item.path 是用户在 Learning Hub 中看到的文件夹路径，如 /1111/abc.pdf
-    // ★ 将当前打开的应用压入历史栈，以便后退恢复
-    setOpenApp(prev => {
-      if (prev) {
-        appHistoryRef.current.push(prev);
-      }
-      return {
-        type: item.type,
-        id: item.id,
-        title: item.title,
-        dstuPath: item.path || `/${item.id}`,
-      };
+    openTab({
+      type: item.type,
+      resourceId: item.id,
+      title: item.title,
+      dstuPath: item.path || `/${item.id}`,
     });
-    // 移动端：自动切换到右侧应用视图
     if (isSmallScreen) {
       setScreenPosition('right');
     }
-  }, [isSmallScreen]);
+  }, [isSmallScreen, openTab]);
 
   // ========== 标题更新回调（统一面板加载资源后更新标题） ==========
   const handleTitleChange = useCallback((title: string) => {
-    setOpenApp(prev => prev ? { ...prev, title } : null);
-  }, []);
+    if (activeTabId) updateTabTitle(activeTabId, title);
+  }, [activeTabId, updateTabTitle]);
 
-  // ========== 关闭应用（支持历史栈后退） ==========
+  // ========== 关闭应用（关闭当前活跃标签页） ==========
   const handleCloseApp = useCallback(() => {
-    const prev = appHistoryRef.current.pop();
-    if (prev) {
-      // 后退到上一个打开的资源
-      setOpenApp(prev);
-    } else {
-      setOpenApp(null);
-      setLocalSidebarCollapsed(false);
+    if (activeTabId) {
+      closeTab(activeTabId);
     }
-  }, []);
+    // 当所有 tab 关闭后展开侧边栏（由 useEffect[tabs.length] 处理）
+  }, [activeTabId, closeTab]);
 
   // ========== 快捷创建并打开资源 ==========
   const handleCreateAndOpen = useCallback(async (type: 'exam' | 'essay' | 'translation' | 'note') => {
@@ -642,14 +628,12 @@ export const LearningHubPage: React.FC = () => {
       const newNode = result.value;
       // 刷新文件列表
       finderRefresh();
-      // 打开新创建的资源
-      setOpenApp({
+      openTab({
         type: type,
-        id: newNode.id,
+        resourceId: newNode.id,
         title: newNode.name,
         dstuPath: newNode.path || `/${newNode.id}`,
       });
-      // 移动端：自动切换到右侧应用视图
       if (isSmallScreen) {
         setScreenPosition('right');
       }
@@ -657,7 +641,7 @@ export const LearningHubPage: React.FC = () => {
     } else {
       showGlobalNotification('error', result.error.toUserMessage());
     }
-  }, [finderCurrentPath.folderId, finderRefresh, isSmallScreen, t]);
+  }, [finderCurrentPath.folderId, finderRefresh, isSmallScreen, t, openTab]);
 
   // ========== 统一注册所有 window 事件监听器 ==========
   useLearningHubEvents({
@@ -673,22 +657,25 @@ export const LearningHubPage: React.FC = () => {
 
   // ========== 📱 同步应用状态到导航上下文 ==========
   useEffect(() => {
-    const hasApp = openApp !== null;
-    setHasOpenApp(hasApp);
+    setHasOpenApp(hasOpenApp);
 
-    // 注册关闭回调
-    if (hasApp) {
+    if (hasOpenApp) {
       registerCloseAppCallback(handleCloseApp);
     } else {
       registerCloseAppCallback(null);
     }
-  }, [openApp, setHasOpenApp, registerCloseAppCallback, handleCloseApp]);
+  }, [hasOpenApp, setHasOpenApp, registerCloseAppCallback, handleCloseApp]);
+
+  // ========== ★ 同步活跃标签页到全局访问器（供 CommandPalette 等使用） ==========
+  useEffect(() => {
+    setActiveTabForExternal(activeTab);
+    return () => setActiveTabForExternal(null);
+  }, [activeTab]);
 
   // ========== 添加到对话（引用模式） ==========
   const handleInjectToChat = useCallback(async () => {
-    if (!openApp) return;
+    if (!activeTab) return;
     
-    // ResourceType → VfsResourceType 映射（只有支持的类型可以注入）
     const typeMapping: Partial<Record<ResourceType, VfsResourceType>> = {
       note: 'note',
       textbook: 'textbook',
@@ -700,57 +687,58 @@ export const LearningHubPage: React.FC = () => {
       mindmap: 'mindmap',
     };
     
-    const sourceType = typeMapping[openApp.type];
+    const sourceType = typeMapping[activeTab.type];
     if (!sourceType) {
-      debugLog.warn('[LearningHubPage] Unsupported resource type for injection:', openApp.type);
+      debugLog.warn('[LearningHubPage] Unsupported resource type for injection:', activeTab.type);
       return;
     }
     
     await injectToChat({
-      sourceId: openApp.id,
+      sourceId: activeTab.resourceId,
       sourceType,
-      name: openApp.title || t('common:untitled'),
+      name: activeTab.title || t('common:untitled'),
       metadata: {
-        title: openApp.title,
+        title: activeTab.title,
       },
     });
-  }, [openApp, injectToChat, t]);
+  }, [activeTab, injectToChat, t]);
 
-  // 检查当前资源类型是否支持添加到对话
   const canInjectCurrentResource = useCallback(() => {
-    if (!openApp) return false;
+    if (!activeTab) return false;
     const supportedTypes: ResourceType[] = ['note', 'textbook', 'exam', 'translation', 'essay'];
-    return supportedTypes.includes(openApp.type);
-  }, [openApp]);
+    return supportedTypes.includes(activeTab.type);
+  }, [activeTab]);
 
   // 更新 ref 引用以便 useMobileHeader 中调用
   handleInjectToChatRef.current = handleInjectToChat;
   handleCloseAppRef.current = handleCloseApp;
   canInjectCurrentResourceRef.current = canInjectCurrentResource;
 
-  const hasOpenApp = openApp !== null;
-  const AppIcon = openApp ? getAppIcon(openApp.type) : FileText;
-  
   // 应用面板引用，用于控制展开/折叠
   const appPanelRef = useRef<ImperativePanelHandle>(null);
   
-  // 当应用打开/关闭时控制面板展开/折叠
+  // ★ 当标签页打开/全部关闭时控制面板展开/折叠
   useEffect(() => {
     const appPanel = appPanelRef.current;
-    if (!appPanel) return;
 
-    if (hasOpenApp) {
-      // 打开应用时展开应用面板，收缩侧边栏
-      appPanel.expand();
-      // 延迟一帧后收缩侧边栏，让动画更流畅
-      requestAnimationFrame(() => {
-        setLocalSidebarCollapsed(true);
-      });
+    if (tabs.length > 0) {
+      if (appPanel) {
+        appPanel.expand();
+        requestAnimationFrame(() => {
+          setLocalSidebarCollapsed(true);
+        });
+      }
     } else {
-      // 关闭应用时折叠应用面板
-      appPanel.collapse();
+      if (appPanel) {
+        appPanel.collapse();
+      }
+      setLocalSidebarCollapsed(false);
+      // 移动端：所有 tab 关闭后返回中间屏
+      if (isSmallScreen) {
+        setScreenPosition('center');
+      }
     }
-  }, [hasOpenApp]);
+  }, [tabs.length, isSmallScreen]);
 
   // ========== 移动端：三屏滑动布局 ==========
   if (isSmallScreen) {
@@ -824,39 +812,24 @@ export const LearningHubPage: React.FC = () => {
               onOpenApp={handleOpenApp}
               className="h-full overflow-hidden"
               isCollapsed={false}
-              activeFileId={openApp?.id}
+              activeFileId={activeTab?.resourceId}
             />
           </div>
 
-          {/* 右侧：DSTU 应用内容（整宽） */}
+          {/* 右侧：DSTU 应用内容（整宽）—— 移动端使用 TabPanelContainer 保活 */}
           <div
             className="h-full flex-shrink-0 bg-background overflow-hidden"
             style={{ width: containerWidth || '100vw' }}
           >
-            {openApp ? (
+            {tabs.length > 0 ? (
               <div className="h-full flex flex-col safe-area-bottom">
-                <Suspense
-                  fallback={
-                    <div className="flex items-center justify-center h-full">
-                      <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
-                      <span className="ml-2 text-muted-foreground">
-                        {t('common:loading')}
-                      </span>
-                    </div>
-                  }
-                >
-                  <UnifiedAppPanel
-                    type={openApp.type}
-                    resourceId={openApp.id}
-                    dstuPath={openApp.dstuPath}
-                    onClose={() => {
-                      handleCloseApp();
-                      setScreenPosition('center');
-                    }}
-                    onTitleChange={handleTitleChange}
-                    className="h-full"
-                  />
-                </Suspense>
+                <TabPanelContainer
+                  tabs={tabs}
+                  activeTabId={activeTabId}
+                  onClose={closeTab}
+                  onTitleChange={updateTabTitle}
+                  className="h-full"
+                />
               </div>
             ) : (
               <div className="h-full flex items-center justify-center text-muted-foreground">
@@ -897,7 +870,7 @@ export const LearningHubPage: React.FC = () => {
               className="w-full h-full"
               isCollapsed={sidebarCollapsed}
               onToggleCollapse={() => handleSidebarCollapsedChange(!sidebarCollapsed)}
-              activeFileId={openApp?.id}
+              activeFileId={activeTab?.resourceId}
               hasOpenApp={hasOpenApp}
               onCloseApp={handleCloseApp}
             />
@@ -927,29 +900,24 @@ export const LearningHubPage: React.FC = () => {
           order={2}
           className="h-full"
         >
-          {openApp && (
+          {tabs.length > 0 && (
             <div className="h-full flex flex-col bg-background min-w-0">
-              {/* 应用内容区域 - 直接显示内容，不显示标题栏 */}
+              {/* ★ 标签页栏 */}
+              <TabBar
+                tabs={tabs}
+                activeTabId={activeTabId}
+                onSwitch={setActiveTabId}
+                onClose={closeTab}
+              />
+              {/* ★ 内容区域：TabPanelContainer 保活所有 tab */}
               <div className="flex-1 overflow-hidden">
-                <Suspense
-                  fallback={
-                    <div className="flex items-center justify-center h-full">
-                      <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
-                      <span className="ml-2 text-muted-foreground">
-                        {t('common:loading')}
-                      </span>
-                    </div>
-                  }
-                >
-                  <UnifiedAppPanel
-                    type={openApp.type}
-                    resourceId={openApp.id}
-                    dstuPath={openApp.dstuPath}
-                    onClose={handleCloseApp}
-                    onTitleChange={handleTitleChange}
-                    className="h-full"
-                  />
-                </Suspense>
+                <TabPanelContainer
+                  tabs={tabs}
+                  activeTabId={activeTabId}
+                  onClose={closeTab}
+                  onTitleChange={updateTabTitle}
+                  className="h-full"
+                />
               </div>
             </div>
           )}

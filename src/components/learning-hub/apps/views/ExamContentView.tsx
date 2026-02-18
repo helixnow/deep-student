@@ -67,14 +67,14 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     markCorrect,
     navigate,
     setPracticeMode: setStorePracticeMode,
+    practiceMode,
     refreshStats,
   } = useQuestionBankSession({ examId: sessionId });
 
-  // 专注模式（从 Store 获取）
+  // 专注模式（从 Store 获取 — 全局 UI 偏好，不需要本地化）
   const focusMode = useQuestionBankStore(state => state.focusMode);
   const setFocusMode = useQuestionBankStore(state => state.setFocusMode);
   const checkSyncStatus = useQuestionBankStore(state => state.checkSyncStatus);
-  const practiceMode = useQuestionBankStore(state => state.practiceMode);
 
   // UI 状态（保留在组件内）
   const [sessionDetail, setSessionDetail] = useState<ExamSheetSessionDetail | null>(null);

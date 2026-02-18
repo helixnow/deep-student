@@ -48,12 +48,15 @@ import './mindmap.css';
 interface MindMapContentViewProps {
   resourceId?: string;
   onTitleChange?: (title: string) => void;
+  /** ★ 标签页：当前视图是否为活跃标签页 */
+  isActive?: boolean;
   className?: string;
 }
 
 export const MindMapContentView: React.FC<MindMapContentViewProps> = ({
   resourceId,
   onTitleChange,
+  isActive,
   className
 }) => {
   const { t } = useTranslation(['mindmap', 'common']);
@@ -103,6 +106,29 @@ export const MindMapContentView: React.FC<MindMapContentViewProps> = ({
   const [showShortcutHelp, setShowShortcutHelp] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isLoadingDoc, setIsLoadingDoc] = useState(false);
+
+  // ★ 标签页保活：isActive 变化时 saveDraft / loadMindMap
+  const prevIsActiveRef = useRef(isActive);
+  const saveDraftSync = useMindMapStore(state => state.saveDraftSync);
+
+  useEffect(() => {
+    const wasActive = prevIsActiveRef.current;
+    prevIsActiveRef.current = isActive;
+
+    if (wasActive && !isActive && resourceId) {
+      // active → inactive：同步保存草稿
+      if (useMindMapStore.getState().mindmapId === resourceId) {
+        saveDraftSync();
+      }
+    } else if (!wasActive && isActive && resourceId) {
+      // inactive → active：从草稿恢复（仅在 store 当前 mindmapId 不匹配时）
+      if (useMindMapStore.getState().mindmapId !== resourceId) {
+        void loadMindMap(resourceId).catch(err => {
+          console.error('[MindMapContentView] Failed to reload from draft:', err);
+        });
+      }
+    }
+  }, [isActive, resourceId, saveDraftSync, loadMindMap]);
 
   const tryLoadMindMap = useCallback(async () => {
     if (!resourceId) return;

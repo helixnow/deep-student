@@ -181,6 +181,7 @@ const EssayContentView: React.FC<ContentViewProps> = ({
             session,
             onSessionSave: handleSessionSave,
             onRoundAdd: handleRoundAdd,
+            resourceId: node.id,
           }}
         />
       </Suspense>

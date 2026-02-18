@@ -1,32 +1,86 @@
 /**
  * 题目集会话 Hook
- * 
- * 封装 questionBankStore 与组件的集成逻辑，支持：
- * - 会话加载与状态同步
- * - 兼容现有 ExamContentView 接口
+ *
+ * ★ 标签页改造：所有 exam-specific 状态（questions, stats, currentIndex, practiceMode）
+ * 完全本地化，不再读写全局 useQuestionBankStore。这确保多个 ExamContentView 实例
+ * 在标签页保活场景下数据隔离，互不干扰。
+ *
+ * 全局 store 仅保留 UI 偏好（focusMode, showSettingsPanel）和功能性 actions。
  */
 
-import { useEffect, useCallback, useMemo, useRef } from 'react';
-import { useQuestionBankStore, type Question as StoreQuestion, type QuestionBankStats as StoreStats, type PracticeMode } from '@/stores/questionBankStore';
-import { useShallow } from 'zustand/react/shallow';
-import { type Question, type QuestionBankStats, type SubmitResult } from '@/api/questionBankApi';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { invoke } from '@tauri-apps/api/core';
+import { type Question, type QuestionBankStats, type SubmitResult, type PracticeMode } from '@/api/questionBankApi';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
+import { emitExamSheetDebug } from '@/debug-panel/plugins/ExamSheetProcessingDebugPlugin';
 
-// 🆕 类型转换：Store (snake_case) -> API (camelCase)
+// Store 侧类型（snake_case，与 Rust 序列化一致）
+interface StoreQuestion {
+  id: string;
+  card_id?: string;
+  question_label?: string;
+  content: string;
+  question_type: string;
+  options: any[];
+  answer: string;
+  explanation: string;
+  difficulty: string;
+  tags: string[];
+  status: string;
+  user_answer: string;
+  is_correct: boolean | null;
+  user_note: string;
+  attempt_count: number;
+  correct_count: number;
+  last_attempt_at: string | null;
+  is_favorite: boolean;
+  images: any[];
+  ai_feedback?: string | null;
+  ai_score?: number | null;
+  ai_graded_at?: string | null;
+}
+
+interface StoreStats {
+  total_count: number;
+  mastered_count: number;
+  review_count: number;
+  in_progress_count: number;
+  new_count: number;
+  correct_rate: number;
+}
+
+interface QuestionListResult {
+  questions: StoreQuestion[];
+  total: number;
+  page: number;
+  page_size: number;
+  has_more: boolean;
+}
+
+interface SubmitAnswerResult {
+  is_correct: boolean;
+  correct_answer: string;
+  needs_manual_grading: boolean;
+  message: string;
+  submission_id: string;
+  updated_question: StoreQuestion;
+  updated_stats: StoreStats;
+}
+
 function convertToApiQuestion(q: StoreQuestion): Question {
   return {
     id: q.id,
     cardId: q.card_id || q.id,
     questionLabel: q.question_label || '',
     content: q.content,
-    ocrText: q.content, // KNOWN-ISSUE: ocr_text 未在 Store/Rust Question 中独立存储，当前与 content 相同
-    questionType: q.question_type,
+    ocrText: q.content,
+    questionType: q.question_type as Question['questionType'],
     options: q.options,
     answer: q.answer,
     explanation: q.explanation,
-    difficulty: q.difficulty,
+    difficulty: q.difficulty as Question['difficulty'],
     tags: q.tags,
-    status: q.status,
+    status: q.status as Question['status'],
     userAnswer: q.user_answer,
     isCorrect: q.is_correct,
     userNote: q.user_note,
@@ -58,23 +112,19 @@ interface UseQuestionBankSessionOptions {
 }
 
 interface UseQuestionBankSessionReturn {
-  // 数据（使用 API 类型，与组件兼容）
   questions: Question[];
   currentQuestion: Question | null;
   currentIndex: number;
   stats: QuestionBankStats | null;
-  
-  // 分页
+
   hasMore: boolean;
   pagination: { page: number; pageSize: number; total: number; hasMore: boolean };
-  
-  // 状态
+
   isLoading: boolean;
   isSubmitting: boolean;
   error: string | null;
   isMigrated: boolean;
-  
-  // Actions
+
   loadQuestions: () => Promise<void>;
   loadMoreQuestions: () => Promise<void>;
   submitAnswer: (questionId: string, answer: string, isCorrectOverride?: boolean) => Promise<SubmitResult>;
@@ -83,168 +133,283 @@ interface UseQuestionBankSessionReturn {
   goNext: () => void;
   goPrev: () => void;
   toggleFavorite: (questionId: string) => Promise<void>;
+  practiceMode: PracticeMode;
   setPracticeMode: (mode: PracticeMode) => void;
   refreshStats: () => Promise<void>;
 }
 
+const PAGE_SIZE = 50;
+
 export function useQuestionBankSession({
   examId,
 }: UseQuestionBankSessionOptions): UseQuestionBankSessionReturn {
-  // 精细化 Store 订阅：只订阅需要的状态片段，避免不相关状态变化触发重渲染
-  const {
-    questions: storeQuestionsMap,
-    questionOrder,
-    currentQuestionId,
-    stats: storeStats,
-    isLoading,
-    isSubmitting,
-    error,
-    pagination,
-  } = useQuestionBankStore(useShallow(state => ({
-    questions: state.questions,
-    questionOrder: state.questionOrder,
-    currentQuestionId: state.currentQuestionId,
-    stats: state.stats,
-    isLoading: state.isLoading,
-    isSubmitting: state.isSubmitting,
-    error: state.error,
-    pagination: state.pagination,
-  })));
+  // ========== ★ 完全本地化状态 ==========
+  const [localQuestions, setLocalQuestions] = useState<Map<string, StoreQuestion>>(new Map());
+  const [localOrder, setLocalOrder] = useState<string[]>([]);
+  const [localStats, setLocalStats] = useState<StoreStats | null>(null);
+  const [currentQuestionId, setCurrentQuestionId] = useState<string | null>(null);
+  const [practiceMode, setPracticeModeState] = useState<PracticeMode>('sequential');
+  const [isLoading, setIsLoading] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [pagination, setPagination] = useState({ page: 1, pageSize: PAGE_SIZE, total: 0, hasMore: false });
 
-  // Actions 使用稳定引用（不受 useShallow 影响）
-  const loadQuestionsAction = useQuestionBankStore(state => state.loadQuestions);
-  const loadStatsAction = useQuestionBankStore(state => state.loadStats);
-  const submitAnswerAction = useQuestionBankStore(state => state.submitAnswer);
-  const goToQuestion = useQuestionBankStore(state => state.goToQuestion);
-  const goToNextQuestion = useQuestionBankStore(state => state.goToNextQuestion);
-  const goToPrevQuestion = useQuestionBankStore(state => state.goToPrevQuestion);
-  const loadMoreQuestionsAction = useQuestionBankStore(state => state.loadMoreQuestions);
-  const refreshStatsAction = useQuestionBankStore(state => state.refreshStats);
-  const toggleFavoriteAction = useQuestionBankStore(state => state.toggleFavorite);
-  const setPracticeModeAction = useQuestionBankStore(state => state.setPracticeMode);
-  const getCurrentQuestion = useQuestionBankStore(state => state.getCurrentQuestion);
+  // Refs for concurrent request protection
+  const examIdRef = useRef(examId);
+  const loadRequestIdRef = useRef(0);
+  examIdRef.current = examId;
 
-  // 加载题目（使用 ref 避免循环依赖）
-  const loadQuestionsRef = useRef<() => Promise<void>>();
+  // ========== 加载题目 ==========
+  const loadQuestionsImpl = useCallback(async () => {
+    const currentExamId = examIdRef.current;
+    if (!currentExamId) return;
 
-  loadQuestionsRef.current = async () => {
-    if (!examId) return;
+    const requestId = ++loadRequestIdRef.current;
+    setIsLoading(true);
+    setError(null);
+
+    emitExamSheetDebug('info', 'frontend:hook-state', `[Session] loadQuestions: examId=${currentExamId}`, { sessionId: currentExamId });
 
     try {
-      await loadQuestionsAction(examId);
-      await loadStatsAction(examId);
-    } catch (err: unknown) {
-      debugLog.error('[useQuestionBankSession] loadQuestions failed:', err);
-    }
-  };
+      const [result, stats] = await Promise.all([
+        invoke<QuestionListResult>('qbank_list_questions', {
+          request: { exam_id: currentExamId, filters: {}, page: 1, page_size: PAGE_SIZE },
+        }),
+        invoke<StoreStats | null>('qbank_get_stats', { examId: currentExamId }),
+      ]);
 
-  // 稳定的 loadQuestions 引用
-  const loadQuestions = useCallback(async () => {
-    await loadQuestionsRef.current?.();
+      // Concurrent guard
+      if (loadRequestIdRef.current !== requestId) return;
+
+      const questionsMap = new Map<string, StoreQuestion>();
+      const order: string[] = [];
+      result.questions.forEach(q => {
+        questionsMap.set(q.id, q);
+        order.push(q.id);
+      });
+
+      setLocalQuestions(questionsMap);
+      setLocalOrder(order);
+      setLocalStats(stats);
+      setCurrentQuestionId(result.questions[0]?.id || null);
+      setPagination({ page: result.page, pageSize: result.page_size, total: result.total, hasMore: result.has_more });
+
+      emitExamSheetDebug('success', 'frontend:hook-state',
+        `[Session] loadQuestions OK: ${result.questions.length} questions, total=${result.total}`,
+        { sessionId: currentExamId },
+      );
+    } catch (err: unknown) {
+      if (loadRequestIdRef.current !== requestId) return;
+      debugLog.error('[useQuestionBankSession] loadQuestions failed:', err);
+      setError(String(err));
+    } finally {
+      if (loadRequestIdRef.current === requestId) {
+        setIsLoading(false);
+      }
+    }
   }, []);
 
-  // 初始加载（只在 examId 变化时触发）
+  const loadQuestions = useCallback(async () => {
+    await loadQuestionsImpl();
+  }, [loadQuestionsImpl]);
+
+  // 初始加载
   useEffect(() => {
     if (examId) {
-      void loadQuestionsRef.current?.();
+      void loadQuestionsImpl();
+    } else {
+      // Reset when examId becomes null
+      setLocalQuestions(new Map());
+      setLocalOrder([]);
+      setLocalStats(null);
+      setCurrentQuestionId(null);
+      setPagination({ page: 1, pageSize: PAGE_SIZE, total: 0, hasMore: false });
     }
-  }, [examId]);
+  }, [examId, loadQuestionsImpl]);
 
-  // 提交答案（返回 API 兼容的 SubmitResult 类型）
+  // ========== 加载更多（分页） ==========
+  const loadMoreQuestions = useCallback(async () => {
+    const currentExamId = examIdRef.current;
+    if (!currentExamId || isLoading || !pagination.hasMore) return;
+
+    setIsLoading(true);
+    try {
+      const result = await invoke<QuestionListResult>('qbank_list_questions', {
+        request: { exam_id: currentExamId, filters: {}, page: pagination.page + 1, page_size: PAGE_SIZE },
+      });
+
+      setLocalQuestions(prev => {
+        const next = new Map(prev);
+        result.questions.forEach(q => next.set(q.id, q));
+        return next;
+      });
+      setLocalOrder(prev => {
+        const existingSet = new Set(prev);
+        const newIds = result.questions.filter(q => !existingSet.has(q.id)).map(q => q.id);
+        return [...prev, ...newIds];
+      });
+      setPagination(prev => ({ ...prev, page: result.page, total: result.total, hasMore: result.has_more }));
+    } catch (err: unknown) {
+      debugLog.error('[useQuestionBankSession] loadMoreQuestions failed:', err);
+      setError(String(err));
+    } finally {
+      setIsLoading(false);
+    }
+  }, [isLoading, pagination.hasMore, pagination.page]);
+
+  // ========== 提交答案 ==========
   const submitAnswer = useCallback(async (questionId: string, answer: string, isCorrectOverride?: boolean): Promise<SubmitResult> => {
-    const result = await submitAnswerAction(questionId, answer, isCorrectOverride);
-    return {
-      isCorrect: result.is_correct,
-      correctAnswer: result.correct_answer,
-      needsManualGrading: result.needs_manual_grading,
-      message: result.message,
-      submissionId: result.submission_id,
-    };
-  }, [submitAnswerAction]);
+    setIsSubmitting(true);
+    try {
+      const result = await invoke<SubmitAnswerResult>('qbank_submit_answer', {
+        request: { question_id: questionId, user_answer: answer, is_correct_override: isCorrectOverride },
+      });
 
-  // 标记正确/错误（用于主观题手动批改）
-  // 🔧 修复：通过 submitAnswer 触发正确的状态转换逻辑
+      // 本地更新 question + stats
+      setLocalQuestions(prev => {
+        const next = new Map(prev);
+        next.set(result.updated_question.id, result.updated_question);
+        return next;
+      });
+      setLocalStats(result.updated_stats);
+
+      return {
+        isCorrect: result.is_correct,
+        correctAnswer: result.correct_answer,
+        needsManualGrading: result.needs_manual_grading,
+        message: result.message,
+        submissionId: result.submission_id,
+      };
+    } finally {
+      setIsSubmitting(false);
+    }
+  }, []);
+
+  // ========== 标记正确/错误 ==========
   const markCorrect = useCallback(async (questionId: string, isCorrect: boolean) => {
-    // 获取当前问题的用户答案
-    const question = storeQuestionsMap.get(questionId);
+    const question = localQuestions.get(questionId);
     const userAnswer = question?.user_answer || '';
-    // 使用 submitAnswer 并传入 isCorrectOverride 来触发正确的状态更新
-    await submitAnswerAction(questionId, userAnswer, isCorrect);
-  }, [storeQuestionsMap, submitAnswerAction]);
+    await submitAnswer(questionId, userAnswer, isCorrect);
+  }, [localQuestions, submitAnswer]);
 
-  // 导航
+  // ========== ★ 本地化导航（含 practiceMode） ==========
   const navigate = useCallback((index: number) => {
-    goToQuestion(index);
-  }, [goToQuestion]);
+    if (index >= 0 && index < localOrder.length) {
+      setCurrentQuestionId(localOrder[index] || null);
+    }
+  }, [localOrder]);
 
   const goNext = useCallback(() => {
-    goToNextQuestion();
-  }, [goToNextQuestion]);
+    if (localOrder.length === 0) return;
+    const currentIndex = currentQuestionId ? localOrder.indexOf(currentQuestionId) : -1;
+    let nextIndex: number;
+
+    switch (practiceMode) {
+      case 'random': {
+        if (localOrder.length <= 1) { nextIndex = 0; break; }
+        let rand: number;
+        do { rand = Math.floor(Math.random() * localOrder.length); } while (rand === currentIndex);
+        nextIndex = rand;
+        break;
+      }
+      case 'review_first': {
+        const reviewIds = localOrder.filter(id => localQuestions.get(id)?.status === 'review');
+        if (reviewIds.length > 0) {
+          setCurrentQuestionId(reviewIds[Math.floor(Math.random() * reviewIds.length)]);
+          return;
+        }
+        nextIndex = (currentIndex + 1) % localOrder.length;
+        break;
+      }
+      case 'by_tag': {
+        // by_tag 模式下，goNext 退化为顺序模式（标签过滤由 ExamContentView 通过 getNextQuestionIndex 处理）
+        nextIndex = (currentIndex + 1) % localOrder.length;
+        break;
+      }
+      default:
+        nextIndex = (currentIndex + 1) % localOrder.length;
+    }
+
+    setCurrentQuestionId(localOrder[nextIndex] || null);
+  }, [localOrder, currentQuestionId, practiceMode, localQuestions]);
 
   const goPrev = useCallback(() => {
-    goToPrevQuestion();
-  }, [goToPrevQuestion]);
+    if (localOrder.length === 0) return;
+    const currentIndex = currentQuestionId ? localOrder.indexOf(currentQuestionId) : -1;
+    const prevIndex = currentIndex <= 0 ? localOrder.length - 1 : currentIndex - 1;
+    setCurrentQuestionId(localOrder[prevIndex] || null);
+  }, [localOrder, currentQuestionId]);
 
-  // 加载更多题目（分页）
-  const loadMoreQuestions = useCallback(async () => {
-    if (!examId) return;
-    await loadMoreQuestionsAction();
-  }, [examId, loadMoreQuestionsAction]);
+  // ========== 切换收藏 ==========
+  const toggleFavorite = useCallback(async (questionId: string) => {
+    try {
+      const question = await invoke<StoreQuestion>('qbank_toggle_favorite', { questionId });
+      setLocalQuestions(prev => {
+        const next = new Map(prev);
+        next.set(question.id, question);
+        return next;
+      });
+    } catch (err: unknown) {
+      debugLog.error('[useQuestionBankSession] toggleFavorite failed:', err);
+      throw err;
+    }
+  }, []);
 
-  const hasMore = pagination.hasMore;
+  // ========== 练习模式 ==========
+  const setPracticeMode = useCallback((mode: PracticeMode) => {
+    setPracticeModeState(mode);
+  }, []);
 
-  // 刷新统计
+  // ========== 刷新统计 ==========
   const refreshStats = useCallback(async () => {
-    if (!examId) return;
-    await refreshStatsAction(examId);
-  }, [examId, refreshStatsAction]);
+    const currentExamId = examIdRef.current;
+    if (!currentExamId) return;
+    try {
+      const stats = await invoke<StoreStats>('qbank_refresh_stats', { examId: currentExamId });
+      setLocalStats(stats);
+    } catch (err: unknown) {
+      debugLog.error('[useQuestionBankSession] refreshStats failed:', err);
+    }
+  }, []);
 
-  // 🆕 转换为 API 类型
-  // M-024: 使用 questionOrder 保证题目顺序与服务端一致，而非依赖 Map 迭代顺序
-  const storeQuestions = useMemo(() => {
-    return questionOrder
-      .map(id => storeQuestionsMap.get(id))
-      .filter((q): q is NonNullable<typeof q> => q != null);
-  }, [storeQuestionsMap, questionOrder]);
-  const questions = useMemo(() => storeQuestions.map(convertToApiQuestion), [storeQuestions]);
+  // ========== 转换为 API 类型 ==========
+  const questions = useMemo(() => {
+    return localOrder
+      .map(id => localQuestions.get(id))
+      .filter((q): q is StoreQuestion => q != null)
+      .map(convertToApiQuestion);
+  }, [localQuestions, localOrder]);
 
-  const storeCurrentQuestion = getCurrentQuestion();
-  const currentQuestion = useMemo(
-    () => storeCurrentQuestion ? convertToApiQuestion(storeCurrentQuestion) : null,
-    [storeCurrentQuestion]
-  );
-
-  // M-024: 直接使用 questionOrder 计算索引，与 store 导航逻辑一致
   const currentIndex = useMemo(() => {
-    if (!storeCurrentQuestion) return 0;
-    const idx = questionOrder.indexOf(storeCurrentQuestion.id);
+    if (!currentQuestionId) return 0;
+    const idx = localOrder.indexOf(currentQuestionId);
     return idx >= 0 ? idx : 0;
-  }, [questionOrder, storeCurrentQuestion]);
+  }, [localOrder, currentQuestionId]);
 
-  // 检查是否已有题目
+  const currentQuestion = useMemo(() => {
+    if (!currentQuestionId) return null;
+    const q = localQuestions.get(currentQuestionId);
+    return q ? convertToApiQuestion(q) : null;
+  }, [localQuestions, currentQuestionId]);
+
+  const stats = useMemo(() => convertToApiStats(localStats), [localStats]);
+
   const isMigrated = questions.length > 0;
 
-  // 🆕 转换统计类型
-  const stats = useMemo(() => convertToApiStats(storeStats), [storeStats]);
-
   return {
-    // 数据（已转换为 API 类型）
     questions,
     currentQuestion,
     currentIndex,
     stats,
 
-    // 分页
-    hasMore,
+    hasMore: pagination.hasMore,
     pagination,
 
-    // 状态
     isLoading,
     isSubmitting,
     error,
     isMigrated,
 
-    // Actions
     loadQuestions,
     loadMoreQuestions,
     submitAnswer,
@@ -252,8 +417,9 @@ export function useQuestionBankSession({
     navigate,
     goNext,
     goPrev,
-    toggleFavorite: toggleFavoriteAction,
-    setPracticeMode: setPracticeModeAction,
+    toggleFavorite,
+    practiceMode,
+    setPracticeMode,
     refreshStats,
   };
 }

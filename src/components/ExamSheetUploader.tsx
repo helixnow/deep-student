@@ -322,6 +322,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
     startProcessing: startOCRProcessing,
     setError: setOCRError,
   } = useExamSheetProgress({
+    sessionId: sessionId ?? null,
     onSessionUpdate: async (detail) => {
       // 生成摘要并显示
       const summary = generateImportSummary(detail);

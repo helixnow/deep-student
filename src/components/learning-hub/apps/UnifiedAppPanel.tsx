@@ -53,6 +53,8 @@ export interface UnifiedAppPanelProps {
   onTitleChange?: (title: string) => void;
   /** 是否只读（透传给各 ContentView） */
   readOnly?: boolean;
+  /** ★ 标签页：当前面板是否为活跃面板 */
+  isActive?: boolean;
   /** 自定义类名 */
   className?: string;
 }
@@ -66,6 +68,8 @@ export interface ContentViewProps {
   onTitleChange?: (title: string) => void;
   /** 是否只读 */
   readOnly?: boolean;
+  /** ★ 标签页：当前视图是否为活跃标签页 */
+  isActive?: boolean;
 }
 
 // ============================================================================
@@ -82,6 +86,7 @@ export const UnifiedAppPanel: React.FC<UnifiedAppPanelProps> = ({
   onClose,
   onTitleChange,
   readOnly,
+  isActive,
   className,
 }) => {
   const { t } = useTranslation(['learningHub', 'common']);
@@ -164,6 +169,7 @@ export const UnifiedAppPanel: React.FC<UnifiedAppPanelProps> = ({
       onTitleChange?.(newTitle);
     },
     readOnly,
+    isActive,
   };
 
   // 根据资源类型渲染对应的内容视图
@@ -184,7 +190,7 @@ export const UnifiedAppPanel: React.FC<UnifiedAppPanelProps> = ({
       case 'file':
         return <FileContentView {...commonProps} />;
       case 'mindmap':
-        return <MindMapContentView resourceId={node.id} onTitleChange={onTitleChange} className="h-full" />;
+        return <MindMapContentView resourceId={node.id} onTitleChange={onTitleChange} isActive={isActive} className="h-full" />;
       default:
         return (
           <div className="flex items-center justify-center h-full text-muted-foreground">

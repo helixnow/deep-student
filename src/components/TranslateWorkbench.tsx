@@ -51,6 +51,8 @@ export interface TranslateWorkbenchDstuMode {
   session: TranslationSession | null;
   /** 会话保存回调 */
   onSessionSave?: (session: TranslationSession) => Promise<void>;
+  /** ★ 标签页：资源 ID，用于事件定向过滤 */
+  resourceId?: string;
 }
 
 interface TranslateWorkbenchProps {
@@ -125,14 +127,19 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
   //       (e.g. useAppEvent or EventBus) so that the event source and consumer are
   //       co-located in a single registry rather than scattered across files.
   useEffect(() => {
-    const handleToggleSettings = () => {
+    const handleToggleSettings = (evt: Event) => {
+      // ★ 标签页：检查 targetResourceId 是否匹配（无 targetResourceId 时兼容旧调用）
+      const detail = (evt as CustomEvent<{ targetResourceId?: string }>).detail;
+      if (detail?.targetResourceId && dstuMode.resourceId && detail.targetResourceId !== dstuMode.resourceId) {
+        return;
+      }
       setShowPromptEditor(prev => !prev);
     };
     window.addEventListener('translation:openSettings', handleToggleSettings);
     return () => {
       window.removeEventListener('translation:openSettings', handleToggleSettings);
     };
-  }, []);
+  }, [dstuMode.resourceId]);
 
   // 使用流式状态
   const translatedText = translationStream.translatedText;

@@ -163,6 +163,7 @@ const TranslationContentView: React.FC<ContentViewProps> = ({
           dstuMode={{
             session,
             onSessionSave: handleSessionSave,
+            resourceId: node.id,
           }}
         />
       </Suspense>

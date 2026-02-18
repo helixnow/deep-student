@@ -165,13 +165,19 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
   }, [node.sourceId, node.name]);
 
   // 监听 Chat 侧发来的清除/移除选择事件
+  // ★ 标签页：通过 sourceId 过滤，避免多个 PDF tab 互相干扰
   useEffect(() => {
-    const handleClear = () => setSelectedPages(new Set());
+    const handleClear = (event: Event) => {
+      const detail = (event as CustomEvent<{ sourceId?: string }>).detail;
+      if (detail?.sourceId && detail.sourceId !== node.sourceId) return;
+      setSelectedPages(new Set());
+    };
     const handleRemove = (event: Event) => {
-      const { page } = (event as CustomEvent<{ page: number }>).detail;
+      const detail = (event as CustomEvent<{ page: number; sourceId?: string }>).detail;
+      if (detail?.sourceId && detail.sourceId !== node.sourceId) return;
       setSelectedPages((prev) => {
         const next = new Set(prev);
-        next.delete(page);
+        next.delete(detail.page);
         return next;
       });
     };
@@ -181,7 +187,7 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
       document.removeEventListener('pdf-page-refs:clear', handleClear);
       document.removeEventListener('pdf-page-refs:remove', handleRemove);
     };
-  }, []);
+  }, [node.sourceId]);
 
   // 稳定的空回调（避免每次渲染创建新函数）
   const noopExportPages = useCallback(() => {}, []);
