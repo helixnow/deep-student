@@ -8,10 +8,10 @@
 
 **Deep Student to You — AI-Native, Local-First, Open-Source Learning System**
 
-[![CI](https://github.com/000haoji/deep-student/actions/workflows/ci.yml/badge.svg)](https://github.com/000haoji/deep-student/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/000haoji/deep-student?color=blue&label=release)](https://github.com/000haoji/deep-student/releases/latest)
+[![CI](https://github.com/helixnow/deep-student/actions/workflows/ci.yml/badge.svg)](https://github.com/helixnow/deep-student/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/helixnow/deep-student?color=blue&label=release)](https://github.com/helixnow/deep-student/releases/latest)
 [![License](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
-[![Stars](https://img.shields.io/github/stars/000haoji/deep-student?style=social)](https://github.com/000haoji/deep-student)
+[![Stars](https://img.shields.io/github/stars/helixnow/deep-student?style=social)](https://github.com/helixnow/deep-student)
 
 [![macOS](https://img.shields.io/badge/-macOS-black?style=flat-square&logo=apple&logoColor=white)](#installation)
 [![Windows](https://img.shields.io/badge/-Windows-blue?style=flat-square&logo=windows&logoColor=white)](#installation)
@@ -19,7 +19,7 @@
 
 Smart Chat · Knowledge Management · Anki Card Making · Universal Reader · Deep Research · Skill Extensions
 
-[**Download**](#installation) · [Quick Start](./docs/user-guide/00-快速入门.md) · [User Guide](./docs/user-guide/README.md) · [Contributing](./CONTRIBUTING.md) · [Report Issues](https://github.com/000haoji/deep-student/issues)
+[**Download**](#installation) · [Quick Start](./docs/user-guide/00-快速入门.md) · [User Guide](./docs/user-guide/README.md) · [Contributing](./CONTRIBUTING.md) · [Report Issues](https://github.com/helixnow/deep-student/issues)
 
 </div>
 
@@ -46,7 +46,7 @@ Smart Chat · Knowledge Management · Anki Card Making · Universal Reader · De
 
 ## Installation
 
-Download the latest version from [GitHub Releases](https://github.com/000haoji/deep-student/releases/latest):
+Download the latest version from [GitHub Releases](https://github.com/helixnow/deep-student/releases/latest):
 
 | Platform | Package | Architecture |
 |:---:|--------|------|
@@ -394,7 +394,7 @@ Comprehensive data management and security mechanisms:
 
 ```bash
 # Clone the project
-git clone https://github.com/000haoji/deep-student.git
+git clone https://github.com/helixnow/deep-student.git
 cd deep-student
 
 # Install dependencies
@@ -481,7 +481,7 @@ Community contributions are welcome!
 
 1. Read [CONTRIBUTING.md](./CONTRIBUTING.md) for development workflow and submission guidelines.
 2. Ensure `npm run lint` and type checks pass before submitting a PR.
-3. Submit bug reports and feature requests via [Issues](https://github.com/000haoji/deep-student/issues).
+3. Submit bug reports and feature requests via [Issues](https://github.com/helixnow/deep-student/issues).
 
 ---
 

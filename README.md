@@ -8,10 +8,10 @@
 
 **Deep Student to You — AI 原生的本地优先开源学习系统**
 
-[![CI](https://github.com/000haoji/deep-student/actions/workflows/ci.yml/badge.svg)](https://github.com/000haoji/deep-student/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/000haoji/deep-student?color=blue&label=release)](https://github.com/000haoji/deep-student/releases/latest)
+[![CI](https://github.com/helixnow/deep-student/actions/workflows/ci.yml/badge.svg)](https://github.com/helixnow/deep-student/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/helixnow/deep-student?color=blue&label=release)](https://github.com/helixnow/deep-student/releases/latest)
 [![License](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
-[![Stars](https://img.shields.io/github/stars/000haoji/deep-student?style=social)](https://github.com/000haoji/deep-student)
+[![Stars](https://img.shields.io/github/stars/helixnow/deep-student?style=social)](https://github.com/helixnow/deep-student)
 
 [![macOS](https://img.shields.io/badge/-macOS-black?style=flat-square&logo=apple&logoColor=white)](#下载安装)
 [![Windows](https://img.shields.io/badge/-Windows-blue?style=flat-square&logo=windows&logoColor=white)](#下载安装)
@@ -19,7 +19,7 @@
 
 智能对话 · 知识管理 · Anki 制卡 · 全能阅读 · 深度调研 · 技能扩展
 
-[**下载安装**](#下载安装) · [快速入门](./docs/user-guide/00-快速入门.md) · [用户手册](./docs/user-guide/README.md) · [参与贡献](./CONTRIBUTING.md) · [报告问题](https://github.com/000haoji/deep-student/issues)
+[**下载安装**](#下载安装) · [快速入门](./docs/user-guide/00-快速入门.md) · [用户手册](./docs/user-guide/README.md) · [参与贡献](./CONTRIBUTING.md) · [报告问题](https://github.com/helixnow/deep-student/issues)
 
 </div>
 
@@ -46,7 +46,7 @@
 
 ## 下载安装
 
-前往 [GitHub Releases](https://github.com/000haoji/deep-student/releases/latest) 下载最新版本：
+前往 [GitHub Releases](https://github.com/helixnow/deep-student/releases/latest) 下载最新版本：
 
 | 平台 | 安装包 | 架构 |
 |:---:|--------|------|
@@ -392,7 +392,7 @@ DeepStudent 的对话引擎专为学习场景打造，支持多模态输入与�
 
 ```bash
 # 克隆项目
-git clone https://github.com/000haoji/deep-student.git
+git clone https://github.com/helixnow/deep-student.git
 cd deep-student
 
 # 安装依赖
@@ -479,7 +479,7 @@ DeepStudent
 
 1. 阅读 [CONTRIBUTING.md](./CONTRIBUTING.md) 了解开发流程与提交规范。
 2. 提交 PR 前请确保通过 `npm run lint` 与类型检查。
-3. Bug 报告与功能建议请提交 [Issue](https://github.com/000haoji/deep-student/issues)。
+3. Bug 报告与功能建议请提交 [Issue](https://github.com/helixnow/deep-student/issues)。
 
 ---
 

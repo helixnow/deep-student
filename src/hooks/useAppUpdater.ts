@@ -156,7 +156,7 @@ export function useAppUpdater() {
         if (!latestVersion) {
           const ghController = new AbortController();
           const ghTimeout = setTimeout(() => ghController.abort(), 10000);
-          const resp = await fetch('https://api.github.com/repos/000haoji/deep-student/releases/latest', {
+          const resp = await fetch('https://api.github.com/repos/helixnow/deep-student/releases/latest', {
             headers: { Accept: 'application/vnd.github+json' },
             signal: ghController.signal,
           }).finally(() => clearTimeout(ghTimeout));

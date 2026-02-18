@@ -6,7 +6,7 @@
  *   node scripts/generate-update-manifest.mjs
  *
  * 环境变量:
- *   GITHUB_REPO       - GitHub 仓库 (默认: 000haoji/deep-student)
+ *   GITHUB_REPO       - GitHub 仓库 (默认: helixnow/deep-student)
  *   BUILD_TARGET       - 构建目标平台，逗号分隔 (默认: 自动检测已有产物)
  *   OUTPUT_DIR         - latest.json 输出目录 (默认: 项目根目录)
  */
@@ -18,7 +18,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const projectRoot = join(__dirname, '..');
 
-const GITHUB_REPO = process.env.GITHUB_REPO || '000haoji/deep-student';
+const GITHUB_REPO = process.env.GITHUB_REPO || 'helixnow/deep-student';
 
 // 读取版本号
 const tauriConfigPath = join(projectRoot, 'src-tauri', 'tauri.conf.json');

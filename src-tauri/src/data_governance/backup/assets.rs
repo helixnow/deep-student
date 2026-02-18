@@ -20,6 +20,7 @@ use std::collections::HashMap;
 use std::fs::{self, File};
 use std::io::{BufReader, Read, Write};
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 use tracing::{debug, info, warn};
 
 /// 资产类型
@@ -44,6 +45,51 @@ pub enum AssetType {
     Videos,
     /// 教材资产
     Textbooks,
+}
+
+/// 复制文件（带重试与大小校验）
+///
+/// 处理跨平台常见瞬态错误（Windows 文件占用、Android I/O 抖动、macOS 临时锁）
+/// 并在复制后校验源/目标大小一致，避免静默写入不完整。
+fn copy_file_with_retry(src: &Path, dest: &Path) -> Result<(), AssetBackupError> {
+    const MAX_RETRIES: u32 = 5;
+    const RETRY_SLEEP_MS: u64 = 80;
+
+    let mut last_error: Option<String> = None;
+
+    for attempt in 0..MAX_RETRIES {
+        match fs::copy(src, dest) {
+            Ok(_) => {
+                let src_size = fs::metadata(src)?.len();
+                let dest_size = fs::metadata(dest)?.len();
+                if src_size == dest_size {
+                    return Ok(());
+                }
+
+                last_error = Some(format!(
+                    "复制后大小不一致: {:?} -> {:?}, expected={}, actual={}",
+                    src, dest, src_size, dest_size
+                ));
+            }
+            Err(e) => {
+                last_error = Some(format!(
+                    "复制资产失败: {:?} -> {:?}: {}",
+                    src, dest, e
+                ));
+            }
+        }
+
+        // 清理可能写入了一半的目标文件，避免下次重试命中脏文件
+        let _ = fs::remove_file(dest);
+
+        if attempt + 1 < MAX_RETRIES {
+            std::thread::sleep(Duration::from_millis(RETRY_SLEEP_MS));
+        }
+    }
+
+    Err(AssetBackupError::RestoreFailed(last_error.unwrap_or_else(
+        || "复制资产失败（未知错误）".to_string(),
+    )))
 }
 
 impl AssetType {
@@ -738,12 +784,7 @@ pub fn restore_assets(
         }
 
         // 复制文件（失败即终止，避免“恢复成功但资源缺失”）
-        fs::copy(&src_path, &dest_path).map_err(|e| {
-            AssetBackupError::RestoreFailed(format!(
-                "复制资产失败: {:?} -> {:?}: {}",
-                src_path, dest_path, e
-            ))
-        })?;
+        copy_file_with_retry(&src_path, &dest_path)?;
         restored_count += 1;
         debug!("恢复文件: {:?} -> {:?}", src_path, dest_path);
     }
@@ -812,12 +853,7 @@ fn copy_dir_recursive(src: &Path, dest: &Path) -> Result<usize, AssetBackupError
             if let Some(parent) = dest_path.parent() {
                 fs::create_dir_all(parent)?;
             }
-            fs::copy(&src_path, &dest_path).map_err(|e| {
-                AssetBackupError::RestoreFailed(format!(
-                    "复制资产失败: {:?} -> {:?}: {}",
-                    src_path, dest_path, e
-                ))
-            })?;
+            copy_file_with_retry(&src_path, &dest_path)?;
             count += 1;
         }
     }
@@ -835,7 +871,7 @@ pub fn restore_assets_with_progress<F>(
     on_progress: F,
 ) -> Result<usize, AssetBackupError>
 where
-    F: Fn(usize, usize),
+    F: Fn(usize, usize) -> bool,
 {
     info!(
         "开始恢复资产(带进度): backup_dir={:?}, app_data_dir={:?}, count={}",
@@ -859,14 +895,13 @@ where
             fs::create_dir_all(parent)?;
         }
 
-        fs::copy(&src_path, &dest_path).map_err(|e| {
-            AssetBackupError::RestoreFailed(format!(
-                "复制资产失败: {:?} -> {:?}: {}",
-                src_path, dest_path, e
-            ))
-        })?;
+        copy_file_with_retry(&src_path, &dest_path)?;
         restored_count += 1;
-        on_progress(restored_count, total);
+        if !on_progress(restored_count, total) {
+            return Err(AssetBackupError::RestoreFailed(
+                "用户取消恢复（资产阶段）".to_string(),
+            ));
+        }
     }
 
     info!("资产恢复完成(带进度): restored={}", restored_count);
@@ -882,7 +917,7 @@ pub fn restore_assets_from_dir_with_progress<F>(
     on_progress: F,
 ) -> Result<usize, AssetBackupError>
 where
-    F: Fn(usize, usize),
+    F: Fn(usize, usize) -> bool,
 {
     info!(
         "开始从目录直接恢复资产(带进度): assets_dir={:?}, app_data_dir={:?}",
@@ -946,7 +981,7 @@ fn copy_dir_recursive_with_progress<F>(
     on_progress: &F,
 ) -> Result<usize, AssetBackupError>
 where
-    F: Fn(usize, usize),
+    F: Fn(usize, usize) -> bool,
 {
     let mut count = 0;
     fs::create_dir_all(dest)?;
@@ -972,15 +1007,14 @@ where
             if let Some(parent) = dest_path.parent() {
                 fs::create_dir_all(parent)?;
             }
-            fs::copy(&src_path, &dest_path).map_err(|e| {
-                AssetBackupError::RestoreFailed(format!(
-                    "复制资产失败: {:?} -> {:?}: {}",
-                    src_path, dest_path, e
-                ))
-            })?;
+            copy_file_with_retry(&src_path, &dest_path)?;
             count += 1;
             *restored_count += 1;
-            on_progress(*restored_count, total);
+            if !on_progress(*restored_count, total) {
+                return Err(AssetBackupError::RestoreFailed(
+                    "用户取消恢复（资产阶段）".to_string(),
+                ));
+            }
         }
     }
 

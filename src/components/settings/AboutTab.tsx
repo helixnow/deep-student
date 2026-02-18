@@ -154,7 +154,7 @@ export const AboutTab: React.FC = () => {
                         </a>
                       )}
                       <a
-                        href={`https://github.com/000haoji/deep-student/releases/latest`}
+                        href={`https://github.com/helixnow/deep-student/releases/latest`}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-primary hover:underline"
@@ -220,8 +220,8 @@ export const AboutTab: React.FC = () => {
           <div className="space-y-px">
             {[
               { icon: Globe, label: t('acknowledgements.links.website', '访问官网'), href: 'https://www.deepstudent.com' },
-              { icon: Github, label: t('acknowledgements.links.github', 'GitHub'), href: 'https://github.com/000haoji/deep-student' },
-              { icon: Bug, label: t('acknowledgements.links.issues', 'Issue 反馈'), href: 'https://github.com/000haoji/deep-student/issues' },
+              { icon: Github, label: t('acknowledgements.links.github', 'GitHub'), href: 'https://github.com/helixnow/deep-student' },
+              { icon: Bug, label: t('acknowledgements.links.issues', 'Issue 反馈'), href: 'https://github.com/helixnow/deep-student/issues' },
             ].map((item) => (
               <LinkRow key={item.href} icon={item.icon} label={item.label} href={item.href} />
             ))}

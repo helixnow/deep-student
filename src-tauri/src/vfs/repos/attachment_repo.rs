@@ -26,7 +26,7 @@
 use base64::{engine::general_purpose::STANDARD, Engine};
 use rusqlite::{params, Connection, OptionalExtension};
 use sha2::{Digest, Sha256};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 use tracing::{debug, error, info, warn};
 
@@ -295,6 +295,80 @@ impl VfsAttachmentRepo {
         }
 
         false
+    }
+
+    fn build_original_path_candidates(blobs_dir: &Path, raw_path: &str) -> Vec<PathBuf> {
+        let trimmed = raw_path.trim();
+        if trimmed.is_empty() {
+            return Vec::new();
+        }
+
+        let raw = Path::new(trimmed);
+        let mut candidates: Vec<PathBuf> = Vec::new();
+
+        if raw.is_absolute() {
+            candidates.push(raw.to_path_buf());
+            return candidates;
+        }
+
+        // 兼容历史数据：original_path 可能是相对 slot 根目录，也可能相对 vfs_blobs 目录
+        if let Some(slot_root) = blobs_dir.parent() {
+            candidates.push(slot_root.join(trimmed));
+        }
+        candidates.push(blobs_dir.join(trimmed));
+
+        // 去重
+        let mut deduped: Vec<PathBuf> = Vec::new();
+        for candidate in candidates {
+            if !deduped.iter().any(|p| p == &candidate) {
+                deduped.push(candidate);
+            }
+        }
+        deduped
+    }
+
+    fn try_read_original_path(blobs_dir: &Path, id: &str, raw_path: &str) -> Option<Vec<u8>> {
+        for candidate in Self::build_original_path_candidates(blobs_dir, raw_path) {
+            let candidate_str = candidate.to_string_lossy().to_string();
+            if !Self::is_safe_original_path(blobs_dir, &candidate_str) {
+                warn!(
+                    "[VFS::AttachmentRepo] Blocked unsafe original_path for {}: {}",
+                    id, candidate_str
+                );
+                continue;
+            }
+
+            if !candidate.exists() {
+                debug!(
+                    "[VFS::AttachmentRepo] original_path not exists for {}: {}",
+                    id,
+                    candidate.display()
+                );
+                continue;
+            }
+
+            match std::fs::read(&candidate) {
+                Ok(data) => {
+                    info!(
+                        "[VFS::AttachmentRepo] Fallback to original_path for {}: {}, file_size={}",
+                        id,
+                        candidate.display(),
+                        data.len()
+                    );
+                    return Some(data);
+                }
+                Err(e) => {
+                    warn!(
+                        "[VFS::AttachmentRepo] Failed to read original_path for {}: {} - {}",
+                        id,
+                        candidate.display(),
+                        e
+                    );
+                }
+            }
+        }
+
+        None
     }
 
     // ========================================================================
@@ -1285,14 +1359,14 @@ impl VfsAttachmentRepo {
         if let Some(resource_id) = &attachment.resource_id {
             // Inline 模式：从 resources.data 获取
             // ★ 2026-01-30 修复：显式指定 Option<String> 类型，确保正确处理 NULL 值
-            let data: Option<String> = conn
+            let (data, resource_external_hash): (Option<String>, Option<String>) = conn
                 .query_row(
-                    "SELECT data FROM resources WHERE id = ?1",
+                    "SELECT data, external_hash FROM resources WHERE id = ?1",
                     params![resource_id],
-                    |row| row.get::<_, Option<String>>(0),
+                    |row| Ok((row.get::<_, Option<String>>(0)?, row.get::<_, Option<String>>(1)?)),
                 )
                 .optional()?
-                .flatten();
+                .unwrap_or((None, None));
 
             // ★ 2026-01-25 修复：检查 resources.data 是否是有效的文件内容
             // textbooks 迁移的文件，resources.data 可能存储的是文件路径而非 base64 内容
@@ -1345,42 +1419,24 @@ impl VfsAttachmentRepo {
                     .flatten();
 
                 if let Some(path) = original_path {
-                    if Self::is_safe_original_path(blobs_dir, &path) {
-                        let path_obj = std::path::Path::new(&path);
-                        if path_obj.exists() {
-                            match std::fs::read(path_obj) {
-                                Ok(file_data) => {
-                                    info!(
-                                        "[VFS::AttachmentRepo] Fallback to original_path for {}: {}, file_size={}",
-                                        id, path, file_data.len()
-                                    );
-                                    return Ok(Some(STANDARD.encode(file_data)));
-                                }
-                                Err(e) => {
-                                    warn!(
-                                        "[VFS::AttachmentRepo] Failed to read original_path: {} - {}",
-                                        path, e
-                                    );
-                                }
-                            }
-                        } else {
-                            warn!(
-                                "[VFS::AttachmentRepo] original_path not exists for {}: {}",
-                                id, path
-                            );
-                        }
-                    } else {
-                        warn!(
-                            "[VFS::AttachmentRepo] Blocked unsafe original_path for {}: {}",
-                            id, path
-                        );
+                    if let Some(file_data) = Self::try_read_original_path(blobs_dir, id, &path) {
+                        return Ok(Some(STANDARD.encode(file_data)));
                     }
                 }
 
-                // ★ 2026-01-30 修复：回退2：尝试从 blob_hash 读取
-                // external 模式的附件同时有 resource_id 和 blob_hash，
-                // 当 resources.data 为 NULL 时，应该继续尝试 blob_hash
-                if let Some(blob_hash) = &attachment.blob_hash {
+                // ★ 回退2：尝试从 blob_hash 读取（files.blob_hash → resources.external_hash）
+                // 兼容恢复后 files.blob_hash 缺失但 resources.external_hash 仍在的情况
+                let mut blob_hash_candidates: Vec<&str> = Vec::new();
+                if let Some(blob_hash) = attachment.blob_hash.as_deref() {
+                    blob_hash_candidates.push(blob_hash);
+                }
+                if let Some(external_hash) = resource_external_hash.as_deref() {
+                    if !blob_hash_candidates.contains(&external_hash) {
+                        blob_hash_candidates.push(external_hash);
+                    }
+                }
+
+                for blob_hash in blob_hash_candidates {
                     info!(
                         "[VFS::AttachmentRepo] Fallback to blob_hash for {}: {}",
                         id, blob_hash
@@ -1399,6 +1455,12 @@ impl VfsAttachmentRepo {
                         );
                     }
                 }
+
+                warn!(
+                    "[VFS::AttachmentRepo] Fallback exhausted for {} (resource_id={}), returning None",
+                    id, resource_id
+                );
+                return Ok(None);
             }
 
             Ok(data)
@@ -1429,35 +1491,8 @@ impl VfsAttachmentRepo {
                 .flatten();
 
             if let Some(path) = original_path {
-                if Self::is_safe_original_path(blobs_dir, &path) {
-                    let path_obj = std::path::Path::new(&path);
-                    if path_obj.exists() {
-                        match std::fs::read(path_obj) {
-                            Ok(data) => {
-                                debug!(
-                                    "[VFS::AttachmentRepo] Read content from original_path for {}: {}",
-                                    id, path
-                                );
-                                return Ok(Some(STANDARD.encode(data)));
-                            }
-                            Err(e) => {
-                                warn!(
-                                    "[VFS::AttachmentRepo] Failed to read original_path for {}: {} - {}",
-                                    id, path, e
-                                );
-                            }
-                        }
-                    } else {
-                        warn!(
-                            "[VFS::AttachmentRepo] original_path not found for {}: {}",
-                            id, path
-                        );
-                    }
-                } else {
-                    warn!(
-                        "[VFS::AttachmentRepo] Blocked unsafe original_path for {}: {}",
-                        id, path
-                    );
+                if let Some(data) = Self::try_read_original_path(blobs_dir, id, &path) {
+                    return Ok(Some(STANDARD.encode(data)));
                 }
             }
 
