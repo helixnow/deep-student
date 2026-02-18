@@ -10,6 +10,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.9.13](https://github.com/helixnow/deep-student/compare/v0.9.12...v0.9.13) (2026-02-18)
+
+
+### Features
+
+* add multi-tab support with LRU eviction, fix cross-tab event pollution, and enhance LaTeX rendering ([8af002c](https://github.com/helixnow/deep-student/commit/8af002cc7d29e53092f70d1441be006597cea394))
+* enhance tool handling, sleep wake logic, and crypto key backup/restore ([a477bca](https://github.com/helixnow/deep-student/commit/a477bca302fb8d487a5e43a64b56aaad9450651f))
+* **indexing:** 一键索引自动对预处理未完成的教材/PDF文件执行OCR ([83560f7](https://github.com/helixnow/deep-student/commit/83560f7968b7957fe70be62e955a48f4565cfdcc))
+
+
+### Performance Improvements
+
+* **vfs:** optimize index status query with CTE aggregation and add performance indexes ([07c6e5e](https://github.com/helixnow/deep-student/commit/07c6e5ea479bf9b0f888642572693755d4e17530))
+
 ## [0.9.12](https://github.com/helixnow/deep-student/compare/v0.9.11...v0.9.12) (2026-02-18)
 
 
