@@ -12,7 +12,7 @@
  * - essay: 作文批改
  */
 
-import React, { lazy, Suspense, useEffect, useState } from 'react';
+import React, { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Loader2, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -96,6 +96,11 @@ export const UnifiedAppPanel: React.FC<UnifiedAppPanelProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [node, setNode] = useState<DstuNode | null>(null);
 
+  // ★ 标签页修复：用 ref 持有 onTitleChange，避免其引用变化导致 useEffect 重新触发 dstu.get()
+  //   TabPanelContainer 在 tab 增删时会重建闭包，如果 onTitleChange 在 deps 中会导致所有已有 tab 重新加载
+  const onTitleChangeRef = useRef(onTitleChange);
+  onTitleChangeRef.current = onTitleChange;
+
   // 加载资源数据
   useEffect(() => {
     const loadResource = async () => {
@@ -122,12 +127,12 @@ export const UnifiedAppPanel: React.FC<UnifiedAppPanelProps> = ({
       }
 
       setNode(result.value);
-      onTitleChange?.(result.value.name || t('common:untitled', '未命名'));
+      onTitleChangeRef.current?.(result.value.name || t('common:untitled', '未命名'));
       setIsLoading(false);
     };
 
     void loadResource();
-  }, [dstuPath, onTitleChange, resourceId, t, type]);
+  }, [dstuPath, resourceId, t, type]);
 
   // 加载状态
   if (isLoading) {

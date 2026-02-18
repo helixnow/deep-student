@@ -82,9 +82,13 @@ export function useExamSheetProgress(options: UseExamSheetProgressOptions = {}) 
     if (!payload) return;
 
     // ★ 标签页：过滤非当前 session 的事件
+    //   优先从 detail.summary.id 取 session ID；Failed 事件 detail 可能为 null，回退到顶层 session_id
     const targetSessionId = sessionIdRef.current;
-    if (targetSessionId && payload.detail?.summary?.id && payload.detail.summary.id !== targetSessionId) {
-      return; // 忽略其他 session 的事件
+    if (targetSessionId) {
+      const eventSessionId = payload.detail?.summary?.id ?? (payload as any).session_id;
+      if (eventSessionId && eventSessionId !== targetSessionId) {
+        return; // 忽略其他 session 的事件
+      }
     }
 
     // 处理失败事件

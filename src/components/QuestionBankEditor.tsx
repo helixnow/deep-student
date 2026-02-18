@@ -116,6 +116,8 @@ export interface QuestionBankEditorProps {
   onUpdateUserNote?: (questionId: string, note: string) => Promise<void>;
   /** 答题进度持久化 key */
   persistKey?: string;
+  /** ★ 标签页：当前面板是否为活跃标签页（控制计时器暂停） */
+  isActive?: boolean;
 }
 
 const DIFFICULTY_CONFIG: Record<Difficulty, { color: string; bg: string }> = {
@@ -381,6 +383,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
   onHideAnswerModeChange,
   onUpdateUserNote,
   persistKey,
+  isActive,
 }) => {
   const { t } = useTranslation('practice');
   const [selectedAnswer, setSelectedAnswer] = useState<string>('');
@@ -600,15 +603,26 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
     };
   }, [isSmallScreen, handleDragStart, handleDragMove, handleDragEnd]);
 
-  // 监听 Store 中的设置面板状态（替代 window.addEventListener）
-  const storeShowSettingsPanel = useQuestionBankStore(state => state.showSettingsPanel);
+  // ★ 标签页修复：监听 exam:openSettings 事件（带 targetResourceId 过滤），
+  //   替代全局 store sync，确保只切换当前标签页的设置面板
   useEffect(() => {
-    setShowSettingsPanel(storeShowSettingsPanel);
-  }, [storeShowSettingsPanel]);
+    const handleToggleSettings = (evt: Event) => {
+      const detail = (evt as CustomEvent<{ targetResourceId?: string }>).detail;
+      if (detail?.targetResourceId && sessionId && detail.targetResourceId !== sessionId) {
+        return;
+      }
+      setShowSettingsPanel(prev => !prev);
+    };
+    window.addEventListener('exam:openSettings', handleToggleSettings);
+    return () => {
+      window.removeEventListener('exam:openSettings', handleToggleSettings);
+    };
+  }, [sessionId]);
 
   // 计时器逻辑
+  // ★ 标签页：isActive === false 时暂停计时器
   useEffect(() => {
-    if (showTimer && isTimerRunning) {
+    if (showTimer && isTimerRunning && isActive !== false) {
       timerRef.current = setInterval(() => {
         setElapsedTime(prev => prev + 1);
       }, 1000);
@@ -618,7 +632,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
         clearInterval(timerRef.current);
       }
     };
-  }, [showTimer, isTimerRunning]);
+  }, [showTimer, isTimerRunning, isActive]);
 
   // 题目切换时重置状态和记录单题用时（使用 ref 避免 stale closure）
   useEffect(() => {

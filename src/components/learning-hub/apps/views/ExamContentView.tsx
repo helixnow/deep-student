@@ -44,6 +44,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
   node,
   onClose,
   readOnly = false,
+  isActive,
 }) => {
   const { t } = useTranslation(['exam_sheet', 'common', 'learningHub']);
 
@@ -87,8 +88,9 @@ const ExamContentView: React.FC<ContentViewProps> = ({
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   
   // 计时器逻辑
+  // ★ 标签页：isActive === false 时暂停计时器，避免后台计时不精确
   useEffect(() => {
-    if (viewMode === 'practice' && isTimerRunning) {
+    if (viewMode === 'practice' && isTimerRunning && isActive !== false) {
       timerRef.current = setInterval(() => {
         setElapsedTime(prev => prev + 1);
       }, 1000);
@@ -98,7 +100,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
         clearInterval(timerRef.current);
       }
     };
-  }, [viewMode, isTimerRunning]);
+  }, [viewMode, isTimerRunning, isActive]);
   
   // 进入做题模式时自动开始计时
   useEffect(() => {
@@ -548,6 +550,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
               selectedTag={selectedTag}
               focusMode={focusMode}
               onFocusModeChange={setFocusMode}
+              isActive={isActive}
               onSubmitAnswer={readOnly ? undefined : handleSubmitAnswer}
               onNavigate={handleNavigate}
               onModeChange={handleModeChange}

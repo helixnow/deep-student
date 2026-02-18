@@ -110,6 +110,9 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
   const { t } = useTranslation(['exam_sheet', 'common', 'settings']);
   const resolvedSessionName = sessionName ?? t('exam_sheet:uploader.session_name_default');
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // ★ 标签页：ref 持有 sessionId，供 question_import_progress 空 deps 监听器过滤事件
+  const sessionIdRef = useRef(sessionId);
+  sessionIdRef.current = sessionId;
   
   // 文件状态
   const [selectedFiles, setSelectedFiles] = useState<FileInfo[]>([]);
@@ -207,6 +210,11 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
         error?: string;
       }>('question_import_progress', (event) => {
         const payload = event.payload;
+
+        // ★ 标签页：过滤非当前 session 的事件，防止多 tab 上传时交叉污染
+        if (sessionIdRef.current && payload.session_id && payload.session_id !== sessionIdRef.current) {
+          return;
+        }
         
         switch (payload.type) {
           case 'OcrImageCompleted': {

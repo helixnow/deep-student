@@ -46,7 +46,6 @@ import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { useLearningHubNavigation } from './LearningHubNavigationContext';
 import { useFinderStore } from './stores/finderStore';
-import { useQuestionBankStore } from '@/stores/questionBankStore';
 import { DstuAppLauncher } from './components/DstuAppLauncher';
 import { type OpenTab, MAX_TABS, createTab } from './types/tabs';
 import { TabBar } from './components/TabBar';
@@ -114,19 +113,23 @@ export const LearningHubPage: React.FC = () => {
   const hasOpenApp = tabs.length > 0;
 
   // ========== 标签页操作函数 ==========
+  const activeTabIdRef = useRef(activeTabId);
+  activeTabIdRef.current = activeTabId;
+
   const openTab = useCallback((app: Omit<OpenTab, 'tabId' | 'openedAt'>) => {
     setTabs(prev => {
-      // 1. 已存在同 resourceId 的 tab → 直接激活
+      // 1. 已存在同 resourceId 的 tab → 激活并更新 openedAt（LRU）
       const existing = prev.find(t => t.resourceId === app.resourceId);
       if (existing) {
         setActiveTabId(existing.tabId);
-        return prev;
+        return prev.map(t => t.tabId === existing.tabId ? { ...t, openedAt: Date.now() } : t);
       }
-      // 2. 超出上限时 LRU 淘汰最旧的非固定 tab
+      // 2. 超出上限时 LRU 淘汰最旧的非固定、非活跃 tab
       let next = [...prev];
       if (next.length >= MAX_TABS) {
+        const currentActiveId = activeTabIdRef.current;
         const toEvict = [...next]
-          .filter(t => !t.isPinned)
+          .filter(t => !t.isPinned && t.tabId !== currentActiveId)
           .sort((a, b) => a.openedAt - b.openedAt)[0];
         if (toEvict) {
           next = next.filter(t => t.tabId !== toEvict.tabId);
@@ -158,6 +161,12 @@ export const LearningHubPage: React.FC = () => {
     setTabs(prev => prev.map(t => t.tabId === tabId ? { ...t, title } : t));
   }, []);
 
+  // ★ 标签页切换（同时更新 openedAt 以确保 LRU 正确性）
+  const switchTab = useCallback((tabId: string) => {
+    setActiveTabId(tabId);
+    setTabs(prev => prev.map(t => t.tabId === tabId ? { ...t, openedAt: Date.now() } : t));
+  }, []);
+
   // ========== 三屏滑动布局状态（移动端） ==========
   const [screenPosition, setScreenPosition] = useState<ScreenPosition>('center');
   const [activeAppType, setActiveAppType] = useState<string>('all');
@@ -173,6 +182,10 @@ export const LearningHubPage: React.FC = () => {
   });
   const [isDragging, setIsDragging] = useState(false);
   const [dragOffset, setDragOffset] = useState(0);
+  // ★ ref 用于 handleDragEnd 读取最新 dragOffset，避免将 dragOffset 放入 useCallback deps
+  //   否则每次 touchmove 更新 dragOffset 都会重建 handleDragEnd → 重新注册所有 touch listener
+  const dragOffsetRef = useRef(0);
+  dragOffsetRef.current = dragOffset;
   const [containerWidth, setContainerWidth] = useState(0);
 
   // 监听容器宽度
@@ -272,7 +285,7 @@ export const LearningHubPage: React.FC = () => {
     }
 
     const threshold = sidebarWidth * 0.3; // 30% 阈值
-    const offset = dragOffset;
+    const offset = dragOffsetRef.current;
 
     // 根据拖拽方向和距离决定目标屏幕
     if (Math.abs(offset) > threshold) {
@@ -297,7 +310,7 @@ export const LearningHubPage: React.FC = () => {
     stateRef.current.axisLocked = null;
     setIsDragging(false);
     setDragOffset(0);
-  }, [dragOffset, screenPosition, sidebarWidth, activeTab]);
+  }, [screenPosition, sidebarWidth, activeTab]);
 
   // ========== 三屏滑动：绑定触摸事件 ==========
   useEffect(() => {
@@ -378,14 +391,11 @@ export const LearningHubPage: React.FC = () => {
             : activeTab?.type === 'essay'
               ? 'essay:openSettings'
               : 'exam:openSettings';
-          if (eventName === 'exam:openSettings') {
-            const { toggleSettingsPanel } = useQuestionBankStore.getState();
-            toggleSettingsPanel();
-          } else {
-            window.dispatchEvent(new CustomEvent(eventName, {
-              detail: { targetResourceId: activeTab?.resourceId },
-            }));
-          }
+          // ★ 标签页修复：统一使用带 targetResourceId 的事件派发，
+          //   确保只影响当前活跃标签页（而非通过全局 store 影响所有实例）
+          window.dispatchEvent(new CustomEvent(eventName, {
+            detail: { targetResourceId: activeTab?.resourceId },
+          }));
         }}
         className="h-9 w-9"
       >
@@ -599,11 +609,6 @@ export const LearningHubPage: React.FC = () => {
       setScreenPosition('right');
     }
   }, [isSmallScreen, openTab]);
-
-  // ========== 标题更新回调（统一面板加载资源后更新标题） ==========
-  const handleTitleChange = useCallback((title: string) => {
-    if (activeTabId) updateTabTitle(activeTabId, title);
-  }, [activeTabId, updateTabTitle]);
 
   // ========== 关闭应用（关闭当前活跃标签页） ==========
   const handleCloseApp = useCallback(() => {
@@ -906,7 +911,7 @@ export const LearningHubPage: React.FC = () => {
               <TabBar
                 tabs={tabs}
                 activeTabId={activeTabId}
-                onSwitch={setActiveTabId}
+                onSwitch={switchTab}
                 onClose={closeTab}
               />
               {/* ★ 内容区域：TabPanelContainer 保活所有 tab */}

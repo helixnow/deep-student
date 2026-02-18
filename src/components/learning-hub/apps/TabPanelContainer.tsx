@@ -5,7 +5,7 @@
  * 通过 display:none 隐藏非活跃标签页，保持其组件状态不丢失。
  */
 
-import React, { lazy, Suspense, useMemo } from 'react';
+import React, { lazy, Suspense, useCallback } from 'react';
 import { Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { OpenTab } from '../types/tabs';
@@ -35,29 +35,15 @@ export const TabPanelContainer: React.FC<TabPanelContainerProps> = ({
 }) => {
   const { t } = useTranslation('common');
 
-  // ★ 为每个 tab 创建稳定的回调引用，避免 onTitleChange 闭包导致
-  //   UnifiedAppPanel 内部 useEffect 重新触发 dstu.get()
-  //   （见批判性检查 C-1）
-  const stableCallbacks = useMemo(() => {
-    const map = new Map<string, {
-      onClose: () => void;
-      onTitleChange: (title: string) => void;
-    }>();
-    for (const tab of tabs) {
-      map.set(tab.tabId, {
-        onClose: () => onClose(tab.tabId),
-        onTitleChange: (title: string) => onTitleChange(tab.tabId, title),
-      });
-    }
-    return map;
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tabs.map(t => t.tabId).join(','), onClose, onTitleChange]);
+  // ★ UnifiedAppPanel 已使用 ref 持有 onTitleChange，因此回调引用变化不会导致重新加载
+  //   这里直接用内联闭包即可，无需复杂的 memoization
+  const handleClose = useCallback((tabId: string) => onClose(tabId), [onClose]);
+  const handleTitleChange = useCallback((tabId: string, title: string) => onTitleChange(tabId, title), [onTitleChange]);
 
   return (
     <div className={cn('relative h-full', className)}>
       {tabs.map(tab => {
         const isActive = tab.tabId === activeTabId;
-        const callbacks = stableCallbacks.get(tab.tabId);
         return (
           <div
             key={tab.tabId}
@@ -78,8 +64,8 @@ export const TabPanelContainer: React.FC<TabPanelContainerProps> = ({
                 type={tab.type}
                 resourceId={tab.resourceId}
                 dstuPath={tab.dstuPath}
-                onClose={callbacks?.onClose}
-                onTitleChange={callbacks?.onTitleChange}
+                onClose={() => handleClose(tab.tabId)}
+                onTitleChange={(title) => handleTitleChange(tab.tabId, title)}
                 isActive={isActive}
                 className="h-full w-full"
               />

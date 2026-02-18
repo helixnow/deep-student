@@ -153,14 +153,15 @@ export const MindMapContentView: React.FC<MindMapContentViewProps> = ({
   }, [tryLoadMindMap]);
 
   // 同步标题变更到外部
+  // ★ 标签页：仅活跃标签页同步标题，防止其他 MindMap 标签页加载时覆盖当前标题
   useEffect(() => {
-    if (!onTitleChange) return;
+    if (!onTitleChange || isActive === false) return;
     const title = mindmapDocument?.root?.text ?? '';
     if (lastTitleRef.current !== title) {
       lastTitleRef.current = title;
       onTitleChange(title);
     }
-  }, [mindmapDocument?.root?.text, onTitleChange]);
+  }, [mindmapDocument?.root?.text, onTitleChange, isActive]);
 
   const handleExport = useCallback(async (format: string) => {
     if (!mindmapDocument) return;
@@ -280,8 +281,11 @@ export const MindMapContentView: React.FC<MindMapContentViewProps> = ({
   }, [save]);
 
   // 键盘快捷键
+  // ★ 标签页：仅活跃标签页响应快捷键，防止多个 MindMap 标签页同时处理同一按键
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (isActive === false) return;
+
       const isMod = e.ctrlKey || e.metaKey;
       const target = e.target as HTMLElement;
       const isTextInputContext =
@@ -316,7 +320,7 @@ export const MindMapContentView: React.FC<MindMapContentViewProps> = ({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [undo, redo, canUndo, canRedo, save, isDirty, isSaving, showSearch, clearSearch, currentView]);
+  }, [undo, redo, canUndo, canRedo, save, isDirty, isSaving, showSearch, clearSearch, currentView, isActive]);
 
   // M-069: 组件卸载时同步保存草稿到 localStorage，防止异步 save 未完成导致数据丢失
   // loadMindMap 时会自动检查并恢复本地草稿

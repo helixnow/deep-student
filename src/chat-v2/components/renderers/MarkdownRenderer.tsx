@@ -192,6 +192,19 @@ const preprocessContent = (content: string): string => {
 
   let processedContent = content;
 
+  // remark-math v6 仅支持 $...$ 和 $$...$$ 分隔符，不支持 \(...\) 和 \[...\]。
+  // 许多 LLM（GPT、Claude 等）使用 \(...\) / \[...\] 格式输出数学公式，
+  // 需要预先转换为 $...$ / $$...$$ 以确保 KaTeX 正确渲染。
+  // 跳过代码块内部的内容以避免误转换。
+  const codeBlockPlaceholders: string[] = [];
+  processedContent = processedContent.replace(/```[\s\S]*?```|`[^`\n]+`/g, (match) => {
+    codeBlockPlaceholders.push(match);
+    return `\x00CB${codeBlockPlaceholders.length - 1}\x00`;
+  });
+  processedContent = processedContent.replace(/(?<!\\)\\\((.+?)(?<!\\)\\\)/g, (_m, math) => `$${math}$`);
+  processedContent = processedContent.replace(/(?<!\\)\\\[([\s\S]+?)(?<!\\)\\\]/g, (_m, math) => `$$${math}$$`);
+  processedContent = processedContent.replace(/\x00CB(\d+)\x00/g, (_m, idx) => codeBlockPlaceholders[Number(idx)]);
+
   // 专门处理 bmatrix 环境
   processedContent = processedContent.replace(/\\begin{bmatrix}(.*?)\\end{bmatrix}/gs, (match, matrixContent) => {
     // 移除每行末尾 \\ 之前和之后的空格
