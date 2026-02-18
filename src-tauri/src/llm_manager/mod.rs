@@ -57,6 +57,146 @@ struct IncrementalJsonArrayParser {
     escape_next: bool,
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn profile(id: &str, label: &str, model: &str, supports_tools: bool, is_builtin: bool) -> ModelProfile {
+        ModelProfile {
+            id: id.to_string(),
+            vendor_id: "builtin-deepseek".to_string(),
+            label: label.to_string(),
+            model: model.to_string(),
+            supports_tools,
+            is_builtin,
+            ..ModelProfile::default()
+        }
+    }
+
+    #[test]
+    fn merge_builtin_profile_user_aware_preserves_user_modified_fields() {
+        let mut profiles = vec![profile(
+            "builtin-deepseek-reasoner",
+            "My Custom Label",
+            "deepseek-reasoner-custom",
+            false,
+            false,
+        )];
+        let builtin = profile(
+            "builtin-deepseek-reasoner",
+            "DeepSeek Reasoner (深度推理)",
+            "deepseek-reasoner",
+            true,
+            true,
+        );
+        let previous_builtin = profile(
+            "builtin-deepseek-reasoner",
+            "DeepSeek Reasoner (旧标签)",
+            "deepseek-reasoner",
+            true,
+            true,
+        );
+
+        LLMManager::merge_builtin_profile_user_aware(
+            &mut profiles,
+            builtin,
+            Some(&previous_builtin),
+        );
+
+        assert_eq!(profiles.len(), 1);
+        let merged = &profiles[0];
+        assert_eq!(merged.label, "My Custom Label");
+        assert_eq!(merged.model, "deepseek-reasoner-custom");
+        assert!(!merged.supports_tools);
+        assert!(merged.is_builtin);
+    }
+
+    #[test]
+    fn merge_builtin_profile_user_aware_updates_untouched_fields_from_builtin() {
+        let mut profiles = vec![profile(
+            "builtin-deepseek-chat",
+            "DeepSeek Chat (旧标签)",
+            "deepseek-chat",
+            true,
+            false,
+        )];
+        let mut builtin = profile(
+            "builtin-deepseek-chat",
+            "DeepSeek Chat (新标签)",
+            "deepseek-chat",
+            true,
+            true,
+        );
+        builtin.temperature = 0.2;
+
+        let mut previous_builtin = profile(
+            "builtin-deepseek-chat",
+            "DeepSeek Chat (旧标签)",
+            "deepseek-chat",
+            true,
+            true,
+        );
+        previous_builtin.temperature = 0.7;
+        profiles[0].temperature = 0.7;
+
+        LLMManager::merge_builtin_profile_user_aware(
+            &mut profiles,
+            builtin,
+            Some(&previous_builtin),
+        );
+
+        assert_eq!(profiles.len(), 1);
+        let merged = &profiles[0];
+        assert_eq!(merged.label, "DeepSeek Chat (新标签)");
+        assert!((merged.temperature - 0.2).abs() < f32::EPSILON);
+        assert!(merged.is_builtin);
+    }
+
+    #[test]
+    fn merge_builtin_profile_user_aware_adds_missing_builtin_profile() {
+        let mut profiles = vec![];
+        let builtin = profile(
+            "builtin-deepseek-chat",
+            "DeepSeek Chat (对话)",
+            "deepseek-chat",
+            true,
+            true,
+        );
+
+        LLMManager::merge_builtin_profile_user_aware(&mut profiles, builtin, None);
+
+        assert_eq!(profiles.len(), 1);
+        assert_eq!(profiles[0].id, "builtin-deepseek-chat");
+        assert!(profiles[0].is_builtin);
+    }
+
+    #[test]
+    fn merge_builtin_profile_user_aware_without_snapshot_keeps_existing_metadata() {
+        let mut profiles = vec![profile(
+            "builtin-deepseek-chat",
+            "User Local Label",
+            "deepseek-chat-custom",
+            false,
+            false,
+        )];
+        let builtin = profile(
+            "builtin-deepseek-chat",
+            "DeepSeek Chat (官方)",
+            "deepseek-chat",
+            true,
+            true,
+        );
+
+        LLMManager::merge_builtin_profile_user_aware(&mut profiles, builtin, None);
+
+        let merged = &profiles[0];
+        assert_eq!(merged.label, "User Local Label");
+        assert_eq!(merged.model, "deepseek-chat-custom");
+        assert!(!merged.supports_tools);
+        assert!(merged.is_builtin);
+    }
+}
+
 impl IncrementalJsonArrayParser {
     fn new() -> Self {
         Self {
@@ -181,6 +321,7 @@ const EXAM_SEGMENT_MAX_PAGES: usize = 36;
 const STREAM_MAX_CTX_TOKENS: usize = 200_000;
 const USER_PREFERENCES_SETTING_KEY: &str = "chat.user_preferences_profile";
 const USER_PREFERENCE_FIELD_MAX_LEN: usize = 800;
+const BUILTIN_MODEL_PROFILES_SNAPSHOT_KEY: &str = "builtin_model_profiles_snapshot";
 
 static CONTROL_CHARS_REGEX: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"[\u{0000}-\u{001F}\u{007F}]").unwrap());
@@ -723,6 +864,89 @@ pub trait LLMStreamHooks: Send + Sync {
 }
 
 impl LLMManager {
+    fn merge_builtin_profile_user_aware(
+        profiles: &mut Vec<ModelProfile>,
+        builtin_profile: ModelProfile,
+        previous_builtin_profile: Option<&ModelProfile>,
+    ) {
+        if let Some(existing) = profiles.iter_mut().find(|p| p.id == builtin_profile.id) {
+            // 无论如何都修复内置标记，避免旧数据将内置模型错误标记为非内置。
+            existing.is_builtin = true;
+
+            // 首次无基线快照时，保守处理：完全尊重现有本地数据，不覆盖元数据。
+            let Some(previous_builtin) = previous_builtin_profile else {
+                return;
+            };
+
+            macro_rules! update_if_untouched {
+                ($field:ident) => {
+                    if existing.$field == previous_builtin.$field {
+                        existing.$field = builtin_profile.$field.clone();
+                    }
+                };
+            }
+
+            update_if_untouched!(vendor_id);
+            update_if_untouched!(label);
+            update_if_untouched!(model);
+            update_if_untouched!(model_adapter);
+            update_if_untouched!(is_multimodal);
+            update_if_untouched!(is_reasoning);
+            update_if_untouched!(is_embedding);
+            update_if_untouched!(is_reranker);
+            update_if_untouched!(supports_tools);
+            update_if_untouched!(supports_reasoning);
+            update_if_untouched!(status);
+            update_if_untouched!(enabled);
+            update_if_untouched!(max_output_tokens);
+            update_if_untouched!(temperature);
+            update_if_untouched!(reasoning_effort);
+            update_if_untouched!(thinking_enabled);
+            update_if_untouched!(thinking_budget);
+            update_if_untouched!(include_thoughts);
+            update_if_untouched!(enable_thinking);
+            update_if_untouched!(min_p);
+            update_if_untouched!(top_k);
+            update_if_untouched!(gemini_api_version);
+            update_if_untouched!(repetition_penalty);
+            update_if_untouched!(reasoning_split);
+            update_if_untouched!(effort);
+            update_if_untouched!(verbosity);
+            update_if_untouched!(is_favorite);
+            update_if_untouched!(max_tokens_limit);
+            return;
+        }
+        profiles.push(builtin_profile);
+    }
+
+    fn read_builtin_profile_snapshot_map(&self) -> HashMap<String, ModelProfile> {
+        let raw = match self.db.get_setting(BUILTIN_MODEL_PROFILES_SNAPSHOT_KEY) {
+            Ok(Some(raw)) => raw,
+            _ => return HashMap::new(),
+        };
+
+        let parsed: Vec<ModelProfile> = match serde_json::from_str(&raw) {
+            Ok(parsed) => parsed,
+            Err(err) => {
+                warn!("[VendorModel] 解析内置模型快照失败，回退为空快照: {}", err);
+                return HashMap::new();
+            }
+        };
+
+        parsed
+            .into_iter()
+            .map(|profile| (profile.id.clone(), profile))
+            .collect()
+    }
+
+    fn save_builtin_profile_snapshot(&self, builtin_profiles: &[ModelProfile]) -> Result<()> {
+        let json = serde_json::to_string(builtin_profiles)
+            .map_err(|e| AppError::configuration(format!("序列化内置模型快照失败: {}", e)))?;
+        self.db
+            .save_setting(BUILTIN_MODEL_PROFILES_SNAPSHOT_KEY, &json)
+            .map_err(|e| AppError::database(format!("保存内置模型快照失败: {}", e)))
+    }
+
     pub fn new(db: Arc<Database>, file_manager: Arc<FileManager>) -> Self {
         // 创建HTTP客户端，使用渐进式回退策略确保始终有合理的配置
         let client = Self::create_http_client_with_fallback();
@@ -1599,14 +1823,17 @@ impl LLMManager {
     pub async fn get_model_profiles(&self) -> Result<Vec<ModelProfile>> {
         self.bootstrap_vendor_model_config().await?;
         let mut profiles = self.read_user_model_profiles().await?;
+        let snapshot_map = self.read_builtin_profile_snapshot_map();
         if let Ok((_, builtin_profiles)) = self.load_builtin_vendor_profiles() {
-            for builtin_profile in builtin_profiles {
-                if let Some(existing) = profiles.iter_mut().find(|p| p.id == builtin_profile.id) {
-                    // 已有同 ID 的用户配置：同步内置模型的核心字段
-                    Self::sync_builtin_profile_fields(existing, &builtin_profile);
-                } else {
-                    profiles.push(builtin_profile);
-                }
+            for builtin_profile in &builtin_profiles {
+                Self::merge_builtin_profile_user_aware(
+                    &mut profiles,
+                    builtin_profile.clone(),
+                    snapshot_map.get(&builtin_profile.id),
+                );
+            }
+            if let Err(err) = self.save_builtin_profile_snapshot(&builtin_profiles) {
+                warn!("[VendorModel] 保存内置模型快照失败（不影响读取）: {}", err);
             }
         }
         Ok(profiles)
@@ -1626,42 +1853,22 @@ impl LLMManager {
 
     async fn model_profiles_for_runtime(&self) -> Result<Vec<ModelProfile>> {
         let mut profiles = self.read_user_model_profiles().await?;
+        let snapshot_map = self.read_builtin_profile_snapshot_map();
         if let Ok((_, builtin_profiles)) = self.load_builtin_vendor_profiles() {
             for builtin_profile in builtin_profiles {
-                if let Some(user_profile) = profiles.iter_mut().find(|p| p.id == builtin_profile.id)
-                {
-                    Self::sync_builtin_profile_fields(user_profile, &builtin_profile);
-                } else {
-                    profiles.push(builtin_profile);
-                }
+                Self::merge_builtin_profile_user_aware(
+                    &mut profiles,
+                    builtin_profile.clone(),
+                    snapshot_map.get(&builtin_profile.id),
+                );
             }
         }
         Ok(profiles)
     }
 
-    /// 将内置模型定义的核心字段同步到已有的用户配置中。
-    /// 保留用户的个性化设置（收藏、温度、思考预算等），
-    /// 仅更新由代码定义、不应由用户长期持有旧值的字段。
-    fn sync_builtin_profile_fields(user_profile: &mut ModelProfile, builtin: &ModelProfile) {
-        user_profile.label = builtin.label.clone();
-        user_profile.model = builtin.model.clone();
-        user_profile.vendor_id = builtin.vendor_id.clone();
-        user_profile.model_adapter = builtin.model_adapter.clone();
-        user_profile.is_multimodal = builtin.is_multimodal;
-        user_profile.is_reasoning = builtin.is_reasoning;
-        user_profile.is_embedding = builtin.is_embedding;
-        user_profile.is_reranker = builtin.is_reranker;
-        user_profile.supports_tools = builtin.supports_tools;
-        user_profile.supports_reasoning = builtin.supports_reasoning;
-        user_profile.gemini_api_version = builtin.gemini_api_version.clone();
-        if user_profile.max_tokens_limit.is_none() {
-            user_profile.max_tokens_limit = builtin.max_tokens_limit;
-        }
-    }
-
     pub async fn save_model_profiles(&self, profiles: &[ModelProfile]) -> Result<()> {
         // ★ 2026-01-19 修复：保存所有模型（包括 is_builtin=true），以支持用户对内置模型的收藏等自定义设置
-        // 加载时会智能合并内置模型的最新配置与用户的自定义设置
+        // 加载时按“字段级用户优先”进行合并：用户改过的字段保持不变，未改字段可接收后续内置更新
         let json = serde_json::to_string(profiles)
             .map_err(|e| AppError::configuration(format!("序列化模型条目失败: {}", e)))?;
         self.db

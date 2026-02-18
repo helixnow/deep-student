@@ -27,6 +27,7 @@ use base64::{engine::general_purpose::STANDARD, Engine};
 use rusqlite::{params, Connection, OptionalExtension};
 use sha2::{Digest, Sha256};
 use std::path::Path;
+use std::time::Duration;
 use tracing::{debug, error, info, warn};
 
 use crate::document_parser::DocumentParser;
@@ -163,6 +164,15 @@ const SUPPORTED_MIME_TYPES: &[&str] = &[
 pub struct VfsAttachmentRepo;
 
 impl VfsAttachmentRepo {
+    #[inline]
+    fn is_sqlite_busy_error(err: &VfsError) -> bool {
+        let msg = err.to_string().to_lowercase();
+        msg.contains("database is locked")
+            || msg.contains("database table is locked")
+            || msg.contains("sqlite_busy")
+            || msg.contains("database busy")
+    }
+
     pub(crate) fn max_upload_size_bytes(mime_type: &str) -> usize {
         if mime_type.trim().to_lowercase().starts_with("image/") {
             MAX_IMAGE_BYTES
@@ -797,19 +807,30 @@ impl VfsAttachmentRepo {
         } else {
             // 插入被忽略，说明 content_hash 已存在（可能由其他线程创建）
             // 查询现有附件并返回
+            // ★ Windows/并发修复：冲突记录可能仍在其他连接的未提交事务中，短暂重试可见性
             debug!(
                 "[VFS::AttachmentRepo] Hash collision detected, querying existing attachment for hash: {}",
                 content_hash
             );
 
-            let existing = Self::get_by_hash_with_conn(conn, &content_hash)?.ok_or_else(|| {
-                VfsError::NotFound {
-                    resource_type: "Attachment".to_string(),
-                    id: format!(
-                        "content_hash={} (race condition edge case: should exist but not found)",
-                        content_hash
-                    ),
+            const HASH_VISIBILITY_RETRIES: usize = 8;
+            let mut existing = None;
+            for attempt in 0..HASH_VISIBILITY_RETRIES {
+                existing = Self::get_by_hash_with_conn(conn, &content_hash)?;
+                if existing.is_some() {
+                    break;
                 }
+                if attempt < HASH_VISIBILITY_RETRIES - 1 {
+                    std::thread::sleep(Duration::from_millis(30));
+                }
+            }
+
+            let existing = existing.ok_or_else(|| VfsError::NotFound {
+                resource_type: "Attachment".to_string(),
+                id: format!(
+                    "content_hash={} (race condition edge case: should exist but not found)",
+                    content_hash
+                ),
             })?;
 
             // ★ 如果复用附件但缺少 ocr_pages_json，补写页级 OCR
@@ -857,8 +878,32 @@ impl VfsAttachmentRepo {
         params: VfsUploadAttachmentParams,
         folder_id: Option<&str>,
     ) -> VfsResult<VfsUploadAttachmentResult> {
-        let conn = db.get_conn_safe()?;
-        Self::upload_with_folder_conn(&conn, db.blobs_dir(), params, folder_id)
+        // ★ Windows 写锁修复：SQLite 在高并发上传时可能短暂返回 SQLITE_BUSY
+        // 这里做短重试，避免直接向前端暴露 "database is locked"
+        const BUSY_RETRIES: usize = 4;
+        for attempt in 0..BUSY_RETRIES {
+            let conn = db.get_conn_safe()?;
+            match Self::upload_with_folder_conn(&conn, db.blobs_dir(), params.clone(), folder_id) {
+                Ok(res) => return Ok(res),
+                Err(err) if Self::is_sqlite_busy_error(&err) && attempt < BUSY_RETRIES - 1 => {
+                    let backoff_ms = (80u64.saturating_mul(1u64 << attempt.min(6))).min(1000);
+                    warn!(
+                        "[VFS::AttachmentRepo] upload_with_folder busy (attempt {}/{}), retry in {}ms: {}",
+                        attempt + 1,
+                        BUSY_RETRIES,
+                        backoff_ms,
+                        err
+                    );
+                    std::thread::sleep(Duration::from_millis(backoff_ms));
+                    continue;
+                }
+                Err(err) => return Err(err),
+            }
+        }
+
+        Err(VfsError::Database(
+            "upload_with_folder retry exhausted due to SQLITE_BUSY".to_string(),
+        ))
     }
 
     /// ★ 2026-02-08 修复：使用 SAVEPOINT 事务保护，确保 upload + add_to_folder 两步操作的原子性。

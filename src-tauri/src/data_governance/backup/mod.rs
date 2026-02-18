@@ -1844,11 +1844,60 @@ impl BackupManager {
         let src_conn = Connection::open(&backup_path)?;
         let mut dest_conn = Connection::open(&target_path)?;
 
+        // 显式设置 busy_timeout，避免 Windows 文件锁场景下无界等待
+        src_conn.pragma_update(None, "busy_timeout", 5000i64)?;
+        dest_conn.pragma_update(None, "busy_timeout", 5000i64)?;
+
         debug!("恢复数据库: {:?} -> {:?}", backup_path, target_path);
 
         {
             let backup = Backup::new(&src_conn, &mut dest_conn)?;
-            backup.run_to_completion(5, Duration::from_millis(100), None)?;
+            use rusqlite::backup::StepResult;
+
+            // P0 修复：避免 Busy/Locked 时无限阻塞（Windows 下会表现为恢复进度长期卡住）
+            const STEP_PAGES: i32 = 100;
+            const RETRY_SLEEP_MS: u64 = 100;
+            const MAX_BUSY_RETRIES: u32 = 600; // 约 60 秒
+
+            let mut busy_retries: u32 = 0;
+
+            loop {
+                let step_result = backup.step(STEP_PAGES)?;
+                match step_result {
+                    StepResult::Done => break,
+                    StepResult::More => {
+                        // 复制有进展，重置 Busy/Locked 计数
+                        busy_retries = 0;
+                    }
+                    StepResult::Busy | StepResult::Locked => {
+                        busy_retries = busy_retries.saturating_add(1);
+                        if busy_retries % 50 == 0 {
+                            let p = backup.progress();
+                            warn!(
+                                "[data_governance] 恢复数据库等待锁释放: db={:?}, retry={}/{}, remaining_pages={}/{}",
+                                db_id,
+                                busy_retries,
+                                MAX_BUSY_RETRIES,
+                                p.remaining,
+                                p.pagecount
+                            );
+                        }
+
+                        if busy_retries >= MAX_BUSY_RETRIES {
+                            return Err(BackupError::RestoreFailed(format!(
+                                "恢复数据库超时：目标数据库持续被锁定（db={:?}, target={}）",
+                                db_id,
+                                target_path.display()
+                            )));
+                        }
+
+                        std::thread::sleep(Duration::from_millis(RETRY_SLEEP_MS));
+                    }
+                    _ => {
+                        std::thread::sleep(Duration::from_millis(RETRY_SLEEP_MS));
+                    }
+                }
+            }
         }
 
         // 执行完整性检查

@@ -23,16 +23,45 @@ use crate::vfs::{
 
 /// 解析时间戳字符串为毫秒
 pub fn parse_timestamp(s: &str) -> i64 {
-    chrono::DateTime::parse_from_rfc3339(s)
-        .map(|dt| dt.timestamp_millis())
-        .unwrap_or_else(|e| {
-            log::warn!(
-                "[DSTU::node_converters] Failed to parse timestamp '{}': {}, using epoch fallback",
-                s,
-                e
-            );
-            0_i64
-        })
+    let trimmed = s.trim();
+    if trimmed.is_empty() {
+        return chrono::Utc::now().timestamp_millis();
+    }
+
+    // 1) RFC3339（主格式）
+    if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(trimmed) {
+        return dt.timestamp_millis();
+    }
+
+    // 2) SQLite datetime('now') 常见格式："YYYY-MM-DD HH:MM:SS"
+    if let Ok(naive) = chrono::NaiveDateTime::parse_from_str(trimmed, "%Y-%m-%d %H:%M:%S") {
+        return chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(naive, chrono::Utc)
+            .timestamp_millis();
+    }
+
+    // 3) SQLite 带毫秒格式："YYYY-MM-DD HH:MM:SS%.f"
+    if let Ok(naive) = chrono::NaiveDateTime::parse_from_str(trimmed, "%Y-%m-%d %H:%M:%S%.f") {
+        return chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(naive, chrono::Utc)
+            .timestamp_millis();
+    }
+
+    // 4) 纯数字 Unix 时间戳：秒(10位) / 毫秒(13位)
+    if let Ok(raw) = trimmed.parse::<i64>() {
+        let ms = if raw.abs() < 100_000_000_000 {
+            raw.saturating_mul(1000)
+        } else {
+            raw
+        };
+        return ms;
+    }
+
+    let now = chrono::Utc::now().timestamp_millis();
+    log::warn!(
+        "[DSTU::node_converters] Failed to parse timestamp '{}', fallback to now: {}",
+        s,
+        now
+    );
+    now
 }
 
 /// 创建类型文件夹节点
@@ -299,12 +328,8 @@ pub fn session_to_dstu_node(session: &VfsEssaySession) -> DstuNode {
 pub fn attachment_to_dstu_node(attachment: &VfsAttachment) -> DstuNode {
     let path = build_simple_resource_path(&attachment.id);
 
-    let created_at = chrono::DateTime::parse_from_rfc3339(&attachment.created_at)
-        .map(|dt| dt.timestamp_millis())
-        .unwrap_or(0);
-    let updated_at = chrono::DateTime::parse_from_rfc3339(&attachment.updated_at)
-        .map(|dt| dt.timestamp_millis())
-        .unwrap_or_else(|_| created_at);
+    let created_at = parse_timestamp(&attachment.created_at);
+    let updated_at = parse_timestamp(&attachment.updated_at);
 
     let node_type = if attachment.attachment_type == "image" {
         DstuNodeType::Image

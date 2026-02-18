@@ -875,6 +875,28 @@ pub struct ImportQuestionBankRequest {
     /// 可选：指定用于解析的模型配置 ID
     #[serde(default)]
     pub model_config_id: Option<String>,
+    /// 可选：PDF 导入时是否优先 OCR
+    /// - Some(true): 强制 OCR
+    /// - Some(false): 强制使用解析文本
+    /// - None: 使用后端默认策略
+    #[serde(default)]
+    pub pdf_prefer_ocr: Option<bool>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+pub struct InspectPdfTextRequest {
+    pub content: String,
+}
+
+#[tauri::command]
+pub async fn inspect_pdf_text_for_qbank(
+    request: InspectPdfTextRequest,
+    state: State<'_, AppState>,
+) -> Result<crate::question_import_service::PdfTextInspection> {
+    use crate::question_import_service::QuestionImportService;
+
+    let import_service = QuestionImportService::new(state.llm_manager.clone(), state.file_manager.clone());
+    import_service.inspect_pdf_text(&request.content)
 }
 
 /// 导入题目集 - 使用统一的 QuestionImportService
@@ -903,6 +925,7 @@ pub async fn import_question_bank(
         session_id: request.session_id,
         folder_id: request.folder_id,
         model_config_id: request.model_config_id,
+        pdf_prefer_ocr: request.pdf_prefer_ocr,
     };
 
     let result = import_service
@@ -954,6 +977,7 @@ pub async fn import_question_bank_stream(
         session_id: request.session_id,
         folder_id: request.folder_id,
         model_config_id: request.model_config_id,
+        pdf_prefer_ocr: request.pdf_prefer_ocr,
     };
 
     let result = import_service

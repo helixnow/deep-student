@@ -23,6 +23,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
+use pdfium_render::prelude::PdfRenderConfig;
 use std::collections::HashMap;
 use std::io::{BufReader, Read};
 use std::sync::Arc;
@@ -100,6 +101,7 @@ pub struct ImportRequest {
     pub session_id: Option<String>,
     pub folder_id: Option<String>,
     pub model_config_id: Option<String>,
+    pub pdf_prefer_ocr: Option<bool>,
 }
 
 /// 导入结果
@@ -109,6 +111,14 @@ pub struct ImportResult {
     pub name: String,
     pub imported_count: usize,
     pub total_questions: usize,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct PdfTextInspection {
+    pub valid_char_count: usize,
+    pub total_char_count: usize,
+    pub preview_text: String,
+    pub recommendation: String,
 }
 
 impl QuestionImportService {
@@ -313,6 +323,237 @@ impl QuestionImportService {
         Ok((joined, blob_hashes))
     }
 
+    /// 提取 PDF 文本（优先文本层，空文本时自动回退 OCR）
+    fn count_valid_chars(text: &str) -> usize {
+        text.chars()
+            .filter(|c| {
+                c.is_alphanumeric()
+                    || ('\u{4E00}'..='\u{9FFF}').contains(c)
+                    || ('\u{3400}'..='\u{4DBF}').contains(c)
+            })
+            .count()
+    }
+
+    pub fn inspect_pdf_text(&self, base64_content: &str) -> Result<PdfTextInspection, AppError> {
+        let parser = DocumentParser::new();
+        let extracted = parser
+            .extract_text_from_base64("document.pdf", base64_content)
+            .map_err(|e| AppError::validation(format!("文档解析失败: {}", e)))?;
+
+        let normalized = extracted.trim();
+        let valid_char_count = Self::count_valid_chars(normalized);
+        let total_char_count = normalized.chars().count();
+        let recommendation = if valid_char_count < 100 {
+            "auto_ocr"
+        } else if valid_char_count < 500 {
+            "manual_decision"
+        } else {
+            "use_text"
+        }
+        .to_string();
+
+        Ok(PdfTextInspection {
+            valid_char_count,
+            total_char_count,
+            preview_text: normalized.chars().take(800).collect(),
+            recommendation,
+        })
+    }
+
+    async fn extract_pdf_text_with_fallback(
+        &self,
+        base64_content: &str,
+        pdf_prefer_ocr: Option<bool>,
+        progress_tx: Option<&UnboundedSender<QuestionImportProgress>>,
+    ) -> Result<String, AppError> {
+        let parser = DocumentParser::new();
+        let extracted = parser
+            .extract_text_from_base64("document.pdf", base64_content)
+            .map_err(|e| AppError::validation(format!("文档解析失败: {}", e)))?;
+        let normalized = extracted.trim().to_string();
+        let valid_char_count = Self::count_valid_chars(&normalized);
+        let can_run_pdf_ocr = self.file_manager.is_some();
+
+        if matches!(pdf_prefer_ocr, Some(true)) {
+            if !can_run_pdf_ocr {
+                return Err(AppError::validation(
+                    "当前导入入口不支持 PDF OCR，请在应用界面中导入或取消强制 OCR",
+                ));
+            }
+            log::info!(
+                "[QuestionImport] 用户选择 PDF OCR（有效字符数={}）",
+                valid_char_count
+            );
+            return self.ocr_pdf_to_text(base64_content, progress_tx).await;
+        }
+
+        if matches!(pdf_prefer_ocr, Some(false)) {
+            if normalized.is_empty() {
+                return Err(AppError::validation(
+                    "PDF 提取文本为空，无法仅使用解析文本，请选择 OCR",
+                ));
+            }
+            return Ok(normalized);
+        }
+
+        if valid_char_count < 100 {
+            if !can_run_pdf_ocr {
+                if normalized.is_empty() {
+                    return Err(AppError::validation(
+                        "PDF 文本层为空，且当前导入入口不支持 OCR，请在应用界面中导入 PDF",
+                    ));
+                }
+                log::warn!(
+                    "[QuestionImport] PDF 有效字符数 {} < 100，但当前入口不支持 OCR，回退使用文本层",
+                    valid_char_count
+                );
+                return Ok(normalized);
+            }
+            log::info!(
+                "[QuestionImport] PDF 有效字符数 {} < 100，自动回退 OCR",
+                valid_char_count
+            );
+            return self.ocr_pdf_to_text(base64_content, progress_tx).await;
+        }
+
+        if valid_char_count < 500 {
+            log::info!(
+                "[QuestionImport] PDF 有效字符数 {} < 500，建议前端提示用户选择是否 OCR",
+                valid_char_count
+            );
+        }
+
+        Ok(normalized)
+    }
+
+    /// PDF OCR：将 PDF 逐页渲染为图片，再调用视觉模型提取文本
+    async fn ocr_pdf_to_text(
+        &self,
+        base64_content: &str,
+        progress_tx: Option<&UnboundedSender<QuestionImportProgress>>,
+    ) -> Result<String, AppError> {
+        use base64::Engine;
+
+        let fm = self.file_manager.as_ref().ok_or_else(|| {
+            AppError::validation("PDF OCR 需要 FileManager，当前上下文不支持")
+        })?;
+
+        let raw_b64 = if base64_content.starts_with("data:") {
+            base64_content.split(',').nth(1).ok_or_else(|| {
+                AppError::validation("PDF Data URL 格式错误：缺少 base64 内容")
+            })?
+        } else {
+            base64_content
+        };
+
+        let pdf_bytes = base64::engine::general_purpose::STANDARD
+            .decode(raw_b64)
+            .map_err(|e| AppError::validation(format!("PDF Base64 解码失败: {}", e)))?;
+
+        let temp_dir = fm
+            .get_writable_app_data_dir()
+            .join("temp_pdf_ocr_import")
+            .join(uuid::Uuid::new_v4().to_string());
+        tokio::fs::create_dir_all(&temp_dir)
+            .await
+            .map_err(|e| AppError::file_system(format!("创建 PDF OCR 临时目录失败: {}", e)))?;
+
+        let temp_pdf_path = temp_dir.join("document.pdf");
+        tokio::fs::write(&temp_pdf_path, &pdf_bytes)
+            .await
+            .map_err(|e| AppError::file_system(format!("写入临时 PDF 失败: {}", e)))?;
+
+        let render_dir = temp_dir.clone();
+        let render_pdf_path = temp_pdf_path.clone();
+        let rendered_images = tokio::task::spawn_blocking(move || -> std::result::Result<Vec<String>, String> {
+            let pdfium = crate::pdfium_utils::load_pdfium()
+                .map_err(|e| format!("加载 Pdfium 失败: {}", e))?;
+            let document = pdfium
+                .load_pdf_from_file(&render_pdf_path, None)
+                .map_err(|e| format!("加载 PDF 失败: {:?}", e))?;
+
+            let total_pages = document.pages().len() as usize;
+            if total_pages == 0 {
+                return Err("PDF 中没有可渲染页面".to_string());
+            }
+
+            let render_config = PdfRenderConfig::new()
+                .set_target_width((150.0_f32 * 8.5) as i32)
+                .set_maximum_height((150.0_f32 * 14.0) as i32);
+
+            let mut image_paths = Vec::with_capacity(total_pages);
+            for page_index in 0..total_pages {
+                let page = document
+                    .pages()
+                    .get(page_index as u16)
+                    .map_err(|e| format!("获取页面 {} 失败: {:?}", page_index + 1, e))?;
+                let bitmap = page
+                    .render_with_config(&render_config)
+                    .map_err(|e| format!("渲染页面 {} 失败: {:?}", page_index + 1, e))?;
+                let image = bitmap.as_image().to_rgb8();
+                let image_path = render_dir.join(format!("page_{:05}.jpg", page_index));
+                image
+                    .save_with_format(&image_path, image::ImageFormat::Jpeg)
+                    .map_err(|e| format!("保存页面 {} 图片失败: {}", page_index + 1, e))?;
+                image_paths.push(image_path.to_string_lossy().to_string());
+            }
+
+            Ok(image_paths)
+        })
+        .await
+        .map_err(|e| AppError::internal(format!("PDF 渲染线程失败: {}", e)))?
+        .map_err(|e| AppError::validation(format!("PDF OCR 渲染失败: {}", e)))?;
+
+        let total_images = rendered_images.len();
+        let mut all_texts = Vec::new();
+
+        for (i, image_path) in rendered_images.iter().enumerate() {
+            match self.llm_manager.convert_image_to_markdown(image_path).await {
+                Ok(text) if !text.trim().is_empty() => {
+                    all_texts.push(text);
+                }
+                Ok(_) => {
+                    log::warn!(
+                        "[QuestionImport] PDF OCR 页面 {} 识别为空",
+                        i + 1
+                    );
+                }
+                Err(e) => {
+                    log::warn!(
+                        "[QuestionImport] PDF OCR 页面 {} 识别失败: {}",
+                        i + 1,
+                        e
+                    );
+                }
+            }
+
+            if let Some(tx) = progress_tx {
+                let _ = tx.send(QuestionImportProgress::OcrImageCompleted {
+                    image_index: i,
+                    total_images,
+                });
+            }
+        }
+
+        let _ = tokio::fs::remove_dir_all(&temp_dir).await;
+
+        if all_texts.is_empty() {
+            return Err(AppError::validation(
+                "PDF 文本层为空，且 OCR 未识别到有效内容，请检查 PDF 清晰度或尝试图片导入",
+            ));
+        }
+
+        let joined = all_texts.join("\n\n");
+        if let Some(tx) = progress_tx {
+            let _ = tx.send(QuestionImportProgress::OcrPhaseCompleted {
+                total_images,
+                total_chars: joined.len(),
+            });
+        }
+
+        Ok(joined)
+    }
+
     /// 统一的文档导入入口
     pub async fn import_document(
         &self,
@@ -333,7 +574,7 @@ impl QuestionImportService {
                 self.decode_text_content(&request.content)
                     .unwrap_or_else(|_| request.content.clone())
             }
-            format @ ("docx" | "xlsx" | "xls" | "pdf") => {
+            format @ ("docx" | "xlsx" | "xls") => {
                 // 使用 DocumentParser 解析复杂格式
                 let parser = DocumentParser::new();
                 let file_name = format!("document.{}", format);
@@ -341,6 +582,9 @@ impl QuestionImportService {
                     .extract_text_from_base64(&file_name, &request.content)
                     .map_err(|e| AppError::validation(format!("文档解析失败: {}", e)))?
             }
+            "pdf" => self
+                .extract_pdf_text_with_fallback(&request.content, request.pdf_prefer_ocr, None)
+                .await?,
             fmt if Self::is_image_format(fmt) => {
                 // ★ 图片格式：OCR 提取文本 + 保存原图到 VFS Blob
                 let (text, hashes) = self.ocr_images_to_text_with_blobs(&request.content, Some(vfs_db), None).await?;
@@ -1160,12 +1404,20 @@ impl QuestionImportService {
                 return self.import_json_directly(vfs_db, &request).await;
             }
             "txt" | "md" | "markdown" => self.decode_text_content(&request.content)?,
-            format @ ("docx" | "xlsx" | "xls" | "pdf") => {
+            format @ ("docx" | "xlsx" | "xls") => {
                 let parser = DocumentParser::new();
                 let file_name = format!("document.{}", format);
                 parser
                     .extract_text_from_base64(&file_name, &request.content)
                     .map_err(|e| AppError::validation(format!("文档解析失败: {}", e)))?
+            }
+            "pdf" => {
+                self.extract_pdf_text_with_fallback(
+                    &request.content,
+                    request.pdf_prefer_ocr,
+                    progress_tx.as_ref(),
+                )
+                    .await?
             }
             fmt if Self::is_image_format(fmt) => {
                 // ★ 图片格式：OCR 提取文本 + 保存原图到 VFS Blob（带进度反馈）

@@ -1542,6 +1542,7 @@ impl QBankExecutor {
             session_id: session_id.map(String::from),
             folder_id: folder_id.map(String::from),
             model_config_id: None,
+            pdf_prefer_ocr: None,
         };
 
         let result = import_service

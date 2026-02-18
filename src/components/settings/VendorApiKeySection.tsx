@@ -56,11 +56,13 @@ export const VendorApiKeySection: React.FC<VendorApiKeySectionProps> = ({
       setApiKey('');
       lastSavedKeyRef.current = '';
     }
-    // 重置初始化标记，在下一个 tick 后设置为 true
+    // 重置初始化标记，并在下一个 tick 允许自动保存。
+    // 不能延迟过久（例如 900ms），否则用户首次输入后若刚好在防抖窗口内结束，
+    // 会被误判为“初始化阶段”而跳过保存，导致配置未持久化。
     isInitializedRef.current = false;
     const timer = setTimeout(() => {
       isInitializedRef.current = true;
-    }, 900); // 略大于防抖延迟，确保初始化完成后才启用自动保存
+    }, 0);
     return () => clearTimeout(timer);
   }, [vendor.apiKey, vendor.id]);
 

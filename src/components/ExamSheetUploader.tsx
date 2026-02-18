@@ -93,6 +93,13 @@ interface ImportSummary {
   warnings: string[];
 }
 
+interface PdfTextInspection {
+  valid_char_count: number;
+  total_char_count: number;
+  preview_text: string;
+  recommendation: 'auto_ocr' | 'manual_decision' | 'use_text' | string;
+}
+
 export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
   sessionId,
   sessionName,
@@ -131,6 +138,11 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
   // 导入结果摘要
   const [importSummary, setImportSummary] = useState<ImportSummary | null>(null);
   const [pendingDetail, setPendingDetail] = useState<ExamSheetSessionDetail | null>(null);
+  const [pendingPdfImport, setPendingPdfImport] = useState<{
+    base64Content: string;
+    format: string;
+    inspection: PdfTextInspection;
+  } | null>(null);
 
   // 加载可用模型列表（与 Chat V2 MultiSelectModelPanel 相同方式）
   const loadModels = useCallback(async () => {
@@ -356,6 +368,55 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
     };
   }, []);
 
+  const executeDocumentImport = useCallback(async (
+    base64Content: string,
+    format: string,
+    pdfPreferOcr?: boolean,
+  ) => {
+    const file = selectedFiles[0]?.file;
+    if (!file) {
+      throw new Error('No file selected');
+    }
+
+    setStep('processing');
+    setIsLLMProcessing(true);
+    setLlmProgress({ percent: 0, message: t('exam_sheet:uploader.reading_document'), parsedCount: 0 });
+    setParsedQuestions([]);
+    setError(null);
+    setPendingPdfImport(null);
+
+    try {
+      setLlmProgress({ percent: 5, message: t('exam_sheet:uploader.parsing_document'), parsedCount: 0 });
+
+      const response = await invoke<ExamSheetSessionDetail>('import_question_bank_stream', {
+        request: {
+          content: base64Content,
+          format,
+          name: qbankName || file.name.replace(/\.[^/.]+$/, ''),
+          folder_id: undefined,
+          session_id: sessionId || undefined,
+          model_config_id: selectedModelId || undefined,
+          pdf_prefer_ocr: format === 'pdf' ? pdfPreferOcr : undefined,
+        },
+      });
+
+      const summary = generateImportSummary(response);
+      setImportSummary(summary);
+      setPendingDetail(response);
+      setStep('summary');
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error
+        ? err.message
+        : (typeof err === 'object' && err !== null && 'message' in err)
+          ? (err as { message: string }).message
+          : String(err);
+      setError(t('exam_sheet:uploader.import_failed_prefix', { error: errorMessage }));
+      setStep('select');
+    } finally {
+      setIsLLMProcessing(false);
+    }
+  }, [selectedFiles, qbankName, sessionId, selectedModelId, generateImportSummary, t]);
+
   // 确认导入摘要
   const handleConfirmSummary = useCallback(() => {
     if (pendingDetail) {
@@ -410,6 +471,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
     }
 
     setError(null);
+    setPendingPdfImport(null);
     
     // 文档只接受一个文件
     if (validFiles[0].category === 'document') {
@@ -428,6 +490,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
         URL.revokeObjectURL(file.previewUrl);
       }
       const newFiles = prev.filter((_, i) => i !== index);
+      setPendingPdfImport(null);
       if (newFiles.length === 0) {
         setStep('select');
       }
@@ -505,11 +568,6 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
   // 文档直接导入（使用流式版本，支持实时进度）
   const handleDocumentImport = useCallback(async () => {
     const file = selectedFiles[0].file;
-    setStep('processing');
-    setIsLLMProcessing(true);
-    setLlmProgress({ percent: 0, message: t('exam_sheet:uploader.reading_document'), parsedCount: 0 });
-    setParsedQuestions([]); // 清空已解析题目，准备接收新的流式数据
-    setError(null);
 
     try {
       const base64Content = await new Promise<string>((resolve, reject) => {
@@ -523,25 +581,26 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
         reader.readAsDataURL(file);
       });
 
-      setLlmProgress({ percent: 5, message: t('exam_sheet:uploader.parsing_document'), parsedCount: 0 });
-
       const format = file.name.split('.').pop()?.toLowerCase() || 'txt';
 
-      const response = await invoke<ExamSheetSessionDetail>('import_question_bank_stream', {
-        request: {
-          content: base64Content,
-          format: format,
-          name: qbankName || file.name.replace(/\\.[^/.]+$/, ''),
-          folder_id: undefined,
-          session_id: sessionId || undefined,
-          model_config_id: selectedModelId || undefined,
-        },
-      });
+      if (format === 'pdf') {
+        const inspection = await invoke<PdfTextInspection>('inspect_pdf_text_for_qbank', {
+          request: { content: base64Content },
+        });
 
-      const summary = generateImportSummary(response);
-      setImportSummary(summary);
-      setPendingDetail(response);
-      setStep('summary');
+        if (inspection.recommendation === 'auto_ocr') {
+          debugLog.info('[ExamSheetUploader] PDF 文本质量低，按后端建议自动 OCR');
+          await executeDocumentImport(base64Content, format, true);
+          return;
+        }
+
+        if (inspection.recommendation === 'manual_decision') {
+          setPendingPdfImport({ base64Content, format, inspection });
+          return;
+        }
+      }
+
+      await executeDocumentImport(base64Content, format, undefined);
 
     } catch (err: unknown) {
       const errorMessage = err instanceof Error 
@@ -554,7 +613,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
     } finally {
       setIsLLMProcessing(false);
     }
-  }, [selectedFiles, qbankName, sessionId, selectedModelId, generateImportSummary]);
+  }, [selectedFiles, executeDocumentImport, t]);
 
   // 开始处理 - 根据文件类型分流
   const handleStartProcess = useCallback(async () => {
@@ -602,6 +661,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
     setQbankName('');
     setError(null);
     setParsedQuestions([]);
+    setPendingPdfImport(null);
     resetOCRProgress();
   }, [selectedFiles, resetOCRProgress]);
 
@@ -728,6 +788,49 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                         </NotionButton>
                       </div>
                     ))}
+                  </div>
+                </div>
+              )}
+
+              {pendingPdfImport && currentCategory === 'document' && selectedFiles.length > 0 && (
+                <div className="space-y-3 p-3 rounded-lg border border-amber-500/30 bg-amber-500/10">
+                  <div className="text-sm font-medium text-amber-600">
+                    PDF 文本层质量较低（有效字符 {pendingPdfImport.inspection.valid_char_count}）
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    可选择直接使用解析文本，或启用 OCR 进行识别。
+                  </div>
+                  <div className="max-h-40 overflow-y-auto rounded bg-background/70 p-2 text-xs whitespace-pre-wrap border border-border/40">
+                    {pendingPdfImport.inspection.preview_text || '（无可预览文本）'}
+                  </div>
+                  <div className="flex gap-2">
+                    <NotionButton
+                      variant="ghost"
+                      className="flex-1"
+                      disabled={selectedFiles.length === 0 || isProcessing}
+                      onClick={() => {
+                        void executeDocumentImport(
+                          pendingPdfImport.base64Content,
+                          pendingPdfImport.format,
+                          false,
+                        );
+                      }}
+                    >
+                      仅使用解析文本
+                    </NotionButton>
+                    <NotionButton
+                      className="flex-1"
+                      disabled={selectedFiles.length === 0 || isProcessing}
+                      onClick={() => {
+                        void executeDocumentImport(
+                          pendingPdfImport.base64Content,
+                          pendingPdfImport.format,
+                          true,
+                        );
+                      }}
+                    >
+                      启用 OCR
+                    </NotionButton>
                   </div>
                 </div>
               )}

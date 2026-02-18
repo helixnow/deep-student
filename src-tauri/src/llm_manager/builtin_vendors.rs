@@ -151,7 +151,7 @@ pub const BUILTIN_MODELS: &[BuiltinModel] = &[
         model: "deepseek-reasoner",
         is_multimodal: false,
         is_reasoning: true,
-        supports_tools: false,
+        supports_tools: true,
         max_output_tokens: 8192, // DeepSeek API 限制最大 8192
         temperature: 0.7,
     },

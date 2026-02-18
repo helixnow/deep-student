@@ -762,6 +762,7 @@ pub fn run() {
             crate::commands::get_exam_sheet_session_detail,
             crate::commands::update_exam_sheet_cards,
             crate::commands::rename_exam_sheet_session,
+            crate::commands::inspect_pdf_text_for_qbank,
             crate::commands::import_question_bank,
             crate::commands::import_question_bank_stream,
             // 题目集原始图片管理
