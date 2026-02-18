@@ -371,6 +371,7 @@
       "questionTypes": {
         "single_choice": "单选题",
         "multiple_choice": "多选题",
+        "indefinite_choice": "不定项选择题",
         "fill_blank": "填空题",
         "short_answer": "简答题",
         "essay": "论述题",

@@ -28,7 +28,7 @@ export interface OpenTab {
 }
 
 /** 标签页数量上限 */
-export const MAX_TABS = 8;
+export const MAX_TABS = 20;
 
 /**
  * 创建新标签页（自动生成 tabId 和 openedAt）

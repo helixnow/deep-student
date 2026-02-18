@@ -371,6 +371,7 @@
       "questionTypes": {
         "single_choice": "Single Choice",
         "multiple_choice": "Multiple Choice",
+        "indefinite_choice": "Indefinite Choice",
         "fill_blank": "Fill in Blank",
         "short_answer": "Short Answer",
         "essay": "Essay",

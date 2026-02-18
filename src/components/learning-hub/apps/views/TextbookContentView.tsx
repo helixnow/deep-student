@@ -276,7 +276,7 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
           setFileContent(base64Content);
           setContentLoading(false);
         } else {
-          setContentError(t('learningHub:file.loadFailed', '无法加载文件内容'));
+          setContentError(t('learningHub:file.contentNotFound', '未找到文件内容 (id: {{id}})', { id: node.id }));
           setContentLoading(false);
         }
       } catch (err: unknown) {

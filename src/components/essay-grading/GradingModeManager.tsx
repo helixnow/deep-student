@@ -18,7 +18,6 @@ import {
   Check,
   RotateCcw,
   MoreHorizontal,
-  Settings2,
   GripVertical,
   AlertCircle
 } from 'lucide-react';
@@ -345,19 +344,15 @@ export const GradingModeManager: React.FC<GradingModeManagerProps> = ({
               <div
                 key={mode.id}
                 className={cn(
-                  "group relative flex items-start justify-between p-3 rounded-lg transition-all duration-200 border border-transparent",
+                  "group relative flex items-start gap-2.5 p-3 rounded-lg transition-all duration-200 border cursor-pointer",
                   mode.id === currentModeId
-                    ? "bg-primary/5 shadow-sm"
-                    : "hover:bg-muted/50"
+                    ? "bg-primary/5 border-primary/20 shadow-sm"
+                    : "border-transparent hover:bg-muted/50 hover:border-border/30"
                 )}
+                onClick={() => handleStartEdit(mode)}
               >
-                <div
-                  className="flex-1 cursor-pointer min-w-0 pr-8"
-                  onClick={() => {
-                    onModeSelect(mode.id);
-                    // 不自动关闭，允许用户确认
-                  }}
-                >
+                {/* 模式信息（点击进入编辑） */}
+                <div className="flex-1 min-w-0 pr-6">
                   <div className="flex items-center gap-2 mb-1">
                     <span className={cn(
                       "font-medium text-sm truncate",
@@ -370,9 +365,6 @@ export const GradingModeManager: React.FC<GradingModeManagerProps> = ({
                         {t('settings:gradingMode.badgeBuiltin')}
                       </Badge>
                     )}
-                    {mode.id === currentModeId && (
-                      <Check className="w-3.5 h-3.5 text-primary ml-auto" />
-                    )}
                   </div>
                   <p className="text-xs text-muted-foreground/70 line-clamp-2 leading-relaxed">
                     {mode.description}
@@ -383,18 +375,15 @@ export const GradingModeManager: React.FC<GradingModeManagerProps> = ({
                   </div>
                 </div>
 
-                {/* 操作菜单 - 总是通过 MoreHorizontal 触发，避免视觉杂乱 */}
+                {/* 右侧：更多操作菜单 */}
                 <div className="absolute right-2 top-3 opacity-0 group-hover:opacity-100 transition-opacity focus-within:opacity-100">
                   <AppMenu>
                     <AppMenuTrigger asChild>
-                      <NotionButton variant="ghost" size="icon" iconOnly className="!h-6 !w-6 text-muted-foreground/50 hover:text-foreground hover:bg-muted" aria-label="more">
+                      <NotionButton variant="ghost" size="icon" iconOnly className="!h-6 !w-6 text-muted-foreground/50 hover:text-foreground hover:bg-muted" aria-label="more" onClick={(e: React.MouseEvent) => e.stopPropagation()}>
                         <MoreHorizontal className="w-4 h-4" />
                       </NotionButton>
                     </AppMenuTrigger>
                     <AppMenuContent align="end" width={128}>
-                      <AppMenuItem icon={<Settings2 className="w-4 h-4" />} onClick={() => handleStartEdit(mode)}>
-                        {t('settings:gradingMode.menuEdit')}
-                      </AppMenuItem>
                       <AppMenuItem icon={<Copy className="w-4 h-4" />} onClick={() => handleCopyMode(mode)}>
                         {t('settings:gradingMode.menuCopy')}
                       </AppMenuItem>

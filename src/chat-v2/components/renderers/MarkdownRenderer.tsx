@@ -203,6 +203,20 @@ const preprocessContent = (content: string): string => {
   });
   processedContent = processedContent.replace(/(?<!\\)\\\((.+?)(?<!\\)\\\)/g, (_m, math) => `$${math}$`);
   processedContent = processedContent.replace(/(?<!\\)\\\[([\s\S]+?)(?<!\\)\\\]/g, (_m, math) => `$$${math}$$`);
+
+  // 兜底：检测普通圆括号包裹的裸 LaTeX 公式，如 (\lambda = \frac{h}{p})，
+  // 转换为 $\lambda = \frac{h}{p}$。仅在内容含已知数学命令或上下标时触发。
+  const BARE_LATEX_MATH_RE = /\\(?:frac|sqrt|sum|int|prod|lim|lambda|gamma|alpha|beta|theta|pi|sigma|omega|delta|epsilon|varepsilon|mu|nu|rho|tau|phi|varphi|psi|chi|eta|zeta|kappa|xi|infty|partial|nabla|cdot|times|approx|equiv|vec|hat|bar|tilde|overline|mathrm|mathbb|text|Gamma|Delta|Theta|Lambda|Sigma|Phi|Psi|Omega|hbar|ell|[lg]eq?|neq?|pm|mp|div|sim|propto|binom)\b/;
+  processedContent = processedContent.replace(
+    /(?<!\$)\(([^)]{1,300})\)(?!\$)/g,
+    (match, inner: string) => {
+      if (!BARE_LATEX_MATH_RE.test(inner) && !/[_^]\{/.test(inner)) return match;
+      // 含连续中文字符说明是自然语言括号，不转换
+      if (/[\u4e00-\u9fff]{2,}/.test(inner)) return match;
+      return `$${inner}$`;
+    },
+  );
+
   processedContent = processedContent.replace(/\x00CB(\d+)\x00/g, (_m, idx) => codeBlockPlaceholders[Number(idx)]);
 
   // 专门处理 bmatrix 环境

@@ -1794,6 +1794,7 @@
     "maxScore": "满分 {{score}}",
     "dimensionCount": "{{count}} 个维度",
     "menuEdit": "编辑",
+    "menuUse": "使用此模式",
     "menuCopy": "复制",
     "menuReset": "重置",
     "menuDelete": "删除",

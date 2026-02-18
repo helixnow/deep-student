@@ -33,6 +33,7 @@ import {
   Edit3,
   AlertTriangle,
   Image as ImageIcon,
+  Plus,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { Question, QuestionBankStats, QuestionStatus, Difficulty } from '@/api/questionBankApi';
@@ -541,6 +542,13 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
             <Star className={cn('w-4 h-4', showFavoriteOnly && 'fill-current')} />
           </NotionButton>
 
+          {/* 手动添加题目按钮 */}
+          {examId && onCreateQuestion && (
+            <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setExpandedEditId(prev => prev === '__new__' ? null : '__new__')} className={cn('!h-7 !w-7 !p-1.5 flex-shrink-0', expandedEditId === '__new__' ? 'bg-primary/20 text-primary' : 'text-muted-foreground hover:text-foreground hover:bg-muted/50')} aria-label="add question">
+              <Plus className="w-4 h-4" />
+            </NotionButton>
+          )}
+
           {/* 编辑模式按钮 */}
           {hasBatchOperations && !isEditMode && (
             <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setIsEditMode(true)} className="!h-7 !w-7 !p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted/50 flex-shrink-0" aria-label="edit mode">
@@ -659,23 +667,22 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
             ))}
           </div>
         )}
+        {/* 新题目内联创建区域 */}
+        {expandedEditId === '__new__' && examId && (
+          <div className="pb-4">
+            <QuestionInlineEditor
+              question={null}
+              mode="create"
+              examId={examId}
+              onCreate={async (q) => {
+                await onCreateQuestion?.(q);
+                setExpandedEditId(null);
+              }}
+              onCancel={() => setExpandedEditId(null)}
+            />
+          </div>
+        )}
       </CustomScrollArea>
-      
-      {/* 新题目内联创建区域 */}
-      {expandedEditId === '__new__' && examId && (
-        <div className="px-3 sm:px-4 pb-4">
-          <QuestionInlineEditor
-            question={null}
-            mode="create"
-            examId={examId}
-            onCreate={async (q) => {
-              await onCreateQuestion?.(q);
-              setExpandedEditId(null);
-            }}
-            onCancel={() => setExpandedEditId(null)}
-          />
-        </div>
-      )}
       
       {/* 删除确认对话框 */}
       <NotionAlertDialog

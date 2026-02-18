@@ -3617,12 +3617,11 @@ pub async fn vfs_get_all_index_status(
         });
     }
 
-    // 构建查询条件
-    // 注意：统计查询不应受 state_filter 影响，应始终显示全部资源的统计
+    // ========== 构建查询条件 ==========
+    // 统计查询不受 state_filter 影响，始终显示全部资源统计
     let mut stats_conditions = vec!["1=1".to_string()];
     let mut stats_params: Vec<Box<dyn rusqlite::ToSql>> = vec![];
 
-    // 资源列表查询的条件（包含 state_filter）
     let mut list_conditions = vec!["1=1".to_string()];
     let mut list_params: Vec<Box<dyn rusqlite::ToSql>> = vec![];
 
@@ -3646,7 +3645,7 @@ pub async fn vfs_get_all_index_status(
         stats_params.push(Box::new(fid.clone()));
         list_conditions.push("fi.folder_id = ?".to_string());
         list_params.push(Box::new(fid));
-        "LEFT JOIN folder_items fi ON r.id = fi.item_id AND fi.deleted_at IS NULL"
+        "JOIN folder_items fi ON r.id = fi.item_id AND fi.deleted_at IS NULL"
     } else {
         ""
     };
@@ -3656,217 +3655,183 @@ pub async fn vfs_get_all_index_status(
     let limit_val = limit.unwrap_or(100) as i64;
     let offset_val = offset.unwrap_or(0) as i64;
 
-    // 根据是否有 vfs_index_units 表选择查询方式（统一索引架构）
-    let (
-        chunk_count_expr,
-        native_chunk_count_expr,
-        ocr_chunk_count_expr,
-        embedding_dim_expr,
-        modality_expr,
-    ) = if has_index_tables {
-        (
-            "(SELECT COUNT(*) FROM vfs_index_segments s JOIN vfs_index_units u ON s.unit_id = u.id WHERE u.resource_id = r.id)",
-            "(SELECT COALESCE(SUM(u2.text_chunk_count), 0) FROM vfs_index_units u2 WHERE u2.resource_id = r.id AND u2.text_source = 'native')",
-            "(SELECT COALESCE(SUM(u3.text_chunk_count), 0) FROM vfs_index_units u3 WHERE u3.resource_id = r.id AND u3.text_source = 'ocr')",
-            "(SELECT s.embedding_dim FROM vfs_index_segments s JOIN vfs_index_units u ON s.unit_id = u.id WHERE u.resource_id = r.id LIMIT 1)",
-            r#"
-            CASE
-                WHEN EXISTS(
-                    SELECT 1 FROM vfs_index_segments s
-                    JOIN vfs_index_units u ON s.unit_id = u.id
-                    WHERE u.resource_id = r.id AND s.modality = 'text'
-                ) AND EXISTS(
-                    SELECT 1 FROM vfs_index_segments s
-                    JOIN vfs_index_units u ON s.unit_id = u.id
-                    WHERE u.resource_id = r.id AND s.modality = 'multimodal'
-                ) THEN 'both'
-                WHEN EXISTS(
-                    SELECT 1 FROM vfs_index_segments s
-                    JOIN vfs_index_units u ON s.unit_id = u.id
-                    WHERE u.resource_id = r.id AND s.modality = 'text'
-                ) THEN 'text'
-                WHEN EXISTS(
-                    SELECT 1 FROM vfs_index_segments s
-                    JOIN vfs_index_units u ON s.unit_id = u.id
-                    WHERE u.resource_id = r.id AND s.modality = 'multimodal'
-                ) THEN 'multimodal'
-                ELSE NULL
-            END
-            "#,
-        )
+    // ========== 优化：使用 CTE + LEFT JOIN 替代关联子查询 ==========
+    // 原始查询对每行执行 ~42 个关联子查询，改为：
+    // 1. CTE 预聚合 vfs_index_units/segments 数据（一次扫描）
+    // 2. LEFT JOIN 到 notes/files/exam_sheets 等表（一次扫描）
+    // 3. 消除 OR 条件（files 拆为两个 JOIN：按 resource_id 和按 source_id）
+
+    let index_ctes = if has_index_tables {
+        r#"
+        unit_agg AS (
+            SELECT resource_id,
+                COALESCE(SUM(CASE WHEN text_source = 'native' THEN text_chunk_count ELSE 0 END), 0) as native_chunks,
+                COALESCE(SUM(CASE WHEN text_source = 'ocr' THEN text_chunk_count ELSE 0 END), 0) as ocr_chunks
+            FROM vfs_index_units
+            GROUP BY resource_id
+        ),
+        seg_agg AS (
+            SELECT u.resource_id,
+                COUNT(*) as segment_count,
+                MIN(s.embedding_dim) as first_embedding_dim,
+                MAX(CASE WHEN s.modality = 'text' THEN 1 ELSE 0 END) as has_text_seg,
+                MAX(CASE WHEN s.modality = 'multimodal' THEN 1 ELSE 0 END) as has_mm_seg
+            FROM vfs_index_segments s
+            JOIN vfs_index_units u ON s.unit_id = u.id
+            GROUP BY u.resource_id
+        ),
+        "#
     } else {
-        ("0", "0", "0", "NULL", "NULL")
+        ""
     };
 
-    // 查询资源列表
-    // index_state 由文本索引和多模态索引完成后统一更新
-    // ★ 2026-01 修复：始终返回有效的状态值，不使用 index_error 作为状态
-    // indexed + chunk_count=0 的资源仍然显示为 indexed（空内容已索引）
-    let effective_index_state_expr = "COALESCE(r.index_state, 'pending')";
+    let (chunk_count_col, native_chunks_col, ocr_chunks_col, embedding_dim_col, modality_col) =
+        if has_index_tables {
+            (
+                "COALESCE(sa.segment_count, 0)",
+                "COALESCE(ua.native_chunks, 0)",
+                "COALESCE(ua.ocr_chunks, 0)",
+                "sa.first_embedding_dim",
+                r#"CASE
+                    WHEN COALESCE(sa.has_text_seg, 0) = 1 AND COALESCE(sa.has_mm_seg, 0) = 1 THEN 'both'
+                    WHEN COALESCE(sa.has_text_seg, 0) = 1 THEN 'text'
+                    WHEN COALESCE(sa.has_mm_seg, 0) = 1 THEN 'multimodal'
+                    ELSE NULL
+                END"#,
+            )
+        } else {
+            ("0", "0", "0", "NULL", "NULL")
+        };
+
+    let index_joins = if has_index_tables {
+        "LEFT JOIN unit_agg ua ON ua.resource_id = r.id\n        LEFT JOIN seg_agg sa ON sa.resource_id = r.id"
+    } else {
+        ""
+    };
 
     let query = format!(
         r#"
+        WITH
+        file_by_res AS (
+            SELECT resource_id, file_name, name, ocr_pages_json, extracted_text,
+                   mm_index_state, mm_indexed_pages_json, mm_index_error
+            FROM files
+            WHERE resource_id IS NOT NULL
+            GROUP BY resource_id
+        ),
+        exam_by_res AS (
+            SELECT resource_id, exam_name, preview_json,
+                   mm_index_state, mm_indexed_pages_json, mm_index_error
+            FROM exam_sheets
+            WHERE resource_id IS NOT NULL
+            GROUP BY resource_id
+        ),
+        {index_ctes}
+        note_names AS (
+            SELECT resource_id, title FROM notes GROUP BY resource_id
+        ),
+        tr_names AS (
+            SELECT resource_id, title FROM translations GROUP BY resource_id
+        ),
+        essay_names AS (
+            SELECT resource_id, title FROM essays GROUP BY resource_id
+        ),
+        mm_names AS (
+            SELECT resource_id, title FROM mindmaps GROUP BY resource_id
+        )
         SELECT
             r.id,
             r.source_id,
             r.type,
+            -- name: 使用预 JOIN 的表替代 6 个关联子查询
             COALESCE(
-                (SELECT title FROM notes WHERE resource_id = r.id),
-                (SELECT file_name FROM files WHERE resource_id = r.id OR id = r.source_id),
-                (SELECT exam_name FROM exam_sheets WHERE resource_id = r.id OR id = r.source_id),
-                (SELECT title FROM translations WHERE resource_id = r.id),
-                (SELECT title FROM essays WHERE resource_id = r.id),
-                (SELECT title FROM mindmaps WHERE resource_id = r.id),
-                (SELECT name FROM files WHERE id = r.source_id OR resource_id = r.id),
+                nn.title,
+                COALESCE(fr.file_name, fs.file_name),
+                COALESCE(ei.exam_name, es_src.exam_name),
+                tn.title,
+                en.title,
+                mn.title,
+                COALESCE(fs.name, fr.name),
                 r.id
             ) as name,
-            -- OCR 状态
-            -- ★ 2026-01 修复：教材同时支持 resource_id 和 textbook_id (source_id) 查询
+            -- has_ocr: 使用 JOIN 数据替代关联子查询
             CASE
-                WHEN r.type = 'textbook' THEN (
-                    SELECT ocr_pages_json IS NOT NULL FROM files
-                    WHERE resource_id = r.id OR id = r.source_id
-                    LIMIT 1
-                )
+                WHEN r.type = 'textbook' THEN (COALESCE(fr.ocr_pages_json, fs.ocr_pages_json) IS NOT NULL)
                 WHEN r.type = 'image' THEN (r.ocr_text IS NOT NULL AND r.ocr_text != '')
                 WHEN r.type = 'file' THEN (
-                    SELECT (extracted_text IS NOT NULL AND extracted_text != '')
-                           OR (ocr_pages_json IS NOT NULL AND ocr_pages_json != '')
-                    FROM files WHERE id = r.source_id OR resource_id = r.id
-                    LIMIT 1
-                ) OR (r.ocr_text IS NOT NULL AND r.ocr_text != '')
-                WHEN r.type = 'exam' THEN (
-                    SELECT preview_json IS NOT NULL FROM exam_sheets WHERE resource_id = r.id
+                    (COALESCE(fr.extracted_text, fs.extracted_text) IS NOT NULL AND COALESCE(fr.extracted_text, fs.extracted_text) != '')
+                    OR (COALESCE(fr.ocr_pages_json, fs.ocr_pages_json) IS NOT NULL AND COALESCE(fr.ocr_pages_json, fs.ocr_pages_json) != '')
+                    OR (r.ocr_text IS NOT NULL AND r.ocr_text != '')
                 )
+                WHEN r.type = 'exam' THEN (ei.preview_json IS NOT NULL)
                 ELSE 0
             END as has_ocr,
+            -- ocr_count
             CASE
                 WHEN r.type = 'textbook' THEN COALESCE(
-                    (SELECT
-                        CASE
-                            WHEN json_type(ocr_pages_json) = 'array' THEN json_array_length(ocr_pages_json)
-                            WHEN json_type(ocr_pages_json, '$.pages') = 'array' THEN json_array_length(json_extract(ocr_pages_json, '$.pages'))
-                            ELSE 0
-                        END
-                     FROM files
-                     WHERE (resource_id = r.id OR id = r.source_id) AND ocr_pages_json IS NOT NULL
-                     LIMIT 1),
-                    0
-                )
+                    CASE
+                        WHEN json_type(COALESCE(fr.ocr_pages_json, fs.ocr_pages_json)) = 'array'
+                            THEN json_array_length(COALESCE(fr.ocr_pages_json, fs.ocr_pages_json))
+                        WHEN json_type(COALESCE(fr.ocr_pages_json, fs.ocr_pages_json), '$.pages') = 'array'
+                            THEN json_array_length(json_extract(COALESCE(fr.ocr_pages_json, fs.ocr_pages_json), '$.pages'))
+                        ELSE 0
+                    END, 0)
                 WHEN r.type = 'image' THEN COALESCE(LENGTH(r.ocr_text), 0)
                 WHEN r.type = 'file' THEN COALESCE(
-                    (SELECT COALESCE(LENGTH(extracted_text), 0) + COALESCE(LENGTH(
-                        (SELECT ocr_text FROM resources WHERE id = r.id AND ocr_text IS NOT NULL AND ocr_text != '')
-                    ), 0) FROM files WHERE id = r.source_id OR resource_id = r.id LIMIT 1),
-                    COALESCE(LENGTH(r.ocr_text), 0)
-                )
-                WHEN r.type = 'exam' THEN COALESCE(
-                    (SELECT LENGTH(preview_json) FROM exam_sheets WHERE resource_id = r.id),
-                    0
-                )
+                    COALESCE(LENGTH(COALESCE(fr.extracted_text, fs.extracted_text)), 0)
+                    + COALESCE(LENGTH(r.ocr_text), 0), 0)
+                WHEN r.type = 'exam' THEN COALESCE(LENGTH(ei.preview_json), 0)
                 ELSE 0
             END as ocr_count,
             -- 文本索引状态
-            {} as index_state,
+            COALESCE(r.index_state, 'pending') as index_state,
             r.indexed_at,
             r.index_error,
-            {} as chunk_count,
-            {} as native_chunk_count,
-            {} as ocr_chunk_count,
-            {} as text_embedding_dim,
-            -- 文本索引来源（lance 表示向量化完成，sqlite 表示仅 FTS）
+            -- 块计数：使用 CTE 预聚合替代关联子查询
+            {chunk_count} as chunk_count,
+            {native_chunks} as native_chunk_count,
+            {ocr_chunks} as ocr_chunk_count,
+            {embedding_dim} as text_embedding_dim,
+            -- 文本索引来源
             CASE
-                WHEN COALESCE(r.index_state, 'pending') = 'indexed' AND {} > 0 THEN 'lance'
+                WHEN COALESCE(r.index_state, 'pending') = 'indexed' AND {chunk_count} > 0 THEN 'lance'
                 WHEN COALESCE(r.index_state, 'pending') = 'indexed' THEN 'sqlite'
                 ELSE NULL
             END as text_index_source,
-            -- 多模态索引状态
+            -- 多模态索引状态：使用 JOIN 数据替代 4×5=20 个关联子查询
             CASE
-                WHEN r.type = 'textbook' THEN COALESCE(
-                    (SELECT mm_index_state FROM files WHERE resource_id = r.id OR id = r.source_id),
-                    'pending'
-                )
-                WHEN r.type = 'file' THEN COALESCE(
-                    (SELECT mm_index_state FROM files WHERE id = r.source_id OR resource_id = r.id LIMIT 1),
-                    'pending'
-                )
-                WHEN r.type = 'image' THEN COALESCE(
-                    (SELECT mm_index_state FROM files WHERE id = r.source_id OR resource_id = r.id LIMIT 1),
-                    'pending'
-                )
-                WHEN r.type = 'exam' THEN COALESCE(
-                    (SELECT mm_index_state FROM exam_sheets WHERE resource_id = r.id),
-                    'pending'
-                )
+                WHEN r.type IN ('textbook', 'file', 'image') THEN COALESCE(
+                    fr.mm_index_state, fs.mm_index_state, 'pending')
+                WHEN r.type = 'exam' THEN COALESCE(ei.mm_index_state, 'pending')
                 ELSE 'disabled'
             END as mm_index_state,
             CASE
-                WHEN r.type = 'textbook' THEN COALESCE(
-                    (SELECT json_array_length(mm_indexed_pages_json) FROM files WHERE (resource_id = r.id OR id = r.source_id) AND mm_indexed_pages_json IS NOT NULL),
-                    0
-                )
-                WHEN r.type = 'file' THEN COALESCE(
-                    (SELECT json_array_length(mm_indexed_pages_json) FROM files WHERE (id = r.source_id OR resource_id = r.id) AND mm_indexed_pages_json IS NOT NULL LIMIT 1),
-                    0
-                )
-                WHEN r.type = 'image' THEN COALESCE(
-                    (SELECT json_array_length(mm_indexed_pages_json) FROM files WHERE (id = r.source_id OR resource_id = r.id) AND mm_indexed_pages_json IS NOT NULL LIMIT 1),
-                    0
-                )
-                WHEN r.type = 'exam' THEN COALESCE(
-                    (SELECT json_array_length(mm_indexed_pages_json) FROM exam_sheets WHERE resource_id = r.id AND mm_indexed_pages_json IS NOT NULL),
-                    0
-                )
+                WHEN r.type IN ('textbook', 'file', 'image') THEN COALESCE(
+                    json_array_length(COALESCE(fr.mm_indexed_pages_json, fs.mm_indexed_pages_json)), 0)
+                WHEN r.type = 'exam' THEN COALESCE(json_array_length(ei.mm_indexed_pages_json), 0)
                 ELSE CASE WHEN r.mm_embedding_dim IS NOT NULL THEN 1 ELSE 0 END
             END as mm_indexed_pages,
             CASE
-                WHEN r.type = 'textbook' THEN (
-                    SELECT json_extract(mm_indexed_pages_json, '$[0].embedding_dim')
-                    FROM files WHERE (resource_id = r.id OR id = r.source_id) AND mm_indexed_pages_json IS NOT NULL
-                )
-                WHEN r.type = 'file' THEN (
-                    SELECT json_extract(mm_indexed_pages_json, '$[0].embedding_dim')
-                    FROM files WHERE (id = r.source_id OR resource_id = r.id) AND mm_indexed_pages_json IS NOT NULL LIMIT 1
-                )
-                WHEN r.type = 'image' THEN (
-                    SELECT json_extract(mm_indexed_pages_json, '$[0].embedding_dim')
-                    FROM files WHERE (id = r.source_id OR resource_id = r.id) AND mm_indexed_pages_json IS NOT NULL LIMIT 1
-                )
-                WHEN r.type = 'exam' THEN (
-                    SELECT json_extract(mm_indexed_pages_json, '$[0].embedding_dim')
-                    FROM exam_sheets WHERE resource_id = r.id AND mm_indexed_pages_json IS NOT NULL
-                )
+                WHEN r.type IN ('textbook', 'file', 'image') THEN
+                    json_extract(COALESCE(fr.mm_indexed_pages_json, fs.mm_indexed_pages_json), '$[0].embedding_dim')
+                WHEN r.type = 'exam' THEN
+                    json_extract(ei.mm_indexed_pages_json, '$[0].embedding_dim')
                 ELSE r.mm_embedding_dim
             END as mm_embedding_dim,
             CASE
-                WHEN r.type = 'textbook' THEN (
-                    SELECT json_extract(mm_indexed_pages_json, '$[0].indexing_mode')
-                    FROM files WHERE (resource_id = r.id OR id = r.source_id) AND mm_indexed_pages_json IS NOT NULL
-                )
-                WHEN r.type = 'file' THEN (
-                    SELECT json_extract(mm_indexed_pages_json, '$[0].indexing_mode')
-                    FROM files WHERE (id = r.source_id OR resource_id = r.id) AND mm_indexed_pages_json IS NOT NULL LIMIT 1
-                )
-                WHEN r.type = 'image' THEN (
-                    SELECT json_extract(mm_indexed_pages_json, '$[0].indexing_mode')
-                    FROM files WHERE (id = r.source_id OR resource_id = r.id) AND mm_indexed_pages_json IS NOT NULL LIMIT 1
-                )
-                WHEN r.type = 'exam' THEN (
-                    SELECT json_extract(mm_indexed_pages_json, '$[0].indexing_mode')
-                    FROM exam_sheets WHERE resource_id = r.id AND mm_indexed_pages_json IS NOT NULL
-                )
+                WHEN r.type IN ('textbook', 'file', 'image') THEN
+                    json_extract(COALESCE(fr.mm_indexed_pages_json, fs.mm_indexed_pages_json), '$[0].indexing_mode')
+                WHEN r.type = 'exam' THEN
+                    json_extract(ei.mm_indexed_pages_json, '$[0].indexing_mode')
                 ELSE r.mm_indexing_mode
             END as mm_indexing_mode,
-            -- 多模态索引错误
             CASE
-                WHEN r.type = 'textbook' THEN (SELECT mm_index_error FROM files WHERE resource_id = r.id OR id = r.source_id)
-                WHEN r.type = 'file' THEN (SELECT mm_index_error FROM files WHERE id = r.source_id OR resource_id = r.id LIMIT 1)
-                WHEN r.type = 'image' THEN (SELECT mm_index_error FROM files WHERE id = r.source_id OR resource_id = r.id LIMIT 1)
-                WHEN r.type = 'exam' THEN (SELECT mm_index_error FROM exam_sheets WHERE resource_id = r.id)
+                WHEN r.type IN ('textbook', 'file', 'image') THEN COALESCE(fr.mm_index_error, fs.mm_index_error)
+                WHEN r.type = 'exam' THEN ei.mm_index_error
                 ELSE r.mm_index_error
             END as mm_index_error,
-            -- 通用
-            {} as modality,
+            -- 模态：使用 CTE 预聚合替代 3 个 EXISTS 关联子查询
+            {modality} as modality,
             r.updated_at,
             CASE
                 WHEN COALESCE(r.index_state, 'pending') = 'indexed'
@@ -3876,23 +3841,37 @@ pub async fn vfs_get_all_index_status(
                 ELSE 0
             END as is_stale
         FROM resources r
-        {}
-        WHERE {}
+        -- 名称 JOIN（替代 6 个 COALESCE 关联子查询）
+        LEFT JOIN note_names nn ON nn.resource_id = r.id
+        LEFT JOIN file_by_res fr ON fr.resource_id = r.id
+        LEFT JOIN files fs ON fs.id = r.source_id
+        LEFT JOIN exam_by_res ei ON ei.resource_id = r.id
+        LEFT JOIN exam_sheets es_src ON es_src.id = r.source_id
+        LEFT JOIN tr_names tn ON tn.resource_id = r.id
+        LEFT JOIN essay_names en ON en.resource_id = r.id
+        LEFT JOIN mm_names mn ON mn.resource_id = r.id
+        -- 索引聚合 JOIN（替代 ~8 个关联子查询）
+        {index_joins}
+        {folder_join}
+        WHERE {list_where}
         ORDER BY r.updated_at DESC
         LIMIT ? OFFSET ?
         "#,
-        effective_index_state_expr,
-        chunk_count_expr,
-        native_chunk_count_expr,
-        ocr_chunk_count_expr,
-        embedding_dim_expr,
-        chunk_count_expr, // 用于 text_index_source 判断
-        modality_expr,
-        folder_join,
-        list_where_clause
+        index_ctes = index_ctes,
+        chunk_count = chunk_count_col,
+        native_chunks = native_chunks_col,
+        ocr_chunks = ocr_chunks_col,
+        embedding_dim = embedding_dim_col,
+        modality = modality_col,
+        index_joins = index_joins,
+        folder_join = folder_join,
+        list_where = list_where_clause,
     );
 
-    let mut stmt = conn.prepare(&query).map_err(|e| e.to_string())?;
+    let mut stmt = conn.prepare(&query).map_err(|e| {
+        log::error!("[VFS::handlers] vfs_get_all_index_status: prepare error: {}", e);
+        e.to_string()
+    })?;
 
     // 构建参数列表（使用 list_params）
     let mut all_params: Vec<&dyn rusqlite::ToSql> =
@@ -3901,7 +3880,7 @@ pub async fn vfs_get_all_index_status(
     all_params.push(&offset_val);
 
     let query_result = stmt.query_map(rusqlite::params_from_iter(all_params.iter()), |row| {
-        // 列顺序：
+        // 列顺序（与优化前保持一致）：
         // 0=id, 1=source_id, 2=type, 3=name,
         // 4=has_ocr, 5=ocr_count,
         // 6=index_state, 7=indexed_at, 8=index_error, 9=chunk_count, 10=native_chunk_count, 11=ocr_chunk_count,
@@ -4009,37 +3988,23 @@ pub async fn vfs_get_all_index_status(
         }
     };
 
-    // 统计各状态数量（不受 state_filter 影响，始终显示全部资源统计）
-    // ★ 2026-01 修复：统一统计逻辑，indexed 包含所有 index_state='indexed' 的资源（无论是否有向量块）
-    // - indexed: index_state='indexed'（包括空内容的资源）
-    // - disabled: 仅 index_state='disabled'
-    // 这样统计和列表显示保持一致
-    let mm_state_expr = r#"
-        CASE
-            WHEN r.type = 'textbook' THEN COALESCE(
-                (SELECT mm_index_state FROM files WHERE resource_id = r.id OR id = r.source_id),
-                COALESCE(r.mm_index_state, 'pending')
-            )
-            WHEN r.type = 'file' THEN COALESCE(
-                (SELECT mm_index_state FROM files WHERE id = r.source_id OR resource_id = r.id LIMIT 1),
-                COALESCE(r.mm_index_state, 'pending')
-            )
-            WHEN r.type = 'exam' THEN COALESCE(
-                (SELECT mm_index_state FROM exam_sheets WHERE resource_id = r.id OR id = r.source_id),
-                COALESCE(r.mm_index_state, 'pending')
-            )
-            WHEN r.type = 'image' THEN COALESCE(
-                (SELECT mm_index_state FROM files WHERE id = r.source_id OR resource_id = r.id LIMIT 1),
-                COALESCE(r.mm_index_state, 'pending')
-            )
-            ELSE 'disabled'
-        END
-    "#;
-    let mm_supported_expr =
-        "CASE WHEN r.type IN ('textbook', 'file', 'exam', 'image') THEN 1 ELSE 0 END";
-
+    // ========== 统计查询（同样使用 JOIN 优化）==========
+    // ★ 2026-01 修复：统一统计逻辑，indexed 包含所有 index_state='indexed' 的资源
+    // 使用 LEFT JOIN 替代原来的 6 次 mm_state_expr 关联子查询
     let stats_query = format!(
         r#"
+        WITH file_mm AS (
+            SELECT resource_id, mm_index_state
+            FROM files
+            WHERE resource_id IS NOT NULL
+            GROUP BY resource_id
+        ),
+        exam_mm AS (
+            SELECT resource_id, mm_index_state
+            FROM exam_sheets
+            WHERE resource_id IS NOT NULL
+            GROUP BY resource_id
+        )
         SELECT
             COUNT(*) as total,
             COALESCE(SUM(CASE WHEN COALESCE(r.index_state, 'pending') = 'indexed' THEN 1 ELSE 0 END), 0) as indexed,
@@ -4051,17 +4016,45 @@ pub async fn vfs_get_all_index_status(
                 WHEN COALESCE(r.index_state, 'pending') = 'indexed'
                      AND r.index_hash IS NOT NULL AND r.index_hash != r.hash
                 THEN 1 ELSE 0 END), 0) as stale
-            ,COALESCE(SUM(CASE WHEN {2} = 1 THEN 1 ELSE 0 END), 0) as mm_total
-            ,COALESCE(SUM(CASE WHEN {2} = 1 AND {3} = 'indexed' THEN 1 ELSE 0 END), 0) as mm_indexed
-            ,COALESCE(SUM(CASE WHEN {2} = 1 AND {3} = 'pending' THEN 1 ELSE 0 END), 0) as mm_pending
-            ,COALESCE(SUM(CASE WHEN {2} = 1 AND {3} = 'indexing' THEN 1 ELSE 0 END), 0) as mm_indexing
-            ,COALESCE(SUM(CASE WHEN {2} = 1 AND {3} = 'failed' THEN 1 ELSE 0 END), 0) as mm_failed
-            ,COALESCE(SUM(CASE WHEN {2} = 1 AND {3} = 'disabled' THEN 1 ELSE 0 END), 0) as mm_disabled
+            ,COALESCE(SUM(CASE WHEN r.type IN ('textbook', 'file', 'exam', 'image') THEN 1 ELSE 0 END), 0) as mm_total
+            ,COALESCE(SUM(CASE WHEN r.type IN ('textbook', 'file', 'exam', 'image')
+                AND COALESCE(
+                    CASE WHEN r.type IN ('textbook', 'file', 'image') THEN COALESCE(fm.mm_index_state, fs_mm.mm_index_state) END,
+                    CASE WHEN r.type = 'exam' THEN em.mm_index_state END,
+                    COALESCE(r.mm_index_state, 'pending')
+                ) = 'indexed' THEN 1 ELSE 0 END), 0) as mm_indexed
+            ,COALESCE(SUM(CASE WHEN r.type IN ('textbook', 'file', 'exam', 'image')
+                AND COALESCE(
+                    CASE WHEN r.type IN ('textbook', 'file', 'image') THEN COALESCE(fm.mm_index_state, fs_mm.mm_index_state) END,
+                    CASE WHEN r.type = 'exam' THEN em.mm_index_state END,
+                    COALESCE(r.mm_index_state, 'pending')
+                ) = 'pending' THEN 1 ELSE 0 END), 0) as mm_pending
+            ,COALESCE(SUM(CASE WHEN r.type IN ('textbook', 'file', 'exam', 'image')
+                AND COALESCE(
+                    CASE WHEN r.type IN ('textbook', 'file', 'image') THEN COALESCE(fm.mm_index_state, fs_mm.mm_index_state) END,
+                    CASE WHEN r.type = 'exam' THEN em.mm_index_state END,
+                    COALESCE(r.mm_index_state, 'pending')
+                ) = 'indexing' THEN 1 ELSE 0 END), 0) as mm_indexing
+            ,COALESCE(SUM(CASE WHEN r.type IN ('textbook', 'file', 'exam', 'image')
+                AND COALESCE(
+                    CASE WHEN r.type IN ('textbook', 'file', 'image') THEN COALESCE(fm.mm_index_state, fs_mm.mm_index_state) END,
+                    CASE WHEN r.type = 'exam' THEN em.mm_index_state END,
+                    COALESCE(r.mm_index_state, 'pending')
+                ) = 'failed' THEN 1 ELSE 0 END), 0) as mm_failed
+            ,COALESCE(SUM(CASE WHEN r.type IN ('textbook', 'file', 'exam', 'image')
+                AND COALESCE(
+                    CASE WHEN r.type IN ('textbook', 'file', 'image') THEN COALESCE(fm.mm_index_state, fs_mm.mm_index_state) END,
+                    CASE WHEN r.type = 'exam' THEN em.mm_index_state END,
+                    COALESCE(r.mm_index_state, 'pending')
+                ) = 'disabled' THEN 1 ELSE 0 END), 0) as mm_disabled
         FROM resources r
+        LEFT JOIN file_mm fm ON fm.resource_id = r.id
+        LEFT JOIN files fs_mm ON fs_mm.id = r.source_id
+        LEFT JOIN exam_mm em ON em.resource_id = r.id
         {0}
         WHERE {1}
         "#,
-        folder_join, stats_where_clause, mm_supported_expr, mm_state_expr
+        folder_join, stats_where_clause
     );
 
     // 构建统计查询的参数（使用 stats_params，不包括 state_filter）

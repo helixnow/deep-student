@@ -1,6 +1,6 @@
 import React, { lazy, Suspense, useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Loader2, AlertCircle, RefreshCw, Plus, RotateCcw, ListOrdered, Shuffle, Tag, Clock, CalendarDays, FileText, Timer, BookOpen } from 'lucide-react';
+import { Loader2, AlertCircle, RefreshCw, ScanLine, RotateCcw, ListOrdered, Shuffle, Tag, Clock, CalendarDays, FileText, Timer, BookOpen } from 'lucide-react';
 import { TauriAPI, type ExamSheetSessionDetail } from '@/utils/tauriApi';
 import { NotionButton } from '@/components/ui/NotionButton';
 import type { ContentViewProps } from '../UnifiedAppPanel';
@@ -484,7 +484,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
                 onClick={() => setViewMode('upload')}
                 className="h-7 sm:h-8 px-2.5 sm:px-3 gap-1.5"
               >
-                <Plus className="w-3.5 h-3.5" />
+                <ScanLine className="w-3.5 h-3.5" />
                 <span className="hidden sm:inline">{t('learningHub:exam.tab.add')}</span>
               </NotionButton>
             </div>

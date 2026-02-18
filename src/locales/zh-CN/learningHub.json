@@ -780,7 +780,7 @@
       "practice": "做题",
       "wrongAnswers": "错题",
       "topics": "知识点",
-      "add": "添加"
+      "add": "识别导入"
     },
     "partialDeleteFailed": "成功删除 {{success}} 题，{{failed}} 题失败",
     "partialResetFailed": "成功重置 {{success}} 题，{{failed}} 题失败",

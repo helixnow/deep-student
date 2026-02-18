@@ -177,7 +177,7 @@ export function usePdfLoader({
           setLoading(false);
         }
       } else {
-        setError(i18n.t('pdf:errors.content_not_found', { defaultValue: 'Unable to load PDF file content' }));
+        setError(i18n.t('pdf:errors.content_not_found', { defaultValue: 'Unable to load PDF file content (id: {{id}})', id: nodeId }));
         setLoading(false);
       }
     } catch (err: unknown) {

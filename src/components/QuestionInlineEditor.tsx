@@ -439,7 +439,7 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
         </div>
 
         {/* 题型 + 难度 横排 */}
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div className="space-y-1.5">
             <Label className="text-xs">{t('exam_sheet:questionBank.edit.type')}</Label>
             <AppSelect

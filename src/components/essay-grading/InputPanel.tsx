@@ -182,14 +182,14 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
       <div className="flex items-center px-4 py-2.5 border-b border-border/30 gap-1.5">
         {/* 左侧：模式选择 - 保持固定宽度 */}
         {modes.length > 0 && (
-          <div className="shrink-0">
+          <div className="min-w-0 max-w-[50%] sm:max-w-none sm:shrink-0">
             <AppSelect
               value={modeId}
               onValueChange={setModeId}
               variant="ghost"
               size="sm"
               triggerIcon={<GraduationCap className="w-3.5 h-3.5 shrink-0 text-muted-foreground" />}
-              className="text-sm text-foreground/80 hover:text-foreground hover:bg-muted/50 transition-colors"
+              className="max-w-full text-sm text-foreground/80 hover:text-foreground hover:bg-muted/50 transition-colors"
               placeholder={t('essay_grading:mode.select')}
               options={modes.map((mode) => ({
                 value: mode.id,

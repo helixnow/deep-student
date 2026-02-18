@@ -273,8 +273,11 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
         if (resolved?.found && resolved?.content) {
           setTextContent(resolved.content);
         }
-      } catch {
-        // 文本解析失败，静默处理
+      } catch (textErr: unknown) {
+        console.warn('[FileContentView] loadTextContent failed:', textErr);
+        if (isMounted) {
+          setError(getErrorMessage(textErr));
+        }
       }
     };
 
@@ -319,6 +322,8 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
 
       if (canPreviewText) {
         await loadTextContent();
+      } else {
+        setError(t('learningHub:file.contentNotFound', '未找到文件内容 (id: {{id}})', { id: node.id }));
       }
     };
 
@@ -527,16 +532,23 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
       );
     }
 
-    // 无法预览
+    // 无法预览 — 显示文件信息以帮助排查
     return (
       <div className="flex flex-col items-center justify-center h-full gap-4 text-muted-foreground">
         <FileIconComponent className="w-16 h-16 opacity-50" />
         <p className="text-center">
           {t('learningHub:file.noPreview', '此文件类型不支持预览')}
         </p>
+        <p className="text-xs text-center opacity-70 max-w-md break-all">
+          {node.name} · {mimeType} · {node.id}
+        </p>
         <p className="text-sm text-center">
           {t('learningHub:file.downloadHint', '您可以下载文件后使用其他应用程序打开')}
         </p>
+        <NotionButton variant="ghost" size="sm" onClick={handleRetry} className="gap-1.5">
+          <RefreshCw className="h-3.5 w-3.5" />
+          {t('common:retry', '重试')}
+        </NotionButton>
       </div>
     );
   };

@@ -1794,6 +1794,7 @@
     "maxScore": "Max {{score}}",
     "dimensionCount": "{{count}} dimensions",
     "menuEdit": "Edit",
+    "menuUse": "Use this mode",
     "menuCopy": "Duplicate",
     "menuReset": "Reset",
     "menuDelete": "Delete",

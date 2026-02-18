@@ -133,7 +133,8 @@ pub const GRADE_SYSTEM_PROMPT: &str = r#"你是一位严谨的教师，负责批
 - partial: 答案部分正确（得分 40-79）
 - incorrect: 答案错误或严重不完整（得分 < 40）
 
-主体部分请用 Markdown 格式撰写详细的评判与解析。"#;
+主体部分请用 Markdown 格式撰写详细的评判与解析。
+数学公式请使用 $...$ 包裹行内公式，$$...$$ 包裹块级公式（例如 $\lambda = \frac{h}{p}$）。不要使用 \(...\) 或裸写 LaTeX 命令。"#;
 
 /// Analyze 模式的系统提示词（客观题解析）
 pub const ANALYZE_SYSTEM_PROMPT: &str = r#"你是一位善于启发学生的教师。请针对学生的作答情况，提供详细的解题思路分析和知识点讲解。
@@ -145,4 +146,5 @@ pub const ANALYZE_SYSTEM_PROMPT: &str = r#"你是一位善于启发学生的教�
 3. **易错点**：常见的错误和注意事项
 4. **学习建议**：针对性的学习方向建议
 
+数学公式请使用 $...$ 包裹行内公式，$$...$$ 包裹块级公式（例如 $\lambda = \frac{h}{p}$）。不要使用 \(...\) 或裸写 LaTeX 命令。
 请不要输出 <verdict> 或 <score> 标签。"#;

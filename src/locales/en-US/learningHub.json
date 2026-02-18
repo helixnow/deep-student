@@ -780,7 +780,7 @@
       "practice": "Practice",
       "wrongAnswers": "Wrong",
       "topics": "Topics",
-      "add": "Add"
+      "add": "OCR Import"
     },
     "partialDeleteFailed": "{{success}} deleted, {{failed}} failed",
     "partialResetFailed": "{{success}} reset, {{failed}} failed",
