@@ -46,16 +46,55 @@ fn is_probably_base64(input: &str) -> bool {
     if trimmed.is_empty() {
         return false;
     }
-    if trimmed.starts_with("data:") {
-        return true;
-    }
-    let cleaned: String = trimmed.chars().filter(|c| !c.is_whitespace()).collect();
-    if cleaned.len() % 4 == 1 {
+
+    // 先排除明显路径文本，避免误判导致无效内容直通前端
+    if looks_like_path(trimmed) {
         return false;
     }
-    cleaned
+
+    // 兼容 data URL
+    let raw = if trimmed.starts_with("data:") {
+        match trimmed.split(',').nth(1) {
+            Some(v) => v,
+            None => return false,
+        }
+    } else {
+        trimmed
+    };
+
+    // 兼容 URL-safe base64 与无 padding
+    let cleaned: String = raw
+        .chars()
+        .filter(|c| !c.is_whitespace())
+        .map(|c| match c {
+            '-' => '+',
+            '_' => '/',
+            _ => c,
+        })
+        .collect();
+
+    if cleaned.is_empty() {
+        return false;
+    }
+
+    if !cleaned
         .chars()
         .all(|c| c.is_ascii_alphanumeric() || c == '+' || c == '/' || c == '=')
+    {
+        return false;
+    }
+
+    let remainder = cleaned.len() % 4;
+    if remainder == 1 {
+        return false;
+    }
+
+    let mut normalized = cleaned;
+    if remainder > 0 {
+        normalized.push_str(&"=".repeat(4 - remainder));
+    }
+
+    STANDARD.decode(normalized.as_bytes()).is_ok()
 }
 
 fn looks_like_path(input: &str) -> bool {
@@ -2428,6 +2467,21 @@ mod tests {
         let input = "data:text/plain;base64,SGVsbG8gV29ybGQ=";
         let result = VfsAttachmentRepo::decode_base64(input).unwrap();
         assert_eq!(result, b"Hello World");
+    }
+
+    #[test]
+    fn test_is_probably_base64_rejects_path_like_content() {
+        assert!(!is_probably_base64("C:\\Users\\alice\\doc.docx"));
+        assert!(!is_probably_base64("/Users/alice/doc.docx"));
+        assert!(!is_probably_base64("file:///Users/alice/doc.docx"));
+    }
+
+    #[test]
+    fn test_is_probably_base64_supports_urlsafe_without_padding() {
+        // "a+b/c" 的 URL-safe + 去 padding 形式
+        let urlsafe_no_padding = "YStiL2M";
+        assert!(is_probably_base64(urlsafe_no_padding));
+        assert!(is_probably_base64("data:application/octet-stream;base64,YStiL2M"));
     }
 
     #[test]

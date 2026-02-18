@@ -5217,6 +5217,10 @@ async fn execute_restore_with_progress(
                 &inactive_dir,
                 &asset_result.files,
                 |restored, total_asset| {
+                    if job_ctx.is_cancelled() {
+                        return false;
+                    }
+
                     let asset_pct = if total_asset > 0 {
                         restored as f32 / total_asset as f32
                     } else {
@@ -5233,6 +5237,8 @@ async fn execute_restore_with_progress(
                         total_databases + restored as u64,
                         total_items,
                     );
+
+                    true
                 },
             ) {
                 Ok(count) => {
@@ -5240,6 +5246,11 @@ async fn execute_restore_with_progress(
                     info!("[data_governance] 资产恢复完成: {} 个文件", count);
                 }
                 Err(e) => {
+                    if e.is_cancelled() {
+                        job_ctx.cancelled(Some("用户取消恢复（资产阶段）".to_string()));
+                        return;
+                    }
+
                     // 资产恢复失败不阻塞数据库恢复结果，记录警告
                     error!("[data_governance] 资产恢复失败: {}", e);
                     restore_errors.push(format!("资产恢复: {}", e));
@@ -5266,6 +5277,10 @@ async fn execute_restore_with_progress(
                     &assets_subdir,
                     &inactive_dir,
                     |restored, total_asset| {
+                        if job_ctx.is_cancelled() {
+                            return false;
+                        }
+
                         let asset_pct = if total_asset > 0 {
                             restored as f32 / total_asset as f32
                         } else {
@@ -5282,6 +5297,8 @@ async fn execute_restore_with_progress(
                             total_databases + restored as u64,
                             total_items,
                         );
+
+                        true
                     },
                 ) {
                     Ok(count) => {
@@ -5289,6 +5306,11 @@ async fn execute_restore_with_progress(
                         info!("[data_governance] 资产目录直接恢复完成: {} 个文件", count);
                     }
                     Err(e) => {
+                        if e.is_cancelled() {
+                            job_ctx.cancelled(Some("用户取消恢复（资产阶段）".to_string()));
+                            return;
+                        }
+
                         error!("[data_governance] 资产目录直接恢复失败: {}", e);
                         restore_errors.push(format!("资产目录恢复: {}", e));
                     }

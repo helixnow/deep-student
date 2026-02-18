@@ -60,16 +60,33 @@ fn copy_file_with_retry(src: &Path, dest: &Path) -> Result<(), AssetBackupError>
     for attempt in 0..MAX_RETRIES {
         match fs::copy(src, dest) {
             Ok(_) => {
-                let src_size = fs::metadata(src)?.len();
-                let dest_size = fs::metadata(dest)?.len();
-                if src_size == dest_size {
-                    return Ok(());
-                }
+                let src_size = fs::metadata(src).map(|m| m.len());
+                let dest_size = fs::metadata(dest).map(|m| m.len());
 
-                last_error = Some(format!(
-                    "复制后大小不一致: {:?} -> {:?}, expected={}, actual={}",
-                    src, dest, src_size, dest_size
-                ));
+                match (src_size, dest_size) {
+                    (Ok(src_size), Ok(dest_size)) => {
+                        if src_size == dest_size {
+                            return Ok(());
+                        }
+
+                        last_error = Some(format!(
+                            "复制后大小不一致: {:?} -> {:?}, expected={}, actual={}",
+                            src, dest, src_size, dest_size
+                        ));
+                    }
+                    (Err(e), _) => {
+                        last_error = Some(format!(
+                            "复制后读取源文件元数据失败: {:?}, error={}",
+                            src, e
+                        ));
+                    }
+                    (_, Err(e)) => {
+                        last_error = Some(format!(
+                            "复制后读取目标文件元数据失败: {:?}, error={}",
+                            dest, e
+                        ));
+                    }
+                }
             }
             Err(e) => {
                 last_error = Some(format!(
@@ -346,6 +363,15 @@ pub enum AssetBackupError {
 
     #[error("资产恢复失败: {0}")]
     RestoreFailed(String),
+
+    #[error("用户取消恢复（资产阶段）")]
+    Cancelled,
+}
+
+impl AssetBackupError {
+    pub fn is_cancelled(&self) -> bool {
+        matches!(self, Self::Cancelled)
+    }
 }
 
 // ============================================================================
@@ -898,9 +924,7 @@ where
         copy_file_with_retry(&src_path, &dest_path)?;
         restored_count += 1;
         if !on_progress(restored_count, total) {
-            return Err(AssetBackupError::RestoreFailed(
-                "用户取消恢复（资产阶段）".to_string(),
-            ));
+            return Err(AssetBackupError::Cancelled);
         }
     }
 
@@ -1011,9 +1035,7 @@ where
             count += 1;
             *restored_count += 1;
             if !on_progress(*restored_count, total) {
-                return Err(AssetBackupError::RestoreFailed(
-                    "用户取消恢复（资产阶段）".to_string(),
-                ));
+                return Err(AssetBackupError::Cancelled);
             }
         }
     }
@@ -1339,5 +1361,52 @@ mod tests {
         let images_stats = stats.get("images").unwrap();
         assert_eq!(images_stats.file_count, 2);
         assert_eq!(images_stats.total_size, 300);
+    }
+
+    #[test]
+    fn test_restore_assets_with_progress_can_cancel() {
+        let backup_dir = TempDir::new().unwrap();
+        let app_data_dir = TempDir::new().unwrap();
+
+        create_test_file(
+            backup_dir.path(),
+            "assets/images/test.png",
+            b"fake png data",
+        );
+
+        let assets = vec![BackedUpAsset {
+            asset_type: AssetType::Images,
+            relative_path: "assets/images/test.png".to_string(),
+            original_path: "images/test.png".to_string(),
+            size: 13,
+            checksum: None,
+            modified_at: None,
+            is_directory: false,
+        }];
+
+        let result = restore_assets_with_progress(
+            backup_dir.path(),
+            app_data_dir.path(),
+            &assets,
+            |_restored, _total| false,
+        );
+
+        assert!(matches!(result, Err(AssetBackupError::Cancelled)));
+    }
+
+    #[test]
+    fn test_restore_assets_from_dir_with_progress_can_cancel() {
+        let backup_dir = TempDir::new().unwrap();
+        let app_data_dir = TempDir::new().unwrap();
+
+        create_test_file(backup_dir.path(), "assets/images/test.png", b"fake png data");
+
+        let result = restore_assets_from_dir_with_progress(
+            &backup_dir.path().join("assets"),
+            app_data_dir.path(),
+            |_restored, _total| false,
+        );
+
+        assert!(matches!(result, Err(AssetBackupError::Cancelled)));
     }
 }

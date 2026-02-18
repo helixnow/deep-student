@@ -59,6 +59,7 @@ import AttachmentPipelineTestPlugin from './plugins/AttachmentPipelineTestPlugin
 import ChatInteractionTestPlugin from './plugins/ChatInteractionTestPlugin';
 import CitationTestPlugin from './plugins/CitationTestPlugin';
 import MultiVariantTestPlugin from './plugins/MultiVariantTestPlugin';
+import WorkspaceOrchestrationTestPlugin from './plugins/WorkspaceOrchestrationTestPlugin';
 import ToolCallLifecycleDebugPlugin from './plugins/ToolCallLifecycleDebugPlugin';
 import ExamSheetProcessingDebugPlugin from './plugins/ExamSheetProcessingDebugPlugin';
 
@@ -183,6 +184,15 @@ const PLUGINS: DebugPanelPluginEntry[] = [
     Component: SubagentMessageFlowDebugPlugin,
     labelDefault: '子代理消息流调试',
     descriptionDefault: '诊断子代理嵌入视图中助手消息不显示的问题，全链路打点追踪 Adapter 创建、storeApi 状态、stream_start 事件处理。',
+    groupId: 'chat-timeline',
+  },
+  {
+    id: 'workspace-orchestration-test',
+    labelKey: 'debug_panel.plugin_workspace_orchestration_test',
+    descriptionKey: 'debug_panel.plugin_workspace_orchestration_test_desc',
+    Component: WorkspaceOrchestrationTestPlugin,
+    labelDefault: '多 Agent 编排自动测试',
+    descriptionDefault: '场景化自动测试多 Agent / 子代理工作区：真实 sendMessage 触发编排，捕获 workspace 事件、tool_call、Store 快照与持久化一致性，生成可下载报告。',
     groupId: 'chat-timeline',
   },
   {

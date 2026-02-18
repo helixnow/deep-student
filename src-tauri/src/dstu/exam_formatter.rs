@@ -246,6 +246,9 @@ mod tests {
                 width: Some(800),
                 height: Some(1200),
                 original_image_path: String::new(),
+                raw_ocr_text: None,
+                ocr_completed: false,
+                parse_completed: false,
                 cards: vec![
                     ExamCardPreview {
                         card_id: "card_1".to_string(),
