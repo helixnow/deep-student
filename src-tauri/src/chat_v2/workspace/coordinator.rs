@@ -323,6 +323,33 @@ impl WorkspaceCoordinator {
             &format!("{:?}", status).to_lowercase(),
         );
 
+        // worker 进入终态时，尝试通过状态信号唤醒 coordinator，避免仅靠 timeout 恢复
+        if matches!(status, AgentStatus::Completed | AgentStatus::Failed) {
+            match instance
+                .sleep_manager
+                .check_and_wake_by_agent_status(workspace_id, session_id, &status)
+            {
+                Ok(awakened) => {
+                    for wake_info in awakened {
+                        self.emitter.emit_coordinator_awakened(
+                            &wake_info.workspace_id,
+                            &wake_info.coordinator_session_id,
+                            &wake_info.sleep_id,
+                            &wake_info.awakened_by,
+                            wake_info.awaken_message.as_deref(),
+                            &wake_info.wake_reason,
+                        );
+                    }
+                }
+                Err(e) => {
+                    log::warn!(
+                        "[WorkspaceCoordinator] Failed to check wake-by-status condition: {:?}",
+                        e
+                    );
+                }
+            }
+        }
+
         Ok(())
     }
 

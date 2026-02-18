@@ -5180,6 +5180,25 @@ async fn execute_restore_with_progress(
         return;
     }
 
+    // ============ 阶段 3a: 恢复加密密钥（跨设备恢复支持） ============
+    match manager.restore_crypto_keys(&backup_subdir) {
+        Ok(count) => {
+            if count > 0 {
+                info!(
+                    "[data_governance] 加密密钥恢复完成: {} 个文件（API 密钥可跨设备解密）",
+                    count
+                );
+            }
+        }
+        Err(e) => {
+            // 加密密钥恢复失败不阻塞整体恢复，用户可手动重新配置 API 密钥
+            warn!(
+                "[data_governance] 加密密钥恢复失败（API 密钥可能需要重新配置）: {}",
+                e
+            );
+        }
+    }
+
     // ============ 阶段 3b: Replace/Assets (80-92%) - 恢复资产文件 ============
     let should_restore_assets = restore_assets.unwrap_or_else(|| {
         manifest

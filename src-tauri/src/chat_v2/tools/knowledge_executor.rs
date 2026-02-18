@@ -1,15 +1,13 @@
 //! 知识工具执行器
 //!
-//! 执行知识内化和提取相关的内置工具：
-//! - `builtin:knowledge_internalize` - 将知识点内化到知识图谱
-//! - `builtin:knowledge_extract` - 从对话中提取知识点
+//! 执行知识提取相关的内置工具：
+//! - `builtin-knowledge_extract` - 从对话中提取知识点并保存到待处理记忆候选表
 
 use std::time::Instant;
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use uuid::Uuid;
 
 use super::builtin_retrieval_executor::BUILTIN_NAMESPACE;
 use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
@@ -38,17 +36,6 @@ impl KnowledgeExecutor {
     // ========================================================================
     // 工具实现
     // ========================================================================
-
-    /// 执行 knowledge_internalize - 将知识点内化到知识图谱
-    async fn execute_internalize(
-        &self,
-        call: &ToolCall,
-        ctx: &ExecutionContext,
-    ) -> Result<Value, String> {
-        let _ = call;
-        let _ = ctx;
-        Err("knowledge_internalize 功能已废弃（知识图谱模块已移除）".to_string())
-    }
 
     /// 执行 knowledge_extract - 从对话中提取知识点
     async fn execute_extract(
@@ -185,7 +172,7 @@ impl Default for KnowledgeExecutor {
 impl ToolExecutor for KnowledgeExecutor {
     fn can_handle(&self, tool_name: &str) -> bool {
         let stripped = Self::strip_namespace(tool_name);
-        matches!(stripped, "knowledge_internalize" | "knowledge_extract")
+        matches!(stripped, "knowledge_extract")
     }
 
     async fn execute(
@@ -213,7 +200,6 @@ impl ToolExecutor for KnowledgeExecutor {
         );
 
         let result = match tool_name {
-            "knowledge_internalize" => self.execute_internalize(call, ctx).await,
             "knowledge_extract" => self.execute_extract(call, ctx).await,
             _ => Err(format!("Unknown knowledge tool: {}", tool_name)),
         };
@@ -394,7 +380,7 @@ mod tests {
         let executor = KnowledgeExecutor::new();
 
         // 处理知识工具
-        assert!(executor.can_handle("builtin-knowledge_internalize"));
+        assert!(!executor.can_handle("builtin-knowledge_internalize")); // deprecated
         assert!(executor.can_handle("builtin-knowledge_extract"));
 
         // 不处理其他工具
@@ -405,10 +391,6 @@ mod tests {
 
     #[test]
     fn test_strip_namespace() {
-        assert_eq!(
-            KnowledgeExecutor::strip_namespace("builtin-knowledge_internalize"),
-            "knowledge_internalize"
-        );
         assert_eq!(
             KnowledgeExecutor::strip_namespace("knowledge_extract"),
             "knowledge_extract"
@@ -421,10 +403,6 @@ mod tests {
 
         assert_eq!(
             executor.sensitivity_level("builtin-knowledge_extract"),
-            ToolSensitivity::Low
-        );
-        assert_eq!(
-            executor.sensitivity_level("builtin-knowledge_internalize"),
             ToolSensitivity::Low
         );
     }

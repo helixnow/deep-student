@@ -82,7 +82,6 @@ export const qbankToolsSkill: SkillDefinition = {
     'builtin-qbank_reset_progress',
     'builtin-qbank_export',
     'builtin-qbank_import_document',
-    'builtin-qbank_ai_grade',
   ],
   embeddedTools: [
     {
@@ -292,19 +291,6 @@ export const qbankToolsSkill: SkillDefinition = {
           folder_id: { type: 'string', description: '目标文件夹 ID（创建新题目集时使用）' },
         },
         required: ['content'],
-      },
-    },
-    {
-      name: 'builtin-qbank_ai_grade',
-      description: '[仅在练习界面可用] 此工具无法在对话中执行。对话中请改用 qbank_submit_answer 提交答案，主观题会自动在练习界面触发 AI 评判。',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          session_id: { type: 'string', description: '【必填】题目集 ID' },
-          card_id: { type: 'string', description: '【必填】题目卡片 ID' },
-          mode: { type: 'string', enum: ['grade', 'analyze'], default: 'grade', description: '评判模式：grade=主观题评判，analyze=客观题解析' },
-        },
-        required: ['session_id', 'card_id'],
       },
     },
   ],

@@ -347,6 +347,21 @@ impl VfsAttachmentRepo {
 
         if raw.is_absolute() {
             candidates.push(raw.to_path_buf());
+
+            // ★ 跨平台备份恢复支持：
+            // original_path 可能来自另一个系统/用户目录，例如：
+            // macOS: /Users/alice/Library/Application Support/com.deepstudent.app/slots/slotA/textbooks/file.pptx
+            // Windows: C:\Users\bob\AppData\Local\com.deepstudent.app\slots\slotA\textbooks\file.pptx
+            // 提取 slots/slotX/ 之后的相对路径，映射到当前 slot root
+            if let Some(slot_root) = blobs_dir.parent() {
+                if let Some(relative) = Self::extract_relative_from_slot_path(trimmed) {
+                    let remapped = slot_root.join(&relative);
+                    if !candidates.contains(&remapped) {
+                        candidates.push(remapped);
+                    }
+                }
+            }
+
             return candidates;
         }
 
@@ -364,6 +379,31 @@ impl VfsAttachmentRepo {
             }
         }
         deduped
+    }
+
+    /// 从绝对路径中提取 slot 目录之后的相对路径（跨平台备份恢复支持）
+    ///
+    /// 支持 macOS / Windows / Linux 路径分隔符，以及任意 slot 名称（slotA, slotB 等）。
+    /// 例如：
+    /// - `/Users/alice/.../slots/slotA/textbooks/file.pptx` → `textbooks/file.pptx`
+    /// - `C:\Users\bob\...\slots\slotB\images\abc.png` → `images/abc.png`
+    fn extract_relative_from_slot_path(path: &str) -> Option<String> {
+        // 统一为正斜杠以便查找模式（\ 和 / 都是单字节，不影响索引偏移）
+        let normalized = path.replace('\\', "/");
+
+        let slots_marker = "/slots/";
+        let slots_idx = normalized.find(slots_marker)?;
+        let after_slots = &normalized[slots_idx + slots_marker.len()..];
+
+        // 跳过 slot 名称（直到下一个 /）
+        let slot_end = after_slots.find('/')?;
+        let relative = &after_slots[slot_end + 1..];
+
+        if relative.is_empty() {
+            None
+        } else {
+            Some(relative.to_string())
+        }
     }
 
     fn try_read_original_path(blobs_dir: &Path, id: &str, raw_path: &str) -> Option<Vec<u8>> {
@@ -2574,5 +2614,67 @@ mod tests {
 
         std::fs::remove_dir_all(slot_root).ok();
         std::fs::remove_dir_all(external_root).ok();
+    }
+
+    #[test]
+    fn test_extract_relative_from_slot_path_macos() {
+        let result = VfsAttachmentRepo::extract_relative_from_slot_path(
+            "/Users/alice/Library/Application Support/com.deepstudent.app/slots/slotA/textbooks/file.pptx",
+        );
+        assert_eq!(result.as_deref(), Some("textbooks/file.pptx"));
+    }
+
+    #[test]
+    fn test_extract_relative_from_slot_path_windows() {
+        let result = VfsAttachmentRepo::extract_relative_from_slot_path(
+            r"C:\Users\bob\AppData\Local\com.deepstudent.app\slots\slotB\images\abc.png",
+        );
+        assert_eq!(result.as_deref(), Some("images/abc.png"));
+    }
+
+    #[test]
+    fn test_extract_relative_from_slot_path_nested() {
+        let result = VfsAttachmentRepo::extract_relative_from_slot_path(
+            "/data/app/slots/slotA/vfs_blobs/ab/cd/ef.bin",
+        );
+        assert_eq!(result.as_deref(), Some("vfs_blobs/ab/cd/ef.bin"));
+    }
+
+    #[test]
+    fn test_extract_relative_from_slot_path_no_match() {
+        assert!(VfsAttachmentRepo::extract_relative_from_slot_path("/Users/alice/Documents/file.pdf").is_none());
+        assert!(VfsAttachmentRepo::extract_relative_from_slot_path("relative/path/file.txt").is_none());
+    }
+
+    #[test]
+    fn test_extract_relative_from_slot_path_slot_root_only() {
+        // slots/slotA/ with nothing after → should return None
+        assert!(VfsAttachmentRepo::extract_relative_from_slot_path(
+            "/data/slots/slotA/"
+        ).is_none());
+    }
+
+    #[test]
+    fn test_build_original_path_candidates_cross_platform_remap() {
+        let uniq = format!(
+            "vfs_cross_platform_test_{}_{}",
+            std::process::id(),
+            chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default()
+        );
+        let slot_root = std::env::temp_dir().join(&uniq);
+        let blobs_dir = slot_root.join("vfs_blobs");
+        std::fs::create_dir_all(&blobs_dir).unwrap();
+
+        // Simulate a macOS path from another machine
+        let foreign_path = "/Users/alice/Library/Application Support/com.deepstudent.app/slots/slotA/textbooks/test.pptx";
+        let candidates = VfsAttachmentRepo::build_original_path_candidates(&blobs_dir, foreign_path);
+
+        // Should have 2 candidates: the original absolute path + remapped path
+        assert!(candidates.len() >= 2);
+        // The remapped candidate should be under the current slot root
+        let remapped = slot_root.join("textbooks/test.pptx");
+        assert!(candidates.contains(&remapped), "Expected remapped path {:?} in candidates {:?}", remapped, candidates);
+
+        std::fs::remove_dir_all(slot_root).ok();
     }
 }

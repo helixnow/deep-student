@@ -123,6 +123,18 @@ export const subagentWorkerSkill: SkillDefinition = {
         required: ['workspace_id'],
       },
     },
+    {
+      name: 'builtin-workspace_get_context',
+      description: '从工作区读取一个共享上下文值。主代理可通过 workspace_set_context 预先存储数据，子代理用此工具读取。',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          workspace_id: { type: 'string', description: '【必填】工作区 ID' },
+          key: { type: 'string', description: '【必填】上下文键名' },
+        },
+        required: ['workspace_id', 'key'],
+      },
+    },
   ],
   allowedTools: [
     'builtin-workspace_send',

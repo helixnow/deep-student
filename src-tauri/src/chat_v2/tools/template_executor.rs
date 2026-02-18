@@ -1528,11 +1528,7 @@ impl ToolExecutor for TemplateDesignerExecutor {
 
     fn sensitivity_level(&self, tool_name: &str) -> ToolSensitivity {
         match Self::strip_namespace(tool_name) {
-            // 为了支持模板设计自动化回归测试，模板工具统一降级为低敏感。
-            "template_list" | "template_get" | "template_validate" | "template_preview"
-            | "template_create" | "template_update" | "template_fork" | "template_delete" => {
-                ToolSensitivity::Low
-            }
+            "template_delete" => ToolSensitivity::Medium,
             _ => ToolSensitivity::Low,
         }
     }
@@ -1878,7 +1874,7 @@ mod tests {
         );
         assert_eq!(
             executor.sensitivity_level("builtin-template_delete"),
-            ToolSensitivity::Low
+            ToolSensitivity::Medium
         );
     }
 

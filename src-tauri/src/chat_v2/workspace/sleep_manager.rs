@@ -12,7 +12,7 @@ use tokio::sync::oneshot;
 use tokio_util::task::TaskTracker;
 
 use super::database::WorkspaceDatabase;
-use super::types::{MessageType, WorkspaceMessage};
+use super::types::{AgentStatus, MessageType, WorkspaceMessage};
 
 // ============================================================================
 // 类型定义
@@ -271,6 +271,7 @@ impl SleepManager {
 
             if let Some(tx) = sender {
                 log::info!("[SleepManager] Sleep timeout: {}", sleep_id);
+
                 let payload = WakeUpPayload {
                     sleep_id: sleep_id.clone(),
                     awakened_by: "system".to_string(),
@@ -289,6 +290,9 @@ impl SleepManager {
                 ) {
                     log::warn!("[SleepManager] Failed to update timeout status: {}", e);
                 }
+
+                // coordinator_awakened 事件由 sleep_executor 在唤醒后统一发射，
+                // 避免 SleepManager 直接持有 AppHandle 产生的生命周期耦合
             }
         });
     }
@@ -400,6 +404,85 @@ impl SleepManager {
         Ok(awakened)
     }
 
+    /// 根据 Agent 状态变化尝试唤醒睡眠中的 Coordinator
+    ///
+    /// 主要用于修复 worker 通过 attempt_completion 结束但未写入 result 消息时，
+    /// coordinator 只能等到 timeout 才恢复的问题。
+    pub fn check_and_wake_by_agent_status(
+        &self,
+        workspace_id: &str,
+        agent_session_id: &str,
+        status: &AgentStatus,
+    ) -> Result<Vec<WakeResultInfo>, SleepError> {
+        if !matches!(status, AgentStatus::Completed | AgentStatus::Failed) {
+            return Ok(Vec::new());
+        }
+
+        let mut awakened = Vec::new();
+
+        let active_sleep_ids: Vec<String> = {
+            let sleeps = self.active_sleeps.lock().unwrap_or_else(|poisoned| {
+                log::error!("[SleepManager] Mutex poisoned! Attempting recovery");
+                poisoned.into_inner()
+            });
+            sleeps.keys().cloned().collect()
+        };
+
+        for sleep_id in active_sleep_ids {
+            if let Ok(Some(sleep_data)) = self.get_sleep(&sleep_id) {
+                if sleep_data.workspace_id != workspace_id {
+                    continue;
+                }
+
+                if !self.is_agent_relevant_to_sleep(agent_session_id, &sleep_data) {
+                    continue;
+                }
+
+                let should_wake = match &sleep_data.wake_condition {
+                    WakeCondition::AllCompleted | WakeCondition::ResultMessage => {
+                        // 终态兜底：仅当所有 awaiting_agents 都进入终态时才唤醒
+                        // ResultMessage 本应由消息触发；但若 worker 走 attempt_completion
+                        // 而未发 result 消息，则以全员终态为 fallback，避免纯超时
+                        self.check_all_agents_terminal(&sleep_data)
+                    }
+                    WakeCondition::AnyMessage | WakeCondition::Timeout { .. } => false,
+                };
+
+                if !should_wake {
+                    continue;
+                }
+
+                log::info!(
+                    "[SleepManager] Waking up sleep {} by agent status: agent={}, status={:?}, condition={:?}",
+                    sleep_id,
+                    agent_session_id,
+                    status,
+                    sleep_data.wake_condition
+                );
+
+                let payload = WakeUpPayload {
+                    sleep_id: sleep_id.clone(),
+                    awakened_by: agent_session_id.to_string(),
+                    message: None,
+                    reason: WakeReason::AllCompleted,
+                };
+
+                if let Ok(true) = self.try_wake(&sleep_id, payload) {
+                    awakened.push(WakeResultInfo {
+                        sleep_id: sleep_id.clone(),
+                        workspace_id: sleep_data.workspace_id.clone(),
+                        coordinator_session_id: sleep_data.coordinator_session_id.clone(),
+                        awakened_by: agent_session_id.to_string(),
+                        awaken_message: None,
+                        wake_reason: "all_completed".to_string(),
+                    });
+                }
+            }
+        }
+
+        Ok(awakened)
+    }
+
     /// 检查消息是否与睡眠相关
     fn is_message_relevant_to_sleep(
         &self,
@@ -437,6 +520,63 @@ impl SleepManager {
         }
 
         false
+    }
+
+    fn is_agent_relevant_to_sleep(&self, agent_session_id: &str, sleep_data: &SleepBlockData) -> bool {
+        if sleep_data.awaiting_agents.is_empty() {
+            return true;
+        }
+        sleep_data.awaiting_agents.contains(&agent_session_id.to_string())
+    }
+
+    fn check_all_agents_terminal(&self, sleep_data: &SleepBlockData) -> bool {
+        if sleep_data.awaiting_agents.is_empty() {
+            return true;
+        }
+
+        let Ok(conn) = self.db.get_connection() else {
+            return false;
+        };
+
+        let statuses: std::collections::HashMap<String, String> = conn
+            .prepare("SELECT session_id, status FROM agent WHERE workspace_id = ?1")
+            .and_then(|mut stmt| {
+                let rows = stmt.query_map(rusqlite::params![sleep_data.workspace_id], |row| {
+                    Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+                })?;
+
+                let mut map = std::collections::HashMap::new();
+                for row in rows {
+                    match row {
+                        Ok((session_id, status)) => {
+                            map.insert(session_id, status);
+                        }
+                        Err(e) => {
+                            log::warn!("[SleepManager] Failed to parse agent status row: {}", e);
+                        }
+                    }
+                }
+                Ok(map)
+            })
+            .unwrap_or_default();
+
+        for agent in &sleep_data.awaiting_agents {
+            let is_terminal = statuses
+                .get(agent)
+                .map(|s| s == "completed" || s == "failed")
+                .unwrap_or(false);
+
+            if !is_terminal {
+                log::debug!(
+                    "[SleepManager] Agent {} not terminal yet for sleep {}",
+                    agent,
+                    sleep_data.id
+                );
+                return false;
+            }
+        }
+
+        true
     }
 
     /// 检查是否所有等待的代理都已完成（用于 AllCompleted 条件）

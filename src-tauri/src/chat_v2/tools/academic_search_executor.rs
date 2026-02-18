@@ -102,6 +102,7 @@ impl AcademicSearchExecutor {
     fn strip_namespace(tool_name: &str) -> &str {
         tool_name
             .strip_prefix(BUILTIN_NAMESPACE)
+            .or_else(|| tool_name.strip_prefix("mcp_"))
             .unwrap_or(tool_name)
     }
 

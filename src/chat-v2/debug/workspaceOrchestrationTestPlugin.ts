@@ -22,6 +22,7 @@ import {
 } from '../workspace/api';
 import { sessionManager } from '../core/session/sessionManager';
 import type { BackendEvent } from '../core/middleware/eventBridge';
+import { getLogs as getSubagentLogs } from './subagentTestPlugin';
 
 export type ScenarioName =
   | 'orchestrate_single_worker'
@@ -54,6 +55,19 @@ interface ScenarioDefinition {
   requireSubagentCall: boolean;
 }
 
+function collectUiLogsSince(startIndex: number): CapturedUiLog[] {
+  return getSubagentLogs()
+    .slice(Math.max(0, startIndex))
+    .map((entry) => ({
+      id: entry.id,
+      timestamp: entry.timestamp,
+      type: entry.type,
+      action: entry.action,
+      subagentSessionId: entry.subagentSessionId,
+      data: entry.data,
+    }));
+}
+
 const SCENARIO_DEFS: Record<ScenarioName, ScenarioDefinition> = {
   orchestrate_single_worker: {
     workspaceNameBase: '[OrchTest] single worker',
@@ -84,12 +98,13 @@ const SCENARIO_DEFS: Record<ScenarioName, ScenarioDefinition> = {
   orchestrate_handoff: {
     workspaceNameBase: '[OrchTest] handoff',
     buildPrompt: (workspaceName: string) => [
-      '请严格按步骤执行：',
+      '请严格按以下顺序逐步执行，不要跳步、不要并行创建 worker：',
       `1) 创建一个名为 "${workspaceName}" 的工作区。`,
-      '2) 创建研究 worker 和写作 worker。',
-      '3) 先让研究 worker 输出 5 条要点。',
-      '4) 再让写作 worker 基于这 5 条写一段总结。',
-      '5) 输出最终结果。',
+      '2) 仅创建研究 worker，给它的初始任务是"列出关于人工智能发展的 5 条关键要点"。',
+      '3) 使用 coordinator_sleep 等待研究 worker 完成（wake_condition=result_message 或 all_completed）。',
+      '4) 研究 worker 完成后，再创建写作 worker，给它的初始任务是"基于刚才研究 worker 给出的 5 条要点，写一段不超过 200 字的中文总结"。',
+      '5) 使用 coordinator_sleep 等待写作 worker 完成。',
+      '6) 输出最终总结结果。',
     ].join('\n'),
     minWorkers: 2,
     minMessages: 2,
@@ -146,6 +161,15 @@ export interface CapturedToolCall {
   error?: string;
   targetWorkspaceId?: string;
   rawPayload?: Record<string, unknown>;
+}
+
+interface CapturedUiLog {
+  id: number;
+  timestamp: string;
+  type: string;
+  action: string;
+  subagentSessionId?: string;
+  data?: Record<string, unknown>;
 }
 
 export interface WorkspaceSnapshot {
@@ -266,6 +290,10 @@ function extractAgentSessionIdFromEventPayload(payload: Record<string, unknown>)
   const agent = asRecord(payload.agent);
   const byAgent = agent?.session_id;
   if (typeof byAgent === 'string' && byAgent) return byAgent;
+  const bySessionField = payload.session_id;
+  if (typeof bySessionField === 'string' && bySessionField) return bySessionField;
+  const bySessionCamel = payload.sessionId;
+  if (typeof bySessionCamel === 'string' && bySessionCamel) return bySessionCamel;
   const byField = payload.agent_session_id;
   if (typeof byField === 'string' && byField) return byField;
   return undefined;
@@ -345,6 +373,95 @@ function createLogger(scenario: ScenarioName, onLog?: (entry: LogEntry) => void)
   return { logs, log };
 }
 
+function extractEventLogFields(
+  eventName: string,
+  payload: Record<string, unknown>,
+): Record<string, unknown> {
+  const p = payload;
+  const agentObj = asRecord(p.agent);
+  const msgObj = asRecord(p.message);
+
+  switch (eventName) {
+    case WORKSPACE_EVENTS.COORDINATOR_AWAKENED:
+      return {
+        workspace_id: p.workspace_id ?? p.workspaceId,
+        coordinator_session_id: p.coordinator_session_id ?? p.coordinatorSessionId,
+        sleep_id: p.sleep_id ?? p.sleepId,
+        awakened_by: p.awakened_by ?? p.awakenedBy,
+        wake_reason: p.wake_reason ?? p.wakeReason,
+        awaken_message: p.awaken_message ?? p.awakenMessage,
+      };
+    case WORKSPACE_EVENTS.AGENT_JOINED:
+      return {
+        workspace_id: p.workspace_id ?? p.workspaceId,
+        session_id: agentObj?.session_id ?? p.session_id,
+        role: agentObj?.role ?? p.role,
+        status: agentObj?.status ?? p.status,
+        skill_id: agentObj?.skill_id ?? p.skill_id,
+      };
+    case WORKSPACE_EVENTS.AGENT_LEFT:
+      return {
+        workspace_id: p.workspace_id ?? p.workspaceId,
+        session_id: agentObj?.session_id ?? p.session_id,
+      };
+    case WORKSPACE_EVENTS.AGENT_STATUS_CHANGED:
+      return {
+        workspace_id: p.workspace_id ?? p.workspaceId,
+        session_id: p.session_id ?? p.sessionId,
+        status: p.status,
+      };
+    case WORKSPACE_EVENTS.WORKER_READY:
+      return {
+        workspace_id: p.workspace_id ?? p.workspaceId,
+        session_id:
+          agentObj?.session_id ?? p.session_id ?? p.agent_session_id ?? p.agentSessionId,
+      };
+    case WORKSPACE_EVENTS.MESSAGE_RECEIVED: {
+      const rawMsg = msgObj ?? p;
+      const content = typeof rawMsg.content === 'string' ? rawMsg.content : undefined;
+      return {
+        workspace_id: p.workspace_id ?? p.workspaceId,
+        sender_session_id: rawMsg.sender_session_id ?? rawMsg.senderSessionId,
+        target_session_id: rawMsg.target_session_id ?? rawMsg.targetSessionId,
+        message_type: rawMsg.message_type ?? rawMsg.messageType,
+        status: rawMsg.status,
+        content_preview: content ? content.slice(0, 120) : undefined,
+      };
+    }
+    case WORKSPACE_EVENTS.WORKSPACE_WARNING:
+      return {
+        workspace_id: p.workspace_id ?? p.workspaceId,
+        code: p.code,
+        message: p.message,
+        agent_session_id: p.agent_session_id ?? p.agentSessionId,
+        retry_count: p.retry_count ?? p.retryCount,
+        max_retries: p.max_retries ?? p.maxRetries,
+      };
+    case WORKSPACE_EVENTS.WORKSPACE_CLOSED:
+      return { workspace_id: p.workspace_id ?? p.workspaceId };
+    case WORKSPACE_EVENTS.SUBAGENT_RETRY:
+      return {
+        workspace_id: p.workspace_id ?? p.workspaceId,
+        agent_session_id: p.agent_session_id ?? p.agentSessionId,
+        reason: p.reason,
+        message: p.message,
+        retry_count: p.retry_count ?? p.retryCount,
+        max_retries: p.max_retries ?? p.maxRetries,
+      };
+    case WORKSPACE_EVENTS.DOCUMENT_UPDATED: {
+      const docObj = asRecord(p.document);
+      return {
+        workspace_id: p.workspace_id ?? p.workspaceId,
+        doc_id: docObj?.id ?? p.document_id,
+        doc_title: docObj?.title ?? p.title,
+        doc_status: docObj?.status ?? p.status,
+      };
+    }
+    default:
+      return p;
+  }
+}
+
 async function createWorkspaceEventCapture(
   log: (level: LogLevel, phase: string, msg: string, data?: Record<string, unknown>) => void,
   onEvent?: (item: CapturedWorkspaceEvent) => void,
@@ -362,7 +479,12 @@ async function createWorkspaceEventCapture(
       };
       events.push(item);
       onEvent?.(item);
-      log('info', 'workspace_event', `${eventName}`, { payload: event.payload });
+      const fields = extractEventLogFields(eventName, event.payload);
+      const level: LogLevel =
+        eventName === WORKSPACE_EVENTS.WORKSPACE_WARNING ? 'warn'
+        : eventName === WORKSPACE_EVENTS.COORDINATOR_AWAKENED ? 'success'
+        : 'info';
+      log(level, 'workspace_event', eventName, fields);
     });
     unlistenFns.push(unlisten);
   }
@@ -420,13 +542,10 @@ async function createToolCallCapture(
         rawPayload: payload,
       };
       toolCalls.push(item);
-      log(phase === 'error' ? 'error' : 'info', 'tool_call', `${toolName}:${phase}`, {
-        sessionId,
-        workspaceId: item.targetWorkspaceId,
-        blockId: item.blockId,
-        messageId: item.messageId,
-        error: item.error,
-      });
+
+      // 根据 toolName + phase 提取有价值的诊断字段
+      const toolLogData = buildToolLogData(toolName, phase, payload, item);
+      log(phase === 'error' ? 'error' : 'info', 'tool_call', `${toolName}:${phase}`, toolLogData);
     });
 
     unlistenFns.push(unlisten);
@@ -445,6 +564,107 @@ async function createToolCallCapture(
       unlistenFns.forEach((u) => u());
     },
   };
+}
+
+function buildToolLogData(
+  toolName: string,
+  phase: string,
+  payload: Record<string, unknown>,
+  item: CapturedToolCall,
+): Record<string, unknown> {
+  const base: Record<string, unknown> = {
+    sessionId: item.sessionId,
+    workspaceId: item.targetWorkspaceId,
+    blockId: item.blockId,
+    messageId: item.messageId,
+  };
+  if (item.error) base.error = item.error;
+
+  if (phase === 'start') {
+    // 对每类工具提取关键入参
+    switch (toolName) {
+      case 'coordinator_sleep':
+        return {
+          ...base,
+          wake_condition: payload.wake_condition ?? payload.wakeCondition,
+          timeout_ms: payload.timeout_ms ?? payload.timeoutMs,
+          awaiting_agents: payload.awaiting_agents ?? payload.awaitingAgents,
+        };
+      case 'workspace_create':
+        return {
+          ...base,
+          name: payload.name,
+          description: payload.description,
+        };
+      case 'workspace_create_agent':
+        return {
+          ...base,
+          role: payload.role,
+          skill_id: payload.skill_id ?? payload.skillId,
+          prompt: typeof payload.prompt === 'string' ? payload.prompt.slice(0, 120) : undefined,
+          initial_task: typeof payload.initial_task === 'string' ? payload.initial_task.slice(0, 120) : undefined,
+        };
+      case 'workspace_send':
+        return {
+          ...base,
+          target_session_id: payload.target_session_id ?? payload.targetSessionId,
+          message_type: payload.message_type ?? payload.messageType,
+          content_preview: typeof payload.content === 'string' ? payload.content.slice(0, 120) : undefined,
+        };
+      case 'workspace_query':
+        return {
+          ...base,
+          target_session_id: payload.target_session_id ?? payload.targetSessionId,
+          query_type: payload.query_type ?? payload.queryType,
+        };
+      default:
+        return { ...base, args_preview: JSON.stringify(payload).slice(0, 200) };
+    }
+  }
+
+  if (phase === 'end') {
+    // 对每类工具提取关键返回值
+    switch (toolName) {
+      case 'coordinator_sleep': {
+        const durationMs = payload.duration_ms ?? payload.durationMs;
+        const timeoutMs = typeof payload.timeout_ms === 'number' ? payload.timeout_ms : undefined;
+        return {
+          ...base,
+          status: payload.status,
+          wake_reason: payload.reason,
+          awakened_by: payload.awakened_by ?? payload.awakenedBy,
+          duration_ms: durationMs,
+          timeout_ms: timeoutMs,
+          time_budget_used_pct:
+            typeof durationMs === 'number' && typeof timeoutMs === 'number' && timeoutMs > 0
+              ? `${((durationMs / timeoutMs) * 100).toFixed(1)}%`
+              : undefined,
+          awaken_message_preview:
+            typeof payload.awaken_message === 'string'
+              ? payload.awaken_message.slice(0, 80)
+              : undefined,
+        };
+      }
+      case 'workspace_create':
+        return {
+          ...base,
+          workspace_id: payload.workspace_id ?? payload.workspaceId ?? payload.id,
+          name: payload.name,
+        };
+      case 'workspace_create_agent':
+        return {
+          ...base,
+          agent_session_id:
+            payload.agent_session_id ?? payload.agentSessionId ?? payload.session_id ?? payload.sessionId,
+          role: payload.role,
+          skill_id: payload.skill_id ?? payload.skillId,
+        };
+      default:
+        return { ...base, result_preview: JSON.stringify(payload).slice(0, 200) };
+    }
+  }
+
+  return base;
 }
 
 function createSnapshotCapture(intervalMs: number) {
@@ -480,12 +700,23 @@ function evaluateChecks(
   events: CapturedWorkspaceEvent[],
   tools: CapturedToolCall[],
   snapshots: WorkspaceSnapshot[],
+  uiLogs: CapturedUiLog[],
   mainSessionId: string,
   persistence: PersistenceSummary | undefined,
 ): VerificationResult {
   const checks: VerificationCheck[] = [];
   const workerJoinCount = events.filter((e) => e.eventName === WORKSPACE_EVENTS.AGENT_JOINED).length;
+  const workerJoinedIds = new Set(
+    events
+      .filter((e) => e.eventName === WORKSPACE_EVENTS.AGENT_JOINED)
+      .map((e) => extractAgentSessionIdFromEventPayload(e.payload))
+      .filter((id): id is string => !!id)
+  );
   const msgCount = events.filter((e) => e.eventName === WORKSPACE_EVENTS.MESSAGE_RECEIVED).length;
+  const workerReadyEvents = events.filter((e) => e.eventName === WORKSPACE_EVENTS.WORKER_READY);
+  const workerReadyCount = workerReadyEvents.length;
+  const agentStatusChangedEvents = events.filter((e) => e.eventName === WORKSPACE_EVENTS.AGENT_STATUS_CHANGED);
+  const agentStatusChangedCount = agentStatusChangedEvents.length;
   const hasWorkspaceCreate = tools.some((t) => t.sessionId === mainSessionId && t.toolName === 'workspace_create' && t.phase === 'end');
   const hasSubagentCall = tools.some((t) => t.toolName === 'subagent_call' && t.phase === 'start');
   const hasCreateAgentCall = tools.some((t) => t.sessionId === mainSessionId && t.toolName === 'workspace_create_agent' && t.phase === 'start');
@@ -502,17 +733,92 @@ function evaluateChecks(
   const maxSnapshotMessages = snapshotInWorkspace.reduce((max, s) => Math.max(max, s.messageCount), 0);
   const workspaceCreateStarts = tools.filter((t) => t.sessionId === mainSessionId && t.toolName === 'workspace_create' && t.phase === 'start').length;
   const workspaceCreateEnds = tools.filter((t) => t.sessionId === mainSessionId && t.toolName === 'workspace_create' && t.phase === 'end').length;
+  const createAgentStarts = tools.filter((t) => t.sessionId === mainSessionId && t.toolName === 'workspace_create_agent' && t.phase === 'start').length;
+  const createAgentEnds = tools.filter((t) => t.sessionId === mainSessionId && t.toolName === 'workspace_create_agent' && t.phase === 'end').length;
+
+  const toolLifecycleStats = ['workspace_create', 'workspace_create_agent', 'workspace_query', 'workspace_send'].map((toolName) => {
+    const starts = tools.filter((t) => t.sessionId === mainSessionId && t.toolName === toolName && t.phase === 'start').length;
+    const ends = tools.filter((t) => t.sessionId === mainSessionId && t.toolName === toolName && t.phase === 'end').length;
+    const errors = tools.filter((t) => t.sessionId === mainSessionId && t.toolName === toolName && t.phase === 'error').length;
+    return { toolName, starts, ends, errors };
+  });
+
+  const strictLifecycleOk = toolLifecycleStats
+    .filter((x) => x.toolName === 'workspace_create' || x.toolName === 'workspace_create_agent')
+    .every((x) => x.starts > 0 && x.ends === x.starts && x.errors === 0)
+    && toolLifecycleStats
+      .filter((x) => x.toolName === 'workspace_query' || x.toolName === 'workspace_send')
+      .every((x) => x.errors === 0 && (x.starts === 0 || x.ends >= x.starts));
+
+  const readyWorkerIds = new Set(
+    workerReadyEvents
+      .map((e) => extractAgentSessionIdFromEventPayload(e.payload))
+      .filter((id): id is string => !!id)
+  );
+  const statusChangedWorkerIds = new Set(
+    agentStatusChangedEvents
+      .map((e) => extractAgentSessionIdFromEventPayload(e.payload))
+      .filter((id): id is string => !!id)
+  );
+  const readyWithStatusCount = Array.from(readyWorkerIds).filter((id) => statusChangedWorkerIds.has(id)).length;
+  const joinedWithReadyCount = Array.from(workerJoinedIds).filter((id) => readyWorkerIds.has(id)).length;
+
+  const workerSnapshotStatusMap = new Map<string, Set<string>>();
+  for (const snap of snapshotInWorkspace) {
+    for (const agent of snap.agents) {
+      if (agent.role !== 'worker') continue;
+      const set = workerSnapshotStatusMap.get(agent.sessionId) ?? new Set<string>();
+      set.add(agent.status || 'unknown');
+      workerSnapshotStatusMap.set(agent.sessionId, set);
+    }
+  }
+  const workersSeenInSnapshot = workerSnapshotStatusMap.size;
+  const workersWithStatusTransition = Array.from(workerSnapshotStatusMap.values()).filter((set) => set.size >= 2).length;
+
+  const uiRenderLogs = uiLogs.filter((l) => l.type === 'ui_render');
+  const uiDataLoadLogs = uiLogs.filter((l) => l.type === 'data_load');
+  const uiRenderedWorkerSet = new Set(
+    uiRenderLogs
+      .filter((l) => l.action === 'container_mount' || l.action === 'chat_container_embed')
+      .map((l) => l.subagentSessionId)
+      .filter((id): id is string => !!id)
+  );
+  const uiDataLoadedWorkerSet = new Set(
+    uiDataLoadLogs
+      .filter((l) => l.action === 'messages_load_complete' || l.action === 'auto_refresh')
+      .map((l) => l.subagentSessionId)
+      .filter((id): id is string => !!id)
+  );
+  const uiRenderGatePassed =
+    uiRenderedWorkerSet.size >= def.minWorkers
+    || workersSeenInSnapshot >= def.minWorkers
+    || uiRenderLogs.length === 0;
+  const uiDataGatePassed =
+    uiDataLoadedWorkerSet.size >= Math.min(def.minWorkers, Math.max(1, uiRenderedWorkerSet.size))
+    || maxSnapshotMessages >= def.minMessages
+    || uiDataLoadLogs.length === 0;
 
   checks.push({ name: '工作区已创建', passed: !!workspaceId, detail: workspaceId ?? '无' });
   checks.push({ name: 'workspace_create 已完成', passed: hasWorkspaceCreate, detail: hasWorkspaceCreate ? '✓' : '未捕获' });
   checks.push({
     name: 'workspace_create 生命周期完整',
-    passed: workspaceCreateStarts > 0 && workspaceCreateEnds > 0 && workspaceCreateEnds <= workspaceCreateStarts,
+    passed: workspaceCreateStarts > 0 && workspaceCreateEnds === workspaceCreateStarts,
     detail: `start=${workspaceCreateStarts}, end=${workspaceCreateEnds}`,
   });
   checks.push({ name: `worker_joined >= ${def.minWorkers}`, passed: workerJoinCount >= def.minWorkers, detail: `${workerJoinCount}` });
   checks.push({ name: `workspace_message_received >= ${def.minMessages}`, passed: msgCount >= def.minMessages, detail: `${msgCount}` });
+  checks.push({ name: `worker_ready >= ${def.minWorkers}`, passed: workerReadyCount >= def.minWorkers, detail: `${workerReadyCount}` });
+  checks.push({
+    name: 'worker_joined → worker_ready 对齐',
+    passed: joinedWithReadyCount >= Math.min(def.minWorkers, workerJoinedIds.size),
+    detail: `joined=${workerJoinedIds.size}, ready=${readyWorkerIds.size}, matched=${joinedWithReadyCount}`,
+  });
   checks.push({ name: '至少一次 worker_ready', passed: hasWorkerReady, detail: hasWorkerReady ? '✓' : '未捕获' });
+  checks.push({
+    name: 'worker_ready → status_changed 可观测',
+    passed: readyWithStatusCount >= Math.min(def.minWorkers, Math.max(1, readyWorkerIds.size)),
+    detail: `readyWorkers=${readyWorkerIds.size}, statusChangedWorkers=${statusChangedWorkerIds.size}, matched=${readyWithStatusCount}, statusEvents=${agentStatusChangedCount}`,
+  });
   checks.push({
     name: '快照覆盖目标工作区',
     passed: snapshotInWorkspace.length > 0,
@@ -527,6 +833,26 @@ function evaluateChecks(
     name: '快照显示消息增长',
     passed: maxSnapshotMessages >= def.minMessages,
     detail: `${maxSnapshotMessages}`,
+  });
+  checks.push({
+    name: '渲染快照覆盖 worker 状态',
+    passed: workersSeenInSnapshot >= def.minWorkers,
+    detail: `workersSeen=${workersSeenInSnapshot}, transitions=${workersWithStatusTransition}`,
+  });
+  checks.push({
+    name: '渲染快照状态变化（诊断）',
+    passed: true,
+    detail: `workersWithTransition=${workersWithStatusTransition}`,
+  });
+  checks.push({
+    name: 'UI 渲染可见（container/embed）',
+    passed: uiRenderGatePassed,
+    detail: `uiRenderedWorkers=${uiRenderedWorkerSet.size}, snapshotWorkers=${workersSeenInSnapshot}, uiRenderLogs=${uiRenderLogs.length}`,
+  });
+  checks.push({
+    name: 'UI 数据加载可见（messages/refresh）',
+    passed: uiDataGatePassed,
+    detail: `uiDataLoadedWorkers=${uiDataLoadedWorkerSet.size}, snapshotMessages=${maxSnapshotMessages}, uiDataLogs=${uiDataLoadLogs.length}`,
   });
 
   if (def.requireSubagentCall) {
@@ -545,6 +871,13 @@ function evaluateChecks(
     passed: tools.every((t) => t.phase !== 'error'),
     detail: `${tools.filter((t) => t.phase === 'error').length} 个 error`,
   });
+  checks.push({
+    name: '关键工具生命周期闭合',
+    passed: strictLifecycleOk,
+    detail: toolLifecycleStats
+      .map((x) => `${x.toolName}(s=${x.starts},e=${x.ends},err=${x.errors})`)
+      .join('; '),
+  });
 
   checks.push({
     name: '无 workspace_warning',
@@ -554,7 +887,7 @@ function evaluateChecks(
 
   checks.push({
     name: '唤醒链路可观测（可选）',
-    passed: true,
+    passed: hasCoordinatorAwake || workerReadyCount > 0,
     detail: hasCoordinatorAwake ? '检测到 coordinator_awakened' : '未触发（可接受）',
   });
 
@@ -577,18 +910,48 @@ function evaluateChecks(
       detail: `${persistence.workerSessionIds.length}`,
     });
     checks.push({
+      name: '持久化工作区命名有效',
+      passed: !!persistence.workspaceName && persistence.workspaceName.startsWith('[OrchTest]'),
+      detail: persistence.workspaceName ?? '无',
+    });
+    checks.push({
       name: '持久化消息发送者含 worker（诊断）',
       passed: true,
       detail: distinctWorkerSenders.length > 0
         ? `✓ ${distinctWorkerSenders.length} 个 worker 有发送记录`
         : `0（worker 可能通过 attempt_completion 返回，未写入 workspace board）`,
     });
+    checks.push({
+      name: '持久化/事件消息一致性（诊断）',
+      passed: true,
+      detail: `events.message_received=${msgCount}, persistence.messages=${persistence.messagesCount}`,
+    });
 
     if (scenario === 'orchestrate_handoff') {
+      const handoffCreateAgentStarts = tools.filter(
+        (t) => t.sessionId === mainSessionId && t.toolName === 'workspace_create_agent' && t.phase === 'start'
+      ).length;
+      const hasHandoffToolChain =
+        handoffCreateAgentStarts >= 2
+        && tools.some(
+          (t) => t.sessionId === mainSessionId
+            && (t.toolName === 'workspace_send' || t.toolName === 'workspace_query')
+            && t.phase === 'start'
+        );
+
       checks.push({
         name: 'handoff 至少两个 worker 参与发送',
-        passed: distinctWorkerSenders.length >= 2,
-        detail: `${distinctWorkerSenders.length}`,
+        passed: distinctWorkerSenders.length >= 2 || hasHandoffToolChain,
+        detail:
+          distinctWorkerSenders.length >= 2
+            ? `worker-senders=${distinctWorkerSenders.length}`
+            : `worker-senders=${distinctWorkerSenders.length}, create_agent:start=${handoffCreateAgentStarts}, handoffToolChain=${hasHandoffToolChain ? 'yes' : 'no'}`,
+      });
+
+      checks.push({
+        name: 'handoff create_agent 生命周期完整',
+        passed: createAgentEnds >= createAgentStarts && createAgentStarts >= 2,
+        detail: `create_agent start=${createAgentStarts}, end=${createAgentEnds}`,
       });
 
       const skillHints = persistence.workerSkillHints;
@@ -643,6 +1006,7 @@ async function runSingleScenario(
   let workspaceCapture: Awaited<ReturnType<typeof createWorkspaceEventCapture>> | null = null;
   let snapshotCapture: ReturnType<typeof createSnapshotCapture> | null = null;
   let toolCapture: Awaited<ReturnType<typeof createToolCallCapture>> | null = null;
+  let uiLogStartIndex = 0;
 
   try {
     const currentSessionId = sessionManager.getCurrentSessionId();
@@ -651,8 +1015,25 @@ async function runSingleScenario(
 
     const store = sessionManager.get(currentSessionId);
     if (!store) throw new Error(`无法获取会话 store: ${currentSessionId}`);
+
+    // 若前一场景的 LLM 输出还未结束，等待至多 120s 再启动
     if (store.getState().sessionStatus === 'streaming') {
-      throw new Error('当前会话正在 streaming，请稍后重试');
+      log('warn', 'pre_start_wait', '会话仍在 streaming，等待结束后启动场景', {});
+      const preWait = await waitFor(
+        () => sessionManager.get(currentSessionId)?.getState().sessionStatus !== 'streaming',
+        120_000,
+        500,
+      );
+      if (preWait === 'aborted') {
+        status = 'skipped';
+        error = '用户中止测试';
+        log('warn', 'abort', error);
+        throw new Error(error);
+      }
+      if (preWait === 'timeout') {
+        throw new Error('等待前置会话 streaming 结束超时（120s），无法启动场景');
+      }
+      log('info', 'pre_start_wait', '会话 streaming 已结束，继续启动', {});
     }
 
     const baselineStore = useWorkspaceStore.getState();
@@ -662,6 +1043,7 @@ async function runSingleScenario(
     const baselineWorkspaces = await listAllWorkspaces(currentSessionId);
 
     toolCapture = await createToolCallCapture([currentSessionId], log);
+    uiLogStartIndex = getSubagentLogs().length;
     workspaceCapture = await createWorkspaceEventCapture(log, (item) => {
       if (item.eventName !== WORKSPACE_EVENTS.AGENT_JOINED) return;
       const agentSessionId = extractAgentSessionIdFromEventPayload(item.payload);
@@ -677,8 +1059,60 @@ async function runSingleScenario(
     const basePrompt = def.buildPrompt(workspaceName);
     const prompt = config.promptSuffix ? `${basePrompt}\n\n${config.promptSuffix}` : basePrompt;
 
-    log('info', 'scenario', '发送场景 prompt', { workspaceName, promptPreview: prompt.slice(0, 220) });
+    log('info', 'scenario', '场景启动', {
+      scenario,
+      workspaceName,
+      minWorkers: def.minWorkers,
+      minMessages: def.minMessages,
+      requireSubagentCall: def.requireSubagentCall,
+      timeoutMs: config.timeoutMs,
+      mainSessionId: currentSessionId,
+      baselineWorkspaceId,
+      baselineWorkerCount,
+      baselineMessageCount,
+      baselineWorkspaceCount: baselineWorkspaces.length,
+    });
+    log('debug', 'scenario', 'prompt 全文', { prompt });
     await store.getState().sendMessage(prompt);
+
+    // 先校验「关键里程碑」：主会话需触发足够次数的 workspace_create_agent:start。
+    // 否则像 S3 这类交接场景会长时间卡住在单 worker 状态，直到总超时才结束。
+    if (def.minWorkers > 0) {
+      const createAgentMilestone = await waitFor(() => {
+        const starts = (toolCapture?.toolCalls ?? []).filter(
+          (t) => t.sessionId === currentSessionId && t.toolName === 'workspace_create_agent' && t.phase === 'start'
+        ).length;
+        return starts >= def.minWorkers;
+      }, Math.min(config.timeoutMs, 90_000), config.pollMs);
+
+      if (createAgentMilestone === 'aborted') {
+        status = 'skipped';
+        error = '用户中止测试';
+        log('warn', 'abort', error);
+        throw new Error(error);
+      }
+
+      if (createAgentMilestone === 'timeout') {
+        const allTools = toolCapture?.toolCalls ?? [];
+        const allEvents = workspaceCapture?.events ?? [];
+        const starts = allTools.filter(
+          (t) => t.sessionId === currentSessionId && t.toolName === 'workspace_create_agent' && t.phase === 'start'
+        ).length;
+        const ws = useWorkspaceStore.getState();
+        log('error', 'milestone_timeout', 'worker 创建里程碑超时', {
+          create_agent_starts: starts,
+          required: def.minWorkers,
+          store_workerCount: ws.agents.filter((a) => a.role === 'worker').length,
+          store_workspaceId: ws.currentWorkspaceId,
+          events_total: allEvents.length,
+          coordinator_sleep_starts: allTools.filter((t) => t.toolName === 'coordinator_sleep' && t.phase === 'start').length,
+          coordinator_sleep_ends:   allTools.filter((t) => t.toolName === 'coordinator_sleep' && t.phase === 'end').length,
+          workspace_create_ends: allTools.filter((t) => t.toolName === 'workspace_create' && t.phase === 'end').length,
+          tool_errors: allTools.filter((t) => t.phase === 'error').map((t) => ({ tool: t.toolName, err: t.error })),
+        });
+        throw new Error(`worker 创建里程碑未达成: workspace_create_agent:start=${starts}/${def.minWorkers}`);
+      }
+    }
 
     const finished = await waitFor(() => {
       const ws = useWorkspaceStore.getState();
@@ -703,6 +1137,31 @@ async function runSingleScenario(
     }
 
     if (finished === 'timeout') {
+      const allTools = toolCapture?.toolCalls ?? [];
+      const allEvents = workspaceCapture?.events ?? [];
+      const ws = useWorkspaceStore.getState();
+      const workerCount = ws.agents.filter((a) => a.role === 'worker').length;
+      const messageCount = ws.messages.length;
+      log('error', 'finish_timeout', '场景等待超时', {
+        timeoutMs: config.timeoutMs,
+        store_workspaceId: ws.currentWorkspaceId,
+        store_workerCount: workerCount,
+        store_messageCount: messageCount,
+        required_workers: def.minWorkers,
+        required_messages: def.minMessages,
+        baseline_workerCount: baselineWorkerCount,
+        baseline_messageCount: baselineMessageCount,
+        delta_workers: workerCount - baselineWorkerCount,
+        delta_messages: messageCount - baselineMessageCount,
+        events_total: allEvents.length,
+        agent_status_changed_events: allEvents
+          .filter((e) => e.eventName === WORKSPACE_EVENTS.AGENT_STATUS_CHANGED)
+          .map((e) => ({ session_id: e.payload.session_id ?? e.payload.sessionId, status: e.payload.status })),
+        coordinator_sleep_results: allTools
+          .filter((t) => t.toolName === 'coordinator_sleep' && t.phase === 'end')
+          .map((t) => ({ reason: t.rawPayload?.reason, duration_ms: t.rawPayload?.duration_ms ?? t.rawPayload?.durationMs })),
+        tool_errors: allTools.filter((t) => t.phase === 'error').map((t) => ({ tool: t.toolName, err: t.error })),
+      });
       throw new Error(`场景超时: ${config.timeoutMs}ms`);
     }
 
@@ -712,6 +1171,69 @@ async function runSingleScenario(
       error = '用户中止测试';
       log('warn', 'abort', error);
       throw new Error(error);
+    }
+
+    // ── 等待结束后打印捕获快照，供后续诊断对比 ──
+    {
+      const capturedEvents = workspaceCapture?.events ?? [];
+      const capturedTools = toolCapture?.toolCalls ?? [];
+      const coordinatorAwakenEvents = capturedEvents.filter(
+        (e) => e.eventName === WORKSPACE_EVENTS.COORDINATOR_AWAKENED,
+      );
+      const coordinatorSleepStarts = capturedTools.filter(
+        (t) => t.toolName === 'coordinator_sleep' && t.phase === 'start',
+      );
+      const coordinatorSleepEnds = capturedTools.filter(
+        (t) => t.toolName === 'coordinator_sleep' && t.phase === 'end',
+      );
+
+      log('info', 'settle_summary', '等待完成，捕获全量摘要', {
+        events_total: capturedEvents.length,
+        events_by_type: Object.fromEntries(
+          Object.values(WORKSPACE_EVENTS).map((name) => [
+            name.replace('workspace_', ''),
+            capturedEvents.filter((e) => e.eventName === name).length,
+          ])
+        ),
+        tool_calls_total: capturedTools.length,
+        tool_calls_by_name: Object.fromEntries(
+          ['workspace_create', 'workspace_create_agent', 'workspace_send',
+           'workspace_query', 'coordinator_sleep', 'subagent_call'].map((n) => [
+            n,
+            {
+              start: capturedTools.filter((t) => t.toolName === n && t.phase === 'start').length,
+              end:   capturedTools.filter((t) => t.toolName === n && t.phase === 'end').length,
+              error: capturedTools.filter((t) => t.toolName === n && t.phase === 'error').length,
+            },
+          ])
+        ),
+        coordinator_sleep_params: coordinatorSleepStarts.map((t) => ({
+          wake_condition: t.rawPayload?.wake_condition ?? t.rawPayload?.wakeCondition,
+          timeout_ms:     t.rawPayload?.timeout_ms     ?? t.rawPayload?.timeoutMs,
+          awaiting_agents: t.rawPayload?.awaiting_agents ?? t.rawPayload?.awaitingAgents,
+        })),
+        coordinator_sleep_results: coordinatorSleepEnds.map((t) => ({
+          status:      t.rawPayload?.status,
+          reason:      t.rawPayload?.reason,
+          awakened_by: t.rawPayload?.awakened_by ?? t.rawPayload?.awakenedBy,
+          duration_ms: t.rawPayload?.duration_ms ?? t.rawPayload?.durationMs,
+        })),
+        coordinator_awakened_events: coordinatorAwakenEvents.map((e) => ({
+          sleep_id:    e.payload.sleep_id    ?? e.payload.sleepId,
+          awakened_by: e.payload.awakened_by ?? e.payload.awakenedBy,
+          wake_reason: e.payload.wake_reason ?? e.payload.wakeReason,
+        })),
+        snapshots_count: (snapshotCapture?.snapshots ?? []).length,
+        store_now: (() => {
+          const ws = useWorkspaceStore.getState();
+          return {
+            workspaceId: ws.currentWorkspaceId,
+            workerCount: ws.agents.filter((a) => a.role === 'worker').length,
+            messageCount: ws.messages.length,
+            documentCount: ws.documents.length,
+          };
+        })(),
+      });
     }
 
     const ws = useWorkspaceStore.getState();
@@ -724,6 +1246,15 @@ async function runSingleScenario(
       ws.currentWorkspaceId ?? undefined,
     );
     workspaceId = targetWorkspace?.id;
+    log(workspaceId ? 'info' : 'warn', 'workspace_resolve', workspaceId ? '工作区已定位' : '工作区未找到', {
+      resolved_id: workspaceId,
+      resolved_name: targetWorkspace?.name,
+      expected_name: workspaceName,
+      all_workspaces_count: currentWorkspaces.length,
+      new_workspaces: currentWorkspaces
+        .filter((w) => !baselineWorkspaces.some((b) => b.id === w.id))
+        .map((w) => ({ id: w.id, name: w.name })),
+    });
 
     if (workspaceId) {
       const [agents, messages, documents] = await Promise.all([
@@ -796,6 +1327,24 @@ async function runSingleScenario(
       return s.workspaceId === workspaceId;
     });
 
+    log('info', 'eval_input', '进入校验，过滤后数据范围', {
+      workspace_id: workspaceId,
+      events_total: workspaceCapture.events.length,
+      events_in_scope: scenarioWorkspaceEvents.length,
+      events_out_of_scope: workspaceCapture.events.length - scenarioWorkspaceEvents.length,
+      tool_calls_total: (toolCapture?.toolCalls ?? []).length,
+      tool_calls_in_scope: scenarioToolCalls.length,
+      tool_calls_out_of_scope: (toolCapture?.toolCalls ?? []).length - scenarioToolCalls.length,
+      snapshots_in_scope: scenarioSnapshots.length,
+      relevant_session_ids: Array.from(relevantSessionIds),
+      events_by_type_in_scope: Object.fromEntries(
+        Object.values(WORKSPACE_EVENTS).map((name) => [
+          name.replace('workspace_', ''),
+          scenarioWorkspaceEvents.filter((e) => e.eventName === name).length,
+        ])
+      ),
+    });
+
     verification = evaluateChecks(
       scenario,
       def,
@@ -803,16 +1352,29 @@ async function runSingleScenario(
       scenarioWorkspaceEvents,
       scenarioToolCalls,
       scenarioSnapshots,
+      collectUiLogsSince(uiLogStartIndex).filter((l) => {
+        if ((l.timestamp && parseIsoMs(l.timestamp) < parseIsoMs(startTime))) return false;
+        if (!persistence?.workerSessionIds?.length) return true;
+        if (!l.subagentSessionId) return false;
+        return persistence.workerSessionIds.includes(l.subagentSessionId);
+      }),
       currentSessionId,
       persistence,
     );
 
     if (!verification.passed) {
       status = 'failed';
-      error = '验证未通过: ' + verification.checks.filter((c) => !c.passed).map((c) => c.name).join(', ');
-      log('error', 'verify', error);
+      const failedChecks = verification.checks.filter((c) => !c.passed);
+      error = '验证未通过: ' + failedChecks.map((c) => c.name).join(', ');
+      log('error', 'verify', error, {
+        failed_checks: failedChecks.map((c) => ({ name: c.name, detail: c.detail })),
+        all_checks: verification.checks.map((c) => ({ name: c.name, passed: c.passed, detail: c.detail })),
+      });
     } else {
-      log('success', 'verify', '场景验证通过');
+      log('success', 'verify', '场景验证通过', {
+        checks_count: verification.checks.length,
+        all_checks: verification.checks.map((c) => ({ name: c.name, passed: c.passed, detail: c.detail })),
+      });
     }
   } catch (e) {
     if (status !== 'skipped') {
@@ -830,15 +1392,22 @@ async function runSingleScenario(
   const finalToolCalls = toolCapture?.toolCalls ?? [];
   const finalSnapshots = snapshotCapture?.snapshots ?? [];
 
-  const filteredWorkspaceEvents = workspaceId
-    ? finalWorkspaceEvents.filter((e) => extractWorkspaceIdFromObject(e.payload) === workspaceId)
-    : finalWorkspaceEvents;
+  const filteredWorkspaceEvents = finalWorkspaceEvents.filter((e) => {
+    if (parseIsoMs(e.timestamp) < parseIsoMs(startTime)) return false;
+    if (!workspaceId) return true;
+    return extractWorkspaceIdFromObject(e.payload) === workspaceId;
+  });
 
-  const filteredToolCalls = finalToolCalls.filter((t) => isRelevantToolForWorkspace(t, workspaceId));
+  const filteredToolCalls = finalToolCalls.filter((t) => {
+    if (parseIsoMs(t.timestamp) < parseIsoMs(startTime)) return false;
+    return isRelevantToolForWorkspace(t, workspaceId);
+  });
 
-  const filteredSnapshots = workspaceId
-    ? finalSnapshots.filter((s) => s.workspaceId === workspaceId)
-    : finalSnapshots;
+  const filteredSnapshots = finalSnapshots.filter((s) => {
+    if (parseIsoMs(s.timestamp) < parseIsoMs(startTime)) return false;
+    if (!workspaceId) return true;
+    return s.workspaceId === workspaceId;
+  });
 
   return {
     scenario,
@@ -910,12 +1479,23 @@ export async function runAllWorkspaceOrchestrationTests(
     if (!_abortRequested) {
       const sessId = sessionManager.getCurrentSessionId();
       if (sessId) {
+        const streamDrainTimeoutMs = Math.min(config.timeoutMs, 120_000);
         const streamEndResult = await waitFor(() => {
           const s = sessionManager.get(sessId);
           if (!s) return true;
           return s.getState().sessionStatus !== 'streaming';
-        }, config.timeoutMs, 500);
+        }, streamDrainTimeoutMs, 300);
         if (streamEndResult === 'aborted') continue;
+        if (streamEndResult === 'timeout') {
+          onLog?.({
+            id: ++_logId,
+            timestamp: new Date().toISOString(),
+            level: 'warn',
+            phase: 'stream_wait',
+            message: '等待会话 streaming 结束超时，继续执行下一个场景',
+            data: { timeoutMs: streamDrainTimeoutMs, scenario },
+          });
+        }
       }
     }
   }

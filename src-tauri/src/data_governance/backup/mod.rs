@@ -831,6 +831,19 @@ impl BackupManager {
             manifest.set_schema_version(db_id.as_str(), version);
         }
 
+        // 3.5 备份加密密钥（跨设备恢复支持）
+        match self.backup_crypto_keys(&backup_subdir) {
+            Ok(count) => {
+                if count > 0 {
+                    info!("加密密钥备份完成: {} 个文件", count);
+                }
+            }
+            Err(e) => {
+                // 加密密钥备份失败不阻塞整体备份，记录警告
+                warn!("加密密钥备份失败（API 密钥可能无法跨设备恢复）: {}", e);
+            }
+        }
+
         // 4. 保存清单
         let manifest_path = backup_subdir.join(MANIFEST_FILENAME);
         manifest.save_to_file(&manifest_path)?;
@@ -899,6 +912,18 @@ impl BackupManager {
             manifest.set_schema_version(db_id.as_str(), version);
         }
 
+        // 3.5 备份加密密钥（跨设备恢复支持）
+        match self.backup_crypto_keys(&backup_subdir) {
+            Ok(count) => {
+                if count > 0 {
+                    info!("加密密钥备份完成: {} 个文件", count);
+                }
+            }
+            Err(e) => {
+                warn!("加密密钥备份失败（API 密钥可能无法跨设备恢复）: {}", e);
+            }
+        }
+
         // 4. 备份资产文件
         let config = asset_config.unwrap_or_default();
         if !config.asset_types.is_empty() {
@@ -938,6 +963,119 @@ impl BackupManager {
         );
 
         Ok(manifest)
+    }
+
+    /// 备份加密密钥文件到备份目录
+    ///
+    /// 包含 `.master_key`（CryptoService 主密钥）和 `.secure/` 目录（SecureStore 密钥种子 + 加密凭据）。
+    /// 这些文件在跨设备恢复时必须一并还原，否则 API 密钥将无法解密。
+    pub fn backup_crypto_keys(&self, backup_subdir: &Path) -> Result<usize, BackupError> {
+        let master_key_path = self.app_data_dir.join(".master_key");
+        let secure_dir = self.app_data_dir.join(".secure");
+
+        // 无加密文件时跳过，避免创建空目录
+        if !master_key_path.exists() && !(secure_dir.exists() && secure_dir.is_dir()) {
+            return Ok(0);
+        }
+
+        let crypto_dest = backup_subdir.join("crypto");
+        fs::create_dir_all(&crypto_dest)?;
+
+        let mut count = 0;
+
+        // 1. 备份 .master_key
+        if master_key_path.exists() {
+            let dest = crypto_dest.join(".master_key");
+            fs::copy(&master_key_path, &dest).map_err(|e| {
+                BackupError::RestoreFailed(format!("备份 .master_key 失败: {}", e))
+            })?;
+            count += 1;
+            info!("[Backup] 已备份 .master_key");
+        }
+
+        // 2. 备份 .secure/ 目录（.key_seed + *.enc）
+        if secure_dir.exists() && secure_dir.is_dir() {
+            let secure_dest = crypto_dest.join(".secure");
+            fs::create_dir_all(&secure_dest)?;
+
+            let mut secure_count = 0usize;
+            for entry in fs::read_dir(&secure_dir)? {
+                let entry = entry?;
+                let path = entry.path();
+                if path.is_file() {
+                    if let Some(file_name) = path.file_name() {
+                        let dest = secure_dest.join(file_name);
+                        fs::copy(&path, &dest).map_err(|e| {
+                            BackupError::RestoreFailed(format!(
+                                "备份 .secure/{} 失败: {}",
+                                file_name.to_string_lossy(),
+                                e
+                            ))
+                        })?;
+                        secure_count += 1;
+                    }
+                }
+            }
+            count += secure_count;
+            info!("[Backup] 已备份 .secure/ 目录: {} 个文件", secure_count);
+        }
+
+        Ok(count)
+    }
+
+    /// 从备份目录恢复加密密钥文件到应用数据目录
+    ///
+    /// 恢复 `.master_key` 和 `.secure/` 目录，使跨设备恢复后 API 密钥可正常解密。
+    /// 仅在备份中包含 crypto/ 子目录时执行。
+    pub fn restore_crypto_keys(&self, backup_subdir: &Path) -> Result<usize, BackupError> {
+        let crypto_src = backup_subdir.join("crypto");
+        if !crypto_src.exists() || !crypto_src.is_dir() {
+            info!("[Restore] 备份中无加密密钥文件（旧版备份），跳过");
+            return Ok(0);
+        }
+
+        let mut count = 0;
+
+        // 1. 恢复 .master_key
+        let master_key_src = crypto_src.join(".master_key");
+        if master_key_src.exists() {
+            let dest = self.app_data_dir.join(".master_key");
+            fs::copy(&master_key_src, &dest).map_err(|e| {
+                BackupError::RestoreFailed(format!("恢复 .master_key 失败: {}", e))
+            })?;
+            count += 1;
+            info!("[Restore] 已恢复 .master_key");
+        }
+
+        // 2. 恢复 .secure/ 目录
+        let secure_src = crypto_src.join(".secure");
+        if secure_src.exists() && secure_src.is_dir() {
+            let secure_dest = self.app_data_dir.join(".secure");
+            fs::create_dir_all(&secure_dest)?;
+
+            let mut secure_count = 0usize;
+            for entry in fs::read_dir(&secure_src)? {
+                let entry = entry?;
+                let path = entry.path();
+                if path.is_file() {
+                    if let Some(file_name) = path.file_name() {
+                        let dest = secure_dest.join(file_name);
+                        fs::copy(&path, &dest).map_err(|e| {
+                            BackupError::RestoreFailed(format!(
+                                "恢复 .secure/{} 失败: {}",
+                                file_name.to_string_lossy(),
+                                e
+                            ))
+                        })?;
+                        secure_count += 1;
+                    }
+                }
+            }
+            count += secure_count;
+            info!("[Restore] 已恢复 .secure/ 目录: {} 个文件", secure_count);
+        }
+
+        Ok(count)
     }
 
     /// 恢复包含资产的备份
@@ -1014,6 +1152,18 @@ impl BackupManager {
                     error!("恢复数据库失败: {:?}, 错误: {}", db_id, e);
                     restore_errors.push(format!("{:?}: {}", db_id, e));
                 }
+            }
+        }
+
+        // 4.5 恢复加密密钥（跨设备恢复支持）
+        match self.restore_crypto_keys(&backup_subdir) {
+            Ok(count) => {
+                if count > 0 {
+                    info!("加密密钥恢复完成: {} 个文件", count);
+                }
+            }
+            Err(e) => {
+                warn!("加密密钥恢复失败（API 密钥可能需要重新配置）: {}", e);
             }
         }
 
@@ -1708,6 +1858,18 @@ impl BackupManager {
                     error!("恢复数据库失败: {:?}, 错误: {}", db_id, e);
                     restore_errors.push(format!("{:?}: {}", db_id, e));
                 }
+            }
+        }
+
+        // 4.5 恢复加密密钥（跨设备恢复支持）
+        match self.restore_crypto_keys(&backup_subdir) {
+            Ok(count) => {
+                if count > 0 {
+                    info!("加密密钥恢复完成: {} 个文件", count);
+                }
+            }
+            Err(e) => {
+                warn!("加密密钥恢复失败（API 密钥可能需要重新配置）: {}", e);
             }
         }
 
