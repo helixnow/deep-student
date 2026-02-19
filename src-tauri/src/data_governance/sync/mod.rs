@@ -290,6 +290,40 @@ pub const SYNC_FIELDS_SQL: &str = r#"
     CREATE INDEX IF NOT EXISTS idx_{table}_deleted_at ON {table}(deleted_at);
 "#;
 
+/// 工作区数据库云同步清单（ws_*.db 文件级同步）
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct WorkspacesManifest {
+    /// ws_id → 条目
+    pub entries: HashMap<String, WorkspaceEntry>,
+    #[serde(default)]
+    pub updated_at: String,
+}
+
+/// 单个工作区数据库的同步条目
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct WorkspaceEntry {
+    pub sha256: String,
+    pub size: u64,
+    pub updated_at: String,
+}
+
+/// VFS blob 云同步清单（内容寻址）
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct BlobsManifest {
+    /// content_hash → 条目
+    pub entries: HashMap<String, BlobEntry>,
+    #[serde(default)]
+    pub updated_at: String,
+}
+
+/// 单个 blob 的同步条目
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct BlobEntry {
+    /// 相对路径（相对于 vfs_blobs/），如 "ab/abc123....pdf"
+    pub relative_path: String,
+    pub size: u64,
+}
+
 /// 同步管理器
 pub struct SyncManager {
     /// 本地设备 ID
@@ -2691,6 +2725,272 @@ impl SyncExecutionResult {
             duration_ms,
             error_message: Some(error),
         }
+    }
+}
+
+impl SyncManager {
+    // ========================================================================
+    // 文件级云同步：工作区数据库（ws_*.db）+ VFS blobs
+    // ========================================================================
+
+    const WORKSPACES_MANIFEST_KEY: &'static str = "data_governance/workspaces_manifest.json";
+    const WORKSPACES_CLOUD_PREFIX: &'static str = "data_governance/workspaces";
+    const BLOBS_MANIFEST_KEY: &'static str = "data_governance/blobs_manifest.json";
+    const BLOBS_CLOUD_PREFIX: &'static str = "data_governance/blobs";
+
+    /// 同步工作区数据库（ws_*.db）与云端
+    ///
+    /// 策略：
+    /// - 本地有，与云端 sha256 不同 → 上传（本地优先，保护运行中工作区）
+    /// - 云端有，本地没有 → 下载
+    /// - 失败不阻断主流程
+    pub async fn sync_workspace_databases(
+        &self,
+        storage: &dyn CloudStorage,
+        active_dir: &std::path::Path,
+    ) -> Result<(), SyncError> {
+        let workspaces_dir = active_dir.join("workspaces");
+
+        // 1. 下载云端清单
+        let cloud_manifest = self.download_workspaces_manifest(storage).await?;
+
+        // 2. 扫描本地 ws_*.db
+        let mut local_entries: HashMap<String, (std::path::PathBuf, String, u64)> = HashMap::new();
+        if workspaces_dir.exists() {
+            for entry in std::fs::read_dir(&workspaces_dir)
+                .map_err(|e| SyncError::Database(format!("读取工作区目录失败: {}", e)))?
+            {
+                let entry = entry
+                    .map_err(|e| SyncError::Database(format!("读取目录条目失败: {}", e)))?;
+                let path = entry.path();
+                let name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
+                if !name.starts_with("ws_") || !name.ends_with(".db") {
+                    continue;
+                }
+                let ws_id = name.trim_end_matches(".db").to_string();
+                // WAL checkpoint（不阻断，失败继续）
+                if let Ok(conn) = rusqlite::Connection::open(&path) {
+                    let _ = conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE)");
+                }
+                let sha256 = crate::backup_common::calculate_file_hash(&path).map_err(|e| {
+                    SyncError::Database(format!(
+                        "计算工作区数据库校验和失败 {:?}: {}",
+                        path, e
+                    ))
+                })?;
+                let size = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
+                local_entries.insert(ws_id, (path, sha256, size));
+            }
+        }
+
+        // 3. 上传本地新增或已修改的 ws_*.db
+        let mut new_manifest = cloud_manifest.clone();
+        for (ws_id, (path, sha256, size)) in &local_entries {
+            let should_upload = match cloud_manifest.entries.get(ws_id) {
+                None => true,
+                Some(ce) => ce.sha256 != *sha256,
+            };
+            if should_upload {
+                let key = format!("{}/{}.db", Self::WORKSPACES_CLOUD_PREFIX, ws_id);
+                match storage.put_file(&key, path, None).await {
+                    Ok(_) => {
+                        new_manifest.entries.insert(
+                            ws_id.clone(),
+                            WorkspaceEntry {
+                                sha256: sha256.clone(),
+                                size: *size,
+                                updated_at: chrono::Utc::now().to_rfc3339(),
+                            },
+                        );
+                        tracing::info!("[sync] 工作区数据库已上传: {}", ws_id);
+                    }
+                    Err(e) => {
+                        tracing::warn!("[sync] 工作区数据库上传失败（跳过）: {}: {}", ws_id, e);
+                    }
+                }
+            }
+        }
+
+        // 4. 下载云端有但本地没有的 ws_*.db
+        if !workspaces_dir.exists() {
+            let _ = std::fs::create_dir_all(&workspaces_dir);
+        }
+        for (ws_id, cloud_entry) in &cloud_manifest.entries {
+            if !local_entries.contains_key(ws_id) {
+                let dest = workspaces_dir.join(format!("{}.db", ws_id));
+                let key = format!("{}/{}.db", Self::WORKSPACES_CLOUD_PREFIX, ws_id);
+                match storage.get_file(&key, &dest, Some(&cloud_entry.sha256), None).await {
+                    Ok(_) => {
+                        tracing::info!("[sync] 工作区数据库已下载: {}", ws_id);
+                    }
+                    Err(e) => {
+                        tracing::warn!("[sync] 工作区数据库下载失败（跳过）: {}: {}", ws_id, e);
+                    }
+                }
+            }
+        }
+
+        // 5. 仅在有上传时更新云端清单
+        if new_manifest.entries != cloud_manifest.entries {
+            new_manifest.updated_at = chrono::Utc::now().to_rfc3339();
+            let json = serde_json::to_vec(&new_manifest)
+                .map_err(|e| SyncError::Database(format!("序列化工作区清单失败: {}", e)))?;
+            storage
+                .put(Self::WORKSPACES_MANIFEST_KEY, &json)
+                .await
+                .map_err(|e| SyncError::Network(format!("上传工作区清单失败: {}", e)))?;
+        }
+
+        Ok(())
+    }
+
+    async fn download_workspaces_manifest(
+        &self,
+        storage: &dyn CloudStorage,
+    ) -> Result<WorkspacesManifest, SyncError> {
+        match storage
+            .get(Self::WORKSPACES_MANIFEST_KEY)
+            .await
+            .map_err(|e| SyncError::Network(format!("获取工作区清单失败: {}", e)))?
+        {
+            Some(bytes) => serde_json::from_slice::<WorkspacesManifest>(&bytes)
+                .map_err(|e| SyncError::Database(format!("解析工作区清单失败: {}", e))),
+            None => Ok(WorkspacesManifest::default()),
+        }
+    }
+
+    /// 同步 VFS blobs（内容寻址，纯增量，无冲突）
+    ///
+    /// 策略：
+    /// - 本地有但云端没有 → 上传
+    /// - 云端有但本地没有 → 下载
+    /// - hash 即内容唯一标识，天然去重，无冲突问题
+    pub async fn sync_vfs_blobs(
+        &self,
+        storage: &dyn CloudStorage,
+        blobs_dir: &std::path::Path,
+    ) -> Result<(), SyncError> {
+        if !blobs_dir.exists() {
+            return Ok(());
+        }
+
+        // 1. 下载云端 blobs 清单
+        let cloud_manifest = self.download_blobs_manifest(storage).await?;
+
+        // 2. 扫描本地 blobs 目录
+        let mut local_blobs: HashMap<String, std::path::PathBuf> = HashMap::new();
+        Self::scan_blobs_dir(blobs_dir, &mut local_blobs)?;
+
+        // 3. 上传本地有但云端没有的 blobs
+        let mut new_manifest = cloud_manifest.clone();
+        let mut uploaded = 0usize;
+        for (hash, path) in &local_blobs {
+            if cloud_manifest.entries.contains_key(hash.as_str()) {
+                continue;
+            }
+            let relative = path
+                .strip_prefix(blobs_dir)
+                .unwrap_or(path)
+                .to_string_lossy()
+                .replace('\\', "/");
+            let key = format!("{}/{}", Self::BLOBS_CLOUD_PREFIX, relative);
+            let size = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
+            match storage.put_file(&key, path, None).await {
+                Ok(_) => {
+                    new_manifest.entries.insert(
+                        hash.clone(),
+                        BlobEntry { relative_path: relative, size },
+                    );
+                    uploaded += 1;
+                    tracing::debug!("[sync] blob 已上传: {}", hash);
+                }
+                Err(e) => {
+                    tracing::warn!("[sync] blob 上传失败（跳过）: {}: {}", hash, e);
+                }
+            }
+        }
+
+        // 4. 下载云端有但本地没有的 blobs
+        let mut downloaded_count = 0usize;
+        for (hash, cloud_entry) in &cloud_manifest.entries {
+            if local_blobs.contains_key(hash.as_str()) {
+                continue;
+            }
+            let dest = blobs_dir.join(&cloud_entry.relative_path);
+            if let Some(parent) = dest.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            let key = format!("{}/{}", Self::BLOBS_CLOUD_PREFIX, cloud_entry.relative_path);
+            match storage.get_file(&key, &dest, None, None).await {
+                Ok(_) => {
+                    downloaded_count += 1;
+                    tracing::debug!("[sync] blob 已下载: {}", hash);
+                }
+                Err(e) => {
+                    tracing::warn!("[sync] blob 下载失败（跳过）: {}: {}", hash, e);
+                }
+            }
+        }
+
+        if uploaded > 0 || downloaded_count > 0 {
+            tracing::info!(
+                "[sync] blob 同步完成: 上传 {}, 下载 {}",
+                uploaded,
+                downloaded_count
+            );
+        }
+
+        // 5. 如有新上传则更新云端清单
+        if uploaded > 0 {
+            new_manifest.updated_at = chrono::Utc::now().to_rfc3339();
+            let json = serde_json::to_vec(&new_manifest)
+                .map_err(|e| SyncError::Database(format!("序列化 blob 清单失败: {}", e)))?;
+            storage
+                .put(Self::BLOBS_MANIFEST_KEY, &json)
+                .await
+                .map_err(|e| SyncError::Network(format!("上传 blob 清单失败: {}", e)))?;
+        }
+
+        Ok(())
+    }
+
+    async fn download_blobs_manifest(
+        &self,
+        storage: &dyn CloudStorage,
+    ) -> Result<BlobsManifest, SyncError> {
+        match storage
+            .get(Self::BLOBS_MANIFEST_KEY)
+            .await
+            .map_err(|e| SyncError::Network(format!("获取 blob 清单失败: {}", e)))?
+        {
+            Some(bytes) => serde_json::from_slice::<BlobsManifest>(&bytes)
+                .map_err(|e| SyncError::Database(format!("解析 blob 清单失败: {}", e))),
+            None => Ok(BlobsManifest::default()),
+        }
+    }
+
+    fn scan_blobs_dir(
+        dir: &std::path::Path,
+        result: &mut HashMap<String, std::path::PathBuf>,
+    ) -> Result<(), SyncError> {
+        for entry in std::fs::read_dir(dir)
+            .map_err(|e| SyncError::Database(format!("读取 blobs 目录失败: {}", e)))?
+        {
+            let entry =
+                entry.map_err(|e| SyncError::Database(format!("读取目录条目失败: {}", e)))?;
+            let path = entry.path();
+            if path.is_dir() {
+                Self::scan_blobs_dir(&path, result)?;
+            } else if path.is_file() {
+                let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+                if ext != "tmp" {
+                    if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+                        result.insert(stem.to_string(), path);
+                    }
+                }
+            }
+        }
+        Ok(())
     }
 }
 

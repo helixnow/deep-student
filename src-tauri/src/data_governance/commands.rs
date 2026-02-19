@@ -7078,7 +7078,7 @@ pub async fn data_governance_run_sync(
             manager
                 .upload_enriched_changes(storage.as_ref(), &all_enriched, None)
                 .await
-                .map_err(|e| format!("上传同步失败: {}", e))?
+                .map_err(|e| format!("上传同步失败: {}", e))?;
 
             manager
                 .upload_manifest(storage.as_ref(), &local_manifest)
@@ -7800,6 +7800,7 @@ pub async fn data_governance_run_sync_with_progress(
             return Err(e);
         }
     };
+    let app_data_dir = get_app_data_dir(&app).unwrap_or_else(|_| active_dir.clone());
 
     // 创建同步管理器（复用上方已获取的 device_id）
     let manager = SyncManager::new(device_id.clone());
@@ -7824,7 +7825,7 @@ pub async fn data_governance_run_sync_with_progress(
     // 遍历所有数据库，收集待同步变更并补全完整记录数据
     let mut all_enriched: Vec<SyncChangeWithData> = Vec::new();
     let mut db_found = false;
-    let all_db_ids: Vec<_> = DatabaseId::all_ordered().collect();
+    let all_db_ids: Vec<_> = DatabaseId::all_ordered();
     let total_dbs = all_db_ids.len() as u64;
 
     for (db_index, db_id) in all_db_ids.iter().enumerate() {
@@ -7924,6 +7925,7 @@ pub async fn data_governance_run_sync_with_progress(
                 &pending,
                 &local_manifest,
                 &active_dir,
+                &app_data_dir,
                 &opt_emitter.clone(),
             )
             .await
@@ -7935,6 +7937,7 @@ pub async fn data_governance_run_sync_with_progress(
                 &local_manifest,
                 merge_strategy,
                 &active_dir,
+                &app_data_dir,
                 &opt_emitter,
             )
             .await
@@ -7948,6 +7951,7 @@ pub async fn data_governance_run_sync_with_progress(
                 &local_manifest,
                 merge_strategy,
                 &active_dir,
+                &app_data_dir,
                 &opt_emitter,
             )
             .await
@@ -8080,6 +8084,7 @@ async fn execute_upload_with_progress_v2(
     pending: &super::sync::PendingChanges,
     local_manifest: &SyncManifest,
     active_dir: &std::path::Path,
+    app_data_dir: &std::path::Path,
     emitter: &OptionalEmitter,
 ) -> Result<(SyncExecutionResult, usize), String> {
     let start = std::time::Instant::now();
@@ -8171,6 +8176,15 @@ async fn execute_upload_with_progress_v2(
 
     emitter.emit_applying(total, total, None).await;
 
+    // 文件级云同步：工作区数据库（ws_*.db）+ VFS blobs
+    let blobs_dir = app_data_dir.join("vfs_blobs");
+    if let Err(e) = manager.sync_workspace_databases(storage, active_dir).await {
+        tracing::warn!("[data_governance] 工作区数据库同步失败（非致命）: {}", e);
+    }
+    if let Err(e) = manager.sync_vfs_blobs(storage, &blobs_dir).await {
+        tracing::warn!("[data_governance] VFS blob 同步失败（非致命）: {}", e);
+    }
+
     Ok((
         SyncExecutionResult {
             success: true,
@@ -8192,6 +8206,7 @@ async fn execute_download_with_progress_v2(
     local_manifest: &SyncManifest,
     merge_strategy: MergeStrategy,
     active_dir: &std::path::Path,
+    app_data_dir: &std::path::Path,
     emitter: &OptionalEmitter,
 ) -> Result<(SyncExecutionResult, usize), String> {
     let start = std::time::Instant::now();
@@ -8229,6 +8244,15 @@ async fn execute_download_with_progress_v2(
             .await;
     }
 
+    // 文件级云同步：工作区数据库（ws_*.db）+ VFS blobs
+    let blobs_dir = app_data_dir.join("vfs_blobs");
+    if let Err(e) = manager.sync_workspace_databases(storage, active_dir).await {
+        tracing::warn!("[data_governance] 工作区数据库同步失败（非致命）: {}", e);
+    }
+    if let Err(e) = manager.sync_vfs_blobs(storage, &blobs_dir).await {
+        tracing::warn!("[data_governance] VFS blob 同步失败（非致命）: {}", e);
+    }
+
     Ok((exec_result, total_skipped))
 }
 
@@ -8241,6 +8265,7 @@ async fn execute_bidirectional_with_progress_v2(
     local_manifest: &SyncManifest,
     merge_strategy: MergeStrategy,
     active_dir: &std::path::Path,
+    app_data_dir: &std::path::Path,
     emitter: &OptionalEmitter,
 ) -> Result<(SyncExecutionResult, usize), String> {
     let start = std::time::Instant::now();
@@ -8358,6 +8383,15 @@ async fn execute_bidirectional_with_progress_v2(
             "[data_governance] 双向同步标记变更完成: {} 条",
             change_ids.len()
         );
+    }
+
+    // 文件级云同步：工作区数据库（ws_*.db）+ VFS blobs
+    let blobs_dir = app_data_dir.join("vfs_blobs");
+    if let Err(e) = manager.sync_workspace_databases(storage, active_dir).await {
+        tracing::warn!("[data_governance] 工作区数据库同步失败（非致命）: {}", e);
+    }
+    if let Err(e) = manager.sync_vfs_blobs(storage, &blobs_dir).await {
+        tracing::warn!("[data_governance] VFS blob 同步失败（非致命）: {}", e);
     }
 
     Ok((exec_result, total_skipped))

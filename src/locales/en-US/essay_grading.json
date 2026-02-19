@@ -173,7 +173,15 @@
       "grammar": "Grammar error",
       "spelling": "Spelling error",
       "logic": "Logic issue",
-      "expression": "Expression issue"
+      "expression": "Expression issue",
+      "article": "Article error",
+      "preposition": "Preposition error",
+      "word_form": "Word form error",
+      "sentence_structure": "Sentence structure",
+      "word_choice": "Word choice",
+      "punctuation": "Punctuation error",
+      "tense": "Tense error",
+      "agreement": "Subject-verb agreement"
     }
   },
   "legend": {
@@ -260,5 +268,18 @@
     "toggle_label": "Topic / Reference",
     "placeholder": "Enter essay topic, requirements, or reference content...",
     "add_image": "Add reference image"
+  },
+  "sections": {
+    "tab_overview": "Overview",
+    "tab_details": "Corrections",
+    "tab_polish": "Polish",
+    "tab_model_essay": "Model Essay",
+    "no_corrections": "No corrections needed",
+    "no_polish": "No polish suggestions",
+    "no_model_essay": "No model essay (please provide essay topic)",
+    "polish_desc": "The following sentences can be polished for better fluency and precision",
+    "model_essay_desc": "AI-generated model essay based on the topic, for reference",
+    "original": "Original",
+    "polished": "Polished"
   }
 }

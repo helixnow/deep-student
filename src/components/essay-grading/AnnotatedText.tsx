@@ -24,13 +24,8 @@ interface AnnotatedTextProps {
  * 获取错误类型的翻译键
  */
 const getErrorTypeKey = (type?: string): string => {
-  switch (type) {
-    case 'grammar': return 'essay_grading:markers.error.grammar';
-    case 'spelling': return 'essay_grading:markers.error.spelling';
-    case 'logic': return 'essay_grading:markers.error.logic';
-    case 'expression': return 'essay_grading:markers.error.expression';
-    default: return 'essay_grading:markers.error.grammar';
-  }
+  if (type) return `essay_grading:markers.error.${type}`;
+  return 'essay_grading:markers.error.grammar';
 };
 
 /**
@@ -152,9 +147,10 @@ const MarkerRenderer: React.FC<{ marker: ParsedMarker; t: (key: string) => strin
         <CommonTooltip
           content={
             <div className="text-xs">
-              <div className="font-medium text-red-500/90">
+              <div className="font-medium text-red-500/90 mb-1">
                 {t(getErrorTypeKey(marker.errorType))}
               </div>
+              {marker.explanation && <div className="text-muted-foreground leading-relaxed">{marker.explanation}</div>}
             </div>
           }
           position="top"

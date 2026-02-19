@@ -28,7 +28,8 @@ export interface ParsedMarker {
   // note
   comment?: string;
   // err
-  errorType?: 'grammar' | 'spelling' | 'logic' | 'expression';
+  errorType?: 'grammar' | 'spelling' | 'logic' | 'expression' | 'article' | 'preposition' | 'word_form' | 'sentence_structure' | 'word_choice' | 'punctuation' | 'tense' | 'agreement';
+  explanation?: string;
 }
 
 export interface ParsedScore {
@@ -122,8 +123,8 @@ export function parseMarkers(text: string): ParsedMarker[] {
     { regex: /<note\s+text="([^"]*)">([\s\S]*?)<\/note>/gi, type: 'note' as MarkerType },
     // <good>...</good>
     { regex: /<good>([\s\S]*?)<\/good>/gi, type: 'good' as MarkerType },
-    // <err type="...">...</err>
-    { regex: /<err\s+type="([^"]*)">([\s\S]*?)<\/err>/gi, type: 'err' as MarkerType },
+    // <err type="..." explanation="...">...</err> (supports both attribute orders)
+    { regex: /<err\s+((?:(?:type|explanation)="[^"]*?"\s*)+)>([\s\S]*?)<\/err>/gi, type: 'err' as MarkerType },
   ];
   
   // 收集所有匹配及其位置
@@ -162,10 +163,15 @@ export function parseMarkers(text: string): ParsedMarker[] {
         case 'good':
           marker.content = match[1];
           break;
-        case 'err':
-          marker.errorType = match[1] as ParsedMarker['errorType'];
+        case 'err': {
+          const attrs = match[1];
+          const typeM = attrs.match(/type="([^"]*?)"/);
+          const explM = attrs.match(/explanation="([^"]*?)"/);
+          marker.errorType = (typeM?.[1] || 'grammar') as ParsedMarker['errorType'];
+          marker.explanation = explM?.[1] || undefined;
           marker.content = match[2];
           break;
+        }
       }
       
       allMatches.push({
@@ -209,25 +215,4 @@ export function parseMarkers(text: string): ParsedMarker[] {
   return markers;
 }
 
-/**
- * 获取错误类型的 i18n 键
- * @deprecated 建议直接在组件中使用 essay_grading:markers.error.{type}
- */
-export function getErrorTypeName(type?: string): string {
-  // Return i18n key for use with t()
-  switch (type) {
-    case 'grammar': return 'essay_grading:markers.error.grammar';
-    case 'spelling': return 'essay_grading:markers.error.spelling';
-    case 'logic': return 'essay_grading:markers.error.logic';
-    case 'expression': return 'essay_grading:markers.error.expression';
-    default: return 'essay_grading:markers.error.grammar';
-  }
-}
 
-/**
- * 判断文本是否包含批改标记
- */
-export function hasMarkers(text: string): boolean {
-  const markerPattern = /<(del|ins|replace|note|good|err|score)\b/i;
-  return markerPattern.test(text);
-}

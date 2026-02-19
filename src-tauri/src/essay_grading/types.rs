@@ -246,13 +246,24 @@ pub const MARKER_INSTRUCTIONS: &str = r#"
 替换标记：<replace old="原文" new="修正" reason="原因"/>
 批注标记：<note text="批注内容">被批注的原文</note>
 亮点标记：<good>优秀片段</good>
-错误标记：<err type="grammar|spelling|logic|expression">错误内容</err>
+错误标记：<err type="错误类型" explanation="详细解释">错误内容</err>
 
-错误类型说明：
-grammar: 语法错误
+错误类型说明（type 取值）：
+grammar: 语法错误（一般性语法问题）
 spelling: 拼写/错别字
 logic: 逻辑问题
 expression: 表达不当
+article: 冠词错误（a/an/the 使用不当）
+preposition: 介词错误
+word_form: 词性错误（名词/动词/形容词等词性误用）
+sentence_structure: 句子成分残缺或冗余
+word_choice: 用词不当/用词建议
+punctuation: 标点符号错误
+tense: 时态错误
+agreement: 主谓一致错误
+
+【重要】每个 <err> 标记的 explanation 属性必须包含详细的中文解释，说明错误原因和修改理由。
+同样，<replace> 和 <del> 标记的 reason 属性也应包含详细解释。
 
 【重要】输出格式规范（严格禁止 Markdown）：
 严禁使用任何 Markdown 语法，包括但不限于：
@@ -267,6 +278,44 @@ expression: 表达不当
 用空行分隔段落，不要用任何列表或缩进格式。
 XML 标记必须直接嵌入正文中，是实际标注而非代码示例。
 输出纯文本 + XML 标记，这是唯一允许的格式。
+"#;
+
+/// 润色提升 + 参考范文 section 指令
+pub const SECTION_INSTRUCTIONS: &str = r#"
+附加输出段落
+
+在批注正文和评分标签之间，请输出以下附加段落（使用 XML section 标签包裹）：
+
+一、润色提升段落
+挑选原文中 3-6 个可以润色提升的句子，给出润色后的版本：
+<section-polish>
+<polish-item>
+<original>原句内容</original>
+<polished>润色后的句子</polished>
+</polish-item>
+<polish-item>
+<original>原句内容</original>
+<polished>润色后的句子</polished>
+</polish-item>
+</section-polish>
+
+【润色要求】：
+润色应提升句子的流畅度、用词精准度和表达力，而非仅修正错误。
+每个 polish-item 是独立的句子级改写。
+"#;
+
+/// 参考范文 section 指令（仅在有题目元数据时注入）
+pub const MODEL_ESSAY_INSTRUCTIONS: &str = r#"
+二、参考范文段落
+根据提供的作文题目/要求，生成一篇高质量参考范文供学生学习：
+<section-model-essay>
+在此写出完整的参考范文，语言地道，结构清晰，作为学生写作的参考。
+</section-model-essay>
+
+【范文要求】：
+范文应紧扣题目要求，展现优秀的写作技巧。
+范文中不要使用任何 XML 标记，输出纯文本。
+范文长度应与学生作文相近或略长。
 "#;
 
 /// 评分输出格式说明

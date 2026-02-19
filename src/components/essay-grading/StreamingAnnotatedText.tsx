@@ -9,6 +9,7 @@ import { CommonTooltip } from '@/components/shared/CommonTooltip';
 import {
   parseStreamingContent,
   type StreamingMarker,
+  type StreamingParseResult,
   type ParsedScore,
 } from '@/essay-grading/streamingMarkerParser';
 import { ScoreCard } from './ScoreCard';
@@ -36,19 +37,16 @@ interface StreamingAnnotatedTextProps {
   className?: string;
   showScore?: boolean;
   markerFilter?: 'all' | 'errors' | 'suggestions' | 'highlights';
+  /** 父组件已解析的结果，传入后跳过内部重复解析 */
+  preParsedResult?: StreamingParseResult;
 }
 
 /**
  * 获取错误类型的翻译键
  */
 const getErrorTypeKey = (type?: string): string => {
-  switch (type) {
-    case 'grammar': return 'essay_grading:markers.error.grammar';
-    case 'spelling': return 'essay_grading:markers.error.spelling';
-    case 'logic': return 'essay_grading:markers.error.logic';
-    case 'expression': return 'essay_grading:markers.error.expression';
-    default: return 'essay_grading:markers.error.grammar';
-  }
+  if (type) return `essay_grading:markers.error.${type}`;
+  return 'essay_grading:markers.error.grammar';
 };
 
 /**
@@ -172,9 +170,10 @@ const MarkerRenderer: React.FC<{ marker: StreamingMarker; t: (key: string) => st
         <CommonTooltip
           content={
             <div className="text-xs">
-              <div className="font-medium text-red-500/90">
+              <div className="font-medium text-red-500/90 mb-1">
                 {t(getErrorTypeKey(marker.errorType))}
               </div>
+              {marker.explanation && <div className="text-muted-foreground leading-relaxed">{marker.explanation}</div>}
             </div>
           }
           position="top"
@@ -224,15 +223,16 @@ export const StreamingAnnotatedText: React.FC<StreamingAnnotatedTextProps> = ({
   className,
   showScore = true,
   markerFilter,
+  preParsedResult,
 }) => {
   const { t } = useTranslation(['essay_grading']);
   
-  const parseResult = useMemo(
-    () => parseStreamingContent(text, !isStreaming),
-    [text, isStreaming]
+  const internalParseResult = useMemo(
+    () => preParsedResult ? null : parseStreamingContent(text, !isStreaming),
+    [text, isStreaming, preParsedResult]
   );
   
-  const { markers, score } = parseResult;
+  const { markers, score } = preParsedResult ?? internalParseResult!;
 
   const filteredMarkers = useMemo(() => {
     if (!markerFilter || markerFilter === 'all') return markers;

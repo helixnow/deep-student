@@ -28,7 +28,7 @@ use super::events::GradingEventEmitter;
 use super::types::{
     canonical_mode_id, get_builtin_grading_modes, get_default_grading_mode, DimensionScore,
     GradingMode, GradingRequest, GradingResponse, ParsedScore, MARKER_INSTRUCTIONS,
-    SCORE_FORMAT_INSTRUCTIONS,
+    MODEL_ESSAY_INSTRUCTIONS, SCORE_FORMAT_INSTRUCTIONS, SECTION_INSTRUCTIONS,
 };
 
 /// 批改管线依赖
@@ -471,6 +471,14 @@ fn build_grading_prompts(
 
     // 2. 添加标记符使用说明
     system_prompt.push_str(MARKER_INSTRUCTIONS);
+    system_prompt.push_str("\n");
+
+    // 2.5 添加润色提升 section 指令（始终启用）
+    system_prompt.push_str(SECTION_INSTRUCTIONS);
+    // 如果有作文题干，追加参考范文 section 指令
+    if request.topic.as_ref().map_or(false, |t| !t.trim().is_empty()) {
+        system_prompt.push_str(MODEL_ESSAY_INSTRUCTIONS);
+    }
     system_prompt.push_str("\n");
 
     // 3. 添加评分格式说明，包含该模式的评分维度

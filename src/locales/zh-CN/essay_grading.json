@@ -173,7 +173,15 @@
       "grammar": "语法错误",
       "spelling": "拼写错误",
       "logic": "逻辑问题",
-      "expression": "表达不当"
+      "expression": "表达不当",
+      "article": "冠词错误",
+      "preposition": "介词错误",
+      "word_form": "词性错误",
+      "sentence_structure": "句子成分残缺",
+      "word_choice": "用词建议",
+      "punctuation": "标点错误",
+      "tense": "时态错误",
+      "agreement": "主谓一致"
     }
   },
   "legend": {
@@ -260,5 +268,18 @@
     "toggle_label": "题目/参考材料",
     "placeholder": "输入作文题目、要求或参考内容...",
     "add_image": "添加参考图片"
+  },
+  "sections": {
+    "tab_overview": "批注总览",
+    "tab_details": "逐句详解",
+    "tab_polish": "润色提升",
+    "tab_model_essay": "参考范文",
+    "no_corrections": "未发现需要修改的内容",
+    "no_polish": "暂无润色建议",
+    "no_model_essay": "暂无参考范文（请提供作文题目）",
+    "polish_desc": "以下句子可以进一步润色提升，提高表达的流畅度和精准度",
+    "model_essay_desc": "根据题目要求生成的参考范文，供学习参考",
+    "original": "原句",
+    "polished": "润色后"
   }
 }

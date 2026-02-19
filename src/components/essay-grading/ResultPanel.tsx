@@ -134,7 +134,8 @@ export const ResultPanel = React.forwardRef<HTMLDivElement, ResultPanelProps>(({
             showStats={false}
             charCount={charCount}
             viewMode="annotated"
-            hideToolbar={true}
+            hideToolbar={false}
+            hideStreamingIndicator={true}
           />
         </div>
 

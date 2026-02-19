@@ -1197,6 +1197,21 @@ impl BackupManager {
             }
         }
 
+        // 4.7 恢复工作区数据库（ws_*.db）
+        let active_dir_for_ws = crate::data_space::get_data_space_manager()
+            .map(|mgr| mgr.active_dir())
+            .unwrap_or_else(|| self.app_data_dir.join("slots").join("slotA"));
+        match self.restore_workspace_databases(&backup_subdir, &active_dir_for_ws) {
+            Ok(count) => {
+                if count > 0 {
+                    info!("工作区数据库恢复完成: {} 个", count);
+                }
+            }
+            Err(e) => {
+                warn!("工作区数据库恢复失败（非致命）: {}", e);
+            }
+        }
+
         // 5. 恢复资产文件（如果需要）
         let mut restored_assets = 0;
         if restore_assets {
@@ -1344,6 +1359,18 @@ impl BackupManager {
                     error!("恢复数据库失败: {:?}, 错误: {}", db_id, e);
                     restore_errors.push(format!("{:?}: {}", db_id, e));
                 }
+            }
+        }
+
+        // 4.7 恢复工作区数据库到目标目录（ws_*.db）
+        match self.restore_workspace_databases(&backup_subdir, target_dir) {
+            Ok(count) => {
+                if count > 0 {
+                    info!("工作区数据库恢复完成: {} 个", count);
+                }
+            }
+            Err(e) => {
+                warn!("工作区数据库恢复失败（非致命）: {}", e);
             }
         }
 
@@ -1903,6 +1930,21 @@ impl BackupManager {
             }
         }
 
+        // 4.7 恢复工作区数据库（ws_*.db）
+        let active_dir_for_ws = crate::data_space::get_data_space_manager()
+            .map(|mgr| mgr.active_dir())
+            .unwrap_or_else(|| self.app_data_dir.join("slots").join("slotA"));
+        match self.restore_workspace_databases(&backup_subdir, &active_dir_for_ws) {
+            Ok(count) => {
+                if count > 0 {
+                    info!("工作区数据库恢复完成: {} 个", count);
+                }
+            }
+            Err(e) => {
+                warn!("工作区数据库恢复失败（非致命）: {}", e);
+            }
+        }
+
         // 5. 检查是否有错误
         if !restore_errors.is_empty() {
             error!("恢复失败，尝试自动回滚到预恢复备份: {:?}", pre_restore_dir);
@@ -1943,6 +1985,14 @@ impl BackupManager {
             }
         }
 
+        // 回滚工作区数据库
+        let active_dir = crate::data_space::get_data_space_manager()
+            .map(|mgr| mgr.active_dir())
+            .unwrap_or_else(|| self.app_data_dir.join("slots").join("slotA"));
+        if let Err(e) = self.restore_workspace_databases(pre_restore_dir, &active_dir) {
+            warn!("工作区数据库回滚失败（非致命）: {}", e);
+        }
+
         Ok(())
     }
 
@@ -1968,6 +2018,14 @@ impl BackupManager {
             if db_path.exists() {
                 self.backup_single_database(&db_id, &db_path, pre_restore_dir, idx, total_dbs)?;
             }
+        }
+
+        // 备份工作区数据库（用于恢复失败时回滚）
+        let active_dir = crate::data_space::get_data_space_manager()
+            .map(|mgr| mgr.active_dir())
+            .unwrap_or_else(|| self.app_data_dir.join("slots").join("slotA"));
+        if let Err(e) = self.backup_workspace_databases(&active_dir, pre_restore_dir) {
+            warn!("预恢复备份中工作区数据库备份失败（非致命）: {}", e);
         }
 
         Ok(())
@@ -2541,6 +2599,21 @@ impl BackupManager {
             // 获取 schema 版本
             let version = self.get_schema_version(&db_path)?;
             manifest.set_schema_version(db_id.as_str(), version);
+        }
+
+        // 4.5 备份工作区数据库（ws_*.db）
+        let active_dir_for_ws = crate::data_space::get_data_space_manager()
+            .map(|mgr| mgr.active_dir())
+            .unwrap_or_else(|| self.app_data_dir.join("slots").join("slotA"));
+        match self.backup_workspace_databases(&active_dir_for_ws, &backup_subdir) {
+            Ok(count) => {
+                if count > 0 {
+                    info!("工作区数据库备份完成: {} 个", count);
+                }
+            }
+            Err(e) => {
+                warn!("工作区数据库备份失败（非致命）: {}", e);
+            }
         }
 
         // 5. 备份资产文件（如果启用）

@@ -22,7 +22,8 @@ export interface StreamingMarker {
   // note
   comment?: string;
   // err
-  errorType?: 'grammar' | 'spelling' | 'logic' | 'expression';
+  errorType?: 'grammar' | 'spelling' | 'logic' | 'expression' | 'article' | 'preposition' | 'word_form' | 'sentence_structure' | 'word_choice' | 'punctuation' | 'tense' | 'agreement';
+  explanation?: string;
   // 标记是否完整
   isComplete: boolean;
 }
@@ -43,6 +44,12 @@ export interface DimensionScore {
   comment?: string;
 }
 
+/** 润色提升项 */
+export interface PolishItem {
+  original: string;
+  polished: string;
+}
+
 /**
  * 流式解析结果
  */
@@ -50,70 +57,40 @@ export interface StreamingParseResult {
   markers: StreamingMarker[];
   pendingText: string; // 未能确定的尾部文本
   score: ParsedScore | null;
+  /** 润色提升段落 */
+  polishItems: PolishItem[];
+  /** 参考范文段落（纯文本） */
+  modelEssay: string | null;
 }
-
-// 标记模式定义
-const MARKER_PATTERNS = {
-  // 完整标记的正则
-  del: /<del(?:\s+reason="([^"]*)")?>([\s\S]*?)<\/del>/gi,
-  ins: /<ins>([\s\S]*?)<\/ins>/gi,
-  replace: /<replace\s+old="([^"]*)"\s+new="([^"]*)"(?:\s+reason="([^"]*)")?\/>/gi,
-  note: /<note\s+text="([^"]*)">([\s\S]*?)<\/note>/gi,
-  good: /<good>([\s\S]*?)<\/good>/gi,
-  err: /<err\s+type="([^"]*)">([\s\S]*?)<\/err>/gi,
-  score: /<score\s+(?:total="([^"]+)"\s+max="([^"]+)"|max="([^"]+)"\s+total="([^"]+)")[^>]*>([\s\S]*?)<\/score>/gi,
-};
-
-// 不完整标记的开始模式（用于检测是否有未完成的标记）
-const INCOMPLETE_START_PATTERNS = [
-  /<del(?:\s+reason="[^"]*")?>[^<]*$/i,
-  /<ins>[^<]*$/i,
-  /<note\s+text="[^"]*">[^<]*$/i,
-  /<good>[^<]*$/i,
-  /<err\s+type="[^"]*">[^<]*$/i,
-  /<score\s+(?:total="[^"]+"\s+max="[^"]+"|max="[^"]+"\s+total="[^"]+")[^>]*>[^<]*$/i,
-  // 更基础的不完整检测：任何以 < 开头但没有 > 的
-  /<[^>]*$/,
-];
 
 /**
  * 检查文本末尾是否有不完整的标记
  */
 function findIncompleteMarkerStart(text: string): number {
-  // 从后向前查找最后一个 < 
+  // 从后向前查找最后一个 <
   const lastOpenBracket = text.lastIndexOf('<');
-  if (lastOpenBracket === -1) {
-    return -1;
-  }
-  
-  // 检查这个 < 后面是否有对应的 >
+  if (lastOpenBracket === -1) return -1;
+
   const afterBracket = text.slice(lastOpenBracket);
-  
-  // 如果是自闭合标签 (<replace ... />) 检查是否完整
+
+  // < 后面没有 >，标记不完整
+  if (!afterBracket.includes('>')) return lastOpenBracket;
+
+  // 自闭合标签 (<replace ... />) — 检查其后是否还有未闭合标记
   if (afterBracket.includes('/>')) {
-    // 检查是否还有未闭合的标记
-    const remaining = text.slice(text.indexOf('/>', lastOpenBracket) + 2);
-    return findIncompleteMarkerStart(remaining) !== -1 
-      ? findIncompleteMarkerStart(remaining) + text.indexOf('/>', lastOpenBracket) + 2
-      : -1;
+    const closePos = text.indexOf('/>', lastOpenBracket) + 2;
+    const tail = text.slice(closePos);
+    const tailResult = findIncompleteMarkerStart(tail);
+    return tailResult !== -1 ? tailResult + closePos : -1;
   }
-  
-  // 检查是否有闭合标签
-  if (afterBracket.includes('>')) {
-    // 可能是开始标签，检查是否有对应的结束标签
-    const tagMatch = afterBracket.match(/^<(\w+)/);
-    if (tagMatch) {
-      const tagName = tagMatch[1];
-      const closeTag = `</${tagName}>`;
-      if (!afterBracket.includes(closeTag)) {
-        return lastOpenBracket;
-      }
-    }
-    return -1;
+
+  // 开始标签 — 检查是否有对应的结束标签
+  const tagMatch = afterBracket.match(/^<(\w+)/);
+  if (tagMatch) {
+    const closeTag = `</${tagMatch[1]}>`;
+    if (!afterBracket.includes(closeTag)) return lastOpenBracket;
   }
-  
-  // < 后面没有 >，说明标记不完整
-  return lastOpenBracket;
+  return -1;
 }
 
 /**
@@ -210,16 +187,20 @@ function parseCompleteMarkers(text: string): { markers: StreamingMarker[], remai
     });
   }
   
-  // err
-  const errRegex = /<err\s+type="([^"]*)">([\s\S]*?)<\/err>/gi;
+  // err (supports both attribute orders: type/explanation or explanation/type)
+  const errRegex = /<err\s+((?:(?:type|explanation)="[^"]*?"\s*)+)>([\s\S]*?)<\/err>/gi;
   while ((match = errRegex.exec(text)) !== null) {
+    const attrs = match[1];
+    const typeMatch = attrs.match(/type="([^"]*?)"/);
+    const explMatch = attrs.match(/explanation="([^"]*?)"/);
     allMatches.push({
       index: match.index,
       length: match[0].length,
       marker: {
         type: 'err',
         content: match[2],
-        errorType: match[1] as StreamingMarker['errorType'],
+        errorType: (typeMatch?.[1] || 'grammar') as StreamingMarker['errorType'],
+        explanation: explMatch?.[1] || undefined,
         isComplete: true,
       },
     });
@@ -375,8 +356,8 @@ export function parseStreamingContent(text: string, isComplete: boolean): Stream
   // 2. 先尝试解析评分（只解析第一个，忽略代码块内的）
   const score = parseScoreFromText(cleanText);
   
-  // 3. 移除评分标签后处理剩余内容
-  const contentWithoutScore = removeScoreTag(cleanText);
+  // 3. 移除评分标签和 section 标签后处理剩余内容
+  const contentWithoutScore = removeSectionTags(removeScoreTag(cleanText));
   
   // 4. 查找不完整标记的起始位置
   const incompleteStart = isComplete ? -1 : findIncompleteMarkerStart(contentWithoutScore);
@@ -396,11 +377,9 @@ export function parseStreamingContent(text: string, isComplete: boolean): Stream
   // 6. 解析确定部分的标记
   const { markers, remaining } = parseCompleteMarkers(confirmedText);
   
-  // 7. 如果有剩余的确定文本，添加为普通文本
+  // 7. 如果有剩余的确定文本，添加为普通文本（step 10 统一清理 Markdown）
   if (remaining) {
-    // 清理 Markdown 语法
-    const cleanedRemaining = cleanMarkdownSyntax(remaining);
-    markers.push({ type: 'text', content: cleanedRemaining, isComplete: true });
+    markers.push({ type: 'text', content: remaining, isComplete: true });
   }
   
   // 8. 如果有待定文本，添加为 pending 类型
@@ -419,29 +398,51 @@ export function parseStreamingContent(text: string, isComplete: boolean): Stream
     return marker;
   });
   
-  return { markers: cleanedMarkers, pendingText, score };
+  // 11. 提取润色提升和参考范文 sections（使用 cleanText 以排除代码块内的误匹配）
+  const polishItems = extractPolishItems(cleanText);
+  const modelEssay = extractModelEssay(cleanText);
+
+  return { markers: cleanedMarkers, pendingText, score, polishItems, modelEssay };
 }
 
+// ============================================================================
+// Section extractors
+// ============================================================================
+
 /**
- * 获取错误类型的 i18n 键
- * @deprecated 建议直接在组件中使用 essay_grading:markers.error.{type}
+ * 提取 <section-polish> 中的润色项
  */
-export function getErrorTypeName(type?: string): string {
-  switch (type) {
-    case 'grammar': return 'essay_grading:markers.error.grammar';
-    case 'spelling': return 'essay_grading:markers.error.spelling';
-    case 'logic': return 'essay_grading:markers.error.logic';
-    case 'expression': return 'essay_grading:markers.error.expression';
-    default: return 'essay_grading:markers.error.grammar';
+function extractPolishItems(text: string): PolishItem[] {
+  const sectionMatch = text.match(/<section-polish>([\s\S]*?)<\/section-polish>/i);
+  if (!sectionMatch) return [];
+  const content = sectionMatch[1];
+  const items: PolishItem[] = [];
+  const itemRegex = /<polish-item>\s*<original>([\s\S]*?)<\/original>\s*<polished>([\s\S]*?)<\/polished>\s*<\/polish-item>/gi;
+  let m;
+  while ((m = itemRegex.exec(content)) !== null) {
+    items.push({ original: m[1].trim(), polished: m[2].trim() });
   }
+  return items;
 }
 
 /**
- * 判断文本是否包含批改标记（含 score）
+ * 提取 <section-model-essay> 中的范文文本
  */
-export function hasMarkers(text: string): boolean {
-  const markerPattern = /<(del|ins|replace|note|good|err|score)\b/i;
-  return markerPattern.test(text);
+function extractModelEssay(text: string): string | null {
+  const match = text.match(/<section-model-essay>([\s\S]*?)<\/section-model-essay>/i);
+  return match ? match[1].trim() : null;
+}
+
+/**
+ * 移除 section 标签（用于批注正文视图，避免 section 内容出现在主文中）
+ */
+export function removeSectionTags(text: string): string {
+  return text
+    // 完整闭合的 section 标签（合并两种 section 类型为单次 pass）
+    .replace(/<section-(?:polish|model-essay)>[\s\S]*?<\/section-(?:polish|model-essay)>/gi, '')
+    // 流式中未闭合的 section 开始标签（含已接收的部分内容）
+    .replace(/<section-(?:polish|model-essay)>[\s\S]*$/gi, '')
+    .trim();
 }
 
 /**
