@@ -1,16 +1,9 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
-import { NotionButton } from '@/components/ui/NotionButton';
-import { useTranslation } from 'react-i18next';
 import { InputPanel } from './InputPanel';
 import { ResultPanel } from './ResultPanel';
-import { GradingModeManager } from './GradingModeManager';
 import { SettingsDrawer } from './SettingsDrawer';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
-import { Textarea } from '../ui/shad/Textarea';
-import { RotateCcw, Save, Settings2 } from 'lucide-react';
-import { UnifiedModelSelector } from '../shared/UnifiedModelSelector';
 import { HorizontalResizable, VerticalResizable } from '../shared/Resizable';
-import { CustomScrollArea } from '../custom-scroll-area';
 import type { GradingMode, ModelInfo } from '@/essay-grading/essayGradingApi';
 import { cn } from '@/lib/utils';
 
@@ -113,19 +106,14 @@ export const GradingMain: React.FC<GradingMainProps> = ({
   onModesChange,
   roundNavigation,
 }) => {
-  const { t } = useTranslation(['essay_grading', 'common']);
   const { isSmallScreen, isLg } = useBreakpoint();
   const inputRef = React.useRef<HTMLTextAreaElement>(null);
   const resultRef = React.useRef<HTMLDivElement>(null);
 
-  // 模式管理器状态
-  const [showModeManager, setShowModeManager] = useState(false);
-  
   // 桌面端设置抽屉状态
   const [showSettingsDrawer, setShowSettingsDrawer] = useState(false);
   
   // 判断屏幕类型
-  const isDesktop = isLg; // ≥1024px
   const isMediumScreen = !isSmallScreen && !isLg; // 768px - 1024px
 
   // ========== 移动端滑动布局状态 ==========
@@ -257,12 +245,6 @@ export const GradingMain: React.FC<GradingMainProps> = ({
     };
   }, [isSmallScreen, handleDragStart, handleDragMove, handleDragEnd]);
 
-  // 获取默认模型
-  const defaultModel = models.find(m => m.is_default);
-
-  // 获取当前选中的批阅模式
-  const currentMode = modes.find(m => m.id === modeId);
-
   // ========== 移动端：滑动布局 ==========
   if (isSmallScreen) {
     const translateX = getBaseTranslate() + dragOffset;
@@ -344,7 +326,7 @@ export const GradingMain: React.FC<GradingMainProps> = ({
             />
           </div>
 
-          {/* 右侧：设置面板 */}
+          {/* 右侧：设置面板（复用 SettingsDrawer，内联编辑模式） */}
           <div
             className="h-full flex-shrink-0 bg-background border-l"
             style={{ width: settingsPanelWidth }}
@@ -352,103 +334,23 @@ export const GradingMain: React.FC<GradingMainProps> = ({
             onTouchMove={(e) => e.stopPropagation()}
             onTouchEnd={(e) => e.stopPropagation()}
           >
-            {/* 模式管理器 */}
-            {showModeManager ? (
-              <GradingModeManager
-                modes={modes}
-                currentModeId={modeId}
-                onModeSelect={setModeId}
-                onModesChange={() => onModesChange?.()}
-                onClose={() => setShowModeManager(false)}
-              />
-            ) : (
-              <div className="h-full flex flex-col bg-background">
-                {/* 内容区 - Notion 风格 */}
-                <CustomScrollArea className="flex-1" viewportClassName="p-4">
-                  {/* 当前批阅模式信息 */}
-                  {currentMode && (
-                    <div className="mb-6 pb-4 border-b border-border/30">
-                      <div className="flex items-center justify-between mb-3">
-                        <h3 className="text-xs font-medium text-muted-foreground/70 uppercase tracking-wide">
-                          {t('essay_grading:mode.current')}
-                        </h3>
-                        <NotionButton variant="ghost" size="sm" onClick={() => setShowModeManager(true)} className="h-7 px-2 text-xs text-muted-foreground/70 hover:text-foreground hover:bg-muted/50">
-                          <Settings2 className="w-3 h-3" />
-                          {t('essay_grading:mode.manage')}
-                        </NotionButton>
-                      </div>
-                      <div className="space-y-3">
-                        <div>
-                          <div className="font-medium text-sm text-foreground/90">{currentMode.name}</div>
-                          <div className="text-xs text-muted-foreground/70 mt-1 leading-relaxed">{currentMode.description}</div>
-                        </div>
-                        <div className="text-xs">
-                          <span className="text-muted-foreground/60">{t('essay_grading:mode.total_score')}：</span>
-                          <span className="font-medium text-foreground/80">{currentMode.total_max_score}</span>
-                        </div>
-                        {currentMode.score_dimensions && currentMode.score_dimensions.length > 0 && (
-                          <div className="space-y-1.5">
-                            <div className="text-xs text-muted-foreground/60">{t('essay_grading:mode.dimensions')}：</div>
-                            <div className="flex flex-wrap gap-1.5">
-                              {currentMode.score_dimensions.map((dim, idx) => (
-                                <span
-                                  key={idx}
-                                  className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-muted/50 text-foreground/70"
-                                >
-                                  {dim.name}
-                                  <span className="ml-1 text-muted-foreground/50">({dim.max_score})</span>
-                                </span>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* 模型选择 */}
-                  {models.length > 0 && (
-                    <div className="mb-6 pb-4 border-b border-border/30">
-                      <h3 className="text-xs font-medium text-muted-foreground/70 uppercase tracking-wide mb-3">
-                        {t('essay_grading:model.title')}
-                      </h3>
-                      <UnifiedModelSelector
-                        models={models}
-                        value={modelId || defaultModel?.id || ''}
-                        onChange={setModelId}
-                        disabled={isGrading}
-                        placeholder={t('essay_grading:model.select')}
-                      />
-                    </div>
-                  )}
-
-                  {/* 提示词编辑器 */}
-                  <div className="mb-4">
-                    <h3 className="text-xs font-medium text-muted-foreground/70 uppercase tracking-wide mb-3">
-                      {t('essay_grading:prompt_editor.title')}
-                    </h3>
-                  </div>
-                  <div className="space-y-4 flex flex-col">
-                    <Textarea
-                      value={customPrompt}
-                      onChange={(e) => setCustomPrompt(e.target.value)}
-                      placeholder={t('essay_grading:prompt_editor.placeholder')}
-                      className="flex-1 min-h-[320px] resize-none w-full text-sm border-border/40 focus:border-border/60"
-                    />
-                    <div className="flex gap-2 justify-end">
-                      <NotionButton variant="ghost" size="sm" onClick={onRestoreDefaultPrompt} className="text-sm text-muted-foreground/70 hover:text-foreground hover:bg-muted/50">
-                        <RotateCcw className="w-3.5 h-3.5" />
-                        {t('essay_grading:prompt_editor.restore_default')}
-                      </NotionButton>
-                      <NotionButton variant="primary" size="sm" onClick={() => { onSavePrompt(); setShowPromptEditor(false); }} className="text-sm bg-primary/10 text-primary hover:bg-primary/20">
-                        <Save className="w-3.5 h-3.5" />
-                        {t('essay_grading:prompt_editor.save')}
-                      </NotionButton>
-                    </div>
-                  </div>
-                </CustomScrollArea>
-              </div>
-            )}
+            <SettingsDrawer
+              isOpen={showPromptEditor}
+              onClose={() => setShowPromptEditor(false)}
+              modeId={modeId}
+              setModeId={setModeId}
+              modes={modes}
+              modelId={modelId}
+              setModelId={setModelId}
+              models={models}
+              customPrompt={customPrompt}
+              setCustomPrompt={setCustomPrompt}
+              onSavePrompt={onSavePrompt}
+              onRestoreDefaultPrompt={onRestoreDefaultPrompt}
+              isGrading={isGrading}
+              onModesChange={onModesChange}
+              variant="panel"
+            />
           </div>
         </div>
       </div>
@@ -576,15 +478,6 @@ export const GradingMain: React.FC<GradingMainProps> = ({
           marginRight: showSettingsDrawer ? settingsDrawerWidth : 0
         }}
       >
-        {showModeManager ? (
-          <GradingModeManager
-            modes={modes}
-            currentModeId={modeId}
-            onModeSelect={setModeId}
-            onModesChange={() => onModesChange?.()}
-            onClose={() => setShowModeManager(false)}
-          />
-        ) : (
           <HorizontalResizable
             initial={0.5}
             minLeft={0.35}
@@ -641,7 +534,6 @@ export const GradingMain: React.FC<GradingMainProps> = ({
               />
             }
           />
-        )}
       </div>
 
       {/* 设置抽屉 */}

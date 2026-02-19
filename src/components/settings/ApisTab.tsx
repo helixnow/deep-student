@@ -16,6 +16,7 @@ import { Switch } from '../ui/shad/Switch';
 import { SettingSection } from './SettingsCommon';
 import { SiliconFlowSection } from './SiliconFlowSection';
 import { VendorApiKeySection } from './VendorApiKeySection';
+import { VendorModelFetcher, supportsModelFetching } from './VendorModelFetcher';
 import { ShadApiEditModal } from './ShadApiEditModal';
 import { cn } from '../../lib/utils';
 import { showGlobalNotification } from '../UnifiedNotification';
@@ -128,6 +129,7 @@ interface ApisTabProps {
   handleBatchCreateConfigs: (configs: any[]) => Promise<any> | void | undefined;
   handleBatchConfigsCreated: (mapping: { [key: string]: string }) => void;
   onReorderVendors: (reorderedVendors: VendorConfig[]) => void;
+  onAddVendorModels?: (vendor: VendorConfig, models: Array<{ modelId: string; label: string }>) => Promise<void>;
   // 移动端标识：移动端使用右侧滑动面板，桌面端使用内联编辑
   isSmallScreen?: boolean;
 }
@@ -168,6 +170,7 @@ export const ApisTab: React.FC<ApisTabProps> = ({
   handleSiliconFlowConfig,
   handleBatchCreateConfigs,
   handleBatchConfigsCreated,
+  onAddVendorModels,
   isSmallScreen = false,
   onReorderVendors,
 }) => {
@@ -446,6 +449,15 @@ export const ApisTab: React.FC<ApisTabProps> = ({
                       {selectedVendorIsSiliconflow && (
                         <div className="mb-6">
                           <SiliconFlowSection variant="models" onCreateConfig={handleSiliconFlowConfig} onBatchCreateConfigs={handleBatchCreateConfigs} onBatchConfigsCreated={handleBatchConfigsCreated} showMessage={showGlobalNotification} />
+                        </div>
+                      )}
+                      {!selectedVendorIsSiliconflow && onAddVendorModels && supportsModelFetching(selectedVendor.providerType) && (
+                        <div className="mb-6">
+                          <VendorModelFetcher
+                            vendor={selectedVendor}
+                            existingModelIds={selectedVendorModels.map(({ profile }) => profile.model)}
+                            onAddModels={onAddVendorModels}
+                          />
                         </div>
                       )}
                       <div className="space-y-3">

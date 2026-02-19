@@ -54,6 +54,8 @@ import {
   clampFontSize,
 } from '../config/fontConfig';
 import { normalizeMcpToolList } from './settings/mcpUtils';
+import { inferCapabilities, getModelDefaultParameters, applyProviderSpecificAdjustments } from '../utils/modelCapabilities';
+import { inferApiCapabilities } from '../utils/apiCapabilityEngine';
 import {
   DEFAULT_STDIO_ARGS,
   DEFAULT_STDIO_ARGS_STORAGE,
@@ -3804,6 +3806,85 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
     }
   };
 
+  // 通用供应商模型批量添加（由 VendorModelFetcher 调用）
+  const handleAddVendorModels = useCallback(async (
+    vendor: VendorConfig,
+    models: Array<{ modelId: string; label: string }>
+  ) => {
+    let nextProfiles = [...modelProfiles];
+    let changed = false;
+    for (const { modelId, label } of models) {
+      const normalizedModel = modelId.trim().toLowerCase();
+      const existing = nextProfiles.find(
+        p => p.vendorId === vendor.id && p.model.trim().toLowerCase() === normalizedModel
+      );
+      if (existing) continue; // 已存在，跳过
+
+      const caps = inferCapabilities(modelId);
+      const extCaps = inferApiCapabilities({ id: modelId, name: label });
+      const defaults = getModelDefaultParameters(modelId);
+
+      const effectiveSupportsReasoning =
+        caps.supportsReasoning ||
+        extCaps.reasoning ||
+        extCaps.supportsReasoningEffort ||
+        extCaps.supportsThinkingTokens ||
+        extCaps.supportsHybridReasoning;
+
+      const enableThinkingDefault = effectiveSupportsReasoning
+        ? defaults.enableThinking ?? (extCaps.supportsThinkingTokens || extCaps.supportsHybridReasoning || caps.isReasoning)
+        : false;
+
+      const modelAdapter = vendor.providerType?.toLowerCase() === 'gemini' ? 'google' : caps.modelAdapter;
+      const geminiApiVersion = vendor.providerType?.toLowerCase() === 'gemini' ? 'v1beta' : undefined;
+
+      const profile: ModelProfile = {
+        id: `vm_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        vendorId: vendor.id,
+        label: label || modelId,
+        model: modelId,
+        modelAdapter,
+        isMultimodal: caps.isMultimodal,
+        isReasoning: effectiveSupportsReasoning,
+        isEmbedding: caps.isEmbedding,
+        isReranker: caps.isReranker,
+        supportsTools: caps.supportsTools,
+        supportsReasoning: effectiveSupportsReasoning,
+        status: 'enabled',
+        enabled: true,
+        maxOutputTokens: defaults.maxOutputTokens ?? 8192,
+        temperature: defaults.temperature ?? 0.7,
+        thinkingEnabled: enableThinkingDefault,
+        includeThoughts: effectiveSupportsReasoning ? (defaults.includeThoughts ?? extCaps.supportsThinkingTokens) : false,
+        enableThinking: enableThinkingDefault,
+        thinkingBudget: effectiveSupportsReasoning ? defaults.thinkingBudget : undefined,
+        minP: defaults.minP,
+        topK: defaults.topK,
+        geminiApiVersion,
+        isBuiltin: false,
+      };
+
+      // 供应商特定调整
+      const adjustments = applyProviderSpecificAdjustments({
+        modelId,
+        supportsTools: caps.supportsTools,
+        supportsReasoning: caps.supportsReasoning,
+      });
+      if (adjustments.enableThinking !== undefined) {
+        profile.enableThinking = adjustments.enableThinking;
+        profile.thinkingEnabled = adjustments.enableThinking;
+      }
+      if (adjustments.includeThoughts !== undefined) profile.includeThoughts = adjustments.includeThoughts;
+      if (adjustments.thinkingBudget !== undefined) profile.thinkingBudget = adjustments.thinkingBudget;
+
+      nextProfiles.push(profile);
+      changed = true;
+    }
+    if (changed) {
+      await persistModelProfiles(nextProfiles);
+    }
+  }, [modelProfiles, persistModelProfiles]);
+
   // 获取所有启用的对话模型，支持包含当前已分配但被禁用的模型
   const getAllEnabledApis = (currentValue?: string) => {
     const enabledApis = config.apiConfigs.filter(api => api.enabled && !api.isEmbedding && !api.isReranker);
@@ -4070,6 +4151,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
             handleBatchCreateConfigs={handleBatchCreateConfigs}
             handleBatchConfigsCreated={handleBatchConfigsCreated}
             onReorderVendors={handleReorderVendors}
+            onAddVendorModels={handleAddVendorModels}
             isSmallScreen={isSmallScreen}
           />
         )}
