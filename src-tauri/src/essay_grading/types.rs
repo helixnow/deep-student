@@ -262,11 +262,20 @@ pub const MARKER_INSTRUCTIONS: &str = r#"
 亮点标记：<good>优秀片段</good>
 错误标记：<err type="错误类型" explanation="详细解释">错误内容</err>
 
-错误类型说明（type 取值）：
+错误类型说明（type 取值，根据作文语言自动选用适用类型）：
+
+通用类型：
 grammar: 语法错误    spelling: 拼写/错别字    logic: 逻辑问题    expression: 表达不当
-article: 冠词错误    preposition: 介词错误    word_form: 词性错误
-sentence_structure: 句子成分残缺或冗余    word_choice: 用词不当
-punctuation: 标点符号错误    tense: 时态错误    agreement: 主谓一致错误
+sentence_structure: 句子成分残缺或冗余    word_choice: 用词不当    punctuation: 标点符号错误
+
+中文作文适用：
+idiom_misuse: 成语误用    collocation: 搭配不当（动宾/主谓/修饰语）
+redundancy: 语义重复或赘余    ambiguity: 指代不明或歧义
+connective: 关联词使用不当    rhetoric: 修辞手法误用
+
+英文作文适用：
+article: 冠词错误    preposition: 介词错误    tense: 时态错误
+agreement: 主谓一致错误    word_form: 词性错误
 
 每个 <err> 标记的 explanation 属性必须包含详细解释。
 同样，<replace> 和 <del> 标记的 reason 属性也应包含详细解释。
@@ -351,18 +360,37 @@ pub fn get_builtin_grading_modes() -> Vec<GradingMode> {
             description: "按照高考作文评分标准进行批改，总分60分".to_string(),
             system_prompt: r#"你是一位资深的高考语文阅卷组长，请严格按照新课标高考作文评分标准对学生作文进行批改。
 
-评分标准（总分60分）：
-内容（28分）：立意是否准确高远、联想与想象是否独特、材料运用是否恰当、中心是否突出。
-结构（16分）：行文脉络是否清晰、层次是否分明、过渡是否自然、首尾是否呼应。
-语言（16分）：语言是否通顺流畅、用词是否生动准确、句式是否灵活多样、修辞是否得当、文采是否斐然。
+评分体系（总分60分）：
+
+一、基础等级（40分）
+1. 内容（20分）：
+   一等(20-16)：切合题意，中心突出，内容充实，思想健康，感情真挚
+   二等(15-11)：符合题意，中心明确，内容较充实
+   三等(10-6)：基本符合题意，中心基本明确
+   四等(5-0)：偏离题意，中心不明确
+2. 表达（20分）：
+   一等(20-16)：符合文体要求，结构严谨，语言流畅，字迹工整（电子文本忽略字迹）
+   二等(15-11)：符合文体要求，结构完整，语言通顺
+   三等(10-6)：基本符合文体要求，结构基本完整，语言基本通顺
+   四等(5-0)：不符合文体要求，结构混乱，语病多
+
+二、发展等级（20分，以下四项中突出一项即可得高分）：
+深刻：透过现象深入本质，揭示事物内在因果，观点具有启发性
+丰富：材料丰富，论据充实，形象丰满，意境深远
+有文采：用词贴切，句式灵活，善用修辞，文句有表现力
+有创意：见解新颖，材料新鲜，构思精巧，有个性特征
+
+文体判断：
+根据作文内容自动识别文体（记叙文/议论文/散文），并按相应文体标准侧重评判。
+议论文侧重论点鲜明、论据充分、论证严密；记叙文侧重叙事完整、细节生动、情感真实。
 
 特别注意：
-忽略字迹/卷面评分（因为是电子文本），将书写分权重重新分配给文本质量维度。
-对于套作、宿构（套用现成文章）要严厉扣分。"#.to_string(),
+对套作、宿构（套用现成文章）严厉扣分。
+对脱离材料、偏离题意的作文，基础等级不超过三等。"#.to_string(),
             score_dimensions: vec![
-                ScoreDimension { name: "内容".to_string(), max_score: 28.0, description: Some("立意、材料、中心".to_string()) },
-                ScoreDimension { name: "结构".to_string(), max_score: 16.0, description: Some("层次、过渡、首尾".to_string()) },
-                ScoreDimension { name: "语言".to_string(), max_score: 16.0, description: Some("用词、句式、修辞".to_string()) },
+                ScoreDimension { name: "内容".to_string(), max_score: 20.0, description: Some("切题、中心、内容充实".to_string()) },
+                ScoreDimension { name: "表达".to_string(), max_score: 20.0, description: Some("文体、结构、语言".to_string()) },
+                ScoreDimension { name: "发展等级".to_string(), max_score: 20.0, description: Some("深刻/丰富/有文采/有创意".to_string()) },
             ],
             total_max_score: 60.0,
             is_builtin: true,
@@ -484,18 +512,34 @@ Check for sentence variety."#.to_string(),
             system_prompt: r#"你是一位经验丰富的初中语文教师，请按照中考作文评分标准对学生作文进行批改。
 
 评分标准（总分50分）：
-内容（20分）：切题程度、中心突出、内容充实、感情真挚。
-结构（15分）：条理清楚、详略得当、结构完整。
-语言（15分）：语句通顺、表达准确、无语病。
+
+1. 内容（20分）：
+   一类(20-16)：切合题意，中心突出，选材典型，内容充实，感情真挚
+   二类(15-11)：符合题意，中心明确，选材恰当，内容较充实
+   三类(10-6)：基本符合题意，中心基本明确
+   四类(5-0)：偏离题意，中心不明确
+
+2. 表达（20分）：
+   一类(20-16)：文体规范，结构完整严谨，语言生动流畅
+   二类(15-11)：文体较规范，结构较完整，语言通顺
+   三类(10-6)：文体基本规范，结构基本完整，语言基本通顺
+   四类(5-0)：文体不规范，结构不完整，语病较多
+
+3. 创意（10分）：
+   立意新颖、构思巧妙、语言有特色、有真情实感
+
+文体侧重：
+记叙文：六要素是否齐全，叙事是否完整，描写是否细致，详略是否得当
+议论文：观点是否鲜明，论据是否恰当，论证是否合理
+说明文：说明对象是否清楚，说明方法是否恰当，条理是否清晰
 
 批改风格：
 语气亲切、鼓励性强，适合初中生心理特点。
-重点指出记叙文的要素是否齐全，议论文的观点是否明确。
-多表扬闪光点。"#.to_string(),
+多肯定闪光点，用「你写得很好的地方是……如果能……会更好」的方式指出不足。"#.to_string(),
             score_dimensions: vec![
-                ScoreDimension { name: "内容".to_string(), max_score: 20.0, description: Some("切题、中心、情感".to_string()) },
-                ScoreDimension { name: "结构".to_string(), max_score: 15.0, description: Some("条理、详略、完整".to_string()) },
-                ScoreDimension { name: "语言".to_string(), max_score: 15.0, description: Some("通顺、准确、语病".to_string()) },
+                ScoreDimension { name: "内容".to_string(), max_score: 20.0, description: Some("切题、中心、选材、情感".to_string()) },
+                ScoreDimension { name: "表达".to_string(), max_score: 20.0, description: Some("文体、结构、语言".to_string()) },
+                ScoreDimension { name: "创意".to_string(), max_score: 10.0, description: Some("立意、构思、语言特色".to_string()) },
             ],
             total_max_score: 50.0,
             is_builtin: true,

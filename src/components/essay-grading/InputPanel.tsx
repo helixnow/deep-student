@@ -331,6 +331,12 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
                     <Loader2 className="w-4 h-4 text-white animate-spin" />
                   </div>
                 )}
+                {img.ocrStatus === 'retrying' && (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/30 rounded">
+                    <Loader2 className="w-3.5 h-3.5 text-yellow-300 animate-spin" />
+                    <span className="text-[7px] text-yellow-300 mt-0.5">Retry</span>
+                  </div>
+                )}
                 {img.ocrStatus === 'timeout' && (
                   <div className="absolute bottom-0 left-0 right-0 bg-yellow-500/80 text-[8px] text-white text-center leading-tight rounded-b">
                     Timeout

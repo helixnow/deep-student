@@ -34,7 +34,7 @@ const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'in
 const OCR_MAX_FILES = 5;
 
 /** OCR 处理状态 */
-export type OcrStatus = 'pending' | 'processing' | 'done' | 'error' | 'timeout';
+export type OcrStatus = 'pending' | 'processing' | 'retrying' | 'done' | 'error' | 'timeout';
 
 /** 上传的图片数据（保存原图 base64 + OCR 文本） */
 export interface UploadedImage {
@@ -50,6 +50,8 @@ export interface UploadedImage {
   ocrError?: string;
   /** 请求版本号，用于时序控制 */
   ocrVersion?: number;
+  /** 已重试次数（默认 0） */
+  ocrRetryCount?: number;
 }
 
 interface EssayGradingWorkbenchProps {
@@ -370,61 +372,94 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({ on
     setUploadedImages(prev => [...prev, ...pendingImages]);
     showGlobalNotification('info', t('essay_grading:toast.ocr_processing'));
 
-    // ── 阶段 2：异步 OCR（并发限制 = 2，逐张完成立即回填） ──
+    // ── 阶段 2：异步 OCR（并发限制 = 2，逐张完成立即回填，超时/失败自动重试 1 次） ──
     const OCR_CONCURRENCY = 2;
+    const OCR_MAX_RETRIES = 1;
+    const OCR_RETRY_DELAY_MS = 3000;
     let running = 0;
     let idx = 0;
     const queue = [...pendingImages];
+
+    /** 对单张图片执行 OCR（含自动重试） */
+    const executeOcrForImage = (img: UploadedImage, retryCount: number): void => {
+      // 标记状态
+      const statusLabel: OcrStatus = retryCount > 0 ? 'retrying' : 'processing';
+      setUploadedImages(prev =>
+        prev.map(p => p.id === img.id ? { ...p, ocrStatus: statusLabel, ocrRetryCount: retryCount } : p)
+      );
+
+      const capturedVersion = img.ocrVersion!;
+      // ★ JS finally 总会执行，用 flag 区分"重试接管"和"真正结束"
+      let scheduledRetry = false;
+
+      ocrExtractText({ imageBase64: img.base64 })
+        .then(text => {
+          // ★ 时序控制：通过 ref 同步检查图片是否仍活跃（未被用户删除）
+          if (!activeImageIdsRef.current.has(img.id)) return;
+          setUploadedImages(prev => {
+            const existing = prev.find(p => p.id === img.id);
+            if (!existing || existing.ocrVersion !== capturedVersion) return prev; // stale
+            return prev.map(p =>
+              p.id === img.id ? { ...p, ocrText: text, ocrStatus: 'done' as OcrStatus } : p
+            );
+          });
+          if (text.trim()) {
+            setInputText(prev => prev ? `${prev}\n\n${text}` : text);
+          }
+        })
+        .catch((err: unknown) => {
+          if (!activeImageIdsRef.current.has(img.id)) return;
+          const msg = getErrorMessage(err);
+          const isTimeout = msg === 'OCR_TIMEOUT';
+
+          // ★ 超时或失败且未达重试上限 → 延迟自动重试
+          if (retryCount < OCR_MAX_RETRIES) {
+            scheduledRetry = true;
+            setUploadedImages(prev =>
+              prev.map(p => p.id === img.id
+                ? { ...p, ocrStatus: 'retrying' as OcrStatus, ocrError: msg, ocrRetryCount: retryCount + 1 }
+                : p
+              )
+            );
+            setTimeout(() => {
+              if (!activeImageIdsRef.current.has(img.id)) {
+                running--;
+                processNext();
+                return;
+              }
+              executeOcrForImage(img, retryCount + 1);
+            }, OCR_RETRY_DELAY_MS);
+            return;
+          }
+
+          // 重试耗尽，标记最终失败
+          setUploadedImages(prev => {
+            const existing = prev.find(p => p.id === img.id);
+            if (!existing || existing.ocrVersion !== capturedVersion) return prev;
+            return prev.map(p =>
+              p.id === img.id
+                ? { ...p, ocrStatus: (isTimeout ? 'timeout' : 'error') as OcrStatus, ocrError: msg }
+                : p
+            );
+          });
+          if (isTimeout) {
+            showGlobalNotification('warning', t('essay_grading:toast.ocr_timeout', { fileName: img.fileName }));
+          } else {
+            showGlobalNotification('error', t('essay_grading:toast.ocr_failed', { error: msg }));
+          }
+        })
+        .finally(() => {
+          if (scheduledRetry) return; // 重试接管，不释放并发槽位
+          running--;
+          processNext();
+        });
+    };
 
     const processNext = (): void => {
       while (running < OCR_CONCURRENCY && idx < queue.length) {
         const img = queue[idx++];
         running++;
-
-        // 标记 processing
-        setUploadedImages(prev =>
-          prev.map(p => p.id === img.id ? { ...p, ocrStatus: 'processing' as OcrStatus } : p)
-        );
-
-        const capturedVersion = img.ocrVersion!;
-
-        ocrExtractText({ imageBase64: img.base64 })
-          .then(text => {
-            // ★ 时序控制：通过 ref 同步检查图片是否仍活跃（未被用户删除）
-            if (!activeImageIdsRef.current.has(img.id)) return; // 已被删除，丢弃
-            setUploadedImages(prev => {
-              const existing = prev.find(p => p.id === img.id);
-              if (!existing || existing.ocrVersion !== capturedVersion) return prev; // stale
-              return prev.map(p =>
-                p.id === img.id ? { ...p, ocrText: text, ocrStatus: 'done' as OcrStatus } : p
-              );
-            });
-            if (text.trim()) {
-              setInputText(prev => prev ? `${prev}\n\n${text}` : text);
-            }
-          })
-          .catch((err: unknown) => {
-            const msg = getErrorMessage(err);
-            const isTimeout = msg === 'OCR_TIMEOUT';
-            setUploadedImages(prev => {
-              const existing = prev.find(p => p.id === img.id);
-              if (!existing || existing.ocrVersion !== capturedVersion) return prev;
-              return prev.map(p =>
-                p.id === img.id
-                  ? { ...p, ocrStatus: (isTimeout ? 'timeout' : 'error') as OcrStatus, ocrError: msg }
-                  : p
-              );
-            });
-            if (isTimeout) {
-              showGlobalNotification('warning', t('essay_grading:toast.ocr_timeout', { fileName: img.fileName }));
-            } else {
-              showGlobalNotification('error', t('essay_grading:toast.ocr_failed', { error: msg }));
-            }
-          })
-          .finally(() => {
-            running--;
-            processNext();
-          });
+        executeOcrForImage(img, 0);
       }
     };
 

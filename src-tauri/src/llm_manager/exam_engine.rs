@@ -17,6 +17,108 @@ use super::{
     Result, EXAM_SEGMENT_MAX_DIMENSION, EXAM_SEGMENT_MAX_IMAGE_BYTES,
 };
 
+// ── 渐进对冲 OCR 用数据结构 ──
+
+/// 预构建的单引擎 OCR 请求（所有字段 owned，可 tokio::spawn）
+struct PreparedOcrRequest {
+    idx: usize,
+    engine_name: String,
+    model_name: String,
+    model_adapter: String,
+    url: String,
+    headers: reqwest::header::HeaderMap,
+    body: serde_json::Value,
+}
+
+/// 安全截取字符串（避免切断 UTF-8 字符边界）— 模块级别，供 spawn 任务使用
+fn safe_truncate(s: &str, max_bytes: usize) -> &str {
+    if s.len() <= max_bytes {
+        s
+    } else {
+        s.char_indices()
+            .take_while(|(idx, _)| *idx < max_bytes)
+            .last()
+            .map(|(idx, ch)| &s[..idx + ch.len_utf8()])
+            .unwrap_or("")
+    }
+}
+
+/// 执行单个 OCR 引擎请求（独立于 LLMManager，可 tokio::spawn）
+async fn run_single_ocr_request(
+    client: reqwest::Client,
+    req: PreparedOcrRequest,
+    timeout_secs: u64,
+) -> std::result::Result<String, String> {
+    let request_future = client
+        .post(&req.url)
+        .headers(req.headers)
+        .json(&req.body)
+        .send();
+
+    // 硬超时
+    let response = match tokio::time::timeout(
+        std::time::Duration::from_secs(timeout_secs),
+        request_future,
+    )
+    .await
+    {
+        Ok(Ok(resp)) => resp,
+        Ok(Err(e)) => {
+            return Err(format!(
+                "Engine #{} ({}) network error: {}",
+                req.idx, req.engine_name, e
+            ))
+        }
+        Err(_) => {
+            return Err(format!(
+                "Engine #{} ({}) timed out ({}s)",
+                req.idx, req.engine_name, timeout_secs
+            ))
+        }
+    };
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let error_text = response.text().await.unwrap_or_default();
+        return Err(format!(
+            "Engine #{} ({}) HTTP {}: {}",
+            req.idx,
+            req.engine_name,
+            status,
+            safe_truncate(&error_text, 200)
+        ));
+    }
+
+    let response_text = response
+        .text()
+        .await
+        .map_err(|e| format!("Engine #{} ({}) read failed: {}", req.idx, req.engine_name, e))?;
+
+    let response_json: Value = serde_json::from_str(&response_text)
+        .map_err(|e| format!("Engine #{} ({}) JSON parse failed: {}", req.idx, req.engine_name, e))?;
+
+    // Gemini / Anthropic 响应格式转换
+    let openai_like = if req.model_adapter == "google" {
+        crate::adapters::gemini_openai_converter::convert_gemini_nonstream_response_to_openai(
+            &response_json,
+            &req.model_name,
+        )
+        .map_err(|e| format!("Gemini conversion failed: {}", e))?
+    } else if matches!(req.model_adapter.as_str(), "anthropic" | "claude") {
+        crate::providers::convert_anthropic_response_to_openai(&response_json, &req.model_name)
+            .ok_or_else(|| "Anthropic conversion failed".to_string())?
+    } else {
+        response_json
+    };
+
+    let content = openai_like["choices"][0]["message"]["content"]
+        .as_str()
+        .unwrap_or("")
+        .to_string();
+
+    Ok(content)
+}
+
 impl LLMManager {
     pub async fn get_pdf_ocr_model_config(&self) -> Result<ApiConfig> {
         let engine_type = self.get_ocr_engine_type().await;
@@ -450,11 +552,16 @@ impl LLMManager {
         Err(last_err.unwrap_or_else(|| AppError::configuration("所有 OCR 引擎均失败")))
     }
 
-    /// ★ FreeOCR 模式 + 优先级 fallback + 单引擎 45s 超时
+    /// ★ FreeOCR 模式 + 渐进对冲（progressive hedging）
     ///
     /// 供作文批改 OCR、翻译 OCR、题目导入 OCR 使用。
-    /// 与 `call_ocr_page_with_fallback`（Grounding 模式）不同，本方法使用 FreeOcr 模式
-    /// 只返回纯文本，无坐标信息。每个引擎有独立 45s 超时保护。
+    ///
+    /// **策略：**
+    /// 1. 立即启动优先级最高的引擎
+    /// 2. 若 10s 内无响应，并行启动下一个引擎（前一个不取消）
+    /// 3. 每隔 10s 再追加一个引擎，直到所有引擎均已启动
+    /// 4. 每个引擎有独立 60s 硬超时
+    /// 5. 采用**最先返回成功结果**的那个引擎
     pub async fn call_ocr_free_text_with_fallback(
         &self,
         image_path: &str,
@@ -463,7 +570,10 @@ impl LLMManager {
         use crate::ocr_circuit_breaker::OCR_CIRCUIT_BREAKER;
         use crate::providers::ProviderAdapter;
 
-        const OCR_TIMEOUT_SECS: u64 = 45;
+        /// 单引擎硬超时
+        const ENGINE_TIMEOUT_SECS: u64 = 60;
+        /// 渐进对冲间隔：N 秒无响应则启动下一个引擎
+        const HEDGE_INTERVAL_SECS: u64 = 10;
 
         // ★ 熔断检查
         if !OCR_CIRCUIT_BREAKER.allow_request() {
@@ -485,13 +595,14 @@ impl LLMManager {
             .prepare_segmentation_image_data(image_path, mime)
             .await?;
 
-        let mut last_err = None;
+        // ── 阶段 1：预构建所有引擎的 HTTP 请求 ──
+        let mut prepared: Vec<PreparedOcrRequest> = Vec::new();
+
         for (idx, (config, engine_type)) in engines.iter().enumerate() {
             let api_key = match self.decrypt_api_key_if_needed(&config.api_key) {
                 Ok(k) => k,
                 Err(e) => {
-                    warn!("[OCR-FreeText] Engine #{} ({}) key decrypt failed: {}", idx, engine_type.as_str(), e);
-                    last_err = Some(e);
+                    warn!("[OCR-Hedge] Engine #{} ({}) key decrypt failed: {}", idx, engine_type.as_str(), e);
                     continue;
                 }
             };
@@ -545,16 +656,10 @@ impl LLMManager {
             let preq = match provider.build_request(&config.base_url, &api_key, &config.model, &request_body) {
                 Ok(p) => p,
                 Err(e) => {
-                    warn!("[OCR-FreeText] Engine #{} ({}) request build failed: {}", idx, engine_type.as_str(), e);
-                    last_err = Some(AppError::llm(format!("OCR 请求构建失败: {}", e)));
+                    warn!("[OCR-Hedge] Engine #{} ({}) request build failed: {}", idx, engine_type.as_str(), e);
                     continue;
                 }
             };
-
-            debug!(
-                "[OCR-FreeText] Trying engine #{} ({}, model={}) with {}s timeout",
-                idx, engine_type.as_str(), config.model, OCR_TIMEOUT_SECS
-            );
 
             let mut header_map = reqwest::header::HeaderMap::new();
             for (k, v) in preq.headers.iter() {
@@ -566,97 +671,121 @@ impl LLMManager {
                 }
             }
 
-            let request_future = self.client
-                .post(&preq.url)
-                .headers(header_map)
-                .json(&preq.body)
-                .send();
+            prepared.push(PreparedOcrRequest {
+                idx,
+                engine_name: engine_type.as_str().to_string(),
+                model_name: config.model.clone(),
+                model_adapter: config.model_adapter.clone(),
+                url: preq.url,
+                headers: header_map,
+                body: preq.body,
+            });
+        }
 
-            // ★ 45s 独立超时
-            let response = match tokio::time::timeout(
-                std::time::Duration::from_secs(OCR_TIMEOUT_SECS),
-                request_future,
-            ).await {
-                Ok(Ok(resp)) => resp,
-                Ok(Err(e)) => {
-                    warn!("[OCR-FreeText] Engine #{} ({}) network error: {}", idx, engine_type.as_str(), e);
-                    last_err = Some(AppError::network(format!("OCR 请求失败: {}", e)));
-                    continue;
-                }
-                Err(_) => {
-                    warn!("[OCR-FreeText] Engine #{} ({}) timed out after {}s", idx, engine_type.as_str(), OCR_TIMEOUT_SECS);
-                    last_err = Some(AppError::network(format!(
-                        "OCR 引擎 {} 超时 ({}s)", engine_type.as_str(), OCR_TIMEOUT_SECS
-                    )));
-                    continue;
-                }
-            };
+        if prepared.is_empty() {
+            return Err(AppError::configuration(
+                "所有 OCR 引擎配置异常，无法构建请求",
+            ));
+        }
 
-            if !response.status().is_success() {
-                let status = response.status();
-                let error_text = response.text().await.unwrap_or_default();
-                warn!("[OCR-FreeText] Engine #{} ({}) HTTP {}: {}", idx, engine_type.as_str(), status, Self::safe_truncate_str(&error_text, 200));
-                last_err = Some(AppError::llm(format!("OCR API 返回错误 {}: {}", status, error_text)));
-                continue;
-            }
+        // ── 阶段 2：渐进对冲执行 ──
+        let total = prepared.len();
+        let (tx, mut rx) =
+            tokio::sync::mpsc::unbounded_channel::<(usize, std::result::Result<String, String>)>();
+        let mut spawned = 0usize;
+        let mut completed = 0usize;
+        let mut last_err_msg: Option<String> = None;
 
-            let response_text = match response.text().await {
-                Ok(t) => t,
-                Err(e) => {
-                    warn!("[OCR-FreeText] Engine #{} ({}) read response failed: {}", idx, engine_type.as_str(), e);
-                    last_err = Some(AppError::llm(format!("读取 OCR 响应失败: {}", e)));
-                    continue;
-                }
-            };
+        for (seq, req) in prepared.into_iter().enumerate() {
+            let engine_name = req.engine_name.clone();
+            let model_name = req.model_name.clone();
+            let engine_idx = req.idx;
 
-            let response_json: Value = match serde_json::from_str(&response_text) {
-                Ok(v) => v,
-                Err(e) => {
-                    warn!("[OCR-FreeText] Engine #{} ({}) JSON parse failed: {}", idx, engine_type.as_str(), e);
-                    last_err = Some(AppError::llm(format!("解析 OCR 响应失败: {}", e)));
-                    continue;
-                }
-            };
+            let client = self.client.clone();
+            let tx_clone = tx.clone();
+            tokio::spawn(async move {
+                let result =
+                    run_single_ocr_request(client, req, ENGINE_TIMEOUT_SECS).await;
+                let _ = tx_clone.send((engine_idx, result));
+            });
+            spawned += 1;
 
-            // Gemini / Anthropic 响应转换
-            let openai_like = if config.model_adapter == "google" {
-                match crate::adapters::gemini_openai_converter::convert_gemini_nonstream_response_to_openai(&response_json, &config.model) {
-                    Ok(v) => v,
-                    Err(e) => {
-                        last_err = Some(AppError::llm(format!("Gemini 响应转换失败: {}", e)));
-                        continue;
+            info!(
+                "[OCR-Hedge] Spawned engine #{} ({}, model={}) [{}/{}]",
+                engine_idx, engine_name, model_name, seq + 1, total
+            );
+
+            // 非最后一个引擎 → 等 HEDGE_INTERVAL 看是否有结果
+            if seq < total - 1 {
+                let deadline =
+                    tokio::time::sleep(std::time::Duration::from_secs(HEDGE_INTERVAL_SECS));
+                tokio::pin!(deadline);
+
+                loop {
+                    tokio::select! {
+                        msg = rx.recv() => {
+                            match msg {
+                                Some((eidx, Ok(text))) => {
+                                    info!(
+                                        "[OCR-Hedge] Engine #{} won the race ({} chars), {} other(s) may still be running",
+                                        eidx, text.len(), spawned - completed - 1
+                                    );
+                                    OCR_CIRCUIT_BREAKER.record_success();
+                                    return Ok(text);
+                                }
+                                Some((eidx, Err(e))) => {
+                                    completed += 1;
+                                    warn!("[OCR-Hedge] Engine #{} failed: {}", eidx, e);
+                                    last_err_msg = Some(e);
+                                    if completed >= spawned {
+                                        break; // 已启动的全部失败，继续启动下一个
+                                    }
+                                    // 继续等待其他引擎或超时
+                                }
+                                None => break,
+                            }
+                        }
+                        _ = &mut deadline => {
+                            debug!(
+                                "[OCR-Hedge] {}s elapsed with no result, hedging with next engine",
+                                HEDGE_INTERVAL_SECS
+                            );
+                            break; // 启动下一个引擎
+                        }
                     }
                 }
-            } else if matches!(config.model_adapter.as_str(), "anthropic" | "claude") {
-                match crate::providers::convert_anthropic_response_to_openai(&response_json, &config.model) {
-                    Some(v) => v,
-                    None => {
-                        last_err = Some(AppError::llm("Anthropic 响应转换失败".to_string()));
-                        continue;
-                    }
-                }
-            } else {
-                response_json
-            };
-
-            let content = openai_like["choices"][0]["message"]["content"]
-                .as_str()
-                .unwrap_or("")
-                .to_string();
-
-            if idx > 0 {
-                info!(
-                    "[OCR-FreeText] Fallback succeeded: engine #{} ({}) returned {} chars",
-                    idx, engine_type.as_str(), content.len()
-                );
             }
-            OCR_CIRCUIT_BREAKER.record_success();
-            return Ok(content);
+        }
+
+        // 显式 drop 发送端，使 rx.recv() 在所有 spawn 完成后返回 None
+        drop(tx);
+
+        // ── 等待剩余已启动的引擎返回 ──
+        while completed < spawned {
+            match rx.recv().await {
+                Some((eidx, Ok(text))) => {
+                    info!(
+                        "[OCR-Hedge] Engine #{} succeeded ({} chars)",
+                        eidx,
+                        text.len()
+                    );
+                    OCR_CIRCUIT_BREAKER.record_success();
+                    return Ok(text);
+                }
+                Some((eidx, Err(e))) => {
+                    completed += 1;
+                    warn!("[OCR-Hedge] Engine #{} failed: {}", eidx, e);
+                    last_err_msg = Some(e);
+                }
+                None => break,
+            }
         }
 
         // 所有引擎均失败 → 记录熔断失败
         OCR_CIRCUIT_BREAKER.record_failure();
-        Err(last_err.unwrap_or_else(|| AppError::configuration("所有 OCR 引擎均失败")))
+        Err(AppError::llm(
+            last_err_msg.unwrap_or_else(|| "所有 OCR 引擎均失败".to_string()),
+        ))
     }
 
     pub async fn call_deepseek_ocr_page_raw(

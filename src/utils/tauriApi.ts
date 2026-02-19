@@ -3776,13 +3776,13 @@ export interface TranslationHistoryItem {
   quality_rating?: number | null;
 }
 
-/** OCR 默认超时（毫秒） */
-const OCR_DEFAULT_TIMEOUT_MS = 30_000;
+/** OCR 默认超时（毫秒）— 后端渐进对冲：60s 引擎超时 + 10s 对冲间隔，前端留 buffer */
+const OCR_DEFAULT_TIMEOUT_MS = 75_000;
 
 /**
  * OCR提取文本（单页图片识别）
  * @param options - {imagePath?: string, imageBase64?: string}
- * @param timeoutMs - 超时毫秒数，默认 30s；0 表示不设超时
+ * @param timeoutMs - 超时毫秒数，默认 75s；0 表示不设超时
  */
 export async function ocrExtractText(options: {
   imagePath?: string;
