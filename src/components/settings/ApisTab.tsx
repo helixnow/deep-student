@@ -523,7 +523,7 @@ export const ApisTab: React.FC<ApisTabProps> = ({
                                     <div className="flex items-center gap-2">
                                       <span className="text-sm font-medium text-foreground truncate">{profile.label || api.name}</span>
                                       {!profile.enabled && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground whitespace-nowrap shrink-0">{t('settings:status.disabled')}</span>}
-                                      {profile.isBuiltin && profile.isReadOnly && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400 whitespace-nowrap shrink-0">{t('settings:api_config.badge_builtin_free')}</span>}
+                                      {api.isBuiltin && api.isReadOnly && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400 whitespace-nowrap shrink-0">{t('settings:api_config.badge_builtin_free')}</span>}
                                     </div>
                                     <div className="font-mono text-xs text-muted-foreground truncate">{api.model}</div>
                                     
@@ -539,7 +539,7 @@ export const ApisTab: React.FC<ApisTabProps> = ({
                                     
                                     {/* 操作按钮区域 - 改为上下布局，始终显示 */}
                                     <div className="flex items-center gap-1 pt-2">
-                                      <Switch checked={profile.enabled} onCheckedChange={value => handleToggleModelProfile(profile, value)} disabled={profile.isBuiltin || vendorBusy} className="scale-75 mr-2" />
+                                      <Switch checked={profile.enabled} onCheckedChange={value => handleToggleModelProfile(profile, value)} disabled={(api.isBuiltin && api.isReadOnly) || vendorBusy} className="scale-75 mr-2" />
                                       <NotionButton size="sm" variant="ghost" iconOnly className={cn(profile.isFavorite && "text-yellow-500")} onClick={() => handleToggleFavorite(profile)} disabled={vendorBusy} title={t('settings:api_config.toggle_favorite')}>
                                         <Star className={cn("h-3.5 w-3.5", profile.isFavorite && "fill-current")} />
                                       </NotionButton>
@@ -556,7 +556,7 @@ export const ApisTab: React.FC<ApisTabProps> = ({
                                       <NotionButton size="sm" variant="ghost" iconOnly onClick={() => void testApiConnection(api)} disabled={testingApi === api.id || vendorBusy} title={t('settings:api_config.test_button')}>
                                         {testingApi === api.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Activity className="h-3.5 w-3.5" />}
                                       </NotionButton>
-                                      <NotionButton size="sm" variant="ghost" iconOnly onClick={() => handleDeleteModelProfile(profile)} disabled={profile.isBuiltin || vendorBusy} title={t('common:actions.delete')} className="text-muted-foreground hover:text-destructive"><Trash2 className="h-3.5 w-3.5" /></NotionButton>
+                                      <NotionButton size="sm" variant="ghost" iconOnly onClick={() => handleDeleteModelProfile(profile)} disabled={(api.isBuiltin && api.isReadOnly) || vendorBusy} title={t('common:actions.delete')} className="text-muted-foreground hover:text-destructive"><Trash2 className="h-3.5 w-3.5" /></NotionButton>
                                     </div>
                                   </div>
                                 </div>

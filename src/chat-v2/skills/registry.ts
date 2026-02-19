@@ -341,6 +341,12 @@ ${skillList}
   /** 等待初始化完成的回调列表 */
   private _initWaiters: Array<() => void> = [];
 
+  /** Skills 是否已加载完成（区别于 initialized：initialized 只表示上下文类型已注册） */
+  private _skillsLoaded = false;
+
+  /** 等待 skills 加载完成的回调列表 */
+  private _skillsLoadedWaiters: Array<() => void> = [];
+
   /**
    * 检查是否已初始化
    */
@@ -376,12 +382,54 @@ ${skillList}
   }
 
   /**
+   * 标记 skills 已加载完成
+   *
+   * 在 loadSkillsFromFileSystem 完成后调用，
+   * 通知所有等待 skills 加载的消费者。
+   */
+  markSkillsLoaded(): void {
+    this._skillsLoaded = true;
+    for (const resolve of this._skillsLoadedWaiters) {
+      resolve();
+    }
+    this._skillsLoadedWaiters = [];
+  }
+
+  /**
+   * 等待 skills 加载完成
+   *
+   * 如果已加载则立即 resolve，否则等待 markSkillsLoaded() 被调用。
+   * 带超时保护，防止无限等待。
+   *
+   * @param timeoutMs 超时时间（默认 3000ms）
+   * @returns 是否在超时内加载完成
+   */
+  waitForSkillsLoaded(timeoutMs = 3000): Promise<boolean> {
+    if (this._skillsLoaded) return Promise.resolve(true);
+
+    return new Promise<boolean>((resolve) => {
+      const timer = setTimeout(() => {
+        this._skillsLoadedWaiters = this._skillsLoadedWaiters.filter((r) => r !== onLoaded);
+        resolve(false);
+      }, timeoutMs);
+
+      const onLoaded = () => {
+        clearTimeout(timer);
+        resolve(true);
+      };
+      this._skillsLoadedWaiters.push(onLoaded);
+    });
+  }
+
+  /**
    * 重置状态（用于测试）
    */
   reset(): void {
     this.skills.clear();
     this.initialized = false;
     this._initWaiters = [];
+    this._skillsLoaded = false;
+    this._skillsLoadedWaiters = [];
     this.loadConfig = {};
     console.log(LOG_PREFIX, 'Registry reset');
   }

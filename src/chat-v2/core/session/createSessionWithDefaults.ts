@@ -51,6 +51,10 @@ export async function createSessionWithDefaults(options: CreateSessionWithDefaul
   const effectiveDefaults = skillDefaults.getEffective(groupDefaults);
 
   if (effectiveDefaults.length > 0) {
+    // 等待 skills 加载完成，避免首次安装时 skills 尚未注册导致激活失败
+    const { skillRegistry } = await import('../../skills/registry');
+    await skillRegistry.waitForSkillsLoaded();
+
     const failedSkills: string[] = [];
     for (const skillId of effectiveDefaults) {
       try {

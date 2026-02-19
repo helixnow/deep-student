@@ -505,7 +505,12 @@
     "ocr_image_progress": "正在识别图片 {{current}}/{{total}}...",
     "ocr_phase_done": "{{total}} 张图片识别完成，开始解析题目...",
     "import_done": "导入完成！共 {{count}} 道题目",
-    "import_interrupted": "导入中断，已保存 {{count}} 道题目"
+    "import_interrupted": "导入中断，已保存 {{count}} 道题目",
+    "filter_questions": "筛选题目",
+    "filter_excluded_count": "已排除 {{count}} 题",
+    "filter_hint": "展开可取消勾选不需要录入的题目（如已掌握的题目）",
+    "filter_delete_failed": "删除排除题目失败",
+    "view_questions_filtered": "确认导入 {{count}} 题"
   },
   "questionTypes": {
     "single_choice": "单选",

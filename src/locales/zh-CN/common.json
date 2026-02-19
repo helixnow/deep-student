@@ -322,7 +322,14 @@
     "shortcut_switch": "←→: 切换",
     "shortcut_zoom": "+/-: 缩放",
     "shortcut_rotate": "R: 旋转",
-    "shortcut_reset": "0: 重置"
+    "shortcut_reset": "0: 重置",
+    "crop": "裁剪",
+    "crop_hint": "拖拽选择裁剪区域",
+    "crop_confirm": "确认裁剪",
+    "rotate_ccw": "逆时针旋转",
+    "ocr_text": "OCR 文字",
+    "no_ocr_text": "暂无 OCR 文字",
+    "download": "下载"
   },
   "messages": {
     "success": {

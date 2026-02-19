@@ -505,7 +505,12 @@
     "ocr_image_progress": "Recognizing image {{current}}/{{total}}...",
     "ocr_phase_done": "{{total}} images recognized, starting question parsing...",
     "import_done": "Import complete! {{count}} questions total",
-    "import_interrupted": "Import interrupted, {{count}} questions saved"
+    "import_interrupted": "Import interrupted, {{count}} questions saved",
+    "filter_questions": "Filter Questions",
+    "filter_excluded_count": "{{count}} excluded",
+    "filter_hint": "Expand to deselect questions you don't need to import (e.g. already mastered)",
+    "filter_delete_failed": "Failed to delete excluded questions",
+    "view_questions_filtered": "Confirm Import {{count}} Questions"
   },
   "questionTypes": {
     "single_choice": "Single Choice",

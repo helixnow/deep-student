@@ -48,6 +48,7 @@ initializeToolRegistry();
 // ============================================================================
 
 import { initializeSkillSystem, loadSkillsFromFileSystem } from './skills';
+import { skillRegistry } from './skills/registry';
 
 // 注册 skill_instruction 上下文类型
 initializeSkillSystem().catch((error) => {
@@ -62,6 +63,9 @@ setTimeout(() => {
     })
     .catch((error) => {
       console.error('[Chat V2] Skills loading failed:', error);
+    })
+    .finally(() => {
+      skillRegistry.markSkillsLoaded();
     });
 }, 500); // 延迟 500ms，等待 Tauri 初始化完成
 

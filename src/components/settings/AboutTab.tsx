@@ -1,16 +1,14 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Globe, Github, Bug, Shield, ExternalLink, RefreshCw, Download, Layers } from 'lucide-react';
+import { Globe, Github, Bug, Shield, ExternalLink, RefreshCw, Download } from 'lucide-react';
 import { OpenSourceAcknowledgementsSection } from './OpenSourceAcknowledgementsSection';
 import { SiliconFlowLogo } from '../ui/SiliconFlowLogo';
 import { NotionButton } from '../ui/NotionButton';
-import pkgJson from '../../../package.json';
 import { SettingSection } from './SettingsCommon';
 import { PrivacyPolicyDialog } from '../legal/PrivacyPolicyDialog';
 import VERSION_INFO from '../../version';
 import { useAppUpdater } from '../../hooks/useAppUpdater';
-import { NotionDialogDemo } from '../ui/NotionDialogDemo';
-import { NotionDialog, NotionDialogHeader, NotionDialogTitle, NotionDialogDescription, NotionDialogBody } from '../ui/NotionDialog';
+import ReactMarkdown from 'react-markdown';
 
 const GroupTitle = ({ title }: { title: string }) => (
   <div className="px-1 mb-3 mt-0">
@@ -36,7 +34,7 @@ const SettingRow = ({
         </p>
       )}
     </div>
-    <div className="flex-shrink-0">
+    <div className="flex-shrink-0 min-w-0 max-w-full">
       {children}
     </div>
   </div>
@@ -66,12 +64,11 @@ const LinkRow = ({
 export const AboutTab: React.FC = () => {
   const { t } = useTranslation(['common', 'settings']);
   const [showPrivacyPolicy, setShowPrivacyPolicy] = useState(false);
-  const [showNotionDialogDemo, setShowNotionDialogDemo] = useState(false);
   const updater = useAppUpdater();
 
   return (
     <div className="space-y-1 pb-10 text-left animate-in fade-in duration-500">
-      <SettingSection title="" hideHeader className="overflow-visible">
+      <SettingSection title="" hideHeader className="overflow-hidden">
         <div>
           <GroupTitle title={t('acknowledgements.partners.title', '技术合作伙伴致谢')} />
           <div className="relative p-4 rounded-lg bg-muted/30 hover:bg-muted/40 transition-colors">
@@ -99,8 +96,8 @@ export const AboutTab: React.FC = () => {
               <span className="text-sm text-foreground/90">DeepStudent Team</span>
             </SettingRow>
             <SettingRow title={t('acknowledgements.developer.fields.version', '版本')}>
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-mono text-foreground/90">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-sm font-mono text-foreground/90 break-all">
                   {VERSION_INFO.FULL_VERSION}
                   <span className="text-muted-foreground/50 ml-1.5 text-xs">{VERSION_INFO.GIT_HASH}</span>
                 </span>
@@ -130,15 +127,33 @@ export const AboutTab: React.FC = () => {
 
             {/* 更新可用提示 */}
             {updater.available && updater.info && (
-              <div className="mx-1 p-3 rounded-lg bg-primary/5 border border-primary/20">
+              <div className="mx-1 p-3 rounded-lg bg-primary/5 border border-primary/20 overflow-hidden">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium text-foreground">
                       {t('about.update.available', '发现新版本')}: v{updater.info.version}
                     </p>
-                    {updater.info.body && (
-                      <p className="text-xs text-muted-foreground mt-1 line-clamp-2 break-all">{updater.info.body}</p>
-                    )}
+                    {updater.info.body && (() => {
+                      const md = updater.info!.body!
+                        .replace(/ (#{1,3} )/g, '\n\n$1')
+                        .replace(/ \* /g, '\n* ');
+                      return (
+                      <div className="text-xs text-muted-foreground mt-1 overflow-hidden release-notes-md">
+                        <ReactMarkdown
+                          components={{
+                            h1: ({ children }) => <h4 className="text-xs font-semibold text-foreground/90 mt-2 first:mt-0">{children}</h4>,
+                            h2: ({ children }) => <h4 className="text-xs font-semibold text-foreground/90 mt-2 first:mt-0">{children}</h4>,
+                            h3: ({ children }) => <h5 className="text-xs font-medium text-foreground/80 mt-1.5 first:mt-0">{children}</h5>,
+                            p: ({ children }) => <p className="mt-0.5 break-words" style={{ overflowWrap: 'anywhere' }}>{children}</p>,
+                            ul: ({ children }) => <ul className="mt-0.5 ml-3 list-disc space-y-0.5">{children}</ul>,
+                            li: ({ children }) => <li className="break-words" style={{ overflowWrap: 'anywhere' }}>{children}</li>,
+                            a: ({ href, children }) => <a href={href} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline" style={{ overflowWrap: 'anywhere' }}>{children}</a>,
+                            strong: ({ children }) => <strong className="font-semibold text-foreground/90">{children}</strong>,
+                            code: ({ children }) => <code className="px-1 py-0.5 rounded bg-muted text-[11px]">{children}</code>,
+                          }}
+                        >{md}</ReactMarkdown>
+                      </div>);
+                    })()}
                   </div>
                   {updater.isMobile ? (
                     <div className="w-full sm:w-auto sm:ml-3 flex-shrink-0 flex flex-col gap-1.5">
@@ -219,7 +234,7 @@ export const AboutTab: React.FC = () => {
           <GroupTitle title={t('acknowledgements.links.title', '官方链接')} />
           <div className="space-y-px">
             {[
-              { icon: Globe, label: t('acknowledgements.links.website', '访问官网'), href: 'https://www.deepstudent.com' },
+              { icon: Globe, label: t('acknowledgements.links.website', '访问官网'), href: 'https://www.deepstudent.cn' },
               { icon: Github, label: t('acknowledgements.links.github', 'GitHub'), href: 'https://github.com/helixnow/deep-student' },
               { icon: Bug, label: t('acknowledgements.links.issues', 'Issue 反馈'), href: 'https://github.com/helixnow/deep-student/issues' },
             ].map((item) => (
@@ -236,17 +251,6 @@ export const AboutTab: React.FC = () => {
                 {t('legal.settingsSection.viewPrivacyPolicy', '查看隐私政策')}
               </span>
             </NotionButton>
-            {/* Notion 模态框组件预览 */}
-            <NotionButton
-              variant="ghost"
-              onClick={() => setShowNotionDialogDemo(true)}
-              className="group flex h-auto w-full items-center gap-3 py-2.5 px-1 text-left hover:bg-muted/30 rounded"
-            >
-              <Layers className="h-4 w-4 text-muted-foreground/70 group-hover:text-primary transition-colors flex-shrink-0" />
-              <span className="text-sm text-foreground/90 group-hover:text-primary transition-colors">
-                Notion 模态框组件预览
-              </span>
-            </NotionButton>
           </div>
         </div>
       </SettingSection>
@@ -254,21 +258,6 @@ export const AboutTab: React.FC = () => {
       {/* 隐私政策弹窗 */}
       <PrivacyPolicyDialog open={showPrivacyPolicy} onOpenChange={setShowPrivacyPolicy} />
 
-      {/* Notion 模态框组件预览 */}
-      <NotionDialog open={showNotionDialogDemo} onOpenChange={setShowNotionDialogDemo} maxWidth="max-w-3xl">
-        <NotionDialogHeader>
-          <NotionDialogTitle className="flex items-center gap-2">
-            <Layers className="h-5 w-5" />
-            Notion 模态框组件预览
-          </NotionDialogTitle>
-          <NotionDialogDescription>
-            NotionDialog（通用）与 NotionAlertDialog（确认）组件演示，默认使用 NotionButton + 自研滚动条
-          </NotionDialogDescription>
-        </NotionDialogHeader>
-        <NotionDialogBody>
-          <NotionDialogDemo />
-        </NotionDialogBody>
-      </NotionDialog>
     </div>
   );
 };

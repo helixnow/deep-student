@@ -2763,7 +2763,14 @@
     "shortcut_switch": "←→: Switch",
     "shortcut_zoom": "+/-: Zoom",
     "shortcut_rotate": "R: Rotate",
-    "shortcut_reset": "0: Reset"
+    "shortcut_reset": "0: Reset",
+    "crop": "Crop",
+    "crop_hint": "Drag to select crop area",
+    "crop_confirm": "Confirm Crop",
+    "rotate_ccw": "Rotate Counter-clockwise",
+    "ocr_text": "OCR Text",
+    "no_ocr_text": "No OCR text available",
+    "download": "Download"
   },
   "settings.chat_stream.card_title": "Chat Streaming Parameters",
   "settings.chat_stream.card_desc": "Adjust streaming timeout thresholds and post-timeout behavior. New conversations will apply these settings immediately.",

@@ -23,6 +23,9 @@ import {
   Info,
   Bot,
   Upload,
+  CheckSquare,
+  Square,
+  Filter,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
@@ -141,6 +144,11 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
   // 导入结果摘要
   const [importSummary, setImportSummary] = useState<ImportSummary | null>(null);
   const [pendingDetail, setPendingDetail] = useState<ExamSheetSessionDetail | null>(null);
+  
+  // 题目筛选状态：summary 步骤中用户可取消勾选不需要录入的题目
+  const [excludedCardIds, setExcludedCardIds] = useState<Set<string>>(new Set());
+  const [showQuestionFilter, setShowQuestionFilter] = useState(false);
+  const [isConfirming, setIsConfirming] = useState(false);
   const [pendingPdfImport, setPendingPdfImport] = useState<{
     base64Content: string;
     format: string;
@@ -336,6 +344,8 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
       const summary = generateImportSummary(detail);
       setImportSummary(summary);
       setPendingDetail(detail);
+      setExcludedCardIds(new Set());
+      setShowQuestionFilter(false);
       setStep('summary');
     },
   });
@@ -412,6 +422,8 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
       const summary = generateImportSummary(response);
       setImportSummary(summary);
       setPendingDetail(response);
+      setExcludedCardIds(new Set());
+      setShowQuestionFilter(false);
       setStep('summary');
     } catch (err: unknown) {
       const errorMessage = err instanceof Error
@@ -426,13 +438,38 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
     }
   }, [selectedFiles, qbankName, sessionId, selectedModelId, generateImportSummary, t]);
 
-  // 确认导入摘要
-  const handleConfirmSummary = useCallback(() => {
-    if (pendingDetail) {
-      showGlobalNotification('success', t('exam_sheet:uploader.import_success_notification', { count: importSummary?.totalQuestions || 0 }));
-      onUploadSuccess?.(pendingDetail);
+  // 确认导入摘要（删除被排除的题目后再确认）
+  const handleConfirmSummary = useCallback(async () => {
+    if (!pendingDetail || isConfirming) return;
+    setIsConfirming(true);
+
+    try {
+      // 如果有排除的题目，先通过 API 删除
+      if (excludedCardIds.size > 0) {
+        try {
+          const updatedDetail = await TauriAPI.updateExamSheetCards({
+            session_id: pendingDetail.summary.id,
+            delete_card_ids: Array.from(excludedCardIds),
+          });
+          const keptCount = Math.max(0, (importSummary?.totalQuestions || 0) - excludedCardIds.size);
+          showGlobalNotification('success', t('exam_sheet:uploader.import_success_notification', { count: keptCount }));
+          onUploadSuccess?.(updatedDetail);
+        } catch (err: unknown) {
+          debugLog.error('[ExamSheetUploader] Failed to delete excluded cards:', err);
+          showGlobalNotification('error', t('exam_sheet:uploader.filter_delete_failed', { defaultValue: '删除排除题目失败' }));
+          // 即使删除失败也让用户继续
+          onUploadSuccess?.(pendingDetail);
+        }
+      } else {
+        showGlobalNotification('success', t('exam_sheet:uploader.import_success_notification', { count: importSummary?.totalQuestions || 0 }));
+        onUploadSuccess?.(pendingDetail);
+      }
+      setExcludedCardIds(new Set());
+      setShowQuestionFilter(false);
+    } finally {
+      setIsConfirming(false);
     }
-  }, [pendingDetail, importSummary, onUploadSuccess]);
+  }, [pendingDetail, importSummary, onUploadSuccess, excludedCardIds, isConfirming, t]);
 
   // 判断文件类型
   const categorizeFile = useCallback((file: File): FileCategory | null => {
@@ -557,6 +594,8 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
       const summary = generateImportSummary(response);
       setImportSummary(summary);
       setPendingDetail(response);
+      setExcludedCardIds(new Set());
+      setShowQuestionFilter(false);
       setStep('summary');
       showGlobalNotification('success', t('exam_sheet:recognition_complete_notification', { defaultValue: 'Question set recognition completed!' }));
     } catch (err: unknown) {
@@ -982,7 +1021,10 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
           )}
 
           {/* 导入结果摘要 */}
-          {step === 'summary' && importSummary && (
+          {step === 'summary' && importSummary && (() => {
+            const allCards = pendingDetail?.preview?.pages?.flatMap(p => p.cards || []) || [];
+            const keptCount = Math.max(0, importSummary.totalQuestions - excludedCardIds.size);
+            return (
             <div className="space-y-4">
               <div className="text-center space-y-2">
                 <div className="w-16 h-16 mx-auto rounded-full bg-emerald-500/10 flex items-center justify-center">
@@ -994,7 +1036,11 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
               {/* 统计数据 */}
               <div className="grid grid-cols-2 gap-3">
                 <div className="p-4 rounded-xl bg-muted/50 text-center">
-                  <div className="text-2xl font-bold text-primary">{importSummary.totalQuestions}</div>
+                  <div className="text-2xl font-bold text-primary">
+                    {excludedCardIds.size > 0 ? (
+                      <>{keptCount}<span className="text-base font-normal text-muted-foreground"> / {importSummary.totalQuestions}</span></>
+                    ) : importSummary.totalQuestions}
+                  </div>
                   <div className="text-sm text-muted-foreground">{t('exam_sheet:uploader.total_questions')}</div>
                 </div>
                 <div className="p-4 rounded-xl bg-muted/50 text-center">
@@ -1014,6 +1060,123 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                       </span>
                     ))}
                   </div>
+                </div>
+              )}
+
+              {/* 题目筛选区域 */}
+              {allCards.length > 0 && (
+                <div className="rounded-xl border border-border/50 overflow-hidden">
+                  {/* 筛选头部 */}
+                  <div
+                    className="flex items-center justify-between px-4 py-2.5 bg-muted/30 cursor-pointer hover:bg-muted/50 transition-colors"
+                    onClick={() => setShowQuestionFilter(prev => !prev)}
+                  >
+                    <div className="flex items-center gap-2">
+                      <Filter className="w-4 h-4 text-muted-foreground" />
+                      <span className="text-sm font-medium">
+                        {t('exam_sheet:uploader.filter_questions', { defaultValue: '筛选题目' })}
+                      </span>
+                      {excludedCardIds.size > 0 && (
+                        <span className="px-1.5 py-0.5 text-[10px] rounded-full bg-amber-500/15 text-amber-600">
+                          {t('exam_sheet:uploader.filter_excluded_count', { count: excludedCardIds.size, defaultValue: '已排除 {{count}} 题' })}
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-xs text-muted-foreground">
+                      {showQuestionFilter ? '▲' : '▼'}
+                    </span>
+                  </div>
+
+                  {/* 筛选提示 */}
+                  {!showQuestionFilter && excludedCardIds.size === 0 && (
+                    <div className="px-4 py-2 text-xs text-muted-foreground bg-muted/10">
+                      {t('exam_sheet:uploader.filter_hint', { defaultValue: '展开可取消勾选不需要录入的题目（如已掌握的题目）' })}
+                    </div>
+                  )}
+
+                  {/* 题目列表 */}
+                  {showQuestionFilter && (
+                    <div className="border-t border-border/30">
+                      {/* 全选/取消全选 */}
+                      <div className="flex items-center justify-between px-4 py-2 bg-muted/15 border-b border-border/20">
+                        <NotionButton
+                          variant="ghost"
+                          size="sm"
+                          className="!h-7 text-xs"
+                          onClick={() => setExcludedCardIds(new Set())}
+                        >
+                          <CheckSquare className="w-3.5 h-3.5 mr-1" />
+                          {t('common:select_all', '全选')}
+                        </NotionButton>
+                        <NotionButton
+                          variant="ghost"
+                          size="sm"
+                          className="!h-7 text-xs"
+                          onClick={() => setExcludedCardIds(new Set(allCards.map(c => c.card_id)))}
+                        >
+                          <Square className="w-3.5 h-3.5 mr-1" />
+                          {t('common:deselect_all', '取消全选')}
+                        </NotionButton>
+                      </div>
+                      {/* 滚动列表 */}
+                      <div className="max-h-[280px] overflow-y-auto divide-y divide-border/20">
+                        {allCards.map((card, idx) => {
+                          const isExcluded = excludedCardIds.has(card.card_id);
+                          return (
+                            <div
+                              key={card.card_id}
+                              className={cn(
+                                'flex items-start gap-2.5 px-4 py-2.5 cursor-pointer transition-colors',
+                                isExcluded ? 'bg-muted/20 opacity-60' : 'hover:bg-muted/10'
+                              )}
+                              onClick={() => {
+                                setExcludedCardIds(prev => {
+                                  const next = new Set(prev);
+                                  if (next.has(card.card_id)) {
+                                    next.delete(card.card_id);
+                                  } else {
+                                    next.add(card.card_id);
+                                  }
+                                  return next;
+                                });
+                              }}
+                            >
+                              {/* 勾选框 */}
+                              <div className="flex-shrink-0 mt-0.5">
+                                {isExcluded ? (
+                                  <Square className="w-4 h-4 text-muted-foreground" />
+                                ) : (
+                                  <CheckSquare className="w-4 h-4 text-primary" />
+                                )}
+                              </div>
+                              {/* 序号 */}
+                              <span className="flex-shrink-0 w-5 h-5 rounded-full bg-primary/10 text-primary text-[10px] font-bold flex items-center justify-center mt-0.5">
+                                {idx + 1}
+                              </span>
+                              {/* 内容 */}
+                              <div className="flex-1 min-w-0 space-y-0.5">
+                                <div className={cn('text-sm line-clamp-2', isExcluded && 'line-through')}>
+                                  {card.ocr_text?.trim() || card.question_label || t('exam_sheet:uploader.no_content')}
+                                </div>
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  {card.question_type && (
+                                    <span className="px-1.5 py-0.5 text-[10px] rounded bg-primary/10 text-primary">
+                                      {t(`exam_sheet:questionTypes.${card.question_type}`, card.question_type)}
+                                    </span>
+                                  )}
+                                  {card.answer && (
+                                    <span className="text-[10px] text-emerald-600">
+                                      {t('exam_sheet:uploader.answer_prefix', { answer: card.answer })}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
               
@@ -1037,12 +1200,17 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                 <NotionButton variant="ghost" onClick={handleReset} className="flex-1">
                   {t('exam_sheet:uploader.continue_import')}
                 </NotionButton>
-                <NotionButton onClick={handleConfirmSummary} className="flex-1">
-                  {t('exam_sheet:uploader.view_questions')}
+                <NotionButton onClick={() => void handleConfirmSummary()} className="flex-1" disabled={keptCount === 0 || isConfirming}>
+                  {isConfirming && <Loader2 className="w-4 h-4 mr-1 animate-spin" />}
+                  {excludedCardIds.size > 0
+                    ? t('exam_sheet:uploader.view_questions_filtered', { count: keptCount, defaultValue: '确认导入 {{count}} 题' })
+                    : t('exam_sheet:uploader.view_questions')
+                  }
                 </NotionButton>
               </div>
             </div>
-          )}
+            );
+          })()}
 
           {/* 错误显示 */}
           {(error || ocrError) && (

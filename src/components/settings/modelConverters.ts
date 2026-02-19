@@ -25,7 +25,7 @@ export const convertProfileToApiConfig = (profile: ModelProfile, vendor: VendorC
   supportsTools: profile.supportsTools ?? false,
   geminiApiVersion: profile.geminiApiVersion ?? 'v1',
   isBuiltin: profile.isBuiltin ?? false,
-  isReadOnly: profile.isReadOnly ?? false,
+  isReadOnly: vendor.isReadOnly ?? false,
   reasoningEffort: profile.reasoningEffort,
   thinkingEnabled: profile.thinkingEnabled ?? false,
   thinkingBudget: profile.thinkingBudget,

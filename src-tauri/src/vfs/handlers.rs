@@ -3625,10 +3625,10 @@ pub async fn vfs_get_all_index_status(
 
     // ========== 构建查询条件 ==========
     // 统计查询不受 state_filter 影响，始终显示全部资源统计
-    let mut stats_conditions = vec!["1=1".to_string()];
+    let mut stats_conditions = vec!["r.deleted_at IS NULL".to_string()];
     let mut stats_params: Vec<Box<dyn rusqlite::ToSql>> = vec![];
 
-    let mut list_conditions = vec!["1=1".to_string()];
+    let mut list_conditions = vec!["r.deleted_at IS NULL".to_string()];
     let mut list_params: Vec<Box<dyn rusqlite::ToSql>> = vec![];
 
     if let Some(ref rt) = resource_type {
@@ -3722,7 +3722,7 @@ pub async fn vfs_get_all_index_status(
             SELECT resource_id, file_name, name, ocr_pages_json, extracted_text,
                    mm_index_state, mm_indexed_pages_json, mm_index_error
             FROM files
-            WHERE resource_id IS NOT NULL
+            WHERE resource_id IS NOT NULL AND status = 'active'
             GROUP BY resource_id
         ),
         exam_by_res AS (
@@ -3850,7 +3850,7 @@ pub async fn vfs_get_all_index_status(
         -- 名称 JOIN（替代 6 个 COALESCE 关联子查询）
         LEFT JOIN note_names nn ON nn.resource_id = r.id
         LEFT JOIN file_by_res fr ON fr.resource_id = r.id
-        LEFT JOIN files fs ON fs.id = r.source_id
+        LEFT JOIN files fs ON fs.id = r.source_id AND fs.status = 'active'
         LEFT JOIN exam_by_res ei ON ei.resource_id = r.id
         LEFT JOIN exam_sheets es_src ON es_src.id = r.source_id
         LEFT JOIN tr_names tn ON tn.resource_id = r.id
@@ -3860,6 +3860,16 @@ pub async fn vfs_get_all_index_status(
         {index_joins}
         {folder_join}
         WHERE {list_where}
+            AND (
+                nn.resource_id IS NOT NULL
+                OR fr.resource_id IS NOT NULL
+                OR fs.id IS NOT NULL
+                OR ei.resource_id IS NOT NULL
+                OR es_src.id IS NOT NULL
+                OR tn.resource_id IS NOT NULL
+                OR en.resource_id IS NOT NULL
+                OR mn.resource_id IS NOT NULL
+            )
         ORDER BY r.updated_at DESC
         LIMIT ? OFFSET ?
         "#,
@@ -4002,7 +4012,7 @@ pub async fn vfs_get_all_index_status(
         WITH file_mm AS (
             SELECT resource_id, mm_index_state
             FROM files
-            WHERE resource_id IS NOT NULL
+            WHERE resource_id IS NOT NULL AND status = 'active'
             GROUP BY resource_id
         ),
         exam_mm AS (
@@ -4060,6 +4070,16 @@ pub async fn vfs_get_all_index_status(
         LEFT JOIN exam_sheets es_mm ON es_mm.id = r.source_id
         {0}
         WHERE {1}
+            AND (
+                fm.resource_id IS NOT NULL
+                OR fs_mm.id IS NOT NULL
+                OR em.resource_id IS NOT NULL
+                OR es_mm.id IS NOT NULL
+                OR EXISTS (SELECT 1 FROM notes WHERE resource_id = r.id)
+                OR EXISTS (SELECT 1 FROM translations WHERE resource_id = r.id)
+                OR EXISTS (SELECT 1 FROM essays WHERE resource_id = r.id)
+                OR EXISTS (SELECT 1 FROM mindmaps WHERE resource_id = r.id)
+            )
         "#,
         folder_join, stats_where_clause
     );
