@@ -127,20 +127,21 @@ const PROVIDER_PATTERNS: Record<ProviderBrand, (string | RegExp)[]> = {
   ],
   
   // === 中国供应商 ===
-  deepseek: [
-    /deepseek/i,
-    /^deepseek-ai\//i,
-  ],
-  
+  // qwen 必须在 deepseek 之前，以便 deepseek-r1-distill-qwen-* 优先匹配为 qwen
   qwen: [
     /^qwen\//i,
-    /qwen[23]/i,
+    /qwen\d/i,    // qwen1/qwen2/qwen3/codeqwen1.5 等所有版本
     /qwen-/i,
     /qwenlong/i,  // QwenLong 系列
     /qwq/i,
     /qvq/i,
     /^wan-?ai\//i,  // Wan视频模型（通义系列）
     /wan2\./i,      // Wan2.x 系列
+  ],
+  
+  deepseek: [
+    /deepseek/i,
+    /^deepseek-ai\//i,
   ],
   
   alibaba: [
@@ -417,6 +418,8 @@ function getIconPath(brand: ProviderBrand): string {
     microsoft: 'azure',     // Microsoft使用azure图标
     antling: 'ling',        // 蚂蚁百灵使用ling图标
     siliconflow: 'siliconcloud', // 硅基流动使用siliconcloud图标
+    alibaba: 'bailian',     // 阿里云使用百炼图标
+    zhipu: 'chatglm',       // 智谱AI使用chatglm图标
   };
   
   const iconName = iconMap[brand] || brand;

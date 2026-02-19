@@ -14,10 +14,14 @@ import {
   ImagePlus,
   ChevronLeft,
   ChevronRight,
+  X,
+  FileText,
+  ChevronDown,
 } from 'lucide-react';
 import UnifiedDragDropZone, { FILE_TYPES } from '../shared/UnifiedDragDropZone';
 import { UnifiedModelSelector } from '../shared/UnifiedModelSelector';
 import type { GradingMode, ModelInfo } from '@/essay-grading/essayGradingApi';
+import type { UploadedImage } from '../EssayGradingWorkbench';
 import { cn } from '@/lib/utils';
 import { showGlobalNotification } from '../UnifiedNotification';
 import { CustomScrollArea } from '../custom-scroll-area';
@@ -65,6 +69,15 @@ interface InputPanelProps {
     onPrev: () => void;
     onNext: () => void;
   };
+  // ★ 图片预览
+  uploadedImages?: UploadedImage[];
+  onRemoveImage?: (imageId: string) => void;
+  // ★ 题目元数据
+  topicText?: string;
+  setTopicText?: (text: string) => void;
+  topicImages?: UploadedImage[];
+  onTopicFilesDropped?: (files: File[]) => void;
+  onRemoveTopicImage?: (imageId: string) => void;
 }
 
 /**
@@ -125,9 +138,18 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
   onNextRound,
   onOpenSettings,
   roundNavigation,
+  uploadedImages,
+  onRemoveImage,
+  topicText,
+  setTopicText,
+  topicImages,
+  onTopicFilesDropped,
+  onRemoveTopicImage,
 }, ref) => {
   const { t } = useTranslation(['essay_grading', 'common']);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
+  const topicFileInputRef = React.useRef<HTMLInputElement>(null);
+  const [showTopicSection, setShowTopicSection] = useState(false);
 
   // 确保 inputText 有默认值，防止 undefined
   const safeInputText = inputText ?? '';
@@ -281,6 +303,95 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
         </div>
       </div>
 
+      {/* ★ 图片缩略图预览条 */}
+      {uploadedImages && uploadedImages.length > 0 && (
+        <div className="flex items-center gap-2 px-4 py-2 border-b border-border/30 overflow-x-auto">
+          <span className="text-xs text-muted-foreground/60 shrink-0">
+            {t('essay_grading:images.essay_images', { count: uploadedImages.length })}
+          </span>
+          <div className="flex items-center gap-1.5">
+            {uploadedImages.map((img) => (
+              <div key={img.id} className="relative group/thumb shrink-0">
+                <img
+                  src={img.dataUrl}
+                  alt={img.fileName}
+                  className="w-10 h-10 object-cover rounded border border-border/40"
+                  title={img.fileName}
+                />
+                {!isGrading && onRemoveImage && (
+                  <button
+                    onClick={() => onRemoveImage(img.id)}
+                    className="absolute -top-1 -right-1 w-4 h-4 bg-destructive text-destructive-foreground rounded-full flex items-center justify-center opacity-0 group-hover/thumb:opacity-100 transition-opacity"
+                    aria-label={t('common:delete')}
+                  >
+                    <X className="w-2.5 h-2.5" />
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ★ 题目元数据折叠区 */}
+      {setTopicText && (
+        <div className="border-b border-border/30">
+          <button
+            onClick={() => setShowTopicSection(!showTopicSection)}
+            className="flex items-center gap-1.5 w-full px-4 py-1.5 text-xs text-muted-foreground/70 hover:text-foreground hover:bg-muted/30 transition-colors"
+          >
+            <FileText className="w-3 h-3" />
+            <span>{t('essay_grading:topic.toggle_label')}</span>
+            <ChevronDown className={cn("w-3 h-3 ml-auto transition-transform", showTopicSection && "rotate-180")} />
+            {((topicText && topicText.trim()) || (topicImages && topicImages.length > 0)) && (
+              <span className="w-1.5 h-1.5 rounded-full bg-primary" />
+            )}
+          </button>
+          {showTopicSection && (
+            <div className="px-4 pb-3 space-y-2">
+              <Textarea
+                value={topicText ?? ''}
+                onChange={(e) => setTopicText(e.target.value)}
+                placeholder={t('essay_grading:topic.placeholder')}
+                className="w-full min-h-[60px] max-h-[120px] resize-y text-sm !border-border/40 !bg-muted/20 focus:!ring-1 focus:!ring-primary/30"
+                disabled={isGrading}
+              />
+              {/* 题目参考图片 */}
+              <div className="flex items-center gap-2 flex-wrap">
+                {topicImages && topicImages.map((img) => (
+                  <div key={img.id} className="relative group/thumb shrink-0">
+                    <img
+                      src={img.dataUrl}
+                      alt={img.fileName}
+                      className="w-10 h-10 object-cover rounded border border-border/40"
+                      title={img.fileName}
+                    />
+                    {!isGrading && onRemoveTopicImage && (
+                      <button
+                        onClick={() => onRemoveTopicImage(img.id)}
+                        className="absolute -top-1 -right-1 w-4 h-4 bg-destructive text-destructive-foreground rounded-full flex items-center justify-center opacity-0 group-hover/thumb:opacity-100 transition-opacity"
+                        aria-label={t('common:delete')}
+                      >
+                        <X className="w-2.5 h-2.5" />
+                      </button>
+                    )}
+                  </div>
+                ))}
+                {onTopicFilesDropped && !isGrading && (
+                  <button
+                    onClick={() => topicFileInputRef.current?.click()}
+                    className="w-10 h-10 rounded border border-dashed border-border/60 flex items-center justify-center text-muted-foreground/50 hover:text-foreground hover:border-foreground/40 transition-colors"
+                    aria-label={t('essay_grading:topic.add_image')}
+                  >
+                    <ImagePlus className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Content - Notion 风格编辑区 */}
       <div className="flex-1 min-h-0 flex flex-col relative overflow-hidden">
         <UnifiedDragDropZone
@@ -432,6 +543,23 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
           e.target.value = '';
         }}
       />
+      {/* 题目参考材料图片上传输入 */}
+      {onTopicFilesDropped && (
+        <input
+          ref={topicFileInputRef}
+          type="file"
+          accept="image/png,image/jpeg,image/webp"
+          multiple
+          className="hidden"
+          onChange={(e) => {
+            const files = Array.from(e.target.files || []);
+            if (files.length > 0) {
+              onTopicFilesDropped(files);
+            }
+            e.target.value = '';
+          }}
+        />
+      )}
     </div>
   );
 });

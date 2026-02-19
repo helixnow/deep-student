@@ -33,6 +33,16 @@ const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'in
 
 const OCR_MAX_FILES = 5;
 
+/** 上传的图片数据（保存原图 base64 + OCR 文本） */
+export interface UploadedImage {
+  id: string;
+  fileName: string;
+  base64: string;
+  ocrText: string;
+  /** data URL 用于缩略图预览 */
+  dataUrl: string;
+}
+
 interface EssayGradingWorkbenchProps {
   onBack?: () => void;
   /** DSTU 模式配置（必需），由 Learning Hub 管理会话 */
@@ -66,6 +76,12 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({ on
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const lastGradedInputRef = useRef<string>('');
   const draftRestoredRef = useRef(false);
+
+  // ★ 图片存储状态（保存原图用于预览和多模态批改）
+  const [uploadedImages, setUploadedImages] = useState<UploadedImage[]>([]);
+  // ★ 题目元数据状态（作文题目/要求/参考材料）
+  const [topicText, setTopicText] = useState('');
+  const [topicImages, setTopicImages] = useState<UploadedImage[]>([]);
 
   // 监听全局顶栏的设置按钮点击事件（移动端）- 切换模式
   // TODO: Migrate 'essay:openSettings' to a centralised event hook/registry
@@ -286,7 +302,7 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({ on
     }
   }, [currentRoundIndex, rounds, gradingStream]);
 
-  // 文件拖拽处理（OCR）- 支持多图自动拼接
+  // 文件拖拽处理（OCR + 图片存储）- 支持多图自动拼接
   const handleFilesDropped = useCallback(async (files: File[]) => {
     if (files.length === 0) return;
 
@@ -295,23 +311,35 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({ on
       file.name.toLowerCase().match(/\.(png|jpg|jpeg|webp)$/)
     );
 
-    const limitedFiles = imageFiles.slice(0, OCR_MAX_FILES);
+    // 限制总图片数（已有 + 新上传）
+    const remainingSlots = OCR_MAX_FILES - uploadedImages.length;
+    if (remainingSlots <= 0) {
+      showGlobalNotification('warning', t('essay_grading:toast.max_images_reached', { max: OCR_MAX_FILES }));
+      return;
+    }
+    const limitedFiles = imageFiles.slice(0, remainingSlots);
 
     if (limitedFiles.length === 0) return;
 
     try {
       showGlobalNotification('info', t('essay_grading:toast.ocr_processing'));
       
-      // 并行处理所有图片
-      const ocrPromises = limitedFiles.map(file => {
-        return new Promise<string>((resolve, reject) => {
+      // 并行处理所有图片：读取 base64 + OCR
+      const processPromises = limitedFiles.map(file => {
+        return new Promise<UploadedImage>((resolve, reject) => {
           const reader = new FileReader();
           reader.onload = async (e) => {
             try {
               const dataUrl = e.target?.result as string;
               const base64Content = dataUrl.split(',')[1];
               const extracted = await ocrExtractText({ imageBase64: base64Content });
-              resolve(extracted);
+              resolve({
+                id: `img_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+                fileName: file.name,
+                base64: base64Content,
+                ocrText: extracted,
+                dataUrl,
+              });
             } catch (error: unknown) {
               reject(error);
             }
@@ -321,15 +349,18 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({ on
         });
       });
 
-      const results = await Promise.all(ocrPromises);
+      const newImages = await Promise.all(processPromises);
       
-      // 拼接所有 OCR 结果（用双换行分隔不同图片的内容）
-      const combinedText = results
+      // 存储图片到状态
+      setUploadedImages(prev => [...prev, ...newImages]);
+      
+      // 拼接所有 OCR 结果到文本输入
+      const combinedText = newImages
+        .map(img => img.ocrText)
         .filter(text => text.trim())
         .join('\n\n');
       
       if (combinedText) {
-        // 如果已有内容，追加到末尾
         setInputText(prev => prev ? `${prev}\n\n${combinedText}` : combinedText);
         showGlobalNotification('success', 
           limitedFiles.length > 1 
@@ -342,7 +373,61 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({ on
     } catch (error: unknown) {
       showGlobalNotification('error', t('essay_grading:toast.ocr_failed', { error: getErrorMessage(error) }));
     }
-  }, [t]);
+  }, [t, uploadedImages.length]);
+
+  // 删除单张上传图片
+  const handleRemoveImage = useCallback((imageId: string) => {
+    setUploadedImages(prev => prev.filter(img => img.id !== imageId));
+  }, []);
+
+  // ★ 题目参考材料图片上传处理
+  const handleTopicFilesDropped = useCallback(async (files: File[]) => {
+    if (files.length === 0) return;
+    const imageFiles = files.filter(file =>
+      file.name.toLowerCase().match(/\.(png|jpg|jpeg|webp)$/)
+    );
+    const remainingSlots = OCR_MAX_FILES - topicImages.length;
+    if (remainingSlots <= 0) {
+      showGlobalNotification('warning', t('essay_grading:toast.max_images_reached', { max: OCR_MAX_FILES }));
+      return;
+    }
+    const limitedFiles = imageFiles.slice(0, remainingSlots);
+    if (limitedFiles.length === 0) return;
+
+    try {
+      const processPromises = limitedFiles.map(file => {
+        return new Promise<UploadedImage>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = async (e) => {
+            try {
+              const dataUrl = e.target?.result as string;
+              const base64Content = dataUrl.split(',')[1];
+              resolve({
+                id: `topic_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+                fileName: file.name,
+                base64: base64Content,
+                ocrText: '',
+                dataUrl,
+              });
+            } catch (error: unknown) {
+              reject(error);
+            }
+          };
+          reader.onerror = () => reject(new Error('Failed to read file'));
+          reader.readAsDataURL(file);
+        });
+      });
+      const newImages = await Promise.all(processPromises);
+      setTopicImages(prev => [...prev, ...newImages]);
+    } catch (error: unknown) {
+      showGlobalNotification('error', getErrorMessage(error));
+    }
+  }, [t, topicImages.length]);
+
+  // 删除题目参考图片
+  const handleRemoveTopicImage = useCallback((imageId: string) => {
+    setTopicImages(prev => prev.filter(img => img.id !== imageId));
+  }, []);
 
   // 开始批改
   const handleGrade = useCallback(async () => {
@@ -415,12 +500,20 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({ on
       // 使流式期间 UI 显示正确的轮次号（rounds[rounds.length] 越界 → undefined → fallback 到 rounds.length + 1）
       setCurrentRoundIndex(rounds.length);
 
+      // ★ 收集图片 base64 列表
+      const imageBase64List = uploadedImages.length > 0
+        ? uploadedImages.map(img => img.base64)
+        : undefined;
+      const topicImageBase64List = topicImages.length > 0
+        ? topicImages.map(img => img.base64)
+        : undefined;
+
       const outcome = await gradingStream.startGrading({
         session_id: sessionId,
         stream_session_id: streamSessionId,
         round_number: nextRoundNumber,
         input_text: safeInputText,
-        topic: undefined, // TODO: 添加题干输入
+        topic: topicText.trim() || undefined,
         mode_id: modeId || undefined,
         model_config_id: modelId || undefined, // 空字符串会使用默认模型
         essay_type: essayType,
@@ -428,6 +521,8 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({ on
         custom_prompt: customPrompt || undefined,
         previous_result: previousResult,
         previous_input: previousInput,
+        image_base64_list: imageBase64List,
+        topic_image_base64_list: topicImageBase64List,
       });
 
       if (outcome === 'completed') {
@@ -478,7 +573,7 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({ on
         showGlobalNotification('error', t('essay_grading:toast.grading_failed', { error: errorMsg }));
       }
     }
-  }, [inputText, modeId, modelId, essayType, gradeLevel, customPrompt, currentSession, initialSession?.id, rounds, isGrading, t, gradingStream, loadSessionRounds, dstuMode]);
+  }, [inputText, modeId, modelId, essayType, gradeLevel, customPrompt, currentSession, initialSession?.id, rounds, isGrading, t, gradingStream, loadSessionRounds, dstuMode, uploadedImages, topicImages, topicText]);
 
   // P1-19: 监听命令面板 LEARNING_GRADE_ESSAY 事件
   // 'LEARNING_GRADE_ESSAY' — dispatched by CommandPalette to trigger essay grading.
@@ -524,6 +619,7 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({ on
   const handleConfirmNextRound = useCallback(() => {
     setShowNextRoundConfirm(false);
     setInputText('');
+    setUploadedImages([]);
     gradingStream.setGradingResult('');
     setCurrentRoundIndex(rounds.length);
   }, [rounds.length, gradingStream]);
@@ -599,6 +695,7 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({ on
   const handleConfirmClear = useCallback(() => {
     setShowClearConfirm(false);
     setInputText('');
+    setUploadedImages([]);
     gradingStream.resetState();
   }, [gradingStream]);
 
@@ -608,6 +705,9 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({ on
     setRounds([]);
     setCurrentRoundIndex(0);
     setInputText('');
+    setUploadedImages([]);
+    setTopicText('');
+    setTopicImages([]);
     gradingStream.resetState();
   }, [gradingStream]);
 
@@ -658,6 +758,13 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({ on
           currentRound={currentRoundNumber}
           hasResult={gradingResult.length > 0}
           onNextRound={handleNextRoundSubmit}
+          uploadedImages={uploadedImages}
+          onRemoveImage={handleRemoveImage}
+          topicText={topicText}
+          setTopicText={setTopicText}
+          topicImages={topicImages}
+          onTopicFilesDropped={handleTopicFilesDropped}
+          onRemoveTopicImage={handleRemoveTopicImage}
           onModesChange={loadModes}
           roundNavigation={totalRounds > 0 ? {
             currentIndex: currentRoundIndex,

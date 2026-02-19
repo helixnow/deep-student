@@ -115,7 +115,8 @@
     "ocr_success_multi": "Successfully recognized {{count}} images",
     "ocr_empty": "No text recognized by OCR",
     "ocr_failed": "OCR recognition failed: {{error}}",
-    "suggestions_in_result": "Improvement suggestions are included in the grading result"
+    "suggestions_in_result": "Improvement suggestions are included in the grading result",
+    "max_images_reached": "Image limit reached (max {{max}} images)"
   },
   "round_navigation": {
     "title": "Round Navigation",
@@ -251,5 +252,13 @@
     "hint": "Supports PNG/JPG/WEBP, up to {{max}} images",
     "processing": "Recognizing image {{current}}/{{total}}...",
     "per_image_failed": "Image {{index}} recognition failed"
+  },
+  "images": {
+    "essay_images": "Essay images ({{count}})"
+  },
+  "topic": {
+    "toggle_label": "Topic / Reference",
+    "placeholder": "Enter essay topic, requirements, or reference content...",
+    "add_image": "Add reference image"
   }
 }

@@ -310,6 +310,23 @@ impl OptionalEmitter {
     pub fn has_emitter(&self) -> bool {
         self.emitter.is_some()
     }
+
+    /// 同步强制发射（不节流）—— 专供 sync 回调闭包使用
+    ///
+    /// 与 `emit` 不同，此方法为同步，可在非 async 上下文（如上传进度回调）中安全调用。
+    pub fn emit_force_sync(&self, progress: SyncProgress) {
+        if let Some(ref emitter) = self.emitter {
+            emitter.emit_force(progress);
+        }
+    }
+}
+
+impl Clone for OptionalEmitter {
+    fn clone(&self) -> Self {
+        Self {
+            emitter: self.emitter.clone(),
+        }
+    }
 }
 
 impl From<Option<SyncProgressEmitter>> for OptionalEmitter {

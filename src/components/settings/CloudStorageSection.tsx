@@ -4,9 +4,10 @@
  * 支持 WebDAV 和 S3 兼容存储配置
  */
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Cloud, CheckCircle2, XCircle, Loader2, Eye, EyeOff, History, Upload, Download, Trash2 } from 'lucide-react';
+import { listen, type UnlistenFn } from '@tauri-apps/api/event';
+import { Cloud, CheckCircle2, XCircle, Loader2, Eye, EyeOff, History, Upload, Download, Trash2, AlertCircle } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/shad/Card';
 import { NotionButton } from '../ui/NotionButton';
 import { Input } from '../ui/shad/Input';
@@ -22,6 +23,18 @@ import { TauriAPI } from '../../utils/tauriApi';
 import { DataGovernanceApi, type BackupJobSummary } from '../../api/dataGovernance';
 
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
+
+/** 云端同步操作的细粒度进度状态 */
+interface SyncOpProgress {
+  operation: 'upload' | 'download';
+  stageIndex: number;    // 1-based
+  stageTotal: number;
+  stageLabel: string;    // 当前阶段描述
+  bytesDone: number;
+  bytesTotal: number;
+  isTransferring: boolean; // 是否处于文件传输阶段（有字节进度）
+  error: string | null;  // 阶段失败时的错误文本
+}
 
 // 本地存储配置的 key（仅存储非敏感信息，密码存储在系统安全存储中）
 const CONFIG_STORAGE_KEY = 'cloud_storage_config_v2';
@@ -71,7 +84,10 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
   const [uploading, setUploading] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [restoreVersionId, setRestoreVersionId] = useState<string | null>(null);
-  
+
+  // 细粒度进度状态
+  const [opProgress, setOpProgress] = useState<SyncOpProgress | null>(null);
+
   // S3 feature 状态
   const [s3Enabled, setS3Enabled] = useState<boolean | null>(null);
 
@@ -82,6 +98,29 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
   // 删除确认对话框状态
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [pendingDeleteVersionId, setPendingDeleteVersionId] = useState<string | null>(null);
+
+  // 监听后端 cloud-sync-progress 事件（字节级传输进度）
+  useEffect(() => {
+    let unlisten: UnlistenFn | null = null;
+    listen<{
+      operation: 'upload' | 'download';
+      stage: 'transferring' | 'done';
+      stageLabel: string;
+      bytesDone: number;
+      bytesTotal: number;
+      percent: number;
+    }>('cloud-sync-progress', (event) => {
+      const { operation, stage, bytesDone, bytesTotal } = event.payload;
+      setOpProgress(prev => {
+        if (!prev || prev.operation !== operation) return prev;
+        if (stage === 'done') {
+          return { ...prev, bytesDone: bytesTotal, bytesTotal, isTransferring: false };
+        }
+        return { ...prev, bytesDone, bytesTotal, isTransferring: true };
+      });
+    }).then(u => { unlisten = u; });
+    return () => { unlisten?.(); };
+  }, []);
 
   // 加载保存的配置 & 检测 S3 是否启用
   useEffect(() => {
@@ -221,6 +260,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       console.warn('Failed to delete credentials from secure storage:', e);
     }
     // 重置状态
+    setOpProgress(null);
     setWebdavConfig({ endpoint: '', username: '', password: '' });
     setS3Config({ endpoint: '', bucket: '', accessKeyId: '', secretAccessKey: '', region: '', pathStyle: false });
     setRoot('deep-student-sync');
@@ -336,6 +376,25 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     throw new Error(`backup job timeout: ${kind} (${Math.floor(timeoutMs / 1000)}s)`);
   }, []);
 
+  // 进度辅助：设置当前阶段
+  const setStage = useCallback((
+    operation: 'upload' | 'download',
+    stageIndex: number,
+    stageTotal: number,
+    stageLabel: string,
+  ) => {
+    setOpProgress(prev => ({
+      operation,
+      stageIndex,
+      stageTotal,
+      stageLabel,
+      bytesDone: 0,
+      bytesTotal: 0,
+      isTransferring: false,
+      error: null,
+    }));
+  }, []);
+
   // 备份并上传到云端
   const handleBackupAndUpload = useCallback(async () => {
     if (connectionStatus !== 'connected') {
@@ -343,31 +402,54 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       return;
     }
     setUploading(true);
+    setOpProgress({ operation: 'upload', stageIndex: 1, stageTotal: 4, stageLabel: '正在备份数据库...', bytesDone: 0, bytesTotal: 0, isTransferring: false, error: null });
     try {
-      const backupJob = await DataGovernanceApi.backupTiered(['core']);
-      const backupSummary = await waitForGovernanceJob(backupJob.job_id, 'export');
-      const backupId = resolveBackupId(backupSummary);
-      if (!backupId) {
-        throw new Error('backup_id missing from backup result');
+      // 阶段 1/4：创建备份
+      let backupId: string;
+      try {
+        const backupJob = await DataGovernanceApi.backupTiered(['core']);
+        const backupSummary = await waitForGovernanceJob(backupJob.job_id, 'export');
+        backupId = resolveBackupId(backupSummary) ?? '';
+        if (!backupId) throw new Error('backup_id missing from backup result');
+      } catch (e: unknown) {
+        throw new Error(`备份数据库失败: ${getErrorMessage(e)}`);
       }
 
-      const zipExportJob = await DataGovernanceApi.exportZip(backupId);
-      const zipExportSummary = await waitForGovernanceJob(zipExportJob.job_id, 'export');
-      const zipPath = resolveExportZipPath(zipExportSummary);
-      if (!zipPath) {
-        throw new Error('zip export path missing from export result');
+      // 阶段 2/4：导出 ZIP
+      setStage('upload', 2, 4, '正在打包 ZIP...');
+      let zipPath: string;
+      try {
+        const zipExportJob = await DataGovernanceApi.exportZip(backupId);
+        const zipExportSummary = await waitForGovernanceJob(zipExportJob.job_id, 'export');
+        zipPath = resolveExportZipPath(zipExportSummary) ?? '';
+        if (!zipPath) throw new Error('zip export path missing from export result');
+      } catch (e: unknown) {
+        throw new Error(`打包 ZIP 失败: ${getErrorMessage(e)}`);
       }
 
-      const appVersion = await TauriAPI.getAppVersion();
-      const result = await cloudApi.uploadBackup(buildConfig(), zipPath, appVersion);
+      // 阶段 3/4：上传至云端（字节进度由 Tauri 事件驱动）
+      setStage('upload', 3, 4, '正在上传至云端...');
+      let result: cloudApi.UploadResult;
+      try {
+        const appVersion = await TauriAPI.getAppVersion();
+        result = await cloudApi.uploadBackup(buildConfig(), zipPath, appVersion);
+      } catch (e: unknown) {
+        throw new Error(`上传文件失败: ${getErrorMessage(e)}`);
+      }
+
+      // 阶段 4/4：刷新状态
+      setStage('upload', 4, 4, '正在刷新状态...');
+      await refreshStatus();
+
+      setOpProgress(null);
       showGlobalNotification('success', t('cloudStorage:upload.successDetail', { version: result.version.id }));
       if (result.prunedVersions.length > 0) {
         showGlobalNotification('info', t('cloudStorage:upload.pruned', { count: result.prunedVersions.length }));
       }
-
-      await refreshStatus();
     } catch (e: unknown) {
-      showGlobalNotification('error', `${t('cloudStorage:errors.uploadFailed')}: ${getErrorMessage(e)}`);
+      const msg = getErrorMessage(e);
+      setOpProgress(prev => prev ? { ...prev, error: msg } : null);
+      showGlobalNotification('error', msg);
     } finally {
       setUploading(false);
     }
@@ -377,6 +459,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     refreshStatus,
     resolveBackupId,
     resolveExportZipPath,
+    setStage,
     t,
     waitForGovernanceJob,
   ]);
@@ -399,31 +482,47 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     setRestoreConfirmOpen(false);
     setDownloading(true);
     setRestoreVersionId(versionId);
-    
+    setOpProgress({ operation: 'download', stageIndex: 1, stageTotal: 3, stageLabel: '正在从云端下载...', bytesDone: 0, bytesTotal: 0, isTransferring: false, error: null });
+
     try {
-      // 1. 获取应用数据目录
+      // 阶段 1/3：下载云端备份（字节进度由 Tauri 事件驱动）
       const appDataDir = await TauriAPI.getAppDataDir();
       const downloadDir = `${appDataDir}/backups/cloud-downloads`;
-      
-      // 2. 下载云端备份（后端已验证校验和，失败会抛出错误）
-      const downloadResult = await cloudApi.downloadBackup(buildConfig(), versionId, downloadDir);
-
-      // 3. 新架构导入 ZIP -> 恢复备份
-      const importJob = await DataGovernanceApi.importZip(downloadResult.localPath);
-      const importSummary = await waitForGovernanceJob(importJob.job_id, 'import');
-      const importedBackupId = resolveBackupId(importSummary);
-      if (!importedBackupId) {
-        throw new Error('backup_id missing from import result');
+      let downloadResult: cloudApi.DownloadResult;
+      try {
+        downloadResult = await cloudApi.downloadBackup(buildConfig(), versionId, downloadDir);
+      } catch (e: unknown) {
+        throw new Error(`下载备份失败: ${getErrorMessage(e)}`);
       }
 
-      const restoreJob = await DataGovernanceApi.restoreBackup(importedBackupId);
-      await waitForGovernanceJob(restoreJob.job_id, 'import');
-      
-      // 4. 显示成功消息，提示用户手动重启
+      // 阶段 2/3：导入 ZIP
+      setStage('download', 2, 3, '正在导入 ZIP...');
+      let importedBackupId: string;
+      try {
+        const importJob = await DataGovernanceApi.importZip(downloadResult.localPath);
+        const importSummary = await waitForGovernanceJob(importJob.job_id, 'import');
+        importedBackupId = resolveBackupId(importSummary) ?? '';
+        if (!importedBackupId) throw new Error('backup_id missing from import result');
+      } catch (e: unknown) {
+        throw new Error(`导入 ZIP 失败: ${getErrorMessage(e)}`);
+      }
+
+      // 阶段 3/3：恢复数据库
+      setStage('download', 3, 3, '正在恢复数据库...');
+      try {
+        const restoreJob = await DataGovernanceApi.restoreBackup(importedBackupId);
+        await waitForGovernanceJob(restoreJob.job_id, 'import');
+      } catch (e: unknown) {
+        throw new Error(`恢复数据库失败: ${getErrorMessage(e)}`);
+      }
+
+      setOpProgress(null);
       showGlobalNotification('success', t('cloudStorage:download.successRestart'));
       showGlobalNotification('info', t('cloudStorage:download.restartWhenReady'));
     } catch (e: unknown) {
-      showGlobalNotification('error', `${t('cloudStorage:errors.downloadFailed')}: ${getErrorMessage(e)}`);
+      const msg = getErrorMessage(e);
+      setOpProgress(prev => prev ? { ...prev, error: msg } : null);
+      showGlobalNotification('error', msg);
     } finally {
       setDownloading(false);
       setRestoreVersionId(null);
@@ -433,6 +532,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     buildConfig,
     pendingRestoreVersionId,
     resolveBackupId,
+    setStage,
     t,
     waitForGovernanceJob,
   ]);
@@ -718,6 +818,73 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
                 </div>
               )}
             </div>
+
+            {/* 进度面板：上传/下载时显示 */}
+            {opProgress && (
+              <div className={`rounded-lg border p-3 space-y-2 text-sm ${
+                opProgress.error
+                  ? 'border-destructive/50 bg-destructive/5'
+                  : 'border-border bg-muted/30'
+              }`}>
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    {opProgress.error ? (
+                      <AlertCircle className="h-4 w-4 shrink-0 text-destructive" />
+                    ) : (
+                      <Loader2 className="h-4 w-4 shrink-0 animate-spin text-primary" />
+                    )}
+                    <span className={`font-medium truncate ${
+                      opProgress.error ? 'text-destructive' : ''
+                    }`}>
+                      {opProgress.error ?? opProgress.stageLabel}
+                    </span>
+                  </div>
+                  <span className="text-xs text-muted-foreground shrink-0">
+                    {opProgress.stageIndex}/{opProgress.stageTotal}
+                  </span>
+                </div>
+
+                {/* 文件传输进度条 */}
+                {!opProgress.error && opProgress.isTransferring && (
+                  <>
+                    <div className="w-full bg-secondary rounded-full h-1.5 overflow-hidden">
+                      <div
+                        className="bg-primary h-1.5 rounded-full transition-all duration-200"
+                        style={{
+                          width: opProgress.bytesTotal > 0
+                            ? `${Math.min(100, opProgress.bytesDone / opProgress.bytesTotal * 100)}%`
+                            : '0%',
+                        }}
+                      />
+                    </div>
+                    <div className="flex justify-between text-xs text-muted-foreground">
+                      <span>{cloudApi.formatFileSize(opProgress.bytesDone)}</span>
+                      {opProgress.bytesTotal > 0 && (
+                        <span>{cloudApi.formatFileSize(opProgress.bytesTotal)}</span>
+                      )}
+                    </div>
+                  </>
+                )}
+
+                {/* 非传输阶段：脉动进度条 */}
+                {!opProgress.error && !opProgress.isTransferring && (
+                  <div className="w-full bg-secondary rounded-full h-1.5 overflow-hidden">
+                    <div className="bg-primary/60 h-1.5 rounded-full animate-pulse w-full" />
+                  </div>
+                )}
+
+                {opProgress.error && (
+                  <NotionButton
+                    size="sm"
+                    variant="ghost"
+                    className="h-6 px-2 text-xs text-muted-foreground"
+                    onClick={() => setOpProgress(null)}
+                  >
+                    关闭
+                  </NotionButton>
+                )}
+              </div>
+            )}
 
             {/* 快捷操作 */}
             <div className="flex flex-wrap gap-2 pt-2">

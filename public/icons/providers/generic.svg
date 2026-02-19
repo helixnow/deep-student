@@ -1,7 +1,12 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none">
-  <!-- 外圈 -->
-  <circle cx="12" cy="12" r="10" stroke="#6366f1" stroke-width="1.5" fill="#6366f1" fill-opacity="0.1"/>
-  <!-- AI 文字 -->
-  <text x="12" y="16" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="10" font-weight="600" fill="#6366f1">AI</text>
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="24" y2="24" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#818cf8"/>
+      <stop offset="100%" stop-color="#6366f1"/>
+    </linearGradient>
+  </defs>
+  <rect width="24" height="24" rx="6" fill="url(#g)"/>
+  <!-- 四角星 sparkle -->
+  <path d="M12 5l1.2 4.3L17.5 12l-4.3 1.2L12 19l-1.2-4.3L6.5 12l4.3-1.2L12 5z" fill="white" fill-opacity="0.95"/>
 </svg>
 

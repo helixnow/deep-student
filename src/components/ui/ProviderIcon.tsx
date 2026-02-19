@@ -66,11 +66,11 @@ export interface ProviderIconProps {
  */
 const GenericFallbackIcon: React.FC<{ size: number }> = ({ size }) => (
   <img
-    src="/logo.svg"
+    src="/icons/providers/generic.svg"
     alt="AI"
     style={{
-      width: size * 0.7,
-      height: size * 0.7,
+      width: size,
+      height: size,
       objectFit: 'contain',
       flexShrink: 0,
     }}

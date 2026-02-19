@@ -185,9 +185,6 @@ const CHAT_FTS_VERSION: &str = "2024-05-chat-ngram-v1";
 #[cfg(feature = "lance")]
 const OPTIMIZE_MIN_INTERVAL_CHAT_SECS: i64 = 1800; // 30min
 #[cfg(feature = "lance")]
-const OPTIMIZE_MIN_INTERVAL_KB_SECS: i64 = 600; // 10min
-
-#[cfg(feature = "lance")]
 const LANCE_RELEVANCE_COL: &str = "_relevance_score";
 #[cfg(feature = "lance")]
 const LANCE_FTS_SCORE_COL: &str = "_score";
@@ -483,32 +480,6 @@ impl LanceVectorStore {
             }
             Some(total)
         })
-    }
-
-    #[cfg(feature = "lance")]
-    pub async fn optimize_all_tables_async(
-        &self,
-        parallelism: usize,
-        force: bool,
-    ) -> Result<usize> {
-        if parallelism <= 1 {
-            let mut optimized = 0usize;
-            optimized += self
-                .optimize_chat_tables(None, None, force)
-                .await
-                .map_err(|e| AppError::database(e.to_string()))?;
-            optimized += self
-                .optimize_kb_tables(None, None, force)
-                .await
-                .map_err(|e| AppError::database(e.to_string()))?;
-            return Ok(optimized);
-        }
-
-        let (chat, kb) = tokio::try_join!(
-            self.optimize_chat_tables(None, None, force),
-            self.optimize_kb_tables(None, None, force)
-        )?;
-        Ok(chat + kb)
     }
 
     #[cfg(feature = "lance")]
@@ -898,35 +869,6 @@ impl LanceVectorStore {
             .await?;
         if optimized > 0 {
             info!("✅ [Lance优化] 聊天向量表优化完成（{} 张表）", optimized);
-        }
-        Ok(optimized)
-    }
-
-    #[cfg(feature = "lance")]
-    pub async fn optimize_kb_tables(
-        &self,
-        older_than_days: Option<u64>,
-        delete_unverified: Option<bool>,
-        force: bool,
-    ) -> Result<usize> {
-        let mut names: Vec<String> = Vec::new();
-        for dim in Self::candidate_dim_values() {
-            names.push(format!("{}{}", KB_V2_TABLE_PREFIX, dim));
-            names.push(format!("{}{}", KB_LEGACY_TABLE_PREFIX, dim));
-        }
-
-        let optimized = self
-            .optimize_table_group(
-                "kb",
-                OPTIMIZE_MIN_INTERVAL_KB_SECS,
-                names,
-                older_than_days,
-                delete_unverified,
-                force,
-            )
-            .await?;
-        if optimized > 0 {
-            info!("✅ [Lance优化] 知识库向量表优化完成（{} 张表）", optimized);
         }
         Ok(optimized)
     }

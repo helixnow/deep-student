@@ -4,6 +4,7 @@
 /// - PP-1: 添加 Prompt 输入净化，防止注入
 /// - M-8: 评分边界校验，防止除零
 /// - PP-2: 评分正则支持属性顺序变化
+use base64::Engine;
 use futures_util::StreamExt;
 use regex::Regex;
 use serde_json::json;
@@ -87,6 +88,10 @@ pub async fn run_grading(
     let mut accumulated = String::new();
     let stream_event = format!("essay_grading_stream_{}", request.stream_session_id);
 
+    // 收集图片数据（作文原图 + 题目参考图片）
+    let essay_images = request.image_base64_list.clone().unwrap_or_default();
+    let topic_images = request.topic_image_base64_list.clone().unwrap_or_default();
+
     let stream_status = stream_grade(
         &config,
         &api_key,
@@ -94,6 +99,9 @@ pub async fn run_grading(
         &user_prompt,
         &stream_event,
         deps.llm.clone(),
+        config.is_multimodal,
+        &essay_images,
+        &topic_images,
         |chunk| {
             accumulated.push_str(&chunk);
             deps.emitter
@@ -560,6 +568,8 @@ fn build_grading_prompts(
 }
 
 /// 流式批改（核心逻辑）
+///
+/// ★ 多模态支持：当 `is_multimodal` 为 true 且有图片时，构造图文混合消息
 async fn stream_grade<F>(
     config: &ApiConfig,
     api_key: &str,
@@ -567,6 +577,9 @@ async fn stream_grade<F>(
     user_prompt: &str,
     stream_event: &str,
     llm: Arc<LLMManager>,
+    is_multimodal: bool,
+    essay_images: &[String],
+    topic_images: &[String],
     mut on_chunk: F,
 ) -> Result<StreamStatus, AppError>
 where
@@ -574,16 +587,80 @@ where
 {
     let result = async {
         // 构造消息
-        let messages = vec![
-            json!({
-                "role": "system",
-                "content": system_prompt
-            }),
-            json!({
-                "role": "user",
-                "content": user_prompt
-            }),
-        ];
+        let has_images = !essay_images.is_empty() || !topic_images.is_empty();
+        let messages = if is_multimodal && has_images {
+            // 多模态模式：构造图文混合 content
+            let mut user_content_parts: Vec<serde_json::Value> = Vec::new();
+
+            // 先添加题目参考图片（如果有）
+            if !topic_images.is_empty() {
+                user_content_parts.push(json!({
+                    "type": "text",
+                    "text": "【题目/参考材料图片】"
+                }));
+                for img_b64 in topic_images {
+                    let mime = guess_image_mime(img_b64);
+                    user_content_parts.push(json!({
+                        "type": "image_url",
+                        "image_url": {
+                            "url": format!("data:{};base64,{}", mime, img_b64)
+                        }
+                    }));
+                }
+            }
+
+            // 添加作文原图
+            if !essay_images.is_empty() {
+                user_content_parts.push(json!({
+                    "type": "text",
+                    "text": "【学生作文原图】以下是学生手写/打印作文的原始图片，请直接阅读图片内容进行批改："
+                }));
+                for img_b64 in essay_images {
+                    let mime = guess_image_mime(img_b64);
+                    user_content_parts.push(json!({
+                        "type": "image_url",
+                        "image_url": {
+                            "url": format!("data:{};base64,{}", mime, img_b64)
+                        }
+                    }));
+                }
+            }
+
+            // 最后追加文本 prompt（含上下文、题干等）
+            user_content_parts.push(json!({
+                "type": "text",
+                "text": user_prompt
+            }));
+
+            println!(
+                "📸 [EssayGrading] 多模态批改：{} 张作文图 + {} 张题目图",
+                essay_images.len(),
+                topic_images.len()
+            );
+
+            vec![
+                json!({
+                    "role": "system",
+                    "content": system_prompt
+                }),
+                json!({
+                    "role": "user",
+                    "content": user_content_parts
+                }),
+            ]
+        } else {
+            // 纯文本模式（文本模型或无图片）
+            vec![
+                json!({
+                    "role": "system",
+                    "content": system_prompt
+                }),
+                json!({
+                    "role": "user",
+                    "content": user_prompt
+                }),
+            ]
+        };
 
         // 构造请求体
         let request_body = json!({
@@ -721,4 +798,24 @@ where
     llm.clear_cancel_stream(stream_event).await;
 
     result
+}
+
+/// 根据 base64 数据的前几个字节猜测图片 MIME 类型
+fn guess_image_mime(base64_data: &str) -> &'static str {
+    // 解码前 16 字节用于魔数检测
+    if let Ok(bytes) = base64::engine::general_purpose::STANDARD.decode(
+        &base64_data[..std::cmp::min(base64_data.len(), 24)],
+    ) {
+        if bytes.starts_with(&[0x89, 0x50, 0x4E, 0x47]) {
+            return "image/png";
+        }
+        if bytes.starts_with(&[0xFF, 0xD8, 0xFF]) {
+            return "image/jpeg";
+        }
+        if bytes.starts_with(b"RIFF") && bytes.len() >= 12 && &bytes[8..12] == b"WEBP" {
+            return "image/webp";
+        }
+    }
+    // 默认 JPEG
+    "image/jpeg"
 }

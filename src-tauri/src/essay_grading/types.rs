@@ -107,6 +107,14 @@ pub struct GradingRequest {
 
     /// 上一轮的学生原文（用于多轮对比）
     pub previous_input: Option<String>,
+
+    /// 作文原图 base64 列表（多模态模型使用原图，文本模型使用 OCR 文本）
+    #[serde(default)]
+    pub image_base64_list: Option<Vec<String>>,
+
+    /// 题目/参考材料图片 base64 列表（作文要求、原题目、参考范文等）
+    #[serde(default)]
+    pub topic_image_base64_list: Option<Vec<String>>,
 }
 
 /// 批改响应

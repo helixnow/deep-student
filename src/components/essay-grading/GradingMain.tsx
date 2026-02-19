@@ -5,6 +5,7 @@ import { SettingsDrawer } from './SettingsDrawer';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { HorizontalResizable, VerticalResizable } from '../shared/Resizable';
 import type { GradingMode, ModelInfo } from '@/essay-grading/essayGradingApi';
+import type { UploadedImage } from '../EssayGradingWorkbench';
 import { cn } from '@/lib/utils';
 
 interface GradingMainProps {
@@ -37,6 +38,16 @@ interface GradingMainProps {
   onGrade: () => void;
   onCancelGrading: () => void;
   inputCharCount: number;
+
+  // Image Props
+  uploadedImages: UploadedImage[];
+  onRemoveImage: (imageId: string) => void;
+  // Topic Metadata Props
+  topicText: string;
+  setTopicText: (text: string) => void;
+  topicImages: UploadedImage[];
+  onTopicFilesDropped: (files: File[]) => void;
+  onRemoveTopicImage: (imageId: string) => void;
 
   // Result Panel Props
   gradingResult: string;
@@ -92,6 +103,13 @@ export const GradingMain: React.FC<GradingMainProps> = ({
   onGrade,
   onCancelGrading,
   inputCharCount,
+  uploadedImages,
+  onRemoveImage,
+  topicText,
+  setTopicText,
+  topicImages,
+  onTopicFilesDropped,
+  onRemoveTopicImage,
   gradingResult,
   resultCharCount,
   onCopyResult,
@@ -306,6 +324,13 @@ export const GradingMain: React.FC<GradingMainProps> = ({
                   hasResult={hasResult}
                   onNextRound={onNextRound}
                   roundNavigation={roundNavigation}
+                  uploadedImages={uploadedImages}
+                  onRemoveImage={onRemoveImage}
+                  topicText={topicText}
+                  setTopicText={setTopicText}
+                  topicImages={topicImages}
+                  onTopicFilesDropped={onTopicFilesDropped}
+                  onRemoveTopicImage={onRemoveTopicImage}
                 />
               }
               bottom={
@@ -406,6 +431,13 @@ export const GradingMain: React.FC<GradingMainProps> = ({
                 onNextRound={onNextRound}
                 roundNavigation={roundNavigation}
                 onOpenSettings={() => setShowSettingsDrawer(true)}
+                uploadedImages={uploadedImages}
+                onRemoveImage={onRemoveImage}
+                topicText={topicText}
+                setTopicText={setTopicText}
+                topicImages={topicImages}
+                onTopicFilesDropped={onTopicFilesDropped}
+                onRemoveTopicImage={onRemoveTopicImage}
               />
             }
             bottom={
@@ -516,6 +548,13 @@ export const GradingMain: React.FC<GradingMainProps> = ({
                 onNextRound={onNextRound}
                 roundNavigation={roundNavigation}
                 onOpenSettings={() => setShowSettingsDrawer(true)}
+                uploadedImages={uploadedImages}
+                onRemoveImage={onRemoveImage}
+                topicText={topicText}
+                setTopicText={setTopicText}
+                topicImages={topicImages}
+                onTopicFilesDropped={onTopicFilesDropped}
+                onRemoveTopicImage={onRemoveTopicImage}
               />
             }
             right={

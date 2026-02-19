@@ -6,7 +6,7 @@
 
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import { Loader2, FileText, Zap, MessageSquare, Database, HelpCircle, BookOpen, Network, FolderSearch } from 'lucide-react';
+import { Loader2, Zap, MessageSquare, Database, HelpCircle, FolderSearch } from 'lucide-react';
 import { NotionButton } from '../ui/NotionButton';
 import { Switch } from '../ui/shad/Switch';
 import { TauriAPI } from '../../utils/tauriApi';
@@ -129,9 +129,6 @@ export const LanceOptimizationPanel: React.FC = () => {
   const optimizeAll = async () => {
     const tables = [
       { type: 'chat', command: 'optimize_chat_embeddings_table' },
-      { type: 'kb', command: 'optimize_kb_embeddings_table' },
-      { type: 'kg', command: 'optimize_kg_embeddings_table' },
-      { type: 'notes', command: 'optimize_notes_embeddings_table' },
       { type: 'vfs', command: 'vfs_optimize_lance' },
     ];
 
@@ -228,7 +225,7 @@ export const LanceOptimizationPanel: React.FC = () => {
       </div>
 
       {/* 优化按钮组 */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 gap-3">
         <NotionButton
           variant="ghost"
           disabled={optimizing.chat}
@@ -241,48 +238,6 @@ export const LanceOptimizationPanel: React.FC = () => {
             <MessageSquare className="h-4 w-4" />
           )}
           <span className="text-xs">{t('lance_optimization.chat_table')}</span>
-        </NotionButton>
-
-        <NotionButton
-          variant="ghost"
-          disabled={optimizing.kb}
-          onClick={() => optimizeTable('kb', 'optimize_kb_embeddings_table')}
-          className="flex flex-col items-center gap-1 h-auto py-3 rounded-lg border border-border/40 hover:bg-muted/30"
-        >
-          {optimizing.kb ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <BookOpen className="h-4 w-4" />
-          )}
-          <span className="text-xs">{t('lance_optimization.kb_table')}</span>
-        </NotionButton>
-
-        <NotionButton
-          variant="ghost"
-          disabled={optimizing.kg}
-          onClick={() => optimizeTable('kg', 'optimize_kg_embeddings_table')}
-          className="flex flex-col items-center gap-1 h-auto py-3 rounded-lg border border-border/40 hover:bg-muted/30"
-        >
-          {optimizing.kg ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <Network className="h-4 w-4" />
-          )}
-          <span className="text-xs">{t('lance_optimization.kg_table')}</span>
-        </NotionButton>
-
-        <NotionButton
-          variant="ghost"
-          disabled={optimizing.notes}
-          onClick={() => optimizeTable('notes', 'optimize_notes_embeddings_table')}
-          className="flex flex-col items-center gap-1 h-auto py-3 rounded-lg border border-border/40 hover:bg-muted/30"
-        >
-          {optimizing.notes ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <FileText className="h-4 w-4" />
-          )}
-          <span className="text-xs">{t('lance_optimization.notes_table')}</span>
         </NotionButton>
 
         <NotionButton

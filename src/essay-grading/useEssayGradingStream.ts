@@ -44,6 +44,10 @@ export interface GradingRequest {
   custom_prompt?: string;
   previous_result?: string;
   previous_input?: string;
+  /** 作文原图 base64 列表（多模态模型使用原图，文本模型使用 OCR 文本） */
+  image_base64_list?: string[];
+  /** 题目/参考材料图片 base64 列表（作文要求、原题目、参考范文等） */
+  topic_image_base64_list?: string[];
 }
 
 /**

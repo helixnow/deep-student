@@ -34,10 +34,37 @@ pub use sync_manager::{
 };
 pub use traits::{CloudStorage, FileInfo, Result};
 
+use serde::Serialize;
+use tauri::{AppHandle, Emitter};
+
 use crate::models::AppError;
 #[cfg(feature = "cloud_storage_s3")]
 use s3::S3Storage;
 use webdav::WebDavStorage;
+
+/// 云同步操作进度事件（通过 `cloud-sync-progress` 事件发送到前端）
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CloudSyncProgressEvent {
+    /// 操作类型: "upload" | "download"
+    operation: &'static str,
+    /// 阶段标识: "transferring" | "done"
+    stage: &'static str,
+    /// 阶段描述（面向用户的中文说明）
+    stage_label: &'static str,
+    /// 已传输字节数
+    bytes_done: u64,
+    /// 总字节数（0 = 未知）
+    bytes_total: u64,
+    /// 传输进度百分比 0.0–100.0（仅文件传输阶段有意义）
+    percent: f32,
+}
+
+fn emit_sync_progress(app: &AppHandle, event: CloudSyncProgressEvent) {
+    if let Err(e) = app.emit("cloud-sync-progress", &event) {
+        tracing::warn!("[CloudSync] 进度事件发射失败: {}", e);
+    }
+}
 
 /// 根据配置创建存储实例
 ///
@@ -157,33 +184,146 @@ pub async fn cloud_sync_list_versions(config: CloudStorageConfig) -> Result<Vec<
     manager.list_versions().await
 }
 
-/// 上传备份到云端
+/// 上传备份到云端（带实时进度事件）
+///
+/// 通过 `cloud-sync-progress` Tauri 事件向前端推送字节级传输进度。
 #[tauri::command]
 pub async fn cloud_sync_upload(
+    app_handle: AppHandle,
     config: CloudStorageConfig,
     zip_path: String,
     app_version: Option<String>,
     note: Option<String>,
 ) -> Result<UploadResult> {
+    let file_size = std::fs::metadata(&zip_path)
+        .map(|m| m.len())
+        .unwrap_or(0);
+
     let storage = create_storage(&config).await?;
     let manager = CloudSyncManager::new(storage, get_device_id());
-    manager
-        .upload(std::path::Path::new(&zip_path), app_version, note)
-        .await
+
+    emit_sync_progress(
+        &app_handle,
+        CloudSyncProgressEvent {
+            operation: "upload",
+            stage: "transferring",
+            stage_label: "正在上传文件...",
+            bytes_done: 0,
+            bytes_total: file_size,
+            percent: 0.0,
+        },
+    );
+
+    let handle = app_handle.clone();
+    let progress_cb: traits::UploadProgressCallback = Box::new(move |done, total| {
+        let pct = if total > 0 {
+            (done as f32 / total as f32 * 95.0).min(95.0)
+        } else {
+            0.0
+        };
+        emit_sync_progress(
+            &handle,
+            CloudSyncProgressEvent {
+                operation: "upload",
+                stage: "transferring",
+                stage_label: "正在上传文件...",
+                bytes_done: done,
+                bytes_total: total,
+                percent: pct,
+            },
+        );
+    });
+
+    let result = manager
+        .upload_with_progress(
+            std::path::Path::new(&zip_path),
+            app_version,
+            note,
+            Some(progress_cb),
+        )
+        .await?;
+
+    emit_sync_progress(
+        &app_handle,
+        CloudSyncProgressEvent {
+            operation: "upload",
+            stage: "done",
+            stage_label: "上传完成",
+            bytes_done: file_size,
+            bytes_total: file_size,
+            percent: 100.0,
+        },
+    );
+
+    Ok(result)
 }
 
-/// 从云端下载备份
+/// 从云端下载备份（带实时进度事件）
+///
+/// 通过 `cloud-sync-progress` Tauri 事件向前端推送字节级下载进度。
 #[tauri::command]
 pub async fn cloud_sync_download(
+    app_handle: AppHandle,
     config: CloudStorageConfig,
     version_id: Option<String>,
     local_dir: String,
 ) -> Result<DownloadResult> {
     let storage = create_storage(&config).await?;
     let manager = CloudSyncManager::new(storage, get_device_id());
-    manager
-        .download(version_id.as_deref(), std::path::Path::new(&local_dir))
-        .await
+
+    emit_sync_progress(
+        &app_handle,
+        CloudSyncProgressEvent {
+            operation: "download",
+            stage: "transferring",
+            stage_label: "正在下载备份...",
+            bytes_done: 0,
+            bytes_total: 0,
+            percent: 0.0,
+        },
+    );
+
+    let handle = app_handle.clone();
+    let progress_cb: traits::DownloadProgressCallback = Box::new(move |done, total| {
+        let pct = if total > 0 {
+            (done as f32 / total as f32 * 95.0).min(95.0)
+        } else {
+            0.0
+        };
+        emit_sync_progress(
+            &handle,
+            CloudSyncProgressEvent {
+                operation: "download",
+                stage: "transferring",
+                stage_label: "正在下载备份...",
+                bytes_done: done,
+                bytes_total: total,
+                percent: pct,
+            },
+        );
+    });
+
+    let result = manager
+        .download_with_progress(
+            version_id.as_deref(),
+            std::path::Path::new(&local_dir),
+            Some(progress_cb),
+        )
+        .await?;
+
+    emit_sync_progress(
+        &app_handle,
+        CloudSyncProgressEvent {
+            operation: "download",
+            stage: "done",
+            stage_label: "下载完成",
+            bytes_done: result.version.size,
+            bytes_total: result.version.size,
+            percent: 100.0,
+        },
+    );
+
+    Ok(result)
 }
 
 /// 删除云端备份版本

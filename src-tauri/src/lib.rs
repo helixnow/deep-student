@@ -846,8 +846,6 @@ pub fn run() {
             crate::commands::remove_ocr_engine,
             // Lance 向量表优化命令
             crate::commands::optimize_chat_embeddings_table,
-            crate::commands::optimize_kb_embeddings_table,
-            crate::commands::optimize_kg_embeddings_table,
             crate::commands::create_performance_indexes,
             crate::commands::analyze_query_performance,
 

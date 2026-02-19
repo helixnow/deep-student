@@ -7076,9 +7076,9 @@ pub async fn data_governance_run_sync(
         SyncDirection::Upload => {
             // 上传带完整数据的变更
             manager
-                .upload_enriched_changes(storage.as_ref(), &all_enriched)
+                .upload_enriched_changes(storage.as_ref(), &all_enriched, None)
                 .await
-                .map_err(|e| format!("上传同步失败: {}", e))?;
+                .map_err(|e| format!("上传同步失败: {}", e))?
 
             manager
                 .upload_manifest(storage.as_ref(), &local_manifest)
@@ -7159,7 +7159,7 @@ pub async fn data_governance_run_sync(
             // 上传带完整数据的变更（唯一上传点，避免重复）
             if !all_enriched.is_empty() {
                 manager
-                    .upload_enriched_changes(storage.as_ref(), &all_enriched)
+                    .upload_enriched_changes(storage.as_ref(), &all_enriched, None)
                     .await
                     .map_err(|e| format!("上传变更失败: {}", e))?;
             }
@@ -7824,13 +7824,29 @@ pub async fn data_governance_run_sync_with_progress(
     // 遍历所有数据库，收集待同步变更并补全完整记录数据
     let mut all_enriched: Vec<SyncChangeWithData> = Vec::new();
     let mut db_found = false;
+    let all_db_ids: Vec<_> = DatabaseId::all_ordered().collect();
+    let total_dbs = all_db_ids.len() as u64;
 
-    for db_id in DatabaseId::all_ordered() {
-        let db_path = resolve_database_path(&db_id, &active_dir);
+    for (db_index, db_id) in all_db_ids.iter().enumerate() {
+        let db_path = resolve_database_path(db_id, &active_dir);
         if !db_path.exists() {
             continue;
         }
         db_found = true;
+
+        // 每处理一个 DB 就推送一次 detecting_changes 进度，消除大批量富化时的静默窗口
+        emitter
+            .emit(SyncProgress {
+                phase: SyncPhase::DetectingChanges,
+                percent: 5.0,
+                current: db_index as u64 + 1,
+                total: total_dbs,
+                current_item: Some(db_id.as_str().to_string()),
+                speed_bytes_per_sec: None,
+                eta_seconds: None,
+                error: None,
+            })
+            .await;
 
         let conn = match rusqlite::Connection::open(&db_path) {
             Ok(c) => c,
@@ -7908,7 +7924,7 @@ pub async fn data_governance_run_sync_with_progress(
                 &pending,
                 &local_manifest,
                 &active_dir,
-                &opt_emitter,
+                &opt_emitter.clone(),
             )
             .await
         }
@@ -8086,11 +8102,44 @@ async fn execute_upload_with_progress_v2(
 
     emitter.emit_uploading(0, total, None).await;
 
-    // 上传带完整数据的变更
-    manager
-        .upload_enriched_changes(storage, enriched)
-        .await
-        .map_err(|e| format!("上传同步失败: {}", e))?;
+    // 上传带完整数据的变更（带字节级进度回调，节流 100ms）
+    {
+        let emitter_cb = emitter.clone();
+        let last_emit_ms = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
+        let byte_progress_cb: Box<dyn Fn(u64, u64) + Send + Sync> = Box::new(move |done, total_bytes| {
+            let is_final = total_bytes > 0 && done >= total_bytes;
+            if !is_final {
+                let now_ms = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_millis() as u64)
+                    .unwrap_or(0);
+                let last = last_emit_ms.load(std::sync::atomic::Ordering::Relaxed);
+                if now_ms.saturating_sub(last) < 100 {
+                    return;
+                }
+                last_emit_ms.store(now_ms, std::sync::atomic::Ordering::Relaxed);
+            }
+            let pct = if total_bytes > 0 {
+                10.0_f32 + (done as f32 / total_bytes as f32) * 40.0
+            } else {
+                10.0
+            };
+            emitter_cb.emit_force_sync(SyncProgress {
+                phase: SyncPhase::Uploading,
+                percent: pct,
+                current: done,
+                total: total_bytes,
+                current_item: None,
+                speed_bytes_per_sec: None,
+                eta_seconds: None,
+                error: None,
+            });
+        });
+        manager
+            .upload_enriched_changes(storage, enriched, Some(byte_progress_cb))
+            .await
+            .map_err(|e| format!("上传同步失败: {}", e))?
+    }
 
     manager
         .upload_manifest(storage, local_manifest)
@@ -8196,20 +8245,58 @@ async fn execute_bidirectional_with_progress_v2(
 ) -> Result<(SyncExecutionResult, usize), String> {
     let start = std::time::Instant::now();
 
-    emitter.emit_downloading(0, 0, None).await;
-
+    // 先执行下载同步（不先发射 downloading 事件，避免在无内容时发操导致百分比倒退）
     let (exec_result, change_ids, downloaded_changes) = manager
         .execute_bidirectional(storage, pending, local_manifest, merge_strategy)
         .await
         .map_err(|e| format!("双向同步失败: {}", e))?;
+
+    // 有下载内容时才发射 downloading 事件
+    if !downloaded_changes.is_empty() {
+        let dl_total = downloaded_changes.len() as u64;
+        emitter.emit_downloading(dl_total, dl_total, None).await;
+    }
 
     // 上传带完整数据的变更（唯一上传点，execute_bidirectional 不再内部上传）
     if !enriched.is_empty() {
         let upload_total = enriched.len() as u64;
         emitter.emit_uploading(0, upload_total, None).await;
 
+        // 字节级进度回调——通过流式 PUT 实时上报已传输字节数（节流 100ms）
+        let emitter_cb = emitter.clone();
+        let last_emit_ms = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
+        let byte_progress_cb: Box<dyn Fn(u64, u64) + Send + Sync> = Box::new(move |done, total_bytes| {
+            let is_final = total_bytes > 0 && done >= total_bytes;
+            if !is_final {
+                let now_ms = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_millis() as u64)
+                    .unwrap_or(0);
+                let last = last_emit_ms.load(std::sync::atomic::Ordering::Relaxed);
+                if now_ms.saturating_sub(last) < 100 {
+                    return;
+                }
+                last_emit_ms.store(now_ms, std::sync::atomic::Ordering::Relaxed);
+            }
+            let pct = if total_bytes > 0 {
+                10.0_f32 + (done as f32 / total_bytes as f32) * 40.0
+            } else {
+                10.0
+            };
+            emitter_cb.emit_force_sync(SyncProgress {
+                phase: SyncPhase::Uploading,
+                percent: pct,
+                current: done,
+                total: total_bytes,
+                current_item: None,
+                speed_bytes_per_sec: None,
+                eta_seconds: None,
+                error: None,
+            });
+        });
+
         manager
-            .upload_enriched_changes(storage, enriched)
+            .upload_enriched_changes(storage, enriched, Some(byte_progress_cb))
             .await
             .map_err(|e| format!("上传变更失败: {}", e))?;
 

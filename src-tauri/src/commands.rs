@@ -1257,39 +1257,6 @@ pub async fn optimize_chat_embeddings_table(
     Ok(())
 }
 
-/// 优化知识库向量表（合并小文件、清理旧版本、优化索引）
-#[tauri::command]
-pub async fn optimize_kb_embeddings_table(
-    older_than_days: Option<u64>,
-    delete_unverified: Option<bool>,
-    force: Option<bool>,
-    state: State<'_, AppState>,
-) -> Result<()> {
-    let db = state.database.clone();
-    let store = crate::lance_vector_store::LanceVectorStore::new(db.clone())
-        .map_err(|e| AppError::database(e.to_string()))?;
-    let optimized = store
-        .optimize_kb_tables(older_than_days, delete_unverified, force.unwrap_or(true))
-        .await
-        .map_err(|e| AppError::database(e.to_string()))?;
-    if optimized == 0 {
-        debug!("[Lance优化] 知识库向量表在节流窗口内，未执行优化。");
-    }
-    Ok(())
-}
-
-/// 优化知识图谱向量表（合并小文件、清理旧版本、优化索引）
-#[tauri::command]
-pub async fn optimize_kg_embeddings_table(
-    older_than_days: Option<u64>,
-    delete_unverified: Option<bool>,
-    force: Option<bool>,
-    state: State<'_, AppState>,
-) -> Result<()> {
-    let _ = (older_than_days, delete_unverified, force, &state);
-    Ok(())
-}
-
 /// 获取增强统计信息（包含所有模块）
 #[tauri::command]
 pub async fn get_enhanced_statistics(state: State<'_, AppState>) -> Result<serde_json::Value> {

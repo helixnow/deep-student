@@ -416,7 +416,7 @@ impl BackupTier {
     pub fn asset_directories(&self) -> Vec<&'static str> {
         match self {
             BackupTier::Core => vec![],
-            BackupTier::Important => vec!["notes_assets"],
+            BackupTier::Important => vec!["notes_assets", "vfs_blobs"],
             BackupTier::Rebuildable => vec!["lance"],
             BackupTier::LargeAssets => vec!["images", "documents", "videos", "assets"],
         }
@@ -844,6 +844,21 @@ impl BackupManager {
             }
         }
 
+        // 3.6 备份工作区数据库（ws_*.db）
+        let active_dir_for_ws = crate::data_space::get_data_space_manager()
+            .map(|mgr| mgr.active_dir())
+            .unwrap_or_else(|| self.app_data_dir.join("slots").join("slotA"));
+        match self.backup_workspace_databases(&active_dir_for_ws, &backup_subdir) {
+            Ok(count) => {
+                if count > 0 {
+                    info!("工作区数据库备份完成: {} 个", count);
+                }
+            }
+            Err(e) => {
+                warn!("工作区数据库备份失败（非致命）: {}", e);
+            }
+        }
+
         // 4. 保存清单
         let manifest_path = backup_subdir.join(MANIFEST_FILENAME);
         manifest.save_to_file(&manifest_path)?;
@@ -921,6 +936,21 @@ impl BackupManager {
             }
             Err(e) => {
                 warn!("加密密钥备份失败（API 密钥可能无法跨设备恢复）: {}", e);
+            }
+        }
+
+        // 3.6 备份工作区数据库（ws_*.db）
+        let active_dir_for_ws = crate::data_space::get_data_space_manager()
+            .map(|mgr| mgr.active_dir())
+            .unwrap_or_else(|| self.app_data_dir.join("slots").join("slotA"));
+        match self.backup_workspace_databases(&active_dir_for_ws, &backup_subdir) {
+            Ok(count) => {
+                if count > 0 {
+                    info!("工作区数据库备份完成: {} 个", count);
+                }
+            }
+            Err(e) => {
+                warn!("工作区数据库备份失败（非致命）: {}", e);
             }
         }
 
@@ -2179,6 +2209,166 @@ impl BackupManager {
         } else {
             Err(BackupError::IntegrityCheckFailed(result))
         }
+    }
+
+    // =========================================================================
+    // 工作区数据库备份/恢复（ws_*.db，位于 active_dir/workspaces/）
+    // =========================================================================
+
+    /// 使用 SQLite Backup API 备份任意路径的数据库（不依赖 DatabaseId）
+    fn backup_db_at_path(src_path: &Path, dest_path: &Path) -> Result<(), BackupError> {
+        let src_conn = Connection::open(src_path)?;
+        src_conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE)")?;
+
+        let mut dest_conn = Connection::open(dest_path)?;
+        {
+            let backup = Backup::new(&src_conn, &mut dest_conn)?;
+            use rusqlite::backup::StepResult;
+            loop {
+                match backup.step(100)? {
+                    StepResult::Done => break,
+                    _ => std::thread::sleep(Duration::from_millis(50)),
+                }
+            }
+        }
+        dest_conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE)")?;
+        drop(dest_conn);
+        drop(src_conn);
+        Ok(())
+    }
+
+    /// 使用 SQLite Backup API 恢复任意路径的数据库（不依赖 DatabaseId）
+    fn restore_db_at_path(src_path: &Path, dest_path: &Path) -> Result<(), BackupError> {
+        if !src_path.exists() {
+            return Err(BackupError::FileNotFound(format!(
+                "备份文件不存在: {:?}",
+                src_path
+            )));
+        }
+        if let Some(parent) = dest_path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        // 目标存在时先关闭 WAL
+        if dest_path.exists() {
+            let conn = Connection::open(dest_path)?;
+            conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE)")?;
+            drop(conn);
+            let wal = dest_path.with_extension("db-wal");
+            let shm = dest_path.with_extension("db-shm");
+            if wal.exists() { let _ = fs::remove_file(&wal); }
+            if shm.exists() { let _ = fs::remove_file(&shm); }
+        }
+        let src_conn = Connection::open(src_path)?;
+        let mut dest_conn = Connection::open(dest_path)?;
+        src_conn.pragma_update(None, "busy_timeout", 5000i64)?;
+        dest_conn.pragma_update(None, "busy_timeout", 5000i64)?;
+        {
+            let backup = Backup::new(&src_conn, &mut dest_conn)?;
+            use rusqlite::backup::StepResult;
+            let mut busy_retries: u32 = 0;
+            loop {
+                match backup.step(100)? {
+                    StepResult::Done => break,
+                    StepResult::More => { busy_retries = 0; }
+                    StepResult::Busy | StepResult::Locked => {
+                        busy_retries += 1;
+                        if busy_retries >= 600 {
+                            return Err(BackupError::RestoreFailed(format!(
+                                "恢复工作区数据库超时: {:?}",
+                                dest_path
+                            )));
+                        }
+                        std::thread::sleep(Duration::from_millis(100));
+                    }
+                    _ => std::thread::sleep(Duration::from_millis(50)),
+                }
+            }
+        }
+        dest_conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE)")?;
+        drop(dest_conn);
+        drop(src_conn);
+        Ok(())
+    }
+
+    /// 备份工作区数据库（ws_*.db → backup_dir/workspaces/ws_*.db）
+    ///
+    /// 使用 SQLite Backup API，对每个打开中的 WAL 模式数据库都是安全的。
+    /// 备份失败不阻断主流程（返回已成功备份数量）。
+    fn backup_workspace_databases(
+        &self,
+        active_dir: &Path,
+        backup_dir: &Path,
+    ) -> Result<usize, BackupError> {
+        let src_dir = active_dir.join("workspaces");
+        if !src_dir.exists() {
+            return Ok(0);
+        }
+        let dest_dir = backup_dir.join("workspaces");
+        fs::create_dir_all(&dest_dir)?;
+
+        let mut count = 0usize;
+        for entry in fs::read_dir(&src_dir)? {
+            let entry = entry?;
+            let src = entry.path();
+            let name = src.file_name().unwrap_or_default().to_string_lossy();
+            if !name.starts_with("ws_") || !name.ends_with(".db") {
+                continue;
+            }
+            let dest = dest_dir.join(&*name);
+            match Self::backup_db_at_path(&src, &dest) {
+                Ok(()) => {
+                    count += 1;
+                    debug!("备份工作区数据库: {:?} -> {:?}", src, dest);
+                }
+                Err(e) => {
+                    warn!("备份工作区数据库失败（跳过）: {:?}: {}", src, e);
+                }
+            }
+        }
+        if count > 0 {
+            info!("工作区数据库备份完成: {} 个", count);
+        }
+        Ok(count)
+    }
+
+    /// 恢复工作区数据库（backup_dir/workspaces/ws_*.db → target_dir/workspaces/ws_*.db）
+    ///
+    /// 恢复失败记录警告但不阻断主流程。
+    fn restore_workspace_databases(
+        &self,
+        backup_dir: &Path,
+        target_dir: &Path,
+    ) -> Result<usize, BackupError> {
+        let src_dir = backup_dir.join("workspaces");
+        if !src_dir.exists() {
+            return Ok(0);
+        }
+        let dest_dir = target_dir.join("workspaces");
+        fs::create_dir_all(&dest_dir)?;
+
+        let mut count = 0usize;
+        for entry in fs::read_dir(&src_dir)? {
+            let entry = entry?;
+            let src = entry.path();
+            let name = src.file_name().unwrap_or_default().to_string_lossy();
+            if !name.starts_with("ws_") || !name.ends_with(".db") {
+                continue;
+            }
+            let dest = dest_dir.join(&*name);
+            match Self::restore_db_at_path(&src, &dest) {
+                Ok(()) => {
+                    count += 1;
+                    debug!("恢复工作区数据库: {:?} -> {:?}", src, dest);
+                }
+                Err(e) => {
+                    warn!("恢复工作区数据库失败（跳过）: {:?}: {}", src, e);
+                }
+            }
+        }
+        if count > 0 {
+            info!("工作区数据库恢复完成: {} 个", count);
+        }
+        Ok(count)
     }
 
     /// 列出所有备份

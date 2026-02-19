@@ -58,6 +58,10 @@ describe('ProviderIconEngine', () => {
       expect(detectProviderBrand('Qwen/Qwen2.5-VL-32B-Instruct')).toBe('qwen');
       expect(detectProviderBrand('qwq-32b')).toBe('qwen');
       expect(detectProviderBrand('qvq-72b')).toBe('qwen');
+      expect(detectProviderBrand('codeqwen1.5-7b-chat')).toBe('qwen');
+      expect(detectProviderBrand('deepseek-r1-distill-qwen-14b')).toBe('qwen');
+      expect(detectProviderBrand('deepseek-r1-distill-qwen-1.5b')).toBe('qwen');
+      expect(detectProviderBrand('deepseek-r1-distill-qwen-32b')).toBe('qwen');
     });
 
     it('应该正确识别智谱 (GLM) 模型', () => {
@@ -177,6 +181,14 @@ describe('ProviderIconEngine', () => {
 
     it('字节跳动应该映射到doubao图标', () => {
       expect(getProviderIcon('doubao-pro')).toBe('/icons/providers/doubao.svg');
+    });
+
+    it('阿里云应该映射到bailian图标', () => {
+      expect(getProviderIcon('tongyi-xiaomi-analysis-flash')).toBe('/icons/providers/bailian.svg');
+    });
+
+    it('智谱AI应该映射到chatglm图标', () => {
+      expect(getProviderIcon('glm-4.5')).toBe('/icons/providers/chatglm.svg');
     });
   });
 });

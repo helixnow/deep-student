@@ -700,6 +700,7 @@ impl SyncManager {
         &self,
         storage: &dyn CloudStorage,
         changes: &[SyncChangeWithData],
+        progress: Option<Box<dyn Fn(u64, u64) + Send + Sync>>,
     ) -> Result<(), SyncError> {
         if changes.is_empty() {
             tracing::debug!("[sync] 没有变更需要上传");
@@ -727,18 +728,34 @@ impl SyncManager {
         let compressed = zstd::stream::encode_all(std::io::Cursor::new(json), 0)
             .map_err(|e| SyncError::Database(format!("压缩变更数据失败: {}", e)))?;
 
-        storage
-            .put(&key, &compressed)
-            .await
-            .map_err(|e| SyncError::Network(format!("上传变更数据失败: {}", e)))?;
+        let compressed_size = compressed.len();
+        let total_count = payload.total_count;
+
+        if let Some(cb) = progress {
+            // 有进度回调：写入临时文件，通过 put_file 流式上传以实时汇报字节进度
+            let tmp = tempfile::NamedTempFile::new()
+                .map_err(|e| SyncError::Database(format!("创建临时上传文件失败: {}", e)))?;
+            std::fs::write(tmp.path(), &compressed)
+                .map_err(|e| SyncError::Database(format!("写入临时上传文件失败: {}", e)))?;
+            storage
+                .put_file(&key, tmp.path(), Some(cb))
+                .await
+                .map_err(|e| SyncError::Network(format!("上传变更数据失败: {}", e)))?;
+        } else {
+            // 无进度回调：直接 PUT 字节（原路径）
+            storage
+                .put(&key, &compressed)
+                .await
+                .map_err(|e| SyncError::Network(format!("上传变更数据失败: {}", e)))?;
+        }
 
         tracing::info!(
             "[sync] 带完整数据的变更已上传(Compressed): device={}, count={}, key={}, original_size={}, compressed_size={}",
             self.device_id,
             changes.len(),
             key,
-            payload.total_count, // Approximate logic, logging size would require len()
-            compressed.len()
+            total_count,
+            compressed_size
         );
 
         Ok(())
