@@ -333,6 +333,12 @@ function restoreCodeBlocks(markers: StreamingMarker[], codeBlocks: Map<string, s
  */
 function cleanMarkdownSyntax(text: string): string {
   return text
+    // 移除标题标记 (# ## ### 等)
+    .replace(/^#{1,6}\s+/gm, '')
+    // 移除水平分隔线 (---, ***, ___)
+    .replace(/^(?:---|\*\*\*|___)\s*$/gm, '')
+    // 移除引用标记 (> )
+    .replace(/^>\s?/gm, '')
     // 移除粗体标记
     .replace(/\*\*([^*]+)\*\*/g, '$1')
     // 移除斜体标记
@@ -340,7 +346,11 @@ function cleanMarkdownSyntax(text: string): string {
     // 移除代码块标记符（但保留内容）
     .replace(/```\w*\n?/g, '')
     // 移除行内代码标记
-    .replace(/`([^`]+)`/g, '$1');
+    .replace(/`([^`]+)`/g, '$1')
+    // 移除无序列表标记 (- item, * item, + item)
+    .replace(/^[\t ]*[-*+]\s+/gm, '')
+    // 移除有序列表标记 (1. item, 2. item)
+    .replace(/^[\t ]*\d+\.\s+/gm, '');
 }
 
 /**

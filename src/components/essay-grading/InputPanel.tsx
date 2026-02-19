@@ -315,9 +315,32 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
                 <img
                   src={img.dataUrl}
                   alt={img.fileName}
-                  className="w-10 h-10 object-cover rounded border border-border/40"
+                  className={cn(
+                    "w-10 h-10 object-cover rounded border",
+                    img.ocrStatus === 'error' || img.ocrStatus === 'timeout'
+                      ? "border-destructive/60 opacity-75"
+                      : img.ocrStatus === 'done'
+                        ? "border-primary/40"
+                        : "border-border/40"
+                  )}
                   title={img.fileName}
                 />
+                {/* OCR 状态指示器 */}
+                {(img.ocrStatus === 'pending' || img.ocrStatus === 'processing') && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/30 rounded">
+                    <Loader2 className="w-4 h-4 text-white animate-spin" />
+                  </div>
+                )}
+                {img.ocrStatus === 'timeout' && (
+                  <div className="absolute bottom-0 left-0 right-0 bg-yellow-500/80 text-[8px] text-white text-center leading-tight rounded-b">
+                    Timeout
+                  </div>
+                )}
+                {img.ocrStatus === 'error' && (
+                  <div className="absolute bottom-0 left-0 right-0 bg-destructive/80 text-[8px] text-white text-center leading-tight rounded-b">
+                    Error
+                  </div>
+                )}
                 {!isGrading && onRemoveImage && (
                   <button
                     onClick={() => onRemoveImage(img.id)}

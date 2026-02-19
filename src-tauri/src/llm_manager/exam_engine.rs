@@ -450,6 +450,215 @@ impl LLMManager {
         Err(last_err.unwrap_or_else(|| AppError::configuration("所有 OCR 引擎均失败")))
     }
 
+    /// ★ FreeOCR 模式 + 优先级 fallback + 单引擎 45s 超时
+    ///
+    /// 供作文批改 OCR、翻译 OCR、题目导入 OCR 使用。
+    /// 与 `call_ocr_page_with_fallback`（Grounding 模式）不同，本方法使用 FreeOcr 模式
+    /// 只返回纯文本，无坐标信息。每个引擎有独立 45s 超时保护。
+    pub async fn call_ocr_free_text_with_fallback(
+        &self,
+        image_path: &str,
+    ) -> Result<String> {
+        use crate::ocr_adapters::{OcrAdapterFactory, OcrMode};
+        use crate::ocr_circuit_breaker::OCR_CIRCUIT_BREAKER;
+        use crate::providers::ProviderAdapter;
+
+        const OCR_TIMEOUT_SECS: u64 = 45;
+
+        // ★ 熔断检查
+        if !OCR_CIRCUIT_BREAKER.allow_request() {
+            return Err(AppError::llm(
+                "OCR 服务暂时不可用（连续失败触发熔断），请稍后重试",
+            ));
+        }
+
+        let engines = self.get_ocr_configs_by_priority().await.unwrap_or_default();
+        if engines.is_empty() {
+            return Err(AppError::configuration(
+                "没有已启用的 OCR 引擎，请在设置中配置",
+            ));
+        }
+
+        // 准备图片数据（只做一次）
+        let mime = Self::infer_image_mime(image_path);
+        let (data_url, _) = self
+            .prepare_segmentation_image_data(image_path, mime)
+            .await?;
+
+        let mut last_err = None;
+        for (idx, (config, engine_type)) in engines.iter().enumerate() {
+            let api_key = match self.decrypt_api_key_if_needed(&config.api_key) {
+                Ok(k) => k,
+                Err(e) => {
+                    warn!("[OCR-FreeText] Engine #{} ({}) key decrypt failed: {}", idx, engine_type.as_str(), e);
+                    last_err = Some(e);
+                    continue;
+                }
+            };
+
+            let adapter = OcrAdapterFactory::create(*engine_type);
+            let ocr_mode = OcrMode::FreeOcr;
+            let prompt_text = adapter.build_prompt(ocr_mode);
+
+            let messages = vec![json!({
+                "role": "user",
+                "content": [
+                    { "type": "image_url", "image_url": { "url": &data_url, "detail": if adapter.requires_high_detail() { "high" } else { "low" } } },
+                    { "type": "text", "text": prompt_text }
+                ]
+            })];
+
+            let max_tokens = super::effective_max_tokens(config.max_output_tokens, config.max_tokens_limit)
+                .min(adapter.recommended_max_tokens(ocr_mode))
+                .max(2048)
+                .min(8000);
+
+            let mut request_body = json!({
+                "model": config.model,
+                "messages": messages,
+                "temperature": adapter.recommended_temperature(),
+                "max_tokens": max_tokens,
+                "stream": false,
+            });
+
+            if let Some(extra) = adapter.get_extra_request_params() {
+                if let Some(obj) = request_body.as_object_mut() {
+                    if let Some(extra_obj) = extra.as_object() {
+                        for (k, v) in extra_obj {
+                            obj.insert(k.to_string(), v.clone());
+                        }
+                    }
+                }
+            }
+            if let Some(rp) = adapter.recommended_repetition_penalty() {
+                if let Some(obj) = request_body.as_object_mut() {
+                    obj.insert("repetition_penalty".to_string(), json!(rp));
+                }
+            }
+
+            let provider: Box<dyn ProviderAdapter> = match config.model_adapter.as_str() {
+                "google" | "gemini" => Box::new(crate::providers::GeminiAdapter::new()),
+                "anthropic" | "claude" => Box::new(crate::providers::AnthropicAdapter::new()),
+                _ => Box::new(crate::providers::OpenAIAdapter),
+            };
+
+            let preq = match provider.build_request(&config.base_url, &api_key, &config.model, &request_body) {
+                Ok(p) => p,
+                Err(e) => {
+                    warn!("[OCR-FreeText] Engine #{} ({}) request build failed: {}", idx, engine_type.as_str(), e);
+                    last_err = Some(AppError::llm(format!("OCR 请求构建失败: {}", e)));
+                    continue;
+                }
+            };
+
+            debug!(
+                "[OCR-FreeText] Trying engine #{} ({}, model={}) with {}s timeout",
+                idx, engine_type.as_str(), config.model, OCR_TIMEOUT_SECS
+            );
+
+            let mut header_map = reqwest::header::HeaderMap::new();
+            for (k, v) in preq.headers.iter() {
+                if let (Ok(name), Ok(val)) = (
+                    reqwest::header::HeaderName::from_bytes(k.as_bytes()),
+                    reqwest::header::HeaderValue::from_str(v),
+                ) {
+                    header_map.insert(name, val);
+                }
+            }
+
+            let request_future = self.client
+                .post(&preq.url)
+                .headers(header_map)
+                .json(&preq.body)
+                .send();
+
+            // ★ 45s 独立超时
+            let response = match tokio::time::timeout(
+                std::time::Duration::from_secs(OCR_TIMEOUT_SECS),
+                request_future,
+            ).await {
+                Ok(Ok(resp)) => resp,
+                Ok(Err(e)) => {
+                    warn!("[OCR-FreeText] Engine #{} ({}) network error: {}", idx, engine_type.as_str(), e);
+                    last_err = Some(AppError::network(format!("OCR 请求失败: {}", e)));
+                    continue;
+                }
+                Err(_) => {
+                    warn!("[OCR-FreeText] Engine #{} ({}) timed out after {}s", idx, engine_type.as_str(), OCR_TIMEOUT_SECS);
+                    last_err = Some(AppError::network(format!(
+                        "OCR 引擎 {} 超时 ({}s)", engine_type.as_str(), OCR_TIMEOUT_SECS
+                    )));
+                    continue;
+                }
+            };
+
+            if !response.status().is_success() {
+                let status = response.status();
+                let error_text = response.text().await.unwrap_or_default();
+                warn!("[OCR-FreeText] Engine #{} ({}) HTTP {}: {}", idx, engine_type.as_str(), status, Self::safe_truncate_str(&error_text, 200));
+                last_err = Some(AppError::llm(format!("OCR API 返回错误 {}: {}", status, error_text)));
+                continue;
+            }
+
+            let response_text = match response.text().await {
+                Ok(t) => t,
+                Err(e) => {
+                    warn!("[OCR-FreeText] Engine #{} ({}) read response failed: {}", idx, engine_type.as_str(), e);
+                    last_err = Some(AppError::llm(format!("读取 OCR 响应失败: {}", e)));
+                    continue;
+                }
+            };
+
+            let response_json: Value = match serde_json::from_str(&response_text) {
+                Ok(v) => v,
+                Err(e) => {
+                    warn!("[OCR-FreeText] Engine #{} ({}) JSON parse failed: {}", idx, engine_type.as_str(), e);
+                    last_err = Some(AppError::llm(format!("解析 OCR 响应失败: {}", e)));
+                    continue;
+                }
+            };
+
+            // Gemini / Anthropic 响应转换
+            let openai_like = if config.model_adapter == "google" {
+                match crate::adapters::gemini_openai_converter::convert_gemini_nonstream_response_to_openai(&response_json, &config.model) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        last_err = Some(AppError::llm(format!("Gemini 响应转换失败: {}", e)));
+                        continue;
+                    }
+                }
+            } else if matches!(config.model_adapter.as_str(), "anthropic" | "claude") {
+                match crate::providers::convert_anthropic_response_to_openai(&response_json, &config.model) {
+                    Some(v) => v,
+                    None => {
+                        last_err = Some(AppError::llm("Anthropic 响应转换失败".to_string()));
+                        continue;
+                    }
+                }
+            } else {
+                response_json
+            };
+
+            let content = openai_like["choices"][0]["message"]["content"]
+                .as_str()
+                .unwrap_or("")
+                .to_string();
+
+            if idx > 0 {
+                info!(
+                    "[OCR-FreeText] Fallback succeeded: engine #{} ({}) returned {} chars",
+                    idx, engine_type.as_str(), content.len()
+                );
+            }
+            OCR_CIRCUIT_BREAKER.record_success();
+            return Ok(content);
+        }
+
+        // 所有引擎均失败 → 记录熔断失败
+        OCR_CIRCUIT_BREAKER.record_failure();
+        Err(last_err.unwrap_or_else(|| AppError::configuration("所有 OCR 引擎均失败")))
+    }
+
     pub async fn call_deepseek_ocr_page_raw(
         &self,
         config: &ApiConfig,

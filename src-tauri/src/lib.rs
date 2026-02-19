@@ -41,6 +41,7 @@ pub mod file_manager;
 pub mod injection_budget;
 pub mod json_validator;
 pub mod ocr_adapters; // OCR 适配器模块（支持多种 OCR 引擎）
+pub mod ocr_circuit_breaker; // OCR 熔断器（三态：Closed/Open/HalfOpen）
 pub mod pdf_ocr_service;
 pub mod pdf_protocol;
 pub mod pdfium_utils; // Pdfium 公共工具（库加载 + 文本提取）

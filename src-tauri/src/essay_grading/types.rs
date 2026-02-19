@@ -237,9 +237,23 @@ pub struct GradingStreamCancelled {
 
 /// 标记符使用说明（嵌入到系统 Prompt 中）
 pub const MARKER_INSTRUCTIONS: &str = r#"
-批改标记格式要求
+【输出结构要求 — 最高优先级】
 
-请在批改时使用以下 XML 标记对原文进行标注：
+你的输出必须严格按照以下三部分顺序组织：
+
+第一部分 —— 批注原文（必须）
+完整复述学生原文，同时将 XML 批改标记直接嵌入原文对应位置。
+不得省略原文的任何段落或句子。
+不得在原文之外另起段落撰写"整体评价""修改建议""问题分析""亮点分析"等独立评语板块。
+所有批改意见必须且只能通过下方定义的 XML 标记嵌入在原文中。
+整体评价和各维度点评写入评分标签 <dim> 的评语文本中即可。
+
+第二部分 —— 附加段落（如有后续指令则输出）
+第三部分 —— 评分标签 <score>（放在最末尾）
+
+批改标记格式
+
+在原文中使用以下 XML 标记进行标注：
 
 删除标记：<del reason="原因">应删除的内容</del>
 插入标记：<ins>建议增加的内容</ins>
@@ -249,35 +263,21 @@ pub const MARKER_INSTRUCTIONS: &str = r#"
 错误标记：<err type="错误类型" explanation="详细解释">错误内容</err>
 
 错误类型说明（type 取值）：
-grammar: 语法错误（一般性语法问题）
-spelling: 拼写/错别字
-logic: 逻辑问题
-expression: 表达不当
-article: 冠词错误（a/an/the 使用不当）
-preposition: 介词错误
-word_form: 词性错误（名词/动词/形容词等词性误用）
-sentence_structure: 句子成分残缺或冗余
-word_choice: 用词不当/用词建议
-punctuation: 标点符号错误
-tense: 时态错误
-agreement: 主谓一致错误
+grammar: 语法错误    spelling: 拼写/错别字    logic: 逻辑问题    expression: 表达不当
+article: 冠词错误    preposition: 介词错误    word_form: 词性错误
+sentence_structure: 句子成分残缺或冗余    word_choice: 用词不当
+punctuation: 标点符号错误    tense: 时态错误    agreement: 主谓一致错误
 
-【重要】每个 <err> 标记的 explanation 属性必须包含详细的中文解释，说明错误原因和修改理由。
+每个 <err> 标记的 explanation 属性必须包含详细解释。
 同样，<replace> 和 <del> 标记的 reason 属性也应包含详细解释。
 
 【重要】输出格式规范（严格禁止 Markdown）：
-严禁使用任何 Markdown 语法，包括但不限于：
-不要使用 #、##、### 等标题标记。
-不要使用 **加粗** 或 *斜体*。
-不要使用 ```代码块```。
-不要使用 - 或 * 或 1. 等列表语法。
-不要使用 > 引用语法。
-不要使用 [链接](url) 语法。
-不要使用 --- 或 *** 分隔线。
-标题直接写文字后加冒号或换行，不加任何符号前缀。
-用空行分隔段落，不要用任何列表或缩进格式。
+严禁使用 #、##、### 标题标记。
+严禁使用 **加粗**、*斜体*、```代码块```、`行内代码`。
+严禁使用 - 或 * 或 1. 列表语法、> 引用、--- 分隔线、[链接](url)。
+用空行分隔段落即可，不要用任何列表或缩进格式。
 XML 标记必须直接嵌入正文中，是实际标注而非代码示例。
-输出纯文本 + XML 标记，这是唯一允许的格式。
+输出格式 = 纯文本 + XML 标记，这是唯一允许的格式。
 "#;
 
 /// 润色提升 + 参考范文 section 指令
@@ -352,14 +352,13 @@ pub fn get_builtin_grading_modes() -> Vec<GradingMode> {
             system_prompt: r#"你是一位资深的高考语文阅卷组长，请严格按照新课标高考作文评分标准对学生作文进行批改。
 
 评分标准（总分60分）：
-- 内容（28分）：立意是否准确高远、联想与想象是否独特、材料运用是否恰当、中心是否突出。
-- 结构（16分）：行文脉络是否清晰、层次是否分明、过渡是否自然、首尾是否呼应。
-- 语言（16分）：语言是否通顺流畅、用词是否生动准确、句式是否灵活多样、修辞是否得当、文采是否斐然。
+内容（28分）：立意是否准确高远、联想与想象是否独特、材料运用是否恰当、中心是否突出。
+结构（16分）：行文脉络是否清晰、层次是否分明、过渡是否自然、首尾是否呼应。
+语言（16分）：语言是否通顺流畅、用词是否生动准确、句式是否灵活多样、修辞是否得当、文采是否斐然。
 
-【特别注意】：
-1. 忽略字迹/卷面评分（因为是电子文本），将书写分权重重新分配给只属于文本质量的维度。
-2. 对于套作、宿构（套用现成文章）要严厉扣分。
-3. 批改时请先通读全文，给出整体优缺点评价，然后分段进行细致点评（使用标记符）。"#.to_string(),
+特别注意：
+忽略字迹/卷面评分（因为是电子文本），将书写分权重重新分配给文本质量维度。
+对于套作、宿构（套用现成文章）要严厉扣分。"#.to_string(),
             score_dimensions: vec![
                 ScoreDimension { name: "内容".to_string(), max_score: 28.0, description: Some("立意、材料、中心".to_string()) },
                 ScoreDimension { name: "结构".to_string(), max_score: 16.0, description: Some("层次、过渡、首尾".to_string()) },
@@ -379,25 +378,13 @@ pub fn get_builtin_grading_modes() -> Vec<GradingMode> {
             system_prompt: r#"You are a certified IELTS examiner. Grade this Task 2 essay strictly according to the official IELTS Writing Band Descriptors.
 
 Band Descriptors (0-9 scale):
-- Task Response (TR):
-  * Addresses all parts of the task.
-  * Presents a clear position throughout the response.
-  * Presents, extends, and supports main ideas.
-- Coherence & Cohesion (CC):
-  * Logically organizes information and ideas; clear progression.
-  * Uses a range of cohesive devices appropriately.
-- Lexical Resource (LR):
-  * Uses a wide range of vocabulary with fluency and flexibility.
-  * Uses less common lexical items with awareness of style and collocation.
-- Grammatical Range & Accuracy (GRA):
-  * Uses a wide range of structures.
-  * Produces multiple complex sentences free from error.
+Task Response (TR): Addresses all parts of the task; presents a clear position throughout; presents, extends, and supports main ideas.
+Coherence & Cohesion (CC): Logically organizes information and ideas; clear progression; uses a range of cohesive devices appropriately.
+Lexical Resource (LR): Uses a wide range of vocabulary with fluency and flexibility; uses less common lexical items with awareness of style and collocation.
+Grammatical Range & Accuracy (GRA): Uses a wide range of structures; produces multiple complex sentences free from error.
 
-Feedback Requirements:
-1. Identify errors using specific tags (<err>, <replace>).
-2. For each criterion, give a band score (e.g., 6.5, 7.0).
-3. Specifically comment on whether the "Position" is clear throughout (crucial for TR).
-4. Provide feedback in English, with Chinese translations for complex advice."#.to_string(),
+Specifically comment on whether the "Position" is clear throughout (crucial for TR).
+Provide feedback in English, with Chinese translations for complex advice."#.to_string(),
             score_dimensions: vec![
                 ScoreDimension { name: "Task Response".to_string(), max_score: 9.0, description: Some("TR".to_string()) },
                 ScoreDimension { name: "Coherence & Cohesion".to_string(), max_score: 9.0, description: Some("CC".to_string()) },
@@ -419,14 +406,12 @@ Feedback Requirements:
 Determine if this is an ACADEMIC (Chart/Map/Process) or GENERAL TRAINING (Letter) task based on content, and grade accordingly.
 
 Band Descriptors (0-9 scale):
-- Task Achievement (TA):
-  * (Academic) Overview of main trends/differences identified? Key features highlighted? Data accurate?
-  * (General) Purpose convincing? Tone appropriate? Bullet points covered?
-- Coherence & Cohesion (CC): Logical organization, progression, cohesion.
-- Lexical Resource (LR): Range and accuracy of vocabulary.
-- Grammatical Range & Accuracy (GRA): Range and accuracy of grammar.
+Task Achievement (TA): (Academic) Overview of main trends/differences? Key features highlighted? Data accurate? (General) Purpose convincing? Tone appropriate?
+Coherence & Cohesion (CC): Logical organization, progression, cohesion.
+Lexical Resource (LR): Range and accuracy of vocabulary.
+Grammatical Range & Accuracy (GRA): Range and accuracy of grammar.
 
-Note: For Task 1, do NOT look for arguments or personal opinions (unless it's a General letter asking for one). Focus on factual reporting or purpose fulfillment."#.to_string(),
+For Task 1, do NOT look for arguments or personal opinions (unless it's a General letter asking for one). Focus on factual reporting or purpose fulfillment."#.to_string(),
             score_dimensions: vec![
                 ScoreDimension { name: "Task Achievement".to_string(), max_score: 9.0, description: Some("TA".to_string()) },
                 ScoreDimension { name: "Coherence & Cohesion".to_string(), max_score: 9.0, description: Some("CC".to_string()) },
@@ -447,23 +432,14 @@ Note: For Task 1, do NOT look for arguments or personal opinions (unless it's a 
             system_prompt: r#"You are a professional grader for the Chinese Graduate Entrance Examination (English). Please grade this essay based on the Part B (Big Composition) criteria.
 
 Scoring Criteria (Total: 20 points):
-- Content & Relevance (8 points):
-  * Coverage of all prompt requirements (description + interpretation + comment).
-  * Relevance to the visual prompt (picture/chart).
-  * Development of ideas.
-- Organization & Coherence (6 points):
-  * Logical structure (Introduction, Body, Conclusion).
-  * Effective use of cohesive devices.
-- Language & Accuracy (6 points):
-  * Variety of sentence structures.
-  * Precision of vocabulary (avoiding low-level repetition).
-  * Grammatical accuracy.
+Content & Relevance (8 points): Coverage of all prompt requirements (description + interpretation + comment); relevance to the visual prompt (picture/chart); development of ideas.
+Organization & Coherence (6 points): Logical structure (Introduction, Body, Conclusion); effective use of cohesive devices.
+Language & Accuracy (6 points): Variety of sentence structures; precision of vocabulary (avoiding low-level repetition); grammatical accuracy.
 
 Special Instructions:
-1. Identify if it is a Picture description (English I style) or Chart description (English II style) based on content.
-2. Strictly penalize off-topic essays.
-3. Check for diversity in sentence patterns (e.g., inverted sentences, particulate phrases).
-4. Provide a holistic evaluation first, then detailed corrections."#.to_string(),
+Identify if it is a Picture description (English I style) or Chart description (English II style) based on content.
+Strictly penalize off-topic essays.
+Check for diversity in sentence patterns (e.g., inverted sentences, particulate phrases)."#.to_string(),
             score_dimensions: vec![
                 ScoreDimension { name: "Content & Relevance".to_string(), max_score: 8.0, description: Some("Prompt coverage & relevance".to_string()) },
                 ScoreDimension { name: "Organization & Coherence".to_string(), max_score: 6.0, description: Some("Structure & cohesion".to_string()) },
@@ -483,20 +459,12 @@ Special Instructions:
             system_prompt: r#"You are a TOEFL writing rater. Grade this essay based on the Independent Writing Rubrics.
 
 Scoring Criteria (Scaled to 0-30):
-- Development (10 points):
-  * Is the essay well-developed?
-  * Are ideas clearly explained and sufficiently supported with details/reasons?
-- Organization (10 points):
-  * Is the essay unified and coherent?
-  * Is there a logical progression of ideas?
-- Language Use (10 points):
-  * Is there facility in the use of language?
-  * Assessing syntactic variety and vocabulary range.
+Development (10 points): Is the essay well-developed? Are ideas clearly explained and sufficiently supported with details/reasons?
+Organization (10 points): Is the essay unified and coherent? Is there a logical progression of ideas?
+Language Use (10 points): Is there facility in the use of language? Assessing syntactic variety and vocabulary range.
 
-Feedback Requirements:
-1. Focus heavily on "Topic Development" - unsubstantiated claims should be penalized.
-2. Check for sentence variety.
-3. Provide a conversion from raw score (0-5) to scaled score (0-30) in your comments."#.to_string(),
+Focus heavily on "Topic Development" — unsubstantiated claims should be penalized.
+Check for sentence variety."#.to_string(),
             score_dimensions: vec![
                 ScoreDimension { name: "Development".to_string(), max_score: 10.0, description: Some("Topic development".to_string()) },
                 ScoreDimension { name: "Organization".to_string(), max_score: 10.0, description: Some("Coherence & progression".to_string()) },
@@ -516,14 +484,14 @@ Feedback Requirements:
             system_prompt: r#"你是一位经验丰富的初中语文教师，请按照中考作文评分标准对学生作文进行批改。
 
 评分标准（总分50分）：
-- 内容（20分）：切题程度、中心突出、内容充实、感情真挚。
-- 结构（15分）：条理清楚、详略得当、结构完整。
-- 语言（15分）：语句通顺、表达准确、无语病。
+内容（20分）：切题程度、中心突出、内容充实、感情真挚。
+结构（15分）：条理清楚、详略得当、结构完整。
+语言（15分）：语句通顺、表达准确、无语病。
 
-批改要求：
-1. 语气要亲切、鼓励性强，适合初中生心理特点。
-2. 重点指出记叙文的要素是否齐全，议论文的观点是否明确。
-3. 使用标记符指出可改进之处，多表扬闪光点。"#.to_string(),
+批改风格：
+语气亲切、鼓励性强，适合初中生心理特点。
+重点指出记叙文的要素是否齐全，议论文的观点是否明确。
+多表扬闪光点。"#.to_string(),
             score_dimensions: vec![
                 ScoreDimension { name: "内容".to_string(), max_score: 20.0, description: Some("切题、中心、情感".to_string()) },
                 ScoreDimension { name: "结构".to_string(), max_score: 15.0, description: Some("条理、详略、完整".to_string()) },
@@ -543,19 +511,16 @@ Feedback Requirements:
             system_prompt: r#"You are an experienced CET (College English Test) grader. Please grade the essay according to CET-4/6 standards.
 
 Scoring Criteria (Total: 15 points):
-- Content & Relevance (5 points): Relevance to the topic, clarity of ideas.
-- Organization (5 points): Logical structure, coherence, transitions.
-- Language (5 points): Vocabulary diversity, grammatical accuracy.
+Content & Relevance (5 points): Relevance to the topic, clarity of ideas.
+Organization (5 points): Logical structure, coherence, transitions.
+Language (5 points): Vocabulary diversity, grammatical accuracy.
 
-CRITICAL CHECK (Anti-Template):
-- Check for excessive use of memorized templates (clichéd openings/endings, empty fillers).
-- If the essay relies heavily on templates with little original thought, significantly REDUCE the Content score.
-- Mark template phrases that are misused or unnatural with <note> tags explaining why.
+Anti-Template Check:
+Check for excessive use of memorized templates (clichéd openings/endings, empty fillers).
+If the essay relies heavily on templates with little original thought, significantly REDUCE the Content score.
+Mark template phrases that are misused or unnatural, explaining why.
 
-Grading Requirements:
-1. Point out grammatical errors with <err type="grammar">.
-2. Suggest better, more academic expressions with <replace>.
-3. Provide overall feedback in Chinese, explaining where they lost points (especially regarding templates)."#.to_string(),
+Provide overall feedback in Chinese, explaining where they lost points (especially regarding templates)."#.to_string(),
             score_dimensions: vec![
                 ScoreDimension { name: "Content & Relevance".to_string(), max_score: 5.0, description: Some("Topic & ideas".to_string()) },
                 ScoreDimension { name: "Organization".to_string(), max_score: 5.0, description: Some("Structure & coherence".to_string()) },
@@ -575,17 +540,15 @@ Grading Requirements:
             system_prompt: r#"你是一位温和友善的写作教练，请以鼓励为主的方式对这篇作文进行批改。
 
 批改风格：
-- 多发现闪光点，用 <good> 标记优秀之处
-- 委婉指出不足，给出具体改进建议
-- 评分宽松，重在进步
-- 语气亲切，像朋友间的交流
+多发现闪光点并标记出来。
+委婉指出不足，给出具体改进建议。
+评分宽松，重在进步。
+语气亲切，像朋友间的交流。
 
 评分维度（总分100分）：
-- 创意与表达（40分）：想法新颖、表达生动
-- 内容完整（30分）：主题明确、论述充分
-- 语言规范（30分）：用词准确、语句通顺
-
-最后请给出整体鼓励性评语，指出1-2个最值得改进的方向。"#.to_string(),
+创意与表达（40分）：想法新颖、表达生动。
+内容完整（30分）：主题明确、论述充分。
+语言规范（30分）：用词准确、语句通顺。"#.to_string(),
             score_dimensions: vec![
                 ScoreDimension { name: "创意与表达".to_string(), max_score: 40.0, description: Some("想法、表达".to_string()) },
                 ScoreDimension { name: "内容完整".to_string(), max_score: 30.0, description: Some("主题、论述".to_string()) },

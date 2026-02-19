@@ -33,6 +33,9 @@ const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'in
 
 const OCR_MAX_FILES = 5;
 
+/** OCR 处理状态 */
+export type OcrStatus = 'pending' | 'processing' | 'done' | 'error' | 'timeout';
+
 /** 上传的图片数据（保存原图 base64 + OCR 文本） */
 export interface UploadedImage {
   id: string;
@@ -41,6 +44,12 @@ export interface UploadedImage {
   ocrText: string;
   /** data URL 用于缩略图预览 */
   dataUrl: string;
+  /** OCR 处理状态（默认 pending） */
+  ocrStatus?: OcrStatus;
+  /** OCR 错误信息 */
+  ocrError?: string;
+  /** 请求版本号，用于时序控制 */
+  ocrVersion?: number;
 }
 
 interface EssayGradingWorkbenchProps {
@@ -302,7 +311,12 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({ on
     }
   }, [currentRoundIndex, rounds, gradingStream]);
 
-  // 文件拖拽处理（OCR + 图片存储）- 支持多图自动拼接
+  // ★ OCR 版本计数器（用于时序控制，防止旧请求覆盖新结果）
+  const ocrVersionRef = useRef(0);
+  // ★ 活跃图片 ID 集合（同步可读，用于 async 回调中判断图片是否已被删除）
+  const activeImageIdsRef = useRef(new Set<string>());
+
+  // ★ 文件拖拽处理（两阶段：即时显示缩略图 + 异步 OCR）
   const handleFilesDropped = useCallback(async (files: File[]) => {
     if (files.length === 0) return;
 
@@ -318,65 +332,108 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({ on
       return;
     }
     const limitedFiles = imageFiles.slice(0, remainingSlots);
-
     if (limitedFiles.length === 0) return;
 
-    try {
-      showGlobalNotification('info', t('essay_grading:toast.ocr_processing'));
-      
-      // 并行处理所有图片：读取 base64 + OCR
-      const processPromises = limitedFiles.map(file => {
-        return new Promise<UploadedImage>((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = async (e) => {
-            try {
-              const dataUrl = e.target?.result as string;
-              const base64Content = dataUrl.split(',')[1];
-              const extracted = await ocrExtractText({ imageBase64: base64Content });
-              resolve({
-                id: `img_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-                fileName: file.name,
-                base64: base64Content,
-                ocrText: extracted,
-                dataUrl,
-              });
-            } catch (error: unknown) {
-              reject(error);
-            }
-          };
-          reader.onerror = () => reject(new Error('Failed to read file'));
-          reader.readAsDataURL(file);
-        });
-      });
+    // ── 阶段 1：立即读取 base64 并显示缩略图（ocrStatus=pending） ──
+    const readPromises = limitedFiles.map(file =>
+      new Promise<UploadedImage>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const dataUrl = e.target?.result as string;
+          const base64Content = dataUrl.split(',')[1];
+          const version = ++ocrVersionRef.current;
+          resolve({
+            id: `img_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+            fileName: file.name,
+            base64: base64Content,
+            ocrText: '',
+            dataUrl,
+            ocrStatus: 'pending',
+            ocrVersion: version,
+          });
+        };
+        reader.onerror = () => reject(new Error('Failed to read file'));
+        reader.readAsDataURL(file);
+      })
+    );
 
-      const newImages = await Promise.all(processPromises);
-      
-      // 存储图片到状态
-      setUploadedImages(prev => [...prev, ...newImages]);
-      
-      // 拼接所有 OCR 结果到文本输入
-      const combinedText = newImages
-        .map(img => img.ocrText)
-        .filter(text => text.trim())
-        .join('\n\n');
-      
-      if (combinedText) {
-        setInputText(prev => prev ? `${prev}\n\n${combinedText}` : combinedText);
-        showGlobalNotification('success', 
-          limitedFiles.length > 1 
-            ? t('essay_grading:toast.ocr_success_multi', { count: limitedFiles.length }) 
-            : t('essay_grading:toast.ocr_success')
-        );
-      } else {
-        showGlobalNotification('warning', t('essay_grading:toast.ocr_empty'));
-      }
-    } catch (error: unknown) {
-      showGlobalNotification('error', t('essay_grading:toast.ocr_failed', { error: getErrorMessage(error) }));
+    let pendingImages: UploadedImage[];
+    try {
+      pendingImages = await Promise.all(readPromises);
+    } catch {
+      showGlobalNotification('error', t('essay_grading:toast.ocr_failed', { error: 'File read error' }));
+      return;
     }
+
+    // 立即添加到状态 → 缩略图即时可见
+    pendingImages.forEach(img => activeImageIdsRef.current.add(img.id));
+    setUploadedImages(prev => [...prev, ...pendingImages]);
+    showGlobalNotification('info', t('essay_grading:toast.ocr_processing'));
+
+    // ── 阶段 2：异步 OCR（并发限制 = 2，逐张完成立即回填） ──
+    const OCR_CONCURRENCY = 2;
+    let running = 0;
+    let idx = 0;
+    const queue = [...pendingImages];
+
+    const processNext = (): void => {
+      while (running < OCR_CONCURRENCY && idx < queue.length) {
+        const img = queue[idx++];
+        running++;
+
+        // 标记 processing
+        setUploadedImages(prev =>
+          prev.map(p => p.id === img.id ? { ...p, ocrStatus: 'processing' as OcrStatus } : p)
+        );
+
+        const capturedVersion = img.ocrVersion!;
+
+        ocrExtractText({ imageBase64: img.base64 })
+          .then(text => {
+            // ★ 时序控制：通过 ref 同步检查图片是否仍活跃（未被用户删除）
+            if (!activeImageIdsRef.current.has(img.id)) return; // 已被删除，丢弃
+            setUploadedImages(prev => {
+              const existing = prev.find(p => p.id === img.id);
+              if (!existing || existing.ocrVersion !== capturedVersion) return prev; // stale
+              return prev.map(p =>
+                p.id === img.id ? { ...p, ocrText: text, ocrStatus: 'done' as OcrStatus } : p
+              );
+            });
+            if (text.trim()) {
+              setInputText(prev => prev ? `${prev}\n\n${text}` : text);
+            }
+          })
+          .catch((err: unknown) => {
+            const msg = getErrorMessage(err);
+            const isTimeout = msg === 'OCR_TIMEOUT';
+            setUploadedImages(prev => {
+              const existing = prev.find(p => p.id === img.id);
+              if (!existing || existing.ocrVersion !== capturedVersion) return prev;
+              return prev.map(p =>
+                p.id === img.id
+                  ? { ...p, ocrStatus: (isTimeout ? 'timeout' : 'error') as OcrStatus, ocrError: msg }
+                  : p
+              );
+            });
+            if (isTimeout) {
+              showGlobalNotification('warning', t('essay_grading:toast.ocr_timeout', { fileName: img.fileName }));
+            } else {
+              showGlobalNotification('error', t('essay_grading:toast.ocr_failed', { error: msg }));
+            }
+          })
+          .finally(() => {
+            running--;
+            processNext();
+          });
+      }
+    };
+
+    processNext();
   }, [t, uploadedImages.length]);
 
   // 删除单张上传图片
   const handleRemoveImage = useCallback((imageId: string) => {
+    activeImageIdsRef.current.delete(imageId); // ★ 同步标记删除，OCR 回调可立即感知
     setUploadedImages(prev => prev.filter(img => img.id !== imageId));
   }, []);
 
@@ -666,11 +723,18 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({ on
 
     let content = `# ${t('essay_grading:page_title')}\n\n`;
     content += `> ${t('essay_grading:round.label', { number: currentRoundNumber })} | ${dateStr}\n\n`;
-    content += `## ${t('essay_grading:input_section.title')}\n\n${safeInput}\n\n`;
-    content += `## ${t('essay_grading:result_section.title')}\n\n${safeResult}\n`;
-
-    const defaultName = `essay_grading_${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}.md`;
+    
+    // 动态导入 exportFormatter 以减小初始包体积
     try {
+      const { formatGradingResultForExport } = await import('../essay-grading/exportFormatter');
+      
+      // 格式化原始内容
+      content += `## ${t('essay_grading:input_section.title')}\n\n${safeInput}\n\n`;
+      content += `## ${t('essay_grading:result_section.title')}\n\n`;
+      content += formatGradingResultForExport(safeResult, safeInput);
+      
+      const defaultName = `essay_grading_${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}.md`;
+      
       const result = await fileManager.saveTextFile({
         title: defaultName,
         defaultFileName: defaultName,
@@ -682,6 +746,7 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({ on
       }
     } catch (e) {
       console.error('[EssayGradingWorkbench] Export failed:', e);
+      showGlobalNotification('error', t('essay_grading:errors.export_failed'));
     }
   }, [inputText, gradingResult, currentRoundNumber, t]);
 

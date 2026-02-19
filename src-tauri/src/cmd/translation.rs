@@ -39,9 +39,10 @@ pub async fn ocr_extract_text(
         return Err(AppError::validation("必须提供image_path或image_base64"));
     };
 
+    // ★ 使用 FreeOCR fallback 链路（优先级引擎切换 + 45s 超时）
     let result = state
         .llm_manager
-        .convert_image_to_markdown(&temp_path.0)
+        .call_ocr_free_text_with_fallback(&temp_path.0)
         .await?;
 
     // 清理临时文件

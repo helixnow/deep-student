@@ -115,6 +115,7 @@
     "ocr_success_multi": "成功识别 {{count}} 张图片",
     "ocr_empty": "OCR 未识别到文字",
     "ocr_failed": "OCR 识别失败：{{error}}",
+    "ocr_timeout": "图片「{{fileName}}」OCR 识别超时，已跳过",
     "suggestions_in_result": "改进建议已包含在批改结果中",
     "max_images_reached": "已达到图片上限（最多 {{max}} 张）"
   },

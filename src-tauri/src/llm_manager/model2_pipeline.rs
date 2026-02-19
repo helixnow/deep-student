@@ -4047,6 +4047,10 @@ impl LLMManager {
 
     /// 单张图片转 Markdown 文本（复用 DeepSeek-OCR 配置）
     /// 翻译场景使用 Free OCR 模式，无需输出坐标（题目集识别使用 grounding 模式）
+    ///
+    /// ⚠️ DEPRECATED: 所有调用者已迁移到 `call_ocr_free_text_with_fallback`（带 fallback + 超时 + 熔断）。
+    /// 本方法保留仅供兼容，新代码请勿使用。
+    #[allow(dead_code)]
     pub async fn convert_image_to_markdown(&self, image_path: &str) -> Result<String> {
         let config = self.get_exam_segmentation_model_config().await?;
         let api_key = self.decrypt_api_key_if_needed(&config.api_key)?;

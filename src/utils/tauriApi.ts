@@ -3776,25 +3776,50 @@ export interface TranslationHistoryItem {
   quality_rating?: number | null;
 }
 
+/** OCR 默认超时（毫秒） */
+const OCR_DEFAULT_TIMEOUT_MS = 30_000;
+
 /**
  * OCR提取文本（单页图片识别）
  * @param options - {imagePath?: string, imageBase64?: string}
+ * @param timeoutMs - 超时毫秒数，默认 30s；0 表示不设超时
  */
 export async function ocrExtractText(options: {
   imagePath?: string;
   imageBase64?: string;
-}): Promise<string> {
+}, timeoutMs: number = OCR_DEFAULT_TIMEOUT_MS): Promise<string> {
+  const invokePromise = invoke<string>('ocr_extract_text', {
+    image_path: options.imagePath || null,
+    image_base64: options.imageBase64 || null,
+    imagePath: options.imagePath || null, // 兼容驼峰命名
+    imageBase64: options.imageBase64 || null,
+  });
+
+  if (timeoutMs <= 0) {
+    try {
+      return await invokePromise;
+    } catch (error) {
+      throw new Error(`OCR text extraction failed: ${getErrorMessage(error)}`);
+    }
+  }
+
+  // ★ 可清理的超时 timer，避免 invoke 先完成时产生 unhandled rejection
+  let timerId: ReturnType<typeof setTimeout> | undefined;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timerId = setTimeout(() => reject(new Error('OCR_TIMEOUT')), timeoutMs);
+  });
+
   try {
-    const result = await invoke<string>('ocr_extract_text', {
-      image_path: options.imagePath || null,
-      image_base64: options.imageBase64 || null,
-      imagePath: options.imagePath || null, // 兼容驼峰命名
-      imageBase64: options.imageBase64 || null,
-    });
+    const result = await Promise.race([invokePromise, timeoutPromise]);
     return result;
   } catch (error) {
     const message = getErrorMessage(error);
+    if (message === 'OCR_TIMEOUT') {
+      throw new Error('OCR_TIMEOUT');
+    }
     throw new Error(`OCR text extraction failed: ${message}`);
+  } finally {
+    if (timerId !== undefined) clearTimeout(timerId);
   }
 }
 

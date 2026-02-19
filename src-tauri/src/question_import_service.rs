@@ -281,8 +281,8 @@ impl QuestionImportService {
 
             log::info!("[QuestionImport] OCR 图片 {}/{}: {}", i + 1, base64_images.len(), temp_path.display());
 
-            // 调用视觉模型做纯文本 OCR（FreeOcr 模式，不带坐标标记）
-            match self.llm_manager.convert_image_to_markdown(
+            // ★ 使用 FreeOCR fallback 链路（优先级引擎切换 + 45s 超时）
+            match self.llm_manager.call_ocr_free_text_with_fallback(
                 temp_path.to_str().unwrap_or_default(),
             ).await {
                 Ok(text) => {
@@ -508,7 +508,7 @@ impl QuestionImportService {
         let mut all_texts = Vec::new();
 
         for (i, image_path) in rendered_images.iter().enumerate() {
-            match self.llm_manager.convert_image_to_markdown(image_path).await {
+            match self.llm_manager.call_ocr_free_text_with_fallback(image_path).await {
                 Ok(text) if !text.trim().is_empty() => {
                     all_texts.push(text);
                 }

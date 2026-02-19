@@ -6,7 +6,10 @@ import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import type { StreamingMarker } from '@/essay-grading/streamingMarkerParser';
-import { AlertTriangle, ArrowRight, Trash2, PenLine, Sparkles, type LucideIcon } from 'lucide-react';
+import { AlertTriangle, ArrowRight, Trash2, PenLine, Sparkles, Copy, Check, type LucideIcon } from 'lucide-react';
+import { NotionButton } from '@/components/ui/NotionButton';
+import { CommonTooltip } from '@/components/shared/CommonTooltip';
+import { useState } from 'react';
 
 interface SentenceDetailViewProps {
   markers: StreamingMarker[];
@@ -40,19 +43,56 @@ const MARKER_BADGE_CONFIG: Partial<Record<StreamingMarker['type'], { icon: Lucid
 
 /** 渲染标记卡片的内容区 */
 const MarkerContent: React.FC<{ marker: StreamingMarker }> = ({ marker }) => {
+  const { t } = useTranslation(['common']);
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = (text: string) => {
+    navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
   switch (marker.type) {
     case 'replace':
       return (
-        <div className="flex items-start gap-2 text-sm">
+        <div className="flex items-start gap-2 text-sm group/content">
           <span className="text-red-500/80 line-through">{marker.oldText}</span>
           <ArrowRight className="w-4 h-4 text-muted-foreground/40 shrink-0 mt-0.5" />
           <span className="text-emerald-600 dark:text-emerald-400 font-medium">{marker.newText}</span>
+          {marker.newText && (
+            <CommonTooltip content={copied ? t('common:copied') : t('common:copy')}>
+              <NotionButton
+                variant="ghost"
+                size="icon"
+                iconOnly
+                onClick={() => handleCopy(marker.newText!)}
+                className="h-5 w-5 ml-auto opacity-0 group-hover/content:opacity-100 transition-opacity text-emerald-600/60 hover:text-emerald-600 hover:bg-emerald-100/50 dark:hover:bg-emerald-900/30"
+              >
+                {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+              </NotionButton>
+            </CommonTooltip>
+          )}
         </div>
       );
     case 'del':
       return <div className="text-sm text-red-500/80 line-through">{marker.content}</div>;
     case 'ins':
-      return <div className="text-sm text-emerald-600 dark:text-emerald-400">{marker.content}</div>;
+      return (
+        <div className="flex items-center gap-2 text-sm group/content">
+          <span className="text-emerald-600 dark:text-emerald-400">{marker.content}</span>
+          <CommonTooltip content={copied ? t('common:copied') : t('common:copy')}>
+            <NotionButton
+              variant="ghost"
+              size="icon"
+              iconOnly
+              onClick={() => handleCopy(marker.content)}
+              className="h-5 w-5 ml-auto opacity-0 group-hover/content:opacity-100 transition-opacity text-emerald-600/60 hover:text-emerald-600 hover:bg-emerald-100/50 dark:hover:bg-emerald-900/30"
+            >
+              {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+            </NotionButton>
+          </CommonTooltip>
+        </div>
+      );
     case 'err':
       return (
         <div className="text-sm">

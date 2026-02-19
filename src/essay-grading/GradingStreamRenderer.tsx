@@ -172,29 +172,29 @@ export const GradingStreamRenderer: React.FC<GradingStreamRendererProps> = ({
         </div>
       )}
       {showLegend && contentHasInlineMarkers && activeTab === 'overview' && (
-        <div className="px-5 py-3 border-b border-border/20 bg-muted/10 grid grid-cols-2 gap-x-6 gap-y-2 text-xs">
+        <div className="px-5 py-3 border-b border-border/20 bg-muted/10 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 text-xs">
           <div className="flex items-center gap-2">
-            <span className="text-red-500 line-through">{t('essay_grading:legend.example')}</span>
+            <span className="shrink-0 whitespace-nowrap text-red-500 line-through">{t('essay_grading:legend.example')}</span>
             <span className="text-muted-foreground">{t('essay_grading:legend.del_desc')}</span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-emerald-500 underline">{t('essay_grading:legend.example')}</span>
+            <span className="shrink-0 whitespace-nowrap text-emerald-500 underline">{t('essay_grading:legend.example')}</span>
             <span className="text-muted-foreground">{t('essay_grading:legend.ins_desc')}</span>
           </div>
           <div className="flex items-center gap-2">
-            <span><span className="text-red-400 line-through">{t('essay_grading:legend.example_old')}</span><span className="text-muted-foreground/50 mx-0.5">→</span><span className="text-emerald-500">{t('essay_grading:legend.example_new')}</span></span>
+            <span className="shrink-0 whitespace-nowrap"><span className="text-red-400 line-through">{t('essay_grading:legend.example_old')}</span><span className="text-muted-foreground/50 mx-0.5">→</span><span className="text-emerald-500">{t('essay_grading:legend.example_new')}</span></span>
             <span className="text-muted-foreground">{t('essay_grading:legend.replace_desc')}</span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-blue-500 border-b border-dashed border-blue-400">{t('essay_grading:legend.example')}</span>
+            <span className="shrink-0 whitespace-nowrap text-blue-500 border-b border-dashed border-blue-400">{t('essay_grading:legend.example')}</span>
             <span className="text-muted-foreground">{t('essay_grading:legend.note_desc')}</span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-amber-500 bg-amber-50 dark:bg-amber-950/20 px-1 rounded">{t('essay_grading:legend.example')}</span>
+            <span className="shrink-0 whitespace-nowrap text-amber-500 bg-amber-50 dark:bg-amber-950/20 px-1 rounded">{t('essay_grading:legend.example')}</span>
             <span className="text-muted-foreground">{t('essay_grading:legend.good_desc')}</span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-red-500 underline decoration-wavy decoration-red-400/50">{t('essay_grading:legend.example')}</span>
+            <span className="shrink-0 whitespace-nowrap text-red-500 underline decoration-wavy decoration-red-400/50">{t('essay_grading:legend.example')}</span>
             <span className="text-muted-foreground">{t('essay_grading:legend.err_desc')}</span>
           </div>
         </div>

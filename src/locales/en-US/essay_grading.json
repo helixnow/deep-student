@@ -115,6 +115,7 @@
     "ocr_success_multi": "Successfully recognized {{count}} images",
     "ocr_empty": "No text recognized by OCR",
     "ocr_failed": "OCR recognition failed: {{error}}",
+    "ocr_timeout": "Image \"{{fileName}}\" OCR timed out, skipped",
     "suggestions_in_result": "Improvement suggestions are included in the grading result",
     "max_images_reached": "Image limit reached (max {{max}} images)"
   },

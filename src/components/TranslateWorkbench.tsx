@@ -251,7 +251,12 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
             handleSetSourceText(cleanOcrText(extracted));
             showGlobalNotification('success', t('translation:toast.ocr_success'));
           } catch (error: unknown) {
-            showGlobalNotification('error', t('translation:toast.ocr_failed', { error: getErrorMessage(error) }));
+            const msg = getErrorMessage(error);
+            if (msg === 'OCR_TIMEOUT') {
+              showGlobalNotification('warning', t('translation:toast.ocr_failed', { error: 'OCR 识别超时，请重试' }));
+            } else {
+              showGlobalNotification('error', t('translation:toast.ocr_failed', { error: msg }));
+            }
           }
         };
         reader.readAsDataURL(file);
