@@ -101,12 +101,32 @@ export const VendorConfigModal = forwardRef<VendorConfigModalRef, VendorConfigMo
       }
     }
 
-    // 自动检测 SiliconFlow
+    // 自动检测供应商类型
     let providerType = formData.providerType;
     if (!providerType || providerType === 'custom') {
       const lowerBaseUrl = formData.baseUrl.toLowerCase();
       if (lowerBaseUrl.includes('siliconflow.cn') || lowerBaseUrl.includes('siliconflow.com')) {
         providerType = 'siliconflow';
+      } else if (lowerBaseUrl.includes('dashscope.aliyuncs.com')) {
+        providerType = 'qwen';
+      } else if (lowerBaseUrl.includes('api.deepseek.com')) {
+        providerType = 'deepseek';
+      } else if (lowerBaseUrl.includes('open.bigmodel.cn')) {
+        providerType = 'zhipu';
+      } else if (lowerBaseUrl.includes('volces.com') || lowerBaseUrl.includes('volcengine.com')) {
+        providerType = 'doubao';
+      } else if (lowerBaseUrl.includes('api.moonshot.cn')) {
+        providerType = 'moonshot';
+      } else if (lowerBaseUrl.includes('api.openai.com')) {
+        providerType = 'openai';
+      } else if (lowerBaseUrl.includes('generativelanguage.googleapis.com')) {
+        providerType = 'gemini';
+      } else if (lowerBaseUrl.includes('api.x.ai')) {
+        providerType = 'grok';
+      } else if (lowerBaseUrl.includes('api.anthropic.com')) {
+        providerType = 'anthropic';
+      } else if (lowerBaseUrl.includes('api.minimax.io') || lowerBaseUrl.includes('api.minimax.chat')) {
+        providerType = 'minimax';
       }
     }
 

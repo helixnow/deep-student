@@ -1270,7 +1270,7 @@
     "no_api_configs": "No API configurations yet",
     "no_api_configs_desc": "Create or import an API configuration to get started.",
     "badges": {
-      "builtin_free": "Built-in Free Tier",
+      "builtin_free": "Built-in Free",
       "siliconflow": "SiliconFlow",
       "tools": "Tool Calling"
     },
@@ -2254,7 +2254,7 @@
   "embedding": "Embedding",
   "current": "Current",
   "advanced_search_updated": "Advanced search configuration updated",
-  "builtin_cannot_edit": "Built-in configuration cannot be edited",
+  "builtin_cannot_edit": "Built-in free configuration cannot be edited",
   "chat_controls": "Chat Controls",
   "close": "Close",
   "close_notification": "Close notification",

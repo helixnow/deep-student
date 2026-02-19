@@ -2333,9 +2333,12 @@ export class ChatV2TauriAdapter {
       const errorMsg = getErrorMessage(error);
       console.error(LOG_PREFIX, 'Continue message failed:', errorMsg);
       // 清除流式状态
+      // 🔧 修复：同时清除 stale currentStreamingMessageId（completeStream 在 idle 时不清除它）
       this.store.completeStream('error');
-      const continueFailedMsg = i18n.t('chatV2:messageItem.actions.continueFailed');
-      showGlobalNotification('error', `${continueFailedMsg}: ${errorMsg}`);
+      this.store.setCurrentStreamingMessage(null);
+      // 🔧 修复：不在此处显示通知，让 store.continueMessage 的 fallback（sendMessage）处理
+      // 原代码在此显示 "继续执行失败" 通知，但 store 会 fallback 到 sendMessage('继续')，
+      // 导致用户看到一个无意义的错误通知
       throw error;
     }
   }

@@ -78,7 +78,9 @@ export interface ParallelVariantViewProps {
   onCopy?: () => Promise<void>;
   /** 🆕 消息是否锁定（流式中不允许操作） */
   isLocked?: boolean;
-  /** 🚀 P0修复：移除 isBlockStreaming，块状态由 BlockRendererWithStore 内部订阅 */
+  /** � 继续执行回调（工具限制节点使用） */
+  onContinue?: () => void;
+  /** � P0修复：移除 isBlockStreaming，块状态由 BlockRendererWithStore 内部订阅 */
   /** 自定义类名 */
   className?: string;
 }
@@ -143,6 +145,8 @@ interface VariantCardProps {
   onRetry?: () => Promise<void>;
   onDelete?: () => Promise<void>;
   isBlockStreaming?: (blockId: string) => boolean;
+  /** 🔧 继续执行回调（工具限制节点使用） */
+  onContinue?: () => void;
 }
 
 const VariantCard: React.FC<VariantCardProps> = ({
@@ -161,6 +165,7 @@ const VariantCard: React.FC<VariantCardProps> = ({
   onCancel,
   onRetry,
   onDelete,
+  onContinue,
 }) => {
   const { t } = useTranslation('chatV2');
   const [copied, setCopied] = useState(false);
@@ -364,6 +369,7 @@ const VariantCard: React.FC<VariantCardProps> = ({
                       key={segment.key}
                       store={store}
                       blockIds={segment.blockIds}
+                      onContinue={onContinue}
                     />
                   );
                 } else {
@@ -624,6 +630,7 @@ export const ParallelVariantView: React.FC<ParallelVariantViewProps> = ({
   onDeleteMessage,
   onCopy,
   isLocked = false,
+  onContinue,
   className,
 }) => {
   const { t } = useTranslation('chatV2');
@@ -821,6 +828,7 @@ export const ParallelVariantView: React.FC<ParallelVariantViewProps> = ({
               onDelete={
                 onDeleteVariant ? () => onDeleteVariant(variant.id) : undefined
               }
+              onContinue={onContinue}
             />
           );
         })}

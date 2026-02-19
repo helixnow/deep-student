@@ -21,7 +21,7 @@ import type { VendorConfig } from '../../types';
 
 /** 支持模型列表获取的供应商 provider_type 集合 */
 const OPENAI_COMPATIBLE_PROVIDERS = new Set([
-  'deepseek', 'qwen', 'zhipu', 'doubao', 'moonshot', 'openai',
+  'deepseek', 'qwen', 'dashscope', 'bailian', 'zhipu', 'doubao', 'moonshot', 'openai', 'grok',
 ]);
 
 const GEMINI_PROVIDER = 'gemini';

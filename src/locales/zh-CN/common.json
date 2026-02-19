@@ -2721,7 +2721,7 @@
   "embedding": "嵌入",
   "current": "当前",
   "advanced_search_updated": "高级搜索配置已更新",
-  "builtin_cannot_edit": "内置配置不可编辑",
+  "builtin_cannot_edit": "内置免费配置不可编辑",
   "chat_controls": "对话控制",
   "close": "关闭",
   "close_notification": "关闭通知",

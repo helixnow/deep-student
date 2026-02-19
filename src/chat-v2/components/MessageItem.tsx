@@ -531,7 +531,16 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
 
   // 🔧 P0 修复：继续执行——优先调用后端 continue_message（同消息内继续），失败时 fallback 到 sendMessage
   const handleContinue = useCallback(async () => {
-    if (isLocked) return;
+    if (isLocked) {
+      // 使用 getState() 获取实时状态用于日志，避免将 sessionStatus/hasActiveBlock 加入依赖数组
+      const s = store.getState();
+      console.warn('[MessageItem] handleContinue blocked: isLocked=true', {
+        sessionStatus: s.sessionStatus,
+        activeBlockIds: Array.from(s.activeBlockIds).slice(0, 5),
+        messageId,
+      });
+      return;
+    }
     try {
       await store.getState().continueMessage(messageId, activeVariant?.id);
     } catch (error: unknown) {
@@ -707,6 +716,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                     onDeleteMessage={handleDelete}
                     onCopy={handleCopy}
                     isLocked={isLocked}
+                    onContinue={handleContinue}
                   />
                 ) : (
                 /* 单变体：正常块列表渲染 */

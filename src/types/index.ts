@@ -364,6 +364,7 @@ export interface ModelProfile {
   topK?: number;
   geminiApiVersion?: string;
   isBuiltin?: boolean;
+  isReadOnly?: boolean;
   /** 是否收藏（收藏的模型在列表中优先显示） */
   isFavorite?: boolean;
   repetitionPenalty?: number;
