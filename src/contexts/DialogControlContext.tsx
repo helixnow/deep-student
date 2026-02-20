@@ -500,17 +500,31 @@ export const DialogControlProvider: React.FC<{ children: React.ReactNode }> = ({
     init();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  // 🔧 使用 ref 持有回调，避免回调引用变化导致事件监听器反复拆卸/重挂
+  const reloadAvailabilityRef = React.useRef(reloadAvailability);
+  reloadAvailabilityRef.current = reloadAvailability;
+  const loadPersistedSelectionsRef = React.useRef(loadPersistedSelections);
+  loadPersistedSelectionsRef.current = loadPersistedSelections;
+  const cleanSelectionsRef = React.useRef(cleanSelectionsAgainstAvailability);
+  cleanSelectionsRef.current = cleanSelectionsAgainstAvailability;
+
   React.useEffect(() => {
-    const handler = async () => {
+    const handler = async (event: Event) => {
+      const detail = (event as CustomEvent<any>)?.detail;
+      // 过滤：仅对 MCP/搜索引擎相关变更执行完整重载，跳过纯主题/调试等无关变更
+      const isRelevant = !detail || detail.mcpChanged || detail.mcpReloaded ||
+        (typeof detail.settingKey === 'string' && (detail.settingKey.startsWith('mcp.') || detail.settingKey.startsWith('web_search.')));
+      if (!isRelevant) return;
+
       try {
-        await loadPersistedSelections();
+        await loadPersistedSelectionsRef.current();
       } catch (e: unknown) { debugLog.warn('Failed to reload persisted selections on settings change:', e); }
-      await reloadAvailability();
-      await cleanSelectionsAgainstAvailability();
+      await reloadAvailabilityRef.current();
+      await cleanSelectionsRef.current();
     };
     window.addEventListener('systemSettingsChanged', handler as EventListener);
     return () => window.removeEventListener('systemSettingsChanged', handler as EventListener);
-  }, [reloadAvailability, loadPersistedSelections, cleanSelectionsAgainstAvailability]);
+  }, []); // 稳定 deps：回调通过 ref 访问
 
   // 🔧 修复竞态条件：监听 MCP 启动完成事件
   // main.tsx 中 bootstrapMcpFromSettings() 是异步执行的，可能晚于本 Provider 的初始化
@@ -518,12 +532,12 @@ export const DialogControlProvider: React.FC<{ children: React.ReactNode }> = ({
   React.useEffect(() => {
     const handleMcpBootstrapReady = async () => {
       debugLog.log('📡 收到 MCP 启动完成事件，重新加载工具列表...');
-      await reloadAvailability();
-      await cleanSelectionsAgainstAvailability();
+      await reloadAvailabilityRef.current();
+      await cleanSelectionsRef.current();
     };
     window.addEventListener('mcp-bootstrap-ready', handleMcpBootstrapReady as EventListener);
     return () => window.removeEventListener('mcp-bootstrap-ready', handleMcpBootstrapReady as EventListener);
-  }, [reloadAvailability, cleanSelectionsAgainstAvailability]);
+  }, []); // 稳定 deps：回调通过 ref 访问
 
   // 取消对 window 全局的依赖广播，保持组件内一致性
 

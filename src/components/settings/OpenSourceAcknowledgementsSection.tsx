@@ -16,17 +16,18 @@ export const OpenSourceAcknowledgementsSection: React.FC = () => {
       key: 'coreStack',
       color: 'bg-blue-50/80 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400 border-blue-200/50 dark:border-blue-800/50',
       hoverColor: 'hover:bg-blue-100 hover:border-blue-300 dark:hover:bg-blue-900/40 dark:hover:border-blue-700/50',
-      items: ['React 18', 'TypeScript 5', 'Vite 6', 'Tailwind CSS 3', 'PostCSS']
+      items: ['React 18', 'TypeScript 5', 'Vite 6', 'Tailwind CSS 4', 'PostCSS']
     },
     {
       key: 'uiAndInteraction',
       color: 'bg-purple-50/80 text-purple-600 dark:bg-purple-900/20 dark:text-purple-400 border-purple-200/50 dark:border-purple-800/50',
       hoverColor: 'hover:bg-purple-100 hover:border-purple-300 dark:hover:bg-purple-900/40 dark:hover:border-purple-700/50',
       items: [
-        'Ant Design 5', 'Radix UI', 'Framer Motion', 'Lucide React', 'DnD Kit',
-        'React Flow', 'Hello Pangea DnD', 'cmdk', 'Recharts', 'React Toastify',
-        'React Tooltip', 'React Dropzone', 'Smooth Scrollbar',
-        'React Hotkeys Hook', 'React Zoom Pan Pinch', 'Reactour'
+        'Radix UI', 'Framer Motion', 'Lucide React', 'DnD Kit',
+        'React Flow', 'Hello Pangea DnD', 'cmdk', 'Recharts',
+        'React Tooltip', 'React Dropzone', 'React Complex Tree',
+        'React Resizable Panels', 'React Hotkeys Hook',
+        'React Zoom Pan Pinch', 'html-to-image', 'Reactour'
       ]
     },
     {
@@ -35,7 +36,8 @@ export const OpenSourceAcknowledgementsSection: React.FC = () => {
       hoverColor: 'hover:bg-pink-100 hover:border-pink-300 dark:hover:bg-pink-900/40 dark:hover:border-pink-700/50',
       items: [
         'Milkdown', 'CodeMirror', 'ProseMirror', 'Mermaid', 'KaTeX',
-        'React PDF', 'PDF.js', 'React Markdown', 'Prism.js', 'remark-gfm', 'rehype-katex', 'rehype-sanitize'
+        'React PDF', 'PDF.js', 'React Markdown', 'Prism.js', 'Defuddle',
+        'remark-gfm', 'remark-math', 'rehype-katex', 'rehype-raw', 'rehype-sanitize'
       ]
     },
     {
@@ -44,7 +46,7 @@ export const OpenSourceAcknowledgementsSection: React.FC = () => {
       hoverColor: 'hover:bg-orange-100 hover:border-orange-300 dark:hover:bg-orange-900/40 dark:hover:border-orange-700/50',
       items: [
         'Zustand', 'Immer', 'i18next', 'react-i18next',
-        'date-fns', 'nanoid', 'uuid', 'yaml', 'diff', 'clsx', 'DOMPurify', 'xss'
+        'date-fns', 'nanoid', 'uuid', 'yaml', 'diff', 'clsx', 'Mustache', 'DOMPurify'
       ]
     },
     {
@@ -60,9 +62,10 @@ export const OpenSourceAcknowledgementsSection: React.FC = () => {
       color: 'bg-amber-50/80 text-amber-600 dark:bg-amber-900/20 dark:text-amber-400 border-amber-200/50 dark:border-amber-800/50',
       hoverColor: 'hover:bg-amber-100 hover:border-amber-300 dark:hover:bg-amber-900/40 dark:hover:border-amber-700/50',
       items: [
-        'Tauri 2', 'Tokio', 'Serde', 'Rusqlite', 'Reqwest', 'Rayon', 'Moka',
-        'pdf-extract', 'docx-rs', 'Comrak', 'pdfium-render', 'Calamine', 'ExcelJS', 'docx-preview', 'pptx-preview',
-        'instant-distance', 'Anyhow', 'Tracing', 'Sentry'
+        'Tauri 2', 'Tokio', 'Serde', 'Rusqlite', 'Reqwest', 'Rayon', 'Moka', 'Chrono',
+        'docx-rs', 'pdfium-render', 'Calamine', 'ppt-rs', 'pptx-to-md', 'Umya Spreadsheet',
+        'epub-rs', 'encoding_rs', 'ExcelJS', 'docx-preview', 'pptx-preview',
+        'Anyhow', 'Tracing', 'Sentry'
       ]
     }
   ], []);
@@ -85,6 +88,9 @@ export const OpenSourceAcknowledgementsSection: React.FC = () => {
   return (
     <div className="flex flex-col mb-4">
       <GroupTitle title={t('acknowledgements.openSource.title')} />
+      <p className="text-[12.5px] text-muted-foreground/70 leading-relaxed px-1 -mt-4 mb-5">
+        DeepStudent 依托以下成熟的开源生态快速发展，感谢所有社区长期的维护与创新。
+      </p>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-8 px-1">
         {groups.map((group) => (
           <div key={group.key} className="flex flex-col space-y-3">

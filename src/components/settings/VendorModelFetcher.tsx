@@ -7,7 +7,7 @@
 
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Download, Plus, Clock, Check, Search } from 'lucide-react';
+import { Download, Plus, Clock, Check, Search, Loader2 } from 'lucide-react';
 import { fetch as tauriFetch } from '@tauri-apps/plugin-http';
 import { NotionButton } from '../ui/NotionButton';
 import { Badge } from '../ui/shad/Badge';
@@ -19,18 +19,11 @@ import { getProviderIcon } from '../../utils/providerIconEngine';
 import { cn } from '@/lib/utils';
 import type { VendorConfig } from '../../types';
 
-/** 支持模型列表获取的供应商 provider_type 集合 */
-const OPENAI_COMPATIBLE_PROVIDERS = new Set([
-  'deepseek', 'qwen', 'dashscope', 'bailian', 'zhipu', 'doubao', 'moonshot', 'openai', 'grok',
-]);
-
 const GEMINI_PROVIDER = 'gemini';
 
-/** 检查供应商是否支持模型列表获取 */
-export function supportsModelFetching(providerType?: string | null): boolean {
-  if (!providerType) return false;
-  const key = providerType.toLowerCase();
-  return OPENAI_COMPATIBLE_PROVIDERS.has(key) || key === GEMINI_PROVIDER;
+/** 检查供应商是否支持模型列表获取 — 所有有 baseUrl 的供应商均可尝试（默认 OpenAI 兼容） */
+export function supportsModelFetching(_providerType?: string | null): boolean {
+  return true;
 }
 
 /** OpenAI 兼容 API 返回的模型对象 */
@@ -122,6 +115,7 @@ export const VendorModelFetcher: React.FC<VendorModelFetcherProps> = ({
   }, [vendor.id, vendor.apiKey, isBuiltinVendor]);
 
   const hasApiKey = resolvedApiKey !== null;
+  const hasBaseUrl = !!(vendor.baseUrl && vendor.baseUrl.trim());
 
   const isGemini = (vendor.providerType ?? '').toLowerCase() === GEMINI_PROVIDER;
 
@@ -255,6 +249,10 @@ export const VendorModelFetcher: React.FC<VendorModelFetcherProps> = ({
   };
 
   const fetchModels = useCallback(async (forceRefresh = false) => {
+    if (!hasBaseUrl) {
+      showGlobalNotification('warning', t('settings:vendor_model_fetcher.need_base_url'));
+      return;
+    }
     if (!hasApiKey) {
       showGlobalNotification('warning', t('settings:vendor_model_fetcher.need_api_key'));
       return;
@@ -291,7 +289,7 @@ export const VendorModelFetcher: React.FC<VendorModelFetcherProps> = ({
     } finally {
       setLoading(false);
     }
-  }, [hasApiKey, isGemini, loadCache, saveCache, t, vendor.id, resolvedApiKey, vendor.baseUrl]);
+  }, [hasApiKey, hasBaseUrl, isGemini, loadCache, saveCache, t, vendor.id, resolvedApiKey, vendor.baseUrl]);
 
   // 过滤 + 分组
   const existingSet = useMemo(() => new Set(existingModelIds.map(id => id.toLowerCase())), [existingModelIds]);
@@ -356,9 +354,9 @@ export const VendorModelFetcher: React.FC<VendorModelFetcherProps> = ({
           variant="default"
           size="sm"
           onClick={() => fetchModels(true)}
-          disabled={loading || !hasApiKey}
+          disabled={loading || !hasApiKey || !hasBaseUrl}
         >
-          <Download className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
+          {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
           {loading ? t('settings:vendor_model_fetcher.fetching') : t('settings:vendor_model_fetcher.fetch_button')}
         </NotionButton>
         <div className="flex items-center gap-2">

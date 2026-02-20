@@ -258,6 +258,7 @@
     "fetch_failed": "获取模型列表失败: {{error}}",
     "invalid_response": "接口返回格式异常",
     "need_api_key": "请先填写 API 密钥",
+    "need_base_url": "请先填写接口地址",
     "model_count": "共 {{count}} 个模型",
     "cached": "缓存",
     "just_now": "刚刚",

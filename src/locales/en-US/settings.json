@@ -258,6 +258,7 @@
     "fetch_failed": "Failed to fetch model list: {{error}}",
     "invalid_response": "Invalid API response format",
     "need_api_key": "Please enter API key first",
+    "need_base_url": "Please enter base URL first",
     "model_count": "{{count}} models",
     "cached": "Cached",
     "just_now": "Just now",

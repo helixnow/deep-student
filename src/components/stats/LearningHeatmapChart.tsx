@@ -295,6 +295,15 @@ export const LearningHeatmapChart: React.FC<LearningHeatmapChartProps> = ({
     return new Date(`${selectedYear}-01-01`);
   }, [selectedYear]);
 
+  // 计算热力图实际像素宽度，避免 width="100%" 导致 SVG 裁剪
+  const heatmapWidth = useMemo(() => {
+    const rectW = 11;
+    const spaceW = 3;
+    const weekLabelWidth = 35;
+    const numWeeks = 54; // 一年最多 54 周
+    return weekLabelWidth + numWeeks * (rectW + spaceW);
+  }, []);
+
   // 年份切换
   const handlePrevYear = () => setSelectedYear(y => y - 1);
   const handleNextYear = () => setSelectedYear(y => Math.min(y + 1, new Date().getFullYear()));
@@ -380,11 +389,12 @@ export const LearningHeatmapChart: React.FC<LearningHeatmapChartProps> = ({
         />
       </div>
 
-      {/* 热力图 */}
-      <div className="overflow-x-auto pb-2">
+      {/* 热力图 — overflow-hidden + direction:rtl 保留最新日期，截断最旧 */}
+      <div className="overflow-hidden pb-2" style={{ direction: 'rtl' }}>
+        <div style={{ minWidth: heatmapWidth, direction: 'ltr' }}>
         <HeatMap
           value={formattedData}
-          width="100%"
+          width={heatmapWidth}
           startDate={startDate}
           style={{ 
             color: themeTextColor,
@@ -426,6 +436,7 @@ export const LearningHeatmapChart: React.FC<LearningHeatmapChartProps> = ({
             );
           }}
         />
+        </div>
       </div>
 
       {/* 图例 */}

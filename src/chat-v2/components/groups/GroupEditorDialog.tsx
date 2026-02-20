@@ -7,10 +7,27 @@ import {
   Music, Palette, Camera, Lightbulb, Target, Trophy,
   Rocket, Brain, Sparkles, MessageSquare, FileText, Bookmark,
   Paperclip, Plus, Loader2,
+  ClipboardList, PenTool, Image as ImageIcon, File as FileIcon,
 } from 'lucide-react';
 import type { VfsResourceRef } from '../../context/vfsRefTypes';
 import { getResourceRefsV2 } from '../../context/vfsRefApi';
-import { ResourcePickerDialog, getResourceTypeIcon } from './ResourcePickerDialog';
+import { LearningHubSidebar } from '@/components/learning-hub';
+import type { ResourceListItem } from '@/components/learning-hub/types';
+
+function getResourceTypeIcon(type: string): React.ElementType {
+  switch (type) {
+    case 'note': return FileText;
+    case 'textbook': return BookOpen;
+    case 'exam': return ClipboardList;
+    case 'translation': return Languages;
+    case 'essay': return PenTool;
+    case 'image': return ImageIcon;
+    case 'mindmap': return Brain;
+    case 'file':
+    default:
+      return FileIcon;
+  }
+}
 
 // 预设图标列表
 export const PRESET_ICONS = [
@@ -45,6 +62,8 @@ import { Checkbox } from '@/components/ui/shad/Checkbox';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { cn } from '@/lib/utils';
+import { useBreakpoint } from '@/hooks/useBreakpoint';
+import { MOBILE_LAYOUT } from '@/config/mobileLayout';
 import { skillRegistry, subscribeToSkillRegistry } from '../../skills/registry';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import type { CreateGroupRequest, SessionGroup, UpdateGroupRequest } from '../../types/group';
@@ -92,6 +111,7 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
   onDelete,
 }) => {
   const { t } = useTranslation(['chatV2', 'common', 'skills']);
+  const { isSmallScreen } = useBreakpoint();
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [icon, setIcon] = useState('');
@@ -398,7 +418,10 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
                       <button
                         type="button"
                         onClick={() => removePinnedResource(ref.sourceId)}
-                        className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-destructive/10 hover:text-destructive transition-all"
+                        className={cn(
+                          'p-0.5 rounded hover:bg-destructive/10 hover:text-destructive transition-all',
+                          isSmallScreen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+                        )}
                         aria-label={t('common:remove', '移除')}
                       >
                         <X className="w-3.5 h-3.5" />
@@ -426,14 +449,60 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
             )}
           </div>
 
-          {/* Resource Picker Dialog */}
-          <ResourcePickerDialog
-            open={pickerOpen}
-            onClose={() => setPickerOpen(false)}
-            selectedIds={pinnedResourceIds}
-            onSelect={addPinnedResource}
-            onDeselect={removePinnedResource}
-          />
+          {/* Resource Picker — reuse LearningHubSidebar */}
+          {pickerOpen && (
+            <div
+              className="fixed inset-0 z-[200] flex justify-end"
+              onClick={() => setPickerOpen(false)}
+            >
+              <div
+                className={cn(
+                  'h-full bg-card shadow-xl flex flex-col',
+                  isSmallScreen
+                    ? 'w-full animate-in slide-in-from-bottom duration-200'
+                    : 'w-[380px] max-w-[85vw] border-l border-border/40 animate-in slide-in-from-right-full duration-200'
+                )}
+                style={isSmallScreen ? {
+                  paddingBottom: `calc(var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px)) + ${MOBILE_LAYOUT.bottomTabBar.defaultHeight}px)`,
+                } : undefined}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="flex items-center justify-between px-3 py-2 border-b border-border/40 shrink-0">
+                  <div className="flex items-center gap-2">
+                    {isSmallScreen && (
+                      <NotionButton
+                        variant="ghost"
+                        size="icon"
+                        iconOnly
+                        onClick={() => setPickerOpen(false)}
+                        className="!h-7 !w-7"
+                      >
+                        <X className="w-4 h-4" />
+                      </NotionButton>
+                    )}
+                    <span className="text-sm font-medium">{t('page.groupPinnedBrowse')}</span>
+                  </div>
+                  <span className="text-xs text-muted-foreground">
+                    {pinnedResourceIds.length > 0
+                      ? t('page.groupPinnedSelectedCount', { count: pinnedResourceIds.length })
+                      : ''}
+                  </span>
+                </div>
+                <div className="flex-1 overflow-hidden">
+                  <LearningHubSidebar
+                    mode="canvas"
+                    onClose={() => setPickerOpen(false)}
+                    onOpenApp={(item: ResourceListItem) => {
+                      addPinnedResource(item.id);
+                    }}
+                    className="h-full"
+                    hideToolbarAndNav={isSmallScreen}
+                    mobileBottomPadding={isSmallScreen}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
 
           {mode === 'edit' && onDelete && (
             <div className="pt-6 border-t border-border/40">

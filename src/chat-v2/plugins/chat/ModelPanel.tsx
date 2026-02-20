@@ -30,6 +30,8 @@ interface ModelConfig {
   id: string;
   name: string;
   model: string;
+  /** 所属供应商 ID */
+  vendorId?: string;
   isMultimodal?: boolean;
   isReasoning?: boolean;
   supportsTools?: boolean;
@@ -40,6 +42,13 @@ interface ModelConfig {
   is_reranker?: boolean;
   isFavorite?: boolean;
   is_favorite?: boolean;
+}
+
+interface VendorConfigSlim {
+  id: string;
+  providerType?: string;
+  sortOrder?: number;
+  name: string;
 }
 
 interface ModelPanelProps {
@@ -62,6 +71,7 @@ export const ModelPanel: React.FC<ModelPanelProps> = ({ store, onClose }) => {
 
   // 本地状态
   const [models, setModels] = useState<ModelConfig[]>([]);
+  const [vendorOrderMap, setVendorOrderMap] = useState<Map<string, number>>(new Map());
   const [searchTerm, setSearchTerm] = useState('');
   const [defaultModelId, setDefaultModelId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -86,6 +96,26 @@ export const ModelPanel: React.FC<ModelPanelProps> = ({ store, onClose }) => {
         return !isEmbedding && !isReranker && isEnabled;
       });
       setModels(chatModels);
+
+      // 加载供应商配置以获取排序信息
+      try {
+        const vendorConfigs = await invoke<VendorConfigSlim[]>('get_vendor_configs');
+        const orderMap = new Map<string, number>();
+        // 与设置页面排序逻辑一致：SiliconFlow 置顶 → sortOrder → name
+        const sorted = [...(vendorConfigs || [])].sort((a, b) => {
+          const aSilicon = (a.providerType ?? '').toLowerCase() === 'siliconflow';
+          const bSilicon = (b.providerType ?? '').toLowerCase() === 'siliconflow';
+          if (aSilicon !== bSilicon) return aSilicon ? -1 : 1;
+          const aOrder = a.sortOrder ?? Number.MAX_SAFE_INTEGER;
+          const bOrder = b.sortOrder ?? Number.MAX_SAFE_INTEGER;
+          if (aOrder !== bOrder) return aOrder - bOrder;
+          return a.name.localeCompare(b.name);
+        });
+        sorted.forEach((v, i) => orderMap.set(v.id, i));
+        setVendorOrderMap(orderMap);
+      } catch {
+        setVendorOrderMap(new Map());
+      }
 
       // 尝试获取默认模型
       // 🔧 修复：使用正确的字段名 model2_config_id 而非 analysis
@@ -140,11 +170,16 @@ export const ModelPanel: React.FC<ModelPanelProps> = ({ store, onClose }) => {
       ? normalizedModels.filter((m) => m.searchable.includes(keyword))
       : normalizedModels;
     return [...filtered].sort((a, b) => {
+      // 按供应商顺序排序（与设置页面一致）
+      const aVendorOrder = a.vendorId ? (vendorOrderMap.get(a.vendorId) ?? Number.MAX_SAFE_INTEGER) : Number.MAX_SAFE_INTEGER;
+      const bVendorOrder = b.vendorId ? (vendorOrderMap.get(b.vendorId) ?? Number.MAX_SAFE_INTEGER) : Number.MAX_SAFE_INTEGER;
+      if (aVendorOrder !== bVendorOrder) return aVendorOrder - bVendorOrder;
+      // 同一供应商内，收藏优先
       if (a.isFavorite && !b.isFavorite) return -1;
       if (!a.isFavorite && b.isFavorite) return 1;
       return 0;
     });
-  }, [normalizedModels, searchTerm]);
+  }, [normalizedModels, searchTerm, vendorOrderMap]);
 
   // 默认模型名称
   const defaultModelName = useMemo(() => {

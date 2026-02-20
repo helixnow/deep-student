@@ -213,6 +213,17 @@ export function LearningHeatmap({
     return date;
   }, [months]);
 
+  // 计算热力图实际像素宽度，确保 SVG 不被内部裁剪
+  const heatmapWidth = useMemo(() => {
+    const rectW = 10;
+    const spaceW = 2;
+    const weekLabelWidth = 35;
+    const endDate = new Date();
+    const diffMs = endDate.getTime() - startDate.getTime();
+    const numWeeks = Math.ceil(diffMs / (7 * 24 * 60 * 60 * 1000)) + 2;
+    return weekLabelWidth + numWeeks * (rectW + spaceW);
+  }, [startDate]);
+
   // 根据日期获取活动详情
   const getActivityByDate = (date: string): LearningActivity | undefined => {
     return data.find(item => item.date === date);
@@ -271,12 +282,15 @@ export function LearningHeatmap({
         </div>
       )}
 
-      {/* 热力图容器 */}
-      <div className="w-full overflow-x-auto pb-2">
-        <div className="min-w-[600px]"> 
+      {/* 热力图容器 — overflow-hidden + direction:rtl 保留最新日期，截断最旧 */}
+      <div
+        className="w-full overflow-hidden pb-2"
+        style={{ direction: 'rtl' }}
+      >
+        <div style={{ minWidth: heatmapWidth, direction: 'ltr' }}>
           <HeatMap
             value={heatmapData}
-            width="100%"
+            width={heatmapWidth}
             startDate={startDate}
             style={{ 
               color: themeTextColor,

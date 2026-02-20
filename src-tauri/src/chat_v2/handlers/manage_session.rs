@@ -881,36 +881,8 @@ fn branch_session_in_db(
         block_id_map.insert(block_id.clone(), new_block_id);
     }
 
-    // 8. 写入新块
-    for (old_block_id, new_block_id) in &block_id_map {
-        if let Some(source_block) = source_blocks_map.get(old_block_id) {
-            // 映射 message_id
-            let new_message_id = msg_id_map
-                .get(&source_block.message_id)
-                .cloned()
-                .unwrap_or_else(|| source_block.message_id.clone());
-
-            let new_block = crate::chat_v2::types::MessageBlock {
-                id: new_block_id.clone(),
-                message_id: new_message_id,
-                block_type: source_block.block_type.clone(),
-                status: source_block.status.clone(),
-                content: source_block.content.clone(),
-                tool_name: source_block.tool_name.clone(),
-                tool_input: source_block.tool_input.clone(),
-                tool_output: source_block.tool_output.clone(),
-                citations: source_block.citations.clone(),
-                error: source_block.error.clone(),
-                started_at: source_block.started_at,
-                ended_at: source_block.ended_at,
-                first_chunk_at: source_block.first_chunk_at,
-                block_index: source_block.block_index,
-            };
-            ChatV2Repo::create_block_with_conn(&tx, &new_block).map_err(|e| e.to_string())?;
-        }
-    }
-
-    // 9. 写入新消息（含 ID 重映射）
+    // 8. 先写入新消息（含 ID 重映射）
+    //    ⚠️ 必须先写 messages 再写 blocks，因为 blocks.message_id 有外键约束指向 messages.id
     for msg in messages_to_copy {
         let new_msg_id = msg_id_map.get(&msg.id).unwrap().clone();
 
@@ -1014,6 +986,35 @@ fn branch_session_in_db(
         };
 
         ChatV2Repo::create_message_with_conn(&tx, &new_message).map_err(|e| e.to_string())?;
+    }
+
+    // 9. 写入新块（必须在 messages 之后，因为 blocks.message_id FK → messages.id）
+    for (old_block_id, new_block_id) in &block_id_map {
+        if let Some(source_block) = source_blocks_map.get(old_block_id) {
+            // 映射 message_id
+            let new_message_id = msg_id_map
+                .get(&source_block.message_id)
+                .cloned()
+                .unwrap_or_else(|| source_block.message_id.clone());
+
+            let new_block = crate::chat_v2::types::MessageBlock {
+                id: new_block_id.clone(),
+                message_id: new_message_id,
+                block_type: source_block.block_type.clone(),
+                status: source_block.status.clone(),
+                content: source_block.content.clone(),
+                tool_name: source_block.tool_name.clone(),
+                tool_input: source_block.tool_input.clone(),
+                tool_output: source_block.tool_output.clone(),
+                citations: source_block.citations.clone(),
+                error: source_block.error.clone(),
+                started_at: source_block.started_at,
+                ended_at: source_block.ended_at,
+                first_chunk_at: source_block.first_chunk_at,
+                block_index: source_block.block_index,
+            };
+            ChatV2Repo::create_block_with_conn(&tx, &new_block).map_err(|e| e.to_string())?;
+        }
     }
 
     // 10. 复制 session_state（裁剪草稿字段）

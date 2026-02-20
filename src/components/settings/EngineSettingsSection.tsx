@@ -179,7 +179,7 @@ export const EngineSettingsSection: React.FC<{
     return (
       <div className="mt-6 grid gap-4 text-xs grid-cols-2 md:grid-cols-4 lg:grid-cols-7">
         <div className="space-y-1.5">
-          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('settings:advanced_search.providers.timeout_ms')}</div>
+          <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">{t('settings:advanced_search.providers.timeout_ms')}</div>
           <Input
             type="number"
             min={1000}
@@ -189,7 +189,7 @@ export const EngineSettingsSection: React.FC<{
           />
         </div>
         <div className="space-y-1.5">
-          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('settings:advanced_search.providers.max_retries')}</div>
+          <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">{t('settings:advanced_search.providers.max_retries')}</div>
           <Input
             type="number"
             min={0}
@@ -199,7 +199,7 @@ export const EngineSettingsSection: React.FC<{
           />
         </div>
         <div className="space-y-1.5">
-          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('settings:advanced_search.providers.initial_delay_ms')}</div>
+          <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">{t('settings:advanced_search.providers.initial_delay_ms')}</div>
           <Input
             type="number"
             min={0}
@@ -209,7 +209,7 @@ export const EngineSettingsSection: React.FC<{
           />
         </div>
         <div className="space-y-1.5">
-          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('settings:advanced_search.providers.max_concurrent_requests')}</div>
+          <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">{t('settings:advanced_search.providers.max_concurrent_requests')}</div>
           <Input
             type="number"
             min={0}
@@ -219,7 +219,7 @@ export const EngineSettingsSection: React.FC<{
           />
         </div>
         <div className="space-y-1.5">
-          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('settings:advanced_search.providers.rate_limit_per_minute')}</div>
+          <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">{t('settings:advanced_search.providers.rate_limit_per_minute')}</div>
           <Input
             type="number"
             min={0}
@@ -229,7 +229,7 @@ export const EngineSettingsSection: React.FC<{
           />
         </div>
         <div className="space-y-1.5">
-          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('settings:advanced_search.providers.cache_ttl_seconds')}</div>
+          <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">{t('settings:advanced_search.providers.cache_ttl_seconds')}</div>
           <Input
             type="number"
             min={0}
@@ -239,7 +239,7 @@ export const EngineSettingsSection: React.FC<{
           />
         </div>
         <div className="space-y-1.5">
-          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('settings:advanced_search.providers.cache_max_entries')}</div>
+          <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">{t('settings:advanced_search.providers.cache_max_entries')}</div>
           <Input
             type="number"
             min={0}
@@ -257,8 +257,8 @@ export const EngineSettingsSection: React.FC<{
       <div className="flex flex-col gap-6">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="min-w-0 flex-1 space-y-1">
-            <h3 className="text-lg font-medium text-foreground">{t('settings:advanced_search.providers.strategy_title', '策略配置')}</h3>
-            <p className="text-sm text-muted-foreground">{t('settings:advanced_search.providers.strategy_hint', '未配置则回退 default')}</p>
+            <h3 className="text-sm font-medium text-foreground">{t('settings:advanced_search.providers.strategy_title', '策略配置')}</h3>
+            <p className="text-xs text-muted-foreground">{t('settings:advanced_search.providers.strategy_hint', '未配置则回退 default')}</p>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
             {engineResults[id] && (
@@ -322,10 +322,9 @@ export const EngineSettingsSection: React.FC<{
                   <NotionButton
                     key={id}
                     variant="ghost"
-                    size="sm"
                     onClick={() => setActiveEngine(id)}
                     className={cn(
-                      '!rounded-lg !px-3 !py-2 text-left w-full !justify-start group relative',
+                      '!rounded-lg !px-3 !py-2 text-sm text-left w-full !justify-start group relative',
                       isActive ? 'bg-muted text-foreground font-medium' : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
                     )}
                   >
@@ -350,24 +349,24 @@ export const EngineSettingsSection: React.FC<{
               <div className="flex flex-col gap-2 mb-6">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex items-center gap-2 min-w-0">
-                    <h3 className="text-lg font-medium text-foreground truncate">Google CSE</h3>
+                    <h3 className="text-base font-medium text-foreground truncate">Google CSE</h3>
                     <NotionButton size="sm" variant="ghost" iconOnly className="opacity-60 hover:opacity-100" onClick={() => window.open("https://cse.google.com/cse/create/new", "_blank")} title={t('settings:external_search.create_custom_search', '创建自定义搜索引擎')}>
                       <ExternalLink className="h-3.5 w-3.5" />
                     </NotionButton>
                   </div>
                 </div>
-                <p className="text-sm text-muted-foreground leading-relaxed">
+                <p className="text-xs text-muted-foreground leading-relaxed">
                   {t('settings:descriptions.google_cse_desc', 'Google 自定义搜索引擎 API，提供最准确全面的网页搜索。')}
                 </p>
               </div>
-              <div className="flex flex-col gap-6 text-sm md:grid md:grid-cols-2">
+              <div className="flex flex-col gap-6 text-xs md:grid md:grid-cols-2">
                 <div className="space-y-2">
-                          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('settings:external_search.google_api_key_label')}</div>
+                          <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">{t('settings:external_search.google_api_key_label')}</div>
                           <SecurePasswordInput value={config.webSearchGoogleKey} onChange={(v) => setConfig((prev: WebSearchConfig) => ({ ...prev, webSearchGoogleKey: v }))} placeholder="GOOGLE_API_KEY" isSensitive />
                   <p className="text-[11px] text-muted-foreground/70">{t('settings:external_search.google_api_key_desc')}</p>
                 </div>
                 <div className="space-y-2">
-                          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('settings:external_search.google_cse_cx_label')}</div>
+                          <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">{t('settings:external_search.google_cse_cx_label')}</div>
                           <Input
                     type="text"
                     value={config.webSearchGoogleCx}
@@ -387,19 +386,19 @@ export const EngineSettingsSection: React.FC<{
               <div className="flex flex-col gap-2 mb-6">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex items-center gap-2 min-w-0">
-                    <h3 className="text-lg font-medium text-foreground truncate">SerpAPI</h3>
+                    <h3 className="text-base font-medium text-foreground truncate">SerpAPI</h3>
                     <NotionButton size="sm" variant="ghost" iconOnly className="opacity-60 hover:opacity-100" onClick={() => window.open("https://serpapi.com/users/sign_up", "_blank")} title={t('settings:external_search.get_serpapi_key', '注册并获取 SerpAPI Key')}>
                       <ExternalLink className="h-3.5 w-3.5" />
                     </NotionButton>
                   </div>
                 </div>
-                <p className="text-sm text-muted-foreground leading-relaxed">
+                <p className="text-xs text-muted-foreground leading-relaxed">
                   {t('settings:descriptions.serpapi_desc', '封装了 Google、Bing 等多个引擎的聚合搜索 API。')}
                 </p>
               </div>
-              <div className="flex flex-col gap-6 text-sm md:grid md:grid-cols-2">
+              <div className="flex flex-col gap-6 text-xs md:grid md:grid-cols-2">
                 <div className="space-y-2 md:col-span-2">
-                          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('settings:external_search.serpapi_key_label')}</div>
+                          <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">{t('settings:external_search.serpapi_key_label')}</div>
                           <SecurePasswordInput value={config.webSearchSerpApiKey} onChange={(v) => setConfig((prev: WebSearchConfig) => ({ ...prev, webSearchSerpApiKey: v }))} placeholder="SERPAPI_KEY" isSensitive />
                   <p className="text-[11px] text-muted-foreground/70">{t('settings:external_search.serpapi_key_desc')}</p>
                 </div>
@@ -413,19 +412,19 @@ export const EngineSettingsSection: React.FC<{
               <div className="flex flex-col gap-2 mb-6">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex items-center gap-2 min-w-0">
-                    <h3 className="text-lg font-medium text-foreground truncate">Tavily</h3>
+                    <h3 className="text-base font-medium text-foreground truncate">Tavily</h3>
                     <NotionButton size="sm" variant="ghost" iconOnly className="opacity-60 hover:opacity-100" onClick={() => window.open("https://tavily.com", "_blank")} title={t('settings:external_search.get_tavily_key', '注册并获取 Tavily API Key')}>
                       <ExternalLink className="h-3.5 w-3.5" />
                     </NotionButton>
                   </div>
                 </div>
-                <p className="text-sm text-muted-foreground leading-relaxed">
+                <p className="text-xs text-muted-foreground leading-relaxed">
                   {t('settings:descriptions.tavily_desc', '专为大语言模型打造的检索优化型搜索引擎。')}
                 </p>
               </div>
-              <div className="flex flex-col gap-6 text-sm md:grid md:grid-cols-2">
+              <div className="flex flex-col gap-6 text-xs md:grid md:grid-cols-2">
                 <div className="space-y-2 md:col-span-2">
-                          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('settings:external_search.tavily_key_label')}</div>
+                          <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">{t('settings:external_search.tavily_key_label')}</div>
                           <SecurePasswordInput value={config.webSearchTavilyKey} onChange={(v) => setConfig((prev: WebSearchConfig) => ({ ...prev, webSearchTavilyKey: v }))} placeholder="TAVILY_API_KEY" isSensitive />
                   <p className="text-[11px] text-muted-foreground/70">{t('settings:external_search.tavily_key_desc')}</p>
                 </div>
@@ -439,19 +438,19 @@ export const EngineSettingsSection: React.FC<{
               <div className="flex flex-col gap-2 mb-6">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex items-center gap-2 min-w-0">
-                    <h3 className="text-lg font-medium text-foreground truncate">Brave</h3>
+                    <h3 className="text-base font-medium text-foreground truncate">Brave</h3>
                     <NotionButton size="sm" variant="ghost" iconOnly className="opacity-60 hover:opacity-100" onClick={() => window.open("https://api.search.brave.com/", "_blank")} title={t('settings:external_search.get_brave_key', '申请 Brave Search API Key')}>
                       <ExternalLink className="h-3.5 w-3.5" />
                     </NotionButton>
                   </div>
                 </div>
-                <p className="text-sm text-muted-foreground leading-relaxed">
+                <p className="text-xs text-muted-foreground leading-relaxed">
                   {t('settings:descriptions.brave_desc', '注重隐私的独立网页搜索引擎。')}
                 </p>
               </div>
-              <div className="flex flex-col gap-6 text-sm md:grid md:grid-cols-2">
+              <div className="flex flex-col gap-6 text-xs md:grid md:grid-cols-2">
                 <div className="space-y-2 md:col-span-2">
-                          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('settings:external_search.brave_key_label')}</div>
+                          <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">{t('settings:external_search.brave_key_label')}</div>
                           <SecurePasswordInput value={config.webSearchBraveKey} onChange={(v) => setConfig((prev: WebSearchConfig) => ({ ...prev, webSearchBraveKey: v }))} placeholder="BRAVE_API_KEY" isSensitive />
                   <p className="text-[11px] text-muted-foreground/70">{t('settings:external_search.brave_key_desc')}</p>
                 </div>
@@ -465,19 +464,19 @@ export const EngineSettingsSection: React.FC<{
               <div className="flex flex-col gap-2 mb-6">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex items-center gap-2 min-w-0">
-                    <h3 className="text-lg font-medium text-foreground truncate">SearXNG</h3>
+                    <h3 className="text-base font-medium text-foreground truncate">SearXNG</h3>
                     <NotionButton size="sm" variant="ghost" iconOnly className="opacity-60 hover:opacity-100" onClick={() => window.open("https://docs.searxng.org/", "_blank")} title={t('settings:external_search.searxng_docs', 'SearXNG 部署文档')}>
                       <ExternalLink className="h-3.5 w-3.5" />
                     </NotionButton>
                   </div>
                 </div>
-                <p className="text-sm text-muted-foreground leading-relaxed">
+                <p className="text-xs text-muted-foreground leading-relaxed">
                   {t('settings:descriptions.searxng_desc', '免费开源、聚合多个搜索源的元搜索引擎。')}
                 </p>
               </div>
-              <div className="flex flex-col gap-6 text-sm md:grid md:grid-cols-2">
+              <div className="flex flex-col gap-6 text-xs md:grid md:grid-cols-2">
                 <div className="space-y-2">
-                          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('settings:external_search.searxng_endpoint_label')}</div>
+                          <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">{t('settings:external_search.searxng_endpoint_label')}</div>
                           <Input
                     type="text"
                     value={config.webSearchSearxngEndpoint}
@@ -488,7 +487,7 @@ export const EngineSettingsSection: React.FC<{
                   <p className="text-[11px] text-muted-foreground/70">{t('settings:external_search.searxng_endpoint_desc')}</p>
                 </div>
                 <div className="space-y-2">
-                          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('settings:external_search.searxng_key_label')}</div>
+                          <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">{t('settings:external_search.searxng_key_label')}</div>
                           <SecurePasswordInput value={config.webSearchSearxngKey} onChange={(v) => setConfig((prev: WebSearchConfig) => ({ ...prev, webSearchSearxngKey: v }))} placeholder="SEARXNG_API_KEY" isSensitive />
                   <p className="text-[11px] text-muted-foreground/70">{t('settings:external_search.searxng_key_desc')}</p>
                 </div>
@@ -502,19 +501,19 @@ export const EngineSettingsSection: React.FC<{
               <div className="flex flex-col gap-2 mb-6">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex items-center gap-2 min-w-0">
-                    <h3 className="text-lg font-medium text-foreground truncate">{t('settings:external_search.zhipu_name', '智谱 AI 搜索')}</h3>
+                    <h3 className="text-base font-medium text-foreground truncate">{t('settings:external_search.zhipu_name', '智谱 AI 搜索')}</h3>
                     <NotionButton size="sm" variant="ghost" iconOnly className="opacity-60 hover:opacity-100" onClick={() => window.open("https://open.bigmodel.cn/", "_blank")} title={t('settings:external_search.zhipu_apply', '申请智谱大模型 API')}>
                       <ExternalLink className="h-3.5 w-3.5" />
                     </NotionButton>
                   </div>
                 </div>
-                <p className="text-sm text-muted-foreground leading-relaxed">
+                <p className="text-xs text-muted-foreground leading-relaxed">
                   {t('settings:descriptions.zhipu_desc', '智谱提供的国产化互联网搜索聚合服务。')}
                 </p>
               </div>
-              <div className="flex flex-col gap-6 text-sm md:grid md:grid-cols-2">
+              <div className="flex flex-col gap-6 text-xs md:grid md:grid-cols-2">
                 <div className="space-y-2 md:col-span-2">
-                          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('settings:external_search.zhipu_key_label')}</div>
+                          <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">{t('settings:external_search.zhipu_key_label')}</div>
                           <SecurePasswordInput value={config.webSearchZhipuKey} onChange={(v) => setConfig((prev: WebSearchConfig) => ({ ...prev, webSearchZhipuKey: v }))} placeholder="ZHIPU_API_KEY" isSensitive />
                   <p className="text-[11px] text-muted-foreground/70">{t('settings:external_search.zhipu_key_desc')}</p>
                 </div>
@@ -528,19 +527,19 @@ export const EngineSettingsSection: React.FC<{
               <div className="flex flex-col gap-2 mb-6">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex items-center gap-2 min-w-0">
-                    <h3 className="text-lg font-medium text-foreground truncate">{t('settings:external_search.bocha_name', '博查 AI 搜索')}</h3>
+                    <h3 className="text-base font-medium text-foreground truncate">{t('settings:external_search.bocha_name', '博查 AI 搜索')}</h3>
                     <NotionButton size="sm" variant="ghost" iconOnly className="opacity-60 hover:opacity-100" onClick={() => window.open("https://open.bochaai.com/", "_blank")} title={t('settings:external_search.bocha_apply', '申请博查 API')}>
                       <ExternalLink className="h-3.5 w-3.5" />
                     </NotionButton>
                   </div>
                 </div>
-                <p className="text-sm text-muted-foreground leading-relaxed">
+                <p className="text-xs text-muted-foreground leading-relaxed">
                   {t('settings:descriptions.bocha_desc', '专注于中文资料索引的轻量级检索服务。')}
                 </p>
               </div>
-              <div className="flex flex-col gap-6 text-sm md:grid md:grid-cols-2">
+              <div className="flex flex-col gap-6 text-xs md:grid md:grid-cols-2">
                 <div className="space-y-2 md:col-span-2">
-                          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('settings:external_search.bocha_key_label')}</div>
+                          <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">{t('settings:external_search.bocha_key_label')}</div>
                           <SecurePasswordInput value={config.webSearchBochaKey} onChange={(v) => setConfig((prev: WebSearchConfig) => ({ ...prev, webSearchBochaKey: v }))} placeholder="BOCHA_API_KEY" isSensitive />
                   <p className="text-[11px] text-muted-foreground/70">{t('settings:external_search.bocha_key_desc')}</p>
                 </div>

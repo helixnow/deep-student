@@ -98,6 +98,7 @@ export const MultiSelectModelPanel: React.FC<MultiSelectModelPanelProps> = ({
 
   // 本地状态
   const [models, setModels] = useState<ModelConfig[]>([]);
+  const [vendorOrderMap, setVendorOrderMap] = useState<Map<string, number>>(new Map());
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(true);
   const [defaultModelId, setDefaultModelId] = useState<string | null>(null);
@@ -125,6 +126,25 @@ export const MultiSelectModelPanel: React.FC<MultiSelectModelPanelProps> = ({
         return !isEmbedding && !isReranker && isEnabled;
       });
       setModels(chatModels);
+
+      // 加载供应商配置以获取排序信息
+      try {
+        const vendorConfigs = await invoke<Array<{ id: string; providerType?: string; sortOrder?: number; name: string }>>('get_vendor_configs');
+        const orderMap = new Map<string, number>();
+        const sorted = [...(vendorConfigs || [])].sort((a, b) => {
+          const aSilicon = (a.providerType ?? '').toLowerCase() === 'siliconflow';
+          const bSilicon = (b.providerType ?? '').toLowerCase() === 'siliconflow';
+          if (aSilicon !== bSilicon) return aSilicon ? -1 : 1;
+          const aOrder = a.sortOrder ?? Number.MAX_SAFE_INTEGER;
+          const bOrder = b.sortOrder ?? Number.MAX_SAFE_INTEGER;
+          if (aOrder !== bOrder) return aOrder - bOrder;
+          return a.name.localeCompare(b.name);
+        });
+        sorted.forEach((v, i) => orderMap.set(v.id, i));
+        setVendorOrderMap(orderMap);
+      } catch {
+        setVendorOrderMap(new Map());
+      }
 
       try {
         const assignments = await invoke<Record<string, string | null>>('get_model_assignments');
@@ -176,11 +196,16 @@ export const MultiSelectModelPanel: React.FC<MultiSelectModelPanelProps> = ({
       ? normalizedModels.filter((m) => m.searchable.includes(keyword))
       : normalizedModels;
     return [...filtered].sort((a, b) => {
+      // 按供应商顺序排序（与设置页面一致）
+      const aVendorOrder = a.vendorId ? (vendorOrderMap.get(a.vendorId) ?? Number.MAX_SAFE_INTEGER) : Number.MAX_SAFE_INTEGER;
+      const bVendorOrder = b.vendorId ? (vendorOrderMap.get(b.vendorId) ?? Number.MAX_SAFE_INTEGER) : Number.MAX_SAFE_INTEGER;
+      if (aVendorOrder !== bVendorOrder) return aVendorOrder - bVendorOrder;
+      // 同一供应商内，收藏优先
       if (a.isFavorite && !b.isFavorite) return -1;
       if (!a.isFavorite && b.isFavorite) return 1;
       return 0;
     });
-  }, [normalizedModels, searchTerm]);
+  }, [normalizedModels, searchTerm, vendorOrderMap]);
 
   // 切换选中状态
   const handleToggleModel = useCallback(

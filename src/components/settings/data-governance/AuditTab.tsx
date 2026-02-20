@@ -144,38 +144,36 @@ export const AuditTab: React.FC<AuditTabProps> = ({
 
       {/* 过滤器 */}
       <div className="flex items-center gap-2">
-        <div className="w-20 shrink-0">
-          <AppSelect
-            value={operationFilter}
-            onValueChange={(v) => handleFilterChange(v, statusFilter)}
-            options={[
-              { value: 'all', label: t('common:all') },
-              { value: 'Migration', label: t('data:governance.operation_migration') },
-              { value: 'Backup', label: t('data:governance.operation_backup') },
-              { value: 'Restore', label: t('data:governance.operation_restore') },
-              { value: 'Sync', label: t('data:governance.operation_sync') },
-              { value: 'Maintenance', label: t('data:governance.operation_maintenance') },
-            ]}
-            size="sm"
-            variant="outline"
-          />
-        </div>
+        <AppSelect
+          value={operationFilter}
+          onValueChange={(v) => handleFilterChange(v, statusFilter)}
+          options={[
+            { value: 'all', label: t('common:all') },
+            { value: 'Migration', label: t('data:governance.operation_migration') },
+            { value: 'Backup', label: t('data:governance.operation_backup') },
+            { value: 'Restore', label: t('data:governance.operation_restore') },
+            { value: 'Sync', label: t('data:governance.operation_sync') },
+            { value: 'Maintenance', label: t('data:governance.operation_maintenance') },
+          ]}
+          size="sm"
+          variant="outline"
+          width={130}
+        />
 
-        <div className="w-20 shrink-0">
-          <AppSelect
-            value={statusFilter}
-            onValueChange={(v) => handleFilterChange(operationFilter, v)}
-            options={[
-              { value: 'all', label: t('common:all') },
-              { value: 'Completed', label: t('data:governance.status_completed') },
-              { value: 'Failed', label: t('data:governance.status_failed') },
-              { value: 'Started', label: t('data:governance.status_started') },
-              { value: 'Partial', label: t('data:governance.status_partial') },
-            ]}
-            size="sm"
-            variant="outline"
-          />
-        </div>
+        <AppSelect
+          value={statusFilter}
+          onValueChange={(v) => handleFilterChange(operationFilter, v)}
+          options={[
+            { value: 'all', label: t('common:all') },
+            { value: 'Completed', label: t('data:governance.status_completed') },
+            { value: 'Failed', label: t('data:governance.status_failed') },
+            { value: 'Started', label: t('data:governance.status_started') },
+            { value: 'Partial', label: t('data:governance.status_partial') },
+          ]}
+          size="sm"
+          variant="outline"
+          width={130}
+        />
 
         <NotionButton variant="ghost" size="sm" onClick={onRefresh} disabled={loading} className="h-8 w-8 p-0 shrink-0" aria-label={t('common:actions.refresh')}>
           <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />

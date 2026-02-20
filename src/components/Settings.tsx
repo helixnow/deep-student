@@ -415,7 +415,14 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
         maxOutputTokens: config.maxOutputTokens,
         temperature: config.temperature,
       }));
-      setConfig((prev) => ({ ...prev, apiConfigs: mappedApiConfigs }));
+      setConfig((prev) => {
+        // Shallow compare: skip update if apiConfigs content is identical (prevents unnecessary re-renders that feed the auto-save loop)
+        if (prev.apiConfigs.length === mappedApiConfigs.length &&
+            prev.apiConfigs.every((c: any, i: number) => c.id === mappedApiConfigs[i]?.id && c.enabled === mappedApiConfigs[i]?.enabled)) {
+          return prev;
+        }
+        return { ...prev, apiConfigs: mappedApiConfigs };
+      });
     } catch (e) {
       // 静默失败：不阻塞设置页、避免控制台警告噪音
     }
@@ -3130,21 +3137,24 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
           showGlobalNotification('success', t('settings:notifications.config_save_success'));
         }
         
-        // 广播：API 配置已变更
-        try {
-          if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
-            window.dispatchEvent(new CustomEvent('api_configurations_changed'));
-          }
-        } catch {}
+        // 广播：API 配置已变更（仅非静默保存时广播，避免 auto-save 触发自身 refreshApiConfigsFromBackend 形成无限循环）
+        if (!silent) {
+          try {
+            if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+              window.dispatchEvent(new CustomEvent('api_configurations_changed'));
+            }
+          } catch {}
+        }
 
         // 触发设置变更事件，通知其他组件
+        // 静默保存（auto-save）时不标记 mcpChanged，避免每次 auto-save 都触发 MCP bootstrap 全链路
         window.dispatchEvent(new CustomEvent('systemSettingsChanged', { 
           detail: { 
             ankiConnectEnabled: config.ankiConnectEnabled,
             theme: config.theme,
             themePalette: config.themePalette,
             debugMode: config.debugMode,
-            mcpChanged: true,
+            mcpChanged: !silent,
           } 
         }));
       } else {
@@ -3258,16 +3268,19 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
 
   // 自动保存配置（当配置发生变化时）
   // 注意：模型分配已经在onChange中立即保存，这里主要处理其他配置项
+  // 🔧 使用 ref 持有 handleSave，避免 handleSave 引用变化（因 config 对象重建）导致 auto-save effect 无限重跑
+  const handleSaveRef = useRef(handleSave);
+  handleSaveRef.current = handleSave;
   useEffect(() => {
     if (!loading && config.autoSave) {
       const timeoutId = setTimeout(() => {
         // 只保存API配置和通用设置，模型分配已经立即保存了
-        handleSave(true); // 静默保存
+        handleSaveRef.current(true); // 静默保存
       }, 1000); // 1秒后自动保存
 
       return () => clearTimeout(timeoutId);
     }
-  }, [config.autoSave, config.theme, config.themePalette, loading, handleSave]);
+  }, [config.autoSave, config.theme, config.themePalette, loading]);
 
   const testApiConnection = async (api: ApiConfig) => {
     if (api.isBuiltin) {

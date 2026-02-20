@@ -17,7 +17,7 @@ import {
   Sparkles, 
   Info, 
   Bot, 
-  Brain, 
+  Atom, 
   Image as ImageIcon, 
   Database, 
   Search, 
@@ -444,7 +444,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
         key: 'isReasoning',
         title: t('settings:api.modal.capabilities.reasoning.title'),
         description: t('settings:api.modal.capabilities.reasoning.description'),
-        icon: <Brain className="h-5 w-5" />,
+        icon: <Atom className="h-5 w-5" />,
       },
       {
         key: 'isEmbedding',
@@ -1198,7 +1198,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                       <Card className="border-border/40 bg-transparent shadow-none">
                         <CardHeader className="pb-3">
                           <CardTitle className="text-sm flex items-center gap-2">
-                            <Brain className="h-4 w-4 text-primary" />
+                            <Atom className="h-4 w-4 text-primary" />
                             {t('settings:api.modal.deepseek.title')}
                           </CardTitle>
                           <CardDescription className="text-xs">
@@ -1237,7 +1237,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                       <Card className="border-border/40 bg-transparent shadow-none">
                         <CardHeader className="pb-3">
                           <CardTitle className="text-sm flex items-center gap-2">
-                            <Brain className="h-4 w-4 text-primary" />
+                            <Atom className="h-4 w-4 text-primary" />
                             {t('settings:api.modal.qwen.title')}
                           </CardTitle>
                           <CardDescription className="text-xs">
@@ -1357,7 +1357,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                       <Card className="border-border/40 bg-transparent shadow-none">
                         <CardHeader className="pb-3">
                           <CardTitle className="text-sm flex items-center gap-2">
-                            <Brain className="h-4 w-4 text-primary" />
+                            <Atom className="h-4 w-4 text-primary" />
                             {t('settings:api.modal.doubao.title')}
                           </CardTitle>
                           <CardDescription className="text-xs">
@@ -1400,7 +1400,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                       <Card className="border-border/40 bg-transparent shadow-none">
                         <CardHeader className="pb-3">
                           <CardTitle className="text-sm flex items-center gap-2">
-                            <Brain className="h-4 w-4 text-primary" />
+                            <Atom className="h-4 w-4 text-primary" />
                             {t('settings:api.modal.zhipu.title')}
                           </CardTitle>
                           <CardDescription className="text-xs">
@@ -1447,7 +1447,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                       <Card className="border-border/40 bg-transparent shadow-none">
                         <CardHeader className="pb-3">
                           <CardTitle className="text-sm flex items-center gap-2">
-                            <Brain className="h-4 w-4 text-primary" />
+                            <Atom className="h-4 w-4 text-primary" />
                             {t('settings:api.modal.moonshot.title')}
                           </CardTitle>
                           <CardDescription className="text-xs">
@@ -1473,7 +1473,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                       <Card className="border-border/40 bg-transparent shadow-none">
                         <CardHeader className="pb-3">
                           <CardTitle className="text-sm flex items-center gap-2">
-                            <Brain className="h-4 w-4 text-primary" />
+                            <Atom className="h-4 w-4 text-primary" />
                             {t('settings:api.modal.minimax.title')}
                           </CardTitle>
                           <CardDescription className="text-xs">

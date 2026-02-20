@@ -34,7 +34,7 @@ const SettingRow = ({
         </p>
       )}
     </div>
-    <div className="flex-shrink-0 min-w-0 max-w-full">
+    <div className="min-w-0 max-w-full">
       {children}
     </div>
   </div>
@@ -69,35 +69,23 @@ export const AboutTab: React.FC = () => {
   return (
     <div className="space-y-1 pb-10 text-left animate-in fade-in duration-500">
       <SettingSection title="" hideHeader className="overflow-hidden">
-        <div>
-          <GroupTitle title={t('acknowledgements.partners.title', '技术合作伙伴致谢')} />
-          <div className="relative p-4 rounded-lg bg-muted/30 hover:bg-muted/40 transition-colors">
-            <h4 className="text-sm font-medium text-foreground/90 mb-1.5">
-              {t('acknowledgements.partners.cards.siliconflow.title', 'SiliconFlow')}
-            </h4>
-            <p className="text-[11px] text-muted-foreground/70 leading-relaxed mb-6 max-w-md">
-              {t('acknowledgements.partners.cards.siliconflow.description', '提供多模态与推理模型服务，保障 DeepStudent 在国产算力生态中的高效稳定运行。')}
-            </p>
-            <SiliconFlowLogo
-              alt={t('acknowledgements.partners.cards.siliconflow.alt', 'Powered by SiliconFlow')}
-              className="absolute bottom-3 right-3 h-7 w-auto opacity-60"
-            />
+        <div className="flex flex-col sm:flex-row gap-6 py-6">
+          <div className="flex flex-col items-center justify-center sm:w-1/3 gap-5">
+            <img src="/logo.svg" alt="DeepStudent" className="h-16 w-16" />
+            <div className="text-center">
+              <h2 className="text-lg font-semibold text-foreground">DeepStudent</h2>
+              <p className="text-xs text-muted-foreground/70 mt-0.5">{VERSION_INFO.FULL_VERSION}</p>
+            </div>
           </div>
-        </div>
-
-        <div className="mt-8">
-          <OpenSourceAcknowledgementsSection />
-        </div>
-
-        <div className="mt-8">
-          <GroupTitle title={t('acknowledgements.developer.title', '开发信息')} />
-          <div className="space-y-px">
-            <SettingRow title={t('acknowledgements.developer.fields.developer', '开发者')}>
-              <span className="text-sm text-foreground/90">DeepStudent Team</span>
-            </SettingRow>
+          <div className="sm:w-2/3">
+            <GroupTitle title={t('acknowledgements.developer.title', '开发信息')} />
+            <div className="space-y-px">
+              <SettingRow title={t('acknowledgements.developer.fields.developer', '开发者')}>
+                <span className="text-sm text-foreground/90">DeepStudent Team</span>
+              </SettingRow>
             <SettingRow title={t('acknowledgements.developer.fields.version', '版本')}>
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-sm font-mono text-foreground/90 break-all">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-mono text-foreground/90 whitespace-nowrap">
                   {VERSION_INFO.FULL_VERSION}
                   <span className="text-muted-foreground/50 ml-1.5 text-xs">{VERSION_INFO.GIT_HASH}</span>
                 </span>
@@ -106,7 +94,7 @@ export const AboutTab: React.FC = () => {
                   size="sm"
                   onClick={() => updater.checkForUpdate(false)}
                   disabled={updater.checking}
-                  className="h-6 px-2 text-xs"
+                  className="h-6 px-2 text-xs flex-shrink-0 whitespace-nowrap"
                 >
                   <RefreshCw className={`h-3 w-3 mr-1 ${updater.checking ? 'animate-spin' : ''}`} />
                   {updater.checking
@@ -227,6 +215,7 @@ export const AboutTab: React.FC = () => {
                 {t('acknowledgements.developer.values.platforms', 'Windows / macOS / iPadOS / Android')}
               </span>
             </SettingRow>
+            </div>
           </div>
         </div>
 
@@ -253,6 +242,27 @@ export const AboutTab: React.FC = () => {
             </NotionButton>
           </div>
         </div>
+
+        <div className="mt-8">
+          <GroupTitle title={t('acknowledgements.partners.title', '技术合作伙伴致谢')} />
+          <div className="relative p-4 rounded-lg bg-muted/30 hover:bg-muted/40 transition-colors">
+            <h4 className="text-sm font-medium text-foreground/90 mb-1.5">
+              {t('acknowledgements.partners.cards.siliconflow.title', 'SiliconFlow')}
+            </h4>
+            <p className="text-[11px] text-muted-foreground/70 leading-relaxed mb-6 max-w-md">
+              {t('acknowledgements.partners.cards.siliconflow.description', '提供多模态与推理模型服务，保障 DeepStudent 在国产算力生态中的高效稳定运行。')}
+            </p>
+            <SiliconFlowLogo
+              alt={t('acknowledgements.partners.cards.siliconflow.alt', 'Powered by SiliconFlow')}
+              className="absolute bottom-3 right-3 h-7 w-auto opacity-60"
+            />
+          </div>
+        </div>
+
+        <div className="mt-8">
+          <OpenSourceAcknowledgementsSection />
+        </div>
+
       </SettingSection>
 
       {/* 隐私政策弹窗 */}
