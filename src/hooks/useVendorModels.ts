@@ -147,6 +147,18 @@ export const useVendorModels = () => {
     void loadAll();
   }, [loadAll]);
 
+  // 监听外部模型分配变更（Chat V2 修改默认模型后广播），仅刷新 assignments 避免过时状态
+  useEffect(() => {
+    const reloadAssignments = async () => {
+      try {
+        const fresh = await TauriAPI.getModelAssignments();
+        setModelAssignments(normalizeAssignments(fresh ?? undefined));
+      } catch {}
+    };
+    window.addEventListener('model_assignments_changed', reloadAssignments);
+    return () => window.removeEventListener('model_assignments_changed', reloadAssignments);
+  }, []);
+
   const clearAssignmentsForProfiles = useCallback(
     async (profileIds: string[]) => {
       if (!profileIds.length) {

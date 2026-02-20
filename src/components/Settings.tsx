@@ -3266,6 +3266,37 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
     loadConfig();
   }, []);
 
+  // 监听模型分配变更事件（Chat V2 修改默认模型后广播）
+  useEffect(() => {
+    const reloadAssignments = async () => {
+      try {
+        const modelAssignments = await invoke<{
+          model2_config_id: string | null;
+          anki_card_model_config_id: string | null;
+          qbank_ai_grading_model_config_id: string | null;
+          reranker_model_config_id: string | null;
+          exam_sheet_ocr_model_config_id: string | null;
+          translation_model_config_id: string | null;
+          chat_title_model_config_id: string | null;
+          vl_reranker_model_config_id: string | null;
+        }>('get_model_assignments');
+        setConfig((prev: any) => ({
+          ...prev,
+          model2ConfigId: modelAssignments?.model2_config_id || '',
+          ankiCardModelConfigId: modelAssignments?.anki_card_model_config_id || '',
+          qbank_ai_grading_model_config_id: modelAssignments?.qbank_ai_grading_model_config_id || '',
+          rerankerModelConfigId: modelAssignments?.reranker_model_config_id || '',
+          chat_title_model_config_id: modelAssignments?.chat_title_model_config_id || '',
+          exam_sheet_ocr_model_config_id: modelAssignments?.exam_sheet_ocr_model_config_id || '',
+          translation_model_config_id: modelAssignments?.translation_model_config_id || '',
+          vl_reranker_model_config_id: modelAssignments?.vl_reranker_model_config_id || '',
+        }));
+      } catch {}
+    };
+    window.addEventListener('model_assignments_changed', reloadAssignments);
+    return () => window.removeEventListener('model_assignments_changed', reloadAssignments);
+  }, []);
+
   // 自动保存配置（当配置发生变化时）
   // 注意：模型分配已经在onChange中立即保存，这里主要处理其他配置项
   // 🔧 使用 ref 持有 handleSave，避免 handleSave 引用变化（因 config 对象重建）导致 auto-save effect 无限重跑

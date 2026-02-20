@@ -410,7 +410,7 @@ export const ApisTab: React.FC<ApisTabProps> = ({
                             {selectedVendorIsSiliconflow ? (
                               <SiliconFlowSection variant="inline" onCreateConfig={handleSiliconFlowConfig} onBatchCreateConfigs={handleBatchCreateConfigs} onBatchConfigsCreated={handleBatchConfigsCreated} showMessage={showGlobalNotification} />
                             ) : (
-                              <VendorApiKeySection vendor={selectedVendor} onSave={(apiKey) => handleSaveVendorApiKey(selectedVendor.id, apiKey)} onClear={() => handleClearVendorApiKey(selectedVendor.id)} showMessage={showGlobalNotification} />
+                              <VendorApiKeySection key={selectedVendor.id} vendor={selectedVendor} onSave={(apiKey) => handleSaveVendorApiKey(selectedVendor.id, apiKey)} onClear={() => handleClearVendorApiKey(selectedVendor.id)} showMessage={showGlobalNotification} />
                             )}
                           </div>
                         </div>
@@ -454,6 +454,7 @@ export const ApisTab: React.FC<ApisTabProps> = ({
                       {!selectedVendorIsSiliconflow && onAddVendorModels && supportsModelFetching(selectedVendor.providerType) && (
                         <div className="mb-6">
                           <VendorModelFetcher
+                            key={selectedVendor.id}
                             vendor={selectedVendor}
                             existingModelIds={selectedVendorModels.map(({ profile }) => profile.model)}
                             onAddModels={onAddVendorModels}

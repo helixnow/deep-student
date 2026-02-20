@@ -153,7 +153,14 @@ export const VendorModelFetcher: React.FC<VendorModelFetcherProps> = ({
   // 初始加载缓存
   useEffect(() => {
     if (hasApiKey) {
-      void loadCache();
+      void (async () => {
+        const loaded = await loadCache();
+        if (!loaded) {
+          setModels([]);
+          setLastFetchTime(null);
+          setIsFromCache(false);
+        }
+      })();
     } else {
       setModels([]);
       setLastFetchTime(null);
@@ -161,11 +168,14 @@ export const VendorModelFetcher: React.FC<VendorModelFetcherProps> = ({
     }
   }, [hasApiKey, loadCache]);
 
-  // 供应商切换时重置选择
+  // 供应商切换时重置所有状态（防御性：配合 key prop 双重保障）
   useEffect(() => {
     setSelectedIds(new Set());
     setSearchQuery('');
     setExpanded(false);
+    setModels([]);
+    setLastFetchTime(null);
+    setIsFromCache(false);
   }, [vendor.id]);
 
   const isStreamChannelError = (error: unknown) => {

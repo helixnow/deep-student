@@ -6403,13 +6403,12 @@ impl ChatV2Pipeline {
 
     /// 调用 LLM 生成摘要（简单的非流式调用）
     ///
-    /// 使用 `call_model2_raw_prompt` 方法，该方法使用 Irec 模型配置。
-    /// 如果 Irec 模型未配置，会返回错误。
+    /// 使用标题/标签生成模型（回退链：chat_title_model → model2）。
     ///
     /// 🔧 P1修复：添加 Pipeline 层超时保护
     async fn call_llm_for_summary(&self, prompt: &str) -> ChatV2Result<String> {
-        // 调用 LLM（非流式），带超时保护
-        let llm_future = self.llm_manager.call_model2_raw_prompt(prompt, None);
+        // 调用 LLM（非流式），使用标题生成专用模型，带超时保护
+        let llm_future = self.llm_manager.call_chat_title_raw_prompt(prompt);
 
         let response =
             match timeout(Duration::from_secs(LLM_NON_STREAM_TIMEOUT_SECS), llm_future).await {

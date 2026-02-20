@@ -3694,10 +3694,27 @@ impl LLMManager {
         user_prompt: &str,
         image_payloads: Option<Vec<ImagePayload>>,
     ) -> Result<StandardModel2Output> {
-        // 1. 获取 Model2 配置（原使用 Irec 配置，现已废弃）
         let config = self.get_model2_config().await?;
+        self.call_raw_prompt_with_config(config, user_prompt, image_payloads).await
+    }
 
-        // 2. 构造最简消息，仅包含用户指令
+    /// 使用标题/标签生成模型调用（回退链：chat_title_model → model2）
+    pub async fn call_chat_title_raw_prompt(
+        &self,
+        user_prompt: &str,
+    ) -> Result<StandardModel2Output> {
+        let config = self.get_chat_title_model_config().await?;
+        self.call_raw_prompt_with_config(config, user_prompt, None).await
+    }
+
+    /// 内部方法：使用显式传入的 ApiConfig 执行 raw prompt 调用
+    async fn call_raw_prompt_with_config(
+        &self,
+        config: ApiConfig,
+        user_prompt: &str,
+        image_payloads: Option<Vec<ImagePayload>>,
+    ) -> Result<StandardModel2Output> {
+        // 构造最简消息，仅包含用户指令
         let mut content_parts = vec![json!({
             "type": "text",
             "text": user_prompt

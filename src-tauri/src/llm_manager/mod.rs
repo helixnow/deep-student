@@ -2399,6 +2399,29 @@ impl LLMManager {
         Ok(config)
     }
 
+    /// 获取标题/标签生成模型配置（公开方法）
+    ///
+    /// 回退链：chat_title_model_config_id → model2_config_id
+    pub async fn get_chat_title_model_config(&self) -> Result<ApiConfig> {
+        let assignments = self.get_model_assignments().await?;
+        let model_id = assignments
+            .chat_title_model_config_id
+            .or(assignments.model2_config_id)
+            .ok_or_else(|| AppError::configuration("没有配置可用的标题/标签生成模型"))?;
+
+        let configs = self.get_api_configs().await?;
+        let config = configs
+            .into_iter()
+            .find(|c| c.id == model_id && !c.is_embedding && !c.is_reranker)
+            .ok_or_else(|| {
+                AppError::configuration(
+                    "找不到有效的标题/标签生成模型配置（禁止使用嵌入/重排序模型）",
+                )
+            })?;
+
+        Ok(config)
+    }
+
     /// 获取 OCR 模型配置（公开方法，供多模态索引使用）
     ///
     /// 按优先级返回第一个可用的已启用 OCR 引擎对应的模型配置。
