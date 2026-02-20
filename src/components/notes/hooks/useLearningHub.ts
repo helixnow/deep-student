@@ -21,6 +21,7 @@ import { type VfsError, reportError } from '@/shared/result';
 import { updatePathCacheV2 } from '@/chat-v2/context/vfsRefApi';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import i18next from 'i18next';
+import { copyTextToClipboard } from '@/utils/clipboardUtils';
 
 // ============================================================================
 // 类型定义
@@ -412,7 +413,7 @@ export function useLearningHub(options?: {
       },
       shareResource: async (path) => {
         try {
-          await navigator.clipboard.writeText(path);
+          await copyTextToClipboard(path);
           showGlobalNotification('success', i18next.t('notes:learningHub.share_success_message'), i18next.t('notes:learningHub.share_success_title'));
         } catch (error) {
           console.error('[LearningHub] shareResource failed:', getErrorMessage(error));

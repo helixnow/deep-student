@@ -36,6 +36,7 @@ import type { DebugPanelPluginProps } from '../DebugPanelHost';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import { sessionManager } from '../../chat-v2/core/session/sessionManager';
 import { adapterManager } from '../../chat-v2/adapters/AdapterManager';
+import { copyTextToClipboard } from '@/utils/clipboardUtils';
 
 // =============================================================================
 // 类型定义
@@ -348,7 +349,7 @@ export function SubagentMessageFlowDebugPlugin({ isActive }: DebugPanelPluginPro
     const text = logs.map(l => 
       `[${l.timestamp}][${l.phase}] ${l.action}: ${JSON.stringify(l.data)}`
     ).join('\n');
-    navigator.clipboard.writeText(text);
+    copyTextToClipboard(text);
   }, [logs]);
   
   // 获取子代理会话列表

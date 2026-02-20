@@ -7,6 +7,7 @@ import { useSystemStatusStore } from '@/stores/systemStatusStore';
 import { cn } from '@/lib/utils';
 import { setPendingSettingsTab } from '@/utils/pendingSettingsTab';
 import { getMigrationDiagnosticReport } from '@/api/dataGovernance';
+import { copyTextToClipboard } from '@/utils/clipboardUtils';
 
 /** warning 级别自动消失时长（ms） */
 const AUTO_DISMISS_MS = 8000;
@@ -198,7 +199,7 @@ const CopyDiagnosticButton: React.FC = () => {
   const handleCopy = useCallback(async () => {
     try {
       const report = await getMigrationDiagnosticReport();
-      await navigator.clipboard.writeText(report);
+      await copyTextToClipboard(report);
       setCopied(true);
       setCopyFailed(false);
       setTimeout(() => setCopied(false), 2000);

@@ -1,3 +1,5 @@
+import { copyTextToClipboard } from '@/utils/clipboardUtils';
+
 /**
  * AttachmentInjectionDebugPlugin - 附件注入调试插件
  *
@@ -198,7 +200,7 @@ const AttachmentInjectionDebugPlugin: React.FC<DebugPanelPluginProps> = ({
     const text = logs
       .map((log) => `[${log.timestamp}] [${log.stage}] ${log.action}\n${formatDataPreview(log.data)}`)
       .join('\n\n---\n\n');
-    navigator.clipboard.writeText(text);
+    copyTextToClipboard(text);
   }, [logs]);
 
   // 切换展开

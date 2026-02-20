@@ -9,6 +9,7 @@
  */
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import type { DebugPanelPluginProps } from '../DebugPanelHost';
+import { copyTextToClipboard } from '@/utils/clipboardUtils';
 
 interface LogEntry {
   id: string;
@@ -327,7 +328,7 @@ const EssayGradingTooltipDebugPlugin: React.FC<DebugPanelPluginProps> = ({
       return `[${time}] [${log.level.toUpperCase()}] [${log.category}] ${log.message}${data}`;
     }).join('\n\n');
     
-    navigator.clipboard.writeText(text);
+    copyTextToClipboard(text);
     addLog({
       level: 'info',
       category: 'event',
@@ -337,7 +338,7 @@ const EssayGradingTooltipDebugPlugin: React.FC<DebugPanelPluginProps> = ({
   
   const handleCopySnapshot = useCallback((snapshot: TooltipSnapshot) => {
     const text = JSON.stringify(snapshot, null, 2);
-    navigator.clipboard.writeText(text);
+    copyTextToClipboard(text);
     addLog({
       level: 'info',
       category: 'event',
@@ -357,7 +358,7 @@ const EssayGradingTooltipDebugPlugin: React.FC<DebugPanelPluginProps> = ({
         snapshotCount: snapshots.length,
       },
     };
-    navigator.clipboard.writeText(JSON.stringify(report, null, 2));
+    copyTextToClipboard(JSON.stringify(report, null, 2));
     addLog({
       level: 'info',
       category: 'event',

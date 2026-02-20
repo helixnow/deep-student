@@ -11,6 +11,7 @@ import { IframePreview, renderCardPreview } from './SharedPreview';
 import { templateService } from '../services/templateService';
 import { UnifiedCodeEditor } from './shared/UnifiedCodeEditor';
 import './MinimalTemplateEditor.css';
+import { copyTextToClipboard } from '@/utils/clipboardUtils';
 
 interface EnhancedTemplateEditorProps {
   template: CustomAnkiTemplate | null;
@@ -267,7 +268,7 @@ const EnhancedTemplateEditor: React.FC<EnhancedTemplateEditorProps> = ({
     
     const jsonStr = JSON.stringify(template, null, 2);
     setPreviewDataJson(jsonStr);
-    navigator.clipboard.writeText(jsonStr);
+    copyTextToClipboard(jsonStr);
   };
 
   return (

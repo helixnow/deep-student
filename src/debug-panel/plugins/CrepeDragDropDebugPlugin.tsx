@@ -18,6 +18,7 @@ import {
   MousePointer, Target, ArrowDown
 } from 'lucide-react';
 import { showGlobalNotification } from '../../components/UnifiedNotification';
+import { copyTextToClipboard } from '@/utils/clipboardUtils';
 
 // ============ 类型定义 ============
 
@@ -797,7 +798,7 @@ const CrepeDragDropDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, is
       ...log,
     })), null, 2);
     
-    navigator.clipboard.writeText(text).then(() => {
+    copyTextToClipboard(text).then(() => {
       showGlobalNotification('success', `已复制 ${filteredLogs.length} 条日志`);
     }).catch(console.error);
   }, [filteredLogs]);
@@ -808,7 +809,7 @@ const CrepeDragDropDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, is
       ...log,
     }, null, 2);
     
-    navigator.clipboard.writeText(text).then(() => {
+    copyTextToClipboard(text).then(() => {
       showGlobalNotification('success', '日志已复制');
     }).catch(console.error);
   }, []);

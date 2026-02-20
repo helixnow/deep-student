@@ -23,6 +23,7 @@ import {
   Check,
 } from 'lucide-react';
 import { fileManager } from '@/utils/fileManager';
+import { copyTextToClipboard } from '@/utils/clipboardUtils';
 
 // ============================================================================
 // 类型定义
@@ -144,7 +145,7 @@ export const InlineDocumentViewer: React.FC<InlineDocumentViewerProps> = ({
   const handleCopy = useCallback(async () => {
     if (!textContent) return;
     try {
-      await navigator.clipboard.writeText(textContent);
+      await copyTextToClipboard(textContent);
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch (e: unknown) {

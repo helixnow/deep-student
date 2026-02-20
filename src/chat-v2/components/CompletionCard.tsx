@@ -13,6 +13,7 @@ import { NotionButton } from '@/components/ui/NotionButton';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/shad/Card';
 import { cn } from '@/lib/utils';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
+import { copyTextToClipboard } from '@/utils/clipboardUtils';
 
 // ============================================================================
 // 类型定义
@@ -42,7 +43,7 @@ export const CompletionCard: React.FC<CompletionCardProps> = ({ data, className 
     if (!data.command) return;
 
     try {
-      await navigator.clipboard.writeText(data.command);
+      await copyTextToClipboard(data.command);
       showGlobalNotification('success', t('completion.commandCopied'));
     } catch (error: unknown) {
       showGlobalNotification('error', t('completion.copyFailed'));

@@ -104,6 +104,15 @@ export const PracticeLauncher: React.FC<PracticeLauncherProps> = ({
       isAdvanced: false,
     },
     {
+      key: 'review_only',
+      icon: RotateCcw,
+      label: t('practice:modes.reviewOnly.label'),
+      desc: t('practice:modes.reviewOnly.desc'),
+      colorText: 'text-amber-600 dark:text-amber-400',
+      colorBg: 'bg-amber-500/10',
+      isAdvanced: false,
+    },
+    {
       key: 'by_tag',
       icon: Tag,
       label: t('practice:modes.byTag.label'),

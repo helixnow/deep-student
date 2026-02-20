@@ -9,6 +9,7 @@ import { ArrowLeft, Copy, Check } from 'lucide-react';
 import { CrepeEditor, type CrepeEditorApi } from '../crepe';
 import { useMobileHeader } from '../layout';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
+import { copyTextToClipboard } from '@/utils/clipboardUtils';
 
 export const CrepeDemoPage: React.FC<{ onBack?: () => void }> = ({ onBack }) => {
   const { isSmallScreen } = useBreakpoint();
@@ -81,7 +82,7 @@ greeting('Crepe');
 
   const handleCopyMarkdown = async () => {
     const md = editorApiRef.current?.getMarkdown() || markdown;
-    await navigator.clipboard.writeText(md);
+    await copyTextToClipboard(md);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };

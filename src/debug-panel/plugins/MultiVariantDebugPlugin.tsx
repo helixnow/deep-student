@@ -15,6 +15,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/sh
 import { Separator } from '../../components/ui/shad/Separator';
 import { Copy, Trash2, AlertCircle, CheckCircle2, AlertTriangle, Layers, ArrowRight, Bug } from 'lucide-react';
 import type { DebugPanelPluginProps } from '../DebugPanelHost';
+import { copyTextToClipboard } from '@/utils/clipboardUtils';
 import {
   logChatV2,
   clearChatV2Logs,
@@ -190,7 +191,7 @@ const MultiVariantDebugPlugin: React.FC<DebugPanelPluginProps> = ({
       },
     };
 
-    navigator.clipboard.writeText(JSON.stringify(report, null, 2));
+    copyTextToClipboard(JSON.stringify(report, null, 2));
     console.log('📋 Chat V2 调试日志已复制到剪贴板');
   }, [logs]);
 

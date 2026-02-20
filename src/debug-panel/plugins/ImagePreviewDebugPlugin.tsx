@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { DebugPanelPluginProps } from '../DebugPanelHost';
 import { Copy, Trash2, Play, Pause, Camera, AlertCircle, CheckCircle, XCircle } from 'lucide-react';
+import { copyTextToClipboard } from '@/utils/clipboardUtils';
 
 /**
  * 图片预览调试插件
@@ -285,7 +286,7 @@ const ImagePreviewDebugPlugin: React.FC<DebugPanelPluginProps> = ({
       return `[${log.timestamp}] [${STAGES[log.stage].label}] [${log.level.toUpperCase()}] ${log.message}${dataStr}${snapshotStr}`;
     }).join('\n\n');
     
-    navigator.clipboard.writeText(text).then(() => {
+    copyTextToClipboard(text).then(() => {
       console.log('[ImagePreviewDebug] 日志已复制到剪贴板');
     });
   };
@@ -303,7 +304,7 @@ const ImagePreviewDebugPlugin: React.FC<DebugPanelPluginProps> = ({
       diagnosis: generateDiagnosis(),
     };
     
-    navigator.clipboard.writeText(JSON.stringify(report, null, 2)).then(() => {
+    copyTextToClipboard(JSON.stringify(report, null, 2)).then(() => {
       console.log('[ImagePreviewDebug] 诊断报告已复制');
     });
   };

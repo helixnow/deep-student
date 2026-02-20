@@ -1,3 +1,5 @@
+import { copyTextToClipboard } from '@/utils/clipboardUtils';
+
 /**
  * Chat V2 - SystemPromptEditor 系统 Prompt 编辑器
  *
@@ -377,7 +379,7 @@ export const SystemPromptEditor: React.FC<SystemPromptEditorProps> = ({
   // 复制内容
   const handleCopy = useCallback(async () => {
     try {
-      await navigator.clipboard.writeText(value);
+      await copyTextToClipboard(value);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch (error: unknown) {

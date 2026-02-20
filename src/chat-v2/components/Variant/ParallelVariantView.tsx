@@ -43,6 +43,7 @@ import type { StoreApi } from 'zustand';
 import type { ChatStore } from '../../core/types/store';
 import type { Variant } from '../../core/types/message';
 import type { Block } from '../../core/types/block';
+import { copyTextToClipboard } from '@/utils/clipboardUtils';
 
 // ============================================================================
 // Props 定义
@@ -200,7 +201,7 @@ const VariantCard: React.FC<VariantCardProps> = ({
     const contentBlocks = blocks.filter((b) => b.type === 'content');
     const text = contentBlocks.map((b) => b.content || '').join('\n');
     try {
-      await navigator.clipboard.writeText(text);
+      await copyTextToClipboard(text);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
       showGlobalNotification('success', t('messageItem.actions.copySuccess', '已复制'));

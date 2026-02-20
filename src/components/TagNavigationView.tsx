@@ -159,7 +159,7 @@ const TagGroupCard: React.FC<{
         {/* 标签图标和名称 */}
         <div className="flex items-center gap-1.5 flex-1 min-w-0">
           <Hash className="w-3.5 h-3.5 text-violet-500 flex-shrink-0" />
-          <span className="text-sm font-medium truncate">{group.tag}</span>
+          <span className="text-sm font-medium truncate">{group.tag === '__untagged__' ? t('tagNav.untaggedLabel', '未分类') : group.tag}</span>
           <span className="text-xs text-muted-foreground ml-1">{group.totalCount}</span>
         </div>
 
@@ -282,15 +282,20 @@ export const TagNavigationView: React.FC<TagNavigationViewProps> = ({
   // 聚合标签
   const tagGroups = useMemo(() => {
     const tagMap = new Map<string, Question[]>();
+    const untaggedQuestions: Question[] = [];
     
     questions.forEach(q => {
       const tags = q.tags || [];
-      tags.forEach(tag => {
-        if (!tagMap.has(tag)) {
-          tagMap.set(tag, []);
-        }
-        tagMap.get(tag)!.push(q);
-      });
+      if (tags.length === 0) {
+        untaggedQuestions.push(q);
+      } else {
+        tags.forEach(tag => {
+          if (!tagMap.has(tag)) {
+            tagMap.set(tag, []);
+          }
+          tagMap.get(tag)!.push(q);
+        });
+      }
     });
 
     const groups: TagGroup[] = [];
@@ -312,6 +317,24 @@ export const TagNavigationView: React.FC<TagNavigationViewProps> = ({
 
     // 按题目数量降序排列
     groups.sort((a, b) => b.totalCount - a.totalCount);
+    
+    // 如果有未分类题目，添加到末尾
+    if (untaggedQuestions.length > 0) {
+      const masteredCount = untaggedQuestions.filter(q => q.status === 'mastered').length;
+      const reviewCount = untaggedQuestions.filter(q => q.status === 'review').length;
+      const newCount = untaggedQuestions.filter(q => q.status === 'new').length;
+      
+      groups.push({
+        tag: '__untagged__',
+        questions: untaggedQuestions,
+        totalCount: untaggedQuestions.length,
+        masteredCount,
+        reviewCount,
+        newCount,
+        progressPercent: untaggedQuestions.length > 0 ? (masteredCount / untaggedQuestions.length) * 100 : 0,
+      });
+    }
+    
     return groups;
   }, [questions]);
 

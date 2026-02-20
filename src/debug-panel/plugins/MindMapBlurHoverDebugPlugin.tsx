@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { NotionButton } from '@/components/ui/NotionButton';
 import type { DebugPanelPluginProps } from '../DebugPanelHost';
 import { debugLog } from '../debugMasterSwitch';
+import { copyTextToClipboard } from '@/utils/clipboardUtils';
 
 interface BlurSample {
   id: string;
@@ -143,7 +144,7 @@ export default function MindMapBlurHoverDebugPlugin({ isActive }: DebugPanelPlug
       sampleCount: samples.length,
       samples,
     };
-    await navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
+    await copyTextToClipboard(JSON.stringify(payload, null, 2));
   }, [samples]);
 
   const summary = useMemo(() => {

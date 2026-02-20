@@ -24,6 +24,7 @@ import { CodeMirrorScrollOverlay } from './skills-management/CodeMirrorScrollOve
 import { CustomScrollArea } from './custom-scroll-area';
 import './MinimalTemplateEditor.css';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
+import { copyTextToClipboard } from '@/utils/clipboardUtils';
 
 // 编辑器 Tab 类型导出
 export type EditorTabType = 'basic' | 'templates' | 'styles' | 'data' | 'rules' | 'advanced';
@@ -384,7 +385,7 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
     
     const jsonStr = JSON.stringify(template, null, 2);
     setPreviewDataJson(jsonStr);
-    navigator.clipboard.writeText(jsonStr);
+    copyTextToClipboard(jsonStr);
   };
 
   return (
@@ -627,7 +628,7 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
                                 key={field}
                                 className="px-1.5 py-0.5 bg-muted/50 rounded text-[10px] font-mono cursor-pointer hover:bg-muted transition-colors"
                                 onClick={() => {
-                                  navigator.clipboard.writeText(`{{${field}}}`);
+                                  copyTextToClipboard(`{{${field}}}`);
                                 }}
                                 title={t('click_to_copy', '点击复制')}
                               >
@@ -741,7 +742,7 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
                                   key={field}
                                   className="px-1.5 py-0.5 bg-muted/50 rounded text-[10px] font-mono cursor-pointer hover:bg-muted transition-colors"
                                   onClick={() => {
-                                    navigator.clipboard.writeText(`{{${field}}}`);
+                                    copyTextToClipboard(`{{${field}}}`);
                                   }}
                                   title={t('click_to_copy', '点击复制')}
                                 >

@@ -15,7 +15,7 @@ export type QuestionType =
   | 'proof' 
   | 'other';
 
-export type PracticeMode = 'sequential' | 'random' | 'review_first' | 'by_tag' | 'timed' | 'mock_exam' | 'daily' | 'paper';
+export type PracticeMode = 'sequential' | 'random' | 'review_first' | 'review_only' | 'by_tag' | 'timed' | 'mock_exam' | 'daily' | 'paper';
 
 export interface QuestionOption {
   key: string;
@@ -269,15 +269,27 @@ export function getNextQuestionIndex(
       if (progressIdx >= 0) return progressIdx;
       return Math.min(currentIndex + 1, questions.length - 1);
     }
+    case 'review_only': {
+      const reviewIdx = questions.findIndex((q, i) => i > currentIndex && q.status === 'review');
+      if (reviewIdx >= 0) return reviewIdx;
+      const fromStartIdx = questions.findIndex(q => q.status === 'review');
+      return fromStartIdx >= 0 ? fromStartIdx : Math.min(currentIndex + 1, questions.length - 1);
+    }
     case 'by_tag': {
       if (!tag) return Math.min(currentIndex + 1, questions.length - 1);
-      const tagIdx = questions.findIndex((q, i) =>
-        i > currentIndex && q.tags?.includes(tag) && q.status !== 'mastered'
-      );
+      
+      const isUntaggedMode = tag === '__untagged__';
+      
+      const tagIdx = questions.findIndex((q, i) => {
+        if (i <= currentIndex || q.status === 'mastered') return false;
+        return isUntaggedMode ? (!q.tags || q.tags.length === 0) : q.tags?.includes(tag);
+      });
       if (tagIdx >= 0) return tagIdx;
-      const fromStartIdx = questions.findIndex(q =>
-        q.tags?.includes(tag) && q.status !== 'mastered'
-      );
+      
+      const fromStartIdx = questions.findIndex(q => {
+        if (q.status === 'mastered') return false;
+        return isUntaggedMode ? (!q.tags || q.tags.length === 0) : q.tags?.includes(tag);
+      });
       return fromStartIdx >= 0 ? fromStartIdx : Math.min(currentIndex + 1, questions.length - 1);
     }
     default:

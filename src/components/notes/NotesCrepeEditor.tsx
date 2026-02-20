@@ -23,6 +23,7 @@ import { NotionButton } from '@/components/ui/NotionButton';
 // import { Separator } from '../ui/shad/Separator';
 import { NotesEditorHeader } from './components/NotesEditorHeader';
 import { NotesEditorToolbar } from './components/NotesEditorToolbar';
+import { FindReplacePanel } from './components/FindReplacePanel';
 import { emitOutlineDebugLog, emitOutlineDebugSnapshot } from '../../debug-panel/events/NotesOutlineDebugChannel';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { isMacOS } from '../../utils/platform';
@@ -109,7 +110,8 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
   const contentChangedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null); // 内容变化事件防抖
   const saveRetryCountRef = useRef(0); // 🔒 审计修复: 自动保存重试计数（指数退避）
 
-  // TODO: Find & Replace state — 待 Crepe 支持后重新实现
+  // Find & Replace 状态
+  const [isFindReplaceOpen, setIsFindReplaceOpen] = useState(false);
 
   const dropZoneRef = useRef<HTMLDivElement>(null);
   const scrollViewportRef = useRef<HTMLDivElement | null>(null);
@@ -484,7 +486,6 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
   }, []);
 
   // 键盘快捷键（注册在 document 上，处理后 stopPropagation 防止命令系统重复触发）
-  // NOTE: Ctrl+F / ⌘F 不再拦截，让浏览器原生查找工作
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 's') {
@@ -495,12 +496,25 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
           .catch(() => showGlobalNotification('error', t('notes:actions.save_failed')));
         return;
       }
+      
+      // 拦截 Ctrl+F / Cmd+F 打开查找替换面板
+      if ((e.metaKey || e.ctrlKey) && e.key === 'f') {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsFindReplaceOpen(true);
+        return;
+      }
     };
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [handleManualSave, t]);
 
-  // TODO: Find/Replace handlers — 待 Crepe 支持后重新实现
+  // Find/Replace handlers
+  const handleFindReplaceClose = useCallback(() => {
+    setIsFindReplaceOpen(false);
+    // 焦点回到编辑器
+    editorApi?.focus();
+  }, [editorApi]);
 
   // ========== 内容加载状态（支持 DSTU 模式） ==========
   const hasSelection = isDstuMode ? true : !!active;
@@ -793,6 +807,13 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
             viewportClassName="overflow-x-visible"
             viewportRef={scrollViewportRef}
           >
+            {isFindReplaceOpen && (
+              <FindReplacePanel 
+                editorApi={editorApi}
+                onClose={handleFindReplaceClose}
+              />
+            )}
+            
             {/* 编辑器内容区域 */}
             <div
               className="notes-editor-content max-w-[800px] mx-auto min-h-full px-4 sm:px-8 sm:pl-24 relative flex flex-col"

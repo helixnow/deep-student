@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import type { DebugPanelPluginProps } from '../DebugPanelHost';
 import { Copy, Trash2, Play, Pause, Camera, AlertCircle, CheckCircle, XCircle, RefreshCw } from 'lucide-react';
+import { copyTextToClipboard } from '@/utils/clipboardUtils';
 
 /**
  * Chat V2 图片预览调试插件
@@ -167,7 +168,7 @@ const ChatV2ImagePreviewDebugPlugin: React.FC<DebugPanelPluginProps> = ({
       return `[${log.timestamp}] [${log.stage}] [${log.level.toUpperCase()}] ${log.message}${dataStr}`;
     }).join('\n\n');
     
-    navigator.clipboard.writeText(text);
+    copyTextToClipboard(text);
   };
 
   // 手动检查容器状态

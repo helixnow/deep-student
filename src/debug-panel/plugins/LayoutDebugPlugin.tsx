@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { Maximize2, Copy, Check } from 'lucide-react';
+import { copyTextToClipboard } from '@/utils/clipboardUtils';
 
 interface CSSRuleInfo {
   selector: string;
@@ -292,7 +293,7 @@ export default function LayoutDebugPlugin() {
     
     text += `---\n生成时间: ${new Date(analysis.timestamp).toLocaleString()}\n`;
     
-    navigator.clipboard.writeText(text).then(() => {
+    copyTextToClipboard(text).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     });

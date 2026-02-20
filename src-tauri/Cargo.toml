@@ -132,6 +132,7 @@ aws-config = { version = "1.5", optional = true, default-features = false, featu
 eventsource-stream = "0.2"
 reqwest-eventsource = "0.5"
 zstd = "0.13.3"
+tauri-plugin-clipboard-manager = "~2.2"
 
 # 桌面端专用插件（更新器 + 进程管理）
 # 官方推荐白名单写法：仅在 macOS/Windows/Linux 编译

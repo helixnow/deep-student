@@ -8,6 +8,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Copy, Trash2, Filter, Download, CheckCircle2, XCircle, Clock } from 'lucide-react';
 import { Button } from '@/components/ui/shad/Button';
 import { cn } from '@/lib/utils';
+import { copyTextToClipboard } from '@/utils/clipboardUtils';
 
 // ============================================================================
 // 类型定义
@@ -179,7 +180,7 @@ export const DstuDebugPlugin: React.FC<DstuDebugPluginProps> = ({
   // 复制单条日志
   const copyLog = useCallback((log: DstuLogEntry) => {
     const text = JSON.stringify(log, null, 2);
-    navigator.clipboard.writeText(text);
+    copyTextToClipboard(text);
     setCopiedId(log.id);
     setTimeout(() => setCopiedId(null), 1500);
   }, []);
@@ -187,7 +188,7 @@ export const DstuDebugPlugin: React.FC<DstuDebugPluginProps> = ({
   // 复制所有日志
   const copyAllLogs = useCallback(() => {
     const text = JSON.stringify(filteredLogs, null, 2);
-    navigator.clipboard.writeText(text);
+    copyTextToClipboard(text);
   }, [filteredLogs]);
 
   // 导出日志

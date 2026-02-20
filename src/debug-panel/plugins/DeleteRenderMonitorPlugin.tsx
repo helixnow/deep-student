@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { DebugPanelPluginProps } from '../DebugPanelHost';
 import { CHAT_DELETE_RENDER_EVENT, type ChatDeleteRenderEventDetail } from '../events';
+import { copyTextToClipboard } from '@/utils/clipboardUtils';
 
 const MAX_EVENTS = 80;
 
@@ -48,7 +49,7 @@ const DeleteRenderMonitorPlugin: React.FC<DebugPanelPluginProps> = ({ isActive, 
   const copyLogs = useCallback(() => {
     try {
       const payload = JSON.stringify(bufferRef.current, null, 2);
-      void navigator.clipboard.writeText(payload);
+      void copyTextToClipboard(payload);
     } catch (err) {
       console.error('[DeleteRenderMonitor] 复制失败', err);
     }

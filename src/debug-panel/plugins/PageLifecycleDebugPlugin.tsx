@@ -1,3 +1,5 @@
+import { copyTextToClipboard } from '@/utils/clipboardUtils';
+
 /**
  * PageLifecycleDebugPlugin - 页面生命周期监控插件
  * 
@@ -200,7 +202,7 @@ const PageLifecycleDebugPlugin: React.FC<DebugPanelPluginProps> = ({ isActive })
   const handleCopyReport = useCallback(async () => {
     const report = pageLifecycleTracker.generateReport();
     try {
-      await navigator.clipboard.writeText(report);
+      await copyTextToClipboard(report);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch (e) {
@@ -217,7 +219,7 @@ const PageLifecycleDebugPlugin: React.FC<DebugPanelPluginProps> = ({ isActive })
     };
     const json = JSON.stringify(data, null, 2);
     try {
-      await navigator.clipboard.writeText(json);
+      await copyTextToClipboard(json);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch (e) {

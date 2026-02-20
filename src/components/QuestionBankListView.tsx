@@ -30,6 +30,7 @@ import {
   Trash2,
   RefreshCw,
   CheckSquare,
+  ListChecks,
   Edit3,
   AlertTriangle,
   Image as ImageIcon,
@@ -321,6 +322,7 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
   const [viewType, setViewType] = useState<'grid' | 'list'>('grid');
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<QuestionStatus | 'all'>('all');
+  const [difficultyFilter, setDifficultyFilter] = useState<Difficulty | 'all'>('all');
   const [showFavoriteOnly, setShowFavoriteOnly] = useState(false);
 
   // 编辑模式状态（批量操作）
@@ -366,31 +368,42 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
       if (statusFilter !== 'all' && q.status !== statusFilter) {
         return false;
       }
+      // 难度过滤
+      if (difficultyFilter !== 'all' && q.difficulty !== difficultyFilter) {
+        return false;
+      }
       // 收藏过滤
       if (showFavoriteOnly && !q.isFavorite) {
         return false;
       }
       return true;
     });
-  }, [questions, searchQuery, statusFilter, showFavoriteOnly, useBackendFilter]);
+  }, [questions, searchQuery, statusFilter, difficultyFilter, showFavoriteOnly, useBackendFilter]);
 
   // 筛选变更时通知父组件（后端筛选模式）
   const handleFilterChange = useCallback((
     newSearch: string,
     newStatus: QuestionStatus | 'all',
+    newDifficulty: Difficulty | 'all',
     newFavorite?: boolean,
   ) => {
+    // Toggle-to-clear logic
+    const finalStatus = (newStatus !== 'all' && newStatus === statusFilter) ? 'all' : newStatus;
+    const finalDifficulty = (newDifficulty !== 'all' && newDifficulty === difficultyFilter) ? 'all' : newDifficulty;
+
     setSearchQuery(newSearch);
-    setStatusFilter(newStatus);
+    setStatusFilter(finalStatus);
+    setDifficultyFilter(finalDifficulty);
     if (newFavorite !== undefined) setShowFavoriteOnly(newFavorite);
     if (onFilterChange) {
       onFilterChange({
         search: newSearch || undefined,
-        status: newStatus,
+        status: finalStatus,
+        difficulty: finalDifficulty === 'all' ? undefined : finalDifficulty,
         isFavorite: newFavorite || undefined,
       });
     }
-  }, [onFilterChange]);
+  }, [statusFilter, difficultyFilter, onFilterChange]);
   
   const handleQuestionClick = useCallback((index: number) => {
     // 找到原始索引（使用预计算 Map，O(1) 查找）
@@ -512,7 +525,7 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/60" />
             <Input
               value={searchQuery}
-              onChange={(e) => handleFilterChange(e.target.value, statusFilter)}
+              onChange={(e) => handleFilterChange(e.target.value, statusFilter, difficultyFilter)}
               placeholder={t('practice:questionBank.searchPlaceholder')}
               className="pl-9 h-8 sm:h-9 bg-muted/30 border-transparent focus:border-border focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors text-sm"
             />
@@ -538,7 +551,7 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
           </div>
           
           {/* 收藏和书签按钮 */}
-          <NotionButton variant="ghost" size="icon" iconOnly onClick={() => handleFilterChange(searchQuery, statusFilter, !showFavoriteOnly)} className={cn('!h-7 !w-7 !p-1.5 flex-shrink-0', showFavoriteOnly ? 'bg-amber-500/20 text-amber-600 dark:text-amber-400' : 'text-muted-foreground hover:text-foreground hover:bg-muted/50')} aria-label="favorites">
+          <NotionButton variant="ghost" size="icon" iconOnly onClick={() => handleFilterChange(searchQuery, statusFilter, difficultyFilter, !showFavoriteOnly)} className={cn('!h-7 !w-7 !p-1.5 flex-shrink-0', showFavoriteOnly ? 'bg-amber-500/20 text-amber-600 dark:text-amber-400' : 'text-muted-foreground hover:text-foreground hover:bg-muted/50')} aria-label="favorites">
             <Star className={cn('w-4 h-4', showFavoriteOnly && 'fill-current')} />
           </NotionButton>
 
@@ -551,8 +564,9 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
 
           {/* 编辑模式按钮 */}
           {hasBatchOperations && !isEditMode && (
-            <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setIsEditMode(true)} className="!h-7 !w-7 !p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted/50 flex-shrink-0" aria-label="edit mode">
-              <Pencil className="w-4 h-4" />
+            <NotionButton variant="ghost" size="sm" onClick={() => setIsEditMode(true)} className="!h-7 !px-2 !py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/50 flex-shrink-0" aria-label="batch manage">
+              <ListChecks className="w-3.5 h-3.5 mr-1" />
+              <span className="hidden sm:inline">{t('common:manage')}</span>
             </NotionButton>
           )}
         </div>
@@ -582,37 +596,70 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
                   <span className="hidden sm:inline">{t('common:delete')}</span>
                 </NotionButton>
               )}
-              <NotionButton variant="ghost" size="sm" onClick={exitEditMode} className="!h-auto !px-2 !py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/50">
-                {t('practice:questionBank.done')}
+              <div className="w-px h-3 bg-border/60 mx-1" />
+              <NotionButton variant="ghost" size="sm" onClick={exitEditMode} className="!h-auto !px-2 !py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/50 gap-1">
+                <X className="w-3 h-3" />
+                <span className="hidden sm:inline">{t('common:cancel')}</span>
               </NotionButton>
             </div>
           </div>
         )}
         
         {/* 筛选 Tab */}
-        <div className="flex items-center gap-1.5 mt-3">
-          <NotionButton variant="ghost" size="sm" onClick={() => handleFilterChange(searchQuery, 'all', false)} className={cn('!h-auto !px-2 !py-1 !rounded-md text-xs', statusFilter === 'all' && !showFavoriteOnly ? 'bg-foreground text-background font-medium' : 'text-muted-foreground hover:text-foreground hover:bg-muted/50')}>
+        <div className="flex flex-wrap items-center gap-1.5 mt-3">
+          <NotionButton variant="ghost" size="sm" onClick={() => handleFilterChange(searchQuery, 'all', difficultyFilter, showFavoriteOnly)} className={cn('!h-auto !px-2 !py-1 !rounded-md text-xs', statusFilter === 'all' ? 'bg-foreground text-background font-medium' : 'text-muted-foreground hover:text-foreground hover:bg-muted/50')}>
             {t('practice:questionBank.all')} {questions.length}
           </NotionButton>
           {stats && stats.newCount > 0 && (
-            <NotionButton variant="ghost" size="sm" onClick={() => handleFilterChange(searchQuery, 'new')} className={cn('!h-auto !px-2 !py-1 !rounded-md text-xs', statusFilter === 'new' ? 'bg-foreground text-background font-medium' : 'text-muted-foreground hover:text-foreground hover:bg-muted/50')}>
+            <NotionButton variant="ghost" size="sm" onClick={() => handleFilterChange(searchQuery, 'new', difficultyFilter, showFavoriteOnly)} className={cn('!h-auto !px-2 !py-1 !rounded-md text-xs', statusFilter === 'new' ? 'bg-foreground text-background font-medium' : 'text-muted-foreground hover:text-foreground hover:bg-muted/50')}>
               {t('practice:questionBank.newQuestions')} {stats.newCount}
             </NotionButton>
           )}
           {stats && stats.review > 0 && (
-            <NotionButton variant="ghost" size="sm" onClick={() => handleFilterChange(searchQuery, 'review')} className={cn('!h-auto !px-2 !py-1 !rounded-md text-xs', statusFilter === 'review' ? 'bg-amber-500 text-white font-medium' : 'text-amber-600 dark:text-amber-400 hover:bg-amber-500/10')}>
+            <NotionButton variant="ghost" size="sm" onClick={() => handleFilterChange(searchQuery, 'review', difficultyFilter, showFavoriteOnly)} className={cn('!h-auto !px-2 !py-1 !rounded-md text-xs', statusFilter === 'review' ? 'bg-amber-500 text-white font-medium' : 'text-amber-600 dark:text-amber-400 hover:bg-amber-500/10')}>
               {t('practice:questionBank.needsReview')} {stats.review}
             </NotionButton>
           )}
           {stats && stats.mastered > 0 && (
-            <NotionButton variant="ghost" size="sm" onClick={() => handleFilterChange(searchQuery, 'mastered')} className={cn('!h-auto !px-2 !py-1 !rounded-md text-xs', statusFilter === 'mastered' ? 'bg-emerald-500 text-white font-medium' : 'text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10')}>
+            <NotionButton variant="ghost" size="sm" onClick={() => handleFilterChange(searchQuery, 'mastered', difficultyFilter, showFavoriteOnly)} className={cn('!h-auto !px-2 !py-1 !rounded-md text-xs', statusFilter === 'mastered' ? 'bg-emerald-500 text-white font-medium' : 'text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10')}>
               {t('practice:questionBank.masteredFilter')} {stats.mastered}
             </NotionButton>
           )}
+
+          <div className="w-px h-3 bg-border/60 mx-1" />
+
+          <NotionButton variant="ghost" size="sm" onClick={() => handleFilterChange(searchQuery, statusFilter, 'easy', showFavoriteOnly)} className={cn('!h-auto !px-2 !py-1 !rounded-md text-xs', difficultyFilter === 'easy' ? 'bg-emerald-500 text-white font-medium' : 'text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10')}>
+            {t('practice:questionBank.difficultyShort.easy')}
+          </NotionButton>
+          <NotionButton variant="ghost" size="sm" onClick={() => handleFilterChange(searchQuery, statusFilter, 'medium', showFavoriteOnly)} className={cn('!h-auto !px-2 !py-1 !rounded-md text-xs', difficultyFilter === 'medium' ? 'bg-amber-500 text-white font-medium' : 'text-amber-600 dark:text-amber-400 hover:bg-amber-500/10')}>
+            {t('practice:questionBank.difficultyShort.medium')}
+          </NotionButton>
+          <NotionButton variant="ghost" size="sm" onClick={() => handleFilterChange(searchQuery, statusFilter, 'hard', showFavoriteOnly)} className={cn('!h-auto !px-2 !py-1 !rounded-md text-xs', difficultyFilter === 'hard' ? 'bg-orange-500 text-white font-medium' : 'text-orange-600 dark:text-orange-400 hover:bg-orange-500/10')}>
+            {t('practice:questionBank.difficultyShort.hard')}
+          </NotionButton>
+          <NotionButton variant="ghost" size="sm" onClick={() => handleFilterChange(searchQuery, statusFilter, 'very_hard', showFavoriteOnly)} className={cn('!h-auto !px-2 !py-1 !rounded-md text-xs', difficultyFilter === 'very_hard' ? 'bg-rose-500 text-white font-medium' : 'text-rose-600 dark:text-rose-400 hover:bg-rose-500/10')}>
+            {t('practice:questionBank.difficultyShort.veryHard')}
+          </NotionButton>
         </div>
       </div>
       
       <CustomScrollArea className="flex-1" viewportClassName="px-3 sm:px-4 pt-1 pb-4">
+        {/* 新题目内联创建区域（置顶） */}
+        {expandedEditId === '__new__' && examId && (
+          <div className="pb-2">
+            <QuestionInlineEditor
+              question={null}
+              mode="create"
+              examId={examId}
+              onCreate={async (q) => {
+                await onCreateQuestion?.(q);
+                setExpandedEditId(null);
+              }}
+              onCancel={() => setExpandedEditId(null)}
+            />
+          </div>
+        )}
+
         {filteredQuestions.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
             <Search className="w-8 h-8 mb-3 opacity-40" />
@@ -667,21 +714,6 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
             ))}
           </div>
         )}
-        {/* 新题目内联创建区域 */}
-        {expandedEditId === '__new__' && examId && (
-          <div className="pb-4">
-            <QuestionInlineEditor
-              question={null}
-              mode="create"
-              examId={examId}
-              onCreate={async (q) => {
-                await onCreateQuestion?.(q);
-                setExpandedEditId(null);
-              }}
-              onCancel={() => setExpandedEditId(null)}
-            />
-          </div>
-        )}
       </CustomScrollArea>
       
       {/* 删除确认对话框 */}
@@ -703,7 +735,7 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
         onOpenChange={setResetConfirmOpen}
         icon={<AlertTriangle className="w-5 h-5 text-amber-500" />}
         title={t('practice:questionBank.confirmResetTitle')}
-        description={t('practice:questionBank.confirmResetDesc', { count: selectedIds.size })}
+        description={t('practice:questionBank.confirmResetDescDetail', { count: selectedIds.size, defaultValue: `将清空这 ${selectedIds.size} 道题的掌握状态和作答次数，但您填写的用户笔记和标签会被保留。确定要重置吗？` })}
         confirmText={t('practice:questionBank.resetProgress')}
         cancelText={t('common:cancel')}
         confirmVariant="warning"

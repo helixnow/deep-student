@@ -12,6 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/sh
 import { Separator } from '../../components/ui/shad/Separator';
 import { Copy, Trash2, Play, AlertCircle, CheckCircle2, AlertTriangle, Database, RefreshCw } from 'lucide-react';
 import type { DebugPanelPluginProps } from '../DebugPanelHost';
+import { copyTextToClipboard } from '@/utils/clipboardUtils';
 
 // =============================================================================
 // 类型定义
@@ -205,7 +206,7 @@ const SessionLoadFlowDebugPlugin: React.FC<DebugPanelPluginProps> = ({
       },
     };
 
-    navigator.clipboard.writeText(JSON.stringify(report, null, 2));
+    copyTextToClipboard(JSON.stringify(report, null, 2));
     console.log('📋 会话加载日志已复制到剪贴板');
   }, [logs, snapshots]);
 

@@ -13,6 +13,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '.
 import type { MigrationStatusResponse } from '../../../types/dataGovernance';
 import { getDatabaseDisplayName } from '../../../types/dataGovernance';
 import { getMigrationDiagnosticReport } from '../../../api/dataGovernance';
+import { copyTextToClipboard } from '@/utils/clipboardUtils';
 
 export interface MigrationTabProps {
   migrationStatus: MigrationStatusResponse | null;
@@ -36,7 +37,7 @@ export const MigrationTab: React.FC<MigrationTabProps> = ({
   const handleCopyDiagnostic = useCallback(async () => {
     try {
       const report = await getMigrationDiagnosticReport();
-      await navigator.clipboard.writeText(report);
+      await copyTextToClipboard(report);
       setDiagCopied(true);
       setTimeout(() => setDiagCopied(false), 2000);
     } catch {

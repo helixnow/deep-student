@@ -419,7 +419,6 @@ function getIconPath(brand: ProviderBrand): string {
     antling: 'ling',        // 蚂蚁百灵使用ling图标
     siliconflow: 'siliconcloud', // 硅基流动使用siliconcloud图标
     alibaba: 'bailian',     // 阿里云使用百炼图标
-    zhipu: 'chatglm',       // 智谱AI使用chatglm图标
   };
   
   const iconName = iconMap[brand] || brand;

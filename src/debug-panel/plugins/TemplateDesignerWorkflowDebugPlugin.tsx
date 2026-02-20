@@ -1,3 +1,5 @@
+import { copyTextToClipboard } from '@/utils/clipboardUtils';
+
 /**
  * 模板设计师全链路调试插件
  *
@@ -445,7 +447,7 @@ const TemplateDesignerWorkflowDebugPlugin: React.FC<DebugPanelPluginProps> = ({ 
   const handleCopy = useCallback(async () => {
     const text = toPlainText(filtered);
     try {
-      await navigator.clipboard.writeText(text);
+      await copyTextToClipboard(text);
       setCopyMessage(`已复制 ${filtered.length} 条日志`);
       setTimeout(() => setCopyMessage(''), 2000);
     } catch {

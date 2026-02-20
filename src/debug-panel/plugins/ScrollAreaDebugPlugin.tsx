@@ -18,6 +18,7 @@ import {
   MousePointer, Maximize2, Move, Scroll
 } from 'lucide-react';
 import { showGlobalNotification } from '../../components/UnifiedNotification';
+import { copyTextToClipboard } from '@/utils/clipboardUtils';
 
 // ============ 类型定义 ============
 
@@ -442,7 +443,7 @@ const ScrollAreaDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, isAct
       mutationInfo: log.mutationInfo,
     }, null, 2);
     
-    navigator.clipboard.writeText(text).then(() => {
+    copyTextToClipboard(text).then(() => {
       showGlobalNotification('success', '日志已复制到剪贴板');
     }).catch(console.error);
   }, []);
@@ -465,7 +466,7 @@ const ScrollAreaDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, isAct
       })),
     }, null, 2);
     
-    navigator.clipboard.writeText(text).then(() => {
+    copyTextToClipboard(text).then(() => {
       showGlobalNotification('success', `已复制 ${filteredLogs.length} 条日志到剪贴板`);
     }).catch(console.error);
   }, [filteredLogs, liveDimension, liveSelection]);

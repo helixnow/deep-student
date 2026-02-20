@@ -2,6 +2,8 @@ import { useEffect, useCallback } from 'react';
 import { useMindMapStore } from '../store';
 import { findNodeById } from '../utils/node/find';
 import type { MindMapNode } from '../types';
+import { copyTextToClipboard } from '@/utils/clipboardUtils';
+import { readTextFromClipboard } from '@/utils/clipboardUtils';
 
 /** 将节点树递归序列化为纯文本（每行一个节点，缩进表示层级） */
 function nodesToText(nodes: MindMapNode[], level = 0): string {
@@ -16,12 +18,12 @@ function nodesToText(nodes: MindMapNode[], level = 0): string {
 
 /** 写入系统剪贴板（静默失败，不阻塞流程） */
 async function writeToSystemClipboard(text: string): Promise<void> {
-  try { await navigator.clipboard.writeText(text); } catch { /* 权限被拒 */ }
+  try { await copyTextToClipboard(text); } catch { /* 权限被拒 */ }
 }
 
 /** 从系统剪贴板读取纯文本（失败时返回 null） */
 async function readFromSystemClipboard(): Promise<string | null> {
-  try { return await navigator.clipboard.readText(); } catch { return null; }
+  try { return await readTextFromClipboard(); } catch { return null; }
 }
 
 export function useMindMapClipboard(): void {

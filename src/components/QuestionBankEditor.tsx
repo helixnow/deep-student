@@ -70,6 +70,7 @@ import type {
   QuestionBankStats,
   SubmitResult,
 } from '@/api/questionBankApi';
+import { getNextQuestionIndex } from '@/api/questionBankApi';
 
 /** 编辑模式下的题目更新数据 */
 export interface QuestionUpdateData {
@@ -138,6 +139,7 @@ const MODE_ICON: Record<PracticeMode, React.ElementType> = {
   sequential: ListOrdered,
   random: Shuffle,
   review_first: RotateCcw,
+  review_only: RotateCcw,
   by_tag: Tag,
   timed: Clock,
   mock_exam: BookOpen,
@@ -150,6 +152,7 @@ const MODE_I18N_KEY: Record<PracticeMode, string> = {
   sequential: 'sequential',
   random: 'random',
   review_first: 'reviewFirst',
+  review_only: 'reviewOnly',
   by_tag: 'byTag',
   timed: 'timed',
   mock_exam: 'mockExam',
@@ -900,9 +903,9 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
     if (!onNavigate) return;
     const newIndex = direction === 'prev' 
       ? Math.max(0, currentIndex - 1)
-      : Math.min(totalQuestions - 1, currentIndex + 1);
+      : getNextQuestionIndex(questions, currentIndex, practiceMode, selectedTag);
     onNavigate(newIndex);
-  }, [currentIndex, totalQuestions, onNavigate]);
+  }, [currentIndex, practiceMode, selectedTag, questions, onNavigate]);
 
   const handleModeChange = useCallback((mode: PracticeMode) => {
     onModeChange?.(mode, mode === 'by_tag' ? selectedTag : undefined);

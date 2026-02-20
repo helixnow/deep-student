@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import './ImageAttachmentInspectorPlugin.css';
 import { unifiedAlert, unifiedConfirm } from '@/utils/unifiedDialogs';
+import { copyTextToClipboard } from '@/utils/clipboardUtils';
 
 interface ImageSourceInfo {
   messageIndex: number;
@@ -302,7 +303,7 @@ const ImageAttachmentInspectorPlugin: React.FC = () => {
     const text = renderLogs.map(log => 
       `[${log.timestamp}] messageIndex=${log.messageIndex} stableId=${log.msgStableId} role=${log.msgRole} hasImage=${log.hasImage} imageCount=${log.imageCount}`
     ).join('\n');
-    navigator.clipboard.writeText(text);
+    copyTextToClipboard(text);
     unifiedAlert('渲染日志已复制到剪贴板！');
   };
 

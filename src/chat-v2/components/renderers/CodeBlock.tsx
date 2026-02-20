@@ -6,6 +6,7 @@ import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { useTranslation } from 'react-i18next';
 import DOMPurify from 'dompurify';
+import { copyTextToClipboard } from '@/utils/clipboardUtils';
 
 // ============================================================================
 // HTML 转义辅助函数（防止 XSS）
@@ -256,7 +257,7 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ children, className, isStr
 
   const handleCopy = async () => {
     try {
-      await navigator.clipboard.writeText(codeContent);
+      await copyTextToClipboard(codeContent);
       setCopied(true);
       // 清理之前的定时器，避免多次点击累积
       if (copyTimeoutRef.current) {

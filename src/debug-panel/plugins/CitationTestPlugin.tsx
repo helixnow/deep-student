@@ -40,6 +40,7 @@ import {
 } from '../../chat-v2/debug/citationTestPlugin';
 import { ensureModelsCacheLoaded } from '../../chat-v2/hooks/useAvailableModels';
 import type { ModelInfo } from '../../chat-v2/utils/parseModelMentions';
+import { copyTextToClipboard } from '@/utils/clipboardUtils';
 
 // =============================================================================
 // 工具函数
@@ -219,7 +220,7 @@ const CitationTestPlugin: React.FC<DebugPanelPluginProps> = ({
 
   const handleCopyLogs = useCallback(() => {
     const text = liveLogs.map(l => `[${fmtTime(l.timestamp)}][${l.phase}] ${l.message}`).join('\n');
-    navigator.clipboard.writeText(text);
+    copyTextToClipboard(text);
   }, [liveLogs]);
 
   const [isCleaningUp, setIsCleaningUp] = useState(false);

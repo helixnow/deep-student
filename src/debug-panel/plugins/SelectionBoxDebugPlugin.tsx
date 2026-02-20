@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import type { DebugPanelPluginProps } from '../DebugPanelHost';
 import { Trash2, Copy, Play, Pause, Square, MousePointer } from 'lucide-react';
+import { copyTextToClipboard } from '@/utils/clipboardUtils';
 
 interface SelectionEvent {
   id: string;
@@ -95,7 +96,7 @@ export default function SelectionBoxDebugPlugin({ isActive, isActivated }: Debug
       return line;
     }).join('\n');
     
-    navigator.clipboard.writeText(text);
+    copyTextToClipboard(text);
   };
 
   const formatTime = (ts: number) => {

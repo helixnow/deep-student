@@ -10,6 +10,7 @@ import { useTranslation } from 'react-i18next';
 import { MarkdownRenderer } from '../chat-v2/components/renderers';
 import { CustomScrollArea } from './custom-scroll-area';
 import { fileManager } from '@/utils/fileManager';
+import { copyTextToClipboard } from '@/utils/clipboardUtils';
 
 interface SourceInfo {
   document_id: string;
@@ -40,7 +41,7 @@ export const SourcePreviewPanel: React.FC<SourcePreviewPanelProps> = ({
 
   const handleCopyContent = async () => {
     try {
-      await navigator.clipboard.writeText(source.chunk_text);
+      await copyTextToClipboard(source.chunk_text);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
       console.log('📋 [来源预览] 已复制内容到剪贴板');

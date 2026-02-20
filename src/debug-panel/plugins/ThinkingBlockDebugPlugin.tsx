@@ -16,6 +16,7 @@ import { Copy, Trash2, Brain, Database, Zap, RefreshCw, Radio } from 'lucide-rea
 import type { DebugPanelPluginProps } from '../DebugPanelHost';
 import { sessionManager } from '../../chat-v2/core/session';
 import { useStreamingSessions } from '../../chat-v2/hooks/useStreamingSessions';
+import { copyTextToClipboard } from '@/utils/clipboardUtils';
 // =============================================================================
 // 类型定义
 // =============================================================================
@@ -194,7 +195,7 @@ const ThinkingBlockDebugPlugin: React.FC<DebugPanelPluginProps> = () => {
     const text = events.map(e => 
       `[${e.timestamp}] [${e.stage}] ${e.type}: ${JSON.stringify(e.data)}`
     ).join('\n');
-    navigator.clipboard.writeText(text);
+    copyTextToClipboard(text);
   }, [events]);
 
   // 自动跟随流式会话

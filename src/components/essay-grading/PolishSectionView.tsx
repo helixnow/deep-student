@@ -8,6 +8,7 @@ import type { PolishItem } from '@/essay-grading/streamingMarkerParser';
 import { ArrowRight, Sparkles, Copy, Check } from 'lucide-react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
+import { copyTextToClipboard } from '@/utils/clipboardUtils';
 
 interface PolishSectionViewProps {
   items: PolishItem[];
@@ -19,7 +20,7 @@ export const PolishSectionView: React.FC<PolishSectionViewProps> = ({ items, cla
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
 
   const handleCopy = (text: string, index: number) => {
-    navigator.clipboard.writeText(text);
+    copyTextToClipboard(text);
     setCopiedIndex(index);
     setTimeout(() => setCopiedIndex(null), 2000);
   };

@@ -46,6 +46,7 @@ import type {
 import { sessionManager } from '../../chat-v2/core/session/sessionManager';
 import type { BackendEvent } from '../../chat-v2/core/middleware/eventBridge';
 import { debugLog } from '../debugMasterSwitch';
+import { copyTextToClipboard } from '@/utils/clipboardUtils';
 
 function isTauriEnvironment(): boolean {
   return (
@@ -430,7 +431,7 @@ const MultiAgentDebugPlugin: React.FC<DebugPanelPluginProps> = ({
       })),
     };
 
-    navigator.clipboard.writeText(JSON.stringify(report, null, 2));
+    copyTextToClipboard(JSON.stringify(report, null, 2));
     logMultiAgent('system', 'LOGS_COPIED', { logsCount: logs.length }, 'success');
   }, [logs, currentWorkspaceId, workspace, agents, messages]);
 

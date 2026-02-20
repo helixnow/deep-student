@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { showGlobalNotification } from '../../components/UnifiedNotification';
 import { debugMasterSwitch } from '../debugMasterSwitch';
+import { copyTextToClipboard } from '@/utils/clipboardUtils';
 
 // ============ 类型定义 ============
 
@@ -300,7 +301,7 @@ const CrepeEditorDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, isAc
       editorSnapshot: log.editorSnapshot,
     }, null, 2);
     
-    navigator.clipboard.writeText(text).then(() => {
+    copyTextToClipboard(text).then(() => {
       showGlobalNotification('success', '日志已复制到剪贴板');
     }).catch(console.error);
   }, []);
@@ -316,7 +317,7 @@ const CrepeEditorDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, isAc
       editorSnapshot: log.editorSnapshot,
     })), null, 2);
     
-    navigator.clipboard.writeText(text).then(() => {
+    copyTextToClipboard(text).then(() => {
       showGlobalNotification('success', `已复制 ${filteredLogs.length} 条日志到剪贴板`);
     }).catch(console.error);
   }, [filteredLogs]);

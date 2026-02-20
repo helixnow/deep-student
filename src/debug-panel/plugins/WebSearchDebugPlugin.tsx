@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import type { DebugPanelPluginProps } from '../DebugPanelHost';
 import { Copy, Save, Search, Filter, Globe, Database } from 'lucide-react';
 import { useDialogControl } from '../../contexts/DialogControlContext';
+import { copyTextToClipboard } from '@/utils/clipboardUtils';
 
 type LogKind = 'status' | 'event' | 'invoke' | 'injection' | 'source' | 'request' | 'tool';
 
@@ -440,7 +441,7 @@ const WebSearchDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, isActi
 
   const copyLogs = React.useCallback(async () => {
     try {
-      await navigator.clipboard.writeText(stringify(logs));
+      await copyTextToClipboard(stringify(logs));
     } catch {}
   }, [logs]);
 

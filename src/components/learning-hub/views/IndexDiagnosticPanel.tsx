@@ -33,6 +33,7 @@ import {
 } from '@/api/vfsRagApi';
 import { batchIndexPendingLegacy as batchIndexPending } from '@/api/vfsUnifiedIndexApi';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
+import { copyTextToClipboard } from '@/utils/clipboardUtils';
 
 interface LogEntry {
   timestamp: string;
@@ -204,7 +205,7 @@ export const IndexDiagnosticPanel: React.FC<IndexDiagnosticPanelProps> = ({ onRe
       return text;
     }).join('\n\n');
     
-    navigator.clipboard.writeText(logText).then(() => {
+    copyTextToClipboard(logText).then(() => {
       showGlobalNotification('success', t('diagnostic.logsCopied'));
     }).catch(() => {
       showGlobalNotification('error', t('diagnostic.copyFailed'));

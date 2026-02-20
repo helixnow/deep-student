@@ -187,8 +187,8 @@ describe('ProviderIconEngine', () => {
       expect(getProviderIcon('tongyi-xiaomi-analysis-flash')).toBe('/icons/providers/bailian.svg');
     });
 
-    it('智谱AI应该映射到chatglm图标', () => {
-      expect(getProviderIcon('glm-4.5')).toBe('/icons/providers/chatglm.svg');
+    it('智谱AI应该使用zhipu图标', () => {
+      expect(getProviderIcon('glm-4.5')).toBe('/icons/providers/zhipu.svg');
     });
   });
 });

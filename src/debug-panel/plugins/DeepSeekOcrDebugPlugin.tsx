@@ -4,6 +4,7 @@ import type { DebugPanelPluginProps } from '../DebugPanelHost';
 import { useTauriEventListener } from '../../hooks/useTauriEventListener';
 import { Copy, Search, Filter, AlertCircle, CheckCircle, Clock, FileText } from 'lucide-react';
 import { unifiedAlert, unifiedConfirm } from '@/utils/unifiedDialogs';
+import { copyTextToClipboard } from '@/utils/clipboardUtils';
 
 type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
@@ -110,7 +111,7 @@ const DeepSeekOcrDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, isAc
       return `[${ts}]${page} [${log.level.toUpperCase()}] [${log.stage}] ${log.message}${dataStr}`;
     }).join('\n\n');
     
-    navigator.clipboard.writeText(text).then(() => {
+    copyTextToClipboard(text).then(() => {
       unifiedAlert('已复制 DeepSeek-OCR 日志到剪贴板');
     });
   };

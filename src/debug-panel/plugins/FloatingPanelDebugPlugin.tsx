@@ -6,6 +6,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Copy, RefreshCw, ChevronDown, ChevronRight, Eye, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { Button } from '../../components/ui/shad/Button';
 import { ScrollArea } from '../../components/ui/shad/ScrollArea';
+import { copyTextToClipboard } from '@/utils/clipboardUtils';
 
 interface CSSRuleInfo {
   selector: string;
@@ -405,7 +406,7 @@ const FloatingPanelDebugPlugin: React.FC = () => {
   // 复制到剪贴板
   const copyToClipboard = (data: any, label: string) => {
     const text = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
-    navigator.clipboard.writeText(text).then(() => {
+    copyTextToClipboard(text).then(() => {
       addLog('info', `已复制: ${label}`);
     });
   };

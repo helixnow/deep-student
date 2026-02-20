@@ -10,6 +10,7 @@ import { useStore } from 'zustand';
 import { cn } from '@/utils/cn';
 import { ChevronDown, ChevronRight, Copy, Check, RefreshCw } from 'lucide-react';
 import type { ChatStore } from '../core/types';
+import { copyTextToClipboard } from '@/utils/clipboardUtils';
 
 // ============================================================================
 // Props 定义
@@ -199,7 +200,7 @@ export const StoreInspector: React.FC<StoreInspectorProps> = ({
         },
         2
       );
-      await navigator.clipboard.writeText(serialized);
+      await copyTextToClipboard(serialized);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch (error: unknown) {

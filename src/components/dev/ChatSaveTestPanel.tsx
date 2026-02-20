@@ -1,3 +1,5 @@
+import { copyTextToClipboard } from '@/utils/clipboardUtils';
+
 import { NotionButton } from '@/components/ui/NotionButton';
 /**
  * SOTA级别聊天保存功能综合测试面板 - 模块化重构版 v3.0
@@ -274,7 +276,7 @@ export const ChatSaveTestPanel: React.FC<ChatSaveTestPanelProps> = ({
     }).join('\n');
     
     try {
-      await navigator.clipboard.writeText(logsText);
+      await copyTextToClipboard(logsText);
       addLog('success', t('dev:save_test.logs.copied'));
     } catch (error) {
       addLog('error', t('dev:save_test.logs.copy_failed', { error: getErrorMessage(error) }));

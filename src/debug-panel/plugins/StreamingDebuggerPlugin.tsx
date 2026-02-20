@@ -1,6 +1,7 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { fileManager } from '../../utils/fileManager';
+import { copyTextToClipboard } from '@/utils/clipboardUtils';
 
 type StreamEvent = {
   channel: string;
@@ -293,7 +294,7 @@ const StreamingDebuggerPlugin: React.FC<StreamingDebuggerPluginProps> = ({
     try {
       const data = all ? events : (viewMode === 'raw' ? filteredRaw : timeline);
       const text = JSON.stringify(data, null, 2);
-      navigator.clipboard.writeText(text);
+      copyTextToClipboard(text);
     } catch {}
   }, [events, filteredRaw, timeline, viewMode]);
 
@@ -597,7 +598,7 @@ const StreamingDebuggerPlugin: React.FC<StreamingDebuggerPluginProps> = ({
                     <button
                       onClick={() => {
                         try {
-                          navigator.clipboard.writeText(JSON.stringify(entry.data, null, 2));
+                          copyTextToClipboard(JSON.stringify(entry.data, null, 2));
                         } catch {}
                       }}
                       style={{ fontSize: 12, color: '#94a3b8', background: 'transparent', border: '1px solid #334155', borderRadius: 6, padding: '2px 6px' }}
@@ -639,7 +640,7 @@ const StreamingDebuggerPlugin: React.FC<StreamingDebuggerPluginProps> = ({
                   <button
                     onClick={() => {
                       try {
-                        navigator.clipboard.writeText(JSON.stringify(ev, null, 2));
+                        copyTextToClipboard(JSON.stringify(ev, null, 2));
                       } catch {}
                     }}
                     style={{ fontSize: 12, color: '#94a3b8', background: 'transparent', border: '1px solid #334155', borderRadius: 6, padding: '2px 6px' }}

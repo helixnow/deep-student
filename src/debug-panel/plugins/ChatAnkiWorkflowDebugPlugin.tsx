@@ -15,6 +15,7 @@ import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { Copy, Trash2, Download, ChevronDown, ChevronRight, Search, X } from 'lucide-react';
 import type { DebugPanelPluginProps } from '../DebugPanelHost';
+import { copyTextToClipboard } from '@/utils/clipboardUtils';
 
 // ============================================================================
 // 类型
@@ -480,7 +481,7 @@ const ChatAnkiWorkflowDebugPlugin: React.FC<DebugPanelPluginProps> = ({
   const handleCopy = useCallback(async () => {
     const text = logsToText(filtered);
     try {
-      await navigator.clipboard.writeText(text);
+      await copyTextToClipboard(text);
       setCopyMsg(`已复制 ${filtered.length} 条日志`);
       setTimeout(() => setCopyMsg(''), 2000);
     } catch {
@@ -701,7 +702,7 @@ const ChatAnkiWorkflowDebugPlugin: React.FC<DebugPanelPluginProps> = ({
                     className="absolute top-0 right-0 text-[9px] bg-slate-800 hover:bg-slate-700 px-1.5 py-0.5 rounded border border-slate-700"
                     onClick={async () => {
                       try {
-                        await navigator.clipboard.writeText(stringify(entry.detail));
+                        await copyTextToClipboard(stringify(entry.detail));
                       } catch { /* ignore */ }
                     }}
                   >

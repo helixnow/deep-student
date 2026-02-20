@@ -14,6 +14,7 @@ import type { StoreApi } from 'zustand';
 import type { ChatStore, Block, Message } from '../core/types';
 import { useWorkspaceStore } from '../workspace/workspaceStore';
 import type { WorkspaceMessage, WorkspaceAgent } from '../workspace/types';
+import { copyTextToClipboard } from '@/utils/clipboardUtils';
 
 // ============================================================================
 // 类型定义
@@ -772,5 +773,5 @@ export async function copyDebugInfoToClipboard(
     ? formatDebugInfoAsJson(info) 
     : formatDebugInfoAsText(info);
   
-  await navigator.clipboard.writeText(text);
+  await copyTextToClipboard(text);
 }

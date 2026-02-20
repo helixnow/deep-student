@@ -1,3 +1,5 @@
+import { copyTextToClipboard } from '@/utils/clipboardUtils';
+
 /**
  * WorkspaceOrchestrationTestPlugin - 多 Agent / 子代理编排自动测试 UI
  */
@@ -186,7 +188,7 @@ const WorkspaceOrchestrationTestPlugin: React.FC<DebugPanelPluginProps> = ({
 
   const handleCopyLogs = useCallback(() => {
     const text = liveLogs.map((l) => `[${fmtTime(l.timestamp)}][${l.phase}] ${l.message}`).join('\n');
-    navigator.clipboard.writeText(text);
+    copyTextToClipboard(text);
   }, [liveLogs]);
 
   const handleCleanup = useCallback(async () => {

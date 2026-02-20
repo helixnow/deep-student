@@ -27,6 +27,7 @@ import { debugLog } from '../debug-panel/debugMasterSwitch';
 
 // 子组件
 import { GradingMain } from './essay-grading/GradingMain';
+import { copyTextToClipboard } from '@/utils/clipboardUtils';
 // GradingHistory 已移除 - 历史由 Learning Hub 管理
 
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
@@ -744,7 +745,7 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({ on
 
   // 复制结果
   const handleCopyResult = useCallback(() => {
-    navigator.clipboard.writeText(gradingResult);
+    copyTextToClipboard(gradingResult);
     showGlobalNotification('success', t('essay_grading:result_section.copied'));
   }, [gradingResult, t]);
 

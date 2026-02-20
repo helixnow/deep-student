@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { showGlobalNotification } from '../../components/UnifiedNotification';
 import { debugMasterSwitch } from '../debugMasterSwitch';
+import { copyTextToClipboard } from '@/utils/clipboardUtils';
 
 // ============ 类型定义 ============
 
@@ -375,7 +376,7 @@ export const CrepeImageUploadDebugPlugin: React.FC<DebugPanelPluginProps> = ({ v
       return content;
     }).join('\n\n');
     
-    navigator.clipboard.writeText(text).then(() => {
+    copyTextToClipboard(text).then(() => {
       showGlobalNotification('success', `已复制 ${filteredLogs.length} 条日志`);
     });
   }, [logs, filterLevel]);
@@ -405,7 +406,7 @@ export const CrepeImageUploadDebugPlugin: React.FC<DebugPanelPluginProps> = ({ v
       })),
     };
     
-    navigator.clipboard.writeText(JSON.stringify(report, null, 2)).then(() => {
+    copyTextToClipboard(JSON.stringify(report, null, 2)).then(() => {
       showGlobalNotification('success', '已复制完整诊断报告');
     });
   }, [logs, lastSnapshot]);

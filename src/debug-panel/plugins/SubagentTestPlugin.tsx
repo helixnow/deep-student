@@ -1,3 +1,5 @@
+import { copyTextToClipboard } from '@/utils/clipboardUtils';
+
 /**
  * SubagentTestPlugin - 子代理自动测试插件
  *
@@ -209,7 +211,7 @@ const SubagentTestPlugin: React.FC<DebugPanelPluginProps> = ({
     const text = logs
       .map((log) => `[${formatTimestamp(log.timestamp)}][${log.type}] ${log.action}: ${JSON.stringify(log.data)}`)
       .join('\n');
-    navigator.clipboard.writeText(text);
+    copyTextToClipboard(text);
   };
 
   // 下载报告

@@ -20,6 +20,7 @@ import { debugLog } from '../debug-panel/debugMasterSwitch';
 
 // 子组件
 import { TranslationMain } from './translation/TranslationMain';
+import { copyTextToClipboard } from '@/utils/clipboardUtils';
 
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
 
@@ -394,7 +395,7 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
   // 复制翻译结果
   const handleCopyResult = useCallback(async () => {
     try {
-      await navigator.clipboard.writeText(translatedText);
+      await copyTextToClipboard(translatedText);
       showGlobalNotification('success', t('translation:target_section.copied'));
     } catch (error: unknown) {
       console.error('[Translation] Failed to copy:', error);

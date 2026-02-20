@@ -6,6 +6,7 @@ import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useTranslation } from 'react-i18next';
 import { Copy, Trash2, Download, ChevronDown, ChevronRight, AlertCircle, CheckCircle, Clock, Filter } from 'lucide-react';
 import type { DebugPanelPluginProps } from '../DebugPanelHost';
+import { copyTextToClipboard } from '@/utils/clipboardUtils';
 
 // ============ 类型定义 ============
 interface DebugEvent {
@@ -350,7 +351,7 @@ const ChatAnkiParseDebugPlugin: React.FC<DebugPanelPluginProps> = ({
 
   const handleCopyReport = useCallback(() => {
     const report = chatAnkiParseDebug.exportReport();
-    navigator.clipboard.writeText(report).then(() => {
+    copyTextToClipboard(report).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     });

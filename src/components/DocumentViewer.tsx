@@ -6,6 +6,7 @@ import { openUrl } from '@/utils/urlOpener';
 import { useTranslation } from 'react-i18next';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { fileManager } from '@/utils/fileManager';
+import { copyTextToClipboard } from '@/utils/clipboardUtils';
 
 interface DocumentViewerProps {
   isOpen: boolean;
@@ -61,7 +62,7 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({
   const applyCopy = async () => {
     try {
       const txt = textContent ?? '';
-      await navigator.clipboard.writeText(txt);
+      await copyTextToClipboard(txt);
       setCopied(true);
       setTimeout(() => setCopied(false), 1200);
     } catch {}

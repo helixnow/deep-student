@@ -2,6 +2,7 @@ import React, { useState, useCallback } from 'react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { Eye, EyeOff, Shield, Copy, Check } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { copyTextToClipboard } from '@/utils/clipboardUtils';
 
 interface SecurePasswordInputProps {
   value: string;
@@ -42,7 +43,7 @@ export const SecurePasswordInput: React.FC<SecurePasswordInputProps> = ({
     }
     
     try {
-      await navigator.clipboard.writeText(value);
+      await copyTextToClipboard(value);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch (err: unknown) {

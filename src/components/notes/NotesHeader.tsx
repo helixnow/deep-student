@@ -38,6 +38,7 @@ import { fileManager } from "../../utils/fileManager";
 import { isMobilePlatform } from "../../utils/platform";
 
 import { showGlobalNotification } from '@/components/UnifiedNotification';
+import { copyTextToClipboard } from '@/utils/clipboardUtils';
 
 interface NotesHeaderProps {
     onMobileMenuClick?: () => void;
@@ -237,7 +238,7 @@ export const NotesHeader: React.FC<NotesHeaderProps> = ({
                                         onClick={() => {
                                             if (active) {
                                                 const noteUrl = `note://${active.id}`;
-                                                navigator.clipboard.writeText(noteUrl);
+                                                copyTextToClipboard(noteUrl);
                                                 showGlobalNotification('success', t('notes:menu.link_copied', '链接已复制'));
                                             }
                                         }}

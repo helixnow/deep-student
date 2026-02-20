@@ -13,11 +13,17 @@ import { useTranslation } from 'react-i18next';
 import { Loader2, AlertCircle, RotateCcw, History } from 'lucide-react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { NotesCrepeEditor } from '@/components/notes/NotesCrepeEditor';
+import { NotesContextPanel } from '@/components/notes/NotesContextPanel';
 import { reportError, type VfsError, VfsErrorCode } from '@/shared/result';
 import { dstu } from '@/dstu';
 import { useSystemStatusStore } from '@/stores/systemStatusStore';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import type { ContentViewProps } from '../UnifiedAppPanel';
+import { DstuVersionsDialog } from '@/components/notes/dialogs/DstuVersionsDialog';
+import { PanelGroup, Panel, PanelResizeHandle } from 'react-resizable-panels';
+import { cn } from '@/lib/utils';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
+import { GripVertical } from 'lucide-react';
 
 /**
  * 笔记内容视图
@@ -32,6 +38,7 @@ const NoteContentView: React.FC<ContentViewProps> = ({
   readOnly = false,
 }) => {
   const { t } = useTranslation(['notes', 'common']);
+  const isSmallScreen = useMediaQuery("(max-width: 768px)");
 
   // ========== 状态 ==========
   const [isLoading, setIsLoading] = useState(true);
@@ -41,6 +48,7 @@ const NoteContentView: React.FC<ContentViewProps> = ({
   // 🔧 修复：使用 null 表示"未加载"，空字符串表示"已加载但内容为空"
   const [content, setContent] = useState<string | null>(null);
   const [title, setTitle] = useState<string>(node.name || '');
+  const [versionsOpen, setVersionsOpen] = useState(false);
   
   // 🔧 追踪当前加载的笔记 ID，用于防止竞态条件
   const loadingNoteIdRef = React.useRef<string | null>(null);
@@ -55,8 +63,8 @@ const NoteContentView: React.FC<ContentViewProps> = ({
     
     setIsLoading(true);
     setError(null);
-    // 🔧 修复：切换笔记时重置 content 为 null（而不是保留旧值）
-    setContent(null);
+    // ★ 优化体验：不再粗暴地 setContent(null)，保留旧内容（Stale-While-Revalidate），
+    // 配合顶部的透明 Loading 指示器，实现无缝切换
 
     // 通过 DSTU 获取笔记内容
     const result = await dstu.getContent(node.path);
@@ -126,10 +134,10 @@ const NoteContentView: React.FC<ContentViewProps> = ({
   }, [node.path, readOnly, onTitleChange, t]);
 
   // ========== 渲染 ==========
-  // 🔧 修复：只有在加载中或内容尚未获取时才显示加载状态
-  // content === null 表示内容尚未加载，content === '' 表示内容已加载但为空
+  // 🔧 优化：Stale-While-Revalidate
+  // 当有旧内容 (content !== null) 但正在加载新内容 (isLoading) 时，不要白屏，而是保留旧内容+顶部透明进度条
   
-  if (isLoading || content === null) {
+  if (isLoading && content === null) {
     return (
       <div className="flex items-center justify-center h-full">
         <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
@@ -169,29 +177,83 @@ const NoteContentView: React.FC<ContentViewProps> = ({
   }
   
   return (
-    <div className="flex flex-col h-full bg-background">
-      <NotesCrepeEditor
-        initialContent={content}
-        initialTitle={title}
-        onSave={readOnly ? undefined : handleSave}
-        onTitleChange={readOnly ? undefined : handleTitleChange}
-        noteId={noteId}
-        className="flex-1 min-h-0"
-        readOnly={readOnly}
-      />
-      {/* TODO [M-005]: 添加版本历史/回滚入口按钮。
-          后端已有 VfsNoteVersion 表和 notes_versions 存储，但前端 Learning Hub 尚未暴露
-          版本浏览和回滚 UI。需要：
-          1. 添加"查看版本历史"按钮，打开版本列表面板
-          2. 版本列表调用 dstu.listVersions(noteId)
-          3. 选中版本后可预览 diff 并一键回滚
-          参考：src-tauri/src/vfs/types.rs - VfsNoteVersion 结构体 */}
-      <div className="flex-shrink-0 flex items-center gap-1.5 px-4 py-1.5 border-t border-border/40">
-        <History className="w-3.5 h-3.5 text-muted-foreground/60" />
-        <span className="text-xs text-muted-foreground/60">
-          {t('notes:tips.versionHistory', '版本历史可在笔记面板中查看和回滚')}
-        </span>
+    <div className="flex flex-col h-full bg-background relative overflow-hidden">
+      {isLoading && content !== null && (
+        <div className="absolute top-0 left-0 right-0 h-1 bg-primary/20 z-50 overflow-hidden">
+          <div className="h-full bg-primary animate-[indeterminate_1.5s_infinite_linear]" />
+        </div>
+      )}
+      <PanelGroup direction="horizontal" autoSaveId="learning-hub-note-layout" className="flex-1 min-h-0">
+        <Panel
+          defaultSize={80}
+          minSize={50}
+          id="learning-hub-note-editor"
+          order={1}
+          className="flex flex-col min-h-0 relative"
+        >
+          <NotesCrepeEditor
+            initialContent={content}
+            initialTitle={title}
+            onSave={readOnly ? undefined : handleSave}
+            onTitleChange={readOnly ? undefined : handleTitleChange}
+            noteId={noteId}
+            className="flex-1 min-h-0"
+            readOnly={readOnly}
+          />
+        </Panel>
+
+        {!isSmallScreen && (
+          <>
+            <PanelResizeHandle className="w-1 bg-border/40 hover:bg-primary/20 transition-colors flex items-center justify-center group">
+              <GripVertical className="w-3 h-3 text-muted-foreground/30 group-hover:text-muted-foreground/60 transition-colors" />
+            </PanelResizeHandle>
+            <Panel
+              defaultSize={20}
+              minSize={15}
+              maxSize={30}
+              id="learning-hub-note-outline"
+              order={2}
+              className="flex flex-col min-h-0 border-l border-border/40 bg-muted/5"
+            >
+              <NotesContextPanel
+                noteId={noteId}
+                title={title}
+                content={content || ''}
+              />
+            </Panel>
+          </>
+        )}
+      </PanelGroup>
+
+      <div className="flex-shrink-0 flex items-center justify-between px-4 py-2 border-t border-border/40 bg-muted/10">
+        <div className="flex items-center gap-1.5">
+          <History className="w-3.5 h-3.5 text-muted-foreground/60" />
+          <span className="text-xs text-muted-foreground/80">
+            {t('notes:tips.versionHistory', '笔记会自动保存历史版本')}
+          </span>
+        </div>
+        <NotionButton 
+          variant="ghost" 
+          size="sm" 
+          className="h-7 text-xs px-2"
+          onClick={() => setVersionsOpen(true)}
+        >
+          <History className="w-3.5 h-3.5 mr-1.5" />
+          {t('notes:versions.title', '版本历史')}
+        </NotionButton>
       </div>
+
+      <DstuVersionsDialog
+        open={versionsOpen}
+        onOpenChange={setVersionsOpen}
+        noteId={noteId}
+        currentTitle={title}
+        currentContent={content || ''}
+        onRevertSuccess={() => {
+          // 回滚成功后重新加载当前笔记内容
+          loadNoteContent();
+        }}
+      />
     </div>
   );
 };

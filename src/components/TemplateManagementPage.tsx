@@ -36,6 +36,7 @@ import { useMobileHeader, MobileSlidingLayout, type ScreenPosition } from '@/com
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { MOBILE_LAYOUT } from '@/config/mobileLayout';
 import { showGlobalNotification } from './UnifiedNotification';
+import { copyTextToClipboard } from '@/utils/clipboardUtils';
 
 function buildExportErrorMessage(permissionDeniedText: string, prefix: string, error: unknown) {
   const rawMessage = getErrorMessage(error);
@@ -202,7 +203,7 @@ const TemplateManagementPage: React.FC<TemplateManagementPageProps> = ({
   const copyJsonToClipboard = useCallback(async (content: string) => {
     if (navigator?.clipboard?.writeText) {
       try {
-        await navigator.clipboard.writeText(content);
+        await copyTextToClipboard(content);
         return true;
       } catch (err: unknown) {
         console.warn('clipboard write failed', err);

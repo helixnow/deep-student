@@ -42,6 +42,7 @@ import { AiContentLabel } from '@/components/shared/AiContentLabel';
 import { dispatchContextRefPreview } from '../utils/contextRefPreview';
 import { notesDstuAdapter } from '@/dstu/adapters/notesDstuAdapter';
 import { fileManager } from '@/utils/fileManager';
+import { copyTextToClipboard } from '@/utils/clipboardUtils';
 
 // ============================================================================
 // 辅助函数
@@ -296,7 +297,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
     if (!text) return; // 仍为空则不做任何操作
 
     try {
-      await navigator.clipboard.writeText(text);
+      await copyTextToClipboard(text);
       showGlobalNotification('success', t('messageItem.actions.copySuccess'));
     } catch (error: unknown) {
       console.error('[MessageItem] Copy failed:', error);
@@ -1106,7 +1107,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                   size="sm"
                   onClick={async () => {
                     try {
-                      await navigator.clipboard.writeText(copyText);
+                      await copyTextToClipboard(copyText);
                       showGlobalNotification('success', t('messageItem.rawRequest.copySuccess'));
                     } catch (error: unknown) {
                       showGlobalNotification('error', getErrorMessage(error), t('messageItem.rawRequest.copyFailed'));

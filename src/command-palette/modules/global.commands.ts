@@ -38,6 +38,7 @@ import {
 } from 'lucide-react';
 import type { Command } from '../registry/types';
 import { isGlobalCommandEnabled } from '../registry/capabilityRegistry';
+import { copyTextToClipboard } from '@/utils/clipboardUtils';
 
 /** Helper: get localized keywords array for a given command key */
 const kw = (key: string): string[] =>
@@ -296,7 +297,7 @@ function createRawGlobalCommands(): Command[] {
       priority: 40,
       execute: async (deps) => {
         try {
-          await navigator.clipboard.writeText(window.location.href);
+          await copyTextToClipboard(window.location.href);
           deps.showNotification('success', i18next.t('command_palette:notifications.link_copied', 'Link copied'));
         } catch {
           deps.showNotification('error', i18next.t('command_palette:notifications.copy_failed', 'Copy failed'));

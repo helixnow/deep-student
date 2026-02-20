@@ -12,6 +12,7 @@ import { Button } from "../../components/ui/shad/Button";
 import { Card, CardContent } from "../../components/ui/shad/Card";
 import { ScrollArea } from "../../components/ui/shad/ScrollArea";
 import { AlertTriangle, CheckCircle2, Copy, FileSearch, RefreshCw, Trash2 } from "lucide-react";
+import { copyTextToClipboard } from '@/utils/clipboardUtils';
 
 type RequestAuditPayload = {
   source: "frontend" | "backend";
@@ -165,7 +166,7 @@ const AttachmentOcrRequestAuditPlugin: React.FC<DebugPanelPluginProps> = ({ visi
 
   const onCopy = React.useCallback(() => {
     const text = buildCopyText(frontendAudits, backendAudits);
-    void navigator.clipboard.writeText(text);
+    void copyTextToClipboard(text);
   }, [backendAudits, frontendAudits]);
 
   const onClear = React.useCallback(() => {

@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
+import { copyTextToClipboard } from '@/utils/clipboardUtils';
 
 export interface ThinkingChainDebugPluginProps {
   visible: boolean;
@@ -205,7 +206,7 @@ const ThinkingChainDebugPlugin: React.FC<ThinkingChainDebugPluginProps> = ({
     const fullText = header + logText;
 
     try {
-      await navigator.clipboard.writeText(fullText);
+      await copyTextToClipboard(fullText);
       setCopySuccess(true);
       setTimeout(() => setCopySuccess(false), 2000);
     } catch (error) {

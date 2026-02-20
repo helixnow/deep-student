@@ -27,6 +27,7 @@ import {
   EyeOff,
 } from 'lucide-react';
 import type { DebugPanelPluginProps } from '../DebugPanelHost';
+import { copyTextToClipboard } from '@/utils/clipboardUtils';
 
 // =============================================================================
 // 类型定义
@@ -355,7 +356,7 @@ const PdfMultimodalDebugPlugin: React.FC<DebugPanelPluginProps> = ({
     const text = logs
       .map((log) => `[${log.timestamp}] [${log.source}] [${log.level}] ${log.message}\n${formatDataPreview(log.data)}`)
       .join('\n\n---\n\n');
-    navigator.clipboard.writeText(text);
+    copyTextToClipboard(text);
   }, [logs]);
 
   // 切换展开

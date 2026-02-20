@@ -24,6 +24,7 @@ import {
 } from '../../chat-v2/debug/multiVariantTestPlugin';
 import { ensureModelsCacheLoaded } from '../../chat-v2/hooks/useAvailableModels';
 import type { ModelInfo } from '../../chat-v2/utils/parseModelMentions';
+import { copyTextToClipboard } from '@/utils/clipboardUtils';
 
 // =============================================================================
 // 工具
@@ -181,7 +182,7 @@ const MultiVariantTestPlugin: React.FC<DebugPanelPluginProps> = ({
   }, [results, modelA, modelB, modelC, prompt, longPrompt, cancelDelayMs, fastCancelDelayMs, roundTimeoutMs]);
 
   const handleCopyLogs = useCallback(() => {
-    navigator.clipboard.writeText(liveLogs.map(l => `[${fmtTime(l.timestamp)}][${l.phase}] ${l.message}`).join('\n'));
+    copyTextToClipboard(liveLogs.map(l => `[${fmtTime(l.timestamp)}][${l.phase}] ${l.message}`).join('\n'));
   }, [liveLogs]);
 
   const handleCleanup = useCallback(async () => {

@@ -28,6 +28,7 @@ import type { WorkspaceMessage, MessageType } from '../types';
 import type { StoreApi } from 'zustand';
 import type { ChatStore } from '../../core/types';
 import { copyDebugInfoToClipboard } from '../../debug/exportSessionDebug';
+import { copyTextToClipboard } from '@/utils/clipboardUtils';
 
 // ============================================================================
 // 消息类型配置
@@ -238,7 +239,7 @@ export const WorkspaceLogInline: React.FC<WorkspaceLogInlineProps> = ({
       .join('\n\n');
 
     try {
-      await navigator.clipboard.writeText(logText);
+      await copyTextToClipboard(logText);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch (error: unknown) {

@@ -19,6 +19,7 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Copy, Trash2, Download, Search, ChevronDown, ChevronRight, AlertTriangle, CheckCircle, XCircle, Clock, Zap, ArrowRight, Activity } from 'lucide-react';
 import type { DebugPanelPluginProps } from '../DebugPanelHost';
+import { copyTextToClipboard } from '@/utils/clipboardUtils';
 
 // ============================================================================
 // 常量
@@ -473,7 +474,7 @@ const ToolCallLifecycleDebugPlugin: React.FC<DebugPanelPluginProps> = ({
   const handleCopy = useCallback(async () => {
     const text = buildCopyText(filteredLogs);
     try {
-      await navigator.clipboard.writeText(text);
+      await copyTextToClipboard(text);
       setCopyFeedback(true);
       setTimeout(() => setCopyFeedback(false), 1500);
     } catch {

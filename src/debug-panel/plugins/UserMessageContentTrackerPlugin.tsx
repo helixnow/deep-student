@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Copy, Check, Trash2, Play, Pause, ChevronDown, ChevronRight, AlertTriangle, CheckCircle } from 'lucide-react';
+import { copyTextToClipboard } from '@/utils/clipboardUtils';
 
 /**
  * 用户消息内容链路追踪器
@@ -323,7 +324,7 @@ const UserMessageContentTrackerPlugin: React.FC = () => {
           })),
         })),
       };
-      await navigator.clipboard.writeText(JSON.stringify(data, null, 2));
+      await copyTextToClipboard(JSON.stringify(data, null, 2));
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch (err) {

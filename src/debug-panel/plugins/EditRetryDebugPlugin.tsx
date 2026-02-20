@@ -1,3 +1,5 @@
+import { copyTextToClipboard } from '@/utils/clipboardUtils';
+
 /**
  * EditRetryDebugPlugin - 编辑重发与重试流程调试插件
  *
@@ -250,7 +252,7 @@ const EditRetryDebugPlugin: React.FC<DebugPanelPluginProps> = ({
     const text = filteredLogs
       .map(l => `[${l.timestamp}] [${l.stage}] ${l.action}: ${JSON.stringify(l.data)}`)
       .join('\n');
-    navigator.clipboard.writeText(text);
+    copyTextToClipboard(text);
   }, [filteredLogs]);
 
   // 清空日志

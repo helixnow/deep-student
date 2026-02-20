@@ -1,3 +1,5 @@
+import { copyTextToClipboard } from '@/utils/clipboardUtils';
+
 /**
  * SessionSwitchPerfDebugPlugin - 会话切换性能监控插件
  * 
@@ -305,7 +307,7 @@ const SessionSwitchPerfDebugPlugin: React.FC<DebugPanelPluginProps> = ({
       summary,
       recentTraces: traces.slice(-10),
     };
-    navigator.clipboard.writeText(JSON.stringify(report, null, 2));
+    copyTextToClipboard(JSON.stringify(report, null, 2));
     console.log('📋 性能报告已复制到剪贴板');
   }, [traces, enabled]);
 

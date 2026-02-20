@@ -69,6 +69,14 @@ export const PracticeModeSelector: React.FC<PracticeModeSelectorProps> = ({
       bgColor: 'bg-amber-500/10',
     },
     {
+      key: 'review_only',
+      icon: RotateCcw,
+      label: t('modes.reviewOnly.label'),
+      desc: t('modes.reviewOnly.desc'),
+      color: 'text-amber-600',
+      bgColor: 'bg-amber-500/10',
+    },
+    {
       key: 'by_tag',
       icon: Tag,
       label: t('modes.byTag.label'),

@@ -1,6 +1,6 @@
 import React, { lazy, Suspense, useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Loader2, AlertCircle, RefreshCw, ScanLine, RotateCcw, ListOrdered, Shuffle, Tag, Clock, CalendarDays, FileText, Timer, BookOpen } from 'lucide-react';
+import { Loader2, AlertCircle, RefreshCw, ScanLine, RotateCcw, ListOrdered, Shuffle, Tag, Clock, CalendarDays, FileText, Timer, BookOpen, Play, Pause } from 'lucide-react';
 import { TauriAPI, type ExamSheetSessionDetail } from '@/utils/tauriApi';
 import { NotionButton } from '@/components/ui/NotionButton';
 import type { ContentViewProps } from '../UnifiedAppPanel';
@@ -33,6 +33,7 @@ const MODE_CONFIG: Record<PracticeMode, { labelKey: string; icon: React.ElementT
   sequential: { labelKey: 'learningHub:exam.mode.sequential', icon: ListOrdered, descKey: 'learningHub:exam.mode.sequentialDesc' },
   random: { labelKey: 'learningHub:exam.mode.random', icon: Shuffle, descKey: 'learningHub:exam.mode.randomDesc' },
   review_first: { labelKey: 'learningHub:exam.mode.reviewFirst', icon: RotateCcw, descKey: 'learningHub:exam.mode.reviewFirstDesc' },
+  review_only: { labelKey: 'learningHub:exam.mode.reviewOnly', icon: RotateCcw, descKey: 'learningHub:exam.mode.reviewOnlyDesc' },
   by_tag: { labelKey: 'learningHub:exam.mode.byTag', icon: Tag, descKey: 'learningHub:exam.mode.byTagDesc' },
   daily: { labelKey: 'learningHub:exam.mode.daily', icon: CalendarDays, descKey: 'learningHub:exam.mode.dailyDesc' },
   paper: { labelKey: 'learningHub:exam.mode.paper', icon: FileText, descKey: 'learningHub:exam.mode.paperDesc' },
@@ -420,7 +421,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
             >
               {t('learningHub:exam.tab.practice')}
             </NotionButton>
-            {hasQuestions && stats && stats.review > 0 && (
+            {hasQuestions && stats && (
               <NotionButton
                 variant="ghost"
                 size="sm"
@@ -429,11 +430,16 @@ const ExamContentView: React.FC<ContentViewProps> = ({
                   'px-2.5 sm:px-3 py-1.5 text-sm rounded-md transition-colors flex items-center gap-1 whitespace-nowrap flex-shrink-0',
                   viewMode === 'review' 
                     ? 'bg-amber-500 text-white font-medium' 
-                    : 'text-amber-600 dark:text-amber-400 hover:bg-amber-500/10'
+                    : stats.review > 0 
+                      ? 'text-amber-600 dark:text-amber-400 hover:bg-amber-500/10'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
                 )}
               >
                 {t('learningHub:exam.tab.wrongAnswers')}
-                <span className="text-xs opacity-80">{stats.review}</span>
+                <span className={cn(
+                  "text-xs opacity-80",
+                  stats.review === 0 && viewMode !== 'review' && "text-muted-foreground"
+                )}>{stats.review}</span>
               </NotionButton>
             )}
             {hasQuestions && (
@@ -466,10 +472,20 @@ const ExamContentView: React.FC<ContentViewProps> = ({
                   variant="ghost"
                   size="sm"
                   onClick={toggleTimer}
-                  className="hidden sm:flex items-center gap-1.5 px-2 py-1 rounded-md transition-colors text-sm text-muted-foreground flex-shrink-0"
+                  className={cn(
+                    'flex items-center gap-1.5 px-2 py-1 rounded-md transition-colors text-sm flex-shrink-0',
+                    isTimerRunning ? 'text-primary bg-primary/5 hover:bg-primary/10' : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                  )}
+                  title={isTimerRunning ? t('learningHub:exam.timer.pause', '暂停') : t('learningHub:exam.timer.resume', '继续')}
                 >
-                  <Clock className={cn('w-3.5 h-3.5', isTimerRunning && 'text-primary')} />
-                  <span className="font-mono tabular-nums text-xs">{formatTime(elapsedTime)}</span>
+                  {isTimerRunning ? (
+                    <Pause className="w-3.5 h-3.5" />
+                  ) : (
+                    <Play className="w-3.5 h-3.5" />
+                  )}
+                  <span className={cn("font-mono tabular-nums text-xs", !isTimerRunning && "animate-pulse")}>
+                    {formatTime(elapsedTime)}
+                  </span>
                 </NotionButton>
               </>
             )}

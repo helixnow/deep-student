@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { Type, Copy, Check, Trash2, Play, Pause } from 'lucide-react';
+import { copyTextToClipboard } from '@/utils/clipboardUtils';
 
 interface TypographyLogEntry {
   id: string;
@@ -213,7 +214,7 @@ export default function NotesTypographyDebugPlugin() {
       text += `- 详情: ${JSON.stringify(log.details, null, 2)}\n\n`;
     });
 
-    navigator.clipboard.writeText(text).then(() => {
+    copyTextToClipboard(text).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     });

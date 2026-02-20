@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { DebugPanelPluginProps } from '../DebugPanelHost';
 import { Trash2, Copy, Play, Pause, FolderInput, FileText, Folder, AlertTriangle, CheckCircle } from 'lucide-react';
+import { copyTextToClipboard } from '@/utils/clipboardUtils';
 
 interface DragEvent {
   id: string;
@@ -51,7 +52,7 @@ export default function FinderDragDropDebugPlugin({ isActive, isActivated }: Deb
     const text = events.map(e => 
       `[${new Date(e.timestamp).toLocaleTimeString()}] ${e.type}: active=${e.activeId}, over=${e.overId ?? 'null'}`
     ).join('\n');
-    navigator.clipboard.writeText(text);
+    copyTextToClipboard(text);
   };
 
   const getEventIcon = (event: DragEvent) => {

@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ScrollText, Copy, Check, Trash2, Play, Pause, AlertTriangle } from 'lucide-react';
 import type { DebugPanelPluginProps } from '../DebugPanelHost';
+import { copyTextToClipboard } from '@/utils/clipboardUtils';
 import {
   NOTES_OUTLINE_DEBUG_EVENT,
   type OutlineDebugEventDetail,
@@ -72,7 +73,7 @@ export default function NotesOutlineDebugPlugin({ isActive }: DebugPanelPluginPr
       snapshots,
       exportedAt: new Date().toISOString(),
     };
-    navigator.clipboard.writeText(JSON.stringify(payload, null, 2)).then(() => {
+    copyTextToClipboard(JSON.stringify(payload, null, 2)).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     });

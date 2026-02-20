@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import type { DebugPanelPluginProps } from '../DebugPanelHost';
 import { Copy, Save, AlertTriangle, CheckCircle, XCircle, Filter, Upload, ExternalLink, FileText, Clipboard, MessageSquare } from 'lucide-react';
 import { showGlobalNotification } from '../../components/UnifiedNotification';
+import { copyTextToClipboard } from '@/utils/clipboardUtils';
 
 type LogLevel = 'debug' | 'info' | 'warning' | 'error';
 type DragDropStage = 
@@ -261,7 +262,7 @@ const UnifiedDragDropDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, 
       details: sanitizeDetails(log.details),
     }, null, 2);
     
-    navigator.clipboard.writeText(text).then(() => {
+    copyTextToClipboard(text).then(() => {
       showGlobalNotification('success', '日志已复制到剪贴板');
     }).catch(console.error);
   }, []);
@@ -276,7 +277,7 @@ const UnifiedDragDropDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, 
       details: sanitizeDetails(log.details),
     })), null, 2);
     
-    navigator.clipboard.writeText(text).then(() => {
+    copyTextToClipboard(text).then(() => {
       showGlobalNotification('success', `已复制 ${filteredLogs.length} 条日志到剪贴板`);
     }).catch(console.error);
   }, [filteredLogs]);
