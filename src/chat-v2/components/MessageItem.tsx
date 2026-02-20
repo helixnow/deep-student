@@ -5,6 +5,7 @@
  */
 
 import React, { useMemo, useCallback, useState, useRef, useEffect } from 'react';
+import { Copy, Check, RotateCcw, Trash2 } from 'lucide-react';
 import { useStore } from 'zustand';
 import { useTranslation } from 'react-i18next';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
@@ -304,6 +305,44 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
       showGlobalNotification('error', getErrorMessage(error), t('messageItem.actions.copyFailed'));
     }
   }, [message, extractMessageContent, t]);
+
+  // 多变体：底部行内操作（与时间同一行）
+  const [multiCopied, setMultiCopied] = useState(false);
+  const [isRetryingAllVariants, setIsRetryingAllVariants] = useState(false);
+  const [isDeletingMultiMessage, setIsDeletingMultiMessage] = useState(false);
+
+  const handleMultiVariantCopy = useCallback(async () => {
+    if (multiCopied) return;
+    await handleCopy();
+    setMultiCopied(true);
+    setTimeout(() => setMultiCopied(false), 2000);
+  }, [multiCopied, handleCopy]);
+
+  const handleRetryAllVariantsInline = useCallback(async () => {
+    if (!retryAllVariants || isLocked || isRetryingAllVariants) return;
+    setIsRetryingAllVariants(true);
+    try {
+      await retryAllVariants();
+    } catch (error: unknown) {
+      console.error('[MessageItem] Retry all variants failed:', error);
+    } finally {
+      setIsRetryingAllVariants(false);
+    }
+  }, [retryAllVariants, isLocked, isRetryingAllVariants]);
+
+  const handleDeleteMultiMessageInline = useCallback(async () => {
+    if (!canDelete || isDeletingMultiMessage) return;
+    setIsDeletingMultiMessage(true);
+    try {
+      await store.getState().deleteMessage(messageId);
+      showGlobalNotification('success', t('messageItem.actions.deleteSuccess'));
+    } catch (error: unknown) {
+      console.error('[MessageItem] Delete multi-variant message failed:', error);
+      showGlobalNotification('error', getErrorMessage(error), t('messageItem.actions.deleteFailed'));
+    } finally {
+      setIsDeletingMultiMessage(false);
+    }
+  }, [canDelete, isDeletingMultiMessage, store, messageId, t]);
 
   // 🆕 复制调试信息（思维链 + 工具调用 + 内容 + 工作区日志）
   const handleCopyDebug = useCallback(async () => {
@@ -645,6 +684,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
             onDeleteMessage={handleDelete}
             onCopy={handleCopy}
             isLocked={isLocked}
+            hideMessageLevelActions={!isSmallScreen}
           />
         </div>
       ) : (
@@ -718,6 +758,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                     onCopy={handleCopy}
                     isLocked={isLocked}
                     onContinue={handleContinue}
+                    hideMessageLevelActions={!isSmallScreen}
                   />
                 ) : (
                 /* 单变体：正常块列表渲染 */
@@ -925,6 +966,10 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
           {showActions && !isInlineEditing && !isWaitingForContent && (
             <div className={cn(
               'mt-3 md:opacity-0 md:group-hover:opacity-100 transition-opacity',
+              // 多变体：底部汇总计数/操作与单变体保持同一内容宽度定位
+              isMultiVariant && 'max-w-3xl mx-auto',
+              // 桌面端多变体（助手消息）：补齐单变体头像列(8) + 间距(4) = 12，确保与上方单变体竖向参考线对齐
+              !isSmallScreen && !isUser && isMultiVariant && 'pl-12',
               // 📱 移动端 AI 消息：向左扩展到头像位置，利用左侧空间避免右侧溢出
               isSmallScreen && !isUser && !isMultiVariant && '-ml-12 w-[calc(100%+3rem)]'
             )}>
@@ -988,9 +1033,46 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                         onSaveAsNote={!isUser ? handleSaveAsNote : undefined}
                       />
                     )}
+                    {!isUser && isMultiVariant && (
+                      <div className="flex items-center gap-1">
+                        <NotionButton
+                          variant="ghost"
+                          size="icon"
+                          iconOnly
+                          onClick={handleMultiVariantCopy}
+                          aria-label={t('messageItem.actions.copy')}
+                          title={t('messageItem.actions.copy')}
+                        >
+                          {multiCopied ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
+                        </NotionButton>
+                        <NotionButton
+                          variant="ghost"
+                          size="icon"
+                          iconOnly
+                          onClick={handleRetryAllVariantsInline}
+                          disabled={isLocked || isRetryingAllVariants}
+                          aria-label={t('variant.retryAll', '全部重试')}
+                          title={t('variant.retryAll', '全部重试')}
+                        >
+                          <RotateCcw className={cn('w-4 h-4', isRetryingAllVariants && 'animate-spin')} />
+                        </NotionButton>
+                        <NotionButton
+                          variant="ghost"
+                          size="icon"
+                          iconOnly
+                          onClick={handleDeleteMultiMessageInline}
+                          disabled={!canDelete || isDeletingMultiMessage}
+                          className={cn(!canDelete || isDeletingMultiMessage ? '' : 'hover:text-destructive')}
+                          aria-label={t('messageItem.actions.delete')}
+                          title={t('messageItem.actions.delete')}
+                        >
+                          <Trash2 className={cn('w-4 h-4', isDeletingMultiMessage && 'animate-pulse')} />
+                        </NotionButton>
+                      </div>
+                    )}
                     {message.timestamp && (
                       <span
-                        className="text-[11px] text-muted-foreground/50 flex items-center ml-1"
+                        className="text-[11px] text-muted-foreground/50 flex items-center ml-1 whitespace-nowrap shrink-0"
                         title={new Date(message.timestamp).toLocaleString()}
                       >
                         {formatMessageTime(message.timestamp)}

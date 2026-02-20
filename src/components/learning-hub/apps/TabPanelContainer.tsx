@@ -8,7 +8,7 @@
  */
 
 import React, { lazy, Suspense, useCallback } from 'react';
-import { Loader2, X } from 'lucide-react';
+import { Loader2, X, PanelRight } from 'lucide-react';
 import { PanelGroup, Panel, PanelResizeHandle } from 'react-resizable-panels';
 import { cn } from '@/lib/utils';
 import type { OpenTab, SplitViewState } from '../types/tabs';

@@ -256,7 +256,7 @@ export const MultiSelectModelPanel: React.FC<MultiSelectModelPanelProps> = ({
       isMobile ? 'h-[18px] w-[18px]' : 'h-5 w-5',
       isSelected
         ? 'border-primary bg-primary text-primary-foreground shadow-sm'
-        : 'border-muted-foreground/30 text-transparent hover:border-muted-foreground/50'
+        : 'border-muted-foreground/30 text-transparent'
     );
 
     return (
@@ -267,7 +267,7 @@ export const MultiSelectModelPanel: React.FC<MultiSelectModelPanelProps> = ({
           isMobile ? 'py-1.5' : 'py-2',
           isSelected
             ? 'border-primary/60 bg-primary/5'
-            : 'border-transparent bg-card/80 hover:border-muted-foreground/20 hover:bg-muted/70',
+            : 'border-transparent bg-card/80',
           disabled && 'opacity-60'
         )}
       >
@@ -286,6 +286,8 @@ export const MultiSelectModelPanel: React.FC<MultiSelectModelPanelProps> = ({
           disabled={disabled}
           className={cn(
             'min-w-0 flex-1 !h-auto !flex-col !items-start !justify-start !gap-0.5 !whitespace-normal !px-0 !py-0 text-left',
+            '!bg-transparent dark:!bg-transparent !hover:bg-transparent dark:!hover:bg-transparent !active:bg-transparent',
+            '!text-inherit hover:!text-inherit dark:hover:!text-inherit active:!text-inherit',
             isMobile && '!gap-0',
             disabled && 'cursor-not-allowed'
           )}
@@ -352,8 +354,8 @@ export const MultiSelectModelPanel: React.FC<MultiSelectModelPanelProps> = ({
               }}
               disabled={disabled || savingDefault}
               className={cn(
-                'mt-0.5 !h-6 !w-6 opacity-0 group-hover:opacity-100 transition-opacity',
-                'text-muted-foreground hover:text-primary hover:bg-primary/10',
+                'mt-0.5 !h-6 !w-6 opacity-60',
+                'text-muted-foreground !hover:bg-transparent !active:bg-transparent hover:!text-muted-foreground',
                 (disabled || savingDefault) && 'cursor-not-allowed opacity-40'
               )}
               aria-label={t('chat_host:model_panel.set_as_default')}

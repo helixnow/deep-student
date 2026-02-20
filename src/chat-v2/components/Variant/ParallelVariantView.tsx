@@ -79,9 +79,11 @@ export interface ParallelVariantViewProps {
   onCopy?: () => Promise<void>;
   /** 🆕 消息是否锁定（流式中不允许操作） */
   isLocked?: boolean;
-  /** � 继续执行回调（工具限制节点使用） */
+  /** 🔧 继续执行回调（工具限制节点使用） */
   onContinue?: () => void;
-  /** � P0修复：移除 isBlockStreaming，块状态由 BlockRendererWithStore 内部订阅 */
+  /** 是否隐藏底部消息级操作栏（由父级自行渲染） */
+  hideMessageLevelActions?: boolean;
+  /** 🚀 P0修复：移除 isBlockStreaming，块状态由 BlockRendererWithStore 内部订阅 */
   /** 自定义类名 */
   className?: string;
 }
@@ -562,7 +564,7 @@ const MessageLevelActions: React.FC<MessageLevelActionsProps> = ({
   }
 
   return (
-    <div className="mt-3 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+    <div className="mt-3 md:opacity-0 md:group-hover:opacity-100 transition-opacity max-w-3xl mx-auto">
       <div className="flex items-center gap-1">
         {/* 复制按钮 */}
         {onCopy && (
@@ -632,6 +634,7 @@ export const ParallelVariantView: React.FC<ParallelVariantViewProps> = ({
   onCopy,
   isLocked = false,
   onContinue,
+  hideMessageLevelActions = false,
   className,
 }) => {
   const { t } = useTranslation('chatV2');
@@ -836,13 +839,15 @@ export const ParallelVariantView: React.FC<ParallelVariantViewProps> = ({
       </div>
 
       {/* 🆕 消息级操作栏：全部重试 + 删除消息 */}
-      <MessageLevelActions
-        variants={variants}
-        isLocked={isLocked}
-        onRetryAll={onRetryAllVariants}
-        onDeleteMessage={onDeleteMessage}
-        onCopy={onCopy}
-      />
+      {!hideMessageLevelActions && (
+        <MessageLevelActions
+          variants={variants}
+          isLocked={isLocked}
+          onRetryAll={onRetryAllVariants}
+          onDeleteMessage={onDeleteMessage}
+          onCopy={onCopy}
+        />
+      )}
     </div>
   );
 };

@@ -1255,7 +1255,7 @@ const TemplateCard: React.FC<TemplateCardProps> = ({
           <NotionButton
             variant="primary"
             size="sm"
-            className="w-full"
+            className="flex-1 min-w-0"
             onClick={isDefault ? undefined : onSetDefaultTemplate}
             disabled={isDefault}
           >

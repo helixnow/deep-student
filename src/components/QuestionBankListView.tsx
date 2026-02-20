@@ -17,7 +17,6 @@ import { Input } from '@/components/ui/shad/Input';
 import { NotionAlertDialog } from '@/components/ui/NotionDialog';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import {
-  BookOpen,
   Search,
   Check,
   X,
@@ -36,6 +35,7 @@ import {
   Image as ImageIcon,
   Plus,
 } from 'lucide-react';
+import { ExamIcon } from '@/components/learning-hub/icons/ResourceIcons';
 import { useTranslation } from 'react-i18next';
 import type { Question, QuestionBankStats, QuestionStatus, Difficulty } from '@/api/questionBankApi';
 import { QuestionInlineEditor } from './QuestionInlineEditor';
@@ -500,8 +500,8 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
   if (questions.length === 0) {
     return (
       <div className={cn('flex flex-col items-center justify-center h-full py-16', className)}>
-        <div className="p-5 rounded-2xl bg-muted/30 mb-5">
-          <BookOpen className="w-12 h-12 text-muted-foreground/60" />
+        <div className="mb-5">
+          <ExamIcon size={48} className="opacity-70" />
         </div>
         <h3 className="text-lg font-medium mb-1.5">{t('practice:questionBank.emptyTitle')}</h3>
         <p className="text-sm text-muted-foreground">{t('practice:questionBank.emptyDesc')}</p>

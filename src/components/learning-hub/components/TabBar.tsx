@@ -1,8 +1,9 @@
 /**
  * TabBar - 学习资源标签页栏（Notion 风格）
  *
- * 显示已打开的标签页列表，支持切换、关闭。
+ * 显示已打开的标签页列表，支持切换、关闭、拖拽排序。
  * 标签页过多时显示左右滚动箭头按钮。
+ * 使用 @dnd-kit/sortable 实现水平拖拽重排。
  * 使用自定义 ResourceIcons 替代 Lucide 图标。
  */
 
@@ -15,8 +16,9 @@ import {
   PointerSensor,
   useSensor,
   useSensors,
-  DragEndEvent,
+  type DragEndEvent,
 } from '@dnd-kit/core';
+import { restrictToHorizontalAxis } from '@dnd-kit/modifiers';
 import {
   arrayMove,
   SortableContext,
@@ -150,24 +152,19 @@ const TabItem: React.FC<TabItemProps> = React.memo(({
         role="tab"
         tabIndex={0}
         aria-selected={isActive}
-        onPointerDown={(e) => {
-          // 只在左键点击时触发切换，防止拖拽时意外切换，或右键时切换
-          if (e.button === 0) {
-            onSwitch();
-          }
-        }}
+        onClick={onSwitch}
         onAuxClick={handleAuxClick}
         onContextMenu={handleContextMenu}
         title={tab.dstuPath}
         className={cn(
           'group/tab relative flex items-center gap-1.5 pl-2.5 pr-1.5 h-[28px] rounded-md cursor-default select-none my-[4px]',
           'text-[13px] leading-none whitespace-nowrap min-w-0 max-w-[200px] shrink-0',
-          'transition-colors duration-150', // 移除 transform/all transition 防止与 dnd-kit 冲突
+          'transition-colors duration-150',
           isActive
             ? 'text-[var(--foreground)] font-medium bg-[var(--foreground)]/[0.06] shadow-[0_1px_2px_rgba(0,0,0,0.02)] ring-1 ring-inset ring-[var(--foreground)]/[0.04]'
             : 'text-[var(--foreground)]/60 hover:text-[var(--foreground)]/90 hover:bg-[var(--foreground)]/[0.04]',
           isSplitRight && !isActive && 'text-[#2383e2] dark:text-[#3b82f6] bg-[#2383e2]/10 hover:bg-[#2383e2]/15 hover:text-[#2383e2]',
-          isDragging && 'opacity-50 scale-105 shadow-md z-50'
+          isDragging && 'opacity-60 shadow-lg ring-2 ring-primary/20 z-50',
         )}
       >
         {/* 图标 */}
@@ -273,17 +270,6 @@ function useScrollOverflow(ref: React.RefObject<HTMLDivElement | null>) {
 // TabBar 主组件
 // ============================================================================
 
-export interface TabBarProps {
-  tabs: OpenTab[];
-  activeTabId: string | null;
-  onSwitch: (tabId: string) => void;
-  onClose: (tabId: string) => void;
-  splitView?: SplitViewState | null;
-  onSplitView?: (tabId: string) => void;
-  onCloseSplitView?: () => void;
-  setTabs?: React.Dispatch<React.SetStateAction<OpenTab[]>>;
-}
-
 export const TabBar: React.FC<TabBarProps> = ({
   tabs, activeTabId, onSwitch, onClose, splitView, onSplitView, onCloseSplitView, setTabs
 }) => {
@@ -360,6 +346,7 @@ export const TabBar: React.FC<TabBarProps> = ({
       <DndContext
         sensors={sensors}
         collisionDetection={closestCenter}
+        modifiers={[restrictToHorizontalAxis]}
         onDragEnd={handleDragEnd}
       >
         <SortableContext

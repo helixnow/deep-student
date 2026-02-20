@@ -1930,7 +1930,7 @@ export function LearningHubSidebar({
   }, [selectedIds, handleSelectAll, handleBatchDelete, handleClearSelection]);
 
   return (
-    <div ref={containerRef} className={cn("flex h-full bg-background border-r", className)} tabIndex={-1}>
+    <div ref={containerRef} className={cn("flex h-full bg-background", className)} tabIndex={-1}>
       {/* 左侧：快速导航栏（可折叠，包含搜索和新建）- 移动端和 canvas 模式隐藏 */}
       {!isSmallScreen && mode !== 'canvas' && (
         <FinderQuickAccess

@@ -159,6 +159,8 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
   
   // 获取默认模型
   const defaultModel = models.find(m => m.is_default);
+  const topicImageCount = topicImages?.length ?? 0;
+  const hasTopicContent = Boolean(topicText?.trim()) || topicImageCount > 0;
 
   // ---- 自研滚动条：合并转发 ref + textarea 自动调高 ----
   const internalRef = React.useRef<HTMLTextAreaElement>(null);
@@ -367,22 +369,32 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
         <div className="border-b border-border/30">
           <button
             onClick={() => setShowTopicSection(!showTopicSection)}
-            className="flex items-center gap-1.5 w-full px-4 py-1.5 text-xs text-muted-foreground/70 hover:text-foreground hover:bg-muted/30 transition-colors"
-          >
-            <FileText className="w-3 h-3" />
-            <span>{t('essay_grading:topic.toggle_label')}</span>
-            <ChevronDown className={cn("w-3 h-3 ml-auto transition-transform", showTopicSection && "rotate-180")} />
-            {((topicText && topicText.trim()) || (topicImages && topicImages.length > 0)) && (
-              <span className="w-1.5 h-1.5 rounded-full bg-primary" />
+            className={cn(
+              'flex items-center gap-2 w-full px-4 py-2 text-xs transition-colors',
+              showTopicSection
+                ? 'text-foreground bg-muted/25'
+                : 'text-muted-foreground/70 hover:text-foreground hover:bg-muted/20'
             )}
+          >
+            <span className="inline-flex items-center justify-center w-4 h-4 rounded bg-muted/60">
+              <FileText className="w-3 h-3" />
+            </span>
+            <span className="font-medium">{t('essay_grading:topic.toggle_label')}</span>
+            {hasTopicContent && (
+              <span className="inline-flex items-center rounded-md border border-primary/25 bg-primary/10 px-1.5 py-0.5 text-[10px] text-primary">
+                {topicImageCount > 0 ? `${topicImageCount} 图` : '已填写'}
+              </span>
+            )}
+            <ChevronDown className={cn('w-3.5 h-3.5 ml-auto transition-transform', showTopicSection && 'rotate-180')} />
           </button>
           {showTopicSection && (
-            <div className="px-4 pb-3 space-y-2">
+            <div className="px-3 pb-3">
+              <div className="rounded-lg border border-border/40 bg-muted/[0.18] p-3 space-y-2.5">
               <Textarea
                 value={topicText ?? ''}
                 onChange={(e) => setTopicText(e.target.value)}
                 placeholder={t('essay_grading:topic.placeholder')}
-                className="w-full min-h-[60px] max-h-[120px] resize-y text-sm !border-border/40 !bg-muted/20 focus:!ring-1 focus:!ring-primary/30"
+                className="w-full min-h-[72px] max-h-[144px] resize-y text-sm leading-relaxed !border-border/35 !bg-background/80 focus:!ring-1 focus:!ring-primary/20"
                 disabled={isGrading}
               />
               {/* 题目参考图片 */}
@@ -392,7 +404,7 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
                     <img
                       src={img.dataUrl}
                       alt={img.fileName}
-                      className="w-10 h-10 object-cover rounded border border-border/40"
+                      className="w-11 h-11 object-cover rounded-md border border-border/40 bg-background"
                       title={img.fileName}
                     />
                     {!isGrading && onRemoveTopicImage && (
@@ -409,12 +421,13 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
                 {onTopicFilesDropped && !isGrading && (
                   <button
                     onClick={() => topicFileInputRef.current?.click()}
-                    className="w-10 h-10 rounded border border-dashed border-border/60 flex items-center justify-center text-muted-foreground/50 hover:text-foreground hover:border-foreground/40 transition-colors"
+                    className="w-11 h-11 rounded-md border border-dashed border-border/60 bg-background/60 flex items-center justify-center text-muted-foreground/55 hover:text-foreground hover:border-foreground/35 hover:bg-muted/20 transition-colors"
                     aria-label={t('essay_grading:topic.add_image')}
                   >
                     <ImagePlus className="w-4 h-4" />
                   </button>
                 )}
+              </div>
               </div>
             </div>
           )}

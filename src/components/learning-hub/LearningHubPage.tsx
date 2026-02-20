@@ -917,17 +917,12 @@ export const LearningHubPage: React.FC = () => {
           </div>
         </Panel>
 
-        {/* 分隔条 */}
-        <PanelResizeHandle
-          className={cn(
-            "w-1.5 transition-colors flex items-center justify-center group",
-            hasOpenApp
-              ? "bg-border hover:bg-primary/30 active:bg-primary/50"
-              : "w-0 opacity-0 pointer-events-none"
-          )}
-        >
-          <GripVertical className="w-3 h-3 text-muted-foreground/50 group-hover:text-muted-foreground transition-colors" />
-        </PanelResizeHandle>
+        {/* 分隔条：仅在右侧面板可见时渲染，避免隐藏态仍占宽度 */}
+        {hasOpenApp && (
+          <PanelResizeHandle className="w-1.5 transition-colors flex items-center justify-center group bg-border hover:bg-primary/30 active:bg-primary/50">
+            <GripVertical className="w-3 h-3 text-muted-foreground/50 group-hover:text-muted-foreground transition-colors" />
+          </PanelResizeHandle>
+        )}
 
         {/* 右侧：原生应用面板（始终渲染，通过 collapsible 控制显示） */}
         <Panel
