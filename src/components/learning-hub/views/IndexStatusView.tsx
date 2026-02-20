@@ -26,6 +26,7 @@ import { pLimit } from '@/utils/concurrency';
  */
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useIsMobile } from '@/hooks/useBreakpoint';
 import { useTranslation } from 'react-i18next';
 import {
   Database,
@@ -52,6 +53,7 @@ import {
   Network,
   RotateCcw,
   Workflow,
+  MoreHorizontal,
 } from 'lucide-react';
 // Button 组件已替换为原生 button + Tailwind（Notion 风格）
 import { cn } from '@/lib/utils';
@@ -185,6 +187,7 @@ const ProgressRing: React.FC<ProgressRingProps> = ({
 
 export const IndexStatusView: React.FC = () => {
   const { t } = useTranslation(['learningHub', 'common']);
+  const isMobile = useIsMobile();
 
   // ========== 状态 ==========
   const [summary, setSummary] = useState<IndexStatusSummary | null>(null);
@@ -738,6 +741,19 @@ export const IndexStatusView: React.FC = () => {
 
   // ========== 重置所有索引状态 ==========
   const [resetting, setResetting] = useState(false);
+  const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
+  const mobileMoreRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!mobileMoreOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (mobileMoreRef.current && !mobileMoreRef.current.contains(e.target as Node)) {
+        setMobileMoreOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [mobileMoreOpen]);
   
   const handleResetAllIndexState = useCallback(async () => {
     if (resetting || batchIndexing || mmIndexing) {
@@ -1308,214 +1324,320 @@ export const IndexStatusView: React.FC = () => {
   return (
     <div className="flex flex-col h-full">
       {/* 顶部概览区 */}
-      <div className="flex flex-col md:flex-row items-center gap-3 md:gap-6 p-3 md:p-6 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        {/* ★ 2026-02 修复：环形进度图 - 多模态索引已禁用时只显示文本进度 */}
-        <div className="flex items-center gap-4 md:gap-6 shrink-0">
-          {/* 综合进度环（当有多模态资源时显示，且多模态已启用） */}
-          {MULTIMODAL_INDEX_ENABLED && summary.mmTotalResources > 0 ? (
-            <>
-              <div className="flex flex-col items-center gap-2">
-                <ProgressRing
-                  percentage={overallProgressPercentage}
-                  total={summary.totalResources + summary.mmTotalResources}
-                  indexed={summary.indexedCount + summary.mmIndexedCount}
-                  size={80}
-                  strokeWidth={8}
-                />
-                <span className="text-xs font-medium text-muted-foreground">{t('indexStatus.progress.overallProgress', { defaultValue: '综合进度' })}</span>
+      {isMobile ? (
+        /* ==================== 移动端紧凑布局 ==================== */
+        <div className="relative z-20 flex flex-col gap-2 px-3 py-2.5 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+          {/* 第一行：进度环 + 关键数字 + 操作按钮 */}
+          <div className="flex items-center gap-3">
+            {/* 进度环 - 紧凑 */}
+            <ProgressRing
+              percentage={MULTIMODAL_INDEX_ENABLED && summary.mmTotalResources > 0 ? overallProgressPercentage : progressPercentage}
+              total={MULTIMODAL_INDEX_ENABLED && summary.mmTotalResources > 0 ? summary.totalResources + summary.mmTotalResources : summary.totalResources}
+              indexed={MULTIMODAL_INDEX_ENABLED && summary.mmTotalResources > 0 ? summary.indexedCount + summary.mmIndexedCount : summary.indexedCount}
+              size={56}
+              strokeWidth={6}
+            />
+            {/* 关键数字 - 紧凑两行 */}
+            <div className="flex-1 min-w-0 grid grid-cols-2 gap-x-3 gap-y-0.5">
+              <div className="flex items-center gap-1.5 text-xs">
+                <Database className="h-3 w-3 text-muted-foreground shrink-0" />
+                <span className="text-muted-foreground shrink-0">{t('indexStatus.stats.totalVectors', { defaultValue: '总向量数' })}</span>
+                <span className="font-semibold tabular-nums">{dimensions.reduce((acc, d) => acc + d.recordCount, 0).toLocaleString()}</span>
               </div>
-              <div className="h-16 w-px bg-border/50 hidden md:block" />
-              <div className="flex flex-col gap-3">
-                <div className="flex items-center gap-3">
-                  <ProgressRing
-                    percentage={progressPercentage}
-                    total={summary.totalResources}
-                    indexed={summary.indexedCount}
-                    size={32}
-                    strokeWidth={3}
-                  />
-                  <div className="flex flex-col">
-                    <span className="text-xs font-medium">{t('indexStatus.progress.text', { defaultValue: '文本' })}</span>
-                    <span className="text-[10px] text-muted-foreground">{summary.indexedCount}/{summary.totalResources}</span>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3">
-                  <ProgressRing
-                    percentage={summary.mmTotalResources > 0 ? (summary.mmIndexedCount / summary.mmTotalResources) * 100 : 0}
-                    total={summary.mmTotalResources}
-                    indexed={summary.mmIndexedCount}
-                    size={32}
-                    strokeWidth={3}
-                  />
-                  <div className="flex flex-col">
-                    <span className="text-xs font-medium">{t('indexStatus.progress.multimodal', { defaultValue: '多模态' })}</span>
-                    <span className="text-[10px] text-muted-foreground">{summary.mmIndexedCount}/{summary.mmTotalResources}</span>
-                  </div>
-                </div>
+              <div className="flex items-center gap-1.5 text-xs">
+                <Workflow className="h-3 w-3 text-muted-foreground shrink-0" />
+                <span className="text-muted-foreground shrink-0">{t('indexStatus.stats.dimensions', { defaultValue: '向量维度' })}</span>
+                <span className="font-mono font-semibold">{dimensions.length > 0 ? dimensions[0].dimension : '-'}</span>
               </div>
-            </>
-          ) : (
-            <div className="flex items-center gap-4">
-              <ProgressRing
-                percentage={progressPercentage}
-                total={summary.totalResources}
-                indexed={summary.indexedCount}
-                size={80}
-                strokeWidth={8}
-              />
-              <div className="flex flex-col gap-1">
-                <span className="text-sm font-medium">{t('indexStatus.progress.textIndexProgress')}</span>
-                <span className="text-xs text-muted-foreground">{summary.indexedCount} / {summary.totalResources} {t('indexStatus.progress.items', { defaultValue: '项' })}</span>
+              <div className="flex items-center gap-1.5 text-xs">
+                <AlertCircle className={cn('h-3 w-3 shrink-0', summary.failedCount > 0 ? 'text-red-500' : 'text-muted-foreground')} />
+                <span className="text-muted-foreground shrink-0">{t('indexStatus.stats.errors', { defaultValue: '索引错误' })}</span>
+                <span className={cn('font-semibold tabular-nums', summary.failedCount > 0 && 'text-red-500')}>{summary.failedCount + summary.mmFailedCount}</span>
               </div>
-            </div>
-          )}
-        </div>
-
-        {/* 中间信息区 */}
-        <div className="flex-1 min-w-0 w-full grid gap-3 md:gap-6 content-center">
-          {/* 关键指标卡片 */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 md:gap-3">
-            <div className="bg-muted/30 p-2 md:p-3 rounded-md flex flex-col justify-between gap-0.5 md:gap-1 group transition-colors">
-              <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium flex items-center gap-1.5">
-                <Database className="h-3 w-3" />
-                {t('indexStatus.stats.totalVectors', { defaultValue: '总向量数' })}
-              </span>
-              <span className="text-base md:text-lg font-semibold tabular-nums text-foreground/90">
-                {dimensions.reduce((acc, d) => acc + d.recordCount, 0).toLocaleString()}
-              </span>
-            </div>
-            
-            <div className="bg-muted/30 p-2 md:p-3 rounded-md flex flex-col justify-between gap-0.5 md:gap-1 group transition-colors">
-              <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium flex items-center gap-1.5">
-                <Workflow className="h-3 w-3" />
-                {t('indexStatus.stats.dimensions', { defaultValue: '向量维度' })}
-              </span>
-              <div className="flex items-center gap-1.5 overflow-hidden">
-                {dimensions.length > 0 ? (
-                  dimensions.slice(0, 2).map(d => (
-                    <span key={d.dimension} className="text-xs font-mono bg-background px-1.5 py-0.5 rounded border border-border/50">
-                      {d.dimension}
-                    </span>
-                  ))
-                ) : (
-                  <span className="text-sm text-muted-foreground">-</span>
-                )}
-                {dimensions.length > 2 && (
-                  <span className="text-[10px] text-muted-foreground">+{dimensions.length - 2}</span>
-                )}
+              <div className="flex items-center gap-1.5 text-xs">
+                <Clock className={cn('h-3 w-3 shrink-0', summary.staleCount > 0 ? 'text-warning' : 'text-muted-foreground')} />
+                <span className="text-muted-foreground shrink-0">{t('indexStatus.stats.stale', { defaultValue: '待更新' })}</span>
+                <span className={cn('font-semibold tabular-nums', summary.staleCount > 0 && 'text-warning')}>{summary.staleCount}</span>
               </div>
-            </div>
-
-            <div className={cn(
-              "p-2 md:p-3 rounded-md flex flex-col justify-between gap-0.5 md:gap-1 group transition-colors",
-              summary.failedCount + summary.mmFailedCount > 0 
-                ? "bg-red-500/5" 
-                : "bg-muted/30"
-            )}>
-              <span className={cn(
-                "text-[10px] uppercase tracking-wider font-medium flex items-center gap-1.5",
-                summary.failedCount + summary.mmFailedCount > 0 ? "text-red-600/80 dark:text-red-400/80" : "text-muted-foreground"
-              )}>
-                <AlertCircle className="h-3 w-3" />
-                {t('indexStatus.stats.errors', { defaultValue: '索引错误' })}
-              </span>
-              <span className={cn(
-                "text-base md:text-lg font-semibold tabular-nums",
-                summary.failedCount + summary.mmFailedCount > 0 ? "text-red-600 dark:text-red-400" : "text-foreground/90"
-              )}>
-                {summary.failedCount + summary.mmFailedCount}
-              </span>
-            </div>
-
-            <div className={cn(
-              "p-2 md:p-3 rounded-md flex flex-col justify-between gap-0.5 md:gap-1 group transition-colors",
-              summary.staleCount > 0 
-                ? "bg-warning/5" 
-                : "bg-muted/30"
-            )}>
-              <span className={cn(
-                "text-[10px] uppercase tracking-wider font-medium flex items-center gap-1.5",
-                summary.staleCount > 0 ? "text-warning" : "text-muted-foreground"
-              )}>
-                <Clock className="h-3 w-3" />
-                {t('indexStatus.stats.stale', { defaultValue: '待更新' })}
-              </span>
-              <span className={cn(
-                "text-base md:text-lg font-semibold tabular-nums",
-                summary.staleCount > 0 ? "text-warning" : "text-foreground/90"
-              )}>
-                {summary.staleCount}
-              </span>
             </div>
           </div>
 
-          {/* 状态过滤徽章 - 紧凑排列 */}
-          <div className="flex flex-wrap gap-2">
-            {renderStatBadge('indexed', summary.indexedCount, selectedState === 'indexed', () => setSelectedState('indexed'))}
-            {summary.pendingCount > 0 && renderStatBadge('pending', summary.pendingCount, selectedState === 'pending', () => setSelectedState('pending'))}
-            {summary.indexingCount > 0 && renderStatBadge('indexing', summary.indexingCount, selectedState === 'indexing', () => setSelectedState('indexing'))}
-            {summary.failedCount > 0 && renderStatBadge('failed', summary.failedCount, selectedState === 'failed', () => setSelectedState('failed'))}
-            {summary.disabledCount > 0 && renderStatBadge('disabled', summary.disabledCount, selectedState === 'disabled', () => setSelectedState('disabled'))}
+          {/* 第二行：状态徽章独占一行 */}
+          <div className="flex flex-wrap gap-1.5">
+            {renderStatBadge('indexed', summary.indexedCount, selectedState === 'indexed', () => setSelectedState(s => s === 'indexed' ? 'all' : 'indexed'))}
+            {summary.pendingCount > 0 && renderStatBadge('pending', summary.pendingCount, selectedState === 'pending', () => setSelectedState(s => s === 'pending' ? 'all' : 'pending'))}
+            {summary.failedCount > 0 && renderStatBadge('failed', summary.failedCount, selectedState === 'failed', () => setSelectedState(s => s === 'failed' ? 'all' : 'failed'))}
+            {summary.disabledCount > 0 && renderStatBadge('disabled', summary.disabledCount, selectedState === 'disabled', () => setSelectedState(s => s === 'disabled' ? 'all' : 'disabled'))}
           </div>
 
-          {/* 动态提示与进度 */}
-          <div className="space-y-2">
-            {/* 批量索引进度条 */}
-            {(batchIndexing || batchProgress > 0) && (
-              <div className="space-y-1.5 bg-muted/30 p-2 rounded-md">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="font-medium">{batchMessage}</span>
-                  <span className="font-mono tabular-nums">{batchProgress}%</span>
-                </div>
-                <Progress value={batchProgress} className="h-2" />
-              </div>
-            )}
-
-            {/* 原生多模态索引进度条 - ★ 多模态索引已禁用时隐藏 */}
-            {MULTIMODAL_INDEX_ENABLED && (mmIndexing || mmProgress > 0) && (
-              <div className="space-y-1.5 bg-purple-500/5 p-2 rounded-md">
-                <div className="flex items-center justify-between text-xs text-purple-600 dark:text-purple-400">
-                  <span className="font-medium">{mmMessage}</span>
-                  <span className="font-mono tabular-nums">{mmProgress}%</span>
-                </div>
-                <Progress value={mmProgress} className="h-2 [&>div]:bg-purple-600" />
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* 右侧操作按钮 - 纵向排列 */}
-        <div className="flex flex-col gap-1.5 md:gap-2 shrink-0 w-full md:w-auto min-w-[140px]">
-          <NotionButton variant="primary" size="sm" onClick={handleUnifiedIndex} disabled={batchIndexing || mmIndexing} className={cn(batchIndexing || mmIndexing ? 'bg-muted text-muted-foreground' : 'bg-foreground text-background hover:bg-foreground/90')}>
-            {(batchIndexing || mmIndexing) ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <Zap className="h-3.5 w-3.5 fill-current" />
-            )}
-            {batchIndexing ? t('indexStatus.action.ocrIndexing') : mmIndexing ? t('indexStatus.action.mmIndexing') : t('indexStatus.action.oneClickIndex')}
-          </NotionButton>
-          
-          <div className="grid grid-cols-2 gap-2">
-            <NotionButton variant="default" size="sm" onClick={() => { loadData(); }} disabled={isLoading || batchIndexing} title={t('indexStatus.action.refreshTitle', { defaultValue: '刷新向量化状态' })}>
+          {/* 第三行：操作按钮独占一行 */}
+          <div className="flex items-center gap-1.5">
+            <NotionButton variant="primary" size="sm" onClick={handleUnifiedIndex} disabled={batchIndexing || mmIndexing} className={cn('!px-3', batchIndexing || mmIndexing ? 'bg-muted text-muted-foreground' : 'bg-neutral-500 dark:bg-foreground text-white dark:text-background hover:bg-neutral-400 dark:hover:bg-foreground/90')}>
+              {(batchIndexing || mmIndexing) ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5 fill-current" />}
+              {batchIndexing ? t('indexStatus.action.ocrIndexing') : mmIndexing ? t('indexStatus.action.mmIndexing') : t('indexStatus.action.oneClickIndex')}
+            </NotionButton>
+            <NotionButton variant="default" size="sm" onClick={() => { loadData(); }} disabled={isLoading || batchIndexing}>
               <RefreshCw className={cn('h-3.5 w-3.5', isLoading && 'animate-spin')} />
               {t('indexStatus.action.refresh')}
             </NotionButton>
-            <NotionButton variant="default" size="sm" onClick={() => setShowTestPanel(!showTestPanel)} className={cn(showTestPanel && 'bg-accent text-accent-foreground')}>
-              <TestTube className="h-3.5 w-3.5" />
-              {t('indexStatus.action.recallTest')}
+            {/* 更多操作下拉 */}
+            <div className="relative" ref={mobileMoreRef}>
+              <NotionButton variant="default" size="sm" onClick={() => setMobileMoreOpen(v => !v)} className={cn(mobileMoreOpen && 'bg-accent text-accent-foreground')}>
+                <MoreHorizontal className="h-3.5 w-3.5" />
+              </NotionButton>
+              {mobileMoreOpen && (
+                <div className="absolute right-0 top-full mt-1 z-50 min-w-[160px] rounded-md border bg-popover shadow-md py-1 animate-in fade-in-0 zoom-in-95">
+                  <button
+                    className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-accent transition-colors"
+                    onClick={() => { setShowTestPanel(v => !v); setMobileMoreOpen(false); }}
+                  >
+                    <TestTube className="h-3.5 w-3.5" />
+                    {t('indexStatus.action.recallTest')}
+                  </button>
+                  <button
+                    className="flex w-full items-center gap-2 px-3 py-2 text-sm text-muted-foreground hover:text-destructive hover:bg-destructive/5 transition-colors"
+                    disabled={resetting || batchIndexing || mmIndexing}
+                    onClick={() => { handleResetAllIndexState(); setMobileMoreOpen(false); }}
+                  >
+                    {resetting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
+                    {t('indexStatus.action.resetState')}
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* 进度条（如果有） */}
+          {(batchIndexing || batchProgress > 0) && (
+            <div className="space-y-1 bg-muted/30 p-2 rounded-md">
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-medium truncate">{batchMessage}</span>
+                <span className="font-mono tabular-nums shrink-0 ml-2">{batchProgress}%</span>
+              </div>
+              <Progress value={batchProgress} className="h-1.5" />
+            </div>
+          )}
+          {MULTIMODAL_INDEX_ENABLED && (mmIndexing || mmProgress > 0) && (
+            <div className="space-y-1 bg-purple-500/5 p-2 rounded-md">
+              <div className="flex items-center justify-between text-xs text-purple-600 dark:text-purple-400">
+                <span className="font-medium truncate">{mmMessage}</span>
+                <span className="font-mono tabular-nums shrink-0 ml-2">{mmProgress}%</span>
+              </div>
+              <Progress value={mmProgress} className="h-1.5 [&>div]:bg-purple-600" />
+            </div>
+          )}
+        </div>
+      ) : (
+        /* ==================== 桌面端布局 ==================== */
+        <div className="flex flex-row items-center gap-6 p-4 lg:p-6 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+          {/* ★ 2026-02 修复：环形进度图 - 多模态索引已禁用时只显示文本进度 */}
+          <div className="flex items-center gap-4 lg:gap-6 shrink-0">
+            {/* 综合进度环（当有多模态资源时显示，且多模态已启用） */}
+            {MULTIMODAL_INDEX_ENABLED && summary.mmTotalResources > 0 ? (
+              <>
+                <div className="flex flex-col items-center gap-2">
+                  <ProgressRing
+                    percentage={overallProgressPercentage}
+                    total={summary.totalResources + summary.mmTotalResources}
+                    indexed={summary.indexedCount + summary.mmIndexedCount}
+                    size={80}
+                    strokeWidth={8}
+                  />
+                  <span className="text-xs font-medium text-muted-foreground">{t('indexStatus.progress.overallProgress', { defaultValue: '综合进度' })}</span>
+                </div>
+                <div className="h-16 w-px bg-border/50" />
+                <div className="flex flex-col gap-3">
+                  <div className="flex items-center gap-3">
+                    <ProgressRing
+                      percentage={progressPercentage}
+                      total={summary.totalResources}
+                      indexed={summary.indexedCount}
+                      size={32}
+                      strokeWidth={3}
+                    />
+                    <div className="flex flex-col">
+                      <span className="text-xs font-medium">{t('indexStatus.progress.text', { defaultValue: '文本' })}</span>
+                      <span className="text-[10px] text-muted-foreground">{summary.indexedCount}/{summary.totalResources}</span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <ProgressRing
+                      percentage={summary.mmTotalResources > 0 ? (summary.mmIndexedCount / summary.mmTotalResources) * 100 : 0}
+                      total={summary.mmTotalResources}
+                      indexed={summary.mmIndexedCount}
+                      size={32}
+                      strokeWidth={3}
+                    />
+                    <div className="flex flex-col">
+                      <span className="text-xs font-medium">{t('indexStatus.progress.multimodal', { defaultValue: '多模态' })}</span>
+                      <span className="text-[10px] text-muted-foreground">{summary.mmIndexedCount}/{summary.mmTotalResources}</span>
+                    </div>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div className="flex items-center gap-4">
+                <ProgressRing
+                  percentage={progressPercentage}
+                  total={summary.totalResources}
+                  indexed={summary.indexedCount}
+                  size={80}
+                  strokeWidth={8}
+                />
+                <div className="flex flex-col gap-1">
+                  <span className="text-sm font-medium">{t('indexStatus.progress.textIndexProgress')}</span>
+                  <span className="text-xs text-muted-foreground">{summary.indexedCount} / {summary.totalResources} {t('indexStatus.progress.items', { defaultValue: '项' })}</span>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* 中间信息区 */}
+          <div className="flex-1 min-w-0 grid gap-3 lg:gap-4 content-center">
+            {/* 关键指标卡片 */}
+            <div className="grid grid-cols-4 gap-2 lg:gap-3">
+              <div className="bg-muted/30 p-2 lg:p-3 rounded-md flex flex-col justify-between gap-0.5 lg:gap-1 group transition-colors">
+                <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium flex items-center gap-1.5">
+                  <Database className="h-3 w-3" />
+                  <span className="truncate">{t('indexStatus.stats.totalVectors', { defaultValue: '总向量数' })}</span>
+                </span>
+                <span className="text-base lg:text-lg font-semibold tabular-nums text-foreground/90">
+                  {dimensions.reduce((acc, d) => acc + d.recordCount, 0).toLocaleString()}
+                </span>
+              </div>
+              
+              <div className="bg-muted/30 p-2 lg:p-3 rounded-md flex flex-col justify-between gap-0.5 lg:gap-1 group transition-colors">
+                <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium flex items-center gap-1.5">
+                  <Workflow className="h-3 w-3" />
+                  <span className="truncate">{t('indexStatus.stats.dimensions', { defaultValue: '向量维度' })}</span>
+                </span>
+                <div className="flex items-center gap-1.5 overflow-hidden">
+                  {dimensions.length > 0 ? (
+                    dimensions.slice(0, 2).map(d => (
+                      <span key={d.dimension} className="text-xs font-mono bg-background px-1.5 py-0.5 rounded border border-border/50">
+                        {d.dimension}
+                      </span>
+                    ))
+                  ) : (
+                    <span className="text-sm text-muted-foreground">-</span>
+                  )}
+                  {dimensions.length > 2 && (
+                    <span className="text-[10px] text-muted-foreground">+{dimensions.length - 2}</span>
+                  )}
+                </div>
+              </div>
+
+              <div className={cn(
+                "p-2 lg:p-3 rounded-md flex flex-col justify-between gap-0.5 lg:gap-1 group transition-colors",
+                summary.failedCount + summary.mmFailedCount > 0 
+                  ? "bg-red-500/5" 
+                  : "bg-muted/30"
+              )}>
+                <span className={cn(
+                  "text-[10px] uppercase tracking-wider font-medium flex items-center gap-1.5",
+                  summary.failedCount + summary.mmFailedCount > 0 ? "text-red-600/80 dark:text-red-400/80" : "text-muted-foreground"
+                )}>
+                  <AlertCircle className="h-3 w-3" />
+                  <span className="truncate">{t('indexStatus.stats.errors', { defaultValue: '索引错误' })}</span>
+                </span>
+                <span className={cn(
+                  "text-base lg:text-lg font-semibold tabular-nums",
+                  summary.failedCount + summary.mmFailedCount > 0 ? "text-red-600 dark:text-red-400" : "text-foreground/90"
+                )}>
+                  {summary.failedCount + summary.mmFailedCount}
+                </span>
+              </div>
+
+              <div className={cn(
+                "p-2 lg:p-3 rounded-md flex flex-col justify-between gap-0.5 lg:gap-1 group transition-colors",
+                summary.staleCount > 0 
+                  ? "bg-warning/5" 
+                  : "bg-muted/30"
+              )}>
+                <span className={cn(
+                  "text-[10px] uppercase tracking-wider font-medium flex items-center gap-1.5",
+                  summary.staleCount > 0 ? "text-warning" : "text-muted-foreground"
+                )}>
+                  <Clock className="h-3 w-3" />
+                  <span className="truncate">{t('indexStatus.stats.stale', { defaultValue: '待更新' })}</span>
+                </span>
+                <span className={cn(
+                  "text-base lg:text-lg font-semibold tabular-nums",
+                  summary.staleCount > 0 ? "text-warning" : "text-foreground/90"
+                )}>
+                  {summary.staleCount}
+                </span>
+              </div>
+            </div>
+
+            {/* 状态过滤徽章 - 紧凑排列 */}
+            <div className="flex flex-wrap gap-2">
+              {renderStatBadge('indexed', summary.indexedCount, selectedState === 'indexed', () => setSelectedState(s => s === 'indexed' ? 'all' : 'indexed'))}
+              {summary.pendingCount > 0 && renderStatBadge('pending', summary.pendingCount, selectedState === 'pending', () => setSelectedState(s => s === 'pending' ? 'all' : 'pending'))}
+              {summary.indexingCount > 0 && renderStatBadge('indexing', summary.indexingCount, selectedState === 'indexing', () => setSelectedState(s => s === 'indexing' ? 'all' : 'indexing'))}
+              {summary.failedCount > 0 && renderStatBadge('failed', summary.failedCount, selectedState === 'failed', () => setSelectedState(s => s === 'failed' ? 'all' : 'failed'))}
+              {summary.disabledCount > 0 && renderStatBadge('disabled', summary.disabledCount, selectedState === 'disabled', () => setSelectedState(s => s === 'disabled' ? 'all' : 'disabled'))}
+            </div>
+
+            {/* 动态提示与进度 */}
+            <div className="space-y-2">
+              {/* 批量索引进度条 */}
+              {(batchIndexing || batchProgress > 0) && (
+                <div className="space-y-1.5 bg-muted/30 p-2 rounded-md">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-medium">{batchMessage}</span>
+                    <span className="font-mono tabular-nums">{batchProgress}%</span>
+                  </div>
+                  <Progress value={batchProgress} className="h-2" />
+                </div>
+              )}
+
+              {/* 原生多模态索引进度条 - ★ 多模态索引已禁用时隐藏 */}
+              {MULTIMODAL_INDEX_ENABLED && (mmIndexing || mmProgress > 0) && (
+                <div className="space-y-1.5 bg-purple-500/5 p-2 rounded-md">
+                  <div className="flex items-center justify-between text-xs text-purple-600 dark:text-purple-400">
+                    <span className="font-medium">{mmMessage}</span>
+                    <span className="font-mono tabular-nums">{mmProgress}%</span>
+                  </div>
+                  <Progress value={mmProgress} className="h-2 [&>div]:bg-purple-600" />
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* 右侧操作按钮 - 纵向排列 */}
+          <div className="flex flex-col gap-1.5 lg:gap-2 shrink-0 min-w-[140px]">
+            <NotionButton variant="primary" size="sm" onClick={handleUnifiedIndex} disabled={batchIndexing || mmIndexing} className={cn(batchIndexing || mmIndexing ? 'bg-muted text-muted-foreground' : 'bg-neutral-500 dark:bg-foreground text-white dark:text-background hover:bg-neutral-400 dark:hover:bg-foreground/90')}>
+              {(batchIndexing || mmIndexing) ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Zap className="h-3.5 w-3.5 fill-current" />
+              )}
+              {batchIndexing ? t('indexStatus.action.ocrIndexing') : mmIndexing ? t('indexStatus.action.mmIndexing') : t('indexStatus.action.oneClickIndex')}
+            </NotionButton>
+            
+            <div className="grid grid-cols-2 gap-2">
+              <NotionButton variant="default" size="sm" onClick={() => { loadData(); }} disabled={isLoading || batchIndexing} title={t('indexStatus.action.refreshTitle', { defaultValue: '刷新向量化状态' })}>
+                <RefreshCw className={cn('h-3.5 w-3.5', isLoading && 'animate-spin')} />
+                {t('indexStatus.action.refresh')}
+              </NotionButton>
+              <NotionButton variant="default" size="sm" onClick={() => setShowTestPanel(!showTestPanel)} className={cn(showTestPanel && 'bg-accent text-accent-foreground')}>
+                <TestTube className="h-3.5 w-3.5" />
+                {t('indexStatus.action.recallTest')}
+              </NotionButton>
+            </div>
+            
+            <NotionButton variant="ghost" size="sm" onClick={handleResetAllIndexState} disabled={resetting || batchIndexing || mmIndexing} title={t('indexStatus.action.resetStateTitle')} className="text-muted-foreground hover:text-destructive hover:bg-destructive/5">
+              {resetting ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <RotateCcw className="h-3.5 w-3.5" />
+              )}
+              {t('indexStatus.action.resetState')}
             </NotionButton>
           </div>
-          
-          <NotionButton variant="ghost" size="sm" onClick={handleResetAllIndexState} disabled={resetting || batchIndexing || mmIndexing} title={t('indexStatus.action.resetStateTitle')} className="text-muted-foreground hover:text-destructive hover:bg-destructive/5">
-            {resetting ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <RotateCcw className="h-3.5 w-3.5" />
-            )}
-            {t('indexStatus.action.resetState')}
-          </NotionButton>
         </div>
-      </div>
+      )}
 
       {/* 召回测试面板 */}
       {showTestPanel && (
@@ -1619,27 +1741,26 @@ export const IndexStatusView: React.FC = () => {
       )}
 
       {/* 筛选栏 */}
-      <div className="flex items-center justify-between px-3 md:px-6 py-2 md:py-3 border-b bg-background/50 backdrop-blur sticky top-0 z-10">
-        <div className="flex items-center gap-3 overflow-x-auto no-scrollbar mask-gradient-r pr-4">
+      <div className="flex items-center gap-2 px-3 md:px-6 py-2 md:py-3 border-b bg-background/50 backdrop-blur sticky top-0 z-10">
+        <div className="flex-1 min-w-0 flex flex-wrap items-center gap-1.5 md:gap-2">
           <span className="text-xs font-medium text-muted-foreground shrink-0 uppercase tracking-wider">{t('indexStatus.filter.typeFilter')}</span>
-          <div className="h-4 w-px bg-border/60 shrink-0" />
-          <div className="flex gap-1.5 shrink-0">
-            {['all', 'note', 'textbook', 'exam', 'translation', 'essay', 'mindmap', 'file', 'image'].map((type) => {
-              const isActive = selectedType === type;
-              const label = type === 'all' ? t('indexStatus.filter.all') : (RESOURCE_TYPE_CONFIG[type]?.labelKey ? t(RESOURCE_TYPE_CONFIG[type].labelKey) : type);
-              return (
-                <NotionButton key={type} variant="ghost" size="sm" onClick={() => setSelectedType(type)} className={cn('!rounded-full !px-3 !py-1 text-xs font-medium border', isActive ? 'bg-primary text-primary-foreground border-primary shadow-sm' : 'bg-background text-muted-foreground border-transparent hover:bg-muted hover:text-foreground')}>
-                  {label}
-                </NotionButton>
-              );
-            })}
+          {['all', 'note', 'textbook', 'exam', 'translation', 'essay', 'mindmap', 'file', 'image'].map((type) => {
+            const isActive = selectedType === type;
+            const label = type === 'all' ? t('indexStatus.filter.all') : (RESOURCE_TYPE_CONFIG[type]?.labelKey ? t(RESOURCE_TYPE_CONFIG[type].labelKey) : type);
+            return (
+              <NotionButton key={type} variant="ghost" size="sm" onClick={() => setSelectedType(type)} className={cn('!rounded-full !px-2.5 !py-1 text-xs font-medium border', isActive ? 'bg-primary text-primary-foreground border-primary shadow-sm' : 'bg-background text-muted-foreground border-transparent hover:bg-muted hover:text-foreground')}>
+                {label}
+              </NotionButton>
+            );
+          })}
+        </div>
+        {!isMobile && (
+          <div className="text-xs font-mono text-muted-foreground shrink-0 pl-2 md:pl-4 border-l border-border/50 whitespace-nowrap">
+            <span className="font-semibold text-foreground">{summary.resources.length}</span>
+            <span className="mx-1 text-muted-foreground/50">/</span>
+            <span>{summary.totalResources}</span>
           </div>
-        </div>
-        <div className="text-xs font-mono text-muted-foreground shrink-0 pl-4 border-l border-border/50">
-          <span className="font-semibold text-foreground">{summary.resources.length}</span>
-          <span className="mx-1 text-muted-foreground/50">/</span>
-          <span>{summary.totalResources}</span>
-        </div>
+        )}
       </div>
 
       {/* 分组资源列表 */}

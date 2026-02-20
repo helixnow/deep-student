@@ -1960,6 +1960,31 @@ impl MigrationCoordinator {
             }
         }
 
+        // --- V20260221: 分组关联来源（pinned_resource_ids_json） ---
+        {
+            const TARGET_VERSION: i32 = 20260221;
+            const TARGET_COLUMN: &str = "pinned_resource_ids_json";
+            const TARGET_TABLE: &str = "chat_v2_session_groups";
+
+            if self.table_exists(conn, TARGET_TABLE)?
+                && !self.is_migration_recorded(conn, TARGET_VERSION)?
+            {
+                let _ = self.add_column_if_missing(
+                    conn,
+                    TARGET_TABLE,
+                    TARGET_COLUMN,
+                    "TEXT DEFAULT '[]'",
+                )?;
+                tracing::info!(
+                    "🔧 [PreRepair] chat_v2: {} 列已补齐，标记 V{} 迁移为已完成",
+                    TARGET_COLUMN,
+                    TARGET_VERSION
+                );
+                self.ensure_refinery_history_table(conn)?;
+                self.mark_migration_complete(conn, runner, TARGET_VERSION)?;
+            }
+        }
+
         Ok(())
     }
 

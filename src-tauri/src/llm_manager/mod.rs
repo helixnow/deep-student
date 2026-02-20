@@ -1192,6 +1192,105 @@ impl LLMManager {
         result
     }
 
+    /// 🔧 合并连续同角色的用户消息（防御性措施）
+    ///
+    /// 部分 LLM API（如 Anthropic Claude 原生 API、文心一言）严格要求 user/assistant 交替。
+    /// 当以下场景发生时，可能产生连续的 user 消息：
+    /// 1. assistant 回复为空（被取消/失败）被 `load_chat_history` 跳过
+    /// 2. 会话分支后用户继续发送新消息
+    /// 3. 消息编辑等边界情况
+    ///
+    /// 此函数在 messages 数组构建完成后、发送请求前调用，
+    /// 将连续的同角色 user 消息用 `\n\n` 合并为单条消息。
+    /// 对 system / assistant / tool 消息不做合并（它们有各自的语义）。
+    ///
+    /// 注意：仅合并 content 为纯字符串的 user 消息。
+    /// 对于 content 为数组（多模态）的情况，将数组元素追加到前一条。
+    pub(crate) fn merge_consecutive_user_messages(messages: &mut Vec<serde_json::Value>) {
+        if messages.len() < 2 {
+            return;
+        }
+
+        let mut merged: Vec<serde_json::Value> = Vec::with_capacity(messages.len());
+
+        for msg in messages.drain(..) {
+            let is_user = msg.get("role").and_then(|r| r.as_str()) == Some("user");
+
+            if !is_user {
+                merged.push(msg);
+                continue;
+            }
+
+            // 检查前一条是否也是 user
+            let prev_is_user = merged
+                .last()
+                .and_then(|m| m.get("role"))
+                .and_then(|r| r.as_str())
+                == Some("user");
+
+            if !prev_is_user {
+                merged.push(msg);
+                continue;
+            }
+
+            // 需要合并：将当前 user 消息的 content 追加到前一条
+            let prev = merged.last_mut().unwrap();
+            let prev_content = prev.get("content").cloned();
+            let curr_content = msg.get("content").cloned();
+
+            match (prev_content, curr_content) {
+                // 两条都是纯文本 → 用 \n\n 拼接
+                (Some(serde_json::Value::String(ref prev_text)), Some(serde_json::Value::String(ref curr_text))) => {
+                    let merged_text = format!("{}\n\n{}", prev_text, curr_text);
+                    let combined_len = merged_text.len();
+                    prev["content"] = serde_json::Value::String(merged_text);
+                    log::warn!(
+                        "[LLMManager] Merged 2 consecutive user messages (text+text, combined_len={})",
+                        combined_len
+                    );
+                }
+                // 前一条是数组（多模态），当前也是数组 → 追加元素
+                (Some(serde_json::Value::Array(ref _prev_arr)), Some(serde_json::Value::Array(ref curr_arr))) => {
+                    let curr_len = curr_arr.len();
+                    if let Some(arr) = prev.get_mut("content").and_then(|c| c.as_array_mut()) {
+                        arr.extend(curr_arr.clone());
+                        log::warn!(
+                            "[LLMManager] Merged 2 consecutive user messages (array+array, appended {} parts)",
+                            curr_len
+                        );
+                    }
+                }
+                // 前一条是纯文本，当前是数组 → 转换前一条为数组后追加
+                (Some(serde_json::Value::String(prev_text)), Some(serde_json::Value::Array(curr_arr))) => {
+                    let mut new_content = vec![json!({"type": "text", "text": prev_text})];
+                    let curr_len = curr_arr.len();
+                    new_content.extend(curr_arr);
+                    prev["content"] = serde_json::Value::Array(new_content);
+                    log::warn!(
+                        "[LLMManager] Merged 2 consecutive user messages (text+array, appended {} parts)",
+                        curr_len
+                    );
+                }
+                // 前一条是数组，当前是纯文本 → 追加 text 元素
+                (Some(serde_json::Value::Array(ref _prev_arr)), Some(serde_json::Value::String(ref curr_text))) => {
+                    if let Some(arr) = prev.get_mut("content").and_then(|c| c.as_array_mut()) {
+                        arr.push(json!({"type": "text", "text": curr_text}));
+                        log::warn!(
+                            "[LLMManager] Merged 2 consecutive user messages (array+text, text_len={})",
+                            curr_text.len()
+                        );
+                    }
+                }
+                // 其他情况（None 等）→ 不合并，直接追加
+                _ => {
+                    merged.push(msg);
+                }
+            }
+        }
+
+        *messages = merged;
+    }
+
     /// 发送专用流式事件（根据工具类型和citations的source_type分类）
     fn emit_specialized_source_events(
         window: &Window,

@@ -2789,6 +2789,57 @@ export function createChatStore(sessionId: string): StoreApi<ChatStore> {
           // 合并原有的三条竞态路径为单一 queueMicrotask
           queueMicrotask(async () => {
             try {
+              // === Step 0: 注入分组关联来源（pinned resources） ===
+              const currentGroupId = getState().groupId;
+              if (currentGroupId) {
+                try {
+                  const { invoke } = await import('@tauri-apps/api/core');
+                  const group = await invoke<{ pinnedResourceIds?: string[] } | null>('chat_v2_get_group', { groupId: currentGroupId });
+                  const pinnedIds = group?.pinnedResourceIds ?? [];
+                  if (pinnedIds.length > 0) {
+                    const { getResourceRefsV2 } = await import('../../context/vfsRefApi');
+                    const { resourceStoreApi } = await import('../../resources');
+                    const refsResult = await getResourceRefsV2(pinnedIds);
+                    if (refsResult.ok && refsResult.value.refs.length > 0) {
+                      const currentRefs = getState().pendingContextRefs;
+                      const newRefs = [...currentRefs];
+                      // Build a set of existing resourceIds for fast dedup
+                      const existingResourceIds = new Set(currentRefs.map((r) => r.resourceId));
+                      for (const vfsRef of refsResult.value.refs) {
+                        try {
+                          const resourceResult = await resourceStoreApi.createOrReuse({
+                            type: vfsRef.type as import('../../context/types').ResourceType,
+                            data: JSON.stringify({ refs: [vfsRef], totalCount: 1, truncated: false }),
+                            sourceId: vfsRef.sourceId,
+                            metadata: { name: vfsRef.name, title: vfsRef.name },
+                          });
+                          // Skip if same resourceId already in refs (exact content match via hash)
+                          if (existingResourceIds.has(resourceResult.resourceId)) continue;
+                          existingResourceIds.add(resourceResult.resourceId);
+
+                          const contextRef: import('../../context/types').ContextRef = {
+                            resourceId: resourceResult.resourceId,
+                            hash: resourceResult.hash,
+                            typeId: vfsRef.type,
+                            isSticky: true,
+                            displayName: vfsRef.name,
+                          };
+                          newRefs.push(contextRef);
+                        } catch (refErr) {
+                          console.warn('[ChatStore] Failed to create pinned resource ref:', vfsRef.sourceId, refErr);
+                        }
+                      }
+                      if (newRefs.length > currentRefs.length) {
+                        set({ pendingContextRefs: newRefs });
+                        console.log('[ChatStore] Injected group pinned resources:', newRefs.length - currentRefs.length);
+                      }
+                    }
+                  }
+                } catch (groupErr) {
+                  console.warn('[ChatStore] Failed to inject group pinned resources:', groupErr);
+                }
+              }
+
               // === Step 1: 恢复手动激活 Skills 的 ContextRefs ===
               if (restoredActiveSkillIds.length > 0) {
                 try {

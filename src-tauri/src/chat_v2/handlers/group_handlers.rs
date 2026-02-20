@@ -34,6 +34,7 @@ pub async fn chat_v2_create_group(
         color: request.color,
         system_prompt: request.system_prompt,
         default_skill_ids: request.default_skill_ids.unwrap_or_default(),
+        pinned_resource_ids: request.pinned_resource_ids.unwrap_or_default(),
         workspace_id: request.workspace_id,
         sort_order: next_sort,
         persist_status: PersistStatus::Active,
@@ -81,6 +82,9 @@ pub async fn chat_v2_update_group(
         default_skill_ids: request
             .default_skill_ids
             .unwrap_or(existing.default_skill_ids),
+        pinned_resource_ids: request
+            .pinned_resource_ids
+            .unwrap_or(existing.pinned_resource_ids),
         workspace_id: merge_optional_string(request.workspace_id, existing.workspace_id),
         sort_order: request.sort_order.unwrap_or(existing.sort_order),
         persist_status: request.persist_status.unwrap_or(existing.persist_status),

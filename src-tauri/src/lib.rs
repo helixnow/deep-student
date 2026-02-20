@@ -1133,6 +1133,8 @@ pub fn run() {
             // P1-23: 会话软删除与恢复
             ,crate::chat_v2::handlers::manage_session::chat_v2_soft_delete_session
             ,crate::chat_v2::handlers::manage_session::chat_v2_restore_session
+            // 会话分支
+            ,crate::chat_v2::handlers::manage_session::chat_v2_branch_session
             // 会话分组命令
             ,crate::chat_v2::handlers::group_handlers::chat_v2_create_group
             ,crate::chat_v2::handlers::group_handlers::chat_v2_update_group

@@ -580,6 +580,9 @@ impl LLMManager {
             }
         }
 
+        // 🔧 防御性合并：连续 user 消息合并，避免部分 API（Anthropic/ERNIE）报错
+        Self::merge_consecutive_user_messages(&mut messages);
+
         // 近似输入token统计（用于用量/事件）
         let approx_tokens_in = {
             let mut s = 0usize;
@@ -2043,6 +2046,9 @@ impl LLMManager {
             }
         }
 
+        // 🔧 防御性合并：连续 user 消息合并
+        Self::merge_consecutive_user_messages(&mut messages);
+
         let mut request_body = json!({
             "model": config.model,
             "messages": messages,
@@ -2910,6 +2916,9 @@ impl LLMManager {
                 messages.push(json!({"role": msg.role, "content": msg.content}));
             }
         }
+
+        // 🔧 防御性合并：连续 user 消息合并
+        Self::merge_consecutive_user_messages(&mut messages);
 
         let mut request_body = json!({
             "model": config.model,

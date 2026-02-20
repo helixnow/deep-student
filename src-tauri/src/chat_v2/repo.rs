@@ -366,6 +366,7 @@ impl ChatV2Repo {
     /// 创建分组
     pub fn create_group_with_conn(conn: &Connection, group: &SessionGroup) -> ChatV2Result<()> {
         let default_skill_ids_json = serde_json::to_string(&group.default_skill_ids)?;
+        let pinned_resource_ids_json = serde_json::to_string(&group.pinned_resource_ids)?;
         let persist_status = match group.persist_status {
             PersistStatus::Active => "active",
             PersistStatus::Archived => "archived",
@@ -377,9 +378,9 @@ impl ChatV2Repo {
             INSERT INTO chat_v2_session_groups (
                 id, name, description, icon, color, system_prompt,
                 default_skill_ids_json, workspace_id, sort_order, persist_status,
-                created_at, updated_at
+                created_at, updated_at, pinned_resource_ids_json
             )
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
             "#,
             params![
                 group.id,
@@ -394,6 +395,7 @@ impl ChatV2Repo {
                 persist_status,
                 group.created_at.to_rfc3339(),
                 group.updated_at.to_rfc3339(),
+                pinned_resource_ids_json,
             ],
         )?;
         Ok(())
@@ -407,7 +409,8 @@ impl ChatV2Repo {
         let mut stmt = conn.prepare(
             r#"
             SELECT id, name, description, icon, color, system_prompt, default_skill_ids_json,
-                   workspace_id, sort_order, persist_status, created_at, updated_at
+                   workspace_id, sort_order, persist_status, created_at, updated_at,
+                   pinned_resource_ids_json
             FROM chat_v2_session_groups
             WHERE id = ?1
             "#,
@@ -428,7 +431,8 @@ impl ChatV2Repo {
         let mut sql = String::from(
             r#"
                 SELECT id, name, description, icon, color, system_prompt, default_skill_ids_json,
-                       workspace_id, sort_order, persist_status, created_at, updated_at
+                       workspace_id, sort_order, persist_status, created_at, updated_at,
+                       pinned_resource_ids_json
                 FROM chat_v2_session_groups
                 WHERE 1=1
             "#,
@@ -465,6 +469,7 @@ impl ChatV2Repo {
     /// 更新分组
     pub fn update_group_with_conn(conn: &Connection, group: &SessionGroup) -> ChatV2Result<()> {
         let default_skill_ids_json = serde_json::to_string(&group.default_skill_ids)?;
+        let pinned_resource_ids_json = serde_json::to_string(&group.pinned_resource_ids)?;
         let persist_status = match group.persist_status {
             PersistStatus::Active => "active",
             PersistStatus::Archived => "archived",
@@ -476,7 +481,7 @@ impl ChatV2Repo {
             UPDATE chat_v2_session_groups
             SET name = ?2, description = ?3, icon = ?4, color = ?5, system_prompt = ?6,
                 default_skill_ids_json = ?7, workspace_id = ?8, sort_order = ?9,
-                persist_status = ?10, updated_at = ?11
+                persist_status = ?10, updated_at = ?11, pinned_resource_ids_json = ?12
             WHERE id = ?1
             "#,
             params![
@@ -491,6 +496,7 @@ impl ChatV2Repo {
                 group.sort_order,
                 persist_status,
                 group.updated_at.to_rfc3339(),
+                pinned_resource_ids_json,
             ],
         )?;
         Ok(())
@@ -560,6 +566,7 @@ impl ChatV2Repo {
         let persist_status_str: String = row.get(9)?;
         let created_at_str: String = row.get(10)?;
         let updated_at_str: String = row.get(11)?;
+        let pinned_resource_ids_json: Option<String> = row.get(12).unwrap_or(None);
 
         let persist_status = match persist_status_str.as_str() {
             "active" => PersistStatus::Active,
@@ -588,6 +595,11 @@ impl ChatV2Repo {
             .and_then(|s| serde_json::from_str(s).ok())
             .unwrap_or_default();
 
+        let pinned_resource_ids: Vec<String> = pinned_resource_ids_json
+            .as_ref()
+            .and_then(|s| serde_json::from_str(s).ok())
+            .unwrap_or_default();
+
         Ok(SessionGroup {
             id,
             name,
@@ -596,6 +608,7 @@ impl ChatV2Repo {
             color,
             system_prompt,
             default_skill_ids,
+            pinned_resource_ids,
             workspace_id,
             sort_order,
             persist_status,

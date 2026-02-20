@@ -956,6 +956,26 @@ export const ChatV2Page: React.FC = () => {
     }
   }, [isInitialLoading, currentSessionId, createSession]);
 
+  // ★ 会话分支：监听 CHAT_V2_BRANCH_SESSION 事件，插入新会话并切换
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const session = (e as CustomEvent)?.detail?.session as ChatSession | undefined;
+      if (!session?.id) return;
+      console.log('[ChatV2Page] CHAT_V2_BRANCH_SESSION:', session.id);
+      // 插入新会话到列表顶部（去重）
+      setSessions((prev) => {
+        if (prev.some((s) => s.id === session.id)) return prev;
+        return [session, ...prev];
+      });
+      // 切换到新会话
+      setCurrentSessionId(session.id);
+      // 刷新未分组计数
+      loadUngroupedCount();
+    };
+    window.addEventListener('CHAT_V2_BRANCH_SESSION', handler);
+    return () => window.removeEventListener('CHAT_V2_BRANCH_SESSION', handler);
+  }, [setCurrentSessionId, loadUngroupedCount]);
+
   // ★ 调试插件：允许程序化切换会话（附件流水线测试插件使用）
   useEffect(() => {
     const handler = (e: Event) => {

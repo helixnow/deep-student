@@ -2,7 +2,7 @@
  * MessageActions - 消息操作按钮组件
  */
 import React, { useCallback, useState } from 'react';
-import { Copy, Check, RotateCcw, Trash2, Edit3, Bug, BookmarkPlus } from 'lucide-react';
+import { Copy, Check, RotateCcw, Trash2, Edit3, Bug, BookmarkPlus, GitBranch } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
 import { NotionButton } from '@/components/ui/NotionButton';
@@ -23,6 +23,8 @@ export interface MessageActionsProps {
   onCopyDebug?: () => Promise<void>;
   /** 🆕 保存为 VFS 笔记 */
   onSaveAsNote?: () => Promise<void>;
+  /** 🆕 会话分支 */
+  onBranchSession?: () => Promise<void>;
   className?: string;
 }
 
@@ -38,6 +40,7 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
   onEdit,
   onDelete,
   onSaveAsNote,
+  onBranchSession,
   onCopyDebug,
   className,
 }) => {
@@ -49,6 +52,7 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [isSavingNote, setIsSavingNote] = useState(false);
+  const [isBranching, setIsBranching] = useState(false);
 
   const handleCopy = useCallback(async () => {
     if (copied) return;
@@ -67,6 +71,17 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
       setIsSavingNote(false);
     }
   }, [onSaveAsNote, isSavingNote]);
+
+  // 🆕 会话分支
+  const handleBranch = useCallback(async () => {
+    if (!onBranchSession || isBranching) return;
+    setIsBranching(true);
+    try {
+      await onBranchSession();
+    } finally {
+      setIsBranching(false);
+    }
+  }, [onBranchSession, isBranching]);
 
   // 🆕 复制调试信息
   const handleCopyDebug = useCallback(async () => {
@@ -117,6 +132,13 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
       {onSaveAsNote && (
         <NotionButton variant="ghost" size="icon" iconOnly onClick={handleSaveAsNote} disabled={isSavingNote} aria-label={t('messageItem.actions.saveAsNote')} title={t('messageItem.actions.saveAsNote')}>
           <BookmarkPlus className={cn('w-4 h-4', isSavingNote && 'animate-pulse')} />
+        </NotionButton>
+      )}
+
+      {/* 🆕 会话分支按钮 */}
+      {onBranchSession && (
+        <NotionButton variant="ghost" size="icon" iconOnly onClick={handleBranch} disabled={isBranching || isLocked} aria-label={t('messageItem.actions.branch', '从此处分支')} title={t('messageItem.actions.branch', '从此处分支')}>
+          <GitBranch className={cn('w-4 h-4', isBranching && 'animate-pulse')} />
         </NotionButton>
       )}
 

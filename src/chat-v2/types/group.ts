@@ -10,6 +10,7 @@ export interface SessionGroup {
   color?: string;
   systemPrompt?: string;
   defaultSkillIds: string[];
+  pinnedResourceIds: string[];
   workspaceId?: string;
   sortOrder: number;
   persistStatus: 'active' | 'archived' | 'deleted';
@@ -24,6 +25,7 @@ export interface CreateGroupRequest {
   color?: string;
   systemPrompt?: string;
   defaultSkillIds?: string[];
+  pinnedResourceIds?: string[];
   workspaceId?: string;
 }
 
@@ -34,6 +36,7 @@ export interface UpdateGroupRequest {
   color?: string;
   systemPrompt?: string;
   defaultSkillIds?: string[];
+  pinnedResourceIds?: string[];
   workspaceId?: string;
   sortOrder?: number;
   persistStatus?: 'active' | 'archived' | 'deleted';

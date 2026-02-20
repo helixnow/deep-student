@@ -5,8 +5,12 @@ import {
   Folder, FolderOpen, Star, Heart, BookOpen, GraduationCap,
   Code, Calculator, FlaskConical, Atom, Globe, Languages,
   Music, Palette, Camera, Lightbulb, Target, Trophy,
-  Rocket, Brain, Sparkles, MessageSquare, FileText, Bookmark
+  Rocket, Brain, Sparkles, MessageSquare, FileText, Bookmark,
+  Paperclip, Plus, Loader2,
 } from 'lucide-react';
+import type { VfsResourceRef } from '../../context/vfsRefTypes';
+import { getResourceRefsV2 } from '../../context/vfsRefApi';
+import { ResourcePickerDialog, getResourceTypeIcon } from './ResourcePickerDialog';
 
 // 预设图标列表
 export const PRESET_ICONS = [
@@ -93,6 +97,10 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
   const [icon, setIcon] = useState('');
   const [systemPrompt, setSystemPrompt] = useState('');
   const [defaultSkillIds, setDefaultSkillIds] = useState<string[]>([]);
+  const [pinnedResourceIds, setPinnedResourceIds] = useState<string[]>([]);
+  const [resolvedPinnedRefs, setResolvedPinnedRefs] = useState<VfsResourceRef[]>([]);
+  const [pinnedLoading, setPinnedLoading] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [registryVersion, setRegistryVersion] = useState(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -110,14 +118,46 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
       setIcon(initial.icon ?? '');
       setSystemPrompt(initial.systemPrompt ?? '');
       setDefaultSkillIds(initial.defaultSkillIds ?? []);
+      setPinnedResourceIds(initial.pinnedResourceIds ?? []);
     } else {
       setName('');
       setDescription('');
       setIcon('');
       setSystemPrompt('');
       setDefaultSkillIds([]);
+      setPinnedResourceIds([]);
+      setResolvedPinnedRefs([]);
     }
   }, [mode, initial]);
+
+  // Resolve pinned resource IDs to display info
+  useEffect(() => {
+    if (pinnedResourceIds.length === 0) {
+      setResolvedPinnedRefs([]);
+      return;
+    }
+    let cancelled = false;
+    setPinnedLoading(true);
+    getResourceRefsV2(pinnedResourceIds).then((result) => {
+      if (cancelled) return;
+      if (result.ok) {
+        setResolvedPinnedRefs(result.value.refs);
+      } else {
+        console.warn('[GroupEditorPanel] Failed to resolve pinned refs:', result.error);
+        // Show sourceIds as fallback
+        setResolvedPinnedRefs(
+          pinnedResourceIds.map((id) => ({
+            sourceId: id,
+            resourceHash: '',
+            type: 'file' as const,
+            name: id,
+          }))
+        );
+      }
+      setPinnedLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [pinnedResourceIds]);
 
   useEffect(() => {
     const unsubscribe = subscribeToSkillRegistry(() => {
@@ -130,6 +170,20 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
     void registryVersion;
     return skillRegistry.getAll().sort((a, b) => a.name.localeCompare(b.name));
   }, [registryVersion]);
+
+  const addPinnedResource = useCallback((sourceId: string) => {
+    const trimmed = sourceId.trim();
+    if (!trimmed) return;
+    setPinnedResourceIds((prev) => {
+      if (prev.includes(trimmed)) return prev;
+      return [...prev, trimmed];
+    });
+  }, []);
+
+  const removePinnedResource = useCallback((sourceId: string) => {
+    setPinnedResourceIds((prev) => prev.filter((id) => id !== sourceId));
+    setResolvedPinnedRefs((prev) => prev.filter((r) => r.sourceId !== sourceId));
+  }, []);
 
   const toggleSkill = useCallback((skillId: string) => {
     setDefaultSkillIds((prev) => {
@@ -151,6 +205,7 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
           icon: icon.trim() || undefined,
           systemPrompt: systemPrompt.trim() || undefined,
           defaultSkillIds,
+          pinnedResourceIds,
         };
         await onSubmit(payload);
       } else {
@@ -161,6 +216,7 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
           icon: icon.trim(),
           systemPrompt: systemPrompt.trim(),
           defaultSkillIds,
+          pinnedResourceIds,
         };
         await onSubmit(payload);
       }
@@ -170,7 +226,7 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
     } finally {
       setIsSaving(false);
     }
-  }, [defaultSkillIds, description, icon, mode, name, onSubmit, systemPrompt, t]);
+  }, [defaultSkillIds, pinnedResourceIds, description, icon, mode, name, onSubmit, systemPrompt, t]);
 
   return (
     <div className="flex flex-col h-full bg-background relative">
@@ -311,6 +367,73 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
             </PropertyRow>
 
           </div>
+
+          {/* Pinned Resources Section */}
+          <div className="space-y-3 pt-4 border-t border-border/40">
+            <div className="flex items-center gap-2 text-sm font-medium text-foreground/80">
+              <Paperclip className="w-4 h-4" />
+              <span>{t('page.groupPinnedResources')}</span>
+            </div>
+
+            {/* Pinned resource list */}
+            {pinnedLoading ? (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span>{t('common:loading', '加载中...')}</span>
+              </div>
+            ) : resolvedPinnedRefs.length > 0 ? (
+              <div className="space-y-1">
+                {resolvedPinnedRefs.map((ref) => {
+                  const TypeIcon = getResourceTypeIcon(ref.type);
+                  return (
+                    <div
+                      key={ref.sourceId}
+                      className="flex items-center justify-between gap-2 px-3 py-1.5 rounded-md bg-muted/30 hover:bg-muted/50 transition-colors group"
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <TypeIcon className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+                        <span className="text-sm truncate">{ref.name}</span>
+                        <span className="text-xs text-muted-foreground/60 flex-shrink-0">{ref.type}</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => removePinnedResource(ref.sourceId)}
+                        className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-destructive/10 hover:text-destructive transition-all"
+                        aria-label={t('common:remove', '移除')}
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : null}
+
+            {/* Add from browse — primary action */}
+            <button
+              type="button"
+              onClick={() => setPickerOpen(true)}
+              className="w-full flex items-center gap-2 px-3 py-2 rounded-md border border-dashed border-border/60 text-sm text-muted-foreground hover:bg-muted/40 hover:text-foreground hover:border-border transition-all cursor-pointer"
+            >
+              <Plus className="w-4 h-4" />
+              <span>{t('page.groupPinnedBrowse')}</span>
+            </button>
+
+            {resolvedPinnedRefs.length > 0 && (
+              <p className="text-xs text-muted-foreground/60">
+                {t('page.groupPinnedResourcesHint')}
+              </p>
+            )}
+          </div>
+
+          {/* Resource Picker Dialog */}
+          <ResourcePickerDialog
+            open={pickerOpen}
+            onClose={() => setPickerOpen(false)}
+            selectedIds={pinnedResourceIds}
+            onSelect={addPinnedResource}
+            onDeselect={removePinnedResource}
+          />
 
           {mode === 'edit' && onDelete && (
             <div className="pt-6 border-t border-border/40">

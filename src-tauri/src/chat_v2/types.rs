@@ -413,7 +413,10 @@ pub struct SessionGroup {
     pub color: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub system_prompt: Option<String>,
+    #[serde(default)]
     pub default_skill_ids: Vec<String>,
+    #[serde(default)]
+    pub pinned_resource_ids: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub workspace_id: Option<String>,
     pub sort_order: i32,
@@ -438,6 +441,7 @@ pub struct CreateGroupRequest {
     pub color: Option<String>,
     pub system_prompt: Option<String>,
     pub default_skill_ids: Option<Vec<String>>,
+    pub pinned_resource_ids: Option<Vec<String>>,
     pub workspace_id: Option<String>,
 }
 
@@ -451,6 +455,7 @@ pub struct UpdateGroupRequest {
     pub color: Option<String>,
     pub system_prompt: Option<String>,
     pub default_skill_ids: Option<Vec<String>>,
+    pub pinned_resource_ids: Option<Vec<String>>,
     pub workspace_id: Option<String>,
     pub sort_order: Option<i32>,
     pub persist_status: Option<PersistStatus>,

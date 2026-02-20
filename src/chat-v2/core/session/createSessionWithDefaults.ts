@@ -81,5 +81,49 @@ export async function createSessionWithDefaults(options: CreateSessionWithDefaul
     }
   }
 
+  // === Inject group pinned resources ===
+  if (options.groupId) {
+    const pinnedIds = groupCache.get(options.groupId)?.pinnedResourceIds ?? [];
+    if (pinnedIds.length > 0) {
+      try {
+        const { getResourceRefsV2 } = await import('../../context/vfsRefApi');
+        const { resourceStoreApi } = await import('../../resources');
+        const refsResult = await getResourceRefsV2(pinnedIds);
+        if (refsResult.ok && refsResult.value.refs.length > 0) {
+          const currentRefs = store.getState().pendingContextRefs;
+          const newRefs = [...currentRefs];
+          const existingResourceIds = new Set(currentRefs.map((r) => r.resourceId));
+          for (const vfsRef of refsResult.value.refs) {
+            try {
+              const resourceResult = await resourceStoreApi.createOrReuse({
+                type: vfsRef.type as import('../../context/types').ResourceType,
+                data: JSON.stringify({ refs: [vfsRef], totalCount: 1, truncated: false }),
+                sourceId: vfsRef.sourceId,
+                metadata: { name: vfsRef.name, title: vfsRef.name },
+              });
+              if (existingResourceIds.has(resourceResult.resourceId)) continue;
+              existingResourceIds.add(resourceResult.resourceId);
+              newRefs.push({
+                resourceId: resourceResult.resourceId,
+                hash: resourceResult.hash,
+                typeId: vfsRef.type,
+                isSticky: true,
+                displayName: vfsRef.name,
+              });
+            } catch (refErr) {
+              console.warn('[createSessionWithDefaults] Failed to create pinned resource ref:', vfsRef.sourceId, refErr);
+            }
+          }
+          if (newRefs.length > currentRefs.length) {
+            store.setState({ pendingContextRefs: newRefs });
+            console.log('[createSessionWithDefaults] Injected group pinned resources:', newRefs.length - currentRefs.length);
+          }
+        }
+      } catch (pinnedErr) {
+        console.warn('[createSessionWithDefaults] Failed to inject pinned resources:', getErrorMessage(pinnedErr));
+      }
+    }
+  }
+
   return session;
 }

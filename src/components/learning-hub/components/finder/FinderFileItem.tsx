@@ -50,6 +50,19 @@ interface SortableFinderFileItemProps extends FinderFileItemProps {
   enableDrag?: boolean;
 }
 
+/** 类型标签映射 */
+const TYPE_LABELS: Partial<Record<DstuNodeType, string>> = {
+  note: '笔记',
+  textbook: '教材',
+  exam: '题目集',
+  translation: '翻译',
+  essay: '作文',
+  image: '图片',
+  file: '文件',
+  mindmap: '导图',
+  retrieval: '检索',
+};
+
 /** 自定义 SVG 图标映射 */
 const TYPE_CUSTOM_ICONS: Record<DstuNodeType, React.FC<ResourceIconProps>> = {
   folder: FolderIcon,
@@ -127,25 +140,26 @@ export const FinderFileItem = React.memo(function FinderFileItem({
     locale: zhCN 
   });
 
+  const typeLabel = TYPE_LABELS[item.type];
+  const childCountLabel = item.type === 'folder' && item.childCount !== undefined
+    ? `${item.childCount} 项`
+    : undefined;
+  const rowTitle = snippet ? `${item.name}\n${matchSource === 'index' ? '[索引] ' : ''}${snippet}` : item.name;
+
   if (viewMode === 'list') {
     return (
       <div
         className={cn(
-          // Notion 风格：更大的行高、更精致的悬停效果
-          "group relative flex items-center gap-3 px-3 py-2.5 cursor-default select-none rounded-md mx-1 my-0.5",
+          "group relative flex items-center gap-2 px-3 py-1.5 cursor-default select-none rounded-md mx-1 my-0.5",
           "transition-all duration-150 ease-out",
-          // 默认状态
           "hover:bg-accent/60 dark:hover:bg-accent/40",
-          // 选中状态 - Notion 风格的蓝色高亮
           isSelected && "bg-primary/10 dark:bg-primary/20 hover:bg-primary/15 dark:hover:bg-primary/25",
-          // 激活状态（在应用面板中打开）
           isActive && !isSelected && "bg-accent/40 dark:bg-accent/30",
-          // 拖拽状态
           isDragging && "opacity-40 scale-[0.98]",
           isDragOverlay && "shadow-notion-lg ring-1 ring-primary/20 bg-background rounded-lg scale-[1.02]",
-          // 放置目标
           isDropTarget && item.type === 'folder' && "ring-2 ring-primary bg-primary/10 scale-[1.01]"
         )}
+        title={rowTitle}
         onClick={handleClick}
         onDoubleClick={handleDoubleClick}
         onContextMenu={onContextMenu}
@@ -153,48 +167,46 @@ export const FinderFileItem = React.memo(function FinderFileItem({
         
         {/* 自定义 SVG 图标 */}
         <div className="shrink-0 transition-transform duration-150 group-hover:scale-105">
-          <CustomIcon size={32} />
+          <CustomIcon size={24} />
         </div>
         
-        {/* 内容区域 */}
-        <div className="flex-1 min-w-0 flex flex-col justify-center">
-          <div className="flex items-center gap-2">
-            <InlineEditText
-              value={item.name}
-              isEditing={isEditing}
-              onConfirm={handleEditConfirm}
-              onCancel={handleEditCancel}
-              selectNameOnly={item.type !== 'folder'}
-              textClassName="truncate block text-[13px] font-medium text-foreground/90"
-              inputClassName="h-6 text-[13px]"
-            />
-            {/* 收藏星标 */}
-            {isFavorite && (
-              <Star className="h-3 w-3 text-yellow-500 fill-yellow-500 shrink-0" />
+        {/* 名称 + 收藏 */}
+        <div className="flex-1 min-w-0 flex items-center gap-1.5">
+          <InlineEditText
+            value={item.name}
+            isEditing={isEditing}
+            onConfirm={handleEditConfirm}
+            onCancel={handleEditCancel}
+            selectNameOnly={item.type !== 'folder'}
+            textClassName="truncate block text-[13px] font-medium text-foreground/90"
+            inputClassName="h-6 text-[13px]"
+          />
+          {isFavorite && (
+            <Star className="h-3 w-3 text-yellow-500 fill-yellow-500 shrink-0" />
+          )}
+        </div>
+        
+        {/* 右侧元数据 - 始终可见 */}
+        {!compact && (
+          <div className="flex items-center gap-2.5 shrink-0">
+            {/* 子项数量（文件夹）或文件大小（文件类） */}
+            {(childCountLabel || (item.type !== 'folder' && item.size !== undefined)) && (
+              <span className="text-[11px] text-muted-foreground/50 tabular-nums w-12 text-right">
+                {childCountLabel ?? formatSize(item.size)}
+              </span>
             )}
-          </div>
-          {/* 副标题：相对时间 */}
-          {!compact && (
-            <span className="text-[11px] text-muted-foreground/70 truncate">
+            {/* 类型标签 */}
+            {typeLabel && (
+              <span className="text-[10px] text-muted-foreground/45 bg-muted/50 px-1.5 py-0 rounded shrink-0">
+                {typeLabel}
+              </span>
+            )}
+            {/* 修改时间 */}
+            <span className="text-[11px] text-muted-foreground/55 tabular-nums shrink-0">
               {relativeTime}
             </span>
-          )}
-          {/* ★ 索引召回：内容匹配摘要 */}
-          {snippet && (
-            <span className="text-[11px] text-muted-foreground/60 truncate italic">
-              {matchSource === 'index' ? '📄 ' : ''}{snippet}
-            </span>
-          )}
-        </div>
-        
-        {/* 右侧信息 */}
-        {!compact && (
-          <div className="flex items-center gap-3 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
-            <span className="text-[11px] text-muted-foreground/60 tabular-nums">
-              {item.type === 'folder' ? '' : formatSize(item.size)}
-            </span>
             {/* 更多操作按钮 - 悬停时显示 */}
-            <NotionButton variant="ghost" size="icon" iconOnly className="!h-6 !w-6 !p-1 hover:bg-muted/60" onClick={(e) => { e.stopPropagation(); onContextMenu(e); }} aria-label="more">
+            <NotionButton variant="ghost" size="icon" iconOnly className="!h-6 !w-6 !p-1 hover:bg-muted/60 opacity-0 group-hover:opacity-100 transition-opacity duration-150" onClick={(e) => { e.stopPropagation(); onContextMenu(e); }} aria-label="more">
               <MoreHorizontal className="h-4 w-4 text-muted-foreground/60" />
             </NotionButton>
           </div>

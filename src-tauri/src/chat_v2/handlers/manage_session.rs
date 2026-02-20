@@ -328,6 +328,93 @@ pub async fn chat_v2_list_agent_sessions(
     Ok(sessions)
 }
 
+/// 会话分支：从指定消息处创建新会话
+///
+/// 深拷贝源会话中从开头到目标消息（含）的所有消息和块，
+/// 创建为一个新的普通 sess_ 会话。
+///
+/// ## 参数
+/// - `source_session_id`: 源会话 ID（支持 sess_/agent_/subagent_ 前缀）
+/// - `up_to_message_id`: 截止到的消息 ID（含此消息）
+/// - `db`: Chat V2 独立数据库
+/// - `vfs_db`: VFS 数据库（用于资源引用计数）
+///
+/// ## 返回
+/// - `Ok(ChatSession)`: 新创建的分支会话
+/// - `Err(String)`: 分支失败
+#[tauri::command]
+pub async fn chat_v2_branch_session(
+    source_session_id: String,
+    up_to_message_id: String,
+    db: State<'_, Arc<ChatV2Database>>,
+    vfs_db: State<'_, Arc<VfsDatabase>>,
+) -> Result<ChatSession, String> {
+    log::info!(
+        "[ChatV2::handlers] chat_v2_branch_session: source={}, upTo={}",
+        source_session_id,
+        up_to_message_id
+    );
+
+    // 1. 校验源会话 ID 前缀
+    if !source_session_id.starts_with("sess_")
+        && !source_session_id.starts_with("agent_")
+        && !source_session_id.starts_with("subagent_")
+    {
+        return Err(ChatV2Error::Validation(format!(
+            "Invalid source session_id format: {}",
+            source_session_id
+        ))
+        .into());
+    }
+
+    // 2. 在事务中执行分支
+    let (new_session, resource_ids) = branch_session_in_db(
+        &source_session_id,
+        &up_to_message_id,
+        &db,
+    )?;
+
+    // 3. 事务提交后：增量 VFS 资源引用计数（失败仅告警）
+    if !resource_ids.is_empty() {
+        match vfs_db.get_conn_safe() {
+            Ok(vfs_conn) => {
+                let mut success_count = 0usize;
+                for rid in &resource_ids {
+                    match VfsResourceRepo::increment_ref_with_conn(&vfs_conn, rid) {
+                        Ok(_) => success_count += 1,
+                        Err(e) => {
+                            log::warn!(
+                                "[ChatV2::handlers] Failed to increment ref for {}: {}",
+                                rid, e
+                            );
+                        }
+                    }
+                }
+                log::debug!(
+                    "[ChatV2::handlers] Incremented refs for {}/{} resources in branched session {}",
+                    success_count,
+                    resource_ids.len(),
+                    new_session.id
+                );
+            }
+            Err(e) => {
+                log::warn!(
+                    "[ChatV2::handlers] Failed to get vfs.db conn for branch ref increment: {}",
+                    e
+                );
+            }
+        }
+    }
+
+    log::info!(
+        "[ChatV2::handlers] Branched session created: id={}, from={}",
+        new_session.id,
+        source_session_id
+    );
+
+    Ok(new_session)
+}
+
 /// P1-23: 软删除会话（移动到回收站）
 ///
 /// 将会话标记为已删除状态，但不永久删除数据。可以恢复。
@@ -674,6 +761,290 @@ fn restore_session_in_db(
     ChatV2Repo::update_session_v2(db, &restored_session)?;
 
     Ok(restored_session)
+}
+
+/// 会话分支核心逻辑（事务内执行）
+///
+/// 返回: (新会话, 需要增量引用计数的资源 ID 列表)
+fn branch_session_in_db(
+    source_session_id: &str,
+    up_to_message_id: &str,
+    db: &ChatV2Database,
+) -> Result<(ChatSession, Vec<String>), String> {
+    use std::collections::HashMap;
+
+    let mut conn = db.get_conn_safe().map_err(|e| e.to_string())?;
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+
+    // 1. 加载并校验源会话
+    let source_session = ChatV2Repo::get_session_with_conn(&tx, source_session_id)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("Source session not found: {}", source_session_id))?;
+
+    if source_session.persist_status != PersistStatus::Active {
+        return Err(format!(
+            "Source session is not active (status: {:?}): {}",
+            source_session.persist_status, source_session_id
+        ));
+    }
+
+    // 2. 加载源消息（按 timestamp ASC, rowid ASC 排序）
+    let source_messages = ChatV2Repo::get_session_messages_with_conn(&tx, source_session_id)
+        .map_err(|e| e.to_string())?;
+
+    // 3. 按 index 截断（不用 timestamp）
+    let cut_index = source_messages
+        .iter()
+        .position(|m| m.id == up_to_message_id)
+        .ok_or_else(|| {
+            format!(
+                "Message {} not found in session {}",
+                up_to_message_id, source_session_id
+            )
+        })?;
+
+    let messages_to_copy = &source_messages[..=cut_index];
+
+    // 4. 收集需要复制的所有块 ID
+    let mut all_block_ids: Vec<String> = Vec::new();
+    for msg in messages_to_copy {
+        // message.block_ids
+        all_block_ids.extend(msg.block_ids.iter().cloned());
+        // variant block_ids
+        if let Some(ref variants) = msg.variants {
+            for variant in variants {
+                all_block_ids.extend(variant.block_ids.iter().cloned());
+            }
+        }
+    }
+    all_block_ids.sort();
+    all_block_ids.dedup();
+
+    // 5. 批量加载所有源块
+    let mut source_blocks_map: HashMap<String, crate::chat_v2::types::MessageBlock> =
+        HashMap::new();
+    for block_id in &all_block_ids {
+        if let Some(block) =
+            ChatV2Repo::get_block_with_conn(&tx, block_id).map_err(|e| e.to_string())?
+        {
+            source_blocks_map.insert(block_id.clone(), block);
+        }
+    }
+
+    // 6. 创建新会话
+    let now = chrono::Utc::now();
+    let new_session_id = ChatSession::generate_id();
+
+    // 构建 metadata，加入 branchedFrom 信息
+    let mut metadata = source_session
+        .metadata
+        .clone()
+        .unwrap_or_else(|| serde_json::json!({}));
+    if let Some(obj) = metadata.as_object_mut() {
+        obj.insert(
+            "branchedFrom".to_string(),
+            serde_json::json!({
+                "sessionId": source_session_id,
+                "messageId": up_to_message_id,
+                "branchedAt": now.to_rfc3339(),
+            }),
+        );
+    }
+
+    let new_session = ChatSession {
+        id: new_session_id.clone(),
+        mode: "chat".to_string(), // 统一创建为普通 chat 会话
+        title: source_session.title.map(|t| format!("{} (branch)", t)),
+        description: source_session.description.clone(),
+        summary_hash: None,
+        persist_status: PersistStatus::Active,
+        created_at: now,
+        updated_at: now,
+        metadata: Some(metadata),
+        group_id: source_session.group_id.clone(),
+    };
+
+    ChatV2Repo::create_session_with_conn(&tx, &new_session).map_err(|e| e.to_string())?;
+
+    // 7. 构建 ID 映射（old -> new）并深拷贝消息和块
+    let mut msg_id_map: HashMap<String, String> = HashMap::new();
+    let mut block_id_map: HashMap<String, String> = HashMap::new();
+    let mut resource_ids: Vec<String> = Vec::new();
+
+    // 预生成所有新 ID
+    for msg in messages_to_copy {
+        let new_msg_id = crate::chat_v2::types::ChatMessage::generate_id();
+        msg_id_map.insert(msg.id.clone(), new_msg_id);
+    }
+    for block_id in &all_block_ids {
+        let new_block_id = crate::chat_v2::types::MessageBlock::generate_id();
+        block_id_map.insert(block_id.clone(), new_block_id);
+    }
+
+    // 8. 写入新块
+    for (old_block_id, new_block_id) in &block_id_map {
+        if let Some(source_block) = source_blocks_map.get(old_block_id) {
+            // 映射 message_id
+            let new_message_id = msg_id_map
+                .get(&source_block.message_id)
+                .cloned()
+                .unwrap_or_else(|| source_block.message_id.clone());
+
+            let new_block = crate::chat_v2::types::MessageBlock {
+                id: new_block_id.clone(),
+                message_id: new_message_id,
+                block_type: source_block.block_type.clone(),
+                status: source_block.status.clone(),
+                content: source_block.content.clone(),
+                tool_name: source_block.tool_name.clone(),
+                tool_input: source_block.tool_input.clone(),
+                tool_output: source_block.tool_output.clone(),
+                citations: source_block.citations.clone(),
+                error: source_block.error.clone(),
+                started_at: source_block.started_at,
+                ended_at: source_block.ended_at,
+                first_chunk_at: source_block.first_chunk_at,
+                block_index: source_block.block_index,
+            };
+            ChatV2Repo::create_block_with_conn(&tx, &new_block).map_err(|e| e.to_string())?;
+        }
+    }
+
+    // 9. 写入新消息（含 ID 重映射）
+    for msg in messages_to_copy {
+        let new_msg_id = msg_id_map.get(&msg.id).unwrap().clone();
+
+        // 重映射 block_ids
+        let new_block_ids: Vec<String> = msg
+            .block_ids
+            .iter()
+            .map(|bid| block_id_map.get(bid).cloned().unwrap_or_else(|| bid.clone()))
+            .collect();
+
+        // 重映射 parent_id / supersedes
+        let new_parent_id = msg
+            .parent_id
+            .as_ref()
+            .and_then(|pid| msg_id_map.get(pid).cloned());
+        let new_supersedes = msg
+            .supersedes
+            .as_ref()
+            .and_then(|sid| msg_id_map.get(sid).cloned());
+
+        // 重映射 variants
+        let new_variants = msg.variants.as_ref().map(|variants| {
+            variants
+                .iter()
+                .map(|v| {
+                    let new_var_block_ids: Vec<String> = v
+                        .block_ids
+                        .iter()
+                        .map(|bid| block_id_map.get(bid).cloned().unwrap_or_else(|| bid.clone()))
+                        .collect();
+                    crate::chat_v2::types::Variant {
+                        id: crate::chat_v2::types::Variant::generate_id(),
+                        model_id: v.model_id.clone(),
+                        config_id: v.config_id.clone(),
+                        block_ids: new_var_block_ids,
+                        status: v.status.clone(),
+                        error: v.error.clone(),
+                        created_at: v.created_at,
+                        usage: v.usage.clone(),
+                    }
+                })
+                .collect::<Vec<_>>()
+        });
+
+        // 重映射 active_variant_id
+        let new_active_variant_id = if let (Some(ref old_active), Some(ref old_variants), Some(ref new_vars)) =
+            (&msg.active_variant_id, &msg.variants, &new_variants)
+        {
+            // 找到旧 active 在旧 variants 中的 index，映射到新 variants 的 id
+            old_variants
+                .iter()
+                .position(|v| &v.id == old_active)
+                .and_then(|idx| new_vars.get(idx))
+                .map(|v| v.id.clone())
+        } else {
+            None
+        };
+
+        // 重映射 shared_context 中的 block_ids
+        let new_shared_context = msg.shared_context.as_ref().map(|sc| {
+            let remap = |bid: &Option<String>| -> Option<String> {
+                bid.as_ref()
+                    .and_then(|b| block_id_map.get(b).cloned())
+            };
+            crate::chat_v2::types::SharedContext {
+                rag_sources: sc.rag_sources.clone(),
+                memory_sources: sc.memory_sources.clone(),
+                graph_sources: sc.graph_sources.clone(),
+                web_search_sources: sc.web_search_sources.clone(),
+                multimodal_sources: sc.multimodal_sources.clone(),
+                rag_block_id: remap(&sc.rag_block_id),
+                memory_block_id: remap(&sc.memory_block_id),
+                graph_block_id: remap(&sc.graph_block_id),
+                web_search_block_id: remap(&sc.web_search_block_id),
+                multimodal_block_id: remap(&sc.multimodal_block_id),
+            }
+        });
+
+        // 收集 context_snapshot 中的资源 ID（用于后续 ref_count 增量）
+        if let Some(ref meta) = msg.meta {
+            if let Some(ref cs) = meta.context_snapshot {
+                let ids = cs.all_resource_ids();
+                resource_ids.extend(ids.into_iter().map(|s| s.to_string()));
+            }
+        }
+
+        let new_message = crate::chat_v2::types::ChatMessage {
+            id: new_msg_id,
+            session_id: new_session_id.clone(),
+            role: msg.role.clone(),
+            block_ids: new_block_ids,
+            timestamp: msg.timestamp,
+            persistent_stable_id: msg.persistent_stable_id.clone(),
+            parent_id: new_parent_id,
+            supersedes: new_supersedes,
+            meta: msg.meta.clone(),
+            attachments: msg.attachments.clone(),
+            active_variant_id: new_active_variant_id,
+            variants: new_variants,
+            shared_context: new_shared_context,
+        };
+
+        ChatV2Repo::create_message_with_conn(&tx, &new_message).map_err(|e| e.to_string())?;
+    }
+
+    // 10. 复制 session_state（裁剪草稿字段）
+    if let Ok(Some(source_state)) =
+        ChatV2Repo::load_session_state_with_conn(&tx, source_session_id)
+    {
+        let branched_state = SessionState {
+            session_id: new_session_id.clone(),
+            chat_params: source_state.chat_params,
+            features: source_state.features,
+            mode_state: source_state.mode_state,
+            input_value: None, // 清空输入草稿
+            panel_states: None, // 清空面板 UI 状态
+            updated_at: now.to_rfc3339(),
+            pending_context_refs_json: None, // 清空待发送上下文
+            loaded_skill_ids_json: source_state.loaded_skill_ids_json,
+            active_skill_ids_json: source_state.active_skill_ids_json,
+        };
+        let _ = ChatV2Repo::save_session_state_with_conn(&tx, &new_session_id, &branched_state);
+    }
+
+    // 11. 提交事务
+    tx.commit().map_err(|e| format!("Failed to commit branch transaction: {}", e))?;
+
+    log::info!(
+        "[ChatV2::handlers] Branch transaction committed: {} messages, {} blocks copied",
+        messages_to_copy.len(),
+        block_id_map.len()
+    );
+
+    Ok((new_session, resource_ids))
 }
 
 /// 保存会话状态

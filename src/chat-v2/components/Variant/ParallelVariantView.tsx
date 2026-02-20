@@ -25,6 +25,7 @@ import {
   MoreHorizontal,
   ChevronLeft,
   ChevronRight,
+  GitBranch,
 } from 'lucide-react';
 import { ProviderIcon } from '@/components/ui/ProviderIcon';
 import {
@@ -81,6 +82,8 @@ export interface ParallelVariantViewProps {
   isLocked?: boolean;
   /** 🔧 继续执行回调（工具限制节点使用） */
   onContinue?: () => void;
+  /** 🆕 会话分支回调 */
+  onBranchSession?: () => Promise<void>;
   /** 是否隐藏底部消息级操作栏（由父级自行渲染） */
   hideMessageLevelActions?: boolean;
   /** 🚀 P0修复：移除 isBlockStreaming，块状态由 BlockRendererWithStore 内部订阅 */
@@ -498,6 +501,7 @@ interface MessageLevelActionsProps {
   onRetryAll?: () => Promise<void>;
   onDeleteMessage?: () => Promise<void>;
   onCopy?: () => Promise<void>;
+  onBranchSession?: () => Promise<void>;
 }
 
 const MessageLevelActions: React.FC<MessageLevelActionsProps> = ({
@@ -506,6 +510,7 @@ const MessageLevelActions: React.FC<MessageLevelActionsProps> = ({
   onRetryAll,
   onDeleteMessage,
   onCopy,
+  onBranchSession,
 }) => {
   const { t } = useTranslation('chatV2');
   const [isRetryingAll, setIsRetryingAll] = useState(false);
@@ -558,8 +563,21 @@ const MessageLevelActions: React.FC<MessageLevelActionsProps> = ({
     }
   }, [onCopy, copied]);
 
+  const [isBranching, setIsBranching] = useState(false);
+  const handleBranch = useCallback(async () => {
+    if (!onBranchSession || isBranching || isLocked) return;
+    setIsBranching(true);
+    try {
+      await onBranchSession();
+    } catch (error: unknown) {
+      console.error('[MessageLevelActions] Branch failed:', error);
+    } finally {
+      setIsBranching(false);
+    }
+  }, [onBranchSession, isBranching, isLocked]);
+
   // 如果没有任何操作可用，不显示操作栏
-  if (!onRetryAll && !onDeleteMessage && !onCopy) {
+  if (!onRetryAll && !onDeleteMessage && !onCopy && !onBranchSession) {
     return null;
   }
 
@@ -570,6 +588,13 @@ const MessageLevelActions: React.FC<MessageLevelActionsProps> = ({
         {onCopy && (
           <NotionButton variant="ghost" size="icon" iconOnly onClick={handleCopy} aria-label={t('messageItem.actions.copy', '复制')} title={t('messageItem.actions.copy', '复制')}>
             {copied ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
+          </NotionButton>
+        )}
+
+        {/* 会话分支按钮 */}
+        {onBranchSession && (
+          <NotionButton variant="ghost" size="icon" iconOnly onClick={handleBranch} disabled={isLocked || isBranching} aria-label={t('messageItem.actions.branch', '从此处分支')} title={t('messageItem.actions.branch', '从此处分支')}>
+            <GitBranch className={cn('w-4 h-4', isBranching && 'animate-pulse')} />
           </NotionButton>
         )}
 
@@ -634,6 +659,7 @@ export const ParallelVariantView: React.FC<ParallelVariantViewProps> = ({
   onCopy,
   isLocked = false,
   onContinue,
+  onBranchSession,
   hideMessageLevelActions = false,
   className,
 }) => {
@@ -846,6 +872,7 @@ export const ParallelVariantView: React.FC<ParallelVariantViewProps> = ({
           onRetryAll={onRetryAllVariants}
           onDeleteMessage={onDeleteMessage}
           onCopy={onCopy}
+          onBranchSession={onBranchSession}
         />
       )}
     </div>

@@ -30,8 +30,8 @@ import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { useSelectionBox, getSelectionBoxStyle, SelectionBoxRect } from './useSelectionBox';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 
-// Notion 风格：更大的列表项高度
-const LIST_ITEM_HEIGHT = 52;
+// 紧凑列表项高度
+const LIST_ITEM_HEIGHT = 40;
 
 // 网格模式虚拟滚动常量
 const GRID_ITEM_MIN_WIDTH = 88;  // minmax(88px, 1fr)

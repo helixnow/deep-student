@@ -259,6 +259,14 @@ pub const V20260207_ACTIVE_SKILL_IDS: MigrationDef = MigrationDef::new(
 )
 .idempotent();
 
+/// V20260221: 分组关联来源（pinned_resource_ids_json）
+pub const V20260221_GROUP_PINNED_RESOURCES: MigrationDef = MigrationDef::new(
+    20260221,
+    "group_pinned_resources",
+    include_str!("../../../migrations/chat_v2/V20260221__group_pinned_resources.sql"),
+)
+.idempotent();
+
 /// Chat V2 数据库迁移定义列表
 pub const CHAT_V2_MIGRATIONS: &[MigrationDef] = &[
     V20260130_INIT,
@@ -268,6 +276,7 @@ pub const CHAT_V2_MIGRATIONS: &[MigrationDef] = &[
     V20260203_ENSURE_SUBAGENT_TASK,
     V20260204_SESSION_GROUPS,
     V20260207_ACTIVE_SKILL_IDS,
+    V20260221_GROUP_PINNED_RESOURCES,
 ];
 
 /// Chat V2 数据库迁移集合

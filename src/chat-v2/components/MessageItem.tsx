@@ -5,7 +5,7 @@
  */
 
 import React, { useMemo, useCallback, useState, useRef, useEffect } from 'react';
-import { Copy, Check, RotateCcw, Trash2 } from 'lucide-react';
+import { Copy, Check, RotateCcw, Trash2, GitBranch } from 'lucide-react';
 import { useStore } from 'zustand';
 import { useTranslation } from 'react-i18next';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
@@ -611,6 +611,32 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
     }
   }, [message, extractMessageContent, extractNoteTitle, t]);
 
+  // 🆕 会话分支：从此消息处创建新会话
+  const isBranchingRef = useRef(false);
+  const handleBranch = useCallback(async () => {
+    if (isBranchingRef.current || isLocked || !message) return;
+    isBranchingRef.current = true;
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      const sessionId = store.getState().sessionId;
+      if (!sessionId) throw new Error('No active session');
+      const newSession = await invoke('chat_v2_branch_session', {
+        sourceSessionId: sessionId,
+        upToMessageId: messageId,
+      });
+      // 通知 ChatV2Page 插入新会话并切换
+      window.dispatchEvent(new CustomEvent('CHAT_V2_BRANCH_SESSION', {
+        detail: { session: newSession },
+      }));
+      showGlobalNotification('success', t('messageItem.actions.branchSuccess', '已创建分支会话'));
+    } catch (error: unknown) {
+      console.error('[MessageItem] Branch session failed:', error);
+      showGlobalNotification('error', getErrorMessage(error), t('messageItem.actions.branchFailed', '分支失败'));
+    } finally {
+      isBranchingRef.current = false;
+    }
+  }, [isLocked, message, store, messageId, t]);
+
   // 🆕 导出为 Markdown 文件
   const handleExportMarkdown = useCallback(async () => {
     if (!message) return;
@@ -684,6 +710,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
             onDeleteMessage={handleDelete}
             onCopy={handleCopy}
             isLocked={isLocked}
+            onBranchSession={handleBranch}
             hideMessageLevelActions={!isSmallScreen}
           />
         </div>
@@ -758,6 +785,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                     onCopy={handleCopy}
                     isLocked={isLocked}
                     onContinue={handleContinue}
+                    onBranchSession={handleBranch}
                     hideMessageLevelActions={!isSmallScreen}
                   />
                 ) : (
@@ -1031,6 +1059,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                         onEdit={isUser ? handleEdit : undefined}
                         onDelete={handleDelete}
                         onSaveAsNote={!isUser ? handleSaveAsNote : undefined}
+                        onBranchSession={handleBranch}
                       />
                     )}
                     {!isUser && isMultiVariant && (
@@ -1044,6 +1073,17 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                           title={t('messageItem.actions.copy')}
                         >
                           {multiCopied ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
+                        </NotionButton>
+                        <NotionButton
+                          variant="ghost"
+                          size="icon"
+                          iconOnly
+                          onClick={handleBranch}
+                          disabled={isLocked}
+                          aria-label={t('messageItem.actions.branch', '从此处分支')}
+                          title={t('messageItem.actions.branch', '从此处分支')}
+                        >
+                          <GitBranch className="w-4 h-4" />
                         </NotionButton>
                         <NotionButton
                           variant="ghost"
@@ -1098,6 +1138,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                         onEdit={isUser ? handleEdit : undefined}
                         onDelete={handleDelete}
                         onSaveAsNote={!isUser ? handleSaveAsNote : undefined}
+                        onBranchSession={handleBranch}
                       />
                     )}
                     {/* 移动端用户消息的时间显示（AI 消息时间在第二行渲染） */}
