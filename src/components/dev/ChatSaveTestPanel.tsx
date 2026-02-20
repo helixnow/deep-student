@@ -1014,7 +1014,7 @@ export const ChatSaveTestPanel: React.FC<ChatSaveTestPanelProps> = ({
   return (
     <div 
       data-testid="save-test-panel"
-      className="fixed w-[520px] bg-[hsl(var(--card))] border border-[hsl(var(--border))] rounded-lg shadow-2xl"
+      className="fixed w-[520px] bg-card border border-transparent ring-1 ring-border/40 rounded-lg shadow-lg"
       style={{ 
         zIndex: Z_INDEX.topmost,
         left: `${position.x}px`,
@@ -1046,7 +1046,7 @@ export const ChatSaveTestPanel: React.FC<ChatSaveTestPanelProps> = ({
       {/* Body */}
       <div className="overflow-y-auto" style={{ maxHeight: 'calc(100vh - 200px)' }}>
         {/* 当前模式和错题ID */}
-        <div className="p-4 bg-[hsl(var(--muted))] border-b border-[hsl(var(--border))]">
+        <div className="p-4 bg-muted/50 border-b border-transparent ring-1 ring-border/40">
           <div className="grid grid-cols-2 gap-3 text-sm">
             <div>
               <div className="font-medium text-[hsl(var(--foreground))] mb-1">
@@ -1128,7 +1128,7 @@ export const ChatSaveTestPanel: React.FC<ChatSaveTestPanelProps> = ({
               <Play size={16} />
               {isRunning ? t('dev:save_test.buttons.running') : t('dev:save_test.buttons.start')}
             </NotionButton>
-            <NotionButton variant="default" size="sm" data-testid="btn-reset-test" onClick={resetTest} disabled={isRunning || isAutoTesting} className="!px-4 !py-2 bg-[hsl(var(--muted))] text-[hsl(var(--foreground))] hover:bg-[hsl(var(--accent))] disabled:opacity-50">
+            <NotionButton variant="default" size="sm" data-testid="btn-reset-test" onClick={resetTest} disabled={isRunning || isAutoTesting} className="!px-4 !py-2 bg-muted/50 text-[hsl(var(--foreground))] hover:bg-accent disabled:opacity-50">
               <RotateCcw size={16} />
             </NotionButton>
           </div>
@@ -1165,7 +1165,7 @@ export const ChatSaveTestPanel: React.FC<ChatSaveTestPanelProps> = ({
                         ? 'bg-[hsl(var(--info-bg))] border-[hsl(var(--info))]'
                         : step.status === 'skipped'
                         ? 'bg-[hsl(var(--warning-bg))] border-[hsl(var(--warning))]'
-                        : 'bg-[hsl(var(--muted))] border-[hsl(var(--border))]'
+                        : 'bg-muted/50 border-transparent ring-1 ring-border/40'
                     }`}
                   >
                     <div className="flex items-start gap-2">
@@ -1227,7 +1227,7 @@ export const ChatSaveTestPanel: React.FC<ChatSaveTestPanelProps> = ({
                 全自动测试汇总
               </div>
               <div className="grid grid-cols-4 gap-2 text-xs">
-                <div className="p-2 bg-[hsl(var(--muted))] rounded text-center">
+                <div className="p-2 bg-muted/50 rounded text-center">
                   <div className="text-[hsl(var(--muted-foreground))]">总计</div>
                   <div className="text-lg font-bold text-[hsl(var(--foreground))]">{autoTestResults.length}</div>
                 </div>
@@ -1331,7 +1331,7 @@ export const ChatSaveTestPanel: React.FC<ChatSaveTestPanelProps> = ({
                 )}
               </NotionButton>
               <div className="flex items-center gap-2">
-                <NotionButton variant="ghost" size="sm" data-testid="btn-copy-logs" onClick={copyLogs} className="!px-2 !py-1 !h-auto text-xs bg-[hsl(var(--muted))] hover:bg-[hsl(var(--accent))] text-[hsl(var(--foreground))]">
+                <NotionButton variant="ghost" size="sm" data-testid="btn-copy-logs" onClick={copyLogs} className="!px-2 !py-1 !h-auto text-xs bg-muted/50 hover:bg-accent text-[hsl(var(--foreground))]">
                   <Copy size={12} />
                   {t('common:copy')}
                 </NotionButton>
@@ -1345,7 +1345,7 @@ export const ChatSaveTestPanel: React.FC<ChatSaveTestPanelProps> = ({
             {expandedSections.has('logs') && (
               <div 
                 data-testid="logs-container"
-                className="max-h-60 overflow-y-auto bg-[hsl(var(--muted))] rounded p-2 space-y-1 font-mono text-xs">
+                className="max-h-60 overflow-y-auto bg-muted/50 rounded p-2 space-y-1 font-mono text-xs">
                 {testLogs.map((log, idx) => (
                   <div
                     key={idx}
@@ -1389,7 +1389,7 @@ export const ChatSaveTestPanel: React.FC<ChatSaveTestPanelProps> = ({
             )}
           </NotionButton>
           {expandedSections.has('diagnostics') && (
-            <div className="max-h-60 overflow-y-auto bg-[hsl(var(--muted))] rounded p-2 space-y-1 font-mono text-xs">
+            <div className="max-h-60 overflow-y-auto bg-muted/50 rounded p-2 space-y-1 font-mono text-xs">
               {diagLogs.length === 0 ? (
                 <div className="text-[hsl(var(--muted-foreground))]">暂无</div>
               ) : (
@@ -1467,7 +1467,7 @@ export const ChatSaveTestPanel: React.FC<ChatSaveTestPanelProps> = ({
       <div className="p-4 border-t border-[hsl(var(--border))] text-xs text-[hsl(var(--muted-foreground))]">
         <div className="flex items-center justify-between">
           <span>
-            {t('dev:save_test.footer.shortcut')}: <kbd className="px-1 py-0.5 bg-[hsl(var(--muted))] rounded">Ctrl+Shift+T</kbd>
+            {t('dev:save_test.footer.shortcut')}: <kbd className="px-1 py-0.5 bg-muted/50 rounded">Ctrl+Shift+T</kbd>
           </span>
           <span className="text-[hsl(var(--success))]">
             日志: {testLogs.length}/{MAX_LOGS}

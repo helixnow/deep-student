@@ -168,7 +168,7 @@ export const Slider = React.forwardRef<HTMLDivElement, SliderProps>(
       >
         <div
           ref={trackRef}
-          className="relative h-2 w-full grow overflow-hidden rounded-full bg-secondary cursor-pointer"
+          className="relative h-1.5 w-full grow overflow-hidden rounded-full bg-muted cursor-pointer"
           onMouseDown={handleMouseDown}
           onTouchStart={handleTouchStart}
         >
@@ -187,9 +187,9 @@ export const Slider = React.forwardRef<HTMLDivElement, SliderProps>(
           aria-valuenow={currentValue[0]}
           aria-disabled={disabled}
           className={cn(
-            'absolute block h-5 w-5 rounded-full border-2 border-primary bg-background ring-offset-background transition-colors',
-            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
-            'hover:bg-accent',
+            'absolute block h-3 w-3 rounded-full bg-primary shadow-sm transition-colors',
+            'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/30',
+            'hover:scale-110',
             disabled ? 'cursor-not-allowed' : 'cursor-grab active:cursor-grabbing'
           )}
           style={{

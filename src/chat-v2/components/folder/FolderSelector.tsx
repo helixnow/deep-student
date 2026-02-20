@@ -341,15 +341,15 @@ export const FolderSelector: React.FC<FolderSelectorProps> = ({
       <div
         ref={containerRef}
         className={cn(
-          'w-full max-w-md max-h-[70vh] rounded-xl shadow-xl overflow-hidden',
-          'bg-card border border-border',
+        'w-full max-w-md max-h-[70vh] rounded-xl border border-transparent ring-1 ring-border/40 shadow-lg overflow-hidden',
+          'bg-card border border-border/40',
           'flex flex-col'
         )}
         onClick={(e) => e.stopPropagation()}
         onKeyDown={handleKeyDown}
       >
         {/* 头部 */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-border/40">
           <h3 className="text-base font-medium text-foreground">
             {t('context.selectFolder', '选择文件夹')}
           </h3>
@@ -359,7 +359,7 @@ export const FolderSelector: React.FC<FolderSelectorProps> = ({
         </div>
 
         {/* 搜索框 */}
-        <div className="px-4 py-3 border-b border-border">
+        <div className="px-4 py-3 border-b border-border/40">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <input
@@ -370,7 +370,7 @@ export const FolderSelector: React.FC<FolderSelectorProps> = ({
               placeholder={t('context.searchFolder', '搜索文件夹...')}
               className={cn(
                 'w-full pl-9 pr-4 py-2 text-sm rounded-lg',
-                'bg-muted/50 border border-border',
+                'bg-muted/50 border border-border/40',
                 'focus:outline-none focus:ring-2 focus:ring-primary/50',
                 'placeholder:text-muted-foreground'
               )}
@@ -430,7 +430,7 @@ export const FolderSelector: React.FC<FolderSelectorProps> = ({
         </div>
 
         {/* 底部提示 */}
-        <div className="px-4 py-2 border-t border-border bg-muted/30">
+        <div className="px-4 py-2 border-t border-border/40 bg-muted/30">
           <div className="flex items-center justify-between text-xs text-muted-foreground">
             <span>↑↓ {t('chatV2:context.navigate', '导航')}</span>
             <span>Enter {t('chatV2:context.confirm', '确认')}</span>

@@ -28,14 +28,14 @@ TableBody.displayName = 'TableBody';
 
 const TableFooter = React.forwardRef<HTMLTableSectionElement, React.HTMLAttributes<HTMLTableSectionElement>>(
   ({ className, ...props }, ref) => (
-    <tfoot ref={ref} className={cn('bg-[hsl(var(--muted))] font-medium', className)} {...props} />
+    <tfoot ref={ref} className={cn('bg-muted/50 font-medium', className)} {...props} />
   )
 );
 TableFooter.displayName = 'TableFooter';
 
 const TableRow = React.forwardRef<HTMLTableRowElement, React.HTMLAttributes<HTMLTableRowElement>>(
   ({ className, ...props }, ref) => (
-    <tr ref={ref} className={cn('border-b hover:bg-[hsl(var(--muted))]/50', className)} {...props} />
+    <tr ref={ref} className={cn('border-b border-border/40 hover:bg-muted/30 transition-colors', className)} {...props} />
   )
 );
 TableRow.displayName = 'TableRow';
@@ -44,7 +44,7 @@ const TableHead = React.forwardRef<HTMLTableCellElement, React.ThHTMLAttributes<
   ({ className, ...props }, ref) => (
     <th
       ref={ref}
-      className={cn('h-10 px-4 text-left align-middle font-medium text-[hsl(var(--muted-foreground))]', className)}
+      className={cn('h-10 px-4 text-left align-middle font-medium text-muted-foreground', className)}
       {...props}
     />
   )
@@ -60,7 +60,7 @@ TableCell.displayName = 'TableCell';
 
 const TableCaption = React.forwardRef<HTMLTableCaptionElement, React.HTMLAttributes<HTMLTableCaptionElement>>(
   ({ className, ...props }, ref) => (
-    <caption ref={ref} className={cn('mt-4 text-sm text-[hsl(var(--muted-foreground))]', className)} {...props} />
+    <caption ref={ref} className={cn('mt-4 text-sm text-muted-foreground', className)} {...props} />
   )
 );
 TableCaption.displayName = 'TableCaption';

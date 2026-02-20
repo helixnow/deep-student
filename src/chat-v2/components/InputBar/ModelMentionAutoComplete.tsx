@@ -226,7 +226,7 @@ export const ModelMentionAutoComplete: React.FC<
         // 样式
         'bg-popover dark:bg-popover',
         'border border-border dark:border-border',
-        'rounded-lg shadow-lg dark:shadow-2xl',
+        'rounded-lg shadow-lg ring-1 ring-border/40 dark:shadow-xl',
         'overflow-hidden',
         // 动画
         'animate-in fade-in-0 zoom-in-95',

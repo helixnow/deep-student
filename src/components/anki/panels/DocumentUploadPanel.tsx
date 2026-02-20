@@ -87,7 +87,7 @@ export function DocumentUploadPanel({
   };
 
   return (
-    <div className="flex flex-col overflow-hidden rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] shadow-sm flex-1 min-h-[300px] min-w-0">
+    <div className="flex flex-col overflow-hidden rounded-2xl border border-transparent ring-1 ring-border/40 bg-card shadow-sm flex-1 min-h-[300px] min-w-0">
       {/* 选中文件数提示 */}
       {selectedFiles.length > 0 && (
         <div className="flex items-center justify-end px-5 pt-5 pb-3 shrink-0">
@@ -144,7 +144,7 @@ export function DocumentUploadPanel({
 
           {/* 上传图标和提示 */}
           <div className="relative flex flex-col items-center gap-2 text-[hsl(var(--foreground))] z-10">
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[hsl(var(--card))] shadow-sm transition group-hover:scale-105">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-card shadow-sm transition group-hover:scale-105">
               <Upload className="h-6 w-6 text-[hsl(var(--foreground))]" aria-hidden />
             </div>
             <p className="text-xs text-[hsl(var(--muted-foreground))] break-words text-center px-2">
@@ -169,7 +169,7 @@ export function DocumentUploadPanel({
               variant="outline"
               size="sm"
               onClick={() => fileInputRef.current?.click()}
-              className="border-[hsl(var(--border))] bg-[hsl(var(--card))] text-[hsl(var(--foreground))] hover:border-[hsl(var(--ring))] hover:bg-[hsl(var(--accent))]"
+              className="border-transparent ring-1 ring-border/40 bg-card text-foreground hover:bg-accent/50"
             >
               {t('upload_button')}
             </NotionButton>
@@ -180,7 +180,7 @@ export function DocumentUploadPanel({
       {/* 已选文件列表 */}
       {selectedFiles.length > 0 && (
         <div className="px-5 pt-3 pb-5">
-          <div className="rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-3 shadow-sm">
+          <div className="rounded-xl border border-transparent ring-1 ring-border/40 bg-card p-3 shadow-sm">
             {/* 文件列表头部 */}
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs text-[hsl(var(--muted-foreground))]">

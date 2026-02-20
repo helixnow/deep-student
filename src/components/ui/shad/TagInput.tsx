@@ -65,7 +65,7 @@ const TagInput: React.FC<TagInputProps> = ({ value, onChange, placeholder, disab
       value.map((t, i) => (
         <span
           key={`${t}-${i}`}
-          className="inline-flex items-center gap-1 rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--muted))] px-2 py-0.5 text-xs text-foreground"
+          className="inline-flex items-center gap-1 rounded-md border-transparent bg-muted/50 px-2 py-0.5 text-xs text-foreground"
         >
           {t}
           <button
@@ -74,7 +74,7 @@ const TagInput: React.FC<TagInputProps> = ({ value, onChange, placeholder, disab
             disabled={disabled}
             aria-label={`${translate('common:remove')} ${t}`}
             title={translate('common:remove')}
-            className="ml-1 inline-flex h-5 w-5 items-center justify-center rounded hover:bg-[hsl(var(--muted))] disabled:opacity-50"
+            className="ml-1 inline-flex h-5 w-5 items-center justify-center rounded hover:bg-muted disabled:opacity-50"
           >
             <X size={12} className="text-muted-foreground" />
           </button>
@@ -84,7 +84,7 @@ const TagInput: React.FC<TagInputProps> = ({ value, onChange, placeholder, disab
   );
 
   return (
-    <div className={`min-h-[40px] rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--input))] px-2 py-2 ${disabled ? 'opacity-60' : ''}`}>
+    <div className={`min-h-[40px] rounded-md border border-transparent bg-transparent hover:bg-muted/30 focus-within:border-border/60 focus-within:bg-background focus-within:ring-1 focus-within:ring-border/50 transition-colors px-2 py-2 ${disabled ? 'opacity-60' : ''}`}>
       <div className="flex flex-wrap items-center gap-1.5">
         {chips}
         <Input

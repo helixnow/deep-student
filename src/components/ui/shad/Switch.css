@@ -7,15 +7,15 @@
 [data-shad-switch] {
   position: relative;
   /* 固定尺寸 - 使用 !important 确保 Android WebView 正确渲染 */
-  width: 44px !important;
-  min-width: 44px !important;
-  max-width: 44px !important;
-  height: 24px !important;
-  min-height: 24px !important;
-  max-height: 24px !important;
+  width: 32px !important;
+  min-width: 32px !important;
+  max-width: 32px !important;
+  height: 18px !important;
+  min-height: 18px !important;
+  max-height: 18px !important;
   padding: 2px !important;
   border: none;
-  border-radius: 12px;
+  border-radius: 9px;
   cursor: pointer;
   flex-shrink: 0 !important;
   flex-grow: 0 !important;
@@ -29,12 +29,12 @@
   position: relative;
   display: block;
   /* 固定尺寸 - 确保 Android WebView 正确渲染 */
-  width: 20px !important;
-  min-width: 20px !important;
-  max-width: 20px !important;
-  height: 20px !important;
-  min-height: 20px !important;
-  max-height: 20px !important;
+  width: 14px !important;
+  min-width: 14px !important;
+  max-width: 14px !important;
+  height: 14px !important;
+  min-height: 14px !important;
+  max-height: 14px !important;
   border-radius: 50% !important;
   flex-shrink: 0 !important;
   flex-grow: 0 !important;
@@ -44,7 +44,7 @@
 
 /* Checked state - thumb position */
 [data-shad-switch][data-state="checked"] > span {
-  transform: translateX(20px) !important;
+  transform: translateX(14px) !important;
 }
 
 [data-shad-switch][data-state="unchecked"] > span {

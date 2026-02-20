@@ -123,7 +123,7 @@ export function AlertDialogContent({ className, children }: React.HTMLAttributes
           aria-modal="true"
           variants={alertContentVariants}
           className={cn(
-            'relative w-[92vw] max-w-md rounded-xl border border-border bg-background p-6 text-foreground shadow-2xl',
+            'relative w-[92vw] max-w-md rounded-xl border border-transparent bg-background p-6 text-foreground shadow-lg ring-1 ring-border/40',
             className
           )}
           style={{ zIndex: Z_INDEX.modal + 1 }}

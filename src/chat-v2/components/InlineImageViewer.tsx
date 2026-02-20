@@ -253,7 +253,7 @@ export const InlineImageViewer: React.FC<InlineImageViewerProps> = ({
       className={cn(
         'bg-black/40 dark:bg-black/50 backdrop-blur-sm',
         'flex flex-col',
-        'shadow-2xl',
+        'shadow-lg ring-1 ring-border/40',
         className
       )}
       style={overlayStyle}

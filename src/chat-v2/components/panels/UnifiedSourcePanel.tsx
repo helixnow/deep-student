@@ -507,7 +507,7 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
         }}
         className={cn(
           'p-3 rounded-lg border bg-card hover:bg-accent/50 transition-all',
-          isHighlighted && 'ring-2 ring-primary ring-offset-2 ring-offset-background'
+          isHighlighted && 'ring-1 ring-primary/30'
         )}
       >
         <div className="flex items-center gap-2 mb-2">
@@ -981,7 +981,7 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
 
                   return (
                     <div
-                      className="fixed w-80 p-4 bg-popover text-popover-foreground rounded-xl shadow-xl border border-border text-sm pointer-events-none animate-in fade-in zoom-in-95 duration-150"
+                      className="fixed w-80 p-4 bg-popover text-popover-foreground rounded-xl shadow-lg ring-1 ring-border/40 border-transparent text-sm pointer-events-none animate-in fade-in zoom-in-95 duration-150"
                       style={{
                         zIndex: Z_INDEX.toast,
                         top,

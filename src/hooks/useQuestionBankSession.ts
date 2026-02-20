@@ -130,8 +130,6 @@ interface UseQuestionBankSessionReturn {
   submitAnswer: (questionId: string, answer: string, isCorrectOverride?: boolean) => Promise<SubmitResult>;
   markCorrect: (questionId: string, isCorrect: boolean) => Promise<void>;
   navigate: (index: number) => void;
-  goNext: () => void;
-  goPrev: () => void;
   toggleFavorite: (questionId: string) => Promise<void>;
   practiceMode: PracticeMode;
   setPracticeMode: (mode: PracticeMode) => void;
@@ -299,47 +297,6 @@ export function useQuestionBankSession({
     }
   }, [localOrder]);
 
-  const goNext = useCallback(() => {
-    if (localOrder.length === 0) return;
-    const currentIndex = currentQuestionId ? localOrder.indexOf(currentQuestionId) : -1;
-    let nextIndex: number;
-
-    switch (practiceMode) {
-      case 'random': {
-        if (localOrder.length <= 1) { nextIndex = 0; break; }
-        let rand: number;
-        do { rand = Math.floor(Math.random() * localOrder.length); } while (rand === currentIndex);
-        nextIndex = rand;
-        break;
-      }
-      case 'review_first': {
-        const reviewIds = localOrder.filter(id => localQuestions.get(id)?.status === 'review');
-        if (reviewIds.length > 0) {
-          setCurrentQuestionId(reviewIds[Math.floor(Math.random() * reviewIds.length)]);
-          return;
-        }
-        nextIndex = (currentIndex + 1) % localOrder.length;
-        break;
-      }
-      case 'by_tag': {
-        // by_tag 模式下，goNext 退化为顺序模式（标签过滤由 ExamContentView 通过 getNextQuestionIndex 处理）
-        nextIndex = (currentIndex + 1) % localOrder.length;
-        break;
-      }
-      default:
-        nextIndex = (currentIndex + 1) % localOrder.length;
-    }
-
-    setCurrentQuestionId(localOrder[nextIndex] || null);
-  }, [localOrder, currentQuestionId, practiceMode, localQuestions]);
-
-  const goPrev = useCallback(() => {
-    if (localOrder.length === 0) return;
-    const currentIndex = currentQuestionId ? localOrder.indexOf(currentQuestionId) : -1;
-    const prevIndex = currentIndex <= 0 ? localOrder.length - 1 : currentIndex - 1;
-    setCurrentQuestionId(localOrder[prevIndex] || null);
-  }, [localOrder, currentQuestionId]);
-
   // ========== 切换收藏 ==========
   const toggleFavorite = useCallback(async (questionId: string) => {
     try {
@@ -415,8 +372,6 @@ export function useQuestionBankSession({
     submitAnswer,
     markCorrect,
     navigate,
-    goNext,
-    goPrev,
     toggleFavorite,
     practiceMode,
     setPracticeMode,

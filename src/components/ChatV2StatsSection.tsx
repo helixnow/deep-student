@@ -28,7 +28,7 @@ const PropRow: React.FC<{
   label: string;
   children: React.ReactNode;
 }> = ({ icon, label, children }) => (
-  <div className="grid grid-cols-[120px_1fr] sm:grid-cols-[150px_1fr] items-center py-[5px] group">
+  <div className="grid grid-cols-[120px_1fr] sm:grid-cols-[150px_1fr] items-center py-2 group border-b border-border/20 last:border-0">
     <div className="flex items-center gap-2 min-w-0">
       <span className="text-muted-foreground/40 group-hover:text-muted-foreground/60 transition-colors flex-shrink-0">
         {icon}

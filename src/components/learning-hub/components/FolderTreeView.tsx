@@ -673,7 +673,7 @@ export const FolderTreeView: React.FC<FolderTreeViewProps> = ({
             <>
               {/* Grid 模式新建文件夹输入框 */}
               {isCreating && createParentId === null && (
-                <div className="flex items-center gap-1 px-3 py-1 m-2 bg-muted/30 rounded-md border border-border/50">
+                <div className="flex items-center gap-1 px-3 py-1 m-2 bg-muted/30 rounded-md border border-border/40">
                   <FolderPlus className="w-4 h-4 text-amber-500" />
                   <Input
                     autoFocus

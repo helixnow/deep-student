@@ -225,10 +225,10 @@ const ThinkingBlockDebugPlugin: React.FC<DebugPanelPluginProps> = () => {
   // 获取阶段颜色
   const getStageColor = (stage: string) => {
     switch (stage) {
-      case 'stream': return 'bg-blue-500';
-      case 'collect': return 'bg-yellow-500';
-      case 'save': return 'bg-green-500';
-      case 'load': return 'bg-purple-500';
+      case 'stream': return 'bg-primary';
+      case 'collect': return 'bg-warning';
+      case 'save': return 'bg-success';
+      case 'load': return 'bg-info';
       default: return 'bg-gray-500';
     }
   };

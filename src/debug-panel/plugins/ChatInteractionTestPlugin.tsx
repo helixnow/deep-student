@@ -298,7 +298,7 @@ const ChatInteractionTestPlugin: React.FC<DebugPanelPluginProps> = ({
           <CardTitle className="flex items-center gap-2 text-base">
             <Zap className="w-5 h-5" />
             聊天交互自动化测试
-            {status === 'running' && <Loader2 className="w-4 h-4 animate-spin text-blue-500" />}
+            {status === 'running' && <Loader2 className="w-4 h-4 animate-spin text-primary" />}
             {status === 'completed' && (
               <Badge variant={failed > 0 ? 'destructive' : 'default'}>
                 ✅{passed} ❌{failed} ⏭️{skipped}
@@ -511,7 +511,7 @@ const ChatInteractionTestPlugin: React.FC<DebugPanelPluginProps> = ({
                       <div className="border-t p-2 bg-muted/20 space-y-2">
                         {/* 错误 */}
                         {r.error && (
-                          <div className="text-xs text-red-500 bg-red-50 dark:bg-red-950/30 p-2 rounded">
+                          <div className="text-xs text-destructive bg-destructive/10 p-2 rounded">
                             ❌ {r.error}
                           </div>
                         )}
@@ -521,7 +521,7 @@ const ChatInteractionTestPlugin: React.FC<DebugPanelPluginProps> = ({
                           <div className="space-y-1">
                             <div className="text-xs font-medium text-muted-foreground">验证检查:</div>
                             {r.verification.checks.map((c, i) => (
-                              <div key={i} className={`text-xs flex items-start gap-1 ${c.passed ? 'text-green-600 dark:text-green-400' : 'text-red-500'}`}>
+                              <div key={i} className={`text-xs flex items-start gap-1 ${c.passed ? 'text-success' : 'text-destructive'}`}>
                                 {c.passed ? <CheckCircle2 className="w-3 h-3 mt-0.5 flex-shrink-0" /> : <XCircle className="w-3 h-3 mt-0.5 flex-shrink-0" />}
                                 <span><strong>{c.name}</strong>: {c.detail}</span>
                               </div>
@@ -534,7 +534,7 @@ const ChatInteractionTestPlugin: React.FC<DebugPanelPluginProps> = ({
                           <div className="space-y-1">
                             <div className="text-xs font-medium text-muted-foreground">Model Icon 检查:</div>
                             {r.modelIconChecks.map((ic, i) => (
-                              <div key={i} className={`text-xs flex items-start gap-1 ${ic.iconLost ? 'text-red-500' : 'text-green-600 dark:text-green-400'}`}>
+                              <div key={i} className={`text-xs flex items-start gap-1 ${ic.iconLost ? 'text-destructive' : 'text-success'}`}>
                                 {ic.iconLost ? <XCircle className="w-3 h-3 mt-0.5 flex-shrink-0" /> : <CheckCircle2 className="w-3 h-3 mt-0.5 flex-shrink-0" />}
                                 <span>
                                   期望 <strong>{ic.expectedBrand}</strong> ({ic.expectedModelId?.slice(0, 30)})
@@ -590,10 +590,10 @@ const ChatInteractionTestPlugin: React.FC<DebugPanelPluginProps> = ({
                                 <div key={i} className="text-xs font-mono flex gap-1">
                                   <span className="text-muted-foreground w-20 flex-shrink-0">{fmtTime(c.timestamp)}</span>
                                   <Badge variant="outline" className={`text-[10px] px-1 py-0 h-4 ${
-                                    c.level === 'error' ? 'border-red-300 text-red-500' :
+                                    c.level === 'error' ? 'border-destructive/30 text-destructive' :
                                     c.level === 'warn' ? 'border-yellow-300 text-yellow-600' : ''
                                   }`}>{c.level}</Badge>
-                                  <span className={c.level === 'error' ? 'text-red-500' : c.level === 'warn' ? 'text-yellow-600' : ''}>
+                                  <span className={c.level === 'error' ? 'text-destructive' : c.level === 'warn' ? 'text-warning' : ''}>
                                     {c.message}
                                   </span>
                                 </div>
@@ -614,8 +614,8 @@ const ChatInteractionTestPlugin: React.FC<DebugPanelPluginProps> = ({
                                   <span className="text-muted-foreground w-20 flex-shrink-0">{fmtTime(l.timestamp)}</span>
                                   <Badge variant="outline" className="text-[10px] px-1 py-0 h-4">{l.phase}</Badge>
                                   <span className={
-                                    l.level === 'error' ? 'text-red-500' :
-                                    l.level === 'success' ? 'text-green-500' :
+                                    l.level === 'error' ? 'text-destructive' :
+                                    l.level === 'success' ? 'text-success' :
                                     l.level === 'warn' ? 'text-yellow-600' : ''
                                   }>
                                     {l.message}
@@ -650,8 +650,8 @@ const ChatInteractionTestPlugin: React.FC<DebugPanelPluginProps> = ({
                 <div key={l.id} className="text-xs font-mono flex gap-1">
                   <span className="text-muted-foreground w-20 flex-shrink-0">{fmtTime(l.timestamp)}</span>
                   <span className={
-                    l.level === 'error' ? 'text-red-500' :
-                    l.level === 'success' ? 'text-green-500' :
+                    l.level === 'error' ? 'text-destructive' :
+                    l.level === 'success' ? 'text-success' :
                     l.level === 'warn' ? 'text-yellow-600' : ''
                   }>
                     [{l.phase}] {l.message}

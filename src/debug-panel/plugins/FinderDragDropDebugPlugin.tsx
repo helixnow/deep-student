@@ -57,12 +57,12 @@ export default function FinderDragDropDebugPlugin({ isActive, isActivated }: Deb
 
   const getEventIcon = (event: DragEvent) => {
     if (event.type === 'drag_start') {
-      return <Play className="w-4 h-4 text-blue-500" />;
+      return <Play className="w-4 h-4 text-primary" />;
     }
     if (event.overId === null) {
-      return <AlertTriangle className="w-4 h-4 text-yellow-500" />;
+      return <AlertTriangle className="w-4 h-4 text-warning" />;
     }
-    return <CheckCircle className="w-4 h-4 text-green-500" />;
+    return <CheckCircle className="w-4 h-4 text-success" />;
   };
 
   const formatTime = (ts: number) => {
@@ -91,7 +91,7 @@ export default function FinderDragDropDebugPlugin({ isActive, isActivated }: Deb
         <div className="flex items-center gap-2">
           <button
             onClick={() => setIsPaused(!isPaused)}
-            className={`p-1.5 rounded hover:bg-muted ${isPaused ? 'text-yellow-500' : 'text-muted-foreground'}`}
+            className={`p-1.5 rounded hover:bg-muted ${isPaused ? 'text-warning' : 'text-muted-foreground'}`}
             title={isPaused ? '继续记录' : '暂停记录'}
           >
             {isPaused ? <Play className="w-4 h-4" /> : <Pause className="w-4 h-4" />}
@@ -114,7 +114,7 @@ export default function FinderDragDropDebugPlugin({ isActive, isActivated }: Deb
       </div>
 
       {/* Instructions */}
-      <div className="p-3 border-b border-border bg-blue-500/10">
+      <div className="p-3 border-b border-border bg-primary/10">
         <div className="text-xs text-blue-600 dark:text-blue-400">
           <p className="font-medium mb-1">📋 使用说明：</p>
           <p>1. 打开 Learning Hub 侧边栏</p>
@@ -140,10 +140,10 @@ export default function FinderDragDropDebugPlugin({ isActive, isActivated }: Deb
               key={event.id}
               className={`p-2 rounded border text-xs font-mono ${
                 event.type === 'drag_start' 
-                  ? 'bg-blue-500/10 border-blue-500/30' 
+                  ? 'bg-primary/10 border-primary/30' 
                   : event.overId 
-                    ? 'bg-green-500/10 border-green-500/30'
-                    : 'bg-yellow-500/10 border-yellow-500/30'
+                    ? 'bg-success/10 border-success/30'
+                    : 'bg-warning/10 border-warning/30'
               }`}
             >
               <div className="flex items-center gap-2 mb-1">
@@ -158,12 +158,12 @@ export default function FinderDragDropDebugPlugin({ isActive, isActivated }: Deb
               <div className="pl-6 space-y-0.5 text-muted-foreground">
                 <div>
                   <span className="text-foreground">activeId:</span>{' '}
-                  <span className="text-blue-500">{String(event.activeId)}</span>
+                  <span className="text-primary">{String(event.activeId)}</span>
                 </div>
                 {event.type === 'drag_end' && (
                   <div>
                     <span className="text-foreground">overId:</span>{' '}
-                    <span className={event.overId ? 'text-green-500' : 'text-yellow-500'}>
+                    <span className={event.overId ? 'text-success' : 'text-warning'}>
                       {event.overId ?? 'null (无目标)'}
                     </span>
                   </div>

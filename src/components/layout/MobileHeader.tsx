@@ -57,7 +57,7 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
         // 样式
         transparent
           ? "bg-transparent"
-          : "bg-background/95 backdrop-blur-lg border-b border-border",
+          : "bg-background/95 backdrop-blur-lg border-b border-border/40",
         className
       )}
     >

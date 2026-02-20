@@ -41,7 +41,7 @@ interface QuestionFavoritesViewProps {
 const statusColors: Record<QuestionStatus, string> = {
   new: 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200',
   in_progress: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200',
-  mastered: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
+  mastered: 'bg-success/10 text-success',
   review: 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200',
 };
 
@@ -165,7 +165,7 @@ export const QuestionFavoritesView: React.FC<QuestionFavoritesViewProps> = ({
               {t(statusLabelKeys[question.status])}
             </Badge>
             {question.isCorrect === true && (
-              <CheckCircle className="w-3.5 h-3.5 text-green-500" />
+              <CheckCircle className="w-3.5 h-3.5 text-success" />
             )}
             {question.isCorrect === false && (
               <XCircle className="w-3.5 h-3.5 text-red-500" />
@@ -208,7 +208,7 @@ export const QuestionFavoritesView: React.FC<QuestionFavoritesViewProps> = ({
         <CustomScrollArea className="h-[calc(100vh-180px)]">
           <div className="space-y-2 pr-2">
             {totalCount > PAGE_SIZE && (
-              <div className="flex items-center gap-1.5 px-2 py-1.5 mb-1 rounded-md bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400">
+              <div className="flex items-center gap-1.5 px-2 py-1.5 mb-1 rounded-md bg-warning/10 text-warning">
                 <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
                 <span className="text-xs">
                   {t(

@@ -942,7 +942,7 @@ const DebugPanelHost: React.FC<DebugPanelHostProps> = ({ visible, onClose, curre
                             activatePlugin(plugin.id);
                             setActivePluginId(plugin.id);
                           }}
-                          className="group relative rounded-xl border border-[hsl(var(--border))] p-3.5 bg-[hsl(var(--card))] hover:bg-[hsl(var(--card)/0.8)] flex flex-col gap-3 shadow-sm hover:shadow-md transition-all duration-200 hover:border-[hsl(var(--border)/0.8)] cursor-pointer"
+                          className="group relative rounded-xl border border-transparent ring-1 ring-border/40 p-3.5 bg-card hover:bg-card/80 flex flex-col gap-3 shadow-sm hover:shadow-md transition-all duration-200 cursor-pointer"
                         >
                           <button
                             type="button"
@@ -957,7 +957,7 @@ const DebugPanelHost: React.FC<DebugPanelHostProps> = ({ visible, onClose, curre
                             }}
                             className={`absolute right-2.5 top-2.5 text-[13px] transition-colors ${
                               favoriteIds.has(plugin.id)
-                                ? 'text-amber-500 dark:text-amber-400 drop-shadow-sm'
+                                ? 'text-warning drop-shadow-sm'
                                 : 'text-[hsl(var(--muted-foreground)/0.5)] hover:text-[hsl(var(--muted-foreground))]'
                             }`}
                           >
@@ -969,7 +969,7 @@ const DebugPanelHost: React.FC<DebugPanelHostProps> = ({ visible, onClose, curre
                                 {plugin.label}
                               </h3>
                               {activatedIds.has(plugin.id) && (
-                                <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 font-medium">
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-success/10 text-success border border-success/30 font-medium">
                                   {t('debug_panel.activated_badge', '已激活')}
                                 </span>
                               )}

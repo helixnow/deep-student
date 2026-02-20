@@ -183,7 +183,7 @@ export const ToolApprovalCard: React.FC<ToolApprovalCardProps> = ({
       return {
         label: t('approval.resolution.approved'),
         icon: Check,
-        className: 'text-green-700 dark:text-green-400',
+        className: 'text-success',
       };
     }
     if (resolvedStatus === 'rejected') {
@@ -216,7 +216,7 @@ export const ToolApprovalCard: React.FC<ToolApprovalCardProps> = ({
 
   // 敏感等级颜色映射
   const sensitivityColors: Record<string, string> = {
-    low: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400',
+    low: 'bg-success/10 text-success',
     medium: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400',
     high: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400',
   };
@@ -297,7 +297,7 @@ export const ToolApprovalCard: React.FC<ToolApprovalCardProps> = ({
               size="sm"
               onClick={() => handleResponse(true, undefined, true)}
               disabled={isResponding}
-              className="text-green-600 hover:text-green-700 dark:text-green-400"
+              className="text-success hover:text-success/80"
             >
               {t('approval.alwaysAllow')}
             </NotionButton>
@@ -330,7 +330,7 @@ export const ToolApprovalCard: React.FC<ToolApprovalCardProps> = ({
               size="sm"
               onClick={() => handleResponse(true)}
               disabled={isResponding}
-              className="bg-green-600 hover:bg-green-700 text-white"
+              className="bg-success text-success-foreground"
             >
               <Check className="mr-1 h-4 w-4" />
               {t('approval.approve')}

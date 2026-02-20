@@ -289,9 +289,9 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               {syncSummary.status === 'synced' ? (
-                <Cloud className="h-5 w-5 text-green-500" />
+                <Cloud className="h-5 w-5 text-success" />
               ) : syncSummary.status === 'pending' ? (
-                <CloudOff className="h-5 w-5 text-amber-500" />
+                <CloudOff className="h-5 w-5 text-warning" />
               ) : (
                 <Cloud className="h-5 w-5 text-muted-foreground" />
               )}
@@ -319,15 +319,15 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
             <div className="flex items-center gap-2">
               {syncSummary.status === 'synced' ? (
                 <>
-                  <CheckCircle2 className="h-4 w-4 text-green-500" />
-                  <span className="text-sm text-green-700 dark:text-green-400">
+                  <CheckCircle2 className="h-4 w-4 text-success" />
+                  <span className="text-sm text-success">
                     {t('data:sync_settings.all_synced')}
                   </span>
                 </>
               ) : syncSummary.status === 'pending' ? (
                 <>
-                  <AlertTriangle className="h-4 w-4 text-amber-500" />
-                  <span className="text-sm text-amber-700 dark:text-amber-400">
+                  <AlertTriangle className="h-4 w-4 text-warning" />
+                  <span className="text-sm text-warning">
                     {t('data:sync_settings.pending_changes', {
                       count: syncSummary.pendingChanges,
                     })}
@@ -371,12 +371,12 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
                     </div>
                     {db.has_change_log ? (
                       db.pending_changes > 0 ? (
-                        <Badge variant="secondary" className="text-xs bg-amber-100 text-amber-800">
+                        <Badge variant="secondary" className="text-xs bg-warning/10 text-warning">
                           <ArrowUpCircle className="h-3 w-3 mr-1" />
                           {db.pending_changes}
                         </Badge>
                       ) : (
-                        <CheckCircle2 className="h-4 w-4 text-green-500" />
+                        <CheckCircle2 className="h-4 w-4 text-success" />
                       )
                     ) : (
                       <span className="text-muted-foreground">-</span>

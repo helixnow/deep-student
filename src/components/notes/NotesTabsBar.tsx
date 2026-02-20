@@ -88,7 +88,7 @@ const SortableTab: React.FC<SortableTabProps> = ({ tab, active, onClose }) => {
           aria-label={t('notes:tabs.close')}
           className={cn(
             "absolute right-1.5 flex h-5 w-5 items-center justify-center rounded-md text-muted-foreground/70 transition-all duration-150",
-            "hover:bg-foreground/10 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40",
+            "hover:bg-foreground/10 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/30",
             active
               ? "opacity-100"
               : "opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100",

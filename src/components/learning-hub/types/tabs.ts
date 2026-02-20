@@ -31,6 +31,16 @@ export interface OpenTab {
 export const MAX_TABS = 20;
 
 /**
+ * 分屏视图状态
+ * - null: 无分屏
+ * - { rightTabId }: 右侧面板显示的标签页 ID
+ */
+export interface SplitViewState {
+  /** 右侧面板显示的标签页 ID */
+  rightTabId: string;
+}
+
+/**
  * 创建新标签页（自动生成 tabId 和 openedAt）
  */
 export function createTab(app: Omit<OpenTab, 'tabId' | 'openedAt'>): OpenTab {

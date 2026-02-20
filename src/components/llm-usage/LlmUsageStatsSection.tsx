@@ -81,7 +81,7 @@ const PropRow: React.FC<{
   label: string;
   children: React.ReactNode;
 }> = ({ icon, label, children }) => (
-  <div className="grid grid-cols-[120px_1fr] sm:grid-cols-[150px_1fr] items-center py-[5px] group">
+  <div className="grid grid-cols-[120px_1fr] sm:grid-cols-[150px_1fr] items-center py-2 group border-b border-border/20 last:border-0">
     <div className="flex items-center gap-2 min-w-0">
       <span className="text-muted-foreground/40 group-hover:text-muted-foreground/60 transition-colors flex-shrink-0">
         {icon}
@@ -184,7 +184,7 @@ const CombinedTrend: React.FC<CombinedTrendProps> = ({ tokenData, sessionData })
                 <stop offset="95%" stopColor="hsl(160, 60%, 50%)" stopOpacity={0} />
               </linearGradient>
             </defs>
-            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" opacity={0.4} />
+            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" opacity={0.3} />
             <XAxis
               dataKey="timeLabel"
               tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 10, opacity: 0.8 }}
@@ -345,10 +345,11 @@ const ModelDistribution: React.FC<ModelDistributionProps> = ({ data }) => {
               <Tooltip
                 contentStyle={{
                   background: 'hsl(var(--popover))',
-                  border: '1px solid hsl(var(--border))',
-                  borderRadius: '6px',
+                  border: '1px solid var(--border)',
+                  borderColor: 'hsl(var(--border) / 0.4)',
+                  borderRadius: '8px',
                   fontSize: '12px',
-                  boxShadow: '0 4px 6px -1px hsl(var(--foreground) / 0.1), 0 2px 4px -2px hsl(var(--foreground) / 0.1)',
+                  boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)',
                   padding: '8px 12px',
                 }}
                 labelStyle={{ display: 'none' }}
@@ -446,10 +447,11 @@ const CallerDistribution: React.FC<CallerDistributionProps> = ({ data }) => {
               <Tooltip
                 contentStyle={{
                   background: 'hsl(var(--popover))',
-                  border: '1px solid hsl(var(--border))',
-                  borderRadius: '6px',
+                  border: '1px solid var(--border)',
+                  borderColor: 'hsl(var(--border) / 0.4)',
+                  borderRadius: '8px',
                   fontSize: '12px',
-                  boxShadow: '0 4px 6px -1px hsl(var(--foreground) / 0.1), 0 2px 4px -2px hsl(var(--foreground) / 0.1)',
+                  boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)',
                   padding: '8px 12px',
                 }}
                 labelStyle={{ display: 'none' }}

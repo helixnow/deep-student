@@ -339,7 +339,7 @@ export const AppTab: React.FC<AppTabProps> = ({
                         className={cn(
                           'h-7 w-7 rounded-full shadow-sm transition-transform duration-200',
                           'group-hover/palette:scale-105',
-                          isSelected && 'ring-2 ring-primary ring-offset-2 ring-offset-background'
+                          isSelected && 'ring-1 ring-primary/30'
                         )} 
                         style={{ backgroundColor: previewColor }} 
                       />
@@ -367,7 +367,7 @@ export const AppTab: React.FC<AppTabProps> = ({
                       className={cn(
                         'h-7 w-7 rounded-full shadow-sm transition-transform duration-200',
                         'group-hover/palette:scale-105',
-                        themePalette === 'custom' && 'ring-2 ring-primary ring-offset-2 ring-offset-background'
+                        themePalette === 'custom' && 'ring-1 ring-primary/30'
                       )}
                       style={{
                         // Intentional decorative: rainbow conic-gradient for color picker preview

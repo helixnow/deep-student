@@ -209,10 +209,10 @@ export function PopoverContent({ className, align = 'center', side = 'bottom', s
       <div
         role="dialog"
         ref={assignContentRef}
-        className={cn(
-          'fixed min-w-[200px] rounded-lg border border-border bg-popover p-1.5 text-sm shadow-xl outline-none animate-in fade-in-0 zoom-in-95',
-          className
-        )}
+          className={cn(
+            'fixed min-w-[200px] rounded-lg border border-transparent bg-popover p-1.5 text-sm outline-none animate-in fade-in-0 zoom-in-95 shadow-lg ring-1 ring-border/40',
+            className
+          )}
         style={{
           zIndex: Z_INDEX.popover,
           left: finalLeft,
@@ -233,7 +233,7 @@ export function PopoverContent({ className, align = 'center', side = 'bottom', s
       role="dialog"
       ref={assignContentRef}
       className={cn(
-        'absolute mt-2 min-w-[200px] rounded-lg border border-border bg-popover p-1.5 text-sm shadow-xl outline-none animate-in fade-in-0 zoom-in-95',
+        'absolute mt-2 min-w-[200px] rounded-lg border border-transparent bg-popover p-1.5 text-sm outline-none animate-in fade-in-0 zoom-in-95 shadow-lg ring-1 ring-border/40',
         alignmentClass,
         className
       )}

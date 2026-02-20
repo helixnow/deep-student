@@ -127,7 +127,7 @@ const FullscreenModal: React.FC<FullscreenModalProps> = ({
       <img
         src={src}
         alt={alt || 'Fullscreen preview'}
-        className="max-w-full max-h-full object-contain rounded-lg shadow-2xl"
+        className="max-w-full max-h-full object-contain rounded-lg shadow-lg ring-1 ring-border/40"
       />
     </div>
   );

@@ -12,7 +12,7 @@ const Checkbox = React.forwardRef<
     ref={ref}
     data-radix-checkbox-root=""
     className={cn(
-      'peer h-4 w-4 shrink-0 rounded border border-[hsl(var(--border))] shadow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40 disabled:cursor-not-allowed disabled:opacity-50 data-[state=checked]:bg-sky-500',
+      'peer h-4 w-4 shrink-0 rounded border border-border/50 bg-transparent transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/30 disabled:cursor-not-allowed disabled:opacity-50 data-[state=checked]:bg-primary data-[state=checked]:border-primary',
       className
     )}
     {...props}

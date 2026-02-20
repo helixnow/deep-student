@@ -227,7 +227,7 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
   return (
     <div 
       className={cn(
-        'flex flex-col bg-muted/30 border-r border-border transition-all duration-200 ease-out overflow-hidden',
+        'flex flex-col bg-muted/30 border-r border-border/40 transition-all duration-200 ease-out overflow-hidden',
         collapsed ? 'w-14' : 'w-52'
       )}
     >
@@ -450,7 +450,7 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
         </CustomScrollArea>
 
         {onToggleCollapse && (
-          <div className="shrink-0 h-11 flex items-center px-2 border-t border-border">
+          <div className="shrink-0 h-11 flex items-center px-2 border-t border-border/40">
             <NotionButton variant="ghost" size="sm" onClick={onToggleCollapse} className="w-full justify-center !py-1.5 text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted/40" title={collapsed ? t('finder.quickAccess.expand') : t('finder.quickAccess.collapse')}>
               {collapsed ? (
                 <ChevronRight className="h-4 w-4" />

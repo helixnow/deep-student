@@ -249,7 +249,7 @@ export const EssayEditorWrapper: React.FC<EditorProps | CreateEditorProps> = (pr
       <CustomScrollArea className="flex-1" viewportClassName="p-4 space-y-4">
         {/* M-050: 数据解析异常警告横幅 */}
         {isParseError && (
-          <div className="flex items-start gap-3 p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-md">
+          <div className="flex items-start gap-3 p-3 bg-warning/10 border border-warning/30 rounded-md">
             <ShieldAlert className="w-5 h-5 text-yellow-600 dark:text-yellow-400 flex-shrink-0 mt-0.5" />
             <div className="flex-1 space-y-1">
               <p className="text-sm font-medium text-yellow-800 dark:text-yellow-300">

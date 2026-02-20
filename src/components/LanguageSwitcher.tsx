@@ -26,7 +26,7 @@ export const LanguageSwitcher: React.FC<LanguageSwitcherProps> = ({ className = 
         role="switch"
         aria-checked={isEnglishActive}
         onClick={handleToggle}
-        className={`relative inline-flex h-6 w-11 items-center rounded-full border transition-all duration-300 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
+        className={`relative inline-flex h-6 w-11 items-center rounded-full border transition-all duration-300 ease-in-out focus:outline-none focus-visible:ring-1 focus-visible:ring-primary/30 ${
           isEnglishActive
             ? 'bg-primary text-primary-foreground border-transparent hover:bg-primary/90'
             : 'bg-muted text-muted-foreground border-border hover:bg-muted/80'

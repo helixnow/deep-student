@@ -52,7 +52,7 @@ export const HeaderTemplate: React.FC<HeaderTemplateProps> = ({
   return (
     <>
       <header
-        className={`w-full bg-[hsl(var(--card))] px-6 py-4 flex items-center justify-between ${className || ''}`}
+        className={`w-full bg-card px-6 py-4 flex items-center justify-between ${className || ''}`}
       >
         <div className="flex items-center gap-6">
           <div className="flex items-center gap-3">
@@ -113,7 +113,7 @@ export const HeaderTemplate: React.FC<HeaderTemplateProps> = ({
       </header>
 
       {bottomToolbar && (
-        <div className="w-full bg-[hsl(var(--card))] px-6 py-3 flex items-center justify-between min-h-[56px]">
+        <div className="w-full bg-card px-6 py-3 flex items-center justify-between min-h-[56px]">
           {bottomToolbar}
         </div>
       )}

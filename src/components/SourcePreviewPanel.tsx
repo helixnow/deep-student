@@ -149,9 +149,9 @@ export const SourcePreviewPanel: React.FC<SourcePreviewPanelProps> = ({
   const copyButtonState = copied ? 'success' : 'idle';
 
   return (
-    <div className="fixed inset-y-0 right-0 w-96 bg-[hsl(var(--card))] text-[hsl(var(--foreground))] shadow-2xl border-l border-[hsl(var(--border))] z-50 flex flex-col">
+    <div className="fixed inset-y-0 right-0 w-96 bg-card text-[hsl(var(--foreground))] shadow-lg ring-1 ring-border/40 border-l border-transparent z-50 flex flex-col">
       {/* 头部 */}
-      <div className="flex items-center justify-between p-4 border-b border-[hsl(var(--border))] bg-[hsl(var(--muted))]">
+      <div className="flex items-center justify-between p-4 border-b border-transparent ring-1 ring-border/40 bg-muted/50">
         <div className="flex items-center gap-3">
           <FileText size={20} className="text-[hsl(var(--muted-foreground))]" />
           <div>
@@ -216,7 +216,7 @@ export const SourcePreviewPanel: React.FC<SourcePreviewPanelProps> = ({
       </div>
 
       {/* 内容预览 */}
-      <CustomScrollArea className="flex-1 min-h-0 -mr-4 pl-4 pb-4 bg-[hsl(var(--card))]" viewportClassName="pr-4" trackOffsetTop={12} trackOffsetBottom={12} trackOffsetRight={0}>
+      <CustomScrollArea className="flex-1 min-h-0 -mr-4 pl-4 pb-4 bg-card" viewportClassName="pr-4" trackOffsetTop={12} trackOffsetBottom={12} trackOffsetRight={0}>
         <div className="prose prose-sm max-w-none text-[hsl(var(--foreground))]">
           <MarkdownRenderer content={source.chunk_text} />
         </div>

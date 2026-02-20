@@ -110,7 +110,7 @@ export function NotionDialog({
           aria-modal="true"
           variants={contentVariants}
           className={cn(
-            'relative w-[92vw] rounded-xl border border-border/60 bg-background text-foreground shadow-xl',
+            'relative w-[92vw] rounded-xl border border-transparent ring-1 ring-border/40 bg-background text-foreground shadow-lg',
             'flex flex-col overflow-hidden',
             maxWidth,
             className,
@@ -277,7 +277,7 @@ export function NotionAlertDialog({
           aria-modal="true"
           variants={alertContentVariants}
           className={cn(
-            'relative w-[92vw] max-w-md rounded-xl border border-border/60 bg-background p-5 text-foreground shadow-xl',
+            'relative w-[92vw] max-w-md rounded-xl border border-transparent ring-1 ring-border/40 bg-background p-5 text-foreground shadow-lg',
             className,
           )}
           style={{ zIndex: Z_INDEX.modal + 1 }}

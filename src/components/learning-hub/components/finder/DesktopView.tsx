@@ -229,7 +229,7 @@ function DesktopContextMenu({
       className={cn(
         'fixed min-w-[160px] overflow-hidden rounded-lg',
         'bg-popover/95 backdrop-blur-md text-popover-foreground',
-        'border border-border/50 shadow-xl',
+        'border border-transparent ring-1 ring-border/40 shadow-lg',
         'py-1 animate-in fade-in-0 zoom-in-95'
       )}
       style={{ left: menuPosition.x, top: menuPosition.y, zIndex: Z_INDEX.contextMenu }}
@@ -360,7 +360,7 @@ function ShortcutCard({
             autoFocus
           />
           <NotionButton variant="ghost" size="icon" iconOnly className="!h-5 !w-5 !p-0.5" onClick={() => { if (editName.trim() && editName !== shortcut.name) { onEditConfirm(editName.trim()); } else { onEditCancel(); } }} aria-label="confirm">
-            <Check className="w-3.5 h-3.5 text-green-600" />
+            <Check className="w-3.5 h-3.5 text-success" />
           </NotionButton>
           <NotionButton variant="ghost" size="icon" iconOnly className="!h-5 !w-5 !p-0.5" onClick={onEditCancel} aria-label="cancel">
             <X className="w-3.5 h-3.5 text-red-500" />
@@ -429,8 +429,8 @@ function AddShortcutDialog({
                 className={cn(
                   '!h-auto flex-col items-center gap-2 !p-3 !rounded-lg border',
                   added
-                    ? 'border-green-500/50 bg-green-50/50 dark:bg-green-900/20 cursor-not-allowed opacity-60'
-                    : 'border-border hover:border-primary hover:bg-accent'
+                    ? 'border-success/50 bg-success/10 cursor-not-allowed opacity-60'
+                    : 'border-transparent bg-muted/30 hover:border-border/40 hover:bg-muted/50'
                 )}
                 onClick={() => !added && handleAddPreset(index)}
                 disabled={added}
@@ -438,7 +438,7 @@ function AddShortcutDialog({
                 {Icon && <Icon size={32} />}
                 <span className="text-xs text-center">{preset.name}</span>
                 {added && (
-                  <span className="text-[10px] text-green-600">{t('desktop.added', '已添加')}</span>
+                  <span className="text-[10px] text-success">{t('desktop.added', '已添加')}</span>
                 )}
               </NotionButton>
             );

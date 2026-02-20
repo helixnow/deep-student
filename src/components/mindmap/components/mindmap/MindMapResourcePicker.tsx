@@ -158,7 +158,7 @@ export const MindMapResourcePicker: React.FC<MindMapResourcePickerProps> = ({
       ref={panelRef}
       className={cn(
         'fixed w-[360px] max-h-[420px] flex flex-col',
-        'rounded-lg border border-border bg-popover shadow-xl',
+        'rounded-lg border border-transparent ring-1 ring-border/40 bg-popover shadow-lg',
         'animate-in fade-in-0 zoom-in-95 duration-150',
         'top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2',
       )}

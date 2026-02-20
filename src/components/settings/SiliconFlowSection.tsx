@@ -867,8 +867,8 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
 
   const quickContainerClass =
     variant === 'full'
-      ? 'rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] text-[hsl(var(--card-foreground))] shadow-sm'
-      : 'mt-4 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] text-[hsl(var(--card-foreground))] shadow-sm';
+      ? 'rounded-xl border border-transparent ring-1 ring-border/40 bg-card text-card-foreground shadow-sm'
+      : 'mt-4 rounded-xl border border-transparent ring-1 ring-border/40 bg-card text-card-foreground shadow-sm';
   const quickHeaderPadding = variant === 'full' ? 'px-5 py-4' : 'px-4 py-3';
   const quickBodyClass =
     variant === 'full'

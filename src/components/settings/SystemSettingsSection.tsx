@@ -36,7 +36,7 @@ import { NotionButton } from '../ui/NotionButton';
 import { invoke as tauriInvoke } from '@tauri-apps/api/core';
 
 const SettingSection = ({ title, description, children }: { title: string; description?: string; children: React.ReactNode }) => (
-  <div className="rounded-2xl border border-border/70 bg-card/90 p-6 shadow-sm transition-shadow duration-300 hover:shadow-md">
+  <div className="rounded-2xl border border-transparent ring-1 ring-border/40 bg-card/90 p-6 shadow-sm transition-shadow duration-300 hover:shadow-md">
     <div className="flex flex-col gap-3 mb-6 sm:flex-row sm:items-center sm:justify-between">
       <div className="space-y-1">
         <h2 className="m-0 text-2xl font-semibold text-[hsl(var(--card-foreground, 222.2 47.4% 11.2%))] dark:text-[hsl(var(--card-foreground, 210 40% 98%))]">{title}</h2>
@@ -277,7 +277,7 @@ export const SystemSettingsSection: React.FC = () => {
                     variant={themeMode === 'light' ? 'primary' : 'default'}
                     size="sm"
                     onClick={() => setThemeMode('light')}
-                    className={themeMode === 'light' ? 'border-2 border-primary shadow-sm' : 'border border-border'}
+                    className={themeMode === 'light' ? 'border-2 border-primary shadow-sm' : 'border border-transparent ring-1 ring-border/40'}
                     title={t('settings:system_settings.general.theme_light')}
                   >
                     <Sun size={16} />
@@ -288,7 +288,7 @@ export const SystemSettingsSection: React.FC = () => {
                     variant={themeMode === 'dark' ? 'primary' : 'default'}
                     size="sm"
                     onClick={() => setThemeMode('dark')}
-                    className={themeMode === 'dark' ? 'border-2 border-primary shadow-sm' : 'border border-border'}
+                    className={themeMode === 'dark' ? 'border-2 border-primary shadow-sm' : 'border border-transparent ring-1 ring-border/40'}
                     title={t('settings:system_settings.general.theme_dark')}
                   >
                     <Moon size={16} />
@@ -299,7 +299,7 @@ export const SystemSettingsSection: React.FC = () => {
                     variant={themeMode === 'auto' ? 'primary' : 'default'}
                     size="sm"
                     onClick={() => setThemeMode('auto')}
-                    className={themeMode === 'auto' ? 'border-2 border-primary shadow-sm' : 'border border-border'}
+                    className={themeMode === 'auto' ? 'border-2 border-primary shadow-sm' : 'border border-transparent ring-1 ring-border/40'}
                     title={t('settings:system_settings.general.theme_follow_title', { 
                       system: isSystemDark ? t('settings:system_settings.general.theme_dark') : t('settings:system_settings.general.theme_light')
                     })}

@@ -17,14 +17,14 @@ export const Progress = React.forwardRef<HTMLDivElement, ProgressProps>(
         aria-valuemax={100}
         aria-valuenow={typeof clamped === 'number' ? clamped : undefined}
         className={cn(
-          'relative w-full h-2 overflow-hidden rounded-full bg-[hsl(var(--muted))]',
+          'relative w-full h-1.5 overflow-hidden rounded-full bg-muted/50',
           clamped == null && 'progress-indeterminate',
           className
         )}
         {...props}
       >
         <div
-          className={cn('bar h-full bg-sky-500 transition-all')}
+          className={cn('bar h-full bg-primary transition-all')}
           style={{ width: clamped == null ? '40%' : `${clamped}%` }}
         />
       </div>

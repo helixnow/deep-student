@@ -774,7 +774,7 @@ export default function Topbar({ currentView, onNavigate, sidebarCollapsed, onTo
 
   const itemBase =
     'relative z-10 inline-flex items-center justify-center gap-2 px-4 min-w-[44px] h-11 select-none touch-manipulation icon-ghost-btn' +
-    ' transition-[opacity,colors] duration-200 [transition-timing-function:cubic-bezier(0.22,1,0.36,1)] active:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background';
+    ' transition-[opacity,colors] duration-200 [transition-timing-function:cubic-bezier(0.22,1,0.36,1)] active:opacity-80 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/30';
   const itemText = 'text-sm font-medium';
   const activeStyles = 'text-[hsl(var(--primary))]';
   const inactiveStyles = 'text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]';
@@ -804,7 +804,7 @@ export default function Topbar({ currentView, onNavigate, sidebarCollapsed, onTo
     <div
       ref={outerRef}
       data-tauri-drag-region
-      className="dstu-virtual-titlebar fixed top-0 left-0 right-0 h-10 flex items-center select-none bg-[hsl(var(--nav-background))] border-b border-border"
+      className="dstu-virtual-titlebar fixed top-0 left-0 right-0 h-10 flex items-center select-none bg-background/95 backdrop-blur-lg border-b border-border/40"
       style={{ zIndex: Z_INDEX.systemTitlebar }}
       onMouseDown={(e) => {
         // 在标记了 data-no-drag 的区域不触发拖拽

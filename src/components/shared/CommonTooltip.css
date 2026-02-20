@@ -28,8 +28,8 @@
   white-space: pre-wrap;
   word-wrap: break-word;
   box-shadow: 
-    0 4px 16px rgba(0, 0, 0, 0.1),
-    0 2px 8px rgba(0, 0, 0, 0.06);
+    0 4px 12px rgba(0, 0, 0, 0.08),
+    0 2px 4px rgba(0, 0, 0, 0.04);
   backdrop-filter: blur(20px) saturate(180%);
   -webkit-backdrop-filter: blur(20px) saturate(180%);
 }
@@ -39,7 +39,7 @@
 .common-tooltip--auto .common-tooltip__content {
   background: hsl(var(--nav-background));
   color: hsl(var(--foreground));
-  border: 1px solid hsl(var(--border));
+  border: 1px solid hsl(var(--border) / 0.4);
 }
 
 .common-tooltip--dark .common-tooltip__arrow,
@@ -54,12 +54,12 @@
     hsl(var(--card)) 100%
   );
   color: hsl(var(--popover-foreground));
-  border: 1px solid hsl(var(--border));
+  border: 1px solid hsl(var(--border) / 0.4);
 }
 
 .common-tooltip--light .common-tooltip__arrow {
   background: hsl(var(--popover));
-  border-color: hsl(var(--border));
+  border-color: hsl(var(--border) / 0.4);
 }
 
 /* 箭头 */
@@ -76,8 +76,8 @@
   bottom: -4px;
   left: 50%;
   transform: translateX(-50%) rotate(45deg);
-  border-right: 1px solid hsl(var(--border));
-  border-bottom: 1px solid hsl(var(--border));
+  border-right: 1px solid hsl(var(--border) / 0.4);
+  border-bottom: 1px solid hsl(var(--border) / 0.4);
 }
 
 .common-tooltip--top.common-tooltip--light.common-tooltip--with-arrow .common-tooltip__arrow {
@@ -90,8 +90,8 @@
   top: -4px;
   left: 50%;
   transform: translateX(-50%) rotate(45deg);
-  border-left: 1px solid hsl(var(--border));
-  border-top: 1px solid hsl(var(--border));
+  border-left: 1px solid hsl(var(--border) / 0.4);
+  border-top: 1px solid hsl(var(--border) / 0.4);
 }
 
 .common-tooltip--bottom.common-tooltip--light.common-tooltip--with-arrow .common-tooltip__arrow {
@@ -104,8 +104,8 @@
   right: -4px;
   top: 50%;
   transform: translateY(-50%) rotate(45deg);
-  border-right: 1px solid hsl(var(--border));
-  border-top: 1px solid hsl(var(--border));
+  border-right: 1px solid hsl(var(--border) / 0.4);
+  border-top: 1px solid hsl(var(--border) / 0.4);
 }
 
 .common-tooltip--left.common-tooltip--light.common-tooltip--with-arrow .common-tooltip__arrow {
@@ -118,8 +118,8 @@
   left: -4px;
   top: 50%;
   transform: translateY(-50%) rotate(45deg);
-  border-left: 1px solid hsl(var(--border));
-  border-bottom: 1px solid hsl(var(--border));
+  border-left: 1px solid hsl(var(--border) / 0.4);
+  border-bottom: 1px solid hsl(var(--border) / 0.4);
 }
 
 .common-tooltip--right.common-tooltip--light.common-tooltip--with-arrow .common-tooltip__arrow {
@@ -132,7 +132,7 @@
   .common-tooltip--auto .common-tooltip__content {
     background: hsl(var(--nav-background));
     color: hsl(var(--foreground));
-    border-color: hsl(var(--border));
+    border-color: hsl(var(--border) / 0.4);
   }
   
   .common-tooltip--auto .common-tooltip__arrow {
@@ -144,7 +144,7 @@
   .common-tooltip--auto .common-tooltip__content {
     background: hsl(var(--nav-background));
     color: hsl(var(--foreground));
-    border-color: hsl(var(--border));
+    border-color: hsl(var(--border) / 0.4);
   }
   
   .common-tooltip--auto .common-tooltip__arrow {

@@ -202,7 +202,7 @@ const StatCard = ({
   const displayValue = typeof value === 'number' ? (formatNumber || defaultFormatNumber)(value) : value;
 
   return (
-    <div className="rounded-lg border border-border bg-card p-4 transition-shadow hover:shadow-md">
+    <div className="rounded-xl border border-transparent ring-1 ring-border/40 bg-card p-4 transition-shadow hover:shadow-md">
       {/* 顶部：图标 + 标题 + 趋势 */}
       <div className="flex items-center gap-2 mb-3">
         <div>
@@ -1613,7 +1613,7 @@ ${resolvedPath}`);
                   <p className="text-sm text-muted-foreground">{t('data:statistics_section_subtitle')}</p>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Badge variant="outline" className={`border-border ${isRefreshing ? 'text-sky-600 border-sky-200 bg-sky-50' : 'text-muted-foreground bg-muted'}`}>
+                  <Badge variant="outline" className={`border-transparent ring-1 ring-border/40 ${isRefreshing ? 'text-primary bg-primary/10' : 'text-muted-foreground bg-muted/50'}`}>
                     {t('data:auto_refresh_label')} {isRefreshing ? t('data:auto_refresh_in_progress') : t('data:auto_refresh_interval')}
                   </Badge>
                   <NotionButton variant="ghost" size="sm" onClick={exportStatsData} disabled={!statsData} className="flex items-center gap-1">
@@ -1625,7 +1625,7 @@ ${resolvedPath}`);
               <ChatV2StatsSection />
               
               {/* LLM 使用统计 */}
-              <div className="border-t border-border">
+              <div className="border-t border-border/40">
                 <LlmUsageStatsSection days={30} sessionTrends={chatStats.dailyActivity} />
               </div>
             </div>
@@ -1635,7 +1635,7 @@ ${resolvedPath}`);
         {(mode === 'all' || mode === 'manage') && (
           <>
             {/* 分隔线 */}
-            {mode === 'all' && <div className="border-t border-border my-8"></div>}
+            {mode === 'all' && <div className="border-t border-border/40 my-8"></div>}
 
             {/* 数据管理部分标题 - 仅在 all 模式下显示，避免与外层 SettingSection 重复 */}
             {mode === 'all' && (
@@ -1648,7 +1648,7 @@ ${resolvedPath}`);
             {/* Main Actions - shadcn 结构（Header/Description/Footer） */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
           {/* 导出 */}
-          <Card className="overflow-hidden">
+          <Card className="overflow-hidden border-transparent ring-1 ring-border/40 shadow-sm">
             <CardHeader>
               <div className={cn(DATA_CENTER_ICON_CONTAINER_CLASS, 'h-10 w-10 mb-1')}>
                 {isExporting ? (
@@ -1744,7 +1744,7 @@ ${resolvedPath}`);
           </Card>
 
           {/* 导入 */}
-          <Card className="overflow-hidden">
+          <Card className="overflow-hidden border-transparent ring-1 ring-border/40 shadow-sm">
             <CardHeader>
               <div className={cn(DATA_CENTER_ICON_CONTAINER_CLASS, 'h-10 w-10 mb-1')}>
                 <Download className={DATA_CENTER_ICON_CLASS} />
@@ -1778,7 +1778,7 @@ ${resolvedPath}`);
           </Card>
 
           {/* 🎯 导入对话（新增）*/}
-          <Card className="overflow-hidden">
+          <Card className="overflow-hidden border-transparent ring-1 ring-border/40 shadow-sm">
             <CardHeader>
               <div className={cn(DATA_CENTER_ICON_CONTAINER_CLASS, 'h-10 w-10 mb-1')}>
                 <Brain className={DATA_CENTER_ICON_CLASS} />
@@ -1806,7 +1806,7 @@ ${resolvedPath}`);
 
 
           {/* 云存储配置 */}
-          <Card className="overflow-hidden">
+          <Card className="overflow-hidden border-transparent ring-1 ring-border/40 shadow-sm">
             <CardHeader>
               <div className={cn(DATA_CENTER_ICON_CONTAINER_CLASS, 'h-10 w-10 mb-1')}>
                 <Cloud className={DATA_CENTER_ICON_CLASS} />
@@ -1838,9 +1838,9 @@ ${resolvedPath}`);
                 {backupTestRunning ? (
                   <Loader2 className={cn(DATA_CENTER_ICON_CLASS, 'animate-spin')} />
                 ) : backupTestResult.status === 'success' ? (
-                  <CheckCircle2 className={cn(DATA_CENTER_ICON_CLASS, 'text-green-500')} />
-                ) : backupTestResult.status === 'failed' ? (
-                  <XCircle className={cn(DATA_CENTER_ICON_CLASS, 'text-red-500')} />
+                          <CheckCircle2 className={cn(DATA_CENTER_ICON_CLASS, 'text-success')} />
+                        ) : backupTestResult.status === 'failed' ? (
+                          <XCircle className={cn(DATA_CENTER_ICON_CLASS, 'text-destructive')} />
                 ) : (
                   <FlaskConical className={DATA_CENTER_ICON_CLASS} />
                 )}
@@ -1864,9 +1864,9 @@ ${resolvedPath}`);
 
               {/* 测试结果 */}
               {backupTestResult.status === 'success' && (
-                <Alert className="mb-4 border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950">
-                  <CheckCircle2 className="h-4 w-4 text-green-600" />
-                  <AlertDescription className="text-green-800 dark:text-green-200">
+                  <Alert className="mb-4 border-success/30 bg-success/10">
+                    <CheckCircle2 className="h-4 w-4 text-success" />
+                    <AlertDescription className="text-success">
                     {t('data:backup_test.result_passed', { score: backupTestResult.integrityScore?.toFixed(1), duration: ((backupTestResult.duration || 0) / 1000).toFixed(2) })}
                   </AlertDescription>
                 </Alert>
@@ -1886,10 +1886,10 @@ ${resolvedPath}`);
                 <CustomScrollArea className="rounded-lg bg-muted/50 max-h-[200px] font-mono text-xs" viewportClassName="p-3 space-y-1">
                   {backupTestResult.logs.map((log, i) => (
                     <div key={i} className={cn(
-                      log.includes('✅') ? 'text-green-600 dark:text-green-400' :
-                      log.includes('❌') ? 'text-red-600 dark:text-red-400' :
-                      log.includes('⚠️') ? 'text-yellow-600 dark:text-yellow-400' :
-                      log.includes('🚀') || log.includes('🎉') ? 'text-blue-600 dark:text-blue-400' :
+                      log.includes('✅') ? 'text-success' :
+                      log.includes('❌') ? 'text-destructive' :
+                      log.includes('⚠️') ? 'text-warning' :
+                      log.includes('🚀') || log.includes('🎉') ? 'text-primary' :
                       'text-muted-foreground'
                     )}>
                       {log}
@@ -1906,12 +1906,11 @@ ${resolvedPath}`);
                 </NotionButton>
               ) : (
                 <>
-                  <NotionButton
-                    variant="default"
-                    size="sm"
-                    onClick={runBackupSystemTest}
-                    className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700"
-                  >
+                    <NotionButton
+                      variant="default"
+                      size="sm"
+                      onClick={runBackupSystemTest}
+                    >
                     <Play className="mr-1.5 h-4 w-4" />
                     {t('data:backup_test.run_button')}
                   </NotionButton>
@@ -1928,7 +1927,7 @@ ${resolvedPath}`);
         </div>
 
         {/* Tabs */}
-        <div className="mb-8 rounded-2xl border border-border bg-card shadow-sm">
+        <div className="mb-8 rounded-2xl border border-transparent ring-1 ring-border/40 bg-card shadow-sm">
           <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v)} className="w-full">
             <div className="border-b border-border/60 px-4 py-3">
               <TabsList className="h-9 gap-2 rounded-lg bg-muted/40 p-1">
@@ -2007,24 +2006,24 @@ ${resolvedPath}`);
                     </div>
                   </div>
 
-                  <div className="rounded-xl border border-border bg-muted/30 p-6">
+                  <div className="rounded-xl border border-transparent ring-1 ring-border/40 bg-muted/30 p-6">
                     <h3 className="text-base font-medium text-foreground">{t('data:data_space.title')}</h3>
                     <p className="mt-1 text-sm text-muted-foreground">
                       {t('data:data_space.description')}
                     </p>
                     {slotInfo ? (
                       <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                        <div className="rounded-lg border border-border/60 bg-background/80 p-3 shadow-sm">
+                        <div className="rounded-lg border border-transparent ring-1 ring-border/40/60 bg-background/80 p-3 shadow-sm">
                           <div className="text-sm text-muted-foreground">{t('data:data_space.active_label')}</div>
                           <div className="text-base font-semibold text-foreground">{slotInfo.active_slot}</div>
                           <div className="break-all text-xs text-muted-foreground/80">{slotInfo.active_dir}</div>
                         </div>
-                        <div className="rounded-lg border border-border/60 bg-background/80 p-3 shadow-sm">
+                        <div className="rounded-lg border border-transparent ring-1 ring-border/40/60 bg-background/80 p-3 shadow-sm">
                           <div className="text-sm text-muted-foreground">{t('data:data_space.inactive_label')}</div>
                           <div className="text-base font-semibold text-foreground">{slotInfo.inactive_slot}</div>
                           <div className="break-all text-xs text-muted-foreground/80">{slotInfo.inactive_dir}</div>
                         </div>
-                        <div className="rounded-lg border border-border/60 bg-background/80 p-3 shadow-sm sm:col-span-2">
+                        <div className="rounded-lg border border-transparent ring-1 ring-border/40/60 bg-background/80 p-3 shadow-sm sm:col-span-2">
                           <div className="text-sm text-muted-foreground">{t('data:data_space.pending_label')}</div>
                           <div
                             className={cn(
@@ -2063,7 +2062,7 @@ ${resolvedPath}`);
                   </div>
 
                   <div className="grid gap-4 lg:grid-cols-2">
-                    <div className="rounded-xl border border-border bg-muted/30 p-6">
+                    <div className="rounded-xl border border-transparent ring-1 ring-border/40 bg-muted/30 p-6">
                       <h3 className="text-base font-medium text-foreground">{t('data:integrity.title')}</h3>
                       <p className="mt-1 text-sm text-muted-foreground">
                         {t('data:integrity.description')}
@@ -2074,7 +2073,7 @@ ${resolvedPath}`);
                       </NotionButton>
                     </div>
 
-                    <div className="rounded-xl border border-border bg-muted/30 p-6">
+                    <div className="rounded-xl border border-transparent ring-1 ring-border/40 bg-muted/30 p-6">
                       <h3 className="text-base font-medium text-foreground">{t('data:clear_section.title')}</h3>
                       <p className="mt-1 text-sm text-muted-foreground">{t('data:clear_section.description')}</p>
                       <NotionButton variant="danger" onClick={handleClearAllData} className="mt-4">

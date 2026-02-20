@@ -93,7 +93,7 @@ export const WorkflowTimeline: React.FC<WorkflowTimelineProps> = ({
     >
       <motion.div
         layout
-        className="overflow-hidden rounded-3xl border border-border/60 bg-card/80 shadow-xl backdrop-blur"
+        className="overflow-hidden rounded-3xl border border-transparent ring-1 ring-border/40 bg-card/80 shadow-lg backdrop-blur"
       >
         <div className="flex flex-col gap-6 border-b border-border/60 bg-gradient-to-b from-background via-background/90 to-muted/30 p-6 md:p-7">
           <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
@@ -128,7 +128,7 @@ export const WorkflowTimeline: React.FC<WorkflowTimelineProps> = ({
                     type="button"
                     onClick={() => setFocusedStep(meta.step)}
                     className={cn(
-                      'group relative flex min-w-[80px] flex-1 items-center justify-center gap-2 rounded-lg px-3 py-2 text-[11px] font-medium transition-colors duration-200 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30',
+                      'group relative flex min-w-[80px] flex-1 items-center justify-center gap-2 rounded-lg px-3 py-2 text-[11px] font-medium transition-colors duration-200 ease-out focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/30',
                       meta.status === 'done' && 'text-emerald-500',
                       meta.status === 'active' && 'text-primary',
                       meta.status === 'pending' && 'text-muted-foreground/70',

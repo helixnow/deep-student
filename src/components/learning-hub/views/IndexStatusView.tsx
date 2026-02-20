@@ -85,7 +85,7 @@ import type { IndexState } from '@/types/vfs-unified-index';
 /** 状态配置 */
 const STATE_CONFIG: Record<IndexState, { labelKey: string; icon: React.ElementType; color: string; bgColor: string; ringColor: string }> = {
   indexed: { labelKey: 'indexStatus.state.indexed', icon: CheckCircle, color: 'text-emerald-600 dark:text-emerald-400', bgColor: 'bg-emerald-500/10', ringColor: 'stroke-emerald-500' },
-  pending: { labelKey: 'indexStatus.state.pending', icon: Clock, color: 'text-amber-600 dark:text-amber-400', bgColor: 'bg-amber-500/10', ringColor: 'stroke-amber-500' },
+  pending: { labelKey: 'indexStatus.state.pending', icon: Clock, color: 'text-warning', bgColor: 'bg-warning/10', ringColor: 'stroke-warning' },
   indexing: { labelKey: 'indexStatus.state.indexing', icon: RefreshCw, color: 'text-blue-600 dark:text-blue-400', bgColor: 'bg-blue-500/10', ringColor: 'stroke-blue-500' },
   failed: { labelKey: 'indexStatus.state.failed', icon: AlertCircle, color: 'text-red-600 dark:text-red-400', bgColor: 'bg-red-500/10', ringColor: 'stroke-red-500' },
   disabled: { labelKey: 'indexStatus.state.disabled', icon: Ban, color: 'text-gray-500 dark:text-gray-400', bgColor: 'bg-gray-500/10', ringColor: 'stroke-gray-400' },
@@ -99,9 +99,9 @@ const RESOURCE_TYPE_CONFIG: Record<string, { icon: React.ElementType; labelKey: 
   translation: { icon: Languages, labelKey: 'indexStatus.resourceType.translation', color: 'text-cyan-500 bg-cyan-500/10' },
   essay: { icon: PenTool, labelKey: 'indexStatus.resourceType.essay', color: 'text-pink-500 bg-pink-500/10' },
   mindmap: { icon: Network, labelKey: 'indexStatus.resourceType.mindmap', color: 'text-indigo-500 bg-indigo-500/10' },
-  retrieval: { icon: Database, labelKey: 'indexStatus.resourceType.retrieval', color: 'text-green-500 bg-green-500/10' },
+  retrieval: { icon: Database, labelKey: 'indexStatus.resourceType.retrieval', color: 'text-success bg-success/10' },
   file: { icon: FileText, labelKey: 'indexStatus.resourceType.file', color: 'text-gray-500 bg-gray-500/10' },
-  image: { icon: Image, labelKey: 'indexStatus.resourceType.image', color: 'text-amber-500 bg-amber-500/10' },
+  image: { icon: Image, labelKey: 'indexStatus.resourceType.image', color: 'text-warning bg-warning/10' },
 };
 
 /** 不支持任何索引的资源类型（技能卡等系统资源） */
@@ -899,7 +899,7 @@ export const IndexStatusView: React.FC = () => {
     const Icon = config.icon;
     
     return (
-      <NotionButton variant="ghost" size="sm" onClick={onClick} className={cn('!rounded-full !px-3 !py-1.5 text-xs font-medium', config.bgColor, config.color, isActive && 'ring-2 ring-offset-2 ring-offset-background', isActive && config.ringColor.replace('stroke-', 'ring-'))}>
+      <NotionButton variant="ghost" size="sm" onClick={onClick} className={cn('!rounded-full !px-3 !py-1.5 text-xs font-medium', config.bgColor, config.color, isActive && 'ring-1 ring-primary/30', isActive && config.ringColor.replace('stroke-', 'ring-'))}>
         <Icon className="h-3.5 w-3.5" />
         <span>{t(config.labelKey)}</span>
         <span className="ml-0.5 tabular-nums font-bold">{count}</span>
@@ -978,7 +978,7 @@ export const IndexStatusView: React.FC = () => {
                 <span className={cn(
                   'px-1.5 rounded text-[10px] border',
                   resource.modality === 'text' 
-                    ? 'border-sky-500/20 text-sky-600 bg-sky-500/5'
+                    ? 'border-primary/20 text-primary bg-primary/5'
                     : resource.modality === 'multimodal'
                       ? 'border-violet-500/20 text-violet-600 bg-violet-500/5'
                       : 'border-emerald-500/20 text-emerald-600 bg-emerald-500/5'
@@ -995,7 +995,7 @@ export const IndexStatusView: React.FC = () => {
               'flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium border shadow-sm',
               isUnsupportedType && state === 'pending' && 'bg-muted/50 text-muted-foreground border-transparent',
               !isUnsupportedType && hasIndexError && !isEmptyContent && 'bg-orange-50/50 text-orange-700 border-orange-200 dark:bg-orange-900/10 dark:text-orange-400 dark:border-orange-800/30',
-              !isUnsupportedType && isEmptyContent && 'bg-amber-50/50 text-amber-700 border-amber-200 dark:bg-amber-900/10 dark:text-amber-400 dark:border-amber-800/30',
+              !isUnsupportedType && isEmptyContent && 'bg-warning/10 text-warning border-warning/30',
               !isUnsupportedType && !hasIndexError && isStale && 'bg-orange-50/50 text-orange-700 border-orange-200 dark:bg-orange-900/10 dark:text-orange-400 dark:border-orange-800/30',
               !isUnsupportedType && !hasIndexError && !isStale && state === 'indexed' && 'bg-emerald-50/50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/10 dark:text-emerald-400 dark:border-emerald-800/30',
               !isUnsupportedType && !hasIndexError && state === 'pending' && 'bg-yellow-50/50 text-yellow-700 border-yellow-200 dark:bg-yellow-900/10 dark:text-yellow-400 dark:border-yellow-800/30',
@@ -1081,7 +1081,7 @@ export const IndexStatusView: React.FC = () => {
                   <div>
                     <div className="text-muted-foreground/70 font-medium mb-1.5 uppercase tracking-wider text-[10px]">{t('indexStatus.detail.extractedTextIndex')}</div>
                     <div className="font-semibold tabular-nums text-foreground/90">
-                      <span className="text-sky-600 dark:text-sky-400">
+                      <span className="text-primary">
                         {t('indexStatus.detail.chunks', { count: resource.nativeTextChunkCount })}
                         {resource.textEmbeddingDim && ` (${resource.textEmbeddingDim}D)`}
                       </span>
@@ -1106,7 +1106,7 @@ export const IndexStatusView: React.FC = () => {
                   </div>
                   <div className="font-semibold tabular-nums text-foreground/90">
                     {resource.textChunkCount > 0 ? (
-                      <span className="text-sky-600 dark:text-sky-400">
+                      <span className="text-primary">
                         {t('indexStatus.detail.chunks', { count: resource.textChunkCount })}
                         {resource.textEmbeddingDim && ` (${resource.textEmbeddingDim}D)`}
                       </span>
@@ -1124,7 +1124,7 @@ export const IndexStatusView: React.FC = () => {
                   <div className={cn(
                     'inline-flex items-center gap-1.5 px-2 py-1 rounded text-xs font-medium w-fit border',
                     resource.mmIndexState === 'indexed' && 'bg-emerald-500/5 text-emerald-600 border-emerald-500/20',
-                    resource.mmIndexState === 'pending' && 'bg-amber-500/5 text-amber-600 border-amber-500/20',
+                    resource.mmIndexState === 'pending' && 'bg-warning/5 text-warning border-warning/20',
                     resource.mmIndexState === 'indexing' && 'bg-blue-500/5 text-blue-600 border-blue-500/20',
                     resource.mmIndexState === 'failed' && 'bg-red-500/5 text-red-600 border-red-500/20',
                     resource.mmIndexState === 'disabled' && 'bg-muted/50 text-muted-foreground border-transparent'
@@ -1155,7 +1155,7 @@ export const IndexStatusView: React.FC = () => {
                   MULTIMODAL_INDEX_ENABLED && resource.mmIndexingMode
                     ? 'bg-violet-500/5 text-violet-600 border-violet-500/20'
                     : resource.textChunkCount > 0
-                      ? 'bg-sky-500/5 text-sky-600 border-sky-500/20'
+                      ? 'bg-primary/5 text-primary border-primary/20'
                       : 'text-muted-foreground bg-muted/50 border-transparent'
                 )}>
                   {MULTIMODAL_INDEX_ENABLED && resource.mmIndexingMode
@@ -1242,7 +1242,7 @@ export const IndexStatusView: React.FC = () => {
                   <div className={cn(
                     'px-3 py-2 rounded-md text-xs border',
                     state === 'disabled' 
-                      ? 'bg-amber-500/5 text-amber-700 border-amber-500/20 dark:text-amber-400'
+                      ? 'bg-warning/5 text-warning border-warning/20'
                       : 'bg-red-500/5 text-red-700 border-red-500/20 dark:text-red-400'
                   )}>
                     {resource.textIndexError}
@@ -1285,10 +1285,10 @@ export const IndexStatusView: React.FC = () => {
         <XCircle className="h-10 w-10 text-destructive/60" />
         <p className="text-sm text-muted-foreground text-center max-w-md">{error}</p>
         {isEmbeddingError && (
-          <p className="text-xs text-amber-600 dark:text-amber-400">{t('indexStatus.notification.checkEmbeddingModel', { defaultValue: '请检查嵌入模型是否已正确配置（设置 → AI 模型）' })}</p>
+          <p className="text-xs text-warning">{t('indexStatus.notification.checkEmbeddingModel', { defaultValue: '请检查嵌入模型是否已正确配置（设置 → AI 模型）' })}</p>
         )}
         {isNetworkError && (
-          <p className="text-xs text-amber-600 dark:text-amber-400">{t('indexStatus.notification.checkNetwork', { defaultValue: '请检查网络连接后重试' })}</p>
+          <p className="text-xs text-warning">{t('indexStatus.notification.checkNetwork', { defaultValue: '请检查网络连接后重试' })}</p>
         )}
         {isDbError && (
           <p className="text-xs text-amber-600 dark:text-amber-400">{t('indexStatus.notification.checkDb', { defaultValue: '数据库可能正忙，请稍后重试' })}</p>
@@ -1430,19 +1430,19 @@ export const IndexStatusView: React.FC = () => {
             <div className={cn(
               "p-2 md:p-3 rounded-md flex flex-col justify-between gap-0.5 md:gap-1 group transition-colors",
               summary.staleCount > 0 
-                ? "bg-amber-500/5" 
+                ? "bg-warning/5" 
                 : "bg-muted/30"
             )}>
               <span className={cn(
                 "text-[10px] uppercase tracking-wider font-medium flex items-center gap-1.5",
-                summary.staleCount > 0 ? "text-amber-600/80 dark:text-amber-400/80" : "text-muted-foreground"
+                summary.staleCount > 0 ? "text-warning" : "text-muted-foreground"
               )}>
                 <Clock className="h-3 w-3" />
                 {t('indexStatus.stats.stale', { defaultValue: '待更新' })}
               </span>
               <span className={cn(
                 "text-base md:text-lg font-semibold tabular-nums",
-                summary.staleCount > 0 ? "text-amber-600 dark:text-amber-400" : "text-foreground/90"
+                summary.staleCount > 0 ? "text-warning" : "text-foreground/90"
               )}>
                 {summary.staleCount}
               </span>
@@ -1573,7 +1573,7 @@ export const IndexStatusView: React.FC = () => {
 
               {testElapsedMs !== null && (
                 <div className="flex items-center gap-2 text-xs text-muted-foreground px-1">
-                  <div className={cn("w-2 h-2 rounded-full", testResults.length > 0 ? "bg-emerald-500" : "bg-amber-500")} />
+                  <div className={cn("w-2 h-2 rounded-full", testResults.length > 0 ? "bg-success" : "bg-warning")} />
                   {t('indexStatus.test.resultCount', { count: testResults.length, elapsed: testElapsedMs })}
                 </div>
               )}

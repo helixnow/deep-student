@@ -61,7 +61,7 @@ import { open as dialogOpen } from '@tauri-apps/plugin-dialog';
 import { convertFileSrc } from '@tauri-apps/api/core';
 
 // 懒加载统一应用面板
-const UnifiedAppPanel = lazy(() => import('@/components/learning-hub/apps/UnifiedAppPanel'));
+const UnifiedAppPanel = lazy(() => import('@/components/learning-hub/apps/UnifiedAppPanel').then(m => ({ default: m.UnifiedAppPanel })));
 
 // CardForge 2.0 Anki 面板 (Chat V2 集成)
 import { AnkiPanelHost } from '../anki';
@@ -1904,7 +1904,7 @@ export const ChatV2Page: React.FC = () => {
                 <span>{t('page.ungrouped')}</span>
                 {!session.groupId && <Check className="w-3 h-3" />}
               </NotionButton>
-              <div className="my-1 border-t border-border/60" />
+              <div className="my-1 border-t border-border/40/60" />
               {groups.length === 0 ? (
                 <div className="px-2 py-1.5 text-xs text-muted-foreground">
                   {t('page.noGroups')}
@@ -2017,7 +2017,7 @@ export const ChatV2Page: React.FC = () => {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder={t('page.searchPlaceholder')}
-            className="w-full h-[37px] px-3 text-[16px] rounded-md border border-border bg-background
+            className="w-full h-[37px] px-3 text-[16px] rounded-md border border-border/40 bg-background
                        placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
           />
         </div>
@@ -2119,7 +2119,7 @@ export const ChatV2Page: React.FC = () => {
           /* 🔧 P1-29: 回收站视图（移动端） */
           <>
             {/* 回收站标题和清空按钮 */}
-            <div className="px-3 py-2 flex items-center justify-between border-b border-border mb-2">
+            <div className="px-3 py-2 flex items-center justify-between border-b border-border/40 mb-2">
               <span className="text-sm font-medium text-muted-foreground">
                 {t('page.trashTitle')}
               </span>
@@ -2537,7 +2537,7 @@ export const ChatV2Page: React.FC = () => {
               {openApp ? (
                 <div className="h-full flex flex-col">
                   {/* 附件/资源预览标题栏 */}
-                  <div className="flex items-center justify-between px-3 py-2 border-b border-border bg-background/95 backdrop-blur-lg shrink-0">
+                  <div className="flex items-center justify-between px-3 py-2 border-b border-border/40 bg-background/95 backdrop-blur-lg shrink-0">
                     <div className="flex items-center gap-2 min-w-0">
                       {(() => {
                         const AppIcon = getAppIcon(openApp.type);
@@ -2748,7 +2748,7 @@ export const ChatV2Page: React.FC = () => {
               ) : showTrash ? (
                 <>
                   {/* 回收站标题和清空按钮 */}
-                  <div className="px-3 py-2 flex items-center justify-between border-b border-border mb-2">
+                  <div className="px-3 py-2 flex items-center justify-between border-b border-border/40 mb-2">
                     <span className="text-sm font-medium text-muted-foreground">
                       {t('page.trashTitle')}
                     </span>
@@ -3060,7 +3060,7 @@ export const ChatV2Page: React.FC = () => {
 
             {/* 折叠状态下的新建按钮 */}
             {sidebarCollapsed && (
-              <div className="p-2 flex flex-col items-center gap-1 border-t border-border">
+              <div className="p-2 flex flex-col items-center gap-1 border-t border-border/40">
                 <NotionButton variant="ghost" size="icon" iconOnly onClick={() => createSession()} disabled={isLoading} aria-label={t('page.newSession')} title={t('page.newSession')}>
                   <Plus className="w-4 h-4" />
                 </NotionButton>
@@ -3105,7 +3105,7 @@ export const ChatV2Page: React.FC = () => {
               {attachmentPreviewOpen && !canvasSidebarOpen && openApp ? (
                 <div className="h-full flex flex-col bg-background">
                   {/* 应用标题栏 */}
-                  <div className="flex items-center justify-between px-3 py-2 border-b border-border bg-muted/30 shrink-0">
+                  <div className="flex items-center justify-between px-3 py-2 border-b border-border/40 bg-muted/30 shrink-0">
                     <div className="flex items-center gap-2 min-w-0">
                       {(() => {
                         const AppIcon = getAppIcon(openApp.type);
@@ -3180,7 +3180,7 @@ export const ChatV2Page: React.FC = () => {
                       >
                         <div className="h-full flex flex-col bg-background border-l border-border">
                           {/* 应用标题栏 */}
-                          <div className="flex items-center justify-between px-3 py-2 border-b border-border bg-muted/30 shrink-0">
+                          <div className="flex items-center justify-between px-3 py-2 border-b border-border/40 bg-muted/30 shrink-0">
                             <div className="flex items-center gap-2 min-w-0">
                               {(() => {
                                 const AppIcon = getAppIcon(openApp.type);
@@ -3247,7 +3247,7 @@ export const ChatV2Page: React.FC = () => {
         >
           <div className="h-full flex flex-col">
             {/* 标题栏 */}
-            <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-muted/30 shrink-0">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-border/40 bg-muted/30 shrink-0">
               <span className="font-medium">{t('learningHub:title')}</span>
               <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setLearningHubSheetOpen(false)} aria-label={t('common:close')} title={t('common:close')} className="!h-7 !w-7">
                 <X className="w-4 h-4 text-muted-foreground" />
@@ -3257,7 +3257,7 @@ export const ChatV2Page: React.FC = () => {
               {openApp ? (
                 <div className="h-full flex flex-col">
                   {/* 应用标题栏 */}
-                  <div className="flex items-center justify-between px-3 py-2 border-b border-border bg-muted/30 shrink-0">
+                  <div className="flex items-center justify-between px-3 py-2 border-b border-border/40 bg-muted/30 shrink-0">
                     <div className="flex items-center gap-2 min-w-0">
                       {(() => {
                         const AppIcon = getAppIcon(openApp.type);

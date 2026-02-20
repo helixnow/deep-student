@@ -67,7 +67,7 @@ function getSourceTypeColor(sourceType: MultimodalSourceType): string {
     case 'exam':
       return 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950';
     case 'textbook':
-      return 'text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-950';
+      return 'text-success bg-success/10';
     case 'attachment':
       return 'text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-950';
     default:
@@ -137,7 +137,7 @@ export const MultimodalSourceCard: React.FC<MultimodalSourceCardProps> = ({
       className={cn(
         // 与 UnifiedSourcePanel 中的卡片样式保持一致
         'usp-item-card w-56 flex-shrink-0 rounded-lg border bg-card p-2.5 hover:bg-accent/50 transition-all cursor-default group',
-        highlighted && 'ring-2 ring-primary ring-offset-2 ring-offset-background shadow-lg scale-[1.02]',
+        highlighted && 'ring-1 ring-primary/30 shadow-lg scale-[1.02]',
         className
       )}
       onClick={handleClick}

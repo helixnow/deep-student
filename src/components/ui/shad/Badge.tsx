@@ -4,14 +4,14 @@ import { cn } from '../../../lib/utils';
 import './Badge.css';
 
 const badgeVariants = cva(
-  'inline-flex items-center rounded-md border px-2 py-1 text-xs font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background',
+  'inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background',
   {
     variants: {
       variant: {
-        default: 'border-transparent bg-primary text-primary-foreground hover:bg-primary/90',
-        secondary: 'border-transparent bg-muted text-muted-foreground',
-        destructive: 'border-transparent bg-destructive text-destructive-foreground hover:bg-destructive/90',
-        outline: 'border-border bg-background text-foreground',
+        default: 'border-transparent bg-primary/10 text-primary',
+        secondary: 'border-transparent bg-muted/40 text-muted-foreground',
+        destructive: 'border-transparent bg-destructive/10 text-destructive',
+        outline: 'border-transparent bg-transparent text-muted-foreground',
       },
     },
     defaultVariants: {

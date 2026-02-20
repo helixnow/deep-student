@@ -567,7 +567,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
 
           {/* Tabs & Content - Flex Body */}
           <Tabs defaultValue="general" className="flex-1 flex flex-col min-h-0">
-            <div className="flex-none px-2 sm:px-4 border-b border-border/40">
+            <div className="flex-none px-2 sm:px-4 border-b border-border/40/40">
               <TabsList className="w-full justify-between sm:justify-start h-auto p-0 bg-transparent gap-0 sm:gap-4">
                 <TabsTrigger 
                   value="general" 

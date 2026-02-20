@@ -10,7 +10,7 @@ const Skeleton = React.forwardRef<HTMLDivElement, SkeletonProps>(({ className, v
     return (
       <div
         ref={ref}
-        className={cn('animate-pulse rounded-md bg-[hsl(var(--muted))]', className)}
+        className={cn('animate-pulse rounded-md bg-muted/50', className)}
         {...props}
       >
         {children}
@@ -22,7 +22,7 @@ const Skeleton = React.forwardRef<HTMLDivElement, SkeletonProps>(({ className, v
     <div
       ref={ref}
       className={cn(
-        'relative overflow-hidden rounded-md bg-[hsl(var(--muted))]',
+        'relative overflow-hidden rounded-md bg-muted/50',
         className
       )}
       {...props}

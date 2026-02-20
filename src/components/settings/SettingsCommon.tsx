@@ -98,7 +98,7 @@ export const ToggleSwitch: React.FC<ToggleSwitchProps> = ({ checked, onChange })
     role="switch"
     aria-checked={checked}
     onClick={() => onChange(!checked)}
-    className="relative inline-flex h-6 w-11 items-center rounded-full transition-all duration-300 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+    className="relative inline-flex h-6 w-11 items-center rounded-full transition-all duration-300 ease-in-out focus:outline-none focus-visible:ring-1 focus-visible:ring-primary/30"
     style={{
       backgroundColor: checked ? 'hsl(var(--primary))' : 'hsl(var(--muted-foreground))',
       border: checked ? 'none' : '2px solid hsl(var(--border))'
@@ -136,7 +136,7 @@ export const SettingsTextarea = React.forwardRef<HTMLTextAreaElement, React.Text
       ref={ref}
       className={
         ['flex w-full rounded-md border border-[hsl(var(--border))] bg-transparent px-3 py-2 text-sm',
-         'placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40',
+         'placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/30',
          'resize-y settings-textarea-scrollbar',
          className
         ].filter(Boolean).join(' ')

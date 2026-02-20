@@ -59,8 +59,8 @@ export function Combobox({
     <div className={cn('w-full', className)}>
       <NotionButton
         type="button"
-        variant="outline"
-        className={cn('w-full justify-between', buttonClassName)}
+        variant="ghost"
+        className={cn('w-full justify-between border border-border/30 hover:bg-muted/30', buttonClassName)}
         disabled={disabled}
         onClick={() => setOpen(true)}
       >
@@ -109,7 +109,7 @@ export function Combobox({
                     <li key={o.value}>
                       <button
                         className={cn(
-                          'w-full flex items-center justify-between rounded-md px-2 py-2 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
+                          'w-full flex items-center justify-between rounded-md px-2 py-2 text-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/30',
                           'hover:bg-accent/70 hover:text-accent-foreground',
                           selected
                             ? 'bg-accent text-accent-foreground'

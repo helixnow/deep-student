@@ -98,7 +98,7 @@ export const ModelMentionPopover: React.FC<ModelMentionPopoverProps> = ({
     return (
       <div
         className={cn(
-          'absolute w-72 rounded-2xl border border-border/50 bg-popover/80 backdrop-blur-xl backdrop-saturate-150 shadow-2xl',
+          'absolute w-72 rounded-2xl border border-border/50 bg-popover/80 backdrop-blur-xl backdrop-saturate-150 shadow-lg ring-1 ring-border/40',
           'animate-in fade-in-0 slide-in-from-bottom-2 duration-200 ease-out',
           'bottom-full mb-3 left-0',
           className
@@ -131,7 +131,7 @@ export const ModelMentionPopover: React.FC<ModelMentionPopoverProps> = ({
     <div
       className={cn(
         // 基础样式
-        'absolute w-72 rounded-2xl border border-border/50 bg-popover/80 backdrop-blur-xl backdrop-saturate-150 shadow-2xl',
+        'absolute w-72 rounded-2xl border border-border/50 bg-popover/80 backdrop-blur-xl backdrop-saturate-150 shadow-lg ring-1 ring-border/40',
         // 动画
         'animate-in fade-in-0 slide-in-from-bottom-2 duration-200 ease-out',
         // 定位：在输入框上方

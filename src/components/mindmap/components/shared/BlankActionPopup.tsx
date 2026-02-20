@@ -48,7 +48,7 @@ export const BlankActionPopup: React.FC<BlankActionPopupProps> = ({
   return createPortal(
     <div
       ref={ref}
-      className="fixed z-[9999] flex items-center rounded-full shadow-xl animate-in fade-in-0 zoom-in-95 duration-150 backdrop-blur-sm"
+      className="fixed z-[9999] flex items-center rounded-full shadow-lg ring-1 ring-border/40 animate-in fade-in-0 zoom-in-95 duration-150 backdrop-blur-sm"
       style={{
         left: `${x}px`,
         top: `${y - 36}px`,

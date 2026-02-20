@@ -227,7 +227,7 @@ export const InlineDocumentViewer: React.FC<InlineDocumentViewerProps> = ({
       className={cn(
         'bg-background/95 dark:bg-background/98 backdrop-blur-sm',
         'flex flex-col',
-        'shadow-2xl border-l border-border/50',
+        'shadow-lg ring-1 ring-border/40 border-l border-border/50',
         className
       )}
       style={overlayStyle}

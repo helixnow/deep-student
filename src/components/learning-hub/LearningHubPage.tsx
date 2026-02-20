@@ -47,7 +47,7 @@ import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { useLearningHubNavigation } from './LearningHubNavigationContext';
 import { useFinderStore } from './stores/finderStore';
 import { DstuAppLauncher } from './components/DstuAppLauncher';
-import { type OpenTab, MAX_TABS, createTab } from './types/tabs';
+import { type OpenTab, type SplitViewState, MAX_TABS, createTab } from './types/tabs';
 import { TabBar } from './components/TabBar';
 import { TabPanelContainer } from './apps/TabPanelContainer';
 import { setActiveTabForExternal } from './activeTabAccessor';
@@ -107,6 +107,7 @@ export const LearningHubPage: React.FC = () => {
   // ========== ★ 标签页状态 ==========
   const [tabs, setTabs] = useState<OpenTab[]>([]);
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
+  const [splitView, setSplitView] = useState<SplitViewState | null>(null);
 
   // 派生状态
   const activeTab = tabs.find(t => t.tabId === activeTabId) ?? null;
@@ -166,6 +167,35 @@ export const LearningHubPage: React.FC = () => {
     setActiveTabId(tabId);
     setTabs(prev => prev.map(t => t.tabId === tabId ? { ...t, openedAt: Date.now() } : t));
   }, []);
+
+  // ★ 分屏操作
+  const openSplitView = useCallback((tabId: string) => {
+    // 将指定 tab 放到右侧分屏
+    setSplitView({ rightTabId: tabId });
+    // 如果右侧 tab 恰好是当前活跃 tab，则切换左侧到其他 tab
+    setActiveTabId(currentId => {
+      if (currentId === tabId) {
+        // 找一个非当前 tab 作为左侧
+        const other = tabs.find(t => t.tabId !== tabId);
+        return other?.tabId ?? currentId;
+      }
+      return currentId;
+    });
+  }, [tabs]);
+
+  const closeSplitView = useCallback(() => {
+    setSplitView(null);
+  }, []);
+
+  // ★ 关闭 tab 时自动清理分屏状态
+  const closeTabWithSplit = useCallback((tabId: string) => {
+    // 如果关闭的是右侧分屏 tab，先退出分屏
+    setSplitView(prev => {
+      if (prev?.rightTabId === tabId) return null;
+      return prev;
+    });
+    closeTab(tabId);
+  }, [closeTab]);
 
   // ========== 三屏滑动布局状态（移动端） ==========
   const [screenPosition, setScreenPosition] = useState<ScreenPosition>('center');
@@ -867,7 +897,7 @@ export const LearningHubPage: React.FC = () => {
           order={1}
           className="h-full"
         >
-          <div className={cn("h-full", hasOpenApp && "border-r border-border")}>
+          <div className={cn("h-full", hasOpenApp && "border-r border-border/40")}>
             <LearningHubSidebar
               mode="fullscreen"
               onOpenPreview={handleOpenApp}
@@ -912,15 +942,20 @@ export const LearningHubPage: React.FC = () => {
                 tabs={tabs}
                 activeTabId={activeTabId}
                 onSwitch={switchTab}
-                onClose={closeTab}
+                onClose={closeTabWithSplit}
+                splitView={splitView}
+                onSplitView={openSplitView}
+                onCloseSplitView={closeSplitView}
               />
               {/* ★ 内容区域：TabPanelContainer 保活所有 tab */}
               <div className="flex-1 overflow-hidden">
                 <TabPanelContainer
                   tabs={tabs}
                   activeTabId={activeTabId}
-                  onClose={closeTab}
+                  splitView={splitView}
+                  onClose={closeTabWithSplit}
                   onTitleChange={updateTabTitle}
+                  onCloseSplitView={closeSplitView}
                   className="h-full"
                 />
               </div>

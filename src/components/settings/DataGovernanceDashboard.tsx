@@ -313,8 +313,8 @@ export const DebugTab: React.FC = () => {
               slotCResult == null
                 ? 'bg-muted text-muted-foreground'
                 : slotCResult.success
-                  ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
-                  : 'bg-red-500/10 text-red-600 dark:text-red-400'
+                  ? 'bg-success/10 text-success'
+                  : 'bg-destructive/10 text-destructive'
             }`}>
               {slotCResult == null
                 ? t('data:governance.debug_slot_status_idle')
@@ -344,8 +344,8 @@ export const DebugTab: React.FC = () => {
               slotDResult == null
                 ? 'bg-muted text-muted-foreground'
                 : slotDResult.success
-                  ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
-                  : 'bg-red-500/10 text-red-600 dark:text-red-400'
+                  ? 'bg-success/10 text-success'
+                  : 'bg-destructive/10 text-destructive'
             }`}>
               {slotDResult == null
                 ? t('data:governance.debug_slot_status_idle')

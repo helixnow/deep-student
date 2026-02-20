@@ -523,7 +523,7 @@ export const ExamSheetMobileLayout: React.FC<ExamSheetMobileLayoutProps> = ({
       <motion.div
         className={cn(
           'absolute bottom-0 left-0 right-0 z-30',
-          'bg-card rounded-t-3xl shadow-2xl',
+          'bg-card rounded-t-3xl shadow-lg ring-1 ring-border/40 border-transparent',
           'flex flex-col overflow-hidden',
           isDragging && 'select-none'
         )}

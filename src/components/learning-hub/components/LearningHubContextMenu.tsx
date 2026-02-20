@@ -623,7 +623,7 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
       className={cn(
         'fixed min-w-[180px] overflow-hidden rounded-lg',
         'bg-popover/95 backdrop-blur-md text-popover-foreground',
-        'border border-border/50 shadow-xl',
+        'border border-transparent ring-1 ring-border/40 shadow-lg',
         'py-1.5 animate-in fade-in-0 zoom-in-95'
       )}
       style={{
