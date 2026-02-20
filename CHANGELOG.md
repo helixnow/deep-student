@@ -10,6 +10,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.9.14](https://github.com/helixnow/deep-student/compare/v0.9.13...v0.9.14) (2026-02-20)
+
+
+### Features
+
+* **chat-v2:** add session branching and group pinned resources support ([82f359c](https://github.com/helixnow/deep-student/commit/82f359cb9ad3ca77cca01a2082f37b5c4ff747ce))
+* **chat-v2:** use dedicated chat_title_model for summary generation with fallback chain ([eb5e14d](https://github.com/helixnow/deep-student/commit/eb5e14d425a49606373de786e8dc6c27fded302b))
+* **cloud-sync:** add real-time upload/download progress events and workspace database backup support ([8a2b496](https://github.com/helixnow/deep-student/commit/8a2b496ab3b6c84a59327fce896c721d9545c8c4))
+* **essay-grading:** refine grading mode rubrics and implement progressive hedging for OCR fallback ([40f2664](https://github.com/helixnow/deep-student/commit/40f2664c44f3be55fab52c54f6ca69737c8c13fb))
+* **ocr:** add FreeOCR fallback chain with circuit breaker and streamline grading mode prompts ([6777d50](https://github.com/helixnow/deep-student/commit/6777d501aa9820d599701faea26114e70608209f))
+* **settings:** add vendor model batch import and refactor essay grading settings panel ([b282fdb](https://github.com/helixnow/deep-student/commit/b282fdb451db75717f83e6f4614aa20ab8df310c))
+* **sync:** add workspace database and VFS blob file-level cloud sync support ([bccce85](https://github.com/helixnow/deep-student/commit/bccce85b2cee4c4a8147364874ee549c05e4ec94))
+* **vfs:** filter deleted/inactive resources in index status queries and add question filtering in exam uploader ([1665d05](https://github.com/helixnow/deep-student/commit/1665d0512a5d2fa0bc93c0fb71142cae3adbac08))
+
+
+### Bug Fixes
+
+* **android:** replace navigator.clipboard with tauri-plugin-clipboard-manager ([d410dc2](https://github.com/helixnow/deep-student/commit/d410dc2eb08b5f3b1cfff06cdec329f3688ade5d))
+* **chat-v2:** fix continue message error handling and builtin model badge display logic ([2b20f3a](https://github.com/helixnow/deep-student/commit/2b20f3a705e014a7ba9422b7ea1c1ec4b1827225))
+* **chat-v2:** reorder session branching DB writes to satisfy FK constraints and refactor resource picker UI ([185137c](https://github.com/helixnow/deep-student/commit/185137c1bf9177e44bc3fb88acc588c00705a4ed))
+* merge duplicate clipboardUtils import in useMindMapClipboard ([fd71294](https://github.com/helixnow/deep-student/commit/fd712942470c2ece3ab6a877d0e8f0ea68df4764))
+
 ## [0.9.13](https://github.com/helixnow/deep-student/compare/v0.9.12...v0.9.13) (2026-02-18)
 
 
