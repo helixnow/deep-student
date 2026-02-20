@@ -2,8 +2,7 @@ import { useEffect, useCallback } from 'react';
 import { useMindMapStore } from '../store';
 import { findNodeById } from '../utils/node/find';
 import type { MindMapNode } from '../types';
-import { copyTextToClipboard } from '@/utils/clipboardUtils';
-import { readTextFromClipboard } from '@/utils/clipboardUtils';
+import { copyTextToClipboard, readTextFromClipboard } from '@/utils/clipboardUtils';
 
 /** 将节点树递归序列化为纯文本（每行一个节点，缩进表示层级） */
 function nodesToText(nodes: MindMapNode[], level = 0): string {
