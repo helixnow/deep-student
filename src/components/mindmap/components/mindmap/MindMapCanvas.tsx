@@ -31,7 +31,7 @@ import type { ILayoutEngine } from '../../registry/types';
 
 type DropMode = 'child' | 'sibling-before' | 'sibling-after';
 // 临时诊断开关：关闭所有与 hover 模糊相关的可疑动画/透明度联动。
-const DISABLE_HOVER_BLUR_FACTORS = true;
+const DISABLE_HOVER_BLUR_FACTORS = false;
 
 const MindMapCanvasInner: React.FC = () => {
   ensureInitialized();
@@ -616,7 +616,7 @@ const MindMapCanvasInner: React.FC = () => {
             <div className="space-y-1.5">
               <p className="text-sm font-medium text-[var(--mm-text-secondary)]">{t('canvas.emptyTitle')}</p>
               <p className="text-xs text-[var(--mm-text-muted)] leading-relaxed">
-                {t('canvas.emptyHintBefore')} <kbd className="px-1.5 py-0.5 mx-0.5 rounded bg-[var(--mm-bg-hover)] border border-[var(--mm-border)] text-[11px] font-mono">Tab</kbd> {t('canvas.emptyHintAfter')}
+                {t('canvas.emptyHintBefore', { defaultValue: '按' })} <kbd className="px-1.5 py-0.5 mx-0.5 rounded bg-[var(--mm-bg-hover)] border border-[var(--mm-border)] text-[11px] font-mono">Enter</kbd> {t('canvas.emptyHintAfter', { defaultValue: '或 Tab 开始创建节点' })}
               </p>
             </div>
           </div>

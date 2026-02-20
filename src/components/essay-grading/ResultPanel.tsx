@@ -45,7 +45,7 @@ export const ResultPanel = React.forwardRef<HTMLDivElement, ResultPanelProps>(({
   return (
     <div className="flex flex-col h-full min-h-0 flex-1 basis-1/2 min-w-0 transition-all duration-200 group/target">
       {/* Toolbar - Notion 风格 */}
-      <div className="flex items-center justify-between px-4 py-2.5 border-b border-border/30">
+      <div className="flex h-[41px] items-center justify-between px-4 border-b border-border/30">
         <div className="flex items-center gap-3">
           {/* 标题 - Notion 风格简洁 */}
           <div className="flex items-center gap-2 text-sm text-foreground/70">

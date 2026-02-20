@@ -7,7 +7,24 @@
  */
 
 import React, { useCallback, useRef, useState, useEffect } from 'react';
-import { ChevronLeft, ChevronRight, PanelRight, PanelLeftClose } from 'lucide-react';
+import { ChevronLeft, ChevronRight, PanelRight, PanelLeftClose, X } from 'lucide-react';
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  horizontalListSortingStrategy,
+  useSortable,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import { cn } from '@/lib/utils';
 import type { OpenTab, SplitViewState } from '../types/tabs';
 import type { ResourceType } from '../types';
@@ -36,6 +53,7 @@ export interface TabBarProps {
   splitView?: SplitViewState | null;
   onSplitView?: (tabId: string) => void;
   onCloseSplitView?: () => void;
+  setTabs?: React.Dispatch<React.SetStateAction<OpenTab[]>>;
 }
 
 // ============================================================================
@@ -77,6 +95,21 @@ const TabItem: React.FC<TabItemProps> = React.memo(({
   const Icon = getTabIcon(tab.type);
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
 
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: tab.tabId });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    zIndex: isDragging ? 10 : 1,
+  };
+
   const handleClose = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     onClose();
@@ -110,49 +143,56 @@ const TabItem: React.FC<TabItemProps> = React.memo(({
   return (
     <>
       <div
+        ref={setNodeRef}
+        style={style}
+        {...attributes}
+        {...listeners}
         role="tab"
         tabIndex={0}
         aria-selected={isActive}
-        onClick={onSwitch}
+        onPointerDown={(e) => {
+          // 只在左键点击时触发切换，防止拖拽时意外切换，或右键时切换
+          if (e.button === 0) {
+            onSwitch();
+          }
+        }}
         onAuxClick={handleAuxClick}
         onContextMenu={handleContextMenu}
         title={tab.dstuPath}
         className={cn(
-          'group/tab relative flex items-center gap-1.5 pl-2.5 pr-1.5 h-[33px] cursor-default select-none',
-          'text-[12.5px] leading-none whitespace-nowrap min-w-0 max-w-[180px] shrink-0',
-          'transition-colors duration-100',
+          'group/tab relative flex items-center gap-1.5 pl-2.5 pr-1.5 h-[28px] rounded-md cursor-default select-none my-[4px]',
+          'text-[13px] leading-none whitespace-nowrap min-w-0 max-w-[200px] shrink-0',
+          'transition-colors duration-150', // 移除 transform/all transition 防止与 dnd-kit 冲突
           isActive
-            ? 'text-[var(--foreground)]'
-            : 'text-[var(--foreground)]/55 hover:text-[var(--foreground)]/80 hover:bg-[var(--foreground)]/[0.04]',
-          isSplitRight && 'ring-1 ring-inset ring-primary/30',
+            ? 'text-[var(--foreground)] font-medium bg-[var(--foreground)]/[0.06] shadow-[0_1px_2px_rgba(0,0,0,0.02)] ring-1 ring-inset ring-[var(--foreground)]/[0.04]'
+            : 'text-[var(--foreground)]/60 hover:text-[var(--foreground)]/90 hover:bg-[var(--foreground)]/[0.04]',
+          isSplitRight && !isActive && 'text-[#2383e2] dark:text-[#3b82f6] bg-[#2383e2]/10 hover:bg-[#2383e2]/15 hover:text-[#2383e2]',
+          isDragging && 'opacity-50 scale-105 shadow-md z-50'
         )}
       >
-        {/* 底部活跃指示条 */}
-        {isActive && (
-          <span className="absolute bottom-0 left-2 right-2 h-[2px] rounded-full bg-[#2383e2]" />
-        )}
-        {/* 右侧分屏指示点 */}
-        {isSplitRight && (
-          <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-primary" />
-        )}
         {/* 图标 */}
-        <Icon size={15} className="shrink-0" />
+        <Icon size={14} className={cn("shrink-0", isSplitRight && !isActive ? "opacity-100" : "opacity-80")} />
+        
         {/* 标题 */}
         <span className="truncate">{tab.title || t('common:untitled')}</span>
+        
+        {/* 右侧分屏指示图标 */}
+        {isSplitRight && (
+          <PanelRight className="w-[13px] h-[13px] ml-0.5 opacity-60 shrink-0" />
+        )}
+        
         {/* 关闭按钮 */}
         <span
           role="button"
           tabIndex={-1}
           onClick={handleClose}
           className={cn(
-            'shrink-0 ml-0.5 rounded-[3px] p-[2px] transition-all duration-100',
+            'shrink-0 ml-0.5 rounded-[4px] p-[3px] transition-all duration-100',
             'opacity-0 group-hover/tab:opacity-100',
             'hover:bg-[var(--foreground)]/10 active:bg-[var(--foreground)]/15',
           )}
         >
-          <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-            <path d="M2.5 2.5L7.5 7.5M7.5 2.5L2.5 7.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
-          </svg>
+          <X className="w-3 h-3" />
         </span>
       </div>
 
@@ -233,11 +273,33 @@ function useScrollOverflow(ref: React.RefObject<HTMLDivElement | null>) {
 // TabBar 主组件
 // ============================================================================
 
+export interface TabBarProps {
+  tabs: OpenTab[];
+  activeTabId: string | null;
+  onSwitch: (tabId: string) => void;
+  onClose: (tabId: string) => void;
+  splitView?: SplitViewState | null;
+  onSplitView?: (tabId: string) => void;
+  onCloseSplitView?: () => void;
+  setTabs?: React.Dispatch<React.SetStateAction<OpenTab[]>>;
+}
+
 export const TabBar: React.FC<TabBarProps> = ({
-  tabs, activeTabId, onSwitch, onClose, splitView, onSplitView, onCloseSplitView,
+  tabs, activeTabId, onSwitch, onClose, splitView, onSplitView, onCloseSplitView, setTabs
 }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const { canScrollLeft, canScrollRight, update } = useScrollOverflow(scrollRef);
+  
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 5, // 拖动 5px 才激活，避免与点击冲突
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
 
   // 标签页变化后重新检查溢出
   useEffect(() => { update(); }, [tabs.length, update]);
@@ -247,6 +309,21 @@ export const TabBar: React.FC<TabBarProps> = ({
     if (!el) return;
     el.scrollBy({ left: dir === 'left' ? -160 : 160, behavior: 'smooth' });
   }, []);
+
+  // 标签页重排
+  const handleDragEnd = useCallback((event: DragEndEvent) => {
+    const { active, over } = event;
+
+    if (over && active.id !== over.id) {
+      if (setTabs) {
+        setTabs((items) => {
+          const oldIndex = items.findIndex((item) => item.tabId === active.id);
+          const newIndex = items.findIndex((item) => item.tabId === over.id);
+          return arrayMove(items, oldIndex, newIndex);
+        });
+      }
+    }
+  }, [setTabs]);
 
   // 自动滚动到活跃标签页
   useEffect(() => {
@@ -266,53 +343,64 @@ export const TabBar: React.FC<TabBarProps> = ({
   if (tabs.length === 0) return null;
 
   return (
-    <div className="flex-shrink-0 relative flex items-stretch h-[34px] bg-[var(--background)]"
-         style={{ borderBottom: '1px solid color-mix(in srgb, var(--foreground) 8%, transparent)' }}>
+    <div className="flex-shrink-0 relative flex items-stretch h-[36px] bg-[var(--background)] z-10"
+         style={{ borderBottom: '1px solid color-mix(in srgb, var(--foreground) 6%, transparent)' }}>
       {/* 左滚动按钮 */}
       {canScrollLeft && (
         <button
           onClick={() => scroll('left')}
-          className="sticky left-0 z-10 flex items-center justify-center w-6 shrink-0 bg-[var(--background)] hover:bg-[var(--foreground)]/[0.04] transition-colors"
+          className="sticky left-0 z-10 flex items-center justify-center w-8 shrink-0 bg-[var(--background)] hover:bg-[var(--foreground)]/[0.04] transition-colors"
           style={{ borderRight: '1px solid color-mix(in srgb, var(--foreground) 6%, transparent)' }}
         >
-          <ChevronLeft className="w-3.5 h-3.5 opacity-45" />
+          <ChevronLeft className="w-4 h-4 opacity-45" />
         </button>
       )}
 
       {/* 标签页列表 */}
-      <div
-        ref={scrollRef}
-        role="tablist"
-        className="flex items-stretch flex-1 min-w-0 overflow-x-auto scrollbar-none"
-        onWheel={e => {
-          const el = scrollRef.current;
-          if (!el || el.scrollWidth <= el.clientWidth) return;
-          e.preventDefault();
-          el.scrollLeft += e.deltaY || e.deltaX;
-        }}
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragEnd={handleDragEnd}
       >
-        {tabs.map(tab => (
-          <TabItem
-            key={tab.tabId}
-            tab={tab}
-            isActive={tab.tabId === activeTabId}
-            isSplitRight={splitView?.rightTabId === tab.tabId}
-            onSwitch={() => onSwitch(tab.tabId)}
-            onClose={() => onClose(tab.tabId)}
-            onSplitView={() => onSplitView?.(tab.tabId)}
-            onCloseSplitView={onCloseSplitView}
-          />
-        ))}
-      </div>
+        <SortableContext
+          items={tabs.map(t => t.tabId)}
+          strategy={horizontalListSortingStrategy}
+        >
+          <div
+            ref={scrollRef}
+            role="tablist"
+            className="flex items-center gap-[2px] flex-1 min-w-0 overflow-x-auto scrollbar-none px-2"
+            onWheel={e => {
+              const el = scrollRef.current;
+              if (!el || el.scrollWidth <= el.clientWidth) return;
+              e.preventDefault();
+              el.scrollLeft += e.deltaY || e.deltaX;
+            }}
+          >
+            {tabs.map(tab => (
+              <TabItem
+                key={tab.tabId}
+                tab={tab}
+                isActive={tab.tabId === activeTabId}
+                isSplitRight={splitView?.rightTabId === tab.tabId}
+                onSwitch={() => onSwitch(tab.tabId)}
+                onClose={() => onClose(tab.tabId)}
+                onSplitView={() => onSplitView?.(tab.tabId)}
+                onCloseSplitView={onCloseSplitView}
+              />
+            ))}
+          </div>
+        </SortableContext>
+      </DndContext>
 
       {/* 右滚动按钮 */}
       {canScrollRight && (
         <button
           onClick={() => scroll('right')}
-          className="sticky right-0 z-10 flex items-center justify-center w-6 shrink-0 bg-[var(--background)] hover:bg-[var(--foreground)]/[0.04] transition-colors"
+          className="sticky right-0 z-10 flex items-center justify-center w-8 shrink-0 bg-[var(--background)] hover:bg-[var(--foreground)]/[0.04] transition-colors"
           style={{ borderLeft: '1px solid color-mix(in srgb, var(--foreground) 6%, transparent)' }}
         >
-          <ChevronRight className="w-3.5 h-3.5 opacity-45" />
+          <ChevronRight className="w-4 h-4 opacity-45" />
         </button>
       )}
     </div>

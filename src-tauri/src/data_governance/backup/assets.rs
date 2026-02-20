@@ -17,8 +17,10 @@
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
-use std::fs::{self, File};
-use std::io::{BufReader, Read, Write};
+use std::fs;
+use std::fs::File;
+use std::io::{BufReader, Read};
+use std::path::Component;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 use tracing::{debug, info, warn};
@@ -206,10 +208,55 @@ impl AssetType {
         }
     }
 
-    /// 转换为字符串
+    /// 转换为稳定字符串 ID（用于统计与前端展示）
     pub fn as_str(&self) -> &'static str {
         self.relative_path()
     }
+
+    /// 安全地过滤和规范化相对路径
+    /// 1. 将所有反斜杠 `\` 替换为正斜杠 `/`
+    /// 2. 拒绝绝对路径（如 `/etc/passwd`）和带有 `..` 的目录穿越路径
+    pub fn sanitize_relative_path(path_str: &str) -> Result<String, AssetBackupError> {
+        let normalized = path_str.trim().replace('\\', "/");
+        // 拒绝空路径、Unix 绝对路径、UNC 路径、Windows 盘符绝对路径
+        let has_drive_prefix = normalized.len() >= 3
+            && normalized.as_bytes()[1] == b':'
+            && normalized.as_bytes()[2] == b'/'
+            && normalized.as_bytes()[0].is_ascii_alphabetic();
+        if normalized.is_empty()
+            || normalized.starts_with('/')
+            || normalized.starts_with("//")
+            || has_drive_prefix
+            || normalized.contains("../")
+            || normalized == ".."
+        {
+            return Err(AssetBackupError::InvalidConfig(format!(
+                "不安全的路径（绝对路径或目录穿越）: {}",
+                path_str
+            )));
+        }
+        Ok(normalized)
+    }
+}
+
+fn safe_join_under_root(root: &Path, unsafe_relative_path: &str) -> Result<std::path::PathBuf, AssetBackupError> {
+    let normalized = AssetType::sanitize_relative_path(unsafe_relative_path)?;
+    let mut clean = std::path::PathBuf::new();
+
+    for component in Path::new(&normalized).components() {
+        match component {
+            Component::Normal(seg) => clean.push(seg),
+            Component::CurDir => {}
+            Component::ParentDir | Component::RootDir | Component::Prefix(_) => {
+                return Err(AssetBackupError::InvalidConfig(format!(
+                    "不安全的路径组件: {}",
+                    unsafe_relative_path
+                )));
+            }
+        }
+    }
+
+    Ok(root.join(clean))
 }
 
 /// 资产备份配置
@@ -687,15 +734,16 @@ fn backup_directory_recursive(
             let modified_at = get_file_modified_time(&path);
 
             // 记录备份的文件
+            let relative_str = relative_path.to_string_lossy().replace('\\', "/");
             let original_path = format!(
                 "{}/{}",
                 asset_type.relative_path(),
-                relative_path.to_string_lossy()
+                relative_str
             );
             let backup_relative_path = format!(
                 "assets/{}/{}",
                 asset_type.relative_path(),
-                relative_path.to_string_lossy()
+                relative_str
             );
 
             result.files.push(BackedUpAsset {
@@ -801,10 +849,11 @@ pub fn restore_assets(
             continue;
         }
 
-        let src_path = backup_dir.join(&asset.relative_path);
-        let dest_path = app_data_dir.join(&asset.original_path);
+        // 防御 Zip Slip 和跨平台路径问题
+        let src_path = safe_join_under_root(backup_dir, &asset.relative_path)?;
+        let dest_path = safe_join_under_root(app_data_dir, &asset.original_path)?;
 
-        // 确保目标目录存在
+        // 安全校验完成后再创建目录，避免越权目录被提前创建
         if let Some(parent) = dest_path.parent() {
             fs::create_dir_all(parent)?;
         }
@@ -914,8 +963,15 @@ where
             continue;
         }
 
-        let src_path = backup_dir.join(&asset.relative_path);
-        let dest_path = app_data_dir.join(&asset.original_path);
+        // 防御 Zip Slip 和跨平台路径问题
+        let src_path = match safe_join_under_root(backup_dir, &asset.relative_path) {
+            Ok(p) => p,
+            Err(_) => return Err(AssetBackupError::InvalidConfig("资产源路径非法".to_string())),
+        };
+        let dest_path = match safe_join_under_root(app_data_dir, &asset.original_path) {
+            Ok(p) => p,
+            Err(_) => return Err(AssetBackupError::InvalidConfig("资产目标路径非法".to_string())),
+        };
 
         if let Some(parent) = dest_path.parent() {
             fs::create_dir_all(parent)?;

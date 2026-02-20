@@ -1398,8 +1398,15 @@ impl SyncManager {
 
     /// 比较两个时间戳字符串
     fn compare_timestamps(local: &str, cloud: &str) -> std::cmp::Ordering {
-        // 假设时间戳是 ISO 8601 格式，可以直接进行字符串比较
-        local.cmp(cloud)
+        use chrono::DateTime;
+        let local_dt = DateTime::parse_from_rfc3339(local);
+        let cloud_dt = DateTime::parse_from_rfc3339(cloud);
+        
+        match (local_dt, cloud_dt) {
+            (Ok(l), Ok(c)) => l.cmp(&c),
+            // 如果解析失败，回退到字符串字典序比较
+            _ => local.cmp(cloud),
+        }
     }
 
     /// 应用合并策略到数据库（实际执行更新）
@@ -1694,14 +1701,15 @@ impl SyncManager {
             .query_row("PRAGMA foreign_keys", [], |row| row.get(0))
             .unwrap_or(1);
 
+        // 注意：SQLite 在事务内修改 foreign_keys 是无操作（no-op），
+        // 必须在 BEGIN 之前修改，或者使用 defer_foreign_keys = ON。
+        conn.execute_batch("PRAGMA defer_foreign_keys = ON;")
+            .map_err(|e| SyncError::Database(format!("开启延迟外键检查失败: {}", e)))?;
+
         conn.execute_batch("BEGIN IMMEDIATE;")
             .map_err(|e| SyncError::Database(format!("开始事务失败: {}", e)))?;
 
         let apply_result: Result<(), SyncError> = (|| {
-            // 禁用外键检查以避免顺序问题（事务内）
-            conn.execute_batch("PRAGMA foreign_keys = OFF;")
-                .map_err(|e| SyncError::Database(format!("禁用外键检查失败: {}", e)))?;
-
             for change in changes {
                 let id_column = id_column_map
                     .and_then(|m| m.get(&change.table_name))
@@ -1732,10 +1740,6 @@ impl SyncManager {
                     );
                 }
             }
-
-            // 重新启用外键检查
-            conn.execute_batch("PRAGMA foreign_keys = ON;")
-                .map_err(|e| SyncError::Database(format!("启用外键检查失败: {}", e)))?;
 
             // 强校验：必须没有任何外键违规
             let violations = Self::collect_foreign_key_violations(conn, 20)?;

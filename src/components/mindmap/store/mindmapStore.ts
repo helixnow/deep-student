@@ -285,8 +285,16 @@ const writeDraft = (payload: MindMapDraftPayload): void => {
   if (!storage) return;
   try {
     storage.setItem(getDraftKey(payload.mindmapId), JSON.stringify(payload));
-  } catch {
-    // ignore quota errors
+  } catch (error) {
+    console.error('[MindMapStore] Failed to write draft to localStorage:', error);
+    // 尝试降级到 sessionStorage
+    try {
+      window.sessionStorage.setItem(getDraftKey(payload.mindmapId), JSON.stringify(payload));
+    } catch (sessionError) {
+      console.error('[MindMapStore] Failed to write draft to sessionStorage as well:', sessionError);
+      // 打破用户的安全幻觉，通知用户草稿保存失败
+      showGlobalNotification('error', i18next.t('store.draftSaveFailed', { ns: 'mindmap', defaultValue: '本地存储空间不足，草稿保存失败，请及时保存并确保网络畅通' }));
+    }
   }
 };
 
@@ -905,6 +913,7 @@ export const useMindMapStore = create<MindMapStoreState>()(
         const { history, document } = get();
         if (history.past.length === 0) return;
 
+        let restoredFocusId: string | null = null;
         set((state) => {
           const prev = state.history.past.pop();
           if (prev) {
@@ -915,10 +924,20 @@ export const useMindMapStore = create<MindMapStoreState>()(
             // ★ 2026-02 修复：退出编辑模式，防止 OutlineView 的 localText 与撤销后的文档不一致
             state.editingNodeId = null;
             state.editingNoteNodeId = null;
+            // 恢复焦点
+            if (prev.meta?.lastFocusId) {
+              state.focusedNodeId = prev.meta.lastFocusId;
+              restoredFocusId = prev.meta.lastFocusId;
+            } else if (state.focusedNodeId) {
+              restoredFocusId = state.focusedNodeId;
+            }
           }
         });
 
         const nextState = get();
+        if (restoredFocusId) {
+          nextState.expandToNode(restoredFocusId, { silent: true });
+        }
         if (nextState.mindmapId) {
           scheduleDraftPersist();
         }
@@ -931,6 +950,7 @@ export const useMindMapStore = create<MindMapStoreState>()(
         const { history, document } = get();
         if (history.future.length === 0) return;
 
+        let restoredFocusId: string | null = null;
         set((state) => {
           const next = state.history.future.pop();
           if (next) {
@@ -940,10 +960,19 @@ export const useMindMapStore = create<MindMapStoreState>()(
             state._documentVersion += 1;
             state.editingNodeId = null;
             state.editingNoteNodeId = null;
+            if (next.meta?.lastFocusId) {
+              state.focusedNodeId = next.meta.lastFocusId;
+              restoredFocusId = next.meta.lastFocusId;
+            } else if (state.focusedNodeId) {
+              restoredFocusId = state.focusedNodeId;
+            }
           }
         });
 
         const nextState = get();
+        if (restoredFocusId) {
+          nextState.expandToNode(restoredFocusId, { silent: true });
+        }
         if (nextState.mindmapId) {
           scheduleDraftPersist();
         }

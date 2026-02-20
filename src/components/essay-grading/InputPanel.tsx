@@ -201,7 +201,7 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
   return (
     <div className="flex flex-col h-full min-h-0 flex-1 basis-1/2 min-w-0 transition-all duration-200 border-b lg:border-b-0 lg:border-r border-border/40 relative group/source">
       {/* Toolbar - Notion 风格简洁布局 */}
-      <div className="flex items-center px-4 py-2.5 border-b border-border/30 gap-1.5">
+      <div className="flex h-[41px] items-center px-4 border-b border-border/30 gap-1.5">
         {/* 左侧：模式选择 - 保持固定宽度 */}
         {modes.length > 0 && (
           <div className="min-w-0 max-w-[50%] sm:max-w-none sm:shrink-0">

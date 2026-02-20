@@ -101,16 +101,20 @@ export const TabPanelContainer: React.FC<TabPanelContainerProps> = ({
         {/* 右侧面板：分屏 tab */}
         <Panel defaultSize={50} minSize={25} id="split-right" order={2}>
           <div className="relative h-full">
-            {/* 右侧面板顶部关闭按钮 */}
-            <div className="absolute top-1 right-1 z-10">
-              <button
-                onClick={onCloseSplitView}
-                className="p-1 rounded hover:bg-muted/80 text-muted-foreground hover:text-foreground transition-colors"
-                title={t('actions.close', '关闭分屏')}
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            </div>
+        {/* 右侧面板顶部关闭按钮 */}
+        <div className="absolute top-2 right-4 z-10 flex items-center gap-2">
+          <div className="bg-background/80 backdrop-blur-sm shadow-sm border border-border rounded-md px-2 py-1 text-xs text-muted-foreground font-medium flex items-center gap-1.5">
+            <PanelRight className="w-3.5 h-3.5" />
+            {t('learningHub:splitView.title', '分屏视图')}
+          </div>
+          <button
+            onClick={onCloseSplitView}
+            className="p-1.5 rounded-md bg-background/80 backdrop-blur-sm border border-border hover:bg-muted text-muted-foreground hover:text-foreground transition-all shadow-sm"
+            title={t('actions.close', '关闭分屏')}
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
             {rightTab ? renderTabPanel(rightTab, true) : (
               <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
                 {t('noContent', '无内容')}

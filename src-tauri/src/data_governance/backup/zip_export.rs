@@ -605,21 +605,24 @@ where
             5.0 + extract_progress_range // 没有文件时直接完成这部分进度
         };
 
-        // 断点续传：跳过已存在且大小匹配的文件
+        // 断点续传：跳过已存在且大小匹配的文件（但数据库文件不能跳过，因为大小可能相同但内容不同）
         if skip_existing && !file.is_dir() && outpath.exists() {
-            if let Ok(metadata) = std::fs::metadata(&outpath) {
-                if metadata.len() == file.size() {
-                    skipped_count += 1;
-                    file_count += 1;
-                    progress_callback(ZipImportProgress {
-                        phase: ZipImportPhase::Extract,
-                        progress: current_progress,
-                        processed_files: i,
-                        total_files,
-                        current_file: Some(file_name.clone()),
-                        message: format!("跳过已存在: {} ({}/{})", file_name, i + 1, total_files),
-                    });
-                    continue;
+            let is_db_file = file_name.to_ascii_lowercase().ends_with(".db");
+            if !is_db_file {
+                if let Ok(metadata) = std::fs::metadata(&outpath) {
+                    if metadata.len() == file.size() {
+                        skipped_count += 1;
+                        file_count += 1;
+                        progress_callback(ZipImportProgress {
+                            phase: ZipImportPhase::Extract,
+                            progress: current_progress,
+                            processed_files: i,
+                            total_files,
+                            current_file: Some(file_name.clone()),
+                            message: format!("跳过已存在: {} ({}/{})", file_name, i + 1, total_files),
+                        });
+                        continue;
+                    }
                 }
             }
         }

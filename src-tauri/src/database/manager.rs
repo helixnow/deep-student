@@ -155,7 +155,7 @@ impl DatabaseManager {
             let _ = conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);");
         }
 
-        // 构建指向 :memory: 的连接池，替换原有池（旧池 drop 时关闭所有文件连接）
+        // 构建指向 :memory: 的连接池，替换原有池
         let mem_manager = SqliteConnectionManager::memory();
         let mem_pool = Pool::builder()
             .max_size(1)
@@ -170,8 +170,17 @@ impl DatabaseManager {
                     poisoned.into_inner()
                 }
             };
+            
+            // 将旧连接池移出，替换为新连接池
+            // r2d2 Pool 的 Drop 并不是立即关闭所有连接的，如果有线程正持有 PooledConnection，
+            // 那个底层 SqliteConnection 将继续存活，直到 PooledConnection 被 drop。
+            // 为了真正释放文件锁，我们在替换后建议调用方等待一小段时间或确保前置的所有后台任务已停止。
             *guard = mem_pool;
         }
+
+        // 给正持有连接的后台任务（如向量化/索引）一点时间释放 PooledConnection，
+        // 从而真正关闭文件句柄，避免 Windows 上 os error 32 权限被占用的问题。
+        std::thread::sleep(Duration::from_millis(500));
 
         log::info!("[DatabaseManager] 已进入维护模式，文件连接已释放");
         Ok(())

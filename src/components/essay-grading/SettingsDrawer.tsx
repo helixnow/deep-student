@@ -12,7 +12,7 @@
  * - 模型选择
  * - 自定义提示词编辑器
  */
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Textarea } from '../ui/shad/Textarea';
 import { Input } from '../ui/shad/Input';
@@ -115,6 +115,7 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const systemPromptTextareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   // 表单状态
   const [formData, setFormData] = useState<FormData>({
@@ -140,6 +141,16 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({
       return () => clearTimeout(timer);
     }
   }, [successMessage]);
+
+  useEffect(() => {
+    const textarea = systemPromptTextareaRef.current;
+    if (!textarea || !isEditing) return;
+    const scrollParent = textarea.closest('.scroll-area__viewport') as HTMLElement | null;
+    const savedScroll = scrollParent ? scrollParent.scrollTop : 0;
+    textarea.style.height = 'auto';
+    textarea.style.height = `${textarea.scrollHeight}px`;
+    if (scrollParent) scrollParent.scrollTop = savedScroll;
+  }, [formData.system_prompt, isEditing]);
 
   // ========== 模式编辑操作 ==========
 
@@ -355,9 +366,9 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({
       variant === 'drawer' && "border-l border-border/40"
     )}>
       {/* 头部 */}
-      <div className="flex items-center justify-between px-4 py-2.5 border-b border-border/30">
+      <div className="flex h-[41px] items-center justify-between px-4 border-b border-border/30">
         <div className="flex items-center gap-2 text-sm font-medium text-foreground/80">
-          <Settings2 className="w-4 h-4" />
+          <Settings2 className="w-3.5 h-3.5" />
           <span>{t('essay_grading:settings.title')}</span>
         </div>
         <NotionButton variant="ghost" size="icon" iconOnly onClick={onClose} className="h-7 w-7 text-muted-foreground/60 hover:text-foreground hover:bg-muted/50" aria-label="close">
@@ -591,17 +602,21 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({
                     onChange={e => {
                       setFormData(prev => ({ ...prev, system_prompt: e.target.value }));
                       const target = e.target;
+                      const scrollParent = target.closest('.scroll-area__viewport') as HTMLElement | null;
+                      const savedScroll = scrollParent ? scrollParent.scrollTop : 0;
                       target.style.height = 'auto';
                       target.style.height = `${target.scrollHeight}px`;
+                      if (scrollParent) scrollParent.scrollTop = savedScroll;
                     }}
                     ref={el => {
-                      if (el) {
+                      systemPromptTextareaRef.current = el;
+                      if (el && !el.style.height) {
                         el.style.height = 'auto';
                         el.style.height = `${el.scrollHeight}px`;
                       }
                     }}
                     placeholder={t('settings:gradingMode.placeholderSystemPrompt')}
-                    className="w-full min-h-[160px] text-sm font-mono leading-relaxed border-border/30 resize-none p-3 focus-visible:ring-1 focus-visible:ring-primary/30"
+                    className="w-full min-h-[160px] overflow-hidden text-sm font-mono leading-relaxed border-border/30 resize-none p-3 focus-visible:ring-1 focus-visible:ring-primary/30"
                   />
                   <div className="absolute right-2 bottom-2 text-[10px] text-muted-foreground/50 bg-background/50 px-1 rounded backdrop-blur-sm pointer-events-none">
                     {t('settings:gradingMode.markdownSupported')}

@@ -36,11 +36,11 @@ const variantStyles: Record<NotionButtonVariant, string> = {
   danger: 'text-red-600 dark:text-red-400 bg-red-500/10 hover:bg-red-500/20 active:bg-red-500/25',
   success: 'text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 active:bg-emerald-500/25',
   warning: 'text-orange-600 dark:text-orange-400 bg-orange-500/10 hover:bg-orange-500/20 active:bg-orange-500/25',
-  ghost: 'text-muted-foreground hover:text-foreground hover:bg-muted/60 active:bg-muted/80',
-  default: 'text-foreground/80 bg-muted/50 hover:bg-muted/70 active:bg-muted/90',
+  ghost: 'text-muted-foreground hover:text-foreground hover:bg-black/5 dark:hover:bg-white/10 active:bg-black/10 dark:active:bg-white/15',
+  default: 'text-foreground/80 bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 active:bg-black/15 dark:active:bg-white/15',
   // 兼容 shadcn 变体名称
   outline: 'border border-input bg-background hover:bg-accent hover:text-accent-foreground',
-  secondary: 'text-foreground/80 bg-muted/50 hover:bg-muted/70 active:bg-muted/90',
+  secondary: 'text-foreground/80 bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 active:bg-black/15 dark:active:bg-white/15',
   destructive: 'text-red-600 dark:text-red-400 bg-red-500/10 hover:bg-red-500/20 active:bg-red-500/25',
 };
 
@@ -94,7 +94,7 @@ export const NotionButton = React.forwardRef<HTMLButtonElement, NotionButtonProp
         disabled={disabled}
         className={cn(
           // 基础样式
-          'inline-flex items-center justify-center font-medium rounded-lg transition-colors duration-150',
+          'inline-flex items-center justify-center font-medium rounded-md transition-colors duration-150',
           // 防止文字换行竖排
           'whitespace-nowrap',
           // 禁用样式

@@ -164,6 +164,11 @@ export const LearningHubPage: React.FC = () => {
 
   // ★ 标签页切换（同时更新 openedAt 以确保 LRU 正确性）
   const switchTab = useCallback((tabId: string) => {
+    // 如果点击的是右侧分屏的 tab，则退出分屏，并将其作为主视图（符合用户直觉）
+    setSplitView(prev => {
+      if (prev?.rightTabId === tabId) return null;
+      return prev;
+    });
     setActiveTabId(tabId);
     setTabs(prev => prev.map(t => t.tabId === tabId ? { ...t, openedAt: Date.now() } : t));
   }, []);
@@ -940,6 +945,7 @@ export const LearningHubPage: React.FC = () => {
               {/* ★ 标签页栏 */}
               <TabBar
                 tabs={tabs}
+                setTabs={setTabs}
                 activeTabId={activeTabId}
                 onSwitch={switchTab}
                 onClose={closeTabWithSplit}
@@ -947,7 +953,6 @@ export const LearningHubPage: React.FC = () => {
                 onSplitView={openSplitView}
                 onCloseSplitView={closeSplitView}
               />
-              {/* ★ 内容区域：TabPanelContainer 保活所有 tab */}
               <div className="flex-1 overflow-hidden">
                 <TabPanelContainer
                   tabs={tabs}

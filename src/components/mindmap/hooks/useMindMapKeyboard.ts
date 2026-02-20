@@ -87,6 +87,9 @@ export function useMindMapKeyboard(): void {
         setEditingNodeId(null);
       } else if (editingNoteNodeId) {
         setEditingNoteNodeId(null);
+      } else if (reciteMode) {
+        // ★ 背诵模式逃生舱：按 Esc 退出背诵模式
+        useMindMapStore.getState().setReciteMode(false);
       } else {
         setFocusedNodeId(null);
         setSelection([]);

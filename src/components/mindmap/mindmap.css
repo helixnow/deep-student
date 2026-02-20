@@ -324,18 +324,6 @@
 }
 
 /* --- 拖拽视觉反馈 --- */
-.drop-indicator {
-  height: 2px;
-  background-color: var(--mm-primary);
-  position: absolute;
-  left: 24px;
-  right: 0;
-  pointer-events: none;
-  z-index: 10;
-  border-radius: 1px;
-  box-shadow: 0 0 4px var(--mm-primary-soft);
-}
-
 .drag-overlay-item {
   background: var(--mm-bg-elevated);
   border: 1px solid var(--mm-border);
@@ -369,7 +357,10 @@
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
-  /* 不对 transform 加 transition，防止 hover 触发 GPU 合成导致文字模糊 */
+  /* 防止文字在拖拽/缩放时模糊 */
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  will-change: transform;
 }
 
 /* ★ 修复：让节点组件填满 ReactFlow 计算的 wrapper 尺寸，使文字居中 */
@@ -382,18 +373,7 @@
   transition: none;
 }
 
-/* 临时诊断模式：尽量关闭 hover 相关动画，定位文字模糊根因 */
-.mm-blur-safety-mode .react-flow__node,
-.mm-blur-safety-mode .react-flow__node * {
-  transition: none !important;
-  animation: none !important;
-}
-
-.mm-blur-safety-mode .mm-node-actions,
-.mm-blur-safety-mode .mm-action-btn,
-.mm-blur-safety-mode .mm-collapse-btn {
-  transition: none !important;
-}
+/* 已移除 .mm-blur-safety-mode 规则，恢复正常的悬停和渐变动画 */
 
 /* 确保 ReactFlow viewport 不使用 3D transform 以避免文字模糊 */
 .mindmap-container .react-flow__viewport {
@@ -729,6 +709,28 @@
 /* ============================================
    拖拽放置目标高亮 (Drag Drop Target)
    ============================================ */
+
+.drop-indicator {
+  height: 2px;
+  background-color: var(--mm-primary);
+  position: absolute;
+  left: 24px;
+  right: 0;
+  pointer-events: none;
+  z-index: 10;
+  border-radius: 1px;
+  box-shadow: 0 0 4px var(--mm-primary-soft);
+}
+
+.drop-indicator-vertical {
+  position: absolute;
+  width: 2px;
+  background-color: var(--mm-primary);
+  pointer-events: none;
+  z-index: 10;
+  border-radius: 1px;
+  box-shadow: 0 0 4px var(--mm-primary-soft);
+}
 
 .mm-dragging {
   opacity: 0.5;

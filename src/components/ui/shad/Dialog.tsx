@@ -179,7 +179,7 @@ export function DialogContent({
           aria-modal="true"
           variants={contentVariants}
           className={cn(
-            'pointer-events-auto w-full max-w-lg rounded-xl border border-transparent bg-background p-5 text-foreground shadow-lg ring-1 ring-border/40',
+            'pointer-events-auto w-full max-w-lg rounded-xl border border-border/40 bg-background p-5 text-foreground shadow-none',
             className
           )}
           onClick={(e) => {

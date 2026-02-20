@@ -69,7 +69,7 @@ interface TooltipContentProps extends React.HTMLAttributes<HTMLDivElement> {
 
 // 基础样式 - 最小化，让用户传递的类可以完全覆盖
 const getBaseClasses = () => {
-  return 'z-50 rounded-md px-2 py-1.5 text-[13px] shadow-sm bg-zinc-900 text-zinc-50 dark:bg-zinc-100 dark:text-zinc-900 font-medium leading-none';
+  return 'z-50 rounded-md px-2 py-1.5 text-[13px] shadow-none border border-border/40 bg-zinc-900 text-zinc-50 dark:bg-zinc-100 dark:text-zinc-900 font-medium leading-none';
 };
 
 export const TooltipContent: React.FC<TooltipContentProps>

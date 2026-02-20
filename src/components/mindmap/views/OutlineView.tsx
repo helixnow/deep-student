@@ -384,12 +384,24 @@ const SortableOutlineNode: React.FC<{
       
       {/* 拖拽指示器 */}
       {isOver && dropPosition === 'before' && !isBeingDragged && (
-        <div 
-          className="drop-indicator"
-          style={{ 
-            left: `${BASE_PADDING + (projectedLevel ?? level) * LEVEL_INDENT}px` 
-          }}
-        />
+        <>
+          <div 
+            className="drop-indicator"
+            style={{ 
+              left: `${BASE_PADDING + (projectedLevel ?? level) * LEVEL_INDENT}px` 
+            }}
+          />
+          {projectedLevel !== null && projectedLevel > level && (
+            <div 
+              className="drop-indicator-vertical"
+              style={{
+                left: `${BASE_PADDING + (projectedLevel) * LEVEL_INDENT}px`,
+                bottom: '0',
+                height: '100%',
+              }}
+            />
+          )}
+        </>
       )}
       
       {/* 左侧控制区容器 - 包含拖拽手柄和Bullet */}
@@ -763,14 +775,26 @@ const SortableOutlineNode: React.FC<{
 
       {/* 下方拖拽指示器 */}
       {isOver && dropPosition === 'after' && !isBeingDragged && (
-        <div 
-          className="drop-indicator"
-          style={{ 
-            bottom: 0,
-            top: 'auto',
-            left: `${BASE_PADDING + (projectedLevel ?? level) * LEVEL_INDENT}px` 
-          }}
-        />
+        <>
+          <div 
+            className="drop-indicator"
+            style={{ 
+              bottom: 0,
+              top: 'auto',
+              left: `${BASE_PADDING + (projectedLevel ?? level) * LEVEL_INDENT}px` 
+            }}
+          />
+          {projectedLevel !== null && projectedLevel > level && (
+            <div 
+              className="drop-indicator-vertical"
+              style={{
+                left: `${BASE_PADDING + (projectedLevel) * LEVEL_INDENT}px`,
+                bottom: '0',
+                height: '100%',
+              }}
+            />
+          )}
+        </>
       )}
     </div>
   );
