@@ -52,13 +52,10 @@ const TabsList = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivEl
 );
 TabsList.displayName = 'TabsList';
 
-interface TabsTriggerProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
-  value: string;
-  // 可选样式：default（无背景色、带底部下划线激活状态）、bare（仅文字，配合外部“滑块”使用）
-  variant?: 'default' | 'bare';
-}
-
-const TabsTrigger = React.forwardRef<HTMLButtonElement, TabsTriggerProps>(({ className, value, variant = 'default', ...props }, ref) => {
+const TabsTrigger = React.forwardRef<
+  HTMLButtonElement,
+  React.ButtonHTMLAttributes<HTMLButtonElement> & { value: string; variant?: 'default' | 'bare' }
+>(({ className, value, variant = 'default', ...props }, ref) => {
   const ctx = React.useContext(TabsContext);
   const active = ctx.value === value;
   return (
@@ -70,8 +67,7 @@ const TabsTrigger = React.forwardRef<HTMLButtonElement, TabsTriggerProps>(({ cla
         ctx.setValue?.(value);
       }}
       className={cn(
-        'inline-flex items-center justify-center whitespace-nowrap text-sm font-medium transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/30 disabled:pointer-events-none disabled:opacity-50',
-        variant === 'default' && 'relative h-9 px-3 data-[state=active]:text-foreground data-[state=active]:shadow-none after:absolute after:bottom-[-1px] after:left-0 after:right-0 after:h-[2px] after:bg-primary after:opacity-0 data-[state=active]:after:opacity-100',
+        'inline-flex items-center justify-center whitespace-nowrap rounded-sm px-3 py-1.5 text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-none',
         variant === 'bare' && 'bg-transparent data-[state=active]:bg-transparent data-[state=active]:shadow-none',
         className
       )}

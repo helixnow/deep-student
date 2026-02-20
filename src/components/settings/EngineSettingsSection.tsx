@@ -1,8 +1,8 @@
 /**
  * 外部搜索引擎配置组件
  * 
- * 从 Settings.tsx 拆分：EngineCard、EngineSettingsSection
- * Notion 风格：简洁、无边框、hover 效果
+ * 从 Settings.tsx 拆分：EngineSettingsSection
+ * Notion 风格：简洁、无边框、双栏布局
  */
 
 import React from 'react';
@@ -20,7 +20,6 @@ import { invoke as tauriInvoke } from '@tauri-apps/api/core';
 const isTauri = typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__;
 const invoke = isTauri ? tauriInvoke : null;
 
-/** Properties accessed on the web-search config object passed to EngineSettingsSection. */
 export interface WebSearchConfig {
   webSearchEngine?: string;
   webSearchGoogleKey?: string;
@@ -35,7 +34,6 @@ export interface WebSearchConfig {
   webSearchTimeoutMs?: number;
 }
 
-/** Per-provider strategy configuration used by the backend. */
 interface ProviderStrategy {
   timeout_ms?: number;
   max_retries?: number;
@@ -48,7 +46,7 @@ interface ProviderStrategy {
 
 type ProviderStrategiesMap = Record<string, ProviderStrategy>;
 
-// 内部组件：设置行 - Notion 风格
+// 内部组件：设置行 - Notion 风格（与 ModelAssignmentRow 保持一致的结构）
 const SettingRow = ({
   title,
   description,
@@ -60,8 +58,8 @@ const SettingRow = ({
   children: React.ReactNode;
   className?: string;
 }) => (
-  <div className={cn("group flex flex-col sm:flex-row sm:items-start gap-2 py-2.5 px-1 hover:bg-muted/30 rounded transition-colors", className)}>
-    <div className="flex-1 min-w-0 pt-1.5">
+  <div className={cn("group flex flex-col sm:flex-row sm:items-start gap-2 py-2.5 px-1 hover:bg-muted/30 rounded transition-colors overflow-hidden", className)}>
+    <div className="flex-1 min-w-0 pt-1.5 sm:min-w-[200px]">
       <h3 className="text-sm text-foreground/90 leading-tight">{title}</h3>
       {description && (
         <p className="text-[11px] text-muted-foreground/70 leading-relaxed mt-0.5 line-clamp-2">
@@ -69,68 +67,12 @@ const SettingRow = ({
         </p>
       )}
     </div>
-    <div className="flex-shrink-0">
+    <div className="w-full sm:w-[280px] flex-shrink-0 [&>div]:w-full [&_button]:w-full flex items-center justify-end sm:justify-start">
       {children}
     </div>
   </div>
 );
 
-// EngineCard 组件 - Notion 风格可折叠卡片
-interface EngineCardProps {
-  id: string;
-  name: string;
-  body: React.ReactNode;
-  enabled: boolean;
-  expanded: boolean;
-  onToggle: () => void;
-  configuredLabel: string;
-  notConfiguredLabel: string;
-}
-
-export const EngineCard: React.FC<EngineCardProps> = React.memo(({ id, name, body, enabled, expanded, onToggle, configuredLabel, notConfiguredLabel }) => (
-  <div className="rounded-lg overflow-hidden">
-    <NotionButton
-      variant="ghost"
-      size="sm"
-      onClick={onToggle}
-      className={cn(
-        "w-full !justify-between !py-2.5 !px-3",
-        expanded && "bg-muted/20"
-      )}
-    >
-      <div className="flex items-center gap-2">
-        <span className="text-sm font-medium text-foreground/90">{name}</span>
-        <span className={cn(
-          "text-[10px] px-1.5 py-0.5 rounded-full font-medium",
-          enabled ? 'bg-success/15 text-success' : 'bg-muted text-muted-foreground/70'
-        )}>
-          {enabled ? configuredLabel : notConfiguredLabel}
-        </span>
-      </div>
-      <svg 
-        className={cn(
-          "w-4 h-4 text-muted-foreground/50 transition-transform duration-200",
-          expanded && "rotate-180"
-        )} 
-        viewBox="0 0 20 20" 
-        fill="currentColor" 
-        aria-hidden="true"
-      >
-        <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 10.94l3.71-3.71a.75.75 0 111.06 1.06l-4.24 4.24a.75.75 0 01-1.06 0L5.21 8.29a.75.75 0 01.02-1.08z" clipRule="evenodd" />
-      </svg>
-    </NotionButton>
-    {expanded && (
-      <div className="px-3 pb-4 pt-2 space-y-4 animate-in slide-in-from-top-2 duration-200">
-        {body}
-      </div>
-    )}
-  </div>
-));
-EngineCard.displayName = 'EngineCard';
-
-// 设计组件
-// 文档31清理：SubjectBackfillSelector 和 ChatIndexStatsViewer 组件已彻底删除
-// 子组件：外部搜索-按引擎分类的卡片（包含策略摘要、API配置、状态测试）
 export const EngineSettingsSection: React.FC<{
   config: WebSearchConfig;
   setConfig: React.Dispatch<React.SetStateAction<WebSearchConfig>>;
@@ -140,18 +82,8 @@ export const EngineSettingsSection: React.FC<{
   const [engineTesting, setEngineTesting] = React.useState<string | null>(null);
   const [engineResults, setEngineResults] = React.useState<Record<string, { ok: boolean; msg: string; ms?: number }>>({});
   const [providerSaving, setProviderSaving] = React.useState(false);
-  // 折叠状态：默认全部折叠
-  const [expanded, setExpanded] = React.useState<Record<string, boolean>>({
-    google_cse: false,
-    serpapi: false,
-    tavily: false,
-    brave: false,
-    searxng: false,
-    zhipu: false,
-    bocha: false,
-  });
+  const [activeEngine, setActiveEngine] = React.useState<string>('google_cse');
 
-  // 延迟加载，避免阻塞 UI 首帧渲染
   React.useEffect(() => {
     const loadData = async () => {
       try {
@@ -162,8 +94,6 @@ export const EngineSettingsSection: React.FC<{
         setProviderStrategies(null);
       }
     };
-    // 使用 requestIdleCallback 或 setTimeout 延迟加载
-    // 🔧 修复 #3: 正确清理 setTimeout 分支
     let usedIdleCallback = false;
     let handle: number;
     if (typeof requestIdleCallback === 'function') {
@@ -200,7 +130,7 @@ export const EngineSettingsSection: React.FC<{
     const s = providerStrategies?.[id] || providerStrategies?.default;
     if (!s) return <div className="text-[11px] text-muted-foreground/70">{t('settings:config_status.not_configured_use_default')}</div>;
     return (
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-1 text-[11px] text-muted-foreground/70">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-1 text-[11px] text-muted-foreground/70 mt-1">
         <div>{t('settings:advanced_search.providers.timeout_ms')}: {s.timeout_ms ?? '-'}ms</div>
         <div>{t('settings:advanced_search.providers.max_retries')}: {s.max_retries ?? '-'}</div>
         <div>{t('settings:advanced_search.providers.initial_delay_ms')}: {s.initial_retry_delay_ms ?? '-'}ms</div>
@@ -247,129 +177,385 @@ export const EngineSettingsSection: React.FC<{
   const StrategyEditor: React.FC<{ id: string }> = ({ id }) => {
     const s = getEffectiveStrategy(id);
     return (
-      <div className="mt-3 grid gap-3 text-xs grid-cols-2 md:grid-cols-4 lg:grid-cols-7">
-        <div className="space-y-1">
-          <label className="text-[11px] font-medium text-muted-foreground/70">
-            {t('settings:advanced_search.providers.timeout_ms')}
-          </label>
+      <div className="mt-6 grid gap-4 text-xs grid-cols-2 md:grid-cols-4 lg:grid-cols-7">
+        <div className="space-y-1.5">
+          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('settings:advanced_search.providers.timeout_ms')}</div>
           <Input
             type="number"
             min={1000}
             value={s.timeout_ms ?? ''}
             onChange={handleStrategyFieldChange(id, 'timeout_ms')}
-            className="h-7 text-xs bg-transparent"
+            className="h-8 text-xs bg-transparent"
           />
         </div>
-        <div className="space-y-1">
-          <label className="text-[11px] font-medium text-muted-foreground/70">
-            {t('settings:advanced_search.providers.max_retries')}
-          </label>
+        <div className="space-y-1.5">
+          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('settings:advanced_search.providers.max_retries')}</div>
           <Input
             type="number"
             min={0}
             value={s.max_retries ?? ''}
             onChange={handleStrategyFieldChange(id, 'max_retries')}
-            className="h-7 text-xs bg-transparent"
+            className="h-8 text-xs bg-transparent"
           />
         </div>
-        <div className="space-y-1">
-          <label className="text-[11px] font-medium text-muted-foreground/70">
-            {t('settings:advanced_search.providers.initial_delay_ms')}
-          </label>
+        <div className="space-y-1.5">
+          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('settings:advanced_search.providers.initial_delay_ms')}</div>
           <Input
             type="number"
             min={0}
             value={s.initial_retry_delay_ms ?? ''}
             onChange={handleStrategyFieldChange(id, 'initial_retry_delay_ms')}
-            className="h-7 text-xs bg-transparent"
+            className="h-8 text-xs bg-transparent"
           />
         </div>
-        <div className="space-y-1">
-          <label className="text-[11px] font-medium text-muted-foreground/70">
-            {t('settings:advanced_search.providers.max_concurrent_requests')}
-          </label>
+        <div className="space-y-1.5">
+          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('settings:advanced_search.providers.max_concurrent_requests')}</div>
           <Input
             type="number"
             min={0}
             value={s.max_concurrent_requests ?? ''}
             onChange={handleStrategyFieldChange(id, 'max_concurrent_requests')}
-            className="h-7 text-xs bg-transparent"
+            className="h-8 text-xs bg-transparent"
           />
         </div>
-        <div className="space-y-1">
-          <label className="text-[11px] font-medium text-muted-foreground/70">
-            {t('settings:advanced_search.providers.rate_limit_per_minute')}
-          </label>
+        <div className="space-y-1.5">
+          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('settings:advanced_search.providers.rate_limit_per_minute')}</div>
           <Input
             type="number"
             min={0}
             value={s.rate_limit_per_minute ?? ''}
             onChange={handleStrategyFieldChange(id, 'rate_limit_per_minute')}
-            className="h-7 text-xs bg-transparent"
+            className="h-8 text-xs bg-transparent"
           />
         </div>
-        <div className="space-y-1">
-          <label className="text-[11px] font-medium text-muted-foreground/70">
-            {t('settings:advanced_search.providers.cache_ttl_seconds')}
-          </label>
+        <div className="space-y-1.5">
+          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('settings:advanced_search.providers.cache_ttl_seconds')}</div>
           <Input
             type="number"
             min={0}
             value={s.cache_ttl_seconds ?? ''}
             onChange={handleStrategyFieldChange(id, 'cache_ttl_seconds')}
-            className="h-7 text-xs bg-transparent"
+            className="h-8 text-xs bg-transparent"
           />
         </div>
-        <div className="space-y-1">
-          <label className="text-[11px] font-medium text-muted-foreground/70">
-            {t('settings:advanced_search.providers.cache_max_entries')}
-          </label>
+        <div className="space-y-1.5">
+          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('settings:advanced_search.providers.cache_max_entries')}</div>
           <Input
             type="number"
             min={0}
             value={s.cache_max_entries ?? ''}
             onChange={handleStrategyFieldChange(id, 'cache_max_entries')}
-            className="h-7 text-xs bg-transparent"
+            className="h-8 text-xs bg-transparent"
           />
         </div>
       </div>
     );
   };
 
-  // 渲染引擎卡片底部的策略和测试区域
   const renderEngineFooter = (id: string, enabled: boolean) => (
-    <div className="pt-3 mt-3 border-t border-border/30 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
-      <div className="flex-1 min-w-0">
-        <div className="text-[11px] text-muted-foreground/60 mb-1.5">
-          {t('settings:advanced_search.providers.strategy_hint', '策略配置（引擎特定，未配置则回退 default）')}
+    <div className="w-full pt-8 border-t border-border/40 mt-8">
+      <div className="flex flex-col gap-6">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="min-w-0 flex-1 space-y-1">
+            <h3 className="text-lg font-medium text-foreground">{t('settings:advanced_search.providers.strategy_title', '策略配置')}</h3>
+            <p className="text-sm text-muted-foreground">{t('settings:advanced_search.providers.strategy_hint', '未配置则回退 default')}</p>
+          </div>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {engineResults[id] && (
+              <span className={cn(
+                "text-[11px] mr-2",
+                engineResults[id].ok ? 'text-success' : 'text-destructive'
+              )}>
+                {engineResults[id].ok ? '✓' : '✗'} {engineResults[id].ms ? `${engineResults[id].ms}ms` : ''}
+              </span>
+            )}
+            <NotionButton onClick={() => testEngine(id)} disabled={engineTesting === id || !enabled} size="sm" variant="ghost" className="border border-border/30">
+              {engineTesting === id ? t('settings:status_labels.testing') : t('settings:status_labels.test_availability')}
+            </NotionButton>
+            <NotionButton size="sm" variant="primary" onClick={handleSaveProviderStrategies} disabled={providerSaving || !providerStrategies}>
+              {providerSaving ? t('common:actions.saving', '保存中…') : t('settings:advanced_search.providers.save_button')}
+            </NotionButton>
+          </div>
         </div>
-        <StrategySummary id={id} />
-      </div>
-      <div className="flex items-center gap-2 flex-shrink-0">
-        {engineResults[id] && (
-          <span className={cn(
-            "text-[11px]",
-            engineResults[id].ok ? 'text-success' : 'text-destructive'
-          )}>
-            {engineResults[id].ok ? '✓' : '✗'} {engineResults[id].ms ? `${engineResults[id].ms}ms` : ''}
-          </span>
-        )}
-        <NotionButton onClick={() => testEngine(id)} disabled={engineTesting === id || !enabled} size="sm" variant="default">
-          {engineTesting === id ? t('settings:status_labels.testing') : t('settings:status_labels.test_availability')}
-        </NotionButton>
+        <div>
+          <StrategySummary id={id} />
+          {providerStrategies && <StrategyEditor id={id} />}
+        </div>
       </div>
     </div>
   );
 
-  // 翻译标签（避免在每个 EngineCard 中重复获取）
-  const configuredLabel = t('settings:status_labels.configured');
-  const notConfiguredLabel = t('settings:status_labels.not_configured');
-
   return (
-    <div className="space-y-4">
-      {/* 默认搜索引擎选择 */}
-      <div className="space-y-px">
-        <SettingRow
+    <div className="space-y-8">
+      <div className="flex flex-col gap-8 md:grid md:grid-cols-[minmax(180px,200px)_1fr]">
+        <div className="space-y-3 w-full min-w-0 pr-0 md:pr-6 md:border-r border-border/40 md:sticky md:top-6 md:self-start">
+          <div className="w-full">
+            <div className="mb-4 flex items-center justify-between gap-2">
+              <div className="text-sm font-medium text-foreground">
+                {t('settings:groups.search_engines_list', '搜索引擎列表')}
+              </div>
+            </div>
+            
+            <div className="flex flex-col gap-1 mt-4">
+              {['google_cse', 'serpapi', 'tavily', 'brave', 'searxng', 'zhipu', 'bocha'].map((id) => {
+                const labelMap: Record<string, string> = {
+                  google_cse: 'Google CSE',
+                  serpapi: 'SerpAPI',
+                  tavily: 'Tavily',
+                  brave: 'Brave',
+                  searxng: 'SearXNG',
+                  zhipu: t('settings:external_search.zhipu_name', '智谱 AI 搜索'),
+                  bocha: t('settings:external_search.bocha_name', '博查 AI 搜索')
+                };
+                const isConfiguredMap: Record<string, boolean> = {
+                  google_cse: !!(config.webSearchGoogleKey && config.webSearchGoogleCx),
+                  serpapi: !!config.webSearchSerpApiKey,
+                  tavily: !!config.webSearchTavilyKey,
+                  brave: !!config.webSearchBraveKey,
+                  searxng: !!config.webSearchSearxngEndpoint,
+                  zhipu: !!config.webSearchZhipuKey,
+                  bocha: !!config.webSearchBochaKey
+                };
+                const isActive = activeEngine === id;
+                const isConfigured = isConfiguredMap[id];
+                return (
+                  <NotionButton
+                    key={id}
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setActiveEngine(id)}
+                    className={cn(
+                      '!rounded-lg !px-3 !py-2 text-left w-full !justify-start group relative',
+                      isActive ? 'bg-muted text-foreground font-medium' : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
+                    )}
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-1.5 w-full">
+                      <div className="flex items-center gap-2 min-w-0 flex-1">
+                        <span className="truncate">{labelMap[id]}</span>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-1">
+                        <span className={cn('w-1.5 h-1.5 rounded-full flex-shrink-0', isConfigured ? 'bg-success/80' : 'bg-muted-foreground/30')} />
+                      </div>
+                    </div>
+                  </NotionButton>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
+        <div className="space-y-8 w-full min-w-0">
+          {activeEngine === 'google_cse' && (
+            <div className="w-full animate-in fade-in duration-200">
+              <div className="flex flex-col gap-2 mb-6">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <h3 className="text-lg font-medium text-foreground truncate">Google CSE</h3>
+                    <NotionButton size="sm" variant="ghost" iconOnly className="opacity-60 hover:opacity-100" onClick={() => window.open("https://cse.google.com/cse/create/new", "_blank")} title={t('settings:external_search.create_custom_search', '创建自定义搜索引擎')}>
+                      <ExternalLink className="h-3.5 w-3.5" />
+                    </NotionButton>
+                  </div>
+                </div>
+                <p className="text-sm text-muted-foreground leading-relaxed">
+                  {t('settings:descriptions.google_cse_desc', 'Google 自定义搜索引擎 API，提供最准确全面的网页搜索。')}
+                </p>
+              </div>
+              <div className="flex flex-col gap-6 text-sm md:grid md:grid-cols-2">
+                <div className="space-y-2">
+                          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('settings:external_search.google_api_key_label')}</div>
+                          <SecurePasswordInput value={config.webSearchGoogleKey} onChange={(v) => setConfig((prev: WebSearchConfig) => ({ ...prev, webSearchGoogleKey: v }))} placeholder="GOOGLE_API_KEY" isSensitive />
+                  <p className="text-[11px] text-muted-foreground/70">{t('settings:external_search.google_api_key_desc')}</p>
+                </div>
+                <div className="space-y-2">
+                          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('settings:external_search.google_cse_cx_label')}</div>
+                          <Input
+                    type="text"
+                    value={config.webSearchGoogleCx}
+                    onChange={(e) => setConfig((prev: WebSearchConfig) => ({ ...prev, webSearchGoogleCx: e.target.value }))}
+                    placeholder="GOOGLE_CSE_CX"
+                    className="font-mono bg-muted/30 border-transparent focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors"
+                  />
+                  <p className="text-[11px] text-muted-foreground/70">{t('settings:external_search.google_cse_cx_desc')}</p>
+                </div>
+              </div>
+              {renderEngineFooter('google_cse', !!(config.webSearchGoogleKey && config.webSearchGoogleCx))}
+            </div>
+          )}
+
+          {activeEngine === 'serpapi' && (
+            <div className="w-full animate-in fade-in duration-200">
+              <div className="flex flex-col gap-2 mb-6">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <h3 className="text-lg font-medium text-foreground truncate">SerpAPI</h3>
+                    <NotionButton size="sm" variant="ghost" iconOnly className="opacity-60 hover:opacity-100" onClick={() => window.open("https://serpapi.com/users/sign_up", "_blank")} title={t('settings:external_search.get_serpapi_key', '注册并获取 SerpAPI Key')}>
+                      <ExternalLink className="h-3.5 w-3.5" />
+                    </NotionButton>
+                  </div>
+                </div>
+                <p className="text-sm text-muted-foreground leading-relaxed">
+                  {t('settings:descriptions.serpapi_desc', '封装了 Google、Bing 等多个引擎的聚合搜索 API。')}
+                </p>
+              </div>
+              <div className="flex flex-col gap-6 text-sm md:grid md:grid-cols-2">
+                <div className="space-y-2 md:col-span-2">
+                          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('settings:external_search.serpapi_key_label')}</div>
+                          <SecurePasswordInput value={config.webSearchSerpApiKey} onChange={(v) => setConfig((prev: WebSearchConfig) => ({ ...prev, webSearchSerpApiKey: v }))} placeholder="SERPAPI_KEY" isSensitive />
+                  <p className="text-[11px] text-muted-foreground/70">{t('settings:external_search.serpapi_key_desc')}</p>
+                </div>
+              </div>
+              {renderEngineFooter('serpapi', !!config.webSearchSerpApiKey)}
+            </div>
+          )}
+
+          {activeEngine === 'tavily' && (
+            <div className="w-full animate-in fade-in duration-200">
+              <div className="flex flex-col gap-2 mb-6">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <h3 className="text-lg font-medium text-foreground truncate">Tavily</h3>
+                    <NotionButton size="sm" variant="ghost" iconOnly className="opacity-60 hover:opacity-100" onClick={() => window.open("https://tavily.com", "_blank")} title={t('settings:external_search.get_tavily_key', '注册并获取 Tavily API Key')}>
+                      <ExternalLink className="h-3.5 w-3.5" />
+                    </NotionButton>
+                  </div>
+                </div>
+                <p className="text-sm text-muted-foreground leading-relaxed">
+                  {t('settings:descriptions.tavily_desc', '专为大语言模型打造的检索优化型搜索引擎。')}
+                </p>
+              </div>
+              <div className="flex flex-col gap-6 text-sm md:grid md:grid-cols-2">
+                <div className="space-y-2 md:col-span-2">
+                          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('settings:external_search.tavily_key_label')}</div>
+                          <SecurePasswordInput value={config.webSearchTavilyKey} onChange={(v) => setConfig((prev: WebSearchConfig) => ({ ...prev, webSearchTavilyKey: v }))} placeholder="TAVILY_API_KEY" isSensitive />
+                  <p className="text-[11px] text-muted-foreground/70">{t('settings:external_search.tavily_key_desc')}</p>
+                </div>
+              </div>
+              {renderEngineFooter('tavily', !!config.webSearchTavilyKey)}
+            </div>
+          )}
+
+          {activeEngine === 'brave' && (
+            <div className="w-full animate-in fade-in duration-200">
+              <div className="flex flex-col gap-2 mb-6">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <h3 className="text-lg font-medium text-foreground truncate">Brave</h3>
+                    <NotionButton size="sm" variant="ghost" iconOnly className="opacity-60 hover:opacity-100" onClick={() => window.open("https://api.search.brave.com/", "_blank")} title={t('settings:external_search.get_brave_key', '申请 Brave Search API Key')}>
+                      <ExternalLink className="h-3.5 w-3.5" />
+                    </NotionButton>
+                  </div>
+                </div>
+                <p className="text-sm text-muted-foreground leading-relaxed">
+                  {t('settings:descriptions.brave_desc', '注重隐私的独立网页搜索引擎。')}
+                </p>
+              </div>
+              <div className="flex flex-col gap-6 text-sm md:grid md:grid-cols-2">
+                <div className="space-y-2 md:col-span-2">
+                          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('settings:external_search.brave_key_label')}</div>
+                          <SecurePasswordInput value={config.webSearchBraveKey} onChange={(v) => setConfig((prev: WebSearchConfig) => ({ ...prev, webSearchBraveKey: v }))} placeholder="BRAVE_API_KEY" isSensitive />
+                  <p className="text-[11px] text-muted-foreground/70">{t('settings:external_search.brave_key_desc')}</p>
+                </div>
+              </div>
+              {renderEngineFooter('brave', !!config.webSearchBraveKey)}
+            </div>
+          )}
+
+          {activeEngine === 'searxng' && (
+            <div className="w-full animate-in fade-in duration-200">
+              <div className="flex flex-col gap-2 mb-6">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <h3 className="text-lg font-medium text-foreground truncate">SearXNG</h3>
+                    <NotionButton size="sm" variant="ghost" iconOnly className="opacity-60 hover:opacity-100" onClick={() => window.open("https://docs.searxng.org/", "_blank")} title={t('settings:external_search.searxng_docs', 'SearXNG 部署文档')}>
+                      <ExternalLink className="h-3.5 w-3.5" />
+                    </NotionButton>
+                  </div>
+                </div>
+                <p className="text-sm text-muted-foreground leading-relaxed">
+                  {t('settings:descriptions.searxng_desc', '免费开源、聚合多个搜索源的元搜索引擎。')}
+                </p>
+              </div>
+              <div className="flex flex-col gap-6 text-sm md:grid md:grid-cols-2">
+                <div className="space-y-2">
+                          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('settings:external_search.searxng_endpoint_label')}</div>
+                          <Input
+                    type="text"
+                    value={config.webSearchSearxngEndpoint}
+                    onChange={(e) => setConfig((prev: WebSearchConfig) => ({ ...prev, webSearchSearxngEndpoint: e.target.value }))}
+                    placeholder="https://searx.example.com"
+                    className="font-mono bg-muted/30 border-transparent focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors"
+                  />
+                  <p className="text-[11px] text-muted-foreground/70">{t('settings:external_search.searxng_endpoint_desc')}</p>
+                </div>
+                <div className="space-y-2">
+                          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('settings:external_search.searxng_key_label')}</div>
+                          <SecurePasswordInput value={config.webSearchSearxngKey} onChange={(v) => setConfig((prev: WebSearchConfig) => ({ ...prev, webSearchSearxngKey: v }))} placeholder="SEARXNG_API_KEY" isSensitive />
+                  <p className="text-[11px] text-muted-foreground/70">{t('settings:external_search.searxng_key_desc')}</p>
+                </div>
+              </div>
+              {renderEngineFooter('searxng', !!config.webSearchSearxngEndpoint)}
+            </div>
+          )}
+
+          {activeEngine === 'zhipu' && (
+            <div className="w-full animate-in fade-in duration-200">
+              <div className="flex flex-col gap-2 mb-6">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <h3 className="text-lg font-medium text-foreground truncate">{t('settings:external_search.zhipu_name', '智谱 AI 搜索')}</h3>
+                    <NotionButton size="sm" variant="ghost" iconOnly className="opacity-60 hover:opacity-100" onClick={() => window.open("https://open.bigmodel.cn/", "_blank")} title={t('settings:external_search.zhipu_apply', '申请智谱大模型 API')}>
+                      <ExternalLink className="h-3.5 w-3.5" />
+                    </NotionButton>
+                  </div>
+                </div>
+                <p className="text-sm text-muted-foreground leading-relaxed">
+                  {t('settings:descriptions.zhipu_desc', '智谱提供的国产化互联网搜索聚合服务。')}
+                </p>
+              </div>
+              <div className="flex flex-col gap-6 text-sm md:grid md:grid-cols-2">
+                <div className="space-y-2 md:col-span-2">
+                          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('settings:external_search.zhipu_key_label')}</div>
+                          <SecurePasswordInput value={config.webSearchZhipuKey} onChange={(v) => setConfig((prev: WebSearchConfig) => ({ ...prev, webSearchZhipuKey: v }))} placeholder="ZHIPU_API_KEY" isSensitive />
+                  <p className="text-[11px] text-muted-foreground/70">{t('settings:external_search.zhipu_key_desc')}</p>
+                </div>
+              </div>
+              {renderEngineFooter('zhipu', !!config.webSearchZhipuKey)}
+            </div>
+          )}
+
+          {activeEngine === 'bocha' && (
+            <div className="w-full animate-in fade-in duration-200">
+              <div className="flex flex-col gap-2 mb-6">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <h3 className="text-lg font-medium text-foreground truncate">{t('settings:external_search.bocha_name', '博查 AI 搜索')}</h3>
+                    <NotionButton size="sm" variant="ghost" iconOnly className="opacity-60 hover:opacity-100" onClick={() => window.open("https://open.bochaai.com/", "_blank")} title={t('settings:external_search.bocha_apply', '申请博查 API')}>
+                      <ExternalLink className="h-3.5 w-3.5" />
+                    </NotionButton>
+                  </div>
+                </div>
+                <p className="text-sm text-muted-foreground leading-relaxed">
+                  {t('settings:descriptions.bocha_desc', '专注于中文资料索引的轻量级检索服务。')}
+                </p>
+              </div>
+              <div className="flex flex-col gap-6 text-sm md:grid md:grid-cols-2">
+                <div className="space-y-2 md:col-span-2">
+                          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('settings:external_search.bocha_key_label')}</div>
+                          <SecurePasswordInput value={config.webSearchBochaKey} onChange={(v) => setConfig((prev: WebSearchConfig) => ({ ...prev, webSearchBochaKey: v }))} placeholder="BOCHA_API_KEY" isSensitive />
+                  <p className="text-[11px] text-muted-foreground/70">{t('settings:external_search.bocha_key_desc')}</p>
+                </div>
+              </div>
+              {renderEngineFooter('bocha', !!config.webSearchBochaKey)}
+            </div>
+          )}
+
+        </div>
+      </div>
+
+      <div className="pt-8 border-t border-border/40 mt-8">
+        <h3 className="text-base font-semibold text-foreground mb-4">{t('settings:groups.global_search_settings', '全局搜索配置')}</h3>
+        <div className="space-y-px">
+          <SettingRow
           title={t('settings:field_labels.default_search_engine')}
           description={t('settings:sections.search_engine_desc')}
         >
@@ -404,234 +590,7 @@ export const EngineSettingsSection: React.FC<{
             );
           })()}
         </SettingRow>
-      </div>
-
-      {/* 按引擎分类的独立卡片 */}
-      <div className="space-y-1">
-        <EngineCard id="google_cse" name="Google CSE" enabled={!!(config.webSearchGoogleKey && config.webSearchGoogleCx)} expanded={!!expanded.google_cse} onToggle={() => setExpanded(prev => ({ ...prev, google_cse: !prev.google_cse }))} configuredLabel={configuredLabel} notConfiguredLabel={notConfiguredLabel}
-          body={
-            <div className="space-y-4">
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-foreground/80">{t('settings:external_search.google_api_key_label')}</label>
-                  <SecurePasswordInput value={config.webSearchGoogleKey} onChange={(v) => setConfig((prev: WebSearchConfig) => ({ ...prev, webSearchGoogleKey: v }))} placeholder="GOOGLE_API_KEY" isSensitive />
-                  <p className="text-[11px] text-muted-foreground/70">{t('settings:external_search.google_api_key_desc')}</p>
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-foreground/80">{t('settings:external_search.google_cse_cx_label')}</label>
-                  <Input
-                    type="text"
-                    value={config.webSearchGoogleCx}
-                    onChange={(e) => setConfig((prev: WebSearchConfig) => ({ ...prev, webSearchGoogleCx: e.target.value }))}
-                    placeholder="GOOGLE_CSE_CX"
-                    className="h-8 text-xs bg-transparent"
-                  />
-                  <p className="text-[11px] text-muted-foreground/70">{t('settings:external_search.google_cse_cx_desc')}</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-4 text-xs">
-                <a 
-                  href="https://developers.google.com/custom-search/v1/introduction" 
-                  target="_blank" 
-                  rel="noopener noreferrer" 
-                  className="inline-flex items-center gap-1.5 text-primary hover:opacity-80"
-                >
-                  <ExternalLink className="w-3 h-3" />
-                  {t('settings:external_search.apply_google_cse', '申请 Google CSE API')}
-                </a>
-                <a 
-                  href="https://cse.google.com/cse/create/new" 
-                  target="_blank" 
-                  rel="noopener noreferrer" 
-                  className="inline-flex items-center gap-1.5 text-success hover:opacity-80"
-                >
-                  <ExternalLink className="w-3 h-3" />
-                  {t('settings:external_search.create_custom_search', '创建自定义搜索引擎')}
-                </a>
-              </div>
-              {providerStrategies && <StrategyEditor id="google_cse" />}
-              {renderEngineFooter('google_cse', !!(config.webSearchGoogleKey && config.webSearchGoogleCx))}
-            </div>
-          }
-        />
-
-        <EngineCard id="serpapi" name="SerpAPI" enabled={!!config.webSearchSerpApiKey} expanded={!!expanded.serpapi} onToggle={() => setExpanded(prev => ({ ...prev, serpapi: !prev.serpapi }))} configuredLabel={configuredLabel} notConfiguredLabel={notConfiguredLabel}
-          body={
-            <div className="space-y-4">
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-foreground/80">{t('settings:external_search.serpapi_key_label')}</label>
-                <SecurePasswordInput value={config.webSearchSerpApiKey} onChange={(v) => setConfig((prev: WebSearchConfig) => ({ ...prev, webSearchSerpApiKey: v }))} placeholder="SERPAPI_KEY" isSensitive />
-                <p className="text-[11px] text-muted-foreground/70">{t('settings:external_search.serpapi_key_desc')}</p>
-              </div>
-              <a 
-                href="https://serpapi.com/users/sign_up" 
-                target="_blank" 
-                rel="noopener noreferrer" 
-                className="inline-flex items-center gap-1.5 text-xs text-primary hover:opacity-80"
-              >
-                <ExternalLink className="w-3 h-3" />
-                {t('settings:external_search.get_serpapi_key', '注册并获取 SerpAPI Key')}
-              </a>
-              {providerStrategies && <StrategyEditor id="serpapi" />}
-              {renderEngineFooter('serpapi', !!config.webSearchSerpApiKey)}
-            </div>
-          }
-        />
-
-        <EngineCard id="tavily" name="Tavily" enabled={!!config.webSearchTavilyKey} expanded={!!expanded.tavily} onToggle={() => setExpanded(prev => ({ ...prev, tavily: !prev.tavily }))} configuredLabel={configuredLabel} notConfiguredLabel={notConfiguredLabel}
-          body={
-            <div className="space-y-4">
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-foreground/80">{t('settings:external_search.tavily_key_label')}</label>
-                <SecurePasswordInput value={config.webSearchTavilyKey} onChange={(v) => setConfig((prev: WebSearchConfig) => ({ ...prev, webSearchTavilyKey: v }))} placeholder="TAVILY_API_KEY" isSensitive />
-                <p className="text-[11px] text-muted-foreground/70">{t('settings:external_search.tavily_key_desc')}</p>
-              </div>
-              <a 
-                href="https://tavily.com" 
-                target="_blank" 
-                rel="noopener noreferrer" 
-                className="inline-flex items-center gap-1.5 text-xs text-primary hover:opacity-80"
-              >
-                <ExternalLink className="w-3 h-3" />
-                {t('settings:external_search.get_tavily_key', '注册并获取 Tavily API Key')}
-              </a>
-              {providerStrategies && <StrategyEditor id="tavily" />}
-              {renderEngineFooter('tavily', !!config.webSearchTavilyKey)}
-            </div>
-          }
-        />
-
-        <EngineCard id="brave" name="Brave" enabled={!!config.webSearchBraveKey} expanded={!!expanded.brave} onToggle={() => setExpanded(prev => ({ ...prev, brave: !prev.brave }))} configuredLabel={configuredLabel} notConfiguredLabel={notConfiguredLabel}
-          body={
-            <div className="space-y-4">
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-foreground/80">{t('settings:external_search.brave_key_label')}</label>
-                <SecurePasswordInput value={config.webSearchBraveKey} onChange={(v) => setConfig((prev: WebSearchConfig) => ({ ...prev, webSearchBraveKey: v }))} placeholder="BRAVE_API_KEY" isSensitive />
-                <p className="text-[11px] text-muted-foreground/70">{t('settings:external_search.brave_key_desc')}</p>
-              </div>
-              <a 
-                href="https://api.search.brave.com/" 
-                target="_blank" 
-                rel="noopener noreferrer" 
-                className="inline-flex items-center gap-1.5 text-xs text-primary hover:opacity-80"
-              >
-                <ExternalLink className="w-3 h-3" />
-                {t('settings:external_search.get_brave_key', '申请 Brave Search API Key')}
-              </a>
-              {providerStrategies && <StrategyEditor id="brave" />}
-              {renderEngineFooter('brave', !!config.webSearchBraveKey)}
-            </div>
-          }
-        />
-
-        <EngineCard id="searxng" name="SearXNG" enabled={!!config.webSearchSearxngEndpoint} expanded={!!expanded.searxng} onToggle={() => setExpanded(prev => ({ ...prev, searxng: !prev.searxng }))} configuredLabel={configuredLabel} notConfiguredLabel={notConfiguredLabel}
-          body={
-            <div className="space-y-4">
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-foreground/80">{t('settings:external_search.searxng_endpoint_label')}</label>
-                  <Input
-                    type="text"
-                    value={config.webSearchSearxngEndpoint}
-                    onChange={(e) => setConfig((prev: WebSearchConfig) => ({ ...prev, webSearchSearxngEndpoint: e.target.value }))}
-                    placeholder="https://searx.example.com"
-                    className="h-8 text-xs bg-transparent"
-                  />
-                  <p className="text-[11px] text-muted-foreground/70">{t('settings:external_search.searxng_endpoint_desc')}</p>
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-foreground/80">{t('settings:external_search.searxng_key_label')}</label>
-                  <SecurePasswordInput value={config.webSearchSearxngKey} onChange={(v) => setConfig((prev: WebSearchConfig) => ({ ...prev, webSearchSearxngKey: v }))} placeholder="SEARXNG_API_KEY" isSensitive />
-                  <p className="text-[11px] text-muted-foreground/70">{t('settings:external_search.searxng_key_desc')}</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-4 text-xs">
-                <a 
-                  href="https://docs.searxng.org/" 
-                  target="_blank" 
-                  rel="noopener noreferrer" 
-                  className="inline-flex items-center gap-1.5 text-primary hover:opacity-80"
-                >
-                  <ExternalLink className="w-3 h-3" />
-                  {t('settings:external_search.searxng_docs', 'SearXNG 部署文档')}
-                </a>
-                <a 
-                  href="https://searx.space/" 
-                  target="_blank" 
-                  rel="noopener noreferrer" 
-                  className="inline-flex items-center gap-1.5 text-success hover:opacity-80"
-                >
-                  <ExternalLink className="w-3 h-3" />
-                  {t('settings:external_search.public_instances', '公共实例列表')}
-                </a>
-              </div>
-              {providerStrategies && <StrategyEditor id="searxng" />}
-              {renderEngineFooter('searxng', !!config.webSearchSearxngEndpoint)}
-            </div>
-          }
-        />
-
-        {/* 智谱 AI 搜索 */}
-        <EngineCard id="zhipu" name={t('settings:external_search.zhipu_name')} enabled={!!config.webSearchZhipuKey} expanded={!!expanded.zhipu} onToggle={() => setExpanded(prev => ({ ...prev, zhipu: !prev.zhipu }))} configuredLabel={configuredLabel} notConfiguredLabel={notConfiguredLabel}
-          body={
-            <div className="space-y-4">
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-foreground/80">{t('settings:external_search.zhipu_key_label')}</label>
-                <SecurePasswordInput value={config.webSearchZhipuKey} onChange={(v) => setConfig((prev: WebSearchConfig) => ({ ...prev, webSearchZhipuKey: v }))} placeholder="ZHIPU_API_KEY" isSensitive />
-                <p className="text-[11px] text-muted-foreground/70">{t('settings:external_search.zhipu_key_desc')}</p>
-              </div>
-              <div className="px-3 py-2 bg-primary/5 rounded-md">
-                <p className="text-[11px] text-muted-foreground/70">
-                  {t('settings:external_search.zhipu_desc')}
-                </p>
-              </div>
-              <a 
-                href="https://open.bigmodel.cn/" 
-                target="_blank" 
-                rel="noopener noreferrer" 
-                className="inline-flex items-center gap-1.5 text-xs text-primary hover:opacity-80"
-              >
-                <ExternalLink className="w-3 h-3" />
-                {t('settings:external_search.zhipu_apply')}
-              </a>
-              {providerStrategies && <StrategyEditor id="zhipu" />}
-              {renderEngineFooter('zhipu', !!config.webSearchZhipuKey)}
-            </div>
-          }
-        />
-
-        {/* 博查 AI 搜索 */}
-        <EngineCard id="bocha" name={t('settings:external_search.bocha_name')} enabled={!!config.webSearchBochaKey} expanded={!!expanded.bocha} onToggle={() => setExpanded(prev => ({ ...prev, bocha: !prev.bocha }))} configuredLabel={configuredLabel} notConfiguredLabel={notConfiguredLabel}
-          body={
-            <div className="space-y-4">
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-foreground/80">{t('settings:external_search.bocha_key_label')}</label>
-                <SecurePasswordInput value={config.webSearchBochaKey} onChange={(v) => setConfig((prev: WebSearchConfig) => ({ ...prev, webSearchBochaKey: v }))} placeholder="BOCHA_API_KEY" isSensitive />
-                <p className="text-[11px] text-muted-foreground/70">{t('settings:external_search.bocha_key_desc')}</p>
-              </div>
-              <div className="px-3 py-2 bg-success/5 rounded-md">
-                <p className="text-[11px] text-muted-foreground/70">
-                  {t('settings:external_search.bocha_desc')}
-                </p>
-              </div>
-              <a 
-                href="https://open.bochaai.com/" 
-                target="_blank" 
-                rel="noopener noreferrer" 
-                className="inline-flex items-center gap-1.5 text-xs text-primary hover:opacity-80"
-              >
-                <ExternalLink className="w-3 h-3" />
-                {t('settings:external_search.bocha_apply')}
-              </a>
-              {providerStrategies && <StrategyEditor id="bocha" />}
-              {renderEngineFooter('bocha', !!config.webSearchBochaKey)}
-            </div>
-          }
-        />
-      </div>
-
-      {/* 全局请求超时 */}
-      <div className="space-y-px mt-4">
+        
         <SettingRow
           title={t('settings:field_labels.request_timeout')}
           description={t('settings:sections.timeout_desc')}
@@ -653,16 +612,7 @@ export const EngineSettingsSection: React.FC<{
         </SettingRow>
       </div>
 
-      {/* 保存策略按钮 */}
-      {providerStrategies && (
-        <div className="flex justify-end pt-4">
-          <NotionButton size="sm" variant="primary" onClick={handleSaveProviderStrategies} disabled={providerSaving}>
-            {providerSaving
-              ? t('common:actions.saving', '保存中…')
-              : t('settings:advanced_search.providers.save_button')}
-          </NotionButton>
-        </div>
-      )}
+      </div>
     </div>
   );
 };

@@ -150,7 +150,7 @@ export const TimedPracticeMode: React.FC<TimedPracticeModeProps> = ({
   // 配置界面
   if (!isStarted) {
     return (
-      <Card className={cn('', className)}>
+      <Card className={cn('bg-transparent border-transparent shadow-none', className)}>
         <CardHeader className="pb-4">
           <CardTitle className="flex items-center gap-2 text-lg">
             <Timer className="w-5 h-5 text-sky-500" />

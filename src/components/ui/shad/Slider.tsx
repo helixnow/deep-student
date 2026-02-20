@@ -187,8 +187,8 @@ export const Slider = React.forwardRef<HTMLDivElement, SliderProps>(
           aria-valuenow={currentValue[0]}
           aria-disabled={disabled}
           className={cn(
-            'absolute block h-3 w-3 rounded-full bg-primary shadow-sm transition-colors',
-            'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/30',
+            'absolute block h-3 w-3 rounded-full bg-primary shadow-none transition-colors',
+            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20',
             'hover:scale-110',
             disabled ? 'cursor-not-allowed' : 'cursor-grab active:cursor-grabbing'
           )}

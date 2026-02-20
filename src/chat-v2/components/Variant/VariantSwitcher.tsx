@@ -163,7 +163,7 @@ export const VariantSwitcher: React.FC<VariantSwitcherProps> = ({
             className={cn(
               'gap-1.5',
               isActive
-                ? 'bg-background text-foreground shadow-sm'
+                ? 'bg-background text-foreground shadow-none'
                 : isDisabled
                 ? 'text-muted-foreground/50 cursor-not-allowed'
                 : 'text-muted-foreground hover:text-foreground hover:bg-background/50'

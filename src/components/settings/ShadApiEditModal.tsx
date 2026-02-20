@@ -1195,7 +1195,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                   {/* DeepSeek 专用面板 */}
                   {formData.modelAdapter === 'deepseek' && (
                     <div className="space-y-6">
-                      <Card className="border-border/40">
+                      <Card className="border-border/40 bg-transparent shadow-none">
                         <CardHeader className="pb-3">
                           <CardTitle className="text-sm flex items-center gap-2">
                             <Brain className="h-4 w-4 text-primary" />
@@ -1234,7 +1234,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                   {/* Qwen 专用面板 */}
                   {formData.modelAdapter === 'qwen' && (
                     <div className="space-y-6">
-                      <Card className="border-border/40">
+                      <Card className="border-border/40 bg-transparent shadow-none">
                         <CardHeader className="pb-3">
                           <CardTitle className="text-sm flex items-center gap-2">
                             <Brain className="h-4 w-4 text-primary" />
@@ -1309,7 +1309,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                   {/* Grok 专用面板 */}
                   {formData.modelAdapter === 'grok' && (
                     <div className="space-y-6">
-                      <Card className="border-border/40">
+                      <Card className="border-border/40 bg-transparent shadow-none">
                         <CardHeader className="pb-3">
                           <CardTitle className="text-sm flex items-center gap-2">
                             <Zap className="h-4 w-4 text-primary" />
@@ -1354,7 +1354,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                   {/* Doubao 专用面板 */}
                   {formData.modelAdapter === 'doubao' && (
                     <div className="space-y-6">
-                      <Card className="border-border/40">
+                      <Card className="border-border/40 bg-transparent shadow-none">
                         <CardHeader className="pb-3">
                           <CardTitle className="text-sm flex items-center gap-2">
                             <Brain className="h-4 w-4 text-primary" />
@@ -1397,7 +1397,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                   {/* Zhipu 专用面板 */}
                   {formData.modelAdapter === 'zhipu' && (
                     <div className="space-y-6">
-                      <Card className="border-border/40">
+                      <Card className="border-border/40 bg-transparent shadow-none">
                         <CardHeader className="pb-3">
                           <CardTitle className="text-sm flex items-center gap-2">
                             <Brain className="h-4 w-4 text-primary" />
@@ -1444,7 +1444,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                   {/* Moonshot/Kimi 专用面板 */}
                   {formData.modelAdapter === 'moonshot' && (
                     <div className="space-y-6">
-                      <Card className="border-border/40">
+                      <Card className="border-border/40 bg-transparent shadow-none">
                         <CardHeader className="pb-3">
                           <CardTitle className="text-sm flex items-center gap-2">
                             <Brain className="h-4 w-4 text-primary" />
@@ -1470,7 +1470,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                   {/* MiniMax 专用面板 */}
                   {formData.modelAdapter === 'minimax' && (
                     <div className="space-y-6">
-                      <Card className="border-border/40">
+                      <Card className="border-border/40 bg-transparent shadow-none">
                         <CardHeader className="pb-3">
                           <CardTitle className="text-sm flex items-center gap-2">
                             <Brain className="h-4 w-4 text-primary" />

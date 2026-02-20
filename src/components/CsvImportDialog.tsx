@@ -553,10 +553,10 @@ export const CsvImportDialog: React.FC<CsvImportDialogProps> = ({
           <div
             key={strategyKey}
             className={cn(
-              'flex items-start gap-3 p-4 rounded-lg border cursor-pointer transition-colors',
+              'flex items-start gap-3 p-4 rounded-lg border cursor-pointer transition-colors bg-transparent',
               duplicateStrategy === strategyKey
-                ? 'border-primary bg-primary/5'
-                : 'border-border hover:bg-muted/50'
+                ? 'border-primary bg-primary/5 ring-1 ring-primary/30'
+                : 'border-border/60 hover:bg-muted/30'
             )}
             onClick={() => setDuplicateStrategy(strategyKey)}
           >

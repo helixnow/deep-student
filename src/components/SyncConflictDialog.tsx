@@ -472,20 +472,29 @@ export function SyncConflictDialog({
                   <div className="flex items-center gap-4">
                     {(['keep_local', 'keep_remote', 'keep_newer', 'merge'] as const).map((strategy) => (
                       <label key={strategy} className="flex items-center gap-1.5 cursor-pointer">
-                        <input
-                          type="radio"
-                          name="batch-strategy"
-                          value={strategy}
-                          checked={batchStrategy === strategy}
-                          onChange={() => setBatchStrategy(strategy)}
-                          className="accent-primary h-4 w-4"
-                        />
-                        <span className="text-sm">
-                          {strategy === 'keep_local' ? t('keepLocal', '保留本地')
-                            : strategy === 'keep_remote' ? t('keepRemote', '保留远程')
-                            : strategy === 'keep_newer' ? t('keepNewer', '保留较新')
-                            : t('merge', '智能合并')}
-                        </span>
+                        <Card
+                          key={strategy}
+                          className={`cursor-pointer transition-all bg-transparent ${
+                            batchStrategy === strategy
+                              ? 'border-primary bg-primary/5 ring-1 ring-primary/30'
+                              : 'hover:border-border/60 hover:bg-muted/30 border-muted'
+                          }`}
+                        >
+                          <input
+                            type="radio"
+                            name="batch-strategy"
+                            value={strategy}
+                            checked={batchStrategy === strategy}
+                            onChange={() => setBatchStrategy(strategy)}
+                            className="accent-primary h-4 w-4"
+                          />
+                          <span className="text-sm">
+                            {strategy === 'keep_local' ? t('keepLocal', '保留本地')
+                              : strategy === 'keep_remote' ? t('keepRemote', '保留远程')
+                              : strategy === 'keep_newer' ? t('keepNewer', '保留较新')
+                              : t('merge', '智能合并')}
+                          </span>
+                        </Card>
                       </label>
                     ))}
                   </div>

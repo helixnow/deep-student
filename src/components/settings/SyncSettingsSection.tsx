@@ -445,7 +445,7 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
 
           {/* 同步进度显示 */}
           {syncProgress && (
-            <Card className="border-dashed">
+            <Card className="border-border/40 bg-transparent shadow-none">
               <CardContent className="pt-4">
                 <div className="space-y-3">
                   {/* 阶段指示器 */}

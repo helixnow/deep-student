@@ -664,8 +664,6 @@ interface QuestionBankState {
   updateSyncConfig: (examId: string, config: SyncConfig) => Promise<void>;
   
   // Navigation
-  goToNextQuestion: () => void;
-  goToPrevQuestion: () => void;
   goToQuestion: (index: number) => void;
   
   // Selectors
@@ -1523,50 +1521,6 @@ export const useQuestionBankStore = create<QuestionBankState>()(
       },
 
       // Navigation — uses questionOrder[] to guarantee stable server ordering
-      goToNextQuestion: () => {
-        const { questions, questionOrder, currentQuestionId, practiceMode } = get();
-        
-        if (questionOrder.length === 0) return;
-        
-        const currentIndex = currentQuestionId ? questionOrder.indexOf(currentQuestionId) : -1;
-        let nextIndex: number;
-        
-        switch (practiceMode) {
-          case 'random': {
-            if (questionOrder.length <= 1) { nextIndex = 0; break; }
-            let rand;
-            do { rand = Math.floor(Math.random() * questionOrder.length); } while (rand === currentIndex);
-            nextIndex = rand;
-            break;
-          }
-          case 'review_first': {
-            const reviewIds = questionOrder.filter((id) => questions.get(id)?.status === 'review');
-            if (reviewIds.length > 0) {
-              const randomReviewId = reviewIds[Math.floor(Math.random() * reviewIds.length)];
-              set({ currentQuestionId: randomReviewId });
-              return;
-            }
-            nextIndex = (currentIndex + 1) % questionOrder.length;
-            break;
-          }
-          default:
-            nextIndex = (currentIndex + 1) % questionOrder.length;
-        }
-        
-        set({ currentQuestionId: questionOrder[nextIndex] || null });
-      },
-
-      goToPrevQuestion: () => {
-        const { questionOrder, currentQuestionId } = get();
-        
-        if (questionOrder.length === 0) return;
-        
-        const currentIndex = currentQuestionId ? questionOrder.indexOf(currentQuestionId) : -1;
-        const prevIndex = currentIndex <= 0 ? questionOrder.length - 1 : currentIndex - 1;
-        
-        set({ currentQuestionId: questionOrder[prevIndex] || null });
-      },
-
       goToQuestion: (index) => {
         const { questionOrder } = get();
         if (index >= 0 && index < questionOrder.length) {

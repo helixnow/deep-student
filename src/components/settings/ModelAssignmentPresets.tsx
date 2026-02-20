@@ -323,7 +323,7 @@ export const ModelAssignmentPresets: React.FC<ModelAssignmentPresetsProps> = ({
   };
 
   return (
-    <Card className="p-4 text-left" data-tour-id="settings-model-presets">
+    <Card className="border-border/40 bg-transparent shadow-none p-4 text-left" data-tour-id="settings-model-presets">
       <CardHeader className="p-0 mb-3 w-full text-left">
         <div className="flex items-center gap-2">
           <SettingsIcon className={MODEL_ASSIGNMENT_ICON_CLASS} />

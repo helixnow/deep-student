@@ -167,7 +167,7 @@ export const PaperGenerator: React.FC<PaperGeneratorProps> = ({
   if (showPreview && generatedPaper) {
     return (
       <div className={cn('space-y-4', className)}>
-        <Card>
+        <Card className="bg-transparent border-transparent shadow-none">
           <CardHeader className="pb-4">
             <div className="flex items-center justify-between">
               <CardTitle className="flex items-center gap-2 text-lg">

@@ -143,7 +143,7 @@ export const DailyPracticeMode: React.FC<DailyPracticeModeProps> = ({
   return (
     <div className={cn('space-y-4', className)}>
       {/* 每日一练卡片 */}
-      <Card>
+      <Card className="bg-transparent border-transparent shadow-none">
         <CardHeader className="pb-4">
           <CardTitle className="flex items-center gap-2 text-lg">
             <CalendarDays className="w-5 h-5 text-sky-500" />
@@ -281,7 +281,7 @@ export const DailyPracticeMode: React.FC<DailyPracticeModeProps> = ({
       </Card>
       
       {/* 打卡日历 */}
-      <Card>
+      <Card className="bg-transparent border-transparent shadow-none">
         <CardHeader className="pb-2">
           <div className="flex items-center justify-between">
             <CardTitle className="text-base">{t('daily.calendar', '打卡日历')}</CardTitle>

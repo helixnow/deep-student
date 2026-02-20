@@ -45,7 +45,7 @@ function cleanDomainList(raw: string): string {
     .join(', ');
 }
 
-// 内部组件：设置行 - Notion 风格（无 icon，简洁）
+// 内部组件：设置行 - Notion 风格（无 icon，与 ModelAssignmentRow 保持一致的结构）
 const SettingRow = ({
   title,
   description,
@@ -57,8 +57,8 @@ const SettingRow = ({
   children: React.ReactNode;
   className?: string;
 }) => (
-  <div className={cn("group flex flex-col sm:flex-row sm:items-start gap-2 py-2.5 px-1 hover:bg-muted/30 rounded transition-colors", className)}>
-    <div className="flex-1 min-w-0 pt-1.5">
+  <div className={cn("group flex flex-col sm:flex-row sm:items-start gap-2 py-2.5 px-1 hover:bg-muted/30 rounded transition-colors overflow-hidden", className)}>
+    <div className="flex-1 min-w-0 pt-1.5 sm:min-w-[200px]">
       <h3 className="text-sm text-foreground/90 leading-tight">{title}</h3>
       {description && (
         <p className="text-[11px] text-muted-foreground/70 leading-relaxed mt-0.5 line-clamp-2">
@@ -66,7 +66,7 @@ const SettingRow = ({
         </p>
       )}
     </div>
-    <div className="flex-shrink-0">
+    <div className="w-full sm:w-[280px] flex-shrink-0 [&>div]:w-full [&_button]:w-full flex items-center justify-end sm:justify-start">
       {children}
     </div>
   </div>
@@ -98,8 +98,7 @@ export const ExternalSearchTab: React.FC<ExternalSearchTabProps> = ({
         hideHeader
       >
         {/* 1. 搜索引擎配置 */}
-        <div>
-          <GroupTitle title={t('settings:groups.search_engines')} />
+        <div className="mt-2">
           <EngineSettingsSection config={config} setConfig={setConfig} />
         </div>
 

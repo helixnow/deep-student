@@ -146,7 +146,7 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
     const score = mockExamScoreCard;
     
     return (
-      <Card className={cn('', className)}>
+      <Card className={cn('bg-transparent border-transparent shadow-none', className)}>
         <CardHeader className="text-center pb-4">
           <div className="flex justify-center mb-4">
             <div className="p-4 rounded-full bg-gradient-to-br from-amber-400 to-orange-500">
@@ -246,7 +246,7 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
   // 配置界面
   if (!mockExamSession) {
     return (
-      <Card className={cn('', className)}>
+      <Card className={cn('bg-transparent border-transparent shadow-none', className)}>
         <CardHeader className="pb-4">
           <CardTitle className="flex items-center gap-2 text-lg">
             <FileText className="w-5 h-5 text-sky-500" />
@@ -367,7 +367,7 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
   
   return (
     <>
-      <Card className={cn('', className)}>
+      <Card className={cn('bg-transparent border-transparent shadow-none', className)}>
         <CardContent className="pt-6 space-y-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">

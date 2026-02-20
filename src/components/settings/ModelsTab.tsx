@@ -46,7 +46,7 @@ interface ModelsTabProps {
   saveSingleAssignmentField: (field: string, value: string | null) => Promise<any>;
 }
 
-// 内部组件：模型分配行 - Notion 风格（无 icon，简洁）
+// 内部组件：设置行 - Notion 风格（无 icon，简洁）
 const ModelAssignmentRow = ({
   title,
   description,
@@ -78,7 +78,7 @@ const ModelAssignmentRow = ({
       </p>
     </div>
     
-    <div className="w-full sm:w-[280px] flex-shrink-0 [&>div]:w-full [&_button]:w-full">
+    <div className="w-full sm:w-[280px] flex-shrink-0 [&>div]:w-full [&_button]:w-full flex items-center justify-end sm:justify-start">
       <UnifiedModelSelector
         models={models}
         value={value || ''}
@@ -93,7 +93,7 @@ const ModelAssignmentRow = ({
         variant="full"
         allowEmpty
         placeholder={placeholder}
-        className="bg-transparent hover:bg-muted/20 transition-colors"
+        className="w-full justify-between h-9 bg-transparent hover:bg-muted/20 transition-colors border border-border/30 hover:border-border/50"
         popoverClassName="w-[280px]"
       />
       {models.length === 0 && noModelsMessage && (

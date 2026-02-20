@@ -258,7 +258,7 @@ export const PracticeLauncher: React.FC<PracticeLauncherProps> = ({
                 </div>
                 <div>
                   <div className="text-sm font-medium">{label}</div>
-                  <div className="text-xs text-muted-foreground mt-0.5">{desc}</div>
+                  <div className="text-[11px] text-muted-foreground mt-0.5">{desc}</div>
                 </div>
                 {/* 错题数量 badge */}
                 {key === 'review_first' && stats && stats.review > 0 && (

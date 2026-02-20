@@ -2074,9 +2074,9 @@ export function McpToolsSection({
         )}
 
         {/* 操作栏 */}
-        <div className="flex items-center justify-between">
-          <h3 className="text-base font-medium text-foreground">{t('settings:mcp_server_list.server_list')}</h3>
-          <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h3 className="text-base font-medium text-foreground flex-shrink-0">{t('settings:mcp_server_list.server_list')}</h3>
+          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
             <ActionMenu
               onReconnect={onReconnect}
               onRefresh={onRefreshRegistry}

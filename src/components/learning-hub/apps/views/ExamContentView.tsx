@@ -26,8 +26,9 @@ const QuestionBankEditor = lazy(() => import('@/components/QuestionBankEditor'))
 const QuestionBankListView = lazy(() => import('@/components/QuestionBankListView'));
 const ReviewQuestionsView = lazy(() => import('@/components/ReviewQuestionsView'));
 const TagNavigationView = lazy(() => import('@/components/TagNavigationView'));
+const PracticeLauncher = lazy(() => import('@/components/practice/PracticeLauncher'));
 
-type ViewMode = 'list' | 'manage' | 'practice' | 'upload' | 'review' | 'tags';
+type ViewMode = 'list' | 'manage' | 'practice' | 'upload' | 'review' | 'tags' | 'launcher';
 
 const MODE_CONFIG: Record<PracticeMode, { labelKey: string; icon: React.ElementType; descKey: string }> = {
   sequential: { labelKey: 'learningHub:exam.mode.sequential', icon: ListOrdered, descKey: 'learningHub:exam.mode.sequentialDesc' },
@@ -77,6 +78,12 @@ const ExamContentView: React.FC<ContentViewProps> = ({
   const focusMode = useQuestionBankStore(state => state.focusMode);
   const setFocusMode = useQuestionBankStore(state => state.setFocusMode);
   const checkSyncStatus = useQuestionBankStore(state => state.checkSyncStatus);
+
+  // 高级练习模式会话数据（全局 store）
+  const mockExamSession = useQuestionBankStore(state => state.mockExamSession);
+  const timedSession = useQuestionBankStore(state => state.timedSession);
+  const dailyPractice = useQuestionBankStore(state => state.dailyPractice);
+  const generatedPaper = useQuestionBankStore(state => state.generatedPaper);
 
   // UI 状态（保留在组件内）
   const [sessionDetail, setSessionDetail] = useState<ExamSheetSessionDetail | null>(null);
@@ -205,6 +212,70 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     navigate(index);
     setViewMode('practice');
   }, [navigate]);
+
+  // 高级模式题目过滤：根据 session 的 question_ids 过滤出子集
+  const practiceQuestions = useMemo(() => {
+    switch (practiceMode) {
+      case 'mock_exam': {
+        if (!mockExamSession?.question_ids?.length) return questions;
+        const idSet = new Set(mockExamSession.question_ids);
+        return questions.filter(q => idSet.has(q.id));
+      }
+      case 'timed': {
+        if (!timedSession?.question_ids?.length) return questions;
+        const idSet = new Set(timedSession.question_ids);
+        return questions.filter(q => idSet.has(q.id));
+      }
+      case 'daily': {
+        if (!dailyPractice?.question_ids?.length) return questions;
+        const idSet = new Set(dailyPractice.question_ids);
+        return questions.filter(q => idSet.has(q.id));
+      }
+      case 'paper': {
+        if (!generatedPaper?.questions?.length) return questions;
+        const idSet = new Set(generatedPaper.questions.map(q => q.id));
+        return questions.filter(q => idSet.has(q.id));
+      }
+      default:
+        return questions;
+    }
+  }, [practiceMode, questions, mockExamSession, timedSession, dailyPractice, generatedPaper]);
+
+  // 高级模式下 currentIndex 需要映射到过滤后的子集
+  const practiceCurrentIndex = useMemo(() => {
+    if (practiceQuestions === questions) return currentIndex;
+    // 找到当前题目在过滤子集中的位置
+    const currentQ = questions[currentIndex];
+    if (!currentQ) return 0;
+    const idx = practiceQuestions.findIndex(q => q.id === currentQ.id);
+    return idx >= 0 ? idx : 0;
+  }, [practiceQuestions, questions, currentIndex]);
+
+  // PracticeLauncher 的 onStartPractice 回调
+  const handleStartPractice = useCallback((mode: PracticeMode, tag?: string) => {
+    setStorePracticeMode(mode);
+    if (tag) setSelectedTag(tag);
+    // 对于高级模式，navigate 到过滤子集的第一题
+    if (['mock_exam', 'timed', 'daily', 'paper'].includes(mode)) {
+      // 高级模式的 question_ids 已经在全局 store 中设置好了
+      // 找到第一个匹配的题目在全量 questions 中的索引
+      let sessionQuestionIds: string[] = [];
+      if (mode === 'mock_exam') sessionQuestionIds = mockExamSession?.question_ids || [];
+      else if (mode === 'timed') sessionQuestionIds = timedSession?.question_ids || [];
+      else if (mode === 'daily') sessionQuestionIds = dailyPractice?.question_ids || [];
+      else if (mode === 'paper') sessionQuestionIds = generatedPaper?.questions?.map(q => q.id) || [];
+      
+      if (sessionQuestionIds.length > 0) {
+        const firstId = sessionQuestionIds[0];
+        const idx = questions.findIndex(q => q.id === firstId);
+        if (idx >= 0) navigate(idx);
+      }
+    } else {
+      const nextIdx = getNextQuestionIndex(questions, currentIndex, mode, tag);
+      navigate(nextIdx);
+    }
+    setViewMode('practice');
+  }, [questions, currentIndex, navigate, setStorePracticeMode, mockExamSession, timedSession, dailyPractice, generatedPaper]);
 
   const refreshQuestionsAndStats = useCallback(async () => {
     await Promise.all([loadQuestions(), refreshStats()]);
@@ -409,11 +480,11 @@ const ExamContentView: React.FC<ContentViewProps> = ({
             <NotionButton
               variant="ghost"
               size="sm"
-              onClick={() => setViewMode('practice')}
+              onClick={() => setViewMode('launcher')}
               disabled={!hasQuestions}
               className={cn(
                 'px-2.5 sm:px-3 py-1.5 text-sm rounded-md transition-colors whitespace-nowrap flex-shrink-0',
-                viewMode === 'practice' 
+                (viewMode === 'practice' || viewMode === 'launcher')
                   ? 'bg-foreground text-background font-medium' 
                   : 'text-muted-foreground hover:text-foreground hover:bg-muted/50',
                 !hasQuestions && 'opacity-50 cursor-not-allowed'
@@ -458,7 +529,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
               </NotionButton>
             )}
             
-            {viewMode === 'practice' && hasQuestions && (
+            {(viewMode === 'practice') && hasQuestions && (
               <>
                 <div className="w-px h-4 bg-border/60 mx-1 sm:mx-2 flex-shrink-0" />
                 <AppSelect value={practiceMode} onValueChange={(v) => handleModeChange(v as PracticeMode)}
@@ -520,7 +591,15 @@ const ExamContentView: React.FC<ContentViewProps> = ({
             </div>
           }
         >
-          {viewMode === 'tags' && hasQuestions ? (
+          {viewMode === 'launcher' && hasQuestions ? (
+            /* 练习启动页 — 选择练习模式 */
+            <PracticeLauncher
+              examId={sessionId}
+              stats={stats}
+              questions={questions}
+              onStartPractice={handleStartPractice}
+            />
+          ) : viewMode === 'tags' && hasQuestions ? (
             /* 知识点导航视图 */
             <TagNavigationView
               questions={questions}
@@ -559,16 +638,26 @@ const ExamContentView: React.FC<ContentViewProps> = ({
           ) : viewMode === 'practice' && hasQuestions ? (
             <QuestionBankEditor
               sessionId={sessionId}
-              questions={questions}
+              questions={practiceQuestions}
               stats={stats}
-              currentIndex={currentIndex}
+              currentIndex={practiceCurrentIndex}
               practiceMode={practiceMode}
               selectedTag={selectedTag}
               focusMode={focusMode}
               onFocusModeChange={setFocusMode}
               isActive={isActive}
               onSubmitAnswer={readOnly ? undefined : handleSubmitAnswer}
-              onNavigate={handleNavigate}
+              onNavigate={(index: number) => {
+                // 将过滤子集的 index 映射回全量 questions 的 index
+                if (practiceQuestions !== questions) {
+                  const targetQ = practiceQuestions[index];
+                  if (targetQ) {
+                    const realIdx = questions.findIndex(q => q.id === targetQ.id);
+                    if (realIdx >= 0) { handleNavigate(realIdx); return; }
+                  }
+                }
+                handleNavigate(index);
+              }}
               onModeChange={handleModeChange}
               onMarkCorrect={readOnly ? undefined : handleMarkCorrect}
               onToggleFavorite={readOnly ? undefined : (id, _isFavorite) => handleToggleFavorite(id)}
@@ -577,7 +666,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
                 await handleUpdateQuestion(questionId, { userNote: note });
               }}
               onDeleteQuestion={readOnly ? undefined : handleDeleteQuestion}
-              onBack={() => setViewMode('list')}
+              onBack={() => setViewMode('launcher')}
             />
           ) : (
             /* 列表视图 - 内联编辑 */
