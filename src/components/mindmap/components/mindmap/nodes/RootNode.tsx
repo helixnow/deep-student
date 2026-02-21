@@ -96,11 +96,12 @@ export const RootNode: React.FC<NodeProps<Node<RootNodeData>>> = ({
   const rootTheme = theme?.node?.root;
   
   // 自定义样式（来自 data.style）优先级高于主题样式
-  const customStyle = {
-    backgroundColor: data.style?.bgColor,
+  const customStyle: React.CSSProperties = {
     color: data.style?.textColor,
     fontWeight: data.style?.fontWeight,
-    fontSize: data.style?.fontSize ? `${data.style.fontSize}px` : undefined,
+    fontStyle: data.style?.fontStyle === 'italic' ? 'italic' : undefined,
+    textDecoration: data.style?.textDecoration && data.style.textDecoration !== 'none' ? data.style.textDecoration : undefined,
+    fontSize: data.style?.headingLevel === 'h1' ? '22px' : data.style?.headingLevel === 'h2' ? '18px' : data.style?.headingLevel === 'h3' ? '16px' : data.style?.fontSize ? `${data.style.fontSize}px` : undefined,
   };
 
   // 合并主题样式和自定义样式，自定义样式优先级更高
@@ -138,6 +139,8 @@ export const RootNode: React.FC<NodeProps<Node<RootNodeData>>> = ({
         text={data.label}
         note={data.note}
         refs={data.refs}
+        icon={data.style?.icon}
+        bgColor={data.style?.bgColor}
         isRoot
         isCompleted={data.completed}
         isEditing={isEditing}

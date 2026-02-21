@@ -8,6 +8,15 @@ import {
   CheckCircle2,
   Circle,
   Bold,
+  Italic,
+  Underline,
+  Strikethrough,
+  Heading1,
+  Heading2,
+  Heading3,
+  Type,
+  Smile,
+  Link,
   Palette,
   Highlighter,
   ChevronRight,
@@ -210,12 +219,6 @@ export const CanvasContextMenu: React.FC<CanvasContextMenuProps> = ({
         />
       )}
       <MenuItem
-        icon={<Pencil className="w-4 h-4" />}
-        label={t('contextMenu.edit')}
-        shortcut="F2"
-        onClick={() => exec(() => setEditingNodeId(nodeId))}
-      />
-      <MenuItem
         icon={<StickyNote className="w-4 h-4" />}
         label={node.note ? t('contextMenu.editNote') : t('contextMenu.addNote')}
         shortcut="⇧Enter"
@@ -242,18 +245,34 @@ export const CanvasContextMenu: React.FC<CanvasContextMenuProps> = ({
         active={node.completed}
         onClick={() => exec(() => updateNode(nodeId, { completed: !node.completed }))}
       />
-      <MenuItem
-        icon={<Bold className="w-4 h-4" />}
-        label={t('contextMenu.bold')}
-        shortcut="⌘B"
-        active={node.style?.fontWeight === 'bold'}
-        onClick={() => exec(() => updateNode(nodeId, {
-          style: {
-            ...node.style,
-            fontWeight: node.style?.fontWeight === 'bold' ? undefined : 'bold',
-          },
-        }))}
-      />
+      {/* B / I / U / S | H1 / H2 / H3 / T */}
+      <div className="flex items-center gap-1 px-2 py-1">
+        {[
+          { key: 'bold', icon: Bold, prop: 'fontWeight' as const, val: 'bold', cur: node.style?.fontWeight },
+          { key: 'italic', icon: Italic, prop: 'fontStyle' as const, val: 'italic', cur: node.style?.fontStyle },
+          { key: 'underline', icon: Underline, prop: 'textDecoration' as const, val: 'underline', cur: node.style?.textDecoration },
+          { key: 'strikethrough', icon: Strikethrough, prop: 'textDecoration' as const, val: 'line-through', cur: node.style?.textDecoration },
+        ].map(({ key, icon: Icon, prop, val, cur }) => (
+          <NotionButton variant="ghost" key={key}
+            className={cn("w-7 h-7 flex items-center justify-center rounded", cur === val && "bg-accent")}
+            onClick={() => exec(() => updateNode(nodeId, { style: { ...node.style, [prop]: cur === val ? undefined : val } }))}
+            title={t(`contextMenu.${key}`)}
+          ><Icon className="w-4 h-4" /></NotionButton>
+        ))}
+        <div className="w-px h-4 bg-border mx-0.5" />
+        {([['h1', Heading1], ['h2', Heading2], ['h3', Heading3]] as const).map(([level, Icon]) => (
+          <NotionButton variant="ghost" key={level}
+            className={cn("w-7 h-7 flex items-center justify-center rounded", node.style?.headingLevel === level && "bg-accent")}
+            onClick={() => exec(() => updateNode(nodeId, { style: { ...node.style, headingLevel: node.style?.headingLevel === level ? undefined : level } }))}
+            title={t(`contextMenu.${level === 'h1' ? 'heading1' : level === 'h2' ? 'heading2' : 'heading3'}`)}
+          ><Icon className="w-4 h-4" /></NotionButton>
+        ))}
+        <NotionButton variant="ghost"
+          className={cn("w-7 h-7 flex items-center justify-center rounded", !node.style?.headingLevel && "bg-accent")}
+          onClick={() => exec(() => updateNode(nodeId, { style: { ...node.style, headingLevel: undefined } }))}
+          title={t('contextMenu.normalText')}
+        ><Type className="w-4 h-4" /></NotionButton>
+      </div>
       <div className="flex items-center gap-2 px-2 pt-1.5 pb-0.5 text-[13px] text-muted-foreground select-none">
         <Palette className="w-4 h-4 flex-shrink-0" />
         <span>{t('contextMenu.textColor')}</span>

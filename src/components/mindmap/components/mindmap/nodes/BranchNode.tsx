@@ -171,11 +171,12 @@ export const BranchNode: React.FC<NodeProps<Node<BranchNodeData>>> = ({
   const branchColor = data.branchColor;
   
   // 自定义样式（来自 data.style）优先级高于主题样式
-  const customStyle = {
-    backgroundColor: data.style?.bgColor,
+  const customStyle: React.CSSProperties = {
     color: data.style?.textColor,
     fontWeight: data.style?.fontWeight,
-    fontSize: data.style?.fontSize ? `${data.style.fontSize}px` : undefined,
+    fontStyle: data.style?.fontStyle === 'italic' ? 'italic' : undefined,
+    textDecoration: data.style?.textDecoration && data.style.textDecoration !== 'none' ? data.style.textDecoration : undefined,
+    fontSize: data.style?.headingLevel === 'h1' ? '22px' : data.style?.headingLevel === 'h2' ? '18px' : data.style?.headingLevel === 'h3' ? '16px' : data.style?.fontSize ? `${data.style.fontSize}px` : undefined,
   };
 
   // 合并主题样式和自定义样式
@@ -186,15 +187,12 @@ export const BranchNode: React.FC<NodeProps<Node<BranchNodeData>>> = ({
     fontSize: nodeTheme?.fontSize ? `${nodeTheme.fontSize}px` : undefined,
     // 自定义样式优先级更高
     ...customStyle,
-    // 仅在没有自定义背景色时才透明；有高亮色时使用半透明背景
-    backgroundColor: data.style?.bgColor ? `${data.style.bgColor}40` : 'transparent',
     border: 'none',
     boxShadow: 'none',
     padding: '2px 4px', // 紧凑一点
-    // 如果有彩虹分支色，覆盖底边颜色
-    borderBottomColor: branchColor,
+    // 如果有彩虹分支色，覆盖底边颜色强制声明内联 borderBottom，以避免部分导出引擎丢失 CSS 中的简写和 !important
+    borderBottom: `1.5px solid ${branchColor || 'var(--mm-border)'}`,
   } : {
-    backgroundColor: nodeTheme?.background || 'var(--mm-bg-elevated)',
     color: nodeTheme?.foreground || 'var(--mm-text)',
     border: nodeTheme?.border || '1px solid var(--mm-border)',
     borderRadius: nodeTheme?.borderRadius ? `${nodeTheme.borderRadius}px` : '4px',
@@ -267,6 +265,7 @@ export const BranchNode: React.FC<NodeProps<Node<BranchNodeData>>> = ({
             aria-label={isCollapsed ? t('actions.expand') : t('actions.collapse')}
             className={cn(
               "mm-collapse-btn w-5 h-5 shadow-sm border border-[var(--mm-border)]",
+              isCollapsed && "is-collapsed",
               isCollapsed 
                 ? "bg-[var(--mm-bg-elevated)] hover:bg-[var(--mm-bg-hover)]" 
                 : "bg-transparent hover:bg-[var(--mm-bg-hover)] border-transparent hover:border-[var(--mm-border)]"
@@ -294,6 +293,8 @@ export const BranchNode: React.FC<NodeProps<Node<BranchNodeData>>> = ({
           text={data.label}
           note={data.note}
           refs={data.refs}
+          bgColor={data.style?.bgColor || (nodeTheme?.background || 'var(--mm-bg-elevated)')}
+          icon={data.style?.icon}
           isCompleted={data.completed}
           isEditing={isEditing}
           isEditingNote={isEditingNote}

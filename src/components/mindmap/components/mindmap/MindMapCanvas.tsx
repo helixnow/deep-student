@@ -231,7 +231,7 @@ const MindMapCanvasInner: React.FC = () => {
   }, [edgeType]);
 
   const styledEdges = useMemo(() => {
-    if (DISABLE_HOVER_BLUR_FACTORS) {
+    if (DISABLE_HOVER_BLUR_FACTORS || isExporting) {
       return edges.map(edge => ({
         ...edge,
         style: {
@@ -537,7 +537,7 @@ const MindMapCanvasInner: React.FC = () => {
   }, [fitView]);
 
   return (
-    <div className={`w-full h-full bg-[var(--mm-bg)] ${DISABLE_HOVER_BLUR_FACTORS ? 'mm-blur-safety-mode' : ''}`}>
+    <div className={`w-full h-full overflow-hidden bg-[var(--mm-bg)] ${DISABLE_HOVER_BLUR_FACTORS ? 'mm-blur-safety-mode' : ''} ${isExporting ? 'mm-exporting' : ''}`}>
       <ReactFlow
         nodes={nodes}
         edges={styledEdges}

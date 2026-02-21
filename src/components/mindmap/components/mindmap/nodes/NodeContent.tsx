@@ -12,6 +12,8 @@ export interface NodeContentProps {
   text: string;
   note?: string;
   refs?: MindMapNodeRef[];
+  icon?: string;
+  bgColor?: string;
   isRoot?: boolean;
   isCompleted?: boolean;
   isEditing?: boolean;
@@ -36,6 +38,8 @@ export const NodeContent: React.FC<NodeContentProps> = ({
   text,
   note,
   refs,
+  icon,
+  bgColor,
   isRoot = false,
   isCompleted = false,
   isEditing = false,
@@ -175,8 +179,10 @@ export const NodeContent: React.FC<NodeContentProps> = ({
       )}
       onDoubleClick={handleDoubleClick}
     >
-      {/* Text Row */}
-      <div className="relative">
+      {/* Icon + Text Row */}
+      <div className="relative flex items-center gap-1">
+        {icon && <span className="flex-shrink-0 text-base leading-none select-none">{icon}</span>}
+        <div className="relative flex-1 min-w-0">
         {/* Structural Anchor: Maintains layout size based on ORIGINAL text */}
         {!isEditing && reciteMode && blankedRanges && blankedRanges.length > 0 ? (
           <BlankedText
@@ -188,9 +194,10 @@ export const NodeContent: React.FC<NodeContentProps> = ({
             onAddBlank={onAddBlank}
             onRemoveBlank={onRemoveBlank}
             className={cn(
-              "block whitespace-nowrap px-1 min-h-[1.2em]",
+              "inline-block whitespace-nowrap px-1 min-h-[1.2em] rounded-sm",
               isCompleted && "line-through text-[var(--mm-text-muted)]",
             )}
+            style={{ backgroundColor: bgColor ? `${bgColor}85` : undefined }}
           />
         ) : !isEditing && reciteMode ? (
           <BlankedText
@@ -199,19 +206,21 @@ export const NodeContent: React.FC<NodeContentProps> = ({
             reciteMode={reciteMode}
             onAddBlank={onAddBlank}
             className={cn(
-              "block whitespace-nowrap px-1 min-h-[1.2em]",
+              "inline-block whitespace-nowrap px-1 min-h-[1.2em] rounded-sm",
               isCompleted && "line-through text-[var(--mm-text-muted)]",
             )}
+            style={{ backgroundColor: bgColor ? `${bgColor}85` : undefined }}
           />
         ) : (
           <InlineLatex
             text={text || t('node.unnamed')}
             className={cn(
-              "block px-1 min-h-[1.2em] select-none opacity-0",
+              "inline-block px-1 min-h-[1.2em] select-none opacity-0 rounded-sm",
               !containsLatex(text) && "whitespace-nowrap",
               !isEditing && "opacity-100",
               isCompleted && !isEditing && "line-through text-[var(--mm-text-muted)]",
             )}
+            style={{ backgroundColor: bgColor ? `${bgColor}85` : undefined }}
           />
         )}
 
@@ -229,23 +238,24 @@ export const NodeContent: React.FC<NodeContentProps> = ({
 
             {/* Actual Input: Absolute positioning to float over without affecting layout */}
             <TextareaAutosize
-              ref={inputRef as any}
-              value={editValue}
-              onChange={(e) => setEditValue(e.target.value)}
-              onBlur={handleSave}
-              onKeyDown={handleKeyDown as any}
-              onClick={(e) => e.stopPropagation()}
-              style={{
-                width: inputWidth,
-                left: isRoot ? '50%' : '0',
-                transform: isRoot ? 'translateX(-50%)' : 'none',
-                // 确保样式与显示文本完全一致，避免跳动
-                fontFamily: 'inherit',
-                fontSize: 'inherit',
-                fontWeight: 'inherit',
-                lineHeight: 'inherit',
-                letterSpacing: 'inherit',
-              }}
+            ref={inputRef as any}
+            value={editValue}
+            onChange={(e) => setEditValue(e.target.value)}
+            onBlur={handleSave}
+            onKeyDown={handleKeyDown as any}
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: inputWidth,
+              left: isRoot ? '50%' : '0',
+              transform: isRoot ? 'translateX(-50%)' : 'none',
+              // 确保样式与显示文本完全一致，避免跳动
+              fontFamily: 'inherit',
+              fontSize: 'inherit',
+              fontWeight: 'inherit',
+              lineHeight: 'inherit',
+              letterSpacing: 'inherit',
+              backgroundColor: bgColor ? `${bgColor}85` : undefined,
+            }}  
               className={cn(
                 "absolute top-0 h-full resize-none overflow-hidden block",
                 "nopan nodrag",  // 阻止 ReactFlow 拖拽/平移，允许文本选择
@@ -260,6 +270,7 @@ export const NodeContent: React.FC<NodeContentProps> = ({
             />
           </>
         )}
+      </div>
       </div>
 
       {/* Note Row */}

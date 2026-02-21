@@ -319,8 +319,19 @@ export async function exportToImage(
   }
 
   // M-078: 导出前先禁用虚拟化，确保所有节点都被渲染
-  useMindMapStore.getState().setIsExporting(true);
-  useMindMapStore.getState().setExportProgress(10);
+  // 清除选中和焦点状态，确保导出的是纯净的导图，没有高亮框和操作按钮
+  const store = useMindMapStore.getState();
+  const originalSelection = store.selection;
+  const originalFocusedNodeId = store.focusedNodeId;
+  const originalEditingNodeId = store.editingNodeId;
+  const originalEditingNoteNodeId = store.editingNoteNodeId;
+  
+  store.setIsExporting(true);
+  store.setSelection([]);
+  store.setFocusedNodeId(null);
+  store.setEditingNodeId(null);
+  store.setEditingNoteNodeId(null);
+  store.setExportProgress(10);
   
   // 等待所有节点 DOM 渲染并完成尺寸测量（替代固定 500ms 延迟）
   if (rfInstance) {
@@ -400,10 +411,26 @@ export async function exportToImage(
     throw new Error('ReactFlow viewport not found');
   }
 
-  // 保存原始状态（容器尺寸 + viewport transform）
+  // 保存原始状态（容器尺寸、CSS、类名 + viewport transform）
   const originalTransform = viewportEl.style.transform;
-  const originalWidth = reactFlowContainer.style.width;
-  const originalHeight = reactFlowContainer.style.height;
+  const originalCssText = reactFlowContainer.style.cssText;
+  const originalClasses = Array.from(reactFlowContainer.classList);
+
+  // 将外层主题容器的 CSS 变量和关键类名临时下放到 reactFlowContainer
+  // 因为 snapdom 是从 reactFlowContainer 开始克隆，如果不下放会导致导出图中丢失主题变量（如 --mm-border）
+  if (scopeRoot instanceof HTMLElement) {
+    scopeRoot.classList.forEach(cls => {
+      if (cls.includes('theme') || cls === 'dark' || cls.includes('mindmap') || cls === 'mm-exporting') {
+        reactFlowContainer.classList.add(cls);
+      }
+    });
+    for (let i = 0; i < scopeRoot.style.length; i++) {
+      const prop = scopeRoot.style[i];
+      if (prop.startsWith('--')) {
+        reactFlowContainer.style.setProperty(prop, scopeRoot.style.getPropertyValue(prop));
+      }
+    }
+  }
 
   // 临时设置：
   // 1. viewport transform → 使所有节点精确 fit 到 contentWidth x contentHeight 区域
@@ -426,7 +453,7 @@ export async function exportToImage(
       const result = await snapdom(reactFlowContainer, {
         scale: currentScale,
         backgroundColor,
-        embedFonts: format === 'svg',
+        embedFonts: true, // 强制内联字体，确保 PNG 渲染 KaTeX 等外部字体时不丢失
         outerTransforms: true,
         exclude: [
           '.react-flow__background',
@@ -505,11 +532,17 @@ export async function exportToImage(
   } finally {
     // 恢复原始状态
     viewportEl.style.transform = originalTransform;
-    reactFlowContainer.style.width = originalWidth;
-    reactFlowContainer.style.height = originalHeight;
-    // 恢复虚拟化
-    useMindMapStore.getState().setIsExporting(false);
-    useMindMapStore.getState().setExportProgress(0);
+    reactFlowContainer.style.cssText = originalCssText;
+    reactFlowContainer.className = originalClasses.join(' ');
+    
+    // 恢复虚拟化及选中状态
+    const store = useMindMapStore.getState();
+    store.setIsExporting(false);
+    store.setExportProgress(0);
+    store.setSelection(originalSelection);
+    store.setFocusedNodeId(originalFocusedNodeId);
+    store.setEditingNodeId(originalEditingNodeId);
+    store.setEditingNoteNodeId(originalEditingNoteNodeId);
     _exportLock = false;
   }
 

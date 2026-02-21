@@ -32,6 +32,9 @@ export interface NodeStyle {
   textColor?: string;
   fontSize?: number;
   fontWeight?: 'normal' | 'bold';
+  fontStyle?: 'normal' | 'italic';
+  textDecoration?: 'none' | 'underline' | 'line-through';
+  headingLevel?: 'h1' | 'h2' | 'h3';
   icon?: string;
 }
 

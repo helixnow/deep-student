@@ -35,6 +35,16 @@ import {
   MoreHorizontal,
   Trash2,
   Bold,
+  Italic,
+  Underline,
+  Strikethrough,
+  Heading1,
+  Heading2,
+  Heading3,
+  Type,
+  Smile,
+  Link,
+  Link2,
   Pencil,
   CheckCircle2,
   Circle,
@@ -58,6 +68,7 @@ import {
 } from '@/components/ui/app-menu';
 import type { MindMapNode, BlankRange } from '../types';
 import { NodeRefList } from '../components/shared/NodeRefCard';
+import { MindMapResourcePicker } from '../components/mindmap/MindMapResourcePicker';
 import { findNodeById, isDescendantOf } from '../utils/node/find';
 import { BlankedText } from '../components/shared/BlankedText';
 import { InlineLatex } from '../components/shared/InlineLatex';
@@ -65,6 +76,7 @@ import { containsLatex } from '../utils/renderLatex';
 import { QUICK_TEXT_COLORS, QUICK_BG_COLORS } from '../constants';
 import { getAncestors } from '../utils/node/traverse';
 import TextareaAutosize from 'react-textarea-autosize';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 
 const LEVEL_INDENT = 28; // Increased indent for better hierarchy
 const BASE_PADDING = 12;
@@ -118,9 +130,11 @@ const SortableOutlineNode: React.FC<{
   dropPosition: DropPosition;
   activeId: UniqueIdentifier | null;
   projectedLevel?: number | null;
+  isEntering?: boolean;
   onNavigate?: (direction: 'up' | 'down') => void;
   onZoomIn?: (nodeId: string) => void;
-}> = ({ flatNode, isRoot, overId, dropPosition, activeId, projectedLevel, onNavigate, onZoomIn }) => {
+  onOpenResourcePicker?: (nodeId: string) => void;
+}> = ({ flatNode, isRoot, overId, dropPosition, activeId, projectedLevel, isEntering, onNavigate, onZoomIn, onOpenResourcePicker }) => {
   const { t } = useTranslation('mindmap');
   const { node, level, parentId, indexInParent } = flatNode;
   
@@ -379,7 +393,8 @@ const SortableOutlineNode: React.FC<{
         isFocused && "focused",
         isSearchMatch && "search-match",
         isRoot && "root",
-        isDragging && "is-dragging"
+        isDragging && "is-dragging",
+        isEntering && "entering"
       )}
     >
       {/* 缩进参考线 - 常驻弱显示，悬停或焦点路径上加深 */}
@@ -449,11 +464,11 @@ const SortableOutlineNode: React.FC<{
             {...(!reciteMode ? listeners : {})}
             onClick={(e) => {
               e.stopPropagation();
-              setFocusedNodeId(node.id);
-            }}
-            onDoubleClick={(e) => {
-              e.stopPropagation();
-              onZoomIn?.(node.id);
+              if (hasChildren) {
+                onZoomIn?.(node.id);
+              } else {
+                setFocusedNodeId(node.id);
+              }
             }}
             title={t('outline.dragToMove')}
           >
@@ -465,6 +480,11 @@ const SortableOutlineNode: React.FC<{
           </div>
         )}
       </div>
+
+      {/* 节点图标 */}
+      {node.style?.icon && (
+        <span className="flex-shrink-0 text-base leading-none pt-[5px]">{node.style.icon}</span>
+      )}
 
       {/* 内容区域 */}
       <div className="flex-1 flex flex-col min-w-0 pr-2 pl-1.5 justify-center" onClick={() => setFocusedNodeId(node.id)}>
@@ -484,33 +504,13 @@ const SortableOutlineNode: React.FC<{
             )}
             style={{
               color: node.style?.textColor,
-              backgroundColor: node.style?.bgColor ? `${node.style.bgColor}20` : undefined,
               fontWeight: node.style?.fontWeight === 'bold' ? 'bold' : 'normal',
+              fontStyle: node.style?.fontStyle === 'italic' ? 'italic' : undefined,
+              textDecoration: node.style?.textDecoration && node.style.textDecoration !== 'none' ? node.style.textDecoration : undefined,
+              fontSize: node.style?.headingLevel === 'h1' ? '22px' : node.style?.headingLevel === 'h2' ? '18px' : node.style?.headingLevel === 'h3' ? '16px' : undefined,
             }}
           />
-        ) : !isEditing && containsLatex(localText) ? (
-          <div
-            className={cn(
-              "node-input node-input-latex",
-              isRoot && "root",
-              node.completed && "line-through text-muted-foreground"
-            )}
-            style={{
-              color: node.style?.textColor,
-              backgroundColor: node.style?.bgColor ? `${node.style.bgColor}20` : undefined,
-              fontWeight: node.style?.fontWeight === 'bold' ? 'bold' : 'normal',
-              cursor: 'text',
-            }}
-            onClick={(e) => {
-              e.stopPropagation();
-              setFocusedNodeId(node.id);
-              setIsEditing(true);
-              requestAnimationFrame(() => inputRef.current?.focus());
-            }}
-          >
-            <InlineLatex text={localText} />
-          </div>
-        ) : (
+        ) : isEditing ? (
         <TextareaAutosize
           ref={inputRef as any}
           className={cn(
@@ -520,8 +520,10 @@ const SortableOutlineNode: React.FC<{
           )}
           style={{
             color: node.style?.textColor,
-            backgroundColor: node.style?.bgColor ? `${node.style.bgColor}20` : undefined,
             fontWeight: node.style?.fontWeight === 'bold' ? 'bold' : 'normal',
+            fontStyle: node.style?.fontStyle === 'italic' ? 'italic' : undefined,
+            textDecoration: node.style?.textDecoration && node.style.textDecoration !== 'none' ? node.style.textDecoration : undefined,
+            fontSize: node.style?.headingLevel === 'h1' ? '22px' : node.style?.headingLevel === 'h2' ? '18px' : node.style?.headingLevel === 'h3' ? '16px' : undefined,
           }}
           minRows={1}
           value={localText}
@@ -534,6 +536,40 @@ const SortableOutlineNode: React.FC<{
             commitText();
           }}
         />
+        ) : (
+          <div
+            className={cn(
+              "node-input cursor-text",
+              isRoot && "root",
+              node.completed && "line-through text-muted-foreground"
+            )}
+            style={{
+              color: node.style?.textColor,
+              fontWeight: node.style?.fontWeight === 'bold' ? 'bold' : 'normal',
+              fontStyle: node.style?.fontStyle === 'italic' ? 'italic' : undefined,
+              textDecoration: node.style?.textDecoration && node.style.textDecoration !== 'none' ? node.style.textDecoration : undefined,
+              fontSize: node.style?.headingLevel === 'h1' ? '22px' : node.style?.headingLevel === 'h2' ? '18px' : node.style?.headingLevel === 'h3' ? '16px' : undefined,
+            }}
+            onClick={(e) => {
+              e.stopPropagation();
+              setFocusedNodeId(node.id);
+              setIsEditing(true);
+              requestAnimationFrame(() => inputRef.current?.focus());
+            }}
+          >
+            <span
+              className="outline-text-highlight"
+              style={{
+                backgroundColor: node.style?.bgColor ? `${node.style.bgColor}85` : undefined,
+              }}
+            >
+              {containsLatex(localText) ? (
+                <InlineLatex text={localText || (isRoot ? t('placeholder.root') : t('placeholder.node'))} />
+              ) : (
+                localText || <span className="text-[var(--mm-text-muted)] opacity-60">{isRoot ? t('placeholder.root') : t('placeholder.node')}</span>
+              )}
+            </span>
+          </div>
         )}
         {node.note && !isEditingNote && (
           <div className="node-note px-[6px] pb-1 text-[13px] text-[var(--mm-text-secondary)] whitespace-pre-wrap cursor-text" onClick={() => !reciteMode && setIsEditingNote(true)}>
@@ -630,22 +666,17 @@ const SortableOutlineNode: React.FC<{
                   </AppMenuItem>
                 )}
                 <AppMenuItem
-                  icon={<Pencil className="w-4 h-4" />}
-                  shortcut="F2"
-                  onClick={() => {
-                    setFocusedNodeId(node.id);
-                    setIsEditing(true);
-                    requestAnimationFrame(() => inputRef.current?.focus());
-                  }}
-                >
-                  {t('contextMenu.edit')}
-                </AppMenuItem>
-                <AppMenuItem
                   icon={<StickyNote className="w-4 h-4" />}
                   shortcut="⇧Enter"
                   onClick={() => setIsEditingNote(true)}
                 >
                   {node.note ? t('contextMenu.editNote') : t('contextMenu.addNote')}
+                </AppMenuItem>
+                <AppMenuItem
+                  icon={<Link2 className="w-4 h-4" />}
+                  onClick={() => onOpenResourcePicker?.(node.id)}
+                >
+                  {t('contextMenu.linkResource')}
                 </AppMenuItem>
                 <AppMenuSeparator />
                 <AppMenuItem
@@ -656,21 +687,43 @@ const SortableOutlineNode: React.FC<{
                 >
                   {node.completed ? t('contextMenu.unmarkComplete') : t('contextMenu.markComplete')}
                 </AppMenuItem>
-                <AppMenuItem
-                  icon={<Bold className="w-4 h-4" />}
-                  shortcut="⌘B"
-                  onClick={() => {
-                    const currentWeight = node.style?.fontWeight;
-                    updateNode(node.id, {
-                      style: {
-                        ...node.style,
-                        fontWeight: currentWeight === 'bold' ? 'normal' : 'bold'
-                      }
-                    });
-                  }}
-                >
-                  {t('contextMenu.bold')}
-                </AppMenuItem>
+                {/* 文本格式 B / I / U / S */}
+                <div className="flex items-center gap-1 px-2 py-1">
+                  <NotionButton variant="ghost"
+                    className={cn("w-7 h-7 flex items-center justify-center rounded", node.style?.fontWeight === 'bold' && "bg-accent")}
+                    onClick={(e) => { e.stopPropagation(); updateNode(node.id, { style: { ...node.style, fontWeight: node.style?.fontWeight === 'bold' ? undefined : 'bold' } }); }}
+                    title={t('contextMenu.bold')}
+                  ><Bold className="w-4 h-4" /></NotionButton>
+                  <NotionButton variant="ghost"
+                    className={cn("w-7 h-7 flex items-center justify-center rounded", node.style?.fontStyle === 'italic' && "bg-accent")}
+                    onClick={(e) => { e.stopPropagation(); updateNode(node.id, { style: { ...node.style, fontStyle: node.style?.fontStyle === 'italic' ? undefined : 'italic' } }); }}
+                    title={t('contextMenu.italic')}
+                  ><Italic className="w-4 h-4" /></NotionButton>
+                  <NotionButton variant="ghost"
+                    className={cn("w-7 h-7 flex items-center justify-center rounded", node.style?.textDecoration === 'underline' && "bg-accent")}
+                    onClick={(e) => { e.stopPropagation(); updateNode(node.id, { style: { ...node.style, textDecoration: node.style?.textDecoration === 'underline' ? undefined : 'underline' } }); }}
+                    title={t('contextMenu.underline')}
+                  ><Underline className="w-4 h-4" /></NotionButton>
+                  <NotionButton variant="ghost"
+                    className={cn("w-7 h-7 flex items-center justify-center rounded", node.style?.textDecoration === 'line-through' && "bg-accent")}
+                    onClick={(e) => { e.stopPropagation(); updateNode(node.id, { style: { ...node.style, textDecoration: node.style?.textDecoration === 'line-through' ? undefined : 'line-through' } }); }}
+                    title={t('contextMenu.strikethrough')}
+                  ><Strikethrough className="w-4 h-4" /></NotionButton>
+                  <div className="w-px h-4 bg-border mx-0.5" />
+                  {([['h1', Heading1], ['h2', Heading2], ['h3', Heading3]] as const).map(([level, Icon]) => (
+                    <NotionButton variant="ghost" key={level}
+                      className={cn("w-7 h-7 flex items-center justify-center rounded", node.style?.headingLevel === level && "bg-accent")}
+                      onClick={(e) => { e.stopPropagation(); updateNode(node.id, { style: { ...node.style, headingLevel: node.style?.headingLevel === level ? undefined : level } }); }}
+                      title={t(`contextMenu.${level === 'h1' ? 'heading1' : level === 'h2' ? 'heading2' : 'heading3'}`)}
+                    ><Icon className="w-4 h-4" /></NotionButton>
+                  ))}
+                  <NotionButton variant="ghost"
+                    className={cn("w-7 h-7 flex items-center justify-center rounded", !node.style?.headingLevel && "bg-accent")}
+                    onClick={(e) => { e.stopPropagation(); updateNode(node.id, { style: { ...node.style, headingLevel: undefined } }); }}
+                    title={t('contextMenu.normalText')}
+                  ><Type className="w-4 h-4" /></NotionButton>
+                </div>
+                <AppMenuSeparator />
                 <div className="flex items-center gap-2 px-2 pt-1.5 pb-0.5 text-[13px] text-muted-foreground select-none">
                   <Palette className="w-4 h-4 flex-shrink-0" />
                   <span>{t('contextMenu.textColor')}</span>
@@ -906,10 +959,12 @@ export const OutlineView: React.FC = () => {
   const moveNode = useMindMapStore(state => state.moveNode);
   const addNode = useMindMapStore(state => state.addNode);
   const setFocusedNodeId = useMindMapStore(state => state.setFocusedNodeId);
+  const addNodeRef = useMindMapStore(state => state.addNodeRef);
   
   const [activeId, setActiveId] = useState<UniqueIdentifier | null>(null);
   const [overId, setOverId] = useState<UniqueIdentifier | null>(null);
   const [dropPosition, setDropPosition] = useState<DropPosition>('inside');
+  const [resourcePickerNodeId, setResourcePickerNodeId] = useState<string | null>(null);
   const [focusedRootId, setFocusedRootId] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -933,6 +988,24 @@ export const OutlineView: React.FC = () => {
   }, [document.root, focusedRootId]);
 
   const allFlatNodes = useMemo(() => flattenTree(displayRoot), [displayRoot]);
+
+  // 追踪新出现的节点（展开动画）
+  const isInitialRender = useRef(true);
+  const prevNodeIdsRef = useRef<Set<string>>(new Set());
+  const enteringNodeIds = useMemo(() => {
+    if (isInitialRender.current) return new Set<string>();
+    const prev = prevNodeIdsRef.current;
+    const entering = new Set<string>();
+    allFlatNodes.forEach(fn => {
+      if (!prev.has(fn.id)) entering.add(fn.id);
+    });
+    return entering;
+  }, [allFlatNodes]);
+
+  useEffect(() => {
+    isInitialRender.current = false;
+    prevNodeIdsRef.current = new Set(allFlatNodes.map(fn => fn.id));
+  }, [allFlatNodes]);
 
   // 拖拽时收集被拖节点的所有后代 ID，用于隐藏子树
   const dragDescendantIds = useMemo(() => {
@@ -1141,7 +1214,7 @@ export const OutlineView: React.FC = () => {
         onNavigate={setFocusedRootId} 
       />
       
-      <div className="flex-1 overflow-y-auto custom-scrollbar p-4 md:px-12 md:py-8">
+      <CustomScrollArea className="flex-1" viewportClassName="p-4 md:px-12 md:py-8">
         <DndContext
           sensors={sensors}
           collisionDetection={closestCenter}
@@ -1153,7 +1226,7 @@ export const OutlineView: React.FC = () => {
           measuring={{ droppable: { strategy: MeasuringStrategy.Always } }}
         >
           <SortableContext items={nodeIds} strategy={verticalListSortingStrategy}>
-            <div className="max-w-4xl mx-auto pb-32">
+            <div key={focusedRootId ?? 'root'} className="max-w-3xl mx-auto pb-32 outline-content-enter">
               {flatNodes.map((flatNode, index) => (
                 <SortableOutlineNode
                   key={flatNode.id}
@@ -1163,6 +1236,7 @@ export const OutlineView: React.FC = () => {
                   dropPosition={dropPosition}
                   activeId={activeId}
                   projectedLevel={overId === flatNode.id ? currentProjectedLevel : null}
+                  isEntering={enteringNodeIds.has(flatNode.id)}
                   onNavigate={(direction) => {
                     if (direction === 'up') {
                       const prev = flatNodes[index - 1];
@@ -1173,6 +1247,7 @@ export const OutlineView: React.FC = () => {
                     }
                   }}
                   onZoomIn={(nodeId) => setFocusedRootId(nodeId)}
+                  onOpenResourcePicker={(nodeId) => setResourcePickerNodeId(nodeId)}
                 />
               ))}
               
@@ -1200,7 +1275,16 @@ export const OutlineView: React.FC = () => {
             globalThis.document.body
           )}
         </DndContext>
-      </div>
+      </CustomScrollArea>
+      <MindMapResourcePicker
+        isOpen={!!resourcePickerNodeId}
+        nodeId={resourcePickerNodeId || ''}
+        existingRefs={resourcePickerNodeId ? findNodeById(document.root, resourcePickerNodeId)?.refs : undefined}
+        onSelect={(ref) => {
+          if (resourcePickerNodeId) addNodeRef(resourcePickerNodeId, ref);
+        }}
+        onClose={() => setResourcePickerNodeId(null)}
+      />
     </div>
   );
 };

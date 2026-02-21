@@ -1868,6 +1868,17 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                 );
               })()}
 
+              {/* 原始图片裁剪入口 */}
+              <NotionButton
+                variant="ghost"
+                size="sm"
+                className="text-muted-foreground hover:text-foreground"
+                onClick={() => setCropDialogOpen(true)}
+              >
+                <Crop className="h-3.5 w-3.5 mr-1.5" />
+                {t('question_bank.source_images_btn', '从原图裁剪配图')}
+              </NotionButton>
+
               {/* 编辑模式：直接显示答案和解析 */}
               {editMode ? (
                 <div className="space-y-4">

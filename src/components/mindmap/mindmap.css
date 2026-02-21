@@ -241,8 +241,9 @@
 
 /* 内容输入框 */
 .node-input {
-  flex: 1;
+  flex: none;
   min-width: 0;
+  width: 100%;
   background: transparent;
   border: none;
   outline: none;
@@ -258,6 +259,14 @@
 .node-input::placeholder {
   color: var(--mm-text-muted);
   opacity: 0.6;
+}
+
+/* 荧光笔高亮：仅包裹文字，不铺满整行 */
+.outline-text-highlight {
+  border-radius: 2px;
+  padding: 0 2px;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
 }
 
 /* 根节点特殊样式 */
@@ -326,13 +335,13 @@
 .node-actions {
   position: absolute;
   right: 4px;
-  top: 2px;
-  height: 28px; /* 与第一行文本等高 */
+  top: 0;
+  bottom: 0;
   display: flex;
   align-items: center;
   gap: 2px;
   opacity: 0;
-  background: var(--mm-bg-hover);
+  background: transparent;
   border-radius: 4px;
   padding: 0 4px;
   pointer-events: none; /* 默认不响应事件 */
@@ -340,17 +349,6 @@
   z-index: 10;
 }
 
-/* 阴影渐变以遮盖底部长文本 */
-.node-actions::before {
-  content: '';
-  position: absolute;
-  left: -20px;
-  top: 0;
-  bottom: 0;
-  width: 20px;
-  background: linear-gradient(to right, transparent, var(--mm-bg-hover));
-  pointer-events: none;
-}
 
 .outline-node-row:hover .node-actions,
 .outline-node-row.focused .node-actions {
@@ -359,8 +357,8 @@
 }
 
 .action-btn {
-  width: 24px;
-  height: 24px;
+  width: 20px;
+  height: 20px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -397,6 +395,28 @@
 
 .outline-node-row.search-match.focused {
   background-color: hsl(var(--warning) / 0.4);
+}
+
+/* ============================================
+   导出模式样式 (.mm-exporting)
+   ============================================ */
+.mm-exporting * {
+  /* 导出时禁用所有过渡动画，避免截图时处于中间状态 */
+  transition: none !important;
+  animation: none !important;
+}
+
+.mm-exporting .mm-node-actions,
+.mm-exporting .mm-collapse-btn:not(.is-collapsed) {
+  /* 隐藏所有悬浮按钮和操作栏，但保留已折叠节点的数字角标 */
+  display: none !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+.mm-exporting .mm-edge-highlighted {
+  /* 移除边的高亮状态 */
+  stroke-width: 1.5px !important;
 }
 
 /* ============================================
@@ -520,11 +540,13 @@
 /* --- 下划线风格节点 (Level 2+) --- */
 .mindmap-node-underline {
   background: transparent; /* 不用 !important，允许 inline style 覆盖（高亮背景色） */
-  border: none !important;
+  border-top: none !important;
+  border-left: none !important;
+  border-right: none !important;
   border-radius: 0 !important;
   padding: 2px 4px 4px 4px !important; /* 底部稍微多一点 padding 给文字 */
   box-shadow: none !important;
-  border-bottom: 1.5px solid var(--mm-border) !important; /* 默认颜色，会被 inline style 覆盖 */
+  border-bottom: 1.5px solid var(--mm-border); /* 默认颜色，会被 inline style 覆盖 */
   min-width: 20px !important;
   transition: border-color 0.2s ease, background-color 0.2s ease;
   /* 防止文字竖排 */
@@ -852,4 +874,39 @@
   -moz-user-select: text !important;
   user-select: text !important;
   cursor: text;
+}
+
+/* --- 展开/折叠动画 --- */
+
+/* 展开时新出现的节点滑入 */
+@keyframes nodeSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.outline-node-row.entering {
+  animation: nodeSlideIn 0.2s ease-out both;
+}
+
+/* --- 进入/退出节点视图动画 --- */
+
+@keyframes contentFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.outline-content-enter {
+  animation: contentFadeIn 0.25s ease-out both;
 }

@@ -10,7 +10,13 @@ import {
   ChevronDown, 
   Check, 
   Type, 
-  Bold, 
+  Bold,
+  Italic,
+  Underline,
+  Strikethrough,
+  Heading1,
+  Heading2,
+  Heading3,
   PaintBucket 
 } from 'lucide-react';
 
@@ -193,30 +199,65 @@ export const StyleSettings: React.FC<{
             {t('style.currentNodeStyle')}
           </h4>
           
-          {/* 字号 & 加粗 */}
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2 bg-muted/50 p-1 rounded-md">
-              <Type className="w-4 h-4 text-muted-foreground ml-1" />
-              <input
-                type="number"
-                className="w-12 h-6 text-sm bg-transparent border-none text-center focus:ring-0"
-                value={focusedNode.style?.fontSize || 14}
-                onChange={(e) => handleNodeStyleUpdate({ fontSize: parseInt(e.target.value) })}
-              />
+          {/* 字号 */}
+          <div className="flex items-center gap-2 bg-muted/50 p-1 rounded-md w-fit">
+            <Type className="w-4 h-4 text-muted-foreground ml-1" />
+            <input
+              type="number"
+              className="w-12 h-6 text-sm bg-transparent border-none text-center focus:ring-0"
+              value={focusedNode.style?.fontSize || 14}
+              onChange={(e) => handleNodeStyleUpdate({ fontSize: parseInt(e.target.value) })}
+            />
+          </div>
+
+          {/* B / I / U / S */}
+          <div className="flex items-center gap-1">
+            {[
+              { key: 'bold', icon: Bold, prop: 'fontWeight' as const, val: 'bold', cur: focusedNode.style?.fontWeight },
+              { key: 'italic', icon: Italic, prop: 'fontStyle' as const, val: 'italic', cur: focusedNode.style?.fontStyle },
+              { key: 'underline', icon: Underline, prop: 'textDecoration' as const, val: 'underline', cur: focusedNode.style?.textDecoration },
+              { key: 'strikethrough', icon: Strikethrough, prop: 'textDecoration' as const, val: 'line-through', cur: focusedNode.style?.textDecoration },
+            ].map(({ key, icon: Icon, prop, val, cur }) => (
+              <NotionButton variant="ghost" key={key}
+                onClick={() => handleNodeStyleUpdate({ [prop]: cur === val ? undefined : val })}
+                className={cn(
+                  "p-1.5 rounded-md transition-colors",
+                  cur === val
+                    ? "bg-primary text-primary-foreground"
+                    : "hover:bg-accent text-muted-foreground"
+                )}
+                title={t(`contextMenu.${key}`)}
+              ><Icon className="w-4 h-4" /></NotionButton>
+            ))}
+          </div>
+
+          {/* H1 / H2 / H3 / T */}
+          <div className="space-y-1">
+            <div className="text-xs font-medium text-muted-foreground">{t('contextMenu.headingLevel')}</div>
+            <div className="flex items-center gap-1">
+              {([['h1', Heading1], ['h2', Heading2], ['h3', Heading3]] as const).map(([level, Icon]) => (
+                <NotionButton variant="ghost" key={level}
+                  onClick={() => handleNodeStyleUpdate({ headingLevel: focusedNode.style?.headingLevel === level ? undefined : level })}
+                  className={cn(
+                    "p-1.5 rounded-md transition-colors",
+                    focusedNode.style?.headingLevel === level
+                      ? "bg-primary text-primary-foreground"
+                      : "hover:bg-accent text-muted-foreground"
+                  )}
+                  title={t(`contextMenu.${level === 'h1' ? 'heading1' : level === 'h2' ? 'heading2' : 'heading3'}`)}
+                ><Icon className="w-4 h-4" /></NotionButton>
+              ))}
+              <NotionButton variant="ghost"
+                onClick={() => handleNodeStyleUpdate({ headingLevel: undefined })}
+                className={cn(
+                  "p-1.5 rounded-md transition-colors",
+                  !focusedNode.style?.headingLevel
+                    ? "bg-primary text-primary-foreground"
+                    : "hover:bg-accent text-muted-foreground"
+                )}
+                title={t('contextMenu.normalText')}
+              ><Type className="w-4 h-4" /></NotionButton>
             </div>
-            
-            <NotionButton variant="ghost"
-              onClick={() => handleNodeStyleUpdate({ fontWeight: focusedNode.style?.fontWeight === 'bold' ? 'normal' : 'bold' })}
-              className={cn(
-                "p-1.5 rounded-md transition-colors",
-                focusedNode.style?.fontWeight === 'bold' 
-                  ? "bg-primary text-primary-foreground" 
-                  : "hover:bg-accent text-muted-foreground"
-              )}
-              title={t('style.bold')}
-            >
-              <Bold className="w-4 h-4" />
-            </NotionButton>
           </div>
 
           {/* 文本颜色 */}
