@@ -38,6 +38,7 @@
   },
   "round": {
     "label": "Round {{number}}",
+    "label_fraction": "Round {{current}}/{{total}}",
     "current": "Current Round",
     "previous": "Previous",
     "next": "Next",
@@ -99,7 +100,8 @@
     "missing_session_id": "Missing session ID",
     "load_models_failed": "Failed to load model list, please check your settings",
     "load_modes_failed": "Failed to load grading modes",
-    "offline": "Cannot grade while offline. Please check your network connection."
+    "offline": "Cannot grade while offline. Please check your network connection.",
+    "unchanged_text": "Content unchanged. Please revise before re-grading."
   },
   "toast": {
     "grading_success": "Grading completed",

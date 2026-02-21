@@ -9,6 +9,8 @@ import {
   AlertCircle,
   RefreshCw,
   Loader2,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import { GradingStreamRenderer } from '../../essay-grading/GradingStreamRenderer';
 import { cn } from '@/lib/utils';
@@ -26,6 +28,12 @@ interface ResultPanelProps {
   canRetry?: boolean;
   onRetry?: () => void;
   isPartialResult?: boolean;
+  roundNavigation?: {
+    currentIndex: number;
+    total: number;
+    onPrev: () => void;
+    onNext: () => void;
+  };
 }
 
 export const ResultPanel = React.forwardRef<HTMLDivElement, ResultPanelProps>(({
@@ -39,6 +47,7 @@ export const ResultPanel = React.forwardRef<HTMLDivElement, ResultPanelProps>(({
   canRetry,
   onRetry,
   isPartialResult,
+  roundNavigation,
 }, ref) => {
   const { t } = useTranslation(['essay_grading', 'common']);
 
@@ -54,9 +63,28 @@ export const ResultPanel = React.forwardRef<HTMLDivElement, ResultPanelProps>(({
           </div>
           
           {currentRound > 0 && (
-            <span className="text-xs text-muted-foreground/60 tabular-nums">
-              {t('essay_grading:round.label', { number: currentRound })}
-            </span>
+            <div className="flex items-center gap-0.5">
+              {roundNavigation && roundNavigation.total > 1 && (
+                <NotionButton variant="ghost" size="icon" iconOnly onClick={roundNavigation.onPrev} disabled={roundNavigation.currentIndex <= 0} className="sm:hidden !h-5 !w-5 text-muted-foreground/50 hover:text-foreground hover:bg-muted/50 disabled:opacity-30">
+                  <ChevronLeft className="w-3 h-3" />
+                </NotionButton>
+              )}
+              <span className="text-xs text-muted-foreground/60 tabular-nums">
+                {roundNavigation && roundNavigation.total > 1 ? (
+                  <>
+                    <span className="sm:hidden">{t('essay_grading:round.label_fraction', { current: currentRound, total: roundNavigation.total })}</span>
+                    <span className="hidden sm:inline">{t('essay_grading:round.label', { number: currentRound })}</span>
+                  </>
+                ) : (
+                  t('essay_grading:round.label', { number: currentRound })
+                )}
+              </span>
+              {roundNavigation && roundNavigation.total > 1 && (
+                <NotionButton variant="ghost" size="icon" iconOnly onClick={roundNavigation.onNext} disabled={roundNavigation.currentIndex >= roundNavigation.total - 1} className="sm:hidden !h-5 !w-5 text-muted-foreground/50 hover:text-foreground hover:bg-muted/50 disabled:opacity-30">
+                  <ChevronRight className="w-3 h-3" />
+                </NotionButton>
+              )}
+            </div>
           )}
           
           {/* 流式状态指示 - Notion 风格 */}

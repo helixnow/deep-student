@@ -38,6 +38,7 @@
   },
   "round": {
     "label": "第 {{number}} 轮",
+    "label_fraction": "第 {{current}}/{{total}} 轮",
     "current": "当前轮次",
     "previous": "上一轮",
     "next": "下一轮",
@@ -99,7 +100,8 @@
     "missing_session_id": "缺少会话 ID",
     "load_models_failed": "模型列表加载失败，请检查设置",
     "load_modes_failed": "批阅模式加载失败",
-    "offline": "离线状态下无法批改，请检查网络连接"
+    "offline": "离线状态下无法批改，请检查网络连接",
+    "unchanged_text": "内容未修改，请修改后再提交批改"
   },
   "toast": {
     "grading_success": "批改完成",

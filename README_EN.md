@@ -346,14 +346,17 @@ Smart translation — more than just sentence-by-sentence comparison.
 Fully automated Chinese and English essay grading and polishing.
 
 - **Multi-Scenario Support**: Covers Gaokao (Chinese college entrance exam), IELTS, TOEFL, Postgraduate entrance exam, CET-4/6, and other exam standards.
-- **Smart Scoring**: AI-based multi-dimensional scoring (vocabulary, grammar, coherence, etc.).
+- **Smart Scoring**: AI-based multi-dimensional scoring (vocabulary, grammar, coherence, etc.), with multi-round iterative grading.
 - **Revision Suggestions**: Provides specific vocabulary and grammar revision suggestions with highlights.
+- **Polish Improvement**: Side-by-side comparison of original and polished expressions, sentence by sentence, improving fluency and precision.
+- **Grading Settings**: Customize scoring dimensions, max score limits, and system prompts to adapt to different exam scenarios.
 
 <details>
 <summary>📸 View Screenshots</summary>
-<p align="center"><img src="./example/作文批改-1.png" width="90%" alt="Type Selection" /></p>
-<p align="center"><img src="./example/作文-1.png" width="90%" alt="Scoring Results" /></p>
-<p align="center"><img src="./example/作文-2.png" width="90%" alt="Detailed Suggestions" /></p>
+<p align="center"><img src="./example/作文-1.png" width="90%" alt="Type Selection & Annotations" /></p>
+<p align="center"><img src="./example/作文-2.png" width="90%" alt="Scoring Results" /></p>
+<p align="center"><img src="./example/作文-3.png" width="90%" alt="Polish Improvement" /></p>
+<p align="center"><img src="./example/作文-4.png" width="90%" alt="Grading Settings" /></p>
 </details>
 
 ### 7. MCP Extensions & Model Configuration

@@ -344,14 +344,17 @@ DeepStudent 的对话引擎专为学习场景打造，支持多模态输入与�
 全自动的中英文作文批改与润色。
 
 - **多场景支持**：覆盖高考、雅思、托福、考研、四六级等多种考试标准。
-- **智能评分**：基于 AI 的多维度评分（词汇、语法、连贯性等）。
+- **智能评分**：基于 AI 的多维度评分（词汇、语法、连贯性等），支持多轮迭代批改。
 - **修改建议**：提供具体的用词、语法修改建议与高亮标注。
+- **润色提升**：逐句对比原文与润色后表达，提升遣词造句的流畅度与精准度。
+- **批改设置**：自定义评分维度、满分上限与系统提示词，适配不同考试场景。
 
 <details>
 <summary>📸 查看截图</summary>
-<p align="center"><img src="./example/作文批改-1.png" width="90%" alt="类型选择" /></p>
-<p align="center"><img src="./example/作文-1.png" width="90%" alt="评分结果" /></p>
-<p align="center"><img src="./example/作文-2.png" width="90%" alt="详细建议" /></p>
+<p align="center"><img src="./example/作文-1.png" width="90%" alt="类型选择与批改标注" /></p>
+<p align="center"><img src="./example/作文-2.png" width="90%" alt="评分结果" /></p>
+<p align="center"><img src="./example/作文-3.png" width="90%" alt="润色提升" /></p>
+<p align="center"><img src="./example/作文-4.png" width="90%" alt="批改设置" /></p>
 </details>
 
 ### 7. MCP 扩展与模型配置

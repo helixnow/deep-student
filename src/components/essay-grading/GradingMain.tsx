@@ -64,8 +64,6 @@ interface GradingMainProps {
 
   // Round Props
   currentRound: number;
-  hasResult: boolean;
-  onNextRound: () => void;
 
   // 模式管理
   onModesChange?: () => void;
@@ -119,8 +117,6 @@ export const GradingMain: React.FC<GradingMainProps> = ({
   onRetry,
   isPartialResult,
   currentRound,
-  hasResult,
-  onNextRound,
   onModesChange,
   roundNavigation,
 }) => {
@@ -321,8 +317,6 @@ export const GradingMain: React.FC<GradingMainProps> = ({
                   onCancelGrading={onCancelGrading}
                   charCount={inputCharCount}
                   currentRound={currentRound}
-                  hasResult={hasResult}
-                  onNextRound={onNextRound}
                   roundNavigation={roundNavigation}
                   uploadedImages={uploadedImages}
                   onRemoveImage={onRemoveImage}
@@ -346,6 +340,7 @@ export const GradingMain: React.FC<GradingMainProps> = ({
                   onRetry={onRetry}
                   isPartialResult={isPartialResult}
                   currentRound={currentRound}
+                  roundNavigation={roundNavigation}
                 />
               }
             />
@@ -427,8 +422,6 @@ export const GradingMain: React.FC<GradingMainProps> = ({
                 onCancelGrading={onCancelGrading}
                 charCount={inputCharCount}
                 currentRound={currentRound}
-                hasResult={hasResult}
-                onNextRound={onNextRound}
                 roundNavigation={roundNavigation}
                 onOpenSettings={() => setShowSettingsDrawer(true)}
                 uploadedImages={uploadedImages}
@@ -453,6 +446,7 @@ export const GradingMain: React.FC<GradingMainProps> = ({
                 onRetry={onRetry}
                 isPartialResult={isPartialResult}
                 currentRound={currentRound}
+                roundNavigation={roundNavigation}
               />
             }
           />
@@ -544,8 +538,6 @@ export const GradingMain: React.FC<GradingMainProps> = ({
                 onCancelGrading={onCancelGrading}
                 charCount={inputCharCount}
                 currentRound={currentRound}
-                hasResult={hasResult}
-                onNextRound={onNextRound}
                 roundNavigation={roundNavigation}
                 onOpenSettings={() => setShowSettingsDrawer(true)}
                 uploadedImages={uploadedImages}
@@ -570,6 +562,7 @@ export const GradingMain: React.FC<GradingMainProps> = ({
                 onRetry={onRetry}
                 isPartialResult={isPartialResult}
                 currentRound={currentRound}
+                roundNavigation={roundNavigation}
               />
             }
           />

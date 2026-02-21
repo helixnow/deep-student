@@ -60,8 +60,6 @@ interface InputPanelProps {
   charCount: number;
   // 多轮相关
   currentRound: number;
-  hasResult: boolean;
-  onNextRound: () => void;
   onOpenSettings?: () => void;
   roundNavigation?: {
     currentIndex: number;
@@ -134,8 +132,6 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
   onCancelGrading,
   charCount,
   currentRound,
-  hasResult,
-  onNextRound,
   onOpenSettings,
   roundNavigation,
   uploadedImages,
@@ -505,21 +501,6 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
         </div>
       </div>
 
-      {/* Action Bar - 移动端显示提交修改稿按钮 */}
-      {hasResult && !isGrading && (
-        <div className="sm:hidden px-4 py-2.5 border-t border-border/30 flex items-center justify-center">
-          <NotionButton
-            variant="default"
-            size="lg"
-            onClick={onNextRound}
-            disabled={!safeInputText.trim()}
-            className="w-full"
-          >
-            {t('essay_grading:actions.next_round')}
-          </NotionButton>
-        </div>
-      )}
-
       {/* Action Bar - 桌面端 Notion 风格 */}
       <div className="hidden sm:flex px-4 py-2.5 border-t border-border/30 items-center gap-2">
         {/* 左侧：模型选择 - 向上展开 */}
@@ -542,18 +523,6 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
         
         {/* 右侧：操作按钮 */}
         <div className="flex items-center gap-2 shrink-0">
-          {/* 如果已有批改结果，显示"提交修改稿"按钮 */}
-          {hasResult && !isGrading && (
-            <NotionButton
-              variant="default"
-              size="lg"
-              onClick={onNextRound}
-              disabled={!safeInputText.trim()}
-            >
-              {t('essay_grading:actions.next_round')}
-            </NotionButton>
-          )}
-
           {isGrading ? (
             <CancelConfirmButton
               onCancel={onCancelGrading}

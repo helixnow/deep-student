@@ -715,6 +715,26 @@ export const ChatV2Page: React.FC = () => {
     return unsubscribe;
   }, [currentSessionId]);
 
+  // 🔧 修复：后端自动生成标题后，同步更新 sessions 列表
+  useEffect(() => {
+    if (!currentSessionId) return;
+    const store = sessionManager.get(currentSessionId);
+    if (!store) return;
+
+    const unsubscribe = store.subscribe((state, prevState) => {
+      if (state.title && state.title !== prevState.title) {
+        setSessions((prev) =>
+          prev.map((s) =>
+            s.id === currentSessionId
+              ? { ...s, title: state.title, description: state.description ?? s.description }
+              : s
+          )
+        );
+      }
+    });
+    return unsubscribe;
+  }, [currentSessionId]);
+
   // ========== 移动端统一顶栏配置 ==========
   const currentSession = sessions.find(s => s.id === currentSessionId);
 

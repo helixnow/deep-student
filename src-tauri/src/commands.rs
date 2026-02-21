@@ -5271,11 +5271,24 @@ pub async fn qbank_get_source_images(
         .map_err(|e| AppError::database(format!("获取题目集失败: {}", e)))?
         .ok_or_else(|| AppError::not_found("题目集不存在"))?;
 
-    let source_hashes: Vec<String> = exam
+    let mut source_hashes: Vec<String> = exam
         .metadata_json
         .get("source_image_hashes")
         .and_then(|v| serde_json::from_value::<Vec<String>>(v.clone()).ok())
         .unwrap_or_default();
+
+    // ★ 回退：OCR 上传流程不写 source_image_hashes，图片存在 preview_json pages 的 blob_hash 中
+    if source_hashes.is_empty() {
+        if let Some(pages) = exam.preview_json.get("pages").and_then(|v| v.as_array()) {
+            for page in pages {
+                if let Some(hash) = page.get("blob_hash").and_then(|v| v.as_str()) {
+                    if !hash.is_empty() {
+                        source_hashes.push(hash.to_string());
+                    }
+                }
+            }
+        }
+    }
 
     if source_hashes.is_empty() {
         return Ok(Vec::new());
@@ -5315,7 +5328,6 @@ pub async fn qbank_get_source_images(
 
 /// 裁剪请求参数
 #[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct CropSourceImageRequest {
     /// 题目 ID
     pub question_id: String,

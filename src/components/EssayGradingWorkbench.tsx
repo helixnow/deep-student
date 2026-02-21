@@ -84,7 +84,6 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({ on
   const [gradeLevel, setGradeLevel] = useState(initialSession?.gradeLevel ?? 'high_school');
   const [customPrompt, setCustomPrompt] = useState(initialSession?.customPrompt ?? '');
   const [showPromptEditor, setShowPromptEditor] = useState(false);
-  const [showNextRoundConfirm, setShowNextRoundConfirm] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const lastGradedInputRef = useRef<string>('');
   const draftRestoredRef = useRef(false);
@@ -116,9 +115,17 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({ on
 
   // 批阅模式状态
   const [modes, setModes] = useState<GradingMode[]>([]);
-  const [modeId, setModeId] = useState(
+  const [modeId, setModeIdRaw] = useState(
     initialSession?.modeId ? canonicalizeEssayModeId(initialSession.modeId) : 'practice'
   ); // 默认使用日常练习模式
+
+  // 包装 setModeId：每次切换模式时持久化到全局设置
+  const setModeId = useCallback((id: string) => {
+    setModeIdRaw(id);
+    TauriAPI.saveSetting('essay_grading.mode_id', id).catch(() => {
+      console.warn('[EssayGrading] Failed to persist modeId');
+    });
+  }, []);
 
   // 模型选择状态
   const [models, setModels] = useState<ModelInfo[]>([]);
@@ -158,10 +165,13 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({ on
     try {
       const loadedModes = await EssayGradingAPI.getGradingModes();
       setModes(loadedModes);
-      if (loadedModes.length > 0 && !loadedModes.find(m => m.id === modeId)) {
+
+      // 确定最佳 modeId：initialSession > 持久化设置 > practice > 第一个
+      setModeIdRaw(prev => {
+        if (loadedModes.find(m => m.id === prev)) return prev;
         const practiceMode = loadedModes.find(m => m.id === 'practice');
-        setModeId(practiceMode?.id || loadedModes[0].id);
-      }
+        return practiceMode?.id || (loadedModes.length > 0 ? loadedModes[0].id : prev);
+      });
     } catch (error: unknown) {
       console.error('[EssayGrading] Failed to load modes:', error);
       showGlobalNotification('error', t('essay_grading:errors.load_modes_failed'));
@@ -193,6 +203,18 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({ on
       } catch {}
     };
   }, [loadModels]);
+
+  // 加载持久化的批阅模式（仅在无 initialSession.modeId 时）
+  useEffect(() => {
+    if (initialSession?.modeId) return;
+    const loadMode = async () => {
+      try {
+        const saved = await TauriAPI.getSetting('essay_grading.mode_id');
+        if (saved) setModeIdRaw(saved);
+      } catch {}
+    };
+    loadMode();
+  }, [initialSession?.modeId]);
 
   // 加载自定义 Prompt
   useEffect(() => {
@@ -541,6 +563,12 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({ on
       return;
     }
 
+    // 内容未修改时阻止重复提交
+    if (rounds.length > 0 && safeInputText === lastGradedInputRef.current) {
+      showGlobalNotification('warning', t('essay_grading:errors.unchanged_text'));
+      return;
+    }
+
     try {
       // 如果没有会话 ID，先创建（仅用于非 DSTU 场景）
       let session = currentSession;
@@ -705,17 +733,6 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({ on
     };
   }, [gradingResult, handleGrade, inputText, t, dstuMode.resourceId]);
 
-  const handleNextRoundSubmit = useCallback(() => {
-    setShowNextRoundConfirm(true);
-  }, []);
-
-  const handleConfirmNextRound = useCallback(() => {
-    setShowNextRoundConfirm(false);
-    setInputText('');
-    setUploadedImages([]);
-    gradingStream.setGradingResult('');
-    setCurrentRoundIndex(rounds.length);
-  }, [rounds.length, gradingStream]);
 
   // 保存 Prompt
   const handleSavePrompt = useCallback(async () => {
@@ -857,8 +874,6 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({ on
           onRetry={() => gradingStream.retryGrading().catch(console.error)}
           isPartialResult={isPartialResult}
           currentRound={currentRoundNumber}
-          hasResult={gradingResult.length > 0}
-          onNextRound={handleNextRoundSubmit}
           uploadedImages={uploadedImages}
           onRemoveImage={handleRemoveImage}
           topicText={topicText}
@@ -875,17 +890,6 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({ on
           } : undefined}
         />
       </div>
-
-      <NotionAlertDialog
-        open={showNextRoundConfirm}
-        onOpenChange={setShowNextRoundConfirm}
-        title={t('essay_grading:next_round_confirm.title')}
-        description={t('essay_grading:next_round_confirm.message')}
-        confirmText={t('essay_grading:next_round_confirm.confirm')}
-        cancelText={t('common:cancel')}
-        confirmVariant="primary"
-        onConfirm={handleConfirmNextRound}
-      />
 
       <NotionAlertDialog
         open={showClearConfirm}
