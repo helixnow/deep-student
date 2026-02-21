@@ -43,6 +43,7 @@ import {
 import { listen } from '@tauri-apps/api/event';
 import { MediaCacheSection } from './MediaCacheSection';
 import { LanceOptimizationPanel } from './IndexMaintenanceSection';
+import { useShallow } from 'zustand/react/shallow';
 import { useSystemStatusStore } from '@/stores/systemStatusStore';
 import { useBackupJobListener } from '../../hooks/useBackupJobListener';
 import type {
@@ -77,7 +78,12 @@ const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'in
 
 export const DebugTab: React.FC = () => {
   const { t } = useTranslation(['data']);
-  const { showMigrationStatus, clearMigrationStatus } = useSystemStatusStore();
+  const { showMigrationStatus, clearMigrationStatus } = useSystemStatusStore(
+    useShallow((state) => ({
+      showMigrationStatus: state.showMigrationStatus,
+      clearMigrationStatus: state.clearMigrationStatus,
+    }))
+  );
   const [flowRunning, setFlowRunning] = useState(false);
   const [slotCTestRunning, setSlotCTestRunning] = useState(false);
   const [slotDTestRunning, setSlotDTestRunning] = useState(false);
@@ -389,7 +395,12 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
   embedded = false,
 }) => {
   const { t } = useTranslation(['data', 'common']);
-  const { enterMaintenanceMode, exitMaintenanceMode } = useSystemStatusStore();
+  const { enterMaintenanceMode, exitMaintenanceMode } = useSystemStatusStore(
+    useShallow((state) => ({
+      enterMaintenanceMode: state.enterMaintenanceMode,
+      exitMaintenanceMode: state.exitMaintenanceMode,
+    }))
+  );
   const [activeTab, setActiveTab] = useState<DashboardTab>('overview');
 
   const [loadingState, setLoadingState] = useState({

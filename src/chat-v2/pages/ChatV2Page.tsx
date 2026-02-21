@@ -188,6 +188,10 @@ export const ChatV2Page: React.FC = () => {
   const [sessionSheetOpen, setSessionSheetOpen] = useState(false);
   // 移动端：资源库右侧滑屏状态
   const [mobileResourcePanelOpen, setMobileResourcePanelOpen] = useState(false);
+  // 移动端：分组编辑器资源选择回调（右面板复用，返回 'added'|'removed'|false）
+  const groupPickerAddRef = useRef<((sourceId: string) => 'added' | 'removed' | false) | null>(null);
+  // 移动端：分组已关联资源 ID 集合（用于右面板高亮显示）
+  const [groupPinnedIds, setGroupPinnedIds] = useState<Set<string>>(new Set());
   // 📱 移动端资源库面包屑导航（用于应用顶栏）
   const finderCurrentPath = useFinderStore(state => state.currentPath);
   const finderJumpToBreadcrumb = useFinderStore(state => state.jumpToBreadcrumb);
@@ -1605,6 +1609,10 @@ export const ChatV2Page: React.FC = () => {
   const closeGroupEditor = useCallback(() => {
     setGroupEditorOpen(false);
     setEditingGroup(null);
+    // 清理分组资源选择器状态
+    groupPickerAddRef.current = null;
+    setGroupPinnedIds(new Set());
+    setMobileResourcePanelOpen(false);
   }, []);
 
   const handleSubmitGroup = useCallback(async (payload: CreateGroupRequest | UpdateGroupRequest) => {
@@ -2514,6 +2522,11 @@ export const ChatV2Page: React.FC = () => {
             setPendingDeleteGroup(editingGroup);
             closeGroupEditor();
           } : undefined}
+          onMobileBrowse={isSmallScreen ? (addResource, currentIds) => {
+            groupPickerAddRef.current = addResource;
+            setGroupPinnedIds(new Set(currentIds));
+            setMobileResourcePanelOpen(true);
+          } : undefined}
         />
       ) : currentSessionId ? (
         <ChatContainer
@@ -2604,7 +2617,23 @@ export const ChatV2Page: React.FC = () => {
                 <LearningHubSidebar
                   mode="canvas"
                   onClose={() => setMobileResourcePanelOpen(false)}
-                  onOpenApp={handleOpenApp}
+                  onOpenApp={(item) => {
+                    if (groupPickerAddRef.current) {
+                      const result = groupPickerAddRef.current(item.id);
+                      if (result === 'added') {
+                        setGroupPinnedIds(prev => new Set([...prev, item.id]));
+                      } else if (result === 'removed') {
+                        setGroupPinnedIds(prev => {
+                          const next = new Set(prev);
+                          next.delete(item.id);
+                          return next;
+                        });
+                      }
+                      return;
+                    }
+                    handleOpenApp(item);
+                  }}
+                  highlightedIds={groupPickerAddRef.current ? groupPinnedIds : undefined}
                   className="h-full"
                   hideToolbarAndNav
                 />

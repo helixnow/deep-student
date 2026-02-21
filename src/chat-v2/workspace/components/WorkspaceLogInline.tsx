@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { cn } from '@/utils/cn';
+import { useShallow } from 'zustand/react/shallow';
 import { useWorkspaceStore } from '../workspaceStore';
 import type { WorkspaceMessage, MessageType } from '../types';
 import type { StoreApi } from 'zustand';
@@ -194,7 +195,13 @@ export const WorkspaceLogInline: React.FC<WorkspaceLogInlineProps> = ({
   const [debugCopied, setDebugCopied] = useState(false);
 
   // 从 Store 获取工作区数据
-  const { workspace, agents, messages } = useWorkspaceStore();
+  const { workspace, agents, messages } = useWorkspaceStore(
+    useShallow((state) => ({
+      workspace: state.workspace,
+      agents: state.agents,
+      messages: state.messages,
+    }))
+  );
 
   // 🔧 P21 修复：按 workspaceId 过滤 agents
   const filteredAgents = useMemo(() => {

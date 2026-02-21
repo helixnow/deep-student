@@ -18,8 +18,9 @@ import { cn } from '@/lib/utils';
 import { Skeleton } from '@/components/ui/shad/Skeleton';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { useTranslation } from 'react-i18next';
+import { useShallow } from 'zustand/react/shallow';
+import { useQuestionBankStore } from '@/stores/questionBankStore';
 import {
-  useQuestionBankStore,
   useActivityHeatmap,
   useLoadingHeatmap,
   type ActivityHeatmapPoint,
@@ -202,7 +203,11 @@ export const LearningHeatmapChart: React.FC<LearningHeatmapChartProps> = ({
   // Store hooks
   const heatmapData = useActivityHeatmap();
   const isLoading = useLoadingHeatmap();
-  const { loadActivityHeatmap } = useQuestionBankStore();
+  const { loadActivityHeatmap } = useQuestionBankStore(
+    useShallow((state) => ({
+      loadActivityHeatmap: state.loadActivityHeatmap,
+    }))
+  );
   
   // 本地状态
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());

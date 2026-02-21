@@ -41,7 +41,8 @@ import { LlmUsageStatsSection } from './llm-usage/LlmUsageStatsSection';
 import { useChatV2Stats } from '../hooks/useChatV2Stats';
 import { LearningHeatmap } from './LearningHeatmap';
 import { Progress as ShadProgress } from './ui/shad/Progress';
-import { useSystemStatusStore } from '../stores/systemStatusStore';
+import { useShallow } from 'zustand/react/shallow';
+import { useSystemStatusStore } from '@/stores/systemStatusStore';
 import {
   AreaChart,
   Area,
@@ -240,7 +241,12 @@ const StatCard = ({
 
 export const DataImportExport: React.FC<DataImportExportProps> = ({ onClose, embedded = false, mode = 'all' }) => {
   const { t } = useTranslation(['data', 'common']);
-  const { enterMaintenanceMode, exitMaintenanceMode } = useSystemStatusStore();
+  const { enterMaintenanceMode, exitMaintenanceMode } = useSystemStatusStore(
+    useShallow((state) => ({
+      enterMaintenanceMode: state.enterMaintenanceMode,
+      exitMaintenanceMode: state.exitMaintenanceMode,
+    }))
+  );
   const [activeTab, setActiveTab] = useState('backup');
   // 获取会话统计数据，用于合并趋势图
   const chatStats = useChatV2Stats(false);

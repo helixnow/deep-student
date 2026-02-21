@@ -36,6 +36,7 @@ import {
   Tag,
   Star,
 } from 'lucide-react';
+import { useShallow } from 'zustand/react/shallow';
 import {
   SyncConflict,
   QuestionConflictStrategy,
@@ -334,7 +335,13 @@ export function SyncConflictDialog({
   const [batchStrategy, setBatchStrategy] = useState<QuestionConflictStrategy>('keep_newer');
   const [resolvingIds, setResolvingIds] = useState<Set<string>>(new Set());
 
-  const { resolveSyncConflict, batchResolveSyncConflicts, isSyncing } = useQuestionBankStore();
+  const { resolveSyncConflict, batchResolveSyncConflicts, isSyncing } = useQuestionBankStore(
+    useShallow((state) => ({
+      resolveSyncConflict: state.resolveSyncConflict,
+      batchResolveSyncConflicts: state.batchResolveSyncConflicts,
+      isSyncing: state.isSyncing,
+    }))
+  );
 
   // 切换选择
   const toggleSelect = useCallback((id: string) => {

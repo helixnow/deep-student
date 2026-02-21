@@ -12,6 +12,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useShallow } from 'zustand/react/shallow';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Building2,
@@ -226,7 +227,14 @@ const WorkspaceStatusBlockComponent: React.FC<BlockComponentProps> = ({
   const [showMessages, setShowMessages] = useState(false);
 
   // 从 Store 获取工作区数据
-  const { workspace, agents: storeAgents, messages, currentWorkspaceId } = useWorkspaceStore();
+  const { workspace, agents: storeAgents, messages, currentWorkspaceId } = useWorkspaceStore(
+    useShallow((state) => ({
+      workspace: state.workspace,
+      agents: state.agents,
+      messages: state.messages,
+      currentWorkspaceId: state.currentWorkspaceId,
+    }))
+  );
 
   // 从块数据中获取快照（历史模式）
   const blockOutput = block.toolOutput as unknown as WorkspaceStatusOutput | undefined;

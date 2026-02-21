@@ -119,6 +119,8 @@ interface FinderFileListProps {
   enableBoxSelect?: boolean;
   /** ★ 加载失败时的重试回调 */
   onRetry?: () => void;
+  /** ★ 高亮标记的项 ID（如已关联资源） */
+  highlightedIds?: Set<string>;
 }
 
 export function FinderFileList({
@@ -144,6 +146,7 @@ export function FinderFileList({
   enableBoxSelect = true,
   onSelectionChange,
   onRetry,
+  highlightedIds,
 }: FinderFileListProps) {
   const { t } = useTranslation('learningHub');
   const scrollAreaRef = useRef<HTMLDivElement>(null);
@@ -508,6 +511,7 @@ export function FinderFileList({
                       viewMode={viewMode}
                       isSelected={selectedIds.has(item.id)}
                       isActive={activeFileId === item.id}
+                      isHighlighted={highlightedIds?.has(item.id)}
                       onSelect={(mode) => onSelect(item.id, mode)}
                       onOpen={() => onOpen(item)}
                       onContextMenu={(e) => onContextMenu(e, item)}
@@ -615,6 +619,7 @@ export function FinderFileList({
                         viewMode={viewMode}
                         isSelected={selectedIds.has(item.id)}
                         isActive={activeFileId === item.id}
+                        isHighlighted={highlightedIds?.has(item.id)}
                         onSelect={(mode) => onSelect(item.id, mode)}
                         onOpen={() => onOpen(item)}
                         onContextMenu={(e) => onContextMenu(e, item)}

@@ -167,6 +167,13 @@ export function useAppUpdater() {
           latestVersion = tagName.match(/v?(\d+\.\d+\.\d+)/)?.[1] ?? tagName.replace(/^v/, '');
           releaseBody = data.body ?? undefined;
           publishedAt = data.published_at ?? undefined;
+          // 从 release assets 中查找 APK，构造 R2 镜像下载链接
+          if (!apkUrl && tagName) {
+            const apkAsset = (data.assets as any[])?.find((a: any) => a.name?.endsWith('.apk'));
+            if (apkAsset) {
+              apkUrl = `https://download.deepstudent.cn/releases/${tagName}/${apkAsset.name}`;
+            }
+          }
         }
 
         if (latestVersion && isNewerVersion(latestVersion, currentVersion)) {

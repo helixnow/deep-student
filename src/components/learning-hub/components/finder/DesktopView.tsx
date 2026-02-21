@@ -32,6 +32,7 @@ import {
   TrashIcon as TrashIconSvg,
   type ResourceIconProps,
 } from '../../icons';
+import { useShallow } from 'zustand/react/shallow';
 import {
   useDesktopStore,
   type DesktopShortcut,
@@ -387,7 +388,13 @@ function AddShortcutDialog({
   onOpenChange: (open: boolean) => void;
 }) {
   const { t } = useTranslation('learningHub');
-  const { addFromPreset, hasAppShortcut, hasQuickAccessShortcut } = useDesktopStore();
+  const { addFromPreset, hasAppShortcut, hasQuickAccessShortcut } = useDesktopStore(
+    useShallow((state) => ({
+      addFromPreset: state.addFromPreset,
+      hasAppShortcut: state.hasAppShortcut,
+      hasQuickAccessShortcut: state.hasQuickAccessShortcut,
+    }))
+  );
 
   const handleAddPreset = useCallback((index: number) => {
     addFromPreset(index);
@@ -473,7 +480,16 @@ export function DesktopView({
     initDefaultShortcuts,
     getDesktopRoot,
     setDesktopRoot,
-  } = useDesktopStore();
+  } = useDesktopStore(
+    useShallow((state) => ({
+      getSortedShortcuts: state.getSortedShortcuts,
+      removeShortcut: state.removeShortcut,
+      renameShortcut: state.renameShortcut,
+      initDefaultShortcuts: state.initDefaultShortcuts,
+      getDesktopRoot: state.getDesktopRoot,
+      setDesktopRoot: state.setDesktopRoot,
+    }))
+  );
   
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [showRootFolderPicker, setShowRootFolderPicker] = useState(false);

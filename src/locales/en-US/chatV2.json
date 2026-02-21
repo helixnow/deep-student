@@ -634,7 +634,7 @@
     "groupPinnedSearch": "Search resources...",
     "groupPinnedSearchEmpty": "No matching resources found",
     "groupPinnedSearchHint": "Select resources from folders to pin",
-    "groupPinnedAdded": "Resource pinned",
+    "groupPinnedAdded": "Pinned: {{name}}",
     "groupPinnedRemoved": "Resource unpinned",
     "groupPinnedDuplicate": "Resource already pinned",
     "groupPinnedSelectedCount": "{{count}} selected",

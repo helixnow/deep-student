@@ -2,7 +2,7 @@ import React, { useCallback } from 'react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { format, formatDistanceToNow } from 'date-fns';
 import { zhCN } from 'date-fns/locale';
-import { Star, MoreHorizontal } from 'lucide-react';
+import { Star, MoreHorizontal, Check } from 'lucide-react';
 import {
   NoteIcon,
   TextbookIcon,
@@ -43,6 +43,8 @@ export interface FinderFileItemProps {
   onEditCancel?: () => void;
   /** ★ 紧凑模式（隐藏时间和大小列） */
   compact?: boolean;
+  /** ★ 高亮标记（如已关联/已选中） */
+  isHighlighted?: boolean;
 }
 
 interface SortableFinderFileItemProps extends FinderFileItemProps {
@@ -98,6 +100,7 @@ export const FinderFileItem = React.memo(function FinderFileItem({
   onEditConfirm,
   onEditCancel,
   compact = false,
+  isHighlighted = false,
 }: FinderFileItemProps) {
   const CustomIcon = TYPE_CUSTOM_ICONS[item.type] || GenericFileIcon;
   const isFavorite = Boolean(item.metadata?.isFavorite);
@@ -170,6 +173,13 @@ export const FinderFileItem = React.memo(function FinderFileItem({
           <CustomIcon size={24} />
         </div>
         
+        {/* 已关联标记 */}
+        {isHighlighted && (
+          <div className="shrink-0 flex items-center justify-center w-4 h-4 rounded-full bg-primary text-primary-foreground">
+            <Check className="w-2.5 h-2.5" strokeWidth={3} />
+          </div>
+        )}
+
         {/* 名称 + 收藏 */}
         <div className="flex-1 min-w-0 flex items-center gap-1.5">
           <InlineEditText
@@ -240,6 +250,12 @@ export const FinderFileItem = React.memo(function FinderFileItem({
       onContextMenu={onContextMenu}
       title={isEditing ? undefined : (snippet ? `${item.name}\n📄 ${snippet}` : item.name)}
     >
+      {/* 已关联标记 */}
+      {isHighlighted && (
+        <div className="absolute top-1 left-1 flex items-center justify-center w-4 h-4 rounded-full bg-primary text-primary-foreground z-10">
+          <Check className="w-2.5 h-2.5" strokeWidth={3} />
+        </div>
+      )}
       {/* 收藏星标 */}
       {isFavorite && (
         <Star className="absolute top-1.5 right-1.5 h-3 w-3 text-yellow-500 fill-yellow-500" />

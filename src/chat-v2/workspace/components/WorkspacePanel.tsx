@@ -7,6 +7,7 @@ import { AgentCard } from './AgentCard';
 import { AgentOutputDrawer } from './AgentOutputDrawer';
 import { WorkspaceTimeline } from './WorkspaceTimeline';
 import { CreateAgentDialog } from './CreateAgentDialog';
+import { useShallow } from 'zustand/react/shallow';
 import { useWorkspaceStore } from '../workspaceStore';
 import { refreshWorkspaceSnapshot } from '../api';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
@@ -22,7 +23,15 @@ export const WorkspacePanel: React.FC<WorkspacePanelProps> = ({
   onViewAgentSession,
 }) => {
   const { t } = useTranslation();
-  const { workspace, agents, messages, isLoading, error } = useWorkspaceStore();
+  const { workspace, agents, messages, isLoading, error } = useWorkspaceStore(
+    useShallow((state) => ({
+      workspace: state.workspace,
+      agents: state.agents,
+      messages: state.messages,
+      isLoading: state.isLoading,
+      error: state.error,
+    }))
+  );
   const [showCreateAgent, setShowCreateAgent] = useState(false);
   // 🆕 2026-01-20: 展开的 Worker ID（用于内联预览）
   const [expandedWorkerId, setExpandedWorkerId] = useState<string | null>(null);

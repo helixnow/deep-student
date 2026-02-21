@@ -27,11 +27,12 @@ import { Skeleton } from '@/components/ui/shad/Skeleton';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { useTranslation } from 'react-i18next';
 import {
-  useQuestionBankStore,
   useKnowledgeStats,
   useLoadingKnowledge,
   type KnowledgePoint,
 } from '@/stores/questionBankStore';
+import { useShallow } from 'zustand/react/shallow';
+import { useQuestionBankStore } from '@/stores/questionBankStore';
 
 // ============================================================================
 // 类型定义
@@ -214,7 +215,11 @@ export const KnowledgeRadar: React.FC<KnowledgeRadarProps> = ({
   // Store hooks
   const knowledgeStats = useKnowledgeStats();
   const isLoading = useLoadingKnowledge();
-  const { loadKnowledgeStats } = useQuestionBankStore();
+  const { loadKnowledgeStats } = useQuestionBankStore(
+    useShallow((state) => ({
+      loadKnowledgeStats: state.loadKnowledgeStats,
+    }))
+  );
 
   // 加载数据
   useEffect(() => {

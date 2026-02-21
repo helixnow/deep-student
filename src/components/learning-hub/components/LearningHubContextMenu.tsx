@@ -40,6 +40,7 @@ import {
 } from '@/components/ui/app-menu';
 import type { ResourceListItem } from '../types';
 import type { FolderTreeNode, VfsFolderItem } from '@/dstu/types/folder';
+import { useShallow } from 'zustand/react/shallow';
 import { useDesktopStore } from '../stores/desktopStore';
 import type { DstuNodeType } from '@/dstu/types';
 
@@ -199,7 +200,14 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
   }, [onOpenChange]);
 
   // ========== 桌面快捷方式 Store（必须在条件返回之前调用） ==========
-  const { addResourceShortcut, addFolderShortcut, hasResourceShortcut, hasFolderShortcut } = useDesktopStore();
+  const { addResourceShortcut, addFolderShortcut, hasResourceShortcut, hasFolderShortcut } = useDesktopStore(
+    useShallow((state) => ({
+      addResourceShortcut: state.addResourceShortcut,
+      addFolderShortcut: state.addFolderShortcut,
+      hasResourceShortcut: state.hasResourceShortcut,
+      hasFolderShortcut: state.hasFolderShortcut,
+    }))
+  );
 
   if (!open) return null;
 

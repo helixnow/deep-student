@@ -634,7 +634,7 @@
     "groupPinnedSearch": "搜索资源...",
     "groupPinnedSearchEmpty": "未找到匹配的资源",
     "groupPinnedSearchHint": "从文件夹中选择要关联的资源",
-    "groupPinnedAdded": "已添加关联来源",
+    "groupPinnedAdded": "已添加关联来源: {{name}}",
     "groupPinnedRemoved": "已移除关联来源",
     "groupPinnedDuplicate": "该资源已关联",
     "groupPinnedSelectedCount": "已选 {{count}} 项",

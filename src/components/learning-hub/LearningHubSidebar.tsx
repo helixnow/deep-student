@@ -62,7 +62,8 @@ const MemoryView = lazy(() => import('./views/MemoryView'));
 // ★ 2026-01-31: 懒加载桌面视图
 import { DesktopView, type CreateResourceType } from './components/finder';
 import type { DesktopRootConfig } from './stores/desktopStore';
-import { useFinderStore } from './stores/finderStore';
+import { useShallow } from 'zustand/react/shallow';
+import { useFinderStore, type QuickAccessType } from './stores/finderStore';
 import { useRecentStore } from './stores/recentStore';
 import { useLearningHubNavigationSafe } from './LearningHubNavigationContext';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
@@ -108,6 +109,7 @@ export function LearningHubSidebar({
   hasOpenApp = false,
   onCloseApp,
   hideToolbarAndNav = false,
+  highlightedIds,
 }: LearningHubSidebarProps) {
   const { t } = useTranslation('learningHub');
 
@@ -264,7 +266,11 @@ export function LearningHubSidebar({
   // 这彻底解决了两个历史栈互相干扰导致的循环问题
 
   // ★ 获取 DSTU 列表选项（文件夹优先模式）
-  const { getDstuListOptions } = useFinderStore();
+  const { getDstuListOptions } = useFinderStore(
+    useShallow((state) => ({
+      getDstuListOptions: state.getDstuListOptions,
+    }))
+  );
 
   // Load items when path changes
   // ★ 使用 debouncedSearchQuery 触发搜索，避免快速输入导致频繁 API 调用
@@ -2351,6 +2357,7 @@ export function LearningHubSidebar({
             enableBoxSelect={mode === 'canvas' ? isMultiSelectMode : !isCollapsed}
             onSelectionChange={setSelectedIds}
             onRetry={handleRefresh}
+            highlightedIds={highlightedIds}
           />
         )}
       

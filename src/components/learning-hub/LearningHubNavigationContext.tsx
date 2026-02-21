@@ -8,7 +8,9 @@
 
 import React, { createContext, useContext, useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { useFolderNavigation, type RealPathBreadcrumbItem } from './hooks/useFolderNavigation';
+import { useShallow } from 'zustand/react/shallow';
 import { useFinderStore } from './stores/finderStore';
+import type { ViewMode as FinderViewMode } from './stores/finderStore';
 
 // ============================================================================
 // 📱 全局导航 Ref（解决 App.tsx 无法访问 Context 的问题）
@@ -137,7 +139,11 @@ export const LearningHubNavigationProvider: React.FC<{ children: React.ReactNode
   }, [finderGoForward]);
 
   // 统一导航方法：使用 finderStore.enterFolder
-  const { enterFolder } = useFinderStore();
+  const { enterFolder } = useFinderStore(
+    useShallow((state) => ({
+      enterFolder: state.enterFolder,
+    }))
+  );
   const navigateTo = useCallback((folderId: string | null) => {
     enterFolder(folderId ?? 'root');
   }, [enterFolder]);

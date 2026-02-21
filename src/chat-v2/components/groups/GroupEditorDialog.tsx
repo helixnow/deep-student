@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { 
   Check, X, Type, Smile, AlignLeft, Terminal, Zap, Trash2,
@@ -74,6 +75,8 @@ interface GroupEditorPanelProps {
   onSubmit: (payload: CreateGroupRequest | UpdateGroupRequest) => Promise<void>;
   onClose: () => void;
   onDelete?: () => void;
+  /** 移动端：通过父级 MobileSlidingLayout 右面板浏览资源，传入 togglePinnedResource 回调和当前已选 ID */
+  onMobileBrowse?: (toggleResource: (sourceId: string) => 'added' | 'removed' | false, currentIds: string[]) => void;
 }
 
 const PropertyRow: React.FC<{
@@ -109,6 +112,7 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
   onSubmit,
   onClose,
   onDelete,
+  onMobileBrowse,
 }) => {
   const { t } = useTranslation(['chatV2', 'common', 'skills']);
   const { isSmallScreen } = useBreakpoint();
@@ -191,13 +195,23 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
     return skillRegistry.getAll().sort((a, b) => a.name.localeCompare(b.name));
   }, [registryVersion]);
 
-  const addPinnedResource = useCallback((sourceId: string) => {
+  const pinnedHighlightSet = useMemo(() => new Set(pinnedResourceIds), [pinnedResourceIds]);
+
+  const togglePinnedResource = useCallback((sourceId: string): 'added' | 'removed' | false => {
     const trimmed = sourceId.trim();
-    if (!trimmed) return;
+    if (!trimmed) return false;
+    const box = { result: 'added' as 'added' | 'removed' };
     setPinnedResourceIds((prev) => {
-      if (prev.includes(trimmed)) return prev;
+      if (prev.includes(trimmed)) {
+        box.result = 'removed';
+        return prev.filter((id) => id !== trimmed);
+      }
       return [...prev, trimmed];
     });
+    if (box.result === 'removed') {
+      setResolvedPinnedRefs((prev) => prev.filter((r) => r.sourceId !== trimmed));
+    }
+    return box.result;
   }, []);
 
   const removePinnedResource = useCallback((sourceId: string) => {
@@ -435,7 +449,13 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
             {/* Add from browse — primary action */}
             <button
               type="button"
-              onClick={() => setPickerOpen(true)}
+              onClick={() => {
+                if (onMobileBrowse) {
+                  onMobileBrowse(togglePinnedResource, pinnedResourceIds);
+                } else {
+                  setPickerOpen(true);
+                }
+              }}
               className="w-full flex items-center gap-2 px-3 py-2 rounded-md border border-dashed border-border/60 text-sm text-muted-foreground hover:bg-muted/40 hover:text-foreground hover:border-border transition-all cursor-pointer"
             >
               <Plus className="w-4 h-4" />
@@ -448,61 +468,6 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
               </p>
             )}
           </div>
-
-          {/* Resource Picker — reuse LearningHubSidebar */}
-          {pickerOpen && (
-            <div
-              className="fixed inset-0 z-[200] flex justify-end"
-              onClick={() => setPickerOpen(false)}
-            >
-              <div
-                className={cn(
-                  'h-full bg-card shadow-xl flex flex-col',
-                  isSmallScreen
-                    ? 'w-full animate-in slide-in-from-bottom duration-200'
-                    : 'w-[380px] max-w-[85vw] border-l border-border/40 animate-in slide-in-from-right-full duration-200'
-                )}
-                style={isSmallScreen ? {
-                  paddingBottom: `calc(var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px)) + ${MOBILE_LAYOUT.bottomTabBar.defaultHeight}px)`,
-                } : undefined}
-                onClick={(e) => e.stopPropagation()}
-              >
-                <div className="flex items-center justify-between px-3 py-2 border-b border-border/40 shrink-0">
-                  <div className="flex items-center gap-2">
-                    {isSmallScreen && (
-                      <NotionButton
-                        variant="ghost"
-                        size="icon"
-                        iconOnly
-                        onClick={() => setPickerOpen(false)}
-                        className="!h-7 !w-7"
-                      >
-                        <X className="w-4 h-4" />
-                      </NotionButton>
-                    )}
-                    <span className="text-sm font-medium">{t('page.groupPinnedBrowse')}</span>
-                  </div>
-                  <span className="text-xs text-muted-foreground">
-                    {pinnedResourceIds.length > 0
-                      ? t('page.groupPinnedSelectedCount', { count: pinnedResourceIds.length })
-                      : ''}
-                  </span>
-                </div>
-                <div className="flex-1 overflow-hidden">
-                  <LearningHubSidebar
-                    mode="canvas"
-                    onClose={() => setPickerOpen(false)}
-                    onOpenApp={(item: ResourceListItem) => {
-                      addPinnedResource(item.id);
-                    }}
-                    className="h-full"
-                    hideToolbarAndNav={isSmallScreen}
-                    mobileBottomPadding={isSmallScreen}
-                  />
-                </div>
-              </div>
-            </div>
-          )}
 
           {mode === 'edit' && onDelete && (
             <div className="pt-6 border-t border-border/40">
@@ -518,6 +483,51 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
           )}
         </div>
       </CustomScrollArea>
+
+      {/* Resource Picker — 桌面端使用 Portal 右侧面板；移动端由父级 MobileSlidingLayout 右面板处理 */}
+      {pickerOpen && !onMobileBrowse && createPortal(
+        <div
+          className="fixed inset-0 z-[200] flex justify-end"
+          onClick={() => setPickerOpen(false)}
+        >
+          <div
+            className="h-full w-[380px] max-w-[85vw] bg-card shadow-xl flex flex-col border-l border-border/40 animate-in slide-in-from-right-full duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-3 py-2 border-b border-border/40 shrink-0">
+              <div className="flex items-center gap-2">
+                <NotionButton
+                  variant="ghost"
+                  size="icon"
+                  iconOnly
+                  onClick={() => setPickerOpen(false)}
+                  className="!h-7 !w-7"
+                >
+                  <X className="w-4 h-4" />
+                </NotionButton>
+                <span className="text-sm font-medium">{t('page.groupPinnedBrowse')}</span>
+              </div>
+              <span className="text-xs text-muted-foreground">
+                {pinnedResourceIds.length > 0
+                  ? t('page.groupPinnedSelectedCount', { count: pinnedResourceIds.length })
+                  : ''}
+              </span>
+            </div>
+            <div className="flex-1 overflow-hidden">
+              <LearningHubSidebar
+                mode="canvas"
+                onClose={() => setPickerOpen(false)}
+                onOpenApp={(item: ResourceListItem) => {
+                  togglePinnedResource(item.id);
+                }}
+                className="h-full"
+                highlightedIds={pinnedHighlightSet}
+              />
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
     </div>
   );
 };

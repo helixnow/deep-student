@@ -111,12 +111,17 @@ export const SkillsManagementPage: React.FC<SkillsManagementPageProps> = ({
   const [editOriginRect, setEditOriginRect] = useState<DOMRect | null>(null);
   const cardRefsMap = useRef<Map<string, HTMLDivElement>>(new Map());
 
-  // 检测主题
-  const isDarkMode = useMemo(() => {
-    if (typeof document !== 'undefined') {
-      return document.documentElement.classList.contains('dark');
-    }
-    return true;
+  // 检测主题（通过 MutationObserver 监听 DOM class 变化，确保跨组件主题切换实时响应）
+  const [isDarkMode, setIsDarkMode] = useState(() =>
+    typeof document !== 'undefined' && document.documentElement.classList.contains('dark')
+  );
+  useEffect(() => {
+    const el = document.documentElement;
+    const observer = new MutationObserver(() => {
+      setIsDarkMode(el.classList.contains('dark'));
+    });
+    observer.observe(el, { attributes: true, attributeFilter: ['class'] });
+    return () => observer.disconnect();
   }, []);
 
   // ========== 订阅 Registry 更新 ==========

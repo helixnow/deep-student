@@ -27,11 +27,8 @@ import {
   X,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import {
-  useReviewPlanStore,
-  type CalendarHeatmapData,
-  type ReviewHistory,
-} from '@/stores/reviewPlanStore';
+import { useShallow } from 'zustand/react/shallow';
+import { useReviewPlanStore, type CalendarHeatmapData, type ReviewHistory } from '@/stores/reviewPlanStore';
 
 // ============================================================================
 // 类型定义
@@ -387,7 +384,12 @@ export const ReviewCalendarView: React.FC<ReviewCalendarViewProps> = ({
   const { t, i18n } = useTranslation(['review', 'common']);
 
   // Store
-  const { calendarData, loadCalendarData } = useReviewPlanStore();
+  const { calendarData, loadCalendarData } = useReviewPlanStore(
+    useShallow((state) => ({
+      calendarData: state.calendarData,
+      loadCalendarData: state.loadCalendarData,
+    }))
+  );
 
   // 本地状态
   const [currentDate, setCurrentDate] = useState(new Date());

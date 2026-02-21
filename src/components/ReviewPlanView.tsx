@@ -41,7 +41,8 @@ import {
   type ReviewStats,
   type ReviewItemWithQuestion,
 } from '@/stores/reviewPlanStore';
-import { useQuestionBankStore, type Question } from '@/stores/questionBankStore';
+import { useShallow } from 'zustand/react/shallow';
+import { useQuestionBankStore, type Question } from '../stores/questionBankStore';
 
 // ============================================================================
 // 类型定义
@@ -221,7 +222,12 @@ export const ReviewPlanView: React.FC<ReviewPlanViewProps> = ({
     startSession,
   } = useReviewPlanStore();
 
-  const { questions, loadQuestions } = useQuestionBankStore();
+  const { questions, loadQuestions } = useQuestionBankStore(
+    useShallow((state) => ({
+      questions: state.questions,
+      loadQuestions: state.loadQuestions,
+    }))
+  );
 
   // 本地状态
   const [isRefreshing, setIsRefreshing] = useState(false);

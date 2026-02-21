@@ -81,8 +81,8 @@ export const OpenSourceAcknowledgementsSection: React.FC = () => {
   };
 
   const itemAnim = {
-    hidden: { opacity: 0, scale: 0.95, y: 5 },
-    show: { opacity: 1, scale: 1, y: 0, transition: { type: "spring", stiffness: 300, damping: 24 } }
+    hidden: { opacity: 0, scale: 0.95, y: 10 },
+    show: { opacity: 1, scale: 1, y: 0, transition: { type: 'spring' as const, stiffness: 300, damping: 24 } }
   };
 
   return (

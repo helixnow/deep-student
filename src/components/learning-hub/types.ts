@@ -134,6 +134,8 @@ export interface LearningHubSidebarProps {
   onCloseApp?: () => void;
   /** ★ 隐藏顶部工具栏和导航栏（移动端聊天内嵌模式使用，由外部容器提供面包屑） */
   hideToolbarAndNav?: boolean;
+  /** ★ 高亮标记的资源 ID（如分组已关联的资源，显示勾选状态） */
+  highlightedIds?: Set<string>;
 }
 
 /**

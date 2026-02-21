@@ -35,6 +35,7 @@ import {
   type DateRange,
   type LearningTrendPoint,
 } from '@/stores/questionBankStore';
+import { useShallow } from 'zustand/react/shallow';
 
 // ============================================================================
 // 类型定义
@@ -168,7 +169,12 @@ export const LearningTrendChart: React.FC<LearningTrendChartProps> = ({
   const trendData = useLearningTrend();
   const isLoading = useLoadingTrend();
   const selectedRange = useSelectedDateRange();
-  const { loadLearningTrend, setDateRange } = useQuestionBankStore();
+  const { loadLearningTrend, setDateRange } = useQuestionBankStore(
+    useShallow((state) => ({
+      loadLearningTrend: state.loadLearningTrend,
+      setDateRange: state.setDateRange,
+    }))
+  );
 
   // 加载数据
   useEffect(() => {
