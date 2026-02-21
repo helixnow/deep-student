@@ -10,6 +10,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.9.15](https://github.com/helixnow/deep-student/compare/v0.9.14...v0.9.15) (2026-02-21)
+
+
+### Features
+
+* **mindmap:** add rich text formatting toolbar and emoji picker, improve node styling and export ([36981fb](https://github.com/helixnow/deep-student/commit/36981fbe1ee5578355128f7d26c69ae106c5cfbf))
+
+
+### Bug Fixes
+
+* **essay-grading:** replace description Input with textarea for multi-line mode descriptions ([881bd5e](https://github.com/helixnow/deep-student/commit/881bd5e97c72c4cc82b85e1e2ea302d4b70b00fe))
+
 ## [0.9.14](https://github.com/helixnow/deep-student/compare/v0.9.13...v0.9.14) (2026-02-20)
 
 
