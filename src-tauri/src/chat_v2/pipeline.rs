@@ -342,11 +342,20 @@ fn inject_synthetic_load_skills(
 ) {
     let active_ids = match options.active_skill_ids.as_ref() {
         Some(ids) if !ids.is_empty() => ids,
-        _ => return,
+        _ => {
+            log::debug!("[ChatV2::pipeline] inject_synthetic_load_skills: skipped (active_skill_ids is None/empty)");
+            return;
+        }
     };
     let skill_contents = match options.skill_contents.as_ref() {
         Some(sc) if !sc.is_empty() => sc,
-        _ => return,
+        _ => {
+            log::info!(
+                "[ChatV2::pipeline] inject_synthetic_load_skills: active_skill_ids={:?} but skill_contents is None/empty!",
+                active_ids
+            );
+            return;
+        }
     };
 
     // 收集有内容的已激活技能
@@ -356,6 +365,11 @@ fn inject_synthetic_load_skills(
         .collect();
 
     if skills_to_inject.is_empty() {
+        log::info!(
+            "[ChatV2::pipeline] inject_synthetic_load_skills: no match! active_ids={:?}, skill_contents_keys={:?}",
+            active_ids,
+            skill_contents.keys().collect::<Vec<_>>()
+        );
         return;
     }
 
