@@ -19,7 +19,7 @@
 
 智能对话 · 知识管理 · Anki 制卡 · 全能阅读 · 深度调研 · 技能扩展
 
-[**下载安装**](#下载安装) · [快速入门](./docs/user-guide/00-快速入门.md) · [用户手册](./docs/user-guide/README.md) · [参与贡献](./CONTRIBUTING.md) · [报告问题](https://github.com/helixnow/deep-student/issues)
+[**下载安装**](#下载安装) · [快速入门](https://ds.a-q.me/docs/user-guide/00-quick-start.html) · [用户手册](https://ds.a-q.me/docs/user-guide/) · [参与贡献](./CONTRIBUTING.md) · [报告问题](https://github.com/helixnow/deep-student/issues)
 
 </div>
 
@@ -465,8 +465,8 @@ DeepStudent
 
 | 文档 | 说明 |
 |------|------|
-| [快速入门](./docs/user-guide/00-快速入门.md) | 5 分钟上手指南 |
-| [用户手册](./docs/user-guide/README.md) | 完整功能使用说明 |
+| [快速入门](https://ds.a-q.me/docs/user-guide/00-quick-start.html) | 5 分钟上手指南 |
+| [用户手册](https://ds.a-q.me/docs/user-guide/) | 完整功能使用说明 |
 | [构建配置](./BUILD-CONFIG.md) | 全平台构建与打包 |
 | [更新日志](./CHANGELOG.md) | 版本变更记录 |
 | [安全政策](./SECURITY.md) | 漏洞报告流程 |
