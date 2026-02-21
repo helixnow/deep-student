@@ -8,9 +8,6 @@
 //! - 新增 `resource_type` 字段
 //! - 表命名：`vfs_emb_{modality}_{dim}`
 
-#![allow(unused_variables)]
-#![allow(dead_code)]
-
 use std::cmp::Ordering;
 use std::fs;
 use std::path::{Path, PathBuf};

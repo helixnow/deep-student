@@ -1,5 +1,3 @@
-#![allow(unused_variables)]
-
 mod manager;
 
 pub use manager::DatabaseManager;
@@ -876,7 +874,7 @@ impl Database {
             );
         }
 
-        let current_version: u32 = conn
+        let _current_version: u32 = conn
             .query_row(
                 "SELECT version FROM schema_version ORDER BY version DESC LIMIT 1",
                 [],
@@ -2697,7 +2695,7 @@ impl Database {
         &self,
         mistake_id: &str,
         messages: &[crate::models::ChatMessage],
-        subject: Option<&str>,
+        _subject: Option<&str>,
         chat_category: Option<&str>,
     ) -> Result<AppendMessagesChangeSet> {
         let mut conn = self.get_conn_safe()?;

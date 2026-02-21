@@ -95,8 +95,6 @@ import {
   LazySOTADashboard,
   LazyDataImportExport,
   LazyImportConversationDialog,
-
-  // ★ 2026-01：LazyUserMemoryPage 已废弃，改用 Learning Hub 中的 MemoryView
   LazySkillsManagementPage,
   LazyTemplateManagementPage,
   LazyTemplateJsonPreviewPage,

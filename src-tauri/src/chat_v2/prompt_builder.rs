@@ -464,7 +464,7 @@ impl PromptBuilder {
 2. <injected_context> - 相关上下文信息，包含以下可能的子标签：
 {}
 
-请优先理解并响应 <user_query> 中的内容，<injected_context> 中的信息仅供参考。
+请优先理解并响应 <user_query> 中的内容。
 </user_message_format_guide>"#,
                 hints_content
             ));

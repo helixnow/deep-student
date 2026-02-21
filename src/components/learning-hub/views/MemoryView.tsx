@@ -3,7 +3,7 @@ import { consumePendingMemoryLocate } from '@/utils/pendingMemoryLocate';
 /**
  * MemoryView - VFS Memory 管理视图
  *
- * ★ 2026-01：替代旧的 UserMemoryPage，集成到 Learning Hub
+ * ★ 2026-01：集成到 Learning Hub
  * ★ 2026-02：内联预览 + 跳转编辑器，移除编辑对话框
  *
  * 功能：

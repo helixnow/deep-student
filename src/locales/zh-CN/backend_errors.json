@@ -122,12 +122,6 @@
     "parent_tag_id_empty": "父标签 ID 为空，拒绝创建",
     "embedding_dimension_mismatch": "embedding 维度不一致"
   },
-  "user_memory": {
-    "get_memory_failed": "获取记忆失败",
-    "update_summary_failed": "更新摘要失败",
-    "save_summary_failed": "保存摘要失败",
-    "get_category_list_failed": "获取类别列表失败"
-  },
   "irec": {
     "sqlite_needs_connection_pool": "SQLite服务需要数据库连接池"
   },

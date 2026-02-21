@@ -1,7 +1,7 @@
 //! 重排序模块
 //!
 //! 对检索结果进行二次排序，提高相关性。
-//! 从 user_memory 模块迁移并适配 VFS Memory
+//! 适配 VFS Memory
 
 use std::sync::Arc;
 

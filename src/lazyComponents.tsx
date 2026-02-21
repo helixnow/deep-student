@@ -70,8 +70,6 @@ export const LazyImportConversationDialog = React.lazy(() =>
   import('./components/ImportConversationDialog').then(m => ({ default: m.ImportConversationDialog }))
 );
 
-// ★ 2026-01：LazyUserMemoryPage 已废弃，改用 Learning Hub 中的 MemoryView
-
 // 技能管理
 export const LazySkillsManagementPage = React.lazy(() =>
   import('./components/skills-management/SkillsManagementPage').then(m => ({ default: m.SkillsManagementPage }))

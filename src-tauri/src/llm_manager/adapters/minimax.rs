@@ -35,7 +35,7 @@ impl RequestAdapter for MiniMaxAdapter {
     fn apply_reasoning_config(
         &self,
         body: &mut Map<String, Value>,
-        config: &ApiConfig,
+        _config: &ApiConfig,
         _enable_thinking: Option<bool>,
     ) -> bool {
         // MiniMax 特性：

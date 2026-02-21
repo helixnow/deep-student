@@ -15,6 +15,7 @@ import { X, FileText, BookOpen, ClipboardList, Languages, Pencil, Folder, Zap } 
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
 import type { ContextRef } from '../../resources/types';
+import { SKILL_INSTRUCTION_TYPE_ID } from '../../skills/types';
 
 // ============================================================================
 // 类型定义
@@ -122,7 +123,12 @@ export const ContextRefChips: React.FC<ContextRefChipsProps> = memo(
     const vfsResourceTypes = new Set(['note', 'textbook', 'exam', 'essay', 'translation', 'image', 'file', 'mindmap']);
     
     const displayRefs = useMemo(() => {
-      return refs.filter((ref) => !vfsResourceTypes.has(ref.typeId));
+      return refs.filter((ref) => {
+        if (vfsResourceTypes.has(ref.typeId)) return false;
+        // ★ 隐藏所有技能气泡（技能面板已展示激活状态，气泡只会造成视觉噪音）
+        if (ref.typeId === SKILL_INSTRUCTION_TYPE_ID) return false;
+        return true;
+      });
     }, [refs]);
 
     // 没有需要显示的引用时不渲染

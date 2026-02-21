@@ -1,8 +1,6 @@
 #![allow(clippy::needless_return)]
 #![allow(clippy::too_many_arguments)]
 #![allow(clippy::large_enum_variant)]
-#![allow(dead_code)]
-#![allow(unused_imports)]
 //! Single-file implementation of `web_search` tool.
 //! - Standardized citations output + optional `inject_text` fallback.
 //! - Multi-provider adapters: google_cse, serpapi, tavily, brave, searxng, zhipu, bocha.
@@ -55,7 +53,6 @@ use tokio::time::sleep;
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::EnvFilter;
 use url::Url;
-use uuid::Uuid;
 
 // =============================
 // Constants & Public Contract
@@ -2677,8 +2674,10 @@ pub async fn do_search(cfg: &ToolConfig, mut input: SearchInput) -> ToolResult {
 
     // 应用Provider策略 - 获取指定引擎的策略并创建定制配置，同时准备运行时控制
     let mut effective_cfg = cfg.clone();
-    let mut _runtime_state: Option<Arc<ProviderRuntimeState>> = None;
-    let mut _runtime_fingerprint: Option<StrategyFingerprint> = None;
+    #[allow(unused_assignments)]
+    let mut runtime_state: Option<Arc<ProviderRuntimeState>> = None;
+    #[allow(unused_assignments)]
+    let mut runtime_fingerprint: Option<StrategyFingerprint> = None;
 
     if let Some(ref provider_strategies) = cfg.provider_strategies {
         let strategy = provider_strategies.get_strategy(&engine);

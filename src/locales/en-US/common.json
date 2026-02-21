@@ -181,12 +181,6 @@
       "note_create": "Create Note",
       "note_list": "List Notes",
       "note_search": "Search Notes",
-      "user_memory_store": "Store Memory",
-      "user_memory_search": "Search Memory",
-      "user_memory_update": "Update Memory",
-      "user_memory_delete": "Delete Memory",
-      "user_memory_list": "List Memories",
-      "user_memory_history": "Memory History",
       "memory_stats": "Memory Stats",
       "memory_prune": "Prune Memory",
       "knowledge_internalize": "Internalize Knowledge",
@@ -2136,12 +2130,12 @@
       "providers": {
         "localRag": "Local Knowledge Base",
         "knowledgeGraph": "Knowledge Graph",
-        "userMemory": "User Memory",
         "webSearch": "Web Search",
         "mcpTool": "MCP Tool",
         "multimodalRag": "Multimodal Knowledge Base",
         "unifiedSearch": "Unified Search",
-        "academicSearch": "Academic Search"
+        "academicSearch": "Academic Search",
+        "memory": "Memory"
       },
       "defaultTitles": {
         "document": "Document",

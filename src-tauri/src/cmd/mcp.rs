@@ -703,7 +703,8 @@ mod mcp_test_helpers {
 
     async fn connect_with_retry(client: &McpClient, timeout: Duration) -> Result<(), McpError> {
         let start = Instant::now();
-        let mut _last_error = String::new();
+        #[allow(unused_assignments)]
+        let mut last_error = String::new();
 
         loop {
             match client.connect().await {

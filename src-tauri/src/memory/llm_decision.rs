@@ -1,7 +1,7 @@
 //! LLM 决策模块
 //!
 //! 使用 LLM 自动决定记忆操作：ADD / UPDATE / NONE
-//! 从 user_memory 模块迁移并适配 VFS Memory
+//! 适配 VFS Memory
 
 use std::sync::Arc;
 

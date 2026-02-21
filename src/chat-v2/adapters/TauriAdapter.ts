@@ -1641,6 +1641,10 @@ export class ChatV2TauriAdapter {
 
         userContextRefs = truncateResult.truncatedRefs;
 
+        // ★ 2026-02: skill 内容已在 buildSystemPromptWithSkills 中直接从 registry 注入 system prompt
+        // 此处仅需从 userContextRefs 中移除 skill_instruction refs，避免在 user message 中重复发送
+        userContextRefs = userContextRefs.filter((ref) => ref.typeId !== SKILL_INSTRUCTION_TYPE_ID);
+
         // ★ 文档28 Prompt10：保存 pathMap 用于传递给后端和更新 store
         if (Object.keys(pathMap).length > 0) {
           contextPathMap = pathMap;
@@ -1829,35 +1833,9 @@ export class ChatV2TauriAdapter {
         // 使用截断后的 sendRefs
         userContextRefs = truncateResult.truncatedRefs;
 
-        // ★ 2026-02 提级：将 skill_instruction 类型的 refs 从 userContextRefs 提升到 system prompt
-        // AI 对 system prompt 中的指令遵循度远高于 user message 中的上下文
-        const skillRefs = userContextRefs.filter((ref) => ref.typeId === SKILL_INSTRUCTION_TYPE_ID);
-        if (skillRefs.length > 0) {
-          // 提取 skill 指令的文本内容
-          const skillTexts: string[] = [];
-          for (const ref of skillRefs) {
-            for (const block of ref.formattedBlocks) {
-              if (block.type === 'text' && (block as { type: 'text'; text: string }).text) {
-                skillTexts.push((block as { type: 'text'; text: string }).text);
-              }
-            }
-          }
-          if (skillTexts.length > 0) {
-            const skillContent = skillTexts.join('\n\n');
-            // 追加到 systemPromptOverride（后端 PromptBuilder 会将其放入 <system_instructions>）
-            if (options.systemPromptOverride) {
-              options.systemPromptOverride = `${options.systemPromptOverride}\n\n${skillContent}`;
-            } else {
-              options.systemPromptOverride = skillContent;
-            }
-            console.log(LOG_PREFIX, '★ Skill instructions elevated to system prompt:', {
-              skillCount: skillRefs.length,
-              contentLength: skillContent.length,
-            });
-          }
-          // 从 userContextRefs 中移除 skill_instruction refs（已提升到 system prompt）
-          userContextRefs = userContextRefs.filter((ref) => ref.typeId !== SKILL_INSTRUCTION_TYPE_ID);
-        }
+        // ★ 2026-02: skill 内容已在 buildSystemPromptWithSkills 中直接从 registry 注入 system prompt
+        // 此处仅需从 userContextRefs 中移除 skill_instruction refs，避免在 user message 中重复发送
+        userContextRefs = userContextRefs.filter((ref) => ref.typeId !== SKILL_INSTRUCTION_TYPE_ID);
 
         logSendContextRefsSummary(userContextRefs);
 
@@ -2950,7 +2928,7 @@ export class ChatV2TauriAdapter {
 
     // 根据模式工具配置覆盖功能开关
     const ragEnabled = features.get('rag') ?? modeEnabledTools.includes('rag');
-    const memoryEnabled = features.get('userMemory') ?? modeEnabledTools.includes('memory');
+    const memoryEnabled = features.get('memory') ?? modeEnabledTools.includes('memory');
     const webSearchEnabled = features.get('webSearch') ?? modeEnabledTools.includes('web_search');
     const ankiEnabled = features.get('anki') ?? modeEnabledTools.includes('anki');
 
@@ -3222,30 +3200,52 @@ export class ChatV2TauriAdapter {
   }
 
   /**
-   * 构建系统提示（注入 Skills 元数据）
+   * 构建系统提示（注入 Skills 元数据 + 激活 Skill 的完整内容）
    *
    * 🔧 2026-01-20: 渐进披露模式下，注入 available_skills 列表
-   *
-   * 将 Skills 元数据追加到系统提示后面，用于 LLM 自动发现和激活技能
+   * ★ 2026-02: 直接从 skillRegistry 读取激活 Skill 的 content 注入 system prompt
+   *   - 绕过 ContextRef → Resource → VFS pipeline，确保 skill 内容始终可靠
+   *   - AI 对 system prompt 中的指令遵循度远高于 user message 中的上下文
    */
   private buildSystemPromptWithSkills(
     basePrompt: string | undefined
   ): string | undefined {
-    // 渐进披露模式：使用 available_skills 格式，告知 LLM 可用的技能组
+    let result = basePrompt;
+
+    // ★ 1) 注入激活 Skill 的完整内容（从 registry 直接读取，不依赖 ContextRef pipeline）
+    const currentState = this.getCurrentState();
+    const activeSkillIds = currentState.activeSkillIds;
+    if (activeSkillIds.length > 0) {
+      const skillContentParts: string[] = [];
+      for (const skillId of activeSkillIds) {
+        const skill = skillRegistry.get(skillId);
+        if (skill?.content && skill.content.trim()) {
+          skillContentParts.push(
+            `<skill_instruction skill-id="${skill.id}" skill-name="${skill.name}">\n${skill.content}\n</skill_instruction>`
+          );
+        }
+      }
+      if (skillContentParts.length > 0) {
+        const skillContent = skillContentParts.join('\n\n');
+        result = result ? `${result}\n\n${skillContent}` : skillContent;
+        console.log(LOG_PREFIX, '★ Skill instructions injected into system prompt:', {
+          skillCount: skillContentParts.length,
+          skillIds: activeSkillIds,
+          contentLength: skillContent.length,
+        });
+      }
+    }
+
+    // 2) 渐进披露模式：注入 available_skills 列表，告知 LLM 可用的技能组
     // 🔧 排除已加载的技能，避免 LLM 重复调用 load_skills
     const skillMetadataPrompt = generateAvailableSkillsPrompt(true, this.sessionId);
     console.log(LOG_PREFIX, '[ProgressiveDisclosure] Generated available_skills prompt (excludeLoaded=true)');
 
-    // 如果没有 skills 元数据，返回原始提示
-    if (!skillMetadataPrompt) {
-      return basePrompt;
+    if (skillMetadataPrompt) {
+      result = result ? `${result}\n\n${skillMetadataPrompt}` : skillMetadataPrompt;
     }
 
-    if (basePrompt) {
-      return `${basePrompt}\n\n${skillMetadataPrompt}`;
-    }
-
-    return skillMetadataPrompt;
+    return result;
   }
 
   // ========================================================================

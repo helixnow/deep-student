@@ -564,7 +564,8 @@ impl ChatAnkiToolExecutor {
             .min(MAX_TIMEOUT_MS);
         let deadline = Instant::now() + Duration::from_millis(timeout_ms);
 
-        let mut _final_status = "timeout".to_string();
+        #[allow(unused_assignments)]
+        let mut final_status = "timeout".to_string();
         let mut final_error: Option<String> = None;
         let mut final_anki_block_id: Option<String> = None;
         let mut final_document_id: Option<String> = None;

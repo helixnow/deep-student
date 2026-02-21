@@ -1,6 +1,3 @@
-#![allow(unused_variables)]
-#![allow(unused_assignments)]
-
 pub mod adapters;
 mod builtin_vendors;
 mod exam_engine;

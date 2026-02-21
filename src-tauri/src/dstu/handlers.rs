@@ -1,6 +1,3 @@
-#![allow(unused_variables)]
-#![allow(dead_code)]
-
 //! DSTU Tauri 命令处理器
 //!
 //! 提供 DSTU 访达协议层的所有 Tauri 命令
@@ -224,7 +221,7 @@ async fn dstu_list_folder_first(
     }
 
     if is_root {
-        let folder_id = "root"; // 用于日志
+        let _folder_id = "root"; // 用于日志
                                 // 列出根级文件夹
         let root_folders = match crate::vfs::VfsFolderRepo::list_folders_by_parent(vfs_db, None) {
             Ok(folders) => folders,
@@ -5271,7 +5268,7 @@ pub async fn dstu_search_in_folder(
     // 如果有 folder_id，先获取文件夹内的所有项
     if let Some(ref fid) = folder_id {
         // 需要获取文件夹的 subject
-        let folder = match crate::vfs::VfsFolderRepo::get_folder(&vfs_db, fid) {
+        let _folder = match crate::vfs::VfsFolderRepo::get_folder(&vfs_db, fid) {
             Ok(Some(f)) => f,
             Ok(None) => {
                 log::error!(

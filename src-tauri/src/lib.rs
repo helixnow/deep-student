@@ -2,11 +2,6 @@
 // 提供 run() 供 bin 目标调用，以解决编译错误。
 // 后续可在此处逐步引入 invoke_handler! 和实际命令函数列表。
 
-// 全局警告抑制（剩余零散警告，逐步治理中）
-#![allow(dead_code)]
-#![allow(static_mut_refs)]
-#![allow(private_interfaces)]
-
 // 声明所有子模块，以便在 crate 内可见
 pub mod adapters;
 pub mod anki_connect_service;

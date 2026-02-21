@@ -18,7 +18,7 @@ export const deepScholarSkill: SkillDefinition = {
   author: 'Deep Student',
   location: 'builtin',
   sourcePath: 'builtin://deep-student',
-  priority: SKILL_DEFAULT_PRIORITY,
+  priority: 1,
   disableAutoInvoke: false,
   isBuiltin: true,
   skillType: 'composite',

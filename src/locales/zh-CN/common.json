@@ -185,12 +185,6 @@
       "note_create": "创建笔记",
       "note_list": "笔记列表",
       "note_search": "搜索笔记",
-      "user_memory_store": "存储记忆",
-      "user_memory_search": "搜索记忆",
-      "user_memory_update": "更新记忆",
-      "user_memory_delete": "删除记忆",
-      "user_memory_list": "记忆列表",
-      "user_memory_history": "记忆历史",
       "memory_stats": "记忆统计",
       "memory_prune": "清理记忆",
       "knowledge_internalize": "知识内化",
@@ -2201,12 +2195,12 @@
       "providers": {
         "localRag": "本地知识库",
         "knowledgeGraph": "知识图谱",
-        "userMemory": "用户记忆",
         "webSearch": "网络搜索",
         "mcpTool": "MCP 工具",
         "multimodalRag": "多模态知识库",
         "unifiedSearch": "统一检索",
-        "academicSearch": "学术搜索"
+        "academicSearch": "学术搜索",
+        "memory": "记忆"
       },
       "defaultTitles": {
         "document": "文档",

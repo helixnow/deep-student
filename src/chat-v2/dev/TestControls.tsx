@@ -307,7 +307,7 @@ export const TestControls: React.FC<TestControlsProps> = ({
         <div className="space-y-2">
           <div className="text-xs text-muted-foreground font-medium">{t('dev.testControls.featureToggles', 'Feature Toggles')}</div>
           <div className="flex flex-wrap gap-2">
-            {['rag', 'graphRag', 'userMemory', 'webSearch', 'anki'].map((feature) => (
+            {['rag', 'graphRag', 'webSearch', 'anki'].map((feature) => (
               <button
                 key={feature}
                 onClick={() => handleToggleFeature(feature)}

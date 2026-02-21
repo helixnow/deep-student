@@ -2590,7 +2590,7 @@ impl ChatV2Pipeline {
 
         let start_time = Instant::now();
 
-        // ★ 2026-01：使用 Memory-as-VFS 替代旧的 UserMemory
+        // ★ 2026-01：使用 Memory-as-VFS
         // 记忆检索现在通过 builtin-memory_search 工具执行，此处仅返回空结果
         // LLM 会根据需要主动调用 memory_search 工具
         let sources: Vec<SourceInfo> = Vec::new();
