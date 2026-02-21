@@ -92,6 +92,7 @@ interface McpToolsSectionProps {
   onSaveServer: (updatedServer: Partial<McpServer>, serverId: string) => boolean | Promise<boolean>;
   onDeleteServer: (serverId: string) => boolean | Promise<boolean>;
   onTestServer: (server: McpServer) => void | Promise<void>;
+  testStep?: string | null;
   onReconnect: () => void;
   onRefreshRegistry: () => void;
   onHealthCheck: () => void;
@@ -178,6 +179,7 @@ function ServerListItem({
   onTest,
   isTesting,
   disableTest,
+  testStepLabel,
   isBuiltin = false
 }: {
   server: McpServer;
@@ -191,6 +193,7 @@ function ServerListItem({
   onTest: () => void;
   isTesting: boolean;
   disableTest: boolean;
+  testStepLabel?: string | null;
   isBuiltin?: boolean;
 }) {
   const { t } = useTranslation(['settings']);
@@ -343,6 +346,11 @@ function ServerListItem({
                     <FlaskConical className="w-3.5 h-3.5" />
                   )}
                 </NotionButton>
+              )}
+              {isTesting && testStepLabel && (
+                <span className="text-[10px] text-muted-foreground whitespace-nowrap animate-pulse">
+                  {testStepLabel}
+                </span>
               )}
               {!isBuiltin && (
                 <>
@@ -1956,6 +1964,7 @@ export function McpToolsSection({
   onSaveServer,
   onDeleteServer,
   onTestServer,
+  testStep,
   onReconnect,
   onRefreshRegistry,
   onHealthCheck,
@@ -1969,6 +1978,22 @@ export function McpToolsSection({
   const [isAddingNew, setIsAddingNew] = useState(false);
   // 正在测试的服务器 ID
   const [testingServerId, setTestingServerId] = useState<string | null>(null);
+
+  // stdio 测试步骤 → 可读标签映射
+  const testStepLabel = useMemo(() => {
+    if (!testStep) return null;
+    const map: Record<string, string> = {
+      spawn_process: t('settings:mcp_test_steps.spawn_process'),
+      connecting: t('settings:mcp_test_steps.connecting'),
+      initializing: t('settings:mcp_test_steps.initializing'),
+      listing_tools: t('settings:mcp_test_steps.listing_tools'),
+      listing_prompts: t('settings:mcp_test_steps.listing_prompts'),
+      listing_resources: t('settings:mcp_test_steps.listing_resources'),
+      disconnecting: t('settings:mcp_test_steps.disconnecting'),
+      done: t('settings:mcp_test_steps.done'),
+    };
+    return map[testStep] || testStep;
+  }, [testStep, t]);
 
   // 切换展开面板
   const handleToggleExpand = useCallback((idx: number, type: ExpandedPanelType) => {
@@ -2154,6 +2179,7 @@ export function McpToolsSection({
                     }}
                     isTesting={testingServerId === server.id}
                     disableTest={testingServerId != null && testingServerId !== server.id}
+                    testStepLabel={testingServerId === server.id ? testStepLabel : null}
                     isBuiltin={isBuiltinServer(server.id)}
                   />
                 );

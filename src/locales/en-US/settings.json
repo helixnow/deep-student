@@ -1361,6 +1361,16 @@
     "cache_max_label": "Cache Max",
     "cache_ttl_label": "Cache TTL"
   },
+  "mcp_test_steps": {
+    "spawn_process": "Starting process…",
+    "connecting": "Connecting…",
+    "initializing": "MCP handshake…",
+    "listing_tools": "Listing tools…",
+    "listing_prompts": "Listing prompts…",
+    "listing_resources": "Listing resources…",
+    "disconnecting": "Disconnecting…",
+    "done": "Done"
+  },
   "table_headers": {
     "name_id": "Name / ID",
     "transport": "Transport",

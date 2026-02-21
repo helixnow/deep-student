@@ -152,10 +152,11 @@ export const VendorModelFetcher: React.FC<VendorModelFetcherProps> = ({
 
   // 初始加载缓存
   useEffect(() => {
+    let cancelled = false;
     if (hasApiKey) {
       void (async () => {
         const loaded = await loadCache();
-        if (!loaded) {
+        if (!cancelled && !loaded) {
           setModels([]);
           setLastFetchTime(null);
           setIsFromCache(false);
@@ -166,6 +167,7 @@ export const VendorModelFetcher: React.FC<VendorModelFetcherProps> = ({
       setLastFetchTime(null);
       setIsFromCache(false);
     }
+    return () => { cancelled = true; };
   }, [hasApiKey, loadCache]);
 
   // 供应商切换时重置所有状态（防御性：配合 key prop 双重保障）

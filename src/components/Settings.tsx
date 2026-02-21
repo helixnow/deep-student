@@ -121,6 +121,7 @@ import { DataImportExport } from './DataImportExport';
 import { DataGovernanceDashboard } from './settings/DataGovernanceDashboard';
 // Tauri 2.x API导入
 import { invoke as tauriInvoke } from '@tauri-apps/api/core';
+import { listen as tauriListen } from '@tauri-apps/api/event';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
 // ★ 2025-01-03: userPreferenceProfile 已删除，由新的 User Memory 系统替代
 // ★ 2026-01-15: 导师模式已迁移到 Skills 系统，不再需要自定义 prompt
@@ -764,6 +765,8 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
   });
   // MCP 快速体检/预览状态
   const [mcpPreview, setMcpPreview] = useState<{ open: boolean; loading: boolean; serverId?: string; serverName?: string; error?: string; tools: any[]; prompts: any[]; resources: any[] }>({ open: false, loading: false, tools: [], prompts: [], resources: [] });
+  // stdio 测试细粒度进度步骤（null = 未在测试）
+  const [mcpTestStep, setMcpTestStep] = useState<string | null>(null);
   // 缓存详情（不触发新体检）：按照服务器聚合的工具清单 + 全局提示/资源
   const [mcpCachedDetails, setMcpCachedDetails] = useState<{
     toolsByServer: Record<string, { items: Array<{ name: string; description?: string }>; at?: number }>;
@@ -2637,9 +2640,37 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
         const fr = await testMcpHttpFrontend(endpoint, String(tool?.apiKey || ''), headerCandidates);
         res = normalizeFrontendResult(fr);
       } else if (transport === 'stdio') {
-        // 前端不支持 stdio
-        showGlobalNotification('warning', t('settings:messages.frontend_test_stdio_unsupported'));
-        return;
+        // stdio 走后端 test_mcp_connection，带细粒度进度
+        failureLabel = t('settings:test_labels.connectivity_test_failed');
+        const rawArgs = tool?.args;
+        const argsArr: string[] = Array.isArray(rawArgs)
+          ? rawArgs
+          : typeof rawArgs === 'string'
+            ? rawArgs.split(',').map((s: string) => s.trim()).filter(Boolean)
+            : [];
+        let unlisten: (() => void) | undefined;
+        try {
+          unlisten = await tauriListen<{ step: string }>('mcp-test-progress', (event) => {
+            setMcpTestStep(event.payload.step);
+          });
+          setMcpTestStep('spawn_process');
+          const backendRes: any = await tauriInvoke('test_mcp_connection', {
+            command: String(tool?.command || ''),
+            args: argsArr,
+            env: tool?.env || null,
+            cwd: tool?.cwd || null,
+            framing: tool?.framing || null,
+          });
+          res = {
+            success: !!backendRes?.success,
+            tools_count: backendRes?.tools_count,
+            tools: backendRes?.tools_preview,
+            error: backendRes?.error,
+          };
+        } finally {
+          unlisten?.();
+          setMcpTestStep(null);
+        }
       } else {
         const endpoint = String(tool?.fetch?.url || tool?.endpoint || tool?.url || '');
         failureLabel = t('settings:test_labels.sse_failed');
@@ -2931,8 +2962,8 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
           return Number.isFinite(parsed) ? parsed : 10;
         })();
         const parsedMcpCacheMax = (() => {
-          const parsed = parseInt(mcpCacheMax || '100', 10);
-          return Number.isFinite(parsed) ? parsed : 100;
+          const parsed = parseInt(mcpCacheMax || '500', 10);
+          return Number.isFinite(parsed) ? parsed : 500;
         })();
         const parsedMcpCacheTtl = (() => {
           const parsed = parseInt(mcpCacheTtlMs || '300000', 10);
@@ -4362,6 +4393,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
             onSaveServer={handleSaveMcpServer}
             onDeleteServer={handleDeleteMcpTool}
             onTestServer={handleTestServer}
+            testStep={mcpTestStep}
             onReconnect={handleReconnectClient}
             onRefreshRegistry={handleRefreshRegistry}
             onHealthCheck={handleRunHealthCheck}

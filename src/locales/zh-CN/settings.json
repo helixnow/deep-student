@@ -1361,6 +1361,16 @@
     "cache_max_label": "缓存上限",
     "cache_ttl_label": "缓存有效期"
   },
+  "mcp_test_steps": {
+    "spawn_process": "启动进程…",
+    "connecting": "建立连接…",
+    "initializing": "MCP 握手…",
+    "listing_tools": "获取工具列表…",
+    "listing_prompts": "获取提示列表…",
+    "listing_resources": "获取资源列表…",
+    "disconnecting": "断开连接…",
+    "done": "完成"
+  },
   "table_headers": {
     "name_id": "名称 / ID",
     "transport": "传输",

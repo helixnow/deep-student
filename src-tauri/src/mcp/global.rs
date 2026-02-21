@@ -323,7 +323,8 @@ pub async fn create_stdio_transport(
 
     // 启动 MCP 子进程
     let mut cmd = Command::new(command);
-    cmd.args(args)
+    cmd.kill_on_drop(true)
+        .args(args)
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());

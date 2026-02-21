@@ -5,7 +5,7 @@
 use crate::commands::AppState;
 use crate::models::AppError;
 use std::collections::HashMap;
-use tauri::{State, Window};
+use tauri::{AppHandle, Emitter, State, Window};
 
 #[cfg(feature = "mcp")]
 use crate::mcp::stdio_proxy::{
@@ -60,6 +60,7 @@ pub async fn get_mcp_tools(state: State<'_, AppState>) -> Result<Vec<serde_json:
 #[cfg(feature = "mcp")]
 #[tauri::command]
 pub async fn test_mcp_connection(
+    app_handle: AppHandle,
     command: String,
     args: Vec<String>,
     env: Option<HashMap<String, String>>,
@@ -67,12 +68,16 @@ pub async fn test_mcp_connection(
     framing: Option<String>,
     _state: State<'_, AppState>,
 ) -> Result<serde_json::Value> {
-    Ok(mcp_test_helpers::test_stdio(command, args, env, cwd, framing).await)
+    let emitter = move |step: &str| {
+        let _ = app_handle.emit("mcp-test-progress", serde_json::json!({ "step": step }));
+    };
+    Ok(mcp_test_helpers::test_stdio(command, args, env, cwd, framing, &emitter).await)
 }
 
 #[cfg(not(feature = "mcp"))]
 #[tauri::command]
 pub async fn test_mcp_connection(
+    _app_handle: AppHandle,
     command: String,
     args: Vec<String>,
     env: Option<HashMap<String, String>>,
@@ -365,9 +370,9 @@ mod mcp_test_helpers {
     use std::time::Duration;
     use tokio::time::{sleep, Instant};
 
-    const CONNECT_TIMEOUT: Duration = Duration::from_secs(8);
+    const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
     const CONNECT_RETRY_DELAY: Duration = Duration::from_millis(250);
-    const CLIENT_TIMEOUT: Duration = Duration::from_secs(30);
+    const CLIENT_TIMEOUT: Duration = Duration::from_secs(60);
     const CACHE_TTL: Duration = Duration::from_secs(300);
     const CACHE_MAX: usize = 128;
     const RATE_LIMIT: usize = 16;
@@ -386,7 +391,9 @@ mod mcp_test_helpers {
         env: Option<HashMap<String, String>>,
         cwd: Option<String>,
         framing: Option<String>,
+        on_progress: &dyn Fn(&str),
     ) -> serde_json::Value {
+        on_progress("spawn_process");
         let normalized_args: Vec<String> = args
             .into_iter()
             .map(|value| value.trim().to_string())
@@ -409,7 +416,7 @@ mod mcp_test_helpers {
         {
             Ok(transport_impl) => {
                 let transport: Box<dyn Transport> = Box::new(transport_impl);
-                probe_transport(transport, "stdio").await
+                probe_transport_with_progress(transport, "stdio", on_progress).await
             }
             Err(err) => {
                 json!({"success": false, "transport": "stdio", "error": format!("无法启动进程: {}", err)})
@@ -513,65 +520,15 @@ mod mcp_test_helpers {
         headers
     }
 
-    async fn probe_transport(
+    async fn probe_transport_with_progress(
         transport: Box<dyn Transport>,
         transport_label: &str,
+        on_progress: &dyn Fn(&str),
     ) -> serde_json::Value {
-        match gather_probe(transport, transport_label).await {
+        match gather_probe_with_progress(transport, transport_label, on_progress).await {
             Ok(outcome) => {
-                let tools_preview: Vec<_> = outcome
-                    .tools
-                    .iter()
-                    .take(8)
-                    .map(|tool| {
-                        json!({
-                            "name": tool.name,
-                            "description": tool.description.clone().unwrap_or_default(),
-                        })
-                    })
-                    .collect();
-
-                let prompts_preview: Vec<_> = outcome
-                    .prompts
-                    .iter()
-                    .take(8)
-                    .map(|prompt| {
-                        json!({
-                            "name": prompt.name,
-                            "description": prompt.description.clone().unwrap_or_default(),
-                        })
-                    })
-                    .collect();
-
-                let resources_preview: Vec<_> = outcome
-                    .resources
-                    .iter()
-                    .take(8)
-                    .map(|resource| {
-                        json!({
-                            "uri": &resource.uri,
-                            "name": &resource.name,
-                            "description": resource.description.as_deref().unwrap_or(""),
-                        })
-                    })
-                    .collect();
-
-                json!({
-                    "success": true,
-                    "transport": transport_label,
-                    "server": {
-                        "name": outcome.server.name,
-                        "version": outcome.server.version,
-                        "protocol_version": outcome.server.protocol_version,
-                    },
-                    "tools_count": outcome.tools.len(),
-                    "prompts_count": outcome.prompts.len(),
-                    "resources_count": outcome.resources.len(),
-                    "tools_preview": tools_preview,
-                    "prompts_preview": prompts_preview,
-                    "resources_preview": resources_preview,
-                    "warnings": outcome.warnings,
-                })
+                on_progress("done");
+                format_probe_outcome(outcome, transport_label)
             }
             Err(err) => json!({
                 "success": false,
@@ -581,9 +538,87 @@ mod mcp_test_helpers {
         }
     }
 
+    async fn probe_transport(
+        transport: Box<dyn Transport>,
+        transport_label: &str,
+    ) -> serde_json::Value {
+        match gather_probe(transport, transport_label).await {
+            Ok(outcome) => format_probe_outcome(outcome, transport_label),
+            Err(err) => json!({
+                "success": false,
+                "transport": transport_label,
+                "error": err,
+            }),
+        }
+    }
+
+    fn format_probe_outcome(outcome: ProbeOutcome, transport_label: &str) -> serde_json::Value {
+        let tools_preview: Vec<_> = outcome
+            .tools
+            .iter()
+            .take(8)
+            .map(|tool| {
+                json!({
+                    "name": tool.name,
+                    "description": tool.description.clone().unwrap_or_default(),
+                })
+            })
+            .collect();
+
+        let prompts_preview: Vec<_> = outcome
+            .prompts
+            .iter()
+            .take(8)
+            .map(|prompt| {
+                json!({
+                    "name": prompt.name,
+                    "description": prompt.description.clone().unwrap_or_default(),
+                })
+            })
+            .collect();
+
+        let resources_preview: Vec<_> = outcome
+            .resources
+            .iter()
+            .take(8)
+            .map(|resource| {
+                json!({
+                    "uri": &resource.uri,
+                    "name": &resource.name,
+                    "description": resource.description.as_deref().unwrap_or(""),
+                })
+            })
+            .collect();
+
+        json!({
+            "success": true,
+            "transport": transport_label,
+            "server": {
+                "name": outcome.server.name,
+                "version": outcome.server.version,
+                "protocol_version": outcome.server.protocol_version,
+            },
+            "tools_count": outcome.tools.len(),
+            "prompts_count": outcome.prompts.len(),
+            "resources_count": outcome.resources.len(),
+            "tools_preview": tools_preview,
+            "prompts_preview": prompts_preview,
+            "resources_preview": resources_preview,
+            "warnings": outcome.warnings,
+        })
+    }
+
     async fn gather_probe(
         transport: Box<dyn Transport>,
         transport_label: &str,
+    ) -> Result<ProbeOutcome, String> {
+        gather_probe_with_progress(transport, transport_label, &|_| {}).await
+    }
+
+    async fn gather_probe_with_progress(
+        transport: Box<dyn Transport>,
+        transport_label: &str,
+        on_progress: &dyn Fn(&str),
     ) -> Result<ProbeOutcome, String> {
         let client_info = ClientInfo {
             name: format!("dstu-mcp-tester-{}", transport_label),
@@ -608,11 +643,13 @@ mod mcp_test_helpers {
             RATE_LIMIT,
         );
 
+        on_progress("connecting");
         if let Err(err) = connect_with_retry(&client, CONNECT_TIMEOUT).await {
             let _ = client.disconnect().await;
             return Err(format!("连接失败: {}", err));
         }
 
+        on_progress("initializing");
         let server_info = match client.initialize().await {
             Ok(info) => info,
             Err(err) => {
@@ -621,6 +658,7 @@ mod mcp_test_helpers {
             }
         };
 
+        on_progress("listing_tools");
         let tools = match client.list_tools().await {
             Ok(list) => list,
             Err(err) => {
@@ -631,6 +669,7 @@ mod mcp_test_helpers {
 
         let mut warnings = Vec::new();
 
+        on_progress("listing_prompts");
         let prompts = match client.list_prompts().await {
             Ok(list) => list,
             Err(err) => {
@@ -639,6 +678,7 @@ mod mcp_test_helpers {
             }
         };
 
+        on_progress("listing_resources");
         let resources = match client.list_resources().await {
             Ok(list) => list,
             Err(err) => {
@@ -647,6 +687,7 @@ mod mcp_test_helpers {
             }
         };
 
+        on_progress("disconnecting");
         if let Err(err) = client.disconnect().await {
             warnings.push(format!("断开连接时出现问题: {}", err));
         }
