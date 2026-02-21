@@ -1617,12 +1617,17 @@ export class ChatV2TauriAdapter {
       let userContextRefs = undefined;
       let contextPathMap: Record<string, string> | undefined;
       let isMultimodalModel = false;
-      if (pendingContextRefs.length > 0) {
+      // 🔧 2026-02-22: 过滤掉 skill_instruction 类型 refs
+      // 技能内容改由后端 auto-load_skills 工具结果投递（role: tool），不再注入 user message
+      const refsForUserMessage = pendingContextRefs.filter(
+        (ref) => ref.typeId !== SKILL_INSTRUCTION_TYPE_ID
+      );
+      if (refsForUserMessage.length > 0) {
         const currentModelId = this.getCurrentState().chatParams.modelId;
         // ★ 2026-02 修复：使用异步版本确保模型缓存已加载
         const isMultimodal = await isModelMultimodalAsync(currentModelId);
         isMultimodalModel = isMultimodal;
-        const { sendRefs, pathMap } = await buildSendContextRefsWithPaths(pendingContextRefs, { isMultimodal });
+        const { sendRefs, pathMap } = await buildSendContextRefsWithPaths(refsForUserMessage, { isMultimodal });
 
         // Token 预估和截断（防止上下文过长）
         // ✅ 按模型上下文预算截断（优先使用用户覆盖，其次模型推断）
@@ -1640,10 +1645,6 @@ export class ChatV2TauriAdapter {
         }
 
         userContextRefs = truncateResult.truncatedRefs;
-
-        // ★ 2026-02: skill 内容已在 buildSystemPromptWithSkills 中直接从 registry 注入 system prompt
-        // 此处仅需从 userContextRefs 中移除 skill_instruction refs，避免在 user message 中重复发送
-        userContextRefs = userContextRefs.filter((ref) => ref.typeId !== SKILL_INSTRUCTION_TYPE_ID);
 
         // ★ 文档28 Prompt10：保存 pathMap 用于传递给后端和更新 store
         if (Object.keys(pathMap).length > 0) {
@@ -1795,14 +1796,19 @@ export class ChatV2TauriAdapter {
       let userContextRefs = undefined;
       let contextPathMap: Record<string, string> | undefined;
       let isMultimodalModel = false;
-      if (pendingContextRefs.length > 0) {
-        console.log(LOG_PREFIX, 'Building SendContextRefs for', pendingContextRefs.length, 'refs');
+      // 🔧 2026-02-22: 过滤掉 skill_instruction 类型 refs
+      // 技能内容改由后端 auto-load_skills 工具结果投递（role: tool），不再注入 user message
+      const refsForUserMessage2 = pendingContextRefs.filter(
+        (ref) => ref.typeId !== SKILL_INSTRUCTION_TYPE_ID
+      );
+      if (refsForUserMessage2.length > 0) {
+        console.log(LOG_PREFIX, 'Building SendContextRefs for', refsForUserMessage2.length, 'refs (filtered', pendingContextRefs.length - refsForUserMessage2.length, 'skill_instruction refs)');
         const currentModelId = this.getCurrentState().chatParams.modelId;
         // ★ 2026-02 修复：使用异步版本确保模型缓存已加载
         const isMultimodal = await isModelMultimodalAsync(currentModelId);
         isMultimodalModel = isMultimodal;
         console.debug('[TauriAdapter] send: model =', currentModelId, 'isMultimodal =', isMultimodal);
-        const { sendRefs, pathMap } = await buildSendContextRefsWithPaths(pendingContextRefs, { isMultimodal });
+        const { sendRefs, pathMap } = await buildSendContextRefsWithPaths(refsForUserMessage2, { isMultimodal });
 
         // 3.1 Token 预估和截断（基于模型预算，防止上下文过长）
         const contextTokenLimit = this.getContextTruncateLimit(options.contextLimit);
@@ -1832,11 +1838,6 @@ export class ChatV2TauriAdapter {
 
         // 使用截断后的 sendRefs
         userContextRefs = truncateResult.truncatedRefs;
-
-        // ★ 2026-02: skill 内容已在 buildSystemPromptWithSkills 中直接从 registry 注入 system prompt
-        // 此处仅需从 userContextRefs 中移除 skill_instruction refs，避免在 user message 中重复发送
-        userContextRefs = userContextRefs.filter((ref) => ref.typeId !== SKILL_INSTRUCTION_TYPE_ID);
-
         logSendContextRefsSummary(userContextRefs);
 
         // 🔧 修复：同步更新 contextSnapshot，确保与截断后的请求一致
@@ -2928,7 +2929,7 @@ export class ChatV2TauriAdapter {
 
     // 根据模式工具配置覆盖功能开关
     const ragEnabled = features.get('rag') ?? modeEnabledTools.includes('rag');
-    const memoryEnabled = features.get('memory') ?? modeEnabledTools.includes('memory');
+    const memoryEnabled = features.get('userMemory') ?? modeEnabledTools.includes('memory');
     const webSearchEnabled = features.get('webSearch') ?? modeEnabledTools.includes('web_search');
     const ankiEnabled = features.get('anki') ?? modeEnabledTools.includes('anki');
 
@@ -3200,52 +3201,30 @@ export class ChatV2TauriAdapter {
   }
 
   /**
-   * 构建系统提示（注入 Skills 元数据 + 激活 Skill 的完整内容）
+   * 构建系统提示（注入 Skills 元数据）
    *
    * 🔧 2026-01-20: 渐进披露模式下，注入 available_skills 列表
-   * ★ 2026-02: 直接从 skillRegistry 读取激活 Skill 的 content 注入 system prompt
-   *   - 绕过 ContextRef → Resource → VFS pipeline，确保 skill 内容始终可靠
-   *   - AI 对 system prompt 中的指令遵循度远高于 user message 中的上下文
+   *
+   * 将 Skills 元数据追加到系统提示后面，用于 LLM 自动发现和激活技能
    */
   private buildSystemPromptWithSkills(
     basePrompt: string | undefined
   ): string | undefined {
-    let result = basePrompt;
-
-    // ★ 1) 注入激活 Skill 的完整内容（从 registry 直接读取，不依赖 ContextRef pipeline）
-    const currentState = this.getCurrentState();
-    const activeSkillIds = currentState.activeSkillIds;
-    if (activeSkillIds.length > 0) {
-      const skillContentParts: string[] = [];
-      for (const skillId of activeSkillIds) {
-        const skill = skillRegistry.get(skillId);
-        if (skill?.content && skill.content.trim()) {
-          skillContentParts.push(
-            `<skill_instruction skill-id="${skill.id}" skill-name="${skill.name}">\n${skill.content}\n</skill_instruction>`
-          );
-        }
-      }
-      if (skillContentParts.length > 0) {
-        const skillContent = skillContentParts.join('\n\n');
-        result = result ? `${result}\n\n${skillContent}` : skillContent;
-        console.log(LOG_PREFIX, '★ Skill instructions injected into system prompt:', {
-          skillCount: skillContentParts.length,
-          skillIds: activeSkillIds,
-          contentLength: skillContent.length,
-        });
-      }
-    }
-
-    // 2) 渐进披露模式：注入 available_skills 列表，告知 LLM 可用的技能组
+    // 渐进披露模式：使用 available_skills 格式，告知 LLM 可用的技能组
     // 🔧 排除已加载的技能，避免 LLM 重复调用 load_skills
     const skillMetadataPrompt = generateAvailableSkillsPrompt(true, this.sessionId);
     console.log(LOG_PREFIX, '[ProgressiveDisclosure] Generated available_skills prompt (excludeLoaded=true)');
 
-    if (skillMetadataPrompt) {
-      result = result ? `${result}\n\n${skillMetadataPrompt}` : skillMetadataPrompt;
+    // 如果没有 skills 元数据，返回原始提示
+    if (!skillMetadataPrompt) {
+      return basePrompt;
     }
 
-    return result;
+    if (basePrompt) {
+      return `${basePrompt}\n\n${skillMetadataPrompt}`;
+    }
+
+    return skillMetadataPrompt;
   }
 
   // ========================================================================

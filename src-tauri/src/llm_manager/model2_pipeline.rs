@@ -918,6 +918,35 @@ impl LLMManager {
                 );
             }
         }
+        // 🆕 检测合成的 load_skills 工具交互是否出现在请求消息中
+        {
+            let synthetic_count = messages.iter().filter(|m| {
+                // 检测 assistant 消息中包含 load_skills tool_call
+                if let Some(tool_calls) = m.get("tool_calls").and_then(|v| v.as_array()) {
+                    tool_calls.iter().any(|tc| {
+                        tc.get("function")
+                            .and_then(|f| f.get("name"))
+                            .and_then(|n| n.as_str())
+                            .map_or(false, |name| name == "load_skills")
+                    })
+                } else if m.get("role").and_then(|r| r.as_str()) == Some("tool") {
+                    // 检测 tool 消息中包含 skill_loaded 标记
+                    m.get("content")
+                        .and_then(|c| c.as_str())
+                        .map_or(false, |c| c.contains("<skill_loaded"))
+                } else {
+                    false
+                }
+            }).count();
+            if synthetic_count > 0 {
+                info!(
+                    "[LLM_AUDIT] 请求体包含 {} 条合成 load_skills 工具消息（总消息数: {}）",
+                    synthetic_count,
+                    messages.len()
+                );
+            }
+        }
+
         // 输出完整请求体用于调试（隐藏图片内容保护隐私）
         let debug_body = {
             let mut debug = request_body.clone();

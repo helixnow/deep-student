@@ -156,7 +156,7 @@ mod tests {
     }
 
     #[test]
-    fn merge_builtin_profile_user_aware_without_snapshot_keeps_existing_metadata() {
+    fn merge_builtin_profile_user_aware_without_snapshot_syncs_capability_fields() {
         let mut profiles = vec![profile(
             "builtin-deepseek-chat",
             "User Local Label",
@@ -175,9 +175,11 @@ mod tests {
         LLMManager::merge_builtin_profile_user_aware(&mut profiles, builtin, None);
 
         let merged = &profiles[0];
+        // 用户偏好字段保持不变
         assert_eq!(merged.label, "User Local Label");
         assert_eq!(merged.model, "deepseek-chat-custom");
-        assert!(!merged.supports_tools);
+        // 能力字段从内置定义同步
+        assert!(merged.supports_tools);
         assert!(merged.is_builtin);
     }
 }
@@ -858,8 +860,15 @@ impl LLMManager {
             // 无论如何都修复内置标记，避免旧数据将内置模型错误标记为非内置。
             existing.is_builtin = true;
 
-            // 首次无基线快照时，保守处理：完全尊重现有本地数据，不覆盖元数据。
+            // 首次无基线快照时：能力字段从内置定义同步（用户极少手动修改），
+            // 用户偏好字段（标签、模型ID、温度等）保持不变。
             let Some(previous_builtin) = previous_builtin_profile else {
+                existing.is_multimodal = builtin_profile.is_multimodal;
+                existing.is_reasoning = builtin_profile.is_reasoning;
+                existing.is_embedding = builtin_profile.is_embedding;
+                existing.is_reranker = builtin_profile.is_reranker;
+                existing.supports_tools = builtin_profile.supports_tools;
+                existing.supports_reasoning = builtin_profile.supports_reasoning;
                 return;
             };
 
@@ -1879,6 +1888,51 @@ impl LLMManager {
     pub async fn get_model_profiles(&self) -> Result<Vec<ModelProfile>> {
         self.bootstrap_vendor_model_config().await?;
         let mut profiles = self.read_user_model_profiles().await?;
+
+        // 一次性迁移：直接将内置模型的能力字段写入用户存储的 model_profiles。
+        // 背景：早期版本在无快照时保守地保留了用户数据（含错误的 supports_tools=false），
+        // 随后快照被"污染"为新内置值，导致后续合并永远跳过更新。
+        // 必须直接修改 DB 中的 model_profiles，否则运行时路径（model_profiles_for_runtime）
+        // 仍会读到旧值。
+        const BUILTIN_CAPS_MIGRATION_KEY: &str = "builtin_caps_migration_v2";
+        if self.db.get_setting(BUILTIN_CAPS_MIGRATION_KEY).ok().flatten().is_none() {
+            if let Ok((_, builtin_list)) = self.load_builtin_vendor_profiles() {
+                let builtin_map: HashMap<String, &ModelProfile> =
+                    builtin_list.iter().map(|p| (p.id.clone(), p)).collect();
+                let mut patched = false;
+                for profile in &mut profiles {
+                    if let Some(builtin) = builtin_map.get(&profile.id) {
+                        if profile.supports_tools != builtin.supports_tools
+                            || profile.is_multimodal != builtin.is_multimodal
+                            || profile.is_reasoning != builtin.is_reasoning
+                            || profile.supports_reasoning != builtin.supports_reasoning
+                        {
+                            profile.is_multimodal = builtin.is_multimodal;
+                            profile.is_reasoning = builtin.is_reasoning;
+                            profile.is_embedding = builtin.is_embedding;
+                            profile.is_reranker = builtin.is_reranker;
+                            profile.supports_tools = builtin.supports_tools;
+                            profile.supports_reasoning = builtin.supports_reasoning;
+                            patched = true;
+                            info!(
+                                "[VendorModel] 迁移: {} 能力字段已从内置定义同步 (supports_tools={})",
+                                profile.id, builtin.supports_tools
+                            );
+                        }
+                    }
+                }
+                if patched {
+                    if let Err(e) = self.save_model_profiles(&profiles).await {
+                        warn!("[VendorModel] 迁移保存失败（不影响本次读取）: {}", e);
+                    }
+                }
+            }
+            // 同时清除快照，让后续 merge 基于干净状态重建
+            let _ = self.db.save_setting(BUILTIN_MODEL_PROFILES_SNAPSHOT_KEY, "[]");
+            let _ = self.db.save_setting(BUILTIN_CAPS_MIGRATION_KEY, "done");
+            info!("[VendorModel] 能力字段迁移完成");
+        }
+
         let snapshot_map = self.read_builtin_profile_snapshot_map();
         if let Ok((_, builtin_profiles)) = self.load_builtin_vendor_profiles() {
             for builtin_profile in &builtin_profiles {
@@ -1908,18 +1962,8 @@ impl LLMManager {
     }
 
     async fn model_profiles_for_runtime(&self) -> Result<Vec<ModelProfile>> {
-        let mut profiles = self.read_user_model_profiles().await?;
-        let snapshot_map = self.read_builtin_profile_snapshot_map();
-        if let Ok((_, builtin_profiles)) = self.load_builtin_vendor_profiles() {
-            for builtin_profile in builtin_profiles {
-                Self::merge_builtin_profile_user_aware(
-                    &mut profiles,
-                    builtin_profile.clone(),
-                    snapshot_map.get(&builtin_profile.id),
-                );
-            }
-        }
-        Ok(profiles)
+        // 复用 get_model_profiles 以确保运行时路径也执行能力字段迁移和快照合并
+        self.get_model_profiles().await
     }
 
     pub async fn save_model_profiles(&self, profiles: &[ModelProfile]) -> Result<()> {

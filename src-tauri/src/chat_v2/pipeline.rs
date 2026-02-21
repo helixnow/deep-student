@@ -37,8 +37,8 @@ use super::tools::{
     AcademicSearchExecutor, AttemptCompletionExecutor, BuiltinResourceExecutor,
     BuiltinRetrievalExecutor, CanvasToolExecutor, ChatAnkiToolExecutor, ExecutionContext,
     FetchExecutor, GeneralToolExecutor, KnowledgeExecutor, MemoryToolExecutor,
-    TemplateDesignerExecutor, ToolExecutor, ToolExecutorRegistry, ToolSensitivity,
-    WorkspaceToolExecutor,
+    SkillsExecutor, TemplateDesignerExecutor, ToolExecutor, ToolExecutorRegistry,
+    ToolSensitivity, WorkspaceToolExecutor,
 };
 use crate::database::Database as MainDatabase;
 use crate::models::{ChatMessage as LegacyChatMessage, MultimodalContentPart, RagSourceInfo};
@@ -299,6 +299,130 @@ fn validate_tool_chain(chat_history: &[LegacyChatMessage]) -> bool {
     }
 
     pending_calls.is_empty()
+}
+
+/// 构建一个仅含 role/content 的空 ChatMessage，其余字段均为 None/默认值。
+/// 用于合成消息构造，避免重复罗列 15+ 个 None 字段。
+fn make_empty_message(role: &str, content: String) -> LegacyChatMessage {
+    LegacyChatMessage {
+        role: role.to_string(),
+        content,
+        timestamp: chrono::Utc::now(),
+        thinking_content: None,
+        thought_signature: None,
+        rag_sources: None,
+        memory_sources: None,
+        graph_sources: None,
+        web_search_sources: None,
+        image_paths: None,
+        image_base64: None,
+        doc_attachments: None,
+        multimodal_content: None,
+        tool_call: None,
+        tool_result: None,
+        overrides: None,
+        relations: None,
+        persistent_stable_id: None,
+        metadata: None,
+    }
+}
+
+/// 🆕 2026-02-22: 为已激活的默认技能自动注入合成 load_skills 工具交互
+///
+/// 模型对 `role: tool` 结果中的指令遵循度远高于 user message 中的 XML 块。
+/// 此函数在消息历史开头 prepend 一对合成的 assistant(tool_call) + tool(result) 消息，
+/// 与真实 `load_skills` 返回格式完全一致。
+///
+/// 跳过条件：
+/// - 没有 active_skill_ids 或 skill_contents
+/// - 历史中已存在真实的 load_skills 调用（避免 regenerate/retry 时重复注入）
+fn inject_synthetic_load_skills(
+    chat_history: &mut Vec<LegacyChatMessage>,
+    options: &SendOptions,
+) {
+    let active_ids = match options.active_skill_ids.as_ref() {
+        Some(ids) if !ids.is_empty() => ids,
+        _ => return,
+    };
+    let skill_contents = match options.skill_contents.as_ref() {
+        Some(sc) if !sc.is_empty() => sc,
+        _ => return,
+    };
+
+    // 收集有内容的已激活技能
+    let skills_to_inject: Vec<(&String, &String)> = active_ids
+        .iter()
+        .filter_map(|id| skill_contents.get(id).map(|content| (id, content)))
+        .collect();
+
+    if skills_to_inject.is_empty() {
+        return;
+    }
+
+    // 检查历史中是否已有真实的 load_skills 调用（regenerate/retry 场景）
+    let has_existing_load_skills = chat_history.iter().any(|m| {
+        m.tool_call
+            .as_ref()
+            .map_or(false, |tc| SkillsExecutor::is_load_skills_tool(&tc.tool_name))
+    });
+
+    if has_existing_load_skills {
+        log::debug!(
+            "[ChatV2::pipeline] Skipping synthetic load_skills: history already contains real load_skills call"
+        );
+        return;
+    }
+
+    // 构建合成的 load_skills 工具交互（与 SkillsExecutor 输出格式一致）
+    let skill_ids: Vec<&str> = skills_to_inject.iter().map(|(id, _)| id.as_str()).collect();
+    let tool_call_id = format!("tc_auto_skills_{}", uuid::Uuid::new_v4().simple());
+
+    // 1. 合成 assistant 消息（tool_call: load_skills）
+    let tool_call_args = json!({ "skills": skill_ids });
+    let mut assistant_msg = make_empty_message("assistant", String::new());
+    assistant_msg.tool_call = Some(crate::models::ToolCall {
+        id: tool_call_id.clone(),
+        tool_name: "load_skills".to_string(),
+        args_json: tool_call_args,
+    });
+
+    // 2. 构建工具结果内容（与 SkillsExecutor 格式一致）
+    let mut content_parts: Vec<String> = Vec::with_capacity(skills_to_inject.len() + 1);
+    for (skill_id, content) in &skills_to_inject {
+        content_parts.push(format!(
+            "<skill_loaded id=\"{}\">\n<instructions>\n{}\n</instructions>\n</skill_loaded>",
+            skill_id, content
+        ));
+    }
+    content_parts.push(format!(
+        "\n共加载 {} 个技能。这些工具现在可以使用了。",
+        skills_to_inject.len()
+    ));
+    let full_content = content_parts.join("\n");
+    let content_len = full_content.len();
+
+    let mut tool_msg = make_empty_message("tool", full_content);
+    tool_msg.tool_result = Some(crate::models::ToolResult {
+        call_id: tool_call_id,
+        ok: true,
+        error: None,
+        error_details: None,
+        data_json: None,
+        usage: None,
+        citations: None,
+    });
+
+    // 3. Prepend 到消息历史开头（这两条消息会出现在 [LLM_REVIEW_DEBUG] 请求体日志中）
+    log::info!(
+        "[ChatV2::pipeline] 🆕 Synthetic load_skills injected: {} skill(s) {:?}, content_len={}, history {} -> {} messages",
+        skills_to_inject.len(),
+        skill_ids,
+        content_len,
+        chat_history.len(),
+        chat_history.len() + 2
+    );
+    chat_history.insert(0, assistant_msg);
+    chat_history.insert(1, tool_msg);
 }
 
 // ============================================================
@@ -2139,6 +2263,10 @@ impl ChatV2Pipeline {
 
         // 🔧 改进 5：验证工具调用链完整性
         validate_tool_chain(&chat_history);
+
+        // 🆕 2026-02-22: 为已激活的默认技能自动注入合成 load_skills 工具交互
+        // 技能内容通过 role: tool 投递，模型遵循度远高于 user message 中的 XML 块
+        inject_synthetic_load_skills(&mut chat_history, &ctx.options);
 
         ctx.chat_history = chat_history;
         Ok(())
@@ -7062,7 +7190,9 @@ impl ChatV2Pipeline {
             .await;
 
         // 加载聊天历史
-        let chat_history = self.load_variant_chat_history(&session_id).await?;
+        let mut chat_history = self.load_variant_chat_history(&session_id).await?;
+        // 🆕 2026-02-22: 为已激活的默认技能自动注入合成 load_skills 工具交互
+        inject_synthetic_load_skills(&mut chat_history, &options);
 
         // 构建当前用户消息
         let current_user_message = self.build_variant_user_message(&user_content, &attachments);
@@ -7256,7 +7386,9 @@ impl ChatV2Pipeline {
         let system_prompt = self
             .build_system_prompt_with_shared_context(&options, &shared_context)
             .await;
-        let chat_history = self.load_variant_chat_history(&session_id).await?;
+        let mut chat_history = self.load_variant_chat_history(&session_id).await?;
+        // 🆕 2026-02-22: 为已激活的默认技能自动注入合成 load_skills 工具交互
+        inject_synthetic_load_skills(&mut chat_history, &options);
         let current_user_message = self.build_variant_user_message(&user_content, &attachments);
 
         let enable_thinking = options.enable_thinking.unwrap_or(true);

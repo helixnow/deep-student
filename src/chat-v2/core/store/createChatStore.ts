@@ -63,7 +63,6 @@ import { createSkillActions } from './skillActions';
 import type { ContextRef } from '../../resources/types';
 import type { EditMessageResult, RetryMessageResult } from '../../adapters/types';
 import { SKILL_INSTRUCTION_TYPE_ID } from '../../skills/types';
-import { skillDefaults } from '../../skills/skillDefaults';
 import { usePdfProcessingStore } from '../../../stores/pdfProcessingStore';
 import {
   updateSingleBlock,
@@ -2727,9 +2726,6 @@ export function createChatStore(sessionId: string): StoreApi<ChatStore> {
           //    让 loadSession Promise 可以更快 resolve
 
           // 🔧 安全解析 activeSkillIdsJson（统一为一次解析，防止 JSON 异常中断恢复）
-          // ★ 2026-02 修复：当后端未保存 activeSkillIdsJson 时（新会话未发消息就触发 restore），
-          //   保留 createSessionWithDefaults 已写入的 activeSkillIds，而非用空数组覆盖。
-          //   若当前 store 也为空，回退到 skillDefaults（用户全局默认技能配置）。
           let restoredActiveSkillIds: string[] = [];
           if (state?.activeSkillIdsJson) {
             try {
@@ -2738,15 +2734,8 @@ export function createChatStore(sessionId: string): StoreApi<ChatStore> {
                 restoredActiveSkillIds = parsed.filter((id): id is string => typeof id === 'string');
               }
             } catch (e) {
-              console.warn('[ChatStore] Failed to parse activeSkillIdsJson, falling back to defaults:', e);
+              console.warn('[ChatStore] Failed to parse activeSkillIdsJson, falling back to empty:', e);
             }
-          } else {
-            // 后端无保存 → 保留 createSessionWithDefaults 已设置的值，或回退到用户默认
-            const currentSkillIds = getState().activeSkillIds;
-            restoredActiveSkillIds = currentSkillIds.length > 0
-              ? currentSkillIds
-              : skillDefaults.getAll();
-            console.log('[ChatStore] No saved activeSkillIds, using fallback:', restoredActiveSkillIds);
           }
 
           // 📊 细粒度打点：set 开始

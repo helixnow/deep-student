@@ -9,9 +9,7 @@
  *
  * 设计说明：
  * - 支持同时激活多个 skill（多选模式）
- * - skill 内容由 TauriAdapter.buildSystemPromptWithSkills 直接从 skillRegistry 注入 system prompt
- *   （2026-02 改造：绕过 ContextRef → VFS pipeline，确保可靠注入 + 提升 AI 遵循度）
- * - ContextRef 仍用于 UI 状态管理（激活/取消激活），但其 formattedBlocks 不再用于 LLM 注入
+ * - skill 内容由后端 pipeline 合成 load_skills 工具交互注入（role: tool），模型遵循度更高
  * - 元数据（available_skills）在 system prompt 中提供
  */
 
