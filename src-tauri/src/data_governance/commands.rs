@@ -8078,7 +8078,7 @@ async fn execute_upload_with_progress_v2(
     manager: &SyncManager,
     storage: &dyn CloudStorage,
     enriched: &[SyncChangeWithData],
-    pending: &super::sync::PendingChanges,
+    _pending: &super::sync::PendingChanges,
     local_manifest: &SyncManifest,
     active_dir: &std::path::Path,
     app_data_dir: &std::path::Path,
@@ -8206,7 +8206,7 @@ async fn execute_download_with_progress_v2(
     app_data_dir: &std::path::Path,
     emitter: &OptionalEmitter,
 ) -> Result<(SyncExecutionResult, usize), String> {
-    let start = std::time::Instant::now();
+    let _start = std::time::Instant::now();
 
     emitter.emit_downloading(0, 0, None).await;
 
@@ -8265,7 +8265,7 @@ async fn execute_bidirectional_with_progress_v2(
     app_data_dir: &std::path::Path,
     emitter: &OptionalEmitter,
 ) -> Result<(SyncExecutionResult, usize), String> {
-    let start = std::time::Instant::now();
+    let _start = std::time::Instant::now();
 
     // 先执行下载同步（不先发射 downloading 事件，避免在无内容时发操导致百分比倒退）
     let (exec_result, change_ids, downloaded_changes) = manager

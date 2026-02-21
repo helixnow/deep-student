@@ -805,7 +805,7 @@ impl PageIndexer {
         );
 
         // 获取模型版本（使用实际模式）
-        let model_version = match self
+        let _model_version = match self
             .embedding_service
             .get_model_version_for_mode(actual_mode)
             .await

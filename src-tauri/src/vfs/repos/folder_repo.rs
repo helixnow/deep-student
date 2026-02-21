@@ -1520,7 +1520,7 @@ impl VfsFolderRepo {
         new_parent_id: Option<&str>,
     ) -> VfsResult<()> {
         // 1. 检查文件夹存在
-        let folder = Self::get_folder_with_conn(conn, folder_id)?.ok_or_else(|| {
+        let _folder = Self::get_folder_with_conn(conn, folder_id)?.ok_or_else(|| {
             VfsError::FolderNotFound {
                 folder_id: folder_id.to_string(),
             }

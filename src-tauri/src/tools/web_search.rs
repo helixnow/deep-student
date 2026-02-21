@@ -2677,8 +2677,8 @@ pub async fn do_search(cfg: &ToolConfig, mut input: SearchInput) -> ToolResult {
 
     // 应用Provider策略 - 获取指定引擎的策略并创建定制配置，同时准备运行时控制
     let mut effective_cfg = cfg.clone();
-    let mut runtime_state: Option<Arc<ProviderRuntimeState>> = None;
-    let mut runtime_fingerprint: Option<StrategyFingerprint> = None;
+    let mut _runtime_state: Option<Arc<ProviderRuntimeState>> = None;
+    let mut _runtime_fingerprint: Option<StrategyFingerprint> = None;
 
     if let Some(ref provider_strategies) = cfg.provider_strategies {
         let strategy = provider_strategies.get_strategy(&engine);

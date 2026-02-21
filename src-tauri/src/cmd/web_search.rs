@@ -177,7 +177,7 @@ pub async fn test_all_search_engines(state: State<'_, AppState>) -> Result<serde
 }
 /// 检查安全存储状态（缓存版本，避免频繁的钥匙串访问）
 #[tauri::command]
-pub async fn get_security_status(state: State<'_, AppState>) -> Result<serde_json::Value> {
+pub async fn get_security_status(_state: State<'_, AppState>) -> Result<serde_json::Value> {
     let migration_completed = true;
 
     // 🚨 钥匙串功能已彻底禁用，移除所有相关代码
@@ -251,7 +251,7 @@ pub async fn get_cn_whitelist_config(state: State<'_, AppState>) -> Result<serde
 
 /// 检测工具名冲突
 #[tauri::command]
-pub async fn detect_tool_conflicts(state: State<'_, AppState>) -> Result<Vec<ToolConflict>> {
+pub async fn detect_tool_conflicts(_state: State<'_, AppState>) -> Result<Vec<ToolConflict>> {
     // 后端 MCP 已禁用，暂不检测冲突（由前端SDK命名空间解决）
     Ok(vec![])
 }
@@ -477,7 +477,7 @@ pub async fn test_search_engine(
                 as std::sync::Arc<dyn crate::tools::Tool>,
         ]);
 
-    let (ok, data, error, _usage, _citations, _inject) =
+    let (ok, _data, error, _usage, _citations, _inject) =
         registry.call_tool("web_search", &args, &tool_ctx).await;
 
     let response_time = start_time.elapsed().as_millis() as u64;

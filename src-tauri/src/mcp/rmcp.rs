@@ -44,7 +44,7 @@ pub async fn test_rmcp_streamable_http(
     let client = McpClient::new(Box::new(transport), client_info);
 
     // Minimal initialize params following MCP expectations
-    let init_params = serde_json::json!({
+    let _init_params = serde_json::json!({
         "protocolVersion": "2024-11-05",
         "capabilities": {
             "roots": { "listChanged": true },

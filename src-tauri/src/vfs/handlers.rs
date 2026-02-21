@@ -1062,7 +1062,7 @@ pub async fn vfs_get_resource_path(
         .optional()
         .map_err(|e| format!("Query folder_item failed: {}", e))?;
 
-    let (fi_id, folder_id, item_type) = match folder_item_opt {
+    let (fi_id, folder_id, _item_type) = match folder_item_opt {
         Some(fi) => fi,
         None => {
             // 资源不在 folder_items 中，返回资源名称作为路径

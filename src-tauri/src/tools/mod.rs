@@ -540,8 +540,8 @@ impl Tool for RagTool {
     }
     async fn invoke(
         &self,
-        args: &Value,
-        ctx: &ToolContext<'_>,
+        _args: &Value,
+        _ctx: &ToolContext<'_>,
     ) -> (
         bool,
         Option<Value>,
@@ -1129,13 +1129,13 @@ impl WebSearchTool {
             .unwrap_or(input.top_k);
 
         // 备份完整排序后的列表，供后续拼接不足的部分
-        let full_sorted = unique_items.clone();
+        let _full_sorted = unique_items.clone();
 
         // 初次截断为参与重排的候选数量
         unique_items.truncate(rerank_candidate_k);
 
         // 可选的重排序
-        let reranking_start = std::time::Instant::now();
+        let _reranking_start = std::time::Instant::now();
         let reranking_time_ms: Option<u64> = None;
 
         // 如果没有进行重排序，重新计算排名分数

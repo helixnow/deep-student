@@ -52,7 +52,7 @@ pub async fn get_mcp_status(state: State<'_, AppState>) -> Result<serde_json::Va
 }
 
 #[tauri::command]
-pub async fn get_mcp_tools(state: State<'_, AppState>) -> Result<Vec<serde_json::Value>> {
+pub async fn get_mcp_tools(_state: State<'_, AppState>) -> Result<Vec<serde_json::Value>> {
     // 后端 MCP 已禁用，返回空（由前端SDK提供工具列表）
     Ok(vec![])
 }
@@ -703,7 +703,7 @@ mod mcp_test_helpers {
 
     async fn connect_with_retry(client: &McpClient, timeout: Duration) -> Result<(), McpError> {
         let start = Instant::now();
-        let mut last_error = String::new();
+        let mut _last_error = String::new();
 
         loop {
             match client.connect().await {

@@ -117,7 +117,7 @@ pub async fn notes_create(
     _subject: String,
     note: NewNotePayload,
     state: State<'_, AppState>,
-    window: Window,
+    _window: Window,
 ) -> Result<crate::notes_manager::NoteItem> {
     let tags: Vec<String> = note.tags.unwrap_or_default();
 
@@ -154,7 +154,7 @@ pub async fn notes_update(
     _subject: String,
     note: UpdateNotePayload,
     state: State<'_, AppState>,
-    window: Window,
+    _window: Window,
 ) -> Result<crate::notes_manager::NoteItem> {
     // 使用 spawn_blocking 避免在异步上下文中阻塞
     let notes_manager = state.notes_manager.clone();
@@ -492,7 +492,7 @@ pub async fn notes_restore(
     subject: String,
     id: String,
     state: State<'_, AppState>,
-    window: Window,
+    _window: Window,
 ) -> Result<bool> {
     // 使用 spawn_blocking 避免 Lance 操作导致的死锁
     let notes_manager = state.notes_manager.clone();

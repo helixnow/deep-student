@@ -540,7 +540,7 @@ fn convert_cards_to_anki_records_with_fields(
     cards: Vec<AnkiCard>,
     _deck_id: i64,
     _model_id: i64,
-    model_name: &str,
+    _model_name: &str,
     template_fields: Option<&[String]>,
     _template: Option<&CustomAnkiTemplate>, // 新增参数：完整的模板对象
 ) -> Result<Vec<(String, String, String, String, i64, String)>, String> {

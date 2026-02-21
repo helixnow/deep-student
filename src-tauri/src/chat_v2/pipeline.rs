@@ -2443,7 +2443,7 @@ impl ChatV2Pipeline {
         query: &str,
         library_ids: &Option<Vec<String>>,
         top_k: u32,
-        enable_reranking: bool,
+        _enable_reranking: bool,
         enabled: bool,
         emitter: &Arc<ChatV2EventEmitter>,
         message_id: &str,
@@ -2575,7 +2575,7 @@ impl ChatV2Pipeline {
     /// 此方法仅在开启记忆检索时发射事件，实际检索由 LLM 工具完成
     async fn execute_memory_retrieval(
         &self,
-        query: &str,
+        _query: &str,
         _session_id: &str,
         enabled: bool,
         emitter: &Arc<ChatV2EventEmitter>,
@@ -5992,7 +5992,7 @@ impl ChatV2Pipeline {
                 .into_iter()
                 .filter(|b| b.block_type == block_types::ANKI_CARDS)
                 .collect();
-        let preserved_anki_cards_block_ids: Vec<String> = preserved_anki_cards_blocks
+        let _preserved_anki_cards_block_ids: Vec<String> = preserved_anki_cards_blocks
             .iter()
             .map(|b| b.id.clone())
             .collect();
@@ -6048,7 +6048,7 @@ impl ChatV2Pipeline {
             merged_block_ids
         };
         let blocks_to_save = blocks;
-        let pipeline_block_count = blocks_to_save.len() as u32;
+        let _pipeline_block_count = blocks_to_save.len() as u32;
         let pipeline_block_id_set: std::collections::HashSet<String> =
             blocks_to_save.iter().map(|b| b.id.clone()).collect();
 

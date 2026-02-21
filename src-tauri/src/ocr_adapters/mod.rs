@@ -81,7 +81,7 @@ pub trait OcrAdapter: Send + Sync {
     /// 构建自定义 prompt（可选）
     ///
     /// 允许用户提供自定义 prompt，适配器会进行必要的格式转换。
-    fn build_custom_prompt(&self, custom_prompt: &str, mode: OcrMode) -> String {
+    fn build_custom_prompt(&self, custom_prompt: &str, _mode: OcrMode) -> String {
         // 默认实现：直接使用自定义 prompt
         custom_prompt.to_string()
     }

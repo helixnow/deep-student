@@ -625,7 +625,7 @@ impl QuestionSyncService {
             .collect();
 
         // 建立本地题目索引（按 remote_id）
-        let local_map: HashMap<&str, &LocalQuestionWithSync> = local_questions
+        let _local_map: HashMap<&str, &LocalQuestionWithSync> = local_questions
             .iter()
             .filter_map(|q| q.remote_id.as_ref().map(|rid| (rid.as_str(), q)))
             .collect();
@@ -780,7 +780,7 @@ impl QuestionSyncService {
         let question_id = &conflict.question_id;
 
         // 根据策略解决冲突
-        let resolved_version = match strategy {
+        let _resolved_version = match strategy {
             QuestionConflictStrategy::KeepLocal => {
                 // 保留本地版本，更新同步状态
                 Self::apply_keep_local(conn, question_id, &conflict.local_version, &now)?

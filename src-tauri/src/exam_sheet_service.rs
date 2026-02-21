@@ -17,7 +17,7 @@ macro_rules! log_with_time {
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default();
-        let millis = now.as_millis() % 1000;
+        let _millis = now.as_millis() % 1000;
         // 转换 u128 到 i64，截断到秒
         let seconds = (now.as_millis() / 1000) as i64;
         let time_str = chrono::NaiveDateTime::from_timestamp_millis(seconds * 1000)

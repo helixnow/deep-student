@@ -1828,6 +1828,37 @@ export class ChatV2TauriAdapter {
 
         // 使用截断后的 sendRefs
         userContextRefs = truncateResult.truncatedRefs;
+
+        // ★ 2026-02 提级：将 skill_instruction 类型的 refs 从 userContextRefs 提升到 system prompt
+        // AI 对 system prompt 中的指令遵循度远高于 user message 中的上下文
+        const skillRefs = userContextRefs.filter((ref) => ref.typeId === SKILL_INSTRUCTION_TYPE_ID);
+        if (skillRefs.length > 0) {
+          // 提取 skill 指令的文本内容
+          const skillTexts: string[] = [];
+          for (const ref of skillRefs) {
+            for (const block of ref.formattedBlocks) {
+              if (block.type === 'text' && (block as { type: 'text'; text: string }).text) {
+                skillTexts.push((block as { type: 'text'; text: string }).text);
+              }
+            }
+          }
+          if (skillTexts.length > 0) {
+            const skillContent = skillTexts.join('\n\n');
+            // 追加到 systemPromptOverride（后端 PromptBuilder 会将其放入 <system_instructions>）
+            if (options.systemPromptOverride) {
+              options.systemPromptOverride = `${options.systemPromptOverride}\n\n${skillContent}`;
+            } else {
+              options.systemPromptOverride = skillContent;
+            }
+            console.log(LOG_PREFIX, '★ Skill instructions elevated to system prompt:', {
+              skillCount: skillRefs.length,
+              contentLength: skillContent.length,
+            });
+          }
+          // 从 userContextRefs 中移除 skill_instruction refs（已提升到 system prompt）
+          userContextRefs = userContextRefs.filter((ref) => ref.typeId !== SKILL_INSTRUCTION_TYPE_ID);
+        }
+
         logSendContextRefsSummary(userContextRefs);
 
         // 🔧 修复：同步更新 contextSnapshot，确保与截断后的请求一致

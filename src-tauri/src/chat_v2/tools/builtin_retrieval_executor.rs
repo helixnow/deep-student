@@ -751,7 +751,7 @@ impl BuiltinRetrievalExecutor {
             .get("max_per_resource")
             .and_then(|v| v.as_u64())
             .unwrap_or(0) as usize;
-        let enable_reranking = call
+        let _enable_reranking = call
             .arguments
             .get("enable_reranking")
             .and_then(|v| v.as_bool())

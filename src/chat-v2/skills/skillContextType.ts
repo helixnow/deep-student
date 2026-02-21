@@ -9,7 +9,8 @@
  *
  * 设计说明：
  * - 支持同时激活多个 skill（多选模式）
- * - skill 内容在发送时注入到 user message
+ * - skill 内容在发送时提升到 system prompt（2026-02 改造，提升 AI 遵循度）
+ * - formatToBlocks 仍用于格式化内容，TauriAdapter 发送时提取文本追加到 systemPromptOverride
  * - 元数据（available_skills）在 system prompt 中提供
  */
 

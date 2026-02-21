@@ -341,7 +341,7 @@ pub async fn essay_grading_get_modes(
 
     if let Some(ref manager) = state.custom_mode_manager {
         let custom_modes = manager.list_modes();
-        let custom_ids: std::collections::HashSet<_> =
+        let _custom_ids: std::collections::HashSet<_> =
             custom_modes.iter().map(|m| m.id.clone()).collect();
 
         // 构建最终列表：自定义覆盖 + 未覆盖的内置模式 + 纯自定义模式

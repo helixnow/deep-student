@@ -3,7 +3,6 @@
 // 后续可在此处逐步引入 invoke_handler! 和实际命令函数列表。
 
 // 全局警告抑制（剩余零散警告，逐步治理中）
-#![allow(unused_assignments)]
 #![allow(dead_code)]
 #![allow(static_mut_refs)]
 #![allow(private_interfaces)]

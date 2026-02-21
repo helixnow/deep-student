@@ -824,7 +824,7 @@ fn resolve_pdf(
                     get_pdf_text_blocks(&extracted_text, conn, blobs_dir, vfs_ref);
                 if !fallback_blocks.is_empty() {
                     blocks.extend(fallback_blocks);
-                    content_added = true;
+                    let _ = content_added; // consumed in condition above
                 }
             }
 

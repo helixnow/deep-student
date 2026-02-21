@@ -2082,7 +2082,7 @@ pub async fn export_template(
             let template_data = serde_json::to_string_pretty(&template)
                 .map_err(|e| AppError::validation(format!("序列化模板失败: {}", e)))?;
 
-            let filename = format!("{}_template.json", template.name.replace(" ", "_"));
+            let _filename = format!("{}_template.json", template.name.replace(" ", "_"));
 
             Ok(TemplateExportResponse { template_data })
         }
@@ -3236,7 +3236,7 @@ pub async fn export_unified_backup_data(
         .get("include_settings")
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
-    let include_stats = options
+    let _include_stats = options
         .get("include_statistics")
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
@@ -3700,7 +3700,7 @@ pub async fn get_mcp_config(state: State<'_, AppState>) -> Result<McpConfig> {
 
 #[cfg(feature = "mcp")]
 #[tauri::command]
-pub async fn import_mcp_config(path: String, _state: State<'_, AppState>) -> Result<McpConfig> {
+pub async fn import_mcp_config(_path: String, _state: State<'_, AppState>) -> Result<McpConfig> {
     // Import functionality removed - no longer supporting external formats
     Err(AppError::validation(
         "Import functionality has been removed",
@@ -3710,8 +3710,8 @@ pub async fn import_mcp_config(path: String, _state: State<'_, AppState>) -> Res
 #[cfg(feature = "mcp")]
 #[tauri::command]
 pub async fn export_mcp_config(
-    config: McpConfig,
-    format: String,
+    _config: McpConfig,
+    _format: String,
     _state: State<'_, AppState>,
 ) -> Result<String> {
     // Export functionality removed - no longer supporting external formats

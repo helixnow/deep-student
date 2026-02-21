@@ -556,7 +556,7 @@ pub async fn test_ocr_engine(
     use std::time::Instant;
 
     let engine_type = OcrEngineType::from_str(&request.engine_type);
-    let adapter = OcrAdapterFactory::create(engine_type);
+    let _adapter = OcrAdapterFactory::create(engine_type);
     // 优先使用用户配置的名称（通过 config_id 查找），回退到适配器名称
     let engine_info = if let Some(ref cid) = request.config_id {
         let db = &state.database;

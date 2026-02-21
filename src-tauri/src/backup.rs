@@ -4344,7 +4344,7 @@ async fn start_import_job(
 
     let opts_clone = options.clone();
     let job_clone = job_ctx.clone();
-    let job_id_clone = job_id.clone();
+    let _job_id_clone = job_id.clone();
     let guard_to_move = materialized_guard;
 
     let job_id_for_log = job_id.clone();
