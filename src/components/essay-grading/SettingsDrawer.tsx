@@ -504,11 +504,12 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({
                   placeholder={t('settings:gradingMode.placeholderModeName')}
                   className="text-sm font-medium px-2 h-8 border-border/30 bg-transparent focus-visible:ring-1 focus-visible:ring-primary/30"
                 />
-                <Input
+                <textarea
                   value={formData.description}
                   onChange={e => setFormData(prev => ({ ...prev, description: e.target.value }))}
                   placeholder={t('settings:gradingMode.placeholderDescription')}
-                  className="text-sm px-2 h-8 border-border/30 bg-transparent text-muted-foreground focus:text-foreground focus-visible:ring-1 focus-visible:ring-primary/30"
+                  rows={2}
+                  className="w-full text-sm px-2 py-1.5 rounded-md border border-border/30 bg-transparent text-muted-foreground focus:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/30 resize-none leading-relaxed"
                 />
               </div>
 
