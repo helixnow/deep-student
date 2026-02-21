@@ -11,7 +11,6 @@
 //! - 可选字段导出
 
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufWriter, Write};
 

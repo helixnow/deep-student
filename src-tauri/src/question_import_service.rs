@@ -33,8 +33,7 @@ use crate::document_parser::DocumentParser;
 use crate::file_manager::FileManager;
 use crate::llm_manager::LLMManager;
 use crate::models::{
-    AppError, Difficulty, ExamCardPreview, ExamSheetPreviewPage, ExamSheetPreviewResult,
-    ExamSheetSessionDetail, QuestionStatus, QuestionType, SourceType,
+    AppError, Difficulty, ExamCardPreview, ExamSheetPreviewPage, ExamSheetPreviewResult, QuestionStatus, QuestionType, SourceType,
 };
 use crate::vfs::database::VfsDatabase;
 use crate::vfs::repos::{CreateQuestionParams, QuestionFilters, QuestionImage, VfsBlobRepo, VfsExamRepo, VfsFileRepo, VfsQuestionRepo};

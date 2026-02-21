@@ -13,7 +13,7 @@ use serde_json::{json, Value};
 use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
 use crate::chat_v2::workspace::{
-    SleepBlockData, SleepManager, WakeCondition, WakeUpPayload, WorkspaceCoordinator,
+    SleepBlockData, WakeCondition, WorkspaceCoordinator,
 };
 
 pub const COORDINATOR_SLEEP_TOOL_NAME: &str = "coordinator_sleep";

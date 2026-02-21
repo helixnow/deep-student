@@ -15,7 +15,7 @@ use crate::database::Database;
 use crate::file_manager::FileManager;
 use crate::models::AppError;
 use crate::vfs::{
-    VfsCreateNoteParams, VfsDatabase, VfsNoteRepo, VfsResourceRepo, VfsUpdateNoteParams,
+    VfsCreateNoteParams, VfsDatabase, VfsNoteRepo, VfsUpdateNoteParams,
 };
 
 type Result<T> = std::result::Result<T, AppError>;
@@ -2427,7 +2427,7 @@ impl NotesImporter {
         }
 
         // 导入偏好设置（写入旧 DB 的 settings 表，偏好设置不在 VFS 中）
-        if let Ok(mut legacy_conn) = self.db.get_conn_safe() {
+        if let Ok(legacy_conn) = self.db.get_conn_safe() {
             for pref in manifest.preferences.iter() {
                 if let Ok(mut file) = zip.by_name(&pref.file) {
                     let mut pref_content = String::new();

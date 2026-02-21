@@ -10,13 +10,11 @@
 //! - `tool_adapter`: 工具调用适配器（MCP 工具、网络搜索、图片生成）
 
 pub mod llm_adapter;
-// ★ rag_adapter 模块已移除（2026-01 清理：VFS RAG 完全替代）
 pub mod tool_adapter;
 pub mod vfs_rag_adapter;
 
 // 重导出常用类型
 pub use llm_adapter::ChatV2LLMAdapter;
-// ★ ChatV2RagAdapter 已移除（2026-01 清理：VFS RAG 完全替代）
 pub use tool_adapter::{
     ChatV2ToolAdapter, ImageGenOptions, DEFAULT_TOOL_TIMEOUT_MS, DEFAULT_WEB_SEARCH_TIMEOUT_MS,
 };

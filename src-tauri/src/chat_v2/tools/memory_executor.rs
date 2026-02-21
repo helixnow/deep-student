@@ -8,7 +8,6 @@ use super::builtin_retrieval_executor::BUILTIN_NAMESPACE;
 use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
 use crate::chat_v2::events::event_types;
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
-use crate::llm_manager::LLMManager;
 use crate::memory::{MemoryService, WriteMode};
 use crate::vfs::lance_store::VfsLanceStore;
 

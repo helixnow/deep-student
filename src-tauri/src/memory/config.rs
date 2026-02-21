@@ -3,7 +3,7 @@ use std::sync::Arc;
 use tracing::{debug, info, warn};
 
 use crate::vfs::database::VfsDatabase;
-use crate::vfs::error::{VfsError, VfsResult};
+use crate::vfs::error::VfsResult;
 use crate::vfs::repos::folder_repo::VfsFolderRepo;
 use crate::vfs::types::VfsFolder;
 

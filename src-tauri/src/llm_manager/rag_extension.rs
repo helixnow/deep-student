@@ -3,12 +3,11 @@
 //! 嵌入/重排序模型配置、多模态RAG
 
 use crate::json_validator::{validate, Stage as ValidateStage};
-use crate::models::{AppError, ChatMessage, StandardModel2Output};
+use crate::models::AppError;
 use crate::providers::ProviderAdapter;
 use crate::utils::text::safe_truncate_chars;
 use log::{debug, error, info, warn};
 use serde_json::{json, Value};
-use std::collections::HashMap;
 use url::Url;
 
 use super::{ApiConfig, LLMManager, Result};
@@ -194,7 +193,7 @@ impl LLMManager {
         &self,
         inputs: &[crate::multimodal::MultimodalInput],
     ) -> Result<Vec<Vec<f32>>> {
-        use crate::multimodal::{MultimodalImage, MultimodalInput, VLEmbeddingInputItem};
+        use crate::multimodal::VLEmbeddingInputItem;
 
         if inputs.is_empty() {
             return Ok(Vec::new());

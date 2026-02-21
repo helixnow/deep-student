@@ -11,7 +11,6 @@
 
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
-use tracing::{error, warn};
 
 /// 心跳时间戳（Unix 毫秒）
 static LAST_HEARTBEAT: AtomicU64 = AtomicU64::new(0);

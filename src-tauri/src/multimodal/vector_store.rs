@@ -14,12 +14,12 @@
 //! 设计文档参考: docs/multimodal-knowledge-base-design.md (Section 6.2)
 
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::database::Database;
 use crate::models::AppError;
-use crate::multimodal::types::{PageEmbeddingMetadata, SourceType};
+use crate::multimodal::types::SourceType;
 
 type Result<T> = std::result::Result<T, AppError>;
 
@@ -37,7 +37,7 @@ use lancedb::query::{ExecutableQuery, QueryBase};
 #[cfg(feature = "lance")]
 use lancedb::DistanceType;
 #[cfg(feature = "lance")]
-use lancedb::{Connection, Table};
+use lancedb::Connection;
 
 /// VL-Embedding 模式的多模态向量表前缀
 pub const MM_PAGES_VL_PREFIX: &str = "mm_pages_v2_vl_d";

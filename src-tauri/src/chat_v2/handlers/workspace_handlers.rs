@@ -7,7 +7,6 @@ use std::sync::Arc;
 use tauri::{State, Window};
 
 use crate::chat_v2::database::ChatV2Database;
-use crate::chat_v2::events::ChatV2EventEmitter;
 use crate::chat_v2::pipeline::ChatV2Pipeline;
 use crate::chat_v2::state::{ChatV2State, StreamGuard};
 use crate::chat_v2::types::{

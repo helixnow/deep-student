@@ -28,7 +28,7 @@ use super::migration::{get_migration_set, MigrationCoordinator};
 use super::schema_registry::{DatabaseId, DatabaseStatus, SchemaRegistry};
 use crate::backup_common::{log_and_skip_entry_err, BACKUP_GLOBAL_LIMITER};
 use crate::backup_job_manager::{
-    BackupJobContext, BackupJobKind, BackupJobManager, BackupJobManagerState, BackupJobParams,
+    BackupJobContext, BackupJobKind, BackupJobManagerState, BackupJobParams,
     BackupJobPhase, BackupJobResultPayload, BackupJobStatus, BackupJobSummary, PersistedJob,
 };
 use crate::utils::text::safe_truncate_chars;
@@ -1352,9 +1352,8 @@ use std::time::Instant;
 use tracing::{debug, error, info, warn};
 
 use super::backup::{
-    export_backup_to_zip, AssetBackupConfig, AssetBackupResult, AssetType, AssetTypeStats,
-    BackupManager, BackupSelection, BackupTier, BackupVerifyResult, TieredAssetConfig,
-    TieredBackupResult, ZipExportOptions,
+    export_backup_to_zip, AssetBackupConfig, AssetType, AssetTypeStats,
+    BackupManager, BackupSelection, TieredAssetConfig, ZipExportOptions,
 };
 
 /// 获取应用数据基础目录（Tauri app_data_dir）
@@ -3869,9 +3868,9 @@ async fn execute_zip_export_with_progress(
     compression_level: u32,
     include_checksums: bool,
 ) {
-    use sha2::{Digest, Sha256};
+    use sha2::Digest;
     use std::fs::File;
-    use std::io::{BufReader, Read, Write};
+    use std::io::Write;
     use std::time::Instant;
     use walkdir::WalkDir;
     use zip::write::FileOptions;
@@ -6372,8 +6371,7 @@ pub struct AssetVerifyErrorResponse {
 // ==================== 同步相关命令 ====================
 
 use super::sync::{
-    ApplyChangesResult, ChangeLogEntry, ChangeLogStats, ConflictDetectionResult, DatabaseSyncState,
-    MergeApplicationResult, MergeStrategy, PendingChanges, SyncChangeWithData, SyncDirection,
+    ChangeLogEntry, DatabaseSyncState, MergeStrategy, PendingChanges, SyncChangeWithData, SyncDirection,
     SyncExecutionResult, SyncManager, SyncManifest,
 };
 use crate::cloud_storage::{create_storage, CloudStorage, CloudStorageConfig};

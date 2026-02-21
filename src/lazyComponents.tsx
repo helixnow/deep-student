@@ -100,20 +100,21 @@ export const LazyPdfReader = React.lazy(() =>
   import('./components/PdfReader').then(m => ({ default: m.default }))
 );
 
-// 树拖拽测试
-export const LazyTreeDragTest = React.lazy(() =>
-  import('./components/notes/TreeDragTest').then(m => ({ default: m.default }))
-);
+// 开发专用组件：生产构建中 import.meta.env.DEV 为 false，动态 import 被 Rollup 死代码消除
+const DevNull: React.FC<any> = () => null;
+const devLazy = () => Promise.resolve({ default: DevNull as React.ComponentType<any> });
 
-// Crepe Demo
-export const LazyCrepeDemoPage = React.lazy(() =>
-  import('./components/dev/CrepeDemoPage').then(m => ({ default: m.CrepeDemoPage }))
-);
+export const LazyTreeDragTest = import.meta.env.DEV
+  ? React.lazy(() => import('./components/notes/TreeDragTest').then(m => ({ default: m.default })))
+  : React.lazy(devLazy);
 
-// Chat V2 集成测试
-export const LazyChatV2IntegrationTest = React.lazy(() =>
-  import('./chat-v2/dev').then(m => ({ default: m.IntegrationTest }))
-);
+export const LazyCrepeDemoPage = import.meta.env.DEV
+  ? React.lazy(() => import('./components/dev/CrepeDemoPage').then(m => ({ default: m.CrepeDemoPage })))
+  : React.lazy(devLazy);
+
+export const LazyChatV2IntegrationTest = import.meta.env.DEV
+  ? React.lazy(() => import('./chat-v2/dev').then(m => ({ default: m.IntegrationTest })))
+  : React.lazy(devLazy);
 
 // 图片查看器
 export const LazyImageViewer = React.lazy(() =>

@@ -2,8 +2,6 @@
 //!
 //! 测试加密解密、密钥管理等核心功能
 
-use crate::crypto::{CryptoService, EncryptedData};
-use tempfile::TempDir;
 
 #[tokio::test]
 async fn test_crypto_service_creation() {

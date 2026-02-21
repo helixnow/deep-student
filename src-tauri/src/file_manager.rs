@@ -218,10 +218,6 @@ impl FileManager {
         writable_dir.join("mistakes.db")
     }
 
-    // ★ 2026-02 清理：get_notes_database_path, get_research_database_path, get_anki_database_path 已移除
-    // 笔记/Anki 现在使用主数据库（通过 DataSpaceManager 管理）
-    // 研究数据库已废弃
-
     /// 获取 images 根目录的绝对路径
     pub fn images_directory(&self) -> PathBuf {
         self.images_dir.clone()

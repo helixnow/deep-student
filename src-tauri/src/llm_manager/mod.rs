@@ -10,37 +10,25 @@ mod rag_extension;
 
 use crate::crypto::{CryptoService, EncryptedData};
 use crate::database::Database;
-use crate::error_details::{ErrorDetails, ErrorDetailsBuilder};
 use crate::file_manager::FileManager;
 use crate::models::{
-    AppError, AppErrorType, ChatMessage, ExamCardBBox, ModelAssignments,
-    RagQueryOptionsWithLibraries, RagSourceInfo, RetrievedChunk, StandardModel2Output, StreamChunk,
+    AppError, ChatMessage, ExamCardBBox, ModelAssignments,
 };
 use crate::providers::{ProviderAdapter, ProviderError};
-use crate::reasoning_policy::{
-    get_passback_policy, requires_reasoning_passback, ReasoningPassbackPolicy,
-};
 use crate::vendors::load_builtin_api_configs;
 use base64::{engine::general_purpose, Engine as _};
 use futures_util::StreamExt;
 use log::{debug, error, info, warn};
 use reqwest::{header::HeaderMap, Client, ClientBuilder};
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Map, Value};
+use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::collections::HashSet;
-use std::io::Cursor;
-use std::path::Path;
 use std::sync::Arc;
 use tauri::{Emitter, Listener, Window};
 use tokio::sync::watch;
 use tokio::sync::Mutex as TokioMutex;
-use url::Url;
 // use chrono::Utc;
-use crate::json_validator::{validate, Stage as ValidateStage};
-use crate::utils::chat_timing;
-use image::imageops::FilterType;
-use image::{GenericImageView, ImageOutputFormat};
 use regex::Regex;
 use std::sync::LazyLock;
 use tokio::sync::RwLock;

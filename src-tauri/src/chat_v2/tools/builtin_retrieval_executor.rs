@@ -17,16 +17,12 @@ use std::time::Instant;
 
 use async_trait::async_trait;
 use serde_json::{json, Value};
-use uuid::Uuid;
 
 use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
 use crate::chat_v2::events::event_types;
-use crate::chat_v2::pipeline::ChatV2Pipeline;
 use crate::chat_v2::types::{SourceInfo, ToolCall, ToolResultInfo};
 use crate::tools::web_search::{do_search, SearchInput, ToolConfig as WebSearchConfig};
-use crate::tools::ToolContext;
 use crate::vfs::VfsResourceRepo;
-// ★ UserMemory 已移除（2026-01），改用 Memory-as-VFS
 
 /// 内置工具命名空间前缀
 /// 🔧 使用 'builtin-' 而非 'builtin:' 以兼容 DeepSeek/OpenAI API 的工具名称限制
@@ -74,8 +70,6 @@ impl BuiltinRetrievalExecutor {
             .or_else(|| tool_name.strip_prefix("mcp_"))
             .unwrap_or(tool_name)
     }
-
-    // ★ 2026-01: 旧 execute_rag 已移除，统一使用 execute_vfs_rag
 
     /// 执行 VFS RAG 知识检索（统一方案）
     async fn execute_vfs_rag(
@@ -378,8 +372,7 @@ impl BuiltinRetrievalExecutor {
         }
     }
 
-    /// ★ 2026-01：memory_search 已废弃，改用 builtin-memory_search（由 MemoryToolExecutor 处理）
-    /// 此方法仅作为兼容存根保留
+    /// 兼容存根：memory_search 已迁移至 builtin-memory_search（由 MemoryToolExecutor 处理）
     async fn execute_memory(
         &self,
         _call: &ToolCall,

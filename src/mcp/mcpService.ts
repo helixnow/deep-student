@@ -555,7 +555,7 @@ class McpServiceImpl {
             args: Array.isArray(cfg.args) ? cfg.args : [],
             env: cfg.env || {},
             cwd: cfg.cwd,
-            framing: cfg.framing ?? 'jsonl',
+            framing: cfg.framing ?? 'content_length',
           }, cfg.id); // 传入 serverId 用于调试
           break;
         }
@@ -1718,7 +1718,7 @@ function toServerConfigs(list: any[]): McpConfig['servers'] {
           args: argsArray,
           env: envObj,
           cwd,
-          framing: framing === 'content_length' ? 'content_length' : 'jsonl',
+          framing: framing === 'jsonl' ? 'jsonl' : 'content_length',
           namespace,
         });
       }

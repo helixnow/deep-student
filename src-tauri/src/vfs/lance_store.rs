@@ -12,7 +12,6 @@
 #![allow(dead_code)]
 
 use std::cmp::Ordering;
-use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -31,11 +30,10 @@ use lancedb::query::{ExecutableQuery, QueryBase, QueryExecutionOptions};
 use lancedb::table::{OptimizeAction, OptimizeOptions};
 use lancedb::DistanceType;
 use lancedb::{Connection, Table};
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info, warn};
 
 use crate::vfs::database::VfsDatabase;
 use crate::vfs::error::{VfsError, VfsResult};
-use crate::vfs::repos::{MODALITY_TEXT, VFS_EMB_TABLE_PREFIX};
 
 // ============================================================================
 // 常量定义

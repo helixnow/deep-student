@@ -12,7 +12,7 @@ use crate::vfs::lance_store::VfsLanceStore;
 use crate::vfs::repos::VfsIndexStateRepo;
 use crate::vfs::unit_builder::UnitBuildInput;
 use std::sync::Arc;
-use tauri::{AppHandle, State};
+use tauri::State;
 
 /// 获取索引状态总览
 #[tauri::command]

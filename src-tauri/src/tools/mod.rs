@@ -1,6 +1,6 @@
 #[cfg(feature = "mcp")]
 use crate::mcp::McpClient;
-use crate::models::{RagSourceInfo, RetrievedChunk};
+use crate::models::RagSourceInfo;
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -550,8 +550,6 @@ impl Tool for RagTool {
         Option<Vec<RagSourceInfo>>,
         Option<String>,
     ) {
-        // ★ 2026-01 清理：rag_manager 已移除，VFS RAG 完全替代
-        // 此工具现在应使用 VFS RAG 或返回不可用
         return (
             false,
             None,
@@ -1139,9 +1137,6 @@ impl WebSearchTool {
         // 可选的重排序
         let reranking_start = std::time::Instant::now();
         let reranking_time_ms: Option<u64> = None;
-
-        // ★ 2026-01 清理：rag_manager 已移除，跳过重排序
-        // 重排序功能已禁用，直接使用原始排序
 
         // 如果没有进行重排序，重新计算排名分数
         if reranking_time_ms.is_none() {

@@ -43,7 +43,7 @@ use super::tools::{
 use crate::database::Database as MainDatabase;
 use crate::models::{ChatMessage as LegacyChatMessage, MultimodalContentPart, RagSourceInfo};
 use crate::tools::web_search::{do_search, SearchInput, ToolConfig as WebSearchConfig};
-use crate::tools::{ToolContext, ToolRegistry};
+use crate::tools::ToolRegistry;
 
 use super::error::{ChatV2Error, ChatV2Result};
 use super::events::{event_types, ChatV2EventEmitter};
@@ -56,12 +56,10 @@ use crate::vfs::repos::VfsResourceRepo;
 use crate::vfs::indexing::{VfsFullSearchService, VfsSearchParams};
 use crate::vfs::lance_store::VfsLanceStore;
 use crate::vfs::repos::MODALITY_TEXT;
-// ★ user_memory 已移除（2026-01），改用 Memory-as-VFS
-// ★ 多模态知识库改用 VFS 统一管理（2026-01）
 use crate::vfs::multimodal_service::VfsMultimodalService;
 // 🆕 MCP 工具注入支持：现在使用前端传递的 mcp_tool_schemas，无需后端 MCP Client
 use super::context::PipelineContext;
-use super::resource_types::{ContentBlock, ContextRef, ContextSnapshot, SendContextRef};
+use super::resource_types::{ContentBlock, ContextRef, ContextSnapshot};
 use super::types::{
     block_status, block_types, feature_flags, variant_status, AttachmentInput, ChatMessage,
     MessageBlock, MessageMeta, MessageRole, MessageSources, SendMessageRequest, SendOptions,
@@ -1139,7 +1137,6 @@ pub struct ChatV2Pipeline {
     executor_registry: Arc<ToolExecutorRegistry>,
     /// 🆕 工具审批管理器（文档 29 P1-3）
     approval_manager: Option<Arc<ApprovalManager>>,
-    // ★ user_memory_db 已移除（2026-01），改用 Memory-as-VFS
     workspace_coordinator: Option<Arc<WorkspaceCoordinator>>,
     /// 🆕 智能题目集服务（用于 qbank_* MCP 工具，2026-01）
     question_bank_service: Option<Arc<crate::question_bank_service::QuestionBankService>>,
@@ -1193,8 +1190,6 @@ impl ChatV2Pipeline {
         self.approval_manager = Some(approval_manager);
         self
     }
-
-    // ★ with_user_memory_db 已移除（2026-01），改用 Memory-as-VFS
 
     pub fn with_workspace_coordinator(mut self, coordinator: Arc<WorkspaceCoordinator>) -> Self {
         self.workspace_coordinator = Some(coordinator.clone());
@@ -2149,11 +2144,7 @@ impl ChatV2Pipeline {
         Ok(())
     }
 
-    // ★ 2025-12-10：旧版 resolve_history_context_snapshot 和 resolve_vfs_ref_content 已废弃
-    // 统一使用 vfs_resolver 模块处理所有资源类型的解引用
-    // 请使用 resolve_history_context_snapshot_v2 代替
-
-    /// ★ 2025-12-10 新增：解析历史消息中的 context_snapshot（V2 版本）
+    /// 解析历史消息中的 context_snapshot（V2 版本）
     ///
     /// 使用统一的 `vfs_resolver` 模块处理所有资源类型的解引用。
     /// 返回 `(String, Vec<String>)`：
@@ -2319,10 +2310,6 @@ impl ChatV2Pipeline {
         );
         Ok(())
     }
-
-    // ★ execute_rag_retrieval 已移除（2026-01 清理）
-    // 旧知识库 RAG 检索已完全由 VFS RAG 工具化检索替代
-    // 检索由 LLM 通过 builtin-rag_search 工具主动调用完成
 
     /// 🆕 执行 VFS RAG 统一知识管理检索
     ///
@@ -4596,7 +4583,6 @@ impl ChatV2Pipeline {
         }
 
         // 🆕 构建执行上下文（文档 29 P0-1）
-        // ★ 2026-01 简化：rag_manager 已移除，VFS RAG 完全替代
         let window = emitter.window();
         let mut ctx = ExecutionContext::new(
             session_id.to_string(),
@@ -4611,7 +4597,6 @@ impl ChatV2Pipeline {
         .with_anki_db(self.anki_db.clone())
         .with_vfs_db(self.vfs_db.clone()) // 🆕 学习资源工具需要访问 VFS 数据库
         .with_llm_manager(Some(self.llm_manager.clone())) // 🆕 VFS RAG 工具需要 LLM 管理器
-        // ★ with_user_memory_db 已移除（2026-01），改用 Memory-as-VFS
         .with_chat_v2_db(Some(self.db.clone())) // 🆕 工具块防闪退保存
         .with_question_bank_service(self.question_bank_service.clone()) // 🆕 智能题目集工具
         .with_pdf_processing_service(self.pdf_processing_service.clone()) // 🆕 论文保存触发 Pipeline

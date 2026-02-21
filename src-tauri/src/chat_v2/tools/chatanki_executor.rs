@@ -22,7 +22,6 @@ use async_trait::async_trait;
 use rusqlite::Connection;
 use serde::{Deserialize, Deserializer};
 use serde_json::{json, Value};
-use tauri::Emitter;
 use tokio::time::{sleep, Duration};
 
 use super::builtin_retrieval_executor::BUILTIN_NAMESPACE;

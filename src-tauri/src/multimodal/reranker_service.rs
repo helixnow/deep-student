@@ -14,7 +14,7 @@ use std::sync::Arc;
 
 use crate::llm_manager::LLMManager;
 use crate::models::AppError;
-use crate::multimodal::types::{MultimodalInput, VLRerankerResult};
+use crate::multimodal::types::MultimodalInput;
 
 type Result<T> = std::result::Result<T, AppError>;
 

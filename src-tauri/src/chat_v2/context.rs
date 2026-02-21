@@ -3,7 +3,6 @@
 //! 从 pipeline.rs 拆分，管理单次请求的完整状态
 
 use std::collections::HashMap;
-use std::sync::Arc;
 use std::time::Instant;
 
 use tokio_util::sync::CancellationToken;

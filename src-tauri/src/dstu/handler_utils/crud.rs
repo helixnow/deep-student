@@ -3,22 +3,16 @@
 //! 包含 dstu_list, dstu_get, dstu_create, dstu_update, dstu_delete 等基本操作
 
 use std::sync::Arc;
-use tauri::{Emitter, State, Window};
 
-use crate::dstu::error::DstuError;
-use crate::dstu::path_parser::build_simple_resource_path;
-use crate::dstu::types::{
-    DstuCreateOptions, DstuListOptions, DstuNode, DstuNodeType, DstuWatchEvent,
-};
+use crate::dstu::types::DstuNode;
 use crate::vfs::{
-    repos::VfsMindMapRepo, VfsCreateEssaySessionParams, VfsCreateExamSheetParams,
-    VfsCreateNoteParams, VfsDatabase, VfsEssayRepo, VfsExamRepo, VfsFileRepo, VfsFolderRepo,
-    VfsNoteRepo, VfsTextbookRepo, VfsTranslationRepo, VfsUpdateNoteParams,
+    repos::VfsMindMapRepo, VfsDatabase, VfsEssayRepo, VfsExamRepo, VfsFileRepo,
+    VfsNoteRepo, VfsTextbookRepo, VfsTranslationRepo,
 };
 
 use super::{
-    emit_watch_event, essay_to_dstu_node, exam_to_dstu_node, extract_resource_info,
-    file_to_dstu_node, generate_resource_id, item_type_to_dstu_node_type, mindmap_to_dstu_node,
+    essay_to_dstu_node, exam_to_dstu_node,
+    file_to_dstu_node, mindmap_to_dstu_node,
     note_to_dstu_node, session_to_dstu_node, textbook_to_dstu_node, translation_to_dstu_node,
 };
 

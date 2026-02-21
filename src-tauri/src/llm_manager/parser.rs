@@ -3,7 +3,7 @@
 //! 从 llm_manager.rs 拆分的纯函数模块，零依赖于 LLMManager 结构体
 
 use log::{debug, warn};
-use serde_json::{json, Value};
+use serde_json::json;
 
 // 提取推理模型的思维链段落
 /// 改进的思维链内容提取方法，提供多种策略以提高可靠性

@@ -401,8 +401,8 @@ mod mcp_test_helpers {
             .collect();
         let env_map = env.unwrap_or_default();
         let framing_mode = match framing.as_deref() {
-            Some("content_length") | Some("content-length") => McpFraming::ContentLength,
-            _ => McpFraming::JsonLines,
+            Some("jsonl") | Some("json_lines") | Some("json-lines") => McpFraming::JsonLines,
+            _ => McpFraming::ContentLength,
         };
         let cwd_path = cwd.as_ref().map(std::path::PathBuf::from);
         match create_stdio_transport(

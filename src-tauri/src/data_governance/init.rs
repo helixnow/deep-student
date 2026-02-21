@@ -28,7 +28,7 @@ use std::time::Instant;
 
 use tracing::{debug, error, info};
 
-use crate::data_governance::audit::{AuditError, AuditRepository};
+use crate::data_governance::audit::AuditError;
 use crate::data_governance::migration::{MigrationCoordinator, MigrationError};
 use crate::data_governance::schema_registry::SchemaRegistry;
 use crate::data_governance::DataGovernanceError;

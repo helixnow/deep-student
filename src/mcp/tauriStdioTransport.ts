@@ -162,7 +162,7 @@ export class TauriStdioClientTransport {
         command: this.params.command,
         args: this.params.args ?? [],
         env: this.params.env ?? {},
-        framing: this.params.framing ?? 'jsonl',
+        framing: this.params.framing ?? 'content_length',
         cwd: this.params.cwd ?? null,
       });
 

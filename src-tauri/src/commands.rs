@@ -7,30 +7,17 @@ use crate::database_optimizations::DatabaseOptimizationExt;
 use crate::exam_sheet_service::ExamSheetService;
 use crate::llm_manager::{ApiConfig, ModelProfile, VendorConfig};
 #[cfg(feature = "mcp")]
-use crate::mcp::stdio_proxy::{
-    close_stdio_session as mcp_close_stdio_session, send_stdio_message as mcp_send_stdio_message,
-    start_stdio_session as mcp_start_stdio_session,
-};
-#[cfg(feature = "mcp")]
 use crate::mcp::McpConfig;
 use crate::models::{
-    AnalysisRequest, AnalysisResponse, AnkiDocumentGenerationRequest,
-    AnkiDocumentGenerationResponse, AnkiGenerationOptions, AppError, ChatMessage, ChatMetadata,
-    CreateTemplateRequest, CustomAnkiTemplate, ExamSheetPreviewRequest, ExamSheetPreviewResult,
-    ExamSheetSegmentationOptions, ExamSheetSegmentationProgress, ExamSheetSessionDetail,
+    AnkiDocumentGenerationRequest,
+    AnkiDocumentGenerationResponse, AnkiGenerationOptions, AppError,
+    CreateTemplateRequest, CustomAnkiTemplate, ExamSheetSessionDetail,
     ExamSheetSessionDetailRequest, ExamSheetSessionDetailResponse, ExamSheetSessionListRequest,
-    ExamSheetSessionListResponse, ExtractMemoriesRequest, ExtractMemoriesResponse,
-    GeneralChatRequest, GeneralChatResponse, GenerateChatMetadataRequest,
-    GenerateChatMetadataResponse, GenerateMistakeSummaryRequest, GenerateMistakeSummaryResponse,
-    InitialAnalysisData, MemoryCandidate, MistakeExamSheetLink, ModelAssignments, PdfOcrRequest,
-    PdfOcrResult, RenameExamSheetSessionRequest, RenameExamSheetSessionResponse, SortDirection,
-    StandardModel1Output, StreamContext, TempStreamState, TemplateBulkImportRequest,
-    TemplateExportResponse, TemplateImportRequest, UpdateChatMetadataNoteRequest,
-    UpdateChatMetadataNoteResponse, UpdateExamSheetCardsRequest, UpdateExamSheetCardsResponse,
-    UpdateOcrNoteRequest, UpdateOcrNoteResponse, UpdateTemplateRequest,
+    ExamSheetSessionListResponse, ModelAssignments, PdfOcrRequest,
+    PdfOcrResult, RenameExamSheetSessionRequest, RenameExamSheetSessionResponse, StreamContext, TemplateBulkImportRequest,
+    TemplateExportResponse, TemplateImportRequest, UpdateExamSheetCardsRequest, UpdateExamSheetCardsResponse, UpdateTemplateRequest,
 };
 use crate::question_bank_service::{BatchResult, QuestionBankService, SubmitAnswerResult};
-use crate::tools::ToolConflict;
 use crate::vfs::repos::AnswerSubmission;
 use base64::Engine;
 use rusqlite::params;
@@ -281,7 +268,6 @@ pub fn merge_tags(primary: &[String], secondary: Option<&[String]>) -> Vec<Strin
     merged
 }
 
-use chrono::Utc;
 use serde_json;
 
 #[cfg(feature = "mcp")]
@@ -501,8 +487,6 @@ pub async fn get_app_data_dir(state: State<'_, AppState>) -> Result<String> {
         .to_string())
 }
 
-// ★ ResearchTaskControl 已删除（文档31清理）
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ActiveDatabaseKind {
     Production,
@@ -525,11 +509,8 @@ pub struct AppState {
     pub notes_database: Arc<Database>,          // 笔记系统独立数据库
 
     // essay_grading_db 已移除，作文批改使用 VFS 统一存储
-    pub vfs_db: Option<Arc<crate::vfs::database::VfsDatabase>>, // ★ VFS 统一存储数据库
-    // ★ user_memory_db 已移除（2026-01），改用 Memory-as-VFS
-    pub custom_mode_manager: Option<crate::essay_grading::custom_modes::CustomModeManager>, // 自定义批阅模式管理器（JSON 存储）
-    // ★ canvas_board_router 已移除（白板模块废弃，2026-01 清理）
-    // ★ backup_job_manager 已移至 Tauri State（BackupJobManagerState）单例模式
+    pub vfs_db: Option<Arc<crate::vfs::database::VfsDatabase>>,
+    pub custom_mode_manager: Option<crate::essay_grading::custom_modes::CustomModeManager>,
     pub file_manager: Arc<FileManager>,
     pub exam_sheet_service: Arc<ExamSheetService>,
     pub question_bank_service: Option<Arc<QuestionBankService>>, // ★ 智能题目集服务
@@ -1500,7 +1481,6 @@ pub async fn test_api_connection(
 // Batch Operations Commands
 // ============================================================================
 
-use crate::batch_operations::BatchOperationExt;
 
 #[derive(Debug, Deserialize)]
 pub struct BatchDeleteRequest {
@@ -3448,7 +3428,6 @@ async fn calculate_recent_growth(database: &Arc<Database>) -> std::result::Resul
     Ok(growth_rate)
 }
 
-// ★ 2026-01 清理：get_irec_service_stats、calculate_irec_trend 已移除（Irec 模块已废弃）
 /// 回顾分析功能已移除
 #[allow(dead_code)]
 async fn calculate_review_analysis_stats(
@@ -4366,7 +4345,6 @@ pub async fn load_webview_settings(state: State<'_, AppState>) -> Result<serde_j
 
 use crate::vfs::repos::{
     CreateQuestionParams,
-    Difficulty as RepoDifficulty,
     Question,
     QuestionBankStats,
     QuestionFilters,
@@ -4374,11 +4352,6 @@ use crate::vfs::repos::{
     QuestionListResult,
     QuestionSearchFilters,
     QuestionSearchListResult,
-    // FTS5 全文搜索相关
-    QuestionSearchResult,
-    QuestionStatus as RepoQuestionStatus,
-    QuestionType as RepoQuestionType,
-    SearchSortBy,
     UpdateQuestionParams,
 };
 

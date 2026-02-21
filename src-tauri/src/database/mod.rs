@@ -5,23 +5,20 @@ mod manager;
 pub use manager::DatabaseManager;
 
 use crate::models::{
-    AnkiCard, AnkiLibraryCard, AppError, ChatMessage, CreateSubLibraryRequest, DocumentTask,
+    AnkiCard, AnkiLibraryCard, CreateSubLibraryRequest, DocumentTask,
     ExamSheetPreviewResult, ExamSheetSessionDetail, ExamSheetSessionMetadata,
-    ExamSheetSessionSummary, SortDirection, StreamContext, SubLibrary, TaskStatus, TempStreamState,
+    ExamSheetSessionSummary, StreamContext, SubLibrary, TaskStatus, TempStreamState,
     UpdateSubLibraryRequest,
 };
 use crate::secure_store::{SecureStore, SecureStoreConfig};
 use anyhow::{Context, Result};
 use chrono::{DateTime, NaiveDateTime, Utc};
-use r2d2::Pool;
-use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::{params, types::Value, Connection, OptionalExtension};
 use sha2::{Digest, Sha256};
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, RwLock};
-use std::time::Duration;
 
 fn parse_datetime_flexible(datetime_str: &str) -> Result<DateTime<Utc>> {
     if datetime_str.is_empty() {

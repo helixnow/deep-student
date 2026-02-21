@@ -3,7 +3,7 @@
 //! 从 llm_manager.rs 拆分的流式和非流式对话管线
 
 use crate::models::{
-    AppError, ChatMessage, RagQueryOptionsWithLibraries, RagSourceInfo, StandardModel2Output,
+    AppError, ChatMessage, StandardModel2Output,
     StreamChunk,
 };
 use crate::providers::ProviderAdapter;
@@ -16,13 +16,11 @@ use log::{debug, error, info, warn};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use tauri::{Emitter, Window};
-use tokio::time::{Duration, Instant};
 use url::Url;
 use uuid::Uuid;
 
 use super::{
     adapters::get_adapter, parser, ApiConfig, ImagePayload, LLMManager, MergedChatMessage, Result,
-    STREAM_MAX_CTX_TOKENS,
 };
 
 /// 计算有效的 max_tokens，应用供应商级别的限制
@@ -780,7 +778,6 @@ impl LLMManager {
                     if let Some(last_user_msg) =
                         chat_history.iter().filter(|m| m.role == "user").last()
                     {
-                        // ★ 2026-01 清理：rag_arc_ref 已移除
                         let memory_enabled_effective = memory_enabled_from_context.unwrap_or(true);
                         if memory_enabled_effective {
                             let _ = window.emit(
@@ -3688,7 +3685,6 @@ impl LLMManager {
 
     // === 无系统提示的简化模型二调用 ===
     /// 直接使用用户提供的 prompt，不附加任何系统提示，适用于严格格式输出的任务（如批量分支选择 / 精确标签映射）。
-    /// ★ 2026-01: Irec 模块已废弃，改用 Model2 配置
     pub async fn call_model2_raw_prompt(
         &self,
         user_prompt: &str,
@@ -4068,8 +4064,6 @@ impl LLMManager {
             cancelled: false,
         })
     }
-
-    // ★ Irec 模块已废弃，get_irec_model_config 方法已移除
 
     /// 单张图片转 Markdown 文本（复用 DeepSeek-OCR 配置）
     /// 翻译场景使用 Free OCR 模式，无需输出坐标（题目集识别使用 grounding 模式）

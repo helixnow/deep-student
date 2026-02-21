@@ -552,7 +552,7 @@ pub async fn test_ocr_engine(
     request: OcrTestRequest,
     state: State<'_, AppState>,
 ) -> Result<OcrTestResponse> {
-    use crate::ocr_adapters::{OcrAdapterFactory, OcrMode};
+    use crate::ocr_adapters::OcrAdapterFactory;
     use std::time::Instant;
 
     let engine_type = OcrEngineType::from_str(&request.engine_type);

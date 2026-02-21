@@ -1387,9 +1387,6 @@ fn restore_context_refs_from_snapshot(
     result
 }
 
-// ★ 2025-12-10：resolve_vfs_ref_content_for_restore 已迁移至 vfs_resolver.rs
-// 使用 crate::chat_v2::vfs_resolver::resolve_vfs_ref_to_blocks 代替
-
 /// 🆕 继续执行中断的消息
 ///
 /// 当消息因网络错误、LLM 超时等原因中断，但有未完成的 TODO 列表时，

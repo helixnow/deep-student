@@ -1,4 +1,3 @@
-use std::sync::Arc;
 use std::time::Instant;
 
 use async_trait::async_trait;
@@ -11,9 +10,8 @@ use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
 use crate::chat_v2::events::event_types;
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
 use crate::models::{
-    AppError, Difficulty as ModelsDifficulty, ExamCardPreview, ExamSheetPreviewPage,
-    ExamSheetPreviewResult, ExamSheetSessionDetail, ExamSheetSessionMetadata,
-    ExamSheetSessionSummary, QuestionBankStats, QuestionStatus as ModelsQuestionStatus,
+    Difficulty as ModelsDifficulty, ExamCardPreview, ExamSheetPreviewPage,
+    ExamSheetPreviewResult, QuestionBankStats, QuestionStatus as ModelsQuestionStatus,
     QuestionType, SourceType,
 };
 use crate::question_bank_service::QuestionBankService;

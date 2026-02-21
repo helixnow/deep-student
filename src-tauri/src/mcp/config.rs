@@ -16,7 +16,7 @@ pub enum McpFraming {
 
 impl Default for McpFraming {
     fn default() -> Self {
-        Self::JsonLines
+        Self::ContentLength
     }
 }
 

@@ -13,7 +13,7 @@
 //! 告诉 Pipeline 继续递归执行，绕过轮次限制。
 
 use std::collections::HashMap;
-use std::sync::{Arc, RwLock};
+use std::sync::RwLock;
 use std::time::Instant;
 
 use async_trait::async_trait;

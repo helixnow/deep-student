@@ -29,7 +29,6 @@ use super::path_types::{
     get_resource_type_from_id, is_virtual_path_type, ParsedPath as NewParsedPath,
     MAX_RESOURCE_ID_LENGTH,
 };
-use super::types::DstuNodeType;
 
 // 重导出类型供外部使用
 pub use super::path_types::is_valid_resource_id;

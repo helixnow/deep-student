@@ -823,7 +823,7 @@ impl LLMManager {
         engine_override: Option<crate::ocr_adapters::OcrEngineType>,
     ) -> Result<Vec<ExamSegmentationCard>> {
         use crate::deepseek_ocr_parser::{parse_deepseek_grounding, project_to_pixels};
-        use crate::ocr_adapters::{OcrAdapterFactory, OcrEngineType, OcrMode};
+        use crate::ocr_adapters::{OcrAdapterFactory, OcrMode};
 
         // S7 fix: 优先使用调用方传入的有效引擎类型，否则回退到全局设置
         let engine_type = match engine_override {

@@ -21,9 +21,9 @@ use crate::vfs::error::{VfsError, VfsResult};
 use crate::vfs::index_service::VfsIndexService;
 use crate::vfs::pdf_processing_service::{PdfProcessingService, ProcessingStage};
 use crate::vfs::repos::{
-    VfsAttachmentRepo, VfsBlobRepo, VfsEssayRepo, VfsExamRepo, VfsFileRepo, VfsIndexStateRepo,
+    VfsAttachmentRepo, VfsBlobRepo, VfsEssayRepo, VfsExamRepo, VfsIndexStateRepo,
     VfsMindMapRepo, VfsNoteRepo, VfsResourceRepo, VfsTextbookRepo, VfsTranslationRepo,
-    INDEX_STATE_DISABLED, INDEX_STATE_FAILED, INDEX_STATE_INDEXED, INDEX_STATE_INDEXING,
+    INDEX_STATE_DISABLED,
     INDEX_STATE_PENDING,
 };
 use crate::vfs::types::*;

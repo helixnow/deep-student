@@ -19,7 +19,7 @@ import type { McpToolModalState, McpToolDraft } from './hooks/useMcpSettings';
 import { showGlobalNotification } from '../UnifiedNotification';
 import { getErrorMessage } from '../../utils/errorUtils';
 
-const DEFAULT_STDIO_ARGS = ['-y', '@anthropic-ai/server-everything'];
+const DEFAULT_STDIO_ARGS = ['-y', '@modelcontextprotocol/server-everything'];
 
 export interface McpToolEditorModalProps {
   mcpToolModal: McpToolModalState;
@@ -81,7 +81,7 @@ export const McpToolEditorModal: React.FC<McpToolEditorModalProps> = ({
           ? argsSource.split(',').map(item => item.trim()).filter(Boolean)
           : [];
       server.args = normalizedArgs.length > 0 ? normalizedArgs : [...DEFAULT_STDIO_ARGS];
-      server.framing = draft.framing || 'jsonl';
+      server.framing = draft.framing || 'content_length';
       if (draft.cwd) server.cwd = draft.cwd;
     }
     if (draft.apiKey) server.apiKey = draft.apiKey;

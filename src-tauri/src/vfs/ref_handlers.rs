@@ -985,8 +985,6 @@ fn get_resource_content_with_conn(
 
     // 特殊处理某些类型
     match resource_type {
-        // ★ 已移除 Textbook 分支，合并到 Image/File/Textbook 分支
-        // VfsResourceType::Textbook => { ... }
         VfsResourceType::Exam => {
             // 题目集返回 preview_json
             info!("[PDF_DEBUG] Exam branch: returning preview_json");

@@ -3,9 +3,7 @@
 // 后续可在此处逐步引入 invoke_handler! 和实际命令函数列表。
 
 // 全局警告抑制（剩余零散警告，逐步治理中）
-#![allow(unused_variables)]
 #![allow(unused_assignments)]
-#![allow(unused_imports)]
 #![allow(dead_code)]
 #![allow(static_mut_refs)]
 #![allow(private_interfaces)]
@@ -27,7 +25,6 @@ pub mod debug_commands;
 pub mod debug_logger;
 
 pub mod cloud_storage;
-// ★ structured_backup 已删除（2026-02-05 废弃功能清理）
 pub mod anr_watchdog; // ANR 看门狗（Android 主线程卡顿检测）
 pub mod deepseek_ocr_parser;
 pub mod document_parser;
@@ -49,15 +46,10 @@ pub mod question_bank_service;
 pub mod question_export_service;
 pub mod question_import_service;
 pub mod secure_store;
-// gemini_adapter 已移除
 pub mod backup;
 pub mod backup_common; // 备份系统共享组件（全局锁、SHA256工具）
 pub mod backup_config; // 备份配置模块（自动备份、精简备份等设置）
-                       // ★ backup_improved 已删除（2026-01-30 清理旧备份系统导出功能）
-                       // ★ backup_test_commands 已删除（2026-02-05 废弃功能清理）
-                       // ★ backup_tests, backup_e2e_tests, backup_flow_tests, backup_integration_tests 已删除（2026-02-05 废弃功能清理）
 pub mod data_space;
-// ★ importers 模块已移除（subject 概念废弃）
 pub mod lance_vector_store;
 pub mod llm_manager;
 #[cfg(feature = "mcp")]
@@ -77,28 +69,19 @@ pub mod streaming_anki_service;
 pub mod textbooks_db;
 pub mod tools;
 pub mod vendors;
-// ★ unified_chat 模块已删除（文档31清理），改用 chat_v2
-// learning_hub 模块已废弃，改用 DSTU/VFS 统一资源访问
 pub mod chat_v2; // Chat V2 - 新版聊天后端模块（基于 Block 架构）
 pub mod dstu;
 pub mod vfs; // VFS 虚拟文件系统（统一资源存储） // DSTU 访达协议层（VFS 的文件系统语义接口）
-             // ★ user_memory 模块已废弃（2026-01），改用 Memory-as-VFS
 pub mod memory; // Memory-as-VFS 记忆系统（复用 VFS 基础设施）
 pub mod unified_file_manager;
 pub mod utils;
 pub mod vector_store;
 pub mod workflow_error_handler;
-// ★ research 模块已删除
-// ★ chat_search 模块已删除（文档31清理）
-
-// ★ subject_research 模块已删除（文档31清理）
 pub mod essay_grading;
 pub mod qbank_grading;
 pub mod test_utils;
 pub mod translation;
 pub mod tts; // 可选的系统 TTS（Web Speech API 回退方案）
-             // ★ essay_grading_db 已删除（2026-02-05 废弃功能清理，作文批改使用 VFS 统一存储）
-             // ★ canvas_board_db, canvas_board_router 已移除（白板模块废弃，2026-01 清理）
 pub mod llm_usage; // LLM 使用量统计模块（独立 llm_usage.db）
 pub mod multimodal; // 多模态知识库模块（基于 Qwen3-VL-Embedding/Reranker）
 pub mod question_sync_service;
@@ -507,8 +490,6 @@ pub fn run() {
             // 需要显式将 `Arc<Database>` 注入到 Tauri 状态中，否则会提示 `.manage()` 缺失
             app.manage(database.clone());
 
-            // ★ user_memory 健康检查已移除（2026-01），改用 Memory-as-VFS
-
             // 🆕 注册 BackupJobManagerState 为 Tauri State（单例模式）
             // 所有备份相关命令都应通过 State 注入获取管理器实例
             #[cfg(feature = "data_governance")]
@@ -678,23 +659,6 @@ pub fn run() {
                 {
                     error!("❌ 注册消息队列处理器失败: {}", e);
                 }
-
-                // ★ memory_intake_workflow 已废弃（图谱模块已移除）
-                // let db_for_resume = database_for_queue.clone();
-                // tauri::async_runtime::spawn(async move {
-                //     tokio::time::sleep(std::time::Duration::from_secs(3)).await;
-                //     crate::memory_intake_workflow::resume_incomplete_memory_intake_tasks(db_for_resume).await;
-                // });
-
-                // ⚠️ 已废弃 (DEPRECATED) - 全库研究功能已废弃
-                // let research_db_for_resume = research_db_for_queue.clone();
-                // tauri::async_runtime::spawn(async move {
-                //     tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-                //     crate::subject_research::resume_incomplete_subject_research_tasks(
-                //         research_db_for_resume,
-                //     )
-                //     .await;
-                // });
             });
 
             // macOS 窗口圆角设置
@@ -747,8 +711,6 @@ pub fn run() {
             crate::pdfium_utils::test_pdfium_status,
             crate::commands::get_app_version,
             crate::commands::get_app_data_dir,
-            // ★ analyze_new_mistake_stream 已移除（错题模块废弃）
-            // ★ process_exam_sheet_preview / process_exam_sheet_preview_stream 已移除（整卷识别废弃，统一走 import_question_bank_stream）
             crate::commands::process_pdf_ocr,
             crate::commands::init_pdf_ocr_session, // 🎯
             crate::commands::upload_pdf_ocr_page, // 🎯
@@ -776,18 +738,8 @@ pub fn run() {
             crate::commands::export_questions_csv,
             crate::commands::get_csv_preview,
             crate::commands::get_csv_exportable_fields,
-            // ★ analyze_from_bridge, create_irec_from_bridge 已移除（桥接模块废弃）
-
-
-
             crate::commands::pin_images,
             crate::commands::unpin_images,
-
-            // ★ 废弃命令已移除（2026-01 清理）：
-            // bridge_to_irec, bridge_to_mistake, link_finish, get_mistakes, get_mistake_details,
-            // update_mistake, delete_mistake, delete_mistake_message
-            // ★ 未实现的命令已移除（2026-01 编译检查）：
-            // import_conversation_snapshot, get_statistics
 
             crate::commands::get_enhanced_statistics,
 
@@ -810,7 +762,6 @@ pub fn run() {
             crate::commands::simulate_budget_allocation,
             crate::commands::test_search_engine,
             crate::commands::get_image_as_base64,
-            // ★ 未实现的命令已移除：save_image_from_base64_path, cleanup_orphaned_images, get_image_statistics
             crate::commands::get_api_configurations,
             crate::commands::save_api_configurations,
             crate::commands::get_model_assignments,
@@ -820,14 +771,6 @@ pub fn run() {
             crate::commands::get_model_profiles,
             crate::commands::save_model_profiles,
             crate::commands::test_api_connection,
-
-
-            // ★ 2026-01 错题库清理：以下命令已废弃
-            // crate::commands::analyze_step_by_step,
-            // crate::commands::start_general_chat_session,
-            // crate::commands::generate_general_chat_metadata,
-            // crate::commands::update_chat_metadata_note,
-            // crate::commands::update_ocr_note,
 
             crate::commands::get_model_adapter_options,
             crate::commands::save_model_adapter_options,
@@ -851,8 +794,6 @@ pub fn run() {
             crate::commands::create_performance_indexes,
             crate::commands::analyze_query_performance,
 
-            // ★ append_mistake_chat_messages 已移除（错题模块废弃）
-            // ★ 未实现的命令已移除：delete_chat_turn_detail, repair_unpaired_turns, list_orphan_assistants, list_tool_rows_for_review
             crate::commands::clear_message_embeddings,
             crate::commands::generate_anki_cards_from_document,
             crate::commands::generate_anki_cards_from_document_file,
@@ -893,12 +834,9 @@ pub fn run() {
             // 状态恢复相关命令
             crate::commands::get_recent_document_tasks,
             crate::commands::get_all_recent_cards,
-            // ★ 旧 RAG 命令已移除（2026-01 清理：VFS RAG 完全替代）
-            // ★ 2026-02 清理：extract_memories_from_chat 已删除（错题模块废弃）
             crate::commands::get_pending_memory_candidates,
             crate::commands::dismiss_pending_memory_candidates,
             crate::commands::mark_pending_memory_candidates_saved,
-            // ★ 更多旧 RAG 命令已移除
             crate::commands::parse_document_from_path,
             crate::commands::parse_document_from_base64,
             // Translation Commands
@@ -939,8 +877,6 @@ pub fn run() {
             crate::commands::read_file_bytes,
             crate::commands::copy_file,
             crate::commands::save_text_to_file,
-            // Textbooks 命令已迁移到 DSTU API
-            // ★ generate_mistake_summary 已移除（错题模块废弃）
             crate::commands::get_all_custom_templates,
             crate::commands::get_custom_template_by_id,
             crate::commands::create_custom_template,
@@ -959,11 +895,6 @@ pub fn run() {
             crate::commands::report_frontend_log,
             crate::commands::save_template_debug_data,
             crate::commands::export_unified_backup_data,
-            // ★ 旧 backup::* 命令已移除，统一走 data_governance_* 命令。
-            // 映射关系见 src/api/dataGovernance.ts：
-            //   - run_data_integrity_check → data_governance_run_health_check
-            //   - get_backup_info → data_governance_verify_backup
-            //   - get_backup_list → data_governance_get_backup_list
             // 备份配置
             crate::backup_config::get_backup_config,
             crate::backup_config::set_backup_config,
@@ -993,7 +924,6 @@ pub fn run() {
             crate::secure_store::secure_store_is_available,
             // AnkiConnect compatibility
             crate::commands::anki_get_deck_names,
-            // ★ App management 命令未定义，已移除（2026-01 检查）
             // =================================================
             // config_recovery.rs
             // =================================================
@@ -1005,7 +935,6 @@ pub fn run() {
             crate::debug_logger::write_debug_logs,
             // =================================================
             // debug_commands.rs - 调试专用直接数据库访问
-            // ★ 错题相关调试命令已移除（2026-01 清理）
             crate::debug_commands::debug_get_database_stats,
             crate::debug_commands::log_debug_message,
             crate::debug_commands::debug_vfs_migration_status,
@@ -1031,9 +960,6 @@ pub fn run() {
             crate::commands::import_mcp_config,
             crate::commands::export_mcp_config,
             crate::commands::test_all_search_engines
-
-            // ★ Memory Intake Workflow 已废弃（图谱模块已移除）
-            // 所有 memory_intake_workflow::* 命令已移除
 
             // =============== Notes (isolated) ===============
             ,crate::commands::notes_list,
@@ -1066,11 +992,9 @@ pub fn run() {
             ,crate::commands::notes_mentions_search
             ,crate::commands::rag_rebuild_fts_index
             ,crate::commands::notes_rag_rebuild_fts_index
-            // Deep Research commands removed
             ,crate::commands::notes_hard_delete
             ,crate::commands::notes_empty_trash
             ,crate::commands::notes_list_deleted
-            // ★ rag_integrity_check 命令已移除
             // Canvas AI 工具命令（智能笔记）
             ,crate::commands::canvas_note_read
             ,crate::commands::canvas_note_append
@@ -1101,7 +1025,6 @@ pub fn run() {
             // P0-27: WebView 设置备份/恢复命令
             ,crate::commands::save_webview_settings
             ,crate::commands::load_webview_settings
-            // ★ Canvas Board 命令已移除（白板模块废弃，2026-01 清理）
             // =================================================
             // Chat V2 - 新版聊天后端命令
             // =================================================
@@ -1179,7 +1102,6 @@ pub fn run() {
             ,crate::chat_v2::handlers::workspace_handlers::workspace_manual_wake
             ,crate::chat_v2::handlers::workspace_handlers::workspace_cancel_sleep
             ,crate::chat_v2::handlers::workspace_handlers::workspace_restore_executions
-            // workspace_list_skills 和 workspace_get_skill 已移除，技能系统由前端管理
             // 资源库命令（统一上下文注入系统）
             ,crate::chat_v2::handlers::resource_handlers::resource_create_or_reuse
             ,crate::chat_v2::handlers::resource_handlers::resource_get
@@ -1389,7 +1311,6 @@ pub fn run() {
             ,crate::dstu::trash_handlers::dstu_list_trash
             ,crate::dstu::trash_handlers::dstu_empty_trash
             ,crate::dstu::trash_handlers::dstu_permanently_delete
-            // ★ User Memory 命令已移除（2026-01），改用 Memory-as-VFS
             // =================================================
             // 教材库命令
             // =================================================
@@ -1594,8 +1515,6 @@ fn build_app_state(
         }
     }
 
-    // ★ user_memory_db 已移除（2026-01），改用 Memory-as-VFS
-
     let llm_manager = Arc::new(crate::llm_manager::LLMManager::new(
         database.clone(),
         file_manager.clone(),
@@ -1618,7 +1537,6 @@ fn build_app_state(
     );
 
     let temp_sessions = Arc::new(Mutex::new(HashMap::new()));
-    // ★ 回顾分析/错题流相关变量已移除
     let pdf_ocr_cancellations = Arc::new(Mutex::new(HashMap::<
         String,
         tokio::sync::watch::Sender<bool>,
@@ -1648,9 +1566,6 @@ fn build_app_state(
         &file_manager.get_writable_app_data_dir(),
     );
 
-    // ★ canvas_board_router 已移除（白板模块废弃，2026-01 清理）
-
-    // ★ 智能题目集服务（2026-01）
     let question_bank_service = Arc::new(crate::question_bank_service::QuestionBankService::new(
         vfs_db.clone(),
     ));
@@ -1708,11 +1623,8 @@ fn build_app_state(
         notes_database,
 
         // essay_grading_db 已移除
-        vfs_db: Some(vfs_db), // ★ VFS 统一存储数据库
-        // ★ user_memory_db 已移除（2026-01），改用 Memory-as-VFS
-        custom_mode_manager: Some(custom_mode_manager), // 自定义批阅模式管理器
-        // ★ canvas_board_router 已移除（白板模块废弃）
-        // ★ backup_job_manager 已移至 Tauri State（BackupJobManagerState）
+        vfs_db: Some(vfs_db),
+        custom_mode_manager: Some(custom_mode_manager),
         notes_manager,
         file_manager,
         exam_sheet_service,
@@ -1721,7 +1633,6 @@ fn build_app_state(
         temp_sessions,
         llm_manager,
         crypto_service,
-        // ★ active_mistake_streams 已移除（错题模块废弃）
         pdf_ocr_cancellations,
         pdf_ocr_pauses,
         pdf_ocr_sessions: Arc::new(tokio::sync::Mutex::new(HashMap::new())), // 🎯 Initialize sessions map

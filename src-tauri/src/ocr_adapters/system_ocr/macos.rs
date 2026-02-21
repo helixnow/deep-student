@@ -10,9 +10,9 @@ extern "C" {}
 
 /// 在当前线程同步执行 Vision OCR（应在 spawn_blocking 中调用）
 pub fn recognize_text_blocking(image_data: &[u8]) -> Result<String, OcrError> {
-    use objc::runtime::{Class, Object, BOOL, YES};
+    use objc::runtime::Object;
     use objc::{class, msg_send, sel, sel_impl};
-    use std::ffi::CStr;
+    
 
     unsafe {
         // 创建 autorelease pool

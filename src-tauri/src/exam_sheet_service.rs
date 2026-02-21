@@ -1,6 +1,5 @@
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::file_manager::FileManager;
 use crate::llm_manager::LLMManager;
@@ -753,7 +752,6 @@ impl ExamSheetService {
             }
         }
 
-        // ★ irec 错题关联逻辑已移除（2025-12-07）
         detail.summary.linked_mistake_ids = None;
 
         // 若历史记录仍引用临时目录，尝试在读取详情时自动归档到 archive 目录，避免刷新后资源丢失
@@ -841,7 +839,6 @@ impl ExamSheetService {
                     });
                 }
 
-                // ★ 错题关联已移除
                 card.linked_mistake_ids = None;
             }
         }

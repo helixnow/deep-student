@@ -22,9 +22,9 @@ static STDIO_SESSIONS: LazyLock<Mutex<HashMap<String, StdioTransportHandle>>> =
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn framing_from_str(value: Option<&str>) -> McpFraming {
-    match value.unwrap_or("jsonl").to_lowercase().as_str() {
-        "content_length" | "content-length" => McpFraming::ContentLength,
-        _ => McpFraming::JsonLines,
+    match value.map(|v| v.to_lowercase()).as_deref() {
+        Some("jsonl") | Some("json_lines") | Some("json-lines") => McpFraming::JsonLines,
+        _ => McpFraming::ContentLength,
     }
 }
 
