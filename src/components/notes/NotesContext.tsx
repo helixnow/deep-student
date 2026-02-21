@@ -107,7 +107,6 @@ interface NotesContextType {
     // Dialogs State
     trashOpen: boolean;
     libraryOpen: boolean;
-    versionsOpen: boolean;
 
     // Search State
     searchQuery: string;
@@ -133,7 +132,6 @@ interface NotesContextType {
     setActive: React.Dispatch<React.SetStateAction<NoteItem | null>>;
     setTrashOpen: React.Dispatch<React.SetStateAction<boolean>>;
     setLibraryOpen: React.Dispatch<React.SetStateAction<boolean>>;
-    setVersionsOpen: React.Dispatch<React.SetStateAction<boolean>>;
     setEditor: React.Dispatch<React.SetStateAction<CrepeEditorApi | null>>;
 
     // CRUD Actions
@@ -359,7 +357,6 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const [activeTabId, setActiveTabId] = useState<string | null>(null);
     const [trashOpen, setTrashOpen] = useState(false);
     const [libraryOpen, setLibraryOpen] = useState(false);
-    const [versionsOpen, setVersionsOpen] = useState(false);
 
     // Search State
     const [searchQuery, setSearchQuery] = useState("");
@@ -1765,8 +1762,6 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         setActive,
         setTrashOpen,
         setLibraryOpen,
-        versionsOpen,
-        setVersionsOpen,
         editor,
         setEditor,
         openTab,

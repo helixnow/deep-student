@@ -10,7 +10,7 @@
 
 import React, { useEffect, useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Loader2, AlertCircle, RotateCcw, History } from 'lucide-react';
+import { Loader2, AlertCircle, RotateCcw } from 'lucide-react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { NotesCrepeEditor } from '@/components/notes/NotesCrepeEditor';
 import { NotesContextPanel } from '@/components/notes/NotesContextPanel';
@@ -19,7 +19,6 @@ import { dstu } from '@/dstu';
 import { useSystemStatusStore } from '@/stores/systemStatusStore';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import type { ContentViewProps } from '../UnifiedAppPanel';
-import { DstuVersionsDialog } from '@/components/notes/dialogs/DstuVersionsDialog';
 import { PanelGroup, Panel, PanelResizeHandle } from 'react-resizable-panels';
 import { cn } from '@/lib/utils';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
@@ -48,7 +47,6 @@ const NoteContentView: React.FC<ContentViewProps> = ({
   // 🔧 修复：使用 null 表示"未加载"，空字符串表示"已加载但内容为空"
   const [content, setContent] = useState<string | null>(null);
   const [title, setTitle] = useState<string>(node.name || '');
-  const [versionsOpen, setVersionsOpen] = useState(false);
   
   // 🔧 追踪当前加载的笔记 ID，用于防止竞态条件
   const loadingNoteIdRef = React.useRef<string | null>(null);
@@ -166,12 +164,6 @@ const NoteContentView: React.FC<ContentViewProps> = ({
             </NotionButton>
           )}
         </div>
-        <div className="flex items-center gap-1.5 mt-4">
-          <History className="w-3.5 h-3.5 text-muted-foreground/60" />
-          <span className="text-xs text-muted-foreground/60">
-            {t('notes:tips.versionHistory', '版本历史可在笔记面板中查看和回滚')}
-          </span>
-        </div>
       </div>
     );
   }
@@ -225,35 +217,6 @@ const NoteContentView: React.FC<ContentViewProps> = ({
         )}
       </PanelGroup>
 
-      <div className="flex-shrink-0 flex items-center justify-between px-4 py-2 border-t border-border/40 bg-muted/10">
-        <div className="flex items-center gap-1.5">
-          <History className="w-3.5 h-3.5 text-muted-foreground/60" />
-          <span className="text-xs text-muted-foreground/80">
-            {t('notes:tips.versionHistory', '笔记会自动保存历史版本')}
-          </span>
-        </div>
-        <NotionButton 
-          variant="ghost" 
-          size="sm" 
-          className="h-7 text-xs px-2"
-          onClick={() => setVersionsOpen(true)}
-        >
-          <History className="w-3.5 h-3.5 mr-1.5" />
-          {t('notes:versions.title', '版本历史')}
-        </NotionButton>
-      </div>
-
-      <DstuVersionsDialog
-        open={versionsOpen}
-        onOpenChange={setVersionsOpen}
-        noteId={noteId}
-        currentTitle={title}
-        currentContent={content || ''}
-        onRevertSuccess={() => {
-          // 回滚成功后重新加载当前笔记内容
-          loadNoteContent();
-        }}
-      />
     </div>
   );
 };

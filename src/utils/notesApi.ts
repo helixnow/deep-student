@@ -5,7 +5,6 @@
  * This module contains only utility functions that don't have DSTU equivalents:
  * - Preferences (getPref, setPref)
  * - Assets (saveAsset, listAssets, deleteAsset, etc.)
- * - Versions (listVersions, getVersion, revertVersion)
  * - Import/Export (exportNotes, importNotes)
  * - Tags, Trash, and other utilities
  * 
@@ -53,24 +52,6 @@ export interface NoteLinksResult {
 }
 
 export const NotesAPI = {
-  // ========== Version Management ==========
-  async getVersion(noteId: string, versionId: string): Promise<NoteItem> {
-    return await invoke<NoteItem>('notes_get_version', { noteId, versionId });
-  },
-
-  async listVersions(noteId: string): Promise<Array<{ version_id: string; created_at: string }>> {
-    const rows = await invoke<Array<[string, string]>>('notes_list_versions', { noteId });
-    return (rows || []).map(([version_id, created_at]) => ({ version_id, created_at }));
-  },
-
-  async revertVersion(noteId: string, versionId: string): Promise<NoteItem> {
-    return await invoke<NoteItem>('notes_revert_version', { noteId, versionId });
-  },
-
-  async revertAsNewVersion(noteId: string, versionId: string, remark?: string): Promise<NoteItem> {
-    return await invoke<NoteItem>('notes_revert_as_new_version', { noteId, versionId, remark });
-  },
-
   // ★ 2026-01 清理：RAG Operations 已移除，VFS RAG 完全替代
   // ragInspectSubject, ragAddFromContent, ragUpdateContent, ragQuery,
   // ragDeleteDocument, ragReembedDocument, ragReembedAll, ragMigrateFilenames,

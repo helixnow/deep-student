@@ -347,23 +347,10 @@ pub async fn notes_hard_delete(
         if let Ok(Some(note)) = VfsNoteRepo::get_note_with_conn(&conn, &id) {
             ids.push(note.resource_id);
         }
-        let mut stmt = conn
-            .prepare("SELECT resource_id FROM notes_versions WHERE note_id = ?1")
-            .map_err(|e| AppError::database(format!("准备版本查询失败: {}", e)))?;
-        let rows = stmt
-            .query_map(params![id.clone()], |row| row.get::<_, String>(0))
-            .map_err(|e| AppError::database(format!("遍历版本失败: {}", e)))?;
-        for r in rows {
-            if let Ok(rid) = r {
-                ids.push(rid);
-            }
-        }
-        ids.sort();
-        ids.dedup();
         ids
     };
 
-    // VFS purge_note 会删除：笔记、版本历史、关联资源
+    // VFS purge_note 会删除：笔记、关联资源
     let deleted = crate::vfs::VfsNoteRepo::purge_note(vfs_db, &id)
         .map(|_| true)
         .unwrap_or(false);
@@ -422,17 +409,6 @@ pub async fn notes_empty_trash(
             if let Ok(note_id) = r {
                 if let Ok(Some(note)) = VfsNoteRepo::get_note_with_conn(&conn, &note_id) {
                     ids.push(note.resource_id);
-                }
-                let mut vstmt = conn
-                    .prepare("SELECT resource_id FROM notes_versions WHERE note_id = ?1")
-                    .map_err(|e| AppError::database(format!("准备版本查询失败: {}", e)))?;
-                let vrows = vstmt
-                    .query_map(params![note_id], |row| row.get::<_, String>(0))
-                    .map_err(|e| AppError::database(format!("遍历版本失败: {}", e)))?;
-                for vr in vrows {
-                    if let Ok(rid) = vr {
-                        ids.push(rid);
-                    }
                 }
             }
         }
@@ -1250,9 +1226,7 @@ pub async fn notes_db_stats(state: State<'_, AppState>) -> Result<NotesDbStats> 
     let total_notes: i64 = conn
         .query_row("SELECT COUNT(*) FROM notes", [], |r| r.get(0))
         .unwrap_or(0);
-    let total_versions: i64 = conn
-        .query_row("SELECT COUNT(*) FROM notes_versions", [], |r| r.get(0))
-        .unwrap_or(0);
+    let total_versions: i64 = 0;
     let total_assets: i64 = 0;
     Ok(NotesDbStats {
         db_path: path.to_string_lossy().to_string(),
@@ -1292,49 +1266,6 @@ pub async fn notes_list_tags(
         .map_err(|e| AppError::database(format!("VFS 获取标签失败: {}", e)))?;
 
     Ok(tags)
-}
-
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
-pub struct NoteVersionPayload {
-    pub subject: String,
-    pub title: String,
-    pub content_md: String,
-    pub tags: Vec<String>,
-    pub created_at: String,
-}
-#[tauri::command]
-pub async fn notes_get_version(
-    noteId: String,
-    versionId: String,
-    state: State<'_, AppState>,
-) -> Result<NoteVersionPayload> {
-    // 读取某个版本的内容（VFS）
-    use rusqlite::params;
-    let vfs_db = state
-        .vfs_db
-        .as_ref()
-        .ok_or_else(|| AppError::configuration("VFS database not configured"))?;
-    let conn = vfs_db
-        .get_conn_safe()
-        .map_err(|e| AppError::database(e.to_string()))?;
-    let (resource_id, title, tags_json, created_at): (String, String, String, String) = conn.query_row(
-        "SELECT resource_id, title, tags, created_at FROM notes_versions WHERE version_id=?1 AND note_id=?2",
-        params![versionId, noteId],
-        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
-    ).map_err(|e| AppError::database(format!("读取版本失败: {}", e)))?;
-    let content_md = crate::vfs::VfsResourceRepo::get_resource(vfs_db, &resource_id)
-        .ok()
-        .flatten()
-        .and_then(|r| r.data)
-        .unwrap_or_default();
-    let tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
-    Ok(NoteVersionPayload {
-        subject: String::new(),
-        title,
-        content_md,
-        tags,
-        created_at,
-    })
 }
 
 // ============== Notes FTS 搜索（标题 + 正文） ==============
@@ -1637,3 +1568,4 @@ pub async fn notes_mentions_search(
 
     Ok(response)
 }
+

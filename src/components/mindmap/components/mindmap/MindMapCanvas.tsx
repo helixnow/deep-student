@@ -271,43 +271,51 @@ const MindMapCanvasInner: React.FC = () => {
     if (!hasFitView.current) {
       hasFitView.current = true;
       const timer = setTimeout(() => {
+        // 空间锚定：如果有 focusedNodeId，跳过初始 fitView，让后续的 setCenter effect 接管
+        if (focusedNodeId) return;
         fitView({ padding: 0.2, duration: 0 });
       }, 50);
       return () => clearTimeout(timer);
     }
-  }, [nodes.length, fitView]);
+  }, [nodes.length, fitView, focusedNodeId]);
 
   // 当布局变化时重新适应视图（修复: 添加 cleanup 防止内存泄漏）
   useEffect(() => {
     if (nodes.length > 0 && hasFitView.current) {
       const timer = setTimeout(() => {
+        // 空间锚定：如果有 focusedNodeId，跳过重新 fitView
+        if (focusedNodeId) return;
         fitView({ padding: 0.2, duration: 300 });
       }, 50);
       return () => clearTimeout(timer);
     }
-  }, [layoutId, layoutDirection, fitView]);
+  }, [layoutId, layoutDirection, fitView, focusedNodeId]);
 
   useEffect(() => {
     if (
       focusedNodeId &&
       focusedNodeId !== prevFocusedNodeId.current
     ) {
-      const targetNode = getNodes().find(n => n.id === focusedNodeId);
-      if (targetNode) {
-        const nodeWidth = targetNode.measured?.width || 100;
-        const nodeHeight = targetNode.measured?.height || 36;
-        const centerX = targetNode.position.x + nodeWidth / 2;
-        const centerY = targetNode.position.y + nodeHeight / 2;
+      // 允许同步，即便是在首屏加载时
+      const timer = setTimeout(() => {
+        const targetNode = getNodes().find(n => n.id === focusedNodeId);
+        if (targetNode) {
+          const nodeWidth = targetNode.measured?.width || 100;
+          const nodeHeight = targetNode.measured?.height || 36;
+          const centerX = targetNode.position.x + nodeWidth / 2;
+          const centerY = targetNode.position.y + nodeHeight / 2;
 
-        const currentZoom = getZoom();
-        setCenter(centerX, centerY, {
-          zoom: Math.max(currentZoom, 0.8),
-          duration: 200
-        });
-      }
+          const currentZoom = getZoom();
+          setCenter(centerX, centerY, {
+            zoom: Math.max(currentZoom, 0.8),
+            duration: 300
+          });
+          prevFocusedNodeId.current = focusedNodeId;
+        }
+      }, 50);
+      return () => clearTimeout(timer);
     }
-    prevFocusedNodeId.current = focusedNodeId;
-  }, [focusedNodeId, getNodes, setCenter, getZoom]);
+  }, [focusedNodeId, getNodes, getZoom, setCenter]);
 
   const setEditingNodeId = useMindMapStore(s => s.setEditingNodeId);
   const setEditingNoteNodeId = useMindMapStore(s => s.setEditingNoteNodeId);

@@ -1690,30 +1690,6 @@ impl LLMManager {
         let mut vendors = self.read_user_vendor_configs().await?;
         if let Ok((builtin_vendors, _)) = self.load_builtin_vendor_profiles() {
             for mut vendor in builtin_vendors {
-                // 检查安全存储中是否有 API key，有则设为 "***"（表示已配置），无则设为空
-                let secret_key = format!("{}.api_key", vendor.id);
-                let has_api_key = self
-                    .db
-                    .get_secret(&secret_key)
-                    .ok()
-                    .flatten()
-                    .map(|k| !k.is_empty())
-                    .unwrap_or(false);
-                // 兼容旧的 SiliconFlow 存储格式
-                let has_api_key = has_api_key
-                    || (vendor.id == "builtin-siliconflow"
-                        && self
-                            .db
-                            .get_secret("siliconflow.api_key")
-                            .ok()
-                            .flatten()
-                            .map(|k| !k.is_empty())
-                            .unwrap_or(false));
-                vendor.api_key = if has_api_key {
-                    "***".to_string()
-                } else {
-                    String::new()
-                };
                 if let Some(existing) = vendors.iter_mut().find(|v| v.id == vendor.id) {
                     // 同步内置供应商的信息字段，保留用户自定义的 base_url/headers 等
                     existing.notes = vendor.notes.clone();
@@ -1722,40 +1698,36 @@ impl LLMManager {
                     existing.is_builtin = true;
                     continue;
                 }
+                vendor.api_key = String::new();
                 vendors.push(vendor);
             }
         }
-        // 统一处理：无论内置供应商是否来自“注入”，都应基于安全存储返回掩码状态
-        // 否则当内置供应商已存在于 vendor_configs 中时，前端会拿到空 key，导致“已配置”状态丢失。
+        // 统一处理：内置供应商从安全存储读取真实 API key（与 vendor_configs_for_runtime 一致）
+        // 前端可直接在 password input 中显示密码点，而非仅显示"已配置"占位符。
         for vendor in &mut vendors {
             let is_builtin_vendor = vendor.is_builtin || vendor.id.starts_with("builtin-");
             if !is_builtin_vendor {
                 continue;
             }
-            let secret_key = format!("{}.api_key", vendor.id);
-            let mut has_api_key = self
-                .db
-                .get_secret(&secret_key)
-                .ok()
-                .flatten()
-                .map(|k| !k.is_empty())
-                .unwrap_or(false);
-            // 兼容旧的 SiliconFlow 存储格式
-            if vendor.id == "builtin-siliconflow" {
-                has_api_key = has_api_key
-                    || self
-                        .db
-                        .get_secret("siliconflow.api_key")
-                        .ok()
-                        .flatten()
-                        .map(|k| !k.is_empty())
-                        .unwrap_or(false);
+            let is_invalid = vendor.api_key.is_empty()
+                || vendor.api_key == "***"
+                || vendor.api_key.chars().all(|c| c == '*');
+            if is_invalid {
+                let secret_key = format!("{}.api_key", vendor.id);
+                if let Ok(Some(key)) = self.db.get_secret(&secret_key) {
+                    if !key.is_empty() {
+                        vendor.api_key = key;
+                    }
+                }
+                // 兼容旧的 SiliconFlow 存储格式
+                if vendor.id == "builtin-siliconflow" && vendor.api_key.is_empty() {
+                    if let Ok(Some(sf_key)) = self.db.get_secret("siliconflow.api_key") {
+                        if !sf_key.is_empty() {
+                            vendor.api_key = sf_key;
+                        }
+                    }
+                }
             }
-            vendor.api_key = if has_api_key {
-                "***".to_string()
-            } else {
-                String::new()
-            };
             vendor.is_builtin = true;
         }
         Ok(vendors)

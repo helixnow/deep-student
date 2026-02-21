@@ -3728,7 +3728,11 @@
   "error_boundary": {
     "title": "Application encountered a critical error",
     "description": "An unrecoverable error occurred. Please try refreshing the page. Contact support if the issue persists.",
-    "refresh": "Refresh Page"
+    "refresh": "Refresh Page",
+    "show_details": "Show Error Details",
+    "hide_details": "Hide Details",
+    "copy_error": "Copy Error Log",
+    "copied": "Copied"
   },
   "frontend_errors": {
     "window_error": "Window Error",

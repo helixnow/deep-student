@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import {
   UI_FONT_STORAGE_KEY,
@@ -57,6 +57,7 @@ export const useAppInitialization = (): UseAppInitializationReturn => {
     { key: 'services', name: t('init_steps.services'), completed: false },
     { key: 'ui', name: t('init_steps.ui'), completed: false },
   ]);
+  const cancelledRef = useRef(false);
 
   const updateStep = (key: string, completed: boolean, error?: string) => {
     setSteps(prev => prev.map(step => 
@@ -70,6 +71,8 @@ export const useAppInitialization = (): UseAppInitializationReturn => {
   };
 
   useEffect(() => {
+    cancelledRef.current = false;
+
     const initializeApp = async () => {
       try {
         // 🚀 性能优化：移除所有人为延迟，快速完成初始化检查
@@ -81,19 +84,49 @@ export const useAppInitialization = (): UseAppInitializationReturn => {
         initializeFontSetting().catch(console.warn);
 
         // Step 2: 数据库连接检查（通过 get_setting 实际查询数据库验证连接可用性）
+        // 🔧 时序修复：版本更新时数据库可能正在执行迁移，首次检查可能失败。
+        // 添加重试机制，避免迁移期间的瞬态失败导致 banner 永久显示。
+        let dbCheckOk = false;
         try {
           await invoke('get_setting', { key: 'app_initialized' });
-          updateStep('database', true);
+          dbCheckOk = true;
         } catch (err: unknown) {
           const errMsg = err instanceof Error ? err.message : String(err);
-          console.error('Database initialization failed:', errMsg);
+          console.warn('[Init] Database check failed (will retry in background):', errMsg);
           updateStep('database', false, errMsg);
           setError(t('messages.error.init_failed'));
-          showGlobalNotification(
-            'warning',
-            t('init_steps.database'),
-            t('messages.error.init_failed') + ': ' + errMsg,
-          );
+        }
+
+        if (dbCheckOk) {
+          updateStep('database', true);
+        } else if (!cancelledRef.current) {
+          // 后台重试：数据库可能正在迁移，等待迁移完成后自动清除错误
+          const retryDelays = [1000, 2000, 3000, 5000, 8000]; // 递增退避，总等待约 19 秒
+          (async () => {
+            for (const delay of retryDelays) {
+              if (cancelledRef.current) return;
+              await new Promise(resolve => setTimeout(resolve, delay));
+              if (cancelledRef.current) return;
+              try {
+                await invoke('get_setting', { key: 'app_initialized' });
+                // 重试成功：清除错误状态
+                console.log('[Init] Database check succeeded on retry, clearing error banner');
+                updateStep('database', true);
+                setError(null);
+                return;
+              } catch {
+                // 继续重试
+              }
+            }
+            // 所有重试均失败，显示通知提示用户
+            if (!cancelledRef.current) {
+              showGlobalNotification(
+                'warning',
+                t('init_steps.database'),
+                t('messages.error.init_failed'),
+              );
+            }
+          })();
         }
 
         // Step 3 & 4: 服务和 UI（立即完成）
@@ -114,6 +147,10 @@ export const useAppInitialization = (): UseAppInitializationReturn => {
 
     // 直接初始化，不阻塞首帧渲染
     initializeApp();
+
+    return () => {
+      cancelledRef.current = true;
+    };
   }, []);
 
   return {

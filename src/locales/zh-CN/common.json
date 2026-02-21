@@ -3669,7 +3669,11 @@
   "error_boundary": {
     "title": "应用遇到严重错误",
     "description": "应用发生了无法恢复的错误。请尝试刷新页面，如果问题持续请联系支持。",
-    "refresh": "刷新页面"
+    "refresh": "刷新页面",
+    "show_details": "查看错误详情",
+    "hide_details": "隐藏详情",
+    "copy_error": "复制错误日志",
+    "copied": "已复制"
   },
   "frontend_errors": {
     "window_error": "窗口错误",

@@ -500,11 +500,10 @@ pub async fn vfs_create_note(
 
 /// 更新笔记
 ///
-/// 自动处理版本管理：
+/// 自动处理资源管理：
 /// 1. 计算新内容的哈希
 /// 2. 若 hash 不同，创建新 resource
-/// 3. 保存旧 resource_id 到 notes_versions
-/// 4. 更新 notes.resource_id
+/// 3. 更新 notes.resource_id
 ///
 /// ## 参数
 /// - `id`: 笔记 ID

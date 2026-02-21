@@ -1450,7 +1450,6 @@ fn infer_database_from_table(table_name: &str) -> Option<&'static str> {
         // vfs 数据库
         "blobs"
         | "notes"
-        | "notes_versions"
         | "files"
         | "exam_sheets"
         | "translations"

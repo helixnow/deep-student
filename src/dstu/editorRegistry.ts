@@ -27,7 +27,7 @@ const FULL_EDIT_CAPABILITIES: ResourceCapabilities = {
   movable: true,
   copyable: true,
   shareable: true,
-  versionable: true,
+  versionable: false,
   referenceable: true,
 };
 

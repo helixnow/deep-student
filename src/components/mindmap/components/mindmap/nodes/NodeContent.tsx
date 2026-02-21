@@ -4,6 +4,7 @@ import { cn } from '@/lib/utils';
 import { BlankedText } from '../../shared/BlankedText';
 import { InlineLatex } from '../../shared/InlineLatex';
 import { containsLatex } from '../../../utils/renderLatex';
+import TextareaAutosize from 'react-textarea-autosize';
 import type { BlankRange, MindMapNodeRef } from '../../../types';
 import { NodeRefList } from '../../shared/NodeRefCard';
 
@@ -137,6 +138,10 @@ export const NodeContent: React.FC<NodeContentProps> = ({
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
+      if (e.shiftKey) {
+        // Shift + Enter: 允许换行，不保存
+        return;
+      }
       e.preventDefault();
       handleSave();
     } else if (e.key === 'Escape') {
@@ -223,12 +228,12 @@ export const NodeContent: React.FC<NodeContentProps> = ({
             </span>
 
             {/* Actual Input: Absolute positioning to float over without affecting layout */}
-            <input
-              ref={inputRef}
+            <TextareaAutosize
+              ref={inputRef as any}
               value={editValue}
               onChange={(e) => setEditValue(e.target.value)}
               onBlur={handleSave}
-              onKeyDown={handleKeyDown}
+              onKeyDown={handleKeyDown as any}
               onClick={(e) => e.stopPropagation()}
               style={{
                 width: inputWidth,
@@ -242,7 +247,7 @@ export const NodeContent: React.FC<NodeContentProps> = ({
                 letterSpacing: 'inherit',
               }}
               className={cn(
-                "absolute top-0 h-full",
+                "absolute top-0 h-full resize-none overflow-hidden block",
                 "nopan nodrag",  // 阻止 ReactFlow 拖拽/平移，允许文本选择
                 "bg-[var(--mm-bg-elevated)] shadow-[var(--mm-shadow-sm)] rounded-sm",
                 "border-none outline-none ring-0 focus:ring-0",

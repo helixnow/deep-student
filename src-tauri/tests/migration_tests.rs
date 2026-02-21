@@ -854,7 +854,6 @@ mod vfs_migration_tests {
             "resources",      // 001: 资源元数据
             "blobs",          // 001: Blob 存储
             "notes",          // 001: 笔记
-            "notes_versions", // 001: 笔记版本历史
             "files",          // 001: 文件（教材、附件）
             "translations",   // 001: 翻译
             "exam_sheets",    // 001: 题目集
@@ -1339,7 +1338,6 @@ mod vfs_migration_tests {
             "resources",
             "blobs",
             "notes",
-            "notes_versions",
             "files",
             "translations",
             "exam_sheets",

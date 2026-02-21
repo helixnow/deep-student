@@ -32,9 +32,6 @@ export interface ContextMenuActionHandler {
   /** 开始重命名 */
   startRename?: (path: string) => void;
 
-  /** 打开版本历史 */
-  openVersionHistory?: (path: string) => void;
-
   /** 确认删除 */
   confirmDelete?: (path: string) => Promise<void>;
 
@@ -232,22 +229,6 @@ export function buildContextMenu(
   }
 
   // ========== 历史与删除 ==========
-
-  // 版本历史（如果支持）
-  if (capabilities.versionable) {
-    items.push({
-      id: 'history',
-      label: 'dstu:menu.versionHistory',
-      icon: 'History',
-      action: () => {
-        if (globalActionHandler?.openVersionHistory) {
-          globalActionHandler.openVersionHistory(node.path);
-        } else {
-          console.warn('[DSTU] openVersionHistory handler not registered');
-        }
-      },
-    });
-  }
 
   // 删除（如果可删除）
   if (capabilities.deletable) {

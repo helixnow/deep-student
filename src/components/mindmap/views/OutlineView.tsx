@@ -64,6 +64,7 @@ import { InlineLatex } from '../components/shared/InlineLatex';
 import { containsLatex } from '../utils/renderLatex';
 import { QUICK_TEXT_COLORS, QUICK_BG_COLORS } from '../constants';
 import { getAncestors } from '../utils/node/traverse';
+import TextareaAutosize from 'react-textarea-autosize';
 
 const LEVEL_INDENT = 28; // Increased indent for better hierarchy
 const BASE_PADDING = 12;
@@ -180,6 +181,8 @@ const SortableOutlineNode: React.FC<{
     if (isFocused && !isEditingNote) {
       if (inputRef.current) {
         inputRef.current.focus();
+        // ★ 空间锚定：确保焦点节点在可视区域内
+        inputRef.current.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
       } else if (!isEditing && containsLatex(localText)) {
         // LaTeX 渲染态下 input 未挂载，需先进入编辑模式
         setIsEditing(true);
@@ -223,7 +226,7 @@ const SortableOutlineNode: React.FC<{
   }, [localNote, node.id, node.note, updateNode]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
-    // Add Sibling: Enter
+    // Add Sibling: Enter (without Shift)
     if (e.key === 'Enter' && !e.shiftKey && !e.metaKey && !e.ctrlKey) {
       e.preventDefault();
       commitText();
@@ -247,10 +250,16 @@ const SortableOutlineNode: React.FC<{
       return;
     }
 
-    // Add/Edit Note: Shift + Enter
-    if (e.shiftKey && e.key === 'Enter') {
+    // Add/Edit Note: Shift + Mod + Enter (Changed from Shift+Enter to allow newline)
+    if (e.shiftKey && (e.metaKey || e.ctrlKey) && e.key === 'Enter') {
       e.preventDefault();
       setIsEditingNote(true);
+      return;
+    }
+    
+    // Internal Newline: Shift + Enter
+    if (e.shiftKey && e.key === 'Enter') {
+      // 允许 react-textarea-autosize 默认行为（换行）
       return;
     }
     
@@ -373,14 +382,16 @@ const SortableOutlineNode: React.FC<{
         isDragging && "is-dragging"
       )}
     >
-      {/* 缩进参考线 - 仅在 hover 时显示 */}
-      {!isRoot && indentLevel > 0 && Array.from({ length: indentLevel }).map((_, i) => (
-        <div 
-          key={i}
-          className="indent-guide"
-          style={{ left: `${BASE_PADDING + i * LEVEL_INDENT + 12}px` }}
-        />
-      ))}
+      {/* 缩进参考线 - 常驻弱显示，悬停或焦点路径上加深 */}
+      {!isRoot && indentLevel > 0 && Array.from({ length: indentLevel }).map((_, i) => {
+        return (
+          <div 
+            key={i}
+            className="indent-guide"
+            style={{ left: `${BASE_PADDING + i * LEVEL_INDENT + 9}px` }}
+          />
+        );
+      })}
       
       {/* 拖拽指示器 */}
       {isOver && dropPosition === 'before' && !isBeingDragged && (
@@ -388,14 +399,14 @@ const SortableOutlineNode: React.FC<{
           <div 
             className="drop-indicator"
             style={{ 
-              left: `${BASE_PADDING + (projectedLevel ?? level) * LEVEL_INDENT}px` 
+              left: `${BASE_PADDING + (projectedLevel ?? level) * LEVEL_INDENT + 9}px` 
             }}
           />
           {projectedLevel !== null && projectedLevel > level && (
             <div 
               className="drop-indicator-vertical"
               style={{
-                left: `${BASE_PADDING + (projectedLevel) * LEVEL_INDENT}px`,
+                left: `${BASE_PADDING + (projectedLevel) * LEVEL_INDENT + 9}px`,
                 bottom: '0',
                 height: '100%',
               }}
@@ -404,40 +415,47 @@ const SortableOutlineNode: React.FC<{
         </>
       )}
       
-      {/* 左侧控制区容器 - 包含拖拽手柄和Bullet */}
+      {/* 左侧控制区容器 - 包含展开三角和 Bullet */}
       <div 
         className="node-left-controls"
         style={{ paddingLeft: `${paddingLeft}px` }}
       >
-        {/* 拖拽把手 - Notion Style (6 dots) - hidden in recite mode */}
-        {!isRoot && !reciteMode && (
-          <div
-            className="node-drag-handle"
-            {...attributes}
-            {...listeners}
-            title={t('outline.dragToMove')}
-          >
-            <GripVertical className="w-3.5 h-3.5" />
-          </div>
-        )}
+        <div className="w-[18px] h-[18px] flex items-center justify-center -ml-[18px]">
+          {/* 展开/折叠三角 */}
+          {!isRoot && hasChildren && (
+            <div 
+              className={cn(
+                "collapse-toggle",
+                isCollapsed && "is-collapsed"
+              )}
+              onClick={(e) => {
+                e.stopPropagation();
+                toggleCollapse(node.id);
+              }}
+              title={isCollapsed ? t('actions.expand') : t('actions.collapse')}
+            >
+              <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" className="transition-transform">
+                <polyline points="9 18 15 12 9 6"></polyline>
+              </svg>
+            </div>
+          )}
+        </div>
 
-        {/* 节点 Bullet / Toggle */}
+        {/* 节点 Bullet (兼作拖拽手柄) */}
         {!isRoot && (
           <div 
-            className="node-bullet-container"
+            className={cn("node-bullet-container", !reciteMode && "cursor-grab active:cursor-grabbing")}
+            {...(!reciteMode ? attributes : {})}
+            {...(!reciteMode ? listeners : {})}
             onClick={(e) => {
               e.stopPropagation();
-              if (hasChildren) {
-                toggleCollapse(node.id);
-              } else {
-                setFocusedNodeId(node.id);
-              }
+              setFocusedNodeId(node.id);
             }}
             onDoubleClick={(e) => {
               e.stopPropagation();
               onZoomIn?.(node.id);
             }}
-            title={hasChildren ? (isCollapsed ? t('actions.expand') : t('actions.collapse')) : t('outline.doubleClickFocus')}
+            title={t('outline.dragToMove')}
           >
             <div className={cn(
               "node-bullet",
@@ -449,7 +467,7 @@ const SortableOutlineNode: React.FC<{
       </div>
 
       {/* 内容区域 */}
-      <div className="flex-1 flex flex-col min-w-0 pr-2" onClick={() => setFocusedNodeId(node.id)}>
+      <div className="flex-1 flex flex-col min-w-0 pr-2 pl-1.5 justify-center" onClick={() => setFocusedNodeId(node.id)}>
         {reciteMode ? (
           <BlankedText
             text={node.text || (isRoot ? t('placeholder.root') : t('placeholder.node'))}
@@ -493,10 +511,10 @@ const SortableOutlineNode: React.FC<{
             <InlineLatex text={localText} />
           </div>
         ) : (
-        <input
-          ref={inputRef}
+        <TextareaAutosize
+          ref={inputRef as any}
           className={cn(
-            "node-input",
+            "node-input resize-none overflow-hidden block w-full",
             isRoot && "root",
             node.completed && "line-through text-muted-foreground"
           )}
@@ -505,10 +523,11 @@ const SortableOutlineNode: React.FC<{
             backgroundColor: node.style?.bgColor ? `${node.style.bgColor}20` : undefined,
             fontWeight: node.style?.fontWeight === 'bold' ? 'bold' : 'normal',
           }}
+          minRows={1}
           value={localText}
           onChange={(e) => setLocalText(e.target.value)}
           placeholder={isRoot ? t('placeholder.root') : t('placeholder.node')}
-          onKeyDown={handleKeyDown}
+          onKeyDown={handleKeyDown as any}
           onFocus={() => setIsEditing(true)}
           onBlur={() => {
             setIsEditing(false);
@@ -517,28 +536,23 @@ const SortableOutlineNode: React.FC<{
         />
         )}
         {node.note && !isEditingNote && (
-          <div className="node-note" onClick={() => !reciteMode && setIsEditingNote(true)}>
+          <div className="node-note px-[6px] pb-1 text-[13px] text-[var(--mm-text-secondary)] whitespace-pre-wrap cursor-text" onClick={() => !reciteMode && setIsEditingNote(true)}>
             <InlineLatex text={node.note} />
           </div>
         )}
         {isEditingNote && !reciteMode && (
-          <textarea
-            ref={noteRef}
+          <TextareaAutosize
+            ref={noteRef as any}
             className="node-note-input"
             value={localNote}
-            onChange={(e) => {
-              setLocalNote(e.target.value);
-              if (noteRef.current) {
-                noteRef.current.style.height = 'auto';
-                noteRef.current.style.height = noteRef.current.scrollHeight + 'px';
-              }
-            }}
-            onKeyDown={handleNoteKeyDown}
+            onChange={(e) => setLocalNote(e.target.value)}
+            onKeyDown={handleNoteKeyDown as any}
             onBlur={() => {
               commitNote();
               setIsEditingNote(false);
             }}
             placeholder={t('placeholder.note')}
+            minRows={1}
           />
         )}
         {node.refs && node.refs.length > 0 && (
@@ -781,14 +795,14 @@ const SortableOutlineNode: React.FC<{
             style={{ 
               bottom: 0,
               top: 'auto',
-              left: `${BASE_PADDING + (projectedLevel ?? level) * LEVEL_INDENT}px` 
+              left: `${BASE_PADDING + (projectedLevel ?? level) * LEVEL_INDENT + 9}px` 
             }}
           />
           {projectedLevel !== null && projectedLevel > level && (
             <div 
               className="drop-indicator-vertical"
               style={{
-                left: `${BASE_PADDING + (projectedLevel) * LEVEL_INDENT}px`,
+                left: `${BASE_PADDING + (projectedLevel) * LEVEL_INDENT + 9}px`,
                 bottom: '0',
                 height: '100%',
               }}

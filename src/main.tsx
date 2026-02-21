@@ -189,45 +189,139 @@ const safeT = (key: string, fallback: string, options?: Record<string, unknown>)
   try { return i18n.t(key, { defaultValue: fallback, ...options }) as string; } catch { return fallback; }
 };
 
-const TopLevelFallback = () => (
-  <div style={{
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    justifyContent: 'center',
-    height: '100vh',
-    width: '100vw',
-    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-    backgroundColor: '#fafafa',
-    color: '#1a1a1a',
-  }}>
-    <div style={{ fontSize: 48, marginBottom: 16 }}>⚠️</div>
-    <h1 style={{ fontSize: 20, fontWeight: 600, marginBottom: 8 }}>
-      {safeT('common:error_boundary.title', '应用遇到严重错误')}
-    </h1>
-    <p style={{ fontSize: 14, color: '#666', marginBottom: 24, maxWidth: 400, textAlign: 'center' }}>
-      {safeT('common:error_boundary.description', '应用发生了无法恢复的错误。请尝试刷新页面，如果问题持续请联系支持。')}
-    </p>
-    <button
-      onClick={() => window.location.reload()}
-      style={{
-        padding: '10px 24px',
-        fontSize: 14,
-        fontWeight: 500,
-        color: '#fff',
-        backgroundColor: '#2563eb',
-        border: 'none',
-        borderRadius: 8,
-        cursor: 'pointer',
-      }}
-    >
-      {safeT('common:error_boundary.refresh', '刷新页面')}
-    </button>
-  </div>
-);
+const TopLevelFallback: React.FC<{ error?: any; componentStack?: string }> = ({ error, componentStack }) => {
+  const errorMessage = error instanceof Error ? error.message : String(error ?? 'Unknown error');
+  const errorStack = error instanceof Error ? error.stack : undefined;
+  const fullLog = [
+    `Error: ${errorMessage}`,
+    errorStack ? `\nStack:\n${errorStack}` : '',
+    componentStack ? `\nComponent Stack:\n${componentStack}` : '',
+    `\nTimestamp: ${new Date().toISOString()}`,
+    `\nUserAgent: ${navigator.userAgent}`,
+  ].filter(Boolean).join('');
+
+  const [showDetails, setShowDetails] = React.useState(false);
+  const [copied, setCopied] = React.useState(false);
+
+  const handleCopy = () => {
+    try {
+      navigator.clipboard.writeText(fullLog).then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      });
+    } catch {
+      // fallback: select text for manual copy
+      const el = document.getElementById('error-log-content');
+      if (el) {
+        const range = document.createRange();
+        range.selectNodeContents(el);
+        const sel = window.getSelection();
+        sel?.removeAllRanges();
+        sel?.addRange(range);
+      }
+    }
+  };
+
+  return (
+    <div style={{
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      justifyContent: 'center',
+      height: '100vh',
+      width: '100vw',
+      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+      backgroundColor: '#fafafa',
+      color: '#1a1a1a',
+    }}>
+      <div style={{ fontSize: 48, marginBottom: 16 }}>⚠️</div>
+      <h1 style={{ fontSize: 20, fontWeight: 600, marginBottom: 8 }}>
+        {safeT('common:error_boundary.title', '应用遇到严重错误')}
+      </h1>
+      <p style={{ fontSize: 14, color: '#666', marginBottom: 24, maxWidth: 400, textAlign: 'center' }}>
+        {safeT('common:error_boundary.description', '应用发生了无法恢复的错误。请尝试刷新页面，如果问题持续请联系支持。')}
+      </p>
+      <div style={{ display: 'flex', gap: 12, marginBottom: 16 }}>
+        <button
+          onClick={() => window.location.reload()}
+          style={{
+            padding: '10px 24px',
+            fontSize: 14,
+            fontWeight: 500,
+            color: '#fff',
+            backgroundColor: '#2563eb',
+            border: 'none',
+            borderRadius: 8,
+            cursor: 'pointer',
+          }}
+        >
+          {safeT('common:error_boundary.refresh', '刷新页面')}
+        </button>
+        <button
+          onClick={() => setShowDetails(v => !v)}
+          style={{
+            padding: '10px 24px',
+            fontSize: 14,
+            fontWeight: 500,
+            color: '#333',
+            backgroundColor: '#fff',
+            border: '1px solid #ddd',
+            borderRadius: 8,
+            cursor: 'pointer',
+          }}
+        >
+          {showDetails
+            ? safeT('common:error_boundary.hide_details', '隐藏详情')
+            : safeT('common:error_boundary.show_details', '查看错误详情')}
+        </button>
+      </div>
+      {showDetails && (
+        <div style={{ width: '100%', maxWidth: 640, padding: '0 24px' }}>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+            <button
+              onClick={handleCopy}
+              style={{
+                padding: '6px 16px',
+                fontSize: 13,
+                color: copied ? '#16a34a' : '#555',
+                backgroundColor: '#fff',
+                border: '1px solid #ddd',
+                borderRadius: 6,
+                cursor: 'pointer',
+              }}
+            >
+              {copied
+                ? safeT('common:error_boundary.copied', '已复制')
+                : safeT('common:error_boundary.copy_error', '复制错误日志')}
+            </button>
+          </div>
+          <pre
+            id="error-log-content"
+            style={{
+              padding: 16,
+              fontSize: 12,
+              lineHeight: 1.6,
+              backgroundColor: '#f5f5f5',
+              border: '1px solid #e5e5e5',
+              borderRadius: 8,
+              overflow: 'auto',
+              maxHeight: 300,
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-all',
+              color: '#d32f2f',
+              userSelect: 'text',
+            }}
+          >
+            {fullLog}
+          </pre>
+        </div>
+      )}
+    </div>
+  );
+};
 
 const appTree = (
-  <ErrorBoundary name="TopLevel" fallback={<TopLevelFallback />}>
+  <ErrorBoundary name="TopLevel" fallback={(error, componentStack) => <TopLevelFallback error={error} componentStack={componentStack} />}>
     <DialogControlProvider>
       <App />
     </DialogControlProvider>

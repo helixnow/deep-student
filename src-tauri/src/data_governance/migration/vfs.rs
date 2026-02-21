@@ -17,7 +17,7 @@
 //! - `blobs`: 大文件外部存储
 //!
 //! ### 业务实体表
-//! - `notes`, `notes_versions`: 笔记及版本
+//! - `notes`: 笔记
 //! - `files`: 文件统一存储
 //! - `exam_sheets`: 整卷识别
 //! - `translations`: 翻译记录
@@ -130,7 +130,6 @@ const VFS_V001_TABLES: &[&str] = &[
     "blobs",
     // 笔记系统
     "notes",
-    "notes_versions",
     // 文件系统
     "files",
     // 整卷识别
@@ -364,10 +363,9 @@ pub const VFS_MIGRATION_SET: MigrationSet = MigrationSet {
 
 /// VFS 数据库中的所有表名（包含虚拟表）
 pub const VFS_ALL_TABLE_NAMES: &[&str] = &[
-    // 27 个常规表
+    // 常规表
     "resources",
     "notes",
-    "notes_versions",
     "files",
     "exam_sheets",
     "translations",

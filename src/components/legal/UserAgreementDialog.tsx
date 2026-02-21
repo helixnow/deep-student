@@ -35,17 +35,47 @@ export function useUserAgreement() {
   const [needsAgreement, setNeedsAgreement] = useState<boolean | null>(null);
 
   const checkAgreement = useCallback(async () => {
-    try {
-      const accepted = await invoke('get_setting', { key: USER_AGREEMENT_ACCEPTED_KEY }) as string | null;
-      if (accepted === USER_AGREEMENT_VERSION) {
-        setNeedsAgreement(false);
-      } else {
-        setNeedsAgreement(true);
+    // 🔧 时序修复：版本更新时数据库可能正在执行迁移，get_setting 可能暂时失败。
+    // 如果首次检查失败，进行重试而非直接判定为"需要同意"，避免已有用户被误弹协议弹窗。
+    const tryCheck = async (): Promise<'agreed' | 'not_agreed' | 'error'> => {
+      try {
+        const accepted = await invoke('get_setting', { key: USER_AGREEMENT_ACCEPTED_KEY }) as string | null;
+        return accepted === USER_AGREEMENT_VERSION ? 'agreed' : 'not_agreed';
+      } catch {
+        return 'error';
       }
-    } catch {
-      // 数据库未初始化或读取失败 —— 视为需要同意
-      setNeedsAgreement(true);
+    };
+
+    const firstResult = await tryCheck();
+    if (firstResult === 'agreed') {
+      setNeedsAgreement(false);
+      return;
     }
+    if (firstResult === 'not_agreed') {
+      setNeedsAgreement(true);
+      return;
+    }
+
+    // 首次检查出错（数据库可能正在迁移），后台重试
+    console.warn('[Legal] 用户协议检查失败，数据库可能正在迁移，将重试...');
+    const retryDelays = [500, 1000, 2000, 3000, 5000];
+    for (const delay of retryDelays) {
+      await new Promise(resolve => setTimeout(resolve, delay));
+      const result = await tryCheck();
+      if (result === 'agreed') {
+        console.log('[Legal] 重试成功：用户已同意协议');
+        setNeedsAgreement(false);
+        return;
+      }
+      if (result === 'not_agreed') {
+        setNeedsAgreement(true);
+        return;
+      }
+    }
+
+    // 所有重试均失败：真正的数据库问题，视为需要同意（兜底保守策略）
+    console.error('[Legal] 所有重试均失败，按需要同意处理');
+    setNeedsAgreement(true);
   }, []);
 
   const acceptAgreement = useCallback(async () => {

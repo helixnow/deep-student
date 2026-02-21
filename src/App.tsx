@@ -1478,11 +1478,15 @@ function App() {
 
   // 保留初始化逻辑，但不阻塞渲染，不再显示覆盖式载入页
 
-  // 🆕 用户协议检查中 —— 等待数据库查询完成，避免空白页闪烁
+  // 🆕 用户协议检查中 —— 等待数据库查询完成
   // needsAgreement: null=检查中, true=需同意, false=已同意
+  // 🔧 时序修复：数据库迁移期间检查可能需要重试，显示轻量加载状态替代白屏
   if (needsAgreement === null) {
-    // 返回 null 让 React 跳过本次渲染；checkAgreement 完成后触发 setState 重渲染
-    return null;
+    return (
+      <div className="h-screen w-full flex items-center justify-center bg-background dark:bg-zinc-950">
+        <div className="animate-pulse text-muted-foreground text-sm">Loading...</div>
+      </div>
+    );
   }
   if (needsAgreement === true) {
     return <UserAgreementDialog onAccept={acceptAgreement} />;

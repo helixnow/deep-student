@@ -4,12 +4,12 @@ import i18n from '@/i18n';
 
 type ErrorBoundaryProps = {
   name?: string;
-  fallback?: React.ReactNode;
+  fallback?: React.ReactNode | ((error: any, componentStack?: string) => React.ReactNode);
   onError?: (error: any, info: any) => void;
   children: React.ReactNode;
 };
 
-type ErrorBoundaryState = { hasError: boolean; error?: any };
+type ErrorBoundaryState = { hasError: boolean; error?: any; componentStack?: string };
 
 export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
   constructor(props: ErrorBoundaryProps) {
@@ -23,6 +23,9 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
 
   componentDidCatch(error: any, info: any) {
     try {
+      this.setState({ componentStack: info?.componentStack ?? undefined });
+    } catch {}
+    try {
       // Reuse existing debug bus if available
       (window as any)?.emitDebug?.({ channel: 'error', eventName: 'error_boundary', payload: { name: this.props.name, error: String(error), info } });
     } catch {}
@@ -31,6 +34,9 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
 
   render() {
     if (this.state.hasError) {
+      if (typeof this.props.fallback === 'function') {
+        return this.props.fallback(this.state.error, this.state.componentStack);
+      }
       return this.props.fallback ?? (
         <div className="flex flex-col items-center justify-center p-8 text-center">
           <div className="text-destructive text-lg mb-2">⚠️</div>

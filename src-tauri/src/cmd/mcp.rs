@@ -391,7 +391,7 @@ mod mcp_test_helpers {
         env: Option<HashMap<String, String>>,
         cwd: Option<String>,
         framing: Option<String>,
-        on_progress: &dyn Fn(&str),
+        on_progress: &(dyn Fn(&str) + Send + Sync),
     ) -> serde_json::Value {
         on_progress("spawn_process");
         let normalized_args: Vec<String> = args
@@ -523,7 +523,7 @@ mod mcp_test_helpers {
     async fn probe_transport_with_progress(
         transport: Box<dyn Transport>,
         transport_label: &str,
-        on_progress: &dyn Fn(&str),
+        on_progress: &(dyn Fn(&str) + Send + Sync),
     ) -> serde_json::Value {
         match gather_probe_with_progress(transport, transport_label, on_progress).await {
             Ok(outcome) => {
@@ -618,7 +618,7 @@ mod mcp_test_helpers {
     async fn gather_probe_with_progress(
         transport: Box<dyn Transport>,
         transport_label: &str,
-        on_progress: &dyn Fn(&str),
+        on_progress: &(dyn Fn(&str) + Send + Sync),
     ) -> Result<ProbeOutcome, String> {
         let client_info = ClientInfo {
             name: format!("dstu-mcp-tester-{}", transport_label),

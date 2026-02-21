@@ -68,7 +68,7 @@
   display: flex;
   align-items: flex-start;
   min-height: var(--mm-line-height);
-  padding: 2px 0;
+  padding: 0;
   border-radius: 4px;
   position: relative;
   transition: background-color 0.1s ease;
@@ -94,13 +94,13 @@
   top: 0;
   bottom: 0;
   width: 1px;
-  background-color: transparent;
-  transition: background-color 0.2s;
+  background-color: var(--mm-border);
+  opacity: 0.15;
+  transition: opacity 0.2s ease, background-color 0.2s;
   pointer-events: none;
 }
 
 .mindmap-container:hover .indent-guide {
-  background-color: var(--mm-border);
   opacity: 0.4;
 }
 
@@ -109,38 +109,49 @@
   position: relative;
   display: flex;
   align-items: flex-start;
-  justify-content: center;
-  height: 100%;
-  padding-top: 6px; /* 对齐文本首行 */
-  width: 24px;
+  padding-top: 5px; /* 对齐文本首行 */
   flex-shrink: 0;
   user-select: none;
+  width: auto;
 }
 
-/* 拖拽把手 (Drag Handle) - 悬停时显示在左侧 */
-.node-drag-handle {
-  position: absolute;
-  left: -20px; /* 向左偏移，悬浮在 gutter 区域 */
-  top: 6px;
-  width: 16px;
-  height: 16px;
+/* 折叠/展开图标 */
+.collapse-toggle {
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 3px;
-  color: var(--mm-text-muted);
-  cursor: grab;
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  cursor: pointer;
   opacity: 0;
-  transition: opacity 0.15s ease, background-color 0.1s;
+  transition: opacity 0.15s, background-color 0.15s;
+  color: var(--mm-text-muted);
 }
 
-.outline-node-row:hover .node-drag-handle {
+.outline-node-row:hover .collapse-toggle {
   opacity: 1;
 }
 
-.node-drag-handle:hover {
-  background-color: var(--mm-border);
+.collapse-toggle.is-collapsed {
+  opacity: 1; /* 节点折叠时常驻显示 */
+}
+
+.collapse-toggle:hover {
+  background-color: var(--mm-bg-hover);
   color: var(--mm-text);
+}
+
+.collapse-toggle svg {
+  transition: transform 0.15s;
+}
+
+.collapse-toggle.is-collapsed svg {
+  transform: rotate(0deg);
+}
+
+.collapse-toggle:not(.is-collapsed) svg {
+  transform: rotate(90deg);
 }
 
 /* 子弹点容器 */
@@ -166,54 +177,61 @@
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background-color: var(--mm-text);
-  opacity: 0.6;
+  background-color: var(--mm-text-muted);
   transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
   position: relative;
+  box-sizing: border-box;
 }
 
 /* 有子节点的圆点 - 稍微明显一点 */
 .node-bullet.has-children {
-  opacity: 0.9;
+  background-color: var(--mm-text);
 }
 
 /* 聚焦时的子弹点 */
-.outline-node-row.focused .node-bullet {
+.outline-node-row.focused .node-bullet:not(.collapsed) {
   background-color: var(--mm-primary);
   opacity: 1;
   transform: scale(1.1);
 }
 
 /* 悬停在容器上时，圆点变深并放大 */
-.node-bullet-container:hover .node-bullet {
+.node-bullet-container:hover .node-bullet:not(.collapsed) {
+  background-color: var(--mm-text);
   opacity: 1;
   transform: scale(1.2);
 }
 
 /* 悬停在有子节点的圆点上 - 显示淡淡的外圈暗示可折叠 */
-.node-bullet-container:hover .node-bullet.has-children {
-  box-shadow: 0 0 0 4px var(--mm-bg-hover);
+.node-bullet-container:hover .node-bullet.has-children:not(.collapsed) {
+  box-shadow: 0 0 0 3px var(--mm-bg-hover);
 }
 
-/* 折叠状态 - 幕布风格：实心圆点 + 双层圆环 */
+/* 折叠状态 - 幕布风格 */
 .node-bullet.collapsed {
-  background-color: var(--mm-text-secondary);
-  width: 6px;
-  height: 6px;
-  border: none; /* 移除之前的 border */
-  box-shadow: 
-    0 0 0 2px var(--mm-bg), /* 间隔层 */
-    0 0 0 3px var(--mm-text-secondary); /* 外圈 */
+  background-color: var(--mm-primary); /* 核心蓝色 */
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid var(--mm-bg); /* 白色/背景色圆环 */
+  box-shadow: 0 0 0 1px var(--mm-text-muted); /* 最外圈细边 */
   opacity: 1;
 }
 
-/* 折叠状态悬停 - 外圈变色 */
+/* 折叠状态悬停 */
 .node-bullet-container:hover .node-bullet.collapsed {
-  background-color: var(--mm-text);
-  box-shadow: 
-    0 0 0 2px var(--mm-bg),
-    0 0 0 3px var(--mm-text);
-  transform: scale(1); /* 保持大小，避免外圈模糊 */
+  background-color: var(--mm-primary);
+  border: 2px solid var(--mm-bg);
+  box-shadow: 0 0 0 1.5px var(--mm-text); /* 悬停时外圈变深 */
+  transform: scale(1);
+}
+
+/* 焦点状态下的折叠圆点 */
+.outline-node-row.focused .node-bullet.collapsed {
+  background-color: var(--mm-primary);
+  border: 2px solid var(--mm-bg);
+  box-shadow: 0 0 0 1.5px var(--mm-primary); /* 选中时整体变蓝 */
+  transform: scale(1.1);
 }
 
 /* 折叠状态下的伪元素清除（如果之前有的话） */
@@ -228,12 +246,13 @@
   background: transparent;
   border: none;
   outline: none;
-  padding: 2px 0 2px 6px; /* 左侧留一点空隙 */
+  padding: 2px 0 2px 6px;
   font-size: 15px;
-  line-height: 1.6; /* 更好的行高 */
+  line-height: 1.6;
   color: var(--mm-text);
   resize: none;
   font-family: inherit;
+  box-sizing: border-box;
 }
 
 .node-input::placeholder {
@@ -253,13 +272,24 @@
   background-color: transparent;
 }
 
-/* 备注 (Note) */
-.node-note {
-  font-size: 13px;
-  color: var(--mm-text-secondary);
+/* 备注输入框 */
+.node-note-input {
+  width: 100%;
+  background: transparent;
+  border: none;
+  outline: none;
   padding: 0 0 4px 6px;
+  font-size: 13px;
   line-height: 1.5;
-  opacity: 0.8;
+  color: var(--mm-text-secondary);
+  resize: none;
+  font-family: inherit;
+  overflow: hidden;
+}
+
+.node-note-input::placeholder {
+  color: var(--mm-text-muted);
+  opacity: 0.6;
 }
 
 /* LaTeX 渲染态样式 */
@@ -294,16 +324,38 @@
 
 /* 工具栏/操作区 (Hover Actions) */
 .node-actions {
-  opacity: 0;
+  position: absolute;
+  right: 4px;
+  top: 2px;
+  height: 28px; /* 与第一行文本等高 */
   display: flex;
   align-items: center;
-  padding-right: 8px;
-  gap: 4px;
+  gap: 2px;
+  opacity: 0;
+  background: var(--mm-bg-hover);
+  border-radius: 4px;
+  padding: 0 4px;
+  pointer-events: none; /* 默认不响应事件 */
   transition: opacity 0.15s ease;
+  z-index: 10;
 }
 
-.outline-node-row:hover .node-actions {
+/* 阴影渐变以遮盖底部长文本 */
+.node-actions::before {
+  content: '';
+  position: absolute;
+  left: -20px;
+  top: 0;
+  bottom: 0;
+  width: 20px;
+  background: linear-gradient(to right, transparent, var(--mm-bg-hover));
+  pointer-events: none;
+}
+
+.outline-node-row:hover .node-actions,
+.outline-node-row.focused .node-actions {
   opacity: 1;
+  pointer-events: auto; /* 显示时响应事件 */
 }
 
 .action-btn {
@@ -479,17 +531,11 @@
   white-space: nowrap !important;
 }
 
-.mindmap-node-underline:hover {
-  /* 悬停时不改变任何可能导致重绘的属性，只改变下划线颜色即可 */
-}
-
 /* 移除强制 hover 变色，让 inline style 生效 */
-.mindmap-node-underline:hover {
-  /* 如果有内联样式设置了 border-color，这里不应该强制覆盖为 primary */
-  /* 只有当没有 branchColor 时才变 primary */
-  /* 但 CSS 无法判断是否有内联样式。 */
-  /* 妥协方案：如果是在彩虹模式下，hover 效果由 brightness 处理；非彩虹模式（默认边框色）则变色 */
-}
+/* 如果有内联样式设置了 border-color，这里不应该强制覆盖为 primary */
+/* 只有当没有 branchColor 时才变 primary */
+/* 但 CSS 无法判断是否有内联样式。 */
+/* 妥协方案：如果是在彩虹模式下，hover 效果由 brightness 处理；非彩虹模式（默认边框色）则变色 */
 
 /* 默认情况（非彩虹） */
 .mindmap-node-underline:not([style*="border-bottom-color"]):hover {
@@ -720,6 +766,18 @@
   z-index: 10;
   border-radius: 1px;
   box-shadow: 0 0 4px var(--mm-primary-soft);
+  transition: left 0.15s ease, bottom 0.15s ease, top 0.15s ease;
+}
+
+.drop-indicator::before {
+  content: '';
+  position: absolute;
+  left: -3px;
+  top: -2px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: var(--mm-primary);
 }
 
 .drop-indicator-vertical {
@@ -730,6 +788,7 @@
   z-index: 10;
   border-radius: 1px;
   box-shadow: 0 0 4px var(--mm-primary-soft);
+  transition: left 0.15s ease, height 0.15s ease;
 }
 
 .mm-dragging {

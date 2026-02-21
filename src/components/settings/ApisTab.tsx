@@ -251,6 +251,7 @@ export const ApisTab: React.FC<ApisTabProps> = ({
                         <div className="flex flex-wrap items-center justify-between gap-1.5 w-full">
                           <div className="flex items-center gap-2 min-w-0 flex-1">
                             <SiliconFlowLogo className="h-3.5 shrink-0" />
+                            <Badge variant="default" className="bg-primary/10 text-primary border-primary/20 text-[10px] px-1 py-0 leading-tight shrink-0">{t('settings:api.modal.capabilities.recommended')}</Badge>
                           </div>
                           <div className="flex flex-wrap items-center gap-1">
                             {modelCount > 0 && <span className="text-[10px] text-muted-foreground/60 bg-muted/50 px-1.5 py-0.5 rounded-full">{modelCount}</span>}
@@ -326,6 +327,7 @@ export const ApisTab: React.FC<ApisTabProps> = ({
                       <div className="flex items-center gap-2 min-w-0">
                         {selectedVendorIsSiliconflow && <SiliconFlowLogo className="h-5" />}
                         <h3 className="text-lg font-medium text-foreground truncate">{selectedVendor.name || getProviderDisplayName(selectedVendor.providerType)}</h3>
+                        {selectedVendorIsSiliconflow && <Badge variant="default" className="bg-primary/10 text-primary border-primary/20 text-[10px] px-1.5 py-0 shrink-0">{t('settings:api.modal.capabilities.recommended')}</Badge>}
                         {(() => {
                           const websiteUrl = selectedVendor.websiteUrl || getProviderWebsiteUrl(selectedVendor.providerType);
                           return websiteUrl ? (

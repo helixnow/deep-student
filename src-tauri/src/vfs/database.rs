@@ -535,7 +535,6 @@ mod tests {
         let tables = [
             "resources",
             "notes",
-            "notes_versions",
             "textbooks",
             "exam_sheets",
             "translations",

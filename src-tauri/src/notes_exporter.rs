@@ -578,49 +578,8 @@ impl NotesExporter {
             }
         }
 
-        // 查询版本
-        let mut versions: Vec<ExportVersion> = Vec::new();
-        if include_versions {
-            let mut ver_stmt = conn
-                .prepare(
-                    "SELECT version_id, note_id, title, content_md, tags, label, created_at
-                     FROM notes_versions
-                     ORDER BY datetime(created_at) DESC",
-                )
-                .map_err(|e| AppError::database(format!("准备版本查询失败: {}", e)))?;
-
-            let ver_rows = ver_stmt
-                .query_map([], |row| {
-                    Ok((
-                        row.get::<_, String>(0)?,
-                        row.get::<_, String>(1)?,
-                        row.get::<_, String>(2)?,
-                        row.get::<_, String>(3)?,
-                        row.get::<_, String>(4)?,
-                        row.get::<_, Option<String>>(5)?,
-                        row.get::<_, String>(6)?,
-                    ))
-                })
-                .map_err(|e| AppError::database(format!("遍历版本失败: {}", e)))?;
-
-            for row in ver_rows {
-                let (version_id, note_id, title, content_md, tags_json, label, created_at) =
-                    row.map_err(|e| AppError::database(e.to_string()))?;
-                if !note_ids.contains(&note_id) {
-                    continue;
-                }
-                let tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
-                versions.push(ExportVersion {
-                    version_id,
-                    note_id,
-                    title,
-                    content_md,
-                    tags,
-                    label,
-                    created_at,
-                });
-            }
-        }
+        // 版本历史已移除，返回空列表
+        let versions: Vec<ExportVersion> = Vec::new();
 
         // 查询偏好设置
         let preferences = self.collect_all_preferences(conn)?;
@@ -991,50 +950,8 @@ impl NotesExporter {
 
         log::info!("附件信息已关联到笔记");
 
-        let mut versions: Vec<ExportVersion> = Vec::new();
-        if include_versions {
-            log::info!("开始查询版本数据");
-            let mut ver_stmt = conn
-                .prepare(
-                    "SELECT version_id, note_id, title, content_md, tags, label, created_at
-                     FROM notes_versions
-                     WHERE subject = ?1
-                     ORDER BY datetime(created_at) DESC",
-                )
-                .map_err(|e| AppError::database(format!("准备版本查询失败: {}", e)))?;
-            let ver_rows = ver_stmt
-                .query_map([subject], |row| {
-                    Ok((
-                        row.get::<_, String>(0)?,
-                        row.get::<_, String>(1)?,
-                        row.get::<_, String>(2)?,
-                        row.get::<_, String>(3)?,
-                        row.get::<_, String>(4)?,
-                        row.get::<_, Option<String>>(5)?,
-                        row.get::<_, String>(6)?,
-                    ))
-                })
-                .map_err(|e| AppError::database(format!("遍历版本失败: {}", e)))?;
-            for row in ver_rows {
-                let (version_id, note_id, title, content_md, tags_json, label, created_at) =
-                    row.map_err(|e| AppError::database(e.to_string()))?;
-                if !note_ids.contains(&note_id) {
-                    continue;
-                }
-                let tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
-                versions.push(ExportVersion {
-                    version_id,
-                    note_id,
-                    title,
-                    content_md,
-                    tags,
-                    label,
-                    created_at,
-                });
-            }
-        }
-
-        log::info!("版本数据查询完成，共 {} 个版本", versions.len());
+        // 版本历史已移除，返回空列表
+        let versions: Vec<ExportVersion> = Vec::new();
 
         log::info!("开始收集偏好设置");
         let preferences = self.collect_preferences(conn, subject)?;
@@ -1196,53 +1113,8 @@ impl NotesExporter {
             }
         }
 
-        // 查询版本（从 VFS notes_versions + resources 读取内容）
-        let mut versions: Vec<ExportVersion> = Vec::new();
-        if include_versions {
-            let mut ver_stmt = vfs_conn
-                .prepare(
-                    "SELECT version_id, note_id, resource_id, title, tags, label, created_at
-                     FROM notes_versions
-                     ORDER BY datetime(created_at) DESC",
-                )
-                .map_err(|e| AppError::database(format!("准备版本查询失败: {}", e)))?;
-            let ver_rows = ver_stmt
-                .query_map([], |row| {
-                    Ok((
-                        row.get::<_, String>(0)?,
-                        row.get::<_, String>(1)?,
-                        row.get::<_, String>(2)?,
-                        row.get::<_, String>(3)?,
-                        row.get::<_, String>(4)?,
-                        row.get::<_, Option<String>>(5)?,
-                        row.get::<_, String>(6)?,
-                    ))
-                })
-                .map_err(|e| AppError::database(format!("遍历版本失败: {}", e)))?;
-
-            for row in ver_rows {
-                let (version_id, note_id, resource_id, title, tags_json, label, created_at) =
-                    row.map_err(|e| AppError::database(e.to_string()))?;
-                if !note_ids.contains(&note_id) {
-                    continue;
-                }
-                let tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
-                let content_md = VfsResourceRepo::get_resource_with_conn(&vfs_conn, &resource_id)
-                    .ok()
-                    .flatten()
-                    .and_then(|res| res.data)
-                    .unwrap_or_default();
-                versions.push(ExportVersion {
-                    version_id,
-                    note_id,
-                    title,
-                    content_md,
-                    tags,
-                    label,
-                    created_at,
-                });
-            }
-        }
+        // 版本历史已移除，返回空列表
+        let versions: Vec<ExportVersion> = Vec::new();
 
         let preferences = self.collect_all_preferences(&conn)?;
 

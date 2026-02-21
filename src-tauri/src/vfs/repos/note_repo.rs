@@ -1,11 +1,10 @@
 //! VFS 笔记表 CRUD 操作
 //!
 //! 笔记内容存储在 `resources.data`，本模块只管理笔记元数据。
-//! 支持自动版本管理：编辑时若内容变化，自动创建版本记录。
 //!
 //! ## 核心方法
 //! - `create_note`: 创建笔记（同时创建关联资源）
-//! - `update_note`: 更新笔记（自动处理版本）
+//! - `update_note`: 更新笔记（内容变化时创建新资源）
 //! - `get_note`: 获取笔记元数据
 //! - `get_note_content`: 获取笔记内容
 
@@ -14,14 +13,13 @@ use std::collections::HashSet;
 use rusqlite::{params, Connection, OptionalExtension};
 use tracing::{debug, info, warn};
 
-use crate::utils::text::safe_truncate_chars;
 use crate::vfs::database::VfsDatabase;
 use crate::vfs::error::{VfsError, VfsResult};
 use crate::vfs::repos::embedding_repo::VfsIndexStateRepo;
 use crate::vfs::repos::folder_repo::VfsFolderRepo;
 use crate::vfs::repos::resource_repo::VfsResourceRepo;
 use crate::vfs::types::{
-    ResourceLocation, VfsCreateNoteParams, VfsFolderItem, VfsNote, VfsNoteVersion, VfsResourceType,
+    ResourceLocation, VfsCreateNoteParams, VfsFolderItem, VfsNote, VfsResourceType,
     VfsUpdateNoteParams,
 };
 
@@ -152,14 +150,14 @@ impl VfsNoteRepo {
     }
 
     // ========================================================================
-    // 更新笔记（带版本管理）
+    // 更新笔记
     // ========================================================================
 
     /// 更新笔记
     ///
-    /// ## 版本管理逻辑
+    /// ## 资源管理逻辑
     /// 1. 如果内容变化，计算新 hash
-    /// 2. 若 hash 不同，创建新 resource，将旧 resource_id 保存到 notes_versions
+    /// 2. 若 hash 不同，创建新 resource
     /// 3. 更新笔记的 resource_id 指向新资源
     pub fn update_note(
         db: &VfsDatabase,
@@ -240,18 +238,8 @@ impl VfsNoteRepo {
                         None,
                     )?;
 
-                    // 保存旧版本到 notes_versions
-                    Self::create_version_with_conn(
-                        conn,
-                        note_id,
-                        &current_note.resource_id,
-                        &current_note.title,
-                        &current_note.tags,
-                        None,
-                    )?;
-
                     debug!(
-                        "[VFS::NoteRepo] Created new version for note {}: {} -> {}",
+                        "[VFS::NoteRepo] Updated note resource {}: {} -> {}",
                         note_id, current_note.resource_id, new_resource_result.resource_id
                     );
 
@@ -326,113 +314,6 @@ impl VfsNoteRepo {
                 Err(e)
             }
         }
-    }
-
-    // ========================================================================
-    // 版本管理
-    // ========================================================================
-
-    /// 创建版本记录
-    fn create_version_with_conn(
-        conn: &Connection,
-        note_id: &str,
-        resource_id: &str,
-        title: &str,
-        tags: &[String],
-        label: Option<&str>,
-    ) -> VfsResult<VfsNoteVersion> {
-        let version_id = VfsNoteVersion::generate_id();
-        let now = chrono::Utc::now()
-            .format("%Y-%m-%dT%H:%M:%S%.3fZ")
-            .to_string();
-        let tags_json =
-            serde_json::to_string(tags).map_err(|e| VfsError::Serialization(e.to_string()))?;
-
-        conn.execute(
-            r#"
-            INSERT INTO notes_versions (version_id, note_id, resource_id, title, tags, label, created_at)
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
-            "#,
-            params![version_id, note_id, resource_id, title, tags_json, label, now],
-        )?;
-
-        debug!(
-            "[VFS::NoteRepo] Created version {} for note {}",
-            version_id, note_id
-        );
-
-        Ok(VfsNoteVersion {
-            version_id,
-            note_id: note_id.to_string(),
-            resource_id: resource_id.to_string(),
-            title: title.to_string(),
-            tags: tags.to_vec(),
-            label: label.map(|s| s.to_string()),
-            created_at: now,
-        })
-    }
-
-    /// 获取笔记的版本历史
-    pub fn get_versions(db: &VfsDatabase, note_id: &str) -> VfsResult<Vec<VfsNoteVersion>> {
-        let conn = db.get_conn_safe()?;
-        Self::get_versions_with_conn(&conn, note_id)
-    }
-
-    /// 获取笔记的版本历史（使用现有连接）
-    pub fn get_versions_with_conn(
-        conn: &Connection,
-        note_id: &str,
-    ) -> VfsResult<Vec<VfsNoteVersion>> {
-        let mut stmt = conn.prepare(
-            r#"
-            SELECT version_id, note_id, resource_id, title, tags, label, created_at
-            FROM notes_versions
-            WHERE note_id = ?1
-            ORDER BY created_at DESC
-            "#,
-        )?;
-
-        let rows = stmt.query_map(params![note_id], |row| {
-            let tags_json: String = row.get(4)?;
-            let tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_else(|e| {
-                // MEDIUM-005修复: 截断日志中的敏感信息，只显示前50字符
-                let truncated_json = if tags_json.chars().count() > 50 {
-                    format!(
-                        "{}...(truncated, len={})",
-                        safe_truncate_chars(&tags_json, 50),
-                        tags_json.len()
-                    )
-                } else {
-                    tags_json.clone()
-                };
-                tracing::warn!(
-                    "[VFS::NoteRepo] Failed to parse tags JSON for note version: {}, using empty array. Preview: {}",
-                    e, truncated_json
-                );
-                Vec::new()
-            });
-
-            Ok(VfsNoteVersion {
-                version_id: row.get(0)?,
-                note_id: row.get(1)?,
-                resource_id: row.get(2)?,
-                title: row.get(3)?,
-                tags,
-                label: row.get(5)?,
-                created_at: row.get(6)?,
-            })
-        })?;
-
-        let versions: Vec<VfsNoteVersion> = rows
-            .filter_map(|r| match r {
-                Ok(val) => Some(val),
-                Err(e) => {
-                    log::warn!("[NoteRepo] Skipping malformed row: {}", e);
-                    None
-                }
-            })
-            .collect();
-        Ok(versions)
     }
 
     // ========================================================================
@@ -552,55 +433,12 @@ impl VfsNoteRepo {
                 .unwrap_or(false);
 
             if !resource_exists {
-                // 🔧 自动修复：尝试从最新版本恢复资源
-                info!(
-                    "[VFS::NoteRepo] Auto-repair: Missing resource for note {}, trying to recover from versions (old resource_id: {})",
+                warn!(
+                    "[VFS::NoteRepo] Missing resource for note {} (resource_id: {})",
                     note_id, resource_id
                 );
-
-                let recovered: Option<(String, String)> = conn
-                    .query_row(
-                        r#"
-                        SELECT r.id, r.data
-                        FROM notes_versions v
-                        JOIN resources r ON v.resource_id = r.id
-                        WHERE v.note_id = ?1
-                        ORDER BY datetime(v.created_at) DESC
-                        LIMIT 1
-                        "#,
-                        params![note_id],
-                        |row| {
-                            Ok((
-                                row.get(0)?,
-                                row.get::<_, Option<String>>(1)?.unwrap_or_default(),
-                            ))
-                        },
-                    )
-                    .optional()?;
-
-                if let Some((recovered_id, recovered_content)) = recovered {
-                    // 更新笔记的 resource_id
-                    conn.execute(
-                        "UPDATE notes SET resource_id = ?1, updated_at = ?2 WHERE id = ?3",
-                        params![
-                            recovered_id,
-                            chrono::Utc::now()
-                                .format("%Y-%m-%dT%H:%M:%S%.3fZ")
-                                .to_string(),
-                            note_id,
-                        ],
-                    )?;
-
-                    info!(
-                        "[VFS::NoteRepo] Auto-repair completed: note {} now points to recovered resource {}",
-                        note_id, recovered_id
-                    );
-
-                    return Ok(Some(recovered_content));
-                }
-
                 return Err(VfsError::Database(format!(
-                    "Missing resource for note {} and no recoverable version found",
+                    "Missing resource for note {}",
                     note_id
                 )));
             }
@@ -987,27 +825,6 @@ impl VfsNoteRepo {
         // 保存主 resource_id
         let main_resource_id = note.resource_id.clone();
 
-        // 获取所有版本的 resource_id（在事务外收集，减少事务持有时间）
-        let version_resource_ids: Vec<String> = {
-            let mut stmt =
-                conn.prepare("SELECT resource_id FROM notes_versions WHERE note_id = ?1")?;
-            let rows = stmt.query_map(params![note_id], |row| row.get(0))?;
-            rows.filter_map(|r| match r {
-                Ok(val) => Some(val),
-                Err(e) => {
-                    log::warn!("[NoteRepo] Skipping malformed row: {}", e);
-                    None
-                }
-            })
-            .collect()
-        };
-
-        debug!(
-            "[VFS::NoteRepo] Found {} versions for note: {}",
-            version_resource_ids.len(),
-            note_id
-        );
-
         // ★ 使用事务包装所有删除操作，确保原子性
         conn.execute("BEGIN IMMEDIATE", []).map_err(|e| {
             tracing::error!(
@@ -1044,19 +861,6 @@ impl VfsNoteRepo {
             fi_deleted, note_id
         );
 
-        // ★ 删除版本历史记录
-        let versions_deleted = rollback_on_error!(
-            conn.execute(
-                "DELETE FROM notes_versions WHERE note_id = ?1",
-                params![note_id]
-            ),
-            "Failed to delete notes_versions"
-        );
-        info!(
-            "[VFS::NoteRepo] Deleted {} versions for note: {}",
-            versions_deleted, note_id
-        );
-
         // ★ 删除笔记记录
         let deleted = rollback_on_error!(
             conn.execute("DELETE FROM notes WHERE id = ?1", params![note_id]),
@@ -1081,12 +885,9 @@ impl VfsNoteRepo {
             note_id, deleted
         );
 
-        // ★ 删除资源前检查是否仍被其他笔记/版本引用，避免误删共享资源
+        // ★ 删除资源前检查是否仍被其他笔记引用，避免误删共享资源
         let mut resource_ids: HashSet<String> = HashSet::new();
         resource_ids.insert(main_resource_id.clone());
-        for resource_id in version_resource_ids {
-            resource_ids.insert(resource_id);
-        }
 
         let mut deleted_resources = 0usize;
         for resource_id in resource_ids {
@@ -1098,19 +899,10 @@ impl VfsNoteRepo {
                 ),
                 "Failed to query notes resource refs"
             );
-            let version_refs: i64 = rollback_on_error!(
-                conn.query_row(
-                    "SELECT COUNT(*) FROM notes_versions WHERE resource_id = ?1",
-                    params![&resource_id],
-                    |row| row.get(0)
-                ),
-                "Failed to query notes_versions resource refs"
-            );
-
-            if note_refs > 0 || version_refs > 0 {
+            if note_refs > 0 {
                 debug!(
-                    "[VFS::NoteRepo] Skip deleting resource {} (refs: notes={}, versions={})",
-                    resource_id, note_refs, version_refs
+                    "[VFS::NoteRepo] Skip deleting resource {} (refs: notes={})",
+                    resource_id, note_refs
                 );
                 continue;
             }

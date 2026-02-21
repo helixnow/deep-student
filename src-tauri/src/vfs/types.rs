@@ -345,47 +345,6 @@ impl VfsNote {
 }
 
 // ============================================================================
-// 笔记版本
-// ============================================================================
-
-/// VFS 笔记版本（notes_versions 表）
-///
-/// 记录笔记的历史版本，版本内容通过 resource_id 关联。
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct VfsNoteVersion {
-    /// 版本 ID
-    pub version_id: String,
-
-    /// 笔记 ID
-    pub note_id: String,
-
-    /// 关联的资源 ID（★ 版本内容存 resources.data）
-    pub resource_id: String,
-
-    /// 当时的标题
-    pub title: String,
-
-    /// 当时的标签
-    #[serde(default)]
-    pub tags: Vec<String>,
-
-    /// 版本标签（可选）
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub label: Option<String>,
-
-    /// 创建时间
-    pub created_at: String,
-}
-
-impl VfsNoteVersion {
-    /// 生成版本 ID
-    pub fn generate_id() -> String {
-        format!("nv_{}", nanoid::nanoid!(10))
-    }
-}
-
-// ============================================================================
 // 教材元数据
 // ============================================================================
 
@@ -2540,23 +2499,6 @@ mod tests {
         assert!(all_types.contains(&VfsResourceType::Note));
         assert!(all_types.contains(&VfsResourceType::Textbook));
         assert!(all_types.contains(&VfsResourceType::Translation));
-    }
-
-    #[test]
-    fn test_vfs_note_version_serialization() {
-        let version = VfsNoteVersion {
-            version_id: "nv_abc123".to_string(),
-            note_id: "note_xyz789".to_string(),
-            resource_id: "res_def456".to_string(),
-            title: "Version Title".to_string(),
-            tags: vec!["tag1".to_string()],
-            label: Some("v1.0".to_string()),
-            created_at: "2025-01-01".to_string(),
-        };
-        let json = serde_json::to_string(&version).unwrap();
-        assert!(json.contains("\"versionId\""));
-        assert!(json.contains("\"noteId\""));
-        assert!(json.contains("\"resourceId\""));
     }
 
     #[test]

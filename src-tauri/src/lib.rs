@@ -1047,7 +1047,6 @@ pub fn run() {
             ,crate::commands::notes_list_assets
             ,crate::commands::notes_delete_asset
             ,crate::commands::notes_resolve_asset_path
-            ,crate::commands::notes_get_version
             ,crate::commands::notes_restore
             ,crate::commands::notes_assets_index_scan
             ,crate::commands::notes_assets_scan_orphans

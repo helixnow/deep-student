@@ -104,8 +104,6 @@ pub struct NoteLinksResult {
     pub backlinks_truncated: bool,
 }
 
-const DEFAULT_VERSION_MIN_INTERVAL_SEC: i64 = 120;
-const DEFAULT_MAX_VERSIONS_PER_NOTE: i64 = 20;
 
 // 新增：将 ListOptions 移到模块级并公开
 #[derive(Debug, Clone)]
@@ -1404,7 +1402,6 @@ impl NotesManager {
         if self.vfs_db.is_some() {
             return self.update_note_vfs(id, title, content_md, tags, expected_updated_at);
         }
-        let min_interval_sec = DEFAULT_VERSION_MIN_INTERVAL_SEC;
 
         let conn = self
             .db
@@ -1457,46 +1454,6 @@ impl NotesManager {
             None => old_tags_json.clone(),
         };
 
-        // Version snapshot throttling
-        let content_changed = new_content != old_content;
-        if content_changed {
-            let last_ver_ts: Option<i64> = {
-                let mut s = tx
-                    .prepare("SELECT created_at FROM notes_versions WHERE note_id=?1 ORDER BY datetime(created_at) DESC LIMIT 1")
-                    .map_err(|e| AppError::database(format!("Failed to prepare version query: {}", e)))?;
-                let row = s
-                    .query_row(params![id], |row| row.get::<_, String>(0))
-                    .optional()
-                    .map_err(|e| AppError::database(format!("Failed to read version: {}", e)))?;
-                row.and_then(|t| chrono::DateTime::parse_from_rfc3339(&t).ok())
-                    .map(|dt| dt.timestamp())
-            };
-            let now_epoch = chrono::Utc::now().timestamp();
-            let interval_ok = match last_ver_ts {
-                Some(ts) => (now_epoch - ts) >= min_interval_sec,
-                None => true,
-            };
-            let diff_ratio = {
-                let a = old_content.len() as i64;
-                let b = new_content.len() as i64;
-                if b <= 0 {
-                    1.0
-                } else {
-                    ((a - b).abs() as f64 / (b.max(1) as f64)) as f64
-                }
-            };
-            let big_change = diff_ratio >= 0.20; // >20% change
-            if interval_ok || big_change {
-                let ver_id = uuid::Uuid::new_v4().to_string();
-                let now_ver = Utc::now().to_rfc3339();
-                tx.execute(
-                    "INSERT INTO notes_versions (version_id, note_id, title, content_md, tags, label, created_at) VALUES (?1, ?2, ?3, ?4, ?5, NULL, ?6)",
-                    params![ver_id, id, old_title, old_content, old_tags_json, now_ver],
-                )
-                .map_err(|e| AppError::database(format!("Failed to save version: {}", e)))?;
-            }
-        }
-
         let now = Utc::now().to_rfc3339();
         let updated_rows = tx
             .execute(
@@ -1509,7 +1466,6 @@ impl NotesManager {
         }
         let tags_vec: Vec<String> = serde_json::from_str(&new_tags_json).unwrap_or_default();
         self.sync_note_tags(&tx, id, &tags_vec)?;
-        self.prune_versions_for_note(&tx, id)?;
         self.rebuild_note_links_tx(&tx, id, new_content)?;
         // 更新指向本笔记的未解析链接（旧标题、新标题都尝试绑定）
         self.update_inbound_link_targets_tx(&tx, id, &[&old_title, new_title])?;
@@ -1555,51 +1511,6 @@ impl NotesManager {
         self.get_note(id)
     }
 
-    pub fn list_versions(&self, note_id: &str) -> Result<Vec<(String, String)>> {
-        let conn = self
-            .db
-            .get_conn_safe()
-            .map_err(|e| AppError::database(e.to_string()))?;
-        let mut stmt = conn.prepare("SELECT version_id, created_at FROM notes_versions WHERE note_id=?1 ORDER BY datetime(created_at) DESC")
-            .map_err(|e| AppError::database(e.to_string()))?;
-        let mut rows = stmt
-            .query(params![note_id])
-            .map_err(|e| AppError::database(e.to_string()))?;
-        let mut out = Vec::new();
-        while let Some(row) = rows.next().map_err(|e| AppError::database(e.to_string()))? {
-            let vid: String = row.get(0).map_err(|e| AppError::database(e.to_string()))?;
-            let ts: String = row.get(1).map_err(|e| AppError::database(e.to_string()))?;
-            out.push((vid, ts));
-        }
-        Ok(out)
-    }
-
-    pub fn revert_version(&self, note_id: &str, version_id: &str) -> Result<NoteItem> {
-        let conn = self
-            .db
-            .get_conn_safe()
-            .map_err(|e| AppError::database(e.to_string()))?;
-        let (title, content_md, tags_json, _created_at): (String, String, String, String) = conn.query_row(
-            "SELECT title, content_md, tags, (SELECT created_at FROM notes WHERE id=?1) FROM notes_versions WHERE version_id=?2 AND note_id=?1",
-            params![note_id, version_id],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
-        ).map_err(|e| AppError::database(format!("Failed to find version: {}", e)))?;
-        let now = Utc::now().to_rfc3339();
-        conn.execute(
-            "UPDATE notes SET title=?1, content_md=?2, tags=?3, updated_at=?4 WHERE id=?5",
-            params![title, content_md, tags_json, now, note_id],
-        )
-        .map_err(|e| AppError::database(e.to_string()))?;
-        let tags_vec: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
-        self.sync_note_tags(&conn, note_id, &tags_vec)?;
-        drop(conn);
-        let note = self.get_note(note_id)?;
-        #[cfg(feature = "lance")]
-        {
-            self.sync_note_to_lance(&note)?;
-        }
-        Ok(note)
-    }
 
     pub fn delete_note(&self, id: &str) -> Result<bool> {
         if self.vfs_db.is_some() {
@@ -1670,26 +1581,6 @@ impl NotesManager {
         Ok(false)
     }
 
-    pub fn create_snapshot(&self, note_id: &str, label: Option<&str>) -> Result<String> {
-        let conn = self
-            .db
-            .get_conn_safe()
-            .map_err(|e| AppError::database(format!("Failed to get db connection: {}", e)))?;
-        let (title, content_md, tags_json): (String, String, String) = conn
-            .query_row(
-                "SELECT title, content_md, tags FROM notes WHERE id=?1",
-                params![note_id],
-                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
-            )
-            .map_err(|e| AppError::database(format!("Failed to read note: {}", e)))?;
-        let ver_id = uuid::Uuid::new_v4().to_string();
-        let now = Utc::now().to_rfc3339();
-        conn.execute(
-            "INSERT INTO notes_versions (version_id, note_id, title, content_md, tags, label, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-            params![ver_id, note_id, title, content_md, tags_json, label.unwrap_or(""), now]
-        ).map_err(|e| AppError::database(format!("Failed to create snapshot: {}", e)))?;
-        Ok(ver_id)
-    }
 
     pub(crate) fn sync_note_tags(
         &self,
@@ -1713,35 +1604,6 @@ impl NotesManager {
         Ok(())
     }
 
-    fn prune_versions_for_note(&self, conn: &rusqlite::Connection, note_id: &str) -> Result<()> {
-        // fixed max keep count
-        let max_keep = DEFAULT_MAX_VERSIONS_PER_NOTE;
-
-        if max_keep <= 0 {
-            return Ok(());
-        }
-
-        // count versions and delete older ones beyond max_keep (by created_at desc)
-        let mut stmt = conn
-            .prepare("SELECT version_id FROM notes_versions WHERE note_id=?1 ORDER BY datetime(created_at) DESC")
-            .map_err(|e| AppError::database(format!("Failed to prepare version query: {}", e)))?;
-        let rows = stmt
-            .query_map(params![note_id], |row| row.get::<_, String>(0))
-            .map_err(|e| AppError::database(format!("Failed to execute version query: {}", e)))?;
-        let mut vids: Vec<String> = Vec::new();
-        for r in rows {
-            vids.push(r.map_err(|e| AppError::database(e.to_string()))?);
-        }
-        if (vids.len() as i64) > max_keep {
-            for vid in vids.iter().skip(max_keep as usize) {
-                let _ = conn.execute(
-                    "DELETE FROM notes_versions WHERE version_id=?1",
-                    params![vid],
-                );
-            }
-        }
-        Ok(())
-    }
 }
 
 // ==================== Canvas AI 工具方法 ====================
@@ -2084,9 +1946,6 @@ impl NotesManager {
         Ok(Self::vfs_note_to_note_item(vfs_note, content))
     }
 
-    /// VFS 版本：获取笔记
-    ///
-    /// 从 VFS 数据库获取笔记（包含内容）。
     pub fn get_note_vfs(&self, note_id: &str) -> Result<NoteItem> {
         let vfs_db = self
             .vfs_db
@@ -2335,3 +2194,4 @@ Some content."#;
         assert_eq!(replaced, "Hi World, Hi Universe");
     }
 }
+

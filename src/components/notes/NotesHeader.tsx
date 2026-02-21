@@ -13,7 +13,6 @@ import {
     Printer,
     Link,
     Copy,
-    History,
     Trash2,
     ArrowRight,
     FolderOpen,
@@ -59,7 +58,6 @@ export const NotesHeader: React.FC<NotesHeaderProps> = ({
         reorderTabs,
         updateNoteTags,
         setSidebarRevealId,
-        setVersionsOpen,
         setLibraryOpen,
         deleteItems
     } = useNotes();
@@ -283,12 +281,6 @@ export const NotesHeader: React.FC<NotesHeaderProps> = ({
                                 <AppMenuSeparator />
 
                                 <AppMenuGroup label={t('notes:menu.history', '历史')}>
-                                    <AppMenuItem 
-                                        icon={<History className="h-4 w-4" />} 
-                                        onClick={() => setVersionsOpen(true)}
-                                    >
-                                        {t('notes:header.versions', '版本历史')}
-                                    </AppMenuItem>
                                     <AppMenuItem 
                                         icon={<Printer className="h-4 w-4" />}
                                         shortcut="⌘P"

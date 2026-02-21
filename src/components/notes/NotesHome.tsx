@@ -8,7 +8,6 @@ import { NotesHeader } from "./NotesHeader";
 import { NotesCrepeEditor } from "./NotesCrepeEditor";
 import { NotesLibraryDialog } from "./dialogs/NotesLibraryDialog";
 import { TrashDialog } from "./dialogs/TrashDialog";
-import VersionsDialog from "./dialogs/VersionsDialog";
 import "./NotesHome.css";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { useCommandEvents, COMMAND_EVENTS } from "@/command-palette";
@@ -120,7 +119,6 @@ export default function NotesHome() {
         {/* Dialogs */}
         <NotesLibraryDialog />
         <TrashDialog />
-        <VersionsDialog />
       </div>
     );
   }
@@ -162,7 +160,6 @@ export default function NotesHome() {
         {/* Dialogs */}
         <NotesLibraryDialog />
         <TrashDialog />
-        <VersionsDialog />
       </div>
   );
 }
