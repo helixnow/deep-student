@@ -3777,7 +3777,13 @@ impl ChatV2Pipeline {
             // 并行执行所有工具调用
             let canvas_note_id = ctx.options.canvas_note_id.clone();
             // 🆕 P1-C: 传递 skill_allowed_tools 进行工具执行校验
-            let skill_allowed_tools = ctx.options.skill_allowed_tools.clone();
+            // 🔧 用户可通过 disable_tool_whitelist 关闭白名单检查
+            let skill_allowed_tools = if ctx.options.disable_tool_whitelist.unwrap_or(false) {
+                log::info!("[ChatV2::pipeline] 🔓 Tool whitelist check disabled by user setting");
+                None
+            } else {
+                ctx.options.skill_allowed_tools.clone()
+            };
             // 🆕 渐进披露：传递 skill_contents 给工具执行器
             let skill_contents = ctx.options.skill_contents.clone();
             let active_skill_ids = ctx.options.active_skill_ids.clone();
@@ -7542,7 +7548,13 @@ impl ChatV2Pipeline {
 
         let emitter_arc = ctx.emitter_arc();
         let canvas_note_id = options.canvas_note_id.clone();
-        let skill_allowed_tools = options.skill_allowed_tools.clone();
+        // 🔧 用户可通过 disable_tool_whitelist 关闭白名单检查
+        let skill_allowed_tools = if options.disable_tool_whitelist.unwrap_or(false) {
+            log::info!("[ChatV2::VariantPipeline] 🔓 Tool whitelist check disabled by user setting");
+            None
+        } else {
+            options.skill_allowed_tools.clone()
+        };
         let skill_contents = options.skill_contents.clone();
         let active_skill_ids = options.active_skill_ids.clone();
         let variant_session_key = format!("{}:{}", session_id, ctx.variant_id());

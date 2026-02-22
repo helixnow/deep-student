@@ -1751,6 +1751,10 @@ pub struct SendOptions {
     pub continue_variant_id: Option<String>,
 
     // ========== 🆕 图片压缩策略 ==========
+    /// 🆕 关闭工具白名单检查（允许所有工具绕过技能白名单限制）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub disable_tool_whitelist: Option<bool>,
+
     /// 视觉质量策略（用于多模态图片压缩）
     ///
     /// - `low`: 最大 768px，JPEG 60%，适用于大量图片/PDF 概览
@@ -1951,6 +1955,10 @@ pub struct ChatParams {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub multimodal_library_ids: Option<Vec<String>>,
 
+    /// 关闭工具白名单检查
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub disable_tool_whitelist: Option<bool>,
+
     /// 图片压缩策略（low/medium/high/auto）
     #[serde(skip_serializing_if = "Option::is_none")]
     pub vision_quality: Option<String>,
@@ -1985,6 +1993,7 @@ impl Default for ChatParams {
             multimodal_top_k: None,
             multimodal_enable_reranking: None,
             multimodal_library_ids: None,
+            disable_tool_whitelist: None,
             vision_quality: None,
         }
     }

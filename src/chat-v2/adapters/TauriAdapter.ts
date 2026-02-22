@@ -2974,6 +2974,9 @@ export class ChatV2TauriAdapter {
       multimodalEnableReranking: chatParams.multimodalEnableReranking,
       multimodalLibraryIds: chatParams.multimodalLibraryIds,
 
+      // 🆕 关闭工具白名单检查
+      disableToolWhitelist: chatParams.disableToolWhitelist || undefined,
+
       // 🆕 图片压缩策略（不设置时后端使用智能默认策略）
       visionQuality: chatParams.visionQuality,
 
