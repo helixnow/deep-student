@@ -824,6 +824,23 @@ pub struct ProviderKeys {
     pub bocha: Option<String>,
 }
 
+impl ProviderKeys {
+    /// 检查指定引擎是否已配置必需的 API key / endpoint
+    pub fn has_valid_keys(&self, engine: &str) -> bool {
+        match engine {
+            "google_cse" => self.google_cse.as_ref().is_some_and(|k| !k.is_empty())
+                && self.google_cse_cx.as_ref().is_some_and(|k| !k.is_empty()),
+            "serpapi" => self.serpapi.as_ref().is_some_and(|k| !k.is_empty()),
+            "tavily" => self.tavily.as_ref().is_some_and(|k| !k.is_empty()),
+            "brave" => self.brave.as_ref().is_some_and(|k| !k.is_empty()),
+            "searxng" => self.searxng_endpoint.as_ref().is_some_and(|k| !k.is_empty()),
+            "zhipu" => self.zhipu.as_ref().is_some_and(|k| !k.is_empty()),
+            "bocha" => self.bocha.as_ref().is_some_and(|k| !k.is_empty()),
+            _ => false,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolConfig {
     #[serde(rename = "web_search.engine")]
