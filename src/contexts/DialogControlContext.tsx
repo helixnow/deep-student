@@ -526,6 +526,48 @@ export const DialogControlProvider: React.FC<{ children: React.ReactNode }> = ({
     return () => window.removeEventListener('systemSettingsChanged', handler as EventListener);
   }, []); // 稳定 deps：回调通过 ref 访问
 
+  // 🔧 修复：实时同步 MCP 连接状态到聊天面板
+  // reloadAvailability() 只在初始化时快照一次 connected 状态，
+  // 之后服务器连接/断开不会反映到 availableMcpServers，导致聊天面板显示"未连接"
+  React.useEffect(() => {
+    let disposed = false;
+    let unsubscribe: (() => void) | undefined;
+
+    (async () => {
+      try {
+        const { McpService } = await import('../mcp/mcpService');
+        if (disposed) return;
+        unsubscribe = McpService.onStatus((statusInfo) => {
+          if (disposed) return;
+          // 只更新 connected/error 字段，不重建整个列表（避免丢失 tools 等信息）
+          setAvailableMcpServers(prev => {
+            if (prev.length === 0) return prev;
+            let changed = false;
+            const updated = prev.map(server => {
+              // 内置服务器始终 connected=true
+              if (isBuiltinServer(server.id)) return server;
+              const fresh = statusInfo.servers.find(s => s.id === server.id);
+              if (!fresh) return server;
+              if (server.connected !== fresh.connected) {
+                changed = true;
+                return { ...server, connected: fresh.connected };
+              }
+              return server;
+            });
+            return changed ? updated : prev;
+          });
+        });
+      } catch (e: unknown) {
+        debugLog.warn('Failed to subscribe to MCP status updates:', e);
+      }
+    })();
+
+    return () => {
+      disposed = true;
+      unsubscribe?.();
+    };
+  }, []);
+
   // 🔧 修复竞态条件：监听 MCP 启动完成事件
   // main.tsx 中 bootstrapMcpFromSettings() 是异步执行的，可能晚于本 Provider 的初始化
   // 当 MCP 服务连接完成后，重新加载可用工具列表

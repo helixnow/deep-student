@@ -106,10 +106,7 @@ impl AskUserExecutor {
 #[async_trait]
 impl ToolExecutor for AskUserExecutor {
     fn can_handle(&self, tool_name: &str) -> bool {
-        let stripped = tool_name
-            .strip_prefix("builtin-")
-            .or_else(|| tool_name.strip_prefix("mcp_"))
-            .unwrap_or(tool_name);
+        let stripped = super::strip_tool_namespace(tool_name);
         stripped == "ask_user"
     }
 

@@ -428,7 +428,8 @@ class McpServiceImpl {
             try { const uu = new URL(urlStr); uu.search = ''; return uu.toString(); } catch { return urlStr; }
           };
           
-          // Auto-fix transport-specific path issues (静默修复，不打印日志)
+          // Auto-fix transport-specific path issues
+          const originalPathname = u.pathname;
           if (cfg.type === 'sse') {
             // SSE should have /sse suffix
             if (u.pathname.endsWith('/mcp')) {
@@ -450,6 +451,10 @@ class McpServiceImpl {
             if (u.pathname.endsWith('/sse')) {
               u.pathname = u.pathname.replace(/\/sse$/, '/ws');
             }
+          }
+          // 🔧 修复：URL 自动修正时打印日志，帮助用户排查配置问题
+          if (u.pathname !== originalPathname) {
+            debugLog.log(`[MCP] Auto-corrected URL path for ${cfg.type} transport: ${originalPathname} → ${u.pathname} (server: ${cfg.id})`);
           }
           
           // Some providers accept api_key via query — attach from headers if missing
@@ -1260,7 +1265,7 @@ class McpServiceImpl {
    * 统一工具调用。toolName 可带 namespace；会自动路由到对应 server。
    * 连接断开时会自动重连并重试一次。
    */
-  async callTool(toolName: string, args?: any, timeoutMs = 15000): Promise<{
+  async callTool(toolName: string, args?: any, timeoutMs = 60000): Promise<{
     ok: boolean; data?: any; error?: string; usage?: any;
   }> {
     const started = Date.now();
@@ -1286,7 +1291,9 @@ class McpServiceImpl {
     if (!rt.connected) {
       const reconnected = await this.ensureConnected(rt);
       if (!reconnected) {
-        return { ok: false, error: i18next.t('mcp:service.connection_lost') + ` (server: ${rt.cfg.id})` };
+        // 🔧 标记 [MCP_SERVER_DISCONNECTED] 便于后端 pipeline 识别连接断开类错误
+        // 后端可据此告知 LLM 该工具暂时不可用，避免反复重试
+        return { ok: false, error: `[MCP_SERVER_DISCONNECTED] ${i18next.t('mcp:service.connection_lost')} (server: ${rt.cfg.id})` };
       }
     }
 
@@ -1575,7 +1582,7 @@ export function setupTauriBridge() {
     .then(({ listen, emit }) => {
       listen<BridgeRequest>('mcp-bridge-request', async (ev) => {
         const req = ev.payload;
-        const res = await McpService.callTool(req.tool, req.args, req.timeoutMs ?? 15000);
+        const res = await McpService.callTool(req.tool, req.args, req.timeoutMs ?? 60000);
         const payload: BridgeResponse = { correlationId: req.correlationId, ...res } as any;
         // Best-effort emit: response delivery failure is non-fatal; the caller will time out
         try { await emit('mcp-bridge-response', payload); } catch { /* best-effort */ }
@@ -1657,6 +1664,9 @@ function toServerConfigs(list: any[]): McpConfig['servers'] {
 
   for (const item of list) {
     if (!item) continue;
+    // 注意：虽然 MCP 2025-11-25 规范推荐 Streamable HTTP，但为保持向后兼容
+    // 默认仍为 'sse'。用户可显式设置 transportType: 'streamable_http' 来使用新标准。
+    // 将来可考虑实现自动探测（先尝试 Streamable HTTP，失败回退 SSE）。
     const transportType = item.transportType || item.transport || 'sse';
     const headers: Record<string, string> = { ...(item.headers || {}) };
     if (item.apiKey && !headers['Authorization']) {
