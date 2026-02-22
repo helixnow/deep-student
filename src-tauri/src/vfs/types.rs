@@ -2495,10 +2495,16 @@ mod tests {
     #[test]
     fn test_vfs_resource_type_all() {
         let all_types = VfsResourceType::all();
-        assert_eq!(all_types.len(), 8);
+        assert_eq!(all_types.len(), 9);
         assert!(all_types.contains(&VfsResourceType::Note));
         assert!(all_types.contains(&VfsResourceType::Textbook));
+        assert!(all_types.contains(&VfsResourceType::Exam));
         assert!(all_types.contains(&VfsResourceType::Translation));
+        assert!(all_types.contains(&VfsResourceType::Essay));
+        assert!(all_types.contains(&VfsResourceType::Image));
+        assert!(all_types.contains(&VfsResourceType::File));
+        assert!(all_types.contains(&VfsResourceType::Retrieval));
+        assert!(all_types.contains(&VfsResourceType::MindMap));
     }
 
     #[test]

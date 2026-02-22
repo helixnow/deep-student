@@ -16,8 +16,8 @@ use std::time::Instant;
 use async_trait::async_trait;
 use serde_json::{json, Value};
 
-use super::builtin_retrieval_executor::BUILTIN_NAMESPACE;
 use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
+use super::strip_tool_namespace;
 use crate::chat_v2::events::event_types;
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
 use crate::document_parser::DocumentParser;
@@ -34,12 +34,6 @@ impl XlsxToolExecutor {
         Self
     }
 
-    fn strip_namespace(tool_name: &str) -> &str {
-        tool_name
-            .strip_prefix(BUILTIN_NAMESPACE)
-            .or_else(|| tool_name.strip_prefix("mcp_"))
-            .unwrap_or(tool_name)
-    }
 
     /// 结构化读取 XLSX（输出 Markdown 表格格式）
     async fn execute_read_structured(
@@ -476,7 +470,7 @@ impl Default for XlsxToolExecutor {
 #[async_trait]
 impl ToolExecutor for XlsxToolExecutor {
     fn can_handle(&self, tool_name: &str) -> bool {
-        let stripped = Self::strip_namespace(tool_name);
+        let stripped = strip_tool_namespace(tool_name);
         matches!(
             stripped,
             "xlsx_read_structured"
@@ -495,7 +489,7 @@ impl ToolExecutor for XlsxToolExecutor {
         ctx: &ExecutionContext,
     ) -> Result<ToolResultInfo, String> {
         let start_time = Instant::now();
-        let tool_name = Self::strip_namespace(&call.name);
+        let tool_name = strip_tool_namespace(&call.name);
 
         log::debug!(
             "[XlsxToolExecutor] Executing: {} (full: {})",
@@ -575,7 +569,7 @@ impl ToolExecutor for XlsxToolExecutor {
     }
 
     fn sensitivity_level(&self, tool_name: &str) -> ToolSensitivity {
-        let stripped = Self::strip_namespace(tool_name);
+        let stripped = strip_tool_namespace(tool_name);
         match stripped {
             "xlsx_read_structured" | "xlsx_extract_tables" | "xlsx_get_metadata"
             | "xlsx_to_spec" => ToolSensitivity::Low,

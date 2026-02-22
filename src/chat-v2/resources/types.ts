@@ -286,13 +286,14 @@ export interface ResourceStoreApi {
   createOrReuse(params: CreateResourceParams): Promise<CreateResourceResult>;
 
   /**
-   * 通过 ID + hash 获取资源（精确版本）
+   * 通过 ID 获取资源
+   *
+   * VFS 模式下按 ID 获取，不需要 hash（VFS 不支持按版本查询）。
    *
    * @param resourceId 资源 ID
-   * @param hash 内容哈希
    * @returns 资源实体或 null
    */
-  get(resourceId: string, hash: string): Promise<Resource | null>;
+  get(resourceId: string): Promise<Resource | null>;
 
   /**
    * 获取资源的最新版本（用于版本失效时回退）

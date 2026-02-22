@@ -112,6 +112,7 @@ pub struct LanceTableDiagnostic {
 pub struct VfsLanceStore {
     db: Arc<VfsDatabase>,
     lance_base_path: PathBuf,
+    connection: tokio::sync::OnceCell<Connection>,
 }
 
 impl VfsLanceStore {
@@ -127,6 +128,7 @@ impl VfsLanceStore {
         Ok(Self {
             db,
             lance_base_path,
+            connection: tokio::sync::OnceCell::new(),
         })
     }
 
@@ -156,13 +158,17 @@ impl VfsLanceStore {
         self.lance_base_path.to_string_lossy().to_string()
     }
 
-    /// 连接到 LanceDB
-    async fn connect(&self) -> VfsResult<Connection> {
-        let path = self.get_lance_path();
-        lancedb::connect(&path)
-            .execute()
+    /// 获取缓存的 LanceDB 连接（首次调用时建立连接）
+    async fn connect(&self) -> VfsResult<&Connection> {
+        self.connection
+            .get_or_try_init(|| async {
+                let path = self.get_lance_path();
+                lancedb::connect(&path)
+                    .execute()
+                    .await
+                    .map_err(|e| VfsError::Other(format!("连接 LanceDB 失败: {}", e)))
+            })
             .await
-            .map_err(|e| VfsError::Other(format!("连接 LanceDB 失败: {}", e)))
     }
 
     /// 获取表名
@@ -560,6 +566,61 @@ impl VfsLanceStore {
         debug!(
             "[VfsLanceStore] Deleted vectors for resource {} from {} tables (keep_dim={})",
             resource_id, deleted, keep_dim
+        );
+
+        Ok(deleted)
+    }
+
+    /// 删除资源的旧向量，但保留指定的 embedding_id 集合。
+    ///
+    /// 用于"先写后删"原子性保护：新嵌入写入 Lance 后，通过排除新 embedding_id
+    /// 来安全清理旧批次残留，避免先删后写导致的检索空窗。
+    pub async fn delete_by_resource_except_ids(
+        &self,
+        modality: &str,
+        resource_id: &str,
+        keep_ids: &[String],
+    ) -> VfsResult<usize> {
+        let conn = self.connect().await?;
+        let mut deleted = 0usize;
+
+        let mut dims = self.get_registered_dimensions(modality)?;
+        for dim in self.discover_dimensions_from_disk(modality) {
+            if !dims.contains(&dim) {
+                dims.push(dim);
+            }
+        }
+
+        dims.sort_unstable();
+        dims.dedup();
+
+        let escaped_resource_id = resource_id.replace("'", "''");
+
+        for dim in dims {
+            let table_name = Self::table_name(modality, dim);
+            if let Ok(tbl) = conn.open_table(&table_name).execute().await {
+                let expr = if keep_ids.is_empty() {
+                    format!("resource_id = '{}'", escaped_resource_id)
+                } else {
+                    let in_list = keep_ids
+                        .iter()
+                        .map(|s| format!("'{}'", s.replace("'", "''")))
+                        .collect::<Vec<_>>()
+                        .join(",");
+                    format!(
+                        "resource_id = '{}' AND embedding_id NOT IN ({})",
+                        escaped_resource_id, in_list
+                    )
+                };
+                if tbl.delete(expr.as_str()).await.is_ok() {
+                    deleted += 1;
+                }
+            }
+        }
+
+        debug!(
+            "[VfsLanceStore] Deleted old vectors for resource {} from {} tables (kept {} embedding ids)",
+            resource_id, deleted, keep_ids.len()
         );
 
         Ok(deleted)

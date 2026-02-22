@@ -1,3 +1,9 @@
+//! ⚠️ DEPRECATED: 前端已迁移到 VFS 统一资源管理（vfs_* 命令）。
+//! 此模块中的 resource_* Tauri 命令不再被前端调用。
+//! 计划在下一次大版本中移除。参见 P1-#9 审计发现。
+//!
+//! ---
+//!
 //! 资源库 Tauri 命令处理器
 //!
 //! 提供资源库（ResourceStore）的 Tauri 命令，供前端调用。
@@ -109,6 +115,7 @@ fn validate_file_size(resource_type: &ResourceType, data: &str) -> Result<(), Ch
 /// ## 大文件限制
 /// - 图片：< 10MB
 /// - 文件：< 50MB
+#[deprecated(note = "前端已迁移到 VFS (vfs_create_or_reuse)。参见 P1-#9。")]
 #[tauri::command]
 pub async fn resource_create_or_reuse(
     params: CreateResourceInput,
@@ -165,6 +172,7 @@ pub async fn resource_create_or_reuse(
 /// - `Ok(Some(Resource))`: 找到资源
 /// - `Ok(None)`: 资源不存在
 /// - `Err(String)`: 数据库错误
+#[deprecated(note = "前端已迁移到 VFS (vfs_get_resource)。参见 P1-#9。")]
 #[tauri::command]
 pub async fn resource_get(
     resource_id: String,
@@ -201,6 +209,7 @@ pub async fn resource_get(
 /// - `Ok(Some(Resource))`: 找到资源
 /// - `Ok(None)`: 资源不存在
 /// - `Err(String)`: 数据库错误
+#[deprecated(note = "前端已迁移到 VFS (vfs_get_resource)。参见 P1-#9。")]
 #[tauri::command]
 pub async fn resource_get_latest(
     resource_id: String,
@@ -233,6 +242,7 @@ pub async fn resource_get_latest(
 /// - `Ok(true)`: 资源存在
 /// - `Ok(false)`: 资源不存在
 /// - `Err(String)`: 数据库错误
+#[deprecated(note = "前端已迁移到 VFS (vfs_resource_exists)。参见 P1-#9。")]
 #[tauri::command]
 pub async fn resource_exists(
     resource_id: String,
@@ -263,6 +273,7 @@ pub async fn resource_exists(
 /// ## 返回
 /// - `Ok(())`: 成功
 /// - `Err(String)`: 资源不存在或数据库错误
+#[deprecated(note = "前端已迁移到 VFS (vfs_increment_ref)。参见 P1-#9。")]
 #[tauri::command]
 pub async fn resource_increment_ref(
     resource_id: String,
@@ -297,6 +308,7 @@ pub async fn resource_increment_ref(
 /// ## 返回
 /// - `Ok(())`: 成功
 /// - `Err(String)`: 资源不存在或数据库错误
+#[deprecated(note = "前端已迁移到 VFS (vfs_decrement_ref)。参见 P1-#9。")]
 #[tauri::command]
 pub async fn resource_decrement_ref(
     resource_id: String,
@@ -331,6 +343,7 @@ pub async fn resource_decrement_ref(
 /// ## 返回
 /// - `Ok(Vec<Resource>)`: 所有版本列表
 /// - `Err(String)`: 数据库错误
+#[deprecated(note = "前端已迁移到 VFS。参见 P1-#9。")]
 #[tauri::command]
 pub async fn resource_get_versions_by_source(
     source_id: String,
@@ -377,6 +390,7 @@ pub struct VfsResourceContent {
 /// ## 返回
 /// - `Ok(VfsResourceContent)`: 资源内容
 /// - `Err(String)`: 资源不存在或数据库错误
+#[deprecated(note = "前端已迁移到 VFS (vfs_* 命令)。参见 P1-#9。")]
 #[tauri::command]
 pub async fn resource_get_content_from_vfs(
     resource_type: String,

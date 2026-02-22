@@ -27,7 +27,7 @@ pub mod load_session;
 pub mod manage_session;
 pub mod migration;
 pub mod ocr;
-pub mod resource_handlers;
+pub mod resource_handlers; // ⚠️ DEPRECATED: 前端已迁移到 VFS (vfs_* 命令)，resource_* 命令零引用。参见 P1-#9。
 pub mod send_message;
 pub mod variant_handlers;
 pub mod workspace_handlers;

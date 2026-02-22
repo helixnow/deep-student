@@ -176,11 +176,12 @@ class TauriResourceStoreApi implements ResourceStoreApi {
   }
 
   /**
-   * 通过 ID + hash 获取资源（精确版本）
+   * 通过 ID 获取资源
+   *
+   * VFS 模式下按 ID 获取，不需要 hash（VFS 不支持按版本查询）。
    */
-  async get(resourceId: string, hash: string): Promise<Resource | null> {
+  async get(resourceId: string): Promise<Resource | null> {
     try {
-      // VFS 使用 vfs_get_resource 获取资源（不需要 hash 参数）
       const backendResource = await invoke<BackendResource | null>('vfs_get_resource', {
         resourceId,
       });

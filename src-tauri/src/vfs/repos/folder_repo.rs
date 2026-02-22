@@ -600,6 +600,13 @@ impl VfsFolderRepo {
                     |row| row.get(0),
                 )
                 .optional()?,
+            "file" => conn
+                .query_row(
+                    "SELECT sha256 FROM files WHERE id = ?1",
+                    params![item_id],
+                    |row| row.get(0),
+                )
+                .optional()?,
             "exam" => conn
                 .query_row(
                     "SELECT r.hash FROM exam_sheets e JOIN resources r ON e.resource_id = r.id WHERE e.id = ?1",
@@ -623,7 +630,17 @@ impl VfsFolderRepo {
                     |row| row.get(0),
                 )
                 .optional()?,
-            _ => None,
+            "mindmap" => conn
+                .query_row(
+                    "SELECT r.hash FROM mindmaps m JOIN resources r ON m.resource_id = r.id WHERE m.id = ?1",
+                    params![item_id],
+                    |row| row.get(0),
+                )
+                .optional()?,
+            _ => {
+                warn!("[VfsFolderRepo] Unknown item_type for hash: {}", item_type);
+                None
+            }
         };
         Ok(hash)
     }
@@ -1826,6 +1843,13 @@ impl VfsFolderRepo {
                     |row| row.get(0),
                 )
                 .optional()?,
+            "file" => conn
+                .query_row(
+                    "SELECT file_name FROM files WHERE id = ?1",
+                    params![item_id],
+                    |row| row.get(0),
+                )
+                .optional()?,
             "exam" => conn
                 .query_row(
                     "SELECT COALESCE(exam_name, id) FROM exam_sheets WHERE id = ?1",
@@ -1835,7 +1859,7 @@ impl VfsFolderRepo {
                 .optional()?,
             "translation" => conn
                 .query_row(
-                    "SELECT id FROM translations WHERE id = ?1",
+                    "SELECT COALESCE(title, id) FROM translations WHERE id = ?1",
                     params![item_id],
                     |row| row.get(0),
                 )
@@ -1847,7 +1871,17 @@ impl VfsFolderRepo {
                     |row| row.get(0),
                 )
                 .optional()?,
-            _ => Some(item_id.to_string()),
+            "mindmap" => conn
+                .query_row(
+                    "SELECT title FROM mindmaps WHERE id = ?1",
+                    params![item_id],
+                    |row| row.get(0),
+                )
+                .optional()?,
+            _ => {
+                warn!("[VfsFolderRepo] Unknown item_type: {}", item_type);
+                Some(item_id.to_string())
+            }
         };
 
         Ok(title.unwrap_or_else(|| item_id.to_string()))
@@ -1994,6 +2028,15 @@ impl VfsFolderRepo {
                 .optional()
                 .ok()
                 .flatten(),
+            "file" => conn
+                .query_row(
+                    "SELECT resource_id FROM files WHERE id = ?1",
+                    params![item_id],
+                    |row| row.get(0),
+                )
+                .optional()
+                .ok()
+                .flatten(),
             "exam" => conn
                 .query_row(
                     "SELECT resource_id FROM exam_sheets WHERE id = ?1",
@@ -2017,7 +2060,20 @@ impl VfsFolderRepo {
                     |row| row.get(0),
                 )
                 .optional()?,
-            _ => None,
+            "mindmap" => conn
+                .query_row(
+                    "SELECT resource_id FROM mindmaps WHERE id = ?1",
+                    params![item_id],
+                    |row| row.get(0),
+                )
+                .optional()?,
+            _ => {
+                warn!(
+                    "[VfsFolderRepo] Unknown item_type for resource_id: {}",
+                    item_type
+                );
+                None
+            }
         };
 
         Ok(resource_id)
@@ -2049,12 +2105,8 @@ impl VfsFolderRepo {
 
         // 根据类型获取内容
         let content: Option<String> = match item_type {
-            "note" => {
-                // 笔记内容在 resources.data
-                None // 已经尝试过了
-            }
+            "note" => None,
             "textbook" => {
-                // 教材是 PDF，返回文件名或路径摘要
                 conn.query_row(
                     "SELECT file_name || ' (PDF)' FROM files WHERE id = ?1",
                     params![item_id],
@@ -2062,8 +2114,15 @@ impl VfsFolderRepo {
                 )
                 .optional()?
             }
+            "file" => {
+                conn.query_row(
+                    "SELECT file_name || ' (file)' FROM files WHERE id = ?1",
+                    params![item_id],
+                    |row| row.get(0),
+                )
+                .optional()?
+            }
             "exam" => {
-                // 题目集识别返回 preview_json
                 conn.query_row(
                     "SELECT preview_json FROM exam_sheets WHERE id = ?1",
                     params![item_id],
@@ -2071,15 +2130,16 @@ impl VfsFolderRepo {
                 )
                 .optional()?
             }
-            "translation" => {
-                // 翻译内容在 resources.data
+            "translation" => None,
+            "essay" => None,
+            "mindmap" => None,
+            _ => {
+                warn!(
+                    "[VfsFolderRepo] Unknown item_type for content: {}",
+                    item_type
+                );
                 None
             }
-            "essay" => {
-                // 作文内容在 resources.data
-                None
-            }
-            _ => None,
         };
 
         Ok(content)

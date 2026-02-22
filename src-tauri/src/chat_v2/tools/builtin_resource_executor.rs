@@ -17,8 +17,8 @@ use async_trait::async_trait;
 use rusqlite::OptionalExtension;
 use serde_json::{json, Value};
 
-use super::builtin_retrieval_executor::BUILTIN_NAMESPACE;
 use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
+use super::strip_tool_namespace;
 use crate::chat_v2::events::event_types;
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
 use crate::dstu::handler_utils::{
@@ -97,16 +97,6 @@ impl BuiltinResourceExecutor {
     /// 创建新的内置学习资源工具执行器
     pub fn new() -> Self {
         Self
-    }
-
-    /// 从工具名称中去除前缀
-    ///
-    /// 支持的前缀：builtin-, mcp_
-    fn strip_namespace(tool_name: &str) -> &str {
-        tool_name
-            .strip_prefix(BUILTIN_NAMESPACE)
-            .or_else(|| tool_name.strip_prefix("mcp_"))
-            .unwrap_or(tool_name)
     }
 
     /// 将资源类型字符串转换为 DstuNodeType
@@ -3198,7 +3188,7 @@ impl Default for BuiltinResourceExecutor {
 #[async_trait]
 impl ToolExecutor for BuiltinResourceExecutor {
     fn can_handle(&self, tool_name: &str) -> bool {
-        let stripped = Self::strip_namespace(tool_name);
+        let stripped = strip_tool_namespace(tool_name);
         matches!(
             stripped,
             "resource_list"
@@ -3220,7 +3210,7 @@ impl ToolExecutor for BuiltinResourceExecutor {
         ctx: &ExecutionContext,
     ) -> Result<ToolResultInfo, String> {
         let start_time = Instant::now();
-        let tool_name = Self::strip_namespace(&call.name);
+        let tool_name = strip_tool_namespace(&call.name);
 
         log::debug!(
             "[BuiltinResourceExecutor] Executing builtin tool: {} (full: {})",
@@ -3308,7 +3298,7 @@ impl ToolExecutor for BuiltinResourceExecutor {
     }
 
     fn sensitivity_level(&self, tool_name: &str) -> ToolSensitivity {
-        let stripped = Self::strip_namespace(tool_name);
+        let stripped = strip_tool_namespace(tool_name);
         match stripped {
             // 删除操作是破坏性的，需要更高敏感度
             "mindmap_delete" => ToolSensitivity::High,
@@ -3363,19 +3353,9 @@ mod tests {
 
     #[test]
     fn test_strip_namespace() {
-        assert_eq!(
-            BuiltinResourceExecutor::strip_namespace("builtin-resource_list"),
-            "resource_list"
-        );
-        assert_eq!(
-            BuiltinResourceExecutor::strip_namespace("builtin-resource_read"),
-            "resource_read"
-        );
-        // 无前缀时返回原字符串
-        assert_eq!(
-            BuiltinResourceExecutor::strip_namespace("resource_list"),
-            "resource_list"
-        );
+        assert_eq!(strip_tool_namespace("builtin-resource_list"), "resource_list");
+        assert_eq!(strip_tool_namespace("builtin-resource_read"), "resource_read");
+        assert_eq!(strip_tool_namespace("resource_list"), "resource_list");
     }
 
     #[test]

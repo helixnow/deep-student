@@ -14,8 +14,8 @@
  *   sourceId: noteId,
  * });
  *
- * // 获取资源
- * const resource = await resourceStoreApi.get(resourceId, hash);
+ * // 获取资源（VFS 模式按 ID 获取，不需要 hash）
+ * const resource = await resourceStoreApi.get(resourceId);
  * ```
  */
 
@@ -139,7 +139,7 @@ export async function createResourceRef(
 /**
  * 验证并获取资源
  *
- * 先尝试精确版本，失败则尝试最新版本。
+ * VFS 模式下按 ID 直接获取（不区分版本）。
  *
  * @param ref 上下文引用
  * @returns 资源实体和是否为最新版本的标志
@@ -147,25 +147,6 @@ export async function createResourceRef(
 export async function getResourceWithFallback(
   ref: import('./types').ContextRef
 ): Promise<{ resource: import('./types').Resource | null; isLatestVersion: boolean }> {
-  // 1. 尝试精确版本
-  const exactResource = await resourceStoreApi.get(ref.resourceId, ref.hash);
-  if (exactResource) {
-    return { resource: exactResource, isLatestVersion: true };
-  }
-
-  // 2. 尝试最新版本
-  const latestResource = await resourceStoreApi.getLatest(ref.resourceId);
-  if (latestResource) {
-    console.warn(
-      '[ResourceStore] Exact version not found, returning latest version:',
-      ref.resourceId,
-      'expected hash:',
-      ref.hash,
-      'actual hash:',
-      latestResource.hash
-    );
-    return { resource: latestResource, isLatestVersion: false };
-  }
-
-  return { resource: null, isLatestVersion: false };
+  const resource = await resourceStoreApi.get(ref.resourceId);
+  return { resource, isLatestVersion: resource !== null };
 }

@@ -5,8 +5,8 @@ use serde_json::{json, Value};
 use std::sync::LazyLock;
 use tokio::sync::Mutex;
 
-use super::builtin_retrieval_executor::BUILTIN_NAMESPACE;
 use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
+use super::strip_tool_namespace;
 use crate::chat_v2::events::event_types;
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
 use crate::models::{
@@ -64,16 +64,6 @@ pub struct QBankExecutor;
 impl QBankExecutor {
     pub fn new() -> Self {
         Self
-    }
-
-    /// 从工具名称中去除前缀
-    ///
-    /// 支持的前缀：builtin-, mcp_
-    fn strip_namespace(tool_name: &str) -> &str {
-        tool_name
-            .strip_prefix(BUILTIN_NAMESPACE)
-            .or_else(|| tool_name.strip_prefix("mcp_"))
-            .unwrap_or(tool_name)
     }
 
     /// 读取全部题目（自动分页）
@@ -1873,7 +1863,7 @@ impl Default for QBankExecutor {
 #[async_trait]
 impl ToolExecutor for QBankExecutor {
     fn can_handle(&self, tool_name: &str) -> bool {
-        let name = Self::strip_namespace(tool_name);
+        let name = strip_tool_namespace(tool_name);
         matches!(
             name,
             "qbank_list"
@@ -1898,7 +1888,7 @@ impl ToolExecutor for QBankExecutor {
         ctx: &ExecutionContext,
     ) -> Result<ToolResultInfo, String> {
         let start_time = Instant::now();
-        let tool_name = Self::strip_namespace(&call.name);
+        let tool_name = strip_tool_namespace(&call.name);
 
         log::debug!("[QBankExecutor] Executing tool: {}", tool_name);
 
@@ -1997,7 +1987,7 @@ impl ToolExecutor for QBankExecutor {
     }
 
     fn sensitivity_level(&self, tool_name: &str) -> ToolSensitivity {
-        let stripped = Self::strip_namespace(tool_name);
+        let stripped = strip_tool_namespace(tool_name);
         match stripped {
             // ★ 2026-02-09: 仅保留 qbank_reset_progress 为 Medium（重置进度不可逆）
             "qbank_reset_progress" => ToolSensitivity::Medium,

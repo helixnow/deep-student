@@ -33,6 +33,45 @@ import i18next from 'i18next';
 import type { Command } from '../registry/types';
 import { isLearningCommandEnabled } from '../registry/capabilityRegistry';
 
+// ============================================================================
+// 事件名常量 — 命令面板 dispatch / 消费者 addEventListener 共享
+// ============================================================================
+
+export const LEARNING_EVENTS = {
+  // 翻译
+  OPEN_TRANSLATE: 'LEARNING_OPEN_TRANSLATE',
+  TRANSLATE_SELECTION: 'LEARNING_TRANSLATE_SELECTION', // TODO: 未实现
+  SWITCH_LANGUAGE: 'LEARNING_SWITCH_LANGUAGE', // TODO: 未实现
+  // 作文批改
+  OPEN_ESSAY_GRADING: 'LEARNING_OPEN_ESSAY_GRADING',
+  GRADE_ESSAY: 'LEARNING_GRADE_ESSAY', // TODO: 未实现
+  ESSAY_SUGGESTIONS: 'LEARNING_ESSAY_SUGGESTIONS', // TODO: 未实现
+  // 学习进度
+  SHOW_PROGRESS: 'LEARNING_SHOW_PROGRESS', // TODO: 未实现
+  SET_DAILY_GOAL: 'LEARNING_SET_DAILY_GOAL', // TODO: 未实现
+  SHOW_STATISTICS: 'LEARNING_SHOW_STATISTICS', // TODO: 未实现
+  SHOW_CALENDAR: 'LEARNING_SHOW_CALENDAR', // TODO: 未实现
+  MARK_MASTERED: 'LEARNING_MARK_MASTERED', // TODO: 未实现
+  SCHEDULE_REVIEW: 'LEARNING_SCHEDULE_REVIEW', // TODO: 未实现
+  // 复习模式
+  START_REVIEW: 'LEARNING_START_REVIEW', // TODO: 未实现
+  PAUSE_REVIEW: 'LEARNING_PAUSE_REVIEW', // TODO: 未实现
+  NEXT_ITEM: 'LEARNING_NEXT_ITEM', // TODO: 未实现
+  SHOW_ANSWER: 'LEARNING_SHOW_ANSWER', // TODO: 未实现
+  // 阅读与朗读
+  READ_ALOUD: 'LEARNING_READ_ALOUD', // TODO: 未实现
+  FOCUS_MODE: 'LEARNING_FOCUS_MODE', // TODO: 未实现
+  // 笔记与标注
+  TAKE_NOTES: 'LEARNING_TAKE_NOTES', // TODO: 未实现
+  HIGHLIGHT: 'LEARNING_HIGHLIGHT', // TODO: 未实现
+  // 成就与激励
+  SHOW_ACHIEVEMENTS: 'LEARNING_SHOW_ACHIEVEMENTS', // TODO: 未实现
+  SHOW_STREAK: 'LEARNING_SHOW_STREAK', // TODO: 未实现
+  // 导入导出
+  EXPORT_REPORT: 'LEARNING_EXPORT_REPORT', // TODO: 未实现
+  SHOW_HISTORY: 'LEARNING_SHOW_HISTORY', // TODO: 未实现
+} as const;
+
 /** Helper: get localized keywords array for a given command key */
 const kw = (key: string): string[] =>
   i18next.t(`command_palette:keywords.${key}`, { returnObjects: true, defaultValue: [] }) as string[];
@@ -55,7 +94,7 @@ export const learningCommands: Command[] = [
     visibleInViews: ['learning-hub'],
     isEnabled: () => isLearningCommandEnabled('learning.translate'),
     execute: () => {
-      window.dispatchEvent(new CustomEvent('LEARNING_OPEN_TRANSLATE'));
+      window.dispatchEvent(new CustomEvent(LEARNING_EVENTS.OPEN_TRANSLATE));
     },
   },
   {
@@ -69,7 +108,7 @@ export const learningCommands: Command[] = [
     visibleInViews: ['learning-hub', 'pdf-reader'],
     isEnabled: () => isLearningCommandEnabled('learning.translate-selection'),
     execute: () => {
-      window.dispatchEvent(new CustomEvent('LEARNING_TRANSLATE_SELECTION'));
+      window.dispatchEvent(new CustomEvent(LEARNING_EVENTS.TRANSLATE_SELECTION));
     },
   },
   {
@@ -83,7 +122,7 @@ export const learningCommands: Command[] = [
     visibleInViews: ['learning-hub'],
     isEnabled: () => isLearningCommandEnabled('learning.switch-language-pair'),
     execute: () => {
-      window.dispatchEvent(new CustomEvent('LEARNING_SWITCH_LANGUAGE'));
+      window.dispatchEvent(new CustomEvent(LEARNING_EVENTS.SWITCH_LANGUAGE));
     },
   },
 
@@ -99,7 +138,7 @@ export const learningCommands: Command[] = [
     visibleInViews: ['learning-hub'],
     isEnabled: () => isLearningCommandEnabled('learning.essay-grading'),
     execute: () => {
-      window.dispatchEvent(new CustomEvent('LEARNING_OPEN_ESSAY_GRADING'));
+      window.dispatchEvent(new CustomEvent(LEARNING_EVENTS.OPEN_ESSAY_GRADING));
     },
   },
   {
@@ -114,7 +153,7 @@ export const learningCommands: Command[] = [
     visibleInViews: ['learning-hub'],
     isEnabled: () => isLearningCommandEnabled('learning.grade-essay'),
     execute: () => {
-      window.dispatchEvent(new CustomEvent('LEARNING_GRADE_ESSAY'));
+      window.dispatchEvent(new CustomEvent(LEARNING_EVENTS.GRADE_ESSAY));
     },
   },
   {
@@ -128,7 +167,7 @@ export const learningCommands: Command[] = [
     visibleInViews: ['learning-hub'],
     isEnabled: () => isLearningCommandEnabled('learning.essay-suggestions'),
     execute: () => {
-      window.dispatchEvent(new CustomEvent('LEARNING_ESSAY_SUGGESTIONS'));
+      window.dispatchEvent(new CustomEvent(LEARNING_EVENTS.ESSAY_SUGGESTIONS));
     },
   },
 
@@ -143,7 +182,7 @@ export const learningCommands: Command[] = [
     priority: 90,
     isEnabled: () => isLearningCommandEnabled('learning.show-progress'),
     execute: () => {
-      window.dispatchEvent(new CustomEvent('LEARNING_SHOW_PROGRESS'));
+      window.dispatchEvent(new CustomEvent(LEARNING_EVENTS.SHOW_PROGRESS));
     },
   },
   {
@@ -156,7 +195,7 @@ export const learningCommands: Command[] = [
     priority: 89,
     isEnabled: () => isLearningCommandEnabled('learning.daily-goal'),
     execute: () => {
-      window.dispatchEvent(new CustomEvent('LEARNING_SET_DAILY_GOAL'));
+      window.dispatchEvent(new CustomEvent(LEARNING_EVENTS.SET_DAILY_GOAL));
     },
   },
   {
@@ -169,7 +208,7 @@ export const learningCommands: Command[] = [
     priority: 88,
     isEnabled: () => isLearningCommandEnabled('learning.statistics'),
     execute: () => {
-      window.dispatchEvent(new CustomEvent('LEARNING_SHOW_STATISTICS'));
+      window.dispatchEvent(new CustomEvent(LEARNING_EVENTS.SHOW_STATISTICS));
     },
   },
   {
@@ -182,7 +221,7 @@ export const learningCommands: Command[] = [
     priority: 87,
     isEnabled: () => isLearningCommandEnabled('learning.calendar'),
     execute: () => {
-      window.dispatchEvent(new CustomEvent('LEARNING_SHOW_CALENDAR'));
+      window.dispatchEvent(new CustomEvent(LEARNING_EVENTS.SHOW_CALENDAR));
     },
   },
 
@@ -197,7 +236,7 @@ export const learningCommands: Command[] = [
     visibleInViews: ['learning-hub'],
     isEnabled: () => isLearningCommandEnabled('learning.mark-mastered'),
     execute: () => {
-      window.dispatchEvent(new CustomEvent('LEARNING_MARK_MASTERED'));
+      window.dispatchEvent(new CustomEvent(LEARNING_EVENTS.MARK_MASTERED));
     },
   },
   {
@@ -210,7 +249,7 @@ export const learningCommands: Command[] = [
     priority: 83,
     isEnabled: () => isLearningCommandEnabled('learning.schedule-review'),
     execute: () => {
-      window.dispatchEvent(new CustomEvent('LEARNING_SCHEDULE_REVIEW'));
+      window.dispatchEvent(new CustomEvent(LEARNING_EVENTS.SCHEDULE_REVIEW));
     },
   },
 
@@ -226,7 +265,7 @@ export const learningCommands: Command[] = [
     priority: 80,
     isEnabled: () => isLearningCommandEnabled('learning.start-review'),
     execute: () => {
-      window.dispatchEvent(new CustomEvent('LEARNING_START_REVIEW'));
+      window.dispatchEvent(new CustomEvent(LEARNING_EVENTS.START_REVIEW));
     },
   },
   {
@@ -240,7 +279,7 @@ export const learningCommands: Command[] = [
     visibleInViews: ['learning-hub'],
     isEnabled: () => isLearningCommandEnabled('learning.pause-review'),
     execute: () => {
-      window.dispatchEvent(new CustomEvent('LEARNING_PAUSE_REVIEW'));
+      window.dispatchEvent(new CustomEvent(LEARNING_EVENTS.PAUSE_REVIEW));
     },
   },
   {
@@ -255,7 +294,7 @@ export const learningCommands: Command[] = [
     visibleInViews: ['learning-hub'],
     isEnabled: () => isLearningCommandEnabled('learning.next-item'),
     execute: () => {
-      window.dispatchEvent(new CustomEvent('LEARNING_NEXT_ITEM'));
+      window.dispatchEvent(new CustomEvent(LEARNING_EVENTS.NEXT_ITEM));
     },
   },
   {
@@ -269,7 +308,7 @@ export const learningCommands: Command[] = [
     visibleInViews: ['learning-hub'],
     isEnabled: () => isLearningCommandEnabled('learning.show-answer'),
     execute: () => {
-      window.dispatchEvent(new CustomEvent('LEARNING_SHOW_ANSWER'));
+      window.dispatchEvent(new CustomEvent(LEARNING_EVENTS.SHOW_ANSWER));
     },
   },
 
@@ -285,7 +324,7 @@ export const learningCommands: Command[] = [
     visibleInViews: ['learning-hub', 'pdf-reader'],
     isEnabled: () => isLearningCommandEnabled('learning.read-aloud'),
     execute: () => {
-      window.dispatchEvent(new CustomEvent('LEARNING_READ_ALOUD'));
+      window.dispatchEvent(new CustomEvent(LEARNING_EVENTS.READ_ALOUD));
     },
   },
   {
@@ -298,7 +337,7 @@ export const learningCommands: Command[] = [
     priority: 69,
     isEnabled: () => isLearningCommandEnabled('learning.focus-mode'),
     execute: () => {
-      window.dispatchEvent(new CustomEvent('LEARNING_FOCUS_MODE'));
+      window.dispatchEvent(new CustomEvent(LEARNING_EVENTS.FOCUS_MODE));
     },
   },
 
@@ -315,7 +354,7 @@ export const learningCommands: Command[] = [
     visibleInViews: ['learning-hub', 'pdf-reader'],
     isEnabled: () => isLearningCommandEnabled('learning.take-notes'),
     execute: () => {
-      window.dispatchEvent(new CustomEvent('LEARNING_TAKE_NOTES'));
+      window.dispatchEvent(new CustomEvent(LEARNING_EVENTS.TAKE_NOTES));
     },
   },
   {
@@ -329,7 +368,7 @@ export const learningCommands: Command[] = [
     visibleInViews: ['learning-hub', 'pdf-reader'],
     isEnabled: () => isLearningCommandEnabled('learning.highlight'),
     execute: () => {
-      window.dispatchEvent(new CustomEvent('LEARNING_HIGHLIGHT'));
+      window.dispatchEvent(new CustomEvent(LEARNING_EVENTS.HIGHLIGHT));
     },
   },
 
@@ -344,7 +383,7 @@ export const learningCommands: Command[] = [
     priority: 60,
     isEnabled: () => isLearningCommandEnabled('learning.achievements'),
     execute: () => {
-      window.dispatchEvent(new CustomEvent('LEARNING_SHOW_ACHIEVEMENTS'));
+      window.dispatchEvent(new CustomEvent(LEARNING_EVENTS.SHOW_ACHIEVEMENTS));
     },
   },
   {
@@ -357,7 +396,7 @@ export const learningCommands: Command[] = [
     priority: 59,
     isEnabled: () => isLearningCommandEnabled('learning.streak'),
     execute: () => {
-      window.dispatchEvent(new CustomEvent('LEARNING_SHOW_STREAK'));
+      window.dispatchEvent(new CustomEvent(LEARNING_EVENTS.SHOW_STREAK));
     },
   },
 
@@ -372,7 +411,7 @@ export const learningCommands: Command[] = [
     priority: 50,
     isEnabled: () => isLearningCommandEnabled('learning.export-progress'),
     execute: () => {
-      window.dispatchEvent(new CustomEvent('LEARNING_EXPORT_REPORT'));
+      window.dispatchEvent(new CustomEvent(LEARNING_EVENTS.EXPORT_REPORT));
     },
   },
   {
@@ -385,7 +424,7 @@ export const learningCommands: Command[] = [
     priority: 49,
     isEnabled: () => isLearningCommandEnabled('learning.history'),
     execute: () => {
-      window.dispatchEvent(new CustomEvent('LEARNING_SHOW_HISTORY'));
+      window.dispatchEvent(new CustomEvent(LEARNING_EVENTS.SHOW_HISTORY));
     },
   },
 ];

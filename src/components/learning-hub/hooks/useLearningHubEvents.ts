@@ -10,11 +10,12 @@
  * - learningHubOpenEssay: 从 App.tsx 打开作文
  * - learningHubOpenNote: 从 ChatV2Page 打开笔记
  * - learningHubOpenResource: 通用资源打开（如思维导图）
- * - LEARNING_OPEN_TRANSLATE / LEARNING_OPEN_ESSAY_GRADING: 命令面板事件
+ * - LEARNING_EVENTS.OPEN_TRANSLATE / LEARNING_EVENTS.OPEN_ESSAY_GRADING: 命令面板事件（常量来自 learning.commands.ts）
  * - learningHubNavigateToKnowledge: 知识库导航
  */
 
 import { useEffect, useRef } from 'react';
+import { LEARNING_EVENTS } from '@/command-palette/modules/learning.commands';
 
 // ============================================================================
 // 事件数据类型定义
@@ -166,8 +167,8 @@ export function useLearningHubEvents(handlers: LearningHubEventHandlers): void {
     window.addEventListener('learningHubOpenEssay', handleOpenEssay);
     window.addEventListener('learningHubOpenNote', handleOpenNote);
     window.addEventListener('learningHubOpenResource', handleOpenResource);
-    window.addEventListener('LEARNING_OPEN_TRANSLATE', handleCommandOpenTranslate);
-    window.addEventListener('LEARNING_OPEN_ESSAY_GRADING', handleCommandOpenEssayGrading);
+    window.addEventListener(LEARNING_EVENTS.OPEN_TRANSLATE, handleCommandOpenTranslate);
+    window.addEventListener(LEARNING_EVENTS.OPEN_ESSAY_GRADING, handleCommandOpenEssayGrading);
     window.addEventListener('learningHubNavigateToKnowledge', handleNavigateToKnowledge);
 
     // 统一清理所有事件监听器
@@ -177,8 +178,8 @@ export function useLearningHubEvents(handlers: LearningHubEventHandlers): void {
       window.removeEventListener('learningHubOpenEssay', handleOpenEssay);
       window.removeEventListener('learningHubOpenNote', handleOpenNote);
       window.removeEventListener('learningHubOpenResource', handleOpenResource);
-      window.removeEventListener('LEARNING_OPEN_TRANSLATE', handleCommandOpenTranslate);
-      window.removeEventListener('LEARNING_OPEN_ESSAY_GRADING', handleCommandOpenEssayGrading);
+      window.removeEventListener(LEARNING_EVENTS.OPEN_TRANSLATE, handleCommandOpenTranslate);
+      window.removeEventListener(LEARNING_EVENTS.OPEN_ESSAY_GRADING, handleCommandOpenEssayGrading);
       window.removeEventListener('learningHubNavigateToKnowledge', handleNavigateToKnowledge);
     };
   }, []); // 空依赖数组 - 只在挂载时注册，卸载时清理

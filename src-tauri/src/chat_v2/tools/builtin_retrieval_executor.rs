@@ -19,6 +19,7 @@ use async_trait::async_trait;
 use serde_json::{json, Value};
 
 use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
+use super::strip_tool_namespace;
 use crate::chat_v2::events::event_types;
 use crate::chat_v2::types::{SourceInfo, ToolCall, ToolResultInfo};
 use crate::tools::web_search::{do_search, SearchInput, ToolConfig as WebSearchConfig};
@@ -59,16 +60,6 @@ impl BuiltinRetrievalExecutor {
     /// 创建新的内置检索工具执行器
     pub fn new() -> Self {
         Self
-    }
-
-    /// 从工具名称中去除前缀
-    ///
-    /// 支持的前缀：builtin-, mcp_
-    fn strip_namespace(tool_name: &str) -> &str {
-        tool_name
-            .strip_prefix(BUILTIN_NAMESPACE)
-            .or_else(|| tool_name.strip_prefix("mcp_"))
-            .unwrap_or(tool_name)
     }
 
     /// 执行 VFS RAG 知识检索（统一方案）
@@ -1386,7 +1377,7 @@ impl Default for BuiltinRetrievalExecutor {
 #[async_trait]
 impl ToolExecutor for BuiltinRetrievalExecutor {
     fn can_handle(&self, tool_name: &str) -> bool {
-        let stripped = Self::strip_namespace(tool_name);
+        let stripped = strip_tool_namespace(tool_name);
         matches!(
             stripped,
             "rag_search" | "multimodal_search" | "unified_search" | "web_search"
@@ -1399,7 +1390,7 @@ impl ToolExecutor for BuiltinRetrievalExecutor {
         ctx: &ExecutionContext,
     ) -> Result<ToolResultInfo, String> {
         let start_time = Instant::now();
-        let tool_name = Self::strip_namespace(&call.name);
+        let tool_name = strip_tool_namespace(&call.name);
 
         log::debug!(
             "[BuiltinRetrievalExecutor] Executing builtin tool: {} (full: {})",
@@ -1614,19 +1605,9 @@ mod tests {
 
     #[test]
     fn test_strip_namespace() {
-        assert_eq!(
-            BuiltinRetrievalExecutor::strip_namespace("builtin-rag_search"),
-            "rag_search"
-        );
-        assert_eq!(
-            BuiltinRetrievalExecutor::strip_namespace("builtin-web_search"),
-            "web_search"
-        );
-        // 无前缀时返回原字符串
-        assert_eq!(
-            BuiltinRetrievalExecutor::strip_namespace("rag_search"),
-            "rag_search"
-        );
+        assert_eq!(strip_tool_namespace("builtin-rag_search"), "rag_search");
+        assert_eq!(strip_tool_namespace("builtin-web_search"), "web_search");
+        assert_eq!(strip_tool_namespace("rag_search"), "rag_search");
     }
 
     #[test]

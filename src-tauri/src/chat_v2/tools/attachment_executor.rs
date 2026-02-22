@@ -17,8 +17,8 @@ use async_trait::async_trait;
 use rusqlite::OptionalExtension;
 use serde_json::{json, Value};
 
-use super::builtin_retrieval_executor::BUILTIN_NAMESPACE;
 use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
+use super::strip_tool_namespace;
 use crate::chat_v2::events::event_types;
 use crate::chat_v2::repo::ChatV2Repo;
 use crate::chat_v2::resource_types::ContextRef;
@@ -47,14 +47,6 @@ impl AttachmentToolExecutor {
     /// 创建新的附件工具执行器
     pub fn new() -> Self {
         Self
-    }
-
-    /// 从工具名称中去除前缀
-    fn strip_namespace(tool_name: &str) -> &str {
-        tool_name
-            .strip_prefix(BUILTIN_NAMESPACE)
-            .or_else(|| tool_name.strip_prefix("mcp_"))
-            .unwrap_or(tool_name)
     }
 
     /// 执行附件列表
@@ -424,7 +416,7 @@ impl Default for AttachmentToolExecutor {
 #[async_trait]
 impl ToolExecutor for AttachmentToolExecutor {
     fn can_handle(&self, tool_name: &str) -> bool {
-        let stripped = Self::strip_namespace(tool_name);
+        let stripped = strip_tool_namespace(tool_name);
         matches!(stripped, "attachment_list" | "attachment_read")
     }
 
@@ -434,7 +426,7 @@ impl ToolExecutor for AttachmentToolExecutor {
         ctx: &ExecutionContext,
     ) -> Result<ToolResultInfo, String> {
         let start_time = Instant::now();
-        let tool_name = Self::strip_namespace(&call.name);
+        let tool_name = strip_tool_namespace(&call.name);
 
         log::debug!(
             "[AttachmentToolExecutor] Executing builtin tool: {} (full: {})",
@@ -546,14 +538,8 @@ mod tests {
 
     #[test]
     fn test_strip_namespace() {
-        assert_eq!(
-            AttachmentToolExecutor::strip_namespace("builtin-attachment_list"),
-            "attachment_list"
-        );
-        assert_eq!(
-            AttachmentToolExecutor::strip_namespace("attachment_read"),
-            "attachment_read"
-        );
+        assert_eq!(strip_tool_namespace("builtin-attachment_list"), "attachment_list");
+        assert_eq!(strip_tool_namespace("attachment_read"), "attachment_read");
     }
 
     #[test]

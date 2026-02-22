@@ -12,6 +12,7 @@ use crate::models::ChatMessage as LegacyChatMessage;
 
 use super::pipeline::ChatV2LLMAdapter;
 use super::resource_types::{ContentBlock, ContextRef, ContextSnapshot, SendContextRef};
+use super::vfs_resolver::escape_xml_content;
 use super::types::{
     block_status, block_types, AttachmentInput, MessageBlock, MessageSources, SendMessageRequest,
     SendOptions, TokenUsage, ToolResultInfo,
@@ -100,6 +101,10 @@ pub(crate) struct PipelineContext {
     /// 🆕 取消令牌：用于工具执行取消机制
     /// 从 Pipeline.execute() 传递，允许工具执行器响应取消请求
     pub(crate) cancellation_token: Option<CancellationToken>,
+
+    /// 🔒 安全修复：连续心跳次数追踪
+    /// 防止工具通过持续返回 continue_execution 无限绕过递归限制
+    pub(crate) heartbeat_count: u32,
 }
 
 impl PipelineContext {
@@ -158,6 +163,7 @@ impl PipelineContext {
             workspace_id: request.workspace_id.clone(),
             workspace_injection_count: 0,
             cancellation_token: None,
+            heartbeat_count: 0,
         }
     }
 
@@ -622,10 +628,11 @@ impl PipelineContext {
         let mut context_text = String::new();
 
         // 1. 首先添加用户输入（用 XML 标签包裹，确保 LLM 注意力聚焦）
+        // 安全：转义用户输入中的 XML 特殊字符，防止通过 </user_query> 闭合标签篡改 prompt 结构
         if !self.user_content.is_empty() {
             combined_text.push_str(&format!(
                 "<user_query>\n{}\n</user_query>",
-                self.user_content
+                escape_xml_content(&self.user_content)
             ));
         }
 
@@ -738,10 +745,11 @@ impl PipelineContext {
         let mut blocks: Vec<ContentBlock> = Vec::new();
 
         // 1. 用户输入在前（用 XML 标签包裹）
+        // 安全：转义用户输入中的 XML 特殊字符，防止通过 </user_query> 闭合标签篡改 prompt 结构
         if !self.user_content.is_empty() {
             blocks.push(ContentBlock::text(format!(
                 "<user_query>\n{}\n</user_query>",
-                self.user_content
+                escape_xml_content(&self.user_content)
             )));
         }
 

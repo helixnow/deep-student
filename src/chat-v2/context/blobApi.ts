@@ -48,21 +48,30 @@ export interface GetBlobOptions {
  */
 const blobCache = new Map<string, VfsBlobBase64Result>();
 
-/**
- * 最大缓存数量
- */
 const MAX_CACHE_SIZE = 50;
+const MAX_CACHE_BYTES = 100 * 1024 * 1024; // 100 MB
+const MAX_SINGLE_ITEM_BYTES = 10 * 1024 * 1024; // 10 MB
+
+let totalCacheBytes = 0;
+
+/** Estimate memory cost of a cached blob (base64 string byte length in V8). */
+function estimateItemBytes(result: VfsBlobBase64Result): number {
+  return result.base64?.length ?? 0;
+}
 
 /**
- * 清理最旧的缓存条目
+ * 淘汰最旧的缓存条目，返回释放的字节数
  */
-function evictOldestCacheEntry(): void {
-  if (blobCache.size >= MAX_CACHE_SIZE) {
-    const firstKey = blobCache.keys().next().value;
-    if (firstKey) {
-      blobCache.delete(firstKey);
-    }
+function evictOldestCacheEntry(): number {
+  const firstKey = blobCache.keys().next().value;
+  if (firstKey) {
+    const entry = blobCache.get(firstKey);
+    blobCache.delete(firstKey);
+    const freed = entry ? estimateItemBytes(entry) : 0;
+    totalCacheBytes -= freed;
+    return freed;
   }
+  return 0;
 }
 
 // ============================================================================
@@ -107,12 +116,27 @@ export async function getBlobBase64(
       blobHash,
     });
 
-    // 添加到缓存
-    evictOldestCacheEntry();
+    const itemBytes = estimateItemBytes(result);
+
+    if (itemBytes > MAX_SINGLE_ITEM_BYTES) {
+      console.debug(
+        `${LOG_PREFIX} Blob too large to cache (${(itemBytes / 1024 / 1024).toFixed(1)} MB): ${blobHash.slice(0, 8)}...`
+      );
+      return result;
+    }
+
+    while (blobCache.size > 0 && totalCacheBytes + itemBytes > MAX_CACHE_BYTES) {
+      evictOldestCacheEntry();
+    }
+    while (blobCache.size >= MAX_CACHE_SIZE) {
+      evictOldestCacheEntry();
+    }
+
     blobCache.set(blobHash, result);
+    totalCacheBytes += itemBytes;
 
     console.debug(
-      `${LOG_PREFIX} Blob fetched: ${blobHash.slice(0, 8)}..., size=${result.size} bytes`
+      `${LOG_PREFIX} Blob fetched: ${blobHash.slice(0, 8)}..., size=${result.size} bytes, cache=${(totalCacheBytes / 1024 / 1024).toFixed(1)} MB (${blobCache.size} items)`
     );
 
     return result;
@@ -185,19 +209,31 @@ export async function preloadBlobs(blobHashes: string[]): Promise<void> {
  */
 export function clearBlobCache(blobHash?: string): void {
   if (blobHash) {
-    blobCache.delete(blobHash);
+    const entry = blobCache.get(blobHash);
+    if (entry) {
+      totalCacheBytes -= estimateItemBytes(entry);
+      blobCache.delete(blobHash);
+    }
   } else {
     blobCache.clear();
+    totalCacheBytes = 0;
   }
 }
 
 /**
  * 获取缓存统计信息
  */
-export function getBlobCacheStats(): { size: number; maxSize: number } {
+export function getBlobCacheStats(): {
+  size: number;
+  maxSize: number;
+  totalBytes: number;
+  maxBytes: number;
+} {
   return {
     size: blobCache.size,
     maxSize: MAX_CACHE_SIZE,
+    totalBytes: totalCacheBytes,
+    maxBytes: MAX_CACHE_BYTES,
   };
 }
 

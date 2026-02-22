@@ -79,7 +79,9 @@ pub use registry::{get_registry, SchemaToolRegistry};
 pub use injector::inject_tool_schemas;
 
 // 重导出类型
-pub use types::{ToolCategory, ToolDefinition, ToolExecutionContext, ToolExecutionResult};
+pub use types::{
+    strip_tool_namespace, ToolCategory, ToolDefinition, ToolExecutionContext, ToolExecutionResult,
+};
 
 // 重导出执行器（文档 29 P0-1）
 pub use academic_search_executor::AcademicSearchExecutor; // 🆕 学术论文搜索执行器
@@ -162,10 +164,7 @@ pub fn is_canvas_tool(tool_name: &str) -> bool {
 /// assert_eq!(strip_canvas_builtin_prefix("note_read"), "note_read");
 /// ```
 pub fn strip_canvas_builtin_prefix(tool_name: &str) -> &str {
-    tool_name
-        .strip_prefix("builtin-")
-        .or_else(|| tool_name.strip_prefix("mcp_"))
-        .unwrap_or(tool_name)
+    strip_tool_namespace(tool_name)
 }
 
 // ============================================================================

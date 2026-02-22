@@ -1984,27 +1984,47 @@ pub async fn vfs_upload_file(
                 params.name
             );
 
-            match render_pdf_preview(&conn, &blobs_dir, &content, &PdfPreviewConfig::default()) {
-                Ok(result) => {
-                    let preview_str = result
-                        .preview_json
-                        .as_ref()
-                        .and_then(|p| serde_json::to_string(p).ok());
-                    log::info!(
-                        "[VFS::handlers] PDF preview rendered: {} pages, text_len={}, has_preview={}",
-                        result.page_count,
-                        result.extracted_text.as_ref().map(|t| t.len()).unwrap_or(0),
-                        preview_str.is_some()
-                    );
-                    (
-                        preview_str,
-                        result.extracted_text,
-                        Some(result.page_count as i32),
+            {
+                let vfs_db_clone = vfs_db.inner().clone();
+                let blobs_dir_clone = blobs_dir.to_path_buf();
+                let content_clone = content.clone();
+                match tokio::task::spawn_blocking(move || {
+                    let conn = vfs_db_clone.get_conn_safe().map_err(|e| e.to_string())?;
+                    render_pdf_preview(
+                        &conn,
+                        &blobs_dir_clone,
+                        &content_clone,
+                        &PdfPreviewConfig::default(),
                     )
-                }
-                Err(e) => {
-                    log::warn!("[VFS::handlers] PDF preview failed: {}", e);
-                    (None, None, None)
+                    .map_err(|e| e.to_string())
+                })
+                .await
+                {
+                    Ok(Ok(result)) => {
+                        let preview_str = result
+                            .preview_json
+                            .as_ref()
+                            .and_then(|p| serde_json::to_string(p).ok());
+                        log::info!(
+                            "[VFS::handlers] PDF preview rendered: {} pages, text_len={}, has_preview={}",
+                            result.page_count,
+                            result.extracted_text.as_ref().map(|t| t.len()).unwrap_or(0),
+                            preview_str.is_some()
+                        );
+                        (
+                            preview_str,
+                            result.extracted_text,
+                            Some(result.page_count as i32),
+                        )
+                    }
+                    Ok(Err(e)) => {
+                        log::warn!("[VFS::handlers] PDF preview failed: {}", e);
+                        (None, None, None)
+                    }
+                    Err(e) => {
+                        log::warn!("[VFS::handlers] PDF render task panicked: {}", e);
+                        (None, None, None)
+                    }
                 }
             }
         } else {
@@ -6589,10 +6609,24 @@ pub async fn vfs_download_paper(
     .map_err(|e| format!("Blob storage failed: {}", e))?
     .hash;
 
-    // PDF 预览 + 文本提取
-    let (preview_json, extracted_text, page_count) =
-        match render_pdf_preview(&conn, &blobs_dir, &pdf_bytes, &PdfPreviewConfig::default()) {
-            Ok(result) => {
+    // PDF 预览 + 文本提取（spawn_blocking 避免阻塞 tokio 线程）
+    let (preview_json, extracted_text, page_count) = {
+        let vfs_db_clone = vfs_db.inner().clone();
+        let blobs_dir_clone = blobs_dir.to_path_buf();
+        let pdf_bytes_clone = pdf_bytes.clone();
+        match tokio::task::spawn_blocking(move || {
+            let conn = vfs_db_clone.get_conn_safe().map_err(|e| e.to_string())?;
+            render_pdf_preview(
+                &conn,
+                &blobs_dir_clone,
+                &pdf_bytes_clone,
+                &PdfPreviewConfig::default(),
+            )
+            .map_err(|e| e.to_string())
+        })
+        .await
+        {
+            Ok(Ok(result)) => {
                 let preview_str = result
                     .preview_json
                     .as_ref()
@@ -6603,11 +6637,16 @@ pub async fn vfs_download_paper(
                     Some(result.page_count as i32),
                 )
             }
-            Err(e) => {
+            Ok(Err(e)) => {
                 log::warn!("[VFS::download_paper] PDF preview failed: {}", e);
                 (None, None, None)
             }
-        };
+            Err(e) => {
+                log::warn!("[VFS::download_paper] PDF render task panicked: {}", e);
+                (None, None, None)
+            }
+        }
+    };
 
     // 文件名
     let safe_title = params

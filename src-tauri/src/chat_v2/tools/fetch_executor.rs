@@ -22,8 +22,8 @@ use reqwest::header::{HeaderMap, HeaderValue, ACCEPT, ACCEPT_LANGUAGE, USER_AGEN
 use serde_json::{json, Value};
 use std::sync::LazyLock;
 
-use super::builtin_retrieval_executor::BUILTIN_NAMESPACE;
 use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
+use super::strip_tool_namespace;
 use crate::chat_v2::events::event_types;
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
 
@@ -374,16 +374,6 @@ impl FetchExecutor {
             .expect("Failed to create HTTP client with security settings - this is a fatal error");
 
         Self { client }
-    }
-
-    /// 从工具名称中去除前缀
-    ///
-    /// 支持的前缀：builtin-, mcp_
-    fn strip_namespace(tool_name: &str) -> &str {
-        tool_name
-            .strip_prefix(BUILTIN_NAMESPACE)
-            .or_else(|| tool_name.strip_prefix("mcp_"))
-            .unwrap_or(tool_name)
     }
 
     /// 执行 fetch 操作
@@ -786,7 +776,7 @@ impl Default for FetchExecutor {
 #[async_trait]
 impl ToolExecutor for FetchExecutor {
     fn can_handle(&self, tool_name: &str) -> bool {
-        let stripped = Self::strip_namespace(tool_name);
+        let stripped = strip_tool_namespace(tool_name);
         matches!(stripped, "web_fetch")
     }
 
@@ -796,7 +786,7 @@ impl ToolExecutor for FetchExecutor {
         ctx: &ExecutionContext,
     ) -> Result<ToolResultInfo, String> {
         let start_time = Instant::now();
-        let tool_name = Self::strip_namespace(&call.name);
+        let tool_name = strip_tool_namespace(&call.name);
 
         log::debug!(
             "[FetchExecutor] Executing builtin tool: {} (full: {})",
@@ -905,11 +895,8 @@ mod tests {
 
     #[test]
     fn test_strip_namespace() {
-        assert_eq!(
-            FetchExecutor::strip_namespace("builtin-web_fetch"),
-            "web_fetch"
-        );
-        assert_eq!(FetchExecutor::strip_namespace("web_fetch"), "web_fetch");
+        assert_eq!(strip_tool_namespace("builtin-web_fetch"), "web_fetch");
+        assert_eq!(strip_tool_namespace("web_fetch"), "web_fetch");
     }
 
     #[test]

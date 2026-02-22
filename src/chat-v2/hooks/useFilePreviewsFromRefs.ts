@@ -126,7 +126,7 @@ export function useFilePreviewsFromRefs(
 
         try {
           // 1.1 从 resources 表获取资源（res_xxx）
-          const resource = await resourceStoreApi.get(ref.resourceId, ref.hash);
+          const resource = await resourceStoreApi.get(ref.resourceId);
 
           if (!resource || !resource.data) {
             console.warn('[useFilePreviewsFromRefs] Resource not found or empty:', ref.resourceId);

@@ -1096,7 +1096,8 @@ pub fn run() {
             ,crate::chat_v2::handlers::workspace_handlers::workspace_manual_wake
             ,crate::chat_v2::handlers::workspace_handlers::workspace_cancel_sleep
             ,crate::chat_v2::handlers::workspace_handlers::workspace_restore_executions
-            // 资源库命令（统一上下文注入系统）
+            // ⚠️ DEPRECATED 资源库命令 — 前端已迁移到 VFS (vfs_* 命令)，零引用。
+            // 保留注册以兼容旧版前端，计划在下一次大版本中移除。参见 P1-#9。
             ,crate::chat_v2::handlers::resource_handlers::resource_create_or_reuse
             ,crate::chat_v2::handlers::resource_handlers::resource_get
             ,crate::chat_v2::handlers::resource_handlers::resource_get_latest
@@ -1585,6 +1586,20 @@ fn build_app_state(
         Ok(_) => {}
         Err(e) => {
             tracing::warn!("[AppSetup] Failed to recover stuck tasks: {}", e);
+        }
+    }
+
+    // ★ 启动时恢复卡在 indexing 状态的索引记录（vfs_index_units + resources）
+    match crate::vfs::VfsFullIndexingService::recover_stuck_indexing(&vfs_db) {
+        Ok(count) if count > 0 => {
+            tracing::info!(
+                "[AppSetup] Recovered {} stuck indexing records",
+                count
+            );
+        }
+        Ok(_) => {}
+        Err(e) => {
+            tracing::warn!("[AppSetup] Failed to recover stuck indexing records: {}", e);
         }
     }
 

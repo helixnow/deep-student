@@ -17,8 +17,8 @@ use std::time::Instant;
 use async_trait::async_trait;
 use serde_json::{json, Value};
 
-use super::builtin_retrieval_executor::BUILTIN_NAMESPACE;
 use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
+use super::strip_tool_namespace;
 use crate::chat_v2::events::event_types;
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
 use crate::document_parser::DocumentParser;
@@ -35,12 +35,6 @@ impl DocxToolExecutor {
         Self
     }
 
-    fn strip_namespace(tool_name: &str) -> &str {
-        tool_name
-            .strip_prefix(BUILTIN_NAMESPACE)
-            .or_else(|| tool_name.strip_prefix("mcp_"))
-            .unwrap_or(tool_name)
-    }
 
     /// 结构化读取 DOCX（输出富 Markdown，保留标题/表格/列表/格式/链接/图片占位）
     async fn execute_read_structured(
@@ -391,7 +385,7 @@ impl Default for DocxToolExecutor {
 #[async_trait]
 impl ToolExecutor for DocxToolExecutor {
     fn can_handle(&self, tool_name: &str) -> bool {
-        let stripped = Self::strip_namespace(tool_name);
+        let stripped = strip_tool_namespace(tool_name);
         matches!(
             stripped,
             "docx_read_structured"
@@ -409,7 +403,7 @@ impl ToolExecutor for DocxToolExecutor {
         ctx: &ExecutionContext,
     ) -> Result<ToolResultInfo, String> {
         let start_time = Instant::now();
-        let tool_name = Self::strip_namespace(&call.name);
+        let tool_name = strip_tool_namespace(&call.name);
 
         log::debug!(
             "[DocxToolExecutor] Executing: {} (full: {})",
@@ -489,7 +483,7 @@ impl ToolExecutor for DocxToolExecutor {
     }
 
     fn sensitivity_level(&self, tool_name: &str) -> ToolSensitivity {
-        let stripped = Self::strip_namespace(tool_name);
+        let stripped = strip_tool_namespace(tool_name);
         match stripped {
             // 读取操作低敏感
             "docx_read_structured" | "docx_extract_tables" | "docx_get_metadata"

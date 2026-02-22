@@ -6,6 +6,7 @@ use serde_json::{json, Value};
 use tauri::Emitter;
 
 use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
+use super::strip_tool_namespace;
 use crate::chat_v2::events::event_types;
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
 use crate::chat_v2::workspace::{
@@ -40,13 +41,11 @@ impl WorkspaceToolExecutor {
 
     /// 从工具名称中去除前缀
     ///
-    /// 支持的前缀：workspace_, builtin-, mcp_
+    /// 先尝试去除 workspace_ 前缀，再回退到通用前缀（builtin-, mcp_）
     fn strip_namespace(tool_name: &str) -> &str {
         tool_name
             .strip_prefix(&format!("{}_", WORKSPACE_NAMESPACE))
-            .or_else(|| tool_name.strip_prefix("builtin-"))
-            .or_else(|| tool_name.strip_prefix("mcp_"))
-            .unwrap_or(tool_name)
+            .unwrap_or_else(|| strip_tool_namespace(tool_name))
     }
 
     async fn execute_create(&self, args: &Value, ctx: &ExecutionContext) -> Result<Value, String> {

@@ -24,8 +24,8 @@ use reqwest::header::{HeaderMap, HeaderValue, USER_AGENT};
 use serde_json::{json, Value};
 use std::time::Duration;
 
-use super::builtin_retrieval_executor::BUILTIN_NAMESPACE;
 use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
+use super::strip_tool_namespace;
 use crate::chat_v2::events::event_types;
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
 
@@ -96,14 +96,6 @@ impl AcademicSearchExecutor {
             arxiv_client,
             openalex_client,
         }
-    }
-
-    /// 从工具名称中去除 builtin- 前缀
-    fn strip_namespace(tool_name: &str) -> &str {
-        tool_name
-            .strip_prefix(BUILTIN_NAMESPACE)
-            .or_else(|| tool_name.strip_prefix("mcp_"))
-            .unwrap_or(tool_name)
     }
 
     // ========================================================================
@@ -898,7 +890,7 @@ fn papers_to_sources(papers: &[Value], search_source: &str) -> Vec<Value> {
 #[async_trait]
 impl ToolExecutor for AcademicSearchExecutor {
     fn can_handle(&self, tool_name: &str) -> bool {
-        let stripped = Self::strip_namespace(tool_name);
+        let stripped = strip_tool_namespace(tool_name);
         matches!(stripped, "arxiv_search" | "scholar_search")
     }
 
@@ -908,7 +900,7 @@ impl ToolExecutor for AcademicSearchExecutor {
         ctx: &ExecutionContext,
     ) -> Result<ToolResultInfo, String> {
         let start_time = Instant::now();
-        let tool_name = Self::strip_namespace(&call.name);
+        let tool_name = strip_tool_namespace(&call.name);
 
         log::debug!(
             "[AcademicSearch] Executing: {} (full: {})",

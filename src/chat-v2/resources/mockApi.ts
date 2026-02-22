@@ -232,31 +232,17 @@ class MockResourceStoreApi implements ResourceStoreApi {
   }
 
   /**
-   * 通过 ID + hash 获取资源（精确版本）
+   * 通过 ID 获取资源
+   *
+   * VFS 模式下按 ID 获取，不需要 hash（VFS 不支持按版本查询）。
    */
-  async get(resourceId: string, hash: string): Promise<Resource | null> {
+  async get(resourceId: string): Promise<Resource | null> {
     const resource = this.store.get(resourceId);
     if (!resource) {
       return null;
     }
 
-    // 验证 hash 匹配
-    if (resource.hash !== hash) {
-      if (!IS_VITEST) {
-        console.warn(
-          LOG_PREFIX,
-          'Hash mismatch for resource:',
-          resourceId,
-          'expected:',
-          hash,
-          'actual:',
-          resource.hash
-        );
-      }
-      return null;
-    }
-
-    return { ...resource }; // 返回副本
+    return { ...resource };
   }
 
   /**

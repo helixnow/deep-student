@@ -1,3 +1,9 @@
+//! ⚠️ DEPRECATED: 资源存储已迁移到 VFS (vfs.db)。
+//! 此模块操作 chat_v2.db 中的 resources 表，已被 vfs/repos/resource_repo.rs 替代。
+//! 计划在下一次大版本中移除。参见 P1-#9 审计发现。
+//!
+//! ---
+//!
 //! 资源库数据存取层
 //!
 //! 提供 ResourceStore 的数据库 CRUD 操作。

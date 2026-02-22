@@ -106,6 +106,15 @@ const MAX_RAG_ITEMS: usize = 5;
 const MAX_MEMORY_ITEMS: usize = 3;
 const MAX_WEB_ITEMS: usize = 5;
 
+/// 单条来源内容的最大字符数（超出则截断）
+const MAX_SINGLE_SOURCE_CHARS: usize = 1500;
+/// RAG 来源的总字符上限
+const MAX_RAG_TOTAL_CHARS: usize = 6000;
+/// 记忆来源的总字符上限
+const MAX_MEMORY_TOTAL_CHARS: usize = 3000;
+/// 网络搜索来源的总字符上限
+const MAX_WEB_TOTAL_CHARS: usize = 4000;
+
 // ============================================================================
 // 来源类型标识
 // ============================================================================
@@ -146,6 +155,16 @@ impl SourceType {
 // 格式化辅助函数
 // ============================================================================
 
+/// 截断超长内容，保留 `max_chars` 个字符并追加省略标记
+fn truncate_content(content: &str, max_chars: usize) -> String {
+    if content.chars().count() <= max_chars {
+        content.to_string()
+    } else {
+        let truncated: String = content.chars().take(max_chars).collect();
+        format!("{}…（已截断）", truncated)
+    }
+}
+
 /// 格式化单个来源条目
 ///
 /// 输出格式：`[类型-编号] 内容`
@@ -184,18 +203,39 @@ fn format_web_search_item(
 }
 
 /// 格式化来源列表为 XML 块
+///
+/// 同时受 `max_items`（条目数）和 `max_total_chars`（总字符数）双重限制，
+/// 两者取最先触发的。每条内容超过 `MAX_SINGLE_SOURCE_CHARS` 会被截断。
 fn format_sources_as_xml(
     sources: &[SourceInfo],
     source_type: SourceType,
     max_items: usize,
+    max_total_chars: usize,
 ) -> Option<String> {
-    let items: Vec<String> = sources
-        .iter()
-        .filter_map(|s| s.snippet.as_ref().or(s.title.as_ref()))
-        .take(max_items)
-        .enumerate()
-        .map(|(i, content)| format_source_item(source_type, i, content))
-        .collect();
+    let mut items: Vec<String> = Vec::new();
+    let mut total_chars: usize = 0;
+
+    for s in sources.iter() {
+        let content = match s.snippet.as_ref().or(s.title.as_ref()) {
+            Some(c) => c,
+            None => continue,
+        };
+
+        if items.len() >= max_items {
+            break;
+        }
+
+        let content = truncate_content(content, MAX_SINGLE_SOURCE_CHARS);
+        let item = format_source_item(source_type, items.len(), &content);
+        let item_chars = item.chars().count();
+
+        if !items.is_empty() && total_chars + item_chars > max_total_chars {
+            break;
+        }
+
+        total_chars += item_chars;
+        items.push(item);
+    }
 
     if items.is_empty() {
         return None;
@@ -210,13 +250,40 @@ fn format_sources_as_xml(
 }
 
 /// 格式化网络搜索结果为 XML 块
-fn format_web_search_as_xml(sources: &[SourceInfo], max_items: usize) -> Option<String> {
-    let items: Vec<String> = sources
-        .iter()
-        .take(max_items)
-        .enumerate()
-        .filter_map(|(i, s)| format_web_search_item(i, s.title.as_deref(), s.snippet.as_deref()))
-        .collect();
+///
+/// 同时受 `max_items` 和 `max_total_chars` 双重限制。
+/// 每条 snippet 超过 `MAX_SINGLE_SOURCE_CHARS` 会被截断。
+fn format_web_search_as_xml(
+    sources: &[SourceInfo],
+    max_items: usize,
+    max_total_chars: usize,
+) -> Option<String> {
+    let mut items: Vec<String> = Vec::new();
+    let mut total_chars: usize = 0;
+
+    for (i, s) in sources.iter().take(max_items).enumerate() {
+        let truncated_snippet = s
+            .snippet
+            .as_deref()
+            .map(|sn| truncate_content(sn, MAX_SINGLE_SOURCE_CHARS));
+
+        let item = match format_web_search_item(
+            i,
+            s.title.as_deref(),
+            truncated_snippet.as_deref(),
+        ) {
+            Some(item) => item,
+            None => continue,
+        };
+
+        let item_chars = item.chars().count();
+        if !items.is_empty() && total_chars + item_chars > max_total_chars {
+            break;
+        }
+
+        total_chars += item_chars;
+        items.push(item);
+    }
 
     if items.is_empty() {
         return None;
@@ -345,9 +412,12 @@ impl PromptBuilder {
     pub fn with_rag_sources(mut self, sources: Option<&Vec<SourceInfo>>) -> Self {
         if let Some(src) = sources {
             if !src.is_empty() {
-                if let Some(block) =
-                    format_sources_as_xml(src, SourceType::KnowledgeBase, MAX_RAG_ITEMS)
-                {
+                if let Some(block) = format_sources_as_xml(
+                    src,
+                    SourceType::KnowledgeBase,
+                    MAX_RAG_ITEMS,
+                    MAX_RAG_TOTAL_CHARS,
+                ) {
                     self.context_blocks.push(block);
                     self.has_sources = true;
                 }
@@ -360,9 +430,12 @@ impl PromptBuilder {
     pub fn with_memory_sources(mut self, sources: Option<&Vec<SourceInfo>>) -> Self {
         if let Some(src) = sources {
             if !src.is_empty() {
-                if let Some(block) =
-                    format_sources_as_xml(src, SourceType::Memory, MAX_MEMORY_ITEMS)
-                {
+                if let Some(block) = format_sources_as_xml(
+                    src,
+                    SourceType::Memory,
+                    MAX_MEMORY_ITEMS,
+                    MAX_MEMORY_TOTAL_CHARS,
+                ) {
                     self.context_blocks.push(block);
                     self.has_sources = true;
                 }
@@ -375,7 +448,9 @@ impl PromptBuilder {
     pub fn with_web_search_sources(mut self, sources: Option<&Vec<SourceInfo>>) -> Self {
         if let Some(src) = sources {
             if !src.is_empty() {
-                if let Some(block) = format_web_search_as_xml(src, MAX_WEB_ITEMS) {
+                if let Some(block) =
+                    format_web_search_as_xml(src, MAX_WEB_ITEMS, MAX_WEB_TOTAL_CHARS)
+                {
                     self.context_blocks.push(block);
                     self.has_sources = true;
                 }

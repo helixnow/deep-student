@@ -121,6 +121,37 @@ CREATE TABLE IF NOT EXISTS subagent_task (
 CREATE INDEX IF NOT EXISTS idx_subagent_task_workspace ON subagent_task(workspace_id, status);
 "#;
 
+const CURRENT_SCHEMA_VERSION: i32 = 1;
+
+fn migrate_schema(conn: &Connection) -> Result<(), String> {
+    let current_version: i32 = conn
+        .pragma_query_value(None, "user_version", |row| row.get(0))
+        .map_err(|e| format!("Failed to read user_version: {}", e))?;
+
+    if current_version < 1 {
+        // V1: initial schema — tables already created via WORKSPACE_SCHEMA above.
+        // Future migrations go here as additional version checks.
+    }
+
+    // 未来新增迁移示例：
+    // if current_version < 2 {
+    //     conn.execute("ALTER TABLE agent ADD COLUMN priority INTEGER DEFAULT 0", [])
+    //         .map_err(|e| format!("Migration V2 failed: {}", e))?;
+    // }
+
+    if current_version < CURRENT_SCHEMA_VERSION {
+        conn.pragma_update(None, "user_version", CURRENT_SCHEMA_VERSION)
+            .map_err(|e| format!("Failed to update user_version: {}", e))?;
+        log::info!(
+            "[WorkspaceDatabase] Schema migrated from v{} to v{}",
+            current_version,
+            CURRENT_SCHEMA_VERSION
+        );
+    }
+
+    Ok(())
+}
+
 #[derive(Debug)]
 pub struct WorkspaceDatabase {
     workspace_id: WorkspaceId,
@@ -173,7 +204,12 @@ impl WorkspaceDatabase {
             }
         }
 
-        let manager = SqliteConnectionManager::file(&db_path);
+        let manager = SqliteConnectionManager::file(&db_path).with_init(|conn| {
+            conn.execute_batch(
+                "PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000;",
+            )?;
+            Ok(())
+        });
         // 🔧 P39 优化：扩大连接池以支持多子代理并行执行
         // 原 max_size=4，改为 8 以支持更多并发数据库操作
         let pool = Pool::builder()
@@ -184,10 +220,9 @@ impl WorkspaceDatabase {
         let conn = pool
             .get()
             .map_err(|e| format!("Failed to get connection: {}", e))?;
-        conn.execute_batch("PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL;")
-            .map_err(|e| format!("Failed to set pragmas: {}", e))?;
         conn.execute_batch(WORKSPACE_SCHEMA)
             .map_err(|e| format!("Failed to create schema: {}", e))?;
+        migrate_schema(&conn)?;
 
         Ok(Self {
             workspace_id: workspace_id.to_string(),

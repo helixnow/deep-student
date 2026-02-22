@@ -2899,7 +2899,7 @@ export function createChatStore(sessionId: string): StoreApi<ChatStore> {
                     }
                     // 否则从资源元数据推断
                     try {
-                      const resource = await resourceStoreApi.get(skillRef.resourceId, skillRef.hash);
+                      const resource = await resourceStoreApi.get(skillRef.resourceId);
                       // eslint-disable-next-line @typescript-eslint/no-explicit-any
                       const skillId = (resource?.metadata as any)?.skillId as string | undefined;
                       if (skillId && !inferredIds.includes(skillId)) {

@@ -24,8 +24,8 @@ pub mod migration; // 旧版数据迁移模块
 pub mod pipeline;
 pub mod prompt_builder;
 pub mod repo;
-pub mod resource_repo; // 资源库（兼容旧数据，新代码应使用 VFS）
-pub mod resource_types; // 统一上下文注入系统 - 资源类型定义
+pub mod resource_repo; // ⚠️ DEPRECATED: 资源存储已迁移到 VFS (vfs.db)，由 vfs/repos/resource_repo.rs 替代。参见 P1-#9。
+pub mod resource_types; // 统一上下文注入系统 - 资源类型定义（类型仍被 pipeline/context 使用，暂不废弃）
 pub mod skills; // 🆕 Skills 文件系统处理器
 pub mod state;
 pub mod tools;
@@ -110,6 +110,8 @@ pub use workspace::{
 };
 
 // 重导出资源库类型（统一上下文注入系统）
+// NOTE: 这些类型仍被 pipeline/context/user_message_builder 等模块使用，暂不废弃。
+// resource_repo 和 resource_handlers 已废弃，参见 P1-#9。
 pub use resource_types::{
     // 资源相关
     ContentBlock,

@@ -24,8 +24,8 @@ use serde::{Deserialize, Deserializer};
 use serde_json::{json, Value};
 use tokio::time::{sleep, Duration};
 
-use super::builtin_retrieval_executor::BUILTIN_NAMESPACE;
 use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
+use super::strip_tool_namespace;
 use crate::chat_v2::events::event_types;
 use crate::chat_v2::repo::ChatV2Repo;
 use crate::chat_v2::resource_types::ContextRef;
@@ -262,18 +262,8 @@ impl ChatAnkiToolExecutor {
         Self
     }
 
-    /// 去除工具名前缀
-    ///
-    /// 支持的前缀：builtin-, mcp_
-    fn strip_namespace(tool_name: &str) -> &str {
-        tool_name
-            .strip_prefix(BUILTIN_NAMESPACE)
-            .or_else(|| tool_name.strip_prefix("mcp_"))
-            .unwrap_or(tool_name)
-    }
-
     fn is_chatanki_tool(tool_name: &str) -> bool {
-        let stripped = Self::strip_namespace(tool_name);
+        let stripped = strip_tool_namespace(tool_name);
         matches!(
             stripped,
             "chatanki_run"
@@ -326,7 +316,7 @@ impl ToolExecutor for ChatAnkiToolExecutor {
             None,
         );
 
-        let stripped_name = Self::strip_namespace(&call.name).to_string();
+        let stripped_name = strip_tool_namespace(&call.name).to_string();
 
         match stripped_name.as_str() {
             "chatanki_check_anki_connect" => {
@@ -346,7 +336,7 @@ impl ToolExecutor for ChatAnkiToolExecutor {
     }
 
     fn sensitivity_level(&self, tool_name: &str) -> ToolSensitivity {
-        match Self::strip_namespace(tool_name) {
+        match strip_tool_namespace(tool_name) {
             // ★ 2026-02-09: chatanki_export/chatanki_sync 降为 Low
             // 理由：制卡是创建性操作（生成新卡片），非破坏性，不应打断制卡体验流
             "chatanki_export" | "chatanki_sync" => ToolSensitivity::Low,
@@ -2246,7 +2236,7 @@ impl ChatAnkiToolExecutor {
             block_type: block_types::ANKI_CARDS.to_string(),
             status: block_status::RUNNING.to_string(),
             content: None,
-            tool_name: Some(Self::strip_namespace(&call.name).to_string()),
+            tool_name: Some(strip_tool_namespace(&call.name).to_string()),
             tool_input: None,
             tool_output: Some(initial_tool_output.clone()),
             citations: None,
@@ -2298,7 +2288,7 @@ impl ChatAnkiToolExecutor {
         let window = ctx.window.clone();
         let session_id = ctx.session_id.clone();
         let message_id = ctx.message_id.clone();
-        let tool_name = Self::strip_namespace(&call.name).to_string();
+        let tool_name = strip_tool_namespace(&call.name).to_string();
         let tool_name_for_persist = tool_name.clone();
         let chat_db_for_persist = chat_db.clone();
         let anki_block_id_for_persist = anki_block_id.clone();

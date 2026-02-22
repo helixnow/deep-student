@@ -3065,15 +3065,35 @@ impl ChatV2Pipeline {
             .unwrap_or(MAX_TOOL_RECURSION)
             .clamp(1, 100); // 限制范围 1-100
 
-        // 🆕 心跳机制：检测上一轮是否有 continue_execution 标志
-        // 如果有，则绕过普通的递归限制（但仍受绝对上限 ABSOLUTE_MAX_RECURSION 限制）
-        const ABSOLUTE_MAX_RECURSION: u32 = 500; // 硬编码绝对上限，防止无限循环
+        // 🔒 安全修复：心跳机制仅信任白名单内部工具
+        // 外部/MCP 工具不能通过返回 continue_execution 绕过递归限制
+        const ABSOLUTE_MAX_RECURSION: u32 = 150;
+        const MAX_HEARTBEAT_COUNT: u32 = 50;
+        const HEARTBEAT_TOOLS: &[&str] = &["coordinator_sleep", "builtin-coordinator_sleep"];
+
         let has_heartbeat = ctx.tool_results.iter().any(|r| {
-            r.output
-                .get("continue_execution")
-                .and_then(|v| v.as_bool())
-                .unwrap_or(false)
+            HEARTBEAT_TOOLS.contains(&r.tool_name.as_str())
+                && r.output
+                    .get("continue_execution")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false)
         });
+
+        // 追踪连续心跳次数，超过上限后忽略心跳
+        if has_heartbeat {
+            ctx.heartbeat_count += 1;
+            if ctx.heartbeat_count > MAX_HEARTBEAT_COUNT {
+                log::warn!(
+                    "[ChatV2::pipeline] Heartbeat count exceeded limit: count={}, max={}, ignoring heartbeat",
+                    ctx.heartbeat_count,
+                    MAX_HEARTBEAT_COUNT
+                );
+            }
+        } else {
+            ctx.heartbeat_count = 0;
+        }
+
+        let heartbeat_effective = has_heartbeat && ctx.heartbeat_count <= MAX_HEARTBEAT_COUNT;
 
         // 绝对上限检查（不可绕过）
         if recursion_depth > ABSOLUTE_MAX_RECURSION {
@@ -3088,8 +3108,8 @@ impl ChatV2Pipeline {
             )));
         }
 
-        // 普通限制检查（可被心跳绕过）
-        if recursion_depth > max_recursion && !has_heartbeat {
+        // 普通限制检查（仅白名单工具的有效心跳可绕过）
+        if recursion_depth > max_recursion && !heartbeat_effective {
             log::warn!(
                 "[ChatV2::pipeline] Tool recursion limit reached: depth={}, max={}",
                 recursion_depth,
@@ -3903,17 +3923,18 @@ impl ChatV2Pipeline {
                     .unwrap_or(false)
             });
 
-            // 🆕 心跳机制：检测 continue_execution 标志（TodoList 永续执行）
-            // 如果任何工具返回 continue_execution: true，则绕过轮次限制继续执行
+            // 🔒 安全修复：心跳检测仅信任白名单内部工具
             let has_continue_execution = tool_results.iter().any(|r| {
-                r.output
-                    .get("continue_execution")
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(false)
+                HEARTBEAT_TOOLS.contains(&r.tool_name.as_str())
+                    && r.output
+                        .get("continue_execution")
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(false)
             });
             if has_continue_execution {
                 log::info!(
-                    "[ChatV2::pipeline] Heartbeat detected: continue_execution=true, will bypass recursion limit"
+                    "[ChatV2::pipeline] Heartbeat detected from whitelisted tool, will bypass recursion limit (count: {})",
+                    ctx.heartbeat_count
                 );
             }
 

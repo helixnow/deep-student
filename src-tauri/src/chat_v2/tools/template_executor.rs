@@ -19,12 +19,12 @@ use async_trait::async_trait;
 use serde::Deserialize;
 use serde_json::{json, Value};
 
-use super::builtin_retrieval_executor::BUILTIN_NAMESPACE;
 use super::chatanki_executor::{
     calculate_complexity_level, ensure_field_extraction_rules, import_builtin_templates_if_empty,
     normalize_template_fields,
 };
 use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
+use super::strip_tool_namespace;
 use crate::chat_v2::events::event_types;
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
 use crate::models::{CreateTemplateRequest, FieldExtractionRule, UpdateTemplateRequest};
@@ -164,16 +164,8 @@ impl TemplateDesignerExecutor {
         Self
     }
 
-    /// 去除命名空间前缀
-    fn strip_namespace(tool_name: &str) -> &str {
-        tool_name
-            .strip_prefix(BUILTIN_NAMESPACE)
-            .or_else(|| tool_name.strip_prefix("mcp_"))
-            .unwrap_or(tool_name)
-    }
-
     fn is_template_tool(tool_name: &str) -> bool {
-        let stripped = Self::strip_namespace(tool_name);
+        let stripped = strip_tool_namespace(tool_name);
         TEMPLATE_TOOLS.contains(&stripped)
     }
 
@@ -1508,7 +1500,7 @@ impl ToolExecutor for TemplateDesignerExecutor {
             None,
         );
 
-        let stripped_name = Self::strip_namespace(&call.name).to_string();
+        let stripped_name = strip_tool_namespace(&call.name).to_string();
 
         match stripped_name.as_str() {
             "template_list" => self.execute_list(call, ctx, start_time).await,
@@ -1527,7 +1519,7 @@ impl ToolExecutor for TemplateDesignerExecutor {
     }
 
     fn sensitivity_level(&self, tool_name: &str) -> ToolSensitivity {
-        match Self::strip_namespace(tool_name) {
+        match strip_tool_namespace(tool_name) {
             "template_delete" => ToolSensitivity::Medium,
             _ => ToolSensitivity::Low,
         }

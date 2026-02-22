@@ -93,7 +93,7 @@ export async function buildSendContextRefsOptimized(
         try {
           // 2.1 从资源库获取内容（带超时）
           const timeoutResult = await withTimeout(
-            resourceStoreApi.get(ref.resourceId, ref.hash),
+            resourceStoreApi.get(ref.resourceId),
             RESOURCE_LOAD_TIMEOUT_MS,
             `加载资源 ${ref.resourceId}`
           );

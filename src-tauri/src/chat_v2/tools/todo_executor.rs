@@ -22,6 +22,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
+use super::strip_tool_namespace;
 use crate::chat_v2::database::ChatV2Database;
 use crate::chat_v2::events::event_types;
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
@@ -697,25 +698,11 @@ impl Default for TodoListExecutor {
     }
 }
 
-/// 内置命名空间前缀
-/// 🔧 使用 'builtin-' 而非 'builtin:' 以兼容 DeepSeek/OpenAI API 的工具名称限制
-pub const BUILTIN_NAMESPACE: &str = "builtin-";
-
-/// 去除工具名称中的前缀
-///
-/// 支持的前缀：builtin-, mcp_
-fn strip_namespace(tool_name: &str) -> &str {
-    tool_name
-        .strip_prefix(BUILTIN_NAMESPACE)
-        .or_else(|| tool_name.strip_prefix("mcp_"))
-        .unwrap_or(tool_name)
-}
-
 #[async_trait]
 impl ToolExecutor for TodoListExecutor {
     fn can_handle(&self, tool_name: &str) -> bool {
         // 支持 builtin- 前缀和无前缀两种格式
-        let stripped = strip_namespace(tool_name);
+        let stripped = strip_tool_namespace(tool_name);
         matches!(
             stripped,
             "todo_init" | "todo_update" | "todo_add" | "todo_get"
@@ -747,7 +734,7 @@ impl ToolExecutor for TodoListExecutor {
         };
 
         // 执行工具（去除 builtin: 前缀后匹配）
-        let tool_name = strip_namespace(&call.name);
+        let tool_name = strip_tool_namespace(&call.name);
         let result = match tool_name {
             "todo_init" => self.execute_init(&call.arguments, session_key),
             "todo_update" => self.execute_update(&call.arguments, session_key),

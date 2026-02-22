@@ -184,17 +184,14 @@ export async function buildSendContextRefs(
 
           try {
             // 2.1 从资源库获取内容
-            const resource = await resourceStoreApi.get(ref.resourceId, ref.hash);
+            const resource = await resourceStoreApi.get(ref.resourceId);
 
             if (!resource) {
               console.warn(
                 LOG_PREFIX,
                 `Resource not found (attempt ${attempt + 1}/${maxRetries + 1}):`,
-                ref.resourceId,
-                'hash:',
-                ref.hash
+                ref.resourceId
               );
-              // 资源不存在时不重试
               return null;
             }
 
@@ -399,17 +396,14 @@ export async function buildSendContextRefsWithPaths(
 
           try {
             // 2.1 从资源库获取内容
-            const resource = await resourceStoreApi.get(ref.resourceId, ref.hash);
+            const resource = await resourceStoreApi.get(ref.resourceId);
 
             if (!resource) {
               console.warn(
                 LOG_PREFIX,
                 `Resource not found (attempt ${attempt + 1}/${maxRetries + 1}):`,
-                ref.resourceId,
-                'hash:',
-                ref.hash
+                ref.resourceId
               );
-              // 资源不存在时不重试
               return null;
             }
 
@@ -1231,7 +1225,7 @@ export async function resolveVfsRefs(
   // ★ 将 injectModes 添加到每个引用中
   // ★ NEW-P0 修复：仅对 Image/File/Textbook 类型注入 effectiveInjectModes，
   //   避免给 Note/Essay/Exam 等不相关类型附加无意义的 image/pdf 模式（会污染缓存键）
-  const MEDIA_REF_TYPES = new Set(['Image', 'File', 'Textbook']);
+  const MEDIA_REF_TYPES = new Set<FullVfsResourceType>(['image', 'file', 'textbook']);
   const refsWithInjectModes = refData.refs.map(ref => ({
     ...ref,
     injectModes: MEDIA_REF_TYPES.has(ref.type)

@@ -9,8 +9,8 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
-use super::builtin_retrieval_executor::BUILTIN_NAMESPACE;
 use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
+use super::strip_tool_namespace;
 use crate::chat_v2::events::event_types;
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
 
@@ -21,16 +21,6 @@ impl KnowledgeExecutor {
     /// 创建新的知识工具执行器
     pub fn new() -> Self {
         Self
-    }
-
-    /// 从工具名称中去除前缀
-    ///
-    /// 支持的前缀：builtin-, mcp_
-    fn strip_namespace(tool_name: &str) -> &str {
-        tool_name
-            .strip_prefix(BUILTIN_NAMESPACE)
-            .or_else(|| tool_name.strip_prefix("mcp_"))
-            .unwrap_or(tool_name)
     }
 
     // ========================================================================
@@ -171,7 +161,7 @@ impl Default for KnowledgeExecutor {
 #[async_trait]
 impl ToolExecutor for KnowledgeExecutor {
     fn can_handle(&self, tool_name: &str) -> bool {
-        let stripped = Self::strip_namespace(tool_name);
+        let stripped = strip_tool_namespace(tool_name);
         matches!(stripped, "knowledge_extract")
     }
 
@@ -181,7 +171,7 @@ impl ToolExecutor for KnowledgeExecutor {
         ctx: &ExecutionContext,
     ) -> Result<ToolResultInfo, String> {
         let start_time = Instant::now();
-        let tool_name = Self::strip_namespace(&call.name);
+        let tool_name = strip_tool_namespace(&call.name);
 
         log::debug!(
             "[KnowledgeExecutor] Executing tool: {} (full: {})",
@@ -391,10 +381,7 @@ mod tests {
 
     #[test]
     fn test_strip_namespace() {
-        assert_eq!(
-            KnowledgeExecutor::strip_namespace("knowledge_extract"),
-            "knowledge_extract"
-        );
+        assert_eq!(strip_tool_namespace("knowledge_extract"), "knowledge_extract");
     }
 
     #[test]

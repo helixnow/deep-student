@@ -190,13 +190,13 @@ impl EmbeddingChunker {
             } else if c.is_ascii_punctuation() || is_cjk_punctuation(c) {
                 // 标点符号（中英文）
                 punct_count += 1;
-            } else if c > '\u{4E00}' && c < '\u{9FFF}' {
+            } else if c >= '\u{4E00}' && c <= '\u{9FFF}' {
                 // CJK 统一汉字
                 chinese_count += 1;
-            } else if c > '\u{3400}' && c < '\u{4DBF}' {
+            } else if c >= '\u{3400}' && c <= '\u{4DBF}' {
                 // CJK 扩展 A
                 chinese_count += 1;
-            } else if c > '\u{F900}' && c < '\u{FAFF}' {
+            } else if c >= '\u{F900}' && c <= '\u{FAFF}' {
                 // CJK 兼容汉字
                 chinese_count += 1;
             } else if c.is_ascii() {
@@ -292,10 +292,26 @@ impl EmbeddingChunker {
             chunks.push(current_chunk.trim().to_string());
         }
 
+        // 滑动窗口重叠：将前一块末尾约 overlap_tokens 个 token 的文本 prepend 到下一块开头，
+        // 避免跨块边界的语义信息丢失，提升检索召回率。
+        if self.overlap_tokens > 0 && chunks.len() > 1 {
+            let tails: Vec<String> = chunks
+                .iter()
+                .map(|c| Self::tail_text_by_tokens(c, self.overlap_tokens).to_string())
+                .collect();
+            for i in 1..chunks.len() {
+                let tail = tails[i - 1].trim();
+                if !tail.is_empty() {
+                    chunks[i] = format!("{} {}", tail, chunks[i]);
+                }
+            }
+        }
+
         log::info!(
-            "[EmbeddingChunker] 分块完成: {} tokens -> {} 块",
+            "[EmbeddingChunker] 分块完成: {} tokens -> {} 块 (overlap={})",
             estimated_tokens,
-            chunks.len()
+            chunks.len(),
+            self.overlap_tokens,
         );
 
         chunks
@@ -420,6 +436,44 @@ impl EmbeddingChunker {
         );
 
         chunks
+    }
+
+    /// 从文本末尾提取约 `target_tokens` 个 token 对应的子串（用于分块重叠）
+    ///
+    /// 使用与 `estimate_tokens` 一致的启发式估算从尾部向前扫描。
+    fn tail_text_by_tokens(text: &str, target_tokens: usize) -> &str {
+        if target_tokens == 0 || text.is_empty() {
+            return "";
+        }
+        let chars: Vec<char> = text.chars().collect();
+        let mut tokens_acc = 0.0f32;
+        let mut start_idx = chars.len();
+
+        for i in (0..chars.len()).rev() {
+            let c = chars[i];
+            let ct = if c.is_whitespace() {
+                0.2
+            } else if c.is_ascii_punctuation() || is_cjk_punctuation(c) {
+                1.0
+            } else if (c >= '\u{4E00}' && c <= '\u{9FFF}')
+                || (c >= '\u{3400}' && c <= '\u{4DBF}')
+                || (c >= '\u{F900}' && c <= '\u{FAFF}')
+            {
+                1.5
+            } else if c.is_ascii() {
+                0.3
+            } else {
+                1.5
+            };
+            tokens_acc += ct;
+            start_idx = i;
+            if tokens_acc >= target_tokens as f32 {
+                break;
+            }
+        }
+
+        let byte_offset: usize = chars[..start_idx].iter().map(|c| c.len_utf8()).sum();
+        &text[byte_offset..]
     }
 
     /// 聚合多个块的嵌入向量
@@ -576,6 +630,47 @@ mod tests {
         // 平均后应该接近 [0.5, 0.5, 0.0]，归一化后接近 [0.707, 0.707, 0.0]
         assert!(result.len() == 3);
         assert!((result[0] - result[1]).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_tail_text_by_tokens() {
+        let text = "前面一些文本。这是尾部内容";
+        let tail = EmbeddingChunker::tail_text_by_tokens(text, 3);
+        assert!(!tail.is_empty());
+        assert!(text.ends_with(tail));
+
+        // zero overlap returns empty
+        assert_eq!(EmbeddingChunker::tail_text_by_tokens(text, 0), "");
+        assert_eq!(EmbeddingChunker::tail_text_by_tokens("", 10), "");
+    }
+
+    #[test]
+    fn test_chunk_text_overlap() {
+        // overlap = 5 tokens, max = 10 tokens → chunks should overlap
+        let chunker = EmbeddingChunker::new(10).with_overlap(5);
+        let text = "这是第一段内容。\n\n这是第二段内容。\n\n这是第三段内容。";
+        let chunks = chunker.chunk_text(text);
+
+        if chunks.len() >= 2 {
+            // 第二块应包含第一块末尾的重叠文本
+            let tail_of_first =
+                EmbeddingChunker::tail_text_by_tokens(&chunks[0], 5);
+            // The overlap text (trimmed) should appear at the start of the next chunk
+            let tail_trimmed = tail_of_first.trim();
+            assert!(
+                chunks[1].starts_with(tail_trimmed),
+                "chunk[1] should start with overlap from chunk[0]"
+            );
+        }
+    }
+
+    #[test]
+    fn test_chunk_text_no_overlap_when_single_chunk() {
+        let chunker = EmbeddingChunker::new(1000).with_overlap(50);
+        let text = "短文本不需要分块";
+        let chunks = chunker.chunk_text(text);
+        assert_eq!(chunks.len(), 1);
+        assert_eq!(chunks[0], text);
     }
 
     #[test]

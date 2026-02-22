@@ -4,8 +4,8 @@ use std::time::Instant;
 use async_trait::async_trait;
 use serde_json::{json, Value};
 
-use super::builtin_retrieval_executor::BUILTIN_NAMESPACE;
 use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
+use super::strip_tool_namespace;
 use crate::chat_v2::events::event_types;
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
 use crate::memory::{MemoryService, WriteMode};
@@ -26,19 +26,9 @@ impl MemoryToolExecutor {
         Self
     }
 
-    /// 去除工具名前缀
-    ///
-    /// 支持的前缀：builtin-, mcp_
-    fn strip_namespace(tool_name: &str) -> &str {
-        tool_name
-            .strip_prefix(BUILTIN_NAMESPACE)
-            .or_else(|| tool_name.strip_prefix("mcp_"))
-            .unwrap_or(tool_name)
-    }
-
     /// 检查工具名是否为 Memory 工具
     fn is_memory_tool(tool_name: &str) -> bool {
-        let stripped = Self::strip_namespace(tool_name);
+        let stripped = strip_tool_namespace(tool_name);
         matches!(
             stripped,
             "memory_search"
@@ -573,7 +563,7 @@ impl ToolExecutor for MemoryToolExecutor {
             None,
         );
 
-        let stripped_name = Self::strip_namespace(&call.name);
+        let stripped_name = strip_tool_namespace(&call.name);
 
         let result = match stripped_name {
             "memory_search" => self.execute_search(call, ctx).await,
@@ -624,7 +614,7 @@ impl ToolExecutor for MemoryToolExecutor {
     }
 
     fn sensitivity_level(&self, tool_name: &str) -> ToolSensitivity {
-        let stripped = Self::strip_namespace(tool_name);
+        let stripped = strip_tool_namespace(tool_name);
         match stripped {
             "memory_delete" => ToolSensitivity::Medium, // 删除操作需要更高敏感度
             _ => ToolSensitivity::Low,

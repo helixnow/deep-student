@@ -80,14 +80,14 @@ impl Default for IndexingConfig {
     }
 }
 
+/// Hybrid search uses LanceDB's built-in RRF (Reciprocal Rank Fusion) strategy;
+/// no user-configurable weights are needed.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SearchConfig {
     pub default_top_k: u32,
     pub enable_hybrid: bool,
     pub enable_reranking: bool,
-    pub fts_weight: f64,
-    pub vector_weight: f64,
 }
 
 impl Default for SearchConfig {
@@ -96,8 +96,6 @@ impl Default for SearchConfig {
             default_top_k: 10,
             enable_hybrid: true,
             enable_reranking: false,
-            fts_weight: 0.3,
-            vector_weight: 0.7,
         }
     }
 }
@@ -1045,10 +1043,12 @@ fn resolve_indexable_content(
                     // 缓存 extracted_text 到 resources.ocr_text（如果 ocr_text 为空）
                     if ocr_len == 0 {
                         if let Some(ref text) = extracted_text {
-                            let _ = conn.execute(
+                            if let Err(e) = conn.execute(
                                 "UPDATE resources SET ocr_text = ?1 WHERE id = ?2 AND (ocr_text IS NULL OR ocr_text = '')",
                                 rusqlite::params![text, resource.id],
-                            );
+                            ) {
+                                log::warn!("[VfsIndexing] Failed to cache ocr_text for resource {}: {}", resource.id, e);
+                            }
                         }
                     }
                     return extracted_text;
@@ -1574,8 +1574,6 @@ impl VfsIndexingService {
                 "search.enable_reranking",
                 false,
             )?,
-            fts_weight: VfsIndexingConfigRepo::get_f64(&self.db, "search.fts_weight", 0.3)?,
-            vector_weight: VfsIndexingConfigRepo::get_f64(&self.db, "search.vector_weight", 0.7)?,
         })
     }
 
@@ -1674,11 +1672,13 @@ impl VfsIndexingService {
                 |row| row.get(0),
             ).unwrap_or_else(|_| {
                 let new_unit_id = format!("unit_{}", nanoid::nanoid!(10));
-                let _ = conn.execute(
+                if let Err(e) = conn.execute(
                     r#"INSERT INTO vfs_index_units (id, resource_id, unit_index, text_content, text_required, text_state, mm_required, mm_state, created_at, updated_at)
                     VALUES (?1, ?2, 0, '', 1, 'indexing', 0, 'disabled', ?3, ?3)"#,
                     rusqlite::params![new_unit_id, resource_id, now],
-                );
+                ) {
+                    log::warn!("[VfsIndexing] Failed to insert index unit for resource {}: {}", resource_id, e);
+                }
                 new_unit_id
             });
 
@@ -1832,7 +1832,76 @@ impl VfsFullIndexingService {
     /// ★ 2026-02-19：设置 AppHandle，用于 auto-OCR 期间发送细粒度进度事件
     pub fn set_app_handle(&mut self, app_handle: AppHandle) {
         self.app_handle = Some(app_handle);
- }
+    }
+
+    /// 恢复崩溃导致卡在 indexing 状态的记录。
+    ///
+    /// 应用重启后，数据库中可能存在处于 `indexing` 中间状态的记录：
+    /// - `vfs_index_units.text_state = 'indexing'`
+    /// - `vfs_index_units.mm_state = 'indexing'`
+    /// - `resources.index_state = 'indexing'`
+    ///
+    /// 这些记录不会被 pending 队列重新拾取。此方法将它们重置为 pending。
+    pub fn recover_stuck_indexing(db: &VfsDatabase) -> VfsResult<usize> {
+        let conn = db.get_conn_safe()?;
+        let now = chrono::Utc::now().timestamp_millis();
+
+        let text_units = conn
+            .execute(
+                r#"UPDATE vfs_index_units
+                   SET text_state = 'pending',
+                       text_error = 'recovered: interrupted by crash',
+                       updated_at = ?1
+                   WHERE text_state = 'indexing'"#,
+                rusqlite::params![now],
+            )
+            .unwrap_or_else(|e| {
+                log::warn!("[VfsFullIndexingService] Failed to recover stuck state: {}", e);
+                0
+            });
+
+        let mm_units = conn
+            .execute(
+                r#"UPDATE vfs_index_units
+                   SET mm_state = 'pending',
+                       mm_error = 'recovered: interrupted by crash',
+                       updated_at = ?1
+                   WHERE mm_state = 'indexing'"#,
+                rusqlite::params![now],
+            )
+            .unwrap_or_else(|e| {
+                log::warn!("[VfsFullIndexingService] Failed to recover stuck state: {}", e);
+                0
+            });
+
+        let resources = conn
+            .execute(
+                r#"UPDATE resources
+                   SET index_state = 'pending',
+                       index_error = 'recovered: interrupted by crash',
+                       updated_at = ?1
+                   WHERE index_state = 'indexing'"#,
+                rusqlite::params![now],
+            )
+            .unwrap_or_else(|e| {
+                log::warn!("[VfsFullIndexingService] Failed to recover stuck state: {}", e);
+                0
+            });
+
+        let total = text_units + mm_units + resources;
+
+        if total > 0 {
+            warn!(
+                "[VfsFullIndexingService] Recovered {} stuck indexing records at startup \
+                 (text_units={}, mm_units={}, resources={})",
+                total, text_units, mm_units, resources
+            );
+        } else {
+            debug!("[VfsFullIndexingService] No stuck indexing records found at startup");
+        }
+
+        Ok(total)
+    }
 
     /// 同步资源到 vfs_index_units 表（VFS 统一索引架构）
     ///
@@ -2034,9 +2103,8 @@ impl VfsFullIndexingService {
         // 2. 设置索引状态为进行中
         VfsIndexStateRepo::mark_indexing(&self.db, resource_id)?;
 
-        // 2.1 清理该资源历史 text 向量，避免维度切换后旧维度残留污染检索结果。
-        // SQLite 元数据会在后续流程中重建，这里先确保 Lance 侧不会混入旧批次数据。
-        self.pipeline.delete_resource_index(resource_id).await?;
+        // 2.1 旧向量删除已移至嵌入生成成功之后（见下方 index_chunks Ok 分支），
+        // 避免先删后写导致嵌入生成失败时资源在 LanceDB 中完全丢失的检索空窗。
 
         // 3. 提取内容
         // ★ 核心修复：移除 resource.data.is_empty() 提前检查
@@ -2181,6 +2249,25 @@ impl VfsFullIndexingService {
                 let dim = index_result.dim;
                 let embedding_ids = index_result.embedding_ids;
 
+                // ★ 原子性修复：新嵌入已成功写入 Lance，现在安全删除旧批次向量。
+                // 使用 keep_ids 排除刚写入的 embedding_id，确保新数据不被误删。
+                // 即使删除失败也仅导致旧向量残留（搜索结果可能重复），不会丢失新数据。
+                if let Err(e) = self
+                    .lance_store
+                    .delete_by_resource_except_ids(
+                        MODALITY_TEXT,
+                        resource_id,
+                        &embedding_ids,
+                    )
+                    .await
+                {
+                    warn!(
+                        "[VfsFullIndexingService] Failed to clean old vectors for {}: {} \
+                         (non-fatal, old vectors may remain)",
+                        resource_id, e
+                    );
+                }
+
                 let metadata_sync_result: VfsResult<()> = (|| {
                     // 6. ★ 审计修复：维度范围校验
                     if dim > 0 {
@@ -2219,16 +2306,18 @@ impl VfsFullIndexingService {
                         |row| row.get(0),
                     ).unwrap_or_else(|_| {
                         let new_unit_id = format!("unit_{}", nanoid::nanoid!(10));
-                        let _ = conn.execute(
+                        if let Err(e) = conn.execute(
                             r#"INSERT INTO vfs_index_units (id, resource_id, unit_index, text_content, text_required, text_state, mm_required, mm_state, created_at, updated_at)
                             VALUES (?1, ?2, 0, '', 1, 'indexed', 0, 'disabled', ?3, ?3)"#,
                             rusqlite::params![new_unit_id, resource_id, now],
-                        );
+                        ) {
+                            log::warn!("[VfsIndexing] Failed to insert index unit for resource {}: {}", resource_id, e);
+                        }
                         new_unit_id
                     });
 
                         // 标记该 unit 进入 indexing，并更新维度（避免删除检查误判旧维度）
-                        let _ = conn.execute(
+                        if let Err(e) = conn.execute(
                             "UPDATE vfs_index_units SET
                                 text_state = 'indexing',
                                 text_error = NULL,
@@ -2236,7 +2325,9 @@ impl VfsFullIndexingService {
                                 updated_at = ?2
                             WHERE id = ?3",
                             rusqlite::params![dim, now, unit_id],
-                        );
+                        ) {
+                            log::warn!("[VfsIndexing] Failed to update text_state to 'indexing' for unit {}: {}", unit_id, e);
+                        }
 
                         // 删除该 unit 的旧 text segments
                         index_segment_repo::delete_by_unit_and_modality(
@@ -2295,7 +2386,7 @@ impl VfsFullIndexingService {
                     let sync_error_msg = sync_err.to_string();
                     if let Ok(conn) = self.db.get_conn_safe() {
                         let now = chrono::Utc::now().timestamp_millis();
-                        let _ = conn.execute(
+                        if let Err(e) = conn.execute(
                             "UPDATE vfs_index_units SET
                                 text_state = 'failed',
                                 text_error = ?1,
@@ -2303,7 +2394,9 @@ impl VfsFullIndexingService {
                                 updated_at = ?2
                             WHERE resource_id = ?3 AND text_required = 1",
                             rusqlite::params![sync_error_msg, now, resource_id],
-                        );
+                        ) {
+                            log::warn!("[VfsIndexing] Failed to update text_state to 'failed' for resource {}: {}", resource_id, e);
+                        }
                     }
                     error!(
                         "[VfsFullIndexingService] Metadata sync failed after Lance write for {}: {}. Rolling back Lance vectors...",
@@ -2365,7 +2458,7 @@ impl VfsFullIndexingService {
                                         {
                                             Ok(extra_result) => {
                                                 let now = chrono::Utc::now().timestamp_millis();
-                                                let _ = conn.execute(
+                                                if let Err(e) = conn.execute(
                                                     "UPDATE vfs_index_units SET
                                                         text_state = 'indexing',
                                                         text_error = NULL,
@@ -2377,7 +2470,9 @@ impl VfsFullIndexingService {
                                                         now,
                                                         unit.id
                                                     ],
-                                                );
+                                                ) {
+                                                    log::warn!("[VfsIndexing] Failed to update text_state to 'indexing' for unit {}: {}", unit.id, e);
+                                                }
                                                 index_segment_repo::delete_by_unit_and_modality(
                                                     &conn,
                                                     &unit.id,
@@ -2426,10 +2521,12 @@ impl VfsFullIndexingService {
                                                     unit.id, resource_id, e
                                                 );
                                                 let now = chrono::Utc::now().timestamp_millis();
-                                                let _ = conn.execute(
+                                                if let Err(db_err) = conn.execute(
                                                     "UPDATE vfs_index_units SET text_state = 'failed', text_error = ?1, updated_at = ?2 WHERE id = ?3",
                                                     rusqlite::params![e.to_string(), now, unit.id],
-                                                );
+                                                ) {
+                                                    log::warn!("[VfsIndexing] Failed to update text_state to 'failed' for unit {}: {}", unit.id, db_err);
+                                                }
                                             }
                                         }
                                     }
@@ -2465,7 +2562,7 @@ impl VfsFullIndexingService {
                 );
                 if let Ok(conn) = self.db.get_conn_safe() {
                     let now = chrono::Utc::now().timestamp_millis();
-                    let _ = conn.execute(
+                    if let Err(db_err) = conn.execute(
                         "UPDATE vfs_index_units SET
                             text_state = 'failed',
                             text_error = ?1,
@@ -2473,7 +2570,9 @@ impl VfsFullIndexingService {
                             updated_at = ?2
                         WHERE resource_id = ?3 AND text_required = 1",
                         rusqlite::params![e.to_string(), now, resource_id],
-                    );
+                    ) {
+                        log::warn!("[VfsIndexing] Failed to update text_state to 'failed' for resource {}: {}", resource_id, db_err);
+                    }
                 }
                 VfsIndexStateRepo::mark_failed(&self.db, resource_id, &e.to_string())?;
                 Err(e)
@@ -2575,10 +2674,12 @@ impl VfsFullIndexingService {
 
                         if !ocr_text.is_empty() {
                             // 缓存到 resources.ocr_text
-                            let _ = conn.execute(
+                            if let Err(e) = conn.execute(
                                 "UPDATE resources SET ocr_text = ?1 WHERE id = ?2",
                                 rusqlite::params![ocr_text, resource.id],
-                            );
+                            ) {
+                                log::warn!("[VfsIndexing] Failed to cache ocr_text for resource {}: {}", resource.id, e);
+                            }
                             return Ok(Some(ocr_text));
                         }
                     }
@@ -2696,10 +2797,12 @@ impl VfsFullIndexingService {
                 if let Some(text) = join_ocr_pages_text(&pages, "第", "页") {
                     if !text.is_empty() {
                         // 缓存到 resources.ocr_text（如果还没有）
-                        let _ = conn.execute(
+                        if let Err(e) = conn.execute(
                             "UPDATE resources SET ocr_text = ?1 WHERE id = ?2 AND (ocr_text IS NULL OR ocr_text = '')",
                             rusqlite::params![text, resource.id],
-                        );
+                        ) {
+                            log::warn!("[VfsIndexing] Failed to cache ocr_text for resource {}: {}", resource.id, e);
+                        }
                         return Ok(Some(text));
                     }
                 }
@@ -2921,10 +3024,12 @@ impl VfsFullIndexingService {
             .join("\n\n");
 
         if !combined_text.is_empty() {
-            let _ = conn.execute(
+            if let Err(e) = conn.execute(
                 "UPDATE resources SET ocr_text = ?1, updated_at = datetime('now') WHERE id = ?2",
                 rusqlite::params![combined_text, resource.id],
-            );
+            ) {
+                log::warn!("[VfsIndexing] Failed to cache ocr_text for resource {}: {}", resource.id, e);
+            }
         }
 
         // 10. 更新 processing_progress 中的 ready_modes（标记 ocr 已就绪）
@@ -2943,10 +3048,12 @@ impl VfsFullIndexingService {
                 if !progress.ready_modes.contains(&"ocr".to_string()) {
                     progress.ready_modes.push("ocr".to_string());
                     if let Ok(new_json) = serde_json::to_string(&progress) {
-                        let _ = conn.execute(
+                        if let Err(e) = conn.execute(
                             "UPDATE files SET processing_progress = ?1, updated_at = datetime('now') WHERE id = ?2",
                             rusqlite::params![new_json, file_id],
-                        );
+                        ) {
+                            log::warn!("[VfsIndexing] Failed to update processing_progress for file {}: {}", file_id, e);
+                        }
                     }
                 }
             }
@@ -3057,10 +3164,12 @@ impl VfsFullIndexingService {
             if !ocr_text.is_empty() {
                 // .await 之后重新获取连接写入
                 let conn = self.db.get_conn_safe()?;
-                let _ = conn.execute(
+                if let Err(e) = conn.execute(
                     "UPDATE resources SET ocr_text = ?1 WHERE id = ?2",
                     rusqlite::params![ocr_text, resource.id],
-                );
+                ) {
+                    log::warn!("[VfsIndexing] Failed to cache ocr_text for resource {}: {}", resource.id, e);
+                }
                 return Ok(Some(ocr_text));
             }
         }
@@ -3203,11 +3312,13 @@ impl VfsFullIndexingService {
                             |row| row.get(0),
                         ).unwrap_or_else(|_| {
                             let new_unit_id = format!("unit_{}", nanoid::nanoid!(10));
-                            let _ = conn.execute(
+                            if let Err(e) = conn.execute(
                                 r#"INSERT INTO vfs_index_units (id, resource_id, unit_index, text_content, text_required, text_state, mm_required, mm_state, created_at, updated_at)
                                 VALUES (?1, ?2, 0, '', 1, 'indexing', 0, 'disabled', ?3, ?3)"#,
                                 rusqlite::params![new_unit_id, question_id, now],
-                            );
+                            ) {
+                                log::warn!("[VfsIndexing] Failed to insert index unit for question {}: {}", question_id, e);
+                            }
                             new_unit_id
                         });
 

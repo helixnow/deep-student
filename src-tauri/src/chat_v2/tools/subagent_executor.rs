@@ -6,6 +6,7 @@ use serde_json::{json, Value};
 use tauri::Emitter;
 
 use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
+use super::strip_tool_namespace;
 use super::workspace_executor::WORKSPACE_WORKER_READY_EVENT;
 use crate::chat_v2::events::event_types;
 use crate::chat_v2::repo::ChatV2Repo;
@@ -21,16 +22,6 @@ pub struct SubagentExecutor {
 impl SubagentExecutor {
     pub fn new(coordinator: Arc<WorkspaceCoordinator>) -> Self {
         Self { coordinator }
-    }
-
-    /// 从工具名称中去除前缀
-    ///
-    /// 支持的前缀：builtin-, mcp_
-    fn strip_namespace(tool_name: &str) -> &str {
-        tool_name
-            .strip_prefix("builtin-")
-            .or_else(|| tool_name.strip_prefix("mcp_"))
-            .unwrap_or(tool_name)
     }
 
     async fn execute_subagent_call(
@@ -210,7 +201,7 @@ impl SubagentExecutor {
 #[async_trait]
 impl ToolExecutor for SubagentExecutor {
     fn can_handle(&self, tool_name: &str) -> bool {
-        let name = Self::strip_namespace(tool_name);
+        let name = strip_tool_namespace(tool_name);
         name == SUBAGENT_TOOL_NAME
     }
 
