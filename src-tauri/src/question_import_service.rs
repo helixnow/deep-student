@@ -36,8 +36,26 @@ use crate::models::{
     AppError, Difficulty, ExamCardPreview, ExamSheetPreviewPage, ExamSheetPreviewResult, QuestionStatus, QuestionType, SourceType,
 };
 use crate::vfs::database::VfsDatabase;
-use crate::vfs::repos::{CreateQuestionParams, QuestionFilters, QuestionImage, VfsBlobRepo, VfsExamRepo, VfsFileRepo, VfsQuestionRepo};
+use crate::vfs::repos::{CreateQuestionParams, ImportingSession, QuestionFilters, QuestionImage, VfsBlobRepo, VfsExamRepo, VfsFileRepo, VfsQuestionRepo};
 use crate::vfs::types::VfsCreateExamSheetParams;
+
+/// 断点续导：持久化的导入中间状态
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ImportCheckpointState {
+    /// OCR/提取后的完整文本（最昂贵的中间产物）
+    pub text_content: String,
+    /// 总 chunk 数
+    pub chunks_total: usize,
+    /// 已完成的 chunk 数（0-indexed，表示 chunks 0..chunks_completed 已完成）
+    pub chunks_completed: usize,
+    /// 解析模型 ID
+    pub model_config_id: Option<String>,
+    /// 原始图片 blob 哈希列表
+    #[serde(default)]
+    pub source_image_hashes: Vec<String>,
+    /// 题目集名称
+    pub qbank_name: String,
+}
 
 /// 流式导入进度事件
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1450,6 +1468,7 @@ impl QuestionImportService {
             .unwrap_or_else(|| "导入的题目集".to_string());
 
         let is_new_session = request.session_id.is_none();
+        let checkpoint_model_config_id = request.model_config_id.clone();
 
         // 提前创建会话记录（异常中断时已保存的题目不会丢失）
         // S-007 fix: 使用 create_exam_sheet 返回的真实 exam_id，而非 UUID
@@ -1517,6 +1536,23 @@ impl QuestionImportService {
                 .map_err(|e| AppError::database(format!("创建题目集失败: {}", e)))?;
             exam_sheet.id // 使用真实的 exam_id（exam_ + nanoid 格式）
         };
+
+        // ★ 断点续导：持久化 OCR/提取后的文本和初始 chunk 进度
+        if is_new_session {
+            let checkpoint = ImportCheckpointState {
+                text_content: text_content.clone(),
+                chunks_total: total_chunks,
+                chunks_completed: 0,
+                model_config_id: checkpoint_model_config_id,
+                source_image_hashes: source_image_hashes.clone(),
+                qbank_name: qbank_name.clone(),
+            };
+            if let Ok(state_json) = serde_json::to_value(&checkpoint) {
+                if let Err(e) = VfsExamRepo::update_import_state(vfs_db, &session_id, &state_json) {
+                    log::warn!("[QuestionImport] 保存导入断点失败: {}", e);
+                }
+            }
+        }
 
         if let Some(ref tx) = progress_tx {
             let _ = tx.send(QuestionImportProgress::SessionCreated {
@@ -1602,6 +1638,18 @@ impl QuestionImportService {
                     }
                 }
             }
+
+            // ★ 断点续导：每完成一个 chunk 更新进度
+            if is_new_session {
+                if let Ok(Some(state_str)) = VfsExamRepo::get_import_state(vfs_db, &session_id) {
+                    if let Ok(mut checkpoint) = serde_json::from_str::<ImportCheckpointState>(&state_str) {
+                        checkpoint.chunks_completed = chunk_idx + 1;
+                        if let Ok(state_json) = serde_json::to_value(&checkpoint) {
+                            let _ = VfsExamRepo::update_import_state(vfs_db, &session_id, &state_json);
+                        }
+                    }
+                }
+            }
         }
 
         // 即使没有解析出题目，如果已创建会话，也更新状态
@@ -1631,6 +1679,11 @@ impl QuestionImportService {
             )
             .await?;
 
+        // ★ 断点续导：完成后清除中间状态
+        if let Err(e) = VfsExamRepo::clear_import_state(vfs_db, &session_id) {
+            log::warn!("[QuestionImport] 清除导入断点失败: {}", e);
+        }
+
         if let Some(ref tx) = progress_tx {
             let _ = tx.send(QuestionImportProgress::Completed {
                 session_id: result.session_id.clone(),
@@ -1640,6 +1693,285 @@ impl QuestionImportService {
         }
 
         Ok(result)
+    }
+
+    /// 断点续导：从中断处继续导入
+    ///
+    /// 读取 import_state_json 中保存的 OCR 文本和 chunk 进度，
+    /// 跳过已完成的 chunks，从下一个 chunk 继续解析。
+    pub async fn resume_import_stream(
+        &self,
+        vfs_db: &VfsDatabase,
+        session_id: &str,
+        progress_tx: Option<UnboundedSender<QuestionImportProgress>>,
+    ) -> Result<ImportResult, AppError> {
+        // 1. 读取 checkpoint
+        let state_str = VfsExamRepo::get_import_state(vfs_db, session_id)
+            .map_err(|e| AppError::database(format!("读取导入断点失败: {}", e)))?
+            .ok_or_else(|| AppError::validation("该题目集没有可恢复的导入状态"))?;
+
+        let checkpoint: ImportCheckpointState = serde_json::from_str(&state_str)
+            .map_err(|e| AppError::validation(format!("解析导入断点失败: {}", e)))?;
+
+        log::info!(
+            "[QuestionImport] 恢复导入: session={}, chunks_completed={}/{}",
+            session_id, checkpoint.chunks_completed, checkpoint.chunks_total
+        );
+
+        // 2. 重新分块（使用相同算法，保证 chunk 边界一致）
+        let max_tokens_per_chunk = 6000;
+        let estimated_tokens = checkpoint.text_content.chars().count() / 2;
+        let chunks = if estimated_tokens <= max_tokens_per_chunk {
+            vec![checkpoint.text_content.clone()]
+        } else {
+            self.segment_document(&checkpoint.text_content, max_tokens_per_chunk)
+        };
+
+        let total_chunks = chunks.len();
+        let qbank_name = checkpoint.qbank_name.clone();
+        let start_chunk = checkpoint.chunks_completed;
+
+        // 安全检查：chunk 数量应一致
+        if total_chunks != checkpoint.chunks_total {
+            log::warn!(
+                "[QuestionImport] chunk 数量不一致: 保存={}, 重新分块={}, 将使用重新分块结果",
+                checkpoint.chunks_total, total_chunks
+            );
+        }
+
+        if start_chunk >= total_chunks {
+            // 所有 chunk 已完成，直接 finalize
+            log::info!("[QuestionImport] 所有 chunk 已完成，直接 finalize");
+            let result = self
+                .finalize_session(vfs_db, &[], session_id, &qbank_name, true)
+                .await?;
+            if let Err(e) = VfsExamRepo::clear_import_state(vfs_db, session_id) {
+                log::warn!("[QuestionImport] 清除导入断点失败: {}", e);
+            }
+            if let Some(ref tx) = progress_tx {
+                let _ = tx.send(QuestionImportProgress::Completed {
+                    session_id: result.session_id.clone(),
+                    name: result.name.clone(),
+                    total_questions: result.total_questions,
+                });
+            }
+            return Ok(result);
+        }
+
+        if let Some(ref tx) = progress_tx {
+            let _ = tx.send(QuestionImportProgress::SessionCreated {
+                session_id: session_id.to_string(),
+                name: qbank_name.clone(),
+                total_chunks,
+            });
+        }
+
+        // 3. 构建 source images
+        let source_question_images =
+            Self::build_source_question_images(vfs_db, &checkpoint.source_image_hashes);
+
+        // 4. 计算已有题目数作为 total_parsed 起点
+        let existing_count = VfsQuestionRepo::list_questions(
+            vfs_db,
+            session_id,
+            &QuestionFilters::default(),
+            1,
+            1, // 只需 total
+        )
+        .map(|r| r.total as usize)
+        .unwrap_or(0);
+
+        let mut all_questions: Vec<Value> = Vec::new();
+        let mut total_parsed = existing_count;
+
+        // 5. 从 start_chunk 继续处理
+        for (chunk_idx, chunk) in chunks.iter().enumerate() {
+            if chunk_idx < start_chunk {
+                // 跳过已完成的 chunk，发送跳过事件
+                if let Some(ref tx) = progress_tx {
+                    let _ = tx.send(QuestionImportProgress::ChunkCompleted {
+                        chunk_index: chunk_idx,
+                        total_chunks,
+                        questions_in_chunk: 0,
+                        total_parsed,
+                    });
+                }
+                continue;
+            }
+
+            if let Some(ref tx) = progress_tx {
+                let _ = tx.send(QuestionImportProgress::ChunkStart {
+                    chunk_index: chunk_idx,
+                    total_chunks,
+                });
+            }
+
+            let mut questions_in_chunk = 0;
+            let chunk_questions = self
+                .parse_single_chunk_streaming(
+                    chunk,
+                    checkpoint.model_config_id.as_deref(),
+                    |q: Value| {
+                        let card = self.question_to_card(&q, total_parsed);
+                        let card_id = card.card_id.clone();
+                        let mut params =
+                            self.json_to_question_params(&q, session_id, &card_id, total_parsed);
+                        if !source_question_images.is_empty() {
+                            params.images = Some(source_question_images.clone());
+                        }
+
+                        if let Err(e) = VfsQuestionRepo::create_question(vfs_db, &params) {
+                            log::warn!("[QuestionImport] 保存题目失败: {}", e);
+                        }
+
+                        total_parsed += 1;
+                        questions_in_chunk += 1;
+
+                        if let Some(ref tx) = progress_tx {
+                            let _ = tx.send(QuestionImportProgress::QuestionParsed {
+                                question: q.clone(),
+                                question_index: total_parsed - 1,
+                                total_parsed,
+                            });
+                        }
+
+                        true
+                    },
+                )
+                .await;
+
+            match chunk_questions {
+                Ok(questions) => {
+                    all_questions.extend(questions);
+                    if let Some(ref tx) = progress_tx {
+                        let _ = tx.send(QuestionImportProgress::ChunkCompleted {
+                            chunk_index: chunk_idx,
+                            total_chunks,
+                            questions_in_chunk,
+                            total_parsed,
+                        });
+                    }
+                }
+                Err(e) => {
+                    log::warn!("[QuestionImport] 块 {} 解析失败: {}", chunk_idx + 1, e);
+                    if let Some(ref tx) = progress_tx {
+                        let _ = tx.send(QuestionImportProgress::ChunkCompleted {
+                            chunk_index: chunk_idx,
+                            total_chunks,
+                            questions_in_chunk: 0,
+                            total_parsed,
+                        });
+                    }
+                }
+            }
+
+            // 更新 checkpoint 进度
+            if let Ok(Some(state_str)) = VfsExamRepo::get_import_state(vfs_db, session_id) {
+                if let Ok(mut cp) = serde_json::from_str::<ImportCheckpointState>(&state_str) {
+                    cp.chunks_completed = chunk_idx + 1;
+                    if let Ok(state_json) = serde_json::to_value(&cp) {
+                        let _ = VfsExamRepo::update_import_state(vfs_db, session_id, &state_json);
+                    }
+                }
+            }
+        }
+
+        // 6. finalize
+        let result = self
+            .finalize_session(vfs_db, &all_questions, session_id, &qbank_name, true)
+            .await?;
+
+        if let Err(e) = VfsExamRepo::clear_import_state(vfs_db, session_id) {
+            log::warn!("[QuestionImport] 清除导入断点失败: {}", e);
+        }
+
+        if let Some(ref tx) = progress_tx {
+            let _ = tx.send(QuestionImportProgress::Completed {
+                session_id: result.session_id.clone(),
+                name: result.name.clone(),
+                total_questions: result.total_questions,
+            });
+        }
+
+        Ok(result)
+    }
+
+    /// 启动恢复：处理所有 status='importing' 的僵尸会话
+    ///
+    /// - 有 import_state_json 且有已保存题目：标记为可恢复（保留 importing 状态）
+    /// - 有 import_state_json 但无题目：如果所有 chunk 完成则 finalize，否则保留
+    /// - 无 import_state_json 但有题目：直接 finalize（旧版数据兼容）
+    /// - 无 import_state_json 且无题目：清理为 failed
+    pub async fn recover_importing_sessions(
+        &self,
+        vfs_db: &VfsDatabase,
+    ) -> Result<Vec<ImportingSession>, AppError> {
+        let sessions = VfsExamRepo::list_importing_sessions(vfs_db)
+            .map_err(|e| AppError::database(format!("查询中断会话失败: {}", e)))?;
+
+        if sessions.is_empty() {
+            return Ok(vec![]);
+        }
+
+        log::info!(
+            "[QuestionImport] 发现 {} 个中断的导入会话",
+            sessions.len()
+        );
+
+        let mut resumable = Vec::new();
+
+        for session in &sessions {
+            let has_checkpoint = session.import_state_json.is_some();
+            let has_questions = session.existing_question_count > 0;
+
+            match (has_checkpoint, has_questions) {
+                (true, _) => {
+                    // 有 checkpoint：可恢复，保留 importing 状态
+                    log::info!(
+                        "[QuestionImport] 会话 {} 可恢复: {} 道已保存题目, checkpoint 存在",
+                        session.session_id, session.existing_question_count
+                    );
+                    resumable.push(session.clone());
+                }
+                (false, true) => {
+                    // 无 checkpoint 但有题目：旧版数据，直接 finalize
+                    let name = session
+                        .exam_name
+                        .clone()
+                        .unwrap_or_else(|| "导入的题目集".to_string());
+                    log::info!(
+                        "[QuestionImport] 会话 {} 无 checkpoint 但有 {} 题目，自动 finalize",
+                        session.session_id, session.existing_question_count
+                    );
+                    if let Err(e) = self
+                        .finalize_session(
+                            vfs_db,
+                            &[],
+                            &session.session_id,
+                            &name,
+                            true,
+                        )
+                        .await
+                    {
+                        log::warn!(
+                            "[QuestionImport] 自动 finalize 失败 {}: {}",
+                            session.session_id, e
+                        );
+                    }
+                }
+                (false, false) => {
+                    // 无 checkpoint 无题目：清理为 failed
+                    log::info!(
+                        "[QuestionImport] 会话 {} 无 checkpoint 无题目，标记为 failed",
+                        session.session_id
+                    );
+                    let _ = VfsExamRepo::update_status(vfs_db, &session.session_id, "failed");
+                    let _ = VfsExamRepo::clear_import_state(vfs_db, &session.session_id);
+                }
+            }
+        }
+
+        Ok(resumable)
     }
 
     /// 最终化会话：更新 preview_json 和状态（题目已在增量保存中写入）

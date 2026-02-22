@@ -333,6 +333,17 @@ pub const V20260212_ADD_MINDMAP_VERSIONS: MigrationDef = MigrationDef::new(
 ])
 .idempotent();
 
+/// V20260215: 题目集导入断点续导支持
+///
+/// 新增 `import_state_json` 列，持久化导入中间状态（OCR 文本、chunk 进度等）。
+/// 正常完成后清空，仅 status='importing' 时有值。
+pub const V20260215_ADD_IMPORT_CHECKPOINT: MigrationDef = MigrationDef::new(
+    20260215,
+    "add_import_checkpoint",
+    include_str!("../../../migrations/vfs/V20260215__add_import_checkpoint.sql"),
+)
+.idempotent();
+
 /// VFS 数据库所有迁移定义
 pub const VFS_MIGRATIONS: &[MigrationDef] = &[
     V20260130_INIT,
@@ -349,6 +360,7 @@ pub const VFS_MIGRATIONS: &[MigrationDef] = &[
     V20260210_ADD_ANSWER_SUBMISSIONS,
     V20260211_FIX_CHANGE_LOG_RECORD_ID,
     V20260212_ADD_MINDMAP_VERSIONS,
+    V20260215_ADD_IMPORT_CHECKPOINT,
 ];
 
 /// VFS 迁移集合
@@ -427,7 +439,7 @@ mod tests {
         // + V20260209 (add_questions_images)
         // + V20260210 (add_answer_submissions)
         // + V20260211 (fix_change_log_record_id)
-        assert_eq!(VFS_MIGRATION_SET.count(), 13);
+        assert_eq!(VFS_MIGRATION_SET.count(), 15);
     }
 
     #[test]
@@ -508,6 +520,6 @@ mod tests {
 
     #[test]
     fn test_latest_version() {
-        assert_eq!(VFS_MIGRATION_SET.latest_version(), 20260211);
+        assert_eq!(VFS_MIGRATION_SET.latest_version(), 20260215);
     }
 }

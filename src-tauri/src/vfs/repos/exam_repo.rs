@@ -31,6 +31,17 @@ use crate::vfs::types::{
     ResourceLocation, VfsCreateExamSheetParams, VfsExamSheet, VfsFolderItem, VfsResourceType,
 };
 
+/// 中断的导入会话信息（断点续导用）
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ImportingSession {
+    pub session_id: String,
+    pub exam_name: Option<String>,
+    /// import_state_json 原始字符串（可能为 None，表示无可恢复的中间状态）
+    pub import_state_json: Option<String>,
+    /// 已写入 questions 表的题目数
+    pub existing_question_count: usize,
+}
+
 /// VFS 题目集识别表 Repo
 pub struct VfsExamRepo;
 
@@ -915,6 +926,118 @@ impl VfsExamRepo {
 
         info!("[VFS::ExamRepo] Updated preview_json for exam {}", exam_id);
         Ok(())
+    }
+
+    // ========================================================================
+    // 断点续导（import checkpoint）
+    // ========================================================================
+
+    /// 更新导入中间状态（断点续导用）
+    pub fn update_import_state(
+        db: &VfsDatabase,
+        exam_id: &str,
+        import_state_json: &Value,
+    ) -> VfsResult<()> {
+        let conn = db.get_conn_safe()?;
+        Self::update_import_state_with_conn(&conn, exam_id, import_state_json)
+    }
+
+    /// 更新导入中间状态（使用现有连接）
+    pub fn update_import_state_with_conn(
+        conn: &Connection,
+        exam_id: &str,
+        import_state_json: &Value,
+    ) -> VfsResult<()> {
+        let state_str = serde_json::to_string(import_state_json).map_err(|e| {
+            VfsError::Serialization(format!("Failed to serialize import_state_json: {}", e))
+        })?;
+
+        let now = chrono::Utc::now()
+            .format("%Y-%m-%dT%H:%M:%S%.3fZ")
+            .to_string();
+
+        conn.execute(
+            "UPDATE exam_sheets SET import_state_json = ?1, updated_at = ?2 WHERE id = ?3",
+            params![state_str, now, exam_id],
+        )?;
+
+        debug!(
+            "[VFS::ExamRepo] Updated import_state for exam {}",
+            exam_id
+        );
+        Ok(())
+    }
+
+    /// 清除导入中间状态（导入完成后调用）
+    pub fn clear_import_state(db: &VfsDatabase, exam_id: &str) -> VfsResult<()> {
+        let conn = db.get_conn_safe()?;
+        let now = chrono::Utc::now()
+            .format("%Y-%m-%dT%H:%M:%S%.3fZ")
+            .to_string();
+
+        conn.execute(
+            "UPDATE exam_sheets SET import_state_json = NULL, updated_at = ?1 WHERE id = ?2",
+            params![now, exam_id],
+        )?;
+
+        info!(
+            "[VFS::ExamRepo] Cleared import_state for exam {}",
+            exam_id
+        );
+        Ok(())
+    }
+
+    /// 查找所有 status='importing' 且有 import_state_json 的题目集
+    ///
+    /// 用于应用启动时恢复中断的导入任务。
+    pub fn list_importing_sessions(db: &VfsDatabase) -> VfsResult<Vec<ImportingSession>> {
+        let conn = db.get_conn_safe()?;
+        let mut stmt = conn.prepare(
+            r#"SELECT id, exam_name, import_state_json,
+                      (SELECT COUNT(*) FROM questions WHERE exam_id = exam_sheets.id AND deleted_at IS NULL) as question_count
+               FROM exam_sheets
+               WHERE status = 'importing' AND deleted_at IS NULL"#,
+        )?;
+
+        let rows = stmt.query_map([], |row| {
+            Ok(ImportingSession {
+                session_id: row.get(0)?,
+                exam_name: row.get(1)?,
+                import_state_json: row.get::<_, Option<String>>(2)?,
+                existing_question_count: row.get::<_, i64>(3)? as usize,
+            })
+        })?;
+
+        let mut sessions = Vec::new();
+        for row in rows {
+            match row {
+                Ok(s) => sessions.push(s),
+                Err(e) => warn!("[VFS::ExamRepo] list_importing_sessions row error: {}", e),
+            }
+        }
+
+        info!(
+            "[VFS::ExamRepo] Found {} importing sessions",
+            sessions.len()
+        );
+        Ok(sessions)
+    }
+
+    /// 读取单个题目集的 import_state_json
+    pub fn get_import_state(
+        db: &VfsDatabase,
+        exam_id: &str,
+    ) -> VfsResult<Option<String>> {
+        let conn = db.get_conn_safe()?;
+        let result: Option<String> = conn
+            .query_row(
+                "SELECT import_state_json FROM exam_sheets WHERE id = ?1",
+                params![exam_id],
+                |row| row.get(0),
+            )
+            .optional()?
+            .flatten();
+        Ok(result)
     }
 
     // ========================================================================

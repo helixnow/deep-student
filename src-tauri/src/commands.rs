@@ -981,6 +981,77 @@ pub async fn import_question_bank_stream(
 }
 
 // ============================================================================
+// 断点续导命令
+// ============================================================================
+
+/// 恢复中断的题目集导入
+///
+/// 从 import_state_json 中读取已保存的 OCR 文本和 chunk 进度，
+/// 跳过已完成的 chunks，从断点处继续解析。
+#[tauri::command]
+pub async fn resume_question_import(
+    session_id: String,
+    state: State<'_, AppState>,
+    app_handle: AppHandle,
+) -> Result<ExamSheetSessionDetail> {
+    use crate::question_import_service::{QuestionImportProgress, QuestionImportService};
+
+    let vfs_db = state
+        .vfs_db
+        .as_ref()
+        .ok_or_else(|| AppError::validation("VFS 数据库未初始化"))?;
+
+    let (progress_tx, mut progress_rx) =
+        tokio::sync::mpsc::unbounded_channel::<QuestionImportProgress>();
+
+    let event_forwarder = {
+        let app_handle = app_handle.clone();
+        tokio::spawn(async move {
+            while let Some(payload) = progress_rx.recv().await {
+                if let Err(err) = app_handle.emit("question_import_progress", payload) {
+                    error!("[question_import_progress] emit failed: {}", err);
+                }
+            }
+        })
+    };
+
+    let import_service =
+        QuestionImportService::new(state.llm_manager.clone(), state.file_manager.clone());
+
+    let result = import_service
+        .resume_import_stream(vfs_db, &session_id, Some(progress_tx))
+        .await;
+
+    if let Err(err) = event_forwarder.await {
+        error!(
+            "[question_import_progress] forwarder join failed: {:?}",
+            err
+        );
+    }
+
+    let result = result?;
+
+    state
+        .exam_sheet_service
+        .get_exam_sheet_session_detail(&result.session_id)
+        .await
+}
+
+/// 查询可恢复的中断导入会话
+#[tauri::command]
+pub async fn list_importing_sessions(
+    state: State<'_, AppState>,
+) -> Result<Vec<crate::vfs::repos::ImportingSession>> {
+    let vfs_db = state
+        .vfs_db
+        .as_ref()
+        .ok_or_else(|| AppError::validation("VFS 数据库未初始化"))?;
+
+    crate::vfs::repos::VfsExamRepo::list_importing_sessions(vfs_db)
+        .map_err(|e| AppError::database(format!("查询中断会话失败: {}", e)).into())
+}
+
+// ============================================================================
 // CSV 导入导出命令
 // ============================================================================
 

@@ -627,6 +627,27 @@ pub fn run() {
                 });
             }
 
+            // ★ 断点续导：启动时恢复中断的导入会话
+            {
+                let llm_mgr = app_state.inner().llm_manager.clone();
+                let file_mgr = app_state.inner().file_manager.clone();
+                let vfs_db_opt = app_state.inner().vfs_db.clone();
+                tauri::async_runtime::spawn(async move {
+                    if let Some(vfs_db) = vfs_db_opt {
+                        let import_service = crate::question_import_service::QuestionImportService::new(llm_mgr, file_mgr);
+                        match import_service.recover_importing_sessions(&vfs_db).await {
+                            Ok(resumable) if !resumable.is_empty() => {
+                                info!("[QuestionImport] {} 个可恢复的导入会话待用户操作", resumable.len());
+                            }
+                            Ok(_) => {}
+                            Err(e) => {
+                                warn!("[QuestionImport] 启动恢复检查失败: {}", e);
+                            }
+                        }
+                    }
+                });
+            }
+
             // 自动备份定时调度器
             {
                 let database_for_backup = database.clone();
@@ -732,6 +753,9 @@ pub fn run() {
             crate::commands::inspect_pdf_text_for_qbank,
             crate::commands::import_question_bank,
             crate::commands::import_question_bank_stream,
+            // 断点续导
+            crate::commands::resume_question_import,
+            crate::commands::list_importing_sessions,
             // 题目集原始图片管理
             crate::commands::qbank_get_source_images,
             crate::commands::qbank_crop_source_image,

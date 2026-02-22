@@ -47,7 +47,7 @@ pub use embedding_repo::{
     VFS_EMB_TABLE_PREFIX,
 };
 pub use essay_repo::VfsEssayRepo;
-pub use exam_repo::VfsExamRepo;
+pub use exam_repo::{ImportingSession, VfsExamRepo};
 pub use file_repo::VfsFileRepo;
 pub use folder_repo::VfsFolderRepo;
 pub use mindmap_repo::VfsMindMapRepo;

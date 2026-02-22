@@ -3464,6 +3464,34 @@ export class TauriAPI {
   // ★ processExamSheetPreview 已移除（整卷识别废弃，统一走 import_question_bank_stream）
 
   // =================================================
+  // 断点续导
+  // =================================================
+
+  /** 查询可恢复的中断导入会话 */
+  static async listImportingSessions(): Promise<Array<{
+    session_id: string;
+    exam_name: string | null;
+    import_state_json: string | null;
+    existing_question_count: number;
+  }>> {
+    try {
+      return await invokeWithDebug('list_importing_sessions', {}, { tag: 'list_importing' });
+    } catch (error) {
+      debugLog.warn('[TauriAPI] listImportingSessions failed:', error);
+      return [];
+    }
+  }
+
+  /** 恢复中断的题目集导入（流式，发送 question_import_progress 事件） */
+  static async resumeQuestionImport(sessionId: string): Promise<ExamSheetSessionDetail> {
+    return invokeWithDebug<ExamSheetSessionDetail>(
+      'resume_question_import',
+      { sessionId },
+      { tag: 'resume_import' }
+    );
+  }
+
+  // =================================================
   // 包管理器检测和安装
   // =================================================
   
