@@ -578,11 +578,9 @@ impl Tool for WebSearchTool {
             "properties": {
                 "query": { "type": "string", "description": "The INTERNET/WEB search query for current information, news, or real-time data" },
                 "top_k": { "type": "integer", "description": "Max results to return (0 means no results)", "default": 5 },
-                "engine": { "type": "string", "description": "Search engine: google_cse|serpapi|tavily|brave|searxng|zhipu|bocha" },
                 "site": { "type": "string", "description": "Optional site restriction (e.g., example.com)" },
-                "time_range": { "type": "string", "description": "Optional time range: 1d|7d|30d|365d|1y|12m (custom YYYY-MM-DDtoYYYY-MM-DD only for brave)" },
-                "start": { "type": "integer", "description": "Optional start index (1-based) for pagination" },
-                "force_engine": { "type": "string", "description": "Force use specific engine for testing" }
+                "time_range": { "type": "string", "description": "Optional time range: 1d|7d|30d|365d|1y|12m" },
+                "start": { "type": "integer", "description": "Optional start index (1-based) for pagination" }
             },
             "required": ["query"]
         })
@@ -720,6 +718,17 @@ impl Tool for WebSearchTool {
             );
         }
 
+        // 2.5) LLM 指定的 engine 没有有效 key → 静默回退到默认引擎
+        if let Some(ref engine) = input.engine {
+            if !cfg.keys.has_valid_keys(engine) {
+                log::info!(
+                    "LLM 指定引擎 '{}' 未配置 API key，忽略并使用默认引擎",
+                    engine
+                );
+                input.engine = None;
+            }
+        }
+
         // 3) Execute search - 检测是否需要多引擎聚合搜索
         //    记录一份输入供后续单引擎重排使用
         let original_input = input.clone();
@@ -738,10 +747,40 @@ impl Tool for WebSearchTool {
                     forced_input.engine = Some(force_engine.clone());
                     web_search::do_search(&cfg, forced_input).await
                 }
-                // 如果选择了多个引擎且没有指定特定引擎，启用聚合搜索
+                // 预过滤：跳过未配置 API key 的引擎，避免无意义的失败请求
                 else if engines.len() > 1 && input.engine.is_none() {
-                    log::info!("启动多引擎聚合搜索，引擎数量: {}", engines.len());
-                    Self::do_aggregated_search(&cfg, &input, &engines).await
+                    let usable_engines: Vec<String> = engines
+                        .iter()
+                        .filter(|e| cfg.keys.has_valid_keys(e))
+                        .cloned()
+                        .collect();
+                    let skipped: Vec<&String> = engines
+                        .iter()
+                        .filter(|e| !cfg.keys.has_valid_keys(e))
+                        .collect();
+                    if !skipped.is_empty() {
+                        log::info!(
+                            "跳过未配置 API key 的引擎: {:?}",
+                            skipped
+                        );
+                    }
+
+                    if usable_engines.len() > 1 {
+                        log::info!("启动多引擎聚合搜索，引擎数量: {}", usable_engines.len());
+                        Self::do_aggregated_search(&cfg, &input, &usable_engines).await
+                    } else if usable_engines.len() == 1 {
+                        let selected = usable_engines[0].clone();
+                        log::info!(
+                            "仅一个引擎有有效 API key，自动使用: {}",
+                            selected
+                        );
+                        input.engine = Some(selected);
+                        web_search::do_search(&cfg, input).await
+                    } else {
+                        // 所有引擎都没有 key，回退到默认引擎（do_search 内部会报具体错误）
+                        log::warn!("所有选中引擎均未配置 API key，回退到默认引擎");
+                        web_search::do_search(&cfg, input).await
+                    }
                 } else {
                     // 单引擎或指定引擎模式
                     if input.engine.is_none() && engines.len() == 1 {
