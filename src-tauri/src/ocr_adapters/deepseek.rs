@@ -213,6 +213,10 @@ fn project_to_unified_format(
     image_width: u32,
     image_height: u32,
 ) -> Vec<OcrRegion> {
+    if image_width == 0 || image_height == 0 {
+        return vec![];
+    }
+
     let w = image_width as f64;
     let h = image_height as f64;
 
@@ -267,38 +271,29 @@ fn project_to_unified_format(
 
 /// 从 grounding 响应中提取纯 Markdown 文本
 fn extract_markdown_text(response: &str) -> String {
-    // 移除所有 grounding 标记，保留纯文本
-    let mut result = response.to_string();
-
-    // 移除 <|ref|>...<|/ref|><|det|>...<|/det|> 模式
-    // 使用简单的字符串替换（因为 regex 可能增加依赖）
     let mut clean = String::new();
     let mut pos = 0;
-    let text = result.as_bytes();
+    let text = response.as_bytes();
 
     while pos < text.len() {
         if let Some(ref_start) = find_substr(text, b"<|ref|>", pos) {
-            // 添加 ref 之前的文本
-            clean.push_str(safe_slice(&result, pos, ref_start));
+            clean.push_str(safe_slice(response, pos, ref_start));
 
-            // 跳过整个 grounding 标记
             if let Some(det_end) = find_substr(text, b"<|/det|>", ref_start) {
                 pos = det_end + 8;
                 continue;
+            } else {
+                clean.push_str(safe_slice(response, ref_start, text.len()));
+                break;
             }
         }
 
-        // 没有更多标记，添加剩余文本
-        clean.push_str(safe_slice(&result, pos, text.len()));
+        clean.push_str(safe_slice(response, pos, text.len()));
         break;
     }
 
-    result = clean;
-
-    // 移除 <|grounding|> 标记
-    result = result.replace("<|grounding|>", "");
-
-    result.trim().to_string()
+    clean = clean.replace("<|grounding|>", "");
+    clean.trim().to_string()
 }
 
 // ============================================================================

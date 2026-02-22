@@ -438,8 +438,15 @@ impl PptxToolExecutor {
             .ok_or_else(|| format!("文件不存在: {}", resource_id))?;
 
         if let Some(ref path) = file.original_path {
-            if std::path::Path::new(path).exists() {
-                return std::fs::read(path)
+            let p = std::path::Path::new(path);
+            let path_str = path.replace('\\', "/");
+            if path_str.contains("..") {
+                log::warn!(
+                    "[PptxToolExecutor] Rejecting original_path with traversal: {}",
+                    path
+                );
+            } else if p.exists() {
+                return std::fs::read(p)
                     .map_err(|e| format!("文件读取失败: {}", e));
             }
         }

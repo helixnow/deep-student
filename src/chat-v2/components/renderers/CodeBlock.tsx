@@ -315,11 +315,18 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ children, className, isStr
         const out = await mermaid.default.render(id, codeContent);
         svg = out?.svg || null;
       } else {
-        // 回退：尝试运行时渲染（需要 DOM 中存在 .mermaid 元素）
         svg = `<pre class="mermaid">${codeContent.replace(/</g, '&lt;')}</pre>`;
         if (mermaid?.run) {
           await mermaid.run();
         }
+      }
+      if (svg) {
+        svg = DOMPurify.sanitize(svg, {
+          USE_PROFILES: { svg: true, svgFilters: true },
+          ADD_TAGS: ['style', 'foreignObject'],
+          FORBID_TAGS: ['script', 'iframe', 'embed', 'object'],
+          FORBID_ATTR: ['xlink:href'],
+        });
       }
       
       // 异步操作完成后再次检查组件是否已卸载

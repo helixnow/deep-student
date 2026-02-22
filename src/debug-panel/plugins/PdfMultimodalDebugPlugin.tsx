@@ -228,10 +228,14 @@ const LogEntry: React.FC<{
   const sourceColor = SOURCE_COLORS[log.source] || 'bg-gray-100 text-gray-800';
   const levelIcon = LEVEL_ICONS[log.level] || LEVEL_ICONS.info;
 
-  // 高亮关键字
   const highlightMessage = (msg: string) => {
+    const escaped = msg
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
     const keywords = ['isMultimodal', 'multimodalBlocks', 'includeImage', 'blocks_count', 'Image', 'true', 'false'];
-    let result = msg;
+    let result = escaped;
     keywords.forEach(kw => {
       const regex = new RegExp(`(${kw})`, 'gi');
       result = result.replace(regex, '<mark class="bg-yellow-200 dark:bg-yellow-800 px-0.5 rounded">$1</mark>');

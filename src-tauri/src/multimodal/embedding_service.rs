@@ -219,11 +219,11 @@ impl MultimodalEmbeddingService {
             {
                 Ok(embeddings) => {
                     if embeddings.len() != processed_inputs.len() {
-                        log::warn!(
-                            "  嵌入 API 返回数量不匹配: 期望 {}, 实际 {}",
+                        return Err(AppError::internal(format!(
+                            "嵌入 API 返回数量不匹配: 期望 {}, 实际 {}",
                             processed_inputs.len(),
                             embeddings.len()
-                        );
+                        )));
                     }
                     all_embeddings.extend(embeddings);
                     completed = all_embeddings.len().min(total);

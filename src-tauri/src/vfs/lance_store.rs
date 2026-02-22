@@ -355,12 +355,13 @@ impl VfsLanceStore {
 
     /// 构建 FTS 索引配置
     fn build_fts_index_builder(&self) -> FtsIndexBuilder {
-        // 使用 ngram 分词器，适合中文
+        // ngram 分词器：prefix_only=false 确保 CJK 文本任意位置子串均可召回
+        // (prefix_only=true 会导致搜索"学习"无法匹配"机器学习")
         FtsIndexBuilder::default()
             .base_tokenizer("ngram".to_string())
             .ngram_min_length(2)
             .ngram_max_length(4)
-            .ngram_prefix_only(true)
+            .ngram_prefix_only(false)
             .max_token_length(Some(64))
             .lower_case(true)
             .stem(false)
@@ -395,29 +396,19 @@ impl VfsLanceStore {
 
         let tbl = self.ensure_table(modality, dim).await?;
 
-        // 删除已存在的记录（按 embedding_id）
-        let embedding_ids: Vec<String> = rows.iter().map(|r| r.embedding_id.clone()).collect();
-        for batch_ids in embedding_ids.chunks(900) {
-            let in_list = batch_ids
-                .iter()
-                .map(|s| format!("'{}'", s.replace("'", "''")))
-                .collect::<Vec<_>>()
-                .join(",");
-            let expr = format!("embedding_id IN ({})", in_list);
-            let _ = tbl.delete(expr.as_str()).await;
-        }
-
-        // 构建批次并写入
         let (schema, batch) = self.build_batch(dim, rows)?;
         let iter = RecordBatchIterator::new(vec![Ok(batch)].into_iter(), schema);
 
-        tbl.add(iter)
-            .execute()
+        let mut builder = tbl.merge_insert(&["embedding_id"]);
+        builder.when_matched_update_all(None);
+        builder.when_not_matched_insert_all();
+        builder
+            .execute(Box::new(iter))
             .await
-            .map_err(|e| VfsError::Other(format!("写入 Lance 表失败: {}", e)))?;
+            .map_err(|e| VfsError::Other(format!("写入 Lance 表失败 (merge_insert): {}", e)))?;
 
         info!(
-            "[VfsLanceStore] Wrote {} chunks to {}",
+            "[VfsLanceStore] Wrote {} chunks to {} (merge_insert)",
             rows.len(),
             Self::table_name(modality, dim)
         );

@@ -740,9 +740,15 @@ impl SleepManager {
                         .get::<_, Option<String>>(6)?
                         .and_then(|s| DateTime::parse_from_rfc3339(&s).ok())
                         .map(|dt| dt.with_timezone(&Utc)),
-                    created_at: DateTime::parse_from_rfc3339(&row.get::<_, String>(7)?)
-                        .unwrap()
-                        .with_timezone(&Utc),
+                    created_at: {
+                        let s = row.get::<_, String>(7)?;
+                        DateTime::parse_from_rfc3339(&s)
+                            .map(|dt| dt.with_timezone(&Utc))
+                            .unwrap_or_else(|e| {
+                                log::warn!("[SleepManager] Failed to parse created_at in restore_sleeps '{}': {}", s, e);
+                                DateTime::<Utc>::from(std::time::UNIX_EPOCH)
+                            })
+                    },
                     awakened_at: row
                         .get::<_, Option<String>>(8)?
                         .and_then(|s| DateTime::parse_from_rfc3339(&s).ok())
@@ -889,9 +895,15 @@ impl SleepManager {
                         .get::<_, Option<String>>(6)?
                         .and_then(|s| DateTime::parse_from_rfc3339(&s).ok())
                         .map(|dt| dt.with_timezone(&Utc)),
-                    created_at: DateTime::parse_from_rfc3339(&row.get::<_, String>(7)?)
-                        .unwrap()
-                        .with_timezone(&Utc),
+                    created_at: {
+                        let s = row.get::<_, String>(7)?;
+                        DateTime::parse_from_rfc3339(&s)
+                            .map(|dt| dt.with_timezone(&Utc))
+                            .unwrap_or_else(|e| {
+                                log::warn!("[SleepManager] Failed to parse created_at in get_sleep '{}': {}", s, e);
+                                DateTime::<Utc>::from(std::time::UNIX_EPOCH)
+                            })
+                    },
                     awakened_at: row
                         .get::<_, Option<String>>(8)?
                         .and_then(|s| DateTime::parse_from_rfc3339(&s).ok())

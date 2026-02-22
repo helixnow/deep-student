@@ -272,7 +272,7 @@ const AttachmentItem: React.FC<AttachmentItemProps> = ({
             'absolute top-0.5 right-0.5 z-20 !rounded-full !p-0.5',
             'bg-black/40 hover:bg-destructive text-white',
             'backdrop-blur-sm',
-            'opacity-0 group-hover:opacity-100 transition-all duration-200',
+            'opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-all duration-200',
             'transform scale-90 group-hover:scale-100',
             config.closeBtnPadding
           )}

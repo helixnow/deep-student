@@ -18,8 +18,6 @@
 //! | text-embedding-3-small/large | 8,192 |
 //! | voyage-3 | 32,000 |
 
-use std::collections::HashMap;
-
 /// 检查字符是否为 CJK 标点符号
 #[inline]
 fn is_cjk_punctuation(c: char) -> bool {
@@ -35,41 +33,39 @@ fn is_cjk_punctuation(c: char) -> bool {
 pub struct EmbeddingTokenLimits {
     /// 默认安全限制（最保守）
     pub default_limit: usize,
-    /// 已知模型的限制映射（模型名前缀 -> token 限制）
-    model_limits: HashMap<String, usize>,
+    /// 已知模型的限制映射（模型名前缀 -> token 限制，按前缀长度降序排列）
+    model_limits: Vec<(String, usize)>,
     /// 安全裕量（预留比例，如 0.9 表示使用 90% 的限制）
     pub safety_margin: f32,
 }
 
 impl Default for EmbeddingTokenLimits {
     fn default() -> Self {
-        let mut limits = HashMap::new();
+        let mut limits: Vec<(String, usize)> = vec![
+            // SiliconFlow 模型
+            ("BAAI/bge-large-zh".into(), 512),
+            ("BAAI/bge-large-en".into(), 512),
+            ("netease-youdao/bce-embedding".into(), 512),
+            ("BAAI/bge-m3".into(), 8192),
+            ("Pro/BAAI/bge-m3".into(), 8192),
+            ("Qwen/Qwen3-Embedding".into(), 32768),
+            // OpenAI 模型
+            ("text-embedding-3".into(), 8192),
+            ("text-embedding-ada".into(), 8192),
+            // Voyage AI 模型
+            ("voyage-3".into(), 32000),
+            ("voyage-code".into(), 32000),
+            ("voyage-multilingual".into(), 32000),
+            // Jina AI 模型
+            ("jina-embeddings".into(), 8192),
+            // Cohere 模型（较短）
+            ("embed-".into(), 512),
+        ];
 
-        // SiliconFlow 模型
-        limits.insert("BAAI/bge-large-zh".into(), 512);
-        limits.insert("BAAI/bge-large-en".into(), 512);
-        limits.insert("netease-youdao/bce-embedding".into(), 512);
-        limits.insert("BAAI/bge-m3".into(), 8192);
-        limits.insert("Pro/BAAI/bge-m3".into(), 8192);
-        limits.insert("Qwen/Qwen3-Embedding".into(), 32768);
-
-        // OpenAI 模型
-        limits.insert("text-embedding-3".into(), 8192);
-        limits.insert("text-embedding-ada".into(), 8192);
-
-        // Voyage AI 模型
-        limits.insert("voyage-3".into(), 32000);
-        limits.insert("voyage-code".into(), 32000);
-        limits.insert("voyage-multilingual".into(), 32000);
-
-        // Jina AI 模型
-        limits.insert("jina-embeddings".into(), 8192);
-
-        // Cohere 模型（较短）
-        limits.insert("embed-".into(), 512);
+        limits.sort_by(|a, b| b.0.len().cmp(&a.0.len()));
 
         Self {
-            default_limit: 512, // 最保守的默认值
+            default_limit: 512,
             model_limits: limits,
             safety_margin: 0.9,
         }
@@ -81,9 +77,8 @@ impl EmbeddingTokenLimits {
     ///
     /// 按模型名前缀匹配，返回匹配到的限制或默认值
     pub fn get_limit(&self, model_name: &str) -> usize {
-        // 按前缀匹配
         for (prefix, limit) in &self.model_limits {
-            if model_name.starts_with(prefix) || model_name.contains(prefix) {
+            if model_name.starts_with(prefix) {
                 let effective_limit = (*limit as f32 * self.safety_margin) as usize;
                 log::debug!(
                     "[EmbeddingChunker] 模型 {} 匹配到限制 {} (安全值 {})",
@@ -108,7 +103,12 @@ impl EmbeddingTokenLimits {
 
     /// 添加自定义模型限制
     pub fn add_limit(&mut self, model_prefix: &str, limit: usize) {
-        self.model_limits.insert(model_prefix.to_string(), limit);
+        self.model_limits
+            .retain(|(p, _)| p != model_prefix);
+        self.model_limits
+            .push((model_prefix.to_string(), limit));
+        self.model_limits
+            .sort_by(|a, b| b.0.len().cmp(&a.0.len()));
     }
 }
 

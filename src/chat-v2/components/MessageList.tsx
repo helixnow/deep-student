@@ -112,6 +112,27 @@ const MessageListInner: React.FC<MessageListProps> = ({
   // 订阅消息顺序（已通过 useMessageOrder 内部的引用缓存优化）
   const messageOrder = useMessageOrder(store);
 
+  // WCAG: 屏幕阅读器新消息通知（适用于虚拟化模式）
+  const prevSrCountRef = useRef(messageOrder.length);
+  const isFirstSrRender = useRef(true);
+  const [srAnnouncement, setSrAnnouncement] = useState('');
+  useEffect(() => {
+    if (isFirstSrRender.current) {
+      isFirstSrRender.current = false;
+      prevSrCountRef.current = messageOrder.length;
+      return;
+    }
+    if (messageOrder.length > prevSrCountRef.current) {
+      setSrAnnouncement(
+        t('messageList.srNewMessages', {
+          count: messageOrder.length,
+          defaultValue: `New messages received, total {{count}} messages`,
+        })
+      );
+    }
+    prevSrCountRef.current = messageOrder.length;
+  }, [messageOrder.length, t]);
+
   // 订阅会话状态
   const sessionStatus = useSessionStatus(store);
 
@@ -428,6 +449,16 @@ const MessageListInner: React.FC<MessageListProps> = ({
   }
 
   return (
+    <>
+    {/* WCAG 4.1.3: 屏幕阅读器通知区域（虚拟化模式下不能在容器上用 aria-live） */}
+    <div
+      role="status"
+      aria-live="polite"
+      aria-atomic="true"
+      className="sr-only"
+    >
+      {srAnnouncement}
+    </div>
     <CustomScrollArea
       key={scrollAreaKey}
       ref={containerRef}
@@ -441,7 +472,12 @@ const MessageListInner: React.FC<MessageListProps> = ({
     >
       {useDirectRender ? (
         // 直接渲染模式(禁用虚拟化)
-        <div style={{ width: '100%' }}>
+        <div
+          role="log"
+          aria-live="polite"
+          aria-relevant="additions"
+          style={{ width: '100%' }}
+        >
           {messageOrder.map((messageId, index) => (
             <MessageItem
               key={messageId}
@@ -486,6 +522,7 @@ const MessageListInner: React.FC<MessageListProps> = ({
         </div>
       )}
     </CustomScrollArea>
+    </>
   );
 };
 

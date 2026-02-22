@@ -467,16 +467,19 @@ impl PageIndexer {
             .delete_by_source(source_type, source_id)
             .await?;
 
-        // 删除 VFS 中的索引元数据（替代 mm_page_embeddings）
+        // 删除 VFS 中的索引元数据
         match source_type {
-            SourceType::Textbook => {
+            SourceType::Textbook | SourceType::Attachment => {
                 if let Err(e) = VfsTextbookRepo::clear_mm_index(&self.vfs_db, source_id) {
-                    log::warn!("清除教材索引元数据失败: {}", e);
+                    log::warn!("清除索引元数据失败 (files): {}", e);
                 }
             }
-            _ => {
-                // 其他类型暂不处理（图片等使用 resources 表）
+            SourceType::Exam => {
+                if let Err(e) = self.clear_exam_mm_index(source_id) {
+                    log::warn!("清除试卷索引元数据失败: {}", e);
+                }
             }
+            _ => {}
         }
 
         log::info!("✅ 索引删除完成: {:?} {}", source_type, source_id);
@@ -967,28 +970,55 @@ impl PageIndexer {
                         continue;
                     }
 
-                    // 写入 VFS 索引元数据（替代 mm_page_embeddings）
-                    if source_type == SourceType::Textbook {
-                        let meta = PageIndexMeta {
-                            page_index: page.page_index,
-                            blob_hash: page.blob_hash.clone(),
-                            embedding_dim: dim as i32,
-                            indexing_mode: actual_mode.as_str().to_string(),
-                            indexed_at: now_str.clone(),
-                        };
-                        if let Err(e) =
-                            VfsTextbookRepo::save_page_mm_index(&self.vfs_db, source_id, &meta)
-                        {
-                            log::warn!("  ⚠️ P{}: VFS索引元数据保存失败: {}", page_num, e);
+                    // 写入 VFS 索引元数据（per-page blob_hash，用于增量检测）
+                    match source_type {
+                        SourceType::Textbook | SourceType::Attachment => {
+                            let meta = PageIndexMeta {
+                                page_index: page.page_index,
+                                blob_hash: page.blob_hash.clone(),
+                                embedding_dim: dim as i32,
+                                indexing_mode: actual_mode.as_str().to_string(),
+                                indexed_at: now_str.clone(),
+                            };
+                            if let Err(e) =
+                                VfsTextbookRepo::save_page_mm_index(&self.vfs_db, source_id, &meta)
+                            {
+                                log::warn!("  ⚠️ P{}: VFS索引元数据保存失败: {}", page_num, e);
+                            }
                         }
-                    } else if let Err(e) = self.update_resource_mm_index_meta(
-                        source_type,
-                        source_id,
-                        dim as i32,
-                        actual_mode.as_str(),
-                        &now_str,
-                    ) {
-                        log::warn!("  ⚠️ P{}: 更新资源多模态索引元数据失败: {}", page_num, e);
+                        SourceType::Exam => {
+                            if let Err(e) = self.save_exam_page_mm_index(
+                                source_id,
+                                page.page_index,
+                                &page.blob_hash,
+                                dim as i32,
+                                actual_mode.as_str(),
+                                &now_str,
+                            ) {
+                                log::warn!(
+                                    "  ⚠️ P{}: 试卷索引元数据保存失败: {}",
+                                    page_num,
+                                    e
+                                );
+                            }
+                        }
+                        _ => {}
+                    }
+                    // 更新 resources 表级别的多模态索引元数据
+                    if source_type != SourceType::Textbook {
+                        if let Err(e) = self.update_resource_mm_index_meta(
+                            source_type,
+                            source_id,
+                            dim as i32,
+                            actual_mode.as_str(),
+                            &now_str,
+                        ) {
+                            log::warn!(
+                                "  ⚠️ P{}: 更新资源多模态索引元数据失败: {}",
+                                page_num,
+                                e
+                            );
+                        }
                     }
 
                     let duration_ms = page_start.elapsed().as_millis() as u64;
@@ -1076,16 +1106,135 @@ impl PageIndexer {
         source_id: &str,
     ) -> Result<HashMap<i32, String>> {
         match source_type {
-            SourceType::Textbook => {
-                // 从 VFS textbooks 表读取
+            SourceType::Textbook | SourceType::Attachment => {
+                // Textbook 和 Attachment 都存储在 files.mm_indexed_pages_json
                 VfsTextbookRepo::get_mm_indexed_blob_hashes(&self.vfs_db, source_id)
-                    .map_err(|e| AppError::database(format!("获取教材索引元数据失败: {}", e)))
+                    .map_err(|e| AppError::database(format!("获取索引元数据失败: {}", e)))
+            }
+            SourceType::Exam => {
+                self.get_exam_indexed_blob_hashes(source_id)
             }
             _ => {
-                // 其他类型暂返回空映射（后续可扩展 resources 表）
+                // Image: 单页资源，无 mm_indexed_pages_json 字段，始终重新索引（开销极小）
                 Ok(HashMap::new())
             }
         }
+    }
+
+    /// 清除 exam_sheets.mm_indexed_pages_json
+    fn clear_exam_mm_index(&self, exam_id: &str) -> Result<()> {
+        let conn = self
+            .vfs_db
+            .get_conn_safe()
+            .map_err(|e| AppError::database(format!("获取 VFS 连接失败: {}", e)))?;
+
+        conn.execute(
+            "UPDATE exam_sheets SET mm_indexed_pages_json = NULL, updated_at = ?1 WHERE id = ?2",
+            params![
+                chrono::Utc::now()
+                    .format("%Y-%m-%dT%H:%M:%S%.3fZ")
+                    .to_string(),
+                exam_id
+            ],
+        )
+        .map_err(|e| AppError::database(format!("清除试卷索引元数据失败: {}", e)))?;
+
+        log::info!(
+            "[PageIndexer] Cleared MM index for exam {}",
+            exam_id
+        );
+        Ok(())
+    }
+
+    /// 从 exam_sheets.mm_indexed_pages_json 读取已索引页面的 blob_hash 映射
+    fn get_exam_indexed_blob_hashes(&self, exam_id: &str) -> Result<HashMap<i32, String>> {
+        let conn = self
+            .vfs_db
+            .get_conn_safe()
+            .map_err(|e| AppError::database(format!("获取 VFS 连接失败: {}", e)))?;
+
+        let json: Option<String> = conn
+            .query_row(
+                "SELECT mm_indexed_pages_json FROM exam_sheets WHERE id = ?1",
+                params![exam_id],
+                |row| row.get::<_, Option<String>>(0),
+            )
+            .optional()
+            .map_err(|e| AppError::database(format!("查询试卷索引元数据失败: {}", e)))?
+            .flatten();
+
+        if let Some(json_str) = json {
+            let pages: Vec<PageIndexMeta> = serde_json::from_str(&json_str)
+                .map_err(|e| AppError::database(format!("解析试卷索引元数据失败: {}", e)))?;
+            let mut map = HashMap::new();
+            for p in pages {
+                map.insert(p.page_index, p.blob_hash);
+            }
+            Ok(map)
+        } else {
+            Ok(HashMap::new())
+        }
+    }
+
+    /// 保存单页索引元数据到 exam_sheets.mm_indexed_pages_json
+    fn save_exam_page_mm_index(
+        &self,
+        exam_id: &str,
+        page_index: i32,
+        blob_hash: &str,
+        embedding_dim: i32,
+        indexing_mode: &str,
+        indexed_at: &str,
+    ) -> Result<()> {
+        let conn = self
+            .vfs_db
+            .get_conn_safe()
+            .map_err(|e| AppError::database(format!("获取 VFS 连接失败: {}", e)))?;
+
+        let existing: Option<String> = conn
+            .query_row(
+                "SELECT mm_indexed_pages_json FROM exam_sheets WHERE id = ?1",
+                params![exam_id],
+                |row| row.get::<_, Option<String>>(0),
+            )
+            .optional()
+            .map_err(|e| AppError::database(format!("查询试卷索引元数据失败: {}", e)))?
+            .flatten();
+
+        let mut pages: Vec<PageIndexMeta> = existing
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or_default();
+
+        let meta = PageIndexMeta {
+            page_index,
+            blob_hash: blob_hash.to_string(),
+            embedding_dim,
+            indexing_mode: indexing_mode.to_string(),
+            indexed_at: indexed_at.to_string(),
+        };
+
+        if let Some(pos) = pages.iter().position(|p| p.page_index == page_index) {
+            pages[pos] = meta;
+        } else {
+            pages.push(meta);
+        }
+
+        let json = serde_json::to_string(&pages)
+            .map_err(|e| AppError::internal(format!("序列化索引元数据失败: {}", e)))?;
+
+        conn.execute(
+            "UPDATE exam_sheets SET mm_indexed_pages_json = ?1, updated_at = ?2 WHERE id = ?3",
+            params![
+                json,
+                chrono::Utc::now()
+                    .format("%Y-%m-%dT%H:%M:%S%.3fZ")
+                    .to_string(),
+                exam_id
+            ],
+        )
+        .map_err(|e| AppError::database(format!("更新试卷索引元数据失败: {}", e)))?;
+
+        Ok(())
     }
 
     /// 加载 Blob 内容并转换为 Base64
@@ -1223,11 +1372,11 @@ impl PageIndexer {
         let (blob_hash, mime_type): (String, String) = conn
             .query_row(
                 r#"
-            SELECT r.hash, COALESCE(a.mime_type, 'image/png') as mime_type
+            SELECT r.hash, COALESCE(f.mime_type, 'image/png') as mime_type
             FROM resources r
-            LEFT JOIN files f ON a.resource_id = r.id
+            LEFT JOIN files f ON f.resource_id = r.id
             WHERE r.id = ?1
-              AND (r.type = 'image' OR (r.type = 'file' AND a.mime_type LIKE 'image/%'))
+              AND (r.type = 'image' OR (r.type = 'file' AND f.mime_type LIKE 'image/%'))
             "#,
                 params![image_id],
                 |row| {

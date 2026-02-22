@@ -74,7 +74,7 @@ export const PaperGenerator: React.FC<PaperGeneratorProps> = ({
     generatedPaper,
     setGeneratedPaper,
     generatePaper,
-    isLoading,
+    isLoadingPractice,
   } = useQuestionBankStore();
   
   // 配置状态
@@ -404,10 +404,10 @@ export const PaperGenerator: React.FC<PaperGeneratorProps> = ({
         
         <NotionButton
           onClick={handleGenerate}
-          disabled={isLoading || totalQuestions === 0}
+          disabled={isLoadingPractice || totalQuestions === 0}
           className="w-full h-12 text-lg"
         >
-          {isLoading ? (
+          {isLoadingPractice ? (
             <>
               <Loader2 className="w-5 h-5 mr-2 animate-spin" />
               {t('paper.generating', '生成中...')}

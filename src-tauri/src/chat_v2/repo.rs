@@ -728,8 +728,21 @@ impl ChatV2Repo {
 
         conn.execute(
             r#"
-            INSERT OR REPLACE INTO chat_v2_messages (id, session_id, role, block_ids_json, timestamp, persistent_stable_id, parent_id, supersedes, meta_json, attachments_json, active_variant_id, variants_json, shared_context_json)
+            INSERT INTO chat_v2_messages (id, session_id, role, block_ids_json, timestamp, persistent_stable_id, parent_id, supersedes, meta_json, attachments_json, active_variant_id, variants_json, shared_context_json)
             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
+            ON CONFLICT(id) DO UPDATE SET
+                session_id = excluded.session_id,
+                role = excluded.role,
+                block_ids_json = excluded.block_ids_json,
+                timestamp = excluded.timestamp,
+                persistent_stable_id = excluded.persistent_stable_id,
+                parent_id = excluded.parent_id,
+                supersedes = excluded.supersedes,
+                meta_json = excluded.meta_json,
+                attachments_json = excluded.attachments_json,
+                active_variant_id = excluded.active_variant_id,
+                variants_json = excluded.variants_json,
+                shared_context_json = excluded.shared_context_json
             "#,
             params![
                 message.id,
@@ -987,11 +1000,24 @@ impl ChatV2Repo {
             .map(|v| serde_json::to_string(v))
             .transpose()?;
 
-        // 🔧 使用 INSERT OR REPLACE，兼容 save_tool_block 的增量保存
         conn.execute(
             r#"
-            INSERT OR REPLACE INTO chat_v2_blocks (id, message_id, block_type, status, block_index, content, tool_name, tool_input_json, tool_output_json, citations_json, error, started_at, ended_at, first_chunk_at)
+            INSERT INTO chat_v2_blocks (id, message_id, block_type, status, block_index, content, tool_name, tool_input_json, tool_output_json, citations_json, error, started_at, ended_at, first_chunk_at)
             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
+            ON CONFLICT(id) DO UPDATE SET
+                message_id = excluded.message_id,
+                block_type = excluded.block_type,
+                status = excluded.status,
+                block_index = excluded.block_index,
+                content = excluded.content,
+                tool_name = excluded.tool_name,
+                tool_input_json = excluded.tool_input_json,
+                tool_output_json = excluded.tool_output_json,
+                citations_json = excluded.citations_json,
+                error = excluded.error,
+                started_at = excluded.started_at,
+                ended_at = excluded.ended_at,
+                first_chunk_at = excluded.first_chunk_at
             "#,
             params![
                 block.id,
@@ -2390,17 +2416,20 @@ mod tests {
             .unwrap()
             .is_some());
 
-        // Re-inserting the same message id uses INSERT OR REPLACE, which performs a DELETE + INSERT.
-        // The DELETE triggers ON DELETE CASCADE, removing blocks for this message_id.
+        // Re-inserting the same message id now uses ON CONFLICT DO UPDATE (not DELETE+INSERT).
+        // Blocks should NOT be cascade-deleted.
         ChatV2Repo::create_message_with_conn(&conn, &message).unwrap();
 
-        // The block row is gone even though the message row still exists and references it.
-        assert!(ChatV2Repo::get_block_with_conn(&conn, block_id)
-            .unwrap()
-            .is_none());
+        // Block should still exist after upsert (no cascade deletion).
+        assert!(
+            ChatV2Repo::get_block_with_conn(&conn, block_id)
+                .unwrap()
+                .is_some(),
+            "Block must survive message upsert (ON CONFLICT DO UPDATE)"
+        );
         let reloaded_message = ChatV2Repo::get_message_with_conn(&conn, message_id)
             .unwrap()
-            .expect("Message should exist after INSERT OR REPLACE");
+            .expect("Message should exist after upsert");
         assert_eq!(reloaded_message.block_ids, vec![block_id.to_string()]);
     }
 

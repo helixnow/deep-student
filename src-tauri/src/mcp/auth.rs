@@ -4,7 +4,7 @@
 
 use super::types::{McpError, McpResult};
 use chrono::{DateTime, Duration, Utc};
-use log::{debug, info, warn};
+use log::{debug, error, info, warn};
 use oauth2::{
     basic::BasicClient, reqwest::async_http_client, AuthUrl, AuthorizationCode, ClientId,
     ClientSecret, CsrfToken, PkceCodeChallenge, PkceCodeVerifier, RedirectUrl, RefreshToken,
@@ -153,19 +153,18 @@ impl McpAuthManager {
 
         info!("Authorization URL: {}", auth_url);
 
-        // 这里需要实际的用户交互
-        // 在Tauri应用中，可以打开WebView或浏览器
-        warn!(
-            "OAuth authentication requires user interaction - returning mock token for development"
+        // OAuth 2.1 interactive flow is not yet implemented.
+        // SECURITY: Never return mock tokens — this would bypass authentication entirely.
+        error!(
+            "OAuth 2.1 interactive authentication flow is not yet implemented. \
+             Please use API Key authentication instead."
         );
 
-        Ok(AuthToken::OAuth2(OAuth2Token {
-            access_token: "mock_access_token".to_string(),
-            token_type: "Bearer".to_string(),
-            expires_at: Some(Utc::now() + Duration::hours(1)),
-            refresh_token: Some("mock_refresh_token".to_string()),
-            scopes: vec!["mcp:read".to_string(), "mcp:write".to_string()],
-        }))
+        Err(McpError::AuthenticationError(
+            "OAuth 2.1 interactive flow is not yet implemented. \
+             Please configure an API Key for this MCP server instead."
+                .to_string(),
+        ))
     }
 
     /// 发现OAuth端点
@@ -382,11 +381,10 @@ impl McpAuthManager {
 
     /// 创建长期访问令牌（用于不支持OAuth的客户端）
     pub fn create_long_lived_token(&self, provider: &str) -> String {
-        use rand::Rng;
-        let mut rng = rand::thread_rng();
+        use rand::{rngs::OsRng, Rng};
         let token: String = (0..32)
             .map(|_| {
-                let idx = rng.gen_range(0..62);
+                let idx = OsRng.gen_range(0..62);
                 let chars = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
                 chars[idx] as char
             })

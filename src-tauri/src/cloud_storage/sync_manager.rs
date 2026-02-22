@@ -152,16 +152,37 @@ impl CloudSyncManager {
         }
     }
 
-    /// 保存云端 Manifest（带备份）
+    /// 保存云端 Manifest（带备份 + 写入验证）
     async fn save_manifest(&self, manifest: &CloudManifest) -> Result<()> {
         let data = serde_json::to_vec_pretty(manifest)
             .map_err(|e| AppError::internal(format!("序列化 manifest 失败: {e}")))?;
+
+        let temp_key = format!(
+            "manifest.{}.tmp",
+            chrono::Utc::now().timestamp_millis()
+        );
+
+        self.storage.put(&temp_key, &data).await?;
+
+        let verify = self.storage.get(&temp_key).await?;
+        match verify {
+            Some(ref read_back) if read_back == &data => {}
+            _ => {
+                let _ = self.storage.delete(&temp_key).await;
+                return Err(AppError::internal(
+                    "manifest 临时文件验证失败：写入内容与读回不一致".to_string(),
+                ));
+            }
+        }
 
         if let Ok(Some(old_data)) = self.storage.get(MANIFEST_FILE).await {
             let _ = self.storage.put(MANIFEST_BACKUP_FILE, &old_data).await;
         }
 
-        self.storage.put(MANIFEST_FILE, &data).await
+        self.storage.put(MANIFEST_FILE, &data).await?;
+        let _ = self.storage.delete(&temp_key).await;
+
+        Ok(())
     }
 
     /// 获取同步状态

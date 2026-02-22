@@ -15,7 +15,7 @@ use crate::vfs::embedding_service::{
 use crate::vfs::error::{VfsError, VfsResult};
 use crate::vfs::index_service::VfsIndexService;
 use crate::vfs::lance_store::VfsLanceStore;
-use crate::vfs::ocr_utils::{join_ocr_pages_text, parse_ocr_pages_json};
+use crate::vfs::ocr_utils::{join_ocr_pages_text, parse_ocr_pages_json, OCR_FAILED_MARKER};
 use crate::vfs::pdf_processing_service::{OcrPageResult, OcrPagesJson};
 use crate::vfs::repos::{
     embedding_dim_repo, index_segment_repo, index_unit_repo, VfsBlobRepo, VfsEmbedding,
@@ -845,9 +845,6 @@ fn resolve_indexable_content(
                 }
             });
 
-            // ★ 2026-01 修复：OCR 失败标记，过滤掉永久失败的页面
-            const OCR_FAILED_MARKER: &str = "__OCR_FAILED__";
-
             if let Some((ocr_pages_json, extracted_text)) = result {
                 // 优先使用 ocr_pages_json
                 if let Some(json_str) = ocr_pages_json {
@@ -1165,9 +1162,6 @@ fn resolve_indexable_pages(
                     None
                 }
             });
-
-            // ★ 2026-01 修复：OCR 失败标记，过滤掉永久失败的页面
-            const OCR_FAILED_MARKER: &str = "__OCR_FAILED__";
 
             if let Some((ocr_pages_json, extracted_text, page_count)) = result {
                 // 优先使用 ocr_pages_json（按页存储的 OCR 文本）
@@ -2290,6 +2284,9 @@ impl VfsFullIndexingService {
                         let conn = self.db.get_conn()?;
                         let now = chrono::Utc::now().timestamp_millis();
 
+                        conn.execute("SAVEPOINT index_metadata", rusqlite::params![])?;
+                        let savepoint_result: VfsResult<String> = (|| {
+
                         // ★ 验证 embedding_ids 数量与 chunks 数量一致
                         if embedding_ids.len() != chunks_for_db.len() {
                             warn!(
@@ -2373,10 +2370,23 @@ impl VfsFullIndexingService {
                             count as i64,
                         )?;
 
-                        debug!(
-                        "[VfsFullIndexingService] Created {} segments for unit {} (resource {}), lance_row_ids synced (emb_ids={}, chunks={})",
-                        chunks_for_db.len(), unit_id, resource_id, embedding_ids.len(), chunks_for_db.len()
-                    );
+                        Ok(unit_id)
+                        })();
+
+                        match savepoint_result {
+                            Ok(unit_id) => {
+                                conn.execute("RELEASE SAVEPOINT index_metadata", rusqlite::params![])?;
+                                debug!(
+                                    "[VfsFullIndexingService] Created {} segments for unit {} (resource {}), lance_row_ids synced (emb_ids={}, chunks={})",
+                                    chunks_for_db.len(), unit_id, resource_id, embedding_ids.len(), chunks_for_db.len()
+                                );
+                            }
+                            Err(e) => {
+                                let _ = conn.execute("ROLLBACK TO SAVEPOINT index_metadata", rusqlite::params![]);
+                                let _ = conn.execute("RELEASE SAVEPOINT index_metadata", rusqlite::params![]);
+                                return Err(e);
+                            }
+                        }
                     }
 
                     Ok(())

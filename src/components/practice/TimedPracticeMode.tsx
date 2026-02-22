@@ -8,7 +8,7 @@
  * - 进度追踪
  */
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useCallback } from 'react';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/shad/Card';
@@ -29,6 +29,8 @@ import {
 } from 'lucide-react';
 import { useQuestionBankStore, TimedPracticeSession } from '@/stores/questionBankStore';
 import { useTranslation } from 'react-i18next';
+import { useCountdown } from '@/hooks/useCountdown';
+import { showGlobalNotification } from '@/components/UnifiedNotification';
 
 interface TimedPracticeModeProps {
   examId: string;
@@ -59,83 +61,61 @@ export const TimedPracticeMode: React.FC<TimedPracticeModeProps> = ({
     timedSession,
     setTimedSession,
     startTimedPractice,
-    isLoading,
+    isLoadingPractice,
   } = useQuestionBankStore();
   
   // 配置状态
   const [durationMinutes, setDurationMinutes] = useState(30);
   const [questionCount, setQuestionCount] = useState(20);
   
-  // 计时器状态
-  const [remainingSeconds, setRemainingSeconds] = useState(0);
-  const [isPaused, setIsPaused] = useState(false);
-  const [isStarted, setIsStarted] = useState(false);
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  // 计时器状态 — 基于绝对时间戳的高精度倒计时
+  const [targetEndTime, setTargetEndTime] = useState<number | null>(null);
+  const isStarted = targetEndTime != null;
+  
+  const { remaining: remainingSeconds, isPaused, pause, resume, reset: resetCountdown } = useCountdown(
+    targetEndTime,
+    onTimeout,
+  );
   
   // 计算进度
   const progress = timedSession
     ? (timedSession.answered_count / timedSession.question_count) * 100
     : 0;
   
-  // 倒计时逻辑
-  useEffect(() => {
-    if (isStarted && !isPaused && remainingSeconds > 0) {
-      timerRef.current = setInterval(() => {
-        setRemainingSeconds((prev) => {
-          if (prev <= 1) {
-            // 时间到
-            clearInterval(timerRef.current!);
-            onTimeout?.();
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-    }
-    
-    return () => {
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-      }
-    };
-  }, [isStarted, isPaused, remainingSeconds, onTimeout]);
-  
   // 开始练习
   const handleStart = useCallback(async () => {
     try {
       const session = await startTimedPractice(examId, durationMinutes, questionCount);
-      setRemainingSeconds(durationMinutes * 60);
-      setIsStarted(true);
+      setTargetEndTime(Date.now() + durationMinutes * 60 * 1000);
       onStart?.(session);
     } catch (err: unknown) {
-      console.error('Failed to start timed practice:', err);
+      const msg = err instanceof Error ? err.message : String(err);
+      showGlobalNotification('error', msg, t('timed.startError', '启动限时练习失败'));
     }
   }, [examId, durationMinutes, questionCount, startTimedPractice, onStart]);
   
   // 暂停/继续
   const togglePause = useCallback(() => {
-    setIsPaused((prev) => !prev);
-  }, []);
+    if (isPaused) {
+      resume();
+    } else {
+      pause();
+    }
+  }, [isPaused, pause, resume]);
   
   // 提交
   const handleSubmit = useCallback(() => {
-    if (timerRef.current) {
-      clearInterval(timerRef.current);
-    }
-    setIsStarted(false);
+    setTargetEndTime(null);
+    resetCountdown();
     onSubmit?.();
-  }, [onSubmit]);
+  }, [onSubmit, resetCountdown]);
   
   // 重置
   const handleReset = useCallback(() => {
-    if (timerRef.current) {
-      clearInterval(timerRef.current);
-    }
-    setIsStarted(false);
-    setIsPaused(false);
-    setRemainingSeconds(0);
+    setTargetEndTime(null);
+    resetCountdown();
     setTimedSession(null);
-  }, [setTimedSession]);
+  }, [setTimedSession, resetCountdown]);
   
   // 计算时间状态颜色
   const getTimeColor = () => {
@@ -201,10 +181,10 @@ export const TimedPracticeMode: React.FC<TimedPracticeModeProps> = ({
           
           <NotionButton
             onClick={handleStart}
-            disabled={isLoading}
+            disabled={isLoadingPractice}
             className="w-full h-12 text-lg"
           >
-            {isLoading ? (
+            {isLoadingPractice ? (
               <>
                 <Loader2 className="w-5 h-5 mr-2 animate-spin" />
                 {t('timed.loading')}

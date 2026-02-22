@@ -123,6 +123,9 @@ libc = "0.2"
 pdfium-render = { version = "0.8", default-features = false, features = ["image_024", "pdfium_7350", "thread_safe"] }
 fs_extra = "1.3"
 urlencoding = "2.1.3"
+roxmltree = "0.20"
+argon2 = "0.5"
+zeroize = { version = "1", features = ["derive"] }
 
 # 云存储 S3 兼容（可选，feature-gated 避免默认增加编译时间）
 aws-sdk-s3 = { version = "1.65", optional = true, default-features = false, features = ["behavior-version-latest", "rt-tokio"] }

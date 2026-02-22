@@ -993,7 +993,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
           {/* 🔧 统一：多变体也在底部显示汇总 Token 统计 */}
           {showActions && !isInlineEditing && !isWaitingForContent && (
             <div className={cn(
-              'mt-3 md:opacity-0 md:group-hover:opacity-100 transition-opacity',
+              'mt-3 md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100 transition-opacity',
               // 多变体：底部汇总计数/操作与单变体保持同一内容宽度定位
               isMultiVariant && 'max-w-3xl mx-auto',
               // 桌面端多变体（助手消息）：补齐单变体头像列(8) + 间距(4) = 12，确保与上方单变体竖向参考线对齐

@@ -77,14 +77,13 @@ impl ExamSheetService {
         database: Arc<crate::database::Database>,
         file_manager: Arc<FileManager>,
         vfs_db: Arc<VfsDatabase>,
-    ) -> Self {
-        // database 仅用于创建 LLMManager，不再存储
-        let llm_manager = Arc::new(LLMManager::new(database, file_manager.clone()));
-        Self {
+    ) -> Result<Self, AppError> {
+        let llm_manager = Arc::new(LLMManager::new(database, file_manager.clone())?);
+        Ok(Self {
             file_manager,
             llm_manager,
             vfs_db,
-        }
+        })
     }
 
     /// ★ 将 ExamSheetSessionDetail 保存到 VFS（统一存储入口）

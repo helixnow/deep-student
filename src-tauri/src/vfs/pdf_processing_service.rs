@@ -708,6 +708,13 @@ impl PdfProcessingService {
         // 为每个 PDF 页面生成压缩版本，发送时直接使用压缩版本
         if has_preview {
             if cancel_token.is_cancelled() {
+                info!("[PdfProcessingService] Pipeline cancelled for {}", file_id);
+                let _ = self.update_processing_status(
+                    file_id,
+                    ProcessingStage::Pending,
+                    None,
+                    None,
+                ).await;
                 return Ok(());
             }
 
@@ -835,6 +842,13 @@ impl PdfProcessingService {
                 );
             } else {
                 if cancel_token.is_cancelled() {
+                    info!("[PdfProcessingService] Pipeline cancelled for {}", file_id);
+                    let _ = self.update_processing_status(
+                        file_id,
+                        ProcessingStage::Pending,
+                        None,
+                        None,
+                    ).await;
                     return Ok(());
                 }
 
@@ -912,6 +926,13 @@ impl PdfProcessingService {
         // Stage 4: 向量索引（如果需要）
         if start_stage <= ProcessingStage::VectorIndexing {
             if cancel_token.is_cancelled() {
+                info!("[PdfProcessingService] Pipeline cancelled for {}", file_id);
+                let _ = self.update_processing_status(
+                    file_id,
+                    ProcessingStage::Pending,
+                    None,
+                    None,
+                ).await;
                 return Ok(());
             }
 
@@ -1056,6 +1077,13 @@ impl PdfProcessingService {
         // Stage 1: 图片压缩
         if start_stage <= ProcessingStage::ImageCompression {
             if cancel_token.is_cancelled() {
+                info!("[PdfProcessingService] Pipeline cancelled for {}", file_id);
+                let _ = self.update_processing_status(
+                    file_id,
+                    ProcessingStage::Pending,
+                    None,
+                    None,
+                ).await;
                 return Ok(());
             }
 
@@ -1167,6 +1195,13 @@ impl PdfProcessingService {
                 file_id, start_stage
             );
             if cancel_token.is_cancelled() {
+                info!("[PdfProcessingService] Pipeline cancelled for {}", file_id);
+                let _ = self.update_processing_status(
+                    file_id,
+                    ProcessingStage::Pending,
+                    None,
+                    None,
+                ).await;
                 return Ok(());
             }
 
@@ -1283,6 +1318,13 @@ impl PdfProcessingService {
         // Stage 3: 向量索引
         if start_stage <= ProcessingStage::VectorIndexing && resource_id.is_some() {
             if cancel_token.is_cancelled() {
+                info!("[PdfProcessingService] Pipeline cancelled for {}", file_id);
+                let _ = self.update_processing_status(
+                    file_id,
+                    ProcessingStage::Pending,
+                    None,
+                    None,
+                ).await;
                 return Ok(());
             }
 
@@ -2979,22 +3021,22 @@ impl Ord for ProcessingStage {
             ProcessingStage::TextExtraction => 1,
             ProcessingStage::PageRendering => 2,
             ProcessingStage::PageCompression => 3,
-            ProcessingStage::ImageCompression => 2, // 与 PageRendering 同级（图片专用）
-            ProcessingStage::OcrProcessing => 4,
-            ProcessingStage::VectorIndexing => 5,
-            ProcessingStage::Completed => 6,
-            ProcessingStage::Error => 7,
+            ProcessingStage::ImageCompression => 4,
+            ProcessingStage::OcrProcessing => 5,
+            ProcessingStage::VectorIndexing => 6,
+            ProcessingStage::Completed => 7,
+            ProcessingStage::Error => 8,
         };
         let other_order = match other {
             ProcessingStage::Pending => 0,
             ProcessingStage::TextExtraction => 1,
             ProcessingStage::PageRendering => 2,
             ProcessingStage::PageCompression => 3,
-            ProcessingStage::ImageCompression => 2, // 与 PageRendering 同级（图片专用）
-            ProcessingStage::OcrProcessing => 4,
-            ProcessingStage::VectorIndexing => 5,
-            ProcessingStage::Completed => 6,
-            ProcessingStage::Error => 7,
+            ProcessingStage::ImageCompression => 4,
+            ProcessingStage::OcrProcessing => 5,
+            ProcessingStage::VectorIndexing => 6,
+            ProcessingStage::Completed => 7,
+            ProcessingStage::Error => 8,
         };
         self_order.cmp(&other_order)
     }

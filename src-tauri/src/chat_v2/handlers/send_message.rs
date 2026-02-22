@@ -1570,6 +1570,10 @@ pub async fn chat_v2_continue_message(
     // 🆕 P1修复：使用 TaskTracker 追踪异步任务
     // 11. 异步执行 Pipeline（继续模式）
     chat_v2_state.spawn_tracked(async move {
+        // 🔧 Panic guard: RAII 确保 remove_stream 在正常完成、取消或 panic 时都会被调用
+        let _stream_guard =
+            StreamGuard::new(chat_v2_state_clone.clone(), session_id_for_cleanup.clone());
+
         let result = pipeline_clone
             .execute(
                 window_clone,
@@ -1579,7 +1583,6 @@ pub async fn chat_v2_continue_message(
             )
             .await;
 
-        chat_v2_state_clone.remove_stream(&session_id_for_cleanup);
         log::debug!(
             "[ChatV2::handlers] Continue stream cleanup completed for session: {}",
             session_id_for_cleanup

@@ -223,10 +223,11 @@ impl FileManager {
         self.images_dir.clone()
     }
 
-    /// 将 `images/` 相对路径转换为绝对路径
-    /// 如果传入的已经是绝对路径，则直接返回（支持临时文件路径等场景）
+    /// 将 `images/` 相对路径转换为绝对路径（带路径遍历防护）
+    ///
+    /// 使用 canonicalize + starts_with 验证，防止 `..` 变体绕过。
+    /// 仅允许解析到 images_dir 子树内的路径。
     pub fn resolve_image_path(&self, relative_path: &str) -> PathBuf {
-        // 检测是否已经是绝对路径（Unix: 以 / 开头且长度 > 1，Windows: 包含盘符如 C:\）
         let path = std::path::Path::new(relative_path);
         if path.is_absolute() {
             return path.to_path_buf();
@@ -235,9 +236,32 @@ impl FileManager {
         let trimmed = relative_path
             .strip_prefix("images/")
             .unwrap_or(relative_path)
-            .trim_start_matches('/')
-            .replace("..", "");
-        self.images_dir.join(trimmed)
+            .trim_start_matches('/');
+        let candidate = self.images_dir.join(trimmed);
+
+        // canonicalize 可能失败（文件尚不存在），此时回退到逐段检查
+        if let Ok(canonical) = std::fs::canonicalize(&candidate) {
+            if let Ok(base) = std::fs::canonicalize(&self.images_dir) {
+                if canonical.starts_with(&base) {
+                    return canonical;
+                }
+                warn!(
+                    "路径遍历拦截: {} 不在 {} 内",
+                    canonical.display(),
+                    base.display()
+                );
+                return self.images_dir.clone();
+            }
+        }
+
+        // 文件尚不存在时，检查组件中是否包含 `..`
+        for component in candidate.components() {
+            if component == std::path::Component::ParentDir {
+                warn!("路径遍历拦截: 检测到 '..' 组件 in {}", relative_path);
+                return self.images_dir.clone();
+            }
+        }
+        candidate
     }
 
     /// 保存base64编码的图片文件
@@ -431,20 +455,39 @@ impl FileManager {
         Ok(format!("data:{};base64,{}", mime_type, base64_content))
     }
 
-    /// 删除图片文件
+    /// 删除图片文件（带路径遍历防护）
     pub async fn delete_image(&self, relative_path: &str) -> Result<()> {
-        // delete image
+        if relative_path.trim().is_empty() {
+            return Err(AppError::validation("路径为空"));
+        }
+        if std::path::Path::new(relative_path).is_absolute() {
+            return Err(AppError::validation("拒绝删除：仅允许相对路径"));
+        }
 
         let file_path = self.app_data_dir.join(relative_path);
-        if async_fs::try_exists(&file_path)
+        if !async_fs::try_exists(&file_path)
             .await
             .map_err(|e| AppError::file_system(format!("检查文件存在性失败: {}", e)))?
         {
-            async_fs::remove_file(&file_path)
-                .await
-                .map_err(|e| AppError::file_system(format!("删除图片文件失败: {}", e)))?;
+            return Ok(());
         }
 
+        let base = std::fs::canonicalize(&self.app_data_dir)
+            .map_err(|e| AppError::file_system(format!("解析 app_data_dir 失败: {}", e)))?;
+        let fp_clone = file_path.clone();
+        let canonical = match tokio::task::spawn_blocking(move || std::fs::canonicalize(&fp_clone))
+            .await
+        {
+            Ok(Ok(p)) => p,
+            _ => file_path.clone(),
+        };
+        if !canonical.starts_with(&base) {
+            return Err(AppError::validation("拒绝删除：路径越界"));
+        }
+
+        async_fs::remove_file(&canonical)
+            .await
+            .map_err(|e| AppError::file_system(format!("删除图片文件失败: {}", e)))?;
         Ok(())
     }
 
@@ -467,15 +510,28 @@ impl FileManager {
         }
     }
 
-    /// 删除多个图片文件
+    /// 删除多个图片文件（带路径遍历防护）
     pub fn delete_images(&self, relative_paths: &[String]) -> Result<()> {
-        // delete multiple images
+        let base = std::fs::canonicalize(&self.app_data_dir)
+            .map_err(|e| AppError::file_system(format!("解析 app_data_dir 失败: {}", e)))?;
+
         for path in relative_paths {
-            let file_path = self.app_data_dir.join(path);
-            if file_path.exists() {
-                fs::remove_file(&file_path)
-                    .map_err(|e| AppError::file_system(format!("删除图片文件失败: {}", e)))?;
+            if path.trim().is_empty() || std::path::Path::new(path).is_absolute() {
+                warn!("delete_images: 跳过非法路径 {}", path);
+                continue;
             }
+            let file_path = self.app_data_dir.join(path);
+            if !file_path.exists() {
+                continue;
+            }
+            let canonical = std::fs::canonicalize(&file_path)
+                .map_err(|e| AppError::file_system(format!("解析文件路径失败: {}", e)))?;
+            if !canonical.starts_with(&base) {
+                warn!("delete_images: 路径越界拦截 {}", path);
+                continue;
+            }
+            fs::remove_file(&canonical)
+                .map_err(|e| AppError::file_system(format!("删除图片文件失败: {}", e)))?;
         }
         Ok(())
     }

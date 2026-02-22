@@ -2,18 +2,43 @@
 /// 用于处理跨chunk的不完整SSE行，确保数据完整性
 pub struct SseLineBuffer {
     buffer: String,
+    max_buffer_size: usize,
 }
+
+/// 默认缓冲区上限：10 MB。正常SSE单行不会超过几KB，
+/// 超过此阈值说明上游异常（恶意服务端或协议错误）。
+const DEFAULT_MAX_BUFFER_SIZE: usize = 10 * 1024 * 1024;
 
 impl SseLineBuffer {
     pub fn new() -> Self {
         Self {
             buffer: String::new(),
+            max_buffer_size: DEFAULT_MAX_BUFFER_SIZE,
+        }
+    }
+
+    #[cfg(test)]
+    fn with_max_size(max_buffer_size: usize) -> Self {
+        Self {
+            buffer: String::new(),
+            max_buffer_size,
         }
     }
 
     /// 处理新到达的chunk数据，返回完整的行
     pub fn process_chunk(&mut self, chunk: &str) -> Vec<String> {
         let mut lines = Vec::new();
+
+        if self.buffer.len().saturating_add(chunk.len()) > self.max_buffer_size {
+            tracing::error!(
+                buffer_len = self.buffer.len(),
+                chunk_len = chunk.len(),
+                max = self.max_buffer_size,
+                "SSE缓冲区超过大小上限，丢弃数据以防OOM"
+            );
+            self.buffer.clear();
+            return lines;
+        }
 
         // 将新数据追加到缓冲区
         self.buffer.push_str(chunk);
@@ -151,6 +176,45 @@ mod tests {
     fn test_empty_chunk() {
         let mut buffer = SseLineBuffer::new();
         let lines = buffer.process_chunk("");
+        assert_eq!(lines.len(), 0);
+        assert!(!buffer.has_remaining());
+    }
+
+    #[test]
+    fn test_buffer_overflow_protection() {
+        let mut buffer = SseLineBuffer::with_max_size(32);
+
+        // 第一次写入在限额内
+        let lines = buffer.process_chunk("data: ok\n");
+        assert_eq!(lines.len(), 1);
+        assert_eq!(lines[0], "data: ok");
+
+        // 写入超长数据（无换行），累积到缓冲区
+        let lines = buffer.process_chunk("data: short");
+        assert_eq!(lines.len(), 0);
+        assert!(buffer.has_remaining());
+
+        // 再追加一块，总长超过上限 → 触发保护
+        let lines = buffer.process_chunk("_this_is_way_too_long_for_limit!");
+        assert_eq!(lines.len(), 0);
+        assert!(!buffer.has_remaining()); // 缓冲区已被清空
+
+        // 后续正常数据不受影响
+        let lines = buffer.process_chunk("data: recovered\n");
+        assert_eq!(lines.len(), 1);
+        assert_eq!(lines[0], "data: recovered");
+    }
+
+    #[test]
+    fn test_buffer_exactly_at_limit() {
+        let mut buffer = SseLineBuffer::with_max_size(16);
+        // 恰好等于上限不应触发保护
+        let lines = buffer.process_chunk("1234567890123456");
+        assert_eq!(lines.len(), 0);
+        assert!(buffer.has_remaining());
+
+        // 再多一字节触发
+        let lines = buffer.process_chunk("X");
         assert_eq!(lines.len(), 0);
         assert!(!buffer.has_remaining());
     }

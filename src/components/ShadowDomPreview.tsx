@@ -1,11 +1,29 @@
-import React, { useRef, useEffect, useState, useCallback } from 'react';
+import React, { useRef, useEffect, useState, useMemo } from 'react';
+import DOMPurify from 'dompurify';
 
 const sanitizeCss = (css: string) => {
   if (!css) return '';
   let sanitized = css;
+  // Prevent CSS-to-HTML breakout via </style> injection
+  sanitized = sanitized.replace(/<\s*\/\s*style/gi, '<\\/style');
   sanitized = sanitized.replace(/@import\s+[^;]+;?/gi, '');
+  sanitized = sanitized.replace(/@charset\s+[^;]+;?/gi, '');
   sanitized = sanitized.replace(/expression\s*\(/gi, '');
+  sanitized = sanitized.replace(/behavior\s*:/gi, 'blocked-behavior:');
+  sanitized = sanitized.replace(/-moz-binding\s*:/gi, 'blocked-moz-binding:');
+  sanitized = sanitized.replace(/javascript\s*:/gi, 'blocked-javascript:');
+  // Block external resource loading via url() — allow data: URIs only
+  sanitized = sanitized.replace(/url\s*\(\s*(['"]?)\s*https?:\/\//gi, 'url($1blocked://');
   return sanitized;
+};
+
+const sanitizeHtml = (html: string) => {
+  if (!html) return '';
+  return DOMPurify.sanitize(html, {
+    FORBID_TAGS: ['script', 'iframe', 'embed', 'object', 'form'],
+    FORBID_ATTR: ['onerror', 'onload', 'onclick', 'onmouseover', 'onfocus', 'onblur'],
+    ALLOW_DATA_ATTR: false,
+  });
 };
 
 interface ShadowDomPreviewProps {
@@ -29,46 +47,15 @@ export const ShadowDomPreview: React.FC<ShadowDomPreviewProps> = ({
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [iframeHeight, setIframeHeight] = useState<number>(height || 200);
 
-  const adjustHeight = useCallback(() => {
-    const iframe = iframeRef.current;
-    if (!iframe?.contentDocument?.body) return;
-    const body = iframe.contentDocument.body;
-    const scrollH = body.scrollHeight;
-    if (scrollH > 0) {
-      setIframeHeight(scrollH);
-    }
-  }, []);
-
-  useEffect(() => {
-    const iframe = iframeRef.current;
-    if (!iframe) return;
-
+  const srcdoc = useMemo(() => {
     const safeCss = sanitizeCss(cssContent);
+    const safeHtml = sanitizeHtml(htmlContent);
+    const isAnkiFidelity = fidelity === 'anki';
+    const bodyContent = isAnkiFidelity
+      ? safeHtml
+      : `<div class="card-content-container">${safeHtml}</div>`;
 
-    const handleLoad = () => {
-      const doc = iframe.contentDocument;
-      if (!doc) return;
-      const isAnkiFidelity = fidelity === 'anki';
-      const bodyContent = isAnkiFidelity
-        ? htmlContent
-        : `<div class="card-content-container">${htmlContent}</div>`;
-      try {
-        window.dispatchEvent(new CustomEvent('chatanki-debug-lifecycle', {
-          detail: {
-            level: 'debug',
-            phase: 'render:stack',
-            summary: `ShadowDomPreview load fidelity=${fidelity} compact=${compact} html=${htmlContent.length} css=${safeCss.length}`,
-            detail: {
-              fidelity,
-              compact,
-              htmlLength: htmlContent.length,
-              cssLength: safeCss.length,
-            },
-          },
-        }));
-      } catch { /* debug only */ }
-
-      const fullHtml = `<!DOCTYPE html>
+    return `<!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8">
@@ -112,51 +99,40 @@ export const ShadowDomPreview: React.FC<ShadowDomPreviewProps> = ({
   }
   ${safeCss}
 </style>
+<script>
+  new ResizeObserver(function() {
+    var h = document.body ? document.body.scrollHeight : 0;
+    if (h > 0) window.parent.postMessage({ type: 'sdp-resize', height: h }, '*');
+  }).observe(document.documentElement);
+  window.addEventListener('load', function() {
+    var h = document.body ? document.body.scrollHeight : 0;
+    if (h > 0) window.parent.postMessage({ type: 'sdp-resize', height: h }, '*');
+  });
+</script>
 </head>
 <body>
 ${bodyContent}
 </body>
 </html>`;
+  }, [htmlContent, cssContent, compact, fidelity]);
 
-      doc.open();
-      doc.write(fullHtml);
-      doc.close();
-
-      // 高度自适应
-      requestAnimationFrame(() => {
-        adjustHeight();
-        // 监听内部尺寸变化
-        try {
-          const ro = new ResizeObserver(() => adjustHeight());
-          if (doc.body) ro.observe(doc.body);
-          (iframe as any).__resizeObserver = ro;
-        } catch (_) {}
-      });
-
-      // 监听 iframe 内部点击后可能引起的 DOM 变化，重新调整高度
-      doc.addEventListener('click', () => {
-        setTimeout(adjustHeight, 50);
-        setTimeout(adjustHeight, 200);
-      });
-    };
-
-    iframe.addEventListener('load', handleLoad);
-    // 触发加载：设置空白 src
-    iframe.src = 'about:blank';
-
-    return () => {
-      iframe.removeEventListener('load', handleLoad);
-      if ((iframe as any).__resizeObserver) {
-        try { (iframe as any).__resizeObserver.disconnect(); } catch (_) {}
-        delete (iframe as any).__resizeObserver;
+  useEffect(() => {
+    const handleMessage = (e: MessageEvent) => {
+      if (e.source !== iframeRef.current?.contentWindow) return;
+      if (e.data?.type === 'sdp-resize' && typeof e.data.height === 'number') {
+        const h = Math.max(20, Math.min(e.data.height, 5000));
+        if (Number.isFinite(h)) setIframeHeight(h);
       }
     };
-  }, [htmlContent, cssContent, compact, fidelity, adjustHeight]);
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, []);
 
   return (
     <iframe
       ref={iframeRef}
-      sandbox="allow-scripts allow-same-origin"
+      sandbox="allow-scripts"
+      srcDoc={srcdoc}
       style={{
         display: 'block',
         width: '100%',

@@ -4,8 +4,8 @@
  */
 
 import mermaid from 'mermaid';
+import DOMPurify from 'dompurify';
 
-// 初始化 Mermaid
 let initialized = false;
 
 const initMermaid = () => {
@@ -14,7 +14,7 @@ const initMermaid = () => {
   mermaid.initialize({
     startOnLoad: false,
     theme: 'default',
-    securityLevel: 'loose',
+    securityLevel: 'strict',
     fontFamily: 'system-ui, -apple-system, sans-serif',
   });
   
@@ -33,7 +33,11 @@ export const renderMermaidDiagram = async (
   try {
     const id = `mermaid-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     const { svg } = await mermaid.render(id, code.trim());
-    container.innerHTML = svg;
+    container.innerHTML = DOMPurify.sanitize(svg, {
+      USE_PROFILES: { svg: true, svgFilters: true },
+      FORBID_TAGS: ['script', 'foreignObject', 'iframe', 'embed', 'object'],
+      FORBID_ATTR: ['xlink:href'],
+    });
     container.classList.add('mermaid-rendered');
   } catch (error) {
     console.error('[Mermaid] Render failed:', error);

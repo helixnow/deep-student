@@ -941,15 +941,14 @@ impl LLMManager {
             .map_err(|e| AppError::database(format!("保存内置模型快照失败: {}", e)))
     }
 
-    pub fn new(db: Arc<Database>, file_manager: Arc<FileManager>) -> Self {
-        // 创建HTTP客户端，使用渐进式回退策略确保始终有合理的配置
+    pub fn new(db: Arc<Database>, file_manager: Arc<FileManager>) -> Result<Self> {
         let client = Self::create_http_client_with_fallback();
 
-        let app_data_dir_path = file_manager.get_app_data_dir(); // Assuming this returns &Path
-        let crypto_service =
-            CryptoService::new(&app_data_dir_path.to_path_buf()).expect("无法初始化加密服务");
+        let app_data_dir_path = file_manager.get_app_data_dir();
+        let crypto_service = CryptoService::new(&app_data_dir_path.to_path_buf())
+            .map_err(|e| AppError::configuration(format!("加密服务初始化失败: {e}")))?;
 
-        Self {
+        Ok(Self {
             client,
             db,
             file_manager,
@@ -958,7 +957,7 @@ impl LLMManager {
             cancel_channels: Arc::new(TokioMutex::new(std::collections::HashMap::new())),
             mcp_tool_cache: Arc::new(RwLock::new(None)),
             hooks_registry: Arc::new(TokioMutex::new(std::collections::HashMap::new())),
-        }
+        })
     }
 
     // 对外暴露 HTTP 客户端，便于独立管线重用统一配置的客户端

@@ -955,7 +955,7 @@ impl LanceVectorStore {
                 .ok()
                 .flatten()
                 .map(|s| s == "1" || s.eq_ignore_ascii_case("true"))
-                .unwrap_or(true);
+                .unwrap_or(false);
 
             builder = builder
                 .ngram_min_length(min_len)

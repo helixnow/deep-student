@@ -587,6 +587,7 @@ interface QuestionBankState {
   isLoadingTrend: boolean;
   isLoadingHeatmap: boolean;
   isLoadingKnowledge: boolean;
+  isLoadingPractice: boolean;
   error: string | null;
   // 并发防护
   loadRequestId: number;
@@ -708,6 +709,7 @@ export const useQuestionBankStore = create<QuestionBankState>()(
       isLoadingTrend: false,
       isLoadingHeatmap: false,
       isLoadingKnowledge: false,
+      isLoadingPractice: false,
       error: null,
       
       // 并发防护：请求 ID，确保只有最新请求的结果会被应用
@@ -1284,7 +1286,7 @@ export const useQuestionBankStore = create<QuestionBankState>()(
       setGeneratedPaper: (paper) => set({ generatedPaper: paper }),
 
       startTimedPractice: async (examId, durationMinutes, questionCount) => {
-        set({ isLoading: true, error: null });
+        set({ isLoadingPractice: true, error: null });
         
         try {
           const session = await invoke<TimedPracticeSession>('qbank_start_timed_practice', {
@@ -1295,17 +1297,17 @@ export const useQuestionBankStore = create<QuestionBankState>()(
             },
           });
           
-          set({ timedSession: session, isLoading: false });
+          set({ timedSession: session, isLoadingPractice: false });
           return session;
         } catch (err: unknown) {
           debugLog.error('[QuestionBankStore] startTimedPractice failed:', err);
-          set({ error: String(err), isLoading: false });
+          set({ error: String(err), isLoadingPractice: false });
           throw err;
         }
       },
 
       generateMockExam: async (examId, config) => {
-        set({ isLoading: true, error: null });
+        set({ isLoadingPractice: true, error: null });
         
         try {
           const session = await invoke<MockExamSession>('qbank_generate_mock_exam', {
@@ -1315,34 +1317,34 @@ export const useQuestionBankStore = create<QuestionBankState>()(
             },
           });
           
-          set({ mockExamSession: session, isLoading: false });
+          set({ mockExamSession: session, isLoadingPractice: false });
           return session;
         } catch (err: unknown) {
           debugLog.error('[QuestionBankStore] generateMockExam failed:', err);
-          set({ error: String(err), isLoading: false });
+          set({ error: String(err), isLoadingPractice: false });
           throw err;
         }
       },
 
       submitMockExam: async (session) => {
-        set({ isLoading: true, error: null });
+        set({ isLoadingPractice: true, error: null });
         
         try {
           const scoreCard = await invoke<MockExamScoreCard>('qbank_submit_mock_exam', {
             request: { session },
           });
           
-          set({ mockExamScoreCard: scoreCard, isLoading: false });
+          set({ mockExamScoreCard: scoreCard, isLoadingPractice: false });
           return scoreCard;
         } catch (err: unknown) {
           debugLog.error('[QuestionBankStore] submitMockExam failed:', err);
-          set({ error: String(err), isLoading: false });
+          set({ error: String(err), isLoadingPractice: false });
           throw err;
         }
       },
 
       getDailyPractice: async (examId, count) => {
-        set({ isLoading: true, error: null });
+        set({ isLoadingPractice: true, error: null });
         
         try {
           const result = await invoke<DailyPracticeResult>('qbank_get_daily_practice', {
@@ -1352,17 +1354,17 @@ export const useQuestionBankStore = create<QuestionBankState>()(
             },
           });
           
-          set({ dailyPractice: result, isLoading: false });
+          set({ dailyPractice: result, isLoadingPractice: false });
           return result;
         } catch (err: unknown) {
           debugLog.error('[QuestionBankStore] getDailyPractice failed:', err);
-          set({ error: String(err), isLoading: false });
+          set({ error: String(err), isLoadingPractice: false });
           throw err;
         }
       },
 
       generatePaper: async (examId, config) => {
-        set({ isLoading: true, error: null });
+        set({ isLoadingPractice: true, error: null });
         
         try {
           const paper = await invoke<GeneratedPaper>('qbank_generate_paper', {
@@ -1372,17 +1374,17 @@ export const useQuestionBankStore = create<QuestionBankState>()(
             },
           });
           
-          set({ generatedPaper: paper, isLoading: false });
+          set({ generatedPaper: paper, isLoadingPractice: false });
           return paper;
         } catch (err: unknown) {
           debugLog.error('[QuestionBankStore] generatePaper failed:', err);
-          set({ error: String(err), isLoading: false });
+          set({ error: String(err), isLoadingPractice: false });
           throw err;
         }
       },
 
       getCheckInCalendar: async (examId, year, month) => {
-        set({ isLoading: true, error: null });
+        set({ isLoadingPractice: true, error: null });
         
         try {
           const calendar = await invoke<CheckInCalendar>('qbank_get_check_in_calendar', {
@@ -1393,11 +1395,11 @@ export const useQuestionBankStore = create<QuestionBankState>()(
             },
           });
           
-          set({ checkInCalendar: calendar, isLoading: false });
+          set({ checkInCalendar: calendar, isLoadingPractice: false });
           return calendar;
         } catch (err: unknown) {
           debugLog.error('[QuestionBankStore] getCheckInCalendar failed:', err);
-          set({ error: String(err), isLoading: false });
+          set({ error: String(err), isLoadingPractice: false });
           throw err;
         }
       },

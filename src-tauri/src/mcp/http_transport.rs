@@ -14,13 +14,24 @@ use std::time::Duration;
 use tokio::sync::{mpsc, Mutex, RwLock};
 
 /// HTTP传输配置
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct HttpConfig {
     pub url: String,
     pub api_key: Option<String>,
     pub oauth: Option<OAuthConfig>,
     pub headers: HeaderMap,
     pub timeout: Duration,
+}
+
+impl std::fmt::Debug for HttpConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("HttpConfig")
+            .field("url", &self.url)
+            .field("api_key", &self.api_key.as_ref().map(|_| "[REDACTED]"))
+            .field("oauth", &self.oauth)
+            .field("timeout", &self.timeout)
+            .finish()
+    }
 }
 
 /// OAuth配置

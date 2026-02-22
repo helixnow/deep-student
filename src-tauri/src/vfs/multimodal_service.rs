@@ -608,7 +608,7 @@ impl VfsMultimodalService {
                 };
 
                 // 读取文件内容
-                let blob_data = match std::fs::read(&blob_path) {
+                let blob_data = match tokio::fs::read(&blob_path).await {
                     Ok(data) => data,
                     Err(e) => {
                         warn!(
@@ -655,7 +655,7 @@ impl VfsMultimodalService {
             if let (Some(blob_hash), mime_type) = image_info {
                 // 从 VFS Blob 获取文件路径并读取数据
                 match VfsBlobRepo::get_blob_path(&self.vfs_db, &blob_hash)? {
-                    Some(blob_path) => match std::fs::read(&blob_path) {
+                    Some(blob_path) => match tokio::fs::read(&blob_path).await {
                         Ok(blob_data) => {
                             let image_base64 = BASE64.encode(&blob_data);
                             let mime = mime_type.unwrap_or_else(|| "image/png".to_string());

@@ -30,6 +30,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { showGlobalNotification } from '@/components/UnifiedNotification';
 import type { QuestionBankStats } from '@/api/questionBankApi';
 import type { PracticeMode } from '@/api/questionBankApi';
 
@@ -304,6 +305,12 @@ export const PracticeLauncher: React.FC<PracticeLauncherProps> = ({
               <TimedPracticeMode
                 examId={examId}
                 onStart={() => onStartPractice('timed')}
+                onTimeout={() => {
+                  showGlobalNotification('info', t('timed.timeoutMessage', '限时练习时间已到'), t('timed.timeoutTitle', '时间到'));
+                }}
+                onSubmit={() => {
+                  setActiveAdvanced(null);
+                }}
               />
             )}
             {activeAdvanced === 'mock_exam' && (

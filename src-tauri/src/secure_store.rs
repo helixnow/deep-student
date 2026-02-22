@@ -17,6 +17,7 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use tracing::{debug, info, warn};
+use zeroize::Zeroize;
 
 /// 服务名称常量
 const SERVICE_NAME: &str = "deep-student";
@@ -208,10 +209,11 @@ impl SecureStore {
             }
         }
 
-        use rand::RngCore;
+        use rand::{rngs::OsRng, RngCore};
         let mut seed_bytes = [0u8; 32];
-        rand::thread_rng().fill_bytes(&mut seed_bytes);
+        OsRng.fill_bytes(&mut seed_bytes);
         let seed = hex::encode(seed_bytes);
+        seed_bytes.zeroize();
         std::fs::write(&seed_file, &seed)
             .map_err(|e| SecureStoreError::Other(format!("写入密钥种子失败: {}", e)))?;
         Ok(seed)
@@ -279,13 +281,13 @@ impl SecureStore {
     fn encrypt_with_key(key: &[u8; 32], value: &str) -> Result<Vec<u8>, SecureStoreError> {
         use aes_gcm::aead::{Aead, KeyInit};
         use aes_gcm::{Aes256Gcm, Key, Nonce};
-        use rand::RngCore;
+        use rand::{rngs::OsRng, RngCore};
 
         let encryption_key = Key::<Aes256Gcm>::from_slice(key);
         let cipher = Aes256Gcm::new(encryption_key);
 
         let mut nonce_bytes = [0u8; 12];
-        rand::thread_rng().fill_bytes(&mut nonce_bytes);
+        OsRng.fill_bytes(&mut nonce_bytes);
         let nonce = Nonce::from_slice(&nonce_bytes);
 
         let ciphertext = cipher
@@ -325,8 +327,10 @@ impl SecureStore {
         let secure_dir = self.get_secure_dir()?;
         let file_path = secure_dir.join(format!("{}.enc", key.replace("/", "_")));
 
-        let device_key = self.get_device_key();
-        let data = Self::encrypt_with_key(&device_key, value)?;
+        let mut device_key = self.get_device_key();
+        let result = Self::encrypt_with_key(&device_key, value);
+        device_key.zeroize();
+        let data = result?;
 
         std::fs::write(&file_path, &data)
             .map_err(|e| SecureStoreError::Other(format!("写入文件失败: {}", e)))?;
@@ -346,13 +350,16 @@ impl SecureStore {
         let data = std::fs::read(&file_path)
             .map_err(|e| SecureStoreError::Other(format!("读取文件失败: {}", e)))?;
 
-        let device_key = self.get_device_key();
-        match Self::decrypt_with_key(&device_key, &data) {
+        let mut device_key = self.get_device_key();
+        let result = Self::decrypt_with_key(&device_key, &data);
+        device_key.zeroize();
+        match result {
             Ok(plaintext) => Ok(Some(plaintext)),
             Err(primary_err) => {
-                // 兼容旧版本密钥：允许读旧数据并在成功后自动重加密到新密钥
-                let legacy_key = self.get_legacy_device_key();
-                match Self::decrypt_with_key(&legacy_key, &data) {
+                let mut legacy_key = self.get_legacy_device_key();
+                let legacy_result = Self::decrypt_with_key(&legacy_key, &data);
+                legacy_key.zeroize();
+                match legacy_result {
                     Ok(legacy_plaintext) => {
                         warn!("检测到 legacy 加密格式，正在迁移到稳定主密钥: {}", key);
                         if let Err(e) = self.save_encrypted_file(key, &legacy_plaintext) {

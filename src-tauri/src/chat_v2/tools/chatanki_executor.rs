@@ -5000,6 +5000,38 @@ fn upsert_block_allow_orphan(
 ) -> Result<(), String> {
     let conn = db.get_conn_safe().map_err(|e| e.to_string())?;
 
+    // FK 约束要求 message 先于 block 存在。
+    // 从 message_id 推导 session_id（查询同 message 的已有记录），
+    // 若消息不存在则创建占位行。
+    let session_id: Option<String> = conn
+        .query_row(
+            "SELECT session_id FROM chat_v2_messages WHERE id = ?1",
+            rusqlite::params![block.message_id],
+            |row| row.get(0),
+        )
+        .ok();
+    if session_id.is_none() {
+        // 消息尚不存在，从同 block.message_id 前缀推断 session_id 比较困难。
+        // 使用 message_id 本身作为临时 session_id，后续 save_results 会覆盖正确值。
+        let fallback_sid = block
+            .message_id
+            .strip_prefix("msg_")
+            .map(|rest| format!("sess_{}", rest))
+            .unwrap_or_else(|| format!("orphan_sess_{}", &block.message_id))
+            .chars()
+            .take(40)
+            .collect::<String>();
+        let _ = conn.execute(
+            "INSERT OR IGNORE INTO chat_v2_messages (id, session_id, role, block_ids_json, timestamp) \
+             VALUES (?1, ?2, 'assistant', '[]', ?3)",
+            rusqlite::params![
+                block.message_id,
+                fallback_sid,
+                chrono::Utc::now().timestamp_millis(),
+            ],
+        );
+    }
+
     let tool_input_json = block
         .tool_input
         .as_ref()
@@ -5019,15 +5051,25 @@ fn upsert_block_allow_orphan(
         .transpose()
         .map_err(|e| e.to_string())?;
 
-    // Streaming path: message may not be saved yet; allow orphan blocks.
-    conn.execute("PRAGMA foreign_keys = OFF", [])
-        .map_err(|e| e.to_string())?;
-
-    let result = conn.execute(
+    conn.execute(
         r#"
-        INSERT OR REPLACE INTO chat_v2_blocks
+        INSERT INTO chat_v2_blocks
         (id, message_id, block_type, status, block_index, content, tool_name, tool_input_json, tool_output_json, citations_json, error, started_at, ended_at, first_chunk_at)
         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
+        ON CONFLICT(id) DO UPDATE SET
+            message_id = excluded.message_id,
+            block_type = excluded.block_type,
+            status = excluded.status,
+            block_index = excluded.block_index,
+            content = excluded.content,
+            tool_name = excluded.tool_name,
+            tool_input_json = excluded.tool_input_json,
+            tool_output_json = excluded.tool_output_json,
+            citations_json = excluded.citations_json,
+            error = excluded.error,
+            started_at = excluded.started_at,
+            ended_at = excluded.ended_at,
+            first_chunk_at = excluded.first_chunk_at
         "#,
         rusqlite::params![
             block.id,
@@ -5045,10 +5087,8 @@ fn upsert_block_allow_orphan(
             block.ended_at,
             block.first_chunk_at,
         ],
-    );
-
-    let _ = conn.execute("PRAGMA foreign_keys = ON", []);
-    result.map_err(|e| e.to_string())?;
+    )
+    .map_err(|e| e.to_string())?;
 
     // Best-effort append block_id to message if message already exists.
     let _ = append_block_id_to_message(&conn, &block.message_id, &block.id);

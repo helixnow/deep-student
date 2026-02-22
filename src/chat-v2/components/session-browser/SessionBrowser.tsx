@@ -224,7 +224,7 @@ const SessionCard: React.FC<SessionCardProps> = ({
     >
       {/* 操作按钮 - 悬停显示 (右上角) */}
       {!isEditing && (
-        <div className="absolute top-2 right-2 flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+        <div className="absolute top-2 right-2 flex gap-0.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity z-10">
           <NotionButton variant="ghost" size="icon" iconOnly onClick={handleEditClick} aria-label={t('page.renameSession')} title={t('page.renameSession')} className="!h-7 !w-7">
             <Edit2 className="w-3.5 h-3.5" />
           </NotionButton>

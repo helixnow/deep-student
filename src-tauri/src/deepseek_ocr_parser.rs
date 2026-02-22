@@ -199,6 +199,10 @@ pub fn project_to_pixels(
     image_width: u32,
     image_height: u32,
 ) -> Vec<DeepseekRegion> {
+    if image_width == 0 || image_height == 0 {
+        return vec![];
+    }
+
     let w = image_width as f64;
     let h = image_height as f64;
 

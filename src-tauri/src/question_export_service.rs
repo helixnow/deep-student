@@ -90,11 +90,13 @@ pub struct CsvExportService;
 impl CsvExportService {
     /// M-038: 校验文件路径，防止目录遍历攻击
     fn validate_file_path(path: &str) -> Result<(), AppError> {
-        let path_str = std::path::Path::new(path).to_string_lossy();
-        if path_str.contains("..") {
-            return Err(AppError::validation(
-                "路径不允许包含 '..' 目录遍历".to_string(),
-            ));
+        let p = std::path::Path::new(path);
+        for component in p.components() {
+            if component == std::path::Component::ParentDir {
+                return Err(AppError::validation(
+                    "路径不允许包含 '..' 目录遍历".to_string(),
+                ));
+            }
         }
         Ok(())
     }
@@ -389,15 +391,32 @@ impl CsvExportService {
             .map_err(|e| AppError::internal(format!("写入 CSV 行失败: {}", e)))
     }
 
-    /// 转义 CSV 单元格
+    /// 转义 CSV 单元格（含 OWASP 公式注入防护）
     fn escape_csv_cell(cell: &str) -> String {
-        let needs_quote =
-            cell.contains(',') || cell.contains('"') || cell.contains('\n') || cell.contains('\r');
+        let mut value = cell.to_string();
+
+        // OWASP CSV Injection: 以危险前缀开头的单元格需要前缀 tab 字符中和公式解析
+        // 覆盖半角和全角变体: = + - @ \t \r \n ＝ ＋ － ＠
+        let first_char = value.chars().next();
+        let is_formula_prefix = matches!(
+            first_char,
+            Some('=' | '+' | '-' | '@' | '\t' | '\r' | '\n'
+                | '\u{FF1D}' | '\u{FF0B}' | '\u{FF0D}' | '\u{FF20}')
+        );
+        if is_formula_prefix {
+            value = format!("\t{}", value);
+        }
+
+        let needs_quote = value.contains(',')
+            || value.contains('"')
+            || value.contains('\n')
+            || value.contains('\r')
+            || is_formula_prefix;
 
         if needs_quote {
-            format!("\"{}\"", cell.replace('"', "\"\""))
+            format!("\"{}\"", value.replace('"', "\"\""))
         } else {
-            cell.to_string()
+            value
         }
     }
 }
@@ -421,6 +440,20 @@ mod tests {
             CsvExportService::escape_csv_cell("line1\nline2"),
             "\"line1\nline2\""
         );
+    }
+
+    #[test]
+    fn test_escape_csv_formula_injection() {
+        // OWASP CSV Injection: dangerous prefixes get tab-prefixed and quoted
+        assert_eq!(CsvExportService::escape_csv_cell("=1+2"), "\"\t=1+2\"");
+        assert_eq!(CsvExportService::escape_csv_cell("+1+2"), "\"\t+1+2\"");
+        assert_eq!(CsvExportService::escape_csv_cell("-1+2"), "\"\t-1+2\"");
+        assert_eq!(CsvExportService::escape_csv_cell("@SUM(A1)"), "\"\t@SUM(A1)\"");
+        // Fullwidth variants
+        assert_eq!(CsvExportService::escape_csv_cell("\u{FF1D}CMD"), "\"\t\u{FF1D}CMD\"");
+        // Safe content stays unchanged
+        assert_eq!(CsvExportService::escape_csv_cell("normal text"), "normal text");
+        assert_eq!(CsvExportService::escape_csv_cell("100"), "100");
     }
 
     #[test]

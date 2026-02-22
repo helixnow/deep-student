@@ -43,12 +43,18 @@ impl WebDavStorage {
         let url = Url::parse(config.endpoint.trim())
             .map_err(|e| AppError::configuration(format!("无效的 WebDAV endpoint: {e}")))?;
 
-        // 超时配置：大文件上传可能需要较长时间
-        // - 读取超时：300 秒（5分钟），适应 500MB 文件在慢速网络下上传
-        // - 连接超时：30 秒，确保快速发现网络问题
+        let is_local = matches!(url.host_str(), Some("localhost" | "127.0.0.1" | "::1"));
+        if !is_local && url.scheme() != "https" {
+            return Err(AppError::configuration(
+                "WebDAV endpoint 必须使用 HTTPS 以保护 Basic Auth 凭据（仅 localhost 允许 HTTP）"
+                    .to_string(),
+            ));
+        }
+
         let http = Client::builder()
             .timeout(Duration::from_secs(300))
             .connect_timeout(Duration::from_secs(30))
+            .min_tls_version(reqwest::tls::Version::TLS_1_2)
             .build()
             .map_err(|e| AppError::internal(format!("构建 HTTP 客户端失败: {e}")))?;
 
@@ -177,90 +183,66 @@ impl WebDavStorage {
         Ok(())
     }
 
-    /// 解析 PROPFIND 响应获取文件列表
+    /// 解析 PROPFIND 响应获取文件列表（使用 roxmltree 安全解析，防止 XXE 注入）
     fn parse_propfind_response(&self, xml: &str, prefix: &str) -> Vec<FileInfo> {
-        // 简单的 XML 解析，提取 href、getlastmodified、getcontentlength
-        // 注意：此实现支持常见的 WebDAV 命名空间前缀，但对于复杂嵌套 XML 可能不够健壮
-        let mut files = Vec::new();
-
-        // 检测并使用正确的 response 分隔符
-        let response_parts: Vec<&str> = if xml.contains("<d:response>") {
-            xml.split("<d:response>").skip(1).collect()
-        } else if xml.contains("<D:response>") {
-            xml.split("<D:response>").skip(1).collect()
-        } else if xml.contains("<response>") {
-            xml.split("<response>").skip(1).collect()
-        } else {
-            Vec::new()
+        let doc = match roxmltree::Document::parse(xml) {
+            Ok(d) => d,
+            Err(e) => {
+                tracing::warn!("WebDAV PROPFIND XML 解析失败: {e}");
+                return Vec::new();
+            }
         };
 
-        for response in response_parts {
-            let href = Self::extract_tag_multi_ns(response, "href");
-            let last_modified = Self::extract_tag_multi_ns(response, "getlastmodified");
-            let content_length = Self::extract_tag_multi_ns(response, "getcontentlength");
+        let dav_ns = "DAV:";
+        let mut files = Vec::new();
 
-            if let Some(href) = href {
-                // 跳过目录本身
-                if href.ends_with('/') {
-                    continue;
-                }
+        for response in doc
+            .descendants()
+            .filter(|n| n.has_tag_name((dav_ns, "response")))
+        {
+            let href = response
+                .descendants()
+                .find(|n| n.has_tag_name((dav_ns, "href")))
+                .and_then(|n| n.text())
+                .unwrap_or_default();
 
-                // 提取相对路径
-                let key = self.extract_relative_key(&href, prefix);
-                if key.is_empty() {
-                    continue;
-                }
-
-                let size = content_length
-                    .and_then(|s| s.parse::<u64>().ok())
-                    .unwrap_or(0);
-
-                let modified = match &last_modified {
-                    Some(s) => DateTime::parse_from_rfc2822(s)
-                        .map(|dt| dt.with_timezone(&Utc))
-                        .unwrap_or_else(|e| {
-                            log::warn!("[CloudStorage::WebDAV] Failed to parse last_modified '{}': {}, using epoch fallback", s, e);
-                            DateTime::<Utc>::from(std::time::UNIX_EPOCH)
-                        }),
-                    None => DateTime::<Utc>::from(std::time::UNIX_EPOCH),
-                };
-
-                files.push(FileInfo {
-                    key,
-                    size,
-                    last_modified: modified,
-                    etag: None,
-                });
+            if href.ends_with('/') {
+                continue;
             }
+
+            let key = self.extract_relative_key(href, prefix);
+            if key.is_empty() {
+                continue;
+            }
+
+            let size = response
+                .descendants()
+                .find(|n| n.has_tag_name((dav_ns, "getcontentlength")))
+                .and_then(|n| n.text())
+                .and_then(|s| s.parse::<u64>().ok())
+                .unwrap_or(0);
+
+            let modified = response
+                .descendants()
+                .find(|n| n.has_tag_name((dav_ns, "getlastmodified")))
+                .and_then(|n| n.text())
+                .and_then(|s| {
+                    DateTime::parse_from_rfc2822(s)
+                        .map(|dt| dt.with_timezone(&Utc))
+                        .ok()
+                })
+                .unwrap_or_else(|| DateTime::<Utc>::from(std::time::UNIX_EPOCH));
+
+            files.push(FileInfo {
+                key,
+                size,
+                last_modified: modified,
+                etag: None,
+            });
         }
 
-        // 按修改时间降序排列
         files.sort_by(|a, b| b.last_modified.cmp(&a.last_modified));
         files
-    }
-
-    fn extract_tag(xml: &str, tag: &str) -> Option<String> {
-        let start_tag = format!("<{}>", tag);
-        let end_tag = format!("</{}>", tag);
-
-        let start = xml.find(&start_tag)?;
-        let content_start = start + start_tag.len();
-        let end = xml[content_start..].find(&end_tag)?;
-
-        Some(xml[content_start..content_start + end].to_string())
-    }
-
-    /// 支持多种命名空间前缀的标签提取
-    fn extract_tag_multi_ns(xml: &str, tag_name: &str) -> Option<String> {
-        // 尝试不同的命名空间前缀
-        let prefixes = ["d:", "D:", "dav:", "DAV:", ""];
-        for prefix in prefixes {
-            let tag = format!("{}{}", prefix, tag_name);
-            if let Some(value) = Self::extract_tag(xml, &tag) {
-                return Some(value);
-            }
-        }
-        None
     }
 
     fn extract_relative_key(&self, href: &str, prefix: &str) -> String {

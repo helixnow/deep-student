@@ -149,16 +149,15 @@ pub fn calculate_next_review(
     let current_ef = ease_factor.max(MIN_EASE_FACTOR);
 
     if quality < PASSING_GRADE {
-        // 失败：重置复习进度，但保留易度因子
-        // 易度因子仍然需要更新，但间隔和重复次数重置
-        let new_ef = calculate_ease_factor(current_ef, q);
-
+        // 失败：重置间隔和重复次数，但保留 EF 不变（SM-2 原始规范）。
+        // 原始 SM-2 论文（Wozniak 1987）在 q < 3 时不更新 EF，
+        // 仅在 q >= 3 时才调整 EF，以避免连续失败导致 EF 过快跌至底线。
         debug!(
-            "[SM2] Failed review: quality={}, resetting to interval=1, repetitions=0, EF={:.2}",
-            quality, new_ef
+            "[SM2] Failed review: quality={}, resetting to interval=1, repetitions=0, EF preserved={:.2}",
+            quality, current_ef
         );
 
-        (FIRST_INTERVAL, new_ef, 0)
+        (FIRST_INTERVAL, current_ef, 0)
     } else {
         // 及格：增加重复次数，更新易度因子，计算新间隔
         let new_ef = calculate_ease_factor(current_ef, q);
@@ -228,9 +227,28 @@ pub fn calculate_next_review_advanced(
 /// # 返回
 /// * ISO 8601 格式的日期字符串（YYYY-MM-DD）
 pub fn calculate_next_review_date(interval: u32) -> String {
+    let fuzzed = fuzz_interval(interval);
     let now = chrono::Utc::now();
-    let next_date = now + chrono::Duration::days(interval as i64);
+    let next_date = now + chrono::Duration::days(fuzzed as i64);
     next_date.format("%Y-%m-%d").to_string()
+}
+
+/// 对间隔添加随机模糊，避免大量卡片在同一天到期（"复习洪峰"）。
+/// 短间隔不模糊，长间隔按 ±5% 偏移。
+fn fuzz_interval(interval: u32) -> u32 {
+    use std::collections::hash_map::RandomState;
+    use std::hash::{BuildHasher, Hasher};
+
+    if interval <= 2 {
+        return interval;
+    }
+    let fuzz_range = std::cmp::max(1, (interval as f64 * 0.05).round() as u32);
+    let mut hasher = RandomState::new().build_hasher();
+    hasher.write_u64(interval as u64);
+    let random_val = hasher.finish() as u32;
+    let offset = random_val % (fuzz_range * 2 + 1);
+    let fuzzed = (interval as i64 + offset as i64 - fuzz_range as i64).max(1) as u32;
+    fuzzed.min(MAX_INTERVAL)
 }
 
 /// 计算预计复习日期时间戳（毫秒）

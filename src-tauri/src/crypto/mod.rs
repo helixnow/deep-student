@@ -1,3 +1,4 @@
+pub mod backup_crypto;
 pub mod tests;
 
 // =====================================================================================
@@ -16,6 +17,7 @@ use sha2::{Digest, Sha256};
 use std::fs::{self, OpenOptions};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
+use zeroize::Zeroize;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EncryptedData {
@@ -25,10 +27,16 @@ pub struct EncryptedData {
     pub version: Option<u8>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct CryptoService {
     key_path: PathBuf,
     master_key: [u8; 32],
+}
+
+impl Drop for CryptoService {
+    fn drop(&mut self) {
+        self.master_key.zeroize();
+    }
 }
 
 impl CryptoService {
@@ -37,10 +45,10 @@ impl CryptoService {
         let key_path = path.join(".master_key");
         tracing::info!("🔐 [Crypto] 初始化加密服务，密钥路径: {:?}", key_path);
         let master_key = Self::load_or_create_master_key(&key_path)?;
-        // 记录密钥指纹（前4字节的哈希），用于诊断密钥是否变化
+        let fp = Sha256::digest(&master_key);
         let key_fingerprint = format!(
             "{:02x}{:02x}{:02x}{:02x}",
-            master_key[0], master_key[1], master_key[2], master_key[3]
+            fp[0], fp[1], fp[2], fp[3]
         );
         tracing::info!("🔐 [Crypto] 主密钥指纹: {}...", key_fingerprint);
         Ok(Self {
@@ -58,14 +66,17 @@ impl CryptoService {
                 .with_context(|| format!("无法打开主密钥文件: {:?}", key_path))?;
             let mut encoded = String::new();
             file.read_to_string(&mut encoded)?;
-            let bytes = general_purpose::STANDARD
+            let mut bytes = general_purpose::STANDARD
                 .decode(encoded.trim())
                 .map_err(|e| anyhow!("主密钥Base64解码失败: {}", e))?;
+            encoded.zeroize();
             if bytes.len() != 32 {
+                bytes.zeroize();
                 return Err(anyhow!("主密钥长度无效，预期32字节，实际{}", bytes.len()));
             }
             let mut key = [0u8; 32];
             key.copy_from_slice(&bytes);
+            bytes.zeroize();
             Ok(key)
         } else {
             tracing::warn!("🔐 [Crypto] 主密钥文件不存在，将创建新密钥: {:?}", key_path);
@@ -74,7 +85,7 @@ impl CryptoService {
             }
             let mut key = [0u8; 32];
             OsRng.fill_bytes(&mut key);
-            let encoded = general_purpose::STANDARD.encode(key);
+            let mut encoded = general_purpose::STANDARD.encode(key);
             let mut file = OpenOptions::new()
                 .create(true)
                 .write(true)
@@ -82,6 +93,7 @@ impl CryptoService {
                 .open(key_path)
                 .with_context(|| format!("无法创建主密钥文件: {:?}", key_path))?;
             file.write_all(encoded.as_bytes())?;
+            encoded.zeroize();
             #[cfg(unix)]
             {
                 use std::os::unix::fs::PermissionsExt;
@@ -180,7 +192,8 @@ impl CryptoService {
 
     pub fn verify_key_integrity(&self) -> Result<bool> {
         let cipher = self.cipher();
-        let nonce = Nonce::from_slice(&[0u8; 12]);
+        let nonce_bytes = Self::generate_nonce();
+        let nonce = Nonce::from_slice(&nonce_bytes);
         let test = b"integrity-check";
         let encrypted = cipher
             .encrypt(nonce, test.as_ref())

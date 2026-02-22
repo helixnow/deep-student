@@ -854,7 +854,7 @@ mod tests {
         let fm = Arc::new(FileManager::new(tmp_dir.clone()).expect("fm"));
         let db_path = tmp_dir.join("test.db");
         let db = Arc::new(crate::database::Database::new(&db_path).expect("db"));
-        let llm = Arc::new(crate::llm_manager::LLMManager::new(db.clone(), fm.clone()));
+        let llm = Arc::new(crate::llm_manager::LLMManager::new(db.clone(), fm.clone()).expect("llm"));
         let svc = EnhancedAnkiService::new(db.clone(), llm.clone());
         let dps = DocumentProcessingService::new(db.clone());
 
@@ -924,7 +924,7 @@ mod tests {
         let fm = Arc::new(FileManager::new(tmp_dir.clone()).expect("fm"));
         let db_path = tmp_dir.join("test.db");
         let db = Arc::new(crate::database::Database::new(&db_path).expect("db"));
-        let llm = Arc::new(crate::llm_manager::LLMManager::new(db.clone(), fm.clone()));
+        let llm = Arc::new(crate::llm_manager::LLMManager::new(db.clone(), fm.clone()).expect("llm"));
         let svc = EnhancedAnkiService::new(db.clone(), llm.clone());
         let dps = DocumentProcessingService::new(db.clone());
 

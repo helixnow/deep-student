@@ -80,33 +80,23 @@ fn lookup_resource_id(db: &VfsDatabase, item_type: &str, item_id: &str) -> Optio
 /// 异步清理资源的向量索引（text + multimodal）
 ///
 /// 失败仅记录警告，不阻塞删除流程。
-async fn cleanup_vector_index(db: &Arc<VfsDatabase>, resource_id: &str) {
-    match VfsLanceStore::new(Arc::clone(db)) {
-        Ok(lance_store) => {
-            if let Err(e) = lance_store.delete_by_resource("text", resource_id).await {
-                warn!(
-                    "[DSTU::trash] Failed to delete text vectors for {}: {}",
-                    resource_id, e
-                );
-            }
-            if let Err(e) = lance_store.delete_by_resource("multimodal", resource_id).await {
-                warn!(
-                    "[DSTU::trash] Failed to delete multimodal vectors for {}: {}",
-                    resource_id, e
-                );
-            }
-            info!(
-                "[DSTU::trash] Cleaned up vector index for resource {}",
-                resource_id
-            );
-        }
-        Err(e) => {
-            warn!(
-                "[DSTU::trash] LanceStore init failed, skipping vector cleanup for {}: {}",
-                resource_id, e
-            );
-        }
+async fn cleanup_vector_index(lance_store: &VfsLanceStore, resource_id: &str) {
+    if let Err(e) = lance_store.delete_by_resource("text", resource_id).await {
+        warn!(
+            "[DSTU::trash] Failed to delete text vectors for {}: {}",
+            resource_id, e
+        );
     }
+    if let Err(e) = lance_store.delete_by_resource("multimodal", resource_id).await {
+        warn!(
+            "[DSTU::trash] Failed to delete multimodal vectors for {}: {}",
+            resource_id, e
+        );
+    }
+    info!(
+        "[DSTU::trash] Cleaned up vector index for resource {}",
+        resource_id
+    );
 }
 
 /// 软删除资源或文件夹
@@ -118,6 +108,7 @@ pub async fn dstu_soft_delete(
     item_type: String,
     window: Window,
     db: State<'_, Arc<VfsDatabase>>,
+    lance_store: State<'_, Arc<VfsLanceStore>>,
 ) -> Result<(), DstuError> {
     info!(
         "[DSTU::trash] dstu_soft_delete: id={}, type={}",
@@ -158,7 +149,7 @@ pub async fn dstu_soft_delete(
 
             // ★ P1 修复：软删除后清理向量索引，防止已删除资源仍可通过 RAG 检索到
             if let Some(resource_id) = lookup_resource_id(&db, &item_type, &id) {
-                cleanup_vector_index(db.inner(), &resource_id).await;
+                cleanup_vector_index(lance_store.inner(), &resource_id).await;
             }
 
             // 发射删除事件
@@ -504,6 +495,7 @@ pub async fn dstu_list_trash(
 pub async fn dstu_empty_trash(
     window: Window,
     db: State<'_, Arc<VfsDatabase>>,
+    lance_store: State<'_, Arc<VfsLanceStore>>,
 ) -> Result<usize, DstuError> {
     info!("[DSTU::trash] dstu_empty_trash");
 
@@ -676,26 +668,16 @@ pub async fn dstu_empty_trash(
 
     // ★ P1 修复：purge 成功后异步清理所有向量索引
     if !resource_ids_to_cleanup.is_empty() {
-        let db_clone = db.inner().clone();
+        let lance_for_cleanup = Arc::clone(lance_store.inner());
         tokio::spawn(async move {
-            match VfsLanceStore::new(db_clone) {
-                Ok(lance_store) => {
-                    for rid in &resource_ids_to_cleanup {
-                        let _ = lance_store.delete_by_resource("text", rid).await;
-                        let _ = lance_store.delete_by_resource("multimodal", rid).await;
-                    }
-                    info!(
-                        "[DSTU::trash] dstu_empty_trash: cleaned up vectors for {} resources",
-                        resource_ids_to_cleanup.len()
-                    );
-                }
-                Err(e) => {
-                    warn!(
-                        "[DSTU::trash] dstu_empty_trash: LanceStore init failed, skipping vector cleanup: {}",
-                        e
-                    );
-                }
+            for rid in &resource_ids_to_cleanup {
+                let _ = lance_for_cleanup.delete_by_resource("text", rid).await;
+                let _ = lance_for_cleanup.delete_by_resource("multimodal", rid).await;
             }
+            info!(
+                "[DSTU::trash] dstu_empty_trash: cleaned up vectors for {} resources",
+                resource_ids_to_cleanup.len()
+            );
         });
     }
 
@@ -709,6 +691,7 @@ pub async fn dstu_permanently_delete(
     item_type: String,
     window: Window,
     db: State<'_, Arc<VfsDatabase>>,
+    lance_store: State<'_, Arc<VfsLanceStore>>,
 ) -> Result<(), DstuError> {
     info!(
         "[DSTU::trash] dstu_permanently_delete: id={}, type={}",
@@ -779,23 +762,21 @@ pub async fn dstu_permanently_delete(
 
             // ★ P1 修复：永久删除后清理向量索引（如果软删除时未清理）
             if let Some(ref rid) = resource_id {
-                cleanup_vector_index(db.inner(), rid).await;
+                cleanup_vector_index(lance_store.inner(), rid).await;
             }
 
             // ★ P1 修复：essay_session 的子 essays 向量清理
             if !session_essay_resource_ids.is_empty() {
-                let db_clone = db.inner().clone();
+                let lance_for_cleanup = Arc::clone(lance_store.inner());
                 tokio::spawn(async move {
-                    if let Ok(lance_store) = VfsLanceStore::new(db_clone) {
-                        for rid in &session_essay_resource_ids {
-                            let _ = lance_store.delete_by_resource("text", rid).await;
-                            let _ = lance_store.delete_by_resource("multimodal", rid).await;
-                        }
-                        log::info!(
-                            "[DSTU::trash] dstu_permanently_delete: cleaned up vectors for {} child essays",
-                            session_essay_resource_ids.len()
-                        );
+                    for rid in &session_essay_resource_ids {
+                        let _ = lance_for_cleanup.delete_by_resource("text", rid).await;
+                        let _ = lance_for_cleanup.delete_by_resource("multimodal", rid).await;
                     }
+                    log::info!(
+                        "[DSTU::trash] dstu_permanently_delete: cleaned up vectors for {} child essays",
+                        session_essay_resource_ids.len()
+                    );
                 });
             }
 

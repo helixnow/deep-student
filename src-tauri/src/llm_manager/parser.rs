@@ -3,7 +3,33 @@
 //! 从 llm_manager.rs 拆分的纯函数模块，零依赖于 LLMManager 结构体
 
 use log::{debug, warn};
+use regex::Regex;
 use serde_json::json;
+use std::sync::LazyLock;
+
+static RE_CODE_FENCE_LINE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?im)^\s*```[\w-]*\s*$").expect("static regex"));
+static RE_TILDE_FENCE_LINE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?im)^\s*~~~[\w-]*\s*$").expect("static regex"));
+static RE_BACKTICK_INLINE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)```").expect("static regex"));
+static RE_TILDE_INLINE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"~~~").expect("static regex"));
+static RE_OCR_JSON_FRAGMENT: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"\{[^{}]*"ocr_text"[^{}]*"tags"[^{}]*"mistake_type"[^{}]*\}"#)
+        .expect("static regex")
+});
+static RE_OCR_TEXT_FIELD: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"(?i)(?:ocr_text|题目内容|文字内容|题目文字)[":\s]*["']?([^"'\n\r}]+)["']?"#)
+        .expect("static regex")
+});
+static RE_TAGS_FIELD: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"(?i)(?:tags|标签|知识点)[":\s]*\[([^\]]+)\]"#).expect("static regex")
+});
+static RE_TYPE_FIELD: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"(?i)(?:mistake_type|题目类型|类型)[":\s]*["']?([^"'\n\r}]+)["']?"#)
+        .expect("static regex")
+});
 
 // 提取推理模型的思维链段落
 /// 改进的思维链内容提取方法，提供多种策略以提高可靠性
@@ -62,18 +88,18 @@ pub(crate) fn extract_numbered_list_format(content: &str) -> Option<Vec<serde_js
         let sections: Vec<_> = re
             .captures_iter(content)
             .enumerate()
-            .map(|(i, cap)| {
-                let full_match = cap.get(0).unwrap().as_str();
+            .filter_map(|(i, cap)| {
+                let full_match = cap.get(0)?.as_str();
                 let lines: Vec<&str> = full_match.lines().collect();
                 let title = lines.first().unwrap_or(&"").trim();
                 let content_lines = &lines[1..];
 
-                json!({
+                Some(json!({
                     "title": title,
                     "content": content_lines.join("\n").trim(),
                     "section_index": i,
                     "extraction_method": "numbered_list"
-                })
+                }))
             })
             .collect();
 
@@ -185,8 +211,8 @@ pub(crate) fn extract_markdown_sections(content: &str) -> Option<Vec<serde_json:
             .captures_iter(content)
             .enumerate()
             .map(|(i, cap)| {
-                let title = cap.get(1).unwrap().as_str().trim();
-                let section_content = cap.get(2).unwrap().as_str().trim();
+                let title = cap.get(1).map(|m| m.as_str()).unwrap_or("").trim();
+                let section_content = cap.get(2).map(|m| m.as_str()).unwrap_or("").trim();
 
                 json!({
                     "title": title.trim_start_matches('#').trim(),
@@ -395,23 +421,11 @@ pub(crate) fn fix_common_json_errors(json_str: &str) -> String {
 pub(crate) fn enhanced_clean_json_response(content: &str) -> String {
     let mut cleaned = content.trim().to_string();
 
-    // 移除markdown代码块及常见围栏
-    cleaned = regex::Regex::new(r"(?im)^\s*```[\w-]*\s*$")
-        .unwrap()
-        .replace_all(&cleaned, "")
-        .to_string();
-    cleaned = regex::Regex::new(r"(?im)^\s*~~~[\w-]*\s*$")
-        .unwrap()
-        .replace_all(&cleaned, "")
-        .to_string();
-    cleaned = regex::Regex::new(r"(?i)```")
-        .unwrap()
-        .replace_all(&cleaned, "")
-        .to_string();
-    cleaned = regex::Regex::new(r"~~~")
-        .unwrap()
-        .replace_all(&cleaned, "")
-        .to_string();
+    // 移除markdown代码块及常见围栏（使用预编译的静态正则）
+    cleaned = RE_CODE_FENCE_LINE.replace_all(&cleaned, "").to_string();
+    cleaned = RE_TILDE_FENCE_LINE.replace_all(&cleaned, "").to_string();
+    cleaned = RE_BACKTICK_INLINE.replace_all(&cleaned, "").to_string();
+    cleaned = RE_TILDE_INLINE.replace_all(&cleaned, "").to_string();
 
     // 移除常见前缀和后缀
     let prefixes = [
@@ -463,11 +477,7 @@ pub(crate) fn enhanced_clean_json_response(content: &str) -> String {
 
 /// 智能JSON提取函数
 pub(crate) fn smart_extract_json_from_text(text: &str) -> Option<String> {
-    // 使用正则表达式查找JSON对象
-    let json_pattern =
-        regex::Regex::new(r#"\{[^{}]*"ocr_text"[^{}]*"tags"[^{}]*"mistake_type"[^{}]*\}"#).unwrap();
-
-    if let Some(captures) = json_pattern.find(text) {
+    if let Some(captures) = RE_OCR_JSON_FRAGMENT.find(text) {
         return Some(captures.as_str().to_string());
     }
 
@@ -511,56 +521,41 @@ pub(crate) fn smart_extract_json_from_text(text: &str) -> Option<String> {
 
 /// 从内容中重构JSON（当结构化JSON无法提取时）
 pub(crate) fn reconstruct_json_from_content(content: &str) -> Option<String> {
-    // 使用正则表达式提取各个字段的值
-    let ocr_pattern = regex::Regex::new(
-        r#"(?i)(?:ocr_text|题目内容|文字内容|题目文字)[":\s]*["']?([^"'\n\r}]+)["']?"#,
-    )
-    .unwrap();
-    let tags_pattern = regex::Regex::new(r#"(?i)(?:tags|标签|知识点)[":\s]*\[([^\]]+)\]"#).unwrap();
-    let type_pattern =
-        regex::Regex::new(r#"(?i)(?:mistake_type|题目类型|类型)[":\s]*["']?([^"'\n\r}]+)["']?"#)
-            .unwrap();
-
     let mut ocr_text = "";
     let mut tags_text = "";
     let mut mistake_type = "";
 
-    // 提取OCR文本
-    if let Some(captures) = ocr_pattern.captures(content) {
+    if let Some(captures) = RE_OCR_TEXT_FIELD.captures(content) {
         ocr_text = captures.get(1).map(|m| m.as_str().trim()).unwrap_or("");
     }
 
-    // 提取标签
-    if let Some(captures) = tags_pattern.captures(content) {
+    if let Some(captures) = RE_TAGS_FIELD.captures(content) {
         tags_text = captures.get(1).map(|m| m.as_str().trim()).unwrap_or("");
     }
 
-    // 提取错误类型
-    if let Some(captures) = type_pattern.captures(content) {
+    if let Some(captures) = RE_TYPE_FIELD.captures(content) {
         mistake_type = captures.get(1).map(|m| m.as_str().trim()).unwrap_or("");
     }
 
     // 如果至少提取到一些内容，构建JSON
     if !ocr_text.is_empty() || !tags_text.is_empty() || !mistake_type.is_empty() {
         // 处理标签字符串
-        let tags_array = if tags_text.is_empty() {
-            "[]".to_string()
+        let tags_vec: Vec<String> = if tags_text.is_empty() {
+            vec![]
         } else {
-            let tags: Vec<String> = tags_text
+            tags_text
                 .split(',')
-                .map(|tag| format!("\"{}\"", tag.trim().trim_matches('"').trim_matches('\'')))
-                .collect();
-            format!("[{}]", tags.join(", "))
+                .map(|tag| tag.trim().trim_matches('"').trim_matches('\'').to_string())
+                .collect()
         };
 
-        let json = format!(
-            r#"{{"ocr_text": "{}", "tags": {}, "mistake_type": "{}"}}"#,
-            ocr_text.replace('"', "\\\""),
-            tags_array,
-            mistake_type.replace('"', "\\\"")
-        );
+        let result = json!({
+            "ocr_text": ocr_text,
+            "tags": tags_vec,
+            "mistake_type": mistake_type,
+        });
 
-        return Some(json);
+        return serde_json::to_string(&result).ok();
     }
 
     None
@@ -570,16 +565,17 @@ pub(crate) fn reconstruct_json_from_content(content: &str) -> Option<String> {
 pub(crate) fn create_fallback_json(content: &str) -> String {
     debug!("创建降级JSON，原始内容长度: {} 字符", content.len());
 
-    // 特殊处理空响应或只有符号的响应
     if content.trim().is_empty() || content.trim() == "{}" || content.trim() == "[]" {
         warn!("检测到空响应，生成默认内容");
-        return format!(
-            r#"{{"ocr_text": "模型响应为空，无法识别题目内容", "tags": ["API响应异常", "需要人工处理"], "mistake_type": "系统错误"}}"#
-        );
+        return serde_json::to_string(&json!({
+            "ocr_text": "模型响应为空，无法识别题目内容",
+            "tags": ["API响应异常", "需要人工处理"],
+            "mistake_type": "系统错误"
+        }))
+        .unwrap_or_default();
     }
 
-    // 尝试从内容中提取一些有用信息作为OCR文本
-    let mut ocr_content = content
+    let mut ocr_content: String = content
         .lines()
         .filter(|line| !line.trim().is_empty())
         .filter(|line| !line.contains("JSON") && !line.contains("格式"))
@@ -587,8 +583,6 @@ pub(crate) fn create_fallback_json(content: &str) -> String {
         .collect::<Vec<_>>()
         .join(" ");
 
-    // 清理内容
-    ocr_content = ocr_content.replace('"', "\\\"");
     if ocr_content.chars().count() > 200 {
         ocr_content = format!("{}...", ocr_content.chars().take(200).collect::<String>());
     }
@@ -597,8 +591,10 @@ pub(crate) fn create_fallback_json(content: &str) -> String {
         ocr_content = "无法识别题目内容，模型响应异常".to_string();
     }
 
-    format!(
-        r#"{{"ocr_text": "{}", "tags": ["需要人工标注"], "mistake_type": "未分类"}}"#,
-        ocr_content
-    )
+    serde_json::to_string(&json!({
+        "ocr_text": ocr_content,
+        "tags": ["需要人工标注"],
+        "mistake_type": "未分类"
+    }))
+    .unwrap_or_default()
 }

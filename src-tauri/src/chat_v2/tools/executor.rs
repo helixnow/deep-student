@@ -297,7 +297,7 @@ impl ExecutionContext {
             block_index: 0,                   // 🔧 防闪退保存时暂用 0，save_results 会覆盖为正确值
         };
 
-        // 使用 UPSERT 保存（临时禁用外键约束）
+        // 使用 UPSERT 保存（通过消息占位行满足 FK 约束）
         let conn = db.get_conn_safe().map_err(|e| e.to_string())?;
 
         let tool_input_json = block
@@ -313,16 +313,37 @@ impl ExecutionContext {
             .transpose()
             .map_err(|e| e.to_string())?;
 
-        // 临时禁用外键约束（流式过程中消息可能还未保存）
-        conn.execute("PRAGMA foreign_keys = OFF", [])
-            .map_err(|e| e.to_string())?;
+        // 确保消息占位行存在（避免 FK 违反，无需关闭 FK 约束）
+        conn.execute(
+            "INSERT OR IGNORE INTO chat_v2_messages (id, session_id, role, block_ids_json, timestamp) \
+             VALUES (?1, ?2, 'assistant', '[]', ?3)",
+            rusqlite::params![
+                block.message_id,
+                self.session_id,
+                chrono::Utc::now().timestamp_millis(),
+            ],
+        )
+        .map_err(|e| e.to_string())?;
 
-        // 🔧 与 repo.rs 标准 INSERT 保持一致，包含 block_index 和 first_chunk_at
-        let result = conn.execute(
+        conn.execute(
             r#"
-            INSERT OR REPLACE INTO chat_v2_blocks
+            INSERT INTO chat_v2_blocks
             (id, message_id, block_type, status, block_index, content, tool_name, tool_input_json, tool_output_json, citations_json, error, started_at, ended_at, first_chunk_at)
             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
+            ON CONFLICT(id) DO UPDATE SET
+                message_id = excluded.message_id,
+                block_type = excluded.block_type,
+                status = excluded.status,
+                block_index = excluded.block_index,
+                content = excluded.content,
+                tool_name = excluded.tool_name,
+                tool_input_json = excluded.tool_input_json,
+                tool_output_json = excluded.tool_output_json,
+                citations_json = excluded.citations_json,
+                error = excluded.error,
+                started_at = excluded.started_at,
+                ended_at = excluded.ended_at,
+                first_chunk_at = excluded.first_chunk_at
             "#,
             rusqlite::params![
                 block.id,
@@ -340,12 +361,8 @@ impl ExecutionContext {
                 block.ended_at,
                 block.first_chunk_at,
             ],
-        );
-
-        // 重新启用外键约束
-        let _ = conn.execute("PRAGMA foreign_keys = ON", []);
-
-        result.map_err(|e| e.to_string())?;
+        )
+        .map_err(|e| e.to_string())?;
 
         log::debug!(
             "[ExecutionContext] Tool block saved: block_id={}, tool={}",

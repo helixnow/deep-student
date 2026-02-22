@@ -6,29 +6,48 @@ use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::PathBuf;
 
+/// 从 Tauri AppHandle 解析允许的 PDF 访问目录白名单。
+/// 仅包含用户数据和文档相关目录，排除系统敏感路径。
+pub fn resolve_allowed_dirs(app: &tauri::AppHandle) -> Vec<PathBuf> {
+    use tauri::Manager;
+
+    let resolvers: Vec<Box<dyn Fn() -> Result<PathBuf, tauri::Error>>> = vec![
+        Box::new(|| app.path().app_data_dir()),
+        Box::new(|| app.path().app_local_data_dir()),
+        Box::new(|| app.path().app_cache_dir()),
+        Box::new(|| app.path().document_dir()),
+        Box::new(|| app.path().download_dir()),
+        Box::new(|| app.path().desktop_dir()),
+        Box::new(|| app.path().picture_dir()),
+        Box::new(|| app.path().temp_dir()),
+        Box::new(|| app.path().resource_dir()),
+    ];
+
+    resolvers
+        .into_iter()
+        .filter_map(|f| {
+            f().ok().and_then(|p| std::fs::canonicalize(&p).ok())
+        })
+        .collect()
+}
+
 /// 处理 pdfstream:// 协议请求
 ///
 /// 支持功能：
 /// - HTTP Range Request (用于 PDF.js 流式加载)
 /// - Content-Type 自动识别
 /// - 跨域支持（CORS）
-/// - 路径白名单安全检查（仅允许访问特定目录）
+/// - 目录白名单安全检查（仅允许访问特定目录下的 PDF）
 pub fn handle_asset_protocol(
     request: &tauri::http::Request<Vec<u8>>,
+    allowed_dirs: &[PathBuf],
 ) -> Result<tauri::http::Response<Vec<u8>>, Box<dyn std::error::Error>> {
-    // 解析请求路径 pdfstream://localhost/xxx -> xxx
-    // 注意：路径可能是 //Users/... (macOS 绝对路径) 或 /Users/...
-    // 使用 strip_prefix 仅移除一个前导斜杠，保留绝对路径的第二个斜杠
     let raw_uri = request.uri().to_string();
     let path = request.uri().path();
     let path = path.strip_prefix('/').unwrap_or(path);
 
-    // 解码 URL 编码的路径
-    // 前端使用 convertFileSrc(filePath, 'pdfstream') 对整个路径做 encodeURIComponent
     let decoded_path = urlencoding::decode(path)?;
 
-    // Windows 兼容：前端 convertFileSrc 会对整个路径编码（包括 \ 和 :）
-    // 解码后直接是平台原生路径，无需额外转换
     info!(
         "[pdfstream] raw_uri={}, decoded_path={}",
         raw_uri, decoded_path
@@ -36,7 +55,6 @@ pub fn handle_asset_protocol(
 
     let requested_path = PathBuf::from(decoded_path.as_ref());
 
-    // 通过 canonicalize 获取规范路径（消除路径遍历、符号链接、. 和 ..）
     let canonical_path = match std::fs::canonicalize(&requested_path) {
         Ok(path) => path,
         Err(e) => {
@@ -47,27 +65,44 @@ pub fn handle_asset_protocol(
             );
             return Ok(tauri::http::Response::builder()
                 .status(404)
-                .header("Access-Control-Allow-Origin", "*")
+                .header("Access-Control-Allow-Origin", "tauri://localhost")
                 .body(Vec::new())?);
         }
     };
 
-    // 安全检查：只允许访问 PDF 文件
-    // 移除严格的白名单检查，因为 PDF 文件可能存储在任意用户路径
-    // 保留 .pdf 扩展名检查作为基本安全措施
-    let extension = canonical_path.extension().and_then(|s| s.to_str());
-    if extension != Some("pdf") {
+    // 安全检查 1：目录白名单 — 规范路径必须位于已授权目录下
+    let is_in_allowed_dir = allowed_dirs
+        .iter()
+        .any(|dir| canonical_path.starts_with(dir));
+    if !is_in_allowed_dir {
+        warn!(
+            "[pdfstream] 拒绝访问白名单外路径: {}",
+            canonical_path.display()
+        );
+        return Ok(tauri::http::Response::builder()
+            .status(403)
+            .header("Access-Control-Allow-Origin", "tauri://localhost")
+            .body(Vec::new())?);
+    }
+
+    // 安全检查 2：只允许访问 .pdf 文件（大小写不敏感，兼容 Windows 上的 .PDF）
+    let is_pdf = canonical_path
+        .extension()
+        .and_then(|s| s.to_str())
+        .map(|ext| ext.eq_ignore_ascii_case("pdf"))
+        .unwrap_or(false);
+    if !is_pdf {
         warn!(
             "[pdfstream] 拒绝访问非 PDF 文件: {}",
             canonical_path.display()
         );
         return Ok(tauri::http::Response::builder()
             .status(403)
-            .header("Access-Control-Allow-Origin", "*")
+            .header("Access-Control-Allow-Origin", "tauri://localhost")
             .body(Vec::new())?);
     }
 
-    // 安全检查：确保路径存在且可读
+    // 安全检查 3：确保路径存在且可读
     if !canonical_path.exists() || !canonical_path.is_file() {
         warn!(
             "[pdfstream] 文件不存在或非文件: {}",
@@ -75,7 +110,7 @@ pub fn handle_asset_protocol(
         );
         return Ok(tauri::http::Response::builder()
             .status(404)
-            .header("Access-Control-Allow-Origin", "*")
+            .header("Access-Control-Allow-Origin", "tauri://localhost")
             .body(Vec::new())?);
     }
 
@@ -115,16 +150,16 @@ pub fn handle_asset_protocol(
                         format!("bytes {}-{}/{}", start, end, file_size),
                     )
                     .header("Accept-Ranges", "bytes")
-                    .header("Access-Control-Allow-Origin", "*")
-                    .header("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS")
-                    .header("Access-Control-Allow-Headers", "Range")
-                    .body(buffer)?)
+                .header("Access-Control-Allow-Origin", "tauri://localhost")
+                .header("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS")
+                .header("Access-Control-Allow-Headers", "Range")
+                .body(buffer)?)
             } else {
                 // Range 格式错误
                 Ok(tauri::http::Response::builder()
                     .status(416)
                     .header("Content-Range", format!("bytes */{}", file_size))
-                    .header("Access-Control-Allow-Origin", "*")
+                    .header("Access-Control-Allow-Origin", "tauri://localhost")
                     .body(Vec::new())?)
             }
         }
@@ -138,7 +173,7 @@ pub fn handle_asset_protocol(
                 .header("Content-Type", get_mime_type(&canonical_path))
                 .header("Content-Length", file_size.to_string())
                 .header("Accept-Ranges", "bytes")
-                .header("Access-Control-Allow-Origin", "*")
+                .header("Access-Control-Allow-Origin", "tauri://localhost")
                 .header("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS")
                 .header("Access-Control-Allow-Headers", "Range")
                 .body(buffer)?)

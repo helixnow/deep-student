@@ -2084,8 +2084,7 @@ pub async fn vfs_upload_file(
         }
     };
 
-    // 创建文件记录（需要扩展 create_file 以支持 extracted_text 等字段）
-    let file = VfsFileRepo::create_file_with_doc_data_in_folder(
+    let file = match VfsFileRepo::create_file_with_doc_data_in_folder(
         &conn,
         &sha256,
         &params.name,
@@ -2098,8 +2097,26 @@ pub async fn vfs_upload_file(
         preview_json.as_deref(),
         extracted_text.as_deref(),
         page_count,
-    )
-    .map_err(|e| e.to_string())?;
+    ) {
+        Ok(file) => file,
+        Err(e) => {
+            if let Some(ref hash) = blob_hash {
+                log::warn!(
+                    "[VFS::handlers] 文件记录创建失败，补偿清理 blob: hash={}…",
+                    &hash[..hash.len().min(16)]
+                );
+                if let Err(cleanup_err) =
+                    VfsBlobRepo::cleanup_blob_with_conn(&conn, &blobs_dir, hash)
+                {
+                    log::error!(
+                        "[VFS::handlers] 补偿清理 blob 失败（将由后台清理）: {}",
+                        cleanup_err
+                    );
+                }
+            }
+            return Err(e.to_string());
+        }
+    };
 
     log::info!(
         "[VFS::handlers] File uploaded: {} (type={}, folder={:?}, has_text={})",
@@ -2313,23 +2330,25 @@ pub async fn vfs_list_files(
 pub async fn vfs_delete_file(
     file_id: String,
     vfs_db: State<'_, Arc<VfsDatabase>>,
+    lance_store: State<'_, Arc<crate::vfs::lance_store::VfsLanceStore>>,
 ) -> Result<(), String> {
     use crate::vfs::index_service::VfsIndexService;
-    use crate::vfs::lance_store::VfsLanceStore;
     use crate::vfs::repos::VfsFileRepo;
 
     if !file_id.starts_with("file_") {
         return Err(format!("Invalid file ID format: {}", file_id));
     }
 
-    // 创建 LanceStore 和 IndexService
-    let lance_store = VfsLanceStore::new(Arc::clone(&vfs_db)).map_err(|e| e.to_string())?;
     let index_service = VfsIndexService::new(Arc::clone(&vfs_db));
 
-    // 使用带索引清理的删除方法
-    VfsFileRepo::delete_file_with_index_cleanup(&vfs_db, &file_id, &index_service, &lance_store)
-        .await
-        .map_err(|e| e.to_string())
+    VfsFileRepo::delete_file_with_index_cleanup(
+        &vfs_db,
+        &file_id,
+        &index_service,
+        lance_store.as_ref(),
+    )
+    .await
+    .map_err(|e| e.to_string())
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -2648,7 +2667,6 @@ use crate::vfs::indexing::{
     VfsEmbeddingStats, VfsFullIndexingService, VfsIndexingService, VfsSearchParams,
     VfsSearchResult, VfsSearchService,
 };
-use crate::vfs::lance_store::VfsLanceStore;
 use crate::vfs::repos::VfsIndexingConfigRepo;
 
 #[tauri::command]
@@ -2679,6 +2697,7 @@ pub async fn vfs_reindex_resource(
     app_handle: AppHandle,
     llm_manager: State<'_, Arc<crate::llm_manager::LLMManager>>,
     vfs_db: State<'_, Arc<VfsDatabase>>,
+    lance_store: State<'_, Arc<crate::vfs::lance_store::VfsLanceStore>>,
 ) -> Result<usize, String> {
     log::info!("[VFS::handlers] vfs_reindex_resource: id={}", resource_id);
 
@@ -2721,10 +2740,12 @@ pub async fn vfs_reindex_resource(
         );
     }
 
-    let lance_store = Arc::new(VfsLanceStore::new(Arc::clone(&vfs_db)).map_err(|e| e.to_string())?);
-    let mut indexing_service =
-        VfsFullIndexingService::new(Arc::clone(&vfs_db), Arc::clone(&llm_manager), lance_store)
-            .map_err(|e| e.to_string())?;
+    let mut indexing_service = VfsFullIndexingService::new(
+        Arc::clone(&vfs_db),
+        Arc::clone(&llm_manager),
+        Arc::clone(lance_store.inner()),
+    )
+    .map_err(|e| e.to_string())?;
     // ★ 2026-02-19：传递 AppHandle，使 try_auto_ocr 能发送细粒度进度事件
     indexing_service.set_app_handle(app_handle.clone());
 
@@ -3269,6 +3290,7 @@ pub async fn vfs_batch_index_pending(
     app_handle: AppHandle,
     llm_manager: State<'_, Arc<crate::llm_manager::LLMManager>>,
     vfs_db: State<'_, Arc<VfsDatabase>>,
+    lance_store: State<'_, Arc<crate::vfs::lance_store::VfsLanceStore>>,
 ) -> Result<BatchIndexResult, String> {
     let batch_size = batch_size.unwrap_or(10);
     log::info!(
@@ -3317,23 +3339,10 @@ pub async fn vfs_batch_index_pending(
 
     // ★ 2026-02 修复：如果服务初始化失败，必须将已 claim 的资源回退为 pending
     // 否则资源会永久卡在 indexing 状态，不再被后续批量处理拾取
-    let lance_store = match VfsLanceStore::new(Arc::clone(&vfs_db)) {
-        Ok(store) => Arc::new(store),
-        Err(e) => {
-            log::error!(
-                "[VFS::handlers] vfs_batch_index_pending: LanceStore 初始化失败，回退 {} 个已 claim 的资源",
-                pending.len()
-            );
-            for resource_id in &pending {
-                let _ = VfsIndexStateRepo::mark_pending(&vfs_db, resource_id);
-            }
-            return Err(e.to_string());
-        }
-    };
     let full_indexing_service = match VfsFullIndexingService::new(
         Arc::clone(&vfs_db),
         Arc::clone(&llm_manager),
-        lance_store,
+        Arc::clone(lance_store.inner()),
     ) {
         Ok(mut svc) => {
             // ★ 2026-02-19：传递 AppHandle，使 try_auto_ocr 能发送细粒度进度事件
@@ -4264,9 +4273,9 @@ pub async fn vfs_rag_search(
     input: VfsRagSearchInput,
     vfs_db: State<'_, Arc<VfsDatabase>>,
     llm_manager: State<'_, Arc<crate::llm_manager::LLMManager>>,
+    lance_store: State<'_, Arc<crate::vfs::lance_store::VfsLanceStore>>,
 ) -> Result<VfsRagSearchOutput, String> {
     use crate::vfs::indexing::{VfsFullSearchService, VfsSearchParams};
-    use crate::vfs::lance_store::VfsLanceStore;
     use crate::vfs::repos::MODALITY_TEXT;
 
     let start = std::time::Instant::now();
@@ -4284,8 +4293,7 @@ pub async fn vfs_rag_search(
         return Err("查询文本不能为空".to_string());
     }
 
-    // 创建 Lance 存储
-    let lance_store = Arc::new(VfsLanceStore::new(Arc::clone(&vfs_db)).map_err(|e| e.to_string())?);
+    let lance_store = Arc::clone(lance_store.inner());
 
     // 创建搜索服务
     let search_service =
@@ -4351,13 +4359,12 @@ pub async fn vfs_rag_search(
 pub async fn vfs_get_lance_stats(
     modality: Option<String>,
     vfs_db: State<'_, Arc<VfsDatabase>>,
+    lance_store: State<'_, Arc<crate::vfs::lance_store::VfsLanceStore>>,
 ) -> Result<Vec<(String, usize)>, String> {
-    use crate::vfs::lance_store::VfsLanceStore;
     use crate::vfs::repos::MODALITY_TEXT;
 
     log::debug!("[VFS::handlers] vfs_get_lance_stats");
 
-    let lance_store = VfsLanceStore::new(Arc::clone(&vfs_db)).map_err(|e| e.to_string())?;
     let modality_str = modality.as_deref().unwrap_or(MODALITY_TEXT);
 
     lance_store
@@ -4371,13 +4378,12 @@ pub async fn vfs_get_lance_stats(
 pub async fn vfs_optimize_lance(
     modality: Option<String>,
     vfs_db: State<'_, Arc<VfsDatabase>>,
+    lance_store: State<'_, Arc<crate::vfs::lance_store::VfsLanceStore>>,
 ) -> Result<usize, String> {
-    use crate::vfs::lance_store::VfsLanceStore;
     use crate::vfs::repos::MODALITY_TEXT;
 
     log::info!("[VFS::handlers] vfs_optimize_lance");
 
-    let lance_store = VfsLanceStore::new(Arc::clone(&vfs_db)).map_err(|e| e.to_string())?;
     let modality_str = modality.as_deref().unwrap_or(MODALITY_TEXT);
 
     lance_store
@@ -5237,13 +5243,13 @@ pub async fn vfs_reset_indexed_without_embeddings(
 ///
 /// 将所有资源的索引状态重置为 pending，并清空 segments、units、维度统计和 LanceDB 向量数据
 #[tauri::command]
-pub async fn vfs_reset_all_index_state(vfs_db: State<'_, Arc<VfsDatabase>>) -> Result<i32, String> {
+pub async fn vfs_reset_all_index_state(
+    vfs_db: State<'_, Arc<VfsDatabase>>,
+    lance_store: State<'_, Arc<crate::vfs::lance_store::VfsLanceStore>>,
+) -> Result<i32, String> {
     use crate::vfs::repos::{MODALITY_MULTIMODAL, MODALITY_TEXT};
 
     log::info!("[VFS::handlers] vfs_reset_all_index_state - 重置所有索引状态");
-
-    // ★ 2026-01 修复：先清除 LanceDB 向量数据
-    let lance_store = VfsLanceStore::new(Arc::clone(&vfs_db)).map_err(|e| e.to_string())?;
 
     // 清除文本向量
     let text_cleared = lance_store
@@ -5398,17 +5404,13 @@ pub async fn vfs_multimodal_index(
     app_handle: tauri::AppHandle,
     vfs_db: State<'_, Arc<VfsDatabase>>,
     llm_manager: State<'_, Arc<crate::llm_manager::LLMManager>>,
+    lance_store: State<'_, Arc<crate::vfs::lance_store::VfsLanceStore>>,
 ) -> Result<VfsMultimodalIndexOutput, String> {
     use crate::multimodal::types::IndexProgressEvent;
-    use crate::vfs::lance_store::VfsLanceStore;
     use crate::vfs::multimodal_service::{VfsMultimodalPage, VfsMultimodalService};
     use tokio::sync::mpsc;
 
-    // 创建 Lance Store
-    let lance_store = Arc::new(
-        VfsLanceStore::new(Arc::clone(&vfs_db))
-            .map_err(|e| format!("创建 Lance Store 失败: {}", e))?,
-    );
+    let lance_store = Arc::clone(lance_store.inner());
 
     // 创建多模态服务
     let service =
@@ -5510,15 +5512,11 @@ pub async fn vfs_multimodal_search(
     params: VfsMultimodalSearchInput,
     vfs_db: State<'_, Arc<VfsDatabase>>,
     llm_manager: State<'_, Arc<crate::llm_manager::LLMManager>>,
+    lance_store: State<'_, Arc<crate::vfs::lance_store::VfsLanceStore>>,
 ) -> Result<Vec<VfsMultimodalSearchOutput>, String> {
-    use crate::vfs::lance_store::VfsLanceStore;
     use crate::vfs::multimodal_service::VfsMultimodalService;
 
-    // 创建 Lance Store
-    let lance_store = Arc::new(
-        VfsLanceStore::new(Arc::clone(&vfs_db))
-            .map_err(|e| format!("创建 Lance Store 失败: {}", e))?,
-    );
+    let lance_store = Arc::clone(lance_store.inner());
 
     // 创建多模态服务
     let service =
@@ -5554,15 +5552,11 @@ pub async fn vfs_multimodal_search(
 pub async fn vfs_multimodal_stats(
     vfs_db: State<'_, Arc<VfsDatabase>>,
     llm_manager: State<'_, Arc<crate::llm_manager::LLMManager>>,
+    lance_store: State<'_, Arc<crate::vfs::lance_store::VfsLanceStore>>,
 ) -> Result<serde_json::Value, String> {
-    use crate::vfs::lance_store::VfsLanceStore;
     use crate::vfs::multimodal_service::VfsMultimodalService;
 
-    // 创建 Lance Store
-    let lance_store = Arc::new(
-        VfsLanceStore::new(Arc::clone(&vfs_db))
-            .map_err(|e| format!("创建 Lance Store 失败: {}", e))?,
-    );
+    let lance_store = Arc::clone(lance_store.inner());
 
     // 创建多模态服务
     let service =
@@ -5582,14 +5576,11 @@ pub async fn vfs_multimodal_delete(
     resource_id: String,
     vfs_db: State<'_, Arc<VfsDatabase>>,
     llm_manager: State<'_, Arc<crate::llm_manager::LLMManager>>,
+    lance_store: State<'_, Arc<crate::vfs::lance_store::VfsLanceStore>>,
 ) -> Result<(), String> {
-    use crate::vfs::lance_store::VfsLanceStore;
     use crate::vfs::multimodal_service::VfsMultimodalService;
 
-    let lance_store = Arc::new(
-        VfsLanceStore::new(Arc::clone(&vfs_db))
-            .map_err(|e| format!("创建 Lance Store 失败: {}", e))?,
-    );
+    let lance_store = Arc::clone(lance_store.inner());
 
     let service =
         VfsMultimodalService::new(Arc::clone(&vfs_db), Arc::clone(&llm_manager), lance_store);
@@ -5614,16 +5605,13 @@ pub async fn vfs_multimodal_index_resource(
     database: State<'_, Arc<crate::database::Database>>,
     vfs_db: State<'_, Arc<VfsDatabase>>,
     llm_manager: State<'_, Arc<crate::llm_manager::LLMManager>>,
+    lance_store: State<'_, Arc<crate::vfs::lance_store::VfsLanceStore>>,
 ) -> Result<serde_json::Value, String> {
     use crate::multimodal::types::IndexProgressEvent;
-    use crate::vfs::lance_store::VfsLanceStore;
     use crate::vfs::multimodal_service::VfsMultimodalService;
     use tokio::sync::mpsc;
 
-    let lance_store = Arc::new(
-        VfsLanceStore::new(Arc::clone(&vfs_db))
-            .map_err(|e| format!("创建 Lance Store 失败: {}", e))?,
-    );
+    let lance_store = Arc::clone(lance_store.inner());
 
     let service =
         VfsMultimodalService::new(Arc::clone(&vfs_db), Arc::clone(&llm_manager), lance_store);
@@ -5662,8 +5650,8 @@ pub async fn vfs_multimodal_index_resource(
 pub async fn vfs_diagnose_lance_schema(
     modality: Option<String>,
     vfs_db: State<'_, Arc<VfsDatabase>>,
+    lance_store: State<'_, Arc<crate::vfs::lance_store::VfsLanceStore>>,
 ) -> Result<Vec<crate::vfs::lance_store::LanceTableDiagnostic>, String> {
-    use crate::vfs::lance_store::VfsLanceStore;
     use crate::vfs::repos::MODALITY_TEXT;
 
     log::info!(
@@ -5671,7 +5659,6 @@ pub async fn vfs_diagnose_lance_schema(
         modality
     );
 
-    let lance_store = VfsLanceStore::new(Arc::clone(&vfs_db)).map_err(|e| e.to_string())?;
     let modality_str = modality.as_deref().unwrap_or(MODALITY_TEXT);
 
     lance_store

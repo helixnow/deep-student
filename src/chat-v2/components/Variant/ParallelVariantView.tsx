@@ -582,7 +582,7 @@ const MessageLevelActions: React.FC<MessageLevelActionsProps> = ({
   }
 
   return (
-    <div className="mt-3 md:opacity-0 md:group-hover:opacity-100 transition-opacity max-w-3xl mx-auto">
+    <div className="mt-3 md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100 transition-opacity max-w-3xl mx-auto">
       <div className="flex items-center gap-1">
         {/* 复制按钮 */}
         {onCopy && (

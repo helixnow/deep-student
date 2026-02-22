@@ -736,12 +736,16 @@ impl PdfOcrService {
             }
         };
 
-        // 等待所有 OCR 任务完成
-        while let Some(_) = join_set.join_next().await {}
-
-        // 如果取消，中止所有任务
+        // 如果取消，先中止所有任务再 drain；否则正常等待完成
         if cancelled {
             join_set.abort_all();
+        }
+        while let Some(result) = join_set.join_next().await {
+            if let Err(e) = result {
+                if !e.is_cancelled() {
+                    log::error!("[PdfOcrService] OCR task panicked: {:?}", e);
+                }
+            }
         }
 
         // 6. 完成
@@ -1091,9 +1095,16 @@ impl PdfOcrService {
             }
         }
 
-        // If cancelled, drain join_set
+        // 如果取消，先中止所有任务再 drain
         if cancelled {
             join_set.abort_all();
+        }
+        while let Some(result) = join_set.join_next().await {
+            if let Err(e) = result {
+                if !e.is_cancelled() {
+                    log::error!("[PdfOcrService] OCR task panicked: {:?}", e);
+                }
+            }
         }
 
         // Finalize

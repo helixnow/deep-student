@@ -1066,12 +1066,27 @@ impl McpClient {
         let response = self.send_request("initialize", Some(params)).await?;
 
         if let Some(result) = response.result {
-            // Accept MCP initialize result { protocolVersion, capabilities, serverInfo: { name, version } }
             let protocol_version = result
                 .get("protocolVersion")
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
                 .to_string();
+
+            // MCP 规范要求：验证服务器返回的协议版本是否为客户端支持的版本
+            if protocol_version.is_empty() {
+                log::warn!(
+                    "[McpClient] Server did not return protocolVersion (required by MCP spec). \
+                     Proceeding with best-effort compatibility."
+                );
+            } else if super::protocol_version::ProtocolVersion::from_str(&protocol_version).is_none()
+            {
+                log::warn!(
+                    "[McpClient] Server returned unsupported protocol version: '{}'. \
+                     Supported versions: 2024-11-05, 2025-03-26, 2025-06-18. \
+                     Proceeding with best-effort compatibility.",
+                    protocol_version
+                );
+            }
             let caps_val = result
                 .get("capabilities")
                 .cloned()

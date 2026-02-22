@@ -24,6 +24,28 @@ impl SubagentExecutor {
         Self { coordinator }
     }
 
+    /// 从当前会话的 metadata 中获取子代理嵌套深度。
+    /// Fail-closed: 数据库不可用时返回错误，拒绝创建子代理。
+    fn get_subagent_depth(&self, ctx: &ExecutionContext) -> Result<u32, String> {
+        let chat_v2_db = ctx
+            .chat_v2_db
+            .as_ref()
+            .ok_or("chat_v2_db not available for subagent depth check")?;
+        let conn = chat_v2_db
+            .get_conn_safe()
+            .map_err(|e| format!("DB connection failed during depth check: {}", e))?;
+        let session = ChatV2Repo::get_session_with_conn(&conn, &ctx.session_id)
+            .map_err(|e| format!("Failed to query session for depth: {}", e))?;
+        Ok(session
+            .and_then(|s| s.metadata)
+            .and_then(|m| m.get("subagent_depth").cloned())
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0) as u32)
+    }
+
+    /// 子代理递归嵌套的最大深度
+    const MAX_SUBAGENT_DEPTH: u32 = 3;
+
     async fn execute_subagent_call(
         &self,
         args: &Value,
@@ -32,6 +54,17 @@ impl SubagentExecutor {
         // 🆕 取消检查：在执行前检查是否已取消
         if ctx.is_cancelled() {
             return Err("Subagent call cancelled before start".to_string());
+        }
+
+        // 🔒 安全检查：防止子代理无限递归嵌套（fail-closed: DB错误时拒绝）
+        let current_depth = self.get_subagent_depth(ctx)?;
+        if current_depth >= Self::MAX_SUBAGENT_DEPTH {
+            return Err(format!(
+                "Maximum subagent nesting depth ({}) exceeded. Current depth: {}. \
+                 Recursive subagent creation is not allowed to prevent resource exhaustion.",
+                Self::MAX_SUBAGENT_DEPTH,
+                current_depth
+            ));
         }
 
         let workspace_id = args
@@ -101,6 +134,7 @@ impl SubagentExecutor {
                 "system_prompt": system_prompt,
                 "is_subagent": true,
                 "parent_session_id": ctx.session_id,
+                "subagent_depth": current_depth + 1,
             })),
             group_id: None,
         };
@@ -279,8 +313,7 @@ impl ToolExecutor for SubagentExecutor {
     }
 
     fn sensitivity_level(&self, _tool_name: &str) -> ToolSensitivity {
-        // subagent_call 是低风险操作，无需用户审批
-        ToolSensitivity::Low
+        ToolSensitivity::Medium
     }
 
     fn name(&self) -> &'static str {

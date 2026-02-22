@@ -56,6 +56,7 @@ pub async fn vfs_reindex_unit(
 pub async fn vfs_unified_batch_index(
     vfs_db: State<'_, Arc<VfsDatabase>>,
     llm_manager: State<'_, Arc<LLMManager>>,
+    lance_store: State<'_, Arc<VfsLanceStore>>,
     mode: String, // "text" | "mm" | "both"
     batch_size: Option<i32>,
 ) -> Result<BatchIndexResult, String> {
@@ -86,12 +87,10 @@ pub async fn vfs_unified_batch_index(
             });
         }
 
-        let lance_store = VfsLanceStore::new(Arc::clone(&vfs_db)).map_err(|e| e.to_string())?;
-
         let full_indexing_service = VfsFullIndexingService::new(
             Arc::clone(&vfs_db),
             Arc::clone(&llm_manager),
-            Arc::new(lance_store),
+            Arc::clone(lance_store.inner()),
         )
         .map_err(|e| e.to_string())?;
 
@@ -187,6 +186,7 @@ pub async fn vfs_sync_resource_units(
 #[tauri::command]
 pub async fn vfs_delete_resource_index(
     vfs_db: State<'_, Arc<VfsDatabase>>,
+    lance_store: State<'_, Arc<VfsLanceStore>>,
     resource_id: String,
 ) -> Result<DeleteIndexResult, String> {
     log::info!(
@@ -221,67 +221,49 @@ pub async fn vfs_delete_resource_index(
 
     // 2. 删除 LanceDB 向量数据（text 和 multimodal 两种 modality）
     // ★ C-3 修复：即使 lance_row_ids 为空也尝试删除，以清理可能的历史遗留数据
-    match VfsLanceStore::new(Arc::clone(&vfs_db)) {
-        Ok(lance_store) => {
-            // 删除 text modality 的向量
-            match lance_store.delete_by_resource("text", &resource_id).await {
-                Ok(_) => {
-                    result.lance_text_ok = true;
-                }
-                Err(e) => {
-                    log::warn!(
-                        "[VFS::index_handlers] Failed to delete text vectors for resource {}: {}",
-                        resource_id,
-                        e
-                    );
-                    result
-                        .warnings
-                        .push(format!("Failed to delete text vectors: {}", e));
-                    result.retryable = true;
-                }
-            }
-
-            // 删除 multimodal modality 的向量
-            match lance_store
-                .delete_by_resource("multimodal", &resource_id)
-                .await
-            {
-                Ok(_) => {
-                    result.lance_mm_ok = true;
-                }
-                Err(e) => {
-                    log::warn!(
-                        "[VFS::index_handlers] Failed to delete multimodal vectors for resource {}: {}",
-                        resource_id,
-                        e
-                    );
-                    result
-                        .warnings
-                        .push(format!("Failed to delete multimodal vectors: {}", e));
-                    result.retryable = true;
-                }
-            }
-
-            log::info!(
-                "[VFS::index_handlers] Deleted {} units and {} LanceDB vectors for resource {}",
-                delete_result.deleted_unit_count,
-                delete_result.lance_row_ids.len(),
-                resource_id
-            );
+    match lance_store.delete_by_resource("text", &resource_id).await {
+        Ok(_) => {
+            result.lance_text_ok = true;
         }
         Err(e) => {
-            // LanceStore 初始化失败，记录警告但不阻止操作
-            // SQLite 记录已删除，LanceDB 可能存在孤立数据
             log::warn!(
-                "[VFS::index_handlers] LanceStore init failed, SQLite deleted but LanceDB may have orphan vectors for resource {}: {}",
-                resource_id, e
+                "[VFS::index_handlers] Failed to delete text vectors for resource {}: {}",
+                resource_id,
+                e
             );
             result
                 .warnings
-                .push(format!("LanceStore init failed: {}", e));
+                .push(format!("Failed to delete text vectors: {}", e));
             result.retryable = true;
         }
     }
+
+    match lance_store
+        .delete_by_resource("multimodal", &resource_id)
+        .await
+    {
+        Ok(_) => {
+            result.lance_mm_ok = true;
+        }
+        Err(e) => {
+            log::warn!(
+                "[VFS::index_handlers] Failed to delete multimodal vectors for resource {}: {}",
+                resource_id,
+                e
+            );
+            result
+                .warnings
+                .push(format!("Failed to delete multimodal vectors: {}", e));
+            result.retryable = true;
+        }
+    }
+
+    log::info!(
+        "[VFS::index_handlers] Deleted {} units and {} LanceDB vectors for resource {}",
+        delete_result.deleted_unit_count,
+        delete_result.lance_row_ids.len(),
+        resource_id
+    );
 
     Ok(result)
 }

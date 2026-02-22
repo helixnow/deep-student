@@ -31,6 +31,7 @@ import {
 } from 'lucide-react';
 import { useQuestionBankStore, DailyPracticeResult, CheckInCalendar } from '@/stores/questionBankStore';
 import { useTranslation } from 'react-i18next';
+import { showGlobalNotification } from '@/components/UnifiedNotification';
 
 interface DailyPracticeModeProps {
   examId: string;
@@ -61,7 +62,7 @@ export const DailyPracticeMode: React.FC<DailyPracticeModeProps> = ({
     checkInCalendar,
     getDailyPractice,
     getCheckInCalendar,
-    isLoading,
+    isLoadingPractice,
   } = useQuestionBankStore();
   
   // 配置状态
@@ -83,7 +84,8 @@ export const DailyPracticeMode: React.FC<DailyPracticeModeProps> = ({
       const result = await getDailyPractice(examId, dailyTarget);
       onStart?.(result);
     } catch (err: unknown) {
-      console.error('Failed to get daily practice:', err);
+      const msg = err instanceof Error ? err.message : String(err);
+      showGlobalNotification('error', msg, t('daily.startError', '获取每日练习失败'));
     }
   }, [examId, dailyTarget, getDailyPractice, onStart]);
   
@@ -262,10 +264,10 @@ export const DailyPracticeMode: React.FC<DailyPracticeModeProps> = ({
           
           <NotionButton
             onClick={handleStart}
-            disabled={isLoading}
+            disabled={isLoadingPractice}
             className="w-full h-12 text-lg"
           >
-            {isLoading ? (
+            {isLoadingPractice ? (
               <>
                 <Loader2 className="w-5 h-5 mr-2 animate-spin" />
                 {t('daily.loading', '准备中...')}

@@ -1,5 +1,5 @@
 import React, { Suspense } from 'react';
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef, startTransition } from 'react';
 import './i18n';
 import { useTranslation } from 'react-i18next';
 // getCurrentWebviewWindow 已无使用（2026-02 清理）
@@ -443,8 +443,11 @@ function App() {
       return next;
     });
 
-    // 使用 canonical view 避免进入已废弃/未渲染视图
-    setCurrentViewRaw(targetView);
+    // 使用 startTransition 避免 Suspense fallback 闪白：
+    // React 会保持当前视图直到新视图准备就绪
+    startTransition(() => {
+      setCurrentViewRaw(targetView);
+    });
   }, []);
   const templateJsonPreviewReturnRef = useRef<CurrentView>('template-management');
 
@@ -1229,6 +1232,7 @@ function App() {
       view={view}
       currentView={currentView}
       visitedViews={visitedViews}
+      errorBoundaryName={view}
       extraClass={extraClass}
       extraStyle={extraStyle}
     >
@@ -1446,13 +1450,11 @@ function App() {
               {renderViewLayer(
                 'settings',
                 (
-                  <ErrorBoundary name="Settings">
-                    <Suspense fallback={<PageLoadingFallback />}>
-                      <LazySettings 
-                        onBack={() => setCurrentView('chat-v2')} 
-                      />
-                    </Suspense>
-                  </ErrorBoundary>
+                  <Suspense fallback={<PageLoadingFallback />}>
+                    <LazySettings 
+                      onBack={() => setCurrentView('chat-v2')} 
+                    />
+                  </Suspense>
                 ),
                 'overflow-hidden'
               )}

@@ -30,7 +30,7 @@ impl std::fmt::Display for StorageProvider {
 }
 
 /// WebDAV 配置
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct WebDavConfig {
     /// WebDAV 服务器地址（如 https://dav.jianguoyun.com/dav/）
@@ -41,8 +41,18 @@ pub struct WebDavConfig {
     pub password: String,
 }
 
+impl std::fmt::Debug for WebDavConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("WebDavConfig")
+            .field("endpoint", &self.endpoint)
+            .field("username", &self.username)
+            .field("password", &"[REDACTED]")
+            .finish()
+    }
+}
+
 /// S3 兼容存储配置
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct S3Config {
     /// S3 endpoint URL
@@ -64,6 +74,22 @@ pub struct S3Config {
     /// 默认 false 使用 virtual-hosted-style
     #[serde(default)]
     pub path_style: bool,
+}
+
+impl std::fmt::Debug for S3Config {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("S3Config")
+            .field("endpoint", &self.endpoint)
+            .field("bucket", &self.bucket)
+            .field(
+                "access_key_id",
+                &format!("{}...", self.access_key_id.get(..4).unwrap_or("?")),
+            )
+            .field("secret_access_key", &"[REDACTED]")
+            .field("region", &self.region)
+            .field("path_style", &self.path_style)
+            .finish()
+    }
 }
 
 /// 统一的云存储配置
@@ -106,7 +132,15 @@ impl CloudStorageConfig {
                 if config.username.trim().is_empty() {
                     return Err("WebDAV 用户名不能为空".into());
                 }
-                // 密码可以为空（某些 WebDAV 服务支持匿名访问）
+                let endpoint_lower = config.endpoint.trim().to_lowercase();
+                let is_local = endpoint_lower.contains("://localhost")
+                    || endpoint_lower.contains("://127.0.0.1")
+                    || endpoint_lower.contains("://[::1]");
+                if !is_local && !endpoint_lower.starts_with("https://") {
+                    return Err(
+                        "WebDAV endpoint 必须使用 HTTPS（仅 localhost 允许 HTTP）".into(),
+                    );
+                }
                 Ok(())
             }
             StorageProvider::S3 => {
@@ -122,6 +156,15 @@ impl CloudStorageConfig {
                 }
                 if config.secret_access_key.trim().is_empty() {
                     return Err("S3 Secret Access Key 不能为空".into());
+                }
+                let endpoint_lower = config.endpoint.trim().to_lowercase();
+                let is_local = endpoint_lower.contains("://localhost")
+                    || endpoint_lower.contains("://127.0.0.1")
+                    || endpoint_lower.contains("://[::1]");
+                if !is_local && !endpoint_lower.starts_with("https://") {
+                    return Err(
+                        "S3 endpoint 必须使用 HTTPS（仅 localhost 允许 HTTP）".into(),
+                    );
                 }
                 Ok(())
             }
@@ -164,6 +207,84 @@ mod tests {
             ..Default::default()
         };
         assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_https_enforcement_webdav() {
+        let config = CloudStorageConfig {
+            provider: StorageProvider::WebDav,
+            webdav: Some(WebDavConfig {
+                endpoint: "http://dav.example.com".into(),
+                username: "user".into(),
+                password: "pass".into(),
+            }),
+            ..Default::default()
+        };
+        assert!(config.validate().is_err(), "HTTP WebDAV should be rejected");
+
+        let config = CloudStorageConfig {
+            provider: StorageProvider::WebDav,
+            webdav: Some(WebDavConfig {
+                endpoint: "http://localhost:8080/dav".into(),
+                username: "user".into(),
+                password: "pass".into(),
+            }),
+            ..Default::default()
+        };
+        assert!(config.validate().is_ok(), "localhost HTTP should be allowed");
+    }
+
+    #[test]
+    fn test_https_enforcement_s3() {
+        let config = CloudStorageConfig {
+            provider: StorageProvider::S3,
+            s3: Some(S3Config {
+                endpoint: "http://s3.example.com".into(),
+                bucket: "b".into(),
+                access_key_id: "AK".into(),
+                secret_access_key: "SK".into(),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        assert!(config.validate().is_err(), "HTTP S3 should be rejected");
+
+        let config = CloudStorageConfig {
+            provider: StorageProvider::S3,
+            s3: Some(S3Config {
+                endpoint: "http://localhost:9000".into(),
+                bucket: "b".into(),
+                access_key_id: "AK".into(),
+                secret_access_key: "SK".into(),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        assert!(config.validate().is_ok(), "localhost HTTP S3 should be allowed");
+    }
+
+    #[test]
+    fn test_debug_redaction() {
+        let webdav = WebDavConfig {
+            endpoint: "https://dav.example.com".into(),
+            username: "user".into(),
+            password: "super-secret".into(),
+        };
+        let debug = format!("{:?}", webdav);
+        assert!(!debug.contains("super-secret"), "password should be redacted in Debug");
+        assert!(debug.contains("[REDACTED]"));
+
+        let s3 = S3Config {
+            endpoint: "https://s3.example.com".into(),
+            bucket: "b".into(),
+            access_key_id: "AKIAIOSFODNN7EXAMPLE".into(),
+            secret_access_key: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY".into(),
+            ..Default::default()
+        };
+        let debug = format!("{:?}", s3);
+        assert!(!debug.contains("wJalrXUtnFEMI"), "secret_access_key should be redacted");
+        assert!(debug.contains("[REDACTED]"));
+        assert!(debug.contains("AKIA"), "access_key_id prefix should be visible");
     }
 
     #[test]

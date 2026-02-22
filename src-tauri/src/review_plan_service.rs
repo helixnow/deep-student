@@ -198,7 +198,7 @@ impl ReviewPlanService {
         let (new_status, consecutive_failures, is_difficult) =
             self.calculate_new_status(&plan, passed, new_interval, new_repetitions);
 
-        // 6. 更新复习计划
+        // 6. 在同一事务中更新复习计划并记录历史
         let update_params = UpdateReviewPlanParams {
             ease_factor: new_ease_factor,
             interval_days: new_interval,
@@ -216,10 +216,6 @@ impl ReviewPlanService {
             is_difficult,
         };
 
-        let updated_plan = VfsReviewPlanRepo::update_plan(&self.vfs_db, plan_id, &update_params)
-            .with_context(|| format!("Failed to update review plan: {}", plan_id))?;
-
-        // 7. 记录复习历史
         let history_params = RecordReviewHistoryParams {
             plan_id: plan_id.to_string(),
             question_id: plan.question_id.clone(),
@@ -235,8 +231,20 @@ impl ReviewPlanService {
             time_spent_seconds,
         };
 
-        let history = VfsReviewPlanRepo::record_history(&self.vfs_db, &history_params)
+        let conn = self.vfs_db.get_conn_safe()
+            .map_err(|e| anyhow::anyhow!("Failed to get DB connection: {}", e))?;
+
+        let tx = conn.unchecked_transaction()
+            .with_context(|| "Failed to begin transaction for process_review")?;
+
+        let updated_plan = VfsReviewPlanRepo::update_plan_with_conn(&tx, plan_id, &update_params)
+            .with_context(|| format!("Failed to update review plan: {}", plan_id))?;
+
+        let history = VfsReviewPlanRepo::record_history_with_conn(&tx, &history_params)
             .with_context(|| format!("Failed to record review history for plan: {}", plan_id))?;
+
+        tx.commit()
+            .with_context(|| "Failed to commit process_review transaction")?;
 
         info!(
             "[ReviewPlanService] Processed review: plan_id={}, quality={}, passed={}, new_interval={}, next_date={}",

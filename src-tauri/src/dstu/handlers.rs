@@ -67,7 +67,6 @@ use super::handler_utils::{
 use super::trash_handlers::is_resource_in_trash;
 
 use crate::vfs::{
-    lance_store::VfsLanceStore,
     repos::VfsMindMapRepo, VfsBlobRepo, VfsCreateEssaySessionParams, VfsCreateExamSheetParams,
     VfsCreateMindMapParams, VfsCreateNoteParams, VfsDatabase, VfsEssayRepo, VfsExamRepo, VfsFileRepo, VfsFolderItem, VfsFolderRepo, VfsNoteRepo, VfsTextbookRepo,
     VfsTranslationRepo, VfsUpdateMindMapParams, VfsUpdateNoteParams,
@@ -1318,6 +1317,7 @@ pub async fn dstu_delete(
     path: String,
     window: Window,
     vfs_db: State<'_, Arc<VfsDatabase>>,
+    lance_store: State<'_, Arc<crate::vfs::lance_store::VfsLanceStore>>,
 ) -> Result<(), String> {
     log::info!("[DSTU::handlers] dstu_delete: path={}", path);
 
@@ -1381,13 +1381,11 @@ pub async fn dstu_delete(
 
     // ★ P1 修复：删除成功后异步清理向量索引
     if let Some(rid) = resource_id {
-        let db_clone = vfs_db.inner().clone();
+        let lance_for_cleanup = Arc::clone(lance_store.inner());
         tokio::spawn(async move {
-            if let Ok(lance_store) = VfsLanceStore::new(db_clone) {
-                let _ = lance_store.delete_by_resource("text", &rid).await;
-                let _ = lance_store.delete_by_resource("multimodal", &rid).await;
-                log::info!("[DSTU::handlers] dstu_delete: cleaned up vectors for {}", rid);
-            }
+            let _ = lance_for_cleanup.delete_by_resource("text", &rid).await;
+            let _ = lance_for_cleanup.delete_by_resource("multimodal", &rid).await;
+            log::info!("[DSTU::handlers] dstu_delete: cleaned up vectors for {}", rid);
         });
     }
 
@@ -4050,6 +4048,7 @@ pub async fn dstu_purge(
     path: String,
     window: Window,
     vfs_db: State<'_, Arc<VfsDatabase>>,
+    lance_store: State<'_, Arc<crate::vfs::lance_store::VfsLanceStore>>,
 ) -> Result<(), String> {
     log::info!("[DSTU::handlers] dstu_purge: path={}", path);
 
@@ -4125,13 +4124,11 @@ pub async fn dstu_purge(
 
     // ★ P1 修复：purge 成功后异步清理向量索引
     if let Some(rid) = resource_id {
-        let db_clone = vfs_db.inner().clone();
+        let lance_for_cleanup = Arc::clone(lance_store.inner());
         tokio::spawn(async move {
-            if let Ok(lance_store) = VfsLanceStore::new(db_clone) {
-                let _ = lance_store.delete_by_resource("text", &rid).await;
-                let _ = lance_store.delete_by_resource("multimodal", &rid).await;
-                log::info!("[DSTU::handlers] dstu_purge: cleaned up vectors for {}", rid);
-            }
+            let _ = lance_for_cleanup.delete_by_resource("text", &rid).await;
+            let _ = lance_for_cleanup.delete_by_resource("multimodal", &rid).await;
+            log::info!("[DSTU::handlers] dstu_purge: cleaned up vectors for {}", rid);
         });
     }
 
@@ -4749,6 +4746,7 @@ pub async fn dstu_purge_all(
     resource_type: String,
     window: Window,
     vfs_db: State<'_, Arc<VfsDatabase>>,
+    lance_store: State<'_, Arc<crate::vfs::lance_store::VfsLanceStore>>,
 ) -> Result<usize, String> {
     log::info!("[DSTU::handlers] dstu_purge_all: type={}", resource_type);
 
@@ -4827,18 +4825,16 @@ pub async fn dstu_purge_all(
 
     // ★ P1 修复：purge 成功后异步清理向量索引
     if !resource_ids_to_cleanup.is_empty() {
-        let db_clone = vfs_db.inner().clone();
+        let lance_for_cleanup = Arc::clone(lance_store.inner());
         tokio::spawn(async move {
-            if let Ok(lance_store) = VfsLanceStore::new(db_clone) {
-                for rid in &resource_ids_to_cleanup {
-                    let _ = lance_store.delete_by_resource("text", rid).await;
-                    let _ = lance_store.delete_by_resource("multimodal", rid).await;
-                }
-                log::info!(
-                    "[DSTU::handlers] dstu_purge_all: cleaned up vectors for {} resources",
-                    resource_ids_to_cleanup.len()
-                );
+            for rid in &resource_ids_to_cleanup {
+                let _ = lance_for_cleanup.delete_by_resource("text", rid).await;
+                let _ = lance_for_cleanup.delete_by_resource("multimodal", rid).await;
             }
+            log::info!(
+                "[DSTU::handlers] dstu_purge_all: cleaned up vectors for {} resources",
+                resource_ids_to_cleanup.len()
+            );
         });
     }
 
@@ -4871,6 +4867,7 @@ pub async fn dstu_delete_many(
     paths: Vec<String>,
     window: Window,
     vfs_db: State<'_, Arc<VfsDatabase>>,
+    lance_store: State<'_, Arc<crate::vfs::lance_store::VfsLanceStore>>,
 ) -> Result<usize, String> {
     log::info!("[DSTU::handlers] dstu_delete_many: {} paths", paths.len());
 
@@ -4975,26 +4972,16 @@ pub async fn dstu_delete_many(
 
     // ★ P1 修复：事务成功后，异步清理向量索引（不阻塞返回）
     if !resource_ids_to_cleanup.is_empty() {
-        let db_for_cleanup = vfs_db.inner().clone();
+        let lance_for_cleanup = Arc::clone(lance_store.inner());
         tokio::spawn(async move {
-            match VfsLanceStore::new(db_for_cleanup) {
-                Ok(lance_store) => {
-                    for rid in &resource_ids_to_cleanup {
-                        let _ = lance_store.delete_by_resource("text", rid).await;
-                        let _ = lance_store.delete_by_resource("multimodal", rid).await;
-                    }
-                    log::info!(
-                        "[DSTU::handlers] dstu_delete_many: cleaned up vectors for {} resources",
-                        resource_ids_to_cleanup.len()
-                    );
-                }
-                Err(e) => {
-                    log::warn!(
-                        "[DSTU::handlers] dstu_delete_many: LanceStore init failed, skipping vector cleanup: {}",
-                        e
-                    );
-                }
+            for rid in &resource_ids_to_cleanup {
+                let _ = lance_for_cleanup.delete_by_resource("text", rid).await;
+                let _ = lance_for_cleanup.delete_by_resource("multimodal", rid).await;
             }
+            log::info!(
+                "[DSTU::handlers] dstu_delete_many: cleaned up vectors for {} resources",
+                resource_ids_to_cleanup.len()
+            );
         });
     }
 

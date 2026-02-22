@@ -29,6 +29,7 @@
 //! ```
 
 use super::types::{MessageSources, SendOptions, SharedContext, SourceInfo};
+use super::vfs_resolver::escape_xml_content;
 
 // ============================================================================
 // 常量定义
@@ -168,11 +169,18 @@ fn truncate_content(content: &str, max_chars: usize) -> String {
 /// 格式化单个来源条目
 ///
 /// 输出格式：`[类型-编号] 内容`
+/// 对外部内容进行XML转义，防止间接Prompt注入
 fn format_source_item(source_type: SourceType, index: usize, content: &str) -> String {
-    format!("[{}-{}] {}", source_type.label(), index + 1, content)
+    format!(
+        "[{}-{}] {}",
+        source_type.label(),
+        index + 1,
+        escape_xml_content(content)
+    )
 }
 
 /// 格式化网络搜索条目（包含标题和摘要）
+/// 对外部内容进行XML转义，防止间接Prompt注入
 fn format_web_search_item(
     index: usize,
     title: Option<&str>,
@@ -183,20 +191,20 @@ fn format_web_search_item(
             "[{}-{}] 标题: {}\n摘要: {}",
             SourceType::WebSearch.label(),
             index + 1,
-            t,
-            s
+            escape_xml_content(t),
+            escape_xml_content(s)
         )),
         (Some(t), None) => Some(format!(
             "[{}-{}] {}",
             SourceType::WebSearch.label(),
             index + 1,
-            t
+            escape_xml_content(t)
         )),
         (None, Some(s)) => Some(format!(
             "[{}-{}] {}",
             SourceType::WebSearch.label(),
             index + 1,
-            s
+            escape_xml_content(s)
         )),
         (None, None) => None,
     }
@@ -570,18 +578,22 @@ impl PromptBuilder {
             };
 
             let content_section = if note.is_long_note() {
-                // 长笔记：仅注入摘要
+                // 长笔记：仅注入摘要（转义防止注入）
                 let summary = note.generate_summary(500);
                 format!(
                     r#"<note_summary>
 {}
 </note_summary>
 <note_hint>笔记较长（{}字），请使用 note_read 工具查看具体章节</note_hint>"#,
-                    summary, note.word_count
+                    escape_xml_content(&summary),
+                    note.word_count
                 )
             } else {
-                // 短笔记：全量注入
-                format!("<note_content>\n{}\n</note_content>", note.content)
+                // 短笔记：全量注入（转义防止注入）
+                format!(
+                    "<note_content>\n{}\n</note_content>",
+                    escape_xml_content(&note.content)
+                )
             };
 
             let canvas_block = format!(
@@ -608,7 +620,11 @@ impl PromptBuilder {
 - 每次修改后，简要说明做了什么改动
 </behavior_rules>
 </canvas_note>"#,
-                note.title, note.note_id, note.word_count, structure_str, content_section
+                escape_xml_content(&note.title),
+                escape_xml_content(&note.note_id),
+                note.word_count,
+                escape_xml_content(&structure_str),
+                content_section
             );
             parts.push(canvas_block);
         }

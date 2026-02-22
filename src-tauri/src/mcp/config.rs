@@ -117,7 +117,7 @@ pub enum McpTransportConfig {
 }
 
 /// OAuth配置
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct OAuthConfig {
     /// OAuth客户端ID
     pub client_id: String,
@@ -132,6 +132,22 @@ pub struct OAuthConfig {
     /// 客户端密钥（可选）
     #[serde(skip_serializing_if = "Option::is_none")]
     pub client_secret: Option<String>,
+}
+
+impl std::fmt::Debug for OAuthConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("OAuthConfig")
+            .field("client_id", &self.client_id)
+            .field("auth_url", &self.auth_url)
+            .field("token_url", &self.token_url)
+            .field("redirect_uri", &self.redirect_uri)
+            .field("scopes", &self.scopes)
+            .field(
+                "client_secret",
+                &self.client_secret.as_ref().map(|_| "[REDACTED]"),
+            )
+            .finish()
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -4,6 +4,7 @@
  * 无 LaTeX 时回退为纯文本显示。
  */
 import React, { useEffect, useMemo } from 'react';
+import DOMPurify from 'dompurify';
 import { ensureKatexStyles } from '@/utils/lazyStyles';
 import { renderLatexToHtml } from '../../utils/renderLatex';
 
@@ -19,16 +20,21 @@ export const InlineLatex: React.FC<InlineLatexProps> = ({ text, className, style
     ensureKatexStyles();
   }, []);
 
-  const html = useMemo(() => renderLatexToHtml(text), [text]);
+  const html = useMemo(() => {
+    const raw = renderLatexToHtml(text);
+    if (!raw) return null;
+    return DOMPurify.sanitize(raw, {
+      ADD_TAGS: ['annotation', 'semantics', 'mrow', 'mi', 'mo', 'mn', 'msup', 'msub', 'mfrac', 'mover', 'munder', 'munderover', 'msqrt', 'mroot', 'mtable', 'mtr', 'mtd', 'mtext', 'mspace', 'math', 'mpadded', 'menclose', 'mglyph', 'mphantom', 'mstyle'],
+      ADD_ATTR: ['xmlns', 'mathvariant', 'encoding', 'stretchy', 'fence', 'separator', 'accent', 'accentunder', 'columnalign', 'rowalign', 'columnspacing', 'rowspacing', 'displaystyle', 'scriptlevel', 'lspace', 'rspace', 'movablelimits', 'largeop', 'symmetric', 'maxsize', 'minsize', 'linethickness', 'depth', 'height', 'voffset', 'notation'],
+      FORBID_TAGS: ['script', 'iframe', 'object', 'embed'],
+    });
+  }, [text]);
 
   if (!html) {
-    // 无 LaTeX，返回 fallback 或纯文本
     if (fallback !== undefined) return <>{fallback}</>;
     return <span className={className} style={style}>{text}</span>;
   }
 
-  // 使用 <div> 而非 <span>，因为 KaTeX display mode ($$...$$) 会生成 <div> 子元素，
-  // HTML 规范不允许 <div> 嵌套在 <span> 内
   return (
     <div
       className={className}

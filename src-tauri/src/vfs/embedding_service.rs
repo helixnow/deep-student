@@ -267,6 +267,16 @@ impl VfsEmbeddingService {
             if embedding_dim == 0 && !batch_embeddings.is_empty() {
                 embedding_dim = batch_embeddings[0].len();
             }
+            for (i, emb) in batch_embeddings.iter().enumerate() {
+                if embedding_dim > 0 && emb.len() != embedding_dim {
+                    return Err(VfsError::Other(format!(
+                        "嵌入维度不一致: 期望 {}, 第 {} 个向量为 {}",
+                        embedding_dim,
+                        start + i,
+                        emb.len()
+                    )));
+                }
+            }
 
             for (i, chunk) in batch_chunks.iter().enumerate() {
                 results.push(ChunkWithEmbedding {

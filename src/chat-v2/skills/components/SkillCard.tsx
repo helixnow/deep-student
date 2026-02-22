@@ -168,7 +168,7 @@ export const SkillCard: React.FC<SkillCardProps> = ({
         <div
           className={cn(
             'absolute right-2 top-1/2 -translate-y-1/2 transition-opacity duration-200',
-            'opacity-0 group-hover:opacity-100',
+            'opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100',
             isActive && 'opacity-100'
           )}
         >

@@ -16,13 +16,24 @@ use std::time::Duration;
 use tokio::sync::{mpsc, Mutex, RwLock};
 
 /// SSE传输配置
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct SSEConfig {
     pub endpoint: String,
     pub api_key: Option<String>,
     pub oauth: Option<OAuthConfig>,
     pub headers: HeaderMap,
     pub timeout: Duration,
+}
+
+impl std::fmt::Debug for SSEConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SSEConfig")
+            .field("endpoint", &self.endpoint)
+            .field("api_key", &self.api_key.as_ref().map(|_| "[REDACTED]"))
+            .field("oauth", &self.oauth)
+            .field("timeout", &self.timeout)
+            .finish()
+    }
 }
 
 /// OAuth配置

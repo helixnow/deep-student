@@ -186,7 +186,7 @@ impl MultimodalRerankerService {
         query: &MultimodalInput,
         documents: &[MultimodalInput],
     ) -> Result<Vec<f32>> {
-        let batch_size = self.config.batch_size;
+        let batch_size = self.config.batch_size.max(1);
         let mut all_scores = Vec::with_capacity(documents.len());
 
         for (batch_idx, chunk) in documents.chunks(batch_size).enumerate() {

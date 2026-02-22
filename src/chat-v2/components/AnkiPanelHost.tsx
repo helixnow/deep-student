@@ -50,7 +50,7 @@ const CardItem: React.FC<CardItemProps> = ({ card, index, onRemove }) => {
   return (
     <div className="group relative p-4 border rounded-lg bg-card hover:bg-accent/50 transition-colors">
       {/* 删除按钮 */}
-      <NotionButton variant="ghost" size="icon" iconOnly onClick={() => onRemove(card, index)} className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 hover:bg-destructive/10" aria-label={t('chatV2.removeCard')} title={t('chatV2.removeCard')}>
+      <NotionButton variant="ghost" size="icon" iconOnly onClick={() => onRemove(card, index)} className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 hover:bg-destructive/10" aria-label={t('chatV2.removeCard')} title={t('chatV2.removeCard')}>
         <X className="w-4 h-4 text-muted-foreground hover:text-destructive" />
       </NotionButton>
 

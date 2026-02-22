@@ -236,8 +236,17 @@ pub fn run() {
             // 初始化崩溃日志（即使后续仍有致命错误，也能落盘）
             crate::crash_logger::init_crash_logging(base_app_data_dir.clone());
 
-            // 启动 ANR 看门狗（Android 主线程卡顿检测）
+            // 启动 ANR 看门狗（所有平台，检测后端线程阻塞）
             crate::anr_watchdog::start_anr_watchdog();
+
+            // 定期发送心跳以驱动 ANR 检测
+            tauri::async_runtime::spawn(async {
+                let mut interval = tokio::time::interval(std::time::Duration::from_secs(3));
+                loop {
+                    interval.tick().await;
+                    crate::anr_watchdog::heartbeat();
+                }
+            });
 
             if let Err(e) = std::fs::create_dir_all(&base_app_data_dir) {
                 error!(
@@ -1445,19 +1454,20 @@ pub fn run() {
             ,crate::data_governance::commands::data_governance_run_slot_d_clone_db_test
         ])
         // 注册 pdfstream:// 自定义协议，用于 PDF 流式加载（支持 HTTP Range Request）
-        .register_uri_scheme_protocol("pdfstream", |_app, request| {
-            match crate::pdf_protocol::handle_asset_protocol(&request) {
+        .register_uri_scheme_protocol("pdfstream", |ctx, request| {
+            let allowed_dirs = crate::pdf_protocol::resolve_allowed_dirs(ctx.app_handle());
+            match crate::pdf_protocol::handle_asset_protocol(&request, &allowed_dirs) {
                 Ok(response) => response,
                 Err(e) => {
                     error!("pdfstream:// 协议处理失败: {}", e);
                     tauri::http::Response::builder()
                         .status(500)
-                        .header("Access-Control-Allow-Origin", "*")
-                        .body(format!("Internal Server Error: {}", e).into_bytes())
+                        .header("Access-Control-Allow-Origin", "tauri://localhost")
+                        .body(b"Internal Server Error".to_vec())
                         .unwrap_or_else(|_| {
                             tauri::http::Response::builder()
                                 .status(500)
-                                .header("Access-Control-Allow-Origin", "*")
+                                .header("Access-Control-Allow-Origin", "tauri://localhost")
                                 .body(b"Internal Server Error".to_vec())
                                 .unwrap_or_else(|_| {
                                     tauri::http::Response::new(b"Internal Server Error".to_vec())
@@ -1500,27 +1510,25 @@ fn build_app_state(
     );
     app_handle.manage(vfs_db.clone());
     // ★ 2026-01-19: 初始化 VfsLanceStore 并注册到 Tauri State（Memory-as-VFS 需要）
-    match crate::vfs::VfsLanceStore::new(vfs_db.clone()) {
-        Ok(lance_store) => {
-            let lance_store_arc = std::sync::Arc::new(lance_store);
-            app_handle.manage(lance_store_arc);
-        }
-        Err(e) => {
-            warn!("⚠️ VfsLanceStore 初始化失败: {}", e);
-        }
-    }
+    let lance_store = crate::vfs::VfsLanceStore::new(vfs_db.clone())
+        .expect("VfsLanceStore 初始化失败，无法启动应用");
+    let lance_store_arc = std::sync::Arc::new(lance_store);
+    app_handle.manage(lance_store_arc);
 
-    let llm_manager = Arc::new(crate::llm_manager::LLMManager::new(
-        database.clone(),
-        file_manager.clone(),
-    ));
+    let llm_manager = Arc::new(
+        crate::llm_manager::LLMManager::new(database.clone(), file_manager.clone())
+            .expect("Failed to initialise LLMManager"),
+    );
     // 注册 LLMManager 到 Tauri 状态（供 mm_get_dimension_registry 等命令使用）
     app_handle.manage(llm_manager.clone());
-    let exam_sheet_service = Arc::new(crate::exam_sheet_service::ExamSheetService::new(
-        database.clone(),
-        file_manager.clone(),
-        vfs_db.clone(), // ★ 传入 VFS 数据库
-    ));
+    let exam_sheet_service = Arc::new(
+        crate::exam_sheet_service::ExamSheetService::new(
+            database.clone(),
+            file_manager.clone(),
+            vfs_db.clone(),
+        )
+        .expect("Failed to initialise ExamSheetService"),
+    );
     let pdf_ocr_service = Arc::new(crate::pdf_ocr_service::PdfOcrService::new(
         file_manager.clone(),
         llm_manager.clone(),

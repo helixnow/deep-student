@@ -434,7 +434,7 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
                         onClick={() => removePinnedResource(ref.sourceId)}
                         className={cn(
                           'p-0.5 rounded hover:bg-destructive/10 hover:text-destructive transition-all',
-                          isSmallScreen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+                          isSmallScreen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100'
                         )}
                         aria-label={t('common:remove', '移除')}
                       >

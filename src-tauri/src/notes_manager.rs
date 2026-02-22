@@ -234,7 +234,21 @@ impl NotesManager {
                 }
             };
             if let Err(err) = tbl
-                .create_index(&["content"], Index::FTS(FtsIndexBuilder::default()))
+                .create_index(
+                    &["content"],
+                    Index::FTS(
+                        FtsIndexBuilder::default()
+                            .base_tokenizer("ngram".to_string())
+                            .ngram_min_length(2)
+                            .ngram_max_length(4)
+                            .ngram_prefix_only(false)
+                            .max_token_length(Some(64))
+                            .lower_case(true)
+                            .stem(false)
+                            .remove_stop_words(false)
+                            .ascii_folding(true)
+                    ),
+                )
                 .replace(false)
                 .execute()
                 .await

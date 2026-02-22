@@ -335,7 +335,7 @@ pub async fn create_stdio_transport(
 
     // 添加环境变量
     for (key, value) in env {
-        log::debug!("Setting MCP env var: {}={}", key, value);
+        log::debug!("Setting MCP env var: {}=[REDACTED]", key);
         cmd.env(key, value);
     }
 

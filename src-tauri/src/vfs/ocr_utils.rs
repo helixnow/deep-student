@@ -8,6 +8,8 @@
 use serde_json::Value;
 use tracing::warn;
 
+pub const OCR_FAILED_MARKER: &str = "__OCR_FAILED__";
+
 /// Parse `ocr_pages_json` into a per-page text array.
 pub fn parse_ocr_pages_json(json_str: &str) -> Vec<Option<String>> {
     let trimmed = json_str.trim();
@@ -16,7 +18,10 @@ pub fn parse_ocr_pages_json(json_str: &str) -> Vec<Option<String>> {
     }
 
     if let Ok(pages) = serde_json::from_str::<Vec<Option<String>>>(trimmed) {
-        return pages;
+        return pages
+            .into_iter()
+            .map(|opt| opt.filter(|s| s != OCR_FAILED_MARKER && !s.trim().is_empty()))
+            .collect();
     }
 
     if let Ok(pages) = serde_json::from_str::<Vec<String>>(trimmed) {
@@ -24,7 +29,7 @@ pub fn parse_ocr_pages_json(json_str: &str) -> Vec<Option<String>> {
             .into_iter()
             .map(|text| {
                 let t = text.trim();
-                if t.is_empty() {
+                if t.is_empty() || t == OCR_FAILED_MARKER {
                     None
                 } else {
                     Some(text)
@@ -56,7 +61,7 @@ pub fn parse_ocr_pages_json(json_str: &str) -> Vec<Option<String>> {
         .or_else(|| {
             pages
                 .iter()
-                .filter_map(|p| p.get("page_index").and_then(|v| v.as_u64()))
+                .filter_map(|p| p.get("page_index").or_else(|| p.get("pageIndex")).and_then(|v| v.as_u64()))
                 .max()
                 .map(|v| v as usize + 1)
         })
@@ -67,6 +72,7 @@ pub fn parse_ocr_pages_json(json_str: &str) -> Vec<Option<String>> {
     for (idx, page) in pages.iter().enumerate() {
         let page_index = page
             .get("page_index")
+            .or_else(|| page.get("pageIndex"))
             .and_then(|v| v.as_u64())
             .map(|v| v as usize)
             .unwrap_or(idx);
@@ -118,6 +124,9 @@ pub fn parse_ocr_pages_json(json_str: &str) -> Vec<Option<String>> {
     }
 
     result
+        .into_iter()
+        .map(|opt| opt.filter(|s| s != OCR_FAILED_MARKER && !s.trim().is_empty()))
+        .collect()
 }
 
 /// Join OCR pages into a single text block with page headers.

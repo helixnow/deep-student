@@ -550,12 +550,7 @@ pub async fn chat_v2_upsert_streaming_block(
         block_index: 0, // 流式块不需要排序，使用默认值
     };
 
-    // UPSERT 到数据库
-    upsert_block_in_db(&block, &db)?;
-
-    // 🔧 P36 批判性修复：追加 block_id 到消息的 block_ids
-    // 问题：前端创建的 workspace_status 块虽然被保存到数据库，
-    //       但没有更新 message.block_ids，导致刷新后不会加载
+    // 先确保消息占位行存在（FK 约束要求消息先于块存在）
     let conn = db.get_conn_safe().map_err(|e| e.to_string())?;
     if let Err(e) =
         ensure_message_exists_with_block(&conn, session_id.as_deref(), &block.message_id, &block.id)
@@ -565,6 +560,11 @@ pub async fn chat_v2_upsert_streaming_block(
             e
         );
     }
+
+    // 再 UPSERT 块到数据库（消息已存在，FK 不会违反）
+    upsert_block_in_db(&block, &db)?;
+
+    // 追加 block_id 到消息的 block_ids
     if let Err(e) = append_block_id_to_message(&conn, &block.message_id, &block.id) {
         log::warn!(
             "[ChatV2::handlers] Failed to append block_id to message: {}",
@@ -722,15 +722,25 @@ fn upsert_block_in_db(
         .map(|v| serde_json::to_string(v))
         .transpose()?;
 
-    // 🔧 临时禁用外键约束（因为流式过程中消息可能还未保存）
-    conn.execute("PRAGMA foreign_keys = OFF", [])?;
-
-    // INSERT OR REPLACE（🔧 与 repo.rs 标准 INSERT 保持一致）
-    let result = conn.execute(
+    conn.execute(
         r#"
-        INSERT OR REPLACE INTO chat_v2_blocks
+        INSERT INTO chat_v2_blocks
         (id, message_id, block_type, status, block_index, content, tool_name, tool_input_json, tool_output_json, citations_json, error, started_at, ended_at, first_chunk_at)
         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
+        ON CONFLICT(id) DO UPDATE SET
+            message_id = excluded.message_id,
+            block_type = excluded.block_type,
+            status = excluded.status,
+            block_index = excluded.block_index,
+            content = excluded.content,
+            tool_name = excluded.tool_name,
+            tool_input_json = excluded.tool_input_json,
+            tool_output_json = excluded.tool_output_json,
+            citations_json = excluded.citations_json,
+            error = excluded.error,
+            started_at = excluded.started_at,
+            ended_at = excluded.ended_at,
+            first_chunk_at = excluded.first_chunk_at
         "#,
         rusqlite::params![
             block.id,
@@ -748,12 +758,7 @@ fn upsert_block_in_db(
             block.ended_at,
             block.first_chunk_at,
         ],
-    );
-
-    // 🔧 无论成功失败，都重新启用外键约束
-    let _ = conn.execute("PRAGMA foreign_keys = ON", []);
-
-    result?;
+    )?;
 
     // 🔧 P35 批判性修复：更新消息的 block_ids_json，确保块被正确关联
     // 如果不更新，刷新后加载消息时 block_ids_json 中没有这个块 ID，块不会被渲染

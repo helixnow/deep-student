@@ -512,7 +512,7 @@ const InlineCardItem: React.FC<InlineCardItemProps> = ({
         </div>
         {/* 编辑按钮 */}
         {!disabled && (
-          <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); onToggleEdit(index); }} className="absolute top-2 right-2 z-10 !w-6 !h-6 bg-background/80 backdrop-blur opacity-0 group-hover:opacity-100 border hover:bg-accent" aria-label="edit">
+          <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); onToggleEdit(index); }} className="absolute top-2 right-2 z-10 !w-6 !h-6 bg-background/80 backdrop-blur opacity-0 group-hover:opacity-100 focus-visible:opacity-100 border hover:bg-accent" aria-label="edit">
             <Edit3 className="w-3 h-3 text-muted-foreground" />
           </NotionButton>
         )}

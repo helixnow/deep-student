@@ -2855,7 +2855,7 @@ export const ChatV2Page: React.FC = () => {
                               {session.title || t('page.untitled')}
                             </div>
                           </div>
-                          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
                             {/* 恢复按钮 */}
                             <NotionButton variant="success" size="icon" iconOnly onClick={() => restoreSession(session.id)} aria-label={t('page.restoreSession')} title={t('page.restoreSession')} className="!h-6 !w-6">
                               <RefreshCw className="w-3.5 h-3.5" />
