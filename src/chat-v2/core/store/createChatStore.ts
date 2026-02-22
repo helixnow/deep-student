@@ -2872,7 +2872,7 @@ export function createChatStore(sessionId: string): StoreApi<ChatStore> {
                     );
 
                     if (!hasSkillRef) {
-                      set({ pendingContextRefs: [...currentRefs, contextRef] });
+                      set({ pendingContextRefs: [...currentRefs, { ...contextRef, autoLoaded: true }] });
                     }
                   }
                   console.log('[ChatStore] Restored active skill contextRefs:', restoredActiveSkillIds);

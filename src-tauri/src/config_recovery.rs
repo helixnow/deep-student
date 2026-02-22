@@ -109,6 +109,7 @@ pub fn create_default_model_assignments() -> ModelAssignments {
         // 多模态知识库模型
         vl_embedding_model_config_id: None,
         vl_reranker_model_config_id: None,
+        memory_decision_model_config_id: None,
     }
 }
 

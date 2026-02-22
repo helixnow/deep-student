@@ -2,7 +2,7 @@ pub mod adapters;
 mod builtin_vendors;
 mod exam_engine;
 mod model2_pipeline;
-mod parser;
+pub(crate) mod parser;
 mod rag_extension;
 
 use crate::crypto::{CryptoService, EncryptedData};
@@ -2394,6 +2394,29 @@ impl LLMManager {
             .ok_or_else(|| {
                 AppError::configuration(
                     "找不到有效的对话模型配置（禁止使用嵌入/重排序模型作为对话模型）",
+                )
+            })?;
+
+        Ok(config)
+    }
+
+    /// 获取记忆决策模型配置（公开方法）
+    ///
+    /// 回退链：memory_decision_model_config_id → model2_config_id
+    pub async fn get_memory_decision_model_config(&self) -> Result<ApiConfig> {
+        let assignments = self.get_model_assignments().await?;
+        let model_id = assignments
+            .memory_decision_model_config_id
+            .or(assignments.model2_config_id)
+            .ok_or_else(|| AppError::configuration("没有配置可用的记忆决策模型"))?;
+
+        let configs = self.get_api_configs().await?;
+        let config = configs
+            .into_iter()
+            .find(|c| c.id == model_id && !c.is_embedding && !c.is_reranker)
+            .ok_or_else(|| {
+                AppError::configuration(
+                    "找不到有效的记忆决策模型配置（禁止使用嵌入/重排序模型）",
                 )
             })?;
 

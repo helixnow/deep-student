@@ -1212,7 +1212,11 @@ fn sanitize_filename(name: &str) -> String {
     }
     let trimmed = out.trim_matches('_').to_string();
     if trimmed.len() > 100 {
-        trimmed[..100].to_string()
+        let mut end = 100;
+        while !trimmed.is_char_boundary(end) && end > 0 {
+            end -= 1;
+        }
+        trimmed[..end].to_string()
     } else {
         trimmed
     }

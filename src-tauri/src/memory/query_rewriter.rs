@@ -76,7 +76,7 @@ impl MemoryQueryRewriter {
             .call_model2_raw_prompt(&prompt, None)
             .await?;
 
-        let response = output.raw_response.unwrap_or(output.assistant_message);
+        let response = output.assistant_message;
 
         // 解析响应
         match self.parse_rewrite_response(&response, original_query) {

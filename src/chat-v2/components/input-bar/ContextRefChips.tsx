@@ -122,7 +122,7 @@ export const ContextRefChips: React.FC<ContextRefChipsProps> = memo(
     const vfsResourceTypes = new Set(['note', 'textbook', 'exam', 'essay', 'translation', 'image', 'file', 'mindmap']);
     
     const displayRefs = useMemo(() => {
-      return refs.filter((ref) => !vfsResourceTypes.has(ref.typeId));
+      return refs.filter((ref) => !vfsResourceTypes.has(ref.typeId) && !ref.autoLoaded);
     }, [refs]);
 
     // 没有需要显示的引用时不渲染

@@ -264,6 +264,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
     chat_title_model_config_id: '', // 新增：聊天标题生成模型配置ID
     // 多模态知识库模型配置（嵌入模型通过维度管理设置）
     vl_reranker_model_config_id: '', // 多模态重排序模型
+    memory_decision_model_config_id: '', // 记忆决策模型
 
     // MCP 工具协议设置（默认保持可配置；启用与否由消息级选择决定）
     mcpCommand: 'npx',
@@ -455,6 +456,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
       chat_title_model_config_id: modelAssignments.chat_title_model_config_id || '',
       // 多模态知识库模型（嵌入模型通过维度管理设置）
       vl_reranker_model_config_id: modelAssignments.vl_reranker_model_config_id || '',
+      memory_decision_model_config_id: modelAssignments.memory_decision_model_config_id || '',
     }));
   }, [modelAssignments]);
 
@@ -2851,6 +2853,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
             chat_title_model_config_id: null,
             // 多模态知识库模型（嵌入模型通过维度管理设置）
             vl_reranker_model_config_id: null,
+            memory_decision_model_config_id: null,
           })) as Promise<{
             model2_config_id: string | null,
             anki_card_model_config_id: string | null,
@@ -2861,6 +2864,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
             chat_title_model_config_id: string | null,
             // 多模态知识库模型（嵌入模型通过维度管理设置）
             vl_reranker_model_config_id: string | null,
+            memory_decision_model_config_id: string | null,
           }>,
           invoke('get_setting', { key: 'auto_save' }).catch(() => 'true') as Promise<string>,
           invoke('get_setting', { key: 'theme' }).catch(() => 'light') as Promise<string>,
@@ -3024,6 +3028,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
           translation_model_config_id: modelAssignments?.translation_model_config_id || '',
           // 多模态知识库模型配置（嵌入模型通过维度管理设置）
           vl_reranker_model_config_id: modelAssignments?.vl_reranker_model_config_id || '',
+          memory_decision_model_config_id: modelAssignments?.memory_decision_model_config_id || '',
           autoSave: (autoSave || 'true') === 'true',
           theme: normalizeThemeMode(theme),
           themePalette: normalizeThemePalette(themePaletteSetting),
@@ -3310,6 +3315,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
           translation_model_config_id: string | null;
           chat_title_model_config_id: string | null;
           vl_reranker_model_config_id: string | null;
+          memory_decision_model_config_id: string | null;
         }>('get_model_assignments');
         setConfig((prev: any) => ({
           ...prev,
@@ -3321,6 +3327,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
           exam_sheet_ocr_model_config_id: modelAssignments?.exam_sheet_ocr_model_config_id || '',
           translation_model_config_id: modelAssignments?.translation_model_config_id || '',
           vl_reranker_model_config_id: modelAssignments?.vl_reranker_model_config_id || '',
+          memory_decision_model_config_id: modelAssignments?.memory_decision_model_config_id || '',
         }));
       } catch {}
     };
@@ -4085,6 +4092,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
       // 多模态知识库模型（嵌入模型通过维度管理设置）
       vl_embedding_model_config_id: null,
       vl_reranker_model_config_id: null,
+      memory_decision_model_config_id: mapping[t('settings:mapping_keys.memory_decision_configured')] || null,
     };
     handleApplyPreset(assignments);
   };

@@ -3723,6 +3723,15 @@ impl LLMManager {
         self.call_raw_prompt_with_config(config, user_prompt, image_payloads).await
     }
 
+    /// 使用记忆决策模型调用（回退链：memory_decision_model → model2）
+    pub async fn call_memory_decision_raw_prompt(
+        &self,
+        user_prompt: &str,
+    ) -> Result<StandardModel2Output> {
+        let config = self.get_memory_decision_model_config().await?;
+        self.call_raw_prompt_with_config(config, user_prompt, None).await
+    }
+
     /// 使用标题/标签生成模型调用（回退链：chat_title_model → model2）
     pub async fn call_chat_title_raw_prompt(
         &self,

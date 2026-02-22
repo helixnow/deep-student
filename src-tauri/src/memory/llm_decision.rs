@@ -122,13 +122,13 @@ impl MemoryLLMDecision {
         // 构造决策 Prompt
         let prompt = self.build_decision_prompt(new_content, new_title, similar_memories);
 
-        // 使用轻量模型进行决策
+        // 使用记忆决策模型（回退链：memory_decision_model → model2）
         let output = self
             .llm_manager
-            .call_model2_raw_prompt(&prompt, None)
+            .call_memory_decision_raw_prompt(&prompt)
             .await
             .map_err(|e| anyhow!("LLM 调用失败: {}", e))?;
-        let response = output.raw_response.unwrap_or(output.assistant_message);
+        let response = output.assistant_message;
 
         // 解析响应
         let decision = self.parse_response(&response)?;
@@ -161,7 +161,12 @@ impl MemoryLLMDecision {
                     m.note_id,
                     m.title,
                     if m.content_preview.len() > 200 {
-                        format!("{}...", &m.content_preview[..200])
+                        // 安全截断：找到 <= 200 字节的最近 char 边界，避免 UTF-8 panic
+                        let mut end = 200;
+                        while !m.content_preview.is_char_boundary(end) && end > 0 {
+                            end -= 1;
+                        }
+                        format!("{}...", &m.content_preview[..end])
                     } else {
                         m.content_preview.clone()
                     }
@@ -203,54 +208,62 @@ impl MemoryLLMDecision {
         )
     }
 
-    /// 解析 LLM 响应
+    /// 解析 LLM 响应（无启发式回退，复用 parser 模块成熟的 JSON 提取逻辑）
     fn parse_response(&self, response: &str) -> Result<MemoryDecisionResponse> {
-        let cleaned = Self::sanitize_json_response(response);
+        // 策略 1：enhanced_clean_json_response 清理后直接解析
+        let cleaned = crate::llm_manager::parser::enhanced_clean_json_response(response);
+        if let Ok(decision) = serde_json::from_str::<MemoryDecisionResponse>(&cleaned) {
+            return Ok(decision);
+        }
 
-        // 尝试解析 JSON
-        match serde_json::from_str::<MemoryDecisionResponse>(&cleaned) {
-            Ok(decision) => {
-                // 确保 event 字符串被正确解析
-                Ok(decision)
-            }
-            Err(e) => {
-                tracing::warn!("JSON 解析失败: {}, 原始响应: {}", e, response);
-                // 尝试从响应中提取事件类型
-                let event = if response.to_uppercase().contains("\"ADD\"") {
-                    MemoryEvent::ADD
-                } else if response.to_uppercase().contains("\"UPDATE\"") {
-                    MemoryEvent::UPDATE
-                } else if response.to_uppercase().contains("\"APPEND\"") {
-                    MemoryEvent::APPEND
-                } else {
-                    MemoryEvent::NONE
-                };
-
-                Ok(MemoryDecisionResponse {
-                    event,
-                    target_note_id: None,
-                    confidence: 0.5,
-                    reason: "JSON 解析失败，使用启发式提取".to_string(),
-                })
+        // 策略 2：从清理后文本提取第一个 JSON 对象
+        if let Some(json_str) = Self::extract_first_json_object(&cleaned) {
+            if let Ok(decision) = serde_json::from_str::<MemoryDecisionResponse>(&json_str) {
+                return Ok(decision);
             }
         }
+
+        // 策略 3：从原始响应提取（防止清理过程破坏内容）
+        if let Some(json_str) = Self::extract_first_json_object(response) {
+            if let Ok(decision) = serde_json::from_str::<MemoryDecisionResponse>(&json_str) {
+                return Ok(decision);
+            }
+        }
+
+        let preview: String = response.chars().take(300).collect();
+        tracing::warn!(
+            "[MemoryLLMDecision] 所有 JSON 解析策略失败, raw(前300): {}",
+            preview
+        );
+        Err(anyhow!("LLM 决策响应 JSON 解析失败"))
     }
 
-    /// 清理 JSON 响应（移除 Markdown 代码块等）
-    fn sanitize_json_response(raw: &str) -> String {
-        let trimmed = raw.trim();
-
-        // 移除 Markdown 代码块
-        if trimmed.starts_with("```") {
-            let without_prefix = trimmed
-                .trim_start_matches("```json")
-                .trim_start_matches("```JSON")
-                .trim_start_matches("```");
-            let without_suffix = without_prefix.trim_end_matches("```");
-            return without_suffix.trim().to_string();
+    /// 从文本中提取第一个平衡的 JSON 对象 `{ ... }`
+    fn extract_first_json_object(text: &str) -> Option<String> {
+        let mut depth = 0i32;
+        let mut start = None;
+        for (i, ch) in text.char_indices() {
+            match ch {
+                '{' => {
+                    if depth == 0 {
+                        start = Some(i);
+                    }
+                    depth += 1;
+                }
+                '}' => {
+                    if depth > 0 {
+                        depth -= 1;
+                        if depth == 0 {
+                            if let Some(s) = start {
+                                return Some(text[s..=i].to_string());
+                            }
+                        }
+                    }
+                }
+                _ => {}
+            }
         }
-
-        trimmed.to_string()
+        None
     }
 }
 
@@ -267,10 +280,46 @@ mod tests {
     }
 
     #[test]
-    fn test_sanitize_json() {
-        let raw = "```json\n{\"event\":\"ADD\"}\n```";
-        let cleaned = MemoryLLMDecision::sanitize_json_response(raw);
-        assert_eq!(cleaned, "{\"event\":\"ADD\"}");
+    fn test_extract_and_parse_clean_json() {
+        let raw = r#"{"event":"ADD","confidence":0.9,"reason":"test"}"#;
+        let json = MemoryLLMDecision::extract_first_json_object(raw).unwrap();
+        let resp: MemoryDecisionResponse = serde_json::from_str(&json).unwrap();
+        assert_eq!(resp.event, MemoryEvent::ADD);
+    }
+
+    #[test]
+    fn test_extract_json_from_surrounding_text() {
+        let raw = "根据分析，决策如下：\n{\"event\":\"ADD\",\"confidence\":0.9,\"reason\":\"新信息\"}\n以上是我的判断。";
+        let json = MemoryLLMDecision::extract_first_json_object(raw).unwrap();
+        assert_eq!(
+            json,
+            "{\"event\":\"ADD\",\"confidence\":0.9,\"reason\":\"新信息\"}"
+        );
+    }
+
+    #[test]
+    fn test_extract_json_with_think_tag() {
+        let raw = "<think>让我分析一下...</think>\n{\"event\":\"ADD\",\"confidence\":0.95,\"reason\":\"全新\"}";
+        let json = MemoryLLMDecision::extract_first_json_object(raw).unwrap();
+        assert_eq!(
+            json,
+            "{\"event\":\"ADD\",\"confidence\":0.95,\"reason\":\"全新\"}"
+        );
+    }
+
+    #[test]
+    fn test_extract_json_markdown_with_text_before() {
+        let raw = "好的，以下是结果：\n```json\n{\"event\":\"UPDATE\",\"target_note_id\":\"note_abc\"}\n```";
+        let json = MemoryLLMDecision::extract_first_json_object(raw).unwrap();
+        assert_eq!(
+            json,
+            "{\"event\":\"UPDATE\",\"target_note_id\":\"note_abc\"}"
+        );
+    }
+
+    #[test]
+    fn test_extract_json_returns_none_for_no_json() {
+        assert!(MemoryLLMDecision::extract_first_json_object("no json here").is_none());
     }
 
     #[test]
