@@ -1617,12 +1617,17 @@ export class ChatV2TauriAdapter {
       let userContextRefs = undefined;
       let contextPathMap: Record<string, string> | undefined;
       let isMultimodalModel = false;
-      if (pendingContextRefs.length > 0) {
+      // 🔧 2026-02-22: 过滤掉 skill_instruction 类型 refs
+      // 技能内容改由后端 auto-load_skills 工具结果投递（role: tool），不再注入 user message
+      const refsForUserMessage = pendingContextRefs.filter(
+        (ref) => ref.typeId !== SKILL_INSTRUCTION_TYPE_ID
+      );
+      if (refsForUserMessage.length > 0) {
         const currentModelId = this.getCurrentState().chatParams.modelId;
         // ★ 2026-02 修复：使用异步版本确保模型缓存已加载
         const isMultimodal = await isModelMultimodalAsync(currentModelId);
         isMultimodalModel = isMultimodal;
-        const { sendRefs, pathMap } = await buildSendContextRefsWithPaths(pendingContextRefs, { isMultimodal });
+        const { sendRefs, pathMap } = await buildSendContextRefsWithPaths(refsForUserMessage, { isMultimodal });
 
         // Token 预估和截断（防止上下文过长）
         // ✅ 按模型上下文预算截断（优先使用用户覆盖，其次模型推断）
@@ -1791,14 +1796,19 @@ export class ChatV2TauriAdapter {
       let userContextRefs = undefined;
       let contextPathMap: Record<string, string> | undefined;
       let isMultimodalModel = false;
-      if (pendingContextRefs.length > 0) {
-        console.log(LOG_PREFIX, 'Building SendContextRefs for', pendingContextRefs.length, 'refs');
+      // 🔧 2026-02-22: 过滤掉 skill_instruction 类型 refs
+      // 技能内容改由后端 auto-load_skills 工具结果投递（role: tool），不再注入 user message
+      const refsForUserMessage2 = pendingContextRefs.filter(
+        (ref) => ref.typeId !== SKILL_INSTRUCTION_TYPE_ID
+      );
+      if (refsForUserMessage2.length > 0) {
+        console.log(LOG_PREFIX, 'Building SendContextRefs for', refsForUserMessage2.length, 'refs (filtered', pendingContextRefs.length - refsForUserMessage2.length, 'skill_instruction refs)');
         const currentModelId = this.getCurrentState().chatParams.modelId;
         // ★ 2026-02 修复：使用异步版本确保模型缓存已加载
         const isMultimodal = await isModelMultimodalAsync(currentModelId);
         isMultimodalModel = isMultimodal;
         console.debug('[TauriAdapter] send: model =', currentModelId, 'isMultimodal =', isMultimodal);
-        const { sendRefs, pathMap } = await buildSendContextRefsWithPaths(pendingContextRefs, { isMultimodal });
+        const { sendRefs, pathMap } = await buildSendContextRefsWithPaths(refsForUserMessage2, { isMultimodal });
 
         // 3.1 Token 预估和截断（基于模型预算，防止上下文过长）
         const contextTokenLimit = this.getContextTruncateLimit(options.contextLimit);
@@ -2964,6 +2974,9 @@ export class ChatV2TauriAdapter {
       multimodalEnableReranking: chatParams.multimodalEnableReranking,
       multimodalLibraryIds: chatParams.multimodalLibraryIds,
 
+      // 🆕 关闭工具白名单检查
+      disableToolWhitelist: chatParams.disableToolWhitelist || undefined,
+
       // 🆕 图片压缩策略（不设置时后端使用智能默认策略）
       visionQuality: chatParams.visionQuality,
 
@@ -3005,14 +3018,27 @@ export class ChatV2TauriAdapter {
     // 从多来源收集需要注入的 Schema 工具 ID
     // 🔧 多技能修复：从所有激活的 skill refs 收集 allowedTools 取并集
     let skillAllowedTools: string[] | undefined;
-    const skillRefs = currentState.pendingContextRefs.filter(
-      (ref) => ref.typeId === SKILL_INSTRUCTION_TYPE_ID && ref.isSticky
-    );
-    if (skillRefs.length > 0) {
+    {
       const mergedAllowedTools: string[] = [];
+      // 来源 1：pendingContextRefs 中的 sticky skill refs
+      const skillRefs = currentState.pendingContextRefs.filter(
+        (ref) => ref.typeId === SKILL_INSTRUCTION_TYPE_ID && ref.isSticky
+      );
+      const seenSkillIds = new Set<string>();
       for (const ref of skillRefs) {
-        // 🔧 使用 ref.skillId 而非字符串解析（避免 resourceId 格式不匹配）
         const skillId = ref.skillId ?? ref.resourceId.replace(/^skill_/, '');
+        seenSkillIds.add(skillId);
+        const skill = skillRegistry.get(skillId);
+        if (skill) {
+          const tools = skill.allowedTools ?? skill.tools;
+          if (tools && tools.length > 0) {
+            mergedAllowedTools.push(...tools);
+          }
+        }
+      }
+      // 来源 2：activeSkillIds（修复 loadSession 竞态导致 pendingContextRefs 为空的情况）
+      for (const skillId of currentState.activeSkillIds) {
+        if (seenSkillIds.has(skillId)) continue;
         const skill = skillRegistry.get(skillId);
         if (skill) {
           const tools = skill.allowedTools ?? skill.tools;
@@ -3026,7 +3052,7 @@ export class ChatV2TauriAdapter {
       // - 若没有任何技能声明 allowedTools，则不进行过滤（保持现有行为）
       if (mergedAllowedTools.length > 0) {
         skillAllowedTools = [...new Set(mergedAllowedTools)]; // 去重
-        console.log(LOG_PREFIX, '🛡️ Skill allowedTools constraint (union of', skillRefs.length, 'skills):', {
+        console.log(LOG_PREFIX, '🛡️ Skill allowedTools constraint (union of', skillRefs.length, 'refs +', currentState.activeSkillIds.length, 'active):', {
           allowedTools: skillAllowedTools,
         });
       }
@@ -3050,14 +3076,18 @@ export class ChatV2TauriAdapter {
 
     // 🔧 渐进披露优化：只传递尚未加载的技能 content 和 embeddedTools
     // 已加载的技能内容无需重传（后端 load_skills 不会再次请求它们）
+    // ⚠️ 例外：activeSkillIds 中的技能必须始终包含 content，
+    // 后端 inject_synthetic_load_skills 需要它来合成 role:tool 消息
     const allSkills = skillRegistry.getAll();
     if (allSkills.length > 0) {
       const loadedIds = new Set(getLoadedSkills(this.sessionId).map(s => s.id));
+      const activeIdSet = new Set(currentState.activeSkillIds);
       const skillContents: Record<string, string> = {};
       const skillEmbeddedTools: Record<string, Array<{ name: string; description?: string; inputSchema?: unknown }>> = {};
       for (const skill of allSkills) {
-        // 跳过已加载的技能，减少 IPC 传输体积
-        if (loadedIds.has(skill.id)) continue;
+        // 跳过已加载且非激活的技能，减少 IPC 传输体积
+        // 激活技能必须保留 content（后端合成 load_skills 需要）
+        if (loadedIds.has(skill.id) && !activeIdSet.has(skill.id)) continue;
         if (skill.content) {
           skillContents[skill.id] = skill.content;
         }
@@ -3071,7 +3101,7 @@ export class ChatV2TauriAdapter {
       }
       if (Object.keys(skillContents).length > 0) {
         (options as Record<string, unknown>).skillContents = skillContents;
-        console.log(LOG_PREFIX, '[ProgressiveDisclosure] Injected skill contents (excluding', loadedIds.size, 'loaded):', Object.keys(skillContents).length);
+        console.log(LOG_PREFIX, '[ProgressiveDisclosure] Injected skill contents (excluding', loadedIds.size - activeIdSet.size, 'loaded, keeping', activeIdSet.size, 'active):', Object.keys(skillContents).length);
       }
       if (Object.keys(skillEmbeddedTools).length > 0) {
         (options as Record<string, unknown>).skillEmbeddedTools = skillEmbeddedTools;

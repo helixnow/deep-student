@@ -16,18 +16,18 @@ use rusqlite::OptionalExtension;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::mpsc;
-use tracing::{debug, error, info, warn};
+use tracing::{info, warn};
 
 use crate::database::Database;
 use crate::llm_manager::LLMManager;
 use crate::multimodal::embedding_service::MultimodalEmbeddingService;
-use crate::multimodal::page_indexer::{AttachmentPreview, PageIndexer};
-use crate::multimodal::types::{IndexProgressEvent, MultimodalImage, MultimodalInput, SourceType};
+use crate::multimodal::page_indexer::AttachmentPreview;
+use crate::multimodal::types::{IndexProgressEvent, MultimodalInput};
 use crate::vfs::database::VfsDatabase;
 use crate::vfs::error::{VfsError, VfsResult};
-use crate::vfs::lance_store::{VfsLanceRow, VfsLanceSearchResult, VfsLanceStore};
+use crate::vfs::lance_store::{VfsLanceRow, VfsLanceStore};
 use crate::vfs::repos::{
-    embedding_dim_repo, VfsBlobRepo, VfsExamRepo, VfsFileRepo, VfsResourceRepo, VfsTextbookRepo,
+    embedding_dim_repo, VfsBlobRepo,
     MODALITY_MULTIMODAL,
 };
 

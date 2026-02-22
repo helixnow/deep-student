@@ -5,7 +5,7 @@
 use crate::vfs::database::VfsDatabase;
 use crate::vfs::error::VfsError;
 use crate::vfs::repos::index_segment_repo::{CreateSegmentInput, VfsIndexSegment};
-use crate::vfs::repos::index_unit_repo::{CreateUnitInput, IndexState, UnitStats, VfsIndexUnit};
+use crate::vfs::repos::index_unit_repo::{IndexState, VfsIndexUnit};
 use crate::vfs::repos::{embedding_dim_repo, index_segment_repo, index_unit_repo};
 use crate::vfs::unit_builder::{UnitBuildInput, UnitBuilderRegistry};
 use rusqlite::Connection;

@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tauri::State;
-use tracing::{debug, info, warn};
+use tracing::{info, warn};
 
 use crate::llm_manager::LLMManager;
 use crate::vfs::database::VfsDatabase;

@@ -25,7 +25,6 @@ pub mod page_indexer;
 // ★ 以下模块仍需保留（内部依赖）
 pub mod reranker_service;
 pub mod vector_store; // page_indexer 依赖 // llm_manager 依赖
-                      // ★ retriever 已废弃; dimension_registry.rs 已删除（S1 fix: 迁移到 VFS embedding_dim_repo）
 
 // 重新导出常用类型
 pub use types::{

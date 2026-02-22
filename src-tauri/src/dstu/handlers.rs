@@ -1,16 +1,12 @@
-#![allow(unused_variables)]
-#![allow(dead_code)]
-
 //! DSTU Tauri 命令处理器
 //!
 //! 提供 DSTU 访达协议层的所有 Tauri 命令
 
 use std::sync::Arc;
 
-use chrono::{DateTime, NaiveDateTime, Utc};
 use rusqlite::OptionalExtension;
 use serde_json::Value;
-use tauri::{Emitter, State, Window};
+use tauri::{State, Window};
 
 use super::error::DstuError;
 
@@ -24,32 +20,27 @@ fn log_and_skip_err<T, E: std::fmt::Display>(result: std::result::Result<T, E>) 
         }
     }
 }
-use super::path_parser::{build_simple_resource_path, parse_real_path};
+use super::path_parser::build_simple_resource_path;
 use super::types::{
     BatchMoveRequest, BatchMoveResult, DstuCreateOptions, DstuListOptions, DstuNode, DstuNodeType,
-    DstuParsedPath, DstuWatchEvent, FailedMoveItem, ResourceLocation, SubjectMigrationStatus,
+    DstuParsedPath, DstuWatchEvent, FailedMoveItem, ResourceLocation,
 };
 
 // 从子模块导入路径工具和节点转换器
 use super::handler_utils::{
-    create_type_folder,
-    // 删除辅助函数
     delete_resource_by_type,
     delete_resource_by_type_with_conn,
     emit_watch_event,
     essay_to_dstu_node,
     exam_to_dstu_node,
     extract_resource_info,
-    extract_simple_id,
     fallback_lookup_uuid_resource, // UUID 回退查找
     fetch_resource_as_dstu_node,
     file_to_dstu_node,
-    generate_resource_id,
     // 内容辅助函数
     get_content_by_type,
     // CRUD 辅助函数
     get_resource_by_type_and_id,
-    get_resource_folder_path,
     infer_resource_type_from_id,
     is_uuid_format, // UUID 格式检测
     item_type_to_dstu_node_type,
@@ -62,18 +53,15 @@ use super::handler_utils::{
     list_unassigned_translations,
     mindmap_to_dstu_node,
     note_to_dstu_node,
-    parse_timestamp,
     purge_resource_by_type,
     restore_resource_by_type,
     restore_resource_by_type_with_conn,
     search_all,
     // 搜索辅助函数
     search_by_index,
-    search_notes,
     session_to_dstu_node,
     textbook_to_dstu_node,
     translation_to_dstu_node,
-    update_content_by_type,
 };
 
 use super::trash_handlers::is_resource_in_trash;
@@ -81,9 +69,7 @@ use super::trash_handlers::is_resource_in_trash;
 use crate::vfs::{
     lance_store::VfsLanceStore,
     repos::VfsMindMapRepo, VfsBlobRepo, VfsCreateEssaySessionParams, VfsCreateExamSheetParams,
-    VfsCreateMindMapParams, VfsCreateNoteParams, VfsDatabase, VfsEssay, VfsEssayRepo,
-    VfsEssaySession, VfsExamRepo, VfsExamSheet, VfsFileRepo, VfsFolderItem, VfsFolderRepo,
-    VfsMindMap, VfsNote, VfsNoteRepo, VfsTextbook, VfsTextbookRepo, VfsTranslation,
+    VfsCreateMindMapParams, VfsCreateNoteParams, VfsDatabase, VfsEssayRepo, VfsExamRepo, VfsFileRepo, VfsFolderItem, VfsFolderRepo, VfsNoteRepo, VfsTextbookRepo,
     VfsTranslationRepo, VfsUpdateMindMapParams, VfsUpdateNoteParams,
 };
 
@@ -235,7 +221,7 @@ async fn dstu_list_folder_first(
     }
 
     if is_root {
-        let folder_id = "root"; // 用于日志
+        let _folder_id = "root"; // 用于日志
                                 // 列出根级文件夹
         let root_folders = match crate::vfs::VfsFolderRepo::list_folders_by_parent(vfs_db, None) {
             Ok(folders) => folders,
@@ -5282,7 +5268,7 @@ pub async fn dstu_search_in_folder(
     // 如果有 folder_id，先获取文件夹内的所有项
     if let Some(ref fid) = folder_id {
         // 需要获取文件夹的 subject
-        let folder = match crate::vfs::VfsFolderRepo::get_folder(&vfs_db, fid) {
+        let _folder = match crate::vfs::VfsFolderRepo::get_folder(&vfs_db, fid) {
             Ok(Some(f)) => f,
             Ok(None) => {
                 log::error!(

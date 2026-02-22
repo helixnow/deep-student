@@ -36,6 +36,7 @@ interface ModelsTabProps {
     chat_title_model_config_id: string;
     exam_sheet_ocr_model_config_id: string;
     translation_model_config_id: string;
+    memory_decision_model_config_id: string;
   };
   setConfig: React.Dispatch<React.SetStateAction<any>>;
   apiConfigs: ApiConfig[];
@@ -214,6 +215,17 @@ export const ModelsTab: React.FC<ModelsTabProps> = ({
               models={toUnifiedModelInfo(getAllEnabledApis(config.translation_model_config_id))}
               placeholder={t('settings:api.select_model')}
               notificationKey={notify('translation_saved')}
+              onSave={handleSave}
+              setConfig={setConfig}
+            />
+            <ModelAssignmentRow
+              title={t('settings:api_config.memory_decision_model_label')}
+              description={t('settings:api_config.memory_decision_model_hint')}
+              value={config.memory_decision_model_config_id}
+              field="memory_decision_model_config_id"
+              models={toUnifiedModelInfo(getAllEnabledApis(config.memory_decision_model_config_id))}
+              placeholder={t('settings:api.select_model')}
+              notificationKey={notify('memory_decision_saved')}
               onSave={handleSave}
               setConfig={setConfig}
             />

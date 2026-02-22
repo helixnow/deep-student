@@ -7,7 +7,6 @@ use std::sync::Arc;
 use tauri::{State, Window};
 
 use crate::chat_v2::database::ChatV2Database;
-use crate::chat_v2::events::ChatV2EventEmitter;
 use crate::chat_v2::pipeline::ChatV2Pipeline;
 use crate::chat_v2::state::{ChatV2State, StreamGuard};
 use crate::chat_v2::types::{
@@ -540,7 +539,7 @@ pub async fn workspace_run_agent(
     );
     // 🆕 P38: 处理 inbox 为空但有 reminder 的情况（子代理没发消息的重试）
     if messages.is_empty() {
-        if let Some(ref reminder) = request.reminder {
+        if let Some(ref _reminder) = request.reminder {
             log::info!(
                 "[Workspace::handlers] [INBOX_EMPTY_WITH_REMINDER] P38: No inbox messages but has reminder for agent {}, proceeding with reminder only",
                 agent_session_id
@@ -1161,9 +1160,9 @@ pub async fn workspace_restore_executions(
     workspace_id: String,
     window: Window,
     coordinator: State<'_, Arc<WorkspaceCoordinator>>,
-    chat_v2_state: State<'_, Arc<ChatV2State>>,
-    pipeline: State<'_, Arc<ChatV2Pipeline>>,
-    db: State<'_, Arc<ChatV2Database>>,
+    _chat_v2_state: State<'_, Arc<ChatV2State>>,
+    _pipeline: State<'_, Arc<ChatV2Pipeline>>,
+    _db: State<'_, Arc<ChatV2Database>>,
 ) -> Result<RestoreExecutionsResponse, String> {
     coordinator.ensure_member_or_creator(&workspace_id, &session_id)?;
 

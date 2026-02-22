@@ -145,6 +145,9 @@ export interface ChatParams {
   // ★ 2026-01 简化：VFS RAG 作为唯一知识检索方案，移除 vfsRagEnabled 开关
   // ragTopK 和 ragEnableReranking 直接用于 VFS RAG 检索
 
+  /** 🆕 关闭工具白名单检查（允许所有工具绕过技能白名单限制） */
+  disableToolWhitelist?: boolean;
+
   /**
    * 🆕 图片压缩策略（用于多模态消息）
    * - 'low': 最大 768px，JPEG 60%，适用于大量图片/PDF 概览
@@ -174,6 +177,7 @@ export function createDefaultChatParams(): ChatParams {
     disableTools: false,
     model2OverrideId: null,
     maxToolRecursion: 30,
+    disableToolWhitelist: false,
   };
 }
 

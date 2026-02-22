@@ -9,7 +9,7 @@
 
 use rusqlite::Connection;
 use std::path::Path;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info, warn};
 
 use crate::vfs::error::{VfsError, VfsResult};
 use crate::vfs::repos::VfsBlobRepo;

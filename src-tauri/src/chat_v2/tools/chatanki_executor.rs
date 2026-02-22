@@ -22,7 +22,6 @@ use async_trait::async_trait;
 use rusqlite::Connection;
 use serde::{Deserialize, Deserializer};
 use serde_json::{json, Value};
-use tauri::Emitter;
 use tokio::time::{sleep, Duration};
 
 use super::builtin_retrieval_executor::BUILTIN_NAMESPACE;
@@ -565,6 +564,7 @@ impl ChatAnkiToolExecutor {
             .min(MAX_TIMEOUT_MS);
         let deadline = Instant::now() + Duration::from_millis(timeout_ms);
 
+        #[allow(unused_assignments)]
         let mut final_status = "timeout".to_string();
         let mut final_error: Option<String> = None;
         let mut final_anki_block_id: Option<String> = None;

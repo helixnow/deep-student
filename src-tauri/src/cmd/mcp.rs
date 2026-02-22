@@ -52,7 +52,7 @@ pub async fn get_mcp_status(state: State<'_, AppState>) -> Result<serde_json::Va
 }
 
 #[tauri::command]
-pub async fn get_mcp_tools(state: State<'_, AppState>) -> Result<Vec<serde_json::Value>> {
+pub async fn get_mcp_tools(_state: State<'_, AppState>) -> Result<Vec<serde_json::Value>> {
     // 后端 MCP 已禁用，返回空（由前端SDK提供工具列表）
     Ok(vec![])
 }
@@ -401,8 +401,8 @@ mod mcp_test_helpers {
             .collect();
         let env_map = env.unwrap_or_default();
         let framing_mode = match framing.as_deref() {
-            Some("content_length") | Some("content-length") => McpFraming::ContentLength,
-            _ => McpFraming::JsonLines,
+            Some("jsonl") | Some("json_lines") | Some("json-lines") => McpFraming::JsonLines,
+            _ => McpFraming::ContentLength,
         };
         let cwd_path = cwd.as_ref().map(std::path::PathBuf::from);
         match create_stdio_transport(
@@ -703,6 +703,7 @@ mod mcp_test_helpers {
 
     async fn connect_with_retry(client: &McpClient, timeout: Duration) -> Result<(), McpError> {
         let start = Instant::now();
+        #[allow(unused_assignments)]
         let mut last_error = String::new();
 
         loop {

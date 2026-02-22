@@ -1,7 +1,7 @@
 //! 查询重写模块
 //!
 //! 将用户的原始查询优化为更适合向量检索的形式。
-//! 从 user_memory 模块迁移并适配 VFS Memory
+//! 适配 VFS Memory
 
 use std::sync::Arc;
 
@@ -76,7 +76,7 @@ impl MemoryQueryRewriter {
             .call_model2_raw_prompt(&prompt, None)
             .await?;
 
-        let response = output.raw_response.unwrap_or(output.assistant_message);
+        let response = output.assistant_message;
 
         // 解析响应
         match self.parse_rewrite_response(&response, original_query) {

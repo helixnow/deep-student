@@ -85,8 +85,6 @@ import {
   LazySOTADashboard,
   LazyDataImportExport,
   LazyImportConversationDialog,
-
-  // ★ 2026-01：LazyUserMemoryPage 已废弃，改用 Learning Hub 中的 MemoryView
   LazySkillsManagementPage,
   LazyTemplateManagementPage,
   LazyTemplateJsonPreviewPage,
@@ -636,8 +634,9 @@ function App() {
     return () => { try { window.removeEventListener('OPEN_NOTES' as any, openNotes as any); } catch { /* non-critical: cleanup */ } };
   }, []);
 
-  // Crepe minimal demo：用于排查编辑器性能的纯净示例
+  // Crepe minimal demo：用于排查编辑器性能的纯净示例（仅开发模式）
   useEffect(() => {
+    if (!import.meta.env.DEV) return;
     const openCrepeDemo = () => setCurrentView('crepe-demo');
     try {
       window.addEventListener('OPEN_CREPE_DEMO' as any, openCrepeDemo as any);
@@ -675,12 +674,12 @@ function App() {
     return () => { try { window.removeEventListener('DSTU_NAVIGATE_TO_KNOWLEDGE_BASE' as any, handleNavigateToKnowledgeBase as any); } catch { /* non-critical: cleanup */ } };
   }, []);
 
-  // Tree test: global open event for testing
+  // Tree test: global open event for testing（仅开发模式）
   useEffect(() => {
+    if (!import.meta.env.DEV) return;
     const openTreeTest = () => setCurrentView('tree-test');
     try { 
       window.addEventListener('OPEN_TREE_TEST' as any, openTreeTest as any); 
-      // 暴露到全局方便测试
       (window as any).openTreeTest = openTreeTest;
     } catch { /* non-critical: event listener setup may fail in test env */ }
     return () => { 
@@ -691,12 +690,12 @@ function App() {
     };
   }, []);
 
-  // Chat V2 Integration Test: 集成测试页面入口
+  // Chat V2 Integration Test: 集成测试页面入口（仅开发模式）
   useEffect(() => {
+    if (!import.meta.env.DEV) return;
     const openChatV2Test = () => setCurrentView('chat-v2-test');
     try { 
       window.addEventListener('OPEN_CHAT_V2_TEST' as any, openChatV2Test as any); 
-      // 暴露到全局方便测试
       (window as any).openChatV2Test = openChatV2Test;
     } catch { /* non-critical: event listener setup may fail in test env */ }
     return () => { 
@@ -1537,11 +1536,11 @@ function App() {
 
               {renderViewLayer('pdf-reader', <Suspense fallback={<PageLoadingFallback />}><LazyPdfReader /></Suspense>)}
 
-              {renderViewLayer('tree-test', <Suspense fallback={<PageLoadingFallback />}><LazyTreeDragTest /></Suspense>)}
+              {import.meta.env.DEV && renderViewLayer('tree-test', <Suspense fallback={<PageLoadingFallback />}><LazyTreeDragTest /></Suspense>)}
 
-              {renderViewLayer('crepe-demo', <Suspense fallback={<PageLoadingFallback />}><LazyCrepeDemoPage onBack={() => setCurrentView('settings')} /></Suspense>)}
+              {import.meta.env.DEV && renderViewLayer('crepe-demo', <Suspense fallback={<PageLoadingFallback />}><LazyCrepeDemoPage onBack={() => setCurrentView('settings')} /></Suspense>)}
 
-              {renderViewLayer('chat-v2-test', <Suspense fallback={<PageLoadingFallback />}><LazyChatV2IntegrationTest /></Suspense>)}
+              {import.meta.env.DEV && renderViewLayer('chat-v2-test', <Suspense fallback={<PageLoadingFallback />}><LazyChatV2IntegrationTest /></Suspense>)}
 
               {/* Chat V2 正式入口 */}
               {renderViewLayer('chat-v2', <Suspense fallback={<PageLoadingFallback />}><LazyChatV2Page /></Suspense>)}

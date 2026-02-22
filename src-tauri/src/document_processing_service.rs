@@ -547,12 +547,12 @@ impl DocumentProcessingService {
 
                 if combined_tokens > max_tokens_per_segment && suffix_tokens > 0 {
                     suffix_insert.clear();
-                    suffix_tokens = 0;
+                    let _ = suffix_tokens; // consumed above
                     combined_tokens = base_tokens.saturating_add(prefix_tokens);
                 }
                 if combined_tokens > max_tokens_per_segment && prefix_tokens > 0 {
                     prefix_insert.clear();
-                    prefix_tokens = 0;
+                    let _ = prefix_tokens; // consumed above
                     combined_tokens = base_tokens;
                 }
                 if combined_tokens > max_tokens_per_segment {

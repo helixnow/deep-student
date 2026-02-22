@@ -771,7 +771,7 @@ impl VfsAttachmentRepo {
                 .as_ref()
                 .map(|t| !t.trim().is_empty())
                 .unwrap_or(false);
-            let has_preview = preview_json.is_some();
+            let _has_preview = preview_json.is_some();
 
             // 构建 ready_modes
             let mut ready_modes = vec![];

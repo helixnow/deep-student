@@ -105,7 +105,6 @@ $$
 const MAX_RAG_ITEMS: usize = 5;
 const MAX_MEMORY_ITEMS: usize = 3;
 const MAX_WEB_ITEMS: usize = 5;
-// ★ 2026-01 清理：MAX_GRAPH_ITEMS 已移除（错题系统废弃）
 
 // ============================================================================
 // 来源类型标识
@@ -371,8 +370,6 @@ impl PromptBuilder {
         }
         self
     }
-
-    // ★ 2026-01 清理：with_graph_sources 已移除（错题系统废弃）
 
     /// 添加网络搜索来源
     pub fn with_web_search_sources(mut self, sources: Option<&Vec<SourceInfo>>) -> Self {

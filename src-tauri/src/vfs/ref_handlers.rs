@@ -475,7 +475,7 @@ fn resolve_single_ref_with_conn(
     );
 
     // 根据 sourceId 前缀判断资源类型
-    let (_, table_name, title_column) = match get_source_id_type(&r.source_id) {
+    let (_, table_name, _title_column) = match get_source_id_type(&r.source_id) {
         Some(info) => info,
         None => {
             warn!(
@@ -985,8 +985,6 @@ fn get_resource_content_with_conn(
 
     // 特殊处理某些类型
     match resource_type {
-        // ★ 已移除 Textbook 分支，合并到 Image/File/Textbook 分支
-        // VfsResourceType::Textbook => { ... }
         VfsResourceType::Exam => {
             // 题目集返回 preview_json
             info!("[PDF_DEBUG] Exam branch: returning preview_json");
@@ -1343,7 +1341,7 @@ pub fn get_ocr_pages_text_with_conn(conn: &Connection, source_id: &str) -> Optio
 fn get_resource_title_with_conn(
     conn: &Connection,
     source_id: &str,
-    resource_type: &VfsResourceType,
+    _resource_type: &VfsResourceType,
 ) -> VfsResult<Option<String>> {
     let (_, table_name, title_column) = match get_source_id_type(source_id) {
         Some(info) => info,

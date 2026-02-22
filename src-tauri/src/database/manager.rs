@@ -7,11 +7,9 @@
 
 use crate::models::AppError;
 use anyhow::{Context, Result};
-use chrono::Utc;
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::{params, OptionalExtension};
-use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::RwLock;
@@ -777,8 +775,6 @@ impl DatabaseManager {
         )?;
 
         // MIGRATION_DEBT: embedding_dimension_registry 表创建应迁移到主数据库 Refinery 脚本
-        // ★ mm_page_embeddings 已废弃，多模态索引元数据改由 VFS 表（textbooks/resources）自管理
-        // embedding_dimension_registry 仍然保留用于维度注册
         conn.execute_batch(
             r#"
             CREATE TABLE IF NOT EXISTS embedding_dimension_registry (
@@ -2512,8 +2508,7 @@ impl DatabaseManager {
                 println!("数据库迁移 v38 -> v39 完成（subject 字段已彻底删除）");
             }
             40 => {
-                // Version 40: embedding_dimension_registry（mm_page_embeddings 已废弃）
-                // ★ mm_page_embeddings 已移除，多模态索引元数据改由 VFS 表自管理
+                // Version 40: embedding_dimension_registry
                 println!("📦 数据库迁移 v39 -> v40: 创建 embedding_dimension_registry");
 
                 conn.execute_batch(

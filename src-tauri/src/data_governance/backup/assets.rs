@@ -21,7 +21,7 @@ use std::fs;
 use std::fs::File;
 use std::io::{BufReader, Read};
 use std::path::Component;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::time::Duration;
 use tracing::{debug, info, warn};
 

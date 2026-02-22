@@ -26,6 +26,7 @@ import {
   Wrench,
   ChevronDown,
   RotateCcw,
+  ShieldOff,
 } from 'lucide-react';
 import { UnifiedModelSelector } from '@/components/shared/UnifiedModelSelector';
 import type { ChatStore, ChatParams } from '../core/types';
@@ -386,6 +387,15 @@ export const ChatParamsPanel: React.FC<ChatParamsPanelProps> = ({
               onChange={(v) => updateParam('disableTools', v)}
               disabled={!selectedModelConfig?.supportsTools}
               icon={<Wrench className="w-4 h-4" />}
+            />
+
+            {/* 关闭工具白名单检查 */}
+            <ToggleControl
+              label={t('chatParams.disableToolWhitelist')}
+              description={t('chatParams.disableToolWhitelistDesc')}
+              checked={chatParams.disableToolWhitelist ?? false}
+              onChange={(v) => updateParam('disableToolWhitelist', v)}
+              icon={<ShieldOff className="w-4 h-4" />}
             />
           </div>
 

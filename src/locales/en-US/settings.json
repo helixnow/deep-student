@@ -788,6 +788,8 @@
     "model_assignment_description": "Select corresponding model configuration for key functions",
     "chat_title_model_label": "Title/Tag Generation Model",
     "chat_title_model_hint": "Used for generating chat titles and intelligent tag extraction. Recommend models with strong comprehension and fast speed. Defaults to second model if unset.",
+    "memory_decision_model_label": "Memory Decision Model",
+    "memory_decision_model_hint": "Used for smart memory write deduplication/update/append decisions. Recommend a fast and lightweight model. Defaults to the enhanced model if unset.",
     "batch_create_success": "Successfully created {{count}} API configurations",
     "batch_create_failed": "Failed to batch create API configurations",
     "auto_assign_success": "Auto-assignment completed, model assignments have been applied",
@@ -1201,7 +1203,8 @@
     "exam_sheet_ocr_configured": "OCR Engine: Configured",
     "translation_configured": "Translation Model: Configured",
     "qbank_ai_grading_configured": "Question Bank AI Grading Model: Configured",
-    "question_parsing_configured": "Question Parsing Model: Configured"
+    "question_parsing_configured": "Question Parsing Model: Configured",
+    "memory_decision_configured": "Memory Decision Model: Configured"
   },
   "status_labels": {
     "summary_model": "Summary Generation Model (Deprecated)",

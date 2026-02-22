@@ -593,3 +593,16 @@ jobs:
             done
           done
           echo "✅ R2 cleanup complete"
+
+      # ─── 触发官网重构建（更新下载页版本信息）─────────────
+      - name: Trigger website rebuild
+        continue-on-error: true
+        env:
+          VERCEL_DEPLOY_HOOK: ${{ secrets.VERCEL_DEPLOY_HOOK }}
+        run: |
+          if [ -z "$VERCEL_DEPLOY_HOOK" ]; then
+            echo "⚠️ VERCEL_DEPLOY_HOOK not configured, skipping"
+            exit 0
+          fi
+          RESP=$(curl -s -X POST "$VERCEL_DEPLOY_HOOK")
+          echo "🌐 Website rebuild triggered: $RESP"

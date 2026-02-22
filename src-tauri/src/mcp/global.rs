@@ -388,9 +388,48 @@ pub async fn create_stdio_transport(
                             }
                             if trimmed.starts_with("Content-Length:") {
                                 log::warn!("MCP stdout indicates Content-Length framing while configured JSONL → fallback to Content-Length framing");
-                                // 进入 Content-Length 解帧循环：当前已读的是第一行Header
-                                // 将第一行header放入一个临时reader流中不容易，直接调用专用读取函数，已读取的header行会丢失，
-                                // 但后续消息将按Content-Length正确解帧。
+                                // 手动处理第一条消息：从已消费的 header 行解析 content_length
+                                let first_ok = 'first: {
+                                    let cl_value = trimmed.strip_prefix("Content-Length:").unwrap_or("0").trim();
+                                    let content_length: usize = match cl_value.parse() {
+                                        Ok(v) if v > 0 => v,
+                                        _ => {
+                                            log::error!("Invalid Content-Length in fallback first line: {:?}", cl_value);
+                                            break 'first false;
+                                        }
+                                    };
+                                    // 读取剩余 header 行直到空行分隔符
+                                    loop {
+                                        buffer.clear();
+                                        match reader.read_line(&mut buffer).await {
+                                            Ok(0) => break 'first false,
+                                            Ok(_) => {
+                                                if buffer.trim().is_empty() { break; }
+                                                // 其他 header 行（如 Content-Type）跳过
+                                            }
+                                            Err(e) => {
+                                                log::error!("Error reading fallback header: {}", e);
+                                                break 'first false;
+                                            }
+                                        }
+                                    }
+                                    // 读取消息体
+                                    let mut body = vec![0u8; content_length];
+                                    if let Err(e) = reader.read_exact(&mut body).await {
+                                        log::error!("Error reading fallback body: {}", e);
+                                        break 'first false;
+                                    }
+                                    match String::from_utf8(body) {
+                                        Ok(msg) => { let _ = recv_tx_clone.send(msg); }
+                                        Err(e) => {
+                                            log::error!("Invalid UTF-8 in fallback body: {}", e);
+                                            break 'first false;
+                                        }
+                                    }
+                                    true
+                                };
+                                if !first_ok { break; }
+                                // 后续消息正常 Content-Length 解帧
                                 loop {
                                     match read_content_length_message(&mut reader).await {
                                         Ok(Some(message)) => {

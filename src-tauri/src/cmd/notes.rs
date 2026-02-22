@@ -8,15 +8,12 @@ use crate::models::AppError;
 use crate::unified_file_manager;
 use crate::vfs::index_service::VfsIndexService;
 use crate::vfs::{VfsLanceStore, VfsNoteRepo};
-use base64::Engine;
 use chrono::Utc;
 use rusqlite::params;
 use serde::Serialize;
-use serde_json::json;
 use std::sync::Arc;
 use std::sync::LazyLock;
 use tauri::{Emitter, State, Window};
-use tokio::sync::Semaphore;
 use uuid::Uuid;
 
 type Result<T> = std::result::Result<T, AppError>;
@@ -30,7 +27,7 @@ pub async fn notes_list(
 ) -> Result<Vec<crate::notes_manager::NoteItem>> {
     // 使用 spawn_blocking 避免 Lance 操作导致的死锁
     let notes_manager = state.notes_manager.clone();
-    // ★ 切换到 VFS 版本，subject 已移除
+
     tokio::task::spawn_blocking(move || notes_manager.list_notes_vfs(None, 1000, 0))
         .await
         .map_err(|e| AppError::internal(format!("列出笔记任务失败: {}", e)))?
@@ -120,7 +117,7 @@ pub async fn notes_create(
     _subject: String,
     note: NewNotePayload,
     state: State<'_, AppState>,
-    window: Window,
+    _window: Window,
 ) -> Result<crate::notes_manager::NoteItem> {
     let tags: Vec<String> = note.tags.unwrap_or_default();
 
@@ -130,7 +127,7 @@ pub async fn notes_create(
     let content_md = note.content_md.clone();
     let tags_clone = tags.clone();
 
-    // ★ 切换到 VFS 版本，subject 已移除
+
     let created = tokio::task::spawn_blocking(move || {
         notes_manager.create_note_vfs(&title, &content_md, &tags_clone)
     })
@@ -157,7 +154,7 @@ pub async fn notes_update(
     _subject: String,
     note: UpdateNotePayload,
     state: State<'_, AppState>,
-    window: Window,
+    _window: Window,
 ) -> Result<crate::notes_manager::NoteItem> {
     // 使用 spawn_blocking 避免在异步上下文中阻塞
     let notes_manager = state.notes_manager.clone();
@@ -167,7 +164,7 @@ pub async fn notes_update(
     let tags = note.tags.clone();
     let expected_updated_at = note.expected_updated_at.clone();
 
-    // ★ 切换到 VFS 版本，subject 已移除
+
     let updated = tokio::task::spawn_blocking(move || {
         notes_manager.update_note_vfs(
             &note_id,
@@ -495,7 +492,7 @@ pub async fn notes_restore(
     subject: String,
     id: String,
     state: State<'_, AppState>,
-    window: Window,
+    _window: Window,
 ) -> Result<bool> {
     // 使用 spawn_blocking 避免 Lance 操作导致的死锁
     let notes_manager = state.notes_manager.clone();

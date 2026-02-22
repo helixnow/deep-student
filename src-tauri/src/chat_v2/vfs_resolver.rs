@@ -28,7 +28,7 @@ use crate::document_parser::DocumentParser;
 use crate::vfs::ocr_utils::parse_ocr_pages_json;
 use crate::vfs::repos::VfsFileRepo;
 use crate::vfs::types::{
-    resolve_image_inject_modes, resolve_pdf_inject_modes, PdfPreviewJson, ResourceInjectModes,
+    resolve_image_inject_modes, resolve_pdf_inject_modes, PdfPreviewJson,
     VfsContextRefData, VfsResourceRef, VfsResourceType,
 };
 
@@ -824,7 +824,7 @@ fn resolve_pdf(
                     get_pdf_text_blocks(&extracted_text, conn, blobs_dir, vfs_ref);
                 if !fallback_blocks.is_empty() {
                     blocks.extend(fallback_blocks);
-                    content_added = true;
+                    let _ = content_added; // consumed in condition above
                 }
             }
 

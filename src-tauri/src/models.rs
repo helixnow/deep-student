@@ -1184,6 +1184,7 @@ pub struct ModelAssignments {
     // ★ 多模态知识库模型配置（文档：multimodal-knowledge-base-design.md）
     pub vl_embedding_model_config_id: Option<String>, // 多模态嵌入模型（Qwen3-VL-Embedding）
     pub vl_reranker_model_config_id: Option<String>,  // 多模态重排序模型（Qwen3-VL-Reranker）
+    pub memory_decision_model_config_id: Option<String>, // 记忆决策模型（smart write 去重判断）
 }
 
 #[derive(Debug, Deserialize)]

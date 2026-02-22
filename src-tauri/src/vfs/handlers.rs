@@ -21,9 +21,9 @@ use crate::vfs::error::{VfsError, VfsResult};
 use crate::vfs::index_service::VfsIndexService;
 use crate::vfs::pdf_processing_service::{PdfProcessingService, ProcessingStage};
 use crate::vfs::repos::{
-    VfsAttachmentRepo, VfsBlobRepo, VfsEssayRepo, VfsExamRepo, VfsFileRepo, VfsIndexStateRepo,
+    VfsAttachmentRepo, VfsBlobRepo, VfsEssayRepo, VfsExamRepo, VfsIndexStateRepo,
     VfsMindMapRepo, VfsNoteRepo, VfsResourceRepo, VfsTextbookRepo, VfsTranslationRepo,
-    INDEX_STATE_DISABLED, INDEX_STATE_FAILED, INDEX_STATE_INDEXED, INDEX_STATE_INDEXING,
+    INDEX_STATE_DISABLED,
     INDEX_STATE_PENDING,
 };
 use crate::vfs::types::*;
@@ -1062,7 +1062,7 @@ pub async fn vfs_get_resource_path(
         .optional()
         .map_err(|e| format!("Query folder_item failed: {}", e))?;
 
-    let (fi_id, folder_id, item_type) = match folder_item_opt {
+    let (fi_id, folder_id, _item_type) = match folder_item_opt {
         Some(fi) => fi,
         None => {
             // 资源不在 folder_items 中，返回资源名称作为路径

@@ -1,11 +1,6 @@
-use crate::models::{ChatMessage, RagQueryOptions, RagQueryOptionsWithLibraries, RetrievedChunk};
-use crate::utils::chat_timing;
-use anyhow::Result as AnyResult;
-use serde::Serialize;
+use crate::models::ChatMessage;
 use serde_json::{json, Value};
-use std::cmp::Ordering;
-use std::collections::{BTreeMap, HashMap, HashSet};
-use std::sync::Arc;
+use std::collections::{BTreeMap, HashMap};
 use tauri::{Emitter, Window};
 
 fn provider_icon_for_origin(origin: &str) -> &'static str {

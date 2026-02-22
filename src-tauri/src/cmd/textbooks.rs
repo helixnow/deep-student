@@ -524,7 +524,7 @@ pub async fn textbooks_recover(state: State<'_, AppState>, id: String) -> Result
 /// 清空回收站（可选物理删除文件）
 #[tauri::command]
 pub async fn textbooks_purge_trash(
-    window: Window,
+    _window: Window,
     state: State<'_, AppState>,
     options: Option<PurgeTrashOptions>,
 ) -> Result<serde_json::Value> {
@@ -562,7 +562,7 @@ pub async fn textbooks_purge_trash(
 /// 永久删除单个教材（可选物理删除）
 #[tauri::command]
 pub async fn textbooks_delete_permanent(
-    window: Window,
+    _window: Window,
     state: State<'_, AppState>,
     id: String,
     delete_file: Option<bool>,

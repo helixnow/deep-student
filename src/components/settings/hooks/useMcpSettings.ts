@@ -125,7 +125,7 @@ export function useMcpSettings(): McpSettingsState {
       args: [...DEFAULT_STDIO_ARGS],
       env: {},
       cwd: '',
-      framing: 'jsonl'
+      framing: 'content_length'
     },
     error: null
   });

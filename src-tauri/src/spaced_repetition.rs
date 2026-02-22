@@ -23,7 +23,7 @@
 //! - 5: 完美回忆（完美）
 
 use serde::{Deserialize, Serialize};
-use tracing::{debug, info};
+use tracing::debug;
 
 // ============================================================================
 // 常量定义

@@ -174,6 +174,14 @@ export interface ContextRef {
   skillId?: string;
 
   /**
+   * 是否为自动加载的引用（可选）
+   *
+   * - true: 由系统自动加载（默认技能、会话恢复等），不在输入栏显示气泡
+   * - false/undefined: 用户手动添加，在输入栏显示气泡
+   */
+  autoLoaded?: boolean;
+
+  /**
    * ★ 注入模式配置（可选）
    *
    * 用于图片和 PDF 附件的注入模式选择：

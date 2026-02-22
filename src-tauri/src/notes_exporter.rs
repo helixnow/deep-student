@@ -1,6 +1,3 @@
-#![allow(unused_variables)]
-#![allow(dead_code)]
-
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -15,7 +12,7 @@ use crate::database::Database;
 use crate::file_manager::FileManager;
 use crate::models::AppError;
 use crate::vfs::{
-    VfsCreateNoteParams, VfsDatabase, VfsNoteRepo, VfsResourceRepo, VfsUpdateNoteParams,
+    VfsCreateNoteParams, VfsDatabase, VfsNoteRepo, VfsUpdateNoteParams,
 };
 
 type Result<T> = std::result::Result<T, AppError>;
@@ -784,7 +781,7 @@ impl NotesExporter {
         &self,
         conn: &rusqlite::Connection,
         subject: &str,
-        include_versions: bool,
+        _include_versions: bool,
         note_filter: Option<&HashSet<String>>,
     ) -> Result<SubjectBundle> {
         log::info!("collect_subject_bundle 开始查询学科 {} 的笔记", subject);
@@ -1035,7 +1032,7 @@ impl NotesExporter {
     fn collect_all_notes_bundle_vfs(
         &self,
         vfs_db: &Arc<VfsDatabase>,
-        include_versions: bool,
+        _include_versions: bool,
         note_filter: Option<&HashSet<String>>,
     ) -> Result<SubjectBundle> {
         log::info!("collect_all_notes_bundle_vfs 开始查询所有笔记");
@@ -1215,7 +1212,11 @@ fn sanitize_filename(name: &str) -> String {
     }
     let trimmed = out.trim_matches('_').to_string();
     if trimmed.len() > 100 {
-        trimmed[..100].to_string()
+        let mut end = 100;
+        while !trimmed.is_char_boundary(end) && end > 0 {
+            end -= 1;
+        }
+        trimmed[..end].to_string()
     } else {
         trimmed
     }
@@ -1770,7 +1771,7 @@ impl NotesImporter {
         let mut folder_paths: HashMap<String, Option<String>> = HashMap::new();
 
         // 用于跟踪导入的学科数量（现已废弃，始终为 0）
-        let subjects_count = 0usize;
+        let _subjects_count = 0usize;
 
         // 先统计需要导入的笔记数量
         let mut md_file_indices: Vec<usize> = Vec::new();
@@ -2427,7 +2428,7 @@ impl NotesImporter {
         }
 
         // 导入偏好设置（写入旧 DB 的 settings 表，偏好设置不在 VFS 中）
-        if let Ok(mut legacy_conn) = self.db.get_conn_safe() {
+        if let Ok(legacy_conn) = self.db.get_conn_safe() {
             for pref in manifest.preferences.iter() {
                 if let Ok(mut file) = zip.by_name(&pref.file) {
                     let mut pref_content = String::new();

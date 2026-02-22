@@ -10,7 +10,7 @@
 //! - 从 preview 迁移题目
 
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::sync::Arc;
 use tracing::{debug, info, warn};
 
@@ -28,14 +28,9 @@ use crate::vfs::repos::{
     QuestionOption,
     QuestionSearchFilters,
     QuestionSearchListResult,
-    // FTS5 全文搜索相关
-    QuestionSearchResult,
     QuestionStatus,
     QuestionType,
-    SearchSortBy,
-    SourceType,
     UpdateQuestionParams,
-    VfsExamRepo,
     VfsQuestionRepo,
 };
 

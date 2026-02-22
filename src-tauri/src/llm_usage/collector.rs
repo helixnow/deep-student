@@ -31,7 +31,6 @@
 //! collector.shutdown().await;
 //! ```
 
-use chrono::Utc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};

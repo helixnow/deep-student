@@ -8,11 +8,10 @@
 
 use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info, warn};
 
 use crate::vfs::database::VfsDatabase;
-use crate::vfs::error::{VfsError, VfsResult};
+use crate::vfs::error::VfsResult;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

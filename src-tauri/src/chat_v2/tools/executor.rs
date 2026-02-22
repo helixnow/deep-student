@@ -22,13 +22,11 @@ use tokio_util::sync::CancellationToken;
 
 use crate::chat_v2::database::ChatV2Database;
 use crate::chat_v2::events::ChatV2EventEmitter;
-use crate::chat_v2::types::{block_status, block_types, MessageBlock, ToolCall, ToolResultInfo};
+use crate::chat_v2::types::{block_status, MessageBlock, ToolCall, ToolResultInfo};
 use crate::database::Database;
 use crate::notes_manager::NotesManager;
-// ★ rag_manager 已移除（2026-01 清理：VFS RAG 完全替代）
 use crate::tools::ToolRegistry;
 use crate::vfs::pdf_processing_service::PdfProcessingService;
-// ★ UserMemoryDatabase 已移除（2026-01），改用 Memory-as-VFS
 use crate::vfs::database::VfsDatabase;
 use crate::vfs::lance_store::VfsLanceStore;
 
@@ -88,7 +86,6 @@ pub struct ExecutionContext {
     pub main_db: Option<Arc<Database>>,
     /// Anki 数据库（用于 Anki 制卡进度查询）
     pub anki_db: Option<Arc<Database>>,
-    // ★ rag_manager 已移除（2026-01 清理：VFS RAG 完全替代）
     /// Tauri 窗口（用于 MCP 工具桥接）
     pub window: Window,
     /// VFS 数据库（用于学习资源工具访问 DSTU 数据）
@@ -97,7 +94,6 @@ pub struct ExecutionContext {
     pub vfs_lance_store: Option<Arc<VfsLanceStore>>,
     /// 🆕 LLM 管理器（用于 VFS RAG 嵌入生成，2025-01）
     pub llm_manager: Option<Arc<crate::llm_manager::LLMManager>>,
-    // ★ user_memory_db 已移除（2026-01），改用 Memory-as-VFS
     /// 🆕 Chat V2 数据库（用于工具块防闪退保存）
     pub chat_v2_db: Option<Arc<ChatV2Database>>,
     /// 🆕 智能题目集服务（用于 qbank_* 工具，2026-01）
@@ -118,8 +114,6 @@ pub struct ExecutionContext {
 
 impl ExecutionContext {
     /// 创建新的执行上下文
-    ///
-    /// ★ 2026-01 简化：rag_manager 已移除，VFS RAG 完全替代
     pub fn new(
         session_id: String,
         message_id: String,
@@ -218,8 +212,6 @@ impl ExecutionContext {
         self.llm_manager = llm_manager;
         self
     }
-
-    // ★ with_user_memory_db 已移除（2026-01），改用 Memory-as-VFS
 
     /// 🆕 设置 Chat V2 数据库（用于工具块防闪退保存）
     pub fn with_chat_v2_db(mut self, db: Option<Arc<ChatV2Database>>) -> Self {

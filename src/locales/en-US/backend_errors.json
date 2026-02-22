@@ -122,12 +122,6 @@
     "parent_tag_id_empty": "Parent tag ID is empty, creation rejected",
     "embedding_dimension_mismatch": "Embedding dimension mismatch"
   },
-  "user_memory": {
-    "get_memory_failed": "Failed to get memory",
-    "update_summary_failed": "Failed to update summary",
-    "save_summary_failed": "Failed to save summary",
-    "get_category_list_failed": "Failed to get category list"
-  },
   "irec": {
     "sqlite_needs_connection_pool": "SQLite service requires database connection pool"
   },

@@ -20,21 +20,21 @@
 //!
 //! 设计文档参考: docs/multimodal-knowledge-base-design.md (Section 7.5)
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
 
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use chrono::Utc;
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{params, OptionalExtension};
 
 use tokio::sync::mpsc;
 
 use crate::database::Database;
-use crate::models::{AppError, ExamCardPreview, ExamSheetPreviewPage, ExamSheetPreviewResult};
-use crate::multimodal::embedding_service::{EmbeddingProgress, MultimodalEmbeddingService};
+use crate::models::{AppError, ExamCardPreview, ExamSheetPreviewResult};
+use crate::multimodal::embedding_service::MultimodalEmbeddingService;
 use crate::multimodal::types::{
-    IndexProgressEvent, IndexResult, MultimodalIndexingMode, PageEmbeddingMetadata, PageIndexLog,
+    IndexProgressEvent, IndexResult, MultimodalIndexingMode, PageIndexLog,
     PageIndexTask, SourceType,
 };
 use crate::multimodal::vector_store::{MultimodalPageRecord, MultimodalVectorStore};
@@ -805,7 +805,7 @@ impl PageIndexer {
         );
 
         // 获取模型版本（使用实际模式）
-        let model_version = match self
+        let _model_version = match self
             .embedding_service
             .get_model_version_for_mode(actual_mode)
             .await

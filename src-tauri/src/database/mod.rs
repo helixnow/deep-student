@@ -1,27 +1,22 @@
-#![allow(unused_variables)]
-
 mod manager;
 
 pub use manager::DatabaseManager;
 
 use crate::models::{
-    AnkiCard, AnkiLibraryCard, AppError, ChatMessage, CreateSubLibraryRequest, DocumentTask,
+    AnkiCard, AnkiLibraryCard, CreateSubLibraryRequest, DocumentTask,
     ExamSheetPreviewResult, ExamSheetSessionDetail, ExamSheetSessionMetadata,
-    ExamSheetSessionSummary, SortDirection, StreamContext, SubLibrary, TaskStatus, TempStreamState,
+    ExamSheetSessionSummary, StreamContext, SubLibrary, TaskStatus, TempStreamState,
     UpdateSubLibraryRequest,
 };
 use crate::secure_store::{SecureStore, SecureStoreConfig};
 use anyhow::{Context, Result};
 use chrono::{DateTime, NaiveDateTime, Utc};
-use r2d2::Pool;
-use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::{params, types::Value, Connection, OptionalExtension};
 use sha2::{Digest, Sha256};
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, RwLock};
-use std::time::Duration;
 
 fn parse_datetime_flexible(datetime_str: &str) -> Result<DateTime<Utc>> {
     if datetime_str.is_empty() {
@@ -879,7 +874,7 @@ impl Database {
             );
         }
 
-        let current_version: u32 = conn
+        let _current_version: u32 = conn
             .query_row(
                 "SELECT version FROM schema_version ORDER BY version DESC LIMIT 1",
                 [],
@@ -2220,12 +2215,6 @@ impl Database {
         query_parts.push("version = ?".to_string());
         params.push(Box::new(version_to_use));
 
-        // 将需要长期存储的值移动到这里，避免借用生命周期问题
-        let mut owned_fields_json = None;
-        let mut owned_rules_json = None;
-        let mut owned_active_val = None;
-        let mut owned_builtin_val = None;
-
         if let Some(name) = &request.name {
             query_parts.push("name = ?".to_string());
             params.push(Box::new(name.clone()));
@@ -2253,7 +2242,6 @@ impl Database {
         if let Some(fields) = &request.fields {
             query_parts.push("fields_json = ?".to_string());
             let fields_json = serde_json::to_string(fields)?;
-            owned_fields_json = Some(fields_json.clone());
             params.push(Box::new(fields_json));
         }
         if let Some(generation_prompt) = &request.generation_prompt {
@@ -2275,13 +2263,11 @@ impl Database {
         if let Some(field_extraction_rules) = &request.field_extraction_rules {
             query_parts.push("field_extraction_rules_json = ?".to_string());
             let rules_json = serde_json::to_string(field_extraction_rules)?;
-            owned_rules_json = Some(rules_json.clone());
             params.push(Box::new(rules_json));
         }
         if let Some(is_active) = &request.is_active {
             query_parts.push("is_active = ?".to_string());
             let active_val = if *is_active { 1 } else { 0 };
-            owned_active_val = Some(active_val);
             params.push(Box::new(active_val));
         }
         if let Some(preview_data_json) = &request.preview_data_json {
@@ -2291,7 +2277,6 @@ impl Database {
         if let Some(is_built_in) = &request.is_built_in {
             query_parts.push("is_built_in = ?".to_string());
             let builtin_val = if *is_built_in { 1 } else { 0 };
-            owned_builtin_val = Some(builtin_val);
             params.push(Box::new(builtin_val));
         }
 
@@ -2710,7 +2695,7 @@ impl Database {
         &self,
         mistake_id: &str,
         messages: &[crate::models::ChatMessage],
-        subject: Option<&str>,
+        _subject: Option<&str>,
         chat_category: Option<&str>,
     ) -> Result<AppendMessagesChangeSet> {
         let mut conn = self.get_conn_safe()?;

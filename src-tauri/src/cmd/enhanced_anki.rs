@@ -3,7 +3,6 @@
 //! 从 commands.rs 拆分：增强版文档处理、制卡、记忆提取
 
 use crate::commands::{export_cards_as_apkg_with_template, AppState};
-use crate::database::Database;
 use crate::models::{
     AnkiDocumentGenerationRequest, AnkiGenerationOptions, AppError, MemoryCandidate,
 };
@@ -480,9 +479,6 @@ pub async fn export_anki_cards(
         format: "apkg".to_string(),
     })
 }
-
-// ★ 2026-02 清理：extract_memories_from_chat 已废弃并删除（错题模块废弃）
-// 相关辅助函数 save_pending_memory_candidates 也已删除
 
 /// 待处理记忆候选响应
 #[derive(Debug, Clone, Serialize, Deserialize)]

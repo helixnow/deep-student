@@ -2,18 +2,12 @@
 //!
 //! 管理所有 Schema 注入型工具的定义。
 //! 遵循文档 26：统一工具注入系统架构设计。
-//!
-//! ★ 2026-01 改造：
-//! - Canvas 工具已移除，通过内置 MCP 服务器注入
-//! - Anki 工具已移除，通过内置 MCP 服务器注入
 
 use std::collections::HashMap;
 use std::sync::OnceLock;
 
 use serde_json::Value;
 
-// ★ 2026-01 改造：Anki 工具已移除，通过内置 MCP 服务器注入
-// use super::anki_tools::{...};
 use super::attempt_completion::{
     self, TOOL_DESCRIPTION as ATTEMPT_COMPLETION_DESCRIPTION, TOOL_NAME as ATTEMPT_COMPLETION_NAME,
 };
@@ -56,13 +50,8 @@ impl SchemaToolRegistry {
 
     /// 创建并注册内置工具
     ///
-    /// ★ 2026-01 改造：
-    /// - Canvas 笔记工具不再通过 Registry 注入，使用内置 MCP 服务器
-    /// - Anki 制卡工具不再通过 Registry 注入，使用内置 MCP 服务器
     pub fn new_with_builtin_tools() -> Self {
         let mut registry = Self::new();
-        // ★ Canvas 工具已移除，通过内置 MCP 服务器注入
-        // ★ Anki 工具已移除，通过内置 MCP 服务器注入
         registry.register_todo_tools();
         registry.register_attempt_completion_tool();
         registry
@@ -143,10 +132,6 @@ impl SchemaToolRegistry {
     // 内置工具注册
     // ========================================================================
 
-    // ★ 2026-01 改造：Canvas 笔记工具已移除
-    // 笔记工具现在通过内置 MCP 服务器（builtinMcpServer.ts）注入
-    // 原 register_canvas_tools 方法已删除
-
     /// 注册 attempt_completion 工具（文档 29 P1-4）
     fn register_attempt_completion_tool(&mut self) {
         self.register(ToolDefinition::new(
@@ -159,9 +144,6 @@ impl SchemaToolRegistry {
 
         log::info!("[SchemaToolRegistry] Registered attempt_completion tool (Agent category)");
     }
-
-    // ★ 2026-01 改造：register_anki_tools 已移除
-    // Anki 工具现在通过内置 MCP 服务器（builtinMcpServer.ts）注入
 
     /// 🆕 注册 TodoList 工具（永续执行）
     fn register_todo_tools(&mut self) {
@@ -228,12 +210,10 @@ mod tests {
     #[test]
     fn test_registry_with_builtin_tools() {
         let registry = SchemaToolRegistry::new_with_builtin_tools();
-        // ★ 2026-01 改造：Canvas 和 Anki 工具已移除，通过内置 MCP 服务器注入
         // 1 attempt_completion + 4 TodoList tools = 5
         assert!(registry.len() >= 5);
         // Agent tool
         assert!(registry.has_tool("attempt_completion"));
-        // ★ Anki 工具已移除，通过内置 MCP 服务器注入
         assert!(!registry.has_tool("anki:generate_cards"));
         // TodoList tools
         assert!(registry.has_tool("builtin-todo_init"));
@@ -265,7 +245,6 @@ mod tests {
     #[test]
     fn test_get_tools_for_context_type() {
         let registry = SchemaToolRegistry::new_with_builtin_tools();
-        // ★ Canvas 工具已移除，note 上下文不再关联工具
         let tools = registry.get_tools_for_context_type("note");
         assert_eq!(tools.len(), 0);
     }
@@ -273,7 +252,6 @@ mod tests {
     #[test]
     fn test_get_tools_by_category() {
         let registry = SchemaToolRegistry::new_with_builtin_tools();
-        // ★ ContextBound 类型现在只有 0 个工具（Canvas 已移除）
         let tools = registry.get_tools_by_category(ToolCategory::ContextBound);
         assert_eq!(tools.len(), 0);
 

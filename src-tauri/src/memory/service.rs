@@ -6,6 +6,7 @@ use tracing::{debug, info, warn};
 use crate::llm_manager::LLMManager;
 use crate::vfs::database::VfsDatabase;
 use crate::vfs::error::{VfsError, VfsResult};
+use crate::vfs::indexing::VfsFullIndexingService;
 use crate::vfs::lance_store::VfsLanceStore;
 use crate::vfs::repos::embedding_repo::VfsIndexStateRepo;
 use crate::vfs::repos::folder_repo::VfsFolderRepo;
@@ -16,7 +17,7 @@ use crate::vfs::types::{
 };
 
 use super::config::MemoryConfig;
-use super::llm_decision::{MemoryEvent, MemoryLLMDecision, SimilarMemorySummary};
+use super::llm_decision::{MemoryDecisionResponse, MemoryEvent, MemoryLLMDecision, SimilarMemorySummary};
 use super::query_rewriter::MemoryQueryRewriter;
 use super::reranker::MemoryReranker;
 
@@ -149,6 +150,27 @@ impl MemoryService {
         self.config.set_root_folder_id(folder_id)?;
         info!("[Memory] Set root folder: {}", folder_id);
         Ok(())
+    }
+
+    /// 立即索引资源（同步生成嵌入 + 写入 LanceDB），确保后续向量搜索能找到
+    async fn index_immediately(&self, resource_id: &str) {
+        match VfsFullIndexingService::new(
+            self.vfs_db.clone(),
+            self.llm_manager.clone(),
+            self.lance_store.clone(),
+        ) {
+            Ok(svc) => match svc.index_resource(resource_id, None, None).await {
+                Ok((chunks, _dim)) => {
+                    info!("[Memory] Immediate indexing succeeded: resource={}, chunks={}", resource_id, chunks);
+                }
+                Err(e) => {
+                    warn!("[Memory] Immediate indexing failed (will retry via pending): {}", e);
+                }
+            },
+            Err(e) => {
+                warn!("[Memory] Failed to create indexing service: {}", e);
+            }
+        }
     }
 
     pub fn set_privacy_mode(&self, enabled: bool) -> VfsResult<()> {
@@ -418,12 +440,23 @@ impl MemoryService {
             })
             .collect();
 
-        // 3. 调用 LLM 决策
+        // 3. 调用 LLM 决策（失败时安全降级为 ADD，不阻塞用户写入意图）
         let llm_decision = MemoryLLMDecision::new(self.llm_manager.clone());
-        let decision = llm_decision
+        let decision = match llm_decision
             .decide(content, Some(title), &similar_summaries)
             .await
-            .map_err(|e| VfsError::Other(format!("LLM decision failed: {}", e)))?;
+        {
+            Ok(d) => d,
+            Err(e) => {
+                tracing::warn!("[Memory] LLM 决策失败，降级为 ADD: {}", e);
+                MemoryDecisionResponse {
+                    event: MemoryEvent::ADD,
+                    target_note_id: None,
+                    confidence: 0.6,
+                    reason: format!("LLM 决策失败（{}），降级为新增", e),
+                }
+            }
+        };
 
         info!(
             "[Memory] Smart write decision: {:?}, target={:?}, confidence={:.2}",
@@ -453,6 +486,7 @@ impl MemoryService {
         match decision.event {
             MemoryEvent::ADD => {
                 let result = self.write(folder_path, title, content, WriteMode::Create)?;
+                self.index_immediately(&result.resource_id).await;
                 Ok(SmartWriteOutput {
                     note_id: result.note_id,
                     event: "ADD".to_string(),
@@ -464,20 +498,22 @@ impl MemoryService {
             }
             MemoryEvent::UPDATE => {
                 if let Some(target_id) = decision.target_note_id {
-                    // 按 ID 更新（包含记忆根目录边界校验）
                     match self.update_by_id(&target_id, Some(title), Some(content)) {
-                        Ok(result) => Ok(SmartWriteOutput {
-                            note_id: result.note_id,
-                            event: "UPDATE".to_string(),
-                            is_new: false,
-                            confidence: decision.confidence,
-                            reason: decision.reason,
-                            resource_id: Some(result.resource_id),
-                        }),
+                        Ok(result) => {
+                            self.index_immediately(&result.resource_id).await;
+                            Ok(SmartWriteOutput {
+                                note_id: result.note_id,
+                                event: "UPDATE".to_string(),
+                                is_new: false,
+                                confidence: decision.confidence,
+                                reason: decision.reason,
+                                resource_id: Some(result.resource_id),
+                            })
+                        }
                         Err(VfsError::NotFound { .. }) => {
-                            // LLM 可能返回已失效/越界的 target_note_id，安全降级为新增。
                             let result =
                                 self.write(folder_path, title, content, WriteMode::Create)?;
+                            self.index_immediately(&result.resource_id).await;
                             Ok(SmartWriteOutput {
                                 note_id: result.note_id,
                                 event: "ADD".to_string(),
@@ -493,8 +529,8 @@ impl MemoryService {
                         Err(e) => Err(e),
                     }
                 } else {
-                    // 没有目标 ID，降级为新增
                     let result = self.write(folder_path, title, content, WriteMode::Create)?;
+                    self.index_immediately(&result.resource_id).await;
                     Ok(SmartWriteOutput {
                         note_id: result.note_id,
                         event: "ADD".to_string(),
@@ -507,7 +543,6 @@ impl MemoryService {
             }
             MemoryEvent::APPEND => {
                 if let Some(target_id) = decision.target_note_id {
-                    // 追加到目标笔记
                     let append_result: VfsResult<MemoryWriteOutput> = (|| {
                         self.ensure_note_in_memory_root(&target_id)?;
                         let current = VfsNoteRepo::get_note_content(&self.vfs_db, &target_id)?
@@ -517,18 +552,21 @@ impl MemoryService {
                     })();
 
                     match append_result {
-                        Ok(result) => Ok(SmartWriteOutput {
-                            note_id: result.note_id,
-                            event: "APPEND".to_string(),
-                            is_new: false,
-                            confidence: decision.confidence,
-                            reason: decision.reason,
-                            resource_id: Some(result.resource_id),
-                        }),
+                        Ok(result) => {
+                            self.index_immediately(&result.resource_id).await;
+                            Ok(SmartWriteOutput {
+                                note_id: result.note_id,
+                                event: "APPEND".to_string(),
+                                is_new: false,
+                                confidence: decision.confidence,
+                                reason: decision.reason,
+                                resource_id: Some(result.resource_id),
+                            })
+                        }
                         Err(VfsError::NotFound { .. }) => {
-                            // target_note_id 无效时，降级为新增，避免写入失败中断记忆流程。
                             let result =
                                 self.write(folder_path, title, content, WriteMode::Create)?;
+                            self.index_immediately(&result.resource_id).await;
                             Ok(SmartWriteOutput {
                                 note_id: result.note_id,
                                 event: "ADD".to_string(),
@@ -544,8 +582,8 @@ impl MemoryService {
                         Err(e) => Err(e),
                     }
                 } else {
-                    // 没有目标 ID，降级为新增
                     let result = self.write(folder_path, title, content, WriteMode::Create)?;
+                    self.index_immediately(&result.resource_id).await;
                     Ok(SmartWriteOutput {
                         note_id: result.note_id,
                         event: "ADD".to_string(),

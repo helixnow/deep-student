@@ -2,7 +2,6 @@ use chrono::{DateTime, Utc};
 use dashmap::DashMap;
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::HashSet,
     fs,
     path::PathBuf,
     sync::{

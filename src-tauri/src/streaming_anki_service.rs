@@ -2,8 +2,7 @@ use crate::database::Database;
 use crate::llm_manager::ApiConfig;
 use crate::llm_manager::LLMManager;
 use crate::models::{
-    AnkiCard, AnkiGenerationOptions, AppError, DocumentTask, FieldExtractionRule, FieldType,
-    StreamEvent, StreamedCardPayload, TaskStatus, TemplateDescription,
+    AnkiCard, AnkiGenerationOptions, AppError, DocumentTask, FieldExtractionRule, FieldType, StreamedCardPayload, TaskStatus, TemplateDescription,
 };
 use crate::providers::ProviderAdapter;
 use chrono::Utc;

@@ -1520,7 +1520,7 @@ impl VfsFolderRepo {
         new_parent_id: Option<&str>,
     ) -> VfsResult<()> {
         // 1. 检查文件夹存在
-        let folder = Self::get_folder_with_conn(conn, folder_id)?.ok_or_else(|| {
+        let _folder = Self::get_folder_with_conn(conn, folder_id)?.ok_or_else(|| {
             VfsError::FolderNotFound {
                 folder_id: folder_id.to_string(),
             }
@@ -2447,7 +2447,6 @@ impl VfsFolderRepo {
             );
             let now = chrono::Utc::now().timestamp_millis();
             // 生成唯一 ID（格式：fi_随机字符串）
-            // ★ 迁移011清理：subject 字段已移除
             let fi_id = crate::vfs::VfsFolderItem::generate_id();
             conn.execute(
                 "INSERT INTO folder_items (id, item_type, item_id, folder_id, sort_order, cached_path, created_at) VALUES (?1, ?2, ?3, ?4, 0, NULL, ?5)",

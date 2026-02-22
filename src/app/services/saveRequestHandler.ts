@@ -360,8 +360,6 @@ export function createSaveRequestHandler(deps: SaveRequestHandlerDeps) {
             console.error('保存前端总结内容失败:', error);
             showGlobalNotification('error', t('common:messages.error.summary_save_failed') + ': ' + getErrorMessage(error));
           }
-
-          // ★ 错题记忆通过 UserMemory 系统和记忆内化→知识图谱实现
         }
 
         // 成功保存后：手动保存仍然跳转回错题库；自动保存保持在当前分析/详情视图

@@ -1384,7 +1384,7 @@ impl PdfProcessingService {
 
         // 如果压缩后没有显著减少（<10%），使用原始图片但标记为"已压缩"
         // 这样发送时就知道不需要再压缩
-        let (final_data, final_hash) = if compressed_size >= original_size * 9 / 10 {
+        let (_final_data, final_hash) = if compressed_size >= original_size * 9 / 10 {
             info!(
                 "[MediaProcessingService] Compression not effective for file {}: {} -> {} bytes, using original",
                 file_id, original_size, compressed_size
@@ -2794,7 +2794,7 @@ impl PdfProcessingService {
     /// 使用指数退避重试策略处理速率限制错误
     async fn call_ocr_with_retry(
         llm_manager: &Arc<LLMManager>,
-        config: &crate::llm_manager::ApiConfig,
+        _config: &crate::llm_manager::ApiConfig,
         image_path: &PathBuf,
         page_index: usize,
         cancel_token: &CancellationToken,

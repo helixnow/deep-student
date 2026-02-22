@@ -1,4 +1,3 @@
-use std::sync::Arc;
 use std::time::Instant;
 
 use async_trait::async_trait;
@@ -11,9 +10,8 @@ use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
 use crate::chat_v2::events::event_types;
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
 use crate::models::{
-    AppError, Difficulty as ModelsDifficulty, ExamCardPreview, ExamSheetPreviewPage,
-    ExamSheetPreviewResult, ExamSheetSessionDetail, ExamSheetSessionMetadata,
-    ExamSheetSessionSummary, QuestionBankStats, QuestionStatus as ModelsQuestionStatus,
+    Difficulty as ModelsDifficulty, ExamCardPreview, ExamSheetPreviewPage,
+    ExamSheetPreviewResult, QuestionBankStats, QuestionStatus as ModelsQuestionStatus,
     QuestionType, SourceType,
 };
 use crate::question_bank_service::QuestionBankService;
@@ -559,7 +557,7 @@ impl QBankExecutor {
         let mut found = false;
         let mut is_correct: Option<bool> = Some(false);
         let mut correct_answer = String::new();
-        let mut question_type: Option<QuestionType> = None;
+        let mut _question_type: Option<QuestionType> = None;
         let mut needs_manual_grading = false;
 
         for page in &mut preview.pages {
@@ -569,7 +567,7 @@ impl QBankExecutor {
                     card.user_answer = Some(user_answer.to_string());
                     card.attempt_count += 1;
                     card.last_attempt_at = Some(chrono::Utc::now().to_rfc3339());
-                    question_type = card.question_type.clone();
+                    _question_type = card.question_type.clone();
 
                     let is_subjective = matches!(
                         card.question_type,

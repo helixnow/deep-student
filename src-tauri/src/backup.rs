@@ -57,9 +57,8 @@
 
 use crate::backup_common::{
     calculate_file_hash, check_disk_space, check_zip_security, copy_directory_safe, is_symlink,
-    BACKUP_GLOBAL_LIMITER, MAX_SINGLE_FILE_SIZE, RESILIENT_RETRY_COUNT, RESILIENT_RETRY_DELAY_MS,
+    BACKUP_GLOBAL_LIMITER, RESILIENT_RETRY_COUNT, RESILIENT_RETRY_DELAY_MS,
 };
-use crate::backup_config::{cleanup_old_backups, get_effective_backup_dir, BackupConfig};
 use crate::backup_job_manager::{
     BackupJobContext, BackupJobKind, BackupJobManagerState, BackupJobPhase, BackupJobResultPayload,
 };
@@ -75,7 +74,6 @@ use std::fs::{self, File};
 use std::io::{BufReader, Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::sync::LazyLock;
 use std::time::{Duration, Instant};
 use tauri::{Emitter, Manager, State, Window};
 use tracing::{debug, error, info, warn};
@@ -4346,7 +4344,7 @@ async fn start_import_job(
 
     let opts_clone = options.clone();
     let job_clone = job_ctx.clone();
-    let job_id_clone = job_id.clone();
+    let _job_id_clone = job_id.clone();
     let guard_to_move = materialized_guard;
 
     let job_id_for_log = job_id.clone();

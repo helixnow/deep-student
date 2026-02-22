@@ -523,6 +523,8 @@
     "enableThinkingDesc": "Show model reasoning process",
     "disableTools": "Disable Tools",
     "disableToolsDesc": "Don't call external tools",
+    "disableToolWhitelist": "Disable Tool Whitelist",
+    "disableToolWhitelistDesc": "Allow all tools to bypass skill whitelist restrictions",
     "reset": "Reset to defaults",
     "maxToolRecursion": "Tool Recursion Limit",
     "maxToolRecursionHint": "Maximum consecutive tool calls by AI to prevent infinite loops",

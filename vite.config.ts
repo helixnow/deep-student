@@ -28,6 +28,18 @@ export default defineConfig(({ command, mode }) => ({
   // dev 使用默认根路径，build 使用相对路径
   base: command === 'serve' ? '/' : './',
   plugins: [
+    // 生产构建排除 mcp-debug 模块（4,573 行调试代码），替换为空实现
+    mode === 'production' && {
+      name: 'exclude-mcp-debug',
+      resolveId(id: string) {
+        if (id.includes('mcp-debug')) return '\0mcp-debug-noop';
+      },
+      load(id: string) {
+        if (id === '\0mcp-debug-noop') {
+          return 'export const initMCPDebug = async () => {}; export const registerAllStores = async () => {}; export const destroyMCPDebug = () => {};';
+        }
+      },
+    },
     react(),
     viteStaticCopy({
       targets: [

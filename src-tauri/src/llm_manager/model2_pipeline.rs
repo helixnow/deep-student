@@ -3,7 +3,7 @@
 //! 从 llm_manager.rs 拆分的流式和非流式对话管线
 
 use crate::models::{
-    AppError, ChatMessage, RagQueryOptionsWithLibraries, RagSourceInfo, StandardModel2Output,
+    AppError, ChatMessage, StandardModel2Output,
     StreamChunk,
 };
 use crate::providers::ProviderAdapter;
@@ -16,13 +16,11 @@ use log::{debug, error, info, warn};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use tauri::{Emitter, Window};
-use tokio::time::{Duration, Instant};
 use url::Url;
 use uuid::Uuid;
 
 use super::{
     adapters::get_adapter, parser, ApiConfig, ImagePayload, LLMManager, MergedChatMessage, Result,
-    STREAM_MAX_CTX_TOKENS,
 };
 
 /// 计算有效的 max_tokens，应用供应商级别的限制
@@ -158,9 +156,9 @@ impl LLMManager {
         task_context: Option<&str>,
         window: Window,
         stream_event: &str,
-        trace_id: Option<&str>,
+        _trace_id: Option<&str>,
         disable_tools: bool,
-        max_input_tokens_override: Option<usize>,
+        _max_input_tokens_override: Option<usize>,
         model_override_id: Option<String>,
         temp_override: Option<f32>,
         system_prompt_override: Option<String>,
@@ -175,10 +173,10 @@ impl LLMManager {
         );
 
         // 记录开始时间和统计信息
-        let start_instant = std::time::Instant::now();
+        let _start_instant = std::time::Instant::now();
         let mut request_bytes = 0usize;
-        let response_bytes = 0usize;
-        let chunk_count = 0usize;
+        let _response_bytes = 0usize;
+        let _chunk_count = 0usize;
 
         // 获取模型配置（支持 override），根据任务上下文路由
         let task_key = match task_context {
@@ -246,7 +244,7 @@ impl LLMManager {
         let merged_history = Self::merge_consecutive_tool_calls(&chat_history);
 
         // 添加聊天历史（逐条处理用户图片与工具调用消息的标准化）
-        for (index, merged_msg) in merged_history.iter().enumerate() {
+        for (_index, merged_msg) in merged_history.iter().enumerate() {
             match merged_msg {
                 // 🔧 P1修复：处理合并的工具调用消息
                 // 🔧 Anthropic 最佳实践：必须保留 thinking_content
@@ -584,7 +582,7 @@ impl LLMManager {
         Self::merge_consecutive_user_messages(&mut messages);
 
         // 近似输入token统计（用于用量/事件）
-        let approx_tokens_in = {
+        let _approx_tokens_in = {
             let mut s = 0usize;
             // 使用 system_content 估算系统提示的 token 数量
             s += crate::utils::token_budget::estimate_tokens(&system_content);
@@ -780,7 +778,6 @@ impl LLMManager {
                     if let Some(last_user_msg) =
                         chat_history.iter().filter(|m| m.role == "user").last()
                     {
-                        // ★ 2026-01 清理：rag_arc_ref 已移除
                         let memory_enabled_effective = memory_enabled_from_context.unwrap_or(true);
                         if memory_enabled_effective {
                             let _ = window.emit(
@@ -793,7 +790,7 @@ impl LLMManager {
                             .get("rag_enabled")
                             .and_then(|v| v.as_bool())
                             .unwrap_or(true);
-                        let rag_library_ids: Option<Vec<String>> = context
+                        let _rag_library_ids: Option<Vec<String>> = context
                             .get("rag_library_ids")
                             .and_then(|v| v.as_array())
                             .map(|arr| {
@@ -802,7 +799,7 @@ impl LLMManager {
                                     .collect::<Vec<String>>()
                             })
                             .filter(|v| !v.is_empty());
-                        let rag_note_subjects: Option<Vec<String>> = context
+                        let _rag_note_subjects: Option<Vec<String>> = context
                             .get("rag_note_subjects")
                             .and_then(|v| v.as_array())
                             .map(|arr| {
@@ -921,6 +918,35 @@ impl LLMManager {
                 );
             }
         }
+        // 🆕 检测合成的 load_skills 工具交互是否出现在请求消息中
+        {
+            let synthetic_count = messages.iter().filter(|m| {
+                // 检测 assistant 消息中包含 load_skills tool_call
+                if let Some(tool_calls) = m.get("tool_calls").and_then(|v| v.as_array()) {
+                    tool_calls.iter().any(|tc| {
+                        tc.get("function")
+                            .and_then(|f| f.get("name"))
+                            .and_then(|n| n.as_str())
+                            .map_or(false, |name| name == "load_skills")
+                    })
+                } else if m.get("role").and_then(|r| r.as_str()) == Some("tool") {
+                    // 检测 tool 消息中包含 skill_loaded 标记
+                    m.get("content")
+                        .and_then(|c| c.as_str())
+                        .map_or(false, |c| c.contains("<skill_loaded"))
+                } else {
+                    false
+                }
+            }).count();
+            if synthetic_count > 0 {
+                info!(
+                    "[LLM_AUDIT] 请求体包含 {} 条合成 load_skills 工具消息（总消息数: {}）",
+                    synthetic_count,
+                    messages.len()
+                );
+            }
+        }
+
         // 输出完整请求体用于调试（隐藏图片内容保护隐私）
         let debug_body = {
             let mut debug = request_body.clone();
@@ -1841,7 +1867,7 @@ impl LLMManager {
         task_context: Option<&str>,
         window: Window,
         stream_event: &str,
-        max_input_tokens_override: Option<usize>,
+        _max_input_tokens_override: Option<usize>,
     ) -> Result<StandardModel2Output> {
         info!(
             "调用通用流式接口: 模型={}, 科目={}, 思维链={}, 图片数量={}",
@@ -2084,7 +2110,7 @@ impl LLMManager {
                 // 为不支持工具的模型主动调用RAG/智能记忆工具并注入上下文
                 let inject_texts: Vec<String> = Vec::new();
 
-                if let Some(last_user_msg) = chat_history.iter().filter(|m| m.role == "user").last()
+                if let Some(_last_user_msg) = chat_history.iter().filter(|m| m.role == "user").last()
                 {
                     let memory_enabled_effective = context
                         .get("memory_enabled")
@@ -2101,7 +2127,7 @@ impl LLMManager {
                         .get("rag_enabled")
                         .and_then(|v| v.as_bool())
                         .unwrap_or(true);
-                    let rag_library_ids: Option<Vec<String>> = context
+                    let _rag_library_ids: Option<Vec<String>> = context
                         .get("rag_library_ids")
                         .and_then(|v| v.as_array())
                         .map(|arr| {
@@ -2110,7 +2136,7 @@ impl LLMManager {
                                 .collect::<Vec<String>>()
                         })
                         .filter(|v| !v.is_empty());
-                    let rag_note_subjects: Option<Vec<String>> = context
+                    let _rag_note_subjects: Option<Vec<String>> = context
                         .get("rag_note_subjects")
                         .and_then(|v| v.as_array())
                         .map(|arr| {
@@ -3688,7 +3714,6 @@ impl LLMManager {
 
     // === 无系统提示的简化模型二调用 ===
     /// 直接使用用户提供的 prompt，不附加任何系统提示，适用于严格格式输出的任务（如批量分支选择 / 精确标签映射）。
-    /// ★ 2026-01: Irec 模块已废弃，改用 Model2 配置
     pub async fn call_model2_raw_prompt(
         &self,
         user_prompt: &str,
@@ -3696,6 +3721,15 @@ impl LLMManager {
     ) -> Result<StandardModel2Output> {
         let config = self.get_model2_config().await?;
         self.call_raw_prompt_with_config(config, user_prompt, image_payloads).await
+    }
+
+    /// 使用记忆决策模型调用（回退链：memory_decision_model → model2）
+    pub async fn call_memory_decision_raw_prompt(
+        &self,
+        user_prompt: &str,
+    ) -> Result<StandardModel2Output> {
+        let config = self.get_memory_decision_model_config().await?;
+        self.call_raw_prompt_with_config(config, user_prompt, None).await
     }
 
     /// 使用标题/标签生成模型调用（回退链：chat_title_model → model2）
@@ -4068,8 +4102,6 @@ impl LLMManager {
             cancelled: false,
         })
     }
-
-    // ★ Irec 模块已废弃，get_irec_model_config 方法已移除
 
     /// 单张图片转 Markdown 文本（复用 DeepSeek-OCR 配置）
     /// 翻译场景使用 Free OCR 模式，无需输出坐标（题目集识别使用 grounding 模式）

@@ -470,8 +470,8 @@ function ServerEditPanel({
   }, []);
 
   const normalizeTransportType = useCallback((raw: unknown): 'stdio' | 'websocket' | 'sse' | 'streamable_http' => {
-    const v = String(raw ?? '').trim();
-    if (v === 'streamable-http' || v === 'http') return 'streamable_http';
+    const v = String(raw ?? '').trim().toLowerCase();
+    if (v === 'streamable-http' || v === 'streamablehttp' || v === 'http') return 'streamable_http';
     if (v === 'ws') return 'websocket';
     if (v === 'stdio' || v === 'websocket' || v === 'sse' || v === 'streamable_http') return v;
     return 'sse';
@@ -923,8 +923,8 @@ function NewServerEditItem({
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const normalizeTransportType = useCallback((raw: unknown): 'stdio' | 'websocket' | 'sse' | 'streamable_http' => {
-    const v = String(raw ?? '').trim();
-    if (v === 'streamable-http' || v === 'http') return 'streamable_http';
+    const v = String(raw ?? '').trim().toLowerCase();
+    if (v === 'streamable-http' || v === 'streamablehttp' || v === 'http') return 'streamable_http';
     if (v === 'ws') return 'websocket';
     if (v === 'stdio' || v === 'websocket' || v === 'sse' || v === 'streamable_http') return v;
     return 'sse';

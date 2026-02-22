@@ -2,8 +2,7 @@ use crate::database::Database;
 use crate::document_processing_service::DocumentProcessingService;
 use crate::llm_manager::LLMManager;
 use crate::models::{
-    AnkiCard, AnkiDocumentGenerationRequest, AnkiGenerationOptions, AppError, DocumentTask,
-    StreamEvent, StreamedCardPayload, TaskStatus,
+    AnkiCard, AnkiDocumentGenerationRequest, AnkiGenerationOptions, AppError, DocumentTask, StreamedCardPayload, TaskStatus,
 };
 use crate::streaming_anki_service::StreamingAnkiService;
 use dashmap::DashMap;

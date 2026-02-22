@@ -2,7 +2,6 @@ use chrono::Utc;
 use regex::Regex;
 use rusqlite::{params, OptionalExtension, Transaction};
 use std::collections::HashSet;
-use std::path::Path;
 use std::sync::Arc;
 
 use crate::database::Database;

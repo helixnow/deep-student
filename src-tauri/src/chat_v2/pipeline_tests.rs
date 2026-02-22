@@ -34,7 +34,7 @@ fn test_send_message_request_serialization() {
     let request = SendMessageRequest {
         session_id: "sess_123".to_string(),
         content: "Hello".to_string(),
-        // ★ 2025-12-10: attachments 字段已移除，附件通过 user_context_refs 传递
+
         options: Some(SendOptions {
             model_id: Some("gpt-4".to_string()),
             temperature: Some(0.7),
@@ -57,7 +57,7 @@ fn test_pipeline_context_creation() {
     let request = SendMessageRequest {
         session_id: "sess_test".to_string(),
         content: "Test message".to_string(),
-        // ★ 2025-12-10: attachments 字段已移除，附件通过 user_context_refs 传递
+
         options: None,
         user_message_id: None,
         assistant_message_id: None,
@@ -192,7 +192,7 @@ async fn test_pipeline_context_elapsed() {
     let request = SendMessageRequest {
         session_id: "sess_test".to_string(),
         content: "Test".to_string(),
-        // ★ 2025-12-10: attachments 字段已移除，附件通过 user_context_refs 传递
+
         options: None,
         user_message_id: None,
         assistant_message_id: None,
@@ -211,7 +211,7 @@ fn test_pipeline_context_generated_blocks() {
     let request = SendMessageRequest {
         session_id: "sess_test".to_string(),
         content: "Test message".to_string(),
-        // ★ 2025-12-10: attachments 字段已移除，附件通过 user_context_refs 传递
+
         options: None,
         user_message_id: None,
         assistant_message_id: None,
@@ -309,7 +309,7 @@ fn test_pipeline_context_with_options() {
     let request = SendMessageRequest {
         session_id: "sess_test".to_string(),
         content: "Test".to_string(),
-        // ★ 2025-12-10: attachments 字段已移除，附件通过 user_context_refs 传递
+
         options: Some(SendOptions {
             context_limit: Some(10),
             model_id: Some("gpt-4".to_string()),
@@ -929,7 +929,7 @@ fn test_pipeline_context_with_frontend_ids() {
     let request = SendMessageRequest {
         session_id: "sess_test123".to_string(),
         content: "测试内容".to_string(),
-        // ★ 2025-12-10: attachments 字段已移除，附件通过 user_context_refs 传递
+
         options: Some(SendOptions {
             model_id: Some("test-model".to_string()),
             enable_thinking: Some(true),
@@ -961,7 +961,7 @@ fn test_pipeline_context_generates_ids_when_not_provided() {
     let request = SendMessageRequest {
         session_id: "sess_test".to_string(),
         content: "测试".to_string(),
-        // ★ 2025-12-10: attachments 字段已移除，附件通过 user_context_refs 传递
+
         options: None,
         user_message_id: None,
         assistant_message_id: None,
@@ -985,7 +985,7 @@ fn test_tool_results_to_messages() {
     let request = SendMessageRequest {
         session_id: "sess_test".to_string(),
         content: "测试".to_string(),
-        // ★ 2025-12-10: attachments 字段已移除，附件通过 user_context_refs 传递
+
         options: None,
         user_message_id: None,
         assistant_message_id: None,
@@ -1261,7 +1261,7 @@ fn test_pipeline_context_add_tool_results() {
     let request = SendMessageRequest {
         session_id: "sess_test".to_string(),
         content: "Test".to_string(),
-        // ★ 2025-12-10: attachments 字段已移除，附件通过 user_context_refs 传递
+
         options: None,
         user_message_id: None,
         assistant_message_id: None,
@@ -1312,7 +1312,7 @@ fn test_tool_results_to_messages_format() {
     let request = SendMessageRequest {
         session_id: "sess_test".to_string(),
         content: "Test".to_string(),
-        // ★ 2025-12-10: attachments 字段已移除，附件通过 user_context_refs 传递
+
         options: None,
         user_message_id: None,
         assistant_message_id: None,
@@ -1666,7 +1666,7 @@ fn test_context_snapshot_initialization() {
     let request = SendMessageRequest {
         session_id: "sess_test".to_string(),
         content: "Test".to_string(),
-        // ★ 2025-12-10: attachments 字段已移除，附件通过 user_context_refs 传递
+
         options: None,
         user_message_id: None,
         assistant_message_id: None,
@@ -1702,7 +1702,7 @@ fn test_context_snapshot_add_retrieval_refs() {
     let request = SendMessageRequest {
         session_id: "sess_test".to_string(),
         content: "Test".to_string(),
-        // ★ 2025-12-10: attachments 字段已移除，附件通过 user_context_refs 传递
+
         options: None,
         user_message_id: None,
         assistant_message_id: None,
@@ -1781,7 +1781,7 @@ fn test_pipeline_context_with_user_context_refs() {
     let request = SendMessageRequest {
         session_id: "sess_test".to_string(),
         content: "Test".to_string(),
-        // ★ 2025-12-10: attachments 字段已移除，附件通过 user_context_refs 传递
+
         options: Some(SendOptions {
             user_context_refs: Some(user_refs.clone()),
             ..Default::default()
@@ -1868,7 +1868,7 @@ fn test_get_combined_user_content() {
     let request = SendMessageRequest {
         session_id: "sess_test".to_string(),
         content: "用户输入的问题".to_string(),
-        // ★ 2025-12-10: attachments 字段已移除，附件通过 user_context_refs 传递
+
         options: None,
         user_message_id: None,
         assistant_message_id: None,
@@ -1933,7 +1933,7 @@ fn test_get_combined_user_content_with_images() {
     let request = SendMessageRequest {
         session_id: "sess_test".to_string(),
         content: "描述这张图片".to_string(),
-        // ★ 2025-12-10: attachments 字段已移除，附件通过 user_context_refs 传递
+
         options: None,
         user_message_id: None,
         assistant_message_id: None,
@@ -1993,7 +1993,7 @@ fn test_get_combined_user_content_empty_refs() {
     let request = SendMessageRequest {
         session_id: "sess_test".to_string(),
         content: "简单问题".to_string(),
-        // ★ 2025-12-10: attachments 字段已移除，附件通过 user_context_refs 传递
+
         options: None,
         user_message_id: None,
         assistant_message_id: None,

@@ -509,7 +509,7 @@ impl MigrationExecutor {
                 let block_id =
                     self.create_tool_block(conn, &message_id, block_index, tool_call, tool_output)?;
                 block_ids.push(block_id);
-                block_index += 1;
+                let _ = block_index; // last block, no further use
             }
         }
 

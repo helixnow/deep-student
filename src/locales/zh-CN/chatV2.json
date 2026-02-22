@@ -523,6 +523,8 @@
     "enableThinkingDesc": "让模型展示推理过程",
     "disableTools": "禁用工具",
     "disableToolsDesc": "不调用外部工具",
+    "disableToolWhitelist": "关闭工具白名单",
+    "disableToolWhitelistDesc": "允许所有工具绕过技能白名单限制",
     "reset": "重置为默认值",
     "maxToolRecursion": "工具递归限制",
     "maxToolRecursionHint": "AI 连续调用工具的最大次数，防止无限循环",

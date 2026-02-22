@@ -1,7 +1,7 @@
 // PDF 文件流式加载协议
 // 提供 pdfstream:// 自定义协议，支持 HTTP Range Request，用于高效加载大型 PDF 文件
 
-use log::{error, info, warn};
+use log::{info, warn};
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::PathBuf;

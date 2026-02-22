@@ -37,13 +37,13 @@ use super::tools::{
     AcademicSearchExecutor, AttemptCompletionExecutor, BuiltinResourceExecutor,
     BuiltinRetrievalExecutor, CanvasToolExecutor, ChatAnkiToolExecutor, ExecutionContext,
     FetchExecutor, GeneralToolExecutor, KnowledgeExecutor, MemoryToolExecutor,
-    TemplateDesignerExecutor, ToolExecutor, ToolExecutorRegistry, ToolSensitivity,
-    WorkspaceToolExecutor,
+    SkillsExecutor, TemplateDesignerExecutor, ToolExecutor, ToolExecutorRegistry,
+    ToolSensitivity, WorkspaceToolExecutor,
 };
 use crate::database::Database as MainDatabase;
 use crate::models::{ChatMessage as LegacyChatMessage, MultimodalContentPart, RagSourceInfo};
 use crate::tools::web_search::{do_search, SearchInput, ToolConfig as WebSearchConfig};
-use crate::tools::{ToolContext, ToolRegistry};
+use crate::tools::ToolRegistry;
 
 use super::error::{ChatV2Error, ChatV2Result};
 use super::events::{event_types, ChatV2EventEmitter};
@@ -56,12 +56,10 @@ use crate::vfs::repos::VfsResourceRepo;
 use crate::vfs::indexing::{VfsFullSearchService, VfsSearchParams};
 use crate::vfs::lance_store::VfsLanceStore;
 use crate::vfs::repos::MODALITY_TEXT;
-// ★ user_memory 已移除（2026-01），改用 Memory-as-VFS
-// ★ 多模态知识库改用 VFS 统一管理（2026-01）
 use crate::vfs::multimodal_service::VfsMultimodalService;
 // 🆕 MCP 工具注入支持：现在使用前端传递的 mcp_tool_schemas，无需后端 MCP Client
 use super::context::PipelineContext;
-use super::resource_types::{ContentBlock, ContextRef, ContextSnapshot, SendContextRef};
+use super::resource_types::{ContentBlock, ContextRef, ContextSnapshot};
 use super::types::{
     block_status, block_types, feature_flags, variant_status, AttachmentInput, ChatMessage,
     MessageBlock, MessageMeta, MessageRole, MessageSources, SendMessageRequest, SendOptions,
@@ -241,6 +239,15 @@ fn filter_retrieval_results(
     filtered
 }
 
+/// Sanitize tool name for LLM API compatibility.
+/// OpenAI requires function names to match `^[a-zA-Z0-9_-]+$`.
+/// Replaces any non-matching character (e.g. `:`, `.`, `/`) with `_`.
+fn sanitize_tool_name_for_api(name: &str) -> String {
+    name.chars()
+        .map(|c| if c.is_ascii_alphanumeric() || c == '_' || c == '-' { c } else { '_' })
+        .collect()
+}
+
 fn approval_scope_setting_key(tool_name: &str, arguments: &Value) -> String {
     let serialized = serde_json::to_string(arguments).unwrap_or_else(|_| "null".to_string());
     let mut hasher = Sha256::new();
@@ -301,6 +308,144 @@ fn validate_tool_chain(chat_history: &[LegacyChatMessage]) -> bool {
     }
 
     pending_calls.is_empty()
+}
+
+/// 构建一个仅含 role/content 的空 ChatMessage，其余字段均为 None/默认值。
+/// 用于合成消息构造，避免重复罗列 15+ 个 None 字段。
+fn make_empty_message(role: &str, content: String) -> LegacyChatMessage {
+    LegacyChatMessage {
+        role: role.to_string(),
+        content,
+        timestamp: chrono::Utc::now(),
+        thinking_content: None,
+        thought_signature: None,
+        rag_sources: None,
+        memory_sources: None,
+        graph_sources: None,
+        web_search_sources: None,
+        image_paths: None,
+        image_base64: None,
+        doc_attachments: None,
+        multimodal_content: None,
+        tool_call: None,
+        tool_result: None,
+        overrides: None,
+        relations: None,
+        persistent_stable_id: None,
+        metadata: None,
+    }
+}
+
+/// 🆕 2026-02-22: 为已激活的默认技能自动注入合成 load_skills 工具交互
+///
+/// 模型对 `role: tool` 结果中的指令遵循度远高于 user message 中的 XML 块。
+/// 此函数在消息历史开头 prepend 一对合成的 assistant(tool_call) + tool(result) 消息，
+/// 与真实 `load_skills` 返回格式完全一致。
+///
+/// 跳过条件：
+/// - 没有 active_skill_ids 或 skill_contents
+/// - 历史中已存在真实的 load_skills 调用（避免 regenerate/retry 时重复注入）
+fn inject_synthetic_load_skills(
+    chat_history: &mut Vec<LegacyChatMessage>,
+    options: &SendOptions,
+) {
+    let active_ids = match options.active_skill_ids.as_ref() {
+        Some(ids) if !ids.is_empty() => ids,
+        _ => {
+            log::debug!("[ChatV2::pipeline] inject_synthetic_load_skills: skipped (active_skill_ids is None/empty)");
+            return;
+        }
+    };
+    let skill_contents = match options.skill_contents.as_ref() {
+        Some(sc) if !sc.is_empty() => sc,
+        _ => {
+            log::info!(
+                "[ChatV2::pipeline] inject_synthetic_load_skills: active_skill_ids={:?} but skill_contents is None/empty!",
+                active_ids
+            );
+            return;
+        }
+    };
+
+    // 收集有内容的已激活技能
+    let skills_to_inject: Vec<(&String, &String)> = active_ids
+        .iter()
+        .filter_map(|id| skill_contents.get(id).map(|content| (id, content)))
+        .collect();
+
+    if skills_to_inject.is_empty() {
+        log::info!(
+            "[ChatV2::pipeline] inject_synthetic_load_skills: no match! active_ids={:?}, skill_contents_keys={:?}",
+            active_ids,
+            skill_contents.keys().collect::<Vec<_>>()
+        );
+        return;
+    }
+
+    // 检查历史中是否已有真实的 load_skills 调用（regenerate/retry 场景）
+    let has_existing_load_skills = chat_history.iter().any(|m| {
+        m.tool_call
+            .as_ref()
+            .map_or(false, |tc| SkillsExecutor::is_load_skills_tool(&tc.tool_name))
+    });
+
+    if has_existing_load_skills {
+        log::debug!(
+            "[ChatV2::pipeline] Skipping synthetic load_skills: history already contains real load_skills call"
+        );
+        return;
+    }
+
+    // 构建合成的 load_skills 工具交互（与 SkillsExecutor 输出格式一致）
+    let skill_ids: Vec<&str> = skills_to_inject.iter().map(|(id, _)| id.as_str()).collect();
+    let tool_call_id = format!("tc_auto_skills_{}", uuid::Uuid::new_v4().simple());
+
+    // 1. 合成 assistant 消息（tool_call: load_skills）
+    let tool_call_args = json!({ "skills": skill_ids });
+    let mut assistant_msg = make_empty_message("assistant", String::new());
+    assistant_msg.tool_call = Some(crate::models::ToolCall {
+        id: tool_call_id.clone(),
+        tool_name: "load_skills".to_string(),
+        args_json: tool_call_args,
+    });
+
+    // 2. 构建工具结果内容（与 SkillsExecutor 格式一致）
+    let mut content_parts: Vec<String> = Vec::with_capacity(skills_to_inject.len() + 1);
+    for (skill_id, content) in &skills_to_inject {
+        content_parts.push(format!(
+            "<skill_loaded id=\"{}\">\n<instructions>\n{}\n</instructions>\n</skill_loaded>",
+            skill_id, content
+        ));
+    }
+    content_parts.push(format!(
+        "\n共加载 {} 个技能。这些工具现在可以使用了。",
+        skills_to_inject.len()
+    ));
+    let full_content = content_parts.join("\n");
+    let content_len = full_content.len();
+
+    let mut tool_msg = make_empty_message("tool", full_content);
+    tool_msg.tool_result = Some(crate::models::ToolResult {
+        call_id: tool_call_id,
+        ok: true,
+        error: None,
+        error_details: None,
+        data_json: None,
+        usage: None,
+        citations: None,
+    });
+
+    // 3. Prepend 到消息历史开头（这两条消息会出现在 [LLM_REVIEW_DEBUG] 请求体日志中）
+    log::info!(
+        "[ChatV2::pipeline] 🆕 Synthetic load_skills injected: {} skill(s) {:?}, content_len={}, history {} -> {} messages",
+        skills_to_inject.len(),
+        skill_ids,
+        content_len,
+        chat_history.len(),
+        chat_history.len() + 2
+    );
+    chat_history.insert(0, assistant_msg);
+    chat_history.insert(1, tool_msg);
 }
 
 // ============================================================
@@ -1139,7 +1284,6 @@ pub struct ChatV2Pipeline {
     executor_registry: Arc<ToolExecutorRegistry>,
     /// 🆕 工具审批管理器（文档 29 P1-3）
     approval_manager: Option<Arc<ApprovalManager>>,
-    // ★ user_memory_db 已移除（2026-01），改用 Memory-as-VFS
     workspace_coordinator: Option<Arc<WorkspaceCoordinator>>,
     /// 🆕 智能题目集服务（用于 qbank_* MCP 工具，2026-01）
     question_bank_service: Option<Arc<crate::question_bank_service::QuestionBankService>>,
@@ -1193,8 +1337,6 @@ impl ChatV2Pipeline {
         self.approval_manager = Some(approval_manager);
         self
     }
-
-    // ★ with_user_memory_db 已移除（2026-01），改用 Memory-as-VFS
 
     pub fn with_workspace_coordinator(mut self, coordinator: Arc<WorkspaceCoordinator>) -> Self {
         self.workspace_coordinator = Some(coordinator.clone());
@@ -2145,15 +2287,15 @@ impl ChatV2Pipeline {
         // 🔧 改进 5：验证工具调用链完整性
         validate_tool_chain(&chat_history);
 
+        // 🆕 2026-02-22: 为已激活的默认技能自动注入合成 load_skills 工具交互
+        // 技能内容通过 role: tool 投递，模型遵循度远高于 user message 中的 XML 块
+        inject_synthetic_load_skills(&mut chat_history, &ctx.options);
+
         ctx.chat_history = chat_history;
         Ok(())
     }
 
-    // ★ 2025-12-10：旧版 resolve_history_context_snapshot 和 resolve_vfs_ref_content 已废弃
-    // 统一使用 vfs_resolver 模块处理所有资源类型的解引用
-    // 请使用 resolve_history_context_snapshot_v2 代替
-
-    /// ★ 2025-12-10 新增：解析历史消息中的 context_snapshot（V2 版本）
+    /// 解析历史消息中的 context_snapshot（V2 版本）
     ///
     /// 使用统一的 `vfs_resolver` 模块处理所有资源类型的解引用。
     /// 返回 `(String, Vec<String>)`：
@@ -2320,10 +2462,6 @@ impl ChatV2Pipeline {
         Ok(())
     }
 
-    // ★ execute_rag_retrieval 已移除（2026-01 清理）
-    // 旧知识库 RAG 检索已完全由 VFS RAG 工具化检索替代
-    // 检索由 LLM 通过 builtin-rag_search 工具主动调用完成
-
     /// 🆕 执行 VFS RAG 统一知识管理检索
     ///
     /// 使用 VFS 统一存储的向量检索替代传统 RagManager，支持：
@@ -2456,7 +2594,7 @@ impl ChatV2Pipeline {
         query: &str,
         library_ids: &Option<Vec<String>>,
         top_k: u32,
-        enable_reranking: bool,
+        _enable_reranking: bool,
         enabled: bool,
         emitter: &Arc<ChatV2EventEmitter>,
         message_id: &str,
@@ -2588,7 +2726,7 @@ impl ChatV2Pipeline {
     /// 此方法仅在开启记忆检索时发射事件，实际检索由 LLM 工具完成
     async fn execute_memory_retrieval(
         &self,
-        query: &str,
+        _query: &str,
         _session_id: &str,
         enabled: bool,
         emitter: &Arc<ChatV2EventEmitter>,
@@ -2603,7 +2741,7 @@ impl ChatV2Pipeline {
 
         let start_time = Instant::now();
 
-        // ★ 2026-01：使用 Memory-as-VFS 替代旧的 UserMemory
+        // ★ 2026-01：使用 Memory-as-VFS
         // 记忆检索现在通过 builtin-memory_search 工具执行，此处仅返回空结果
         // LLM 会根据需要主动调用 memory_search 工具
         let sources: Vec<SourceInfo> = Vec::new();
@@ -3235,6 +3373,10 @@ impl ChatV2Pipeline {
         // - 后端直接使用前端传递的 Schema，无需自己连接 MCP 服务器
         // - 🔧 P1-49：后端应用 whitelist/blacklist 策略过滤，确保配置生效
 
+        // 🔧 工具名称映射：sanitized API name → original name（含 `:` 等特殊字符）
+        // 用于 LLM 返回工具调用时反向映射回原始名称
+        let mut mcp_tool_name_mapping: HashMap<String, String> = HashMap::new();
+
         // 🔍 调试日志：检查 mcp_tool_schemas 在 pipeline 中的状态
         let mcp_schema_count = ctx
             .options
@@ -3318,15 +3460,21 @@ impl ChatV2Pipeline {
                         // 🔧 P0-19 修复：builtin- 前缀的工具保持原名，MCP 工具添加 mcp_ 前缀
                         // 原因：executor 检查 tool_name.starts_with("builtin-")，
                         //       如果变成 "mcp_builtin-..." 则无法匹配
-                        let tool_name = if tool.name.starts_with(BUILTIN_NAMESPACE) {
+                        let raw_tool_name = if tool.name.starts_with(BUILTIN_NAMESPACE) {
                             tool.name.clone()
                         } else {
                             format!("mcp_{}", tool.name)
                         };
+                        // 🔧 修复：OpenAI API 要求 function name 匹配 ^[a-zA-Z0-9_-]+$
+                        // MCP 工具名可能含 `:` 等特殊字符（如 namespace 分隔符）
+                        let api_tool_name = sanitize_tool_name_for_api(&raw_tool_name);
+                        if api_tool_name != raw_tool_name {
+                            mcp_tool_name_mapping.insert(api_tool_name.clone(), raw_tool_name);
+                        }
                         json!({
                             "type": "function",
                             "function": {
-                                "name": tool_name,
+                                "name": api_tool_name,
                                 "description": tool.description.clone().unwrap_or_default(),
                                 "parameters": tool.input_schema.clone().unwrap_or(json!({}))
                             }
@@ -3629,7 +3777,13 @@ impl ChatV2Pipeline {
             // 并行执行所有工具调用
             let canvas_note_id = ctx.options.canvas_note_id.clone();
             // 🆕 P1-C: 传递 skill_allowed_tools 进行工具执行校验
-            let skill_allowed_tools = ctx.options.skill_allowed_tools.clone();
+            // 🔧 用户可通过 disable_tool_whitelist 关闭白名单检查
+            let skill_allowed_tools = if ctx.options.disable_tool_whitelist.unwrap_or(false) {
+                log::info!("[ChatV2::pipeline] 🔓 Tool whitelist check disabled by user setting");
+                None
+            } else {
+                ctx.options.skill_allowed_tools.clone()
+            };
             // 🆕 渐进披露：传递 skill_contents 给工具执行器
             let skill_contents = ctx.options.skill_contents.clone();
             let active_skill_ids = ctx.options.active_skill_ids.clone();
@@ -3650,6 +3804,7 @@ impl ChatV2Pipeline {
                     cancel_token,
                     rag_top_k,
                     rag_enable_reranking,
+                    &mcp_tool_name_mapping,
                 )
                 .await?;
 
@@ -4052,8 +4207,29 @@ impl ChatV2Pipeline {
         cancellation_token: Option<&CancellationToken>,
         rag_top_k: Option<u32>,
         rag_enable_reranking: Option<bool>,
+        tool_name_mapping: &HashMap<String, String>,
     ) -> ChatV2Result<Vec<ToolResultInfo>> {
-        let ordered_tool_calls = self.ordered_tool_calls_for_execution(tool_calls);
+        // 🔧 反向映射：LLM 返回的 sanitized 工具名 → 原始名（含 `:` 等特殊字符）
+        let tool_calls: Vec<ToolCall> = tool_calls
+            .iter()
+            .map(|tc| {
+                if let Some(original_name) = tool_name_mapping.get(&tc.name) {
+                    log::debug!(
+                        "[ChatV2::pipeline] Reverse-mapping tool name: {} → {}",
+                        tc.name,
+                        original_name
+                    );
+                    ToolCall {
+                        id: tc.id.clone(),
+                        name: original_name.clone(),
+                        arguments: tc.arguments.clone(),
+                    }
+                } else {
+                    tc.clone()
+                }
+            })
+            .collect();
+        let ordered_tool_calls = self.ordered_tool_calls_for_execution(&tool_calls);
         log::debug!(
             "[ChatV2::pipeline] Executing {} tool calls sequentially",
             ordered_tool_calls.len()
@@ -4381,7 +4557,12 @@ impl ChatV2Pipeline {
         let is_load_skills_tool =
             super::tools::SkillsExecutor::is_load_skills_tool(&tool_call.name);
 
-        if !is_load_skills_tool {
+        // 🔧 外部 MCP 工具（mcp_ 前缀、非 builtin-）不受技能白名单限制
+        // 它们由用户在 MCP 设置中手动启用，应始终可调用
+        let is_external_mcp_tool = tool_call.name.starts_with("mcp_")
+            && !tool_call.name.starts_with("mcp_load_skills");
+
+        if !is_load_skills_tool && !is_external_mcp_tool {
             match skill_allowed_tools {
                 Some(allowed_tools) if allowed_tools.is_empty() => {
                     log::warn!(
@@ -4596,7 +4777,6 @@ impl ChatV2Pipeline {
         }
 
         // 🆕 构建执行上下文（文档 29 P0-1）
-        // ★ 2026-01 简化：rag_manager 已移除，VFS RAG 完全替代
         let window = emitter.window();
         let mut ctx = ExecutionContext::new(
             session_id.to_string(),
@@ -4611,7 +4791,6 @@ impl ChatV2Pipeline {
         .with_anki_db(self.anki_db.clone())
         .with_vfs_db(self.vfs_db.clone()) // 🆕 学习资源工具需要访问 VFS 数据库
         .with_llm_manager(Some(self.llm_manager.clone())) // 🆕 VFS RAG 工具需要 LLM 管理器
-        // ★ with_user_memory_db 已移除（2026-01），改用 Memory-as-VFS
         .with_chat_v2_db(Some(self.db.clone())) // 🆕 工具块防闪退保存
         .with_question_bank_service(self.question_bank_service.clone()) // 🆕 智能题目集工具
         .with_pdf_processing_service(self.pdf_processing_service.clone()) // 🆕 论文保存触发 Pipeline
@@ -6007,7 +6186,7 @@ impl ChatV2Pipeline {
                 .into_iter()
                 .filter(|b| b.block_type == block_types::ANKI_CARDS)
                 .collect();
-        let preserved_anki_cards_block_ids: Vec<String> = preserved_anki_cards_blocks
+        let _preserved_anki_cards_block_ids: Vec<String> = preserved_anki_cards_blocks
             .iter()
             .map(|b| b.id.clone())
             .collect();
@@ -6063,7 +6242,7 @@ impl ChatV2Pipeline {
             merged_block_ids
         };
         let blocks_to_save = blocks;
-        let pipeline_block_count = blocks_to_save.len() as u32;
+        let _pipeline_block_count = blocks_to_save.len() as u32;
         let pipeline_block_id_set: std::collections::HashSet<String> =
             blocks_to_save.iter().map(|b| b.id.clone()).collect();
 
@@ -7077,7 +7256,9 @@ impl ChatV2Pipeline {
             .await;
 
         // 加载聊天历史
-        let chat_history = self.load_variant_chat_history(&session_id).await?;
+        let mut chat_history = self.load_variant_chat_history(&session_id).await?;
+        // 🆕 2026-02-22: 为已激活的默认技能自动注入合成 load_skills 工具交互
+        inject_synthetic_load_skills(&mut chat_history, &options);
 
         // 构建当前用户消息
         let current_user_message = self.build_variant_user_message(&user_content, &attachments);
@@ -7151,15 +7332,16 @@ impl ChatV2Pipeline {
                 let mcp_tool_values: Vec<Value> = tool_schemas
                     .iter()
                     .map(|tool| {
-                        let tool_name = if tool.name.starts_with(BUILTIN_NAMESPACE) {
+                        let raw_tool_name = if tool.name.starts_with(BUILTIN_NAMESPACE) {
                             tool.name.clone()
                         } else {
                             format!("mcp_{}", tool.name)
                         };
+                        let api_tool_name = sanitize_tool_name_for_api(&raw_tool_name);
                         json!({
                             "type": "function",
                             "function": {
-                                "name": tool_name,
+                                "name": api_tool_name,
                                 "description": tool.description.clone().unwrap_or_default(),
                                 "parameters": tool.input_schema.clone().unwrap_or(json!({}))
                             }
@@ -7271,7 +7453,9 @@ impl ChatV2Pipeline {
         let system_prompt = self
             .build_system_prompt_with_shared_context(&options, &shared_context)
             .await;
-        let chat_history = self.load_variant_chat_history(&session_id).await?;
+        let mut chat_history = self.load_variant_chat_history(&session_id).await?;
+        // 🆕 2026-02-22: 为已激活的默认技能自动注入合成 load_skills 工具交互
+        inject_synthetic_load_skills(&mut chat_history, &options);
         let current_user_message = self.build_variant_user_message(&user_content, &attachments);
 
         let enable_thinking = options.enable_thinking.unwrap_or(true);
@@ -7323,20 +7507,27 @@ impl ChatV2Pipeline {
         let vq = options.vision_quality.as_deref().unwrap_or("auto");
         llm_context.insert("vision_quality".into(), Value::String(vq.to_string()));
 
+        // 🔧 工具名称映射：sanitized API name → original name
+        let mut variant_tool_name_mapping: HashMap<String, String> = HashMap::new();
+
         if !disable_tools {
             if let Some(ref tool_schemas) = options.mcp_tool_schemas {
                 let mcp_tool_values: Vec<Value> = tool_schemas
                     .iter()
                     .map(|tool| {
-                        let tool_name = if tool.name.starts_with(BUILTIN_NAMESPACE) {
+                        let raw_tool_name = if tool.name.starts_with(BUILTIN_NAMESPACE) {
                             tool.name.clone()
                         } else {
                             format!("mcp_{}", tool.name)
                         };
+                        let api_tool_name = sanitize_tool_name_for_api(&raw_tool_name);
+                        if api_tool_name != raw_tool_name {
+                            variant_tool_name_mapping.insert(api_tool_name.clone(), raw_tool_name);
+                        }
                         json!({
                             "type": "function",
                             "function": {
-                                "name": tool_name,
+                                "name": api_tool_name,
                                 "description": tool.description.clone().unwrap_or_default(),
                                 "parameters": tool.input_schema.clone().unwrap_or(json!({}))
                             }
@@ -7357,7 +7548,13 @@ impl ChatV2Pipeline {
 
         let emitter_arc = ctx.emitter_arc();
         let canvas_note_id = options.canvas_note_id.clone();
-        let skill_allowed_tools = options.skill_allowed_tools.clone();
+        // 🔧 用户可通过 disable_tool_whitelist 关闭白名单检查
+        let skill_allowed_tools = if options.disable_tool_whitelist.unwrap_or(false) {
+            log::info!("[ChatV2::VariantPipeline] 🔓 Tool whitelist check disabled by user setting");
+            None
+        } else {
+            options.skill_allowed_tools.clone()
+        };
         let skill_contents = options.skill_contents.clone();
         let active_skill_ids = options.active_skill_ids.clone();
         let variant_session_key = format!("{}:{}", session_id, ctx.variant_id());
@@ -7488,6 +7685,7 @@ impl ChatV2Pipeline {
                     cancel_token,
                     rag_top_k,
                     rag_enable_reranking,
+                    &variant_tool_name_mapping,
                 )
                 .await?;
 

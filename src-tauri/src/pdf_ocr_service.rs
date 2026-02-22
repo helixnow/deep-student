@@ -560,7 +560,7 @@ impl PdfOcrService {
                         }
                     };
                     let llm = self.llm_manager.clone();
-                    let config = config.clone();
+                    let _config = config.clone();
                     let cache_dir = cache_dir.clone();
                     let app_handle = app_handle.clone();
                     let counter = completed_counter.clone();
@@ -880,7 +880,7 @@ impl PdfOcrService {
     async fn run_worker(
         self,
         temp_id: String,
-        pdf_rel_path: String,
+        _pdf_rel_path: String,
         pdf_abs_path: PathBuf,
         total_pages: usize,
         mut page_rx: mpsc::Receiver<PreparedPage>,
@@ -967,13 +967,13 @@ impl PdfOcrService {
                                 }
                             };
                             let llm = self.llm_manager.clone();
-                            let config = config.clone();
+                            let _config = config.clone();
                             let cache_dir = cache_dir.clone();
                             let app_handle = app_handle.clone();
                             let counter = completed_counter.clone();
                             let all_results = all_results.clone();
                             let failed_pages = failed_pages.clone();
-                            let temp_id = temp_id.clone();
+                            let _temp_id = temp_id.clone();
                             let cancel_rx = cancel_rx.clone();
 
                             join_set.spawn(async move {
@@ -1112,7 +1112,7 @@ impl PdfOcrService {
             .collect();
         mapped_results.sort_by_key(|p| p.page_index);
 
-        let pdfstream_url = format!(
+        let _pdfstream_url = format!(
             "pdfstream://localhost/{}",
             urlencoding::encode(&pdf_abs_path.to_string_lossy())
         );

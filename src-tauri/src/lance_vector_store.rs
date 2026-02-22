@@ -1,6 +1,3 @@
-#![allow(unused_variables)]
-#![allow(unused_assignments)]
-
 use crate::database::Database;
 use crate::models::{
     AppError, DocumentChunk, DocumentChunkWithEmbedding, RetrievedChunk, VectorStoreStats,
@@ -506,7 +503,7 @@ impl LanceVectorStore {
     #[cfg(feature = "lance")]
     fn spawn_warmup_scan(&self) {
         use futures_util::TryStreamExt;
-        let this = self.database.clone();
+        let _this = self.database.clone();
         let base = match self.get_lance_path() {
             Ok(path) => path,
             Err(err) => {

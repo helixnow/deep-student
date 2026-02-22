@@ -264,6 +264,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
     chat_title_model_config_id: '', // 新增：聊天标题生成模型配置ID
     // 多模态知识库模型配置（嵌入模型通过维度管理设置）
     vl_reranker_model_config_id: '', // 多模态重排序模型
+    memory_decision_model_config_id: '', // 记忆决策模型
 
     // MCP 工具协议设置（默认保持可配置；启用与否由消息级选择决定）
     mcpCommand: 'npx',
@@ -455,6 +456,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
       chat_title_model_config_id: modelAssignments.chat_title_model_config_id || '',
       // 多模态知识库模型（嵌入模型通过维度管理设置）
       vl_reranker_model_config_id: modelAssignments.vl_reranker_model_config_id || '',
+      memory_decision_model_config_id: modelAssignments.memory_decision_model_config_id || '',
     }));
   }, [modelAssignments]);
 
@@ -751,7 +753,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
       namespace?: string;
     };
     error?: string | null;
-  }>({ open: false, index: null, mode: 'json', jsonInput: '', draft: { id: '', name: '', transportType: 'stdio', command: 'npx', args: [...DEFAULT_STDIO_ARGS], env: {}, cwd: '', framing: 'jsonl' }, error: null });
+  }>({ open: false, index: null, mode: 'json', jsonInput: '', draft: { id: '', name: '', transportType: 'stdio', command: 'npx', args: [...DEFAULT_STDIO_ARGS], env: {}, cwd: '', framing: 'content_length' }, error: null });
   // MCP 全局策略模态（白/黑名单等）
   const [mcpPolicyModal, setMcpPolicyModal] = useState<{ open: boolean; advertiseAll: boolean; whitelist: string; blacklist: string; timeoutMs: number; rateLimit: number; cacheMax: number; cacheTtlMs: number }>({
     open: false,
@@ -1309,7 +1311,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
         mcpServers: (tool as any).mcpServers,
         namespace: (tool as any).namespace || '',
         cwd: (tool as any).cwd || '',
-        framing: (tool as any).framing?.toLowerCase() === 'content_length' ? 'content_length' : 'jsonl',
+        framing: (tool as any).framing?.toLowerCase() === 'jsonl' ? 'jsonl' : 'content_length',
       },
       error: null,
     });
@@ -1468,7 +1470,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
             ? argsSource.split(',').map(item => item.trim()).filter(Boolean)
             : [];
         server.args = normalizedArgs.length > 0 ? normalizedArgs : [...DEFAULT_STDIO_ARGS];
-        server.framing = draft.framing || 'jsonl';
+        server.framing = draft.framing || 'content_length';
         if (draft.cwd) server.cwd = draft.cwd;
       }
       if (draft.apiKey) server.apiKey = draft.apiKey;
@@ -1827,7 +1829,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
                     {renderInfoPopover(t('settings:mcp_descriptions.framing_label'), t('settings:mcp_descriptions.framing_hint'))}
                   </div>
                   <AppSelect
-                    value={draft.framing || 'jsonl'}
+                    value={draft.framing || 'content_length'}
                     onValueChange={value => updateDraft({ framing: value as 'jsonl' | 'content_length' })}
                     options={[
                       { value: 'jsonl', label: t('settings:mcp.framing.json_lines') },
@@ -1974,7 +1976,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
               ? argsSource.split(',').map(item => item.trim()).filter(Boolean)
               : [];
           server.args = normalizedArgs.length > 0 ? normalizedArgs : [...DEFAULT_STDIO_ARGS];
-          server.framing = draft.framing || 'jsonl';
+          server.framing = draft.framing || 'content_length';
           if (draft.cwd) server.cwd = draft.cwd;
         }
         if (draft.apiKey) server.apiKey = draft.apiKey;
@@ -2851,6 +2853,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
             chat_title_model_config_id: null,
             // 多模态知识库模型（嵌入模型通过维度管理设置）
             vl_reranker_model_config_id: null,
+            memory_decision_model_config_id: null,
           })) as Promise<{
             model2_config_id: string | null,
             anki_card_model_config_id: string | null,
@@ -2861,6 +2864,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
             chat_title_model_config_id: string | null,
             // 多模态知识库模型（嵌入模型通过维度管理设置）
             vl_reranker_model_config_id: string | null,
+            memory_decision_model_config_id: string | null,
           }>,
           invoke('get_setting', { key: 'auto_save' }).catch(() => 'true') as Promise<string>,
           invoke('get_setting', { key: 'theme' }).catch(() => 'light') as Promise<string>,
@@ -3024,6 +3028,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
           translation_model_config_id: modelAssignments?.translation_model_config_id || '',
           // 多模态知识库模型配置（嵌入模型通过维度管理设置）
           vl_reranker_model_config_id: modelAssignments?.vl_reranker_model_config_id || '',
+          memory_decision_model_config_id: modelAssignments?.memory_decision_model_config_id || '',
           autoSave: (autoSave || 'true') === 'true',
           theme: normalizeThemeMode(theme),
           themePalette: normalizeThemePalette(themePaletteSetting),
@@ -3310,6 +3315,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
           translation_model_config_id: string | null;
           chat_title_model_config_id: string | null;
           vl_reranker_model_config_id: string | null;
+          memory_decision_model_config_id: string | null;
         }>('get_model_assignments');
         setConfig((prev: any) => ({
           ...prev,
@@ -3321,6 +3327,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
           exam_sheet_ocr_model_config_id: modelAssignments?.exam_sheet_ocr_model_config_id || '',
           translation_model_config_id: modelAssignments?.translation_model_config_id || '',
           vl_reranker_model_config_id: modelAssignments?.vl_reranker_model_config_id || '',
+          memory_decision_model_config_id: modelAssignments?.memory_decision_model_config_id || '',
         }));
       } catch {}
     };
@@ -4085,6 +4092,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
       // 多模态知识库模型（嵌入模型通过维度管理设置）
       vl_embedding_model_config_id: null,
       vl_reranker_model_config_id: null,
+      memory_decision_model_config_id: mapping[t('settings:mapping_keys.memory_decision_configured')] || null,
     };
     handleApplyPreset(assignments);
   };

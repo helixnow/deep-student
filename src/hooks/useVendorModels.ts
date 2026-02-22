@@ -15,6 +15,7 @@ const DEFAULT_ASSIGNMENTS: ModelAssignments = {
   // 多模态知识库模型
   vl_embedding_model_config_id: null,
   vl_reranker_model_config_id: null,
+  memory_decision_model_config_id: null,
 };
 
 const normalizeAssignments = (input?: Partial<ModelAssignments>): ModelAssignments => ({

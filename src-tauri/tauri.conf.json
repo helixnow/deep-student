@@ -81,7 +81,7 @@
       }
     },
     "android": {
-      "versionCode": 13242
+      "versionCode": 13250
     }
   },
   "plugins": {

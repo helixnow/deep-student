@@ -15,11 +15,11 @@ use std::sync::Arc;
 use tracing::{debug, info, warn};
 
 use crate::spaced_repetition::{
-    calculate_next_review, calculate_next_review_date, is_due_for_review, DEFAULT_EASE_FACTOR,
+    calculate_next_review, calculate_next_review_date, DEFAULT_EASE_FACTOR,
     PASSING_GRADE,
 };
 use crate::vfs::database::VfsDatabase;
-use crate::vfs::repos::question_repo::{Question, QuestionFilters, VfsQuestionRepo};
+use crate::vfs::repos::question_repo::{QuestionFilters, VfsQuestionRepo};
 use crate::vfs::repos::review_plan_repo::{
     CalendarHeatmapData, CreateReviewPlanParams, DueReviewsFilter, DueReviewsResult,
     RecordReviewHistoryParams, ReviewHistory, ReviewPlan, ReviewPlanStatus, ReviewStats,

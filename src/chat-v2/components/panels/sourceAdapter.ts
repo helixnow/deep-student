@@ -56,7 +56,6 @@ function isKnowledgeRetrievalBlock(blockType: string): boolean {
  */
 export const PROVIDER_LABEL_I18N_KEYS: Record<string, string> = {
   rag: 'common:chat.sources.providers.localRag',
-  memory: 'common:chat.sources.providers.userMemory',
   web_search: 'common:chat.sources.providers.webSearch',
   mcp_tool: 'common:chat.sources.providers.mcpTool',
   multimodal_rag: 'common:chat.sources.providers.multimodalRag',
@@ -467,7 +466,7 @@ function getProviderIdByContextType(contextType: string): string {
     case 'rag':
       return 'local_rag';
     case 'memory':
-      return 'user_memory';
+      return 'memory';
     case 'web_search':
       return 'web_search';
     case 'multimodal_rag':
@@ -679,8 +678,8 @@ export function extractSourcesFromSharedContext(
     {
       sources: sharedContext.memorySources,
       origin: 'memory',
-      providerId: 'user_memory',
-      providerLabelKey: PROVIDER_LABEL_I18N_KEYS.memory,
+      providerId: 'memory',
+      providerLabelKey: 'common:chat.sources.providers.memory',
     },
     {
       sources: sharedContext.graphSources,

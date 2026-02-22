@@ -27,7 +27,7 @@ use super::chatanki_executor::{
 use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
 use crate::chat_v2::events::event_types;
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
-use crate::models::{CreateTemplateRequest, FieldExtractionRule, FieldType, UpdateTemplateRequest};
+use crate::models::{CreateTemplateRequest, FieldExtractionRule, UpdateTemplateRequest};
 
 // ============================================================================
 // 工具名常量

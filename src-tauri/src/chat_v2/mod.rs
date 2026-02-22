@@ -109,8 +109,6 @@ pub use workspace::{
     WorkspaceStatus,
 };
 
-// ★ ChatV2RagAdapter 已移除（2026-01 清理：VFS RAG 完全替代）
-
 // 重导出资源库类型（统一上下文注入系统）
 pub use resource_types::{
     // 资源相关

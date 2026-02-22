@@ -63,6 +63,7 @@ import { createSkillActions } from './skillActions';
 import type { ContextRef } from '../../resources/types';
 import type { EditMessageResult, RetryMessageResult } from '../../adapters/types';
 import { SKILL_INSTRUCTION_TYPE_ID } from '../../skills/types';
+import { skillDefaults } from '../../skills/skillDefaults';
 import { usePdfProcessingStore } from '../../../stores/pdfProcessingStore';
 import {
   updateSingleBlock,
@@ -2737,6 +2738,11 @@ export function createChatStore(sessionId: string): StoreApi<ChatStore> {
               console.warn('[ChatStore] Failed to parse activeSkillIdsJson, falling back to empty:', e);
             }
           }
+          // 🔧 新会话（无持久化 activeSkillIdsJson）回退到默认技能
+          // 避免 loadSession 竞态覆写 activateSkill 已设置的 activeSkillIds
+          if (restoredActiveSkillIds.length === 0 && !state?.activeSkillIdsJson) {
+            restoredActiveSkillIds = skillDefaults.getAll();
+          }
 
           // 📊 细粒度打点：set 开始
           sessionSwitchPerf.mark('set_start', {
@@ -2866,7 +2872,7 @@ export function createChatStore(sessionId: string): StoreApi<ChatStore> {
                     );
 
                     if (!hasSkillRef) {
-                      set({ pendingContextRefs: [...currentRefs, contextRef] });
+                      set({ pendingContextRefs: [...currentRefs, { ...contextRef, autoLoaded: true }] });
                     }
                   }
                   console.log('[ChatStore] Restored active skill contextRefs:', restoredActiveSkillIds);

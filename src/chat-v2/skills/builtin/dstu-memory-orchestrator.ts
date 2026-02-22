@@ -23,7 +23,38 @@ export const deepScholarSkill: SkillDefinition = {
   isBuiltin: true,
   skillType: 'composite',
   dependencies: ['knowledge-retrieval', 'vfs-memory', 'ask-user'],
-  relatedSkills: ['knowledge-retrieval', 'vfs-memory', 'ask-user'],
+  relatedSkills: ['knowledge-retrieval', 'vfs-memory', 'ask-user', 'learning-resource', 'mindmap-tools', 'web-fetch', 'attachment-tools'],
+  allowedTools: [
+    // knowledge-retrieval
+    'builtin-unified_search',
+    'builtin-web_search',
+    // vfs-memory
+    'builtin-memory_read',
+    'builtin-memory_write',
+    'builtin-memory_update_by_id',
+    'builtin-memory_delete',
+    'builtin-memory_write_smart',
+    'builtin-memory_list',
+    // ask-user
+    'builtin-ask_user',
+    // learning-resource (auto-loaded)
+    'builtin-resource_list',
+    'builtin-resource_read',
+    'builtin-resource_search',
+    'builtin-folder_list',
+    // mindmap-tools (auto-loaded)
+    'builtin-mindmap_create',
+    'builtin-mindmap_update',
+    'builtin-mindmap_delete',
+    'builtin-mindmap_edit_nodes',
+    'builtin-mindmap_versions',
+    'builtin-mindmap_diff_versions',
+    // web-fetch (auto-loaded)
+    'builtin-web_fetch',
+    // attachment-tools (auto-loaded)
+    'builtin-attachment_list',
+    'builtin-attachment_read',
+  ],
   content: `# 深度学者（默认开启）
 
 你是 Deep Student 的长期学习助手。你拥有**持久记忆**能力——能记住用户的偏好、背景和学习历程，并在未来的对话中主动运用这些记忆来提供个性化帮助。

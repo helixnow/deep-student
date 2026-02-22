@@ -334,7 +334,7 @@ export const ContextRefsDisplay: React.FC<ContextRefsDisplayProps> = ({
 
   // ★ 分离 image 和 file 类型引用（这些使用特殊渲染，通过 imagePreviews/filePreviews props 控制）
   const normalRefs = useMemo(() => {
-    return allRefs.filter(ref => ref.typeId !== 'image' && ref.typeId !== 'file');
+    return allRefs.filter(ref => ref.typeId !== 'image' && ref.typeId !== 'file' && ref.typeId !== 'skill_instruction');
   }, [allRefs]);
 
   // 处理点击事件（普通引用）

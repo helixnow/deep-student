@@ -9,7 +9,7 @@
  *
  * 设计说明：
  * - 支持同时激活多个 skill（多选模式）
- * - skill 内容在发送时注入到 user message
+ * - skill 内容由后端 pipeline 合成 load_skills 工具交互注入（role: tool），模型遵循度更高
  * - 元数据（available_skills）在 system prompt 中提供
  */
 

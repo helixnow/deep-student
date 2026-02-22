@@ -19,9 +19,8 @@ use crate::vfs::ocr_utils::{join_ocr_pages_text, parse_ocr_pages_json};
 use crate::vfs::pdf_processing_service::{OcrPageResult, OcrPagesJson};
 use crate::vfs::repos::{
     embedding_dim_repo, index_segment_repo, index_unit_repo, VfsBlobRepo, VfsEmbedding,
-    VfsIndexStateRepo, VfsIndexingConfigRepo, VfsNoteRepo, VfsResourceRepo, INDEX_STATE_DISABLED,
-    INDEX_STATE_FAILED, INDEX_STATE_INDEXED, INDEX_STATE_INDEXING, INDEX_STATE_PENDING,
-    MODALITY_MULTIMODAL, MODALITY_TEXT, VFS_EMB_TABLE_PREFIX,
+    VfsIndexStateRepo, VfsIndexingConfigRepo, VfsNoteRepo, VfsResourceRepo, INDEX_STATE_INDEXED, INDEX_STATE_INDEXING,
+    MODALITY_MULTIMODAL, MODALITY_TEXT,
 };
 use crate::vfs::types::{PdfPreviewJson, VfsResource, VfsResourceType};
 use crate::vfs::unit_builder::UnitBuildInput;

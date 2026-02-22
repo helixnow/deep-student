@@ -385,6 +385,7 @@ export interface ModelAssignments {
   // 多模态知识库模型配置
   vl_embedding_model_config_id: string | null;  // 多模态嵌入模型（Qwen3-VL-Embedding）
   vl_reranker_model_config_id: string | null;   // 多模态重排序模型（Qwen3-VL-Reranker）
+  memory_decision_model_config_id: string | null; // 记忆决策模型（smart write 去重判断）
 }
 
 // 子适配器类型（与后端 ADAPTER_REGISTRY 保持一致）
