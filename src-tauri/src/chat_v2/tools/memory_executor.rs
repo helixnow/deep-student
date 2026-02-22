@@ -26,14 +26,8 @@ impl MemoryToolExecutor {
         Self
     }
 
-    /// 去除工具名前缀
-    ///
-    /// 支持的前缀：builtin-, mcp_
     fn strip_namespace(tool_name: &str) -> &str {
-        tool_name
-            .strip_prefix(BUILTIN_NAMESPACE)
-            .or_else(|| tool_name.strip_prefix("mcp_"))
-            .unwrap_or(tool_name)
+        super::strip_tool_namespace(tool_name)
     }
 
     /// 检查工具名是否为 Memory 工具

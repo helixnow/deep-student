@@ -376,14 +376,8 @@ impl FetchExecutor {
         Self { client }
     }
 
-    /// 从工具名称中去除前缀
-    ///
-    /// 支持的前缀：builtin-, mcp_
     fn strip_namespace(tool_name: &str) -> &str {
-        tool_name
-            .strip_prefix(BUILTIN_NAMESPACE)
-            .or_else(|| tool_name.strip_prefix("mcp_"))
-            .unwrap_or(tool_name)
+        super::strip_tool_namespace(tool_name)
     }
 
     /// 执行 fetch 操作

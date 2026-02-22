@@ -164,12 +164,8 @@ impl TemplateDesignerExecutor {
         Self
     }
 
-    /// 去除命名空间前缀
     fn strip_namespace(tool_name: &str) -> &str {
-        tool_name
-            .strip_prefix(BUILTIN_NAMESPACE)
-            .or_else(|| tool_name.strip_prefix("mcp_"))
-            .unwrap_or(tool_name)
+        super::strip_tool_namespace(tool_name)
     }
 
     fn is_template_tool(tool_name: &str) -> bool {

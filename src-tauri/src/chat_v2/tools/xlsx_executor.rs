@@ -35,10 +35,7 @@ impl XlsxToolExecutor {
     }
 
     fn strip_namespace(tool_name: &str) -> &str {
-        tool_name
-            .strip_prefix(BUILTIN_NAMESPACE)
-            .or_else(|| tool_name.strip_prefix("mcp_"))
-            .unwrap_or(tool_name)
+        super::strip_tool_namespace(tool_name)
     }
 
     /// 结构化读取 XLSX（输出 Markdown 表格格式）

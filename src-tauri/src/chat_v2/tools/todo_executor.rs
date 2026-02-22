@@ -701,14 +701,8 @@ impl Default for TodoListExecutor {
 /// 🔧 使用 'builtin-' 而非 'builtin:' 以兼容 DeepSeek/OpenAI API 的工具名称限制
 pub const BUILTIN_NAMESPACE: &str = "builtin-";
 
-/// 去除工具名称中的前缀
-///
-/// 支持的前缀：builtin-, mcp_
 fn strip_namespace(tool_name: &str) -> &str {
-    tool_name
-        .strip_prefix(BUILTIN_NAMESPACE)
-        .or_else(|| tool_name.strip_prefix("mcp_"))
-        .unwrap_or(tool_name)
+    super::strip_tool_namespace(tool_name)
 }
 
 #[async_trait]

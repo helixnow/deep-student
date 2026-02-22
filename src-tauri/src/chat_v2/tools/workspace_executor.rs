@@ -42,11 +42,10 @@ impl WorkspaceToolExecutor {
     ///
     /// 支持的前缀：workspace_, builtin-, mcp_
     fn strip_namespace(tool_name: &str) -> &str {
+        // workspace_ 前缀是 workspace_executor 特有的，先尝试剥离
         tool_name
             .strip_prefix(&format!("{}_", WORKSPACE_NAMESPACE))
-            .or_else(|| tool_name.strip_prefix("builtin-"))
-            .or_else(|| tool_name.strip_prefix("mcp_"))
-            .unwrap_or(tool_name)
+            .unwrap_or_else(|| super::strip_tool_namespace(tool_name))
     }
 
     async fn execute_create(&self, args: &Value, ctx: &ExecutionContext) -> Result<Value, String> {

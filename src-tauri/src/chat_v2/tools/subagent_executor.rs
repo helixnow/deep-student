@@ -23,14 +23,8 @@ impl SubagentExecutor {
         Self { coordinator }
     }
 
-    /// 从工具名称中去除前缀
-    ///
-    /// 支持的前缀：builtin-, mcp_
     fn strip_namespace(tool_name: &str) -> &str {
-        tool_name
-            .strip_prefix("builtin-")
-            .or_else(|| tool_name.strip_prefix("mcp_"))
-            .unwrap_or(tool_name)
+        super::strip_tool_namespace(tool_name)
     }
 
     async fn execute_subagent_call(

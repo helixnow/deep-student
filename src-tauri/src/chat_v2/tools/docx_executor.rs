@@ -36,10 +36,7 @@ impl DocxToolExecutor {
     }
 
     fn strip_namespace(tool_name: &str) -> &str {
-        tool_name
-            .strip_prefix(BUILTIN_NAMESPACE)
-            .or_else(|| tool_name.strip_prefix("mcp_"))
-            .unwrap_or(tool_name)
+        super::strip_tool_namespace(tool_name)
     }
 
     /// 结构化读取 DOCX（输出富 Markdown，保留标题/表格/列表/格式/链接/图片占位）

@@ -148,24 +148,28 @@ pub fn is_canvas_tool(tool_name: &str) -> bool {
     )
 }
 
-/// 从 Canvas 工具名中去除前缀
+/// 从工具名中去除命名空间前缀
 ///
-/// 用于将带前缀的工具名转换为 `note_read` 格式，
-/// 以便与后端的 canvas_tool_names 常量进行匹配。
+/// 统一的命名空间剥离函数，所有 Executor 应使用此函数而非自行实现。
 ///
 /// 支持的前缀：builtin-, mcp_
 ///
 /// ## 示例
 /// ```ignore
-/// assert_eq!(strip_canvas_builtin_prefix("builtin-note_read"), "note_read");
-/// assert_eq!(strip_canvas_builtin_prefix("mcp_note_read"), "note_read");
-/// assert_eq!(strip_canvas_builtin_prefix("note_read"), "note_read");
+/// assert_eq!(strip_tool_namespace("builtin-note_read"), "note_read");
+/// assert_eq!(strip_tool_namespace("mcp_brave_search"), "brave_search");
+/// assert_eq!(strip_tool_namespace("note_read"), "note_read");
 /// ```
-pub fn strip_canvas_builtin_prefix(tool_name: &str) -> &str {
+pub fn strip_tool_namespace(tool_name: &str) -> &str {
     tool_name
         .strip_prefix("builtin-")
         .or_else(|| tool_name.strip_prefix("mcp_"))
         .unwrap_or(tool_name)
+}
+
+/// 从 Canvas 工具名中去除前缀（`strip_tool_namespace` 的别名，保持向后兼容）
+pub fn strip_canvas_builtin_prefix(tool_name: &str) -> &str {
+    strip_tool_namespace(tool_name)
 }
 
 // ============================================================================

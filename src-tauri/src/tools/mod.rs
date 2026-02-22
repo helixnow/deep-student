@@ -398,7 +398,9 @@ impl ToolRegistry {
         use tokio::sync::oneshot;
         use tokio::time::{timeout, Duration};
 
-        // 超时配置（默认 15s，可由调用方指定）
+        // 超时配置（默认 60s，可由调用方指定）
+        // 🔧 修复：原默认 15s 太短，与 executor_registry 的 MCP 工具 180s 超时严重不匹配
+        // 慢速 MCP 工具（如大数据查询）会在 bridge 层被截断，造成误报超时
         let mut tool_args = args.clone();
         let timeout_override = tool_args.as_object_mut().and_then(|obj| {
             obj.remove("_timeoutMs")
@@ -406,8 +408,8 @@ impl ToolRegistry {
         });
         let timeout_ms: u64 = timeout_override
             .and_then(|v| v.as_u64())
-            .map(|v| v.clamp(1_000, 120_000))
-            .unwrap_or(15_000);
+            .map(|v| v.clamp(1_000, 300_000))
+            .unwrap_or(60_000);
         let corr = uuid::Uuid::new_v4().to_string();
         let event_name = format!("mcp-bridge-response:{}", corr);
         let (tx, rx) = oneshot::channel::<serde_json::Value>();
