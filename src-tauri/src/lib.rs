@@ -7,7 +7,6 @@
 #![allow(unused_assignments)]
 #![allow(unused_imports)]
 #![allow(dead_code)]
-#![allow(static_mut_refs)]
 #![allow(private_interfaces)]
 
 // 声明所有子模块，以便在 crate 内可见

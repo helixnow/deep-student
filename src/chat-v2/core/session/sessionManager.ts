@@ -394,14 +394,15 @@ class SessionManagerImpl implements ISessionManager {
         // Save data, then finalize eviction (cleanup + cache removal)
         autoSave
           .forceImmediateSave(store.getState())
+          .then(() => {
+            this.finalizeEviction(sessionId);
+          })
           .catch((error) => {
             console.error(
-              `[SessionManager] Save failed during eviction for session ${sessionId}:`,
+              `[SessionManager] Save failed during eviction for session ${sessionId}, keeping in cache:`,
               error
             );
-          })
-          .finally(() => {
-            this.finalizeEviction(sessionId);
+            this.pendingEvictions.delete(sessionId);
           });
 
         return true;

@@ -1810,16 +1810,16 @@ impl PdfProcessingService {
         progress: Option<&ProcessingProgress>,
         completed_at: Option<i64>,
     ) -> VfsResult<()> {
-        let conn = self.db.get_conn_safe()?;
-
         // ★ P1-4 修复：带 busy-retry 的事务开始
         // 并发处理多文件时 BEGIN IMMEDIATE 可能因 SQLITE_BUSY 失败
-        {
+        // 连接在循环内获取，避免 sleep 期间持有空闲连接导致连接池饥饿
+        let conn = {
             let max_retries = 3u32;
             let mut attempt = 0u32;
             loop {
+                let conn = self.db.get_conn_safe()?;
                 match conn.execute("BEGIN IMMEDIATE", []) {
-                    Ok(_) => break,
+                    Ok(_) => break conn,
                     Err(e) if attempt < max_retries => {
                         let msg = e.to_string();
                         if msg.contains("database is locked") || msg.contains("SQLITE_BUSY") {
@@ -1829,6 +1829,7 @@ impl PdfProcessingService {
                                 "[PdfProcessingService] BEGIN IMMEDIATE busy for file {}, retry {}/{} in {}ms",
                                 file_id, attempt, max_retries, backoff_ms
                             );
+                            drop(conn);
                             sleep(std::time::Duration::from_millis(backoff_ms)).await;
                             continue;
                         }
@@ -1842,7 +1843,7 @@ impl PdfProcessingService {
                     }
                 }
             }
-        }
+        };
 
         let result = (|| -> VfsResult<()> {
             let progress_json = progress.map(|p| serde_json::to_string(p).unwrap_or_default());
@@ -2865,16 +2866,16 @@ impl PdfProcessingService {
         ocr_json: &str,
         ocr_usable: bool,
     ) -> VfsResult<()> {
-        let conn = self.db.get_conn_safe()?;
-
         // ★ P1-4 修复：带 busy-retry 的事务开始
         // 并发处理多文件时 BEGIN IMMEDIATE 可能因 SQLITE_BUSY 失败
-        {
+        // 连接在循环内获取，避免 sleep 期间持有空闲连接导致连接池饥饿
+        let conn = {
             let max_retries = 3u32;
             let mut attempt = 0u32;
             loop {
+                let conn = self.db.get_conn_safe()?;
                 match conn.execute("BEGIN IMMEDIATE", []) {
-                    Ok(_) => break,
+                    Ok(_) => break conn,
                     Err(e) if attempt < max_retries => {
                         let msg = e.to_string();
                         if msg.contains("database is locked") || msg.contains("SQLITE_BUSY") {
@@ -2884,6 +2885,7 @@ impl PdfProcessingService {
                                 "[PdfProcessingService] update_file_ocr BEGIN IMMEDIATE busy for file {}, retry {}/{} in {}ms",
                                 file_id, attempt, max_retries, backoff_ms
                             );
+                            drop(conn);
                             sleep(std::time::Duration::from_millis(backoff_ms)).await;
                             continue;
                         }
@@ -2901,7 +2903,7 @@ impl PdfProcessingService {
                     }
                 }
             }
-        }
+        };
 
         let result = (|| -> VfsResult<()> {
             // 1. 更新 OCR 数据

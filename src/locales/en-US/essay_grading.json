@@ -284,5 +284,16 @@
     "model_essay_desc": "AI-generated model essay based on the topic, for reference",
     "original": "Original",
     "polished": "Polished"
+  },
+  "export": {
+    "grading_details": "### Grading Details",
+    "polish_suggestions": "### Polish Suggestions",
+    "model_essay": "### Model Essay",
+    "score_title": "### Score: {{total}} / {{max}} ({{grade}})",
+    "table_header": "| Dimension | Score | Max | Comment |",
+    "table_separator": "| :--- | :---: | :---: | :--- |",
+    "delete_reason": "Deleted: ",
+    "original_sentence": "**{{index}}. Original**:",
+    "polished_sentence": "**Polished**:"
   }
 }

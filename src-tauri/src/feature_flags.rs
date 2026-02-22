@@ -337,17 +337,26 @@ impl FeatureFlagManager {
         }
     }
 
+    fn compare_versions(a: &str, b: &str) -> std::cmp::Ordering {
+        let parse = |v: &str| -> Vec<u64> {
+            v.split('.')
+                .map(|s| s.parse::<u64>().unwrap_or(0))
+                .collect()
+        };
+        parse(a).cmp(&parse(b))
+    }
+
     /// 检查版本兼容性
     fn is_version_compatible(&self, flag: &FeatureFlag) -> bool {
-        // 简单的版本比较，实际项目中可能需要更复杂的语义版本比较
         if let Some(ref min_version) = flag.min_version {
-            if self.app_version < *min_version {
+            if Self::compare_versions(&self.app_version, min_version) == std::cmp::Ordering::Less {
                 return false;
             }
         }
 
         if let Some(ref max_version) = flag.max_version {
-            if self.app_version > *max_version {
+            if Self::compare_versions(&self.app_version, max_version) == std::cmp::Ordering::Greater
+            {
                 return false;
             }
         }

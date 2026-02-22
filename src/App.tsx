@@ -2,8 +2,8 @@ import React, { Suspense } from 'react';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import './i18n';
 import { useTranslation } from 'react-i18next';
-import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
-import { invoke, convertFileSrc } from '@tauri-apps/api/core';
+// getCurrentWebviewWindow 已无使用（2026-02 清理）
+import { invoke } from '@tauri-apps/api/core';
 // 🚀 性能优化：Settings, Dashboard, SOTADashboard 改为懒加载
 import { ChevronLeft, ChevronRight, Terminal, PanelLeft, AlertTriangle } from 'lucide-react';
 import { useSystemStatusStore } from '@/stores/systemStatusStore';
@@ -26,7 +26,7 @@ import { MobileLayoutProvider, BottomTabBar, MobileHeaderProvider, UnifiedMobile
 // 🚀 性能优化：IrecServiceSwitcher, IrecGraphFlow, IrecGraphFlowDemo, CrepeDemoPage, ChatV2IntegrationTest, BridgeToIrec 改为懒加载
 import { TauriAPI } from './utils/tauriApi';
 // ★ MistakeItem 类型导入已废弃（2026-01 清理）
-import { isWindows, isAndroid, isMacOS } from './utils/platform';
+import { isWindows, isMacOS } from './utils/platform';
 // 🚀 性能优化：ChatV2Page 改为懒加载，见 lazyComponents.tsx
 import { NoteEditorPortal } from './components/notes/NoteEditorPortal';
 // 🚀 性能优化：TreeDragTest, PdfReader, LearningHubPage 改为懒加载
@@ -64,7 +64,7 @@ import { useBreakpoint } from './hooks/useBreakpoint';
 import { useNavigationHistory } from './hooks/useNavigationHistory';
 import { useNavigationShortcuts, getNavigationShortcutText } from './hooks/useNavigationShortcuts';
 import type { CurrentView as NavigationCurrentView } from './types/navigation';
-import { getCurrentWindow } from '@tauri-apps/api/window';
+// getCurrentWindow 已无使用（2026-02 清理）
 import { autoSaveScrollPosition, autoRestoreScrollPosition } from './utils/viewStateManager';
 import { usePreventScroll } from './hooks/usePreventScroll';
 import { CommandPaletteProvider, CommandPalette, registerBuiltinCommands, useCommandPalette } from './command-palette';
@@ -74,16 +74,6 @@ import { useNetworkStatus } from './hooks/useNetworkStatus';
 import { useViewStore } from './stores/viewStore';
 import { debugLog } from './debug-panel/debugMasterSwitch';
 
-// 🚀 性能优化：从 App.tsx 抽取的大型函数
-import {
-  // ★ 分析模式已废弃 - createAnalysisApiProviderFactory removed
-  createSaveRequestHandler,
-  // type AnalysisApiProviderDeps,
-  type SaveRequestHandlerDeps,
-  type ChatMessage,
-  type HostedChatApiProvider,
-  getStableMessageId,
-} from './app/services';
 import { ViewLayerRenderer } from './app/components';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { canonicalizeView } from './app/navigation/canonicalView';
@@ -105,7 +95,6 @@ import {
   LazyTreeDragTest,
   LazyCrepeDemoPage,
   LazyChatV2IntegrationTest,
-  LazyImageViewer,
   LazyChatV2Page,
 } from './lazyComponents';
 
@@ -135,24 +124,6 @@ function CommandPaletteButton() {
   );
 }
 
-// ChatMessage 类型已移至 src/app/services/types.ts
-
-interface AnalysisResponse {
-  mistake_id: string; // 首轮即正式：直接是mistake_id
-  business_session_id: string;
-  generation_id: number;
-  initial_data: {
-    ocr_text: string;
-    tags: string[];
-    mistake_type: string;
-    first_answer: string;
-  };
-}
-
-interface ContinueChatResponse {
-  new_assistant_message: string;
-}
-
 type CurrentView = NavigationCurrentView;
 
 const BRIDGE_COMPLETION_REASONS = new Set([
@@ -174,13 +145,6 @@ const DESKTOP_TITLEBAR_BASE_HEIGHT = 40;
 const PINNED_VIEWS: Set<CurrentView> = new Set(['chat-v2']);
 /** 最大保活视图数量（含 pinned） */
 const MAX_ALIVE_VIEWS = 5;
-
-// ============================================================================
-// 🎯 旧架构临时类型定义（已废弃，仅用于编译兼容）
-// HostedChatApiProvider, getStableMessageId 已移至 src/app/services/types.ts
-// ============================================================================
-type UniversalAppChatHostProps = Record<string, any>;
-// ============================================================================
 
 interface AnnStatusResponse {
   indexed: boolean;
@@ -550,7 +514,6 @@ function App() {
   }, []);
 
   // 统一架构：selectedMistake 已移除，由 ChatSessionStore 统一管理
-  const [showDataManagement, setShowDataManagement] = useState(false);
   const [showImportConversation, setShowImportConversation] = useState(false);
   const [showCloudStorageSettings, setShowCloudStorageSettings] = useState(false);
   
@@ -567,8 +530,6 @@ function App() {
   }, [t]);
   
   const [sidebarCollapsed] = useState(true); // 固定为收起状态，禁用展开
-  const [isChatFullscreen, setIsChatFullscreen] = useState(false);
-  const [currentReviewSessionId, setCurrentReviewSessionId] = useState<string | null>(null);
 
   // [Phase 3 清理] 教材侧栏状态已迁移到 TextbookContext
   // 旧的 useState、事件监听、回调函数已移除，现在由以下组件统一处理：
@@ -781,9 +742,6 @@ function App() {
   ], [handleNavigateToView]);
 
   // ★ 分析模式已废弃（旧错题系统已移除）
-  // const [analysisBusinessSessionId, setAnalysisBusinessSessionId] = useState<string | null>(null);
-  // const [irecAnalysisData, setIrecAnalysisData] = useState<any>(null);
-  const [chatCategory, setChatCategory] = useState<'analysis' | 'general_chat'>('general_chat');
 
   // 🐛 BUG-1 修复: 追踪是否通过页面级 back/forward 抵达 Learning Hub
   // 当通过页面级导航抵达 LH 时，前进按钮应优先使用页面级前进（如有），
@@ -948,23 +906,6 @@ function App() {
   }, []);
 
   // ★ Bridge 会话上下文已废弃（2026-01 清理）
-
-  // 🎯 Phase 5 清理：熄火机制已废弃，ChatViewWithSidebar 内部管理会话状态
-  // 保留变量兼容性，但始终为 true
-  const analysisKeepAliveRef = useRef<boolean>(true);
-  const analysisHostActive = true;  // 🎯 常量化：不再需要动态控制
-  const analysisHostMounted = true; // 🎯 常量化：不再需要卸载
-  const [analysisGenerating, setAnalysisGenerating] = useState(false);
-  // 记录 temp 会话已生成的最终错题ID，避免重复走"新建"保存路径
-  const latestGenerationBySessionRef = useRef<Map<string, number>>(new Map());
-
-  // 🎯 Phase 5 清理：setAnalysisHostKeepAlive 简化为空操作
-  // 保留函数签名兼容性，但不再做任何状态变更
-  const setAnalysisHostKeepAlive = useCallback((_value: boolean) => {
-    // No-op: 新架构由 ChatViewWithSidebar 管理会话状态
-  }, []);
-
-  // 🎯 Phase 5 清理：移除旧的熄火 useEffect
 
   // ★ irec 相关回调已废弃（图谱模块已移除）
   // handleNavigateToAnalysisFromIrec, handleNavigateToGraph, handleJumpToGraphCard,
@@ -1140,38 +1081,7 @@ function App() {
   // App组件状态变化（已禁用日志）
   const { startDragging } = useWindowDrag();
   
-  // 文档31清理：subject 相关状态已彻底删除
-  const [userQuestion, setUserQuestion] = useState('');
-  const [questionImages, setQuestionImages] = useState<File[]>([]);
-  const [questionImageUrls, setQuestionImageUrls] = useState<string[]>([]);
-  const [imageViewerOpen, setImageViewerOpen] = useState(false);
-  const [currentImageIndex, setCurrentImageIndex] = useState(0);
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [analysisResult, setAnalysisResult] = useState<AnalysisResponse | null>(null);
-  const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
-  const [currentMessage, setCurrentMessage] = useState('');
-  const [isChatting, setIsChatting] = useState(false);
-  const [streamingMessageIndex, setStreamingMessageIndex] = useState<number | null>(null);
-  const [isInputAllowed, setIsInputAllowed] = useState(false);
-  const [useStreamMode] = useState(true); // 固定启用流式模式
   
-  // 新增状态：用于立即显示OCR结果
-  const [ocrResult, setOcrResult] = useState<{
-    ocr_text: string;
-    tags: string[];
-    mistake_type: string;
-  } | null>(null);
-  const [isOcrComplete, setIsOcrComplete] = useState(false);
-  const [enableChainOfThought] = useState(true); // 固定启用思维链
-  const [thinkingContent, setThinkingContent] = useState<Map<string, string>>(new Map()); // 存储每条消息的思维链内容
-  
-  
-  // RAG相关状态
-  const [enableRag, setEnableRag] = useState(false);
-  const [ragTopK, setRagTopK] = useState(5);
-  const [selectedLibraries, setSelectedLibraries] = useState<string[]>([]);
-
-
   // 🔧 定期持久化 WebView 设置，确保自动备份可获取
   useEffect(() => {
     let lastSnapshot = '';
@@ -1199,82 +1109,6 @@ function App() {
       cancelled = true;
       window.clearInterval(intervalId);
     };
-  }, []);
-
-  // 文档31清理：loadSubjects 已彻底删除
-  // ★ 2026-02-04：移除前端 autoBackup 调用
-  // 自动备份已由后端 start_auto_backup_scheduler 调度器处理（lib.rs:675）
-  // 前端不再需要主动触发，避免 "Command auto_backup not found" 错误
-
-  // 加载RAG设置和开发功能设置
-  const loadSettings = async () => {
-    try {
-      const [ragEnabled, ragTopKSetting] = await Promise.all([
-        TauriAPI.getSetting('rag_enabled').catch(() => 'false'),
-        TauriAPI.getSetting('rag_top_k').catch(() => '5'),
-      ]);
-      setEnableRag(ragEnabled === 'true');
-      setRagTopK(parseInt(ragTopKSetting || '5') || 5);
-    } catch (error) {
-      console.error('加载设置失败:', error);
-    }
-  };
-
-  useEffect(() => {
-    loadSettings();
-  }, []);
-
-  // 监听窗口焦点，当用户切换回页面时重新加载设置
-  useEffect(() => {
-    const handleWindowFocus = () => {
-      loadSettings();
-    };
-
-    window.addEventListener('focus', handleWindowFocus);
-    
-    return () => {
-      window.removeEventListener('focus', handleWindowFocus);
-    };
-  }, []);
-
-  // 处理聊天全屏切换 - 简化为直接状态切换
-  const handleChatFullscreenToggle = () => {
-    setIsChatFullscreen(!isChatFullscreen);
-  };
-
-  // 处理图片上传
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || []);
-    const remainingSlots = 9 - questionImages.length;
-    const filesToAdd = files.slice(0, remainingSlots);
-    
-    if (filesToAdd.length > 0) {
-      setQuestionImages(prev => [...prev, ...filesToAdd]);
-      // URL管理由useEffect自动处理，不需要在这里手动创建
-    }
-    
-    // 清空input
-    e.target.value = '';
-  };
-
-  // 删除图片
-  const removeImage = (index: number) => {
-    // 只需要更新questionImages状态，URL管理由useEffect自动处理
-    setQuestionImages(prev => prev.filter((_, i) => i !== index));
-  };
-
-  // 打开图片查看器
-  const openImageViewer = (index: number) => {
-    setCurrentImageIndex(index);
-    setImageViewerOpen(true);
-  };
-
-  // 优化的文件上传点击处理器
-  const handleFileUploadClick = useCallback(() => {
-    const fileInput = document.querySelector('.file-input') as HTMLInputElement;
-    if (fileInput) {
-      fileInput.click();
-    }
   }, []);
 
   // 处理模板选择请求
@@ -1334,79 +1168,6 @@ function App() {
   // Cmd+S→按视图保存（chat.save / notes.save）, Cmd+R→按视图重试（chat.retry / anki.regenerate）
 
   // 管理题目图片URL的生命周期
-  useEffect(() => {
-    // 清理旧的URLs（避免在第一次渲染时清理不存在的URLs）
-    if (questionImageUrls.length > 0) {
-      questionImageUrls.forEach(url => {
-        try {
-          URL.revokeObjectURL(url);
-        } catch (error) {
-          console.warn('清理URL时出错:', error);
-        }
-      });
-    }
-    
-    // 创建新的URLs
-    const newUrls = questionImages.map(file => {
-      try {
-        return URL.createObjectURL(file);
-      } catch (error) {
-        console.error('创建图片URL失败:', error);
-        return '';
-      }
-    }).filter(url => url !== '');
-    
-    setQuestionImageUrls(newUrls);
-    
-    // 清理函数
-    return () => {
-      newUrls.forEach(url => {
-        try {
-          URL.revokeObjectURL(url);
-        } catch (error) {
-          console.warn('清理URL时出错:', error);
-        }
-      });
-    };
-  }, [questionImages]); // 仅依赖questionImages，避免questionImageUrls导致循环
-
-  // 开始分析（旧路径已物理移除，统一由 UniversalAppChatHost 承担）
-  // 🎯 Phase 6 清理：以下废弃函数已移除
-  // - handleAnalyze: 统一由 UniversalAppChatHost 承担
-  // - handleSendMessage: 统一由 UniversalAppChatHost 承担
-  // - handleSaveToLibrary: 首轮即正式架构下，保存由 UniversalAppChatHost 的自动保存处理
-
-  // 重置分析
-  const handleReset = () => {
-    setAnalysisResult(null);
-    setChatHistory([]);
-    setCurrentMessage('');
-    setStreamingMessageIndex(null);
-    setOcrResult(null);
-    setIsOcrComplete(false);
-    setUserQuestion('');
-    setQuestionImages([]);
-    setThinkingContent(new Map<string, string>());
-    setIsInputAllowed(false);
-    // ★ 分析模式已废弃 - setAnalysisBusinessSessionId(null);
-    // ★ Bridge 回滚已废弃（2026-01 清理）
-    setAnalysisHostKeepAlive(false);
-  };
-
-  // ★ handleSelectMistake 和 handleUpdateMistake 已废弃（2026-01 清理）
-
-  // 删除错题（已废弃，保留空实现兼容）
-  const handleDeleteMistake = (mistakeId: string) => {
-    console.log('[App] Deleting mistake:', mistakeId);
-    // 错题库已废弃，跳转到聊天页面
-    handleViewChange('chat-v2');
-  };
-
-  // ★ 分析模式已废弃（旧错题系统已移除）- 以下代码块已注释
-  // useEffect for irecAnalysisData removed
-  // createAnalysisApiProvider removed
-  // buildIrecContextualContent removed  
-  // createIrecQuestionApiProvider removed
 
   // 渲染侧边栏导航 - 现代化风格
   const renderSidebar = () => (
@@ -1787,30 +1548,6 @@ function App() {
 
               {/* ★ 废弃视图已移除（2026-01 清理）：bridge-to-irec */}
 
-          {/* 图片查看器 - 在内容区域内显示 */}
-          {imageViewerOpen && (
-            <div
-              style={{
-                position: 'absolute',
-                top: pageContainerTop,
-                left: 0,
-                right: 0,
-                bottom: 0,
-                zIndex: 1000,
-              }}
-            >
-              <Suspense fallback={<PageLoadingFallback />}>
-                <LazyImageViewer
-                  images={questionImageUrls}
-                  currentIndex={currentImageIndex}
-                  isOpen={imageViewerOpen}
-                  onClose={() => setImageViewerOpen(false)}
-                  onNext={() => setCurrentImageIndex((prev) => (prev + 1) % questionImageUrls.length)}
-                  onPrev={() => setCurrentImageIndex((prev) => (prev - 1 + questionImageUrls.length) % questionImageUrls.length)}
-                />
-              </Suspense>
-            </div>
-          )}
             </div>
           </main>
         </div>

@@ -284,5 +284,16 @@
     "model_essay_desc": "根据题目要求生成的参考范文，供学习参考",
     "original": "原句",
     "polished": "润色后"
+  },
+  "export": {
+    "grading_details": "### 批改详情",
+    "polish_suggestions": "### 润色建议",
+    "model_essay": "### 参考范文",
+    "score_title": "### 评分: {{total}} / {{max}} ({{grade}})",
+    "table_header": "| 维度 | 得分 | 满分 | 评语 |",
+    "table_separator": "| :--- | :---: | :---: | :--- |",
+    "delete_reason": "删除: ",
+    "original_sentence": "**{{index}}. 原句**：",
+    "polished_sentence": "**润色**："
   }
 }

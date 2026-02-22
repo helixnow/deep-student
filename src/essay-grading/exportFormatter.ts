@@ -1,9 +1,14 @@
+import i18next from 'i18next';
 import {
   parseStreamingContent,
   type StreamingMarker,
   type ParsedScore,
   type PolishItem
 } from './streamingMarkerParser';
+
+function et(key: string, options?: Record<string, unknown>): string {
+  return i18next.t(`essay_grading:export.${key}`, options as any) as string;
+}
 
 /**
  * 将带 XML 标记的批改结果转换为用户友好的 Markdown 格式
@@ -26,20 +31,20 @@ export function formatGradingResultForExport(
   }
 
   // 2. 批注详情部分（将行内标记转换为可读文本）
-  markdown += '### 批改详情\n\n';
+  markdown += et('grading_details') + '\n\n';
   markdown += formatMarkersToMarkdown(parsed.markers);
   markdown += '\n\n';
 
   // 3. 润色部分
   if (parsed.polishItems.length > 0) {
-    markdown += '---\n\n### 润色建议\n\n';
+    markdown += '---\n\n' + et('polish_suggestions') + '\n\n';
     markdown += formatPolishItems(parsed.polishItems);
     markdown += '\n\n';
   }
 
   // 4. 范文部分
   if (parsed.modelEssay) {
-    markdown += '---\n\n### 参考范文\n\n';
+    markdown += '---\n\n' + et('model_essay') + '\n\n';
     markdown += parsed.modelEssay;
     markdown += '\n';
   }
@@ -48,10 +53,10 @@ export function formatGradingResultForExport(
 }
 
 function formatScore(score: ParsedScore): string {
-  let md = `### 评分: ${score.total} / ${score.maxTotal} (${score.grade.toUpperCase()})\n\n`;
+  let md = et('score_title', { total: score.total, max: score.maxTotal, grade: score.grade.toUpperCase() }) + '\n\n';
   
   if (score.dimensions.length > 0) {
-    md += '| 维度 | 得分 | 满分 | 评语 |\n';
+    md += et('table_header') + '\n';
     md += '| :--- | :--- | :--- | :--- |\n';
     score.dimensions.forEach(dim => {
       const comment = dim.comment ? dim.comment.replace(/\n/g, ' ') : '-';
@@ -70,7 +75,7 @@ function formatMarkersToMarkdown(markers: StreamingMarker[]): string {
       
       case 'del':
         // 删除：~~text~~
-        const delReason = marker.reason ? `^删除: ${marker.reason}` : '';
+        const delReason = marker.reason ? `^${et('delete_reason')}${marker.reason}` : '';
         return `~~${marker.content}~~${delReason ? `(${delReason})` : ''}`;
       
       case 'ins':
@@ -109,7 +114,7 @@ function formatMarkersToMarkdown(markers: StreamingMarker[]): string {
 
 function formatPolishItems(items: PolishItem[]): string {
   return items.map((item, index) => {
-    return `**${index + 1}. 原句**：${item.original}\n\n` + 
-           `   **润色**：${item.polished}\n`;
+    return `${et('original_sentence', { index: index + 1 })}${item.original}\n\n` + 
+           `   ${et('polished_sentence')}${item.polished}\n`;
   }).join('\n');
 }
