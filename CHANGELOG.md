@@ -10,6 +10,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.9.16](https://github.com/helixnow/deep-student/compare/v0.9.15...v0.9.16) (2026-02-22)
+
+
+### Features
+
+* **chat-v2:** add disable_tool_whitelist option to bypass skill whitelist restrictions ([830d1eb](https://github.com/helixnow/deep-student/commit/830d1eb815a8e8bd1386064d06aa97a3e6c04d04))
+* 题目集导入断点续导（checkpoint resume） ([6ef1333](https://github.com/helixnow/deep-student/commit/6ef1333e92f6977c6f072223e66ae0a7227a4045))
+
+
+### Bug Fixes
+
+* address verified P0/P1 issues from code audit ([0dca38e](https://github.com/helixnow/deep-student/commit/0dca38e5761c670a4f5d6681f0a50dadb283239a))
+* **chat-v2:** ensure active skills content is always passed to backend for synthetic load_skills injection ([0f791c0](https://github.com/helixnow/deep-student/commit/0f791c074fb7fdaf87c7e39a50747df2531beafc))
+* **mcp:** audit compliance fixes - timeout alignment, connection state tracking, and DRY refactor ([4fbb093](https://github.com/helixnow/deep-student/commit/4fbb093ef85ea0fdd0e19e43bc44d9316dac0147))
+* **mcp:** sanitize tool names for OpenAI API compatibility and improve memory retrieval ranking ([2bf3d9f](https://github.com/helixnow/deep-student/commit/2bf3d9fd34fed8d569dc0b666e7244c5c1e186cb))
+* **web-search:** remove engine/force_engine from schema and add silent fallback for unconfigured engines ([e136ef8](https://github.com/helixnow/deep-student/commit/e136ef8206c9bcc3c933cd0a8c635d70f2cfc407))
+
 ## [0.9.15](https://github.com/helixnow/deep-student/compare/v0.9.14...v0.9.15) (2026-02-21)
 
 
