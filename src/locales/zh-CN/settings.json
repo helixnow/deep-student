@@ -788,6 +788,8 @@
     "model_assignment_description": "为关键功能选择对应的模型配置",
     "chat_title_model_label": "标题/标签生成模型",
     "chat_title_model_hint": "用于生成聊天标题与智能标签提取，建议使用理解能力强且速度快的模型。若不设置，将默认使用对话模型。",
+    "memory_decision_model_label": "记忆决策模型",
+    "memory_decision_model_hint": "用于智能写入记忆时判断去重/更新/追加，建议使用快速轻量的模型。若不设置，将默认使用功能增强模型。",
     "batch_create_success": "成功创建 {{count}} 个API配置",
     "batch_create_failed": "批量创建API配置失败",
     "auto_assign_success": "一键分配完成，模型分配已自动应用",

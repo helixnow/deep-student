@@ -996,21 +996,104 @@ impl BuiltinRetrievalExecutor {
             }
         }
 
-        // ========== 3. 合并、排序、截断 ==========
-        all_sources.sort_by(|a, b| {
+        // ========== 3. 合并、排序、截断（保底记忆槽位） ==========
+        // ★ 修复记忆淹没问题：
+        //   - 问题1：VFS 文本搜索未排除记忆文件夹，同一条记忆可能重复出现
+        //   - 问题2：纯分数排序导致记忆条目被大量知识库内容挤出 top_k
+        //   - 问题3：独立归一化的分数不可直接比较
+        // 方案：分区合并 + 保底槽位 + 跨源去重
+
+        let score_cmp = |a: &SourceInfo, b: &SourceInfo| {
             b.score
                 .unwrap_or(0.0)
                 .partial_cmp(&a.score.unwrap_or(0.0))
                 .unwrap_or(std::cmp::Ordering::Equal)
-        });
-        all_sources.truncate(top_k);
+        };
 
-        // 🔧 批判性检查修复：per-document 去重过滤
+        // 3a. 分区：记忆 vs 知识库/多模态
+        let (mut memory_sources, mut kb_sources): (Vec<_>, Vec<_>) =
+            all_sources.into_iter().partition(|s| {
+                s.metadata
+                    .as_ref()
+                    .and_then(|m| m.get("sourceType"))
+                    .and_then(|v| v.as_str())
+                    == Some("memory")
+            });
+
+        // 3b. 跨源去重：从知识库结果中移除同一笔记的 VFS 文本搜索副本
+        //     （记忆笔记同时被索引在 VFS 中，Step 1 可能返回同一条记忆作为 text_search 结果）
+        if !memory_sources.is_empty() {
+            // 知识库中 resource_type="note" 且 resourceId 对应的 note 已在记忆结果中 → 去重
+            // 注意：VFS text_search 结果的 resourceId 是 VFS resource_id，不是 note_id，
+            // 但 resource_type="note" 的结果通常表示同类数据，通过标题匹配做最佳努力去重
+            let memory_titles: std::collections::HashSet<String> = memory_sources
+                .iter()
+                .filter_map(|s| s.title.clone())
+                .collect();
+            let before_dedup = kb_sources.len();
+            kb_sources.retain(|s| {
+                let is_note = s
+                    .metadata
+                    .as_ref()
+                    .and_then(|m| m.get("resourceType"))
+                    .and_then(|v| v.as_str())
+                    == Some("note");
+                if is_note {
+                    // 标题匹配去重：如果知识库中的 note 标题与记忆标题一致，认为是重复
+                    !s.title.as_ref().map_or(false, |t| memory_titles.contains(t))
+                } else {
+                    true
+                }
+            });
+            let deduped = before_dedup - kb_sources.len();
+            if deduped > 0 {
+                log::debug!(
+                    "[BuiltinRetrievalExecutor] Deduped {} memory notes from KB results",
+                    deduped
+                );
+            }
+        }
+
+        // 3c. 各自按分数排序
+        memory_sources.sort_by(&score_cmp);
+        kb_sources.sort_by(&score_cmp);
+
+        // 3d. 保底记忆槽位：保证至少 min(记忆数, 3) 条记忆出现在最终结果中
+        //     如果知识库结果不足以填满剩余槽位，回补给记忆
+        const MEMORY_RESERVED_SLOTS: usize = 3;
+        let memory_reserved = memory_sources.len().min(MEMORY_RESERVED_SLOTS).min(top_k);
+        let kb_slots = top_k.saturating_sub(memory_reserved);
+        let kb_actual = kb_sources.len().min(kb_slots);
+        // 回补：KB 未填满的槽位还给记忆
+        let memory_actual = (memory_reserved + kb_slots.saturating_sub(kb_actual))
+            .min(memory_sources.len())
+            .min(top_k);
+
+        let mut final_sources = Vec::with_capacity(top_k);
+        final_sources.extend(memory_sources.into_iter().take(memory_actual));
+        final_sources.extend(kb_sources.into_iter().take(kb_slots));
+
+        // 最终按分数排序（保持一致的输出顺序）
+        final_sources.sort_by(&score_cmp);
+        let all_sources = final_sources;
+
+        // 🔧 per-document 去重过滤
+        // ★ 记忆结果无 resourceId（只有 noteId），跳过 per_resource 限制
+        //   记忆已在 MemoryService::search 中做了 note_id 去重
         let all_sources = if max_per_resource > 0 {
             let mut resource_count: HashMap<String, usize> = HashMap::new();
             all_sources
                 .into_iter()
                 .filter(|s| {
+                    let source_type = s
+                        .metadata
+                        .as_ref()
+                        .and_then(|m| m.get("sourceType"))
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("");
+                    if source_type == "memory" {
+                        return true; // 记忆结果不参与 per_resource 去重
+                    }
                     let resource_id = s
                         .metadata
                         .as_ref()

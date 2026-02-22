@@ -219,8 +219,8 @@ export const ModelsTab: React.FC<ModelsTabProps> = ({
               setConfig={setConfig}
             />
             <ModelAssignmentRow
-              title={t('settings:api_config.memory_decision_model_label', '记忆决策模型')}
-              description={t('settings:api_config.memory_decision_model_hint', '用于智能写入记忆时判断去重/更新/追加，默认使用功能增强模型')}
+              title={t('settings:api_config.memory_decision_model_label')}
+              description={t('settings:api_config.memory_decision_model_hint')}
               value={config.memory_decision_model_config_id}
               field="memory_decision_model_config_id"
               models={toUnifiedModelInfo(getAllEnabledApis(config.memory_decision_model_config_id))}

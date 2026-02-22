@@ -239,6 +239,15 @@ fn filter_retrieval_results(
     filtered
 }
 
+/// Sanitize tool name for LLM API compatibility.
+/// OpenAI requires function names to match `^[a-zA-Z0-9_-]+$`.
+/// Replaces any non-matching character (e.g. `:`, `.`, `/`) with `_`.
+fn sanitize_tool_name_for_api(name: &str) -> String {
+    name.chars()
+        .map(|c| if c.is_ascii_alphanumeric() || c == '_' || c == '-' { c } else { '_' })
+        .collect()
+}
+
 fn approval_scope_setting_key(tool_name: &str, arguments: &Value) -> String {
     let serialized = serde_json::to_string(arguments).unwrap_or_else(|_| "null".to_string());
     let mut hasher = Sha256::new();
@@ -3364,6 +3373,10 @@ impl ChatV2Pipeline {
         // - 后端直接使用前端传递的 Schema，无需自己连接 MCP 服务器
         // - 🔧 P1-49：后端应用 whitelist/blacklist 策略过滤，确保配置生效
 
+        // 🔧 工具名称映射：sanitized API name → original name（含 `:` 等特殊字符）
+        // 用于 LLM 返回工具调用时反向映射回原始名称
+        let mut mcp_tool_name_mapping: HashMap<String, String> = HashMap::new();
+
         // 🔍 调试日志：检查 mcp_tool_schemas 在 pipeline 中的状态
         let mcp_schema_count = ctx
             .options
@@ -3447,15 +3460,21 @@ impl ChatV2Pipeline {
                         // 🔧 P0-19 修复：builtin- 前缀的工具保持原名，MCP 工具添加 mcp_ 前缀
                         // 原因：executor 检查 tool_name.starts_with("builtin-")，
                         //       如果变成 "mcp_builtin-..." 则无法匹配
-                        let tool_name = if tool.name.starts_with(BUILTIN_NAMESPACE) {
+                        let raw_tool_name = if tool.name.starts_with(BUILTIN_NAMESPACE) {
                             tool.name.clone()
                         } else {
                             format!("mcp_{}", tool.name)
                         };
+                        // 🔧 修复：OpenAI API 要求 function name 匹配 ^[a-zA-Z0-9_-]+$
+                        // MCP 工具名可能含 `:` 等特殊字符（如 namespace 分隔符）
+                        let api_tool_name = sanitize_tool_name_for_api(&raw_tool_name);
+                        if api_tool_name != raw_tool_name {
+                            mcp_tool_name_mapping.insert(api_tool_name.clone(), raw_tool_name);
+                        }
                         json!({
                             "type": "function",
                             "function": {
-                                "name": tool_name,
+                                "name": api_tool_name,
                                 "description": tool.description.clone().unwrap_or_default(),
                                 "parameters": tool.input_schema.clone().unwrap_or(json!({}))
                             }
@@ -3779,6 +3798,7 @@ impl ChatV2Pipeline {
                     cancel_token,
                     rag_top_k,
                     rag_enable_reranking,
+                    &mcp_tool_name_mapping,
                 )
                 .await?;
 
@@ -4181,8 +4201,29 @@ impl ChatV2Pipeline {
         cancellation_token: Option<&CancellationToken>,
         rag_top_k: Option<u32>,
         rag_enable_reranking: Option<bool>,
+        tool_name_mapping: &HashMap<String, String>,
     ) -> ChatV2Result<Vec<ToolResultInfo>> {
-        let ordered_tool_calls = self.ordered_tool_calls_for_execution(tool_calls);
+        // 🔧 反向映射：LLM 返回的 sanitized 工具名 → 原始名（含 `:` 等特殊字符）
+        let tool_calls: Vec<ToolCall> = tool_calls
+            .iter()
+            .map(|tc| {
+                if let Some(original_name) = tool_name_mapping.get(&tc.name) {
+                    log::debug!(
+                        "[ChatV2::pipeline] Reverse-mapping tool name: {} → {}",
+                        tc.name,
+                        original_name
+                    );
+                    ToolCall {
+                        id: tc.id.clone(),
+                        name: original_name.clone(),
+                        arguments: tc.arguments.clone(),
+                    }
+                } else {
+                    tc.clone()
+                }
+            })
+            .collect();
+        let ordered_tool_calls = self.ordered_tool_calls_for_execution(&tool_calls);
         log::debug!(
             "[ChatV2::pipeline] Executing {} tool calls sequentially",
             ordered_tool_calls.len()
@@ -4510,7 +4551,12 @@ impl ChatV2Pipeline {
         let is_load_skills_tool =
             super::tools::SkillsExecutor::is_load_skills_tool(&tool_call.name);
 
-        if !is_load_skills_tool {
+        // 🔧 外部 MCP 工具（mcp_ 前缀、非 builtin-）不受技能白名单限制
+        // 它们由用户在 MCP 设置中手动启用，应始终可调用
+        let is_external_mcp_tool = tool_call.name.starts_with("mcp_")
+            && !tool_call.name.starts_with("mcp_load_skills");
+
+        if !is_load_skills_tool && !is_external_mcp_tool {
             match skill_allowed_tools {
                 Some(allowed_tools) if allowed_tools.is_empty() => {
                     log::warn!(
@@ -7280,15 +7326,16 @@ impl ChatV2Pipeline {
                 let mcp_tool_values: Vec<Value> = tool_schemas
                     .iter()
                     .map(|tool| {
-                        let tool_name = if tool.name.starts_with(BUILTIN_NAMESPACE) {
+                        let raw_tool_name = if tool.name.starts_with(BUILTIN_NAMESPACE) {
                             tool.name.clone()
                         } else {
                             format!("mcp_{}", tool.name)
                         };
+                        let api_tool_name = sanitize_tool_name_for_api(&raw_tool_name);
                         json!({
                             "type": "function",
                             "function": {
-                                "name": tool_name,
+                                "name": api_tool_name,
                                 "description": tool.description.clone().unwrap_or_default(),
                                 "parameters": tool.input_schema.clone().unwrap_or(json!({}))
                             }
@@ -7454,20 +7501,27 @@ impl ChatV2Pipeline {
         let vq = options.vision_quality.as_deref().unwrap_or("auto");
         llm_context.insert("vision_quality".into(), Value::String(vq.to_string()));
 
+        // 🔧 工具名称映射：sanitized API name → original name
+        let mut variant_tool_name_mapping: HashMap<String, String> = HashMap::new();
+
         if !disable_tools {
             if let Some(ref tool_schemas) = options.mcp_tool_schemas {
                 let mcp_tool_values: Vec<Value> = tool_schemas
                     .iter()
                     .map(|tool| {
-                        let tool_name = if tool.name.starts_with(BUILTIN_NAMESPACE) {
+                        let raw_tool_name = if tool.name.starts_with(BUILTIN_NAMESPACE) {
                             tool.name.clone()
                         } else {
                             format!("mcp_{}", tool.name)
                         };
+                        let api_tool_name = sanitize_tool_name_for_api(&raw_tool_name);
+                        if api_tool_name != raw_tool_name {
+                            variant_tool_name_mapping.insert(api_tool_name.clone(), raw_tool_name);
+                        }
                         json!({
                             "type": "function",
                             "function": {
-                                "name": tool_name,
+                                "name": api_tool_name,
                                 "description": tool.description.clone().unwrap_or_default(),
                                 "parameters": tool.input_schema.clone().unwrap_or(json!({}))
                             }
@@ -7619,6 +7673,7 @@ impl ChatV2Pipeline {
                     cancel_token,
                     rag_top_k,
                     rag_enable_reranking,
+                    &variant_tool_name_mapping,
                 )
                 .await?;
 

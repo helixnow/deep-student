@@ -499,11 +499,8 @@ class McpServiceImpl {
             try {
               return await (tauriFetch as typeof fetch)(input, init);
             } catch (error: unknown) {
-              if (isTauriStreamChannelCompatError(error)) {
-                debugLog.warn('[MCP] Tauri HTTP streamChannel compatibility issue detected, falling back to browser fetch');
-                return await fetch(input, init);
-              }
-              throw error;
+              debugLog.warn('[MCP] Tauri HTTP fetch failed, falling back to browser fetch:', getErrorMessage(error));
+              return await fetch(input, init);
             }
           }) as typeof fetch;
         } catch {
@@ -1736,7 +1733,7 @@ function toServerConfigs(list: any[]): McpConfig['servers'] {
       continue;
     }
 
-    if (transportType === 'streamable-http' || transportType === 'streamable_http') {
+    if (transportType === 'streamable-http' || transportType === 'streamable_http' || transportType === 'streamablehttp' || transportType === 'streamableHttp') {
       const httpUrl = resolveUrl(item?.fetch?.url, item?.endpoint, item?.url, item?.mcpServers?.fetch?.url);
       if (httpUrl) {
         servers.push({
