@@ -10,6 +10,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.9.17](https://github.com/helixnow/deep-student/compare/v0.9.16...v0.9.17) (2026-02-23)
+
+
+### Features
+
+* enhance SiliconFlowSection with new OCR model and improve backup functionality ([f94fef3](https://github.com/helixnow/deep-student/commit/f94fef323f4fdf536bdc4bc02a7628b839a7d97b))
+
+
+### Bug Fixes
+
+* enhance error handling and performance optimizations in Chat V2 ([bbaf9ec](https://github.com/helixnow/deep-student/commit/bbaf9ec19b92ef8ce5bc9ee240b6d39b9fd26392))
+* gate desktop_dir/picture_dir with #[cfg(desktop)] for Android build ([512768f](https://github.com/helixnow/deep-student/commit/512768f1e1fd7b3d0e9bbf866a471f71ad438b50))
+* **gemini:** add thought_signature support for Gemini 3 tool calling and enforce role alternation ([aa82ff0](https://github.com/helixnow/deep-student/commit/aa82ff0d7fdefa14d54f12b7565db3b0d7069a10))
+* **gemini:** force v1beta for Gemini 3 models and convert unprotected functionCalls to text ([cd35419](https://github.com/helixnow/deep-student/commit/cd35419616fb2b92996438ae08e302f0ef78ece1))
+* **memory:** enforce atomic fact storage and prevent knowledge/content leakage ([dab0c78](https://github.com/helixnow/deep-student/commit/dab0c78383d79b1f4fe3951b6b4b63e54423c48d))
+
 ## [0.9.16](https://github.com/helixnow/deep-student/compare/v0.9.15...v0.9.16) (2026-02-22)
 
 
