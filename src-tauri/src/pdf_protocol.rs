@@ -11,17 +11,22 @@ use std::path::PathBuf;
 pub fn resolve_allowed_dirs(app: &tauri::AppHandle) -> Vec<PathBuf> {
     use tauri::Manager;
 
-    let resolvers: Vec<Box<dyn Fn() -> Result<PathBuf, tauri::Error>>> = vec![
+    let mut resolvers: Vec<Box<dyn Fn() -> Result<PathBuf, tauri::Error>>> = vec![
         Box::new(|| app.path().app_data_dir()),
         Box::new(|| app.path().app_local_data_dir()),
         Box::new(|| app.path().app_cache_dir()),
         Box::new(|| app.path().document_dir()),
         Box::new(|| app.path().download_dir()),
-        Box::new(|| app.path().desktop_dir()),
-        Box::new(|| app.path().picture_dir()),
         Box::new(|| app.path().temp_dir()),
         Box::new(|| app.path().resource_dir()),
     ];
+
+    // desktop_dir / picture_dir 仅桌面端可用
+    #[cfg(desktop)]
+    {
+        resolvers.push(Box::new(|| app.path().desktop_dir()));
+        resolvers.push(Box::new(|| app.path().picture_dir()));
+    }
 
     resolvers
         .into_iter()
