@@ -25,6 +25,16 @@ export const vfsMemorySkill: SkillDefinition = {
 
 你拥有持久记忆能力，可以跨对话记住用户信息。**主动使用记忆**是提供优质个性化服务的关键。
 
+## 记忆 = 原子事实（最重要的原则）
+
+每条记忆是关于用户的**一个简短陈述句**（≤ 50 字），不是一篇笔记。
+
+✅ 正确："高三理科生" / "数学是弱项" / "偏好表格形式总结" / "高考在2026年6月7日"
+❌ 错误：写一篇知识点总结 / 罗列错题分析 / 总结章节内容 / 一条记忆塞多个事实
+
+**绝对禁止**存入记忆：学科知识、定理公式、题目内容、解题过程、文档摘要。
+判断标准：这条信息换一个用户还成立吗？如果是，就不是记忆。
+
 ## 何时应主动使用记忆
 
 ### 主动读取（每次对话都应考虑）
@@ -32,12 +42,13 @@ export const vfsMemorySkill: SkillDefinition = {
 - 需要做个性化决策时（推荐、规划、格式选择），先查看用户偏好
 - 用户提到"之前/上次/老规矩"时，检索历史记忆
 
-### 主动写入（发现有价值信息时立即记录）
+### 主动写入（发现有价值的用户事实时立即记录）
 - 用户透露身份背景（年级、学校、专业、备考目标）
 - 用户表达稳定偏好（讲解风格、输出格式、语言偏好）
 - 用户提到时间约束（考试日期、截止日期）
 - 用户纠正你的理解（更新旧记忆）
 - 用户明确要求"记住"某些信息
+- 多个事实 → 分多次写入，每次只写一条
 
 ## 工具选择指南
 
@@ -59,9 +70,9 @@ export const vfsMemorySkill: SkillDefinition = {
 记忆按文件夹分类存储：
 - **偏好**: 用户的个人偏好和习惯（格式偏好、风格偏好、负面偏好等）
 - **偏好/个人背景**: 身份、年级、学校、专业方向
-- **知识**: 用户学到的知识和概念
 - **经历**: 用户的重要经历、计划和进度
 - **经历/时间节点**: 考试日期、截止日期等时间约束
+- **经历/学科状态**: 强项/弱项、成绩记录、学习进度
 
 ## 使用建议
 
@@ -69,7 +80,7 @@ export const vfsMemorySkill: SkillDefinition = {
 2. 优先使用 memory_write_smart，它能自动处理新增/更新逻辑
 3. 按 note_id 更新比按标题更新更精确
 4. 写入后简短告知用户即可，如"（已记住你的 XX 偏好）"
-5. 记忆内容应简洁、结构化，包含关键词标签便于未来检索
+5. **每条记忆 ≤ 50 字，一条记忆 = 一个事实**
 `,
   embeddedTools: [
     {
@@ -85,14 +96,14 @@ export const vfsMemorySkill: SkillDefinition = {
     },
     {
       name: 'builtin-memory_write',
-      description: '创建或更新用户记忆。当用户透露偏好、背景、目标等有长期价值的信息时应主动调用。不需要每次都征求用户同意——身份背景、稳定偏好、时间约束等可直接写入。',
+      description: '创建或更新用户记忆。记忆只存储关于用户的原子事实（≤50字的短句），禁止存入学科知识/题目分析/文档摘要。多个事实应分多次调用。',
       inputSchema: {
         type: 'object',
         properties: {
           note_id: { type: 'string', description: '可选：指定 note_id 则按 ID 更新/追加该记忆' },
-          folder: { type: 'string', description: '记忆分类文件夹路径，如 "偏好"、"偏好/个人背景"、"知识"、"经历"、"经历/时间节点"。留空表示存储在记忆根目录。' },
-          title: { type: 'string', description: '【必填】记忆标题（简洁明确，便于检索）' },
-          content: { type: 'string', description: '【必填】记忆内容（Markdown 格式，简洁结构化，包含关键词标签）' },
+          folder: { type: 'string', description: '记忆分类文件夹路径，如 "偏好"、"偏好/个人背景"、"经历"、"经历/时间节点"、"经历/学科状态"。留空表示存储在记忆根目录。' },
+          title: { type: 'string', description: '【必填】记忆标题（事实的关键词概括，如"数学弱项"、"高考日期"、"格式偏好-表格"）' },
+          content: { type: 'string', description: '【必填】一个关于用户的简短陈述句，≤50字。示例："高三理科生" / "数学是弱项科目" / "偏好表格形式的总结"。禁止写入学科知识、解题过程、知识点总结。' },
           mode: { type: 'string', description: '写入模式：create=新建, update=替换同名记忆, append=追加', enum: ['create', 'update', 'append'] },
         },
         required: ['title', 'content'],
@@ -124,13 +135,13 @@ export const vfsMemorySkill: SkillDefinition = {
     },
     {
       name: 'builtin-memory_write_smart',
-      description: '智能写入记忆（推荐首选）。自动判断是否有重复记忆并决策新增/更新/追加。当你发现用户透露了有价值的偏好、背景或目标信息时，直接用此工具保存。',
+      description: '智能写入记忆（推荐首选）。自动判断是否有重复记忆并决策新增/更新/追加。只存储关于用户的原子事实（≤50字），禁止存入学科知识或文档内容。多个事实分多次调用。',
       inputSchema: {
         type: 'object',
         properties: {
-          folder: { type: 'string', description: '记忆分类文件夹路径，如 "偏好"、"知识"、"经历"。留空表示存储在记忆根目录。' },
-          title: { type: 'string', description: '【必填】记忆标题（简洁明确，便于检索）' },
-          content: { type: 'string', description: '【必填】记忆内容（Markdown 格式，简洁结构化，包含关键词标签）' },
+          folder: { type: 'string', description: '记忆分类文件夹路径，如 "偏好"、"经历"、"经历/学科状态"。留空表示存储在记忆根目录。' },
+          title: { type: 'string', description: '【必填】记忆标题（事实的关键词概括，如"数学弱项"、"高考日期"）' },
+          content: { type: 'string', description: '【必填】一个关于用户的简短陈述句，≤50字。示例："高考在2026年6月7日" / "模考总分580分（2026-02）"。禁止写入知识点、公式、题目分析。' },
         },
         required: ['title', 'content'],
       },

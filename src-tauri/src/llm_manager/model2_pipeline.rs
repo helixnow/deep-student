@@ -1625,6 +1625,54 @@ impl LLMManager {
             }
         }
 
+        // 🔧 P0修复：Gemini 原生 SSE 不发送 `data: [DONE]`，流直接结束。
+        // 如果 pending_tool_calls 中仍有未处理的工具调用，在此执行与 Done 处理器相同的 finalize 逻辑。
+        if !pending_tool_calls.is_empty() {
+            info!(
+                "[llm_manager] Finalizing {} pending tool calls after stream end (no Done event received)",
+                pending_tool_calls.len()
+            );
+            for (_index, (id, name, accumulated_args)) in pending_tool_calls.iter() {
+                let complete_tool_call = serde_json::json!({
+                    "id": id,
+                    "type": "function",
+                    "function": {
+                        "name": name,
+                        "arguments": accumulated_args
+                    }
+                });
+
+                match Self::convert_openai_tool_call(&complete_tool_call) {
+                    Ok(tc) => {
+                        captured_tool_calls.push(tc);
+                    }
+                    Err(e) => {
+                        warn!("[llm_manager] 工具调用解析失败(fallback): {}, args_len={}", e, accumulated_args.len());
+                        captured_tool_calls.push(crate::models::ToolCall {
+                            id: id.clone(),
+                            tool_name: name.clone(),
+                            args_json: json!({
+                                "_truncation_error": true,
+                                "_error_message": format!(
+                                    "工具调用参数 JSON 被截断（已生成 {} 字符但未完成）。原因：模型输出 token 达到上限。",
+                                    accumulated_args.len()
+                                ),
+                                "_args_len": accumulated_args.len(),
+                            }),
+                        });
+                    }
+                }
+            }
+            if !captured_tool_calls.is_empty() {
+                let names: Vec<_> = captured_tool_calls
+                    .iter()
+                    .map(|tc| tc.tool_name.as_str())
+                    .collect();
+                info!("[llm_manager] Fallback tool call finalize completed: {:?}", names);
+            }
+            pending_tool_calls.clear();
+        }
+
         // Clear cancel channel for this stream
         self.clear_cancel_channel(stream_event).await;
 

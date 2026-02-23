@@ -204,6 +204,13 @@ const preprocessContent = (content: string): string => {
   processedContent = processedContent.replace(/(?<!\\)\\\((.+?)(?<!\\)\\\)/g, (_m, math) => `$${math}$`);
   processedContent = processedContent.replace(/(?<!\\)\\\[([\s\S]+?)(?<!\\)\\\]/g, (_m, math) => `$$${math}$$`);
 
+  // 保护已有的 $$...$$ 和 $...$ 数学块，避免兜底正则误改块内圆括号
+  const mathBlockPlaceholders: string[] = [];
+  processedContent = processedContent.replace(/\$\$[\s\S]+?\$\$|\$[^$\n]+?\$/g, (match) => {
+    mathBlockPlaceholders.push(match);
+    return `\x00MB${mathBlockPlaceholders.length - 1}\x00`;
+  });
+
   // 兜底：检测普通圆括号包裹的裸 LaTeX 公式，如 (\lambda = \frac{h}{p})，
   // 转换为 $\lambda = \frac{h}{p}$。仅在内容含已知数学命令或上下标时触发。
   const BARE_LATEX_MATH_RE = /\\(?:frac|sqrt|sum|int|prod|lim|lambda|gamma|alpha|beta|theta|pi|sigma|omega|delta|epsilon|varepsilon|mu|nu|rho|tau|phi|varphi|psi|chi|eta|zeta|kappa|xi|infty|partial|nabla|cdot|times|approx|equiv|vec|hat|bar|tilde|overline|mathrm|mathbb|text|Gamma|Delta|Theta|Lambda|Sigma|Phi|Psi|Omega|hbar|ell|[lg]eq?|neq?|pm|mp|div|sim|propto|binom)\b/;
@@ -216,6 +223,9 @@ const preprocessContent = (content: string): string => {
       return `$${inner}$`;
     },
   );
+
+  // 还原数学块占位符
+  processedContent = processedContent.replace(/\x00MB(\d+)\x00/g, (_m, idx) => mathBlockPlaceholders[Number(idx)]);
 
   processedContent = processedContent.replace(/\x00CB(\d+)\x00/g, (_m, idx) => codeBlockPlaceholders[Number(idx)]);
 
