@@ -15,6 +15,7 @@
 export type ToolCategory =
   | 'context_bound' // 上下文绑定工具（如 Canvas note_*, Card card_*）
   | 'mcp' // MCP 外部工具
+  | 'agent' // Agent 控制工具（如 attempt_completion, todo_*）
   | 'custom'; // 自定义工具（未来扩展）
 
 // ============================================================================
@@ -48,6 +49,9 @@ export interface ToolDefinition {
 
 /**
  * OpenAI Function Calling Schema
+ *
+ * @deprecated 使用 skills/types.ts 中的 ToolSchema 替代。
+ * 此接口保留以兼容旧代码，新代码应使用 FunctionCallingSchema。
  */
 export interface ToolSchema {
   type: 'function';
@@ -61,6 +65,11 @@ export interface ToolSchema {
     };
   };
 }
+
+/**
+ * OpenAI Function Calling Schema（显式命名，避免与 skills/types.ts 的 ToolSchema 混淆）
+ */
+export type FunctionCallingSchema = ToolSchema;
 
 /**
  * 工具参数 Schema

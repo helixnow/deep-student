@@ -37,7 +37,7 @@ interface BackendWebSearchResult {
  * 3. 显示搜索结果列表
  * 4. 暗色/亮色主题支持
  */
-const WebSearchBlock: React.FC<BlockComponentProps> = ({ block, isStreaming }) => {
+const WebSearchBlock: React.FC<BlockComponentProps> = React.memo(({ block, isStreaming }) => {
   const { t } = useTranslation('chatV2');
 
   // 解析后端数据并转换为前端格式
@@ -189,7 +189,7 @@ const WebSearchBlock: React.FC<BlockComponentProps> = ({ block, isStreaming }) =
       </div>
     </div>
   );
-};
+});
 
 // ============================================================================
 // 自动注册

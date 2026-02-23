@@ -25,7 +25,7 @@ import { StreamingMarkdownRenderer } from '../../components/renderers';
  * 2. 流式渲染支持
  * 3. 暗色/亮色主题支持
  */
-const ThinkingBlock: React.FC<BlockComponentProps> = ({ block, isStreaming }) => {
+const ThinkingBlock: React.FC<BlockComponentProps> = React.memo(({ block, isStreaming }) => {
   const { t } = useTranslation('chatV2');
   const [isExpanded, setIsExpanded] = useState(false);
 
@@ -88,7 +88,7 @@ const ThinkingBlock: React.FC<BlockComponentProps> = ({ block, isStreaming }) =>
       )}
     </div>
   );
-};
+});
 
 // ============================================================================
 // 自动注册

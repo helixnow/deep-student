@@ -24,7 +24,7 @@ import { blockRegistry, type BlockComponentProps } from '../../registry';
  * 3. 显示块状态
  * 4. 流式指示器
  */
-const GenericBlock: React.FC<BlockComponentProps> = ({ block, isStreaming }) => {
+const GenericBlock: React.FC<BlockComponentProps> = React.memo(({ block, isStreaming }) => {
   const { t } = useTranslation('chatV2');
 
   return (
@@ -98,7 +98,7 @@ const GenericBlock: React.FC<BlockComponentProps> = ({ block, isStreaming }) => 
       )}
     </div>
   );
-};
+});
 
 // ============================================================================
 // 自动注册

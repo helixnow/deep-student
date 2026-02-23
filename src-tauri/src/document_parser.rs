@@ -662,6 +662,158 @@ impl DocumentParser {
         Ok(self.extract_docx_text(&docx))
     }
 
+    /// 从 DOCX 字节流提取文本 + 嵌入图片
+    ///
+    /// 在文本中图片出现位置插入 `<<IMG:N>>` 标记（N 为从 0 开始的图片索引），
+    /// 同时返回所有提取的图片原始字节数据。
+    ///
+    /// 返回 `(text_with_markers, images_bytes)` — images_bytes[N] 对应 `<<IMG:N>>`。
+    pub fn extract_docx_with_images(&self, bytes: &[u8]) -> Result<(String, Vec<Vec<u8>>), ParsingError> {
+        self.check_office_encryption(bytes, "document.docx")?;
+        self.check_zip_bomb(bytes, "document.docx")?;
+
+        let docx = docx_rs::read_docx(bytes)
+            .map_err(|e| ParsingError::DocxParsingError(e.to_string()))?;
+
+        let mut text_content = String::with_capacity(8192);
+        let mut images: Vec<Vec<u8>> = Vec::new();
+
+        for child in &docx.document.children {
+            match child {
+                docx_rs::DocumentChild::Paragraph(para) => {
+                    let line = Self::extract_paragraph_text_with_images(para, &mut images);
+                    if !line.trim().is_empty() {
+                        text_content.push_str(&line);
+                        text_content.push('\n');
+                    }
+                }
+                docx_rs::DocumentChild::Table(table) => {
+                    Self::extract_table_text_with_images(table, &mut text_content, &mut images);
+                    text_content.push('\n');
+                }
+                docx_rs::DocumentChild::TableOfContents(toc) => {
+                    for item in &toc.items {
+                        if !item.text.is_empty() {
+                            text_content.push_str(&format!("{}\n", item.text));
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        Ok((text_content, images))
+    }
+
+    /// 从段落中提取文本 + 图片标记
+    fn extract_paragraph_text_with_images(
+        para: &docx_rs::Paragraph,
+        images: &mut Vec<Vec<u8>>,
+    ) -> String {
+        let mut line = String::new();
+        for child in &para.children {
+            match child {
+                docx_rs::ParagraphChild::Run(run) => {
+                    Self::extract_run_text_with_images(run, &mut line, images);
+                }
+                docx_rs::ParagraphChild::Hyperlink(hyperlink) => {
+                    for run in &hyperlink.children {
+                        if let docx_rs::ParagraphChild::Run(r) = run {
+                            Self::extract_run_text_with_images(r, &mut line, images);
+                        }
+                    }
+                }
+                docx_rs::ParagraphChild::Insert(ins) => {
+                    for ic in &ins.children {
+                        if let docx_rs::InsertChild::Run(r) = ic {
+                            Self::extract_run_text_with_images(r, &mut line, images);
+                        }
+                    }
+                }
+                docx_rs::ParagraphChild::Delete(del) => {
+                    for dc in &del.children {
+                        if let docx_rs::DeleteChild::Run(r) = dc {
+                            Self::extract_run_text_with_images(r, &mut line, images);
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        line
+    }
+
+    /// 从 Run 中提取文本 + 图片标记
+    fn extract_run_text_with_images(
+        run: &docx_rs::Run,
+        out: &mut String,
+        images: &mut Vec<Vec<u8>>,
+    ) {
+        for rc in &run.children {
+            match rc {
+                docx_rs::RunChild::Text(t) => {
+                    out.push_str(&t.text);
+                }
+                docx_rs::RunChild::DeleteText(dt) => {
+                    if let Ok(v) = serde_json::to_value(dt) {
+                        if let Some(t) = v.get("text").and_then(|t| t.as_str()) {
+                            out.push_str(t);
+                        }
+                    }
+                }
+                docx_rs::RunChild::Tab(_) => {
+                    out.push('\t');
+                }
+                docx_rs::RunChild::Break(_) => {
+                    out.push('\n');
+                }
+                docx_rs::RunChild::Drawing(drawing) => {
+                    if let Some(docx_rs::DrawingData::Pic(pic)) = &drawing.data {
+                        if !pic.image.is_empty() {
+                            let idx = images.len();
+                            images.push(pic.image.clone());
+                            out.push_str(&format!("<<IMG:{}>>", idx));
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    /// 从表格中提取文本 + 图片标记
+    fn extract_table_text_with_images(
+        table: &docx_rs::Table,
+        out: &mut String,
+        images: &mut Vec<Vec<u8>>,
+    ) {
+        for tc in &table.rows {
+            if let docx_rs::TableChild::TableRow(row) = tc {
+                let mut cells: Vec<String> = Vec::new();
+                for rc in &row.cells {
+                    if let docx_rs::TableRowChild::TableCell(cell) = rc {
+                        let mut cell_text = String::new();
+                        for cc in &cell.children {
+                            if let docx_rs::TableCellContent::Paragraph(para) = cc {
+                                let t = Self::extract_paragraph_text_with_images(para, images);
+                                if !t.trim().is_empty() {
+                                    if !cell_text.is_empty() {
+                                        cell_text.push(' ');
+                                    }
+                                    cell_text.push_str(t.trim());
+                                }
+                            }
+                        }
+                        cells.push(cell_text);
+                    }
+                }
+                if cells.iter().any(|c| !c.is_empty()) {
+                    out.push_str(&format!("| {} |\n", cells.join(" | ")));
+                }
+            }
+        }
+    }
+
     /// 从DOCX文档对象提取文本内容（增强版：支持表格/超链接/标题/列表）
     fn extract_docx_text(&self, docx: &docx_rs::Docx) -> String {
         let mut text_content = String::with_capacity(8192);

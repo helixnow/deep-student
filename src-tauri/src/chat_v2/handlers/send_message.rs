@@ -433,9 +433,12 @@ pub async fn chat_v2_cancel_stream(
     );
 
     if chat_v2_state.cancel_stream(&session_id) {
-        // 发射取消事件
-        let emitter = ChatV2EventEmitter::new(window, session_id);
-        emitter.emit_stream_cancelled(&message_id);
+        // pipeline 的 Cancelled 分支会统一发射 stream_cancelled，此处不再重复发射
+        log::info!(
+            "[ChatV2::handlers] Stream cancellation requested: session={}, message={}",
+            session_id,
+            message_id
+        );
         Ok(())
     } else {
         Err(ChatV2Error::Other("No active stream to cancel".to_string()).into())
@@ -609,7 +612,7 @@ pub async fn chat_v2_retry_message(
             }
         }
 
-        conn.execute("BEGIN TRANSACTION", []).map_err(|e| {
+        conn.execute("BEGIN IMMEDIATE", []).map_err(|e| {
             log::error!(
                 "[ChatV2::handlers] Failed to begin transaction for retry: {}",
                 e
@@ -1006,7 +1009,7 @@ pub async fn chat_v2_edit_and_resend(
         }
 
         // 使用事务确保原子性
-        conn.execute("BEGIN TRANSACTION", []).map_err(|e| {
+        conn.execute("BEGIN IMMEDIATE", []).map_err(|e| {
             log::error!("[ChatV2::handlers] Failed to begin transaction: {}", e);
             chat_v2_state.remove_stream(&session_id);
             e.to_string()
@@ -1437,15 +1440,7 @@ pub async fn chat_v2_continue_message(
         variant_id
     );
 
-    // 1. 检查是否有活跃流
-    if chat_v2_state.has_active_stream(&session_id) {
-        return Err(ChatV2Error::Other(
-            "Session has an active stream. Please wait for completion or cancel first.".to_string(),
-        )
-        .into());
-    }
-
-    // 2. 加载持久化的 TodoList
+    // 加载持久化的 TodoList (活跃流检查由 try_register_stream 原子完成)
     let todo_info = load_persisted_todo_list(&db, &session_id)
         .map_err(|e| format!("Failed to load TodoList: {}", e))?;
 

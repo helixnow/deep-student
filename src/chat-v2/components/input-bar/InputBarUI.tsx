@@ -1795,6 +1795,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
             <textarea
               data-testid="input-bar-v2-textarea"
               ref={textareaRef}
+              aria-label={placeholder || t('analysis:input_bar.placeholder')}
               value={inputValue}
               onChange={(e) => {
                 onInputChange(e.target.value);

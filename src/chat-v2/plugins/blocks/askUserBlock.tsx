@@ -75,7 +75,7 @@ const TIMEOUT_SECONDS = 30;
 // 组件实现
 // ============================================================================
 
-const AskUserBlockComponent: React.FC<BlockComponentProps> = ({ block }) => {
+const AskUserBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block }) => {
   const { t } = useTranslation('chatV2');
   const [remainingSeconds, setRemainingSeconds] = useState(TIMEOUT_SECONDS);
   const [hasResponded, setHasResponded] = useState(false);
@@ -316,7 +316,7 @@ const AskUserBlockComponent: React.FC<BlockComponentProps> = ({ block }) => {
       </div>
     </div>
   );
-};
+});
 
 // ============================================================================
 // 注册块类型

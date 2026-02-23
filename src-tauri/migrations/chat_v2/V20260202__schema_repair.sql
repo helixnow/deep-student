@@ -12,21 +12,22 @@
 -- @skip-check: fk_orphan_cleanup
 -- ============================================================================
 
--- 确保 sleep_block 表存在
+-- 确保 sleep_block 表存在（与 V20260130__init.sql 保持一致）
 CREATE TABLE IF NOT EXISTS sleep_block (
     id TEXT PRIMARY KEY,
     workspace_id TEXT NOT NULL,
     coordinator_session_id TEXT NOT NULL,
     awaiting_agents TEXT NOT NULL DEFAULT '[]',
-    condition_description TEXT,
-    timeout_seconds INTEGER,
+    wake_condition TEXT NOT NULL DEFAULT '{"type":"result_message"}',
+    status TEXT NOT NULL DEFAULT 'sleeping',
+    timeout_at TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     awakened_at TEXT,
     awakened_by TEXT,
     awaken_message TEXT,
-    status TEXT NOT NULL DEFAULT 'sleeping',
-    FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
-    FOREIGN KEY (coordinator_session_id) REFERENCES sessions(id) ON DELETE CASCADE
+    message_id TEXT,
+    block_id TEXT,
+    FOREIGN KEY (workspace_id) REFERENCES workspace_index(workspace_id) ON DELETE CASCADE
 );
 
 -- 确保 sleep_block 表的索引存在

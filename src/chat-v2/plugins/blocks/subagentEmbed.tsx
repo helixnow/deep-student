@@ -64,7 +64,7 @@ export interface SubagentEmbedOutput {
 // 子代理嵌入视图组件
 // ============================================================================
 
-const SubagentEmbedBlockComponent: React.FC<BlockComponentProps> = ({ block, store }) => {
+const SubagentEmbedBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block, store }) => {
   const { t } = useTranslation('chatV2');
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isFullHeight, setIsFullHeight] = useState(false);
@@ -299,7 +299,7 @@ const SubagentEmbedBlockComponent: React.FC<BlockComponentProps> = ({ block, sto
       </div>
     </div>
   );
-};
+});
 
 // ============================================================================
 // 注册块类型

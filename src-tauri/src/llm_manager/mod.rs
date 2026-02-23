@@ -3126,8 +3126,7 @@ impl LLMManager {
             .map_err(|e| AppError::configuration(format!("序列化加密数据失败: {}", e)))
     }
 
-    // 解密API密钥（如果需要）
-    fn decrypt_api_key_if_needed(&self, api_key: &str) -> Result<String> {
+    pub(crate) fn decrypt_api_key_if_needed(&self, api_key: &str) -> Result<String> {
         // 检查是否为加密格式
         if CryptoService::is_encrypted_format(api_key) {
             let encrypted_data: EncryptedData = serde_json::from_str(api_key)

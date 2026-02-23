@@ -36,6 +36,7 @@ import { ToolInputView, ToolOutputView, isTemplateVisualOutput } from './compone
 import { CompletionCard } from '../../components/CompletionCard';
 import { TodoListBlock } from './todoList';
 import { PaperSaveBlock } from './paperSave';
+import type { Block } from '../../core/types/block';
 import { getReadableToolName } from '@/chat-v2/utils/toolDisplayName';
 import {
   emitTemplateDesignerLifecycle,
@@ -413,7 +414,7 @@ function extractNoteId(toolOutput: unknown, toolInput: Record<string, unknown>):
 /**
  * McpToolBlock - MCP 工具块渲染组件
  */
-const McpToolBlockComponent: React.FC<BlockComponentProps> = ({
+const McpToolBlockComponent: React.FC<BlockComponentProps> = React.memo(({
   block,
   isStreaming,
   store, // 🔧 P1-24: 接收 store 用于重试
@@ -462,7 +463,7 @@ const McpToolBlockComponent: React.FC<BlockComponentProps> = ({
     const todoData = rawOutput?.result || toolOutput;
     
     // 构造 todo_list 块格式供 TodoListBlock 使用
-    const todoBlock = {
+    const todoBlock: Block = {
       ...block,
       type: 'todo_list',
       toolOutput: todoData,
@@ -694,7 +695,7 @@ const McpToolBlockComponent: React.FC<BlockComponentProps> = ({
       )}
     </div>
   );
-};
+});
 
 // ============================================================================
 // 自动注册

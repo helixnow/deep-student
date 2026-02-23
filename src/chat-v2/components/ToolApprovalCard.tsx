@@ -330,6 +330,7 @@ export const ToolApprovalCard: React.FC<ToolApprovalCardProps> = ({
               size="sm"
               onClick={() => handleResponse(true)}
               disabled={isResponding}
+              autoFocus
               className="bg-success text-success-foreground"
             >
               <Check className="mr-1 h-4 w-4" />

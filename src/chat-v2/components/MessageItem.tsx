@@ -199,12 +199,13 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
   // 订阅会话状态来判断操作可用性
   const sessionStatus = useStore(store, (s) => s.sessionStatus);
   
-  // 🔧 P2优化：细粒度订阅，只检查当前显示的块是否活跃
-  // 使用 displayBlockIds（考虑变体）而非 message.blockIds
-  const activeBlockIds = useStore(store, (s) => s.activeBlockIds);
-  const hasActiveBlock = useMemo(() => {
-    return displayBlockIds.some(blockId => activeBlockIds.has(blockId));
-  }, [displayBlockIds, activeBlockIds]);
+  // 🔧 P0修复：精确布尔选择器，避免 Set 引用变化导致全量重渲染
+  // 选择器返回 boolean，Zustand 的 Object.is() 比较只在真正变化时触发更新
+  const hasActiveBlockSelector = useCallback(
+    (s: ChatStore) => displayBlockIds.some(blockId => s.activeBlockIds.has(blockId)),
+    [displayBlockIds]
+  );
+  const hasActiveBlock = useStore(store, hasActiveBlockSelector);
   
   // 派生状态：消息是否锁定
   // 🔧 P1修复：同时检查 sending/streaming/aborting 状态，与 Store 守卫保持一致
@@ -228,11 +229,10 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
         isLocked,
         sessionStatus,
         hasActiveBlock,
-        activeBlockIds: Array.from(activeBlockIds),
         displayBlockIds,
       }, canEdit ? 'info' : 'warning', { messageId });
     }
-  }, [canEdit, isLocked, sessionStatus, hasActiveBlock, messageId, message?.role, activeBlockIds, displayBlockIds]);
+  }, [canEdit, isLocked, sessionStatus, hasActiveBlock, messageId, message?.role, displayBlockIds]);
 
   const canDelete = useMemo(() => {
     if (!message) return false;
@@ -671,10 +671,10 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
   }, []);
 
   // 🔒 审计修复: 将 useCallback 移到条件返回之前，避免 React Hooks 调用顺序违规
-  // 🔧 P1修复：使用已订阅的 activeBlockIds 判断块是否正在流式生成
+  // 🔧 P0修复：使用精确的 store 选择器判断块是否正在流式生成
   const isBlockStreaming = useCallback((blockId: string) => {
-    return activeBlockIds.has(blockId);
-  }, [activeBlockIds]);
+    return store.getState().activeBlockIds.has(blockId);
+  }, [store]);
 
   // 消息不存在
   if (!message) {

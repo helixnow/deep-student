@@ -46,6 +46,8 @@ import { sessionSwitchPerf } from '../../debug/sessionSwitchPerf';
 import { showGlobalNotification } from '../../../components/UnifiedNotification';
 import i18n from 'i18next';
 import { autoSave } from '../middleware/autoSave';
+import { chunkBuffer } from '../middleware/chunkBuffer';
+import { clearEventContext, clearBridgeState } from '../middleware/eventBridge';
 import {
   createInitialState,
   createDefaultChatParams,
@@ -80,6 +82,8 @@ import {
 
 const IS_VITEST = typeof process !== 'undefined' && Boolean(process.env?.VITEST);
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
+
+const OPERATION_LOCK_TIMEOUT_MS = 30_000;
 
 // ============================================================================
 // ID 生成
@@ -257,6 +261,9 @@ function createBlockInternal(
 export function createChatStore(sessionId: string): StoreApi<ChatStore> {
   return createStore<ChatStore>()(
     subscribeWithSelector((set, get) => {
+      // 每个会话 store 独立的删除操作锁看门狗，避免跨会话串扰
+      let lockWatchdogTimer: ReturnType<typeof setTimeout> | null = null;
+
       // 获取状态的类型安全包装
       const getState = () => get() as ChatStoreState & ChatStore;
 
@@ -473,8 +480,14 @@ export function createChatStore(sessionId: string): StoreApi<ChatStore> {
           const message = state.messageMap.get(messageId);
           if (!message) return;
 
-          // 获取操作锁
           set({ messageOperationLock: { messageId, operation: 'delete' } });
+          if (lockWatchdogTimer) clearTimeout(lockWatchdogTimer);
+          lockWatchdogTimer = setTimeout(() => {
+            if (getState().messageOperationLock) {
+              console.error('[ChatStore] Operation lock timeout, force releasing');
+              set({ messageOperationLock: null });
+            }
+          }, OPERATION_LOCK_TIMEOUT_MS);
 
           try {
             // 获取删除回调
@@ -514,7 +527,7 @@ export function createChatStore(sessionId: string): StoreApi<ChatStore> {
 
             console.log('[ChatStore] deleteMessage completed:', messageId);
           } finally {
-            // 释放操作锁
+            if (lockWatchdogTimer) { clearTimeout(lockWatchdogTimer); lockWatchdogTimer = null; }
             set({ messageOperationLock: null });
           }
         },
@@ -1336,12 +1349,16 @@ export function createChatStore(sessionId: string): StoreApi<ChatStore> {
 
         forceResetToIdle: (): void => {
           console.warn('[ChatStore] forceResetToIdle called - emergency state recovery');
-          // 强制重置到 idle 状态，跳过所有守卫检查
-          // 用于 abortStream 失败时的应急恢复
+          const sessionId = getState().sessionId;
+
+          // 清理中间件状态
+          chunkBuffer.flushSession(sessionId);
+          clearEventContext(sessionId);
+          clearBridgeState(sessionId);
+
           set((s) => {
             const newBlocks = new Map(s.blocks);
             
-            // 将所有活跃块标记为 error（强制中断）
             s.activeBlockIds.forEach((blockId) => {
               const block = newBlocks.get(blockId);
               if (block && block.status !== 'success' && block.status !== 'error') {
@@ -1359,6 +1376,11 @@ export function createChatStore(sessionId: string): StoreApi<ChatStore> {
               currentStreamingMessageId: null,
               activeBlockIds: new Set(),
               blocks: newBlocks,
+              streamingVariantIds: new Set(),
+              messageOperationLock: null,
+              pendingApprovalRequest: null,
+              pendingParallelModelIds: null,
+              modelRetryTarget: null,
             };
           });
         },
@@ -1905,6 +1927,8 @@ export function createChatStore(sessionId: string): StoreApi<ChatStore> {
 
         setInputValue: (value: string): void => {
           set({ inputValue: value });
+          // P2 修复：触发自动保存，防止崩溃时草稿丢失
+          scheduleAutoSaveIfReady();
         },
 
         addAttachment: (attachment: AttachmentMeta): void => {
@@ -2356,7 +2380,11 @@ export function createChatStore(sessionId: string): StoreApi<ChatStore> {
           });
 
           // 4. 转换状态数据
-          const chatParams = state?.chatParams ?? createDefaultChatParams();
+          // P1 修复：使用字段级合并而非整体替换，防止后端返回的部分字段为 null 时丢失默认值
+          const chatParams = {
+            ...createDefaultChatParams(),
+            ...(state?.chatParams ?? {}),
+          };
           const features = new Map(Object.entries(state?.features ?? {}));
           const panelStates = state?.panelStates ?? createDefaultPanelStates();
           const modeState = state?.modeState ?? null;

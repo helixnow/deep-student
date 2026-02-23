@@ -87,7 +87,7 @@ export async function buildSendContextRefsOptimized(
   });
 
   // 2. 并行加载资源（自适应并发 + 超时）
-  const results = await Promise.all(
+  const results: Array<SendContextRef | null> = await Promise.all(
     sortedRefs.map((ref) =>
       adaptiveLimiter.run(async () => {
         try {
@@ -126,11 +126,14 @@ export async function buildSendContextRefsOptimized(
           // ★ 2026-02-13 修复：传递 injectModes，确保 resolveVfsRefs 能为文本模型补全 OCR
           const resolvedResource = await resolveVfsRefs(resource, ref.typeId, options, ref.injectModes);
 
-          // 2.3 调用 formatToBlocks 格式化
+          // 2.3 调用 formatToBlocks 格式化（合并 injectModes 到 formatOptions）
+          const formatOptions = ref.injectModes
+            ? { ...options, injectModes: ref.injectModes }
+            : options;
           const formattedBlocks = contextTypeRegistry.formatResource(
             ref.typeId,
             resolvedResource,
-            options
+            formatOptions
           );
 
           logAttachment(
@@ -147,13 +150,19 @@ export async function buildSendContextRefsOptimized(
             'success'
           );
 
-          // 2.4 返回 SendContextRef
-          return {
+          const sendRef: SendContextRef = {
             resourceId: ref.resourceId,
             hash: ref.hash,
             typeId: ref.typeId,
             formattedBlocks,
           };
+          if (ref.displayName !== undefined) {
+            sendRef.displayName = ref.displayName;
+          }
+          if (ref.injectModes !== undefined) {
+            sendRef.injectModes = ref.injectModes;
+          }
+          return sendRef;
         } catch (error: unknown) {
           console.error(
             LOG_PREFIX,

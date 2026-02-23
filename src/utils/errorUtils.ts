@@ -11,19 +11,21 @@ import { t } from './i18n';
  * @returns 格式化的错误消息
  */
 export const getErrorMessage = (error: unknown): string => {
-  // 标准 Error 对象
+  // 标准 Error 对象（Tauri invoke 失败时会把后端 JSON 字符串包装在 Error.message 中）
   if (error instanceof Error) {
-    return sanitizeErrorMessage(error.message);
+    const extracted = extractStructuredErrorMessage(error.message);
+    return sanitizeErrorMessage(extracted ?? error.message);
   }
   
   // 字符串错误
   if (typeof error === 'string') {
-    return error;
+    return extractStructuredErrorMessage(error) ?? error;
   }
   
   // Tauri 错误对象检查
   if (error && typeof error === 'object' && 'message' in error && typeof error.message === 'string') {
-    return sanitizeErrorMessage((error as { message: string }).message);
+    const message = (error as { message: string }).message;
+    return sanitizeErrorMessage(extractStructuredErrorMessage(message) ?? message);
   }
   
   // 尝试 JSON 序列化
@@ -37,6 +39,26 @@ export const getErrorMessage = (error: unknown): string => {
     return t('utils.errors.unserializable_error');
   }
 };
+
+/**
+ * 解析后端结构化错误字符串（例如 {"code":"X","message":"..."}）
+ */
+function extractStructuredErrorMessage(raw: string): string | null {
+  const text = raw.trim();
+  if (!text.startsWith('{') || !text.endsWith('}')) return null;
+  try {
+    const parsed = JSON.parse(text) as { code?: unknown; message?: unknown };
+    if (typeof parsed.message === 'string' && parsed.message.trim()) {
+      return parsed.message;
+    }
+    if (typeof parsed.code === 'string' && parsed.code.trim()) {
+      return parsed.code;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * 格式化错误消息，添加前缀

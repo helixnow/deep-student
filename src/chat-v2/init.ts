@@ -30,8 +30,11 @@ import './styles/index.css';
 
 import { initializeContextSystem } from './context';
 
-// 注册所有预定义的上下文类型（note, card, image, file, retrieval）
-initializeContextSystem();
+try {
+  initializeContextSystem();
+} catch (error) {
+  console.error('[Chat V2] Context system initialization failed:', error);
+}
 
 // ============================================================================
 // 初始化 Schema 工具注册表（文档 26）
@@ -39,9 +42,11 @@ initializeContextSystem();
 
 import { initializeToolRegistry } from './tools';
 
-// 注册所有内置 Schema 工具定义（Canvas 工具等）
-// 虽然工具收集使用 contextTypeRegistry，但保持前后端注册表一致性
-initializeToolRegistry();
+try {
+  initializeToolRegistry();
+} catch (error) {
+  console.error('[Chat V2] Tool registry initialization failed:', error);
+}
 
 // ============================================================================
 // 初始化 Skills 系统
@@ -55,8 +60,17 @@ initializeSkillSystem().catch((error) => {
   console.error('[Chat V2] Skill system initialization failed:', error);
 });
 
-// 延迟加载 skills 文件（避免阻塞启动）
-setTimeout(() => {
+// 延迟加载 skills 文件（等待 Tauri 初始化完成后再执行）
+const loadSkillsWhenReady = async () => {
+  try {
+    const tauriApi = (await import('@/utils/tauriApi')) as {
+      waitForTauriReady?: () => Promise<void>;
+    };
+    await tauriApi.waitForTauriReady?.();
+  } catch {
+    // fallback: 如果 waitForTauriReady 不可用，延迟 500ms
+    await new Promise(resolve => setTimeout(resolve, 500));
+  }
   loadSkillsFromFileSystem()
     .then((stats) => {
       console.log(`[Chat V2] Skills loaded: ${stats.total} (global=${stats.global}, project=${stats.project})`);
@@ -67,7 +81,8 @@ setTimeout(() => {
     .finally(() => {
       skillRegistry.markSkillsLoaded();
     });
-}, 500); // 延迟 500ms，等待 Tauri 初始化完成
+};
+loadSkillsWhenReady();
 
 // ============================================================================
 // 初始化 Workspace 事件监听

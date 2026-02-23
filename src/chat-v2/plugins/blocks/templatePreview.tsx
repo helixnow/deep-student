@@ -16,7 +16,7 @@ import { TemplateToolOutput, isTemplateVisualOutput } from './components';
 /**
  * TemplatePreviewBlock - 模板预览独立块组件
  */
-const TemplatePreviewBlock: React.FC<BlockComponentProps> = ({ block }) => {
+const TemplatePreviewBlock: React.FC<BlockComponentProps> = React.memo(({ block }) => {
   if (!isTemplateVisualOutput(block.toolOutput)) return null;
 
   return (
@@ -24,7 +24,7 @@ const TemplatePreviewBlock: React.FC<BlockComponentProps> = ({ block }) => {
       <TemplateToolOutput output={block.toolOutput} />
     </div>
   );
-};
+});
 
 // ============================================================================
 // 自动注册

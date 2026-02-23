@@ -120,12 +120,12 @@ const ContentBlockWithStore: React.FC<BlockComponentProps> = ({ block, isStreami
   );
 };
 
-const ContentBlock: React.FC<BlockComponentProps> = ({ store, ...rest }) => {
+const ContentBlock: React.FC<BlockComponentProps> = React.memo(({ store, ...rest }) => {
   if (!store) {
     return <ContentBlockBase {...rest} />;
   }
   return <ContentBlockWithStore store={store} {...rest} />;
-};
+});
 
 // ============================================================================
 // 自动注册

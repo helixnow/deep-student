@@ -25,7 +25,7 @@ import { blockRegistry, type BlockComponentProps } from '../../registry';
  * 2. 提示用户工具调用已达到限制
  * 3. 🆕 提供"继续执行"按钮，点击后在同一消息内继续执行
  */
-const ToolLimitBlock: React.FC<BlockComponentProps> = ({ block, onContinue }) => {
+const ToolLimitBlock: React.FC<BlockComponentProps> = React.memo(({ block, onContinue }) => {
   const { t } = useTranslation();
   const content = block.content || '';
   const [isContinuing, setIsContinuing] = useState(false);
@@ -120,7 +120,7 @@ const ToolLimitBlock: React.FC<BlockComponentProps> = ({ block, onContinue }) =>
       </div>
     </div>
   );
-};
+});
 
 // ============================================================================
 // 自动注册

@@ -39,6 +39,7 @@ pub mod pdfium_utils; // Pdfium 公共工具（库加载 + 文本提取）
 pub mod question_bank_service;
 pub mod question_export_service;
 pub mod question_import_service;
+pub mod vlm_grounding_service;
 pub mod secure_store;
 pub mod backup;
 pub mod backup_common; // 备份系统共享组件（全局锁、SHA256工具）
@@ -1528,22 +1529,27 @@ fn build_app_state(
     let notes_database = database.clone();
     let anki_database = database.clone();
 
-    // ★ VFS 统一存储（2025-12-07）：在 build_app_state 中也初始化 VFS 数据库
+    // ★ VFS 统一存储：核心服务依赖，初始化失败时 fail-fast，避免半初始化状态
     let vfs_db = Arc::new(
-        crate::vfs::VfsDatabase::new(&app_data_dir).expect("Failed to initialise VFS Database"),
+        crate::vfs::VfsDatabase::new(&app_data_dir)
+            .unwrap_or_else(|e| panic!("Failed to initialise VFS Database: {}", e)),
     );
     app_handle.manage(vfs_db.clone());
-    // ★ 2026-01-19: 初始化 VfsLanceStore 并注册到 Tauri State（Memory-as-VFS 需要）
-    let lance_store = crate::vfs::VfsLanceStore::new(vfs_db.clone())
-        .expect("VfsLanceStore 初始化失败，无法启动应用");
-    let lance_store_arc = std::sync::Arc::new(lance_store);
-    app_handle.manage(lance_store_arc);
+
+    // ★ VfsLanceStore：非核心，可降级
+    match crate::vfs::VfsLanceStore::new(vfs_db.clone()) {
+        Ok(store) => {
+            app_handle.manage(std::sync::Arc::new(store));
+        }
+        Err(e) => {
+            log::error!("[AppState] VfsLanceStore init failed, degrading: {}", e);
+        }
+    }
 
     let llm_manager = Arc::new(
         crate::llm_manager::LLMManager::new(database.clone(), file_manager.clone())
             .expect("Failed to initialise LLMManager"),
     );
-    // 注册 LLMManager 到 Tauri 状态（供 mm_get_dimension_registry 等命令使用）
     app_handle.manage(llm_manager.clone());
     let exam_sheet_service = Arc::new(
         crate::exam_sheet_service::ExamSheetService::new(
@@ -1577,11 +1583,12 @@ fn build_app_state(
         std::collections::HashSet<usize>,
     >::new()));
 
-    // Managers for notes
-    // ★ 使用 new_with_vfs 传入 VFS 数据库，以支持 VFS 版本的笔记操作
     let notes_manager = Arc::new(
-        crate::notes_manager::NotesManager::new_with_vfs(notes_database.clone(), vfs_db.clone())
-            .expect("Failed to init NotesManager"),
+        crate::notes_manager::NotesManager::new_with_vfs(
+            notes_database.clone(),
+            vfs_db.clone(),
+        )
+        .expect("Failed to init NotesManager"),
     );
 
     // ★ backup_job_manager 已移至 Tauri State（BackupJobManagerState）单例模式
@@ -1593,41 +1600,36 @@ fn build_app_state(
         &file_manager.get_writable_app_data_dir(),
     );
 
-    let question_bank_service = Arc::new(crate::question_bank_service::QuestionBankService::new(
-        vfs_db.clone(),
+    let question_bank_service = Some(Arc::new(
+        crate::question_bank_service::QuestionBankService::new(vfs_db.clone()),
     ));
 
     // ★ PDF 预处理流水线服务（2026-02）
-    let pdf_processing_service = Arc::new(crate::vfs::PdfProcessingService::new(
+    let pdf_processing_service = Some(Arc::new(crate::vfs::PdfProcessingService::new(
         vfs_db.clone(),
         database.clone(),
         llm_manager.clone(),
         file_manager.clone(),
-    ));
+    )));
     // 注册 PdfProcessingService 到 Tauri 状态（供 vfs_get_pdf_processing_status 等命令使用）
-    app_handle.manage(pdf_processing_service.clone());
+    if let Some(ref pps) = pdf_processing_service {
+        app_handle.manage(pps.clone());
 
-    // ★ P0-1 修复：启动时恢复 stuck 任务（同步，在 set_app_handle 之前）
-    match pdf_processing_service.recover_stuck_tasks() {
-        Ok(count) if count > 0 => {
-            tracing::info!(
-                "[AppSetup] Recovered {} stuck media processing tasks",
-                count
-            );
-        }
-        Ok(_) => {}
-        Err(e) => {
-            tracing::warn!("[AppSetup] Failed to recover stuck tasks: {}", e);
+        match pps.recover_stuck_tasks() {
+            Ok(count) if count > 0 => {
+                tracing::info!("[AppSetup] Recovered {} stuck media processing tasks", count);
+            }
+            Ok(_) => {}
+            Err(e) => {
+                tracing::warn!("[AppSetup] Failed to recover stuck tasks: {}", e);
+            }
         }
     }
 
     // ★ 启动时恢复卡在 indexing 状态的索引记录（vfs_index_units + resources）
     match crate::vfs::VfsFullIndexingService::recover_stuck_indexing(&vfs_db) {
         Ok(count) if count > 0 => {
-            tracing::info!(
-                "[AppSetup] Recovered {} stuck indexing records",
-                count
-            );
+            tracing::info!("[AppSetup] Recovered {} stuck indexing records", count);
         }
         Ok(_) => {}
         Err(e) => {
@@ -1647,8 +1649,8 @@ fn build_app_state(
     }
 
     // 设置 AppHandle 到 PdfProcessingService（供事件推送使用）
-    {
-        let pdf_service_for_handle = pdf_processing_service.clone();
+    if let Some(ref pps) = pdf_processing_service {
+        let pdf_service_for_handle = pps.clone();
         let app_handle_clone = app_handle.clone();
         tauri::async_runtime::spawn(async move {
             pdf_service_for_handle
@@ -1663,14 +1665,13 @@ fn build_app_state(
         anki_database,
         notes_database,
 
-        // essay_grading_db 已移除
         vfs_db: Some(vfs_db),
         custom_mode_manager: Some(custom_mode_manager),
         notes_manager,
         file_manager,
         exam_sheet_service,
         pdf_ocr_service,
-        pdf_processing_service: Some(pdf_processing_service), // ★ PDF 预处理流水线服务
+        pdf_processing_service,
         temp_sessions,
         llm_manager,
         crypto_service,
@@ -1680,7 +1681,7 @@ fn build_app_state(
         pdf_ocr_skip_pages,
         app_handle,
         active_database: RwLock::new(crate::commands::ActiveDatabaseKind::Production),
-        question_bank_service: Some(question_bank_service), // ★ 智能题目集服务
+        question_bank_service,
     }
 }
 

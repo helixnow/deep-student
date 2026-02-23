@@ -226,7 +226,7 @@ const ImageGenError: React.FC<ImageGenErrorProps> = ({
 /**
  * ImageGenBlock - 图片生成块渲染组件
  */
-const ImageGenBlockComponent: React.FC<BlockComponentProps> = ({
+const ImageGenBlockComponent: React.FC<BlockComponentProps> = React.memo(({
   block,
   isStreaming,
 }) => {
@@ -344,7 +344,7 @@ const ImageGenBlockComponent: React.FC<BlockComponentProps> = ({
       <ImageInfo width={width} height={height} model={model} />
     </div>
   );
-};
+});
 
 // ============================================================================
 // 自动注册

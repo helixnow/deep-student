@@ -72,6 +72,10 @@ const STATUS_CONFIG: Record<
     Icon: Ban,
     colorClass: 'text-yellow-500 dark:text-yellow-400',
   },
+  interrupted: {
+    Icon: Ban,
+    colorClass: 'text-amber-500 dark:text-amber-400',
+  },
 };
 
 // ============================================================================

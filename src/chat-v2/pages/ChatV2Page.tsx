@@ -20,6 +20,7 @@ import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 import { cn } from '@/lib/utils';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { ChatContainer } from '../components/ChatContainer';
+import { ChatErrorBoundary } from '../components/ChatErrorBoundary';
 import { SessionBrowser } from '../components/session-browser';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { TauriAPI } from '@/utils/tauriApi';
@@ -2056,6 +2057,7 @@ export const ChatV2Page: React.FC = () => {
 
   // 渲染会话侧边栏内容（复用于移动端推拉布局和桌面端面板）
   const renderSessionSidebarContent = () => (
+    <ChatErrorBoundary>
     <>
       {/* 搜索框 */}
       <div className="px-3 py-2 shrink-0">
@@ -2497,6 +2499,7 @@ export const ChatV2Page: React.FC = () => {
       </CustomScrollArea>
 
     </>
+    </ChatErrorBoundary>
   );
 
   // 渲染主聊天区域

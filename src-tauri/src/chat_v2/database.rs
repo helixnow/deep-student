@@ -19,7 +19,7 @@ const DATABASE_FILENAME: &str = "chat_v2.db";
 /// 当前数据库 Schema 版本
 /// 当前 Schema 版本（对应 Refinery 迁移的最新版本）
 /// 注意：此常量仅用于统计信息显示，实际版本以 refinery_schema_history 表为准
-pub const CURRENT_SCHEMA_VERSION: u32 = 20260207;
+pub const CURRENT_SCHEMA_VERSION: u32 = 20260221;
 
 /// SQLite 连接池类型
 pub type ChatV2Pool = Pool<SqliteConnectionManager>;
@@ -39,6 +39,9 @@ pub struct ChatV2Database {
     pool: RwLock<ChatV2Pool>,
     /// 数据库文件路径
     db_path: PathBuf,
+    /// 维护模式标志：备份/恢复操作进行时设为 true，
+    /// 用于阻止写操作访问内存连接池导致数据丢失。
+    maintenance_mode: std::sync::atomic::AtomicBool,
 }
 
 impl ChatV2Database {
@@ -75,6 +78,7 @@ impl ChatV2Database {
         let db = Self {
             pool: RwLock::new(pool),
             db_path,
+            maintenance_mode: std::sync::atomic::AtomicBool::new(false),
         };
 
         info!(
@@ -93,14 +97,12 @@ impl ChatV2Database {
         );
 
         let manager = SqliteConnectionManager::file(db_path).with_init(|conn| {
-            // 启用外键约束（必须！）
             conn.pragma_update(None, "foreign_keys", "ON")?;
-            // 使用 WAL 模式提升并发性能
             conn.pragma_update(None, "journal_mode", "WAL")?;
-            // 同步模式设为 NORMAL（平衡安全与性能）
             conn.pragma_update(None, "synchronous", "NORMAL")?;
-            // 设置 busy_timeout 避免无界等待（3秒）
             conn.pragma_update(None, "busy_timeout", 3000i64)?;
+            // P2 修复：启用增量自动 VACUUM，批量删除后可回收空间
+            conn.pragma_update(None, "auto_vacuum", "INCREMENTAL")?;
             Ok(())
         });
 
@@ -135,6 +137,13 @@ impl ChatV2Database {
     /// # Returns
     /// * `ChatV2Result<ChatV2PooledConnection>` - 池化连接
     pub fn get_conn_safe(&self) -> ChatV2Result<ChatV2PooledConnection> {
+        // P0 修复：维护模式下拒绝返回连接，避免写入内存数据库导致数据丢失
+        if self.maintenance_mode.load(std::sync::atomic::Ordering::Acquire) {
+            return Err(ChatV2Error::Database(
+                "Database is in maintenance mode (backup/restore in progress)".to_string(),
+            ));
+        }
+
         let pool = self.pool.read().unwrap_or_else(|poisoned| {
             log::error!("[ChatV2Database] Pool RwLock poisoned! Attempting recovery");
             poisoned.into_inner()
@@ -142,6 +151,11 @@ impl ChatV2Database {
 
         pool.get()
             .map_err(|e| ChatV2Error::Database(format!("Failed to get connection: {}", e)))
+    }
+
+    /// 检查是否处于维护模式
+    pub fn is_in_maintenance_mode(&self) -> bool {
+        self.maintenance_mode.load(std::sync::atomic::Ordering::Acquire)
     }
 
     /// 获取连接池的克隆
@@ -188,24 +202,31 @@ impl ChatV2Database {
     ///
     /// 用于恢复流程中替换实际数据库文件，避免 Windows 上文件锁定（os error 32）。
     pub fn enter_maintenance_mode(&self) -> ChatV2Result<()> {
-        // 先尝试 WAL checkpoint
+        // 先尝试 WAL checkpoint（仍使用文件连接）
         if let Ok(conn) = self.get_conn() {
             let _ = conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);");
         }
+
+        // 然后设置维护模式标志，阻止后续 get_conn_safe 返回文件连接
+        self.maintenance_mode
+            .store(true, std::sync::atomic::Ordering::Release);
 
         let mem_manager = SqliteConnectionManager::memory();
         let mem_pool = Pool::builder()
             .max_size(1)
             .build(mem_manager)
-            .map_err(|e| ChatV2Error::Database(format!("创建内存连接池失败: {}", e)))?;
+            .map_err(|e| {
+                self.maintenance_mode
+                    .store(false, std::sync::atomic::Ordering::Release);
+                ChatV2Error::Database(format!("创建内存连接池失败: {}", e))
+            })?;
 
-        {
-            let mut guard = self
-                .pool
-                .write()
-                .map_err(|e| ChatV2Error::Database(format!("Pool lock poisoned: {}", e)))?;
-            *guard = mem_pool;
-        }
+        let mut guard = self.pool.write().map_err(|e| {
+            self.maintenance_mode
+                .store(false, std::sync::atomic::Ordering::Release);
+            ChatV2Error::Database(format!("Pool lock poisoned: {}", e))
+        })?;
+        *guard = mem_pool;
 
         info!("[ChatV2::Database] 已进入维护模式，文件连接已释放");
         Ok(())
@@ -222,6 +243,10 @@ impl ChatV2Database {
                 .map_err(|e| ChatV2Error::Database(format!("Pool lock poisoned: {}", e)))?;
             *guard = new_pool;
         }
+
+        // 恢复文件连接后清除维护模式标志
+        self.maintenance_mode
+            .store(false, std::sync::atomic::Ordering::Release);
 
         info!("[ChatV2::Database] 已退出维护模式，文件连接已恢复");
         Ok(())

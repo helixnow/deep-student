@@ -60,7 +60,7 @@ const memoryTypeIcons: Record<MemoryType, typeof Brain> = {
  * 3. 区分不同记忆类型（对话/长期/用户画像）
  * 4. 暗色/亮色主题支持
  */
-const MemoryBlock: React.FC<BlockComponentProps> = ({ block, isStreaming }) => {
+const MemoryBlock: React.FC<BlockComponentProps> = React.memo(({ block, isStreaming }) => {
   const { t } = useTranslation('chatV2');
 
   // 解析后端数据并转换为前端格式
@@ -221,7 +221,7 @@ const MemoryBlock: React.FC<BlockComponentProps> = ({ block, isStreaming }) => {
       </div>
     </div>
   );
-};
+});
 
 // ============================================================================
 // 自动注册

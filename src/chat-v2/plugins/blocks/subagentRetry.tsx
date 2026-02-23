@@ -33,7 +33,7 @@ interface SubagentRetryOutput {
 // 子代理重试块组件
 // ============================================================================
 
-const SubagentRetryBlockComponent: React.FC<BlockComponentProps> = ({
+const SubagentRetryBlockComponent: React.FC<BlockComponentProps> = React.memo(({
   block,
 }) => {
   const { t } = useTranslation(['chatV2']);
@@ -120,7 +120,7 @@ const SubagentRetryBlockComponent: React.FC<BlockComponentProps> = ({
       </div>
     </div>
   );
-};
+});
 
 // ============================================================================
 // 自动注册

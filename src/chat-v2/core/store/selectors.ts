@@ -87,11 +87,23 @@ export const selectMessage =
 
 /**
  * 选择有序消息列表
+ * 使用缓存避免 useStore 场景下的无效重渲染
  */
-export const selectOrderedMessages = (state: ChatStoreState): Message[] =>
-  state.messageOrder
+let _cachedMessageOrder: string[] | null = null;
+let _cachedMessageMap: Map<string, Message> | null = null;
+let _cachedResult: Message[] = [];
+
+export const selectOrderedMessages = (state: ChatStoreState): Message[] => {
+  if (state.messageOrder === _cachedMessageOrder && state.messageMap === _cachedMessageMap) {
+    return _cachedResult;
+  }
+  _cachedMessageOrder = state.messageOrder;
+  _cachedMessageMap = state.messageMap;
+  _cachedResult = state.messageOrder
     .map((id) => state.messageMap.get(id))
     .filter((msg): msg is Message => msg !== undefined);
+  return _cachedResult;
+};
 
 /**
  * 选择消息数量

@@ -95,6 +95,8 @@ interface MarkdownRendererProps {
   // 可选的链接点击处理函数
   onLinkClick?: (url: string) => void;
   extraRemarkPlugins?: any[];
+  // 启用引用标记处理（默认根据 onCitationClick/resolveCitationImage 是否传入自动判断）
+  enableCitations?: boolean;
   // 引用标记点击回调（type: rag/memory/web_search/multimodal, index: 从1开始的编号）
   onCitationClick?: (type: string, index: number) => void;
   // 引用图片解析器：根据引用类型与序号返回图片信息（支持 URL 或 PDF 页面异步加载）
@@ -344,9 +346,11 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
   isStreaming = false,
   onLinkClick,
   extraRemarkPlugins = EMPTY_REMARK_PLUGINS,
+  enableCitations,
   onCitationClick,
   resolveCitationImage,
 }) => {
+  const shouldEnableCitations = enableCitations ?? !!(onCitationClick || resolveCitationImage);
   const containerRef = useRef<HTMLDivElement | null>(null);
   // 🚀 性能优化：按需加载 KaTeX CSS
   useEffect(() => {
@@ -440,19 +444,18 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
   }, [processedContent]);
 
   const remarkPlugins = useMemo(() => {
-    // remark-math 默认支持 $...$ $$...$$ \(...\) \[...\] 四种格式
-    // 作为 prompt 失效时的兜底机制，确保所有标准 LaTeX 格式都能渲染
-    // convertMathCodeBlocksPlugin 必须在 remarkMath 之前，拦截 ```math/```latex 代码块
-    const base = [
+    const base: any[] = [
       disableIndentedCodePlugin as any,
       normalizeFullWidthPunctPlugin as any,
-      convertMathCodeBlocksPlugin as any,  // 在 remark-math 之前拦截代码块
+      convertMathCodeBlocksPlugin as any,
       remarkMath as any,
       remarkGfm as any,
-      makeCitationRemarkPlugin() as any,   // 🆕 引用标记处理插件
     ];
+    if (shouldEnableCitations) {
+      base.push(makeCitationRemarkPlugin() as any);
+    }
     return [...base, ...(extraRemarkPlugins || [])];
-  }, [extraRemarkPlugins]);
+  }, [extraRemarkPlugins, shouldEnableCitations]);
 
   const katexOptions: KatexOptions = useMemo(() => ({
     throwOnError: false,

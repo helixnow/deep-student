@@ -116,6 +116,17 @@ export interface SendOptions {
 
   /** 当前会话激活的 Skill IDs（用于后端 fail-closed 白名单判定） */
   activeSkillIds?: string[];
+
+  /** Skill 白名单工具 ID 列表 */
+  skillAllowedTools?: string[];
+  /** Skill 内容（SKILL.md 内容） */
+  skillContents?: string[];
+  /** Skill 内嵌工具 Schema */
+  skillEmbeddedTools?: unknown[];
+  /** 关闭工具白名单检查 */
+  disableToolWhitelist?: boolean;
+  /** 图片压缩质量策略 */
+  visionQuality?: string;
 }
 
 // ============================================================================
@@ -307,7 +318,7 @@ export interface BackendMessage {
   persistentStableId?: string;
   parentId?: string;
   supersedes?: string;
-  meta?: MessageMeta;
+  _meta?: MessageMeta;
   attachments?: AttachmentMeta[];
 }
 

@@ -121,10 +121,35 @@ impl From<anyhow::Error> for ChatV2Error {
     }
 }
 
-// Tauri 命令返回需要转为 String
+// Tauri 命令返回：序列化为结构化 JSON，便于前端按 code 差异化处理
 impl From<ChatV2Error> for String {
     fn from(e: ChatV2Error) -> Self {
-        e.to_string()
+        let code = match &e {
+            ChatV2Error::SessionNotFound(_) => "SESSION_NOT_FOUND",
+            ChatV2Error::GroupNotFound(_) => "GROUP_NOT_FOUND",
+            ChatV2Error::MessageNotFound(_) => "MESSAGE_NOT_FOUND",
+            ChatV2Error::BlockNotFound(_) => "BLOCK_NOT_FOUND",
+            ChatV2Error::ResourceNotFound(_) => "RESOURCE_NOT_FOUND",
+            ChatV2Error::VariantNotFound(_) => "VARIANT_NOT_FOUND",
+            ChatV2Error::VariantCannotActivateFailed(_) => "VARIANT_CANNOT_ACTIVATE",
+            ChatV2Error::VariantCannotDeleteLast => "VARIANT_CANNOT_DELETE_LAST",
+            ChatV2Error::VariantAlreadyStreaming(_) => "VARIANT_ALREADY_STREAMING",
+            ChatV2Error::VariantCannotRetry(_, _) => "VARIANT_CANNOT_RETRY",
+            ChatV2Error::LimitExceeded(_) => "LIMIT_EXCEEDED",
+            ChatV2Error::Database(_) => "DATABASE_ERROR",
+            ChatV2Error::Llm(_) => "LLM_ERROR",
+            ChatV2Error::Tool(_) => "TOOL_ERROR",
+            ChatV2Error::Cancelled => "CANCELLED",
+            ChatV2Error::Serialization(_) => "SERIALIZATION_ERROR",
+            ChatV2Error::Validation(_) => "VALIDATION_ERROR",
+            ChatV2Error::Other(_) => "OTHER",
+            ChatV2Error::IoError(_) => "IO_ERROR",
+            ChatV2Error::InvalidInput(_) => "INVALID_INPUT",
+            ChatV2Error::DatabaseCorrupted { .. } => "DATABASE_CORRUPTED",
+            ChatV2Error::Timeout(_) => "TIMEOUT",
+        };
+        let message = e.to_string();
+        serde_json::json!({ "code": code, "message": message }).to_string()
     }
 }
 

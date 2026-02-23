@@ -16,7 +16,7 @@ import { eventRegistry, type EventStartPayload } from '../../registry/eventRegis
 import { autoSave, streamingBlockSaver } from './autoSave';
 import { chunkBuffer } from './chunkBuffer';
 import { logMultiVariant } from '../../../debug-panel/plugins/MultiVariantDebugPlugin';
-import { EVENT_BRIDGE_MAX_BUFFER_SIZE, EVENT_BRIDGE_MAX_PROCESSED_IDS } from '../constants';
+import { EVENT_BRIDGE_MAX_BUFFER_SIZE, EVENT_BRIDGE_MAX_PROCESSED_IDS, EVENT_BRIDGE_GAP_TIMEOUT_MS } from '../constants';
 
 // ============================================================================
 // 后端事件类型定义
@@ -117,6 +117,8 @@ export interface EventBridgeState {
   lastSequenceId: number;
   pendingEvents: Map<number, BackendEvent>;
   maxBufferSize: number;
+  gapTimer: ReturnType<typeof setTimeout> | null;
+  gapDetectedAt: number | null;
 }
 
 const activeContexts = new Map<string, EventContext>();
@@ -152,7 +154,7 @@ function markEventProcessed(sessionId: string, sequenceId: number): void {
   if (ids.size > EVENT_BRIDGE_MAX_PROCESSED_IDS) {
     const idsArray = Array.from(ids);
     ids.clear();
-    for (let i = idsArray.length / 2; i < idsArray.length; i++) {
+    for (let i = Math.floor(idsArray.length / 2); i < idsArray.length; i++) {
       ids.add(idsArray[i]);
     }
   }
@@ -170,6 +172,8 @@ function getOrCreateBridgeState(sessionId: string): EventBridgeState {
       lastSequenceId: -1,
       pendingEvents: new Map(),
       maxBufferSize: EVENT_BRIDGE_MAX_BUFFER_SIZE,
+      gapTimer: null,
+      gapDetectedAt: null,
     };
     bridgeStates.set(sessionId, state);
   }
@@ -182,6 +186,10 @@ export function clearEventContext(sessionId: string): void {
 }
 
 export function clearBridgeState(sessionId: string): void {
+  const state = bridgeStates.get(sessionId);
+  if (state?.gapTimer) {
+    clearTimeout(state.gapTimer);
+  }
   bridgeStates.delete(sessionId);
 }
 
@@ -193,6 +201,11 @@ export function resetBridgeState(sessionId: string): void {
   const prevSeqId = state.lastSequenceId;
   const prevPendingCount = state.pendingEvents.size;
   
+  if (state.gapTimer) {
+    clearTimeout(state.gapTimer);
+    state.gapTimer = null;
+  }
+  state.gapDetectedAt = null;
   state.lastSequenceId = -1;
   state.pendingEvents.clear();
   
@@ -351,15 +364,30 @@ export function handleBackendEventWithSequence(
 
   if (bridgeState.pendingEvents.size >= bridgeState.maxBufferSize) {
     console.warn(
-      `[EventBridge] Buffer full, dropping oldest event. ` +
+      `[EventBridge] Buffer full, skipping gap and flushing. ` +
         `Current size=${bridgeState.pendingEvents.size}, max=${bridgeState.maxBufferSize}`
     );
-    // 删除最小序列号的事件
-    const minSeqId = Math.min(...bridgeState.pendingEvents.keys());
-    bridgeState.pendingEvents.delete(minSeqId);
+    bridgeState.pendingEvents.set(sequenceId, event);
+    skipGapAndFlush(store, bridgeState);
+    return;
   }
 
   bridgeState.pendingEvents.set(sequenceId, event);
+
+  // 启动 gap 超时定时器
+  if (!bridgeState.gapTimer) {
+    bridgeState.gapDetectedAt = Date.now();
+    bridgeState.gapTimer = setTimeout(() => {
+      bridgeState.gapTimer = null;
+      if (bridgeState.pendingEvents.size > 0) {
+        console.warn(
+          `[EventBridge] Gap timeout (${EVENT_BRIDGE_GAP_TIMEOUT_MS}ms) - skipping missing seqId(s). ` +
+            `Last processed: ${bridgeState.lastSequenceId}, buffered: ${bridgeState.pendingEvents.size}`
+        );
+        skipGapAndFlush(store, bridgeState);
+      }
+    }, EVENT_BRIDGE_GAP_TIMEOUT_MS);
+  }
 }
 
 /**
@@ -376,9 +404,66 @@ function processBufferedEvents(
     bridgeState.pendingEvents.delete(nextSeqId);
 
     markEventProcessed(store.sessionId, nextSeqId);
-    processEventInternal(store, bufferedEvent);
+    try {
+      processEventInternal(store, bufferedEvent);
+    } catch (error) {
+      console.error(
+        `[EventBridge] Error processing buffered event seqId=${nextSeqId}, type=${bufferedEvent.type}:`,
+        error
+      );
+    }
     bridgeState.lastSequenceId = nextSeqId;
     nextSeqId++;
+  }
+
+  // 缓冲区清空后取消 gap timer
+  if (bridgeState.pendingEvents.size === 0 && bridgeState.gapTimer) {
+    clearTimeout(bridgeState.gapTimer);
+    bridgeState.gapTimer = null;
+    bridgeState.gapDetectedAt = null;
+  }
+}
+
+/**
+ * 跳过序列号间隙，按序处理缓冲区中所有事件
+ */
+function skipGapAndFlush(
+  store: ChatStore,
+  bridgeState: EventBridgeState
+): void {
+  if (bridgeState.pendingEvents.size === 0) return;
+
+  const sortedSeqIds = Array.from(bridgeState.pendingEvents.keys()).sort((a, b) => a - b);
+  const skippedFrom = bridgeState.lastSequenceId + 1;
+  const skippedTo = sortedSeqIds[0] - 1;
+
+  console.warn(
+    `[EventBridge] Skipping gap: seqId ${skippedFrom}-${skippedTo} (${skippedTo - skippedFrom + 1} events lost). ` +
+      `Flushing ${sortedSeqIds.length} buffered events.`
+  );
+
+  if (bridgeState.gapTimer) {
+    clearTimeout(bridgeState.gapTimer);
+    bridgeState.gapTimer = null;
+  }
+  bridgeState.gapDetectedAt = null;
+
+  // 强制按序消费当前缓冲中的全部事件（允许中间仍有 gap）
+  for (const seqId of sortedSeqIds) {
+    const event = bridgeState.pendingEvents.get(seqId);
+    if (!event) continue;
+
+    bridgeState.pendingEvents.delete(seqId);
+    markEventProcessed(store.sessionId, seqId);
+    try {
+      processEventInternal(store, event);
+    } catch (error) {
+      console.error(
+        `[EventBridge] Error processing flushed event seqId=${seqId}, type=${event.type}:`,
+        error
+      );
+    }
+    bridgeState.lastSequenceId = seqId;
   }
 }
 
@@ -1017,7 +1102,14 @@ export function handleBackendEvents(
   events: BackendEvent[]
 ): void {
   for (const event of events) {
-    handleBackendEventWithSequence(store, event);
+    try {
+      handleBackendEventWithSequence(store, event);
+    } catch (error) {
+      console.error(
+        `[EventBridge] Error in batch event processing, type=${event.type}, phase=${event.phase}:`,
+        error
+      );
+    }
   }
 }
 

@@ -36,7 +36,7 @@ interface BackendRagResult {
  * 3. 显示检索查询和结果数量
  * 4. 暗色/亮色主题支持
  */
-const RagBlock: React.FC<BlockComponentProps> = ({ block, isStreaming }) => {
+const RagBlock: React.FC<BlockComponentProps> = React.memo(({ block, isStreaming }) => {
   const { t } = useTranslation('chatV2');
 
   // 解析后端数据并转换为前端格式
@@ -175,7 +175,7 @@ const RagBlock: React.FC<BlockComponentProps> = ({ block, isStreaming }) => {
       </div>
     </div>
   );
-};
+});
 
 // ============================================================================
 // 自动注册

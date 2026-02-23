@@ -318,6 +318,8 @@ export class AdaptiveConcurrencyLimiter {
   private activeTasks = 0;
   private taskQueue: Array<() => void> = [];
   private operationCount = 0;
+  private recentSuccessCount = 0;
+  private recentFailureCount = 0;
 
   constructor(config: AdaptiveConcurrencyConfig = {}) {
     this.minConcurrency = config.minConcurrency ?? 1;
@@ -378,21 +380,17 @@ export class AdaptiveConcurrencyLimiter {
     }
   }
 
-  /**
-   * 记录成功的任务
-   */
   private recordSuccess(duration: number): void {
     this.stats.successCount++;
+    this.recentSuccessCount++;
     this.addSample(duration);
     this.maybeAdjustConcurrency();
   }
 
-  /**
-   * 记录失败的任务
-   */
-  private recordFailure(duration: number): void {
+  private recordFailure(_duration: number): void {
     this.stats.failureCount++;
-    this.addSample(duration);
+    this.recentFailureCount++;
+    // 不将失败任务的 duration 加入样本——快速失败的短 duration 会误导延迟判断
     this.maybeAdjustConcurrency();
   }
 
@@ -414,19 +412,36 @@ export class AdaptiveConcurrencyLimiter {
     }
   }
 
-  /**
-   * 根据性能数据调整并发数
-   */
   private maybeAdjustConcurrency(): void {
     this.operationCount++;
 
-    // 每隔一定次数才调整
     if (this.operationCount % this.adjustmentInterval !== 0) {
       return;
     }
 
-    // 样本不足时不调整
+    const recentTotal = this.recentSuccessCount + this.recentFailureCount;
+    const recentFailureRate = recentTotal > 0 ? this.recentFailureCount / recentTotal : 0;
+
+    // 高失败率：乘性减少，防止故障放大
+    if (recentFailureRate > 0.5 && this.currentConcurrency > this.minConcurrency) {
+      const prev = this.currentConcurrency;
+      this.currentConcurrency = Math.max(
+        Math.ceil(this.currentConcurrency * 0.5),
+        this.minConcurrency
+      );
+      console.log(
+        `[AdaptiveConcurrency] 高失败率乘性降低: ${prev} → ${this.currentConcurrency}`,
+        `(失败率: ${(recentFailureRate * 100).toFixed(0)}%)`
+      );
+      this.recentSuccessCount = 0;
+      this.recentFailureCount = 0;
+      return;
+    }
+
+    // 样本不足时不做延迟调整
     if (this.stats.recentSamples.length < Math.min(5, this.sampleWindowSize)) {
+      this.recentSuccessCount = 0;
+      this.recentFailureCount = 0;
       return;
     }
 
@@ -434,28 +449,29 @@ export class AdaptiveConcurrencyLimiter {
     const target = this.targetResponseTime;
     const threshold = this.adjustmentThreshold;
 
-    // 响应时间显著快于目标 → 增加并发
-    if (avgTime < target * (1 - threshold) && this.currentConcurrency < this.maxConcurrency) {
+    if (avgTime < target * (1 - threshold) && this.currentConcurrency < this.maxConcurrency && recentFailureRate < 0.1) {
       this.currentConcurrency = Math.min(
         this.currentConcurrency + 1,
         this.maxConcurrency
       );
       console.log(
         `[AdaptiveConcurrency] 增加并发: ${this.currentConcurrency - 1} → ${this.currentConcurrency}`,
-        `(平均响应时间: ${avgTime.toFixed(0)}ms, 目标: ${target}ms)`
+        `(平均响应时间: ${avgTime.toFixed(0)}ms, 目标: ${target}ms, 失败率: ${(recentFailureRate * 100).toFixed(0)}%)`
       );
-    }
-    // 响应时间显著慢于目标 → 降低并发
-    else if (avgTime > target * (1 + threshold) && this.currentConcurrency > this.minConcurrency) {
+    } else if (avgTime > target * (1 + threshold) && this.currentConcurrency > this.minConcurrency) {
+      const prev = this.currentConcurrency;
       this.currentConcurrency = Math.max(
-        this.currentConcurrency - 1,
+        Math.ceil(this.currentConcurrency * 0.5),
         this.minConcurrency
       );
       console.log(
-        `[AdaptiveConcurrency] 降低并发: ${this.currentConcurrency + 1} → ${this.currentConcurrency}`,
+        `[AdaptiveConcurrency] 乘性降低并发: ${prev} → ${this.currentConcurrency}`,
         `(平均响应时间: ${avgTime.toFixed(0)}ms, 目标: ${target}ms)`
       );
     }
+
+    this.recentSuccessCount = 0;
+    this.recentFailureCount = 0;
   }
 
   /**

@@ -75,6 +75,7 @@ pub mod block_types {
 
     pub const RAG: &str = "rag";
     pub const MEMORY: &str = "memory";
+    pub const GRAPH: &str = "graph";
     pub const WEB_SEARCH: &str = "web_search";
     pub const MULTIMODAL_RAG: &str = "multimodal_rag";
 
@@ -1412,25 +1413,31 @@ pub struct SourceInfo {
 #[serde(rename_all = "camelCase")]
 pub struct AttachmentMeta {
     /// 附件 ID（格式：att_{uuid}）
+    #[serde(default)]
     pub id: String,
 
     /// 文件名
+    #[serde(default)]
     pub name: String,
 
     /// 附件类型（'image' | 'document' | 'audio' | 'video' | 'other'）
+    #[serde(default)]
     pub r#type: String,
 
     /// MIME 类型
+    #[serde(default)]
     pub mime_type: String,
 
     /// 文件大小（字节）
+    #[serde(default)]
     pub size: u64,
 
     /// 图片/文档的预览 URL 或 base64
     #[serde(skip_serializing_if = "Option::is_none")]
     pub preview_url: Option<String>,
 
-    /// 上传状态（'pending' | 'uploading' | 'ready' | 'error'）
+    /// 上传状态（'pending' | 'uploading' | 'ready' | 'error' | 'processing'）
+    #[serde(default = "AttachmentMeta::default_status")]
     pub status: String,
 
     /// 错误信息
@@ -1442,6 +1449,10 @@ impl AttachmentMeta {
     /// 生成附件 ID
     pub fn generate_id() -> String {
         format!("att_{}", uuid::Uuid::new_v4())
+    }
+
+    fn default_status() -> String {
+        "pending".to_string()
     }
 }
 

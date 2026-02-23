@@ -223,7 +223,7 @@ impl ChatV2Repo {
     /// 删除会话（级联删除消息和块）
     pub fn delete_session(db: &Database, session_id: &str) -> ChatV2Result<()> {
         let mut conn = db.get_conn_safe()?;
-        let tx = conn.transaction()?;
+        let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
         Self::delete_session_with_tx(&tx, session_id)?;
         tx.commit()?;
         Ok(())
@@ -504,7 +504,7 @@ impl ChatV2Repo {
 
     /// 软删除分组（并将关联会话置为未分组）
     pub fn soft_delete_group_with_conn(conn: &mut Connection, group_id: &str) -> ChatV2Result<()> {
-        let tx = conn.transaction()?;
+        let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
         tx.execute(
             r#"
             UPDATE chat_v2_session_groups
@@ -528,7 +528,7 @@ impl ChatV2Repo {
         conn: &mut Connection,
         group_ids: &[String],
     ) -> ChatV2Result<()> {
-        let tx = conn.transaction()?;
+        let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
         for (idx, group_id) in group_ids.iter().enumerate() {
             tx.execute(
                 "UPDATE chat_v2_session_groups SET sort_order = ?2, updated_at = ?3 WHERE id = ?1",
@@ -932,23 +932,38 @@ impl ChatV2Repo {
         };
 
         let block_ids: Vec<String> =
-            serde_json::from_str(&block_ids_json).unwrap_or_else(|_| Vec::new());
+            serde_json::from_str(&block_ids_json).unwrap_or_else(|e| {
+                log::warn!("[ChatV2::Repo] block_ids_json 解析失败 (msg_id={}): {}", id, e);
+                Vec::new()
+            });
 
         let meta: Option<MessageMeta> = meta_json
             .as_ref()
-            .and_then(|s| serde_json::from_str(s).ok());
+            .and_then(|s| serde_json::from_str(s).map_err(|e| {
+                log::warn!("[ChatV2::Repo] meta_json 解析失败 (msg_id={}): {}", id, e);
+                e
+            }).ok());
 
         let attachments: Option<Vec<AttachmentMeta>> = attachments_json
             .as_ref()
-            .and_then(|s| serde_json::from_str(s).ok());
+            .and_then(|s| serde_json::from_str(s).map_err(|e| {
+                log::warn!("[ChatV2::Repo] attachments_json 解析失败 (msg_id={}): {}", id, e);
+                e
+            }).ok());
 
         let variants: Option<Vec<Variant>> = variants_json
             .as_ref()
-            .and_then(|s| serde_json::from_str(s).ok());
+            .and_then(|s| serde_json::from_str(s).map_err(|e| {
+                log::warn!("[ChatV2::Repo] variants_json 解析失败 (msg_id={}): {}", id, e);
+                e
+            }).ok());
 
         let shared_context: Option<SharedContext> = shared_context_json
             .as_ref()
-            .and_then(|s| serde_json::from_str(s).ok());
+            .and_then(|s| serde_json::from_str(s).map_err(|e| {
+                log::warn!("[ChatV2::Repo] shared_context_json 解析失败 (msg_id={}): {}", id, e);
+                e
+            }).ok());
 
         Ok(ChatMessage {
             id,
@@ -1544,10 +1559,28 @@ impl ChatV2Repo {
     /// 删除会话（使用 ChatV2Database）
     pub fn delete_session_v2(db: &ChatV2Database, session_id: &str) -> ChatV2Result<()> {
         let mut conn = db.get_conn_safe()?;
-        let tx = conn.transaction()?;
+        let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
         Self::delete_session_with_tx(&tx, session_id)?;
         tx.commit()?;
         Ok(())
+    }
+
+    /// 列出所有已删除（回收站中）的会话 ID
+    ///
+    /// 用于清空回收站前收集待删除会话，以便先递减 VFS 资源引用计数。
+    ///
+    /// ## 返回
+    /// - `Ok(Vec<String>)`: 所有已删除会话的 ID 列表
+    pub fn list_deleted_session_ids(db: &ChatV2Database) -> ChatV2Result<Vec<String>> {
+        let conn = db.get_conn_safe()?;
+        let mut stmt = conn.prepare(
+            "SELECT id FROM chat_v2_sessions WHERE persist_status = 'deleted'",
+        )?;
+        let ids = stmt
+            .query_map([], |row| row.get::<_, String>(0))?
+            .filter_map(|r| r.ok())
+            .collect();
+        Ok(ids)
     }
 
     /// 清空所有已删除的会话（永久删除）
@@ -1564,6 +1597,14 @@ impl ChatV2Repo {
             [],
         )?;
         info!("[ChatV2::Repo] Purged {} deleted sessions", count);
+
+        // P2 修复：批量删除后执行增量 VACUUM 回收空间
+        if count > 0 {
+            if let Err(e) = conn.execute_batch("PRAGMA incremental_vacuum;") {
+                log::warn!("[ChatV2::Repo] Incremental vacuum failed after purge: {}", e);
+            }
+        }
+
         Ok(count as u32)
     }
 
@@ -1893,6 +1934,8 @@ impl ChatV2Repo {
     }
 
     /// 删除变体（使用现有连接）
+    ///
+    /// P1 修复：使用 SAVEPOINT 保证原子性
     pub fn delete_variant_with_conn(
         conn: &Connection,
         message_id: &str,
@@ -1927,19 +1970,31 @@ impl ChatV2Repo {
             return Ok(DeleteVariantResult::MessageDeleted);
         }
 
-        // 删除变体所属的块（使用 variant_id 批量删除，更可靠）
-        // 首先尝试通过 variant_id 删除
-        let deleted_by_variant_id = conn.execute(
-            "DELETE FROM chat_v2_blocks WHERE variant_id = ?1",
-            params![variant_id],
-        )?;
+        // P1 修复：使用 SAVEPOINT 保护删块 + 更新消息的原子性
+        conn.execute("SAVEPOINT delete_variant", []).map_err(|e| {
+            ChatV2Error::Database(format!("Failed to create savepoint: {}", e))
+        })?;
 
-        // 如果没有通过 variant_id 删除任何块，回退到通过 block_ids 删除
-        // 这可能发生在旧数据或 block_ids 列表不为空但 variant_id 未设置的情况
-        if deleted_by_variant_id == 0 && !block_ids_to_delete.is_empty() {
-            for block_id in &block_ids_to_delete {
-                let _ = Self::delete_block_with_conn(conn, block_id);
+        let mut deleted_by_variant_id = 0usize;
+        let delete_result = (|| -> ChatV2Result<()> {
+            // 删除变体所属的块
+            deleted_by_variant_id = conn.execute(
+                "DELETE FROM chat_v2_blocks WHERE variant_id = ?1",
+                params![variant_id],
+            )?;
+
+            if deleted_by_variant_id == 0 && !block_ids_to_delete.is_empty() {
+                for block_id in &block_ids_to_delete {
+                    let _ = Self::delete_block_with_conn(conn, block_id);
+                }
             }
+            Ok(())
+        })();
+
+        if let Err(e) = delete_result {
+            let _ = conn.execute("ROLLBACK TO SAVEPOINT delete_variant", []);
+            let _ = conn.execute("RELEASE SAVEPOINT delete_variant", []);
+            return Err(e);
         }
 
         debug!(
@@ -1964,17 +2019,28 @@ impl ChatV2Repo {
 
         // 更新消息
         let variants_json = serde_json::to_string(&variants)?;
-        conn.execute(
+        let update_result = conn.execute(
             "UPDATE chat_v2_messages SET variants_json = ?2, active_variant_id = ?3 WHERE id = ?1",
             params![message_id, variants_json, &new_active_id],
-        )?;
-
-        info!(
-            "[ChatV2::Repo] Variant deleted: variant_id={}, new_active_id={:?}",
-            variant_id, new_active_id
         );
 
-        Ok(DeleteVariantResult::VariantDeleted { new_active_id })
+        match update_result {
+            Ok(_) => {
+                // 提交 SAVEPOINT
+                let _ = conn.execute("RELEASE SAVEPOINT delete_variant", []);
+                info!(
+                    "[ChatV2::Repo] Variant deleted: variant_id={}, new_active_id={:?}",
+                    variant_id, new_active_id
+                );
+                Ok(DeleteVariantResult::VariantDeleted { new_active_id })
+            }
+            Err(e) => {
+                // 回滚 SAVEPOINT
+                let _ = conn.execute("ROLLBACK TO SAVEPOINT delete_variant", []);
+                let _ = conn.execute("RELEASE SAVEPOINT delete_variant", []);
+                Err(ChatV2Error::Database(e.to_string()))
+            }
+        }
     }
 
     /// 确定激活变体 ID

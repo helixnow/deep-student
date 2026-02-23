@@ -240,7 +240,7 @@ const SubagentEmbedItem: React.FC<SubagentEmbedItemProps> = ({
 // 睡眠块主组件
 // ============================================================================
 
-const SleepBlockComponent: React.FC<BlockComponentProps> = ({ block, store }) => {
+const SleepBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block, store }) => {
   const { t } = useTranslation('chatV2');
   const [isExpanded, setIsExpanded] = useState(true);
   const [expandedAgents, setExpandedAgents] = useState<Set<string>>(new Set());
@@ -565,7 +565,7 @@ const SleepBlockComponent: React.FC<BlockComponentProps> = ({ block, store }) =>
       )}
     </div>
   );
-};
+});
 
 // ============================================================================
 // 注册块类型

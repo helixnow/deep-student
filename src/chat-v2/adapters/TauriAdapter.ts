@@ -126,6 +126,7 @@ export class ChatV2TauriAdapter {
   private store: ChatStore;
   private unlisteners: UnlistenFn[] = [];
   private isSetup = false;
+  private setupGeneration = 0;
   private readonly adapterInstanceId: number;
   
   /** 🚀 性能优化：数据恢复完成回调，在 restoreFromBackend 后立即触发 */
@@ -270,9 +271,11 @@ export class ChatV2TauriAdapter {
       this.unlisteners.push(blockUnlisten, sessionUnlisten, ankiUnlisten, llmReqUnlisten);
       this.claimAnkiEventOwnership('retrySetupListeners');
       
+      // L1 修复：更新 listenersReadyPromise 为已 resolve 的 Promise
+      this.listenersReadyPromise = Promise.resolve();
+
       console.log(LOG_PREFIX, `Retry successful: ${this.unlisteners.length} event listeners registered`);
       
-      // 通知用户重试成功
       showGlobalNotification(
         'success',
         i18n.t('chatV2:success.listenerRetrySuccessMessage', '功能已恢复正常'),
@@ -349,6 +352,9 @@ export class ChatV2TauriAdapter {
       // 📊 细粒度打点：listen 开始
       sessionSwitchPerf.mark('listen_start');
       
+      // 🔧 P0修复：记录当前 setup generation，防止 cleanup→re-setup 场景下旧 listener 泄漏到新 session
+      const currentGeneration = ++this.setupGeneration;
+      
       // 启动事件监听（不立即 await，后台注册）
       const listenPromise = Promise.all([
         listen<BackendEvent>(blockEventChannel, (event) => {
@@ -366,9 +372,10 @@ export class ChatV2TauriAdapter {
         }),
       ]);
       
-      // 🔧 P20 修复：保存 listenPromise，供子代理场景等待监听器就绪
       this.listenersReadyPromise = listenPromise.then(() => {
         console.log(LOG_PREFIX, `Listeners ready for session: ${this.sessionId}`);
+      }).catch((err) => {
+        console.error(LOG_PREFIX, 'listenersReadyPromise rejected:', getErrorMessage(err));
       });
 
       // 📊 细粒度打点：loadSession 开始
@@ -453,11 +460,18 @@ export class ChatV2TauriAdapter {
       
       // 事件监听在后台继续，不阻塞 setup 完成
       listenPromise.then(([blockUnlisten, sessionUnlisten, ankiUnlisten, llmReqUnlisten]) => {
+        // 守卫：如果 cleanup 已执行或已 re-setup（generation 变化），立即释放过期的监听器
+        if (!this.isSetup || this.setupGeneration !== currentGeneration) {
+          console.warn(LOG_PREFIX, `Releasing stale listeners (gen=${currentGeneration}, current=${this.setupGeneration}, isSetup=${this.isSetup})`);
+          blockUnlisten();
+          sessionUnlisten();
+          ankiUnlisten();
+          llmReqUnlisten();
+          return;
+        }
         this.unlisteners.push(blockUnlisten, sessionUnlisten, ankiUnlisten, llmReqUnlisten);
         this.claimAnkiEventOwnership('setup');
-        // 📊 细粒度打点：listen 完成（后台）
         sessionSwitchPerf.mark('listen_end');
-        // 🆕 P1 修复：清除可能存在的旧错误状态
         this.listenerRegistrationError = null;
         console.log(LOG_PREFIX, `Successfully registered ${this.unlisteners.length} event listeners`);
       }).catch((err) => {
@@ -516,8 +530,9 @@ export class ChatV2TauriAdapter {
       // 🔧 性能优化：已缓存的会话无需再执行 initSession
       // initSession 只在首次加载时执行，后续切换回该会话时跳过
       if (!alreadyLoaded) {
-        // 🔧 P0修复：在回调设置完成后，处理待执行的 initSession
-        // 这确保 analysis/bridge 模式的 autoSendFirstMessage 能正常工作
+        // M2 修复：在 initSession 之前确保监听器就绪（autoSendFirstMessage 会立即触发消息发送）
+        await this.waitForListenersReady();
+
         const meta = sessionManager.getSessionMeta(this.sessionId);
         if (meta?.pendingInitConfig) {
           const mode = meta.mode;
@@ -562,8 +577,17 @@ export class ChatV2TauriAdapter {
    * - 组件卸载时流式尚未完成
    * - 会话切换时事件未正常结束
    */
-  cleanup(): void {
+  async cleanup(): Promise<void> {
     console.log(LOG_PREFIX, 'Cleaning up...');
+
+    // 等待监听器注册完成，确保 unlisteners 已填充
+    if (this.listenersReadyPromise) {
+      try {
+        await this.listenersReadyPromise;
+      } catch {
+        // 注册失败的情况已由 .catch() 分支处理
+      }
+    }
 
     // 🔧 同步修复：cleanup 前先保存会话状态（fire-and-forget）
     // 确保 idle 状态下修改的 UI 设置（chatParams, features 等）不丢失

@@ -296,7 +296,7 @@ mod tests {
     #[test]
     fn test_migration_set_structure() {
         assert_eq!(CHAT_V2_MIGRATION_SET.database_name, "chat_v2");
-        assert_eq!(CHAT_V2_MIGRATION_SET.count(), 7); // V20260130 + V20260131 + V20260201 + V20260202 + V20260203 + V20260204 + V20260207
+        assert_eq!(CHAT_V2_MIGRATION_SET.count(), 8); // V20260130 ~ V20260221
     }
 
     #[test]
@@ -323,41 +323,45 @@ mod tests {
 
     #[test]
     fn test_latest_version() {
-        assert_eq!(CHAT_V2_MIGRATION_SET.latest_version(), 20260207);
+        assert_eq!(CHAT_V2_MIGRATION_SET.latest_version(), 20260221);
     }
 
     #[test]
     fn test_pending_migrations() {
-        // 从版本 0 开始，应该有 7 个待执行
+        // 从版本 0 开始，应该有 8 个待执行
         let pending: Vec<_> = CHAT_V2_MIGRATION_SET.pending(0).collect();
+        assert_eq!(pending.len(), 8);
+
+        // 从版本 20260130 开始，应该有 7 个待执行
+        let pending: Vec<_> = CHAT_V2_MIGRATION_SET.pending(20260130).collect();
         assert_eq!(pending.len(), 7);
 
-        // 从版本 20260130 开始，应该有 6 个待执行
-        let pending: Vec<_> = CHAT_V2_MIGRATION_SET.pending(20260130).collect();
+        // 从版本 20260131 开始，应该有 6 个待执行
+        let pending: Vec<_> = CHAT_V2_MIGRATION_SET.pending(20260131).collect();
         assert_eq!(pending.len(), 6);
 
-        // 从版本 20260131 开始，应该有 5 个待执行
-        let pending: Vec<_> = CHAT_V2_MIGRATION_SET.pending(20260131).collect();
+        // 从版本 20260201 开始，应该有 5 个待执行
+        let pending: Vec<_> = CHAT_V2_MIGRATION_SET.pending(20260201).collect();
         assert_eq!(pending.len(), 5);
 
-        // 从版本 20260201 开始，应该有 4 个待执行
-        let pending: Vec<_> = CHAT_V2_MIGRATION_SET.pending(20260201).collect();
+        // 从版本 20260202 开始，应该有 4 个待执行
+        let pending: Vec<_> = CHAT_V2_MIGRATION_SET.pending(20260202).collect();
         assert_eq!(pending.len(), 4);
 
-        // 从版本 20260202 开始，应该有 3 个待执行
-        let pending: Vec<_> = CHAT_V2_MIGRATION_SET.pending(20260202).collect();
+        // 从版本 20260203 开始，应该有 3 个待执行
+        let pending: Vec<_> = CHAT_V2_MIGRATION_SET.pending(20260203).collect();
         assert_eq!(pending.len(), 3);
 
-        // 从版本 20260203 开始，应该有 2 个待执行
-        let pending: Vec<_> = CHAT_V2_MIGRATION_SET.pending(20260203).collect();
+        // 从版本 20260204 开始，应该有 2 个待执行
+        let pending: Vec<_> = CHAT_V2_MIGRATION_SET.pending(20260204).collect();
         assert_eq!(pending.len(), 2);
 
-        // 从版本 20260204 开始，应该有 1 个待执行
-        let pending: Vec<_> = CHAT_V2_MIGRATION_SET.pending(20260204).collect();
+        // 从版本 20260207 开始，应该有 1 个待执行
+        let pending: Vec<_> = CHAT_V2_MIGRATION_SET.pending(20260207).collect();
         assert_eq!(pending.len(), 1);
 
-        // 从版本 20260207 开始，应该没有待执行
-        let pending: Vec<_> = CHAT_V2_MIGRATION_SET.pending(20260207).collect();
+        // 从版本 20260221 开始，应该没有待执行
+        let pending: Vec<_> = CHAT_V2_MIGRATION_SET.pending(20260221).collect();
         assert_eq!(pending.len(), 0);
     }
 }

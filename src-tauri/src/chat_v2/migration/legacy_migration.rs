@@ -147,7 +147,7 @@ impl MigrationExecutor {
         self.progress.total_sessions = grouped.len();
         tracing::info!("[Migration] 分组为 {} 个会话", grouped.len());
 
-        // 步骤 3-6: 逐个会话迁移
+        // 步骤 3-6: 逐个会话迁移（每个会话使用事务保护）
         for (mistake_id, messages) in grouped {
             self.progress.current_mistake_id = Some(mistake_id.clone());
 
@@ -157,30 +157,80 @@ impl MigrationExecutor {
                 &format!("正在创建会话: {}", mistake_id),
             );
 
-            // ★ 获取有意义的标题
-            let title = self.get_session_title(data_conn, &mistake_id, &messages);
-            let session_id = self.create_session(chat_v2_conn, &mistake_id, &title)?;
-            self.progress.created_sessions += 1;
-            self.report.sessions_created += 1;
+            // P0 修复：为每个会话的迁移使用事务保护
+            // 确保会话创建 + 所有消息迁移是原子的，避免中途失败产生不一致数据
+            chat_v2_conn
+                .execute("BEGIN IMMEDIATE", [])
+                .map_err(|e| ChatV2Error::Database(format!("迁移事务开始失败: {}", e)))?;
 
-            // 迁移消息
-            for msg in &messages {
-                self.update_progress(
-                    MigrationStep::MigrateMessages,
-                    &format!(
-                        "正在迁移消息 {}/{}",
-                        self.progress.migrated_messages + 1,
-                        self.progress.total_messages
-                    ),
-                );
+            let session_result = (|| -> Result<(String, Vec<i64>), ChatV2Error> {
+                // ★ 获取有意义的标题
+                let title = self.get_session_title(data_conn, &mistake_id, &messages);
+                let session_id = self.create_session(chat_v2_conn, &mistake_id, &title)?;
+                self.progress.created_sessions += 1;
+                self.report.sessions_created += 1;
 
-                let blocks_count = self.migrate_message(chat_v2_conn, &session_id, msg)?;
-                self.report.blocks_created += blocks_count;
-                self.report.messages_migrated += 1;
-                self.progress.migrated_messages += 1;
+                let mut migrated_msg_ids: Vec<i64> = Vec::new();
 
-                // 标记旧消息已迁移
-                self.mark_message_migrated(data_conn, msg.id, &session_id)?;
+                // 迁移消息
+                for msg in &messages {
+                    self.update_progress(
+                        MigrationStep::MigrateMessages,
+                        &format!(
+                            "正在迁移消息 {}/{}",
+                            self.progress.migrated_messages + 1,
+                            self.progress.total_messages
+                        ),
+                    );
+
+                    let blocks_count = self.migrate_message(chat_v2_conn, &session_id, msg)?;
+                    self.report.blocks_created += blocks_count;
+                    self.report.messages_migrated += 1;
+                    self.progress.migrated_messages += 1;
+                    migrated_msg_ids.push(msg.id);
+                }
+                Ok((session_id, migrated_msg_ids))
+            })();
+
+            match session_result {
+                Ok((session_id, migrated_msg_ids)) => {
+                    // 先提交 chat_v2.db 事务
+                    chat_v2_conn.execute("COMMIT", []).map_err(|e| {
+                        ChatV2Error::Database(format!("迁移事务提交失败: {}", e))
+                    })?;
+
+                    // 事务提交成功后，再标记 data.db 中的消息为已迁移
+                    // 这样即使标记失败，V2 数据完整，重试时最多产生重复但不会丢数据
+                    for msg_id in &migrated_msg_ids {
+                        if let Err(e) =
+                            self.mark_message_migrated(data_conn, *msg_id, &session_id)
+                        {
+                            tracing::warn!(
+                                "[Migration] 标记消息 {} 已迁移失败: {:?}（V2 数据已保存）",
+                                msg_id, e
+                            );
+                        }
+                    }
+                }
+                Err(e) => {
+                    // 回滚 chat_v2.db 事务
+                    if let Err(rollback_err) = chat_v2_conn.execute("ROLLBACK", []) {
+                        tracing::error!(
+                            "[Migration] 回滚迁移事务失败: {} (原始错误: {:?})",
+                            rollback_err, e
+                        );
+                    }
+                    tracing::error!(
+                        "[Migration] 会话 {} 迁移失败并已回滚: {:?}",
+                        mistake_id, e
+                    );
+                    self.report.errors.push(format!(
+                        "会话 {} 迁移失败: {}",
+                        mistake_id, e
+                    ));
+                    // 继续迁移其他会话，不中断整个流程
+                    continue;
+                }
             }
         }
 
@@ -493,6 +543,22 @@ impl MigrationExecutor {
                     conn,
                     &message_id,
                     block_types::WEB_SEARCH,
+                    block_index,
+                    None,
+                    Some(sources),
+                )?;
+                block_ids.push(block_id);
+                block_index += 1;
+            }
+        }
+
+        // 6. graph 块
+        if let Some(ref sources) = msg.graph_sources {
+            if sources != "[]" && !sources.is_empty() {
+                let block_id = self.create_block(
+                    conn,
+                    &message_id,
+                    block_types::GRAPH,
                     block_index,
                     None,
                     Some(sources),

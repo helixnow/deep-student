@@ -37,6 +37,9 @@ export const EVENT_BRIDGE_MAX_BUFFER_SIZE = 100;
 /** 已处理事件 ID 最大保留数量 */
 export const EVENT_BRIDGE_MAX_PROCESSED_IDS = 200;
 
+/** 序列号间隙超时时间（毫秒），超时后跳过丢失的序列号 */
+export const EVENT_BRIDGE_GAP_TIMEOUT_MS = 3000;
+
 // ==================== 会话管理配置 ====================
 
 /** SessionManager 最大缓存会话数 */

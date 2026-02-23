@@ -38,7 +38,7 @@ interface BackendAcademicSearchResult {
  * 3. 显示论文结果列表（复用 SourceList 组件）
  * 4. 暗色/亮色主题支持
  */
-const AcademicSearchBlock: React.FC<BlockComponentProps> = ({ block, isStreaming }) => {
+const AcademicSearchBlock: React.FC<BlockComponentProps> = React.memo(({ block, isStreaming }) => {
   const { t } = useTranslation('chatV2');
 
   // 解析后端数据并转换为前端格式
@@ -211,7 +211,7 @@ const AcademicSearchBlock: React.FC<BlockComponentProps> = ({ block, isStreaming
       </div>
     </div>
   );
-};
+});
 
 // ============================================================================
 // 自动注册

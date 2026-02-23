@@ -814,7 +814,7 @@ const ActionButtons: React.FC<{
  * 1. 折叠态：预览前 3 张卡片
  * 2. 展开态：内联展示所有卡片，点击可编辑
  */
-const AnkiCardsBlock: React.FC<BlockComponentProps> = ({
+const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
   block,
   isStreaming,
   store,
@@ -1157,7 +1157,7 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = ({
       )}
     </div>
   );
-};
+});
 
 // ============================================================================
 // 自动注册

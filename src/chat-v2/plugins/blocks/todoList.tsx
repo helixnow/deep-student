@@ -295,7 +295,7 @@ export const TodoListPanel: React.FC<TodoListPanelProps> = ({
  * 用于在 BlockRenderer 中渲染单独的 todo_list 块
  * 实际上在 ActivityTimeline 中会被聚合渲染
  */
-const TodoListBlock: React.FC<BlockComponentProps> = ({ block }) => {
+const TodoListBlock: React.FC<BlockComponentProps> = React.memo(({ block }) => {
   // 从 toolOutput 解析数据
   const output = block.toolOutput as TodoListOutput | undefined;
   
@@ -320,7 +320,7 @@ const TodoListBlock: React.FC<BlockComponentProps> = ({ block }) => {
       defaultExpanded={true}
     />
   );
-};
+});
 
 // ============================================================================
 // 自动注册

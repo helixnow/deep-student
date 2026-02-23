@@ -288,7 +288,7 @@ const PaperRow: React.FC<{ paper: PaperProgressItem }> = ({ paper }) => {
 // 主组件
 // ============================================================================
 
-const PaperSaveBlock: React.FC<BlockComponentProps> = ({ block }) => {
+const PaperSaveBlock: React.FC<BlockComponentProps> = React.memo(({ block }) => {
   // 从 block.content 解析最后一行 NDJSON 获取当前进度快照
   const snapshot = useMemo<ProgressSnapshot | null>(() => {
     const raw = block.content;
@@ -401,6 +401,6 @@ const PaperSaveBlock: React.FC<BlockComponentProps> = ({ block }) => {
       )}
     </div>
   );
-};
+});
 
 export { PaperSaveBlock };

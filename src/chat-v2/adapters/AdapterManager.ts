@@ -298,9 +298,9 @@ class AdapterManagerImpl {
       }
     }
 
-    // 执行 cleanup
+    // 执行 cleanup（现在是异步的，等待监听器就绪后清理）
     try {
-      entry.adapter.cleanup();
+      await entry.adapter.cleanup();
     } catch (err: unknown) {
       console.error(LOG_PREFIX, `Cleanup failed for ${sessionId}:`, getErrorMessage(err));
     }

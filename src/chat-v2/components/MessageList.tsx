@@ -490,6 +490,9 @@ const MessageListInner: React.FC<MessageListProps> = ({
       ) : (
         // 虚拟滚动模式
         <div
+          role="log"
+          aria-live="polite"
+          aria-relevant="additions"
           style={{
             height: `${virtualizer.getTotalSize()}px`,
             width: '100%',

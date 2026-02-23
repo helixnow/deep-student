@@ -53,5 +53,5 @@ export interface BlockRendererPlugin {
  * 块渲染注册表单例
  */
 export const blockRegistry = new Registry<BlockRendererPlugin>('BlockRegistry', {
-  warnOnOverwrite: false,
+  warnOnOverwrite: true,
 });

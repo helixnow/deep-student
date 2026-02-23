@@ -858,8 +858,11 @@ export function estimateContentBlockTokens(blocks: ContentBlock[]): number {
       // 文本块：使用动态估算
       totalTokens += estimateTokensForText(block.text);
     } else if (block.type === 'image') {
-      // 图片块：固定 500 tokens（图片在 vision 模型中通常占用大量 tokens）
-      totalTokens += 500;
+      // 图片块：按 Claude 公式估算 (width * height) / 750，最低 258
+      const imageBlock = block as typeof block & { source?: { width?: number; height?: number } };
+      const w = typeof imageBlock.source?.width === 'number' ? imageBlock.source.width : 0;
+      const h = typeof imageBlock.source?.height === 'number' ? imageBlock.source.height : 0;
+      totalTokens += (w > 0 && h > 0) ? Math.max(258, Math.ceil((w * h) / 750)) : 800;
     } else {
       // 其他类型：尝试获取文本内容并动态估算
       const text = String(block.text || '');

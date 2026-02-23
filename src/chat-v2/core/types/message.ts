@@ -23,7 +23,7 @@ export type { AttachmentMeta } from './common';
  * - error: 失败
  * - cancelled: 被用户取消
  */
-export type VariantStatus = 'pending' | 'streaming' | 'success' | 'error' | 'cancelled';
+export type VariantStatus = 'pending' | 'streaming' | 'success' | 'error' | 'cancelled' | 'interrupted';
 
 /**
  * 回答变体

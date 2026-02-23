@@ -217,7 +217,7 @@ const MessageItem: React.FC<MessageItemProps> = ({ message }) => {
 // 主组件
 // ============================================================================
 
-const WorkspaceStatusBlockComponent: React.FC<BlockComponentProps> = ({
+const WorkspaceStatusBlockComponent: React.FC<BlockComponentProps> = React.memo(({
   block,
   store,
 }) => {
@@ -534,7 +534,7 @@ const WorkspaceStatusBlockComponent: React.FC<BlockComponentProps> = ({
       <WorkspaceLogInline className="mx-0" defaultExpanded={false} store={store} />
     </div>
   );
-};
+});
 
 // ============================================================================
 // 自动注册

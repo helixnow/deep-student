@@ -8,6 +8,8 @@ export interface ChatSession {
   title?: string;
   /** 会话简介（自动生成） */
   description?: string;
+  /** 持久化状态 */
+  persistStatus?: 'active' | 'archived' | 'deleted';
   createdAt: string;
   updatedAt: string;
   /** 分组 ID（可选） */

@@ -1,8 +1,46 @@
-import React, { useState, useEffect, useMemo, memo } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback, memo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { shallowEqualSpans, makeUncertaintyHighlightPlugin } from './rendererUtils';
 import type { RetrievalSourceType } from '../../plugins/blocks/components/types';
+
+const STREAMING_THROTTLE_MS = 100;
+
+function useThrottledContent(content: string, isStreaming: boolean): string {
+  const [throttled, setThrottled] = useState(content);
+  const lastUpdateRef = useRef(0);
+  const rafRef = useRef<number | null>(null);
+  const latestContentRef = useRef(content);
+  latestContentRef.current = content;
+
+  useEffect(() => {
+    if (!isStreaming) {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      setThrottled(content);
+      return;
+    }
+    const now = performance.now();
+    const elapsed = now - lastUpdateRef.current;
+    if (elapsed >= STREAMING_THROTTLE_MS) {
+      lastUpdateRef.current = now;
+      setThrottled(content);
+    } else if (!rafRef.current) {
+      rafRef.current = requestAnimationFrame(() => {
+        rafRef.current = null;
+        lastUpdateRef.current = performance.now();
+        setThrottled(latestContentRef.current);
+      });
+    }
+    return () => {
+      if (rafRef.current) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
+    };
+  }, [content, isStreaming]);
+
+  return isStreaming ? throttled : content;
+}
 
 interface StreamingMarkdownRendererProps {
   content: string;
@@ -188,10 +226,11 @@ export const StreamingMarkdownRenderer: React.FC<StreamingMarkdownRendererProps>
   resolveCitationImage,
 }) => {
   const { t } = useTranslation('chatV2');
-  // 🔧 P1修复：使用 useMemo 替代 useEffect+setState，避免额外渲染周期
+  // 🔧 P0修复：流式期间 throttle content 更新，减少 O(n²) 重解析开销
+  const throttledContent = useThrottledContent(content, isStreaming);
   const processedContent = useMemo(
-    () => preprocessStreamingContent(content, isStreaming),
-    [content, isStreaming]
+    () => preprocessStreamingContent(throttledContent, isStreaming),
+    [throttledContent, isStreaming]
   );
   const displayContent = processedContent.content;
   const isPartialMath = processedContent.hasPartialMath;

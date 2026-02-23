@@ -51,6 +51,7 @@ use super::prompt_builder;
 use super::repo::ChatV2Repo;
 // 🆕 VFS 统一存储（2025-12-07）：使用 vfs.db 的 VfsResourceRepo
 use crate::vfs::database::VfsDatabase;
+use crate::vfs::error::VfsError;
 use crate::vfs::repos::VfsResourceRepo;
 // 🆕 VFS RAG 统一知识管理（2025-01）：使用 VFS 向量检索
 use crate::vfs::indexing::{VfsFullSearchService, VfsSearchParams};
@@ -1455,6 +1456,7 @@ impl ChatV2Pipeline {
             "rag_search" | "multimodal_search" | "unified_search" => block_types::RAG.to_string(),
             "memory_search" => block_types::MEMORY.to_string(),
             "web_search" => block_types::WEB_SEARCH.to_string(),
+            "graph_search" => block_types::GRAPH.to_string(),
             "ask_user" => block_types::ASK_USER.to_string(),
             _ => block_types::MCP_TOOL.to_string(),
         }
@@ -2547,10 +2549,22 @@ impl ChatV2Pipeline {
             top_k,
         };
 
-        // 执行搜索
-        let result = search_service
-            .search_with_resource_info(query, &params, enable_reranking)
-            .await;
+        // 执行搜索（30秒超时保护，防止 LanceDB 或 reranker 挂起）
+        let result = match tokio::time::timeout(
+            std::time::Duration::from_secs(30),
+            search_service.search_with_resource_info(query, &params, enable_reranking),
+        )
+        .await
+        {
+            Ok(r) => r,
+            Err(_) => {
+                log::error!(
+                    "[ChatV2::pipeline] VFS RAG search timeout (30s), message={}",
+                    message_id
+                );
+                Err(VfsError::Internal("VFS RAG search timeout".to_string()))
+            }
+        };
 
         match result {
             Ok(results) => {
@@ -2567,6 +2581,8 @@ impl ChatV2Pipeline {
                             "chunkIndex": r.chunk_index,
                             "embeddingId": r.embedding_id,
                             "sourceType": "vfs_rag",
+                            "pageIndex": r.page_index,
+                            "sourceId": r.source_id,
                         })),
                     })
                     .collect();
@@ -5685,6 +5701,59 @@ impl ChatV2Pipeline {
         let conn = self.db.get_conn_safe()?;
         let now_ms = chrono::Utc::now().timestamp_millis();
 
+        // P0 修复：使用事务包裹所有写操作，确保中间保存的原子性
+        conn.execute("BEGIN IMMEDIATE", []).map_err(|e| {
+            log::error!(
+                "[ChatV2::pipeline] Failed to begin transaction for save_intermediate_results: {}",
+                e
+            );
+            ChatV2Error::Database(format!("Failed to begin transaction: {}", e))
+        })?;
+
+        let save_result = self.save_intermediate_results_inner(&conn, ctx, now_ms);
+
+        match save_result {
+            Ok(()) => {
+                conn.execute("COMMIT", []).map_err(|e| {
+                    log::error!(
+                        "[ChatV2::pipeline] Failed to commit intermediate save transaction: {}",
+                        e
+                    );
+                    ChatV2Error::Database(format!("Failed to commit transaction: {}", e))
+                })?;
+                log::debug!(
+                    "[ChatV2::pipeline] Intermediate save committed: message_id={}, blocks={}",
+                    ctx.assistant_message_id,
+                    ctx.interleaved_blocks.len()
+                );
+                Ok(())
+            }
+            Err(e) => {
+                if let Err(rollback_err) = conn.execute("ROLLBACK", []) {
+                    log::error!(
+                        "[ChatV2::pipeline] Failed to rollback intermediate save: {} (original: {:?})",
+                        rollback_err,
+                        e
+                    );
+                } else {
+                    log::warn!(
+                        "[ChatV2::pipeline] Intermediate save rolled back for session={}: {:?}",
+                        ctx.session_id,
+                        e
+                    );
+                }
+                Err(e)
+            }
+        }
+    }
+
+    /// save_intermediate_results 的内部实现（在事务内执行）
+    fn save_intermediate_results_inner(
+        &self,
+        conn: &crate::chat_v2::database::ChatV2PooledConnection,
+        ctx: &PipelineContext,
+        now_ms: i64,
+    ) -> ChatV2Result<()> {
         // 🔧 P23 修复：中间保存也要保存用户消息
         // 否则刷新后子代理会话只有助手消息，没有用户消息（任务内容）
         // 检查是否跳过用户消息保存（编辑重发场景）
@@ -5707,10 +5776,9 @@ impl ChatV2Pipeline {
         // 1. 保存助手消息（如果不存在则创建）
         // 🔧 Preserve `anki_cards` blocks created outside of `ctx.interleaved_blocks`.
         //
-        // `ChatV2Repo::create_message_with_conn` uses SQLite `INSERT OR REPLACE`, which is a
-        // DELETE+INSERT under the hood. With `chat_v2_blocks.message_id ON DELETE CASCADE`,
-        // replacing the assistant message row will delete *all* existing blocks (including
-        // ChatAnki-generated `anki_cards` blocks). We query + re-insert them best-effort.
+        // `ChatV2Repo::create_message_with_conn` 使用 ON CONFLICT(id) DO UPDATE SET，
+        // 是原地更新而非 DELETE+INSERT，不会触发 CASCADE 删除。
+        // 但仍保留 anki_cards 块的保存逻辑以防 block_ids 列表覆盖。
         let preserved_anki_cards_blocks: Vec<MessageBlock> =
             ChatV2Repo::get_message_blocks_with_conn(&conn, &ctx.assistant_message_id)?
                 .into_iter()
@@ -7199,7 +7267,7 @@ impl ChatV2Pipeline {
             .collect();
         // ★ 2025-12-10 统一改造：附件不再通过 request.attachments 传递
         let empty_attachments: Vec<crate::chat_v2::types::AttachmentInput> = Vec::new();
-        self.save_multi_variant_results(
+        let save_result = self.save_multi_variant_results(
             &session_id,
             &user_message_id,
             &assistant_message_id,
@@ -7207,13 +7275,13 @@ impl ChatV2Pipeline {
             &empty_attachments,
             &options,
             &shared_context,
-            &contexts_only, // 传入 contexts 以便获取累积的内容
+            &contexts_only,
             active_variant_id.as_deref(),
-            context_snapshot, // 🆕 传入上下文快照
+            context_snapshot,
         )
-        .await?;
+        .await;
 
-        // === 11. 🔧 P1修复：清理每个变体的 cancel token ===
+        // === 11. 清理每个变体的 cancel token（无论保存成败都必须执行）===
         if let Some(ref state) = chat_v2_state {
             for (ctx, _) in &variant_contexts {
                 let cancel_key = format!("{}:{}", session_id, ctx.variant_id());
@@ -7224,6 +7292,8 @@ impl ChatV2Pipeline {
                 variant_contexts.len()
             );
         }
+
+        save_result?;
 
         // === 12. 发射 stream_complete（带 token 统计） ===
         let duration_ms = start_time.elapsed().as_millis() as u64;
@@ -8852,8 +8922,18 @@ impl ChatV2Pipeline {
         let conn = self.db.get_conn_safe()?;
         let now_ms = chrono::Utc::now().timestamp_millis();
 
+        // P0 修复：使用事务包裹所有写操作，确保多变体保存的原子性
+        conn.execute("BEGIN IMMEDIATE", []).map_err(|e| {
+            log::error!(
+                "[ChatV2::pipeline] Failed to begin transaction for save_multi_variant_results: {}",
+                e
+            );
+            ChatV2Error::Database(format!("Failed to begin transaction: {}", e))
+        })?;
+
+        let save_result = (|| -> ChatV2Result<()> {
+
         // === 1. 保存用户消息 ===
-        // 🆕 使用统一的用户消息构建器，确保所有路径的一致性
         let mut user_msg_params =
             UserMessageParams::new(session_id.to_string(), user_content.to_string())
                 .with_id(user_message_id.to_string())
@@ -9135,6 +9215,35 @@ impl ChatV2Pipeline {
         );
 
         Ok(())
+        })(); // 闭包结束
+
+        match save_result {
+            Ok(()) => {
+                conn.execute("COMMIT", []).map_err(|e| {
+                    log::error!(
+                        "[ChatV2::pipeline] Failed to commit multi-variant save: {}",
+                        e
+                    );
+                    ChatV2Error::Database(format!("Failed to commit transaction: {}", e))
+                })?;
+                Ok(())
+            }
+            Err(e) => {
+                if let Err(rollback_err) = conn.execute("ROLLBACK", []) {
+                    log::error!(
+                        "[ChatV2::pipeline] Failed to rollback multi-variant save: {} (original: {:?})",
+                        rollback_err,
+                        e
+                    );
+                } else {
+                    log::warn!(
+                        "[ChatV2::pipeline] Multi-variant save rolled back: {:?}",
+                        e
+                    );
+                }
+                Err(e)
+            }
+        }
     }
 }
 

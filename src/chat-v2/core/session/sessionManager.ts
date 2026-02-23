@@ -399,10 +399,11 @@ class SessionManagerImpl implements ISessionManager {
           })
           .catch((error) => {
             console.error(
-              `[SessionManager] Save failed during eviction for session ${sessionId}, keeping in cache:`,
+              `[SessionManager] Save failed during eviction for session ${sessionId}, finalizing anyway to prevent cache growth:`,
               error
             );
-            this.pendingEvictions.delete(sessionId);
+            // 即使保存失败也完成淘汰，防止 sessions Map 无上限增长
+            this.finalizeEviction(sessionId);
           });
 
         return true;
@@ -562,16 +563,20 @@ export function getSessionManager(): ISessionManager {
  * 使用同步方式触发保存（因为 beforeunload 不支持异步）。
  */
 function emergencySaveAllSessions(): void {
-  // 使用公开的 getAllSessionIds 方法获取所有缓存的会话
   const activeSessions = sessionManager.getAllSessionIds();
   
   console.log(`[SessionManager] 🆘 Emergency save triggered for ${activeSessions.length} sessions`);
   
   for (const sessionId of activeSessions) {
     try {
+      // 同步 flush chunkBuffer 确保流式数据写入 store
+      try {
+        chunkBuffer.flushSession(sessionId);
+      } catch {
+        // chunkBuffer flush 失败不阻塞保存
+      }
       const store = sessionManager.get(sessionId);
       if (store) {
-        // 使用 Promise 触发保存，但不等待（beforeunload 不支持异步）
         autoSave.forceImmediateSave(store.getState()).catch((err) => {
           console.warn(`[SessionManager] Emergency save failed for ${sessionId}:`, err);
         });

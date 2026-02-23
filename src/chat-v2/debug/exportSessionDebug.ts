@@ -388,7 +388,6 @@ function extractMessageDebugInfo(
         break;
 
       case 'mcp_tool':
-      case 'builtin_tool':
       case 'sleep':           // 🆕 睡眠块也作为工具调用记录
       case 'subagent_embed':  // 🆕 子代理嵌入块
       case 'workspace_status': // 🆕 工作区状态块

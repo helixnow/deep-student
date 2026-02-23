@@ -15,6 +15,7 @@ interface ChatErrorBoundaryProps {
 interface ChatErrorBoundaryState {
   hasError: boolean;
   error: Error | null;
+  retryCount: number;
 }
 
 interface ErrorFallbackProps {
@@ -58,12 +59,14 @@ const ErrorFallback: React.FC<ErrorFallbackProps> = ({ error, onRetry, className
 };
 
 export class ChatErrorBoundary extends Component<ChatErrorBoundaryProps, ChatErrorBoundaryState> {
+  private static readonly MAX_RETRIES = 3;
+
   constructor(props: ChatErrorBoundaryProps) {
     super(props);
-    this.state = { hasError: false, error: null };
+    this.state = { hasError: false, error: null, retryCount: 0 };
   }
 
-  static getDerivedStateFromError(error: Error): ChatErrorBoundaryState {
+  static getDerivedStateFromError(error: Error): Partial<ChatErrorBoundaryState> {
     return { hasError: true, error };
   }
 
@@ -73,7 +76,10 @@ export class ChatErrorBoundary extends Component<ChatErrorBoundaryProps, ChatErr
   }
 
   handleRetry = (): void => {
-    this.setState({ hasError: false, error: null });
+    if (this.state.retryCount >= ChatErrorBoundary.MAX_RETRIES) {
+      return;
+    }
+    this.setState((prev) => ({ hasError: false, error: null, retryCount: prev.retryCount + 1 }));
     this.props.onRetry?.();
   };
 
@@ -82,10 +88,11 @@ export class ChatErrorBoundary extends Component<ChatErrorBoundaryProps, ChatErr
       if (this.props.fallback) {
         return this.props.fallback;
       }
+      const canRetry = this.state.retryCount < ChatErrorBoundary.MAX_RETRIES;
       return (
         <ErrorFallback
           error={this.state.error}
-          onRetry={this.handleRetry}
+          onRetry={canRetry ? this.handleRetry : undefined}
           className={this.props.className}
         />
       );

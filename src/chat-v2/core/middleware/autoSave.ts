@@ -155,13 +155,17 @@ class AutoSaveMiddlewareImpl implements AutoSaveMiddleware {
     // 更新最后保存时间
     this.lastSaveTimes.set(sessionId, Date.now());
 
-    // 异步执行保存，不阻塞
-    const savePromise = store
-      .saveSession()
-      .catch((error) => {
-        console.error(`[AutoSave] Save failed for session ${sessionId}:`, error);
-        // P2改进：显示保存失败提示（节流，避免频繁弹出）
-        // 使用静态方法判断上次提示时间，5秒内不重复提示
+    // 异步执行保存，支持失败重试（最多1次）
+    const attemptSave = async (retryCount = 0): Promise<void> => {
+      try {
+        await store.saveSession();
+      } catch (error) {
+        if (retryCount < 1) {
+          console.warn(`[AutoSave] Save failed for session ${sessionId}, retrying in 2s...`, error);
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          return attemptSave(retryCount + 1);
+        }
+        console.error(`[AutoSave] Save failed after retry for session ${sessionId}:`, error);
         const now = Date.now();
         const lastNotifyKey = `autoSave_lastNotify_${sessionId}`;
         const lastNotify = (this as any)[lastNotifyKey] || 0;
@@ -169,7 +173,9 @@ class AutoSaveMiddlewareImpl implements AutoSaveMiddleware {
           (this as any)[lastNotifyKey] = now;
           showGlobalNotification('warning', i18next.t('chatV2:error.saveFailedDesc'));
         }
-      })
+      }
+    };
+    const savePromise = attemptSave()
       .finally(() => {
         this.savingPromises.delete(sessionId);
       });

@@ -170,7 +170,7 @@ export function updateMessageAndBlocks(
  * set({ activeBlockIds: addToSet(state.activeBlockIds, blockId) })
  */
 export function addToSet<T>(set: Set<T>, value: T): Set<T> {
-  // 始终创建新 Set 实例，确保引用变化
+  if (set.has(value)) return set;
   const newSet = new Set(set);
   newSet.add(value);
   return newSet;
@@ -186,7 +186,7 @@ export function addToSet<T>(set: Set<T>, value: T): Set<T> {
  * set({ activeBlockIds: removeFromSet(state.activeBlockIds, blockId) })
  */
 export function removeFromSet<T>(set: Set<T>, value: T): Set<T> {
-  // 始终创建新 Set 实例，确保引用变化
+  if (!set.has(value)) return set;
   const newSet = new Set(set);
   newSet.delete(value);
   return newSet;

@@ -39,9 +39,25 @@ use crate::vfs::database::VfsDatabase;
 use crate::vfs::repos::{CreateQuestionParams, ImportingSession, QuestionFilters, QuestionImage, VfsBlobRepo, VfsExamRepo, VfsFileRepo, VfsQuestionRepo};
 use crate::vfs::types::VfsCreateExamSheetParams;
 
+/// 导入模式
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum ImportMode {
+    /// 传统纯文本模式（txt/md/docx纯文本/可解析PDF）
+    #[default]
+    TextOnly,
+    /// DOCX 带图片模式（文本 + 嵌入图片标记 <<IMG:N>>）
+    DocxWithImages,
+    /// VLM 一体化模式（图片/扫描PDF → VLM分析 → LLM结构化）
+    VlmGrounding,
+}
+
 /// 断点续导：持久化的导入中间状态
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ImportCheckpointState {
+    /// 导入模式（向后兼容：旧 checkpoint 默认 TextOnly）
+    #[serde(default)]
+    pub import_mode: ImportMode,
     /// OCR/提取后的完整文本（最昂贵的中间产物）
     pub text_content: String,
     /// 总 chunk 数
@@ -55,6 +71,22 @@ pub struct ImportCheckpointState {
     pub source_image_hashes: Vec<String>,
     /// 题目集名称
     pub qbank_name: String,
+
+    // ===== DOCX 图片模式扩展字段 =====
+    /// DOCX 内嵌图片的 blob 哈希列表（按出现顺序，对应 <<IMG:0>>, <<IMG:1>>, ...）
+    #[serde(default)]
+    pub docx_image_hashes: Vec<String>,
+
+    // ===== VLM 模式扩展字段 =====
+    /// 页面图片的 VFS blob 哈希列表（PDF 渲染页 / 原始导入图片）
+    #[serde(default)]
+    pub page_image_hashes: Vec<String>,
+    /// VLM 已完成分析的页面数
+    #[serde(default)]
+    pub vlm_pages_completed: usize,
+    /// VLM 各页面分析结果（每个元素为序列化的 VlmPageAnalysis JSON）
+    #[serde(default)]
+    pub vlm_page_results: Vec<String>,
 }
 
 /// 流式导入进度事件
@@ -231,6 +263,51 @@ impl QuestionImportService {
         }
     }
 
+    /// 根据导入模式为单个题目解析出对应的 QuestionImage 列表
+    ///
+    /// - TextOnly: 所有题目共享全部源图片
+    /// - DocxWithImages: 根据 LLM 返回的 `image_refs` 字段精确关联
+    fn resolve_question_images(
+        question_json: &Value,
+        import_mode: &ImportMode,
+        source_images: &[QuestionImage],
+        docx_images: &[QuestionImage],
+    ) -> Vec<QuestionImage> {
+        match import_mode {
+            ImportMode::DocxWithImages if !docx_images.is_empty() => {
+                if let Some(refs) = question_json.get("image_refs").and_then(|v| v.as_array()) {
+                    let mut images = Vec::new();
+                    for r in refs {
+                        if let Some(idx) = r.as_u64().map(|n| n as usize) {
+                            if let Some(img) = docx_images.get(idx) {
+                                images.push(img.clone());
+                            }
+                        }
+                    }
+                    if images.is_empty() {
+                        log::warn!(
+                            "[QuestionImport] DOCX 图片模式：题目有 image_refs 但无有效映射: {:?}",
+                            refs
+                        );
+                    }
+                    images
+                } else {
+                    Vec::new()
+                }
+            }
+            _ => source_images.to_vec(),
+        }
+    }
+
+    /// 检测是否有可用的 VLM 模型（GLM-4.6V / Qwen-VL 等）
+    async fn is_vlm_available(llm_manager: &Arc<LLMManager>) -> bool {
+        let configs = match llm_manager.get_api_configs().await {
+            Ok(c) => c,
+            Err(_) => return false,
+        };
+        configs.iter().any(|c| c.enabled && c.is_multimodal)
+    }
+
     /// OCR 图片（base64）→ 纯文本 + VFS Blob 哈希列表
     /// 支持单张图片（裸 base64）或多张图片（JSON 数组 ["base64_1", "base64_2"]）
     /// 返回 (ocr_text, blob_hashes) — blob_hashes 为每张图片在 VFS 中的 SHA-256 哈希
@@ -377,12 +454,14 @@ impl QuestionImportService {
         })
     }
 
+    /// 返回 `(text, image_blob_hashes)` — 文本路径时同时提取嵌入图
     async fn extract_pdf_text_with_fallback(
         &self,
         base64_content: &str,
         pdf_prefer_ocr: Option<bool>,
+        vfs_db: Option<&VfsDatabase>,
         progress_tx: Option<&UnboundedSender<QuestionImportProgress>>,
-    ) -> Result<String, AppError> {
+    ) -> Result<(String, Vec<String>), AppError> {
         let parser = DocumentParser::new();
         let extracted = parser
             .extract_text_from_base64("document.pdf", base64_content)
@@ -401,7 +480,7 @@ impl QuestionImportService {
                 "[QuestionImport] 用户选择 PDF OCR（有效字符数={}）",
                 valid_char_count
             );
-            return self.ocr_pdf_to_text(base64_content, progress_tx).await;
+            return self.ocr_pdf_to_text(base64_content, vfs_db, progress_tx).await;
         }
 
         if matches!(pdf_prefer_ocr, Some(false)) {
@@ -410,7 +489,8 @@ impl QuestionImportService {
                     "PDF 提取文本为空，无法仅使用解析文本，请选择 OCR",
                 ));
             }
-            return Ok(normalized);
+            let img_hashes = Self::extract_pdf_embedded_images_to_blobs(base64_content, vfs_db);
+            return Ok((normalized, img_hashes));
         }
 
         if valid_char_count < 100 {
@@ -424,13 +504,14 @@ impl QuestionImportService {
                     "[QuestionImport] PDF 有效字符数 {} < 100，但当前入口不支持 OCR，回退使用文本层",
                     valid_char_count
                 );
-                return Ok(normalized);
+                let img_hashes = Self::extract_pdf_embedded_images_to_blobs(base64_content, vfs_db);
+                return Ok((normalized, img_hashes));
             }
             log::info!(
                 "[QuestionImport] PDF 有效字符数 {} < 100，自动回退 OCR",
                 valid_char_count
             );
-            return self.ocr_pdf_to_text(base64_content, progress_tx).await;
+            return self.ocr_pdf_to_text(base64_content, vfs_db, progress_tx).await;
         }
 
         if valid_char_count < 500 {
@@ -440,15 +521,131 @@ impl QuestionImportService {
             );
         }
 
-        Ok(normalized)
+        let img_hashes = Self::extract_pdf_embedded_images_to_blobs(base64_content, vfs_db);
+        Ok((normalized, img_hashes))
+    }
+
+    /// 从可解析 PDF 中提取嵌入的图片对象，保存到 VFS Blob 并返回哈希列表。
+    ///
+    /// 过滤掉面积过小的装饰性图片（< 50x50 像素），仅保留有意义的配图。
+    /// 当 `vfs_db` 为 None 时直接返回空列表。
+    fn extract_pdf_embedded_images_to_blobs(
+        base64_content: &str,
+        vfs_db: Option<&VfsDatabase>,
+    ) -> Vec<String> {
+        use image::GenericImageView;
+        use pdfium_render::prelude::*;
+
+        let db = match vfs_db {
+            Some(d) => d,
+            None => return Vec::new(),
+        };
+
+        let pdf_bytes = match Self::decode_base64_bytes(base64_content) {
+            Ok(b) => b,
+            Err(e) => {
+                log::warn!("[QuestionImport] PDF base64 解码失败，跳过嵌入图提取: {}", e);
+                return Vec::new();
+            }
+        };
+
+        let pdfium = match crate::pdfium_utils::load_pdfium() {
+            Ok(p) => p,
+            Err(e) => {
+                log::warn!("[QuestionImport] 加载 pdfium 失败，跳过嵌入图提取: {}", e);
+                return Vec::new();
+            }
+        };
+
+        let document = match pdfium.load_pdf_from_byte_slice(&pdf_bytes, None) {
+            Ok(d) => d,
+            Err(e) => {
+                log::warn!("[QuestionImport] PDF 加载失败，跳过嵌入图提取: {:?}", e);
+                return Vec::new();
+            }
+        };
+
+        let mut blob_hashes = Vec::new();
+        let total_pages = document.pages().len();
+
+        for page_idx in 0..total_pages {
+            let page = match document.pages().get(page_idx as u16) {
+                Ok(p) => p,
+                Err(_) => continue,
+            };
+
+            let objects = page.objects();
+            let obj_count = objects.len();
+            for obj_idx in 0..obj_count {
+                let obj = match objects.get(obj_idx) {
+                    Ok(o) => o,
+                    Err(_) => continue,
+                };
+                let img_obj = match obj.as_image_object() {
+                    Some(io) => io,
+                    None => continue,
+                };
+
+                let dynamic_image = match img_obj.get_raw_image() {
+                    Ok(img) => img,
+                    Err(e) => {
+                        log::debug!(
+                            "[QuestionImport] PDF 页 {} 嵌入图提取失败: {:?}",
+                            page_idx + 1, e
+                        );
+                        continue;
+                    }
+                };
+
+                let (w, h) = dynamic_image.dimensions();
+                if w < 50 || h < 50 {
+                    continue;
+                }
+
+                let mut buffer = std::io::Cursor::new(Vec::new());
+                if dynamic_image
+                    .write_to(&mut buffer, image::ImageOutputFormat::Png)
+                    .is_err()
+                {
+                    continue;
+                }
+                let png_bytes = buffer.into_inner();
+
+                match VfsBlobRepo::store_blob(db, &png_bytes, Some("image/png"), Some("png")) {
+                    Ok(blob) => {
+                        log::info!(
+                            "[QuestionImport] PDF 页 {} 嵌入图 ({}x{}) 已保存: {}",
+                            page_idx + 1, w, h, blob.hash
+                        );
+                        blob_hashes.push(blob.hash);
+                    }
+                    Err(e) => {
+                        log::warn!("[QuestionImport] PDF 嵌入图 VFS 保存失败: {}", e);
+                    }
+                }
+            }
+        }
+
+        if !blob_hashes.is_empty() {
+            log::info!(
+                "[QuestionImport] PDF 共提取 {} 张嵌入图片",
+                blob_hashes.len()
+            );
+        }
+
+        blob_hashes
     }
 
     /// PDF OCR：将 PDF 逐页渲染为图片，再调用视觉模型提取文本
+    ///
+    /// 返回 `(ocr_text, page_blob_hashes)` — page_blob_hashes 为每页渲染图片在 VFS 中的 SHA-256 哈希。
+    /// 当 `vfs_db` 为 None 时不持久化页面图片（兼容 MCP 等无 VFS 场景）。
     async fn ocr_pdf_to_text(
         &self,
         base64_content: &str,
+        vfs_db: Option<&VfsDatabase>,
         progress_tx: Option<&UnboundedSender<QuestionImportProgress>>,
-    ) -> Result<String, AppError> {
+    ) -> Result<(String, Vec<String>), AppError> {
         use base64::Engine;
 
         let fm = self.file_manager.as_ref().ok_or_else(|| {
@@ -482,7 +679,7 @@ impl QuestionImportService {
 
         let render_dir = temp_dir.clone();
         let render_pdf_path = temp_pdf_path.clone();
-        let rendered_images = tokio::task::spawn_blocking(move || -> std::result::Result<Vec<String>, String> {
+        let rendered_images = tokio::task::spawn_blocking(move || -> std::result::Result<Vec<(String, Vec<u8>)>, String> {
             let pdfium = crate::pdfium_utils::load_pdfium()
                 .map_err(|e| format!("加载 Pdfium 失败: {}", e))?;
             let document = pdfium
@@ -498,7 +695,7 @@ impl QuestionImportService {
                 .set_target_width((150.0_f32 * 8.5) as i32)
                 .set_maximum_height((150.0_f32 * 14.0) as i32);
 
-            let mut image_paths = Vec::with_capacity(total_pages);
+            let mut results = Vec::with_capacity(total_pages);
             for page_index in 0..total_pages {
                 let page = document
                     .pages()
@@ -512,10 +709,14 @@ impl QuestionImportService {
                 image
                     .save_with_format(&image_path, image::ImageFormat::Jpeg)
                     .map_err(|e| format!("保存页面 {} 图片失败: {}", page_index + 1, e))?;
-                image_paths.push(image_path.to_string_lossy().to_string());
+
+                let jpeg_bytes = std::fs::read(&image_path)
+                    .map_err(|e| format!("读取渲染页面 {} 失败: {}", page_index + 1, e))?;
+
+                results.push((image_path.to_string_lossy().to_string(), jpeg_bytes));
             }
 
-            Ok(image_paths)
+            Ok(results)
         })
         .await
         .map_err(|e| AppError::internal(format!("PDF 渲染线程失败: {}", e)))?
@@ -523,8 +724,30 @@ impl QuestionImportService {
 
         let total_images = rendered_images.len();
         let mut all_texts = Vec::new();
+        let mut page_blob_hashes = Vec::new();
 
-        for (i, image_path) in rendered_images.iter().enumerate() {
+        for (i, (image_path, jpeg_bytes)) in rendered_images.iter().enumerate() {
+            // 持久化页面图片到 VFS Blob（用于后续 VLM 分析和前端预览）
+            if let Some(db) = vfs_db {
+                match VfsBlobRepo::store_blob(db, jpeg_bytes, Some("image/jpeg"), Some("jpg")) {
+                    Ok(blob) => {
+                        log::info!(
+                            "[QuestionImport] PDF 页面 {} 已持久化到 VFS Blob: {}",
+                            i + 1,
+                            blob.hash
+                        );
+                        page_blob_hashes.push(blob.hash);
+                    }
+                    Err(e) => {
+                        log::warn!(
+                            "[QuestionImport] PDF 页面 {} 持久化到 VFS Blob 失败: {}",
+                            i + 1,
+                            e
+                        );
+                    }
+                }
+            }
+
             match self.llm_manager.call_ocr_free_text_with_fallback(image_path).await {
                 Ok(text) if !text.trim().is_empty() => {
                     all_texts.push(text);
@@ -568,7 +791,7 @@ impl QuestionImportService {
             });
         }
 
-        Ok(joined)
+        Ok((joined, page_blob_hashes))
     }
 
     /// 统一的文档导入入口
@@ -599,9 +822,13 @@ impl QuestionImportService {
                     .extract_text_from_base64(&file_name, &request.content)
                     .map_err(|e| AppError::validation(format!("文档解析失败: {}", e)))?
             }
-            "pdf" => self
-                .extract_pdf_text_with_fallback(&request.content, request.pdf_prefer_ocr, None)
-                .await?,
+            "pdf" => {
+                let (text, pdf_page_hashes) = self
+                    .extract_pdf_text_with_fallback(&request.content, request.pdf_prefer_ocr, Some(vfs_db), None)
+                    .await?;
+                source_image_hashes = pdf_page_hashes;
+                text
+            }
             fmt if Self::is_image_format(fmt) => {
                 // ★ 图片格式：OCR 提取文本 + 保存原图到 VFS Blob
                 let (text, hashes) = self.ocr_images_to_text_with_blobs(&request.content, Some(vfs_db), None).await?;
@@ -758,9 +985,30 @@ impl QuestionImportService {
         chunks
     }
 
-    /// 解析单个文本块
     /// 构建题目解析的 prompt
     fn build_parse_prompt(&self, chunk: &str) -> String {
+        let has_img_markers = chunk.contains("<<IMG:");
+
+        let img_rules = if has_img_markers {
+            r#"
+
+**图片标记处理（极其重要）**：
+- 文本中 <<IMG:N>> 标记表示文档中嵌入的第 N 张图片（N 从 0 开始）
+- 请在 content 中**原样保留**所有 <<IMG:N>> 标记，它们代表题目中的配图位置
+- 如果某道题的题干或选项中包含 <<IMG:N>>，必须在输出中保留
+- 同一张图片可能被多道题引用（如共用配图的题组）
+- 在 JSON 输出中额外添加 "image_refs" 字段：包含该题引用的所有图片索引数组，例如 "image_refs": [0, 2]"#
+        } else {
+            ""
+        };
+
+        let image_refs_field = if has_img_markers {
+            r#",
+    "image_refs": [0]"#
+        } else {
+            ""
+        };
+
         format!(
             r#"请将以下文本内容解析为题目列表。
 
@@ -784,7 +1032,7 @@ impl QuestionImportService {
     "answer": "A",
     "explanation": "解析（如有）",
     "difficulty": "easy|medium|hard|very_hard",
-    "tags": ["知识点标签"]
+    "tags": ["知识点标签"]{}
   }}
 ]
 ```
@@ -808,8 +1056,8 @@ impl QuestionImportService {
 - 下标用 $r_{{1}}$，上标用 $v^{{2}}$，分数用 $\frac{{a}}{{b}}$，根号用 $\sqrt{{x}}$
 - 希腊字母用 $\alpha$, $\beta$, $\pi$ 等
 - 度数符号用 $90^\circ$
-- 中文文本保持原样，只对数学部分添加 LaTeX 标记"#,
-            chunk
+- 中文文本保持原样，只对数学部分添加 LaTeX 标记{}"#,
+            chunk, image_refs_field, img_rules
         )
     }
 
@@ -877,6 +1125,23 @@ impl QuestionImportService {
         String::from_utf8(bytes).map_err(|e| {
             AppError::validation(format!("文件编码错误，请确保文件使用 UTF-8 编码: {}", e))
         })
+    }
+
+    /// 从 base64 或 data URL 解码为原始字节（DOCX/PDF 等二进制文件）
+    fn decode_base64_bytes(base64_content: &str) -> Result<Vec<u8>, AppError> {
+        use base64::Engine;
+
+        let raw_b64 = if base64_content.starts_with("data:") {
+            base64_content.split(',').nth(1).ok_or_else(|| {
+                AppError::validation("Data URL 格式错误：缺少 base64 内容")
+            })?
+        } else {
+            base64_content
+        };
+
+        base64::engine::general_purpose::STANDARD
+            .decode(raw_b64)
+            .map_err(|e| AppError::validation(format!("Base64 解码失败: {}", e)))
     }
 
     /// 直接导入 JSON 格式
@@ -1415,13 +1680,51 @@ impl QuestionImportService {
         progress_tx: Option<UnboundedSender<QuestionImportProgress>>,
     ) -> Result<ImportResult, AppError> {
         let mut source_image_hashes: Vec<String> = Vec::new();
+        let mut docx_image_hashes: Vec<String> = Vec::new();
+        let mut import_mode = ImportMode::TextOnly;
 
         let text_content = match request.format.as_str() {
             "json" => {
                 return self.import_json_directly(vfs_db, &request).await;
             }
             "txt" | "md" | "markdown" => self.decode_text_content(&request.content)?,
-            format @ ("docx" | "xlsx" | "xls") => {
+            "docx" => {
+                // DOCX 带图片提取：文本中嵌入 <<IMG:N>> 标记
+                let parser = DocumentParser::new();
+                let docx_bytes = Self::decode_base64_bytes(&request.content)?;
+                match parser.extract_docx_with_images(&docx_bytes) {
+                    Ok((text, images)) if !images.is_empty() => {
+                        import_mode = ImportMode::DocxWithImages;
+                        for (idx, img_bytes) in images.iter().enumerate() {
+                            let (mime, ext) = Self::detect_image_format(img_bytes);
+                            match VfsBlobRepo::store_blob(vfs_db, img_bytes, Some(mime), Some(ext)) {
+                                Ok(blob) => {
+                                    log::info!(
+                                        "[QuestionImport] DOCX 嵌入图片 {} 已保存到 VFS Blob: {}",
+                                        idx, blob.hash
+                                    );
+                                    docx_image_hashes.push(blob.hash);
+                                }
+                                Err(e) => {
+                                    log::warn!(
+                                        "[QuestionImport] DOCX 嵌入图片 {} 保存失败: {}", idx, e
+                                    );
+                                    docx_image_hashes.push(String::new());
+                                }
+                            }
+                        }
+                        text
+                    }
+                    Ok((text, _)) => text,
+                    Err(e) => {
+                        log::warn!("[QuestionImport] DOCX 图片提取失败，回退纯文本: {}", e);
+                        parser
+                            .extract_text_from_base64("document.docx", &request.content)
+                            .map_err(|e2| AppError::validation(format!("DOCX 解析失败: {}", e2)))?
+                    }
+                }
+            }
+            format @ ("xlsx" | "xls") => {
                 let parser = DocumentParser::new();
                 let file_name = format!("document.{}", format);
                 parser
@@ -1429,12 +1732,15 @@ impl QuestionImportService {
                     .map_err(|e| AppError::validation(format!("文档解析失败: {}", e)))?
             }
             "pdf" => {
-                self.extract_pdf_text_with_fallback(
+                let (text, pdf_page_hashes) = self.extract_pdf_text_with_fallback(
                     &request.content,
                     request.pdf_prefer_ocr,
+                    Some(vfs_db),
                     progress_tx.as_ref(),
                 )
-                    .await?
+                    .await?;
+                source_image_hashes = pdf_page_hashes;
+                text
             }
             fmt if Self::is_image_format(fmt) => {
                 // ★ 图片格式：OCR 提取文本 + 保存原图到 VFS Blob（带进度反馈）
@@ -1537,15 +1843,33 @@ impl QuestionImportService {
             exam_sheet.id // 使用真实的 exam_id（exam_ + nanoid 格式）
         };
 
+        // ★ 检测是否应使用 VLM 模式（有页面图片且 VLM 服务可用）
+        let use_vlm = !source_image_hashes.is_empty()
+            && import_mode == ImportMode::TextOnly
+            && Self::is_vlm_available(&self.llm_manager).await;
+
+        if use_vlm {
+            import_mode = ImportMode::VlmGrounding;
+            log::info!(
+                "[QuestionImport] 检测到 {} 张页面图片，切换到 VLM 一体化模式",
+                source_image_hashes.len()
+            );
+        }
+
         // ★ 断点续导：持久化 OCR/提取后的文本和初始 chunk 进度
         if is_new_session {
             let checkpoint = ImportCheckpointState {
+                import_mode: import_mode.clone(),
                 text_content: text_content.clone(),
                 chunks_total: total_chunks,
                 chunks_completed: 0,
                 model_config_id: checkpoint_model_config_id,
                 source_image_hashes: source_image_hashes.clone(),
                 qbank_name: qbank_name.clone(),
+                docx_image_hashes: docx_image_hashes.clone(),
+                page_image_hashes: if use_vlm { source_image_hashes.clone() } else { Vec::new() },
+                vlm_pages_completed: 0,
+                vlm_page_results: Vec::new(),
             };
             if let Ok(state_json) = serde_json::to_value(&checkpoint) {
                 if let Err(e) = VfsExamRepo::update_import_state(vfs_db, &session_id, &state_json) {
@@ -1558,12 +1882,57 @@ impl QuestionImportService {
             let _ = tx.send(QuestionImportProgress::SessionCreated {
                 session_id: session_id.clone(),
                 name: qbank_name.clone(),
-                total_chunks,
+                total_chunks: if use_vlm { source_image_hashes.len() } else { total_chunks },
             });
+        }
+
+        // ★ VLM 模式：跳过传统 chunk 流程，直接使用 VLM pipeline
+        if use_vlm {
+            let all_questions = self.process_vlm_import(
+                vfs_db,
+                &session_id,
+                &source_image_hashes,
+                request.model_config_id.as_deref(),
+                0,
+                &[],
+                progress_tx.as_ref(),
+            ).await?;
+
+            if all_questions.is_empty() {
+                if let Some(ref tx) = progress_tx {
+                    let _ = tx.send(QuestionImportProgress::Failed {
+                        session_id: Some(session_id.clone()),
+                        error: "VLM 分析未能提取到题目".to_string(),
+                        total_parsed: 0,
+                    });
+                }
+                return Err(AppError::validation("VLM 分析未能提取到题目"));
+            }
+
+            let result = self
+                .finalize_session(vfs_db, &all_questions, &session_id, &qbank_name, is_new_session)
+                .await?;
+
+            if let Err(e) = VfsExamRepo::clear_import_state(vfs_db, &session_id) {
+                log::warn!("[QuestionImport] 清除导入断点失败: {}", e);
+            }
+
+            if let Some(ref tx) = progress_tx {
+                let _ = tx.send(QuestionImportProgress::Completed {
+                    session_id: result.session_id.clone(),
+                    name: result.name.clone(),
+                    total_questions: result.total_questions,
+                });
+            }
+
+            return Ok(result);
         }
 
         // ★ 将原始图片 blob 转为 QuestionImage（在流式解析前，避免连接竞争）
         let source_question_images = Self::build_source_question_images(vfs_db, &source_image_hashes);
+
+        // ★ DOCX 图片模式：预构建所有嵌入图片的 QuestionImage
+        let docx_question_images = Self::build_source_question_images(vfs_db, &docx_image_hashes);
 
         let mut all_questions: Vec<Value> = Vec::new();
         let mut total_parsed = 0;
@@ -1583,13 +1952,20 @@ impl QuestionImportService {
                     chunk,
                     request.model_config_id.as_deref(),
                     |q: Value| {
-                        // 立即保存题目到数据库
                         let card = self.question_to_card(&q, total_parsed);
                         let card_id = card.card_id.clone();
                         let mut params =
                             self.json_to_question_params(&q, &session_id, &card_id, total_parsed);
-                        if !source_question_images.is_empty() {
-                            params.images = Some(source_question_images.clone());
+
+                        // 根据导入模式关联图片
+                        let question_images = Self::resolve_question_images(
+                            &q,
+                            &import_mode,
+                            &source_question_images,
+                            &docx_question_images,
+                        );
+                        if !question_images.is_empty() {
+                            params.images = Some(question_images);
                         }
 
                         if let Err(e) = VfsQuestionRepo::create_question(vfs_db, &params) {
@@ -1695,6 +2071,275 @@ impl QuestionImportService {
         Ok(result)
     }
 
+    /// VLM 一体化导入流程
+    ///
+    /// 对每个页面图片调用 VLM 分析，提取题目文本和配图坐标，
+    /// 然后用 LLM 将 raw_text 结构化为标准题目格式，并裁切配图保存到 VFS。
+    ///
+    /// 支持断点续导：每完成一个页面 VLM 分析就持久化到 checkpoint。
+    async fn process_vlm_import(
+        &self,
+        vfs_db: &VfsDatabase,
+        session_id: &str,
+        page_image_hashes: &[String],
+        model_config_id: Option<&str>,
+        vlm_pages_completed: usize,
+        existing_vlm_results: &[String],
+        progress_tx: Option<&UnboundedSender<QuestionImportProgress>>,
+    ) -> Result<Vec<Value>, AppError> {
+        use crate::vlm_grounding_service::VlmGroundingService;
+        use base64::Engine;
+
+        let vlm_service = VlmGroundingService::new(self.llm_manager.clone());
+        let total_pages = page_image_hashes.len();
+
+        let mut all_vlm_results: Vec<String> = existing_vlm_results.to_vec();
+        let mut all_questions: Vec<Value> = Vec::new();
+
+        // 已完成页面的题目已在首次运行时写入数据库，直接获取已有题目数
+        let mut total_parsed = if vlm_pages_completed > 0 {
+            let existing = VfsQuestionRepo::list_questions(
+                vfs_db, session_id, &QuestionFilters::default(), 1, 1,
+            ).map(|r| r.total as usize).unwrap_or(0);
+            log::info!(
+                "[QuestionImport-VLM] 跳过已完成的 {} 页，已有 {} 道题目",
+                vlm_pages_completed, existing
+            );
+            existing
+        } else {
+            0
+        };
+
+        for page_idx in vlm_pages_completed..total_pages {
+
+            let hash = &page_image_hashes[page_idx];
+            log::info!(
+                "[QuestionImport-VLM] 分析页面 {}/{}: hash={}",
+                page_idx + 1, total_pages, hash
+            );
+
+            // 读取页面图片并构建 data URL
+            let blob_path = match crate::vfs::repos::VfsBlobRepo::get_blob_path(vfs_db, hash) {
+                Ok(Some(p)) => p,
+                _ => {
+                    log::warn!("[QuestionImport-VLM] 页面图片 blob 不存在: {}", hash);
+                    while all_vlm_results.len() <= page_idx {
+                        all_vlm_results.push(String::new());
+                    }
+                    continue;
+                }
+            };
+            let img_bytes = std::fs::read(&blob_path)
+                .map_err(|e| AppError::file_system(format!("读取页面图片失败: {}", e)))?;
+            let (mime, _) = Self::detect_image_format(&img_bytes);
+            let b64 = base64::engine::general_purpose::STANDARD.encode(&img_bytes);
+            let data_url = format!("data:{};base64,{}", mime, b64);
+
+            // VLM 分析
+            let analysis = match vlm_service.analyze_exam_page(&data_url).await {
+                Ok(a) => {
+                    log::info!(
+                        "[QuestionImport-VLM] 页面 {} 识别出 {} 道题目",
+                        page_idx + 1, a.questions.len()
+                    );
+                    a
+                }
+                Err(e) => {
+                    log::warn!(
+                        "[QuestionImport-VLM] 页面 {} VLM 分析失败: {}", page_idx + 1, e
+                    );
+                    while all_vlm_results.len() <= page_idx {
+                        all_vlm_results.push(String::new());
+                    }
+                    if let Ok(Some(state_str)) = VfsExamRepo::get_import_state(vfs_db, session_id) {
+                        if let Ok(mut cp) = serde_json::from_str::<ImportCheckpointState>(&state_str) {
+                            cp.vlm_pages_completed = page_idx + 1;
+                            cp.vlm_page_results = all_vlm_results.clone();
+                            if let Ok(state_json) = serde_json::to_value(&cp) {
+                                let _ = VfsExamRepo::update_import_state(vfs_db, session_id, &state_json);
+                            }
+                        }
+                    }
+                    if let Some(tx) = progress_tx {
+                        let _ = tx.send(QuestionImportProgress::OcrImageCompleted {
+                            image_index: page_idx,
+                            total_images: total_pages,
+                        });
+                    }
+                    continue;
+                }
+            };
+
+            let analysis_json = serde_json::to_string(&analysis).unwrap_or_default();
+            while all_vlm_results.len() <= page_idx {
+                all_vlm_results.push(String::new());
+            }
+            all_vlm_results[page_idx] = analysis_json;
+
+            // 更新 checkpoint
+            if let Ok(Some(state_str)) = VfsExamRepo::get_import_state(vfs_db, session_id) {
+                if let Ok(mut cp) = serde_json::from_str::<ImportCheckpointState>(&state_str) {
+                    cp.vlm_pages_completed = page_idx + 1;
+                    cp.vlm_page_results = all_vlm_results.clone();
+                    if let Ok(state_json) = serde_json::to_value(&cp) {
+                        let _ = VfsExamRepo::update_import_state(vfs_db, session_id, &state_json);
+                    }
+                }
+            }
+
+            if let Some(tx) = progress_tx {
+                let _ = tx.send(QuestionImportProgress::OcrImageCompleted {
+                    image_index: page_idx,
+                    total_images: total_pages,
+                });
+            }
+
+            // 处理 VLM 结果：LLM 结构化 + 图片裁切
+            let page_questions = self.vlm_analysis_to_questions(
+                vfs_db, &analysis, page_idx, hash,
+                model_config_id, &mut total_parsed, session_id,
+                progress_tx,
+            ).await?;
+            all_questions.extend(page_questions);
+        }
+
+        if let Some(tx) = progress_tx {
+            let _ = tx.send(QuestionImportProgress::OcrPhaseCompleted {
+                total_images: total_pages,
+                total_chars: all_questions.len(),
+            });
+        }
+
+        Ok(all_questions)
+    }
+
+    /// 将单页 VLM 分析结果转换为结构化题目列表
+    ///
+    /// 1. 用 LLM 将 raw_text 结构化
+    /// 2. 裁切配图并保存到 VFS
+    /// 3. 关联图片到题目
+    async fn vlm_analysis_to_questions(
+        &self,
+        vfs_db: &VfsDatabase,
+        analysis: &crate::vlm_grounding_service::VlmPageAnalysis,
+        page_idx: usize,
+        page_blob_hash: &str,
+        model_config_id: Option<&str>,
+        total_parsed: &mut usize,
+        session_id: &str,
+        progress_tx: Option<&UnboundedSender<QuestionImportProgress>>,
+    ) -> Result<Vec<Value>, AppError> {
+        use crate::vlm_grounding_service::VlmGroundingService;
+
+        let mut page_questions: Vec<Value> = Vec::new();
+
+        // 读取页面图片（用于裁切配图）
+        let page_img_bytes = match crate::vfs::repos::VfsBlobRepo::get_blob_path(vfs_db, page_blob_hash) {
+            Ok(Some(p)) => std::fs::read(&p).ok(),
+            _ => None,
+        };
+
+        for vlm_q in &analysis.questions {
+            if vlm_q.raw_text.trim().is_empty() {
+                continue;
+            }
+
+            // 用 LLM 将 raw_text 结构化为标准题目格式
+            let prompt = self.build_parse_prompt(&vlm_q.raw_text);
+            let parsed = match self.llm_manager
+                .call_llm_for_question_parsing_with_model(&prompt, model_config_id)
+                .await
+            {
+                Ok(resp) => {
+                    if let Some(start) = resp.find('[') {
+                        if let Some(end) = resp.rfind(']') {
+                            serde_json::from_str::<Vec<Value>>(&resp[start..=end])
+                                .unwrap_or_default()
+                        } else { Vec::new() }
+                    } else { Vec::new() }
+                }
+                Err(e) => {
+                    log::warn!(
+                        "[QuestionImport-VLM] 题目 {} LLM 结构化失败: {}",
+                        vlm_q.label, e
+                    );
+                    Vec::new()
+                }
+            };
+
+            // 裁切配图并保存到 VFS
+            let mut question_images: Vec<QuestionImage> = Vec::new();
+            if let Some(ref img_bytes) = page_img_bytes {
+                for (fig_idx, figure) in vlm_q.figures.iter().enumerate() {
+                    match VlmGroundingService::crop_figure_from_page(img_bytes, &figure.bbox) {
+                        Ok(cropped_bytes) => {
+                            let (mime, ext) = Self::detect_image_format(&cropped_bytes);
+                            match VfsBlobRepo::store_blob(vfs_db, &cropped_bytes, Some(mime), Some(ext)) {
+                                Ok(blob) => {
+                                    let file_name = format!(
+                                        "p{}_q{}_fig{}.{}",
+                                        page_idx, vlm_q.label, fig_idx, ext
+                                    );
+                                    match VfsFileRepo::create_file(
+                                        vfs_db, &blob.hash, &file_name,
+                                        cropped_bytes.len() as i64, "image",
+                                        Some(mime), Some(&blob.hash), None,
+                                    ) {
+                                        Ok(vfs_file) => {
+                                            question_images.push(QuestionImage {
+                                                id: vfs_file.id,
+                                                name: file_name,
+                                                mime: mime.to_string(),
+                                                hash: blob.hash,
+                                            });
+                                        }
+                                        Err(e) => log::warn!(
+                                            "[QuestionImport-VLM] 创建 VFS 文件条目失败: {}", e
+                                        ),
+                                    }
+                                }
+                                Err(e) => log::warn!(
+                                    "[QuestionImport-VLM] 保存裁切图片失败: {}", e
+                                ),
+                            }
+                        }
+                        Err(e) => log::warn!(
+                            "[QuestionImport-VLM] 裁切配图失败: {}", e
+                        ),
+                    }
+                }
+            }
+
+            // 保存结构化题目到数据库
+            for q in &parsed {
+                let card = self.question_to_card(q, *total_parsed);
+                let card_id = card.card_id.clone();
+                let mut params = self.json_to_question_params(q, session_id, &card_id, *total_parsed);
+                if !question_images.is_empty() {
+                    params.images = Some(question_images.clone());
+                }
+
+                if let Err(e) = VfsQuestionRepo::create_question(vfs_db, &params) {
+                    log::warn!("[QuestionImport-VLM] 保存题目失败: {}", e);
+                }
+
+                *total_parsed += 1;
+
+                if let Some(tx) = progress_tx {
+                    let _ = tx.send(QuestionImportProgress::QuestionParsed {
+                        question: q.clone(),
+                        question_index: *total_parsed - 1,
+                        total_parsed: *total_parsed,
+                    });
+                }
+
+                page_questions.push(q.clone());
+            }
+        }
+
+        Ok(page_questions)
+    }
+
     /// 断点续导：从中断处继续导入
     ///
     /// 读取 import_state_json 中保存的 OCR 文本和 chunk 进度，
@@ -1714,9 +2359,57 @@ impl QuestionImportService {
             .map_err(|e| AppError::validation(format!("解析导入断点失败: {}", e)))?;
 
         log::info!(
-            "[QuestionImport] 恢复导入: session={}, chunks_completed={}/{}",
-            session_id, checkpoint.chunks_completed, checkpoint.chunks_total
+            "[QuestionImport] 恢复导入: session={}, mode={:?}, chunks_completed={}/{}",
+            session_id, checkpoint.import_mode, checkpoint.chunks_completed, checkpoint.chunks_total
         );
+
+        // ★ VLM 模式的断点续导：走独立路径
+        if checkpoint.import_mode == ImportMode::VlmGrounding && !checkpoint.page_image_hashes.is_empty() {
+            log::info!(
+                "[QuestionImport] VLM 模式恢复: vlm_pages_completed={}/{}, vlm_results={}",
+                checkpoint.vlm_pages_completed,
+                checkpoint.page_image_hashes.len(),
+                checkpoint.vlm_page_results.len()
+            );
+
+            let qbank_name = checkpoint.qbank_name.clone();
+
+            if let Some(ref tx) = progress_tx {
+                let _ = tx.send(QuestionImportProgress::SessionCreated {
+                    session_id: session_id.to_string(),
+                    name: qbank_name.clone(),
+                    total_chunks: checkpoint.page_image_hashes.len(),
+                });
+            }
+
+            let all_questions = self.process_vlm_import(
+                vfs_db,
+                session_id,
+                &checkpoint.page_image_hashes,
+                checkpoint.model_config_id.as_deref(),
+                checkpoint.vlm_pages_completed,
+                &checkpoint.vlm_page_results,
+                progress_tx.as_ref(),
+            ).await?;
+
+            let result = self
+                .finalize_session(vfs_db, &all_questions, session_id, &qbank_name, true)
+                .await?;
+
+            if let Err(e) = VfsExamRepo::clear_import_state(vfs_db, session_id) {
+                log::warn!("[QuestionImport] 清除导入断点失败: {}", e);
+            }
+
+            if let Some(ref tx) = progress_tx {
+                let _ = tx.send(QuestionImportProgress::Completed {
+                    session_id: result.session_id.clone(),
+                    name: result.name.clone(),
+                    total_questions: result.total_questions,
+                });
+            }
+
+            return Ok(result);
+        }
 
         // 2. 重新分块（使用相同算法，保证 chunk 边界一致）
         let max_tokens_per_chunk = 6000;
@@ -1766,9 +2459,12 @@ impl QuestionImportService {
             });
         }
 
-        // 3. 构建 source images
+        // 3. 构建 source images 和 DOCX images
         let source_question_images =
             Self::build_source_question_images(vfs_db, &checkpoint.source_image_hashes);
+        let docx_question_images =
+            Self::build_source_question_images(vfs_db, &checkpoint.docx_image_hashes);
+        let resume_import_mode = checkpoint.import_mode.clone();
 
         // 4. 计算已有题目数作为 total_parsed 起点
         let existing_count = VfsQuestionRepo::list_questions(
@@ -1787,7 +2483,6 @@ impl QuestionImportService {
         // 5. 从 start_chunk 继续处理
         for (chunk_idx, chunk) in chunks.iter().enumerate() {
             if chunk_idx < start_chunk {
-                // 跳过已完成的 chunk，发送跳过事件
                 if let Some(ref tx) = progress_tx {
                     let _ = tx.send(QuestionImportProgress::ChunkCompleted {
                         chunk_index: chunk_idx,
@@ -1816,8 +2511,15 @@ impl QuestionImportService {
                         let card_id = card.card_id.clone();
                         let mut params =
                             self.json_to_question_params(&q, session_id, &card_id, total_parsed);
-                        if !source_question_images.is_empty() {
-                            params.images = Some(source_question_images.clone());
+
+                        let question_images = Self::resolve_question_images(
+                            &q,
+                            &resume_import_mode,
+                            &source_question_images,
+                            &docx_question_images,
+                        );
+                        if !question_images.is_empty() {
+                            params.images = Some(question_images);
                         }
 
                         if let Err(e) = VfsQuestionRepo::create_question(vfs_db, &params) {
