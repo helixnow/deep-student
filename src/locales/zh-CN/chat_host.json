@@ -187,6 +187,7 @@
     "set_as_default": "设为默认模型",
     "set_default_success": "已将 {{model}} 设为默认模型",
     "set_default_error": "设置默认模型失败",
+    "unknown_vendor": "其他",
     "badges": {
       "system_default": "系统默认",
       "system_default_tooltip": "此模型已设为系统默认的对话模型"

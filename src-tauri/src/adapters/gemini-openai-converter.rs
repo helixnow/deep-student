@@ -603,8 +603,9 @@ pub fn build_gemini_request_with_version(
         .and_then(|cfg| cfg.thinking_config.as_ref())
         .is_some();
 
-    // 若包含思维链配置或 systemInstruction，则使用 v1beta
-    let require_v1beta = thinking_config_present || system_instruction_present;
+    // 若包含思维链配置、systemInstruction 或 Gemini 3 模型，则使用 v1beta
+    // Gemini 3 模型仅在 v1beta 上可用，即使测试请求不含 thinkingConfig 也需要 v1beta
+    let require_v1beta = thinking_config_present || system_instruction_present || is_gemini_3;
 
     if require_v1beta {
         match resolved_version.as_deref() {
@@ -1537,6 +1538,57 @@ fn convert_openai_to_gemini(openai_req: &OpenAIRequest) -> Result<GeminiRequest,
             }
         }
         contents = merged_contents;
+    }
+
+    // 🔧 Gemini 3+ 防护：将没有 thoughtSignature 的 functionCall 降级为文本
+    // 合成的 load_skills 等工具调用没有真实的 thoughtSignature，
+    // Gemini 3+ 会拒绝此类请求（400: "Function call is missing a thought_signature"）。
+    // 将它们及对应的 functionResponse 转换为等价的文本消息。
+    {
+        let mut i = 0;
+        while i < contents.len() {
+            let has_unprotected_fc = contents[i].role == "model"
+                && contents[i]
+                    .parts
+                    .iter()
+                    .any(|p| p.function_call.is_some() && p.thought_signature.is_none());
+
+            if has_unprotected_fc {
+                // 将 functionCall parts 转换为文本描述
+                for part in &mut contents[i].parts {
+                    if part.function_call.is_some() && part.thought_signature.is_none() {
+                        if let Some(fc) = part.function_call.take() {
+                            let args_str =
+                                serde_json::to_string(&fc.args).unwrap_or_else(|_| "{}".into());
+                            part.text =
+                                Some(format!("[Tool call: {}({})]", fc.name, args_str));
+                        }
+                    }
+                }
+
+                // 将紧随其后的 user content 中的 functionResponse parts 也转换为文本
+                if i + 1 < contents.len() && contents[i + 1].role == "user" {
+                    for part in &mut contents[i + 1].parts {
+                        if part.function_response.is_some() {
+                            if let Some(fr) = part.function_response.take() {
+                                let resp_str = serde_json::to_string(&fr.response)
+                                    .unwrap_or_else(|_| "{}".into());
+                                part.text = Some(format!(
+                                    "[Tool result for {}: {}]",
+                                    fr.name, resp_str
+                                ));
+                            }
+                        }
+                    }
+                }
+
+                log::warn!(
+                    "[GeminiConverter] Converted functionCall without thoughtSignature to text at content index {}",
+                    i
+                );
+            }
+            i += 1;
+        }
     }
 
     // 确保第一个 content 是 user 角色（Gemini 要求）

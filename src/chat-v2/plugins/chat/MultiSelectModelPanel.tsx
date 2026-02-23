@@ -7,7 +7,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
-import { X, Check, RotateCcw, Search, Star, Pin } from 'lucide-react';
+import { X, Check, RotateCcw, Search, Star, Pin, ChevronDown, ChevronRight } from 'lucide-react';
 import { useMobileLayoutSafe } from '@/components/layout/MobileLayoutContext';
 import { cn } from '@/lib/utils';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
@@ -103,6 +103,7 @@ export const MultiSelectModelPanel: React.FC<MultiSelectModelPanelProps> = ({
   const [loading, setLoading] = useState(true);
   const [defaultModelId, setDefaultModelId] = useState<string | null>(null);
   const [savingDefault, setSavingDefault] = useState(false);
+  const [collapsedVendors, setCollapsedVendors] = useState<Set<string>>(new Set());
 
   // 已选中的模型 ID 集合
   const selectedIds = useMemo(
@@ -180,11 +181,12 @@ export const MultiSelectModelPanel: React.FC<MultiSelectModelPanelProps> = ({
   }, [loadModels]);
 
   // 搜索过滤
+  type NormalizedModel = ModelConfig & { searchable: string; isFavorite: boolean };
   const normalizedModels = useMemo(
     () =>
       models.map((m) => ({
         ...m,
-        searchable: `${m.name ?? ''} ${m.model ?? ''}`.toLowerCase(),
+        searchable: `${m.name ?? ''} ${m.model ?? ''} ${m.vendorName ?? ''}`.toLowerCase(),
         isFavorite: m.isFavorite === true || m.is_favorite === true,
       })),
     [models]
@@ -196,16 +198,50 @@ export const MultiSelectModelPanel: React.FC<MultiSelectModelPanelProps> = ({
       ? normalizedModels.filter((m) => m.searchable.includes(keyword))
       : normalizedModels;
     return [...filtered].sort((a, b) => {
-      // 按供应商顺序排序（与设置页面一致）
       const aVendorOrder = a.vendorId ? (vendorOrderMap.get(a.vendorId) ?? Number.MAX_SAFE_INTEGER) : Number.MAX_SAFE_INTEGER;
       const bVendorOrder = b.vendorId ? (vendorOrderMap.get(b.vendorId) ?? Number.MAX_SAFE_INTEGER) : Number.MAX_SAFE_INTEGER;
       if (aVendorOrder !== bVendorOrder) return aVendorOrder - bVendorOrder;
-      // 同一供应商内，收藏优先
       if (a.isFavorite && !b.isFavorite) return -1;
       if (!a.isFavorite && b.isFavorite) return 1;
       return 0;
     });
   }, [normalizedModels, searchTerm, vendorOrderMap]);
+
+  // 按供应商分组
+  const vendorGroups = useMemo(() => {
+    const groups: { vendorId: string; vendorName: string; models: NormalizedModel[] }[] = [];
+    const groupMap = new Map<string, NormalizedModel[]>();
+    const orderList: { vendorId: string; vendorName: string }[] = [];
+    for (const m of sortedAndFilteredModels) {
+      const vid = m.vendorId || '__unknown__';
+      const vname = m.vendorName || t('chat_host:model_panel.unknown_vendor');
+      if (!groupMap.has(vid)) {
+        groupMap.set(vid, []);
+        orderList.push({ vendorId: vid, vendorName: vname });
+      }
+      groupMap.get(vid)!.push(m);
+    }
+    for (const { vendorId, vendorName } of orderList) {
+      groups.push({ vendorId, vendorName, models: groupMap.get(vendorId)! });
+    }
+    return groups;
+  }, [sortedAndFilteredModels, t]);
+
+  // 搜索时自动展开所有分组
+  useEffect(() => {
+    if (searchTerm.trim()) {
+      setCollapsedVendors(new Set());
+    }
+  }, [searchTerm]);
+
+  const toggleVendorCollapse = useCallback((vendorId: string) => {
+    setCollapsedVendors(prev => {
+      const next = new Set(prev);
+      if (next.has(vendorId)) next.delete(vendorId);
+      else next.add(vendorId);
+      return next;
+    });
+  }, []);
 
   // 切换选中状态
   const handleToggleModel = useCallback(
@@ -325,17 +361,6 @@ export const MultiSelectModelPanel: React.FC<MultiSelectModelPanelProps> = ({
             />
             {option.isFavorite && (
               <Star size={12} className="text-warning fill-warning" />
-            )}
-            {option.vendorName && (
-              <Badge
-                variant="outline"
-                className={cn(
-                  'h-4 px-1 py-0 text-[10px] font-medium truncate shrink-0',
-                  isMobile ? 'max-w-[90px]' : 'max-w-[110px]'
-                )}
-              >
-                {option.vendorName}
-              </Badge>
             )}
             <Badge
               variant="secondary"
@@ -488,13 +513,56 @@ export const MultiSelectModelPanel: React.FC<MultiSelectModelPanelProps> = ({
           trackOffsetTop={8}
           trackOffsetBottom={8}
         >
-        <div className="space-y-1">
+        <div className="space-y-0.5">
           {loading ? (
             <div className="px-2 py-4 text-sm text-muted-foreground text-center">
               {t('common:loading')}
             </div>
           ) : hasModels ? (
-            sortedAndFilteredModels.map(renderModelOption)
+            vendorGroups.map((group) => {
+              const isCollapsed = collapsedVendors.has(group.vendorId);
+              const groupSelectedCount = group.models.filter(m => selectedIds.has(m.id)).length;
+              return (
+                <div key={group.vendorId}>
+                  {/* 供应商分组头 */}
+                  <button
+                    type="button"
+                    onClick={() => toggleVendorCollapse(group.vendorId)}
+                    className={cn(
+                      'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors',
+                      'hover:bg-muted/60 active:bg-muted/80',
+                      'select-none cursor-pointer'
+                    )}
+                  >
+                    {isCollapsed ? (
+                      <ChevronRight size={14} className="shrink-0 text-muted-foreground" />
+                    ) : (
+                      <ChevronDown size={14} className="shrink-0 text-muted-foreground" />
+                    )}
+                    <span className="text-xs font-semibold text-muted-foreground truncate">
+                      {group.vendorName}
+                    </span>
+                    <span className="text-[11px] text-muted-foreground/50 tabular-nums">
+                      {group.models.length}
+                    </span>
+                    {groupSelectedCount > 0 && (
+                      <Badge
+                        variant="default"
+                        className="ml-auto h-4 px-1 py-0 text-[9px] font-medium bg-primary/20 text-primary border-primary/30"
+                      >
+                        {groupSelectedCount}
+                      </Badge>
+                    )}
+                  </button>
+                  {/* 供应商下的模型列表 */}
+                  {!isCollapsed && (
+                    <div className="space-y-0.5 pl-1">
+                      {group.models.map(renderModelOption)}
+                    </div>
+                  )}
+                </div>
+              );
+            })
           ) : (
             <div className="px-2 py-4 text-sm text-muted-foreground text-center">
               {searchTerm

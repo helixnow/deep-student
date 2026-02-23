@@ -187,6 +187,7 @@
     "set_as_default": "Set as Default Model",
     "set_default_success": "Set {{model}} as default model",
     "set_default_error": "Failed to set default model",
+    "unknown_vendor": "Other",
     "badges": {
       "system_default": "System Default",
       "system_default_tooltip": "This model is set as the system default chat model"
