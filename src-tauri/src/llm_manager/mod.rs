@@ -829,6 +829,8 @@ enum MergedChatMessage {
         content: String,
         /// 🔧 保留第一个工具调用对应的思维链（Anthropic 要求）
         thinking_content: Option<String>,
+        /// 🔧 Gemini 3 思维签名：工具调用场景下必须在后续请求中回传
+        thought_signature: Option<String>,
     },
 }
 
@@ -1115,6 +1117,8 @@ impl LLMManager {
         let mut pending_tool_results: Vec<ChatMessage> = Vec::new();
         // 🔧 保留当前轮次的思维链
         let mut current_thinking_content: Option<String> = None;
+        // 🔧 Gemini 3 思维签名：工具调用场景下必须回传
+        let mut current_thought_signature: Option<String> = None;
 
         for msg in history {
             if msg.role == "assistant" && msg.tool_call.is_some() {
@@ -1133,6 +1137,7 @@ impl LLMManager {
                             tool_calls: std::mem::take(&mut pending_tool_calls),
                             content: String::new(),
                             thinking_content: std::mem::take(&mut current_thinking_content),
+                            thought_signature: std::mem::take(&mut current_thought_signature),
                         });
                         for tr in std::mem::take(&mut pending_tool_results) {
                             result.push(MergedChatMessage::Regular(tr));
@@ -1150,6 +1155,10 @@ impl LLMManager {
                     if current_thinking_content.is_none() && has_new_reasoning {
                         current_thinking_content = msg.thinking_content.clone();
                     }
+                    // 保留当前轮次的思维签名（只保留第一个非空的）
+                    if current_thought_signature.is_none() {
+                        current_thought_signature = msg.thought_signature.clone();
+                    }
                 }
             } else if msg.role == "tool" {
                 // 收集工具结果
@@ -1161,6 +1170,7 @@ impl LLMManager {
                         tool_calls: std::mem::take(&mut pending_tool_calls),
                         content: String::new(),
                         thinking_content: std::mem::take(&mut current_thinking_content),
+                        thought_signature: std::mem::take(&mut current_thought_signature),
                     });
                     for tr in std::mem::take(&mut pending_tool_results) {
                         result.push(MergedChatMessage::Regular(tr));
@@ -1176,6 +1186,7 @@ impl LLMManager {
                 tool_calls: pending_tool_calls,
                 content: String::new(),
                 thinking_content: current_thinking_content,
+                thought_signature: current_thought_signature,
             });
             for tr in pending_tool_results {
                 result.push(MergedChatMessage::Regular(tr));

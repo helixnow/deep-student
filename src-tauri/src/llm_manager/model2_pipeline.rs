@@ -252,6 +252,7 @@ impl LLMManager {
                     tool_calls,
                     content,
                     thinking_content,
+                    thought_signature,
                 } => {
                     // 生成 tool_calls 数组
                     let tool_calls_arr: Vec<_> = tool_calls
@@ -268,6 +269,14 @@ impl LLMManager {
                         })
                         .collect();
 
+                    // 🔧 辅助闭包：将 thought_signature 注入到 assistant 消息中
+                    // Gemini 3 要求在包含 functionCall 的 model content 中回传 thoughtSignature
+                    let inject_thought_signature = |msg: &mut Value| {
+                        if let Some(ref sig) = thought_signature {
+                            msg["thought_signature"] = json!(sig);
+                        }
+                    };
+
                     // 🔧 使用适配器系统处理工具调用消息格式
                     let has_thinking = thinking_content
                         .as_ref()
@@ -282,10 +291,12 @@ impl LLMManager {
                         if let Some(formatted_content) = adapter
                             .format_tool_call_message(&tool_calls_json, thinking_content.as_deref())
                         {
-                            messages.push(json!({
+                            let mut msg = json!({
                                 "role": "assistant",
                                 "content": formatted_content
-                            }));
+                            });
+                            inject_thought_signature(&mut msg);
+                            messages.push(msg);
 
                             debug!(
                                 "[LLMManager] Adapter {} format: {} tool_calls with thinking block (len={})",
@@ -317,6 +328,7 @@ impl LLMManager {
                                 }
                             }
 
+                            inject_thought_signature(&mut assistant_msg);
                             messages.push(assistant_msg);
 
                             debug!(
@@ -326,11 +338,13 @@ impl LLMManager {
                             );
                         } else {
                             // 无思维链或不需要回传（适配器未提供自定义格式）
-                            messages.push(json!({
+                            let mut msg = json!({
                                 "role": "assistant",
                                 "content": content,
                                 "tool_calls": tool_calls_arr
-                            }));
+                            });
+                            inject_thought_signature(&mut msg);
+                            messages.push(msg);
 
                             debug!(
                                 "[LLMManager] Merged {} tool_calls into single assistant message (no custom format)",
@@ -339,11 +353,13 @@ impl LLMManager {
                         }
                     } else {
                         // 无思维链
-                        messages.push(json!({
+                        let mut msg = json!({
                             "role": "assistant",
                             "content": content,
                             "tool_calls": tool_calls_arr
-                        }));
+                        });
+                        inject_thought_signature(&mut msg);
+                        messages.push(msg);
 
                         debug!(
                             "[LLMManager] Merged {} tool_calls into single assistant message",

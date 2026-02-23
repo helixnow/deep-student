@@ -88,6 +88,9 @@ pub struct OpenAIMessage {
     pub tool_calls: Option<Vec<OpenAIToolCall>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_call_id: Option<String>,
+    /// 🔧 Gemini 3 思维签名：工具调用场景下必须在后续请求中回传
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub thought_signature: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -218,6 +221,9 @@ pub struct GeminiPart {
     pub function_call: Option<GeminiFunctionCall>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub function_response: Option<GeminiFunctionResponse>,
+    /// 🔧 Gemini 3 思维签名：工具调用场景下必须在后续请求中回传
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub thought_signature: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -428,6 +434,17 @@ pub fn build_gemini_request_with_version(
         }
         map.remove("google_thinking_config");
 
+        // 🔧 修复：Gemini adapter 使用 thinkingConfig (camelCase) 键写入，
+        // 需要同时读取此键作为 fallback，否则 includeThoughts 等值会丢失
+        if google_thinking_config.is_none() {
+            if let Some(value) = map.get("thinkingConfig").cloned() {
+                google_thinking_config = Some(value);
+            }
+        }
+        map.remove("thinkingConfig");
+        // 同时清理 adapter 可能注入的 gemini_api_version
+        map.remove("gemini_api_version");
+
         // 读取顶层扩展的 top_k（来自 LLMManager.apply_reasoning_config）
         if let Some(v) = map.get("top_k").and_then(|v| v.as_i64()) {
             // clamp 合理范围（最小为1）
@@ -471,16 +488,29 @@ pub fn build_gemini_request_with_version(
     let is_gemini_3 = model.to_lowercase().contains("gemini-3");
 
     if let Some(extra) = google_thinking_config.and_then(|v| v.as_object().cloned()) {
-        // Gemini 3 优先使用 thinking_level
-        if let Some(level) = extra.get("thinking_level").and_then(|v| v.as_str()) {
+        // Gemini 3 优先使用 thinking_level（兼容 snake_case 和 camelCase）
+        if let Some(level) = extra
+            .get("thinking_level")
+            .or_else(|| extra.get("thinkingLevel"))
+            .and_then(|v| v.as_str())
+        {
             thinking_level = Some(level.to_string());
         }
-        // Gemini 2.5 使用 thinking_budget
-        if let Some(budget) = extra.get("thinking_budget").and_then(|v| v.as_i64()) {
+        // Gemini 2.5 使用 thinking_budget（兼容 snake_case 和 camelCase）
+        if let Some(budget) = extra
+            .get("thinking_budget")
+            .or_else(|| extra.get("thinkingBudget"))
+            .and_then(|v| v.as_i64())
+        {
             let clamped = budget.clamp(-1, 2_147_483_647);
             thinking_budget = Some(clamped as i32);
         }
-        if let Some(include) = extra.get("include_thoughts").and_then(|v| v.as_bool()) {
+        // includeThoughts（兼容 snake_case 和 camelCase）
+        if let Some(include) = extra
+            .get("include_thoughts")
+            .or_else(|| extra.get("includeThoughts"))
+            .and_then(|v| v.as_bool())
+        {
             include_thoughts = Some(include);
         }
     }
@@ -641,6 +671,7 @@ pub fn build_gemini_request_with_version(
                             inline_data: None,
                             function_call: None,
                             function_response: None,
+                            thought_signature: None,
                         },
                     );
                 } else {
@@ -652,6 +683,7 @@ pub fn build_gemini_request_with_version(
                             inline_data: None,
                             function_call: None,
                             function_response: None,
+                            thought_signature: None,
                         }],
                     });
                 }
@@ -1352,6 +1384,7 @@ fn convert_openai_to_gemini(openai_req: &OpenAIRequest) -> Result<GeminiRequest,
                                 inline_data: None,
                                 function_call: None,
                                 function_response: None,
+                                thought_signature: None,
                             }],
                         });
                     }
@@ -1382,13 +1415,17 @@ fn convert_openai_to_gemini(openai_req: &OpenAIRequest) -> Result<GeminiRequest,
                             inline_data: None,
                             function_call: None,
                             function_response: None,
+                            thought_signature: None,
                         });
                     }
                 }
 
                 // 处理工具调用
+                // 🔧 Gemini 3：thoughtSignature 必须和 functionCall 在同一个 part 中
+                // 流式响应中 [part_keys]=["functionCall", "thoughtSignature"] 表明它们是同一个 part
                 if let Some(tool_calls) = &message.tool_calls {
-                    for tool_call in tool_calls {
+                    let sig = message.thought_signature.clone();
+                    for (i, tool_call) in tool_calls.iter().enumerate() {
                         if tool_call.tool_type == "function" {
                             let args: Value = serde_json::from_str(&tool_call.function.arguments)
                                 .unwrap_or(json!({}));
@@ -1400,6 +1437,8 @@ fn convert_openai_to_gemini(openai_req: &OpenAIRequest) -> Result<GeminiRequest,
                                     args,
                                 }),
                                 function_response: None,
+                                // 第一个 functionCall part 携带 thoughtSignature
+                                thought_signature: if i == 0 { sig.clone() } else { None },
                             });
                         }
                     }
@@ -1414,30 +1453,111 @@ fn convert_openai_to_gemini(openai_req: &OpenAIRequest) -> Result<GeminiRequest,
             }
             "function" | "tool" => {
                 // 函数/工具响应
-                if let Some(name) = &message.name {
+                // 🔧 修复：OpenAI tool 消息可能没有 name 字段，需要从 tool_call_id
+                // 查找前面 assistant 消息的 tool_calls 来获取函数名
+                let resolved_name = message.name.clone().or_else(|| {
+                    if let Some(tool_call_id) = &message.tool_call_id {
+                        // 从前面的消息中查找对应的 tool_call
+                        for prev_msg in &openai_req.messages {
+                            if prev_msg.role == "assistant" {
+                                if let Some(tool_calls) = &prev_msg.tool_calls {
+                                    for tc in tool_calls {
+                                        if tc.id == *tool_call_id {
+                                            return Some(tc.function.name.clone());
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    None
+                });
+
+                if let Some(name) = resolved_name {
                     if let Some(content) = &message.content {
                         let response_text = extract_text_from_openai_content(content);
                         let response_value: Value = serde_json::from_str(&response_text)
                             .unwrap_or_else(|_| json!({"result": response_text}));
 
-                        contents.push(GeminiContent {
-                            role: "user".to_string(),
-                            parts: vec![GeminiPart {
-                                text: None,
-                                inline_data: None,
-                                function_call: None,
-                                function_response: Some(GeminiFunctionResponse {
-                                    name: name.clone(),
-                                    response: response_value,
-                                }),
-                            }],
+                        let new_part = GeminiPart {
+                            text: None,
+                            inline_data: None,
+                            function_call: None,
+                            function_response: Some(GeminiFunctionResponse {
+                                name: name.clone(),
+                                response: response_value,
+                            }),
+                            thought_signature: None,
+                        };
+
+                        // 🔧 Gemini 要求角色交替：多个 functionResponse 必须合并到同一个 user content 块
+                        // 官方文档示例：并行工具调用的结果在一个 user 消息中包含多个 functionResponse parts
+                        let should_merge = contents.last().map_or(false, |last: &GeminiContent| {
+                            last.role == "user"
+                                && last.parts.iter().all(|p| p.function_response.is_some())
                         });
+
+                        if should_merge {
+                            contents.last_mut().unwrap().parts.push(new_part);
+                        } else {
+                            contents.push(GeminiContent {
+                                role: "user".to_string(),
+                                parts: vec![new_part],
+                            });
+                        }
                     }
                 }
             }
             _ => {
                 // 忽略未知角色
             }
+        }
+    }
+
+    // 🔧 防御性后处理：合并连续同角色 content，确保 Gemini 角色交替要求
+    // Gemini API 要求 contents 中 user 和 model 角色严格交替
+    // 如果 OpenAI 消息转换后产生连续同角色 turn（如两个连续 assistant/model），会触发 400 错误
+    if contents.len() >= 2 {
+        let mut merged_contents: Vec<GeminiContent> = Vec::with_capacity(contents.len());
+        for content in contents.drain(..) {
+            let should_merge = merged_contents
+                .last()
+                .map_or(false, |last| last.role == content.role);
+            if should_merge {
+                let last = merged_contents.last_mut().unwrap();
+                let merged_count = content.parts.len();
+                last.parts.extend(content.parts);
+                log::warn!(
+                    "[GeminiConverter] Merged consecutive '{}' turns ({} parts appended)",
+                    last.role,
+                    merged_count
+                );
+            } else {
+                merged_contents.push(content);
+            }
+        }
+        contents = merged_contents;
+    }
+
+    // 确保第一个 content 是 user 角色（Gemini 要求）
+    if let Some(first) = contents.first() {
+        if first.role == "model" {
+            log::warn!(
+                "[GeminiConverter] First content is 'model' role, inserting dummy user turn"
+            );
+            contents.insert(
+                0,
+                GeminiContent {
+                    role: "user".to_string(),
+                    parts: vec![GeminiPart {
+                        text: Some(".".to_string()),
+                        inline_data: None,
+                        function_call: None,
+                        function_response: None,
+                        thought_signature: None,
+                    }],
+                },
+            );
         }
     }
 
@@ -1607,6 +1727,7 @@ fn convert_openai_content_to_gemini_parts(
                     inline_data: None,
                     function_call: None,
                     function_response: None,
+                    thought_signature: None,
                 });
             }
         }
@@ -1620,6 +1741,7 @@ fn convert_openai_content_to_gemini_parts(
                                 inline_data: None,
                                 function_call: None,
                                 function_response: None,
+                                thought_signature: None,
                             });
                         }
                     }
@@ -1630,6 +1752,7 @@ fn convert_openai_content_to_gemini_parts(
                                 inline_data: Some(inline_data),
                                 function_call: None,
                                 function_response: None,
+                                thought_signature: None,
                             });
                         }
                     }

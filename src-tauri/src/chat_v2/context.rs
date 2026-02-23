@@ -322,7 +322,7 @@ impl PipelineContext {
                 content: String::new(),
                 timestamp: chrono::Utc::now(),
                 thinking_content,
-                thought_signature: None,
+                thought_signature: result.thought_signature.clone(),
                 rag_sources: None,
                 memory_sources: None,
                 graph_sources: None,

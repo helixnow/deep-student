@@ -1109,6 +1109,11 @@ pub struct ToolResultInfo {
     /// 用于在多轮工具调用中保留每轮的思维链，确保完整回传给 LLM
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reasoning_content: Option<String>,
+
+    /// 🔧 Gemini 3 思维签名：工具调用场景必需
+    /// API 返回的 thoughtSignature 需要在后续请求中回传，否则 Gemini 3 返回 400 错误
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub thought_signature: Option<String>,
 }
 
 impl ToolResultInfo {
@@ -1131,6 +1136,7 @@ impl ToolResultInfo {
             error: None,
             duration_ms: Some(duration_ms),
             reasoning_content: None, // 稍后通过 with_reasoning 设置
+            thought_signature: None,
         }
     }
 
@@ -1153,6 +1159,7 @@ impl ToolResultInfo {
             error: Some(error),
             duration_ms: Some(duration_ms),
             reasoning_content: None, // 稍后通过 with_reasoning 设置
+            thought_signature: None,
         }
     }
 
@@ -1183,6 +1190,7 @@ impl ToolResultInfo {
             error: Some("Tool execution was cancelled".to_string()),
             duration_ms: Some(duration_ms),
             reasoning_content: None,
+            thought_signature: None,
         }
     }
 }

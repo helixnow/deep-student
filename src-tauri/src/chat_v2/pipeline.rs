@@ -584,6 +584,8 @@ pub struct ChatV2LLMAdapter {
     in_think_tag: std::sync::Mutex<bool>,
     /// 🔧 <think> 标签解析缓冲区：用于处理跨 chunk 的标签边界
     think_tag_buffer: std::sync::Mutex<String>,
+    /// 🔧 Gemini 3 思维签名缓存：工具调用场景下必须在后续请求中回传
+    cached_thought_signature: std::sync::Mutex<Option<String>>,
 }
 
 impl ChatV2LLMAdapter {
@@ -605,6 +607,7 @@ impl ChatV2LLMAdapter {
             api_usage: std::sync::Mutex::new(None),
             in_think_tag: std::sync::Mutex::new(false),
             think_tag_buffer: std::sync::Mutex::new(String::new()),
+            cached_thought_signature: std::sync::Mutex::new(None),
         }
     }
 
@@ -827,6 +830,14 @@ impl ChatV2LLMAdapter {
     /// 如果 API 未返回 usage 信息，则返回 None。
     pub fn get_api_usage(&self) -> Option<TokenUsage> {
         self.api_usage
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
+    }
+
+    /// 获取缓存的 Gemini 3 思维签名（如果有）
+    pub fn get_thought_signature(&self) -> Option<String> {
+        self.cached_thought_signature
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .clone()
@@ -1187,6 +1198,18 @@ impl LLMStreamHooks for ChatV2LLMAdapter {
         // 使用新的事件类型，前端可以据此显示工具调用准备中的 UI
         self.emitter
             .emit_tool_call_preparing(&self.message_id, tool_call_id, tool_name);
+    }
+
+    fn on_thought_signature(&self, signature: &str) {
+        log::info!(
+            "[ChatV2::pipeline] Cached thought_signature: len={}",
+            signature.len()
+        );
+        let mut guard = self
+            .cached_thought_signature
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        *guard = Some(signature.to_string());
     }
 
     fn on_tool_call(&self, msg: &LegacyChatMessage) {
@@ -3970,6 +3993,8 @@ impl ChatV2Pipeline {
             // 将工具结果添加到上下文
             // 🔧 思维链修复：为这一批工具结果中的第一个附加当前轮次的思维链
             // 一轮 LLM 调用可能产生多个工具调用，但只有一个思维链
+            // 🔧 Gemini 3 修复：同时附加 thought_signature（工具调用必需）
+            let cached_thought_sig = adapter.get_thought_signature();
             let tool_results_with_reasoning: Vec<_> = tool_results
                 .into_iter()
                 .enumerate()
@@ -3977,6 +4002,8 @@ impl ChatV2Pipeline {
                     if i == 0 {
                         // 只有第一个工具结果携带这一轮的思维链
                         result.reasoning_content = ctx.pending_reasoning_for_api.clone();
+                        // 🔧 Gemini 3：附加 thought_signature 以便后续请求回传
+                        result.thought_signature = cached_thought_sig.clone();
                     }
                     result
                 })
@@ -4338,6 +4365,7 @@ impl ChatV2Pipeline {
                     error: Some(retry_hint),
                     duration_ms: None,
                     reasoning_content: None,
+                    thought_signature: None,
                 });
                 continue;
             }
@@ -4388,6 +4416,7 @@ impl ChatV2Pipeline {
                         error: Some(e.to_string()),
                         duration_ms: None,
                         reasoning_content: None,
+                    thought_signature: None,
                     });
                 }
             }
@@ -4600,6 +4629,7 @@ impl ChatV2Pipeline {
                         error: Some("当前技能未声明可用工具，已安全拦截".to_string()),
                         duration_ms: None,
                         reasoning_content: None,
+                    thought_signature: None,
                     });
                 }
                 Some(allowed_tools) => {
@@ -4626,6 +4656,7 @@ impl ChatV2Pipeline {
                             )),
                             duration_ms: None,
                             reasoning_content: None,
+                            thought_signature: None,
                         });
                     }
                 }
@@ -4644,6 +4675,7 @@ impl ChatV2Pipeline {
                         error: Some("技能工具白名单缺失，已安全拦截".to_string()),
                         duration_ms: None,
                         reasoning_content: None,
+                    thought_signature: None,
                     });
                 }
                 None => {
@@ -4731,6 +4763,7 @@ impl ChatV2Pipeline {
                             error: Some("用户已拒绝此工具执行".to_string()),
                             duration_ms: None,
                             reasoning_content: None,
+                            thought_signature: None,
                         });
                     }
                     // 用户之前选择了"始终允许"，继续执行
@@ -4764,6 +4797,7 @@ impl ChatV2Pipeline {
                                 error: Some("用户拒绝执行此工具".to_string()),
                                 duration_ms: None,
                                 reasoning_content: None,
+                                thought_signature: None,
                             });
                         }
                         ApprovalOutcome::Timeout => {
@@ -4777,6 +4811,7 @@ impl ChatV2Pipeline {
                                 error: Some("工具审批等待超时，请重试".to_string()),
                                 duration_ms: None,
                                 reasoning_content: None,
+                                thought_signature: None,
                             });
                         }
                         ApprovalOutcome::ChannelClosed => {
@@ -4790,6 +4825,7 @@ impl ChatV2Pipeline {
                                 error: Some("工具审批通道异常关闭，请重试".to_string()),
                                 duration_ms: None,
                                 reasoning_content: None,
+                                thought_signature: None,
                             });
                         }
                     }
@@ -4847,6 +4883,7 @@ impl ChatV2Pipeline {
                     error: Some(error_msg),
                     duration_ms: None,
                     reasoning_content: None,
+                    thought_signature: None,
                 })
             }
         }
@@ -5017,6 +5054,7 @@ impl ChatV2Pipeline {
                     error: Some(error_msg.to_string()),
                     duration_ms: Some(start_time.elapsed().as_millis() as u64),
                     reasoning_content: None,
+                    thought_signature: None,
                 });
             }
         };
@@ -5043,6 +5081,7 @@ impl ChatV2Pipeline {
                 error: Some(error_msg.to_string()),
                 duration_ms: Some(start_time.elapsed().as_millis() as u64),
                 reasoning_content: None,
+                thought_signature: None,
             });
         }
 
@@ -5215,6 +5254,7 @@ impl ChatV2Pipeline {
                     error: None,
                     duration_ms: Some(duration_ms),
                     reasoning_content: None,
+                    thought_signature: None,
                 })
             }
             Err(error_msg) => {
@@ -5237,6 +5277,7 @@ impl ChatV2Pipeline {
                     error: Some(error_msg),
                     duration_ms: Some(duration_ms),
                     reasoning_content: None,
+                    thought_signature: None,
                 })
             }
         }

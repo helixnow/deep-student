@@ -141,7 +141,9 @@ impl RequestAdapter for GeminiAdapter {
         }
 
         // includeThoughts 嵌套在 thinkingConfig 内
-        if config.include_thoughts {
+        // 🔧 修复：当 thinking 启用时，自动设置 includeThoughts=true
+        // 否则 Gemini 3 不会在响应中返回思维内容（仅消耗 thinking tokens 但不输出）
+        if config.include_thoughts || enable_thinking_value {
             thinking_map.insert("includeThoughts".to_string(), json!(true));
         }
 

@@ -263,14 +263,14 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                   <div
                     key={skill.id}
                     className={cn(
-                      'w-full rounded-lg border p-2.5 transition-all duration-150',
+                      'w-full rounded-lg border px-2 py-2 transition-all duration-150',
                       isSelected
-                        ? 'border-primary bg-primary/5 shadow-sm'
+                        ? 'border-primary/60 bg-primary/5'
                         : isToolLoaded
-                          ? 'border-amber-500/50 bg-amber-500/5'
+                          ? 'border-amber-500/40 bg-amber-500/5'
                           : isDefaultSkill
-                            ? 'border-emerald-500/30 bg-emerald-500/5'
-                            : 'border-border bg-card hover:border-primary/30 hover:bg-accent/30',
+                            ? 'border-emerald-500/20 bg-emerald-500/5'
+                            : 'border-transparent bg-card/80',
                       disabled && 'opacity-50'
                     )}
                   >
@@ -322,6 +322,7 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                         disabled={disabled}
                         className={cn(
                           'font-medium text-sm truncate flex-1 !justify-start !px-0',
+                          '!bg-transparent dark:!bg-transparent !hover:bg-transparent dark:!hover:bg-transparent !active:bg-transparent',
                           isActiveSkill ? 'text-primary' : isToolLoaded ? 'text-amber-600 dark:text-amber-400' : 'text-foreground',
                           !disabled && 'hover:underline cursor-pointer'
                         )}

@@ -210,6 +210,7 @@ impl ToolExecutor for AttemptCompletionExecutor {
                     error: Some(e),
                     duration_ms: Some(start.elapsed().as_millis() as u64),
                     reasoning_content: None,
+                    thought_signature: None,
                 };
 
                 // 🆕 SSOT: 后端立即保存工具块（防闪退）
@@ -263,6 +264,7 @@ impl ToolExecutor for AttemptCompletionExecutor {
             error: None,
             duration_ms: Some(duration_ms),
             reasoning_content: None,
+            thought_signature: None,
         };
 
         // 🆕 SSOT: 后端立即保存工具块（防闪退）

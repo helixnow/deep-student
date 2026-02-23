@@ -426,6 +426,7 @@ impl ToolExecutor for CoordinatorSleepExecutor {
                 error: None,
                 duration_ms: Some(duration_ms),
                 reasoning_content: None,
+                thought_signature: None,
             }),
             Err(e) => Ok(ToolResultInfo {
                 tool_call_id: Some(call.id.clone()),
@@ -437,6 +438,7 @@ impl ToolExecutor for CoordinatorSleepExecutor {
                 error: Some(e),
                 duration_ms: Some(duration_ms),
                 reasoning_content: None,
+                thought_signature: None,
             }),
         }
     }

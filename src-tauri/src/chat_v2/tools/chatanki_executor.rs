@@ -490,6 +490,7 @@ impl ChatAnkiToolExecutor {
                 error: Some(error_message),
                 duration_ms: Some(duration_ms),
                 reasoning_content: None,
+                thought_signature: None,
             };
             let _ = ctx.save_tool_block(&result);
             return Ok(result);
@@ -605,6 +606,7 @@ impl ChatAnkiToolExecutor {
                 error: Some(error_message),
                 duration_ms: Some(duration_ms),
                 reasoning_content: None,
+                thought_signature: None,
             };
             let _ = ctx.save_tool_block(&result);
             return Ok(result);
@@ -896,6 +898,7 @@ impl ChatAnkiToolExecutor {
                 error: Some(error_message),
                 duration_ms: Some(duration_ms),
                 reasoning_content: None,
+                thought_signature: None,
             };
             let _ = ctx.save_tool_block(&result);
             return Ok(result);
@@ -1725,6 +1728,7 @@ impl ChatAnkiToolExecutor {
                 error: error.clone(),
                 duration_ms: Some(duration_ms),
                 reasoning_content: None,
+                thought_signature: None,
             };
             let _ = ctx.save_tool_block(&result);
             return Ok(result);

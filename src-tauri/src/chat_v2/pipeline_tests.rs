@@ -101,6 +101,7 @@ fn test_tool_result_info_serialization() {
         error: None,
         duration_ms: Some(150),
         reasoning_content: None,
+        thought_signature: None,
     };
 
     let json = serde_json::to_string(&result).unwrap();
@@ -415,6 +416,7 @@ fn test_assistant_message_meta_with_tool_results() {
         error: None,
         duration_ms: Some(150),
         reasoning_content: None,
+        thought_signature: None,
     }];
 
     let meta = MessageMeta {
@@ -1007,6 +1009,7 @@ fn test_tool_results_to_messages() {
         error: None,
         duration_ms: Some(100),
         reasoning_content: None,
+        thought_signature: None,
     }];
 
     let messages = ctx.tool_results_to_messages();
@@ -1196,6 +1199,7 @@ fn test_tool_result_info_with_duration() {
         error: None,
         duration_ms: Some(1500),
         reasoning_content: None,
+        thought_signature: None,
     };
 
     assert!(result.success);
@@ -1216,6 +1220,7 @@ fn test_tool_result_info_with_error() {
         error: Some("Tool execution failed: timeout".to_string()),
         duration_ms: Some(30_000),
         reasoning_content: None,
+        thought_signature: None,
     };
 
     assert!(!result.success);
@@ -1286,6 +1291,7 @@ fn test_pipeline_context_add_tool_results() {
         error: None,
         duration_ms: Some(100),
         reasoning_content: None,
+        thought_signature: None,
     }]);
 
     assert_eq!(ctx.tool_results.len(), 1);
@@ -1301,6 +1307,7 @@ fn test_pipeline_context_add_tool_results() {
         error: Some("error".to_string()),
         duration_ms: None,
         reasoning_content: None,
+        thought_signature: None,
     }]);
 
     assert_eq!(ctx.tool_results.len(), 2);
@@ -1332,6 +1339,7 @@ fn test_tool_results_to_messages_format() {
         error: None,
         duration_ms: Some(200),
         reasoning_content: None,
+        thought_signature: None,
     }]);
 
     let messages = ctx.tool_results_to_messages();
