@@ -15,6 +15,8 @@ pub enum OcrEngineType {
     PaddleOcrVl,
     /// PaddleOCR-VL（旧版备用）- 百度开源，免费
     PaddleOcrVlV1,
+    /// GLM-4.6V - 智谱多模态模型，支持 bbox_2d 坐标输出，题目集导入优先引擎
+    Glm4vOcr,
     /// 通用多模态模型 - 使用标准 VLM 进行 OCR
     GenericVlm,
     /// 系统 OCR - 调用操作系统内置 OCR 引擎（macOS Vision / Windows.Media.Ocr / iOS Vision）
@@ -33,6 +35,7 @@ impl OcrEngineType {
             "deepseek_ocr" | "deepseek-ocr" | "deepseek" => Some(Self::DeepSeekOcr),
             "paddle_ocr_vl" | "paddleocr-vl" | "paddleocr_vl" | "paddle" => Some(Self::PaddleOcrVl),
             "paddle_ocr_vl_v1" | "paddleocr-vl-v1" | "paddleocr_vl_v1" => Some(Self::PaddleOcrVlV1),
+            "glm4v_ocr" | "glm-4.6v" | "glm4v" | "glm-4v" => Some(Self::Glm4vOcr),
             "generic_vlm" | "generic" | "vlm" => Some(Self::GenericVlm),
             "system_ocr" | "system" | "native" => Some(Self::SystemOcr),
             _ => None,
@@ -45,6 +48,7 @@ impl OcrEngineType {
             Self::DeepSeekOcr => "deepseek_ocr",
             Self::PaddleOcrVl => "paddle_ocr_vl",
             Self::PaddleOcrVlV1 => "paddle_ocr_vl_v1",
+            Self::Glm4vOcr => "glm4v_ocr",
             Self::GenericVlm => "generic_vlm",
             Self::SystemOcr => "system_ocr",
         }
@@ -56,6 +60,7 @@ impl OcrEngineType {
             Self::DeepSeekOcr => "DeepSeek-OCR",
             Self::PaddleOcrVl => "PaddleOCR-VL-1.5",
             Self::PaddleOcrVlV1 => "PaddleOCR-VL",
+            Self::Glm4vOcr => "GLM-4.6V",
             Self::GenericVlm => "通用多模态模型",
             Self::SystemOcr => "系统 OCR",
         }
@@ -67,6 +72,7 @@ impl OcrEngineType {
             Self::DeepSeekOcr => true,
             Self::PaddleOcrVl => true, // PaddleOCR-VL 也支持坐标输出
             Self::PaddleOcrVlV1 => true,
+            Self::Glm4vOcr => true,
             Self::GenericVlm => false,
             Self::SystemOcr => false,
         }
@@ -78,6 +84,7 @@ impl OcrEngineType {
             Self::DeepSeekOcr => "deepseek-ai/DeepSeek-OCR",
             Self::PaddleOcrVl => "PaddlePaddle/PaddleOCR-VL-1.5",
             Self::PaddleOcrVlV1 => "PaddlePaddle/PaddleOCR-VL",
+            Self::Glm4vOcr => "THUDM/GLM-4.1V-9B-Thinking",
             Self::GenericVlm => "Qwen/Qwen2.5-VL-7B-Instruct",
             Self::SystemOcr => "system",
         }
@@ -86,6 +93,11 @@ impl OcrEngineType {
     /// 是否为系统原生 OCR（不通过 LLM 云端调用）
     pub fn is_native_ocr(&self) -> bool {
         matches!(self, Self::SystemOcr)
+    }
+
+    /// 是否为题目集导入优先引擎
+    pub fn is_import_preferred(&self) -> bool {
+        matches!(self, Self::Glm4vOcr)
     }
 }
 

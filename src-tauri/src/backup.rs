@@ -127,6 +127,7 @@ fn log_and_skip_walkdir_err(
 /// ```
 struct MaintenanceGuard {
     database: Arc<Database>,
+    workspace_coordinator: Option<Arc<crate::chat_v2::workspace::WorkspaceCoordinator>>,
     entered: bool,
     entered_at: Instant,
     timeout_secs: u64,
@@ -148,10 +149,30 @@ impl MaintenanceGuard {
 
         Ok(Self {
             database,
+            workspace_coordinator: None,
             entered: true,
             entered_at: Instant::now(),
             timeout_secs,
         })
+    }
+
+    /// 关联 WorkspaceCoordinator 并使其也进入维护模式
+    fn with_workspace_coordinator(
+        mut self,
+        coordinator: Option<Arc<crate::chat_v2::workspace::WorkspaceCoordinator>>,
+    ) -> Self {
+        if let Some(ref wc) = coordinator {
+            if let Err(e) = wc.enter_maintenance_mode() {
+                warn!(
+                    "[MaintenanceGuard] WorkspaceCoordinator 进入维护模式失败（非致命）: {}",
+                    e
+                );
+            } else {
+                info!("[MaintenanceGuard] WorkspaceCoordinator 已进入维护模式");
+            }
+        }
+        self.workspace_coordinator = coordinator;
+        self
     }
 
     /// 检查是否已进入维护模式
@@ -172,6 +193,11 @@ impl MaintenanceGuard {
     /// 手动退出维护模式（通常不需要调用，Drop 会自动处理）
     fn exit(&mut self) {
         if self.entered {
+            if let Some(ref wc) = self.workspace_coordinator {
+                if let Err(e) = wc.exit_maintenance_mode() {
+                    warn!("[MaintenanceGuard] WorkspaceCoordinator 退出维护模式失败: {}", e);
+                }
+            }
             if let Err(err) = self.database.exit_maintenance_mode() {
                 warn!("[MaintenanceGuard] 退出维护模式失败: {}", err);
             } else {
@@ -194,6 +220,11 @@ impl Drop for MaintenanceGuard {
                     "[MaintenanceGuard] 维护模式超时！（已持续 {} 秒，限制 {} 秒）",
                     elapsed, self.timeout_secs
                 );
+            }
+            if let Some(ref wc) = self.workspace_coordinator {
+                if let Err(e) = wc.exit_maintenance_mode() {
+                    error!("[MaintenanceGuard] Drop 时 WorkspaceCoordinator 退出维护模式失败: {}", e);
+                }
             }
             if let Err(err) = self.database.exit_maintenance_mode() {
                 error!("[MaintenanceGuard] Drop 时退出维护模式失败: {}", err);

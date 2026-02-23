@@ -906,10 +906,16 @@ impl SyncManager {
 
     /// 从文件路径解析版本号
     fn parse_version_from_key(key: &str) -> Option<u64> {
-        // 格式: data_governance/changes/{device_id}/{version}-{nonce}.json
+        // 新格式: data_governance/changes/{device_id}/{version}-{nonce}.json.zst
+        // 旧格式: data_governance/changes/{device_id}/{version}-{nonce}.json
+        //     或: data_governance/changes/{device_id}/{version}.json
         key.rsplit('/')
             .next()
-            .and_then(|filename| filename.strip_suffix(".json"))
+            .and_then(|filename| {
+                filename
+                    .strip_suffix(".json.zst")
+                    .or_else(|| filename.strip_suffix(".json"))
+            })
             .and_then(|stem| stem.split('-').next())
             .and_then(|version_str| version_str.parse().ok())
     }
@@ -3042,10 +3048,38 @@ mod tests {
 
     #[test]
     fn test_parse_version_from_key_seconds_with_nonce() {
-        // 新格式：秒级时间戳 + UUID nonce
+        // 旧格式 .json：秒级时间戳 + UUID nonce
         let key =
             "data_governance/changes/device-1/1707500000-550e8400-e29b-41d4-a716-446655440000.json";
         assert_eq!(SyncManager::parse_version_from_key(key), Some(1707500000));
+    }
+
+    #[test]
+    fn test_parse_version_from_key_zst_with_nonce() {
+        // 新格式 .json.zst：秒级时间戳 + UUID nonce + zstd 压缩
+        let key = "data_governance/changes/device-1/1707500000-550e8400-e29b-41d4-a716-446655440000.json.zst";
+        assert_eq!(SyncManager::parse_version_from_key(key), Some(1707500000));
+    }
+
+    #[test]
+    fn test_parse_version_from_key_zst_legacy_no_nonce() {
+        // .json.zst 无 nonce
+        let key = "data_governance/changes/device-1/1707500000.json.zst";
+        assert_eq!(SyncManager::parse_version_from_key(key), Some(1707500000));
+    }
+
+    #[test]
+    fn test_parse_version_from_key_invalid() {
+        assert_eq!(SyncManager::parse_version_from_key(""), None);
+        assert_eq!(SyncManager::parse_version_from_key("no-slash"), None);
+        assert_eq!(
+            SyncManager::parse_version_from_key("data_governance/changes/device-1/notanumber.json"),
+            None
+        );
+        assert_eq!(
+            SyncManager::parse_version_from_key("data_governance/changes/device-1/abc.json.zst"),
+            None
+        );
     }
 
     #[test]

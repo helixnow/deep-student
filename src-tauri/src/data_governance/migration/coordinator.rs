@@ -187,7 +187,6 @@ impl MigrationCoordinator {
                     report.add(db_report);
                 }
                 Err(e) => {
-                    // 记录已成功迁移的数据库，帮助运维了解部分完成状态
                     let completed_dbs: Vec<&str> = report
                         .databases
                         .iter()
@@ -202,14 +201,50 @@ impl MigrationCoordinator {
                         db_id.as_str(),
                         completed_dbs,
                     );
-                    report.success = false;
-                    report.error = Some(format!(
-                        "Database '{}' migration failed: {}. Successfully completed: [{}]",
-                        db_id.as_str(),
-                        e,
-                        completed_dbs.join(", "),
-                    ));
-                    return Err(e);
+
+                    // 自动恢复：从迁移前快照恢复所有核心库到一致状态
+                    tracing::warn!(
+                        "[MigrationCoordinator] 尝试从迁移前快照自动恢复所有核心数据库..."
+                    );
+                    match self.restore_from_latest_core_backup() {
+                        Ok(count) => {
+                            tracing::info!(
+                                "[MigrationCoordinator] 自动恢复成功: 已恢复 {} 个数据库到迁移前状态",
+                                count
+                            );
+                            report.success = false;
+                            report.error = Some(format!(
+                                "Database '{}' migration failed: {}. Auto-recovered {} databases from pre-migration snapshot. Completed before failure: [{}]",
+                                db_id.as_str(),
+                                e,
+                                count,
+                                completed_dbs.join(", "),
+                            ));
+                            return Err(MigrationError::RecoveredFromBackup {
+                                original_error: format!(
+                                    "Database '{}' migration failed: {}",
+                                    db_id.as_str(),
+                                    e
+                                ),
+                                restored_count: count,
+                            });
+                        }
+                        Err(restore_err) => {
+                            tracing::error!(
+                                "[MigrationCoordinator] 自动恢复失败: {}",
+                                restore_err
+                            );
+                            report.success = false;
+                            report.error = Some(format!(
+                                "Database '{}' migration failed: {}. Auto-recovery also failed: {}. Successfully completed: [{}]",
+                                db_id.as_str(),
+                                e,
+                                restore_err,
+                                completed_dbs.join(", "),
+                            ));
+                            return Err(e);
+                        }
+                    }
                 }
             }
         }
@@ -315,6 +350,155 @@ impl MigrationCoordinator {
             }
         }
         Ok(())
+    }
+
+    /// 从最新的迁移前快照恢复所有核心数据库
+    ///
+    /// 当迁移失败时调用，将所有核心库恢复到迁移前的一致状态。
+    /// 使用 SQLite Backup API 确保恢复的原子性和 WAL 兼容性。
+    ///
+    /// # Returns
+    /// 成功恢复的数据库数量
+    pub fn restore_from_latest_core_backup(&self) -> Result<usize, MigrationError> {
+        let root = self.core_backup_root_dir();
+        if !root.exists() {
+            return Err(MigrationError::Database(
+                "无迁移前快照可用于恢复（migration_core_backups 目录不存在）".to_string(),
+            ));
+        }
+
+        let mut snapshot_dirs: Vec<PathBuf> = std::fs::read_dir(&root)?
+            .filter_map(|e| e.ok())
+            .map(|e| e.path())
+            .filter(|p| {
+                p.is_dir()
+                    && p.file_name()
+                        .and_then(|n| n.to_str())
+                        .map_or(false, |n| n.starts_with("startup_"))
+            })
+            .collect();
+
+        snapshot_dirs.sort_by(|a, b| {
+            a.file_name()
+                .and_then(|n| n.to_str())
+                .cmp(&b.file_name().and_then(|n| n.to_str()))
+        });
+
+        let latest = snapshot_dirs.last().ok_or_else(|| {
+            MigrationError::Database("无迁移前快照目录可用于恢复".to_string())
+        })?;
+
+        tracing::info!(
+            "[MigrationCoordinator] 尝试从快照恢复: {}",
+            latest.display()
+        );
+
+        let metadata_path = latest.join("metadata.json");
+        let copied_files: Vec<String> = if metadata_path.exists() {
+            let content = std::fs::read_to_string(&metadata_path)?;
+            let parsed: serde_json::Value = serde_json::from_str(&content)
+                .map_err(|e| MigrationError::Database(format!("解析快照元数据失败: {}", e)))?;
+            parsed
+                .get("copied_files")
+                .and_then(|v| v.as_array())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                        .collect()
+                })
+                .unwrap_or_default()
+        } else {
+            tracing::warn!(
+                "[MigrationCoordinator] 快照缺少 metadata.json，回退到默认核心文件列表"
+            );
+            vec![
+                "databases/vfs.db".to_string(),
+                "chat_v2.db".to_string(),
+                "mistakes.db".to_string(),
+                "llm_usage.db".to_string(),
+            ]
+        };
+
+        if copied_files.is_empty() {
+            return Err(MigrationError::Database(
+                "快照元数据中无备份文件记录".to_string(),
+            ));
+        }
+
+        let mut restored = 0usize;
+        let mut errors: Vec<String> = Vec::new();
+
+        for relative in &copied_files {
+            let src = latest.join(relative);
+            let dst = self.app_data_dir.join(relative);
+
+            if !src.exists() {
+                tracing::warn!(
+                    "[MigrationCoordinator] 快照文件不存在，跳过: {}",
+                    src.display()
+                );
+                continue;
+            }
+
+            if let Some(parent) = dst.parent() {
+                if let Err(e) = std::fs::create_dir_all(parent) {
+                    errors.push(format!("创建目录失败 {}: {}", parent.display(), e));
+                    continue;
+                }
+            }
+
+            match Self::backup_sqlite_consistent(&src, &dst) {
+                Ok(()) => {
+                    // 清除残留的 WAL/SHM 文件，避免下次打开时回放旧事务污染恢复的数据
+                    for ext in &["db-wal", "db-shm"] {
+                        let residual = dst.with_extension(ext);
+                        if residual.exists() {
+                            if let Err(e) = std::fs::remove_file(&residual) {
+                                tracing::warn!(
+                                    "[MigrationCoordinator] 清理残留文件失败 {}: {}",
+                                    residual.display(),
+                                    e
+                                );
+                            }
+                        }
+                    }
+                    restored += 1;
+                    tracing::info!(
+                        "[MigrationCoordinator] 已恢复: {} -> {}",
+                        src.display(),
+                        dst.display()
+                    );
+                }
+                Err(e) => {
+                    let msg = format!("恢复 {} 失败: {}", relative, e);
+                    tracing::error!("[MigrationCoordinator] {}", msg);
+                    errors.push(msg);
+                }
+            }
+        }
+
+        if restored == 0 {
+            return Err(MigrationError::Database(format!(
+                "从快照恢复失败，无数据库成功恢复。错误: {}",
+                errors.join("; ")
+            )));
+        }
+
+        if !errors.is_empty() {
+            tracing::warn!(
+                "[MigrationCoordinator] 部分数据库恢复失败（已恢复 {}）: {:?}",
+                restored,
+                errors
+            );
+        }
+
+        tracing::info!(
+            "[MigrationCoordinator] 从快照恢复完成: {}/{} 个数据库",
+            restored,
+            copied_files.len()
+        );
+
+        Ok(restored)
     }
 
     fn backup_core_databases_once_per_startup(&mut self) -> Result<(), MigrationError> {

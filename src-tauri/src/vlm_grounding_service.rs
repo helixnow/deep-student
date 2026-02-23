@@ -31,11 +31,14 @@ pub struct VlmPageAnalysis {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VlmQuestion {
     /// 题号标签（"1", "2", "5-8" 等）
-    pub label: String,
-    /// 题目区域归一化边界框 [x, y, w, h]，值域 0.0-1.0
     #[serde(default)]
+    pub label: String,
+    /// 题目区域归一化边界框 [x1, y1, x2, y2]，值域 0.0-1.0，
+    /// 对齐 GLM-4.6V 原生 bbox_2d 格式
+    #[serde(default = "default_bbox")]
     pub bbox: [f64; 4],
     /// VLM OCR 的完整题目文本（含选项、LaTeX 公式）
+    #[serde(default)]
     pub raw_text: String,
     /// 是否为共享配图的题组
     #[serde(default)]
@@ -51,11 +54,17 @@ pub struct VlmQuestion {
 /// VLM 识别出的图片/配图
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VlmFigure {
-    /// 图片区域归一化边界框 [x, y, w, h]，值域 0.0-1.0
+    /// 图片区域归一化边界框 [x1, y1, x2, y2]，值域 0.0-1.0，
+    /// 对齐 GLM-4.6V 原生 bbox_2d 格式
+    #[serde(default = "default_bbox")]
     pub bbox: [f64; 4],
     /// 图片标签 ("图1", "配图", "选项图" 等)
     #[serde(default)]
     pub fig_label: String,
+}
+
+fn default_bbox() -> [f64; 4] {
+    [0.0, 0.0, 0.0, 0.0]
 }
 
 // ============================================================================
@@ -128,72 +137,136 @@ impl VlmGroundingService {
             .build()
             .map_err(|e| AppError::internal(format!("创建 HTTP 客户端失败: {}", e)))?;
 
-        let mut request_builder = client.post(&preq.url);
-        for (k, v) in preq.headers.iter() {
-            request_builder = request_builder.header(k.as_str(), v.as_str());
+        const MAX_RETRIES: u32 = 3;
+        let mut last_error = String::new();
+
+        for attempt in 0..=MAX_RETRIES {
+            if attempt > 0 {
+                let delay = std::time::Duration::from_secs(2u64.pow(attempt));
+                warn!(
+                    "[VLM-Grounding] 第 {} 次重试，等待 {}s",
+                    attempt,
+                    delay.as_secs()
+                );
+                tokio::time::sleep(delay).await;
+            }
+
+            let mut rb = client.post(&preq.url);
+            for (k, v) in preq.headers.iter() {
+                rb = rb.header(k.as_str(), v.as_str());
+            }
+
+            if attempt == 0 {
+                info!(
+                    "[VLM-Grounding] 发送分析请求: model={}, url={}",
+                    config.model, preq.url
+                );
+            }
+
+            let response = match rb.json(&preq.body).send().await {
+                Ok(r) => r,
+                Err(e) => {
+                    last_error = format!("VLM 请求失败: {}", e);
+                    if attempt < MAX_RETRIES {
+                        continue;
+                    }
+                    return Err(AppError::network(last_error));
+                }
+            };
+
+            let status = response.status();
+            let body = response
+                .text()
+                .await
+                .map_err(|e| AppError::network(format!("读取 VLM 响应失败: {}", e)))?;
+
+            if status.as_u16() == 429
+                || status.as_u16() == 502
+                || status.as_u16() == 503
+                || status.as_u16() == 504
+            {
+                last_error = format!(
+                    "VLM API 返回 {}: {}",
+                    status,
+                    &body[..body.len().min(200)]
+                );
+                if attempt < MAX_RETRIES {
+                    warn!("[VLM-Grounding] {}", last_error);
+                    continue;
+                }
+                return Err(AppError::llm(last_error));
+            }
+
+            if !status.is_success() {
+                return Err(AppError::llm(format!(
+                    "VLM API 返回错误 {}: {}",
+                    status,
+                    &body[..body.len().min(500)]
+                )));
+            }
+
+            let resp_json: Value = serde_json::from_str(&body)
+                .map_err(|e| AppError::llm(format!("解析 VLM 响应 JSON 失败: {}", e)))?;
+
+            let content = resp_json
+                .get("choices")
+                .and_then(|c| c.get(0))
+                .and_then(|c| c.get("message"))
+                .and_then(|m| m.get("content"))
+                .and_then(|c| c.as_str())
+                .ok_or_else(|| AppError::llm("VLM 响应格式错误：无法提取 content"))?;
+
+            info!(
+                "[VLM-Grounding] 收到响应: {} 字符{}",
+                content.len(),
+                if attempt > 0 {
+                    format!(" (第 {} 次重试成功)", attempt)
+                } else {
+                    String::new()
+                }
+            );
+
+            return Self::parse_vlm_response(content);
         }
 
-        info!(
-            "[VLM-Grounding] 发送分析请求: model={}, url={}",
-            config.model, preq.url
-        );
-
-        let response = request_builder
-            .json(&preq.body)
-            .send()
-            .await
-            .map_err(|e| AppError::network(format!("VLM 请求失败: {}", e)))?;
-
-        let status = response.status();
-        let body = response
-            .text()
-            .await
-            .map_err(|e| AppError::network(format!("读取 VLM 响应失败: {}", e)))?;
-
-        if !status.is_success() {
-            return Err(AppError::llm(format!(
-                "VLM API 返回错误 {}: {}",
-                status,
-                &body[..body.len().min(500)]
-            )));
-        }
-
-        let resp_json: Value = serde_json::from_str(&body)
-            .map_err(|e| AppError::llm(format!("解析 VLM 响应 JSON 失败: {}", e)))?;
-
-        let content = resp_json
-            .get("choices")
-            .and_then(|c| c.get(0))
-            .and_then(|c| c.get("message"))
-            .and_then(|m| m.get("content"))
-            .and_then(|c| c.as_str())
-            .ok_or_else(|| AppError::llm("VLM 响应格式错误：无法提取 content"))?;
-
-        info!(
-            "[VLM-Grounding] 收到响应: {} 字符",
-            content.len()
-        );
-
-        Self::parse_vlm_response(content)
+        Err(AppError::llm(last_error))
     }
 
     /// 从 VLM 响应文本中提取结构化分析结果
     fn parse_vlm_response(content: &str) -> Result<VlmPageAnalysis, AppError> {
-        // 尝试提取 JSON（可能被 ```json ... ``` 包裹）
-        let json_str = if let Some(start) = content.find('[') {
-            if let Some(end) = content.rfind(']') {
-                &content[start..=end]
+        // 先剥离 ```json ... ``` 代码围栏（VLM 最常见的包裹格式）
+        let stripped = {
+            let trimmed = content.trim();
+            if let Some(rest) = trimmed.strip_prefix("```json") {
+                rest.trim_start()
+                    .strip_suffix("```")
+                    .unwrap_or(rest)
+                    .trim()
+            } else if let Some(rest) = trimmed.strip_prefix("```") {
+                rest.trim_start()
+                    .strip_suffix("```")
+                    .unwrap_or(rest)
+                    .trim()
             } else {
-                content
+                trimmed
             }
-        } else if let Some(start) = content.find('{') {
-            if let Some(end) = content.rfind('}') {
-                &content[start..=end]
+        };
+
+        // 从剥离后的文本中定位 JSON 数组或对象
+        let json_str = if let Some(start) = stripped.find('[') {
+            if let Some(end) = stripped.rfind(']') {
+                &stripped[start..=end]
             } else {
-                content
+                stripped
+            }
+        } else if let Some(start) = stripped.find('{') {
+            if let Some(end) = stripped.rfind('}') {
+                &stripped[start..=end]
+            } else {
+                stripped
             }
         } else {
-            content
+            stripped
         };
 
         // 尝试直接作为 VlmPageAnalysis 解析
@@ -222,14 +295,14 @@ impl VlmGroundingService {
         Err(AppError::llm("VLM 响应无法解析为题目分析结果"))
     }
 
-    /// 构建 VLM 分析 prompt
+    /// 构建 VLM 分析 prompt（坐标格式对齐 GLM-4.6V bbox_2d）
     fn build_analysis_prompt() -> String {
         r#"请分析这张试卷/题目页面图片，识别其中的所有题目和配图。
 
 **任务**：
 1. 识别页面中每道题目的完整内容（题号、题干、选项、答案、解析）
 2. 识别页面中所有图片/配图/插图，并确定它们属于哪道题目
-3. 估计每道题目和每张图片在页面中的大致位置（归一化坐标）
+3. 给出每道题目和每张图片在页面中的位置坐标
 
 **输出要求**：
 请输出 JSON 数组，每个元素代表一道题目（只输出 JSON，不要其他内容）：
@@ -238,13 +311,13 @@ impl VlmGroundingService {
 [
   {
     "label": "1",
-    "bbox": [0.05, 0.02, 0.9, 0.15],
+    "bbox": [0.05, 0.02, 0.95, 0.17],
     "raw_text": "1. 下列关于力的说法正确的是（  ）\nA. 力是物体...\nB. 力可以...\nC. ...\nD. ...",
     "is_group": false,
     "sub_questions": [],
     "figures": [
       {
-        "bbox": [0.6, 0.03, 0.3, 0.12],
+        "bbox": [0.60, 0.03, 0.92, 0.15],
         "fig_label": "配图"
       }
     ]
@@ -254,19 +327,19 @@ impl VlmGroundingService {
 
 **字段说明**：
 - `label`: 题号（如 "1", "2", "5-8"）
-- `bbox`: 题目区域 [x, y, width, height]，归一化到 0-1（左上角为原点）
+- `bbox`: 题目区域坐标 **[x1, y1, x2, y2]**，左上角 (x1,y1) 到右下角 (x2,y2)，归一化到 0-1
 - `raw_text`: 题目的完整文本（含题号、题干、选项等），数学公式用 LaTeX 格式（行内 $...$，独立 $$...$$）
 - `is_group`: 是否为题组（多道题共享一段材料或配图时为 true）
 - `sub_questions`: 题组时的子题号列表
 - `figures`: 该题关联的配图列表
-  - `bbox`: 图片区域 [x, y, width, height]，归一化到 0-1
+  - `bbox`: 图片区域坐标 **[x1, y1, x2, y2]**，左上角到右下角，归一化到 0-1
   - `fig_label`: 图片标签（"图1", "配图", "选项图"等）
 
 **重要规则**：
 1. 所有数学公式必须用 LaTeX 格式：行内 $E=mc^2$，独立 $$\int_0^1 f(x)dx$$
 2. 每道题的 raw_text 必须包含完整内容（题干+选项+答案+解析，如果页面上有的话）
 3. 如果多道题共享一张配图（如阅读理解），将它们标记为 is_group=true
-4. bbox 坐标为归一化值（0-1），x 从左到右，y 从上到下
+4. **bbox 坐标格式为 [x1, y1, x2, y2]**：(x1,y1) 是左上角，(x2,y2) 是右下角，值域 0-1
 5. 如果题目没有配图，figures 留空数组
 6. 注意区分题目配图和装饰性元素（页眉页脚、水印等不需要标记）"#.to_string()
     }
@@ -279,20 +352,19 @@ impl VlmGroundingService {
             .await
             .map_err(|e| AppError::configuration(format!("获取模型配置失败: {}", e)))?;
 
-        let vlm_model_priorities = [
-            "glm-4.6v",
-            "glm-4v",
-            "qwen3-vl",
-            "qwen2.5-vl",
-            "qwen-vl",
+        let glm_vision_regex =
+            regex::Regex::new(r"(?i)glm-(?:4(?:\.\d+)?|5(?:\.\d+)?)v").unwrap();
+
+        let vlm_model_priorities: Vec<Box<dyn Fn(&str) -> bool>> = vec![
+            Box::new(move |m: &str| glm_vision_regex.is_match(m)),
+            Box::new(|m: &str| m.contains("qwen3-vl")),
+            Box::new(|m: &str| m.contains("qwen2.5-vl")),
+            Box::new(|m: &str| m.contains("qwen-vl")),
         ];
 
-        // 按优先级查找 VLM 模型
-        for priority_model in &vlm_model_priorities {
+        for matcher in &vlm_model_priorities {
             if let Some(config) = configs.iter().find(|c| {
-                c.enabled
-                    && c.is_multimodal
-                    && c.model.to_lowercase().contains(priority_model)
+                c.enabled && c.is_multimodal && matcher(&c.model.to_lowercase())
             }) {
                 info!(
                     "[VLM-Grounding] 使用 VLM 模型: {} ({})",
@@ -316,9 +388,9 @@ impl VlmGroundingService {
         ))
     }
 
-    /// 将 VLM 分析结果中的 figure bbox 裁切为图片字节
+    /// 按 `[x1, y1, x2, y2]` 归一化坐标从页面图片中裁切配图区域
     ///
-    /// 从原始页面图片中按 bbox 坐标裁切出配图区域。
+    /// 坐标格式对齐 GLM-4.6V bbox_2d：(x1,y1) 左上角，(x2,y2) 右下角，值域 0.0-1.0。
     pub fn crop_figure_from_page(
         page_image_bytes: &[u8],
         figure_bbox: &[f64; 4],
@@ -327,21 +399,28 @@ impl VlmGroundingService {
             .map_err(|e| AppError::internal(format!("加载页面图片失败: {}", e)))?;
 
         let (img_w, img_h) = img.dimensions();
-        let x = (figure_bbox[0] * img_w as f64).round() as u32;
-        let y = (figure_bbox[1] * img_h as f64).round() as u32;
-        let w = (figure_bbox[2] * img_w as f64).round().max(1.0) as u32;
-        let h = (figure_bbox[3] * img_h as f64).round().max(1.0) as u32;
 
-        let x = x.min(img_w.saturating_sub(1));
-        let y = y.min(img_h.saturating_sub(1));
-        let w = w.min(img_w - x);
-        let h = h.min(img_h - y);
+        // [x1, y1, x2, y2] → 排序确保 min/max 正确
+        let x1 = figure_bbox[0].min(figure_bbox[2]).clamp(0.0, 1.0);
+        let y1 = figure_bbox[1].min(figure_bbox[3]).clamp(0.0, 1.0);
+        let x2 = figure_bbox[0].max(figure_bbox[2]).clamp(0.0, 1.0);
+        let y2 = figure_bbox[1].max(figure_bbox[3]).clamp(0.0, 1.0);
 
-        if w == 0 || h == 0 {
+        let px = (x1 * img_w as f64).round() as u32;
+        let py = (y1 * img_h as f64).round() as u32;
+        let pw = ((x2 - x1) * img_w as f64).round().max(1.0) as u32;
+        let ph = ((y2 - y1) * img_h as f64).round().max(1.0) as u32;
+
+        let px = px.min(img_w.saturating_sub(1));
+        let py = py.min(img_h.saturating_sub(1));
+        let pw = pw.min(img_w - px);
+        let ph = ph.min(img_h - py);
+
+        if pw == 0 || ph == 0 {
             return Err(AppError::validation("裁切区域无效：宽度或高度为 0"));
         }
 
-        let cropped = image::imageops::crop_imm(&img, x, y, w, h).to_image();
+        let cropped = image::imageops::crop_imm(&img, px, py, pw, ph).to_image();
 
         let mut buffer = std::io::Cursor::new(Vec::new());
         cropped

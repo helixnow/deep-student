@@ -885,4 +885,77 @@ impl WorkspaceCoordinator {
         let instance = self.get_instance(workspace_id)?;
         Ok(Arc::clone(&instance.task_manager))
     }
+
+    /// 进入维护模式：暂停所有活跃工作区的数据库连接池
+    ///
+    /// 在备份/恢复操作期间调用，确保 ws_*.db 文件不被锁定。
+    /// 单个工作区失败不阻断其他工作区。
+    pub fn enter_maintenance_mode(&self) -> Result<(), String> {
+        let instances = self.instances.read().unwrap_or_else(|poisoned| {
+            log::error!("[WorkspaceCoordinator] RwLock poisoned (read)! Attempting recovery");
+            poisoned.into_inner()
+        });
+
+        let mut failures = Vec::new();
+        for (id, instance) in instances.iter() {
+            if let Err(e) = instance.db.enter_maintenance_mode() {
+                log::warn!(
+                    "[WorkspaceCoordinator] 工作区 {} 进入维护模式失败: {}",
+                    id,
+                    e
+                );
+                failures.push(format!("{}: {}", id, e));
+            }
+        }
+
+        if failures.is_empty() {
+            log::info!(
+                "[WorkspaceCoordinator] 所有 {} 个工作区已进入维护模式",
+                instances.len()
+            );
+        } else {
+            log::warn!(
+                "[WorkspaceCoordinator] {} 个工作区进入维护模式失败: {:?}",
+                failures.len(),
+                failures
+            );
+        }
+
+        Ok(())
+    }
+
+    /// 退出维护模式：恢复所有活跃工作区的磁盘数据库连接
+    pub fn exit_maintenance_mode(&self) -> Result<(), String> {
+        let instances = self.instances.read().unwrap_or_else(|poisoned| {
+            log::error!("[WorkspaceCoordinator] RwLock poisoned (read)! Attempting recovery");
+            poisoned.into_inner()
+        });
+
+        let mut failures = Vec::new();
+        for (id, instance) in instances.iter() {
+            if let Err(e) = instance.db.exit_maintenance_mode() {
+                log::warn!(
+                    "[WorkspaceCoordinator] 工作区 {} 退出维护模式失败: {}",
+                    id,
+                    e
+                );
+                failures.push(format!("{}: {}", id, e));
+            }
+        }
+
+        if failures.is_empty() {
+            log::info!(
+                "[WorkspaceCoordinator] 所有 {} 个工作区已退出维护模式",
+                instances.len()
+            );
+        } else {
+            log::warn!(
+                "[WorkspaceCoordinator] {} 个工作区退出维护模式失败: {:?}",
+                failures.len(),
+                failures
+            );
+        }
+
+        Ok(())
+    }
 }

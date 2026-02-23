@@ -156,7 +156,8 @@ fn migrate_schema(conn: &Connection) -> Result<(), String> {
 pub struct WorkspaceDatabase {
     workspace_id: WorkspaceId,
     db_path: PathBuf,
-    pool: WorkspaceDatabasePool,
+    pool: std::sync::RwLock<WorkspaceDatabasePool>,
+    maintenance_mode: std::sync::atomic::AtomicBool,
 }
 
 impl WorkspaceDatabase {
@@ -227,7 +228,8 @@ impl WorkspaceDatabase {
         Ok(Self {
             workspace_id: workspace_id.to_string(),
             db_path,
-            pool,
+            pool: std::sync::RwLock::new(pool),
+            maintenance_mode: std::sync::atomic::AtomicBool::new(false),
         })
     }
 
@@ -240,9 +242,74 @@ impl WorkspaceDatabase {
     }
 
     pub fn get_connection(&self) -> Result<WorkspacePooledConnection, String> {
-        self.pool
-            .get()
+        if self.maintenance_mode.load(std::sync::atomic::Ordering::Acquire) {
+            return Err("Workspace database is in maintenance mode (backup/restore in progress)".to_string());
+        }
+        let pool = self.pool.read().map_err(|e| format!("Pool lock poisoned: {}", e))?;
+        pool.get()
             .map_err(|e| format!("Failed to get connection: {}", e))
+    }
+
+    pub fn enter_maintenance_mode(&self) -> Result<(), String> {
+        if let Ok(conn) = self.get_connection() {
+            let _ = conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);");
+        }
+
+        self.maintenance_mode
+            .store(true, std::sync::atomic::Ordering::Release);
+
+        let mem_manager = SqliteConnectionManager::memory();
+        let mem_pool = Pool::builder()
+            .max_size(1)
+            .build(mem_manager)
+            .map_err(|e| {
+                self.maintenance_mode
+                    .store(false, std::sync::atomic::Ordering::Release);
+                format!("创建内存连接池失败: {}", e)
+            })?;
+
+        let mut guard = self.pool.write().map_err(|e| {
+            self.maintenance_mode
+                .store(false, std::sync::atomic::Ordering::Release);
+            format!("Pool lock poisoned: {}", e)
+        })?;
+        *guard = mem_pool;
+
+        log::info!(
+            "[WorkspaceDatabase:{}] 已进入维护模式",
+            self.workspace_id
+        );
+        Ok(())
+    }
+
+    pub fn exit_maintenance_mode(&self) -> Result<(), String> {
+        let manager = SqliteConnectionManager::file(&self.db_path).with_init(|conn| {
+            conn.execute_batch(
+                "PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000;",
+            )?;
+            Ok(())
+        });
+        let new_pool = Pool::builder()
+            .max_size(8)
+            .build(manager)
+            .map_err(|e| format!("重建工作区连接池失败: {}", e))?;
+
+        {
+            let mut guard = self
+                .pool
+                .write()
+                .map_err(|e| format!("Pool lock poisoned: {}", e))?;
+            *guard = new_pool;
+        }
+
+        self.maintenance_mode
+            .store(false, std::sync::atomic::Ordering::Release);
+
+        log::info!(
+            "[WorkspaceDatabase:{}] 已退出维护模式",
+            self.workspace_id
+        );
+        Ok(())
     }
 
     pub fn delete_database(workspaces_dir: &Path, workspace_id: &str) -> Result<(), String> {

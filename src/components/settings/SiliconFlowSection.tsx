@@ -568,6 +568,13 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
   // OCR 专用模型预设（支持多引擎，按优先级排列，全部默认启用）
   // 注意：这些模型会自动根据名称推断适配器类型
   const PRESET_OCR_MODELS = [
+    {
+      model: 'THUDM/GLM-4.1V-9B-Thinking',
+      name: 'SiliconFlow - GLM-4.6V',
+      engineType: 'glm4v_ocr',
+      description: '智谱多模态模型，支持坐标定位，题目集导入优先引擎',
+      isFree: false,
+    },
     { 
       model: 'PaddlePaddle/PaddleOCR-VL-1.5', 
       name: 'SiliconFlow - PaddleOCR-VL-1.5',

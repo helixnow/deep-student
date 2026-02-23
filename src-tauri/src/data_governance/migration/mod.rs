@@ -221,6 +221,12 @@ pub enum MigrationError {
     #[error("Insufficient disk space: {available_mb}MB available, need at least {required_mb}MB. Please free up disk space and retry.")]
     InsufficientDiskSpace { available_mb: u64, required_mb: u64 },
 
+    #[error("Migration failed but recovered from backup: {original_error} (restored {restored_count} databases)")]
+    RecoveredFromBackup {
+        original_error: String,
+        restored_count: usize,
+    },
+
     #[error("Not implemented: {0}")]
     NotImplemented(String),
 }

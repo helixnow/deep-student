@@ -43,7 +43,10 @@ impl WebDavStorage {
         let url = Url::parse(config.endpoint.trim())
             .map_err(|e| AppError::configuration(format!("无效的 WebDAV endpoint: {e}")))?;
 
-        let is_local = matches!(url.host_str(), Some("localhost" | "127.0.0.1" | "::1"));
+        let is_local = url
+            .host_str()
+            .map(|h| matches!(h.to_lowercase().as_str(), "localhost" | "127.0.0.1" | "::1"))
+            .unwrap_or(false);
         if !is_local && url.scheme() != "https" {
             return Err(AppError::configuration(
                 "WebDAV endpoint 必须使用 HTTPS 以保护 Basic Auth 凭据（仅 localhost 允许 HTTP）"
@@ -262,6 +265,89 @@ impl WebDavStorage {
         }
         String::new()
     }
+
+    /// 解析 PROPFIND 响应，同时返回文件列表和子目录列表。
+    ///
+    /// RFC 4918 推荐使用 Depth:1 + 客户端迭代递归替代 Depth:infinity，
+    /// 避免依赖服务器对 infinity 的支持（坚果云等可能不支持）。
+    fn parse_propfind_entries(
+        &self,
+        xml: &str,
+        prefix: &str,
+        request_dir: &str,
+    ) -> (Vec<FileInfo>, Vec<String>) {
+        let doc = match roxmltree::Document::parse(xml) {
+            Ok(d) => d,
+            Err(e) => {
+                tracing::warn!("WebDAV PROPFIND XML 解析失败: {e}");
+                return (Vec::new(), Vec::new());
+            }
+        };
+
+        let dav_ns = "DAV:";
+        let mut files = Vec::new();
+        let mut subdirs = Vec::new();
+        let request_dir_normalized = request_dir.trim_matches('/');
+        let prefix_normalized = prefix.trim_matches('/');
+
+        for response in doc
+            .descendants()
+            .filter(|n| n.has_tag_name((dav_ns, "response")))
+        {
+            let href = response
+                .descendants()
+                .find(|n| n.has_tag_name((dav_ns, "href")))
+                .and_then(|n| n.text())
+                .unwrap_or_default();
+
+            if href.ends_with('/') {
+                // 目录项：提取相对路径（不做 prefix 过滤）
+                let key = self.extract_relative_key(href, "");
+                let dir_path = key.trim_matches('/');
+                // 跳过请求目录自身和空路径
+                if dir_path == request_dir_normalized || dir_path.is_empty() {
+                    continue;
+                }
+                // 只包含 prefix 下的子目录
+                if !prefix_normalized.is_empty() && !dir_path.starts_with(prefix_normalized) {
+                    continue;
+                }
+                subdirs.push(dir_path.to_string());
+            } else {
+                let key = self.extract_relative_key(href, prefix);
+                if key.is_empty() {
+                    continue;
+                }
+
+                let size = response
+                    .descendants()
+                    .find(|n| n.has_tag_name((dav_ns, "getcontentlength")))
+                    .and_then(|n| n.text())
+                    .and_then(|s| s.parse::<u64>().ok())
+                    .unwrap_or(0);
+
+                let modified = response
+                    .descendants()
+                    .find(|n| n.has_tag_name((dav_ns, "getlastmodified")))
+                    .and_then(|n| n.text())
+                    .and_then(|s| {
+                        DateTime::parse_from_rfc2822(s)
+                            .map(|dt| dt.with_timezone(&Utc))
+                            .ok()
+                    })
+                    .unwrap_or_else(|| DateTime::<Utc>::from(std::time::UNIX_EPOCH));
+
+                files.push(FileInfo {
+                    key,
+                    size,
+                    last_modified: modified,
+                    etag: None,
+                });
+            }
+        }
+
+        (files, subdirs)
+    }
 }
 
 #[async_trait]
@@ -479,42 +565,85 @@ impl CloudStorage for WebDavStorage {
     }
 
     async fn list(&self, prefix: &str) -> Result<Vec<FileInfo>> {
-        let path = if prefix.is_empty() {
+        let start_path = if prefix.is_empty() {
             String::new()
         } else {
             prefix.trim_matches('/').to_string()
         };
 
-        let url = self.build_url(&path)?;
+        let propfind_body = r#"<?xml version="1.0"?><d:propfind xmlns:d="DAV:"><d:prop><d:getlastmodified/><d:getcontentlength/></d:prop></d:propfind>"#;
 
-        let res = self
-            .http
-            .request(Self::propfind_method()?, url)
-            .header("Authorization", self.auth_header())
-            .header("Depth", "1")
-            .header("Content-Type", "application/xml")
-            .body(r#"<?xml version="1.0"?><d:propfind xmlns:d="DAV:"><d:prop><d:getlastmodified/><d:getcontentlength/></d:prop></d:propfind>"#)
-            .send()
-            .await
-            .map_err(|e| AppError::network(format!("WebDAV PROPFIND 请求失败: {e}")))?;
+        let mut all_files = Vec::new();
+        let mut dirs_to_visit = vec![start_path];
+        // 坚果云单次 PROPFIND 上限 750 条目
+        const JIANGUOYUN_PROPFIND_LIMIT: usize = 750;
+        const MAX_DIRS: usize = 200;
+        let mut visited = 0usize;
 
-        if res.status() == StatusCode::NOT_FOUND {
-            return Ok(Vec::new());
+        while let Some(dir) = dirs_to_visit.pop() {
+            visited += 1;
+            if visited > MAX_DIRS {
+                tracing::warn!(
+                    "[WebDAV] 递归列举已访问 {MAX_DIRS} 个目录，停止遍历以防异常"
+                );
+                break;
+            }
+
+            // RFC 4918: PROPFIND 对集合的 Request-URI 应以 `/` 结尾，
+            // 否则某些服务器返回 301 重定向，而 reqwest 默认不对非 GET 方法跟随重定向。
+            let dir_with_slash = if dir.is_empty() || dir.ends_with('/') {
+                dir.clone()
+            } else {
+                format!("{}/", dir)
+            };
+            let url = self.build_url(&dir_with_slash)?;
+
+            let res = self
+                .http
+                .request(Self::propfind_method()?, url)
+                .header("Authorization", self.auth_header())
+                .header("Depth", "1")
+                .header("Content-Type", "application/xml")
+                .body(propfind_body)
+                .send()
+                .await
+                .map_err(|e| AppError::network(format!("WebDAV PROPFIND 请求失败: {e}")))?;
+
+            if res.status() == StatusCode::NOT_FOUND {
+                continue;
+            }
+            if !res.status().is_success() {
+                return Err(AppError::network(format!(
+                    "WebDAV PROPFIND 失败: {} {}",
+                    res.status(),
+                    res.status().canonical_reason().unwrap_or(""),
+                )));
+            }
+
+            let xml = res
+                .text()
+                .await
+                .map_err(|e| AppError::network(format!("读取 PROPFIND 响应失败: {e}")))?;
+
+            let (files, subdirs) = self.parse_propfind_entries(&xml, prefix, &dir);
+
+            let entry_count = files.len() + subdirs.len();
+            if entry_count >= JIANGUOYUN_PROPFIND_LIMIT - 1 {
+                tracing::warn!(
+                    "[WebDAV] PROPFIND 返回 {} 条目（接近坚果云 {} 上限），\
+                     目录 '{}' 下可能有未列出的文件",
+                    entry_count,
+                    JIANGUOYUN_PROPFIND_LIMIT,
+                    dir
+                );
+            }
+
+            all_files.extend(files);
+            dirs_to_visit.extend(subdirs);
         }
-        if !res.status().is_success() {
-            return Err(AppError::network(format!(
-                "WebDAV PROPFIND 失败: {} {}",
-                res.status(),
-                res.status().canonical_reason().unwrap_or(""),
-            )));
-        }
 
-        let xml = res
-            .text()
-            .await
-            .map_err(|e| AppError::network(format!("读取 PROPFIND 响应失败: {e}")))?;
-
-        Ok(self.parse_propfind_response(&xml, prefix))
+        all_files.sort_by(|a, b| b.last_modified.cmp(&a.last_modified));
+        Ok(all_files)
     }
 
     async fn delete(&self, key: &str) -> Result<()> {

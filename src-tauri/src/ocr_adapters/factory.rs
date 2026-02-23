@@ -3,8 +3,8 @@
 //! 提供统一的适配器创建和管理功能。
 
 use super::{
-    DeepSeekOcrAdapter, GenericVlmAdapter, OcrAdapter, OcrEngineType, PaddleOcrVlAdapter,
-    SystemOcrAdapter,
+    DeepSeekOcrAdapter, GenericVlmAdapter, Glm4vOcrAdapter, OcrAdapter, OcrEngineType,
+    PaddleOcrVlAdapter, SystemOcrAdapter,
 };
 use std::sync::Arc;
 
@@ -20,6 +20,7 @@ impl OcrAdapterFactory {
             OcrEngineType::DeepSeekOcr => Arc::new(DeepSeekOcrAdapter::new()),
             OcrEngineType::PaddleOcrVl => Arc::new(PaddleOcrVlAdapter::new()),
             OcrEngineType::PaddleOcrVlV1 => Arc::new(PaddleOcrVlAdapter::with_engine(OcrEngineType::PaddleOcrVlV1)),
+            OcrEngineType::Glm4vOcr => Arc::new(Glm4vOcrAdapter::new()),
             OcrEngineType::GenericVlm => Arc::new(GenericVlmAdapter::new()),
             OcrEngineType::SystemOcr => Arc::new(SystemOcrAdapter::new()),
         }
@@ -33,6 +34,7 @@ impl OcrAdapterFactory {
     /// 获取所有可用的引擎类型
     pub fn available_engines() -> Vec<OcrEngineType> {
         let mut engines = vec![
+            OcrEngineType::Glm4vOcr,
             OcrEngineType::DeepSeekOcr,
             OcrEngineType::PaddleOcrVl,
             OcrEngineType::PaddleOcrVlV1,
@@ -75,6 +77,14 @@ impl OcrAdapterFactory {
                 is_free: true,
             },
             OcrEngineInfo {
+                engine_type: OcrEngineType::Glm4vOcr,
+                name: "GLM-4.6V",
+                description: "智谱多模态模型，支持 bbox_2d 坐标输出，题目集导入优先引擎",
+                recommended_model: "THUDM/GLM-4.1V-9B-Thinking",
+                supports_grounding: true,
+                is_free: false,
+            },
+            OcrEngineInfo {
                 engine_type: OcrEngineType::GenericVlm,
                 name: "通用多模态模型",
                 description: "使用通用 VLM 进行 OCR，适合简单文档识别",
@@ -109,8 +119,10 @@ impl OcrAdapterFactory {
                 // 收紧匹配：要求包含 "paddleocr" 或 "paddlepaddle" 而非单独的 "paddle"
                 model_lower.contains("paddleocr") || model_lower.contains("paddlepaddle")
             }
+            OcrEngineType::Glm4vOcr => {
+                model_lower.contains("glm") && (model_lower.contains("4v") || model_lower.contains("4.1v") || model_lower.contains("4.6v"))
+            }
             OcrEngineType::GenericVlm => {
-                // 通用 VLM 接受任何多模态模型
                 true
             }
             OcrEngineType::SystemOcr => {
@@ -126,6 +138,8 @@ impl OcrAdapterFactory {
 
         if model_lower == "system" {
             OcrEngineType::SystemOcr
+        } else if model_lower.contains("glm") && (model_lower.contains("4v") || model_lower.contains("4.1v") || model_lower.contains("4.6v")) {
+            OcrEngineType::Glm4vOcr
         } else if model_lower.contains("deepseek") && model_lower.contains("ocr") {
             OcrEngineType::DeepSeekOcr
         } else if model_lower.contains("paddleocr-vl-1") || model_lower.contains("paddleocr_vl_1") {

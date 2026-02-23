@@ -54,6 +54,7 @@ pub use factory::OcrAdapterFactory;
 pub use paddle::PaddleOcrVlAdapter;
 pub use system_ocr::SystemOcrAdapter;
 pub use types::*;
+// Glm4vOcrAdapter 和 GenericVlmAdapter 直接定义在本模块中
 
 use async_trait::async_trait;
 
@@ -142,6 +143,82 @@ pub trait OcrAdapter: Send + Sync {
     /// 返回 None 表示不需要设置此参数。
     fn recommended_repetition_penalty(&self) -> Option<f64> {
         None
+    }
+}
+
+/// GLM-4.6V OCR 适配器
+///
+/// 智谱 GLM-4.6V 系列多模态模型，支持 bbox_2d 坐标输出。
+/// 题目集导入流程的优先 OCR 引擎。
+pub struct Glm4vOcrAdapter;
+
+impl Glm4vOcrAdapter {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+#[async_trait]
+impl OcrAdapter for Glm4vOcrAdapter {
+    fn engine_type(&self) -> OcrEngineType {
+        OcrEngineType::Glm4vOcr
+    }
+
+    fn supports_mode(&self, _mode: OcrMode) -> bool {
+        true
+    }
+
+    fn build_prompt(&self, mode: OcrMode) -> String {
+        match mode {
+            OcrMode::FreeOcr => {
+                "请将图片中的所有文本内容转换为 Markdown 格式，保持原有排版结构。数学公式用 LaTeX 格式（行内 $...$，独立 $$...$$）。".to_string()
+            }
+            OcrMode::Grounding => {
+                "请识别图片中的所有文本区域，输出每个区域的文本内容和位置坐标 bbox_2d [x1,y1,x2,y2]。数学公式用 LaTeX 格式。".to_string()
+            }
+            OcrMode::Formula => {
+                "请提取图片中的所有数学公式，转换为 LaTeX 格式输出。".to_string()
+            }
+            OcrMode::Table => {
+                "请提取图片中的表格，转换为 Markdown 表格格式输出。".to_string()
+            }
+            OcrMode::Chart => {
+                "请分析图片中的图表，详细描述其内容、数据和趋势。".to_string()
+            }
+        }
+    }
+
+    fn parse_response(
+        &self,
+        response: &str,
+        image_width: u32,
+        image_height: u32,
+        page_index: usize,
+        image_path: &str,
+        mode: OcrMode,
+    ) -> Result<OcrPageResult, OcrError> {
+        Ok(OcrPageResult {
+            page_index,
+            image_path: image_path.to_string(),
+            image_width,
+            image_height,
+            regions: vec![OcrRegion {
+                label: "document".to_string(),
+                text: response.trim().to_string(),
+                bbox_normalized: None,
+                bbox_pixels: None,
+                confidence: None,
+                raw_output: Some(response.to_string()),
+            }],
+            markdown_text: Some(response.trim().to_string()),
+            engine: OcrEngineType::Glm4vOcr,
+            mode,
+            processing_time_ms: None,
+        })
+    }
+
+    fn recommended_max_tokens(&self, _mode: OcrMode) -> u32 {
+        8192
     }
 }
 

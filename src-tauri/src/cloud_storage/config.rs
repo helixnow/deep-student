@@ -3,6 +3,7 @@
 //! 支持 WebDAV 和 S3 兼容存储的统一配置
 
 use serde::{Deserialize, Serialize};
+use url::Url;
 
 /// 存储提供商类型
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -121,6 +122,18 @@ impl CloudStorageConfig {
             .to_string()
     }
 
+    /// 通过 URL 解析精确判断 endpoint 是否为本地地址。
+    ///
+    /// 使用 `url::Url` 解析后对 host 做精确匹配，
+    /// 避免 `contains("://localhost")` 被 `http://localhost.evil.com` 绕过。
+    fn is_local_endpoint(endpoint: &str) -> bool {
+        Url::parse(endpoint.trim())
+            .ok()
+            .and_then(|u| u.host_str().map(|h| h.to_lowercase()))
+            .map(|host| matches!(host.as_str(), "localhost" | "127.0.0.1" | "::1"))
+            .unwrap_or(false)
+    }
+
     /// 验证配置是否完整
     pub fn validate(&self) -> Result<(), String> {
         match self.provider {
@@ -132,11 +145,8 @@ impl CloudStorageConfig {
                 if config.username.trim().is_empty() {
                     return Err("WebDAV 用户名不能为空".into());
                 }
-                let endpoint_lower = config.endpoint.trim().to_lowercase();
-                let is_local = endpoint_lower.contains("://localhost")
-                    || endpoint_lower.contains("://127.0.0.1")
-                    || endpoint_lower.contains("://[::1]");
-                if !is_local && !endpoint_lower.starts_with("https://") {
+                let is_local = Self::is_local_endpoint(&config.endpoint);
+                if !is_local && !config.endpoint.trim().to_lowercase().starts_with("https://") {
                     return Err(
                         "WebDAV endpoint 必须使用 HTTPS（仅 localhost 允许 HTTP）".into(),
                     );
@@ -157,11 +167,8 @@ impl CloudStorageConfig {
                 if config.secret_access_key.trim().is_empty() {
                     return Err("S3 Secret Access Key 不能为空".into());
                 }
-                let endpoint_lower = config.endpoint.trim().to_lowercase();
-                let is_local = endpoint_lower.contains("://localhost")
-                    || endpoint_lower.contains("://127.0.0.1")
-                    || endpoint_lower.contains("://[::1]");
-                if !is_local && !endpoint_lower.starts_with("https://") {
+                let is_local = Self::is_local_endpoint(&config.endpoint);
+                if !is_local && !config.endpoint.trim().to_lowercase().starts_with("https://") {
                     return Err(
                         "S3 endpoint 必须使用 HTTPS（仅 localhost 允许 HTTP）".into(),
                     );
@@ -297,5 +304,57 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(config.root(), "custom/path");
+    }
+
+    #[test]
+    fn test_is_local_endpoint() {
+        assert!(CloudStorageConfig::is_local_endpoint("http://localhost:8080/dav"));
+        assert!(CloudStorageConfig::is_local_endpoint("http://127.0.0.1:9000"));
+        assert!(CloudStorageConfig::is_local_endpoint("http://[::1]:8080"));
+        assert!(CloudStorageConfig::is_local_endpoint("https://localhost/path"));
+
+        assert!(
+            !CloudStorageConfig::is_local_endpoint("http://localhost.evil.com"),
+            "localhost.evil.com must NOT be treated as local"
+        );
+        assert!(
+            !CloudStorageConfig::is_local_endpoint("http://fakehost-localhost.com"),
+            "fakehost-localhost.com must NOT be treated as local"
+        );
+        assert!(!CloudStorageConfig::is_local_endpoint("https://dav.example.com"));
+        assert!(!CloudStorageConfig::is_local_endpoint("not-a-url"));
+    }
+
+    #[test]
+    fn test_localhost_evil_rejected() {
+        let config = CloudStorageConfig {
+            provider: StorageProvider::WebDav,
+            webdav: Some(WebDavConfig {
+                endpoint: "http://localhost.evil.com/dav".into(),
+                username: "user".into(),
+                password: "pass".into(),
+            }),
+            ..Default::default()
+        };
+        assert!(
+            config.validate().is_err(),
+            "http://localhost.evil.com should be rejected as non-local HTTP"
+        );
+
+        let config = CloudStorageConfig {
+            provider: StorageProvider::S3,
+            s3: Some(S3Config {
+                endpoint: "http://localhost.evil.com".into(),
+                bucket: "b".into(),
+                access_key_id: "AK".into(),
+                secret_access_key: "SK".into(),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        assert!(
+            config.validate().is_err(),
+            "S3 http://localhost.evil.com should be rejected as non-local HTTP"
+        );
     }
 }

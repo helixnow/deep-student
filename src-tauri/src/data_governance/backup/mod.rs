@@ -839,9 +839,15 @@ impl BackupManager {
                 }
             }
             Err(e) => {
-                // 加密密钥备份失败不阻塞整体备份，记录警告
                 warn!("加密密钥备份失败（API 密钥可能无法跨设备恢复）: {}", e);
             }
+        }
+
+        // 3.5b 备份审计数据库（操作追溯支持，失败不阻断）
+        match self.backup_audit_db(&backup_subdir) {
+            Ok(true) => info!("审计数据库备份完成"),
+            Ok(false) => debug!("审计数据库不存在，跳过备份"),
+            Err(e) => warn!("审计数据库备份失败（非致命）: {}", e),
         }
 
         // 3.6 备份工作区数据库（ws_*.db）
@@ -937,6 +943,13 @@ impl BackupManager {
             Err(e) => {
                 warn!("加密密钥备份失败（API 密钥可能无法跨设备恢复）: {}", e);
             }
+        }
+
+        // 3.5b 备份审计数据库（操作追溯支持，失败不阻断）
+        match self.backup_audit_db(&backup_subdir) {
+            Ok(true) => info!("审计数据库备份完成"),
+            Ok(false) => debug!("审计数据库不存在，跳过备份"),
+            Err(e) => warn!("审计数据库备份失败（非致命）: {}", e),
         }
 
         // 3.6 备份工作区数据库（ws_*.db）
@@ -1108,6 +1121,62 @@ impl BackupManager {
         Ok(count)
     }
 
+    /// 备份审计数据库到备份目录
+    ///
+    /// audit.db 作为辅助文件备份，失败不阻断主流程。
+    /// 使用 SQLite Backup API 确保 WAL 模式下的一致性。
+    pub fn backup_audit_db(&self, backup_subdir: &Path) -> Result<bool, BackupError> {
+        let audit_src = self.app_data_dir.join("databases").join("audit.db");
+        if !audit_src.exists() {
+            return Ok(false);
+        }
+
+        let audit_dest_dir = backup_subdir.join("databases");
+        fs::create_dir_all(&audit_dest_dir)?;
+        let audit_dest = audit_dest_dir.join("audit.db");
+
+        let src_conn = Connection::open(&audit_src)?;
+        let _ = src_conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);");
+
+        let mut dst_conn = Connection::open(&audit_dest)?;
+        let backup = Backup::new(&src_conn, &mut dst_conn)?;
+        backup.run_to_completion(50, Duration::from_millis(50), None)?;
+
+        info!(
+            "[Backup] 已备份 audit.db: {} -> {}",
+            audit_src.display(),
+            audit_dest.display()
+        );
+        Ok(true)
+    }
+
+    /// 从备份目录恢复审计数据库
+    ///
+    /// audit.db 恢复失败不阻断主流程（审计日志丢失可接受）。
+    pub fn restore_audit_db(&self, backup_subdir: &Path) -> Result<bool, BackupError> {
+        let audit_src = backup_subdir.join("databases").join("audit.db");
+        if !audit_src.exists() {
+            return Ok(false);
+        }
+
+        let audit_dest = self.app_data_dir.join("databases").join("audit.db");
+        if let Some(parent) = audit_dest.parent() {
+            fs::create_dir_all(parent)?;
+        }
+
+        let src_conn = Connection::open(&audit_src)?;
+        let mut dst_conn = Connection::open(&audit_dest)?;
+        let backup = Backup::new(&src_conn, &mut dst_conn)?;
+        backup.run_to_completion(50, Duration::from_millis(50), None)?;
+
+        info!(
+            "[Restore] 已恢复 audit.db: {} -> {}",
+            audit_src.display(),
+            audit_dest.display()
+        );
+        Ok(true)
+    }
+
     /// 恢复包含资产的备份
     ///
     /// ## 参数
@@ -1195,6 +1264,13 @@ impl BackupManager {
             Err(e) => {
                 warn!("加密密钥恢复失败（API 密钥可能需要重新配置）: {}", e);
             }
+        }
+
+        // 4.6 恢复审计数据库（操作追溯，失败不阻断）
+        match self.restore_audit_db(&backup_subdir) {
+            Ok(true) => info!("审计数据库恢复完成"),
+            Ok(false) => debug!("备份中无审计数据库，跳过"),
+            Err(e) => warn!("审计数据库恢复失败（非致命）: {}", e),
         }
 
         // 4.7 恢复工作区数据库（ws_*.db）
@@ -1899,7 +1975,6 @@ impl BackupManager {
                 "mistakes" => DatabaseId::Mistakes,
                 "llm_usage" => DatabaseId::LlmUsage,
                 _ => {
-                    // 理论上 check_manifest_compatibility 已经拦截；这里做最后一道防线。
                     let msg = format!("备份中包含未知的数据库 ID: {}", db_id_str);
                     error!("{}", msg);
                     restore_errors.push(msg);
@@ -1928,6 +2003,13 @@ impl BackupManager {
             Err(e) => {
                 warn!("加密密钥恢复失败（API 密钥可能需要重新配置）: {}", e);
             }
+        }
+
+        // 4.6 恢复审计数据库（操作追溯，失败不阻断）
+        match self.restore_audit_db(&backup_subdir) {
+            Ok(true) => info!("审计数据库恢复完成"),
+            Ok(false) => debug!("备份中无审计数据库，跳过"),
+            Err(e) => warn!("审计数据库恢复失败（非致命）: {}", e),
         }
 
         // 4.7 恢复工作区数据库（ws_*.db）

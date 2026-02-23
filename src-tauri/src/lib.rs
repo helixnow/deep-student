@@ -427,42 +427,91 @@ pub fn run() {
                         }
                     }
                     Err(e) => {
-                        // 初始化失败不阻止应用启动，但仍需注册默认 State
                         let error_msg = e.to_string();
-                        warn!("⚠️ [DataGovernance] 初始化失败（将以降级模式继续运行）: {}", error_msg);
-                        warn!(
-                            error = %e,
-                            "数据治理系统初始化失败，应用将以降级模式继续运行"
+
+                        let is_recovered = matches!(
+                            &e,
+                            crate::data_governance::DataGovernanceError::Migration(
+                                crate::data_governance::migration::MigrationError::RecoveredFromBackup { .. }
+                            )
                         );
-                        data_governance_init_failed = true;
 
-                        // 🆕 持久化真实迁移错误到文件，供后续诊断报告和状态查询使用
-                        crate::data_governance::commands::persist_migration_error(&active_app_data_dir, &error_msg);
+                        if is_recovered {
+                            warn!(
+                                "⚠️ [DataGovernance] 迁移失败已自动恢复到迁移前状态，以旧版 schema 启动: {}",
+                                error_msg
+                            );
 
-                        // 🆕 发送迁移失败事件到前端（关键！）
-                        let _ = app_handle.emit("data-governance-migration-status", serde_json::json!({
-                            "success": false,
-                            "error": error_msg,
-                            "degraded_mode": true
-                        }));
+                            crate::data_governance::commands::persist_migration_error(&active_app_data_dir, &error_msg);
 
-                        // 注册空的 SchemaRegistry（降级模式，仍支持后续实时刷新）
-                        let empty_registry = crate::data_governance::schema_registry::SchemaRegistry::default();
-                        let registry_arc =
-                            std::sync::Arc::new(std::sync::RwLock::new(empty_registry));
-                        app.manage(registry_arc);
-                        warn!("⚠️ [DataGovernance] 已注册空的 SchemaRegistry（降级模式）");
+                            let _ = app_handle.emit("data-governance-migration-status", serde_json::json!({
+                                "success": false,
+                                "recovered": true,
+                                "error": error_msg,
+                                "message": "数据库升级失败，已自动恢复到升级前状态。部分新功能可能不可用，建议更新应用。"
+                            }));
 
-                        // 尝试创建审计数据库
-                        let audit_db_path = active_app_data_dir.join("databases").join("audit.db");
-                        if let Ok(default_audit_db) = crate::data_governance::audit::AuditDatabase::open(&audit_db_path) {
-                            // 初始化表结构
-                            let _ = default_audit_db.init();
-                            let audit_db_arc = std::sync::Arc::new(default_audit_db);
-                            app.manage(audit_db_arc);
-                            info!("✅ [DataGovernance] 默认 AuditDatabase 已注册为 Tauri State");
-                        } else if let Some(audit_health) = app.try_state::<std::sync::Arc<crate::data_governance::commands::AuditHealthState>>() {
-                            audit_health.record_failure("审计数据库初始化失败，默认实例创建失败");
+                            let coordinator = crate::data_governance::MigrationCoordinator::new(active_app_data_dir.clone());
+                            match coordinator.aggregate_schema_registry() {
+                                Ok(registry) => {
+                                    info!(
+                                        "✅ [DataGovernance] 恢复后 Schema 聚合完成: 全局版本={}",
+                                        registry.global_version
+                                    );
+                                    let registry_arc =
+                                        std::sync::Arc::new(std::sync::RwLock::new(registry));
+                                    app.manage(registry_arc);
+                                }
+                                Err(agg_err) => {
+                                    warn!(
+                                        "⚠️ [DataGovernance] 恢复后 Schema 聚合失败，使用空 Registry: {}",
+                                        agg_err
+                                    );
+                                    let empty_registry = crate::data_governance::schema_registry::SchemaRegistry::default();
+                                    let registry_arc =
+                                        std::sync::Arc::new(std::sync::RwLock::new(empty_registry));
+                                    app.manage(registry_arc);
+                                }
+                            }
+
+                            let audit_db_path = active_app_data_dir.join("databases").join("audit.db");
+                            if let Ok(default_audit_db) = crate::data_governance::audit::AuditDatabase::open(&audit_db_path) {
+                                let _ = default_audit_db.init();
+                                let audit_db_arc = std::sync::Arc::new(default_audit_db);
+                                app.manage(audit_db_arc);
+                            }
+                            // data_governance_init_failed 保持 false：应用正常启动，不进入维护模式
+                        } else {
+                            warn!("⚠️ [DataGovernance] 初始化失败（将以降级模式继续运行）: {}", error_msg);
+                            warn!(
+                                error = %e,
+                                "数据治理系统初始化失败，应用将以降级模式继续运行"
+                            );
+                            data_governance_init_failed = true;
+
+                            crate::data_governance::commands::persist_migration_error(&active_app_data_dir, &error_msg);
+
+                            let _ = app_handle.emit("data-governance-migration-status", serde_json::json!({
+                                "success": false,
+                                "error": error_msg,
+                                "degraded_mode": true
+                            }));
+
+                            let empty_registry = crate::data_governance::schema_registry::SchemaRegistry::default();
+                            let registry_arc =
+                                std::sync::Arc::new(std::sync::RwLock::new(empty_registry));
+                            app.manage(registry_arc);
+                            warn!("⚠️ [DataGovernance] 已注册空的 SchemaRegistry（降级模式）");
+
+                            let audit_db_path = active_app_data_dir.join("databases").join("audit.db");
+                            if let Ok(default_audit_db) = crate::data_governance::audit::AuditDatabase::open(&audit_db_path) {
+                                let _ = default_audit_db.init();
+                                let audit_db_arc = std::sync::Arc::new(default_audit_db);
+                                app.manage(audit_db_arc);
+                                info!("✅ [DataGovernance] 默认 AuditDatabase 已注册为 Tauri State");
+                            } else if let Some(audit_health) = app.try_state::<std::sync::Arc<crate::data_governance::commands::AuditHealthState>>() {
+                                audit_health.record_failure("审计数据库初始化失败，默认实例创建失败");
+                            }
                         }
                     }
                 }
