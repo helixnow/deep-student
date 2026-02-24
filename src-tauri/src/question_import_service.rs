@@ -257,15 +257,16 @@ impl QuestionImportService {
                     continue;
                 }
             };
+            let file_id = vfs_file.id;
             images.push(QuestionImage {
-                id: vfs_file.id,
+                id: file_id.clone(),
                 name: file_name,
                 mime: mime.to_string(),
                 hash: hash.clone(),
             });
             log::info!(
                 "[QuestionImport] 源图片 {} 已关联为 QuestionImage: file_id={}",
-                idx, images.last().unwrap().id
+                idx, file_id
             );
         }
         images

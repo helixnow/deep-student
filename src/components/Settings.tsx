@@ -74,6 +74,7 @@ import {
   providerTypeFromConfig,
 } from './settings/modelConverters';
 import type { SystemConfig, SettingsProps } from './settings/types';
+import type { SettingsExtra } from './settings/hookDepsTypes';
 
 import { useSettingsVendorState } from './useSettingsVendorState';
 import { useSettingsZoomFont } from './useSettingsZoomFont';
@@ -323,16 +324,15 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
   const refreshApiConfigsFromBackend = useCallback(async () => {
     try {
       if (!invoke) return;
-      const apiConfigs = (await invoke('get_api_configurations').catch(() => [])) as any[];
-      const mappedApiConfigs = (apiConfigs || []).map((config: any) => ({
-        ...config,
-        maxOutputTokens: config.maxOutputTokens,
-        temperature: config.temperature,
+      const apiConfigs = (await invoke('get_api_configurations').catch(() => [])) as ApiConfig[];
+      const mappedApiConfigs = (apiConfigs || []).map((c: ApiConfig) => ({
+        ...c,
+        maxOutputTokens: c.maxOutputTokens,
+        temperature: c.temperature,
       }));
       setConfig((prev) => {
-        // Shallow compare: skip update if apiConfigs content is identical (prevents unnecessary re-renders that feed the auto-save loop)
         if (prev.apiConfigs.length === mappedApiConfigs.length &&
-            prev.apiConfigs.every((c: any, i: number) => c.id === mappedApiConfigs[i]?.id && c.enabled === mappedApiConfigs[i]?.enabled)) {
+            prev.apiConfigs.every((c, i) => c.id === mappedApiConfigs[i]?.id && c.enabled === mappedApiConfigs[i]?.enabled)) {
           return prev;
         }
         return { ...prev, apiConfigs: mappedApiConfigs };
@@ -347,11 +347,11 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
       void refreshApiConfigsFromBackend();
     };
     try {
-      window.addEventListener('api_configurations_changed', onChanged as any);
+      window.addEventListener('api_configurations_changed', onChanged);
     } catch {}
     return () => {
       try {
-        window.removeEventListener('api_configurations_changed', onChanged as any);
+        window.removeEventListener('api_configurations_changed', onChanged);
       } catch {}
     };
   }, [refreshApiConfigsFromBackend]);
@@ -387,14 +387,14 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
 
   useEffect(() => {
     if (!Array.isArray(config.mcpTools)) {
-      const normalized = normalizeMcpToolList((config as any).mcpTools);
+      const normalized = normalizeMcpToolList(config.mcpTools);
       setConfig(prev => ({ ...prev, mcpTools: normalized }));
     }
   }, [config.mcpTools]);
 
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [extra, setExtra] = useState<any>({});
+  const [extra, setExtra] = useState<SettingsExtra>({});
   const globalLeftPanelCollapsed = useUIStore((state) => state.leftPanelCollapsed);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarSearchQuery, setSidebarSearchQuery] = useState('');
@@ -454,19 +454,19 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
   }, []);
 
   // ========== Hook 调用 ==========
-  const { handleZoomChange, handleZoomReset, handleFontChange, handleFontReset, handleFontSizeChange, handleFontSizeReset, normalizedMcpServers } = useSettingsZoomFont({ isTauriEnvironment, setZoomLoading: (v: any) => setZoomLoading(v), setUiZoom, setZoomSaving: (v: any) => setZoomSaving(v), setZoomStatus, t, setFontLoading: (v: any) => setFontLoading(v), setUiFont, setFontSaving: (v: any) => setFontSaving(v), setFontSizeLoading: (v: any) => setFontSizeLoading(v), setUiFontSize, setFontSizeSaving: (v: any) => setFontSizeSaving(v), config });
+  const { handleZoomChange, handleZoomReset, handleFontChange, handleFontReset, handleFontSizeChange, handleFontSizeReset, normalizedMcpServers } = useSettingsZoomFont({ isTauriEnvironment, setZoomLoading, setUiZoom, setZoomSaving, setZoomStatus, t, setFontLoading, setUiFont, setFontSaving, setFontSizeLoading, setUiFontSize, setFontSizeSaving, config });
 
   const updateIndicatorRafRef = useRef<((tabId: string) => void) | null>(null);
   const { loadConfig, handleSave, saveSingleAssignmentField, handleTabChange } = useSettingsConfig({ setLoading, setExtra, setActiveTab, activeTab, modelAssignments, vendors, modelProfiles, resolvedApiConfigs, refreshVendors: undefined, refreshProfiles: undefined, refreshApiConfigsFromBackend, persistAssignments, saving, setSaving, t, config, setConfig, loading, updateIndicatorRaf: (tabId: string) => updateIndicatorRafRef.current?.(tabId) });
 
-  const vendorState: any = useSettingsVendorState({ resolvedApiConfigs, vendorLoading, vendorSaving, vendors, modelProfiles, modelAssignments, config, t, loading, upsertVendor, upsertModelProfile, deleteModelProfile, persistAssignments, persistModelProfiles, persistVendors, closeRightPanel, refreshVendors: undefined, refreshProfiles: undefined, refreshApiConfigsFromBackend, isSmallScreen, setScreenPosition, setRightPanelType, activeTab, deleteVendorById: deleteVendor });
+  const vendorState = useSettingsVendorState({ resolvedApiConfigs, vendorLoading, vendorSaving, vendors, modelProfiles, modelAssignments, config, t, loading, upsertVendor, upsertModelProfile, deleteModelProfile, persistAssignments, persistModelProfiles, persistVendors, closeRightPanel, refreshVendors: undefined, refreshProfiles: undefined, refreshApiConfigsFromBackend, isSmallScreen, setScreenPosition, setRightPanelType, activeTab, deleteVendorById: deleteVendor });
   const { selectedVendorId, setSelectedVendorId, vendorModalOpen, setVendorModalOpen, editingVendor, setEditingVendor, isEditingVendor, vendorFormData, setVendorFormData, modelEditor, setModelEditor, inlineEditState, setInlineEditState, isAddingNewModel, setIsAddingNewModel, modelDeleteDialog, setModelDeleteDialog, vendorDeleteDialog, setVendorDeleteDialog, testingApi, vendorBusy, sortedVendors, selectedVendor, selectedVendorModels, profileCountByVendor, selectedVendorIsSiliconflow, testApiConnection, handleOpenVendorModal, handleStartEditVendor, handleCancelEditVendor, handleSaveEditVendor, handleSaveVendorModal, handleDeleteVendor, handleSaveVendorApiKey, handleSaveVendorBaseUrl, handleReorderVendors, confirmDeleteVendor, handleOpenModelEditor, handleSaveModelProfile, handleSaveInlineEdit, handleAddModelInline, handleCloseModelEditor, handleSaveModelProfileAndClose, handleDeleteModelProfile, confirmDeleteModelProfile, handleToggleModelProfile, handleToggleFavorite, handleSiliconFlowConfig, handleAddVendorModels, getAllEnabledApis, getEmbeddingApis, getRerankerApis, toUnifiedModelInfo, handleBatchCreateConfigs, handleApplyPreset, handleBatchConfigsCreated, handleClearVendorApiKey, isSensitiveKey, PasswordInputWithToggle, maskApiKey, apiConfigsForApisTab } = vendorState;
 
   const mcpSection = useMcpEditorSection({ config, setConfig, isSmallScreen, activeTab, setActiveTab, setScreenPosition, setRightPanelType, t, extra, setExtra, handleSave, normalizedMcpServers, setMcpStatusInfo });
   const { mcpPolicyModal, setMcpPolicyModal, mcpPreview, mcpTestStep, stripMcpPrefix, emitChatStreamSettingsUpdate, refreshSnapshots, handleDeleteMcpTool, handleSaveMcpServer, handleTestServer, handleReconnectClient, handleAddMcpTool, handleOpenMcpPolicy, handleClosePreview, renderMcpToolEditor, renderMcpToolEditorEmbedded, renderMcpPolicyEditorEmbedded, mcpCachedDetails, mcpServers, serverStatusMap, lastError, cacheCapacity, lastCacheUpdatedAt, lastCacheUpdatedText, connectedServers, totalServers, totalCachedTools, promptsCount, resourcesCount, cacheUsagePercent, latestPrompts, latestResources, mcpErrors, clearMcpErrors, dismissMcpError, handleRunHealthCheck, handleClearCaches, handleRefreshRegistry } = mcpSection;
 
   const handleSaveChatStreamTimeout = useCallback(async () => {
-    const raw = String((extra as any)?.chatStreamTimeoutSeconds ?? '').trim();
+    const raw = String(extra?.chatStreamTimeoutSeconds ?? '').trim();
     if (!invoke) {
       showGlobalNotification('error', t('common:settings.chat_stream.save_error_timeout', { error: 'invoke unavailable' }));
       return;
@@ -487,7 +487,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
       await invoke('save_setting', { key: 'chat.stream.timeout_ms', value: payloadValue });
       showGlobalNotification('success', t('common:settings.chat_stream.save_success_timeout'));
       const savedValue = raw ? String(Math.round(Number(raw))) : '';
-      setExtra((prev: any) => ({
+      setExtra(prev => ({
         ...prev,
         chatStreamTimeoutSeconds: savedValue,
         _lastSavedTimeoutSeconds: savedValue,
@@ -497,8 +497,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
       const errorMessage = getErrorMessage(error);
       console.error('[Settings] 保存聊天流式超时失败:', error);
       showGlobalNotification('error', t('common:settings.chat_stream.save_error_timeout', { error: errorMessage }));
-      // 🔧 R2-5: 保存失败时恢复输入框为上一次成功值
-      setExtra((prev: any) => ({
+      setExtra(prev => ({
         ...prev,
         chatStreamTimeoutSeconds: prev._lastSavedTimeoutSeconds ?? '',
       }));
@@ -506,7 +505,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
   }, [emitChatStreamSettingsUpdate, extra, invoke, showGlobalNotification, t]);
 
   const handleToggleChatStreamAutoCancel = useCallback(async (checked: boolean) => {
-    setExtra((prev: any) => ({ ...prev, chatStreamAutoCancel: checked }));
+    setExtra(prev => ({ ...prev, chatStreamAutoCancel: checked }));
     if (!invoke) {
       showGlobalNotification('error', t('common:settings.chat_stream.save_error_auto_cancel', { error: 'invoke unavailable' }));
       return;
@@ -519,7 +518,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
       const errorMessage = getErrorMessage(error);
       console.error('[Settings] 保存聊天流式自动取消失败:', error);
       showGlobalNotification('error', t('common:settings.chat_stream.save_error_auto_cancel', { error: errorMessage }));
-      setExtra((prev: any) => ({ ...prev, chatStreamAutoCancel: !checked }));
+      setExtra(prev => ({ ...prev, chatStreamAutoCancel: !checked }));
     }
   }, [emitChatStreamSettingsUpdate, invoke, showGlobalNotification, t]);
 
@@ -557,7 +556,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
         })();
 
         // 一次性更新全部，避免竞态
-        setExtra((prev: any) => ({
+        setExtra(prev => ({
           ...prev,
           chatSemanticFtsPrefilter: ftsEnabled,
           rrf_k: rrfk || '',
@@ -784,7 +783,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
         const tabElement = tabsRef.current.get(tabId);
         const buttonsEl = tabButtonsContainerRef.current;
         if (tabElement && buttonsEl) {
-          const left = Math.max(0, tabElement.offsetLeft + buttonsEl.offsetLeft - (buttonsEl as any).scrollLeft);
+          const left = Math.max(0, tabElement.offsetLeft + buttonsEl.offsetLeft - buttonsEl.scrollLeft);
           setIndicatorStyle({
             transform: `translateX(${left}px)`,
             width: tabElement.offsetWidth,
@@ -824,9 +823,9 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
   }, [loading, activeTab, updateIndicatorRaf]);
 
   // 添加防抖函数
-  function debounce(func: Function, wait: number) {
+  function debounce(func: (...args: unknown[]) => void, wait: number) {
     let timeout: ReturnType<typeof setTimeout>;
-    return function(...args: any[]) {
+    return function(...args: unknown[]) {
       clearTimeout(timeout);
       timeout = setTimeout(() => func(...args), wait);
     };
@@ -851,7 +850,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
           vl_reranker_model_config_id: string | null;
           memory_decision_model_config_id: string | null;
         }>('get_model_assignments');
-        setConfig((prev: any) => ({
+        setConfig(prev => ({
           ...prev,
           model2ConfigId: modelAssignments?.model2_config_id || '',
           ankiCardModelConfigId: modelAssignments?.anki_card_model_config_id || '',
@@ -1012,7 +1011,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
                       </div>
                     ) : (
                       <div className="mt-3 space-y-2 text-xs text-muted-foreground">
-                        {mcpPreview.tools.map((tool: any, index: number) => {
+                        {mcpPreview.tools.map((tool, index) => {
                           const formattedName = stripMcpPrefix(tool?.name);
                           return (
                             <div
@@ -1044,7 +1043,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
                       </div>
                     ) : (
                       <div className="mt-3 space-y-2 text-xs text-muted-foreground">
-                        {mcpPreview.prompts.map((prompt: any, index: number) => (
+                        {mcpPreview.prompts.map((prompt, index) => (
                           <div
                             key={`${prompt?.name || 'prompt'}-${index}`}
                             className="rounded border bg-card px-2 py-2 shadow-sm"
@@ -1073,7 +1072,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
                       </div>
                     ) : (
                       <div className="mt-3 space-y-2 text-xs text-muted-foreground">
-                        {mcpPreview.resources.map((res: any, index: number) => (
+                        {mcpPreview.resources.map((res, index) => (
                           <div
                             key={`${res?.uri || res?.name || 'resource'}-${index}`}
                             className="rounded border bg-card px-2 py-2 shadow-sm"

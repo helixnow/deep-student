@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { useCallback } from 'react';
 import { ApiConfig, ModelAssignments } from '../types';
 import { showGlobalNotification } from './UnifiedNotification';
@@ -8,6 +7,9 @@ import { normalizeMcpToolList } from './settings/mcpUtils';
 import { DEFAULT_STDIO_ARGS, DEFAULT_STDIO_ARGS_STORAGE } from './settings/constants';
 import { invoke as tauriInvoke } from '@tauri-apps/api/core';
 import type { ThemeMode, ThemePalette } from '../hooks/useTheme';
+import type { UseSettingsConfigDeps } from './settings/hookDepsTypes';
+import type { SystemConfig } from './settings/types';
+import { BUILTIN_SERVER_ID } from '../mcp/builtinMcpServer';
 
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
 const isTauri = typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__;
@@ -18,7 +20,7 @@ const normalizeThemeMode = (value: unknown): ThemeMode => {
   return 'light';
 };
 
-export function useSettingsConfig(deps: any) {
+export function useSettingsConfig(deps: UseSettingsConfigDeps) {
   const { setLoading, setExtra, setActiveTab, activeTab, modelAssignments, vendors, modelProfiles, resolvedApiConfigs, refreshVendors, refreshProfiles, refreshApiConfigsFromBackend, persistAssignments, saving, setSaving, t, config, setConfig, loading, updateIndicatorRaf } = deps;
 
 const normalizeThemePalette = (value: unknown): ThemePalette => {
@@ -143,10 +145,10 @@ const normalizeThemePalette = (value: unknown): ThemePalette => {
         ] = results;
 
         // 处理API配置的字段映射（snake_case to camelCase）
-        const mappedApiConfigs = (apiConfigs || []).map((config: any) => ({
-          ...config,
-          maxOutputTokens: config.maxOutputTokens,
-          temperature: config.temperature,
+        const mappedApiConfigs = (apiConfigs || []).map((c: ApiConfig) => ({
+          ...c,
+          maxOutputTokens: c.maxOutputTokens,
+          temperature: c.temperature,
         }));
 
         const parsedMcpTimeout = (() => {
@@ -292,13 +294,13 @@ const normalizeThemePalette = (value: unknown): ThemePalette => {
         }
         if (savedConfig) {
           try {
-            const parsed = JSON.parse(savedConfig);
-            const normalized = normalizeMcpToolList((parsed as any)?.mcpTools ?? (parsed as any)?.mcpServers);
+            const parsed = JSON.parse(savedConfig) as Partial<SystemConfig> & { mcpServers?: unknown };
+            const normalized = normalizeMcpToolList(parsed?.mcpTools ?? parsed?.mcpServers);
             setConfig(prev => ({
               ...prev,
               ...parsed,
-              theme: normalizeThemeMode((parsed as any)?.theme),
-              themePalette: normalizeThemePalette((parsed as any)?.themePalette),
+              theme: normalizeThemeMode(parsed?.theme),
+              themePalette: normalizeThemePalette(parsed?.themePalette),
               mcpTools: normalized,
             }));
           } catch (e) {
@@ -339,27 +341,27 @@ const normalizeThemePalette = (value: unknown): ThemePalette => {
           invoke('save_setting', { key: 'mcp.performance.cache_max_size', value: String(config.mcpCacheMax ?? 500) }),
           invoke('save_setting', { key: 'mcp.performance.cache_ttl_ms', value: String(config.mcpCacheTtlMs ?? 300000) }),
           // 保存多工具配置（过滤掉内置服务器）
-          invoke('save_setting', { key: 'mcp.tools.list', value: JSON.stringify((normalizedMcpServers || []).filter((s: any) => s.id !== BUILTIN_SERVER_ID)) }),
+          invoke('save_setting', { key: 'mcp.tools.list', value: JSON.stringify((config.mcpTools || []).filter(s => s.id !== BUILTIN_SERVER_ID)) }),
           // 强制使用前端SDK模式
           invoke('save_setting', { key: 'mcp.mode', value: 'frontend' }),
 
           // Web Search 设置保存
           // 外部搜索保存（移除全局启用项）
-          invoke('save_setting', { key: 'web_search.engine', value: (config as any).webSearchEngine ?? '' }),
-          invoke('save_setting', { key: 'web_search.timeout_ms', value: String((config as any).webSearchTimeoutMs ?? 15000) }),
-          invoke('save_setting', { key: 'web_search.api_key.google_cse', value: (config as any).webSearchGoogleKey ?? '' }),
-          invoke('save_setting', { key: 'web_search.google_cse.cx', value: (config as any).webSearchGoogleCx ?? '' }),
-          invoke('save_setting', { key: 'web_search.api_key.serpapi', value: (config as any).webSearchSerpApiKey ?? '' }),
-          invoke('save_setting', { key: 'web_search.api_key.tavily', value: (config as any).webSearchTavilyKey ?? '' }),
-          invoke('save_setting', { key: 'web_search.api_key.brave', value: (config as any).webSearchBraveKey ?? '' }),
-          invoke('save_setting', { key: 'web_search.searxng.endpoint', value: (config as any).webSearchSearxngEndpoint ?? '' }),
-          invoke('save_setting', { key: 'web_search.searxng.api_key', value: (config as any).webSearchSearxngKey ?? '' }),
-          invoke('save_setting', { key: 'web_search.api_key.zhipu', value: (config as any).webSearchZhipuKey ?? '' }),
-          invoke('save_setting', { key: 'web_search.api_key.bocha', value: (config as any).webSearchBochaKey ?? '' }),
-          invoke('save_setting', { key: 'web_search.site_whitelist', value: (config as any).webSearchWhitelist ?? '' }),
-          invoke('save_setting', { key: 'web_search.site_blacklist', value: (config as any).webSearchBlacklist ?? '' }),
-          invoke('save_setting', { key: 'web_search.inject.snippet_max_chars', value: String((config as any).webSearchInjectSnippetMax ?? 180) }),
-          invoke('save_setting', { key: 'web_search.inject.total_max_chars', value: String((config as any).webSearchInjectTotalMax ?? 1900) }),
+          invoke('save_setting', { key: 'web_search.engine', value: config.webSearchEngine ?? '' }),
+          invoke('save_setting', { key: 'web_search.timeout_ms', value: String(config.webSearchTimeoutMs ?? 15000) }),
+          invoke('save_setting', { key: 'web_search.api_key.google_cse', value: config.webSearchGoogleKey ?? '' }),
+          invoke('save_setting', { key: 'web_search.google_cse.cx', value: config.webSearchGoogleCx ?? '' }),
+          invoke('save_setting', { key: 'web_search.api_key.serpapi', value: config.webSearchSerpApiKey ?? '' }),
+          invoke('save_setting', { key: 'web_search.api_key.tavily', value: config.webSearchTavilyKey ?? '' }),
+          invoke('save_setting', { key: 'web_search.api_key.brave', value: config.webSearchBraveKey ?? '' }),
+          invoke('save_setting', { key: 'web_search.searxng.endpoint', value: config.webSearchSearxngEndpoint ?? '' }),
+          invoke('save_setting', { key: 'web_search.searxng.api_key', value: config.webSearchSearxngKey ?? '' }),
+          invoke('save_setting', { key: 'web_search.api_key.zhipu', value: config.webSearchZhipuKey ?? '' }),
+          invoke('save_setting', { key: 'web_search.api_key.bocha', value: config.webSearchBochaKey ?? '' }),
+          invoke('save_setting', { key: 'web_search.site_whitelist', value: config.webSearchWhitelist ?? '' }),
+          invoke('save_setting', { key: 'web_search.site_blacklist', value: config.webSearchBlacklist ?? '' }),
+          invoke('save_setting', { key: 'web_search.inject.snippet_max_chars', value: String(config.webSearchInjectSnippetMax ?? 180) }),
+          invoke('save_setting', { key: 'web_search.inject.total_max_chars', value: String(config.webSearchInjectTotalMax ?? 1900) }),
       ]);
         if (!silent) {
           showGlobalNotification('success', t('settings:notifications.config_save_success'));

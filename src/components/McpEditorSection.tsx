@@ -1,4 +1,3 @@
-// @ts-nocheck
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { showGlobalNotification } from './UnifiedNotification';
 import { getErrorMessage } from '../utils/errorUtils';
@@ -23,13 +22,40 @@ import { Info as InfoIcon, Plus, Trash2, X, Check, RefreshCcw } from 'lucide-rea
 import { listen as tauriListen } from '@tauri-apps/api/event';
 import { invoke as tauriInvoke } from '@tauri-apps/api/core';
 import { useUnifiedErrorHandler } from './UnifiedErrorHandler';
+import { TauriAPI } from '../utils/tauriApi';
+import { MOBILE_LAYOUT } from '../config/mobileLayout';
+import type { UseMcpEditorSectionDeps, McpToolConfig } from './settings/hookDepsTypes';
+
+interface McpTestResult {
+  success: boolean;
+  tools_count?: number;
+  tools?: Array<{ name: string; description?: string }>;
+  error?: string;
+}
+
+interface McpPreviewItem {
+  name: string;
+  description?: string;
+}
+
+interface McpPreviewResource {
+  uri: string;
+  name?: string;
+  description?: string;
+  mime_type?: string;
+}
 
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
-const isTauri = typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__;
+const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 const invoke = isTauri ? tauriInvoke : null;
 
-export function useMcpEditorSection(deps: any) {
+export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
   const { config, setConfig, isSmallScreen, activeTab, setActiveTab, setScreenPosition, setRightPanelType, t, extra, setExtra, handleSave, normalizedMcpServers, setMcpStatusInfo } = deps;
+
+  const closeRightPanel = useCallback(() => {
+    setRightPanelType('none');
+    setScreenPosition('center');
+  }, [setRightPanelType, setScreenPosition]);
 
   const { errors: mcpErrors, addError: addMcpError, dismissError: dismissMcpError, clearAllErrors: clearMcpErrors } = useUnifiedErrorHandler();
 
@@ -66,7 +92,7 @@ export function useMcpEditorSection(deps: any) {
       cwd?: string; 
       framing?: 'jsonl' | 'content_length'; 
       // 新增字段支持
-      mcpServers?: Record<string, any>;
+      mcpServers?: Record<string, unknown>;
       namespace?: string;
     };
     error?: string | null;
@@ -83,7 +109,7 @@ export function useMcpEditorSection(deps: any) {
     cacheTtlMs: 300000
   });
   // MCP 快速体检/预览状态
-  const [mcpPreview, setMcpPreview] = useState<{ open: boolean; loading: boolean; serverId?: string; serverName?: string; error?: string; tools: any[]; prompts: any[]; resources: any[] }>({ open: false, loading: false, tools: [], prompts: [], resources: [] });
+  const [mcpPreview, setMcpPreview] = useState<{ open: boolean; loading: boolean; serverId?: string; serverName?: string; error?: string; tools: McpPreviewItem[]; prompts: McpPreviewItem[]; resources: McpPreviewResource[] }>({ open: false, loading: false, tools: [], prompts: [], resources: [] });
   // stdio 测试细粒度进度步骤（null = 未在测试）
   const [mcpTestStep, setMcpTestStep] = useState<string | null>(null);
   // 缓存详情（不触发新体检）：按照服务器聚合的工具清单 + 全局提示/资源
@@ -95,24 +121,24 @@ export function useMcpEditorSection(deps: any) {
   const MCP_BACKEND_DISABLED_CODE = 'backend_mcp_disabled';
   const MCP_BACKEND_DISABLED_HINT = t('settings:mcp.backend_disabled_hint');
 
-  const isBackendDisabled = (value: any): boolean => {
-    if (value && typeof value === 'object') {
-      if (value.error === MCP_BACKEND_DISABLED_CODE) return true;
+  const isBackendDisabled = (value: unknown): boolean => {
+    if (value && typeof value === 'object' && 'error' in value) {
+      if ((value as { error?: unknown }).error === MCP_BACKEND_DISABLED_CODE) return true;
     }
     const msg = getErrorMessage(value);
     return typeof msg === 'string' && msg.includes(MCP_BACKEND_DISABLED_CODE);
   };
 
-  const normalizeFrontendResult = (r: any) => ({ success: !!r?.success, tools_count: typeof r?.tools_count === 'number' ? r.tools_count : (Array.isArray(r?.tools) ? r.tools.length : undefined), tools: r?.tools });
+  const normalizeFrontendResult = (r: Record<string, unknown> | null | undefined): McpTestResult => ({ success: !!r?.success, tools_count: typeof r?.tools_count === 'number' ? r.tools_count : (Array.isArray(r?.tools) ? r.tools.length : undefined), tools: Array.isArray(r?.tools) ? r.tools as McpTestResult['tools'] : undefined });
 
-  const describeToolCount = (res: any): string => {
+  const describeToolCount = (res: McpTestResult | null): string => {
     const count = typeof res?.tools_count === 'number'
       ? res.tools_count
       : Array.isArray(res?.tools) ? res.tools.length : undefined;
     return typeof count === 'number' ? `, ${t('settings:mcp_descriptions.tools_count', { count })}` : '';
   };
 
-  const handleMcpTestResult = (res: any, failureLabel: string): boolean => {
+  const handleMcpTestResult = (res: McpTestResult | null, failureLabel: string): boolean => {
     if (res && typeof res === 'object' && Object.prototype.hasOwnProperty.call(res, 'success')) {
       if (res.success) {
         return true;
@@ -128,7 +154,7 @@ export function useMcpEditorSection(deps: any) {
     return true;
   };
 
-  const handleMcpTestError = (error: any, failureLabel: string) => {
+  const handleMcpTestError = (error: unknown, failureLabel: string) => {
     const message = getErrorMessage(error) || t('common:error.unknown_error');
     if (message.includes(MCP_BACKEND_DISABLED_CODE)) {
       showGlobalNotification('warning', MCP_BACKEND_DISABLED_HINT);
@@ -154,10 +180,10 @@ export function useMcpEditorSection(deps: any) {
     ),
     []
   );
-  const [mcpStatusInfo, setMcpStatusInfo] = useState<McpStatusInfo | null>(null);
+  const [localMcpStatusInfo, setLocalMcpStatusInfo] = useState<McpStatusInfo | null>(null);
   const rebuildCachedDetailsFromSnapshots = useCallback((
-    toolSnap: Record<string, { at: number; tools: Array<{ name: string; description?: string; input_schema?: any }> }> = {},
-    promptSnap: Record<string, { at: number; prompts: Array<{ name: string; description?: string; arguments?: any }> }> = {},
+    toolSnap: Record<string, { at: number; tools: Array<{ name: string; description?: string; input_schema?: unknown }> }> = {},
+    promptSnap: Record<string, { at: number; prompts: Array<{ name: string; description?: string; arguments?: unknown }> }> = {},
     resourceSnap: Record<string, { at: number; resources: Array<{ uri: string; name?: string; description?: string; mime_type?: string }> }> = {}
   ) => {
     const toolMap: Record<string, { items: Array<{ name: string; description?: string }>; at?: number }> = {};
@@ -222,18 +248,18 @@ export function useMcpEditorSection(deps: any) {
       window.dispatchEvent(new CustomEvent(CHAT_STREAM_SETTINGS_EVENT, { detail: payload }));
     }
   }, []);
-  const resolveServerId = (tool: any, idx: number): string => {
-    const transport = (tool?.transportType || tool?.draft?.transportType || 'sse') as string;
+  const resolveServerId = (tool: McpToolConfig, idx: number): string => {
+    const transport = (tool?.transportType || 'sse') as string;
     const directId = tool?.id || tool?.name;
     if (directId) return String(directId);
-    const fromServers = tool?.mcpServers ? Object.values(tool.mcpServers).find((srv: any) => (srv as any)?.url) as any : undefined;
+    const fromServers = tool?.mcpServers ? Object.values(tool.mcpServers).find((srv) => srv && typeof srv === 'object' && 'url' in (srv as Record<string, unknown>)) as Record<string, unknown> | undefined : undefined;
     if (transport === 'websocket') {
       if (tool?.url) return String(tool.url);
     } else if (transport === 'streamable_http') {
-      const httpUrl = tool?.fetch?.url || tool?.endpoint || tool?.url || (fromServers ? (fromServers as any).url : undefined);
+      const httpUrl = tool?.fetch?.url || tool?.endpoint || tool?.url || (fromServers ? fromServers.url : undefined);
       if (httpUrl) return String(httpUrl);
     } else if (transport === 'sse') {
-      const sseUrl = tool?.fetch?.url || tool?.endpoint || (fromServers ? (fromServers as any).url : undefined) || tool?.url;
+      const sseUrl = tool?.fetch?.url || tool?.endpoint || (fromServers ? fromServers.url : undefined) || tool?.url;
       if (sseUrl) return String(sseUrl);
     }
     if (tool?.command) {
@@ -243,7 +269,7 @@ export function useMcpEditorSection(deps: any) {
     return `mcp_${idx}`;
   };
 
-  const findSnapshotKey = (tool: any, idx: number): string | undefined => {
+  const findSnapshotKey = (tool: McpToolConfig, idx: number): string | undefined => {
     const candidates = [
       tool?.id,
       tool?.name,
@@ -263,12 +289,12 @@ export function useMcpEditorSection(deps: any) {
     }
     return undefined;
   };
-  const buildToolJson = (tool: any) => {
+  const buildToolJson = (tool: McpToolConfig) => {
     if (tool?.mcpServers) {
       return JSON.stringify({ mcpServers: tool.mcpServers }, null, 2);
     }
     const serverKey = tool?.name || tool?.id || 'mcp_server';
-    const config: any = {};
+    const config: Record<string, Record<string, Record<string, unknown>>> = {};
     if (tool?.fetch) {
       config.mcpServers = {
         [serverKey]: {
@@ -322,10 +348,9 @@ export function useMcpEditorSection(deps: any) {
     }
     return JSON.stringify(config, null, 2);
   };
-  const handleAddMcpTool = async (newServer: Partial<any>): Promise<boolean> => {
+  const handleAddMcpTool = async (newServer: Partial<McpToolConfig>): Promise<boolean> => {
     try {
-      // 构建要保存的服务器数据
-      const toolToSave: any = {
+      const toolToSave: McpToolConfig = {
         id: newServer.id || `mcp_${Date.now()}`,
         name: newServer.name || t('common:new_mcp_server'),
         transportType: newServer.transportType || 'sse',
@@ -370,12 +395,12 @@ export function useMcpEditorSection(deps: any) {
     }
   };
 
-  const handleEditMcpTool = (tool: any, idx: number) => {
+  const handleEditMcpTool = (tool: McpToolConfig, idx: number) => {
     const jsonInput = buildToolJson(tool) || '{}';
-    const transportType = (tool as any).transportType || 'stdio';
-    const rawCommand = (tool as any).command || 'npx';
+    const transportType = tool.transportType || 'stdio';
+    const rawCommand = (tool.command as string) || 'npx';
     const deriveArgs = (): string[] | undefined => {
-      const rawArgs = (tool as any).args;
+      const rawArgs = tool.args;
       if (Array.isArray(rawArgs)) {
         return rawArgs;
       }
@@ -393,7 +418,7 @@ export function useMcpEditorSection(deps: any) {
 
     if (transportType === 'stdio') {
       const shouldMigrateInlineArgs =
-        (!Array.isArray((tool as any).args) || ((tool as any).args || []).length === 0) &&
+        (!Array.isArray(tool.args) || (tool.args || []).length === 0) &&
         /@modelcontextprotocol\//.test(rawCommand);
       if (shouldMigrateInlineArgs) {
         const pieces = rawCommand.split(' ').filter(Boolean);
@@ -416,20 +441,20 @@ export function useMcpEditorSection(deps: any) {
         id: tool.id,
         name: tool.name,
         transportType,
-        url: (tool as any).url || '',
+        url: (tool.url as string) || '',
         command: normalizedCommand,
         args: normalizedArgs,
-        env: (tool as any).env || {},
-        fetch: (tool as any).fetch,
-        endpoint: (tool as any).endpoint || '',
-        apiKey: (tool as any).apiKey || '',
-        serverId: (tool as any).serverId || '',
-        region: (tool as any).region || 'cn-hangzhou',
-        hosted: (tool as any).hosted !== undefined ? (tool as any).hosted : true,
-        mcpServers: (tool as any).mcpServers,
-        namespace: (tool as any).namespace || '',
-        cwd: (tool as any).cwd || '',
-        framing: (tool as any).framing?.toLowerCase() === 'jsonl' ? 'jsonl' : 'content_length',
+        env: (tool.env as Record<string, string>) || {},
+        fetch: tool.fetch as { type: 'sse' | 'streamable_http'; url: string } | undefined,
+        endpoint: (tool.endpoint as string) || '',
+        apiKey: (tool.apiKey as string) || '',
+        serverId: (tool['serverId'] as string) || '',
+        region: (tool['region'] as string) || 'cn-hangzhou',
+        hosted: tool['hosted'] !== undefined ? !!(tool['hosted']) : true,
+        mcpServers: tool.mcpServers as Record<string, unknown> | undefined,
+        namespace: (tool['namespace'] as string) || '',
+        cwd: (tool['cwd'] as string) || '',
+        framing: typeof tool['framing'] === 'string' && tool['framing'].toLowerCase() === 'jsonl' ? 'jsonl' : 'content_length',
       },
       error: null,
     });
@@ -441,7 +466,7 @@ export function useMcpEditorSection(deps: any) {
   };
 
   const handleDeleteMcpTool = async (serverId: string): Promise<boolean> => {
-    const next = (config.mcpTools || []).filter((tool: any) => tool.id !== serverId);
+    const next = (config.mcpTools || []).filter((tool: McpToolConfig) => tool.id !== serverId);
     try {
       if (invoke) {
         await invoke('save_setting', { key: 'mcp.tools.list', value: JSON.stringify(next) });
@@ -463,10 +488,10 @@ export function useMcpEditorSection(deps: any) {
   };
 
   // 内联编辑保存 MCP 服务器
-  const handleSaveMcpServer = async (updatedData: Partial<any>, serverId: string): Promise<boolean> => {
+  const handleSaveMcpServer = async (updatedData: Partial<McpToolConfig>, serverId: string): Promise<boolean> => {
     try {
       const currentList = [...(config.mcpTools || [])];
-      const idx = currentList.findIndex((tool: any) => tool.id === serverId);
+      const idx = currentList.findIndex((tool: McpToolConfig) => tool.id === serverId);
       
       if (idx === -1) {
         showGlobalNotification('error', t('settings:mcp_descriptions.server_not_found'));
@@ -476,7 +501,7 @@ export function useMcpEditorSection(deps: any) {
       const existing = currentList[idx];
 
       // 合并更新数据，但清理非标准字段（如 mcpServers 残留）
-      const { mcpServers: _discardMcpServers, ...cleanUpdatedData } = updatedData as any;
+      const { mcpServers: _discardMcpServers, ...cleanUpdatedData } = updatedData;
 
       const updated = {
         ...existing,
@@ -571,8 +596,8 @@ export function useMcpEditorSection(deps: any) {
 
     const convertDraftToJson = () => {
       const name = draft.name || t('common:unnamed_mcp_tool');
-      const config: Record<string, any> = { mcpServers: {} };
-      const server: Record<string, any> = {};
+      const config: Record<string, Record<string, Record<string, unknown>>> = { mcpServers: {} };
+      const server: Record<string, unknown> = {};
       if (transport === 'sse' || transport === 'streamable_http') {
         server.type = transport;
         server.url = draft.endpoint || draft.fetch?.url || '';
@@ -641,14 +666,13 @@ export function useMcpEditorSection(deps: any) {
 
     const buildTestHeaders = (): Record<string, string> => {
       const headers: Record<string, string> = {};
-      const merge = (source?: Record<string, any>) => {
+      const merge = (source?: Record<string, unknown>) => {
         if (!source) return;
         Object.entries(source).forEach(([key, value]) => {
           if (value == null) return;
           headers[key] = typeof value === 'string' ? value : String(value);
         });
       };
-      // 仅合并 HTTP headers，不合并 env（env 是进程环境变量，不应发送给远程服务器）
       merge(draft.headers as Record<string, string> | undefined);
       return headers;
     };
@@ -718,37 +742,38 @@ export function useMcpEditorSection(deps: any) {
 
     const handleSubmit = async () => {
       try {
-        let toolToSave: any;
+        let toolToSave: McpToolConfig;
         if (mcpToolModal.mode === 'json') {
           try {
-            const jsonConfig = JSON.parse(mcpToolModal.jsonInput || '{}');
+            const jsonConfig = JSON.parse(mcpToolModal.jsonInput || '{}') as Record<string, unknown>;
             if (jsonConfig?.mcpServers && typeof jsonConfig.mcpServers === 'object') {
-              const [serverName, serverConfig] = Object.entries(jsonConfig.mcpServers)[0] as [string, any];
+              const entries = Object.entries(jsonConfig.mcpServers as Record<string, Record<string, unknown>>);
+              const [serverName, serverConfig] = entries[0] ?? ['', {}];
               toolToSave = {
                 id: draft.id || `mcp_${Date.now()}`,
                 name: serverName || draft.name || t('common:unnamed_mcp_tool'),
-                mcpServers: jsonConfig.mcpServers,
+                mcpServers: jsonConfig.mcpServers as Record<string, unknown>,
               };
               if (serverConfig?.type === 'sse' || serverConfig?.type === 'streamable_http') {
-                toolToSave.transportType = serverConfig.type;
-                toolToSave.fetch = { type: serverConfig.type, url: serverConfig.url };
+                toolToSave.transportType = serverConfig.type as 'sse' | 'streamable_http';
+                toolToSave.fetch = { type: serverConfig.type as 'sse' | 'streamable_http', url: serverConfig.url as string };
               } else if (serverConfig?.url && typeof serverConfig.url === 'string' && serverConfig.url.startsWith('ws')) {
                 toolToSave.transportType = 'websocket';
                 toolToSave.url = serverConfig.url;
               } else if (serverConfig?.command) {
                 toolToSave.transportType = 'stdio';
-                toolToSave.command = serverConfig.command;
-                toolToSave.args = serverConfig.args || [];
+                toolToSave.command = serverConfig.command as string;
+                toolToSave.args = (serverConfig.args as string[]) || [];
               }
-              if (serverConfig?.env) toolToSave.env = serverConfig.env;
-              if (serverConfig?.apiKey) toolToSave.apiKey = serverConfig.apiKey;
-              if (serverConfig?.namespace) toolToSave.namespace = serverConfig.namespace;
+              if (serverConfig?.env) toolToSave.env = serverConfig.env as Record<string, string>;
+              if (serverConfig?.apiKey) toolToSave.apiKey = serverConfig.apiKey as string;
+              if (serverConfig?.namespace) toolToSave['namespace'] = serverConfig.namespace;
             } else {
               toolToSave = {
                 id: draft.id || `mcp_${Date.now()}`,
-                name: jsonConfig.name || draft.name || t('common:unnamed_mcp_tool'),
+                name: (jsonConfig.name as string) || draft.name || t('common:unnamed_mcp_tool'),
                 ...jsonConfig,
-              };
+              } as McpToolConfig;
             }
           } catch (err) {
             setMcpToolModal(prev => ({ ...prev, error: t('settings:mcp_errors.json_format_error') + (err as Error).message }));
@@ -772,7 +797,7 @@ export function useMcpEditorSection(deps: any) {
             return;
           }
 
-          const normalizedDraft: any = { ...draft };
+          const normalizedDraft: Record<string, unknown> = { ...draft };
           if (transport === 'sse' || transport === 'streamable_http') {
             normalizedDraft.fetch = {
               type: transport,
@@ -792,7 +817,7 @@ export function useMcpEditorSection(deps: any) {
               normalizedDraft.args = [...DEFAULT_STDIO_ARGS];
             }
           }
-          toolToSave = normalizedDraft;
+          toolToSave = normalizedDraft as McpToolConfig;
         }
 
         const nextList = [...(config.mcpTools || [])];
@@ -863,13 +888,11 @@ export function useMcpEditorSection(deps: any) {
                 <label className="text-sm font-medium text-foreground">{t('settings:mcp_descriptions.transport_type')}</label>
                 <AppSelect value={transport} onValueChange={value => {
                   const nextTransport = value as 'stdio' | 'websocket' | 'sse' | 'streamable_http';
-                  const nextDraft: any = { ...draft, transportType: nextTransport };
                   if (nextTransport === 'sse' || nextTransport === 'streamable_http') {
-                    nextDraft.fetch = { type: nextTransport, url: draft.fetch?.url || draft.endpoint || '' };
+                    updateDraft({ transportType: nextTransport, fetch: { type: nextTransport, url: draft.fetch?.url || draft.endpoint || '' } });
                   } else {
-                    delete nextDraft.fetch;
+                    updateDraft({ transportType: nextTransport, fetch: undefined });
                   }
-                  updateDraft(nextDraft);
                 }}
                   placeholder={t('settings:mcp_descriptions.transport_type')}
                   options={[
@@ -1075,10 +1098,9 @@ export function useMcpEditorSection(deps: any) {
 
     const handleModeChange = (value: string) => {
       if (value === 'json' && mcpToolModal.mode !== 'json') {
-        // 转换为 JSON
         const name = draft.name || t('common:unnamed_mcp_tool');
-        const config: Record<string, any> = { mcpServers: {} };
-        const server: Record<string, any> = {};
+        const config: Record<string, Record<string, Record<string, unknown>>> = { mcpServers: {} };
+        const server: Record<string, unknown> = {};
         if (transport === 'sse' || transport === 'streamable_http') {
           server.type = transport;
           server.url = draft.endpoint || draft.fetch?.url || '';
@@ -1108,40 +1130,34 @@ export function useMcpEditorSection(deps: any) {
 
     const handleSubmit = async () => {
       try {
-        let toolToSave: any;
+        let toolToSave: McpToolConfig;
         if (mcpToolModal.mode === 'json') {
           try {
-            const jsonConfig = JSON.parse(mcpToolModal.jsonInput || '{}');
+            const jsonConfig = JSON.parse(mcpToolModal.jsonInput || '{}') as Record<string, unknown>;
             if (jsonConfig?.mcpServers && typeof jsonConfig.mcpServers === 'object') {
-              const [serverName, serverConfig] = Object.entries(jsonConfig.mcpServers)[0] as [string, any];
+              const entries = Object.entries(jsonConfig.mcpServers as Record<string, Record<string, unknown>>);
+              const [serverName, serverConfig] = entries[0] ?? ['', {}];
               toolToSave = {
                 id: draft.id || `mcp_${Date.now()}`,
                 name: serverName,
-                transportType: serverConfig.type || serverConfig.transportType || (serverConfig.command ? 'stdio' : 'sse'),
-                command: serverConfig.command,
-                args: serverConfig.args,
-                env: serverConfig.env,
-                url: serverConfig.url,
-                endpoint: serverConfig.url,
-                fetch: serverConfig.type === 'sse' || serverConfig.type === 'streamable_http' ? { type: serverConfig.type, url: serverConfig.url } : undefined,
-                apiKey: serverConfig.apiKey,
-                namespace: serverConfig.namespace,
-                cwd: serverConfig.cwd,
-                framing: serverConfig.framing,
+                transportType: (serverConfig.type || serverConfig.transportType || (serverConfig.command ? 'stdio' : 'sse')) as McpToolConfig['transportType'],
+                command: serverConfig.command as string | undefined,
+                args: serverConfig.args as string[] | undefined,
+                env: serverConfig.env as Record<string, string> | undefined,
+                url: serverConfig.url as string | undefined,
+                endpoint: serverConfig.url as string | undefined,
+                fetch: serverConfig.type === 'sse' || serverConfig.type === 'streamable_http' ? { type: serverConfig.type as 'sse' | 'streamable_http', url: serverConfig.url as string } : undefined,
+                apiKey: serverConfig.apiKey as string | undefined,
               };
+              if (serverConfig?.namespace) toolToSave['namespace'] = serverConfig.namespace;
+              if (serverConfig?.cwd) toolToSave['cwd'] = serverConfig.cwd;
+              if (serverConfig?.framing) toolToSave['framing'] = serverConfig.framing;
             } else {
-              // 兼容非 mcpServers 格式的 JSON — 防止 toolToSave 为 undefined
               toolToSave = {
                 id: draft.id || `mcp_${Date.now()}`,
-                name: jsonConfig.name || draft.name || t('common:unnamed_mcp_tool'),
-                transportType: jsonConfig.transportType || jsonConfig.type || 'sse',
-                url: jsonConfig.url,
-                command: jsonConfig.command,
-                args: jsonConfig.args,
-                env: jsonConfig.env,
-                apiKey: jsonConfig.apiKey,
-                namespace: jsonConfig.namespace,
-              };
+                name: (jsonConfig.name as string) || draft.name || t('common:unnamed_mcp_tool'),
+                ...jsonConfig,
+              } as McpToolConfig;
             }
           } catch (err) {
             setMcpToolModal(prev => ({ ...prev, error: t('settings:mcp_errors.json_format_error') + (err as Error).message }));
@@ -1235,13 +1251,11 @@ export function useMcpEditorSection(deps: any) {
                     <label className="text-sm font-medium">{t('settings:mcp_descriptions.transport_type')}</label>
                     <AppSelect value={transport} onValueChange={value => {
                       const nextTransport = value as 'stdio' | 'websocket' | 'sse' | 'streamable_http';
-                      const nextDraft: any = { ...draft, transportType: nextTransport };
                       if (nextTransport === 'sse' || nextTransport === 'streamable_http') {
-                        nextDraft.fetch = { type: nextTransport, url: draft.fetch?.url || draft.endpoint || '' };
+                        updateDraft({ transportType: nextTransport, fetch: { type: nextTransport, url: draft.fetch?.url || draft.endpoint || '' } });
                       } else {
-                        delete nextDraft.fetch;
+                        updateDraft({ transportType: nextTransport, fetch: undefined });
                       }
-                      updateDraft(nextDraft);
                     }}
                       placeholder={t('settings:mcp_descriptions.transport_type')}
                       options={[
@@ -1568,7 +1582,7 @@ export function useMcpEditorSection(deps: any) {
         // 事件派发失败不影响主流程，重连已完成
       }
       showGlobalNotification('success', t('settings:mcp_descriptions.reconnected'));
-    } catch (e: any) {
+    } catch (e: unknown) {
       try {
         addMcpError('network', e, {
           title: t('settings:mcp_descriptions.frontend_connect_failed'),
@@ -1603,7 +1617,7 @@ export function useMcpEditorSection(deps: any) {
       } catch (innerErr) {
         console.warn('[Settings] 记录 MCP 连接错误时自身也失败:', innerErr);
       }
-      showGlobalNotification('error', t('settings:mcp_descriptions.reconnect_failed', { error: e?.message || e }));
+      showGlobalNotification('error', t('settings:mcp_descriptions.reconnect_failed', { error: getErrorMessage(e) }));
     }
   };
 
@@ -1617,8 +1631,8 @@ export function useMcpEditorSection(deps: any) {
       ]);
       await refreshSnapshots();
       showGlobalNotification('success', t('settings:mcp_descriptions.refreshed_summary', { tools: tools.length, prompts: prompts.length, resources: resources.length }));
-    } catch (e: any) {
-      showGlobalNotification('error', t('settings:mcp_descriptions.refresh_failed', { error: e?.message || e }));
+    } catch (e: unknown) {
+      showGlobalNotification('error', t('settings:mcp_descriptions.refresh_failed', { error: getErrorMessage(e) }));
     }
   };
   const handleRunHealthCheck = async () => {
@@ -1632,7 +1646,7 @@ export function useMcpEditorSection(deps: any) {
       }
       const summaries: string[] = [];
       const failures: string[] = [];
-      const configured = normalizedMcpServers.map((item: any, index: number) => ({ item, index }));
+      const configured = normalizedMcpServers.map((item: McpToolConfig, index: number) => ({ item, index }));
       for (const server of status.servers) {
         try {
           if (!server.connected) {
@@ -1661,8 +1675,8 @@ export function useMcpEditorSection(deps: any) {
       } else {
         showGlobalNotification('success', t('settings:mcp_descriptions.health_complete', { message }));
       }
-    } catch (e: any) {
-      showGlobalNotification('error', t('settings:mcp_descriptions.health_failed', { error: e?.message || e }));
+    } catch (e: unknown) {
+      showGlobalNotification('error', t('settings:mcp_descriptions.health_failed', { error: getErrorMessage(e) }));
     }
   };
 
@@ -1678,12 +1692,12 @@ export function useMcpEditorSection(deps: any) {
       ]);
       await refreshSnapshots();
       showGlobalNotification('success', t('settings:mcp_descriptions.cache_cleared'));
-    } catch (e: any) {
-      showGlobalNotification('error', t('settings:mcp_descriptions.clear_cache_failed', { error: e?.message || e }));
+    } catch (e: unknown) {
+      showGlobalNotification('error', t('settings:mcp_descriptions.clear_cache_failed', { error: getErrorMessage(e) }));
     }
   };
 
-  const handlePreviewServer = async (tool: any, idx: number) => {
+  const handlePreviewServer = async (tool: McpToolConfig, idx: number) => {
     const serverId = resolveServerId(tool, idx);
     const serverName = tool?.name || tool?.id || serverId;
     setMcpPreview({ open: true, loading: true, serverId, serverName, tools: [], prompts: [], resources: [] });
@@ -1696,17 +1710,17 @@ export function useMcpEditorSection(deps: any) {
       ]);
       await refreshSnapshots();
       setMcpPreview(prev => ({ ...prev, loading: false, tools: toolList, prompts: promptList, resources: resourceList }));
-    } catch (e: any) {
-      setMcpPreview(prev => ({ ...prev, loading: false, error: e?.message || String(e) }));
+    } catch (e: unknown) {
+      setMcpPreview(prev => ({ ...prev, loading: false, error: getErrorMessage(e) }));
     }
   };
-  const handleTestServer = async (tool: any) => {
+  const handleTestServer = async (tool: McpToolConfig) => {
     try {
       const transport = (tool?.transportType || 'sse') as string;
       let failureLabel = t('settings:test_labels.connectivity_test_failed');
-      let res: any = null;
+      let res: McpTestResult | null = null;
       const headerCandidates: Record<string, string> = {};
-      const mergeHeaders = (source?: Record<string, any>) => {
+      const mergeHeaders = (source?: Record<string, unknown>) => {
         if (!source) return;
         Object.entries(source).forEach(([key, value]) => {
           if (value == null) return;
@@ -1714,7 +1728,7 @@ export function useMcpEditorSection(deps: any) {
         });
       };
       // 仅合并 headers，不合并 env（env 是进程环境变量，不应发送到远程服务器）
-      mergeHeaders(tool?.headers as Record<string, any> | undefined);
+      mergeHeaders(tool['headers'] as Record<string, unknown> | undefined);
       // 改为仅使用前端体检
       if (transport === 'websocket') {
         failureLabel = t('settings:test_labels.websocket_failed');
@@ -1740,7 +1754,7 @@ export function useMcpEditorSection(deps: any) {
             setMcpTestStep(event.payload.step);
           });
           setMcpTestStep('spawn_process');
-          const backendRes: any = await tauriInvoke('test_mcp_connection', {
+          const backendRes = await tauriInvoke<{ success?: boolean; tools_count?: number; tools_preview?: Array<{ name: string; description?: string }>; error?: string }>('test_mcp_connection', {
             command: String(tool?.command || ''),
             args: argsArr,
             env: tool?.env || null,
@@ -1774,13 +1788,13 @@ export function useMcpEditorSection(deps: any) {
           toolsByServer: {
             ...prev.toolsByServer,
             [serverId]: {
-              items: res.tools.map((t: any) => ({ name: t.name, description: t.description })),
+              items: res.tools.map((tool: { name: string; description?: string }) => ({ name: tool.name, description: tool.description })),
               at: Date.now(),
             },
           },
         }));
       }
-    } catch (e: any) {
+    } catch (e: unknown) {
       handleMcpTestError(e, t('settings:messages.connection_test_error'));
     }
   };
@@ -1792,11 +1806,11 @@ export function useMcpEditorSection(deps: any) {
   const mcpServers = normalizedMcpServers;
   const serverStatusMap = useMemo(() => {
     const map = new Map<string, { connected: boolean; error?: string }>();
-    (mcpStatusInfo?.servers || []).forEach(s => {
+    (localMcpStatusInfo?.servers || []).forEach(s => {
       map.set(s.id, { connected: s.connected, error: s.error });
     });
     return map;
-  }, [mcpStatusInfo]);
+  }, [localMcpStatusInfo]);
   const totalServers = mcpServers.length;
   const connectedServers = useMemo(() => {
     if (!totalServers) return 0;
@@ -1822,7 +1836,7 @@ export function useMcpEditorSection(deps: any) {
   const lastCacheUpdatedText = lastCacheUpdatedAt
     ? new Date(lastCacheUpdatedAt).toLocaleString()
     : '—';
-  const lastError = mcpStatusInfo?.lastError;
+  const lastError = localMcpStatusInfo?.lastError;
   const displayedLastError = lastError && lastError.length > 96 ? `${lastError.slice(0, 96)}…` : lastError;
   const cacheCapacity = useMemo(() => {
     const candidate = Number(config.mcpCacheMax ?? 500);

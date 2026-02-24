@@ -1091,8 +1091,8 @@ impl DatabaseManager {
 
                 for (column_name, column_def) in columns_to_add {
                     let has_column: bool = conn.query_row(
-                        &format!("SELECT COUNT(*) FROM pragma_table_info('custom_anki_templates') WHERE name='{}'", column_name),
-                        [],
+                        "SELECT COUNT(*) FROM pragma_table_info('custom_anki_templates') WHERE name=?1",
+                        [column_name],
                         |row| row.get::<_, i32>(0).map(|count| count > 0),
                     )?;
 

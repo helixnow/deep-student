@@ -1,5 +1,4 @@
-// @ts-nocheck
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { VendorConfig, ModelProfile, ApiConfig, ModelAssignments } from '../types';
 import { showGlobalNotification } from './UnifiedNotification';
 import { getErrorMessage } from '../utils/errorUtils';
@@ -10,14 +9,15 @@ import { convertProfileToApiConfig, convertApiConfigToProfile, normalizeBaseUrl,
 import { inferCapabilities, getModelDefaultParameters, applyProviderSpecificAdjustments } from '../utils/modelCapabilities';
 import { inferApiCapabilities } from '../utils/apiCapabilityEngine';
 import { type UnifiedModelInfo } from './shared/UnifiedModelSelector';
+import type { UseSettingsVendorStateDeps } from './settings/hookDepsTypes';
 import { invoke as tauriInvoke } from '@tauri-apps/api/core';
 
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
 const isTauri = typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__;
 const invoke = isTauri ? tauriInvoke : null;
 
-export function useSettingsVendorState(deps: any) {
-  const { resolvedApiConfigs, vendorLoading, vendorSaving, vendors, modelProfiles, modelAssignments, config, t, loading, upsertVendor, upsertModelProfile, deleteModelProfile, persistAssignments, persistModelProfiles, closeRightPanel, refreshVendors, refreshProfiles, refreshApiConfigsFromBackend, isSmallScreen, setScreenPosition, setRightPanelType, activeTab, deleteVendorById } = deps;
+export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
+  const { resolvedApiConfigs, vendorLoading, vendorSaving, vendors, modelProfiles, modelAssignments, config, t, loading, upsertVendor, upsertModelProfile, deleteModelProfile, persistAssignments, persistModelProfiles, persistVendors, refreshVendors, refreshProfiles, refreshApiConfigsFromBackend, isSmallScreen, setScreenPosition, setRightPanelType, activeTab, deleteVendorById: deleteVendor } = deps;
 
   const apiConfigsForApisTab = resolvedApiConfigs;
   const [selectedVendorId, setSelectedVendorId] = useState<string | null>(null);
@@ -121,7 +121,7 @@ export function useSettingsVendorState(deps: any) {
     // 注意：API 密钥可能是 *** 占位符（安全遮蔽），后端会从安全存储获取真实密钥
     // 前端只检查是否完全没有配置（空字符串且没有 vendorId）
     const apiKeyTrimmed = (api.apiKey || '').trim();
-    const hasVendorId = !!(api.vendorId || (api as any).vendor_id);
+    const hasVendorId = !!api.vendorId;
     
     // 如果 apiKey 是空且没有 vendorId，才报错（占位符如 *** 由后端处理）
     if (!apiKeyTrimmed && !hasVendorId) {
@@ -140,7 +140,7 @@ export function useSettingsVendorState(deps: any) {
       if (invoke) {
         // 使用用户指定的模型名称进行测试
         // 传递 vendor_id 以便后端从安全存储获取真实密钥
-        const vendorId = api.vendorId || (api as any).vendor_id;
+        const vendorId = api.vendorId;
         const result = await invoke('test_api_connection', {
           // 双写兼容：后端参数为 snake_case（api_key, api_base），某些桥接层可能校验 camelCase
           api_key: api.apiKey,
@@ -168,9 +168,9 @@ export function useSettingsVendorState(deps: any) {
         name: api.name,
         baseUrl: api.baseUrl,
         model: api.model,
-        modelAdapter: (api as any).modelAdapter || 'unknown',
+        modelAdapter: api.modelAdapter || 'unknown',
         apiKeyLength: api.apiKey.length,
-        vendorId: api.vendorId || (api as any).vendor_id,
+        vendorId: api.vendorId,
       });
       
       // 提取更详细的错误信息
@@ -225,7 +225,7 @@ export function useSettingsVendorState(deps: any) {
         providerType,
         baseUrl: configData.baseUrl,
         apiKey: configData.apiKey,
-        headers: (configData.headers as Record<string, string>) ?? {},
+        headers: configData.headers ?? {},
         rateLimitPerMinute: undefined,
         defaultTimeoutMs: undefined,
         notes: undefined,
@@ -408,7 +408,7 @@ export function useSettingsVendorState(deps: any) {
         ...v,
         sortOrder: index,
       }));
-      await persistVendors(updatedVendors);
+      await persistVendors?.(updatedVendors);
     } catch (error) {
       const errorMessage = getErrorMessage(error);
       console.error('保存供应商排序失败:', errorMessage);

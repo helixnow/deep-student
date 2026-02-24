@@ -1,5 +1,5 @@
-// @ts-nocheck
 import { useEffect, useCallback, useMemo } from 'react';
+import type { UseSettingsZoomFontDeps, McpToolConfig } from './settings/hookDepsTypes';
 import { getErrorMessage } from '../utils/errorUtils';
 import { debugLog } from '../debug-panel/debugMasterSwitch';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
@@ -12,12 +12,11 @@ import {
 } from '../config/fontConfig';
 import {
   UI_ZOOM_STORAGE_KEY, DEFAULT_UI_ZOOM, clampZoom, formatZoomLabel,
-  type ZoomStatusState,
 } from './settings/constants';
 
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
 
-export function useSettingsZoomFont(deps: any) {
+export function useSettingsZoomFont(deps: UseSettingsZoomFontDeps) {
   const { isTauriEnvironment, setZoomLoading, setUiZoom, setZoomSaving, setZoomStatus, t, setFontLoading, setUiFont, setFontSaving, setFontSizeLoading, setUiFontSize, setFontSizeSaving, config } = deps;
 
   const applyZoomToWebview = useCallback(async (scale: number) => {
@@ -56,7 +55,7 @@ export function useSettingsZoomFont(deps: any) {
     return () => {
       disposed = true;
     };
-  }, [applyZoomToWebview, isTauriEnvironment, tauriInvoke]);
+  }, [applyZoomToWebview, isTauriEnvironment]);
 
   const handleZoomChange = useCallback(async (value: number) => {
     const normalized = clampZoom(value);
@@ -81,7 +80,7 @@ export function useSettingsZoomFont(deps: any) {
     } finally {
       setZoomSaving(false);
     }
-  }, [applyZoomToWebview, isTauriEnvironment, t, tauriInvoke]);
+  }, [applyZoomToWebview, isTauriEnvironment, t]);
 
   const handleZoomReset = useCallback(() => {
     void handleZoomChange(DEFAULT_UI_ZOOM);
@@ -116,7 +115,7 @@ export function useSettingsZoomFont(deps: any) {
     return () => {
       disposed = true;
     };
-  }, [isTauriEnvironment, tauriInvoke]);
+  }, [isTauriEnvironment]);
 
   // 字体设置：处理变更
   const handleFontChange = useCallback(async (value: string) => {
@@ -133,7 +132,7 @@ export function useSettingsZoomFont(deps: any) {
     } finally {
       setFontSaving(false);
     }
-  }, [isTauriEnvironment, tauriInvoke]);
+  }, [isTauriEnvironment]);
 
   // 字体设置：重置为默认
   const handleFontReset = useCallback(() => {
@@ -169,7 +168,7 @@ export function useSettingsZoomFont(deps: any) {
     return () => {
       disposed = true;
     };
-  }, [isTauriEnvironment, tauriInvoke]);
+  }, [isTauriEnvironment]);
 
   // 字体大小设置：处理变更
   const handleFontSizeChange = useCallback(async (value: number) => {
@@ -187,7 +186,7 @@ export function useSettingsZoomFont(deps: any) {
     } finally {
       setFontSizeSaving(false);
     }
-  }, [isTauriEnvironment, tauriInvoke]);
+  }, [isTauriEnvironment]);
 
   // 字体大小设置：重置为默认
   const handleFontSizeReset = useCallback(() => {
@@ -195,14 +194,12 @@ export function useSettingsZoomFont(deps: any) {
   }, [handleFontSizeChange]);
 
   // 🆕 将内置服务器添加到 MCP 服务器列表开头
-  const normalizedMcpServers = useMemo(() => {
-    const userServers = normalizeMcpToolList((config as any).mcpTools);
+  const normalizedMcpServers = useMemo((): McpToolConfig[] => {
+    const userServers = normalizeMcpToolList(config.mcpTools) as McpToolConfig[];
     const builtinServer = getBuiltinServer();
-    // 转换为设置页面期望的格式
-    const builtinForSettings = {
+    const builtinForSettings: McpToolConfig = {
       id: builtinServer.id,
       name: builtinServer.name,
-      transportType: 'builtin' as const,
       connected: true,
     };
     return [builtinForSettings, ...userServers];

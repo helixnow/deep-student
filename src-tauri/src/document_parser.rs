@@ -2403,7 +2403,8 @@ impl DocumentParser {
             // 获取或创建工作表
             let sheet = if sheet_idx == 0 {
                 // 第一个工作表：重命名默认的 Sheet1
-                let ws = book.get_sheet_mut(&0).unwrap();
+                let ws = book.get_sheet_mut(&0)
+                    .ok_or_else(|| ParsingError::ExcelParsingError("默认工作表不存在".to_string()))?;
                 ws.set_name(sheet_name);
                 ws
             } else {
@@ -2531,12 +2532,10 @@ impl DocumentParser {
         let mut edit_count = 0usize;
 
         for (sheet_name, cell_ref, value) in edits {
-            let ws = book.get_sheet_by_name_mut(sheet_name);
-            if ws.is_none() {
+            let Some(ws) = book.get_sheet_by_name_mut(sheet_name) else {
                 log::warn!("[DocumentParser] XLSX 编辑：工作表 '{}' 不存在，跳过", sheet_name);
                 continue;
-            }
-            let ws = ws.unwrap();
+            };
             let cell = ws.get_cell_mut(cell_ref.as_str());
             // 尝试作为数字写入
             if let Ok(num) = value.parse::<f64>() {
@@ -2575,11 +2574,9 @@ impl DocumentParser {
             .collect();
 
         for sheet_name in &sheet_names {
-            let ws = book.get_sheet_by_name_mut(sheet_name);
-            if ws.is_none() {
+            let Some(ws) = book.get_sheet_by_name_mut(sheet_name) else {
                 continue;
-            }
-            let ws = ws.unwrap();
+            };
             let (max_col, max_row) = ws.get_highest_column_and_row();
 
             for row in 1..=max_row {
