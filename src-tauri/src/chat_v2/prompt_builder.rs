@@ -387,6 +387,8 @@ pub struct PromptBuilder {
     canvas_note: Option<CanvasNoteInfo>,
     /// 上下文类型 Hints（告知 LLM 用户消息中 XML 标签的含义）
     context_type_hints: Vec<String>,
+    /// 用户画像摘要（始终注入，不依赖 query 匹配）
+    user_profile: Option<String>,
 }
 
 impl PromptBuilder {
@@ -407,6 +409,7 @@ impl PromptBuilder {
             has_sources: false,
             canvas_note: None,
             context_type_hints: Vec::new(),
+            user_profile: None,
         }
     }
 
@@ -449,6 +452,12 @@ impl PromptBuilder {
                 }
             }
         }
+        self
+    }
+
+    /// 添加用户画像摘要（始终注入，不依赖检索 query）
+    pub fn with_user_profile(mut self, profile: Option<String>) -> Self {
+        self.user_profile = profile;
         self
     }
 
@@ -553,6 +562,14 @@ impl PromptBuilder {
             ));
         }
 
+        // 2.8 用户画像（始终注入，不依赖检索 query）
+        if let Some(profile) = self.user_profile {
+            parts.push(format!(
+                "<user_profile>\n以下是关于当前用户的已知信息，请在回答中自然地运用这些背景：\n{}\n</user_profile>",
+                profile
+            ));
+        }
+
         // 3. 上下文块（如果有来源）
         if !self.context_blocks.is_empty() {
             let context_content = self.context_blocks.join("\n\n");
@@ -649,6 +666,21 @@ pub fn build_system_prompt(
         .with_message_sources(sources)
         .with_options(options)
         .with_canvas_note(canvas_note)
+        .build()
+}
+
+/// 从 SendOptions 和 MessageSources 构建 System Prompt（带用户画像注入）
+pub fn build_system_prompt_with_profile(
+    options: &SendOptions,
+    sources: &MessageSources,
+    canvas_note: Option<CanvasNoteInfo>,
+    user_profile: Option<String>,
+) -> String {
+    PromptBuilder::new(options.system_prompt_override.as_deref())
+        .with_message_sources(sources)
+        .with_options(options)
+        .with_canvas_note(canvas_note)
+        .with_user_profile(user_profile)
         .build()
 }
 

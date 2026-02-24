@@ -390,8 +390,8 @@ export function LearningHubSidebar({
 
   // Handle open item
   const handleOpen = (item: DstuNode) => {
-    // ★ 记录访问（排除文件夹）
-    if (item.type !== 'folder') {
+    // ★ Bug Fix: 回收站中的资源不应记录为最近访问
+    if (item.type !== 'folder' && currentPath.folderId !== 'trash') {
       addRecent({
         id: item.id,
         path: item.path,
@@ -1450,20 +1450,31 @@ export function LearningHubSidebar({
   }, [clearSelection]);
 
   // 批量删除（显示确认对话框）
+  // ★ Bug Fix: 回收站视图中走永久删除路径，而非软删除
   const handleBatchDelete = useCallback(() => {
     if (selectedIds.size === 0) return;
 
-    // ★ 使用 AlertDialog 替代直接删除
-    setDeleteTarget({
-      type: 'batch',
-      batchIds: new Set(selectedIds),
-      message: t('finder.batch.confirmDelete', {
-        count: selectedIds.size,
-        defaultValue: `确定要删除选中的 ${selectedIds.size} 个项目吗？删除后可在回收站恢复。`
-      }),
-    });
+    if (isTrashView) {
+      setDeleteTarget({
+        type: 'batch',
+        batchIds: new Set(selectedIds),
+        message: t('finder.trash.confirmBatchPermanentDelete', {
+          count: selectedIds.size,
+          defaultValue: `确定要永久删除选中的 ${selectedIds.size} 个项目吗？此操作不可撤销。`
+        }),
+      });
+    } else {
+      setDeleteTarget({
+        type: 'batch',
+        batchIds: new Set(selectedIds),
+        message: t('finder.batch.confirmDelete', {
+          count: selectedIds.size,
+          defaultValue: `确定要删除选中的 ${selectedIds.size} 个项目吗？删除后可在回收站恢复。`
+        }),
+      });
+    }
     setDeleteConfirmOpen(true);
-  }, [selectedIds, t]);
+  }, [selectedIds, t, isTrashView]);
 
   // ★ 执行批量删除操作（AlertDialog 确认后调用）
   const executeBatchDelete = useCallback(async (idsToDelete: Set<string>) => {
@@ -1679,7 +1690,29 @@ export function LearningHubSidebar({
           break;
         case 'batch':
           if (deleteTarget.batchIds) {
-            await executeBatchDelete(deleteTarget.batchIds);
+            if (isTrashView) {
+              const idsArray = Array.from(deleteTarget.batchIds);
+              let succeeded = 0;
+              let failed = 0;
+              for (const id of idsArray) {
+                const item = items.find(i => i.id === id);
+                if (!item) { failed++; continue; }
+                const result = await trashApi.permanentlyDelete(id, item.type);
+                if (result.ok) { succeeded++; } else { failed++; }
+              }
+              if (!isMountedRef.current) break;
+              if (failed === 0) {
+                showGlobalNotification('success', t('finder.trash.batchDeleteSuccess', { count: succeeded, defaultValue: `已永久删除 ${succeeded} 个项目` }));
+              } else if (succeeded > 0) {
+                showGlobalNotification('warning', t('finder.trash.batchDeletePartial', { succeeded, failed, defaultValue: `成功 ${succeeded} 个，失败 ${failed} 个` }));
+              } else {
+                showGlobalNotification('error', t('finder.trash.batchDeleteFailed', '批量永久删除失败'));
+              }
+              clearSelection();
+              handleRefresh();
+            } else {
+              await executeBatchDelete(deleteTarget.batchIds);
+            }
           }
           break;
         case 'permanent':
@@ -1699,7 +1732,7 @@ export function LearningHubSidebar({
       setDeleteConfirmOpen(false);
       setDeleteTarget(null);
     }
-  }, [deleteTarget, executeDeleteResource, executeBatchDelete, executePermanentDelete, executeEmptyTrash]);
+  }, [deleteTarget, executeDeleteResource, executeBatchDelete, executePermanentDelete, executeEmptyTrash, isTrashView, items, t, clearSelection, handleRefresh]);
 
   // ★ 批量添加到对话（将选中的文件引用发送到 Chat V2 附件区域）
   const handleBatchAddToChat = useCallback(async () => {
@@ -2021,6 +2054,8 @@ export function LearningHubSidebar({
                 >
                   <Search className="w-4 h-4" />
                 </NotionButton>
+                {/* ★ Bug Fix: 回收站视图中隐藏"新建"菜单 */}
+                {!isTrashView && (
                 <AppMenu>
                   <AppMenuTrigger asChild>
                     <NotionButton
@@ -2077,6 +2112,7 @@ export function LearningHubSidebar({
                     </AppMenuItem>
                   </AppMenuContent>
                 </AppMenu>
+                )}
                 {/* 回收站视图显示清空按钮 */}
                 {isTrashView && (
                   <NotionButton
@@ -2348,7 +2384,7 @@ export function LearningHubSidebar({
             onMoveItems={mode === 'canvas' ? undefined : handleMoveItems}
             isLoading={isLoading}
             error={error}
-            enableDragDrop={mode !== 'canvas'}
+            enableDragDrop={mode !== 'canvas' && !isTrashView}
             editingId={mode === 'canvas' ? undefined : inlineEdit.editingId}
             onEditConfirm={mode === 'canvas' ? undefined : handleInlineEditConfirm}
             onEditCancel={mode === 'canvas' ? undefined : handleInlineEditCancel}
@@ -2369,8 +2405,8 @@ export function LearningHubSidebar({
             onSelectAll={handleSelectAll}
             onClearSelection={handleClearSelection}
             onBatchDelete={handleBatchDelete}
-            onBatchMove={handleBatchMove}
-            onBatchAddToChat={handleBatchAddToChat}
+            onBatchMove={isTrashView ? undefined : handleBatchMove}
+            onBatchAddToChat={isTrashView ? undefined : handleBatchAddToChat}
             isProcessing={isBatchProcessing || isInjecting}
             viewMode={isCollapsed ? 'list' : viewMode}
             onViewModeChange={isCollapsed ? undefined : setViewMode}

@@ -774,22 +774,32 @@ impl BuiltinRetrievalExecutor {
             .as_ref()
             .ok_or("LLM manager not available")?;
 
-        // ========== 1. VFS 文本搜索 ==========
-        // 🆕 取消检查：在文本搜索前检查
+        // ========== 0. 预计算 query embedding（全局复用） ==========
         if ctx.is_cancelled() {
             return Err("Unified search cancelled before text search".to_string());
         }
 
-        let lance_store = std::sync::Arc::new(
-            VfsLanceStore::new(std::sync::Arc::clone(vfs_db))
-                .map_err(|e| format!("Failed to create Lance store: {}", e))?,
-        );
+        let lance_store = ctx
+            .vfs_lance_store
+            .clone()
+            .map(Ok)
+            .unwrap_or_else(|| {
+                VfsLanceStore::new(std::sync::Arc::clone(vfs_db)).map(std::sync::Arc::new)
+            })
+            .map_err(|e| format!("Failed to create Lance store: {}", e))?;
+
         let search_service = VfsFullSearchService::new(
             std::sync::Arc::clone(vfs_db),
             std::sync::Arc::clone(&lance_store),
             std::sync::Arc::clone(llm_manager),
         );
-        // 🔧 批判性检查修复：传递 resource_ids 参数
+
+        let shared_embedding = search_service
+            .generate_query_embedding(query)
+            .await
+            .map_err(|e| format!("Failed to generate query embedding: {}", e))?;
+
+        // ========== 1. VFS 文本搜索（复用 shared_embedding） ==========
         let text_params = VfsSearchParams {
             query: query.to_string(),
             folder_ids: folder_ids.clone(),
@@ -799,17 +809,16 @@ impl BuiltinRetrievalExecutor {
             top_k: top_k as u32,
         };
 
-        // 文本搜索（支持取消）
         let text_result = if let Some(cancel_token) = ctx.cancellation_token() {
             tokio::select! {
-                res = search_service.search(query, &text_params, false) => res.ok(),
+                res = search_service.search_with_embedding(query, &shared_embedding, &text_params, false) => res.ok(),
                 _ = cancel_token.cancelled() => {
                     log::info!("[BuiltinRetrievalExecutor] Unified search cancelled during text search");
                     return Err("Unified search cancelled during text search".to_string());
                 }
             }
         } else {
-            search_service.search(query, &text_params, false).await.ok()
+            search_service.search_with_embedding(query, &shared_embedding, &text_params, false).await.ok()
         };
 
         if let Some(vfs_results) = text_result {
@@ -927,7 +936,7 @@ impl BuiltinRetrievalExecutor {
             return Err("Unified search cancelled before memory search".to_string());
         }
 
-        // 记忆搜索（忽略错误，不影响主流程）
+        // 记忆搜索（复用 shared_embedding，忽略错误，不影响主流程）
         {
             let memory_service = MemoryService::new(
                 std::sync::Arc::clone(vfs_db),
@@ -935,12 +944,11 @@ impl BuiltinRetrievalExecutor {
                 std::sync::Arc::clone(llm_manager),
             );
 
-            let memory_top_k = (top_k / 2).max(3).min(10); // 记忆搜索取较少结果
+            let memory_top_k = (top_k / 2).max(3).min(10);
 
-            // 记忆搜索（支持取消）
             let memory_result = if let Some(cancel_token) = ctx.cancellation_token() {
                 tokio::select! {
-                    res = memory_service.search(query, memory_top_k) => {
+                    res = memory_service.search_with_embedding(query, &shared_embedding, memory_top_k) => {
                         res.map_err(|e| {
                             log::warn!("[BuiltinRetrievalExecutor] Unified memory search failed: {}", e);
                             e
@@ -948,12 +956,12 @@ impl BuiltinRetrievalExecutor {
                     },
                     _ = cancel_token.cancelled() => {
                         log::info!("[BuiltinRetrievalExecutor] Unified search cancelled during memory search");
-                        None // 记忆搜索取消不影响已获取的文本/多模态结果
+                        None
                     }
                 }
             } else {
                 memory_service
-                    .search(query, memory_top_k)
+                    .search_with_embedding(query, &shared_embedding, memory_top_k)
                     .await
                     .map_err(|e| {
                         log::warn!(
@@ -1011,35 +1019,48 @@ impl BuiltinRetrievalExecutor {
                     == Some("memory")
             });
 
-        // 3b. 跨源去重：从知识库结果中移除同一笔记的 VFS 文本搜索副本
-        //     （记忆笔记同时被索引在 VFS 中，Step 1 可能返回同一条记忆作为 text_search 结果）
+        // 3b. 跨源去重：从知识库结果中移除与记忆重复的 VFS 笔记
+        //     记忆笔记同时被索引在 VFS 中，Step 1 可能返回同一条记忆作为 text_search 结果。
+        //     优先使用 noteId 精确匹配，回退到标题匹配。
         if !memory_sources.is_empty() {
-            // 知识库中 resource_type="note" 且 resourceId 对应的 note 已在记忆结果中 → 去重
-            // 注意：VFS text_search 结果的 resourceId 是 VFS resource_id，不是 note_id，
-            // 但 resource_type="note" 的结果通常表示同类数据，通过标题匹配做最佳努力去重
+            let memory_note_ids: std::collections::HashSet<String> = memory_sources
+                .iter()
+                .filter_map(|s| {
+                    s.metadata
+                        .as_ref()
+                        .and_then(|m| m.get("noteId"))
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string())
+                })
+                .collect();
             let memory_titles: std::collections::HashSet<String> = memory_sources
                 .iter()
                 .filter_map(|s| s.title.clone())
                 .collect();
+
             let before_dedup = kb_sources.len();
             kb_sources.retain(|s| {
-                let is_note = s
-                    .metadata
-                    .as_ref()
+                let meta = s.metadata.as_ref();
+                let is_note = meta
                     .and_then(|m| m.get("resourceType"))
                     .and_then(|v| v.as_str())
                     == Some("note");
-                if is_note {
-                    // 标题匹配去重：如果知识库中的 note 标题与记忆标题一致，认为是重复
-                    !s.title.as_ref().map_or(false, |t| memory_titles.contains(t))
-                } else {
-                    true
+                if !is_note {
+                    return true;
                 }
+                let source_id = meta
+                    .and_then(|m| m.get("sourceId"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                if !source_id.is_empty() && memory_note_ids.contains(source_id) {
+                    return false;
+                }
+                !s.title.as_ref().map_or(false, |t| memory_titles.contains(t))
             });
             let deduped = before_dedup - kb_sources.len();
             if deduped > 0 {
                 log::debug!(
-                    "[BuiltinRetrievalExecutor] Deduped {} memory notes from KB results",
+                    "[BuiltinRetrievalExecutor] Deduped {} memory notes from KB results (noteId+title match)",
                     deduped
                 );
             }

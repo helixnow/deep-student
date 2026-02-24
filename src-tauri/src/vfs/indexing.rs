@@ -3908,7 +3908,19 @@ impl VfsFullSearchService {
         params: &VfsSearchParams,
         enable_reranking: bool,
     ) -> VfsResult<Vec<VfsSearchResult>> {
-        // 根据配置决定搜索模式
+        let embedding = self.embedding_service.generate_embedding(query).await?;
+        self.search_with_embedding(query, &embedding, params, enable_reranking)
+            .await
+    }
+
+    /// 使用预计算 embedding 搜索（避免重复调用 Embedding API）
+    pub async fn search_with_embedding(
+        &self,
+        query: &str,
+        query_embedding: &[f32],
+        params: &VfsSearchParams,
+        enable_reranking: bool,
+    ) -> VfsResult<Vec<VfsSearchResult>> {
         let config = VfsIndexingService::new(self.db.clone()).get_search_config()?;
 
         let mode = if config.enable_hybrid {
@@ -3917,21 +3929,55 @@ impl VfsFullSearchService {
             VfsSearchMode::Vector
         };
 
-        // 执行搜索
+        let folder_ids: Option<Vec<String>> = params.folder_ids.clone();
+        let resource_ids: Option<Vec<String>> = params.resource_ids.clone();
+        let resource_types: Option<Vec<String>> = params.resource_types.clone();
+
         let mut results = match mode {
-            VfsSearchMode::Hybrid => self.hybrid_search(query, params).await?,
-            VfsSearchMode::Vector => self.vector_search(query, params).await?,
+            VfsSearchMode::Hybrid => {
+                let lance_results = self
+                    .lance_store
+                    .hybrid_search_full(
+                        &params.modality,
+                        query,
+                        query_embedding,
+                        params.top_k as usize,
+                        folder_ids.as_deref(),
+                        resource_ids.as_deref(),
+                        resource_types.as_deref(),
+                    )
+                    .await?;
+                self.lance_results_to_search_results(lance_results)
+            }
+            VfsSearchMode::Vector => {
+                let lance_results = self
+                    .lance_store
+                    .vector_search_full(
+                        &params.modality,
+                        query_embedding,
+                        params.top_k as usize,
+                        folder_ids.as_deref(),
+                        resource_ids.as_deref(),
+                        resource_types.as_deref(),
+                    )
+                    .await?;
+                self.lance_results_to_search_results(lance_results)
+            }
             VfsSearchMode::FullText => {
                 VfsSearchService::new(self.db.clone()).search_fts(query, params.top_k)?
             }
         };
 
-        // 可选的重排序
         if enable_reranking && !results.is_empty() && config.enable_reranking {
             results = self.rerank_results(query, results).await?;
         }
 
         Ok(results)
+    }
+
+    /// 生成查询 embedding（公开接口，供外部调用者预计算后复用）
+    pub async fn generate_query_embedding(&self, query: &str) -> VfsResult<Vec<f32>> {
+        self.embedding_service.generate_embedding(query).await
     }
 
     /// 重排序搜索结果

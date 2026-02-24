@@ -1277,6 +1277,10 @@ pub fn run() {
             ,crate::vfs::handlers::vfs_set_indexing_config
             ,crate::vfs::handlers::vfs_get_indexing_config
             ,crate::vfs::handlers::vfs_get_all_index_status
+            // VFS 数据透视命令（OCR 查看/清除、文本块查看）
+            ,crate::vfs::handlers::vfs_get_resource_ocr_info
+            ,crate::vfs::handlers::vfs_clear_resource_ocr
+            ,crate::vfs::handlers::vfs_get_resource_text_chunks
             // VFS RAG 向量检索命令
             ,crate::vfs::handlers::vfs_rag_search
             ,crate::vfs::handlers::vfs_get_lance_stats

@@ -1,6 +1,6 @@
 use rusqlite::params;
 use std::collections::HashSet;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use tracing::{debug, info, warn};
 
 use crate::llm_manager::LLMManager;
@@ -16,12 +16,29 @@ use crate::vfs::types::{
     FolderTreeNode, VfsCreateNoteParams, VfsFolder, VfsNote, VfsUpdateNoteParams,
 };
 
+/// 文件夹树缓存，避免每次搜索/列表都执行 CTE 递归查询
+struct FolderIdCache {
+    root_id: String,
+    folder_ids: Vec<String>,
+}
+
 use super::config::MemoryConfig;
 use super::llm_decision::{MemoryDecisionResponse, MemoryEvent, MemoryLLMDecision, SimilarMemorySummary};
 use super::query_rewriter::MemoryQueryRewriter;
 use super::reranker::MemoryReranker;
 
 const SMART_WRITE_MUTATION_CONFIDENCE_THRESHOLD: f32 = 0.65;
+
+/// 用户画像摘要笔记的保留标题
+const PROFILE_NOTE_TITLE: &str = "__user_profile__";
+/// 画像摘要的最大条目数
+const PROFILE_MAX_ITEMS: usize = 15;
+/// 标记记忆被搜索命中的 tag 前缀
+const TAG_HITS_PREFIX: &str = "_hits:";
+/// 标记记忆最后命中时间的 tag 前缀
+const TAG_LAST_HIT_PREFIX: &str = "_last_hit:";
+/// 时间衰减半衰期（天）：超过此天数的记忆搜索分数减半
+const TIME_DECAY_HALF_LIFE_DAYS: f64 = 60.0;
 
 fn should_downgrade_smart_mutation(event: &MemoryEvent, confidence: f32) -> bool {
     matches!(event, MemoryEvent::UPDATE | MemoryEvent::APPEND)
@@ -36,6 +53,9 @@ pub struct MemorySearchResult {
     pub folder_path: String,
     pub chunk_text: String,
     pub score: f32,
+    /// 笔记的 updated_at（ISO 8601），用于时间衰减计算
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub updated_at: Option<String>,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -99,6 +119,9 @@ pub struct SmartWriteOutput {
     /// 当 event 为 NONE 时为 None（无写入发生）。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub resource_id: Option<String>,
+    /// 是否因低置信度被降级为 NONE（LLM 应提示用户确认）
+    #[serde(default)]
+    pub downgraded: bool,
 }
 
 #[derive(Clone)]
@@ -107,6 +130,7 @@ pub struct MemoryService {
     vfs_db: Arc<VfsDatabase>,
     lance_store: Arc<VfsLanceStore>,
     llm_manager: Arc<LLMManager>,
+    folder_cache: Arc<RwLock<Option<FolderIdCache>>>,
 }
 
 impl MemoryService {
@@ -120,7 +144,36 @@ impl MemoryService {
             vfs_db,
             lance_store,
             llm_manager,
+            folder_cache: Arc::new(RwLock::new(None)),
         }
+    }
+
+    /// 获取记忆文件夹 ID 列表（带缓存）
+    fn get_memory_folder_ids(&self, root_id: &str) -> VfsResult<Vec<String>> {
+        {
+            let cache = self.folder_cache.read().unwrap();
+            if let Some(ref c) = *cache {
+                if c.root_id == root_id {
+                    return Ok(c.folder_ids.clone());
+                }
+            }
+        }
+        let folder_ids = VfsFolderRepo::get_folder_ids_recursive(&self.vfs_db, root_id)?;
+        {
+            let mut cache = self.folder_cache.write().unwrap();
+            *cache = Some(FolderIdCache {
+                root_id: root_id.to_string(),
+                folder_ids: folder_ids.clone(),
+            });
+        }
+        debug!("[Memory] Folder cache populated: {} folders", folder_ids.len());
+        Ok(folder_ids)
+    }
+
+    /// 使文件夹缓存失效（在文件夹结构变更后调用）
+    fn invalidate_folder_cache(&self) {
+        let mut cache = self.folder_cache.write().unwrap();
+        *cache = None;
     }
 
     pub fn get_config(&self) -> VfsResult<MemoryConfigOutput> {
@@ -152,7 +205,8 @@ impl MemoryService {
         Ok(())
     }
 
-    /// 立即索引资源（同步生成嵌入 + 写入 LanceDB），确保后续向量搜索能找到
+    /// 立即索引资源（同步生成嵌入 + 写入 LanceDB），确保后续向量搜索能找到。
+    /// 索引成功后标记为 indexed，防止批量 worker 和 handler 重复处理。
     async fn index_immediately(&self, resource_id: &str) {
         match VfsFullIndexingService::new(
             self.vfs_db.clone(),
@@ -161,6 +215,13 @@ impl MemoryService {
         ) {
             Ok(svc) => match svc.index_resource(resource_id, None, None).await {
                 Ok((chunks, _dim)) => {
+                    if let Err(e) = VfsIndexStateRepo::mark_indexed(
+                        &self.vfs_db,
+                        resource_id,
+                        &format!("mem_imm_{}", chrono::Utc::now().timestamp_millis()),
+                    ) {
+                        warn!("[Memory] Failed to mark indexed after immediate indexing: {}", e);
+                    }
                     info!("[Memory] Immediate indexing succeeded: resource={}, chunks={}", resource_id, chunks);
                 }
                 Err(e) => {
@@ -196,10 +257,8 @@ impl MemoryService {
             return Ok(vec![]);
         }
 
-        let root_id = self.ensure_root_folder_id()?;
-
-        let folder_ids = VfsFolderRepo::get_folder_ids_recursive(&self.vfs_db, &root_id)?;
-        if folder_ids.is_empty() {
+        if self.config.is_privacy_mode()? {
+            warn!("[Memory] Privacy mode enabled, skipping embedding API call for search");
             return Ok(vec![]);
         }
 
@@ -209,14 +268,41 @@ impl MemoryService {
             .await
             .map_err(|e| VfsError::Other(format!("Embedding failed: {}", e)))?;
 
-        // 先多取一些候选，再按 note_id 去重，避免单一笔记占满结果集。
+        self.search_with_embedding(query, &embedding, top_k).await
+    }
+
+    /// 使用预计算 embedding 搜索记忆（避免重复调用 Embedding API）
+    ///
+    /// unified_search 可先生成一次 embedding，同时传给 VFS 文本搜索和记忆搜索。
+    pub async fn search_with_embedding(
+        &self,
+        query: &str,
+        query_embedding: &[f32],
+        top_k: usize,
+    ) -> VfsResult<Vec<MemorySearchResult>> {
+        if top_k == 0 {
+            return Ok(vec![]);
+        }
+
+        if self.config.is_privacy_mode()? {
+            warn!("[Memory] Privacy mode enabled, skipping search_with_embedding");
+            return Ok(vec![]);
+        }
+
+        let root_id = self.ensure_root_folder_id()?;
+
+        let folder_ids = self.get_memory_folder_ids(&root_id)?;
+        if folder_ids.is_empty() {
+            return Ok(vec![]);
+        }
+
         let retrieval_k = top_k.saturating_mul(3);
         let lance_results = self
             .lance_store
             .hybrid_search(
                 "text",
                 query,
-                &embedding,
+                query_embedding,
                 retrieval_k,
                 Some(&folder_ids),
                 Some(&["note".to_string()]),
@@ -239,6 +325,7 @@ impl MemoryService {
                     folder_path,
                     chunk_text: r.text,
                     score: r.score,
+                    updated_at: Some(note.updated_at),
                 });
 
                 if results.len() >= top_k {
@@ -247,8 +334,18 @@ impl MemoryService {
             }
         }
 
+        // 应用时间衰减
+        self.apply_time_decay(&mut results);
+
+        // 异步记录命中（不阻塞搜索返回）
+        let hit_ids: Vec<String> = results.iter().map(|r| r.note_id.clone()).collect();
+        if !hit_ids.is_empty() {
+            let svc = self.clone();
+            tokio::task::spawn_blocking(move || svc.record_search_hits(&hit_ids));
+        }
+
         debug!(
-            "[Memory] Search '{}' returned {} deduplicated results",
+            "[Memory] Search '{}' returned {} results (with time decay)",
             query,
             results.len()
         );
@@ -424,6 +521,7 @@ impl MemoryService {
                 confidence: 1.0,
                 reason: "隐私模式已启用，跳过 LLM 决策并安全降级为新增".to_string(),
                 resource_id: Some(result.resource_id),
+                downgraded: false,
             });
         }
 
@@ -479,11 +577,12 @@ impl MemoryService {
                     decision.reason, decision.confidence, SMART_WRITE_MUTATION_CONFIDENCE_THRESHOLD
                 ),
                 resource_id: None,
+                downgraded: true,
             });
         }
 
         // 4. 根据决策执行操作
-        match decision.event {
+        let result = match decision.event {
             MemoryEvent::ADD => {
                 let result = self.write(folder_path, title, content, WriteMode::Create)?;
                 self.index_immediately(&result.resource_id).await;
@@ -494,6 +593,7 @@ impl MemoryService {
                     confidence: decision.confidence,
                     reason: decision.reason,
                     resource_id: Some(result.resource_id),
+                    downgraded: false,
                 })
             }
             MemoryEvent::UPDATE => {
@@ -508,6 +608,7 @@ impl MemoryService {
                                 confidence: decision.confidence,
                                 reason: decision.reason,
                                 resource_id: Some(result.resource_id),
+                                downgraded: false,
                             })
                         }
                         Err(VfsError::NotFound { .. }) => {
@@ -524,6 +625,7 @@ impl MemoryService {
                                     decision.reason
                                 ),
                                 resource_id: Some(result.resource_id),
+                                downgraded: false,
                             })
                         }
                         Err(e) => Err(e),
@@ -538,6 +640,7 @@ impl MemoryService {
                         confidence: decision.confidence,
                         reason: "UPDATE 决策但无目标 ID，降级为 ADD".to_string(),
                         resource_id: Some(result.resource_id),
+                        downgraded: false,
                     })
                 }
             }
@@ -561,6 +664,7 @@ impl MemoryService {
                                 confidence: decision.confidence,
                                 reason: decision.reason,
                                 resource_id: Some(result.resource_id),
+                                downgraded: false,
                             })
                         }
                         Err(VfsError::NotFound { .. }) => {
@@ -577,6 +681,7 @@ impl MemoryService {
                                     decision.reason
                                 ),
                                 resource_id: Some(result.resource_id),
+                                downgraded: false,
                             })
                         }
                         Err(e) => Err(e),
@@ -591,11 +696,11 @@ impl MemoryService {
                         confidence: decision.confidence,
                         reason: "APPEND 决策但无目标 ID，降级为 ADD".to_string(),
                         resource_id: Some(result.resource_id),
+                        downgraded: false,
                     })
                 }
             }
             MemoryEvent::NONE => {
-                // 无需操作，返回最相似的记忆 ID
                 let existing_id = similar_results
                     .first()
                     .map(|r| r.note_id.clone())
@@ -607,9 +712,24 @@ impl MemoryService {
                     confidence: decision.confidence,
                     reason: decision.reason,
                     resource_id: None,
+                    downgraded: false,
                 })
             }
+        };
+
+        // 实际发生写入时，异步刷新用户画像摘要
+        if let Ok(ref out) = result {
+            if out.resource_id.is_some() {
+                let svc = self.clone();
+                tokio::task::spawn_blocking(move || {
+                    if let Err(e) = svc.refresh_profile_summary() {
+                        warn!("[Memory] Profile refresh failed: {}", e);
+                    }
+                });
+            }
         }
+
+        result
     }
 
     /// 带重排序的增强搜索
@@ -620,8 +740,8 @@ impl MemoryService {
         use_query_rewrite: bool,
     ) -> VfsResult<Vec<MemorySearchResult>> {
         if self.config.is_privacy_mode()? {
-            // 隐私模式下禁止 query rewrite 与 rerank，避免将原始查询发送到外部模型。
-            return self.search(query, top_k).await;
+            warn!("[Memory] Privacy mode enabled, skipping search_with_rerank (no external API calls)");
+            return Ok(vec![]);
         }
 
         // 1. 可选的查询重写
@@ -674,7 +794,7 @@ impl MemoryService {
         };
 
         // 列表语义采用“递归列出目录下全部记忆”，避免默认分类子目录中的记忆不可见。
-        let folder_ids = VfsFolderRepo::get_folder_ids_recursive(&self.vfs_db, &target_root_id)?;
+        let folder_ids = self.get_memory_folder_ids(&target_root_id)?;
         if folder_ids.is_empty() {
             return Ok(vec![]);
         }
@@ -687,6 +807,7 @@ impl MemoryService {
             FROM notes n
             JOIN folder_items fi ON fi.item_type = 'note' AND fi.item_id = n.id
             WHERE fi.folder_id IN ({}) AND n.deleted_at IS NULL
+              AND n.title NOT LIKE '\\_\\_%\\_\\_%' ESCAPE '\\'
             ORDER BY n.updated_at DESC
             LIMIT ? OFFSET ?
             "#,
@@ -784,6 +905,7 @@ impl MemoryService {
                     None,
                 );
                 VfsFolderRepo::create_folder(&self.vfs_db, &new_folder)?;
+                self.invalidate_folder_cache();
                 debug!(
                     "[Memory] Created subfolder: {} under {}",
                     part, current_parent_id
@@ -819,8 +941,62 @@ impl MemoryService {
         folder_id: Option<&str>,
         title: &str,
     ) -> VfsResult<Option<VfsNote>> {
-        let notes = VfsNoteRepo::list_notes_by_folder(&self.vfs_db, folder_id, 1000, 0)?;
-        Ok(notes.into_iter().find(|n| n.title == title))
+        let conn = self.vfs_db.get_conn_safe()?;
+        let note: Option<VfsNote> = if let Some(fid) = folder_id {
+            conn.query_row(
+                r#"
+                SELECT n.id, n.resource_id, n.title, n.tags, n.is_favorite,
+                       n.created_at, n.updated_at, n.deleted_at
+                FROM notes n
+                JOIN folder_items fi ON fi.item_type = 'note' AND fi.item_id = n.id
+                WHERE n.title = ?1 AND fi.folder_id = ?2 AND n.deleted_at IS NULL
+                LIMIT 1
+                "#,
+                params![title, fid],
+                |row| {
+                    let tags_json: String = row.get(3)?;
+                    let tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
+                    Ok(VfsNote {
+                        id: row.get(0)?,
+                        resource_id: row.get(1)?,
+                        title: row.get(2)?,
+                        tags,
+                        is_favorite: row.get::<_, i32>(4)? != 0,
+                        created_at: row.get(5)?,
+                        updated_at: row.get(6)?,
+                        deleted_at: row.get(7)?,
+                    })
+                },
+            )
+            .ok()
+        } else {
+            conn.query_row(
+                r#"
+                SELECT id, resource_id, title, tags, is_favorite,
+                       created_at, updated_at, deleted_at
+                FROM notes
+                WHERE title = ?1 AND deleted_at IS NULL
+                LIMIT 1
+                "#,
+                params![title],
+                |row| {
+                    let tags_json: String = row.get(3)?;
+                    let tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
+                    Ok(VfsNote {
+                        id: row.get(0)?,
+                        resource_id: row.get(1)?,
+                        title: row.get(2)?,
+                        tags,
+                        is_favorite: row.get::<_, i32>(4)? != 0,
+                        created_at: row.get(5)?,
+                        updated_at: row.get(6)?,
+                        deleted_at: row.get(7)?,
+                    })
+                },
+            )
+            .ok()
+        };
+        Ok(note)
     }
 
     fn get_note_by_resource_id(&self, resource_id: &str) -> VfsResult<Option<VfsNote>> {
@@ -969,8 +1145,176 @@ impl MemoryService {
             return Ok(true);
         }
 
-        let folder_ids = VfsFolderRepo::get_folder_ids_recursive(&self.vfs_db, root_id)?;
+        let folder_ids = self.get_memory_folder_ids(root_id)?;
         Ok(folder_ids.contains(&folder_id))
+    }
+
+    // ========================================================================
+    // 用户画像摘要
+    // ========================================================================
+
+    /// 获取用户画像摘要（从特殊笔记读取，不存在时返回 None）
+    pub fn get_profile_summary(&self) -> VfsResult<Option<String>> {
+        let root_id = match self.config.get_root_folder_id()? {
+            Some(id) => id,
+            None => return Ok(None),
+        };
+        match self.find_note_by_title(Some(&root_id), PROFILE_NOTE_TITLE)? {
+            Some(note) => {
+                let content = VfsNoteRepo::get_note_content(&self.vfs_db, &note.id)?
+                    .unwrap_or_default();
+                if content.is_empty() { Ok(None) } else { Ok(Some(content)) }
+            }
+            None => Ok(None),
+        }
+    }
+
+    /// 获取记忆根文件夹 ID（公开接口，供外部调用方获取记忆文件夹 ID 以排除全局搜索）
+    pub fn get_root_folder_id(&self) -> VfsResult<Option<String>> {
+        self.config.get_root_folder_id()
+    }
+
+    /// 刷新用户画像摘要笔记
+    ///
+    /// 从记忆列表中选取最近更新的 N 条记忆，聚合为结构化画像文本，
+    /// 写入/更新 `__user_profile__` 笔记。
+    /// 画像笔记本身不被索引（标题以 `__` 开头，列表/搜索时过滤）。
+    pub fn refresh_profile_summary(&self) -> VfsResult<()> {
+        let root_id = self.ensure_root_folder_id()?;
+        let all_memories = self.list(None, PROFILE_MAX_ITEMS as u32, 0)?;
+
+        if all_memories.is_empty() {
+            return Ok(());
+        }
+
+        let mut lines = Vec::with_capacity(all_memories.len());
+        for mem in &all_memories {
+            if mem.title == PROFILE_NOTE_TITLE {
+                continue;
+            }
+            let content = VfsNoteRepo::get_note_content(&self.vfs_db, &mem.id)?
+                .unwrap_or_default();
+            if !content.is_empty() {
+                lines.push(format!("- {}", content));
+            } else {
+                lines.push(format!("- {}", mem.title));
+            }
+        }
+
+        if lines.is_empty() {
+            return Ok(());
+        }
+
+        let profile_content = lines.join("\n");
+
+        match self.find_note_by_title(Some(&root_id), PROFILE_NOTE_TITLE)? {
+            Some(note) => {
+                VfsNoteRepo::update_note(
+                    &self.vfs_db,
+                    &note.id,
+                    VfsUpdateNoteParams {
+                        title: None,
+                        content: Some(profile_content),
+                        tags: None,
+                        expected_updated_at: None,
+                    },
+                )?;
+                debug!("[Memory] Profile summary updated ({} items)", lines.len());
+            }
+            None => {
+                let profile_note = VfsNoteRepo::create_note_in_folder(
+                    &self.vfs_db,
+                    VfsCreateNoteParams {
+                        title: PROFILE_NOTE_TITLE.to_string(),
+                        content: profile_content,
+                        tags: vec!["_system".to_string()],
+                    },
+                    Some(&root_id),
+                )?;
+                if let Err(e) = VfsIndexStateRepo::mark_disabled_with_reason(
+                    &self.vfs_db,
+                    &profile_note.resource_id,
+                    "system profile note",
+                ) {
+                    warn!("[Memory] Failed to disable indexing for profile note: {}", e);
+                }
+                debug!("[Memory] Profile summary created ({} items)", lines.len());
+            }
+        }
+
+        Ok(())
+    }
+
+    // ========================================================================
+    // 访问追踪 + 时间衰减
+    // ========================================================================
+
+    /// 记录搜索命中（直接 SQL 更新 tags，不触发 updated_at 变更以免重置时间衰减）
+    pub fn record_search_hits(&self, note_ids: &[String]) {
+        let now_ms = chrono::Utc::now().timestamp_millis().to_string();
+        let conn = match self.vfs_db.get_conn_safe() {
+            Ok(c) => c,
+            Err(_) => return,
+        };
+        for note_id in note_ids {
+            let tags_json: Option<String> = conn
+                .query_row(
+                    "SELECT tags FROM notes WHERE id = ?1 AND deleted_at IS NULL",
+                    params![note_id],
+                    |row| row.get(0),
+                )
+                .ok();
+            let Some(tags_json) = tags_json else { continue };
+            let mut tags: Vec<String> =
+                serde_json::from_str(&tags_json).unwrap_or_default();
+
+            let mut hits: u32 = 1;
+            tags.retain(|t| {
+                if let Some(val) = t.strip_prefix(TAG_HITS_PREFIX) {
+                    hits = val.parse::<u32>().unwrap_or(0) + 1;
+                    false
+                } else if t.starts_with(TAG_LAST_HIT_PREFIX) {
+                    false
+                } else {
+                    true
+                }
+            });
+            tags.push(format!("{}{}", TAG_HITS_PREFIX, hits));
+            tags.push(format!("{}{}", TAG_LAST_HIT_PREFIX, now_ms));
+
+            let new_tags_json = serde_json::to_string(&tags).unwrap_or_default();
+            if let Err(e) = conn.execute(
+                "UPDATE notes SET tags = ?1 WHERE id = ?2",
+                params![new_tags_json, note_id],
+            ) {
+                warn!("[Memory] Failed to record search hit for {}: {}", note_id, e);
+            }
+        }
+    }
+
+    /// 对搜索结果应用时间衰减（利用结果中携带的 updated_at，无额外查询）
+    pub fn apply_time_decay(&self, results: &mut Vec<MemorySearchResult>) {
+        let now = chrono::Utc::now();
+        let now_ms = now.timestamp_millis() as f64;
+        for r in results.iter_mut() {
+            let age_days = if let Some(ref ts) = r.updated_at {
+                if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(ts) {
+                    (now - dt.with_timezone(&chrono::Utc))
+                        .num_seconds()
+                        .max(0) as f64
+                        / 86400.0
+                } else if let Ok(ms) = ts.parse::<f64>() {
+                    ((now_ms - ms) / (1000.0 * 86400.0)).max(0.0)
+                } else {
+                    0.0
+                }
+            } else {
+                0.0
+            };
+            let decay = (0.5_f64).powf(age_days / TIME_DECAY_HALF_LIFE_DAYS);
+            r.score *= decay as f32;
+        }
+        results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
     }
 }
 

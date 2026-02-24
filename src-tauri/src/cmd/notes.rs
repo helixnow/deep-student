@@ -473,9 +473,7 @@ pub async fn notes_list_deleted(
         })
         .collect();
 
-    // 获取总数（简化：使用大 limit 查询）
-    let total_items = crate::vfs::VfsNoteRepo::list_deleted_notes(vfs_db, 100000, 0)
-        .map(|v| v.len() as i64)
+    let total_items = crate::vfs::VfsNoteRepo::count_deleted_notes(vfs_db)
         .unwrap_or(items.len() as i64);
 
     Ok(NotesListAdvancedResponse {

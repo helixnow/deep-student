@@ -309,15 +309,8 @@ pub async fn memory_write_smart(
         .await
         .map_err(|e| e.to_string())?;
 
-    // ★ P2-2 修复：smart write 后立即触发索引（仅当实际发生写入时）
-    if let Some(ref resource_id) = result.resource_id {
-        trigger_immediate_index(
-            Arc::clone(vfs_db.inner()),
-            Arc::clone(llm_manager.inner()),
-            Arc::clone(lance_store.inner()),
-            resource_id.clone(),
-        );
-    }
+    // write_smart 内部已通过 index_immediately 完成索引 + mark_indexed，
+    // 此处不再重复触发 trigger_immediate_index。
 
     Ok(result)
 }

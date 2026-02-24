@@ -334,6 +334,69 @@ export async function clearDefaultEmbeddingDimension(
   });
 }
 
+// ============================================================================
+// 数据透视 API：OCR 查看/清除、文本块查看
+// ============================================================================
+
+/** OCR 单页信息 */
+export interface OcrPageInfo {
+  pageIndex: number;
+  text: string;
+  charCount: number;
+  isFailed: boolean;
+}
+
+/** 资源 OCR 详情 */
+export interface ResourceOcrInfo {
+  resourceId: string;
+  resourceType: string;
+  hasOcr: boolean;
+  ocrText: string | null;
+  ocrTextLength: number;
+  extractedText: string | null;
+  extractedTextLength: number;
+  /** 系统选择的活跃来源: "ocr" | "extracted" | "none" */
+  activeSource: string;
+  ocrPages: OcrPageInfo[] | null;
+}
+
+/** 文本块信息 */
+export interface TextChunkInfo {
+  unitId: string;
+  unitIndex: number;
+  textContent: string | null;
+  textSource: string | null;
+  textState: string;
+  textChunkCount: number;
+  charCount: number;
+}
+
+/**
+ * 获取资源的 OCR 文本和提取文本详情
+ */
+export async function getResourceOcrInfo(resourceId: string): Promise<ResourceOcrInfo> {
+  console.log(LOG_PREFIX, 'getResourceOcrInfo:', resourceId);
+  return invoke<ResourceOcrInfo>('vfs_get_resource_ocr_info', { resourceId });
+}
+
+/**
+ * 清除资源的 OCR 数据（用于强制重新 OCR）
+ *
+ * 清除后资源索引状态会被重置为 pending，下次索引时重新触发 OCR
+ */
+export async function clearResourceOcr(resourceId: string): Promise<boolean> {
+  console.log(LOG_PREFIX, 'clearResourceOcr:', resourceId);
+  return invoke<boolean>('vfs_clear_resource_ocr', { resourceId });
+}
+
+/**
+ * 获取资源的文本块列表（数据透视）
+ */
+export async function getResourceTextChunks(resourceId: string): Promise<TextChunkInfo[]> {
+  console.log(LOG_PREFIX, 'getResourceTextChunks:', resourceId);
+  return invoke<TextChunkInfo[]>('vfs_get_resource_text_chunks', { resourceId });
+}
+
 // 导出所有 API
 export const vfsUnifiedIndexApi = {
   // Unit-based API
@@ -359,6 +422,10 @@ export const vfsUnifiedIndexApi = {
   setDefaultEmbeddingDimension,
   getDefaultEmbeddingDimension,
   clearDefaultEmbeddingDimension,
+  // 数据透视 API
+  getResourceOcrInfo,
+  clearResourceOcr,
+  getResourceTextChunks,
 };
 
 export default vfsUnifiedIndexApi;

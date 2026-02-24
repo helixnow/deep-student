@@ -54,6 +54,9 @@ import {
   RotateCcw,
   Workflow,
   MoreHorizontal,
+  Eye,
+  Eraser,
+  Layers,
 } from 'lucide-react';
 // Button 组件已替换为原生 button + Tailwind（Notion 风格）
 import { cn } from '@/lib/utils';
@@ -63,8 +66,13 @@ import {
   reindexResource,
   batchIndexPendingLegacy as batchIndexPending,
   listDimensions,
+  getResourceOcrInfo,
+  clearResourceOcr,
+  getResourceTextChunks,
   type ResourceIndexStatusSummary as IndexStatusSummary,
   type ResourceIndexStatus,
+  type ResourceOcrInfo,
+  type TextChunkInfo,
   type VfsEmbeddingDimension,
 } from '@/api/vfsUnifiedIndexApi';
 import {
@@ -216,6 +224,14 @@ export const IndexStatusView: React.FC = () => {
   // ========== 平滑进度动画 ==========
   const smoothProgressRef = useRef(0);
   const [smoothProgress, setSmoothProgress] = useState(0);
+
+  // ========== 数据透视状态 ==========
+  const [inspectingResourceId, setInspectingResourceId] = useState<string | null>(null);
+  const [inspectMode, setInspectMode] = useState<'ocr' | 'chunks' | null>(null);
+  const [ocrInfo, setOcrInfo] = useState<ResourceOcrInfo | null>(null);
+  const [textChunks, setTextChunks] = useState<TextChunkInfo[]>([]);
+  const [inspectLoading, setInspectLoading] = useState(false);
+  const [clearingOcr, setClearingOcr] = useState(false);
 
   // ========== 原生多模态索引状态 ==========
   const [mmIndexing, setMmIndexing] = useState(false);
@@ -511,6 +527,74 @@ export const IndexStatusView: React.FC = () => {
       });
     }
   }, [loadData]);
+
+  // ========== 数据透视：查看 OCR ==========
+  const handleInspectOcr = useCallback(async (resourceId: string) => {
+    setInspectingResourceId(resourceId);
+    setInspectMode('ocr');
+    setInspectLoading(true);
+    try {
+      const info = await getResourceOcrInfo(resourceId);
+      setOcrInfo(info);
+    } catch (err: unknown) {
+      debugLog.error('[IndexStatusView] getResourceOcrInfo failed:', err);
+      showGlobalNotification('error', '获取 OCR 信息失败', err instanceof Error ? err.message : '未知错误');
+      setInspectMode(null);
+      setInspectingResourceId(null);
+    } finally {
+      setInspectLoading(false);
+    }
+  }, []);
+
+  // ========== 数据透视：查看文本块 ==========
+  const handleInspectChunks = useCallback(async (resourceId: string) => {
+    setInspectingResourceId(resourceId);
+    setInspectMode('chunks');
+    setInspectLoading(true);
+    try {
+      const chunks = await getResourceTextChunks(resourceId);
+      setTextChunks(chunks);
+    } catch (err: unknown) {
+      debugLog.error('[IndexStatusView] getResourceTextChunks failed:', err);
+      showGlobalNotification('error', '获取文本块失败', err instanceof Error ? err.message : '未知错误');
+      setInspectMode(null);
+      setInspectingResourceId(null);
+    } finally {
+      setInspectLoading(false);
+    }
+  }, []);
+
+  // ========== 数据透视：清除 OCR 并重做 ==========
+  const handleClearOcrAndReindex = useCallback(async (resourceId: string) => {
+    setClearingOcr(true);
+    try {
+      await clearResourceOcr(resourceId);
+      showGlobalNotification('info', 'OCR 数据已清除，正在重新索引...');
+      setInspectMode(null);
+      setInspectingResourceId(null);
+      setOcrInfo(null);
+      try {
+        await reindexResource(resourceId);
+        showGlobalNotification('success', '重新 OCR 和索引完成');
+      } catch (reindexErr: unknown) {
+        debugLog.error('[IndexStatusView] reindex after OCR clear failed:', reindexErr);
+        showGlobalNotification('warning', 'OCR 已清除但重新索引失败，请手动点击重新索引按钮');
+      }
+      loadData();
+    } catch (err: unknown) {
+      debugLog.error('[IndexStatusView] clearResourceOcr failed:', err);
+      showGlobalNotification('error', '清除 OCR 失败', err instanceof Error ? err.message : '未知错误');
+    } finally {
+      setClearingOcr(false);
+    }
+  }, [loadData]);
+
+  const closeInspectPanel = useCallback(() => {
+    setInspectMode(null);
+    setInspectingResourceId(null);
+    setOcrInfo(null);
+    setTextChunks([]);
+  }, []);
 
   // ========== 批量重新索引（使用后端批量 API，带进度事件）==========
   const handleReindexAll = useCallback(async () => {
@@ -1275,6 +1359,44 @@ export const IndexStatusView: React.FC = () => {
                   </div>
                 </div>
               )}
+
+              {/* 数据透视操作按钮 */}
+              <div className="col-span-2 md:col-span-4 flex flex-wrap gap-2 pt-2 border-t border-border/30">
+                {showOcrStatus && (
+                  <NotionButton
+                    variant="outline"
+                    size="sm"
+                    onClick={(e: React.MouseEvent) => { e.stopPropagation(); handleInspectOcr(resource.resourceId); }}
+                    className="text-xs gap-1.5"
+                  >
+                    <Eye className="h-3.5 w-3.5" />
+                    查看 OCR 文本
+                  </NotionButton>
+                )}
+                {resource.textChunkCount > 0 && (
+                  <NotionButton
+                    variant="outline"
+                    size="sm"
+                    onClick={(e: React.MouseEvent) => { e.stopPropagation(); handleInspectChunks(resource.resourceId); }}
+                    className="text-xs gap-1.5"
+                  >
+                    <Layers className="h-3.5 w-3.5" />
+                    查看文本块 ({resource.textChunkCount})
+                  </NotionButton>
+                )}
+                {showOcrStatus && resource.hasOcr && (
+                  <NotionButton
+                    variant="outline"
+                    size="sm"
+                    onClick={(e: React.MouseEvent) => { e.stopPropagation(); handleClearOcrAndReindex(resource.resourceId); }}
+                    disabled={clearingOcr}
+                    className="text-xs gap-1.5 text-destructive hover:text-destructive"
+                  >
+                    {clearingOcr ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Eraser className="h-3.5 w-3.5" />}
+                    清除 OCR 并重做
+                  </NotionButton>
+                )}
+              </div>
             </div>
           </div>
         )}
@@ -1813,6 +1935,177 @@ export const IndexStatusView: React.FC = () => {
           </div>
         )}
       </CustomScrollArea>
+
+      {/* ========== 数据透视面板 ========== */}
+      {inspectMode && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={closeInspectPanel}>
+          <div
+            className="bg-background border rounded-xl shadow-2xl w-[90vw] max-w-3xl max-h-[80vh] flex flex-col animate-in fade-in-0 zoom-in-95"
+            onClick={(e: React.MouseEvent) => e.stopPropagation()}
+          >
+            {/* 面板头部 */}
+            <div className="flex items-center justify-between px-5 py-3 border-b shrink-0">
+              <div className="flex items-center gap-2">
+                {inspectMode === 'ocr' ? <Eye className="h-4 w-4 text-primary" /> : <Layers className="h-4 w-4 text-primary" />}
+                <h3 className="font-semibold text-sm">
+                  {inspectMode === 'ocr' ? 'OCR 文本 / 提取文本' : '文本块详情'}
+                </h3>
+                <span className="text-xs text-muted-foreground font-mono">{inspectingResourceId?.slice(0, 12)}...</span>
+              </div>
+              <NotionButton variant="ghost" size="icon" iconOnly onClick={closeInspectPanel} className="h-7 w-7">
+                <X className="h-4 w-4" />
+              </NotionButton>
+            </div>
+
+            {/* 面板内容 */}
+            <CustomScrollArea className="flex-1 min-h-0">
+              <div className="p-5">
+                {inspectLoading ? (
+                  <div className="flex items-center justify-center py-12">
+                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                  </div>
+                ) : inspectMode === 'ocr' && ocrInfo ? (
+                  <div className="space-y-4">
+                    {/* 来源对比概览 */}
+                    <div className="grid grid-cols-3 gap-3 text-xs">
+                      <div className={cn('p-3 rounded-lg border', ocrInfo.activeSource === 'ocr' ? 'border-primary bg-primary/5' : 'border-border/50')}>
+                        <div className="text-muted-foreground mb-1">OCR 文本</div>
+                        <div className="font-semibold tabular-nums">{ocrInfo.ocrTextLength.toLocaleString()} 字符</div>
+                        {ocrInfo.activeSource === 'ocr' && <div className="text-primary text-[10px] mt-1">✓ 当前使用</div>}
+                      </div>
+                      <div className={cn('p-3 rounded-lg border', ocrInfo.activeSource === 'extracted' ? 'border-primary bg-primary/5' : 'border-border/50')}>
+                        <div className="text-muted-foreground mb-1">提取文本</div>
+                        <div className="font-semibold tabular-nums">{ocrInfo.extractedTextLength.toLocaleString()} 字符</div>
+                        {ocrInfo.activeSource === 'extracted' && <div className="text-primary text-[10px] mt-1">✓ 当前使用</div>}
+                      </div>
+                      <div className="p-3 rounded-lg border border-border/50">
+                        <div className="text-muted-foreground mb-1">选择逻辑</div>
+                        <div className="font-medium text-[11px]">
+                          {ocrInfo.activeSource === 'none' ? '无内容' : ocrInfo.activeSource === 'ocr' ? 'OCR 优先' : '回退到提取文本'}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* 逐页 OCR 结果（PDF） */}
+                    {ocrInfo.ocrPages && ocrInfo.ocrPages.length > 0 && (
+                      <div>
+                        <div className="text-xs font-medium text-muted-foreground mb-2">
+                          逐页 OCR 结果 ({ocrInfo.ocrPages.length} 页)
+                        </div>
+                        <div className="space-y-2 max-h-[40vh] overflow-y-auto">
+                          {ocrInfo.ocrPages.map((page) => (
+                            <div key={page.pageIndex} className={cn('border rounded-lg', page.isFailed ? 'border-red-300 bg-red-50/50 dark:border-red-800 dark:bg-red-900/10' : 'border-border/50')}>
+                              <div className={cn('flex items-center justify-between px-3 py-1.5 text-xs border-b', page.isFailed ? 'border-red-200 dark:border-red-800' : 'border-border/30')}>
+                                <span className="font-medium">第 {page.pageIndex + 1} 页</span>
+                                <span className={cn('tabular-nums', page.isFailed ? 'text-red-500' : 'text-muted-foreground')}>
+                                  {page.isFailed ? 'OCR 失败' : `${page.charCount} 字符`}
+                                </span>
+                              </div>
+                              {!page.isFailed && page.text && (
+                                <pre className="px-3 py-2 text-xs text-foreground/80 whitespace-pre-wrap break-words max-h-32 overflow-y-auto font-sans leading-relaxed">
+                                  {page.text}
+                                </pre>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* 图片/单文件 OCR 文本 */}
+                    {!ocrInfo.ocrPages && ocrInfo.ocrText && (
+                      <div>
+                        <div className="text-xs font-medium text-muted-foreground mb-2">OCR 文本内容</div>
+                        <pre className="border rounded-lg px-3 py-2 text-xs whitespace-pre-wrap break-words max-h-[40vh] overflow-y-auto font-sans leading-relaxed bg-muted/30">
+                          {ocrInfo.ocrText}
+                        </pre>
+                      </div>
+                    )}
+
+                    {/* 提取文本 */}
+                    {ocrInfo.extractedText && (
+                      <div>
+                        <div className="text-xs font-medium text-muted-foreground mb-2">提取文本内容</div>
+                        <pre className="border rounded-lg px-3 py-2 text-xs whitespace-pre-wrap break-words max-h-[40vh] overflow-y-auto font-sans leading-relaxed bg-muted/30">
+                          {ocrInfo.extractedText}
+                        </pre>
+                      </div>
+                    )}
+
+                    {!ocrInfo.ocrText && !ocrInfo.extractedText && !ocrInfo.ocrPages && (
+                      <div className="text-center py-8 text-muted-foreground text-sm">
+                        此资源没有 OCR 文本或提取文本
+                      </div>
+                    )}
+
+                    {/* 操作区 */}
+                    {ocrInfo.hasOcr && (
+                      <div className="flex justify-end pt-2 border-t">
+                        <NotionButton
+                          variant="outline"
+                          size="sm"
+                          onClick={() => inspectingResourceId && handleClearOcrAndReindex(inspectingResourceId)}
+                          disabled={clearingOcr}
+                          className="text-xs gap-1.5 text-destructive hover:text-destructive"
+                        >
+                          {clearingOcr ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Eraser className="h-3.5 w-3.5" />}
+                          清除 OCR 数据并重新识别
+                        </NotionButton>
+                      </div>
+                    )}
+                  </div>
+                ) : inspectMode === 'chunks' && textChunks.length > 0 ? (
+                  <div className="space-y-3">
+                    <div className="text-xs text-muted-foreground">
+                      共 {textChunks.length} 个索引单元
+                    </div>
+                    {textChunks.map((chunk) => (
+                      <div key={chunk.unitId} className="border rounded-lg border-border/50">
+                        <div className="flex items-center justify-between px-3 py-1.5 text-xs border-b border-border/30 bg-muted/20">
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium">Unit #{chunk.unitIndex}</span>
+                            {chunk.textSource && (
+                              <span className={cn(
+                                'px-1.5 py-0.5 rounded text-[10px] font-medium',
+                                chunk.textSource === 'ocr' ? 'bg-teal-500/10 text-teal-600' : 'bg-primary/10 text-primary'
+                              )}>
+                                {chunk.textSource === 'ocr' ? 'OCR' : '提取文本'}
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2 text-muted-foreground">
+                            <span className="tabular-nums">{chunk.charCount} 字符</span>
+                            <span className={cn(
+                              'px-1.5 py-0.5 rounded text-[10px]',
+                              chunk.textState === 'indexed' ? 'bg-emerald-500/10 text-emerald-600' :
+                              chunk.textState === 'pending' ? 'bg-warning/10 text-warning' :
+                              'bg-muted text-muted-foreground'
+                            )}>
+                              {chunk.textState}
+                            </span>
+                          </div>
+                        </div>
+                        {chunk.textContent && (
+                          <pre className="px-3 py-2 text-xs whitespace-pre-wrap break-words max-h-40 overflow-y-auto font-sans leading-relaxed text-foreground/80">
+                            {chunk.textContent}
+                          </pre>
+                        )}
+                        {!chunk.textContent && (
+                          <div className="px-3 py-2 text-xs text-muted-foreground italic">无文本内容</div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-8 text-muted-foreground text-sm">
+                    没有找到数据
+                  </div>
+                )}
+              </div>
+            </CustomScrollArea>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

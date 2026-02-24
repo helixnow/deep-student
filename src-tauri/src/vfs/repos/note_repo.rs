@@ -1001,6 +1001,17 @@ impl VfsNoteRepo {
         Ok(notes)
     }
 
+    /// 统计已删除的笔记数量
+    pub fn count_deleted_notes(db: &VfsDatabase) -> VfsResult<i64> {
+        let conn = db.get_conn_safe()?;
+        let count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM notes WHERE deleted_at IS NOT NULL",
+            [],
+            |row| row.get(0),
+        )?;
+        Ok(count)
+    }
+
     /// 清空回收站（永久删除所有已删除的笔记）
     ///
     pub fn purge_deleted_notes(db: &VfsDatabase) -> VfsResult<usize> {
@@ -1155,6 +1166,27 @@ impl VfsNoteRepo {
             "UPDATE folder_items SET deleted_at = ?1, updated_at = ?2 WHERE item_type = 'note' AND item_id = ?3 AND deleted_at IS NULL",
             params![now_str, now_ms, note_id],
         )?;
+
+        // 3. 标记索引为 disabled，防止搜索命中已删除内容
+        let resource_id: Option<String> = conn
+            .query_row(
+                "SELECT resource_id FROM notes WHERE id = ?1",
+                params![note_id],
+                |row| row.get(0),
+            )
+            .optional()?;
+        if let Some(ref rid) = resource_id {
+            let disabled_count = conn.execute(
+                "UPDATE vfs_index_units SET text_state = 'disabled', mm_state = 'disabled' WHERE resource_id = ?1",
+                params![rid],
+            ).unwrap_or(0);
+            if disabled_count > 0 {
+                info!(
+                    "[VFS::NoteRepo] Disabled {} index units for soft-deleted note {} (resource={})",
+                    disabled_count, note_id, rid
+                );
+            }
+        }
 
         debug!(
             "[VFS::NoteRepo] Soft deleted note {} and its folder_items",
@@ -1335,10 +1367,9 @@ mod tests {
     }
 
     #[test]
-    fn test_update_note_creates_version() {
+    fn test_update_note_changes_resource_on_content_change() {
         let (_temp_dir, db) = setup_test_db();
 
-        // 创建笔记
         let note = VfsNoteRepo::create_note(
             &db,
             VfsCreateNoteParams {
@@ -1351,7 +1382,6 @@ mod tests {
 
         let original_resource_id = note.resource_id.clone();
 
-        // 更新内容（应该创建新版本）
         let updated_note = VfsNoteRepo::update_note(
             &db,
             &note.id,
@@ -1364,27 +1394,23 @@ mod tests {
         )
         .expect("Update note should succeed");
 
-        // 验证 resource_id 变化
         assert_ne!(
             updated_note.resource_id, original_resource_id,
             "Resource ID should change when content changes"
         );
         assert_eq!(updated_note.title, "新标题");
+        assert_eq!(updated_note.tags, vec!["v2"]);
 
-        // 验证版本历史
-        let versions =
-            VfsNoteRepo::get_versions(&db, &note.id).expect("Get versions should succeed");
-
-        assert_eq!(versions.len(), 1, "Should have one version");
-        assert_eq!(versions[0].resource_id, original_resource_id);
-        assert_eq!(versions[0].title, "原始标题");
+        let content = VfsNoteRepo::get_note_content(&db, &note.id)
+            .expect("Get content should succeed")
+            .expect("Content should exist");
+        assert_eq!(content, "新内容");
     }
 
     #[test]
-    fn test_update_note_no_version_if_same_content() {
+    fn test_update_note_keeps_resource_when_content_unchanged() {
         let (_temp_dir, db) = setup_test_db();
 
-        // 创建笔记
         let note = VfsNoteRepo::create_note(
             &db,
             VfsCreateNoteParams {
@@ -1397,12 +1423,11 @@ mod tests {
 
         let original_resource_id = note.resource_id.clone();
 
-        // 只更新标题，不更新内容
         let updated_note = VfsNoteRepo::update_note(
             &db,
             &note.id,
             VfsUpdateNoteParams {
-                content: None, // 不更新内容
+                content: None,
                 title: Some("新标题".to_string()),
                 tags: None,
                 expected_updated_at: None,
@@ -1410,13 +1435,16 @@ mod tests {
         )
         .expect("Update note should succeed");
 
-        // resource_id 应该不变
-        assert_eq!(updated_note.resource_id, original_resource_id);
+        assert_eq!(
+            updated_note.resource_id, original_resource_id,
+            "Resource ID should NOT change when only title changes"
+        );
+        assert_eq!(updated_note.title, "新标题");
 
-        // 不应该有版本历史
-        let versions =
-            VfsNoteRepo::get_versions(&db, &note.id).expect("Get versions should succeed");
-        assert!(versions.is_empty(), "Should have no versions");
+        let content = VfsNoteRepo::get_note_content(&db, &note.id)
+            .expect("Get content should succeed")
+            .expect("Content should exist");
+        assert_eq!(content, "内容", "Content should remain unchanged");
     }
 
     #[test]

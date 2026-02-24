@@ -37,13 +37,25 @@ pub fn inject_tool_schemas(
     let count = schemas.len();
 
     if count > 0 {
-        llm_context.insert(
-            "custom_tools".into(),
-            serde_json::to_value(schemas).unwrap_or(Value::Null),
-        );
+        let schemas_json = serde_json::to_value(&schemas).unwrap_or(Value::Null);
+        let schemas_str = serde_json::to_string(&schemas_json).unwrap_or_default();
+        let estimated_tokens = schemas_str.len() / 4;
+        const TOOL_SCHEMA_TOKEN_WARNING_THRESHOLD: usize = 4000;
+
+        if estimated_tokens > TOOL_SCHEMA_TOKEN_WARNING_THRESHOLD {
+            log::warn!(
+                "[ToolInjector] Tool schemas occupy ~{} tokens ({} chars), exceeding warning threshold of {}. Consider reducing active tools.",
+                estimated_tokens,
+                schemas_str.len(),
+                TOOL_SCHEMA_TOKEN_WARNING_THRESHOLD
+            );
+        }
+
+        llm_context.insert("custom_tools".into(), schemas_json);
         log::info!(
-            "[ToolInjector] Injected {} tool schemas: {:?}",
+            "[ToolInjector] Injected {} tool schemas (~{} tokens): {:?}",
             count,
+            estimated_tokens,
             tool_ids
         );
     } else {

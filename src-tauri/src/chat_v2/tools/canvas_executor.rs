@@ -933,10 +933,14 @@ impl ToolExecutor for CanvasToolExecutor {
         }
     }
 
-    fn sensitivity_level(&self, _tool_name: &str) -> ToolSensitivity {
-        // ★ 2026-02-09: 全部降为 Low
-        // 理由：用户主动让 AI 编辑笔记，note_set/note_replace 是预期行为，不应打断写作流
-        ToolSensitivity::Low
+    fn sensitivity_level(&self, tool_name: &str) -> ToolSensitivity {
+        let stripped = strip_canvas_builtin_prefix(tool_name);
+        match stripped {
+            canvas_tool_names::NOTE_SET | canvas_tool_names::NOTE_REPLACE => {
+                ToolSensitivity::Medium
+            }
+            _ => ToolSensitivity::Low,
+        }
     }
 
     fn name(&self) -> &'static str {
@@ -982,7 +986,6 @@ mod tests {
     fn test_sensitivity_level() {
         let executor = CanvasToolExecutor::new();
 
-        // ★ 2026-02-09: 全部 Low
         assert_eq!(
             executor.sensitivity_level("note_read"),
             ToolSensitivity::Low
@@ -1005,9 +1008,9 @@ mod tests {
         );
         assert_eq!(
             executor.sensitivity_level("note_replace"),
-            ToolSensitivity::Low
+            ToolSensitivity::Medium
         );
-        assert_eq!(executor.sensitivity_level("note_set"), ToolSensitivity::Low);
+        assert_eq!(executor.sensitivity_level("note_set"), ToolSensitivity::Medium);
 
         // builtin- 前缀格式
         assert_eq!(
@@ -1016,7 +1019,7 @@ mod tests {
         );
         assert_eq!(
             executor.sensitivity_level("builtin-note_set"),
-            ToolSensitivity::Low
+            ToolSensitivity::Medium
         );
         assert_eq!(
             executor.sensitivity_level("builtin-note_list"),

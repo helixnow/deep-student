@@ -576,7 +576,10 @@ impl ChatV2Pipeline {
             max_tokens_override,
         );
 
-        let call_result =
+        const LLM_MAX_RETRIES: u32 = 2;
+        const LLM_RETRY_DELAY_MS: u64 = 1000;
+
+        let mut call_result =
             match timeout(Duration::from_secs(LLM_STREAM_TIMEOUT_SECS), llm_future).await {
                 Ok(result) => result,
                 Err(_) => {
@@ -591,6 +594,60 @@ impl ChatV2Pipeline {
                     )));
                 }
             };
+
+        // 瞬时网络错误自动重试（最多 LLM_MAX_RETRIES 次）
+        if call_result.is_err() {
+            let err_str = format!("{:?}", call_result.as_ref().err().unwrap());
+            let is_transient = err_str.contains("connection")
+                || err_str.contains("timeout")
+                || err_str.contains("reset")
+                || err_str.contains("broken pipe")
+                || err_str.contains("connect")
+                || err_str.contains("temporarily unavailable")
+                || err_str.contains("status: 429")
+                || err_str.contains("status: 502")
+                || err_str.contains("status: 503")
+                || err_str.contains("status: 504");
+
+            if is_transient && !ctx.cancel_token.as_ref().map(|t| t.is_cancelled()).unwrap_or(false) {
+                for retry in 1..=LLM_MAX_RETRIES {
+                    let delay = LLM_RETRY_DELAY_MS * (1 << (retry - 1));
+                    log::warn!(
+                        "[ChatV2::pipeline] Transient LLM error, retry {}/{} after {}ms: {}",
+                        retry, LLM_MAX_RETRIES, delay, err_str
+                    );
+                    tokio::time::sleep(Duration::from_millis(delay)).await;
+
+                    if ctx.cancel_token.as_ref().map(|t| t.is_cancelled()).unwrap_or(false) {
+                        break;
+                    }
+
+                    // 重新注册 hooks 以清理首次失败调用的累积状态
+                    self.llm_manager.unregister_stream_hooks(&stream_event).await;
+                    self.llm_manager.register_stream_hooks(&stream_event, adapter.clone()).await;
+
+                    let retry_future = self.llm_manager.call_unified_model_2_stream(
+                        &llm_context, &messages, "", true, enable_thinking,
+                        Some("chat_v2"), emitter.window(), &stream_event,
+                        None, disable_tools, max_input_tokens_override,
+                        model_override.clone(), temp_override,
+                        system_prompt_override.clone(), top_p_override,
+                        frequency_penalty_override, presence_penalty_override,
+                        max_tokens_override,
+                    );
+
+                    call_result = match timeout(Duration::from_secs(LLM_STREAM_TIMEOUT_SECS), retry_future).await {
+                        Ok(result) => result,
+                        Err(_) => continue,
+                    };
+
+                    if call_result.is_ok() {
+                        log::info!("[ChatV2::pipeline] LLM retry {} succeeded", retry);
+                        break;
+                    }
+                }
+            }
+        }
 
         // 注销 hooks
         self.llm_manager

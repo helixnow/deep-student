@@ -5,6 +5,7 @@ import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 // ★ DSTU API 导入 (Prompt 8)
 import { dstu, pathUtils } from "@/dstu";
 import type { DstuNode } from "@/dstu/types";
+import { dstuNodeToNoteItem } from "@/dstu/adapters/notesDstuAdapter";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { useTranslation } from "react-i18next";
 import { showGlobalNotification } from "../UnifiedNotification";
@@ -51,25 +52,6 @@ import {
 } from "@/services/resourceSyncService";
 
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
-
-// ============================================================================
-// ★ DSTU 兼容层 (Prompt 8)
-// ============================================================================
-
-/**
- * 将 DstuNode 转换为 NoteItem（兼容层）
- */
-function dstuNodeToNoteItem(node: DstuNode): NoteItem {
-    return {
-        id: node.id,
-        title: node.name,
-        content_md: '', // 内容需要单独加载
-        tags: (node.metadata?.tags as string[]) || [],
-        created_at: new Date(node.createdAt).toISOString(),
-        updated_at: new Date(node.updatedAt).toISOString(),
-        is_favorite: (node.metadata?.isFavorite as boolean) || false,
-    };
-}
 
 // ============================================================================
 // 学习资源管理器 - 内容获取结果类型
@@ -548,7 +530,7 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                 variant: "destructive",
             });
         }
-    }, [active?.id, loadedContentIds, notes, notify, t]);
+    }, [active?.id, loadedContentIds, notify, t]);
 
     // 🔧 修复：强制刷新笔记内容（用于后端 Canvas 工具更新后刷新前端显示）
     const forceRefreshNoteContent = useCallback(async (noteId: string) => {
@@ -596,7 +578,7 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             reportError(error, t('notes:errors.force_refresh_content'));
             console.error('[Canvas] Failed to refresh note content:', error.toUserMessage());
         }
-    }, [active?.id, notes]);
+    }, [active?.id]);
 
     // 🔧 修复：监听后端 Canvas 工具更新事件
     useEffect(() => {

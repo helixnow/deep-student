@@ -39,17 +39,8 @@ export interface NotesMentionSearchResult {
   irec_cards: NotesMentionIrecCardHit[];
 }
 
-export interface NoteOutgoingLink {
-  target: string;
-  target_note_id?: string | null;
-}
-
-export interface NoteLinksResult {
-  outgoing: NoteOutgoingLink[];
-  external: string[];
-  outgoing_truncated?: boolean;
-  external_truncated?: boolean;
-}
+// ★ 2026-02 清理：NoteOutgoingLink, NoteLinksResult 已移除
+// note_links 系统在 VFS 模式下不维护，getLinks/listVectorStatus 后端命令不存在
 
 export const NotesAPI = {
   // ★ 2026-01 清理：RAG Operations 已移除，VFS RAG 完全替代
@@ -58,13 +49,10 @@ export const NotesAPI = {
   // ragGetStatus, ragListSubjectStatuses 均已废弃
 
   async saveAsset(noteId: string, base64Data: string, defaultExt?: string): Promise<{ absolute_path: string; relative_path: string }>{
-    // 同时传递多种参数命名以兼容不同后端版本
     return await invoke<any>('notes_save_asset', { 
-      note_id: noteId, 
+      subject: '_global',
       noteId,
-      base64_data: base64Data,
-      base64Data,  // 后端可能期望 camelCase
-      default_ext: defaultExt,
+      base64Data,
       defaultExt,
     });
   },
@@ -74,21 +62,9 @@ export const NotesAPI = {
   async listAssets(noteId: string): Promise<Array<{ absolute_path: string; relative_path: string }>> {
     return await invoke<any[]>('notes_list_assets', { subject: '_global', noteId }) as any;
   },
-  async getLinks(noteId: string): Promise<NoteLinksResult> {
-    return await invoke<any>('notes_get_links', { noteId }) as any;
-  },
 
-  async listVectorStatus(): Promise<Record<string, { last_upsert_at: number | null; last_hash?: string | null }>> {
-    const rows = await invoke<Array<{ note_id: string; last_upsert_at: number | null; last_hash?: string | null }>>('notes_vector_status_list', {});
-    const map: Record<string, { last_upsert_at: number | null; last_hash?: string | null }> = {};
-    (rows || []).forEach((item) => {
-      map[item.note_id] = {
-        last_upsert_at: item.last_upsert_at ?? null,
-        last_hash: item.last_hash ?? undefined,
-      };
-    });
-    return map;
-  },
+  // ★ 2026-02 清理：getLinks (notes_get_links) 已移除，后端命令不存在
+  // ★ 2026-02 清理：listVectorStatus (notes_vector_status_list) 已移除，后端命令不存在
 
   async deleteAsset(relativePath: string): Promise<boolean> {
     // Tauri v2 将 snake_case 参数名转换为 camelCase
@@ -270,11 +246,7 @@ export const NotesAPI = {
     noteId: string,
     section?: string
   ): Promise<string> {
-    return await invoke<string>('canvas_note_read', {
-      note_id: noteId,
-      noteId,
-      section,
-    });
+    return await invoke<string>('canvas_note_read', { noteId, section });
   },
 
   /**
@@ -288,12 +260,7 @@ export const NotesAPI = {
     content: string,
     section?: string
   ): Promise<void> {
-    await invoke<void>('canvas_note_append', {
-      note_id: noteId,
-      noteId,
-      content,
-      section,
-    });
+    await invoke<void>('canvas_note_append', { noteId, content, section });
   },
 
   /**
@@ -310,14 +277,7 @@ export const NotesAPI = {
     replace: string,
     isRegex?: boolean
   ): Promise<number> {
-    return await invoke<number>('canvas_note_replace', {
-      note_id: noteId,
-      noteId,
-      search,
-      replace,
-      is_regex: isRegex,
-      isRegex,
-    });
+    return await invoke<number>('canvas_note_replace', { noteId, search, replace, isRegex });
   },
 
   /**
@@ -329,10 +289,6 @@ export const NotesAPI = {
     noteId: string,
     content: string
   ): Promise<void> {
-    await invoke<void>('canvas_note_set', {
-      note_id: noteId,
-      noteId,
-      content,
-    });
+    await invoke<void>('canvas_note_set', { noteId, content });
   },
 };

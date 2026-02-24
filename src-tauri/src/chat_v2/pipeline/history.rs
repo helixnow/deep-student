@@ -346,6 +346,14 @@ impl ChatV2Pipeline {
         // 技能内容通过 role: tool 投递，模型遵循度远高于 user message 中的 XML 块
         inject_synthetic_load_skills(&mut chat_history, &ctx.options);
 
+        // 🔧 Token 预算裁剪：在条数限制基础上，按 token 预算从最旧消息开始移除
+        let max_tokens = ctx
+            .options
+            .context_limit
+            .map(|v| (v as usize).min(DEFAULT_MAX_HISTORY_TOKENS))
+            .unwrap_or(DEFAULT_MAX_HISTORY_TOKENS);
+        trim_history_by_token_budget(&mut chat_history, max_tokens);
+
         ctx.chat_history = chat_history;
         Ok(())
     }

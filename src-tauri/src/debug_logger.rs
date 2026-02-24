@@ -56,7 +56,9 @@ pub struct DebugLogger {
     log_queue: Arc<Mutex<Vec<LogEntry>>>,
 }
 
-impl DebugLogger {
+    const MAX_LOG_AGE_DAYS: i64 = 7;
+    const MAX_LOG_FILE_SIZE_BYTES: u64 = 10 * 1024 * 1024; // 10MB
+
     pub fn new(app_data_dir: PathBuf) -> Self {
         let log_dir = app_data_dir.join("logs");
 
@@ -71,9 +73,65 @@ impl DebugLogger {
             error!("Failed to create debug log directory: {}", e);
         }
 
-        Self {
+        let logger = Self {
             log_dir,
             log_queue: Arc::new(Mutex::new(Vec::new())),
+        };
+
+        logger.cleanup_old_logs();
+
+        logger
+    }
+
+    /// 清理过期和超大日志文件
+    fn cleanup_old_logs(&self) {
+        let mut removed_count = 0u32;
+        let mut removed_bytes = 0u64;
+
+        for subdir in &["frontend", "backend", "debug"] {
+            let dir = self.log_dir.join(subdir);
+            let entries = match std::fs::read_dir(&dir) {
+                Ok(e) => e,
+                Err(_) => continue,
+            };
+
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if !path.is_file() {
+                    continue;
+                }
+
+                let should_remove = match entry.metadata() {
+                    Ok(meta) => {
+                        let modified = meta.modified().ok().and_then(|t| {
+                            let duration = t.elapsed().ok()?;
+                            Some(duration.as_secs() > (Self::MAX_LOG_AGE_DAYS as u64 * 86400))
+                        }).unwrap_or(false);
+
+                        let oversized = meta.len() > Self::MAX_LOG_FILE_SIZE_BYTES;
+
+                        modified || oversized
+                    }
+                    Err(_) => false,
+                };
+
+                if should_remove {
+                    if let Ok(meta) = entry.metadata() {
+                        removed_bytes += meta.len();
+                    }
+                    if std::fs::remove_file(&path).is_ok() {
+                        removed_count += 1;
+                    }
+                }
+            }
+        }
+
+        if removed_count > 0 {
+            info!(
+                "[DebugLogger] Cleaned up {} old/oversized log files ({:.1} MB)",
+                removed_count,
+                removed_bytes as f64 / (1024.0 * 1024.0)
+            );
         }
     }
 

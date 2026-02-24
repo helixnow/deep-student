@@ -560,6 +560,12 @@ impl ChatV2Pipeline {
         let mut chat_history = self.load_variant_chat_history(&session_id).await?;
         // 🆕 2026-02-22: 为已激活的默认技能自动注入合成 load_skills 工具交互
         inject_synthetic_load_skills(&mut chat_history, &options);
+        // 🔧 Token 预算裁剪（对齐单变体路径）
+        let max_tokens = options
+            .context_limit
+            .map(|v| (v as usize).min(DEFAULT_MAX_HISTORY_TOKENS))
+            .unwrap_or(DEFAULT_MAX_HISTORY_TOKENS);
+        trim_history_by_token_budget(&mut chat_history, max_tokens);
 
         // 构建当前用户消息
         let current_user_message = self.build_variant_user_message(&user_content, &attachments);
@@ -757,6 +763,12 @@ impl ChatV2Pipeline {
         let mut chat_history = self.load_variant_chat_history(&session_id).await?;
         // 🆕 2026-02-22: 为已激活的默认技能自动注入合成 load_skills 工具交互
         inject_synthetic_load_skills(&mut chat_history, &options);
+        // 🔧 Token 预算裁剪（对齐单变体路径）
+        let max_tokens_budget = options
+            .context_limit
+            .map(|v| (v as usize).min(DEFAULT_MAX_HISTORY_TOKENS))
+            .unwrap_or(DEFAULT_MAX_HISTORY_TOKENS);
+        trim_history_by_token_budget(&mut chat_history, max_tokens_budget);
         let current_user_message = self.build_variant_user_message(&user_content, &attachments);
 
         let enable_thinking = options.enable_thinking.unwrap_or(true);
@@ -1154,13 +1166,30 @@ impl ChatV2Pipeline {
         options: &SendOptions,
         shared_context: &SharedContext,
     ) -> String {
-        // 构建 Canvas 笔记信息（如果有）
         let canvas_note = self.build_canvas_note_info_from_options(options).await;
-        prompt_builder::build_system_prompt_with_shared_context(
-            options,
-            shared_context,
-            canvas_note,
-        )
+
+        let user_profile = self.load_user_profile_for_variant().await;
+
+        prompt_builder::PromptBuilder::new(options.system_prompt_override.as_deref())
+            .with_shared_context(shared_context)
+            .with_options(options)
+            .with_canvas_note(canvas_note)
+            .with_user_profile(user_profile)
+            .build()
+    }
+
+    async fn load_user_profile_for_variant(&self) -> Option<String> {
+        use crate::memory::MemoryService;
+        use crate::vfs::lance_store::VfsLanceStore;
+
+        let vfs_db = self.vfs_db.as_ref()?;
+        let lance_store = VfsLanceStore::new(vfs_db.clone()).ok().map(std::sync::Arc::new)?;
+        let svc = MemoryService::new(
+            vfs_db.clone(),
+            lance_store,
+            self.llm_manager.clone(),
+        );
+        svc.get_profile_summary().ok().flatten()
     }
 
     /// 根据 SendOptions 构建 Canvas 笔记信息

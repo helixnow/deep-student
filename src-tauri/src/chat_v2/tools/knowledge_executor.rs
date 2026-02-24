@@ -88,36 +88,56 @@ impl KnowledgeExecutor {
             .unwrap_or(conversation_id)
             .to_string();
 
-        // 保存到待处理记忆候选表（如果有主数据库）
+        // 保存到待处理记忆候选表（如果有主数据库），使用事务保证原子性
         let mut saved_count = 0usize;
         if !candidates.is_empty() {
             if let Some(db) = &ctx.main_db {
                 match db.get_conn_safe() {
                     Ok(conn) => {
-                        // 清除旧的待处理候选
-                        if let Err(e) = conn.execute(
-                            "DELETE FROM pending_memory_candidates WHERE conversation_id = ?1 AND status = 'pending'",
-                            rusqlite::params![&normalized_id],
-                        ) {
-                            log::warn!("[knowledge_extract] 清除旧候选失败: {}", e);
-                        }
-
-                        // 插入新候选
-                        for candidate in &candidates {
-                            match conn.execute(
-                                "INSERT INTO pending_memory_candidates (conversation_id, subject, content, category, origin, user_edited) \
-                                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-                                rusqlite::params![
-                                    &normalized_id,
-                                    "通用",
-                                    &candidate.content,
-                                    &candidate.category,
-                                    "tool_extract",
-                                    0
-                                ],
+                        if let Err(e) = conn.execute("BEGIN", []) {
+                            log::warn!("[knowledge_extract] 开启事务失败: {}", e);
+                        } else {
+                            // 清除旧的待处理候选
+                            if let Err(e) = conn.execute(
+                                "DELETE FROM pending_memory_candidates WHERE conversation_id = ?1 AND status = 'pending'",
+                                rusqlite::params![&normalized_id],
                             ) {
-                                Ok(_) => saved_count += 1,
-                                Err(e) => log::warn!("[knowledge_extract] 保存候选失败: {}", e),
+                                log::warn!("[knowledge_extract] 清除旧候选失败，回滚: {}", e);
+                                let _ = conn.execute("ROLLBACK", []);
+                            } else {
+                                // 插入新候选
+                                let mut insert_failed = false;
+                                for candidate in &candidates {
+                                    match conn.execute(
+                                        "INSERT INTO pending_memory_candidates (conversation_id, subject, content, category, origin, user_edited) \
+                                         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                                        rusqlite::params![
+                                            &normalized_id,
+                                            "通用",
+                                            &candidate.content,
+                                            &candidate.category,
+                                            "tool_extract",
+                                            0
+                                        ],
+                                    ) {
+                                        Ok(_) => saved_count += 1,
+                                        Err(e) => {
+                                            log::warn!("[knowledge_extract] 保存候选失败，回滚: {}", e);
+                                            let _ = conn.execute("ROLLBACK", []);
+                                            insert_failed = true;
+                                            saved_count = 0;
+                                            break;
+                                        }
+                                    }
+                                }
+
+                                if !insert_failed {
+                                    if let Err(e) = conn.execute("COMMIT", []) {
+                                        log::warn!("[knowledge_extract] 提交事务失败: {}", e);
+                                        let _ = conn.execute("ROLLBACK", []);
+                                        saved_count = 0;
+                                    }
+                                }
                             }
                         }
 
@@ -132,8 +152,8 @@ impl KnowledgeExecutor {
             }
         }
 
-        println!(
-            "✅ [knowledge_extract] 提取完成: conversation_id={}, candidates={}",
+        log::info!(
+            "[knowledge_extract] 提取完成: conversation_id={}, candidates={}",
             normalized_id,
             candidates.len()
         );

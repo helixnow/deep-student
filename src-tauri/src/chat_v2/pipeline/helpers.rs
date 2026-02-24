@@ -297,3 +297,46 @@ pub(crate) fn inject_synthetic_load_skills(
     chat_history.insert(1, tool_msg);
 }
 
+/// 启发式估算文本的 token 数量（支持中英混排）
+pub(crate) fn estimate_token_count(text: &str) -> usize {
+    let mut cjk_chars = 0usize;
+    let mut ascii_chars = 0usize;
+    for c in text.chars() {
+        if c.is_ascii() {
+            ascii_chars += 1;
+        } else {
+            cjk_chars += 1;
+        }
+    }
+    let tokens = (cjk_chars as f64 * CHARS_PER_TOKEN_CJK)
+        + (ascii_chars as f64 * CHARS_PER_TOKEN_ASCII);
+    tokens.ceil() as usize
+}
+
+/// 按 token 预算裁剪聊天历史（从最旧消息开始移除）
+pub(crate) fn trim_history_by_token_budget(
+    history: &mut Vec<LegacyChatMessage>,
+    max_tokens: usize,
+) {
+    let mut total_tokens: usize = history
+        .iter()
+        .map(|m| estimate_token_count(&m.content))
+        .sum();
+
+    let original_len = history.len();
+    while total_tokens > max_tokens && history.len() > 2 {
+        let removed = history.remove(0);
+        total_tokens = total_tokens.saturating_sub(estimate_token_count(&removed.content));
+    }
+
+    if history.len() < original_len {
+        log::info!(
+            "[ChatV2::pipeline] Token budget trim: {} -> {} messages (budget={}, remaining≈{})",
+            original_len,
+            history.len(),
+            max_tokens,
+            total_tokens
+        );
+    }
+}
+

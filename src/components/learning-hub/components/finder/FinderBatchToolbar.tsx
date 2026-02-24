@@ -19,7 +19,7 @@ interface FinderBatchToolbarProps {
   onSelectAll: () => void;
   onClearSelection: () => void;
   onBatchDelete: () => void;
-  onBatchMove: () => void;
+  onBatchMove?: () => void;
   onBatchAddToChat?: () => void;
   isProcessing?: boolean;
   className?: string;
@@ -121,6 +121,7 @@ export const FinderBatchToolbar = React.memo(function FinderBatchToolbar({
               </NotionButton>
             )}
 
+            {onBatchMove && (
             <NotionButton
               variant="ghost"
               size="icon"
@@ -131,6 +132,7 @@ export const FinderBatchToolbar = React.memo(function FinderBatchToolbar({
             >
               <FolderInput className="h-4 w-4" />
             </NotionButton>
+            )}
 
             <NotionButton
               variant="ghost"

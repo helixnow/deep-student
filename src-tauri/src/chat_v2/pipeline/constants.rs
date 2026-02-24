@@ -23,6 +23,16 @@ pub(crate) const DEFAULT_MULTIMODAL_TOP_K: u32 = 10;
 /// context_limit 应该用于 LLM 的 token 限制，不应误用于消息条数
 pub(crate) const DEFAULT_MAX_HISTORY_MESSAGES: usize = 50;
 
+/// 历史消息 token 预算上限（启发式估算）
+/// 超过此预算时从最旧消息开始裁剪，避免上下文溢出
+pub(crate) const DEFAULT_MAX_HISTORY_TOKENS: usize = 32_000;
+
+/// 中文字符的 token 估算系数（1 个中文字 ≈ 1.5 tokens）
+pub(crate) const CHARS_PER_TOKEN_CJK: f64 = 1.5;
+
+/// ASCII 字符的 token 估算系数（约 4 个字符 ≈ 1 token）
+pub(crate) const CHARS_PER_TOKEN_ASCII: f64 = 0.25;
+
 /// 🔧 P1修复：LLM 流式调用超时（秒）
 /// 流式响应需要较长时间，设置为 10 分钟
 pub(crate) const LLM_STREAM_TIMEOUT_SECS: u64 = 600;

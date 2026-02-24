@@ -7,9 +7,38 @@ impl ChatV2Pipeline {
     /// 统一引用格式为 `[类型-编号]`，并添加使用指引。
     /// 如果有 Canvas 笔记，也会一并注入。
     pub(crate) async fn build_system_prompt(&self, ctx: &PipelineContext) -> String {
-        // 构建 Canvas 笔记信息（如果有）
         let canvas_note = self.build_canvas_note_info(ctx).await;
-        prompt_builder::build_system_prompt(&ctx.options, &ctx.retrieved_sources, canvas_note)
+
+        // 读取用户画像摘要（如果 VFS 可用）
+        let user_profile = self.load_user_profile().await;
+
+        prompt_builder::build_system_prompt_with_profile(
+            &ctx.options,
+            &ctx.retrieved_sources,
+            canvas_note,
+            user_profile,
+        )
+    }
+
+    /// 从 MemoryService 读取用户画像摘要
+    async fn load_user_profile(&self) -> Option<String> {
+        use crate::memory::MemoryService;
+        use crate::vfs::lance_store::VfsLanceStore;
+
+        let vfs_db = self.vfs_db.as_ref()?;
+        let lance_store = VfsLanceStore::new(vfs_db.clone()).ok().map(std::sync::Arc::new)?;
+        let svc = MemoryService::new(
+            vfs_db.clone(),
+            lance_store,
+            self.llm_manager.clone(),
+        );
+        match svc.get_profile_summary() {
+            Ok(profile) => profile,
+            Err(e) => {
+                log::debug!("[ChatV2::pipeline] Failed to load user profile: {}", e);
+                None
+            }
+        }
     }
 
     /// 构建 Canvas 笔记信息

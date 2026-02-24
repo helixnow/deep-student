@@ -375,16 +375,16 @@ impl NotesExporter {
         md_content.push_str("---\n");
         md_content.push_str(&format!("version_id: {}\n", version.version_id));
         md_content.push_str(&format!("note_id: {}\n", version.note_id));
-        md_content.push_str(&format!("title: {}\n", version.title));
-        md_content.push_str(&format!("subject: {}\n", subject));
+        md_content.push_str(&format!("title: {}\n", yaml_quote(&version.title)));
+        md_content.push_str(&format!("subject: {}\n", yaml_quote(subject)));
         md_content.push_str(&format!("created: {}\n", version.created_at));
         if let Some(ref label) = version.label {
-            md_content.push_str(&format!("label: {}\n", label));
+            md_content.push_str(&format!("label: {}\n", yaml_quote(label)));
         }
         if !version.tags.is_empty() {
             md_content.push_str("tags:\n");
             for tag in version.tags.iter() {
-                md_content.push_str(&format!("  - {}\n", tag));
+                md_content.push_str(&format!("  - {}\n", yaml_quote(tag)));
             }
         }
         md_content.push_str("---\n\n");
@@ -429,19 +429,19 @@ impl NotesExporter {
 
         md_content.push_str("---\n");
         md_content.push_str(&format!("id: {}\n", note.id));
-        md_content.push_str(&format!("title: {}\n", note.title));
+        md_content.push_str(&format!("title: {}\n", yaml_quote(&note.title)));
         md_content.push_str(&format!("created: {}\n", note.created_at));
         md_content.push_str(&format!("updated: {}\n", note.updated_at));
         if note.is_favorite {
             md_content.push_str("favorite: true\n");
         }
         if let Some(fp) = folder_path {
-            md_content.push_str(&format!("folder: {}\n", fp));
+            md_content.push_str(&format!("folder: {}\n", yaml_quote(fp)));
         }
         if !note.tags.is_empty() {
             md_content.push_str("tags:\n");
             for tag in note.tags.iter() {
-                md_content.push_str(&format!("  - {}\n", tag));
+                md_content.push_str(&format!("  - {}\n", yaml_quote(tag)));
             }
         }
         md_content.push_str("---\n\n");
@@ -455,15 +455,15 @@ impl NotesExporter {
         md_content.push_str("---\n");
         md_content.push_str(&format!("version_id: {}\n", version.version_id));
         md_content.push_str(&format!("note_id: {}\n", version.note_id));
-        md_content.push_str(&format!("title: {}\n", version.title));
+        md_content.push_str(&format!("title: {}\n", yaml_quote(&version.title)));
         md_content.push_str(&format!("created: {}\n", version.created_at));
         if let Some(ref label) = version.label {
-            md_content.push_str(&format!("label: {}\n", label));
+            md_content.push_str(&format!("label: {}\n", yaml_quote(label)));
         }
         if !version.tags.is_empty() {
             md_content.push_str("tags:\n");
             for tag in version.tags.iter() {
-                md_content.push_str(&format!("  - {}\n", tag));
+                md_content.push_str(&format!("  - {}\n", yaml_quote(tag)));
             }
         }
         md_content.push_str("---\n\n");
@@ -624,8 +624,8 @@ impl NotesExporter {
 
         md_content.push_str("---\n");
         md_content.push_str(&format!("id: {}\n", note.id));
-        md_content.push_str(&format!("title: {}\n", note.title));
-        md_content.push_str(&format!("subject: {}\n", subject));
+        md_content.push_str(&format!("title: {}\n", yaml_quote(&note.title)));
+        md_content.push_str(&format!("subject: {}\n", yaml_quote(subject)));
         md_content.push_str(&format!("created: {}\n", note.created_at));
         md_content.push_str(&format!("updated: {}\n", note.updated_at));
         if note.is_favorite {
@@ -633,13 +633,13 @@ impl NotesExporter {
         }
         if let Some(path) = folder_path {
             if !path.is_empty() {
-                md_content.push_str(&format!("folder_path: {}\n", path));
+                md_content.push_str(&format!("folder_path: {}\n", yaml_quote(path)));
             }
         }
         if !note.tags.is_empty() {
             md_content.push_str("tags:\n");
             for tag in note.tags.iter() {
-                md_content.push_str(&format!("  - {}\n", tag));
+                md_content.push_str(&format!("  - {}\n", yaml_quote(tag)));
             }
         }
         md_content.push_str("---\n\n");
@@ -1181,6 +1181,51 @@ fn slugify_subject(subject: &str) -> String {
     }
 }
 
+fn yaml_quote(value: &str) -> String {
+    if value.is_empty() {
+        return "\"\"".to_string();
+    }
+    let needs_quoting = value.contains(':')
+        || value.contains('#')
+        || value.contains('{')
+        || value.contains('}')
+        || value.contains('[')
+        || value.contains(']')
+        || value.contains('\'')
+        || value.contains('"')
+        || value.contains('&')
+        || value.contains('*')
+        || value.contains('!')
+        || value.contains('|')
+        || value.contains('>')
+        || value.contains('%')
+        || value.contains('@')
+        || value.contains('`')
+        || value.starts_with(' ')
+        || value.ends_with(' ')
+        || value.starts_with('-')
+        || value.starts_with('?');
+    if needs_quoting {
+        let escaped = value.replace('\\', r"\\").replace('"', r#"\""#);
+        format!("\"{}\"", escaped)
+    } else {
+        value.to_string()
+    }
+}
+
+fn strip_yaml_quotes(s: &str) -> String {
+    let trimmed = s.trim();
+    if trimmed.len() >= 2 {
+        if (trimmed.starts_with('"') && trimmed.ends_with('"'))
+            || (trimmed.starts_with('\'') && trimmed.ends_with('\''))
+        {
+            let inner = &trimmed[1..trimmed.len() - 1];
+            return inner.replace(r#"\""#, "\"").replace(r"\\", "\\");
+        }
+    }
+    trimmed.to_string()
+}
+
 fn sanitize_pref_key(key: &str) -> String {
     key.chars()
         .map(|c| {
@@ -1277,12 +1322,59 @@ fn build_folder_paths(
     preferences: &BTreeMap<String, Value>,
 ) -> HashMap<String, String> {
     let pref_key = format!("notes_folders:{}", subject);
-    let pref_value = preferences.get(&pref_key).or_else(|| {
-        preferences
-            .iter()
-            .find(|(k, _)| k.starts_with("notes_folders"))
-            .map(|(_, v)| v)
-    });
+    if let Some(val) = preferences.get(&pref_key) {
+        let mut scoped = BTreeMap::new();
+        scoped.insert(pref_key, val.clone());
+        return build_folder_paths_core(note_ids, &scoped);
+    }
+    build_folder_paths_core(note_ids, preferences)
+}
+
+fn build_md_path(
+    subject_slug: &str,
+    folder_path: Option<&String>,
+    safe_title: &str,
+    id_prefix: &str,
+) -> String {
+    let mut segments: Vec<String> = Vec::new();
+    segments.push(subject_slug.to_string());
+
+    if let Some(path) = folder_path {
+        if !path.is_empty() {
+            for segment in path.split('/') {
+                let sanitized = sanitize_filename(segment);
+                if !sanitized.is_empty() {
+                    segments.push(sanitized);
+                }
+            }
+        }
+    }
+
+    let filename = if safe_title.is_empty() {
+        format!("{}.md", id_prefix)
+    } else {
+        format!("{}_{}.md", safe_title, id_prefix)
+    };
+    segments.push(filename);
+
+    segments.join("/")
+}
+
+fn build_folder_paths_flat(
+    note_ids: &HashSet<String>,
+    preferences: &BTreeMap<String, Value>,
+) -> HashMap<String, String> {
+    build_folder_paths_core(note_ids, preferences)
+}
+
+fn build_folder_paths_core(
+    note_ids: &HashSet<String>,
+    preferences: &BTreeMap<String, Value>,
+) -> HashMap<String, String> {
+    let pref_value = preferences
+        .iter()
+        .find(|(k, _)| k.contains("notes_folders") || k.contains("notes.pref"))
+        .map(|(_, v)| v);
 
     let mut result: HashMap<String, String> = HashMap::new();
     let Some(Value::Object(obj)) = pref_value else {
@@ -1351,118 +1443,6 @@ fn build_folder_paths(
     let mut visited: HashSet<String> = HashSet::new();
     for child in root_children.iter().filter_map(|v| v.as_str()) {
         dfs(child, &[], &folders, note_ids, &mut visited, &mut result);
-    }
-
-    result
-}
-
-fn build_md_path(
-    subject_slug: &str,
-    folder_path: Option<&String>,
-    safe_title: &str,
-    id_prefix: &str,
-) -> String {
-    let mut segments: Vec<String> = Vec::new();
-    segments.push(subject_slug.to_string());
-
-    if let Some(path) = folder_path {
-        if !path.is_empty() {
-            for segment in path.split('/') {
-                let sanitized = sanitize_filename(segment);
-                if !sanitized.is_empty() {
-                    segments.push(sanitized);
-                }
-            }
-        }
-    }
-
-    let filename = if safe_title.is_empty() {
-        format!("{}.md", id_prefix)
-    } else {
-        format!("{}_{}.md", safe_title, id_prefix)
-    };
-    segments.push(filename);
-
-    segments.join("/")
-}
-
-fn build_folder_paths_flat(
-    note_ids: &HashSet<String>,
-    preferences: &BTreeMap<String, Value>,
-) -> HashMap<String, String> {
-    // 尝试找到任意 notes_folders 偏好设置
-    let pref_value = preferences
-        .iter()
-        .find(|(k, _)| k.contains("notes_folders") || k.contains("notes.pref"))
-        .map(|(_, v)| v);
-
-    let mut result: HashMap<String, String> = HashMap::new();
-    let Some(Value::Object(obj)) = pref_value else {
-        return result;
-    };
-
-    let folders_value = obj.get("folders").and_then(|v| v.as_object());
-    let root_children = obj
-        .get("rootChildren")
-        .and_then(|v| v.as_array())
-        .cloned()
-        .unwrap_or_default();
-
-    let mut folders: HashMap<String, (String, Vec<String>)> = HashMap::new();
-    if let Some(folders_obj) = folders_value {
-        for (folder_id, raw_folder) in folders_obj.iter() {
-            if let Value::Object(folder_obj) = raw_folder {
-                let title = folder_obj
-                    .get("title")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("未命名文件夹")
-                    .to_string();
-                let children = folder_obj
-                    .get("children")
-                    .and_then(|v| v.as_array())
-                    .map(|arr| {
-                        arr.iter()
-                            .filter_map(|v| v.as_str().map(|s| s.to_string()))
-                            .collect::<Vec<String>>()
-                    })
-                    .unwrap_or_default();
-                folders.insert(folder_id.clone(), (title, children));
-            }
-        }
-    }
-
-    fn dfs_flat(
-        current: &str,
-        prefix: &[String],
-        folders: &HashMap<String, (String, Vec<String>)>,
-        note_ids: &HashSet<String>,
-        visited: &mut HashSet<String>,
-        out: &mut HashMap<String, String>,
-    ) {
-        if !visited.insert(current.to_string()) {
-            return;
-        }
-
-        if let Some((title, children)) = folders.get(current) {
-            let mut new_prefix = prefix.to_vec();
-            let sanitized = sanitize_filename(title);
-            if !sanitized.is_empty() {
-                new_prefix.push(sanitized);
-            }
-            for child in children {
-                dfs_flat(child, &new_prefix, folders, note_ids, visited, out);
-            }
-        } else if note_ids.contains(current) {
-            let path = prefix.join("/");
-            if !path.is_empty() {
-                out.insert(current.to_string(), path);
-            }
-        }
-    }
-
-    let mut visited: HashSet<String> = HashSet::new();
-    for child in root_children.iter().filter_map(|v| v.as_str()) {
-        dfs_flat(child, &[], &folders, note_ids, &mut visited, &mut result);
     }
 
     result
@@ -2288,17 +2268,49 @@ impl NotesImporter {
             let final_note_id: String;
 
             match existing_vfs_note {
-                Some(_existing) => {
-                    // 笔记已存在，根据冲突策略处理
+                Some(existing) => {
                     match options.conflict_strategy {
                         ImportConflictStrategy::Skip => {
                             log::info!("[VFS Import] 笔记 {} 已存在，跳过", metadata.id);
                             skipped += 1;
                             continue;
                         }
-                        ImportConflictStrategy::Overwrite
-                        | ImportConflictStrategy::MergeKeepNewer => {
-                            // 覆盖或合并：更新 VFS 笔记
+                        ImportConflictStrategy::MergeKeepNewer => {
+                            if metadata.updated_at <= existing.updated_at {
+                                log::info!(
+                                    "[VFS Import] 笔记 {} 本地版本更新（local={}, import={}），跳过",
+                                    metadata.id, existing.updated_at, metadata.updated_at
+                                );
+                                skipped += 1;
+                                continue;
+                            }
+                            log::info!(
+                                "[VFS Import] 笔记 {} 导入版本更新，覆盖本地",
+                                metadata.id
+                            );
+                            let update_params = VfsUpdateNoteParams {
+                                title: Some(metadata.title.clone()),
+                                content: Some(normalized_content.clone()),
+                                tags: Some(metadata.tags.clone()),
+                                expected_updated_at: None,
+                            };
+                            match VfsNoteRepo::update_note_with_conn(
+                                &vfs_conn,
+                                &metadata.id,
+                                update_params,
+                            ) {
+                                Ok(_) => {
+                                    overwritten += 1;
+                                    total_notes += 1;
+                                    final_note_id = metadata.id.clone();
+                                }
+                                Err(e) => {
+                                    log::warn!("[VFS Import] 合并笔记 {} 失败: {}", metadata.id, e);
+                                    continue;
+                                }
+                            }
+                        }
+                        ImportConflictStrategy::Overwrite => {
                             log::info!("[VFS Import] 笔记 {} 已存在，覆盖", metadata.id);
                             let update_params = VfsUpdateNoteParams {
                                 title: Some(metadata.title.clone()),
@@ -2844,42 +2856,30 @@ impl NotesImporter {
 
                 // 解析 YAML 键值对或 tags 数组项
                 if in_tags_block {
-                    // 处理 tags:
                     if trimmed.starts_with('-') {
-                        let mut value = trimmed.trim_start_matches('-').trim();
-                        // 去除包裹引号
-                        if (value.starts_with('"') && value.ends_with('"'))
-                            || (value.starts_with('\'') && value.ends_with('\''))
-                        {
-                            value = &value[1..value.len().saturating_sub(1)];
-                        }
+                        let raw = trimmed.trim_start_matches('-').trim();
+                        let value = strip_yaml_quotes(raw);
                         if !value.is_empty() {
-                            tags.push(value.to_string());
+                            tags.push(value);
                         }
                         continue;
                     }
-                    // 如果遇到非 '-' 开头，说明 tags 块结束，继续按键值解析
                     in_tags_block = false;
                 }
 
                 if let Some(colon_pos) = trimmed.find(':') {
                     let key = trimmed[..colon_pos].trim();
-                    let mut value = trimmed[colon_pos + 1..].trim();
-                    // 去除包裹引号
-                    if (value.starts_with('"') && value.ends_with('"'))
-                        || (value.starts_with('\'') && value.ends_with('\''))
-                    {
-                        value = &value[1..value.len().saturating_sub(1)];
-                    }
+                    let raw_value = trimmed[colon_pos + 1..].trim();
+                    let value = strip_yaml_quotes(raw_value);
 
                     match key {
-                        "id" => id = value.to_string(),
-                        "title" => title = value.to_string(),
-                        "created" => created_at = value.to_string(),
-                        "updated" => updated_at = value.to_string(),
-                        "folder_path" => {
+                        "id" => id = value,
+                        "title" => title = value,
+                        "created" => created_at = value,
+                        "updated" => updated_at = value,
+                        "folder" | "folder_path" => {
                             if !value.is_empty() {
-                                folder_path = Some(value.to_string());
+                                folder_path = Some(value);
                             }
                         }
                         "favorite" => is_favorite = value == "true",
@@ -2888,9 +2888,8 @@ impl NotesImporter {
                             in_tags_block = true;
                         }
                         _ => {
-                            // 处理 tags 数组项
                             if key == "-" && !value.is_empty() {
-                                tags.push(value.to_string());
+                                tags.push(value);
                             }
                         }
                     }
