@@ -5,6 +5,7 @@
 //! - SHA256计算: 用于文件完整性校验
 //! - 安全防护: ZIP炸弹检测、符号链接防护
 
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::fs::{self, File};
 use std::io::{BufReader, Read};
@@ -63,7 +64,6 @@ pub const RESILIENT_RETRY_DELAY_MS: u64 = 150;
 /// 全局备份互斥锁 - 确保所有备份/恢复操作串行执行
 ///
 /// 此锁由以下模块共享:
-/// - backup.rs (传统ZIP备份)
 ///
 /// 使用 OwnedSemaphorePermit 可跨 .await 持有，满足 Tauri Future: Send 要求
 pub static BACKUP_GLOBAL_LIMITER: LazyLock<Arc<tokio::sync::Semaphore>> =
@@ -642,6 +642,16 @@ fn copy_directory_recursive_safe(src: &Path, dst: &Path) -> Result<u64> {
     }
 
     Ok(total_bytes)
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct ImportProgress {
+    pub phase: String,
+    pub progress: f32,
+    pub message: String,
+    pub current_file: Option<String>,
+    pub total_files: usize,
+    pub processed_files: usize,
 }
 
 #[cfg(test)]

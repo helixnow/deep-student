@@ -9,7 +9,8 @@
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
-use crate::backup::BackupTier;
+use crate::data_governance::backup::{BackupManager, BackupSelection, BackupTier};
+use crate::data_governance::backup::zip_export::{export_backup_to_zip, ZipExportOptions};
 use crate::backup_common::log_and_skip_entry_err;
 use crate::database::{Database, DatabaseManager};
 use crate::models::AppError;
@@ -236,21 +237,17 @@ pub async fn start_auto_backup_scheduler(
     }
 }
 
-/// 检查是否需要自动备份，如果需要则执行
 async fn check_and_perform_auto_backup(
     database: Arc<Database>,
-    database_manager: Arc<DatabaseManager>,
+    _database_manager: Arc<DatabaseManager>,
     file_manager: Arc<FileManager>,
 ) -> Result<()> {
-    // 加载配置
     let config = BackupConfig::load(&database)?;
 
-    // 检查是否启用自动备份
     if !config.auto_backup_enabled {
         return Ok(());
     }
 
-    // 检查上次备份时间
     let last_backup_time = get_last_auto_backup_time(&database)?;
     let now = Utc::now();
 
@@ -259,7 +256,7 @@ async fn check_and_perform_auto_backup(
             let elapsed_hours = (now - last_time).num_hours();
             elapsed_hours >= config.auto_backup_interval_hours as i64
         }
-        None => true, // 从未备份过，应该备份
+        None => true,
     };
 
     if !should_backup {
@@ -268,55 +265,68 @@ async fn check_and_perform_auto_backup(
 
     tracing::info!("[AutoBackup] 开始执行自动备份...");
 
-    // 执行备份
     let root = file_manager.get_writable_app_data_dir();
     let backups_dir = get_effective_backup_dir(&config, &root)?;
 
-    // 构建导出选项
-    let backup_tiers = config
-        .backup_tiers
-        .as_ref()
-        .filter(|tiers| !tiers.is_empty())
-        .cloned();
-    let export_options = crate::backup::ExportOptions {
-        slim_backup: if backup_tiers.is_some() {
-            false
-        } else {
-            config.slim_backup
+    let _permit = crate::backup_common::BACKUP_GLOBAL_LIMITER
+        .clone()
+        .acquire_owned()
+        .await
+        .map_err(|_| AppError::internal("备份信号量已关闭".to_string()))?;
+
+    let manager = BackupManager::with_config(
+        backups_dir.clone(),
+        crate::data_governance::backup::BackupConfig {
+            app_data_dir: root.clone(),
+            app_version: env!("CARGO_PKG_VERSION").to_string(),
+            progress_callback: None,
         },
-        backup_tiers,
-        ..Default::default()
+    );
+
+    let manifest = if let Some(tiers) = &config.backup_tiers {
+        let selection = BackupSelection {
+            tiers: tiers.clone(),
+            ..Default::default()
+        };
+        manager
+            .backup_tiered(&selection)
+            .map_err(|e| AppError::internal(format!("分级备份失败: {}", e)))?
+            .manifest
+    } else if config.slim_backup {
+        let selection = BackupSelection {
+            tiers: vec![BackupTier::Core],
+            ..Default::default()
+        };
+        manager
+            .backup_tiered(&selection)
+            .map_err(|e| AppError::internal(format!("精简备份失败: {}", e)))?
+            .manifest
+    } else {
+        manager
+            .backup_full()
+            .map_err(|e| AppError::internal(format!("完整备份失败: {}", e)))?
     };
 
-    // 执行备份（使用统一的备份实现，包含维护模式、checkpoint、安全过滤等）
-    let result = crate::backup::perform_auto_backup_export(
-        database.clone(),
-        database_manager.clone(),
-        file_manager.clone(),
-        backups_dir.clone(),
-        export_options,
-    )
-    .await;
+    let backup_id = &manifest.backup_id;
+    let backup_subdir = backups_dir.join(backup_id);
+    let zip_name = format!("auto-backup-{}.zip", Utc::now().format("%Y%m%d-%H%M%S"));
+    let zip_options = ZipExportOptions {
+        output_path: Some(backups_dir.join(&zip_name)),
+        ..Default::default()
+    };
+    export_backup_to_zip(&backup_subdir, &zip_options)
+        .map_err(|e| AppError::internal(format!("ZIP 导出失败: {}", e)))?;
 
-    match result {
-        Ok(_) => {
-            tracing::info!("[AutoBackup] 自动备份完成");
+    let _ = std::fs::remove_dir_all(&backup_subdir);
 
-            // 更新上次备份时间
-            save_last_auto_backup_time(&database, now)?;
+    tracing::info!("[AutoBackup] 自动备份完成: {}", zip_name);
+    save_last_auto_backup_time(&database, now)?;
 
-            // 清理旧备份
-            if let Some(max_count) = config.max_backup_count {
-                cleanup_old_backups(&backups_dir, max_count)?;
-            }
-
-            Ok(())
-        }
-        Err(e) => {
-            tracing::error!("[AutoBackup] 自动备份失败: {}", e);
-            Err(e)
-        }
+    if let Some(max_count) = config.max_backup_count {
+        cleanup_old_backups(&backups_dir, max_count)?;
     }
+
+    Ok(())
 }
 
 /// 获取有效的备份目录

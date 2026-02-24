@@ -41,9 +41,8 @@ pub mod question_export_service;
 pub mod question_import_service;
 pub mod vlm_grounding_service;
 pub mod secure_store;
-pub mod backup;
-pub mod backup_common; // 备份系统共享组件（全局锁、SHA256工具）
-pub mod backup_config; // 备份配置模块（自动备份、精简备份等设置）
+pub mod backup_common;
+pub mod backup_config;
 pub mod data_space;
 pub mod lance_vector_store;
 pub mod llm_manager;

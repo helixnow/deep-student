@@ -369,17 +369,12 @@ impl BackupVerifyResult {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum BackupTier {
-    /// 核心数据（P0）：chat_v2, vfs, mistakes（主数据库）
-    /// 这些是用户最核心的数据，丢失后无法恢复
+    #[serde(alias = "core_config_chat")]
     Core,
-    /// 重要数据（P1）：+ llm_usage, notes_assets
-    /// 重要但非核心的数据（LLM 使用统计等）
+    #[serde(alias = "vfs_full")]
     Important,
-    /// 可重建数据（P2）：+ lance (向量索引)
-    /// 可以通过重新处理原始数据重建
     Rebuildable,
-    /// 大型资产（P3）：+ images, documents, videos
-    /// 大型文件，可能需要单独处理
+    #[serde(alias = "large_files")]
     LargeAssets,
 }
 

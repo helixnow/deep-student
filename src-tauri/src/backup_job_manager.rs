@@ -14,7 +14,7 @@ use tauri::{AppHandle, Emitter, Manager};
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
-use crate::backup::ImportProgress;
+use crate::backup_common::ImportProgress;
 
 // ============================================================================
 // 安全锁访问辅助函数（处理锁中毒问题）
