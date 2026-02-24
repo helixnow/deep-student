@@ -1449,6 +1449,9 @@ export function LearningHubSidebar({
     clearSelection();
   }, [clearSelection]);
 
+  // ★ 2025-12-11: 检测是否在回收站视图（提前声明，供后续 useCallback 使用）
+  const isTrashView = currentPath.folderId === 'trash';
+
   // 批量删除（显示确认对话框）
   // ★ Bug Fix: 回收站视图中走永久删除路径，而非软删除
   const handleBatchDelete = useCallback(() => {
@@ -1604,9 +1607,6 @@ export function LearningHubSidebar({
   }, [items, t, clearSelection, setSelectedIds, handleRefresh]);
 
   // ★ 2025-12-11: 回收站相关操作
-  // 检测是否在回收站视图
-  const isTrashView = currentPath.folderId === 'trash';
-
   // 恢复项目
   const handleRestoreItem = useCallback(async (id: string, itemType: string) => {
     const result = await trashApi.restoreItem(id, itemType);
