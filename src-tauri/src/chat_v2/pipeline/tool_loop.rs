@@ -567,9 +567,9 @@ impl ChatV2Pipeline {
             None, // trace_id
             disable_tools,
             max_input_tokens_override, // 🔧 P1修复：传递 context_limit 作为输入 token 限制
-            model_override,
+            model_override.clone(),
             temp_override,
-            system_prompt_override,
+            system_prompt_override.clone(),
             top_p_override,
             frequency_penalty_override,
             presence_penalty_override,
@@ -609,7 +609,7 @@ impl ChatV2Pipeline {
                 || err_str.contains("status: 503")
                 || err_str.contains("status: 504");
 
-            if is_transient && !ctx.cancel_token.as_ref().map(|t| t.is_cancelled()).unwrap_or(false) {
+            if is_transient && !ctx.cancellation_token.as_ref().map(|t| t.is_cancelled()).unwrap_or(false) {
                 for retry in 1..=LLM_MAX_RETRIES {
                     let delay = LLM_RETRY_DELAY_MS * (1 << (retry - 1));
                     log::warn!(
@@ -618,7 +618,7 @@ impl ChatV2Pipeline {
                     );
                     tokio::time::sleep(Duration::from_millis(delay)).await;
 
-                    if ctx.cancel_token.as_ref().map(|t| t.is_cancelled()).unwrap_or(false) {
+                    if ctx.cancellation_token.as_ref().map(|t| t.is_cancelled()).unwrap_or(false) {
                         break;
                     }
 
