@@ -25,7 +25,7 @@
     "predev:test:stop": "npm run version:generate",
     "dev:test:stop": "vite --host --port 1422 --open '/?test=true&debug-plugin=chat-test-runner&autorun=true&autorun-case=basic-stop-generation'",
     "icons": "tauri icon app-icon.png",
-    "icons:ios": "tauri icon --output src-tauri/icons_ios_current app-icon.png",
+    "icons:ios": "tauri icon --output src-tauri/icons app-icon.png",
     "icons:ios:opaque": "node ./scripts/fix_ios_icons.mjs",
     "mcp:test": "node ./scripts/mcp-sse-test.mjs",
     "mcp:test:ws": "node ./scripts/mcp-ws-test.mjs",

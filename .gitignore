@@ -206,47 +206,58 @@ wasi-*.tar.gz
 # Rust local build cache variant
 src-tauri/.cargo-target/
 
-# Internal planning/review docs (not for OSS repo)
+# Internal docs (not for OSS repo)
 /PLAN.md
 /todo.md
 /CHATANKI_REVIEW_FIX.md
 /CRITICAL_CODE_REVIEW_REPORT.md
 /LEARNING_RESOURCE_CRITICAL_REVIEW_FIXES.md
 /SECURITY_AUDIT_TYPESCRIPT_FIXES.md
+/docs/design/
+/docs/features/
+/docs/research/
 /docs/plans/
-/docs/review/results/
-/docs/design/notes/
-/docs/design/research/
-/docs/design/review/
-
-# Additional internal docs generated during development/review
 /docs/review/
+/docs/tech-debt-*.md
+/docs/backup-tiers.md
+/docs/SCHEMA_CHANGELOG.md
+/docs/RELEASE-WORKFLOW.md
+/docs/api-config-provider-editing.md
+/docs/mindmap-layout-architecture.md
+/docs/mindmap-layout-style-system.md
+/docs/ocr-adapters.md
 /docs/*report*.md
 /docs/*audit*.md
 /docs/*review*.md
 /docs/*debug*.md
 /docs/*checklist*.md
-/docs/*进度*.md
-/docs/*调研报告*.md
-/docs/*审计报告*.md
-/docs/*批判性检查*.md
-/docs/*修复记录*.md
-/docs/*任务拆解*.md
-/docs/*改造总结*.md
-/docs/FIX-STRATEGIES-*.md
-/docs/VERIFIED-RISKS-*.md
-/docs/design/*report*.md
-/docs/design/*review*.md
-/docs/design/*checklist*.md
-/docs/design/code-review-prompts/
-/docs/design/**/*code-review*.md
-docs/RELEASE-WORKFLOW.md
-
-# Internal architecture/contract docs (not for OSS repo)
-/docs/api-config-provider-editing.md
-/docs/mindmap-layout-architecture.md
-/docs/mindmap-layout-style-system.md
-/docs/ocr-adapters.md
 
 # Intermediate verification/fix docs in src
 src/**/verify-*.md
+
+# One-off SQL scripts (use migrations/ for schema changes)
+src-tauri/create_tables.sql
+src-tauri/fix_*.sql
+src-tauri/import_*.sql
+src-tauri/update_*.sql
+scripts/*.sql
+
+# Temporary test files at src-tauri root
+src-tauri/test_*.rs
+patch_notes_manager.rs
+
+# Timestamp / sweep files
+src-tauri/sweep.timestamp
+
+# iOS icon generation output (use `npm run icons` for canonical icons)
+src-tauri/icons_ios_current/
+
+# Personal development environment scripts
+init-ramdisk.bat
+format_ascii.*
+
+# Hashed / auto-generated images
+public/images/*
+
+# Private CI workflows (backup infrastructure)
+.github/workflows/backup.yml
