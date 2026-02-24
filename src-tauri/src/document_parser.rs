@@ -8,8 +8,10 @@ use std::path::Path;
 
 // PPTX 解析
 use pptx_to_md::{ParserConfig, PptxContainer};
-// EPUB 解析
-use epub::doc::EpubDoc;
+// EPUB 解析（使用 zip + quick-xml 自行实现，避免 GPL-3.0 依赖）
+use quick_xml::events::Event as XmlEvent;
+use quick_xml::Reader as XmlReader;
+use zip::ZipArchive;
 // RTF 解析
 use rtf_parser::lexer::Lexer as RtfLexer;
 use rtf_parser::parser::Parser as RtfParser;
@@ -2683,7 +2685,7 @@ impl DocumentParser {
     }
 
     // ========================================================================
-    // EPUB 解析（纯 Rust，使用 epub crate）
+    // EPUB 解析（纯 Rust，使用 zip + quick-xml，无 GPL 依赖）
     // ========================================================================
 
     /// 从EPUB文件路径提取文本
@@ -2695,56 +2697,219 @@ impl DocumentParser {
     /// 从EPUB字节流提取文本
     fn extract_epub_from_bytes(&self, bytes: Vec<u8>) -> Result<String, ParsingError> {
         let cursor = Cursor::new(bytes);
+        let mut archive = ZipArchive::new(cursor)
+            .map_err(|e| ParsingError::EpubParsingError(format!("无法打开EPUB ZIP: {}", e)))?;
 
-        let mut doc = EpubDoc::from_reader(cursor)
-            .map_err(|e| ParsingError::EpubParsingError(format!("无法解析EPUB: {}", e)))?;
+        let opf_path = self.epub_find_root_file(&mut archive)?;
+        let opf_dir = opf_path
+            .rfind('/')
+            .map(|i| &opf_path[..=i])
+            .unwrap_or("")
+            .to_string();
+
+        let opf_content = self.epub_read_entry(&mut archive, &opf_path)?;
+        let (metadata, spine_hrefs) = self.epub_parse_opf(&opf_content)?;
 
         let mut text_content = String::with_capacity(8192);
 
-        // 提取元数据
-        if let Some(title) = doc.mdata("title") {
-            // MetadataItem 可能是 String 或 Vec<String>，使用 to_string() 获取文本
-            let title_str = format!("{:?}", title)
-                .trim_matches('"')
-                .trim_matches('[')
-                .trim_matches(']')
-                .to_string();
-            if !title_str.is_empty() {
-                text_content.push_str(&format!("# {}\n\n", title_str));
+        if let Some(title) = metadata.get("title") {
+            if !title.is_empty() {
+                text_content.push_str(&format!("# {}\n\n", title));
             }
         }
-        if let Some(author) = doc.mdata("creator") {
-            let author_str = format!("{:?}", author)
-                .trim_matches('"')
-                .trim_matches('[')
-                .trim_matches(']')
-                .to_string();
-            if !author_str.is_empty() {
-                text_content.push_str(&format!("作者: {}\n\n", author_str));
+        if let Some(author) = metadata.get("creator") {
+            if !author.is_empty() {
+                text_content.push_str(&format!("作者: {}\n\n", author));
             }
         }
 
-        // 遍历所有章节提取文本
-        let spine_count = doc.get_num_pages();
-        for i in 0..spine_count {
-            doc.set_current_page(i);
-            if let Some((content, _mime)) = doc.get_current_str() {
-                // EPUB 内容是 XHTML，使用 html2text 转换
-                let plain_text = match from_read(content.as_bytes(), 80) {
-                    Ok(text) => text,
-                    Err(e) => {
-                        log::warn!("[DocumentParser] EPUB 页面 HTML 转文本失败: {}", e);
-                        continue;
-                    }
-                };
-                if !plain_text.trim().is_empty() {
-                    text_content.push_str(&plain_text);
-                    text_content.push_str("\n\n");
+        for href in &spine_hrefs {
+            let decoded_href = urlencoding::decode(href).unwrap_or(std::borrow::Cow::Borrowed(href));
+            let full_path = if decoded_href.starts_with('/') {
+                decoded_href[1..].to_string()
+            } else {
+                format!("{}{}", opf_dir, decoded_href)
+            };
+            let xhtml = match self.epub_read_entry(&mut archive, &full_path) {
+                Ok(c) => c,
+                Err(_) => continue,
+            };
+            let plain_text = match from_read(xhtml.as_bytes(), 80) {
+                Ok(text) => text,
+                Err(e) => {
+                    log::warn!("[DocumentParser] EPUB 页面 HTML 转文本失败: {}", e);
+                    continue;
                 }
+            };
+            if !plain_text.trim().is_empty() {
+                text_content.push_str(&plain_text);
+                text_content.push_str("\n\n");
             }
         }
 
         Ok(text_content.trim().to_string())
+    }
+
+    /// 从 META-INF/container.xml 定位 OPF 根文件路径
+    fn epub_find_root_file<R: std::io::Read + std::io::Seek>(
+        &self,
+        archive: &mut ZipArchive<R>,
+    ) -> Result<String, ParsingError> {
+        let container_xml = self.epub_read_entry(archive, "META-INF/container.xml")?;
+        let mut reader = XmlReader::from_str(&container_xml);
+        reader.config_mut().trim_text(true);
+        let mut buf = Vec::new();
+
+        loop {
+            match reader.read_event_into(&mut buf) {
+                Ok(XmlEvent::Empty(ref e)) | Ok(XmlEvent::Start(ref e))
+                    if e.local_name().as_ref() == b"rootfile" =>
+                {
+                    for attr in e.attributes().flatten() {
+                        if attr.key.local_name().as_ref() == b"full-path" {
+                            return String::from_utf8(attr.value.to_vec()).map_err(|e| {
+                                ParsingError::EpubParsingError(format!(
+                                    "OPF 路径编码错误: {}",
+                                    e
+                                ))
+                            });
+                        }
+                    }
+                }
+                Ok(XmlEvent::Eof) => break,
+                Err(e) => {
+                    return Err(ParsingError::EpubParsingError(format!(
+                        "container.xml 解析失败: {}",
+                        e
+                    )));
+                }
+                _ => {}
+            }
+            buf.clear();
+        }
+
+        Err(ParsingError::EpubParsingError(
+            "container.xml 中未找到 rootfile".into(),
+        ))
+    }
+
+    /// 解析 OPF 文件，提取元数据和按 spine 顺序排列的内容文件 href 列表
+    fn epub_parse_opf(
+        &self,
+        opf_content: &str,
+    ) -> Result<(std::collections::HashMap<String, String>, Vec<String>), ParsingError> {
+        let mut metadata = std::collections::HashMap::new();
+        let mut manifest: std::collections::HashMap<String, String> =
+            std::collections::HashMap::new();
+        let mut spine_idrefs: Vec<String> = Vec::new();
+
+        let mut reader = XmlReader::from_str(opf_content);
+        reader.config_mut().trim_text(true);
+        let mut buf = Vec::new();
+
+        #[derive(PartialEq)]
+        enum Section {
+            None,
+            Metadata,
+            Manifest,
+            Spine,
+        }
+        let mut section = Section::None;
+        let mut current_meta_tag: Option<String> = None;
+
+        loop {
+            match reader.read_event_into(&mut buf) {
+                Ok(XmlEvent::Start(ref e)) | Ok(XmlEvent::Empty(ref e)) => {
+                    let local_name = e.local_name();
+                    match local_name.as_ref() {
+                        b"metadata" => section = Section::Metadata,
+                        b"manifest" => section = Section::Manifest,
+                        b"spine" => section = Section::Spine,
+                        b"title" | b"creator" | b"language" | b"description" | b"publisher"
+                            if section == Section::Metadata =>
+                        {
+                            current_meta_tag =
+                                Some(String::from_utf8_lossy(local_name.as_ref()).to_string());
+                        }
+                        b"item" if section == Section::Manifest => {
+                            let mut id = String::new();
+                            let mut href = String::new();
+                            for attr in e.attributes().flatten() {
+                                match attr.key.local_name().as_ref() {
+                                    b"id" => {
+                                        id = String::from_utf8_lossy(&attr.value).to_string();
+                                    }
+                                    b"href" => {
+                                        href = String::from_utf8_lossy(&attr.value).to_string();
+                                    }
+                                    _ => {}
+                                }
+                            }
+                            if !id.is_empty() && !href.is_empty() {
+                                manifest.insert(id, href);
+                            }
+                        }
+                        b"itemref" if section == Section::Spine => {
+                            for attr in e.attributes().flatten() {
+                                if attr.key.local_name().as_ref() == b"idref" {
+                                    spine_idrefs
+                                        .push(String::from_utf8_lossy(&attr.value).to_string());
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                Ok(XmlEvent::Text(ref e)) => {
+                    if let Some(ref tag) = current_meta_tag {
+                        let text = e.unescape().unwrap_or_default().to_string();
+                        if !text.is_empty() {
+                            metadata.insert(tag.clone(), text);
+                        }
+                    }
+                }
+                Ok(XmlEvent::End(ref e)) => {
+                    let local_name = e.local_name();
+                    match local_name.as_ref() {
+                        b"metadata" | b"manifest" | b"spine" => section = Section::None,
+                        _ => {}
+                    }
+                    current_meta_tag = None;
+                }
+                Ok(XmlEvent::Eof) => break,
+                Err(e) => {
+                    return Err(ParsingError::EpubParsingError(format!(
+                        "OPF 解析失败: {}",
+                        e
+                    )));
+                }
+                _ => {}
+            }
+            buf.clear();
+        }
+
+        let spine_hrefs: Vec<String> = spine_idrefs
+            .iter()
+            .filter_map(|idref| manifest.get(idref).cloned())
+            .collect();
+
+        Ok((metadata, spine_hrefs))
+    }
+
+    /// 从 ZIP 归档中读取指定条目的 UTF-8 文本内容
+    fn epub_read_entry<R: std::io::Read + std::io::Seek>(
+        &self,
+        archive: &mut ZipArchive<R>,
+        name: &str,
+    ) -> Result<String, ParsingError> {
+        let mut file = archive.by_name(name).map_err(|e| {
+            ParsingError::EpubParsingError(format!("EPUB 中未找到 {}: {}", name, e))
+        })?;
+        let mut content = String::new();
+        std::io::Read::read_to_string(&mut file, &mut content).map_err(|e| {
+            ParsingError::EpubParsingError(format!("读取 EPUB 条目 {} 失败: {}", name, e))
+        })?;
+        Ok(content)
     }
 
     // ========================================================================

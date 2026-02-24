@@ -1,0 +1,41 @@
+name: "CLA Assistant"
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request_target:
+    types: [opened, closed, synchronize]
+
+permissions:
+  actions: write
+  contents: write
+  pull-requests: write
+  statuses: write
+
+concurrency:
+  group: cla-${{ github.event.pull_request.number || github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  CLAAssistant:
+    runs-on: ubuntu-latest
+    steps:
+      - name: "CLA Assistant"
+        if: (github.event.comment.body == 'recheck' || github.event.comment.body == 'I have read the CLA Document and I hereby sign the CLA') || github.event_name == 'pull_request_target'
+        uses: contributor-assistant/github-action@v2.6.1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          path-to-signatures: 'signatures/version1/cla.json'
+          path-to-document: 'https://github.com/${{ github.repository }}/blob/main/CLA.md'
+          branch: 'cla-signatures'
+          allowlist: 'dependabot[bot],renovate[bot],github-actions[bot],bot*'
+          custom-notsigned-prcomment: |
+            感谢您的贡献！在我们合并您的 Pull Request 之前，需要您签署我们的 [贡献者许可协议 (CLA)](${{ github.server_url }}/${{ github.repository }}/blob/main/CLA.md)。
+
+            请仔细阅读 CLA 文档，然后在本 PR 下回复以下内容完成签署：
+
+            > I have read the CLA Document and I hereby sign the CLA
+          custom-pr-sign-comment: 'I have read the CLA Document and I hereby sign the CLA'
+          custom-allsigned-prcomment: '所有贡献者已签署 CLA。感谢您的贡献！'
+          lock-pullrequest-aftermerge: true
