@@ -1019,7 +1019,7 @@ pub async fn resume_question_import(
         QuestionImportService::new(state.llm_manager.clone(), state.file_manager.clone());
 
     let result = import_service
-        .resume_import_stream(vfs_db, &session_id, Some(progress_tx))
+        .resume_import(vfs_db, &session_id, Some(progress_tx))
         .await;
 
     if let Err(err) = event_forwarder.await {

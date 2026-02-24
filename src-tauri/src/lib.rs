@@ -38,6 +38,10 @@ pub mod pdf_protocol;
 pub mod pdfium_utils; // Pdfium 公共工具（库加载 + 文本提取）
 pub mod question_bank_service;
 pub mod question_export_service;
+pub mod cross_page_merger;
+pub mod figure_extractor;
+pub mod llm_structurer;
+pub mod page_rasterizer;
 pub mod question_import_service;
 pub mod vlm_grounding_service;
 pub mod secure_store;

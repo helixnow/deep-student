@@ -120,6 +120,21 @@ impl DocumentParser {
         DocumentParser
     }
 
+    /// 公共接口：检查 ZIP Bomb（供 page_rasterizer 调用）
+    pub fn check_zip_bomb_bytes(&self, bytes: &[u8], file_name: &str) -> Result<(), ParsingError> {
+        self.check_zip_bomb(bytes, file_name)
+    }
+
+    /// 公共接口：检查 Office 文档加密（供 page_rasterizer 调用）
+    pub fn check_office_encryption_bytes(&self, bytes: &[u8], file_name: &str) -> Result<(), ParsingError> {
+        self.check_office_encryption(bytes, file_name)
+    }
+
+    /// 公共接口：检查 PDF 文档加密（供 page_rasterizer 调用）
+    pub fn check_pdf_encryption_bytes(&self, bytes: &[u8], file_name: &str) -> Result<(), ParsingError> {
+        self.check_pdf_encryption(bytes, file_name)
+    }
+
     /// 检查文件大小是否超出限制
     fn check_file_size(&self, size: usize) -> Result<(), ParsingError> {
         if size > MAX_DOCUMENT_SIZE {

@@ -149,6 +149,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
   const [excludedCardIds, setExcludedCardIds] = useState<Set<string>>(new Set());
   const [showQuestionFilter, setShowQuestionFilter] = useState(false);
   const [isConfirming, setIsConfirming] = useState(false);
+  // Visual-First: PDF 不再需要文本质量检测，保留变量避免下游引用报错
   const [pendingPdfImport, setPendingPdfImport] = useState<{
     base64Content: string;
     format: string;
@@ -415,7 +416,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
           folder_id: undefined,
           session_id: sessionId || undefined,
           model_config_id: selectedModelId || undefined,
-          pdf_prefer_ocr: format === 'pdf' ? pdfPreferOcr : undefined,
+          pdf_prefer_ocr: undefined,
         },
       });
 
@@ -631,23 +632,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
 
       const format = file.name.split('.').pop()?.toLowerCase() || 'txt';
 
-      if (format === 'pdf') {
-        const inspection = await invoke<PdfTextInspection>('inspect_pdf_text_for_qbank', {
-          request: { content: base64Content },
-        });
-
-        if (inspection.recommendation === 'auto_ocr') {
-          debugLog.info('[ExamSheetUploader] PDF 文本质量低，按后端建议自动 OCR');
-          await executeDocumentImport(base64Content, format, true);
-          return;
-        }
-
-        if (inspection.recommendation === 'manual_decision') {
-          setPendingPdfImport({ base64Content, format, inspection });
-          return;
-        }
-      }
-
+      // Visual-First: 所有格式统一走 VLM 管线，不再做 PDF 文本质量检测
       await executeDocumentImport(base64Content, format, undefined);
 
     } catch (err: unknown) {
