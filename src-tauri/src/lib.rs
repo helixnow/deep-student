@@ -1493,36 +1493,40 @@ pub fn run() {
             ,crate::data_governance::commands::data_governance_run_health_check
             ,crate::data_governance::commands::data_governance_get_audit_logs
             ,crate::data_governance::commands::data_governance_cleanup_audit_logs
-            ,crate::data_governance::commands::data_governance_run_backup
-            ,crate::data_governance::commands::data_governance_cancel_backup
-            ,crate::data_governance::commands::data_governance_get_backup_job
-            ,crate::data_governance::commands::data_governance_list_backup_jobs
-            ,crate::data_governance::commands::data_governance_get_backup_list
-            ,crate::data_governance::commands::data_governance_delete_backup
-            ,crate::data_governance::commands::data_governance_check_disk_space_for_restore
-            ,crate::data_governance::commands::data_governance_verify_backup
-            ,crate::data_governance::commands::data_governance_auto_verify_latest_backup
-            ,crate::data_governance::commands::data_governance_backup_tiered
-            ,crate::data_governance::commands::data_governance_backup_and_export_zip
-            ,crate::data_governance::commands::data_governance_export_zip
-            ,crate::data_governance::commands::data_governance_import_zip
-            ,crate::data_governance::commands::data_governance_restore_backup
-            ,crate::data_governance::commands::data_governance_get_sync_status
-            ,crate::data_governance::commands::data_governance_detect_conflicts
-            ,crate::data_governance::commands::data_governance_resolve_conflicts
-            ,crate::data_governance::commands::data_governance_run_sync
-            ,crate::data_governance::commands::data_governance_run_sync_with_progress
-            ,crate::data_governance::commands::data_governance_export_sync_data
-            ,crate::data_governance::commands::data_governance_import_sync_data
+            // 备份命令
+            ,crate::data_governance::commands_backup::data_governance_run_backup
+            ,crate::data_governance::commands_backup::data_governance_cancel_backup
+            ,crate::data_governance::commands_backup::data_governance_get_backup_job
+            ,crate::data_governance::commands_backup::data_governance_list_backup_jobs
+            ,crate::data_governance::commands_backup::data_governance_get_backup_list
+            ,crate::data_governance::commands_backup::data_governance_delete_backup
+            ,crate::data_governance::commands_backup::data_governance_check_disk_space_for_restore
+            ,crate::data_governance::commands_backup::data_governance_verify_backup
+            ,crate::data_governance::commands_backup::data_governance_auto_verify_latest_backup
+            ,crate::data_governance::commands_backup::data_governance_backup_tiered
+            // ZIP 导出/导入命令
+            ,crate::data_governance::commands_zip::data_governance_backup_and_export_zip
+            ,crate::data_governance::commands_zip::data_governance_export_zip
+            ,crate::data_governance::commands_zip::data_governance_import_zip
+            // 恢复命令
+            ,crate::data_governance::commands_restore::data_governance_restore_backup
+            // 同步命令
+            ,crate::data_governance::commands_sync::data_governance_get_sync_status
+            ,crate::data_governance::commands_sync::data_governance_detect_conflicts
+            ,crate::data_governance::commands_sync::data_governance_resolve_conflicts
+            ,crate::data_governance::commands_sync::data_governance_run_sync
+            ,crate::data_governance::commands_sync::data_governance_run_sync_with_progress
+            ,crate::data_governance::commands_sync::data_governance_export_sync_data
+            ,crate::data_governance::commands_sync::data_governance_import_sync_data
             // 任务恢复命令（断点续传支持）
-            ,crate::data_governance::commands::data_governance_resume_backup_job
-            ,crate::data_governance::commands::data_governance_list_resumable_jobs
-            ,crate::data_governance::commands::data_governance_cleanup_persisted_jobs
+            ,crate::data_governance::commands_backup::data_governance_resume_backup_job
+            ,crate::data_governance::commands_backup::data_governance_list_resumable_jobs
+            ,crate::data_governance::commands_backup::data_governance_cleanup_persisted_jobs
             // 资产管理命令
-            ,crate::data_governance::commands::data_governance_scan_assets
-            ,crate::data_governance::commands::data_governance_get_asset_types
-            ,crate::data_governance::commands::data_governance_restore_with_assets
-            ,crate::data_governance::commands::data_governance_verify_backup_with_assets
+            ,crate::data_governance::commands_asset::data_governance_scan_assets
+            ,crate::data_governance::commands_asset::data_governance_get_asset_types
+            ,crate::data_governance::commands_asset::data_governance_restore_with_assets
+            ,crate::data_governance::commands_asset::data_governance_verify_backup_with_assets
             ,crate::data_governance::commands::data_governance_get_migration_diagnostic_report
             ,crate::data_governance::commands::data_governance_run_slot_c_empty_db_test
             ,crate::data_governance::commands::data_governance_run_slot_d_clone_db_test

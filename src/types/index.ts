@@ -5,7 +5,7 @@
  * to improve maintainability and consistency.
  */
 
-import type { ExamSheetSessionDetail } from '../utils/tauriApi';
+import type { ExamSheetSessionDetail } from '../utils/types';
 
 // ============================================================================
 // Core Data Models (matching backend Rust structs)

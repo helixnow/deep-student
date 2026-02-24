@@ -35,6 +35,12 @@
 pub mod audit;
 pub mod backup;
 pub mod commands;
+pub mod commands_types;
+pub mod commands_backup;
+pub mod commands_zip;
+pub mod commands_restore;
+pub mod commands_asset;
+pub mod commands_sync;
 pub mod dto;
 pub mod init;
 pub mod migration;
@@ -51,50 +57,58 @@ mod migration_tests;
 #[cfg(test)]
 mod critical_audit_tests;
 
-// Re-exports - 命令
+// Re-exports - 命令（commands.rs 中保留的命令）
 pub use commands::{
-    data_governance_backup_and_export_zip,
-    // 分层备份命令
-    data_governance_backup_tiered,
-    // 备份任务管理命令
-    data_governance_cancel_backup,
-    // 审计日志命令
     data_governance_cleanup_audit_logs,
-    data_governance_cleanup_persisted_jobs,
-    data_governance_delete_backup,
-    data_governance_detect_conflicts,
-    data_governance_export_sync_data,
-    // ZIP 导出/导入命令
-    data_governance_export_zip,
-    data_governance_get_asset_types,
     data_governance_get_audit_logs,
-    data_governance_get_backup_job,
-    data_governance_get_backup_list,
     data_governance_get_database_status,
     data_governance_get_migration_status,
-    // Schema 和状态查询命令
     data_governance_get_schema_registry,
-    // 同步命令
-    data_governance_get_sync_status,
-    data_governance_import_sync_data,
-    data_governance_import_zip,
+    data_governance_run_health_check,
+};
+
+// Re-exports - 备份命令（commands_backup.rs）
+pub use commands_backup::{
+    data_governance_backup_tiered,
+    data_governance_cancel_backup,
+    data_governance_cleanup_persisted_jobs,
+    data_governance_delete_backup,
+    data_governance_get_backup_job,
+    data_governance_get_backup_list,
     data_governance_list_backup_jobs,
     data_governance_list_resumable_jobs,
-    data_governance_resolve_conflicts,
-    // 恢复命令
-    data_governance_restore_backup,
-    data_governance_restore_with_assets,
-    // 任务恢复命令（断点续传支持）
     data_governance_resume_backup_job,
-    // 备份命令
     data_governance_run_backup,
-    data_governance_run_health_check,
+    data_governance_verify_backup,
+};
+
+// Re-exports - ZIP 导出/导入命令（commands_zip.rs）
+pub use commands_zip::{
+    data_governance_backup_and_export_zip,
+    data_governance_export_zip,
+    data_governance_import_zip,
+};
+
+// Re-exports - 恢复命令（commands_restore.rs）
+pub use commands_restore::data_governance_restore_backup;
+
+// Re-exports - 资产管理命令（commands_asset.rs）
+pub use commands_asset::{
+    data_governance_get_asset_types,
+    data_governance_restore_with_assets,
+    data_governance_scan_assets,
+    data_governance_verify_backup_with_assets,
+};
+
+// Re-exports - 同步命令（commands_sync.rs）
+pub use commands_sync::{
+    data_governance_detect_conflicts,
+    data_governance_export_sync_data,
+    data_governance_get_sync_status,
+    data_governance_import_sync_data,
+    data_governance_resolve_conflicts,
     data_governance_run_sync,
     data_governance_run_sync_with_progress,
-    // 资产管理命令
-    data_governance_scan_assets,
-    data_governance_verify_backup,
-    data_governance_verify_backup_with_assets,
 };
 
 // Re-exports - 同步进度相关
