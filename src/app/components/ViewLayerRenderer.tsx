@@ -13,7 +13,7 @@ export interface ViewLayerRendererProps {
   errorBoundaryName?: string;
 }
 
-export function ViewLayerRenderer({
+export const ViewLayerRenderer = React.memo(function ViewLayerRenderer({
   view,
   currentView,
   visitedViews,
@@ -55,4 +55,19 @@ export function ViewLayerRenderer({
       {content}
     </div>
   );
-}
+}, (prev, next) => {
+  // 仅在可见性状态、子树引用或样式发生变化时才重新渲染
+  const prevActive = prev.currentView === prev.view;
+  const nextActive = next.currentView === next.view;
+  if (prevActive !== nextActive) return false;
+
+  const prevVisited = prev.visitedViews.has(prev.view);
+  const nextVisited = next.visitedViews.has(next.view);
+  if (prevVisited !== nextVisited) return false;
+
+  if (prev.children !== next.children) return false;
+  if (prev.extraClass !== next.extraClass) return false;
+  if (prev.extraStyle !== next.extraStyle) return false;
+
+  return true;
+});

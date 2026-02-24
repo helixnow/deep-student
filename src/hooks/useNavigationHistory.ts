@@ -1,4 +1,4 @@
-import { useRef, useCallback, useState, useEffect } from 'react';
+import { useRef, useCallback, useState, useEffect, useMemo, startTransition } from 'react';
 import type { CurrentView, NavigationHistoryEntry } from '../types/navigation';
 import { SKIP_IN_HISTORY, MAX_HISTORY_LENGTH } from '../types/navigation';
 import { debugLog } from '../debug-panel/debugMasterSwitch';
@@ -123,9 +123,8 @@ export function useNavigationHistory(options: UseNavigationHistoryOptions): UseN
       }
     }
     
-    // 触发视图变更
+    // 触发视图变更（onViewChange → setCurrentView → startTransition 内的 push 会处理状态更新）
     onViewChange(entry.view, entry.params);
-    forceUpdate({});
     
     console.log('[NavigationHistory] 后退:', { view: entry.view, index: newIndex, total: historyRef.current.length });
   }, [onViewChange, shouldSkipClick]);
@@ -167,9 +166,8 @@ export function useNavigationHistory(options: UseNavigationHistoryOptions): UseN
       }
     }
     
-    // 触发视图变更
+    // 触发视图变更（onViewChange → setCurrentView → startTransition 内的 push 会处理状态更新）
     onViewChange(entry.view, entry.params);
-    forceUpdate({});
     
     console.log('[NavigationHistory] 前进:', { view: entry.view, index: newIndex, total: historyRef.current.length });
   }, [onViewChange, shouldSkipClick]);
@@ -291,15 +289,15 @@ export function useNavigationHistory(options: UseNavigationHistoryOptions): UseN
     
     console.log('[NavigationHistory] 推入新项:', { view: currentView, index: historyIndexRef.current, total: updated.length });
     
-    // 强制重渲染
-    forceUpdate({});
+    // 🚀 低优先级重渲染：更新 canGoBack/canGoForward，不阻塞视图切换的 transition 渲染
+    startTransition(() => forceUpdate({}));
   }, [currentView, currentParams, areParamsEqual]); // ✅ 移除 push 依赖
 
   // ✅ 使用状态变量确保响应式
   const canGoBack = historyIndexRef.current > 0;
   const canGoForward = historyIndexRef.current < historyRef.current.length - 1;
 
-  return {
+  return useMemo(() => ({
     canGoBack,
     canGoForward,
     goBack,
@@ -307,6 +305,6 @@ export function useNavigationHistory(options: UseNavigationHistoryOptions): UseN
     push,
     clear,
     getHistorySize,
-  };
+  }), [canGoBack, canGoForward, goBack, goForward, push, clear, getHistorySize]);
 }
 

@@ -141,8 +141,11 @@ const DESKTOP_TITLEBAR_BASE_HEIGHT = 40;
 // 🚀 LRU 视图淘汰：限制保活视图数量，避免内存无限增长
 /** 始终保活的视图（不参与 LRU 淘汰） */
 const PINNED_VIEWS: Set<CurrentView> = new Set(['chat-v2']);
-/** 最大保活视图数量（含 pinned） */
-const MAX_ALIVE_VIEWS = 5;
+/** 最大保活视图数量（含 pinned）
+ *  用户常用 6-7 个视图，设为 8 避免频繁驱逐导致的重新挂载开销。
+ *  搭配 useMemo 缓存子树后，保活视图的 re-render 成本接近零。
+ */
+const MAX_ALIVE_VIEWS = 8;
 
 interface AnnStatusResponse {
   indexed: boolean;
@@ -411,41 +414,40 @@ function App() {
       );
     }
 
-    // 🚀 LRU 更新：记录访问时间戳，超过阈值时淘汰最久未访问的非 pinned 视图
-    setVisitedViews(prev => {
-      const now = Date.now();
-      const next = new Map(prev);
-      next.set(targetView, now);
+    // 使用 startTransition 将 LRU 更新 + 视图切换 打包在同一个 transition 中。
+    // 导航历史由 useNavigationHistory 的 useEffect 推入（始终基于 committed state，避免快速点击竞态）。
+    startTransition(() => {
+      // 🚀 LRU 更新：记录访问时间戳，超过阈值时淘汰最久未访问的非 pinned 视图
+      setVisitedViews(prev => {
+        const now = Date.now();
+        const next = new Map(prev);
+        next.set(targetView, now);
 
-      // 淘汰逻辑：仅在超出上限时移除最旧的非 pinned 视图
-      if (next.size > MAX_ALIVE_VIEWS) {
-        let oldestView: CurrentView | null = null;
-        let oldestTime = Infinity;
-        for (const [view, ts] of next) {
-          if (PINNED_VIEWS.has(view)) continue; // pinned 视图不淘汰
-          if (view === targetView) continue;     // 当前要切换到的视图不淘汰
-          if (ts < oldestTime) {
-            oldestTime = ts;
-            oldestView = view;
+        // 淘汰逻辑：仅在超出上限时移除最旧的非 pinned 视图
+        if (next.size > MAX_ALIVE_VIEWS) {
+          let oldestView: CurrentView | null = null;
+          let oldestTime = Infinity;
+          for (const [view, ts] of next) {
+            if (PINNED_VIEWS.has(view)) continue;
+            if (view === targetView) continue;
+            if (ts < oldestTime) {
+              oldestTime = ts;
+              oldestView = view;
+            }
+          }
+          if (oldestView) {
+            next.delete(oldestView);
+            pageLifecycleTracker.log(
+              'app',
+              'App.tsx',
+              'view_evict',
+              `LRU evicted: ${oldestView} (%.0fms old)`.replace('%.0fms', `${now - oldestTime}ms`)
+            );
           }
         }
-        if (oldestView) {
-          next.delete(oldestView);
-          pageLifecycleTracker.log(
-            'app',
-            'App.tsx',
-            'view_evict',
-            `LRU evicted: ${oldestView} (%.0fms old)`.replace('%.0fms', `${now - oldestTime}ms`)
-          );
-        }
-      }
 
-      return next;
-    });
-
-    // 使用 startTransition 避免 Suspense fallback 闪白：
-    // React 会保持当前视图直到新视图准备就绪
-    startTransition(() => {
+        return next;
+      });
       setCurrentViewRaw(targetView);
     });
   }, []);
@@ -762,6 +764,7 @@ function App() {
       setCurrentView(view);
     },
   });
+
   // 📁 Learning Hub 内部导航（使用全局订阅，因为 App.tsx 在 Provider 外部）
   const [learningHubNav, setLearningHubNav] = useState(() => getGlobalLearningHubNavigation());
   const isInLearningHub = currentView === 'learning-hub';
@@ -1020,16 +1023,16 @@ function App() {
     { target: 'window', type: 'PREFILL_CHAT_INPUT', listener: handlePrefillChatInput },
   ], [handleNavigateToExamSheet, handleNavigateToTranslation, handleNavigateToEssay, handleNavigateToNote, handlePrefillChatInput]);
 
-  // 处理页面切换
-  const handleViewChange = (newView: CurrentView) => {
+  // 处理页面切换（useCallback 稳定引用，避免 ModernSidebar 每次重渲染）
+  const handleViewChange = useCallback((newView: CurrentView) => {
     // 如果切换到模板管理页面，且不是从 Anki 制卡页面进入的，清除选择模板状态
-    if (newView === 'template-management' && currentView !== 'task-dashboard') {
+    if (newView === 'template-management' && currentViewRef.current !== 'task-dashboard') {
       setIsSelectingTemplate(false);
       setTemplateSelectionCallback(null);
     }
 
     setCurrentView(newView);
-  };
+  }, [setCurrentView]);
 
   // 历史管理已迁移到 useNavigationHistory Hook
 
@@ -1172,17 +1175,18 @@ function App() {
   // 管理题目图片URL的生命周期
 
   // 渲染侧边栏导航 - 现代化风格
-  const renderSidebar = () => (
+  const noopToggle = useCallback(() => {}, []);
+  const sidebarElement = useMemo(() => (
     <ModernSidebar
       currentView={currentView}
       onViewChange={handleViewChange}
       sidebarCollapsed={sidebarCollapsed}
-      onToggleSidebar={() => {}} // 禁用展开功能
+      onToggleSidebar={noopToggle}
       startDragging={startDragging}
-      navigationHistory={navigationHistory}
       topbarTopMargin={topbarTopMargin}
     />
-  );
+    // navigationHistory 已从 deps 中移除：ModernSidebar 仅解构 currentView/onViewChange/topbarTopMargin
+  ), [currentView, handleViewChange, sidebarCollapsed, noopToggle, startDragging, topbarTopMargin]);
 
   // ★ 分析模式已废弃（旧错题系统已移除）- handleCoreStateUpdate, handleSaveRequest, analysisHostProps 已移除
   // const renderAnalysisView = () => null; // 已废弃
@@ -1221,6 +1225,94 @@ function App() {
 
   const navigationShortcuts = getNavigationShortcutText();
 
+  // 🚀 性能优化：memoize 各视图内容，防止切换视图时所有已缓存视图子树被重新协调
+  // 当 App 因 currentView 变化而重渲染时，useMemo 返回相同的 React 元素引用，
+  // React 协调器看到相同引用后会跳过整个子树的 diff，大幅减少切换耗时。
+  // 仅包含稳定依赖（useCallback/useState setter/ref）的视图可安全 memoize。
+  const dashboardContent = useMemo(() => (
+    <CustomScrollArea className="flex-1" viewportClassName="flex-1" trackOffsetTop={12} trackOffsetBottom={12}>
+      <Suspense fallback={<PageLoadingFallback />}>
+        <LazySOTADashboard onBack={() => setCurrentView('chat-v2')} />
+      </Suspense>
+    </CustomScrollArea>
+  ), [setCurrentView]);
+
+  const settingsContent = useMemo(() => (
+    <Suspense fallback={<PageLoadingFallback />}>
+      <LazySettings onBack={() => setCurrentView('chat-v2')} />
+    </Suspense>
+  ), [setCurrentView]);
+
+  const taskDashboardContent = useMemo(() => (
+    <Suspense fallback={<PageLoadingFallback />}>
+      <TaskDashboardPage
+        onNavigateToChat={(sessionId) => {
+          setCurrentView('chat-v2');
+          window.dispatchEvent(
+            new CustomEvent('navigate-to-session', { detail: { sessionId } })
+          );
+        }}
+        onOpenTemplateManagement={() => {
+          setIsSelectingTemplate(false);
+          setCurrentView('template-management');
+        }}
+      />
+    </Suspense>
+  ), [setCurrentView]);
+
+  const skillsManagementContent = useMemo(() => (
+    <Suspense fallback={<PageLoadingFallback />}><LazySkillsManagementPage /></Suspense>
+  ), []);
+
+  const templateJsonPreviewContent = useMemo(() => (
+    <Suspense fallback={<PageLoadingFallback />}>
+      <LazyTemplateJsonPreviewPage
+        onBack={() => setCurrentView(templateJsonPreviewReturnRef.current)}
+      />
+    </Suspense>
+  ), [setCurrentView]);
+
+  const learningHubContent = useMemo(() => (
+    <Suspense fallback={<PageLoadingFallback />}><LazyLearningHubPage /></Suspense>
+  ), []);
+
+  const pdfReaderContent = useMemo(() => (
+    <Suspense fallback={<PageLoadingFallback />}><LazyPdfReader /></Suspense>
+  ), []);
+
+  const chatV2Content = useMemo(() => (
+    <Suspense fallback={<PageLoadingFallback />}><LazyChatV2Page /></Suspense>
+  ), []);
+
+  // template-management: 依赖仅在模板选择流程触发时变化，日常视图切换中保持稳定
+  const templateManagementContent = useMemo(() => (
+    <Suspense fallback={<PageLoadingFallback />}>
+      <LazyTemplateManagementPage
+        isSelectingMode={isSelectingTemplate}
+        onTemplateSelected={handleTemplateSelected}
+        onCancel={handleTemplateSelectionCancel}
+        onBackToAnki={() => setCurrentView('task-dashboard')}
+        refreshToken={templateManagementRefreshTick}
+        onOpenJsonPreview={() => {
+          templateJsonPreviewReturnRef.current = currentViewRef.current;
+          setCurrentView('template-json-preview');
+        }}
+      />
+    </Suspense>
+  ), [isSelectingTemplate, handleTemplateSelected, handleTemplateSelectionCancel, templateManagementRefreshTick, setCurrentView]);
+
+  // data-management: 依赖仅在导入对话框打开/语言切换时变化
+  const dataManagementContent = useMemo(() => (
+    <Suspense fallback={<PageLoadingFallback />}>
+      <LazyDataImportExport />
+      <LazyImportConversationDialog
+        open={showImportConversation}
+        onOpenChange={setShowImportConversation}
+        onImportSuccess={handleImportConversationSuccess}
+      />
+    </Suspense>
+  ), [showImportConversation, handleImportConversationSuccess]);
+
   // 🚀 使用抽取的 ViewLayerRenderer 组件
   const renderViewLayer = (
     view: CurrentView,
@@ -1241,6 +1333,12 @@ function App() {
   );
 
   // 保留初始化逻辑，但不阻塞渲染，不再显示覆盖式载入页
+
+  // 🔍 诊断：分离调度延迟 vs 渲染时间（找出 200-400ms 的真正来源）
+  if (viewSwitchStartRef.current && viewSwitchStartRef.current.to === currentView) {
+    const hooksMs = Math.round(performance.now() - viewSwitchStartRef.current.startTime);
+    pageLifecycleTracker.log('app', 'App.tsx', 'custom', `⏱ Hooks+调度: ${hooksMs}ms | ${viewSwitchStartRef.current.from} → ${currentView}`);
+  }
 
   // 🆕 用户协议检查中 —— 等待数据库查询完成
   // needsAgreement: null=检查中, true=需同意, false=已同意
@@ -1364,7 +1462,7 @@ function App() {
         )}
 
         {/* 桌面端：主导航侧边栏 */}
-        {!isSmallScreen && renderSidebar()}
+        {!isSmallScreen && sidebarElement}
 
         <div
           className="flex-1 flex flex-col h-full relative overflow-hidden bg-background/50 dark:bg-zinc-950/30 backdrop-blur-sm"
@@ -1435,98 +1533,26 @@ function App() {
             <div ref={contentBodyRef} className={`content-body w-full h-full relative ${currentView === 'settings' ? 'settings-view' : ''}`}>
               {/* ★ 废弃视图已移除（2026-01 清理）：analysis, library, exam-sheet */}
 
-              {renderViewLayer(
-                'dashboard',
-                (
-                  <CustomScrollArea className="flex-1" viewportClassName="flex-1" trackOffsetTop={12} trackOffsetBottom={12}>
-                    <Suspense fallback={<PageLoadingFallback />}>
-                      <LazySOTADashboard onBack={() => setCurrentView('chat-v2')} />
-                    </Suspense>
-                  </CustomScrollArea>
-                ),
-                'overflow-hidden'
-              )}
+              {renderViewLayer('dashboard', dashboardContent, 'overflow-hidden')}
 
-              {renderViewLayer(
-                'settings',
-                (
-                  <Suspense fallback={<PageLoadingFallback />}>
-                    <LazySettings 
-                      onBack={() => setCurrentView('chat-v2')} 
-                    />
-                  </Suspense>
-                ),
-                'overflow-hidden'
-              )}
+              {renderViewLayer('settings', settingsContent, 'overflow-hidden')}
 
               {/* 🎯 Phase 5 清理：mistake-detail 视图已移除，统一由 ChatViewWithSidebar 处理 */}
               {/* 🎯 2026-01: llm-usage-stats 视图已移除，统计数据已整合到 DataStats 页面 */}
 
               {/* 制卡任务管理页面 */}
-              {renderViewLayer(
-                'task-dashboard',
-                (
-                  <Suspense fallback={<PageLoadingFallback />}>
-                    <TaskDashboardPage
-                      onNavigateToChat={(sessionId) => {
-                        setCurrentView('chat-v2');
-                        window.dispatchEvent(
-                          new CustomEvent('navigate-to-session', { detail: { sessionId } })
-                        );
-                      }}
-                      onOpenTemplateManagement={() => {
-                        setIsSelectingTemplate(false);
-                        setCurrentView('template-management');
-                      }}
-                    />
-                  </Suspense>
-                )
-              )}
+              {renderViewLayer('task-dashboard', taskDashboardContent)}
               {/* anki-generation 已通过 canonicalView.ts 重定向到 task-dashboard */}
 
-              {renderViewLayer('skills-management', <Suspense fallback={<PageLoadingFallback />}><LazySkillsManagementPage /></Suspense>)}
+              {renderViewLayer('skills-management', skillsManagementContent)}
 
               {/* ★ 记忆内化已废弃（图谱模块已移除） */}
 
-              {renderViewLayer(
-                'data-management',
-                <Suspense fallback={<PageLoadingFallback />}>
-                  <LazyDataImportExport />
-                  <LazyImportConversationDialog
-                    open={showImportConversation}
-                    onOpenChange={setShowImportConversation}
-                    onImportSuccess={handleImportConversationSuccess}
-                  />
-                </Suspense>
-              )}
+              {renderViewLayer('data-management', dataManagementContent)}
 
-              {renderViewLayer(
-                'template-management',
-                (
-                  <Suspense fallback={<PageLoadingFallback />}>
-                    <LazyTemplateManagementPage
-                      isSelectingMode={isSelectingTemplate}
-                      onTemplateSelected={handleTemplateSelected}
-                      onCancel={handleTemplateSelectionCancel}
-                      onBackToAnki={() => setCurrentView('task-dashboard')}
-                      refreshToken={templateManagementRefreshTick}
-                      onOpenJsonPreview={() => {
-                        templateJsonPreviewReturnRef.current = currentView;
-                        setCurrentView('template-json-preview');
-                      }}
-                    />
-                  </Suspense>
-                )
-              )}
+              {renderViewLayer('template-management', templateManagementContent)}
 
-              {renderViewLayer(
-                'template-json-preview',
-                <Suspense fallback={<PageLoadingFallback />}>
-                  <LazyTemplateJsonPreviewPage
-                    onBack={() => setCurrentView(templateJsonPreviewReturnRef.current)}
-                  />
-                </Suspense>
-              )}
+              {renderViewLayer('template-json-preview', templateJsonPreviewContent)}
 
               {/* ★ 废弃视图已移除（2026-01 清理）：irec, irec-management, irec-service-switcher, math-workflow */}
 
@@ -1534,9 +1560,9 @@ function App() {
               {/* {renderViewLayer('notes', <NotesHome />)} */}
 
               {/* Learning Hub 学习资源全屏模式（已整合教材库功能） */}
-              {renderViewLayer('learning-hub', <Suspense fallback={<PageLoadingFallback />}><LazyLearningHubPage /></Suspense>)}
+              {renderViewLayer('learning-hub', learningHubContent)}
 
-              {renderViewLayer('pdf-reader', <Suspense fallback={<PageLoadingFallback />}><LazyPdfReader /></Suspense>)}
+              {renderViewLayer('pdf-reader', pdfReaderContent)}
 
               {import.meta.env.DEV && renderViewLayer('tree-test', <Suspense fallback={<PageLoadingFallback />}><LazyTreeDragTest /></Suspense>)}
 
@@ -1545,7 +1571,7 @@ function App() {
               {import.meta.env.DEV && renderViewLayer('chat-v2-test', <Suspense fallback={<PageLoadingFallback />}><LazyChatV2IntegrationTest /></Suspense>)}
 
               {/* Chat V2 正式入口 */}
-              {renderViewLayer('chat-v2', <Suspense fallback={<PageLoadingFallback />}><LazyChatV2Page /></Suspense>)}
+              {renderViewLayer('chat-v2', chatV2Content)}
 
               {/* ★ 废弃视图已移除（2026-01 清理）：bridge-to-irec */}
 

@@ -43,8 +43,10 @@ interface CommandPaletteContextValue {
   searchCommands: (query: string) => Command[];
   /** 依赖解析器 */
   deps: DependencyResolver;
-  /** 当前视图 */
+  /** 当前视图（快照值，可能滞后于最新切换；优先使用 getCurrentView()） */
   currentView: CurrentView;
+  /** 获取最新视图（ref-based，始终返回最新值） */
+  getCurrentView: () => CurrentView;
 }
 
 const CommandPaletteContext = createContext<CommandPaletteContextValue | null>(null);
@@ -77,6 +79,10 @@ export function CommandPaletteProvider({
 }: CommandPaletteProviderProps) {
   const [isOpen, setIsOpen] = useState(false);
   const { t, i18n } = useTranslation();
+
+  // 🚀 用 ref 持有 currentView，避免 deps/contextValue 在每次视图切换时重建
+  const currentViewRef = useRef(currentView);
+  currentViewRef.current = currentView;
   
   // 打开/关闭命令面板
   const open = useCallback(() => setIsOpen(true), []);
@@ -85,7 +91,7 @@ export function CommandPaletteProvider({
 
   const deps = useMemo<DependencyResolver>(() => ({
     navigate,
-    getCurrentView: () => currentView,
+    getCurrentView: () => currentViewRef.current,
     t,
     showNotification: showGlobalNotification,
     toggleTheme,
@@ -95,7 +101,6 @@ export function CommandPaletteProvider({
     openCommandPalette: open,
     closeCommandPalette: close,
   }), [
-    currentView,
     navigate,
     t,
     toggleTheme,
@@ -121,10 +126,10 @@ export function CommandPaletteProvider({
     }
   }, [deps, close, t]);
   
-  // 搜索命令
+  // 搜索命令（使用 ref 读取 currentView，避免每次视图切换重建）
   const searchCommands = useCallback((query: string) => {
-    return commandRegistry.search(query, currentView, deps);
-  }, [currentView, deps]);
+    return commandRegistry.search(query, currentViewRef.current, deps);
+  }, [deps]);
   
   // ==================== 快捷键缓存索引 ====================
 
@@ -252,6 +257,9 @@ export function CommandPaletteProvider({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, toggle, currentView, deps, resolveEffectiveShortcut]);
   
+  // 🚀 getCurrentView getter 替代直接暴露 currentView，使 contextValue 不随视图切换重建
+  const getCurrentView = useCallback(() => currentViewRef.current, []);
+
   const contextValue = useMemo<CommandPaletteContextValue>(() => ({
     isOpen,
     open,
@@ -260,8 +268,9 @@ export function CommandPaletteProvider({
     executeCommand,
     searchCommands,
     deps,
-    currentView,
-  }), [isOpen, open, close, toggle, executeCommand, searchCommands, deps, currentView]);
+    currentView: currentViewRef.current,
+    getCurrentView,
+  }), [isOpen, open, close, toggle, executeCommand, searchCommands, deps, getCurrentView]);
   
   return (
     <CommandPaletteContext.Provider value={contextValue}>
