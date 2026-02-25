@@ -47,6 +47,7 @@ const NoteContentView: React.FC<ContentViewProps> = ({
   // 🔧 修复：使用 null 表示"未加载"，空字符串表示"已加载但内容为空"
   const [content, setContent] = useState<string | null>(null);
   const [title, setTitle] = useState<string>(node.name || '');
+  const [tags, setTags] = useState<string[]>((node.metadata?.tags as string[]) || []);
   
   // 🔧 追踪当前加载的笔记 ID，用于防止竞态条件
   const loadingNoteIdRef = React.useRef<string | null>(null);
@@ -86,6 +87,8 @@ const NoteContentView: React.FC<ContentViewProps> = ({
     
     setContent(contentStr);
     setTitle(node.name || '');
+    // 重新加载时同步最新的 tags（node 可能已更新）
+    setTags((node.metadata?.tags as string[]) || []);
     setIsLoading(false);
   }, [node.id, node.path, node.name]);
 
@@ -130,6 +133,18 @@ const NoteContentView: React.FC<ContentViewProps> = ({
     // 通知父级面板标题已更新
     onTitleChange?.(newTitle);
   }, [node.path, readOnly, onTitleChange, t]);
+
+  // 标签变更
+  const handleTagsChange = useCallback(async (newTags: string[]) => {
+    if (readOnly) return;
+    const result = await dstu.setMetadata(node.path, { tags: newTags });
+    if (!result.ok) {
+      console.error('[NoteContentView] Failed to update tags:', result.error);
+      reportError(result.error, '更新标签');
+      throw new Error(result.error.toUserMessage());
+    }
+    setTags(newTags);
+  }, [node.path, readOnly]);
 
   // ========== 渲染 ==========
   // 🔧 优化：Stale-While-Revalidate
@@ -210,7 +225,11 @@ const NoteContentView: React.FC<ContentViewProps> = ({
               <NotesContextPanel
                 noteId={noteId}
                 title={title}
+                createdAt={node.createdAt}
+                updatedAt={node.updatedAt}
+                tags={tags}
                 content={content || ''}
+                onTagsChange={readOnly ? undefined : handleTagsChange}
               />
             </Panel>
           </>

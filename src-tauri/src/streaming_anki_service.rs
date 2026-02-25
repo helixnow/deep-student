@@ -1565,7 +1565,43 @@ impl StreamingAnkiService {
 
                 back = choice_back;
             } else {
-                return Err(AppError::validation("back字段不能为空".to_string()));
+                // 兜底：从 extra_fields 中取第一个非 front 的非空值作为 back
+                let skip_keys: std::collections::HashSet<&str> = [
+                    "front", "tags", "template_id", "templateid", "text",
+                ].iter().copied().collect();
+                let mut fallback_back = String::new();
+                for (key, value) in &extra_fields {
+                    if skip_keys.contains(key.as_str()) || value.trim().is_empty() || value == &front {
+                        continue;
+                    }
+                    if !fallback_back.is_empty() {
+                        fallback_back.push_str("\n\n");
+                    }
+                    fallback_back.push_str(value);
+                }
+                if fallback_back.is_empty() {
+                    // 最终兜底：从原始 JSON 中收集所有非 front 的字符串值
+                    if let Some(obj) = json_value.as_object() {
+                        for (key, value) in obj {
+                            let key_lower = key.to_lowercase();
+                            if matches!(key_lower.as_str(), "front" | "tags" | "template_id" | "templateid" | "fields") {
+                                continue;
+                            }
+                            if let Some(s) = value.as_str() {
+                                if !s.trim().is_empty() && s != front {
+                                    if !fallback_back.is_empty() {
+                                        fallback_back.push_str("\n\n");
+                                    }
+                                    fallback_back.push_str(s);
+                                }
+                            }
+                        }
+                    }
+                }
+                if fallback_back.is_empty() {
+                    return Err(AppError::validation("back字段不能为空".to_string()));
+                }
+                back = fallback_back;
             }
         }
 

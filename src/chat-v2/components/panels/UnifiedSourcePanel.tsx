@@ -649,11 +649,12 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
                     </NotionButton>
                   )}
 
-                  <div
-                    ref={scrollContainerRef}
-                    className="flex gap-2 py-1 overflow-x-auto no-scrollbar"
-                    style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
-                    role="list"
+                  <CustomScrollArea
+                    orientation="horizontal"
+                    viewportRef={scrollContainerRef}
+                    viewportClassName="flex gap-2 py-1"
+                    viewportProps={{ role: 'list' }}
+                    className="w-full"
                   >
                     {flatEntries.length === 0 && (
                       <div className="usp-empty w-full text-center py-4">{t('common:chat.sources.empty')}</div>
@@ -690,7 +691,7 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
                         </div>
                       );
                     })}
-                  </div>
+                  </CustomScrollArea>
                 </div>
               </div>
             </div>
@@ -718,7 +719,7 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
             </SheetHeader>
 
             {/* 分类切换 */}
-            <div className="flex gap-2 px-4 py-2 overflow-x-auto border-b bg-muted/30">
+            <CustomScrollArea orientation="horizontal" viewportClassName="flex gap-2 px-4 py-2" className="border-b bg-muted/30">
               {categories.map(category => {
                 const isActive = category.group === activeCategory;
                 const label = t(`common:chat.sources.groupLabels.${category.group}`, { defaultValue: category.group });
@@ -741,7 +742,7 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
                   </NotionButton>
                 );
               })}
-            </div>
+            </CustomScrollArea>
 
             {/* 来源列表（垂直滚动 - 使用自研滚动条） */}
             <CustomScrollArea className="flex-1" viewportClassName="p-4">
@@ -876,25 +877,21 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
                   </NotionButton>
                 )}
 
-                <div
-                  ref={scrollContainerRef}
-                  className={cn(
+                <CustomScrollArea
+                  orientation="horizontal"
+                  viewportRef={scrollContainerRef}
+                  viewportClassName={cn(
                     'py-1 w-full',
-                    isExpanded 
-                      ? 'grid gap-2' 
-                      : 'flex gap-2 overflow-x-auto no-scrollbar'
+                    isExpanded
+                      ? 'grid gap-2'
+                      : 'flex gap-2'
                   )}
-                  style={isExpanded 
-                    ? { gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))' } 
-                    : { scrollbarWidth: 'none', msOverflowStyle: 'none' }
-                  }
-                  role="list"
+                  viewportProps={{
+                    role: 'list',
+                    ...(isExpanded ? { style: { gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))' } } : {})
+                  }}
+                  className="w-full"
                 >
-                  <style>{`
-                    .no-scrollbar::-webkit-scrollbar {
-                      display: none;
-                    }
-                  `}</style>
                   {flatEntries.length === 0 && (
                     <div className="usp-empty w-full text-center py-4">{t('common:chat.sources.empty')}</div>
                   )}
@@ -968,7 +965,7 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
                     </div>
                   );
                 })}
-                </div>
+                </CustomScrollArea>
               </div>
 
               {/* Hover Preview via Portal */}
