@@ -36,6 +36,7 @@ import {
 import type { AnkiCard, CustomAnkiTemplate } from '@/types';
 import { exportCardsAsApkg } from '@/chat-v2/anki';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
+import { useViewVisibility } from '@/hooks/useViewVisibility';
 import {
   normalizeTaskCardsForExport,
   selectTaskExportCards,
@@ -839,6 +840,7 @@ export const TaskDashboardPage: React.FC<TaskDashboardPageProps> = ({
 
   // P2: 智能轮询 —— 通过 ref 跟踪是否有活跃任务
   const hasActiveRef = useRef(false);
+  const { isActive: isViewActive } = useViewVisibility('task-dashboard');
 
   const load = useCallback(async () => {
     try {
@@ -855,12 +857,14 @@ export const TaskDashboardPage: React.FC<TaskDashboardPageProps> = ({
     }
   }, []);
 
-  // P2: 智能轮询 —— 有活跃任务 5s，无则 30s
+  // P2: 智能轮询 —— 有活跃任务 5s，无则 30s；视图不可见时暂停
   useEffect(() => {
+    if (!isViewActive) return; // 视图不可见时完全跳过轮询
+
     let isActive = true;
     let timerId: ReturnType<typeof setTimeout> | null = null;
 
-    load(); // 首次加载
+    load(); // 首次加载（切回视图时也刷新一次）
 
     const schedulePoll = () => {
       if (!isActive) return;
@@ -889,7 +893,7 @@ export const TaskDashboardPage: React.FC<TaskDashboardPageProps> = ({
       if (timerId) clearTimeout(timerId);
       document.removeEventListener('visibilitychange', handleVisibility);
     };
-  }, [load]);
+  }, [load, isViewActive]);
 
   const handleRecover = useCallback(async () => {
     setRecovering(true);

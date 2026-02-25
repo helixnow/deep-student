@@ -689,6 +689,10 @@ impl DocumentParser {
         self.check_office_encryption(bytes, "document.docx")?;
         self.check_zip_bomb(bytes, "document.docx")?;
 
+        // Step 1: 从 ZIP 中构建 rId → 图片字节 映射
+        let rid_to_bytes = Self::build_docx_image_map(bytes)?;
+
+        // Step 2: 用 docx_rs 解析文档结构
         let docx = docx_rs::read_docx(bytes)
             .map_err(|e| ParsingError::DocxParsingError(e.to_string()))?;
 
@@ -698,14 +702,14 @@ impl DocumentParser {
         for child in &docx.document.children {
             match child {
                 docx_rs::DocumentChild::Paragraph(para) => {
-                    let line = Self::extract_paragraph_text_with_images(para, &mut images);
+                    let line = Self::extract_paragraph_text_with_images(para, &mut images, &rid_to_bytes);
                     if !line.trim().is_empty() {
                         text_content.push_str(&line);
                         text_content.push('\n');
                     }
                 }
                 docx_rs::DocumentChild::Table(table) => {
-                    Self::extract_table_text_with_images(table, &mut text_content, &mut images);
+                    Self::extract_table_text_with_images(table, &mut text_content, &mut images, &rid_to_bytes);
                     text_content.push('\n');
                 }
                 docx_rs::DocumentChild::TableOfContents(toc) => {
@@ -722,35 +726,114 @@ impl DocumentParser {
         Ok((text_content, images))
     }
 
+    /// 从 DOCX ZIP 中构建 relationship ID → 图片字节 的映射
+    ///
+    /// docx_rs 读取模式下 `Pic.image` 始终为空，只保存 `Pic.id`（即 rId）。
+    /// 我们需要自行解析 `word/_rels/document.xml.rels` 获取 rId → target 映射，
+    /// 再从 ZIP 中读取 `word/{target}` 的实际字节。
+    fn build_docx_image_map(bytes: &[u8]) -> Result<std::collections::HashMap<String, Vec<u8>>, ParsingError> {
+        use std::collections::HashMap;
+        use std::io::Read;
+
+        let cursor = Cursor::new(bytes);
+        let mut archive = ZipArchive::new(cursor)
+            .map_err(|e| ParsingError::DocxParsingError(format!("无法打开 DOCX ZIP: {}", e)))?;
+
+        // Step 1: 解析 word/_rels/document.xml.rels
+        let mut rid_to_target: HashMap<String, String> = HashMap::new();
+        if let Ok(mut rels_file) = archive.by_name("word/_rels/document.xml.rels") {
+            let mut rels_xml = String::new();
+            rels_file.read_to_string(&mut rels_xml).map_err(|e| {
+                ParsingError::DocxParsingError(format!("读取 rels 失败: {}", e))
+            })?;
+
+            let mut reader = XmlReader::from_str(&rels_xml);
+            reader.config_mut().trim_text(true);
+            let mut buf = Vec::new();
+            loop {
+                match reader.read_event_into(&mut buf) {
+                    Ok(XmlEvent::Empty(ref e)) | Ok(XmlEvent::Start(ref e))
+                        if e.name().as_ref() == b"Relationship" =>
+                    {
+                        let mut id = None;
+                        let mut target = None;
+                        let mut rel_type = None;
+                        for attr in e.attributes().flatten() {
+                            match attr.key.as_ref() {
+                                b"Id" => id = Some(String::from_utf8_lossy(&attr.value).to_string()),
+                                b"Target" => target = Some(String::from_utf8_lossy(&attr.value).to_string()),
+                                b"Type" => rel_type = Some(String::from_utf8_lossy(&attr.value).to_string()),
+                                _ => {}
+                            }
+                        }
+                        // 只收集 image 类型的 relationship
+                        if let (Some(id), Some(target)) = (id, target) {
+                            let is_image = rel_type
+                                .as_deref()
+                                .map(|t| t.contains("/image"))
+                                .unwrap_or(false);
+                            if is_image {
+                                rid_to_target.insert(id, target);
+                            }
+                        }
+                    }
+                    Ok(XmlEvent::Eof) => break,
+                    Err(_) => break,
+                    _ => {}
+                }
+                buf.clear();
+            }
+        }
+
+        // Step 2: 从 ZIP 中读取 image 字节
+        let mut rid_to_bytes: HashMap<String, Vec<u8>> = HashMap::new();
+        for (rid, target) in &rid_to_target {
+            let zip_path = if target.starts_with('/') {
+                target[1..].to_string()
+            } else {
+                format!("word/{}", target)
+            };
+            if let Ok(mut file) = archive.by_name(&zip_path) {
+                let mut buf = Vec::with_capacity(file.size() as usize);
+                if file.read_to_end(&mut buf).is_ok() && !buf.is_empty() {
+                    rid_to_bytes.insert(rid.clone(), buf);
+                }
+            }
+        }
+
+        Ok(rid_to_bytes)
+    }
+
     /// 从段落中提取文本 + 图片标记
     fn extract_paragraph_text_with_images(
         para: &docx_rs::Paragraph,
         images: &mut Vec<Vec<u8>>,
+        rid_map: &std::collections::HashMap<String, Vec<u8>>,
     ) -> String {
         let mut line = String::new();
         for child in &para.children {
             match child {
                 docx_rs::ParagraphChild::Run(run) => {
-                    Self::extract_run_text_with_images(run, &mut line, images);
+                    Self::extract_run_text_with_images(run, &mut line, images, rid_map);
                 }
                 docx_rs::ParagraphChild::Hyperlink(hyperlink) => {
                     for run in &hyperlink.children {
                         if let docx_rs::ParagraphChild::Run(r) = run {
-                            Self::extract_run_text_with_images(r, &mut line, images);
+                            Self::extract_run_text_with_images(r, &mut line, images, rid_map);
                         }
                     }
                 }
                 docx_rs::ParagraphChild::Insert(ins) => {
                     for ic in &ins.children {
                         if let docx_rs::InsertChild::Run(r) = ic {
-                            Self::extract_run_text_with_images(r, &mut line, images);
+                            Self::extract_run_text_with_images(r, &mut line, images, rid_map);
                         }
                     }
                 }
                 docx_rs::ParagraphChild::Delete(del) => {
                     for dc in &del.children {
                         if let docx_rs::DeleteChild::Run(r) = dc {
-                            Self::extract_run_text_with_images(r, &mut line, images);
+                            Self::extract_run_text_with_images(r, &mut line, images, rid_map);
                         }
                     }
                 }
@@ -765,6 +848,7 @@ impl DocumentParser {
         run: &docx_rs::Run,
         out: &mut String,
         images: &mut Vec<Vec<u8>>,
+        rid_map: &std::collections::HashMap<String, Vec<u8>>,
     ) {
         for rc in &run.children {
             match rc {
@@ -786,9 +870,17 @@ impl DocumentParser {
                 }
                 docx_rs::RunChild::Drawing(drawing) => {
                     if let Some(docx_rs::DrawingData::Pic(pic)) = &drawing.data {
-                        if !pic.image.is_empty() {
+                        // 优先用 pic.image（写模式有值），否则通过 rId 从 ZIP 解析
+                        let image_bytes = if !pic.image.is_empty() {
+                            Some(pic.image.clone())
+                        } else if !pic.id.is_empty() {
+                            rid_map.get(&pic.id).cloned()
+                        } else {
+                            None
+                        };
+                        if let Some(bytes) = image_bytes {
                             let idx = images.len();
-                            images.push(pic.image.clone());
+                            images.push(bytes);
                             out.push_str(&format!("<<IMG:{}>>", idx));
                         }
                     }
@@ -803,6 +895,7 @@ impl DocumentParser {
         table: &docx_rs::Table,
         out: &mut String,
         images: &mut Vec<Vec<u8>>,
+        rid_map: &std::collections::HashMap<String, Vec<u8>>,
     ) {
         for tc in &table.rows {
             if let docx_rs::TableChild::TableRow(row) = tc {
@@ -812,7 +905,7 @@ impl DocumentParser {
                         let mut cell_text = String::new();
                         for cc in &cell.children {
                             if let docx_rs::TableCellContent::Paragraph(para) = cc {
-                                let t = Self::extract_paragraph_text_with_images(para, images);
+                                let t = Self::extract_paragraph_text_with_images(para, images, rid_map);
                                 if !t.trim().is_empty() {
                                     if !cell_text.is_empty() {
                                         cell_text.push(' ');

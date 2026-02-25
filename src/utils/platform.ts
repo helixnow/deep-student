@@ -73,6 +73,14 @@ export const initPlatformClasses = (): void => {
     initAndroidSafeArea();
   }
 
+  // 桌面平台检测
+  if (isMacOS()) {
+    html.classList.add('is-macos');
+  }
+  if (isWindows()) {
+    html.classList.add('is-windows');
+  }
+
   // 移动端检测
   if (isMobilePlatform()) {
     html.classList.add('is-mobile');

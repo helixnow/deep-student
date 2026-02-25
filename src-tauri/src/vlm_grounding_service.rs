@@ -251,6 +251,105 @@ impl VlmGroundingService {
         Err(AppError::llm(last_error))
     }
 
+    /// 描述单张图片内容（轻量 VLM 调用）
+    ///
+    /// 用于 DOCX 原生导入：对文档中嵌入的配图/示意图/图表进行文字描述，
+    /// 描述会嵌入到题目文本中供 LLM 结构化时理解图片含义。
+    pub async fn describe_image(&self, image_bytes: &[u8]) -> Result<String, AppError> {
+        let (mime, _) = detect_image_format(image_bytes);
+        let b64 = base64::engine::general_purpose::STANDARD.encode(image_bytes);
+        let data_url = format!("data:{};base64,{}", mime, b64);
+
+        let config = self.get_vlm_config().await?;
+        let api_key = self.llm_manager.decrypt_api_key_if_needed(&config.api_key)?;
+
+        let prompt = r#"请详细描述这张图片的内容。这是一份试题/学习材料中的配图。
+
+要求：
+1. 如果是数学/物理/化学等图形，精确描述图中的坐标、标注、数值、方程
+2. 如果是表格，用文字或 Markdown 表格转录完整内容
+3. 如果是示意图/流程图，描述各部分的关系和标注
+4. 如果包含文字，完整转录（数学公式用 LaTeX 格式）
+5. 只输出描述，不要其他多余内容"#;
+
+        let messages = vec![json!({
+            "role": "user",
+            "content": [
+                { "type": "image_url", "image_url": { "url": data_url, "detail": "high" } },
+                { "type": "text", "text": prompt }
+            ]
+        })];
+
+        let max_tokens = crate::llm_manager::effective_max_tokens(
+            config.max_output_tokens,
+            config.max_tokens_limit,
+        )
+        .max(2048)
+        .min(4096);
+
+        let request_body = json!({
+            "model": config.model,
+            "messages": messages,
+            "temperature": 0.1,
+            "max_tokens": max_tokens,
+            "stream": false,
+        });
+
+        let provider: Box<dyn crate::providers::ProviderAdapter> =
+            match config.model_adapter.as_str() {
+                "google" | "gemini" => Box::new(crate::providers::GeminiAdapter::new()),
+                "anthropic" | "claude" => Box::new(crate::providers::AnthropicAdapter::new()),
+                _ => Box::new(crate::providers::OpenAIAdapter),
+            };
+
+        let preq = provider
+            .build_request(&config.base_url, &api_key, &config.model, &request_body)
+            .map_err(|e| AppError::llm(format!("VLM 图片描述请求构建失败: {:?}", e)))?;
+
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(120))
+            .build()
+            .map_err(|e| AppError::internal(format!("创建 HTTP 客户端失败: {}", e)))?;
+
+        let mut rb = client.post(&preq.url);
+        for (k, v) in preq.headers.iter() {
+            rb = rb.header(k.as_str(), v.as_str());
+        }
+
+        let response = rb
+            .json(&preq.body)
+            .send()
+            .await
+            .map_err(|e| AppError::network(format!("VLM 图片描述请求失败: {}", e)))?;
+
+        let status = response.status();
+        let body = response
+            .text()
+            .await
+            .map_err(|e| AppError::network(format!("读取 VLM 响应失败: {}", e)))?;
+
+        if !status.is_success() {
+            return Err(AppError::llm(format!(
+                "VLM 图片描述 API 返回 {}: {}",
+                status,
+                &body[..body.len().min(300)]
+            )));
+        }
+
+        let resp_json: Value = serde_json::from_str(&body)
+            .map_err(|e| AppError::llm(format!("解析 VLM 响应 JSON 失败: {}", e)))?;
+
+        let content = resp_json
+            .get("choices")
+            .and_then(|c| c.get(0))
+            .and_then(|c| c.get("message"))
+            .and_then(|m| m.get("content"))
+            .and_then(|c| c.as_str())
+            .unwrap_or("");
+
+        Ok(content.trim().to_string())
+    }
+
     /// 检测是否有可用的 VLM 模型
     pub async fn is_available(llm_manager: &Arc<LLMManager>) -> bool {
         let configs = match llm_manager.get_api_configs().await {

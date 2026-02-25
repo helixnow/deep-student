@@ -217,6 +217,11 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
         total_chars?: number;
         image_index?: number;
         error?: string;
+        stage?: string;
+        message?: string;
+        percent?: number;
+        current?: number;
+        total?: number;
       }>('question_import_progress', (event) => {
         const payload = event.payload;
 
@@ -226,32 +231,87 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
         }
         
         switch (payload.type) {
+          case 'Preprocessing': {
+            const pct = payload.percent || 0;
+            const msg = payload.message || t('exam_sheet:uploader.preprocessing', { defaultValue: '正在预处理文档...' });
+            setLlmProgress(prev => ({
+              ...prev,
+              percent: Math.max(prev.percent, pct),
+              message: msg,
+            }));
+            break;
+          }
+          case 'RenderingPages': {
+            const done = payload.current || 0;
+            const total = payload.total || 1;
+            const pct = total > 0 ? Math.min(Math.round((done / total) * 15) + 2, 17) : 2;
+            setLlmProgress(prev => ({
+              ...prev,
+              percent: Math.max(prev.percent, pct),
+              message: t('exam_sheet:uploader.rendering_pages', {
+                current: done,
+                total,
+                defaultValue: '正在渲染页面 {{current}}/{{total}}...',
+              }),
+            }));
+            break;
+          }
           case 'OcrImageCompleted': {
-            // OCR 阶段占进度条 0~40%
+            // OCR/VLM 阶段占进度条 20~40%（DOCX 预处理已占到 20%）
             const done = (payload.image_index || 0) + 1;
             const total = payload.total_images || 1;
-            setLlmProgress({
-              percent: Math.min(Math.round((done / total) * 40), 40),
+            const ocrPct = Math.min(20 + Math.round((done / total) * 20), 40);
+            setLlmProgress(prev => ({
+              ...prev,
+              percent: Math.max(prev.percent, ocrPct),
               message: t('exam_sheet:uploader.ocr_image_progress', {
                 current: done,
                 total,
                 defaultValue: '正在识别图片 {{current}}/{{total}}...',
               }),
-              parsedCount: 0,
-            });
+            }));
             break;
           }
           case 'OcrPhaseCompleted':
-            setLlmProgress({
-              percent: 40,
+            setLlmProgress(prev => ({
+              ...prev,
+              percent: Math.max(prev.percent, 40),
               message: t('exam_sheet:uploader.ocr_phase_done', {
                 total: payload.total_images,
                 chars: payload.total_chars,
                 defaultValue: '{{total}} 张图片识别完成，开始解析题目...',
               }),
-              parsedCount: 0,
-            });
+            }));
             break;
+          case 'ExtractingFigures': {
+            const done = payload.current || 0;
+            const total = payload.total || 1;
+            const pct = total > 0 ? Math.min(40 + Math.round((done / total) * 5), 45) : 42;
+            setLlmProgress(prev => ({
+              ...prev,
+              percent: Math.max(prev.percent, pct),
+              message: t('exam_sheet:uploader.extracting_figures', {
+                current: done,
+                total,
+                defaultValue: '正在提取配图 {{current}}/{{total}}...',
+              }),
+            }));
+            break;
+          }
+          case 'StructuringQuestion': {
+            const done = payload.current || 0;
+            const total = payload.total || 1;
+            setLlmProgress(prev => ({
+              ...prev,
+              percent: Math.max(prev.percent, 45),
+              message: t('exam_sheet:uploader.structuring_questions', {
+                current: done,
+                total,
+                defaultValue: '正在结构化题目 {{current}}/{{total}}...',
+              }),
+            }));
+            break;
+          }
           case 'SessionCreated':
             setLlmProgress(prev => ({
               ...prev,

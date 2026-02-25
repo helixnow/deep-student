@@ -431,11 +431,23 @@ export function createSessionActions(
               console.log('[ChatStore] continueMessage succeeded (same-message continue):', messageId);
               return;
             } catch (error) {
-              // 后端 continue_message 可能因无 TodoList 等原因失败
-              // 回退到 sendMessage('继续') 作为兜底
+              const errorMsg = getErrorMessage(error);
+              // 🔧 竞态修复：区分"流已存在"（后端正在执行）和"无 TodoList"（可 fallback）
+              // 流已存在时不应 fallback 到 sendMessage，否则会再次失败并显示混淆错误
+              const isStreamConflict = errorMsg.includes('register stream') ||
+                errorMsg.includes('already') ||
+                getState().sessionStatus === 'streaming';
+              if (isStreamConflict) {
+                console.warn(
+                  '[ChatStore] continueMessage failed due to active stream, NOT falling back:',
+                  errorMsg
+                );
+                throw error;
+              }
+              // 非流冲突错误（如无 TodoList）：回退到 sendMessage('继续') 作为兜底
               console.warn(
                 '[ChatStore] continueMessage callback failed, falling back to sendMessage:',
-                getErrorMessage(error)
+                errorMsg
               );
             }
           }

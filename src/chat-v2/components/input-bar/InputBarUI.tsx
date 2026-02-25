@@ -2237,7 +2237,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
               </div>
 
               {/* 附件列表 */}
-              <div className="flex flex-col gap-2 max-h-56 overflow-auto">
+              <CustomScrollArea viewportClassName="max-h-56" className="flex flex-col gap-2">
                 {attachments.length === 0 ? (
                   <div className="flex items-center justify-center rounded-lg border border-dashed bg-card/70 px-3 py-6 text-sm text-muted-foreground">
                     {t('analysis:input_bar.attachments.empty')}
@@ -2435,7 +2435,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                     );
                   })
                 )}
-              </div>
+              </CustomScrollArea>
 
             </div>
           </div>

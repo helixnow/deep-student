@@ -2347,8 +2347,13 @@ export class ChatV2TauriAdapter {
       await this.ensureModelMetadataReady(activeModelId);
       const options = this.buildSendOptions();
 
-      // 标记正在继续执行
+      // 🔧 竞态修复：invoke 前立即设置 streaming 状态，防止窗口期内重复点击
+      // 与 sendMessageWithIds / retryVariant 保持一致
       this.store.setCurrentStreamingMessage(messageId);
+      const storeApi = this.storeApi ?? sessionManager.get(this.sessionId);
+      if (storeApi) {
+        storeApi.setState({ sessionStatus: 'streaming' as const });
+      }
 
       const resultMessageId = await invoke<string>('chat_v2_continue_message', {
         sessionId: this.sessionId,

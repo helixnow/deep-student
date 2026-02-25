@@ -320,6 +320,17 @@
   overflow: visible !important; /* 避免内部再滚动 */
 }
 
+/* HTML 预览 iframe：独立渲染容器，不使用 mermaid 的 zoom/pan */
+.chat-v2 .markdown-content .html-preview-iframe {
+  display: block;
+  width: 100%;
+  max-height: 70vh;
+  min-height: 120px;
+  border: none;
+  border-radius: 0 0 12px 12px;
+  background: #fff;
+}
+
 .chat-v2 .markdown-content .code-block-header {
   display: flex;
   justify-content: space-between;
@@ -379,6 +390,8 @@
   width: 100% !important;
   max-width: 100% !important;
   white-space: pre;
+  max-height: 80vh;
+  overflow-y: auto;
 }
 
 .chat-v2 .markdown-content pre.code-block code {

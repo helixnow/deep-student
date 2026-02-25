@@ -554,7 +554,10 @@ html.is-android .android-safe-top {
   transform: none !important;
   clip: none !important;
   overflow: visible !important;
-  /* macOS 圆角适配 - 右上角圆角 */
+  /* macOS 圆角适配 - 右上角圆角（仅 macOS） */
+}
+
+html.is-macos .window-controls {
   border-top-right-radius: 12px !important;
   overflow: hidden !important;
 }
@@ -657,7 +660,10 @@ html.is-android .android-safe-top {
 
 .window-button:last-child {
   border-radius: 0 !important; /* 取消所有圆角 */
-  /* macOS 右上角关闭按钮圆角 */
+}
+
+/* macOS 右上角关闭按钮圆角 */
+html.is-macos .window-button:last-child {
   border-top-right-radius: 12px !important;
 }
 

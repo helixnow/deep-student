@@ -190,6 +190,8 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ children, className, isStr
   const [running, setRunning] = useState(false);
   const [renderedSvg, setRenderedSvg] = useState<string | null>(null);
   const [showRendered, setShowRendered] = useState(false);
+  const [htmlPreviewDoc, setHtmlPreviewDoc] = useState<string | null>(null);
+  const htmlIframeRef = useRef<HTMLIFrameElement | null>(null);
   const [scale, setScale] = useState(1);
   const [offset, setOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [panning, setPanning] = useState(false);
@@ -228,18 +230,20 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ children, className, isStr
 
   // 记录上一次的代码内容用于防抖比较
   const prevCodeRef = useRef<string>('');
+  const didAutoFitRef = useRef(false);
 
   // 当代码内容变更时，重置渲染状态
   // 使用 useMemo 避免流式过程中频繁触发
   useEffect(() => {
     // 流式过程中不重置（除非内容完全不同的新代码块）
-    if (isStreaming && renderedSvg) {
+    if (isStreaming && (renderedSvg || htmlPreviewDoc)) {
       return;
     }
     // 只有内容真正稳定后才重置
     if (prevCodeRef.current !== codeContent) {
       prevCodeRef.current = codeContent;
       setRenderedSvg(null);
+      setHtmlPreviewDoc(null);
       setShowRendered(false);
       setScale(1);
       setOffset({ x: 0, y: 0 });
@@ -354,6 +358,46 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ children, className, isStr
 
   const clamp = (val: number, min: number, max: number) => Math.max(min, Math.min(max, val));
 
+  const sanitizeForIframe = (html: string) => {
+    // 🔒 安全审计修复: 使用 DOMPurify 替代不完整的正则过滤
+    const isFullDoc = /^\s*(<\!doctype|<html[\s>])/i.test(html.trim());
+    return DOMPurify.sanitize(String(html), {
+      WHOLE_DOCUMENT: isFullDoc,
+      ADD_TAGS: ['link', 'style', 'meta'],
+      FORBID_TAGS: ['script', 'iframe', 'embed', 'object', 'base'],
+    });
+  };
+
+  const buildIframeDoc = (inner: string) => `<!doctype html><html><head><meta charset="utf-8"><style>
+    html,body{margin:0;padding:0;background:#fff;color:#111;overflow:visible!important;height:auto;min-width:0}
+    *,*:before,*:after{box-sizing:border-box}
+    /* 避免外部 CSS 干扰，使用 iframe 独立环境 */
+    /* 让页面尺寸由内容决定，供父层测量 */
+    body { display: inline-block; }
+    /* 基于内容自动包裹宽高 */
+    svg, img, canvas, table, pre, code, div, section, article { max-width: none !important; }
+  </style></head><body>${inner}</body></html>`;
+
+  const handleRunHtml = () => {
+    if (!canRenderHtml || isStreaming) return;
+    try {
+      setMermaidError(null);
+      const sanitized = sanitizeForIframe(codeContent);
+      const isFullDoc = /^\s*(<\!doctype|<html[\s>])/i.test(codeContent.trim());
+      // 完整 HTML 文档直接作为 srcdoc，保留用户原始样式；片段则包裹在基础文档中
+      const doc = isFullDoc ? sanitized : buildIframeDoc(sanitized);
+      setHtmlPreviewDoc(doc);
+      setShowRendered(true);
+    } catch (err: unknown) {
+      const errorMsg = getErrorMessage(err);
+      console.error('[CodeBlock] HTML render failed:', errorMsg);
+      setMermaidError(errorMsg);
+      setHtmlPreviewDoc(null);
+      setRenderedSvg(`<div class="mermaid-render-error"><span class="error-icon">⚠️</span><span class="error-text">${t('codeBlock.htmlFailed', 'HTML 渲染失败')}：${escapeHtml(errorMsg)}</span></div>`);
+      setShowRendered(true);
+    }
+  };
+
   const handleRunSvg = () => {
     if (!canRenderSvg || isStreaming) return;
     try {
@@ -373,43 +417,6 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ children, className, isStr
       console.error('[CodeBlock] SVG render failed:', errorMsg);
       setMermaidError(errorMsg);
       setRenderedSvg(`<div class="mermaid-render-error"><span class="error-icon">⚠️</span><span class="error-text">${t('codeBlock.svgFailed', 'SVG 渲染失败')}：${escapeHtml(errorMsg)}</span></div>`);
-      setShowRendered(true);
-    }
-  };
-
-  const sanitizeForIframe = (html: string) => {
-    // 🔒 安全审计修复: 使用 DOMPurify 替代不完整的正则过滤
-    return DOMPurify.sanitize(String(html), {
-      WHOLE_DOCUMENT: false,
-      FORBID_TAGS: ['script', 'iframe', 'embed', 'object', 'base'],
-    });
-  };
-
-  const buildIframeDoc = (inner: string) => `<!doctype html><html><head><meta charset=\"utf-8\"><style>
-    html,body{margin:0;padding:0;background:#fff;color:#111;overflow:visible!important;height:auto;min-width:0}
-    *,*:before,*:after{box-sizing:border-box}
-    /* 避免外部 CSS 干扰，使用 iframe 独立环境 */
-    /* 让页面尺寸由内容决定，供父层测量 */
-    body { display: inline-block; }
-    /* 基于内容自动包裹宽高 */
-    svg, img, canvas, table, pre, code, div, section, article { max-width: none !important; }
-  </style></head><body>${inner}</body></html>`;
-
-  const handleRunHtml = () => {
-    if (!canRenderHtml || isStreaming) return;
-    try {
-      setMermaidError(null);
-      const doc = buildIframeDoc(sanitizeForIframe(codeContent));
-      // 使用 iframe + srcdoc 隔离样式
-      const srcdoc = doc.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
-      // 初始不给 width/height，等待测量后外层控制缩放
-      setRenderedSvg(`<iframe data-html-preview sandbox="allow-same-origin" style="display:block;border:0;" srcdoc="${srcdoc}"></iframe>`);
-      setShowRendered(true);
-    } catch (err: unknown) {
-      const errorMsg = getErrorMessage(err);
-      console.error('[CodeBlock] HTML render failed:', errorMsg);
-      setMermaidError(errorMsg);
-      setRenderedSvg(`<div class="mermaid-render-error"><span class="error-icon">⚠️</span><span class="error-text">${t('codeBlock.htmlFailed', 'HTML 渲染失败')}：${escapeHtml(errorMsg)}</span></div>`);
       setShowRendered(true);
     }
   };
@@ -482,14 +489,12 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ children, className, isStr
   };
   const endPan = () => { setPanning(false); setLastMouse(null); };
 
-  // 计算 SVG/HTML 预览基础尺寸
-  const didAutoFitRef = useRef(false);
-
   // 重置错误边界
   const handleErrorBoundaryReset = () => {
     errorBoundaryKey.current += 1;
     setMermaidError(null);
     setRenderedSvg(null);
+    setHtmlPreviewDoc(null);
     setShowRendered(false);
   };
 
@@ -638,7 +643,7 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ children, className, isStr
           </NotionButton>
 
           {(canRunMermaid || canRenderSvg || canRenderHtml || canRenderXml) && (
-            renderedSvg ? (
+            (renderedSvg || htmlPreviewDoc) ? (
               <NotionButton
                 variant="ghost"
                 size="sm"
@@ -674,7 +679,7 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ children, className, isStr
             )
           )}
 
-          {(renderedSvg && showRendered) && (
+          {(renderedSvg && showRendered && !htmlPreviewDoc) && (
             <>
               <NotionButton variant="ghost" size="icon" iconOnly className="code-block-copy" onClick={handleZoomOut} aria-label={t('codeBlock.zoomOut', '缩小')} title={t('codeBlock.zoomOut', '缩小')}>
                 <Minus size={14} />
@@ -692,7 +697,21 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ children, className, isStr
           )}
         </div>
       </div>
-      {renderedSvg && showRendered ? (
+      {htmlPreviewDoc && showRendered ? (
+        <MermaidErrorBoundary
+          key={errorBoundaryKey.current}
+          fallbackCode={codeContent}
+          language={language}
+          onReset={handleErrorBoundaryReset}
+        >
+          <iframe
+            ref={htmlIframeRef}
+            className="html-preview-iframe"
+            sandbox="allow-same-origin"
+            srcDoc={htmlPreviewDoc}
+          />
+        </MermaidErrorBoundary>
+      ) : renderedSvg && showRendered ? (
         <MermaidErrorBoundary
           key={errorBoundaryKey.current}
           fallbackCode={codeContent}

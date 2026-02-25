@@ -25,17 +25,20 @@ import { blockRegistry, type BlockComponentProps } from '../../registry';
  * 2. 提示用户工具调用已达到限制
  * 3. 🆕 提供"继续执行"按钮，点击后在同一消息内继续执行
  */
-const ToolLimitBlock: React.FC<BlockComponentProps> = React.memo(({ block, onContinue }) => {
+const ToolLimitBlock: React.FC<BlockComponentProps> = React.memo(({ block, isStreaming, onContinue }) => {
   const { t } = useTranslation();
   const content = block.content || '';
   const [isContinuing, setIsContinuing] = useState(false);
+
+  // 🔧 竞态修复：同时检查本地 isContinuing 和 store 的 isStreaming，双重保护
+  const isDisabled = isContinuing || !!isStreaming;
 
   // 解析内容为段落
   const paragraphs = content.split('\n\n').filter(Boolean);
 
   // 🆕 处理继续执行
   const handleContinue = useCallback(async () => {
-    if (isContinuing || !onContinue) return;
+    if (isDisabled || !onContinue) return;
     
     setIsContinuing(true);
     try {
@@ -45,7 +48,7 @@ const ToolLimitBlock: React.FC<BlockComponentProps> = React.memo(({ block, onCon
     } finally {
       setIsContinuing(false);
     }
-  }, [isContinuing, onContinue]);
+  }, [isDisabled, onContinue]);
 
   return (
     <div
@@ -101,10 +104,10 @@ const ToolLimitBlock: React.FC<BlockComponentProps> = React.memo(({ block, onCon
             variant="primary"
             size="sm"
             onClick={handleContinue}
-            disabled={isContinuing}
+            disabled={isDisabled}
             className="bg-amber-500 hover:bg-amber-600 text-white"
           >
-            {isContinuing ? (
+            {isDisabled ? (
               <>
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
                 {t('chatV2:tool_limit.continuing')}

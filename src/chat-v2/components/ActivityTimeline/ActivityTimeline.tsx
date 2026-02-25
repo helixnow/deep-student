@@ -802,6 +802,20 @@ interface ToolLimitNodeContentProps {
 
 const ToolLimitNodeContent: React.FC<ToolLimitNodeContentProps> = ({ node, isFirst, isLast, onContinue }) => {
   const { t } = useTranslation('chatV2');
+  // 🔧 竞态修复：添加本地防抖，防止 invoke 返回后、stream_start 到达前的窗口期重复点击
+  const [isContinuing, setIsContinuing] = useState(false);
+
+  const handleContinue = useCallback(async () => {
+    if (isContinuing || !onContinue) return;
+    setIsContinuing(true);
+    try {
+      await onContinue();
+    } catch {
+      // 错误由上层 handleContinue 处理
+    } finally {
+      setIsContinuing(false);
+    }
+  }, [isContinuing, onContinue]);
 
   return (
     <TimelineNode
@@ -828,11 +842,16 @@ const ToolLimitNodeContent: React.FC<ToolLimitNodeContentProps> = ({ node, isFir
           <NotionButton
             variant="outline"
             size="sm"
-            onClick={onContinue}
+            onClick={handleContinue}
+            disabled={isContinuing}
             className="bg-primary/10 hover:bg-primary/20 text-primary border-primary/20 hover:border-primary/30"
           >
-            <ChevronRight size={14} className="flex-shrink-0" />
-            <span>{t('timeline.limit.continue')}</span>
+            {isContinuing ? (
+              <Loader2 size={14} className="flex-shrink-0 animate-spin" />
+            ) : (
+              <ChevronRight size={14} className="flex-shrink-0" />
+            )}
+            <span>{isContinuing ? t('timeline.limit.continuing', '继续中...') : t('timeline.limit.continue')}</span>
           </NotionButton>
         )}
       </div>
