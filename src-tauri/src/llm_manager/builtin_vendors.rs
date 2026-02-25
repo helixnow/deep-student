@@ -46,7 +46,7 @@ pub const BUILTIN_VENDORS: &[BuiltinVendor] = &[
         base_url: "https://api.siliconflow.cn/v1",
         notes: "Built-in template for SiliconFlow. Please enter your API Key.",
         max_tokens_limit: None,
-        website_url: "https://siliconflow.cn",
+        website_url: "https://cloud.siliconflow.cn/i/deadXN1B",
     },
     // DeepSeek
     BuiltinVendor {

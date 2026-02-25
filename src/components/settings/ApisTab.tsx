@@ -73,7 +73,7 @@ const getProviderDisplayName = (providerType?: string | null) => {
 const getProviderWebsiteUrl = (providerType?: string | null): string | null => {
   if (!providerType) return null;
   const map: Record<string, string> = {
-    siliconflow: 'https://siliconflow.cn',
+    siliconflow: 'https://cloud.siliconflow.cn/i/deadXN1B',
     deepseek: 'https://deepseek.com',
     qwen: 'https://bailian.console.aliyun.com',
     zhipu: 'https://open.bigmodel.cn',
