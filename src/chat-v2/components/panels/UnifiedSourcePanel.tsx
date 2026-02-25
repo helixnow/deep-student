@@ -981,7 +981,7 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
 
                   return (
                     <div
-                      className="fixed w-80 p-4 bg-popover text-popover-foreground rounded-xl shadow-lg ring-1 ring-border/40 border-transparent text-sm pointer-events-none animate-in fade-in zoom-in-95 duration-150"
+                      className="fixed w-80 max-h-80 p-4 bg-popover text-popover-foreground rounded-xl shadow-lg ring-1 ring-border/40 border-transparent text-sm pointer-events-none animate-in fade-in zoom-in-95 duration-150 flex flex-col"
                       style={{
                         zIndex: Z_INDEX.toast,
                         top,
@@ -989,14 +989,16 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
                         transform
                       }}
                     >
-                      <div className="font-semibold mb-2 flex items-center gap-2 border-b pb-2">
+                      <div className="font-semibold mb-2 flex items-center gap-2 border-b pb-2 shrink-0">
                         {groupIcon(hoveredItem.origin)}
                         <span className="truncate">{hoveredItem.title}</span>
                         {renderScore(hoveredItem)}
                       </div>
-                      <div className="text-muted-foreground text-xs leading-relaxed max-h-60 overflow-y-auto overflow-x-hidden custom-scrollbar" style={{ overflowX: 'hidden' }}>
-                        {hoveredItem.snippet}
-                      </div>
+                      <CustomScrollArea className="flex-1 min-h-0" hideTrackWhenIdle={false}>
+                        <div className="text-muted-foreground text-xs leading-relaxed">
+                          {hoveredItem.snippet}
+                        </div>
+                      </CustomScrollArea>
                     </div>
                   );
                 })(),

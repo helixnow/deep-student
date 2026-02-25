@@ -1809,8 +1809,8 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                 setTimeout(adjustTextareaHeight, 0);
               }}
               onChange={(e) => {
-                // 🔧 IME 合成期间跳过 store 更新，防止 WKWebView 重复追加文本
-                if (!isComposingRef.current) {
+                // 🔧 IME 合成期间跳过 store 更新，仅移动端 WKWebView 需要（桌面端受控组件会阻止输入）
+                if (!isComposingRef.current || !isMobile) {
                   onInputChange(e.target.value);
                 }
                 setTimeout(adjustTextareaHeight, 0);
