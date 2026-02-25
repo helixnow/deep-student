@@ -10,6 +10,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.9.19](https://github.com/helixnow/deep-student/compare/v0.9.18...v0.9.19) (2026-02-25)
+
+
+### Bug Fixes
+
+* add fallback logic for empty Anki back field and replace custom scrollbars with CustomScrollArea ([341c9dc](https://github.com/helixnow/deep-student/commit/341c9dc6be4553dff604b9192f8a5bbf92714961))
+* prevent duplicate user messages in history and improve IME handling across platforms ([f903bd1](https://github.com/helixnow/deep-student/commit/f903bd18794722fbab566ae932e146cf54428143))
+* standardize snippet container heights using Tailwind spacing units ([5fe902d](https://github.com/helixnow/deep-student/commit/5fe902d0e60991ebe4aa1a80b597963220995833))
+* update SiliconFlow website URLs in ApisTab and builtin_vendors ([aa2ad0d](https://github.com/helixnow/deep-student/commit/aa2ad0dcb6325b647d0ffbecd08b2047d5ec41c7))
+
 ## [0.9.18](https://github.com/helixnow/deep-student/compare/v0.9.17...v0.9.18) (2026-02-25)
 
 
