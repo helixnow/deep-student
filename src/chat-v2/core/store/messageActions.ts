@@ -279,7 +279,7 @@ export function createMessageActions(
                 console.error('[ChatStore] editMessage sync failed:', getErrorMessage(error));
                 showGlobalNotification(
                   'warning',
-                  i18n.t('chat.edit_save_failed', { defaultValue: '消息编辑保存失败，请重试' })
+                  i18n.t('common:chat.edit_save_failed')
                 );
               });
             }

@@ -76,7 +76,7 @@ export const WorkspacePanel: React.FC<WorkspacePanelProps> = ({
       if (!opts?.silent) {
         showGlobalNotification(
           'error',
-          t('chatV2:workspace.refreshFailed', { defaultValue: `工作区同步失败: ${msg}` })
+          t('chatV2:workspace.refreshFailed', { message: msg })
         );
       }
     } finally {
@@ -89,12 +89,12 @@ export const WorkspacePanel: React.FC<WorkspacePanelProps> = ({
     setIsOnline(navigator.onLine);
     const handleOnline = () => {
       setIsOnline(true);
-      showGlobalNotification('info', t('chatV2:workspace.online', '网络已恢复，正在同步工作区...'));
+      showGlobalNotification('info', t('chatV2:workspace.online'));
       void handleRefresh({ silent: true });
     };
     const handleOffline = () => {
       setIsOnline(false);
-      showGlobalNotification('warning', t('chatV2:workspace.offline', '网络已断开，部分操作不可用'));
+      showGlobalNotification('warning', t('chatV2:workspace.offline'));
     };
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);

@@ -99,7 +99,7 @@ export const PageRefChips: React.FC<PageRefChipsProps> = memo(
           <span className="opacity-60">·</span>
           <span className="whitespace-nowrap">{label}</span>
           {!disabled && (
-            <NotionButton variant="ghost" size="icon" iconOnly onClick={onClearAll} className="-mr-0.5 !h-4 !w-4 !p-0 !rounded-full opacity-60 hover:opacity-100 hover:bg-black/5 dark:hover:bg-white/10" aria-label={t('chatV2:pageRef.clearAll', { defaultValue: '清空页码引用' })} title={t('chatV2:pageRef.clearAll', { defaultValue: '清空页码引用' })}>
+            <NotionButton variant="ghost" size="icon" iconOnly onClick={onClearAll} className="-mr-0.5 !h-4 !w-4 !p-0 !rounded-full opacity-60 hover:opacity-100 hover:bg-black/5 dark:hover:bg-white/10" aria-label={t('chatV2:pageRef.clearAll')} title={t('chatV2:pageRef.clearAll')}>
               <X size={10} />
             </NotionButton>
           )}

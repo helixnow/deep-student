@@ -51,7 +51,7 @@ function CommandPaletteButton() {
  * 在顶栏显示当前位置：学习资源 > 全部笔记
  */
 function LearningHubBreadcrumb() {
-  const { t } = useTranslation(['learningHub', 'finder']);
+  const { t } = useTranslation('learningHub');
   const currentPath = useFinderStore(state => state.currentPath);
   const quickAccessNavigate = useFinderStore(state => state.quickAccessNavigate);
   const jumpToBreadcrumb = useFinderStore(state => state.jumpToBreadcrumb);
@@ -59,24 +59,24 @@ function LearningHubBreadcrumb() {
   // 计算当前视图标题
   const currentTitle = useMemo(() => {
     if (currentPath.folderId === 'root') return undefined;
-    if (currentPath.folderId === 'trash') return t('finder:quickAccess.trash', '回收站');
-    if (currentPath.folderId === 'recent') return t('finder:quickAccess.recent', '最近');
-    if (currentPath.folderId === 'indexStatus') return t('finder:quickAccess.indexStatus', '向量化状态');
-    if (currentPath.folderId === 'memory') return t('learningHub:memory.title', '记忆管理');
-    if (currentPath.dstuPath === '/@favorites') return t('finder:quickAccess.favorites', '收藏');
-    if (currentPath.typeFilter === 'note') return t('finder:quickAccess.notes', '全部笔记');
-    if (currentPath.typeFilter === 'textbook') return t('finder:quickAccess.textbooks', '全部教材');
-    if (currentPath.typeFilter === 'exam') return t('finder:quickAccess.exams', '全部题目集');
-    if (currentPath.typeFilter === 'essay') return t('finder:quickAccess.essays', '全部作文');
-    if (currentPath.typeFilter === 'translation') return t('finder:quickAccess.translations', '全部翻译');
-    if (currentPath.typeFilter === 'mindmap') return t('finder:quickAccess.mindmaps', '知识导图');
-    if (currentPath.typeFilter === 'image') return t('finder:quickAccess.images', '全部图片');
-    if (currentPath.typeFilter === 'file') return t('finder:quickAccess.files', '全部文档');
+    if (currentPath.folderId === 'trash') return t('finder.quickAccess.trash');
+    if (currentPath.folderId === 'recent') return t('finder.quickAccess.recent');
+    if (currentPath.folderId === 'indexStatus') return t('finder.quickAccess.indexStatus');
+    if (currentPath.folderId === 'memory') return t('memory.title');
+    if (currentPath.dstuPath === '/@favorites') return t('finder.quickAccess.favorites');
+    if (currentPath.typeFilter === 'note') return t('finder.quickAccess.notes');
+    if (currentPath.typeFilter === 'textbook') return t('finder.quickAccess.textbooks');
+    if (currentPath.typeFilter === 'exam') return t('finder.quickAccess.exams');
+    if (currentPath.typeFilter === 'essay') return t('finder.quickAccess.essays');
+    if (currentPath.typeFilter === 'translation') return t('finder.quickAccess.translations');
+    if (currentPath.typeFilter === 'mindmap') return t('finder.quickAccess.mindmaps');
+    if (currentPath.typeFilter === 'image') return t('finder.quickAccess.images');
+    if (currentPath.typeFilter === 'file') return t('finder.quickAccess.files');
     return undefined;
   }, [currentPath, t]);
 
   const breadcrumbs = currentPath.breadcrumbs;
-  const rootTitle = t('learningHub:title', '学习资源');
+  const rootTitle = t('title');
 
   // 根目录：只显示 "学习资源"
   if (!currentTitle && breadcrumbs.length === 0) {

@@ -90,9 +90,7 @@ export const EssayEditorWrapper: React.FC<EditorProps | CreateEditorProps> = (pr
           });
           showGlobalNotification(
             'warning',
-            t('dstu:errors.essayParseErrorSaveBlocked', {
-              defaultValue: '作文数据解析异常，评分和反馈可能丢失。为保护数据安全，已禁用保存功能。请重试加载或联系支持。',
-            })
+            t('dstu:errors.essayParseErrorDesc')
           );
         }
       }
@@ -115,9 +113,7 @@ export const EssayEditorWrapper: React.FC<EditorProps | CreateEditorProps> = (pr
     if (isParseError) {
       showGlobalNotification(
         'warning',
-        t('dstu:errors.essayParseErrorSaveBlocked', {
-          defaultValue: '数据解析异常，保存已被阻止以防丢失评分数据。请重试加载或联系支持。',
-        })
+        t('dstu:errors.essayParseErrorSaveBlockedDesc')
       );
       return;
     }
@@ -236,7 +232,7 @@ export const EssayEditorWrapper: React.FC<EditorProps | CreateEditorProps> = (pr
               )}
               onClick={handleSave}
               disabled={isSaving || isParseError}
-              title={isParseError ? t('dstu:errors.essayParseErrorSaveBlocked', { defaultValue: '数据解析异常，保存已被阻止' }) : undefined}
+              title={isParseError ? t('dstu:errors.essayParseErrorSaveBlocked') : undefined}
             >
               {isSaving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
               {isSaving ? t('common:actions.saving') : t('common:actions.save')}
@@ -253,12 +249,10 @@ export const EssayEditorWrapper: React.FC<EditorProps | CreateEditorProps> = (pr
             <ShieldAlert className="w-5 h-5 text-yellow-600 dark:text-yellow-400 flex-shrink-0 mt-0.5" />
             <div className="flex-1 space-y-1">
               <p className="text-sm font-medium text-yellow-800 dark:text-yellow-300">
-                {t('dstu:errors.essayParseErrorTitle', { defaultValue: '数据解析异常' })}
+                {t('dstu:errors.essayParseErrorTitle')}
               </p>
               <p className="text-xs text-yellow-700 dark:text-yellow-400">
-                {t('dstu:errors.essayParseErrorDescription', {
-                  defaultValue: '作文数据格式异常，评分和批改反馈可能已丢失。为保护原始数据，编辑和保存功能已被禁用。请尝试重新加载，如问题持续请联系技术支持。',
-                })}
+                {t('dstu:errors.essayParseErrorDetailDesc')}
               </p>
               <button
                 className="inline-flex items-center gap-1.5 mt-1 px-3 py-1 text-xs bg-yellow-600 text-white rounded-md hover:bg-yellow-700"

@@ -470,7 +470,11 @@
       "emptySuccess": "Trash emptied",
       "restoreSuccess": "Restored",
       "deleteSuccess": "Permanently deleted",
-      "confirmPermanentDelete": "Are you sure you want to permanently delete this item? This action cannot be undone."
+      "confirmPermanentDelete": "Are you sure you want to permanently delete this item? This action cannot be undone.",
+      "confirmBatchPermanentDelete": "Are you sure you want to permanently delete {{count}} selected items? This action cannot be undone.",
+      "batchDeleteSuccess": "Permanently deleted {{count}} items",
+      "batchDeletePartial": "{{succeeded}} succeeded, {{failed}} failed",
+      "batchDeleteFailed": "Batch permanent delete failed"
     },
     "statusBar": {
       "itemCount": "{{count}} items"
@@ -632,8 +636,15 @@
       "statsNote": "Stats are totals (unaffected by filters)",
       "multimodal": "Multimodal:",
       "text": "Text:",
+      "items": "items",
       "staleHint": "{{count}} resource(s) have updated content, index needs refresh",
       "recordCount": "{{count}} records"
+    },
+    "stats": {
+      "totalVectors": "Total Vectors",
+      "dimensions": "Dimensions",
+      "errors": "Index Errors",
+      "stale": "Stale"
     },
     "action": {
       "refresh": "Refresh",
@@ -648,7 +659,8 @@
       "retry": "Retry",
       "search": "Search",
       "update": "Update",
-      "reindex": "Reindex"
+      "reindex": "Reindex",
+      "clearOcrAndReindex": "Clear OCR and re-identify"
     },
     "notification": {
       "resetDisabledSuccess": "Reset {{count}} disabled resource(s), will be re-indexed",
@@ -687,7 +699,13 @@
       "skippedNoSourceId": "{{count}} resource(s) skipped due to missing sourceId",
       "checkEmbeddingModel": "Please check that the embedding model is configured correctly (Settings → AI Models)",
       "checkNetwork": "Please check your network connection and try again",
-      "checkDb": "Database may be busy, please try again later"
+      "checkDb": "Database may be busy, please try again later",
+      "getOcrInfoFailed": "Failed to get OCR info",
+      "getChunksFailed": "Failed to get text chunks",
+      "ocrClearedReindexing": "OCR data cleared, re-indexing...",
+      "ocrReindexComplete": "OCR and indexing completed",
+      "ocrClearedButReindexFailed": "OCR cleared but re-indexing failed. Please click re-index manually",
+      "clearOcrFailed": "Failed to clear OCR"
     },
     "mmProgress": {
       "preparing": "{{prefix}}Preparing... ({{pages}} pages)",
@@ -707,14 +725,29 @@
       "modalityTextAndMm": "Text+MM",
       "unsupported": "Unsupported",
       "emptyContent": "Empty Content",
+      "noContent": "No content",
+      "ocrPreferred": "OCR preferred",
+      "fallbackToExtracted": "Fallback to extracted text",
+      "ocrFailed": "OCR failed",
       "indexError": "Index Error",
       "stale": "Stale",
       "textStatus": "Text Status",
       "ocrStatus": "OCR Status",
       "noText": "No text",
       "noOcr": "No OCR",
+      "extractedText": "Extracted Text",
       "extractedTextIndex": "Extracted Text Index",
+      "extractedTextContent": "Extracted Text Content",
       "ocrTextIndex": "OCR Text Index",
+      "ocrTextContent": "OCR Text Content",
+      "selectionLogic": "Selection Logic",
+      "currentInUse": "Currently in use",
+      "pageOcrResults": "Page OCR Results",
+      "pageOcrResultsWithCount": "Page OCR Results ({{count}} pages)",
+      "pageLabel": "Page {{n}}",
+      "noOcrOrExtracted": "This resource has no OCR or extracted text",
+      "noTextContent": "No text content",
+      "noDataFound": "No data found",
       "nativeMmIndex": "Native MM Index",
       "indexMode": "Index Mode",
       "pureText": "Text Only",

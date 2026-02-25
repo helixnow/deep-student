@@ -1702,11 +1702,11 @@ export function LearningHubSidebar({
               }
               if (!isMountedRef.current) break;
               if (failed === 0) {
-                showGlobalNotification('success', t('finder.trash.batchDeleteSuccess', { count: succeeded, defaultValue: `已永久删除 ${succeeded} 个项目` }));
+                showGlobalNotification('success', t('finder.trash.batchDeleteSuccess', { count: succeeded }));
               } else if (succeeded > 0) {
-                showGlobalNotification('warning', t('finder.trash.batchDeletePartial', { succeeded, failed, defaultValue: `成功 ${succeeded} 个，失败 ${failed} 个` }));
+                showGlobalNotification('warning', t('finder.trash.batchDeletePartial', { succeeded, failed }));
               } else {
-                showGlobalNotification('error', t('finder.trash.batchDeleteFailed', '批量永久删除失败'));
+                showGlobalNotification('error', t('finder.trash.batchDeleteFailed'));
               }
               clearSelection();
               handleRefresh();

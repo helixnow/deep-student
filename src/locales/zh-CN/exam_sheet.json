@@ -175,6 +175,9 @@
   "question_title": "题目",
   "no_ocr_text": "暂无识别内容",
   "bookmark": "收藏",
+  "similar_questions": "同类题讲解",
+  "similar_questions_hint": "正在为您匹配相似题目...",
+  "retake_page": "再拍一页",
   "errors": {
     "noSession": "未指定题目集会话",
     "loadFailed": "加载题目集会话失败",

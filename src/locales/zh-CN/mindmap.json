@@ -158,7 +158,8 @@
     "conflictReloadFailed": "自动刷新失败，请手动刷新页面获取最新内容",
     "depthExceeded": "导图层级过深，超过最大限制，无法保存",
     "nodeCountExceeded": "导图节点过多，超过最大限制，无法保存",
-    "invalidContent": "导图内容异常，无法保存，请稍后重试"
+    "invalidContent": "导图内容异常，无法保存，请稍后重试",
+    "draftSaveFailed": "本地存储空间不足，草稿保存失败，请及时保存并确保网络畅通"
   },
   "style": {
     "bold": "加粗",

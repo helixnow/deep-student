@@ -428,7 +428,7 @@ export const MindMapEmbed: React.FC<MindMapEmbedProps> = ({
           document = {
             root: {
               id: 'root',
-              text: metadata?.title || displayTitle || t('embed.newMindMap', { defaultValue: '新思维导图' }),
+              text: metadata?.title || displayTitle || t('embed.newMindMap'),
               children: [],
             },
           } as MindMapDocument;

@@ -82,14 +82,13 @@ export const QbankCitationBadge: React.FC<QbankCitationBadgeProps> = ({
         'border border-emerald-500/20 hover:border-emerald-500/40',
         className
       )}
-      title={t('qbankCitation.openTitle', {
-        defaultValue: '打开题目集：{{title}}',
+      title={t('qbankCitation.openQbank', {
         title: title || sessionId,
       })}
     >
       <BookOpen className="w-3 h-3" />
       <span className="truncate max-w-[150px]">
-        {title || t('qbankCitation.qbank', { defaultValue: '题目集' })}
+        {title || t('qbankCitation.qbank')}
       </span>
     </NotionButton>
   );

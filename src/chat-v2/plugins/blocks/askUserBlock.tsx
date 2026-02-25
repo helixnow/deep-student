@@ -176,13 +176,13 @@ const AskUserBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block
   const sourceLabel = useMemo(() => {
     switch (resolvedSource) {
       case 'user_click':
-        return t('askUser.sourceUserClick', { defaultValue: '用户选择' });
+        return t('askUser.sourceUserClick');
       case 'custom_input':
-        return t('askUser.sourceCustomInput', { defaultValue: '自定义输入' });
+        return t('askUser.sourceCustomInput');
       case 'timeout':
-        return t('askUser.sourceTimeout', { defaultValue: '超时自动选择' });
+        return t('askUser.sourceTimeout');
       case 'channel_closed':
-        return t('askUser.sourceChannelClosed', { defaultValue: '连接中断' });
+        return t('askUser.sourceChannelClosed');
       default:
         return resolvedSource || '';
     }
@@ -194,7 +194,7 @@ const AskUserBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block
       <div className="rounded-lg border border-border/50 bg-card px-3 py-2">
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <MessageCircleQuestion className="w-4 h-4" />
-          <span>{t('askUser.preparing', { defaultValue: '正在准备提问...' })}</span>
+          <span>{t('askUser.preparing')}</span>
         </div>
       </div>
     );
@@ -214,7 +214,7 @@ const AskUserBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block
         {/* 结果 */}
         <div className="px-3 py-2 flex items-center gap-2 text-sm">
           <span className="text-muted-foreground">
-            {t('askUser.selected', { defaultValue: '已选择' })}:
+            {t('askUser.selected')}:
           </span>
           <span className="font-medium">{resolvedText}</span>
           {resolvedSource && (
@@ -273,7 +273,7 @@ const AskUserBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block
               {isRecommended && (
                 <span className="flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400 flex-shrink-0">
                   <Star className="w-3 h-3 fill-current" />
-                  {t('askUser.recommended', { defaultValue: '推荐' })}
+                  {t('askUser.recommended')}
                 </span>
               )}
             </NotionButton>
@@ -293,7 +293,7 @@ const AskUserBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block
               handleCustomSubmit();
             }
           }}
-          placeholder={t('askUser.customPlaceholder', { defaultValue: '或输入自定义回答...' })}
+          placeholder={t('askUser.customPlaceholder')}
           disabled={isResponding}
           className={cn(
             'flex-1 px-3 py-1.5 text-sm rounded-md border border-border/50',

@@ -16,7 +16,9 @@
     "listenerRetryFailedMessage": "Event listener retry failed",
     "listenerRetryFailed": "Listener recovery failed",
     "listenerRegistrationFailedMessage": "Event listener registration failed",
-    "listenerRegistrationFailed": "Listener registration failed"
+    "listenerRegistrationFailed": "Listener registration failed",
+    "sessionLoadFailedMessage": "A new session was created automatically. Check network or restart the app if needed.",
+    "sessionLoadFailed": "Session load failed"
   },
   "success": {
     "listenerRetrySuccessMessage": "Event listener retry succeeded",
@@ -879,7 +881,8 @@
     "source_ids_empty": "sourceIds cannot be empty",
     "resource_deleted_or_moved": "Resource has been deleted or moved",
     "resolve_failed_skipped": "{{count}} resources failed to resolve, skipped",
-    "unnamed_resource": "Unnamed resource"
+    "unnamed_resource": "Unnamed resource",
+    "more_warnings": "; and {{count}} more warnings"
   },
   "variant": {
     "switcher": "Variant Switcher",
@@ -1070,6 +1073,9 @@
     "workers": "Workers",
     "viewFull": "View Full",
     "loadError": "Load failed",
+    "refreshFailed": "Workspace sync failed: {{message}}",
+    "online": "Network restored, syncing workspace...",
+    "offline": "Network disconnected, some operations unavailable",
     "noMessages": "No messages",
     "missingSession": "Missing current session, unable to sync workspace",
     "task": "Task",
@@ -1301,5 +1307,22 @@
     "inactive": "Inactive",
     "builtin": "Built-in",
     "forkedFrom": "Forked from"
+  },
+  "askUser": {
+    "sourceUserClick": "User choice",
+    "sourceCustomInput": "Custom input",
+    "sourceTimeout": "Auto-selected (timeout)",
+    "sourceChannelClosed": "Connection lost",
+    "preparing": "Preparing question...",
+    "selected": "Selected",
+    "recommended": "Recommended",
+    "customPlaceholder": "Or enter a custom answer..."
+  },
+  "pageRef": {
+    "clearAll": "Clear all page references"
+  },
+  "qbankCitation": {
+    "openQbank": "Open question set: {{title}}",
+    "qbank": "Question Set"
   }
 }

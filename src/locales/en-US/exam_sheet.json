@@ -175,6 +175,9 @@
   "question_title": "Question",
   "no_ocr_text": "No OCR content available",
   "bookmark": "Bookmark",
+  "similar_questions": "Similar Questions",
+  "similar_questions_hint": "Matching similar questions...",
+  "retake_page": "Retake Page",
   "errors": {
     "noSession": "No exam session specified",
     "loadFailed": "Failed to load exam session",

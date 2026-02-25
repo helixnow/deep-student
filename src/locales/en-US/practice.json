@@ -226,6 +226,7 @@
     "confirmDeleteDesc": "Are you sure you want to delete the selected {{count}} questions? This action cannot be undone.",
     "confirmResetTitle": "Confirm reset progress",
     "confirmResetDesc": "Are you sure you want to reset progress for the selected {{count}} questions? This will clear all attempt records, accuracy stats, and questions will return to \"New\" status.",
+    "confirmResetDescDetail": "This will clear mastery status and attempt counts for {{count}} questions. Your notes and tags will be preserved. Continue?",
     "resetProgress": "Reset progress",
     "deleteSuccess": "Successfully deleted {{count}} questions",
     "deleteFailed": "Delete failed",

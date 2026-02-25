@@ -216,10 +216,10 @@ const DiffView: React.FC<DiffViewProps> = ({ before, after, sampleData }) => {
       {/* 正面/背面切换 */}
       <div className="flex gap-1 mb-2">
         <NotionButton variant={side === 'front' ? 'default' : 'ghost'} size="sm" onClick={() => setSide('front')} className={cn(side === 'front' && 'bg-primary/15 text-primary')}>
-          {t('templateTool.front', { defaultValue: '正面' })}
+          {t('templateTool.front')}
         </NotionButton>
         <NotionButton variant={side === 'back' ? 'default' : 'ghost'} size="sm" onClick={() => setSide('back')} className={cn(side === 'back' && 'bg-primary/15 text-primary')}>
-          {t('templateTool.back', { defaultValue: '背面' })}
+          {t('templateTool.back')}
         </NotionButton>
       </div>
 
@@ -228,7 +228,7 @@ const DiffView: React.FC<DiffViewProps> = ({ before, after, sampleData }) => {
         <div>
           <div className="flex items-center gap-1 text-xs text-muted-foreground mb-1.5">
             <span className="inline-block w-2 h-2 rounded-full bg-red-400/70" />
-            {t('templateTool.before', { defaultValue: '修改前' })}
+            {t('templateTool.before')}
           </div>
           <div
             className={cn(
@@ -248,7 +248,7 @@ const DiffView: React.FC<DiffViewProps> = ({ before, after, sampleData }) => {
         <div>
           <div className="flex items-center gap-1 text-xs text-muted-foreground mb-1.5">
             <span className="inline-block w-2 h-2 rounded-full bg-green-400/70" />
-            {t('templateTool.after', { defaultValue: '修改后' })}
+            {t('templateTool.after')}
           </div>
           <div
             className={cn(
@@ -332,10 +332,10 @@ export const TemplateToolOutput: React.FC<TemplateToolOutputProps> = ({
 
   // 头部标题
   const headerTitle = useMemo(() => {
-    if (isDiff) return t('templateTool.diffTitle', { defaultValue: '模板变更对比' });
-    if (isForkResult) return t('templateTool.forkTitle', { defaultValue: '模板已分叉' });
-    if (isCreateResult) return t('templateTool.createTitle', { defaultValue: '模板已创建' });
-    return t('templateTool.previewTitle', { defaultValue: '模板预览' });
+    if (isDiff) return t('templateTool.diffTitle');
+    if (isForkResult) return t('templateTool.forkTitle');
+    if (isCreateResult) return t('templateTool.createTitle');
+    return t('templateTool.previewTitle');
   }, [isDiff, isForkResult, isCreateResult, t]);
 
   return (
@@ -354,8 +354,8 @@ export const TemplateToolOutput: React.FC<TemplateToolOutputProps> = ({
         <NotionButton variant="ghost" size="sm" onClick={() => setShowRawJson(!showRawJson)}>
           <FileJson className="w-3 h-3" />
           {showRawJson
-            ? t('templateTool.hideJson', { defaultValue: '视图' })
-            : t('templateTool.showJson', { defaultValue: 'JSON' })}
+            ? t('templateTool.hideJson')
+            : t('templateTool.showJson')}
         </NotionButton>
       </div>
 
@@ -389,7 +389,6 @@ export const TemplateToolOutput: React.FC<TemplateToolOutputProps> = ({
           {output.fields && output.fields.length > 0 && (
             <div className="text-muted-foreground">
               {t('templateTool.fieldsCount', {
-                defaultValue: '{{count}} 个字段',
                 count: output.fields.length,
               })}：<span className="text-foreground/70">{output.fields.join(', ')}</span>
             </div>
@@ -403,19 +402,19 @@ export const TemplateToolOutput: React.FC<TemplateToolOutputProps> = ({
               )}
               <span className={output.isActive ? 'text-green-600 dark:text-green-400' : 'text-muted-foreground'}>
                 {output.isActive
-                  ? t('templateTool.active', { defaultValue: '激活' })
-                  : t('templateTool.inactive', { defaultValue: '未激活' })}
+                  ? t('templateTool.active')
+                  : t('templateTool.inactive')}
               </span>
             </div>
           )}
           {output.isBuiltIn && (
             <div className="px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 text-[10px]">
-              {t('templateTool.builtin', { defaultValue: '内置' })}
+              {t('templateTool.builtin')}
             </div>
           )}
           {isForkResult && output.sourceTemplateId && (
             <div className="text-muted-foreground">
-              {t('templateTool.forkedFrom', { defaultValue: '源自' })}：
+              {t('templateTool.forkedFrom')}：
               <code className="text-[10px] bg-muted/50 px-1 rounded">{output.sourceTemplateId.slice(0, 8)}…</code>
             </div>
           )}
@@ -455,12 +454,12 @@ export const TemplateToolOutput: React.FC<TemplateToolOutputProps> = ({
         ) : rendered ? (
           <div className="flex gap-3">
             <CardSide
-              label={t('templateTool.front', { defaultValue: '正面' })}
+              label={t('templateTool.front')}
               htmlContent={rendered.front}
               cssContent={output.cssStyle || ''}
             />
             <CardSide
-              label={t('templateTool.back', { defaultValue: '背面' })}
+              label={t('templateTool.back')}
               htmlContent={rendered.back}
               cssContent={output.cssStyle || ''}
             />

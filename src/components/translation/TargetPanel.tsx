@@ -90,7 +90,7 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
 
                 <div className="flex items-center gap-1">
                     {/* Comparison View Toggle */}
-                    <CommonTooltip content={t('translation:comparison.toggle', { defaultValue: '段落对照' })}>
+                    <CommonTooltip content={t('translation:comparison.toggle')}>
                         <NotionButton
                             variant="ghost"
                             size="icon"

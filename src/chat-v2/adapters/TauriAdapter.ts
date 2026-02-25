@@ -278,8 +278,8 @@ export class ChatV2TauriAdapter {
       
       showGlobalNotification(
         'success',
-        i18n.t('chatV2:success.listenerRetrySuccessMessage', '功能已恢复正常'),
-        i18n.t('chatV2:success.listenerRetrySuccess', '事件监听恢复成功')
+        i18n.t('chatV2:success.listenerRetrySuccessMessage'),
+        i18n.t('chatV2:success.listenerRetrySuccess')
       );
       
       return true;
@@ -291,8 +291,8 @@ export class ChatV2TauriAdapter {
       // 通知用户重试失败
       showGlobalNotification(
         'error',
-        i18n.t('chatV2:error.listenerRetryFailedMessage', '请尝试刷新页面'),
-        i18n.t('chatV2:error.listenerRetryFailed', '事件监听恢复失败')
+        i18n.t('chatV2:error.listenerRetryFailedMessage'),
+        i18n.t('chatV2:error.listenerRetryFailed')
       );
       
       return false;
@@ -485,8 +485,8 @@ export class ChatV2TauriAdapter {
         // 通知用户（使用统一通知系统）
         showGlobalNotification(
           'error',
-          i18n.t('chatV2:error.listenerRegistrationFailedMessage', '部分功能可能无法正常工作，请刷新页面重试'),
-          i18n.t('chatV2:error.listenerRegistrationFailed', '事件监听初始化失败')
+          i18n.t('chatV2:error.listenerRegistrationFailedMessage'),
+          i18n.t('chatV2:error.listenerRegistrationFailed')
         );
       });
 
@@ -508,8 +508,8 @@ export class ChatV2TauriAdapter {
         // 🔧 用户通知：会话加载失败时提示用户（降级为新会话）
         showGlobalNotification(
           'warning',
-          i18n.t('chatV2:error.sessionLoadFailedMessage', '已自动创建新会话，如有需要请检查网络或重启应用'),
-          i18n.t('chatV2:error.sessionLoadFailed', '会话加载失败')
+          i18n.t('chatV2:error.sessionLoadFailedMessage'),
+          i18n.t('chatV2:error.sessionLoadFailed')
         );
         // 🔧 P27 修复：新会话加载失败时也要标记 isDataLoaded=true
         // 否则 ChatContainer 会一直显示空白（因为 isDataLoaded 永远是 false）

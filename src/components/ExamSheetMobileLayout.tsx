@@ -196,7 +196,7 @@ const CardDetail: React.FC<CardDetailProps> = ({ card, onBookmark }) => {
   if (!card) {
     return (
       <div className="flex items-center justify-center h-32 text-muted-foreground">
-        {t('exam_sheet:select_card_hint', { defaultValue: '请选择一道题目' })}
+        {t('exam_sheet:select_card_hint')}
       </div>
     );
   }
@@ -206,7 +206,7 @@ const CardDetail: React.FC<CardDetailProps> = ({ card, onBookmark }) => {
       {/* 题目标题行 */}
       <div className="flex items-start justify-between gap-3">
         <h3 className="text-lg font-semibold text-foreground">
-          {t('exam_sheet:question_title', { defaultValue: '题目' })}
+          {t('exam_sheet:question_title')}
         </h3>
         {onBookmark && (
           <NotionButton
@@ -216,14 +216,14 @@ const CardDetail: React.FC<CardDetailProps> = ({ card, onBookmark }) => {
             className="shrink-0"
           >
             <Bookmark className="w-4 h-4 mr-1.5" />
-            {t('exam_sheet:bookmark', { defaultValue: '收藏' })}
+            {t('exam_sheet:bookmark')}
           </NotionButton>
         )}
       </div>
 
       {/* 题目内容 */}
       <div className="text-base text-foreground leading-relaxed whitespace-pre-wrap">
-        {card.ocrText || t('exam_sheet:no_ocr_text', { defaultValue: '暂无识别内容' })}
+        {card.ocrText || t('exam_sheet:no_ocr_text')}
       </div>
 
       {/* 标签 */}
@@ -385,12 +385,11 @@ export const ExamSheetMobileLayout: React.FC<ExamSheetMobileLayoutProps> = ({
           {/* 标题区域 */}
           <div className="flex-1 text-center">
             <h1 className="text-white font-medium text-base truncate px-2">
-              {sessionTitle || t('exam_sheet:title', { defaultValue: '题目集识别' })}
+              {sessionTitle || t('exam_sheet:title')}
             </h1>
             {totalPages > 0 && (
               <p className="text-white/70 text-xs">
                 {t('exam_sheet:page_info', { 
-                  defaultValue: '第 {{current}} / {{total}} 页',
                   current: currentPageIndex + 1,
                   total: totalPages
                 })}
@@ -565,10 +564,10 @@ export const ExamSheetMobileLayout: React.FC<ExamSheetMobileLayoutProps> = ({
           {isExpanded && selectedCard && (
             <div className="px-3 py-2 border-t border-border/50">
               <h4 className="text-base font-semibold text-foreground mb-2">
-                {t('exam_sheet:similar_questions', { defaultValue: '同类题讲解' })}
+                {t('exam_sheet:similar_questions')}
               </h4>
               <div className="text-sm text-muted-foreground">
-                {t('exam_sheet:similar_questions_hint', { defaultValue: '正在为您匹配相似题目...' })}
+                {t('exam_sheet:similar_questions_hint')}
               </div>
             </div>
           )}
@@ -588,8 +587,8 @@ export const ExamSheetMobileLayout: React.FC<ExamSheetMobileLayoutProps> = ({
               >
                 <Camera className="w-4 h-4" />
                 {isUploading 
-                  ? t('exam_sheet:uploading', { defaultValue: '上传中...' })
-                  : t('exam_sheet:retake_page', { defaultValue: '再拍一页' })
+                  ? t('exam_sheet:uploading')
+                  : t('exam_sheet:retake_page')
                 }
               </NotionButton>
               
@@ -602,7 +601,7 @@ export const ExamSheetMobileLayout: React.FC<ExamSheetMobileLayoutProps> = ({
                   className="flex-1 rounded-full gap-1.5"
                 >
                   <Sparkles className="w-4 h-4" />
-                  {t('exam_sheet:ai_analyze', { defaultValue: 'AI 解析' })}
+                  {t('exam_sheet:ai_analyze')}
                 </NotionButton>
               )}
             </div>

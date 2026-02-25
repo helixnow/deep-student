@@ -735,7 +735,7 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
         onOpenChange={setResetConfirmOpen}
         icon={<AlertTriangle className="w-5 h-5 text-amber-500" />}
         title={t('practice:questionBank.confirmResetTitle')}
-        description={t('practice:questionBank.confirmResetDescDetail', { count: selectedIds.size, defaultValue: `将清空这 ${selectedIds.size} 道题的掌握状态和作答次数，但您填写的用户笔记和标签会被保留。确定要重置吗？` })}
+        description={t('practice:questionBank.confirmResetDescDetail', { count: selectedIds.size })}
         confirmText={t('practice:questionBank.resetProgress')}
         cancelText={t('common:cancel')}
         confirmVariant="warning"

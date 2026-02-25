@@ -457,7 +457,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
           onUploadSuccess?.(updatedDetail);
         } catch (err: unknown) {
           debugLog.error('[ExamSheetUploader] Failed to delete excluded cards:', err);
-          showGlobalNotification('error', t('exam_sheet:uploader.filter_delete_failed', { defaultValue: '删除排除题目失败' }));
+          showGlobalNotification('error', t('exam_sheet:uploader.filter_delete_failed'));
           // 即使删除失败也让用户继续
           onUploadSuccess?.(pendingDetail);
         }
@@ -1059,11 +1059,11 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                     <div className="flex items-center gap-2">
                       <Filter className="w-4 h-4 text-muted-foreground" />
                       <span className="text-sm font-medium">
-                        {t('exam_sheet:uploader.filter_questions', { defaultValue: '筛选题目' })}
+                        {t('exam_sheet:uploader.filter_questions')}
                       </span>
                       {excludedCardIds.size > 0 && (
                         <span className="px-1.5 py-0.5 text-[10px] rounded-full bg-amber-500/15 text-amber-600">
-                          {t('exam_sheet:uploader.filter_excluded_count', { count: excludedCardIds.size, defaultValue: '已排除 {{count}} 题' })}
+                          {t('exam_sheet:uploader.filter_excluded_count', { count: excludedCardIds.size })}
                         </span>
                       )}
                     </div>
@@ -1075,7 +1075,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                   {/* 筛选提示 */}
                   {!showQuestionFilter && excludedCardIds.size === 0 && (
                     <div className="px-4 py-2 text-xs text-muted-foreground bg-muted/10">
-                      {t('exam_sheet:uploader.filter_hint', { defaultValue: '展开可取消勾选不需要录入的题目（如已掌握的题目）' })}
+                      {t('exam_sheet:uploader.filter_hint')}
                     </div>
                   )}
 
@@ -1188,7 +1188,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                 <NotionButton onClick={() => void handleConfirmSummary()} className="flex-1" disabled={keptCount === 0 || isConfirming}>
                   {isConfirming && <Loader2 className="w-4 h-4 mr-1 animate-spin" />}
                   {excludedCardIds.size > 0
-                    ? t('exam_sheet:uploader.view_questions_filtered', { count: keptCount, defaultValue: '确认导入 {{count}} 题' })
+                    ? t('exam_sheet:uploader.view_questions_filtered', { count: keptCount })
                     : t('exam_sheet:uploader.view_questions')
                   }
                 </NotionButton>

@@ -610,7 +610,7 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
         <div className="text-center space-y-2">
           <p className="text-lg font-medium text-foreground">{node.name}</p>
           <p className="text-muted-foreground">
-            {t('learningHub:textbook.unsupportedPreview', { ext, defaultValue: `${ext} 文件暂不支持预览` })}
+            {t('learningHub:textbook.unsupportedPreview', { ext })}
           </p>
         </div>
       </div>

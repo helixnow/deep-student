@@ -226,6 +226,7 @@
     "confirmDeleteDesc": "确定要删除选中的 {{count}} 道题目吗？此操作无法撤销。",
     "confirmResetTitle": "确认重置进度",
     "confirmResetDesc": "确定要重置选中的 {{count}} 道题目的学习进度吗？这将清除所有答题记录、正确率统计，题目将恢复为\"新题\"状态。",
+    "confirmResetDescDetail": "将清空这 {{count}} 道题的掌握状态和作答次数，但您填写的用户笔记和标签会被保留。确定要重置吗？",
     "resetProgress": "重置进度",
     "deleteSuccess": "成功删除 {{count}} 道题目",
     "deleteFailed": "删除失败",

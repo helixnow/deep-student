@@ -293,7 +293,7 @@ const writeDraft = (payload: MindMapDraftPayload): void => {
     } catch (sessionError) {
       console.error('[MindMapStore] Failed to write draft to sessionStorage as well:', sessionError);
       // 打破用户的安全幻觉，通知用户草稿保存失败
-      showGlobalNotification('error', i18next.t('store.draftSaveFailed', { ns: 'mindmap', defaultValue: '本地存储空间不足，草稿保存失败，请及时保存并确保网络畅通' }));
+      showGlobalNotification('error', i18next.t('mindmap:store.draftSaveFailed'));
     }
   }
 };

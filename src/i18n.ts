@@ -15,11 +15,12 @@ import enUSCommon from './locales/en-US/common.json';
 import enUSSidebar from './locales/en-US/sidebar.json';
 
 // 完整命名空间列表（保持与组件 useTranslation 引用一致）
+// 注：knowledge_graph 在 common.json 内；graph 无独立文件，已移除
 const ALL_NS = [
   'common', 'sidebar', 'settings', 'analysis', 'enhanced_rag', 'anki',
   'template', 'data', 'chat_host', 'chat_module', 'chatV2', 'notes',
-  'exam_sheet', 'card_manager', 'knowledge_graph', 'dev', 'drag_drop',
-  'pdf', 'textbook', 'graph', 'graph_conflict', 'translation',
+  'exam_sheet', 'card_manager', 'dev', 'drag_drop',
+  'pdf', 'textbook', 'graph_conflict', 'translation',
   'essay_grading', 'app_menu', 'learningHub', 'dstu', 'migration',
   'skills', 'command_palette', 'backend_errors', 'mcp', 'workspace',
   'stats', 'llm_usage', 'review', 'practice', 'sync', 'mindmap',
@@ -54,7 +55,7 @@ if (!i18n.isInitialized) {
       fallbackLng: 'en-US',
       defaultNS: 'common',
       ns: ALL_NS,
-      fallbackNS: ['sidebar', 'settings', 'analysis', 'enhanced_rag', 'anki', 'template', 'data', 'chat_host', 'chat_module', 'notes', 'exam_sheet', 'card_manager', 'knowledge_graph', 'dev', 'drag_drop', 'pdf', 'textbook', 'graph_conflict', 'translation', 'essay_grading', 'learningHub', 'backend_errors', 'forms', 'console'],
+      fallbackNS: ['sidebar', 'settings', 'analysis', 'enhanced_rag', 'anki', 'template', 'data', 'chat_host', 'chat_module', 'notes', 'exam_sheet', 'card_manager', 'dev', 'drag_drop', 'pdf', 'textbook', 'graph_conflict', 'translation', 'essay_grading', 'learningHub', 'backend_errors', 'forms', 'console'],
 
       detection: {
         order: ['localStorage', 'navigator', 'htmlTag'],

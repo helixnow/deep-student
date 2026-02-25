@@ -1259,7 +1259,7 @@ export async function resolveVfsRefs(
     const displayWarnings = uniqueWarnings.slice(0, MAX_DISPLAY_WARNINGS);
     const remaining = uniqueWarnings.length - displayWarnings.length;
     const message = remaining > 0
-      ? displayWarnings.join('；') + i18n.t('chatV2:context.more_warnings', { count: remaining, defaultValue: `；等 ${remaining} 条警告` })
+      ? displayWarnings.join('；') + i18n.t('chatV2:context.more_warnings', { count: remaining })
       : displayWarnings.join('；');
     showGlobalNotification('warning', message);
   }

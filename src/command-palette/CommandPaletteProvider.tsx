@@ -120,8 +120,8 @@ export function CommandPaletteProvider({
       console.error('[CommandPalette] 命令执行失败:', error);
       showGlobalNotification(
         'error',
-        t('command_palette:error.execute_failed', '命令执行失败'),
-        t('common:error', '错误')
+        t('command_palette:error.execute_failed'),
+        t('common:error')
       );
     }
   }, [deps, close, t]);

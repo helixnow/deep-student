@@ -168,7 +168,7 @@ export const NoteToolPreview: React.FC<NoteToolPreviewProps> = ({
       const ms = durationMs ?? 0;
       return {
         icon: CheckCircle,
-        text: t('timeline.noteTool.completed', { ms, defaultValue: `完成 (${ms}ms)` }),
+        text: t('timeline.noteTool.completed', { ms }),
         color: 'text-green-500 dark:text-green-400',
         spin: false,
       };
@@ -419,13 +419,13 @@ export const NoteToolPreview: React.FC<NoteToolPreviewProps> = ({
               {isSuccess && output && (
                 <div className="flex items-center gap-3 text-xs text-muted-foreground">
                   {output.appendedCount !== undefined && (
-                    <span>{t('timeline.noteTool.appendedChars', { count: output.appendedCount, defaultValue: `追加了 ${output.appendedCount} 个字符` })}</span>
+                    <span>{t('timeline.noteTool.appendedChars', { count: output.appendedCount })}</span>
                   )}
                   {output.replaceCount !== undefined && (
-                    <span>{t('timeline.noteTool.replacedCount', { count: output.replaceCount, defaultValue: `替换了 ${output.replaceCount} 处` })}</span>
+                    <span>{t('timeline.noteTool.replacedCount', { count: output.replaceCount })}</span>
                   )}
                   {output.wordCount !== undefined && (
-                    <span>{t('timeline.noteTool.wordCount', { count: output.wordCount, defaultValue: `共 ${output.wordCount} 个字符` })}</span>
+                    <span>{t('timeline.noteTool.wordCount', { count: output.wordCount })}</span>
                   )}
                 </div>
               )}

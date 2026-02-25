@@ -161,7 +161,8 @@
     "conflictReloadFailed": "Auto-refresh failed. Please manually refresh the page to get the latest content.",
     "depthExceeded": "Mind map depth exceeds the maximum limit and cannot be saved.",
     "nodeCountExceeded": "Mind map node count exceeds the maximum limit and cannot be saved.",
-    "invalidContent": "Mind map content is abnormal and cannot be saved. Please try again later."
+    "invalidContent": "Mind map content is abnormal and cannot be saved. Please try again later.",
+    "draftSaveFailed": "Local storage is full, draft save failed. Please save your work and ensure network connectivity."
   },
   "style": {
     "bold": "Bold",

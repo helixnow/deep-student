@@ -108,7 +108,7 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
         field_type: field.toLowerCase() === 'tags' ? 'Array' : 'Text',
         is_required: field.toLowerCase() === 'front' || field.toLowerCase() === 'back',
         default_value: field.toLowerCase() === 'tags' ? '[]' : '',
-        description: t('field_description', { field, defaultValue: `${field}字段的描述` })
+        description: t('field_description', { field })
       };
     });
     return defaultRules;
@@ -271,7 +271,7 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
     // 验证字段提取规则
     Object.entries(fieldExtractionRules).forEach(([fieldName, rule]) => {
       if (!rule.description || !rule.description.trim()) {
-        errors.push({ field: 'field_rules', message: t('field_missing_description', { fieldName, defaultValue: `字段 ${fieldName} 缺少描述` }) });
+        errors.push({ field: 'field_rules', message: t('field_missing_description', { fieldName }) });
       }
     });
     
@@ -292,7 +292,7 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
           field_type: field.toLowerCase() === 'tags' ? 'Array' : 'Text',
           is_required: field.toLowerCase() === 'front' || field.toLowerCase() === 'back',
           default_value: field.toLowerCase() === 'tags' ? '[]' : '',
-          description: t('field_description', { field, defaultValue: `${field}字段的描述` })
+          description: t('field_description', { field })
         };
       }
     });
@@ -379,7 +379,7 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
       if (field.toLowerCase() === 'tags') {
         template[field] = [t('tag_1'), t('tag_2')];
       } else {
-        template[field] = t('field_example_content', { field, defaultValue: `${field}的示例内容` });
+        template[field] = t('field_example_content', { field });
       }
     });
     

@@ -470,7 +470,11 @@
       "emptySuccess": "已清空回收站",
       "restoreSuccess": "已恢复",
       "deleteSuccess": "已永久删除",
-      "confirmPermanentDelete": "确定要永久删除此项目吗？此操作不可撤销。"
+      "confirmPermanentDelete": "确定要永久删除此项目吗？此操作不可撤销。",
+      "confirmBatchPermanentDelete": "确定要永久删除选中的 {{count}} 个项目吗？此操作不可撤销。",
+      "batchDeleteSuccess": "已永久删除 {{count}} 个项目",
+      "batchDeletePartial": "成功 {{succeeded}} 个，失败 {{failed}} 个",
+      "batchDeleteFailed": "批量永久删除失败"
     },
     "statusBar": {
       "itemCount": "{{count}} 个项目"
@@ -632,8 +636,15 @@
       "statsNote": "统计为全量（不受筛选影响）",
       "multimodal": "多模态:",
       "text": "文本:",
+      "items": "项",
       "staleHint": "{{count}} 个资源内容已更新，索引需要刷新",
       "recordCount": "{{count}} 条记录"
+    },
+    "stats": {
+      "totalVectors": "总向量数",
+      "dimensions": "向量维度",
+      "errors": "索引错误",
+      "stale": "待更新"
     },
     "action": {
       "refresh": "刷新",
@@ -648,7 +659,8 @@
       "retry": "重试",
       "search": "搜索",
       "update": "更新",
-      "reindex": "待索引"
+      "reindex": "待索引",
+      "clearOcrAndReindex": "清除 OCR 数据并重新识别"
     },
     "notification": {
       "resetDisabledSuccess": "已重置 {{count}} 个不适用资源，将重新索引",
@@ -687,7 +699,13 @@
       "skippedNoSourceId": "{{count}} 个资源因缺少 sourceId 被跳过索引",
       "checkEmbeddingModel": "请检查嵌入模型是否已正确配置（设置 → AI 模型）",
       "checkNetwork": "请检查网络连接后重试",
-      "checkDb": "数据库可能正忙，请稍后重试"
+      "checkDb": "数据库可能正忙，请稍后重试",
+      "getOcrInfoFailed": "获取 OCR 信息失败",
+      "getChunksFailed": "获取文本块失败",
+      "ocrClearedReindexing": "OCR 数据已清除，正在重新索引...",
+      "ocrReindexComplete": "重新 OCR 和索引完成",
+      "ocrClearedButReindexFailed": "OCR 已清除但重新索引失败，请手动点击重新索引按钮",
+      "clearOcrFailed": "清除 OCR 失败"
     },
     "mmProgress": {
       "preparing": "{{prefix}}准备中... ({{pages}} 页)",
@@ -707,14 +725,29 @@
       "modalityTextAndMm": "文本+多模态",
       "unsupported": "不支持",
       "emptyContent": "空内容",
+      "noContent": "无内容",
+      "ocrPreferred": "OCR 优先",
+      "fallbackToExtracted": "回退到提取文本",
+      "ocrFailed": "OCR 失败",
       "indexError": "索引错误",
       "stale": "过时",
       "textStatus": "文本状态",
       "ocrStatus": "OCR 状态",
       "noText": "无文本",
       "noOcr": "无 OCR",
+      "extractedText": "提取文本",
       "extractedTextIndex": "提取文本索引",
+      "extractedTextContent": "提取文本内容",
       "ocrTextIndex": "OCR文本索引",
+      "ocrTextContent": "OCR 文本内容",
+      "selectionLogic": "选择逻辑",
+      "currentInUse": "当前使用",
+      "pageOcrResults": "逐页 OCR 结果",
+      "pageOcrResultsWithCount": "逐页 OCR 结果 ({{count}} 页)",
+      "pageLabel": "第 {{n}} 页",
+      "noOcrOrExtracted": "此资源没有 OCR 文本或提取文本",
+      "noTextContent": "无文本内容",
+      "noDataFound": "没有找到数据",
       "nativeMmIndex": "原生多模态索引",
       "indexMode": "索引模式",
       "pureText": "纯文本",

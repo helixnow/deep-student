@@ -208,7 +208,6 @@ const SourceImagesBubble: React.FC<{
         <span className="flex-1 text-left">
           {t('image.source_images_bubble', {
             count: images.length,
-            defaultValue: '原始试卷图片 ({{count}} 张)',
           })}
         </span>
         {expanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}

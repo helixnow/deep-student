@@ -80,15 +80,9 @@ export function useMigrationStatusListener(options?: {
 
       const warningList = payload.warnings?.map((warning) => warning.trim()).filter(Boolean) ?? [];
       const warningText = warningList.join('\n');
-      const migrationFailedTitle = i18n.t('data:governance.listener_migration_failed_title', {
-        defaultValue: '数据库迁移失败',
-      });
-      const unknownErrorText = i18n.t('data:governance.listener_unknown_error', {
-        defaultValue: '未知错误',
-      });
-      const warningTitle = i18n.t('data:governance.listener_migration_warning_title', {
-        defaultValue: '数据库迁移存在警告',
-      });
+      const migrationFailedTitle = i18n.t('data:governance.listener_migration_failed_title');
+      const unknownErrorText = i18n.t('data:governance.listener_unknown_error');
+      const warningTitle = i18n.t('data:governance.listener_migration_warning_title');
 
       if (!payload.success) {
         showMigrationStatus({
@@ -105,10 +99,6 @@ export function useMigrationStatusListener(options?: {
           'error',
           i18n.t(failureMessageKey, {
             error: payload.error || unknownErrorText,
-            defaultValue:
-              payload.degraded_mode
-                ? '数据库迁移失败：{{error}}。应用将以降级模式运行，部分功能可能不可用。请检查数据或联系技术支持。'
-                : '数据库迁移失败：{{error}}。部分功能可能不可用。请检查数据或联系技术支持。',
           })
         );
 
@@ -124,7 +114,6 @@ export function useMigrationStatusListener(options?: {
           'warning',
           i18n.t('data:governance.listener_migration_warning_message', {
             warnings: warningText,
-            defaultValue: '数据库迁移完成，但有以下警告：\n{{warnings}}',
           })
         );
 
@@ -135,7 +124,6 @@ export function useMigrationStatusListener(options?: {
           i18n.t('data:governance.listener_migration_success_message', {
             version: payload.global_version,
             count: payload.migrations_applied,
-            defaultValue: '数据库已升级到版本 {{version}}，应用了 {{count}} 个迁移',
           })
         );
 
@@ -181,7 +169,6 @@ export function useMigrationStatusListener(options?: {
                 warnings: [
                   i18n.t('data:governance.listener_pending_migration_warning', {
                     count: status.pending_migrations_total,
-                    defaultValue: '有 {{count}} 个数据库迁移待执行，请重启应用完成迁移。',
                   }),
                 ],
                 global_version: Number(status.global_version),

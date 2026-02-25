@@ -538,7 +538,7 @@ export const IndexStatusView: React.FC = () => {
       setOcrInfo(info);
     } catch (err: unknown) {
       debugLog.error('[IndexStatusView] getResourceOcrInfo failed:', err);
-      showGlobalNotification('error', '获取 OCR 信息失败', err instanceof Error ? err.message : '未知错误');
+      showGlobalNotification('error', t('indexStatus.notification.getOcrInfoFailed'), err instanceof Error ? err.message : t('indexStatus.notification.unknownError'));
       setInspectMode(null);
       setInspectingResourceId(null);
     } finally {
@@ -562,7 +562,7 @@ export const IndexStatusView: React.FC = () => {
       setTextChunks(chunks);
     } catch (err: unknown) {
       debugLog.error('[IndexStatusView] getResourceTextChunks failed:', err);
-      showGlobalNotification('error', '获取文本块失败', err instanceof Error ? err.message : '未知错误');
+      showGlobalNotification('error', t('indexStatus.notification.getChunksFailed'), err instanceof Error ? err.message : t('indexStatus.notification.unknownError'));
       setInspectMode(null);
       setInspectingResourceId(null);
     } finally {
@@ -575,21 +575,21 @@ export const IndexStatusView: React.FC = () => {
     setClearingOcr(true);
     try {
       await clearResourceOcr(resourceId);
-      showGlobalNotification('info', 'OCR 数据已清除，正在重新索引...');
+      showGlobalNotification('info', t('indexStatus.notification.ocrClearedReindexing'));
       setInspectMode(null);
       setInspectingResourceId(null);
       setOcrInfo(null);
       try {
         await reindexResource(resourceId);
-        showGlobalNotification('success', '重新 OCR 和索引完成');
+        showGlobalNotification('success', t('indexStatus.notification.ocrReindexComplete'));
       } catch (reindexErr: unknown) {
         debugLog.error('[IndexStatusView] reindex after OCR clear failed:', reindexErr);
-        showGlobalNotification('warning', 'OCR 已清除但重新索引失败，请手动点击重新索引按钮');
+        showGlobalNotification('warning', t('indexStatus.notification.ocrClearedButReindexFailed'));
       }
       loadData();
     } catch (err: unknown) {
       debugLog.error('[IndexStatusView] clearResourceOcr failed:', err);
-      showGlobalNotification('error', '清除 OCR 失败', err instanceof Error ? err.message : '未知错误');
+      showGlobalNotification('error', t('indexStatus.notification.clearOcrFailed'), err instanceof Error ? err.message : t('indexStatus.notification.unknownError'));
     } finally {
       setClearingOcr(false);
     }
@@ -1426,12 +1426,12 @@ export const IndexStatusView: React.FC = () => {
                                   'px-1.5 py-0.5 rounded text-[10px] font-medium',
                                   chunk.textSource === 'ocr' ? 'bg-teal-500/10 text-teal-600' : 'bg-primary/10 text-primary'
                                 )}>
-                                  {chunk.textSource === 'ocr' ? 'OCR' : '提取文本'}
+                                  {chunk.textSource === 'ocr' ? 'OCR' : t('indexStatus.detail.extractedText')}
                                 </span>
                               )}
                             </div>
                             <div className="flex items-center gap-2 text-muted-foreground">
-                              <span className="tabular-nums">{chunk.charCount} 字符</span>
+                              <span className="tabular-nums">{t('indexStatus.detail.chars', { count: chunk.charCount })}</span>
                               <span className={cn(
                                 'px-1.5 py-0.5 rounded text-[10px]',
                                 chunk.textState === 'indexed' ? 'bg-emerald-500/10 text-emerald-600' :
@@ -1447,13 +1447,13 @@ export const IndexStatusView: React.FC = () => {
                               {chunk.textContent}
                             </pre>
                           ) : (
-                            <div className="px-3 py-2 text-xs text-muted-foreground italic">无文本内容</div>
+                            <div className="px-3 py-2 text-xs text-muted-foreground italic">{t('indexStatus.detail.noTextContent')}</div>
                           )}
                         </div>
                       ))}
                     </div>
                   ) : (
-                    <div className="text-center py-4 text-muted-foreground text-xs">没有找到数据</div>
+                    <div className="text-center py-4 text-muted-foreground text-xs">{t('indexStatus.detail.noDataFound')}</div>
                   )}
                 </div>
               )}
@@ -1483,13 +1483,13 @@ export const IndexStatusView: React.FC = () => {
         <XCircle className="h-10 w-10 text-destructive/60" />
         <p className="text-sm text-muted-foreground text-center max-w-md">{error}</p>
         {isEmbeddingError && (
-          <p className="text-xs text-warning">{t('indexStatus.notification.checkEmbeddingModel', { defaultValue: '请检查嵌入模型是否已正确配置（设置 → AI 模型）' })}</p>
+          <p className="text-xs text-warning">{t('indexStatus.notification.checkEmbeddingModel')}</p>
         )}
         {isNetworkError && (
-          <p className="text-xs text-warning">{t('indexStatus.notification.checkNetwork', { defaultValue: '请检查网络连接后重试' })}</p>
+          <p className="text-xs text-warning">{t('indexStatus.notification.checkNetwork')}</p>
         )}
         {isDbError && (
-          <p className="text-xs text-amber-600 dark:text-amber-400">{t('indexStatus.notification.checkDb', { defaultValue: '数据库可能正忙，请稍后重试' })}</p>
+          <p className="text-xs text-amber-600 dark:text-amber-400">{t('indexStatus.notification.checkDb')}</p>
         )}
         <NotionButton variant="ghost" size="sm" onClick={() => { loadData(); }} className="text-primary hover:bg-primary/10">
           {t('indexStatus.action.retry')}
@@ -1523,22 +1523,22 @@ export const IndexStatusView: React.FC = () => {
             <div className="flex-1 min-w-0 grid grid-cols-2 gap-x-3 gap-y-0.5">
               <div className="flex items-center gap-1.5 text-xs">
                 <Database className="h-3 w-3 text-muted-foreground shrink-0" />
-                <span className="text-muted-foreground shrink-0">{t('indexStatus.stats.totalVectors', { defaultValue: '总向量数' })}</span>
+                <span className="text-muted-foreground shrink-0">{t('indexStatus.stats.totalVectors')}</span>
                 <span className="font-semibold tabular-nums">{dimensions.reduce((acc, d) => acc + d.recordCount, 0).toLocaleString()}</span>
               </div>
               <div className="flex items-center gap-1.5 text-xs">
                 <Workflow className="h-3 w-3 text-muted-foreground shrink-0" />
-                <span className="text-muted-foreground shrink-0">{t('indexStatus.stats.dimensions', { defaultValue: '向量维度' })}</span>
+                <span className="text-muted-foreground shrink-0">{t('indexStatus.stats.dimensions')}</span>
                 <span className="font-mono font-semibold">{dimensions.length > 0 ? dimensions[0].dimension : '-'}</span>
               </div>
               <div className="flex items-center gap-1.5 text-xs">
                 <AlertCircle className={cn('h-3 w-3 shrink-0', summary.failedCount > 0 ? 'text-red-500' : 'text-muted-foreground')} />
-                <span className="text-muted-foreground shrink-0">{t('indexStatus.stats.errors', { defaultValue: '索引错误' })}</span>
+                <span className="text-muted-foreground shrink-0">{t('indexStatus.stats.errors')}</span>
                 <span className={cn('font-semibold tabular-nums', summary.failedCount > 0 && 'text-red-500')}>{summary.failedCount + summary.mmFailedCount}</span>
               </div>
               <div className="flex items-center gap-1.5 text-xs">
                 <Clock className={cn('h-3 w-3 shrink-0', summary.staleCount > 0 ? 'text-warning' : 'text-muted-foreground')} />
-                <span className="text-muted-foreground shrink-0">{t('indexStatus.stats.stale', { defaultValue: '待更新' })}</span>
+                <span className="text-muted-foreground shrink-0">{t('indexStatus.stats.stale')}</span>
                 <span className={cn('font-semibold tabular-nums', summary.staleCount > 0 && 'text-warning')}>{summary.staleCount}</span>
               </div>
             </div>
@@ -1625,7 +1625,7 @@ export const IndexStatusView: React.FC = () => {
                     size={80}
                     strokeWidth={8}
                   />
-                  <span className="text-xs font-medium text-muted-foreground">{t('indexStatus.progress.overallProgress', { defaultValue: '综合进度' })}</span>
+                  <span className="text-xs font-medium text-muted-foreground">{t('indexStatus.progress.overallProgress')}</span>
                 </div>
                 <div className="h-16 w-px bg-border/50" />
                 <div className="flex flex-col gap-3">
@@ -1638,7 +1638,7 @@ export const IndexStatusView: React.FC = () => {
                       strokeWidth={3}
                     />
                     <div className="flex flex-col">
-                      <span className="text-xs font-medium">{t('indexStatus.progress.text', { defaultValue: '文本' })}</span>
+                      <span className="text-xs font-medium">{t('indexStatus.progress.text')}</span>
                       <span className="text-[10px] text-muted-foreground">{summary.indexedCount}/{summary.totalResources}</span>
                     </div>
                   </div>
@@ -1651,7 +1651,7 @@ export const IndexStatusView: React.FC = () => {
                       strokeWidth={3}
                     />
                     <div className="flex flex-col">
-                      <span className="text-xs font-medium">{t('indexStatus.progress.multimodal', { defaultValue: '多模态' })}</span>
+                      <span className="text-xs font-medium">{t('indexStatus.progress.multimodal')}</span>
                       <span className="text-[10px] text-muted-foreground">{summary.mmIndexedCount}/{summary.mmTotalResources}</span>
                     </div>
                   </div>
@@ -1668,7 +1668,7 @@ export const IndexStatusView: React.FC = () => {
                 />
                 <div className="flex flex-col gap-1">
                   <span className="text-sm font-medium">{t('indexStatus.progress.textIndexProgress')}</span>
-                  <span className="text-xs text-muted-foreground">{summary.indexedCount} / {summary.totalResources} {t('indexStatus.progress.items', { defaultValue: '项' })}</span>
+                  <span className="text-xs text-muted-foreground">{summary.indexedCount} / {summary.totalResources} {t('indexStatus.progress.items')}</span>
                 </div>
               </div>
             )}
@@ -1681,7 +1681,7 @@ export const IndexStatusView: React.FC = () => {
               <div className="bg-muted/30 p-2 lg:p-3 rounded-md flex flex-col justify-between gap-0.5 lg:gap-1 group transition-colors">
                 <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium flex items-center gap-1.5">
                   <Database className="h-3 w-3" />
-                  <span className="truncate">{t('indexStatus.stats.totalVectors', { defaultValue: '总向量数' })}</span>
+                  <span className="truncate">{t('indexStatus.stats.totalVectors')}</span>
                 </span>
                 <span className="text-base lg:text-lg font-semibold tabular-nums text-foreground/90">
                   {dimensions.reduce((acc, d) => acc + d.recordCount, 0).toLocaleString()}
@@ -1691,7 +1691,7 @@ export const IndexStatusView: React.FC = () => {
               <div className="bg-muted/30 p-2 lg:p-3 rounded-md flex flex-col justify-between gap-0.5 lg:gap-1 group transition-colors">
                 <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium flex items-center gap-1.5">
                   <Workflow className="h-3 w-3" />
-                  <span className="truncate">{t('indexStatus.stats.dimensions', { defaultValue: '向量维度' })}</span>
+                  <span className="truncate">{t('indexStatus.stats.dimensions')}</span>
                 </span>
                 <div className="flex items-center gap-1.5 overflow-hidden">
                   {dimensions.length > 0 ? (
@@ -1720,7 +1720,7 @@ export const IndexStatusView: React.FC = () => {
                   summary.failedCount + summary.mmFailedCount > 0 ? "text-red-600/80 dark:text-red-400/80" : "text-muted-foreground"
                 )}>
                   <AlertCircle className="h-3 w-3" />
-                  <span className="truncate">{t('indexStatus.stats.errors', { defaultValue: '索引错误' })}</span>
+                  <span className="truncate">{t('indexStatus.stats.errors')}</span>
                 </span>
                 <span className={cn(
                   "text-base lg:text-lg font-semibold tabular-nums",
@@ -1741,7 +1741,7 @@ export const IndexStatusView: React.FC = () => {
                   summary.staleCount > 0 ? "text-warning" : "text-muted-foreground"
                 )}>
                   <Clock className="h-3 w-3" />
-                  <span className="truncate">{t('indexStatus.stats.stale', { defaultValue: '待更新' })}</span>
+                  <span className="truncate">{t('indexStatus.stats.stale')}</span>
                 </span>
                 <span className={cn(
                   "text-base lg:text-lg font-semibold tabular-nums",
@@ -1799,7 +1799,7 @@ export const IndexStatusView: React.FC = () => {
             </NotionButton>
             
             <div className="grid grid-cols-2 gap-2">
-              <NotionButton variant="default" size="sm" onClick={() => { loadData(); }} disabled={isLoading || batchIndexing} title={t('indexStatus.action.refreshTitle', { defaultValue: '刷新向量化状态' })}>
+              <NotionButton variant="default" size="sm" onClick={() => { loadData(); }} disabled={isLoading || batchIndexing} title={t('indexStatus.action.refreshTitle')}>
                 <RefreshCw className={cn('h-3.5 w-3.5', isLoading && 'animate-spin')} />
                 {t('indexStatus.action.refresh')}
               </NotionButton>
@@ -2034,14 +2034,14 @@ export const IndexStatusView: React.FC = () => {
                         {ocrInfo.activeSource === 'ocr' && <div className="text-primary text-[10px] mt-1">✓ 当前使用</div>}
                       </div>
                       <div className={cn('p-3 rounded-lg border', ocrInfo.activeSource === 'extracted' ? 'border-primary bg-primary/5' : 'border-border/50')}>
-                        <div className="text-muted-foreground mb-1">提取文本</div>
-                        <div className="font-semibold tabular-nums">{ocrInfo.extractedTextLength.toLocaleString()} 字符</div>
-                        {ocrInfo.activeSource === 'extracted' && <div className="text-primary text-[10px] mt-1">✓ 当前使用</div>}
+                        <div className="text-muted-foreground mb-1">{t('indexStatus.detail.extractedText')}</div>
+                        <div className="font-semibold tabular-nums">{t('indexStatus.detail.chars', { count: ocrInfo.extractedTextLength.toLocaleString() })}</div>
+                        {ocrInfo.activeSource === 'extracted' && <div className="text-primary text-[10px] mt-1">✓ {t('indexStatus.detail.currentInUse')}</div>}
                       </div>
                       <div className="p-3 rounded-lg border border-border/50">
-                        <div className="text-muted-foreground mb-1">选择逻辑</div>
+                        <div className="text-muted-foreground mb-1">{t('indexStatus.detail.selectionLogic')}</div>
                         <div className="font-medium text-[11px]">
-                          {ocrInfo.activeSource === 'none' ? '无内容' : ocrInfo.activeSource === 'ocr' ? 'OCR 优先' : '回退到提取文本'}
+                          {ocrInfo.activeSource === 'none' ? t('indexStatus.detail.noContent') : ocrInfo.activeSource === 'ocr' ? t('indexStatus.detail.ocrPreferred') : t('indexStatus.detail.fallbackToExtracted')}
                         </div>
                       </div>
                     </div>
@@ -2050,15 +2050,15 @@ export const IndexStatusView: React.FC = () => {
                     {ocrInfo.ocrPages && ocrInfo.ocrPages.length > 0 && (
                       <div>
                         <div className="text-xs font-medium text-muted-foreground mb-2">
-                          逐页 OCR 结果 ({ocrInfo.ocrPages.length} 页)
+                          {t('indexStatus.detail.pageOcrResultsWithCount', { count: ocrInfo.ocrPages.length })}
                         </div>
                         <div className="space-y-2 max-h-[40vh] overflow-y-auto">
                           {ocrInfo.ocrPages.map((page) => (
                             <div key={page.pageIndex} className={cn('border rounded-lg', page.isFailed ? 'border-red-300 bg-red-50/50 dark:border-red-800 dark:bg-red-900/10' : 'border-border/50')}>
                               <div className={cn('flex items-center justify-between px-3 py-1.5 text-xs border-b', page.isFailed ? 'border-red-200 dark:border-red-800' : 'border-border/30')}>
-                                <span className="font-medium">第 {page.pageIndex + 1} 页</span>
+                                <span className="font-medium">{t('indexStatus.detail.pageLabel', { n: page.pageIndex + 1 })}</span>
                                 <span className={cn('tabular-nums', page.isFailed ? 'text-red-500' : 'text-muted-foreground')}>
-                                  {page.isFailed ? 'OCR 失败' : `${page.charCount} 字符`}
+                                  {page.isFailed ? t('indexStatus.detail.ocrFailed') : t('indexStatus.detail.chars', { count: page.charCount })}
                                 </span>
                               </div>
                               {!page.isFailed && page.text && (
@@ -2075,7 +2075,7 @@ export const IndexStatusView: React.FC = () => {
                     {/* 图片/单文件 OCR 文本 */}
                     {!ocrInfo.ocrPages && ocrInfo.ocrText && (
                       <div>
-                        <div className="text-xs font-medium text-muted-foreground mb-2">OCR 文本内容</div>
+                        <div className="text-xs font-medium text-muted-foreground mb-2">{t('indexStatus.detail.ocrTextContent')}</div>
                         <pre className="border rounded-lg px-3 py-2 text-xs whitespace-pre-wrap break-words max-h-[40vh] overflow-y-auto font-sans leading-relaxed bg-muted/30">
                           {ocrInfo.ocrText}
                         </pre>
@@ -2085,7 +2085,7 @@ export const IndexStatusView: React.FC = () => {
                     {/* 提取文本 */}
                     {ocrInfo.extractedText && (
                       <div>
-                        <div className="text-xs font-medium text-muted-foreground mb-2">提取文本内容</div>
+                        <div className="text-xs font-medium text-muted-foreground mb-2">{t('indexStatus.detail.extractedTextContent')}</div>
                         <pre className="border rounded-lg px-3 py-2 text-xs whitespace-pre-wrap break-words max-h-[40vh] overflow-y-auto font-sans leading-relaxed bg-muted/30">
                           {ocrInfo.extractedText}
                         </pre>
@@ -2094,7 +2094,7 @@ export const IndexStatusView: React.FC = () => {
 
                     {!ocrInfo.ocrText && !ocrInfo.extractedText && !ocrInfo.ocrPages && (
                       <div className="text-center py-8 text-muted-foreground text-sm">
-                        此资源没有 OCR 文本或提取文本
+                        {t('indexStatus.detail.noOcrOrExtracted')}
                       </div>
                     )}
 
@@ -2109,14 +2109,14 @@ export const IndexStatusView: React.FC = () => {
                           className="text-xs gap-1.5 text-destructive hover:text-destructive"
                         >
                           {clearingOcr ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Eraser className="h-3.5 w-3.5" />}
-                          清除 OCR 数据并重新识别
+                          {t('indexStatus.action.clearOcrAndReindex')}
                         </NotionButton>
                       </div>
                     )}
                   </div>
                 ) : (
                   <div className="text-center py-8 text-muted-foreground text-sm">
-                    没有找到数据
+                    {t('indexStatus.detail.noDataFound')}
                   </div>
                 )}
               </div>

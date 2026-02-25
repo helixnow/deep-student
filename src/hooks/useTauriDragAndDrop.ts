@@ -326,7 +326,6 @@ export const useTauriDragAndDrop = ({
         } else if (rejectedFiles.length > 0) {
           // 所有文件都失败了，通知用户
           showGlobalNotification('error', i18n.t('drag_drop:errors.all_files_failed', {
-            defaultValue: '文件处理失败：{{reason}}',
             reason: rejectedFiles[0],
           }));
           emitDebugEvent(zoneId, 'complete', 'error', `所有文件处理失败: ${rejectedFiles.length} 个`, {
@@ -341,7 +340,6 @@ export const useTauriDragAndDrop = ({
       } catch (fatalError: unknown) {
         console.error('[useTauriDragAndDrop] processFilePaths fatal error:', fatalError);
         showGlobalNotification('error', i18n.t('drag_drop:errors.all_files_failed', {
-          defaultValue: '文件处理失败：{{reason}}',
           reason: String(fatalError),
         }));
         emitDebugEvent(zoneId, 'callback_error', 'error', `processFilePaths 致命错误: ${String(fatalError)}`, {
@@ -566,7 +564,7 @@ export const useTauriDragAndDrop = ({
             successCount: files.length,
           });
         } else if (allFiles.length > 0) {
-          showGlobalNotification('warning', i18n.t('drag_drop:errors.unsupported_type', { defaultValue: '不支持的文件类型' }));
+          showGlobalNotification('warning', i18n.t('drag_drop:errors.unsupported_type'));
         }
       }
     },

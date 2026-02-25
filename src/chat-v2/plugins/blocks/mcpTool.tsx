@@ -657,7 +657,7 @@ const McpToolBlockComponent: React.FC<BlockComponentProps> = React.memo(({
               >
                 <DocIcon size={12} />
                 <Eye size={10} />
-                {t('blocks.mcpTool.viewSourceFile', { defaultValue: '查看源文件' })}
+                {t('blocks.mcpTool.viewSourceFile')}
               </NotionButton>
             );
           })()}

@@ -95,7 +95,6 @@ export const MultimodalIndexButton: React.FC<MultimodalIndexButtonProps> = ({
         'success',
         t('common:multimodal.indexSuccess', {
           pages: result.indexedPages,
-          defaultValue: `已索引 ${result.indexedPages} 页`,
         })
       );
 
@@ -109,9 +108,7 @@ export const MultimodalIndexButton: React.FC<MultimodalIndexButtonProps> = ({
 
       showGlobalNotification(
         'error',
-        t('common:multimodal.indexError', {
-          defaultValue: '索引失败，请重试',
-        })
+        t('common:multimodal.indexError')
       );
 
       // 3秒后恢复 idle 状态
@@ -140,7 +137,6 @@ export const MultimodalIndexButton: React.FC<MultimodalIndexButtonProps> = ({
         'success',
         t('common:multimodal.rebuildSuccess', {
           pages: result.indexedPages,
-          defaultValue: `已重建 ${result.indexedPages} 页索引`,
         })
       );
 
@@ -153,9 +149,7 @@ export const MultimodalIndexButton: React.FC<MultimodalIndexButtonProps> = ({
 
       showGlobalNotification(
         'error',
-        t('common:multimodal.rebuildError', {
-          defaultValue: '重建索引失败，请重试',
-        })
+        t('common:multimodal.rebuildError')
       );
 
       setTimeout(() => setStatus('idle'), 3000);
@@ -180,13 +174,13 @@ export const MultimodalIndexButton: React.FC<MultimodalIndexButtonProps> = ({
   const getLabel = () => {
     switch (status) {
       case 'indexing':
-        return t('common:multimodal.indexing', { defaultValue: '索引中...' });
+        return t('common:multimodal.indexing');
       case 'success':
-        return t('common:multimodal.indexed', { defaultValue: '已索引' });
+        return t('common:multimodal.indexed');
       case 'error':
-        return t('common:multimodal.indexFailed', { defaultValue: '索引失败' });
+        return t('common:multimodal.indexFailed');
       default:
-        return t('common:multimodal.index', { defaultValue: '索引到知识库' });
+        return t('common:multimodal.index');
     }
   };
 
@@ -196,12 +190,9 @@ export const MultimodalIndexButton: React.FC<MultimodalIndexButtonProps> = ({
       return t('common:multimodal.indexResultTooltip', {
         pages: lastResult.indexedPages,
         failed: lastResult.failedPages.length,
-        defaultValue: `索引 ${lastResult.indexedPages} 页，失败 ${lastResult.failedPages.length} 页`,
       });
     }
-    return t('common:multimodal.indexTooltip', {
-      defaultValue: '将此资源的内容索引到多模态知识库，支持图文混合检索',
-    });
+    return t('common:multimodal.indexTooltip');
   };
 
   return (
@@ -224,7 +215,7 @@ export const MultimodalIndexButton: React.FC<MultimodalIndexButtonProps> = ({
 
       {/* 重建按钮（仅在成功后显示） */}
       {status === 'success' && (
-        <CommonTooltip content={<p className="text-xs">{t('common:multimodal.rebuild', { defaultValue: '重建索引' })}</p>} position="bottom">
+        <CommonTooltip content={<p className="text-xs">{t('common:multimodal.rebuild')}</p>} position="bottom">
           <NotionButton
             variant="ghost"
             size="icon"

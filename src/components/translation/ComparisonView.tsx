@@ -44,7 +44,7 @@ export const ComparisonView: React.FC<ComparisonViewProps> = ({
   if (!sourceText.trim() && !translatedText.trim()) {
     return (
       <div className="flex-1 flex items-center justify-center text-muted-foreground/50 text-sm">
-        {t('translation:comparison.empty', { defaultValue: '输入文本并翻译后，将在此显示逐段对照' })}
+        {t('translation:comparison.empty')}
       </div>
     );
   }
