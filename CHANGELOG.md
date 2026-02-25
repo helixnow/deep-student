@@ -10,6 +10,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.9.18](https://github.com/helixnow/deep-student/compare/v0.9.17...v0.9.18) (2026-02-25)
+
+
+### Features
+
+* add data visualization APIs for OCR and text chunk management ([d1b7ae4](https://github.com/helixnow/deep-student/commit/d1b7ae4b74f5deb9d5cf564e88c72197e1164083))
+* enhance backup functionality with ImportProgress struct and refactor auto backup logic ([a33f2d9](https://github.com/helixnow/deep-student/commit/a33f2d9a5db03e2a467a834cf064d17f0efe890c))
+* implement block and message actions for enhanced chat functionality ([e68df84](https://github.com/helixnow/deep-student/commit/e68df84be6dfc0bf9fface0ebfda9929fff25d0e))
+
+
+### Bug Fixes
+
+* correct field references and add missing impl block in debug logger ([13bb819](https://github.com/helixnow/deep-student/commit/13bb8194c7d12c9f7a4083c4dacb352a83a54c81))
+* prevent duplicate text input during IME composition and sync skill whitelist after load_skills ([05be6b5](https://github.com/helixnow/deep-student/commit/05be6b53a1e392174058a3f9afc6e51256bbe942))
+
+
+### Performance Improvements
+
+* optimize view switching with memoization and ref-based state tracking ([2dc59c2](https://github.com/helixnow/deep-student/commit/2dc59c2b6a0cb15d2a274579ac91d3108fb787f6))
+
 ## [0.9.17](https://github.com/helixnow/deep-student/compare/v0.9.16...v0.9.17) (2026-02-23)
 
 
