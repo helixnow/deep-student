@@ -684,7 +684,7 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
                             <span className="text-muted-foreground shrink-0">{groupIcon(entry.item.origin)}</span>
                             <span className="text-xs font-medium truncate">{entry.item.title}</span>
                           </div>
-                          <div className="text-[10px] text-muted-foreground line-clamp-2 h-[2.4em]">
+                          <div className="text-[10px] text-muted-foreground line-clamp-2 h-6">
                             {snippetText}
                           </div>
                         </div>
@@ -937,7 +937,7 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
                         </div>
                         {renderScore(entry.item)}
                       </div>
-                      <div className="text-xs text-muted-foreground line-clamp-2 mb-1.5 h-[2.4em]">
+                      <div className="text-xs text-muted-foreground line-clamp-2 mb-1.5 h-8">
                         {snippetText}
                       </div>
                       <div className="flex items-center justify-between mt-auto pt-1.5 border-t border-border/50">
