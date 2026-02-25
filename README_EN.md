@@ -33,7 +33,7 @@ Smart Chat · Knowledge Management · Anki Card Making · Universal Reader · De
 
 | | Feature | Description |
 |:---:|---|---|
-| 💬 | **Smart Chat** | Multi-modal input, deep reasoning (chain-of-thought), multi-model comparison, RAG knowledge retrieval |
+| 💬 | **Smart Chat** | Multi-modal input, deep reasoning (chain-of-thought), multi-model comparison, RAG knowledge retrieval, multi-tab sessions, session branching |
 | 📚 | **Learning Hub** | VFS-based unified management for notes/textbooks/question banks, batch OCR & vectorized indexing |
 | 🧩 | **Skill System** | On-demand AI capabilities with 11 built-in professional skills: Card Making · Research · Paper · Mind Map · Question Bank · Memory · Tutor · Literature Review · Office Suite, plus custom extensions |
 | 📖 | **Smart Reader** | PDF / DOCX split-screen reading with page reference injection into chat context |
@@ -129,9 +129,11 @@ DeepStudent's conversation engine is purpose-built for learning scenarios, suppo
 
 - **Multi-Modal & References**: Supports drag-and-drop upload of images, PDFs, Word documents, and other formats. The reference panel allows direct selection of notes or textbooks from the knowledge base as context, with real-time token estimation.
 - **Deep Reasoning**: Built-in reasoning mode (chain-of-thought) that displays the AI's full thinking process, ideal for complex STEM problems or deep analysis.
+- **Multi-Tab Sessions**: Open multiple conversation tabs simultaneously with LRU eviction for automatic memory management and cross-tab event isolation.
+- **Session Branching**: Create branch conversations from any message to explore different problem-solving approaches without losing the original context.
 - **Multi-Model Comparison (Experimental)**: Send the same question to multiple models simultaneously, displaying responses in side-by-side cards for easy horizontal comparison.
 - **Sub-Agent Execution (Experimental)**: Built-in subagent-worker mechanism that allows the main agent to decompose complex tasks and dispatch them to sub-agents, which complete tasks in the background and report results.
-- **Session Management**: Supports session grouping, custom icons, group-level System Prompt injection and default skill configuration, making it easy to manage conversation contexts across different subjects.
+- **Session Management**: Supports session grouping, custom icons, group-level System Prompt injection, group pinned resources, and default skill configuration, making it easy to manage conversation contexts across different subjects.
 
 <details>
 <summary>📸 View Screenshots</summary>
@@ -364,7 +366,8 @@ Fully automated Chinese and English essay grading and polishing.
 Embracing open ecosystems with high customizability.
 
 - **MCP Support**: Compatible with the Model Context Protocol, connecting external tool services like Arxiv, Context7, etc.
-- **Multi-Model Management**: Pre-configured with 9 providers (SiliconFlow / DeepSeek / Qwen / Zhipu AI / ByteDance Doubao / MiniMax / Moonshot / OpenAI / Google Gemini), plus support for adding any custom provider compatible with the OpenAI API protocol, with fine-grained model assignment configuration for different functions.
+- **Multi-Model Management**: Pre-configured with 9 providers (SiliconFlow / DeepSeek / Qwen / Zhipu AI / ByteDance Doubao / MiniMax / Moonshot / OpenAI / Google Gemini), plus support for adding any custom provider compatible with the OpenAI API protocol, with fine-grained model assignment configuration for different functions and batch model import.
+- **Latest Model Adaptation**: Continuously tracking mainstream model updates, already adapted for Gemini 3 (thought_signature / v1beta), GPT-5.2 Pro, GLM-5, Seed 2.0, Kimi K2.5, and other latest models.
 
 <details>
 <summary>📸 View Screenshots</summary>
@@ -379,9 +382,11 @@ Embracing open ecosystems with high customizability.
 
 Comprehensive data management and security mechanisms:
 
-- **Backup & Recovery**: Supports full backup and recovery, data import/export (incremental backup experimentally supported).
+- **Backup & Recovery**: Supports full backup and recovery, data import/export (incremental backup experimentally supported), with cancellation support and real-time progress tracking.
+- **Cloud Sync (Experimental)**: S3-compatible storage and WebDAV support, workspace database and VFS blob file-level sync, real-time upload/download progress events.
 - **Audit Logs**: Records all data operations for traceability.
-- **Database Status**: Real-time monitoring of SQLite and LanceDB operational status.
+- **Database Status**: Real-time monitoring of SQLite and LanceDB operational status, with database maintenance mode support.
+- **Secure Storage**: AES-256-GCM encryption for sensitive data, dual-slot data space A/B switching mechanism.
 
 ## Getting Started
 
@@ -428,8 +433,14 @@ DeepStudent
 │   ├── stores/             #   Zustand State Management
 │   ├── mcp/                #   MCP Client & Built-in Tool Definitions
 │   ├── essay-grading/      #   Essay Grading Frontend
+│   ├── translation/        #   Translation Workbench Frontend
+│   ├── command-palette/    #   Command Palette (shortcuts / favorites / pinyin search)
 │   ├── dstu/               #   DSTU Resource Protocol & VFS API
 │   ├── api/                #   Frontend API Layer (Tauri invoke wrappers)
+│   ├── hooks/              #   React Hooks (theme, hotkeys, platform detection, etc.)
+│   ├── services/           #   Service Layer (update checker, audit, logging, etc.)
+│   ├── engines/            #   Rendering Engines (Markdown, code highlighting, etc.)
+│   ├── debug-panel/        #   Debug Panel & Dev Tools
 │   └── locales/            #   i18n Internationalization (CN / EN)
 ├── src-tauri/              # Tauri / Rust Backend
 │   └── src/
@@ -440,9 +451,15 @@ DeepStudent
 │       ├── tools/          #   Web Search Engine Adapters (7 engines)
 │       ├── memory/         #   Smart Memory Backend
 │       ├── mcp/            #   MCP Protocol Implementation
+│       ├── translation/    #   Translation Pipeline Backend
+│       ├── cloud_storage/  #   Cloud Sync (S3 / WebDAV)
 │       ├── data_governance/ #  Backup, Audit, Migration
 │       ├── essay_grading/  #   Essay Grading Backend
-│       └── ocr_adapters/   #   OCR Adapters (DeepSeek VL / PaddleOCR)
+│       ├── qbank_grading/  #   Question Bank AI Grading
+│       ├── crypto/         #   Encryption & Secure Storage (AES-256-GCM)
+│       ├── multimodal/     #   Multimodal Processing
+│       ├── ocr_adapters/   #   OCR Adapters (6 engines: DeepSeek / PaddleOCR / GLM-4V / Generic VLM / System OCR)
+│       └── llm_usage/      #   LLM Usage Tracking
 ├── docs/                   # User Docs & Design Docs
 ├── tests/                  # Vitest Unit Tests & Playwright CT
 └── .github/workflows/      # CI / Release Automation
@@ -454,13 +471,13 @@ DeepStudent
 
 | Area | Technology |
 |------|----------|
-| **Frontend Framework** | React 18 + TypeScript + Vite 6 |
-| **UI Components** | Tailwind CSS + Radix UI + Lucide Icons |
+| **Frontend Framework** | React 18 + TypeScript 5.6 + Vite 6 |
+| **UI Components** | Tailwind CSS 3 + Radix UI + Lucide Icons |
 | **Desktop / Mobile** | Tauri 2 (Rust) — macOS · Windows · Android · iOS |
 | **Data Storage** | SQLite (Rusqlite) + LanceDB (Vector Search) + Local Blob |
 | **State Management** | Zustand 5 + Immer |
 | **Editors** | Milkdown (Markdown) + CodeMirror (Code) |
-| **Document Processing** | PDF.js + Remote OCR Adapters (DeepSeek VL / PaddleOCR API) |
+| **Document Processing** | PDF.js + pdfium-render + Multi-engine OCR (DeepSeek / PaddleOCR / GLM-4V / Generic VLM / System OCR) |
 | **Search Engines** | Google CSE · SerpAPI · Tavily · Brave · SearXNG · Zhipu · Bocha |
 | **CI / CD** | GitHub Actions — lint · type-check · build · Release Please |
 
@@ -515,7 +532,7 @@ DeepStudent originated from a Python demo prototype in March 2025 and has evolve
 | **2025.11** | 💬 Chat V2 Architecture — New conversation engine (Variant multi-model comparison, tool event system, snapshot health monitoring) |
 | **2025.12** | ⚡ Performance Optimization — Parallel session loading, config caching, input box singleton architecture, DSTU resource protocol |
 | **2026.01** | 🧩 Skill System & VFS — File-based skill loading, unified Virtual File System (VFS), legacy module cleanup |
-| **2026.02** | 🚀 Open Source Release — Renamed to **DeepStudent**, released **v0.9.2**, configured CI/CD and release-please auto-publishing |
+| **2026.02** | 🚀 Open Source Release — Renamed to **DeepStudent**, iterated to **v0.9.17**, configured CI/CD and release-please auto-publishing; added Translation Workbench, Cloud Sync, Session Branching, Multi-Tab, Gemini 3 adaptation, 6-engine OCR, and more |
 
 ---
 
@@ -543,7 +560,7 @@ DeepStudent would not be possible without these outstanding open-source projects
 [LanceDB](https://lancedb.com) · [SQLite](https://www.sqlite.org) / [rusqlite](https://github.com/rusqlite/rusqlite) · [Apache Arrow](https://arrow.apache.org) · [Zustand](https://zustand.docs.pmnd.rs) · [Immer](https://immerjs.github.io/immer) · [Serde](https://serde.rs)
 
 **Document Processing**
-[PDF.js](https://mozilla.github.io/pdf.js/) · [pdfium-render](https://github.com/nicholasgasior/pdfium-render) · [docx-preview](https://github.com/nicholasgasior/docx-preview) · [Mustache](https://mustache.github.io) · [DOMPurify](https://github.com/cure53/DOMPurify)
+[PDF.js](https://mozilla.github.io/pdf.js/) · [pdfium-render](https://github.com/nicholasgasior/pdfium-render) · [docx-preview](https://github.com/nicholasgasior/docx-preview) · [docx-rs](https://github.com/cstkingkey/docx-rs) · [umya-spreadsheet](https://github.com/MathNya/umya-spreadsheet) · [Mustache](https://mustache.github.io) · [DOMPurify](https://github.com/cure53/DOMPurify)
 
 **Internationalization & Toolchain**
 [i18next](https://www.i18next.com) · [date-fns](https://date-fns.org) · [Vitest](https://vitest.dev) · [Playwright](https://playwright.dev) · [ESLint](https://eslint.org) · [Sentry](https://sentry.io)

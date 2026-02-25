@@ -232,7 +232,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [0.9.1] - 2026-02-XX
+## [0.9.1] - 2026-02-12
 
 ### Added | 新增
 - ChatAnki 端到端制卡闭环（替代原 CardForge 独立制卡流程）
@@ -261,7 +261,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [0.9.0] - 2026-01-XX
+## [0.9.0] - 2026-01-31
 
 ### Added | 新增
 - Chat V2 架构：支持多轮对话、消息编辑、流式响应
@@ -297,7 +297,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-[Unreleased]: https://github.com/helixnow/deep-student/compare/v0.9.7...HEAD
+[Unreleased]: https://github.com/helixnow/deep-student/compare/v0.9.17...HEAD
 [0.9.7]: https://github.com/helixnow/deep-student/compare/v0.9.6...v0.9.7
 [0.9.6]: https://github.com/helixnow/deep-student/compare/v0.9.5...v0.9.6
 [0.9.5]: https://github.com/helixnow/deep-student/compare/v0.9.1...v0.9.5

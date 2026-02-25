@@ -33,7 +33,7 @@
 
 | | 功能 | 说明 |
 |:---:|---|---|
-| 💬 | **智能对话** | 多模态输入、深度推理（思维链）、多模型对比、RAG 知识检索 |
+| 💬 | **智能对话** | 多模态输入、深度推理（思维链）、多模型对比、RAG 知识检索、多 Tab 会话、会话分支 |
 | 📚 | **学习资源中心** | VFS 统一管理笔记/教材/题库，批量 OCR 与向量化索引 |
 | 🧩 | **技能系统** | 按需加载 AI 能力，内置 11 项专业技能：制卡 · 调研 · 论文 · 导图 · 题库 · 记忆 · 导师 · 文献综述 · Office 套件，支持自定义扩展 |
 | 📖 | **智能阅读器** | PDF / DOCX 分屏阅读，页面引用注入对话上下文 |
@@ -127,9 +127,11 @@ DeepStudent 的对话引擎专为学习场景打造，支持多模态输入与�
 
 - **多模态与引用**：支持图片、PDF、Word 等多格式文件拖拽上传。通过引用面板，可直接选取知识库中的笔记或教材作为上下文，实时显示 Token 估算。
 - **深度推理**：内置推理模式（思维链），展示 AI 思考全过程，适合处理复杂理科题目或深度分析。
+- **多 Tab 会话**：支持同时打开多个会话标签页，LRU 淘汰策略自动管理内存，跨 Tab 事件隔离。
+- **会话分支**：从任意消息创建分支对话，探索不同解题思路而不丢失原始上下文。
 - **多模型对比 (实验性)**：支持同时向多个模型发送相同问题，以并排卡片方式展示各模型的回答，便于横向对比评估。
 - **子代理执行 (实验性)**：内置 subagent-worker 机制，支持主代理将复杂任务拆解并分发给子代理执行，子代理在后台自动完成任务并汇报结果。
-- **会话管理**：支持会话分组、图标自定义、分组 System Prompt 注入与默认技能配置，方便管理不同学科的对话上下文。
+- **会话管理**：支持会话分组、图标自定义、分组 System Prompt 注入、分组固定资源与默认技能配置，方便管理不同学科的对话上下文。
 
 <details>
 <summary>📸 查看截图</summary>
@@ -362,7 +364,8 @@ DeepStudent 的对话引擎专为学习场景打造，支持多模态输入与�
 拥抱开放生态，高度可定制。
 
 - **MCP 支持**：兼容 Model Context Protocol，可连接 Arxiv、Context7 等外部工具服务。
-- **多模型管理**：预置 9 家供应商（SiliconFlow / DeepSeek / 通义千问 / 智谱 AI / 字节豆包 / MiniMax / 月之暗面 / OpenAI / Google Gemini），同时支持添加任何兼容 OpenAI 协议的自定义供应商，可精细配置不同功能的模型分配。
+- **多模型管理**：预置 9 家供应商（SiliconFlow / DeepSeek / 通义千问 / 智谱 AI / 字节豆包 / MiniMax / 月之暗面 / OpenAI / Google Gemini），同时支持添加任何兼容 OpenAI 协议的自定义供应商，可精细配置不同功能的模型分配，支持供应商模型批量导入。
+- **最新模型适配**：持续跟进主流模型更新，已适配 Gemini 3（thought_signature / v1beta）、GPT-5.2 Pro、GLM-5、Seed 2.0、Kimi K2.5 等最新模型。
 
 <details>
 <summary>📸 查看截图</summary>
@@ -377,9 +380,11 @@ DeepStudent 的对话引擎专为学习场景打造，支持多模态输入与�
 
 完善的数据管理与安全机制：
 
-- **备份与恢复**：支持全量备份与恢复，数据导入导出（增量备份试验性支持）。
+- **备份与恢复**：支持全量备份与恢复，数据导入导出（增量备份试验性支持），备份支持取消与实时进度追踪。
+- **云同步 (实验性)**：支持 S3 兼容存储与 WebDAV，工作区数据库与 VFS Blob 文件级同步，实时上传/下载进度事件。
 - **审计日志**：记录所有数据操作，可追溯。
-- **数据库状态**：实时查看 SQLite 和 LanceDB 的运行状态。
+- **数据库状态**：实时查看 SQLite 和 LanceDB 的运行状态，支持数据库维护模式。
+- **安全存储**：AES-256-GCM 加密敏感数据，双槽位数据空间 A/B 切换机制。
 
 ## 快速上手
 
@@ -426,8 +431,14 @@ DeepStudent
 │   ├── stores/             #   Zustand 状态管理
 │   ├── mcp/                #   MCP 客户端 & 内置工具定义
 │   ├── essay-grading/      #   作文批改前端
+│   ├── translation/        #   翻译工作台前端
+│   ├── command-palette/    #   命令面板（快捷键 / 收藏 / 拼音搜索）
 │   ├── dstu/               #   DSTU 资源协议 & VFS API
 │   ├── api/                #   前端 API 层 (Tauri invoke 封装)
+│   ├── hooks/              #   React Hooks（主题、快捷键、平台检测等）
+│   ├── services/           #   服务层（更新检查、审计、日志等）
+│   ├── engines/            #   渲染引擎（Markdown、代码高亮等）
+│   ├── debug-panel/        #   调试面板 & 开发工具
 │   └── locales/            #   i18n 国际化（中 / 英）
 ├── src-tauri/              # Tauri / Rust 后端
 │   └── src/
@@ -438,9 +449,15 @@ DeepStudent
 │       ├── tools/          #   联网搜索引擎适配 (7 引擎)
 │       ├── memory/         #   智能记忆后端
 │       ├── mcp/            #   MCP 协议实现
+│       ├── translation/    #   翻译 Pipeline 后端
+│       ├── cloud_storage/  #   云同步 (S3 / WebDAV)
 │       ├── data_governance/ #  备份、审计、迁移
 │       ├── essay_grading/  #   作文批改后端
-│       └── ocr_adapters/   #   OCR 适配器 (DeepSeek VL / PaddleOCR)
+│       ├── qbank_grading/  #   题目集 AI 评分
+│       ├── crypto/         #   加密 & 安全存储 (AES-256-GCM)
+│       ├── multimodal/     #   多模态处理
+│       ├── ocr_adapters/   #   OCR 适配器 (6 引擎: DeepSeek / PaddleOCR / GLM-4V / 通用 VLM / 系统 OCR)
+│       └── llm_usage/      #   LLM 使用量追踪
 ├── docs/                   # 用户文档 & 设计文档
 ├── tests/                  # Vitest 单元测试 & Playwright CT
 └── .github/workflows/      # CI / Release 自动化
@@ -452,13 +469,13 @@ DeepStudent
 
 | 领域 | 技术方案 |
 |------|----------|
-| **前端框架** | React 18 + TypeScript + Vite 6 |
-| **UI 组件** | Tailwind CSS + Radix UI + Lucide Icons |
+| **前端框架** | React 18 + TypeScript 5.6 + Vite 6 |
+| **UI 组件** | Tailwind CSS 3 + Radix UI + Lucide Icons |
 | **桌面 / 移动** | Tauri 2 (Rust) — macOS · Windows · Android · iOS |
 | **数据存储** | SQLite (Rusqlite) + LanceDB (向量检索) + 本地 Blob |
 | **状态管理** | Zustand 5 + Immer |
 | **编辑器** | Milkdown (Markdown) + CodeMirror (代码) |
-| **文档处理** | PDF.js + OCR 远程适配（DeepSeek VL / PaddleOCR API） |
+| **文档处理** | PDF.js + pdfium-render + OCR 多引擎适配（DeepSeek / PaddleOCR / GLM-4V / 通用 VLM / 系统 OCR） |
 | **搜索引擎** | Google CSE · SerpAPI · Tavily · Brave · SearXNG · 智谱 · 博查 |
 | **CI / CD** | GitHub Actions — lint · type-check · build · Release Please |
 
@@ -513,7 +530,7 @@ DeepStudent 起源于 2025 年 3 月的一个 Python demo 原型，经过近一�
 | **2025.11** | 💬 Chat V2 架构 — 全新对话引擎（Variant 多模型对比、工具事件系统、快照健康监控） |
 | **2025.12** | ⚡ 性能优化 — 会话加载并行化、配置缓存、输入框单例架构、DSTU 资源协议 |
 | **2026.01** | 🧩 技能系统与 VFS — 文件式技能加载、统一虚拟文件系统（VFS）、遗留模块清理 |
-| **2026.02** | 🚀 开源发布 — 更名为 **DeepStudent**，发布 **v0.9.2**，配置 CI/CD、release-please 自动发版 |
+| **2026.02** | 🚀 开源发布 — 更名为 **DeepStudent**，发布至 **v0.9.17**，配置 CI/CD、release-please 自动发版；新增翻译工作台、云同步、会话分支、多 Tab、Gemini 3 适配、6 引擎 OCR 等 |
 
 ---
 
@@ -541,7 +558,7 @@ DeepStudent 的诞生离不开以下优秀的开源项目：
 [LanceDB](https://lancedb.com) · [SQLite](https://www.sqlite.org) / [rusqlite](https://github.com/rusqlite/rusqlite) · [Apache Arrow](https://arrow.apache.org) · [Zustand](https://zustand.docs.pmnd.rs) · [Immer](https://immerjs.github.io/immer) · [Serde](https://serde.rs)
 
 **文档处理**
-[PDF.js](https://mozilla.github.io/pdf.js/) · [pdfium-render](https://github.com/nicholasgasior/pdfium-render) · [docx-preview](https://github.com/nicholasgasior/docx-preview) · [Mustache](https://mustache.github.io) · [DOMPurify](https://github.com/cure53/DOMPurify)
+[PDF.js](https://mozilla.github.io/pdf.js/) · [pdfium-render](https://github.com/nicholasgasior/pdfium-render) · [docx-preview](https://github.com/nicholasgasior/docx-preview) · [docx-rs](https://github.com/cstkingkey/docx-rs) · [umya-spreadsheet](https://github.com/MathNya/umya-spreadsheet) · [Mustache](https://mustache.github.io) · [DOMPurify](https://github.com/cure53/DOMPurify)
 
 **国际化与工具链**
 [i18next](https://www.i18next.com) · [date-fns](https://date-fns.org) · [Vitest](https://vitest.dev) · [Playwright](https://playwright.dev) · [ESLint](https://eslint.org) · [Sentry](https://sentry.io)
