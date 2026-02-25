@@ -56,6 +56,7 @@ pub struct DebugLogger {
     log_queue: Arc<Mutex<Vec<LogEntry>>>,
 }
 
+impl DebugLogger {
     const MAX_LOG_AGE_DAYS: i64 = 7;
     const MAX_LOG_FILE_SIZE_BYTES: u64 = 10 * 1024 * 1024; // 10MB
 

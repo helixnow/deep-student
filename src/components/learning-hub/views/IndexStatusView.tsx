@@ -546,8 +546,14 @@ export const IndexStatusView: React.FC = () => {
     }
   }, []);
 
-  // ========== 数据透视：查看文本块 ==========
+  // ========== 数据透视：查看文本块（内联 toggle） ==========
   const handleInspectChunks = useCallback(async (resourceId: string) => {
+    if (inspectingResourceId === resourceId && inspectMode === 'chunks') {
+      setInspectMode(null);
+      setInspectingResourceId(null);
+      setTextChunks([]);
+      return;
+    }
     setInspectingResourceId(resourceId);
     setInspectMode('chunks');
     setInspectLoading(true);
@@ -562,7 +568,7 @@ export const IndexStatusView: React.FC = () => {
     } finally {
       setInspectLoading(false);
     }
-  }, []);
+  }, [inspectingResourceId, inspectMode]);
 
   // ========== 数据透视：清除 OCR 并重做 ==========
   const handleClearOcrAndReindex = useCallback(async (resourceId: string) => {
@@ -1397,6 +1403,60 @@ export const IndexStatusView: React.FC = () => {
                   </NotionButton>
                 )}
               </div>
+
+              {/* 文本块详情（内联） */}
+              {inspectingResourceId === resource.resourceId && inspectMode === 'chunks' && (
+                <div className="col-span-2 md:col-span-4 pt-2 border-t border-border/30">
+                  {inspectLoading ? (
+                    <div className="flex items-center justify-center py-6">
+                      <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                    </div>
+                  ) : textChunks.length > 0 ? (
+                    <div className="space-y-2">
+                      <div className="text-xs text-muted-foreground">
+                        共 {textChunks.length} 个索引单元
+                      </div>
+                      {textChunks.map((chunk) => (
+                        <div key={chunk.unitId} className="border rounded-lg border-border/50">
+                          <div className="flex items-center justify-between px-3 py-1.5 text-xs border-b border-border/30 bg-muted/20">
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium">Unit #{chunk.unitIndex}</span>
+                              {chunk.textSource && (
+                                <span className={cn(
+                                  'px-1.5 py-0.5 rounded text-[10px] font-medium',
+                                  chunk.textSource === 'ocr' ? 'bg-teal-500/10 text-teal-600' : 'bg-primary/10 text-primary'
+                                )}>
+                                  {chunk.textSource === 'ocr' ? 'OCR' : '提取文本'}
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2 text-muted-foreground">
+                              <span className="tabular-nums">{chunk.charCount} 字符</span>
+                              <span className={cn(
+                                'px-1.5 py-0.5 rounded text-[10px]',
+                                chunk.textState === 'indexed' ? 'bg-emerald-500/10 text-emerald-600' :
+                                chunk.textState === 'pending' ? 'bg-warning/10 text-warning' :
+                                'bg-muted text-muted-foreground'
+                              )}>
+                                {chunk.textState}
+                              </span>
+                            </div>
+                          </div>
+                          {chunk.textContent ? (
+                            <pre className="px-3 py-2 text-xs whitespace-pre-wrap break-words max-h-40 overflow-y-auto font-sans leading-relaxed text-foreground/80">
+                              {chunk.textContent}
+                            </pre>
+                          ) : (
+                            <div className="px-3 py-2 text-xs text-muted-foreground italic">无文本内容</div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-4 text-muted-foreground text-xs">没有找到数据</div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -1937,7 +1997,7 @@ export const IndexStatusView: React.FC = () => {
       </CustomScrollArea>
 
       {/* ========== 数据透视面板 ========== */}
-      {inspectMode && (
+      {inspectMode === 'ocr' && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={closeInspectPanel}>
           <div
             className="bg-background border rounded-xl shadow-2xl w-[90vw] max-w-3xl max-h-[80vh] flex flex-col animate-in fade-in-0 zoom-in-95"
@@ -1946,9 +2006,9 @@ export const IndexStatusView: React.FC = () => {
             {/* 面板头部 */}
             <div className="flex items-center justify-between px-5 py-3 border-b shrink-0">
               <div className="flex items-center gap-2">
-                {inspectMode === 'ocr' ? <Eye className="h-4 w-4 text-primary" /> : <Layers className="h-4 w-4 text-primary" />}
+                <Eye className="h-4 w-4 text-primary" />
                 <h3 className="font-semibold text-sm">
-                  {inspectMode === 'ocr' ? 'OCR 文本 / 提取文本' : '文本块详情'}
+                  OCR 文本 / 提取文本
                 </h3>
                 <span className="text-xs text-muted-foreground font-mono">{inspectingResourceId?.slice(0, 12)}...</span>
               </div>
@@ -1964,7 +2024,7 @@ export const IndexStatusView: React.FC = () => {
                   <div className="flex items-center justify-center py-12">
                     <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
                   </div>
-                ) : inspectMode === 'ocr' && ocrInfo ? (
+                ) : ocrInfo ? (
                   <div className="space-y-4">
                     {/* 来源对比概览 */}
                     <div className="grid grid-cols-3 gap-3 text-xs">
@@ -2053,48 +2113,6 @@ export const IndexStatusView: React.FC = () => {
                         </NotionButton>
                       </div>
                     )}
-                  </div>
-                ) : inspectMode === 'chunks' && textChunks.length > 0 ? (
-                  <div className="space-y-3">
-                    <div className="text-xs text-muted-foreground">
-                      共 {textChunks.length} 个索引单元
-                    </div>
-                    {textChunks.map((chunk) => (
-                      <div key={chunk.unitId} className="border rounded-lg border-border/50">
-                        <div className="flex items-center justify-between px-3 py-1.5 text-xs border-b border-border/30 bg-muted/20">
-                          <div className="flex items-center gap-2">
-                            <span className="font-medium">Unit #{chunk.unitIndex}</span>
-                            {chunk.textSource && (
-                              <span className={cn(
-                                'px-1.5 py-0.5 rounded text-[10px] font-medium',
-                                chunk.textSource === 'ocr' ? 'bg-teal-500/10 text-teal-600' : 'bg-primary/10 text-primary'
-                              )}>
-                                {chunk.textSource === 'ocr' ? 'OCR' : '提取文本'}
-                              </span>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-2 text-muted-foreground">
-                            <span className="tabular-nums">{chunk.charCount} 字符</span>
-                            <span className={cn(
-                              'px-1.5 py-0.5 rounded text-[10px]',
-                              chunk.textState === 'indexed' ? 'bg-emerald-500/10 text-emerald-600' :
-                              chunk.textState === 'pending' ? 'bg-warning/10 text-warning' :
-                              'bg-muted text-muted-foreground'
-                            )}>
-                              {chunk.textState}
-                            </span>
-                          </div>
-                        </div>
-                        {chunk.textContent && (
-                          <pre className="px-3 py-2 text-xs whitespace-pre-wrap break-words max-h-40 overflow-y-auto font-sans leading-relaxed text-foreground/80">
-                            {chunk.textContent}
-                          </pre>
-                        )}
-                        {!chunk.textContent && (
-                          <div className="px-3 py-2 text-xs text-muted-foreground italic">无文本内容</div>
-                        )}
-                      </div>
-                    ))}
                   </div>
                 ) : (
                   <div className="text-center py-8 text-muted-foreground text-sm">
