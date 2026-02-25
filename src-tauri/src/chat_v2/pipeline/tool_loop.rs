@@ -920,6 +920,33 @@ impl ChatV2Pipeline {
                                         );
                                     }
                                 }
+
+                                // 🔧 修复：load_skills 加载新技能后，同步更新 skill_allowed_tools 白名单
+                                // 否则新加载技能的工具虽然有 Schema 但会被白名单拦截（"当前技能不允许使用此工具"）
+                                if let Some(ref embedded_tools_map2) = ctx.options.skill_embedded_tools {
+                                    let allowed = ctx.options.skill_allowed_tools.get_or_insert_with(Vec::new);
+                                    let existing_allowed: std::collections::HashSet<String> =
+                                        allowed.iter().cloned().collect();
+                                    let mut newly_allowed = 0;
+                                    for skill_id in &loaded_skill_ids {
+                                        if let Some(tools) = embedded_tools_map2.get(skill_id) {
+                                            for tool in tools {
+                                                if !existing_allowed.contains(&tool.name) {
+                                                    allowed.push(tool.name.clone());
+                                                    newly_allowed += 1;
+                                                }
+                                            }
+                                        }
+                                    }
+                                    if newly_allowed > 0 {
+                                        log::info!(
+                                            "[ChatV2::pipeline] 🔧 Updated skill_allowed_tools: +{} tools from {:?}, total allowed: {}",
+                                            newly_allowed,
+                                            loaded_skill_ids,
+                                            allowed.len()
+                                        );
+                                    }
+                                }
                             }
                         }
                     }

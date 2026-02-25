@@ -862,7 +862,7 @@ impl ChatV2Pipeline {
         let emitter_arc = ctx.emitter_arc();
         let canvas_note_id = options.canvas_note_id.clone();
         // 🔧 用户可通过 disable_tool_whitelist 关闭白名单检查
-        let skill_allowed_tools = if options.disable_tool_whitelist.unwrap_or(false) {
+        let mut skill_allowed_tools = if options.disable_tool_whitelist.unwrap_or(false) {
             log::info!("[ChatV2::VariantPipeline] 🔓 Tool whitelist check disabled by user setting");
             None
         } else {
@@ -1009,6 +1009,67 @@ impl ChatV2Pipeline {
                 success_count,
                 tool_results.len()
             );
+
+            // 🔧 渐进披露：load_skills 执行后动态追加工具 + 更新白名单
+            for tool_result in &tool_results {
+                if super::super::tools::SkillsExecutor::is_load_skills_tool(&tool_result.tool_name)
+                    && tool_result.success
+                {
+                    if let Some(skill_ids) = tool_result
+                        .output
+                        .get("result")
+                        .and_then(|r| r.get("skill_ids"))
+                        .and_then(|ids| ids.as_array())
+                    {
+                        let loaded_skill_ids: Vec<String> = skill_ids
+                            .iter()
+                            .filter_map(|id| id.as_str().map(|s| s.to_string()))
+                            .collect();
+
+                        if !loaded_skill_ids.is_empty() {
+                            if let Some(ref embedded_tools_map) = options.skill_embedded_tools {
+                                // 追加工具 Schema 到 mcp_tool_schemas
+                                let mcp_schemas =
+                                    options.mcp_tool_schemas.get_or_insert_with(Vec::new);
+                                let existing_names: std::collections::HashSet<String> =
+                                    mcp_schemas.iter().map(|t| t.name.clone()).collect();
+                                let mut added_count = 0;
+                                for skill_id in &loaded_skill_ids {
+                                    if let Some(tools) = embedded_tools_map.get(skill_id) {
+                                        for tool in tools {
+                                            if !existing_names.contains(&tool.name) {
+                                                mcp_schemas.push(tool.clone());
+                                                added_count += 1;
+                                            }
+                                        }
+                                    }
+                                }
+                                if added_count > 0 {
+                                    log::info!(
+                                        "[ChatV2::VariantPipeline] 🆕 Progressive disclosure: added {} tools from skills {:?}",
+                                        added_count,
+                                        loaded_skill_ids,
+                                    );
+                                }
+
+                                // 🔧 修复：同步更新 skill_allowed_tools 白名单
+                                let allowed = skill_allowed_tools.get_or_insert_with(Vec::new);
+                                let existing_allowed: std::collections::HashSet<String> =
+                                    allowed.iter().cloned().collect();
+                                for skill_id in &loaded_skill_ids {
+                                    if let Some(tools) = embedded_tools_map.get(skill_id) {
+                                        for tool in tools {
+                                            if !existing_allowed.contains(&tool.name) {
+                                                allowed.push(tool.name.clone());
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
 
             for tc in &tool_calls {
                 let tool_call = crate::models::ToolCall {
