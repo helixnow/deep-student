@@ -189,12 +189,12 @@ const QUESTION_TYPE_I18N_KEY: Record<QuestionType, string> = {
   other: 'other',
 };
 
-/** 自动关联的原始图片折叠气泡 — 默认折叠，点击展开 */
+/** 自动关联的原始图片折叠气泡 — 默认展开 */
 const SourceImagesBubble: React.FC<{
   images: QuestionImage[];
   imageUrls: Record<string, string>;
 }> = ({ images, imageUrls }) => {
-  const [expanded, setExpanded] = React.useState(false);
+  const [expanded, setExpanded] = React.useState(true);
   const { t } = useTranslation('exam_sheet');
 
   return (

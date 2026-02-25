@@ -1622,14 +1622,31 @@ pub async fn vfs_get_attachment_content(
                 for img in &images {
                     if img.get("id").and_then(|v| v.as_str()) == Some(&attachment_id) {
                         if let Some(blob_hash) = img.get("hash").and_then(|v| v.as_str()) {
-                            // 从 VFS blobs 目录读取文件
-                            let blob_path = vfs_db.blobs_dir().join(blob_hash);
+                            // 从 blobs 表查 relative_path，再拼接 blobs_dir 得到绝对路径
+                            let blob_path: Option<std::path::PathBuf> = conn
+                                .query_row(
+                                    "SELECT relative_path FROM blobs WHERE hash = ?1",
+                                    rusqlite::params![blob_hash],
+                                    |row| row.get::<_, String>(0),
+                                )
+                                .optional()
+                                .ok()
+                                .flatten()
+                                .map(|rel| vfs_db.blobs_dir().join(rel));
+
+                            let blob_path = match blob_path {
+                                Some(p) => p,
+                                None => {
+                                    log::warn!("[VFS::handlers] img_ blob not in DB: hash={}", blob_hash);
+                                    continue;
+                                }
+                            };
+
                             if blob_path.exists() {
                                 match std::fs::read(&blob_path) {
                                     Ok(data) => {
                                         use base64::{engine::general_purpose::STANDARD, Engine};
-                                        let mime = img.get("mime").and_then(|v| v.as_str()).unwrap_or("image/png");
-                                        let b64 = format!("data:{};base64,{}", mime, STANDARD.encode(&data));
+                                        let b64 = STANDARD.encode(&data);
                                         log::info!(
                                             "[VFS::handlers] vfs_get_attachment_content: img_ resolved via blob hash={}, size={}",
                                             blob_hash, data.len()
@@ -1644,7 +1661,7 @@ pub async fn vfs_get_attachment_content(
                                     }
                                 }
                             } else {
-                                log::warn!("[VFS::handlers] img_ blob not found: {:?}", blob_path);
+                                log::warn!("[VFS::handlers] img_ blob file not found: {:?}", blob_path);
                             }
                         }
                     }

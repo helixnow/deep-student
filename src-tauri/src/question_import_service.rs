@@ -2607,13 +2607,13 @@ fn json_to_question_params(
     card_id: &str,
     index: usize,
 ) -> CreateQuestionParams {
-    let content = q
+    let mut content = q
         .get("content")
         .and_then(|v| v.as_str())
         .unwrap_or("")
         .to_string();
 
-    let options = q.get("options").and_then(|v| v.as_array()).map(|arr| {
+    let options: Option<Vec<crate::vfs::repos::QuestionOption>> = q.get("options").and_then(|v| v.as_array()).map(|arr| {
         arr.iter()
             .filter_map(|opt| {
                 let key = opt.get("key").and_then(|k| k.as_str()).unwrap_or("").to_string();
@@ -2626,6 +2626,28 @@ fn json_to_question_params(
             })
             .collect()
     });
+
+    // 后处理：选择题如果 options 有实际内容，移除 content 末尾重复的选项文本
+    if let Some(ref opts) = options {
+        if opts.len() >= 2 && opts.iter().any(|o| !o.content.is_empty()) {
+            // 找到 content 末尾形如 "A. xxx B. xxx" 或 "A．xxx" 的选项文本并移除
+            // 匹配模式：从最后一个 "\nA" 或 " A." 开始到末尾
+            let patterns = ["\nA.", "\nA．", "\nA、", "\nA ", "\nA.", "\nA．"];
+            let mut best_cut = content.len();
+            for pat in &patterns {
+                if let Some(pos) = content.rfind(pat) {
+                    // 确认后面确实有 B/C/D 选项的迹象
+                    let after = &content[pos..];
+                    if after.contains("B") && after.contains("C") {
+                        best_cut = best_cut.min(pos);
+                    }
+                }
+            }
+            if best_cut < content.len() {
+                content = content[..best_cut].trim_end().to_string();
+            }
+        }
+    }
 
     let question_type = q
         .get("question_type")

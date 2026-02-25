@@ -720,7 +720,7 @@ impl VlmGroundingService {
 ```json
 [
   {{
-    "content": "题干完整文本（数学公式用 LaTeX：行内 $...$，独立 $$...$$）",
+    "content": "题干文本（不含选项；表格用 Markdown 格式；公式用 LaTeX：$...$）",
     "question_type": "single_choice",
     "options": [{{"key": "A", "content": "选项内容"}}, ...],
     "answer": "A",
@@ -744,7 +744,12 @@ impl VlmGroundingService {
 3. 如果图片本身就是题目内容（整道题是图片），在 content 中用文字描述图片内容
 4. 如果多道题共享一张图片（题组），将图片归属到题组的第一道题
 5. 题目按文档中出现的顺序排列
-6. 只输出 JSON 数组，不要输出任何其他内容"#,
+6. 只输出 JSON 数组，不要输出任何其他内容
+7. **选择题的 content 只包含题干**，不要把选项文本（A/B/C/D 的内容）写进 content，选项放到 options 数组中
+8. 如果题干包含表格，请使用标准 Markdown 表格格式（必须有表头分隔行 `|---|---|`），例如：
+   | 列1 | 列2 |
+   |---|---|
+   | 数据1 | 数据2 |"#,
             count = image_count,
             last = image_count.saturating_sub(1),
             text = text_section,
