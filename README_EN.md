@@ -19,7 +19,7 @@
 
 Smart Chat · Knowledge Management · Anki Card Making · Universal Reader · Deep Research · Skill Extensions
 
-[**Download**](#installation) · [Quick Start](./docs/user-guide/00-快速入门.md) · [User Guide](./docs/user-guide/README.md) · [Contributing](./CONTRIBUTING.md) · [Report Issues](https://github.com/helixnow/deep-student/issues)
+[**Download**](#installation) · [Quick Start](https://ds.a-q.me/docs/user-guide/00-quick-start.html) · [User Guide](https://ds.a-q.me/docs/user-guide/) · [Contributing](./CONTRIBUTING.md) · [Report Issues](https://github.com/helixnow/deep-student/issues)
 
 </div>
 
@@ -487,8 +487,8 @@ DeepStudent
 
 | Document | Description |
 |------|------|
-| [Quick Start](./docs/user-guide/00-快速入门.md) | 5-minute getting started guide |
-| [User Guide](./docs/user-guide/README.md) | Complete feature documentation |
+| [Quick Start](https://ds.a-q.me/docs/user-guide/00-quick-start.html) | 5-minute getting started guide |
+| [User Guide](https://ds.a-q.me/docs/user-guide/) | Complete feature documentation |
 | [Build Configuration](./BUILD-CONFIG.md) | Cross-platform build & packaging |
 | [Changelog](./CHANGELOG.md) | Version change history |
 | [Security Policy](./SECURITY.md) | Vulnerability reporting process |
