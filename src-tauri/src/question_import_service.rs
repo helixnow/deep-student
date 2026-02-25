@@ -36,7 +36,7 @@ use crate::vfs::repos::{
     VfsQuestionRepo,
 };
 use crate::vfs::types::VfsCreateExamSheetParams;
-use crate::vlm_grounding_service::{VlmGroundingService, VlmPageAnalysis};
+use crate::vlm_grounding_service::{VlmExtractedQuestion, VlmGroundingService, VlmPageAnalysis};
 
 // ============================================================================
 // 公共类型
@@ -155,11 +155,14 @@ pub enum ImportStage {
     FiguresExtracted,
     Structuring,
     Completed,
-    // DOCX 原生路径阶段
+    // DOCX 原生路径阶段（旧 text+marker 方案）
     DocxExtracted,
     DocxVlmDescribing,
     DocxVlmDone,
     DocxStructuring,
+    // DOCX VLM 直提路径阶段
+    DocxVlmDirect,
+    DocxVlmDirectDone,
 }
 
 impl Default for ImportStage {
@@ -213,7 +216,7 @@ pub struct ImportCheckpointState {
     #[serde(default)]
     pub chunks_completed: usize,
 
-    // DOCX 原生路径专用
+    // DOCX 原生路径专用（旧 text+marker）
     #[serde(default)]
     pub docx_image_entries: Vec<DocxImageEntrySerde>,
     #[serde(default)]
@@ -224,6 +227,18 @@ pub struct ImportCheckpointState {
     pub docx_enriched_text: String,
     #[serde(default)]
     pub docx_marker_positions: Vec<(usize, usize)>,
+
+    // DOCX VLM 直提路径专用
+    #[serde(default)]
+    pub docx_vlm_direct_blob_hashes: Vec<String>,
+    #[serde(default)]
+    pub docx_vlm_direct_mimes: Vec<String>,
+    #[serde(default)]
+    pub docx_vlm_direct_exts: Vec<String>,
+    #[serde(default)]
+    pub docx_vlm_direct_text: String,
+    #[serde(default)]
+    pub docx_vlm_direct_saved: usize,
 }
 
 // ============================================================================
@@ -307,7 +322,36 @@ impl QuestionImportService {
                 .await;
         }
 
-        // ====== Visual-First 管线：PDF / Image / DOCX ======
+        // ====== DOCX：原生提取 + VLM 直提（无需 LibreOffice） ======
+        if format == "docx" {
+            // 快速检测是否含嵌入图片
+            let has_images = match decode_base64_content(&request.content) {
+                Ok(ref docx_bytes) => {
+                    let parser = DocumentParser::new();
+                    match parser.extract_docx_with_images(docx_bytes) {
+                        Ok((_, images)) => !images.is_empty(),
+                        Err(_) => false,
+                    }
+                }
+                Err(_) => false,
+            };
+
+            if has_images {
+                // 有图片 DOCX → VLM 直接提取（VLM 看到真实图片，自行判断图文关联）
+                log::info!("[QuestionImport] DOCX 含嵌入图片，走 VLM 直提路径");
+                return self
+                    .import_docx_via_vlm(vfs_db, &request, progress_tx.as_ref())
+                    .await;
+            } else {
+                // 纯文本 DOCX → LLM 结构化
+                log::info!("[QuestionImport] DOCX 无嵌入图片，走纯文本路径");
+                return self
+                    .import_text_via_llm(vfs_db, &request, progress_tx.as_ref())
+                    .await;
+            }
+        }
+
+        // ====== Visual-First 管线：PDF / Image ======
 
         if let Some(ref tx) = progress_tx {
             let _ = tx.send(QuestionImportProgress::Preprocessing {
@@ -325,12 +369,6 @@ impl QuestionImportService {
             Ok(p) if !p.is_empty() => p,
             Ok(_) => {
                 return Err(AppError::validation("文档渲染后没有生成任何页面"));
-            }
-            Err(e) if request.format == "docx" => {
-                log::info!("[QuestionImport] DOCX→PDF 不可用 ({}), 使用原生提取路径", e);
-                return self
-                    .import_docx_with_images(vfs_db, &request, progress_tx.as_ref())
-                    .await;
             }
             Err(e) => return Err(e),
         };
@@ -365,6 +403,11 @@ impl QuestionImportService {
             docx_vlm_images_completed: 0,
             docx_enriched_text: String::new(),
             docx_marker_positions: Vec::new(),
+            docx_vlm_direct_blob_hashes: Vec::new(),
+            docx_vlm_direct_mimes: Vec::new(),
+            docx_vlm_direct_exts: Vec::new(),
+            docx_vlm_direct_text: String::new(),
+            docx_vlm_direct_saved: 0,
         };
         save_checkpoint(vfs_db, &session_id, &checkpoint);
 
@@ -420,6 +463,134 @@ impl QuestionImportService {
                 | ImportStage::DocxVlmDone
                 | ImportStage::DocxStructuring
         );
+
+        // DOCX VLM 直提路径恢复
+        let is_docx_vlm_direct = matches!(
+            checkpoint.current_stage,
+            ImportStage::DocxVlmDirect | ImportStage::DocxVlmDirectDone
+        );
+
+        if is_docx_vlm_direct {
+            let blob_hashes = checkpoint.docx_vlm_direct_blob_hashes.clone();
+            let mime_list = checkpoint.docx_vlm_direct_mimes.clone();
+            let ext_list = checkpoint.docx_vlm_direct_exts.clone();
+            let clean_text = checkpoint.docx_vlm_direct_text.clone();
+            let already_saved = checkpoint.docx_vlm_direct_saved;
+            let qbank_name = checkpoint.qbank_name.clone();
+
+            log::info!(
+                "[QuestionImport] 恢复 DOCX VLM 直提: session={}, stage={:?}, 已保存={}, blobs={}",
+                session_id,
+                checkpoint.current_stage,
+                already_saved,
+                blob_hashes.len()
+            );
+
+            if let Some(ref tx) = progress_tx {
+                let _ = tx.send(QuestionImportProgress::SessionCreated {
+                    session_id: session_id.to_string(),
+                    name: qbank_name.clone(),
+                    total_chunks: 1,
+                });
+            }
+
+            // DocxVlmDirectDone 表示 VLM 已完成，直接 finalize
+            if checkpoint.current_stage == ImportStage::DocxVlmDirectDone {
+                rebuild_preview_from_questions(vfs_db, session_id);
+                let _ = VfsExamRepo::update_status(vfs_db, session_id, "completed");
+                let _ = VfsExamRepo::clear_import_state(vfs_db, session_id);
+                if let Err(e) = VfsQuestionRepo::refresh_stats(vfs_db, session_id) {
+                    log::warn!("[QuestionImport] 统计刷新失败: {}", e);
+                }
+                if let Some(ref tx) = progress_tx {
+                    let _ = tx.send(QuestionImportProgress::Completed {
+                        session_id: session_id.to_string(),
+                        name: qbank_name.clone(),
+                        total_questions: already_saved,
+                    });
+                }
+                return Ok(ImportResult {
+                    session_id: session_id.to_string(),
+                    name: qbank_name,
+                    imported_count: already_saved,
+                    total_questions: already_saved,
+                });
+            }
+
+            // DocxVlmDirect: 重建 data URL，从 VLM 调用处恢复
+            let mut data_urls: Vec<String> = Vec::with_capacity(blob_hashes.len());
+            for (idx, hash) in blob_hashes.iter().enumerate() {
+                let mime = mime_list.get(idx).map(|s| s.as_str()).unwrap_or("image/png");
+                match VfsBlobRepo::get_blob_path(vfs_db, hash) {
+                    Ok(Some(path)) => match std::fs::read(&path) {
+                        Ok(blob_data) => {
+                            use base64::Engine;
+                            let b64 =
+                                base64::engine::general_purpose::STANDARD.encode(&blob_data);
+                            data_urls.push(format!("data:{};base64,{}", mime, b64));
+                        }
+                        Err(e) => {
+                            log::warn!(
+                                "[QuestionImport] 恢复时读取 blob 文件失败: {}: {}",
+                                path.display(),
+                                e
+                            );
+                            data_urls.push(String::new());
+                        }
+                    },
+                    _ => {
+                        log::warn!("[QuestionImport] 恢复时找不到 blob: {}", hash);
+                        data_urls.push(String::new());
+                    }
+                }
+            }
+
+            if let Some(ref tx) = progress_tx {
+                let _ = tx.send(QuestionImportProgress::Preprocessing {
+                    stage: "vlm_extracting".to_string(),
+                    message: format!(
+                        "恢复 VLM 提取: {} 张图片, 已保存 {} 题...",
+                        data_urls.len(),
+                        already_saved
+                    ),
+                    percent: 20,
+                });
+            }
+
+            let total_saved = self.run_vlm_direct_extraction(
+                vfs_db,
+                session_id,
+                &data_urls,
+                &blob_hashes,
+                &mime_list,
+                &ext_list,
+                &clean_text,
+                &mut checkpoint,
+                already_saved,
+                progress_tx.as_ref(),
+            ).await?;
+
+            rebuild_preview_from_questions(vfs_db, session_id);
+
+            let _ = VfsExamRepo::update_status(vfs_db, session_id, "completed");
+            let _ = VfsExamRepo::clear_import_state(vfs_db, session_id);
+            if let Err(e) = VfsQuestionRepo::refresh_stats(vfs_db, session_id) {
+                log::warn!("[QuestionImport] 统计刷新失败: {}", e);
+            }
+            if let Some(ref tx) = progress_tx {
+                let _ = tx.send(QuestionImportProgress::Completed {
+                    session_id: session_id.to_string(),
+                    name: qbank_name.clone(),
+                    total_questions: total_saved,
+                });
+            }
+            return Ok(ImportResult {
+                session_id: session_id.to_string(),
+                name: qbank_name,
+                imported_count: total_saved,
+                total_questions: total_saved,
+            });
+        }
 
         if is_docx_native {
             // 从 checkpoint 恢复 image_map
@@ -575,6 +746,8 @@ impl QuestionImportService {
                 let _ = VfsExamRepo::clear_import_state(vfs_db, session_id);
                 return Err(AppError::validation("未能提取到题目"));
             }
+
+            rebuild_preview_from_questions(vfs_db, session_id);
 
             let _ = VfsExamRepo::update_status(vfs_db, session_id, "completed");
             let _ = VfsExamRepo::clear_import_state(vfs_db, session_id);
@@ -830,10 +1003,391 @@ impl QuestionImportService {
         Ok(result.pages)
     }
 
-    /// DOCX 原生导入路径 — 全 VLM，带完整断点续导
+    /// DOCX 图文混合导入 — VLM 直接提取全部题目（流式逐题 + 断点续导）
+    ///
+    /// 将 DOCX 中的所有嵌入图片 + 提取文本一起发给 VLM，
+    /// 由 VLM 直接看到真实图片并判断图片与题目的对应关系。
+    /// 完全绕过 text+marker 方案，从根本上消除图片-题目错配问题。
+    ///
+    /// **流式**：VLM 每输出一道完整题目就立即保存 + 发送 QuestionParsed 事件
+    /// **断点续导**：图片提取后保存 checkpoint，崩溃后可从 VLM 调用处恢复
+    async fn import_docx_via_vlm(
+        &self,
+        vfs_db: &VfsDatabase,
+        request: &ImportRequest,
+        progress_tx: Option<&UnboundedSender<QuestionImportProgress>>,
+    ) -> Result<ImportResult, AppError> {
+        // ===== Stage 1: 提取文本 + 嵌入图片 =====
+        log::info!(
+            "[QuestionImport] DOCX VLM 直提路径开始: content 长度={} 字符",
+            request.content.len()
+        );
+
+        if let Some(tx) = progress_tx {
+            let _ = tx.send(QuestionImportProgress::Preprocessing {
+                stage: "decoding".to_string(),
+                message: "正在解码文档...".to_string(),
+                percent: 2,
+            });
+        }
+
+        let docx_bytes = decode_base64_content(&request.content)?;
+
+        if let Some(tx) = progress_tx {
+            let _ = tx.send(QuestionImportProgress::Preprocessing {
+                stage: "extracting".to_string(),
+                message: "正在提取文本和图片...".to_string(),
+                percent: 5,
+            });
+        }
+
+        let parser = DocumentParser::new();
+        let (extracted_text, image_bytes_list) = parser
+            .extract_docx_with_images(&docx_bytes)
+            .map_err(|e| AppError::validation(format!("DOCX 解析失败: {}", e)))?;
+
+        let total_images = image_bytes_list.len();
+        log::info!(
+            "[QuestionImport] DOCX 提取完成: {} 字符, {} 张图片",
+            extracted_text.len(),
+            total_images
+        );
+
+        // ===== 图片存 VFS blob + 构建 data URL =====
+        let mut blob_hashes: Vec<String> = Vec::with_capacity(total_images);
+        let mut data_urls: Vec<String> = Vec::with_capacity(total_images);
+        let mut mime_list: Vec<String> = Vec::with_capacity(total_images);
+        let mut ext_list: Vec<String> = Vec::with_capacity(total_images);
+
+        for (idx, img_bytes) in image_bytes_list.iter().enumerate() {
+            if img_bytes.is_empty() {
+                continue;
+            }
+
+            if let Some(tx) = progress_tx {
+                let _ = tx.send(QuestionImportProgress::Preprocessing {
+                    stage: "storing_images".to_string(),
+                    message: format!("正在存储图片 {}/{}...", idx + 1, total_images),
+                    percent: 5 + (idx * 10) / total_images.max(1),
+                });
+            }
+
+            let (mime, ext) = detect_image_format(img_bytes);
+            let blob = VfsBlobRepo::store_blob(vfs_db, img_bytes, Some(mime), Some(ext))
+                .map_err(|e| AppError::database(format!("图片 {} Blob 存储失败: {}", idx, e)))?;
+
+            use base64::Engine;
+            let b64 = base64::engine::general_purpose::STANDARD.encode(img_bytes);
+            let url = format!("data:{};base64,{}", mime, b64);
+
+            blob_hashes.push(blob.hash);
+            data_urls.push(url);
+            mime_list.push(mime.to_string());
+            ext_list.push(ext.to_string());
+        }
+
+        // 去掉文本中的 <<IMG:N>> 标记（VLM 能直接看到图片，不需要标记）
+        let clean_text = regex::Regex::new(r"<<IMG:\d+>>")
+            .unwrap()
+            .replace_all(&extracted_text, "[图片]")
+            .to_string();
+
+        // ===== 创建会话 =====
+        let qbank_name = request
+            .name
+            .clone()
+            .unwrap_or_else(|| "导入的题目集".to_string());
+
+        let session_id = if let Some(sid) = &request.session_id {
+            sid.clone()
+        } else {
+            let temp_id = uuid::Uuid::new_v4().to_string();
+            let preview = ExamSheetPreviewResult {
+                temp_id: temp_id.clone(),
+                exam_name: Some(qbank_name.clone()),
+                pages: vec![ExamSheetPreviewPage {
+                    page_index: 0,
+                    cards: Vec::new(),
+                    blob_hash: None,
+                    width: None,
+                    height: None,
+                    original_image_path: String::new(),
+                    raw_ocr_text: None,
+                    ocr_completed: false,
+                    parse_completed: false,
+                }],
+                raw_model_response: None,
+                instructions: None,
+                session_id: Some(temp_id.clone()),
+            };
+            let preview_json = serde_json::to_value(&preview)
+                .map_err(|e| AppError::validation(format!("序列化失败: {}", e)))?;
+
+            let params = VfsCreateExamSheetParams {
+                exam_name: Some(qbank_name.clone()),
+                temp_id,
+                metadata_json: json!({}),
+                preview_json,
+                status: "importing".to_string(),
+                folder_id: request.folder_id.clone(),
+            };
+            VfsExamRepo::create_exam_sheet(vfs_db, params)
+                .map_err(|e| AppError::database(format!("创建题目集失败: {}", e)))?
+                .id
+        };
+
+        // ===== 保存 checkpoint: DocxVlmDirect（图片已提取，准备 VLM 调用） =====
+        let mut checkpoint = ImportCheckpointState {
+            qbank_name: qbank_name.clone(),
+            model_config_id: request.model_config_id.clone(),
+            source_format: "docx".to_string(),
+            current_stage: ImportStage::DocxVlmDirect,
+            page_blob_hashes: Vec::new(),
+            vlm_pages_completed: 0,
+            vlm_page_results: Vec::new(),
+            structuring_batches_completed: 0,
+            structured_batch_results: Vec::new(),
+            page_dimensions: Vec::new(),
+            source_image_hashes: Vec::new(),
+            import_mode: String::new(),
+            text_content: String::new(),
+            chunks_total: 0,
+            chunks_completed: 0,
+            docx_image_entries: Vec::new(),
+            docx_vlm_descriptions: HashMap::new(),
+            docx_vlm_images_completed: 0,
+            docx_enriched_text: String::new(),
+            docx_marker_positions: Vec::new(),
+            docx_vlm_direct_blob_hashes: blob_hashes.clone(),
+            docx_vlm_direct_mimes: mime_list.clone(),
+            docx_vlm_direct_exts: ext_list.clone(),
+            docx_vlm_direct_text: clean_text.clone(),
+            docx_vlm_direct_saved: 0,
+        };
+        save_checkpoint(vfs_db, &session_id, &checkpoint);
+
+        if let Some(tx) = progress_tx {
+            let _ = tx.send(QuestionImportProgress::SessionCreated {
+                session_id: session_id.clone(),
+                name: qbank_name.clone(),
+                total_chunks: 1,
+            });
+            let _ = tx.send(QuestionImportProgress::Preprocessing {
+                stage: "vlm_extracting".to_string(),
+                message: format!(
+                    "正在用 VLM 分析 {} 张图片和文本，提取题目...",
+                    data_urls.len()
+                ),
+                percent: 20,
+            });
+        }
+
+        // ===== Stage 2: VLM 流式提取 → 逐题保存 =====
+        let total_saved = self.run_vlm_direct_extraction(
+            vfs_db,
+            &session_id,
+            &data_urls,
+            &blob_hashes,
+            &mime_list,
+            &ext_list,
+            &clean_text,
+            &mut checkpoint,
+            0, // start from question 0
+            progress_tx,
+        ).await?;
+
+        // ===== 完成 =====
+        rebuild_preview_from_questions(vfs_db, &session_id);
+
+        let _ = VfsExamRepo::update_status(vfs_db, &session_id, "completed");
+        let _ = VfsExamRepo::clear_import_state(vfs_db, &session_id);
+
+        if let Err(e) = VfsQuestionRepo::refresh_stats(vfs_db, &session_id) {
+            log::warn!("[QuestionImport] 统计刷新失败: {}", e);
+        }
+
+        if let Some(tx) = progress_tx {
+            let _ = tx.send(QuestionImportProgress::Completed {
+                session_id: session_id.clone(),
+                name: qbank_name.clone(),
+                total_questions: total_saved,
+            });
+        }
+
+        log::info!(
+            "[QuestionImport] DOCX VLM 直提完成: {} 道题目, session={}",
+            total_saved,
+            session_id
+        );
+
+        Ok(ImportResult {
+            session_id,
+            name: qbank_name,
+            imported_count: total_saved,
+            total_questions: total_saved,
+        })
+    }
+
+    /// VLM 直提核心逻辑（可从 import_docx_via_vlm 和 resume 两处调用）
+    ///
+    /// 使用流式回调逐题保存 + 更新 checkpoint。
+    /// `skip_count`: 已保存的题目数（恢复时跳过前 N 题）。
+    async fn run_vlm_direct_extraction(
+        &self,
+        vfs_db: &VfsDatabase,
+        session_id: &str,
+        data_urls: &[String],
+        blob_hashes: &[String],
+        mime_list: &[String],
+        ext_list: &[String],
+        clean_text: &str,
+        checkpoint: &mut ImportCheckpointState,
+        skip_count: usize,
+        progress_tx: Option<&UnboundedSender<QuestionImportProgress>>,
+    ) -> Result<usize, AppError> {
+        let vlm_service = VlmGroundingService::new(Arc::clone(&self.llm_manager));
+
+        let mut total_saved = skip_count;
+        let mut vlm_question_index: usize = 0;
+
+        let vlm_result = vlm_service
+            .extract_docx_questions_stream(data_urls, clean_text, |vq| {
+                vlm_question_index += 1;
+
+                // 恢复时跳过已保存的题目
+                if vlm_question_index <= skip_count {
+                    return true;
+                }
+
+                if vq.content.trim().is_empty() {
+                    return true;
+                }
+
+                let card_id = format!("card_{}", nanoid::nanoid!(12));
+
+                // 关联图片：为每个 blob 创建/复用 VFS file 条目，使前端可加载
+                let question_images: Vec<QuestionImage> = vq
+                    .image_indices
+                    .iter()
+                    .filter_map(|&img_idx| {
+                        if img_idx < blob_hashes.len() {
+                            let img_name = format!(
+                                "docx_image_{}.{}",
+                                img_idx,
+                                ext_list.get(img_idx).unwrap_or(&"png".to_string())
+                            );
+                            let img_mime = mime_list
+                                .get(img_idx)
+                                .unwrap_or(&"image/png".to_string())
+                                .clone();
+                            let file_id = ensure_vfs_file_for_blob(
+                                vfs_db,
+                                &blob_hashes[img_idx],
+                                &img_name,
+                                &img_mime,
+                            )
+                            .unwrap_or_else(|| format!("file_{}", nanoid::nanoid!(10)));
+                            Some(QuestionImage {
+                                id: file_id,
+                                name: img_name,
+                                mime: img_mime,
+                                hash: blob_hashes[img_idx].clone(),
+                            })
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
+
+                let q_json = serde_json::to_value(&vq).unwrap_or_default();
+                let mut params =
+                    json_to_question_params(&q_json, session_id, &card_id, total_saved);
+
+                if !question_images.is_empty() {
+                    params.images = Some(question_images);
+                }
+
+                if let Err(e) = VfsQuestionRepo::create_question(vfs_db, &params) {
+                    log::warn!(
+                        "[QuestionImport] 保存题目 {} 失败: {}",
+                        vlm_question_index,
+                        e
+                    );
+                    return true; // 跳过失败的题目，继续处理
+                }
+
+                total_saved += 1;
+
+                // 更新 checkpoint
+                checkpoint.docx_vlm_direct_saved = total_saved;
+                save_checkpoint(vfs_db, session_id, checkpoint);
+
+                // 发送实时进度
+                if let Some(tx) = progress_tx {
+                    let _ = tx.send(QuestionImportProgress::QuestionParsed {
+                        question: q_json,
+                        question_index: total_saved - 1,
+                        total_parsed: total_saved,
+                    });
+                }
+
+                true // 继续处理
+            })
+            .await;
+
+        match vlm_result {
+            Ok(vlm_count) => {
+                log::info!(
+                    "[QuestionImport] VLM 流式提取完成: VLM 输出 {} 题, 实际保存 {} 题",
+                    vlm_count,
+                    total_saved
+                );
+            }
+            Err(e) => {
+                log::error!("[QuestionImport] VLM DOCX 提取失败: {}", e);
+                // 如果已保存部分题目，不算完全失败
+                if total_saved > skip_count {
+                    log::warn!(
+                        "[QuestionImport] 已保存 {} 道题目（部分成功）",
+                        total_saved
+                    );
+                } else {
+                    if let Some(tx) = progress_tx {
+                        let _ = tx.send(QuestionImportProgress::Failed {
+                            session_id: Some(session_id.to_string()),
+                            error: format!("VLM 提取失败: {}", e),
+                            total_parsed: total_saved,
+                        });
+                    }
+                    return Err(e);
+                }
+            }
+        }
+
+        // 标记 VLM 提取完成
+        checkpoint.current_stage = ImportStage::DocxVlmDirectDone;
+        checkpoint.docx_vlm_direct_saved = total_saved;
+        save_checkpoint(vfs_db, session_id, checkpoint);
+
+        if total_saved == 0 {
+            if let Some(tx) = progress_tx {
+                let _ = tx.send(QuestionImportProgress::Failed {
+                    session_id: Some(session_id.to_string()),
+                    error: "VLM 未能提取到任何题目".to_string(),
+                    total_parsed: 0,
+                });
+            }
+            return Err(AppError::validation("VLM 未能提取到任何题目"));
+        }
+
+        Ok(total_saved)
+    }
+
+    /// [DEPRECATED] DOCX 原生导入路径 — text+marker 方案，已被 import_docx_via_vlm 取代
     ///
     /// 阶段状态机：DocxExtracted → DocxVlmDescribing → DocxVlmDone → DocxStructuring → Completed
     /// 每个阶段完成后持久化 checkpoint，崩溃后可从断点恢复。
+    #[allow(dead_code)]
     async fn import_docx_with_images(
         &self,
         vfs_db: &VfsDatabase,
@@ -994,6 +1548,11 @@ impl QuestionImportService {
             docx_vlm_images_completed: 0,
             docx_enriched_text: String::new(),
             docx_marker_positions: Vec::new(),
+            docx_vlm_direct_blob_hashes: Vec::new(),
+            docx_vlm_direct_mimes: Vec::new(),
+            docx_vlm_direct_exts: Vec::new(),
+            docx_vlm_direct_text: String::new(),
+            docx_vlm_direct_saved: 0,
         };
         save_checkpoint(vfs_db, &session_id, &checkpoint);
 
@@ -1213,10 +1772,19 @@ impl QuestionImportService {
                         };
 
                         if has_images {
-                            let approx_offset = chunk_start_offset
-                                + (questions_in_chunk * chunk.len())
-                                    / (questions_in_chunk + 1).max(1);
-                            question_text_offsets.push((total_parsed, approx_offset));
+                            // 尝试在 chunk 中定位题干文本的实际位置
+                            let snippet: String = content.chars().take(30).collect();
+                            let local_pos = if snippet.len() >= 6 {
+                                chunk.find(&snippet).unwrap_or(
+                                    (questions_in_chunk * chunk.len())
+                                        / (questions_in_chunk + 1).max(1),
+                                )
+                            } else {
+                                (questions_in_chunk * chunk.len())
+                                    / (questions_in_chunk + 1).max(1)
+                            };
+                            question_text_offsets
+                                .push((total_parsed, chunk_start_offset + local_pos));
                         }
 
                         let mut params = json_to_question_params(
@@ -1545,6 +2113,11 @@ impl QuestionImportService {
             docx_vlm_images_completed: 0,
             docx_enriched_text: String::new(),
             docx_marker_positions: Vec::new(),
+            docx_vlm_direct_blob_hashes: Vec::new(),
+            docx_vlm_direct_mimes: Vec::new(),
+            docx_vlm_direct_exts: Vec::new(),
+            docx_vlm_direct_text: String::new(),
+            docx_vlm_direct_saved: 0,
         };
         save_checkpoint(vfs_db, &session_id, &checkpoint);
 
@@ -1644,6 +2217,8 @@ impl QuestionImportService {
             }
             return Err(AppError::validation("未能提取到题目"));
         }
+
+        rebuild_preview_from_questions(vfs_db, &session_id);
 
         let _ = VfsExamRepo::update_status(vfs_db, &session_id, "completed");
         let _ = VfsExamRepo::clear_import_state(vfs_db, &session_id);
@@ -2295,9 +2870,13 @@ fn extract_marker_positions(enriched_text: &str) -> Vec<(usize, usize)> {
 
 /// 对 VLM 描述文本做安全处理：
 /// 1. 转义 `>>` 为 `> >` 防止截断正则
-/// 2. 截断到 max_chars 防止 segment_document 在标记中间断开
+/// 2. 将换行符替换为空格，防止 segment_document 在标记 `<<IMG:N:[...]>>` 内部断开
+/// 3. 截断到 max_chars 防止单个标记过大
 fn sanitize_vlm_description(desc: &str, max_chars: usize) -> String {
-    let escaped = desc.replace(">>", "> >");
+    let escaped = desc
+        .replace(">>", "> >")
+        .replace('\n', " ")
+        .replace('\r', " ");
     if escaped.chars().count() <= max_chars {
         escaped
     } else {
@@ -2528,6 +3107,158 @@ fn rebuild_pages_from_checkpoint(
     }
 
     Ok(pages)
+}
+
+/// 为已存储的 blob 创建 VFS files 表条目，使前端 `vfs_get_attachment_content` 可以按 file ID 加载图片。
+/// 返回生成的 file_id（`file_` 前缀）。对同一 blob_hash 重复调用是安全的（INSERT OR IGNORE）。
+fn ensure_vfs_file_for_blob(
+    vfs_db: &VfsDatabase,
+    blob_hash: &str,
+    file_name: &str,
+    mime: &str,
+) -> Option<String> {
+    use rusqlite::OptionalExtension;
+
+    // 先查是否已有 file 条目引用此 blob_hash
+    let conn = match vfs_db.get_conn_safe() {
+        Ok(c) => c,
+        Err(e) => {
+            log::warn!("[QuestionImport] ensure_vfs_file: 获取连接失败: {}", e);
+            return None;
+        }
+    };
+
+    // 查找已有的 file 条目
+    let existing: Option<String> = conn
+        .query_row(
+            "SELECT id FROM files WHERE blob_hash = ?1 AND deleted_at IS NULL LIMIT 1",
+            rusqlite::params![blob_hash],
+            |row| row.get(0),
+        )
+        .optional()
+        .ok()
+        .flatten();
+
+    if let Some(id) = existing {
+        return Some(id);
+    }
+
+    // 创建新的 file 条目
+    let file_id = format!("file_{}", nanoid::nanoid!(12));
+    let now = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
+
+    if let Err(e) = conn.execute(
+        r#"INSERT OR IGNORE INTO files (id, blob_hash, file_name, original_path, size, "type", mime_type, tags_json, is_favorite, status, created_at, updated_at)
+           VALUES (?1, ?2, ?3, '', 0, 'image', ?4, '[]', 0, 'active', ?5, ?6)"#,
+        rusqlite::params![file_id, blob_hash, file_name, mime, now, now],
+    ) {
+        log::warn!(
+            "[QuestionImport] ensure_vfs_file: 创建 file 条目失败: {}",
+            e
+        );
+        return None;
+    }
+
+    Some(file_id)
+}
+
+/// 导入完成后，从 questions 表回填 preview.pages[0].cards，
+/// 使前端 `generateImportSummary` 能读到正确的题目数和内容。
+/// 仅用于 DOCX VLM 直提 / 纯文本 等不经过 Visual-First 管线的导入路径。
+fn rebuild_preview_from_questions(vfs_db: &VfsDatabase, session_id: &str) {
+    // 读取所有已保存题目
+    let questions = match VfsQuestionRepo::list_questions(
+        vfs_db,
+        session_id,
+        &QuestionFilters::default(),
+        1,
+        10000, // 足够大，一次拿完
+    ) {
+        Ok(result) => result.questions,
+        Err(e) => {
+            log::warn!(
+                "[QuestionImport] rebuild_preview: 读取题目失败: {}",
+                e
+            );
+            return;
+        }
+    };
+
+    if questions.is_empty() {
+        return;
+    }
+
+    // 构建 ExamCardPreview 列表
+    let cards: Vec<ExamCardPreview> = questions
+        .iter()
+        .enumerate()
+        .map(|(idx, q)| {
+            ExamCardPreview {
+                card_id: q.card_id.clone().unwrap_or_else(|| format!("card_{}", idx)),
+                page_index: 0,
+                question_label: q
+                    .question_label
+                    .clone()
+                    .unwrap_or_else(|| format!("{}", idx + 1)),
+                ocr_text: q.content.clone(),
+                tags: q.tags.clone(),
+                question_type: serde_json::to_value(&q.question_type).ok()
+                    .and_then(|v| serde_json::from_value(v).ok()),
+                answer: q.answer.clone(),
+                explanation: q.explanation.clone(),
+                difficulty: q.difficulty.as_ref().and_then(|d|
+                    serde_json::to_value(d).ok().and_then(|v| serde_json::from_value(v).ok())
+                ),
+                status: serde_json::to_value(&q.status).ok()
+                    .and_then(|v| serde_json::from_value(v).ok())
+                    .unwrap_or_default(),
+                source_type: serde_json::to_value(&q.source_type).ok()
+                    .and_then(|v| serde_json::from_value(v).ok())
+                    .unwrap_or_default(),
+                ..Default::default()
+            }
+        })
+        .collect();
+
+    let page = ExamSheetPreviewPage {
+        page_index: 0,
+        blob_hash: None,
+        width: None,
+        height: None,
+        original_image_path: String::new(),
+        cards,
+        raw_ocr_text: None,
+        ocr_completed: false,
+        parse_completed: false,
+    };
+
+    let preview = ExamSheetPreviewResult {
+        temp_id: String::new(),
+        exam_name: None,
+        pages: vec![page],
+        raw_model_response: None,
+        instructions: None,
+        session_id: Some(session_id.to_string()),
+    };
+
+    match serde_json::to_value(&preview) {
+        Ok(preview_json) => {
+            if let Err(e) =
+                VfsExamRepo::update_preview_json(vfs_db, session_id, preview_json)
+            {
+                log::warn!(
+                    "[QuestionImport] rebuild_preview: 更新 preview 失败: {}",
+                    e
+                );
+            }
+        }
+        Err(e) => {
+            log::warn!(
+                "[QuestionImport] rebuild_preview: 序列化失败: {}",
+                e
+            );
+        }
+    }
 }
 
 // ============================================================================

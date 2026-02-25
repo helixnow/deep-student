@@ -34,6 +34,7 @@ import { TauriAPI, type ExamSheetSessionDetail } from '@/utils/tauriApi';
 import { useExamSheetProgress } from '@/hooks/useExamSheetProgress';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { emitExamSheetDebug } from '@/debug-panel/plugins/ExamSheetProcessingDebugPlugin';
+import { emitImportDebug } from '@/debug-panel/plugins/QuestionImportDebugPlugin';
 import { UnifiedModelSelector, type UnifiedModelInfo } from '@/components/shared/UnifiedModelSelector';
 import { UnifiedDragDropZone, FILE_TYPES, type FileTypeDefinition } from '@/components/shared/UnifiedDragDropZone';
 import type { ApiConfig } from '@/types';
@@ -468,17 +469,29 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
     try {
       setLlmProgress({ percent: 5, message: t('exam_sheet:uploader.parsing_document'), parsedCount: 0 });
 
+      const importName = qbankName || file.name.replace(/\.[^/.]+$/, '');
+      emitImportDebug('info', 'frontend:invoke-start',
+        `发起导入: format=${format} name=${importName} size=${(base64Content.length / 1024).toFixed(0)}KB`,
+        { detail: { format, name: importName, contentSizeKB: Math.round(base64Content.length / 1024), modelId: selectedModelId || 'default' } },
+      );
+
+      const invokeStartAt = Date.now();
       const response = await invoke<ExamSheetSessionDetail>('import_question_bank_stream', {
         request: {
           content: base64Content,
           format,
-          name: qbankName || file.name.replace(/\.[^/.]+$/, ''),
+          name: importName,
           folder_id: undefined,
           session_id: sessionId || undefined,
           model_config_id: selectedModelId || undefined,
           pdf_prefer_ocr: undefined,
         },
       });
+
+      emitImportDebug('success', 'frontend:invoke-end',
+        `导入 invoke 返回成功 | 耗时 ${Date.now() - invokeStartAt}ms`,
+        { durationMs: Date.now() - invokeStartAt, sessionId: response?.summary?.id },
+      );
 
       const summary = generateImportSummary(response);
       setImportSummary(summary);
@@ -492,6 +505,10 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
         : (typeof err === 'object' && err !== null && 'message' in err)
           ? (err as { message: string }).message
           : String(err);
+      emitImportDebug('error', 'frontend:invoke-end',
+        `导入 invoke 失败: ${errorMessage}`,
+        { detail: { error: errorMessage } },
+      );
       setError(t('exam_sheet:uploader.import_failed_prefix', { error: errorMessage }));
       setStep('select');
     } finally {

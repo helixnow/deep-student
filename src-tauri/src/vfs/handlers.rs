@@ -1588,16 +1588,78 @@ pub async fn vfs_get_attachment_content(
         attachment_id
     );
 
-    // 验证附件 ID 格式（支持 att_ 和 file_ 前缀）
+    // 验证附件 ID 格式（支持 att_、file_、tb_ 和 img_ 前缀）
     if !attachment_id.starts_with("att_")
         && !attachment_id.starts_with("file_")
         && !attachment_id.starts_with("tb_")
+        && !attachment_id.starts_with("img_")
     {
         log::error!(
             "[VFS::handlers] Invalid attachment ID format: {}",
             attachment_id
         );
         return Err(format!("Invalid attachment ID format: {}", attachment_id));
+    }
+
+    // ★ img_ 前缀：DOCX VLM 直提路径产生的图片 ID，blob hash 存在 questions.images_json 中
+    if attachment_id.starts_with("img_") {
+        let conn = vfs_db.get_conn_safe().map_err(|e| e.to_string())?;
+        // 在 questions.images_json 中搜索此 img_ ID，提取 blob hash
+        let rows: Vec<String> = {
+            let mut stmt = conn
+                .prepare("SELECT images_json FROM questions WHERE images_json LIKE ?1 AND deleted_at IS NULL LIMIT 5")
+                .map_err(|e| e.to_string())?;
+            let iter = stmt
+                .query_map(rusqlite::params![format!("%{}%", attachment_id)], |row| {
+                    row.get::<_, String>(0)
+                })
+                .map_err(|e| e.to_string())?;
+            iter.filter_map(|r| r.ok()).collect()
+        };
+
+        for images_json_str in &rows {
+            if let Ok(images) = serde_json::from_str::<Vec<serde_json::Value>>(images_json_str) {
+                for img in &images {
+                    if img.get("id").and_then(|v| v.as_str()) == Some(&attachment_id) {
+                        if let Some(blob_hash) = img.get("hash").and_then(|v| v.as_str()) {
+                            // 从 VFS blobs 目录读取文件
+                            let blob_path = vfs_db.blobs_dir().join(blob_hash);
+                            if blob_path.exists() {
+                                match std::fs::read(&blob_path) {
+                                    Ok(data) => {
+                                        use base64::{engine::general_purpose::STANDARD, Engine};
+                                        let mime = img.get("mime").and_then(|v| v.as_str()).unwrap_or("image/png");
+                                        let b64 = format!("data:{};base64,{}", mime, STANDARD.encode(&data));
+                                        log::info!(
+                                            "[VFS::handlers] vfs_get_attachment_content: img_ resolved via blob hash={}, size={}",
+                                            blob_hash, data.len()
+                                        );
+                                        return Ok(VfsAttachmentContentResult {
+                                            content: Some(b64),
+                                            found: true,
+                                        });
+                                    }
+                                    Err(e) => {
+                                        log::warn!("[VFS::handlers] img_ blob read failed: {}", e);
+                                    }
+                                }
+                            } else {
+                                log::warn!("[VFS::handlers] img_ blob not found: {:?}", blob_path);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        log::warn!(
+            "[VFS::handlers] vfs_get_attachment_content: img_ ID not resolved: {}",
+            attachment_id
+        );
+        return Ok(VfsAttachmentContentResult {
+            content: None,
+            found: false,
+        });
     }
 
     // ★ 详细日志：查询文件元数据

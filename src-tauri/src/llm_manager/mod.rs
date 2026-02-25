@@ -34,7 +34,7 @@ use uuid::Uuid;
 
 /// 增量 JSON 数组解析器 - 用于流式解析 LLM 输出的 JSON 数组
 /// 当检测到完整的 JSON 对象时立即返回，无需等待整个数组完成
-struct IncrementalJsonArrayParser {
+pub(crate) struct IncrementalJsonArrayParser {
     buffer: String,
     in_array: bool,
     brace_depth: i32,
@@ -185,7 +185,7 @@ mod tests {
 }
 
 impl IncrementalJsonArrayParser {
-    fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             buffer: String::new(),
             in_array: false,
@@ -196,7 +196,7 @@ impl IncrementalJsonArrayParser {
     }
 
     /// 输入新的文本块，返回解析出的完整 JSON 对象列表
-    fn feed(&mut self, chunk: &str) -> Option<Vec<Value>> {
+    pub(crate) fn feed(&mut self, chunk: &str) -> Option<Vec<Value>> {
         let mut results = Vec::new();
 
         for ch in chunk.chars() {
@@ -285,7 +285,7 @@ impl IncrementalJsonArrayParser {
     }
 
     /// 处理剩余缓冲区内容
-    fn finalize(&mut self) -> Option<Vec<Value>> {
+    pub(crate) fn finalize(&mut self) -> Option<Vec<Value>> {
         if self.buffer.trim().is_empty() {
             return None;
         }

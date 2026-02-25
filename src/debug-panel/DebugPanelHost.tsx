@@ -62,6 +62,7 @@ import MultiVariantTestPlugin from './plugins/MultiVariantTestPlugin';
 import WorkspaceOrchestrationTestPlugin from './plugins/WorkspaceOrchestrationTestPlugin';
 import ToolCallLifecycleDebugPlugin from './plugins/ToolCallLifecycleDebugPlugin';
 import ExamSheetProcessingDebugPlugin from './plugins/ExamSheetProcessingDebugPlugin';
+import QuestionImportDebugPlugin from './plugins/QuestionImportDebugPlugin';
 
 export interface DebugPanelHostProps {
   visible: boolean;
@@ -522,6 +523,15 @@ const PLUGINS: DebugPanelPluginEntry[] = [
     Component: ExamSheetProcessingDebugPlugin,
     labelDefault: '题目集识别生命周期',
     descriptionDefault: '监控两阶段题目集识别全链路：invoke→SessionCreated→OCR逐页→OCR完成→解析逐页→Completed/Failed，检测事件丢失和卡住，可复制完整时序日志。',
+    groupId: 'exam-workflow',
+  },
+  {
+    id: 'question-import-debug',
+    labelKey: 'debug_panel.plugin_question_import',
+    descriptionKey: 'debug_panel.plugin_question_import_desc',
+    Component: QuestionImportDebugPlugin,
+    labelDefault: '题目导入流程调试',
+    descriptionDefault: '监控流式题目导入全链路：预处理→页面渲染→VLM/OCR→配图提取→LLM结构化→分块解析→完成/失败，追踪各阶段耗时和进度百分比，检测卡住和异常，可复制/下载完整时序日志。',
     groupId: 'exam-workflow',
   },
 ];
