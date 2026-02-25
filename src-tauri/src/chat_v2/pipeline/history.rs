@@ -41,6 +41,30 @@ impl ChatV2Pipeline {
             return Ok(());
         }
 
+        // 🔧 排除当前用户消息和助手消息：save_user_message_immediately 会在
+        // load_chat_history 之前将当前用户消息写入 DB，而 build_current_user_message
+        // 会重新构建当前用户消息（带 <user_query> 标签包裹），如果不排除，
+        // merge_consecutive_user_messages 会将两条连续 user 消息合并，导致内容重复。
+        let exclude_ids: std::collections::HashSet<&str> = [
+            ctx.user_message_id.as_str(),
+            ctx.assistant_message_id.as_str(),
+        ]
+        .into_iter()
+        .collect();
+        let messages: Vec<_> = messages
+            .into_iter()
+            .filter(|m| !exclude_ids.contains(m.id.as_str()))
+            .collect();
+
+        if messages.is_empty() {
+            log::debug!(
+                "[ChatV2::pipeline] No chat history after excluding current messages for session={}",
+                ctx.session_id
+            );
+            ctx.chat_history = Vec::new();
+            return Ok(());
+        }
+
         // 🔧 P1修复：使用固定的消息条数限制，而非 context_limit
         // context_limit 应该用于 LLM 的 max_input_tokens_override
         let max_messages = DEFAULT_MAX_HISTORY_MESSAGES;

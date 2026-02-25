@@ -425,6 +425,8 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
   const ghostRef = useRef<HTMLDivElement>(null);
   const inputContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // 🔧 IME 合成态追踪：防止 WKWebView 中文输入法重复追加文本
+  const isComposingRef = useRef(false);
 
   // ========== 本地状态 ==========
   // 🔧 首帧降载：使用固定高度占位，idle 后再测量真实高度
@@ -1797,8 +1799,20 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
               ref={textareaRef}
               aria-label={placeholder || t('analysis:input_bar.placeholder')}
               value={inputValue}
+              onCompositionStart={() => {
+                isComposingRef.current = true;
+              }}
+              onCompositionEnd={(e) => {
+                isComposingRef.current = false;
+                // 合成结束时用最终值同步 store，确保不丢字
+                onInputChange((e.target as HTMLTextAreaElement).value);
+                setTimeout(adjustTextareaHeight, 0);
+              }}
               onChange={(e) => {
-                onInputChange(e.target.value);
+                // 🔧 IME 合成期间跳过 store 更新，仅移动端 WKWebView 需要（桌面端受控组件会阻止输入）
+                if (!isComposingRef.current || !isMobile) {
+                  onInputChange(e.target.value);
+                }
                 setTimeout(adjustTextareaHeight, 0);
                 // 更新光标位置（用于模型提及检测）
                 if (modelMentionActions) {
