@@ -138,7 +138,7 @@ export function useMcpSettings(): McpSettingsState {
     blacklist: '',
     timeoutMs: 15000,
     rateLimit: 10,
-    cacheMax: 100,
+    cacheMax: 500,
     cacheTtlMs: 300000
   });
   

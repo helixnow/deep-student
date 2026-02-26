@@ -105,7 +105,7 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
     blacklist: '',
     timeoutMs: 15000,
     rateLimit: 10,
-    cacheMax: 100,
+    cacheMax: 500,
     cacheTtlMs: 300000
   });
   // MCP 快速体检/预览状态
