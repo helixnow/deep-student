@@ -183,8 +183,11 @@ export function useSessionItemRenderer(deps: UseSessionItemRendererDeps) {
           </div>
         )}
       </div>
-      {showActionButtons && (
-        <div className="flex gap-1 transition-opacity">
+      {editingSessionId !== session.id && (
+        <div className={cn(
+          "flex gap-1 shrink-0 transition-opacity duration-150",
+          showActionButtons ? "opacity-100" : "opacity-0 pointer-events-none"
+        )}>
           <NotionButton
             variant="ghost"
             size="icon"

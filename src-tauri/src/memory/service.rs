@@ -841,7 +841,7 @@ impl MemoryService {
             FROM notes n
             JOIN folder_items fi ON fi.item_type = 'note' AND fi.item_id = n.id
             WHERE fi.folder_id IN ({}) AND n.deleted_at IS NULL
-              AND n.title NOT LIKE '\\_\\_%\\_\\_%' ESCAPE '\\'
+              AND n.title NOT LIKE '\_\_%\_\_%' ESCAPE '\'
             ORDER BY n.updated_at DESC
             LIMIT ? OFFSET ?
             "#,
