@@ -975,11 +975,12 @@ impl ChatV2Pipeline {
                     let evolution = MemoryEvolution::new(vfs_db);
                     match evolution.run_evolution_cycle(&memory_service) {
                         Ok(report) => {
-                            if report.stale_demoted > 0 || report.high_freq_promoted > 0 {
+                            if report.stale_demoted > 0 || report.high_freq_promoted > 0 || report.duplicates_merged > 0 {
                                 log::info!(
-                                    "[AutoMemory] Evolution: demoted={}, promoted={}",
+                                    "[AutoMemory] Evolution: demoted={}, promoted={}, merged={}",
                                     report.stale_demoted,
-                                    report.high_freq_promoted
+                                    report.high_freq_promoted,
+                                    report.duplicates_merged
                                 );
                             }
                         }

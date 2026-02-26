@@ -17,5 +17,5 @@ pub use llm_decision::{
     MemoryDecisionResponse, MemoryEvent, MemoryLLMDecision, SimilarMemorySummary,
 };
 pub use query_rewriter::{MemoryQueryRewriter, QueryRewriteResult};
-pub use reranker::{MemoryReranker, RerankerStrategy};
+pub use reranker::MemoryReranker;
 pub use service::{MemoryListItem, MemorySearchResult, MemoryService, SmartWriteOutput, WriteMode};

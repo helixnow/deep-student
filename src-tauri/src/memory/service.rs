@@ -150,6 +150,10 @@ impl MemoryService {
         }
     }
 
+    pub fn vfs_db_ref(&self) -> &Arc<VfsDatabase> {
+        &self.vfs_db
+    }
+
     /// 获取记忆文件夹 ID 列表（带缓存）
     fn get_memory_folder_ids(&self, root_id: &str) -> VfsResult<Vec<String>> {
         {
@@ -321,12 +325,13 @@ impl MemoryService {
                 }
 
                 let folder_path = self.get_note_folder_path(&note.id)?;
+                let tag_weight = Self::compute_tag_weight(&note.tags);
                 results.push(MemorySearchResult {
                     note_id: note.id,
                     note_title: note.title,
                     folder_path,
                     chunk_text: r.text,
-                    score: r.score,
+                    score: r.score * tag_weight,
                     updated_at: Some(note.updated_at),
                 });
 
@@ -751,7 +756,6 @@ impl MemoryService {
             }
         };
 
-        // 实际发生写入时，异步刷新用户画像摘要
         if let Ok(ref out) = result {
             if out.resource_id.is_some() {
                 let svc = self.clone();
@@ -778,7 +782,6 @@ impl MemoryService {
             return Ok(vec![]);
         }
 
-        // 1. 可选的查询重写
         let final_query = if use_query_rewrite {
             let rewriter = MemoryQueryRewriter::new(self.llm_manager.clone());
             match rewriter.rewrite_simple(query).await {
@@ -792,17 +795,16 @@ impl MemoryService {
             query.to_string()
         };
 
-        // 2. 执行搜索
-        let results = self.search(&final_query, top_k * 2).await?; // 多取一些用于重排序
+        let reranker = MemoryReranker::new(self.llm_manager.clone()).await;
+        let retrieval_k = if reranker.has_reranker_api() { top_k * 2 } else { top_k };
 
-        // 3. 重排序
-        let reranker = MemoryReranker::new_auto(self.llm_manager.clone()).await;
+        let results = self.search(&final_query, retrieval_k).await?;
+
         let reranked = reranker
             .rerank(query, results)
             .await
             .map_err(|e| VfsError::Other(format!("Rerank failed: {}", e)))?;
 
-        // 4. 截取 top_k
         Ok(reranked.into_iter().take(top_k).collect())
     }
 
@@ -1183,6 +1185,19 @@ impl MemoryService {
         Ok(folder_ids.contains(&folder_id))
     }
 
+    /// 根据记忆标签计算搜索分数权重
+    fn compute_tag_weight(tags: &[String]) -> f32 {
+        let mut weight = 1.0f32;
+        for tag in tags {
+            if tag == "_important" {
+                weight *= 1.25;
+            } else if tag == "_stale" {
+                weight *= 0.6;
+            }
+        }
+        weight
+    }
+
     // ========================================================================
     // 用户画像摘要
     // ========================================================================
@@ -1306,6 +1321,10 @@ impl MemoryService {
             Ok(c) => c,
             Err(_) => return,
         };
+        if let Err(e) = conn.execute_batch("BEGIN IMMEDIATE") {
+            warn!("[Memory] Failed to begin transaction for search hits: {}", e);
+            return;
+        }
         for note_id in note_ids {
             let tags_json: Option<String> = conn
                 .query_row(
@@ -1325,6 +1344,8 @@ impl MemoryService {
                     false
                 } else if t.starts_with(TAG_LAST_HIT_PREFIX) {
                     false
+                } else if t == "_stale" {
+                    false
                 } else {
                     true
                 }
@@ -1339,6 +1360,9 @@ impl MemoryService {
             ) {
                 warn!("[Memory] Failed to record search hit for {}: {}", note_id, e);
             }
+        }
+        if let Err(e) = conn.execute_batch("COMMIT") {
+            warn!("[Memory] Failed to commit search hits transaction: {}", e);
         }
     }
 

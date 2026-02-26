@@ -17,6 +17,8 @@ import {
   getMemoryConfig,
   setMemoryRootFolder,
   setMemoryPrivacyMode,
+  setMemoryAutoCreateSubfolders,
+  setMemoryDefaultCategory,
   createMemoryRootFolder,
   type MemoryConfig,
 } from '../../api/memoryApi';
@@ -147,6 +149,34 @@ export const MemorySettingsSection: React.FC<MemorySettingsSectionProps> = ({
     }
   }, [newFolderName, t, loadData]);
 
+  const handleToggleAutoSubfolders = useCallback(async (enabled: boolean) => {
+    try {
+      setSaving(true);
+      await setMemoryAutoCreateSubfolders(enabled);
+      setConfig((prev) => (prev ? { ...prev, autoCreateSubfolders: enabled } : prev));
+      showGlobalNotification('success', t('settings:memory.autoSubfoldersUpdated', '已更新'));
+    } catch (error: unknown) {
+      console.error('更新自动子文件夹失败:', error);
+      showGlobalNotification('error', getErrorMessage(error));
+    } finally {
+      setSaving(false);
+    }
+  }, [t]);
+
+  const handleSetDefaultCategory = useCallback(async (category: string) => {
+    try {
+      setSaving(true);
+      await setMemoryDefaultCategory(category);
+      setConfig((prev) => (prev ? { ...prev, defaultCategory: category } : prev));
+      showGlobalNotification('success', t('settings:memory.defaultCategoryUpdated', '已更新'));
+    } catch (error: unknown) {
+      console.error('更新默认分类失败:', error);
+      showGlobalNotification('error', getErrorMessage(error));
+    } finally {
+      setSaving(false);
+    }
+  }, [t]);
+
   const handleTogglePrivacyMode = useCallback(async (enabled: boolean) => {
     try {
       setSaving(true);
@@ -265,6 +295,37 @@ export const MemorySettingsSection: React.FC<MemorySettingsSectionProps> = ({
             </div>
           </div>
         )}
+
+        <SettingRow
+          title={t('settings:memory.autoSubfolders', '自动创建子文件夹')}
+          description={t('settings:memory.autoSubfoldersDesc', '写入记忆时，自动按分类路径创建子文件夹')}
+        >
+          <Switch
+            checked={!!config?.autoCreateSubfolders}
+            onCheckedChange={handleToggleAutoSubfolders}
+            disabled={saving}
+          />
+        </SettingRow>
+
+        <SettingRow
+          title={t('settings:memory.defaultCategory', '默认分类')}
+          description={t('settings:memory.defaultCategoryDesc', '未指定分类时记忆存入的默认子文件夹')}
+        >
+          <AppSelect
+            value={config?.defaultCategory || '通用'}
+            onValueChange={handleSetDefaultCategory}
+            disabled={saving}
+            options={[
+              { value: '通用', label: '通用' },
+              { value: '偏好', label: '偏好' },
+              { value: '经历', label: '经历' },
+            ]}
+            size="sm"
+            variant="ghost"
+            className="h-8 text-xs bg-transparent hover:bg-muted/20 transition-colors"
+            width={120}
+          />
+        </SettingRow>
 
         <SettingRow
           title={t('settings:memory.privacyMode')}

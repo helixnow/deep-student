@@ -47,10 +47,11 @@ import {
   createMemoryRootFolder,
   searchMemory,
   readMemory,
-  writeMemory,
+  writeMemorySmart,
   listMemory,
   deleteMemory,
   updateMemoryById,
+  exportAllMemories,
   type MemoryConfig,
   type MemoryListItem,
   type MemorySearchResult,
@@ -93,6 +94,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
   // 文件夹列表（用于选择根文件夹）
   const [folderList, setFolderList] = useState<Array<{ id: string; title: string }>>([]);
   const [loadingFolders, setLoadingFolders] = useState(false);
+  const [isPickerOpen, setIsPickerOpen] = useState(false);
 
   // ★ 内联展开状态
   const [expandedMemoryId, setExpandedMemoryId] = useState<string | null>(null);
@@ -188,8 +190,19 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
 
     setIsLoading(true);
     try {
-      await writeMemory(newMemoryTitle, newMemoryContent, undefined, 'create');
-      showGlobalNotification('success', t('memory.create_success', '记忆创建成功'));
+      const result = await writeMemorySmart(newMemoryTitle, newMemoryContent);
+      let msg: string;
+      let level: 'success' | 'warning' = 'success';
+      if (result.downgraded) {
+        msg = t('memory.create_downgraded', '置信度不足，未自动写入。请确认后手动保存。');
+        level = 'warning';
+      } else if (result.event === 'NONE') {
+        msg = t('memory.create_already_exists', '该记忆已存在，无需重复创建');
+        level = 'warning';
+      } else {
+        msg = t('memory.create_success', '记忆创建成功');
+      }
+      showGlobalNotification(level, msg);
       setIsCreatingInline(false);
       setNewMemoryTitle('');
       setNewMemoryContent('');
@@ -332,20 +345,10 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
   const handleExportMemories = useCallback(async () => {
     setIsLoading(true);
     try {
-      const items = await listMemory(undefined, 500);
-      if (items.length === 0) {
+      const exportData = await exportAllMemories();
+      if (exportData.length === 0) {
         showGlobalNotification('warning', t('memory.export_empty', '没有可导出的记忆'));
         return;
-      }
-      const exportData: Array<{ title: string; content: string; folder: string; updatedAt: string }> = [];
-      for (const item of items) {
-        const detail = await readMemory(item.id);
-        exportData.push({
-          title: item.title,
-          content: detail?.content || '',
-          folder: item.folderPath,
-          updatedAt: item.updatedAt,
-        });
       }
       const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
@@ -426,6 +429,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
         flatten(tree);
       }
       setFolderList(folders);
+      setIsPickerOpen(true);
     } catch (error: unknown) {
       console.error('[MemoryView] Load folders failed:', error);
       showGlobalNotification(
@@ -936,40 +940,38 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
         </div>
       </CustomScrollArea>
 
-      {/* 文件夹选择弹出框 - 参考 FolderPickerDialog 设计 */}
-      {folderList.length > 0 && (
-        <NotionDialog open={folderList.length > 0} onOpenChange={() => setFolderList([])} maxWidth="max-w-md">
-          <NotionDialogHeader>
-            <NotionDialogTitle className="flex items-center gap-2">
-              <FolderOpen className="w-4 h-4 text-muted-foreground" />
-              {t('memory.select_root_folder', '选择记忆根文件夹')}
-            </NotionDialogTitle>
-          </NotionDialogHeader>
-          <NotionDialogBody>
-            <div className="py-1">
-              {folderList.map((folder) => (
-                <NotionButton
-                  key={folder.id}
-                  variant="ghost" size="sm"
-                  className="w-full !justify-start !px-3 !py-2"
-                  onClick={() => {
-                    handleSelectRootFolder(folder.id);
-                    setFolderList([]);
-                  }}
-                >
-                  <FolderOpen className="w-4 h-4 text-amber-500 shrink-0" />
-                  <span className="truncate">{folder.title}</span>
-                </NotionButton>
-              ))}
-            </div>
-          </NotionDialogBody>
-          <NotionDialogFooter>
-            <NotionButton variant="ghost" size="sm" onClick={() => setFolderList([])}>
-              {t('common:cancel', '取消')}
-            </NotionButton>
-          </NotionDialogFooter>
-        </NotionDialog>
-      )}
+      {/* 文件夹选择弹出框 */}
+      <NotionDialog open={isPickerOpen} onOpenChange={setIsPickerOpen} maxWidth="max-w-md">
+        <NotionDialogHeader>
+          <NotionDialogTitle className="flex items-center gap-2">
+            <FolderOpen className="w-4 h-4 text-muted-foreground" />
+            {t('memory.select_root_folder', '选择记忆根文件夹')}
+          </NotionDialogTitle>
+        </NotionDialogHeader>
+        <NotionDialogBody>
+          <div className="py-1">
+            {folderList.map((folder) => (
+              <NotionButton
+                key={folder.id}
+                variant="ghost" size="sm"
+                className="w-full !justify-start !px-3 !py-2"
+                onClick={() => {
+                  handleSelectRootFolder(folder.id);
+                  setIsPickerOpen(false);
+                }}
+              >
+                <FolderOpen className="w-4 h-4 text-amber-500 shrink-0" />
+                <span className="truncate">{folder.title}</span>
+              </NotionButton>
+            ))}
+          </div>
+        </NotionDialogBody>
+        <NotionDialogFooter>
+          <NotionButton variant="ghost" size="sm" onClick={() => setIsPickerOpen(false)}>
+            {t('common:cancel', '取消')}
+          </NotionButton>
+        </NotionDialogFooter>
+      </NotionDialog>
     </div>
   );
 };

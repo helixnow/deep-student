@@ -36,13 +36,14 @@ export interface MemoryWriteOutput {
   isNew: boolean;
 }
 
-// ★ 修复风险4：SmartWrite 输出类型
 export interface SmartWriteOutput {
   noteId: string;
   event: 'ADD' | 'UPDATE' | 'APPEND' | 'DELETE' | 'NONE';
   isNew: boolean;
   confidence: number;
   reason: string;
+  resourceId?: string;
+  downgraded: boolean;
 }
 
 export interface FolderTreeNode {
@@ -76,6 +77,14 @@ export async function setMemoryRootFolder(folderId: string): Promise<void> {
 
 export async function setMemoryPrivacyMode(enabled: boolean): Promise<void> {
   return invoke('memory_set_privacy_mode', { enabled });
+}
+
+export async function setMemoryAutoCreateSubfolders(enabled: boolean): Promise<void> {
+  return invoke('memory_set_auto_create_subfolders', { enabled });
+}
+
+export async function setMemoryDefaultCategory(category: string): Promise<void> {
+  return invoke('memory_set_default_category', { category });
 }
 
 export async function createMemoryRootFolder(title: string): Promise<string> {
@@ -143,7 +152,17 @@ export async function deleteMemory(noteId: string): Promise<void> {
   return invoke('memory_delete', { noteId });
 }
 
-// ★ 修复风险4：智能写入记忆
+export interface MemoryExportItem {
+  title: string;
+  content: string;
+  folder: string;
+  updatedAt: string;
+}
+
+export async function exportAllMemories(): Promise<MemoryExportItem[]> {
+  return invoke<MemoryExportItem[]>('memory_export_all');
+}
+
 export async function writeMemorySmart(
   title: string,
   content: string,

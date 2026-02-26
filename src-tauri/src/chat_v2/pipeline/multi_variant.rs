@@ -1240,7 +1240,7 @@ impl ChatV2Pipeline {
     }
 
     async fn load_user_profile_for_variant(&self) -> Option<String> {
-        use crate::memory::MemoryService;
+        use crate::memory::{MemoryCategoryManager, MemoryService};
         use crate::vfs::lance_store::VfsLanceStore;
 
         let vfs_db = self.vfs_db.as_ref()?;
@@ -1250,7 +1250,32 @@ impl ChatV2Pipeline {
             lance_store,
             self.llm_manager.clone(),
         );
-        svc.get_profile_summary().ok().flatten()
+
+        let root_id = match svc.get_root_folder_id() {
+            Ok(Some(id)) => id,
+            _ => return None,
+        };
+
+        let mut sections: Vec<String> = Vec::new();
+
+        let cat_mgr = MemoryCategoryManager::new(vfs_db.clone(), self.llm_manager.clone());
+        if let Ok(categories) = cat_mgr.load_all_category_summaries(&root_id) {
+            for (cat_name, content) in &categories {
+                sections.push(format!("### {}\n{}", cat_name, content));
+            }
+        }
+
+        if sections.is_empty() {
+            return svc.get_profile_summary().ok().flatten();
+        }
+
+        let combined = sections.join("\n\n");
+        if combined.chars().count() > 2000 {
+            let truncated: String = combined.chars().take(2000).collect();
+            Some(format!("{}...\n（用户画像已截断，完整信息请使用 memory_search 工具检索）", truncated))
+        } else {
+            Some(combined)
+        }
     }
 
     /// 根据 SendOptions 构建 Canvas 笔记信息

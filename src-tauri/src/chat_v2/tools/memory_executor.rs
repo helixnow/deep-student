@@ -120,10 +120,9 @@ impl MemoryToolExecutor {
             .map(|v| v as usize)
             .unwrap_or(5);
 
-        // 🆕 取消支持：使用 tokio::select! 监听取消信号
         let results = if let Some(cancel_token) = ctx.cancellation_token() {
             tokio::select! {
-                res = service.search(query, top_k) => res.map_err(|e| e.to_string())?,
+                res = service.search_with_rerank(query, top_k, false) => res.map_err(|e| e.to_string())?,
                 _ = cancel_token.cancelled() => {
                     log::info!("[MemoryToolExecutor] Memory search cancelled");
                     return Err("Memory search cancelled during execution".to_string());
@@ -131,7 +130,7 @@ impl MemoryToolExecutor {
             }
         } else {
             service
-                .search(query, top_k)
+                .search_with_rerank(query, top_k, false)
                 .await
                 .map_err(|e| e.to_string())?
         };
@@ -536,7 +535,8 @@ impl MemoryToolExecutor {
             "event": result.event,
             "is_new": result.is_new,
             "confidence": result.confidence,
-            "reason": result.reason
+            "reason": result.reason,
+            "downgraded": result.downgraded
         }))
     }
 }

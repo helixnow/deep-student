@@ -122,6 +122,17 @@ impl MemoryConfig {
             .get(CONFIG_KEY_DEFAULT_CATEGORY)?
             .unwrap_or_else(|| "通用".to_string()))
     }
+
+    pub fn set_auto_create_subfolders(&self, enabled: bool) -> VfsResult<()> {
+        self.set(
+            CONFIG_KEY_AUTO_CREATE_SUBFOLDERS,
+            if enabled { "true" } else { "false" },
+        )
+    }
+
+    pub fn set_default_category(&self, category: &str) -> VfsResult<()> {
+        self.set(CONFIG_KEY_DEFAULT_CATEGORY, category)
+    }
 }
 
 #[cfg(test)]

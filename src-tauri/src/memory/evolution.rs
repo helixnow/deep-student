@@ -30,7 +30,7 @@ pub struct MemoryEvolution {
 pub struct EvolutionReport {
     pub stale_demoted: usize,
     pub high_freq_promoted: usize,
-    pub folders_reorganized: usize,
+    pub duplicates_merged: usize,
 }
 
 impl MemoryEvolution {
@@ -56,12 +56,12 @@ impl MemoryEvolution {
         // Phase 2: 识别高频记忆并打标记
         report.high_freq_promoted = self.promote_high_freq_memories(&all_memories)?;
 
-        // Phase 3: 检查文件夹溢出
-        report.folders_reorganized = self.check_folder_overflow(memory_service)?;
+        // Phase 3: 检查文件夹溢出并合并重复
+        report.duplicates_merged = self.check_folder_overflow(memory_service)?;
 
         info!(
-            "[Evolution] Cycle complete: demoted={}, promoted={}, reorganized={}",
-            report.stale_demoted, report.high_freq_promoted, report.folders_reorganized
+            "[Evolution] Cycle complete: demoted={}, promoted={}, merged={}",
+            report.stale_demoted, report.high_freq_promoted, report.duplicates_merged
         );
 
         Ok(report)
@@ -183,25 +183,86 @@ impl MemoryEvolution {
         Ok(promoted)
     }
 
-    /// 检查文件夹溢出（记录日志，后续可触发 LLM 重新分类）
+    /// 检查文件夹溢出并执行合并：同一文件夹中标题完全相同的记忆合并内容后去重
     fn check_folder_overflow(&self, memory_service: &MemoryService) -> VfsResult<usize> {
         let folders = ["偏好", "经历", "经历/学科状态", "经历/时间节点", "偏好/个人背景"];
-        let mut overflow_count = 0usize;
+        let mut merged_count = 0usize;
+        let conn = self.vfs_db.get_conn_safe()?;
 
         for folder in &folders {
-            let items = memory_service.list(Some(folder), 100, 0)?;
-            let active_count = items.iter().filter(|m| !m.title.starts_with("__")).count();
+            let items = memory_service.list(Some(folder), 200, 0)?;
+            let active: Vec<&MemoryListItem> = items.iter().filter(|m| !m.title.starts_with("__")).collect();
 
-            if active_count > FOLDER_OVERFLOW_THRESHOLD {
-                overflow_count += 1;
-                warn!(
-                    "[Evolution] Folder '{}' has {} memories (threshold={}), consider reorganization",
-                    folder, active_count, FOLDER_OVERFLOW_THRESHOLD
+            if active.len() <= FOLDER_OVERFLOW_THRESHOLD {
+                continue;
+            }
+
+            let mut folder_merged = 0usize;
+            let mut title_groups: std::collections::HashMap<&str, Vec<&MemoryListItem>> =
+                std::collections::HashMap::new();
+            for mem in &active {
+                title_groups.entry(&mem.title).or_default().push(mem);
+            }
+
+            for (_title, group) in &title_groups {
+                if group.len() < 2 {
+                    continue;
+                }
+                let keep = group[0];
+                let mut combined_content = String::new();
+                for mem in group {
+                    if let Ok(Some(content)) =
+                        crate::vfs::repos::note_repo::VfsNoteRepo::get_note_content(
+                            &self.vfs_db,
+                            &mem.id,
+                        )
+                    {
+                        if !content.is_empty() {
+                            if !combined_content.is_empty() {
+                                combined_content.push_str("\n\n");
+                            }
+                            combined_content.push_str(&content);
+                        }
+                    }
+                }
+
+                if let Err(e) = crate::vfs::repos::note_repo::VfsNoteRepo::update_note(
+                    &self.vfs_db,
+                    &keep.id,
+                    crate::vfs::types::VfsUpdateNoteParams {
+                        title: None,
+                        content: Some(combined_content),
+                        tags: None,
+                        expected_updated_at: None,
+                    },
+                ) {
+                    warn!("[Evolution] Failed to update merged memory {}: {}", keep.id, e);
+                    continue;
+                }
+
+                for dup in &group[1..] {
+                    if let Err(e) = conn.execute(
+                        "UPDATE notes SET deleted_at = datetime('now') WHERE id = ?1",
+                        params![&dup.id],
+                    ) {
+                        warn!("[Evolution] Failed to soft-delete duplicate {}: {}", dup.id, e);
+                    } else {
+                        folder_merged += 1;
+                        debug!("[Evolution] Merged duplicate '{}' ({} → {})", _title, dup.id, keep.id);
+                    }
+                }
+            }
+
+            if folder_merged > 0 {
+                info!(
+                    "[Evolution] Folder '{}': merged {} duplicate memories (was {} active)",
+                    folder, folder_merged, active.len()
                 );
+                merged_count += folder_merged;
             }
         }
 
-        Ok(overflow_count)
+        Ok(merged_count)
     }
 
     fn extract_hits(tags: &[String]) -> u32 {

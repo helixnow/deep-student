@@ -31,10 +31,8 @@ fn get_memory_service(
     MemoryService::new(vfs_db.clone(), lance_store.clone(), llm_manager.clone())
 }
 
-/// ★ P2-2 修复：写入后触发单资源索引，保证 write-then-search SLA。
-///
-/// 使用 fire-and-forget 语义：索引任务在后台执行，不阻塞写入返回。
-/// 索引失败仅记录告警，资源仍可被后续批量索引重试。
+/// 写入后触发单资源索引，保证 write-then-search SLA。
+/// 索引成功后标记为 indexed，防止批量 worker 重复处理。
 fn trigger_immediate_index(
     vfs_db: Arc<VfsDatabase>,
     llm_manager: Arc<LLMManager>,
@@ -42,11 +40,12 @@ fn trigger_immediate_index(
     resource_id: String,
 ) {
     tokio::spawn(async move {
+        let db_ref = vfs_db.clone();
         let indexing_service = match VfsFullIndexingService::new(vfs_db, llm_manager, lance_store) {
             Ok(svc) => svc,
             Err(e) => {
                 warn!(
-                    "[Memory] P2-2: Failed to create indexing service for immediate index of {}: {}",
+                    "[Memory] Failed to create indexing service for immediate index of {}: {}",
                     resource_id, e
                 );
                 return;
@@ -58,14 +57,21 @@ fn trigger_immediate_index(
             .await
         {
             Ok((chunk_count, dim)) => {
+                if let Err(e) = crate::vfs::repos::embedding_repo::VfsIndexStateRepo::mark_indexed(
+                    &db_ref,
+                    &resource_id,
+                    &format!("mem_handler_{}", chrono::Utc::now().timestamp_millis()),
+                ) {
+                    warn!("[Memory] Failed to mark indexed after immediate indexing: {}", e);
+                }
                 info!(
-                    "[Memory] P2-2: Immediate index completed for resource {} ({} chunks, dim={})",
+                    "[Memory] Immediate index completed for resource {} ({} chunks, dim={})",
                     resource_id, chunk_count, dim
                 );
             }
             Err(e) => {
                 warn!(
-                    "[Memory] P2-2: Immediate index failed for resource {} (will retry in next batch): {}",
+                    "[Memory] Immediate index failed for resource {} (will retry in next batch): {}",
                     resource_id, e
                 );
             }
@@ -142,7 +148,7 @@ pub async fn memory_search(
 ) -> Result<Vec<MemorySearchResult>, String> {
     let service = get_memory_service(&vfs_db, &lance_store, &llm_manager);
     let k = top_k.unwrap_or(5);
-    service.search(&query, k).await.map_err(|e| e.to_string())
+    service.search_with_rerank(&query, k, false).await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -293,7 +299,67 @@ pub async fn memory_delete(
     service.delete(&note_id).await.map_err(|e| e.to_string())
 }
 
-// ★ 修复风险4：暴露 smart_write 接口
+#[tauri::command]
+pub async fn memory_set_auto_create_subfolders(
+    enabled: bool,
+    vfs_db: State<'_, Arc<VfsDatabase>>,
+    lance_store: State<'_, Arc<VfsLanceStore>>,
+    llm_manager: State<'_, Arc<LLMManager>>,
+) -> Result<(), String> {
+    let service = get_memory_service(&vfs_db, &lance_store, &llm_manager);
+    let cfg = super::config::MemoryConfig::new(service.vfs_db_ref().clone());
+    cfg.set_auto_create_subfolders(enabled)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn memory_set_default_category(
+    category: String,
+    vfs_db: State<'_, Arc<VfsDatabase>>,
+    lance_store: State<'_, Arc<VfsLanceStore>>,
+    llm_manager: State<'_, Arc<LLMManager>>,
+) -> Result<(), String> {
+    let service = get_memory_service(&vfs_db, &lance_store, &llm_manager);
+    let cfg = super::config::MemoryConfig::new(service.vfs_db_ref().clone());
+    cfg.set_default_category(&category)
+        .map_err(|e| e.to_string())
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MemoryExportItem {
+    pub title: String,
+    pub content: String,
+    pub folder: String,
+    pub updated_at: String,
+}
+
+#[tauri::command]
+pub async fn memory_export_all(
+    vfs_db: State<'_, Arc<VfsDatabase>>,
+    lance_store: State<'_, Arc<VfsLanceStore>>,
+    llm_manager: State<'_, Arc<LLMManager>>,
+) -> Result<Vec<MemoryExportItem>, String> {
+    let service = get_memory_service(&vfs_db, &lance_store, &llm_manager);
+    let items = service.list(None, 500, 0).map_err(|e| e.to_string())?;
+
+    let mut results = Vec::with_capacity(items.len());
+    for item in &items {
+        let content = service
+            .read(&item.id)
+            .map_err(|e| e.to_string())?
+            .map(|(_, c)| c)
+            .unwrap_or_default();
+        results.push(MemoryExportItem {
+            title: item.title.clone(),
+            content,
+            folder: item.folder_path.clone(),
+            updated_at: item.updated_at.clone(),
+        });
+    }
+    Ok(results)
+}
+
 #[tauri::command]
 pub async fn memory_write_smart(
     folder_path: Option<String>,
