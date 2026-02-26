@@ -40,7 +40,7 @@ impl MemoryAutoExtractor {
         user_content: &str,
         assistant_content: &str,
     ) -> Result<Vec<CandidateMemory>> {
-        if user_content.len() < 5 && assistant_content.len() < 5 {
+        if user_content.chars().count() < 4 && assistant_content.chars().count() < 4 {
             return Ok(vec![]);
         }
 

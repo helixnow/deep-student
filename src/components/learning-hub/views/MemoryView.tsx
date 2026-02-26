@@ -617,11 +617,28 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
             {t('memory.new', '新建')}
           </NotionButton>
         )}
-        {batchMode && selectedIds.size > 0 && (
-          <NotionButton variant="ghost" size="sm" onClick={handleBatchDelete} disabled={isLoading} className="text-rose-500 hover:bg-rose-500/10">
-            <Trash2 className="w-4 h-4" />
-            {t('memory.batch_delete', `删除(${selectedIds.size})`)}
-          </NotionButton>
+        {batchMode && (
+          <>
+            <NotionButton
+              variant="ghost" size="sm"
+              onClick={() => {
+                if (selectedIds.size === memories.length) {
+                  setSelectedIds(new Set());
+                } else {
+                  setSelectedIds(new Set(memories.map(m => m.id)));
+                }
+              }}
+              className="text-muted-foreground hover:bg-muted/40"
+            >
+              {selectedIds.size === memories.length ? t('memory.deselect_all', '取消全选') : t('memory.select_all', '全选')}
+            </NotionButton>
+            {selectedIds.size > 0 && (
+              <NotionButton variant="ghost" size="sm" onClick={handleBatchDelete} disabled={isLoading} className="text-rose-500 hover:bg-rose-500/10">
+                <Trash2 className="w-4 h-4" />
+                {t('memory.batch_delete', `删除(${selectedIds.size})`)}
+              </NotionButton>
+            )}
+          </>
         )}
       </div>
 
@@ -742,7 +759,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                           </p>
                         )}
                       </NotionButton>
-                      {/* 内联展开预览 */}
+                      {/* 内联展开预览 + 编辑 */}
                       {isExpanded && (
                         <div className="mx-3 mb-2 rounded-md border border-border/40 bg-card/50 overflow-hidden">
                           {isLoadingContent ? (
@@ -751,14 +768,44 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                             </div>
                           ) : expandedContent ? (
                             <>
-                              <div className="px-3 py-2 text-xs text-muted-foreground whitespace-pre-wrap line-clamp-6 leading-relaxed">
-                                {expandedContent.content || t('memory.no_content', '（无内容）')}
-                              </div>
+                              {editingMemoryId === result.noteId ? (
+                                <div className="p-3 space-y-2">
+                                  <textarea
+                                    value={editContent}
+                                    onChange={(e) => setEditContent(e.target.value)}
+                                    rows={4}
+                                    autoFocus
+                                    className="w-full px-3 py-2 text-xs bg-muted/30 border-transparent rounded-md resize-none focus:border-border focus:bg-background focus:outline-none transition-colors"
+                                  />
+                                  <div className="flex gap-2">
+                                    <NotionButton variant="ghost" size="sm" onClick={handleCancelEdit} className="!h-auto !px-2 !py-1 text-xs">
+                                      <X className="w-3 h-3" />
+                                      {t('common:cancel', '取消')}
+                                    </NotionButton>
+                                    <NotionButton variant="primary" size="sm" onClick={handleSaveEdit} disabled={isLoading} className="!h-auto !px-2 !py-1 text-xs">
+                                      <Save className="w-3 h-3" />
+                                      {t('common:save', '保存')}
+                                    </NotionButton>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="px-3 py-2 text-xs text-muted-foreground whitespace-pre-wrap line-clamp-6 leading-relaxed">
+                                  {expandedContent.content || t('memory.no_content', '（无内容）')}
+                                </div>
+                              )}
                               <div className="flex items-center justify-between px-3 py-2 border-t border-border/30 bg-muted/20">
-                                <NotionButton variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); handleDeleteMemory(result.noteId); }} className="text-rose-500 hover:bg-rose-500/10 !h-auto !px-2 !py-1 text-xs">
-                                  <Trash2 className="w-3 h-3" />
-                                  {t('common:delete', '删除')}
-                                </NotionButton>
+                                <div className="flex items-center gap-1.5">
+                                  <NotionButton variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); handleDeleteMemory(result.noteId); }} className="text-rose-500 hover:bg-rose-500/10 !h-auto !px-2 !py-1 text-xs">
+                                    <Trash2 className="w-3 h-3" />
+                                    {t('common:delete', '删除')}
+                                  </NotionButton>
+                                  {editingMemoryId !== result.noteId && (
+                                    <NotionButton variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); handleStartEdit(result.noteId, expandedContent.content || ''); }} className="text-muted-foreground hover:bg-muted/40 !h-auto !px-2 !py-1 text-xs">
+                                      <Edit3 className="w-3 h-3" />
+                                      {t('memory.edit', '编辑')}
+                                    </NotionButton>
+                                  )}
+                                </div>
                                 <NotionButton variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); handleOpenInEditor(result.noteId, result.noteTitle); }} className="text-primary bg-primary/10 hover:bg-primary/15 !h-auto !px-2.5 !py-1 text-xs font-medium">
                                   <ExternalLink className="w-3 h-3" />
                                   {t('memory.open_in_editor', '在编辑器中打开')}

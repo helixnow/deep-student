@@ -946,16 +946,26 @@ impl ChatV2Pipeline {
                         );
                     }
 
-                    // 节流：仅当新增 ≥ 3 条记忆时才刷新分类文件，
-                    // 避免每轮对话都触发 5 次 LLM 分类调用。
-                    if count >= 3 {
-                        use crate::memory::MemoryCategoryManager;
-                        let cat_mgr = MemoryCategoryManager::new(
-                            vfs_db.clone(),
-                            llm_manager.clone(),
-                        );
-                        if let Err(e) = cat_mgr.refresh_all_categories(&memory_service).await {
-                            log::warn!("[AutoMemory] Category refresh failed: {}", e);
+                    // 节流策略：只有实际新增了记忆时才考虑刷新分类文件。
+                    // 进一步通过记忆总数的模运算控制频率：每积累 5 条总记忆刷新一次，
+                    // 避免每轮对话都触发 LLM 分类调用，同时确保分类文件最终会被创建。
+                    if count > 0 {
+                        let should_refresh = match memory_service.list(None, 500, 0) {
+                            Ok(all) => {
+                                let total = all.iter().filter(|m| !m.title.starts_with("__")).count();
+                                total <= 5 || total % 5 == 0
+                            }
+                            Err(_) => false,
+                        };
+                        if should_refresh {
+                            use crate::memory::MemoryCategoryManager;
+                            let cat_mgr = MemoryCategoryManager::new(
+                                vfs_db.clone(),
+                                llm_manager.clone(),
+                            );
+                            if let Err(e) = cat_mgr.refresh_all_categories(&memory_service).await {
+                                log::warn!("[AutoMemory] Category refresh failed: {}", e);
+                            }
                         }
                     }
 

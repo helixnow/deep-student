@@ -69,7 +69,14 @@ impl ChatV2Pipeline {
             }
         }
 
-        Some(sections.join("\n\n"))
+        let combined = sections.join("\n\n");
+        // 防止 profile 过大吞噬上下文窗口：超过 2000 字符时截断
+        if combined.chars().count() > 2000 {
+            let truncated: String = combined.chars().take(2000).collect();
+            Some(format!("{}...\n（用户画像已截断，完整信息请使用 memory_search 工具检索）", truncated))
+        } else {
+            Some(combined)
+        }
     }
 
     /// 构建 Canvas 笔记信息

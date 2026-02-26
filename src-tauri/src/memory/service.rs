@@ -1220,25 +1220,22 @@ impl MemoryService {
             return Ok(());
         }
 
-        let mut facts = Vec::new();
+        let mut facts: Vec<(&str, String)> = Vec::new();
         for mem in &all_memories {
             if mem.title.starts_with("__") {
                 continue;
             }
             let content = VfsNoteRepo::get_note_content(&self.vfs_db, &mem.id)?
                 .unwrap_or_default();
-            if !content.is_empty() {
-                facts.push(content);
-            } else {
-                facts.push(mem.title.clone());
-            }
+            let text = if !content.is_empty() { content } else { mem.title.clone() };
+            facts.push((&mem.folder_path, text));
         }
 
         if facts.is_empty() {
             return Ok(());
         }
 
-        let profile_content = self.generate_structured_profile(&facts);
+        let profile_content = Self::generate_structured_profile(&facts);
 
         match self.find_note_by_title(Some(&root_id), PROFILE_NOTE_TITLE)? {
             Some(note) => {
@@ -1281,31 +1278,18 @@ impl MemoryService {
     /// 从原子事实生成结构化画像（纯同步，无 LLM 调用）
     ///
     /// LLM 结构化聚合由 CategoryManager 负责（生成 __cat_*__ 分类文件）。
-    /// 此方法仅做简单的分组格式化作为 system prompt 注入的回退。
-    fn generate_structured_profile(&self, facts: &[String]) -> String {
-        let mut grouped: std::collections::HashMap<&str, Vec<&str>> = std::collections::HashMap::new();
-        for fact in facts {
-            let category = if fact.contains("偏好") || fact.contains("格式偏好") || fact.contains("风格偏好") || fact.contains("喜欢") {
-                "偏好"
-            } else if fact.contains("年级") || fact.contains("学校") || fact.contains("理科生") || fact.contains("文科生") || fact.contains("专业") {
-                "基本信息"
-            } else if fact.contains("弱项") || fact.contains("强项") || fact.contains("成绩") || fact.contains("得分") || fact.contains("薄弱") {
-                "学科状态"
-            } else if fact.contains("高考") || fact.contains("模考") || fact.contains("考试") || fact.contains("截止") || fact.contains("月日") {
-                "时间节点"
-            } else {
-                "其他"
-            };
-            grouped.entry(category).or_default().push(fact);
+    /// 此方法按记忆自身的 folder_path 分组，作为 system prompt 注入的回退。
+    fn generate_structured_profile(facts: &[(&str, String)]) -> String {
+        let mut grouped: std::collections::BTreeMap<&str, Vec<&str>> = std::collections::BTreeMap::new();
+        for (folder, text) in facts {
+            let key = if folder.is_empty() { "其他" } else { folder };
+            grouped.entry(key).or_default().push(text);
         }
 
-        let order = ["基本信息", "学科状态", "偏好", "时间节点", "其他"];
         let mut sections = Vec::new();
-        for key in &order {
-            if let Some(items) = grouped.get(key) {
-                let lines: Vec<String> = items.iter().map(|f| format!("- {}", f)).collect();
-                sections.push(format!("## {}\n{}", key, lines.join("\n")));
-            }
+        for (folder, items) in &grouped {
+            let lines: Vec<String> = items.iter().map(|f| format!("- {}", f)).collect();
+            sections.push(format!("## {}\n{}", folder, lines.join("\n")));
         }
 
         sections.join("\n\n")
