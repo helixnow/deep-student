@@ -646,7 +646,7 @@ const ToolNodeContent: React.FC<ToolNodeContentProps> = ({ node, isFirst, isLast
           onClick={toggleExpanded}
           disabled={!hasDetails}
           className={cn(
-            '!justify-start !px-0 -mt-0.5',
+            '!justify-start !px-0 -mt-0.5 w-fit',
             'text-muted-foreground hover:text-foreground',
             'disabled:cursor-default disabled:hover:text-muted-foreground'
           )}

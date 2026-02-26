@@ -2172,7 +2172,8 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
       </div>
 
       {/* 🔧 面板容器 - 用于检测点击是否在面板内 */}
-      <div ref={panelContainerRef}>
+      {/* 🔧 P0修复：stopPropagation 防止面板内点击冒泡到 document 触发 handleClickOutside */}
+      <div ref={panelContainerRef} onMouseDown={(e) => e.stopPropagation()}>
         {/* 附件面板 - ★ 统一桌面端和移动端样式 */}
         {attachmentPanelMotion.shouldRender && (
           <div

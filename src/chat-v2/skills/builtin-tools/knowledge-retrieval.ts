@@ -163,7 +163,6 @@ export const knowledgeRetrievalSkill: SkillDefinition = {
         type: 'object',
         properties: {
           query: { type: 'string', description: '【必填】搜索查询文本' },
-          engine: { type: 'string', description: '搜索引擎', enum: ['google_cse', 'serpapi', 'tavily', 'brave', 'searxng', 'zhipu', 'bocha'], default: 'google_cse' },
           top_k: { type: 'integer', description: '返回的结果数量（可选，默认 5）。注意：此参数名为 top_k，不是 limit 或 max_results。', default: 5, minimum: 1, maximum: 20 },
         },
         required: ['query'],
