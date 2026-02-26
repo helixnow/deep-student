@@ -10,6 +10,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.9.20](https://github.com/helixnow/deep-student/compare/v0.9.19...v0.9.20) (2026-02-25)
+
+
+### Features
+
+* add DOCX VLM direct extraction path with streaming and checkpoint recovery ([2ee580f](https://github.com/helixnow/deep-student/commit/2ee580fd8f8465e9a6b867bc505a3e71f38f1fd4))
+* add native DOCX import with embedded image support ([304d940](https://github.com/helixnow/deep-student/commit/304d940663577171f8542db8b86e869f2f1274c4))
+
+
+### Bug Fixes
+
+* improve question import quality and blob path resolution ([aeb5608](https://github.com/helixnow/deep-student/commit/aeb5608115795efbbc99539878d2109ba2f29348))
+* update links in README_EN.md for Quick Start and User Guide ([f4611a5](https://github.com/helixnow/deep-student/commit/f4611a5e61463fc88642d30763774b4213e16659))
+
 ## [0.9.19](https://github.com/helixnow/deep-student/compare/v0.9.18...v0.9.19) (2026-02-25)
 
 
