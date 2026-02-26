@@ -61,7 +61,7 @@ export const FinderBatchToolbar = React.memo(function FinderBatchToolbar({
   return (
     <div 
       className={cn(
-        "relative -mr-px flex items-center gap-1.5 px-2 border-t text-sm h-11 overflow-hidden",
+        "relative -mr-px flex items-center gap-1.5 px-2 border-t text-sm h-11 shrink-0 overflow-hidden",
         hasSelection ? "bg-accent/80 backdrop-blur-sm" : "bg-background/95 backdrop-blur-lg",
         className
       )}

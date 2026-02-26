@@ -1467,7 +1467,7 @@ export const IndexStatusView: React.FC = () => {
   // ========== 渲染内容 ==========
   if (isLoading && !summary) {
     return (
-      <div className="flex items-center justify-center h-64">
+      <div className="flex-1 flex items-center justify-center min-h-0">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
       </div>
     );
@@ -1479,7 +1479,7 @@ export const IndexStatusView: React.FC = () => {
     const isNetworkError = error.includes('network') || error.includes('网络') || error.includes('timeout') || error.includes('超时');
     const isDbError = error.includes('database') || error.includes('数据库') || error.includes('locked');
     return (
-      <div className="flex flex-col items-center justify-center h-64 gap-4">
+      <div className="flex-1 flex flex-col items-center justify-center min-h-0 gap-4">
         <XCircle className="h-10 w-10 text-destructive/60" />
         <p className="text-sm text-muted-foreground text-center max-w-md">{error}</p>
         {isEmbeddingError && (
@@ -1504,7 +1504,7 @@ export const IndexStatusView: React.FC = () => {
   const needsActionCount = summary.pendingCount + summary.failedCount + summary.staleCount;
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col flex-1 min-h-0">
       {/* 顶部概览区 */}
       {isMobile ? (
         /* ==================== 移动端紧凑布局 ==================== */
