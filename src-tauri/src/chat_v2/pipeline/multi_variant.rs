@@ -475,6 +475,55 @@ impl ChatV2Pipeline {
             duration_ms
         );
 
+        // 🆕 多变体模式：对话后自动记忆提取（使用 active_variant 的内容）
+        if let Some(active_id) = &active_variant_id {
+            if let Some((active_ctx, _)) = variant_contexts
+                .iter()
+                .find(|(ctx, _)| ctx.variant_id() == active_id.as_str())
+            {
+                let assistant_content = active_ctx.get_accumulated_content();
+                let user_content_for_mem = user_content.clone();
+                if user_content_for_mem.len() >= 10 || assistant_content.len() >= 10 {
+                    if let Some(vfs_db) = self.vfs_db.clone() {
+                        let llm_mgr = self.llm_manager.clone();
+                        tokio::spawn(async move {
+                            use crate::memory::{MemoryAutoExtractor, MemoryCategoryManager, MemoryEvolution, MemoryService};
+                            use crate::vfs::lance_store::VfsLanceStore;
+
+                            let lance_store = match VfsLanceStore::new(vfs_db.clone()) {
+                                Ok(s) => std::sync::Arc::new(s),
+                                Err(_) => return,
+                            };
+                            let memory_service = MemoryService::new(vfs_db.clone(), lance_store, llm_mgr.clone());
+
+                            if let Ok(cfg) = memory_service.get_config() {
+                                if cfg.privacy_mode { return; }
+                            } else { return; }
+
+                            let extractor = MemoryAutoExtractor::new(llm_mgr.clone());
+                            if let Ok(count) = extractor
+                                .extract_and_store(&memory_service, &user_content_for_mem, &assistant_content)
+                                .await
+                            {
+                                if count > 0 {
+                                    log::info!("[AutoMemory::MultiVariant] Auto-extracted {} memories", count);
+                                    let should_refresh = memory_service.list(None, 500, 0)
+                                        .map(|all| { let t = all.iter().filter(|m| !m.title.starts_with("__")).count(); t <= 5 || t % 5 == 0 })
+                                        .unwrap_or(false);
+                                    if should_refresh {
+                                        let cat_mgr = MemoryCategoryManager::new(vfs_db.clone(), llm_mgr.clone());
+                                        let _ = cat_mgr.refresh_all_categories(&memory_service).await;
+                                    }
+                                }
+                                let evolution = MemoryEvolution::new(vfs_db);
+                                let _ = evolution.run_evolution_cycle(&memory_service);
+                            }
+                        });
+                    }
+                }
+            }
+        }
+
         // 🔧 自动生成会话摘要（多变体模式）
         // 使用 active_variant 的内容来生成摘要
         if let Some(active_id) = &active_variant_id {

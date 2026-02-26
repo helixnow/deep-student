@@ -70,10 +70,9 @@ impl MemoryQueryRewriter {
 
         let prompt = self.build_rewrite_prompt(original_query);
 
-        // 使用轻量模型进行查询重写
         let output = self
             .llm_manager
-            .call_model2_raw_prompt(&prompt, None)
+            .call_memory_decision_raw_prompt(&prompt)
             .await?;
 
         let response = output.assistant_message;

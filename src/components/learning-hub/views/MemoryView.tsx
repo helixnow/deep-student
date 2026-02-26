@@ -36,6 +36,8 @@ import {
   Edit3,
   Save,
   X,
+  Star,
+  Clock,
 } from 'lucide-react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { MemoryIcon } from '../icons/ResourceIcons';
@@ -52,10 +54,12 @@ import {
   deleteMemory,
   updateMemoryById,
   exportAllMemories,
+  getMemoryProfile,
   type MemoryConfig,
   type MemoryListItem,
   type MemorySearchResult,
   type MemoryReadOutput,
+  type MemoryProfileSection,
 } from '@/api/memoryApi';
 import { folderApi } from '@/dstu';
 import type { FolderTreeNode } from '@/dstu/types/folder';
@@ -95,6 +99,11 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
   const [folderList, setFolderList] = useState<Array<{ id: string; title: string }>>([]);
   const [loadingFolders, setLoadingFolders] = useState(false);
   const [isPickerOpen, setIsPickerOpen] = useState(false);
+
+  // ★ 画像状态
+  const [profileSections, setProfileSections] = useState<MemoryProfileSection[]>([]);
+  const [showProfile, setShowProfile] = useState(false);
+  const [isLoadingProfile, setIsLoadingProfile] = useState(false);
 
   // ★ 内联展开状态
   const [expandedMemoryId, setExpandedMemoryId] = useState<string | null>(null);
@@ -398,6 +407,25 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
     setEditContent('');
   }, []);
 
+  // ========== 加载画像 ==========
+  const handleToggleProfile = useCallback(async () => {
+    if (showProfile) {
+      setShowProfile(false);
+      return;
+    }
+    setIsLoadingProfile(true);
+    setShowProfile(true);
+    try {
+      const sections = await getMemoryProfile();
+      setProfileSections(sections);
+    } catch (error: unknown) {
+      console.error('[MemoryView] Load profile failed:', error);
+      setProfileSections([]);
+    } finally {
+      setIsLoadingProfile(false);
+    }
+  }, [showProfile]);
+
   // ========== 加载文件夹列表 ==========
   const loadFolders = useCallback(async () => {
     setLoadingFolders(true);
@@ -615,6 +643,14 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
         <NotionButton variant="ghost" size="icon" iconOnly onClick={handleExportMemories} disabled={isLoading} aria-label="export">
           <Download className="w-4 h-4" />
         </NotionButton>
+        <NotionButton
+          variant="ghost" size="icon" iconOnly
+          onClick={handleToggleProfile}
+          className={cn(showProfile && 'text-primary bg-primary/10')}
+          aria-label="profile"
+        >
+          <MemoryIcon size={16} />
+        </NotionButton>
         {!isCreatingInline && !batchMode && (
           <NotionButton variant="ghost" size="sm" onClick={() => setIsCreatingInline(true)} className="text-primary hover:bg-primary/10">
             <Plus className="w-4 h-4" />
@@ -664,7 +700,35 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
       {/* 记忆列表 */}
       <CustomScrollArea className="flex-1">
         <div className="p-3 space-y-3">
-          {/* 内联创建表单 - Notion 风格 */}
+          {/* 画像汇总 */}
+          {showProfile && (
+            <div className="rounded-lg border border-border/60 bg-card/50 overflow-hidden">
+              <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border/30 bg-muted/20">
+                <MemoryIcon size={14} className="text-muted-foreground" />
+                <span className="text-xs font-medium text-muted-foreground">{t('memory.profile_title', '系统对我的了解')}</span>
+              </div>
+              {isLoadingProfile ? (
+                <div className="flex items-center justify-center py-6">
+                  <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+                </div>
+              ) : profileSections.length === 0 ? (
+                <div className="px-4 py-4 text-xs text-muted-foreground/60 text-center">
+                  {t('memory.profile_empty', '暂无画像数据。系统会在对话中自动积累你的偏好和背景。')}
+                </div>
+              ) : (
+                <div className="px-4 py-3 space-y-3">
+                  {profileSections.map((section) => (
+                    <div key={section.category}>
+                      <div className="text-[11px] font-medium text-foreground/70 mb-1">{section.category}</div>
+                      <div className="text-xs text-muted-foreground whitespace-pre-wrap leading-relaxed">{section.content}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* 内联创建表单 */}
           {isCreatingInline && (
             <div className="rounded-lg border border-border/60 bg-card/50 p-4 space-y-3">
               <div className="flex items-center justify-between">
@@ -862,11 +926,22 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                       )}
                       <FileText className="w-4 h-4 text-muted-foreground flex-shrink-0" />
                       <div className="flex-1 min-w-0">
-                        <div className="text-sm font-medium truncate">{memory.title}</div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-sm font-medium truncate">{memory.title}</span>
+                          {memory.isImportant && (
+                            <Star className="w-3 h-3 text-amber-500 flex-shrink-0" fill="currentColor" />
+                          )}
+                          {memory.isStale && (
+                            <Clock className="w-3 h-3 text-muted-foreground/40 flex-shrink-0" />
+                          )}
+                        </div>
                         <div className="flex items-center gap-2 text-xs text-muted-foreground">
                           <span>{new Date(memory.updatedAt).toLocaleDateString()}</span>
                           {memory.folderPath && (
                             <span className="px-1.5 py-0 rounded bg-muted/50 text-[10px]">{memory.folderPath}</span>
+                          )}
+                          {memory.hits > 0 && (
+                            <span className="text-[10px] text-muted-foreground/50">{memory.hits} {t('memory.hits', '次引用')}</span>
                           )}
                         </div>
                       </div>

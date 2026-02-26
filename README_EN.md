@@ -185,7 +185,7 @@ Extend AI capabilities on demand through Skills, avoiding bloated System Prompts
 | 📄 **Academic Papers** | Tool Set | arXiv / OpenAlex search, batch download, citation formatting |
 | 🧠 **Knowledge Mind Map** | Tool Set | AI-generated knowledge structures, multi-round editing, outline/mind map toggle |
 | 📝 **Question Sets & Practice** | Tool Set | One-click question generation, multiple practice modes, AI deep analysis |
-| 💾 **Smart Memory** | Tool Set | AI auto-identifies and saves high-reuse information for long-term memory |
+| 💾 **Smart Memory** | Tool Set | Self-evolving user profile with auto-extraction, dedup, decay, and cross-session personalization |
 | 📃 **Word Documents** | Tool Set | DOCX structured reading, table extraction, document generation, round-trip editing |
 | 📊 **Excel Sheets** | Tool Set | XLSX reading, table extraction, generation, cell editing, text replacement |
 | 🎬 **PPT Slides** | Tool Set | PPTX structured reading, presentation generation, round-trip editing, text replacement |
@@ -298,11 +298,35 @@ Extend AI capabilities on demand through Skills, avoiding bloated System Prompts
 </details>
 
 <details>
-<summary><strong>💾 Smart Memory</strong> — Give AI long-term memory that understands you better over time</summary>
+<summary><strong>💾 Smart Memory</strong> — Self-evolving user profile that understands you better over time</summary>
 
-- **Proactive Memory**: AI automatically identifies and saves high-reuse information during conversations (e.g., learning preferences, knowledge background), automatically recalled in subsequent sessions.
-- **Memory Management**: Visual memory management panel supporting editing and organizing memory entries.
-- **Context Continuity**: On-demand memory retrieval tool in subsequent conversations maintains context continuity.
+Inspired by [mem0](https://github.com/mem0ai/mem0) and [memU](https://github.com/NevaMind-AI/memU), implemented as a complete memory lifecycle on desktop.
+
+**Three-Layer Architecture** (inspired by memU)
+
+```
+Resource Layer    Conversation records (ChatV2)
+      ↓ Auto-extraction
+Memory Item       Atomic fact notes (≤50 chars each)
+      ↓ LLM aggregation
+Memory Category   Category summary files → injected into System Prompt
+```
+
+**Production Path**
+- **Auto-Extraction**: Asynchronously extracts user facts after each conversation turn (identity, preferences, goals, timelines, subject status). Existing profile is injected into the extraction prompt to avoid duplicates.
+- **LLM Smart Decision**: New memories are compared with existing ones via vector search; LLM decides ADD / UPDATE / APPEND / DELETE / NONE with confidence-based downgrade protection.
+- **Dynamic Categories**: Seed categories + automatic folder tree discovery. LLM can freely create new category paths.
+
+**Consumption Path**
+- **System Prompt Injection**: Category summaries (`__cat_*__`) auto-loaded into every conversation, with fallback to atomic profile summary.
+- **Unified Search**: LLM searches knowledge base and memories simultaneously with tag weights + time decay + optional API reranking.
+- **Memory Management Panel**: Browse, search, create, edit, batch delete, export, and view "What the system knows about me" profile summary.
+
+**Self-Evolution**
+- **Tag System**: 90 days without hits → `_stale` (0.6x weight); 5+ hits → `_important` (1.25x weight); search hits auto-rehabilitate stale memories.
+- **Duplicate Merging**: Auto-merges same-title memories when folder exceeds threshold.
+- **Privacy Mode**: One-click disable of all Embedding / LLM API calls — data never leaves device.
+- **Independent Model Config**: Memory decision model can be configured separately (falls back to main chat model) for cost control.
 
 <p align="center"><img src="./example/记忆-1.png" width="90%" alt="Memory Extraction" /></p>
 <p align="center"><img src="./example/记忆-2.png" width="90%" alt="Memory List" /></p>
@@ -449,7 +473,7 @@ DeepStudent
 │       ├── vfs/            #   Virtual File System & Vectorized Indexing
 │       ├── dstu/           #   DSTU Resource Protocol Backend
 │       ├── tools/          #   Web Search Engine Adapters (7 engines)
-│       ├── memory/         #   Smart Memory Backend
+│       ├── memory/         #   Smart Memory (self-evolving profile / 3-layer arch / LLM decision)
 │       ├── mcp/            #   MCP Protocol Implementation
 │       ├── translation/    #   Translation Pipeline Backend
 │       ├── cloud_storage/  #   Cloud Sync (S3 / WebDAV)

@@ -20,7 +20,7 @@ pub enum MemoryEvent {
     UPDATE,
     /// 追加到现有记忆
     APPEND,
-    /// 删除过时/矛盾的旧记忆（对齐 mem0 conflict resolution）
+    /// 删除过时/矛盾的旧记忆（受 mem0 conflict resolution 启发）
     DELETE,
     /// 无需操作（信息已存在）
     NONE,
@@ -157,14 +157,16 @@ impl MemoryLLMDecision {
     ) -> String {
         let similar_list: Vec<String> = similar_memories
             .iter()
+            .take(10)
             .enumerate()
             .map(|(i, m)| {
+                let preview: String = m.content_preview.chars().take(100).collect();
                 format!(
                     "{}. [ID: {}] 标题: {}\n   内容: {}",
                     i + 1,
                     m.note_id,
                     m.title,
-                    m.content_preview,
+                    preview,
                 )
             })
             .collect();

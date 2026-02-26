@@ -877,14 +877,14 @@ impl ChatV2Pipeline {
             );
         }
 
-        // 🆕 对齐 mem0/memU：对话后自动记忆提取 pipeline
+        // 🆕 受 mem0/memU 启发：对话后自动记忆提取 pipeline
         // 异步 fire-and-forget，不阻塞对话返回
         self.trigger_auto_memory_extraction(ctx);
     }
 
     /// 触发对话后自动记忆提取（fire-and-forget）
     ///
-    /// 对齐 mem0 的 `add` 和 memU 的 `memorize`：
+    /// 受 mem0 `add` 和 memU `memorize` 启发：
     /// 从用户消息和助手回复中自动提取候选记忆，通过 write_smart 去重写入。
     fn trigger_auto_memory_extraction(&self, ctx: &PipelineContext) {
         let vfs_db = match &self.vfs_db {

@@ -360,6 +360,53 @@ pub async fn memory_export_all(
     Ok(results)
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MemoryProfileSection {
+    pub category: String,
+    pub content: String,
+}
+
+#[tauri::command]
+pub async fn memory_get_profile(
+    vfs_db: State<'_, Arc<VfsDatabase>>,
+    lance_store: State<'_, Arc<VfsLanceStore>>,
+    llm_manager: State<'_, Arc<LLMManager>>,
+) -> Result<Vec<MemoryProfileSection>, String> {
+    let service = get_memory_service(&vfs_db, &lance_store, &llm_manager);
+    let root_id = match service.get_root_folder_id().map_err(|e| e.to_string())? {
+        Some(id) => id,
+        None => return Ok(vec![]),
+    };
+
+    let cat_mgr = super::category_manager::MemoryCategoryManager::new(
+        service.vfs_db_ref().clone(),
+        llm_manager.inner().clone(),
+    );
+
+    let categories = cat_mgr
+        .load_all_category_summaries(&root_id)
+        .map_err(|e| e.to_string())?;
+
+    if !categories.is_empty() {
+        return Ok(categories
+            .into_iter()
+            .map(|(cat, content)| MemoryProfileSection {
+                category: cat,
+                content,
+            })
+            .collect());
+    }
+
+    match service.get_profile_summary().map_err(|e| e.to_string())? {
+        Some(profile) => Ok(vec![MemoryProfileSection {
+            category: "画像".to_string(),
+            content: profile,
+        }]),
+        None => Ok(vec![]),
+    }
+}
+
 #[tauri::command]
 pub async fn memory_write_smart(
     folder_path: Option<String>,

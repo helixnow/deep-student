@@ -1,6 +1,6 @@
 //! 分层分类文件管理器（Memory Category Layer）
 //!
-//! 对齐 memU 的三层架构：
+//! 受 memU 三层架构启发：
 //! - Resource Layer：对话记录（ChatV2 已有）
 //! - Memory Item Layer：原子记忆笔记（已有）
 //! - Memory Category Layer：分类聚合文件（本模块实现）
@@ -24,8 +24,8 @@ use super::service::{MemoryListItem, MemoryService};
 const CATEGORY_NOTE_PREFIX: &str = "__cat_";
 const CATEGORY_NOTE_SUFFIX: &str = "__";
 
-/// 预定义的分类及其对应的文件夹路径
-const CATEGORIES: &[(&str, &str)] = &[
+/// 预定义的种子分类（首次使用时自动创建，后续通过数据库发现实际分类）
+const SEED_CATEGORIES: &[(&str, &str)] = &[
     ("偏好", "偏好"),
     ("个人背景", "偏好/个人背景"),
     ("学科状态", "经历/学科状态"),
@@ -52,10 +52,22 @@ impl MemoryCategoryManager {
 
     /// 刷新所有分类摘要文件
     ///
-    /// 遍历预定义分类，收集各分类下的原子记忆，
-    /// 用 LLM 聚合为结构化摘要，写入 `__cat_*__` 笔记。
+    /// 合并两个来源的分类：
+    /// 1. 预定义种子分类（保证基础结构存在）
+    /// 2. 记忆根文件夹下的实际子文件夹（捕获 LLM 自动创建的新分类）
     pub async fn refresh_all_categories(&self, memory_service: &MemoryService) -> VfsResult<()> {
-        for (cat_name, folder_path) in CATEGORIES {
+        let mut categories: Vec<(String, String)> = SEED_CATEGORIES
+            .iter()
+            .map(|(name, path)| (name.to_string(), path.to_string()))
+            .collect();
+
+        if let Ok(Some(tree)) = memory_service.get_tree() {
+            Self::collect_folder_categories(&tree.children, "", &mut categories);
+        }
+
+        categories.dedup_by(|a, b| a.1 == b.1);
+
+        for (cat_name, folder_path) in &categories {
             if let Err(e) = self
                 .refresh_category(memory_service, cat_name, folder_path)
                 .await
@@ -67,6 +79,30 @@ impl MemoryCategoryManager {
             }
         }
         Ok(())
+    }
+
+    fn collect_folder_categories(
+        children: &[crate::vfs::types::FolderTreeNode],
+        parent_path: &str,
+        out: &mut Vec<(String, String)>,
+    ) {
+        for child in children {
+            let title = &child.folder.title;
+            if title.starts_with("__") {
+                continue;
+            }
+            let path = if parent_path.is_empty() {
+                title.clone()
+            } else {
+                format!("{}/{}", parent_path, title)
+            };
+            if !out.iter().any(|(_, p)| p == &path) {
+                out.push((title.clone(), path.clone()));
+            }
+            if !child.children.is_empty() {
+                Self::collect_folder_categories(&child.children, &path, out);
+            }
+        }
     }
 
     /// 刷新单个分类摘要
@@ -106,13 +142,10 @@ impl MemoryCategoryManager {
             .generate_category_summary(category_name, &memory_contents)
             .await?;
 
-        let root_id = memory_service.get_root_folder_id()?.unwrap_or_default();
-        if root_id.is_empty() {
-            return Ok(());
-        }
+        let sys_folder_id = memory_service.get_or_create_system_folder_id()?;
 
         let cat_title = Self::category_note_title(category_name);
-        self.upsert_category_note(&root_id, &cat_title, &summary)?;
+        self.upsert_category_note(&sys_folder_id, &cat_title, &summary)?;
 
         info!(
             "[CategoryManager] Refreshed category '{}' with {} memories",
@@ -159,7 +192,7 @@ impl MemoryCategoryManager {
 
         let output = self
             .llm_manager
-            .call_model2_raw_prompt(&prompt, None)
+            .call_memory_decision_raw_prompt(&prompt)
             .await
             .map_err(|e| {
                 crate::vfs::error::VfsError::Other(format!(
@@ -233,11 +266,16 @@ impl MemoryCategoryManager {
     }
 
     /// 加载所有分类摘要文件内容（用于注入 system prompt）
+    ///
+    /// 查找顺序：__system__ 子文件夹 → 根文件夹（向后兼容）
     pub fn load_all_category_summaries(
         &self,
         root_folder_id: &str,
     ) -> VfsResult<Vec<(String, String)>> {
         use rusqlite::params;
+
+        let sys_folder_id = self.find_system_folder(root_folder_id)?;
+        let target_folder_id = sys_folder_id.as_deref().unwrap_or(root_folder_id);
 
         let conn = self.vfs_db.get_conn_safe()?;
         let mut stmt = conn.prepare(
@@ -251,7 +289,7 @@ impl MemoryCategoryManager {
         )?;
 
         let notes: Vec<(String, String)> = stmt
-            .query_map(params![root_folder_id], |row| {
+            .query_map(params![target_folder_id], |row| {
                 Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
             })?
             .filter_map(|r| r.ok())
@@ -271,6 +309,15 @@ impl MemoryCategoryManager {
         }
 
         Ok(results)
+    }
+
+    fn find_system_folder(&self, root_folder_id: &str) -> VfsResult<Option<String>> {
+        use crate::vfs::repos::folder_repo::VfsFolderRepo;
+        let children = VfsFolderRepo::list_folders_by_parent(&self.vfs_db, Some(root_folder_id))?;
+        Ok(children
+            .iter()
+            .find(|f| f.title == "__system__")
+            .map(|f| f.id.clone()))
     }
 }
 

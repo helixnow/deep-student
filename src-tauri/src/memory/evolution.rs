@@ -1,6 +1,6 @@
 //! 记忆自进化模块
 //!
-//! 对齐 memU 的 Self-Evolution 能力：
+//! 受 memU Self-Evolution 启发：
 //! - 低频记忆降级：超过 N 天未命中的记忆从分类摘要中排除
 //! - 高频记忆升级：频繁命中的记忆在分类中突出标记
 //! - 分类自动重组：当某文件夹记忆过多时触发 LLM 重新分类
@@ -185,7 +185,13 @@ impl MemoryEvolution {
 
     /// 检查文件夹溢出并执行合并：同一文件夹中标题完全相同的记忆合并内容后去重
     fn check_folder_overflow(&self, memory_service: &MemoryService) -> VfsResult<usize> {
-        let folders = ["偏好", "经历", "经历/学科状态", "经历/时间节点", "偏好/个人背景"];
+        let mut folders: Vec<String> = Vec::new();
+        if let Ok(Some(tree)) = memory_service.get_tree() {
+            Self::collect_all_folder_paths(&tree.children, "", &mut folders);
+        }
+        if folders.is_empty() {
+            return Ok(0);
+        }
         let mut merged_count = 0usize;
         let conn = self.vfs_db.get_conn_safe()?;
 
@@ -263,6 +269,27 @@ impl MemoryEvolution {
         }
 
         Ok(merged_count)
+    }
+
+    fn collect_all_folder_paths(
+        children: &[crate::vfs::types::FolderTreeNode],
+        parent_path: &str,
+        out: &mut Vec<String>,
+    ) {
+        for child in children {
+            if child.folder.title.starts_with("__") {
+                continue;
+            }
+            let path = if parent_path.is_empty() {
+                child.folder.title.clone()
+            } else {
+                format!("{}/{}", parent_path, child.folder.title)
+            };
+            out.push(path.clone());
+            if !child.children.is_empty() {
+                Self::collect_all_folder_paths(&child.children, &path, out);
+            }
+        }
     }
 
     fn extract_hits(tags: &[String]) -> u32 {

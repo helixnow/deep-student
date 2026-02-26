@@ -1463,6 +1463,7 @@ pub fn run() {
             ,crate::memory::handlers::memory_set_auto_create_subfolders
             ,crate::memory::handlers::memory_set_default_category
             ,crate::memory::handlers::memory_export_all
+            ,crate::memory::handlers::memory_get_profile
             // =================================================
             // 复习计划与间隔重复系统（SM-2 算法）
             // =================================================

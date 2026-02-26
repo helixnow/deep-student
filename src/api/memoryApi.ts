@@ -21,6 +21,9 @@ export interface MemoryListItem {
   title: string;
   folderPath: string;
   updatedAt: string;
+  hits: number;
+  isImportant: boolean;
+  isStale: boolean;
 }
 
 export interface MemoryReadOutput {
@@ -157,6 +160,15 @@ export interface MemoryExportItem {
   content: string;
   folder: string;
   updatedAt: string;
+}
+
+export interface MemoryProfileSection {
+  category: string;
+  content: string;
+}
+
+export async function getMemoryProfile(): Promise<MemoryProfileSection[]> {
+  return invoke<MemoryProfileSection[]>('memory_get_profile');
 }
 
 export async function exportAllMemories(): Promise<MemoryExportItem[]> {

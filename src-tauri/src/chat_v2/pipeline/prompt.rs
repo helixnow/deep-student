@@ -22,7 +22,7 @@ impl ChatV2Pipeline {
 
     /// 从 MemoryService 读取用户画像 + 分类摘要（双模检索的 LLM 直读模式）
     ///
-    /// 对齐 memU 的 dual-mode retrieval：
+    /// 受 memU dual-mode retrieval 启发：
     /// - LLM 直读模式（本方法）：将分类文件注入 system prompt，每次对话都有
     /// - 向量搜索模式（memory_search 工具）：LLM 按需主动搜索
     async fn load_user_profile(&self) -> Option<String> {

@@ -1,6 +1,6 @@
 //! 对话后自动记忆提取 Pipeline
 //!
-//! 对齐 mem0 的 `add` 和 memU 的 `memorize`：
+//! 受 mem0 `add` 和 memU `memorize` 启发：
 //! 从每轮对话的用户消息和助手回复中自动提取候选记忆，
 //! 通过 write_smart 去重后写入。
 //!
@@ -33,12 +33,12 @@ impl MemoryAutoExtractor {
 
     /// 从对话内容中提取候选记忆
     ///
-    /// 使用轻量模型（model2）分析用户消息和助手回复，
-    /// 提取出关于用户的原子事实。
+    /// `existing_profile` 为已有用户画像摘要，注入 prompt 让 LLM 跳过已知事实。
     pub async fn extract_candidates(
         &self,
         user_content: &str,
         assistant_content: &str,
+        existing_profile: Option<&str>,
     ) -> Result<Vec<CandidateMemory>> {
         if user_content.chars().count() < 4 && assistant_content.chars().count() < 4 {
             return Ok(vec![]);
@@ -47,7 +47,11 @@ impl MemoryAutoExtractor {
         let user_truncated: String = user_content.chars().take(1500).collect();
         let assistant_truncated: String = assistant_content.chars().take(1500).collect();
 
-        let prompt = Self::build_extraction_prompt(&user_truncated, &assistant_truncated);
+        let prompt = Self::build_extraction_prompt(
+            &user_truncated,
+            &assistant_truncated,
+            existing_profile,
+        );
 
         let output = self
             .llm_manager
@@ -72,7 +76,17 @@ impl MemoryAutoExtractor {
         user_content: &str,
         assistant_content: &str,
     ) -> Result<usize> {
-        let candidates = self.extract_candidates(user_content, assistant_content).await?;
+        let existing_profile = memory_service
+            .get_profile_summary()
+            .ok()
+            .flatten();
+        let candidates = self
+            .extract_candidates(
+                user_content,
+                assistant_content,
+                existing_profile.as_deref(),
+            )
+            .await?;
 
         if candidates.is_empty() {
             debug!("[MemoryAutoExtractor] No candidate memories extracted, skipping");
@@ -122,7 +136,24 @@ impl MemoryAutoExtractor {
         Ok(stored_count)
     }
 
-    fn build_extraction_prompt(user_content: &str, assistant_content: &str) -> String {
+    fn build_extraction_prompt(
+        user_content: &str,
+        assistant_content: &str,
+        existing_profile: Option<&str>,
+    ) -> String {
+        let existing_section = if let Some(profile) = existing_profile {
+            let truncated: String = profile.chars().take(800).collect();
+            format!(
+                r#"
+## 已有记忆（不要重复提取这些事实）
+{truncated}
+
+"#
+            )
+        } else {
+            String::new()
+        };
+
         format!(
             r#"你是一个用户记忆提取器。从以下对话中提取关于**用户本人**的原子事实。
 
@@ -133,8 +164,9 @@ impl MemoryAutoExtractor {
 4. **绝对禁止**提取：学科知识、题目内容、解题过程、文档摘要
 5. 判断标准：这条信息换一个用户还成立吗？如果是，就不要提取
 6. 最多提取 5 条，宁缺毋滥
-7. 如果对话中没有关于用户的新事实，返回空数组
-
+7. **跳过已有记忆中已记录的事实**——只提取新增或更新的信息
+8. 如果对话中没有关于用户的新事实，返回空数组
+{existing_section}
 ## 对话内容
 
 用户: {user_content}
@@ -147,6 +179,7 @@ impl MemoryAutoExtractor {
 - "经历/学科状态"：强项弱项、成绩、学习进度
 - "经历/时间节点"：考试日期、截止日期、计划时间
 - "经历"：重要经历、计划、目标
+- 如果以上分类不合适，可以使用新的分类路径
 
 ## 输出格式（JSON 数组）
 [
@@ -155,6 +188,7 @@ impl MemoryAutoExtractor {
 ]
 
 没有可提取的事实时输出空数组 []。请直接输出 JSON，不要添加其他内容。"#,
+            existing_section = existing_section,
             user_content = user_content,
             assistant_content = assistant_content,
         )

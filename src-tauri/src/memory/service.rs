@@ -29,6 +29,9 @@ use super::reranker::MemoryReranker;
 
 const SMART_WRITE_MUTATION_CONFIDENCE_THRESHOLD: f32 = 0.65;
 
+/// 系统笔记统一存放的子文件夹标题（__user_profile__ 和 __cat_*__ 等不再散落在根目录）
+const SYSTEM_FOLDER_TITLE: &str = "__system__";
+
 /// 用户画像摘要笔记的保留标题
 const PROFILE_NOTE_TITLE: &str = "__user_profile__";
 /// 画像摘要的最大条目数
@@ -67,6 +70,15 @@ pub struct MemoryListItem {
     pub title: String,
     pub folder_path: String,
     pub updated_at: String,
+    /// 搜索命中次数（从 tags `_hits:N` 提取）
+    #[serde(default)]
+    pub hits: u32,
+    /// 是否被标记为重要（tags 包含 `_important`）
+    #[serde(default)]
+    pub is_important: bool,
+    /// 是否被标记为过时（tags 包含 `_stale`）
+    #[serde(default)]
+    pub is_stale: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -152,6 +164,32 @@ impl MemoryService {
 
     pub fn vfs_db_ref(&self) -> &Arc<VfsDatabase> {
         &self.vfs_db
+    }
+
+    /// 获取或创建系统文件夹（用于存放 __user_profile__、__cat_*__ 等系统笔记）
+    pub fn get_or_create_system_folder_id(&self) -> VfsResult<String> {
+        let root_id = self.ensure_root_folder_id()?;
+        if let Some(id) = self.find_system_folder_id(&root_id)? {
+            return Ok(id);
+        }
+        let folder = VfsFolder::new(
+            SYSTEM_FOLDER_TITLE.to_string(),
+            Some(root_id.clone()),
+            None,
+            None,
+        );
+        VfsFolderRepo::create_folder(&self.vfs_db, &folder)?;
+        self.invalidate_folder_cache();
+        debug!("[Memory] Created system folder: {}", folder.id);
+        Ok(folder.id)
+    }
+
+    fn find_system_folder_id(&self, root_id: &str) -> VfsResult<Option<String>> {
+        let children = VfsFolderRepo::list_folders_by_parent(&self.vfs_db, Some(root_id))?;
+        Ok(children
+            .iter()
+            .find(|f| f.title == SYSTEM_FOLDER_TITLE)
+            .map(|f| f.id.clone()))
     }
 
     /// 获取记忆文件夹 ID 列表（带缓存）
@@ -519,6 +557,18 @@ impl MemoryService {
     ) -> VfsResult<SmartWriteOutput> {
         self.ensure_root_folder_id()?;
 
+        if content.trim().is_empty() {
+            return Ok(SmartWriteOutput {
+                note_id: String::new(),
+                event: "NONE".to_string(),
+                is_new: false,
+                confidence: 1.0,
+                reason: "内容为空，跳过写入".to_string(),
+                resource_id: None,
+                downgraded: false,
+            });
+        }
+
         if self.config.is_privacy_mode()? {
             let result = self.write(folder_path, title, content, WriteMode::Create)?;
             return Ok(SmartWriteOutput {
@@ -533,7 +583,14 @@ impl MemoryService {
         }
 
         // 1. 先搜索相似记忆（扩大范围以提高冲突检测覆盖率）
-        let similar_results = self.search(content, 15).await?;
+        //    embedding 不可用时降级为空结果（跳过去重，直接走 ADD 路径）
+        let similar_results = match self.search(content, 15).await {
+            Ok(r) => r,
+            Err(e) => {
+                warn!("[Memory] Similar search failed (embedding unavailable?), skipping dedup: {}", e);
+                vec![]
+            }
+        };
 
         // 2. 转换为 LLM 决策需要的格式
         let similar_summaries: Vec<SimilarMemorySummary> = similar_results
@@ -868,16 +925,28 @@ impl MemoryService {
         for note_id in note_ids {
             if let Some(note) = VfsNoteRepo::get_note(&self.vfs_db, &note_id)? {
                 let folder_path = self.get_note_folder_path(&note.id)?;
+                let hits = Self::extract_hits_from_tags(&note.tags);
+                let is_important = note.tags.iter().any(|t| t == "_important");
+                let is_stale = note.tags.iter().any(|t| t == "_stale");
                 items.push(MemoryListItem {
                     id: note.id,
                     title: note.title,
                     folder_path,
                     updated_at: note.updated_at,
+                    hits,
+                    is_important,
+                    is_stale,
                 });
             }
         }
 
         Ok(items)
+    }
+
+    fn extract_hits_from_tags(tags: &[String]) -> u32 {
+        tags.iter()
+            .find_map(|t| t.strip_prefix(TAG_HITS_PREFIX).and_then(|v| v.parse().ok()))
+            .unwrap_or(0)
     }
 
     pub fn get_tree(&self) -> VfsResult<Option<FolderTreeNode>> {
@@ -1203,11 +1272,22 @@ impl MemoryService {
     // ========================================================================
 
     /// 获取用户画像摘要（从特殊笔记读取，不存在时返回 None）
+    ///
+    /// 查找顺序：__system__ 子文件夹 → 根文件夹（向后兼容）
     pub fn get_profile_summary(&self) -> VfsResult<Option<String>> {
         let root_id = match self.config.get_root_folder_id()? {
             Some(id) => id,
             None => return Ok(None),
         };
+        if let Some(sys_id) = self.find_system_folder_id(&root_id)? {
+            if let Some(note) = self.find_note_by_title(Some(&sys_id), PROFILE_NOTE_TITLE)? {
+                let content = VfsNoteRepo::get_note_content(&self.vfs_db, &note.id)?
+                    .unwrap_or_default();
+                if !content.is_empty() {
+                    return Ok(Some(content));
+                }
+            }
+        }
         match self.find_note_by_title(Some(&root_id), PROFILE_NOTE_TITLE)? {
             Some(note) => {
                 let content = VfsNoteRepo::get_note_content(&self.vfs_db, &note.id)?
@@ -1225,10 +1305,10 @@ impl MemoryService {
 
     /// 刷新用户画像摘要笔记（LLM 结构化生成版本）
     ///
-    /// 对齐 memU 自进化理念：用 LLM 将原子事实聚合为结构化画像，
+    /// 受 memU 自进化理念启发：用 LLM 将原子事实聚合为结构化画像，
     /// 而非简单的列表拼接。
     pub fn refresh_profile_summary(&self) -> VfsResult<()> {
-        let root_id = self.ensure_root_folder_id()?;
+        let sys_folder_id = self.get_or_create_system_folder_id()?;
         let all_memories = self.list(None, PROFILE_MAX_ITEMS as u32, 0)?;
 
         if all_memories.is_empty() {
@@ -1252,7 +1332,7 @@ impl MemoryService {
 
         let profile_content = Self::generate_structured_profile(&facts);
 
-        match self.find_note_by_title(Some(&root_id), PROFILE_NOTE_TITLE)? {
+        match self.find_note_by_title(Some(&sys_folder_id), PROFILE_NOTE_TITLE)? {
             Some(note) => {
                 VfsNoteRepo::update_note(
                     &self.vfs_db,
@@ -1274,7 +1354,7 @@ impl MemoryService {
                         content: profile_content,
                         tags: vec!["_system".to_string()],
                     },
-                    Some(&root_id),
+                    Some(&sys_folder_id),
                 )?;
                 if let Err(e) = VfsIndexStateRepo::mark_disabled_with_reason(
                     &self.vfs_db,
