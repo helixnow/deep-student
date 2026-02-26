@@ -20,9 +20,13 @@ impl ChatV2Pipeline {
         )
     }
 
-    /// 从 MemoryService 读取用户画像摘要
+    /// 从 MemoryService 读取用户画像 + 分类摘要（双模检索的 LLM 直读模式）
+    ///
+    /// 对齐 memU 的 dual-mode retrieval：
+    /// - LLM 直读模式（本方法）：将分类文件注入 system prompt，每次对话都有
+    /// - 向量搜索模式（memory_search 工具）：LLM 按需主动搜索
     async fn load_user_profile(&self) -> Option<String> {
-        use crate::memory::MemoryService;
+        use crate::memory::{MemoryCategoryManager, MemoryService};
         use crate::vfs::lance_store::VfsLanceStore;
 
         let vfs_db = self.vfs_db.as_ref()?;
@@ -32,13 +36,40 @@ impl ChatV2Pipeline {
             lance_store,
             self.llm_manager.clone(),
         );
-        match svc.get_profile_summary() {
-            Ok(profile) => profile,
+
+        let root_id = match svc.get_root_folder_id() {
+            Ok(Some(id)) => id,
+            _ => return None,
+        };
+
+        let mut sections: Vec<String> = Vec::new();
+
+        // 1. 加载分类摘要文件（Memory Category Layer）
+        let cat_mgr = MemoryCategoryManager::new(vfs_db.clone(), self.llm_manager.clone());
+        match cat_mgr.load_all_category_summaries(&root_id) {
+            Ok(categories) => {
+                for (cat_name, content) in &categories {
+                    sections.push(format!("### {}\n{}", cat_name, content));
+                }
+            }
             Err(e) => {
-                log::debug!("[ChatV2::pipeline] Failed to load user profile: {}", e);
-                None
+                log::debug!("[ChatV2::pipeline] Failed to load category summaries: {}", e);
             }
         }
+
+        // 2. 回退：如果没有分类文件，尝试加载旧的 profile summary
+        if sections.is_empty() {
+            match svc.get_profile_summary() {
+                Ok(Some(profile)) => return Some(profile),
+                Ok(None) => return None,
+                Err(e) => {
+                    log::debug!("[ChatV2::pipeline] Failed to load user profile: {}", e);
+                    return None;
+                }
+            }
+        }
+
+        Some(sections.join("\n\n"))
     }
 
     /// 构建 Canvas 笔记信息

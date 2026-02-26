@@ -125,13 +125,89 @@ impl MemoryReranker {
         });
     }
 
-    /// API 重排序（预留接口）
-    ///
-    /// 当前 LLMManager 没有 rerank 方法，降级为规则排序
+    /// API 重排序：调用 LLMManager 的 reranker API
     async fn rerank_api(&self, query: &str, results: &mut Vec<MemorySearchResult>) -> Result<()> {
-        // ★ 2026-01：LLMManager 暂不支持 rerank API，降级为规则排序
-        tracing::debug!("[MemoryReranker] API 重排序暂不可用，降级为规则排序");
-        self.rerank_rule_based(query, results);
+        use crate::models::{DocumentChunk, RetrievedChunk};
+
+        let llm = match &self.llm_manager {
+            Some(m) => m.clone(),
+            None => {
+                tracing::warn!("[MemoryReranker] API 策略但无 LLMManager，降级为规则排序");
+                self.rerank_rule_based(query, results);
+                return Ok(());
+            }
+        };
+
+        if results.is_empty() {
+            return Ok(());
+        }
+
+        let model_config_id = match llm.get_model_assignments().await {
+            Ok(a) => match a.reranker_model_config_id {
+                Some(id) => id,
+                None => {
+                    tracing::debug!("[MemoryReranker] No reranker model configured, falling back");
+                    self.rerank_rule_based(query, results);
+                    return Ok(());
+                }
+            },
+            Err(_) => {
+                self.rerank_rule_based(query, results);
+                return Ok(());
+            }
+        };
+
+        let chunks: Vec<RetrievedChunk> = results
+            .iter()
+            .enumerate()
+            .map(|(i, r)| {
+                let text = if r.chunk_text.is_empty() {
+                    r.note_title.clone()
+                } else {
+                    format!("{}: {}", r.note_title, r.chunk_text)
+                };
+                RetrievedChunk {
+                    chunk: DocumentChunk {
+                        id: r.note_id.clone(),
+                        document_id: r.note_id.clone(),
+                        chunk_index: i,
+                        text,
+                        metadata: std::collections::HashMap::new(),
+                    },
+                    score: r.score,
+                }
+            })
+            .collect();
+
+        match llm
+            .call_reranker_api(query.to_string(), chunks, &model_config_id)
+            .await
+        {
+            Ok(reranked) => {
+                let original = results.clone();
+                results.clear();
+                for rc in &reranked {
+                    let idx = rc.chunk.chunk_index;
+                    if let Some(mut item) = original.get(idx).cloned() {
+                        item.score = rc.score;
+                        results.push(item);
+                    }
+                }
+
+                tracing::info!(
+                    "[MemoryReranker] API 重排序完成: {} results reranked",
+                    results.len()
+                );
+            }
+            Err(e) => {
+                tracing::warn!(
+                    "[MemoryReranker] API 重排序失败，降级为规则排序: {}",
+                    e
+                );
+                self.rerank_rule_based(query, results);
+            }
+        }
+
         Ok(())
     }
 }

@@ -20,6 +20,8 @@ pub enum MemoryEvent {
     UPDATE,
     /// 追加到现有记忆
     APPEND,
+    /// 删除过时/矛盾的旧记忆（对齐 mem0 conflict resolution）
+    DELETE,
     /// 无需操作（信息已存在）
     NONE,
 }
@@ -36,6 +38,7 @@ impl MemoryEvent {
             Self::ADD => "ADD",
             Self::UPDATE => "UPDATE",
             Self::APPEND => "APPEND",
+            Self::DELETE => "DELETE",
             Self::NONE => "NONE",
         }
     }
@@ -45,6 +48,7 @@ impl MemoryEvent {
             "ADD" => Self::ADD,
             "UPDATE" => Self::UPDATE,
             "APPEND" => Self::APPEND,
+            "DELETE" => Self::DELETE,
             _ => Self::NONE,
         }
     }
@@ -156,20 +160,11 @@ impl MemoryLLMDecision {
             .enumerate()
             .map(|(i, m)| {
                 format!(
-                    "{}. [ID: {}] 标题: {}\n   内容预览: {}",
+                    "{}. [ID: {}] 标题: {}\n   内容: {}",
                     i + 1,
                     m.note_id,
                     m.title,
-                    if m.content_preview.len() > 200 {
-                        // 安全截断：找到 <= 200 字节的最近 char 边界，避免 UTF-8 panic
-                        let mut end = 200;
-                        while !m.content_preview.is_char_boundary(end) && end > 0 {
-                            end -= 1;
-                        }
-                        format!("{}...", &m.content_preview[..end])
-                    } else {
-                        m.content_preview.clone()
-                    }
+                    m.content_preview,
                 )
             })
             .collect();
@@ -202,12 +197,19 @@ impl MemoryLLMDecision {
 1. **ADD**: 新记忆包含全新的用户事实，与现有记忆不重复
 2. **UPDATE**: 新记忆是对某条现有记忆的修正或替换（指定 target_note_id）
 3. **APPEND**: 新记忆是对某条现有记忆的补充（指定 target_note_id）
-4. **NONE**: 信息已包含在现有记忆中，或内容不合法，无需操作
+4. **DELETE**: 新记忆与某条现有记忆**矛盾**（如 "数学进步了" 与 "数学是弱项"），应删除旧记忆并新增新记忆（指定 target_note_id 为要删除的旧记忆）
+5. **NONE**: 信息已包含在现有记忆中，或内容不合法，无需操作
+
+## 矛盾检测指引
+- 状态变化属于矛盾：如 "数学弱项" → "数学已提升"，应 DELETE 旧 + ADD 新
+- 时间更新属于矛盾：如 "下次模考在3月" → "下次模考改到4月"，应 DELETE 旧 + ADD 新
+- 偏好变化属于矛盾：如 "偏好列表格式" → "偏好思维导图格式"，应 DELETE 旧 + ADD 新
+- 补充信息不属于矛盾：如 "高三理科生" + "就读于XX中学"，应 APPEND
 
 ## 输出格式（JSON）
 {{
-  "event": "ADD" | "UPDATE" | "APPEND" | "NONE",
-  "target_note_id": "仅 UPDATE/APPEND 时填写相似记忆的 ID",
+  "event": "ADD" | "UPDATE" | "APPEND" | "DELETE" | "NONE",
+  "target_note_id": "UPDATE/APPEND/DELETE 时填写目标记忆的 ID",
   "confidence": 0.0-1.0,
   "reason": "简短说明决策原因"
 }}
@@ -338,6 +340,8 @@ mod tests {
         assert_eq!(MemoryEvent::from_str("ADD"), MemoryEvent::ADD);
         assert_eq!(MemoryEvent::from_str("update"), MemoryEvent::UPDATE);
         assert_eq!(MemoryEvent::from_str("APPEND"), MemoryEvent::APPEND);
+        assert_eq!(MemoryEvent::from_str("DELETE"), MemoryEvent::DELETE);
+        assert_eq!(MemoryEvent::from_str("delete"), MemoryEvent::DELETE);
         assert_eq!(MemoryEvent::from_str("none"), MemoryEvent::NONE);
         assert_eq!(MemoryEvent::from_str("invalid"), MemoryEvent::NONE);
     }

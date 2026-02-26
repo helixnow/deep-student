@@ -1,10 +1,16 @@
+pub mod auto_extractor;
+pub mod category_manager;
 pub mod config;
+pub mod evolution;
 pub mod handlers;
 pub mod llm_decision;
 pub mod query_rewriter;
 pub mod reranker;
 pub mod service;
 
+pub use auto_extractor::MemoryAutoExtractor;
+pub use category_manager::MemoryCategoryManager;
+pub use evolution::MemoryEvolution;
 pub use config::MemoryConfig;
 pub use handlers::*;
 pub use llm_decision::{

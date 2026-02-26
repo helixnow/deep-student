@@ -39,7 +39,7 @@ export interface MemoryWriteOutput {
 // ★ 修复风险4：SmartWrite 输出类型
 export interface SmartWriteOutput {
   noteId: string;
-  event: 'ADD' | 'UPDATE' | 'APPEND' | 'NONE';
+  event: 'ADD' | 'UPDATE' | 'APPEND' | 'DELETE' | 'NONE';
   isNew: boolean;
   confidence: number;
   reason: string;

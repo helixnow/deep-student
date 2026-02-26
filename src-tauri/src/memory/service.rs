@@ -41,8 +41,10 @@ const TAG_LAST_HIT_PREFIX: &str = "_last_hit:";
 const TIME_DECAY_HALF_LIFE_DAYS: f64 = 60.0;
 
 fn should_downgrade_smart_mutation(event: &MemoryEvent, confidence: f32) -> bool {
-    matches!(event, MemoryEvent::UPDATE | MemoryEvent::APPEND)
-        && confidence < SMART_WRITE_MUTATION_CONFIDENCE_THRESHOLD
+    matches!(
+        event,
+        MemoryEvent::UPDATE | MemoryEvent::APPEND | MemoryEvent::DELETE
+    ) && confidence < SMART_WRITE_MUTATION_CONFIDENCE_THRESHOLD
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -525,8 +527,8 @@ impl MemoryService {
             });
         }
 
-        // 1. 先搜索相似记忆
-        let similar_results = self.search(content, 5).await?;
+        // 1. 先搜索相似记忆（扩大范围以提高冲突检测覆盖率）
+        let similar_results = self.search(content, 15).await?;
 
         // 2. 转换为 LLM 决策需要的格式
         let similar_summaries: Vec<SimilarMemorySummary> = similar_results
@@ -695,6 +697,38 @@ impl MemoryService {
                         is_new: true,
                         confidence: decision.confidence,
                         reason: "APPEND 决策但无目标 ID，降级为 ADD".to_string(),
+                        resource_id: Some(result.resource_id),
+                        downgraded: false,
+                    })
+                }
+            }
+            MemoryEvent::DELETE => {
+                if let Some(target_id) = decision.target_note_id {
+                    if let Err(e) = self.delete(&target_id).await {
+                        warn!("[Memory] DELETE target {} failed: {}, proceeding with ADD", target_id, e);
+                    } else {
+                        info!("[Memory] DELETE conflicting memory: {}", target_id);
+                    }
+                    let result = self.write(folder_path, title, content, WriteMode::Create)?;
+                    self.index_immediately(&result.resource_id).await;
+                    Ok(SmartWriteOutput {
+                        note_id: result.note_id,
+                        event: "DELETE".to_string(),
+                        is_new: true,
+                        confidence: decision.confidence,
+                        reason: format!("{}（已删除矛盾记忆 {}）", decision.reason, target_id),
+                        resource_id: Some(result.resource_id),
+                        downgraded: false,
+                    })
+                } else {
+                    let result = self.write(folder_path, title, content, WriteMode::Create)?;
+                    self.index_immediately(&result.resource_id).await;
+                    Ok(SmartWriteOutput {
+                        note_id: result.note_id,
+                        event: "ADD".to_string(),
+                        is_new: true,
+                        confidence: decision.confidence,
+                        reason: "DELETE 决策但无目标 ID，降级为 ADD".to_string(),
                         resource_id: Some(result.resource_id),
                         downgraded: false,
                     })
@@ -1174,11 +1208,10 @@ impl MemoryService {
         self.config.get_root_folder_id()
     }
 
-    /// 刷新用户画像摘要笔记
+    /// 刷新用户画像摘要笔记（LLM 结构化生成版本）
     ///
-    /// 从记忆列表中选取最近更新的 N 条记忆，聚合为结构化画像文本，
-    /// 写入/更新 `__user_profile__` 笔记。
-    /// 画像笔记本身不被索引（标题以 `__` 开头，列表/搜索时过滤）。
+    /// 对齐 memU 自进化理念：用 LLM 将原子事实聚合为结构化画像，
+    /// 而非简单的列表拼接。
     pub fn refresh_profile_summary(&self) -> VfsResult<()> {
         let root_id = self.ensure_root_folder_id()?;
         let all_memories = self.list(None, PROFILE_MAX_ITEMS as u32, 0)?;
@@ -1187,25 +1220,25 @@ impl MemoryService {
             return Ok(());
         }
 
-        let mut lines = Vec::with_capacity(all_memories.len());
+        let mut facts = Vec::new();
         for mem in &all_memories {
-            if mem.title == PROFILE_NOTE_TITLE {
+            if mem.title.starts_with("__") {
                 continue;
             }
             let content = VfsNoteRepo::get_note_content(&self.vfs_db, &mem.id)?
                 .unwrap_or_default();
             if !content.is_empty() {
-                lines.push(format!("- {}", content));
+                facts.push(content);
             } else {
-                lines.push(format!("- {}", mem.title));
+                facts.push(mem.title.clone());
             }
         }
 
-        if lines.is_empty() {
+        if facts.is_empty() {
             return Ok(());
         }
 
-        let profile_content = lines.join("\n");
+        let profile_content = self.generate_structured_profile(&facts);
 
         match self.find_note_by_title(Some(&root_id), PROFILE_NOTE_TITLE)? {
             Some(note) => {
@@ -1219,7 +1252,7 @@ impl MemoryService {
                         expected_updated_at: None,
                     },
                 )?;
-                debug!("[Memory] Profile summary updated ({} items)", lines.len());
+                debug!("[Memory] Profile summary updated ({} facts)", facts.len());
             }
             None => {
                 let profile_note = VfsNoteRepo::create_note_in_folder(
@@ -1238,11 +1271,44 @@ impl MemoryService {
                 ) {
                     warn!("[Memory] Failed to disable indexing for profile note: {}", e);
                 }
-                debug!("[Memory] Profile summary created ({} items)", lines.len());
+                debug!("[Memory] Profile summary created ({} facts)", facts.len());
             }
         }
 
         Ok(())
+    }
+
+    /// 从原子事实生成结构化画像（纯同步，无 LLM 调用）
+    ///
+    /// LLM 结构化聚合由 CategoryManager 负责（生成 __cat_*__ 分类文件）。
+    /// 此方法仅做简单的分组格式化作为 system prompt 注入的回退。
+    fn generate_structured_profile(&self, facts: &[String]) -> String {
+        let mut grouped: std::collections::HashMap<&str, Vec<&str>> = std::collections::HashMap::new();
+        for fact in facts {
+            let category = if fact.contains("偏好") || fact.contains("格式偏好") || fact.contains("风格偏好") || fact.contains("喜欢") {
+                "偏好"
+            } else if fact.contains("年级") || fact.contains("学校") || fact.contains("理科生") || fact.contains("文科生") || fact.contains("专业") {
+                "基本信息"
+            } else if fact.contains("弱项") || fact.contains("强项") || fact.contains("成绩") || fact.contains("得分") || fact.contains("薄弱") {
+                "学科状态"
+            } else if fact.contains("高考") || fact.contains("模考") || fact.contains("考试") || fact.contains("截止") || fact.contains("月日") {
+                "时间节点"
+            } else {
+                "其他"
+            };
+            grouped.entry(category).or_default().push(fact);
+        }
+
+        let order = ["基本信息", "学科状态", "偏好", "时间节点", "其他"];
+        let mut sections = Vec::new();
+        for key in &order {
+            if let Some(items) = grouped.get(key) {
+                let lines: Vec<String> = items.iter().map(|f| format!("- {}", f)).collect();
+                sections.push(format!("## {}\n{}", key, lines.join("\n")));
+            }
+        }
+
+        sections.join("\n\n")
     }
 
     // ========================================================================
@@ -1339,7 +1405,10 @@ mod tests {
     fn test_should_downgrade_smart_mutation() {
         assert!(should_downgrade_smart_mutation(&MemoryEvent::UPDATE, 0.5));
         assert!(should_downgrade_smart_mutation(&MemoryEvent::APPEND, 0.64));
+        assert!(should_downgrade_smart_mutation(&MemoryEvent::DELETE, 0.5));
         assert!(!should_downgrade_smart_mutation(&MemoryEvent::UPDATE, 0.8));
+        assert!(!should_downgrade_smart_mutation(&MemoryEvent::DELETE, 0.8));
         assert!(!should_downgrade_smart_mutation(&MemoryEvent::ADD, 0.1));
+        assert!(!should_downgrade_smart_mutation(&MemoryEvent::NONE, 0.1));
     }
 }
