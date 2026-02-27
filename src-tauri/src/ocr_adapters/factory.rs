@@ -6,7 +6,12 @@ use super::{
     DeepSeekOcrAdapter, GenericVlmAdapter, Glm4vOcrAdapter, OcrAdapter, OcrEngineType,
     PaddleOcrVlAdapter, SystemOcrAdapter,
 };
-use std::sync::Arc;
+use regex::Regex;
+use std::sync::{Arc, LazyLock};
+
+/// GLM 视觉模型匹配：glm-4.5v / glm-4.6v / glm-5v / glm-5.1v 等，排除 4.1v 及更低版本
+static GLM_VISION_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)glm-(?:4\.[5-9]|4\.\d{2,}|[5-9](?:\.\d+)?)v").unwrap());
 
 /// OCR 适配器工厂
 ///
@@ -57,6 +62,7 @@ impl OcrAdapterFactory {
                 recommended_model: "deepseek-ai/DeepSeek-OCR",
                 supports_grounding: true,
                 is_free: false,
+                is_dedicated_ocr: true,
             },
             OcrEngineInfo {
                 engine_type: OcrEngineType::PaddleOcrVl,
@@ -66,6 +72,7 @@ impl OcrAdapterFactory {
                 recommended_model: "PaddlePaddle/PaddleOCR-VL-1.5",
                 supports_grounding: true,
                 is_free: true,
+                is_dedicated_ocr: true,
             },
             OcrEngineInfo {
                 engine_type: OcrEngineType::PaddleOcrVlV1,
@@ -75,14 +82,16 @@ impl OcrAdapterFactory {
                 recommended_model: "PaddlePaddle/PaddleOCR-VL",
                 supports_grounding: true,
                 is_free: true,
+                is_dedicated_ocr: true,
             },
             OcrEngineInfo {
                 engine_type: OcrEngineType::Glm4vOcr,
                 name: "GLM-4.6V",
-                description: "智谱多模态模型，支持 bbox_2d 坐标输出，题目集导入优先引擎",
-                recommended_model: "THUDM/GLM-4.1V-9B-Thinking",
+                description: "智谱 106B MoE 多模态模型，支持 bbox_2d 坐标输出，题目集导入优先引擎",
+                recommended_model: "zai-org/GLM-4.6V",
                 supports_grounding: true,
                 is_free: false,
+                is_dedicated_ocr: false,
             },
             OcrEngineInfo {
                 engine_type: OcrEngineType::GenericVlm,
@@ -91,6 +100,7 @@ impl OcrAdapterFactory {
                 recommended_model: "Qwen/Qwen2.5-VL-7B-Instruct",
                 supports_grounding: false,
                 is_free: false,
+                is_dedicated_ocr: false,
             },
         ];
         // 仅在支持的平台上展示系统 OCR
@@ -102,6 +112,7 @@ impl OcrAdapterFactory {
                 recommended_model: "system",
                 supports_grounding: false,
                 is_free: true,
+                is_dedicated_ocr: true,
             });
         }
         list
@@ -119,9 +130,7 @@ impl OcrAdapterFactory {
                 // 收紧匹配：要求包含 "paddleocr" 或 "paddlepaddle" 而非单独的 "paddle"
                 model_lower.contains("paddleocr") || model_lower.contains("paddlepaddle")
             }
-            OcrEngineType::Glm4vOcr => {
-                model_lower.contains("glm") && (model_lower.contains("4v") || model_lower.contains("4.1v") || model_lower.contains("4.6v"))
-            }
+            OcrEngineType::Glm4vOcr => GLM_VISION_RE.is_match(model),
             OcrEngineType::GenericVlm => {
                 true
             }
@@ -138,7 +147,7 @@ impl OcrAdapterFactory {
 
         if model_lower == "system" {
             OcrEngineType::SystemOcr
-        } else if model_lower.contains("glm") && (model_lower.contains("4v") || model_lower.contains("4.1v") || model_lower.contains("4.6v")) {
+        } else if GLM_VISION_RE.is_match(model) {
             OcrEngineType::Glm4vOcr
         } else if model_lower.contains("deepseek") && model_lower.contains("ocr") {
             OcrEngineType::DeepSeekOcr
@@ -168,6 +177,8 @@ pub struct OcrEngineInfo {
     pub supports_grounding: bool,
     /// 是否免费
     pub is_free: bool,
+    /// 引擎分类：true = 专业 OCR 模型（快速/便宜），false = 通用 VLM（能力强/较贵）
+    pub is_dedicated_ocr: bool,
 }
 
 impl serde::Serialize for OcrEngineInfo {
@@ -176,13 +187,14 @@ impl serde::Serialize for OcrEngineInfo {
         S: serde::Serializer,
     {
         use serde::ser::SerializeStruct;
-        let mut state = serializer.serialize_struct("OcrEngineInfo", 6)?;
+        let mut state = serializer.serialize_struct("OcrEngineInfo", 7)?;
         state.serialize_field("engineType", &self.engine_type.as_str())?;
         state.serialize_field("name", &self.name)?;
         state.serialize_field("description", &self.description)?;
         state.serialize_field("recommendedModel", &self.recommended_model)?;
         state.serialize_field("supportsGrounding", &self.supports_grounding)?;
         state.serialize_field("isFree", &self.is_free)?;
+        state.serialize_field("isDedicatedOcr", &self.is_dedicated_ocr)?;
         state.end()
     }
 }
@@ -232,6 +244,17 @@ mod tests {
             OcrEngineType::PaddleOcrVlV1
         ));
 
+        assert!(OcrAdapterFactory::validate_model_for_engine(
+            "zai-org/GLM-4.6V",
+            OcrEngineType::Glm4vOcr
+        ));
+
+        // GLM-4.1V 质量差，不应被识别为有效的 Glm4vOcr 引擎模型
+        assert!(!OcrAdapterFactory::validate_model_for_engine(
+            "THUDM/GLM-4.1V-9B-Thinking",
+            OcrEngineType::Glm4vOcr
+        ));
+
         assert!(!OcrAdapterFactory::validate_model_for_engine(
             "Qwen/Qwen2.5-VL",
             OcrEngineType::DeepSeekOcr
@@ -240,6 +263,11 @@ mod tests {
 
     #[test]
     fn test_infer_engine() {
+        assert_eq!(
+            OcrAdapterFactory::infer_engine_from_model("zai-org/GLM-4.6V"),
+            OcrEngineType::Glm4vOcr
+        );
+
         assert_eq!(
             OcrAdapterFactory::infer_engine_from_model("deepseek-ai/DeepSeek-OCR"),
             OcrEngineType::DeepSeekOcr
@@ -257,6 +285,12 @@ mod tests {
 
         assert_eq!(
             OcrAdapterFactory::infer_engine_from_model("Qwen/Qwen2.5-VL-7B"),
+            OcrEngineType::GenericVlm
+        );
+
+        // GLM-4.1V 不应被推断为 Glm4vOcr，回退到 GenericVlm
+        assert_eq!(
+            OcrAdapterFactory::infer_engine_from_model("THUDM/GLM-4.1V-9B-Thinking"),
             OcrEngineType::GenericVlm
         );
     }

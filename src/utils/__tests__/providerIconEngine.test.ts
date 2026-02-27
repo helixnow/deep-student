@@ -67,6 +67,7 @@ describe('ProviderIconEngine', () => {
     it('应该正确识别智谱 (GLM) 模型', () => {
       expect(detectProviderBrand('glm-4.5')).toBe('zhipu');
       expect(detectProviderBrand('THUDM/GLM-4.1V-9B-Thinking')).toBe('zhipu');
+      expect(detectProviderBrand('zai-org/GLM-4.6V')).toBe('zhipu');
       expect(detectProviderBrand('chatglm3')).toBe('zhipu');
     });
 
@@ -128,7 +129,7 @@ describe('ProviderIconEngine', () => {
     it('应该正确处理 SiliconFlow 格式的模型名', () => {
       expect(detectProviderBrand('SiliconFlow - Qwen/Qwen3-8B')).toBe('qwen');
       expect(detectProviderBrand('SiliconFlow - deepseek-ai/DeepSeek-V3.1')).toBe('deepseek');
-      expect(detectProviderBrand('SiliconFlow - THUDM/GLM-4.1V-9B-Thinking')).toBe('zhipu');
+      expect(detectProviderBrand('SiliconFlow - zai-org/GLM-4.6V')).toBe('zhipu');
     });
 
     it('应该正确处理带组织名的模型ID', () => {

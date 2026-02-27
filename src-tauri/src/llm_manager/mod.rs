@@ -2456,18 +2456,24 @@ impl LLMManager {
         Ok(config)
     }
 
-    /// 获取 OCR 模型配置（公开方法，供多模态索引使用）
+    /// 获取 OCR 模型配置（公开方法，供多模态索引等通用 OCR 使用）
     ///
-    /// 按优先级返回第一个可用的已启用 OCR 引擎对应的模型配置。
-    /// 回退链：已启用的 OCR 引擎（按 priority 排序）→ exam_sheet_ocr_model_config_id
+    /// 默认按 FreeText 策略返回：OCR-VLM（快速/便宜）优先于通用 VLM。
+    /// 同类内部保持用户设置的 priority 顺序。
+    /// 回退链：已启用的 OCR 引擎 → exam_sheet_ocr_model_config_id
     pub async fn get_ocr_model_config(&self) -> Result<ApiConfig> {
+        use crate::ocr_adapters::OcrEngineType;
+
         let configs = self.get_api_configs().await?;
         let available = self.get_available_ocr_models().await;
 
-        // 按优先级排序，只保留已启用的
         let mut enabled_models: Vec<&OcrModelConfig> =
             available.iter().filter(|m| m.enabled).collect();
-        enabled_models.sort_by_key(|m| m.priority);
+        // FreeText 策略：专业 OCR 模型优先（快速/便宜），通用 VLM 兜底
+        enabled_models.sort_by_key(|m| {
+            let engine = OcrEngineType::from_str(&m.engine_type);
+            (if engine.is_dedicated_ocr() { 0u8 } else { 1 }, m.priority)
+        });
 
         // 尝试按优先级找到第一个有效的配置
         for ocr_config in &enabled_models {
@@ -2521,11 +2527,16 @@ impl LLMManager {
 
     /// 按优先级获取所有已启用的 OCR 引擎配置列表（用于熔断重试）
     ///
-    /// 返回 `(ApiConfig, OcrEngineType)` 的有序列表，调用方可按顺序尝试。
+    /// 根据 `task_type` 对引擎列表进行分流排序：
+    /// - `FreeText`：OCR-VLM（快速专业模型）优先，通用 VLM 兜底
+    /// - `Structured`：通用 VLM（GLM-4.6V 等）优先，OCR-VLM 兜底
+    ///
+    /// 同类引擎之间保持用户设置的 priority 顺序。
     pub async fn get_ocr_configs_by_priority(
         &self,
+        task_type: crate::ocr_adapters::OcrTaskType,
     ) -> Result<Vec<(ApiConfig, crate::ocr_adapters::OcrEngineType)>> {
-        use crate::ocr_adapters::{OcrAdapterFactory, OcrEngineType};
+        use crate::ocr_adapters::{OcrAdapterFactory, OcrEngineType, OcrTaskType};
 
         let configs = self.get_api_configs().await?;
         let available = self.get_available_ocr_models().await;
@@ -2541,7 +2552,6 @@ impl LLMManager {
                     continue;
                 }
                 let engine = OcrEngineType::from_str(&ocr_config.engine_type);
-                // 验证模型是否匹配引擎，不匹配则推断
                 let effective_engine =
                     if OcrAdapterFactory::validate_model_for_engine(&config.model, engine) {
                         engine
@@ -2553,7 +2563,6 @@ impl LLMManager {
         }
 
         if result.is_empty() {
-            // 回退到 exam_sheet_ocr_model_config_id
             if let Ok(config) = self.get_ocr_model_config().await {
                 let engine = OcrAdapterFactory::infer_engine_from_model(&config.model);
                 result.push((config, engine));
@@ -2565,6 +2574,29 @@ impl LLMManager {
                 "没有可用的 OCR 引擎配置，请在设置中添加 OCR 引擎",
             ));
         }
+
+        // 按任务类型分流：stable partition 保持同类内部的 priority 顺序
+        match task_type {
+            OcrTaskType::FreeText => {
+                // 专业 OCR 模型在前（快、便宜），通用 VLM 在后
+                result.sort_by_key(|(_, engine)| if engine.is_dedicated_ocr() { 0 } else { 1 });
+            }
+            OcrTaskType::Structured => {
+                // 通用 VLM 在前（GLM-4.6V 等，复杂布局理解能力强），专业 OCR 在后
+                result.sort_by_key(|(_, engine)| if engine.is_dedicated_ocr() { 1 } else { 0 });
+            }
+        }
+
+        debug!(
+            "[OCR] 引擎优先级（{:?}）: {}",
+            task_type,
+            result
+                .iter()
+                .enumerate()
+                .map(|(i, (c, e))| format!("#{} {}({})", i, e.display_name(), c.model))
+                .collect::<Vec<_>>()
+                .join(" → ")
+        );
 
         Ok(result)
     }
@@ -2863,15 +2895,18 @@ impl LLMManager {
 
     /// 获取当前配置的 OCR 引擎类型
     ///
-    /// 优先从 `ocr.available_models` 优先级列表中获取第一个已启用引擎的类型，
+    /// 默认按 FreeText 策略：OCR-VLM 引擎优先于通用 VLM。
     /// 回退到 `ocr.engine_type` 设置，最终默认 PaddleOCR-VL-1.5。
     pub async fn get_ocr_engine_type(&self) -> crate::ocr_adapters::OcrEngineType {
         use crate::ocr_adapters::OcrEngineType;
 
-        // 优先从优先级列表获取
         let available = self.get_available_ocr_models().await;
         let mut enabled: Vec<&OcrModelConfig> = available.iter().filter(|m| m.enabled).collect();
-        enabled.sort_by_key(|m| m.priority);
+        // FreeText 策略：专业 OCR 引擎优先
+        enabled.sort_by_key(|m| {
+            let engine = OcrEngineType::from_str(&m.engine_type);
+            (if engine.is_dedicated_ocr() { 0u8 } else { 1 }, m.priority)
+        });
 
         if let Some(first) = enabled.first() {
             return OcrEngineType::from_str(&first.engine_type);

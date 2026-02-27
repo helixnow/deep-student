@@ -84,7 +84,7 @@ impl OcrEngineType {
             Self::DeepSeekOcr => "deepseek-ai/DeepSeek-OCR",
             Self::PaddleOcrVl => "PaddlePaddle/PaddleOCR-VL-1.5",
             Self::PaddleOcrVlV1 => "PaddlePaddle/PaddleOCR-VL",
-            Self::Glm4vOcr => "THUDM/GLM-4.1V-9B-Thinking",
+            Self::Glm4vOcr => "zai-org/GLM-4.6V",
             Self::GenericVlm => "Qwen/Qwen2.5-VL-7B-Instruct",
             Self::SystemOcr => "system",
         }
@@ -95,10 +95,32 @@ impl OcrEngineType {
         matches!(self, Self::SystemOcr)
     }
 
+    /// 是否为专业 OCR 模型（OCR-VLM），相对于通用 VLM
+    ///
+    /// OCR-VLM：专为文字识别优化的模型，速度快、成本低，适合普通文本提取
+    /// 通用 VLM：大参数视觉语言模型，理解能力强，适合复杂布局/题目集导入
+    pub fn is_dedicated_ocr(&self) -> bool {
+        matches!(
+            self,
+            Self::DeepSeekOcr | Self::PaddleOcrVl | Self::PaddleOcrVlV1 | Self::SystemOcr
+        )
+    }
+
     /// 是否为题目集导入优先引擎
     pub fn is_import_preferred(&self) -> bool {
         matches!(self, Self::Glm4vOcr)
     }
+}
+
+/// OCR 任务类型 — 决定引擎优先级排序策略
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OcrTaskType {
+    /// 纯文本提取（翻译、PDF 索引、文档搜索等）
+    /// 优先使用快速的 OCR-VLM（PaddleOCR / DeepSeek-OCR / 系统 OCR），VLM 作为兜底
+    FreeText,
+    /// 结构化识别（题目集导入、需要坐标定位的场景）
+    /// 优先使用通用 VLM（GLM-4.6V），OCR-VLM 作为兜底
+    Structured,
 }
 
 /// OCR 识别模式

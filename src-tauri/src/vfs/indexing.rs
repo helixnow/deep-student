@@ -2912,11 +2912,10 @@ impl VfsFullIndexingService {
                 }
             };
 
-            // 调用 OCR（使用 call_ocr_page_with_fallback，与预处理管线一致）
             let path_str = blob_path.to_string_lossy().to_string();
             match self
                 .llm_manager
-                .call_ocr_page_with_fallback(&path_str, page.page_index)
+                .call_ocr_page_with_fallback(&path_str, page.page_index, crate::ocr_adapters::OcrTaskType::FreeText)
                 .await
             {
                 Ok(cards) => {

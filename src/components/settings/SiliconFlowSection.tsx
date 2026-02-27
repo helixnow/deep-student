@@ -567,14 +567,9 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
 
   // OCR 专用模型预设（支持多引擎，按优先级排列，全部默认启用）
   // 注意：这些模型会自动根据名称推断适配器类型
+  // OCR-VLM（专业 OCR，快速/便宜）排在前面，通用 VLM（能力强/较贵）排在后面
+  // 普通 OCR 任务自动使用前面的快速模型；题目集导入通过 VlmGroundingService 独立选择 GLM-4.6V
   const PRESET_OCR_MODELS = [
-    {
-      model: 'THUDM/GLM-4.1V-9B-Thinking',
-      name: 'SiliconFlow - GLM-4.6V',
-      engineType: 'glm4v_ocr',
-      description: '智谱多模态模型，支持坐标定位，题目集导入优先引擎',
-      isFree: false,
-    },
     { 
       model: 'PaddlePaddle/PaddleOCR-VL-1.5', 
       name: 'SiliconFlow - PaddleOCR-VL-1.5',
@@ -594,6 +589,13 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
       name: 'SiliconFlow - DeepSeek-OCR',
       engineType: 'deepseek_ocr',
       description: '专业 OCR 模型，支持坐标定位',
+      isFree: false,
+    },
+    {
+      model: 'zai-org/GLM-4.6V',
+      name: 'SiliconFlow - GLM-4.6V',
+      engineType: 'glm4v_ocr',
+      description: '智谱 106B MoE 多模态模型，支持坐标定位，题目集导入自动优先使用',
       isFree: false,
     },
     {

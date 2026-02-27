@@ -500,12 +500,17 @@ impl LLMManager {
 
     /// 优先级熔断重试：按优先级依次尝试已启用的 OCR 引擎，
     /// 某个引擎失败时自动切换到下一个。
+    ///
+    /// `task_type` 控制引擎优先级：
+    /// - `Structured`：VLM 优先（GLM-4.6V），适合题目集/复杂布局
+    /// - `FreeText`：OCR-VLM 优先（PaddleOCR / DeepSeek-OCR），适合普通文本提取
     pub async fn call_ocr_page_with_fallback(
         &self,
         page_path: &str,
         page_index: usize,
+        task_type: crate::ocr_adapters::OcrTaskType,
     ) -> Result<Vec<ExamSegmentationCard>> {
-        let engines = self.get_ocr_configs_by_priority().await.unwrap_or_default();
+        let engines = self.get_ocr_configs_by_priority(task_type).await.unwrap_or_default();
 
         if engines.is_empty() {
             return Err(AppError::configuration(
@@ -582,7 +587,10 @@ impl LLMManager {
             ));
         }
 
-        let engines = self.get_ocr_configs_by_priority().await.unwrap_or_default();
+        let engines = self
+            .get_ocr_configs_by_priority(crate::ocr_adapters::OcrTaskType::FreeText)
+            .await
+            .unwrap_or_default();
         if engines.is_empty() {
             return Err(AppError::configuration(
                 "没有已启用的 OCR 引擎，请在设置中配置",

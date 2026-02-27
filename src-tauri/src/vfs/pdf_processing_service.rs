@@ -2851,7 +2851,7 @@ impl PdfProcessingService {
             }
 
             match llm_manager
-                .call_ocr_page_with_fallback(&path_str, page_index)
+                .call_ocr_page_with_fallback(&path_str, page_index, crate::ocr_adapters::OcrTaskType::FreeText)
                 .await
             {
                 Ok(cards) => {

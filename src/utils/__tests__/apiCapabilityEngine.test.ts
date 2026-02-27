@@ -8,7 +8,7 @@ describe('apiCapabilityEngine vision inference', () => {
   });
 
   it('keeps GLM vision variants as multimodal', () => {
-    const caps = inferApiCapabilities({ id: 'THUDM/GLM-4.1V-9B-Thinking' });
+    const caps = inferApiCapabilities({ id: 'zai-org/GLM-4.6V' });
     expect(caps.vision).toBe(true);
   });
 });

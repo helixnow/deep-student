@@ -160,6 +160,7 @@ const PROVIDER_PATTERNS: Record<ProviderBrand, (string | RegExp)[]> = {
   zhipu: [
     /^zhipu/i,
     /^thudm\//i,
+    /^zai-org\//i,
     /glm-/i,
     /chatglm/i,
     /cogvideo/i,

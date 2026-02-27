@@ -43,16 +43,14 @@ const BUILTIN_MODEL_CONFIGS: &[BuiltinModelConfig] = &[
     },
     BuiltinModelConfig {
         id: "builtin-sf-vision",
-        name: "SiliconFlow - THUDM/GLM-4.1V-9B-Thinking",
+        name: "SiliconFlow - zai-org/GLM-4.6V",
         base_url: "https://api.siliconflow.cn/v1",
-        model: "THUDM/GLM-4.1V-9B-Thinking",
+        model: "zai-org/GLM-4.6V",
         is_multimodal: true,
-        // GLM-4.1V-9B-Thinking 不支持 enable_thinking 参数（API返回20015错误）
-        // 虽然模型名带 "Thinking"，但推理能力是内置的，不通过参数控制
         is_reasoning: false,
         is_embedding: false,
         is_reranker: false,
-        supports_tools: false,
+        supports_tools: true,
         env_var_name: "SILICONFLOW_BUILTIN_VISION_KEY",
     },
     BuiltinModelConfig {
