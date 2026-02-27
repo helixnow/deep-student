@@ -66,13 +66,57 @@ jobs:
       contents: write
       pull-requests: write
     outputs:
-      release_created: ${{ steps.release.outputs.release_created }}
-      tag_name: ${{ steps.release.outputs.tag_name }}
+      release_created: ${{ steps.result.outputs.release_created }}
+      tag_name: ${{ steps.result.outputs.tag_name }}
     steps:
       - uses: googleapis/release-please-action@v4
         id: release
+        continue-on-error: true
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Resolve release result
+        id: result
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RP_CREATED: ${{ steps.release.outputs.release_created }}
+          RP_TAG: ${{ steps.release.outputs.tag_name }}
+          RP_OUTCOME: ${{ steps.release.outcome }}
+        run: |
+          if [[ "${RP_CREATED}" == "true" && -n "${RP_TAG}" ]]; then
+            echo "release_created=true" >> $GITHUB_OUTPUT
+            echo "tag_name=${RP_TAG}" >> $GITHUB_OUTPUT
+            echo "✅ release-please reported: ${RP_TAG}"
+            exit 0
+          fi
+
+          if [[ "${RP_OUTCOME}" != "failure" ]]; then
+            echo "release_created=false" >> $GITHUB_OUTPUT
+            echo "⏭️ No release created this run"
+            exit 0
+          fi
+
+          echo "⚠️ release-please failed — checking if a release was created before the error..."
+          LATEST=$(gh api repos/${{ github.repository }}/releases/latest --jq '.tag_name' 2>/dev/null || echo "")
+          if [[ -z "${LATEST}" ]]; then
+            echo "release_created=false" >> $GITHUB_OUTPUT
+            echo "❌ No releases found"
+            exit 0
+          fi
+
+          LATEST_CREATED=$(gh api repos/${{ github.repository }}/releases/latest --jq '.created_at')
+          NOW=$(date -u +%s)
+          RELEASE_TS=$(date -u -d "${LATEST_CREATED}" +%s 2>/dev/null || date -u +%s)
+          AGE=$(( NOW - RELEASE_TS ))
+
+          if [[ $AGE -lt 120 ]]; then
+            echo "release_created=true" >> $GITHUB_OUTPUT
+            echo "tag_name=${LATEST}" >> $GITHUB_OUTPUT
+            echo "✅ Found recent release ${LATEST} (${AGE}s ago) — proceeding with build"
+          else
+            echo "release_created=false" >> $GITHUB_OUTPUT
+            echo "❌ Latest release ${LATEST} is ${AGE}s old — not from this run"
+          fi
 
   # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   # 阶段二: 版本号三重校验门禁
