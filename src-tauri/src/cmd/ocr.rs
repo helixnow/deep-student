@@ -33,6 +33,27 @@ pub fn migrate_paddle_ocr_models(models: &mut [OcrModelConfig]) -> bool {
     changed
 }
 
+/// 自动迁移：将旧版 GLM-4.1V 替换为 GLM-4.6V
+///
+/// GLM-4.1V-9B-Thinking (9B) 是低质量模型，已被 GLM-4.6V (106B MoE) 替代。
+/// 返回 true 表示有变更需要保存。
+pub fn migrate_glm_ocr_models(models: &mut [OcrModelConfig]) -> bool {
+    let mut changed = false;
+    for model in models.iter_mut() {
+        if model.engine_type == "glm4v_ocr"
+            && model.model.to_lowercase().contains("glm-4.1v")
+        {
+            model.model = "zai-org/GLM-4.6V".to_string();
+            if model.name.contains("4.1V") || model.name.contains("4.1v") {
+                model.name = model.name.replace("4.1V", "4.6V").replace("4.1v", "4.6V");
+            }
+            changed = true;
+            println!("[OCR] 已自动迁移 GLM-4.1V → GLM-4.6V");
+        }
+    }
+    changed
+}
+
 /// OCR 引擎信息（用于前端展示）
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -169,6 +190,9 @@ pub async fn get_available_ocr_models(
         let mut needs_save = migrate_paddle_ocr_models(&mut models);
         if needs_save {
             println!("[OCR] 已自动迁移 PaddleOCR-VL 配置到 1.5 版本");
+        }
+        if migrate_glm_ocr_models(&mut models) {
+            needs_save = true;
         }
 
         // 交叉验证：过滤掉 config_id 对应的 API 配置已被删除的孤儿引擎

@@ -2611,6 +2611,43 @@ impl LLMManager {
             if let Ok(mut models) = serde_json::from_str::<Vec<OcrModelConfig>>(&json) {
                 let mut needs_save = crate::cmd::ocr::migrate_paddle_ocr_models(&mut models);
 
+                // GLM-4.1V → 4.6V 迁移：同时更新关联的 ApiConfig.model
+                let glm_migrate_ids: Vec<String> = models
+                    .iter()
+                    .filter(|m| {
+                        m.engine_type == "glm4v_ocr"
+                            && m.model.to_lowercase().contains("glm-4.1v")
+                    })
+                    .map(|m| m.config_id.clone())
+                    .collect();
+
+                if crate::cmd::ocr::migrate_glm_ocr_models(&mut models) {
+                    needs_save = true;
+                    // 同步更新 ApiConfig 中的 model 字段，确保实际 API 调用也使用新模型
+                    if !glm_migrate_ids.is_empty() {
+                        if let Ok(mut api_configs) = self.get_api_configs().await {
+                            let mut api_changed = false;
+                            for cfg in api_configs.iter_mut() {
+                                if glm_migrate_ids.contains(&cfg.id)
+                                    && cfg.model.to_lowercase().contains("glm-4.1v")
+                                {
+                                    info!(
+                                        "[OCR] 同步更新 ApiConfig model: {} → zai-org/GLM-4.6V (id={})",
+                                        cfg.model, cfg.id
+                                    );
+                                    cfg.model = "zai-org/GLM-4.6V".to_string();
+                                    cfg.name = cfg.name.replace("GLM-4.1V", "GLM-4.6V")
+                                        .replace("4.1V", "4.6V");
+                                    api_changed = true;
+                                }
+                            }
+                            if api_changed {
+                                let _ = self.save_api_configurations(&api_configs).await;
+                            }
+                        }
+                    }
+                }
+
                 // 迁移：如果所有 priority 都是 0 且存在旧 ocr.engine_type 设置，
                 // 则根据旧单选设置调整优先级
                 if models.len() > 1 && models.iter().all(|m| m.priority == 0) {

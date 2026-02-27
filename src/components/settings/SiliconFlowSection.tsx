@@ -796,16 +796,21 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
           } catch { /* 首次使用，列表为空 */ }
 
           // 合并逻辑：预设引擎排在前面，已有自定义引擎追加在后
-          // 对于每个预设：若已存在则保留（保持 enabled 状态）并更新 configId，否则新增
+          // 匹配规则：model 或 engineType 相同视为同一引擎（处理模型 ID 升级场景，如 4.1V → 4.6V）
           const merged = [
             ...PRESET_OCR_MODELS.map((ocrModel, idx) => {
-              const existing = existingEngines.find(e => e.model === ocrModel.model);
+              const existing = existingEngines.find(
+                e => e.model === ocrModel.model || e.engineType === ocrModel.engineType
+              );
               const newConfigId = idMap[ocrConfigIds[idx]] || ocrConfigIds[idx];
               if (existing) {
-                // 已存在：保留用户的 enabled 状态，更新 configId（可能因重分配而变化）
-                return { ...existing, configId: newConfigId };
+                return {
+                  ...existing,
+                  configId: newConfigId,
+                  model: ocrModel.model,
+                  name: ocrModel.name,
+                };
               }
-              // 新增预设引擎
               return {
                 configId: newConfigId,
                 model: ocrModel.model,
@@ -816,8 +821,10 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
                 priority: idx,
               };
             }),
-            // 保留用户自定义引擎（非预设的）
-            ...existingEngines.filter(e => !PRESET_OCR_MODELS.some(p => p.model === e.model)),
+            // 保留用户自定义引擎（非预设的 model 且非预设的 engineType）
+            ...existingEngines.filter(e =>
+              !PRESET_OCR_MODELS.some(p => p.model === e.model || p.engineType === e.engineType)
+            ),
           ].map((e, i) => ({ ...e, priority: i }));
 
           await invoke('save_available_ocr_models', { models: merged });
