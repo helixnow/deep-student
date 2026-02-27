@@ -105,6 +105,7 @@ pub(crate) struct PipelineContext {
     /// 🔒 安全修复：连续心跳次数追踪
     /// 防止工具通过持续返回 continue_execution 无限绕过递归限制
     pub(crate) heartbeat_count: u32,
+
 }
 
 impl PipelineContext {

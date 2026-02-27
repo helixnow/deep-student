@@ -324,6 +324,15 @@ impl MemoryToolExecutor {
             write_task.await.map_err(|e| e.to_string())??
         };
 
+        // 写入后即时索引，保证 write-then-search SLA（与 handler 路径对齐）
+        let svc_for_idx = self.get_service(ctx).ok();
+        if let Some(svc) = svc_for_idx {
+            let resource_id = result.resource_id.clone();
+            tokio::spawn(async move {
+                svc.index_resource_immediately(&resource_id).await;
+            });
+        }
+
         Ok(json!({
             "success": true,
             "note_id": result.note_id,
@@ -441,6 +450,15 @@ impl MemoryToolExecutor {
                 .map_err(|e| e.to_string())?
                 .map_err(|e| e.to_string())?
         };
+
+        // 更新后即时索引，保证 write-then-search SLA（与 handler 路径对齐）
+        let svc_for_idx = self.get_service(ctx).ok();
+        if let Some(svc) = svc_for_idx {
+            let resource_id = result.resource_id.clone();
+            tokio::spawn(async move {
+                svc.index_resource_immediately(&resource_id).await;
+            });
+        }
 
         Ok(json!({
             "success": true,

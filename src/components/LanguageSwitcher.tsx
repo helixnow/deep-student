@@ -1,6 +1,6 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import { type SupportedLanguage } from '../types/i18n';
+import { type SupportedLanguage, normalizeSupportedLanguage } from '../types/i18n';
 
 interface LanguageSwitcherProps {
   className?: string;
@@ -10,11 +10,12 @@ export const LanguageSwitcher: React.FC<LanguageSwitcherProps> = ({ className = 
   const { i18n, t } = useTranslation('common');
 
   const handleToggle = () => {
-    const newLang: SupportedLanguage = i18n.language === 'zh-CN' ? 'en-US' : 'zh-CN';
-    i18n.changeLanguage(newLang);
+    const currentLang = normalizeSupportedLanguage(i18n.language);
+    const newLang: SupportedLanguage = currentLang === 'zh-CN' ? 'en-US' : 'zh-CN';
+    void i18n.changeLanguage(newLang);
   };
 
-  const isEnglishActive = i18n.language === 'en-US' || i18n.language === 'en';
+  const isEnglishActive = normalizeSupportedLanguage(i18n.language) === 'en-US';
 
   return (
     <div className={`flex items-center gap-2 ${className}`}>

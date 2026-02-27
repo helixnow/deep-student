@@ -1673,6 +1673,7 @@ fn convert_openai_to_gemini(openai_req: &OpenAIRequest) -> Result<GeminiRequest,
     /// 递归修补 JSON Schema，确保符合 Gemini 原生 API 的严格要求：
     /// - `type: "array"` 时必须有 `items` 字段
     /// - 每个 `items` 必须包含 `type` 字段
+    /// - `enum` 数组中的值必须全部为字符串（Gemini 不接受整数 enum）
     fn fix_schema_for_gemini(value: &mut Value) {
         match value {
             Value::Object(map) => {
@@ -1691,6 +1692,20 @@ fn convert_openai_to_gemini(openai_req: &OpenAIRequest) -> Result<GeminiRequest,
                             } else {
                                 items_map.insert("type".to_string(), json!("string"));
                             }
+                        }
+                    }
+                }
+                // Gemini 要求 enum 值必须为字符串，将整数/浮点/布尔等非字符串值转为字符串
+                if let Some(Value::Array(enum_arr)) = map.get_mut("enum") {
+                    for item in enum_arr.iter_mut() {
+                        match item {
+                            Value::Number(n) => {
+                                *item = Value::String(n.to_string());
+                            }
+                            Value::Bool(b) => {
+                                *item = Value::String(b.to_string());
+                            }
+                            _ => {}
                         }
                     }
                 }

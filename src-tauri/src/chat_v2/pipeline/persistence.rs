@@ -899,6 +899,22 @@ impl ChatV2Pipeline {
             return;
         }
 
+        // 竞态保护：如果 LLM 本轮已通过工具主动写入过记忆，跳过自动提取。
+        // 避免 auto_extractor 在索引窗口期内重复提取相同事实。
+        let llm_already_wrote_memory = ctx.tool_results.iter().any(|tr| {
+            let name = tr.tool_name.as_str();
+            matches!(
+                name.strip_prefix("builtin-").unwrap_or(name),
+                "memory_write" | "memory_write_smart" | "memory_update_by_id"
+            )
+        });
+        if llm_already_wrote_memory {
+            log::debug!(
+                "[AutoMemory] Skipping auto-extraction: LLM already wrote memories this turn"
+            );
+            return;
+        }
+
         // fire-and-forget: 不走 spawn_tracked 因为 Pipeline 不持有 ChatV2State。
         // 安全性：中断仅导致少提取记忆，不会丢失已有数据（write_smart 内部 DB 写入是原子的）。
         tokio::spawn(async move {
@@ -969,23 +985,31 @@ impl ChatV2Pipeline {
                         }
                     }
 
-                    // 自进化检查频率控制：利用时间戳避免每轮都执行。
-                    // 这里简单地每次都执行（纯 SQL 操作，开销很低）。
+                    // 自进化节流：每 30 分钟最多执行一次，避免大量 SQL 遍历
                     use crate::memory::MemoryEvolution;
-                    let evolution = MemoryEvolution::new(vfs_db);
-                    match evolution.run_evolution_cycle(&memory_service) {
-                        Ok(report) => {
-                            if report.stale_demoted > 0 || report.high_freq_promoted > 0 || report.duplicates_merged > 0 {
-                                log::info!(
-                                    "[AutoMemory] Evolution: demoted={}, promoted={}, merged={}",
-                                    report.stale_demoted,
-                                    report.high_freq_promoted,
-                                    report.duplicates_merged
-                                );
+                    use std::sync::atomic::{AtomicI64, Ordering};
+                    static LAST_EVOLUTION_MS: AtomicI64 = AtomicI64::new(0);
+                    const EVOLUTION_INTERVAL_MS: i64 = 30 * 60 * 1000;
+
+                    let now_ms = chrono::Utc::now().timestamp_millis();
+                    let last = LAST_EVOLUTION_MS.load(Ordering::Relaxed);
+                    if now_ms - last >= EVOLUTION_INTERVAL_MS {
+                        LAST_EVOLUTION_MS.store(now_ms, Ordering::Relaxed);
+                        let evolution = MemoryEvolution::new(vfs_db);
+                        match evolution.run_evolution_cycle(&memory_service) {
+                            Ok(report) => {
+                                if report.stale_demoted > 0 || report.high_freq_promoted > 0 || report.duplicates_merged > 0 {
+                                    log::info!(
+                                        "[AutoMemory] Evolution: demoted={}, promoted={}, merged={}",
+                                        report.stale_demoted,
+                                        report.high_freq_promoted,
+                                        report.duplicates_merged
+                                    );
+                                }
                             }
-                        }
-                        Err(e) => {
-                            log::debug!("[AutoMemory] Evolution check failed (non-fatal): {}", e);
+                            Err(e) => {
+                                log::debug!("[AutoMemory] Evolution check failed (non-fatal): {}", e);
+                            }
                         }
                     }
                 }

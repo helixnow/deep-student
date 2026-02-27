@@ -821,9 +821,46 @@ impl BuiltinRetrievalExecutor {
             search_service.search_with_embedding(query, &shared_embedding, &text_params, false).await.ok()
         };
 
+        // 获取记忆文件夹下所有资源 ID 集合，从文本搜索结果中排除（源头去重）。
+        // 这比事后跨源去重更可靠：不依赖 sourceId/title 匹配。
+        let memory_resource_ids: std::collections::HashSet<String> = {
+            let memory_service = MemoryService::new(
+                std::sync::Arc::clone(vfs_db),
+                std::sync::Arc::clone(&lance_store),
+                std::sync::Arc::clone(llm_manager),
+            );
+            memory_service.get_root_folder_id()
+                .ok()
+                .flatten()
+                .and_then(|root_id| {
+                    use crate::vfs::repos::folder_repo::VfsFolderRepo;
+                    let folder_ids = VfsFolderRepo::get_folder_ids_recursive(vfs_db, &root_id).ok()?;
+                    if folder_ids.is_empty() { return None; }
+                    let conn = vfs_db.get_conn_safe().ok()?;
+                    let placeholders = vec!["?"; folder_ids.len()].join(", ");
+                    let sql = format!(
+                        "SELECT DISTINCT n.resource_id FROM notes n \
+                         JOIN folder_items fi ON fi.item_type = 'note' AND fi.item_id = n.id \
+                         WHERE fi.folder_id IN ({}) AND n.deleted_at IS NULL",
+                        placeholders
+                    );
+                    let mut stmt = conn.prepare(&sql).ok()?;
+                    let params_vals: Vec<rusqlite::types::Value> = folder_ids.into_iter().map(rusqlite::types::Value::from).collect();
+                    let rows = stmt.query_map(rusqlite::params_from_iter(params_vals), |row| row.get::<_, String>(0)).ok()?;
+                    Some(rows.filter_map(|r| r.ok()).collect())
+                })
+                .unwrap_or_default()
+        };
+
         if let Some(vfs_results) = text_result {
             let text_sources: Vec<SourceInfo> = vfs_results
                 .into_iter()
+                .filter(|r| {
+                    if memory_resource_ids.is_empty() {
+                        return true;
+                    }
+                    !memory_resource_ids.contains(&r.resource_id)
+                })
                 .map(|r| SourceInfo {
                     title: r.resource_title,
                     url: None,

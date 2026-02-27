@@ -251,6 +251,12 @@ impl MemoryService {
 
     /// 立即索引资源（同步生成嵌入 + 写入 LanceDB），确保后续向量搜索能找到。
     /// 索引成功后标记为 indexed，防止批量 worker 和 handler 重复处理。
+    ///
+    /// 公开别名 `index_resource_immediately`，供 MemoryToolExecutor 等外部调用方使用。
+    pub async fn index_resource_immediately(&self, resource_id: &str) {
+        self.index_immediately(resource_id).await;
+    }
+
     async fn index_immediately(&self, resource_id: &str) {
         match VfsFullIndexingService::new(
             self.vfs_db.clone(),
@@ -570,6 +576,28 @@ impl MemoryService {
         }
 
         if self.config.is_privacy_mode()? {
+            // 隐私模式下使用本地标题匹配做基础去重（不涉及外部 API 调用）
+            let root_id = self.ensure_root_folder_id()?;
+            let target_folder_id = if let Some(path) = folder_path {
+                if path.is_empty() {
+                    Some(root_id.clone())
+                } else {
+                    self.resolve_path_to_folder_id(&root_id, path)?.or(Some(root_id.clone()))
+                }
+            } else {
+                Some(root_id.clone())
+            };
+            if let Some(existing) = self.find_note_by_title(target_folder_id.as_deref(), title)? {
+                return Ok(SmartWriteOutput {
+                    note_id: existing.id,
+                    event: "NONE".to_string(),
+                    is_new: false,
+                    confidence: 1.0,
+                    reason: "隐私模式：同名记忆已存在（本地标题去重）".to_string(),
+                    resource_id: None,
+                    downgraded: false,
+                });
+            }
             let result = self.write(folder_path, title, content, WriteMode::Create)?;
             return Ok(SmartWriteOutput {
                 note_id: result.note_id,
@@ -812,17 +840,6 @@ impl MemoryService {
                 })
             }
         };
-
-        if let Ok(ref out) = result {
-            if out.resource_id.is_some() {
-                let svc = self.clone();
-                tokio::task::spawn_blocking(move || {
-                    if let Err(e) = svc.refresh_profile_summary() {
-                        warn!("[Memory] Profile refresh failed: {}", e);
-                    }
-                });
-            }
-        }
 
         result
     }
@@ -1075,31 +1092,38 @@ impl MemoryService {
             )
             .ok()
         } else {
-            conn.query_row(
-                r#"
-                SELECT id, resource_id, title, tags, is_favorite,
-                       created_at, updated_at, deleted_at
-                FROM notes
-                WHERE title = ?1 AND deleted_at IS NULL
-                LIMIT 1
-                "#,
-                params![title],
-                |row| {
-                    let tags_json: String = row.get(3)?;
-                    let tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
-                    Ok(VfsNote {
-                        id: row.get(0)?,
-                        resource_id: row.get(1)?,
-                        title: row.get(2)?,
-                        tags,
-                        is_favorite: row.get::<_, i32>(4)? != 0,
-                        created_at: row.get(5)?,
-                        updated_at: row.get(6)?,
-                        deleted_at: row.get(7)?,
-                    })
-                },
-            )
-            .ok()
+            // 无 folder_id 时限制在记忆根文件夹范围内搜索，避免匹配到记忆之外的同名笔记
+            let root_id = self.ensure_root_folder_id().ok();
+            if let Some(ref rid) = root_id {
+                conn.query_row(
+                    r#"
+                    SELECT n.id, n.resource_id, n.title, n.tags, n.is_favorite,
+                           n.created_at, n.updated_at, n.deleted_at
+                    FROM notes n
+                    JOIN folder_items fi ON fi.item_type = 'note' AND fi.item_id = n.id
+                    WHERE n.title = ?1 AND fi.folder_id = ?2 AND n.deleted_at IS NULL
+                    LIMIT 1
+                    "#,
+                    params![title, rid],
+                    |row| {
+                        let tags_json: String = row.get(3)?;
+                        let tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
+                        Ok(VfsNote {
+                            id: row.get(0)?,
+                            resource_id: row.get(1)?,
+                            title: row.get(2)?,
+                            tags,
+                            is_favorite: row.get::<_, i32>(4)? != 0,
+                            created_at: row.get(5)?,
+                            updated_at: row.get(6)?,
+                            deleted_at: row.get(7)?,
+                        })
+                    },
+                )
+                .ok()
+            } else {
+                None
+            }
         };
         Ok(note)
     }
@@ -1217,6 +1241,15 @@ impl MemoryService {
             );
         }
         info!("[Memory] Deleted note: {}", note_id);
+
+        // 删除后异步刷新用户画像摘要（确保画像不包含已删除记忆的事实）
+        let svc = self.clone();
+        tokio::task::spawn_blocking(move || {
+            if let Err(e) = svc.refresh_profile_summary() {
+                warn!("[Memory] Profile refresh after delete failed: {}", e);
+            }
+        });
+
         Ok(())
     }
 

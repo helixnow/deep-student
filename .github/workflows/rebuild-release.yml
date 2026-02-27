@@ -1,0 +1,626 @@
+# ╔══════════════════════════════════════════════════════════════════╗
+# ║  手动重建 Release (rebuild-release.yml)                        ║
+# ╠══════════════════════════════════════════════════════════════════╣
+# ║                                                                ║
+# ║  用途: 重新构建并发布某个已存在的 tag 版本                     ║
+# ║  场景: 构建失败需要重试 / 需要替换已有产物 / 补发某个平台      ║
+# ║                                                                ║
+# ║  安全保障:                                                     ║
+# ║    - 只接受已存在于仓库中的 tag (不存在则 checkout 失败)        ║
+# ║    - 执行与主流程完全相同的版本号三重校验                      ║
+# ║    - checkout 的是 tag 指向的 commit, 不受 headSha 影响        ║
+# ║                                                                ║
+# ║  操作: GitHub → Actions → Rebuild Release → Run workflow       ║
+# ║        输入 tag 名称 (如 v0.9.22) → 自动构建发布               ║
+# ╚══════════════════════════════════════════════════════════════════╝
+
+name: Rebuild Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: '要重建的 tag (如 v0.9.22), 必须是已存在的 tag'
+        required: true
+        type: string
+
+concurrency:
+  group: rebuild-${{ github.event.inputs.tag_name }}
+  cancel-in-progress: false
+
+env:
+  GITHUB_REPO: ${{ github.repository }}
+  R2_BUCKET: deepstudent
+  KEEP_VERSIONS: 10
+
+jobs:
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # 版本号三重校验门禁
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  verify:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.verify.outputs.version }}
+      tag_name: ${{ steps.verify.outputs.tag_name }}
+    steps:
+      - name: Validate tag format
+        run: |
+          TAG_NAME="${{ github.event.inputs.tag_name }}"
+          if [[ ! "${TAG_NAME}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Invalid tag format: '${TAG_NAME}'. Expected format: v0.9.22"
+            exit 1
+          fi
+          echo "✅ Tag format valid: ${TAG_NAME}"
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag_name }}
+
+      - name: Verify version consistency
+        id: verify
+        run: |
+          TAG_NAME="${{ github.event.inputs.tag_name }}"
+          TAG_VERSION="${TAG_NAME#v}"
+
+          echo "tag_name=${TAG_NAME}" >> $GITHUB_OUTPUT
+          echo "version=${TAG_VERSION}" >> $GITHUB_OUTPUT
+
+          PKG_VERSION=$(jq -r '.version' package.json)
+          CARGO_VERSION=$(sed -n '/^\[package\]/,/^\[/{s/^version *= *"\(.*\)"/\1/p}' src-tauri/Cargo.toml)
+          TAURI_VERSION=$(jq -r '.version' src-tauri/tauri.conf.json)
+
+          echo "══════════════════════════════════════"
+          echo "  Tag version:       ${TAG_VERSION}"
+          echo "  package.json:      ${PKG_VERSION}"
+          echo "  Cargo.toml:        ${CARGO_VERSION}"
+          echo "  tauri.conf.json:   ${TAURI_VERSION}"
+          echo "══════════════════════════════════════"
+
+          ERRORS=0
+
+          if [[ "${PKG_VERSION}" != "${TAG_VERSION}" ]]; then
+            echo "::error::package.json version (${PKG_VERSION}) does not match tag (${TAG_VERSION})"
+            ERRORS=$((ERRORS + 1))
+          fi
+
+          if [[ "${CARGO_VERSION}" != "${TAG_VERSION}" ]]; then
+            echo "::error::Cargo.toml version (${CARGO_VERSION}) does not match tag (${TAG_VERSION})"
+            ERRORS=$((ERRORS + 1))
+          fi
+
+          if [[ "${TAURI_VERSION}" != "${TAG_VERSION}" ]]; then
+            echo "::error::tauri.conf.json version (${TAURI_VERSION}) does not match tag (${TAG_VERSION})"
+            ERRORS=$((ERRORS + 1))
+          fi
+
+          if [[ $ERRORS -gt 0 ]]; then
+            echo "::error::Version mismatch detected! ${ERRORS} file(s) have inconsistent versions."
+            echo "::error::The tag does not point to a commit with matching version numbers."
+            exit 1
+          fi
+
+          echo "✅ All version numbers are consistent: ${TAG_VERSION}"
+
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # 构建 (通过版本校验后并行构建全平台)
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  build-macos:
+    needs: [verify]
+    runs-on: macos-latest
+    env:
+      NODE_OPTIONS: '--max-old-space-size=4096'
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [aarch64-apple-darwin, x86_64-apple-darwin]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ needs.verify.outputs.tag_name }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Setup protoc
+        uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate version info
+        run: node scripts/generate-version.mjs
+
+      - name: Build Tauri app
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          SILICONFLOW_BUILTIN_TEXT_KEY: ${{ secrets.SILICONFLOW_BUILTIN_TEXT_KEY }}
+          SILICONFLOW_BUILTIN_VISION_KEY: ${{ secrets.SILICONFLOW_BUILTIN_VISION_KEY }}
+          SILICONFLOW_BUILTIN_EMBED_KEY: ${{ secrets.SILICONFLOW_BUILTIN_EMBED_KEY }}
+        run: npx tauri build --target ${{ matrix.target }}
+
+      - name: Rename updater artifacts with arch suffix
+        run: |
+          BUNDLE_DIR="src-tauri/target/${{ matrix.target }}/release/bundle/macos"
+          ARCH=$(echo "${{ matrix.target }}" | cut -d'-' -f1)
+          for f in "$BUNDLE_DIR"/*.app.tar.gz; do
+            [ -f "$f" ] || continue
+            BASE=$(basename "$f" .app.tar.gz | tr ' ' '.')
+            mv "$f" "$BUNDLE_DIR/${BASE}_${ARCH}.app.tar.gz"
+            [ -f "$f.sig" ] && mv "$f.sig" "$BUNDLE_DIR/${BASE}_${ARCH}.app.tar.gz.sig"
+          done
+          echo "📦 Renamed updater artifacts:"
+          ls -la "$BUNDLE_DIR"/
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-${{ matrix.target }}
+          path: |
+            src-tauri/target/${{ matrix.target }}/release/bundle/macos/*.app.tar.gz
+            src-tauri/target/${{ matrix.target }}/release/bundle/macos/*.app.tar.gz.sig
+            src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg
+
+  build-windows:
+    needs: [verify]
+    runs-on: windows-latest
+    env:
+      NODE_OPTIONS: '--max-old-space-size=4096'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ needs.verify.outputs.tag_name }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup protoc
+        uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate version info
+        run: node scripts/generate-version.mjs
+
+      - name: Build Tauri app
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          SILICONFLOW_BUILTIN_TEXT_KEY: ${{ secrets.SILICONFLOW_BUILTIN_TEXT_KEY }}
+          SILICONFLOW_BUILTIN_VISION_KEY: ${{ secrets.SILICONFLOW_BUILTIN_VISION_KEY }}
+          SILICONFLOW_BUILTIN_EMBED_KEY: ${{ secrets.SILICONFLOW_BUILTIN_EMBED_KEY }}
+        run: npx tauri build --target x86_64-pc-windows-msvc
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-x86_64
+          path: |
+            src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
+            src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe.sig
+
+  build-android:
+    needs: [verify]
+    runs-on: ubuntu-latest
+    env:
+      NODE_OPTIONS: '--max-old-space-size=4096'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ needs.verify.outputs.tag_name }}
+
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android/sdk/ndk /opt/ghc /opt/hostedtoolcache/CodeQL
+          sudo docker image prune --all --force
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Setup Android SDK & NDK
+        run: |
+          yes | ${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager \
+            "ndk;27.0.12077973" "build-tools;35.0.0" "platforms;android-35" | tail -3
+          echo "NDK_HOME=${ANDROID_HOME}/ndk/27.0.12077973" >> $GITHUB_ENV
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      - name: Setup protoc
+        uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate version info
+        run: node scripts/generate-version.mjs
+
+      - name: Initialize Android project
+        run: npx tauri android init
+
+      - name: Copy custom Android icons
+        run: |
+          ICONS_SRC="src-tauri/icons/android"
+          RES_DST="src-tauri/gen/android/app/src/main/res"
+          if [ -d "$ICONS_SRC" ]; then
+            for density in mipmap-mdpi mipmap-hdpi mipmap-xhdpi mipmap-xxhdpi mipmap-xxxhdpi; do
+              if [ -d "$ICONS_SRC/$density" ]; then
+                mkdir -p "$RES_DST/$density"
+                cp -f "$ICONS_SRC/$density/"* "$RES_DST/$density/"
+              fi
+            done
+            if [ -d "$ICONS_SRC/mipmap-anydpi-v26" ]; then
+              mkdir -p "$RES_DST/mipmap-anydpi-v26"
+              cp -f "$ICONS_SRC/mipmap-anydpi-v26/"* "$RES_DST/mipmap-anydpi-v26/"
+            fi
+            if [ -f "$ICONS_SRC/values/ic_launcher_background.xml" ]; then
+              mkdir -p "$RES_DST/values"
+              cp -f "$ICONS_SRC/values/ic_launcher_background.xml" "$RES_DST/values/"
+            fi
+            rm -f "$RES_DST/drawable-v24/ic_launcher_foreground.xml"
+            rm -f "$RES_DST/drawable/ic_launcher_background.xml"
+            echo "✅ Custom Android icons copied from $ICONS_SRC"
+            find "$RES_DST" -name "ic_launcher*" -type f | head -20
+          else
+            echo "⚠️ No custom Android icons found at $ICONS_SRC, using defaults"
+          fi
+
+      - name: Bundle pdfium for Android
+        run: |
+          JNILIBS_DIR="src-tauri/gen/android/app/src/main/jniLibs/arm64-v8a"
+          mkdir -p "$JNILIBS_DIR"
+          if [ -f "src-tauri/resources/pdfium/libpdfium_android_arm64.so" ]; then
+            cp src-tauri/resources/pdfium/libpdfium_android_arm64.so "$JNILIBS_DIR/libpdfium.so"
+            echo "✅ Bundled pdfium for arm64: $(ls -lh "$JNILIBS_DIR/libpdfium.so" | awk '{print $5}')"
+          else
+            echo "⚠️ Android pdfium .so not found, downloading..."
+            bash scripts/download-pdfium.sh android-arm64
+            cp src-tauri/resources/pdfium/libpdfium_android_arm64.so "$JNILIBS_DIR/libpdfium.so"
+            echo "✅ Downloaded and bundled pdfium for arm64"
+          fi
+
+      - name: Configure NDK toolchain
+        run: |
+          NDK_PREBUILT="${NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64"
+
+          sed -i '/\[target.aarch64-linux-android\]/,/^$/{ s|linker = .*|linker = "'"${NDK_PREBUILT}"'/bin/aarch64-linux-android21-clang"|; s|ar = .*|ar = "'"${NDK_PREBUILT}"'/bin/llvm-ar"| }' src-tauri/.cargo/config.toml
+
+          echo "CC_aarch64_linux_android=${NDK_PREBUILT}/bin/aarch64-linux-android21-clang" >> $GITHUB_ENV
+          echo "CXX_aarch64_linux_android=${NDK_PREBUILT}/bin/aarch64-linux-android21-clang++" >> $GITHUB_ENV
+          echo "AR_aarch64_linux_android=${NDK_PREBUILT}/bin/llvm-ar" >> $GITHUB_ENV
+          echo "CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=${NDK_PREBUILT}/bin/aarch64-linux-android21-clang" >> $GITHUB_ENV
+
+          echo "✅ NDK toolchain configured:"
+          cat src-tauri/.cargo/config.toml | grep -A2 aarch64-linux-android
+
+      - name: Build Android APK
+        env:
+          SILICONFLOW_BUILTIN_TEXT_KEY: ${{ secrets.SILICONFLOW_BUILTIN_TEXT_KEY }}
+          SILICONFLOW_BUILTIN_VISION_KEY: ${{ secrets.SILICONFLOW_BUILTIN_VISION_KEY }}
+          SILICONFLOW_BUILTIN_EMBED_KEY: ${{ secrets.SILICONFLOW_BUILTIN_EMBED_KEY }}
+        run: npx tauri android build --target aarch64
+
+      - name: Sign APK
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          echo "${ANDROID_KEYSTORE_BASE64}" | base64 -d > /tmp/release.keystore
+
+          UNSIGNED_APK=$(find src-tauri/gen/android -name "*-unsigned.apk" -type f | head -1)
+          if [ -z "$UNSIGNED_APK" ]; then
+            echo "::error::未找到未签名的 APK"
+            find src-tauri/gen/android -name "*.apk" -type f
+            exit 1
+          fi
+          echo "找到 APK: $UNSIGNED_APK"
+
+          BUILD_TOOLS=$(ls -d "${ANDROID_HOME}/build-tools/"* | sort -V | tail -1)
+
+          "${BUILD_TOOLS}/zipalign" -v 4 "$UNSIGNED_APK" /tmp/aligned.apk
+
+          "${BUILD_TOOLS}/apksigner" sign \
+            --ks /tmp/release.keystore \
+            --ks-key-alias "${ANDROID_KEY_ALIAS:-deepstudent}" \
+            --ks-pass "pass:${ANDROID_KEYSTORE_PASSWORD}" \
+            --key-pass "pass:${ANDROID_KEY_PASSWORD}" \
+            --in /tmp/aligned.apk \
+            --out /tmp/signed.apk
+
+          "${BUILD_TOOLS}/apksigner" verify --print-certs /tmp/signed.apk
+
+          VERSION="${{ needs.verify.outputs.version }}"
+          mkdir -p android-output
+          cp /tmp/signed.apk "android-output/Deep.Student_${VERSION}_arm64.apk"
+
+          rm -f /tmp/release.keystore
+
+          echo "✅ APK 签名完成: Deep.Student_${VERSION}_arm64.apk"
+          ls -lh android-output/
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-arm64
+          path: android-output/*.apk
+
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # 发布 (全平台构建完成后统一发布)
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  publish:
+    needs: [verify, build-macos, build-windows, build-android]
+    if: |
+      always() &&
+      needs.verify.result == 'success' &&
+      needs.build-macos.result == 'success' &&
+      needs.build-windows.result == 'success' &&
+      !cancelled()
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.verify.outputs.tag_name }}
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Display artifact structure
+        run: find artifacts -type f | head -50
+
+      - name: Normalize artifact filenames
+        run: |
+          find artifacts -type f -name '* *' | while IFS= read -r f; do
+            DIR=$(dirname "$f")
+            OLD=$(basename "$f")
+            NEW=$(echo "$OLD" | tr ' ' '.')
+            mv "$f" "$DIR/$NEW"
+            echo "  Renamed: $OLD → $NEW"
+          done
+
+      - name: Generate latest.json
+        run: |
+          VERSION="${{ needs.verify.outputs.version }}"
+          REPO="${{ github.repository }}"
+          TAG="${{ needs.verify.outputs.tag_name }}"
+          DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+          PLATFORMS="{}"
+
+          MACOS_ARM_DIR="artifacts/macos-aarch64-apple-darwin"
+          if [ -d "$MACOS_ARM_DIR" ]; then
+            TAR=$(find "$MACOS_ARM_DIR" -name "*_aarch64.app.tar.gz" ! -name "*.sig" | head -1)
+            SIG=$(find "$MACOS_ARM_DIR" -name "*_aarch64.app.tar.gz.sig" | head -1)
+            if [ -n "$TAR" ] && [ -n "$SIG" ]; then
+              TAR_NAME=$(basename "$TAR")
+              SIGNATURE=$(cat "$SIG")
+              PLATFORMS=$(echo "$PLATFORMS" | jq --arg url "https://github.com/$REPO/releases/download/$TAG/$TAR_NAME" \
+                --arg sig "$SIGNATURE" \
+                '. + {"darwin-aarch64": {"url": $url, "signature": $sig}}')
+            fi
+          fi
+
+          MACOS_X64_DIR="artifacts/macos-x86_64-apple-darwin"
+          if [ -d "$MACOS_X64_DIR" ]; then
+            TAR=$(find "$MACOS_X64_DIR" -name "*_x86_64.app.tar.gz" ! -name "*.sig" | head -1)
+            SIG=$(find "$MACOS_X64_DIR" -name "*_x86_64.app.tar.gz.sig" | head -1)
+            if [ -n "$TAR" ] && [ -n "$SIG" ]; then
+              TAR_NAME=$(basename "$TAR")
+              SIGNATURE=$(cat "$SIG")
+              PLATFORMS=$(echo "$PLATFORMS" | jq --arg url "https://github.com/$REPO/releases/download/$TAG/$TAR_NAME" \
+                --arg sig "$SIGNATURE" \
+                '. + {"darwin-x86_64": {"url": $url, "signature": $sig}}')
+            fi
+          fi
+
+          WIN_DIR="artifacts/windows-x86_64"
+          if [ -d "$WIN_DIR" ]; then
+            EXE=$(find "$WIN_DIR" -name "*-setup.exe" ! -name "*.sig" | head -1)
+            SIG=$(find "$WIN_DIR" -name "*-setup.exe.sig" | head -1)
+            if [ -n "$EXE" ] && [ -n "$SIG" ]; then
+              EXE_NAME=$(basename "$EXE")
+              SIGNATURE=$(cat "$SIG")
+              PLATFORMS=$(echo "$PLATFORMS" | jq --arg url "https://github.com/$REPO/releases/download/$TAG/$EXE_NAME" \
+                --arg sig "$SIGNATURE" \
+                '. + {"windows-x86_64": {"url": $url, "signature": $sig}}')
+            fi
+          fi
+
+          jq -n \
+            --arg version "$VERSION" \
+            --arg notes "Deep Student v$VERSION 更新" \
+            --arg pub_date "$DATE" \
+            --argjson platforms "$PLATFORMS" \
+            '{version: $version, notes: $notes, pub_date: $pub_date, platforms: $platforms}' \
+            > latest.json
+
+          echo "✅ latest.json 已生成:"
+          cat latest.json
+
+      - name: Collect release files
+        run: |
+          mkdir -p release-files
+          cp latest.json release-files/
+
+          find artifacts -name "*.app.tar.gz" -exec cp {} release-files/ \;
+          find artifacts -name "*.app.tar.gz.sig" -exec cp {} release-files/ \;
+          find artifacts -name "*.dmg" -exec cp {} release-files/ \;
+          find artifacts -name "*.exe" -exec cp {} release-files/ \;
+          find artifacts -name "*.exe.sig" -exec cp {} release-files/ \;
+          find artifacts -name "*.apk" -exec cp {} release-files/ \;
+
+          echo "📦 Release files:"
+          ls -lh release-files/
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2 pinned
+        with:
+          tag_name: ${{ needs.verify.outputs.tag_name }}
+          draft: false
+          prerelease: false
+          files: release-files/*
+
+      - name: Setup Node.js for wrangler
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Upload to Cloudflare R2
+        continue-on-error: true
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          TAG="${{ needs.verify.outputs.tag_name }}"
+          echo "📤 Uploading release ${TAG} to R2..."
+          for FILE in release-files/*; do
+            NAME=$(basename "$FILE")
+            [ "$NAME" = "latest.json" ] && continue
+            case "$NAME" in
+              *.sig)  CT="application/pgp-signature" ;;
+              *.dmg)  CT="application/x-apple-diskimage" ;;
+              *.apk)  CT="application/vnd.android.package-archive" ;;
+              *)      CT="application/octet-stream" ;;
+            esac
+            echo "  ⬆️ ${NAME} (${CT})"
+            npx wrangler r2 object put "${R2_BUCKET}/releases/${TAG}/${NAME}" \
+              --file "$FILE" --content-type "$CT" \
+              --cache-control "public, max-age=31536000, immutable" --remote
+          done
+          echo "✅ R2 upload complete"
+
+      - name: Generate R2 latest.json
+        continue-on-error: true
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          TAG="${{ needs.verify.outputs.tag_name }}"
+          R2_BASE="https://download.deepstudent.cn/releases/${TAG}"
+
+          if [ ! -f latest.json ]; then
+            echo "⚠️ No latest.json, skipping"
+            exit 0
+          fi
+
+          APK_NAME=$(ls release-files/*.apk 2>/dev/null | head -1 | xargs basename 2>/dev/null || echo "")
+          APK_URL=""
+          if [ -n "$APK_NAME" ]; then
+            APK_URL="${R2_BASE}/${APK_NAME}"
+            echo "📱 APK: ${APK_URL}"
+          fi
+
+          jq --arg base "$R2_BASE" --arg apk "$APK_URL" '
+            .platforms |= with_entries(
+              .value.url = ($base + "/" + (.value.url | split("/") | last))
+            )
+            | if $apk != "" then .apk_url = $apk else . end
+          ' latest.json > r2-latest.json
+
+          echo "R2 latest.json:"
+          cat r2-latest.json
+
+          npx wrangler r2 object put "${R2_BUCKET}/releases/latest.json" \
+            --file r2-latest.json --content-type "application/json" \
+            --cache-control "public, max-age=300" --remote
+          echo "✅ R2 latest.json uploaded"
+
+      - name: Cleanup old R2 versions
+        continue-on-error: true
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "🧹 Checking for old versions to clean up..."
+          RELEASES=$(gh api repos/${{ github.repository }}/releases \
+            --paginate -q '.[].tag_name')
+          TOTAL=$(echo "$RELEASES" | grep -c . || true)
+          echo "Found ${TOTAL} releases"
+
+          if [ "$TOTAL" -le "$KEEP_VERSIONS" ]; then
+            echo "✅ No cleanup needed (${TOTAL} ≤ ${KEEP_VERSIONS})"
+            exit 0
+          fi
+
+          TO_DELETE=$(echo "$RELEASES" | tail -n +$((KEEP_VERSIONS + 1)))
+          echo "🗑️ Deleting $(echo "$TO_DELETE" | grep -c . || true) old versions from R2"
+          echo "$TO_DELETE" | while read -r OLD_TAG; do
+            [ -z "$OLD_TAG" ] && continue
+            echo "  Removing releases/${OLD_TAG}/..."
+            ASSETS=$(gh api "repos/${{ github.repository }}/releases/tags/${OLD_TAG}" \
+              -q '.assets[].name' 2>/dev/null || true)
+            echo "$ASSETS" | while read -r NAME; do
+              [ -z "$NAME" ] && continue
+              npx wrangler r2 object delete "${R2_BUCKET}/releases/${OLD_TAG}/${NAME}" --remote 2>/dev/null || true
+            done
+          done
+          echo "✅ R2 cleanup complete"
+
+      - name: Trigger website rebuild
+        continue-on-error: true
+        env:
+          VERCEL_DEPLOY_HOOK: ${{ secrets.VERCEL_DEPLOY_HOOK }}
+        run: |
+          if [ -z "$VERCEL_DEPLOY_HOOK" ]; then
+            echo "⚠️ VERCEL_DEPLOY_HOOK not configured, skipping"
+            exit 0
+          fi
+          RESP=$(curl -s -X POST "$VERCEL_DEPLOY_HOOK")
+          echo "🌐 Website rebuild triggered: $RESP"

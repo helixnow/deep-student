@@ -44,8 +44,8 @@ impl MemoryAutoExtractor {
             return Ok(vec![]);
         }
 
-        let user_truncated: String = user_content.chars().take(1500).collect();
-        let assistant_truncated: String = assistant_content.chars().take(1500).collect();
+        let user_truncated = Self::truncate_head_tail(user_content, 1500);
+        let assistant_truncated = Self::truncate_head_tail(assistant_content, 1500);
 
         let prompt = Self::build_extraction_prompt(
             &user_truncated,
@@ -124,6 +124,13 @@ impl MemoryAutoExtractor {
                         candidate.title, e
                     );
                 }
+            }
+        }
+
+        // 批量写入完成后统一刷新一次用户画像（避免逐条刷新的性能浪费）
+        if stored_count > 0 {
+            if let Err(e) = memory_service.refresh_profile_summary() {
+                warn!("[MemoryAutoExtractor] Profile refresh after batch store failed: {}", e);
             }
         }
 
@@ -228,6 +235,10 @@ impl MemoryAutoExtractor {
                 if title.is_empty() || content.is_empty() || content.chars().count() > 80 {
                     return None;
                 }
+                if Self::contains_sensitive_pattern(&content) || Self::contains_sensitive_pattern(&title) {
+                    warn!("[MemoryAutoExtractor] Filtered sensitive content: '{}'", title);
+                    return None;
+                }
                 let folder = item
                     .get("folder")
                     .and_then(|v| v.as_str())
@@ -241,6 +252,38 @@ impl MemoryAutoExtractor {
             })
             .take(5)
             .collect()
+    }
+
+    fn contains_sensitive_pattern(text: &str) -> bool {
+        use regex::Regex;
+        use std::sync::OnceLock;
+        static RE: OnceLock<Regex> = OnceLock::new();
+        let re = RE.get_or_init(|| {
+            Regex::new(concat!(
+                r"(?:",
+                r"(?<!\d)1[3-9]\d{9}(?!\d)",    // 手机号（前后无数字）
+                r"|(?<!\d)\d{15,18}[Xx]?(?!\d)", // 身份证号
+                r"|(?<!\d)\d{16,19}(?!\d)",      // 银行卡号
+                r"|[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}", // 邮箱
+                r"|密码.{0,5}[:：].+",            // 密码
+                r"|password.{0,5}[:=].+",
+                r")"
+            )).unwrap()
+        });
+        re.is_match(text)
+    }
+
+    /// 截断长文本保留头部和尾部（确保对话后段的关键信息不丢失）
+    fn truncate_head_tail(text: &str, max_chars: usize) -> String {
+        let total = text.chars().count();
+        if total <= max_chars {
+            return text.to_string();
+        }
+        let head_len = max_chars * 2 / 3;
+        let tail_len = max_chars - head_len - 10;
+        let head: String = text.chars().take(head_len).collect();
+        let tail: String = text.chars().skip(total - tail_len).collect();
+        format!("{}\n...(省略)...\n{}", head, tail)
     }
 
     /// 从文本中提取第一个 JSON 数组 `[ ... ]`

@@ -327,12 +327,21 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
 
     setIsLoading(true);
     try {
-      for (const id of selectedIds) {
-        await deleteMemory(id);
+      const results = await Promise.allSettled(
+        Array.from(selectedIds).map((id) => deleteMemory(id))
+      );
+      const failed = results.filter((r) => r.status === 'rejected').length;
+      if (failed > 0) {
+        showGlobalNotification('warning', t('memory.batch_delete_partial', `已删除 ${selectedIds.size - failed} 条记忆，${failed} 条失败`));
+      } else {
+        showGlobalNotification('success', t('memory.batch_delete_success', `已删除 ${selectedIds.size} 条记忆`));
       }
-      showGlobalNotification('success', t('memory.batch_delete_success', `已删除 ${selectedIds.size} 条记忆`));
       setSelectedIds(new Set());
       setBatchMode(false);
+      if (expandedMemoryId && selectedIds.has(expandedMemoryId)) {
+        setExpandedMemoryId(null);
+        setExpandedContent(null);
+      }
       loadMemories();
     } catch (error: unknown) {
       console.error('[MemoryView] Batch delete failed:', error);
@@ -340,7 +349,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
     } finally {
       setIsLoading(false);
     }
-  }, [selectedIds, t, loadMemories]);
+  }, [selectedIds, t, loadMemories, expandedMemoryId]);
 
   const toggleSelect = useCallback((id: string) => {
     setSelectedIds(prev => {

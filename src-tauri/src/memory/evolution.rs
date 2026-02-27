@@ -14,6 +14,10 @@ use tracing::{debug, info, warn};
 
 use crate::vfs::database::VfsDatabase;
 use crate::vfs::error::VfsResult;
+use crate::vfs::lance_store::VfsLanceStore;
+use crate::vfs::repos::embedding_repo::VfsIndexStateRepo;
+use crate::vfs::repos::index_unit_repo;
+use crate::vfs::repos::note_repo::VfsNoteRepo;
 
 use super::service::{MemoryListItem, MemoryService};
 
@@ -24,6 +28,7 @@ const FOLDER_OVERFLOW_THRESHOLD: usize = 20;
 
 pub struct MemoryEvolution {
     vfs_db: Arc<VfsDatabase>,
+    lance_store: Option<Arc<VfsLanceStore>>,
 }
 
 #[derive(Debug, Default)]
@@ -35,7 +40,8 @@ pub struct EvolutionReport {
 
 impl MemoryEvolution {
     pub fn new(vfs_db: Arc<VfsDatabase>) -> Self {
-        Self { vfs_db }
+        let lance_store = VfsLanceStore::new(vfs_db.clone()).ok().map(Arc::new);
+        Self { vfs_db, lance_store }
     }
 
     /// 执行一轮完整的自进化周期
@@ -72,6 +78,8 @@ impl MemoryEvolution {
         let conn = self.vfs_db.get_conn_safe()?;
         let now = chrono::Utc::now();
         let mut demoted = 0usize;
+
+        let _ = conn.execute_batch("BEGIN IMMEDIATE");
 
         for mem in memories {
             if mem.title.starts_with("__") {
@@ -128,6 +136,7 @@ impl MemoryEvolution {
             }
         }
 
+        let _ = conn.execute_batch("COMMIT");
         Ok(demoted)
     }
 
@@ -135,6 +144,8 @@ impl MemoryEvolution {
     fn promote_high_freq_memories(&self, memories: &[MemoryListItem]) -> VfsResult<usize> {
         let conn = self.vfs_db.get_conn_safe()?;
         let mut promoted = 0usize;
+
+        let _ = conn.execute_batch("BEGIN IMMEDIATE");
 
         for mem in memories {
             if mem.title.starts_with("__") {
@@ -180,6 +191,7 @@ impl MemoryEvolution {
             }
         }
 
+        let _ = conn.execute_batch("COMMIT");
         Ok(promoted)
     }
 
@@ -247,11 +259,36 @@ impl MemoryEvolution {
                 }
 
                 for dup in &group[1..] {
-                    if let Err(e) = conn.execute(
-                        "UPDATE notes SET deleted_at = datetime('now') WHERE id = ?1",
-                        params![&dup.id],
+                    let resource_id: Option<String> = VfsNoteRepo::get_note(&self.vfs_db, &dup.id)
+                        .ok()
+                        .flatten()
+                        .map(|n| n.resource_id);
+
+                    if let Some(ref res_id) = resource_id {
+                        if let Some(ref lance) = self.lance_store {
+                            let lance_c = lance.clone();
+                            let res_id_c = res_id.clone();
+                            if let Ok(handle) = tokio::runtime::Handle::try_current() {
+                                let _ = tokio::task::block_in_place(|| {
+                                    handle.block_on(async {
+                                        lance_c.delete_by_resource("text", &res_id_c).await
+                                    })
+                                });
+                            }
+                        }
+                        let _ = index_unit_repo::delete_by_resource(&conn, res_id);
+                        let _ = VfsIndexStateRepo::mark_disabled_with_reason(
+                            &self.vfs_db,
+                            res_id,
+                            "evolution merged duplicate",
+                        );
+                    }
+
+                    if let Err(e) = crate::vfs::repos::note_repo::VfsNoteRepo::delete_note_with_folder_item(
+                        &self.vfs_db,
+                        &dup.id,
                     ) {
-                        warn!("[Evolution] Failed to soft-delete duplicate {}: {}", dup.id, e);
+                        warn!("[Evolution] Failed to delete duplicate {}: {}", dup.id, e);
                     } else {
                         folder_merged += 1;
                         debug!("[Evolution] Merged duplicate '{}' ({} → {})", _title, dup.id, keep.id);

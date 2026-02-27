@@ -1,6 +1,7 @@
 import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
 import LanguageDetector from 'i18next-browser-languagedetector';
+import { normalizeSupportedLanguage, type SupportedLanguage } from './types/i18n';
 
 // ============================================================================
 // 🚀 性能优化：只同步导入首屏必需的核心翻译（common + sidebar）
@@ -24,8 +25,11 @@ const ALL_NS = [
   'essay_grading', 'app_menu', 'learningHub', 'dstu', 'migration',
   'skills', 'command_palette', 'backend_errors', 'mcp', 'workspace',
   'stats', 'llm_usage', 'review', 'practice', 'sync', 'mindmap',
-  'forms', 'console',
+  'forms', 'console', 'cloudStorage',
 ];
+
+const FALLBACK_NS = ALL_NS.filter((namespace) => namespace !== 'common');
+const LOADED_LOCALES: Set<SupportedLanguage> = new Set();
 
 // 已同步加载的核心命名空间（延迟加载时跳过）
 const CORE_NS = new Set(['common', 'sidebar']);
@@ -52,10 +56,15 @@ if (!i18n.isInitialized) {
     .use(initReactI18next)
     .init({
       resources,
-      fallbackLng: 'en-US',
       defaultNS: 'common',
       ns: ALL_NS,
-      fallbackNS: ['sidebar', 'settings', 'analysis', 'enhanced_rag', 'anki', 'template', 'data', 'chat_host', 'chat_module', 'notes', 'exam_sheet', 'card_manager', 'dev', 'drag_drop', 'pdf', 'textbook', 'graph_conflict', 'translation', 'essay_grading', 'learningHub', 'backend_errors', 'forms', 'console'],
+      supportedLngs: ['en-US', 'zh-CN'],
+      fallbackLng: {
+        'en': ['en-US'],
+        'zh': ['zh-CN'],
+        default: 'en-US',
+      },
+      fallbackNS: FALLBACK_NS,
 
       detection: {
         order: ['localStorage', 'navigator', 'htmlTag'],
@@ -82,7 +91,11 @@ if (!i18n.isInitialized) {
  * addResourceBundle 会触发 react-i18next 的 'added' 事件，自动刷新使用对应 ns 的组件
  */
 async function loadDeferredNamespaces(lang: string) {
-  const prefix = `./locales/${lang}/`;
+  const resolvedLang = normalizeSupportedLanguage(lang);
+  const prefix = `./locales/${resolvedLang}/`;
+  if (LOADED_LOCALES.has(resolvedLang)) return;
+  LOADED_LOCALES.add(resolvedLang);
+
   const tasks: Promise<void>[] = [];
 
   for (const [path, loader] of Object.entries(localeModules)) {
@@ -94,7 +107,7 @@ async function loadDeferredNamespaces(lang: string) {
     tasks.push(
       (loader() as Promise<{ default?: Record<string, unknown> }>)
         .then((mod) => {
-          i18n.addResourceBundle(lang, ns, mod.default ?? mod, true, true);
+          i18n.addResourceBundle(resolvedLang, ns, mod.default ?? mod, true, true);
         })
         .catch(() => {
           // 单个命名空间加载失败不影响其他（如 graph.json 可能不存在）
@@ -108,12 +121,21 @@ async function loadDeferredNamespaces(lang: string) {
 // 立即开始加载延迟命名空间（不阻塞 i18n 导出和首帧渲染）
 (async () => {
   // 优先加载当前语言，让 UI 文案尽快就位
-  const currentLang = (i18n.language || '').startsWith('zh') ? 'zh-CN' : 'en-US';
+  const currentLang = normalizeSupportedLanguage(i18n.language);
   const otherLang = currentLang === 'zh-CN' ? 'en-US' : 'zh-CN';
 
   await loadDeferredNamespaces(currentLang);
   // 后台加载另一种语言（供 fallback 和语言切换使用）
   loadDeferredNamespaces(otherLang).catch(() => {});
+
+  i18n.on('languageChanged', (newLang) => {
+    const normalized = normalizeSupportedLanguage(newLang);
+    if (newLang !== normalized) {
+      i18n.changeLanguage(normalized);
+      return;
+    }
+    void loadDeferredNamespaces(normalized);
+  });
 })();
 
 export default i18n;

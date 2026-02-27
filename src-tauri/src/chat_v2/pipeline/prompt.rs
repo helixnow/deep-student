@@ -69,11 +69,26 @@ impl ChatV2Pipeline {
             }
         }
 
-        let combined = sections.join("\n\n");
-        // 防止 profile 过大吞噬上下文窗口：超过 2000 字符时截断
-        if combined.chars().count() > 2000 {
-            let truncated: String = combined.chars().take(2000).collect();
-            Some(format!("{}...\n（用户画像已截断，完整信息请使用 memory_search 工具检索）", truncated))
+        // 防止 profile 过大吞噬上下文窗口：按完整 section 截断（不截断到中间位置）
+        const PROFILE_MAX_CHARS: usize = 2000;
+        let mut total_chars = 0usize;
+        let mut kept_sections = Vec::new();
+        for section in &sections {
+            let section_chars = section.chars().count();
+            if total_chars + section_chars > PROFILE_MAX_CHARS && !kept_sections.is_empty() {
+                break;
+            }
+            total_chars += section_chars + 2;
+            kept_sections.push(section.as_str());
+        }
+        let combined = kept_sections.join("\n\n");
+        if kept_sections.len() < sections.len() {
+            Some(format!(
+                "{}\n\n（用户画像已截断 {}/{} 个分类，完整信息请使用 memory_search 工具检索）",
+                combined,
+                kept_sections.len(),
+                sections.len()
+            ))
         } else {
             Some(combined)
         }
