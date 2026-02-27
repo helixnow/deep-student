@@ -68,14 +68,19 @@ function isImageRef(ref: ContextRef): boolean {
 
 /**
  * 构建 data URL
+ * 
+ * 后端 vfs_resolve_resource_refs 可能返回 base64 + <image_ocr> 拼接的内容，
+ * 必须截断 OCR 标签以确保 data URL 只包含纯 base64 数据。
  */
 function buildDataUrl(data: string, mimeType: string): string {
-  // 如果已经是 data URL，直接返回
-  if (data.startsWith('data:')) {
-    return data;
+  // 截断 <image_ocr> 及其后续内容
+  const ocrTagIndex = data.indexOf('<image_ocr');
+  const cleanData = ocrTagIndex >= 0 ? data.substring(0, ocrTagIndex).trim() : data;
+
+  if (cleanData.startsWith('data:')) {
+    return cleanData;
   }
-  // 否则构建 data URL
-  return `data:${mimeType};base64,${data}`;
+  return `data:${mimeType};base64,${cleanData}`;
 }
 
 // ============================================================================

@@ -1116,7 +1116,6 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                           isExpanded && 'rotate-90'
                         )} />
                       )}
-                      <FileText className="w-4 h-4 text-muted-foreground flex-shrink-0" />
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-1.5">
                           <span className="text-sm font-medium truncate">{memory.title}</span>
@@ -1161,11 +1160,21 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                             {isEditing ? (
                               <div className="p-3 space-y-2">
                                 <textarea
+                                  ref={(el) => {
+                                    if (el) {
+                                      el.style.height = 'auto';
+                                      el.style.height = el.scrollHeight + 'px';
+                                    }
+                                  }}
                                   value={editContent}
-                                  onChange={(e) => setEditContent(e.target.value)}
-                                  rows={4}
+                                  onChange={(e) => {
+                                    setEditContent(e.target.value);
+                                    const el = e.target;
+                                    el.style.height = 'auto';
+                                    el.style.height = el.scrollHeight + 'px';
+                                  }}
                                   autoFocus
-                                  className="w-full px-3 py-2 text-xs bg-muted/30 border-transparent rounded-md resize-none focus:border-border focus:bg-background focus:outline-none transition-colors"
+                                  className="w-full px-3 py-2 text-xs bg-muted/30 border-transparent rounded-md resize-none overflow-hidden focus:border-border focus:bg-background focus:outline-none transition-colors"
                                 />
                                 <div className="flex gap-2">
                                   <NotionButton variant="ghost" size="sm" onClick={handleCancelEdit} className="!h-auto !px-2 !py-1 text-xs">

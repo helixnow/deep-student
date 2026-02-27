@@ -8,7 +8,7 @@
  * 所有数据通过 DSTU 节点和 API 获取。
  */
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Loader2, AlertCircle, RotateCcw } from 'lucide-react';
 import { NotionButton } from '@/components/ui/NotionButton';
@@ -19,10 +19,11 @@ import { dstu } from '@/dstu';
 import { useSystemStatusStore } from '@/stores/systemStatusStore';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import type { ContentViewProps } from '../UnifiedAppPanel';
-import { PanelGroup, Panel, PanelResizeHandle } from 'react-resizable-panels';
+import { PanelGroup, Panel, PanelResizeHandle, type ImperativePanelHandle } from 'react-resizable-panels';
 import { cn } from '@/lib/utils';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
-import { GripVertical } from 'lucide-react';
+import { GripVertical, PanelRight } from 'lucide-react';
+import { CommonTooltip } from '@/components/shared/CommonTooltip';
 
 /**
  * 笔记内容视图
@@ -38,6 +39,20 @@ const NoteContentView: React.FC<ContentViewProps> = ({
 }) => {
   const { t } = useTranslation(['notes', 'common']);
   const isSmallScreen = useMediaQuery("(max-width: 768px)");
+
+  // ========== 右侧面板状态 ==========
+  const [rightPanelVisible, setRightPanelVisible] = useState(true);
+  const rightPanelRef = useRef<ImperativePanelHandle>(null);
+
+  const toggleRightPanel = useCallback(() => {
+    const panel = rightPanelRef.current;
+    if (!panel) return;
+    if (rightPanelVisible) {
+      panel.collapse();
+    } else {
+      panel.expand();
+    }
+  }, [rightPanelVisible]);
 
   // ========== 状态 ==========
   const [isLoading, setIsLoading] = useState(true);
@@ -190,13 +205,35 @@ const NoteContentView: React.FC<ContentViewProps> = ({
           <div className="h-full bg-primary animate-[indeterminate_1.5s_infinite_linear]" />
         </div>
       )}
+      {/* 右侧栏开关按钮 - 置于 PanelGroup 之上，避免被编辑器 sticky header 遮挡 */}
+      {!isSmallScreen && (
+        <div className="flex items-center justify-end px-2 py-0.5 flex-shrink-0">
+          <CommonTooltip
+            content={rightPanelVisible ? t('notes:context.collapse_panel', '收起侧边栏') : t('notes:context.expand_panel', '展开侧边栏')}
+            position="bottom"
+          >
+            <NotionButton
+              variant="ghost"
+              iconOnly
+              size="sm"
+              className={cn(
+                "h-6 w-6 text-muted-foreground/50 hover:text-foreground hover:bg-accent transition-colors",
+                !rightPanelVisible && "text-muted-foreground/70"
+              )}
+              onClick={toggleRightPanel}
+            >
+              <PanelRight className="h-3.5 w-3.5" />
+            </NotionButton>
+          </CommonTooltip>
+        </div>
+      )}
       <PanelGroup direction="horizontal" autoSaveId="learning-hub-note-layout" className="flex-1 min-h-0">
         <Panel
           defaultSize={80}
           minSize={50}
           id="learning-hub-note-editor"
           order={1}
-          className="flex flex-col min-h-0 relative"
+          className="flex flex-col min-h-0"
         >
           <NotesCrepeEditor
             initialContent={content}
@@ -211,26 +248,39 @@ const NoteContentView: React.FC<ContentViewProps> = ({
 
         {!isSmallScreen && (
           <>
-            <PanelResizeHandle className="w-1 bg-border/40 hover:bg-primary/20 transition-colors flex items-center justify-center group">
+            <PanelResizeHandle className={cn(
+              "w-1 bg-border/40 hover:bg-primary/20 transition-colors flex items-center justify-center group",
+              !rightPanelVisible && "pointer-events-none opacity-0 !w-0"
+            )}>
               <GripVertical className="w-3 h-3 text-muted-foreground/30 group-hover:text-muted-foreground/60 transition-colors" />
             </PanelResizeHandle>
             <Panel
+              ref={rightPanelRef}
               defaultSize={20}
               minSize={15}
               maxSize={30}
+              collapsedSize={0}
               id="learning-hub-note-outline"
               order={2}
-              className="flex flex-col min-h-0 border-l border-border/40 bg-muted/5"
+              collapsible
+              onCollapse={() => setRightPanelVisible(false)}
+              onExpand={() => setRightPanelVisible(true)}
+              className={cn(
+                "flex flex-col min-h-0 bg-muted/5 transition-all",
+                rightPanelVisible ? "border-l border-border/40" : "border-l-0"
+              )}
             >
-              <NotesContextPanel
-                noteId={noteId}
-                title={title}
-                createdAt={node.createdAt}
-                updatedAt={node.updatedAt}
-                tags={tags}
-                content={content || ''}
-                onTagsChange={readOnly ? undefined : handleTagsChange}
-              />
+              {rightPanelVisible && (
+                <NotesContextPanel
+                  noteId={noteId}
+                  title={title}
+                  createdAt={node.createdAt}
+                  updatedAt={node.updatedAt}
+                  tags={tags}
+                  content={content || ''}
+                  onTagsChange={readOnly ? undefined : handleTagsChange}
+                />
+              )}
             </Panel>
           </>
         )}
