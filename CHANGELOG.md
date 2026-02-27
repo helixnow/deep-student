@@ -10,6 +10,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.9.23](https://github.com/helixnow/deep-student/compare/v0.9.22...v0.9.23) (2026-02-27)
+
+
+### Bug Fixes
+
+* handle release-please comment failure on locked PRs ([6df5ff8](https://github.com/helixnow/deep-student/commit/6df5ff895eb80e93157e58f82355821ebf29c494))
+* resolve TypeScript errors in i18n fallbackLng and IndexStatusView ([00a438a](https://github.com/helixnow/deep-student/commit/00a438a597816de462e51c6e1ab8e58a65e91951))
+
 ## [0.9.22](https://github.com/helixnow/deep-student/compare/v0.9.21...v0.9.22) (2026-02-27)
 
 
