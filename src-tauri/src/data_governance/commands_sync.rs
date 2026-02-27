@@ -20,8 +20,13 @@ use super::commands::{check_maintenance_mode, try_save_audit_log, SYNC_LOCK_TIME
 use super::commands_backup::{
     get_app_data_dir, get_active_data_dir, resolve_database_path,
     validate_user_path, apply_downloaded_changes_to_databases, validate_backup_id,
-    ApplyToDbsResult,
+    ApplyToDbsResult, build_id_column_map,
 };
+
+/// 便捷函数：获取各表主键列名映射（questions → exam_id 等）
+fn id_column_map() -> HashMap<String, String> {
+    build_id_column_map()
+}
 
 /// 获取同步状态
 ///
@@ -681,8 +686,7 @@ pub async fn data_governance_run_sync(
             .map_err(|e| format!("获取数据库 {} 待同步变更失败: {}", db_id.as_str(), e))?;
 
         if pending.has_changes() {
-            // 使用 enrich_changes_with_data 补全完整记录数据（INSERT/UPDATE 包含真实行内容）
-            let mut enriched = SyncManager::enrich_changes_with_data(&conn, &pending.entries, None)
+            let mut enriched = SyncManager::enrich_changes_with_data(&conn, &pending.entries, Some(&id_column_map()))
                 .map_err(|e| format!("补全数据库 {} 变更数据失败: {}", db_id.as_str(), e))?;
 
             // 为每条变更标注来源数据库名称，下载回放时按库路由
@@ -717,18 +721,12 @@ pub async fn data_governance_run_sync(
     // 执行同步（异步操作），返回 (结果, 跳过数量)
     let result: Result<(SyncExecutionResult, usize), String> = match sync_direction {
         SyncDirection::Upload => {
-            // 上传带完整数据的变更
             manager
                 .upload_enriched_changes(storage.as_ref(), &all_enriched, None)
                 .await
                 .map_err(|e| format!("上传同步失败: {}", e))?;
 
-            manager
-                .upload_manifest(storage.as_ref(), &local_manifest)
-                .await
-                .map_err(|e| format!("上传清单失败: {}", e))?;
-
-            // 标记变更为已同步（按数据库分别标记）
+            // 先标记变更为已同步
             for db_id in DatabaseId::all_ordered() {
                 let db_path = resolve_database_path(&db_id, &active_dir);
                 if !db_path.exists() {
@@ -746,6 +744,26 @@ pub async fn data_governance_run_sync(
                         .map_err(|e| format!("标记变更失败: {}", e))?;
                 }
             }
+
+            // 标记完成后重建 manifest 再上传（确保 data_version 反映最新状态）
+            let upload_manifest = {
+                let mut dbs: HashMap<String, DatabaseSyncState> = HashMap::new();
+                for db_id in DatabaseId::all_ordered() {
+                    let db_path = resolve_database_path(&db_id, &active_dir);
+                    if db_path.exists() {
+                        if let Ok(conn) = rusqlite::Connection::open(&db_path) {
+                            if let Ok(state) = SyncManager::get_database_sync_state(&conn, db_id.as_str()) {
+                                dbs.insert(db_id.as_str().to_string(), state);
+                            }
+                        }
+                    }
+                }
+                manager.create_manifest(dbs)
+            };
+            manager
+                .upload_manifest(storage.as_ref(), &upload_manifest)
+                .await
+                .map_err(|e| format!("上传清单失败: {}", e))?;
 
             Ok((
                 SyncExecutionResult {
@@ -806,12 +824,8 @@ pub async fn data_governance_run_sync(
                     .await
                     .map_err(|e| format!("上传变更失败: {}", e))?;
             }
-            manager
-                .upload_manifest(storage.as_ref(), &local_manifest)
-                .await
-                .map_err(|e| format!("上传清单失败: {}", e))?;
 
-            // 应用下载的变更（已包含完整数据，直接按库路由）
+            // 先应用下载的变更，标记后再重建 manifest 上传
             let mut exec_result = exec_result;
             let mut total_skipped = 0usize;
             if !downloaded_changes.is_empty() {
@@ -855,6 +869,26 @@ pub async fn data_governance_run_sync(
                     change_ids.len()
                 );
             }
+
+            // 标记完成后重建 manifest 再上传
+            let refreshed_manifest = {
+                let mut dbs: HashMap<String, DatabaseSyncState> = HashMap::new();
+                for db_id in DatabaseId::all_ordered() {
+                    let db_path = resolve_database_path(&db_id, &active_dir);
+                    if db_path.exists() {
+                        if let Ok(conn) = rusqlite::Connection::open(&db_path) {
+                            if let Ok(state) = SyncManager::get_database_sync_state(&conn, db_id.as_str()) {
+                                dbs.insert(db_id.as_str().to_string(), state);
+                            }
+                        }
+                    }
+                }
+                manager.create_manifest(dbs)
+            };
+            manager
+                .upload_manifest(storage.as_ref(), &refreshed_manifest)
+                .await
+                .map_err(|e| format!("上传刷新清单失败: {}", e))?;
 
             Ok((exec_result, total_skipped))
         }
@@ -1035,7 +1069,7 @@ pub async fn data_governance_export_sync_data(
                 // 获取待同步变更并补全完整数据
                 if let Ok(pending) = SyncManager::get_pending_changes(&conn, None, None) {
                     if pending.has_changes() {
-                        match SyncManager::enrich_changes_with_data(&conn, &pending.entries, None) {
+                        match SyncManager::enrich_changes_with_data(&conn, &pending.entries, Some(&id_column_map())) {
                             Ok(mut enriched) => {
                                 for change in &mut enriched {
                                     change.database_name = Some(db_id.as_str().to_string());
@@ -1515,7 +1549,7 @@ pub async fn data_governance_run_sync_with_progress(
 
         match SyncManager::get_pending_changes(&conn, None, None) {
             Ok(pending) if pending.has_changes() => {
-                match SyncManager::enrich_changes_with_data(&conn, &pending.entries, None) {
+                match SyncManager::enrich_changes_with_data(&conn, &pending.entries, Some(&id_column_map())) {
                     Ok(mut enriched) => {
                         for change in &mut enriched {
                             change.database_name = Some(db_id.as_str().to_string());
@@ -1789,14 +1823,9 @@ async fn execute_upload_with_progress_v2(
             .map_err(|e| format!("上传同步失败: {}", e))?
     }
 
-    manager
-        .upload_manifest(storage, local_manifest)
-        .await
-        .map_err(|e| format!("上传清单失败: {}", e))?;
-
     emitter.emit_uploading(total, total, None).await;
 
-    // 按数据库标记变更为已同步
+    // 先标记变更为已同步
     for db_id in DatabaseId::all_ordered() {
         let db_path = resolve_database_path(&db_id, active_dir);
         if !db_path.exists() {
@@ -1817,6 +1846,26 @@ async fn execute_upload_with_progress_v2(
         }
     }
 
+    // 标记完成后重建 manifest 再上传（确保 data_version 反映最新状态）
+    {
+        let mut refreshed_dbs: HashMap<String, DatabaseSyncState> = HashMap::new();
+        for db_id in DatabaseId::all_ordered() {
+            let db_path = resolve_database_path(&db_id, active_dir);
+            if db_path.exists() {
+                if let Ok(conn) = rusqlite::Connection::open(&db_path) {
+                    if let Ok(state) = SyncManager::get_database_sync_state(&conn, db_id.as_str()) {
+                        refreshed_dbs.insert(db_id.as_str().to_string(), state);
+                    }
+                }
+            }
+        }
+        let refreshed_manifest = manager.create_manifest(refreshed_dbs);
+        manager
+            .upload_manifest(storage, &refreshed_manifest)
+            .await
+            .map_err(|e| format!("上传清单失败: {}", e))?;
+    }
+
     emitter.emit_applying(total, total, None).await;
 
     // 文件级云同步：工作区数据库（ws_*.db）+ VFS blobs
@@ -1826,6 +1875,11 @@ async fn execute_upload_with_progress_v2(
     }
     if let Err(e) = manager.sync_vfs_blobs(storage, &blobs_dir).await {
         tracing::warn!("[data_governance] VFS blob 同步失败（非致命）: {}", e);
+    }
+
+    // 清理云端超过 30 天的旧变更文件（非致命）
+    if let Err(e) = manager.prune_old_changes(storage, 30).await {
+        tracing::warn!("[data_governance] 云端变更文件清理失败（非致命）: {}", e);
     }
 
     Ok((
@@ -1972,12 +2026,8 @@ async fn execute_bidirectional_with_progress_v2(
             .emit_uploading(upload_total, upload_total, None)
             .await;
     }
-    manager
-        .upload_manifest(storage, local_manifest)
-        .await
-        .map_err(|e| format!("上传清单失败: {}", e))?;
 
-    // 应用下载的变更（已含完整数据，按库路由）
+    // 先应用下载的变更，标记完成后再重建 manifest 上传（确保清单反映最终状态）
     let mut exec_result = exec_result;
     let mut total_skipped = 0usize;
     if !downloaded_changes.is_empty() {
@@ -2028,6 +2078,26 @@ async fn execute_bidirectional_with_progress_v2(
         );
     }
 
+    // 重建 manifest 反映下载应用 + 标记后的最新状态，再上传
+    {
+        let mut refreshed_databases: HashMap<String, DatabaseSyncState> = HashMap::new();
+        for db_id in DatabaseId::all_ordered() {
+            let db_path = resolve_database_path(&db_id, active_dir);
+            if db_path.exists() {
+                if let Ok(conn) = rusqlite::Connection::open(&db_path) {
+                    if let Ok(state) = SyncManager::get_database_sync_state(&conn, db_id.as_str()) {
+                        refreshed_databases.insert(db_id.as_str().to_string(), state);
+                    }
+                }
+            }
+        }
+        let refreshed_manifest = manager.create_manifest(refreshed_databases);
+        manager
+            .upload_manifest(storage, &refreshed_manifest)
+            .await
+            .map_err(|e| format!("上传刷新清单失败: {}", e))?;
+    }
+
     // 文件级云同步：工作区数据库（ws_*.db）+ VFS blobs
     let blobs_dir = app_data_dir.join("vfs_blobs");
     if let Err(e) = manager.sync_workspace_databases(storage, active_dir).await {
@@ -2035,6 +2105,11 @@ async fn execute_bidirectional_with_progress_v2(
     }
     if let Err(e) = manager.sync_vfs_blobs(storage, &blobs_dir).await {
         tracing::warn!("[data_governance] VFS blob 同步失败（非致命）: {}", e);
+    }
+
+    // 清理云端超过 30 天的旧变更文件
+    if let Err(e) = manager.prune_old_changes(storage, 30).await {
+        tracing::warn!("[data_governance] 云端变更文件清理失败（非致命）: {}", e);
     }
 
     Ok((exec_result, total_skipped))

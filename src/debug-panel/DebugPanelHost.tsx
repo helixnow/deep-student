@@ -63,6 +63,7 @@ import WorkspaceOrchestrationTestPlugin from './plugins/WorkspaceOrchestrationTe
 import ToolCallLifecycleDebugPlugin from './plugins/ToolCallLifecycleDebugPlugin';
 import ExamSheetProcessingDebugPlugin from './plugins/ExamSheetProcessingDebugPlugin';
 import QuestionImportDebugPlugin from './plugins/QuestionImportDebugPlugin';
+import ChatAnkiIntegrationTestPlugin from './plugins/ChatAnkiIntegrationTestPlugin';
 
 export interface DebugPanelHostProps {
   visible: boolean;
@@ -313,6 +314,15 @@ const PLUGINS: DebugPanelPluginEntry[] = [
     Component: ChatAnkiWorkflowDebugPlugin,
     labelDefault: 'ChatAnki 全链路调试',
     descriptionDefault: '监控 chatanki_run/wait/status 工具调用、后端 anki_generation_event 事件、block 状态变化，支持一键复制/下载日志。',
+    groupId: 'cards-template',
+  },
+  {
+    id: 'chatanki-integration-test',
+    labelKey: 'debug_panel.plugin_chatanki_integration_test',
+    descriptionKey: 'debug_panel.plugin_chatanki_integration_test_desc',
+    Component: ChatAnkiIntegrationTestPlugin,
+    labelDefault: 'ChatAnki 集成自动测试',
+    descriptionDefault: '3 组 9 场景全自动 DOM 模拟测试：制卡核心流 / 用户操作（编辑/删除/保存）/ 数据一致性（onEnd 覆盖/提前 success/进度回退），生成可下载报告。',
     groupId: 'cards-template',
   },
   {

@@ -591,22 +591,19 @@ impl SyncManager {
     // 云存储集成方法
     // ========================================================================
 
-    /// 清单文件的云端路径
-    const MANIFEST_KEY: &'static str = "data_governance/sync_manifest.json";
+    /// 旧版单清单路径（用于向后兼容迁移读取）
+    const LEGACY_MANIFEST_KEY: &'static str = "data_governance/sync_manifest.json";
+    /// 按设备隔离的清单目录前缀
+    const MANIFESTS_PREFIX: &'static str = "data_governance/manifests";
     /// 变更数据的云端路径前缀
     const CHANGES_PREFIX: &'static str = "data_governance/changes";
 
-    /// 上传本地清单到云端
-    ///
-    /// 将 SyncManifest 序列化为 JSON 并上传到云存储。
-    ///
-    /// # 参数
-    /// * `storage` - 云存储实例
-    /// * `manifest` - 要上传的同步清单
-    ///
-    /// # 返回
-    /// * `Ok(())` - 上传成功
-    /// * `Err(SyncError)` - 上传失败
+    /// 构建按设备隔离的清单路径
+    fn device_manifest_key(device_id: &str) -> String {
+        format!("{}/{}.json", Self::MANIFESTS_PREFIX, device_id)
+    }
+
+    /// 上传本地清单到云端（按设备隔离）
     pub async fn upload_manifest(
         &self,
         storage: &dyn CloudStorage,
@@ -615,66 +612,128 @@ impl SyncManager {
         let json = serde_json::to_vec_pretty(manifest)
             .map_err(|e| SyncError::Database(format!("序列化清单失败: {}", e)))?;
 
+        let key = Self::device_manifest_key(&self.device_id);
         storage
-            .put(Self::MANIFEST_KEY, &json)
+            .put(&key, &json)
             .await
             .map_err(|e| SyncError::Network(format!("上传清单失败: {}", e)))?;
 
         tracing::info!(
-            "[sync] 清单已上传到云端: device={}, tx={}, databases={}",
+            "[sync] 清单已上传到云端: device={}, tx={}, databases={}, key={}",
             manifest.device_id,
             manifest.sync_transaction_id,
-            manifest.databases.len()
+            manifest.databases.len(),
+            key
         );
 
         Ok(())
     }
 
-    /// 从云端下载清单
+    /// 从云端下载清单（合并所有其他设备的清单）
     ///
-    /// 从云存储下载 SyncManifest 并反序列化。
-    ///
-    /// # 参数
-    /// * `storage` - 云存储实例
-    ///
-    /// # 返回
-    /// * `Ok(SyncManifest)` - 下载并解析成功
-    /// * `Err(SyncError::Network)` - 云端没有清单或网络错误
+    /// 策略：
+    /// 1. 列出 `data_governance/manifests/` 下所有设备清单
+    /// 2. 排除本设备，合并其他设备的数据库状态（取各库最高 data_version）
+    /// 3. 向后兼容：若新目录为空，回退读取旧的单文件清单
     pub async fn download_manifest(
         &self,
         storage: &dyn CloudStorage,
     ) -> Result<SyncManifest, SyncError> {
-        let data = storage
-            .get(Self::MANIFEST_KEY)
+        // 列出所有设备清单文件
+        let files = storage
+            .list(Self::MANIFESTS_PREFIX)
             .await
-            .map_err(|e| SyncError::Network(format!("获取清单失败: {}", e)))?;
+            .unwrap_or_default();
 
-        match data {
-            Some(bytes) => {
-                let manifest: SyncManifest = serde_json::from_slice(&bytes)
-                    .map_err(|e| SyncError::Database(format!("解析清单失败: {}", e)))?;
+        let mut merged_databases: HashMap<String, DatabaseSyncState> = HashMap::new();
+        let mut any_found = false;
+        let mut latest_created_at: Option<chrono::DateTime<chrono::Utc>> = None;
+        let mut latest_created_at_raw = String::new();
 
-                tracing::info!(
-                    "[sync] 从云端下载清单: device={}, tx={}, databases={}",
-                    manifest.device_id,
-                    manifest.sync_transaction_id,
-                    manifest.databases.len()
-                );
+        for file in &files {
+            let file_device_id = file
+                .key
+                .rsplit('/')
+                .next()
+                .and_then(|f| f.strip_suffix(".json"))
+                .unwrap_or("");
 
-                Ok(manifest)
+            if file_device_id == self.device_id || file_device_id.is_empty() {
+                continue;
             }
-            None => {
-                tracing::info!("[sync] 云端没有同步清单，返回空清单");
-                // 返回一个空的清单，表示云端没有数据
-                Ok(SyncManifest {
-                    sync_transaction_id: String::new(),
-                    databases: HashMap::new(),
-                    status: SyncTransactionStatus::Complete,
-                    created_at: chrono::Utc::now().to_rfc3339(),
-                    device_id: String::new(),
-                })
+
+            if let Ok(Some(bytes)) = storage.get(&file.key).await {
+                if let Ok(manifest) = serde_json::from_slice::<SyncManifest>(&bytes) {
+                    any_found = true;
+                    if let Some(dt) = Self::parse_flexible_timestamp(&manifest.created_at) {
+                        if latest_created_at.map_or(true, |prev| dt > prev) {
+                            latest_created_at = Some(dt);
+                            latest_created_at_raw = manifest.created_at.clone();
+                        }
+                    }
+                    // 合并：对每个数据库取最高 data_version 的状态
+                    for (db_name, state) in &manifest.databases {
+                        let entry = merged_databases
+                            .entry(db_name.clone())
+                            .or_insert_with(|| state.clone());
+                        if state.data_version > entry.data_version {
+                            *entry = state.clone();
+                        }
+                    }
+                    tracing::debug!(
+                        "[sync] 合并设备清单: device={}, databases={}",
+                        file_device_id,
+                        manifest.databases.len()
+                    );
+                }
             }
         }
+
+        // 向后兼容：如果没有新格式清单，回退到旧的单文件
+        if !any_found {
+            if let Ok(Some(bytes)) = storage.get(Self::LEGACY_MANIFEST_KEY).await {
+                if let Ok(manifest) = serde_json::from_slice::<SyncManifest>(&bytes) {
+                    // 旧清单来自另一设备（或自己），直接使用
+                    if manifest.device_id != self.device_id {
+                        tracing::info!(
+                            "[sync] 从旧版单清单迁移读取: device={}, databases={}",
+                            manifest.device_id,
+                            manifest.databases.len()
+                        );
+                        return Ok(manifest);
+                    }
+                }
+            }
+        }
+
+        if !any_found && merged_databases.is_empty() {
+            tracing::info!("[sync] 云端没有其他设备的同步清单");
+            return Ok(SyncManifest {
+                sync_transaction_id: String::new(),
+                databases: HashMap::new(),
+                status: SyncTransactionStatus::Complete,
+                created_at: chrono::Utc::now().to_rfc3339(),
+                device_id: String::new(),
+            });
+        }
+
+        tracing::info!(
+            "[sync] 合并云端清单完成: other_devices={}, merged_databases={}",
+            files.len().saturating_sub(1),
+            merged_databases.len()
+        );
+
+        Ok(SyncManifest {
+            sync_transaction_id: uuid::Uuid::new_v4().to_string(),
+            databases: merged_databases,
+            status: SyncTransactionStatus::Complete,
+            created_at: if latest_created_at_raw.is_empty() {
+                chrono::Utc::now().to_rfc3339()
+            } else {
+                latest_created_at_raw
+            },
+            device_id: "merged".to_string(),
+        })
     }
 
     /// 上传变更数据（v1 旧格式：仅 ChangeLogEntry 元数据，不含行数据）
@@ -818,32 +877,33 @@ impl SyncManager {
         since_version: u64,
         per_db_since: Option<&HashMap<String, u64>>,
     ) -> Result<Vec<SyncChangeWithData>, SyncError> {
-        // 列出所有变更文件
         let files = storage
             .list(Self::CHANGES_PREFIX)
             .await
             .map_err(|e| SyncError::Network(format!("列出变更文件失败: {}", e)))?;
 
         let mut all_changes: Vec<SyncChangeWithData> = Vec::new();
+        let mut skipped_self = 0usize;
 
         for file in files {
-            // 解析文件名中的版本号
+            // 跳过本设备上传的变更文件，避免回声下载
+            // 路径格式: data_governance/changes/{device_id}/{version}-{nonce}.json[.zst]
+            if Self::is_own_change_file(&file.key, &self.device_id) {
+                skipped_self += 1;
+                continue;
+            }
+
             if let Some(version) = Self::parse_version_from_key(&file.key) {
-                // 使用 >= 而非 >：防止同秒上传的变更被跳过
-                // apply 层幂等（INSERT OR REPLACE），重复下载不会产生副作用
+                // >= 防止同秒上传的变更被跳过，apply 层幂等保证安全
                 if version >= since_version {
-                    // 下载并解析变更文件
                     if let Some(data) = storage
                         .get(&file.key)
                         .await
                         .map_err(|e| SyncError::Network(format!("下载变更文件失败: {}", e)))?
                     {
-                        // Phase 5 Optimization: Decompression with Fallback
-                        // Try to decompress assuming Zstd
                         let decoded_data = zstd::stream::decode_all(std::io::Cursor::new(&data))
-                            .unwrap_or_else(|_| data.clone()); // Fallback to raw data if decompression fails (legacy plain JSON)
+                            .unwrap_or_else(|_| data.clone());
 
-                        // 尝试新格式（v2: SyncChangesPayload，含完整记录数据）
                         if let Ok(payload) =
                             serde_json::from_slice::<SyncChangesPayload>(&decoded_data)
                         {
@@ -862,9 +922,7 @@ impl SyncManager {
                                 }
                                 all_changes.push(change);
                             }
-                        }
-                        // 回退到旧格式（v1: PendingChanges，仅含元数据）
-                        else if let Ok(changes) =
+                        } else if let Ok(changes) =
                             serde_json::from_slice::<PendingChanges>(&decoded_data)
                         {
                             tracing::warn!(
@@ -872,7 +930,6 @@ impl SyncManager {
                                 file.key,
                                 changes.total_count
                             );
-                            // 旧格式仅有元数据，INSERT/UPDATE 的 data 为 None
                             for entry in &changes.entries {
                                 let change = SyncChangeWithData::from_entry(entry);
                                 if let Some(db) = change.database_name.as_deref() {
@@ -892,16 +949,46 @@ impl SyncManager {
             }
         }
 
-        // 按变更时间排序
-        all_changes.sort_by(|a, b| a.changed_at.cmp(&b.changed_at));
+        // 使用时间戳归一化排序（兼容 SQLite datetime 和 RFC 3339 格式）
+        all_changes.sort_by(|a, b| {
+            let ta = Self::parse_flexible_timestamp(&a.changed_at);
+            let tb = Self::parse_flexible_timestamp(&b.changed_at);
+            match (ta, tb) {
+                (Some(a_dt), Some(b_dt)) => a_dt.cmp(&b_dt),
+                (Some(_), None) => std::cmp::Ordering::Less,
+                (None, Some(_)) => std::cmp::Ordering::Greater,
+                (None, None) => a.changed_at.cmp(&b.changed_at),
+            }
+        });
+
+        if skipped_self > 0 {
+            tracing::debug!(
+                "[sync] 跳过本设备变更文件: {} 个（避免回声下载）",
+                skipped_self
+            );
+        }
 
         tracing::info!(
-            "[sync] 从云端下载变更: since={}, total={}",
+            "[sync] 从云端下载变更: since={}, total={}, skipped_self={}",
             since_version,
-            all_changes.len()
+            all_changes.len(),
+            skipped_self
         );
 
         Ok(all_changes)
+    }
+
+    /// 判断变更文件是否属于本设备
+    fn is_own_change_file(key: &str, self_device_id: &str) -> bool {
+        // 路径: data_governance/changes/{device_id}/{version}-{nonce}.json[.zst]
+        let parts: Vec<&str> = key.split('/').collect();
+        if parts.len() >= 3 {
+            // parts: ["data_governance", "changes", "{device_id}", "{filename}"]
+            if let Some(device_part) = parts.get(2) {
+                return *device_part == self_device_id;
+            }
+        }
+        false
     }
 
     /// 从文件路径解析版本号
@@ -944,6 +1031,59 @@ impl SyncManager {
             version,
             nonce
         )
+    }
+
+    /// 清理云端过期的变更文件（仅清理本设备的文件）
+    ///
+    /// 只删除本设备上传的、版本号早于 `retention_days` 天前的变更文件。
+    /// 不删除其他设备的文件，避免影响尚未同步的设备。
+    pub async fn prune_old_changes(
+        &self,
+        storage: &dyn CloudStorage,
+        retention_days: u64,
+    ) -> Result<usize, SyncError> {
+        let cutoff_version =
+            (chrono::Utc::now().timestamp() as u64).saturating_sub(retention_days * 86400);
+
+        let files = storage
+            .list(Self::CHANGES_PREFIX)
+            .await
+            .map_err(|e| SyncError::Network(format!("列出变更文件失败: {}", e)))?;
+
+        let mut deleted = 0usize;
+        for file in &files {
+            // 仅清理本设备的旧文件
+            if !Self::is_own_change_file(&file.key, &self.device_id) {
+                continue;
+            }
+            if let Some(version) = Self::parse_version_from_key(&file.key) {
+                if version < cutoff_version {
+                    match storage.delete(&file.key).await {
+                        Ok(_) => {
+                            deleted += 1;
+                            tracing::debug!("[sync] 已清理过期变更文件: {}", file.key);
+                        }
+                        Err(e) => {
+                            tracing::warn!(
+                                "[sync] 清理变更文件失败（跳过）: {}: {}",
+                                file.key,
+                                e
+                            );
+                        }
+                    }
+                }
+            }
+        }
+
+        if deleted > 0 {
+            tracing::info!(
+                "[sync] 云端变更文件清理完成: 删除 {} 个本设备旧文件（保留 {} 天内）",
+                deleted,
+                retention_days
+            );
+        }
+
+        Ok(deleted)
     }
 
     /// 执行完整的上传同步流程（v1 旧格式：不含完整行数据）
@@ -1403,16 +1543,35 @@ impl SyncManager {
     }
 
     /// 比较两个时间戳字符串
+    ///
+    /// 兼容两种常见格式：
+    /// - RFC 3339: `"2026-02-27T12:34:56+00:00"` (Rust chrono 生成)
+    /// - SQLite:   `"2026-02-27 12:34:56"`       (datetime('now') 生成)
     fn compare_timestamps(local: &str, cloud: &str) -> std::cmp::Ordering {
-        use chrono::DateTime;
-        let local_dt = DateTime::parse_from_rfc3339(local);
-        let cloud_dt = DateTime::parse_from_rfc3339(cloud);
-        
+        let local_dt = Self::parse_flexible_timestamp(local);
+        let cloud_dt = Self::parse_flexible_timestamp(cloud);
+
         match (local_dt, cloud_dt) {
-            (Ok(l), Ok(c)) => l.cmp(&c),
-            // 如果解析失败，回退到字符串字典序比较
-            _ => local.cmp(cloud),
+            (Some(l), Some(c)) => l.cmp(&c),
+            (Some(_), None) => std::cmp::Ordering::Greater,
+            (None, Some(_)) => std::cmp::Ordering::Less,
+            (None, None) => local.cmp(cloud),
         }
+    }
+
+    /// 灵活解析时间戳，兼容 RFC 3339 和 SQLite datetime('now') 格式
+    fn parse_flexible_timestamp(s: &str) -> Option<chrono::DateTime<chrono::Utc>> {
+        use chrono::{DateTime, NaiveDateTime, Utc};
+        if let Ok(dt) = DateTime::parse_from_rfc3339(s) {
+            return Some(dt.with_timezone(&Utc));
+        }
+        if let Ok(naive) = NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S") {
+            return Some(naive.and_utc());
+        }
+        if let Ok(naive) = NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S") {
+            return Some(naive.and_utc());
+        }
+        None
     }
 
     /// 应用合并策略到数据库（实际执行更新）
@@ -2196,16 +2355,18 @@ impl SyncManager {
         })
     }
 
-    /// 计算简单的数据库 checksum
+    /// 计算数据库 checksum（跨 Rust 版本稳定）
+    ///
+    /// 使用 SHA-256 代替 DefaultHasher，确保不同编译版本产生一致的哈希值。
     fn calculate_simple_checksum(
         conn: &Connection,
         database_name: &str,
     ) -> Result<String, SyncError> {
-        // 获取所有表的记录数
         let tables: Vec<String> = conn
             .prepare(
                 "SELECT name FROM sqlite_master WHERE type='table'
-                 AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '\\_\\_%' ESCAPE '\\'",
+                 AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '\\_\\_%' ESCAPE '\\'
+                 ORDER BY name",
             )
             .map_err(|e| SyncError::Database(format!("查询表列表失败: {}", e)))?
             .query_map([], |row| row.get(0))
@@ -2215,24 +2376,19 @@ impl SyncManager {
 
         let mut hasher_input = format!("{}:", database_name);
 
-        for table in tables {
+        for table in &tables {
+            let quoted = Self::quote_identifier(table)?;
             let count: i64 = conn
-                .query_row(&format!("SELECT COUNT(*) FROM {}", table), [], |row| {
+                .query_row(&format!("SELECT COUNT(*) FROM {}", quoted), [], |row| {
                     row.get(0)
                 })
                 .unwrap_or(0);
             hasher_input.push_str(&format!("{}={};", table, count));
         }
 
-        // 使用简单的哈希（实际应用中可以使用 SHA256）
-        use std::collections::hash_map::DefaultHasher;
-        use std::hash::{Hash, Hasher};
-
-        let mut hasher = DefaultHasher::new();
-        hasher_input.hash(&mut hasher);
-        let hash = hasher.finish();
-
-        Ok(format!("{:016x}", hash))
+        use sha2::{Digest, Sha256};
+        let hash = Sha256::digest(hasher_input.as_bytes());
+        Ok(hex::encode(&hash[..16]))
     }
 
     /// 获取变更日志统计信息

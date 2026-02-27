@@ -146,6 +146,16 @@ pub(super) fn infer_database_from_table(table_name: &str) -> Option<&'static str
     }
 }
 
+/// 构建各表主键列名映射
+///
+/// 大部分表使用 "id" 作为主键，少数表（如 questions 使用 exam_id，
+/// llm_usage_daily 使用复合主键）需要特殊映射。
+pub(super) fn build_id_column_map() -> std::collections::HashMap<String, String> {
+    let mut m = std::collections::HashMap::new();
+    m.insert("questions".to_string(), "exam_id".to_string());
+    m
+}
+
 /// 将下载的变更按数据库路由并应用
 ///
 /// 根据每条变更的 `database_name` 字段将变更路由到对应的数据库，
@@ -165,13 +175,14 @@ pub(super) fn apply_downloaded_changes_to_databases(
         total_failed: 0,
     };
 
+    let id_column_map = build_id_column_map();
+
     // 按数据库名称分组（legacy 变更按表名推断库）
     let mut grouped: HashMap<String, Vec<&SyncChangeWithData>> = HashMap::new();
     for change in changes {
         let db_name = match change.database_name.as_deref() {
             Some(name) => name.to_string(),
             None => {
-                // Legacy 变更无 database_name，按表名推断目标库
                 match infer_database_from_table(&change.table_name) {
                     Some(name) => name.to_string(),
                     None => {
@@ -189,7 +200,6 @@ pub(super) fn apply_downloaded_changes_to_databases(
     }
 
     for (db_name, db_changes) in &grouped {
-        // 解析数据库 ID
         let db_id = DatabaseId::all_ordered()
             .into_iter()
             .find(|id| id.as_str() == db_name);
@@ -229,7 +239,7 @@ pub(super) fn apply_downloaded_changes_to_databases(
             })
             .collect();
 
-        match SyncManager::apply_downloaded_changes(&conn, &owned_changes, None) {
+        match SyncManager::apply_downloaded_changes(&conn, &owned_changes, Some(&id_column_map)) {
             Ok(apply_result) => {
                 agg.total_success += apply_result.success_count;
                 agg.total_skipped += apply_result.skipped_count;
