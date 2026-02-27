@@ -10,6 +10,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.9.21](https://github.com/helixnow/deep-student/compare/v0.9.20...v0.9.21) (2026-02-26)
+
+
+### Features
+
+* enhance memory management with auto extraction and category management ([0b5d8fb](https://github.com/helixnow/deep-student/commit/0b5d8fb83158b2811d696852cb6fc7bd07446ace))
+* enhance memory management with new settings and export functionality ([2b48b71](https://github.com/helixnow/deep-student/commit/2b48b71e3c33e14ec85fb6f8396d4bdca04dbf18))
+* enhance MemoryView with batch selection and editing capabilities ([788147e](https://github.com/helixnow/deep-student/commit/788147e992bdd368b465253308920c7e78eb1402))
+* enhance Smart Memory with self-evolving profile and auto-extraction features ([c29005a](https://github.com/helixnow/deep-student/commit/c29005af5e17da3c985bc99e9e510acdddb9d8c5))
+* enhance web search tool with dynamic engine injection ([66b5902](https://github.com/helixnow/deep-student/commit/66b590205b828a47f0b449f3b2bd0a608bd6e960))
+
+
+### Bug Fixes
+
+* correct SQL LIKE pattern escape syntax in note query ([8d96e08](https://github.com/helixnow/deep-student/commit/8d96e08bc5bc5cca947e58f7446db68049a7dc2d))
+* increase MCP cache max size for improved performance ([7896e76](https://github.com/helixnow/deep-student/commit/7896e76b09d87ed534041e48d43bd31b08be1cd9))
+* prevent action buttons from overlapping session title during edit ([5278d4b](https://github.com/helixnow/deep-student/commit/5278d4beacef6dfa1e63aa85619a490132bf804f))
+
 ## [0.9.20](https://github.com/helixnow/deep-student/compare/v0.9.19...v0.9.20) (2026-02-25)
 
 
