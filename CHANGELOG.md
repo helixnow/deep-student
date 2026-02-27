@@ -10,6 +10,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.9.22](https://github.com/helixnow/deep-student/compare/v0.9.21...v0.9.22) (2026-02-27)
+
+
+### Features
+
+* add rebuild-release workflow for manual tag rebuilding ([3d28fec](https://github.com/helixnow/deep-student/commit/3d28fec4f6c5fefb794fef3ed2bf2e016a436fb4))
+
 ## [0.9.21](https://github.com/helixnow/deep-student/compare/v0.9.20...v0.9.21) (2026-02-26)
 
 
