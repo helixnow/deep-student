@@ -167,6 +167,7 @@ pub struct MemoryConfigOutput {
     pub auto_create_subfolders: bool,
     pub default_category: String,
     pub privacy_mode: bool,
+    pub auto_extract_frequency: String,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -298,6 +299,7 @@ impl MemoryService {
             auto_create_subfolders: self.config.is_auto_create_subfolders()?,
             default_category: self.config.get_default_category()?,
             privacy_mode: self.config.is_privacy_mode()?,
+            auto_extract_frequency: self.config.get_auto_extract_frequency()?.as_str().to_string(),
         })
     }
 

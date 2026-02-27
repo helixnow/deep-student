@@ -11,8 +11,70 @@ const CONFIG_KEY_ROOT_FOLDER_ID: &str = "memory_root_folder_id";
 const CONFIG_KEY_AUTO_CREATE_SUBFOLDERS: &str = "auto_create_subfolders";
 const CONFIG_KEY_DEFAULT_CATEGORY: &str = "default_category";
 const CONFIG_KEY_PRIVACY_MODE: &str = "privacy_mode";
+const CONFIG_KEY_AUTO_EXTRACT_FREQUENCY: &str = "auto_extract_frequency";
 
 const DEFAULT_FOLDER_TITLE: &str = "记忆";
+
+/// 自动提取频率档位
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AutoExtractFrequency {
+    /// 完全禁用自动提取
+    Off,
+    /// 平衡模式（默认）：每轮对话提取，内容门槛 10 字符
+    Balanced,
+    /// 积极模式：降低门槛（4 字符），更频繁的分类刷新和自进化
+    Aggressive,
+}
+
+impl AutoExtractFrequency {
+    pub fn from_str_lossy(s: &str) -> Self {
+        match s {
+            "off" => Self::Off,
+            "balanced" => Self::Balanced,
+            "aggressive" => Self::Aggressive,
+            other => {
+                warn!("[Memory::Config] Unknown auto_extract_frequency '{}', defaulting to Balanced", other);
+                Self::Balanced
+            }
+        }
+    }
+
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Off => "off",
+            Self::Balanced => "balanced",
+            Self::Aggressive => "aggressive",
+        }
+    }
+
+    /// 内容最短门槛（字符数），低于此值的对话不触发提取
+    pub fn content_min_chars(&self) -> usize {
+        match self {
+            Self::Off => usize::MAX,
+            Self::Balanced => 10,
+            Self::Aggressive => 4,
+        }
+    }
+
+    /// 分类刷新条件：给定记忆总数，是否应刷新分类文件
+    pub fn should_refresh_categories(&self, total_memories: usize) -> bool {
+        match self {
+            Self::Off => false,
+            Self::Balanced => total_memories <= 5 || total_memories % 5 == 0,
+            Self::Aggressive => true,
+        }
+    }
+
+    /// 自进化周期间隔（毫秒）
+    pub fn evolution_interval_ms(&self) -> i64 {
+        match self {
+            Self::Off => i64::MAX,
+            Self::Balanced => 30 * 60 * 1000,
+            Self::Aggressive => 15 * 60 * 1000,
+        }
+    }
+}
 
 #[derive(Clone)]
 pub struct MemoryConfig {
@@ -133,6 +195,17 @@ impl MemoryConfig {
     pub fn set_default_category(&self, category: &str) -> VfsResult<()> {
         self.set(CONFIG_KEY_DEFAULT_CATEGORY, category)
     }
+
+    pub fn get_auto_extract_frequency(&self) -> VfsResult<AutoExtractFrequency> {
+        Ok(self
+            .get(CONFIG_KEY_AUTO_EXTRACT_FREQUENCY)?
+            .map(|v| AutoExtractFrequency::from_str_lossy(&v))
+            .unwrap_or(AutoExtractFrequency::Balanced))
+    }
+
+    pub fn set_auto_extract_frequency(&self, frequency: AutoExtractFrequency) -> VfsResult<()> {
+        self.set(CONFIG_KEY_AUTO_EXTRACT_FREQUENCY, frequency.as_str())
+    }
 }
 
 #[cfg(test)]
@@ -145,6 +218,21 @@ mod tests {
         assert_eq!(CONFIG_KEY_AUTO_CREATE_SUBFOLDERS, "auto_create_subfolders");
         assert_eq!(CONFIG_KEY_DEFAULT_CATEGORY, "default_category");
         assert_eq!(CONFIG_KEY_PRIVACY_MODE, "privacy_mode");
+        assert_eq!(CONFIG_KEY_AUTO_EXTRACT_FREQUENCY, "auto_extract_frequency");
         assert_eq!(DEFAULT_FOLDER_TITLE, "记忆");
+    }
+
+    #[test]
+    fn test_auto_extract_frequency() {
+        assert_eq!(AutoExtractFrequency::from_str_lossy("off"), AutoExtractFrequency::Off);
+        assert_eq!(AutoExtractFrequency::from_str_lossy("balanced"), AutoExtractFrequency::Balanced);
+        assert_eq!(AutoExtractFrequency::from_str_lossy("aggressive"), AutoExtractFrequency::Aggressive);
+        assert_eq!(AutoExtractFrequency::from_str_lossy("unknown"), AutoExtractFrequency::Balanced);
+        assert_eq!(AutoExtractFrequency::Off.as_str(), "off");
+        assert_eq!(AutoExtractFrequency::Balanced.content_min_chars(), 10);
+        assert_eq!(AutoExtractFrequency::Aggressive.content_min_chars(), 4);
+        assert!(AutoExtractFrequency::Aggressive.should_refresh_categories(3));
+        assert!(!AutoExtractFrequency::Balanced.should_refresh_categories(7));
+        assert!(AutoExtractFrequency::Balanced.should_refresh_categories(10));
     }
 }

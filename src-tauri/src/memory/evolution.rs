@@ -44,6 +44,42 @@ impl MemoryEvolution {
         Self { vfs_db, lance_store }
     }
 
+    /// 带全局节流的自进化执行入口
+    ///
+    /// `interval_ms` 由 `AutoExtractFrequency::evolution_interval_ms()` 提供。
+    /// 使用进程级 static AtomicI64 确保标准 pipeline 和多变体 pipeline 共享同一计时器。
+    pub fn run_throttled(
+        &self,
+        memory_service: &MemoryService,
+        interval_ms: i64,
+    ) -> Option<EvolutionReport> {
+        use std::sync::atomic::{AtomicI64, Ordering};
+        static LAST_EVOLUTION_MS: AtomicI64 = AtomicI64::new(0);
+
+        let now_ms = chrono::Utc::now().timestamp_millis();
+        let last = LAST_EVOLUTION_MS.load(Ordering::Relaxed);
+        if now_ms - last < interval_ms {
+            return None;
+        }
+        LAST_EVOLUTION_MS.store(now_ms, Ordering::Relaxed);
+
+        match self.run_evolution_cycle(memory_service) {
+            Ok(report) => {
+                if report.stale_demoted > 0 || report.high_freq_promoted > 0 || report.duplicates_merged > 0 {
+                    info!(
+                        "[Evolution] Throttled cycle: demoted={}, promoted={}, merged={}",
+                        report.stale_demoted, report.high_freq_promoted, report.duplicates_merged
+                    );
+                }
+                Some(report)
+            }
+            Err(e) => {
+                debug!("[Evolution] Throttled cycle failed (non-fatal): {}", e);
+                None
+            }
+        }
+    }
+
     /// 执行一轮完整的自进化周期
     pub fn run_evolution_cycle(
         &self,
@@ -83,6 +119,10 @@ impl MemoryEvolution {
 
         for mem in memories {
             if mem.title.starts_with("__") {
+                continue;
+            }
+            // note 类型记忆是用户主动保存的经验笔记，不参与自动降级
+            if mem.memory_type == "note" {
                 continue;
             }
 
@@ -216,13 +256,14 @@ impl MemoryEvolution {
             }
 
             let mut folder_merged = 0usize;
-            let mut title_groups: std::collections::HashMap<&str, Vec<&MemoryListItem>> =
+            // 按 (title, memory_type) 分组，避免跨类型误合并
+            let mut title_groups: std::collections::HashMap<(&str, &str), Vec<&MemoryListItem>> =
                 std::collections::HashMap::new();
             for mem in &active {
-                title_groups.entry(&mem.title).or_default().push(mem);
+                title_groups.entry((&mem.title, &mem.memory_type)).or_default().push(mem);
             }
 
-            for (_title, group) in &title_groups {
+            for (_key, group) in &title_groups {
                 if group.len() < 2 {
                     continue;
                 }
@@ -291,7 +332,7 @@ impl MemoryEvolution {
                         warn!("[Evolution] Failed to delete duplicate {}: {}", dup.id, e);
                     } else {
                         folder_merged += 1;
-                        debug!("[Evolution] Merged duplicate '{}' ({} → {})", _title, dup.id, keep.id);
+                        debug!("[Evolution] Merged duplicate '{}' ({} → {})", keep.title, dup.id, keep.id);
                     }
                 }
             }

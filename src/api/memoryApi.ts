@@ -1,11 +1,14 @@
 import { invoke } from '@tauri-apps/api/core';
 
+export type AutoExtractFrequency = 'off' | 'balanced' | 'aggressive';
+
 export interface MemoryConfig {
   memoryRootFolderId: string | null;
   memoryRootFolderTitle: string | null;
   autoCreateSubfolders: boolean;
   defaultCategory: string;
   privacyMode: boolean;
+  autoExtractFrequency: AutoExtractFrequency;
 }
 
 export interface MemorySearchResult {
@@ -89,6 +92,10 @@ export async function setMemoryAutoCreateSubfolders(enabled: boolean): Promise<v
 
 export async function setMemoryDefaultCategory(category: string): Promise<void> {
   return invoke('memory_set_default_category', { category });
+}
+
+export async function setMemoryAutoExtractFrequency(frequency: AutoExtractFrequency): Promise<void> {
+  return invoke('memory_set_auto_extract_frequency', { frequency });
 }
 
 export async function createMemoryRootFolder(title: string): Promise<string> {
@@ -179,12 +186,14 @@ export async function exportAllMemories(): Promise<MemoryExportItem[]> {
 export async function writeMemorySmart(
   title: string,
   content: string,
-  folderPath?: string
+  folderPath?: string,
+  memoryType?: 'fact' | 'note'
 ): Promise<SmartWriteOutput> {
   return invoke<SmartWriteOutput>('memory_write_smart', {
     folderPath,
     title,
     content,
+    memoryType,
   });
 }
 

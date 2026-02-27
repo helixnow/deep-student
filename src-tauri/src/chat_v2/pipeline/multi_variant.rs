@@ -476,49 +476,83 @@ impl ChatV2Pipeline {
         );
 
         // 🆕 多变体模式：对话后自动记忆提取（使用 active_variant 的内容）
+        // 门控逻辑与 persistence.rs::trigger_auto_memory_extraction 保持一致
         if let Some(active_id) = &active_variant_id {
             if let Some((active_ctx, _)) = variant_contexts
                 .iter()
                 .find(|(ctx, _)| ctx.variant_id() == active_id.as_str())
             {
-                let assistant_content = active_ctx.get_accumulated_content();
-                let user_content_for_mem = user_content.clone();
-                if user_content_for_mem.len() >= 10 || assistant_content.len() >= 10 {
-                    if let Some(vfs_db) = self.vfs_db.clone() {
-                        let llm_mgr = self.llm_manager.clone();
-                        tokio::spawn(async move {
-                            use crate::memory::{MemoryAutoExtractor, MemoryCategoryManager, MemoryEvolution, MemoryService};
-                            use crate::vfs::lance_store::VfsLanceStore;
+                if let Some(vfs_db) = self.vfs_db.clone() {
+                    // ① 早期门控：频率 + 隐私模式（同步 SQLite 读取，亚毫秒级）
+                    let mem_config = crate::memory::MemoryConfig::new(vfs_db.clone());
+                    let frequency = mem_config
+                        .get_auto_extract_frequency()
+                        .unwrap_or(crate::memory::AutoExtractFrequency::Balanced);
 
-                            let lance_store = match VfsLanceStore::new(vfs_db.clone()) {
-                                Ok(s) => std::sync::Arc::new(s),
-                                Err(_) => return,
-                            };
-                            let memory_service = MemoryService::new(vfs_db.clone(), lance_store, llm_mgr.clone());
+                    let should_extract = frequency != crate::memory::AutoExtractFrequency::Off
+                        && !mem_config.is_privacy_mode().unwrap_or(false);
 
-                            if let Ok(cfg) = memory_service.get_config() {
-                                if cfg.privacy_mode { return; }
-                            } else { return; }
+                    if should_extract {
+                        let assistant_content = active_ctx.get_accumulated_content();
+                        let user_content_for_mem = user_content.clone();
 
-                            let extractor = MemoryAutoExtractor::new(llm_mgr.clone());
-                            if let Ok(count) = extractor
-                                .extract_and_store(&memory_service, &user_content_for_mem, &assistant_content)
-                                .await
-                            {
-                                if count > 0 {
-                                    log::info!("[AutoMemory::MultiVariant] Auto-extracted {} memories", count);
-                                    let should_refresh = memory_service.list(None, 500, 0)
-                                        .map(|all| { let t = all.iter().filter(|m| !m.title.starts_with("__")).count(); t <= 5 || t % 5 == 0 })
-                                        .unwrap_or(false);
-                                    if should_refresh {
-                                        let cat_mgr = MemoryCategoryManager::new(vfs_db.clone(), llm_mgr.clone());
-                                        let _ = cat_mgr.refresh_all_categories(&memory_service).await;
-                                    }
-                                }
-                                let evolution = MemoryEvolution::new(vfs_db);
-                                let _ = evolution.run_evolution_cycle(&memory_service);
-                            }
+                        // ② 内容长度门槛（统一字符数）
+                        let min_chars = frequency.content_min_chars();
+                        let user_chars = user_content_for_mem.chars().count();
+                        let assistant_chars = assistant_content.chars().count();
+
+                        // ③ 竞态保护：检查 active variant 的工具结果
+                        let llm_wrote_fact_memory = active_ctx.get_tool_results().iter().any(|tr| {
+                            let name = tr.tool_name.as_str();
+                            let is_memory_tool = matches!(
+                                name.strip_prefix("builtin-").unwrap_or(name),
+                                "memory_write" | "memory_write_smart" | "memory_update_by_id"
+                            );
+                            if !is_memory_tool { return false; }
+                            let is_note = tr.input.get("memory_type")
+                                .and_then(|v| v.as_str())
+                                .map(|t| t == "note")
+                                .unwrap_or(false);
+                            !is_note
                         });
+
+                        if (user_chars >= min_chars || assistant_chars >= min_chars) && !llm_wrote_fact_memory {
+                            let llm_mgr = self.llm_manager.clone();
+                            tokio::spawn(async move {
+                                use crate::memory::{MemoryAutoExtractor, MemoryCategoryManager, MemoryEvolution, MemoryService};
+                                use crate::vfs::lance_store::VfsLanceStore;
+
+                                let lance_store = match VfsLanceStore::new(vfs_db.clone()) {
+                                    Ok(s) => std::sync::Arc::new(s),
+                                    Err(_) => return,
+                                };
+                                let memory_service = MemoryService::new(vfs_db.clone(), lance_store, llm_mgr.clone());
+
+                                let extractor = MemoryAutoExtractor::new(llm_mgr.clone());
+                                if let Ok(count) = extractor
+                                    .extract_and_store(&memory_service, &user_content_for_mem, &assistant_content)
+                                    .await
+                                {
+                                    if count > 0 {
+                                        log::info!("[AutoMemory::MultiVariant] Auto-extracted {} memories (frequency={:?})", count, frequency);
+                                        let should_refresh = memory_service.list(None, 500, 0)
+                                            .map(|all| {
+                                                let t = all.iter().filter(|m| !m.title.starts_with("__")).count();
+                                                frequency.should_refresh_categories(t)
+                                            })
+                                            .unwrap_or(false);
+                                        if should_refresh {
+                                            let cat_mgr = MemoryCategoryManager::new(vfs_db.clone(), llm_mgr.clone());
+                                            let _ = cat_mgr.refresh_all_categories(&memory_service).await;
+                                        }
+                                    }
+
+                                    // 自进化：使用共享全局节流，间隔由频率档位决定
+                                    let evolution = MemoryEvolution::new(vfs_db);
+                                    evolution.run_throttled(&memory_service, frequency.evolution_interval_ms());
+                                }
+                            });
+                        }
                     }
                 }
             }

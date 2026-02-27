@@ -326,6 +326,20 @@ pub async fn memory_set_default_category(
         .map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+pub async fn memory_set_auto_extract_frequency(
+    frequency: String,
+    vfs_db: State<'_, Arc<VfsDatabase>>,
+    lance_store: State<'_, Arc<VfsLanceStore>>,
+    llm_manager: State<'_, Arc<LLMManager>>,
+) -> Result<(), String> {
+    let freq = super::config::AutoExtractFrequency::from_str_lossy(&frequency);
+    let service = get_memory_service(&vfs_db, &lance_store, &llm_manager);
+    let cfg = super::config::MemoryConfig::new(service.vfs_db_ref().clone());
+    cfg.set_auto_extract_frequency(freq)
+        .map_err(|e| e.to_string())
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MemoryExportItem {
@@ -413,13 +427,25 @@ pub async fn memory_write_smart(
     folder_path: Option<String>,
     title: String,
     content: String,
+    memory_type: Option<String>,
     vfs_db: State<'_, Arc<VfsDatabase>>,
     lance_store: State<'_, Arc<VfsLanceStore>>,
     llm_manager: State<'_, Arc<LLMManager>>,
 ) -> Result<SmartWriteOutput, String> {
     let service = get_memory_service(&vfs_db, &lance_store, &llm_manager);
+    let mem_type = memory_type
+        .as_deref()
+        .map(super::service::MemoryType::from_str)
+        .unwrap_or(super::service::MemoryType::Fact);
     let result = service
-        .write_smart(folder_path.as_deref(), &title, &content)
+        .write_smart_with_source(
+            folder_path.as_deref(),
+            &title,
+            &content,
+            super::audit_log::MemoryOpSource::Handler,
+            None,
+            mem_type,
+        )
         .await
         .map_err(|e| e.to_string())?;
 

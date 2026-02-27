@@ -886,23 +886,44 @@ impl ChatV2Pipeline {
     ///
     /// 受 mem0 `add` 和 memU `memorize` 启发：
     /// 从用户消息和助手回复中自动提取候选记忆，通过 write_smart 去重写入。
+    ///
+    /// 门控顺序（全部在 spawn 前同步检查，避免无谓 task 创建）：
+    /// 1. vfs_db 存在性
+    /// 2. 频率配置（off → 直接 return）
+    /// 3. 隐私模式
+    /// 4. 内容长度（按频率档位的字符数门槛）
+    /// 5. 竞态保护（LLM 本轮已通过工具写入 fact 记忆时跳过）
     fn trigger_auto_memory_extraction(&self, ctx: &PipelineContext) {
         let vfs_db = match &self.vfs_db {
             Some(db) => db.clone(),
             None => return,
         };
-        let llm_manager = self.llm_manager.clone();
-        let user_content = ctx.user_content.clone();
-        let final_content = ctx.final_content.clone();
 
-        if user_content.len() < 10 && final_content.len() < 10 {
+        // ① 早期门控：读取频率 + 隐私模式配置（同步 SQLite 主键查询，亚毫秒级）
+        let mem_config = crate::memory::MemoryConfig::new(vfs_db.clone());
+        let frequency = mem_config
+            .get_auto_extract_frequency()
+            .unwrap_or(crate::memory::AutoExtractFrequency::Balanced);
+
+        if frequency == crate::memory::AutoExtractFrequency::Off {
+            log::debug!("[AutoMemory] Frequency=off, skipping auto-extraction");
             return;
         }
 
-        // 竞态保护（精细化）：
-        // - 如果 LLM 写了 fact 类型记忆 → 跳过自动提取（避免重复）
-        // - 如果 LLM 只写了 note 类型记忆 → 不跳过（note 是用户要求的经验笔记，
-        //   auto extractor 仍应提取对话中的原子事实）
+        if mem_config.is_privacy_mode().unwrap_or(false) {
+            log::debug!("[AutoMemory] Privacy mode enabled, skipping auto-extraction");
+            return;
+        }
+
+        // ② 内容长度门槛（统一使用 chars().count() 做中文友好的字符数比较）
+        let min_chars = frequency.content_min_chars();
+        let user_chars = ctx.user_content.chars().count();
+        let assistant_chars = ctx.final_content.chars().count();
+        if user_chars < min_chars && assistant_chars < min_chars {
+            return;
+        }
+
+        // ③ 竞态保护：LLM 本轮已通过工具写入 fact 记忆时跳过
         let llm_wrote_fact_memory = ctx.tool_results.iter().any(|tr| {
             let name = tr.tool_name.as_str();
             let is_memory_tool = matches!(
@@ -912,7 +933,6 @@ impl ChatV2Pipeline {
             if !is_memory_tool {
                 return false;
             }
-            // 检查是否为 note 类型：从工具输入参数中判断
             let is_note = tr
                 .input
                 .get("memory_type")
@@ -928,8 +948,11 @@ impl ChatV2Pipeline {
             return;
         }
 
+        let llm_manager = self.llm_manager.clone();
+        let user_content = ctx.user_content.clone();
+        let final_content = ctx.final_content.clone();
+
         // fire-and-forget: 不走 spawn_tracked 因为 Pipeline 不持有 ChatV2State。
-        // 安全性：中断仅导致少提取记忆，不会丢失已有数据（write_smart 内部 DB 写入是原子的）。
         tokio::spawn(async move {
             use crate::memory::{MemoryAutoExtractor, MemoryService};
             use crate::vfs::lance_store::VfsLanceStore;
@@ -948,19 +971,6 @@ impl ChatV2Pipeline {
                 llm_manager.clone(),
             );
 
-            // 隐私模式检查：跳过所有 LLM API 调用（不发送对话内容）
-            match memory_service.get_config() {
-                Ok(cfg) if cfg.privacy_mode => {
-                    log::debug!("[AutoMemory] Privacy mode enabled, skipping auto-extraction");
-                    return;
-                }
-                Err(e) => {
-                    log::debug!("[AutoMemory] Config read failed, skipping: {}", e);
-                    return;
-                }
-                _ => {}
-            }
-
             let extractor = MemoryAutoExtractor::new(llm_manager.clone());
 
             match extractor
@@ -970,19 +980,17 @@ impl ChatV2Pipeline {
                 Ok(count) => {
                     if count > 0 {
                         log::info!(
-                            "[AutoMemory] Auto-extracted {} memories from conversation",
-                            count
+                            "[AutoMemory] Auto-extracted {} memories (frequency={:?})",
+                            count, frequency
                         );
                     }
 
-                    // 节流策略：只有实际新增了记忆时才考虑刷新分类文件。
-                    // 进一步通过记忆总数的模运算控制频率：每积累 5 条总记忆刷新一次，
-                    // 避免每轮对话都触发 LLM 分类调用，同时确保分类文件最终会被创建。
+                    // 分类刷新：频率档位决定刷新条件
                     if count > 0 {
                         let should_refresh = match memory_service.list(None, 500, 0) {
                             Ok(all) => {
                                 let total = all.iter().filter(|m| !m.title.starts_with("__")).count();
-                                total <= 5 || total % 5 == 0
+                                frequency.should_refresh_categories(total)
                             }
                             Err(_) => false,
                         };
@@ -998,33 +1006,10 @@ impl ChatV2Pipeline {
                         }
                     }
 
-                    // 自进化节流：每 30 分钟最多执行一次，避免大量 SQL 遍历
+                    // 自进化：使用共享全局节流，间隔由频率档位决定
                     use crate::memory::MemoryEvolution;
-                    use std::sync::atomic::{AtomicI64, Ordering};
-                    static LAST_EVOLUTION_MS: AtomicI64 = AtomicI64::new(0);
-                    const EVOLUTION_INTERVAL_MS: i64 = 30 * 60 * 1000;
-
-                    let now_ms = chrono::Utc::now().timestamp_millis();
-                    let last = LAST_EVOLUTION_MS.load(Ordering::Relaxed);
-                    if now_ms - last >= EVOLUTION_INTERVAL_MS {
-                        LAST_EVOLUTION_MS.store(now_ms, Ordering::Relaxed);
-                        let evolution = MemoryEvolution::new(vfs_db);
-                        match evolution.run_evolution_cycle(&memory_service) {
-                            Ok(report) => {
-                                if report.stale_demoted > 0 || report.high_freq_promoted > 0 || report.duplicates_merged > 0 {
-                                    log::info!(
-                                        "[AutoMemory] Evolution: demoted={}, promoted={}, merged={}",
-                                        report.stale_demoted,
-                                        report.high_freq_promoted,
-                                        report.duplicates_merged
-                                    );
-                                }
-                            }
-                            Err(e) => {
-                                log::debug!("[AutoMemory] Evolution check failed (non-fatal): {}", e);
-                            }
-                        }
-                    }
+                    let evolution = MemoryEvolution::new(vfs_db);
+                    evolution.run_throttled(&memory_service, frequency.evolution_interval_ms());
                 }
                 Err(e) => {
                     log::warn!("[AutoMemory] Auto-extraction failed (non-fatal): {}", e);

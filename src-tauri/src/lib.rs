@@ -1464,6 +1464,7 @@ pub fn run() {
             ,crate::memory::handlers::memory_write_smart
             ,crate::memory::handlers::memory_set_auto_create_subfolders
             ,crate::memory::handlers::memory_set_default_category
+            ,crate::memory::handlers::memory_set_auto_extract_frequency
             ,crate::memory::handlers::memory_export_all
             ,crate::memory::handlers::memory_get_profile
             ,crate::memory::handlers::memory_get_audit_logs

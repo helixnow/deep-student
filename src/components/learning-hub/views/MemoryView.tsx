@@ -65,6 +65,8 @@ import {
   exportAllMemories,
   getMemoryProfile,
   getMemoryAuditLogs,
+  setMemoryAutoExtractFrequency,
+  type AutoExtractFrequency,
   type MemoryConfig,
   type MemoryListItem,
   type MemorySearchResult,
@@ -549,6 +551,19 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
     }
   }, [t]);
 
+  // ========== 自动提取频率 ==========
+  const handleFrequencyChange = useCallback(async (freq: AutoExtractFrequency) => {
+    if (config?.autoExtractFrequency === freq) return;
+    try {
+      await setMemoryAutoExtractFrequency(freq);
+      loadConfig();
+      showGlobalNotification('success', t('memory.frequency_changed', '自动提取频率已更新'));
+    } catch (error: unknown) {
+      console.error('[MemoryView] Set frequency failed:', error);
+      showGlobalNotification('error', t('memory.frequency_change_error', '设置失败'));
+    }
+  }, [t, loadConfig, config?.autoExtractFrequency]);
+
   // ========== 设置根文件夹 ==========
   const handleSelectRootFolder = useCallback(async (folderId: string) => {
     try {
@@ -771,19 +786,45 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
         )}
       </div>
 
-      {/* 当前根文件夹信息 - 更简洁 */}
-      <div className="flex items-center gap-2 px-4 py-2 text-xs text-muted-foreground">
-        <FolderOpen className="w-3.5 h-3.5" />
-        <span>{t('memory.root_folder', '根文件夹')}:</span>
-        <span className="font-medium text-foreground">{config.memoryRootFolderTitle || t('memory.defaultRootTitle', '记忆')}</span>
-        <NotionButton variant="ghost" size="sm" onClick={loadFolders} disabled={loadingFolders} className="ml-auto !h-auto !px-1.5 !py-0.5">
-          {loadingFolders ? (
-            <Loader2 className="w-3 h-3 animate-spin" />
-          ) : (
-            <Settings className="w-3 h-3" />
-          )}
-          {t('memory.change', '更改')}
-        </NotionButton>
+      {/* 当前根文件夹 + 提取频率设置 */}
+      <div className="px-4 py-2 text-xs text-muted-foreground space-y-1.5 border-b border-border/30">
+        <div className="flex items-center gap-2">
+          <FolderOpen className="w-3.5 h-3.5" />
+          <span>{t('memory.root_folder', '根文件夹')}:</span>
+          <span className="font-medium text-foreground">{config.memoryRootFolderTitle || t('memory.defaultRootTitle', '记忆')}</span>
+          <NotionButton variant="ghost" size="sm" onClick={loadFolders} disabled={loadingFolders} className="ml-auto !h-auto !px-1.5 !py-0.5">
+            {loadingFolders ? (
+              <Loader2 className="w-3 h-3 animate-spin" />
+            ) : (
+              <Settings className="w-3 h-3" />
+            )}
+            {t('memory.change', '更改')}
+          </NotionButton>
+        </div>
+        <div className="flex items-center gap-2">
+          <Zap className="w-3.5 h-3.5" />
+          <span>{t('memory.auto_extract', '自动提取')}:</span>
+          <div className="flex items-center gap-0.5 ml-1">
+            {([
+              { value: 'off' as const, label: t('memory.freq_off', '关闭') },
+              { value: 'balanced' as const, label: t('memory.freq_balanced', '平衡') },
+              { value: 'aggressive' as const, label: t('memory.freq_aggressive', '积极') },
+            ]).map((opt) => (
+              <button
+                key={opt.value}
+                onClick={() => handleFrequencyChange(opt.value)}
+                className={cn(
+                  'px-2 py-0.5 rounded text-[11px] transition-colors',
+                  config.autoExtractFrequency === opt.value
+                    ? 'bg-primary/15 text-primary font-medium'
+                    : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
+                )}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
 
       {/* 记忆列表 */}

@@ -13,7 +13,7 @@ pub use audit_log::{MemoryAuditLogger, MemoryOpSource, MemoryOpType, MemoryAudit
 pub use auto_extractor::MemoryAutoExtractor;
 pub use category_manager::MemoryCategoryManager;
 pub use evolution::MemoryEvolution;
-pub use config::MemoryConfig;
+pub use config::{AutoExtractFrequency, MemoryConfig};
 pub use handlers::*;
 pub use llm_decision::{
     MemoryDecisionResponse, MemoryEvent, MemoryLLMDecision, SimilarMemorySummary,
