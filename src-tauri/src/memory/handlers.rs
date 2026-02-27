@@ -8,6 +8,7 @@ use crate::vfs::database::VfsDatabase;
 use crate::vfs::indexing::VfsFullIndexingService;
 use crate::vfs::lance_store::VfsLanceStore;
 
+use super::audit_log::{self, MemoryAuditLogItem};
 use super::service::{
     MemoryConfigOutput, MemoryListItem, MemorySearchResult, MemoryService, MemoryWriteOutput,
     SmartWriteOutput, WriteMode,
@@ -422,8 +423,27 @@ pub async fn memory_write_smart(
         .await
         .map_err(|e| e.to_string())?;
 
-    // write_smart 内部已通过 index_immediately 完成索引 + mark_indexed，
-    // 此处不再重复触发 trigger_immediate_index。
-
     Ok(result)
+}
+
+#[tauri::command]
+pub async fn memory_get_audit_logs(
+    limit: Option<u32>,
+    offset: Option<u32>,
+    source_filter: Option<String>,
+    operation_filter: Option<String>,
+    success_filter: Option<bool>,
+    vfs_db: State<'_, Arc<VfsDatabase>>,
+) -> Result<Vec<MemoryAuditLogItem>, String> {
+    let limit = limit.unwrap_or(50);
+    let offset = offset.unwrap_or(0);
+    audit_log::query_audit_logs(
+        &vfs_db,
+        limit,
+        offset,
+        source_filter.as_deref(),
+        operation_filter.as_deref(),
+        success_filter,
+    )
+    .map_err(|e| e.to_string())
 }

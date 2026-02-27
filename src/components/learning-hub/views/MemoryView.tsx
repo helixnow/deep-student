@@ -38,6 +38,15 @@ import {
   X,
   Star,
   Clock,
+  History,
+  Filter,
+  ChevronDown,
+  CheckCircle2,
+  XCircle,
+  Zap,
+  Bot,
+  User,
+  BookOpen,
 } from 'lucide-react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { MemoryIcon } from '../icons/ResourceIcons';
@@ -55,11 +64,13 @@ import {
   updateMemoryById,
   exportAllMemories,
   getMemoryProfile,
+  getMemoryAuditLogs,
   type MemoryConfig,
   type MemoryListItem,
   type MemorySearchResult,
   type MemoryReadOutput,
   type MemoryProfileSection,
+  type MemoryAuditLogItem,
 } from '@/api/memoryApi';
 import { folderApi } from '@/dstu';
 import type { FolderTreeNode } from '@/dstu/types/folder';
@@ -122,6 +133,15 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
   // ★ 内联编辑状态
   const [editingMemoryId, setEditingMemoryId] = useState<string | null>(null);
   const [editContent, setEditContent] = useState('');
+
+  // ★ 审计日志状态
+  const [showAuditLog, setShowAuditLog] = useState(false);
+  const [auditLogs, setAuditLogs] = useState<MemoryAuditLogItem[]>([]);
+  const [isLoadingAuditLog, setIsLoadingAuditLog] = useState(false);
+  const [auditSourceFilter, setAuditSourceFilter] = useState<string>('');
+  const [auditSuccessFilter, setAuditSuccessFilter] = useState<string>('');
+  const [auditLogOffset, setAuditLogOffset] = useState(0);
+  const AUDIT_LOG_PAGE_SIZE = 30;
 
   // ========== 加载配置和记忆列表 ==========
   const loadConfig = useCallback(async () => {
@@ -435,6 +455,57 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
     }
   }, [showProfile]);
 
+  // ========== 审计日志 ==========
+  const loadAuditLogs = useCallback(async (resetOffset = true) => {
+    setIsLoadingAuditLog(true);
+    const offset = resetOffset ? 0 : auditLogOffset;
+    if (resetOffset) setAuditLogOffset(0);
+    try {
+      const logs = await getMemoryAuditLogs({
+        limit: AUDIT_LOG_PAGE_SIZE,
+        offset,
+        sourceFilter: auditSourceFilter || undefined,
+        successFilter: auditSuccessFilter === '' ? undefined : auditSuccessFilter === 'true',
+      });
+      if (resetOffset) {
+        setAuditLogs(logs);
+      } else {
+        setAuditLogs(prev => [...prev, ...logs]);
+      }
+    } catch (error: unknown) {
+      console.error('[MemoryView] Load audit logs failed:', error);
+    } finally {
+      setIsLoadingAuditLog(false);
+    }
+  }, [auditSourceFilter, auditSuccessFilter, auditLogOffset]);
+
+  const handleToggleAuditLog = useCallback(async () => {
+    if (showAuditLog) {
+      setShowAuditLog(false);
+      return;
+    }
+    setShowAuditLog(true);
+    setShowProfile(false);
+    loadAuditLogs(true);
+  }, [showAuditLog, loadAuditLogs]);
+
+  const handleLoadMoreLogs = useCallback(() => {
+    const newOffset = auditLogOffset + AUDIT_LOG_PAGE_SIZE;
+    setAuditLogOffset(newOffset);
+  }, [auditLogOffset]);
+
+  useEffect(() => {
+    if (showAuditLog && auditLogOffset > 0) {
+      loadAuditLogs(false);
+    }
+  }, [auditLogOffset, showAuditLog, loadAuditLogs]);
+
+  useEffect(() => {
+    if (showAuditLog) {
+      loadAuditLogs(true);
+    }
+  }, [auditSourceFilter, auditSuccessFilter]);
+
   // ========== 加载文件夹列表 ==========
   const loadFolders = useCallback(async () => {
     setLoadingFolders(true);
@@ -660,6 +731,15 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
         >
           <MemoryIcon size={16} />
         </NotionButton>
+        <NotionButton
+          variant="ghost" size="icon" iconOnly
+          onClick={handleToggleAuditLog}
+          className={cn(showAuditLog && 'text-primary bg-primary/10')}
+          aria-label="audit log"
+          title={t('memory.audit_log', '操作日志')}
+        >
+          <History className="w-4 h-4" />
+        </NotionButton>
         {!isCreatingInline && !batchMode && (
           <NotionButton variant="ghost" size="sm" onClick={() => setIsCreatingInline(true)} className="text-primary hover:bg-primary/10">
             <Plus className="w-4 h-4" />
@@ -732,6 +812,68 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                       <div className="text-xs text-muted-foreground whitespace-pre-wrap leading-relaxed">{section.content}</div>
                     </div>
                   ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* 审计日志面板 */}
+          {showAuditLog && (
+            <div className="rounded-lg border border-border/60 bg-card/50 overflow-hidden">
+              <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border/30 bg-muted/20">
+                <History size={14} className="text-muted-foreground" />
+                <span className="text-xs font-medium text-muted-foreground">{t('memory.audit_log', '操作日志')}</span>
+                <div className="ml-auto flex items-center gap-1.5">
+                  {/* 来源筛选 */}
+                  <select
+                    value={auditSourceFilter}
+                    onChange={(e) => setAuditSourceFilter(e.target.value)}
+                    className="h-6 px-1.5 text-[10px] bg-muted/40 border-none rounded focus:outline-none"
+                  >
+                    <option value="">{t('memory.audit_all_sources', '全部来源')}</option>
+                    <option value="tool_call">{t('memory.audit_source_tool', '工具调用')}</option>
+                    <option value="auto_extract">{t('memory.audit_source_auto', '自动提取')}</option>
+                    <option value="handler">{t('memory.audit_source_handler', '前端操作')}</option>
+                    <option value="evolution">{t('memory.audit_source_evolution', '自进化')}</option>
+                  </select>
+                  {/* 成功/失败筛选 */}
+                  <select
+                    value={auditSuccessFilter}
+                    onChange={(e) => setAuditSuccessFilter(e.target.value)}
+                    className="h-6 px-1.5 text-[10px] bg-muted/40 border-none rounded focus:outline-none"
+                  >
+                    <option value="">{t('memory.audit_all_status', '全部状态')}</option>
+                    <option value="true">{t('memory.audit_success', '成功')}</option>
+                    <option value="false">{t('memory.audit_failed', '失败')}</option>
+                  </select>
+                  <NotionButton variant="ghost" size="icon" iconOnly onClick={() => loadAuditLogs(true)} disabled={isLoadingAuditLog} className="!h-5 !w-5 !p-0" aria-label="refresh logs">
+                    <RefreshCw className={cn('w-3 h-3', isLoadingAuditLog && 'animate-spin')} />
+                  </NotionButton>
+                </div>
+              </div>
+              {isLoadingAuditLog && auditLogs.length === 0 ? (
+                <div className="flex items-center justify-center py-6">
+                  <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+                </div>
+              ) : auditLogs.length === 0 ? (
+                <div className="px-4 py-4 text-xs text-muted-foreground/60 text-center">
+                  {t('memory.audit_empty', '暂无操作日志')}
+                </div>
+              ) : (
+                <div>
+                  <div className="divide-y divide-border/20">
+                    {auditLogs.map((log) => (
+                      <AuditLogRow key={log.id} log={log} />
+                    ))}
+                  </div>
+                  {auditLogs.length >= auditLogOffset + AUDIT_LOG_PAGE_SIZE && (
+                    <div className="flex justify-center py-2 border-t border-border/20">
+                      <NotionButton variant="ghost" size="sm" onClick={handleLoadMoreLogs} disabled={isLoadingAuditLog} className="text-xs text-muted-foreground">
+                        {isLoadingAuditLog ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
+                        {t('memory.audit_load_more', '加载更多')}
+                      </NotionButton>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -937,6 +1079,12 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-1.5">
                           <span className="text-sm font-medium truncate">{memory.title}</span>
+                          {memory.memoryType === 'note' && (
+                            <span className="flex items-center gap-0.5 px-1.5 py-0 rounded bg-blue-500/10 text-blue-600 text-[9px] font-medium flex-shrink-0">
+                              <BookOpen className="w-2.5 h-2.5" />
+                              笔记
+                            </span>
+                          )}
                           {memory.isImportant && (
                             <Star className="w-3 h-3 text-amber-500 flex-shrink-0" fill="currentColor" />
                           )}
@@ -1056,6 +1204,138 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
           </NotionButton>
         </NotionDialogFooter>
       </NotionDialog>
+    </div>
+  );
+};
+
+// ============================================================================
+// 审计日志行组件
+// ============================================================================
+
+const SOURCE_LABELS: Record<string, { label: string; icon: React.ReactNode; color: string }> = {
+  tool_call: { label: '工具调用', icon: <Bot className="w-3 h-3" />, color: 'text-blue-500' },
+  auto_extract: { label: '自动提取', icon: <Zap className="w-3 h-3" />, color: 'text-amber-500' },
+  handler: { label: '前端操作', icon: <User className="w-3 h-3" />, color: 'text-emerald-500' },
+  evolution: { label: '自进化', icon: <RefreshCw className="w-3 h-3" />, color: 'text-purple-500' },
+};
+
+const EVENT_COLORS: Record<string, string> = {
+  ADD: 'bg-emerald-500/15 text-emerald-600',
+  UPDATE: 'bg-blue-500/15 text-blue-600',
+  APPEND: 'bg-sky-500/15 text-sky-600',
+  DELETE: 'bg-rose-500/15 text-rose-600',
+  NONE: 'bg-muted text-muted-foreground',
+  FILTERED: 'bg-amber-500/15 text-amber-600',
+};
+
+const AuditLogRow: React.FC<{ log: MemoryAuditLogItem }> = ({ log }) => {
+  const [expanded, setExpanded] = React.useState(false);
+  const sourceMeta = SOURCE_LABELS[log.source] ?? { label: log.source, icon: null, color: 'text-muted-foreground' };
+  const ts = new Date(log.timestamp);
+  const timeStr = `${ts.toLocaleDateString()} ${ts.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`;
+
+  return (
+    <div className="group">
+      <div
+        className="flex items-center gap-2 px-4 py-2 cursor-pointer hover:bg-muted/30 transition-colors"
+        onClick={() => setExpanded(!expanded)}
+      >
+        <ChevronRight className={cn(
+          'w-3 h-3 text-muted-foreground/50 transition-transform duration-150 flex-shrink-0',
+          expanded && 'rotate-90'
+        )} />
+
+        {/* 成功/失败图标 */}
+        {log.success ? (
+          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 flex-shrink-0" />
+        ) : (
+          <XCircle className="w-3.5 h-3.5 text-rose-500 flex-shrink-0" />
+        )}
+
+        {/* 来源 */}
+        <span className={cn('flex items-center gap-1 text-[10px] font-medium flex-shrink-0', sourceMeta.color)}>
+          {sourceMeta.icon}
+          {sourceMeta.label}
+        </span>
+
+        {/* 操作 */}
+        <span className="text-[10px] text-muted-foreground flex-shrink-0">{log.operation}</span>
+
+        {/* 事件标签 */}
+        {log.event && (
+          <span className={cn(
+            'px-1.5 py-0 rounded text-[9px] font-medium flex-shrink-0',
+            EVENT_COLORS[log.event] ?? 'bg-muted text-muted-foreground'
+          )}>
+            {log.event}
+          </span>
+        )}
+
+        {/* 标题 */}
+        <span className="text-xs truncate flex-1 min-w-0">
+          {log.title || log.contentPreview || '—'}
+        </span>
+
+        {/* 时间 */}
+        <span className="text-[10px] text-muted-foreground/60 flex-shrink-0 tabular-nums">
+          {timeStr}
+        </span>
+
+        {/* 耗时 */}
+        {log.durationMs != null && (
+          <span className="text-[10px] text-muted-foreground/40 flex-shrink-0 tabular-nums w-12 text-right">
+            {log.durationMs}ms
+          </span>
+        )}
+      </div>
+
+      {/* 展开详情 */}
+      {expanded && (
+        <div className="px-4 pb-3 ml-7 space-y-1.5">
+          {log.noteId && (
+            <div className="text-[10px]">
+              <span className="text-muted-foreground/60">Note ID: </span>
+              <code className="text-[10px] bg-muted/50 px-1 rounded">{log.noteId}</code>
+            </div>
+          )}
+          {log.contentPreview && (
+            <div className="text-[10px]">
+              <span className="text-muted-foreground/60">内容: </span>
+              <span className="text-muted-foreground">{log.contentPreview}</span>
+            </div>
+          )}
+          {log.folder && (
+            <div className="text-[10px]">
+              <span className="text-muted-foreground/60">文件夹: </span>
+              <span className="text-muted-foreground">{log.folder}</span>
+            </div>
+          )}
+          {log.confidence != null && (
+            <div className="text-[10px]">
+              <span className="text-muted-foreground/60">置信度: </span>
+              <span className={cn(
+                'font-medium',
+                log.confidence >= 0.8 ? 'text-emerald-600' :
+                log.confidence >= 0.5 ? 'text-amber-600' : 'text-rose-600'
+              )}>
+                {(log.confidence * 100).toFixed(0)}%
+              </span>
+            </div>
+          )}
+          {log.reason && (
+            <div className="text-[10px]">
+              <span className="text-muted-foreground/60">原因: </span>
+              <span className="text-muted-foreground">{log.reason}</span>
+            </div>
+          )}
+          {log.sessionId && (
+            <div className="text-[10px]">
+              <span className="text-muted-foreground/60">会话: </span>
+              <code className="text-[10px] bg-muted/50 px-1 rounded">{log.sessionId}</code>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 };

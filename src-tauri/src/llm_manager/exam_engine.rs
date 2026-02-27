@@ -324,6 +324,17 @@ impl LLMManager {
             "stream": false,
         });
 
+        // GLM-4.5+ 支持 thinking 参数；OCR 默认关闭以降低延迟
+        if crate::llm_manager::adapters::zhipu::ZhipuAdapter::supports_thinking_static(&config.model) {
+            let enable = self.is_ocr_thinking_enabled();
+            if let Some(obj) = request_body.as_object_mut() {
+                obj.insert(
+                    "thinking".to_string(),
+                    json!({ "type": if enable { "enabled" } else { "disabled" } }),
+                );
+            }
+        }
+
         if let Some(extra) = adapter.get_extra_request_params() {
             if let Some(obj) = request_body.as_object_mut() {
                 if let Some(extra_obj) = extra.as_object() {
@@ -647,6 +658,15 @@ impl LLMManager {
                             obj.insert(k.to_string(), v.clone());
                         }
                     }
+                }
+            }
+            if crate::llm_manager::adapters::zhipu::ZhipuAdapter::supports_thinking_static(&config.model) {
+                let enable = self.is_ocr_thinking_enabled();
+                if let Some(obj) = request_body.as_object_mut() {
+                    obj.insert(
+                        "thinking".to_string(),
+                        json!({ "type": if enable { "enabled" } else { "disabled" } }),
+                    );
                 }
             }
             if let Some(rp) = adapter.recommended_repetition_penalty() {

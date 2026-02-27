@@ -11,6 +11,7 @@ use std::sync::Arc;
 use anyhow::Result;
 use tracing::{debug, info, warn};
 
+use super::audit_log::{MemoryAuditLogger, MemoryOpSource, MemoryOpType, OpTimer};
 use super::service::MemoryService;
 use crate::llm_manager::LLMManager;
 
@@ -76,6 +77,8 @@ impl MemoryAutoExtractor {
         user_content: &str,
         assistant_content: &str,
     ) -> Result<usize> {
+        let pipeline_timer = OpTimer::start();
+
         let existing_profile = memory_service
             .get_profile_summary()
             .ok()
@@ -93,14 +96,18 @@ impl MemoryAutoExtractor {
             return Ok(0);
         }
 
+        let audit_logger = memory_service.audit_logger().clone();
         let mut stored_count = 0usize;
 
         for candidate in &candidates {
             match memory_service
-                .write_smart(
+                .write_smart_with_source(
                     candidate.folder.as_deref(),
                     &candidate.title,
                     &candidate.content,
+                    MemoryOpSource::AutoExtract,
+                    None,
+                    crate::memory::MemoryType::Fact,
                 )
                 .await
             {
@@ -127,7 +134,13 @@ impl MemoryAutoExtractor {
             }
         }
 
-        // 批量写入完成后统一刷新一次用户画像（避免逐条刷新的性能浪费）
+        audit_logger.log_extract_result(
+            candidates.len(),
+            stored_count,
+            pipeline_timer.elapsed_ms(),
+            None,
+        );
+
         if stored_count > 0 {
             if let Err(e) = memory_service.refresh_profile_summary() {
                 warn!("[MemoryAutoExtractor] Profile refresh after batch store failed: {}", e);
@@ -254,16 +267,21 @@ impl MemoryAutoExtractor {
             .collect()
     }
 
+    pub fn contains_sensitive_pattern_pub(text: &str) -> bool {
+        Self::contains_sensitive_pattern(text)
+    }
+
     fn contains_sensitive_pattern(text: &str) -> bool {
         use regex::Regex;
         use std::sync::OnceLock;
+        // Rust regex crate 不支持 look-around，用 \b 边界代替
         static RE: OnceLock<Regex> = OnceLock::new();
         let re = RE.get_or_init(|| {
             Regex::new(concat!(
                 r"(?:",
-                r"(?<!\d)1[3-9]\d{9}(?!\d)",    // 手机号（前后无数字）
-                r"|(?<!\d)\d{15,18}[Xx]?(?!\d)", // 身份证号
-                r"|(?<!\d)\d{16,19}(?!\d)",      // 银行卡号
+                r"\b1[3-9]\d{9}\b",              // 手机号（11 位，1[3-9] 开头）
+                r"|\b\d{15,18}[Xx]?\b",          // 身份证号（15-18 位 + 可选 X）
+                r"|\b\d{16,19}\b",               // 银行卡号（16-19 位）
                 r"|[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}", // 邮箱
                 r"|密码.{0,5}[:：].+",            // 密码
                 r"|password.{0,5}[:=].+",

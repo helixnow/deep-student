@@ -22,12 +22,66 @@ struct FolderIdCache {
     folder_ids: Vec<String>,
 }
 
+use super::audit_log::{MemoryAuditLogger, MemoryOpSource, MemoryOpType, OpTimer};
 use super::config::MemoryConfig;
 use super::llm_decision::{MemoryDecisionResponse, MemoryEvent, MemoryLLMDecision, SimilarMemorySummary};
 use super::query_rewriter::MemoryQueryRewriter;
 use super::reranker::MemoryReranker;
 
 const SMART_WRITE_MUTATION_CONFIDENCE_THRESHOLD: f32 = 0.65;
+
+/// 记忆类型标签前缀
+const TAG_TYPE_PREFIX: &str = "_type:";
+
+/// 记忆类型
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum MemoryType {
+    /// 原子事实（默认）：关于用户的简短陈述句，≤80 字
+    Fact,
+    /// 经验笔记：用户明确要求保存的方法论、经验、技巧等，≤2000 字
+    Note,
+}
+
+impl Default for MemoryType {
+    fn default() -> Self {
+        Self::Fact
+    }
+}
+
+impl MemoryType {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Fact => "fact",
+            Self::Note => "note",
+        }
+    }
+
+    pub fn from_str(s: &str) -> Self {
+        match s.to_lowercase().as_str() {
+            "note" => Self::Note,
+            _ => Self::Fact,
+        }
+    }
+
+    pub fn to_tag(&self) -> String {
+        format!("{}{}", TAG_TYPE_PREFIX, self.as_str())
+    }
+
+    pub fn from_tags(tags: &[String]) -> Self {
+        tags.iter()
+            .find_map(|t| t.strip_prefix(TAG_TYPE_PREFIX))
+            .map(Self::from_str)
+            .unwrap_or(Self::Fact)
+    }
+
+    pub fn max_content_chars(&self) -> usize {
+        match self {
+            Self::Fact => 200,
+            Self::Note => 2000,
+        }
+    }
+}
 
 /// 系统笔记统一存放的子文件夹标题（__user_profile__ 和 __cat_*__ 等不再散落在根目录）
 const SYSTEM_FOLDER_TITLE: &str = "__system__";
@@ -79,6 +133,9 @@ pub struct MemoryListItem {
     /// 是否被标记为过时（tags 包含 `_stale`）
     #[serde(default)]
     pub is_stale: bool,
+    /// 记忆类型：fact（原子事实）| note（经验笔记）
+    #[serde(default)]
+    pub memory_type: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -145,6 +202,7 @@ pub struct MemoryService {
     lance_store: Arc<VfsLanceStore>,
     llm_manager: Arc<LLMManager>,
     folder_cache: Arc<RwLock<Option<FolderIdCache>>>,
+    audit_logger: MemoryAuditLogger,
 }
 
 impl MemoryService {
@@ -153,13 +211,19 @@ impl MemoryService {
         lance_store: Arc<VfsLanceStore>,
         llm_manager: Arc<LLMManager>,
     ) -> Self {
+        let audit_logger = MemoryAuditLogger::new(vfs_db.clone());
         Self {
             config: MemoryConfig::new(vfs_db.clone()),
             vfs_db,
             lance_store,
             llm_manager,
             folder_cache: Arc::new(RwLock::new(None)),
+            audit_logger,
         }
+    }
+
+    pub fn audit_logger(&self) -> &MemoryAuditLogger {
+        &self.audit_logger
     }
 
     pub fn vfs_db_ref(&self) -> &Arc<VfsDatabase> {
@@ -426,6 +490,17 @@ impl MemoryService {
         content: &str,
         mode: WriteMode,
     ) -> VfsResult<MemoryWriteOutput> {
+        self.write_typed(folder_path, title, content, mode, MemoryType::Fact)
+    }
+
+    pub fn write_typed(
+        &self,
+        folder_path: Option<&str>,
+        title: &str,
+        content: &str,
+        mode: WriteMode,
+        memory_type: MemoryType,
+    ) -> VfsResult<MemoryWriteOutput> {
         let root_id = self.ensure_root_folder_id()?;
 
         let auto_create_subfolders = self.config.is_auto_create_subfolders()?;
@@ -456,6 +531,12 @@ impl MemoryService {
             Some(root_id.clone())
         };
 
+        let type_tags = if memory_type == MemoryType::Note {
+            vec![memory_type.to_tag()]
+        } else {
+            vec![]
+        };
+
         match mode {
             WriteMode::Create => {
                 let note = VfsNoteRepo::create_note_in_folder(
@@ -463,7 +544,7 @@ impl MemoryService {
                     VfsCreateNoteParams {
                         title: title.to_string(),
                         content: content.to_string(),
-                        tags: vec![],
+                        tags: type_tags.clone(),
                     },
                     target_folder_id.as_deref(),
                 )?;
@@ -523,11 +604,10 @@ impl MemoryService {
                         VfsCreateNoteParams {
                             title: title.to_string(),
                             content: content.to_string(),
-                            tags: vec![],
+                            tags: type_tags,
                         },
                         target_folder_id.as_deref(),
                     )?;
-                    // ★ P2-2 修复：创建后触发索引入队
                     if let Err(e) = VfsIndexStateRepo::mark_pending(&self.vfs_db, &note.resource_id)
                     {
                         warn!("[Memory] Failed to mark pending for indexing: {}", e);
@@ -561,6 +641,21 @@ impl MemoryService {
         title: &str,
         content: &str,
     ) -> VfsResult<SmartWriteOutput> {
+        self.write_smart_with_source(folder_path, title, content, MemoryOpSource::Handler, None, MemoryType::Fact)
+            .await
+    }
+
+    /// 智能写入（带来源标记和记忆类型）
+    pub async fn write_smart_with_source(
+        &self,
+        folder_path: Option<&str>,
+        title: &str,
+        content: &str,
+        source: MemoryOpSource,
+        session_id: Option<&str>,
+        memory_type: MemoryType,
+    ) -> VfsResult<SmartWriteOutput> {
+        let timer = OpTimer::start();
         self.ensure_root_folder_id()?;
 
         if content.trim().is_empty() {
@@ -598,7 +693,7 @@ impl MemoryService {
                     downgraded: false,
                 });
             }
-            let result = self.write(folder_path, title, content, WriteMode::Create)?;
+            let result = self.write_typed(folder_path, title, content, WriteMode::Create, memory_type)?;
             return Ok(SmartWriteOutput {
                 note_id: result.note_id,
                 event: "ADD".to_string(),
@@ -608,6 +703,28 @@ impl MemoryService {
                 resource_id: Some(result.resource_id),
                 downgraded: false,
             });
+        }
+
+        // Note 类型快速通道：跳过 LLM 决策，直接写入
+        // 用户明确要求保存的经验/方法论不需要"是否重复"的判断
+        if memory_type == MemoryType::Note {
+            let result = self.write_typed(folder_path, title, content, WriteMode::Create, MemoryType::Note)?;
+            self.index_immediately(&result.resource_id).await;
+
+            let output = SmartWriteOutput {
+                note_id: result.note_id,
+                event: "ADD".to_string(),
+                is_new: true,
+                confidence: 1.0,
+                reason: "经验笔记类型，直接写入".to_string(),
+                resource_id: Some(result.resource_id),
+                downgraded: false,
+            };
+
+            self.audit_logger.log_write_smart_result(
+                source, title, content, folder_path, &output, timer.elapsed_ms(), session_id,
+            );
+            return Ok(output);
         }
 
         // 1. 先搜索相似记忆（扩大范围以提高冲突检测覆盖率）
@@ -841,6 +958,32 @@ impl MemoryService {
             }
         };
 
+        match &result {
+            Ok(output) => {
+                self.audit_logger.log_write_smart_result(
+                    source,
+                    title,
+                    content,
+                    folder_path,
+                    output,
+                    timer.elapsed_ms(),
+                    session_id,
+                );
+            }
+            Err(e) => {
+                self.audit_logger.log_error(
+                    source,
+                    MemoryOpType::WriteSmart,
+                    Some(title),
+                    Some(content),
+                    folder_path,
+                    &e.to_string(),
+                    session_id,
+                    timer.elapsed_ms(),
+                );
+            }
+        }
+
         result
     }
 
@@ -945,6 +1088,7 @@ impl MemoryService {
                 let hits = Self::extract_hits_from_tags(&note.tags);
                 let is_important = note.tags.iter().any(|t| t == "_important");
                 let is_stale = note.tags.iter().any(|t| t == "_stale");
+                let memory_type = MemoryType::from_tags(&note.tags);
                 items.push(MemoryListItem {
                     id: note.id,
                     title: note.title,
@@ -953,6 +1097,7 @@ impl MemoryService {
                     hits,
                     is_important,
                     is_stale,
+                    memory_type: memory_type.as_str().to_string(),
                 });
             }
         }
@@ -1172,6 +1317,7 @@ impl MemoryService {
         title: Option<&str>,
         content: Option<&str>,
     ) -> VfsResult<MemoryWriteOutput> {
+        let timer = OpTimer::start();
         let note = self.ensure_note_in_memory_root(note_id)?;
 
         let updated_note = VfsNoteRepo::update_note(
@@ -1185,7 +1331,6 @@ impl MemoryService {
             },
         )?;
 
-        // ★ P2-2 修复：更新后触发索引入队
         if let Err(e) = VfsIndexStateRepo::mark_pending(&self.vfs_db, &updated_note.resource_id) {
             warn!("[Memory] Failed to mark pending for indexing: {}", e);
         }
@@ -1194,6 +1339,23 @@ impl MemoryService {
             "[Memory] Updated note by ID: {} (resource_id={}) — marked pending for immediate indexing",
             note_id, updated_note.resource_id
         );
+
+        self.audit_logger.log(&super::audit_log::MemoryAuditEntry {
+            source: MemoryOpSource::Handler,
+            operation: MemoryOpType::Update,
+            success: true,
+            note_id: Some(note.id.clone()),
+            title: title.map(|s| s.to_string()),
+            content_preview: content.map(|s| s.to_string()),
+            folder: None,
+            event: Some("UPDATE".to_string()),
+            confidence: None,
+            reason: None,
+            session_id: None,
+            duration_ms: Some(timer.elapsed_ms()),
+            extra_json: None,
+        });
+
         Ok(MemoryWriteOutput {
             note_id: note.id,
             is_new: false,
@@ -1207,9 +1369,10 @@ impl MemoryService {
 
     /// 删除记忆（软删除）
     pub async fn delete(&self, note_id: &str) -> VfsResult<()> {
+        let timer = OpTimer::start();
         let note = self.ensure_note_in_memory_root(note_id)?;
+        let note_title = note.title.clone();
 
-        // 先删除向量索引，避免数据库先删除后向量残留导致敏感记忆仍可检索。
         self.lance_store
             .delete_by_resource("text", &note.resource_id)
             .await
@@ -1241,6 +1404,22 @@ impl MemoryService {
             );
         }
         info!("[Memory] Deleted note: {}", note_id);
+
+        self.audit_logger.log(&super::audit_log::MemoryAuditEntry {
+            source: MemoryOpSource::Handler,
+            operation: MemoryOpType::Delete,
+            success: true,
+            note_id: Some(note_id.to_string()),
+            title: Some(note_title),
+            content_preview: None,
+            folder: None,
+            event: Some("DELETE".to_string()),
+            confidence: None,
+            reason: None,
+            session_id: None,
+            duration_ms: Some(timer.elapsed_ms()),
+            extra_json: None,
+        });
 
         // 删除后异步刷新用户画像摘要（确保画像不包含已删除记忆的事实）
         let svc = self.clone();
@@ -1351,6 +1530,11 @@ impl MemoryService {
         let mut facts: Vec<(&str, String)> = Vec::new();
         for mem in &all_memories {
             if mem.title.starts_with("__") {
+                continue;
+            }
+            // note 类型仅列出标题（避免长内容膨胀画像摘要）
+            if mem.memory_type == "note" {
+                facts.push((&mem.folder_path, format!("[经验笔记] {}", mem.title)));
                 continue;
             }
             let content = VfsNoteRepo::get_note_content(&self.vfs_db, &mem.id)?

@@ -4079,6 +4079,17 @@ impl LLMManager {
             }
         }
 
+        // GLM-4.5+ 支持 thinking 参数；OCR 任务默认关闭以降低延迟
+        if crate::llm_manager::adapters::zhipu::ZhipuAdapter::supports_thinking_static(&config.model) {
+            let enable = self.is_ocr_thinking_enabled();
+            if let Some(obj) = request_body.as_object_mut() {
+                obj.insert(
+                    "thinking".to_string(),
+                    json!({ "type": if enable { "enabled" } else { "disabled" } }),
+                );
+            }
+        }
+
         debug!(
             "[OCR_MODEL_RAW_PROMPT] 发送请求到: {} | 模型: {} | 请求图片数: {} | 实际附加: {} | prompt字符数: {}",
             config.base_url,

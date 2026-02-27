@@ -8,7 +8,7 @@ use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
 use super::strip_tool_namespace;
 use crate::chat_v2::events::event_types;
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
-use crate::memory::{MemoryService, WriteMode};
+use crate::memory::{MemoryAuditLogger, MemoryOpSource, MemoryOpType, MemoryService, MemoryType, OpTimer, WriteMode};
 use crate::vfs::lance_store::VfsLanceStore;
 
 pub const MEMORY_SEARCH: &str = "builtin-memory_search";
@@ -223,7 +223,6 @@ impl MemoryToolExecutor {
         call: &ToolCall,
         ctx: &ExecutionContext,
     ) -> Result<Value, String> {
-        // 🆕 取消检查：在执行前检查是否已取消
         if ctx.is_cancelled() {
             return Err("Memory write cancelled before start".to_string());
         }
@@ -258,6 +257,36 @@ impl MemoryToolExecutor {
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
 
+        // ★ 修复不一致：工具路径也需要敏感信息过滤
+        if let Some(ref c) = content {
+            if crate::memory::auto_extractor::MemoryAutoExtractor::contains_sensitive_pattern_pub(c) {
+                service.audit_logger().log_filtered(
+                    MemoryOpSource::ToolCall,
+                    title.as_deref().unwrap_or(""),
+                    c,
+                    "包含敏感信息（手机号/身份证/银行卡/邮箱/密码）",
+                );
+                return Ok(json!({
+                    "success": false,
+                    "error": "内容包含敏感信息，已拦截。请勿在记忆中存储个人敏感信息。"
+                }));
+            }
+        }
+        if let Some(ref t) = title {
+            if crate::memory::auto_extractor::MemoryAutoExtractor::contains_sensitive_pattern_pub(t) {
+                service.audit_logger().log_filtered(
+                    MemoryOpSource::ToolCall,
+                    t,
+                    content.as_deref().unwrap_or(""),
+                    "标题包含敏感信息",
+                );
+                return Ok(json!({
+                    "success": false,
+                    "error": "标题包含敏感信息，已拦截。"
+                }));
+            }
+        }
+
         let mode_str = call
             .arguments
             .get("mode")
@@ -269,8 +298,8 @@ impl MemoryToolExecutor {
             });
 
         let mode = WriteMode::from_str(mode_str);
+        let timer = OpTimer::start();
 
-        // 🆕 取消支持：使用 spawn_blocking + tokio::select! 监听取消信号
         let write_task = {
             let service = service.clone();
             let note_id = note_id.clone();
@@ -324,12 +353,37 @@ impl MemoryToolExecutor {
             write_task.await.map_err(|e| e.to_string())??
         };
 
-        // 写入后即时索引，保证 write-then-search SLA（与 handler 路径对齐）
+        service.audit_logger().log(&crate::memory::audit_log::MemoryAuditEntry {
+            source: MemoryOpSource::ToolCall,
+            operation: MemoryOpType::Write,
+            success: true,
+            note_id: Some(result.note_id.clone()),
+            title: title.clone(),
+            content_preview: content.clone(),
+            folder: folder.clone(),
+            event: Some(if result.is_new { "ADD" } else { "UPDATE" }.to_string()),
+            confidence: None,
+            reason: None,
+            session_id: None,
+            duration_ms: Some(timer.elapsed_ms()),
+            extra_json: None,
+        });
+
         let svc_for_idx = self.get_service(ctx).ok();
         if let Some(svc) = svc_for_idx {
             let resource_id = result.resource_id.clone();
             tokio::spawn(async move {
                 svc.index_resource_immediately(&resource_id).await;
+            });
+        }
+
+        // ★ 修复不一致：工具路径写入后也刷新画像摘要
+        {
+            let svc = service.clone();
+            tokio::task::spawn_blocking(move || {
+                if let Err(e) = svc.refresh_profile_summary() {
+                    log::warn!("[MemoryToolExecutor] Profile refresh after tool write failed: {}", e);
+                }
             });
         }
 
@@ -509,7 +563,6 @@ impl MemoryToolExecutor {
         call: &ToolCall,
         ctx: &ExecutionContext,
     ) -> Result<Value, String> {
-        // 🆕 取消检查：在执行前检查是否已取消
         if ctx.is_cancelled() {
             return Err("Memory write_smart cancelled before start".to_string());
         }
@@ -531,11 +584,60 @@ impl MemoryToolExecutor {
             .and_then(|v| v.as_str())
             .ok_or("Missing 'content' parameter")?;
         let folder = call.arguments.get("folder").and_then(|v| v.as_str());
+        let memory_type = call
+            .arguments
+            .get("memory_type")
+            .and_then(|v| v.as_str())
+            .map(MemoryType::from_str)
+            .unwrap_or(MemoryType::Fact);
 
-        // 🆕 取消支持：使用 tokio::select! 监听取消信号
+        // 敏感信息过滤（所有类型都检查）
+        if crate::memory::auto_extractor::MemoryAutoExtractor::contains_sensitive_pattern_pub(content)
+            || crate::memory::auto_extractor::MemoryAutoExtractor::contains_sensitive_pattern_pub(title)
+        {
+            service.audit_logger().log_filtered(
+                MemoryOpSource::ToolCall,
+                title,
+                content,
+                "包含敏感信息（手机号/身份证/银行卡/邮箱/密码）",
+            );
+            return Ok(json!({
+                "note_id": "",
+                "event": "FILTERED",
+                "is_new": false,
+                "confidence": 1.0,
+                "reason": "内容包含敏感信息（手机号/身份证/银行卡/邮箱/密码），已拦截。请勿在记忆中存储个人敏感信息。",
+                "downgraded": false
+            }));
+        }
+
+        // 内容长度限制（按类型区分）
+        let max_chars = memory_type.max_content_chars();
+        if content.chars().count() > max_chars {
+            service.audit_logger().log_filtered(
+                MemoryOpSource::ToolCall,
+                title,
+                content,
+                &format!("内容超过 {} 字限制（类型: {}）", max_chars, memory_type.as_str()),
+            );
+            let hint = if memory_type == MemoryType::Fact {
+                format!("原子事实记忆内容过长（超过 {} 字）。请拆分为多条简短事实，或使用 memory_type='note' 保存经验笔记。", max_chars)
+            } else {
+                format!("经验笔记内容过长（超过 {} 字）。请精简内容。", max_chars)
+            };
+            return Ok(json!({
+                "note_id": "",
+                "event": "FILTERED",
+                "is_new": false,
+                "confidence": 1.0,
+                "reason": hint,
+                "downgraded": false
+            }));
+        }
+
         let result = if let Some(cancel_token) = ctx.cancellation_token() {
             tokio::select! {
-                res = service.write_smart(folder, title, content) => res.map_err(|e| e.to_string())?,
+                res = service.write_smart_with_source(folder, title, content, MemoryOpSource::ToolCall, None, memory_type) => res.map_err(|e| e.to_string())?,
                 _ = cancel_token.cancelled() => {
                     log::info!("[MemoryToolExecutor] Memory write_smart cancelled");
                     return Err("Memory write_smart cancelled during execution".to_string());
@@ -543,10 +645,20 @@ impl MemoryToolExecutor {
             }
         } else {
             service
-                .write_smart(folder, title, content)
+                .write_smart_with_source(folder, title, content, MemoryOpSource::ToolCall, None, memory_type)
                 .await
                 .map_err(|e| e.to_string())?
         };
+
+        // ★ 修复不一致：工具路径写入后也刷新画像摘要
+        if result.event != "NONE" && result.event != "FILTERED" {
+            let svc = service.clone();
+            tokio::task::spawn_blocking(move || {
+                if let Err(e) = svc.refresh_profile_summary() {
+                    log::warn!("[MemoryToolExecutor] Profile refresh after tool write failed: {}", e);
+                }
+            });
+        }
 
         Ok(json!({
             "note_id": result.note_id,

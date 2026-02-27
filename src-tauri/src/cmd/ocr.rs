@@ -104,6 +104,24 @@ pub async fn get_ocr_engine_type(state: State<'_, AppState>) -> Result<String> {
     Ok(engine_type)
 }
 
+/// 获取 OCR/题目集任务是否启用 VLM 推理
+#[tauri::command]
+pub async fn get_ocr_thinking_enabled(state: State<'_, AppState>) -> Result<bool> {
+    Ok(state.llm_manager.is_ocr_thinking_enabled())
+}
+
+/// 设置 OCR/题目集任务是否启用 VLM 推理
+#[tauri::command]
+pub async fn set_ocr_thinking_enabled(
+    enabled: bool,
+    state: State<'_, AppState>,
+) -> Result<bool> {
+    let db = &state.database;
+    db.save_setting("ocr.enable_thinking", if enabled { "true" } else { "false" })
+        .map_err(|e| AppError::database(format!("保存 OCR 推理配置失败: {}", e)))?;
+    Ok(true)
+}
+
 /// 设置 OCR 引擎类型
 #[tauri::command]
 pub async fn set_ocr_engine_type(engine_type: String, state: State<'_, AppState>) -> Result<bool> {

@@ -860,6 +860,8 @@ pub fn run() {
             crate::commands::get_ocr_engines,
             crate::commands::get_ocr_engine_type,
             crate::commands::set_ocr_engine_type,
+            crate::commands::get_ocr_thinking_enabled,
+            crate::commands::set_ocr_thinking_enabled,
             crate::commands::infer_ocr_engine_from_model,
             crate::commands::validate_ocr_model,
             crate::commands::get_ocr_prompt_template,
@@ -1464,6 +1466,7 @@ pub fn run() {
             ,crate::memory::handlers::memory_set_default_category
             ,crate::memory::handlers::memory_export_all
             ,crate::memory::handlers::memory_get_profile
+            ,crate::memory::handlers::memory_get_audit_logs
             // =================================================
             // 复习计划与间隔重复系统（SM-2 算法）
             // =================================================

@@ -2930,6 +2930,18 @@ impl LLMManager {
         self.get_ocr_model_config().await
     }
 
+    /// OCR/题目集任务是否启用 VLM 推理（thinking）
+    ///
+    /// 默认关闭：OCR 和结构化任务不需要深度推理，关闭可显著降低延迟和成本。
+    pub fn is_ocr_thinking_enabled(&self) -> bool {
+        self.db
+            .get_setting("ocr.enable_thinking")
+            .ok()
+            .flatten()
+            .map(|v| v.to_lowercase() == "true")
+            .unwrap_or(false)
+    }
+
     /// 获取当前配置的 OCR 引擎类型
     ///
     /// 默认按 FreeText 策略：OCR-VLM 引擎优先于通用 VLM。

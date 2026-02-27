@@ -56,37 +56,26 @@ function isBase64(data: string): boolean {
 }
 
 /**
- * 提取 base64 数据（移除 data URL 前缀）
+ * 提取 base64 数据（移除 data URL 前缀和混入的 OCR 文本）
  * 
  * 支持以下格式：
  * 1. 纯 data URL：`data:image/png;base64,iVBORw...`
- * 2. 混合格式（Image + OCR）：`data:image/png;base64,iVBORw...\n\n<image_ocr>文本</image_ocr>`
+ * 2. 混合格式（Image + OCR）：`iVBORw...<image_ocr>文本</image_ocr>`（后端拼接，可能无换行符）
  * 3. 纯 base64：`iVBORw...`
  */
 function extractBase64(data: string): { base64: string; mediaType?: string } {
-  // 首先处理混合格式（base64 + XML 标签）
-  // 只取第一行作为 base64 数据
-  const firstLine = data.split('\n')[0].trim();
-  
-  if (firstLine.startsWith('data:')) {
-    const match = firstLine.match(/^data:([^;]+);base64,(.+)$/);
+  // 关键：先截断 <image_ocr> 标签及其后续内容，确保 base64 数据干净
+  const ocrTagIndex = data.indexOf('<image_ocr');
+  const cleanData = ocrTagIndex >= 0 ? data.substring(0, ocrTagIndex).trim() : data;
+
+  if (cleanData.startsWith('data:')) {
+    const match = cleanData.match(/^data:([^;]+);base64,(.+)$/s);
     if (match) {
       return { mediaType: match[1], base64: match[2] };
     }
   }
-  
-  // 如果不是 data URL 格式，检查是否是纯 base64
-  // 但要排除 XML 标签
-  if (!data.includes('<') && !data.includes('>')) {
-    return { base64: data };
-  }
-  
-  // 如果包含 XML 标签，尝试提取第一行的纯 base64
-  if (!firstLine.includes('<') && !firstLine.includes('>')) {
-    return { base64: firstLine };
-  }
-  
-  return { base64: data };
+
+  return { base64: cleanData };
 }
 
 /**

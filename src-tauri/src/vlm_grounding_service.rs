@@ -170,13 +170,24 @@ impl VlmGroundingService {
         .max(4096)
         .min(16384);
 
-        let request_body = json!({
+        let mut request_body = json!({
             "model": config.model,
             "messages": messages,
             "temperature": 0.1,
             "max_tokens": max_tokens,
             "stream": false,
         });
+
+        // GLM-4.5+ 支持 thinking 参数；OCR/题目集默认关闭以降低延迟
+        if crate::llm_manager::adapters::zhipu::ZhipuAdapter::supports_thinking_static(&config.model) {
+            let enable = self.llm_manager.is_ocr_thinking_enabled();
+            if let Some(obj) = request_body.as_object_mut() {
+                obj.insert(
+                    "thinking".to_string(),
+                    json!({ "type": if enable { "enabled" } else { "disabled" } }),
+                );
+            }
+        }
 
         let provider: Box<dyn crate::providers::ProviderAdapter> =
             match config.model_adapter.as_str() {
@@ -321,13 +332,23 @@ impl VlmGroundingService {
         .max(2048)
         .min(4096);
 
-        let request_body = json!({
+        let mut request_body = json!({
             "model": config.model,
             "messages": messages,
             "temperature": 0.1,
             "max_tokens": max_tokens,
             "stream": false,
         });
+
+        if crate::llm_manager::adapters::zhipu::ZhipuAdapter::supports_thinking_static(&config.model) {
+            let enable = self.llm_manager.is_ocr_thinking_enabled();
+            if let Some(obj) = request_body.as_object_mut() {
+                obj.insert(
+                    "thinking".to_string(),
+                    json!({ "type": if enable { "enabled" } else { "disabled" } }),
+                );
+            }
+        }
 
         let provider: Box<dyn crate::providers::ProviderAdapter> =
             match config.model_adapter.as_str() {
@@ -439,13 +460,23 @@ impl VlmGroundingService {
         .max(8192)
         .min(32768);
 
-        let request_body = json!({
+        let mut request_body = json!({
             "model": config.model,
             "messages": messages,
             "temperature": 0.1,
             "max_tokens": max_tokens,
             "stream": true,
         });
+
+        if crate::llm_manager::adapters::zhipu::ZhipuAdapter::supports_thinking_static(&config.model) {
+            let enable = self.llm_manager.is_ocr_thinking_enabled();
+            if let Some(obj) = request_body.as_object_mut() {
+                obj.insert(
+                    "thinking".to_string(),
+                    json!({ "type": if enable { "enabled" } else { "disabled" } }),
+                );
+            }
+        }
 
         let provider: Box<dyn crate::providers::ProviderAdapter> =
             match config.model_adapter.as_str() {

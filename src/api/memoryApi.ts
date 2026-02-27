@@ -24,6 +24,7 @@ export interface MemoryListItem {
   hits: number;
   isImportant: boolean;
   isStale: boolean;
+  memoryType: string;
 }
 
 export interface MemoryReadOutput {
@@ -185,4 +186,31 @@ export async function writeMemorySmart(
     title,
     content,
   });
+}
+
+export interface MemoryAuditLogItem {
+  id: number;
+  timestamp: string;
+  source: string;
+  operation: string;
+  success: boolean;
+  noteId: string | null;
+  title: string | null;
+  contentPreview: string | null;
+  folder: string | null;
+  event: string | null;
+  confidence: number | null;
+  reason: string | null;
+  sessionId: string | null;
+  durationMs: number | null;
+}
+
+export async function getMemoryAuditLogs(params?: {
+  limit?: number;
+  offset?: number;
+  sourceFilter?: string;
+  operationFilter?: string;
+  successFilter?: boolean;
+}): Promise<MemoryAuditLogItem[]> {
+  return invoke<MemoryAuditLogItem[]>('memory_get_audit_logs', params ?? {});
 }

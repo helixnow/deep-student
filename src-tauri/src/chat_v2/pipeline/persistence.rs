@@ -899,18 +899,31 @@ impl ChatV2Pipeline {
             return;
         }
 
-        // 竞态保护：如果 LLM 本轮已通过工具主动写入过记忆，跳过自动提取。
-        // 避免 auto_extractor 在索引窗口期内重复提取相同事实。
-        let llm_already_wrote_memory = ctx.tool_results.iter().any(|tr| {
+        // 竞态保护（精细化）：
+        // - 如果 LLM 写了 fact 类型记忆 → 跳过自动提取（避免重复）
+        // - 如果 LLM 只写了 note 类型记忆 → 不跳过（note 是用户要求的经验笔记，
+        //   auto extractor 仍应提取对话中的原子事实）
+        let llm_wrote_fact_memory = ctx.tool_results.iter().any(|tr| {
             let name = tr.tool_name.as_str();
-            matches!(
+            let is_memory_tool = matches!(
                 name.strip_prefix("builtin-").unwrap_or(name),
                 "memory_write" | "memory_write_smart" | "memory_update_by_id"
-            )
+            );
+            if !is_memory_tool {
+                return false;
+            }
+            // 检查是否为 note 类型：从工具输入参数中判断
+            let is_note = tr
+                .input
+                .get("memory_type")
+                .and_then(|v| v.as_str())
+                .map(|t| t == "note")
+                .unwrap_or(false);
+            !is_note
         });
-        if llm_already_wrote_memory {
+        if llm_wrote_fact_memory {
             log::debug!(
-                "[AutoMemory] Skipping auto-extraction: LLM already wrote memories this turn"
+                "[AutoMemory] Skipping auto-extraction: LLM already wrote fact memories this turn"
             );
             return;
         }

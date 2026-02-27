@@ -65,6 +65,7 @@ export const OcrEngineCard: React.FC<OcrEngineCardProps> = ({ className, apiConf
   const [builtinEngines, setBuiltinEngines] = useState<OcrEngineInfo[]>([]);
   const [showTestPanel, setShowTestPanel] = useState(false);
   const [showAddDialog, setShowAddDialog] = useState(false);
+  const [thinkingEnabled, setThinkingEnabled] = useState(false);
 
   const loadEngines = useCallback(async () => {
     try {
@@ -84,14 +85,21 @@ export const OcrEngineCard: React.FC<OcrEngineCardProps> = ({ className, apiConf
     }
   }, []);
 
+  const loadThinkingSetting = useCallback(async () => {
+    try {
+      const enabled = await invoke<boolean>('get_ocr_thinking_enabled');
+      setThinkingEnabled(enabled);
+    } catch { /* 默认关闭 */ }
+  }, []);
+
   useEffect(() => {
     const load = async () => {
       setLoading(true);
-      await Promise.all([loadEngines(), loadBuiltinEngines()]);
+      await Promise.all([loadEngines(), loadBuiltinEngines(), loadThinkingSetting()]);
       setLoading(false);
     };
     load();
-  }, [loadEngines, loadBuiltinEngines]);
+  }, [loadEngines, loadBuiltinEngines, loadThinkingSetting]);
 
   const handleToggleEnabled = useCallback(async (configId: string) => {
     const updated = engines.map((e) =>
@@ -339,6 +347,46 @@ export const OcrEngineCard: React.FC<OcrEngineCardProps> = ({ className, apiConf
             </div>
           )}
         </div>
+
+        {/* VLM 推理开关 */}
+        {!loading && engines.length > 0 && (
+          <div className="flex items-center justify-between px-1.5 py-1.5 rounded bg-muted/20">
+            <div className="space-y-0">
+              <span className="text-[11px] text-muted-foreground/80">
+                {t('settings:ocr.thinking_label', 'VLM 深度推理')}
+              </span>
+              <p className="text-[10px] text-muted-foreground/50 leading-tight">
+                {t('settings:ocr.thinking_desc', '关闭可显著降低 OCR / 题目集导入延迟')}
+              </p>
+            </div>
+            <button
+              onClick={async () => {
+                const next = !thinkingEnabled;
+                setThinkingEnabled(next);
+                try {
+                  await invoke('set_ocr_thinking_enabled', { enabled: next });
+                } catch {
+                  setThinkingEnabled(!next);
+                }
+              }}
+              disabled={saving}
+              className={cn(
+                "relative shrink-0 rounded-full transition-colors",
+                "w-[28px] h-[16px]",
+                thinkingEnabled ? "bg-primary" : "bg-muted-foreground/20"
+              )}
+              title={thinkingEnabled ? t('settings:ocr.thinking_on', '推理已开启') : t('settings:ocr.thinking_off', '推理已关闭')}
+            >
+              <span
+                className={cn(
+                  "block absolute rounded-full bg-white shadow-sm transition-transform",
+                  "w-[12px] h-[12px] top-[2px]",
+                  thinkingEnabled ? "left-[14px]" : "left-[2px]"
+                )}
+              />
+            </button>
+          </div>
+        )}
 
         {/* 底部操作栏 */}
         {!loading && (

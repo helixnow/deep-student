@@ -154,7 +154,7 @@ export const FinderFileItem = React.memo(function FinderFileItem({
       <div
         className={cn(
           "group relative flex items-center gap-2 px-3 py-1.5 cursor-default select-none rounded-md mx-1 my-0.5",
-          "transition-all duration-150 ease-out",
+          "transition-[background-color,box-shadow,border-color,opacity] duration-150 ease-out",
           "hover:bg-accent/60 dark:hover:bg-accent/40",
           isSelected && "bg-primary/10 dark:bg-primary/20 hover:bg-primary/15 dark:hover:bg-primary/25",
           isActive && !isSelected && "bg-accent/40 dark:bg-accent/30",
@@ -169,7 +169,7 @@ export const FinderFileItem = React.memo(function FinderFileItem({
       >
         
         {/* 自定义 SVG 图标 */}
-        <div className="shrink-0 transition-transform duration-150 group-hover:scale-105">
+        <div className="shrink-0">
           <CustomIcon size={24} />
         </div>
         
@@ -232,7 +232,7 @@ export const FinderFileItem = React.memo(function FinderFileItem({
         // Notion 风格的网格卡片 - 更大、更精致
         "group relative flex flex-col items-center p-3 rounded-xl cursor-default select-none",
         "w-[88px] h-[100px]",
-        "transition-all duration-150 ease-out",
+        "transition-[background-color,box-shadow,border-color,opacity] duration-150 ease-out",
         "border border-transparent",
         // 悬停效果
         "hover:bg-accent/50 dark:hover:bg-accent/30 hover:shadow-notion",
@@ -262,7 +262,7 @@ export const FinderFileItem = React.memo(function FinderFileItem({
       )}
       
       {/* 自定义 SVG 图标 */}
-      <div className="mb-2 transition-transform duration-150 group-hover:scale-110">
+      <div className="mb-2">
         <CustomIcon size={48} />
       </div>
       

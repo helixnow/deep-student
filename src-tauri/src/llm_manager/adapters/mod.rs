@@ -25,7 +25,7 @@ mod minimax;
 mod mistral;
 mod moonshot;
 mod qwen;
-mod zhipu;
+pub mod zhipu;
 
 pub use anthropic::AnthropicAdapter;
 pub use deepseek::DeepSeekAdapter;

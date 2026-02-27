@@ -1055,10 +1055,9 @@ impl PdfProcessingService {
             })
             .unwrap_or(false);
 
-        if has_compressed {
-            // 已经有压缩版本，image 模式就绪
-            ready_modes.push("image".to_string());
-        }
+        // 图片上传后原图已存在 resources 表，image 模式立即就绪
+        // 压缩是优化（减小 base64 体积），不应阻塞用户发送
+        ready_modes.push("image".to_string());
         if has_ocr {
             ready_modes.push("ocr".to_string());
         }

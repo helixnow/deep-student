@@ -40,27 +40,8 @@ export function getEffectiveReadyModes(
 ): MediaInjectMode[] | undefined {
   const effectiveStatus = status || attachment.processingStatus;
 
-  // 图片在 processing 阶段默认允许 image 模式发送：
-  // 压缩/OCR 走后台优化，不应阻塞“仅按图片发送”。
-  if (
-    mediaType === 'image' &&
-    attachment.status === 'processing'
-  ) {
-    const stage = effectiveStatus?.stage;
-    if (
-      !stage ||
-      stage === 'pending' ||
-      stage === 'image_compression' ||
-      stage === 'ocr_processing' ||
-      stage === 'vector_indexing'
-    ) {
-      const merged = new Set<MediaInjectMode>(['image']);
-      for (const mode of (effectiveStatus?.readyModes || []) as MediaInjectMode[]) {
-        merged.add(mode);
-      }
-      return Array.from(merged);
-    }
-  }
+  // 后端图片管线上传完成后立即将 image 加入 readyModes，
+  // 不再需要前端虚拟补充。直接使用后端报告的 readyModes。
 
   if (effectiveStatus?.readyModes?.length) {
     const VALID_INJECT_MODES: Set<string> = new Set(['text', 'ocr', 'image']);

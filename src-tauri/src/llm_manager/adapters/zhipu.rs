@@ -1,27 +1,25 @@
 //! 智谱 GLM 专用适配器
 //!
-//! GLM-4.7/GLM-5 系列支持以下推理参数：
+//! GLM-4.5+ 系列支持以下推理参数：
 //! ```json
 //! {
 //!   "thinking": {
 //!     "type": "enabled" | "disabled",
-//!     "clear_thinking": true | false  // 是否保留历史思维链
+//!     "clear_thinking": true | false
 //!   },
-//!   "tool_stream": true  // GLM-4.6+ 支持工具流式
+//!   "tool_stream": true
 //! }
 //! ```
 //!
-//! ## 特殊行为
-//! - GLM-4.7/GLM-5 **默认启用 thinking**（需显式禁用）
-//! - 支持 turn-level thinking（每轮独立控制）
-//! - 支持 preserved thinking（保留历史思维链，通过 clear_thinking: false）
+//! ## 版本特性（Z.ai 官方文档确认）
+//! - GLM-4.5 / GLM-4.5V: 支持 thinking（Thinking Mode switch）
+//! - GLM-4.6 / GLM-4.6V: 支持 thinking + tool_stream + 原生多模态工具调用
+//! - GLM-4.7: 支持 thinking（默认启用）、preserved thinking、interleaved thinking
+//! - GLM-5: 继承 GLM-4.7 全部特性，750B MoE
+//! - GLM-4.1V-9B-Thinking: 内置推理但**不支持** thinking API 参数（返回 20015 错误）
+//! - Flash/FlashX 变体: 免费/快速模型，不支持 thinking
 //!
-//! ## 版本特性
-//! - GLM-4.6: 支持 tool_stream
-//! - GLM-4.7: 支持 thinking（默认启用）、preserved thinking
-//! - GLM-5: 继承 GLM-4.7 全部特性，745B MoE 架构，200K 上下文
-//!
-//! 参考文档：https://open.bigmodel.cn/dev/api
+//! 参考文档：https://docs.z.ai/guides/vlm/glm-4.6v
 
 use super::{resolve_enable_thinking, RequestAdapter};
 use crate::llm_manager::ApiConfig;
@@ -36,18 +34,27 @@ use serde_json::{json, Map, Value};
 pub struct ZhipuAdapter;
 
 impl ZhipuAdapter {
-    /// 检查是否是 GLM-4.7+ 模型（默认启用 thinking）
-    /// GLM-5 继承 GLM-4.7 的 thinking 能力，默认启用
-    fn is_glm47_or_later(model: &str) -> bool {
+    /// GLM-4.5+ 支持 thinking API 参数（排除 flash/flashx 变体和 4.1V）
+    pub fn supports_thinking_static(model: &str) -> bool {
+        Self::supports_thinking(model)
+    }
+
+    fn supports_thinking(model: &str) -> bool {
         let model_lower = model.to_lowercase();
-        model_lower.contains("glm-4.7")
+        if model_lower.contains("-flash") || model_lower.contains("4.1v") {
+            return false;
+        }
+        model_lower.contains("glm-4.5")
+            || model_lower.contains("glm-4.6")
+            || model_lower.contains("glm-4.7")
+            || model_lower.contains("glm4.5")
+            || model_lower.contains("glm4.6")
             || model_lower.contains("glm4.7")
             || model_lower.contains("glm-5")
             || model_lower.contains("glm5")
     }
 
-    /// 检查是否是 GLM-4.6+ 模型（支持 tool_stream）
-    /// GLM-5 继承 GLM-4.6+ 的 tool_stream 能力
+    /// GLM-4.6+ 支持 tool_stream
     fn supports_tool_stream(model: &str) -> bool {
         let model_lower = model.to_lowercase();
         model_lower.contains("glm-4.6")
@@ -82,12 +89,11 @@ impl RequestAdapter for ZhipuAdapter {
         body.remove("frequency_penalty");
         body.remove("presence_penalty");
 
-        let is_glm47 = Self::is_glm47_or_later(&config.model);
+        let can_think = Self::supports_thinking(&config.model);
 
         let mut thinking_map = Map::new();
 
-        // GLM-4.7 默认启用 thinking，除非显式禁用
-        if is_glm47 || config.supports_reasoning {
+        if can_think || config.supports_reasoning {
             let enable_thinking_value = resolve_enable_thinking(config, enable_thinking);
             let thinking_type = if enable_thinking_value {
                 "enabled"
@@ -231,20 +237,26 @@ mod tests {
     }
 
     #[test]
-    fn test_is_glm47_or_later() {
-        // GLM-4.7 系列
-        assert!(ZhipuAdapter::is_glm47_or_later("glm-4.7"));
-        assert!(ZhipuAdapter::is_glm47_or_later("GLM-4.7-Flash"));
-        assert!(ZhipuAdapter::is_glm47_or_later("glm4.7"));
+    fn test_supports_thinking() {
+        // GLM-4.5+ 系列（包括视觉模型）
+        assert!(ZhipuAdapter::supports_thinking("glm-4.5"));
+        assert!(ZhipuAdapter::supports_thinking("zai-org/GLM-4.5V"));
+        assert!(ZhipuAdapter::supports_thinking("glm-4.6"));
+        assert!(ZhipuAdapter::supports_thinking("zai-org/GLM-4.6V"));
+        assert!(ZhipuAdapter::supports_thinking("glm-4.7"));
+        assert!(ZhipuAdapter::supports_thinking("glm-5"));
+        assert!(ZhipuAdapter::supports_thinking("GLM-5"));
 
-        // GLM-5 系列
-        assert!(ZhipuAdapter::is_glm47_or_later("glm-5"));
-        assert!(ZhipuAdapter::is_glm47_or_later("GLM-5"));
-        assert!(ZhipuAdapter::is_glm47_or_later("glm5"));
+        // flash 变体不支持 thinking
+        assert!(!ZhipuAdapter::supports_thinking("GLM-4.7-Flash"));
+        assert!(!ZhipuAdapter::supports_thinking("GLM-4.6V-FlashX"));
 
-        // 旧版本不应匹配
-        assert!(!ZhipuAdapter::is_glm47_or_later("glm-4.6"));
-        assert!(!ZhipuAdapter::is_glm47_or_later("glm-4"));
+        // GLM-4.1V 不支持 thinking 参数
+        assert!(!ZhipuAdapter::supports_thinking("THUDM/GLM-4.1V-9B-Thinking"));
+
+        // 旧版本不匹配
+        assert!(!ZhipuAdapter::supports_thinking("glm-4"));
+        assert!(!ZhipuAdapter::supports_thinking("glm-4.0"));
     }
 
     #[test]

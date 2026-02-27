@@ -183,7 +183,7 @@ const FUNCTION_CALLING_EXCLUDED_REGEXES: RegExp[] = [
   /gemini-1[\w-]*/i,
   /qwen-mt/i,
   /gpt-5-chat/i,
-  /glm-(?:4(?:\.\d+)?|5(?:\.\d+)?)v/i,
+  /glm-(?:4(?:\.[0-4])?v)/i, // 仅排除 GLM-4.4V 及以下（4.5V+ 原生支持工具调用）
   /hunyuan-mt/i, // 排除 Hunyuan-MT 翻译系列，不支持工具调用
   /deepseek-v3\.2-speciale/i, // DeepSeek V3.2-Speciale 不支持工具调用
 ];
@@ -247,10 +247,11 @@ const DOUBAO_THINKING_REGEXES: RegExp[] = [
 // Gemini 排除 image/tts/audio 专用模型的 thinking 能力
 const GEMINI_IMAGE_EXCLUDE_REGEX = /(image|tts|audio)/i;
 // GLM 4.5/4.6/4.7/5 支持思维链 (Preserved Thinking / Interleaved Thinking)
-// 排除 flash/flashx 变体（免费/快速模型不支持 thinking）
-const ZHIPU_GLM_THINKING_REGEX = /glm-(?:4\.[5-7]|5(?:\.\d+)?)(?!-flash)/i;
-// 通用匹配所有 GLM 视觉模型（以 v 结尾的版本号，如 glm-4.5v, glm-4.6v, glm-5v, glm-5.1v）
-const ZHIPU_GLM_VISION_REGEX = /glm-(?:4(?:\.\d+)?|5(?:\.\d+)?)v/i;
+// 包括视觉模型（GLM-4.5V / GLM-4.6V 均支持 thinking.type 参数，Z.ai 官方文档确认）
+// 排除 flash/flashx 变体（免费/快速模型不支持 thinking）和 4.1V（不支持 thinking 参数）
+const ZHIPU_GLM_THINKING_REGEX = /glm-(?:4\.[5-7]|5(?:\.\d+)?)(?:v(?!-flash))?(?!-flash)/i;
+// 仅匹配 GLM-4.1V 及更低版本的视觉模型（质量差且不支持 thinking/tools）
+const ZHIPU_GLM_OLD_VISION_REGEX = /glm-(?:4(?:\.[0-4])?v)/i;
 
 // Kimi K2/K2.5 Thinking 系列支持思维链回传 (reasoning_content)
 // - kimi-k2-thinking, kimi-k2-0711-thinking 等 K2 Thinking 变体
@@ -498,7 +499,7 @@ export function inferApiCapabilities(descriptor: ApiModelDescriptor): InferredAp
 
   const isHunyuanThinking = id.includes('hunyuan-a13b') || id.includes('hunyuan-t1');
 
-  const isZhipuThinking = ZHIPU_GLM_THINKING_REGEX.test(id) && !ZHIPU_GLM_VISION_REGEX.test(id);
+  const isZhipuThinking = ZHIPU_GLM_THINKING_REGEX.test(id) && !ZHIPU_GLM_OLD_VISION_REGEX.test(id);
 
   // Kimi K2 Thinking 系列
   const isKimiK2Thinking = KIMI_K2_THINKING_REGEX.test(id);

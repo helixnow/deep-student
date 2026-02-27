@@ -47,7 +47,7 @@ const BUILTIN_MODEL_CONFIGS: &[BuiltinModelConfig] = &[
         base_url: "https://api.siliconflow.cn/v1",
         model: "zai-org/GLM-4.6V",
         is_multimodal: true,
-        is_reasoning: false,
+        is_reasoning: true,
         is_embedding: false,
         is_reranker: false,
         supports_tools: true,
