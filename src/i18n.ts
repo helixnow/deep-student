@@ -62,7 +62,7 @@ if (!i18n.isInitialized) {
       fallbackLng: {
         'en': ['en-US'],
         'zh': ['zh-CN'],
-        default: 'en-US',
+        default: ['en-US'],
       },
       fallbackNS: FALLBACK_NS,
 

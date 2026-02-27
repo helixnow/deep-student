@@ -2035,7 +2035,7 @@ export const IndexStatusView: React.FC = () => {
                       </div>
                       <div className={cn('p-3 rounded-lg border', ocrInfo.activeSource === 'extracted' ? 'border-primary bg-primary/5' : 'border-border/50')}>
                         <div className="text-muted-foreground mb-1">{t('indexStatus.detail.extractedText')}</div>
-                        <div className="font-semibold tabular-nums">{t('indexStatus.detail.chars', { count: ocrInfo.extractedTextLength.toLocaleString() })}</div>
+                        <div className="font-semibold tabular-nums">{t('indexStatus.detail.chars', { count: ocrInfo.extractedTextLength })}</div>
                         {ocrInfo.activeSource === 'extracted' && <div className="text-primary text-[10px] mt-1">✓ {t('indexStatus.detail.currentInUse')}</div>}
                       </div>
                       <div className="p-3 rounded-lg border border-border/50">
