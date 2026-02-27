@@ -440,6 +440,9 @@ jobs:
           REPO="${{ github.repository }}"
           TAG="${{ needs.verify.outputs.tag_name }}"
           DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          CHANNEL=$(cat .release-channel 2>/dev/null | tr -d '[:space:]' || echo "stable")
+          if [[ "$CHANNEL" != "experimental" ]]; then CHANNEL="stable"; fi
+          echo "📢 Release channel: ${CHANNEL}"
 
           PLATFORMS="{}"
 
@@ -486,8 +489,9 @@ jobs:
             --arg version "$VERSION" \
             --arg notes "Deep Student v$VERSION 更新" \
             --arg pub_date "$DATE" \
+            --arg channel "$CHANNEL" \
             --argjson platforms "$PLATFORMS" \
-            '{version: $version, notes: $notes, pub_date: $pub_date, platforms: $platforms}' \
+            '{version: $version, notes: $notes, pub_date: $pub_date, channel: $channel, platforms: $platforms}' \
             > latest.json
 
           echo "✅ latest.json 已生成:"

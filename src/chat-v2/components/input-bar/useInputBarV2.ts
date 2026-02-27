@@ -25,9 +25,6 @@ import {
   hasAnySelectedInjectModeReady,
 } from './injectModeUtils';
 import { resolveChatReadiness, triggerOpenSettingsModels } from '@/chat-v2/readiness/readinessGate';
-// ★ P0-09：移除静态导入，改用动态导入避免循环依赖
-// import { skillRegistry } from '../../skills/registry';
-
 // ============================================================================
 // InputBar 选项
 // ============================================================================
@@ -115,78 +112,6 @@ export function useInputBarV2(
     }
 
     const rawContent = state.inputValue.trim();
-
-    // ★ P0-09：/skill 命令处理（使用动态导入避免循环依赖）
-    if (rawContent.startsWith('/skill')) {
-      const parts = rawContent.split(/\s+/);
-      const command = parts[0];
-      const arg = parts[1]?.toLowerCase();
-
-      if (command === '/skill') {
-        // 清空输入框
-        state.setInputValue('');
-
-        try {
-          // 动态导入 skillRegistry 避免循环依赖
-          const { skillRegistry } = await import('../../skills/registry');
-
-          if (!arg || arg === 'list') {
-            // /skill 或 /skill list - 列出所有技能
-            const skills = skillRegistry.getAll();
-            if (skills.length === 0) {
-              showGlobalNotification('info', i18n.t('skills:command.noSkills', '暂无可用技能'));
-            } else {
-              const skillList = skills.map(s => `• ${s.name} (${s.id})`).join('\n');
-              showGlobalNotification('info', i18n.t('skills:command.availableSkills', {
-                count: skills.length,
-                list: skillList,
-                defaultValue: `可用技能 (${skills.length}):\n${skillList}`,
-              }));
-            }
-            return;
-          }
-
-          if (arg === 'off') {
-            // /skill off - 取消激活
-            if (state.hasActiveSkill()) {
-              state.deactivateSkill();
-              showGlobalNotification('success', i18n.t('skills:command.deactivated', '已取消技能激活'));
-            } else {
-              showGlobalNotification('info', i18n.t('skills:command.noActiveSkill', '当前没有激活的技能'));
-            }
-            return;
-          }
-
-          // /skill <id> - 激活指定技能
-          const skillId = arg;
-          const skill = skillRegistry.get(skillId);
-          if (!skill) {
-            showGlobalNotification('error', i18n.t('skills:command.skillNotFound', {
-              id: skillId,
-              defaultValue: `未找到技能: ${skillId}`,
-            }));
-            return;
-          }
-
-          const success = await state.activateSkill(skillId);
-          if (success) {
-            showGlobalNotification('success', i18n.t('skills:command.activated', {
-              name: skill.name,
-              defaultValue: `已激活技能: ${skill.name}`,
-            }));
-          } else {
-            showGlobalNotification('error', i18n.t('skills:command.activateFailed', {
-              name: skill.name,
-              defaultValue: `激活技能失败: ${skill.name}`,
-            }));
-          }
-        } catch (error: unknown) {
-          console.error('[useInputBarV2] /skill command execution failed:', error);
-          showGlobalNotification('error', i18n.t('skills:command.error', '技能命令执行失败'));
-        }
-        return;
-      }
-    }
 
     const readiness = await resolveChatReadiness();
     if (!readiness.ok) {

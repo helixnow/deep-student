@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Globe, Github, Bug, Shield, ExternalLink, RefreshCw, Download } from 'lucide-react';
 import { OpenSourceAcknowledgementsSection } from './OpenSourceAcknowledgementsSection';
@@ -7,7 +7,7 @@ import { NotionButton } from '../ui/NotionButton';
 import { SettingSection } from './SettingsCommon';
 import { PrivacyPolicyDialog } from '../legal/PrivacyPolicyDialog';
 import VERSION_INFO from '../../version';
-import { useAppUpdater } from '../../hooks/useAppUpdater';
+import { useAppUpdater, getUpdateChannel, setUpdateChannel, type UpdateChannel } from '../../hooks/useAppUpdater';
 import ReactMarkdown from 'react-markdown';
 
 const GroupTitle = ({ title }: { title: string }) => (
@@ -65,6 +65,13 @@ export const AboutTab: React.FC = () => {
   const { t } = useTranslation(['common', 'settings']);
   const [showPrivacyPolicy, setShowPrivacyPolicy] = useState(false);
   const updater = useAppUpdater();
+  const [channel, setChannel] = useState<UpdateChannel>(getUpdateChannel);
+
+  const toggleChannel = useCallback(() => {
+    const next: UpdateChannel = channel === 'stable' ? 'experimental' : 'stable';
+    setUpdateChannel(next);
+    setChannel(next);
+  }, [channel]);
 
   return (
     <div className="space-y-1 pb-10 text-left animate-in fade-in duration-500">
@@ -102,6 +109,24 @@ export const AboutTab: React.FC = () => {
                     : t('about.update.check', '检查更新')}
                 </NotionButton>
               </div>
+            </SettingRow>
+
+            <SettingRow
+              title={t('about.update.channel', '更新渠道')}
+              description={channel === 'experimental'
+                ? t('about.update.channelExpDesc', '接收实验版更新，可能包含未充分测试的功能')
+                : t('about.update.channelStableDesc', '仅接收经过验证的稳定版更新')}
+            >
+              <NotionButton
+                variant="ghost"
+                size="sm"
+                onClick={toggleChannel}
+                className="h-6 px-2 text-xs"
+              >
+                {channel === 'experimental'
+                  ? t('about.update.channelExp', '实验版')
+                  : t('about.update.channelStable', '稳定版')}
+              </NotionButton>
             </SettingRow>
 
             {/* 已是最新版本提示 */}

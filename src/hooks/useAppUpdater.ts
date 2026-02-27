@@ -9,6 +9,22 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { isMobilePlatform } from '../utils/platform';
 
+export type UpdateChannel = 'stable' | 'experimental';
+const UPDATE_CHANNEL_KEY = 'ds-update-channel';
+
+export function getUpdateChannel(): UpdateChannel {
+  try {
+    return localStorage.getItem(UPDATE_CHANNEL_KEY) === 'experimental' ? 'experimental' : 'stable';
+  } catch { return 'stable'; }
+}
+
+export function setUpdateChannel(channel: UpdateChannel) {
+  try { localStorage.setItem(UPDATE_CHANNEL_KEY, channel); } catch {}
+}
+
+const R2_LATEST_URL = 'https://download.deepstudent.cn/releases/latest.json';
+const GH_LATEST_URL = 'https://github.com/helixnow/deep-student/releases/latest/download/latest.json';
+
 /** semver 大于比较（不引入额外依赖） */
 function isNewerVersion(latest: string, current: string): boolean {
   // 仅比较 core semver（major.minor.patch），忽略 prerelease/build metadata
@@ -134,11 +150,13 @@ export function useAppUpdater() {
         let publishedAt: string | undefined;
         let apkUrl: string | undefined;
 
+        let releaseChannel = '';
+
         // 优先尝试 R2 镜像（国内更快）
         try {
           const r2Controller = new AbortController();
           const r2Timeout = setTimeout(() => r2Controller.abort(), 5000);
-          const r2Resp = await fetch('https://download.deepstudent.cn/releases/latest.json', {
+          const r2Resp = await fetch(R2_LATEST_URL, {
             signal: r2Controller.signal,
           }).finally(() => clearTimeout(r2Timeout));
           if (r2Resp.ok) {
@@ -147,6 +165,7 @@ export function useAppUpdater() {
             releaseBody = r2Data.notes ?? undefined;
             publishedAt = r2Data.pub_date ?? undefined;
             apkUrl = r2Data.apk_url ?? undefined;
+            releaseChannel = r2Data.channel ?? 'stable';
           }
         } catch {
           // R2 失败，静默回退
@@ -174,6 +193,28 @@ export function useAppUpdater() {
               apkUrl = `https://download.deepstudent.cn/releases/${tagName}/${apkAsset.name}`;
             }
           }
+          // GitHub API 不含 channel，从 GitHub Release 的 latest.json asset 补取
+          if (!releaseChannel) {
+            try {
+              const ghLatestCtrl = new AbortController();
+              const ghLatestTimeout = setTimeout(() => ghLatestCtrl.abort(), 5000);
+              const ghLatestResp = await fetch(GH_LATEST_URL, {
+                signal: ghLatestCtrl.signal,
+              }).finally(() => clearTimeout(ghLatestTimeout));
+              if (ghLatestResp.ok) {
+                const ghLatestData = await ghLatestResp.json();
+                releaseChannel = ghLatestData.channel ?? 'stable';
+              }
+            } catch {}
+          }
+        }
+
+        if (!releaseChannel) releaseChannel = 'stable';
+
+        // 稳定版用户遇到实验版 → 视为已是最新
+        if (getUpdateChannel() === 'stable' && releaseChannel === 'experimental') {
+          setState(prev => ({ ...prev, checking: false, available: false, upToDate: !silent }));
+          return;
         }
 
         if (latestVersion && isNewerVersion(latestVersion, currentVersion)) {
@@ -206,6 +247,21 @@ export function useAppUpdater() {
     setState(prev => ({ ...prev, checking: true, error: null, upToDate: false }));
 
     try {
+      // 稳定版用户：先从 R2 检查 latest.json 的 channel，实验版则跳过
+      // 注：桌面端 webview CSP 不允许 fetch github.com，故仅用 R2；
+      //     R2 不可用时 fail-open 进入正常 Tauri updater 流程
+      if (getUpdateChannel() === 'stable') {
+        try {
+          const ctrl = new AbortController();
+          const t = setTimeout(() => ctrl.abort(), 5000);
+          const resp = await fetch(R2_LATEST_URL, { signal: ctrl.signal }).finally(() => clearTimeout(t));
+          if (resp.ok && (await resp.json()).channel === 'experimental') {
+            setState(prev => ({ ...prev, checking: false, available: false, upToDate: !silent }));
+            return;
+          }
+        } catch { /* R2 不可用，继续正常流程 */ }
+      }
+
       const { check } = await import('@tauri-apps/plugin-updater');
       const update = await check();
 

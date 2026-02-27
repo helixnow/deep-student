@@ -480,7 +480,7 @@ DeepStudent
 │       ├── qbank_grading/  #   题目集 AI 评分
 │       ├── crypto/         #   加密 & 安全存储 (AES-256-GCM)
 │       ├── multimodal/     #   多模态处理
-│       ├── ocr_adapters/   #   OCR 适配器 (6 引擎: DeepSeek / PaddleOCR / GLM-4V / 通用 VLM / 系统 OCR)
+│       ├── ocr_adapters/   #   OCR 适配器 (6 引擎: DeepSeek / PaddleOCR-VL / PaddleOCR-VL-V1 / GLM-4.6V / 通用 VLM / 系统 OCR)
 │       └── llm_usage/      #   LLM 使用量追踪
 ├── docs/                   # 用户文档 & 设计文档
 ├── tests/                  # Vitest 单元测试 & Playwright CT
@@ -499,7 +499,7 @@ DeepStudent
 | **数据存储** | SQLite (Rusqlite) + LanceDB (向量检索) + 本地 Blob |
 | **状态管理** | Zustand 5 + Immer |
 | **编辑器** | Milkdown (Markdown) + CodeMirror (代码) |
-| **文档处理** | PDF.js + pdfium-render + OCR 多引擎适配（DeepSeek / PaddleOCR / GLM-4V / 通用 VLM / 系统 OCR） |
+| **文档处理** | PDF.js + pdfium-render + OCR 多引擎适配（DeepSeek / PaddleOCR-VL / PaddleOCR-VL-V1 / GLM-4.6V / 通用 VLM / 系统 OCR） |
 | **搜索引擎** | Google CSE · SerpAPI · Tavily · Brave · SearXNG · 智谱 · 博查 |
 | **CI / CD** | GitHub Actions — lint · type-check · build · Release Please |
 
@@ -554,7 +554,7 @@ DeepStudent 起源于 2025 年 3 月的一个 Python demo 原型，经过近一�
 | **2025.11** | 💬 Chat V2 架构 — 全新对话引擎（Variant 多模型对比、工具事件系统、快照健康监控） |
 | **2025.12** | ⚡ 性能优化 — 会话加载并行化、配置缓存、输入框单例架构、DSTU 资源协议 |
 | **2026.01** | 🧩 技能系统与 VFS — 文件式技能加载、统一虚拟文件系统（VFS）、遗留模块清理 |
-| **2026.02** | 🚀 开源发布 — 更名为 **DeepStudent**，发布至 **v0.9.17**，配置 CI/CD、release-please 自动发版；新增翻译工作台、云同步、会话分支、多 Tab、Gemini 3 适配、6 引擎 OCR 等 |
+| **2026.02** | 🚀 开源发布 — 更名为 **DeepStudent**，发布至 **v0.9.23**，配置 CI/CD、release-please 自动发版；新增翻译工作台、云同步、会话分支、多 Tab、Gemini 3 适配、6 引擎 OCR、智能记忆自进化增强（自动提取 / 分类管理 / 批量操作 / 导出）、DOCX 原生导入（嵌入图片 + VLM 直接提取）等 |
 
 ---
 
