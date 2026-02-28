@@ -1193,7 +1193,7 @@
           "status": "confirmed",
           "capabilities": {
             "text": true,
-            "vision": true,
+            "vision": false,
             "audio": false,
             "video": false,
             "function_calling": true,
@@ -1564,7 +1564,7 @@
             "function_calling": true,
             "reasoning": true,
             "coding_agent": true,
-            "max_context_tokens": 128000,
+            "max_context_tokens": 200000,
             "max_output_tokens": 8192
           },
           "param_format": {
@@ -1589,7 +1589,7 @@
             "function_calling": true,
             "reasoning": false,
             "coding_agent": false,
-            "max_context_tokens": 128000,
+            "max_context_tokens": 200000,
             "max_output_tokens": 8192
           },
           "param_format": {

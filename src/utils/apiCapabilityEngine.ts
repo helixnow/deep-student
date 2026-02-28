@@ -119,7 +119,6 @@ const VISION_ALLOWED_PATTERNS: (string | RegExp)[] = [
   'grok-4-1',
   'grok-4-1-fast',
   'grok-4.1',
-  'grok-3',
   'pixtral',
   'gpt-4',
   'gpt-4.1',
@@ -335,8 +334,12 @@ const CONTEXT_WINDOW_RULES: Array<{ pattern: RegExp; window: number }> = [
   { pattern: /\bo[1-4]\b|\bo1-|\bo3-|\bo4-|codex-mini/i, window: 200_000 },
   // MiniMax M2/M2.1/M2.5：205K tokens（MiniMax 官方 2026-02）
   { pattern: /minimax|abab/i, window: 205_000 },
-  // GLM-4.5/4.6/4.7/5：200K tokens（智谱官方）
-  { pattern: /glm-(?:4\.[5-9]|5(?:\.\d+)?)/i, window: 200_000 },
+  // GLM-4.6/4.7/5：200K tokens（智谱官方 2025-10+）
+  { pattern: /glm-(?:4\.[6-9]|5(?:\.\d+)?)/i, window: 200_000 },
+
+  // --- 128K 级（GLM-4.5 系列）---
+  // GLM-4.5/4.5V/4.5-Air：128K tokens（智谱官方 2025-07）
+  { pattern: /glm-4\.5/i, window: 128_000 },
 
   // --- 131K 级 ---
   // Grok 3/3-mini：131,072 tokens（xAI 官方）
