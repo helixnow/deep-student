@@ -12,6 +12,7 @@
 import type { ContextTypeDefinition, Resource, ContentBlock, FormatOptions } from '../types';
 import { createImageBlock, createTextBlock, createXmlTextBlock } from '../types';
 import { t } from '@/utils/i18n';
+import { extractImagePayload, extractImageOcrText } from '../imagePayload';
 
 /**
  * 图片元数据类型
@@ -40,42 +41,6 @@ function getMediaType(mimeType?: string): string {
   }
   // 默认为 PNG
   return 'image/png';
-}
-
-/**
- * 检查数据是否为 base64 编码
- */
-function isBase64(data: string): boolean {
-  // 检查是否有 data URL 前缀
-  if (data.startsWith('data:')) {
-    return true;
-  }
-  // 简单检查是否为 base64 字符
-  const base64Regex = /^[A-Za-z0-9+/]+=*$/;
-  return base64Regex.test(data.substring(0, 100));
-}
-
-/**
- * 提取 base64 数据（移除 data URL 前缀和混入的 OCR 文本）
- * 
- * 支持以下格式：
- * 1. 纯 data URL：`data:image/png;base64,iVBORw...`
- * 2. 混合格式（Image + OCR）：`iVBORw...<image_ocr>文本</image_ocr>`（后端拼接，可能无换行符）
- * 3. 纯 base64：`iVBORw...`
- */
-function extractBase64(data: string): { base64: string; mediaType?: string } {
-  // 关键：先截断 <image_ocr> 标签及其后续内容，确保 base64 数据干净
-  const ocrTagIndex = data.indexOf('<image_ocr');
-  const cleanData = ocrTagIndex >= 0 ? data.substring(0, ocrTagIndex).trim() : data;
-
-  if (cleanData.startsWith('data:')) {
-    const match = cleanData.match(/^data:([^;]+);base64,(.+)$/s);
-    if (match) {
-      return { mediaType: match[1], base64: match[2] };
-    }
-  }
-
-  return { base64: cleanData };
 }
 
 /**
@@ -130,8 +95,8 @@ export const imageDefinition: ContextTypeDefinition = {
       // 1. 图片模式：注入原始图片（仅多模态模型）
       if (includeImage) {
         const content = resolved.content || '';
-        if (content && isBase64(content)) {
-          const { base64, mediaType: extractedMediaType } = extractBase64(content);
+        const { base64, mediaType: extractedMediaType } = extractImagePayload(content);
+        if (base64) {
           const resolvedMimeType = (resolved.metadata as ImageMetadata | undefined)?.mimeType;
           const mediaType = extractedMediaType || getMediaType(resolvedMimeType);
           blocks.push(createImageBlock(mediaType, base64));
@@ -143,15 +108,9 @@ export const imageDefinition: ContextTypeDefinition = {
       // 2. OCR 模式：注入 OCR 文本
       // 来源优先级：content 中 <image_ocr> 标签 > multimodalBlocks 中的 text 块
       if (includeOcr) {
-        let ocrText = '';
+        let ocrText = extractImageOcrText(resolved.content || '');
 
         // 方式 1：从 resolved.content 中提取 <image_ocr> 标签内容
-        const ocrContent = resolved.content || '';
-        const ocrMatch = ocrContent.match(/<image_ocr[^>]*>([\s\S]*?)<\/image_ocr>/);
-        if (ocrMatch && ocrMatch[1]) {
-          ocrText = ocrMatch[1].trim();
-        }
-
         // 方式 2：从 multimodalBlocks 获取 OCR 文本（兼容旧格式）
         if (!ocrText) {
           const ocrBlocks = resolved.multimodalBlocks?.filter(b => b.type === 'text');

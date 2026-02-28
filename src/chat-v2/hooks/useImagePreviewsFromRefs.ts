@@ -22,6 +22,7 @@ import { resourceStoreApi } from '../resources';
 import { resolveResourceRefsV2 } from '../context/vfsRefApi';
 import { getErrorMessage } from '../../utils/errorUtils';
 import { VfsErrorCode } from '@/shared/result';
+import { buildImageDataUrl } from '../context/imagePayload';
 
 // ============================================================================
 // 类型定义
@@ -67,20 +68,10 @@ function isImageRef(ref: ContextRef): boolean {
 }
 
 /**
- * 构建 data URL
- * 
- * 后端 vfs_resolve_resource_refs 可能返回 base64 + <image_ocr> 拼接的内容，
- * 必须截断 OCR 标签以确保 data URL 只包含纯 base64 数据。
+ * 构建预览 data URL（自动剥离混入的 OCR 片段）
  */
-function buildDataUrl(data: string, mimeType: string): string {
-  // 截断 <image_ocr> 及其后续内容
-  const ocrTagIndex = data.indexOf('<image_ocr');
-  const cleanData = ocrTagIndex >= 0 ? data.substring(0, ocrTagIndex).trim() : data;
-
-  if (cleanData.startsWith('data:')) {
-    return cleanData;
-  }
-  return `data:${mimeType};base64,${cleanData}`;
+function buildPreviewDataUrl(data: string, mimeType: string): string | null {
+  return buildImageDataUrl(data, mimeType);
 }
 
 // ============================================================================
@@ -155,7 +146,14 @@ export function useImagePreviewsFromRefs(
             const refData = JSON.parse(resource.data) as VfsContextRefData;
             for (const vfsRef of refData.refs) {
               if (vfsRef.type === 'image') {
-                allVfsRefs.push({ contextRef: ref, vfsRef });
+                // 预览场景只需要原图，强制 image-only 注入模式，避免拿到 OCR 混合内容
+                allVfsRefs.push({
+                  contextRef: ref,
+                  vfsRef: {
+                    ...vfsRef,
+                    injectModes: { image: ['image'] },
+                  },
+                });
               }
             }
           } catch (parseErr: unknown) {
@@ -191,7 +189,11 @@ export function useImagePreviewsFromRefs(
             if (!matched) continue;
 
             const mimeType = (resolved.metadata as { mimeType?: string } | undefined)?.mimeType || 'image/png';
-            const previewUrl = buildDataUrl(resolved.content, mimeType);
+            const previewUrl = buildPreviewDataUrl(resolved.content, mimeType);
+            if (!previewUrl) {
+              console.warn('[useImagePreviewsFromRefs] Skip preview due to invalid image payload:', resolved.sourceId);
+              continue;
+            }
 
             previews.push({
               id: matched.contextRef.resourceId,
