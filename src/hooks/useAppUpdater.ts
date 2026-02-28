@@ -9,6 +9,23 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { isMobilePlatform } from '../utils/platform';
 
+/**
+ * 获取一个不受 CORS 限制的 fetch 函数。
+ * 移动端 WebView 严格执行 CORS，需要走 Tauri HTTP 插件（原生网络层）；
+ * 桌面端浏览器 fetch 可直接使用。
+ */
+async function getCorsFetch(): Promise<typeof fetch> {
+  if (isMobilePlatform()) {
+    try {
+      const { fetch: tauriFetch } = await import('@tauri-apps/plugin-http');
+      return tauriFetch as typeof fetch;
+    } catch {
+      return fetch;
+    }
+  }
+  return fetch;
+}
+
 export type UpdateChannel = 'stable' | 'experimental';
 const UPDATE_CHANNEL_KEY = 'ds-update-channel';
 
@@ -144,6 +161,7 @@ export function useAppUpdater() {
       try {
         const { default: VERSION_INFO } = await import('../version');
         const currentVersion = VERSION_INFO.APP_VERSION;
+        const safeFetch = await getCorsFetch();
 
         let latestVersion = '';
         let releaseBody: string | undefined;
@@ -156,7 +174,7 @@ export function useAppUpdater() {
         try {
           const r2Controller = new AbortController();
           const r2Timeout = setTimeout(() => r2Controller.abort(), 5000);
-          const r2Resp = await fetch(R2_LATEST_URL, {
+          const r2Resp = await safeFetch(R2_LATEST_URL, {
             signal: r2Controller.signal,
           }).finally(() => clearTimeout(r2Timeout));
           if (r2Resp.ok) {
@@ -175,7 +193,7 @@ export function useAppUpdater() {
         if (!latestVersion) {
           const ghController = new AbortController();
           const ghTimeout = setTimeout(() => ghController.abort(), 10000);
-          const resp = await fetch('https://api.github.com/repos/helixnow/deep-student/releases/latest', {
+          const resp = await safeFetch('https://api.github.com/repos/helixnow/deep-student/releases/latest', {
             headers: { Accept: 'application/vnd.github+json' },
             signal: ghController.signal,
           }).finally(() => clearTimeout(ghTimeout));
@@ -198,7 +216,7 @@ export function useAppUpdater() {
             try {
               const ghLatestCtrl = new AbortController();
               const ghLatestTimeout = setTimeout(() => ghLatestCtrl.abort(), 5000);
-              const ghLatestResp = await fetch(GH_LATEST_URL, {
+              const ghLatestResp = await safeFetch(GH_LATEST_URL, {
                 signal: ghLatestCtrl.signal,
               }).finally(() => clearTimeout(ghLatestTimeout));
               if (ghLatestResp.ok) {
