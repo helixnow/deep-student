@@ -10,6 +10,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.9.24](https://github.com/helixnow/deep-student/compare/v0.9.23...v0.9.24) (2026-02-27)
+
+
+### Features
+
+* add ChatAnki integration test plugin for automated testing ([fc20b15](https://github.com/helixnow/deep-student/commit/fc20b15f47590cfe3a21dc813821f16125596b0d))
+* add memory audit log functionality and enhance memory management ([24cb17b](https://github.com/helixnow/deep-student/commit/24cb17ba77e7f37b30506cd6bae10457a27e7f16))
+* enhance image preview handling and improve NoteContentView layout ([ffe392b](https://github.com/helixnow/deep-student/commit/ffe392bd44da32a28dd9f5725b335dc3bad6492c))
+* implement auto-extract frequency settings for memory management ([69a5990](https://github.com/helixnow/deep-student/commit/69a59905f934cad14416c86571ab4fb20f49193f))
+* implement automatic migration for GLM-4.1V to GLM-4.6V model ([2d194d9](https://github.com/helixnow/deep-student/commit/2d194d9b35598a1146f418901d02594aa4ff5123))
+* introduce release channel management and update README ([4c47987](https://github.com/helixnow/deep-student/commit/4c4798752fa69436f9e16939d015ea2495cc4045))
+* update OCR model configurations and enhance engine selection logic ([30097ec](https://github.com/helixnow/deep-student/commit/30097ecdb58b9cb24cb3bc03bf32c6b9f55dea7d))
+
 ## [0.9.23](https://github.com/helixnow/deep-student/compare/v0.9.22...v0.9.23) (2026-02-27)
 
 
