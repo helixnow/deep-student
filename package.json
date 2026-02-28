@@ -42,7 +42,8 @@
     "lint:components": "eslint src/ --rule 'no-restricted-imports: error' --rule 'ds-components/no-native-button: warn'",
     "lint:components:strict": "eslint src/ --rule 'no-restricted-imports: error' --rule 'ds-components/no-native-button: error'",
     "check:licenses": "node scripts/check-licenses.mjs",
-    "test:lifecycle-gate": "node scripts/lifecycle-score-gate.mjs"
+    "test:lifecycle-gate": "node scripts/lifecycle-score-gate.mjs",
+    "registry:sync": "node scripts/sync-model-registry.mjs"
   },
   "dependencies": {
     "@codemirror/lang-css": "^6.3.1",

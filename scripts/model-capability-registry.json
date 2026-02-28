@@ -1,0 +1,1845 @@
+{
+  "schema_version": "1.0",
+  "updated_at": "2026-02-28",
+  "purpose": "持续维护模型能力、参数形态和适配注意事项，用于修正 chat-v2 适配器与模型能力推断实现",
+  "records": [
+    {
+      "vendor": "OpenAI",
+      "series": "GPT-5",
+      "models": [
+        {
+          "model_id": "gpt-5.3-codex",
+          "release_date": "2026-02-05",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": true,
+            "max_context_tokens": null,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "openai_responses_api_preferred",
+            "required_fields": ["model", "input", "tools?"],
+            "optional_fields": ["reasoning_effort", "verbosity", "max_output_tokens", "temperature", "top_p", "stream", "stream_options", "response_format", "tools", "tool_choice"],
+            "notes": "官方定位为更强的 agentic coding 模型。与 GPT-5.2-Codex/Responses API 差异建议以运行时 SDK 能力为准。"
+          },
+          "quirks": [
+            "相比 gpt-5.2-codex 推理速度有显著提升；需优先校验是否支持 Responses API 的 tools 与工具调用生命周期。"
+          ]
+        },
+        {
+          "model_id": "gpt-5.2",
+          "release_date": "2026-02",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": true,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": false,
+            "max_context_tokens": null,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "openai_chat_completions_compat",
+            "required_fields": ["model", "messages"],
+            "optional_fields": ["max_completion_tokens", "temperature", "top_p", "reasoning_effort", "tools", "tool_choice"],
+            "notes": "主线通用能力；兼容当前 OpenAI Chat Completions 流程时保持默认参数回退策略。"
+          },
+          "quirks": [
+            "已在 Azure AI Foundry 同步宣传为企业标准，参数字段与 openai.com 实现可能存在小差异。"
+          ]
+        },
+        {
+          "model_id": "gpt-5.2-chat",
+          "release_date": "2026-02",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": false,
+            "max_context_tokens": null,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "openai_chat_completions_compat",
+            "required_fields": ["model", "messages"],
+            "optional_fields": ["max_completion_tokens", "max_output_tokens", "temperature", "top_p", "stream", "stream_options", "tools", "tool_choice"],
+            "notes": "作为 gpt-5.2 的轻量企业对话变体处理，默认按 chat 接口参数处理。"
+          },
+          "quirks": [
+            "可作为 gpt-5.2 的替代轻量入口，但不要假设和 gpt-5 一致的思考字段行为。"
+          ]
+        },
+        {
+          "model_id": "gpt-5",
+          "release_date": "2026-02",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": true,
+            "audio": true,
+            "video": true,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": false,
+            "max_context_tokens": null,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "openai_chat_completions_compat",
+            "required_fields": ["model", "messages"],
+            "optional_fields": ["max_tokens", "max_completion_tokens", "temperature", "top_p", "stream", "stream_options", "tools", "tool_choice"],
+            "notes": "统一能力推断入口基线，避免硬编码模型特征映射时误判。"
+          },
+          "quirks": [
+            "适配器中若无明确能力映射，优先回退到 openai 通用推断并保留工具链能力。"
+          ]
+        },
+        {
+          "model_id": "gpt-5-codex-mini",
+          "release_date": "2026-02",
+          "status": "inferred",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": true,
+            "max_context_tokens": null,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "openai_chat_completions_compat",
+            "required_fields": ["model", "messages"],
+            "optional_fields": ["tools", "tool_choice", "temperature", "stream", "stream_options"],
+            "notes": "与 codex-mini 系列命名一致，但需跟后端模型列表最终确认是否在你的供应商清单可见。"
+          },
+          "quirks": [
+            "从 OpenAI 2026 版本替换消息看见 codex-mini 迁移路径，建议通过 live model id 列表二次校验。"
+          ]
+        },
+        {
+          "model_id": "gpt-oss-120b",
+          "release_date": "2025-08",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": true,
+            "max_context_tokens": 128000,
+            "max_output_tokens": 8192
+          },
+          "param_format": {
+            "family": "open_model_openai_compat_if_available",
+            "required_fields": ["model", "messages"],
+            "optional_fields": ["max_tokens", "temperature", "top_p", "tools", "tool_choice", "stream", "stream_options", "response_format"],
+            "notes": "非纯官方 API，通常通过自建服务或开源平台对接；参数兼容度需以部署端为准。"
+          },
+          "quirks": [
+            "当前不是主力 API 公开新发布源，适合作为离线或自建 OpenAI 兼容路径的回退模型。"
+          ]
+      },
+      {
+        "model_id": "gpt-5.1",
+        "release_date": "2025-11",
+        "status": "confirmed",
+        "capabilities": {
+          "text": true,
+          "vision": false,
+          "audio": false,
+          "video": false,
+          "function_calling": true,
+          "reasoning": true,
+          "coding_agent": false,
+          "max_context_tokens": null,
+          "max_output_tokens": null
+        },
+        "param_format": {
+          "family": "openai_chat_completions_compat",
+          "required_fields": ["model", "messages"],
+            "optional_fields": ["max_completion_tokens", "max_tokens", "top_p", "reasoning_effort", "verbosity", "tools", "tool_choice", "stream", "stream_options"],
+          "notes": "OpenAI 2025-11 的 GPT-5.1 主线模型，偏通用推理模型。部分渠道默认 `reasoning` 开关行为与 GPT-5.2 系列不完全一致。"
+        },
+        "quirks": [
+          "对比旧版模型，默认推理行为与 GPT-5.2 系列存在微调，建议以模型返回能力优先。"
+        ]
+      },
+      {
+        "model_id": "gpt-5.1-codex",
+        "release_date": "2025-11",
+        "status": "confirmed",
+        "capabilities": {
+          "text": true,
+          "vision": false,
+          "audio": false,
+          "video": false,
+          "function_calling": true,
+          "reasoning": true,
+          "coding_agent": true,
+          "max_context_tokens": null,
+          "max_output_tokens": null
+        },
+        "param_format": {
+          "family": "openai_responses_api_preferred",
+          "required_fields": ["model", "input", "tools?"],
+            "optional_fields": ["reasoning_effort", "verbosity", "max_output_tokens", "temperature", "top_p", "stream", "stream_options", "response_format", "tools", "tool_choice"],
+          "notes": "面向代码与 agentic coding 的 codex 变体，响应链路建议以 Responses API 为主。"
+        },
+        "quirks": [
+          "在部分企业侧控制面可能与官方 codex 命名映射存在 1-2 个版本窗口差异。"
+        ]
+      },
+      {
+        "model_id": "gpt-5.1-codex-mini",
+        "release_date": "2025-11",
+        "status": "confirmed",
+        "capabilities": {
+          "text": true,
+          "vision": false,
+          "audio": false,
+          "video": false,
+          "function_calling": true,
+          "reasoning": true,
+          "coding_agent": true,
+          "max_context_tokens": null,
+          "max_output_tokens": null
+        },
+        "param_format": {
+          "family": "openai_chat_completions_compat",
+          "required_fields": ["model", "messages"],
+          "optional_fields": ["tools", "tool_choice", "temperature", "top_p", "max_completion_tokens"],
+          "notes": "轻量 codex 分支，仍建议以 vendor 返回列表确认是否已下线或重命名。"
+        },
+        "quirks": [
+          "在无流式环境下可优先选择该系列以降低推理成本。"
+        ]
+      },
+      {
+        "model_id": "gpt-5.2-chat-latest",
+        "release_date": "2026-01",
+        "status": "inferred",
+        "capabilities": {
+          "text": true,
+          "vision": false,
+          "audio": false,
+          "video": false,
+          "function_calling": true,
+          "reasoning": true,
+          "coding_agent": false,
+          "max_context_tokens": null,
+          "max_output_tokens": null
+        },
+        "param_format": {
+          "family": "openai_chat_completions_compat",
+          "required_fields": ["model", "messages"],
+          "optional_fields": ["max_tokens", "tools", "tool_choice"],
+          "notes": "基于 `-latest` 别名模型，适配时不应将其当作固定快照；建议优先匹配具体 snapshot。"
+        },
+        "quirks": [
+          "官方 changelog 在不同页面有更新时间差，`-latest` 别名可能会绕过严格能力快照。"
+        ]
+      },
+      {
+        "model_id": "gpt-4.1",
+        "release_date": "2025-03",
+        "status": "confirmed",
+        "capabilities": {
+          "text": true,
+          "vision": true,
+          "audio": false,
+          "video": false,
+          "function_calling": true,
+          "reasoning": true,
+          "coding_agent": true,
+          "max_context_tokens": 1000000,
+          "max_output_tokens": null
+        },
+        "param_format": {
+          "family": "openai_chat_completions_compat",
+          "required_fields": ["model", "messages"],
+          "optional_fields": ["max_tokens", "max_completion_tokens", "temperature", "top_p", "tools", "tool_choice", "reasoning_effort"],
+          "notes": "与 GPT-5 之间常见行为差异较大，4.1 在部分客户端仍被认为是企业稳定主线。"
+        },
+        "quirks": [
+          "4.1 与 4.5 preview 系列可能共存，需注意 context 与工具字段透传版本。"
+        ]
+      },
+      {
+        "model_id": "gpt-4.1-mini",
+        "release_date": "2025-03",
+        "status": "confirmed",
+        "capabilities": {
+          "text": true,
+          "vision": true,
+          "audio": false,
+          "video": false,
+          "function_calling": true,
+          "reasoning": true,
+          "coding_agent": true,
+          "max_context_tokens": 1000000,
+          "max_output_tokens": null
+        },
+        "param_format": {
+          "family": "openai_chat_completions_compat",
+          "required_fields": ["model", "messages"],
+          "optional_fields": ["max_tokens", "max_completion_tokens", "temperature", "top_p", "tools", "tool_choice", "reasoning_effort"],
+          "notes": "轻量版本，主打成本与速度，适合高并发工具编排链路。"
+        },
+        "quirks": [
+          "适配时可按 4.1 的上下文上限，但长链路建议与实际运行时返回值交叉校验。"
+        ]
+      },
+      {
+        "model_id": "gpt-4.1-nano",
+        "release_date": "2025-03",
+        "status": "confirmed",
+        "capabilities": {
+          "text": true,
+          "vision": true,
+          "audio": false,
+          "video": false,
+          "function_calling": true,
+          "reasoning": true,
+          "coding_agent": false,
+          "max_context_tokens": 1000000,
+          "max_output_tokens": null
+        },
+        "param_format": {
+          "family": "openai_chat_completions_compat",
+          "required_fields": ["model", "messages"],
+          "optional_fields": ["max_tokens", "temperature", "top_p", "tools", "tool_choice", "reasoning_effort"],
+          "notes": "偏低成本模型线，优先用于短回合高频交互，复杂任务可切到 mini/主线。"
+        },
+        "quirks": [
+          "部分渠道对 4.1-nano 的工具返回格式最严格，建议单独加 `tool_choice` 白名单策略。"
+        ]
+        }
+      ]
+    },
+    {
+      "vendor": "Anthropic",
+      "series": "Claude 4.6",
+      "models": [
+        {
+          "model_id": "claude-opus-4-6",
+          "release_date": "2026-02",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": true,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": true,
+            "max_context_tokens": 1000000,
+            "max_output_tokens": 128000
+          },
+          "param_format": {
+            "family": "anthropic_messages_native",
+            "required_fields": ["model", "messages", "max_tokens"],
+            "optional_fields": ["system", "tools", "tool_choice", "temperature", "top_p", "top_k", "thinking", "output_config", "betas/header", "stream", "stream_options", "stop_sequences"],
+            "notes": "支持 1M beta 上下文（通常需要额外 header 或 beta 参数），推断层不要直接写死 200K。"
+          },
+          "quirks": [
+            "1M 上下文常见于 API beta 头部参数；能力推断时需区分标准上下文与启用后上下文。"
+          ]
+        },
+        {
+          "model_id": "claude-sonnet-4-6",
+          "release_date": "2026-02",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": true,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": true,
+            "max_context_tokens": 1000000,
+            "max_output_tokens": 64000
+          },
+          "param_format": {
+            "family": "anthropic_messages_native",
+            "required_fields": ["model", "messages", "max_tokens"],
+            "optional_fields": ["system", "tools", "tool_choice", "temperature", "top_p", "top_k", "stream", "stream_options", "stop_sequences"],
+            "notes": "与 Opus 共享同一上下文扩展机制，仍建议按当前模型列表确认 exact context 切换。"
+          },
+          "quirks": [
+            "建议区分模型能力与渠道能力（AWS Bedrock/GCP Vertex/Azure 映射），同模型名在不同平台可能行为略异。"
+          ]
+        }
+      ]
+    },
+    {
+      "vendor": "Anthropic",
+      "series": "Claude 4.5",
+      "models": [
+        {
+          "model_id": "claude-opus-4-5",
+          "release_date": "2026-02",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": true,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": true,
+            "max_context_tokens": 200000,
+            "max_output_tokens": 64000
+          },
+          "param_format": {
+            "family": "anthropic_messages_native",
+            "required_fields": ["model", "messages", "max_tokens"],
+            "optional_fields": ["system", "tools", "tool_choice", "temperature", "top_p", "top_k", "thinking", "output_config", "stream", "stream_options", "stop_sequences"],
+            "notes": "4.5 系列在 1M 上下文体验层面与 4.6 渠道实现存在差别，建议按 live model id 判定。"
+          },
+          "quirks": [
+            "若使用非官方 proxy，部分参数名与 4.6 beta 字段不完全一致。"
+          ]
+        },
+        {
+          "model_id": "claude-sonnet-4-5",
+          "release_date": "2026-02",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": true,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": true,
+            "max_context_tokens": 200000,
+            "max_output_tokens": 64000
+          },
+          "param_format": {
+            "family": "anthropic_messages_native",
+            "required_fields": ["model", "messages", "max_tokens"],
+            "optional_fields": ["system", "tools", "tool_choice", "temperature", "top_p", "top_k", "stream", "stream_options", "stop_sequences"],
+            "notes": "4.5 Sonnet 兼顾质量和成本，仍保持较强多模态推理。"
+          },
+          "quirks": [
+            "4.5 与 4.6 在 reasoning 配置上可能使用不同 beta 前缀。"
+          ]
+        },
+        {
+          "model_id": "claude-opus-4-1",
+          "release_date": "2025-06",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": true,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": true,
+            "max_context_tokens": 200000,
+            "max_output_tokens": 64000
+          },
+          "param_format": {
+            "family": "anthropic_messages_native",
+            "required_fields": ["model", "messages", "max_tokens"],
+            "optional_fields": ["system", "tools", "tool_choice", "temperature", "top_p", "top_k", "stream", "stream_options", "stop_sequences"],
+            "notes": "作为 4.6 之前的生产可用模型线，保持 API 兼容。"
+          },
+          "quirks": [
+            "部分渠道标注该版本为 4.1-20250115 等修订别名。"
+          ]
+        }
+      ]
+    },
+    {
+      "vendor": "Google",
+      "series": "Gemini 3.1",
+      "models": [
+        {
+          "model_id": "gemini-3.1-pro-preview",
+          "release_date": "2026-02-19",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": true,
+            "audio": true,
+            "video": true,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": true,
+            "max_context_tokens": 1048576,
+            "max_output_tokens": 65536
+          },
+          "param_format": {
+            "family": "google_gemini_api_native",
+            "required_fields": ["contents"],
+            "optional_fields": ["generationConfig", "generationConfig.topK", "generationConfig.topP", "generationConfig.maxOutputTokens", "generationConfig.temperature", "generationConfig.stopSequences", "generationConfig.responseSchema", "generationConfig.responseMimeType", "generationConfig.presencePenalty", "generationConfig.frequencyPenalty", "generationConfig.candidateCount", "tools", "toolConfig", "thinkingConfig"],
+            "notes": "Gemini 3.1 强化代码工程与代理工作流；如使用 Vertex/AI Studio/SDK，参数名为 `generationConfig`。"
+          },
+          "quirks": [
+            "Preview 模式下可能出现版本名变更或别名更新，建议以 `model` 字段实际返回值优先。"
+          ]
+        },
+        {
+          "model_id": "gemini-3.1-pro-preview-customtools",
+          "release_date": "2026-02-19",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": true,
+            "audio": false,
+            "video": true,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": true,
+            "max_context_tokens": 1048576,
+            "max_output_tokens": 65536
+          },
+          "param_format": {
+            "family": "google_gemini_api_native",
+            "required_fields": ["contents", "tools", "toolConfig"],
+            "optional_fields": ["generationConfig", "generationConfig.topK", "generationConfig.topP", "generationConfig.maxOutputTokens", "generationConfig.temperature", "generationConfig.stopSequences", "generationConfig.responseSchema", "generationConfig.responseMimeType", "generationConfig.presencePenalty", "generationConfig.frequencyPenalty", "generationConfig.candidateCount", "tools", "toolConfig", "thinkingConfig"],
+            "notes": "定制工具链路径变体，建议适配逻辑把它与 Gemini 3.1 的能力并集。"
+          },
+          "quirks": [
+            "适配器需优先识别 customtools 变体，避免将其误识别为普通 Pro Preview。"
+          ]
+        },
+        {
+          "model_id": "gemini-3-flash",
+          "release_date": "2025-12",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": true,
+            "audio": true,
+            "video": true,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": true,
+            "max_context_tokens": 1048576,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "google_gemini_api_native",
+            "required_fields": ["contents"],
+            "optional_fields": ["generationConfig", "generationConfig.topK", "generationConfig.topP", "generationConfig.maxOutputTokens", "generationConfig.temperature", "generationConfig.stopSequences", "generationConfig.responseSchema", "generationConfig.responseMimeType", "generationConfig.presencePenalty", "generationConfig.frequencyPenalty", "generationConfig.candidateCount", "tools", "toolConfig", "thinkingConfig"],
+            "notes": "偏向高性价比代理/多模态主力。"
+          },
+          "quirks": [
+            "是否启用 near-zero thinking 层在不同客户端可能有开关差异。"
+          ]
+        }
+      ]
+    },
+    {
+      "vendor": "Google",
+      "series": "Gemini 2.5",
+      "models": [
+        {
+          "model_id": "gemini-2.5-pro",
+          "release_date": "2025-12",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": true,
+            "audio": true,
+            "video": true,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": true,
+            "max_context_tokens": 1000000,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "google_gemini_api_native",
+            "required_fields": ["contents"],
+            "optional_fields": ["generationConfig", "generationConfig.topK", "generationConfig.topP", "generationConfig.maxOutputTokens", "generationConfig.temperature", "generationConfig.stopSequences", "generationConfig.responseSchema", "generationConfig.responseMimeType", "generationConfig.presencePenalty", "generationConfig.frequencyPenalty", "generationConfig.candidateCount", "generationConfig.seed", "tools", "toolConfig", "safetySettings", "thinkingConfig"],
+            "notes": "Gemini 2.5 Pro 在 2025-12 正式可见路线，强调上下文质量与推理稳定性。"
+          },
+          "quirks": [
+            "部分部署在旧链路里将 2.5 命名为 preview/alpha 后缀。"
+          ]
+        },
+        {
+          "model_id": "gemini-2.5-flash",
+          "release_date": "2025-12",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": true,
+            "audio": true,
+            "video": true,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": true,
+            "max_context_tokens": 1048576,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "google_gemini_api_native",
+            "required_fields": ["contents"],
+            "optional_fields": ["generationConfig", "generationConfig.topK", "generationConfig.topP", "generationConfig.maxOutputTokens", "generationConfig.temperature", "generationConfig.stopSequences", "generationConfig.responseSchema", "generationConfig.responseMimeType", "generationConfig.presencePenalty", "generationConfig.frequencyPenalty", "generationConfig.candidateCount", "generationConfig.seed", "tools", "toolConfig", "safetySettings", "thinkingConfig"],
+            "notes": "高吞吐版本，偏快响应，适合大批量代理场景。"
+          },
+          "quirks": [
+            "在部分渠道可能默认关闭部分高质量 reasoning 行为以换取速度。"
+          ]
+        },
+        {
+          "model_id": "gemini-2.5-flash-lite",
+          "release_date": "2025-12",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": true,
+            "audio": true,
+            "video": true,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": false,
+            "max_context_tokens": 1048576,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "google_gemini_api_native",
+            "required_fields": ["contents"],
+            "optional_fields": ["generationConfig", "generationConfig.topK", "generationConfig.topP", "generationConfig.maxOutputTokens", "generationConfig.temperature", "generationConfig.stopSequences", "generationConfig.responseSchema", "generationConfig.responseMimeType", "generationConfig.presencePenalty", "generationConfig.frequencyPenalty", "generationConfig.candidateCount", "generationConfig.seed", "tools", "toolConfig", "thinkingConfig"],
+            "notes": "偏低成本多模态版本。"
+          },
+          "quirks": [
+            "与 3.x 版本相比更偏执行效率，复杂推理任务可切 3.1 Pro。"
+          ]
+        }
+      ]
+    },
+    {
+      "vendor": "Amazon",
+      "series": "Nova",
+      "models": [
+        {
+          "model_id": "nova-premier",
+          "release_date": "2025-04",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": true,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": true,
+            "max_context_tokens": 1000000,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "aws_bedrock_openai_compat",
+            "required_fields": ["modelId", "inputTextOrMessages"],
+            "optional_fields": ["inferenceConfig", "maxTokens", "temperature", "topP", "topK", "stopSequences", "reasoningConfig", "toolConfig", "toolChoice", "additionalModelRequestFields"],
+            "notes": "以 Bedrock 为主的托管能力，参数名与原始 openai chat 入口可有映射差异。"
+          },
+          "quirks": [
+            "适配器如走 Bedrock，优先按 provider 约定字段序列化，避免直接复用 OpenAI 的字段名。"
+          ]
+        },
+        {
+          "model_id": "nova-2-lite",
+          "release_date": "2025-12",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": true,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": true,
+            "max_context_tokens": 1000000,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "aws_bedrock_openai_compat",
+            "required_fields": ["modelId", "inputTextOrMessages"],
+            "optional_fields": ["inferenceConfig", "maxTokens", "temperature", "topP", "topK", "stopSequences", "reasoningConfig", "toolConfig", "toolChoice", "additionalModelRequestFields"],
+            "notes": "支持分级思考，适配器应保留模型级别思考参数透传能力。"
+          },
+          "quirks": [
+            "Nova 2 系列有 Lite/Pro/Omni 变体，模型名策略不同时需统一归一。"
+          ]
+        },
+        {
+          "model_id": "nova-2-pro",
+          "release_date": "2025-12",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": true,
+            "audio": true,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": true,
+            "max_context_tokens": 1000000,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "aws_bedrock_openai_compat",
+            "required_fields": ["modelId", "inputTextOrMessages"],
+            "optional_fields": ["inferenceConfig", "maxTokens", "temperature", "topP", "topK", "stopSequences", "reasoningConfig", "toolConfig", "toolChoice", "additionalModelRequestFields"],
+            "notes": "复杂场景优先级更高，适配器可做更激进 token 预算策略。"
+          },
+          "quirks": [
+            "预览/发布状态可能在不同 AWS 区域略有差异。"
+          ]
+        },
+        {
+          "model_id": "nova-2-omni",
+          "release_date": "2025-12-02",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": true,
+            "audio": true,
+            "video": true,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": true,
+            "max_context_tokens": 1000000,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "aws_bedrock_openai_compat",
+            "required_fields": ["modelId", "inputMultimodalPayload"],
+            "optional_fields": ["inferenceConfig", "maxTokens", "temperature", "topP", "topK", "stopSequences", "reasoningConfig", "toolConfig", "toolChoice", "additionalModelRequestFields", "inputMultimodalPayload"],
+            "notes": "多模态 Omni 通道更可能需要 provider-specific input 封装，不宜直接复用纯 text payload。"
+          },
+          "quirks": [
+            "涉及 image/video 输入时，先判断 provider 是否要求 multipart 或 base64 嵌入，再决定 fallback。"
+          ]
+        }
+      ]
+    },
+    {
+      "vendor": "DeepSeek",
+      "series": "R1/V3.2",
+      "models": [
+        {
+          "model_id": "deepseek-reasoner",
+          "release_date": "2025-01-20",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": true,
+            "max_context_tokens": 128000,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "deepseek_openai_compat",
+            "required_fields": ["model", "messages"],
+            "optional_fields": ["tools", "tool_choice", "max_tokens", "stream", "thinking", "extra_body.thinking"],
+            "notes": "当前版本名 `deepseek-reasoner` 可指代 R1（含后续 0528/0528 优化版本能力）。"
+          },
+            "quirks": [
+            "R1-0528 在 2025-05-28 做了 benchmark 与前端增强，应在真实模型列表里按服务返回的能力优先于历史静态映射。",
+            "官方文档对 top_p/temperature/presence_penalty/frequency_penalty 标记为不生效或不支持，建议优先保留服务端默认行为。"
+          ]
+        },
+        {
+          "model_id": "deepseek-chat",
+          "release_date": "2025-03-24",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": false,
+            "max_context_tokens": 128000,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "deepseek_openai_compat",
+            "required_fields": ["model", "messages"],
+            "optional_fields": ["tools", "tool_choice", "max_tokens", "temperature", "top_p", "stream", "presence_penalty", "frequency_penalty"],
+            "notes": "通常通过 `deepseek-chat` 作为非thinking入口，后续可平滑映射到 deepseek-chat/exp/3.2。"
+          },
+          "quirks": [
+            "不要将 `deepseek-chat` 的上下文能力硬编码为固定值，建议以当前接口返回为准。"
+          ]
+        },
+        {
+          "model_id": "deepseek-chat-exp-250929",
+          "release_date": "2025-09-29",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": false,
+            "max_context_tokens": 128000,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "deepseek_openai_compat",
+            "required_fields": ["model", "messages"],
+            "optional_fields": ["tools", "tool_choice", "max_tokens", "top_p", "temperature", "stream", "presence_penalty", "frequency_penalty"],
+            "notes": "V3.2-Exp 标记的过渡更新期模型。"
+          },
+          "quirks": [
+            "应兼容 provider 实际返回的新 model id，不依赖旧别名逻辑。"
+          ]
+        },
+        {
+          "model_id": "deepseek-v3.2",
+          "release_date": "2025-12-01",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": false,
+            "max_context_tokens": 128000,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "deepseek_openai_compat",
+            "required_fields": ["model", "messages"],
+            "optional_fields": ["tools", "tool_choice", "max_tokens", "stream", "thinking", "extra_body.thinking", "temperature"],
+            "notes": "最新稳态主线。"
+          },
+          "quirks": [
+            "官方日志显示 2025-12-01 已升级为标准主力，模型别名策略应与 API 列表同步。"
+          ]
+        },
+        {
+          "model_id": "deepseek-v3.2-speciale",
+          "release_date": "2025-12",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": false,
+            "video": false,
+            "function_calling": false,
+            "reasoning": true,
+            "coding_agent": false,
+            "max_context_tokens": 128000,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "deepseek_openai_compat",
+            "required_fields": ["model", "messages"],
+            "optional_fields": ["max_tokens", "temperature", "stream", "thinking", "extra_body.thinking"],
+            "notes": "API-only 暂时性高思考模型，按官方公告可能有短时 endpoint。"
+          },
+          "quirks": [
+            "注意官方端点可能是时效链接/临时可用形式，适配器需优先读取 live model id。"
+          ]
+        }
+      ]
+    },
+    {
+      "vendor": "Qwen",
+      "series": "Qwen3",
+      "models": [
+        {
+          "model_id": "qwen3",
+          "release_date": "2025-04-29",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": true,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": true,
+            "max_context_tokens": 128000,
+            "max_output_tokens": 8192
+          },
+          "param_format": {
+            "family": "openai_compat_gateway_preferred",
+            "required_fields": ["model", "messages"],
+            "optional_fields": ["max_tokens", "temperature", "top_p", "top_k", "repetition_penalty", "tools", "tool_choice", "stream", "stream_options", "seed", "stop", "response_format"],
+            "notes": "部分供应商会在 API 网关中做 OpenAI 兼容封装，需以实际配置的转译规则为准。"
+          },
+          "quirks": [
+            "公开信息中无 3.5 代号，按 3 家族主线维护。"
+          ]
+        },
+        {
+          "model_id": "qwen3.5",
+          "release_date": "2026-02-16",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": true,
+            "max_context_tokens": 131072,
+            "max_output_tokens": 8192
+          },
+          "param_format": {
+            "family": "openai_compat_gateway_preferred",
+            "required_fields": ["model", "messages"],
+            "optional_fields": ["max_tokens", "temperature", "top_p", "top_k", "repetition_penalty", "tools", "tool_choice", "stream", "stream_options", "seed", "stop", "response_format"],
+            "notes": "Qwen3.5 初始公开版本与 qwen3 在网关层兼容策略基本一致，推理更偏重指令和多跳。"
+          },
+          "quirks": [
+            "某些部署只支持 subset 版 3.5，需通过供应商模型列表确认可见 id。"
+          ]
+        },
+        {
+          "model_id": "qwen3.5-122b-a17b",
+          "release_date": "2026-02-16",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": true,
+            "max_context_tokens": 131072,
+            "max_output_tokens": 8192
+          },
+          "param_format": {
+            "family": "openai_compat_gateway_preferred",
+            "required_fields": ["model", "messages"],
+            "optional_fields": ["max_tokens", "temperature", "top_p", "top_k", "repetition_penalty", "tools", "tool_choice", "stream", "stream_options", "seed", "stop", "response_format"],
+            "notes": "MoE 规模模型，参数量与实际激活通道差异大，适配时按能力推断回退即可。"
+          },
+          "quirks": [
+            "发布说明显示为主推推理路线，成本与吞吐表现依部署卡型差异显著。"
+          ]
+        },
+        {
+          "model_id": "qwen3.5-35b-a3b",
+          "release_date": "2026-02-24",
+          "status": "inferred",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": true,
+            "max_context_tokens": 131072,
+            "max_output_tokens": 8192
+          },
+          "param_format": {
+            "family": "openai_compat_gateway_preferred",
+            "required_fields": ["model", "messages"],
+            "optional_fields": ["max_tokens", "temperature", "top_p", "top_k", "repetition_penalty", "tools", "tool_choice", "stream", "stream_options", "seed", "stop", "response_format"],
+            "notes": "来源于 GitHub 与公告聚合，推测为 3.5 轻量 MoE 变体。"
+          },
+          "quirks": [
+            "官方文档未统一展示 ID 与参数表，建议以你的 provider 清单为准。"
+          ]
+        },
+        {
+          "model_id": "qwen3.5-27b",
+          "release_date": "2026-02-24",
+          "status": "inferred",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": true,
+            "max_context_tokens": 131072,
+            "max_output_tokens": 8192
+          },
+          "param_format": {
+            "family": "openai_compat_gateway_preferred",
+            "required_fields": ["model", "messages"],
+            "optional_fields": ["max_tokens", "temperature", "top_p", "top_k", "repetition_penalty", "tools", "tool_choice", "stream", "stream_options", "seed", "stop", "response_format"],
+            "notes": "同 35B 的同代轻量版本路线，未见统一 ID 标准。"
+          },
+          "quirks": [
+            "部分环境可能只展示 qwen3.5 或 family alias，不直接暴露具体 27B id。"
+          ]
+        },
+        {
+          "model_id": "qwen3-next-80b-a3b",
+          "release_date": "2025-09-11",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": true,
+            "max_context_tokens": 131072,
+            "max_output_tokens": 8192
+          },
+          "param_format": {
+            "family": "openai_compat_gateway_preferred",
+            "required_fields": ["model", "messages"],
+            "optional_fields": ["max_tokens", "temperature", "top_p", "top_k", "repetition_penalty", "tools", "tool_choice", "stream", "stream_options", "seed", "stop", "response_format"],
+            "notes": "Qwen3-Next 里程碑条目，强调推理效率和结构改进。"
+          },
+          "quirks": [
+            "如无 80B id 可见，使用 vendor 返回的 family alias 做回退。"
+          ]
+        }
+      ]
+    },
+    {
+      "vendor": "Kimi / Moonshot",
+      "series": "K2",
+      "models": [
+        {
+          "model_id": "kimi-k2",
+          "release_date": "2025-07",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": true,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": true,
+            "max_context_tokens": 1000000,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "openai_compat_gateway_preferred",
+            "required_fields": ["model", "messages"],
+            "optional_fields": ["temperature", "max_tokens", "top_p", "tools", "tool_choice"],
+            "notes": "官方文档源与产品页索引对外发布时间粒度不稳定，建议以供应商模型清单为主。"
+          },
+          "quirks": [
+            "模型系列以策略发布与静默更新并行，不能仅凭列表日期判定能力是否变化。"
+          ]
+        },
+        {
+          "model_id": "kimi-k2-thinking",
+          "release_date": "2025-11-06",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": true,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": true,
+            "max_context_tokens": 1000000,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "openai_compat_gateway_preferred",
+            "required_fields": ["model", "messages"],
+            "optional_fields": ["temperature", "top_p", "tools", "tool_choice", "max_tokens"],
+            "notes": "偏重链式推理和工具调用。"
+          },
+          "quirks": [
+            "若未在供应商返回列表命中，可能被归档为 K2 变体，可在推断中做后备映射。"
+          ]
+        },
+        {
+          "model_id": "kimi-k2.5",
+          "release_date": "2026-01-27",
+          "status": "inferred",
+          "capabilities": {
+            "text": true,
+            "vision": true,
+            "audio": false,
+            "video": true,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": true,
+            "max_context_tokens": 256000,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "openai_compat_gateway_preferred",
+            "required_fields": ["model", "messages"],
+            "optional_fields": ["temperature", "max_tokens", "tools", "tool_choice"],
+            "notes": "官方站外信号显示是静默上线/视觉与 Agent Swarm 升级，参数待官方文档再次钉死确认。"
+          },
+          "quirks": [
+            "该条目目前标记 inferred，建议在你自己的供应商模型清单里补齐 exact model id 与上下文长度。"
+          ]
+        }
+      ]
+    },
+    {
+      "vendor": "xAI",
+      "series": "Grok 4",
+      "models": [
+        {
+          "model_id": "grok-4-0709",
+          "release_date": "2025-07",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": true,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": false,
+            "max_context_tokens": 256000,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "xai_openai_compat",
+            "required_fields": ["model", "messages"],
+            "optional_fields": ["stream", "stream_options", "max_tokens", "temperature", "top_p", "top_k", "tools", "tool_choice", "tool_choice_name", "response_format"],
+            "notes": "Grok 4 标准版上下文 256K（xAI 官方 2025-07）；2M 仅 4.1 Fast 系列支持。"
+          },
+          "quirks": [
+            "模型页与文档 ID 可能存在路径差异，务必以 live model id 作为准匹配。"
+          ]
+        },
+        {
+          "model_id": "grok-4-1-fast-non-reasoning",
+          "release_date": "2025-11",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": true,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": false,
+            "coding_agent": false,
+            "max_context_tokens": 2000000,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "xai_openai_compat",
+            "required_fields": ["model", "messages"],
+            "optional_fields": ["stream", "max_tokens", "temperature", "tools", "tool_choice"],
+            "notes": "xAI 文档显示为快路径非推理模式变体。"
+          },
+          "quirks": [
+            "若推理能力被误判，会导致思考/策略字段发送失败。"
+          ]
+        },
+        {
+          "model_id": "grok-4-1-fast-reasoning",
+          "release_date": "2025-11",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": true,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": false,
+            "max_context_tokens": 2000000,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "xai_openai_compat",
+            "required_fields": ["model", "messages"],
+            "optional_fields": ["stream", "max_tokens", "temperature", "tools", "tool_choice"],
+            "notes": "2026-01 的发布日志主要是能力更新，不一定是新主力代号。"
+          },
+          "quirks": [
+            "建议通过工具价格/能力字段判断是否走 fast reasoning 与非 reasoning 分支。"
+          ]
+        },
+        {
+          "model_id": "grok-3",
+          "release_date": "2025-02",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": true,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": false,
+            "coding_agent": true,
+            "max_context_tokens": 131072,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "xai_openai_compat",
+            "required_fields": ["model", "messages"],
+            "optional_fields": ["stream", "stream_options", "max_tokens", "temperature", "top_p", "top_k", "tools", "tool_choice", "tool_choice_name", "response_format"],
+            "notes": "2M 上下文目标的首个公开版本，适配时可先按 legacy openai 流控参数处理。"
+          },
+          "quirks": [
+            "与后来 4.x 模型相比，tooling 行为更严格，需做兼容降级。"
+          ]
+        },
+        {
+          "model_id": "grok-3-mini",
+          "release_date": "2025-02",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": true,
+            "max_context_tokens": 131072,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "xai_openai_compat",
+            "required_fields": ["model", "messages"],
+            "optional_fields": ["stream", "max_tokens", "temperature", "top_p", "tools", "tool_choice"],
+            "notes": "Grok-3-mini 以轻量版本面向高吞吐任务。"
+          },
+          "quirks": [
+            "在部分平台，mini id 仅作为 SKU 名，不一定在模型列表中显式暴露。"
+          ]
+        }
+      ]
+    },
+    {
+      "vendor": "Mistral",
+      "series": "Mistral 3",
+      "models": [
+        {
+          "model_id": "mistral-large-3",
+          "release_date": "2025-12-02",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": true,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": true,
+            "max_context_tokens": 256000,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "mistral_openai_compatible",
+            "required_fields": ["model", "messages"],
+            "optional_fields": ["max_tokens", "temperature", "top_p", "top_k", "tools", "tool_choice", "stream", "stream_options", "response_format"],
+            "notes": "旗舰模型；与 docs 有频繁增量更新，优先以 model id 及 vendor 返回能力表为准。"
+          },
+          "quirks": [
+            "不要把 Mistral Small/Medium 的旧字段直接套到 Large 3。"
+          ]
+        },
+        {
+          "model_id": "mistral-medium-3",
+          "release_date": "2025-05-07",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": true,
+            "max_context_tokens": 128000,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "mistral_openai_compatible",
+            "required_fields": ["model", "messages"],
+            "optional_fields": ["max_tokens", "temperature", "top_p", "top_k", "tools", "tool_choice", "stream", "stream_options", "response_format"],
+            "notes": "中档版本参数/输出行为与 Large 3 显著不同。"
+          },
+          "quirks": [
+            "版本迭代频繁（例如 2501/2503/2506/2508），建议不要只用 family 匹配。"
+          ]
+        }
+      ]
+    },
+    {
+      "vendor": "Mistral",
+      "series": "Magistral",
+      "models": [
+        {
+          "model_id": "magistral-medium-latest",
+          "release_date": "2025-06",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": true,
+            "max_context_tokens": 128000,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "mistral_openai_compatible",
+            "required_fields": ["model", "messages"],
+            "optional_fields": ["prompt_mode", "max_tokens", "temperature", "top_p", "stream"],
+            "notes": "Magistral 使用 prompt_mode: 'reasoning' 启用推理模式（默认行为）；设为 null 可禁用。"
+          },
+          "quirks": [
+            "-latest 当前指向 -2509 版本，使用 tokenized thinking chunks。",
+            "不支持 enable_thinking 参数，使用 prompt_mode 代替。"
+          ]
+        },
+        {
+          "model_id": "magistral-small-latest",
+          "release_date": "2025-06",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": true,
+            "max_context_tokens": 128000,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "mistral_openai_compatible",
+            "required_fields": ["model", "messages"],
+            "optional_fields": ["prompt_mode", "max_tokens", "temperature", "top_p", "stream"],
+            "notes": "开源轻量推理模型，prompt_mode: 'reasoning' 启用推理。"
+          },
+          "quirks": [
+            "Magistral Small 为开源版本，部署时参数格式可能因平台不同而差异。"
+          ]
+        }
+      ]
+    },
+    {
+      "vendor": "百度文心",
+      "series": "ERNIE 4.5",
+      "models": [
+        {
+          "model_id": "ernie-4.5",
+          "release_date": "2025-06-30",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": true,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": true,
+            "max_context_tokens": null,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "baidu_openai_proxy_or_native",
+            "required_fields": ["model", "messages"],
+            "optional_fields": ["max_tokens", "temperature", "tools", "tool_choice"],
+            "notes": "存在多个 MoE/Ada variants（4B/300B/21B/21B 等），模型参数差异建议以实际 id 细分。"
+          },
+          "quirks": [
+            "官方有 PLAS 速度优化说明，建议把优化能力写到能力注解而非能力判定硬判定。"
+          ]
+        }
+      ]
+    },
+    {
+      "vendor": "百度文心",
+      "series": "ERNIE 5.0 Thinking",
+      "models": [
+        {
+          "model_id": "ernie-5.0-thinking-latest",
+          "release_date": "2025-11",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": true,
+            "audio": true,
+            "video": true,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": true,
+            "max_context_tokens": 128000,
+            "max_output_tokens": 64000
+          },
+          "param_format": {
+            "family": "baidu_openai_proxy_or_native",
+            "required_fields": ["model", "messages"],
+            "optional_fields": ["max_output_tokens", "reasoning_effort", "temperature", "tools", "tool_choice", "stream"],
+            "notes": "ERNIE 使用 max_output_tokens 而非 max_tokens；reasoning_effort 支持 low/medium/high。"
+          },
+          "quirks": [
+            "ERNIE 推理模型使用 reasoning_content 字段返回思考内容（DeepSeek 兼容风格）。",
+            "使用 penalty_score 而非 repetition_penalty。",
+            "不支持 enable_thinking 参数。"
+          ]
+        },
+        {
+          "model_id": "ernie-5.0-thinking-preview",
+          "release_date": "2025-11",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": true,
+            "audio": true,
+            "video": true,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": true,
+            "max_context_tokens": 128000,
+            "max_output_tokens": 64000
+          },
+          "param_format": {
+            "family": "baidu_openai_proxy_or_native",
+            "required_fields": ["model", "messages"],
+            "optional_fields": ["max_output_tokens", "reasoning_effort", "temperature", "tools", "tool_choice", "stream"],
+            "notes": "Preview 版本，价格更低，适合实验场景。"
+          },
+          "quirks": [
+            "Preview 版性能略低于 latest，但兼容同一参数格式。"
+          ]
+        },
+        {
+          "model_id": "ernie-x1",
+          "release_date": "2025-06",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": true,
+            "max_context_tokens": 128000,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "baidu_openai_proxy_or_native",
+            "required_fields": ["model", "messages"],
+            "optional_fields": ["max_output_tokens", "reasoning_effort", "temperature", "stream"],
+            "notes": "ERNIE X1 系列为深度思考模型，使用 reasoning_content 回传思考内容。"
+          },
+          "quirks": [
+            "X1 系列推理模型不支持 enable_thinking 参数。",
+            "采样参数（temperature/top_p）在推理模式下可能不生效。"
+          ]
+        },
+        {
+          "model_id": "ernie-x1-turbo",
+          "release_date": "2025-06",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": false,
+            "max_context_tokens": 128000,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "baidu_openai_proxy_or_native",
+            "required_fields": ["model", "messages"],
+            "optional_fields": ["max_output_tokens", "reasoning_effort", "temperature", "stream"],
+            "notes": "X1 Turbo 为轻量推理版本，推理速度更快但深度略低。"
+          },
+          "quirks": [
+            "与 X1 共享同一适配器逻辑，参数格式一致。"
+          ]
+        }
+      ]
+    },
+    {
+      "vendor": "腾讯混元",
+      "series": "Hunyuan 2.0",
+      "models": [
+        {
+          "model_id": "hunyuan-2.0-think",
+          "release_date": "2025-11-09",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": true,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": true,
+            "max_context_tokens": 256000,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "tencent_hunyuan_native_proxy",
+            "required_fields": ["model", "messages"],
+            "optional_fields": ["max_tokens", "temperature", "tools", "tool_choice"],
+            "notes": "最新明确版本主要在 2025 末，2026 未见新独立代号。"
+          },
+          "quirks": [
+            "产品动态页更新到 2025-12，后续若有 2026 patch 先在此列表添加新条目。"
+          ]
+        },
+        {
+          "model_id": "hunyuan-2.0-instruct",
+          "release_date": "2025-11-11",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": false,
+            "max_context_tokens": 256000,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "tencent_hunyuan_native_proxy",
+            "required_fields": ["model", "messages"],
+            "optional_fields": ["max_tokens", "temperature", "tools", "tool_choice"],
+            "notes": "偏指令跟随，作为 Instruct 侧替代。"
+          },
+          "quirks": [
+            "2026 若仅是版本微调，不要重命名为新型号。"
+          ]
+        }
+      ]
+    },
+    {
+      "vendor": "智谱",
+      "series": "GLM-4.6",
+      "models": [
+        {
+          "model_id": "glm-4.6",
+          "release_date": "2025-12",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": true,
+            "max_context_tokens": 128000,
+            "max_output_tokens": 8192
+          },
+          "param_format": {
+            "family": "zhipu_openai_compat_or_native",
+            "required_fields": ["model", "messages"],
+            "optional_fields": ["max_tokens", "temperature", "top_p", "tools", "tool_choice"],
+            "notes": "文档主站更新较频繁，优先对齐供应商返回的实际 id 与参数。"
+          },
+          "quirks": [
+            "能力与多模态变体（4.6V）分离处理，避免混淆。"
+          ]
+        },
+        {
+          "model_id": "glm-4.6v",
+          "release_date": "2025-09-30",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": true,
+            "audio": false,
+            "video": true,
+            "function_calling": true,
+            "reasoning": false,
+            "coding_agent": false,
+            "max_context_tokens": 128000,
+            "max_output_tokens": 8192
+          },
+          "param_format": {
+            "family": "zhipu_openai_compat_or_native",
+            "required_fields": ["model", "messages", "media"],
+            "optional_fields": ["max_tokens", "temperature", "top_p", "tools", "tool_choice"],
+            "notes": "4.6V 具备 Function Calling 原生能力（当前公开说明强调）。"
+          },
+          "quirks": [
+            "可视化能力与多模态代理流程需要额外 pipeline 级别支持。"
+          ]
+        },
+        {
+          "model_id": "glm-4.5",
+          "release_date": "2025-07",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": true,
+            "max_context_tokens": 128000,
+            "max_output_tokens": 96000
+          },
+          "param_format": {
+            "family": "zhipu_openai_compat_or_native",
+            "required_fields": ["model", "messages"],
+            "optional_fields": ["max_tokens", "temperature", "top_p", "tools", "tool_choice"],
+            "notes": "官方说明中的 GLM-4.5 以 MoE 架构主打编码和推理能力。"
+          },
+          "quirks": [
+            "4.5 Air 与 4.5 有时混用别名，需对齐供应商返回 id。"
+          ]
+        },
+        {
+          "model_id": "glm-4.5-air",
+          "release_date": "2025-07",
+          "status": "inferred",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": true,
+            "max_context_tokens": 128000,
+            "max_output_tokens": 96000
+          },
+          "param_format": {
+            "family": "zhipu_openai_compat_or_native",
+            "required_fields": ["model", "messages"],
+            "optional_fields": ["max_tokens", "temperature", "top_p", "tools", "tool_choice"],
+            "notes": "4.5 Air 常见于轻量化展示页，部分平台未单独提供模型信息。"
+          },
+          "quirks": [
+            "若无明确暴露，建议退回 glm-4.5。"
+          ]
+        },
+        {
+          "model_id": "glm-4.5v",
+          "release_date": "2025-08",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": true,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": true,
+            "max_context_tokens": 64000,
+            "max_output_tokens": 96000
+          },
+          "param_format": {
+            "family": "zhipu_openai_compat_or_native",
+            "required_fields": ["model", "messages", "media"],
+            "optional_fields": ["max_tokens", "temperature", "top_p", "tools", "tool_choice"],
+            "notes": "4.5V 增强视觉推理，支持视频、图片、文件输入。"
+          },
+          "quirks": [
+            "多模态输入在部分客户端需要显式 media 字段。"
+          ]
+        },
+        {
+          "model_id": "glm-4.7",
+          "release_date": "2025-12-23",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": true,
+            "max_context_tokens": 200000,
+            "max_output_tokens": 128000
+          },
+          "param_format": {
+            "family": "zhipu_openai_compat_or_native",
+            "required_fields": ["model", "messages"],
+            "optional_fields": ["max_tokens", "temperature", "top_p", "tools", "tool_choice", "stream", "stream_options", "response_format", "include_thoughts", "thinking_budget", "clear_thoughts", "thinking_mode"],
+            "notes": "4.7 强化 agentic 与推理策略开关，含 Thinking Mode。"
+          },
+          "quirks": [
+            "是否输出思考链路依赖 include_thoughts 与 budget 限制。"
+          ]
+        },
+        {
+          "model_id": "glm-4.7-flash",
+          "release_date": "2025-12-23",
+          "status": "inferred",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": true,
+            "max_context_tokens": 200000,
+            "max_output_tokens": 128000
+          },
+          "param_format": {
+            "family": "zhipu_openai_compat_or_native",
+            "required_fields": ["model", "messages"],
+            "optional_fields": ["max_tokens", "temperature", "top_p", "tools", "tool_choice", "stream", "stream_options", "response_format", "thinking_mode", "clear_thoughts"],
+            "notes": "4.7 Flash 偏轻量推理/成本优化路线。"
+          },
+          "quirks": [
+            "部分网关将 Flash 与 FlashX 并到同一入口。"
+          ]
+        },
+        {
+          "model_id": "glm-4.7-flashx",
+          "release_date": "2025-12-23",
+          "status": "inferred",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": true,
+            "max_context_tokens": 200000,
+            "max_output_tokens": 128000
+          },
+          "param_format": {
+            "family": "zhipu_openai_compat_or_native",
+            "required_fields": ["model", "messages"],
+            "optional_fields": ["max_tokens", "temperature", "top_p", "tools", "tool_choice", "stream", "stream_options", "response_format", "thinking_mode", "clear_thoughts"],
+            "notes": "4.7 FlashX 更偏性能优化。"
+          },
+          "quirks": [
+            "若无显式 id，建议回退 glm-4.7。"
+          ]
+        }
+      ]
+    },
+    {
+      "vendor": "Meta",
+      "series": "Llama 4",
+      "models": [
+        {
+          "model_id": "llama-4-scout",
+          "release_date": "2025-04-05",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": true,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": true,
+            "max_context_tokens": 10000000,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "hf_compatible",
+            "required_fields": ["model", "messages_or_prompt"],
+            "optional_fields": ["max_tokens", "temperature", "top_p", "tools"],
+            "notes": "开源家族，不同部署栈实现差异极大。"
+          },
+          "quirks": [
+            "多模态/参数名与官方平台不统一，不可直接复用统一 OpenAI 规范。"
+          ]
+        },
+        {
+          "model_id": "llama-4-maverick",
+          "release_date": "2025-04-05",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": true,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": true,
+            "max_context_tokens": 10000000,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "hf_compatible",
+            "required_fields": ["model", "messages_or_prompt"],
+            "optional_fields": ["max_tokens", "temperature", "top_p", "tools"],
+            "notes": "Llama 4 Maverick 同系列高性能模型，兼顾 MoE 与多模态。"
+          },
+          "quirks": [
+            "不同部署对 4M 参数和激活路径支持差异明显，请保留模型级别配置。"
+          ]
+        }
+      ]
+    },
+    {
+      "vendor": "NVIDIA",
+      "series": "Nemotron 3",
+      "models": [
+        {
+          "model_id": "nemotron-3-nano",
+          "release_date": "2025-12-15",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": true,
+            "max_context_tokens": 1000000,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "nvidia_platform_specific",
+            "required_fields": ["model", "prompt_or_messages"],
+            "optional_fields": ["max_tokens", "temperature", "top_p", "tools"],
+            "notes": "旗舰 Nano 已公开，Super/Ultra 多为 roadmap，按实际可用列表处理。"
+          },
+          "quirks": [
+            "参数封装依赖 NIM/NVIDIA 推理层，非所有平台都提供 openai 风格字段。"
+          ]
+        }
+      ]
+    }
+  ]
+}

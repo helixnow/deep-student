@@ -1,3 +1,5 @@
+import { findModelRecordById } from './modelCapabilityRegistry';
+
 export type ApiCapabilityType =
   | 'reasoning'
   | 'vision'
@@ -299,8 +301,12 @@ const CONTEXT_WINDOW_RULES: Array<{ pattern: RegExp; window: number }> = [
   { pattern: /gemini-(?:flash-latest|pro-latest|flash-lite-latest)/i, window: 1_000_000 },
 
   // --- 2M 级 ---
-  // Grok 4.1 Fast / Grok 4 Fast：2,000,000 tokens（xAI 官方 2026-02）
+  // Grok 4.1 Fast / Grok 4 Fast：2,000,000 tokens（xAI 官方 2025-11）
   { pattern: /grok-4.*fast/i, window: 2_000_000 },
+
+  // --- 256K 级 ---
+  // Grok 4 标准版：256,000 tokens（xAI 官方 2025-07）
+  { pattern: /grok-4/i, window: 256_000 },
 
   // --- 400K 级 ---
   // GPT-5 / GPT-5.2 系列：400K tokens（OpenAI 官方 2025）
@@ -311,7 +317,7 @@ const CONTEXT_WINDOW_RULES: Array<{ pattern: RegExp; window: number }> = [
   { pattern: /qwen-plus/i, window: 1_000_000 },
 
   // --- 256K 级 ---
-  // Kimi K2.5：262,144 tokens（Moonshot 官方 2026-01）; K2: 128-256K
+  // Kimi K2.5：256K tokens（Moonshot 官方 2026-01）; K2: 128-256K
   { pattern: /kimi|moonshot/i, window: 256_000 },
   // Codestral：256K tokens（Mistral 官方 2025-07）
   { pattern: /codestral/i, window: 256_000 },
@@ -333,7 +339,7 @@ const CONTEXT_WINDOW_RULES: Array<{ pattern: RegExp; window: number }> = [
   { pattern: /glm-(?:4\.[5-9]|5(?:\.\d+)?)/i, window: 200_000 },
 
   // --- 131K 级 ---
-  // Grok 3/3-mini/4 标准：131,072 tokens（xAI 官方）
+  // Grok 3/3-mini：131,072 tokens（xAI 官方）
   { pattern: /grok/i, window: 131_072 },
 
   // --- 128K 级 ---
@@ -392,9 +398,16 @@ const matchesRegexList = (value: string, regexes: RegExp[]): boolean => {
   return regexes.some(regex => regex.test(value));
 };
 
+const normalizeRegistryParamName = (value: string): string => value.toLowerCase().replace(/[^a-z0-9_]/g, '');
+const hasRegistryOptionalParam = (fields: string[] | undefined, target: string): boolean =>
+  (fields ?? []).some((field) => normalizeRegistryParamName(field) === normalizeRegistryParamName(target));
+
 export function inferApiCapabilities(descriptor: ApiModelDescriptor): InferredApiCapabilities {
   const id = toLower(descriptor.id);
   const name = toLower(descriptor.name);
+  const modelRecord = findModelRecordById(id);
+  const modelCapabilities = modelRecord?.capabilities;
+  const modelOptionalParams = modelRecord?.param_format?.optional_fields;
 
   const embeddingOverride = getOverride(descriptor, 'embedding');
   const embedding = embeddingOverride !== undefined ? embeddingOverride : EMBEDDING_REGEX.test(id) || (name ? EMBEDDING_REGEX.test(name) : false);
@@ -409,6 +422,8 @@ export function inferApiCapabilities(descriptor: ApiModelDescriptor): InferredAp
   let reasoning = false;
   if (reasoningOverride !== undefined) {
     reasoning = reasoningOverride;
+  } else if (modelCapabilities) {
+    reasoning = modelCapabilities.reasoning;
   } else if (!embedding && !rerank && !imageModel) {
     reasoning = REASONING_REGEX.test(id) || (name ? REASONING_REGEX.test(name) : false);
   }
@@ -417,6 +432,8 @@ export function inferApiCapabilities(descriptor: ApiModelDescriptor): InferredAp
   let vision = false;
   if (visionOverride !== undefined) {
     vision = visionOverride;
+  } else if (modelCapabilities) {
+    vision = modelCapabilities.vision;
   } else if (!embedding && !rerank) {
     const allowed = matchesPatternList(id, VISION_ALLOWED_PATTERNS) || (name ? matchesPatternList(name, VISION_ALLOWED_PATTERNS) : false);
     const excluded = matchesRegexList(id, VISION_EXCLUDED_REGEXES) || (name ? matchesRegexList(name, VISION_EXCLUDED_REGEXES) : false);
@@ -427,6 +444,8 @@ export function inferApiCapabilities(descriptor: ApiModelDescriptor): InferredAp
   let functionCalling = false;
   if (functionOverride !== undefined) {
     functionCalling = functionOverride;
+  } else if (modelCapabilities) {
+    functionCalling = modelCapabilities.function_calling;
   } else if (!embedding && !rerank && !imageModel) {
     const excluded = matchesRegexList(id, FUNCTION_CALLING_EXCLUDED_REGEXES) || (name ? matchesRegexList(name, FUNCTION_CALLING_EXCLUDED_REGEXES) : false);
     const allowed = FUNCTION_CALLING_WHITELIST_REGEX.test(id) || (name ? FUNCTION_CALLING_WHITELIST_REGEX.test(name) : false);
@@ -456,7 +475,19 @@ export function inferApiCapabilities(descriptor: ApiModelDescriptor): InferredAp
 
   const isPerplexityReasoningBudget = id.includes('sonar-deep-research');
 
-  const supportsReasoningEffort = !embedding && !rerank && !imageModel && (isOpenaiReasoningBudget || isGrokReasoningBudget || isPerplexityReasoningBudget);
+  const isRegistryReasoningEffort = modelCapabilities && hasRegistryOptionalParam(modelOptionalParams, 'reasoning_effort');
+  const isRegistryReasoningTokens =
+    modelCapabilities && (
+      hasRegistryOptionalParam(modelOptionalParams, 'include_thoughts') ||
+      hasRegistryOptionalParam(modelOptionalParams, 'thinking_budget') ||
+      hasRegistryOptionalParam(modelOptionalParams, 'thinkingConfig') ||
+      hasRegistryOptionalParam(modelOptionalParams, 'enable_thinking')
+    );
+  const isRegistryHybridReasoning = modelCapabilities && hasRegistryOptionalParam(modelOptionalParams, 'reasoning_mode');
+
+  const supportsReasoningEffort = !embedding && !rerank && !imageModel && (
+    isOpenaiReasoningBudget || isGrokReasoningBudget || isPerplexityReasoningBudget || isRegistryReasoningEffort
+  );
 
   const isGeminiThinking =
     GEMINI_THINKING_REGEX.test(id) &&
@@ -527,16 +558,21 @@ export function inferApiCapabilities(descriptor: ApiModelDescriptor): InferredAp
       isZhipuThinking ||
       isKimiK2Thinking ||
       isMinimaxThinking ||
-      isPerplexityReasoning);
+      isPerplexityReasoning ||
+      isRegistryReasoningTokens);
 
   const supportsHybridReasoning =
     !embedding &&
     !rerank &&
     !imageModel &&
-    DEEPSEEK_HYBRID_REGEXES.some(regex => regex.test(id));
+    (DEEPSEEK_HYBRID_REGEXES.some(regex => regex.test(id)) || isRegistryHybridReasoning);
 
   // 上下文窗口推断：使用 id + name 拼接作为指纹，提高匹配率
-  const contextWindow = inferContextWindow(`${id} ${name}`);
+  const inferredWindow = inferContextWindow(`${id} ${name}`);
+  const contextWindow =
+    modelCapabilities && typeof modelCapabilities.max_context_tokens === 'number' && modelCapabilities.max_context_tokens > 0
+      ? modelCapabilities.max_context_tokens
+      : inferredWindow;
 
   return {
     reasoning,

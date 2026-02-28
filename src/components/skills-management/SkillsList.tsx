@@ -8,7 +8,6 @@ import React, { type MutableRefObject } from 'react';
 import { useTranslation } from 'react-i18next';
 import { motion } from 'framer-motion';
 import { Zap, Pencil, Trash2, Globe, FolderOpen, Package, Check, RotateCcw, Wrench, Download, Star, MoreHorizontal, Copy } from 'lucide-react';
-import { Badge } from '../ui/shad/Badge';
 import { NotionButton } from '@/components/ui/NotionButton';
 import {
   AppMenu,
@@ -16,7 +15,6 @@ import {
   AppMenuContent,
   AppMenuItem,
   AppMenuSeparator,
-  AppMenuLabel
 } from '@/components/ui/app-menu';
 import { cn } from '@/lib/utils';
 import type { SkillDefinition, SkillLocation } from '@/chat-v2/skills/types';
@@ -75,20 +73,6 @@ const LocationIcon: React.FC<{ location: SkillLocation }> = ({ location }) => {
       return <Package size={12} />;
     default:
       return <Zap size={12} />;
-  }
-};
-
-/** 位置标签颜色 */
-const getLocationVariant = (location: SkillLocation): 'default' | 'secondary' | 'outline' => {
-  switch (location) {
-    case 'global':
-      return 'default';
-    case 'project':
-      return 'secondary';
-    case 'builtin':
-      return 'outline';
-    default:
-      return 'outline';
   }
 };
 
@@ -273,20 +257,52 @@ export const SkillsList: React.FC<SkillsListProps> = ({
                 <NotionButton variant="ghost" size="icon" iconOnly className="!p-1.5 text-muted-foreground/60 hover:text-foreground hover:bg-muted" onClick={() => { const cardEl = cardRefs.current[skill.id]; const rect = cardEl?.getBoundingClientRect(); onEdit(skill, rect); }} title={t('common:actions.edit', '编辑')} aria-label="edit">
                   <Pencil size={14} />
                 </NotionButton>
-                
-                <NotionButton variant="ghost" size="icon" iconOnly className={cn('!p-1.5', isDefaultEnabled ? 'text-primary hover:bg-primary/10' : 'text-muted-foreground/60 hover:text-foreground hover:bg-muted')} onClick={() => onToggleDefault(skill)} title={isDefaultEnabled ? t('skills:management.unset_default', '取消默认') : t('skills:management.set_default', '设为默认')} aria-label="toggle default">
-                  <Check size={14} />
-                </NotionButton>
 
-                <NotionButton variant="ghost" size="icon" iconOnly className={cn('!p-1.5', isFavorite(skill.id) ? 'text-amber-500 hover:bg-amber-500/10' : 'text-muted-foreground/60 hover:text-amber-500 hover:bg-muted')} onClick={() => toggleFavorite(skill.id)} title={isFavorite(skill.id) ? t('skills:favorite.remove', '取消收藏') : t('skills:favorite.add', '收藏')} aria-label="favorite">
-                  <Star size={14} className={isFavorite(skill.id) ? 'fill-current' : ''} />
-                </NotionButton>
-
-                {onExport && (
-                  <NotionButton variant="ghost" size="icon" iconOnly className="!p-1.5 text-muted-foreground/60 hover:text-foreground hover:bg-muted" onClick={() => onExport(skill)} title={t('skills:management.export', '导出')} aria-label="export">
-                    <Download size={14} />
-                  </NotionButton>
-                )}
+                <AppMenu>
+                  <AppMenuTrigger asChild>
+                    <NotionButton variant="ghost" size="icon" iconOnly className="!p-1.5 text-muted-foreground/60 hover:text-foreground hover:bg-muted" aria-label="more">
+                      <MoreHorizontal size={14} />
+                    </NotionButton>
+                  </AppMenuTrigger>
+                  <AppMenuContent align="end" className="min-w-[160px]">
+                    <AppMenuItem onClick={() => onToggleDefault(skill)}>
+                      <Check size={14} className="mr-2" />
+                      {isDefaultEnabled ? t('skills:management.unset_default', '取消默认') : t('skills:management.set_default', '设为默认')}
+                    </AppMenuItem>
+                    <AppMenuItem onClick={() => toggleFavorite(skill.id)}>
+                      <Star size={14} className={cn('mr-2', isFavorite(skill.id) && 'fill-current text-amber-500')} />
+                      {isFavorite(skill.id) ? t('skills:favorite.remove', '取消收藏') : t('skills:favorite.add', '收藏')}
+                    </AppMenuItem>
+                    {onExport && (
+                      <AppMenuItem onClick={() => onExport(skill)}>
+                        <Download size={14} className="mr-2" />
+                        {t('skills:management.export', '导出')}
+                      </AppMenuItem>
+                    )}
+                    <AppMenuItem onClick={() => { navigator.clipboard.writeText(skill.id); }}>
+                      <Copy size={14} className="mr-2" />
+                      {t('skills:management.copy_id', '复制 ID')}
+                    </AppMenuItem>
+                    {isBuiltin && isCustomized && onResetToOriginal && (
+                      <>
+                        <AppMenuSeparator />
+                        <AppMenuItem onClick={() => onResetToOriginal(skill)}>
+                          <RotateCcw size={14} className="mr-2" />
+                          {t('skills:management.reset_to_default', '恢复默认')}
+                        </AppMenuItem>
+                      </>
+                    )}
+                    {!isBuiltin && (
+                      <>
+                        <AppMenuSeparator />
+                        <AppMenuItem className="text-destructive focus:text-destructive" onClick={() => onDelete(skill)}>
+                          <Trash2 size={14} className="mr-2" />
+                          {t('common:actions.delete', '删除')}
+                        </AppMenuItem>
+                      </>
+                    )}
+                  </AppMenuContent>
+                </AppMenu>
               </div>
             </div>
           </motion.div>

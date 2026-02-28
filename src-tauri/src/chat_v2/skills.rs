@@ -16,6 +16,27 @@ use tracing::{debug, info, warn};
 
 use super::error::{ChatV2Error, ChatV2Result};
 
+/// 获取 Tauri app_data_dir
+///
+/// 通过全局 AppHandle 获取 Tauri 的 app_data_dir，
+/// 在 Android/iOS 上作为 `dirs::home_dir()` 的替代（后者在移动端不可靠）。
+fn get_tauri_app_data_dir() -> Option<PathBuf> {
+    crate::get_global_app_handle().and_then(|handle| handle.path().app_data_dir().ok())
+}
+
+/// 跨平台获取"家目录"路径
+///
+/// - 桌面端 (Windows/macOS/Linux): 使用 `dirs::home_dir()`
+/// - 移动端 (Android/iOS): 使用 Tauri `app_data_dir`
+///   （Android 上 `dirs::home_dir()` 可能返回 `None` 或不可写路径如 `/`）
+fn resolve_home_dir() -> Option<PathBuf> {
+    if cfg!(any(target_os = "android", target_os = "ios")) {
+        get_tauri_app_data_dir()
+    } else {
+        dirs::home_dir()
+    }
+}
+
 // ============================================================================
 // 返回类型
 // ============================================================================
@@ -46,21 +67,24 @@ pub struct SkillFileContent {
 fn get_allowed_skills_bases() -> Vec<PathBuf> {
     let mut bases = Vec::new();
 
-    // 用户主目录下的 skills 目录
-    if let Some(home) = dirs::home_dir() {
-        // Cursor skills 目录
+    if let Some(home) = resolve_home_dir() {
         bases.push(home.join(".cursor").join("skills-cursor"));
-        // Deep Student skills 目录
         bases.push(home.join(".deep-student").join("skills"));
+        // 移动端 project skills 映射到 {app_data_dir}/.skills（loader.ts resolveDefaultProjectRootDir）
+        if cfg!(any(target_os = "android", target_os = "ios")) {
+            bases.push(home.join(".skills"));
+        }
     }
 
-    // 系统数据目录下的 skills
-    if let Some(data_dir) = dirs::data_dir() {
-        bases.push(data_dir.join("ds91").join("skills"));
-        bases.push(data_dir.join("deep-student").join("skills"));
+    // 桌面端额外的系统数据目录（移动端 dirs::data_dir() 不可靠，已由 resolve_home_dir 覆盖）
+    if !cfg!(any(target_os = "android", target_os = "ios")) {
+        if let Some(data_dir) = dirs::data_dir() {
+            bases.push(data_dir.join("ds91").join("skills"));
+            bases.push(data_dir.join("deep-student").join("skills"));
+        }
     }
 
-    // 当前工作目录下的 .skills（项目内技能目录）
+    // 当前工作目录下的 .skills（项目内技能目录，主要用于桌面端开发环境）
     if let Ok(current_dir) = std::env::current_dir() {
         bases.push(current_dir.join(".skills"));
     }
@@ -168,13 +192,17 @@ fn validate_skill_path(path: &Path) -> ChatV2Result<()> {
 // ============================================================================
 
 /// 展开路径中的 ~ 为用户目录
+///
+/// 使用 `resolve_home_dir()` 跨平台获取家目录：
+/// - 桌面端: `dirs::home_dir()`
+/// - 移动端: Tauri `app_data_dir()`
 fn expand_path(path: &str) -> PathBuf {
     if path == "~" {
-        return dirs::home_dir().unwrap_or_else(|| PathBuf::from(path));
+        return resolve_home_dir().unwrap_or_else(|| PathBuf::from(path));
     }
 
     if let Some(stripped) = path.strip_prefix("~/") {
-        if let Some(home) = dirs::home_dir() {
+        if let Some(home) = resolve_home_dir() {
             return home.join(stripped);
         }
     }
