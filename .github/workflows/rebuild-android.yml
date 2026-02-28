@@ -1,0 +1,322 @@
+# ╔══════════════════════════════════════════════════════════════════╗
+# ║  单独重建 Android APK 并上传到指定 Release                     ║
+# ╠══════════════════════════════════════════════════════════════════╣
+# ║                                                                ║
+# ║  用途: 仅重建 Android APK 并替换指定 Release 中的 APK          ║
+# ║  场景: 修复移动端 Bug 后补发 APK / 某次 Release Android 构建   ║
+# ║        失败需要重试                                             ║
+# ║                                                                ║
+# ║  操作: GitHub → Actions → Rebuild Android APK → Run workflow   ║
+# ║        输入 release tag 和要构建的代码来源                      ║
+# ╚══════════════════════════════════════════════════════════════════╝
+
+name: Rebuild Android APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: '目标 Release 的 tag (如 v0.9.24)，APK 将上传到此 Release'
+        required: true
+        type: string
+      source_ref:
+        description: '构建代码来源 (分支/tag/commit SHA)，默认 main'
+        required: false
+        default: 'main'
+        type: string
+
+concurrency:
+  group: rebuild-android-${{ github.event.inputs.tag_name }}
+  cancel-in-progress: false
+
+env:
+  R2_BUCKET: deepstudent
+
+jobs:
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # 预检: 确认目标 Release 存在
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  preflight:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.info.outputs.version }}
+      tag_name: ${{ steps.info.outputs.tag_name }}
+      release_id: ${{ steps.info.outputs.release_id }}
+    steps:
+      - name: Validate inputs & fetch release info
+        id: info
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ github.event.inputs.tag_name }}"
+          if [[ ! "${TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Invalid tag format: '${TAG}'. Expected: v0.9.24"
+            exit 1
+          fi
+
+          RELEASE_ID=$(gh api "repos/${{ github.repository }}/releases/tags/${TAG}" --jq '.id' 2>/dev/null || echo "")
+          if [ -z "$RELEASE_ID" ]; then
+            echo "::error::Release '${TAG}' not found"
+            exit 1
+          fi
+
+          VERSION="${TAG#v}"
+          echo "tag_name=${TAG}" >> $GITHUB_OUTPUT
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "release_id=${RELEASE_ID}" >> $GITHUB_OUTPUT
+          echo "✅ Target release: ${TAG} (id=${RELEASE_ID}), building from: ${{ github.event.inputs.source_ref }}"
+
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # 构建 Android APK
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  build-android:
+    needs: [preflight]
+    runs-on: ubuntu-latest
+    env:
+      NODE_OPTIONS: '--max-old-space-size=4096'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.inputs.source_ref }}
+
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android/sdk/ndk /opt/ghc /opt/hostedtoolcache/CodeQL
+          sudo docker image prune --all --force
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Setup Android SDK & NDK
+        run: |
+          yes | ${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager \
+            "ndk;27.0.12077973" "build-tools;35.0.0" "platforms;android-35" | tail -3
+          echo "NDK_HOME=${ANDROID_HOME}/ndk/27.0.12077973" >> $GITHUB_ENV
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      - name: Setup protoc
+        uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate version info
+        run: node scripts/generate-version.mjs
+
+      - name: Initialize Android project
+        run: npx tauri android init
+
+      - name: Copy custom Android icons
+        run: |
+          ICONS_SRC="src-tauri/icons/android"
+          RES_DST="src-tauri/gen/android/app/src/main/res"
+          if [ -d "$ICONS_SRC" ]; then
+            for density in mipmap-mdpi mipmap-hdpi mipmap-xhdpi mipmap-xxhdpi mipmap-xxxhdpi; do
+              if [ -d "$ICONS_SRC/$density" ]; then
+                mkdir -p "$RES_DST/$density"
+                cp -f "$ICONS_SRC/$density/"* "$RES_DST/$density/"
+              fi
+            done
+            if [ -d "$ICONS_SRC/mipmap-anydpi-v26" ]; then
+              mkdir -p "$RES_DST/mipmap-anydpi-v26"
+              cp -f "$ICONS_SRC/mipmap-anydpi-v26/"* "$RES_DST/mipmap-anydpi-v26/"
+            fi
+            if [ -f "$ICONS_SRC/values/ic_launcher_background.xml" ]; then
+              mkdir -p "$RES_DST/values"
+              cp -f "$ICONS_SRC/values/ic_launcher_background.xml" "$RES_DST/values/"
+            fi
+            rm -f "$RES_DST/drawable-v24/ic_launcher_foreground.xml"
+            rm -f "$RES_DST/drawable/ic_launcher_background.xml"
+            echo "✅ Custom Android icons copied"
+          else
+            echo "⚠️ No custom Android icons found, using defaults"
+          fi
+
+      - name: Bundle pdfium for Android
+        run: |
+          JNILIBS_DIR="src-tauri/gen/android/app/src/main/jniLibs/arm64-v8a"
+          mkdir -p "$JNILIBS_DIR"
+          if [ -f "src-tauri/resources/pdfium/libpdfium_android_arm64.so" ]; then
+            cp src-tauri/resources/pdfium/libpdfium_android_arm64.so "$JNILIBS_DIR/libpdfium.so"
+            echo "✅ Bundled pdfium for arm64: $(ls -lh "$JNILIBS_DIR/libpdfium.so" | awk '{print $5}')"
+          else
+            echo "⚠️ Android pdfium .so not found, downloading..."
+            bash scripts/download-pdfium.sh android-arm64
+            cp src-tauri/resources/pdfium/libpdfium_android_arm64.so "$JNILIBS_DIR/libpdfium.so"
+            echo "✅ Downloaded and bundled pdfium for arm64"
+          fi
+
+      - name: Configure NDK toolchain
+        run: |
+          NDK_PREBUILT="${NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64"
+
+          sed -i '/\[target.aarch64-linux-android\]/,/^$/{ s|linker = .*|linker = "'"${NDK_PREBUILT}"'/bin/aarch64-linux-android21-clang"|; s|ar = .*|ar = "'"${NDK_PREBUILT}"'/bin/llvm-ar"| }' src-tauri/.cargo/config.toml
+
+          echo "CC_aarch64_linux_android=${NDK_PREBUILT}/bin/aarch64-linux-android21-clang" >> $GITHUB_ENV
+          echo "CXX_aarch64_linux_android=${NDK_PREBUILT}/bin/aarch64-linux-android21-clang++" >> $GITHUB_ENV
+          echo "AR_aarch64_linux_android=${NDK_PREBUILT}/bin/llvm-ar" >> $GITHUB_ENV
+          echo "CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=${NDK_PREBUILT}/bin/aarch64-linux-android21-clang" >> $GITHUB_ENV
+
+          echo "✅ NDK toolchain configured"
+
+      - name: Build Android APK
+        env:
+          SILICONFLOW_BUILTIN_TEXT_KEY: ${{ secrets.SILICONFLOW_BUILTIN_TEXT_KEY }}
+          SILICONFLOW_BUILTIN_VISION_KEY: ${{ secrets.SILICONFLOW_BUILTIN_VISION_KEY }}
+          SILICONFLOW_BUILTIN_EMBED_KEY: ${{ secrets.SILICONFLOW_BUILTIN_EMBED_KEY }}
+        run: npx tauri android build --target aarch64
+
+      - name: Sign APK
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          echo "${ANDROID_KEYSTORE_BASE64}" | base64 -d > /tmp/release.keystore
+
+          UNSIGNED_APK=$(find src-tauri/gen/android -name "*-unsigned.apk" -type f | head -1)
+          if [ -z "$UNSIGNED_APK" ]; then
+            echo "::error::未找到未签名的 APK"
+            find src-tauri/gen/android -name "*.apk" -type f
+            exit 1
+          fi
+          echo "找到 APK: $UNSIGNED_APK"
+
+          BUILD_TOOLS=$(ls -d "${ANDROID_HOME}/build-tools/"* | sort -V | tail -1)
+
+          "${BUILD_TOOLS}/zipalign" -v 4 "$UNSIGNED_APK" /tmp/aligned.apk
+
+          "${BUILD_TOOLS}/apksigner" sign \
+            --ks /tmp/release.keystore \
+            --ks-key-alias "${ANDROID_KEY_ALIAS:-deepstudent}" \
+            --ks-pass "pass:${ANDROID_KEYSTORE_PASSWORD}" \
+            --key-pass "pass:${ANDROID_KEY_PASSWORD}" \
+            --in /tmp/aligned.apk \
+            --out /tmp/signed.apk
+
+          "${BUILD_TOOLS}/apksigner" verify --print-certs /tmp/signed.apk
+
+          VERSION="${{ needs.preflight.outputs.version }}"
+          mkdir -p android-output
+          cp /tmp/signed.apk "android-output/Deep.Student_${VERSION}_arm64.apk"
+
+          rm -f /tmp/release.keystore
+
+          echo "✅ APK 签名完成: Deep.Student_${VERSION}_arm64.apk"
+          ls -lh android-output/
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-arm64
+          path: android-output/*.apk
+
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # 发布: 替换 Release 中的 APK 并更新 R2
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  publish:
+    needs: [preflight, build-android]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download APK artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: android-arm64
+          path: android-output
+
+      - name: Delete old APK from Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ needs.preflight.outputs.tag_name }}"
+          echo "🗑️ Removing old APK assets from release ${TAG}..."
+
+          ASSET_IDS=$(gh api "repos/${{ github.repository }}/releases/tags/${TAG}" \
+            --jq '.assets[] | select(.name | endswith(".apk")) | .id' 2>/dev/null || echo "")
+
+          if [ -n "$ASSET_IDS" ]; then
+            echo "$ASSET_IDS" | while read -r AID; do
+              NAME=$(gh api "repos/${{ github.repository }}/releases/assets/${AID}" --jq '.name')
+              echo "  Deleting: ${NAME} (id=${AID})"
+              gh api -X DELETE "repos/${{ github.repository }}/releases/assets/${AID}"
+            done
+          else
+            echo "  No existing APK assets found"
+          fi
+
+      - name: Upload new APK to Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ needs.preflight.outputs.tag_name }}"
+          APK_FILE=$(ls android-output/*.apk | head -1)
+          APK_NAME=$(basename "$APK_FILE")
+          echo "📤 Uploading ${APK_NAME} to release ${TAG}..."
+          gh release upload "${TAG}" "$APK_FILE" --repo "${{ github.repository }}" --clobber
+          echo "✅ APK uploaded to GitHub Release"
+
+      - name: Setup Node.js for wrangler
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Upload APK to R2 & update latest.json
+        continue-on-error: true
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ needs.preflight.outputs.tag_name }}"
+          R2_BASE="https://download.deepstudent.cn/releases/${TAG}"
+          APK_FILE=$(ls android-output/*.apk | head -1)
+          APK_NAME=$(basename "$APK_FILE")
+
+          echo "📤 Uploading APK to R2..."
+          npx wrangler r2 object put "${R2_BUCKET}/releases/${TAG}/${APK_NAME}" \
+            --file "$APK_FILE" --content-type "application/vnd.android.package-archive" \
+            --cache-control "public, max-age=31536000, immutable" --remote
+          echo "✅ APK uploaded to R2"
+
+          echo "📝 Updating R2 latest.json with new apk_url..."
+          npx wrangler r2 object get "${R2_BUCKET}/releases/latest.json" \
+            --file /tmp/current-latest.json --remote 2>/dev/null || true
+
+          if [ -f /tmp/current-latest.json ]; then
+            APK_URL="${R2_BASE}/${APK_NAME}"
+            jq --arg apk "$APK_URL" '.apk_url = $apk' /tmp/current-latest.json > /tmp/updated-latest.json
+
+            echo "Updated latest.json:"
+            cat /tmp/updated-latest.json
+
+            npx wrangler r2 object put "${R2_BUCKET}/releases/latest.json" \
+              --file /tmp/updated-latest.json --content-type "application/json" \
+              --cache-control "public, max-age=300" --remote
+            echo "✅ R2 latest.json updated with apk_url: ${APK_URL}"
+          else
+            echo "⚠️ Could not fetch current latest.json from R2, skipping update"
+          fi
