@@ -10,6 +10,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.9.25](https://github.com/helixnow/deep-student/compare/v0.9.24...v0.9.25) (2026-03-01)
+
+
+### Features
+
+* add GitHub Actions workflow for rebuilding Android APK ([1285e99](https://github.com/helixnow/deep-student/commit/1285e99643d8f26d61ef2e91d91e11a502e8bd75))
+* add image payload parsing and handling utilities ([a16033e](https://github.com/helixnow/deep-student/commit/a16033ef6a27041d11de2a743a5c74f91a013079))
+* enhance memory management with new relation and tagging features ([d7dc855](https://github.com/helixnow/deep-student/commit/d7dc8559ee47cdc253a9f71dbe2998808cf774ad))
+* enhance model capability registry and update related scripts ([9caea57](https://github.com/helixnow/deep-student/commit/9caea57694f947c92abca1d5bd02cd4eb24c1697))
+* enhance sync functionality with merge strategy and timestamp parsing ([274a81e](https://github.com/helixnow/deep-student/commit/274a81ec49a88803d22fd6be6be40d184f813d76))
+* implement content search and session tagging system ([cb846b5](https://github.com/helixnow/deep-student/commit/cb846b51741e4fad7ce31d4dfcc0224eba94ff50))
+* implement CORS-compliant fetch function for mobile platforms in useAppUpdater ([8206224](https://github.com/helixnow/deep-student/commit/8206224ebae1a6efc9afa0689d7559be7c2cb46a))
+
+
+### Bug Fixes
+
+* update model capabilities and context token limits ([545d645](https://github.com/helixnow/deep-student/commit/545d64551045f305139be231fa6621cbc4897a5e))
+
 ## [0.9.24](https://github.com/helixnow/deep-student/compare/v0.9.23...v0.9.24) (2026-02-27)
 
 

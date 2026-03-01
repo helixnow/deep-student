@@ -1,6 +1,6 @@
 {
   "name": "deep-student",
-  "version": "0.9.24",
+  "version": "0.9.25",
   "license": "AGPL-3.0-or-later",
   "type": "module",
   "scripts": {
