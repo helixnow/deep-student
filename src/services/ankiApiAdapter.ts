@@ -106,16 +106,19 @@ export const ankiApiAdapter = {
         }
       });
     } catch (error: unknown) {
-      // 降级方案：保存到localStorage
-      const existing = localStorage.getItem('anki_cards_cache');
-      const cache = existing ? JSON.parse(existing) : { cards: [] };
-      cache.cards = params.cards;
-      cache.lastUpdated = new Date().toISOString();
-      localStorage.setItem('anki_cards_cache', JSON.stringify(cache));
-      return {
-        savedIds: params.cards.map((card) => card.id || card.front),
-        taskId: 'local-cache',
-      };
+      // 降级方案：缓存到 localStorage 以防数据丢失，但不伪装为成功
+      try {
+        const existing = localStorage.getItem('anki_cards_cache');
+        const cache = existing ? JSON.parse(existing) : { cards: [] };
+        cache.cards = params.cards;
+        cache.lastUpdated = new Date().toISOString();
+        localStorage.setItem('anki_cards_cache', JSON.stringify(cache));
+        console.warn('[ankiApiAdapter] saveAnkiCards: backed up to localStorage after backend failure');
+      } catch (cacheErr) {
+        console.error('[ankiApiAdapter] saveAnkiCards: localStorage backup also failed:', cacheErr);
+      }
+      // 向上层抛出原始错误，让调用方知道保存失败
+      throw error;
     }
   },
 

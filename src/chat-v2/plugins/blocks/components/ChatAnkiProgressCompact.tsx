@@ -1,6 +1,6 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Check, Loader2, X } from 'lucide-react';
+import { Check, Loader2, X, RefreshCw } from 'lucide-react';
 
 import { cn } from '@/utils/cn';
 import { Progress } from '@/components/ui/shad/Progress';
@@ -65,6 +65,31 @@ function getAnkiConnectState(ankiConnect: AnkiCardsBlockData['ankiConnect']) {
   return { state: 'unknown' as const, label: 'checking', variant: 'secondary' as const, className: '' };
 }
 
+const AnkiConnectRefreshButton: React.FC<{ onRefresh: () => Promise<void> }> = ({ onRefresh }) => {
+  const [refreshing, setRefreshing] = useState(false);
+  const handleClick = async () => {
+    if (refreshing) return;
+    setRefreshing(true);
+    try {
+      await onRefresh();
+    } finally {
+      setRefreshing(false);
+    }
+  };
+  return (
+    <button
+      type="button"
+      onClick={handleClick}
+      disabled={refreshing}
+      className="inline-flex items-center justify-center w-5 h-5 rounded-full hover:bg-accent/60 transition-colors disabled:opacity-50"
+      title="Refresh AnkiConnect status"
+      aria-label="Refresh AnkiConnect status"
+    >
+      <RefreshCw className={cn('w-3 h-3 text-muted-foreground', refreshing && 'animate-spin')} />
+    </button>
+  );
+};
+
 export const ChatAnkiProgressCompact: React.FC<{
   progress?: AnkiCardsBlockData['progress'];
   ankiConnect?: AnkiCardsBlockData['ankiConnect'];
@@ -72,7 +97,8 @@ export const ChatAnkiProgressCompact: React.FC<{
   cardsCount: number;
   blockStatus: string;
   finalStatus?: string;
-}> = ({ progress, ankiConnect, warnings, cardsCount, blockStatus, finalStatus }) => {
+  onRefreshAnkiConnect?: () => Promise<void>;
+}> = ({ progress, ankiConnect, warnings, cardsCount, blockStatus, finalStatus, onRefreshAnkiConnect }) => {
   const { t } = useTranslation('chatV2');
 
   const percent = useMemo(() => clampRatioToPercent(progress?.completedRatio), [progress?.completedRatio]);
@@ -271,7 +297,7 @@ export const ChatAnkiProgressCompact: React.FC<{
           })}
         </div>
 
-        {/* AnkiConnect 状态 + 百分比 */}
+        {/* AnkiConnect 状态 + 刷新按钮 + 百分比 */}
         <div className="flex items-center gap-2 flex-shrink-0">
           <Badge
             variant={ankiConnectMeta.variant}
@@ -289,6 +315,9 @@ export const ChatAnkiProgressCompact: React.FC<{
                     : 'checking',
             })}
           </Badge>
+          {onRefreshAnkiConnect && ankiConnectMeta.state !== 'connected' && (
+            <AnkiConnectRefreshButton onRefresh={onRefreshAnkiConnect} />
+          )}
           {typeof percent === 'number' && (
             <span
               className={cn('text-xs tabular-nums flex-shrink-0', isError ? 'text-destructive' : 'text-muted-foreground')}

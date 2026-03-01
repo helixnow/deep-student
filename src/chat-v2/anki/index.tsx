@@ -107,7 +107,7 @@ export async function saveCardsToLibrary(
  */
 export async function exportCardsAsApkg(
   params: AnkiActionParams & { deckName?: string; noteType?: string }
-): Promise<{ success: boolean; filePath?: string }> {
+): Promise<{ success: boolean; filePath?: string; cancelled?: boolean; skippedErrorCards?: number }> {
   const { cards, context } = params;
   const deckName =
     typeof params.deckName === 'string' && params.deckName.trim()
@@ -121,6 +121,7 @@ export async function exportCardsAsApkg(
   try {
     // 多模板导出：直接调用后端 export_cards_as_apkg_with_template
     // 每张卡片保留自己的 template_id，后端会按卡片分组加载对应模板
+    const errorCardCount = cards.filter(card => card.is_error_card).length;
     const cardsForExport = cards
       .filter(card => !card.is_error_card)
       .map(card => ({
@@ -139,8 +140,12 @@ export async function exportCardsAsApkg(
         template_id: card.template_id ?? context?.templateId ?? null,
       }));
 
+    if (errorCardCount > 0) {
+      console.warn(`[anki] exportCardsAsApkg: ${errorCardCount} error cards skipped`);
+    }
+
     if (cardsForExport.length === 0) {
-      return { success: false };
+      return { success: false, skippedErrorCards: errorCardCount };
     }
 
     const sanitizedDeckName = deckName.replace(/[\\/:*?"<>|]/g, '_').trim() || 'anki-export';
@@ -150,7 +155,7 @@ export async function exportCardsAsApkg(
     });
 
     if (!selectedPath) {
-      return { success: false };
+      return { success: false, cancelled: true };
     }
 
     // 直接调用后端多模板导出命令
@@ -164,7 +169,7 @@ export async function exportCardsAsApkg(
 
     if (filePath) {
       console.log('[anki] exportCardsAsApkg success:', filePath);
-      return { success: true, filePath };
+      return { success: true, filePath, skippedErrorCards: errorCardCount };
     } else {
       console.error('[anki] exportCardsAsApkg: no file path returned');
       return { success: false };
@@ -218,9 +223,9 @@ export async function importCardsViaAnkiConnect(
 
     // 后端签名：add_cards_to_anki_connect(selected_cards, deck_name, note_type)
     const results = await invoke<Array<number | null>>('add_cards_to_anki_connect', {
-      selectedCards: validCards,
-      deckName,
-      noteType,
+      selected_cards: validCards,
+      deck_name: deckName,
+      note_type: noteType,
     });
 
     const importedCount = Array.isArray(results) ? results.filter(r => r !== null).length : 0;

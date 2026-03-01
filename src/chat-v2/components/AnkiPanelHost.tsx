@@ -119,6 +119,9 @@ export const AnkiPanelHost: React.FC = () => {
   const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const UNDO_TIMEOUT_MS = 6000;
 
+  // 同步互斥锁：防止快速双击导致重复调用
+  const actionLockRef = useRef<Set<string>>(new Set());
+
   // 重置状态
   const resetStatus = useCallback((setter: React.Dispatch<React.SetStateAction<ActionStatus>>) => {
     setTimeout(() => setter('idle'), 2000);
@@ -126,7 +129,8 @@ export const AnkiPanelHost: React.FC = () => {
 
   // 导出为 APKG
   const handleExport = useCallback(async () => {
-    if (cards.length === 0) return;
+    if (cards.length === 0 || exportStatus === 'loading' || actionLockRef.current.has('export')) return;
+    actionLockRef.current.add('export');
 
     setExportStatus('loading');
     setErrorMessage(null);
@@ -156,13 +160,15 @@ export const AnkiPanelHost: React.FC = () => {
       setErrorMessage(error instanceof Error ? error.message : t('chatV2.exportFailed'));
       console.error('[AnkiPanelHost] Export error:', error);
     } finally {
+      actionLockRef.current.delete('export');
       resetStatus(setExportStatus);
     }
-  }, [cards, businessSessionId, resetStatus, t]);
+  }, [cards, businessSessionId, exportStatus, resetStatus, t]);
 
   // 同步到 AnkiConnect
   const handleSync = useCallback(async () => {
-    if (cards.length === 0) return;
+    if (cards.length === 0 || syncStatus === 'loading' || actionLockRef.current.has('sync')) return;
+    actionLockRef.current.add('sync');
 
     setSyncStatus('loading');
     setErrorMessage(null);
@@ -192,9 +198,10 @@ export const AnkiPanelHost: React.FC = () => {
       setErrorMessage(error instanceof Error ? error.message : t('chatV2.syncFailed'));
       console.error('[AnkiPanelHost] Sync error:', error);
     } finally {
+      actionLockRef.current.delete('sync');
       resetStatus(setSyncStatus);
     }
-  }, [cards, businessSessionId, resetStatus, t]);
+  }, [cards, businessSessionId, syncStatus, resetStatus, t]);
 
   // 移除卡片
   const scheduleUndoClear = useCallback(() => {

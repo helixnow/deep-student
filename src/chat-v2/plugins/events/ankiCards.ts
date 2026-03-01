@@ -86,12 +86,17 @@ function parseAnkiCardsChunk(chunk: string): AnkiCardsChunk | null {
  */
 function ensureCardId(card: AnkiCard): AnkiCard {
   const makeStableSyntheticId = (value: string): string => {
-    let hash = 0;
+    // FNV-1a inspired dual-hash: two independent 32-bit hashes combined into
+    // a 53-bit safe integer, dramatically reducing collision probability.
+    let h1 = 0x811c9dc5 | 0; // FNV offset basis
+    let h2 = 0x01000193 | 0; // secondary seed
     for (let i = 0; i < value.length; i += 1) {
-      hash = (hash << 5) - hash + value.charCodeAt(i);
-      hash |= 0;
+      const c = value.charCodeAt(i);
+      h1 = Math.imul(h1 ^ c, 0x01000193);
+      h2 = Math.imul(h2 ^ c, 0x5bd1e995);
     }
-    return `anki_synthetic_${Math.abs(hash)}`;
+    const combined = (Math.abs(h1) >>> 0) * 0x100000 + (Math.abs(h2) >>> 0 & 0xFFFFF);
+    return `anki_synthetic_${combined}`;
   };
 
   if (!card.id) {
@@ -520,11 +525,12 @@ const ankiCardsEventHandler: EventHandler = {
       const resultObj = result as Record<string, unknown>;
       const resultCards = Array.isArray(resultObj.cards) ? (resultObj.cards as AnkiCard[]) : undefined;
       // 🔧 修复：onEnd 中 result.cards 的处理策略
-      // - 如果后端返回了卡片列表，以后端为权威来源（后端可能重新生成了全部卡片）
+      // - 如果后端返回了卡片列表，以 resultCards 为基础，但用 currentCards 覆盖同 ID 卡片
+      //   这样用户在流式过程中对卡片的编辑不会被后端原始数据覆盖
       // - 如果后端未返回卡片（null/undefined），保留前端流式累积的卡片
-      // 注意：前端编辑已通过 chat_v2_update_block_tool_output 持久化到数据库，不会丢失
+      // mergeCardsUnique(base, overlay): overlay 中同 ID 的卡片会覆盖 base 中的
       const finalCards = resultCards
-        ? mergeCardsUnique([], resultCards)
+        ? mergeCardsUnique(resultCards, currentCards)
         : mergeCardsUnique([], currentCards);
 
       const { cards: _cardsIgnored, status, error, ...rest } = resultObj as any;

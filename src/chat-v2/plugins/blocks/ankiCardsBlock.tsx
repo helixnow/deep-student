@@ -608,6 +608,8 @@ const ActionButtons: React.FC<{
   const [exportStatus, setExportStatus] = useState<ActionStatus>('idle');
   const [syncStatus, setSyncStatus] = useState<ActionStatus>('idle');
 
+  // 同步互斥锁：防止同一事件循环 tick 内的快速双击导致重复调用
+  const actionLockRef = useRef<Set<string>>(new Set());
   const timeoutRefs = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
 
   useEffect(() => {
@@ -638,7 +640,8 @@ const ActionButtons: React.FC<{
   );
 
   const handleSave = useCallback(async () => {
-    if (cards.length === 0 || saveStatus === 'loading') return;
+    if (cards.length === 0 || saveStatus === 'loading' || actionLockRef.current.has('save')) return;
+    actionLockRef.current.add('save');
     setSaveStatus('loading');
     try {
       const result = await saveCardsToLibrary({ cards, context });
@@ -652,11 +655,13 @@ const ActionButtons: React.FC<{
       setSaveStatus('error');
       showGlobalNotification('error', t('blocks.ankiCards.action.saveFailedWithHint'), msg);
     }
+    actionLockRef.current.delete('save');
     resetStatusAfterDelay(setSaveStatus);
   }, [cards, context, saveStatus, resetStatusAfterDelay, t]);
 
   const handleExport = useCallback(async () => {
-    if (cards.length === 0 || exportStatus === 'loading') return;
+    if (cards.length === 0 || exportStatus === 'loading' || actionLockRef.current.has('export')) return;
+    actionLockRef.current.add('export');
     setExportStatus('loading');
     // 统计多模板信息
     const templateIds = [...new Set(cards.map(c => c.template_id).filter(Boolean))];
@@ -669,10 +674,20 @@ const ActionButtons: React.FC<{
     } catch { /* */ }
     try {
       const result = await exportCardsAsApkg({ cards, context });
+      if (result.cancelled) {
+        // 用户取消了文件保存对话框，静默恢复，不显示错误
+        setExportStatus('idle');
+        actionLockRef.current.delete('export');
+        return;
+      }
       if (!result.success || !result.filePath) throw new Error(t('blocks.ankiCards.action.exportFailedNoPath'));
       logChatAnkiEvent('chat_anki_action_performed', { action: 'export', cardCount: cards.length }, context);
       setExportStatus('success');
-      showGlobalNotification('success', t('blocks.ankiCards.action.apkgExportedWithHint'), result.filePath);
+      if (result.skippedErrorCards && result.skippedErrorCards > 0) {
+        showGlobalNotification('warning', t('blocks.ankiCards.action.exportSkippedErrors', { exported: cards.length - result.skippedErrorCards, skipped: result.skippedErrorCards }), result.filePath);
+      } else {
+        showGlobalNotification('success', t('blocks.ankiCards.action.apkgExportedWithHint'), result.filePath);
+      }
       try {
         window.dispatchEvent(new CustomEvent('chatanki-debug-lifecycle', { detail: {
           level: 'info', phase: 'export:apkg',
@@ -693,11 +708,13 @@ const ActionButtons: React.FC<{
         }}));
       } catch { /* */ }
     }
+    actionLockRef.current.delete('export');
     resetStatusAfterDelay(setExportStatus);
   }, [cards, context, exportStatus, resetStatusAfterDelay, t]);
 
   const handleSync = useCallback(async () => {
-    if (cards.length === 0 || syncStatus === 'loading') return;
+    if (cards.length === 0 || syncStatus === 'loading' || actionLockRef.current.has('sync')) return;
+    actionLockRef.current.add('sync');
     setSyncStatus('loading');
     try {
       const result = await importCardsViaAnkiConnect({ cards, context });
@@ -722,6 +739,7 @@ const ActionButtons: React.FC<{
       setSyncStatus('error');
       showGlobalNotification('error', t('blocks.ankiCards.action.syncFailedWithHint'), msg);
     }
+    actionLockRef.current.delete('sync');
     resetStatusAfterDelay(setSyncStatus);
   }, [cards, context, syncStatus, resetStatusAfterDelay, t]);
 
@@ -939,6 +957,9 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
   const [isExpanded, setIsExpanded] = useState(false);
   // 当前正在编辑的卡片索引（-1 表示无）
   const [editingIndex, setEditingIndex] = useState(-1);
+  // 分页：限制同时渲染的卡片数量，防止大量 iframe 导致浏览器卡顿/崩溃
+  const CARDS_PAGE_SIZE = 20;
+  const [visibleCount, setVisibleCount] = useState(CARDS_PAGE_SIZE);
   // 展开态卡片列表末尾的 ref（用于自动滚动到新卡片）
   const cardsEndRef = useRef<HTMLDivElement>(null);
   // 记录上次卡片数量，仅在增长时滚动
@@ -966,6 +987,49 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
 
   const shouldShowChatAnkiProgress = hasProgress || hasAnkiConnect;
 
+  // 刷新 AnkiConnect 状态：调用后端重新检测，更新 block 数据
+  // 注意：从 store 读取最新 block 数据，避免 stale closure 导致覆盖并发更新
+  const handleRefreshAnkiConnect = useCallback(async () => {
+    if (!store) return;
+    try {
+      const available = await invoke<boolean>('check_anki_connect_status');
+      const latestBlock = store.getState().blocks.get(block.id);
+      const latestData = latestBlock?.toolOutput as AnkiCardsBlockData | undefined;
+      if (!latestData) return;
+      const newData = {
+        ...latestData,
+        ankiConnect: {
+          ...latestData.ankiConnect,
+          available,
+          checkedAt: new Date().toISOString(),
+          error: available ? undefined : latestData.ankiConnect?.error,
+        },
+      };
+      store.getState().updateBlock(block.id, { toolOutput: newData });
+    } catch (err) {
+      console.warn('[AnkiCardsBlock] Failed to refresh AnkiConnect status:', err);
+    }
+  }, [store, block.id]);
+
+  // Zombie block watchdog: 如果 block 持续处于 running 状态超过 5 分钟无更新，自动标记为 error
+  const ZOMBIE_TIMEOUT_MS = 5 * 60 * 1000;
+  const lastActivityRef = useRef(Date.now());
+  useEffect(() => {
+    // 每次 cards/progress 变化都重置活跃时间戳
+    lastActivityRef.current = Date.now();
+  }, [cards.length, data?.progress?.stage, data?.progress?.cardsGenerated]);
+  useEffect(() => {
+    if (block.status !== 'running') return;
+    const timer = setInterval(() => {
+      if (block.status === 'running' && Date.now() - lastActivityRef.current > ZOMBIE_TIMEOUT_MS) {
+        console.warn('[AnkiCardsBlock] Zombie block detected, forcing error state:', block.id);
+        store?.getState().setBlockError(block.id, 'Generation timed out — no updates received for 5 minutes.');
+        clearInterval(timer);
+      }
+    }, 30_000); // check every 30s
+    return () => clearInterval(timer);
+  }, [block.status, block.id, store]);
+
   // 展开态：新卡片到来时自动滚动到底部（仅在卡片数量增长时触发）
   useEffect(() => {
     if (isExpanded && cards.length > prevCardsCountRef.current && editingIndex < 0) {
@@ -978,7 +1042,8 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
   const handleToggleExpand = useCallback(() => {
     setIsExpanded((prev) => !prev);
     setEditingIndex(-1);
-  }, []);
+    setVisibleCount(CARDS_PAGE_SIZE);
+  }, [CARDS_PAGE_SIZE]);
 
   // 切换卡片编辑模式
   const handleToggleEdit = useCallback((index: number) => {
@@ -994,9 +1059,13 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
         toolOutputJson: JSON.stringify(newData),
       }).catch((err) => {
         console.warn('[AnkiCardsBlock] Failed to persist tool_output:', err);
+        showGlobalNotification(
+          'warning',
+          t('blocks.ankiCards.action.persistFailed'),
+        );
       });
     },
-    [block.id]
+    [block.id, t]
   );
 
   // 保存卡片编辑
@@ -1099,9 +1168,9 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
             </NotionButton>
           </div>
 
-          {/* 卡片列表 */}
+          {/* 卡片列表（分页渲染，防止大量 iframe 崩溃） */}
           <div className="space-y-2">
-            {cards.map((card, index) => (
+            {cards.slice(0, visibleCount).map((card, index) => (
               <InlineCardItem
                 key={card.id || `card-${index}`}
                 card={card}
@@ -1115,6 +1184,29 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
                 disabled={isActionDisabled}
               />
             ))}
+            {/* 加载更多按钮 */}
+            {visibleCount < cards.length && (
+              <div className="flex items-center justify-center gap-2 py-2">
+                <NotionButton
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setVisibleCount((prev) => prev + CARDS_PAGE_SIZE)}
+                  className="text-xs"
+                >
+                  {t('blocks.ankiCards.showMore', { remaining: cards.length - visibleCount })}
+                </NotionButton>
+                <NotionButton
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setVisibleCount(cards.length)}
+                  className="text-xs text-muted-foreground"
+                >
+                  {t('blocks.ankiCards.showAll', { total: cards.length })}
+                </NotionButton>
+              </div>
+            )}
             {/* 滚动锚点：新卡片到来时自动滚动到此处 */}
             <div ref={cardsEndRef} />
           </div>
@@ -1139,6 +1231,7 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
               cardsCount={cards.length}
               blockStatus={block.status}
               finalStatus={data?.finalStatus}
+              onRefreshAnkiConnect={handleRefreshAnkiConnect}
             />
           )}
 

@@ -319,6 +319,8 @@
       "edit": "Edit",
       "editCard": "Edit card",
       "collapse": "Collapse",
+      "showMore": "Load more ({{remaining}} remaining)",
+      "showAll": "Show all ({{total}})",
       "save": "Save",
       "export": "Export",
       "sync": "Sync",
@@ -412,7 +414,10 @@
         "syncPartialDetail": "Imported {{added}} cards, {{failed}} failed. Check AnkiConnect, note type, duplicates, or field mapping.",
         "syncedCount": "Synced {{count}} cards to Anki",
         "syncedCountWithHint": "Synced {{count}} cards to Anki. Next: open Anki to review.",
-        "syncFailedWithHint": "Sync failed. Ensure Anki is running and AnkiConnect is enabled, then retry."
+        "syncFailedWithHint": "Sync failed. Ensure Anki is running and AnkiConnect is enabled, then retry.",
+        "persistFailed": "Card edit failed to save. Changes may be lost if you switch sessions. Please retry.",
+        "exportCancelled": "Export cancelled",
+        "exportSkippedErrors": "Exported {{exported}} cards, skipped {{skipped}} error cards."
       }
     }
   },

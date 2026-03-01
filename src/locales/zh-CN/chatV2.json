@@ -319,6 +319,8 @@
       "edit": "编辑",
       "editCard": "编辑卡片",
       "collapse": "收起",
+      "showMore": "加载更多（剩余 {{remaining}} 张）",
+      "showAll": "显示全部（{{total}} 张）",
       "save": "保存",
       "export": "导出",
       "sync": "同步",
@@ -412,7 +414,10 @@
         "syncPartialDetail": "已导入 {{added}} 张，{{failed}} 张失败。请检查 AnkiConnect / 笔记类型 / 重复卡片 / 字段映射。",
         "syncedCount": "已同步 {{count}} 张到 Anki",
         "syncedCountWithHint": "已同步 {{count}} 张到 Anki。下一步：打开 Anki 复核。",
-        "syncFailedWithHint": "同步失败。请确认 Anki 正在运行且 AnkiConnect 已启用后重试。"
+        "syncFailedWithHint": "同步失败。请确认 Anki 正在运行且 AnkiConnect 已启用后重试。",
+        "persistFailed": "卡片编辑保存失败，切换会话后可能丢失。请重试编辑。",
+        "exportCancelled": "已取消导出",
+        "exportSkippedErrors": "已导出 {{exported}} 张卡片，跳过 {{skipped}} 张错误卡片。"
       }
     }
   },

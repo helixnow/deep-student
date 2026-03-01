@@ -4,16 +4,28 @@ import DOMPurify from 'dompurify';
 const sanitizeCss = (css: string) => {
   if (!css) return '';
   let sanitized = css;
+  // Strip CSS comments first to prevent comment-based splitting attacks (e.g. java/**/script:)
+  sanitized = sanitized.replace(/\/\*[\s\S]*?\*\//g, '');
+  // Strip Unicode escape sequences that could bypass keyword detection (e.g. \006A → 'j')
+  sanitized = sanitized.replace(/\\[0-9a-fA-F]{1,6}\s?/g, '_');
   // Prevent CSS-to-HTML breakout via </style> injection
   sanitized = sanitized.replace(/<\s*\/\s*style/gi, '<\\/style');
   sanitized = sanitized.replace(/@import\s+[^;]+;?/gi, '');
   sanitized = sanitized.replace(/@charset\s+[^;]+;?/gi, '');
+  // Block @font-face to prevent external font loading (data exfiltration via referer)
+  sanitized = sanitized.replace(/@font-face\s*\{[^}]*\}/gi, '');
   sanitized = sanitized.replace(/expression\s*\(/gi, '');
   sanitized = sanitized.replace(/behavior\s*:/gi, 'blocked-behavior:');
   sanitized = sanitized.replace(/-moz-binding\s*:/gi, 'blocked-moz-binding:');
   sanitized = sanitized.replace(/javascript\s*:/gi, 'blocked-javascript:');
-  // Block external resource loading via url() — allow data: URIs only
-  sanitized = sanitized.replace(/url\s*\(\s*(['"]?)\s*https?:\/\//gi, 'url($1blocked://');
+  // Block all url() except safe data:image/ URIs
+  sanitized = sanitized.replace(/url\s*\(\s*(['"]?)\s*(.*?)\s*\1\s*\)/gi, (_match, quote, uri) => {
+    const trimmed = (uri as string).trim().toLowerCase();
+    if (trimmed.startsWith('data:image/')) {
+      return `url(${quote}${uri}${quote})`;
+    }
+    return `url(${quote}blocked${quote})`;
+  });
   return sanitized;
 };
 
