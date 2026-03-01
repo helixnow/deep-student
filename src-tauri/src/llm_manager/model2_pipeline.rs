@@ -1010,13 +1010,15 @@ impl LLMManager {
             )
             .map_err(|e| Self::provider_error("对话请求构建失败", e))?;
 
+        // ★ 使用 preq.body（适配器转换后的实际请求体）而非 request_body（转换前），
+        // 确保 Anthropic/Gemini 等非 OpenAI 提供商的预览与实际发送内容一致
         log_and_emit_llm_request(
             "CHAT_STREAM",
             &window,
             stream_event,
             &config.model,
             &preq.url,
-            &request_body,
+            &preq.body,
         );
 
         // 发出开始事件
@@ -2321,13 +2323,14 @@ impl LLMManager {
             )
             .map_err(|e| Self::provider_error("续写请求构建失败", e))?;
 
+        // ★ 同主路径：使用适配器转换后的实际请求体
         log_and_emit_llm_request(
             "CONTINUE_STREAM",
             &window,
             stream_event,
             &config.model,
             &preq.url,
-            &request_body,
+            &preq.body,
         );
 
         let mut request_builder = self.client

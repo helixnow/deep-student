@@ -387,10 +387,18 @@ function extractMessageDebugInfo(
         }
         break;
 
+      case 'rag':
+      case 'memory':
+      case 'graph':
+      case 'web_search':
+      case 'multimodal_rag':
+      case 'academic_search':
+      case 'ask_user':
+      case 'image_gen':
       case 'mcp_tool':
-      case 'sleep':           // 🆕 睡眠块也作为工具调用记录
-      case 'subagent_embed':  // 🆕 子代理嵌入块
-      case 'workspace_status': // 🆕 工作区状态块
+      case 'sleep':
+      case 'subagent_embed':
+      case 'workspace_status':
         toolCalls.push({
           blockId: block.id,
           toolName: block.toolName || block.type,
