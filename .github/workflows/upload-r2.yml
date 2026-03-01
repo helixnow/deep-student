@@ -33,7 +33,7 @@ jobs:
           echo "📌 Tag: ${{ github.event.inputs.tag }}"
 
       - name: Download Release Assets
-        uses: robinraju/release-downloader@v1.10
+        uses: robinraju/release-downloader@v1.12
         with:
           repository: ${{ github.repository }}
           tag: ${{ steps.tag.outputs.value }}
