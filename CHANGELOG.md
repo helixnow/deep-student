@@ -10,6 +10,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.9.27](https://github.com/helixnow/deep-student/compare/v0.9.26...v0.9.27) (2026-03-01)
+
+
+### Features
+
+* enhance Anki card handling with action locks, pagination, and improved error handling ([bf5f2bd](https://github.com/helixnow/deep-student/commit/bf5f2bd189750f8bd971486fce6ea5673323ec21))
+* enhance file name handling and import error reporting ([c167b25](https://github.com/helixnow/deep-student/commit/c167b253ee06637c9752ab8437bc30b6d6f9a801))
+* implement resource export system with format-specific adapters ([ed6f8f8](https://github.com/helixnow/deep-student/commit/ed6f8f834025b6e5356708948c05556c43c60f1e))
+* standardize Tauri v2 parameter naming to camelCase for automatic snake_case mapping ([64f541c](https://github.com/helixnow/deep-student/commit/64f541cbd6d81ce4e03134727678cdcb4362380f))
+
 ## [0.9.26](https://github.com/helixnow/deep-student/compare/v0.9.25...v0.9.26) (2026-03-01)
 
 
