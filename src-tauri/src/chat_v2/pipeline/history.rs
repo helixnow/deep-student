@@ -101,8 +101,36 @@ impl ChatV2Pipeline {
                 .collect::<Vec<_>>()
                 .join("");
 
-            // 提取 thinking 类型块的内容（如果有）
-            let thinking_content: Option<String> = {
+            // 🔧 B1+B2+C1 修复：重写工具块和 thinking 关联逻辑
+            //
+            // B1+B2：纳入所有专用工具类型（不只是 MCP_TOOL）
+            // 判断依据：block_type 是工具类型 且 tool_name 已设置（排除预检索块）
+            //
+            // C1：按 block_index 顺序遍历，将 thinking 关联到紧随其后的 tool block
+            // 这样 merge_consecutive_tool_calls 可以通过 thinking_content 检测轮次边界
+
+            // 收集工具块及其关联的 thinking（按 block_index 有序遍历）
+            let mut pending_thinking: Option<String> = None;
+            let mut tool_entries: Vec<(Option<String>, &MessageBlock)> = Vec::new();
+
+            for block in blocks.iter() {
+                if block.block_type == block_types::THINKING {
+                    let text = block.content.as_ref().cloned().unwrap_or_default();
+                    if !text.is_empty() {
+                        pending_thinking = Some(match pending_thinking {
+                            Some(existing) => format!("{}\n{}", existing, text),
+                            None => text,
+                        });
+                    }
+                } else if is_tool_call_block(block) {
+                    tool_entries.push((pending_thinking.take(), block));
+                }
+            }
+
+            // 如果没有工具块，所有 thinking 都归属于 legacy_message
+            // 如果有工具块，未被工具消费的 pending_thinking 留给最终的 legacy_message
+            let thinking_content = if tool_entries.is_empty() {
+                // 无工具调用：回退到原始逻辑，拼接所有 thinking
                 let thinking: String = blocks
                     .iter()
                     .filter(|b| b.block_type == block_types::THINKING)
@@ -110,21 +138,11 @@ impl ChatV2Pipeline {
                     .cloned()
                     .collect::<Vec<_>>()
                     .join("");
-                if thinking.is_empty() {
-                    None
-                } else {
-                    Some(thinking)
-                }
+                if thinking.is_empty() { None } else { Some(thinking) }
+            } else {
+                // 未被工具消费的 thinking 留给 legacy_message
+                pending_thinking
             };
-
-            // 🔧 P1修复：提取 mcp_tool 类型块的工具调用信息
-            // 对于 assistant 消息，如果包含工具调用，需要先添加工具调用消息
-            // 🔧 改进 5：按 block_index 排序，确保多轮工具调用顺序正确
-            let mut tool_blocks: Vec<_> = blocks
-                .iter()
-                .filter(|b| b.block_type == block_types::MCP_TOOL)
-                .collect();
-            tool_blocks.sort_by_key(|b| b.block_index);
 
             // 🆕 对于用户消息，解析 context_snapshot.user_refs 并将内容追加到 content
             // ★ 2025-12-10 修复：同时提取图片 base64，注入到 image_base64 字段
@@ -150,8 +168,9 @@ impl ChatV2Pipeline {
             };
 
             // 如果是 assistant 消息且有工具调用，先添加工具调用消息
-            if role == "assistant" && !tool_blocks.is_empty() {
-                for (idx, tool_block) in tool_blocks.iter().enumerate() {
+            // 🔧 B1+B2+C1 修复：使用 tool_entries（含关联 thinking）替代 tool_blocks
+            if role == "assistant" && !tool_entries.is_empty() {
+                for (idx, (entry_thinking, tool_block)) in tool_entries.iter().enumerate() {
                     // 生成 tool_call_id（使用块 ID 或生成新的）
                     let tool_call_id = format!("tc_{}", tool_block.id.replace("blk_", ""));
 
@@ -169,6 +188,7 @@ impl ChatV2Pipeline {
                     let tool_error = tool_block.error.clone();
 
                     // 1. 添加 assistant 消息（包含 tool_call）
+                    // 🔧 C1修复：携带关联的 thinking_content，用于 merge 边界检测
                     let tool_call = crate::models::ToolCall {
                         id: tool_call_id.clone(),
                         tool_name: tool_name.clone(),
@@ -178,7 +198,7 @@ impl ChatV2Pipeline {
                         role: "assistant".to_string(),
                         content: String::new(),
                         timestamp: chrono::Utc::now(),
-                        thinking_content: None,
+                        thinking_content: entry_thinking.clone(),
                         thought_signature: None,
                         rag_sources: None,
                         memory_sources: None,
@@ -198,6 +218,19 @@ impl ChatV2Pipeline {
                     chat_history.push(assistant_tool_msg);
 
                     // 2. 添加 tool 消息（包含 tool_result）
+                    // 🔧 与 context.rs tool_results_to_messages_impl 保持一致：
+                    // 失败时优先使用 error 信息，让 LLM 知道失败原因
+                    let tool_content = if tool_success {
+                        serde_json::to_string(&tool_output).unwrap_or_default()
+                    } else if let Some(ref err) = tool_error {
+                        if !err.is_empty() {
+                            format!("Error: {}", err)
+                        } else {
+                            serde_json::to_string(&tool_output).unwrap_or_default()
+                        }
+                    } else {
+                        serde_json::to_string(&tool_output).unwrap_or_default()
+                    };
                     let tool_result = crate::models::ToolResult {
                         call_id: tool_call_id,
                         ok: tool_success,
@@ -209,7 +242,7 @@ impl ChatV2Pipeline {
                     };
                     let tool_msg = LegacyChatMessage {
                         role: "tool".to_string(),
-                        content: serde_json::to_string(&tool_output).unwrap_or_default(),
+                        content: tool_content,
                         timestamp: chrono::Utc::now(),
                         thinking_content: None,
                         thought_signature: None,
@@ -231,10 +264,12 @@ impl ChatV2Pipeline {
                     chat_history.push(tool_msg);
 
                     log::debug!(
-                        "[ChatV2::pipeline] Loaded tool call from history: tool={}, block_id={}, index={}",
+                        "[ChatV2::pipeline] Loaded tool call from history: tool={}, block_type={}, block_id={}, index={}, has_thinking={}",
                         tool_name,
+                        tool_block.block_type,
                         tool_block.id,
-                        idx
+                        idx,
+                        entry_thinking.is_some()
                     );
                 }
             }
@@ -511,4 +546,27 @@ impl ChatV2Pipeline {
         let final_content = total_result.to_formatted_text(original_content);
         (final_content, total_result.image_base64_list)
     }
+}
+
+/// 🔧 B1+B2 修复：判断一个 block 是否是 LLM 发起的工具调用块
+///
+/// 条件：
+/// 1. block_type 是已知的工具类型之一（MCP_TOOL, ASK_USER, MEMORY 等）
+/// 2. tool_name 已设置（区分 LLM 工具调用 vs 预检索结果块）
+///    预检索块（如 RAG 检索）也使用 RAG/MEMORY/WEB_SEARCH 类型，
+///    但没有 tool_name，因此被正确排除。
+fn is_tool_call_block(block: &MessageBlock) -> bool {
+    let is_tool_type = matches!(
+        block.block_type.as_str(),
+        block_types::MCP_TOOL
+            | block_types::ASK_USER
+            | block_types::MEMORY
+            | block_types::WEB_SEARCH
+            | block_types::GRAPH
+            | block_types::RAG
+            | block_types::ACADEMIC_SEARCH
+            | block_types::SLEEP
+            | block_types::SUBAGENT_EMBED
+    );
+    is_tool_type && block.tool_name.is_some()
 }

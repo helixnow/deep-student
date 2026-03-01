@@ -2140,6 +2140,10 @@ impl LLMManager {
             }
         }
 
+        // 🔧 防御性合并：连续 assistant tool_calls（极端情况下可能出现）
+        // 注意：history.rs 输出的是交叉模式 assistant→tool→assistant→tool，
+        // 所以此函数在正常流程中是 no-op，仅作为防御性保护。
+        Self::merge_consecutive_assistant_tool_calls(&mut messages);
         // 🔧 防御性合并：连续 user 消息合并
         Self::merge_consecutive_user_messages(&mut messages);
 
@@ -2986,31 +2990,66 @@ impl LLMManager {
         }
 
         // 添加聊天历史（包含每条 user 的 image_base64 多模态 parts 构建）
+        // 🔧 C3修复：补充 tool_call/tool_result 处理（之前完全丢弃工具调用信息）
         for msg in chat_history {
-            if config.is_multimodal
-                && msg.role == "user"
-                && msg
-                    .image_base64
-                    .as_ref()
-                    .map(|v| !v.is_empty())
-                    .unwrap_or(false)
-            {
-                let mut parts = vec![json!({"type":"text","text": msg.content})];
-                if let Some(images) = &msg.image_base64 {
-                    for image_base64 in images {
-                        let image_format = Self::detect_image_format_from_base64(image_base64);
-                        parts.push(json!({
-                            "type": "image_url",
-                            "image_url": {"url": format!("data:image/{};base64,{}", image_format, image_base64)}
-                        }));
+            if msg.role == "user" {
+                if config.is_multimodal
+                    && msg
+                        .image_base64
+                        .as_ref()
+                        .map(|v| !v.is_empty())
+                        .unwrap_or(false)
+                {
+                    let mut parts = vec![json!({"type":"text","text": msg.content})];
+                    if let Some(images) = &msg.image_base64 {
+                        for image_base64 in images {
+                            let image_format = Self::detect_image_format_from_base64(image_base64);
+                            parts.push(json!({
+                                "type": "image_url",
+                                "image_url": {"url": format!("data:image/{};base64,{}", image_format, image_base64)}
+                            }));
+                        }
                     }
+                    messages.push(json!({"role":"user","content": parts}));
+                } else {
+                    messages.push(json!({"role": "user", "content": msg.content}));
                 }
-                messages.push(json!({"role":"user","content": parts}));
+            } else if msg.role == "assistant" {
+                if let Some(tc) = &msg.tool_call {
+                    let tool_call_obj = json!({
+                        "id": tc.id,
+                        "type": "function",
+                        "function": {
+                            "name": tc.tool_name,
+                            "arguments": tc.args_json.to_string()
+                        }
+                    });
+                    messages.push(json!({
+                        "role": "assistant",
+                        "content": msg.content,
+                        "tool_calls": [tool_call_obj]
+                    }));
+                } else {
+                    messages.push(json!({"role": "assistant", "content": msg.content}));
+                }
+            } else if msg.role == "tool" {
+                if let Some(tr) = &msg.tool_result {
+                    messages.push(json!({
+                        "role": "tool",
+                        "tool_call_id": tr.call_id,
+                        "content": msg.content
+                    }));
+                } else {
+                    // 降级兜底
+                    messages.push(json!({"role": "assistant", "content": msg.content}));
+                }
             } else {
                 messages.push(json!({"role": msg.role, "content": msg.content}));
             }
         }
 
+        // 🔧 防御性合并：连续 assistant tool_calls（正常流程中是 no-op）
+        Self::merge_consecutive_assistant_tool_calls(&mut messages);
         // 🔧 防御性合并：连续 user 消息合并
         Self::merge_consecutive_user_messages(&mut messages);
 
