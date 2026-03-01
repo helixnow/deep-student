@@ -126,17 +126,20 @@ export const ankiApiAdapter = {
    * 删除卡片
    */
   async deleteAnkiCards(params: { cardIds: string[] }): Promise<void> {
-    try {
-      await invoke('delete_anki_cards', params);
-    } catch (error: unknown) {
-      // 降级方案：从localStorage删除
-      const existing = localStorage.getItem('anki_cards_cache');
-      if (existing) {
-        const cache = JSON.parse(existing);
-        cache.cards = cache.cards.filter((card: AnkiCard) => 
-          !params.cardIds.includes(card.id || card.front)
-        );
-        localStorage.setItem('anki_cards_cache', JSON.stringify(cache));
+    // 后端仅有 delete_anki_card（单数），需逐个调用
+    // Tauri v2 默认 camelCase → snake_case 自动映射
+    const errors: string[] = [];
+    for (const id of params.cardIds) {
+      try {
+        await invoke('delete_anki_card', { cardId: id });
+      } catch (err) {
+        errors.push(`${id}: ${err}`);
+      }
+    }
+    if (errors.length > 0) {
+      console.error('[ankiApiAdapter] deleteAnkiCards partial failures:', errors);
+      if (errors.length === params.cardIds.length) {
+        throw new Error(`Failed to delete all ${errors.length} cards`);
       }
     }
   },

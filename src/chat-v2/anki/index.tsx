@@ -222,10 +222,11 @@ export async function importCardsViaAnkiConnect(
       }));
 
     // 后端签名：add_cards_to_anki_connect(selected_cards, deck_name, note_type)
+    // Tauri v2 默认期望 camelCase JS 参数，自动映射到 snake_case Rust 参数
     const results = await invoke<Array<number | null>>('add_cards_to_anki_connect', {
-      selected_cards: validCards,
-      deck_name: deckName,
-      note_type: noteType,
+      selectedCards: validCards,
+      deckName,
+      noteType,
     });
 
     const importedCount = Array.isArray(results) ? results.filter(r => r !== null).length : 0;

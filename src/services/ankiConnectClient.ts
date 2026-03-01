@@ -39,7 +39,7 @@ export const ankiConnectClient = {
     return await invoke<string[]>('get_anki_model_names');
   },
   async createDeck(name: string): Promise<void> {
-    await invoke('create_anki_deck', { deck_name: name, deckName: name });
+    await invoke('create_anki_deck', { deckName: name });
   },
   async importPackage(apkgPath: string): Promise<boolean> {
     return await invoke<boolean>('import_anki_package', { path: apkgPath });
@@ -55,10 +55,11 @@ export const ankiConnectClient = {
     if (!noteType?.trim()) {
       throw new Error(i18next.t('anki:connect.note_type_required'));
     }
+    // Tauri v2 默认期望 camelCase JS 参数，自动映射到 snake_case Rust 参数
     return await invoke<(number | null)[]>('add_cards_to_anki_connect', {
-      selected_cards: cards,
-      deck_name: deckName,
-      note_type: noteType,
+      selectedCards: cards,
+      deckName,
+      noteType,
     });
   },
   async loadSettings(): Promise<AnkiConnectSettings> {
