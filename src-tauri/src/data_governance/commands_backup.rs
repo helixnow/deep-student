@@ -78,6 +78,8 @@ pub(super) struct ApplyToDbsResult {
     pub(super) total_success: usize,
     pub(super) total_skipped: usize,
     pub(super) total_failed: usize,
+    /// 各库的失败明细（db_name → error message），用于精确定位部分失败
+    pub(super) db_errors: Vec<(String, String)>,
 }
 
 /// 根据表名推断变更所属的数据库（用于 legacy 无 database_name 的变更）
@@ -173,6 +175,7 @@ pub(super) fn apply_downloaded_changes_to_databases(
         total_success: 0,
         total_skipped: 0,
         total_failed: 0,
+        db_errors: Vec::new(),
     };
 
     let id_column_map = build_id_column_map();
@@ -253,13 +256,30 @@ pub(super) fn apply_downloaded_changes_to_databases(
                 );
             }
             Err(e) => {
-                error!("[data_governance] 数据库 {} 应用变更失败: {}", db_name, e);
-                return Err(format!(
-                    "数据库 {} 应用下载变更失败: {}。请检查网络连接后重试同步",
-                    db_name, e
-                ));
+                // 不再立即中止整个同步流程，而是记录失败并继续处理其余数据库，
+                // 避免先成功的库与后失败的库之间产生不可逆的业务撕裂。
+                let err_msg = format!("{}", e);
+                error!(
+                    "[data_governance] 数据库 {} 应用变更失败（继续处理剩余库）: {}",
+                    db_name, err_msg
+                );
+                agg.total_failed += db_changes.len();
+                agg.db_errors.push((db_name.clone(), err_msg));
             }
         }
+    }
+
+    if !agg.db_errors.is_empty() {
+        let detail = agg
+            .db_errors
+            .iter()
+            .map(|(db, err)| format!("{}: {}", db, err))
+            .collect::<Vec<_>>()
+            .join("；");
+        return Err(format!(
+            "部分数据库应用变更失败（已成功 {} 条，失败 {} 条）: {}。请重试同步以修复",
+            agg.total_success, agg.total_failed, detail
+        ));
     }
 
     Ok(agg)

@@ -123,9 +123,10 @@ export function createBlockActions(
               if (draftBlock) {
                 draftBlock.toolOutput = toolOutput;
                 // 🔧 L-013 修复：检查 toolOutput 是否包含错误标记
-                // 后端 tool executor 成功返回的结果中可能带有 success: false 或 error 字段
+                // 注意：必须检查 error 字段的值是否 truthy，而非仅用 'error' in obj
+                // 因为后端部分工具（chatanki_wait 等）成功时也会返回 "error": null
                 const hasError = toolOutput && typeof toolOutput === 'object' && (
-                  'error' in (toolOutput as Record<string, unknown>) ||
+                  !!(toolOutput as Record<string, unknown>).error ||
                   (toolOutput as Record<string, unknown>).success === false
                 );
                 draftBlock.status = hasError ? 'error' : 'success';

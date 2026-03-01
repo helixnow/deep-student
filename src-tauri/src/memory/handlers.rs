@@ -16,6 +16,15 @@ use super::service::{
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct BatchOperationResult {
+    pub total: usize,
+    pub succeeded: usize,
+    pub failed: usize,
+    pub errors: Vec<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct MemoryReadOutput {
     pub note_id: String,
     pub title: String,
@@ -262,6 +271,143 @@ pub async fn memory_get_tree(
     service.get_tree().map_err(|e| e.to_string())
 }
 
+/// 添加记忆关联（双向）
+#[tauri::command]
+pub async fn memory_add_relation(
+    note_id_a: String,
+    note_id_b: String,
+    vfs_db: State<'_, Arc<VfsDatabase>>,
+    lance_store: State<'_, Arc<VfsLanceStore>>,
+    llm_manager: State<'_, Arc<LLMManager>>,
+) -> Result<(), String> {
+    let service = get_memory_service(&vfs_db, &lance_store, &llm_manager);
+    service.add_relation(&note_id_a, &note_id_b).map_err(|e| e.to_string())
+}
+
+/// 移除记忆关联（双向）
+#[tauri::command]
+pub async fn memory_remove_relation(
+    note_id_a: String,
+    note_id_b: String,
+    vfs_db: State<'_, Arc<VfsDatabase>>,
+    lance_store: State<'_, Arc<VfsLanceStore>>,
+    llm_manager: State<'_, Arc<LLMManager>>,
+) -> Result<(), String> {
+    let service = get_memory_service(&vfs_db, &lance_store, &llm_manager);
+    service.remove_relation(&note_id_a, &note_id_b).map_err(|e| e.to_string())
+}
+
+/// 获取关联记忆 ID 列表
+#[tauri::command]
+pub async fn memory_get_related(
+    note_id: String,
+    vfs_db: State<'_, Arc<VfsDatabase>>,
+    lance_store: State<'_, Arc<VfsLanceStore>>,
+    llm_manager: State<'_, Arc<LLMManager>>,
+) -> Result<Vec<String>, String> {
+    let service = get_memory_service(&vfs_db, &lance_store, &llm_manager);
+    service.get_related_ids(&note_id).map_err(|e| e.to_string())
+}
+
+/// 更新记忆标签
+#[tauri::command]
+pub async fn memory_update_tags(
+    note_id: String,
+    tags: Vec<String>,
+    vfs_db: State<'_, Arc<VfsDatabase>>,
+    lance_store: State<'_, Arc<VfsLanceStore>>,
+    llm_manager: State<'_, Arc<LLMManager>>,
+) -> Result<(), String> {
+    let service = get_memory_service(&vfs_db, &lance_store, &llm_manager);
+    service.update_tags(&note_id, tags).map_err(|e| e.to_string())
+}
+
+/// 获取记忆标签
+#[tauri::command]
+pub async fn memory_get_tags(
+    note_id: String,
+    vfs_db: State<'_, Arc<VfsDatabase>>,
+    lance_store: State<'_, Arc<VfsLanceStore>>,
+    llm_manager: State<'_, Arc<LLMManager>>,
+) -> Result<Vec<String>, String> {
+    let service = get_memory_service(&vfs_db, &lance_store, &llm_manager);
+    service.get_tags(&note_id).map_err(|e| e.to_string())
+}
+
+/// 批量删除记忆
+#[tauri::command]
+pub async fn memory_batch_delete(
+    note_ids: Vec<String>,
+    vfs_db: State<'_, Arc<VfsDatabase>>,
+    lance_store: State<'_, Arc<VfsLanceStore>>,
+    llm_manager: State<'_, Arc<LLMManager>>,
+) -> Result<BatchOperationResult, String> {
+    let service = get_memory_service(&vfs_db, &lance_store, &llm_manager);
+    let total = note_ids.len();
+    let mut succeeded = 0usize;
+    let mut failed = 0usize;
+    let mut errors: Vec<String> = Vec::new();
+
+    for note_id in &note_ids {
+        match service.delete(note_id).await {
+            Ok(()) => succeeded += 1,
+            Err(e) => {
+                failed += 1;
+                if errors.len() < 5 {
+                    errors.push(format!("{}: {}", note_id, e));
+                }
+            }
+        }
+    }
+
+    Ok(BatchOperationResult { total, succeeded, failed, errors })
+}
+
+/// 批量移动记忆到指定文件夹
+#[tauri::command]
+pub async fn memory_batch_move(
+    note_ids: Vec<String>,
+    target_folder_path: String,
+    vfs_db: State<'_, Arc<VfsDatabase>>,
+    lance_store: State<'_, Arc<VfsLanceStore>>,
+    llm_manager: State<'_, Arc<LLMManager>>,
+) -> Result<BatchOperationResult, String> {
+    let service = get_memory_service(&vfs_db, &lance_store, &llm_manager);
+    let total = note_ids.len();
+    let mut succeeded = 0usize;
+    let mut failed = 0usize;
+    let mut errors: Vec<String> = Vec::new();
+
+    for note_id in &note_ids {
+        match service.move_to_folder(note_id, &target_folder_path) {
+            Ok(()) => succeeded += 1,
+            Err(e) => {
+                failed += 1;
+                if errors.len() < 5 {
+                    errors.push(format!("{}: {}", note_id, e));
+                }
+            }
+        }
+    }
+
+    Ok(BatchOperationResult { total, succeeded, failed, errors })
+}
+
+/// 移动记忆到指定文件夹路径
+#[tauri::command]
+pub async fn memory_move_to_folder(
+    note_id: String,
+    target_folder_path: String,
+    vfs_db: State<'_, Arc<VfsDatabase>>,
+    lance_store: State<'_, Arc<VfsLanceStore>>,
+    llm_manager: State<'_, Arc<LLMManager>>,
+) -> Result<(), String> {
+    let service = get_memory_service(&vfs_db, &lance_store, &llm_manager);
+    service
+        .move_to_folder(&note_id, &target_folder_path)
+        .map_err(|e| e.to_string())
+}
+
 // ★ 修复风险2：按 note_id 更新记忆
 #[tauri::command]
 pub async fn memory_update_by_id(
@@ -428,6 +574,7 @@ pub async fn memory_write_smart(
     title: String,
     content: String,
     memory_type: Option<String>,
+    memory_purpose: Option<String>,
     vfs_db: State<'_, Arc<VfsDatabase>>,
     lance_store: State<'_, Arc<VfsLanceStore>>,
     llm_manager: State<'_, Arc<LLMManager>>,
@@ -437,6 +584,9 @@ pub async fn memory_write_smart(
         .as_deref()
         .map(super::service::MemoryType::from_str)
         .unwrap_or(super::service::MemoryType::Fact);
+    let purpose = memory_purpose
+        .as_deref()
+        .map(super::service::MemoryPurpose::from_str);
     let result = service
         .write_smart_with_source(
             folder_path.as_deref(),
@@ -445,6 +595,7 @@ pub async fn memory_write_smart(
             super::audit_log::MemoryOpSource::Handler,
             None,
             mem_type,
+            purpose,
         )
         .await
         .map_err(|e| e.to_string())?;
@@ -472,4 +623,76 @@ pub async fn memory_get_audit_logs(
         success_filter,
     )
     .map_err(|e| e.to_string())
+}
+
+/// 将记忆导出为 ChatAnki 卡片格式的文档内容
+///
+/// 筛选记忆后，格式化为结构化文本，返回给前端。
+/// 前端可将此文本传入 chatanki_run 工具触发制卡。
+#[tauri::command]
+pub async fn memory_to_anki_document(
+    folder_path: Option<String>,
+    purpose_filter: Option<String>,
+    limit: Option<u32>,
+    vfs_db: State<'_, Arc<VfsDatabase>>,
+    lance_store: State<'_, Arc<VfsLanceStore>>,
+    llm_manager: State<'_, Arc<LLMManager>>,
+) -> Result<MemoryAnkiDocument, String> {
+    let service = get_memory_service(&vfs_db, &lance_store, &llm_manager);
+    let limit = limit.unwrap_or(200);
+    let items = service
+        .list(folder_path.as_deref(), limit, 0)
+        .map_err(|e| e.to_string())?;
+
+    let purpose = purpose_filter.as_deref();
+
+    let mut lines = Vec::new();
+    let mut count = 0usize;
+
+    for item in &items {
+        if item.title.starts_with("__") {
+            continue;
+        }
+        if let Some(p) = purpose {
+            if item.memory_purpose != p {
+                continue;
+            }
+        }
+
+        let content = crate::vfs::repos::note_repo::VfsNoteRepo::get_note_content(&vfs_db, &item.id)
+            .map_err(|e| e.to_string())?
+            .unwrap_or_default();
+
+        let text = if content.is_empty() { &item.title } else { &content };
+
+        lines.push(format!(
+            "## {}\n\n{}\n\n---\n",
+            item.title, text
+        ));
+        count += 1;
+    }
+
+    let document_content = if lines.is_empty() {
+        String::new()
+    } else {
+        format!(
+            "# 用户记忆知识卡片\n\n以下是从用户记忆库中提取的 {} 条记忆，请为每条生成对应的 Anki 卡片。\n\n{}",
+            count,
+            lines.join("\n")
+        )
+    };
+
+    Ok(MemoryAnkiDocument {
+        document_content,
+        memory_count: count,
+        document_name: format!("记忆卡片_{}", chrono::Local::now().format("%Y%m%d")),
+    })
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MemoryAnkiDocument {
+    pub document_content: String,
+    pub memory_count: usize,
+    pub document_name: String,
 }

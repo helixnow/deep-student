@@ -1012,7 +1012,13 @@ impl BuiltinRetrievalExecutor {
 
             if let Some(memory_results) = memory_result {
                 let memory_count = memory_results.len();
-                for r in memory_results {
+
+                let compressor = crate::memory::MemoryCompressor::new(
+                    std::sync::Arc::clone(llm_manager),
+                );
+                let compressed = compressor.compress(query, &memory_results).await;
+
+                for r in compressed {
                     all_sources.push(SourceInfo {
                         title: Some(r.note_title),
                         url: None,
@@ -1026,7 +1032,7 @@ impl BuiltinRetrievalExecutor {
                     });
                 }
                 log::debug!(
-                    "[BuiltinRetrievalExecutor] Memory search in unified: {} results",
+                    "[BuiltinRetrievalExecutor] Memory search in unified: {} results (compressed)",
                     memory_count
                 );
             }

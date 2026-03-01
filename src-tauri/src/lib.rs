@@ -1468,6 +1468,15 @@ pub fn run() {
             // ★ 新增命令（2026-01 修复）
             ,crate::memory::handlers::memory_update_by_id
             ,crate::memory::handlers::memory_delete
+            ,crate::memory::handlers::memory_move_to_folder
+            ,crate::memory::handlers::memory_batch_delete
+            ,crate::memory::handlers::memory_batch_move
+            ,crate::memory::handlers::memory_update_tags
+            ,crate::memory::handlers::memory_get_tags
+            ,crate::memory::handlers::memory_add_relation
+            ,crate::memory::handlers::memory_remove_relation
+            ,crate::memory::handlers::memory_get_related
+            ,crate::memory::handlers::memory_to_anki_document
             ,crate::memory::handlers::memory_write_smart
             ,crate::memory::handlers::memory_set_auto_create_subfolders
             ,crate::memory::handlers::memory_set_default_category

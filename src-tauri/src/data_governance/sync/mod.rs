@@ -59,6 +59,45 @@ fn log_and_skip_err<T, E: std::fmt::Display>(result: Result<T, E>) -> Option<T> 
     }
 }
 
+/// 带指数退避的异步重试工具
+///
+/// 对可重试的网络操作（如上传/下载清单和变更）进行最多 `max_retries` 次尝试，
+/// 每次失败后以指数退避等待（500ms, 1s, 2s, ...）。
+#[cfg(feature = "data_governance")]
+async fn retry_async<F, Fut, T>(
+    op_name: &str,
+    max_retries: u32,
+    f: F,
+) -> Result<T, SyncError>
+where
+    F: Fn() -> Fut,
+    Fut: std::future::Future<Output = Result<T, SyncError>>,
+{
+    let base_ms: u64 = 500;
+    let mut last_err = SyncError::Network(format!("{}: 未知错误", op_name));
+    for attempt in 0..max_retries {
+        match f().await {
+            Ok(v) => return Ok(v),
+            Err(e) => {
+                last_err = e;
+                if attempt + 1 < max_retries {
+                    let delay = base_ms * (1u64 << attempt);
+                    tracing::warn!(
+                        "[Sync] {} 重试 {}/{}: {}（等待 {}ms）",
+                        op_name,
+                        attempt + 1,
+                        max_retries,
+                        last_err,
+                        delay
+                    );
+                    tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
+                }
+            }
+        }
+    }
+    Err(last_err)
+}
+
 #[cfg(feature = "data_governance")]
 // 云存储集成
 use crate::cloud_storage::CloudStorage;
@@ -324,6 +363,32 @@ pub struct BlobEntry {
     pub size: u64,
 }
 
+/// VFS Blob 同步结果，区分完全成功与部分失败
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct BlobSyncOutcome {
+    pub uploaded: usize,
+    pub downloaded: usize,
+    pub upload_failures: Vec<String>,
+    pub download_failures: Vec<String>,
+}
+
+impl BlobSyncOutcome {
+    pub fn has_failures(&self) -> bool {
+        !self.upload_failures.is_empty() || !self.download_failures.is_empty()
+    }
+
+    pub fn failure_summary(&self) -> Option<String> {
+        if !self.has_failures() {
+            return None;
+        }
+        Some(format!(
+            "附件同步部分失败：{} 个上传失败，{} 个下载失败",
+            self.upload_failures.len(),
+            self.download_failures.len()
+        ))
+    }
+}
+
 /// 同步管理器
 pub struct SyncManager {
     /// 本地设备 ID
@@ -468,21 +533,18 @@ impl SyncManager {
 
     /// 判断两条记录是否冲突
     ///
-    /// 冲突条件：
-    /// 1. 两边的 sync_version 相同（说明上次同步后都有修改）
-    /// 2. 两边的 local_version 都增加了（双方都有修改）
-    /// 3. 数据内容不同
+    /// 冲突条件（LWW + 基线比对）：
+    /// 1. 双方各自的 local_version > sync_version，表明都有未同步的修改
+    /// 2. 数据内容不同
+    ///
+    /// 不再要求 sync_version 完全相等：当两台设备经过各自独立的同步周期后
+    /// sync_version 自然会发散，原先的相等判断会导致静默数据覆盖。
     fn is_record_conflicting(local: &RecordSnapshot, cloud: &RecordSnapshot) -> bool {
-        // 如果 sync_version 相同，说明双方都基于同一个同步点进行了修改
-        if local.sync_version == cloud.sync_version {
-            // 双方都有修改（local_version > sync_version）
-            let local_modified = local.local_version > local.sync_version;
-            let cloud_modified = cloud.local_version > cloud.sync_version;
+        let local_modified = local.local_version > local.sync_version;
+        let cloud_modified = cloud.local_version > cloud.sync_version;
 
-            if local_modified && cloud_modified {
-                // 数据内容不同才算冲突
-                return local.data != cloud.data;
-            }
+        if local_modified && cloud_modified {
+            return local.data != cloud.data;
         }
         false
     }
@@ -603,7 +665,7 @@ impl SyncManager {
         format!("{}/{}.json", Self::MANIFESTS_PREFIX, device_id)
     }
 
-    /// 上传本地清单到云端（按设备隔离）
+    /// 上传本地清单到云端（按设备隔离，自带网络重试）
     pub async fn upload_manifest(
         &self,
         storage: &dyn CloudStorage,
@@ -613,10 +675,18 @@ impl SyncManager {
             .map_err(|e| SyncError::Database(format!("序列化清单失败: {}", e)))?;
 
         let key = Self::device_manifest_key(&self.device_id);
-        storage
-            .put(&key, &json)
-            .await
-            .map_err(|e| SyncError::Network(format!("上传清单失败: {}", e)))?;
+
+        retry_async("上传清单", 3, || {
+            let json = json.clone();
+            let key = key.clone();
+            async move {
+                storage
+                    .put(&key, &json)
+                    .await
+                    .map_err(|e| SyncError::Network(format!("上传清单失败: {}", e)))
+            }
+        })
+        .await?;
 
         tracing::info!(
             "[sync] 清单已上传到云端: device={}, tx={}, databases={}, key={}",
@@ -835,11 +905,18 @@ impl SyncManager {
                 .await
                 .map_err(|e| SyncError::Network(format!("上传变更数据失败: {}", e)))?;
         } else {
-            // 无进度回调：直接 PUT 字节（原路径）
-            storage
-                .put(&key, &compressed)
-                .await
-                .map_err(|e| SyncError::Network(format!("上传变更数据失败: {}", e)))?;
+            // 无进度回调：直接 PUT 字节，带指数退避重试
+            retry_async("上传变更数据", 3, || {
+                let compressed = compressed.clone();
+                let key = key.clone();
+                async move {
+                    storage
+                        .put(&key, &compressed)
+                        .await
+                        .map_err(|e| SyncError::Network(format!("上传变更数据失败: {}", e)))
+                }
+            })
+            .await?;
         }
 
         tracing::info!(
@@ -1669,29 +1746,46 @@ impl SyncManager {
         let (columns, placeholders, values) = Self::build_insert_parts(obj)?;
         let columns_list: Vec<&str> = columns.split(", ").collect();
 
+        // COALESCE 防御：当云端值为 NULL 时保留本地已有值，
+        // 防止跨版本 Schema 差异导致的 NOT NULL 约束破坏或数据误清除。
         let upsert_sql = if table_name == "llm_usage_daily" {
-            // 复合主键特殊处理
+            let pk_cols = ["\"date\"", "\"caller_type\"", "\"model\"", "\"provider\""];
             let update_set = columns_list
                 .iter()
-                .map(|c| format!("{}=excluded.{}", c, c))
+                .filter(|c| !pk_cols.contains(&c.as_ref()))
+                .map(|c| {
+                    format!(
+                        "{}=COALESCE(excluded.{}, {}.{})",
+                        c, c, table_ident, c
+                    )
+                })
                 .collect::<Vec<_>>()
                 .join(", ");
-            format!(
-                "INSERT INTO {} ({}) VALUES ({}) ON CONFLICT(date, caller_type, model, provider) DO UPDATE SET {}",
-                table_ident, columns, placeholders, update_set
-            )
+            if update_set.is_empty() {
+                format!(
+                    "INSERT INTO {} ({}) VALUES ({}) ON CONFLICT(date, caller_type, model, provider) DO NOTHING",
+                    table_ident, columns, placeholders
+                )
+            } else {
+                format!(
+                    "INSERT INTO {} ({}) VALUES ({}) ON CONFLICT(date, caller_type, model, provider) DO UPDATE SET {}",
+                    table_ident, columns, placeholders, update_set
+                )
+            }
         } else {
-            // 标准单主键处理
             let pk_ident = Self::quote_identifier(id_column)?;
             let update_set = columns_list
                 .iter()
-                // 可选：跳过主键自身的更新（虽然更新为相同值也没错，但跳过更干净）
                 .filter(|c| **c != pk_ident.as_str())
-                .map(|c| format!("{}=excluded.{}", c, c))
+                .map(|c| {
+                    format!(
+                        "{}=COALESCE(excluded.{}, {}.{})",
+                        c, c, table_ident, c
+                    )
+                })
                 .collect::<Vec<_>>()
                 .join(", ");
 
-            // 如果 update_set 为空（例如表只有主键），DO UPDATE 需要处理
             let action = if update_set.is_empty() {
                 "DO NOTHING".to_string()
             } else {
@@ -1881,7 +1975,9 @@ impl SyncManager {
                     .map(|s| s.as_str())
                     .unwrap_or("id");
 
-                let pre_log_max_id = if change.suppress_change_log.unwrap_or(false) {
+                let suppress = change.suppress_change_log.unwrap_or(false);
+
+                let pre_log_max_id = if suppress {
                     conn.query_row("SELECT COALESCE(MAX(id), 0) FROM __change_log", [], |row| {
                         row.get::<_, i64>(0)
                     })
@@ -1897,11 +1993,15 @@ impl SyncManager {
                     result.skipped_count += 1;
                 }
 
+                // 精确抑制：只标记由本次回放产生的、且匹配当前 table+record 的
+                // change_log 条目为已同步，避免误标记用户并发操作产生的条目。
                 if let Some(max_id) = pre_log_max_id {
                     let sync_version = chrono::Utc::now().timestamp();
                     let _ = conn.execute(
-                        "UPDATE __change_log SET sync_version = ?1 WHERE id > ?2 AND sync_version = 0",
-                        params![sync_version, max_id],
+                        "UPDATE __change_log SET sync_version = ?1 \
+                         WHERE id > ?2 AND sync_version = 0 \
+                         AND table_name = ?3 AND record_id = ?4",
+                        params![sync_version, max_id, &change.table_name, &change.record_id],
                     );
                 }
             }
@@ -1959,6 +2059,22 @@ impl SyncManager {
         Ok(result)
     }
 
+    /// 检查表是否拥有指定列
+    fn table_has_column(conn: &Connection, table_name: &str, col_name: &str) -> bool {
+        let table_ident = match Self::quote_identifier(table_name) {
+            Ok(t) => t,
+            Err(_) => return false,
+        };
+        let sql = format!("PRAGMA table_info({})", table_ident);
+        let mut stmt = match conn.prepare(&sql) {
+            Ok(s) => s,
+            Err(_) => return false,
+        };
+        stmt.query_map([], |row| row.get::<_, String>(1))
+            .map(|rows| rows.filter_map(|r| r.ok()).any(|name| name == col_name))
+            .unwrap_or(false)
+    }
+
     /// 应用单条变更
     ///
     /// # 返回
@@ -1972,18 +2088,29 @@ impl SyncManager {
     ) -> Result<bool, SyncError> {
         match change.operation {
             ChangeOperation::Delete => {
-                // DELETE 操作：直接删除记录
                 Self::ensure_table_allowed_and_exists(conn, &change.table_name)?;
                 let table_ident = Self::quote_identifier(&change.table_name)?;
+                let has_tombstone = Self::table_has_column(conn, &change.table_name, "deleted_at");
+
                 let affected = if change.table_name == "llm_usage_daily" {
                     let (date, caller_type, model, provider) =
                         Self::parse_llm_usage_daily_record_id(&change.record_id)?;
+                    // llm_usage_daily 为统计聚合表，无 tombstone，直接物理删除
                     let sql = format!(
                         "DELETE FROM {} WHERE date = ?1 AND caller_type = ?2 AND model = ?3 AND provider = ?4",
                         table_ident
                     );
                     conn.execute(&sql, params![date, caller_type, model, provider])
                         .map_err(|e| SyncError::Database(format!("删除记录失败: {}", e)))?
+                } else if has_tombstone {
+                    let id_col_ident = Self::quote_identifier(id_column)?;
+                    let now = chrono::Utc::now().to_rfc3339();
+                    let sql = format!(
+                        "UPDATE {} SET \"deleted_at\" = ?1 WHERE {} = ?2 AND \"deleted_at\" IS NULL",
+                        table_ident, id_col_ident
+                    );
+                    conn.execute(&sql, params![now, &change.record_id])
+                        .map_err(|e| SyncError::Database(format!("软删除记录失败: {}", e)))?
                 } else {
                     let id_col_ident = Self::quote_identifier(id_column)?;
                     let sql = format!("DELETE FROM {} WHERE {} = ?1", table_ident, id_col_ident);
@@ -1992,7 +2119,8 @@ impl SyncManager {
                 };
 
                 tracing::debug!(
-                    "[sync] DELETE {}.{} = {}, affected={}",
+                    "[sync] DELETE(tombstone={}) {}.{} = {}, affected={}",
+                    has_tombstone,
                     change.table_name,
                     id_column,
                     change.record_id,
@@ -3027,29 +3155,33 @@ impl SyncManager {
 
     /// 同步 VFS blobs（内容寻址，纯增量，无冲突）
     ///
+    const BLOB_MAX_RETRIES: u32 = 3;
+    const BLOB_RETRY_BASE_MS: u64 = 500;
+
     /// 策略：
     /// - 本地有但云端没有 → 上传
-    /// - 云端有但本地没有 → 下载
+    /// - 云端有但本地没有 → 下载（带重试）
     /// - hash 即内容唯一标识，天然去重，无冲突问题
+    ///
+    /// 返回 `BlobSyncOutcome` 以便调用方区分完全成功与部分失败。
     pub async fn sync_vfs_blobs(
         &self,
         storage: &dyn CloudStorage,
         blobs_dir: &std::path::Path,
-    ) -> Result<(), SyncError> {
+    ) -> Result<BlobSyncOutcome, SyncError> {
         if !blobs_dir.exists() {
-            return Ok(());
+            return Ok(BlobSyncOutcome::default());
         }
 
-        // 1. 下载云端 blobs 清单
         let cloud_manifest = self.download_blobs_manifest(storage).await?;
 
-        // 2. 扫描本地 blobs 目录
         let mut local_blobs: HashMap<String, std::path::PathBuf> = HashMap::new();
         Self::scan_blobs_dir(blobs_dir, &mut local_blobs)?;
 
-        // 3. 上传本地有但云端没有的 blobs
         let mut new_manifest = cloud_manifest.clone();
         let mut uploaded = 0usize;
+        let mut upload_failures: Vec<String> = Vec::new();
+
         for (hash, path) in &local_blobs {
             if cloud_manifest.entries.contains_key(hash.as_str()) {
                 continue;
@@ -3061,23 +3193,42 @@ impl SyncManager {
                 .replace('\\', "/");
             let key = format!("{}/{}", Self::BLOBS_CLOUD_PREFIX, relative);
             let size = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
-            match storage.put_file(&key, path, None).await {
-                Ok(_) => {
-                    new_manifest.entries.insert(
-                        hash.clone(),
-                        BlobEntry { relative_path: relative, size },
-                    );
-                    uploaded += 1;
-                    tracing::debug!("[sync] blob 已上传: {}", hash);
+
+            let mut last_err = String::new();
+            let mut ok = false;
+            for attempt in 0..Self::BLOB_MAX_RETRIES {
+                match storage.put_file(&key, path, None).await {
+                    Ok(_) => {
+                        new_manifest.entries.insert(
+                            hash.clone(),
+                            BlobEntry { relative_path: relative.clone(), size },
+                        );
+                        uploaded += 1;
+                        ok = true;
+                        break;
+                    }
+                    Err(e) => {
+                        last_err = e.to_string();
+                        if attempt + 1 < Self::BLOB_MAX_RETRIES {
+                            let delay = Self::BLOB_RETRY_BASE_MS * (1u64 << attempt);
+                            tracing::warn!(
+                                "[sync] blob 上传重试 {}/{}: {}: {}",
+                                attempt + 1, Self::BLOB_MAX_RETRIES, hash, e
+                            );
+                            tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
+                        }
+                    }
                 }
-                Err(e) => {
-                    tracing::warn!("[sync] blob 上传失败（跳过）: {}: {}", hash, e);
-                }
+            }
+            if !ok {
+                tracing::error!("[sync] blob 上传最终失败: {}: {}", hash, last_err);
+                upload_failures.push(hash.clone());
             }
         }
 
-        // 4. 下载云端有但本地没有的 blobs
         let mut downloaded_count = 0usize;
+        let mut download_failures: Vec<String> = Vec::new();
+
         for (hash, cloud_entry) in &cloud_manifest.entries {
             if local_blobs.contains_key(hash.as_str()) {
                 continue;
@@ -3087,26 +3238,44 @@ impl SyncManager {
                 let _ = std::fs::create_dir_all(parent);
             }
             let key = format!("{}/{}", Self::BLOBS_CLOUD_PREFIX, cloud_entry.relative_path);
-            match storage.get_file(&key, &dest, None, None).await {
-                Ok(_) => {
-                    downloaded_count += 1;
-                    tracing::debug!("[sync] blob 已下载: {}", hash);
+
+            let mut last_err = String::new();
+            let mut ok = false;
+            for attempt in 0..Self::BLOB_MAX_RETRIES {
+                match storage.get_file(&key, &dest, None, None).await {
+                    Ok(_) => {
+                        downloaded_count += 1;
+                        ok = true;
+                        break;
+                    }
+                    Err(e) => {
+                        last_err = e.to_string();
+                        // 清理可能写到一半的文件
+                        let _ = std::fs::remove_file(&dest);
+                        if attempt + 1 < Self::BLOB_MAX_RETRIES {
+                            let delay = Self::BLOB_RETRY_BASE_MS * (1u64 << attempt);
+                            tracing::warn!(
+                                "[sync] blob 下载重试 {}/{}: {}: {}",
+                                attempt + 1, Self::BLOB_MAX_RETRIES, hash, e
+                            );
+                            tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
+                        }
+                    }
                 }
-                Err(e) => {
-                    tracing::warn!("[sync] blob 下载失败（跳过）: {}: {}", hash, e);
-                }
+            }
+            if !ok {
+                tracing::error!("[sync] blob 下载最终失败: {}: {}", hash, last_err);
+                download_failures.push(hash.clone());
             }
         }
 
         if uploaded > 0 || downloaded_count > 0 {
             tracing::info!(
-                "[sync] blob 同步完成: 上传 {}, 下载 {}",
-                uploaded,
-                downloaded_count
+                "[sync] blob 同步: 上传 {}, 下载 {}, 上传失败 {}, 下载失败 {}",
+                uploaded, downloaded_count, upload_failures.len(), download_failures.len()
             );
         }
 
-        // 5. 如有新上传则更新云端清单
         if uploaded > 0 {
             new_manifest.updated_at = chrono::Utc::now().to_rfc3339();
             let json = serde_json::to_vec(&new_manifest)
@@ -3117,7 +3286,12 @@ impl SyncManager {
                 .map_err(|e| SyncError::Network(format!("上传 blob 清单失败: {}", e)))?;
         }
 
-        Ok(())
+        Ok(BlobSyncOutcome {
+            uploaded,
+            downloaded: downloaded_count,
+            upload_failures,
+            download_failures,
+        })
     }
 
     async fn download_blobs_manifest(

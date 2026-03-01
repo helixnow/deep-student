@@ -1873,8 +1873,19 @@ async fn execute_upload_with_progress_v2(
     if let Err(e) = manager.sync_workspace_databases(storage, active_dir).await {
         tracing::warn!("[data_governance] 工作区数据库同步失败（非致命）: {}", e);
     }
-    if let Err(e) = manager.sync_vfs_blobs(storage, &blobs_dir).await {
-        tracing::warn!("[data_governance] VFS blob 同步失败（非致命）: {}", e);
+
+    let mut blob_warning: Option<String> = None;
+    match manager.sync_vfs_blobs(storage, &blobs_dir).await {
+        Ok(outcome) => {
+            if outcome.has_failures() {
+                blob_warning = outcome.failure_summary();
+                tracing::warn!("[data_governance] VFS blob 部分失败: {:?}", blob_warning);
+            }
+        }
+        Err(e) => {
+            blob_warning = Some(format!("附件同步失败: {}", e));
+            tracing::error!("[data_governance] VFS blob 同步出错: {}", e);
+        }
     }
 
     // 清理云端超过 30 天的旧变更文件（非致命）
@@ -1890,7 +1901,7 @@ async fn execute_upload_with_progress_v2(
             changes_downloaded: 0,
             conflicts_detected: 0,
             duration_ms: start.elapsed().as_millis() as u64,
-            error_message: None,
+            error_message: blob_warning,
         },
         0,
     ))
@@ -1946,8 +1957,30 @@ async fn execute_download_with_progress_v2(
     if let Err(e) = manager.sync_workspace_databases(storage, active_dir).await {
         tracing::warn!("[data_governance] 工作区数据库同步失败（非致命）: {}", e);
     }
-    if let Err(e) = manager.sync_vfs_blobs(storage, &blobs_dir).await {
-        tracing::warn!("[data_governance] VFS blob 同步失败（非致命）: {}", e);
+
+    match manager.sync_vfs_blobs(storage, &blobs_dir).await {
+        Ok(outcome) => {
+            if outcome.has_failures() {
+                let blob_msg = outcome.failure_summary().unwrap_or_default();
+                tracing::warn!("[data_governance] VFS blob 部分失败: {}", blob_msg);
+                let existing = exec_result.error_message.take().unwrap_or_default();
+                exec_result.error_message = Some(if existing.is_empty() {
+                    blob_msg
+                } else {
+                    format!("{}；{}", existing, blob_msg)
+                });
+            }
+        }
+        Err(e) => {
+            tracing::error!("[data_governance] VFS blob 同步出错: {}", e);
+            let existing = exec_result.error_message.take().unwrap_or_default();
+            let blob_msg = format!("附件同步失败: {}", e);
+            exec_result.error_message = Some(if existing.is_empty() {
+                blob_msg
+            } else {
+                format!("{}；{}", existing, blob_msg)
+            });
+        }
     }
 
     Ok((exec_result, total_skipped))
@@ -2103,8 +2136,30 @@ async fn execute_bidirectional_with_progress_v2(
     if let Err(e) = manager.sync_workspace_databases(storage, active_dir).await {
         tracing::warn!("[data_governance] 工作区数据库同步失败（非致命）: {}", e);
     }
-    if let Err(e) = manager.sync_vfs_blobs(storage, &blobs_dir).await {
-        tracing::warn!("[data_governance] VFS blob 同步失败（非致命）: {}", e);
+
+    match manager.sync_vfs_blobs(storage, &blobs_dir).await {
+        Ok(outcome) => {
+            if outcome.has_failures() {
+                let blob_msg = outcome.failure_summary().unwrap_or_default();
+                tracing::warn!("[data_governance] VFS blob 部分失败: {}", blob_msg);
+                let existing = exec_result.error_message.take().unwrap_or_default();
+                exec_result.error_message = Some(if existing.is_empty() {
+                    blob_msg
+                } else {
+                    format!("{}；{}", existing, blob_msg)
+                });
+            }
+        }
+        Err(e) => {
+            tracing::error!("[data_governance] VFS blob 同步出错: {}", e);
+            let existing = exec_result.error_message.take().unwrap_or_default();
+            let blob_msg = format!("附件同步失败: {}", e);
+            exec_result.error_message = Some(if existing.is_empty() {
+                blob_msg
+            } else {
+                format!("{}；{}", existing, blob_msg)
+            });
+        }
     }
 
     // 清理云端超过 30 天的旧变更文件

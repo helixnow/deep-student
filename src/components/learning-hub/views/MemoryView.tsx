@@ -47,6 +47,9 @@ import {
   Bot,
   User,
   BookOpen,
+  List,
+  GitBranch,
+  Folder,
 } from 'lucide-react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { MemoryIcon } from '../icons/ResourceIcons';
@@ -66,6 +69,7 @@ import {
   getMemoryProfile,
   getMemoryAuditLogs,
   setMemoryAutoExtractFrequency,
+  getMemoryTree,
   type AutoExtractFrequency,
   type MemoryConfig,
   type MemoryListItem,
@@ -73,14 +77,19 @@ import {
   type MemoryReadOutput,
   type MemoryProfileSection,
   type MemoryAuditLogItem,
+  type FolderTreeNode,
+  type MemoryPurposeType,
+  batchDeleteMemories,
 } from '@/api/memoryApi';
 import { folderApi } from '@/dstu';
-import type { FolderTreeNode } from '@/dstu/types/folder';
+import type { FolderTreeNode as DstuFolderTreeNode } from '@/dstu/types/folder';
 import type { ResourceListItem } from '../types';
 
 // ============================================================================
 // 类型定义
 // ============================================================================
+
+const AUDIT_LOG_PAGE_SIZE = 30;
 
 interface MemoryViewProps {
   className?: string;
@@ -126,6 +135,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
   // 创建记忆状态
   const [newMemoryTitle, setNewMemoryTitle] = useState('');
   const [newMemoryContent, setNewMemoryContent] = useState('');
+  const [newMemoryPurpose, setNewMemoryPurpose] = useState<string>('memorized');
   const [newRootFolderTitle, setNewRootFolderTitle] = useState('');
 
   // ★ 批量选择状态
@@ -136,6 +146,12 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
   const [editingMemoryId, setEditingMemoryId] = useState<string | null>(null);
   const [editContent, setEditContent] = useState('');
 
+  // ★ 树状视图状态
+  const [viewMode, setViewMode] = useState<'list' | 'tree'>('list');
+  const [treeData, setTreeData] = useState<FolderTreeNode | null>(null);
+  const [isLoadingTree, setIsLoadingTree] = useState(false);
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
+
   // ★ 审计日志状态
   const [showAuditLog, setShowAuditLog] = useState(false);
   const [auditLogs, setAuditLogs] = useState<MemoryAuditLogItem[]>([]);
@@ -143,7 +159,6 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
   const [auditSourceFilter, setAuditSourceFilter] = useState<string>('');
   const [auditSuccessFilter, setAuditSuccessFilter] = useState<string>('');
   const [auditLogOffset, setAuditLogOffset] = useState(0);
-  const AUDIT_LOG_PAGE_SIZE = 30;
 
   // ========== 加载配置和记忆列表 ==========
   const loadConfig = useCallback(async () => {
@@ -175,6 +190,19 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
     }
   }, [config?.memoryRootFolderId, t]);
 
+  const loadTree = useCallback(async () => {
+    if (!config?.memoryRootFolderId) return;
+    setIsLoadingTree(true);
+    try {
+      const tree = await getMemoryTree();
+      setTreeData(tree);
+    } catch (error: unknown) {
+      console.error('[MemoryView] Failed to load tree:', error);
+    } finally {
+      setIsLoadingTree(false);
+    }
+  }, [config?.memoryRootFolderId]);
+
   useEffect(() => {
     loadConfig();
   }, [loadConfig]);
@@ -185,7 +213,14 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
     }
   }, [config?.memoryRootFolderId, loadMemories]);
 
+  useEffect(() => {
+    if (config?.memoryRootFolderId && viewMode === 'tree') {
+      loadTree();
+    }
+  }, [config?.memoryRootFolderId, viewMode, loadTree]);
+
   // ========== 搜索 ==========
+  const viewModeBeforeSearch = React.useRef<'list' | 'tree'>('list');
   const handleSearch = useCallback(async () => {
     if (!searchQuery.trim()) {
       setIsSearchMode(false);
@@ -193,8 +228,12 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
       return;
     }
 
+    if (!isSearchMode) {
+      viewModeBeforeSearch.current = viewMode;
+    }
     setIsLoading(true);
     setIsSearchMode(true);
+    setViewMode('list');
     try {
       const results = await searchMemory(searchQuery, 20);
       setSearchResults(results);
@@ -204,12 +243,13 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
     } finally {
       setIsLoading(false);
     }
-  }, [searchQuery, t]);
+  }, [searchQuery, isSearchMode, viewMode, t]);
 
   const handleClearSearch = useCallback(() => {
     setSearchQuery('');
     setIsSearchMode(false);
     setSearchResults([]);
+    setViewMode(viewModeBeforeSearch.current);
   }, []);
 
   // ========== 创建记忆 ==========
@@ -221,7 +261,8 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
 
     setIsLoading(true);
     try {
-      const result = await writeMemorySmart(newMemoryTitle, newMemoryContent);
+      const purposeArg = newMemoryPurpose !== 'memorized' ? newMemoryPurpose as MemoryPurposeType : undefined;
+      const result = await writeMemorySmart(newMemoryTitle, newMemoryContent, undefined, undefined, purposeArg);
       let msg: string;
       let level: 'success' | 'warning' = 'success';
       if (result.downgraded) {
@@ -237,6 +278,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
       setIsCreatingInline(false);
       setNewMemoryTitle('');
       setNewMemoryContent('');
+      setNewMemoryPurpose('memorized');
       loadMemories();
     } catch (error: unknown) {
       console.error('[MemoryView] Create failed:', error);
@@ -244,12 +286,13 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
     } finally {
       setIsLoading(false);
     }
-  }, [newMemoryTitle, newMemoryContent, t, loadMemories]);
+  }, [newMemoryTitle, newMemoryContent, newMemoryPurpose, t, loadMemories]);
 
   const handleCancelCreate = useCallback(() => {
     setIsCreatingInline(false);
     setNewMemoryTitle('');
     setNewMemoryContent('');
+    setNewMemoryPurpose('memorized');
   }, []);
 
   // ========== 内联展开预览 ==========
@@ -349,14 +392,11 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
 
     setIsLoading(true);
     try {
-      const results = await Promise.allSettled(
-        Array.from(selectedIds).map((id) => deleteMemory(id))
-      );
-      const failed = results.filter((r) => r.status === 'rejected').length;
-      if (failed > 0) {
-        showGlobalNotification('warning', t('memory.batch_delete_partial', `已删除 ${selectedIds.size - failed} 条记忆，${failed} 条失败`));
+      const result = await batchDeleteMemories(Array.from(selectedIds));
+      if (result.failed > 0) {
+        showGlobalNotification('warning', t('memory.batch_delete_partial', `已删除 ${result.succeeded} 条记忆，${result.failed} 条失败`));
       } else {
-        showGlobalNotification('success', t('memory.batch_delete_success', `已删除 ${selectedIds.size} 条记忆`));
+        showGlobalNotification('success', t('memory.batch_delete_success', `已删除 ${result.succeeded} 条记忆`));
       }
       setSelectedIds(new Set());
       setBatchMode(false);
@@ -524,7 +564,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
       const tree = treeResult.value;
       // 扁平化文件夹树
       const folders: Array<{ id: string; title: string }> = [];
-      const flatten = (nodes: FolderTreeNode[], prefix = '') => {
+      const flatten = (nodes: DstuFolderTreeNode[], prefix = '') => {
         for (const node of nodes) {
           folders.push({
             id: node.folder.id,
@@ -723,10 +763,23 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
           )}
         </div>
 
-        {/* 操作按钮 */}
+        {/* 视图切换 */}
         <NotionButton variant="ghost" size="icon" iconOnly onClick={loadMemories} disabled={isLoading} aria-label="refresh">
           <RefreshCw className={cn('w-4 h-4', isLoading && 'animate-spin')} />
         </NotionButton>
+        <NotionButton
+          variant="ghost" size="icon" iconOnly
+          onClick={() => setViewMode(viewMode === 'list' ? 'tree' : 'list')}
+          className={cn(viewMode === 'tree' && 'text-primary bg-primary/10')}
+          aria-label="tree view"
+          title={viewMode === 'tree' ? '列表视图' : '树状视图'}
+        >
+          {viewMode === 'tree' ? <List className="w-4 h-4" /> : <GitBranch className="w-4 h-4" />}
+        </NotionButton>
+
+        <div className="w-px h-5 bg-border/50" />
+
+        {/* 操作 */}
         <NotionButton
           variant="ghost" size="icon" iconOnly
           onClick={() => { setBatchMode(!batchMode); setSelectedIds(new Set()); }}
@@ -738,6 +791,10 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
         <NotionButton variant="ghost" size="icon" iconOnly onClick={handleExportMemories} disabled={isLoading} aria-label="export">
           <Download className="w-4 h-4" />
         </NotionButton>
+
+        <div className="w-px h-5 bg-border/50" />
+
+        {/* 面板 */}
         <NotionButton
           variant="ghost" size="icon" iconOnly
           onClick={handleToggleProfile}
@@ -826,6 +883,31 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
           </div>
         </div>
       </div>
+
+      {/* 统计栏 */}
+      {memories.length > 0 && !isSearchMode && (
+        <div className="px-4 py-1.5 text-[10px] text-muted-foreground/70 border-b border-border/20 flex items-center gap-3">
+          <span className="font-medium text-muted-foreground">{memories.length} 条记忆</span>
+          {(() => {
+            const counts: Record<string, number> = {};
+            for (const m of memories) {
+              const p = m.memoryPurpose || 'memorized';
+              counts[p] = (counts[p] || 0) + 1;
+            }
+            return Object.entries(counts).map(([key, count]) => (
+              <span key={key} className={cn('px-1.5 py-0 rounded', PURPOSE_BADGE_STYLES[key] || 'bg-muted')}>
+                {PURPOSE_LABELS[key] || key} {count}
+              </span>
+            ));
+          })()}
+          {memories.filter(m => m.isImportant).length > 0 && (
+            <span className="flex items-center gap-0.5">
+              <Star className="w-2.5 h-2.5 text-amber-500" fill="currentColor" />
+              {memories.filter(m => m.isImportant).length}
+            </span>
+          )}
+        </div>
+      )}
 
       {/* 记忆列表 */}
       <CustomScrollArea className="flex-1">
@@ -948,6 +1030,25 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                 className="w-full px-3 py-2 text-sm bg-muted/30 border-transparent rounded-md resize-none focus:border-border focus:bg-background focus:outline-none transition-colors"
               />
 
+              {/* 目的分类选择 */}
+              <div className="flex items-center gap-1">
+                <span className="text-xs text-muted-foreground mr-1.5">{t('memory.purpose', '分类')}:</span>
+                {(['memorized', 'internalized', 'supplementary', 'systemic'] as const).map((p) => (
+                  <button
+                    key={p}
+                    onClick={() => setNewMemoryPurpose(p)}
+                    className={cn(
+                      'px-2 py-0.5 rounded text-[11px] transition-colors',
+                      newMemoryPurpose === p
+                        ? (PURPOSE_BADGE_STYLES[p] || 'bg-primary/15 text-primary') + ' font-medium'
+                        : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
+                    )}
+                  >
+                    {PURPOSE_LABELS[p]}
+                  </button>
+                ))}
+              </div>
+
               <div className="flex gap-2 pt-1">
                 <NotionButton variant="ghost" size="sm" onClick={handleCancelCreate} disabled={isLoading} className="flex-1 !h-9">
                   {t('common:cancel', '取消')}
@@ -960,12 +1061,56 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
             </div>
           )}
 
+          {/* 树状视图 */}
+          {viewMode === 'tree' && !isSearchMode && (
+            isLoadingTree ? (
+              <div className="flex items-center justify-center h-32">
+                <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+              </div>
+            ) : treeData ? (
+              <div className="space-y-0.5">
+                <MemoryTreeNode
+                  node={treeData}
+                  expandedFolders={expandedFolders}
+                  noteTitleMap={Object.fromEntries(memories.map(m => [m.id, { title: m.title, memoryType: m.memoryType, memoryPurpose: m.memoryPurpose, isImportant: m.isImportant, isStale: m.isStale } as NoteMetaInfo]))}
+                  onToggleFolder={(folderId) => {
+                    setExpandedFolders(prev => {
+                      const next = new Set(prev);
+                      if (next.has(folderId)) next.delete(folderId); else next.add(folderId);
+                      return next;
+                    });
+                  }}
+                  onClickNote={handleToggleExpand}
+                  onDeleteNote={handleDeleteMemory}
+                  onOpenInEditor={handleOpenInEditor}
+                  expandedMemoryId={expandedMemoryId}
+                  expandedContent={expandedContent}
+                  isLoadingContent={isLoadingContent}
+                  editingMemoryId={editingMemoryId}
+                  editContent={editContent}
+                  onEditContentChange={setEditContent}
+                  onStartEdit={handleStartEdit}
+                  onSaveEdit={handleSaveEdit}
+                  onCancelEdit={handleCancelEdit}
+                  isLoading={isLoading}
+                  depth={0}
+                  isRoot
+                />
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+                <GitBranch className="w-8 h-8 mb-2 opacity-40" />
+                <span className="text-sm">{t('memory.tree_empty', '暂无记忆树数据')}</span>
+              </div>
+            )
+          )}
+
           {/* 列表内容 - Notion 风格 */}
-          {isLoading && memories.length === 0 && !loadError ? (
+          {viewMode === 'list' && isLoading && memories.length === 0 && !loadError ? (
             <div className="flex items-center justify-center h-32">
               <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
             </div>
-          ) : loadError && !isSearchMode ? (
+          ) : viewMode === 'list' && loadError && !isSearchMode ? (
             <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
               <AlertCircle className="w-8 h-8 mb-2 text-destructive/60" />
               <span className="text-sm mb-1 text-foreground font-medium">
@@ -982,7 +1127,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                 {t('common:retry', '重试')}
               </NotionButton>
             </div>
-          ) : isSearchMode ? (
+          ) : viewMode === 'list' && isSearchMode ? (
             // 搜索结果
             searchResults.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
@@ -1021,66 +1166,29 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                       </NotionButton>
                       {/* 内联展开预览 + 编辑 */}
                       {isExpanded && (
-                        <div className="mx-3 mb-2 rounded-md border border-border/40 bg-card/50 overflow-hidden">
-                          {isLoadingContent ? (
-                            <div className="flex items-center justify-center py-6">
-                              <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
-                            </div>
-                          ) : expandedContent ? (
-                            <>
-                              {editingMemoryId === result.noteId ? (
-                                <div className="p-3 space-y-2">
-                                  <textarea
-                                    value={editContent}
-                                    onChange={(e) => setEditContent(e.target.value)}
-                                    rows={4}
-                                    autoFocus
-                                    className="w-full px-3 py-2 text-xs bg-muted/30 border-transparent rounded-md resize-none focus:border-border focus:bg-background focus:outline-none transition-colors"
-                                  />
-                                  <div className="flex gap-2">
-                                    <NotionButton variant="ghost" size="sm" onClick={handleCancelEdit} className="!h-auto !px-2 !py-1 text-xs">
-                                      <X className="w-3 h-3" />
-                                      {t('common:cancel', '取消')}
-                                    </NotionButton>
-                                    <NotionButton variant="primary" size="sm" onClick={handleSaveEdit} disabled={isLoading} className="!h-auto !px-2 !py-1 text-xs">
-                                      <Save className="w-3 h-3" />
-                                      {t('common:save', '保存')}
-                                    </NotionButton>
-                                  </div>
-                                </div>
-                              ) : (
-                                <div className="px-3 py-2 text-xs text-muted-foreground whitespace-pre-wrap line-clamp-6 leading-relaxed">
-                                  {expandedContent.content || t('memory.no_content', '（无内容）')}
-                                </div>
-                              )}
-                              <div className="flex items-center justify-between px-3 py-2 border-t border-border/30 bg-muted/20">
-                                <div className="flex items-center gap-1.5">
-                                  <NotionButton variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); handleDeleteMemory(result.noteId); }} className="text-rose-500 hover:bg-rose-500/10 !h-auto !px-2 !py-1 text-xs">
-                                    <Trash2 className="w-3 h-3" />
-                                    {t('common:delete', '删除')}
-                                  </NotionButton>
-                                  {editingMemoryId !== result.noteId && (
-                                    <NotionButton variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); handleStartEdit(result.noteId, expandedContent.content || ''); }} className="text-muted-foreground hover:bg-muted/40 !h-auto !px-2 !py-1 text-xs">
-                                      <Edit3 className="w-3 h-3" />
-                                      {t('memory.edit', '编辑')}
-                                    </NotionButton>
-                                  )}
-                                </div>
-                                <NotionButton variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); handleOpenInEditor(result.noteId, result.noteTitle); }} className="text-primary bg-primary/10 hover:bg-primary/15 !h-auto !px-2.5 !py-1 text-xs font-medium">
-                                  <ExternalLink className="w-3 h-3" />
-                                  {t('memory.open_in_editor', '在编辑器中打开')}
-                                </NotionButton>
-                              </div>
-                            </>
-                          ) : null}
-                        </div>
+                        <MemoryExpandPanel
+                          noteId={result.noteId}
+                          noteTitle={result.noteTitle}
+                          isLoadingContent={isLoadingContent}
+                          expandedContent={expandedContent}
+                          editingMemoryId={editingMemoryId}
+                          editContent={editContent}
+                          onEditContentChange={setEditContent}
+                          onStartEdit={handleStartEdit}
+                          onSaveEdit={handleSaveEdit}
+                          onCancelEdit={handleCancelEdit}
+                          onDeleteNote={handleDeleteMemory}
+                          onOpenInEditor={handleOpenInEditor}
+                          isLoading={isLoading}
+                          className="mx-3 mb-2"
+                        />
                       )}
                     </div>
                   );
                 })}
               </div>
             )
-          ) : memories.length === 0 ? (
+          ) : viewMode === 'list' && memories.length === 0 ? (
             // 空状态 - 更简洁
             <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
               <MemoryIcon size={40} className="mb-3 opacity-40" />
@@ -1089,7 +1197,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                 {t('memory.create_first', '创建第一条记忆')}
               </NotionButton>
             </div>
-          ) : (
+          ) : viewMode === 'list' ? (
             // 记忆列表 - 内联展开布局 + 批量选择 + 内联编辑
             <div className="space-y-0.5">
               {memories.map((memory) => {
@@ -1125,6 +1233,14 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                               笔记
                             </span>
                           )}
+                          {memory.memoryPurpose && memory.memoryPurpose !== 'memorized' && (
+                            <span className={cn(
+                              'px-1.5 py-0 rounded text-[9px] font-medium flex-shrink-0',
+                              PURPOSE_BADGE_STYLES[memory.memoryPurpose] || 'bg-muted text-muted-foreground'
+                            )}>
+                              {PURPOSE_LABELS[memory.memoryPurpose] || memory.memoryPurpose}
+                            </span>
+                          )}
                           {memory.isImportant && (
                             <Star className="w-3 h-3 text-amber-500 flex-shrink-0" fill="currentColor" />
                           )}
@@ -1148,77 +1264,29 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                         </NotionButton>
                       )}
                     </div>
-                    {/* 内联展开预览 + 编辑 */}
                     {isExpanded && !batchMode && (
-                      <div className="mx-3 mb-2 rounded-md border border-border/40 bg-card/50 overflow-hidden">
-                        {isLoadingContent ? (
-                          <div className="flex items-center justify-center py-6">
-                            <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
-                          </div>
-                        ) : expandedContent ? (
-                          <>
-                            {isEditing ? (
-                              <div className="p-3 space-y-2">
-                                <textarea
-                                  ref={(el) => {
-                                    if (el) {
-                                      el.style.height = 'auto';
-                                      el.style.height = el.scrollHeight + 'px';
-                                    }
-                                  }}
-                                  value={editContent}
-                                  onChange={(e) => {
-                                    setEditContent(e.target.value);
-                                    const el = e.target;
-                                    el.style.height = 'auto';
-                                    el.style.height = el.scrollHeight + 'px';
-                                  }}
-                                  autoFocus
-                                  className="w-full px-3 py-2 text-xs bg-muted/30 border-transparent rounded-md resize-none overflow-hidden focus:border-border focus:bg-background focus:outline-none transition-colors"
-                                />
-                                <div className="flex gap-2">
-                                  <NotionButton variant="ghost" size="sm" onClick={handleCancelEdit} className="!h-auto !px-2 !py-1 text-xs">
-                                    <X className="w-3 h-3" />
-                                    {t('common:cancel', '取消')}
-                                  </NotionButton>
-                                  <NotionButton variant="primary" size="sm" onClick={handleSaveEdit} disabled={isLoading} className="!h-auto !px-2 !py-1 text-xs">
-                                    <Save className="w-3 h-3" />
-                                    {t('common:save', '保存')}
-                                  </NotionButton>
-                                </div>
-                              </div>
-                            ) : (
-                              <div className="px-3 py-2 text-xs text-muted-foreground whitespace-pre-wrap line-clamp-6 leading-relaxed">
-                                {expandedContent.content || t('memory.no_content', '（无内容）')}
-                              </div>
-                            )}
-                            <div className="flex items-center justify-between px-3 py-2 border-t border-border/30 bg-muted/20">
-                              <div className="flex items-center gap-1.5">
-                                <NotionButton variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); handleDeleteMemory(memory.id); }} className="text-rose-500 hover:bg-rose-500/10 !h-auto !px-2 !py-1 text-xs">
-                                  <Trash2 className="w-3 h-3" />
-                                  {t('common:delete', '删除')}
-                                </NotionButton>
-                                {!isEditing && (
-                                  <NotionButton variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); handleStartEdit(memory.id, expandedContent.content || ''); }} className="text-muted-foreground hover:bg-muted/40 !h-auto !px-2 !py-1 text-xs">
-                                    <Edit3 className="w-3 h-3" />
-                                    {t('memory.edit', '编辑')}
-                                  </NotionButton>
-                                )}
-                              </div>
-                              <NotionButton variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); handleOpenInEditor(memory.id, memory.title); }} className="text-primary bg-primary/10 hover:bg-primary/15 !h-auto !px-2.5 !py-1 text-xs font-medium">
-                                <ExternalLink className="w-3 h-3" />
-                                {t('memory.open_in_editor', '在编辑器中打开')}
-                              </NotionButton>
-                            </div>
-                          </>
-                        ) : null}
-                      </div>
+                      <MemoryExpandPanel
+                        noteId={memory.id}
+                        noteTitle={memory.title}
+                        isLoadingContent={isLoadingContent}
+                        expandedContent={expandedContent}
+                        editingMemoryId={editingMemoryId}
+                        editContent={editContent}
+                        onEditContentChange={setEditContent}
+                        onStartEdit={handleStartEdit}
+                        onSaveEdit={handleSaveEdit}
+                        onCancelEdit={handleCancelEdit}
+                        onDeleteNote={handleDeleteMemory}
+                        onOpenInEditor={handleOpenInEditor}
+                        isLoading={isLoading}
+                        className="mx-3 mb-2"
+                      />
                     )}
                   </div>
                 );
               })}
             </div>
-          )}
+          ) : null}
         </div>
       </CustomScrollArea>
 
@@ -1259,14 +1327,303 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
 };
 
 // ============================================================================
+// 树状视图节点组件
+// ============================================================================
+
+interface NoteMetaInfo {
+  title: string;
+  memoryType?: string;
+  memoryPurpose?: string;
+  isImportant?: boolean;
+  isStale?: boolean;
+}
+
+interface MemoryTreeNodeProps {
+  node: FolderTreeNode;
+  expandedFolders: Set<string>;
+  noteTitleMap: Record<string, NoteMetaInfo>;
+  onToggleFolder: (folderId: string) => void;
+  onClickNote: (noteId: string) => void;
+  onDeleteNote: (noteId: string) => void;
+  onOpenInEditor: (noteId: string, title: string) => void;
+  expandedMemoryId: string | null;
+  expandedContent: MemoryReadOutput | null;
+  isLoadingContent: boolean;
+  editingMemoryId: string | null;
+  editContent: string;
+  onEditContentChange: (content: string) => void;
+  onStartEdit: (noteId: string, content: string) => void;
+  onSaveEdit: () => void;
+  onCancelEdit: () => void;
+  isLoading: boolean;
+  depth: number;
+  isRoot?: boolean;
+}
+
+const MemoryTreeNode: React.FC<MemoryTreeNodeProps> = React.memo(({
+  node, expandedFolders, noteTitleMap, onToggleFolder, onClickNote, onDeleteNote, onOpenInEditor,
+  expandedMemoryId, expandedContent, isLoadingContent,
+  editingMemoryId, editContent, onEditContentChange, onStartEdit, onSaveEdit, onCancelEdit,
+  isLoading, depth, isRoot,
+}) => {
+  const isFolderExpanded = isRoot || expandedFolders.has(node.folder.id);
+  const hasChildren = node.children.length > 0 || node.items.length > 0;
+  const paddingLeft = depth * 16;
+
+  return (
+    <div>
+      {!isRoot && (
+        <div
+          className={cn(
+            'flex items-center gap-2 px-3 py-1.5 cursor-pointer rounded-md transition-colors',
+            'hover:bg-muted/40',
+            isFolderExpanded && 'bg-muted/20'
+          )}
+          style={{ paddingLeft: `${paddingLeft + 12}px` }}
+          onClick={() => onToggleFolder(node.folder.id)}
+        >
+          <ChevronRight className={cn(
+            'w-3.5 h-3.5 text-muted-foreground transition-transform duration-200 flex-shrink-0',
+            isFolderExpanded && 'rotate-90'
+          )} />
+          <Folder className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
+          <span className="text-sm font-medium truncate">{node.folder.title}</span>
+          {hasChildren && (
+            <span className="text-[10px] text-muted-foreground/50 ml-auto">
+              {node.items.length}
+            </span>
+          )}
+        </div>
+      )}
+
+      {isFolderExpanded && (
+        <div>
+          {node.children.map((child) => (
+            <MemoryTreeNode
+              key={child.folder.id}
+              node={child}
+              expandedFolders={expandedFolders}
+              noteTitleMap={noteTitleMap}
+              onToggleFolder={onToggleFolder}
+              onClickNote={onClickNote}
+              onDeleteNote={onDeleteNote}
+              onOpenInEditor={onOpenInEditor}
+              expandedMemoryId={expandedMemoryId}
+              expandedContent={expandedContent}
+              isLoadingContent={isLoadingContent}
+              editingMemoryId={editingMemoryId}
+              editContent={editContent}
+              onEditContentChange={onEditContentChange}
+              onStartEdit={onStartEdit}
+              onSaveEdit={onSaveEdit}
+              onCancelEdit={onCancelEdit}
+              isLoading={isLoading}
+              depth={isRoot ? depth : depth + 1}
+            />
+          ))}
+
+          {node.items
+            .filter((item) => item.itemType === 'note')
+            .map((item) => {
+              const noteId = item.itemId;
+              const isNoteExpanded = expandedMemoryId === noteId;
+              const childPadding = (isRoot ? depth : depth + 1) * 16;
+              const meta = noteTitleMap[noteId];
+              const noteTitle = meta?.title || noteId;
+
+              return (
+                <div key={item.id}>
+                  <div
+                    className={cn(
+                      'group flex items-center gap-2 px-3 py-2 cursor-pointer rounded-md transition-colors',
+                      isNoteExpanded ? 'bg-muted/50' : 'hover:bg-muted/40'
+                    )}
+                    style={{ paddingLeft: `${childPadding + 28}px` }}
+                    onClick={() => onClickNote(noteId)}
+                  >
+                    <ChevronRight className={cn(
+                      'w-3 h-3 text-muted-foreground flex-shrink-0 transition-transform duration-200',
+                      isNoteExpanded && 'rotate-90'
+                    )} />
+                    <FileText className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+                    <span className="text-sm truncate flex-1">{noteTitle}</span>
+                    {meta?.memoryPurpose && meta.memoryPurpose !== 'memorized' && (
+                      <span className={cn(
+                        'px-1.5 py-0 rounded text-[9px] font-medium flex-shrink-0',
+                        PURPOSE_BADGE_STYLES[meta.memoryPurpose] || 'bg-muted text-muted-foreground'
+                      )}>
+                        {PURPOSE_LABELS[meta.memoryPurpose] || meta.memoryPurpose}
+                      </span>
+                    )}
+                    {meta?.isImportant && (
+                      <Star className="w-3 h-3 text-amber-500 flex-shrink-0" fill="currentColor" />
+                    )}
+                    <NotionButton
+                      variant="ghost" size="icon" iconOnly
+                      className="!p-1 text-muted-foreground/0 group-hover:text-muted-foreground hover:text-rose-500 hover:bg-rose-500/10"
+                      onClick={(e) => { e.stopPropagation(); onDeleteNote(noteId); }}
+                      aria-label="delete"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </NotionButton>
+                  </div>
+
+                  {isNoteExpanded && (
+                    <MemoryExpandPanel
+                      noteId={noteId}
+                      noteTitle={noteTitle}
+                      isLoadingContent={isLoadingContent}
+                      expandedContent={expandedContent}
+                      editingMemoryId={editingMemoryId}
+                      editContent={editContent}
+                      onEditContentChange={onEditContentChange}
+                      onStartEdit={onStartEdit}
+                      onSaveEdit={onSaveEdit}
+                      onCancelEdit={onCancelEdit}
+                      onDeleteNote={onDeleteNote}
+                      onOpenInEditor={onOpenInEditor}
+                      isLoading={isLoading}
+                      className="mx-3 mb-1"
+                    />
+                  )}
+                </div>
+              );
+            })}
+        </div>
+      )}
+    </div>
+  );
+});
+
+// ============================================================================
+// 内联展开面板（搜索结果/列表/树状共用）
+// ============================================================================
+
+interface MemoryExpandPanelProps {
+  noteId: string;
+  noteTitle: string;
+  isLoadingContent: boolean;
+  expandedContent: MemoryReadOutput | null;
+  editingMemoryId: string | null;
+  editContent: string;
+  onEditContentChange: (value: string) => void;
+  onStartEdit: (noteId: string, content: string) => void;
+  onSaveEdit: () => void;
+  onCancelEdit: () => void;
+  onDeleteNote: (noteId: string) => void;
+  onOpenInEditor: (noteId: string, title: string) => void;
+  isLoading: boolean;
+  className?: string;
+}
+
+const MemoryExpandPanel: React.FC<MemoryExpandPanelProps> = React.memo(({
+  noteId, noteTitle, isLoadingContent, expandedContent,
+  editingMemoryId, editContent, onEditContentChange,
+  onStartEdit, onSaveEdit, onCancelEdit,
+  onDeleteNote, onOpenInEditor, isLoading, className,
+}) => {
+  const isEditing = editingMemoryId === noteId;
+
+  return (
+    <div className={cn('rounded-md border border-border/40 bg-card/50 overflow-hidden', className)}>
+      {isLoadingContent ? (
+        <div className="flex items-center justify-center py-6">
+          <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+        </div>
+      ) : expandedContent ? (
+        <>
+          {isEditing ? (
+            <div className="p-3 space-y-2">
+              <textarea
+                ref={(el) => {
+                  if (el) {
+                    el.style.height = 'auto';
+                    el.style.height = el.scrollHeight + 'px';
+                  }
+                }}
+                value={editContent}
+                onChange={(e) => {
+                  onEditContentChange(e.target.value);
+                  const el = e.target;
+                  el.style.height = 'auto';
+                  el.style.height = el.scrollHeight + 'px';
+                }}
+                autoFocus
+                className="w-full px-3 py-2 text-xs bg-muted/30 border-transparent rounded-md resize-none overflow-hidden focus:border-border focus:bg-background focus:outline-none transition-colors"
+              />
+              <div className="flex gap-2">
+                <NotionButton variant="ghost" size="sm" onClick={onCancelEdit} className="!h-auto !px-2 !py-1 text-xs">
+                  <X className="w-3 h-3" />取消
+                </NotionButton>
+                <NotionButton variant="primary" size="sm" onClick={onSaveEdit} disabled={isLoading} className="!h-auto !px-2 !py-1 text-xs">
+                  <Save className="w-3 h-3" />保存
+                </NotionButton>
+              </div>
+            </div>
+          ) : (
+            <div className="px-3 py-2 text-xs text-muted-foreground whitespace-pre-wrap line-clamp-6 leading-relaxed">
+              {expandedContent.content || '（无内容）'}
+            </div>
+          )}
+          <div className="flex items-center justify-between px-3 py-1.5 border-t border-border/30 bg-muted/20">
+            <div className="flex items-center gap-1.5">
+              <NotionButton variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); onDeleteNote(noteId); }} className="text-rose-500 hover:bg-rose-500/10 !h-auto !px-2 !py-1 text-xs">
+                <Trash2 className="w-3 h-3" />删除
+              </NotionButton>
+              {!isEditing && (
+                <NotionButton variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); onStartEdit(noteId, expandedContent.content || ''); }} className="text-muted-foreground hover:bg-muted/40 !h-auto !px-2 !py-1 text-xs">
+                  <Edit3 className="w-3 h-3" />编辑
+                </NotionButton>
+              )}
+            </div>
+            <NotionButton variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); onOpenInEditor(noteId, noteTitle); }} className="text-primary bg-primary/10 hover:bg-primary/15 !h-auto !px-2 !py-1 text-xs font-medium">
+              <ExternalLink className="w-3 h-3" />编辑器
+            </NotionButton>
+          </div>
+        </>
+      ) : null}
+    </div>
+  );
+});
+
+// ============================================================================
 // 审计日志行组件
 // ============================================================================
+
+const PURPOSE_LABELS: Record<string, string> = {
+  internalized: '内化',
+  memorized: '记忆',
+  supplementary: '补充',
+  systemic: '系统',
+};
+
+const PURPOSE_BADGE_STYLES: Record<string, string> = {
+  internalized: 'bg-violet-500/10 text-violet-600',
+  supplementary: 'bg-teal-500/10 text-teal-600',
+  systemic: 'bg-slate-500/10 text-slate-500',
+};
 
 const SOURCE_LABELS: Record<string, { label: string; icon: React.ReactNode; color: string }> = {
   tool_call: { label: '工具调用', icon: <Bot className="w-3 h-3" />, color: 'text-blue-500' },
   auto_extract: { label: '自动提取', icon: <Zap className="w-3 h-3" />, color: 'text-amber-500' },
   handler: { label: '前端操作', icon: <User className="w-3 h-3" />, color: 'text-emerald-500' },
   evolution: { label: '自进化', icon: <RefreshCw className="w-3 h-3" />, color: 'text-purple-500' },
+};
+
+const OPERATION_LABELS: Record<string, string> = {
+  write: '写入',
+  write_smart: '智能写入',
+  update: '更新',
+  delete: '删除',
+  search: '搜索',
+  extract: '提取',
+  profile_refresh: '画像刷新',
+  category_refresh: '分类刷新',
+  evolution_cycle: '自进化',
+  move: '移动',
+  update_tags: '标签更新',
+  add_relation: '添加关联',
+  remove_relation: '移除关联',
 };
 
 const EVENT_COLORS: Record<string, string> = {
@@ -1309,7 +1666,7 @@ const AuditLogRow: React.FC<{ log: MemoryAuditLogItem }> = ({ log }) => {
         </span>
 
         {/* 操作 */}
-        <span className="text-[10px] text-muted-foreground flex-shrink-0">{log.operation}</span>
+        <span className="text-[10px] text-muted-foreground flex-shrink-0">{OPERATION_LABELS[log.operation] || log.operation}</span>
 
         {/* 事件标签 */}
         {log.event && (

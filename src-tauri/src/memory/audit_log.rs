@@ -53,6 +53,10 @@ pub enum MemoryOpType {
     ProfileRefresh,
     CategoryRefresh,
     EvolutionCycle,
+    Move,
+    UpdateTags,
+    AddRelation,
+    RemoveRelation,
 }
 
 impl MemoryOpType {
@@ -67,6 +71,10 @@ impl MemoryOpType {
             Self::ProfileRefresh => "profile_refresh",
             Self::CategoryRefresh => "category_refresh",
             Self::EvolutionCycle => "evolution_cycle",
+            Self::Move => "move",
+            Self::UpdateTags => "update_tags",
+            Self::AddRelation => "add_relation",
+            Self::RemoveRelation => "remove_relation",
         }
     }
 }

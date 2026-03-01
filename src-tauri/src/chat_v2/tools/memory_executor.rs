@@ -590,6 +590,11 @@ impl MemoryToolExecutor {
             .and_then(|v| v.as_str())
             .map(MemoryType::from_str)
             .unwrap_or(MemoryType::Fact);
+        let memory_purpose = call
+            .arguments
+            .get("memory_purpose")
+            .and_then(|v| v.as_str())
+            .map(crate::memory::MemoryPurpose::from_str);
 
         // 敏感信息过滤（所有类型都检查）
         if crate::memory::auto_extractor::MemoryAutoExtractor::contains_sensitive_pattern_pub(content)
@@ -637,7 +642,7 @@ impl MemoryToolExecutor {
 
         let result = if let Some(cancel_token) = ctx.cancellation_token() {
             tokio::select! {
-                res = service.write_smart_with_source(folder, title, content, MemoryOpSource::ToolCall, None, memory_type) => res.map_err(|e| e.to_string())?,
+                res = service.write_smart_with_source(folder, title, content, MemoryOpSource::ToolCall, None, memory_type, memory_purpose) => res.map_err(|e| e.to_string())?,
                 _ = cancel_token.cancelled() => {
                     log::info!("[MemoryToolExecutor] Memory write_smart cancelled");
                     return Err("Memory write_smart cancelled during execution".to_string());
@@ -645,7 +650,7 @@ impl MemoryToolExecutor {
             }
         } else {
             service
-                .write_smart_with_source(folder, title, content, MemoryOpSource::ToolCall, None, memory_type)
+                .write_smart_with_source(folder, title, content, MemoryOpSource::ToolCall, None, memory_type, memory_purpose)
                 .await
                 .map_err(|e| e.to_string())?
         };

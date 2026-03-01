@@ -32,6 +32,10 @@ const SMART_WRITE_MUTATION_CONFIDENCE_THRESHOLD: f32 = 0.65;
 
 /// 记忆类型标签前缀
 const TAG_TYPE_PREFIX: &str = "_type:";
+/// 记忆目的标签前缀
+const TAG_PURPOSE_PREFIX: &str = "_purpose:";
+/// 记忆关联引用标签前缀（轻量关联，不依赖关系表）
+const TAG_REF_PREFIX: &str = "_ref:";
 
 /// 记忆类型
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -79,6 +83,67 @@ impl MemoryType {
         match self {
             Self::Fact => 200,
             Self::Note => 2000,
+        }
+    }
+}
+
+/// 记忆目的（重要程度分类，影响检索时加权和 system prompt 注入策略）
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum MemoryPurpose {
+    /// 内化型：用户需要理解并记忆的核心内容（最高优先级）
+    Internalized,
+    /// 记忆型：仅需单独记忆的事实（中高优先级）
+    Memorized,
+    /// 补充知识型：辅助理解的补充内容（中低优先级）
+    Supplementary,
+    /// 系统型：系统用于理解用户的元信息（不直接呈现给用户）
+    Systemic,
+}
+
+impl Default for MemoryPurpose {
+    fn default() -> Self {
+        Self::Memorized
+    }
+}
+
+impl MemoryPurpose {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Internalized => "internalized",
+            Self::Memorized => "memorized",
+            Self::Supplementary => "supplementary",
+            Self::Systemic => "systemic",
+        }
+    }
+
+    pub fn from_str(s: &str) -> Self {
+        match s.to_lowercase().as_str() {
+            "internalized" => Self::Internalized,
+            "supplementary" => Self::Supplementary,
+            "systemic" => Self::Systemic,
+            _ => Self::Memorized,
+        }
+    }
+
+    pub fn to_tag(&self) -> String {
+        format!("{}{}", TAG_PURPOSE_PREFIX, self.as_str())
+    }
+
+    pub fn from_tags(tags: &[String]) -> Self {
+        tags.iter()
+            .find_map(|t| t.strip_prefix(TAG_PURPOSE_PREFIX))
+            .map(Self::from_str)
+            .unwrap_or(Self::Memorized)
+    }
+
+    /// 检索时权重系数：内化型最重要，系统型最低
+    pub fn search_weight(&self) -> f32 {
+        match self {
+            Self::Internalized => 1.4,
+            Self::Memorized => 1.0,
+            Self::Supplementary => 0.8,
+            Self::Systemic => 0.65,
         }
     }
 }
@@ -136,6 +201,9 @@ pub struct MemoryListItem {
     /// 记忆类型：fact（原子事实）| note（经验笔记）
     #[serde(default)]
     pub memory_type: String,
+    /// 记忆目的：internalized | memorized | supplementary | systemic
+    #[serde(default)]
+    pub memory_purpose: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -492,7 +560,7 @@ impl MemoryService {
         content: &str,
         mode: WriteMode,
     ) -> VfsResult<MemoryWriteOutput> {
-        self.write_typed(folder_path, title, content, mode, MemoryType::Fact)
+        self.write_typed(folder_path, title, content, mode, MemoryType::Fact, None)
     }
 
     pub fn write_typed(
@@ -502,6 +570,7 @@ impl MemoryService {
         content: &str,
         mode: WriteMode,
         memory_type: MemoryType,
+        purpose: Option<MemoryPurpose>,
     ) -> VfsResult<MemoryWriteOutput> {
         let root_id = self.ensure_root_folder_id()?;
 
@@ -533,11 +602,14 @@ impl MemoryService {
             Some(root_id.clone())
         };
 
-        let type_tags = if memory_type == MemoryType::Note {
+        let mut type_tags = if memory_type == MemoryType::Note {
             vec![memory_type.to_tag()]
         } else {
             vec![]
         };
+        if let Some(p) = purpose {
+            type_tags.push(p.to_tag());
+        }
 
         match mode {
             WriteMode::Create => {
@@ -643,11 +715,11 @@ impl MemoryService {
         title: &str,
         content: &str,
     ) -> VfsResult<SmartWriteOutput> {
-        self.write_smart_with_source(folder_path, title, content, MemoryOpSource::Handler, None, MemoryType::Fact)
+        self.write_smart_with_source(folder_path, title, content, MemoryOpSource::Handler, None, MemoryType::Fact, None)
             .await
     }
 
-    /// 智能写入（带来源标记和记忆类型）
+    /// 智能写入（带来源标记、记忆类型和目的）
     pub async fn write_smart_with_source(
         &self,
         folder_path: Option<&str>,
@@ -656,6 +728,7 @@ impl MemoryService {
         source: MemoryOpSource,
         session_id: Option<&str>,
         memory_type: MemoryType,
+        purpose: Option<MemoryPurpose>,
     ) -> VfsResult<SmartWriteOutput> {
         let timer = OpTimer::start();
         self.ensure_root_folder_id()?;
@@ -695,7 +768,7 @@ impl MemoryService {
                     downgraded: false,
                 });
             }
-            let result = self.write_typed(folder_path, title, content, WriteMode::Create, memory_type)?;
+            let result = self.write_typed(folder_path, title, content, WriteMode::Create, memory_type, purpose)?;
             return Ok(SmartWriteOutput {
                 note_id: result.note_id,
                 event: "ADD".to_string(),
@@ -710,7 +783,7 @@ impl MemoryService {
         // Note 类型快速通道：跳过 LLM 决策，直接写入
         // 用户明确要求保存的经验/方法论不需要"是否重复"的判断
         if memory_type == MemoryType::Note {
-            let result = self.write_typed(folder_path, title, content, WriteMode::Create, MemoryType::Note)?;
+            let result = self.write_typed(folder_path, title, content, WriteMode::Create, MemoryType::Note, purpose)?;
             self.index_immediately(&result.resource_id).await;
 
             let output = SmartWriteOutput {
@@ -795,7 +868,7 @@ impl MemoryService {
         // 4. 根据决策执行操作
         let result = match decision.event {
             MemoryEvent::ADD => {
-                let result = self.write(folder_path, title, content, WriteMode::Create)?;
+                let result = self.write_typed(folder_path, title, content, WriteMode::Create, memory_type, purpose)?;
                 self.index_immediately(&result.resource_id).await;
                 Ok(SmartWriteOutput {
                     note_id: result.note_id,
@@ -824,7 +897,7 @@ impl MemoryService {
                         }
                         Err(VfsError::NotFound { .. }) => {
                             let result =
-                                self.write(folder_path, title, content, WriteMode::Create)?;
+                                self.write_typed(folder_path, title, content, WriteMode::Create, memory_type, purpose)?;
                             self.index_immediately(&result.resource_id).await;
                             Ok(SmartWriteOutput {
                                 note_id: result.note_id,
@@ -842,7 +915,7 @@ impl MemoryService {
                         Err(e) => Err(e),
                     }
                 } else {
-                    let result = self.write(folder_path, title, content, WriteMode::Create)?;
+                    let result = self.write_typed(folder_path, title, content, WriteMode::Create, memory_type, purpose)?;
                     self.index_immediately(&result.resource_id).await;
                     Ok(SmartWriteOutput {
                         note_id: result.note_id,
@@ -880,7 +953,7 @@ impl MemoryService {
                         }
                         Err(VfsError::NotFound { .. }) => {
                             let result =
-                                self.write(folder_path, title, content, WriteMode::Create)?;
+                                self.write_typed(folder_path, title, content, WriteMode::Create, memory_type, purpose)?;
                             self.index_immediately(&result.resource_id).await;
                             Ok(SmartWriteOutput {
                                 note_id: result.note_id,
@@ -898,7 +971,7 @@ impl MemoryService {
                         Err(e) => Err(e),
                     }
                 } else {
-                    let result = self.write(folder_path, title, content, WriteMode::Create)?;
+                    let result = self.write_typed(folder_path, title, content, WriteMode::Create, memory_type, purpose)?;
                     self.index_immediately(&result.resource_id).await;
                     Ok(SmartWriteOutput {
                         note_id: result.note_id,
@@ -918,7 +991,7 @@ impl MemoryService {
                     } else {
                         info!("[Memory] DELETE conflicting memory: {}", target_id);
                     }
-                    let result = self.write(folder_path, title, content, WriteMode::Create)?;
+                    let result = self.write_typed(folder_path, title, content, WriteMode::Create, memory_type, purpose)?;
                     self.index_immediately(&result.resource_id).await;
                     Ok(SmartWriteOutput {
                         note_id: result.note_id,
@@ -930,7 +1003,7 @@ impl MemoryService {
                         downgraded: false,
                     })
                 } else {
-                    let result = self.write(folder_path, title, content, WriteMode::Create)?;
+                    let result = self.write_typed(folder_path, title, content, WriteMode::Create, memory_type, purpose)?;
                     self.index_immediately(&result.resource_id).await;
                     Ok(SmartWriteOutput {
                         note_id: result.note_id,
@@ -1091,6 +1164,7 @@ impl MemoryService {
                 let is_important = note.tags.iter().any(|t| t == "_important");
                 let is_stale = note.tags.iter().any(|t| t == "_stale");
                 let memory_type = MemoryType::from_tags(&note.tags);
+                let memory_purpose = MemoryPurpose::from_tags(&note.tags);
                 items.push(MemoryListItem {
                     id: note.id,
                     title: note.title,
@@ -1100,6 +1174,7 @@ impl MemoryService {
                     is_important,
                     is_stale,
                     memory_type: memory_type.as_str().to_string(),
+                    memory_purpose: memory_purpose.as_str().to_string(),
                 });
             }
         }
@@ -1434,6 +1509,214 @@ impl MemoryService {
         Ok(())
     }
 
+    // ========================================================================
+    // 关联型记忆（轻量 _ref: 标签方案）
+    // ========================================================================
+
+    /// 添加记忆关联（双向）：A 和 B 互相引用
+    pub fn add_relation(&self, note_id_a: &str, note_id_b: &str) -> VfsResult<()> {
+        if note_id_a == note_id_b {
+            return Err(VfsError::Other("不能将记忆与自身建立关联".to_string()));
+        }
+        let note_a = self.ensure_note_in_memory_root(note_id_a)?;
+        let note_b = self.ensure_note_in_memory_root(note_id_b)?;
+
+        let ref_tag_ab = format!("{}{}", TAG_REF_PREFIX, note_id_b);
+        let ref_tag_ba = format!("{}{}", TAG_REF_PREFIX, note_id_a);
+
+        let mut tags_a = note_a.tags.clone();
+        if !tags_a.contains(&ref_tag_ab) {
+            tags_a.push(ref_tag_ab);
+            VfsNoteRepo::update_note(
+                &self.vfs_db,
+                note_id_a,
+                VfsUpdateNoteParams { tags: Some(tags_a), ..Default::default() },
+            )?;
+        }
+
+        let mut tags_b = note_b.tags.clone();
+        if !tags_b.contains(&ref_tag_ba) {
+            tags_b.push(ref_tag_ba);
+            VfsNoteRepo::update_note(
+                &self.vfs_db,
+                note_id_b,
+                VfsUpdateNoteParams { tags: Some(tags_b), ..Default::default() },
+            )?;
+        }
+
+        info!("[Memory] Added relation: {} <-> {}", note_id_a, note_id_b);
+
+        self.audit_logger.log(&super::audit_log::MemoryAuditEntry {
+            source: MemoryOpSource::Handler,
+            operation: MemoryOpType::AddRelation,
+            success: true,
+            note_id: Some(note_id_a.to_string()),
+            title: None,
+            content_preview: None,
+            folder: None,
+            event: None,
+            confidence: None,
+            reason: Some(format!("关联 {} <-> {}", note_id_a, note_id_b)),
+            session_id: None,
+            duration_ms: None,
+            extra_json: None,
+        });
+
+        Ok(())
+    }
+
+    /// 移除记忆关联（双向）
+    pub fn remove_relation(&self, note_id_a: &str, note_id_b: &str) -> VfsResult<()> {
+        let note_a = self.ensure_note_in_memory_root(note_id_a)?;
+        let note_b = self.ensure_note_in_memory_root(note_id_b)?;
+
+        let ref_tag_ab = format!("{}{}", TAG_REF_PREFIX, note_id_b);
+        let ref_tag_ba = format!("{}{}", TAG_REF_PREFIX, note_id_a);
+
+        let tags_a: Vec<String> = note_a.tags.into_iter().filter(|t| t != &ref_tag_ab).collect();
+        VfsNoteRepo::update_note(
+            &self.vfs_db,
+            note_id_a,
+            VfsUpdateNoteParams { tags: Some(tags_a), ..Default::default() },
+        )?;
+
+        let tags_b: Vec<String> = note_b.tags.into_iter().filter(|t| t != &ref_tag_ba).collect();
+        VfsNoteRepo::update_note(
+            &self.vfs_db,
+            note_id_b,
+            VfsUpdateNoteParams { tags: Some(tags_b), ..Default::default() },
+        )?;
+
+        info!("[Memory] Removed relation: {} <-> {}", note_id_a, note_id_b);
+
+        self.audit_logger.log(&super::audit_log::MemoryAuditEntry {
+            source: MemoryOpSource::Handler,
+            operation: MemoryOpType::RemoveRelation,
+            success: true,
+            note_id: Some(note_id_a.to_string()),
+            title: None,
+            content_preview: None,
+            folder: None,
+            event: None,
+            confidence: None,
+            reason: Some(format!("解除关联 {} <-> {}", note_id_a, note_id_b)),
+            session_id: None,
+            duration_ms: None,
+            extra_json: None,
+        });
+
+        Ok(())
+    }
+
+    /// 获取与指定记忆关联的所有记忆 ID
+    pub fn get_related_ids(&self, note_id: &str) -> VfsResult<Vec<String>> {
+        let note = self.ensure_note_in_memory_root(note_id)?;
+        Ok(note.tags
+            .iter()
+            .filter_map(|t| t.strip_prefix(TAG_REF_PREFIX).map(|s| s.to_string()))
+            .collect())
+    }
+
+    // ========================================================================
+    // 标签管理
+    // ========================================================================
+
+    /// 更新记忆的标签列表（保护系统标签）
+    ///
+    /// 系统标签（以 `_` 开头）会自动保留，用户只能修改非系统标签。
+    /// 传入的 tags 中以 `_` 开头的条目会被静默忽略。
+    pub fn update_tags(&self, note_id: &str, user_tags: Vec<String>) -> VfsResult<()> {
+        let note = self.ensure_note_in_memory_root(note_id)?;
+
+        let system_tags: Vec<String> = note.tags.iter()
+            .filter(|t| t.starts_with('_'))
+            .cloned()
+            .collect();
+        let filtered_user_tags: Vec<String> = user_tags.into_iter()
+            .filter(|t| !t.starts_with('_'))
+            .collect();
+
+        let mut merged = system_tags;
+        merged.extend(filtered_user_tags);
+
+        VfsNoteRepo::update_note(
+            &self.vfs_db,
+            note_id,
+            VfsUpdateNoteParams {
+                tags: Some(merged),
+                ..Default::default()
+            },
+        )?;
+        info!("[Memory] Updated user tags for note {} (system tags preserved)", note_id);
+
+        self.audit_logger.log(&super::audit_log::MemoryAuditEntry {
+            source: MemoryOpSource::Handler,
+            operation: MemoryOpType::UpdateTags,
+            success: true,
+            note_id: Some(note_id.to_string()),
+            title: None,
+            content_preview: None,
+            folder: None,
+            event: None,
+            confidence: None,
+            reason: None,
+            session_id: None,
+            duration_ms: None,
+            extra_json: None,
+        });
+
+        Ok(())
+    }
+
+    /// 获取记忆的标签列表
+    pub fn get_tags(&self, note_id: &str) -> VfsResult<Vec<String>> {
+        let note = self.ensure_note_in_memory_root(note_id)?;
+        Ok(note.tags)
+    }
+
+    /// 移动记忆到指定文件夹路径（在记忆根目录内）
+    pub fn move_to_folder(&self, note_id: &str, target_folder_path: &str) -> VfsResult<()> {
+        let root_id = self.ensure_root_folder_id()?;
+        self.ensure_note_in_memory_root(note_id)?;
+
+        let target_folder_id = if target_folder_path.is_empty() {
+            root_id
+        } else {
+            self.ensure_folder(&root_id, target_folder_path)?
+        };
+
+        VfsFolderRepo::move_item_by_item_id(
+            &self.vfs_db,
+            "note",
+            note_id,
+            Some(&target_folder_id),
+        )?;
+
+        self.invalidate_folder_cache();
+        info!(
+            "[Memory] Moved note {} to folder path '{}'",
+            note_id, target_folder_path
+        );
+
+        self.audit_logger.log(&super::audit_log::MemoryAuditEntry {
+            source: MemoryOpSource::Handler,
+            operation: MemoryOpType::Move,
+            success: true,
+            note_id: Some(note_id.to_string()),
+            title: None,
+            content_preview: None,
+            folder: Some(target_folder_path.to_string()),
+            event: None,
+            confidence: None,
+            reason: None,
+            session_id: None,
+            duration_ms: None,
+            extra_json: None,
+        });
+
+        Ok(())
+    }
+
     fn ensure_note_in_memory_root(&self, note_id: &str) -> VfsResult<VfsNote> {
         let root_id = self.ensure_root_folder_id()?;
 
@@ -1468,7 +1751,7 @@ impl MemoryService {
         Ok(folder_ids.contains(&folder_id))
     }
 
-    /// 根据记忆标签计算搜索分数权重
+    /// 根据记忆标签计算搜索分数权重（含 purpose 加权）
     fn compute_tag_weight(tags: &[String]) -> f32 {
         let mut weight = 1.0f32;
         for tag in tags {
@@ -1478,6 +1761,7 @@ impl MemoryService {
                 weight *= 0.6;
             }
         }
+        weight *= MemoryPurpose::from_tags(tags).search_weight();
         weight
     }
 

@@ -1,6 +1,7 @@
 pub mod audit_log;
 pub mod auto_extractor;
 pub mod category_manager;
+pub mod compressor;
 pub mod config;
 pub mod evolution;
 pub mod handlers;
@@ -20,4 +21,5 @@ pub use llm_decision::{
 };
 pub use query_rewriter::{MemoryQueryRewriter, QueryRewriteResult};
 pub use reranker::MemoryReranker;
-pub use service::{MemoryListItem, MemorySearchResult, MemoryService, MemoryType, SmartWriteOutput, WriteMode};
+pub use compressor::MemoryCompressor;
+pub use service::{MemoryListItem, MemoryPurpose, MemorySearchResult, MemoryService, MemoryType, SmartWriteOutput, WriteMode};

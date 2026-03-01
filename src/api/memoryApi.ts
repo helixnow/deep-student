@@ -28,6 +28,7 @@ export interface MemoryListItem {
   isImportant: boolean;
   isStale: boolean;
   memoryType: string;
+  memoryPurpose: string;
 }
 
 export interface MemoryReadOutput {
@@ -145,6 +146,69 @@ export async function getMemoryTree(): Promise<FolderTreeNode | null> {
   return invoke<FolderTreeNode | null>('memory_get_tree');
 }
 
+export async function addMemoryRelation(noteIdA: string, noteIdB: string): Promise<void> {
+  return invoke('memory_add_relation', { noteIdA, noteIdB });
+}
+
+export async function removeMemoryRelation(noteIdA: string, noteIdB: string): Promise<void> {
+  return invoke('memory_remove_relation', { noteIdA, noteIdB });
+}
+
+export async function getRelatedMemories(noteId: string): Promise<string[]> {
+  return invoke<string[]>('memory_get_related', { noteId });
+}
+
+export async function updateMemoryTags(noteId: string, tags: string[]): Promise<void> {
+  return invoke('memory_update_tags', { noteId, tags });
+}
+
+export async function getMemoryTags(noteId: string): Promise<string[]> {
+  return invoke<string[]>('memory_get_tags', { noteId });
+}
+
+export interface MemoryAnkiDocument {
+  documentContent: string;
+  memoryCount: number;
+  documentName: string;
+}
+
+export async function memoryToAnkiDocument(
+  folderPath?: string,
+  purposeFilter?: string,
+  limit?: number
+): Promise<MemoryAnkiDocument> {
+  return invoke<MemoryAnkiDocument>('memory_to_anki_document', {
+    folderPath,
+    purposeFilter,
+    limit,
+  });
+}
+
+export interface BatchOperationResult {
+  total: number;
+  succeeded: number;
+  failed: number;
+  errors: string[];
+}
+
+export async function batchDeleteMemories(noteIds: string[]): Promise<BatchOperationResult> {
+  return invoke<BatchOperationResult>('memory_batch_delete', { noteIds });
+}
+
+export async function batchMoveMemories(
+  noteIds: string[],
+  targetFolderPath: string
+): Promise<BatchOperationResult> {
+  return invoke<BatchOperationResult>('memory_batch_move', { noteIds, targetFolderPath });
+}
+
+export async function moveMemoryToFolder(
+  noteId: string,
+  targetFolderPath: string
+): Promise<void> {
+  return invoke('memory_move_to_folder', { noteId, targetFolderPath });
+}
+
 // ★ 修复风险2：按 note_id 更新记忆
 export async function updateMemoryById(
   noteId: string,
@@ -183,17 +247,21 @@ export async function exportAllMemories(): Promise<MemoryExportItem[]> {
   return invoke<MemoryExportItem[]>('memory_export_all');
 }
 
+export type MemoryPurposeType = 'internalized' | 'memorized' | 'supplementary' | 'systemic';
+
 export async function writeMemorySmart(
   title: string,
   content: string,
   folderPath?: string,
-  memoryType?: 'fact' | 'note'
+  memoryType?: 'fact' | 'note',
+  memoryPurpose?: MemoryPurposeType
 ): Promise<SmartWriteOutput> {
   return invoke<SmartWriteOutput>('memory_write_smart', {
     folderPath,
     title,
     content,
     memoryType,
+    memoryPurpose,
   });
 }
 

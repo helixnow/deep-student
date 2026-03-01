@@ -148,6 +148,7 @@ export const vfsMemorySkill: SkillDefinition = {
           title: { type: 'string', description: '【必填】记忆标题（fact: 事实关键词，如"数学弱项"；note: 方法论概括，如"遗传大题解题方法"）' },
           content: { type: 'string', description: '【必填】记忆内容。fact 类型：关于用户的简短陈述句（≤50字）。note 类型：用户要求保存的经验、方法论、技巧等（≤2000字）。' },
           memory_type: { type: 'string', enum: ['fact', 'note'], description: '记忆类型。fact（默认）：关于用户的原子事实。note：用户明确要求保存的经验笔记/方法论/学习技巧。仅当用户明确说"记住/保存这个方法/技巧/经验"时才使用 note。' },
+          memory_purpose: { type: 'string', enum: ['internalized', 'memorized', 'supplementary', 'systemic'], description: '记忆目的。internalized：用户需要理解并内化的核心内容（最高优先级）。memorized（默认）：需要单独记忆的事实。supplementary：辅助理解的补充知识。systemic：系统用于理解用户的元信息。' },
         },
         required: ['title', 'content'],
       },

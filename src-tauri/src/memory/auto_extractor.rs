@@ -108,6 +108,7 @@ impl MemoryAutoExtractor {
                     MemoryOpSource::AutoExtract,
                     None,
                     crate::memory::MemoryType::Fact,
+                    None,
                 )
                 .await
             {
