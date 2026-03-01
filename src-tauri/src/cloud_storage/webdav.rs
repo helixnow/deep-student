@@ -629,9 +629,13 @@ impl CloudStorage for WebDavStorage {
 
             let entry_count = files.len() + subdirs.len();
             if entry_count >= JIANGUOYUN_PROPFIND_LIMIT - 1 {
-                tracing::warn!(
-                    "[WebDAV] PROPFIND 返回 {} 条目（接近坚果云 {} 上限），\
-                     目录 '{}' 下可能有未列出的文件",
+                // [P1 Fix] 当条目数达到平台上限时，记录错误级别日志并继续。
+                // 不能直接返回 Err，否则 prune_old_changes 内部的 list() 也会失败，
+                // 导致用户无法通过清理来解决问题（鸡生蛋死锁）。
+                // 返回已列出的文件，让调用方至少能处理已知文件（如执行清理）。
+                tracing::error!(
+                    "[WebDAV] PROPFIND 返回 {} 条目（达到坚果云 {} 上限），\
+                     目录 '{}' 下可能有未列出的文件！建议尽快清理旧的同步变更文件。",
                     entry_count,
                     JIANGUOYUN_PROPFIND_LIMIT,
                     dir

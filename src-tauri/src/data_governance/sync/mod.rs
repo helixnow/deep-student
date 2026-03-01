@@ -63,6 +63,9 @@ fn log_and_skip_err<T, E: std::fmt::Display>(result: Result<T, E>) -> Option<T> 
 ///
 /// 对可重试的网络操作（如上传/下载清单和变更）进行最多 `max_retries` 次尝试，
 /// 每次失败后以指数退避等待（500ms, 1s, 2s, ...）。
+///
+/// [P3 Fix] 注意：底层传输层（WebDAV/S3）可能有自己的重试机制（通常 3 次）。
+/// 调用方应使用较低的 max_retries（建议 2）以避免叠加过多重试。
 #[cfg(feature = "data_governance")]
 async fn retry_async<F, Fut, T>(
     op_name: &str,
@@ -676,7 +679,8 @@ impl SyncManager {
 
         let key = Self::device_manifest_key(&self.device_id);
 
-        retry_async("上传清单", 3, || {
+        // [P3 Fix] 降低为 2 次，避免与传输层重试叠加
+        retry_async("上传清单", 2, || {
             let json = json.clone();
             let key = key.clone();
             async move {
@@ -915,7 +919,8 @@ impl SyncManager {
                 .map_err(|e| SyncError::Network(format!("上传变更数据失败: {}", e)))?;
         } else {
             // 无进度回调：直接 PUT 字节，带指数退避重试
-            retry_async("上传变更数据", 3, || {
+            // [P3 Fix] 降低为 2 次，避免与传输层重试叠加
+            retry_async("上传变更数据", 2, || {
                 let compressed = compressed.clone();
                 let key = key.clone();
                 async move {
@@ -1135,34 +1140,45 @@ impl SyncManager {
         )
     }
 
-    /// 清理云端过期的变更文件（仅清理本设备的文件）
+    /// 清理云端过期的变更文件
     ///
-    /// 只删除本设备上传的、版本号早于 `retention_days` 天前的变更文件。
-    /// 不删除其他设备的文件，避免影响尚未同步的设备。
+    /// 两级清理策略：
+    /// 1. 本设备文件：删除版本号早于 `retention_days` 天前的文件
+    /// 2. [P2 Fix] 任意设备文件：删除版本号早于 `retention_days * 3` 天前的文件，
+    ///    解决退役/重装设备遗留的变更文件永久占用云端存储的问题。
+    ///    3 倍宽限期确保即使设备长期离线，也有足够的窗口恢复同步。
     pub async fn prune_old_changes(
         &self,
         storage: &dyn CloudStorage,
         retention_days: u64,
     ) -> Result<usize, SyncError> {
-        let cutoff_version =
+        let own_cutoff =
             (chrono::Utc::now().timestamp() as u64).saturating_sub(retention_days * 86400);
+        // [P2 Fix] 对其他设备的文件使用 3 倍宽限期
+        let global_cutoff =
+            (chrono::Utc::now().timestamp() as u64).saturating_sub(retention_days * 3 * 86400);
 
         let files = storage
             .list(Self::CHANGES_PREFIX)
             .await
             .map_err(|e| SyncError::Network(format!("列出变更文件失败: {}", e)))?;
 
-        let mut deleted = 0usize;
+        let mut deleted_own = 0usize;
+        let mut deleted_stale = 0usize;
         for file in &files {
-            // 仅清理本设备的旧文件
-            if !Self::is_own_change_file(&file.key, &self.device_id) {
-                continue;
-            }
-            if let Some(version) = Self::parse_version_from_key(&file.key) {
-                if version < cutoff_version {
+            let is_own = Self::is_own_change_file(&file.key, &self.device_id);
+            let cutoff = if is_own { own_cutoff } else { global_cutoff };
+
+            if let Some(raw_version) = Self::parse_version_from_key(&file.key) {
+                let version = Self::normalize_version_to_seconds(raw_version);
+                if version < cutoff {
                     match storage.delete(&file.key).await {
                         Ok(_) => {
-                            deleted += 1;
+                            if is_own {
+                                deleted_own += 1;
+                            } else {
+                                deleted_stale += 1;
+                            }
                             tracing::debug!("[sync] 已清理过期变更文件: {}", file.key);
                         }
                         Err(e) => {
@@ -1177,15 +1193,18 @@ impl SyncManager {
             }
         }
 
-        if deleted > 0 {
+        let total_deleted = deleted_own + deleted_stale;
+        if total_deleted > 0 {
             tracing::info!(
-                "[sync] 云端变更文件清理完成: 删除 {} 个本设备旧文件（保留 {} 天内）",
-                deleted,
-                retention_days
+                "[sync] 云端变更文件清理完成: 删除 {} 个本设备旧文件（{}天）+ {} 个其他设备过期文件（{}天）",
+                deleted_own,
+                retention_days,
+                deleted_stale,
+                retention_days * 3
             );
         }
 
-        Ok(deleted)
+        Ok(total_deleted)
     }
 
     /// 执行完整的上传同步流程（v1 旧格式：不含完整行数据）
@@ -1649,12 +1668,26 @@ impl SyncManager {
     /// 兼容两种常见格式：
     /// - RFC 3339: `"2026-02-27T12:34:56+00:00"` (Rust chrono 生成)
     /// - SQLite:   `"2026-02-27 12:34:56"`       (datetime('now') 生成)
+    ///
+    /// [P1 Fix] 引入 2 秒容差（CLOCK_SKEW_TOLERANCE_SECS），当两端时间差
+    /// 小于该阈值时视为 Equal，避免设备间微小时钟偏差导致 KeepLatest 做出
+    /// 错误决策。对于差距 > 容差的情况仍正常比较。
+    const CLOCK_SKEW_TOLERANCE_SECS: i64 = 2;
+
     fn compare_timestamps(local: &str, cloud: &str) -> std::cmp::Ordering {
         let local_dt = Self::parse_flexible_timestamp(local);
         let cloud_dt = Self::parse_flexible_timestamp(cloud);
 
         match (local_dt, cloud_dt) {
-            (Some(l), Some(c)) => l.cmp(&c),
+            (Some(l), Some(c)) => {
+                let diff_secs = (l - c).num_seconds().abs();
+                if diff_secs <= Self::CLOCK_SKEW_TOLERANCE_SECS {
+                    // 差距在容差范围内，视为相同时间（本地优先）
+                    std::cmp::Ordering::Equal
+                } else {
+                    l.cmp(&c)
+                }
+            }
             (Some(_), None) => std::cmp::Ordering::Greater,
             (None, Some(_)) => std::cmp::Ordering::Less,
             (None, None) => local.cmp(cloud),
@@ -2018,15 +2051,17 @@ impl SyncManager {
                     result.skipped_count += 1;
                 }
 
-                // 精确抑制：只标记由本次回放产生的、且匹配当前 table+record 的
+                // 精确抑制：只标记由本次回放产生的、且匹配当前 table+record+operation 的
                 // change_log 条目为已同步，避免误标记用户并发操作产生的条目。
+                // [P2 Fix] 增加 operation 过滤条件，防止用户恰好在回放间隙修改同一条
+                // 记录时（不同操作类型）被误标记为已同步而导致用户修改静默丢失。
                 if let Some(max_id) = pre_log_max_id {
                     let sync_version = chrono::Utc::now().timestamp();
                     let _ = conn.execute(
                         "UPDATE __change_log SET sync_version = ?1 \
                          WHERE id > ?2 AND sync_version = 0 \
-                         AND table_name = ?3 AND record_id = ?4",
-                        params![sync_version, max_id, &change.table_name, &change.record_id],
+                         AND table_name = ?3 AND record_id = ?4 AND operation = ?5",
+                        params![sync_version, max_id, &change.table_name, &change.record_id, change.operation.as_str()],
                     );
                 }
             }
@@ -2511,6 +2546,9 @@ impl SyncManager {
     /// 计算数据库 checksum（跨 Rust 版本稳定）
     ///
     /// 使用 SHA-256 代替 DefaultHasher，确保不同编译版本产生一致的哈希值。
+    ///
+    /// [P1 Fix] 除了 COUNT 之外，还包含 MAX(updated_at)（如果表存在该列），
+    /// 避免 "删 1 + 插 1 → COUNT 不变 → checksum 不变" 的伪阴性问题。
     fn calculate_simple_checksum(
         conn: &Connection,
         database_name: &str,
@@ -2536,7 +2574,20 @@ impl SyncManager {
                     row.get(0)
                 })
                 .unwrap_or(0);
-            hasher_input.push_str(&format!("{}={};", table, count));
+
+            // [P1 Fix] 追加 MAX(updated_at) 以捕获记录内容变化
+            let max_updated: String = if Self::table_has_column(conn, table, "updated_at") {
+                conn.query_row(
+                    &format!("SELECT COALESCE(MAX(\"updated_at\"), '') FROM {}", quoted),
+                    [],
+                    |row| row.get(0),
+                )
+                .unwrap_or_default()
+            } else {
+                String::new()
+            };
+
+            hasher_input.push_str(&format!("{}={},{};", table, count, max_updated));
         }
 
         use sha2::{Digest, Sha256};
@@ -3087,9 +3138,12 @@ impl SyncManager {
                     continue;
                 }
                 let ws_id = name.trim_end_matches(".db").to_string();
-                // WAL checkpoint（不阻断，失败继续）
+                // [P1 Fix] 使用 PASSIVE 模式代替 TRUNCATE，避免与并发写入者竞争。
+                // PASSIVE 模式不会阻塞其他连接，也不会清空正在使用的 WAL 文件。
+                // 设置 busy_timeout 防止在数据库被锁定时立即失败。
                 if let Ok(conn) = rusqlite::Connection::open(&path) {
-                    let _ = conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE)");
+                    let _ = conn.execute_batch("PRAGMA busy_timeout = 1000");
+                    let _ = conn.execute_batch("PRAGMA wal_checkpoint(PASSIVE)");
                 }
                 let sha256 = crate::backup_common::calculate_file_hash(&path).map_err(|e| {
                     SyncError::Database(format!(
@@ -3267,8 +3321,28 @@ impl SyncManager {
             let mut last_err = String::new();
             let mut ok = false;
             for attempt in 0..Self::BLOB_MAX_RETRIES {
+                // 注意：blob hash 是文件名 stem，不是 SHA256，不能作为 expected_checksum。
+                // 下载后通过文件大小校验完整性。
                 match storage.get_file(&key, &dest, None, None).await {
                     Ok(_) => {
+                        // [P2 Fix] 下载后校验文件大小，防止截断/损坏
+                        let actual_size = std::fs::metadata(&dest).map(|m| m.len()).unwrap_or(0);
+                        if cloud_entry.size > 0 && actual_size != cloud_entry.size {
+                            last_err = format!(
+                                "blob 大小不匹配: 期望 {} 字节, 实际 {} 字节",
+                                cloud_entry.size, actual_size
+                            );
+                            let _ = std::fs::remove_file(&dest);
+                            if attempt + 1 < Self::BLOB_MAX_RETRIES {
+                                let delay = Self::BLOB_RETRY_BASE_MS * (1u64 << attempt);
+                                tracing::warn!(
+                                    "[sync] blob 大小校验失败，重试 {}/{}: {}: {}",
+                                    attempt + 1, Self::BLOB_MAX_RETRIES, hash, last_err
+                                );
+                                tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
+                            }
+                            continue;
+                        }
                         downloaded_count += 1;
                         ok = true;
                         break;

@@ -351,14 +351,32 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     return resolvedPath && resolvedPath.trim().length > 0 ? resolvedPath : null;
   }, []);
 
+  // [P3 Fix] 使用 AbortController 保护轮询循环，组件卸载时自动取消，
+  // 防止对已卸载组件的 state 更新和不必要的 API 请求。
+  const abortCtrlRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    return () => {
+      abortCtrlRef.current?.abort();
+    };
+  }, []);
+
   const waitForGovernanceJob = useCallback(async (
     jobId: string,
     kind: 'export' | 'import',
     timeoutMs = 180000
   ): Promise<BackupJobSummary> => {
+    abortCtrlRef.current?.abort();
+    const ctrl = new AbortController();
+    abortCtrlRef.current = ctrl;
+
     const startedAt = Date.now();
 
     while (Date.now() - startedAt < timeoutMs) {
+      if (ctrl.signal.aborted) {
+        throw new Error(`${kind} job polling cancelled (component unmounted)`);
+      }
+
       const job = await DataGovernanceApi.getBackupJob(jobId);
       if (job) {
         if (job.status === 'completed') {
@@ -370,7 +388,13 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
         }
       }
 
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      await new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(resolve, 1000);
+        ctrl.signal.addEventListener('abort', () => {
+          clearTimeout(timer);
+          reject(new Error('aborted'));
+        }, { once: true });
+      });
     }
 
     throw new Error(`backup job timeout: ${kind} (${Math.floor(timeoutMs / 1000)}s)`);
