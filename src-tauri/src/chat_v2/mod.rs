@@ -198,6 +198,25 @@ pub fn init_chat_v2(app_data_dir: &Path) -> ChatV2Result<ChatV2Database> {
     // 创建数据库（内部执行 schema 迁移）
     let db = ChatV2Database::new(app_data_dir)?;
 
+    // 🔧 A1修复：启动时清理历史遗留的孤儿用户消息 content block
+    // 之前 build_user_message 每次生成随机 block_id，多次 save 导致 DB 积累重复块
+    match repo::ChatV2Repo::cleanup_orphan_user_content_blocks(&db) {
+        Ok(count) => {
+            if count > 0 {
+                tracing::info!(
+                    "[ChatV2] Startup cleanup: removed {} orphan user content blocks",
+                    count
+                );
+            }
+        }
+        Err(e) => {
+            tracing::warn!(
+                "[ChatV2] Startup cleanup failed (non-fatal): {}",
+                e
+            );
+        }
+    }
+
     tracing::info!("[ChatV2] 统一初始化完成: {}", db.db_path().display());
 
     Ok(db)

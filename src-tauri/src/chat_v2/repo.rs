@@ -1587,6 +1587,53 @@ impl ChatV2Repo {
         Ok(ids)
     }
 
+    /// 🔧 A1修复：清理用户消息的孤儿 content block
+    ///
+    /// 之前 `build_user_message` 每次生成随机 block_id，导致多次 save 在 DB 中积累
+    /// 大量同 message_id 的 content block。此方法删除用户消息中多余的 content block，
+    /// 每个用户消息只保留最新插入的那个（按 rowid 降序，保留最大 rowid）。
+    ///
+    /// 注意：所有孤儿块的 block_index 都是 0（build_user_message 固定值），
+    /// 因此不能用 block_index 区分，改用 ROW_NUMBER() 窗口函数按 rowid 排序。
+    ///
+    /// ## 返回
+    /// - `Ok(u32)`: 被清理的孤儿 block 数量
+    pub fn cleanup_orphan_user_content_blocks(db: &ChatV2Database) -> ChatV2Result<u32> {
+        let conn = db.get_conn_safe()?;
+
+        // 使用窗口函数按 message_id 分区，按 rowid 降序排列，
+        // 保留 rn=1（最新的），删除 rn>1（旧的孤儿块）
+        let count = conn.execute(
+            r#"
+            DELETE FROM chat_v2_blocks
+            WHERE id IN (
+                SELECT id FROM (
+                    SELECT b.id,
+                           ROW_NUMBER() OVER (
+                               PARTITION BY b.message_id
+                               ORDER BY b.rowid DESC
+                           ) AS rn
+                    FROM chat_v2_blocks b
+                    INNER JOIN chat_v2_messages m ON b.message_id = m.id
+                    WHERE m.role = 'user'
+                      AND b.block_type = 'content'
+                )
+                WHERE rn > 1
+            )
+            "#,
+            [],
+        )?;
+
+        if count > 0 {
+            info!(
+                "[ChatV2::Repo] Cleaned up {} orphan user content blocks",
+                count
+            );
+        }
+
+        Ok(count as u32)
+    }
+
     /// 清空所有已删除的会话（永久删除）
     ///
     /// 一次性删除所有 persist_status = 'deleted' 的会话。

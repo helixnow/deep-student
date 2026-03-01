@@ -114,7 +114,13 @@ pub fn build_user_message(params: UserMessageParams) -> UserMessageResult {
         chrono::Utc::now().timestamp_millis()
     });
     let message_id = params.id.unwrap_or_else(ChatMessage::generate_id);
-    let block_id = MessageBlock::generate_id();
+    // 🔧 A1修复：使用确定性 block_id（基于 message_id 派生）
+    // 之前每次调用都生成随机 block_id，导致多次 save（save_user_message_immediately +
+    // save_intermediate_results × N + save_results）在 DB 中积累大量孤儿 content block。
+    // 查询 get_message_blocks_with_conn 按 message_id 返回所有 block，
+    // load_chat_history 的 join("") 将它们全部拼接，造成用户消息重复 N 次。
+    // 修复：使用确定性 ID，INSERT OR REPLACE 会正确覆盖同一行。
+    let block_id = format!("blk_ucontent_{}", message_id.trim_start_matches("msg_"));
 
     // 1. 转换附件
     let attachments_meta = if params.attachments.is_empty() {
@@ -317,6 +323,8 @@ mod tests {
 
         assert_eq!(result.message.id, "msg_custom_id");
         assert_eq!(result.block.message_id, "msg_custom_id");
+        // A1修复：block_id 应为确定性 ID
+        assert_eq!(result.block.id, "blk_ucontent_custom_id");
     }
 
     #[test]

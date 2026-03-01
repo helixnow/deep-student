@@ -1298,6 +1298,63 @@ impl LLMManager {
         *messages = merged;
     }
 
+    /// 🔧 C2修复：合并序列化后的连续 assistant tool_calls 消息
+    ///
+    /// OpenAI API 要求同一轮的多个 tool_calls 在一个 assistant 消息中。
+    /// 此函数在 JSON messages 数组上操作，将连续的 `{"role":"assistant","tool_calls":[...]}`
+    /// 消息合并为一个，其 tool_calls 数组包含所有工具调用。
+    ///
+    /// 合并规则：
+    /// - 仅合并连续的、都包含 tool_calls 的 assistant 消息
+    /// - 中间不能有 tool/user 消息（那表示不同轮次）
+    /// - 合并后保留第一个消息的 content
+    pub(crate) fn merge_consecutive_assistant_tool_calls(messages: &mut Vec<serde_json::Value>) {
+        if messages.len() < 2 {
+            return;
+        }
+
+        let mut merged: Vec<serde_json::Value> = Vec::with_capacity(messages.len());
+
+        for msg in messages.drain(..) {
+            let is_assistant_with_tools = msg.get("role").and_then(|r| r.as_str()) == Some("assistant")
+                && msg.get("tool_calls").and_then(|tc| tc.as_array()).map(|a| !a.is_empty()).unwrap_or(false);
+
+            if !is_assistant_with_tools {
+                merged.push(msg);
+                continue;
+            }
+
+            // 检查前一条是否也是 assistant with tool_calls
+            let prev_is_assistant_with_tools = merged.last()
+                .map(|m| {
+                    m.get("role").and_then(|r| r.as_str()) == Some("assistant")
+                        && m.get("tool_calls").and_then(|tc| tc.as_array()).map(|a| !a.is_empty()).unwrap_or(false)
+                })
+                .unwrap_or(false);
+
+            if !prev_is_assistant_with_tools {
+                merged.push(msg);
+                continue;
+            }
+
+            // 合并：将当前消息的 tool_calls 追加到前一条
+            let prev = merged.last_mut().unwrap();
+            if let Some(curr_tool_calls) = msg.get("tool_calls").and_then(|tc| tc.as_array()) {
+                let curr_len = curr_tool_calls.len();
+                if let Some(prev_arr) = prev.get_mut("tool_calls").and_then(|tc| tc.as_array_mut()) {
+                    prev_arr.extend(curr_tool_calls.clone());
+                    log::debug!(
+                        "[LLMManager] C2fix: Merged consecutive assistant tool_calls (+{} calls, total={})",
+                        curr_len,
+                        prev_arr.len()
+                    );
+                }
+            }
+        }
+
+        *messages = merged;
+    }
+
     /// 发送专用流式事件（根据工具类型和citations的source_type分类）
     fn emit_specialized_source_events(
         window: &Window,
