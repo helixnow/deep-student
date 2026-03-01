@@ -821,17 +821,11 @@ pub async fn data_governance_run_sync(
                 .await
                 .map_err(|e| format!("双向同步失败: {}", e))?;
 
-            // 上传带完整数据的变更（唯一上传点，避免重复）
-            if !all_enriched.is_empty() {
-                manager
-                    .upload_enriched_changes(storage.as_ref(), &all_enriched, None)
-                    .await
-                    .map_err(|e| format!("上传变更失败: {}", e))?;
-            }
-
-            // 先应用下载的变更，标记后再重建 manifest 上传
+            // [P0 Fix] 先应用下载的变更，再上传本地变更。
+            // 这确保上传时不会推送已被下载覆盖的过时数据。
             let mut exec_result = exec_result;
             let mut total_skipped = 0usize;
+            let mut applied_keys = std::collections::HashSet::new();
             if !downloaded_changes.is_empty() {
                 let apply_agg = apply_downloaded_changes_to_databases(
                     &downloaded_changes,
@@ -839,6 +833,7 @@ pub async fn data_governance_run_sync(
                     merge_strategy,
                 )?;
                 total_skipped = apply_agg.total_skipped;
+                applied_keys = apply_agg.applied_keys;
                 if total_skipped > 0 {
                     warn!(
                         "[data_governance] 双向同步完成但有 {} 条变更被跳过（旧格式数据缺失）",
@@ -851,7 +846,39 @@ pub async fn data_governance_run_sync(
                 }
             }
 
-            // 下载成功应用后再标记本地变更已同步，避免中断导致“标记成功但下载未落地”。
+            // [P0 Fix] 从待上传列表中剔除已被下载覆盖的记录
+            let filtered_enriched: Vec<&SyncChangeWithData> = if applied_keys.is_empty() {
+                all_enriched.iter().collect()
+            } else {
+                let before = all_enriched.len();
+                let filtered: Vec<_> = all_enriched
+                    .iter()
+                    .filter(|e| !applied_keys.contains(&(e.table_name.clone(), e.record_id.clone())))
+                    .collect();
+                let removed = before - filtered.len();
+                if removed > 0 {
+                    tracing::info!(
+                        "[data_governance] 双向同步: 已从上传列表中剔除 {} 条被下载覆盖的记录",
+                        removed
+                    );
+                }
+                filtered
+            };
+
+            // [批判性修复] 修正 changes_uploaded 为实际上传数量，确保审计日志和前端显示准确
+            exec_result.changes_uploaded = filtered_enriched.len();
+
+            // 上传过滤后的变更（唯一上传点，避免重复）
+            if !filtered_enriched.is_empty() {
+                let refs_vec: Vec<SyncChangeWithData> = filtered_enriched.iter().map(|e| (*e).clone()).collect();
+                manager
+                    .upload_enriched_changes(storage.as_ref(), &refs_vec, None)
+                    .await
+                    .map_err(|e| format!("上传变更失败: {}", e))?;
+            }
+
+            // 下载成功应用后再标记本地变更已同步，避免中断导致"标记成功但下载未落地"。
+            // 注意：仅标记实际上传的变更，被剔除的记录不标记。
             for db_id in DatabaseId::all_ordered() {
                 let db_path = resolve_database_path(&db_id, &active_dir);
                 if !db_path.exists() {
@@ -859,7 +886,7 @@ pub async fn data_governance_run_sync(
                 }
                 let conn = rusqlite::Connection::open(&db_path)
                     .map_err(|e| format!("打开数据库失败: {}", e))?;
-                let db_change_ids: Vec<i64> = all_enriched
+                let db_change_ids: Vec<i64> = filtered_enriched
                     .iter()
                     .filter(|c| c.database_name.as_deref() == Some(db_id.as_str()))
                     .filter_map(|c| c.change_log_id)
@@ -2063,9 +2090,60 @@ async fn execute_bidirectional_with_progress_v2(
         emitter.emit_downloading(dl_total, dl_total, None).await;
     }
 
-    // 上传带完整数据的变更（唯一上传点，execute_bidirectional 不再内部上传）
-    if !enriched.is_empty() {
-        let upload_total = enriched.len() as u64;
+    // [P0 Fix] 先应用下载的变更，再上传本地变更。
+    // 这确保上传时不会推送已被下载覆盖的过时数据。
+    let mut exec_result = exec_result;
+    let mut total_skipped = 0usize;
+    let mut applied_keys = std::collections::HashSet::new();
+    if !downloaded_changes.is_empty() {
+        let total_changes = downloaded_changes.len() as u64;
+        emitter
+            .emit_applying(0, total_changes, Some("应用下载变更".to_string()))
+            .await;
+
+        let apply_agg =
+            apply_downloaded_changes_to_databases(&downloaded_changes, active_dir, merge_strategy)?;
+        total_skipped = apply_agg.total_skipped;
+        applied_keys = apply_agg.applied_keys;
+        if total_skipped > 0 {
+            exec_result.error_message = Some(format!(
+                "同步已完成，但有 {} 条变更因数据不完整被跳过。建议在源设备重新执行完整同步以补全数据。",
+                total_skipped
+            ));
+        }
+
+        emitter
+            .emit_applying(total_changes, total_changes, None)
+            .await;
+    }
+
+    // [P0 Fix] 从待上传列表中剔除已被下载覆盖的记录，避免上传过时的本地快照。
+    // 仅当下载的变更实际被应用（策略判定为云端优先）时才剔除；
+    // 策略判定为本地优先的记录仍会保留在上传列表中。
+    let filtered_enriched: Vec<&SyncChangeWithData> = if applied_keys.is_empty() {
+        enriched.iter().collect()
+    } else {
+        let before = enriched.len();
+        let filtered: Vec<_> = enriched
+            .iter()
+            .filter(|e| !applied_keys.contains(&(e.table_name.clone(), e.record_id.clone())))
+            .collect();
+        let removed = before - filtered.len();
+        if removed > 0 {
+            tracing::info!(
+                "[data_governance] 双向同步: 已从上传列表中剔除 {} 条被下载覆盖的记录",
+                removed
+            );
+        }
+        filtered
+    };
+
+    // [批判性修复] 修正 changes_uploaded 为实际上传数量，确保审计日志和前端显示准确
+    exec_result.changes_uploaded = filtered_enriched.len();
+
+    // 上传过滤后的变更（唯一上传点，execute_bidirectional 不再内部上传）
+    if !filtered_enriched.is_empty() {
+        let upload_total = filtered_enriched.len() as u64;
         emitter.emit_uploading(0, upload_total, None).await;
 
         // 字节级进度回调——通过流式 PUT 实时上报已传输字节数（节流 100ms）
@@ -2101,8 +2179,10 @@ async fn execute_bidirectional_with_progress_v2(
             });
         });
 
+        // 收集引用为 owned slice 以满足 upload_enriched_changes 签名
+        let refs_vec: Vec<SyncChangeWithData> = filtered_enriched.iter().map(|e| (*e).clone()).collect();
         manager
-            .upload_enriched_changes(storage, enriched, Some(byte_progress_cb))
+            .upload_enriched_changes(storage, &refs_vec, Some(byte_progress_cb))
             .await
             .map_err(|e| format!("上传变更失败: {}", e))?;
 
@@ -2111,38 +2191,16 @@ async fn execute_bidirectional_with_progress_v2(
             .await;
     }
 
-    // 先应用下载的变更，标记完成后再重建 manifest 上传（确保清单反映最终状态）
-    let mut exec_result = exec_result;
-    let mut total_skipped = 0usize;
-    if !downloaded_changes.is_empty() {
-        let total_changes = downloaded_changes.len() as u64;
-        emitter
-            .emit_applying(0, total_changes, Some("应用下载变更".to_string()))
-            .await;
-
-        let apply_agg =
-            apply_downloaded_changes_to_databases(&downloaded_changes, active_dir, merge_strategy)?;
-        total_skipped = apply_agg.total_skipped;
-        if total_skipped > 0 {
-            exec_result.error_message = Some(format!(
-                "同步已完成，但有 {} 条变更因数据不完整被跳过。建议在源设备重新执行完整同步以补全数据。",
-                total_skipped
-            ));
-        }
-
-        emitter
-            .emit_applying(total_changes, total_changes, None)
-            .await;
-    }
-
-    // 下载成功应用后再标记本地变更已同步，避免中断导致“标记成功但下载未落地”。
+    // 下载成功应用后再标记本地变更已同步，避免中断导致"标记成功但下载未落地"。
+    // 注意：仅标记实际上传的变更（filtered_enriched），被剔除的记录不标记，
+    // 以确保下次同步时它们能被重新评估。
     for db_id in DatabaseId::all_ordered() {
         let db_path = resolve_database_path(&db_id, active_dir);
         if !db_path.exists() {
             continue;
         }
 
-        let db_change_ids: Vec<i64> = enriched
+        let db_change_ids: Vec<i64> = filtered_enriched
             .iter()
             .filter(|c| c.database_name.as_deref() == Some(db_id.as_str()))
             .filter_map(|c| c.change_log_id)

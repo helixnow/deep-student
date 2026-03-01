@@ -80,6 +80,9 @@ pub(super) struct ApplyToDbsResult {
     pub(super) total_failed: usize,
     /// 各库的失败明细（db_name → error message），用于精确定位部分失败
     pub(super) db_errors: Vec<(String, String)>,
+    /// 实际被应用（未跳过）的记录 key 集合 (table_name, record_id)
+    /// 用于双向同步时过滤 enriched 列表，避免上传被下载覆盖的过时数据
+    pub(super) applied_keys: std::collections::HashSet<(String, String)>,
 }
 
 /// 根据表名推断变更所属的数据库（用于 legacy 无 database_name 的变更）
@@ -238,6 +241,7 @@ pub(super) fn apply_downloaded_changes_to_databases(
         total_skipped: 0,
         total_failed: 0,
         db_errors: Vec::new(),
+        applied_keys: std::collections::HashSet::new(),
     };
 
     let id_column_map = build_id_column_map();
@@ -296,6 +300,8 @@ pub(super) fn apply_downloaded_changes_to_databases(
             .map_err(|e| format!("打开数据库 {} 失败: {}", db_name, e))?;
 
         let mut owned_changes: Vec<SyncChangeWithData> = Vec::new();
+        // 先收集候选 key，仅在 apply 成功后才加入 applied_keys
+        let mut candidate_keys: Vec<(String, String)> = Vec::new();
         for c in db_changes {
             let id_column = id_column_map
                 .get(&c.table_name)
@@ -306,6 +312,7 @@ pub(super) fn apply_downloaded_changes_to_databases(
                 let mut cloned = (*c).clone();
                 cloned.suppress_change_log = Some(true);
                 owned_changes.push(cloned);
+                candidate_keys.push((c.table_name.clone(), c.record_id.clone()));
             } else {
                 agg.total_skipped += 1;
             }
@@ -320,6 +327,12 @@ pub(super) fn apply_downloaded_changes_to_databases(
                 agg.total_success += apply_result.success_count;
                 agg.total_skipped += apply_result.skipped_count;
                 agg.total_failed += apply_result.failure_count;
+                // [批判性修复] 仅在 apply 成功后才将 key 加入 applied_keys。
+                // 如果 apply 失败（事务回滚），这些 key 不应被加入，
+                // 否则对应的本地变更会被错误地从上传列表中剔除。
+                for key in candidate_keys {
+                    agg.applied_keys.insert(key);
+                }
                 info!(
                     "[data_governance] 数据库 {} 应用变更完成: success={}, failed={}, skipped={}",
                     db_name,
@@ -331,6 +344,8 @@ pub(super) fn apply_downloaded_changes_to_databases(
             Err(e) => {
                 // 不再立即中止整个同步流程，而是记录失败并继续处理其余数据库，
                 // 避免先成功的库与后失败的库之间产生不可逆的业务撕裂。
+                // 注意：此处不添加 candidate_keys 到 applied_keys，
+                // 确保对应的本地变更仍会被上传。
                 let err_msg = format!("{}", e);
                 error!(
                     "[data_governance] 数据库 {} 应用变更失败（继续处理剩余库）: {}",
@@ -376,8 +391,26 @@ pub(super) fn sanitize_path_for_user(path: &Path) -> String {
     }
 }
 
-/// 验证用户提供的路径（不再限制目录范围，允许任意路径）
-pub(super) fn validate_user_path(_path: &Path, _app_data_dir: &Path) -> Result<(), String> {
+/// 验证用户提供的路径
+///
+/// [P3 Fix] 虽然允许用户选择任意路径，但仍需拒绝明显的路径遍历攻击：
+/// - 路径组件中包含 `..`（目录遍历）
+/// - 路径中包含 null 字节（C 字符串截断攻击）
+pub(super) fn validate_user_path(path: &Path, _app_data_dir: &Path) -> Result<(), String> {
+    let path_str = path.to_string_lossy();
+
+    // 拒绝 null 字节
+    if path_str.contains('\0') {
+        return Err("路径中不允许包含 null 字节".to_string());
+    }
+
+    // 拒绝路径遍历（.. 组件）
+    for component in path.components() {
+        if let std::path::Component::ParentDir = component {
+            return Err("路径中不允许包含 '..' 目录遍历".to_string());
+        }
+    }
+
     Ok(())
 }
 
