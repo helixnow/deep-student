@@ -23,7 +23,8 @@
     "properties": "Properties",
     "batchReferenceToChat": "Batch Reference to Chat",
     "batchMoveTo": "Batch Move to...",
-    "batchDelete": "Batch Delete"
+    "batchDelete": "Batch Delete",
+    "export": "Export"
   },
   "actions": {
     "create": "Create",

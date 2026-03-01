@@ -29,6 +29,7 @@ const FULL_EDIT_CAPABILITIES: ResourceCapabilities = {
   shareable: true,
   versionable: false,
   referenceable: true,
+  exportable: true,
 };
 
 /**
@@ -42,6 +43,7 @@ const VIEW_ONLY_CAPABILITIES: ResourceCapabilities = {
   shareable: true,
   versionable: false,
   referenceable: true,
+  exportable: true,
 };
 
 /**
@@ -55,6 +57,7 @@ const TRANSLATION_CAPABILITIES: ResourceCapabilities = {
   shareable: true,
   versionable: false,
   referenceable: true,
+  exportable: true,
 };
 
 /**
@@ -68,6 +71,7 @@ const EXAM_CAPABILITIES: ResourceCapabilities = {
   shareable: false,
   versionable: false,
   referenceable: true,
+  exportable: true,
 };
 
 // ============================================================================
@@ -230,6 +234,7 @@ export const editorRegistry: Record<DstuNodeType, EditorRegistryEntry> = {
       shareable: true,
       versionable: false,
       referenceable: false, // 通用文件不可引用到对话
+      exportable: true,
     },
     icon: 'File',
     displayName: 'dstu:types.file',
@@ -249,6 +254,7 @@ export const editorRegistry: Record<DstuNodeType, EditorRegistryEntry> = {
       shareable: false,
       versionable: false,
       referenceable: false,
+      exportable: false, // 文件夹不可导出
     },
     icon: 'Folder',
     displayName: 'dstu:types.folder',
@@ -268,6 +274,7 @@ export const editorRegistry: Record<DstuNodeType, EditorRegistryEntry> = {
       shareable: false,
       versionable: false,
       referenceable: true,
+      exportable: false, // 检索结果不可导出
     },
     icon: 'Search',
     displayName: 'dstu:types.retrieval',

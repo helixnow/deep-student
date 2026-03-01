@@ -28,6 +28,7 @@
 
 pub mod error;
 pub mod exam_formatter;
+pub mod export; // 统一资源导出模块
 pub mod folder_handlers;
 pub mod handler_utils; // 路径工具和节点转换器
 pub mod handlers;

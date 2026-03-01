@@ -40,6 +40,9 @@ export interface ContextMenuActionHandler {
 
   /** 分享资源 */
   shareResource?: (path: string) => Promise<void>;
+
+  /** 导出资源 */
+  exportResource?: (node: DstuNode) => Promise<void>;
 }
 
 /**
@@ -222,8 +225,24 @@ export function buildContextMenu(
     });
   }
 
+  // 导出（如果可导出）
+  if (capabilities.exportable) {
+    items.push({
+      id: 'export',
+      label: 'dstu:menu.export',
+      icon: 'Download',
+      action: async () => {
+        if (globalActionHandler?.exportResource) {
+          await globalActionHandler.exportResource(node);
+        } else {
+          console.warn('[DSTU] exportResource handler not registered');
+        }
+      },
+    });
+  }
+
   // 分隔符
-  const hasEditOperations = capabilities.copyable || capabilities.movable || capabilities.shareable;
+  const hasEditOperations = capabilities.copyable || capabilities.movable || capabilities.shareable || capabilities.exportable;
   if (hasEditOperations) {
     items.push({ id: 'separator-2', type: 'separator', label: '' });
   }

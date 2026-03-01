@@ -23,7 +23,8 @@
     "properties": "属性",
     "batchReferenceToChat": "批量引用到对话",
     "batchMoveTo": "批量移动到...",
-    "batchDelete": "批量删除"
+    "batchDelete": "批量删除",
+    "export": "导出"
   },
   "actions": {
     "create": "新建",

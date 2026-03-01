@@ -1371,6 +1371,11 @@ pub fn run() {
             // E4: 路径缓存
             ,crate::dstu::handlers::dstu_refresh_path_cache
             ,crate::dstu::handlers::dstu_get_path_by_id
+            // =================================================
+            // DSTU 统一资源导出命令
+            // =================================================
+            ,crate::dstu::export::dstu_export_formats
+            ,crate::dstu::export::dstu_export
             // E5: Subject 迁移命令
             // =================================================
             // DSTU 文件夹命令（文档 23 Prompt 3）

@@ -6,7 +6,7 @@ import { open as dialogOpen } from '@tauri-apps/plugin-dialog';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { textbookDstuAdapter } from '@/dstu/adapters/textbookDstuAdapter';
 import { attachmentDstuAdapter } from '@/dstu/adapters/attachmentDstuAdapter';
-import { extractFileName } from '@/utils/fileManager';
+import { extractFileName, fileManager } from '@/utils/fileManager';
 import { UnifiedDragDropZone, FILE_TYPES } from '@/components/shared/UnifiedDragDropZone';
 import { useDebounce } from '@/hooks/useDebounce';
 import {
@@ -1257,6 +1257,88 @@ export function LearningHubSidebar({
     }
   }, [items, t, handleRefresh]);
 
+  // 右键菜单 - 导出资源
+  const handleExportResource = useCallback(async (resource: ResourceListItem) => {
+    try {
+      // 移动端不支持文件保存对话框
+      if (typeof navigator !== 'undefined' && /android|iphone|ipad|ipod/i.test(navigator.userAgent)) {
+        showGlobalNotification('warning', t('contextMenu.exportFailed', '导出失败') + ': 移动端暂不支持导出');
+        return;
+      }
+
+      // 1. 构建资源路径
+      const resourcePath = `/${resource.id}`;
+
+      // 2. 查询支持的导出格式
+      const formatsResult = await dstu.exportFormats(resourcePath);
+      if (!formatsResult.ok) {
+        showGlobalNotification('error', formatsResult.error.toUserMessage());
+        return;
+      }
+
+      const formats = formatsResult.value;
+      if (formats.length === 0) {
+        showGlobalNotification('warning', t('contextMenu.exportNoFormats', '该资源不支持导出'));
+        return;
+      }
+
+      // 3. 选择导出格式（优先 markdown，其次第一个可用格式）
+      const format = (formats.includes('markdown') ? 'markdown' : formats[0]) as 'markdown' | 'original' | 'zip';
+
+      // 4. 执行导出
+      showGlobalNotification('info', t('contextMenu.exporting', '正在导出...'));
+      const exportResult = await dstu.exportResource(resourcePath, format);
+      if (!exportResult.ok) {
+        showGlobalNotification('error', exportResult.error.toUserMessage());
+        return;
+      }
+
+      const payload = exportResult.value;
+
+      // 5. 根据 payloadType 保存文件
+      if (payload.payloadType === 'text' && payload.content) {
+        const result = await fileManager.saveTextFile({
+          content: payload.content,
+          title: t('contextMenu.exportSaveTitle', '导出资源'),
+          defaultFileName: payload.suggestedFilename,
+          filters: [{ name: payload.suggestedFilename.endsWith('.json') ? 'JSON' : 'Markdown', extensions: [payload.suggestedFilename.split('.').pop() || 'md'] }],
+        });
+        if (!result.canceled && result.path) {
+          showGlobalNotification('success', t('contextMenu.exportSuccess', { path: result.path }));
+        }
+      } else if (payload.payloadType === 'binary' && payload.dataBase64) {
+        // 解码 base64 并保存
+        const binaryStr = atob(payload.dataBase64);
+        const bytes = new Uint8Array(binaryStr.length);
+        for (let i = 0; i < binaryStr.length; i++) {
+          bytes[i] = binaryStr.charCodeAt(i);
+        }
+        const ext = payload.suggestedFilename.split('.').pop() || 'bin';
+        const result = await fileManager.saveBinaryFile({
+          data: bytes,
+          title: t('contextMenu.exportSaveTitle', '导出资源'),
+          defaultFileName: payload.suggestedFilename,
+          filters: [{ name: ext.toUpperCase(), extensions: [ext] }],
+        });
+        if (!result.canceled && result.path) {
+          showGlobalNotification('success', t('contextMenu.exportSuccess', { path: result.path }));
+        }
+      } else if (payload.payloadType === 'file' && payload.tempPath) {
+        const result = await fileManager.saveFromSource({
+          sourcePath: payload.tempPath,
+          title: t('contextMenu.exportSaveTitle', '导出资源'),
+          defaultFileName: payload.suggestedFilename,
+        });
+        if (!result.canceled && result.path) {
+          showGlobalNotification('success', t('contextMenu.exportSuccess', { path: result.path }));
+        }
+      }
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
+      showGlobalNotification('error', t('contextMenu.exportFailed', '导出失败') + ': ' + msg);
+    }
+  }, [t]);
+
   // 右键菜单 - 开始文件夹内联编辑
   const handleOpenRenameDialog = useCallback((folderId: string) => {
     const folder = items.find(i => i.id === folderId);
@@ -2475,6 +2557,7 @@ export function LearningHubSidebar({
           }
         }}
         onToggleFavorite={handleToggleFavorite}
+        onExportResource={handleExportResource}
         onRestoreItem={handleRestoreItem}
         onPermanentDeleteItem={handlePermanentDeleteItem}
         onEmptyTrash={handleEmptyTrash}

@@ -898,6 +898,59 @@ export async function purgeAll(resourceType: string): Promise<Result<number>> {
 }
 
 // ============================================================================
+// 资源导出 API
+// ============================================================================
+
+/**
+ * 导出结果类型
+ */
+export interface DstuExportResult {
+  /** 导出类型："text" | "binary" | "file" */
+  payloadType: 'text' | 'binary' | 'file';
+  /** 建议的文件名 */
+  suggestedFilename: string;
+  /** MIME 类型 */
+  mimeType: string;
+  /** 文本内容（payloadType == "text" 时有值） */
+  content?: string;
+  /** Base64 编码的二进制内容（payloadType == "binary" 时有值） */
+  dataBase64?: string;
+  /** 临时文件路径（payloadType == "file" 时有值） */
+  tempPath?: string;
+}
+
+/**
+ * 查询资源支持的导出格式
+ */
+export async function exportFormats(path: string): Promise<Result<string[]>> {
+  try {
+    const result = await invoke<string[]>('dstu_export_formats', { path });
+    return ok(result);
+  } catch (error: unknown) {
+    const vfsError = toVfsError(error, '查询导出格式失败', { path });
+    console.error(LOG_PREFIX, 'exportFormats() failed:', vfsError.toDetailedMessage());
+    return err(vfsError);
+  }
+}
+
+/**
+ * 导出资源
+ */
+export async function exportResource(
+  path: string,
+  format: 'markdown' | 'original' | 'zip',
+): Promise<Result<DstuExportResult>> {
+  try {
+    const result = await invoke<DstuExportResult>('dstu_export', { path, format });
+    return ok(result);
+  } catch (error: unknown) {
+    const vfsError = toVfsError(error, '导出资源失败', { path, format });
+    console.error(LOG_PREFIX, 'exportResource() failed:', vfsError.toDetailedMessage());
+    return err(vfsError);
+  }
+}
+
+// ============================================================================
 // 导出统一 API 对象（兼容旧接口）
 // ============================================================================
 
@@ -923,6 +976,8 @@ export const dstu = {
   purge,
   listDeleted,
   purgeAll,
+  exportFormats,
+  exportResource,
 };
 
 export type DstuApiResult = typeof dstu;

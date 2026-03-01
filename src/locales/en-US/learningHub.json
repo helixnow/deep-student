@@ -40,7 +40,13 @@
     "addToDesktop": "Add to Desktop",
     "addedToDesktop": "Added to Desktop",
     "newMindMap": "New Mind Map",
-    "deleteTitle": "Confirm Delete"
+    "deleteTitle": "Confirm Delete",
+    "export": "Export",
+    "exporting": "Exporting...",
+    "exportNoFormats": "This resource does not support export",
+    "exportSaveTitle": "Export Resource",
+    "exportSuccess": "Exported to: {{path}}",
+    "exportFailed": "Export failed"
   },
   "toolbar": {
     "search": "Search resources...",

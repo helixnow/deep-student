@@ -31,6 +31,7 @@ import {
   StarOff,
   Monitor,
   CheckCircle,
+  Download,
 } from 'lucide-react';
 import { Z_INDEX } from '@/config/zIndex';
 import { cn } from '@/lib/utils';
@@ -103,6 +104,8 @@ export interface LearningHubContextMenuProps {
   onPermanentDeleteItem?: (id: string, itemType: string) => void;
   /** 清空回收站 */
   onEmptyTrash?: () => void;
+  /** 导出资源 */
+  onExportResource?: (resource: ResourceListItem) => void;
 }
 
 // ============================================================================
@@ -132,6 +135,7 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
   onRestoreItem,
   onPermanentDeleteItem,
   onEmptyTrash,
+  onExportResource,
 }) => {
   const { t } = useTranslation('learningHub');
   const menuRef = useRef<HTMLDivElement>(null);
@@ -551,6 +555,24 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
               : t('contextMenu.addToDesktop')
             }
           </AppMenuItem>
+        )}
+        
+        {/* 导出 - 仅资源项 */}
+        {resourceItem && onExportResource && (
+          <>
+            <AppMenuSeparator />
+            <AppMenuItem
+              icon={<Download className="w-4 h-4" />}
+              onClick={() => {
+                closeMenu();
+                setTimeout(() => {
+                  onExportResource(resourceItem);
+                }, 50);
+              }}
+            >
+              {t('contextMenu.export', '导出')}
+            </AppMenuItem>
+          </>
         )}
         
         {/* 删除 - 仅资源项 */}

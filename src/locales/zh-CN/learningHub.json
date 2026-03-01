@@ -40,7 +40,13 @@
     "addToDesktop": "添加到桌面",
     "addedToDesktop": "已添加到桌面",
     "newMindMap": "新建知识导图",
-    "deleteTitle": "确认删除"
+    "deleteTitle": "确认删除",
+    "export": "导出",
+    "exporting": "正在导出...",
+    "exportNoFormats": "该资源不支持导出",
+    "exportSaveTitle": "导出资源",
+    "exportSuccess": "已导出到: {{path}}",
+    "exportFailed": "导出失败"
   },
   "toolbar": {
     "search": "搜索资源...",

@@ -69,6 +69,9 @@ export interface ResourceCapabilities {
 
   /** 是否可被引用到 Chat V2 */
   referenceable: boolean;
+
+  /** 是否可导出 */
+  exportable: boolean;
 }
 
 // ============================================================================
