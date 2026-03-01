@@ -880,6 +880,29 @@ impl ChatV2Pipeline {
         // 🆕 受 mem0/memU 启发：对话后自动记忆提取 pipeline
         // 异步 fire-and-forget，不阻塞对话返回
         self.trigger_auto_memory_extraction(ctx);
+
+        // 🆕 自动标签提取：从对话内容提取关键词标签
+        self.trigger_auto_tag_extraction(ctx);
+    }
+
+    /// 触发对话后自动标签提取（fire-and-forget）
+    fn trigger_auto_tag_extraction(&self, ctx: &PipelineContext) {
+        let user_chars = ctx.user_content.chars().count();
+        let assistant_chars = ctx.final_content.chars().count();
+        if user_chars < 10 && assistant_chars < 20 {
+            return;
+        }
+
+        let session_id = ctx.session_id.clone();
+        let user_content = ctx.user_content.clone();
+        let final_content = ctx.final_content.clone();
+        let pipeline = self.clone();
+
+        tokio::spawn(async move {
+            pipeline
+                .generate_session_tags(&session_id, &user_content, &final_content)
+                .await;
+        });
     }
 
     /// 触发对话后自动记忆提取（fire-and-forget）

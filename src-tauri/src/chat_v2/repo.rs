@@ -95,7 +95,7 @@ impl ChatV2Repo {
     ) -> ChatV2Result<Option<ChatSession>> {
         let mut stmt = conn.prepare(
             r#"
-            SELECT id, mode, title, description, summary_hash, persist_status, created_at, updated_at, metadata_json, group_id
+            SELECT id, mode, title, description, summary_hash, persist_status, created_at, updated_at, metadata_json, group_id, tags_hash
             FROM chat_v2_sessions
             WHERE id = ?1
             "#,
@@ -120,6 +120,7 @@ impl ChatV2Repo {
         let updated_at_str: String = row.get(7)?;
         let metadata_json: Option<String> = row.get(8)?;
         let group_id: Option<String> = row.get(9)?;
+        let tags_hash: Option<String> = row.get::<_, Option<String>>(10).unwrap_or(None);
 
         let persist_status = match persist_status_str.as_str() {
             "active" => PersistStatus::Active,
@@ -167,6 +168,8 @@ impl ChatV2Repo {
             updated_at,
             metadata,
             group_id,
+            tags_hash,
+            tags: None,
         })
     }
 
@@ -196,7 +199,7 @@ impl ChatV2Repo {
             r#"
             UPDATE chat_v2_sessions
             SET mode = ?2, title = ?3, description = ?4, summary_hash = ?5, persist_status = ?6,
-                updated_at = ?7, metadata_json = ?8, group_id = ?9
+                updated_at = ?7, metadata_json = ?8, group_id = ?9, tags_hash = ?10
             WHERE id = ?1
             "#,
             params![
@@ -209,6 +212,7 @@ impl ChatV2Repo {
                 session.updated_at.to_rfc3339(),
                 metadata_json,
                 session.group_id,
+                session.tags_hash,
             ],
         )?;
 
@@ -278,7 +282,7 @@ impl ChatV2Repo {
         // 🔧 2026-01-20: 过滤掉 mode='agent' 的 Worker 会话，它们应该在工作区面板中单独显示
         let mut sql = String::from(
             r#"
-                SELECT id, mode, title, description, summary_hash, persist_status, created_at, updated_at, metadata_json, group_id
+                SELECT id, mode, title, description, summary_hash, persist_status, created_at, updated_at, metadata_json, group_id, tags_hash
                 FROM chat_v2_sessions
                 WHERE mode != 'agent'
             "#,
@@ -633,7 +637,7 @@ impl ChatV2Repo {
         let (sql, params_vec): (String, Vec<Box<dyn rusqlite::ToSql>>) = match workspace_id {
             Some(wid) => (
                 r#"
-                    SELECT id, mode, title, description, summary_hash, persist_status, created_at, updated_at, metadata_json, group_id
+                    SELECT id, mode, title, description, summary_hash, persist_status, created_at, updated_at, metadata_json, group_id, tags_hash
                     FROM chat_v2_sessions
                     WHERE mode = 'agent'
                       AND persist_status = 'active'
@@ -645,7 +649,7 @@ impl ChatV2Repo {
             ),
             None => (
                 r#"
-                    SELECT id, mode, title, description, summary_hash, persist_status, created_at, updated_at, metadata_json, group_id
+                    SELECT id, mode, title, description, summary_hash, persist_status, created_at, updated_at, metadata_json, group_id, tags_hash
                     FROM chat_v2_sessions
                     WHERE mode = 'agent' AND persist_status = 'active'
                     ORDER BY updated_at DESC
@@ -2354,6 +2358,254 @@ impl ChatV2Repo {
     ) -> ChatV2Result<u32> {
         let conn = db.get_conn_safe()?;
         Self::repair_session_variant_status_with_conn(&conn, session_id)
+    }
+
+    // ========================================================================
+    // 内容全文搜索
+    // ========================================================================
+
+    /// FTS5 查询转义（防注入，与 question_repo 一致）
+    fn escape_fts5_query(keyword: &str) -> String {
+        let needs_escape = keyword
+            .chars()
+            .any(|c| matches!(c, '"' | '*' | '(' | ')' | '-' | ':' | '^' | '+' | '~'));
+        if needs_escape {
+            format!("\"{}\"", keyword.replace('"', "\"\""))
+        } else {
+            keyword.to_string()
+        }
+    }
+
+    /// 搜索消息内容（FTS5 全文搜索）
+    pub fn search_content(
+        conn: &Connection,
+        query: &str,
+        limit: u32,
+    ) -> ChatV2Result<Vec<super::types::ContentSearchResult>> {
+        use super::types::ContentSearchResult;
+
+        let trimmed = query.trim();
+        if trimmed.is_empty() {
+            return Ok(vec![]);
+        }
+
+        let fts_query = Self::escape_fts5_query(trimmed);
+
+        let mut stmt = conn.prepare(
+            r#"
+            SELECT
+                s.id,
+                s.title,
+                m.id,
+                b.id,
+                m.role,
+                snippet(chat_v2_content_fts, 0, X'02', X'03', '...', 40),
+                s.updated_at
+            FROM chat_v2_content_fts fts
+            JOIN chat_v2_blocks b ON fts.rowid = b.rowid
+            JOIN chat_v2_messages m ON b.message_id = m.id
+            JOIN chat_v2_sessions s ON m.session_id = s.id
+            WHERE chat_v2_content_fts MATCH ?1
+              AND s.persist_status = 'active'
+            ORDER BY bm25(chat_v2_content_fts)
+            LIMIT ?2
+            "#,
+        )?;
+
+        let rows = stmt.query_map(params![fts_query, limit], |row| {
+            let raw_snippet: String = row.get(5)?;
+            Ok(ContentSearchResult {
+                session_id: row.get(0)?,
+                session_title: row.get(1)?,
+                message_id: row.get(2)?,
+                block_id: row.get(3)?,
+                role: row.get(4)?,
+                snippet: Self::sanitize_fts_snippet(&raw_snippet),
+                updated_at: row.get(6)?,
+            })
+        })?;
+
+        let results: Vec<ContentSearchResult> = rows
+            .filter_map(|r| match r {
+                Ok(val) => Some(val),
+                Err(e) => {
+                    log::warn!("[ChatV2Repo] Search row error: {}", e);
+                    None
+                }
+            })
+            .collect();
+
+        Ok(results)
+    }
+
+    /// 对 FTS5 snippet 进行 HTML 转义，防止 XSS
+    ///
+    /// snippet() 使用 \x02/\x03 作为占位标记，先转义所有 HTML 实体，
+    /// 再将占位标记替换为安全的 `<mark>` 标签。
+    fn sanitize_fts_snippet(raw: &str) -> String {
+        let escaped = raw
+            .replace('&', "&amp;")
+            .replace('<', "&lt;")
+            .replace('>', "&gt;")
+            .replace('"', "&quot;");
+        escaped
+            .replace('\x02', "<mark>")
+            .replace('\x03', "</mark>")
+    }
+
+    // ========================================================================
+    // 会话标签 CRUD
+    // ========================================================================
+
+    /// 批量设置会话标签（替换已有自动标签，保留手动标签）
+    ///
+    /// 使用 SAVEPOINT 保证 DELETE + INSERT 的原子性，避免中途失败丢失所有 auto 标签。
+    pub fn upsert_auto_tags(
+        conn: &Connection,
+        session_id: &str,
+        tags: &[String],
+    ) -> ChatV2Result<()> {
+        conn.execute_batch("SAVEPOINT upsert_auto_tags")?;
+
+        let result = (|| -> ChatV2Result<()> {
+            conn.execute(
+                "DELETE FROM chat_v2_session_tags WHERE session_id = ?1 AND tag_type = 'auto'",
+                params![session_id],
+            )?;
+
+            let mut stmt = conn.prepare(
+                "INSERT OR IGNORE INTO chat_v2_session_tags (session_id, tag, tag_type, created_at) VALUES (?1, ?2, 'auto', datetime('now'))",
+            )?;
+
+            for tag in tags {
+                let t = tag.trim();
+                if !t.is_empty() {
+                    stmt.execute(params![session_id, t])?;
+                }
+            }
+            Ok(())
+        })();
+
+        match result {
+            Ok(()) => {
+                conn.execute_batch("RELEASE SAVEPOINT upsert_auto_tags")?;
+                Ok(())
+            }
+            Err(e) => {
+                let _ = conn.execute_batch("ROLLBACK TO SAVEPOINT upsert_auto_tags");
+                Err(e)
+            }
+        }
+    }
+
+    /// 添加手动标签
+    pub fn add_manual_tag(
+        conn: &Connection,
+        session_id: &str,
+        tag: &str,
+    ) -> ChatV2Result<()> {
+        conn.execute(
+            "INSERT OR IGNORE INTO chat_v2_session_tags (session_id, tag, tag_type, created_at) VALUES (?1, ?2, 'manual', datetime('now'))",
+            params![session_id, tag.trim()],
+        )?;
+        Ok(())
+    }
+
+    /// 删除标签
+    pub fn remove_tag(
+        conn: &Connection,
+        session_id: &str,
+        tag: &str,
+    ) -> ChatV2Result<()> {
+        conn.execute(
+            "DELETE FROM chat_v2_session_tags WHERE session_id = ?1 AND tag = ?2",
+            params![session_id, tag],
+        )?;
+        Ok(())
+    }
+
+    /// 获取会话的所有标签
+    pub fn get_session_tags(
+        conn: &Connection,
+        session_id: &str,
+    ) -> ChatV2Result<Vec<String>> {
+        let mut stmt = conn.prepare(
+            "SELECT tag FROM chat_v2_session_tags WHERE session_id = ?1 ORDER BY tag_type ASC, created_at ASC",
+        )?;
+        let tags: Vec<String> = stmt
+            .query_map(params![session_id], |row| row.get(0))?
+            .filter_map(|r| r.ok())
+            .collect();
+        Ok(tags)
+    }
+
+    /// 批量获取多个会话的标签（用于列表页）
+    ///
+    /// 自动分批查询（每批 500），避免超出 SQLite 参数上限（默认 999）。
+    pub fn get_tags_for_sessions(
+        conn: &Connection,
+        session_ids: &[String],
+    ) -> ChatV2Result<std::collections::HashMap<String, Vec<String>>> {
+        if session_ids.is_empty() {
+            return Ok(std::collections::HashMap::new());
+        }
+
+        let mut map: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
+
+        for chunk in session_ids.chunks(500) {
+            let placeholders: Vec<String> = chunk.iter().enumerate().map(|(i, _)| format!("?{}", i + 1)).collect();
+            let sql = format!(
+                "SELECT session_id, tag FROM chat_v2_session_tags WHERE session_id IN ({}) ORDER BY tag_type ASC, created_at ASC",
+                placeholders.join(", ")
+            );
+
+            let mut stmt = conn.prepare(&sql)?;
+            let params: Vec<&dyn rusqlite::ToSql> = chunk.iter().map(|s| s as &dyn rusqlite::ToSql).collect();
+
+            let rows = stmt.query_map(params.as_slice(), |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })?;
+
+            for row in rows.flatten() {
+                map.entry(row.0).or_default().push(row.1);
+            }
+        }
+
+        Ok(map)
+    }
+
+    /// 获取所有标签（去重，带使用次数）
+    pub fn list_all_tags(
+        conn: &Connection,
+    ) -> ChatV2Result<Vec<(String, u32)>> {
+        let mut stmt = conn.prepare(
+            r#"
+            SELECT t.tag, COUNT(*) as cnt
+            FROM chat_v2_session_tags t
+            JOIN chat_v2_sessions s ON t.session_id = s.id
+            WHERE s.persist_status = 'active'
+            GROUP BY t.tag
+            ORDER BY cnt DESC, t.tag ASC
+            "#,
+        )?;
+        let tags: Vec<(String, u32)> = stmt
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
+            .filter_map(|r| r.ok())
+            .collect();
+        Ok(tags)
+    }
+
+    /// 更新会话的 tags_hash
+    pub fn update_tags_hash(
+        conn: &Connection,
+        session_id: &str,
+        tags_hash: &str,
+    ) -> ChatV2Result<()> {
+        conn.execute(
+            "UPDATE chat_v2_sessions SET tags_hash = ?2 WHERE id = ?1",
+            params![session_id, tags_hash],
+        )?;
+        Ok(())
     }
 }
 

@@ -187,12 +187,13 @@ const toolCallEventHandler: EventHandler = {
       blockId = store.createBlock(messageId, blockType);
     }
 
-    // 设置完整的工具信息
+    // 设置完整的工具信息，清空 preparing 阶段积累的 args 预览 content
     store.updateBlock(blockId, {
       toolName,
       toolInput,
       toolCallId,
-      isPreparing: false, // 清除 preparing 标志
+      isPreparing: false,
+      content: '',
     });
 
     // 🔧 修复：立即将状态更新为 running
@@ -752,7 +753,7 @@ const toolCallPreparingEventHandler: EventHandler = {
     store: ChatStore,
     messageId: string,
     payload: EventStartPayload,
-    _backendBlockId?: string
+    backendBlockId?: string
   ): string => {
     const { toolCallId, toolName } = payload as ToolCallPreparingPayload;
 
@@ -775,14 +776,16 @@ const toolCallPreparingEventHandler: EventHandler = {
     const isAskUserTool = strippedToolName === 'ask_user';
     const blockType = isSleepTool ? 'sleep' : isAskUserTool ? 'ask_user' : 'mcp_tool';
 
-    // 🆕 创建预渲染的工具块（使用正确的类型）
-    const blockId = store.createBlock(messageId, blockType);
+    // 创建预渲染的工具块（使用后端 block_id 或前端生成）
+    const blockId = backendBlockId
+      ? store.createBlockWithId(messageId, blockType, backendBlockId)
+      : store.createBlock(messageId, blockType);
 
     // 设置 preparing 状态和工具信息
     store.updateBlock(blockId, {
       toolName,
       toolCallId,
-      isPreparing: true, // 标记为准备中
+      isPreparing: true,
     });
 
     // 状态设为 pending（区别于 running）
@@ -792,6 +795,14 @@ const toolCallPreparingEventHandler: EventHandler = {
     store.setPreparingToolCall?.(messageId, { toolCallId, toolName });
 
     return blockId;
+  },
+
+  /**
+   * 处理 tool_call_preparing_chunk 事件
+   * LLM 正在流式生成工具参数，追加到 block.content 供前端实时预览
+   */
+  onChunk: (store: ChatStore, blockId: string, chunk: string): void => {
+    store.updateBlockContent(blockId, chunk);
   },
 };
 

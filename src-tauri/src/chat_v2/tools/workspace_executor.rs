@@ -228,6 +228,8 @@ impl WorkspaceToolExecutor {
                 "recommended_models": recommended_models,
             })),
             group_id: None,
+            tags_hash: None,
+            tags: None,
         };
 
         ChatV2Repo::create_session_with_conn(&conn, &session)

@@ -11,6 +11,7 @@
 
 use serde::{Deserialize, Serialize};
 use std::path::{Component, Path, PathBuf};
+use tauri::Manager;
 use tokio::fs;
 use tracing::{debug, info, warn};
 

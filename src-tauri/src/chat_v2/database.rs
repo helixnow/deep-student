@@ -19,7 +19,7 @@ const DATABASE_FILENAME: &str = "chat_v2.db";
 /// 当前数据库 Schema 版本
 /// 当前 Schema 版本（对应 Refinery 迁移的最新版本）
 /// 注意：此常量仅用于统计信息显示，实际版本以 refinery_schema_history 表为准
-pub const CURRENT_SCHEMA_VERSION: u32 = 20260221;
+pub const CURRENT_SCHEMA_VERSION: u32 = 20260301;
 
 /// SQLite 连接池类型
 pub type ChatV2Pool = Pool<SqliteConnectionManager>;

@@ -926,6 +926,21 @@
     "groupByGroup": "按分组浏览",
     "ungrouped": "未分组"
   },
+  "search": {
+    "titleMode": "标题",
+    "contentMode": "内容",
+    "contentPlaceholder": "搜索对话内容...",
+    "searching": "正在搜索...",
+    "noContentResults": "未找到匹配的内容",
+    "contentResultCount": "找到 {{count}} 条匹配内容"
+  },
+  "tags": {
+    "filterTitle": "按标签筛选",
+    "clearFilter": "清除",
+    "showMore": "展开更多 (+{{count}})",
+    "showLess": "收起",
+    "addPlaceholder": "添加标签"
+  },
   "approval": {
     "title": "工具执行确认",
     "toolName": "工具名称",

@@ -347,7 +347,7 @@ export const mindmapToolsSkill: SkillDefinition = {
                             required: ['sourceId', 'type', 'name'],
                           },
                         },
-                        children: { type: 'array', description: '子节点数组' },
+                        children: { type: 'array', description: '子节点数组', items: { type: 'object' } },
                       },
                       required: ['id', 'text', 'children'],
                     },
@@ -559,6 +559,7 @@ export const mindmapToolsSkill: SkillDefinition = {
                     children: {
                       type: 'array',
                       description: '子节点数组（可选，支持嵌套创建）',
+                      items: { type: 'object' },
                     },
                   },
                 },

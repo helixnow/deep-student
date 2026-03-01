@@ -188,6 +188,9 @@ const AsyncCitationImage: React.FC<{
   );
 };
 
+// 东亚文字检测：连续 2+ 个 CJK 表意文字 / 日文假名 / 韩文时视为自然语言而非数学
+const CJK_CONSECUTIVE_RE = /[\u3040-\u9fff\uac00-\ud7af]{2,}/;
+
 // 预处理函数：处理LaTeX和空行
 const preprocessContent = (content: string): string => {
   if (!content) return '';
@@ -203,8 +206,20 @@ const preprocessContent = (content: string): string => {
     codeBlockPlaceholders.push(match);
     return `\x00CB${codeBlockPlaceholders.length - 1}\x00`;
   });
-  processedContent = processedContent.replace(/(?<!\\)\\\((.+?)(?<!\\)\\\)/g, (_m, math) => `$${math}$`);
-  processedContent = processedContent.replace(/(?<!\\)\\\[([\s\S]+?)(?<!\\)\\\]/g, (_m, math) => `$$${math}$$`);
+  processedContent = processedContent.replace(
+    /(?<!\\)\\\((.+?)(?<!\\)\\\)/g,
+    (match, math) => {
+      if (CJK_CONSECUTIVE_RE.test(math) && !/\\[a-zA-Z]+/.test(math)) return match;
+      return `$${math}$`;
+    },
+  );
+  processedContent = processedContent.replace(
+    /(?<!\\)\\\[([\s\S]+?)(?<!\\)\\\]/g,
+    (match, math) => {
+      if (CJK_CONSECUTIVE_RE.test(math) && !/\\[a-zA-Z]+/.test(math)) return match;
+      return `$$${math}$$`;
+    },
+  );
 
   // 保护已有的 $$...$$ 和 $...$ 数学块，避免兜底正则误改块内圆括号
   const mathBlockPlaceholders: string[] = [];
@@ -220,8 +235,7 @@ const preprocessContent = (content: string): string => {
     /(?<!\$)\(([^)]{1,300})\)(?!\$)/g,
     (match, inner: string) => {
       if (!BARE_LATEX_MATH_RE.test(inner) && !/[_^]\{/.test(inner)) return match;
-      // 含连续中文字符说明是自然语言括号，不转换
-      if (/[\u4e00-\u9fff]{2,}/.test(inner)) return match;
+      if (CJK_CONSECUTIVE_RE.test(inner)) return match;
       return `$${inner}$`;
     },
   );

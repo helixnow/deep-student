@@ -1165,6 +1165,13 @@ pub fn run() {
             ,crate::chat_v2::handlers::migration::chat_v2_check_migration_status
             ,crate::chat_v2::handlers::migration::chat_v2_migrate_legacy_chat
             ,crate::chat_v2::handlers::migration::chat_v2_rollback_migration
+            // 内容搜索 + 标签管理命令
+            ,crate::chat_v2::handlers::search_handlers::chat_v2_search_content
+            ,crate::chat_v2::handlers::search_handlers::chat_v2_get_session_tags
+            ,crate::chat_v2::handlers::search_handlers::chat_v2_get_tags_batch
+            ,crate::chat_v2::handlers::search_handlers::chat_v2_add_tag
+            ,crate::chat_v2::handlers::search_handlers::chat_v2_remove_tag
+            ,crate::chat_v2::handlers::search_handlers::chat_v2_list_all_tags
             // 工作区命令（Agent 协作系统）
             ,crate::chat_v2::handlers::workspace_handlers::workspace_create
             ,crate::chat_v2::handlers::workspace_handlers::workspace_get

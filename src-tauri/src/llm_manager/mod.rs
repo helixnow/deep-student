@@ -846,6 +846,9 @@ pub trait LLMStreamHooks: Send + Sync {
     /// - tool_call_id: 工具调用 ID
     /// - tool_name: 工具名称
     fn on_tool_call_start(&self, _tool_call_id: &str, _tool_name: &str) {}
+    /// 工具调用参数流式片段回调
+    /// 在 LLM 逐 token 生成工具调用 arguments 时调用，用于前端实时预览
+    fn on_tool_call_args_delta(&self, _tool_call_id: &str, _delta: &str) {}
     fn on_tool_call(&self, _msg: &ChatMessage) {}
     fn on_tool_result(&self, _msg: &ChatMessage) {}
     fn on_usage(&self, _usage: &serde_json::Value) {}

@@ -137,6 +137,8 @@ impl SubagentExecutor {
                 "subagent_depth": current_depth + 1,
             })),
             group_id: None,
+            tags_hash: None,
+            tags: None,
         };
 
         ChatV2Repo::create_session_with_conn(&conn, &session)

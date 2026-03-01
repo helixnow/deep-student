@@ -12,7 +12,7 @@
 //! - 用户消息内容
 //! - 检索结果（SharedContext，只读）
 
-use crate::chat_v2::events::ChatV2EventEmitter;
+use crate::chat_v2::events::{event_types, ChatV2EventEmitter};
 use crate::chat_v2::types::{
     MessageBlock, SharedContext, TokenUsage, ToolCall, ToolResultInfo, Variant,
 };
@@ -680,12 +680,23 @@ impl VariantExecutionContext {
     }
 
     /// 发射 tool_call_preparing 事件（自动携带 variant_id）
-    pub fn emit_tool_call_preparing(&self, tool_call_id: &str, tool_name: &str) {
+    pub fn emit_tool_call_preparing(&self, tool_call_id: &str, tool_name: &str, block_id: Option<&str>) {
         self.emitter.emit_tool_call_preparing_with_variant(
             &self.message_id,
             tool_call_id,
             tool_name,
+            block_id,
             &self.variant_id,
+        );
+    }
+
+    /// 发射 tool_call_preparing 的 args delta chunk（自动携带 variant_id）
+    pub fn emit_tool_call_preparing_chunk(&self, block_id: &str, chunk: &str) {
+        self.emitter.emit_chunk(
+            event_types::TOOL_CALL_PREPARING,
+            block_id,
+            chunk,
+            Some(&self.variant_id),
         );
     }
 

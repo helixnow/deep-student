@@ -226,22 +226,21 @@ impl ChatV2Pipeline {
     ) -> ChatV2Result<()> {
         let conn = self.db.get_conn_safe()?;
 
-        // 获取会话
-        let mut session = ChatV2Repo::get_session_with_conn(&conn, session_id)?
-            .ok_or_else(|| ChatV2Error::SessionNotFound(session_id.to_string()))?;
-
-        // 更新摘要
-        session.title = Some(title.to_string());
-        session.description = if description.is_empty() {
+        let desc_value = if description.is_empty() {
             None
         } else {
-            Some(description.to_string())
+            Some(description)
         };
-        session.summary_hash = Some(summary_hash.to_string());
-        session.updated_at = chrono::Utc::now();
+        let now = chrono::Utc::now().to_rfc3339();
 
-        // 保存
-        ChatV2Repo::update_session_with_conn(&conn, &session)?;
+        let rows = conn.execute(
+            "UPDATE chat_v2_sessions SET title = ?2, description = ?3, summary_hash = ?4, updated_at = ?5 WHERE id = ?1",
+            rusqlite::params![session_id, title, desc_value, summary_hash, now],
+        )?;
+
+        if rows == 0 {
+            return Err(ChatV2Error::SessionNotFound(session_id.to_string()));
+        }
 
         log::debug!(
             "[ChatV2::pipeline] Session summary updated: session={}, title={}, description={}",
@@ -288,6 +287,147 @@ impl ChatV2Pipeline {
             }
             _ => true,
         }
+    }
+
+    // ========================================================================
+    // 自动标签提取
+    // ========================================================================
+
+    /// 标签提取 Prompt
+    const TAG_EXTRACTION_PROMPT: &'static str = r#"请从以下对话中提取3-6个关键标签。
+
+要求：
+1. 每个标签2-6个字，简短精练
+2. 优先提取：科目名称、核心概念、题型、方法论
+3. 语言与对话内容一致
+4. 按 JSON 数组格式输出：["标签1", "标签2", "标签3"]
+
+用户问题：
+{user_content}
+
+助手回复（摘要）：
+{assistant_content}
+
+请直接输出 JSON 数组："#;
+
+    /// 自动提取会话标签（异步，不阻塞主流程）
+    pub async fn generate_session_tags(
+        &self,
+        session_id: &str,
+        user_content: &str,
+        assistant_content: &str,
+    ) {
+        log::info!(
+            "[ChatV2::pipeline] Generating tags for session={}",
+            session_id
+        );
+
+        let assistant_summary: String = assistant_content.chars().take(500).collect();
+        let content_hash = Self::compute_content_hash(user_content, &assistant_summary);
+
+        // 检查是否需要生成标签（哈希去重）
+        {
+            let conn = match self.db.get_conn_safe() {
+                Ok(c) => c,
+                Err(_) => return,
+            };
+            if let Ok(Some(session)) =
+                ChatV2Repo::get_session_with_conn(&conn, session_id)
+            {
+                if session.tags_hash.as_deref() == Some(&content_hash) {
+                    log::debug!(
+                        "[ChatV2::pipeline] Skip tag generation, hash unchanged: {}",
+                        session_id
+                    );
+                    return;
+                }
+            }
+        }
+
+        let prompt = Self::TAG_EXTRACTION_PROMPT
+            .replace("{user_content}", user_content)
+            .replace("{assistant_content}", &assistant_summary);
+
+        let response = match self.call_llm_for_summary(&prompt).await {
+            Ok(r) => r,
+            Err(e) => {
+                log::warn!("[ChatV2::pipeline] Failed to generate tags: {}", e);
+                return;
+            }
+        };
+
+        let tags = match Self::parse_tags_response(&response) {
+            Some(t) if !t.is_empty() => t,
+            _ => {
+                log::debug!(
+                    "[ChatV2::pipeline] No tags extracted from response: {}",
+                    response
+                );
+                return;
+            }
+        };
+
+        log::info!(
+            "[ChatV2::pipeline] Extracted {} tags for session={}: {:?}",
+            tags.len(),
+            session_id,
+            tags
+        );
+
+        let conn = match self.db.get_conn_safe() {
+            Ok(c) => c,
+            Err(e) => {
+                log::error!("[ChatV2::pipeline] Failed to get conn for tags: {}", e);
+                return;
+            }
+        };
+
+        if let Err(e) = ChatV2Repo::upsert_auto_tags(&conn, session_id, &tags) {
+            log::error!("[ChatV2::pipeline] Failed to save tags: {}", e);
+            return;
+        }
+
+        if let Err(e) = ChatV2Repo::update_tags_hash(&conn, session_id, &content_hash) {
+            log::error!("[ChatV2::pipeline] Failed to update tags_hash: {}", e);
+        }
+    }
+
+    /// 解析标签提取响应
+    fn parse_tags_response(response: &str) -> Option<Vec<String>> {
+        let text = response.trim();
+        let json_str = if text.starts_with("```") {
+            text.trim_start_matches("```json")
+                .trim_start_matches("```")
+                .trim_end_matches("```")
+                .trim()
+        } else {
+            text
+        };
+
+        // 尝试直接解析为数组
+        if let Ok(arr) = serde_json::from_str::<Vec<String>>(json_str) {
+            let filtered: Vec<String> = arr
+                .into_iter()
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty() && s.chars().count() <= 24)
+                .collect();
+            return Some(filtered);
+        }
+
+        // 尝试解析为 {"tags": [...]} 对象
+        if let Ok(obj) = serde_json::from_str::<serde_json::Value>(json_str) {
+            if let Some(arr) = obj.get("tags").and_then(|v| v.as_array()) {
+                let filtered: Vec<String> = arr
+                    .iter()
+                    .filter_map(|v| v.as_str())
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty() && s.chars().count() <= 24)
+                    .collect();
+                return Some(filtered);
+            }
+        }
+
+        None
     }
 
     /// 取消正在进行的流式生成

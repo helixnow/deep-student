@@ -864,14 +864,21 @@ impl ChatV2EventEmitter {
         );
     }
 
-    /// 🆕 2026-01-15: 发射工具调用准备中事件
+    /// 发射工具调用准备中事件
     /// 在 LLM 开始生成工具调用参数时立即调用，让前端显示"正在准备工具调用"状态
     ///
     /// ## 参数
     /// - `message_id`: 消息 ID
     /// - `tool_call_id`: 工具调用 ID
     /// - `tool_name`: 工具名称
-    pub fn emit_tool_call_preparing(&self, message_id: &str, tool_call_id: &str, tool_name: &str) {
+    /// - `block_id`: 后端生成的块 ID，用于后续 args delta chunk 寻址
+    pub fn emit_tool_call_preparing(
+        &self,
+        message_id: &str,
+        tool_call_id: &str,
+        tool_name: &str,
+        block_id: Option<&str>,
+    ) {
         let seq = self.next_sequence_id();
         let payload = serde_json::json!({
             "toolCallId": tool_call_id,
@@ -883,7 +890,7 @@ impl ChatV2EventEmitter {
             r#type: event_types::TOOL_CALL_PREPARING.to_string(),
             phase: "start".to_string(),
             message_id: Some(message_id.to_string()),
-            block_id: None,
+            block_id: block_id.map(|s| s.to_string()),
             block_type: None,
             chunk: None,
             result: None,
@@ -903,6 +910,7 @@ impl ChatV2EventEmitter {
         message_id: &str,
         tool_call_id: &str,
         tool_name: &str,
+        block_id: Option<&str>,
         variant_id: &str,
     ) {
         let seq = self.next_sequence_id();
@@ -916,7 +924,7 @@ impl ChatV2EventEmitter {
             r#type: event_types::TOOL_CALL_PREPARING.to_string(),
             phase: "start".to_string(),
             message_id: Some(message_id.to_string()),
-            block_id: None,
+            block_id: block_id.map(|s| s.to_string()),
             block_type: None,
             chunk: None,
             result: None,

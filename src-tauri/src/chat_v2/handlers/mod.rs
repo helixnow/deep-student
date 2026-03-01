@@ -28,6 +28,7 @@ pub mod manage_session;
 pub mod migration;
 pub mod ocr;
 pub mod resource_handlers; // ⚠️ DEPRECATED: 前端已迁移到 VFS (vfs_* 命令)，resource_* 命令零引用。参见 P1-#9。
+pub mod search_handlers;
 pub mod send_message;
 pub mod variant_handlers;
 pub mod workspace_handlers;
@@ -57,6 +58,10 @@ pub use migration::{
     chat_v2_check_migration_status, chat_v2_migrate_legacy_chat, chat_v2_rollback_migration,
 };
 pub use ocr::chat_v2_perform_ocr;
+pub use search_handlers::{
+    chat_v2_add_tag, chat_v2_get_session_tags, chat_v2_get_tags_batch, chat_v2_list_all_tags,
+    chat_v2_remove_tag, chat_v2_search_content,
+};
 pub use send_message::{
     chat_v2_cancel_stream, chat_v2_continue_message, chat_v2_edit_and_resend,
     chat_v2_retry_message, chat_v2_send_message,

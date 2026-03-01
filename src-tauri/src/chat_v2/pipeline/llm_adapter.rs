@@ -138,6 +138,10 @@ pub struct ChatV2LLMAdapter {
     think_tag_buffer: std::sync::Mutex<String>,
     /// 🔧 Gemini 3 思维签名缓存：工具调用场景下必须在后续请求中回传
     cached_thought_signature: std::sync::Mutex<Option<String>>,
+    /// tool_call_id → preparing block_id 映射（用于 args delta chunk 寻址）
+    preparing_block_ids: std::sync::Mutex<HashMap<String, String>>,
+    /// tool_call_id → 累积的 args delta（节流缓冲，减少事件频率）
+    args_delta_buffer: std::sync::Mutex<HashMap<String, String>>,
 }
 
 impl ChatV2LLMAdapter {
@@ -160,12 +164,36 @@ impl ChatV2LLMAdapter {
             in_think_tag: std::sync::Mutex::new(false),
             think_tag_buffer: std::sync::Mutex::new(String::new()),
             cached_thought_signature: std::sync::Mutex::new(None),
+            preparing_block_ids: std::sync::Mutex::new(HashMap::new()),
+            args_delta_buffer: std::sync::Mutex::new(HashMap::new()),
         }
     }
 
     /// 生成块 ID
     pub(crate) fn generate_block_id() -> String {
         format!("blk_{}", Uuid::new_v4())
+    }
+
+    /// 刷新指定 tool_call_id 的 args delta 缓冲（参数累积完成时调用）
+    fn flush_args_delta_buffer(&self, tool_call_id: &str) {
+        let block_id = {
+            let mut guard = self.preparing_block_ids.lock().unwrap_or_else(|e| e.into_inner());
+            guard.remove(tool_call_id)
+        };
+        if let Some(block_id) = block_id {
+            let chunk = {
+                let mut guard = self.args_delta_buffer.lock().unwrap_or_else(|e| e.into_inner());
+                guard.remove(tool_call_id).unwrap_or_default()
+            };
+            if !chunk.is_empty() {
+                self.emitter.emit_chunk(
+                    event_types::TOOL_CALL_PREPARING,
+                    &block_id,
+                    &chunk,
+                    None,
+                );
+            }
+        }
     }
 
     /// 确保 thinking 块已启动
@@ -746,10 +774,49 @@ impl LLMStreamHooks for ChatV2LLMAdapter {
             return;
         }
 
-        // 发射 tool_call_preparing 事件，让前端显示"正在准备工具调用"状态
-        // 使用新的事件类型，前端可以据此显示工具调用准备中的 UI
+        // 生成 block_id 并存储映射，供后续 args delta chunk 使用
+        let block_id = Self::generate_block_id();
+        {
+            let mut guard = self.preparing_block_ids.lock().unwrap_or_else(|e| e.into_inner());
+            guard.insert(tool_call_id.to_string(), block_id.clone());
+        }
+
         self.emitter
-            .emit_tool_call_preparing(&self.message_id, tool_call_id, tool_name);
+            .emit_tool_call_preparing(&self.message_id, tool_call_id, tool_name, Some(&block_id));
+    }
+
+    /// 工具调用参数流式片段回调（带节流）
+    /// 每累积 ≥500 字符发射一次 chunk，避免事件风暴
+    fn on_tool_call_args_delta(&self, tool_call_id: &str, delta: &str) {
+        let block_id = {
+            let guard = self.preparing_block_ids.lock().unwrap_or_else(|e| e.into_inner());
+            match guard.get(tool_call_id) {
+                Some(id) => id.clone(),
+                None => return,
+            }
+        };
+
+        let should_flush = {
+            let mut guard = self.args_delta_buffer.lock().unwrap_or_else(|e| e.into_inner());
+            let entry = guard.entry(tool_call_id.to_string()).or_default();
+            entry.push_str(delta);
+            entry.len() >= 500
+        };
+
+        if should_flush {
+            let chunk = {
+                let mut guard = self.args_delta_buffer.lock().unwrap_or_else(|e| e.into_inner());
+                guard.remove(tool_call_id).unwrap_or_default()
+            };
+            if !chunk.is_empty() {
+                self.emitter.emit_chunk(
+                    event_types::TOOL_CALL_PREPARING,
+                    &block_id,
+                    &chunk,
+                    None,
+                );
+            }
+        }
     }
 
     fn on_thought_signature(&self, signature: &str) {
@@ -770,6 +837,9 @@ impl LLMStreamHooks for ChatV2LLMAdapter {
             let tool_call_id = &tool_call.id;
             let tool_name = &tool_call.tool_name;
             let tool_input = tool_call.args_json.clone();
+
+            // 刷新该工具调用剩余的 args delta 缓冲
+            self.flush_args_delta_buffer(tool_call_id);
 
             // 🔧 P0修复：移除 block_id 生成和 active_tool_blocks 映射
             // block_id 统一在 execute_single_tool 中生成，并记录到 ToolResultInfo.block_id

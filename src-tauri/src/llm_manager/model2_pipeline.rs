@@ -1427,8 +1427,12 @@ impl LLMManager {
                                                 accumulated_args.push_str(&args_fragment);
                                                 pending_tool_calls.insert(
                                                     index,
-                                                    (id, name, accumulated_args.clone()),
+                                                    (id.clone(), name, accumulated_args.clone()),
                                                 );
+                                                // 🆕 转发 args delta 给前端实时预览
+                                                if let Some(h) = self.get_hook(stream_event).await {
+                                                    h.on_tool_call_args_delta(&id, &args_fragment);
+                                                }
                                                 // 简化日志：每 200 字符输出一个 / 代表累积
                                                 if accumulated_args.len() % 200
                                                     < args_fragment.len()

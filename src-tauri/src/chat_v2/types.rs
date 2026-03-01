@@ -370,6 +370,37 @@ pub struct ChatSession {
     /// 分组 ID（可选）
     #[serde(skip_serializing_if = "Option::is_none")]
     pub group_id: Option<String>,
+
+    /// 标签哈希（用于防重复提取标签）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tags_hash: Option<String>,
+
+    /// 会话标签（从 chat_v2_session_tags 表 JOIN 获取，非持久化字段）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tags: Option<Vec<String>>,
+}
+
+/// 会话标签
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionTag {
+    pub session_id: String,
+    pub tag: String,
+    pub tag_type: String,
+    pub created_at: String,
+}
+
+/// 内容搜索结果
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ContentSearchResult {
+    pub session_id: String,
+    pub session_title: Option<String>,
+    pub message_id: String,
+    pub block_id: String,
+    pub role: String,
+    pub snippet: String,
+    pub updated_at: String,
 }
 
 impl ChatSession {
@@ -387,6 +418,8 @@ impl ChatSession {
             updated_at: now,
             metadata: None,
             group_id: None,
+            tags_hash: None,
+            tags: None,
         }
     }
 

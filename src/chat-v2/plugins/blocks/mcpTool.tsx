@@ -209,6 +209,67 @@ const ToolProgress: React.FC<ToolProgressProps> = ({ content }) => {
 };
 
 // ============================================================================
+// 子组件：参数流式预览（preparing 阶段）
+// ============================================================================
+
+interface ToolArgsPreviewProps {
+  content?: string;
+}
+
+const ARGS_PREVIEW_MAX_DISPLAY = 2048;
+
+const ToolArgsPreview: React.FC<ToolArgsPreviewProps> = ({ content }) => {
+  const { t } = useTranslation('chatV2');
+  const [isExpanded, setIsExpanded] = useState(false);
+  const charCount = content?.length ?? 0;
+
+  const displayContent = useMemo(() => {
+    if (!content) return '';
+    if (content.length <= ARGS_PREVIEW_MAX_DISPLAY) return content;
+    return '...' + content.slice(-ARGS_PREVIEW_MAX_DISPLAY);
+  }, [content]);
+
+  return (
+    <div className="px-3 py-2 border-b border-border/20">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <div className="flex gap-1">
+            <span className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+            <span className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+            <span className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+          </div>
+          <span>{t('blocks.mcpTool.generatingArgs', { defaultValue: '生成参数中...' })}</span>
+          {charCount > 0 && (
+            <span className="text-xs text-muted-foreground/60">
+              ({(charCount / 1024).toFixed(1)} KB)
+            </span>
+          )}
+        </div>
+        {charCount > 0 && (
+          <NotionButton variant="ghost" size="sm" onClick={() => setIsExpanded(!isExpanded)}>
+            {isExpanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+          </NotionButton>
+        )}
+      </div>
+
+      {isExpanded && displayContent && (
+        <pre
+          className={cn(
+            'mt-1.5 p-2 rounded text-xs font-mono',
+            'bg-muted/30 dark:bg-muted/20',
+            'max-h-48 overflow-auto',
+            'whitespace-pre-wrap break-words',
+            'text-muted-foreground'
+          )}
+        >
+          {displayContent}
+        </pre>
+      )}
+    </div>
+  );
+};
+
+// ============================================================================
 // 子组件：错误展示
 // ============================================================================
 
@@ -598,8 +659,13 @@ const McpToolBlockComponent: React.FC<BlockComponentProps> = React.memo(({
         </div>
       )}
 
-      {/* 执行中进度 */}
-      {block.status === 'running' && <ToolProgress content={content} />}
+      {/* 参数生成中预览：isPreparing 且有内容流入 */}
+      {block.isPreparing && (block.status === 'running' || block.status === 'pending') && (
+        <ToolArgsPreview content={content} />
+      )}
+
+      {/* 工具执行中进度（非 preparing 阶段） */}
+      {block.status === 'running' && !block.isPreparing && <ToolProgress content={content} />}
 
       {/* 成功输出 - 当 _templateVisual 时由独立 template_preview 块显示 */}
       {block.status === 'success' && toolOutput !== undefined && !isTemplateVisualOutput(toolOutput) && (

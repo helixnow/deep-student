@@ -14,6 +14,10 @@ pub(crate) struct VariantLLMAdapter {
     in_think_tag: Mutex<bool>,
     /// 🔧 <think> 标签解析缓冲区：用于处理跨 chunk 的标签边界
     think_tag_buffer: Mutex<String>,
+    /// tool_call_id → preparing block_id 映射
+    preparing_block_ids: Mutex<HashMap<String, String>>,
+    /// tool_call_id → 累积的 args delta（节流缓冲）
+    args_delta_buffer: Mutex<HashMap<String, String>>,
 }
 
 impl VariantLLMAdapter {
@@ -29,6 +33,8 @@ impl VariantLLMAdapter {
             finalized_thinking_block_id: Mutex::new(None),
             in_think_tag: Mutex::new(false),
             think_tag_buffer: Mutex::new(String::new()),
+            preparing_block_ids: Mutex::new(HashMap::new()),
+            args_delta_buffer: Mutex::new(HashMap::new()),
         }
     }
 
@@ -399,11 +405,58 @@ impl crate::llm_manager::LLMStreamHooks for VariantLLMAdapter {
             return;
         }
 
-        self.ctx.emit_tool_call_preparing(tool_call_id, tool_name);
+        // 生成 block_id 并存储映射，供后续 args delta chunk 使用
+        let block_id = ChatV2LLMAdapter::generate_block_id();
+        self.ctx.emit_tool_call_preparing(tool_call_id, tool_name, Some(&block_id));
+        {
+            let mut guard = self.preparing_block_ids.lock().unwrap_or_else(|e| e.into_inner());
+            guard.insert(tool_call_id.to_string(), block_id);
+        }
+    }
+
+    fn on_tool_call_args_delta(&self, tool_call_id: &str, delta: &str) {
+        let block_id = {
+            let guard = self.preparing_block_ids.lock().unwrap_or_else(|e| e.into_inner());
+            match guard.get(tool_call_id) {
+                Some(id) => id.clone(),
+                None => return,
+            }
+        };
+        // 节流：累积到阈值后批量发射
+        let should_flush = {
+            let mut guard = self.args_delta_buffer.lock().unwrap_or_else(|e| e.into_inner());
+            let entry = guard.entry(tool_call_id.to_string()).or_insert_with(String::new);
+            entry.push_str(delta);
+            entry.len() >= 500
+        };
+        if should_flush {
+            let chunk = {
+                let mut guard = self.args_delta_buffer.lock().unwrap_or_else(|e| e.into_inner());
+                guard.remove(tool_call_id).unwrap_or_default()
+            };
+            if !chunk.is_empty() {
+                self.ctx.emit_tool_call_preparing_chunk(&block_id, &chunk);
+            }
+        }
     }
 
     fn on_tool_call(&self, msg: &LegacyChatMessage) {
         if let Some(ref tool_call) = msg.tool_call {
+            // 刷新该工具调用剩余的 args delta 缓冲
+            let block_id = {
+                let guard = self.preparing_block_ids.lock().unwrap_or_else(|e| e.into_inner());
+                guard.get(&tool_call.id).cloned()
+            };
+            if let Some(block_id) = block_id {
+                let chunk = {
+                    let mut guard = self.args_delta_buffer.lock().unwrap_or_else(|e| e.into_inner());
+                    guard.remove(&tool_call.id).unwrap_or_default()
+                };
+                if !chunk.is_empty() {
+                    self.ctx.emit_tool_call_preparing_chunk(&block_id, &chunk);
+                }
+            }
+
             self.ctx.add_tool_call(ToolCall {
                 id: tool_call.id.clone(),
                 name: tool_call.tool_name.clone(),

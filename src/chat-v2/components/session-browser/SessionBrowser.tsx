@@ -20,10 +20,16 @@ import {
   CalendarDays,
   Folder,
   ChevronDown,
+  Tag,
+  FileText,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { Skeleton } from '@/components/ui/shad/Skeleton';
+import { useContentSearch } from '../../hooks/useContentSearch';
+import { useSessionTags } from '../../hooks/useSessionTags';
+import { SearchResultList } from './SearchResultList';
+import { TagFilterPanel, SessionTagBadges, AddTagInput } from './TagFilter';
 
 // ============================================================================
 // 类型定义
@@ -120,24 +126,30 @@ interface SessionCardProps {
   session: SessionItem;
   isEditing: boolean;
   editingTitle: string;
+  tags?: string[];
   onSelect: () => void;
   onDelete: () => void;
   onStartEdit: () => void;
   onSaveEdit: () => void;
   onCancelEdit: () => void;
   onEditTitleChange: (value: string) => void;
+  onAddTag?: (tag: string) => void;
+  onRemoveTag?: (tag: string) => void;
 }
 
 const SessionCard: React.FC<SessionCardProps> = ({
   session,
   isEditing,
   editingTitle,
+  tags,
   onSelect,
   onDelete,
   onStartEdit,
   onSaveEdit,
   onCancelEdit,
   onEditTitleChange,
+  onAddTag,
+  onRemoveTag,
 }) => {
   const { t } = useTranslation(['chatV2', 'common']);
   const deleteConfirmTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -281,6 +293,15 @@ const SessionCard: React.FC<SessionCardProps> = ({
                 {session.description}
               </p>
             )}
+            {/* 标签 */}
+            <div className="flex items-center gap-0.5 flex-wrap">
+              {tags && tags.length > 0 && (
+                <SessionTagBadges tags={tags} maxDisplay={3} onRemove={onRemoveTag} />
+              )}
+              {onAddTag && (
+                <AddTagInput onAdd={onAddTag} />
+              )}
+            </div>
           </div>
         )}
       </div>
@@ -317,6 +338,9 @@ const SessionCardSkeleton: React.FC = () => (
 // 主组件
 // ============================================================================
 
+/** 搜索模式：标题搜索 or 内容搜索 */
+type SearchMode = 'title' | 'content';
+
 export const SessionBrowser: React.FC<SessionBrowserProps> = ({
   sessions,
   groups = [],
@@ -336,6 +360,32 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
   const [internalSearchQuery, setInternalSearchQuery] = useState('');
   const searchQuery = embeddedMode && externalSearchQuery !== undefined ? externalSearchQuery : internalSearchQuery;
   const setSearchQuery = embeddedMode && onSearchQueryChange ? onSearchQueryChange : setInternalSearchQuery;
+
+  // 搜索模式：标题 / 内容
+  const [searchMode, setSearchMode] = useState<SearchMode>('title');
+  const contentSearch = useContentSearch(300);
+
+  // 标签系统
+  const sessionTags = useSessionTags();
+  const [showTagFilter, setShowTagFilter] = useState(false);
+
+  // 当 sessions 变化时加载标签
+  const sessionIdsKey = useMemo(() => sessions.map((s) => s.id).join(','), [sessions]);
+  useEffect(() => {
+    const ids = sessions.map((s) => s.id);
+    if (ids.length > 0) {
+      void sessionTags.loadTagsForSessions(ids);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- sessionIdsKey 已稳定追踪 sessions 变化
+  }, [sessionIdsKey]);
+
+  // 搜索模式同步
+  useEffect(() => {
+    if (searchMode === 'content') {
+      contentSearch.search(searchQuery);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- contentSearch.search 是稳定引用
+  }, [searchQuery, searchMode]);
 
   // 编辑状态
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
@@ -370,13 +420,27 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
     older: t('page.timeGroups.older'),
   };
 
-  // 搜索过滤
+  // 搜索过滤 + 标签过滤
   const filteredSessions = useMemo(() => {
-    if (!searchQuery.trim()) return sessions;
-    return sessions.filter((s) =>
-      (s.title || '').toLowerCase().includes(searchQuery.toLowerCase())
-    );
-  }, [sessions, searchQuery]);
+    let filtered = sessions;
+
+    // 标题搜索（仅标题模式）
+    if (searchMode === 'title' && searchQuery.trim()) {
+      filtered = filtered.filter((s) =>
+        (s.title || '').toLowerCase().includes(searchQuery.toLowerCase())
+      );
+    }
+
+    // 标签过滤
+    if (sessionTags.selectedFilterTags.size > 0) {
+      filtered = filtered.filter((s) => {
+        const tags = sessionTags.tagsBySession.get(s.id) || [];
+        return Array.from(sessionTags.selectedFilterTags).every((ft) => tags.includes(ft));
+      });
+    }
+
+    return filtered;
+  }, [sessions, searchQuery, searchMode, sessionTags.selectedFilterTags, sessionTags.tagsBySession]);
 
   // 按时间分组会话
   const timeGroupedSessions = useMemo(() => {
@@ -495,16 +559,57 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
 
             <div className="flex-1 min-w-0" />
 
-            {/* 桌面端搜索框 */}
-            <div className="hidden sm:block relative w-48 md:w-64">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/60" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder={t('page.searchPlaceholder')}
-                className="w-full h-9 pl-9 pr-3 text-sm bg-muted/30 border-transparent rounded-md focus:border-border focus:bg-background focus:outline-none transition-colors"
-              />
+            {/* 标签过滤按钮 */}
+            {sessionTags.allTags.length > 0 && (
+              <NotionButton
+                variant={showTagFilter || sessionTags.selectedFilterTags.size > 0 ? 'default' : 'ghost'}
+                size="sm"
+                onClick={() => setShowTagFilter(!showTagFilter)}
+                className={cn('shrink-0', sessionTags.selectedFilterTags.size > 0 && 'text-primary')}
+              >
+                <Tag className="w-3.5 h-3.5" />
+                {sessionTags.selectedFilterTags.size > 0 && (
+                  <span className="text-[10px] px-1 rounded-full bg-primary/10">{sessionTags.selectedFilterTags.size}</span>
+                )}
+              </NotionButton>
+            )}
+
+            {/* 桌面端搜索框 + 模式切换 */}
+            <div className="hidden sm:flex items-center gap-1">
+              <div className="relative flex items-center h-8 rounded-lg bg-muted/50 p-0.5">
+                <button
+                  onClick={() => setSearchMode('title')}
+                  className={cn(
+                    'relative z-10 flex items-center gap-1 px-2 h-full rounded-md text-[11px] font-medium transition-colors',
+                    searchMode === 'title' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground/70'
+                  )}
+                  title={t('search.titleMode')}
+                >
+                  <Search className="w-3 h-3" />
+                  <span>{t('search.titleMode')}</span>
+                </button>
+                <button
+                  onClick={() => setSearchMode('content')}
+                  className={cn(
+                    'relative z-10 flex items-center gap-1 px-2 h-full rounded-md text-[11px] font-medium transition-colors',
+                    searchMode === 'content' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground/70'
+                  )}
+                  title={t('search.contentMode')}
+                >
+                  <FileText className="w-3 h-3" />
+                  <span>{t('search.contentMode')}</span>
+                </button>
+              </div>
+              <div className="relative w-48 md:w-56">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/60" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder={searchMode === 'content' ? t('search.contentPlaceholder') : t('page.searchPlaceholder')}
+                  className="w-full h-9 pl-9 pr-3 text-sm bg-muted/30 border-transparent rounded-md focus:border-border focus:bg-background focus:outline-none transition-colors"
+                />
+              </div>
             </div>
 
             {/* 新建按钮 */}
@@ -515,16 +620,27 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
           </div>
 
           {/* 移动端搜索框 - 单独一行 */}
-          <div className="sm:hidden pb-2.5">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/60" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder={t('page.searchPlaceholder')}
-                className="w-full h-9 pl-9 pr-3 text-sm bg-muted/30 border-transparent rounded-md focus:border-border focus:bg-background focus:outline-none transition-colors"
-              />
+          <div className="sm:hidden pb-2.5 space-y-2">
+            <div className="flex items-center gap-2">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/60" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder={searchMode === 'content' ? t('search.contentPlaceholder') : t('page.searchPlaceholder')}
+                  className="w-full h-9 pl-9 pr-3 text-sm bg-muted/30 border-transparent rounded-md focus:border-border focus:bg-background focus:outline-none transition-colors"
+                />
+              </div>
+              <button
+                onClick={() => setSearchMode(searchMode === 'title' ? 'content' : 'title')}
+                className={cn(
+                  'shrink-0 h-9 px-2.5 rounded-md text-[11px] font-medium transition-colors',
+                  searchMode === 'content' ? 'bg-primary/10 text-primary' : 'bg-muted/30 text-muted-foreground'
+                )}
+              >
+                {searchMode === 'content' ? <FileText className="w-4 h-4" /> : <Search className="w-4 h-4" />}
+              </button>
             </div>
           </div>
         </div>
@@ -540,7 +656,7 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder={t('page.searchPlaceholder')}
+                placeholder={searchMode === 'content' ? t('search.contentPlaceholder') : t('page.searchPlaceholder')}
                 className="w-full h-9 pl-9 pr-3 text-sm bg-muted/30 border-transparent rounded-md focus:border-border focus:bg-background focus:outline-none transition-colors"
               />
             </div>
@@ -579,9 +695,29 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
         </div>
       )}
 
+      {/* 标签过滤面板 */}
+      {showTagFilter && sessionTags.allTags.length > 0 && (
+        <div className="flex-shrink-0 border-b border-border/40 px-3 sm:px-6 py-3">
+          <TagFilterPanel
+            allTags={sessionTags.allTags}
+            selectedTags={sessionTags.selectedFilterTags}
+            onToggleTag={sessionTags.toggleFilterTag}
+            onClear={sessionTags.clearFilter}
+          />
+        </div>
+      )}
+
       {/* 内容区域 */}
       <CustomScrollArea className="flex-1" viewportClassName={cn("p-3 sm:p-6", embeddedMode && "pb-20")}>
-        {isLoading ? (
+        {/* 内容搜索结果 */}
+        {searchMode === 'content' && searchQuery.trim().length >= 2 ? (
+          <SearchResultList
+            results={contentSearch.results}
+            loading={contentSearch.loading}
+            query={searchQuery}
+            onSelectResult={onSelectSession}
+          />
+        ) : isLoading ? (
           // 加载状态骨架屏
           <div className="grid grid-cols-1 xs:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-3 sm:gap-4">
             {Array.from({ length: 9 }).map((_, i) => (
@@ -637,12 +773,15 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
                           session={session}
                           isEditing={editingSessionId === session.id}
                           editingTitle={editingTitle}
+                          tags={sessionTags.tagsBySession.get(session.id)}
                           onSelect={() => onSelectSession(session.id)}
                           onDelete={() => onDeleteSession(session.id)}
                           onStartEdit={() => handleStartEdit(session)}
                           onSaveEdit={() => handleSaveEdit(session.id)}
                           onCancelEdit={handleCancelEdit}
                           onEditTitleChange={setEditingTitle}
+                          onAddTag={(tag) => sessionTags.addTag(session.id, tag)}
+                          onRemoveTag={(tag) => sessionTags.removeTag(session.id, tag)}
                         />
                       ))}
                     </div>
@@ -695,12 +834,15 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
                           session={session}
                           isEditing={editingSessionId === session.id}
                           editingTitle={editingTitle}
+                          tags={sessionTags.tagsBySession.get(session.id)}
                           onSelect={() => onSelectSession(session.id)}
                           onDelete={() => onDeleteSession(session.id)}
                           onStartEdit={() => handleStartEdit(session)}
                           onSaveEdit={() => handleSaveEdit(session.id)}
                           onCancelEdit={handleCancelEdit}
                           onEditTitleChange={setEditingTitle}
+                          onAddTag={(tag) => sessionTags.addTag(session.id, tag)}
+                          onRemoveTag={(tag) => sessionTags.removeTag(session.id, tag)}
                         />
                       ))}
                     </div>
@@ -740,12 +882,15 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
                           session={session}
                           isEditing={editingSessionId === session.id}
                           editingTitle={editingTitle}
+                          tags={sessionTags.tagsBySession.get(session.id)}
                           onSelect={() => onSelectSession(session.id)}
                           onDelete={() => onDeleteSession(session.id)}
                           onStartEdit={() => handleStartEdit(session)}
                           onSaveEdit={() => handleSaveEdit(session.id)}
                           onCancelEdit={handleCancelEdit}
                           onEditTitleChange={setEditingTitle}
+                          onAddTag={(tag) => sessionTags.addTag(session.id, tag)}
+                          onRemoveTag={(tag) => sessionTags.removeTag(session.id, tag)}
                         />
                       ))}
                     </div>

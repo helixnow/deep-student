@@ -926,6 +926,21 @@
     "groupByGroup": "Group by category",
     "ungrouped": "Ungrouped"
   },
+  "search": {
+    "titleMode": "Title",
+    "contentMode": "Content",
+    "contentPlaceholder": "Search message content...",
+    "searching": "Searching...",
+    "noContentResults": "No matching content found",
+    "contentResultCount": "Found {{count}} matching result(s)"
+  },
+  "tags": {
+    "filterTitle": "Filter by tags",
+    "clearFilter": "Clear",
+    "showMore": "Show more (+{{count}})",
+    "showLess": "Show less",
+    "addPlaceholder": "Add tag"
+  },
   "approval": {
     "title": "Tool Execution Confirmation",
     "toolName": "Tool Name",

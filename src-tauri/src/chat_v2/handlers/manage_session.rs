@@ -736,6 +736,8 @@ fn create_session_in_db(
         updated_at: now,
         metadata,
         group_id,
+        tags_hash: None,
+        tags: None,
     };
 
     // 写入数据库
@@ -768,6 +770,8 @@ fn update_session_settings_in_db(
         updated_at: now,
         metadata: settings.metadata.clone().or(existing.metadata),
         group_id: existing.group_id,
+        tags_hash: existing.tags_hash,
+        tags: None,
     };
 
     // 更新数据库
@@ -796,6 +800,8 @@ fn archive_session_in_db(session_id: &str, db: &ChatV2Database) -> Result<(), Ch
         updated_at: now,
         metadata: existing.metadata,
         group_id: existing.group_id,
+        tags_hash: existing.tags_hash,
+        tags: None,
     };
 
     // 更新数据库
@@ -824,6 +830,8 @@ fn soft_delete_session_in_db(session_id: &str, db: &ChatV2Database) -> Result<()
         updated_at: now,
         metadata: existing.metadata,
         group_id: existing.group_id,
+        tags_hash: existing.tags_hash,
+        tags: None,
     };
 
     // 更新数据库
@@ -855,6 +863,8 @@ fn restore_session_in_db(
         updated_at: now,
         metadata: existing.metadata,
         group_id: existing.group_id,
+        tags_hash: existing.tags_hash,
+        tags: None,
     };
 
     // 更新数据库
@@ -953,7 +963,7 @@ fn branch_session_in_db(
 
     let new_session = ChatSession {
         id: new_session_id.clone(),
-        mode: "chat".to_string(), // 统一创建为普通 chat 会话
+        mode: "chat".to_string(),
         title: source_session.title.map(|t| format!("{} (branch)", t)),
         description: source_session.description.clone(),
         summary_hash: None,
@@ -962,6 +972,8 @@ fn branch_session_in_db(
         updated_at: now,
         metadata: Some(metadata),
         group_id: source_session.group_id.clone(),
+        tags_hash: None,
+        tags: None,
     };
 
     ChatV2Repo::create_session_with_conn(&tx, &new_session).map_err(|e| e.to_string())?;
