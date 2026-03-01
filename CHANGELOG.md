@@ -10,6 +10,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.9.26](https://github.com/helixnow/deep-student/compare/v0.9.25...v0.9.26) (2026-03-01)
+
+
+### Features
+
+* enhance bidirectional sync with download-first strategy and improved conflict handling ([4fb78e3](https://github.com/helixnow/deep-student/commit/4fb78e30737575bdbfafab6c24d432b6939754e0))
+* enhance file handling with new extraction utilities ([be86d16](https://github.com/helixnow/deep-student/commit/be86d166798455d99cd142808f1c676c4f9cd1a5))
+* fix tool call handling and user message deduplication in chat history ([6b38748](https://github.com/helixnow/deep-student/commit/6b3874895b00d1a15dc3d7d87fd0d3fc9f5fe2ff))
+
+
+### Bug Fixes
+
+* use adapter-transformed request body for LLM request logging ([a93ed02](https://github.com/helixnow/deep-student/commit/a93ed02f9e45c52352035628273196623894cac9))
+
 ## [0.9.25](https://github.com/helixnow/deep-student/compare/v0.9.24...v0.9.25) (2026-03-01)
 
 
