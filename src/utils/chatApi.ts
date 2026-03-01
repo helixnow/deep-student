@@ -107,7 +107,8 @@ export async function getFileSize(path: string): Promise<number> {
  */
 export async function copyIntoTextbooksDir(sourcePath: string): Promise<string> {
   const root = await getAppDataDir();
-  const fileName = sourcePath.split(/[/\\]/).pop() || `textbook_${Date.now()}.pdf`;
+  const { extractFileName } = await import('@/utils/fileManager');
+  const fileName = extractFileName(sourcePath) || `textbook_${Date.now()}.pdf`;
   // 使用与 root 一致的路径分隔符，避免 Windows 上产生混合分隔符
   const sep = root.includes('\\') ? '\\' : '/';
   const destPath = [root, 'textbooks', fileName].join(sep);

@@ -3,6 +3,47 @@ import { writeFile } from '@tauri-apps/plugin-fs';
 import { TauriAPI } from './tauriApi';
 import { getErrorMessage } from './errorUtils';
 
+/**
+ * 从任意路径（本地路径或 Android content:// URI）中安全提取文件名。
+ *
+ * Android content:// URI 的最后一段是 URL 编码的 document ID
+ * （如 `primary%3ADownload%2FQuarkDownloads%2Ffile.pdf`），
+ * 需要先 decodeURIComponent 再从中提取实际文件名。
+ */
+export function extractFileName(path: string): string {
+  const lastSegment = path.split(/[/\\]/).pop() || path;
+  try {
+    const decoded = decodeURIComponent(lastSegment);
+    return decoded.split('/').pop() || decoded;
+  } catch {
+    return lastSegment;
+  }
+}
+
+/**
+ * 从任意路径中安全提取文件扩展名（小写，不含点号）。
+ */
+export function extractFileExtension(path: string): string {
+  const name = extractFileName(path);
+  const dotIdx = name.lastIndexOf('.');
+  if (dotIdx < 0 || dotIdx === name.length - 1) return '';
+  return name.slice(dotIdx + 1).toLowerCase();
+}
+
+/**
+ * 判断路径是否为移动端虚拟 URI（content://, ph://, asset:// 等）。
+ */
+export function isVirtualUri(path: string): boolean {
+  const lower = path.trim().toLowerCase();
+  return (
+    lower.startsWith('content://') ||
+    lower.startsWith('ph://') ||
+    lower.startsWith('asset://') ||
+    lower.startsWith('image://') ||
+    lower.startsWith('camera://')
+  );
+}
+
 export interface FilePickerOptions {
   title?: string;
   defaultPath?: string;

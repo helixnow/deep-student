@@ -35,7 +35,7 @@ import {
   Upload,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { fileManager } from '@/utils/fileManager';
+import { fileManager, extractFileName } from '@/utils/fileManager';
 import { showGlobalNotification } from './UnifiedNotification';
 import CsvFieldMapper, { FieldMapping, QUESTION_FIELDS, QuestionFieldKey } from './CsvFieldMapper';
 import { UnifiedDragDropZone, type FileTypeDefinition } from './shared/UnifiedDragDropZone';
@@ -517,7 +517,7 @@ export const CsvImportDialog: React.FC<CsvImportDialogProps> = ({
             <FileSpreadsheet className="w-5 h-5 text-primary" />
             <div className="flex-1">
               <p className="text-sm font-medium">
-                {selectedFile?.split(/[/\\]/).pop() || t('exam_sheet:csv.csv_file_fallback')}
+                {selectedFile ? extractFileName(selectedFile) : t('exam_sheet:csv.csv_file_fallback')}
               </p>
               <p className="text-xs text-muted-foreground">
                 {t('exam_sheet:csv.file_info', '{{rows}} 行数据，{{cols}} 列，编码：{{encoding}}', {

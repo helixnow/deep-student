@@ -2421,7 +2421,8 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
                 }
                 
                 const blob = await response.blob();
-                const fileName = filePath.split('/').pop() || filePath.split('\\').pop() || 'image.png';
+                const { extractFileName } = await import('@/utils/fileManager');
+                const fileName = extractFileName(filePath) || 'image.png';
                 const file = new File([blob], fileName, { type: blob.type || 'image/png' });
                 
                 emitImageUploadDebug('file_convert', 'success', '文件读取成功', {

@@ -99,6 +99,9 @@ fn is_probably_base64(input: &str) -> bool {
 
 fn looks_like_path(input: &str) -> bool {
     let trimmed = input.trim();
+    if crate::unified_file_manager::is_virtual_uri(trimmed) {
+        return true;
+    }
     if trimmed.starts_with("file://") {
         return true;
     }
@@ -339,6 +342,11 @@ impl VfsAttachmentRepo {
     fn build_original_path_candidates(blobs_dir: &Path, raw_path: &str) -> Vec<PathBuf> {
         let trimmed = raw_path.trim();
         if trimmed.is_empty() {
+            return Vec::new();
+        }
+
+        // content:// 等虚拟 URI 无法映射为本地文件系统路径
+        if crate::unified_file_manager::is_virtual_uri(trimmed) {
             return Vec::new();
         }
 

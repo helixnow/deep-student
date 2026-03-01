@@ -7,6 +7,7 @@ import { convertFileSrc, invoke } from '@tauri-apps/api/core';
 import { appDataDir } from '@tauri-apps/api/path';
 import { open as dialogOpen } from '@tauri-apps/plugin-dialog';
 import { getErrorMessage } from '../../../utils/errorUtils';
+import { extractFileName, extractFileExtension } from '../../../utils/fileManager';
 import { emitImageUploadDebug } from '../../../debug-panel/plugins/CrepeImageUploadDebugPlugin';
 import { showGlobalNotification } from '../../UnifiedNotification';
 
@@ -332,12 +333,11 @@ export const pickImageWithTauriDialog = async (): Promise<File | null> => {
     }
     
     const blob = await response.blob();
-    const fileName = selected.split('/').pop() || selected.split('\\').pop() || 'image.png';
+    const fileName = extractFileName(selected) || 'image.png';
     
-    // 使用 blob 的 MIME 类型，或根据扩展名推断
     let mimeType = blob.type;
     if (!mimeType || mimeType === 'application/octet-stream') {
-      const ext = fileName.split('.').pop()?.toLowerCase() || 'png';
+      const ext = extractFileExtension(selected) || 'png';
       const mimeMap: Record<string, string> = {
         png: 'image/png',
         jpg: 'image/jpeg',

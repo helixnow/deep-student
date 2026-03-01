@@ -7,7 +7,7 @@ import { Input } from './ui/shad/Input';
 import { TauriAPI } from '../utils/tauriApi';
 import { getErrorMessage } from '../utils/errorUtils';
 import { showGlobalNotification } from './UnifiedNotification';
-import { fileManager } from '../utils/fileManager';
+import { fileManager, extractFileName } from '../utils/fileManager';
 
 // ★ 文档31清理：subject 已废弃
 interface ImportConversationDialogProps {
@@ -126,7 +126,7 @@ export const ImportConversationDialog: React.FC<ImportConversationDialogProps> =
             </label>
             <div className="flex gap-2">
               <Input
-                value={selectedFile ? selectedFile.split('/').pop() || selectedFile : ''}
+                value={selectedFile ? extractFileName(selectedFile) : ''}
                 readOnly
                 placeholder={t('import.file_placeholder')}
                 className="flex-1"

@@ -1050,6 +1050,7 @@ pub struct ZipExportResultResponse {
 #[tauri::command]
 pub async fn data_governance_import_zip(
     app: tauri::AppHandle,
+    window: tauri::Window,
     backup_job_state: State<'_, BackupJobManagerState>,
     zip_path: String,
     backup_id: Option<String>,
@@ -1059,22 +1060,36 @@ pub async fn data_governance_import_zip(
         None => None,
     };
 
-    // 安全验证：确保 zip_path 在安全范围内（非系统目录、非应用数据目录内部）
     let app_data_dir = get_app_data_dir(&app)?;
-    let zip_file_path = PathBuf::from(&zip_path);
-    validate_user_path(&zip_file_path, &app_data_dir)?;
+
+    // Android content:// 等虚拟 URI 需要先物化到本地临时文件（ZIP 需要随机访问）
+    let (zip_file_path, temp_cleanup_path) = if crate::unified_file_manager::is_virtual_uri(&zip_path) {
+        let temp_dir = app_data_dir.join("temp_zip_import");
+        match crate::unified_file_manager::ensure_local_path(&window, &zip_path, &temp_dir) {
+            Ok(materialized) => {
+                let (path, cleanup) = materialized.into_owned();
+                (path.clone(), cleanup.or(Some(path)))
+            }
+            Err(e) => {
+                return Err(format!("无法读取 ZIP 文件: {}", e));
+            }
+        }
+    } else {
+        let path = PathBuf::from(&zip_path);
+        validate_user_path(&path, &app_data_dir)?;
+        if !path.exists() {
+            return Err(format!(
+                "ZIP 文件不存在: {}。请确认文件路径正确，或重新选择文件",
+                sanitize_path_for_user(&path)
+            ));
+        }
+        (path, None)
+    };
 
     info!(
         "[data_governance] 启动后台 ZIP 导入任务: zip_path={}, backup_id={:?}",
-        zip_path, validated_backup_id
+        zip_file_path.display(), validated_backup_id
     );
-
-    if !zip_file_path.exists() {
-        return Err(format!(
-            "ZIP 文件不存在: {}。请确认文件路径正确，或重新选择文件",
-            sanitize_path_for_user(&zip_file_path)
-        ));
-    }
 
     // 使用全局单例备份任务管理器
     let job_manager = backup_job_state.get();
@@ -1108,6 +1123,14 @@ pub async fn data_governance_import_zip(
     // 在后台执行导入
     tauri::async_runtime::spawn(async move {
         execute_zip_import_with_progress(app, job_ctx, zip_file_path, validated_backup_id).await;
+        // 清理从 content:// 物化的临时 ZIP 文件
+        if let Some(temp_path) = temp_cleanup_path {
+            if let Err(e) = std::fs::remove_file(&temp_path) {
+                tracing::warn!("[data_governance] 临时 ZIP 文件清理失败: {} ({})", temp_path.display(), e);
+            } else {
+                tracing::info!("[data_governance] 已清理临时 ZIP 文件: {}", temp_path.display());
+            }
+        }
     });
 
     Ok(BackupJobStartResponse {

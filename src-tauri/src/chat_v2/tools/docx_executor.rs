@@ -348,16 +348,20 @@ impl DocxToolExecutor {
         // 优先使用 original_path 读取文件（本地导入的文件）
         // 安全检查：验证路径不包含目录遍历，且文件确实存在
         if let Some(ref path) = file.original_path {
-            let p = std::path::Path::new(path);
-            let path_str = path.replace('\\', "/");
-            if path_str.contains("..") {
-                log::warn!(
-                    "[DocxToolExecutor] Rejecting original_path with traversal: {}",
-                    path
-                );
-            } else if p.exists() {
-                return std::fs::read(p)
-                    .map_err(|e| format!("文件读取失败: {}", e));
+            if crate::unified_file_manager::is_virtual_uri(path) {
+                log::debug!("[DocxToolExecutor] Skipping virtual URI original_path: {}", path);
+            } else {
+                let p = std::path::Path::new(path);
+                let path_str = path.replace('\\', "/");
+                if path_str.contains("..") {
+                    log::warn!(
+                        "[DocxToolExecutor] Rejecting original_path with traversal: {}",
+                        path
+                    );
+                } else if p.exists() {
+                    return std::fs::read(p)
+                        .map_err(|e| format!("文件读取失败: {}", e));
+                }
             }
         }
 

@@ -76,18 +76,22 @@ fn classify_path(raw: &str) -> Result<PathKind, AppError> {
         return Err(AppError::validation("路径不能为空"));
     }
 
+    // 对于 content://, asset://, ph:// 等特殊 scheme，必须保留原始编码。
+    // Android SAF 的 content:// URI 中 document ID 的 %3A、%2F 等编码具有语义意义，
+    // 解码会破坏 URI 结构并导致 ContentResolver 权限校验失败（SecurityException）。
+    if is_special_scheme(trimmed) {
+        return Ok(PathKind::Virtual(trimmed.to_string()));
+    }
+
     let decoded_for_check = decode_path(trimmed).unwrap_or_else(|_| trimmed.to_string());
 
+    // 双重编码兜底：原始路径不匹配但解码后匹配 special scheme（如 content%3A%2F%2F...）
     if is_special_scheme(&decoded_for_check) {
         return Ok(PathKind::Virtual(decoded_for_check));
     }
 
     if is_android_saf_path(&decoded_for_check) {
         return Ok(PathKind::Virtual(decoded_for_check));
-    }
-
-    if is_special_scheme(trimmed) {
-        return Ok(PathKind::Virtual(trimmed.to_string()));
     }
 
     if trimmed.starts_with("file://") || trimmed.starts_with("tauri://") {
@@ -254,6 +258,46 @@ pub fn sanitize_for_legacy(input: &str) -> String {
     }
 }
 
+/// 判断路径是否为移动端虚拟 URI（content://, ph://, asset:// 等）或 Android SAF 路径。
+pub fn is_virtual_uri(path: &str) -> bool {
+    let trimmed = path.trim();
+    is_special_scheme(trimmed) || is_android_saf_path(trimmed)
+}
+
+/// 从任意路径（本地路径、Windows 反斜杠路径或 content:// URI）中安全提取文件名。
+///
+/// 对于 `content://...document/primary%3ADownload%2FQuarkDownloads%2Ffile.pdf`，
+/// 解码最后一段 document ID 后返回 `file.pdf`。
+/// 对于 `C:\Users\alice\Documents\file.pdf`，返回 `file.pdf`。
+pub fn extract_file_name(raw_path: &str) -> String {
+    let trimmed = raw_path.trim();
+    // 同时处理 `/` 和 `\`：取最后一段路径组件
+    let last_segment = trimmed
+        .rsplit(|c| c == '/' || c == '\\')
+        .next()
+        .unwrap_or(trimmed);
+    // 尝试 URL 解码（content:// 的 document ID 中 %2F 代表 /）
+    let decoded = urlencoding::decode(last_segment)
+        .map(|c| c.into_owned())
+        .unwrap_or_else(|_| last_segment.to_string());
+    // 解码后可能包含子路径（如 primary:Download/QuarkDownloads/file.pdf），取最后一段
+    decoded
+        .rsplit('/')
+        .next()
+        .unwrap_or(&decoded)
+        .to_string()
+}
+
+/// 从任意路径中安全提取文件扩展名（小写，不含点号）。
+pub fn extract_extension(raw_path: &str) -> Option<String> {
+    let name = extract_file_name(raw_path);
+    Path::new(&name)
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .filter(|ext| !ext.is_empty())
+        .map(|ext| ext.to_lowercase())
+}
+
 /// 获取文件大小（字节）。
 /// - 对于本地文件，使用元数据快速获取长度。
 /// - 对于虚拟/移动端安全URI，使用流式读取累计字节数，避免一次性载入内存。
@@ -371,11 +415,7 @@ pub fn ensure_local_path(
                 })?;
             }
 
-            let legacy = sanitize_for_legacy(raw_path);
-            let extension = Path::new(&legacy)
-                .extension()
-                .and_then(|ext| ext.to_str())
-                .filter(|ext| !ext.is_empty());
+            let extension = extract_extension(raw_path);
             let file_name = match extension {
                 Some(ext) => format!("dstu_materialized_{}.{}", Uuid::new_v4(), ext),
                 None => format!("dstu_materialized_{}", Uuid::new_v4()),

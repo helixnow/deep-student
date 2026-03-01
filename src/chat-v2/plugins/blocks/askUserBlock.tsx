@@ -58,8 +58,9 @@ function unwrapOutput(toolOutput: unknown): AskUserBlockOutput | undefined {
   if (obj.result && typeof obj.result === 'object') {
     return obj.result as AskUserBlockOutput;
   }
-  // 直接就是 output
-  if (obj.question && obj.selected) {
+  // DB 恢复格式: 直接是 { question, selected, ... }
+  // 使用 'in' 检查属性存在性，避免 selected 为空字符串时 falsy 导致匹配失败
+  if ('question' in obj && 'selected' in obj) {
     return obj as unknown as AskUserBlockOutput;
   }
   return undefined;
@@ -98,9 +99,9 @@ const AskUserBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block
   // 是否已经有结果（从持久化数据恢复，或工具已完成）
   const isResolved = Boolean(askOutput) || block.status === 'success' || block.status === 'error';
 
-  // 最终显示的选择结果
-  const resolvedText = askOutput?.selected || localSelectedText;
-  const resolvedSource = askOutput?.source || localSource;
+  // 最终显示的选择结果（优先 DB 恢复数据，降级到本地状态）
+  const resolvedText = (askOutput?.selected !== undefined ? askOutput.selected : null) ?? localSelectedText;
+  const resolvedSource = askOutput?.source ?? localSource;
   const resolvedIndex = askOutput?.selected_index ?? localSelectedIndex;
 
   // 发送回答到后端
@@ -216,7 +217,9 @@ const AskUserBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block
           <span className="text-muted-foreground">
             {t('askUser.selected')}:
           </span>
-          <span className="font-medium">{resolvedText}</span>
+          <span className="font-medium">
+            {resolvedText || t('askUser.autoSelected', { defaultValue: '（自动选择）' })}
+          </span>
           {resolvedSource && (
             <span className="text-xs text-muted-foreground">
               ({sourceLabel})

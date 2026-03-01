@@ -6,6 +6,7 @@ import { open as dialogOpen } from '@tauri-apps/plugin-dialog';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { textbookDstuAdapter } from '@/dstu/adapters/textbookDstuAdapter';
 import { attachmentDstuAdapter } from '@/dstu/adapters/attachmentDstuAdapter';
+import { extractFileName } from '@/utils/fileManager';
 import { UnifiedDragDropZone, FILE_TYPES } from '@/components/shared/UnifiedDragDropZone';
 import { useDebounce } from '@/hooks/useDebounce';
 import {
@@ -681,7 +682,7 @@ export function LearningHubSidebar({
       }
 
       const filePaths = Array.isArray(selected) ? selected : [selected];
-      const firstFileName = filePaths[0]?.split('/').pop() || 'textbook.pdf';
+      const firstFileName = filePaths[0] ? extractFileName(filePaths[0]) : 'textbook.pdf';
       
       // 显示导入进度模态框
       setImportProgress({
@@ -854,7 +855,7 @@ export function LearningHubSidebar({
     const otherPaths: string[] = [];
 
     for (const p of paths) {
-      const name = p.split(/[/\\]/).pop() || '';
+      const name = extractFileName(p);
       const ext = getFileExtension(name);
       if (DOCUMENT_EXTENSIONS.has(ext)) {
         docPaths.push(p);
@@ -878,7 +879,7 @@ export function LearningHubSidebar({
     try {
       // 1. 文档类：通过 textbookDstuAdapter 导入（支持 PDF 渲染、哈希去重等）
       if (docPaths.length > 0) {
-        const firstFileName = docPaths[0]?.split(/[/\\]/).pop() || '';
+        const firstFileName = docPaths[0] ? extractFileName(docPaths[0]) : '';
         setImportProgress({
           isImporting: true,
           fileName: firstFileName,
@@ -932,7 +933,7 @@ export function LearningHubSidebar({
         const attachResults = await Promise.all(
           attachmentPaths.map((filePath) =>
             limit(async () => {
-              const name = filePath.split(/[/\\]/).pop() || 'file';
+              const name = extractFileName(filePath);
               const ext = getFileExtension(name);
               const isImage = IMAGE_EXTENSIONS.has(ext);
 

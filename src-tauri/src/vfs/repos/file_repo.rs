@@ -1309,28 +1309,36 @@ impl VfsFileRepo {
                 "[PDF_DEBUG] VfsFileRepo: trying original_path={}",
                 original_path
             );
-            let path = std::path::Path::new(original_path);
-            if path.exists() {
-                match std::fs::read(path) {
-                    Ok(data) => {
-                        tracing::info!(
-                            "[PDF_DEBUG] VfsFileRepo: original_path read success, raw_len={}",
-                            data.len()
-                        );
-                        return Ok(Some(STANDARD.encode(data)));
-                    }
-                    Err(e) => {
-                        tracing::warn!(
-                            "[PDF_DEBUG] VfsFileRepo: Failed to read original_path: {}",
-                            e
-                        );
-                    }
-                }
-            } else {
+            // content:// 等虚拟 URI 无法通过 std::fs 读取（需要 Tauri Window 上下文）
+            if crate::unified_file_manager::is_virtual_uri(original_path) {
                 tracing::warn!(
-                    "[PDF_DEBUG] VfsFileRepo: original_path does not exist: {}",
+                    "[PDF_DEBUG] VfsFileRepo: original_path is a virtual URI, skipping std::fs read: {}",
                     original_path
                 );
+            } else {
+                let path = std::path::Path::new(original_path);
+                if path.exists() {
+                    match std::fs::read(path) {
+                        Ok(data) => {
+                            tracing::info!(
+                                "[PDF_DEBUG] VfsFileRepo: original_path read success, raw_len={}",
+                                data.len()
+                            );
+                            return Ok(Some(STANDARD.encode(data)));
+                        }
+                        Err(e) => {
+                            tracing::warn!(
+                                "[PDF_DEBUG] VfsFileRepo: Failed to read original_path: {}",
+                                e
+                            );
+                        }
+                    }
+                } else {
+                    tracing::warn!(
+                        "[PDF_DEBUG] VfsFileRepo: original_path does not exist: {}",
+                        original_path
+                    );
+                }
             }
         }
 

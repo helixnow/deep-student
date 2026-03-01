@@ -95,10 +95,10 @@ pub async fn textbooks_add(
     let mut out: Vec<TextbookDto> = Vec::new();
     for src in sources {
         // 目标文件名（用于进度显示）
-        let raw_name = Path::new(&src)
-            .file_name()
-            .and_then(|s| s.to_str())
-            .unwrap_or("textbook.pdf");
+        // Android content:// URI 的最后一段是 URL 编码的 document ID（如 primary%3ADownload%2F...%2Ffile.pdf），
+        // 需要解码后再提取末尾的实际文件名
+        let raw_name = unified_file_manager::extract_file_name(&src);
+        let raw_name = raw_name.as_str();
 
         // 阶段1：计算哈希
         emit_progress(&window, raw_name, "hashing", None, None, 5, None);
@@ -473,14 +473,11 @@ pub async fn textbooks_adopt(
             out.push(tb.to_textbook());
             continue;
         }
-        let file_name = std::path::Path::new(&p)
-            .file_name()
-            .and_then(|s| s.to_str())
-            .unwrap_or("textbook.pdf");
+        let file_name = unified_file_manager::extract_file_name(&p);
         let tb = crate::vfs::VfsTextbookRepo::create_textbook(
             vfs_db,
             &sha256,
-            file_name,
+            &file_name,
             size as i64,
             None,     // blob_hash
             Some(&p), // original_path
@@ -543,6 +540,10 @@ pub async fn textbooks_purge_trash(
             .map_err(|e| AppError::database(format!("VFS 列出回收站失败: {}", e)))?;
         for tb in &trashed {
             if let Some(ref path) = tb.original_path {
+                // content:// 等虚拟 URI 无法通过 std::fs 操作，跳过物理删除
+                if unified_file_manager::is_virtual_uri(path) {
+                    continue;
+                }
                 if std::path::Path::new(path).exists() {
                     if let Err(e) = std::fs::remove_file(path) {
                         eprintln!("⚠️ 删除文件失败: {} ({})", path, e);
@@ -577,9 +578,12 @@ pub async fn textbooks_delete_permanent(
     if delete_file.unwrap_or(false) {
         if let Ok(Some(tb)) = crate::vfs::VfsTextbookRepo::get_textbook(vfs_db, &id) {
             if let Some(ref path) = tb.original_path {
-                let p = std::path::Path::new(path);
-                if p.exists() {
-                    let _ = std::fs::remove_file(p);
+                // content:// 等虚拟 URI 无法通过 std::fs 操作，跳过物理删除
+                if !unified_file_manager::is_virtual_uri(path) {
+                    let p = std::path::Path::new(path);
+                    if p.exists() {
+                        let _ = std::fs::remove_file(p);
+                    }
                 }
             }
         }
