@@ -633,6 +633,7 @@ pub async fn data_governance_run_sync(
         .map_err(|e| format!("创建云存储失败: {}", e))?;
 
     let active_dir = get_active_data_dir(&app)?;
+    let app_data_dir = get_app_data_dir(&app)?;
 
     // 创建同步管理器
     let manager = SyncManager::new(device_id.clone());
@@ -788,8 +789,11 @@ pub async fn data_governance_run_sync(
             let mut exec_result = exec_result;
             let mut total_skipped = 0usize;
             if !downloaded_changes.is_empty() {
-                let apply_agg =
-                    apply_downloaded_changes_to_databases(&downloaded_changes, &active_dir)?;
+                let apply_agg = apply_downloaded_changes_to_databases(
+                    &downloaded_changes,
+                    &active_dir,
+                    merge_strategy,
+                )?;
                 total_skipped = apply_agg.total_skipped;
                 if total_skipped > 0 {
                     warn!(
@@ -829,8 +833,11 @@ pub async fn data_governance_run_sync(
             let mut exec_result = exec_result;
             let mut total_skipped = 0usize;
             if !downloaded_changes.is_empty() {
-                let apply_agg =
-                    apply_downloaded_changes_to_databases(&downloaded_changes, &active_dir)?;
+                let apply_agg = apply_downloaded_changes_to_databases(
+                    &downloaded_changes,
+                    &active_dir,
+                    merge_strategy,
+                )?;
                 total_skipped = apply_agg.total_skipped;
                 if total_skipped > 0 {
                     warn!(
@@ -897,7 +904,45 @@ pub async fn data_governance_run_sync(
     let duration_ms = start.elapsed().as_millis() as u64;
 
     match result {
-        Ok((exec_result, skipped)) => {
+        Ok((mut exec_result, skipped)) => {
+            // 与带进度链路保持一致：在普通同步中也执行文件级同步
+            let append_warning = |base: &mut Option<String>, msg: String| {
+                let existing = base.take().unwrap_or_default();
+                *base = Some(if existing.is_empty() {
+                    msg
+                } else {
+                    format!("{}；{}", existing, msg)
+                });
+            };
+
+            let blobs_dir = app_data_dir.join("vfs_blobs");
+            if let Err(e) = manager.sync_workspace_databases(storage.as_ref(), &active_dir).await {
+                warn!("[data_governance] 工作区数据库同步失败（非致命）: {}", e);
+            }
+            match manager.sync_vfs_blobs(storage.as_ref(), &blobs_dir).await {
+                Ok(outcome) => {
+                    if outcome.has_failures() {
+                        if let Some(msg) = outcome.failure_summary() {
+                            warn!("[data_governance] VFS blob 部分失败: {}", msg);
+                            append_warning(&mut exec_result.error_message, msg);
+                        }
+                    }
+                }
+                Err(e) => {
+                    error!("[data_governance] VFS blob 同步出错: {}", e);
+                    append_warning(
+                        &mut exec_result.error_message,
+                        format!("附件同步失败: {}", e),
+                    );
+                }
+            }
+            if matches!(exec_result.direction, SyncDirection::Upload | SyncDirection::Bidirectional)
+            {
+                if let Err(e) = manager.prune_old_changes(storage.as_ref(), 30).await {
+                    warn!("[data_governance] 云端变更文件清理失败（非致命）: {}", e);
+                }
+            }
+
             info!(
                 "[data_governance] 同步完成: direction={}, uploaded={}, downloaded={}, conflicts={}, skipped={}, duration={}ms",
                 exec_result.direction.as_str(),
@@ -1247,17 +1292,22 @@ pub async fn data_governance_import_sync_data(
     // 应用变更到本地数据库（v2 格式已含完整数据，按数据库路由）
     let mut total_applied = 0usize;
     let mut total_skipped = 0usize;
-    let total_failed = 0usize;
+    let mut total_failed = 0usize;
 
     if !import_data.pending_changes.is_empty() {
         // 导入的变更已含完整记录数据，直接按数据库路由并应用
-        match apply_downloaded_changes_to_databases(&import_data.pending_changes, &active_dir) {
+        match apply_downloaded_changes_to_databases(
+            &import_data.pending_changes,
+            &active_dir,
+            merge_strategy,
+        ) {
             Ok(apply_agg) => {
                 total_applied = apply_agg.total_success;
                 total_skipped = apply_agg.total_skipped;
+                total_failed = apply_agg.total_failed;
                 info!(
-                    "[data_governance] 导入变更应用完成: applied={}, skipped={}",
-                    total_applied, total_skipped
+                    "[data_governance] 导入变更应用完成: applied={}, failed={}, skipped={}",
+                    total_applied, total_failed, total_skipped
                 );
             }
             Err(e) => {
@@ -1938,7 +1988,8 @@ async fn execute_download_with_progress_v2(
             .emit_applying(0, total_changes, Some("应用变更".to_string()))
             .await;
 
-        let apply_agg = apply_downloaded_changes_to_databases(&downloaded_changes, active_dir)?;
+        let apply_agg =
+            apply_downloaded_changes_to_databases(&downloaded_changes, active_dir, merge_strategy)?;
         total_skipped = apply_agg.total_skipped;
         if total_skipped > 0 {
             exec_result.error_message = Some(format!(
@@ -2069,7 +2120,8 @@ async fn execute_bidirectional_with_progress_v2(
             .emit_applying(0, total_changes, Some("应用下载变更".to_string()))
             .await;
 
-        let apply_agg = apply_downloaded_changes_to_databases(&downloaded_changes, active_dir)?;
+        let apply_agg =
+            apply_downloaded_changes_to_databases(&downloaded_changes, active_dir, merge_strategy)?;
         total_skipped = apply_agg.total_skipped;
         if total_skipped > 0 {
             exec_result.error_message = Some(format!(

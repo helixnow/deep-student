@@ -12,7 +12,7 @@ use super::backup::{
     BackupManager, BackupSelection, TieredAssetConfig, ZipExportOptions,
 };
 use super::schema_registry::DatabaseId;
-use super::sync::{SyncChangeWithData, SyncManager};
+use super::sync::{ChangeOperation, MergeStrategy, SyncChangeWithData, SyncManager};
 use crate::backup_common::BACKUP_GLOBAL_LIMITER;
 use crate::backup_job_manager::{
     BackupJobContext, BackupJobKind, BackupJobManagerState, BackupJobParams,
@@ -158,6 +158,67 @@ pub(super) fn build_id_column_map() -> std::collections::HashMap<String, String>
     m
 }
 
+fn parse_sync_timestamp(input: &str) -> Option<chrono::DateTime<chrono::Utc>> {
+    if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(input) {
+        return Some(dt.with_timezone(&chrono::Utc));
+    }
+    if let Ok(ndt) = chrono::NaiveDateTime::parse_from_str(input, "%Y-%m-%d %H:%M:%S") {
+        return Some(chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(
+            ndt,
+            chrono::Utc,
+        ));
+    }
+    None
+}
+
+fn extract_updated_at(data: &serde_json::Value) -> Option<chrono::DateTime<chrono::Utc>> {
+    data.get("updated_at")
+        .and_then(|v| v.as_str())
+        .and_then(parse_sync_timestamp)
+}
+
+fn should_apply_change_by_strategy(
+    conn: &rusqlite::Connection,
+    change: &SyncChangeWithData,
+    id_column: &str,
+    strategy: MergeStrategy,
+) -> Result<bool, String> {
+    match strategy {
+        MergeStrategy::UseCloud => Ok(true),
+        MergeStrategy::Manual => Ok(false),
+        MergeStrategy::KeepLocal | MergeStrategy::KeepLatest => {
+            let local = SyncManager::get_record_data(conn, &change.table_name, &change.record_id, id_column)
+                .map_err(|e| format!("查询本地记录失败 {}.{}: {}", change.table_name, change.record_id, e))?;
+
+            // 本地不存在：无冲突，接受云端变化（含删除操作的幂等）
+            let local = match local {
+                Some(v) => v,
+                None => return Ok(true),
+            };
+
+            if strategy == MergeStrategy::KeepLocal {
+                return Ok(false);
+            }
+
+            let local_ts = extract_updated_at(&local);
+            let cloud_ts = change
+                .data
+                .as_ref()
+                .and_then(extract_updated_at)
+                .or_else(|| parse_sync_timestamp(&change.changed_at));
+
+            // KeepLatest：云端时间更新才覆盖本地；时间不可比较时，保守保留本地
+            match (local_ts, cloud_ts, change.operation) {
+                (Some(l), Some(c), _) => Ok(c >= l),
+                (Some(_), None, _) => Ok(false),
+                (None, Some(_), _) => Ok(true),
+                (None, None, ChangeOperation::Delete) => Ok(false),
+                (None, None, _) => Ok(true),
+            }
+        }
+    }
+}
+
 /// 将下载的变更按数据库路由并应用
 ///
 /// 根据每条变更的 `database_name` 字段将变更路由到对应的数据库，
@@ -168,6 +229,7 @@ pub(super) fn build_id_column_map() -> std::collections::HashMap<String, String>
 pub(super) fn apply_downloaded_changes_to_databases(
     changes: &[SyncChangeWithData],
     active_dir: &std::path::Path,
+    strategy: MergeStrategy,
 ) -> Result<ApplyToDbsResult, String> {
     use std::collections::HashMap;
 
@@ -233,14 +295,25 @@ pub(super) fn apply_downloaded_changes_to_databases(
         let conn = rusqlite::Connection::open(&db_path)
             .map_err(|e| format!("打开数据库 {} 失败: {}", db_name, e))?;
 
-        let owned_changes: Vec<SyncChangeWithData> = db_changes
-            .iter()
-            .map(|c| {
+        let mut owned_changes: Vec<SyncChangeWithData> = Vec::new();
+        for c in db_changes {
+            let id_column = id_column_map
+                .get(&c.table_name)
+                .map(|s| s.as_str())
+                .unwrap_or("id");
+            let should_apply = should_apply_change_by_strategy(&conn, c, id_column, strategy)?;
+            if should_apply {
                 let mut cloned = (*c).clone();
                 cloned.suppress_change_log = Some(true);
-                cloned
-            })
-            .collect();
+                owned_changes.push(cloned);
+            } else {
+                agg.total_skipped += 1;
+            }
+        }
+
+        if owned_changes.is_empty() {
+            continue;
+        }
 
         match SyncManager::apply_downloaded_changes(&conn, &owned_changes, Some(&id_column_map)) {
             Ok(apply_result) => {

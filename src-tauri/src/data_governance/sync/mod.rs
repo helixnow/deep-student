@@ -713,7 +713,7 @@ impl SyncManager {
         let files = storage
             .list(Self::MANIFESTS_PREFIX)
             .await
-            .unwrap_or_default();
+            .map_err(|e| SyncError::Network(format!("列出清单文件失败: {}", e)))?;
 
         let mut merged_databases: HashMap<String, DatabaseSyncState> = HashMap::new();
         let mut any_found = false;
@@ -732,46 +732,55 @@ impl SyncManager {
                 continue;
             }
 
-            if let Ok(Some(bytes)) = storage.get(&file.key).await {
-                if let Ok(manifest) = serde_json::from_slice::<SyncManifest>(&bytes) {
-                    any_found = true;
-                    if let Some(dt) = Self::parse_flexible_timestamp(&manifest.created_at) {
-                        if latest_created_at.map_or(true, |prev| dt > prev) {
-                            latest_created_at = Some(dt);
-                            latest_created_at_raw = manifest.created_at.clone();
-                        }
+            let bytes = storage
+                .get(&file.key)
+                .await
+                .map_err(|e| SyncError::Network(format!("下载设备清单失败 {}: {}", file.key, e)))?;
+            if let Some(bytes) = bytes {
+                let manifest = serde_json::from_slice::<SyncManifest>(&bytes).map_err(|e| {
+                    SyncError::Database(format!("解析设备清单失败 {}: {}", file.key, e))
+                })?;
+                any_found = true;
+                if let Some(dt) = Self::parse_flexible_timestamp(&manifest.created_at) {
+                    if latest_created_at.map_or(true, |prev| dt > prev) {
+                        latest_created_at = Some(dt);
+                        latest_created_at_raw = manifest.created_at.clone();
                     }
-                    // 合并：对每个数据库取最高 data_version 的状态
-                    for (db_name, state) in &manifest.databases {
-                        let entry = merged_databases
-                            .entry(db_name.clone())
-                            .or_insert_with(|| state.clone());
-                        if state.data_version > entry.data_version {
-                            *entry = state.clone();
-                        }
-                    }
-                    tracing::debug!(
-                        "[sync] 合并设备清单: device={}, databases={}",
-                        file_device_id,
-                        manifest.databases.len()
-                    );
                 }
+                // 合并：对每个数据库取最高 data_version 的状态
+                for (db_name, state) in &manifest.databases {
+                    let entry = merged_databases
+                        .entry(db_name.clone())
+                        .or_insert_with(|| state.clone());
+                    if state.data_version > entry.data_version {
+                        *entry = state.clone();
+                    }
+                }
+                tracing::debug!(
+                    "[sync] 合并设备清单: device={}, databases={}",
+                    file_device_id,
+                    manifest.databases.len()
+                );
             }
         }
 
         // 向后兼容：如果没有新格式清单，回退到旧的单文件
         if !any_found {
-            if let Ok(Some(bytes)) = storage.get(Self::LEGACY_MANIFEST_KEY).await {
-                if let Ok(manifest) = serde_json::from_slice::<SyncManifest>(&bytes) {
-                    // 旧清单来自另一设备（或自己），直接使用
-                    if manifest.device_id != self.device_id {
-                        tracing::info!(
-                            "[sync] 从旧版单清单迁移读取: device={}, databases={}",
-                            manifest.device_id,
-                            manifest.databases.len()
-                        );
-                        return Ok(manifest);
-                    }
+            if let Some(bytes) = storage
+                .get(Self::LEGACY_MANIFEST_KEY)
+                .await
+                .map_err(|e| SyncError::Network(format!("下载旧版清单失败: {}", e)))?
+            {
+                let manifest = serde_json::from_slice::<SyncManifest>(&bytes)
+                    .map_err(|e| SyncError::Database(format!("解析旧版清单失败: {}", e)))?;
+                // 旧清单来自另一设备（或自己），直接使用
+                if manifest.device_id != self.device_id {
+                    tracing::info!(
+                        "[sync] 从旧版单清单迁移读取: device={}, databases={}",
+                        manifest.device_id,
+                        manifest.databases.len()
+                    );
+                    return Ok(manifest);
                 }
             }
         }
@@ -961,6 +970,7 @@ impl SyncManager {
 
         let mut all_changes: Vec<SyncChangeWithData> = Vec::new();
         let mut skipped_self = 0usize;
+        let mut decode_failures: Vec<String> = Vec::new();
 
         for file in files {
             // 跳过本设备上传的变更文件，避免回声下载
@@ -1019,11 +1029,26 @@ impl SyncManager {
                                 all_changes.push(change);
                             }
                         } else {
-                            tracing::warn!("[sync] 无法解析变更文件: key={}, 跳过", file.key);
+                            decode_failures.push(file.key.clone());
+                            tracing::error!("[sync] 无法解析变更文件: key={}", file.key);
                         }
                     }
                 }
             }
+        }
+
+        if !decode_failures.is_empty() {
+            let samples = decode_failures
+                .iter()
+                .take(5)
+                .cloned()
+                .collect::<Vec<_>>()
+                .join(", ");
+            return Err(SyncError::Database(format!(
+                "存在 {} 个无法解析的变更文件（示例: {}）",
+                decode_failures.len(),
+                samples
+            )));
         }
 
         // 使用时间戳归一化排序（兼容 SQLite datetime 和 RFC 3339 格式）
