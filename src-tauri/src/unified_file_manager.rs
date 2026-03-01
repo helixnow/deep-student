@@ -383,6 +383,295 @@ impl Drop for MaterializedPath {
     }
 }
 
+/// 所有支持导入的文件扩展名（小写）。
+const SUPPORTED_IMPORT_EXTENSIONS: &[&str] = &[
+    "pdf", "docx", "txt", "md", "xlsx", "xls", "ods", "html", "htm", "pptx", "epub", "rtf",
+    "csv", "json", "xml",
+];
+
+/// 从文件头 magic bytes 检测文件扩展名。
+/// 只读取前 8 字节进行初步判断；对 ZIP 容器再读取更多字节区分 DOCX/XLSX/PPTX/EPUB/ODS。
+/// 返回 None 表示无法识别。
+pub fn detect_extension_from_magic(window: &Window, raw_path: &str) -> Option<String> {
+    let header = read_first_bytes(window, raw_path, 8).ok()?;
+    if header.len() < 4 {
+        return None;
+    }
+
+    // PDF: %PDF
+    if header.starts_with(b"%PDF") {
+        return Some("pdf".into());
+    }
+
+    // ZIP 容器（DOCX/XLSX/PPTX/EPUB/ODS）
+    if header.starts_with(b"PK\x03\x04") {
+        return detect_zip_subtype(window, raw_path);
+    }
+
+    // RTF: {\rtf
+    if header.starts_with(b"{\\rtf") {
+        return Some("rtf".into());
+    }
+
+    // OLE2 Compound Document (旧版 .doc/.xls/.ppt)
+    if header.starts_with(&[0xD0, 0xCF, 0x11, 0xE0]) {
+        return None; // 不支持旧版 Office 格式
+    }
+
+    // 跳过可能的 UTF-8 BOM
+    let content = if header.starts_with(&[0xEF, 0xBB, 0xBF]) {
+        &header[3..]
+    } else {
+        &header[..]
+    };
+
+    // XML: <?xml
+    if content.starts_with(b"<?xm") {
+        // 读取更多内容来区分 XML 和 HTML (XHTML)
+        if let Ok(more) = read_first_bytes(window, raw_path, 512) {
+            let lower = String::from_utf8_lossy(&more).to_lowercase();
+            if lower.contains("<html") || lower.contains("<!doctype html") {
+                return Some("html".into());
+            }
+        }
+        return Some("xml".into());
+    }
+
+    // HTML: <html, <!DOCTYPE, <HTML
+    if content.starts_with(b"<htm")
+        || content.starts_with(b"<HTM")
+        || content.starts_with(b"<!DO")
+        || content.starts_with(b"<!do")
+    {
+        return Some("html".into());
+    }
+
+    // 读取更多字节做文本格式启发式检测
+    let text_sample = read_first_bytes(window, raw_path, 1024).ok()?;
+    let text_str = String::from_utf8_lossy(&text_sample);
+    let trimmed_text = text_str.trim_start_matches('\u{FEFF}').trim();
+
+    // JSON: 以 { 或 [ 开头
+    if trimmed_text.starts_with('{') || trimmed_text.starts_with('[') {
+        if serde_json::from_str::<serde_json::Value>(trimmed_text).is_ok()
+            || trimmed_text.len() >= 1024
+        {
+            return Some("json".into());
+        }
+    }
+
+    // CSV 启发式：多行、含逗号分隔
+    if looks_like_csv(trimmed_text) {
+        return Some("csv".into());
+    }
+
+    // Markdown 启发式：含 # 标题或 ```代码块
+    if looks_like_markdown(trimmed_text) {
+        return Some("md".into());
+    }
+
+    // 纯文本兜底：全部为合法 UTF-8 可打印字符
+    if text_sample.len() > 0 && std::str::from_utf8(&text_sample).is_ok() {
+        return Some("txt".into());
+    }
+
+    None
+}
+
+/// 读取文件的前 N 字节。兼容本地路径与 content:// 等虚拟 URI。
+fn read_first_bytes(window: &Window, raw_path: &str, n: usize) -> Result<Vec<u8>, AppError> {
+    let path = classify_path(raw_path)?;
+    let mut reader = open_reader(window, &path)?;
+    let mut buf = vec![0u8; n];
+    let mut total = 0;
+    while total < n {
+        let read = reader.read(&mut buf[total..]).map_err(|e| {
+            AppError::file_system(format!("读取文件头失败: {} ({})", path.display(), e))
+        })?;
+        if read == 0 {
+            break;
+        }
+        total += read;
+    }
+    buf.truncate(total);
+    Ok(buf)
+}
+
+/// 对 ZIP 容器，通过扫描 Local File Header 中的文件名区分 DOCX/XLSX/PPTX/EPUB/ODS。
+///
+/// 不使用 `ZipArchive::new()`，因为它需要文件末尾的 End-of-Central-Directory 记录，
+/// 而我们只读取了前 N 字节——对大文件（>64KB）会失败。
+/// 改为直接解析 ZIP Local File Header（位于文件头部），只需前 64KB 即可覆盖大多数条目名称。
+fn detect_zip_subtype(window: &Window, raw_path: &str) -> Option<String> {
+    let data = read_first_bytes(window, raw_path, 64 * 1024).ok()?;
+
+    // 手动解析 ZIP Local File Headers 提取条目名称
+    let mut offset = 0;
+    let mut has_content_xml = false;
+    let mut mimetype_content: Option<String> = None;
+
+    while offset + 30 <= data.len() {
+        // Local File Header signature = PK\x03\x04
+        if data[offset..offset + 4] != [0x50, 0x4B, 0x03, 0x04] {
+            break;
+        }
+
+        let name_len =
+            u16::from_le_bytes([data[offset + 26], data[offset + 27]]) as usize;
+        let extra_len =
+            u16::from_le_bytes([data[offset + 28], data[offset + 29]]) as usize;
+        let compressed_size =
+            u32::from_le_bytes([
+                data[offset + 18], data[offset + 19],
+                data[offset + 20], data[offset + 21],
+            ]) as usize;
+
+        let name_start = offset + 30;
+        let name_end = name_start + name_len;
+        if name_end > data.len() {
+            break;
+        }
+
+        let entry_name = String::from_utf8_lossy(&data[name_start..name_end]).to_lowercase();
+
+        if entry_name.starts_with("word/") {
+            return Some("docx".into());
+        }
+        if entry_name.starts_with("xl/") {
+            return Some("xlsx".into());
+        }
+        if entry_name.starts_with("ppt/") {
+            return Some("pptx".into());
+        }
+        if entry_name == "meta-inf/container.xml" {
+            return Some("epub".into());
+        }
+        if entry_name == "content.xml" {
+            has_content_xml = true;
+        }
+
+        // 读取 mimetype 条目的内容（通常是 ZIP 中的第一个条目，且不压缩）
+        if entry_name == "mimetype" {
+            let data_start = name_end + extra_len;
+            let data_end = data_start + compressed_size;
+            if data_end <= data.len() {
+                let mime = String::from_utf8_lossy(&data[data_start..data_end]);
+                mimetype_content = Some(mime.to_string());
+            }
+        }
+
+        // 跳到下一个 Local File Header
+        let next_offset = name_end + extra_len + compressed_size;
+        if next_offset <= offset {
+            break; // 防止无限循环
+        }
+        offset = next_offset;
+    }
+
+    // ODF 判断
+    if let Some(ref mime) = mimetype_content {
+        if mime.contains("spreadsheet") {
+            return Some("ods".into());
+        }
+        if mime.contains("presentation") {
+            return Some("pptx".into());
+        }
+        if mime.contains("text") || mime.contains("opendocument") {
+            return Some("docx".into());
+        }
+    }
+    if has_content_xml || mimetype_content.is_some() {
+        return Some("ods".into()); // ODF 兜底
+    }
+
+    None
+}
+
+fn looks_like_csv(text: &str) -> bool {
+    let lines: Vec<&str> = text.lines().take(5).collect();
+    if lines.len() < 2 {
+        return false;
+    }
+    let comma_counts: Vec<usize> = lines.iter().map(|l| l.matches(',').count()).collect();
+    // 至少每行有 1 个逗号，且各行逗号数量一致
+    comma_counts[0] >= 1 && comma_counts.iter().all(|&c| c == comma_counts[0])
+}
+
+fn looks_like_markdown(text: &str) -> bool {
+    let lines: Vec<&str> = text.lines().take(20).collect();
+    lines
+        .iter()
+        .any(|l| l.starts_with('#') || l.starts_with("```") || l.starts_with("- "))
+}
+
+/// 清洗文件名中不安全的字符（`:` `?` `*` `"` `<` `>` `|`），替换为 `_`。
+pub fn sanitize_file_name_for_fs(name: &str) -> String {
+    name.chars()
+        .map(|c| match c {
+            ':' | '?' | '*' | '"' | '<' | '>' | '|' | '\0' => '_',
+            c if c.is_control() => '_',
+            c => c,
+        })
+        .collect()
+}
+
+/// 判断提取出的文件名是否像 Android document ID（而非真实文件名）。
+/// 例如 `document:1000019790`、`image:12345`、`msf:62`、纯数字 `446` 等。
+pub fn is_opaque_document_id(name: &str) -> bool {
+    // 含冒号且冒号后全是数字（如 document:1000019790、image:12345、msf:62）
+    if let Some(pos) = name.find(':') {
+        let after = &name[pos + 1..];
+        if !after.is_empty() && after.chars().all(|c| c.is_ascii_digit()) {
+            return true;
+        }
+    }
+    // 纯数字（如 Downloads provider 的 446）
+    if !name.is_empty() && name.chars().all(|c| c.is_ascii_digit()) {
+        return true;
+    }
+    false
+}
+
+/// 为 content:// URI 解析出可用的文件名和扩展名。
+///
+/// 三层降级策略：
+/// 1. 从 URI 路径提取文件名（适用于 ExternalStorage / raw 路径）
+/// 2. 若提取的名字是不透明 ID（无扩展名），用 magic bytes 检测文件类型
+/// 3. 若仍无法识别，返回 None 扩展名
+///
+/// 返回 `(display_name, Option<extension>)`。
+pub fn resolve_file_info(window: &Window, raw_path: &str) -> (String, Option<String>) {
+    let uri_name = extract_file_name(raw_path);
+    let uri_ext = Path::new(&uri_name)
+        .extension()
+        .and_then(|e| e.to_str())
+        .filter(|e| !e.is_empty())
+        .map(|e| e.to_lowercase());
+
+    // Layer 1: URI 路径已包含有效扩展名
+    if let Some(ref ext) = uri_ext {
+        if SUPPORTED_IMPORT_EXTENSIONS.contains(&ext.as_str()) || !is_opaque_document_id(&uri_name)
+        {
+            return (sanitize_file_name_for_fs(&uri_name), Some(ext.clone()));
+        }
+    }
+
+    // Layer 2: Magic bytes 检测
+    if let Some(detected_ext) = detect_extension_from_magic(window, raw_path) {
+        let safe_name = if is_opaque_document_id(&uri_name) || uri_ext.is_none() {
+            // 用检测到的扩展名构造文件名
+            let base = sanitize_file_name_for_fs(&uri_name);
+            format!("{}.{}", base, detected_ext)
+        } else {
+            sanitize_file_name_for_fs(&uri_name)
+        };
+        return (safe_name, Some(detected_ext));
+    }
+
+    // Layer 3: 无法识别
+    (sanitize_file_name_for_fs(&uri_name), uri_ext)
+}
+
 pub fn ensure_local_path(
     window: &Window,
     raw_path: &str,
@@ -415,7 +704,9 @@ pub fn ensure_local_path(
                 })?;
             }
 
-            let extension = extract_extension(raw_path);
+            // ★ Android 修复：URI 路径提取失败时，用 magic bytes 降级检测扩展名
+            let extension = extract_extension(raw_path)
+                .or_else(|| detect_extension_from_magic(window, raw_path));
             let file_name = match extension {
                 Some(ext) => format!("dstu_materialized_{}.{}", Uuid::new_v4(), ext),
                 None => format!("dstu_materialized_{}", Uuid::new_v4()),

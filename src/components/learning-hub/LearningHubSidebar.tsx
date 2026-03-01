@@ -6,7 +6,7 @@ import { open as dialogOpen } from '@tauri-apps/plugin-dialog';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { textbookDstuAdapter } from '@/dstu/adapters/textbookDstuAdapter';
 import { attachmentDstuAdapter } from '@/dstu/adapters/attachmentDstuAdapter';
-import { extractFileName, fileManager } from '@/utils/fileManager';
+import { extractFileName, extractDisplayFileName, fileManager } from '@/utils/fileManager';
 import { UnifiedDragDropZone, FILE_TYPES } from '@/components/shared/UnifiedDragDropZone';
 import { useDebounce } from '@/hooks/useDebounce';
 import {
@@ -682,7 +682,7 @@ export function LearningHubSidebar({
       }
 
       const filePaths = Array.isArray(selected) ? selected : [selected];
-      const firstFileName = filePaths[0] ? extractFileName(filePaths[0]) : 'textbook.pdf';
+      const firstFileName = filePaths[0] ? extractDisplayFileName(filePaths[0]) : 'textbook.pdf';
       
       // 显示导入进度模态框
       setImportProgress({
@@ -745,10 +745,12 @@ export function LearningHubSidebar({
           }
         }, 800);
       } else if (result.ok && result.value.length === 0) {
+        // ★ Android 修复：优先使用后端通过 progress 事件发送的具体错误信息
+        // 避免通用的"没有成功导入任何教材"覆盖更有诊断价值的具体原因
         setImportProgress(prev => ({
           ...prev,
           stage: 'error',
-          error: t('textbook.importEmpty', '没有成功导入任何教材'),
+          error: prev.error || t('textbook.importEmpty', '没有成功导入任何教材'),
         }));
       } else if (!result.ok) {
         setImportProgress(prev => ({
@@ -879,7 +881,7 @@ export function LearningHubSidebar({
     try {
       // 1. 文档类：通过 textbookDstuAdapter 导入（支持 PDF 渲染、哈希去重等）
       if (docPaths.length > 0) {
-        const firstFileName = docPaths[0] ? extractFileName(docPaths[0]) : '';
+        const firstFileName = docPaths[0] ? extractDisplayFileName(docPaths[0]) : '';
         setImportProgress({
           isImporting: true,
           fileName: firstFileName,

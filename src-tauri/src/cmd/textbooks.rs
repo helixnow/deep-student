@@ -93,42 +93,107 @@ pub async fn textbooks_add(
     };
 
     let mut out: Vec<TextbookDto> = Vec::new();
-    for src in sources {
-        // 目标文件名（用于进度显示）
-        // Android content:// URI 的最后一段是 URL 编码的 document ID（如 primary%3ADownload%2F...%2Ffile.pdf），
-        // 需要解码后再提取末尾的实际文件名
-        let raw_name = unified_file_manager::extract_file_name(&src);
-        let raw_name = raw_name.as_str();
+    let mut skipped_reasons: Vec<String> = Vec::new();
+
+    for src in &sources {
+        // ★ Android 修复：使用三层降级策略解析文件名和扩展名
+        // Layer 1: URI 路径提取（适用于 ExternalStorage / raw: 路径）
+        // Layer 2: Magic bytes 检测（适用于 Media Provider / Downloads 等不透明 ID）
+        // Layer 3: 无法识别 → 跳过并记录原因
+        let (resolved_name, resolved_ext) =
+            unified_file_manager::resolve_file_info(&window, src);
+        let display_name = resolved_name.as_str();
+
+        info!(
+            "[Textbooks] Resolved file info: uri={}, name={}, ext={:?}",
+            src, display_name, resolved_ext
+        );
+
+        // ★ 校验提前：在哈希和复制之前验证扩展名
+        let extension = match resolved_ext {
+            Some(ref ext) if ext == "pdf" => ext.clone(),
+            Some(ref ext) => {
+                let supported_extensions = [
+                    "docx", "txt", "md", "xlsx", "xls", "ods", "html", "htm", "pptx", "epub",
+                    "rtf", "csv", "json", "xml",
+                ];
+                if supported_extensions.contains(&ext.as_str()) {
+                    ext.clone()
+                } else {
+                    let reason = format!("{}: 不支持的文件格式 ({})", display_name, ext);
+                    warn!("[Textbooks] {}", reason);
+                    emit_progress(
+                        &window,
+                        display_name,
+                        "error",
+                        None,
+                        None,
+                        0,
+                        Some(format!("不支持的文件格式: {}", ext)),
+                    );
+                    skipped_reasons.push(reason);
+                    continue;
+                }
+            }
+            None => {
+                let reason = format!("{}: 无法识别文件格式", display_name);
+                warn!("[Textbooks] {}", reason);
+                emit_progress(
+                    &window,
+                    display_name,
+                    "error",
+                    None,
+                    None,
+                    0,
+                    Some("无法识别文件格式，请确认文件类型后重试".to_string()),
+                );
+                skipped_reasons.push(reason);
+                continue;
+            }
+        };
 
         // 阶段1：计算哈希
-        emit_progress(&window, raw_name, "hashing", None, None, 5, None);
-        let sha256 = unified_file_manager::hash_file_sha256(&window, &src)?;
+        emit_progress(&window, display_name, "hashing", None, None, 5, None);
+        let sha256 = match unified_file_manager::hash_file_sha256(&window, src) {
+            Ok(h) => h,
+            Err(e) => {
+                let reason = format!("{}: 读取文件失败 ({})", display_name, e);
+                warn!("[Textbooks] {}", reason);
+                emit_progress(
+                    &window,
+                    display_name,
+                    "error",
+                    None,
+                    None,
+                    0,
+                    Some(format!("读取文件失败: {}", e)),
+                );
+                skipped_reasons.push(reason);
+                continue;
+            }
+        };
 
         // 若已存在，直接返回
         if let Some(tb) = crate::vfs::VfsTextbookRepo::get_by_sha256(vfs_db, &sha256)
             .map_err(|e| AppError::database(format!("VFS 查询教材失败: {}", e)))?
         {
-            emit_progress(&window, raw_name, "done", None, None, 100, None);
+            emit_progress(&window, display_name, "done", None, None, 100, None);
             out.push(tb.to_textbook());
             continue;
         }
 
-        // 阶段2：复制文件
-        emit_progress(&window, raw_name, "copying", None, None, 10, None);
-        let mut dest_path = textbooks_dir.join(raw_name);
+        // 阶段2：复制文件到本地 textbooks 目录
+        emit_progress(&window, display_name, "copying", None, None, 10, None);
+        let mut dest_path = textbooks_dir.join(display_name);
         // 同名冲突处理：追加序号后缀
         if dest_path.exists() {
-            let stem = Path::new(raw_name)
+            let stem = Path::new(display_name)
                 .file_stem()
                 .and_then(|s| s.to_str())
                 .unwrap_or("textbook");
-            let ext = Path::new(raw_name)
-                .extension()
-                .and_then(|s| s.to_str())
-                .unwrap_or("pdf");
             let mut idx = 1;
             loop {
-                let candidate = textbooks_dir.join(format!("{}_{}.{}", stem, idx, ext));
+                let candidate = textbooks_dir.join(format!("{}_{}.{}", stem, idx, extension));
                 if !candidate.exists() {
                     dest_path = candidate;
                     break;
@@ -137,37 +202,47 @@ pub async fn textbooks_add(
                 if idx > 9999 {
                     emit_progress(
                         &window,
-                        raw_name,
+                        display_name,
                         "error",
                         None,
                         None,
                         0,
                         Some("生成目标文件名失败".to_string()),
                     );
-                    return Err(AppError::validation("生成目标文件名失败: 重试次数过多"));
+                    skipped_reasons.push(format!("{}: 生成目标文件名失败", display_name));
+                    break;
                 }
+            }
+            if idx > 9999 {
+                continue;
             }
         }
 
-        // 执行复制
-        let src_str = src.clone();
         let dest_str = dest_path.to_string_lossy().to_string();
-        unified_file_manager::copy_file(&window, &src_str, &dest_str)?;
+        if let Err(e) = unified_file_manager::copy_file(&window, src, &dest_str) {
+            let reason = format!("{}: 复制文件失败 ({})", display_name, e);
+            warn!("[Textbooks] {}", reason);
+            emit_progress(
+                &window,
+                display_name,
+                "error",
+                None,
+                None,
+                0,
+                Some(format!("复制文件失败: {}", e)),
+            );
+            skipped_reasons.push(reason);
+            continue;
+        }
 
-        let size = unified_file_manager::get_file_size(&window, &dest_str)?;
+        let size = unified_file_manager::get_file_size(&window, &dest_str).unwrap_or(0);
         let file_name = dest_path
             .file_name()
             .and_then(|s| s.to_str())
-            .unwrap_or("textbook.pdf")
+            .unwrap_or(display_name)
             .to_string();
 
         // 阶段3：根据文件类型处理
-        let extension = Path::new(&file_name)
-            .extension()
-            .and_then(|ext| ext.to_str())
-            .map(|s| s.to_lowercase())
-            .unwrap_or_default();
-
         let conn = vfs_db
             .get_conn_safe()
             .map_err(|e| AppError::database(format!("获取 VFS 连接失败: {}", e)))?;
@@ -190,11 +265,9 @@ pub async fn textbooks_add(
                 AppError::file_system(format!("读取 PDF 文件失败: {}", e))
             })?;
 
-            // 创建进度回调闭包（渲染每页时调用）
             let window_clone = window.clone();
             let file_name_clone = file_name.clone();
             let progress_callback = move |current_page: usize, total_pages: usize| {
-                // 渲染阶段占 15% - 85%
                 let render_progress =
                     ((current_page as f32 / total_pages as f32) * 70.0) as u8 + 15;
                 let payload = TextbookImportProgress {
@@ -243,57 +316,34 @@ pub async fn textbooks_add(
         } else {
             // 非 PDF 文件：使用 DocumentParser 提取文本
             emit_progress(&window, &file_name, "parsing", None, None, 15, None);
-
-            let supported_extensions = [
-                "docx", "txt", "md", "xlsx", "xls", "ods", "html", "htm", "pptx", "epub",
-                "rtf", // 扩展格式
-                "csv", "json",
-                "xml", // 数据格式
-                       // 注：doc（旧版 Word）不支持，无纯 Rust 解析库
-            ];
-            if supported_extensions.contains(&extension.as_str()) {
-                let parser = DocumentParser::new();
-                match parser.extract_text_from_path(&dest_str) {
-                    Ok(text) => {
-                        info!(
-                            "[Textbooks] Document text extracted: {} chars from {}",
-                            text.len(),
-                            file_name
-                        );
-                        // 非 PDF 文件没有预览图片，但有提取的文本
-                        (None, Some(text), Some(1)) // page_count = 1 表示单页文档
-                    }
-                    Err(e) => {
-                        warn!(
-                            "[Textbooks] Document parsing failed for {}: {}",
-                            file_name, e
-                        );
-                        emit_progress(
-                            &window,
-                            &file_name,
-                            "error",
-                            None,
-                            None,
-                            0,
-                            Some(format!("文档解析失败: {}", e)),
-                        );
-                        let _ = std::fs::remove_file(&dest_path);
-                        continue;
-                    }
+            let parser = DocumentParser::new();
+            match parser.extract_text_from_path(&dest_str) {
+                Ok(text) => {
+                    info!(
+                        "[Textbooks] Document text extracted: {} chars from {}",
+                        text.len(),
+                        file_name
+                    );
+                    (None, Some(text), Some(1))
                 }
-            } else {
-                warn!("[Textbooks] Unsupported file format: {}", extension);
-                emit_progress(
-                    &window,
-                    &file_name,
-                    "error",
-                    None,
-                    None,
-                    0,
-                    Some(format!("不支持的文件格式: {}", extension)),
-                );
-                let _ = std::fs::remove_file(&dest_path);
-                continue;
+                Err(e) => {
+                    warn!(
+                        "[Textbooks] Document parsing failed for {}: {}",
+                        file_name, e
+                    );
+                    emit_progress(
+                        &window,
+                        &file_name,
+                        "error",
+                        None,
+                        None,
+                        0,
+                        Some(format!("文档解析失败: {}", e)),
+                    );
+                    let _ = std::fs::remove_file(&dest_path);
+                    skipped_reasons.push(format!("{}: 文档解析失败 ({})", display_name, e));
+                    continue;
+                }
             }
         };
 
@@ -397,6 +447,24 @@ pub async fn textbooks_add(
         // 阶段5：完成
         emit_progress(&window, &file_name, "done", None, None, 100, None);
         out.push(tb.to_textbook());
+    }
+
+    // ★ Android 修复：当所有文件都被跳过时，通过 progress 事件发送汇总原因
+    if out.is_empty() && !skipped_reasons.is_empty() {
+        let summary = skipped_reasons.join("; ");
+        info!(
+            "[Textbooks] All files skipped. Reasons: {}",
+            summary
+        );
+        emit_progress(
+            &window,
+            "",
+            "error",
+            None,
+            None,
+            0,
+            Some(summary),
+        );
     }
 
     Ok(out)

@@ -9,6 +9,9 @@ import { getErrorMessage } from './errorUtils';
  * Android content:// URI 的最后一段是 URL 编码的 document ID
  * （如 `primary%3ADownload%2FQuarkDownloads%2Ffile.pdf`），
  * 需要先 decodeURIComponent 再从中提取实际文件名。
+ *
+ * 注意：此函数用于逻辑处理（扩展名提取、文件分类等），原样返回解析结果。
+ * 若需在 UI 中展示用户友好名称，请使用 {@link extractDisplayFileName}。
  */
 export function extractFileName(path: string): string {
   const lastSegment = path.split(/[/\\]/).pop() || path;
@@ -18,6 +21,36 @@ export function extractFileName(path: string): string {
   } catch {
     return lastSegment;
   }
+}
+
+/**
+ * 提取用户友好的文件名用于 UI 展示。
+ * 对 Android 不透明 document ID（如 `document:1000019790`、`msf:62`、纯数字 `446`）
+ * 返回通用占位名称 "文件"，避免在界面上显示无意义的 ID。
+ */
+export function extractDisplayFileName(path: string): string {
+  const name = extractFileName(path);
+  if (isOpaqueDocumentId(name)) {
+    return '文件';
+  }
+  return name;
+}
+
+/** 判断提取出的名称是否为 Android 不透明 document ID 而非真实文件名 */
+function isOpaqueDocumentId(name: string): boolean {
+  // 含冒号且冒号后全是数字（document:1000019790、image:12345、msf:62）
+  const colonIdx = name.indexOf(':');
+  if (colonIdx > 0) {
+    const afterColon = name.slice(colonIdx + 1);
+    if (afterColon.length > 0 && /^\d+$/.test(afterColon)) {
+      return true;
+    }
+  }
+  // 纯数字（Downloads provider 的 446）
+  if (name.length > 0 && /^\d+$/.test(name)) {
+    return true;
+  }
+  return false;
 }
 
 /**
