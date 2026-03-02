@@ -619,7 +619,12 @@ where
                             processed_files: i,
                             total_files,
                             current_file: Some(file_name.clone()),
-                            message: format!("跳过已存在: {} ({}/{})", file_name, i + 1, total_files),
+                            message: format!(
+                                "跳过已存在: {} ({}/{})",
+                                file_name,
+                                i + 1,
+                                total_files
+                            ),
                         });
                         continue;
                     }

@@ -49,11 +49,7 @@ impl ImageExportAdapter {
             .map_err(|e| DstuError::Internal(format!("获取图片文件失败: {}", e)))?
             .ok_or_else(|| DstuError::not_found(resource_id))?;
 
-        let mime = file
-            .mime_type
-            .as_deref()
-            .unwrap_or("image/png")
-            .to_string();
+        let mime = file.mime_type.as_deref().unwrap_or("image/png").to_string();
         let filename = sanitize_filename(&file.file_name);
         let filename = if filename.is_empty() {
             format!("{}.png", resource_id)

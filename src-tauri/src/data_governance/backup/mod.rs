@@ -1024,9 +1024,8 @@ impl BackupManager {
         // 1. 备份 .master_key
         if master_key_path.exists() {
             let dest = crypto_dest.join(".master_key");
-            fs::copy(&master_key_path, &dest).map_err(|e| {
-                BackupError::RestoreFailed(format!("备份 .master_key 失败: {}", e))
-            })?;
+            fs::copy(&master_key_path, &dest)
+                .map_err(|e| BackupError::RestoreFailed(format!("备份 .master_key 失败: {}", e)))?;
             count += 1;
             info!("[Backup] 已备份 .master_key");
         }
@@ -1078,9 +1077,8 @@ impl BackupManager {
         let master_key_src = crypto_src.join(".master_key");
         if master_key_src.exists() {
             let dest = self.app_data_dir.join(".master_key");
-            fs::copy(&master_key_src, &dest).map_err(|e| {
-                BackupError::RestoreFailed(format!("恢复 .master_key 失败: {}", e))
-            })?;
+            fs::copy(&master_key_src, &dest)
+                .map_err(|e| BackupError::RestoreFailed(format!("恢复 .master_key 失败: {}", e)))?;
             count += 1;
             info!("[Restore] 已恢复 .master_key");
         }
@@ -1449,12 +1447,11 @@ impl BackupManager {
         let mut restored_assets = 0;
         if restore_assets {
             if let Some(asset_result) = &manifest.assets {
-                info!("开始恢复资产文件到目标目录: {} 个", asset_result.total_files);
-                match assets::restore_assets(
-                    &backup_subdir,
-                    target_dir,
-                    &asset_result.files,
-                ) {
+                info!(
+                    "开始恢复资产文件到目标目录: {} 个",
+                    asset_result.total_files
+                );
+                match assets::restore_assets(&backup_subdir, target_dir, &asset_result.files) {
                     Ok(count) => {
                         restored_assets = count;
                         info!("资产恢复完成: {} 个文件", count);
@@ -1492,7 +1489,11 @@ impl BackupManager {
 
         info!(
             "恢复到目标目录完成: 数据库={}, 资产={}, 目标={}",
-            manifest.files.iter().filter(|f| f.path.ends_with(".db")).count(),
+            manifest
+                .files
+                .iter()
+                .filter(|f| f.path.ends_with(".db"))
+                .count(),
             restored_assets,
             target_dir.display()
         );
@@ -2390,8 +2391,12 @@ impl BackupManager {
             drop(conn);
             let wal = dest_path.with_extension("db-wal");
             let shm = dest_path.with_extension("db-shm");
-            if wal.exists() { let _ = fs::remove_file(&wal); }
-            if shm.exists() { let _ = fs::remove_file(&shm); }
+            if wal.exists() {
+                let _ = fs::remove_file(&wal);
+            }
+            if shm.exists() {
+                let _ = fs::remove_file(&shm);
+            }
         }
         let src_conn = Connection::open(src_path)?;
         let mut dest_conn = Connection::open(dest_path)?;
@@ -2404,7 +2409,9 @@ impl BackupManager {
             loop {
                 match backup.step(100)? {
                     StepResult::Done => break,
-                    StepResult::More => { busy_retries = 0; }
+                    StepResult::More => {
+                        busy_retries = 0;
+                    }
                     StepResult::Busy | StepResult::Locked => {
                         busy_retries += 1;
                         if busy_retries >= 600 {

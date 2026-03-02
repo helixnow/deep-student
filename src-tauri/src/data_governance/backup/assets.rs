@@ -91,10 +91,7 @@ fn copy_file_with_retry(src: &Path, dest: &Path) -> Result<(), AssetBackupError>
                 }
             }
             Err(e) => {
-                last_error = Some(format!(
-                    "复制资产失败: {:?} -> {:?}: {}",
-                    src, dest, e
-                ));
+                last_error = Some(format!("复制资产失败: {:?} -> {:?}: {}", src, dest, e));
             }
         }
 
@@ -106,9 +103,9 @@ fn copy_file_with_retry(src: &Path, dest: &Path) -> Result<(), AssetBackupError>
         }
     }
 
-    Err(AssetBackupError::RestoreFailed(last_error.unwrap_or_else(
-        || "复制资产失败（未知错误）".to_string(),
-    )))
+    Err(AssetBackupError::RestoreFailed(
+        last_error.unwrap_or_else(|| "复制资产失败（未知错误）".to_string()),
+    ))
 }
 
 impl AssetType {
@@ -239,7 +236,10 @@ impl AssetType {
     }
 }
 
-fn safe_join_under_root(root: &Path, unsafe_relative_path: &str) -> Result<std::path::PathBuf, AssetBackupError> {
+fn safe_join_under_root(
+    root: &Path,
+    unsafe_relative_path: &str,
+) -> Result<std::path::PathBuf, AssetBackupError> {
     let normalized = AssetType::sanitize_relative_path(unsafe_relative_path)?;
     let mut clean = std::path::PathBuf::new();
 
@@ -735,16 +735,9 @@ fn backup_directory_recursive(
 
             // 记录备份的文件
             let relative_str = relative_path.to_string_lossy().replace('\\', "/");
-            let original_path = format!(
-                "{}/{}",
-                asset_type.relative_path(),
-                relative_str
-            );
-            let backup_relative_path = format!(
-                "assets/{}/{}",
-                asset_type.relative_path(),
-                relative_str
-            );
+            let original_path = format!("{}/{}", asset_type.relative_path(), relative_str);
+            let backup_relative_path =
+                format!("assets/{}/{}", asset_type.relative_path(), relative_str);
 
             result.files.push(BackedUpAsset {
                 asset_type,
@@ -966,11 +959,19 @@ where
         // 防御 Zip Slip 和跨平台路径问题
         let src_path = match safe_join_under_root(backup_dir, &asset.relative_path) {
             Ok(p) => p,
-            Err(_) => return Err(AssetBackupError::InvalidConfig("资产源路径非法".to_string())),
+            Err(_) => {
+                return Err(AssetBackupError::InvalidConfig(
+                    "资产源路径非法".to_string(),
+                ))
+            }
         };
         let dest_path = match safe_join_under_root(app_data_dir, &asset.original_path) {
             Ok(p) => p,
-            Err(_) => return Err(AssetBackupError::InvalidConfig("资产目标路径非法".to_string())),
+            Err(_) => {
+                return Err(AssetBackupError::InvalidConfig(
+                    "资产目标路径非法".to_string(),
+                ))
+            }
         };
 
         if let Some(parent) = dest_path.parent() {
@@ -1455,7 +1456,11 @@ mod tests {
         let backup_dir = TempDir::new().unwrap();
         let app_data_dir = TempDir::new().unwrap();
 
-        create_test_file(backup_dir.path(), "assets/images/test.png", b"fake png data");
+        create_test_file(
+            backup_dir.path(),
+            "assets/images/test.png",
+            b"fake png data",
+        );
 
         let result = restore_assets_from_dir_with_progress(
             &backup_dir.path().join("assets"),

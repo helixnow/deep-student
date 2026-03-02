@@ -1,7 +1,6 @@
 use super::*;
 
 impl ChatV2Pipeline {
-
     /// 🆕 P0防闪退：用户消息即时保存
     ///
     /// 在 Pipeline 执行前立即保存用户消息，确保用户输入不会因闪退丢失。
@@ -15,7 +14,10 @@ impl ChatV2Pipeline {
     /// - save_results 使用 INSERT OR REPLACE，会覆盖本方法保存的数据
     /// - 如果 Pipeline 正常完成，save_results 会保存完整数据
     /// - 如果闪退，至少用户消息已保存
-    pub(crate) async fn save_user_message_immediately(&self, ctx: &PipelineContext) -> ChatV2Result<()> {
+    pub(crate) async fn save_user_message_immediately(
+        &self,
+        ctx: &PipelineContext,
+    ) -> ChatV2Result<()> {
         let conn = self.db.get_conn_safe()?;
         let now_ms = chrono::Utc::now().timestamp_millis();
 
@@ -46,7 +48,10 @@ impl ChatV2Pipeline {
     /// - 本方法在流程中间调用，保存部分结果
     /// - save_results 在流程结束时调用，保存完整结果
     /// - 两者都使用 INSERT OR REPLACE，不会冲突
-    pub(crate) async fn save_intermediate_results(&self, ctx: &PipelineContext) -> ChatV2Result<()> {
+    pub(crate) async fn save_intermediate_results(
+        &self,
+        ctx: &PipelineContext,
+    ) -> ChatV2Result<()> {
         // 如果没有块需要保存，直接返回
         if ctx.interleaved_blocks.is_empty() {
             return Ok(());
@@ -751,12 +756,16 @@ impl ChatV2Pipeline {
                 .or_else(|| {
                     // 🔧 P0-2 修复：优先尝试 model2_override_id（实际使用的模型）
                     // 过滤配置 ID 格式，避免保存前端无法识别的值
-                    ctx.options.model2_override_id.as_ref()
+                    ctx.options
+                        .model2_override_id
+                        .as_ref()
                         .filter(|id| !is_config_id_format(id))
                         .cloned()
                 })
                 .or_else(|| {
-                    ctx.options.model_id.as_ref()
+                    ctx.options
+                        .model_id
+                        .as_ref()
                         .filter(|id| !is_config_id_format(id))
                         .cloned()
                 }),
@@ -988,11 +997,8 @@ impl ChatV2Pipeline {
                 }
             };
 
-            let memory_service = MemoryService::new(
-                vfs_db.clone(),
-                lance_store,
-                llm_manager.clone(),
-            );
+            let memory_service =
+                MemoryService::new(vfs_db.clone(), lance_store, llm_manager.clone());
 
             let extractor = MemoryAutoExtractor::new(llm_manager.clone());
 
@@ -1004,7 +1010,8 @@ impl ChatV2Pipeline {
                     if count > 0 {
                         log::info!(
                             "[AutoMemory] Auto-extracted {} memories (frequency={:?})",
-                            count, frequency
+                            count,
+                            frequency
                         );
                     }
 
@@ -1012,17 +1019,16 @@ impl ChatV2Pipeline {
                     if count > 0 {
                         let should_refresh = match memory_service.list(None, 500, 0) {
                             Ok(all) => {
-                                let total = all.iter().filter(|m| !m.title.starts_with("__")).count();
+                                let total =
+                                    all.iter().filter(|m| !m.title.starts_with("__")).count();
                                 frequency.should_refresh_categories(total)
                             }
                             Err(_) => false,
                         };
                         if should_refresh {
                             use crate::memory::MemoryCategoryManager;
-                            let cat_mgr = MemoryCategoryManager::new(
-                                vfs_db.clone(),
-                                llm_manager.clone(),
-                            );
+                            let cat_mgr =
+                                MemoryCategoryManager::new(vfs_db.clone(), llm_manager.clone());
                             if let Err(e) = cat_mgr.refresh_all_categories(&memory_service).await {
                                 log::warn!("[AutoMemory] Category refresh failed: {}", e);
                             }

@@ -138,7 +138,11 @@ impl ChatV2Pipeline {
                     .cloned()
                     .collect::<Vec<_>>()
                     .join("");
-                if thinking.is_empty() { None } else { Some(thinking) }
+                if thinking.is_empty() {
+                    None
+                } else {
+                    Some(thinking)
+                }
             } else {
                 // 未被工具消费的 thinking 留给 legacy_message
                 pending_thinking

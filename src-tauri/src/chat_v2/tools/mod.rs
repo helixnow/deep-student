@@ -46,8 +46,6 @@ pub mod canvas_executor;
 pub mod canvas_tools;
 pub mod chatanki_executor; // 🆕 ChatAnki 工具执行器（文件→卡片闭环）
 pub mod docx_executor; // 🆕 DOCX 文档读写工具执行器（docx-rs 完整能力）
-pub mod pptx_executor; // 🆕 PPTX 演示文稿读写工具执行器（ppt-rs）
-pub mod xlsx_executor; // 🆕 XLSX 电子表格读写工具执行器（umya-spreadsheet）
 pub mod executor;
 pub mod executor_registry;
 pub mod fetch_executor; // 🆕 内置 Web Fetch 工具执行器（参考 @anthropic/mcp-fetch）
@@ -56,6 +54,7 @@ pub mod injector;
 pub mod knowledge_executor; // 🆕 知识工具执行器（内化/提取）
 pub mod memory_executor;
 pub mod paper_save_executor; // 🆕 论文保存+引用格式化工具执行器
+pub mod pptx_executor; // 🆕 PPTX 演示文稿读写工具执行器（ppt-rs）
 pub mod qbank_executor; // 🆕 智能题目集工具执行器
 pub mod registry;
 pub mod skills_executor; // 🆕 Skills 工具执行器（渐进披露架构）
@@ -64,7 +63,8 @@ pub mod subagent_executor;
 pub mod template_executor; // 🆕 模板设计师工具执行器
 pub mod todo_executor;
 pub mod types;
-pub mod workspace_executor; // 🆕 Coordinator 睡眠工具执行器（睡眠/唤醒机制）
+pub mod workspace_executor;
+pub mod xlsx_executor; // 🆕 XLSX 电子表格读写工具执行器（umya-spreadsheet） // 🆕 Coordinator 睡眠工具执行器（睡眠/唤醒机制）
 
 // 重导出工具
 pub use canvas_tools::{
@@ -94,8 +94,6 @@ pub use builtin_retrieval_executor::BuiltinRetrievalExecutor; // 🆕 内置检�
 pub use canvas_executor::CanvasToolExecutor;
 pub use chatanki_executor::ChatAnkiToolExecutor; // 🆕 ChatAnki 工具执行器
 pub use docx_executor::DocxToolExecutor; // 🆕 DOCX 文档读写工具执行器
-pub use pptx_executor::PptxToolExecutor; // 🆕 PPTX 演示文稿读写工具执行器
-pub use xlsx_executor::XlsxToolExecutor; // 🆕 XLSX 电子表格读写工具执行器
 pub use executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
 pub use executor_registry::ToolExecutorRegistry;
 pub use fetch_executor::FetchExecutor; // 🆕 内置 Web Fetch 工具执行器
@@ -103,12 +101,14 @@ pub use general_executor::GeneralToolExecutor;
 pub use knowledge_executor::KnowledgeExecutor; // 🆕 知识工具执行器
 pub use memory_executor::MemoryToolExecutor;
 pub use paper_save_executor::PaperSaveExecutor; // 🆕 论文保存+引用格式化工具执行器
+pub use pptx_executor::PptxToolExecutor; // 🆕 PPTX 演示文稿读写工具执行器
 pub use skills_executor::SkillsExecutor; // 🆕 Skills 工具执行器
 pub use sleep_executor::{get_coordinator_sleep_tool_schema, CoordinatorSleepExecutor};
 pub use subagent_executor::{get_subagent_tool_schema, SubagentExecutor, SUBAGENT_TOOL_NAME};
 pub use template_executor::TemplateDesignerExecutor; // 🆕 模板设计师工具执行器
 pub use todo_executor::TodoListExecutor;
-pub use workspace_executor::{get_workspace_tool_schemas, WorkspaceToolExecutor}; // 🆕 Coordinator 睡眠执行器
+pub use workspace_executor::{get_workspace_tool_schemas, WorkspaceToolExecutor};
+pub use xlsx_executor::XlsxToolExecutor; // 🆕 XLSX 电子表格读写工具执行器 // 🆕 Coordinator 睡眠执行器
 
 /// Canvas 工具名称常量
 pub mod canvas_tool_names {

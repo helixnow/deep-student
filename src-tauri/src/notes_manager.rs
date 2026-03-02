@@ -103,7 +103,6 @@ pub struct NoteLinksResult {
     pub backlinks_truncated: bool,
 }
 
-
 // 新增：将 ListOptions 移到模块级并公开
 #[derive(Debug, Clone)]
 pub struct ListOptions {
@@ -246,7 +245,7 @@ impl NotesManager {
                             .lower_case(true)
                             .stem(false)
                             .remove_stop_words(false)
-                            .ascii_folding(true)
+                            .ascii_folding(true),
                     ),
                 )
                 .replace(false)
@@ -1524,7 +1523,6 @@ impl NotesManager {
         self.get_note(id)
     }
 
-
     pub fn delete_note(&self, id: &str) -> Result<bool> {
         if self.vfs_db.is_some() {
             return self.delete_note_vfs(id);
@@ -1594,7 +1592,6 @@ impl NotesManager {
         Ok(false)
     }
 
-
     pub(crate) fn sync_note_tags(
         &self,
         conn: &rusqlite::Connection,
@@ -1616,7 +1613,6 @@ impl NotesManager {
         }
         Ok(())
     }
-
 }
 
 // ==================== Canvas AI 工具方法 ====================
@@ -2207,4 +2203,3 @@ Some content."#;
         assert_eq!(replaced, "Hi World, Hi Universe");
     }
 }
-

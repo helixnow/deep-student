@@ -31,8 +31,8 @@ use serde::{Deserialize, Serialize};
 use tauri::State;
 
 use crate::dstu::error::DstuError;
-use crate::dstu::types::DstuNodeType;
 use crate::dstu::handler_utils::extract_resource_info;
+use crate::dstu::types::DstuNodeType;
 use crate::vfs::VfsDatabase;
 
 // ============================================================================
@@ -250,12 +250,10 @@ impl ExportRegistry {
         resource_id: &str,
         format: ExportFormat,
     ) -> Result<ExportPayload, DstuError> {
-        let adapter = self.adapters.get(&node_type).ok_or_else(|| {
-            DstuError::NotSupported(format!(
-                "资源类型 {} 不支持导出",
-                node_type
-            ))
-        })?;
+        let adapter = self
+            .adapters
+            .get(&node_type)
+            .ok_or_else(|| DstuError::NotSupported(format!("资源类型 {} 不支持导出", node_type)))?;
 
         if !adapter.supported_formats().contains(&format) {
             return Err(DstuError::NotSupported(format!(
@@ -309,8 +307,8 @@ pub async fn dstu_export(
         format
     );
 
-    let export_format = ExportFormat::from_str(&format)
-        .ok_or_else(|| format!("不支持的导出格式: {}", format))?;
+    let export_format =
+        ExportFormat::from_str(&format).ok_or_else(|| format!("不支持的导出格式: {}", format))?;
 
     let (_resource_type_str, id) = extract_resource_info(&path).map_err(|e| e.to_string())?;
     let node_type = infer_node_type_from_path(&path)?;

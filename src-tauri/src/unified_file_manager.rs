@@ -281,11 +281,7 @@ pub fn extract_file_name(raw_path: &str) -> String {
         .map(|c| c.into_owned())
         .unwrap_or_else(|_| last_segment.to_string());
     // 解码后可能包含子路径（如 primary:Download/QuarkDownloads/file.pdf），取最后一段
-    decoded
-        .rsplit('/')
-        .next()
-        .unwrap_or(&decoded)
-        .to_string()
+    decoded.rsplit('/').next().unwrap_or(&decoded).to_string()
 }
 
 /// 从任意路径中安全提取文件扩展名（小写，不含点号）。
@@ -385,8 +381,8 @@ impl Drop for MaterializedPath {
 
 /// 所有支持导入的文件扩展名（小写）。
 const SUPPORTED_IMPORT_EXTENSIONS: &[&str] = &[
-    "pdf", "docx", "txt", "md", "xlsx", "xls", "ods", "html", "htm", "pptx", "epub", "rtf",
-    "csv", "json", "xml",
+    "pdf", "docx", "txt", "md", "xlsx", "xls", "ods", "html", "htm", "pptx", "epub", "rtf", "csv",
+    "json", "xml",
 ];
 
 /// 从文件头 magic bytes 检测文件扩展名。
@@ -516,15 +512,14 @@ fn detect_zip_subtype(window: &Window, raw_path: &str) -> Option<String> {
             break;
         }
 
-        let name_len =
-            u16::from_le_bytes([data[offset + 26], data[offset + 27]]) as usize;
-        let extra_len =
-            u16::from_le_bytes([data[offset + 28], data[offset + 29]]) as usize;
-        let compressed_size =
-            u32::from_le_bytes([
-                data[offset + 18], data[offset + 19],
-                data[offset + 20], data[offset + 21],
-            ]) as usize;
+        let name_len = u16::from_le_bytes([data[offset + 26], data[offset + 27]]) as usize;
+        let extra_len = u16::from_le_bytes([data[offset + 28], data[offset + 29]]) as usize;
+        let compressed_size = u32::from_le_bytes([
+            data[offset + 18],
+            data[offset + 19],
+            data[offset + 20],
+            data[offset + 21],
+        ]) as usize;
 
         let name_start = offset + 30;
         let name_end = name_start + name_len;

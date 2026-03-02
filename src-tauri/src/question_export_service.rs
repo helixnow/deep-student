@@ -400,8 +400,18 @@ impl CsvExportService {
         let first_char = value.chars().next();
         let is_formula_prefix = matches!(
             first_char,
-            Some('=' | '+' | '-' | '@' | '\t' | '\r' | '\n'
-                | '\u{FF1D}' | '\u{FF0B}' | '\u{FF0D}' | '\u{FF20}')
+            Some(
+                '=' | '+'
+                    | '-'
+                    | '@'
+                    | '\t'
+                    | '\r'
+                    | '\n'
+                    | '\u{FF1D}'
+                    | '\u{FF0B}'
+                    | '\u{FF0D}'
+                    | '\u{FF20}'
+            )
         );
         if is_formula_prefix {
             value = format!("\t{}", value);
@@ -448,11 +458,20 @@ mod tests {
         assert_eq!(CsvExportService::escape_csv_cell("=1+2"), "\"\t=1+2\"");
         assert_eq!(CsvExportService::escape_csv_cell("+1+2"), "\"\t+1+2\"");
         assert_eq!(CsvExportService::escape_csv_cell("-1+2"), "\"\t-1+2\"");
-        assert_eq!(CsvExportService::escape_csv_cell("@SUM(A1)"), "\"\t@SUM(A1)\"");
+        assert_eq!(
+            CsvExportService::escape_csv_cell("@SUM(A1)"),
+            "\"\t@SUM(A1)\""
+        );
         // Fullwidth variants
-        assert_eq!(CsvExportService::escape_csv_cell("\u{FF1D}CMD"), "\"\t\u{FF1D}CMD\"");
+        assert_eq!(
+            CsvExportService::escape_csv_cell("\u{FF1D}CMD"),
+            "\"\t\u{FF1D}CMD\""
+        );
         // Safe content stays unchanged
-        assert_eq!(CsvExportService::escape_csv_cell("normal text"), "normal text");
+        assert_eq!(
+            CsvExportService::escape_csv_cell("normal text"),
+            "normal text"
+        );
         assert_eq!(CsvExportService::escape_csv_cell("100"), "100");
     }
 

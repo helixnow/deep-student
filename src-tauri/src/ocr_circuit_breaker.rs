@@ -215,7 +215,8 @@ mod tests {
 
     #[test]
     fn test_half_open_allows_only_one_probe() {
-        let cb = OcrCircuitBreaker::with_config(1, Duration::from_millis(1), Duration::from_secs(60));
+        let cb =
+            OcrCircuitBreaker::with_config(1, Duration::from_millis(1), Duration::from_secs(60));
         cb.record_failure();
         assert_eq!(cb.current_state(), CircuitState::Open);
 
@@ -231,7 +232,8 @@ mod tests {
 
     #[test]
     fn test_half_open_success_resets() {
-        let cb = OcrCircuitBreaker::with_config(1, Duration::from_millis(1), Duration::from_secs(60));
+        let cb =
+            OcrCircuitBreaker::with_config(1, Duration::from_millis(1), Duration::from_secs(60));
         cb.record_failure();
         std::thread::sleep(Duration::from_millis(5));
         assert!(cb.allow_request()); // enter HalfOpen
@@ -242,7 +244,8 @@ mod tests {
 
     #[test]
     fn test_half_open_failure_reopens() {
-        let cb = OcrCircuitBreaker::with_config(1, Duration::from_millis(1), Duration::from_secs(60));
+        let cb =
+            OcrCircuitBreaker::with_config(1, Duration::from_millis(1), Duration::from_secs(60));
         cb.record_failure();
         std::thread::sleep(Duration::from_millis(5));
         assert!(cb.allow_request()); // enter HalfOpen
@@ -268,7 +271,8 @@ mod tests {
 
     #[test]
     fn test_sliding_window_expires_old_failures() {
-        let cb = OcrCircuitBreaker::with_config(3, Duration::from_secs(60), Duration::from_millis(50));
+        let cb =
+            OcrCircuitBreaker::with_config(3, Duration::from_secs(60), Duration::from_millis(50));
         cb.record_failure();
         cb.record_failure();
         std::thread::sleep(Duration::from_millis(60));

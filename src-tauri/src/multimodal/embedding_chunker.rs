@@ -103,12 +103,9 @@ impl EmbeddingTokenLimits {
 
     /// 添加自定义模型限制
     pub fn add_limit(&mut self, model_prefix: &str, limit: usize) {
-        self.model_limits
-            .retain(|(p, _)| p != model_prefix);
-        self.model_limits
-            .push((model_prefix.to_string(), limit));
-        self.model_limits
-            .sort_by(|a, b| b.0.len().cmp(&a.0.len()));
+        self.model_limits.retain(|(p, _)| p != model_prefix);
+        self.model_limits.push((model_prefix.to_string(), limit));
+        self.model_limits.sort_by(|a, b| b.0.len().cmp(&a.0.len()));
     }
 }
 
@@ -653,8 +650,7 @@ mod tests {
 
         if chunks.len() >= 2 {
             // 第二块应包含第一块末尾的重叠文本
-            let tail_of_first =
-                EmbeddingChunker::tail_text_by_tokens(&chunks[0], 5);
+            let tail_of_first = EmbeddingChunker::tail_text_by_tokens(&chunks[0], 5);
             // The overlap text (trimmed) should appear at the start of the next chunk
             let tail_trimmed = tail_of_first.trim();
             assert!(

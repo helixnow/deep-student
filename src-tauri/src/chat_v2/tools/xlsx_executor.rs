@@ -34,7 +34,6 @@ impl XlsxToolExecutor {
         Self
     }
 
-
     /// 结构化读取 XLSX（输出 Markdown 表格格式）
     async fn execute_read_structured(
         &self,
@@ -192,18 +191,12 @@ impl XlsxToolExecutor {
         // 解析编辑操作
         let mut edits: Vec<(String, String, String)> = Vec::new();
         for e in edits_val {
-            let sheet = e
-                .get("sheet")
-                .and_then(|v| v.as_str())
-                .unwrap_or("Sheet1");
+            let sheet = e.get("sheet").and_then(|v| v.as_str()).unwrap_or("Sheet1");
             let cell = e
                 .get("cell")
                 .and_then(|v| v.as_str())
                 .ok_or("Each edit must have a 'cell' field (e.g. 'A1')")?;
-            let value = e
-                .get("value")
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
+            let value = e.get("value").and_then(|v| v.as_str()).unwrap_or("");
             edits.push((sheet.to_string(), cell.to_string(), value.to_string()));
         }
 
@@ -369,19 +362,15 @@ impl XlsxToolExecutor {
             .get("file_name")
             .and_then(|v| v.as_str())
             .unwrap_or("generated.xlsx");
-        let folder_id = call
-            .arguments
-            .get("folder_id")
-            .and_then(|v| v.as_str());
+        let folder_id = call.arguments.get("folder_id").and_then(|v| v.as_str());
 
         // 🔧 2026-02-16: spawn_blocking 防止同步生成阻塞 tokio 线程
         let spec = spec.clone();
-        let xlsx_bytes = tokio::task::spawn_blocking(move || {
-            DocumentParser::generate_xlsx_from_spec(&spec)
-        })
-        .await
-        .map_err(|e| format!("XLSX 生成任务异常: {}", e))?
-        .map_err(|e| format!("XLSX 生成失败: {}", e))?;
+        let xlsx_bytes =
+            tokio::task::spawn_blocking(move || DocumentParser::generate_xlsx_from_spec(&spec))
+                .await
+                .map_err(|e| format!("XLSX 生成任务异常: {}", e))?
+                .map_err(|e| format!("XLSX 生成失败: {}", e))?;
 
         let file_size = xlsx_bytes.len();
 
@@ -435,7 +424,10 @@ impl XlsxToolExecutor {
 
         if let Some(ref path) = file.original_path {
             if crate::unified_file_manager::is_virtual_uri(path) {
-                log::debug!("[XlsxToolExecutor] Skipping virtual URI original_path: {}", path);
+                log::debug!(
+                    "[XlsxToolExecutor] Skipping virtual URI original_path: {}",
+                    path
+                );
             } else {
                 let p = std::path::Path::new(path);
                 let path_str = path.replace('\\', "/");
@@ -445,16 +437,14 @@ impl XlsxToolExecutor {
                         path
                     );
                 } else if p.exists() {
-                    return std::fs::read(p)
-                        .map_err(|e| format!("文件读取失败: {}", e));
+                    return std::fs::read(p).map_err(|e| format!("文件读取失败: {}", e));
                 }
             }
         }
 
         if let Some(ref blob_hash) = file.blob_hash {
             if let Ok(Some(blob_path)) = VfsBlobRepo::get_blob_path(vfs_db, blob_hash) {
-                return std::fs::read(&blob_path)
-                    .map_err(|e| format!("Blob 读取失败: {}", e));
+                return std::fs::read(&blob_path).map_err(|e| format!("Blob 读取失败: {}", e));
             }
         }
 
@@ -582,7 +572,9 @@ impl ToolExecutor for XlsxToolExecutor {
     fn sensitivity_level(&self, tool_name: &str) -> ToolSensitivity {
         let stripped = strip_tool_namespace(tool_name);
         match stripped {
-            "xlsx_read_structured" | "xlsx_extract_tables" | "xlsx_get_metadata"
+            "xlsx_read_structured"
+            | "xlsx_extract_tables"
+            | "xlsx_get_metadata"
             | "xlsx_to_spec" => ToolSensitivity::Low,
             "xlsx_create" | "xlsx_edit_cells" | "xlsx_replace_text" => ToolSensitivity::Medium,
             _ => ToolSensitivity::Low,

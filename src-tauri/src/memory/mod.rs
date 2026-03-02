@@ -10,16 +10,19 @@ pub mod query_rewriter;
 pub mod reranker;
 pub mod service;
 
-pub use audit_log::{MemoryAuditLogger, MemoryOpSource, MemoryOpType, MemoryAuditLogItem, OpTimer};
+pub use audit_log::{MemoryAuditLogItem, MemoryAuditLogger, MemoryOpSource, MemoryOpType, OpTimer};
 pub use auto_extractor::MemoryAutoExtractor;
 pub use category_manager::MemoryCategoryManager;
-pub use evolution::MemoryEvolution;
+pub use compressor::MemoryCompressor;
 pub use config::{AutoExtractFrequency, MemoryConfig};
+pub use evolution::MemoryEvolution;
 pub use handlers::*;
 pub use llm_decision::{
     MemoryDecisionResponse, MemoryEvent, MemoryLLMDecision, SimilarMemorySummary,
 };
 pub use query_rewriter::{MemoryQueryRewriter, QueryRewriteResult};
 pub use reranker::MemoryReranker;
-pub use compressor::MemoryCompressor;
-pub use service::{MemoryListItem, MemoryPurpose, MemorySearchResult, MemoryService, MemoryType, SmartWriteOutput, WriteMode};
+pub use service::{
+    MemoryListItem, MemoryPurpose, MemorySearchResult, MemoryService, MemoryType, SmartWriteOutput,
+    WriteMode,
+};

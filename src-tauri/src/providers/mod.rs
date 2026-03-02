@@ -1218,7 +1218,13 @@ fn merge_text_content(
 /// 🔧 2026-02: MCP 工具名可能含 `:` 等特殊字符，统一替换为 `_`
 fn sanitize_tool_name_for_anthropic(name: &str) -> String {
     name.chars()
-        .map(|c| if c.is_ascii_alphanumeric() || c == '_' || c == '-' { c } else { '_' })
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '_' || c == '-' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect()
 }
 

@@ -12,7 +12,6 @@ extern "C" {}
 pub fn recognize_text_blocking(image_data: &[u8]) -> Result<String, OcrError> {
     use objc::runtime::Object;
     use objc::{class, msg_send, sel, sel_impl};
-    
 
     unsafe {
         // 创建 autorelease pool

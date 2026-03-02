@@ -24,21 +24,21 @@ use tauri::{AppHandle, Manager, State};
 
 #[cfg(feature = "data_governance")]
 use super::audit::{AuditFilter, AuditLog, AuditOperation, AuditRepository, AuditStatus};
+use super::commands_backup::{get_app_data_dir, sanitize_path_for_user};
+use super::commands_types::{
+    AuditLogPagedResponse, AuditLogResponse, DatabaseDetailResponse, DatabaseHealthStatus,
+    DatabaseStatusResponse, HealthCheckResponse, MaintenanceStatusResponse,
+    MigrationDatabaseStatus, MigrationRecordResponse, MigrationStatusResponse,
+    SchemaRegistryResponse,
+};
 use super::migration::{get_migration_set, MigrationCoordinator};
 use super::schema_registry::{DatabaseId, DatabaseStatus, SchemaRegistry};
 use crate::backup_common::{log_and_skip_entry_err, BACKUP_GLOBAL_LIMITER};
 use crate::backup_job_manager::{
-    BackupJobContext, BackupJobKind, BackupJobManagerState, BackupJobParams,
-    BackupJobPhase, BackupJobResultPayload, BackupJobStatus, BackupJobSummary, PersistedJob,
+    BackupJobContext, BackupJobKind, BackupJobManagerState, BackupJobParams, BackupJobPhase,
+    BackupJobResultPayload, BackupJobStatus, BackupJobSummary, PersistedJob,
 };
 use crate::utils::text::safe_truncate_chars;
-use super::commands_types::{
-    MaintenanceStatusResponse, SchemaRegistryResponse, DatabaseStatusResponse,
-    AuditLogResponse, AuditLogPagedResponse, MigrationStatusResponse,
-    MigrationDatabaseStatus, HealthCheckResponse, DatabaseHealthStatus,
-    DatabaseDetailResponse, MigrationRecordResponse,
-};
-use super::commands_backup::{get_app_data_dir, sanitize_path_for_user};
 
 fn resolve_target_and_pending(
     id: &DatabaseId,
@@ -1185,7 +1185,7 @@ pub fn data_governance_run_slot_d_clone_db_test(
 #[cfg(test)]
 mod tests {
     use super::{refresh_schema_registry_from_dir, resolve_target_and_pending};
-    use crate::data_governance::commands_backup::{validate_backup_id, infer_database_from_table};
+    use crate::data_governance::commands_backup::{infer_database_from_table, validate_backup_id};
     use crate::data_governance::schema_registry::{DatabaseId, DatabaseStatus, SchemaRegistry};
     use std::sync::{Arc, RwLock};
     use tempfile::TempDir;
@@ -1353,10 +1353,7 @@ mod tests {
             infer_database_from_table("chat_v2_messages"),
             Some("chat_v2")
         );
-        assert_eq!(
-            infer_database_from_table("chat_v2_blocks"),
-            Some("chat_v2")
-        );
+        assert_eq!(infer_database_from_table("chat_v2_blocks"), Some("chat_v2"));
     }
 
     #[test]
@@ -1365,14 +1362,8 @@ mod tests {
             infer_database_from_table("workspace_index"),
             Some("chat_v2")
         );
-        assert_eq!(
-            infer_database_from_table("sleep_block"),
-            Some("chat_v2")
-        );
-        assert_eq!(
-            infer_database_from_table("subagent_task"),
-            Some("chat_v2")
-        );
+        assert_eq!(infer_database_from_table("sleep_block"), Some("chat_v2"));
+        assert_eq!(infer_database_from_table("subagent_task"), Some("chat_v2"));
     }
 
     #[test]
@@ -1383,22 +1374,13 @@ mod tests {
 
     #[test]
     fn test_infer_database_mistakes() {
-        assert_eq!(
-            infer_database_from_table("mistakes"),
-            Some("mistakes")
-        );
-        assert_eq!(
-            infer_database_from_table("anki_cards"),
-            Some("mistakes")
-        );
+        assert_eq!(infer_database_from_table("mistakes"), Some("mistakes"));
+        assert_eq!(infer_database_from_table("anki_cards"), Some("mistakes"));
         assert_eq!(
             infer_database_from_table("document_tasks"),
             Some("mistakes")
         );
-        assert_eq!(
-            infer_database_from_table("settings"),
-            Some("mistakes")
-        );
+        assert_eq!(infer_database_from_table("settings"), Some("mistakes"));
         assert_eq!(
             infer_database_from_table("review_analyses"),
             Some("mistakes")
@@ -1441,10 +1423,7 @@ mod tests {
     #[test]
     fn test_infer_database_no_cross_routing() {
         // 确保 mistakes 表不会被路由到 chat_v2
-        assert_ne!(
-            infer_database_from_table("anki_cards"),
-            Some("chat_v2")
-        );
+        assert_ne!(infer_database_from_table("anki_cards"), Some("chat_v2"));
         // 确保 vfs 表不会被路由到 mistakes
         assert_ne!(infer_database_from_table("notes"), Some("mistakes"));
     }

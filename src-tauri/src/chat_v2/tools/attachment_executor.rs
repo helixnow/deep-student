@@ -538,7 +538,10 @@ mod tests {
 
     #[test]
     fn test_strip_namespace() {
-        assert_eq!(strip_tool_namespace("builtin-attachment_list"), "attachment_list");
+        assert_eq!(
+            strip_tool_namespace("builtin-attachment_list"),
+            "attachment_list"
+        );
         assert_eq!(strip_tool_namespace("attachment_read"), "attachment_read");
     }
 

@@ -260,7 +260,10 @@ impl ChatV2Pipeline {
                 for ctx_ref in &ctx.user_context_refs {
                     // 统计图片块数量
                     for block in &ctx_ref.formatted_blocks {
-                        if matches!(block, super::super::resource_types::ContentBlock::Image { .. }) {
+                        if matches!(
+                            block,
+                            super::super::resource_types::ContentBlock::Image { .. }
+                        ) {
                             image_count += 1;
                         }
                     }
@@ -316,7 +319,8 @@ impl ChatV2Pipeline {
                     .iter()
                     .any(|id| id == super::super::tools::attempt_completion::TOOL_NAME)
                 {
-                    extended_ids.push(super::super::tools::attempt_completion::TOOL_NAME.to_string());
+                    extended_ids
+                        .push(super::super::tools::attempt_completion::TOOL_NAME.to_string());
                     log::debug!(
                         "[ChatV2::pipeline] Auto-injected attempt_completion tool (Agent mode)"
                     );
@@ -609,37 +613,69 @@ impl ChatV2Pipeline {
                 || err_str.contains("status: 503")
                 || err_str.contains("status: 504");
 
-            if is_transient && !ctx.cancellation_token.as_ref().map(|t| t.is_cancelled()).unwrap_or(false) {
+            if is_transient
+                && !ctx
+                    .cancellation_token
+                    .as_ref()
+                    .map(|t| t.is_cancelled())
+                    .unwrap_or(false)
+            {
                 for retry in 1..=LLM_MAX_RETRIES {
                     let delay = LLM_RETRY_DELAY_MS * (1 << (retry - 1));
                     log::warn!(
                         "[ChatV2::pipeline] Transient LLM error, retry {}/{} after {}ms: {}",
-                        retry, LLM_MAX_RETRIES, delay, err_str
+                        retry,
+                        LLM_MAX_RETRIES,
+                        delay,
+                        err_str
                     );
                     tokio::time::sleep(Duration::from_millis(delay)).await;
 
-                    if ctx.cancellation_token.as_ref().map(|t| t.is_cancelled()).unwrap_or(false) {
+                    if ctx
+                        .cancellation_token
+                        .as_ref()
+                        .map(|t| t.is_cancelled())
+                        .unwrap_or(false)
+                    {
                         break;
                     }
 
                     // 重新注册 hooks 以清理首次失败调用的累积状态
-                    self.llm_manager.unregister_stream_hooks(&stream_event).await;
-                    self.llm_manager.register_stream_hooks(&stream_event, adapter.clone()).await;
+                    self.llm_manager
+                        .unregister_stream_hooks(&stream_event)
+                        .await;
+                    self.llm_manager
+                        .register_stream_hooks(&stream_event, adapter.clone())
+                        .await;
 
                     let retry_future = self.llm_manager.call_unified_model_2_stream(
-                        &llm_context, &messages, "", true, enable_thinking,
-                        Some("chat_v2"), emitter.window(), &stream_event,
-                        None, disable_tools, max_input_tokens_override,
-                        model_override.clone(), temp_override,
-                        system_prompt_override.clone(), top_p_override,
-                        frequency_penalty_override, presence_penalty_override,
+                        &llm_context,
+                        &messages,
+                        "",
+                        true,
+                        enable_thinking,
+                        Some("chat_v2"),
+                        emitter.window(),
+                        &stream_event,
+                        None,
+                        disable_tools,
+                        max_input_tokens_override,
+                        model_override.clone(),
+                        temp_override,
+                        system_prompt_override.clone(),
+                        top_p_override,
+                        frequency_penalty_override,
+                        presence_penalty_override,
                         max_tokens_override,
                     );
 
-                    call_result = match timeout(Duration::from_secs(LLM_STREAM_TIMEOUT_SECS), retry_future).await {
-                        Ok(result) => result,
-                        Err(_) => continue,
-                    };
+                    call_result =
+                        match timeout(Duration::from_secs(LLM_STREAM_TIMEOUT_SECS), retry_future)
+                            .await
+                        {
+                            Ok(result) => result,
+                            Err(_) => continue,
+                        };
 
                     if call_result.is_ok() {
                         log::info!("[ChatV2::pipeline] LLM retry {} succeeded", retry);
@@ -883,7 +919,8 @@ impl ChatV2Pipeline {
                         if !loaded_skill_ids.is_empty() {
                             // 从 skill_embedded_tools 中获取对应的工具 Schema
                             if let Some(ref embedded_tools_map) = ctx.options.skill_embedded_tools {
-                                let mut new_tools: Vec<super::super::types::McpToolSchema> = Vec::new();
+                                let mut new_tools: Vec<super::super::types::McpToolSchema> =
+                                    Vec::new();
                                 for skill_id in &loaded_skill_ids {
                                     if let Some(tools) = embedded_tools_map.get(skill_id) {
                                         for tool in tools {
@@ -923,8 +960,13 @@ impl ChatV2Pipeline {
 
                                 // 🔧 修复：load_skills 加载新技能后，同步更新 skill_allowed_tools 白名单
                                 // 否则新加载技能的工具虽然有 Schema 但会被白名单拦截（"当前技能不允许使用此工具"）
-                                if let Some(ref embedded_tools_map2) = ctx.options.skill_embedded_tools {
-                                    let allowed = ctx.options.skill_allowed_tools.get_or_insert_with(Vec::new);
+                                if let Some(ref embedded_tools_map2) =
+                                    ctx.options.skill_embedded_tools
+                                {
+                                    let allowed = ctx
+                                        .options
+                                        .skill_allowed_tools
+                                        .get_or_insert_with(Vec::new);
                                     let existing_allowed: std::collections::HashSet<String> =
                                         allowed.iter().cloned().collect();
                                     let mut newly_allowed = 0;
@@ -1252,8 +1294,7 @@ impl ChatV2Pipeline {
             (group, action, *idx)
         });
 
-        let reordered: Vec<ToolCall> =
-            indexed_calls.into_iter().map(|(_, call)| call).collect();
+        let reordered: Vec<ToolCall> = indexed_calls.into_iter().map(|(_, call)| call).collect();
 
         // 日志：如果顺序发生变化，记录重排结果
         if reordered
@@ -1425,7 +1466,11 @@ impl ChatV2Pipeline {
                 Ok(info) => {
                     // 🔧 捕获 _create 工具返回的 file_id，供后续依赖工具使用
                     if info.success {
-                        self.capture_created_file_id(&tc_ref.name, &info.output, &mut created_file_ids);
+                        self.capture_created_file_id(
+                            &tc_ref.name,
+                            &info.output,
+                            &mut created_file_ids,
+                        );
                     }
                     tool_results.push(info);
                 }
@@ -1445,7 +1490,7 @@ impl ChatV2Pipeline {
                         error: Some(e.to_string()),
                         duration_ms: None,
                         reasoning_content: None,
-                    thought_signature: None,
+                        thought_signature: None,
                     });
                 }
             }
@@ -1570,15 +1615,12 @@ impl ChatV2Pipeline {
         }
 
         // 从输出中提取 file_id（可能嵌套在 result 内）
-        let file_id = output
-            .get("file_id")
-            .and_then(|v| v.as_str())
-            .or_else(|| {
-                output
-                    .get("result")
-                    .and_then(|r| r.get("file_id"))
-                    .and_then(|v| v.as_str())
-            });
+        let file_id = output.get("file_id").and_then(|v| v.as_str()).or_else(|| {
+            output
+                .get("result")
+                .and_then(|r| r.get("file_id"))
+                .and_then(|v| v.as_str())
+        });
 
         if let Some(id) = file_id {
             log::info!(
@@ -1638,8 +1680,8 @@ impl ChatV2Pipeline {
 
         // 🔧 外部 MCP 工具（mcp_ 前缀、非 builtin-）不受技能白名单限制
         // 它们由用户在 MCP 设置中手动启用，应始终可调用
-        let is_external_mcp_tool = tool_call.name.starts_with("mcp_")
-            && !tool_call.name.starts_with("mcp_load_skills");
+        let is_external_mcp_tool =
+            tool_call.name.starts_with("mcp_") && !tool_call.name.starts_with("mcp_load_skills");
 
         if !is_load_skills_tool && !is_external_mcp_tool {
             match skill_allowed_tools {
@@ -1658,7 +1700,7 @@ impl ChatV2Pipeline {
                         error: Some("当前技能未声明可用工具，已安全拦截".to_string()),
                         duration_ms: None,
                         reasoning_content: None,
-                    thought_signature: None,
+                        thought_signature: None,
                     });
                 }
                 Some(allowed_tools) => {
@@ -1704,7 +1746,7 @@ impl ChatV2Pipeline {
                         error: Some("技能工具白名单缺失，已安全拦截".to_string()),
                         duration_ms: None,
                         reasoning_content: None,
-                    thought_signature: None,
+                        thought_signature: None,
                     });
                 }
                 None => {

@@ -19,8 +19,8 @@ use crate::vfs::ocr_utils::{join_ocr_pages_text, parse_ocr_pages_json, OCR_FAILE
 use crate::vfs::pdf_processing_service::{OcrPageResult, OcrPagesJson};
 use crate::vfs::repos::{
     embedding_dim_repo, index_segment_repo, index_unit_repo, VfsBlobRepo, VfsEmbedding,
-    VfsIndexStateRepo, VfsIndexingConfigRepo, VfsNoteRepo, VfsResourceRepo, INDEX_STATE_INDEXED, INDEX_STATE_INDEXING,
-    MODALITY_MULTIMODAL, MODALITY_TEXT,
+    VfsIndexStateRepo, VfsIndexingConfigRepo, VfsNoteRepo, VfsResourceRepo, INDEX_STATE_INDEXED,
+    INDEX_STATE_INDEXING, MODALITY_MULTIMODAL, MODALITY_TEXT,
 };
 use crate::vfs::types::{PdfPreviewJson, VfsResource, VfsResourceType};
 use crate::vfs::unit_builder::UnitBuildInput;
@@ -136,9 +136,9 @@ impl VfsChunker {
             return false;
         }
 
-        let mut common_count = 0usize;      // 常用文本字符（ASCII字母数字、CJK、常见标点）
-        let mut replacement_count = 0usize;  // Unicode 替换字符 U+FFFD
-        let mut control_count = 0usize;      // 控制字符（非空白）
+        let mut common_count = 0usize; // 常用文本字符（ASCII字母数字、CJK、常见标点）
+        let mut replacement_count = 0usize; // Unicode 替换字符 U+FFFD
+        let mut control_count = 0usize; // 控制字符（非空白）
 
         for &ch in &chars {
             if ch == '\u{FFFD}' {
@@ -162,21 +162,27 @@ impl VfsChunker {
         if replacement_ratio > 0.05 {
             debug!(
                 "[VfsChunker] Text quality rejected: replacement_ratio={:.2}% ({}/{})",
-                replacement_ratio * 100.0, replacement_count, total
+                replacement_ratio * 100.0,
+                replacement_count,
+                total
             );
             return false;
         }
         if control_ratio > 0.10 {
             debug!(
                 "[VfsChunker] Text quality rejected: control_ratio={:.2}% ({}/{})",
-                control_ratio * 100.0, control_count, total
+                control_ratio * 100.0,
+                control_count,
+                total
             );
             return false;
         }
         if common_ratio < 0.40 {
             debug!(
                 "[VfsChunker] Text quality rejected: common_ratio={:.2}% ({}/{})",
-                common_ratio * 100.0, common_count, total
+                common_ratio * 100.0,
+                common_count,
+                total
             );
             return false;
         }
@@ -1850,7 +1856,10 @@ impl VfsFullIndexingService {
                 rusqlite::params![now],
             )
             .unwrap_or_else(|e| {
-                log::warn!("[VfsFullIndexingService] Failed to recover stuck state: {}", e);
+                log::warn!(
+                    "[VfsFullIndexingService] Failed to recover stuck state: {}",
+                    e
+                );
                 0
             });
 
@@ -1864,7 +1873,10 @@ impl VfsFullIndexingService {
                 rusqlite::params![now],
             )
             .unwrap_or_else(|e| {
-                log::warn!("[VfsFullIndexingService] Failed to recover stuck state: {}", e);
+                log::warn!(
+                    "[VfsFullIndexingService] Failed to recover stuck state: {}",
+                    e
+                );
                 0
             });
 
@@ -1878,7 +1890,10 @@ impl VfsFullIndexingService {
                 rusqlite::params![now],
             )
             .unwrap_or_else(|e| {
-                log::warn!("[VfsFullIndexingService] Failed to recover stuck state: {}", e);
+                log::warn!(
+                    "[VfsFullIndexingService] Failed to recover stuck state: {}",
+                    e
+                );
                 0
             });
 
@@ -2248,11 +2263,7 @@ impl VfsFullIndexingService {
                 // 即使删除失败也仅导致旧向量残留（搜索结果可能重复），不会丢失新数据。
                 if let Err(e) = self
                     .lance_store
-                    .delete_by_resource_except_ids(
-                        MODALITY_TEXT,
-                        resource_id,
-                        &embedding_ids,
-                    )
+                    .delete_by_resource_except_ids(MODALITY_TEXT, resource_id, &embedding_ids)
                     .await
                 {
                     warn!(
@@ -2286,18 +2297,17 @@ impl VfsFullIndexingService {
 
                         conn.execute("SAVEPOINT index_metadata", rusqlite::params![])?;
                         let savepoint_result: VfsResult<String> = (|| {
-
-                        // ★ 验证 embedding_ids 数量与 chunks 数量一致
-                        if embedding_ids.len() != chunks_for_db.len() {
-                            warn!(
+                            // ★ 验证 embedding_ids 数量与 chunks 数量一致
+                            if embedding_ids.len() != chunks_for_db.len() {
+                                warn!(
                             "[VfsFullIndexingService] lance_row_id count mismatch for resource {}: \
                             embedding_ids={}, chunks={}, will generate fallback IDs with emb_ prefix",
                             resource_id, embedding_ids.len(), chunks_for_db.len()
                         );
-                        }
+                            }
 
-                        // 获取或创建 unit
-                        let unit_id: String = conn.query_row(
+                            // 获取或创建 unit
+                            let unit_id: String = conn.query_row(
                         "SELECT id FROM vfs_index_units WHERE resource_id = ?1 AND unit_index = 0",
                         rusqlite::params![resource_id],
                         |row| row.get(0),
@@ -2313,34 +2323,34 @@ impl VfsFullIndexingService {
                         new_unit_id
                     });
 
-                        // 标记该 unit 进入 indexing，并更新维度（避免删除检查误判旧维度）
-                        if let Err(e) = conn.execute(
-                            "UPDATE vfs_index_units SET
+                            // 标记该 unit 进入 indexing，并更新维度（避免删除检查误判旧维度）
+                            if let Err(e) = conn.execute(
+                                "UPDATE vfs_index_units SET
                                 text_state = 'indexing',
                                 text_error = NULL,
                                 text_embedding_dim = ?1,
                                 updated_at = ?2
                             WHERE id = ?3",
-                            rusqlite::params![dim, now, unit_id],
-                        ) {
-                            log::warn!("[VfsIndexing] Failed to update text_state to 'indexing' for unit {}: {}", unit_id, e);
-                        }
+                                rusqlite::params![dim, now, unit_id],
+                            ) {
+                                log::warn!("[VfsIndexing] Failed to update text_state to 'indexing' for unit {}: {}", unit_id, e);
+                            }
 
-                        // 删除该 unit 的旧 text segments
-                        index_segment_repo::delete_by_unit_and_modality(
-                            &conn,
-                            &unit_id,
-                            MODALITY_TEXT,
-                        )?;
+                            // 删除该 unit 的旧 text segments
+                            index_segment_repo::delete_by_unit_and_modality(
+                                &conn,
+                                &unit_id,
+                                MODALITY_TEXT,
+                            )?;
 
-                        // 为每个 chunk 创建 segment，使用 Lance 返回的 embedding_id 作为 lance_row_id
-                        for (i, chunk) in chunks_for_db.iter().enumerate() {
-                            let seg_id = format!("seg_{}", nanoid::nanoid!(10));
-                            // ★ 2026-02 修复：统一 lance_row_id 生成格式
-                            // - 首选：使用 LanceDB 返回的 embedding_id
-                            // - 回退：使用 VfsEmbedding::generate_id() 生成正确格式的 ID
-                            // - 禁止：不再使用 seg_ 前缀作为 lance_row_id（之前的 bug）
-                            let lance_row_id = embedding_ids.get(i).cloned().unwrap_or_else(|| {
+                            // 为每个 chunk 创建 segment，使用 Lance 返回的 embedding_id 作为 lance_row_id
+                            for (i, chunk) in chunks_for_db.iter().enumerate() {
+                                let seg_id = format!("seg_{}", nanoid::nanoid!(10));
+                                // ★ 2026-02 修复：统一 lance_row_id 生成格式
+                                // - 首选：使用 LanceDB 返回的 embedding_id
+                                // - 回退：使用 VfsEmbedding::generate_id() 生成正确格式的 ID
+                                // - 禁止：不再使用 seg_ 前缀作为 lance_row_id（之前的 bug）
+                                let lance_row_id = embedding_ids.get(i).cloned().unwrap_or_else(|| {
                             let fallback_id = VfsEmbedding::generate_id();
                             warn!(
                                 "[VfsFullIndexingService] Missing embedding_id at index {} for resource {}, using fallback: {}",
@@ -2348,42 +2358,51 @@ impl VfsFullIndexingService {
                             );
                             fallback_id
                         });
-                            conn.execute(
+                                conn.execute(
                             r#"INSERT INTO vfs_index_segments (id, unit_id, segment_index, modality, embedding_dim, lance_row_id, content_text, start_pos, end_pos, metadata_json, created_at, updated_at)
                             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)"#,
                             rusqlite::params![seg_id, unit_id, chunk.index, MODALITY_TEXT, dim, lance_row_id, chunk.text, chunk.start_pos, chunk.end_pos, Option::<String>::None, now, now],
                         )?;
-                        }
+                            }
 
-                        // 更新 unit 状态
-                        conn.execute(
+                            // 更新 unit 状态
+                            conn.execute(
                         "UPDATE vfs_index_units SET text_state = 'indexed', text_indexed_at = ?1, text_chunk_count = ?2, text_embedding_dim = ?3, updated_at = ?1 WHERE id = ?4",
                         rusqlite::params![now, count as i32, dim, unit_id],
                     )?;
 
-                        // M12 fix: 确保维度记录存在后再更新计数（register 内部幂等）
-                        embedding_dim_repo::register(&conn, dim as i32, MODALITY_TEXT)?;
-                        embedding_dim_repo::increment_count(
-                            &conn,
-                            dim as i32,
-                            MODALITY_TEXT,
-                            count as i64,
-                        )?;
+                            // M12 fix: 确保维度记录存在后再更新计数（register 内部幂等）
+                            embedding_dim_repo::register(&conn, dim as i32, MODALITY_TEXT)?;
+                            embedding_dim_repo::increment_count(
+                                &conn,
+                                dim as i32,
+                                MODALITY_TEXT,
+                                count as i64,
+                            )?;
 
-                        Ok(unit_id)
+                            Ok(unit_id)
                         })();
 
                         match savepoint_result {
                             Ok(unit_id) => {
-                                conn.execute("RELEASE SAVEPOINT index_metadata", rusqlite::params![])?;
+                                conn.execute(
+                                    "RELEASE SAVEPOINT index_metadata",
+                                    rusqlite::params![],
+                                )?;
                                 debug!(
                                     "[VfsFullIndexingService] Created {} segments for unit {} (resource {}), lance_row_ids synced (emb_ids={}, chunks={})",
                                     chunks_for_db.len(), unit_id, resource_id, embedding_ids.len(), chunks_for_db.len()
                                 );
                             }
                             Err(e) => {
-                                let _ = conn.execute("ROLLBACK TO SAVEPOINT index_metadata", rusqlite::params![]);
-                                let _ = conn.execute("RELEASE SAVEPOINT index_metadata", rusqlite::params![]);
+                                let _ = conn.execute(
+                                    "ROLLBACK TO SAVEPOINT index_metadata",
+                                    rusqlite::params![],
+                                );
+                                let _ = conn.execute(
+                                    "RELEASE SAVEPOINT index_metadata",
+                                    rusqlite::params![],
+                                );
                                 return Err(e);
                             }
                         }
@@ -2688,7 +2707,11 @@ impl VfsFullIndexingService {
                                 "UPDATE resources SET ocr_text = ?1 WHERE id = ?2",
                                 rusqlite::params![ocr_text, resource.id],
                             ) {
-                                log::warn!("[VfsIndexing] Failed to cache ocr_text for resource {}: {}", resource.id, e);
+                                log::warn!(
+                                    "[VfsIndexing] Failed to cache ocr_text for resource {}: {}",
+                                    resource.id,
+                                    e
+                                );
                             }
                             return Ok(Some(ocr_text));
                         }
@@ -2732,7 +2755,10 @@ impl VfsFullIndexingService {
         // 1. 查找关联的 file_id
         let file_id: Option<String> = if let Some(source_id) = resource.source_id.as_deref() {
             // source_id 可能直接是 file_id
-            if source_id.starts_with("file_") || source_id.starts_with("att_") || source_id.starts_with("tb_") {
+            if source_id.starts_with("file_")
+                || source_id.starts_with("att_")
+                || source_id.starts_with("tb_")
+            {
                 // 检查 files 表中是否存在
                 let exists: bool = conn
                     .query_row(
@@ -2900,22 +2926,27 @@ impl VfsFullIndexingService {
 
         for (idx, page) in preview.pages.iter().enumerate() {
             // 获取 blob 文件路径
-            let blob_path = match VfsBlobRepo::get_blob_path_with_conn(&conn, &blobs_dir, &page.blob_hash)? {
-                Some(path) => path,
-                None => {
-                    warn!(
+            let blob_path =
+                match VfsBlobRepo::get_blob_path_with_conn(&conn, &blobs_dir, &page.blob_hash)? {
+                    Some(path) => path,
+                    None => {
+                        warn!(
                         "[try_auto_ocr_pdf_pages] Blob not found for page {} (hash={}), skipping",
                         idx, page.blob_hash
                     );
-                    failed_count += 1;
-                    continue;
-                }
-            };
+                        failed_count += 1;
+                        continue;
+                    }
+                };
 
             let path_str = blob_path.to_string_lossy().to_string();
             match self
                 .llm_manager
-                .call_ocr_page_with_fallback(&path_str, page.page_index, crate::ocr_adapters::OcrTaskType::FreeText)
+                .call_ocr_page_with_fallback(
+                    &path_str,
+                    page.page_index,
+                    crate::ocr_adapters::OcrTaskType::FreeText,
+                )
                 .await
             {
                 Ok(cards) => {
@@ -3009,9 +3040,8 @@ impl VfsFullIndexingService {
             completed_at: chrono::Utc::now().to_rfc3339(),
         };
 
-        let ocr_json_str = serde_json::to_string(&ocr_json).map_err(|e| {
-            VfsError::Other(format!("Failed to serialize OCR result: {}", e))
-        })?;
+        let ocr_json_str = serde_json::to_string(&ocr_json)
+            .map_err(|e| VfsError::Other(format!("Failed to serialize OCR result: {}", e)))?;
 
         conn.execute(
             "UPDATE files SET ocr_pages_json = ?1, updated_at = datetime('now') WHERE id = ?2",
@@ -3037,7 +3067,11 @@ impl VfsFullIndexingService {
                 "UPDATE resources SET ocr_text = ?1, updated_at = datetime('now') WHERE id = ?2",
                 rusqlite::params![combined_text, resource.id],
             ) {
-                log::warn!("[VfsIndexing] Failed to cache ocr_text for resource {}: {}", resource.id, e);
+                log::warn!(
+                    "[VfsIndexing] Failed to cache ocr_text for resource {}: {}",
+                    resource.id,
+                    e
+                );
             }
         }
 
@@ -3137,14 +3171,15 @@ impl VfsFullIndexingService {
                     .ok();
 
                 if let Some(data) = blob_data {
-                    let base64 = base64::Engine::encode(
-                        &base64::engine::general_purpose::STANDARD,
-                        &data,
-                    );
-                    Some((mime_type.clone(), ImagePayload {
-                        mime: mime_type,
-                        base64,
-                    }))
+                    let base64 =
+                        base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &data);
+                    Some((
+                        mime_type.clone(),
+                        ImagePayload {
+                            mime: mime_type,
+                            base64,
+                        },
+                    ))
                 } else {
                     None
                 }
@@ -3177,7 +3212,11 @@ impl VfsFullIndexingService {
                     "UPDATE resources SET ocr_text = ?1 WHERE id = ?2",
                     rusqlite::params![ocr_text, resource.id],
                 ) {
-                    log::warn!("[VfsIndexing] Failed to cache ocr_text for resource {}: {}", resource.id, e);
+                    log::warn!(
+                        "[VfsIndexing] Failed to cache ocr_text for resource {}: {}",
+                        resource.id,
+                        e
+                    );
                 }
                 return Ok(Some(ocr_text));
             }

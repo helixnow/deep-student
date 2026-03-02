@@ -210,10 +210,7 @@ pub fn init_chat_v2(app_data_dir: &Path) -> ChatV2Result<ChatV2Database> {
             }
         }
         Err(e) => {
-            tracing::warn!(
-                "[ChatV2] Startup cleanup failed (non-fatal): {}",
-                e
-            );
+            tracing::warn!("[ChatV2] Startup cleanup failed (non-fatal): {}", e);
         }
     }
 

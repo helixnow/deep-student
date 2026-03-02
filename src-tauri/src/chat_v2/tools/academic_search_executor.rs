@@ -560,7 +560,9 @@ impl AcademicSearchExecutor {
             .min(OPENALEX_MAX_RESULTS_LIMIT);
 
         // 支持 year_from/year_to（正式参数）和 date_from/date_to（LLM 混用 arxiv_search 参数名时的容错）
-        let year_from_val = call.arguments.get("year_from")
+        let year_from_val = call
+            .arguments
+            .get("year_from")
             .or_else(|| call.arguments.get("date_from"))
             .and_then(|v| {
                 v.as_str()
@@ -568,7 +570,9 @@ impl AcademicSearchExecutor {
                     .or_else(|| v.as_u64().map(|n| n.to_string()))
             });
 
-        let year_to_val = call.arguments.get("year_to")
+        let year_to_val = call
+            .arguments
+            .get("year_to")
             .or_else(|| call.arguments.get("date_to"))
             .and_then(|v| {
                 v.as_str()
@@ -848,10 +852,7 @@ fn papers_to_sources(papers: &[Value], search_source: &str) -> Vec<Value> {
                 })
                 .or_else(|| paper.get("pdfUrl").and_then(|v| v.as_str()))
                 .unwrap_or("");
-            let snippet = paper
-                .get("abstract")
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
+            let snippet = paper.get("abstract").and_then(|v| v.as_str()).unwrap_or("");
             // 截断摘要到 300 字符
             let snippet_truncated = if snippet.chars().count() > 300 {
                 format!("{}…", snippet.chars().take(300).collect::<String>())

@@ -48,11 +48,8 @@ impl MemoryAutoExtractor {
         let user_truncated = Self::truncate_head_tail(user_content, 1500);
         let assistant_truncated = Self::truncate_head_tail(assistant_content, 1500);
 
-        let prompt = Self::build_extraction_prompt(
-            &user_truncated,
-            &assistant_truncated,
-            existing_profile,
-        );
+        let prompt =
+            Self::build_extraction_prompt(&user_truncated, &assistant_truncated, existing_profile);
 
         let output = self
             .llm_manager
@@ -79,16 +76,9 @@ impl MemoryAutoExtractor {
     ) -> Result<usize> {
         let pipeline_timer = OpTimer::start();
 
-        let existing_profile = memory_service
-            .get_profile_summary()
-            .ok()
-            .flatten();
+        let existing_profile = memory_service.get_profile_summary().ok().flatten();
         let candidates = self
-            .extract_candidates(
-                user_content,
-                assistant_content,
-                existing_profile.as_deref(),
-            )
+            .extract_candidates(user_content, assistant_content, existing_profile.as_deref())
             .await?;
 
         if candidates.is_empty() {
@@ -144,7 +134,10 @@ impl MemoryAutoExtractor {
 
         if stored_count > 0 {
             if let Err(e) = memory_service.refresh_profile_summary() {
-                warn!("[MemoryAutoExtractor] Profile refresh after batch store failed: {}", e);
+                warn!(
+                    "[MemoryAutoExtractor] Profile refresh after batch store failed: {}",
+                    e
+                );
             }
         }
 
@@ -234,9 +227,7 @@ impl MemoryAutoExtractor {
             }
         }
 
-        debug!(
-            "[MemoryAutoExtractor] No valid JSON array found in response, returning empty"
-        );
+        debug!("[MemoryAutoExtractor] No valid JSON array found in response, returning empty");
         Ok(vec![])
     }
 
@@ -249,8 +240,13 @@ impl MemoryAutoExtractor {
                 if title.is_empty() || content.is_empty() || content.chars().count() > 80 {
                     return None;
                 }
-                if Self::contains_sensitive_pattern(&content) || Self::contains_sensitive_pattern(&title) {
-                    warn!("[MemoryAutoExtractor] Filtered sensitive content: '{}'", title);
+                if Self::contains_sensitive_pattern(&content)
+                    || Self::contains_sensitive_pattern(&title)
+                {
+                    warn!(
+                        "[MemoryAutoExtractor] Filtered sensitive content: '{}'",
+                        title
+                    );
                     return None;
                 }
                 let folder = item
@@ -280,14 +276,15 @@ impl MemoryAutoExtractor {
         let re = RE.get_or_init(|| {
             Regex::new(concat!(
                 r"(?:",
-                r"\b1[3-9]\d{9}\b",              // 手机号（11 位，1[3-9] 开头）
-                r"|\b\d{15,18}[Xx]?\b",          // 身份证号（15-18 位 + 可选 X）
-                r"|\b\d{16,19}\b",               // 银行卡号（16-19 位）
+                r"\b1[3-9]\d{9}\b",     // 手机号（11 位，1[3-9] 开头）
+                r"|\b\d{15,18}[Xx]?\b", // 身份证号（15-18 位 + 可选 X）
+                r"|\b\d{16,19}\b",      // 银行卡号（16-19 位）
                 r"|[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}", // 邮箱
-                r"|密码.{0,5}[:：].+",            // 密码
+                r"|密码.{0,5}[:：].+",  // 密码
                 r"|password.{0,5}[:=].+",
                 r")"
-            )).unwrap()
+            ))
+            .unwrap()
         });
         re.is_match(text)
     }

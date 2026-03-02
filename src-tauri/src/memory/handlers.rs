@@ -72,7 +72,10 @@ fn trigger_immediate_index(
                     &resource_id,
                     &format!("mem_handler_{}", chrono::Utc::now().timestamp_millis()),
                 ) {
-                    warn!("[Memory] Failed to mark indexed after immediate indexing: {}", e);
+                    warn!(
+                        "[Memory] Failed to mark indexed after immediate indexing: {}",
+                        e
+                    );
                 }
                 info!(
                     "[Memory] Immediate index completed for resource {} ({} chunks, dim={})",
@@ -158,7 +161,10 @@ pub async fn memory_search(
 ) -> Result<Vec<MemorySearchResult>, String> {
     let service = get_memory_service(&vfs_db, &lance_store, &llm_manager);
     let k = top_k.unwrap_or(5);
-    service.search_with_rerank(&query, k, false).await.map_err(|e| e.to_string())
+    service
+        .search_with_rerank(&query, k, false)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -281,7 +287,9 @@ pub async fn memory_add_relation(
     llm_manager: State<'_, Arc<LLMManager>>,
 ) -> Result<(), String> {
     let service = get_memory_service(&vfs_db, &lance_store, &llm_manager);
-    service.add_relation(&note_id_a, &note_id_b).map_err(|e| e.to_string())
+    service
+        .add_relation(&note_id_a, &note_id_b)
+        .map_err(|e| e.to_string())
 }
 
 /// 移除记忆关联（双向）
@@ -294,7 +302,9 @@ pub async fn memory_remove_relation(
     llm_manager: State<'_, Arc<LLMManager>>,
 ) -> Result<(), String> {
     let service = get_memory_service(&vfs_db, &lance_store, &llm_manager);
-    service.remove_relation(&note_id_a, &note_id_b).map_err(|e| e.to_string())
+    service
+        .remove_relation(&note_id_a, &note_id_b)
+        .map_err(|e| e.to_string())
 }
 
 /// 获取关联记忆 ID 列表
@@ -319,7 +329,9 @@ pub async fn memory_update_tags(
     llm_manager: State<'_, Arc<LLMManager>>,
 ) -> Result<(), String> {
     let service = get_memory_service(&vfs_db, &lance_store, &llm_manager);
-    service.update_tags(&note_id, tags).map_err(|e| e.to_string())
+    service
+        .update_tags(&note_id, tags)
+        .map_err(|e| e.to_string())
 }
 
 /// 获取记忆标签
@@ -360,7 +372,12 @@ pub async fn memory_batch_delete(
         }
     }
 
-    Ok(BatchOperationResult { total, succeeded, failed, errors })
+    Ok(BatchOperationResult {
+        total,
+        succeeded,
+        failed,
+        errors,
+    })
 }
 
 /// 批量移动记忆到指定文件夹
@@ -390,7 +407,12 @@ pub async fn memory_batch_move(
         }
     }
 
-    Ok(BatchOperationResult { total, succeeded, failed, errors })
+    Ok(BatchOperationResult {
+        total,
+        succeeded,
+        failed,
+        errors,
+    })
 }
 
 /// 移动记忆到指定文件夹路径
@@ -659,16 +681,18 @@ pub async fn memory_to_anki_document(
             }
         }
 
-        let content = crate::vfs::repos::note_repo::VfsNoteRepo::get_note_content(&vfs_db, &item.id)
-            .map_err(|e| e.to_string())?
-            .unwrap_or_default();
+        let content =
+            crate::vfs::repos::note_repo::VfsNoteRepo::get_note_content(&vfs_db, &item.id)
+                .map_err(|e| e.to_string())?
+                .unwrap_or_default();
 
-        let text = if content.is_empty() { &item.title } else { &content };
+        let text = if content.is_empty() {
+            &item.title
+        } else {
+            &content
+        };
 
-        lines.push(format!(
-            "## {}\n\n{}\n\n---\n",
-            item.title, text
-        ));
+        lines.push(format!("## {}\n\n{}\n\n---\n", item.title, text));
         count += 1;
     }
 

@@ -1,6 +1,5 @@
 use super::*;
 
-
 // ============================================================
 // 类型转换实现
 // ============================================================
@@ -93,7 +92,13 @@ pub(crate) fn filter_retrieval_results(
 /// Replaces any non-matching character (e.g. `:`, `.`, `/`) with `_`.
 pub(crate) fn sanitize_tool_name_for_api(name: &str) -> String {
     name.chars()
-        .map(|c| if c.is_ascii_alphanumeric() || c == '_' || c == '-' { c } else { '_' })
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '_' || c == '-' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect()
 }
 
@@ -233,9 +238,9 @@ pub(crate) fn inject_synthetic_load_skills(
 
     // 检查历史中是否已有真实的 load_skills 调用（regenerate/retry 场景）
     let has_existing_load_skills = chat_history.iter().any(|m| {
-        m.tool_call
-            .as_ref()
-            .map_or(false, |tc| SkillsExecutor::is_load_skills_tool(&tc.tool_name))
+        m.tool_call.as_ref().map_or(false, |tc| {
+            SkillsExecutor::is_load_skills_tool(&tc.tool_name)
+        })
     });
 
     if has_existing_load_skills {
@@ -308,8 +313,8 @@ pub(crate) fn estimate_token_count(text: &str) -> usize {
             cjk_chars += 1;
         }
     }
-    let tokens = (cjk_chars as f64 * CHARS_PER_TOKEN_CJK)
-        + (ascii_chars as f64 * CHARS_PER_TOKEN_ASCII);
+    let tokens =
+        (cjk_chars as f64 * CHARS_PER_TOKEN_CJK) + (ascii_chars as f64 * CHARS_PER_TOKEN_ASCII);
     tokens.ceil() as usize
 }
 
@@ -339,4 +344,3 @@ pub(crate) fn trim_history_by_token_budget(
         );
     }
 }
-

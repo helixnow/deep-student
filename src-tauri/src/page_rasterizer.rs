@@ -164,12 +164,8 @@ impl PageRasterizer {
             let blob =
                 VfsBlobRepo::store_blob(vfs_db, &rp.image_bytes, Some("image/jpeg"), Some("jpg"))
                     .map_err(|e| {
-                        AppError::database(format!(
-                            "页面 {} Blob 存储失败: {}",
-                            rp.page_index + 1,
-                            e
-                        ))
-                    })?;
+                    AppError::database(format!("页面 {} Blob 存储失败: {}", rp.page_index + 1, e))
+                })?;
 
             debug!(
                 "[PageRasterizer] 页面 {}/{}: {}x{}, text_hint={} chars, blob={}",
@@ -244,8 +240,8 @@ impl PageRasterizer {
 
             let (mime, ext) = detect_image_format(&bytes);
 
-            let blob = VfsBlobRepo::store_blob(vfs_db, &bytes, Some(mime), Some(ext))
-                .map_err(|e| {
+            let blob =
+                VfsBlobRepo::store_blob(vfs_db, &bytes, Some(mime), Some(ext)).map_err(|e| {
                     AppError::database(format!("图片 {} Blob 存储失败: {}", idx + 1, e))
                 })?;
 
@@ -429,16 +425,12 @@ impl PageRasterizer {
 }
 
 /// 按 blob_hash 从 VFS 读取页面图片字节（Stage 4 配图裁切时使用）
-pub fn load_page_image_bytes(
-    vfs_db: &VfsDatabase,
-    blob_hash: &str,
-) -> Result<Vec<u8>, AppError> {
+pub fn load_page_image_bytes(vfs_db: &VfsDatabase, blob_hash: &str) -> Result<Vec<u8>, AppError> {
     let blob_path = VfsBlobRepo::get_blob_path(vfs_db, blob_hash)
         .map_err(|e| AppError::database(format!("查询 blob 路径失败: {}", e)))?
         .ok_or_else(|| AppError::not_found(format!("页面图片 blob 不存在: {}", blob_hash)))?;
 
-    std::fs::read(&blob_path)
-        .map_err(|e| AppError::file_system(format!("读取页面图片失败: {}", e)))
+    std::fs::read(&blob_path).map_err(|e| AppError::file_system(format!("读取页面图片失败: {}", e)))
 }
 
 pub fn detect_image_format(data: &[u8]) -> (&'static str, &'static str) {
@@ -462,9 +454,6 @@ pub fn detect_image_format(data: &[u8]) -> (&'static str, &'static str) {
 /// 安全的页面索引转换（避免 u16 溢出）
 fn safe_page_index(idx: usize) -> Result<u16, AppError> {
     u16::try_from(idx).map_err(|_| {
-        AppError::validation(format!(
-            "页面索引 {} 超出 pdfium 支持的最大值 65535",
-            idx
-        ))
+        AppError::validation(format!("页面索引 {} 超出 pdfium 支持的最大值 65535", idx))
     })
 }

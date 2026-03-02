@@ -92,7 +92,10 @@ pub async fn start_stdio_session(
         // 自动清理会话，避免依赖前端必须调用 mcp_stdio_close
         if let Some(handle) = STDIO_SESSIONS.lock().await.remove(&session_id_for_reader) {
             let _ = handle.transport.close().await;
-            log::info!("MCP stdio session {} auto-cleaned after reader exit", session_id_for_reader);
+            log::info!(
+                "MCP stdio session {} auto-cleaned after reader exit",
+                session_id_for_reader
+            );
         }
         let _ = emitter.emit(&format!("{}-closed", event_prefix), &serde_json::json!({}));
     });

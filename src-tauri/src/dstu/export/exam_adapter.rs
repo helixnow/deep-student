@@ -57,10 +57,7 @@ impl ExamExportAdapter {
         resource_id: &str,
     ) -> Result<ExportPayload, DstuError> {
         let exam = self.get_exam(vfs_db, resource_id)?;
-        let title = exam
-            .exam_name
-            .as_deref()
-            .unwrap_or("未命名题目集");
+        let title = exam.exam_name.as_deref().unwrap_or("未命名题目集");
 
         let mut md = String::new();
         md.push_str("---\n");
@@ -95,10 +92,7 @@ impl ExamExportAdapter {
                         .and_then(|v| v.as_str())
                         .unwrap_or("")
                         .trim();
-                    let status = card
-                        .get("status")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("new");
+                    let status = card.get("status").and_then(|v| v.as_str()).unwrap_or("new");
                     if ocr.is_empty() {
                         md.push_str(&format!("- **{}** [{}]（无 OCR 文本）\n", label, status));
                     } else {
@@ -125,10 +119,7 @@ impl ExamExportAdapter {
         resource_id: &str,
     ) -> Result<ExportPayload, DstuError> {
         let exam = self.get_exam(vfs_db, resource_id)?;
-        let title = exam
-            .exam_name
-            .as_deref()
-            .unwrap_or("未命名题目集");
+        let title = exam.exam_name.as_deref().unwrap_or("未命名题目集");
 
         let json_str = serde_json::to_string_pretty(&exam.preview_json)
             .map_err(|e| DstuError::Internal(format!("序列化 JSON 失败: {}", e)))?;

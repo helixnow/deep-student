@@ -50,10 +50,7 @@ impl TranslationExportAdapter {
             .map_err(|e| DstuError::Internal(format!("获取翻译失败: {}", e)))?
             .ok_or_else(|| DstuError::not_found(resource_id))?;
 
-        let title = translation
-            .title
-            .as_deref()
-            .unwrap_or("未命名翻译");
+        let title = translation.title.as_deref().unwrap_or("未命名翻译");
 
         // 获取翻译内容（JSON 格式）
         let content_str = VfsTranslationRepo::get_translation_content(vfs_db, resource_id)
@@ -61,24 +58,23 @@ impl TranslationExportAdapter {
             .unwrap_or_default();
 
         // 解析 JSON 获取 source 和 translated
-        let (source, translated) = if let Ok(json) =
-            serde_json::from_str::<serde_json::Value>(&content_str)
-        {
-            let src = json
-                .get("source")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
-            let tgt = json
-                .get("translated")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
-            (src, tgt)
-        } else {
-            // 非 JSON 格式，整体作为翻译内容
-            (String::new(), content_str)
-        };
+        let (source, translated) =
+            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content_str) {
+                let src = json
+                    .get("source")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let tgt = json
+                    .get("translated")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                (src, tgt)
+            } else {
+                // 非 JSON 格式，整体作为翻译内容
+                (String::new(), content_str)
+            };
 
         let mut md = String::new();
         md.push_str("---\n");
@@ -123,10 +119,7 @@ impl TranslationExportAdapter {
             .map_err(|e| DstuError::Internal(format!("获取翻译失败: {}", e)))?
             .ok_or_else(|| DstuError::not_found(resource_id))?;
 
-        let title = translation
-            .title
-            .as_deref()
-            .unwrap_or("未命名翻译");
+        let title = translation.title.as_deref().unwrap_or("未命名翻译");
 
         let content_str = VfsTranslationRepo::get_translation_content(vfs_db, resource_id)
             .map_err(|e| DstuError::Internal(format!("获取翻译内容失败: {}", e)))?

@@ -195,19 +195,19 @@ impl MigrationExecutor {
             match session_result {
                 Ok((session_id, migrated_msg_ids)) => {
                     // 先提交 chat_v2.db 事务
-                    chat_v2_conn.execute("COMMIT", []).map_err(|e| {
-                        ChatV2Error::Database(format!("迁移事务提交失败: {}", e))
-                    })?;
+                    chat_v2_conn
+                        .execute("COMMIT", [])
+                        .map_err(|e| ChatV2Error::Database(format!("迁移事务提交失败: {}", e)))?;
 
                     // 事务提交成功后，再标记 data.db 中的消息为已迁移
                     // 这样即使标记失败，V2 数据完整，重试时最多产生重复但不会丢数据
                     for msg_id in &migrated_msg_ids {
-                        if let Err(e) =
-                            self.mark_message_migrated(data_conn, *msg_id, &session_id)
+                        if let Err(e) = self.mark_message_migrated(data_conn, *msg_id, &session_id)
                         {
                             tracing::warn!(
                                 "[Migration] 标记消息 {} 已迁移失败: {:?}（V2 数据已保存）",
-                                msg_id, e
+                                msg_id,
+                                e
                             );
                         }
                     }
@@ -217,17 +217,14 @@ impl MigrationExecutor {
                     if let Err(rollback_err) = chat_v2_conn.execute("ROLLBACK", []) {
                         tracing::error!(
                             "[Migration] 回滚迁移事务失败: {} (原始错误: {:?})",
-                            rollback_err, e
+                            rollback_err,
+                            e
                         );
                     }
-                    tracing::error!(
-                        "[Migration] 会话 {} 迁移失败并已回滚: {:?}",
-                        mistake_id, e
-                    );
-                    self.report.errors.push(format!(
-                        "会话 {} 迁移失败: {}",
-                        mistake_id, e
-                    ));
+                    tracing::error!("[Migration] 会话 {} 迁移失败并已回滚: {:?}", mistake_id, e);
+                    self.report
+                        .errors
+                        .push(format!("会话 {} 迁移失败: {}", mistake_id, e));
                     // 继续迁移其他会话，不中断整个流程
                     continue;
                 }

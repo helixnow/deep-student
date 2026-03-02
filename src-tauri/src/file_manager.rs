@@ -475,12 +475,11 @@ impl FileManager {
         let base = std::fs::canonicalize(&self.app_data_dir)
             .map_err(|e| AppError::file_system(format!("解析 app_data_dir 失败: {}", e)))?;
         let fp_clone = file_path.clone();
-        let canonical = match tokio::task::spawn_blocking(move || std::fs::canonicalize(&fp_clone))
-            .await
-        {
-            Ok(Ok(p)) => p,
-            _ => file_path.clone(),
-        };
+        let canonical =
+            match tokio::task::spawn_blocking(move || std::fs::canonicalize(&fp_clone)).await {
+                Ok(Ok(p)) => p,
+                _ => file_path.clone(),
+            };
         if !canonical.starts_with(&base) {
             return Err(AppError::validation("拒绝删除：路径越界"));
         }

@@ -10,9 +10,8 @@ use super::strip_tool_namespace;
 use crate::chat_v2::events::event_types;
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
 use crate::models::{
-    Difficulty as ModelsDifficulty, ExamCardPreview, ExamSheetPreviewPage,
-    ExamSheetPreviewResult, QuestionBankStats, QuestionStatus as ModelsQuestionStatus,
-    QuestionType, SourceType,
+    Difficulty as ModelsDifficulty, ExamCardPreview, ExamSheetPreviewPage, ExamSheetPreviewResult,
+    QuestionBankStats, QuestionStatus as ModelsQuestionStatus, QuestionType, SourceType,
 };
 use crate::question_bank_service::QuestionBankService;
 use crate::vfs::repos::{
@@ -1269,8 +1268,7 @@ impl QBankExecutor {
                     .map_err(|e| format!("DOCX 生成失败: {}", e))?;
 
                 use base64::Engine;
-                let base64_content =
-                    base64::engine::general_purpose::STANDARD.encode(&docx_bytes);
+                let base64_content = base64::engine::general_purpose::STANDARD.encode(&docx_bytes);
 
                 return Ok(json!({
                     "format": "docx",

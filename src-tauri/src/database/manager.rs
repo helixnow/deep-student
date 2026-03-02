@@ -168,7 +168,7 @@ impl DatabaseManager {
                     poisoned.into_inner()
                 }
             };
-            
+
             // 将旧连接池移出，替换为新连接池
             // r2d2 Pool 的 Drop 并不是立即关闭所有连接的，如果有线程正持有 PooledConnection，
             // 那个底层 SqliteConnection 将继续存活，直到 PooledConnection 被 drop。

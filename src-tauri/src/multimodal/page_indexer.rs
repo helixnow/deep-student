@@ -34,8 +34,8 @@ use crate::database::Database;
 use crate::models::{AppError, ExamCardPreview, ExamSheetPreviewResult};
 use crate::multimodal::embedding_service::MultimodalEmbeddingService;
 use crate::multimodal::types::{
-    IndexProgressEvent, IndexResult, MultimodalIndexingMode, PageIndexLog,
-    PageIndexTask, SourceType,
+    IndexProgressEvent, IndexResult, MultimodalIndexingMode, PageIndexLog, PageIndexTask,
+    SourceType,
 };
 use crate::multimodal::vector_store::{MultimodalPageRecord, MultimodalVectorStore};
 use crate::vfs::database::VfsDatabase;
@@ -995,11 +995,7 @@ impl PageIndexer {
                                 actual_mode.as_str(),
                                 &now_str,
                             ) {
-                                log::warn!(
-                                    "  ⚠️ P{}: 试卷索引元数据保存失败: {}",
-                                    page_num,
-                                    e
-                                );
+                                log::warn!("  ⚠️ P{}: 试卷索引元数据保存失败: {}", page_num, e);
                             }
                         }
                         _ => {}
@@ -1013,11 +1009,7 @@ impl PageIndexer {
                             actual_mode.as_str(),
                             &now_str,
                         ) {
-                            log::warn!(
-                                "  ⚠️ P{}: 更新资源多模态索引元数据失败: {}",
-                                page_num,
-                                e
-                            );
+                            log::warn!("  ⚠️ P{}: 更新资源多模态索引元数据失败: {}", page_num, e);
                         }
                     }
 
@@ -1111,9 +1103,7 @@ impl PageIndexer {
                 VfsTextbookRepo::get_mm_indexed_blob_hashes(&self.vfs_db, source_id)
                     .map_err(|e| AppError::database(format!("获取索引元数据失败: {}", e)))
             }
-            SourceType::Exam => {
-                self.get_exam_indexed_blob_hashes(source_id)
-            }
+            SourceType::Exam => self.get_exam_indexed_blob_hashes(source_id),
             _ => {
                 // Image: 单页资源，无 mm_indexed_pages_json 字段，始终重新索引（开销极小）
                 Ok(HashMap::new())
@@ -1139,10 +1129,7 @@ impl PageIndexer {
         )
         .map_err(|e| AppError::database(format!("清除试卷索引元数据失败: {}", e)))?;
 
-        log::info!(
-            "[PageIndexer] Cleared MM index for exam {}",
-            exam_id
-        );
+        log::info!("[PageIndexer] Cleared MM index for exam {}", exam_id);
         Ok(())
     }
 

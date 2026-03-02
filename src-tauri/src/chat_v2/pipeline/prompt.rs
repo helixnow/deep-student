@@ -30,12 +30,10 @@ impl ChatV2Pipeline {
         use crate::vfs::lance_store::VfsLanceStore;
 
         let vfs_db = self.vfs_db.as_ref()?;
-        let lance_store = VfsLanceStore::new(vfs_db.clone()).ok().map(std::sync::Arc::new)?;
-        let svc = MemoryService::new(
-            vfs_db.clone(),
-            lance_store,
-            self.llm_manager.clone(),
-        );
+        let lance_store = VfsLanceStore::new(vfs_db.clone())
+            .ok()
+            .map(std::sync::Arc::new)?;
+        let svc = MemoryService::new(vfs_db.clone(), lance_store, self.llm_manager.clone());
 
         let root_id = match svc.get_root_folder_id() {
             Ok(Some(id)) => id,
@@ -53,7 +51,10 @@ impl ChatV2Pipeline {
                 }
             }
             Err(e) => {
-                log::debug!("[ChatV2::pipeline] Failed to load category summaries: {}", e);
+                log::debug!(
+                    "[ChatV2::pipeline] Failed to load category summaries: {}",
+                    e
+                );
             }
         }
 

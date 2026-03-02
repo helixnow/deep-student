@@ -4,10 +4,10 @@ use std::sync::Arc;
 use crate::file_manager::FileManager;
 use crate::llm_manager::LLMManager;
 use crate::models::{
-    AppError, Difficulty, ExamCardBBox, ExamCardPreview, ExamSheetCardUpdate,
-    ExamSheetPreviewPage, ExamSheetPreviewResult, ExamSheetSessionDetail,
-    ExamSheetSessionMetadata, ExamSheetSessionSummary, ImportSource, QuestionBankStats,
-    QuestionType, SourceType, UpdateExamSheetCardsRequest,
+    AppError, Difficulty, ExamCardBBox, ExamCardPreview, ExamSheetCardUpdate, ExamSheetPreviewPage,
+    ExamSheetPreviewResult, ExamSheetSessionDetail, ExamSheetSessionMetadata,
+    ExamSheetSessionSummary, ImportSource, QuestionBankStats, QuestionType, SourceType,
+    UpdateExamSheetCardsRequest,
 };
 use image::GenericImageView;
 
@@ -152,7 +152,6 @@ impl ExamSheetService {
             None => Ok(None),
         }
     }
-
 
     /// ★ 从 VFS 读取整卷历史列表（2025-12-07 迁移）
     pub async fn list_exam_sheet_sessions(
@@ -756,21 +755,17 @@ impl ExamSheetService {
         // 若历史记录仍引用临时目录，尝试在读取详情时自动归档到 archive 目录，避免刷新后资源丢失
         // ★ 两阶段页面使用 blob_hash 存储图片，original_image_path 为空，无需归档
         let archive_prefix = format!("images/exam_sheet_archive/{session_id}");
-        let needs_archive = detail
-            .preview
-            .pages
-            .iter()
-            .any(|p| {
-                // 有 blob_hash 的页面不需要归档（两阶段流水线）
-                p.blob_hash.is_none()
-                    && !p.original_image_path.is_empty()
-                    && !p.original_image_path.starts_with(&archive_prefix)
+        let needs_archive = detail.preview.pages.iter().any(|p| {
+            // 有 blob_hash 的页面不需要归档（两阶段流水线）
+            p.blob_hash.is_none()
+                && !p.original_image_path.is_empty()
+                && !p.original_image_path.starts_with(&archive_prefix)
+        }) || detail.preview.pages.iter().any(|p| {
+            p.cards.iter().any(|c| {
+                !c.cropped_image_path.is_empty()
+                    && !c.cropped_image_path.starts_with(&archive_prefix)
             })
-            || detail.preview.pages.iter().any(|p| {
-                p.cards
-                    .iter()
-                    .any(|c| !c.cropped_image_path.is_empty() && !c.cropped_image_path.starts_with(&archive_prefix))
-            });
+        });
 
         if needs_archive {
             if let Err(e) = self

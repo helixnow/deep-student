@@ -41,7 +41,10 @@ pub struct EvolutionReport {
 impl MemoryEvolution {
     pub fn new(vfs_db: Arc<VfsDatabase>) -> Self {
         let lance_store = VfsLanceStore::new(vfs_db.clone()).ok().map(Arc::new);
-        Self { vfs_db, lance_store }
+        Self {
+            vfs_db,
+            lance_store,
+        }
     }
 
     /// 带全局节流的自进化执行入口
@@ -65,7 +68,10 @@ impl MemoryEvolution {
 
         match self.run_evolution_cycle(memory_service) {
             Ok(report) => {
-                if report.stale_demoted > 0 || report.high_freq_promoted > 0 || report.duplicates_merged > 0 {
+                if report.stale_demoted > 0
+                    || report.high_freq_promoted > 0
+                    || report.duplicates_merged > 0
+                {
                     info!(
                         "[Evolution] Throttled cycle: demoted={}, promoted={}, merged={}",
                         report.stale_demoted, report.high_freq_promoted, report.duplicates_merged
@@ -171,7 +177,10 @@ impl MemoryEvolution {
                     .is_ok()
                 {
                     demoted += 1;
-                    debug!("[Evolution] Demoted stale memory: {} ({}d, {}hits)", mem.title, days_since_hit, hits);
+                    debug!(
+                        "[Evolution] Demoted stale memory: {} ({}d, {}hits)",
+                        mem.title, days_since_hit, hits
+                    );
                 }
             }
         }
@@ -212,10 +221,8 @@ impl MemoryEvolution {
             let hits = Self::extract_hits(&tags);
 
             if hits >= HIGH_FREQ_HITS_THRESHOLD {
-                let mut new_tags: Vec<String> = tags
-                    .into_iter()
-                    .filter(|t| t != "_stale")
-                    .collect();
+                let mut new_tags: Vec<String> =
+                    tags.into_iter().filter(|t| t != "_stale").collect();
                 new_tags.push("_important".to_string());
                 let new_tags_json = serde_json::to_string(&new_tags).unwrap_or_default();
                 if conn
@@ -226,7 +233,10 @@ impl MemoryEvolution {
                     .is_ok()
                 {
                     promoted += 1;
-                    debug!("[Evolution] Promoted high-freq memory: {} ({}hits)", mem.title, hits);
+                    debug!(
+                        "[Evolution] Promoted high-freq memory: {} ({}hits)",
+                        mem.title, hits
+                    );
                 }
             }
         }
@@ -249,7 +259,10 @@ impl MemoryEvolution {
 
         for folder in &folders {
             let items = memory_service.list(Some(folder), 200, 0)?;
-            let active: Vec<&MemoryListItem> = items.iter().filter(|m| !m.title.starts_with("__")).collect();
+            let active: Vec<&MemoryListItem> = items
+                .iter()
+                .filter(|m| !m.title.starts_with("__"))
+                .collect();
 
             if active.len() <= FOLDER_OVERFLOW_THRESHOLD {
                 continue;
@@ -260,7 +273,10 @@ impl MemoryEvolution {
             let mut title_groups: std::collections::HashMap<(&str, &str), Vec<&MemoryListItem>> =
                 std::collections::HashMap::new();
             for mem in &active {
-                title_groups.entry((&mem.title, &mem.memory_type)).or_default().push(mem);
+                title_groups
+                    .entry((&mem.title, &mem.memory_type))
+                    .or_default()
+                    .push(mem);
             }
 
             for (_key, group) in &title_groups {
@@ -295,7 +311,10 @@ impl MemoryEvolution {
                         expected_updated_at: None,
                     },
                 ) {
-                    warn!("[Evolution] Failed to update merged memory {}: {}", keep.id, e);
+                    warn!(
+                        "[Evolution] Failed to update merged memory {}: {}",
+                        keep.id, e
+                    );
                     continue;
                 }
 
@@ -325,14 +344,19 @@ impl MemoryEvolution {
                         );
                     }
 
-                    if let Err(e) = crate::vfs::repos::note_repo::VfsNoteRepo::delete_note_with_folder_item(
-                        &self.vfs_db,
-                        &dup.id,
-                    ) {
+                    if let Err(e) =
+                        crate::vfs::repos::note_repo::VfsNoteRepo::delete_note_with_folder_item(
+                            &self.vfs_db,
+                            &dup.id,
+                        )
+                    {
                         warn!("[Evolution] Failed to delete duplicate {}: {}", dup.id, e);
                     } else {
                         folder_merged += 1;
-                        debug!("[Evolution] Merged duplicate '{}' ({} → {})", keep.title, dup.id, keep.id);
+                        debug!(
+                            "[Evolution] Merged duplicate '{}' ({} → {})",
+                            keep.title, dup.id, keep.id
+                        );
                     }
                 }
             }
@@ -340,7 +364,9 @@ impl MemoryEvolution {
             if folder_merged > 0 {
                 info!(
                     "[Evolution] Folder '{}': merged {} duplicate memories (was {} active)",
-                    folder, folder_merged, active.len()
+                    folder,
+                    folder_merged,
+                    active.len()
                 );
                 merged_count += folder_merged;
             }
@@ -390,7 +416,10 @@ mod tests {
     fn test_extract_hits() {
         let tags = vec!["_hits:5".to_string(), "_last_hit:1234567890".to_string()];
         assert_eq!(MemoryEvolution::extract_hits(&tags), 5);
-        assert_eq!(MemoryEvolution::extract_last_hit_ms(&tags), Some(1234567890));
+        assert_eq!(
+            MemoryEvolution::extract_last_hit_ms(&tags),
+            Some(1234567890)
+        );
     }
 
     #[test]

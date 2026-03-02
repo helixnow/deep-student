@@ -2,8 +2,8 @@
 //!
 //! 提供统一的软删除、恢复、列表和永久删除命令。
 
-use std::sync::Arc;
 use rusqlite::params;
+use std::sync::Arc;
 use tauri::{State, Window};
 use tracing::{error, info, warn};
 
@@ -33,9 +33,13 @@ pub(crate) fn is_resource_in_trash(db: &VfsDatabase, item_type: &str, item_id: &
     };
     let sql = match item_type {
         "note" => "SELECT COUNT(*) FROM notes WHERE id = ?1 AND deleted_at IS NOT NULL",
-        "textbook" | "image" | "file" => "SELECT COUNT(*) FROM files WHERE id = ?1 AND deleted_at IS NOT NULL",
+        "textbook" | "image" | "file" => {
+            "SELECT COUNT(*) FROM files WHERE id = ?1 AND deleted_at IS NOT NULL"
+        }
         "exam" => "SELECT COUNT(*) FROM exam_sheets WHERE id = ?1 AND deleted_at IS NOT NULL",
-        "translation" => "SELECT COUNT(*) FROM translations WHERE id = ?1 AND deleted_at IS NOT NULL",
+        "translation" => {
+            "SELECT COUNT(*) FROM translations WHERE id = ?1 AND deleted_at IS NOT NULL"
+        }
         "essay" => {
             if item_id.starts_with("essay_session_") {
                 "SELECT COUNT(*) FROM essay_sessions WHERE id = ?1 AND deleted_at IS NOT NULL"
@@ -87,7 +91,10 @@ async fn cleanup_vector_index(lance_store: &VfsLanceStore, resource_id: &str) {
             resource_id, e
         );
     }
-    if let Err(e) = lance_store.delete_by_resource("multimodal", resource_id).await {
+    if let Err(e) = lance_store
+        .delete_by_resource("multimodal", resource_id)
+        .await
+    {
         warn!(
             "[DSTU::trash] Failed to delete multimodal vectors for {}: {}",
             resource_id, e
@@ -672,7 +679,9 @@ pub async fn dstu_empty_trash(
         tokio::spawn(async move {
             for rid in &resource_ids_to_cleanup {
                 let _ = lance_for_cleanup.delete_by_resource("text", rid).await;
-                let _ = lance_for_cleanup.delete_by_resource("multimodal", rid).await;
+                let _ = lance_for_cleanup
+                    .delete_by_resource("multimodal", rid)
+                    .await;
             }
             info!(
                 "[DSTU::trash] dstu_empty_trash: cleaned up vectors for {} resources",
@@ -713,14 +722,18 @@ pub async fn dstu_permanently_delete(
     // ★ P1 修复：在 purge 之前查找 resource_id（purge 会删除数据库记录）
     // ★ P1 修复：essay_session 需要收集子 essays 的 resource_ids
     let resource_id = lookup_resource_id(&db, &item_type, &id);
-    let session_essay_resource_ids: Vec<String> = if item_type == "essay" && id.starts_with("essay_session_") {
+    let session_essay_resource_ids: Vec<String> = if item_type == "essay"
+        && id.starts_with("essay_session_")
+    {
         if let Ok(conn) = db.get_conn_safe() {
-            conn.prepare("SELECT resource_id FROM essays WHERE session_id = ?1 AND resource_id IS NOT NULL")
-                .and_then(|mut stmt| {
-                    stmt.query_map(params![&id], |row| row.get::<_, String>(0))
-                        .map(|rows| rows.flatten().collect())
-                })
-                .unwrap_or_default()
+            conn.prepare(
+                "SELECT resource_id FROM essays WHERE session_id = ?1 AND resource_id IS NOT NULL",
+            )
+            .and_then(|mut stmt| {
+                stmt.query_map(params![&id], |row| row.get::<_, String>(0))
+                    .map(|rows| rows.flatten().collect())
+            })
+            .unwrap_or_default()
         } else {
             Vec::new()
         }
@@ -771,7 +784,9 @@ pub async fn dstu_permanently_delete(
                 tokio::spawn(async move {
                     for rid in &session_essay_resource_ids {
                         let _ = lance_for_cleanup.delete_by_resource("text", rid).await;
-                        let _ = lance_for_cleanup.delete_by_resource("multimodal", rid).await;
+                        let _ = lance_for_cleanup
+                            .delete_by_resource("multimodal", rid)
+                            .await;
                     }
                     log::info!(
                         "[DSTU::trash] dstu_permanently_delete: cleaned up vectors for {} child essays",

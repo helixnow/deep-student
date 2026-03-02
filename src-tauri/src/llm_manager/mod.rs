@@ -8,9 +8,7 @@ mod rag_extension;
 use crate::crypto::{CryptoService, EncryptedData};
 use crate::database::Database;
 use crate::file_manager::FileManager;
-use crate::models::{
-    AppError, ChatMessage, ExamCardBBox, ModelAssignments,
-};
+use crate::models::{AppError, ChatMessage, ExamCardBBox, ModelAssignments};
 use crate::providers::{ProviderAdapter, ProviderError};
 use crate::vendors::load_builtin_api_configs;
 use base64::{engine::general_purpose, Engine as _};
@@ -46,7 +44,13 @@ pub(crate) struct IncrementalJsonArrayParser {
 mod tests {
     use super::*;
 
-    fn profile(id: &str, label: &str, model: &str, supports_tools: bool, is_builtin: bool) -> ModelProfile {
+    fn profile(
+        id: &str,
+        label: &str,
+        model: &str,
+        supports_tools: bool,
+        is_builtin: bool,
+    ) -> ModelProfile {
         ModelProfile {
             id: id.to_string(),
             vendor_id: "builtin-deepseek".to_string(),
@@ -1247,7 +1251,10 @@ impl LLMManager {
 
             match (prev_content, curr_content) {
                 // 两条都是纯文本 → 用 \n\n 拼接
-                (Some(serde_json::Value::String(ref prev_text)), Some(serde_json::Value::String(ref curr_text))) => {
+                (
+                    Some(serde_json::Value::String(ref prev_text)),
+                    Some(serde_json::Value::String(ref curr_text)),
+                ) => {
                     let merged_text = format!("{}\n\n{}", prev_text, curr_text);
                     let combined_len = merged_text.len();
                     prev["content"] = serde_json::Value::String(merged_text);
@@ -1257,7 +1264,10 @@ impl LLMManager {
                     );
                 }
                 // 前一条是数组（多模态），当前也是数组 → 追加元素
-                (Some(serde_json::Value::Array(ref _prev_arr)), Some(serde_json::Value::Array(ref curr_arr))) => {
+                (
+                    Some(serde_json::Value::Array(ref _prev_arr)),
+                    Some(serde_json::Value::Array(ref curr_arr)),
+                ) => {
                     let curr_len = curr_arr.len();
                     if let Some(arr) = prev.get_mut("content").and_then(|c| c.as_array_mut()) {
                         arr.extend(curr_arr.clone());
@@ -1268,7 +1278,10 @@ impl LLMManager {
                     }
                 }
                 // 前一条是纯文本，当前是数组 → 转换前一条为数组后追加
-                (Some(serde_json::Value::String(prev_text)), Some(serde_json::Value::Array(curr_arr))) => {
+                (
+                    Some(serde_json::Value::String(prev_text)),
+                    Some(serde_json::Value::Array(curr_arr)),
+                ) => {
                     let mut new_content = vec![json!({"type": "text", "text": prev_text})];
                     let curr_len = curr_arr.len();
                     new_content.extend(curr_arr);
@@ -1279,7 +1292,10 @@ impl LLMManager {
                     );
                 }
                 // 前一条是数组，当前是纯文本 → 追加 text 元素
-                (Some(serde_json::Value::Array(ref _prev_arr)), Some(serde_json::Value::String(ref curr_text))) => {
+                (
+                    Some(serde_json::Value::Array(ref _prev_arr)),
+                    Some(serde_json::Value::String(ref curr_text)),
+                ) => {
                     if let Some(arr) = prev.get_mut("content").and_then(|c| c.as_array_mut()) {
                         arr.push(json!({"type": "text", "text": curr_text}));
                         log::warn!(
@@ -1316,8 +1332,13 @@ impl LLMManager {
         let mut merged: Vec<serde_json::Value> = Vec::with_capacity(messages.len());
 
         for msg in messages.drain(..) {
-            let is_assistant_with_tools = msg.get("role").and_then(|r| r.as_str()) == Some("assistant")
-                && msg.get("tool_calls").and_then(|tc| tc.as_array()).map(|a| !a.is_empty()).unwrap_or(false);
+            let is_assistant_with_tools = msg.get("role").and_then(|r| r.as_str())
+                == Some("assistant")
+                && msg
+                    .get("tool_calls")
+                    .and_then(|tc| tc.as_array())
+                    .map(|a| !a.is_empty())
+                    .unwrap_or(false);
 
             if !is_assistant_with_tools {
                 merged.push(msg);
@@ -1325,10 +1346,14 @@ impl LLMManager {
             }
 
             // 检查前一条是否也是 assistant with tool_calls
-            let prev_is_assistant_with_tools = merged.last()
+            let prev_is_assistant_with_tools = merged
+                .last()
                 .map(|m| {
                     m.get("role").and_then(|r| r.as_str()) == Some("assistant")
-                        && m.get("tool_calls").and_then(|tc| tc.as_array()).map(|a| !a.is_empty()).unwrap_or(false)
+                        && m.get("tool_calls")
+                            .and_then(|tc| tc.as_array())
+                            .map(|a| !a.is_empty())
+                            .unwrap_or(false)
                 })
                 .unwrap_or(false);
 
@@ -1341,7 +1366,8 @@ impl LLMManager {
             let prev = merged.last_mut().unwrap();
             if let Some(curr_tool_calls) = msg.get("tool_calls").and_then(|tc| tc.as_array()) {
                 let curr_len = curr_tool_calls.len();
-                if let Some(prev_arr) = prev.get_mut("tool_calls").and_then(|tc| tc.as_array_mut()) {
+                if let Some(prev_arr) = prev.get_mut("tool_calls").and_then(|tc| tc.as_array_mut())
+                {
                     prev_arr.extend(curr_tool_calls.clone());
                     log::debug!(
                         "[LLMManager] C2fix: Merged consecutive assistant tool_calls (+{} calls, total={})",
@@ -1965,7 +1991,13 @@ impl LLMManager {
         // 必须直接修改 DB 中的 model_profiles，否则运行时路径（model_profiles_for_runtime）
         // 仍会读到旧值。
         const BUILTIN_CAPS_MIGRATION_KEY: &str = "builtin_caps_migration_v2";
-        if self.db.get_setting(BUILTIN_CAPS_MIGRATION_KEY).ok().flatten().is_none() {
+        if self
+            .db
+            .get_setting(BUILTIN_CAPS_MIGRATION_KEY)
+            .ok()
+            .flatten()
+            .is_none()
+        {
             if let Ok((_, builtin_list)) = self.load_builtin_vendor_profiles() {
                 let builtin_map: HashMap<String, &ModelProfile> =
                     builtin_list.iter().map(|p| (p.id.clone(), p)).collect();
@@ -1998,7 +2030,9 @@ impl LLMManager {
                 }
             }
             // 同时清除快照，让后续 merge 基于干净状态重建
-            let _ = self.db.save_setting(BUILTIN_MODEL_PROFILES_SNAPSHOT_KEY, "[]");
+            let _ = self
+                .db
+                .save_setting(BUILTIN_MODEL_PROFILES_SNAPSHOT_KEY, "[]");
             let _ = self.db.save_setting(BUILTIN_CAPS_MIGRATION_KEY, "done");
             info!("[VendorModel] 能力字段迁移完成");
         }
@@ -2485,9 +2519,7 @@ impl LLMManager {
             .into_iter()
             .find(|c| c.id == model_id && !c.is_embedding && !c.is_reranker)
             .ok_or_else(|| {
-                AppError::configuration(
-                    "找不到有效的记忆决策模型配置（禁止使用嵌入/重排序模型）",
-                )
+                AppError::configuration("找不到有效的记忆决策模型配置（禁止使用嵌入/重排序模型）")
             })?;
 
         Ok(config)
@@ -2675,8 +2707,7 @@ impl LLMManager {
                 let glm_migrate_ids: Vec<String> = models
                     .iter()
                     .filter(|m| {
-                        m.engine_type == "glm4v_ocr"
-                            && m.model.to_lowercase().contains("glm-4.1v")
+                        m.engine_type == "glm4v_ocr" && m.model.to_lowercase().contains("glm-4.1v")
                     })
                     .map(|m| m.config_id.clone())
                     .collect();
@@ -2696,7 +2727,9 @@ impl LLMManager {
                                         cfg.model, cfg.id
                                     );
                                     cfg.model = "zai-org/GLM-4.6V".to_string();
-                                    cfg.name = cfg.name.replace("GLM-4.1V", "GLM-4.6V")
+                                    cfg.name = cfg
+                                        .name
+                                        .replace("GLM-4.1V", "GLM-4.6V")
                                         .replace("4.1V", "4.6V");
                                     api_changed = true;
                                 }

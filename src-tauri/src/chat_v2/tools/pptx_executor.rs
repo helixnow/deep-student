@@ -34,7 +34,6 @@ impl PptxToolExecutor {
         Self
     }
 
-
     /// 结构化读取 PPTX（输出 Markdown）
     async fn execute_read_structured(
         &self,
@@ -218,10 +217,7 @@ impl PptxToolExecutor {
         let mut total_count = 0usize;
 
         /// 辅助函数：对字符串应用所有替换对，返回是否有变化
-        fn apply_replacements(
-            original: &str,
-            replacements: &[(String, String)],
-        ) -> Option<String> {
+        fn apply_replacements(original: &str, replacements: &[(String, String)]) -> Option<String> {
             let mut result = original.to_string();
             for (find, replace) in replacements {
                 result = result.replace(find.as_str(), replace.as_str());
@@ -234,7 +230,11 @@ impl PptxToolExecutor {
         }
 
         // 替换顶层 title
-        if let Some(title) = spec.get("title").and_then(|v| v.as_str()).map(|s| s.to_string()) {
+        if let Some(title) = spec
+            .get("title")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
+        {
             if let Some(new_title) = apply_replacements(&title, &replacements) {
                 spec["title"] = serde_json::Value::String(new_title);
                 total_count += 1;
@@ -245,7 +245,11 @@ impl PptxToolExecutor {
         if let Some(slides) = spec.get_mut("slides").and_then(|v| v.as_array_mut()) {
             for slide in slides.iter_mut() {
                 // 替换幻灯片 title
-                if let Some(st) = slide.get("title").and_then(|v| v.as_str()).map(|s| s.to_string()) {
+                if let Some(st) = slide
+                    .get("title")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string())
+                {
                     if let Some(new_st) = apply_replacements(&st, &replacements) {
                         slide["title"] = serde_json::Value::String(new_st);
                         total_count += 1;
@@ -253,7 +257,11 @@ impl PptxToolExecutor {
                 }
 
                 // ★ GAP-2: 替换 subtitle（title 类型幻灯片）
-                if let Some(sub) = slide.get("subtitle").and_then(|v| v.as_str()).map(|s| s.to_string()) {
+                if let Some(sub) = slide
+                    .get("subtitle")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string())
+                {
                     if let Some(new_sub) = apply_replacements(&sub, &replacements) {
                         slide["subtitle"] = serde_json::Value::String(new_sub);
                         total_count += 1;
@@ -313,12 +321,11 @@ impl PptxToolExecutor {
 
         // 重新生成 PPTX
         // 🔧 2026-02-16: spawn_blocking 防止同步生成阻塞 tokio 线程
-        let new_bytes = tokio::task::spawn_blocking(move || {
-            DocumentParser::generate_pptx_from_spec(&spec)
-        })
-        .await
-        .map_err(|e| format!("PPTX 生成任务异常: {}", e))?
-        .map_err(|e| format!("PPTX 重新生成失败: {}", e))?;
+        let new_bytes =
+            tokio::task::spawn_blocking(move || DocumentParser::generate_pptx_from_spec(&spec))
+                .await
+                .map_err(|e| format!("PPTX 生成任务异常: {}", e))?
+                .map_err(|e| format!("PPTX 重新生成失败: {}", e))?;
 
         // 保存到 VFS
         let vfs_db = ctx.vfs_db.as_ref().ok_or("VFS database not available")?;
@@ -371,20 +378,16 @@ impl PptxToolExecutor {
             .get("file_name")
             .and_then(|v| v.as_str())
             .unwrap_or("generated.pptx");
-        let folder_id = call
-            .arguments
-            .get("folder_id")
-            .and_then(|v| v.as_str());
+        let folder_id = call.arguments.get("folder_id").and_then(|v| v.as_str());
 
         // 生成 PPTX 字节
         // 🔧 2026-02-16: spawn_blocking 防止同步生成阻塞 tokio 线程
         let spec = spec.clone();
-        let pptx_bytes = tokio::task::spawn_blocking(move || {
-            DocumentParser::generate_pptx_from_spec(&spec)
-        })
-        .await
-        .map_err(|e| format!("PPTX 生成任务异常: {}", e))?
-        .map_err(|e| format!("PPTX 生成失败: {}", e))?;
+        let pptx_bytes =
+            tokio::task::spawn_blocking(move || DocumentParser::generate_pptx_from_spec(&spec))
+                .await
+                .map_err(|e| format!("PPTX 生成任务异常: {}", e))?
+                .map_err(|e| format!("PPTX 生成失败: {}", e))?;
 
         let file_size = pptx_bytes.len();
 
@@ -439,7 +442,10 @@ impl PptxToolExecutor {
 
         if let Some(ref path) = file.original_path {
             if crate::unified_file_manager::is_virtual_uri(path) {
-                log::debug!("[PptxToolExecutor] Skipping virtual URI original_path: {}", path);
+                log::debug!(
+                    "[PptxToolExecutor] Skipping virtual URI original_path: {}",
+                    path
+                );
             } else {
                 let p = std::path::Path::new(path);
                 let path_str = path.replace('\\', "/");
@@ -449,16 +455,14 @@ impl PptxToolExecutor {
                         path
                     );
                 } else if p.exists() {
-                    return std::fs::read(p)
-                        .map_err(|e| format!("文件读取失败: {}", e));
+                    return std::fs::read(p).map_err(|e| format!("文件读取失败: {}", e));
                 }
             }
         }
 
         if let Some(ref blob_hash) = file.blob_hash {
             if let Ok(Some(blob_path)) = VfsBlobRepo::get_blob_path(vfs_db, blob_hash) {
-                return std::fs::read(&blob_path)
-                    .map_err(|e| format!("Blob 读取失败: {}", e));
+                return std::fs::read(&blob_path).map_err(|e| format!("Blob 读取失败: {}", e));
             }
         }
 
@@ -584,7 +588,9 @@ impl ToolExecutor for PptxToolExecutor {
     fn sensitivity_level(&self, tool_name: &str) -> ToolSensitivity {
         let stripped = strip_tool_namespace(tool_name);
         match stripped {
-            "pptx_read_structured" | "pptx_get_metadata" | "pptx_extract_tables"
+            "pptx_read_structured"
+            | "pptx_get_metadata"
+            | "pptx_extract_tables"
             | "pptx_to_spec" => ToolSensitivity::Low,
             "pptx_create" | "pptx_replace_text" => ToolSensitivity::Medium,
             _ => ToolSensitivity::Low,

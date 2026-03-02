@@ -38,36 +38,34 @@ pub fn start_anr_watchdog() {
 
     std::thread::Builder::new()
         .name("anr-watchdog".into())
-        .spawn(|| {
-            loop {
-                std::thread::sleep(CHECK_INTERVAL);
+        .spawn(|| loop {
+            std::thread::sleep(CHECK_INTERVAL);
 
-                let last = LAST_HEARTBEAT.load(Ordering::Acquire);
-                if last == 0 {
-                    continue;
-                }
+            let last = LAST_HEARTBEAT.load(Ordering::Acquire);
+            if last == 0 {
+                continue;
+            }
 
-                let now = SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_millis() as u64;
+            let now = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis() as u64;
 
-                let frozen_for = now.saturating_sub(last);
+            let frozen_for = now.saturating_sub(last);
 
-                if frozen_for > ANR_TIMEOUT_MS && !ANR_REPORTED.load(Ordering::Acquire) {
-                    ANR_REPORTED.store(true, Ordering::Release);
+            if frozen_for > ANR_TIMEOUT_MS && !ANR_REPORTED.load(Ordering::Acquire) {
+                ANR_REPORTED.store(true, Ordering::Release);
 
-                    log::error!(
-                        "[ANR-Watchdog] Main thread unresponsive for {}ms (threshold: {}ms)",
-                        frozen_for,
-                        ANR_TIMEOUT_MS
-                    );
+                log::error!(
+                    "[ANR-Watchdog] Main thread unresponsive for {}ms (threshold: {}ms)",
+                    frozen_for,
+                    ANR_TIMEOUT_MS
+                );
 
-                    sentry::capture_message(
-                        &format!("ANR detected: main thread frozen for {}ms", frozen_for),
-                        sentry::Level::Error,
-                    );
-                }
+                sentry::capture_message(
+                    &format!("ANR detected: main thread frozen for {}ms", frozen_for),
+                    sentry::Level::Error,
+                );
             }
         })
         .expect("Failed to spawn ANR watchdog thread");

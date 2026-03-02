@@ -8,7 +8,9 @@ use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
 use super::strip_tool_namespace;
 use crate::chat_v2::events::event_types;
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
-use crate::memory::{MemoryAuditLogger, MemoryOpSource, MemoryOpType, MemoryService, MemoryType, OpTimer, WriteMode};
+use crate::memory::{
+    MemoryAuditLogger, MemoryOpSource, MemoryOpType, MemoryService, MemoryType, OpTimer, WriteMode,
+};
 use crate::vfs::lance_store::VfsLanceStore;
 
 pub const MEMORY_SEARCH: &str = "builtin-memory_search";
@@ -259,7 +261,8 @@ impl MemoryToolExecutor {
 
         // ★ 修复不一致：工具路径也需要敏感信息过滤
         if let Some(ref c) = content {
-            if crate::memory::auto_extractor::MemoryAutoExtractor::contains_sensitive_pattern_pub(c) {
+            if crate::memory::auto_extractor::MemoryAutoExtractor::contains_sensitive_pattern_pub(c)
+            {
                 service.audit_logger().log_filtered(
                     MemoryOpSource::ToolCall,
                     title.as_deref().unwrap_or(""),
@@ -273,7 +276,8 @@ impl MemoryToolExecutor {
             }
         }
         if let Some(ref t) = title {
-            if crate::memory::auto_extractor::MemoryAutoExtractor::contains_sensitive_pattern_pub(t) {
+            if crate::memory::auto_extractor::MemoryAutoExtractor::contains_sensitive_pattern_pub(t)
+            {
                 service.audit_logger().log_filtered(
                     MemoryOpSource::ToolCall,
                     t,
@@ -353,21 +357,23 @@ impl MemoryToolExecutor {
             write_task.await.map_err(|e| e.to_string())??
         };
 
-        service.audit_logger().log(&crate::memory::audit_log::MemoryAuditEntry {
-            source: MemoryOpSource::ToolCall,
-            operation: MemoryOpType::Write,
-            success: true,
-            note_id: Some(result.note_id.clone()),
-            title: title.clone(),
-            content_preview: content.clone(),
-            folder: folder.clone(),
-            event: Some(if result.is_new { "ADD" } else { "UPDATE" }.to_string()),
-            confidence: None,
-            reason: None,
-            session_id: None,
-            duration_ms: Some(timer.elapsed_ms()),
-            extra_json: None,
-        });
+        service
+            .audit_logger()
+            .log(&crate::memory::audit_log::MemoryAuditEntry {
+                source: MemoryOpSource::ToolCall,
+                operation: MemoryOpType::Write,
+                success: true,
+                note_id: Some(result.note_id.clone()),
+                title: title.clone(),
+                content_preview: content.clone(),
+                folder: folder.clone(),
+                event: Some(if result.is_new { "ADD" } else { "UPDATE" }.to_string()),
+                confidence: None,
+                reason: None,
+                session_id: None,
+                duration_ms: Some(timer.elapsed_ms()),
+                extra_json: None,
+            });
 
         let svc_for_idx = self.get_service(ctx).ok();
         if let Some(svc) = svc_for_idx {
@@ -382,7 +388,10 @@ impl MemoryToolExecutor {
             let svc = service.clone();
             tokio::task::spawn_blocking(move || {
                 if let Err(e) = svc.refresh_profile_summary() {
-                    log::warn!("[MemoryToolExecutor] Profile refresh after tool write failed: {}", e);
+                    log::warn!(
+                        "[MemoryToolExecutor] Profile refresh after tool write failed: {}",
+                        e
+                    );
                 }
             });
         }
@@ -597,9 +606,11 @@ impl MemoryToolExecutor {
             .map(crate::memory::MemoryPurpose::from_str);
 
         // 敏感信息过滤（所有类型都检查）
-        if crate::memory::auto_extractor::MemoryAutoExtractor::contains_sensitive_pattern_pub(content)
-            || crate::memory::auto_extractor::MemoryAutoExtractor::contains_sensitive_pattern_pub(title)
-        {
+        if crate::memory::auto_extractor::MemoryAutoExtractor::contains_sensitive_pattern_pub(
+            content,
+        ) || crate::memory::auto_extractor::MemoryAutoExtractor::contains_sensitive_pattern_pub(
+            title,
+        ) {
             service.audit_logger().log_filtered(
                 MemoryOpSource::ToolCall,
                 title,
@@ -623,7 +634,11 @@ impl MemoryToolExecutor {
                 MemoryOpSource::ToolCall,
                 title,
                 content,
-                &format!("内容超过 {} 字限制（类型: {}）", max_chars, memory_type.as_str()),
+                &format!(
+                    "内容超过 {} 字限制（类型: {}）",
+                    max_chars,
+                    memory_type.as_str()
+                ),
             );
             let hint = if memory_type == MemoryType::Fact {
                 format!("原子事实记忆内容过长（超过 {} 字）。请拆分为多条简短事实，或使用 memory_type='note' 保存经验笔记。", max_chars)
@@ -650,7 +665,15 @@ impl MemoryToolExecutor {
             }
         } else {
             service
-                .write_smart_with_source(folder, title, content, MemoryOpSource::ToolCall, None, memory_type, memory_purpose)
+                .write_smart_with_source(
+                    folder,
+                    title,
+                    content,
+                    MemoryOpSource::ToolCall,
+                    None,
+                    memory_type,
+                    memory_purpose,
+                )
                 .await
                 .map_err(|e| e.to_string())?
         };
@@ -660,7 +683,10 @@ impl MemoryToolExecutor {
             let svc = service.clone();
             tokio::task::spawn_blocking(move || {
                 if let Err(e) = svc.refresh_profile_summary() {
-                    log::warn!("[MemoryToolExecutor] Profile refresh after tool write failed: {}", e);
+                    log::warn!(
+                        "[MemoryToolExecutor] Profile refresh after tool write failed: {}",
+                        e
+                    );
                 }
             });
         }

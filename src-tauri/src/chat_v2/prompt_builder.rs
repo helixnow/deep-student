@@ -275,11 +275,8 @@ fn format_web_search_as_xml(
             .as_deref()
             .map(|sn| truncate_content(sn, MAX_SINGLE_SOURCE_CHARS));
 
-        let item = match format_web_search_item(
-            i,
-            s.title.as_deref(),
-            truncated_snippet.as_deref(),
-        ) {
+        let item = match format_web_search_item(i, s.title.as_deref(), truncated_snippet.as_deref())
+        {
             Some(item) => item,
             None => continue,
         };

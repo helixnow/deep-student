@@ -622,7 +622,11 @@ impl PdfOcrService {
                             }
 
                             match llm
-                                .call_ocr_page_with_fallback(&image_abs_path, page_index, crate::ocr_adapters::OcrTaskType::FreeText)
+                                .call_ocr_page_with_fallback(
+                                    &image_abs_path,
+                                    page_index,
+                                    crate::ocr_adapters::OcrTaskType::FreeText,
+                                )
                                 .await
                             {
                                 Ok(cards) => {

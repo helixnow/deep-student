@@ -90,7 +90,11 @@ pub fn is_uuid_format(s: &str) -> bool {
 pub fn infer_resource_type_from_id(id: &str) -> &'static str {
     if id.starts_with("note_") {
         "notes"
-    } else if id.starts_with("file_") || id.starts_with("tb_") || id.starts_with("att_") || id.starts_with("img_") {
+    } else if id.starts_with("file_")
+        || id.starts_with("tb_")
+        || id.starts_with("att_")
+        || id.starts_with("img_")
+    {
         "files"
     } else if id.starts_with("tr_") {
         "translations"

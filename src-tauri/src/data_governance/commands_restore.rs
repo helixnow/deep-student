@@ -9,16 +9,15 @@ use super::audit::{AuditLog, AuditOperation};
 use super::schema_registry::DatabaseId;
 use crate::backup_common::BACKUP_GLOBAL_LIMITER;
 use crate::backup_job_manager::{
-    BackupJobContext, BackupJobKind, BackupJobManagerState, BackupJobParams,
-    BackupJobPhase, BackupJobResultPayload, BackupJobStatus, BackupJobSummary,
+    BackupJobContext, BackupJobKind, BackupJobManagerState, BackupJobParams, BackupJobPhase,
+    BackupJobResultPayload, BackupJobStatus, BackupJobSummary,
 };
 
 #[cfg(feature = "data_governance")]
 use super::commands::try_save_audit_log;
 use super::commands_backup::{
-    get_app_data_dir, get_backup_dir, validate_backup_id,
-    ensure_existing_path_within_backup_dir, acquire_backup_global_permit,
-    BackupJobStartResponse,
+    acquire_backup_global_permit, ensure_existing_path_within_backup_dir, get_app_data_dir,
+    get_backup_dir, validate_backup_id, BackupJobStartResponse,
 };
 
 /// 异步后台恢复（带进度事件）
@@ -106,8 +105,8 @@ async fn execute_restore_with_progress(
     backup_id: String,
     restore_assets: Option<bool>,
 ) {
-    use super::backup::BackupManager;
     use super::backup::assets;
+    use super::backup::BackupManager;
     use super::schema_registry::DatabaseId;
     use std::time::Instant;
 
@@ -247,7 +246,12 @@ async fn execute_restore_with_progress(
         job_ctx.mark_running(
             BackupJobPhase::Verify,
             verify_progress,
-            Some(format!("正在验证: {} ({}/{})", backup_file.path, idx + 1, verify_total)),
+            Some(format!(
+                "正在验证: {} ({}/{})",
+                backup_file.path,
+                idx + 1,
+                verify_total
+            )),
             0,
             total_items,
         );
@@ -279,9 +283,14 @@ async fn execute_restore_with_progress(
         if backup_file.path.ends_with(".db") {
             match rusqlite::Connection::open(&file_path) {
                 Ok(conn) => {
-                    match conn.query_row("PRAGMA integrity_check", [], |row| row.get::<_, String>(0)) {
+                    match conn
+                        .query_row("PRAGMA integrity_check", [], |row| row.get::<_, String>(0))
+                    {
                         Ok(result) if result == "ok" => {
-                            debug!("[data_governance] 备份数据库完整性验证通过: {}", backup_file.path);
+                            debug!(
+                                "[data_governance] 备份数据库完整性验证通过: {}",
+                                backup_file.path
+                            );
                         }
                         Ok(result) => {
                             job_ctx.fail(format!(
@@ -310,7 +319,10 @@ async fn execute_restore_with_progress(
         }
     }
 
-    info!("[data_governance] 备份文件完整性验证通过: {} 个文件", verify_total);
+    info!(
+        "[data_governance] 备份文件完整性验证通过: {} 个文件",
+        verify_total
+    );
 
     // ============ 阶段 3: Replace (15-80%) - 逐数据库恢复 ============
     // 获取非活跃插槽目录：恢复写入非活跃插槽，避免 Windows OS error 32
@@ -495,10 +507,7 @@ async fn execute_restore_with_progress(
             job_ctx.mark_running(
                 BackupJobPhase::Replace,
                 asset_progress_base,
-                Some(format!(
-                    "正在恢复资产文件: 0/{}",
-                    asset_result.total_files
-                )),
+                Some(format!("正在恢复资产文件: 0/{}", asset_result.total_files)),
                 total_databases,
                 total_items,
             );
@@ -521,10 +530,7 @@ async fn execute_restore_with_progress(
                     job_ctx.mark_running(
                         BackupJobPhase::Replace,
                         progress,
-                        Some(format!(
-                            "正在恢复资产文件: {}/{}",
-                            restored, total_asset
-                        )),
+                        Some(format!("正在恢复资产文件: {}/{}", restored, total_asset)),
                         total_databases + restored as u64,
                         total_items,
                     );
@@ -581,10 +587,7 @@ async fn execute_restore_with_progress(
                         job_ctx.mark_running(
                             BackupJobPhase::Replace,
                             progress,
-                            Some(format!(
-                                "正在恢复资产文件: {}/{}",
-                                restored, total_asset
-                            )),
+                            Some(format!("正在恢复资产文件: {}/{}", restored, total_asset)),
                             total_databases + restored as u64,
                             total_items,
                         );
@@ -649,7 +652,8 @@ async fn execute_restore_with_progress(
                 Err(e) => {
                     let warn_msg = format!(
                         "恢复成功但标记插槽切换失败: {}。恢复的数据在 {} 中，请手动重启后重试",
-                        e, inactive_dir.display()
+                        e,
+                        inactive_dir.display()
                     );
                     error!("[data_governance] {}", warn_msg);
                     Some(warn_msg)
@@ -1287,4 +1291,3 @@ pub struct RestoreResultResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub assets_restored: Option<usize>,
 }
-

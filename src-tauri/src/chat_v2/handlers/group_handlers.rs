@@ -156,8 +156,7 @@ pub async fn chat_v2_move_session_to_group(
 
     // P1-5/P1-6 fix: Validate target group exists and is active
     if let Some(ref gid) = normalized_group_id {
-        let group = ChatV2Repo::get_group_with_conn(&conn, gid)
-            .map_err(|e| e.to_string())?;
+        let group = ChatV2Repo::get_group_with_conn(&conn, gid).map_err(|e| e.to_string())?;
         match group {
             Some(g) if g.persist_status != PersistStatus::Active => {
                 return Err(ChatV2Error::GroupNotFound(gid.clone()).to_string());

@@ -138,7 +138,10 @@ impl ChatV2Database {
     /// * `ChatV2Result<ChatV2PooledConnection>` - 池化连接
     pub fn get_conn_safe(&self) -> ChatV2Result<ChatV2PooledConnection> {
         // P0 修复：维护模式下拒绝返回连接，避免写入内存数据库导致数据丢失
-        if self.maintenance_mode.load(std::sync::atomic::Ordering::Acquire) {
+        if self
+            .maintenance_mode
+            .load(std::sync::atomic::Ordering::Acquire)
+        {
             return Err(ChatV2Error::Database(
                 "Database is in maintenance mode (backup/restore in progress)".to_string(),
             ));
@@ -155,7 +158,8 @@ impl ChatV2Database {
 
     /// 检查是否处于维护模式
     pub fn is_in_maintenance_mode(&self) -> bool {
-        self.maintenance_mode.load(std::sync::atomic::Ordering::Acquire)
+        self.maintenance_mode
+            .load(std::sync::atomic::Ordering::Acquire)
     }
 
     /// 获取连接池的克隆

@@ -157,10 +157,7 @@ impl CloudSyncManager {
         let data = serde_json::to_vec_pretty(manifest)
             .map_err(|e| AppError::internal(format!("序列化 manifest 失败: {e}")))?;
 
-        let temp_key = format!(
-            "manifest.{}.tmp",
-            chrono::Utc::now().timestamp_millis()
-        );
+        let temp_key = format!("manifest.{}.tmp", chrono::Utc::now().timestamp_millis());
 
         self.storage.put(&temp_key, &data).await?;
 

@@ -72,9 +72,7 @@ pub fn resolve_allowed_dirs(app: &tauri::AppHandle) -> Vec<PathBuf> {
 
     resolvers
         .into_iter()
-        .filter_map(|f| {
-            f().ok().and_then(|p| std::fs::canonicalize(&p).ok())
-        })
+        .filter_map(|f| f().ok().and_then(|p| std::fs::canonicalize(&p).ok()))
         .collect()
 }
 
@@ -90,8 +88,10 @@ pub fn handle_asset_protocol(
     allowed_dirs: &[PathBuf],
 ) -> Result<tauri::http::Response<Vec<u8>>, Box<dyn std::error::Error>> {
     if request.method() == tauri::http::Method::OPTIONS {
-        return Ok(with_cors_headers(tauri::http::Response::builder().status(204), request)
-            .body(Vec::new())?);
+        return Ok(
+            with_cors_headers(tauri::http::Response::builder().status(204), request)
+                .body(Vec::new())?,
+        );
     }
 
     let raw_uri = request.uri().to_string();

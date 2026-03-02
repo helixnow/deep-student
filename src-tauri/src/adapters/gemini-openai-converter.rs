@@ -1560,8 +1560,7 @@ fn convert_openai_to_gemini(openai_req: &OpenAIRequest) -> Result<GeminiRequest,
                         if let Some(fc) = part.function_call.take() {
                             let args_str =
                                 serde_json::to_string(&fc.args).unwrap_or_else(|_| "{}".into());
-                            part.text =
-                                Some(format!("[Tool call: {}({})]", fc.name, args_str));
+                            part.text = Some(format!("[Tool call: {}({})]", fc.name, args_str));
                         }
                     }
                 }
@@ -1573,10 +1572,8 @@ fn convert_openai_to_gemini(openai_req: &OpenAIRequest) -> Result<GeminiRequest,
                             if let Some(fr) = part.function_response.take() {
                                 let resp_str = serde_json::to_string(&fr.response)
                                     .unwrap_or_else(|_| "{}".into());
-                                part.text = Some(format!(
-                                    "[Tool result for {}: {}]",
-                                    fr.name, resp_str
-                                ));
+                                part.text =
+                                    Some(format!("[Tool result for {}: {}]", fr.name, resp_str));
                             }
                         }
                     }

@@ -26,10 +26,7 @@ use crate::multimodal::types::{IndexProgressEvent, MultimodalInput};
 use crate::vfs::database::VfsDatabase;
 use crate::vfs::error::{VfsError, VfsResult};
 use crate::vfs::lance_store::{VfsLanceRow, VfsLanceStore};
-use crate::vfs::repos::{
-    embedding_dim_repo, VfsBlobRepo,
-    MODALITY_MULTIMODAL,
-};
+use crate::vfs::repos::{embedding_dim_repo, VfsBlobRepo, MODALITY_MULTIMODAL};
 
 // ============================================================================
 // 类型定义

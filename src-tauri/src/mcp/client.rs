@@ -1078,7 +1078,8 @@ impl McpClient {
                     "[McpClient] Server did not return protocolVersion (required by MCP spec). \
                      Proceeding with best-effort compatibility."
                 );
-            } else if super::protocol_version::ProtocolVersion::from_str(&protocol_version).is_none()
+            } else if super::protocol_version::ProtocolVersion::from_str(&protocol_version)
+                .is_none()
             {
                 log::warn!(
                     "[McpClient] Server returned unsupported protocol version: '{}'. \

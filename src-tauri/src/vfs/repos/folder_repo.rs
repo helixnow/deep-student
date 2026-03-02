@@ -2175,30 +2175,27 @@ impl VfsFolderRepo {
         // 根据类型获取内容
         let content: Option<String> = match item_type {
             "note" => None,
-            "textbook" => {
-                conn.query_row(
+            "textbook" => conn
+                .query_row(
                     "SELECT file_name || ' (PDF)' FROM files WHERE id = ?1",
                     params![item_id],
                     |row| row.get(0),
                 )
-                .optional()?
-            }
-            "file" => {
-                conn.query_row(
+                .optional()?,
+            "file" => conn
+                .query_row(
                     "SELECT file_name || ' (file)' FROM files WHERE id = ?1",
                     params![item_id],
                     |row| row.get(0),
                 )
-                .optional()?
-            }
-            "exam" => {
-                conn.query_row(
+                .optional()?,
+            "exam" => conn
+                .query_row(
                     "SELECT preview_json FROM exam_sheets WHERE id = ?1",
                     params![item_id],
                     |row| row.get(0),
                 )
-                .optional()?
-            }
+                .optional()?,
             "translation" => None,
             "essay" => None,
             "mindmap" => None,

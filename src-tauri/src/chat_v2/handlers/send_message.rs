@@ -295,7 +295,10 @@ pub async fn chat_v2_send_message(
         log::info!(
             "[ChatV2::handlers] 📦 Skills diag: active_skill_ids={:?}, skill_contents_keys={:?}",
             options.active_skill_ids.as_ref().map(|ids| ids.as_slice()),
-            options.skill_contents.as_ref().map(|sc| sc.keys().collect::<Vec<_>>())
+            options
+                .skill_contents
+                .as_ref()
+                .map(|sc| sc.keys().collect::<Vec<_>>())
         );
     } else {
         log::warn!("[ChatV2::handlers] ⚠️ SendOptions is None!");

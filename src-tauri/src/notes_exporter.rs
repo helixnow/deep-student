@@ -11,9 +11,7 @@ use zip::write::FileOptions;
 use crate::database::Database;
 use crate::file_manager::FileManager;
 use crate::models::AppError;
-use crate::vfs::{
-    VfsCreateNoteParams, VfsDatabase, VfsNoteRepo, VfsUpdateNoteParams,
-};
+use crate::vfs::{VfsCreateNoteParams, VfsDatabase, VfsNoteRepo, VfsUpdateNoteParams};
 
 type Result<T> = std::result::Result<T, AppError>;
 
@@ -2284,10 +2282,7 @@ impl NotesImporter {
                                 skipped += 1;
                                 continue;
                             }
-                            log::info!(
-                                "[VFS Import] 笔记 {} 导入版本更新，覆盖本地",
-                                metadata.id
-                            );
+                            log::info!("[VFS Import] 笔记 {} 导入版本更新，覆盖本地", metadata.id);
                             let update_params = VfsUpdateNoteParams {
                                 title: Some(metadata.title.clone()),
                                 content: Some(normalized_content.clone()),

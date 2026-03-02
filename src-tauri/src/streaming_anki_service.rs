@@ -2,7 +2,8 @@ use crate::database::Database;
 use crate::llm_manager::ApiConfig;
 use crate::llm_manager::LLMManager;
 use crate::models::{
-    AnkiCard, AnkiGenerationOptions, AppError, DocumentTask, FieldExtractionRule, FieldType, StreamedCardPayload, TaskStatus, TemplateDescription,
+    AnkiCard, AnkiGenerationOptions, AppError, DocumentTask, FieldExtractionRule, FieldType,
+    StreamedCardPayload, TaskStatus, TemplateDescription,
 };
 use crate::providers::ProviderAdapter;
 use chrono::Utc;
@@ -1566,12 +1567,17 @@ impl StreamingAnkiService {
                 back = choice_back;
             } else {
                 // 兜底：从 extra_fields 中取第一个非 front 的非空值作为 back
-                let skip_keys: std::collections::HashSet<&str> = [
-                    "front", "tags", "template_id", "templateid", "text",
-                ].iter().copied().collect();
+                let skip_keys: std::collections::HashSet<&str> =
+                    ["front", "tags", "template_id", "templateid", "text"]
+                        .iter()
+                        .copied()
+                        .collect();
                 let mut fallback_back = String::new();
                 for (key, value) in &extra_fields {
-                    if skip_keys.contains(key.as_str()) || value.trim().is_empty() || value == &front {
+                    if skip_keys.contains(key.as_str())
+                        || value.trim().is_empty()
+                        || value == &front
+                    {
                         continue;
                     }
                     if !fallback_back.is_empty() {
@@ -1584,7 +1590,10 @@ impl StreamingAnkiService {
                     if let Some(obj) = json_value.as_object() {
                         for (key, value) in obj {
                             let key_lower = key.to_lowercase();
-                            if matches!(key_lower.as_str(), "front" | "tags" | "template_id" | "templateid" | "fields") {
+                            if matches!(
+                                key_lower.as_str(),
+                                "front" | "tags" | "template_id" | "templateid" | "fields"
+                            ) {
                                 continue;
                             }
                             if let Some(s) = value.as_str() {

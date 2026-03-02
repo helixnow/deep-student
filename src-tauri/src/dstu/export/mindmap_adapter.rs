@@ -72,7 +72,10 @@ impl MindMapExportAdapter {
         let mut md = String::new();
         md.push_str("---\n");
         md.push_str(&format!("id: {}\n", mindmap.id));
-        md.push_str(&format!("title: \"{}\"\n", mindmap.title.replace('"', "\\\"")));
+        md.push_str(&format!(
+            "title: \"{}\"\n",
+            mindmap.title.replace('"', "\\\"")
+        ));
         if let Some(ref desc) = mindmap.description {
             md.push_str(&format!("description: \"{}\"\n", desc.replace('"', "\\\"")));
         }

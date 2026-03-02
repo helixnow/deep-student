@@ -13,8 +13,8 @@ use std::io::Cursor;
 use std::path::Path;
 
 use super::{
-    ApiConfig, ExamSegmentationCard, LLMManager,
-    Result, EXAM_SEGMENT_MAX_DIMENSION, EXAM_SEGMENT_MAX_IMAGE_BYTES,
+    ApiConfig, ExamSegmentationCard, LLMManager, Result, EXAM_SEGMENT_MAX_DIMENSION,
+    EXAM_SEGMENT_MAX_IMAGE_BYTES,
 };
 
 // ── 渐进对冲 OCR 用数据结构 ──
@@ -56,26 +56,24 @@ async fn run_single_ocr_request(
         .send();
 
     // 硬超时
-    let response = match tokio::time::timeout(
-        std::time::Duration::from_secs(timeout_secs),
-        request_future,
-    )
-    .await
-    {
-        Ok(Ok(resp)) => resp,
-        Ok(Err(e)) => {
-            return Err(format!(
-                "Engine #{} ({}) network error: {}",
-                req.idx, req.engine_name, e
-            ))
-        }
-        Err(_) => {
-            return Err(format!(
-                "Engine #{} ({}) timed out ({}s)",
-                req.idx, req.engine_name, timeout_secs
-            ))
-        }
-    };
+    let response =
+        match tokio::time::timeout(std::time::Duration::from_secs(timeout_secs), request_future)
+            .await
+        {
+            Ok(Ok(resp)) => resp,
+            Ok(Err(e)) => {
+                return Err(format!(
+                    "Engine #{} ({}) network error: {}",
+                    req.idx, req.engine_name, e
+                ))
+            }
+            Err(_) => {
+                return Err(format!(
+                    "Engine #{} ({}) timed out ({}s)",
+                    req.idx, req.engine_name, timeout_secs
+                ))
+            }
+        };
 
     if !response.status().is_success() {
         let status = response.status();
@@ -89,13 +87,19 @@ async fn run_single_ocr_request(
         ));
     }
 
-    let response_text = response
-        .text()
-        .await
-        .map_err(|e| format!("Engine #{} ({}) read failed: {}", req.idx, req.engine_name, e))?;
+    let response_text = response.text().await.map_err(|e| {
+        format!(
+            "Engine #{} ({}) read failed: {}",
+            req.idx, req.engine_name, e
+        )
+    })?;
 
-    let response_json: Value = serde_json::from_str(&response_text)
-        .map_err(|e| format!("Engine #{} ({}) JSON parse failed: {}", req.idx, req.engine_name, e))?;
+    let response_json: Value = serde_json::from_str(&response_text).map_err(|e| {
+        format!(
+            "Engine #{} ({}) JSON parse failed: {}",
+            req.idx, req.engine_name, e
+        )
+    })?;
 
     // Gemini / Anthropic 响应格式转换
     let openai_like = if req.model_adapter == "google" {
@@ -325,7 +329,9 @@ impl LLMManager {
         });
 
         // GLM-4.5+ 支持 thinking 参数；OCR 默认关闭以降低延迟
-        if crate::llm_manager::adapters::zhipu::ZhipuAdapter::supports_thinking_static(&config.model) {
+        if crate::llm_manager::adapters::zhipu::ZhipuAdapter::supports_thinking_static(
+            &config.model,
+        ) {
             let enable = self.is_ocr_thinking_enabled();
             if let Some(obj) = request_body.as_object_mut() {
                 obj.insert(
@@ -521,7 +527,10 @@ impl LLMManager {
         page_index: usize,
         task_type: crate::ocr_adapters::OcrTaskType,
     ) -> Result<Vec<ExamSegmentationCard>> {
-        let engines = self.get_ocr_configs_by_priority(task_type).await.unwrap_or_default();
+        let engines = self
+            .get_ocr_configs_by_priority(task_type)
+            .await
+            .unwrap_or_default();
 
         if engines.is_empty() {
             return Err(AppError::configuration(
@@ -578,10 +587,7 @@ impl LLMManager {
     /// 3. 每隔 10s 再追加一个引擎，直到所有引擎均已启动
     /// 4. 每个引擎有独立 60s 硬超时
     /// 5. 采用**最先返回成功结果**的那个引擎
-    pub async fn call_ocr_free_text_with_fallback(
-        &self,
-        image_path: &str,
-    ) -> Result<String> {
+    pub async fn call_ocr_free_text_with_fallback(&self, image_path: &str) -> Result<String> {
         use crate::ocr_adapters::{OcrAdapterFactory, OcrMode};
         use crate::ocr_circuit_breaker::OCR_CIRCUIT_BREAKER;
         use crate::providers::ProviderAdapter;
@@ -621,7 +627,12 @@ impl LLMManager {
             let api_key = match self.decrypt_api_key_if_needed(&config.api_key) {
                 Ok(k) => k,
                 Err(e) => {
-                    warn!("[OCR-Hedge] Engine #{} ({}) key decrypt failed: {}", idx, engine_type.as_str(), e);
+                    warn!(
+                        "[OCR-Hedge] Engine #{} ({}) key decrypt failed: {}",
+                        idx,
+                        engine_type.as_str(),
+                        e
+                    );
                     continue;
                 }
             };
@@ -638,10 +649,11 @@ impl LLMManager {
                 ]
             })];
 
-            let max_tokens = super::effective_max_tokens(config.max_output_tokens, config.max_tokens_limit)
-                .min(adapter.recommended_max_tokens(ocr_mode))
-                .max(2048)
-                .min(8000);
+            let max_tokens =
+                super::effective_max_tokens(config.max_output_tokens, config.max_tokens_limit)
+                    .min(adapter.recommended_max_tokens(ocr_mode))
+                    .max(2048)
+                    .min(8000);
 
             let mut request_body = json!({
                 "model": config.model,
@@ -660,7 +672,9 @@ impl LLMManager {
                     }
                 }
             }
-            if crate::llm_manager::adapters::zhipu::ZhipuAdapter::supports_thinking_static(&config.model) {
+            if crate::llm_manager::adapters::zhipu::ZhipuAdapter::supports_thinking_static(
+                &config.model,
+            ) {
                 let enable = self.is_ocr_thinking_enabled();
                 if let Some(obj) = request_body.as_object_mut() {
                     obj.insert(
@@ -681,10 +695,20 @@ impl LLMManager {
                 _ => Box::new(crate::providers::OpenAIAdapter),
             };
 
-            let preq = match provider.build_request(&config.base_url, &api_key, &config.model, &request_body) {
+            let preq = match provider.build_request(
+                &config.base_url,
+                &api_key,
+                &config.model,
+                &request_body,
+            ) {
                 Ok(p) => p,
                 Err(e) => {
-                    warn!("[OCR-Hedge] Engine #{} ({}) request build failed: {}", idx, engine_type.as_str(), e);
+                    warn!(
+                        "[OCR-Hedge] Engine #{} ({}) request build failed: {}",
+                        idx,
+                        engine_type.as_str(),
+                        e
+                    );
                     continue;
                 }
             };
@@ -732,15 +756,18 @@ impl LLMManager {
             let client = self.client.clone();
             let tx_clone = tx.clone();
             tokio::spawn(async move {
-                let result =
-                    run_single_ocr_request(client, req, ENGINE_TIMEOUT_SECS).await;
+                let result = run_single_ocr_request(client, req, ENGINE_TIMEOUT_SECS).await;
                 let _ = tx_clone.send((engine_idx, result));
             });
             spawned += 1;
 
             info!(
                 "[OCR-Hedge] Spawned engine #{} ({}, model={}) [{}/{}]",
-                engine_idx, engine_name, model_name, seq + 1, total
+                engine_idx,
+                engine_name,
+                model_name,
+                seq + 1,
+                total
             );
 
             // 非最后一个引擎 → 等 HEDGE_INTERVAL 看是否有结果
@@ -831,12 +858,7 @@ impl LLMManager {
             .await?;
 
         let raw_regions = self
-            .parse_ocr_regions_internal(
-                &content,
-                page_path,
-                page_index,
-                Some(effective_engine),
-            )
+            .parse_ocr_regions_internal(&content, page_path, page_index, Some(effective_engine))
             .await?;
 
         Ok(raw_regions)
@@ -1092,5 +1114,4 @@ impl LLMManager {
 
         Ok(cards)
     }
-
 }

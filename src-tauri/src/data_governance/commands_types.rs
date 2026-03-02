@@ -169,4 +169,3 @@ pub struct MigrationRecordResponse {
     pub duration_ms: Option<u64>,
     pub success: bool,
 }
-

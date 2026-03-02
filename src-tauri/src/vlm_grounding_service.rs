@@ -151,7 +151,9 @@ impl VlmGroundingService {
         text_hint: Option<&str>,
     ) -> Result<VlmPageAnalysis, AppError> {
         let config = self.get_vlm_config().await?;
-        let api_key = self.llm_manager.decrypt_api_key_if_needed(&config.api_key)?;
+        let api_key = self
+            .llm_manager
+            .decrypt_api_key_if_needed(&config.api_key)?;
 
         let prompt = Self::build_analysis_prompt(text_hint);
 
@@ -179,7 +181,9 @@ impl VlmGroundingService {
         });
 
         // GLM-4.5+ 支持 thinking 参数；OCR/题目集默认关闭以降低延迟
-        if crate::llm_manager::adapters::zhipu::ZhipuAdapter::supports_thinking_static(&config.model) {
+        if crate::llm_manager::adapters::zhipu::ZhipuAdapter::supports_thinking_static(
+            &config.model,
+        ) {
             let enable = self.llm_manager.is_ocr_thinking_enabled();
             if let Some(obj) = request_body.as_object_mut() {
                 obj.insert(
@@ -249,11 +253,7 @@ impl VlmGroundingService {
                 .map_err(|e| AppError::network(format!("读取 VLM 响应失败: {}", e)))?;
 
             if matches!(status.as_u16(), 429 | 502 | 503 | 504) {
-                last_error = format!(
-                    "VLM API 返回 {}: {}",
-                    status,
-                    &body[..body.len().min(200)]
-                );
+                last_error = format!("VLM API 返回 {}: {}", status, &body[..body.len().min(200)]);
                 if attempt < MAX_RETRIES {
                     warn!("[VLM-Grounding] {}", last_error);
                     continue;
@@ -306,7 +306,9 @@ impl VlmGroundingService {
         let data_url = format!("data:{};base64,{}", mime, b64);
 
         let config = self.get_vlm_config().await?;
-        let api_key = self.llm_manager.decrypt_api_key_if_needed(&config.api_key)?;
+        let api_key = self
+            .llm_manager
+            .decrypt_api_key_if_needed(&config.api_key)?;
 
         let prompt = r#"请详细描述这张图片的内容。这是一份试题/学习材料中的配图。
 
@@ -340,7 +342,9 @@ impl VlmGroundingService {
             "stream": false,
         });
 
-        if crate::llm_manager::adapters::zhipu::ZhipuAdapter::supports_thinking_static(&config.model) {
+        if crate::llm_manager::adapters::zhipu::ZhipuAdapter::supports_thinking_static(
+            &config.model,
+        ) {
             let enable = self.llm_manager.is_ocr_thinking_enabled();
             if let Some(obj) = request_body.as_object_mut() {
                 obj.insert(
@@ -424,7 +428,9 @@ impl VlmGroundingService {
         }
 
         let config = self.get_vlm_config().await?;
-        let api_key = self.llm_manager.decrypt_api_key_if_needed(&config.api_key)?;
+        let api_key = self
+            .llm_manager
+            .decrypt_api_key_if_needed(&config.api_key)?;
 
         // 构建多图 + 文本的 content 数组
         let mut content_parts: Vec<Value> = Vec::with_capacity(image_data_urls.len() + 1);
@@ -468,7 +474,9 @@ impl VlmGroundingService {
             "stream": true,
         });
 
-        if crate::llm_manager::adapters::zhipu::ZhipuAdapter::supports_thinking_static(&config.model) {
+        if crate::llm_manager::adapters::zhipu::ZhipuAdapter::supports_thinking_static(
+            &config.model,
+        ) {
             let enable = self.llm_manager.is_ocr_thinking_enabled();
             if let Some(obj) = request_body.as_object_mut() {
                 obj.insert(
@@ -537,11 +545,7 @@ impl VlmGroundingService {
             // 非流式错误响应（4xx/5xx 可重试）
             if matches!(status.as_u16(), 429 | 502 | 503 | 504) {
                 let body = response.text().await.unwrap_or_default();
-                last_error = format!(
-                    "VLM API 返回 {}: {}",
-                    status,
-                    &body[..body.len().min(200)]
-                );
+                last_error = format!("VLM API 返回 {}: {}", status, &body[..body.len().min(200)]);
                 if attempt < MAX_RETRIES {
                     warn!("[VLM-Grounding] {}", last_error);
                     continue;
@@ -562,8 +566,7 @@ impl VlmGroundingService {
             use futures_util::StreamExt;
             let mut stream = response.bytes_stream();
             let mut sse_buffer = crate::utils::sse_buffer::SseLineBuffer::new();
-            let mut json_parser =
-                crate::llm_manager::IncrementalJsonArrayParser::new();
+            let mut json_parser = crate::llm_manager::IncrementalJsonArrayParser::new();
             let mut full_content = String::new();
             let mut stream_ended = false;
             let mut chunk_count: usize = 0;
@@ -594,7 +597,11 @@ impl VlmGroundingService {
                                         // 增量解析：每个 SSE token 喂给 JSON 解析器
                                         if let Some(objects) = json_parser.feed(&content) {
                                             for obj in objects {
-                                                if let Ok(vq) = serde_json::from_value::<VlmExtractedQuestion>(obj) {
+                                                if let Ok(vq) =
+                                                    serde_json::from_value::<VlmExtractedQuestion>(
+                                                        obj,
+                                                    )
+                                                {
                                                     question_count += 1;
                                                     if !on_question(vq) {
                                                         aborted = true;
@@ -659,7 +666,9 @@ impl VlmGroundingService {
                         if let crate::providers::StreamEvent::ContentChunk(content) = event {
                             if let Some(objects) = json_parser.feed(&content) {
                                 for obj in objects {
-                                    if let Ok(vq) = serde_json::from_value::<VlmExtractedQuestion>(obj) {
+                                    if let Ok(vq) =
+                                        serde_json::from_value::<VlmExtractedQuestion>(obj)
+                                    {
                                         question_count += 1;
                                         let _ = on_question(vq);
                                     }
@@ -794,15 +803,9 @@ impl VlmGroundingService {
         let stripped = {
             let trimmed = content.trim();
             if let Some(rest) = trimmed.strip_prefix("```json") {
-                rest.trim_start()
-                    .strip_suffix("```")
-                    .unwrap_or(rest)
-                    .trim()
+                rest.trim_start().strip_suffix("```").unwrap_or(rest).trim()
             } else if let Some(rest) = trimmed.strip_prefix("```") {
-                rest.trim_start()
-                    .strip_suffix("```")
-                    .unwrap_or(rest)
-                    .trim()
+                rest.trim_start().strip_suffix("```").unwrap_or(rest).trim()
             } else {
                 trimmed
             }
@@ -820,10 +823,7 @@ impl VlmGroundingService {
         };
 
         if let Ok(questions) = serde_json::from_str::<Vec<VlmExtractedQuestion>>(json_str) {
-            info!(
-                "[VLM-Grounding] DOCX 提取成功: {} 道题目",
-                questions.len()
-            );
+            info!("[VLM-Grounding] DOCX 提取成功: {} 道题目", questions.len());
             return Ok(questions);
         }
 
@@ -863,15 +863,9 @@ impl VlmGroundingService {
         let stripped = {
             let trimmed = content.trim();
             if let Some(rest) = trimmed.strip_prefix("```json") {
-                rest.trim_start()
-                    .strip_suffix("```")
-                    .unwrap_or(rest)
-                    .trim()
+                rest.trim_start().strip_suffix("```").unwrap_or(rest).trim()
             } else if let Some(rest) = trimmed.strip_prefix("```") {
-                rest.trim_start()
-                    .strip_suffix("```")
-                    .unwrap_or(rest)
-                    .trim()
+                rest.trim_start().strip_suffix("```").unwrap_or(rest).trim()
             } else {
                 trimmed
             }
@@ -1016,9 +1010,7 @@ impl VlmGroundingService {
     /// 5. 其他 Qwen-VL
     /// 6. GLM-4.xV 兜底（包含 Thinking/小参数等）
     /// 7. 任意多模态模型
-    pub(crate) async fn get_vlm_config(
-        &self,
-    ) -> Result<crate::llm_manager::ApiConfig, AppError> {
+    pub(crate) async fn get_vlm_config(&self) -> Result<crate::llm_manager::ApiConfig, AppError> {
         let configs = self
             .llm_manager
             .get_api_configs()
@@ -1039,13 +1031,14 @@ impl VlmGroundingService {
         // 黑名单：GLM-4.1V / GLM-4.0V / GLM-4V- 质量差，即使在 OCR 引擎中也跳过
         let is_blacklisted = |model: &str| {
             let lower = model.to_lowercase();
-            lower.contains("glm-4.1v")
-                || lower.contains("glm-4.0v")
-                || lower.contains("glm-4v-")
+            lower.contains("glm-4.1v") || lower.contains("glm-4.0v") || lower.contains("glm-4v-")
         };
 
         for ocr_cfg in &ocr_glm {
-            if let Some(config) = configs.iter().find(|c| c.id == ocr_cfg.config_id && c.enabled) {
+            if let Some(config) = configs
+                .iter()
+                .find(|c| c.id == ocr_cfg.config_id && c.enabled)
+            {
                 if is_blacklisted(&config.model) {
                     info!(
                         "[VLM-Grounding] 跳过黑名单 OCR 引擎模型: {} ({})",
@@ -1111,7 +1104,10 @@ impl VlmGroundingService {
 
         // ===== Tier 6: OCR 引擎中的通用 VLM 模型 =====
         for ocr_cfg in &ocr_vlm {
-            if let Some(config) = configs.iter().find(|c| c.id == ocr_cfg.config_id && c.enabled) {
+            if let Some(config) = configs
+                .iter()
+                .find(|c| c.id == ocr_cfg.config_id && c.enabled)
+            {
                 if is_blacklisted(&config.model) {
                     info!(
                         "[VLM-Grounding] 跳过黑名单 OCR 通用 VLM: {} ({})",
@@ -1128,7 +1124,10 @@ impl VlmGroundingService {
         }
 
         // ===== Tier 7: 任意多模态模型（排除黑名单） =====
-        if let Some(config) = configs.iter().find(|c| c.enabled && c.is_multimodal && !is_blacklisted(&c.model)) {
+        if let Some(config) = configs
+            .iter()
+            .find(|c| c.enabled && c.is_multimodal && !is_blacklisted(&c.model))
+        {
             info!(
                 "[VLM-Grounding] 回退使用多模态模型: {} ({})",
                 config.model, config.name

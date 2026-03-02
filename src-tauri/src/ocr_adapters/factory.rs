@@ -24,7 +24,9 @@ impl OcrAdapterFactory {
         match engine_type {
             OcrEngineType::DeepSeekOcr => Arc::new(DeepSeekOcrAdapter::new()),
             OcrEngineType::PaddleOcrVl => Arc::new(PaddleOcrVlAdapter::new()),
-            OcrEngineType::PaddleOcrVlV1 => Arc::new(PaddleOcrVlAdapter::with_engine(OcrEngineType::PaddleOcrVlV1)),
+            OcrEngineType::PaddleOcrVlV1 => Arc::new(PaddleOcrVlAdapter::with_engine(
+                OcrEngineType::PaddleOcrVlV1,
+            )),
             OcrEngineType::Glm4vOcr => Arc::new(Glm4vOcrAdapter::new()),
             OcrEngineType::GenericVlm => Arc::new(GenericVlmAdapter::new()),
             OcrEngineType::SystemOcr => Arc::new(SystemOcrAdapter::new()),
@@ -131,9 +133,7 @@ impl OcrAdapterFactory {
                 model_lower.contains("paddleocr") || model_lower.contains("paddlepaddle")
             }
             OcrEngineType::Glm4vOcr => GLM_VISION_RE.is_match(model),
-            OcrEngineType::GenericVlm => {
-                true
-            }
+            OcrEngineType::GenericVlm => true,
             OcrEngineType::SystemOcr => {
                 // 系统 OCR 不使用模型名称
                 model_lower == "system" || model_lower.is_empty()

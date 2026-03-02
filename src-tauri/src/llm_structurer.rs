@@ -92,7 +92,10 @@ impl LlmStructurer {
                             &qwf.merged.question.label,
                         ),
                     };
-                    results.push(StructuredQuestion { json, source: qwf.clone() });
+                    results.push(StructuredQuestion {
+                        json,
+                        source: qwf.clone(),
+                    });
                 }
             }
         }
@@ -142,7 +145,10 @@ impl LlmStructurer {
                         &qwf.merged.question.label,
                     ),
                 };
-                results.push(StructuredQuestion { json, source: qwf.clone() });
+                results.push(StructuredQuestion {
+                    json,
+                    source: qwf.clone(),
+                });
             }
 
             // 持久化此批次的 LLM 原始结果

@@ -146,10 +146,14 @@ impl CloudStorageConfig {
                     return Err("WebDAV 用户名不能为空".into());
                 }
                 let is_local = Self::is_local_endpoint(&config.endpoint);
-                if !is_local && !config.endpoint.trim().to_lowercase().starts_with("https://") {
-                    return Err(
-                        "WebDAV endpoint 必须使用 HTTPS（仅 localhost 允许 HTTP）".into(),
-                    );
+                if !is_local
+                    && !config
+                        .endpoint
+                        .trim()
+                        .to_lowercase()
+                        .starts_with("https://")
+                {
+                    return Err("WebDAV endpoint 必须使用 HTTPS（仅 localhost 允许 HTTP）".into());
                 }
                 Ok(())
             }
@@ -168,10 +172,14 @@ impl CloudStorageConfig {
                     return Err("S3 Secret Access Key 不能为空".into());
                 }
                 let is_local = Self::is_local_endpoint(&config.endpoint);
-                if !is_local && !config.endpoint.trim().to_lowercase().starts_with("https://") {
-                    return Err(
-                        "S3 endpoint 必须使用 HTTPS（仅 localhost 允许 HTTP）".into(),
-                    );
+                if !is_local
+                    && !config
+                        .endpoint
+                        .trim()
+                        .to_lowercase()
+                        .starts_with("https://")
+                {
+                    return Err("S3 endpoint 必须使用 HTTPS（仅 localhost 允许 HTTP）".into());
                 }
                 Ok(())
             }
@@ -238,7 +246,10 @@ mod tests {
             }),
             ..Default::default()
         };
-        assert!(config.validate().is_ok(), "localhost HTTP should be allowed");
+        assert!(
+            config.validate().is_ok(),
+            "localhost HTTP should be allowed"
+        );
     }
 
     #[test]
@@ -267,7 +278,10 @@ mod tests {
             }),
             ..Default::default()
         };
-        assert!(config.validate().is_ok(), "localhost HTTP S3 should be allowed");
+        assert!(
+            config.validate().is_ok(),
+            "localhost HTTP S3 should be allowed"
+        );
     }
 
     #[test]
@@ -278,7 +292,10 @@ mod tests {
             password: "super-secret".into(),
         };
         let debug = format!("{:?}", webdav);
-        assert!(!debug.contains("super-secret"), "password should be redacted in Debug");
+        assert!(
+            !debug.contains("super-secret"),
+            "password should be redacted in Debug"
+        );
         assert!(debug.contains("[REDACTED]"));
 
         let s3 = S3Config {
@@ -289,9 +306,15 @@ mod tests {
             ..Default::default()
         };
         let debug = format!("{:?}", s3);
-        assert!(!debug.contains("wJalrXUtnFEMI"), "secret_access_key should be redacted");
+        assert!(
+            !debug.contains("wJalrXUtnFEMI"),
+            "secret_access_key should be redacted"
+        );
         assert!(debug.contains("[REDACTED]"));
-        assert!(debug.contains("AKIA"), "access_key_id prefix should be visible");
+        assert!(
+            debug.contains("AKIA"),
+            "access_key_id prefix should be visible"
+        );
     }
 
     #[test]
@@ -308,10 +331,16 @@ mod tests {
 
     #[test]
     fn test_is_local_endpoint() {
-        assert!(CloudStorageConfig::is_local_endpoint("http://localhost:8080/dav"));
-        assert!(CloudStorageConfig::is_local_endpoint("http://127.0.0.1:9000"));
+        assert!(CloudStorageConfig::is_local_endpoint(
+            "http://localhost:8080/dav"
+        ));
+        assert!(CloudStorageConfig::is_local_endpoint(
+            "http://127.0.0.1:9000"
+        ));
         assert!(CloudStorageConfig::is_local_endpoint("http://[::1]:8080"));
-        assert!(CloudStorageConfig::is_local_endpoint("https://localhost/path"));
+        assert!(CloudStorageConfig::is_local_endpoint(
+            "https://localhost/path"
+        ));
 
         assert!(
             !CloudStorageConfig::is_local_endpoint("http://localhost.evil.com"),
@@ -321,7 +350,9 @@ mod tests {
             !CloudStorageConfig::is_local_endpoint("http://fakehost-localhost.com"),
             "fakehost-localhost.com must NOT be treated as local"
         );
-        assert!(!CloudStorageConfig::is_local_endpoint("https://dav.example.com"));
+        assert!(!CloudStorageConfig::is_local_endpoint(
+            "https://dav.example.com"
+        ));
         assert!(!CloudStorageConfig::is_local_endpoint("not-a-url"));
     }
 

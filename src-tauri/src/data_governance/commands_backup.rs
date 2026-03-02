@@ -8,15 +8,15 @@ use tracing::{debug, error, info, warn};
 #[cfg(feature = "data_governance")]
 use super::audit::{AuditLog, AuditOperation};
 use super::backup::{
-    export_backup_to_zip, AssetBackupConfig, AssetType, AssetTypeStats,
-    BackupManager, BackupSelection, TieredAssetConfig, ZipExportOptions,
+    export_backup_to_zip, AssetBackupConfig, AssetType, AssetTypeStats, BackupManager,
+    BackupSelection, TieredAssetConfig, ZipExportOptions,
 };
 use super::schema_registry::DatabaseId;
 use super::sync::{ChangeOperation, MergeStrategy, SyncChangeWithData, SyncManager};
 use crate::backup_common::BACKUP_GLOBAL_LIMITER;
 use crate::backup_job_manager::{
-    BackupJobContext, BackupJobKind, BackupJobManagerState, BackupJobParams,
-    BackupJobPhase, BackupJobResultPayload, BackupJobStatus, BackupJobSummary, PersistedJob,
+    BackupJobContext, BackupJobKind, BackupJobManagerState, BackupJobParams, BackupJobPhase,
+    BackupJobResultPayload, BackupJobStatus, BackupJobSummary, PersistedJob,
 };
 use crate::utils::text::safe_truncate_chars;
 
@@ -190,8 +190,18 @@ fn should_apply_change_by_strategy(
         MergeStrategy::UseCloud => Ok(true),
         MergeStrategy::Manual => Ok(false),
         MergeStrategy::KeepLocal | MergeStrategy::KeepLatest => {
-            let local = SyncManager::get_record_data(conn, &change.table_name, &change.record_id, id_column)
-                .map_err(|e| format!("查询本地记录失败 {}.{}: {}", change.table_name, change.record_id, e))?;
+            let local = SyncManager::get_record_data(
+                conn,
+                &change.table_name,
+                &change.record_id,
+                id_column,
+            )
+            .map_err(|e| {
+                format!(
+                    "查询本地记录失败 {}.{}: {}",
+                    change.table_name, change.record_id, e
+                )
+            })?;
 
             // 本地不存在：无冲突，接受云端变化（含删除操作的幂等）
             let local = match local {
@@ -251,19 +261,17 @@ pub(super) fn apply_downloaded_changes_to_databases(
     for change in changes {
         let db_name = match change.database_name.as_deref() {
             Some(name) => name.to_string(),
-            None => {
-                match infer_database_from_table(&change.table_name) {
-                    Some(name) => name.to_string(),
-                    None => {
-                        warn!(
+            None => match infer_database_from_table(&change.table_name) {
+                Some(name) => name.to_string(),
+                None => {
+                    warn!(
                             "[data_governance] Legacy 变更表名 '{}' 无法推断目标数据库，跳过 (record_id={})",
                             change.table_name, change.record_id
                         );
-                        agg.total_skipped += 1;
-                        continue;
-                    }
+                    agg.total_skipped += 1;
+                    continue;
                 }
-            }
+            },
         };
         grouped.entry(db_name).or_default().push(change);
     }
@@ -2220,4 +2228,3 @@ async fn execute_tiered_backup_with_progress(
         result_payload,
     );
 }
-

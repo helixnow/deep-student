@@ -127,7 +127,6 @@ pub async fn notes_create(
     let content_md = note.content_md.clone();
     let tags_clone = tags.clone();
 
-
     let created = tokio::task::spawn_blocking(move || {
         notes_manager.create_note_vfs(&title, &content_md, &tags_clone)
     })
@@ -163,7 +162,6 @@ pub async fn notes_update(
     let content_md = note.content_md.clone();
     let tags = note.tags.clone();
     let expected_updated_at = note.expected_updated_at.clone();
-
 
     let updated = tokio::task::spawn_blocking(move || {
         notes_manager.update_note_vfs(
@@ -473,8 +471,8 @@ pub async fn notes_list_deleted(
         })
         .collect();
 
-    let total_items = crate::vfs::VfsNoteRepo::count_deleted_notes(vfs_db)
-        .unwrap_or(items.len() as i64);
+    let total_items =
+        crate::vfs::VfsNoteRepo::count_deleted_notes(vfs_db).unwrap_or(items.len() as i64);
 
     Ok(NotesListAdvancedResponse {
         items,
@@ -1563,4 +1561,3 @@ pub async fn notes_mentions_search(
 
     Ok(response)
 }
-

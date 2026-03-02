@@ -58,23 +58,21 @@ pub fn extract_figures(
 
             let page_bytes = match page_image_cache.get(page_idx) {
                 Some(bytes) => bytes.clone(),
-                None => {
-                    match page_rasterizer::load_page_image_bytes(vfs_db, &page.blob_hash) {
-                        Ok(bytes) => {
-                            page_image_cache.insert(*page_idx, bytes.clone());
-                            bytes
-                        }
-                        Err(e) => {
-                            warn!(
-                                "[FigureExtractor] 加载页面 {} 图片失败: {}",
-                                page_idx + 1,
-                                e
-                            );
-                            total_skipped += 1;
-                            continue;
-                        }
+                None => match page_rasterizer::load_page_image_bytes(vfs_db, &page.blob_hash) {
+                    Ok(bytes) => {
+                        page_image_cache.insert(*page_idx, bytes.clone());
+                        bytes
                     }
-                }
+                    Err(e) => {
+                        warn!(
+                            "[FigureExtractor] 加载页面 {} 图片失败: {}",
+                            page_idx + 1,
+                            e
+                        );
+                        total_skipped += 1;
+                        continue;
+                    }
+                },
             };
 
             let cropped_bytes =
@@ -121,10 +119,7 @@ pub fn extract_figures(
             }
         }
 
-        results.push(QuestionWithFigures {
-            merged: mq,
-            images,
-        });
+        results.push(QuestionWithFigures { merged: mq, images });
     }
 
     info!(

@@ -3,10 +3,9 @@ mod manager;
 pub use manager::DatabaseManager;
 
 use crate::models::{
-    AnkiCard, AnkiLibraryCard, CreateSubLibraryRequest, DocumentTask,
-    ExamSheetPreviewResult, ExamSheetSessionDetail, ExamSheetSessionMetadata,
-    ExamSheetSessionSummary, StreamContext, SubLibrary, TaskStatus, TempStreamState,
-    UpdateSubLibraryRequest,
+    AnkiCard, AnkiLibraryCard, CreateSubLibraryRequest, DocumentTask, ExamSheetPreviewResult,
+    ExamSheetSessionDetail, ExamSheetSessionMetadata, ExamSheetSessionSummary, StreamContext,
+    SubLibrary, TaskStatus, TempStreamState, UpdateSubLibraryRequest,
 };
 use crate::secure_store::{SecureStore, SecureStoreConfig};
 use anyhow::{Context, Result};

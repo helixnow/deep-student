@@ -709,12 +709,9 @@ impl PdfProcessingService {
         if has_preview {
             if cancel_token.is_cancelled() {
                 info!("[PdfProcessingService] Pipeline cancelled for {}", file_id);
-                let _ = self.update_processing_status(
-                    file_id,
-                    ProcessingStage::Pending,
-                    None,
-                    None,
-                ).await;
+                let _ = self
+                    .update_processing_status(file_id, ProcessingStage::Pending, None, None)
+                    .await;
                 return Ok(());
             }
 
@@ -843,12 +840,9 @@ impl PdfProcessingService {
             } else {
                 if cancel_token.is_cancelled() {
                     info!("[PdfProcessingService] Pipeline cancelled for {}", file_id);
-                    let _ = self.update_processing_status(
-                        file_id,
-                        ProcessingStage::Pending,
-                        None,
-                        None,
-                    ).await;
+                    let _ = self
+                        .update_processing_status(file_id, ProcessingStage::Pending, None, None)
+                        .await;
                     return Ok(());
                 }
 
@@ -927,12 +921,9 @@ impl PdfProcessingService {
         if start_stage <= ProcessingStage::VectorIndexing {
             if cancel_token.is_cancelled() {
                 info!("[PdfProcessingService] Pipeline cancelled for {}", file_id);
-                let _ = self.update_processing_status(
-                    file_id,
-                    ProcessingStage::Pending,
-                    None,
-                    None,
-                ).await;
+                let _ = self
+                    .update_processing_status(file_id, ProcessingStage::Pending, None, None)
+                    .await;
                 return Ok(());
             }
 
@@ -1077,12 +1068,9 @@ impl PdfProcessingService {
         if start_stage <= ProcessingStage::ImageCompression {
             if cancel_token.is_cancelled() {
                 info!("[PdfProcessingService] Pipeline cancelled for {}", file_id);
-                let _ = self.update_processing_status(
-                    file_id,
-                    ProcessingStage::Pending,
-                    None,
-                    None,
-                ).await;
+                let _ = self
+                    .update_processing_status(file_id, ProcessingStage::Pending, None, None)
+                    .await;
                 return Ok(());
             }
 
@@ -1195,12 +1183,9 @@ impl PdfProcessingService {
             );
             if cancel_token.is_cancelled() {
                 info!("[PdfProcessingService] Pipeline cancelled for {}", file_id);
-                let _ = self.update_processing_status(
-                    file_id,
-                    ProcessingStage::Pending,
-                    None,
-                    None,
-                ).await;
+                let _ = self
+                    .update_processing_status(file_id, ProcessingStage::Pending, None, None)
+                    .await;
                 return Ok(());
             }
 
@@ -1318,12 +1303,9 @@ impl PdfProcessingService {
         if start_stage <= ProcessingStage::VectorIndexing && resource_id.is_some() {
             if cancel_token.is_cancelled() {
                 info!("[PdfProcessingService] Pipeline cancelled for {}", file_id);
-                let _ = self.update_processing_status(
-                    file_id,
-                    ProcessingStage::Pending,
-                    None,
-                    None,
-                ).await;
+                let _ = self
+                    .update_processing_status(file_id, ProcessingStage::Pending, None, None)
+                    .await;
                 return Ok(());
             }
 
@@ -2850,7 +2832,11 @@ impl PdfProcessingService {
             }
 
             match llm_manager
-                .call_ocr_page_with_fallback(&path_str, page_index, crate::ocr_adapters::OcrTaskType::FreeText)
+                .call_ocr_page_with_fallback(
+                    &path_str,
+                    page_index,
+                    crate::ocr_adapters::OcrTaskType::FreeText,
+                )
                 .await
             {
                 Ok(cards) => {

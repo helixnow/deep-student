@@ -50,15 +50,14 @@ impl TextbookExportAdapter {
             .ok_or_else(|| DstuError::not_found(resource_id))?;
 
         // 通过 blob_hash 获取 PDF 文件的磁盘路径
-        let blob_hash = textbook.blob_hash.as_deref().ok_or_else(|| {
-            DstuError::Internal(format!("教材 {} 没有关联的 blob", resource_id))
-        })?;
+        let blob_hash = textbook
+            .blob_hash
+            .as_deref()
+            .ok_or_else(|| DstuError::Internal(format!("教材 {} 没有关联的 blob", resource_id)))?;
 
         let blob_path = VfsBlobRepo::get_blob_path(vfs_db, blob_hash)
             .map_err(|e| DstuError::Internal(format!("获取 blob 路径失败: {}", e)))?
-            .ok_or_else(|| {
-                DstuError::Internal(format!("blob {} 文件不存在", blob_hash))
-            })?;
+            .ok_or_else(|| DstuError::Internal(format!("blob {} 文件不存在", blob_hash)))?;
 
         // 验证文件存在
         if !blob_path.exists() {

@@ -35,7 +35,6 @@ impl DocxToolExecutor {
         Self
     }
 
-
     /// 结构化读取 DOCX（输出富 Markdown，保留标题/表格/列表/格式/链接/图片占位）
     async fn execute_read_structured(
         &self,
@@ -276,19 +275,15 @@ impl DocxToolExecutor {
             .get("file_name")
             .and_then(|v| v.as_str())
             .unwrap_or("generated.docx");
-        let folder_id = call
-            .arguments
-            .get("folder_id")
-            .and_then(|v| v.as_str());
+        let folder_id = call.arguments.get("folder_id").and_then(|v| v.as_str());
 
         // spawn_blocking 防止同步生成阻塞 tokio 线程
         let spec = spec.clone();
-        let docx_bytes = tokio::task::spawn_blocking(move || {
-            DocumentParser::generate_docx_from_spec(&spec)
-        })
-        .await
-        .map_err(|e| format!("DOCX 生成任务异常: {}", e))?
-        .map_err(|e| format!("DOCX 生成失败: {}", e))?;
+        let docx_bytes =
+            tokio::task::spawn_blocking(move || DocumentParser::generate_docx_from_spec(&spec))
+                .await
+                .map_err(|e| format!("DOCX 生成任务异常: {}", e))?
+                .map_err(|e| format!("DOCX 生成失败: {}", e))?;
 
         let file_size = docx_bytes.len();
 
@@ -349,7 +344,10 @@ impl DocxToolExecutor {
         // 安全检查：验证路径不包含目录遍历，且文件确实存在
         if let Some(ref path) = file.original_path {
             if crate::unified_file_manager::is_virtual_uri(path) {
-                log::debug!("[DocxToolExecutor] Skipping virtual URI original_path: {}", path);
+                log::debug!(
+                    "[DocxToolExecutor] Skipping virtual URI original_path: {}",
+                    path
+                );
             } else {
                 let p = std::path::Path::new(path);
                 let path_str = path.replace('\\', "/");
@@ -359,8 +357,7 @@ impl DocxToolExecutor {
                         path
                     );
                 } else if p.exists() {
-                    return std::fs::read(p)
-                        .map_err(|e| format!("文件读取失败: {}", e));
+                    return std::fs::read(p).map_err(|e| format!("文件读取失败: {}", e));
                 }
             }
         }
@@ -368,8 +365,7 @@ impl DocxToolExecutor {
         // 从 blob_hash 读取 blob 文件
         if let Some(ref blob_hash) = file.blob_hash {
             if let Ok(Some(blob_path)) = VfsBlobRepo::get_blob_path(vfs_db, blob_hash) {
-                return std::fs::read(&blob_path)
-                    .map_err(|e| format!("Blob 读取失败: {}", e));
+                return std::fs::read(&blob_path).map_err(|e| format!("Blob 读取失败: {}", e));
             }
         }
 
@@ -498,7 +494,9 @@ impl ToolExecutor for DocxToolExecutor {
         let stripped = strip_tool_namespace(tool_name);
         match stripped {
             // 读取操作低敏感
-            "docx_read_structured" | "docx_extract_tables" | "docx_get_metadata"
+            "docx_read_structured"
+            | "docx_extract_tables"
+            | "docx_get_metadata"
             | "docx_to_spec" => ToolSensitivity::Low,
             // 写入/编辑操作中敏感
             "docx_create" | "docx_replace_text" => ToolSensitivity::Medium,

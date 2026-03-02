@@ -331,9 +331,7 @@ impl ChatV2Pipeline {
                 Ok(c) => c,
                 Err(_) => return,
             };
-            if let Ok(Some(session)) =
-                ChatV2Repo::get_session_with_conn(&conn, session_id)
-            {
+            if let Ok(Some(session)) = ChatV2Repo::get_session_with_conn(&conn, session_id) {
                 if session.tags_hash.as_deref() == Some(&content_hash) {
                     log::debug!(
                         "[ChatV2::pipeline] Skip tag generation, hash unchanged: {}",

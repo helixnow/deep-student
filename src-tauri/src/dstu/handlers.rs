@@ -68,8 +68,9 @@ use super::trash_handlers::is_resource_in_trash;
 
 use crate::vfs::{
     repos::VfsMindMapRepo, VfsBlobRepo, VfsCreateEssaySessionParams, VfsCreateExamSheetParams,
-    VfsCreateMindMapParams, VfsCreateNoteParams, VfsDatabase, VfsEssayRepo, VfsExamRepo, VfsFileRepo, VfsFolderItem, VfsFolderRepo, VfsNoteRepo, VfsTextbookRepo,
-    VfsTranslationRepo, VfsUpdateMindMapParams, VfsUpdateNoteParams,
+    VfsCreateMindMapParams, VfsCreateNoteParams, VfsDatabase, VfsEssayRepo, VfsExamRepo,
+    VfsFileRepo, VfsFolderItem, VfsFolderRepo, VfsNoteRepo, VfsTextbookRepo, VfsTranslationRepo,
+    VfsUpdateMindMapParams, VfsUpdateNoteParams,
 };
 
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
@@ -221,7 +222,7 @@ async fn dstu_list_folder_first(
 
     if is_root {
         let _folder_id = "root"; // 用于日志
-                                // 列出根级文件夹
+                                 // 列出根级文件夹
         let root_folders = match crate::vfs::VfsFolderRepo::list_folders_by_parent(vfs_db, None) {
             Ok(folders) => folders,
             Err(e) => return Err(e.to_string()),
@@ -1359,17 +1360,21 @@ pub async fn dstu_delete(
     let resource_id: Option<String> = vfs_db.get_conn_safe().ok().and_then(|conn| {
         let sql = match resource_type.as_str() {
             "notes" | "note" => Some("SELECT resource_id FROM notes WHERE id = ?1"),
-            "textbooks" | "textbook" | "images" | "image" | "files" | "file" | "attachments" | "attachment" =>
-                Some("SELECT resource_id FROM files WHERE id = ?1"),
+            "textbooks" | "textbook" | "images" | "image" | "files" | "file" | "attachments"
+            | "attachment" => Some("SELECT resource_id FROM files WHERE id = ?1"),
             "exams" | "exam" => Some("SELECT resource_id FROM exam_sheets WHERE id = ?1"),
-            "translations" | "translation" => Some("SELECT resource_id FROM translations WHERE id = ?1"),
+            "translations" | "translation" => {
+                Some("SELECT resource_id FROM translations WHERE id = ?1")
+            }
             "mindmaps" | "mindmap" => Some("SELECT resource_id FROM mindmaps WHERE id = ?1"),
             _ => None,
         };
         sql.and_then(|s| {
-            conn.query_row(s, rusqlite::params![id], |row| row.get::<_, Option<String>>(0))
-                .ok()
-                .flatten()
+            conn.query_row(s, rusqlite::params![id], |row| {
+                row.get::<_, Option<String>>(0)
+            })
+            .ok()
+            .flatten()
         })
     });
 
@@ -1384,8 +1389,13 @@ pub async fn dstu_delete(
         let lance_for_cleanup = Arc::clone(lance_store.inner());
         tokio::spawn(async move {
             let _ = lance_for_cleanup.delete_by_resource("text", &rid).await;
-            let _ = lance_for_cleanup.delete_by_resource("multimodal", &rid).await;
-            log::info!("[DSTU::handlers] dstu_delete: cleaned up vectors for {}", rid);
+            let _ = lance_for_cleanup
+                .delete_by_resource("multimodal", &rid)
+                .await;
+            log::info!(
+                "[DSTU::handlers] dstu_delete: cleaned up vectors for {}",
+                rid
+            );
         });
     }
 
@@ -4081,7 +4091,8 @@ pub async fn dstu_purge(
         if !trash_check_type.is_empty() && !is_resource_in_trash(&vfs_db, trash_check_type, &id) {
             log::warn!(
                 "[DSTU::handlers] dstu_purge: REJECTED - resource not in trash, type={}, id={}",
-                resource_type, id
+                resource_type,
+                id
             );
             return Err(format!(
                 "资源 {} (type={}) 不在回收站中，无法永久删除。请先将其移到回收站。",
@@ -4094,17 +4105,21 @@ pub async fn dstu_purge(
     let resource_id: Option<String> = vfs_db.get_conn_safe().ok().and_then(|conn| {
         let sql = match resource_type.as_str() {
             "notes" | "note" => Some("SELECT resource_id FROM notes WHERE id = ?1"),
-            "textbooks" | "textbook" | "images" | "image" | "files" | "file" | "attachments" | "attachment" =>
-                Some("SELECT resource_id FROM files WHERE id = ?1"),
+            "textbooks" | "textbook" | "images" | "image" | "files" | "file" | "attachments"
+            | "attachment" => Some("SELECT resource_id FROM files WHERE id = ?1"),
             "exams" | "exam" => Some("SELECT resource_id FROM exam_sheets WHERE id = ?1"),
-            "translations" | "translation" => Some("SELECT resource_id FROM translations WHERE id = ?1"),
+            "translations" | "translation" => {
+                Some("SELECT resource_id FROM translations WHERE id = ?1")
+            }
             "mindmaps" | "mindmap" => Some("SELECT resource_id FROM mindmaps WHERE id = ?1"),
             _ => None,
         };
         sql.and_then(|s| {
-            conn.query_row(s, rusqlite::params![id], |row| row.get::<_, Option<String>>(0))
-                .ok()
-                .flatten()
+            conn.query_row(s, rusqlite::params![id], |row| {
+                row.get::<_, Option<String>>(0)
+            })
+            .ok()
+            .flatten()
         })
     });
 
@@ -4127,8 +4142,13 @@ pub async fn dstu_purge(
         let lance_for_cleanup = Arc::clone(lance_store.inner());
         tokio::spawn(async move {
             let _ = lance_for_cleanup.delete_by_resource("text", &rid).await;
-            let _ = lance_for_cleanup.delete_by_resource("multimodal", &rid).await;
-            log::info!("[DSTU::handlers] dstu_purge: cleaned up vectors for {}", rid);
+            let _ = lance_for_cleanup
+                .delete_by_resource("multimodal", &rid)
+                .await;
+            log::info!(
+                "[DSTU::handlers] dstu_purge: cleaned up vectors for {}",
+                rid
+            );
         });
     }
 
@@ -4829,7 +4849,9 @@ pub async fn dstu_purge_all(
         tokio::spawn(async move {
             for rid in &resource_ids_to_cleanup {
                 let _ = lance_for_cleanup.delete_by_resource("text", rid).await;
-                let _ = lance_for_cleanup.delete_by_resource("multimodal", rid).await;
+                let _ = lance_for_cleanup
+                    .delete_by_resource("multimodal", rid)
+                    .await;
             }
             log::info!(
                 "[DSTU::handlers] dstu_purge_all: cleaned up vectors for {} resources",
@@ -4900,22 +4922,35 @@ pub async fn dstu_delete_many(
     // ★ P1 修复：在删除前收集 resource_ids，用于事务成功后清理向量索引
     let resource_ids_to_cleanup: Vec<String> = {
         if let Ok(conn) = vfs_db.get_conn_safe() {
-            parsed_items.iter().filter_map(|(_, resource_type, id)| {
-                let sql = match resource_type.as_str() {
-                    "notes" | "note" => Some("SELECT resource_id FROM notes WHERE id = ?1"),
-                    "textbooks" | "textbook" | "images" | "image" | "files" | "file" | "attachments" | "attachment" =>
-                        Some("SELECT resource_id FROM files WHERE id = ?1"),
-                    "exams" | "exam" => Some("SELECT resource_id FROM exam_sheets WHERE id = ?1"),
-                    "translations" | "translation" => Some("SELECT resource_id FROM translations WHERE id = ?1"),
-                    "mindmaps" | "mindmap" => Some("SELECT resource_id FROM mindmaps WHERE id = ?1"),
-                    _ => None,
-                };
-                sql.and_then(|s| {
-                    conn.query_row(s, rusqlite::params![id], |row| row.get::<_, Option<String>>(0))
+            parsed_items
+                .iter()
+                .filter_map(|(_, resource_type, id)| {
+                    let sql = match resource_type.as_str() {
+                        "notes" | "note" => Some("SELECT resource_id FROM notes WHERE id = ?1"),
+                        "textbooks" | "textbook" | "images" | "image" | "files" | "file"
+                        | "attachments" | "attachment" => {
+                            Some("SELECT resource_id FROM files WHERE id = ?1")
+                        }
+                        "exams" | "exam" => {
+                            Some("SELECT resource_id FROM exam_sheets WHERE id = ?1")
+                        }
+                        "translations" | "translation" => {
+                            Some("SELECT resource_id FROM translations WHERE id = ?1")
+                        }
+                        "mindmaps" | "mindmap" => {
+                            Some("SELECT resource_id FROM mindmaps WHERE id = ?1")
+                        }
+                        _ => None,
+                    };
+                    sql.and_then(|s| {
+                        conn.query_row(s, rusqlite::params![id], |row| {
+                            row.get::<_, Option<String>>(0)
+                        })
                         .ok()
                         .flatten()
+                    })
                 })
-            }).collect()
+                .collect()
         } else {
             Vec::new()
         }
@@ -4976,7 +5011,9 @@ pub async fn dstu_delete_many(
         tokio::spawn(async move {
             for rid in &resource_ids_to_cleanup {
                 let _ = lance_for_cleanup.delete_by_resource("text", rid).await;
-                let _ = lance_for_cleanup.delete_by_resource("multimodal", rid).await;
+                let _ = lance_for_cleanup
+                    .delete_by_resource("multimodal", rid)
+                    .await;
             }
             log::info!(
                 "[DSTU::handlers] dstu_delete_many: cleaned up vectors for {} resources",
@@ -5320,8 +5357,14 @@ pub async fn dstu_search_in_folder(
                     }
                 }
                 "translation" => {
-                    if let Ok(Some(t)) = VfsTranslationRepo::get_translation(&vfs_db, &item.item_id) {
-                        if t.title.as_deref().unwrap_or("").to_lowercase().contains(&query_lower) {
+                    if let Ok(Some(t)) = VfsTranslationRepo::get_translation(&vfs_db, &item.item_id)
+                    {
+                        if t.title
+                            .as_deref()
+                            .unwrap_or("")
+                            .to_lowercase()
+                            .contains(&query_lower)
+                        {
                             Some(translation_to_dstu_node(&t))
                         } else {
                             None
@@ -5332,7 +5375,12 @@ pub async fn dstu_search_in_folder(
                 }
                 "exam" => {
                     if let Ok(Some(e)) = VfsExamRepo::get_exam_sheet(&vfs_db, &item.item_id) {
-                        if e.exam_name.as_deref().unwrap_or("").to_lowercase().contains(&query_lower) {
+                        if e.exam_name
+                            .as_deref()
+                            .unwrap_or("")
+                            .to_lowercase()
+                            .contains(&query_lower)
+                        {
                             Some(exam_to_dstu_node(&e))
                         } else {
                             None

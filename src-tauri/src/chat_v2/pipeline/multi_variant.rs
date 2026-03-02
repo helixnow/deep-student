@@ -67,7 +67,10 @@ impl ChatV2Pipeline {
             for ctx_ref in user_refs {
                 // 统计图片块数量
                 for block in &ctx_ref.formatted_blocks {
-                    if matches!(block, super::super::resource_types::ContentBlock::Image { .. }) {
+                    if matches!(
+                        block,
+                        super::super::resource_types::ContentBlock::Image { .. }
+                    ) {
                         image_count += 1;
                     }
                 }
@@ -436,19 +439,20 @@ impl ChatV2Pipeline {
             .collect();
         // ★ 2025-12-10 统一改造：附件不再通过 request.attachments 传递
         let empty_attachments: Vec<crate::chat_v2::types::AttachmentInput> = Vec::new();
-        let save_result = self.save_multi_variant_results(
-            &session_id,
-            &user_message_id,
-            &assistant_message_id,
-            &user_content,
-            &empty_attachments,
-            &options,
-            &shared_context,
-            &contexts_only,
-            active_variant_id.as_deref(),
-            context_snapshot,
-        )
-        .await;
+        let save_result = self
+            .save_multi_variant_results(
+                &session_id,
+                &user_message_id,
+                &assistant_message_id,
+                &user_content,
+                &empty_attachments,
+                &options,
+                &shared_context,
+                &contexts_only,
+                active_variant_id.as_deref(),
+                context_snapshot,
+            )
+            .await;
 
         // === 11. 清理每个变体的 cancel token（无论保存成败都必须执行）===
         if let Some(ref state) = chat_v2_state {
@@ -502,54 +506,84 @@ impl ChatV2Pipeline {
                         let assistant_chars = assistant_content.chars().count();
 
                         // ③ 竞态保护：检查 active variant 的工具结果
-                        let llm_wrote_fact_memory = active_ctx.get_tool_results().iter().any(|tr| {
-                            let name = tr.tool_name.as_str();
-                            let is_memory_tool = matches!(
-                                name.strip_prefix("builtin-").unwrap_or(name),
-                                "memory_write" | "memory_write_smart" | "memory_update_by_id"
-                            );
-                            if !is_memory_tool { return false; }
-                            let is_note = tr.input.get("memory_type")
-                                .and_then(|v| v.as_str())
-                                .map(|t| t == "note")
-                                .unwrap_or(false);
-                            !is_note
-                        });
+                        let llm_wrote_fact_memory =
+                            active_ctx.get_tool_results().iter().any(|tr| {
+                                let name = tr.tool_name.as_str();
+                                let is_memory_tool = matches!(
+                                    name.strip_prefix("builtin-").unwrap_or(name),
+                                    "memory_write" | "memory_write_smart" | "memory_update_by_id"
+                                );
+                                if !is_memory_tool {
+                                    return false;
+                                }
+                                let is_note = tr
+                                    .input
+                                    .get("memory_type")
+                                    .and_then(|v| v.as_str())
+                                    .map(|t| t == "note")
+                                    .unwrap_or(false);
+                                !is_note
+                            });
 
-                        if (user_chars >= min_chars || assistant_chars >= min_chars) && !llm_wrote_fact_memory {
+                        if (user_chars >= min_chars || assistant_chars >= min_chars)
+                            && !llm_wrote_fact_memory
+                        {
                             let llm_mgr = self.llm_manager.clone();
                             tokio::spawn(async move {
-                                use crate::memory::{MemoryAutoExtractor, MemoryCategoryManager, MemoryEvolution, MemoryService};
+                                use crate::memory::{
+                                    MemoryAutoExtractor, MemoryCategoryManager, MemoryEvolution,
+                                    MemoryService,
+                                };
                                 use crate::vfs::lance_store::VfsLanceStore;
 
                                 let lance_store = match VfsLanceStore::new(vfs_db.clone()) {
                                     Ok(s) => std::sync::Arc::new(s),
                                     Err(_) => return,
                                 };
-                                let memory_service = MemoryService::new(vfs_db.clone(), lance_store, llm_mgr.clone());
+                                let memory_service = MemoryService::new(
+                                    vfs_db.clone(),
+                                    lance_store,
+                                    llm_mgr.clone(),
+                                );
 
                                 let extractor = MemoryAutoExtractor::new(llm_mgr.clone());
                                 if let Ok(count) = extractor
-                                    .extract_and_store(&memory_service, &user_content_for_mem, &assistant_content)
+                                    .extract_and_store(
+                                        &memory_service,
+                                        &user_content_for_mem,
+                                        &assistant_content,
+                                    )
                                     .await
                                 {
                                     if count > 0 {
                                         log::info!("[AutoMemory::MultiVariant] Auto-extracted {} memories (frequency={:?})", count, frequency);
-                                        let should_refresh = memory_service.list(None, 500, 0)
+                                        let should_refresh = memory_service
+                                            .list(None, 500, 0)
                                             .map(|all| {
-                                                let t = all.iter().filter(|m| !m.title.starts_with("__")).count();
+                                                let t = all
+                                                    .iter()
+                                                    .filter(|m| !m.title.starts_with("__"))
+                                                    .count();
                                                 frequency.should_refresh_categories(t)
                                             })
                                             .unwrap_or(false);
                                         if should_refresh {
-                                            let cat_mgr = MemoryCategoryManager::new(vfs_db.clone(), llm_mgr.clone());
-                                            let _ = cat_mgr.refresh_all_categories(&memory_service).await;
+                                            let cat_mgr = MemoryCategoryManager::new(
+                                                vfs_db.clone(),
+                                                llm_mgr.clone(),
+                                            );
+                                            let _ = cat_mgr
+                                                .refresh_all_categories(&memory_service)
+                                                .await;
                                         }
                                     }
 
                                     // 自进化：使用共享全局节流，间隔由频率档位决定
                                     let evolution = MemoryEvolution::new(vfs_db);
-                                    evolution.run_throttled(&memory_service, frequency.evolution_interval_ms());
+                                    evolution.run_throttled(
+                                        &memory_service,
+                                        frequency.evolution_interval_ms(),
+                                    );
                                 }
                             });
                         }
@@ -946,7 +980,9 @@ impl ChatV2Pipeline {
         let canvas_note_id = options.canvas_note_id.clone();
         // 🔧 用户可通过 disable_tool_whitelist 关闭白名单检查
         let mut skill_allowed_tools = if options.disable_tool_whitelist.unwrap_or(false) {
-            log::info!("[ChatV2::VariantPipeline] 🔓 Tool whitelist check disabled by user setting");
+            log::info!(
+                "[ChatV2::VariantPipeline] 🔓 Tool whitelist check disabled by user setting"
+            );
             None
         } else {
             options.skill_allowed_tools.clone()
@@ -1327,12 +1363,10 @@ impl ChatV2Pipeline {
         use crate::vfs::lance_store::VfsLanceStore;
 
         let vfs_db = self.vfs_db.as_ref()?;
-        let lance_store = VfsLanceStore::new(vfs_db.clone()).ok().map(std::sync::Arc::new)?;
-        let svc = MemoryService::new(
-            vfs_db.clone(),
-            lance_store,
-            self.llm_manager.clone(),
-        );
+        let lance_store = VfsLanceStore::new(vfs_db.clone())
+            .ok()
+            .map(std::sync::Arc::new)?;
+        let svc = MemoryService::new(vfs_db.clone(), lance_store, self.llm_manager.clone());
 
         let root_id = match svc.get_root_folder_id() {
             Ok(Some(id)) => id,
@@ -1355,7 +1389,10 @@ impl ChatV2Pipeline {
         let combined = sections.join("\n\n");
         if combined.chars().count() > 2000 {
             let truncated: String = combined.chars().take(2000).collect();
-            Some(format!("{}...\n（用户画像已截断，完整信息请使用 memory_search 工具检索）", truncated))
+            Some(format!(
+                "{}...\n（用户画像已截断，完整信息请使用 memory_search 工具检索）",
+                truncated
+            ))
         } else {
             Some(combined)
         }
@@ -2299,289 +2336,288 @@ impl ChatV2Pipeline {
         })?;
 
         let save_result = (|| -> ChatV2Result<()> {
+            // === 1. 保存用户消息 ===
+            let mut user_msg_params =
+                UserMessageParams::new(session_id.to_string(), user_content.to_string())
+                    .with_id(user_message_id.to_string())
+                    .with_attachments(attachments.to_vec())
+                    .with_timestamp(now_ms);
 
-        // === 1. 保存用户消息 ===
-        let mut user_msg_params =
-            UserMessageParams::new(session_id.to_string(), user_content.to_string())
-                .with_id(user_message_id.to_string())
-                .with_attachments(attachments.to_vec())
-                .with_timestamp(now_ms);
-
-        if let Some(snapshot) = context_snapshot.clone() {
-            user_msg_params = user_msg_params.with_context_snapshot(snapshot);
-        }
-
-        let user_msg_result = build_user_message(user_msg_params);
-
-        ChatV2Repo::create_message_with_conn(&conn, &user_msg_result.message)?;
-        ChatV2Repo::create_block_with_conn(&conn, &user_msg_result.block)?;
-
-        // === 2. 🔧 P1修复：保存检索块 ===
-        let mut all_block_ids: Vec<String> = Vec::new();
-        let mut pending_blocks: Vec<MessageBlock> = Vec::new();
-        let mut block_index_counter = 0;
-
-        // 2.1 保存 RAG 检索块
-        if let Some(ref block_id) = shared_context.rag_block_id {
-            if shared_context
-                .rag_sources
-                .as_ref()
-                .map_or(false, |v| !v.is_empty())
-            {
-                let rag_block = MessageBlock {
-                    id: block_id.clone(),
-                    message_id: assistant_message_id.to_string(),
-                    block_type: block_types::RAG.to_string(),
-                    status: block_status::SUCCESS.to_string(),
-                    content: None,
-                    tool_name: None,
-                    tool_input: None,
-                    tool_output: Some(json!({ "sources": shared_context.rag_sources })),
-                    citations: None,
-                    error: None,
-                    started_at: Some(now_ms),
-                    ended_at: Some(now_ms),
-                    // 🔧 检索块使用 now_ms 作为 first_chunk_at
-                    first_chunk_at: Some(now_ms),
-                    block_index: block_index_counter,
-                };
-                pending_blocks.push(rag_block);
-                all_block_ids.push(block_id.clone());
-                block_index_counter += 1;
-            }
-        }
-
-        // 2.2 保存 Memory 检索块
-        if let Some(ref block_id) = shared_context.memory_block_id {
-            if shared_context
-                .memory_sources
-                .as_ref()
-                .map_or(false, |v| !v.is_empty())
-            {
-                let memory_block = MessageBlock {
-                    id: block_id.clone(),
-                    message_id: assistant_message_id.to_string(),
-                    block_type: block_types::MEMORY.to_string(),
-                    status: block_status::SUCCESS.to_string(),
-                    content: None,
-                    tool_name: None,
-                    tool_input: None,
-                    tool_output: Some(json!({ "sources": shared_context.memory_sources })),
-                    citations: None,
-                    error: None,
-                    started_at: Some(now_ms),
-                    ended_at: Some(now_ms),
-                    // 🔧 检索块使用 now_ms 作为 first_chunk_at
-                    first_chunk_at: Some(now_ms),
-                    block_index: block_index_counter,
-                };
-                pending_blocks.push(memory_block);
-                all_block_ids.push(block_id.clone());
-                block_index_counter += 1;
-            }
-        }
-
-        // 2.4 保存 Web 搜索检索块
-        if let Some(ref block_id) = shared_context.web_search_block_id {
-            if shared_context
-                .web_search_sources
-                .as_ref()
-                .map_or(false, |v| !v.is_empty())
-            {
-                let web_block = MessageBlock {
-                    id: block_id.clone(),
-                    message_id: assistant_message_id.to_string(),
-                    block_type: block_types::WEB_SEARCH.to_string(),
-                    status: block_status::SUCCESS.to_string(),
-                    content: None,
-                    tool_name: None,
-                    tool_input: None,
-                    tool_output: Some(json!({ "sources": shared_context.web_search_sources })),
-                    citations: None,
-                    error: None,
-                    started_at: Some(now_ms),
-                    ended_at: Some(now_ms),
-                    // 🔧 检索块使用 now_ms 作为 first_chunk_at
-                    first_chunk_at: Some(now_ms),
-                    block_index: block_index_counter,
-                };
-                pending_blocks.push(web_block);
-                all_block_ids.push(block_id.clone());
-                block_index_counter += 1;
-            }
-        }
-
-        log::debug!(
-            "[ChatV2::pipeline] Multi-variant retrieval blocks saved: {} blocks",
-            block_index_counter
-        );
-
-        // === 3. 收集所有变体块信息 ===
-        let mut variants: Vec<Variant> = Vec::with_capacity(variant_contexts.len());
-
-        for ctx in variant_contexts {
-            let mut block_index = 0;
-
-            // 保存 thinking 块（如果有）
-            if let Some(thinking_block_id) = ctx.get_thinking_block_id() {
-                let thinking_content = ctx.get_accumulated_reasoning();
-                let thinking_block = MessageBlock {
-                    id: thinking_block_id.clone(),
-                    message_id: assistant_message_id.to_string(),
-                    block_type: block_types::THINKING.to_string(),
-                    status: block_status::SUCCESS.to_string(),
-                    content: thinking_content,
-                    tool_name: None,
-                    tool_input: None,
-                    tool_output: None,
-                    citations: None,
-                    error: None,
-                    // 🔧 P3修复：使用 first_chunk_at 作为 started_at（真正的开始时间）
-                    started_at: ctx.get_thinking_first_chunk_at().or(Some(now_ms)),
-                    ended_at: Some(now_ms),
-                    // 🔧 使用 VariantContext 记录的 first_chunk_at 时间戳
-                    first_chunk_at: ctx.get_thinking_first_chunk_at(),
-                    block_index,
-                };
-                pending_blocks.push(thinking_block);
-                all_block_ids.push(thinking_block_id);
-                block_index += 1;
+            if let Some(snapshot) = context_snapshot.clone() {
+                user_msg_params = user_msg_params.with_context_snapshot(snapshot);
             }
 
-            // 收集 content 块
-            if let Some(content_block_id) = ctx.get_content_block_id() {
-                let content = ctx.get_accumulated_content();
-                let content_block = MessageBlock {
-                    id: content_block_id.clone(),
-                    message_id: assistant_message_id.to_string(),
-                    block_type: block_types::CONTENT.to_string(),
-                    status: if ctx.status() == variant_status::SUCCESS {
-                        block_status::SUCCESS.to_string()
-                    } else if ctx.status() == variant_status::ERROR {
-                        block_status::ERROR.to_string()
-                    } else {
-                        block_status::RUNNING.to_string()
-                    },
-                    content: if content.is_empty() {
-                        None
-                    } else {
-                        Some(content)
-                    },
-                    tool_name: None,
-                    tool_input: None,
-                    tool_output: None,
-                    citations: None,
-                    error: ctx.error(),
-                    // 🔧 P3修复：使用 first_chunk_at 作为 started_at（真正的开始时间）
-                    started_at: ctx.get_content_first_chunk_at().or(Some(now_ms)),
-                    ended_at: Some(now_ms),
-                    // 🔧 使用 VariantContext 记录的 first_chunk_at 时间戳
-                    first_chunk_at: ctx.get_content_first_chunk_at(),
-                    block_index,
-                };
-                pending_blocks.push(content_block);
-                all_block_ids.push(content_block_id);
+            let user_msg_result = build_user_message(user_msg_params);
+
+            ChatV2Repo::create_message_with_conn(&conn, &user_msg_result.message)?;
+            ChatV2Repo::create_block_with_conn(&conn, &user_msg_result.block)?;
+
+            // === 2. 🔧 P1修复：保存检索块 ===
+            let mut all_block_ids: Vec<String> = Vec::new();
+            let mut pending_blocks: Vec<MessageBlock> = Vec::new();
+            let mut block_index_counter = 0;
+
+            // 2.1 保存 RAG 检索块
+            if let Some(ref block_id) = shared_context.rag_block_id {
+                if shared_context
+                    .rag_sources
+                    .as_ref()
+                    .map_or(false, |v| !v.is_empty())
+                {
+                    let rag_block = MessageBlock {
+                        id: block_id.clone(),
+                        message_id: assistant_message_id.to_string(),
+                        block_type: block_types::RAG.to_string(),
+                        status: block_status::SUCCESS.to_string(),
+                        content: None,
+                        tool_name: None,
+                        tool_input: None,
+                        tool_output: Some(json!({ "sources": shared_context.rag_sources })),
+                        citations: None,
+                        error: None,
+                        started_at: Some(now_ms),
+                        ended_at: Some(now_ms),
+                        // 🔧 检索块使用 now_ms 作为 first_chunk_at
+                        first_chunk_at: Some(now_ms),
+                        block_index: block_index_counter,
+                    };
+                    pending_blocks.push(rag_block);
+                    all_block_ids.push(block_id.clone());
+                    block_index_counter += 1;
+                }
             }
 
-            // 创建 Variant 结构
-            let variant = ctx.to_variant();
-            variants.push(variant);
+            // 2.2 保存 Memory 检索块
+            if let Some(ref block_id) = shared_context.memory_block_id {
+                if shared_context
+                    .memory_sources
+                    .as_ref()
+                    .map_or(false, |v| !v.is_empty())
+                {
+                    let memory_block = MessageBlock {
+                        id: block_id.clone(),
+                        message_id: assistant_message_id.to_string(),
+                        block_type: block_types::MEMORY.to_string(),
+                        status: block_status::SUCCESS.to_string(),
+                        content: None,
+                        tool_name: None,
+                        tool_input: None,
+                        tool_output: Some(json!({ "sources": shared_context.memory_sources })),
+                        citations: None,
+                        error: None,
+                        started_at: Some(now_ms),
+                        ended_at: Some(now_ms),
+                        // 🔧 检索块使用 now_ms 作为 first_chunk_at
+                        first_chunk_at: Some(now_ms),
+                        block_index: block_index_counter,
+                    };
+                    pending_blocks.push(memory_block);
+                    all_block_ids.push(block_id.clone());
+                    block_index_counter += 1;
+                }
+            }
+
+            // 2.4 保存 Web 搜索检索块
+            if let Some(ref block_id) = shared_context.web_search_block_id {
+                if shared_context
+                    .web_search_sources
+                    .as_ref()
+                    .map_or(false, |v| !v.is_empty())
+                {
+                    let web_block = MessageBlock {
+                        id: block_id.clone(),
+                        message_id: assistant_message_id.to_string(),
+                        block_type: block_types::WEB_SEARCH.to_string(),
+                        status: block_status::SUCCESS.to_string(),
+                        content: None,
+                        tool_name: None,
+                        tool_input: None,
+                        tool_output: Some(json!({ "sources": shared_context.web_search_sources })),
+                        citations: None,
+                        error: None,
+                        started_at: Some(now_ms),
+                        ended_at: Some(now_ms),
+                        // 🔧 检索块使用 now_ms 作为 first_chunk_at
+                        first_chunk_at: Some(now_ms),
+                        block_index: block_index_counter,
+                    };
+                    pending_blocks.push(web_block);
+                    all_block_ids.push(block_id.clone());
+                    block_index_counter += 1;
+                }
+            }
 
             log::debug!(
-                "[ChatV2::pipeline] Saved blocks for variant {}: status={}",
-                ctx.variant_id(),
-                ctx.status()
+                "[ChatV2::pipeline] Multi-variant retrieval blocks saved: {} blocks",
+                block_index_counter
             );
-        }
 
-        // === 4. 保存助手消息（带变体信息）===
-        let assistant_message = ChatMessage {
-            id: assistant_message_id.to_string(),
-            session_id: session_id.to_string(),
-            role: MessageRole::Assistant,
-            block_ids: all_block_ids,
-            timestamp: now_ms,
-            persistent_stable_id: None,
-            parent_id: None,
-            supersedes: None,
-            meta: Some(MessageMeta {
-                model_id: None, // 多变体模式下不设置单一模型
-                chat_params: Some(json!({
-                    "temperature": options.temperature,
-                    "maxTokens": options.max_tokens,
-                    "enableThinking": options.enable_thinking,
-                    "multiVariantMode": true,
-                })),
-                sources: if shared_context.has_sources() {
-                    Some(MessageSources {
-                        rag: shared_context.rag_sources.clone(),
-                        memory: shared_context.memory_sources.clone(),
-                        graph: shared_context.graph_sources.clone(),
-                        web_search: shared_context.web_search_sources.clone(),
-                        multimodal: shared_context.multimodal_sources.clone(),
-                    })
-                } else {
-                    None
-                },
-                tool_results: None,
-                anki_cards: None,
-                // 多变体模式下 usage 为 None（各变体独立记录）
-                usage: None,
-                // 🆕 统一上下文注入系统：多变体模式支持 context_snapshot
-                context_snapshot: context_snapshot.clone(),
-            }),
-            attachments: None,
-            active_variant_id: active_variant_id.map(|s| s.to_string()),
-            variants: Some(variants),
-            shared_context: Some(shared_context.clone()),
-        };
+            // === 3. 收集所有变体块信息 ===
+            let mut variants: Vec<Variant> = Vec::with_capacity(variant_contexts.len());
 
-        ChatV2Repo::create_message_with_conn(&conn, &assistant_message)?;
+            for ctx in variant_contexts {
+                let mut block_index = 0;
 
-        // 🆕 统一上下文注入系统：消息保存后增加资源引用计数
-        // 🆕 VFS 统一存储（2025-12-07）：使用 vfs.db
-        if let Some(ref snapshot) = context_snapshot {
-            if snapshot.has_refs() {
-                if let Some(ref vfs_db) = self.vfs_db {
-                    if let Ok(vfs_conn) = vfs_db.get_conn_safe() {
-                        let resource_ids = snapshot.all_resource_ids();
-                        // 使用同步方法增加引用计数（使用现有连接避免死锁）
-                        for resource_id in &resource_ids {
-                            if let Err(e) =
-                                VfsResourceRepo::increment_ref_with_conn(&vfs_conn, resource_id)
-                            {
-                                log::warn!(
+                // 保存 thinking 块（如果有）
+                if let Some(thinking_block_id) = ctx.get_thinking_block_id() {
+                    let thinking_content = ctx.get_accumulated_reasoning();
+                    let thinking_block = MessageBlock {
+                        id: thinking_block_id.clone(),
+                        message_id: assistant_message_id.to_string(),
+                        block_type: block_types::THINKING.to_string(),
+                        status: block_status::SUCCESS.to_string(),
+                        content: thinking_content,
+                        tool_name: None,
+                        tool_input: None,
+                        tool_output: None,
+                        citations: None,
+                        error: None,
+                        // 🔧 P3修复：使用 first_chunk_at 作为 started_at（真正的开始时间）
+                        started_at: ctx.get_thinking_first_chunk_at().or(Some(now_ms)),
+                        ended_at: Some(now_ms),
+                        // 🔧 使用 VariantContext 记录的 first_chunk_at 时间戳
+                        first_chunk_at: ctx.get_thinking_first_chunk_at(),
+                        block_index,
+                    };
+                    pending_blocks.push(thinking_block);
+                    all_block_ids.push(thinking_block_id);
+                    block_index += 1;
+                }
+
+                // 收集 content 块
+                if let Some(content_block_id) = ctx.get_content_block_id() {
+                    let content = ctx.get_accumulated_content();
+                    let content_block = MessageBlock {
+                        id: content_block_id.clone(),
+                        message_id: assistant_message_id.to_string(),
+                        block_type: block_types::CONTENT.to_string(),
+                        status: if ctx.status() == variant_status::SUCCESS {
+                            block_status::SUCCESS.to_string()
+                        } else if ctx.status() == variant_status::ERROR {
+                            block_status::ERROR.to_string()
+                        } else {
+                            block_status::RUNNING.to_string()
+                        },
+                        content: if content.is_empty() {
+                            None
+                        } else {
+                            Some(content)
+                        },
+                        tool_name: None,
+                        tool_input: None,
+                        tool_output: None,
+                        citations: None,
+                        error: ctx.error(),
+                        // 🔧 P3修复：使用 first_chunk_at 作为 started_at（真正的开始时间）
+                        started_at: ctx.get_content_first_chunk_at().or(Some(now_ms)),
+                        ended_at: Some(now_ms),
+                        // 🔧 使用 VariantContext 记录的 first_chunk_at 时间戳
+                        first_chunk_at: ctx.get_content_first_chunk_at(),
+                        block_index,
+                    };
+                    pending_blocks.push(content_block);
+                    all_block_ids.push(content_block_id);
+                }
+
+                // 创建 Variant 结构
+                let variant = ctx.to_variant();
+                variants.push(variant);
+
+                log::debug!(
+                    "[ChatV2::pipeline] Saved blocks for variant {}: status={}",
+                    ctx.variant_id(),
+                    ctx.status()
+                );
+            }
+
+            // === 4. 保存助手消息（带变体信息）===
+            let assistant_message = ChatMessage {
+                id: assistant_message_id.to_string(),
+                session_id: session_id.to_string(),
+                role: MessageRole::Assistant,
+                block_ids: all_block_ids,
+                timestamp: now_ms,
+                persistent_stable_id: None,
+                parent_id: None,
+                supersedes: None,
+                meta: Some(MessageMeta {
+                    model_id: None, // 多变体模式下不设置单一模型
+                    chat_params: Some(json!({
+                        "temperature": options.temperature,
+                        "maxTokens": options.max_tokens,
+                        "enableThinking": options.enable_thinking,
+                        "multiVariantMode": true,
+                    })),
+                    sources: if shared_context.has_sources() {
+                        Some(MessageSources {
+                            rag: shared_context.rag_sources.clone(),
+                            memory: shared_context.memory_sources.clone(),
+                            graph: shared_context.graph_sources.clone(),
+                            web_search: shared_context.web_search_sources.clone(),
+                            multimodal: shared_context.multimodal_sources.clone(),
+                        })
+                    } else {
+                        None
+                    },
+                    tool_results: None,
+                    anki_cards: None,
+                    // 多变体模式下 usage 为 None（各变体独立记录）
+                    usage: None,
+                    // 🆕 统一上下文注入系统：多变体模式支持 context_snapshot
+                    context_snapshot: context_snapshot.clone(),
+                }),
+                attachments: None,
+                active_variant_id: active_variant_id.map(|s| s.to_string()),
+                variants: Some(variants),
+                shared_context: Some(shared_context.clone()),
+            };
+
+            ChatV2Repo::create_message_with_conn(&conn, &assistant_message)?;
+
+            // 🆕 统一上下文注入系统：消息保存后增加资源引用计数
+            // 🆕 VFS 统一存储（2025-12-07）：使用 vfs.db
+            if let Some(ref snapshot) = context_snapshot {
+                if snapshot.has_refs() {
+                    if let Some(ref vfs_db) = self.vfs_db {
+                        if let Ok(vfs_conn) = vfs_db.get_conn_safe() {
+                            let resource_ids = snapshot.all_resource_ids();
+                            // 使用同步方法增加引用计数（使用现有连接避免死锁）
+                            for resource_id in &resource_ids {
+                                if let Err(e) =
+                                    VfsResourceRepo::increment_ref_with_conn(&vfs_conn, resource_id)
+                                {
+                                    log::warn!(
                                     "[ChatV2::pipeline] Failed to increment ref for resource {}: {}",
                                     resource_id, e
                                 );
+                                }
                             }
-                        }
-                        log::debug!(
+                            log::debug!(
                             "[ChatV2::pipeline] Multi-variant: incremented refs for {} resources in vfs.db",
                             resource_ids.len()
                         );
+                        } else {
+                            log::warn!("[ChatV2::pipeline] Multi-variant: failed to get vfs.db connection for increment refs");
+                        }
                     } else {
-                        log::warn!("[ChatV2::pipeline] Multi-variant: failed to get vfs.db connection for increment refs");
+                        log::warn!("[ChatV2::pipeline] Multi-variant: vfs_db not available, skipping increment refs");
                     }
-                } else {
-                    log::warn!("[ChatV2::pipeline] Multi-variant: vfs_db not available, skipping increment refs");
                 }
             }
-        }
 
-        // === 4. 现在可以安全地创建块了（助手消息已存在）===
-        for block in pending_blocks {
-            ChatV2Repo::create_block_with_conn(&conn, &block)?;
-        }
+            // === 4. 现在可以安全地创建块了（助手消息已存在）===
+            for block in pending_blocks {
+                ChatV2Repo::create_block_with_conn(&conn, &block)?;
+            }
 
-        log::info!(
+            log::info!(
             "[ChatV2::pipeline] Multi-variant results saved: user_msg={}, assistant_msg={}, variants={}",
             user_message_id,
             assistant_message_id,
             variant_contexts.len()
         );
 
-        Ok(())
+            Ok(())
         })(); // 闭包结束
 
         match save_result {
@@ -2603,10 +2639,7 @@ impl ChatV2Pipeline {
                         e
                     );
                 } else {
-                    log::warn!(
-                        "[ChatV2::pipeline] Multi-variant save rolled back: {:?}",
-                        e
-                    );
+                    log::warn!("[ChatV2::pipeline] Multi-variant save rolled back: {:?}", e);
                 }
                 Err(e)
             }

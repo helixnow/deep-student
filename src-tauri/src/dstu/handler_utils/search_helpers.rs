@@ -685,7 +685,10 @@ pub fn search_by_index(
                 let mut metadata = node.metadata.unwrap_or_else(|| serde_json::json!({}));
                 if let Some(map) = metadata.as_object_mut() {
                     map.insert("snippet".to_string(), Value::String(snippet));
-                    map.insert("matchSource".to_string(), Value::String("index".to_string()));
+                    map.insert(
+                        "matchSource".to_string(),
+                        Value::String("index".to_string()),
+                    );
                 }
                 node.metadata = Some(metadata);
             }
@@ -831,7 +834,10 @@ pub fn search_all(
 
     // ★ 索引内容召回：在标题/文件名搜索基础上，追加内容匹配的结果
     let existing_ids: HashSet<String> = results.iter().map(|n| n.id.clone()).collect();
-    let index_limit = options.get_limit().saturating_sub(results.len() as u32).max(20);
+    let index_limit = options
+        .get_limit()
+        .saturating_sub(results.len() as u32)
+        .max(20);
     if let Ok(mut index_results) = search_by_index(vfs_db, query, index_limit, &existing_ids) {
         // S-020: 索引召回结果也需要按 folder_id 过滤
         if let Some(ref ids) = folder_item_ids {

@@ -21,8 +21,7 @@ pub fn migrate_paddle_ocr_models(models: &mut [OcrModelConfig]) -> bool {
     let mut changed = false;
     for model in models.iter_mut() {
         // 跳过显式配置为旧版的引擎（paddle_ocr_vl_v1 故意使用 PaddleOCR-VL）
-        if model.model == "PaddlePaddle/PaddleOCR-VL" && model.engine_type != "paddle_ocr_vl_v1"
-        {
+        if model.model == "PaddlePaddle/PaddleOCR-VL" && model.engine_type != "paddle_ocr_vl_v1" {
             model.model = "PaddlePaddle/PaddleOCR-VL-1.5".to_string();
             if model.name.contains("PaddleOCR-VL") && !model.name.contains("1.5") {
                 model.name = model.name.replace("PaddleOCR-VL", "PaddleOCR-VL-1.5");
@@ -40,9 +39,7 @@ pub fn migrate_paddle_ocr_models(models: &mut [OcrModelConfig]) -> bool {
 pub fn migrate_glm_ocr_models(models: &mut [OcrModelConfig]) -> bool {
     let mut changed = false;
     for model in models.iter_mut() {
-        if model.engine_type == "glm4v_ocr"
-            && model.model.to_lowercase().contains("glm-4.1v")
-        {
+        if model.engine_type == "glm4v_ocr" && model.model.to_lowercase().contains("glm-4.1v") {
             model.model = "zai-org/GLM-4.6V".to_string();
             if model.name.contains("4.1V") || model.name.contains("4.1v") {
                 model.name = model.name.replace("4.1V", "4.6V").replace("4.1v", "4.6V");
@@ -112,13 +109,13 @@ pub async fn get_ocr_thinking_enabled(state: State<'_, AppState>) -> Result<bool
 
 /// 设置 OCR/题目集任务是否启用 VLM 推理
 #[tauri::command]
-pub async fn set_ocr_thinking_enabled(
-    enabled: bool,
-    state: State<'_, AppState>,
-) -> Result<bool> {
+pub async fn set_ocr_thinking_enabled(enabled: bool, state: State<'_, AppState>) -> Result<bool> {
     let db = &state.database;
-    db.save_setting("ocr.enable_thinking", if enabled { "true" } else { "false" })
-        .map_err(|e| AppError::database(format!("保存 OCR 推理配置失败: {}", e)))?;
+    db.save_setting(
+        "ocr.enable_thinking",
+        if enabled { "true" } else { "false" },
+    )
+    .map_err(|e| AppError::database(format!("保存 OCR 推理配置失败: {}", e)))?;
     Ok(true)
 }
 

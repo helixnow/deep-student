@@ -242,10 +242,19 @@ impl WorkspaceDatabase {
     }
 
     pub fn get_connection(&self) -> Result<WorkspacePooledConnection, String> {
-        if self.maintenance_mode.load(std::sync::atomic::Ordering::Acquire) {
-            return Err("Workspace database is in maintenance mode (backup/restore in progress)".to_string());
+        if self
+            .maintenance_mode
+            .load(std::sync::atomic::Ordering::Acquire)
+        {
+            return Err(
+                "Workspace database is in maintenance mode (backup/restore in progress)"
+                    .to_string(),
+            );
         }
-        let pool = self.pool.read().map_err(|e| format!("Pool lock poisoned: {}", e))?;
+        let pool = self
+            .pool
+            .read()
+            .map_err(|e| format!("Pool lock poisoned: {}", e))?;
         pool.get()
             .map_err(|e| format!("Failed to get connection: {}", e))
     }
@@ -275,10 +284,7 @@ impl WorkspaceDatabase {
         })?;
         *guard = mem_pool;
 
-        log::info!(
-            "[WorkspaceDatabase:{}] 已进入维护模式",
-            self.workspace_id
-        );
+        log::info!("[WorkspaceDatabase:{}] 已进入维护模式", self.workspace_id);
         Ok(())
     }
 
@@ -305,10 +311,7 @@ impl WorkspaceDatabase {
         self.maintenance_mode
             .store(false, std::sync::atomic::Ordering::Release);
 
-        log::info!(
-            "[WorkspaceDatabase:{}] 已退出维护模式",
-            self.workspace_id
-        );
+        log::info!("[WorkspaceDatabase:{}] 已退出维护模式", self.workspace_id);
         Ok(())
     }
 

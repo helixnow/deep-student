@@ -26,9 +26,9 @@ use crate::chat_v2::types::{block_status, MessageBlock, ToolCall, ToolResultInfo
 use crate::database::Database;
 use crate::notes_manager::NotesManager;
 use crate::tools::ToolRegistry;
-use crate::vfs::pdf_processing_service::PdfProcessingService;
 use crate::vfs::database::VfsDatabase;
 use crate::vfs::lance_store::VfsLanceStore;
+use crate::vfs::pdf_processing_service::PdfProcessingService;
 
 // ============================================================================
 // 工具敏感等级

@@ -180,7 +180,6 @@ impl PaperSaveExecutor {
         }
     }
 
-
     // ========================================================================
     // paper_save — 批量下载论文到 VFS
     // ========================================================================
@@ -195,11 +194,17 @@ impl PaperSaveExecutor {
             let raw = call.arguments.to_string();
             log::info!(
                 "[PaperSave] execute_paper_save called. args_type={}, args_len={}, preview={}",
-                if call.arguments.is_object() { "object" }
-                else if call.arguments.is_array() { "array" }
-                else if call.arguments.is_string() { "string" }
-                else if call.arguments.is_null() { "null" }
-                else { "other" },
+                if call.arguments.is_object() {
+                    "object"
+                } else if call.arguments.is_array() {
+                    "array"
+                } else if call.arguments.is_string() {
+                    "string"
+                } else if call.arguments.is_null() {
+                    "null"
+                } else {
+                    "other"
+                },
                 raw.len(),
                 &raw[..raw.len().min(300)]
             );
@@ -220,22 +225,35 @@ impl PaperSaveExecutor {
         fn extract_papers_from_value(val: &Value) -> Option<Vec<Value>> {
             // 尝试从 "papers" key 提取
             if let Some(papers_val) = val.get("papers") {
-                let val_type = if papers_val.is_array() { "array" }
-                    else if papers_val.is_string() { "string" }
-                    else if papers_val.is_object() { "object" }
-                    else if papers_val.is_null() { "null" }
-                    else { "other" };
-                log::info!("[PaperSave] Found 'papers' key, value type={}, preview={}", val_type, {
-                    let s = papers_val.to_string();
-                    s[..s.len().min(200)].to_string()
-                });
+                let val_type = if papers_val.is_array() {
+                    "array"
+                } else if papers_val.is_string() {
+                    "string"
+                } else if papers_val.is_object() {
+                    "object"
+                } else if papers_val.is_null() {
+                    "null"
+                } else {
+                    "other"
+                };
+                log::info!(
+                    "[PaperSave] Found 'papers' key, value type={}, preview={}",
+                    val_type,
+                    {
+                        let s = papers_val.to_string();
+                        s[..s.len().min(200)].to_string()
+                    }
+                );
                 if let Some(arr) = papers_val.as_array() {
                     // 正常：{"papers": [...]}
                     return Some(arr.clone());
                 }
                 if let Some(s) = papers_val.as_str() {
                     // 双重编码：{"papers": "[{...}]"} — papers 值是 JSON 字符串
-                    log::warn!("[PaperSave] 'papers' value is a JSON string (len={}), double-decoding", s.len());
+                    log::warn!(
+                        "[PaperSave] 'papers' value is a JSON string (len={}), double-decoding",
+                        s.len()
+                    );
                     if let Ok(inner) = serde_json::from_str::<Value>(s) {
                         if let Some(arr) = inner.as_array() {
                             return Some(arr.clone());
@@ -254,7 +272,9 @@ impl PaperSaveExecutor {
             }
             // 尝试从 "paper" (单数) key 提取
             if let Some(paper_val) = val.get("paper") {
-                log::warn!("[PaperSave] LLM used 'paper' (singular) instead of 'papers', auto-correcting");
+                log::warn!(
+                    "[PaperSave] LLM used 'paper' (singular) instead of 'papers', auto-correcting"
+                );
                 if let Some(arr) = paper_val.as_array() {
                     return Some(arr.clone());
                 }
@@ -292,8 +312,8 @@ impl PaperSaveExecutor {
                 "[PaperSave] arguments is a JSON string (len={}), attempting double-decode",
                 s.len()
             );
-            let parsed: Value =
-                serde_json::from_str(s).map_err(|e| format!("Failed to parse arguments string: {}", e))?;
+            let parsed: Value = serde_json::from_str(s)
+                .map_err(|e| format!("Failed to parse arguments string: {}", e))?;
             papers_owned = extract_papers_from_value(&parsed).ok_or_else(|| {
                 format!(
                     "After double-decode, still missing 'papers' (array). Parsed keys: {:?}",
@@ -350,10 +370,7 @@ impl PaperSaveExecutor {
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
 
-        let vfs_db = ctx
-            .vfs_db
-            .as_ref()
-            .ok_or("VFS database not available")?;
+        let vfs_db = ctx.vfs_db.as_ref().ok_or("VFS database not available")?;
 
         // 初始化进度状态数组
         let mut progress: Vec<PaperProgressItem> = papers
@@ -399,11 +416,7 @@ impl PaperSaveExecutor {
                 }
                 Err(e) => {
                     let title = progress[i].title.clone();
-                    log::warn!(
-                        "[PaperSave] Failed to save paper '{}': {}",
-                        title,
-                        e
-                    );
+                    log::warn!("[PaperSave] Failed to save paper '{}': {}", title, e);
                     progress[i].stage = PaperStage::Error;
                     progress[i].error = Some(e.clone());
                     emit_progress(ctx, &progress);
@@ -417,7 +430,10 @@ impl PaperSaveExecutor {
             }
         }
 
-        let success_count = results.iter().filter(|r| r.get("success").and_then(|v| v.as_bool()).unwrap_or(false)).count();
+        let success_count = results
+            .iter()
+            .filter(|r| r.get("success").and_then(|v| v.as_bool()).unwrap_or(false))
+            .count();
 
         Ok(json!({
             "total": papers.len(),
@@ -667,11 +683,7 @@ impl PaperSaveExecutor {
                     );
                 }
                 Err(e) => {
-                    log::warn!(
-                        "[PaperSave] Index sync failed for file {}: {}",
-                        file.id,
-                        e
-                    );
+                    log::warn!("[PaperSave] Index sync failed for file {}: {}", file.id, e);
                 }
             }
         }
@@ -759,10 +771,7 @@ impl PaperSaveExecutor {
         // 3. DOI → Unpaywall 开放获取
         if let Some(d) = doi {
             if !d.is_empty() {
-                let clean_doi = d
-                    .trim()
-                    .strip_prefix("https://doi.org/")
-                    .unwrap_or(d);
+                let clean_doi = d.trim().strip_prefix("https://doi.org/").unwrap_or(d);
                 match self.resolve_doi_to_pdf(clean_doi).await {
                     Ok(pdf_url) => {
                         if !candidates.iter().any(|(u, _)| u == &pdf_url) {
@@ -770,7 +779,11 @@ impl PaperSaveExecutor {
                         }
                     }
                     Err(e) => {
-                        log::debug!("[PaperSave] Unpaywall resolve failed for DOI '{}': {}", d, e);
+                        log::debug!(
+                            "[PaperSave] Unpaywall resolve failed for DOI '{}': {}",
+                            d,
+                            e
+                        );
                     }
                 }
             }
@@ -782,7 +795,10 @@ impl PaperSaveExecutor {
                 if let Some(id_part) = u.split("arxiv.org/pdf/").nth(1) {
                     let clean = id_part.trim_end_matches(".pdf").trim_end_matches('/');
                     let export_url = format!("https://export.arxiv.org/pdf/{}", clean);
-                    if !candidates.iter().any(|(existing, _)| existing == &export_url) {
+                    if !candidates
+                        .iter()
+                        .any(|(existing, _)| existing == &export_url)
+                    {
                         candidates.push((export_url, "arXiv Export".to_string()));
                     }
                 }
@@ -858,7 +874,11 @@ impl PaperSaveExecutor {
         idx: usize,
     ) -> Result<Vec<u8>, String> {
         // 安全检查：只允许 HTTPS（除 localhost）
-        if !url.starts_with("https://") && !url.starts_with("http://localhost/") && !url.starts_with("http://localhost:") && url != "http://localhost" {
+        if !url.starts_with("https://")
+            && !url.starts_with("http://localhost/")
+            && !url.starts_with("http://localhost:")
+            && url != "http://localhost"
+        {
             return Err(format!("Only HTTPS URLs are allowed: {}", url));
         }
 
@@ -989,7 +1009,10 @@ impl PaperSaveExecutor {
                 "bibtex" => Self::format_bibtex(paper),
                 "gbt7714" => Self::format_gbt7714(paper),
                 "apa" => Self::format_apa(paper),
-                _ => Err(format!("Unsupported format: '{}'. Use 'bibtex', 'gbt7714', or 'apa'.", format)),
+                _ => Err(format!(
+                    "Unsupported format: '{}'. Use 'bibtex', 'gbt7714', or 'apa'.",
+                    format
+                )),
             }?;
             citations.push(json!({
                 "title": paper.get("title").and_then(|v| v.as_str()).unwrap_or(""),
@@ -1006,7 +1029,10 @@ impl PaperSaveExecutor {
 
     /// 格式化为 BibTeX
     fn format_bibtex(paper: &Value) -> Result<String, String> {
-        let title = paper.get("title").and_then(|v| v.as_str()).unwrap_or("Untitled");
+        let title = paper
+            .get("title")
+            .and_then(|v| v.as_str())
+            .unwrap_or("Untitled");
         let year = paper.get("year").and_then(|v| v.as_u64()).unwrap_or(0);
         let doi = paper.get("doi").and_then(|v| v.as_str()).unwrap_or("");
         let venue = paper.get("venue").and_then(|v| v.as_str()).unwrap_or("");
@@ -1047,7 +1073,10 @@ impl PaperSaveExecutor {
 
     /// 格式化为 GB/T 7714
     fn format_gbt7714(paper: &Value) -> Result<String, String> {
-        let title = paper.get("title").and_then(|v| v.as_str()).unwrap_or("Untitled");
+        let title = paper
+            .get("title")
+            .and_then(|v| v.as_str())
+            .unwrap_or("Untitled");
         let year = paper.get("year").and_then(|v| v.as_u64()).unwrap_or(0);
         let doi = paper.get("doi").and_then(|v| v.as_str()).unwrap_or("");
         let venue = paper.get("venue").and_then(|v| v.as_str()).unwrap_or("");
@@ -1085,7 +1114,10 @@ impl PaperSaveExecutor {
 
     /// 格式化为 APA 格式
     fn format_apa(paper: &Value) -> Result<String, String> {
-        let title = paper.get("title").and_then(|v| v.as_str()).unwrap_or("Untitled");
+        let title = paper
+            .get("title")
+            .and_then(|v| v.as_str())
+            .unwrap_or("Untitled");
         let year = paper.get("year").and_then(|v| v.as_u64()).unwrap_or(0);
         let doi = paper.get("doi").and_then(|v| v.as_str()).unwrap_or("");
         let venue = paper.get("venue").and_then(|v| v.as_str()).unwrap_or("");
@@ -1203,11 +1235,7 @@ impl ToolExecutor for PaperSaveExecutor {
         let start_time = Instant::now();
         let tool_name = strip_tool_namespace(&call.name);
 
-        log::debug!(
-            "[PaperSave] Executing: {} (full: {})",
-            tool_name,
-            call.name
-        );
+        log::debug!("[PaperSave] Executing: {} (full: {})", tool_name, call.name);
 
         ctx.emitter.emit_tool_call_start(
             &ctx.message_id,
@@ -1334,10 +1362,7 @@ mod tests {
             sanitize_filename("A Survey of Transformers"),
             "A Survey of Transformers"
         );
-        assert_eq!(
-            sanitize_filename("What/Why:How?"),
-            "What_Why_How_"
-        );
+        assert_eq!(sanitize_filename("What/Why:How?"), "What_Why_How_");
         assert_eq!(
             sanitize_filename("Test <file> \"name\""),
             "Test _file_ _name_"

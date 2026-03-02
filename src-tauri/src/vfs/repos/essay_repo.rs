@@ -1125,7 +1125,9 @@ impl VfsEssayRepo {
     ) -> VfsResult<()> {
         Self::delete_session_with_conn(conn, session_id)?;
         // ★ P0 修复：deleted_at 是 TEXT 列，updated_at 是 INTEGER 列，必须分开处理
-        let now_str = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
+        let now_str = chrono::Utc::now()
+            .format("%Y-%m-%dT%H:%M:%S%.3fZ")
+            .to_string();
         let now_ms = chrono::Utc::now().timestamp_millis();
         conn.execute(
             "UPDATE folder_items SET deleted_at = ?1, updated_at = ?2 WHERE item_type = 'essay' AND item_id = ?3 AND deleted_at IS NULL",
@@ -1422,7 +1424,9 @@ impl VfsEssayRepo {
 
         // 2. 软删除 folder_items（而非硬删除）
         // ★ P0 修复：deleted_at 是 TEXT 列，updated_at 是 INTEGER 列，必须分开处理
-        let now_str = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
+        let now_str = chrono::Utc::now()
+            .format("%Y-%m-%dT%H:%M:%S%.3fZ")
+            .to_string();
         let now_ms = chrono::Utc::now().timestamp_millis();
         conn.execute(
             "UPDATE folder_items SET deleted_at = ?1, updated_at = ?2 WHERE item_type = 'essay' AND item_id = ?3 AND deleted_at IS NULL",

@@ -45,10 +45,16 @@ pub fn encrypt_backup(plaintext: &[u8], password: &str) -> Result<Vec<u8>> {
     let mut nonce_bytes = [0u8; 12];
     OsRng.fill_bytes(&mut nonce_bytes);
 
-    let mut key = derive_key(password, &salt, DEFAULT_M_COST, DEFAULT_T_COST, DEFAULT_P_COST)?;
+    let mut key = derive_key(
+        password,
+        &salt,
+        DEFAULT_M_COST,
+        DEFAULT_T_COST,
+        DEFAULT_P_COST,
+    )?;
 
-    let cipher = Aes256Gcm::new_from_slice(&key)
-        .map_err(|e| anyhow!("创建 AES cipher 失败: {}", e))?;
+    let cipher =
+        Aes256Gcm::new_from_slice(&key).map_err(|e| anyhow!("创建 AES cipher 失败: {}", e))?;
     let nonce = Nonce::from_slice(&nonce_bytes);
 
     let ciphertext = cipher
@@ -92,8 +98,8 @@ pub fn decrypt_backup(data: &[u8], password: &str) -> Result<Vec<u8>> {
 
     let mut key = derive_key(password, salt, m_cost, t_cost, p_cost)?;
 
-    let cipher = Aes256Gcm::new_from_slice(&key)
-        .map_err(|e| anyhow!("创建 AES cipher 失败: {}", e))?;
+    let cipher =
+        Aes256Gcm::new_from_slice(&key).map_err(|e| anyhow!("创建 AES cipher 失败: {}", e))?;
     let nonce = Nonce::from_slice(nonce_bytes);
 
     let plaintext = cipher

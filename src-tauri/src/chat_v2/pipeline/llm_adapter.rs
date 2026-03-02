@@ -177,21 +177,23 @@ impl ChatV2LLMAdapter {
     /// 刷新指定 tool_call_id 的 args delta 缓冲（参数累积完成时调用）
     fn flush_args_delta_buffer(&self, tool_call_id: &str) {
         let block_id = {
-            let mut guard = self.preparing_block_ids.lock().unwrap_or_else(|e| e.into_inner());
+            let mut guard = self
+                .preparing_block_ids
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
             guard.remove(tool_call_id)
         };
         if let Some(block_id) = block_id {
             let chunk = {
-                let mut guard = self.args_delta_buffer.lock().unwrap_or_else(|e| e.into_inner());
+                let mut guard = self
+                    .args_delta_buffer
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner());
                 guard.remove(tool_call_id).unwrap_or_default()
             };
             if !chunk.is_empty() {
-                self.emitter.emit_chunk(
-                    event_types::TOOL_CALL_PREPARING,
-                    &block_id,
-                    &chunk,
-                    None,
-                );
+                self.emitter
+                    .emit_chunk(event_types::TOOL_CALL_PREPARING, &block_id, &chunk, None);
             }
         }
     }
@@ -777,19 +779,29 @@ impl LLMStreamHooks for ChatV2LLMAdapter {
         // 生成 block_id 并存储映射，供后续 args delta chunk 使用
         let block_id = Self::generate_block_id();
         {
-            let mut guard = self.preparing_block_ids.lock().unwrap_or_else(|e| e.into_inner());
+            let mut guard = self
+                .preparing_block_ids
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
             guard.insert(tool_call_id.to_string(), block_id.clone());
         }
 
-        self.emitter
-            .emit_tool_call_preparing(&self.message_id, tool_call_id, tool_name, Some(&block_id));
+        self.emitter.emit_tool_call_preparing(
+            &self.message_id,
+            tool_call_id,
+            tool_name,
+            Some(&block_id),
+        );
     }
 
     /// 工具调用参数流式片段回调（带节流）
     /// 每累积 ≥500 字符发射一次 chunk，避免事件风暴
     fn on_tool_call_args_delta(&self, tool_call_id: &str, delta: &str) {
         let block_id = {
-            let guard = self.preparing_block_ids.lock().unwrap_or_else(|e| e.into_inner());
+            let guard = self
+                .preparing_block_ids
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
             match guard.get(tool_call_id) {
                 Some(id) => id.clone(),
                 None => return,
@@ -797,7 +809,10 @@ impl LLMStreamHooks for ChatV2LLMAdapter {
         };
 
         let should_flush = {
-            let mut guard = self.args_delta_buffer.lock().unwrap_or_else(|e| e.into_inner());
+            let mut guard = self
+                .args_delta_buffer
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
             let entry = guard.entry(tool_call_id.to_string()).or_default();
             entry.push_str(delta);
             entry.len() >= 500
@@ -805,16 +820,15 @@ impl LLMStreamHooks for ChatV2LLMAdapter {
 
         if should_flush {
             let chunk = {
-                let mut guard = self.args_delta_buffer.lock().unwrap_or_else(|e| e.into_inner());
+                let mut guard = self
+                    .args_delta_buffer
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner());
                 guard.remove(tool_call_id).unwrap_or_default()
             };
             if !chunk.is_empty() {
-                self.emitter.emit_chunk(
-                    event_types::TOOL_CALL_PREPARING,
-                    &block_id,
-                    &chunk,
-                    None,
-                );
+                self.emitter
+                    .emit_chunk(event_types::TOOL_CALL_PREPARING, &block_id, &chunk, None);
             }
         }
     }

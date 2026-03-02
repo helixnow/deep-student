@@ -35,9 +35,9 @@ use futures::TryStreamExt;
 #[cfg(feature = "lance")]
 use lancedb::query::{ExecutableQuery, QueryBase};
 #[cfg(feature = "lance")]
-use lancedb::DistanceType;
-#[cfg(feature = "lance")]
 use lancedb::Connection;
+#[cfg(feature = "lance")]
+use lancedb::DistanceType;
 
 /// VL-Embedding 模式的多模态向量表前缀
 pub const MM_PAGES_VL_PREFIX: &str = "mm_pages_v2_vl_d";

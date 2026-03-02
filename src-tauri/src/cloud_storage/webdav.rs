@@ -583,9 +583,7 @@ impl CloudStorage for WebDavStorage {
         while let Some(dir) = dirs_to_visit.pop() {
             visited += 1;
             if visited > MAX_DIRS {
-                tracing::warn!(
-                    "[WebDAV] 递归列举已访问 {MAX_DIRS} 个目录，停止遍历以防异常"
-                );
+                tracing::warn!("[WebDAV] 递归列举已访问 {MAX_DIRS} 个目录，停止遍历以防异常");
                 break;
             }
 

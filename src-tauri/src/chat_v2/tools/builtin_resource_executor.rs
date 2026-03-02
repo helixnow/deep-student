@@ -3353,8 +3353,14 @@ mod tests {
 
     #[test]
     fn test_strip_namespace() {
-        assert_eq!(strip_tool_namespace("builtin-resource_list"), "resource_list");
-        assert_eq!(strip_tool_namespace("builtin-resource_read"), "resource_read");
+        assert_eq!(
+            strip_tool_namespace("builtin-resource_list"),
+            "resource_list"
+        );
+        assert_eq!(
+            strip_tool_namespace("builtin-resource_read"),
+            "resource_read"
+        );
         assert_eq!(strip_tool_namespace("resource_list"), "resource_list");
     }
 

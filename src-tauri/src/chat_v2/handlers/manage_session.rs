@@ -68,11 +68,13 @@ pub async fn chat_v2_create_session(
     // P1-5 fix: Validate target group exists and is active
     if let Some(ref gid) = normalized_group_id {
         let conn = db.get_conn_safe().map_err(|e| e.to_string())?;
-        let group = ChatV2Repo::get_group_with_conn(&conn, gid)
-            .map_err(|e| e.to_string())?;
+        let group = ChatV2Repo::get_group_with_conn(&conn, gid).map_err(|e| e.to_string())?;
         match group {
             Some(g) if g.persist_status != PersistStatus::Active => {
-                log::warn!("[ChatV2::handlers] Ignoring deleted/archived group_id: {}", gid);
+                log::warn!(
+                    "[ChatV2::handlers] Ignoring deleted/archived group_id: {}",
+                    gid
+                );
                 return Err(format!("Group not found or inactive: {}", gid));
             }
             None => {
@@ -369,11 +371,8 @@ pub async fn chat_v2_branch_session(
     }
 
     // 2. 在事务中执行分支
-    let (new_session, resource_ids) = branch_session_in_db(
-        &source_session_id,
-        &up_to_message_id,
-        &db,
-    )?;
+    let (new_session, resource_ids) =
+        branch_session_in_db(&source_session_id, &up_to_message_id, &db)?;
 
     // 3. 事务提交后：增量 VFS 资源引用计数（失败仅告警）
     if !resource_ids.is_empty() {
@@ -386,7 +385,8 @@ pub async fn chat_v2_branch_session(
                         Err(e) => {
                             log::warn!(
                                 "[ChatV2::handlers] Failed to increment ref for {}: {}",
-                                rid, e
+                                rid,
+                                e
                             );
                         }
                     }
@@ -591,8 +591,7 @@ pub async fn chat_v2_empty_deleted_sessions(
     log::info!("[ChatV2::handlers] chat_v2_empty_deleted_sessions");
 
     // ★ 先查出所有待删除的会话 ID，逐个收集资源引用并批量递减
-    let deleted_ids =
-        ChatV2Repo::list_deleted_session_ids(&db).map_err(|e| e.to_string())?;
+    let deleted_ids = ChatV2Repo::list_deleted_session_ids(&db).map_err(|e| e.to_string())?;
 
     if !deleted_ids.is_empty() {
         // 收集所有待删除会话中消息引用的资源 ID（不去重，与递增时对称）
@@ -659,17 +658,14 @@ pub async fn chat_v2_empty_deleted_sessions(
 ///
 /// **不去重**：引用计数是逐消息递增的，必须逐条递减以保持一致。
 /// 失败仅记录警告，不会阻断调用方流程。
-fn decrement_vfs_refs_for_session(
-    db: &ChatV2Database,
-    vfs_db: &VfsDatabase,
-    session_id: &str,
-) {
+fn decrement_vfs_refs_for_session(db: &ChatV2Database, vfs_db: &VfsDatabase, session_id: &str) {
     let messages = match ChatV2Repo::get_session_messages_v2(db, session_id) {
         Ok(msgs) => msgs,
         Err(e) => {
             log::warn!(
                 "[ChatV2::handlers] Failed to load messages for VFS ref decrement (session {}): {}",
-                session_id, e
+                session_id,
+                e
             );
             return;
         }
@@ -691,12 +687,12 @@ fn decrement_vfs_refs_for_session(
 
     match vfs_db.get_conn_safe() {
         Ok(vfs_conn) => {
-            if let Err(e) =
-                VfsResourceRepo::decrement_refs_with_conn(&vfs_conn, &all_resource_ids)
+            if let Err(e) = VfsResourceRepo::decrement_refs_with_conn(&vfs_conn, &all_resource_ids)
             {
                 log::warn!(
                     "[ChatV2::handlers] Failed to decrement refs for session {}: {}",
-                    session_id, e
+                    session_id,
+                    e
                 );
             } else {
                 log::debug!(
@@ -884,7 +880,9 @@ fn branch_session_in_db(
     use std::collections::HashMap;
 
     let mut conn = db.get_conn_safe().map_err(|e| e.to_string())?;
-    let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate).map_err(|e| e.to_string())?;
+    let tx = conn
+        .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+        .map_err(|e| e.to_string())?;
 
     // 1. 加载并校验源会话
     let source_session = ChatV2Repo::get_session_with_conn(&tx, source_session_id)
@@ -1002,7 +1000,12 @@ fn branch_session_in_db(
         let new_block_ids: Vec<String> = msg
             .block_ids
             .iter()
-            .map(|bid| block_id_map.get(bid).cloned().unwrap_or_else(|| bid.clone()))
+            .map(|bid| {
+                block_id_map
+                    .get(bid)
+                    .cloned()
+                    .unwrap_or_else(|| bid.clone())
+            })
             .collect();
 
         // 重映射 parent_id / supersedes
@@ -1023,7 +1026,12 @@ fn branch_session_in_db(
                     let new_var_block_ids: Vec<String> = v
                         .block_ids
                         .iter()
-                        .map(|bid| block_id_map.get(bid).cloned().unwrap_or_else(|| bid.clone()))
+                        .map(|bid| {
+                            block_id_map
+                                .get(bid)
+                                .cloned()
+                                .unwrap_or_else(|| bid.clone())
+                        })
                         .collect();
                     crate::chat_v2::types::Variant {
                         id: crate::chat_v2::types::Variant::generate_id(),
@@ -1040,24 +1048,24 @@ fn branch_session_in_db(
         });
 
         // 重映射 active_variant_id
-        let new_active_variant_id = if let (Some(ref old_active), Some(ref old_variants), Some(ref new_vars)) =
-            (&msg.active_variant_id, &msg.variants, &new_variants)
-        {
-            // 找到旧 active 在旧 variants 中的 index，映射到新 variants 的 id
-            old_variants
-                .iter()
-                .position(|v| &v.id == old_active)
-                .and_then(|idx| new_vars.get(idx))
-                .map(|v| v.id.clone())
-        } else {
-            None
-        };
+        let new_active_variant_id =
+            if let (Some(ref old_active), Some(ref old_variants), Some(ref new_vars)) =
+                (&msg.active_variant_id, &msg.variants, &new_variants)
+            {
+                // 找到旧 active 在旧 variants 中的 index，映射到新 variants 的 id
+                old_variants
+                    .iter()
+                    .position(|v| &v.id == old_active)
+                    .and_then(|idx| new_vars.get(idx))
+                    .map(|v| v.id.clone())
+            } else {
+                None
+            };
 
         // 重映射 shared_context 中的 block_ids
         let new_shared_context = msg.shared_context.as_ref().map(|sc| {
             let remap = |bid: &Option<String>| -> Option<String> {
-                bid.as_ref()
-                    .and_then(|b| block_id_map.get(b).cloned())
+                bid.as_ref().and_then(|b| block_id_map.get(b).cloned())
             };
             crate::chat_v2::types::SharedContext {
                 rag_sources: sc.rag_sources.clone(),
@@ -1130,15 +1138,14 @@ fn branch_session_in_db(
     }
 
     // 10. 复制 session_state（裁剪草稿字段）
-    if let Ok(Some(source_state)) =
-        ChatV2Repo::load_session_state_with_conn(&tx, source_session_id)
+    if let Ok(Some(source_state)) = ChatV2Repo::load_session_state_with_conn(&tx, source_session_id)
     {
         let branched_state = SessionState {
             session_id: new_session_id.clone(),
             chat_params: source_state.chat_params,
             features: source_state.features,
             mode_state: source_state.mode_state,
-            input_value: None, // 清空输入草稿
+            input_value: None,  // 清空输入草稿
             panel_states: None, // 清空面板 UI 状态
             updated_at: now.to_rfc3339(),
             pending_context_refs_json: None, // 清空待发送上下文
@@ -1149,7 +1156,8 @@ fn branch_session_in_db(
     }
 
     // 11. 提交事务
-    tx.commit().map_err(|e| format!("Failed to commit branch transaction: {}", e))?;
+    tx.commit()
+        .map_err(|e| format!("Failed to commit branch transaction: {}", e))?;
 
     log::info!(
         "[ChatV2::handlers] Branch transaction committed: {} messages, {} blocks copied",

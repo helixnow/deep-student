@@ -172,20 +172,18 @@ fn domain_system_prompt(domain: &str) -> &str {
 }
 
 /// 构造翻译 Prompt
-pub fn build_translation_prompts(request: &TranslationRequest) -> Result<(String, String), AppError> {
+pub fn build_translation_prompts(
+    request: &TranslationRequest,
+) -> Result<(String, String), AppError> {
     // System Prompt: 优先使用用户自定义，否则根据领域选择预设
     let mut system_prompt = if let Some(override_prompt) = &request.prompt_override {
         if !override_prompt.trim().is_empty() {
             override_prompt.clone()
         } else {
-            domain_system_prompt(
-                request.domain.as_deref().unwrap_or("general")
-            ).to_string()
+            domain_system_prompt(request.domain.as_deref().unwrap_or("general")).to_string()
         }
     } else {
-        domain_system_prompt(
-            request.domain.as_deref().unwrap_or("general")
-        ).to_string()
+        domain_system_prompt(request.domain.as_deref().unwrap_or("general")).to_string()
     };
 
     // 注入风格控制（当领域已是 casual 时跳过，避免重复指令）
@@ -206,7 +204,9 @@ pub fn build_translation_prompts(request: &TranslationRequest) -> Result<(String
     // 注入术语表
     if let Some(glossary) = &request.glossary {
         if !glossary.is_empty() {
-            system_prompt.push_str("\n\nGlossary (you MUST use these exact translations for the specified terms):");
+            system_prompt.push_str(
+                "\n\nGlossary (you MUST use these exact translations for the specified terms):",
+            );
             for (src, tgt) in glossary {
                 system_prompt.push_str(&format!("\n- \"{}\" → \"{}\"", src, tgt));
             }

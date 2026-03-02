@@ -24,7 +24,9 @@ struct FolderIdCache {
 
 use super::audit_log::{MemoryAuditLogger, MemoryOpSource, MemoryOpType, OpTimer};
 use super::config::MemoryConfig;
-use super::llm_decision::{MemoryDecisionResponse, MemoryEvent, MemoryLLMDecision, SimilarMemorySummary};
+use super::llm_decision::{
+    MemoryDecisionResponse, MemoryEvent, MemoryLLMDecision, SimilarMemorySummary,
+};
 use super::query_rewriter::MemoryQueryRewriter;
 use super::reranker::MemoryReranker;
 
@@ -343,7 +345,10 @@ impl MemoryService {
                 folder_ids: folder_ids.clone(),
             });
         }
-        debug!("[Memory] Folder cache populated: {} folders", folder_ids.len());
+        debug!(
+            "[Memory] Folder cache populated: {} folders",
+            folder_ids.len()
+        );
         Ok(folder_ids)
     }
 
@@ -367,7 +372,11 @@ impl MemoryService {
             auto_create_subfolders: self.config.is_auto_create_subfolders()?,
             default_category: self.config.get_default_category()?,
             privacy_mode: self.config.is_privacy_mode()?,
-            auto_extract_frequency: self.config.get_auto_extract_frequency()?.as_str().to_string(),
+            auto_extract_frequency: self
+                .config
+                .get_auto_extract_frequency()?
+                .as_str()
+                .to_string(),
         })
     }
 
@@ -404,12 +413,21 @@ impl MemoryService {
                         resource_id,
                         &format!("mem_imm_{}", chrono::Utc::now().timestamp_millis()),
                     ) {
-                        warn!("[Memory] Failed to mark indexed after immediate indexing: {}", e);
+                        warn!(
+                            "[Memory] Failed to mark indexed after immediate indexing: {}",
+                            e
+                        );
                     }
-                    info!("[Memory] Immediate indexing succeeded: resource={}, chunks={}", resource_id, chunks);
+                    info!(
+                        "[Memory] Immediate indexing succeeded: resource={}, chunks={}",
+                        resource_id, chunks
+                    );
                 }
                 Err(e) => {
-                    warn!("[Memory] Immediate indexing failed (will retry via pending): {}", e);
+                    warn!(
+                        "[Memory] Immediate indexing failed (will retry via pending): {}",
+                        e
+                    );
                 }
             },
             Err(e) => {
@@ -715,8 +733,16 @@ impl MemoryService {
         title: &str,
         content: &str,
     ) -> VfsResult<SmartWriteOutput> {
-        self.write_smart_with_source(folder_path, title, content, MemoryOpSource::Handler, None, MemoryType::Fact, None)
-            .await
+        self.write_smart_with_source(
+            folder_path,
+            title,
+            content,
+            MemoryOpSource::Handler,
+            None,
+            MemoryType::Fact,
+            None,
+        )
+        .await
     }
 
     /// 智能写入（带来源标记、记忆类型和目的）
@@ -752,7 +778,8 @@ impl MemoryService {
                 if path.is_empty() {
                     Some(root_id.clone())
                 } else {
-                    self.resolve_path_to_folder_id(&root_id, path)?.or(Some(root_id.clone()))
+                    self.resolve_path_to_folder_id(&root_id, path)?
+                        .or(Some(root_id.clone()))
                 }
             } else {
                 Some(root_id.clone())
@@ -768,7 +795,14 @@ impl MemoryService {
                     downgraded: false,
                 });
             }
-            let result = self.write_typed(folder_path, title, content, WriteMode::Create, memory_type, purpose)?;
+            let result = self.write_typed(
+                folder_path,
+                title,
+                content,
+                WriteMode::Create,
+                memory_type,
+                purpose,
+            )?;
             return Ok(SmartWriteOutput {
                 note_id: result.note_id,
                 event: "ADD".to_string(),
@@ -783,7 +817,14 @@ impl MemoryService {
         // Note 类型快速通道：跳过 LLM 决策，直接写入
         // 用户明确要求保存的经验/方法论不需要"是否重复"的判断
         if memory_type == MemoryType::Note {
-            let result = self.write_typed(folder_path, title, content, WriteMode::Create, MemoryType::Note, purpose)?;
+            let result = self.write_typed(
+                folder_path,
+                title,
+                content,
+                WriteMode::Create,
+                MemoryType::Note,
+                purpose,
+            )?;
             self.index_immediately(&result.resource_id).await;
 
             let output = SmartWriteOutput {
@@ -797,7 +838,13 @@ impl MemoryService {
             };
 
             self.audit_logger.log_write_smart_result(
-                source, title, content, folder_path, &output, timer.elapsed_ms(), session_id,
+                source,
+                title,
+                content,
+                folder_path,
+                &output,
+                timer.elapsed_ms(),
+                session_id,
             );
             return Ok(output);
         }
@@ -807,7 +854,10 @@ impl MemoryService {
         let similar_results = match self.search(content, 15).await {
             Ok(r) => r,
             Err(e) => {
-                warn!("[Memory] Similar search failed (embedding unavailable?), skipping dedup: {}", e);
+                warn!(
+                    "[Memory] Similar search failed (embedding unavailable?), skipping dedup: {}",
+                    e
+                );
                 vec![]
             }
         };
@@ -868,7 +918,14 @@ impl MemoryService {
         // 4. 根据决策执行操作
         let result = match decision.event {
             MemoryEvent::ADD => {
-                let result = self.write_typed(folder_path, title, content, WriteMode::Create, memory_type, purpose)?;
+                let result = self.write_typed(
+                    folder_path,
+                    title,
+                    content,
+                    WriteMode::Create,
+                    memory_type,
+                    purpose,
+                )?;
                 self.index_immediately(&result.resource_id).await;
                 Ok(SmartWriteOutput {
                     note_id: result.note_id,
@@ -896,8 +953,14 @@ impl MemoryService {
                             })
                         }
                         Err(VfsError::NotFound { .. }) => {
-                            let result =
-                                self.write_typed(folder_path, title, content, WriteMode::Create, memory_type, purpose)?;
+                            let result = self.write_typed(
+                                folder_path,
+                                title,
+                                content,
+                                WriteMode::Create,
+                                memory_type,
+                                purpose,
+                            )?;
                             self.index_immediately(&result.resource_id).await;
                             Ok(SmartWriteOutput {
                                 note_id: result.note_id,
@@ -915,7 +978,14 @@ impl MemoryService {
                         Err(e) => Err(e),
                     }
                 } else {
-                    let result = self.write_typed(folder_path, title, content, WriteMode::Create, memory_type, purpose)?;
+                    let result = self.write_typed(
+                        folder_path,
+                        title,
+                        content,
+                        WriteMode::Create,
+                        memory_type,
+                        purpose,
+                    )?;
                     self.index_immediately(&result.resource_id).await;
                     Ok(SmartWriteOutput {
                         note_id: result.note_id,
@@ -952,8 +1022,14 @@ impl MemoryService {
                             })
                         }
                         Err(VfsError::NotFound { .. }) => {
-                            let result =
-                                self.write_typed(folder_path, title, content, WriteMode::Create, memory_type, purpose)?;
+                            let result = self.write_typed(
+                                folder_path,
+                                title,
+                                content,
+                                WriteMode::Create,
+                                memory_type,
+                                purpose,
+                            )?;
                             self.index_immediately(&result.resource_id).await;
                             Ok(SmartWriteOutput {
                                 note_id: result.note_id,
@@ -971,7 +1047,14 @@ impl MemoryService {
                         Err(e) => Err(e),
                     }
                 } else {
-                    let result = self.write_typed(folder_path, title, content, WriteMode::Create, memory_type, purpose)?;
+                    let result = self.write_typed(
+                        folder_path,
+                        title,
+                        content,
+                        WriteMode::Create,
+                        memory_type,
+                        purpose,
+                    )?;
                     self.index_immediately(&result.resource_id).await;
                     Ok(SmartWriteOutput {
                         note_id: result.note_id,
@@ -987,11 +1070,21 @@ impl MemoryService {
             MemoryEvent::DELETE => {
                 if let Some(target_id) = decision.target_note_id {
                     if let Err(e) = self.delete(&target_id).await {
-                        warn!("[Memory] DELETE target {} failed: {}, proceeding with ADD", target_id, e);
+                        warn!(
+                            "[Memory] DELETE target {} failed: {}, proceeding with ADD",
+                            target_id, e
+                        );
                     } else {
                         info!("[Memory] DELETE conflicting memory: {}", target_id);
                     }
-                    let result = self.write_typed(folder_path, title, content, WriteMode::Create, memory_type, purpose)?;
+                    let result = self.write_typed(
+                        folder_path,
+                        title,
+                        content,
+                        WriteMode::Create,
+                        memory_type,
+                        purpose,
+                    )?;
                     self.index_immediately(&result.resource_id).await;
                     Ok(SmartWriteOutput {
                         note_id: result.note_id,
@@ -1003,7 +1096,14 @@ impl MemoryService {
                         downgraded: false,
                     })
                 } else {
-                    let result = self.write_typed(folder_path, title, content, WriteMode::Create, memory_type, purpose)?;
+                    let result = self.write_typed(
+                        folder_path,
+                        title,
+                        content,
+                        WriteMode::Create,
+                        memory_type,
+                        purpose,
+                    )?;
                     self.index_immediately(&result.resource_id).await;
                     Ok(SmartWriteOutput {
                         note_id: result.note_id,
@@ -1088,7 +1188,11 @@ impl MemoryService {
         };
 
         let reranker = MemoryReranker::new(self.llm_manager.clone()).await;
-        let retrieval_k = if reranker.has_reranker_api() { top_k * 2 } else { top_k };
+        let retrieval_k = if reranker.has_reranker_api() {
+            top_k * 2
+        } else {
+            top_k
+        };
 
         let results = self.search(&final_query, retrieval_k).await?;
 
@@ -1329,7 +1433,8 @@ impl MemoryService {
                     params![title, rid],
                     |row| {
                         let tags_json: String = row.get(3)?;
-                        let tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
+                        let tags: Vec<String> =
+                            serde_json::from_str(&tags_json).unwrap_or_default();
                         Ok(VfsNote {
                             id: row.get(0)?,
                             resource_id: row.get(1)?,
@@ -1530,7 +1635,10 @@ impl MemoryService {
             VfsNoteRepo::update_note(
                 &self.vfs_db,
                 note_id_a,
-                VfsUpdateNoteParams { tags: Some(tags_a), ..Default::default() },
+                VfsUpdateNoteParams {
+                    tags: Some(tags_a),
+                    ..Default::default()
+                },
             )?;
         }
 
@@ -1540,7 +1648,10 @@ impl MemoryService {
             VfsNoteRepo::update_note(
                 &self.vfs_db,
                 note_id_b,
-                VfsUpdateNoteParams { tags: Some(tags_b), ..Default::default() },
+                VfsUpdateNoteParams {
+                    tags: Some(tags_b),
+                    ..Default::default()
+                },
             )?;
         }
 
@@ -1573,18 +1684,32 @@ impl MemoryService {
         let ref_tag_ab = format!("{}{}", TAG_REF_PREFIX, note_id_b);
         let ref_tag_ba = format!("{}{}", TAG_REF_PREFIX, note_id_a);
 
-        let tags_a: Vec<String> = note_a.tags.into_iter().filter(|t| t != &ref_tag_ab).collect();
+        let tags_a: Vec<String> = note_a
+            .tags
+            .into_iter()
+            .filter(|t| t != &ref_tag_ab)
+            .collect();
         VfsNoteRepo::update_note(
             &self.vfs_db,
             note_id_a,
-            VfsUpdateNoteParams { tags: Some(tags_a), ..Default::default() },
+            VfsUpdateNoteParams {
+                tags: Some(tags_a),
+                ..Default::default()
+            },
         )?;
 
-        let tags_b: Vec<String> = note_b.tags.into_iter().filter(|t| t != &ref_tag_ba).collect();
+        let tags_b: Vec<String> = note_b
+            .tags
+            .into_iter()
+            .filter(|t| t != &ref_tag_ba)
+            .collect();
         VfsNoteRepo::update_note(
             &self.vfs_db,
             note_id_b,
-            VfsUpdateNoteParams { tags: Some(tags_b), ..Default::default() },
+            VfsUpdateNoteParams {
+                tags: Some(tags_b),
+                ..Default::default()
+            },
         )?;
 
         info!("[Memory] Removed relation: {} <-> {}", note_id_a, note_id_b);
@@ -1611,7 +1736,8 @@ impl MemoryService {
     /// 获取与指定记忆关联的所有记忆 ID
     pub fn get_related_ids(&self, note_id: &str) -> VfsResult<Vec<String>> {
         let note = self.ensure_note_in_memory_root(note_id)?;
-        Ok(note.tags
+        Ok(note
+            .tags
             .iter()
             .filter_map(|t| t.strip_prefix(TAG_REF_PREFIX).map(|s| s.to_string()))
             .collect())
@@ -1628,11 +1754,14 @@ impl MemoryService {
     pub fn update_tags(&self, note_id: &str, user_tags: Vec<String>) -> VfsResult<()> {
         let note = self.ensure_note_in_memory_root(note_id)?;
 
-        let system_tags: Vec<String> = note.tags.iter()
+        let system_tags: Vec<String> = note
+            .tags
+            .iter()
             .filter(|t| t.starts_with('_'))
             .cloned()
             .collect();
-        let filtered_user_tags: Vec<String> = user_tags.into_iter()
+        let filtered_user_tags: Vec<String> = user_tags
+            .into_iter()
             .filter(|t| !t.starts_with('_'))
             .collect();
 
@@ -1647,7 +1776,10 @@ impl MemoryService {
                 ..Default::default()
             },
         )?;
-        info!("[Memory] Updated user tags for note {} (system tags preserved)", note_id);
+        info!(
+            "[Memory] Updated user tags for note {} (system tags preserved)",
+            note_id
+        );
 
         self.audit_logger.log(&super::audit_log::MemoryAuditEntry {
             source: MemoryOpSource::Handler,
@@ -1779,8 +1911,8 @@ impl MemoryService {
         };
         if let Some(sys_id) = self.find_system_folder_id(&root_id)? {
             if let Some(note) = self.find_note_by_title(Some(&sys_id), PROFILE_NOTE_TITLE)? {
-                let content = VfsNoteRepo::get_note_content(&self.vfs_db, &note.id)?
-                    .unwrap_or_default();
+                let content =
+                    VfsNoteRepo::get_note_content(&self.vfs_db, &note.id)?.unwrap_or_default();
                 if !content.is_empty() {
                     return Ok(Some(content));
                 }
@@ -1788,9 +1920,13 @@ impl MemoryService {
         }
         match self.find_note_by_title(Some(&root_id), PROFILE_NOTE_TITLE)? {
             Some(note) => {
-                let content = VfsNoteRepo::get_note_content(&self.vfs_db, &note.id)?
-                    .unwrap_or_default();
-                if content.is_empty() { Ok(None) } else { Ok(Some(content)) }
+                let content =
+                    VfsNoteRepo::get_note_content(&self.vfs_db, &note.id)?.unwrap_or_default();
+                if content.is_empty() {
+                    Ok(None)
+                } else {
+                    Ok(Some(content))
+                }
             }
             None => Ok(None),
         }
@@ -1823,9 +1959,12 @@ impl MemoryService {
                 facts.push((&mem.folder_path, format!("[经验笔记] {}", mem.title)));
                 continue;
             }
-            let content = VfsNoteRepo::get_note_content(&self.vfs_db, &mem.id)?
-                .unwrap_or_default();
-            let text = if !content.is_empty() { content } else { mem.title.clone() };
+            let content = VfsNoteRepo::get_note_content(&self.vfs_db, &mem.id)?.unwrap_or_default();
+            let text = if !content.is_empty() {
+                content
+            } else {
+                mem.title.clone()
+            };
             facts.push((&mem.folder_path, text));
         }
 
@@ -1864,7 +2003,10 @@ impl MemoryService {
                     &profile_note.resource_id,
                     "system profile note",
                 ) {
-                    warn!("[Memory] Failed to disable indexing for profile note: {}", e);
+                    warn!(
+                        "[Memory] Failed to disable indexing for profile note: {}",
+                        e
+                    );
                 }
                 debug!("[Memory] Profile summary created ({} facts)", facts.len());
             }
@@ -1878,7 +2020,8 @@ impl MemoryService {
     /// LLM 结构化聚合由 CategoryManager 负责（生成 __cat_*__ 分类文件）。
     /// 此方法按记忆自身的 folder_path 分组，作为 system prompt 注入的回退。
     fn generate_structured_profile(facts: &[(&str, String)]) -> String {
-        let mut grouped: std::collections::BTreeMap<&str, Vec<&str>> = std::collections::BTreeMap::new();
+        let mut grouped: std::collections::BTreeMap<&str, Vec<&str>> =
+            std::collections::BTreeMap::new();
         for (folder, text) in facts {
             let key = if folder.is_empty() { "其他" } else { folder };
             grouped.entry(key).or_default().push(text);
@@ -1905,7 +2048,10 @@ impl MemoryService {
             Err(_) => return,
         };
         if let Err(e) = conn.execute_batch("BEGIN IMMEDIATE") {
-            warn!("[Memory] Failed to begin transaction for search hits: {}", e);
+            warn!(
+                "[Memory] Failed to begin transaction for search hits: {}",
+                e
+            );
             return;
         }
         for note_id in note_ids {
@@ -1917,8 +2063,7 @@ impl MemoryService {
                 )
                 .ok();
             let Some(tags_json) = tags_json else { continue };
-            let mut tags: Vec<String> =
-                serde_json::from_str(&tags_json).unwrap_or_default();
+            let mut tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
 
             let mut hits: u32 = 1;
             tags.retain(|t| {
@@ -1941,7 +2086,10 @@ impl MemoryService {
                 "UPDATE notes SET tags = ?1 WHERE id = ?2",
                 params![new_tags_json, note_id],
             ) {
-                warn!("[Memory] Failed to record search hit for {}: {}", note_id, e);
+                warn!(
+                    "[Memory] Failed to record search hit for {}: {}",
+                    note_id, e
+                );
             }
         }
         if let Err(e) = conn.execute_batch("COMMIT") {
@@ -1956,10 +2104,7 @@ impl MemoryService {
         for r in results.iter_mut() {
             let age_days = if let Some(ref ts) = r.updated_at {
                 if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(ts) {
-                    (now - dt.with_timezone(&chrono::Utc))
-                        .num_seconds()
-                        .max(0) as f64
-                        / 86400.0
+                    (now - dt.with_timezone(&chrono::Utc)).num_seconds().max(0) as f64 / 86400.0
                 } else if let Ok(ms) = ts.parse::<f64>() {
                     ((now_ms - ms) / (1000.0 * 86400.0)).max(0.0)
                 } else {
@@ -1971,7 +2116,11 @@ impl MemoryService {
             let decay = (0.5_f64).powf(age_days / TIME_DECAY_HALF_LIFE_DAYS);
             r.score *= decay as f32;
         }
-        results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        results.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
     }
 }
 

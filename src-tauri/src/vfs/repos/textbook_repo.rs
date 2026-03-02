@@ -1019,7 +1019,9 @@ impl VfsTextbookRepo {
         // 2. 软删除 folder_items 记录（而不是硬删除）
         // Migration032 后统一使用 'file' 类型
         // ★ P0 修复：deleted_at 是 TEXT 列，updated_at 是 INTEGER 列，必须分开处理
-        let now_str = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
+        let now_str = chrono::Utc::now()
+            .format("%Y-%m-%dT%H:%M:%S%.3fZ")
+            .to_string();
         let now_ms = chrono::Utc::now().timestamp_millis();
         conn.execute(
             "UPDATE folder_items SET deleted_at = ?1, updated_at = ?2 WHERE item_type = 'file' AND item_id = ?3 AND deleted_at IS NULL",

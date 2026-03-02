@@ -34,7 +34,10 @@ impl AutoExtractFrequency {
             "balanced" => Self::Balanced,
             "aggressive" => Self::Aggressive,
             other => {
-                warn!("[Memory::Config] Unknown auto_extract_frequency '{}', defaulting to Balanced", other);
+                warn!(
+                    "[Memory::Config] Unknown auto_extract_frequency '{}', defaulting to Balanced",
+                    other
+                );
                 Self::Balanced
             }
         }
@@ -224,10 +227,22 @@ mod tests {
 
     #[test]
     fn test_auto_extract_frequency() {
-        assert_eq!(AutoExtractFrequency::from_str_lossy("off"), AutoExtractFrequency::Off);
-        assert_eq!(AutoExtractFrequency::from_str_lossy("balanced"), AutoExtractFrequency::Balanced);
-        assert_eq!(AutoExtractFrequency::from_str_lossy("aggressive"), AutoExtractFrequency::Aggressive);
-        assert_eq!(AutoExtractFrequency::from_str_lossy("unknown"), AutoExtractFrequency::Balanced);
+        assert_eq!(
+            AutoExtractFrequency::from_str_lossy("off"),
+            AutoExtractFrequency::Off
+        );
+        assert_eq!(
+            AutoExtractFrequency::from_str_lossy("balanced"),
+            AutoExtractFrequency::Balanced
+        );
+        assert_eq!(
+            AutoExtractFrequency::from_str_lossy("aggressive"),
+            AutoExtractFrequency::Aggressive
+        );
+        assert_eq!(
+            AutoExtractFrequency::from_str_lossy("unknown"),
+            AutoExtractFrequency::Balanced
+        );
         assert_eq!(AutoExtractFrequency::Off.as_str(), "off");
         assert_eq!(AutoExtractFrequency::Balanced.content_min_chars(), 10);
         assert_eq!(AutoExtractFrequency::Aggressive.content_min_chars(), 4);

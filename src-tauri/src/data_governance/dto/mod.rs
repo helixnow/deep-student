@@ -92,13 +92,6 @@
 
 // 重新导出用于类型生成的宏
 #[cfg(feature = "data_governance")]
-// 重新导出所有需要的响应类型，方便统一访问
-pub use super::commands_types::{
-    AuditLogResponse, DatabaseDetailResponse, DatabaseHealthStatus, DatabaseStatusResponse,
-    HealthCheckResponse, MigrationDatabaseStatus, MigrationRecordResponse, MigrationStatusResponse,
-    SchemaRegistryResponse,
-};
-#[cfg(feature = "data_governance")]
 pub use super::commands_backup::{
     BackupInfoResponse, BackupResultResponse, BackupVerifyResponse, DatabaseVerifyStatus,
 };
@@ -109,6 +102,13 @@ pub use super::commands_sync::{
     ConflictDetectionResponse, DatabaseConflictResponse, DatabaseSyncStatusResponse,
     SyncExecutionResponse, SyncExportData, SyncExportResponse, SyncImportResponse,
     SyncResultResponse, SyncStatusResponse,
+};
+#[cfg(feature = "data_governance")]
+// 重新导出所有需要的响应类型，方便统一访问
+pub use super::commands_types::{
+    AuditLogResponse, DatabaseDetailResponse, DatabaseHealthStatus, DatabaseStatusResponse,
+    HealthCheckResponse, MigrationDatabaseStatus, MigrationRecordResponse, MigrationStatusResponse,
+    SchemaRegistryResponse,
 };
 
 pub use super::sync::{

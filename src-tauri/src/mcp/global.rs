@@ -390,7 +390,10 @@ pub async fn create_stdio_transport(
                                 log::warn!("MCP stdout indicates Content-Length framing while configured JSONL → fallback to Content-Length framing");
                                 // 手动处理第一条消息：从已消费的 header 行解析 content_length
                                 let first_ok = 'first: {
-                                    let cl_value = trimmed.strip_prefix("Content-Length:").unwrap_or("0").trim();
+                                    let cl_value = trimmed
+                                        .strip_prefix("Content-Length:")
+                                        .unwrap_or("0")
+                                        .trim();
                                     let content_length: usize = match cl_value.parse() {
                                         Ok(v) if v > 0 => v,
                                         _ => {
@@ -404,7 +407,9 @@ pub async fn create_stdio_transport(
                                         match reader.read_line(&mut buffer).await {
                                             Ok(0) => break 'first false,
                                             Ok(_) => {
-                                                if buffer.trim().is_empty() { break; }
+                                                if buffer.trim().is_empty() {
+                                                    break;
+                                                }
                                                 // 其他 header 行（如 Content-Type）跳过
                                             }
                                             Err(e) => {
@@ -420,7 +425,9 @@ pub async fn create_stdio_transport(
                                         break 'first false;
                                     }
                                     match String::from_utf8(body) {
-                                        Ok(msg) => { let _ = recv_tx_clone.send(msg); }
+                                        Ok(msg) => {
+                                            let _ = recv_tx_clone.send(msg);
+                                        }
                                         Err(e) => {
                                             log::error!("Invalid UTF-8 in fallback body: {}", e);
                                             break 'first false;
@@ -428,7 +435,9 @@ pub async fn create_stdio_transport(
                                     }
                                     true
                                 };
-                                if !first_ok { break; }
+                                if !first_ok {
+                                    break;
+                                }
                                 // 后续消息正常 Content-Length 解帧
                                 loop {
                                     match read_content_length_message(&mut reader).await {

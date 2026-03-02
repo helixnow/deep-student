@@ -325,10 +325,11 @@ impl WorkspaceCoordinator {
 
         // worker 进入终态时，尝试通过状态信号唤醒 coordinator，避免仅靠 timeout 恢复
         if matches!(status, AgentStatus::Completed | AgentStatus::Failed) {
-            match instance
-                .sleep_manager
-                .check_and_wake_by_agent_status(workspace_id, session_id, &status)
-            {
+            match instance.sleep_manager.check_and_wake_by_agent_status(
+                workspace_id,
+                session_id,
+                &status,
+            ) {
                 Ok(awakened) => {
                     for wake_info in awakened {
                         self.emitter.emit_coordinator_awakened(

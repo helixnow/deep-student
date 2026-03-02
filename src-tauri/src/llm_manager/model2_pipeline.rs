@@ -2,10 +2,7 @@
 //!
 //! 从 llm_manager.rs 拆分的流式和非流式对话管线
 
-use crate::models::{
-    AppError, ChatMessage, StandardModel2Output,
-    StreamChunk,
-};
+use crate::models::{AppError, ChatMessage, StandardModel2Output, StreamChunk};
 use crate::providers::ProviderAdapter;
 use crate::reasoning_policy::{
     get_passback_policy, requires_reasoning_passback, ReasoningPassbackPolicy,
@@ -936,24 +933,27 @@ impl LLMManager {
         }
         // 🆕 检测合成的 load_skills 工具交互是否出现在请求消息中
         {
-            let synthetic_count = messages.iter().filter(|m| {
-                // 检测 assistant 消息中包含 load_skills tool_call
-                if let Some(tool_calls) = m.get("tool_calls").and_then(|v| v.as_array()) {
-                    tool_calls.iter().any(|tc| {
-                        tc.get("function")
-                            .and_then(|f| f.get("name"))
-                            .and_then(|n| n.as_str())
-                            .map_or(false, |name| name == "load_skills")
-                    })
-                } else if m.get("role").and_then(|r| r.as_str()) == Some("tool") {
-                    // 检测 tool 消息中包含 skill_loaded 标记
-                    m.get("content")
-                        .and_then(|c| c.as_str())
-                        .map_or(false, |c| c.contains("<skill_loaded"))
-                } else {
-                    false
-                }
-            }).count();
+            let synthetic_count = messages
+                .iter()
+                .filter(|m| {
+                    // 检测 assistant 消息中包含 load_skills tool_call
+                    if let Some(tool_calls) = m.get("tool_calls").and_then(|v| v.as_array()) {
+                        tool_calls.iter().any(|tc| {
+                            tc.get("function")
+                                .and_then(|f| f.get("name"))
+                                .and_then(|n| n.as_str())
+                                .map_or(false, |name| name == "load_skills")
+                        })
+                    } else if m.get("role").and_then(|r| r.as_str()) == Some("tool") {
+                        // 检测 tool 消息中包含 skill_loaded 标记
+                        m.get("content")
+                            .and_then(|c| c.as_str())
+                            .map_or(false, |c| c.contains("<skill_loaded"))
+                    } else {
+                        false
+                    }
+                })
+                .count();
             if synthetic_count > 0 {
                 info!(
                     "[LLM_AUDIT] 请求体包含 {} 条合成 load_skills 工具消息（总消息数: {}）",
@@ -1393,11 +1393,7 @@ impl LLMManager {
 
                                             pending_tool_calls.insert(
                                                 index,
-                                                (
-                                                    id.to_string(),
-                                                    name.to_string(),
-                                                    args,
-                                                ),
+                                                (id.to_string(), name.to_string(), args),
                                             );
                                             // 🆕 2026-01-15: 工具调用参数开始累积时通知前端
                                             // 让前端立即显示"正在准备工具调用"状态
@@ -1422,7 +1418,10 @@ impl LLMManager {
                                                     } else if a.is_null() {
                                                         None
                                                     } else {
-                                                        Some(serde_json::to_string(a).unwrap_or_default())
+                                                        Some(
+                                                            serde_json::to_string(a)
+                                                                .unwrap_or_default(),
+                                                        )
                                                     }
                                                 });
                                             if let Some(args_fragment) = args_fragment_opt {
@@ -1669,7 +1668,11 @@ impl LLMManager {
                         captured_tool_calls.push(tc);
                     }
                     Err(e) => {
-                        warn!("[llm_manager] 工具调用解析失败(fallback): {}, args_len={}", e, accumulated_args.len());
+                        warn!(
+                            "[llm_manager] 工具调用解析失败(fallback): {}, args_len={}",
+                            e,
+                            accumulated_args.len()
+                        );
                         captured_tool_calls.push(crate::models::ToolCall {
                             id: id.clone(),
                             tool_name: name.clone(),
@@ -1690,7 +1693,10 @@ impl LLMManager {
                     .iter()
                     .map(|tc| tc.tool_name.as_str())
                     .collect();
-                info!("[llm_manager] Fallback tool call finalize completed: {:?}", names);
+                info!(
+                    "[llm_manager] Fallback tool call finalize completed: {:?}",
+                    names
+                );
             }
             pending_tool_calls.clear();
         }
@@ -2184,7 +2190,8 @@ impl LLMManager {
                 // 为不支持工具的模型主动调用RAG/智能记忆工具并注入上下文
                 let inject_texts: Vec<String> = Vec::new();
 
-                if let Some(_last_user_msg) = chat_history.iter().filter(|m| m.role == "user").last()
+                if let Some(_last_user_msg) =
+                    chat_history.iter().filter(|m| m.role == "user").last()
                 {
                     let memory_enabled_effective = context
                         .get("memory_enabled")
@@ -2523,11 +2530,7 @@ impl LLMManager {
 
                                             pending_tool_calls.insert(
                                                 index,
-                                                (
-                                                    id.to_string(),
-                                                    name.to_string(),
-                                                    args,
-                                                ),
+                                                (id.to_string(), name.to_string(), args),
                                             );
                                             // 简化日志：工具调用开始时输出一次
                                             print!("🔧");
@@ -2547,7 +2550,10 @@ impl LLMManager {
                                                     } else if a.is_null() {
                                                         None
                                                     } else {
-                                                        Some(serde_json::to_string(a).unwrap_or_default())
+                                                        Some(
+                                                            serde_json::to_string(a)
+                                                                .unwrap_or_default(),
+                                                        )
                                                     }
                                                 });
                                             if let Some(args_fragment) = args_fragment_opt {
@@ -3830,7 +3836,8 @@ impl LLMManager {
         image_payloads: Option<Vec<ImagePayload>>,
     ) -> Result<StandardModel2Output> {
         let config = self.get_model2_config().await?;
-        self.call_raw_prompt_with_config(config, user_prompt, image_payloads).await
+        self.call_raw_prompt_with_config(config, user_prompt, image_payloads)
+            .await
     }
 
     /// 使用记忆决策模型调用（回退链：memory_decision_model → model2）
@@ -3839,7 +3846,8 @@ impl LLMManager {
         user_prompt: &str,
     ) -> Result<StandardModel2Output> {
         let config = self.get_memory_decision_model_config().await?;
-        self.call_raw_prompt_with_config(config, user_prompt, None).await
+        self.call_raw_prompt_with_config(config, user_prompt, None)
+            .await
     }
 
     /// 使用标题/标签生成模型调用（回退链：chat_title_model → model2）
@@ -3848,7 +3856,8 @@ impl LLMManager {
         user_prompt: &str,
     ) -> Result<StandardModel2Output> {
         let config = self.get_chat_title_model_config().await?;
-        self.call_raw_prompt_with_config(config, user_prompt, None).await
+        self.call_raw_prompt_with_config(config, user_prompt, None)
+            .await
     }
 
     /// 内部方法：使用显式传入的 ApiConfig 执行 raw prompt 调用
@@ -4126,7 +4135,9 @@ impl LLMManager {
         }
 
         // GLM-4.5+ 支持 thinking 参数；OCR 任务默认关闭以降低延迟
-        if crate::llm_manager::adapters::zhipu::ZhipuAdapter::supports_thinking_static(&config.model) {
+        if crate::llm_manager::adapters::zhipu::ZhipuAdapter::supports_thinking_static(
+            &config.model,
+        ) {
             let enable = self.is_ocr_thinking_enabled();
             if let Some(obj) = request_body.as_object_mut() {
                 obj.insert(

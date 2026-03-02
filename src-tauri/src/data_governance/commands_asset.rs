@@ -9,8 +9,8 @@ use super::backup::{AssetBackupConfig, AssetType, AssetTypeStats, BackupManager}
 use crate::backup_common::BACKUP_GLOBAL_LIMITER;
 
 use super::commands_backup::{
-    get_app_data_dir, get_active_data_dir, get_backup_dir, validate_backup_id,
-    ensure_existing_path_within_backup_dir,
+    ensure_existing_path_within_backup_dir, get_active_data_dir, get_app_data_dir, get_backup_dir,
+    validate_backup_id,
 };
 use super::commands_restore::RestoreResultResponse;
 
@@ -235,9 +235,7 @@ pub async fn data_governance_restore_with_assets(
                 backup_id: backup_id.clone(),
                 duration_ms,
                 databases_restored,
-                pre_restore_backup_path: Some(
-                    inactive_dir.to_string_lossy().to_string(),
-                ),
+                pre_restore_backup_path: Some(inactive_dir.to_string_lossy().to_string()),
                 error_message: None,
                 assets_restored: if restore_assets {
                     Some(restored_assets)
@@ -365,4 +363,3 @@ pub struct AssetVerifyErrorResponse {
     /// 错误信息
     pub message: String,
 }
-

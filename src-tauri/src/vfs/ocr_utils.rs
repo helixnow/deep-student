@@ -61,7 +61,11 @@ pub fn parse_ocr_pages_json(json_str: &str) -> Vec<Option<String>> {
         .or_else(|| {
             pages
                 .iter()
-                .filter_map(|p| p.get("page_index").or_else(|| p.get("pageIndex")).and_then(|v| v.as_u64()))
+                .filter_map(|p| {
+                    p.get("page_index")
+                        .or_else(|| p.get("pageIndex"))
+                        .and_then(|v| v.as_u64())
+                })
                 .max()
                 .map(|v| v as usize + 1)
         })

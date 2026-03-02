@@ -759,10 +759,7 @@ impl Tool for WebSearchTool {
                         .filter(|e| !cfg.keys.has_valid_keys(e))
                         .collect();
                     if !skipped.is_empty() {
-                        log::info!(
-                            "跳过未配置 API key 的引擎: {:?}",
-                            skipped
-                        );
+                        log::info!("跳过未配置 API key 的引擎: {:?}", skipped);
                     }
 
                     if usable_engines.len() > 1 {
@@ -770,10 +767,7 @@ impl Tool for WebSearchTool {
                         Self::do_aggregated_search(&cfg, &input, &usable_engines).await
                     } else if usable_engines.len() == 1 {
                         let selected = usable_engines[0].clone();
-                        log::info!(
-                            "仅一个引擎有有效 API key，自动使用: {}",
-                            selected
-                        );
+                        log::info!("仅一个引擎有有效 API key，自动使用: {}", selected);
                         input.engine = Some(selected);
                         web_search::do_search(&cfg, input).await
                     } else {

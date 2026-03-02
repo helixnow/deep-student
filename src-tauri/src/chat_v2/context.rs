@@ -12,11 +12,11 @@ use crate::models::ChatMessage as LegacyChatMessage;
 
 use super::pipeline::ChatV2LLMAdapter;
 use super::resource_types::{ContentBlock, ContextRef, ContextSnapshot, SendContextRef};
-use super::vfs_resolver::escape_xml_content;
 use super::types::{
     block_status, block_types, AttachmentInput, MessageBlock, MessageSources, SendMessageRequest,
     SendOptions, TokenUsage, ToolResultInfo,
 };
+use super::vfs_resolver::escape_xml_content;
 
 // ============================================================
 // 内部上下文
@@ -105,7 +105,6 @@ pub(crate) struct PipelineContext {
     /// 🔒 安全修复：连续心跳次数追踪
     /// 防止工具通过持续返回 continue_execution 无限绕过递归限制
     pub(crate) heartbeat_count: u32,
-
 }
 
 impl PipelineContext {

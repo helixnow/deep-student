@@ -67,7 +67,9 @@ pub fn init_crash_logging(app_data_dir: PathBuf) {
                     ..Default::default()
                 });
 
-                sentry::Hub::current().client().map(|c| c.flush(Some(std::time::Duration::from_secs(2))));
+                sentry::Hub::current()
+                    .client()
+                    .map(|c| c.flush(Some(std::time::Duration::from_secs(2))));
             }));
 
             previous_hook(panic_info);
@@ -83,11 +85,7 @@ fn cleanup_old_crash_logs(dir: &Path) {
 
     let mut logs: Vec<_> = entries
         .filter_map(|e| e.ok())
-        .filter(|e| {
-            e.file_name()
-                .to_string_lossy()
-                .starts_with("crash-")
-        })
+        .filter(|e| e.file_name().to_string_lossy().starts_with("crash-"))
         .collect();
 
     if logs.len() <= MAX_CRASH_LOGS {
@@ -114,7 +112,9 @@ fn scrub_pii(input: &str) -> String {
     {
         let re = regex::Regex::new(r"(?i)[A-Z]:\\Users\\[^\\]+\\").ok();
         if let Some(re) = re {
-            return re.replace_all(&result, "C:\\Users\\<REDACTED>\\").to_string();
+            return re
+                .replace_all(&result, "C:\\Users\\<REDACTED>\\")
+                .to_string();
         }
     }
     #[cfg(not(target_os = "windows"))]

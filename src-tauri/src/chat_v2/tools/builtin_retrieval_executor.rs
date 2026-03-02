@@ -818,7 +818,10 @@ impl BuiltinRetrievalExecutor {
                 }
             }
         } else {
-            search_service.search_with_embedding(query, &shared_embedding, &text_params, false).await.ok()
+            search_service
+                .search_with_embedding(query, &shared_embedding, &text_params, false)
+                .await
+                .ok()
         };
 
         // 获取记忆文件夹下所有资源 ID 集合，从文本搜索结果中排除（源头去重）。
@@ -829,13 +832,17 @@ impl BuiltinRetrievalExecutor {
                 std::sync::Arc::clone(&lance_store),
                 std::sync::Arc::clone(llm_manager),
             );
-            memory_service.get_root_folder_id()
+            memory_service
+                .get_root_folder_id()
                 .ok()
                 .flatten()
                 .and_then(|root_id| {
                     use crate::vfs::repos::folder_repo::VfsFolderRepo;
-                    let folder_ids = VfsFolderRepo::get_folder_ids_recursive(vfs_db, &root_id).ok()?;
-                    if folder_ids.is_empty() { return None; }
+                    let folder_ids =
+                        VfsFolderRepo::get_folder_ids_recursive(vfs_db, &root_id).ok()?;
+                    if folder_ids.is_empty() {
+                        return None;
+                    }
                     let conn = vfs_db.get_conn_safe().ok()?;
                     let placeholders = vec!["?"; folder_ids.len()].join(", ");
                     let sql = format!(
@@ -845,8 +852,15 @@ impl BuiltinRetrievalExecutor {
                         placeholders
                     );
                     let mut stmt = conn.prepare(&sql).ok()?;
-                    let params_vals: Vec<rusqlite::types::Value> = folder_ids.into_iter().map(rusqlite::types::Value::from).collect();
-                    let rows = stmt.query_map(rusqlite::params_from_iter(params_vals), |row| row.get::<_, String>(0)).ok()?;
+                    let params_vals: Vec<rusqlite::types::Value> = folder_ids
+                        .into_iter()
+                        .map(rusqlite::types::Value::from)
+                        .collect();
+                    let rows = stmt
+                        .query_map(rusqlite::params_from_iter(params_vals), |row| {
+                            row.get::<_, String>(0)
+                        })
+                        .ok()?;
                     Some(rows.filter_map(|r| r.ok()).collect())
                 })
                 .unwrap_or_default()
@@ -1013,9 +1027,8 @@ impl BuiltinRetrievalExecutor {
             if let Some(memory_results) = memory_result {
                 let memory_count = memory_results.len();
 
-                let compressor = crate::memory::MemoryCompressor::new(
-                    std::sync::Arc::clone(llm_manager),
-                );
+                let compressor =
+                    crate::memory::MemoryCompressor::new(std::sync::Arc::clone(llm_manager));
                 let compressed = compressor.compress(query, &memory_results).await;
 
                 for r in compressed {
@@ -1098,7 +1111,9 @@ impl BuiltinRetrievalExecutor {
                 if !source_id.is_empty() && memory_note_ids.contains(source_id) {
                     return false;
                 }
-                !s.title.as_ref().map_or(false, |t| memory_titles.contains(t))
+                !s.title
+                    .as_ref()
+                    .map_or(false, |t| memory_titles.contains(t))
             });
             let deduped = before_dedup - kb_sources.len();
             if deduped > 0 {

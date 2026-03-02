@@ -252,7 +252,9 @@ mod tests {
         assert!(!ZhipuAdapter::supports_thinking("GLM-4.6V-FlashX"));
 
         // GLM-4.1V 不支持 thinking 参数
-        assert!(!ZhipuAdapter::supports_thinking("THUDM/GLM-4.1V-9B-Thinking"));
+        assert!(!ZhipuAdapter::supports_thinking(
+            "THUDM/GLM-4.1V-9B-Thinking"
+        ));
 
         // 旧版本不匹配
         assert!(!ZhipuAdapter::supports_thinking("glm-4"));

@@ -67,11 +67,7 @@ fn log_and_skip_err<T, E: std::fmt::Display>(result: Result<T, E>) -> Option<T> 
 /// [P3 Fix] 注意：底层传输层（WebDAV/S3）可能有自己的重试机制（通常 3 次）。
 /// 调用方应使用较低的 max_retries（建议 2）以避免叠加过多重试。
 #[cfg(feature = "data_governance")]
-async fn retry_async<F, Fut, T>(
-    op_name: &str,
-    max_retries: u32,
-    f: F,
-) -> Result<T, SyncError>
+async fn retry_async<F, Fut, T>(op_name: &str, max_retries: u32, f: F) -> Result<T, SyncError>
 where
     F: Fn() -> Fut,
     Fut: std::future::Future<Output = Result<T, SyncError>>,
@@ -1182,11 +1178,7 @@ impl SyncManager {
                             tracing::debug!("[sync] 已清理过期变更文件: {}", file.key);
                         }
                         Err(e) => {
-                            tracing::warn!(
-                                "[sync] 清理变更文件失败（跳过）: {}: {}",
-                                file.key,
-                                e
-                            );
+                            tracing::warn!("[sync] 清理变更文件失败（跳过）: {}: {}", file.key, e);
                         }
                     }
                 }
@@ -1811,12 +1803,7 @@ impl SyncManager {
             let update_set = columns_list
                 .iter()
                 .filter(|c| !pk_cols.contains(&c.as_ref()))
-                .map(|c| {
-                    format!(
-                        "{}=COALESCE(excluded.{}, {}.{})",
-                        c, c, table_ident, c
-                    )
-                })
+                .map(|c| format!("{}=COALESCE(excluded.{}, {}.{})", c, c, table_ident, c))
                 .collect::<Vec<_>>()
                 .join(", ");
             if update_set.is_empty() {
@@ -1835,12 +1822,7 @@ impl SyncManager {
             let update_set = columns_list
                 .iter()
                 .filter(|c| **c != pk_ident.as_str())
-                .map(|c| {
-                    format!(
-                        "{}=COALESCE(excluded.{}, {}.{})",
-                        c, c, table_ident, c
-                    )
-                })
+                .map(|c| format!("{}=COALESCE(excluded.{}, {}.{})", c, c, table_ident, c))
                 .collect::<Vec<_>>()
                 .join(", ");
 
@@ -2061,7 +2043,13 @@ impl SyncManager {
                         "UPDATE __change_log SET sync_version = ?1 \
                          WHERE id > ?2 AND sync_version = 0 \
                          AND table_name = ?3 AND record_id = ?4 AND operation = ?5",
-                        params![sync_version, max_id, &change.table_name, &change.record_id, change.operation.as_str()],
+                        params![
+                            sync_version,
+                            max_id,
+                            &change.table_name,
+                            &change.record_id,
+                            change.operation.as_str()
+                        ],
                     );
                 }
             }
@@ -3130,10 +3118,14 @@ impl SyncManager {
             for entry in std::fs::read_dir(&workspaces_dir)
                 .map_err(|e| SyncError::Database(format!("读取工作区目录失败: {}", e)))?
             {
-                let entry = entry
-                    .map_err(|e| SyncError::Database(format!("读取目录条目失败: {}", e)))?;
+                let entry =
+                    entry.map_err(|e| SyncError::Database(format!("读取目录条目失败: {}", e)))?;
                 let path = entry.path();
-                let name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
+                let name = path
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .to_string();
                 if !name.starts_with("ws_") || !name.ends_with(".db") {
                     continue;
                 }
@@ -3146,10 +3138,7 @@ impl SyncManager {
                     let _ = conn.execute_batch("PRAGMA wal_checkpoint(PASSIVE)");
                 }
                 let sha256 = crate::backup_common::calculate_file_hash(&path).map_err(|e| {
-                    SyncError::Database(format!(
-                        "计算工作区数据库校验和失败 {:?}: {}",
-                        path, e
-                    ))
+                    SyncError::Database(format!("计算工作区数据库校验和失败 {:?}: {}", path, e))
                 })?;
                 let size = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
                 local_entries.insert(ws_id, (path, sha256, size));
@@ -3192,7 +3181,10 @@ impl SyncManager {
             if !local_entries.contains_key(ws_id) {
                 let dest = workspaces_dir.join(format!("{}.db", ws_id));
                 let key = format!("{}/{}.db", Self::WORKSPACES_CLOUD_PREFIX, ws_id);
-                match storage.get_file(&key, &dest, Some(&cloud_entry.sha256), None).await {
+                match storage
+                    .get_file(&key, &dest, Some(&cloud_entry.sha256), None)
+                    .await
+                {
                     Ok(_) => {
                         tracing::info!("[sync] 工作区数据库已下载: {}", ws_id);
                     }
@@ -3280,7 +3272,10 @@ impl SyncManager {
                     Ok(_) => {
                         new_manifest.entries.insert(
                             hash.clone(),
-                            BlobEntry { relative_path: relative.clone(), size },
+                            BlobEntry {
+                                relative_path: relative.clone(),
+                                size,
+                            },
                         );
                         uploaded += 1;
                         ok = true;
@@ -3292,7 +3287,10 @@ impl SyncManager {
                             let delay = Self::BLOB_RETRY_BASE_MS * (1u64 << attempt);
                             tracing::warn!(
                                 "[sync] blob 上传重试 {}/{}: {}: {}",
-                                attempt + 1, Self::BLOB_MAX_RETRIES, hash, e
+                                attempt + 1,
+                                Self::BLOB_MAX_RETRIES,
+                                hash,
+                                e
                             );
                             tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
                         }
@@ -3337,7 +3335,10 @@ impl SyncManager {
                                 let delay = Self::BLOB_RETRY_BASE_MS * (1u64 << attempt);
                                 tracing::warn!(
                                     "[sync] blob 大小校验失败，重试 {}/{}: {}: {}",
-                                    attempt + 1, Self::BLOB_MAX_RETRIES, hash, last_err
+                                    attempt + 1,
+                                    Self::BLOB_MAX_RETRIES,
+                                    hash,
+                                    last_err
                                 );
                                 tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
                             }
@@ -3355,7 +3356,10 @@ impl SyncManager {
                             let delay = Self::BLOB_RETRY_BASE_MS * (1u64 << attempt);
                             tracing::warn!(
                                 "[sync] blob 下载重试 {}/{}: {}: {}",
-                                attempt + 1, Self::BLOB_MAX_RETRIES, hash, e
+                                attempt + 1,
+                                Self::BLOB_MAX_RETRIES,
+                                hash,
+                                e
                             );
                             tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
                         }
@@ -3371,7 +3375,10 @@ impl SyncManager {
         if uploaded > 0 || downloaded_count > 0 {
             tracing::info!(
                 "[sync] blob 同步: 上传 {}, 下载 {}, 上传失败 {}, 下载失败 {}",
-                uploaded, downloaded_count, upload_failures.len(), download_failures.len()
+                uploaded,
+                downloaded_count,
+                upload_failures.len(),
+                download_failures.len()
             );
         }
 

@@ -195,9 +195,7 @@ pub async fn cloud_sync_upload(
     app_version: Option<String>,
     note: Option<String>,
 ) -> Result<UploadResult> {
-    let file_size = std::fs::metadata(&zip_path)
-        .map(|m| m.len())
-        .unwrap_or(0);
+    let file_size = std::fs::metadata(&zip_path).map(|m| m.len()).unwrap_or(0);
 
     let storage = create_storage(&config).await?;
     let manager = CloudSyncManager::new(storage, get_device_id());

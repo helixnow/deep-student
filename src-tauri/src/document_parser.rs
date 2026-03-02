@@ -126,12 +126,20 @@ impl DocumentParser {
     }
 
     /// 公共接口：检查 Office 文档加密（供 page_rasterizer 调用）
-    pub fn check_office_encryption_bytes(&self, bytes: &[u8], file_name: &str) -> Result<(), ParsingError> {
+    pub fn check_office_encryption_bytes(
+        &self,
+        bytes: &[u8],
+        file_name: &str,
+    ) -> Result<(), ParsingError> {
         self.check_office_encryption(bytes, file_name)
     }
 
     /// 公共接口：检查 PDF 文档加密（供 page_rasterizer 调用）
-    pub fn check_pdf_encryption_bytes(&self, bytes: &[u8], file_name: &str) -> Result<(), ParsingError> {
+    pub fn check_pdf_encryption_bytes(
+        &self,
+        bytes: &[u8],
+        file_name: &str,
+    ) -> Result<(), ParsingError> {
         self.check_pdf_encryption(bytes, file_name)
     }
 
@@ -685,7 +693,10 @@ impl DocumentParser {
     /// 同时返回所有提取的图片原始字节数据。
     ///
     /// 返回 `(text_with_markers, images_bytes)` — images_bytes[N] 对应 `<<IMG:N>>`。
-    pub fn extract_docx_with_images(&self, bytes: &[u8]) -> Result<(String, Vec<Vec<u8>>), ParsingError> {
+    pub fn extract_docx_with_images(
+        &self,
+        bytes: &[u8],
+    ) -> Result<(String, Vec<Vec<u8>>), ParsingError> {
         self.check_office_encryption(bytes, "document.docx")?;
         self.check_zip_bomb(bytes, "document.docx")?;
 
@@ -693,8 +704,8 @@ impl DocumentParser {
         let rid_to_bytes = Self::build_docx_image_map(bytes)?;
 
         // Step 2: 用 docx_rs 解析文档结构
-        let docx = docx_rs::read_docx(bytes)
-            .map_err(|e| ParsingError::DocxParsingError(e.to_string()))?;
+        let docx =
+            docx_rs::read_docx(bytes).map_err(|e| ParsingError::DocxParsingError(e.to_string()))?;
 
         let mut text_content = String::with_capacity(8192);
         let mut images: Vec<Vec<u8>> = Vec::new();
@@ -702,14 +713,20 @@ impl DocumentParser {
         for child in &docx.document.children {
             match child {
                 docx_rs::DocumentChild::Paragraph(para) => {
-                    let line = Self::extract_paragraph_text_with_images(para, &mut images, &rid_to_bytes);
+                    let line =
+                        Self::extract_paragraph_text_with_images(para, &mut images, &rid_to_bytes);
                     if !line.trim().is_empty() {
                         text_content.push_str(&line);
                         text_content.push('\n');
                     }
                 }
                 docx_rs::DocumentChild::Table(table) => {
-                    Self::extract_table_text_with_images(table, &mut text_content, &mut images, &rid_to_bytes);
+                    Self::extract_table_text_with_images(
+                        table,
+                        &mut text_content,
+                        &mut images,
+                        &rid_to_bytes,
+                    );
                     text_content.push('\n');
                 }
                 docx_rs::DocumentChild::TableOfContents(toc) => {
@@ -731,7 +748,9 @@ impl DocumentParser {
     /// docx_rs 读取模式下 `Pic.image` 始终为空，只保存 `Pic.id`（即 rId）。
     /// 我们需要自行解析 `word/_rels/document.xml.rels` 获取 rId → target 映射，
     /// 再从 ZIP 中读取 `word/{target}` 的实际字节。
-    fn build_docx_image_map(bytes: &[u8]) -> Result<std::collections::HashMap<String, Vec<u8>>, ParsingError> {
+    fn build_docx_image_map(
+        bytes: &[u8],
+    ) -> Result<std::collections::HashMap<String, Vec<u8>>, ParsingError> {
         use std::collections::HashMap;
         use std::io::Read;
 
@@ -743,9 +762,9 @@ impl DocumentParser {
         let mut rid_to_target: HashMap<String, String> = HashMap::new();
         if let Ok(mut rels_file) = archive.by_name("word/_rels/document.xml.rels") {
             let mut rels_xml = String::new();
-            rels_file.read_to_string(&mut rels_xml).map_err(|e| {
-                ParsingError::DocxParsingError(format!("读取 rels 失败: {}", e))
-            })?;
+            rels_file
+                .read_to_string(&mut rels_xml)
+                .map_err(|e| ParsingError::DocxParsingError(format!("读取 rels 失败: {}", e)))?;
 
             let mut reader = XmlReader::from_str(&rels_xml);
             reader.config_mut().trim_text(true);
@@ -760,9 +779,16 @@ impl DocumentParser {
                         let mut rel_type = None;
                         for attr in e.attributes().flatten() {
                             match attr.key.as_ref() {
-                                b"Id" => id = Some(String::from_utf8_lossy(&attr.value).to_string()),
-                                b"Target" => target = Some(String::from_utf8_lossy(&attr.value).to_string()),
-                                b"Type" => rel_type = Some(String::from_utf8_lossy(&attr.value).to_string()),
+                                b"Id" => {
+                                    id = Some(String::from_utf8_lossy(&attr.value).to_string())
+                                }
+                                b"Target" => {
+                                    target = Some(String::from_utf8_lossy(&attr.value).to_string())
+                                }
+                                b"Type" => {
+                                    rel_type =
+                                        Some(String::from_utf8_lossy(&attr.value).to_string())
+                                }
                                 _ => {}
                             }
                         }
@@ -905,7 +931,8 @@ impl DocumentParser {
                         let mut cell_text = String::new();
                         for cc in &cell.children {
                             if let docx_rs::TableCellContent::Paragraph(para) = cc {
-                                let t = Self::extract_paragraph_text_with_images(para, images, rid_map);
+                                let t =
+                                    Self::extract_paragraph_text_with_images(para, images, rid_map);
                                 if !t.trim().is_empty() {
                                     if !cell_text.is_empty() {
                                         cell_text.push(' ');
@@ -1080,8 +1107,8 @@ impl DocumentParser {
     /// 与 `extract_docx_text` 不同，此方法保留文档结构信息，
     /// 供 LLM 工具 `docx_read_structured` 使用。
     pub fn extract_docx_structured(&self, bytes: &[u8]) -> Result<String, ParsingError> {
-        let docx = docx_rs::read_docx(bytes)
-            .map_err(|e| ParsingError::DocxParsingError(e.to_string()))?;
+        let docx =
+            docx_rs::read_docx(bytes).map_err(|e| ParsingError::DocxParsingError(e.to_string()))?;
 
         let mut md = String::with_capacity(16384);
 
@@ -1111,11 +1138,7 @@ impl DocumentParser {
     }
 
     /// 将段落转换为 Markdown（含标题/列表/超链接/粗体/斜体/图片占位）
-    fn paragraph_to_markdown(
-        para: &docx_rs::Paragraph,
-        docx: &docx_rs::Docx,
-        out: &mut String,
-    ) {
+    fn paragraph_to_markdown(para: &docx_rs::Paragraph, docx: &docx_rs::Docx, out: &mut String) {
         // 检测标题样式
         let heading_level = Self::detect_heading_level(para, docx);
 
@@ -1140,7 +1163,9 @@ impl DocumentParser {
                         // 从 HyperlinkData 提取 URL
                         let url_opt = match &hyperlink.link {
                             docx_rs::HyperlinkData::External { rid, .. } => Some(rid.clone()),
-                            docx_rs::HyperlinkData::Anchor { anchor, .. } => Some(format!("#{}", anchor)),
+                            docx_rs::HyperlinkData::Anchor { anchor, .. } => {
+                                Some(format!("#{}", anchor))
+                            }
                         };
                         if let Some(url) = url_opt {
                             line.push_str(&format!("[{}]({})", link_text, url));
@@ -1191,12 +1216,23 @@ impl DocumentParser {
         // Bold::Serialize 输出裸 bool（serialize_bool(self.val)），
         // 因此 to_value(&bold) → Value::Bool(true/false)
         let is_bold = run.run_property.bold.as_ref().map_or(false, |b| {
-            serde_json::to_value(b).ok().and_then(|v| v.as_bool()).unwrap_or(true)
+            serde_json::to_value(b)
+                .ok()
+                .and_then(|v| v.as_bool())
+                .unwrap_or(true)
         });
         let is_italic = run.run_property.italic.as_ref().map_or(false, |i| {
-            serde_json::to_value(i).ok().and_then(|v| v.as_bool()).unwrap_or(true)
+            serde_json::to_value(i)
+                .ok()
+                .and_then(|v| v.as_bool())
+                .unwrap_or(true)
         });
-        let is_strike = run.run_property.strike.as_ref().map(|s| s.val).unwrap_or(false);
+        let is_strike = run
+            .run_property
+            .strike
+            .as_ref()
+            .map(|s| s.val)
+            .unwrap_or(false);
 
         for rc in &run.children {
             match rc {
@@ -1240,16 +1276,16 @@ impl DocumentParser {
     }
 
     /// 检测段落标题级别（通过样式名或 outline_lvl）
-    fn detect_heading_level(
-        para: &docx_rs::Paragraph,
-        _docx: &docx_rs::Docx,
-    ) -> Option<u8> {
+    fn detect_heading_level(para: &docx_rs::Paragraph, _docx: &docx_rs::Docx) -> Option<u8> {
         // 方式1：通过样式名检测（Heading1-9, 标题 1-9）
         if let Some(ref style) = para.property.style {
             let style_id = &style.val;
             // 英文: Heading1, Heading2 ...
             if style_id.starts_with("Heading") || style_id.starts_with("heading") {
-                if let Ok(lvl) = style_id.trim_start_matches(|c: char| !c.is_ascii_digit()).parse::<u8>() {
+                if let Ok(lvl) = style_id
+                    .trim_start_matches(|c: char| !c.is_ascii_digit())
+                    .parse::<u8>()
+                {
                     if (1..=6).contains(&lvl) {
                         return Some(lvl);
                     }
@@ -1307,8 +1343,8 @@ impl DocumentParser {
 
     /// ★ 提取 DOCX 文档中的所有表格为结构化 JSON
     pub fn extract_docx_tables(&self, bytes: &[u8]) -> Result<Vec<Vec<Vec<String>>>, ParsingError> {
-        let docx = docx_rs::read_docx(bytes)
-            .map_err(|e| ParsingError::DocxParsingError(e.to_string()))?;
+        let docx =
+            docx_rs::read_docx(bytes).map_err(|e| ParsingError::DocxParsingError(e.to_string()))?;
 
         let mut tables = Vec::new();
         for child in &docx.document.children {
@@ -1346,13 +1382,16 @@ impl DocumentParser {
 
     /// ★ 提取 DOCX 文档属性（标题/作者/描述/关键词/创建时间/修改时间）
     pub fn extract_docx_metadata(&self, bytes: &[u8]) -> Result<serde_json::Value, ParsingError> {
-        let docx = docx_rs::read_docx(bytes)
-            .map_err(|e| ParsingError::DocxParsingError(e.to_string()))?;
+        let docx =
+            docx_rs::read_docx(bytes).map_err(|e| ParsingError::DocxParsingError(e.to_string()))?;
 
         // DocProps.core.config is private; serialize to JSON to access fields
-        let props_json = serde_json::to_value(&docx.doc_props)
-            .unwrap_or_else(|_| serde_json::json!({}));
-        let core = props_json.get("core").and_then(|c| c.get("config")).cloned()
+        let props_json =
+            serde_json::to_value(&docx.doc_props).unwrap_or_else(|_| serde_json::json!({}));
+        let core = props_json
+            .get("core")
+            .and_then(|c| c.get("config"))
+            .cloned()
             .unwrap_or_else(|| serde_json::json!({}));
 
         Ok(serde_json::json!({
@@ -1370,8 +1409,8 @@ impl DocumentParser {
     ///
     /// LLM 可通过 docx_to_spec → 修改 spec → docx_create 完成编辑闭环。
     pub fn extract_docx_as_spec(&self, bytes: &[u8]) -> Result<serde_json::Value, ParsingError> {
-        let docx = docx_rs::read_docx(bytes)
-            .map_err(|e| ParsingError::DocxParsingError(e.to_string()))?;
+        let docx =
+            docx_rs::read_docx(bytes).map_err(|e| ParsingError::DocxParsingError(e.to_string()))?;
 
         let mut blocks: Vec<serde_json::Value> = Vec::new();
 
@@ -1391,12 +1430,18 @@ impl DocumentParser {
                     for pc in &para.children {
                         if let docx_rs::ParagraphChild::Run(run) = pc {
                             if run.run_property.bold.as_ref().map_or(false, |b| {
-                                serde_json::to_value(b).ok().and_then(|v| v.as_bool()).unwrap_or(true)
+                                serde_json::to_value(b)
+                                    .ok()
+                                    .and_then(|v| v.as_bool())
+                                    .unwrap_or(true)
                             }) {
                                 has_bold = true;
                             }
                             if run.run_property.italic.as_ref().map_or(false, |i| {
-                                serde_json::to_value(i).ok().and_then(|v| v.as_bool()).unwrap_or(true)
+                                serde_json::to_value(i)
+                                    .ok()
+                                    .and_then(|v| v.as_bool())
+                                    .unwrap_or(true)
                             }) {
                                 has_italic = true;
                             }
@@ -1512,7 +1557,11 @@ impl DocumentParser {
         if let Some(blocks) = spec.get_mut("blocks").and_then(|b| b.as_array_mut()) {
             for block in blocks.iter_mut() {
                 // 替换 text 字段
-                if let Some(text) = block.get("text").and_then(|v| v.as_str()).map(|s| s.to_string()) {
+                if let Some(text) = block
+                    .get("text")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string())
+                {
                     let mut new_text = text.clone();
                     for (find, replace) in &replacements {
                         let count = new_text.matches(find.as_str()).count();
@@ -1535,7 +1584,8 @@ impl DocumentParser {
                                     for (find, replace) in &replacements {
                                         let count = new_text.matches(find.as_str()).count();
                                         if count > 0 {
-                                            new_text = new_text.replace(find.as_str(), replace.as_str());
+                                            new_text =
+                                                new_text.replace(find.as_str(), replace.as_str());
                                             total_replacements += count;
                                         }
                                     }
@@ -1551,7 +1601,11 @@ impl DocumentParser {
         }
 
         // 替换 title
-        if let Some(title) = spec.get("title").and_then(|v| v.as_str()).map(|s| s.to_string()) {
+        if let Some(title) = spec
+            .get("title")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
+        {
             let mut new_title = title.clone();
             for (find, replace) in &replacements {
                 let count = new_title.matches(find.as_str()).count();
@@ -1593,10 +1647,7 @@ impl DocumentParser {
             docx = docx.add_paragraph(
                 docx_rs::Paragraph::new()
                     .add_run(
-                        docx_rs::Run::new()
-                            .add_text(title)
-                            .bold()
-                            .size(48) // 24pt = 48 half-points
+                        docx_rs::Run::new().add_text(title).bold().size(48), // 24pt = 48 half-points
                     )
                     .style("Heading1"),
             );
@@ -1613,10 +1664,7 @@ impl DocumentParser {
 
             match block_type {
                 "heading" => {
-                    let level = block
-                        .get("level")
-                        .and_then(|v| v.as_u64())
-                        .unwrap_or(1) as usize;
+                    let level = block.get("level").and_then(|v| v.as_u64()).unwrap_or(1) as usize;
                     let text = block.get("text").and_then(|v| v.as_str()).unwrap_or("");
                     let style_name = format!("Heading{}", level.min(6));
                     let font_size = match level {
@@ -1628,21 +1676,13 @@ impl DocumentParser {
                     };
                     docx = docx.add_paragraph(
                         docx_rs::Paragraph::new()
-                            .add_run(
-                                docx_rs::Run::new()
-                                    .add_text(text)
-                                    .bold()
-                                    .size(font_size),
-                            )
+                            .add_run(docx_rs::Run::new().add_text(text).bold().size(font_size))
                             .style(&style_name),
                     );
                 }
                 "paragraph" => {
                     let text = block.get("text").and_then(|v| v.as_str()).unwrap_or("");
-                    let is_bold = block
-                        .get("bold")
-                        .and_then(|v| v.as_bool())
-                        .unwrap_or(false);
+                    let is_bold = block.get("bold").and_then(|v| v.as_bool()).unwrap_or(false);
                     let is_italic = block
                         .get("italic")
                         .and_then(|v| v.as_bool())
@@ -1724,20 +1764,18 @@ impl DocumentParser {
                 "code" => {
                     let text = block.get("text").and_then(|v| v.as_str()).unwrap_or("");
                     docx = docx.add_paragraph(
-                        docx_rs::Paragraph::new()
-                            .add_run(
-                                docx_rs::Run::new()
-                                    .add_text(text)
-                                    .size(20) // 10pt
-                                    .fonts(docx_rs::RunFonts::new().ascii("Courier New")),
-                            ),
+                        docx_rs::Paragraph::new().add_run(
+                            docx_rs::Run::new()
+                                .add_text(text)
+                                .size(20) // 10pt
+                                .fonts(docx_rs::RunFonts::new().ascii("Courier New")),
+                        ),
                     );
                 }
                 "pagebreak" => {
                     docx = docx.add_paragraph(
-                        docx_rs::Paragraph::new().add_run(
-                            docx_rs::Run::new().add_break(docx_rs::BreakType::Page),
-                        ),
+                        docx_rs::Paragraph::new()
+                            .add_run(docx_rs::Run::new().add_break(docx_rs::BreakType::Page)),
                     );
                 }
                 _ => {
@@ -2092,9 +2130,7 @@ impl DocumentParser {
     /// }
     /// ```
     pub fn generate_pptx_from_spec(spec: &serde_json::Value) -> Result<Vec<u8>, ParsingError> {
-        use ppt_rs::generator::{
-            create_pptx_with_content, SlideContent, TableBuilder,
-        };
+        use ppt_rs::generator::{create_pptx_with_content, SlideContent, TableBuilder};
 
         let title = spec
             .get("title")
@@ -2158,13 +2194,15 @@ impl DocumentParser {
                         .unwrap_or_default();
 
                     // 计算列数和列宽
-                    let col_count = headers.len().max(
-                        rows.first()
-                            .and_then(|r| r.as_array())
-                            .map(|a| a.len())
-                            .unwrap_or(0),
-                    )
-                    .max(1);
+                    let col_count = headers
+                        .len()
+                        .max(
+                            rows.first()
+                                .and_then(|r| r.as_array())
+                                .map(|a| a.len())
+                                .unwrap_or(0),
+                        )
+                        .max(1);
                     let col_width = 8000000u32 / col_count as u32; // 平分幻灯片宽度
                     let col_widths: Vec<u32> = vec![col_width; col_count];
 
@@ -2172,20 +2210,16 @@ impl DocumentParser {
 
                     // 添加表头行
                     if !headers.is_empty() {
-                        let header_strs: Vec<&str> = headers
-                            .iter()
-                            .map(|h| h.as_str().unwrap_or(""))
-                            .collect();
+                        let header_strs: Vec<&str> =
+                            headers.iter().map(|h| h.as_str().unwrap_or("")).collect();
                         tb = tb.add_simple_row(header_strs);
                     }
 
                     // 添加数据行
                     for row in &rows {
                         if let Some(cells) = row.as_array() {
-                            let cell_strs: Vec<&str> = cells
-                                .iter()
-                                .map(|c| c.as_str().unwrap_or(""))
-                                .collect();
+                            let cell_strs: Vec<&str> =
+                                cells.iter().map(|c| c.as_str().unwrap_or("")).collect();
                             tb = tb.add_simple_row(cell_strs);
                         }
                     }
@@ -2291,15 +2325,14 @@ impl DocumentParser {
             if trimmed.len() >= 5 && trimmed.starts_with('|') && trimmed.ends_with('|') {
                 let inner = &trimmed[1..trimmed.len() - 1];
                 // 跳过分隔行（|---|---|）
-                let is_separator = inner.chars().all(|c| c == '-' || c == '|' || c == ':' || c == ' ');
+                let is_separator = inner
+                    .chars()
+                    .all(|c| c == '-' || c == '|' || c == ':' || c == ' ');
                 if is_separator {
                     continue;
                 }
 
-                let cells: Vec<String> = inner
-                    .split('|')
-                    .map(|c| c.trim().to_string())
-                    .collect();
+                let cells: Vec<String> = inner.split('|').map(|c| c.trim().to_string()).collect();
 
                 if !in_table {
                     // 首次遇到表格行 → 作为表头
@@ -2404,7 +2437,10 @@ impl DocumentParser {
     }
 
     /// ★ GAP-3 修复：从 PPTX 中提取所有表格为结构化 JSON
-    pub fn extract_pptx_tables(&self, bytes: &[u8]) -> Result<Vec<serde_json::Value>, ParsingError> {
+    pub fn extract_pptx_tables(
+        &self,
+        bytes: &[u8],
+    ) -> Result<Vec<serde_json::Value>, ParsingError> {
         let markdown = self.extract_pptx_from_bytes(bytes.to_vec())?;
 
         let mut tables: Vec<serde_json::Value> = Vec::new();
@@ -2434,14 +2470,21 @@ impl DocumentParser {
 
             if trimmed.starts_with("# ") || trimmed.starts_with("## ") {
                 // 新幻灯片 → 保存之前的表格
-                flush_table(&current_slide_title, &current_headers, &current_rows, &mut tables);
+                flush_table(
+                    &current_slide_title,
+                    &current_headers,
+                    &current_rows,
+                    &mut tables,
+                );
                 current_slide_title = trimmed.trim_start_matches('#').trim().to_string();
                 current_headers = Vec::new();
                 current_rows = Vec::new();
                 in_table = false;
             } else if trimmed.len() >= 5 && trimmed.starts_with('|') && trimmed.ends_with('|') {
                 let inner = &trimmed[1..trimmed.len() - 1];
-                let is_separator = inner.chars().all(|c| c == '-' || c == '|' || c == ':' || c == ' ');
+                let is_separator = inner
+                    .chars()
+                    .all(|c| c == '-' || c == '|' || c == ':' || c == ' ');
                 if is_separator {
                     continue;
                 }
@@ -2454,7 +2497,12 @@ impl DocumentParser {
                 }
             } else if in_table && (trimmed.is_empty() || !trimmed.starts_with('|')) {
                 // 表格结束
-                flush_table(&current_slide_title, &current_headers, &current_rows, &mut tables);
+                flush_table(
+                    &current_slide_title,
+                    &current_headers,
+                    &current_rows,
+                    &mut tables,
+                );
                 current_headers = Vec::new();
                 current_rows = Vec::new();
                 in_table = false;
@@ -2462,7 +2510,12 @@ impl DocumentParser {
         }
 
         // 保存最后一个表格
-        flush_table(&current_slide_title, &current_headers, &current_rows, &mut tables);
+        flush_table(
+            &current_slide_title,
+            &current_headers,
+            &current_rows,
+            &mut tables,
+        );
 
         Ok(tables)
     }
@@ -2513,8 +2566,9 @@ impl DocumentParser {
             // 获取或创建工作表
             let sheet = if sheet_idx == 0 {
                 // 第一个工作表：重命名默认的 Sheet1
-                let ws = book.get_sheet_mut(&0)
-                    .ok_or_else(|| ParsingError::ExcelParsingError("默认工作表不存在".to_string()))?;
+                let ws = book.get_sheet_mut(&0).ok_or_else(|| {
+                    ParsingError::ExcelParsingError("默认工作表不存在".to_string())
+                })?;
                 ws.set_name(sheet_name);
                 ws
             } else {
@@ -2523,8 +2577,9 @@ impl DocumentParser {
                 } else {
                     sheet_name.to_string()
                 };
-                book.new_sheet(&name)
-                    .map_err(|e| ParsingError::ExcelParsingError(format!("创建工作表失败: {}", e)))?
+                book.new_sheet(&name).map_err(|e| {
+                    ParsingError::ExcelParsingError(format!("创建工作表失败: {}", e))
+                })?
             };
 
             let mut row_num: u32 = 1;
@@ -2643,7 +2698,10 @@ impl DocumentParser {
 
         for (sheet_name, cell_ref, value) in edits {
             let Some(ws) = book.get_sheet_by_name_mut(sheet_name) else {
-                log::warn!("[DocumentParser] XLSX 编辑：工作表 '{}' 不存在，跳过", sheet_name);
+                log::warn!(
+                    "[DocumentParser] XLSX 编辑：工作表 '{}' 不存在，跳过",
+                    sheet_name
+                );
                 continue;
             };
             let cell = ws.get_cell_mut(cell_ref.as_str());
@@ -2832,7 +2890,8 @@ impl DocumentParser {
         }
 
         for href in &spine_hrefs {
-            let decoded_href = urlencoding::decode(href).unwrap_or(std::borrow::Cow::Borrowed(href));
+            let decoded_href =
+                urlencoding::decode(href).unwrap_or(std::borrow::Cow::Borrowed(href));
             let full_path = if decoded_href.starts_with('/') {
                 decoded_href[1..].to_string()
             } else {
@@ -2876,10 +2935,7 @@ impl DocumentParser {
                     for attr in e.attributes().flatten() {
                         if attr.key.local_name().as_ref() == b"full-path" {
                             return String::from_utf8(attr.value.to_vec()).map_err(|e| {
-                                ParsingError::EpubParsingError(format!(
-                                    "OPF 路径编码错误: {}",
-                                    e
-                                ))
+                                ParsingError::EpubParsingError(format!("OPF 路径编码错误: {}", e))
                             });
                         }
                     }

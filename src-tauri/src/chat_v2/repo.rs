@@ -935,39 +935,62 @@ impl ChatV2Repo {
             _ => MessageRole::User,
         };
 
-        let block_ids: Vec<String> =
-            serde_json::from_str(&block_ids_json).unwrap_or_else(|e| {
-                log::warn!("[ChatV2::Repo] block_ids_json 解析失败 (msg_id={}): {}", id, e);
-                Vec::new()
-            });
-
-        let meta: Option<MessageMeta> = meta_json
-            .as_ref()
-            .and_then(|s| serde_json::from_str(s).map_err(|e| {
-                log::warn!("[ChatV2::Repo] meta_json 解析失败 (msg_id={}): {}", id, e);
+        let block_ids: Vec<String> = serde_json::from_str(&block_ids_json).unwrap_or_else(|e| {
+            log::warn!(
+                "[ChatV2::Repo] block_ids_json 解析失败 (msg_id={}): {}",
+                id,
                 e
-            }).ok());
+            );
+            Vec::new()
+        });
 
-        let attachments: Option<Vec<AttachmentMeta>> = attachments_json
-            .as_ref()
-            .and_then(|s| serde_json::from_str(s).map_err(|e| {
-                log::warn!("[ChatV2::Repo] attachments_json 解析失败 (msg_id={}): {}", id, e);
-                e
-            }).ok());
+        let meta: Option<MessageMeta> = meta_json.as_ref().and_then(|s| {
+            serde_json::from_str(s)
+                .map_err(|e| {
+                    log::warn!("[ChatV2::Repo] meta_json 解析失败 (msg_id={}): {}", id, e);
+                    e
+                })
+                .ok()
+        });
 
-        let variants: Option<Vec<Variant>> = variants_json
-            .as_ref()
-            .and_then(|s| serde_json::from_str(s).map_err(|e| {
-                log::warn!("[ChatV2::Repo] variants_json 解析失败 (msg_id={}): {}", id, e);
-                e
-            }).ok());
+        let attachments: Option<Vec<AttachmentMeta>> = attachments_json.as_ref().and_then(|s| {
+            serde_json::from_str(s)
+                .map_err(|e| {
+                    log::warn!(
+                        "[ChatV2::Repo] attachments_json 解析失败 (msg_id={}): {}",
+                        id,
+                        e
+                    );
+                    e
+                })
+                .ok()
+        });
 
-        let shared_context: Option<SharedContext> = shared_context_json
-            .as_ref()
-            .and_then(|s| serde_json::from_str(s).map_err(|e| {
-                log::warn!("[ChatV2::Repo] shared_context_json 解析失败 (msg_id={}): {}", id, e);
-                e
-            }).ok());
+        let variants: Option<Vec<Variant>> = variants_json.as_ref().and_then(|s| {
+            serde_json::from_str(s)
+                .map_err(|e| {
+                    log::warn!(
+                        "[ChatV2::Repo] variants_json 解析失败 (msg_id={}): {}",
+                        id,
+                        e
+                    );
+                    e
+                })
+                .ok()
+        });
+
+        let shared_context: Option<SharedContext> = shared_context_json.as_ref().and_then(|s| {
+            serde_json::from_str(s)
+                .map_err(|e| {
+                    log::warn!(
+                        "[ChatV2::Repo] shared_context_json 解析失败 (msg_id={}): {}",
+                        id,
+                        e
+                    );
+                    e
+                })
+                .ok()
+        });
 
         Ok(ChatMessage {
             id,
@@ -1577,9 +1600,8 @@ impl ChatV2Repo {
     /// - `Ok(Vec<String>)`: 所有已删除会话的 ID 列表
     pub fn list_deleted_session_ids(db: &ChatV2Database) -> ChatV2Result<Vec<String>> {
         let conn = db.get_conn_safe()?;
-        let mut stmt = conn.prepare(
-            "SELECT id FROM chat_v2_sessions WHERE persist_status = 'deleted'",
-        )?;
+        let mut stmt =
+            conn.prepare("SELECT id FROM chat_v2_sessions WHERE persist_status = 'deleted'")?;
         let ids = stmt
             .query_map([], |row| row.get::<_, String>(0))?
             .filter_map(|r| r.ok())
@@ -1652,7 +1674,10 @@ impl ChatV2Repo {
         // P2 修复：批量删除后执行增量 VACUUM 回收空间
         if count > 0 {
             if let Err(e) = conn.execute_batch("PRAGMA incremental_vacuum;") {
-                log::warn!("[ChatV2::Repo] Incremental vacuum failed after purge: {}", e);
+                log::warn!(
+                    "[ChatV2::Repo] Incremental vacuum failed after purge: {}",
+                    e
+                );
             }
         }
 
@@ -2022,9 +2047,8 @@ impl ChatV2Repo {
         }
 
         // P1 修复：使用 SAVEPOINT 保护删块 + 更新消息的原子性
-        conn.execute("SAVEPOINT delete_variant", []).map_err(|e| {
-            ChatV2Error::Database(format!("Failed to create savepoint: {}", e))
-        })?;
+        conn.execute("SAVEPOINT delete_variant", [])
+            .map_err(|e| ChatV2Error::Database(format!("Failed to create savepoint: {}", e)))?;
 
         let mut deleted_by_variant_id = 0usize;
         let delete_result = (|| -> ChatV2Result<()> {
@@ -2495,9 +2519,7 @@ impl ChatV2Repo {
             .replace('<', "&lt;")
             .replace('>', "&gt;")
             .replace('"', "&quot;");
-        escaped
-            .replace('\x02', "<mark>")
-            .replace('\x03', "</mark>")
+        escaped.replace('\x02', "<mark>").replace('\x03', "</mark>")
     }
 
     // ========================================================================
@@ -2546,11 +2568,7 @@ impl ChatV2Repo {
     }
 
     /// 添加手动标签
-    pub fn add_manual_tag(
-        conn: &Connection,
-        session_id: &str,
-        tag: &str,
-    ) -> ChatV2Result<()> {
+    pub fn add_manual_tag(conn: &Connection, session_id: &str, tag: &str) -> ChatV2Result<()> {
         conn.execute(
             "INSERT OR IGNORE INTO chat_v2_session_tags (session_id, tag, tag_type, created_at) VALUES (?1, ?2, 'manual', datetime('now'))",
             params![session_id, tag.trim()],
@@ -2559,11 +2577,7 @@ impl ChatV2Repo {
     }
 
     /// 删除标签
-    pub fn remove_tag(
-        conn: &Connection,
-        session_id: &str,
-        tag: &str,
-    ) -> ChatV2Result<()> {
+    pub fn remove_tag(conn: &Connection, session_id: &str, tag: &str) -> ChatV2Result<()> {
         conn.execute(
             "DELETE FROM chat_v2_session_tags WHERE session_id = ?1 AND tag = ?2",
             params![session_id, tag],
@@ -2572,10 +2586,7 @@ impl ChatV2Repo {
     }
 
     /// 获取会话的所有标签
-    pub fn get_session_tags(
-        conn: &Connection,
-        session_id: &str,
-    ) -> ChatV2Result<Vec<String>> {
+    pub fn get_session_tags(conn: &Connection, session_id: &str) -> ChatV2Result<Vec<String>> {
         let mut stmt = conn.prepare(
             "SELECT tag FROM chat_v2_session_tags WHERE session_id = ?1 ORDER BY tag_type ASC, created_at ASC",
         )?;
@@ -2597,17 +2608,23 @@ impl ChatV2Repo {
             return Ok(std::collections::HashMap::new());
         }
 
-        let mut map: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
+        let mut map: std::collections::HashMap<String, Vec<String>> =
+            std::collections::HashMap::new();
 
         for chunk in session_ids.chunks(500) {
-            let placeholders: Vec<String> = chunk.iter().enumerate().map(|(i, _)| format!("?{}", i + 1)).collect();
+            let placeholders: Vec<String> = chunk
+                .iter()
+                .enumerate()
+                .map(|(i, _)| format!("?{}", i + 1))
+                .collect();
             let sql = format!(
                 "SELECT session_id, tag FROM chat_v2_session_tags WHERE session_id IN ({}) ORDER BY tag_type ASC, created_at ASC",
                 placeholders.join(", ")
             );
 
             let mut stmt = conn.prepare(&sql)?;
-            let params: Vec<&dyn rusqlite::ToSql> = chunk.iter().map(|s| s as &dyn rusqlite::ToSql).collect();
+            let params: Vec<&dyn rusqlite::ToSql> =
+                chunk.iter().map(|s| s as &dyn rusqlite::ToSql).collect();
 
             let rows = stmt.query_map(params.as_slice(), |row| {
                 Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
@@ -2622,9 +2639,7 @@ impl ChatV2Repo {
     }
 
     /// 获取所有标签（去重，带使用次数）
-    pub fn list_all_tags(
-        conn: &Connection,
-    ) -> ChatV2Result<Vec<(String, u32)>> {
+    pub fn list_all_tags(conn: &Connection) -> ChatV2Result<Vec<(String, u32)>> {
         let mut stmt = conn.prepare(
             r#"
             SELECT t.tag, COUNT(*) as cnt

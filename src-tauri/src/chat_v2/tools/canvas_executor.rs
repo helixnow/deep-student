@@ -1010,7 +1010,10 @@ mod tests {
             executor.sensitivity_level("note_replace"),
             ToolSensitivity::Medium
         );
-        assert_eq!(executor.sensitivity_level("note_set"), ToolSensitivity::Medium);
+        assert_eq!(
+            executor.sensitivity_level("note_set"),
+            ToolSensitivity::Medium
+        );
 
         // builtin- 前缀格式
         assert_eq!(

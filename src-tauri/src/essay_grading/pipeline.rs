@@ -476,7 +476,11 @@ fn build_grading_prompts(
     // 2.5 添加润色提升 section 指令（始终启用）
     system_prompt.push_str(SECTION_INSTRUCTIONS);
     // 如果有作文题干，追加参考范文 section 指令
-    if request.topic.as_ref().map_or(false, |t| !t.trim().is_empty()) {
+    if request
+        .topic
+        .as_ref()
+        .map_or(false, |t| !t.trim().is_empty())
+    {
         system_prompt.push_str(MODEL_ESSAY_INSTRUCTIONS);
     }
     system_prompt.push_str("\n");
@@ -811,9 +815,9 @@ where
 /// 根据 base64 数据的前几个字节猜测图片 MIME 类型
 fn guess_image_mime(base64_data: &str) -> &'static str {
     // 解码前 16 字节用于魔数检测
-    if let Ok(bytes) = base64::engine::general_purpose::STANDARD.decode(
-        &base64_data[..std::cmp::min(base64_data.len(), 24)],
-    ) {
+    if let Ok(bytes) = base64::engine::general_purpose::STANDARD
+        .decode(&base64_data[..std::cmp::min(base64_data.len(), 24)])
+    {
         if bytes.starts_with(&[0x89, 0x50, 0x4E, 0x47]) {
             return "image/png";
         }

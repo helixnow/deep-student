@@ -47,7 +47,10 @@ impl MemoryCategoryManager {
     }
 
     fn category_note_title(category_name: &str) -> String {
-        format!("{}{}{}", CATEGORY_NOTE_PREFIX, category_name, CATEGORY_NOTE_SUFFIX)
+        format!(
+            "{}{}{}",
+            CATEGORY_NOTE_PREFIX, category_name, CATEGORY_NOTE_SUFFIX
+        )
     }
 
     /// 刷新所有分类摘要文件
@@ -134,8 +137,7 @@ impl MemoryCategoryManager {
                 memory_contents.push(format!("[经验笔记] {}", mem.title));
                 continue;
             }
-            let content = VfsNoteRepo::get_note_content(&self.vfs_db, &mem.id)?
-                .unwrap_or_default();
+            let content = VfsNoteRepo::get_note_content(&self.vfs_db, &mem.id)?.unwrap_or_default();
             if content.is_empty() {
                 memory_contents.push(mem.title.clone());
             } else {
@@ -302,8 +304,8 @@ impl MemoryCategoryManager {
 
         let mut results = Vec::new();
         for (note_id, title) in notes {
-            let content = VfsNoteRepo::get_note_content(&self.vfs_db, &note_id)?
-                .unwrap_or_default();
+            let content =
+                VfsNoteRepo::get_note_content(&self.vfs_db, &note_id)?.unwrap_or_default();
             if !content.is_empty() {
                 let cat_name = title
                     .strip_prefix(CATEGORY_NOTE_PREFIX)

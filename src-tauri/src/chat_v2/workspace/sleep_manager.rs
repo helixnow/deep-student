@@ -522,11 +522,17 @@ impl SleepManager {
         false
     }
 
-    fn is_agent_relevant_to_sleep(&self, agent_session_id: &str, sleep_data: &SleepBlockData) -> bool {
+    fn is_agent_relevant_to_sleep(
+        &self,
+        agent_session_id: &str,
+        sleep_data: &SleepBlockData,
+    ) -> bool {
         if sleep_data.awaiting_agents.is_empty() {
             return true;
         }
-        sleep_data.awaiting_agents.contains(&agent_session_id.to_string())
+        sleep_data
+            .awaiting_agents
+            .contains(&agent_session_id.to_string())
     }
 
     fn check_all_agents_terminal(&self, sleep_data: &SleepBlockData) -> bool {

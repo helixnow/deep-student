@@ -26,7 +26,10 @@ impl MemoryReranker {
             tracing::info!("[MemoryReranker] 检测到重排序模型配置，启用 API 重排序");
         }
 
-        Self { llm_manager, has_api }
+        Self {
+            llm_manager,
+            has_api,
+        }
     }
 
     pub fn has_reranker_api(&self) -> bool {
@@ -95,16 +98,10 @@ impl MemoryReranker {
                     }
                 }
 
-                tracing::info!(
-                    "[MemoryReranker] API 重排序完成: {} results",
-                    results.len()
-                );
+                tracing::info!("[MemoryReranker] API 重排序完成: {} results", results.len());
             }
             Err(e) => {
-                tracing::warn!(
-                    "[MemoryReranker] API 重排序失败，保持原排序: {}",
-                    e
-                );
+                tracing::warn!("[MemoryReranker] API 重排序失败，保持原排序: {}", e);
             }
         }
 

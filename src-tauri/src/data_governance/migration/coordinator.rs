@@ -230,10 +230,7 @@ impl MigrationCoordinator {
                             });
                         }
                         Err(restore_err) => {
-                            tracing::error!(
-                                "[MigrationCoordinator] 自动恢复失败: {}",
-                                restore_err
-                            );
+                            tracing::error!("[MigrationCoordinator] 自动恢复失败: {}", restore_err);
                             report.success = false;
                             report.error = Some(format!(
                                 "Database '{}' migration failed: {}. Auto-recovery also failed: {}. Successfully completed: [{}]",
@@ -384,9 +381,9 @@ impl MigrationCoordinator {
                 .cmp(&b.file_name().and_then(|n| n.to_str()))
         });
 
-        let latest = snapshot_dirs.last().ok_or_else(|| {
-            MigrationError::Database("无迁移前快照目录可用于恢复".to_string())
-        })?;
+        let latest = snapshot_dirs
+            .last()
+            .ok_or_else(|| MigrationError::Database("无迁移前快照目录可用于恢复".to_string()))?;
 
         tracing::info!(
             "[MigrationCoordinator] 尝试从快照恢复: {}",
@@ -408,9 +405,7 @@ impl MigrationCoordinator {
                 })
                 .unwrap_or_default()
         } else {
-            tracing::warn!(
-                "[MigrationCoordinator] 快照缺少 metadata.json，回退到默认核心文件列表"
-            );
+            tracing::warn!("[MigrationCoordinator] 快照缺少 metadata.json，回退到默认核心文件列表");
             vec![
                 "databases/vfs.db".to_string(),
                 "chat_v2.db".to_string(),

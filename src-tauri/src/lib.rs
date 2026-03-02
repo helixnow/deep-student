@@ -18,73 +18,73 @@ pub mod database_optimizations;
 pub mod debug_commands;
 pub mod debug_logger;
 
-pub mod cloud_storage;
 pub mod anr_watchdog; // ANR 看门狗（Android 主线程卡顿检测）
+pub mod backup_common;
+pub mod backup_config;
+pub mod chat_v2; // Chat V2 - 新版聊天后端模块（基于 Block 架构）
+pub mod cloud_storage;
+pub mod cross_page_merger;
+pub mod data_space;
 pub mod deepseek_ocr_parser;
 pub mod document_parser;
 pub mod document_processing_service;
+pub mod dstu;
 pub mod enhanced_anki_service;
 pub mod error_details;
 pub mod error_recovery;
+pub mod essay_grading;
 pub mod exam_sheet_service;
 pub mod feature_flags;
+pub mod figure_extractor;
 pub mod file_manager;
 pub mod injection_budget;
 pub mod json_validator;
+pub mod lance_vector_store;
+pub mod llm_manager;
+pub mod llm_structurer;
+pub mod llm_usage; // LLM 使用量统计模块（独立 llm_usage.db）
+#[cfg(feature = "mcp")]
+pub mod mcp;
+pub mod memory; // Memory-as-VFS 记忆系统（复用 VFS 基础设施）
+pub mod metrics_server;
+pub mod models;
+pub mod multimodal; // 多模态知识库模块（基于 Qwen3-VL-Embedding/Reranker）
+pub mod notes_exporter;
+pub mod notes_manager;
 pub mod ocr_adapters; // OCR 适配器模块（支持多种 OCR 引擎）
 pub mod ocr_circuit_breaker; // OCR 熔断器（三态：Closed/Open/HalfOpen）
+pub mod package_manager;
+pub mod page_rasterizer;
 pub mod pdf_ocr_service;
 pub mod pdf_protocol;
 pub mod pdfium_utils; // Pdfium 公共工具（库加载 + 文本提取）
-pub mod question_bank_service;
-pub mod question_export_service;
-pub mod cross_page_merger;
-pub mod figure_extractor;
-pub mod llm_structurer;
-pub mod page_rasterizer;
-pub mod question_import_service;
-pub mod vlm_grounding_service;
-pub mod secure_store;
-pub mod backup_common;
-pub mod backup_config;
-pub mod data_space;
-pub mod lance_vector_store;
-pub mod llm_manager;
-#[cfg(feature = "mcp")]
-pub mod mcp;
-pub mod metrics_server;
-pub mod models;
-pub mod notes_exporter;
-pub mod notes_manager;
-pub mod package_manager;
 pub mod persistent_message_queue;
 pub mod providers;
+pub mod qbank_grading;
+pub mod question_bank_service;
+pub mod question_export_service;
+pub mod question_import_service;
+pub mod question_sync_service;
 pub mod reasoning_policy; // 思维链回传策略模块（文档 29 第 7 节）
+pub mod review_plan_service; // 复习计划服务（与错题系统集成）
+pub mod secure_store;
 pub mod services;
 pub mod session_manager;
+pub mod spaced_repetition;
 pub mod startup_cleanup;
 pub mod streaming_anki_service;
+pub mod test_utils;
 pub mod textbooks_db;
 pub mod tools;
-pub mod vendors;
-pub mod chat_v2; // Chat V2 - 新版聊天后端模块（基于 Block 架构）
-pub mod dstu;
-pub mod vfs; // VFS 虚拟文件系统（统一资源存储） // DSTU 访达协议层（VFS 的文件系统语义接口）
-pub mod memory; // Memory-as-VFS 记忆系统（复用 VFS 基础设施）
+pub mod translation;
+pub mod tts; // 可选的系统 TTS（Web Speech API 回退方案）
 pub mod unified_file_manager;
 pub mod utils;
 pub mod vector_store;
-pub mod workflow_error_handler;
-pub mod essay_grading;
-pub mod qbank_grading;
-pub mod test_utils;
-pub mod translation;
-pub mod tts; // 可选的系统 TTS（Web Speech API 回退方案）
-pub mod llm_usage; // LLM 使用量统计模块（独立 llm_usage.db）
-pub mod multimodal; // 多模态知识库模块（基于 Qwen3-VL-Embedding/Reranker）
-pub mod question_sync_service;
-pub mod review_plan_service; // 复习计划服务（与错题系统集成）
-pub mod spaced_repetition; // SM-2 间隔重复算法 // 题目集同步冲突策略服务
+pub mod vendors;
+pub mod vfs; // VFS 虚拟文件系统（统一资源存储） // DSTU 访达协议层（VFS 的文件系统语义接口）
+pub mod vlm_grounding_service;
+pub mod workflow_error_handler; // SM-2 间隔重复算法 // 题目集同步冲突策略服务
 
 // 数据治理模块（条件编译，需启用 data_governance feature）
 #[cfg(feature = "data_governance")]
@@ -1680,11 +1680,8 @@ fn build_app_state(
     >::new()));
 
     let notes_manager = Arc::new(
-        crate::notes_manager::NotesManager::new_with_vfs(
-            notes_database.clone(),
-            vfs_db.clone(),
-        )
-        .expect("Failed to init NotesManager"),
+        crate::notes_manager::NotesManager::new_with_vfs(notes_database.clone(), vfs_db.clone())
+            .expect("Failed to init NotesManager"),
     );
 
     // ★ backup_job_manager 已移至 Tauri State（BackupJobManagerState）单例模式
@@ -1713,7 +1710,10 @@ fn build_app_state(
 
         match pps.recover_stuck_tasks() {
             Ok(count) if count > 0 => {
-                tracing::info!("[AppSetup] Recovered {} stuck media processing tasks", count);
+                tracing::info!(
+                    "[AppSetup] Recovered {} stuck media processing tasks",
+                    count
+                );
             }
             Ok(_) => {}
             Err(e) => {

@@ -715,10 +715,7 @@ impl VfsExamRepo {
         )?;
 
         // 7. 删除关联的 questions
-        conn.execute(
-            "DELETE FROM questions WHERE exam_id = ?1",
-            params![exam_id],
-        )?;
+        conn.execute("DELETE FROM questions WHERE exam_id = ?1", params![exam_id])?;
 
         // 8. 删除 exam_sheets 记录
         let deleted = conn.execute("DELETE FROM exam_sheets WHERE id = ?1", params![exam_id])?;
@@ -961,10 +958,7 @@ impl VfsExamRepo {
             params![state_str, now, exam_id],
         )?;
 
-        debug!(
-            "[VFS::ExamRepo] Updated import_state for exam {}",
-            exam_id
-        );
+        debug!("[VFS::ExamRepo] Updated import_state for exam {}", exam_id);
         Ok(())
     }
 
@@ -980,10 +974,7 @@ impl VfsExamRepo {
             params![now, exam_id],
         )?;
 
-        info!(
-            "[VFS::ExamRepo] Cleared import_state for exam {}",
-            exam_id
-        );
+        info!("[VFS::ExamRepo] Cleared import_state for exam {}", exam_id);
         Ok(())
     }
 
@@ -1024,10 +1015,7 @@ impl VfsExamRepo {
     }
 
     /// 读取单个题目集的 import_state_json
-    pub fn get_import_state(
-        db: &VfsDatabase,
-        exam_id: &str,
-    ) -> VfsResult<Option<String>> {
+    pub fn get_import_state(db: &VfsDatabase, exam_id: &str) -> VfsResult<Option<String>> {
         let conn = db.get_conn_safe()?;
         let result: Option<String> = conn
             .query_row(

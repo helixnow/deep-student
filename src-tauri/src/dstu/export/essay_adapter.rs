@@ -138,10 +138,7 @@ impl EssayExportAdapter {
             .map_err(|e| DstuError::Internal(format!("获取作文失败: {}", e)))?
             .ok_or_else(|| DstuError::not_found(essay_id))?;
 
-        let title = essay
-            .title
-            .as_deref()
-            .unwrap_or("未命名作文");
+        let title = essay.title.as_deref().unwrap_or("未命名作文");
 
         let content = VfsEssayRepo::get_essay_content(vfs_db, essay_id)
             .map_err(|e| DstuError::Internal(format!("获取作文内容失败: {}", e)))?

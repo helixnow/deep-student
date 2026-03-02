@@ -680,7 +680,12 @@ impl VariantExecutionContext {
     }
 
     /// 发射 tool_call_preparing 事件（自动携带 variant_id）
-    pub fn emit_tool_call_preparing(&self, tool_call_id: &str, tool_name: &str, block_id: Option<&str>) {
+    pub fn emit_tool_call_preparing(
+        &self,
+        tool_call_id: &str,
+        tool_name: &str,
+        block_id: Option<&str>,
+    ) {
         self.emitter.emit_tool_call_preparing_with_variant(
             &self.message_id,
             tool_call_id,

@@ -1,8 +1,8 @@
 use std::sync::Arc;
 use tracing::{debug, warn};
 
-use crate::llm_manager::LLMManager;
 use super::service::MemorySearchResult;
+use crate::llm_manager::LLMManager;
 
 /// 记忆检索压缩器
 ///
@@ -47,7 +47,11 @@ impl MemoryCompressor {
 
         let prompt = self.build_prompt(query, results);
 
-        match self.llm_manager.call_memory_decision_raw_prompt(&prompt).await {
+        match self
+            .llm_manager
+            .call_memory_decision_raw_prompt(&prompt)
+            .await
+        {
             Ok(output) => {
                 let compressed_text = output.assistant_message.trim().to_string();
                 if compressed_text.is_empty() {

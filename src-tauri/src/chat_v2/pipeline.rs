@@ -36,12 +36,14 @@ pub(crate) use super::tools::builtin_retrieval_executor::BUILTIN_NAMESPACE;
 pub(crate) use super::tools::{
     AcademicSearchExecutor, AttemptCompletionExecutor, BuiltinResourceExecutor,
     BuiltinRetrievalExecutor, CanvasToolExecutor, ChatAnkiToolExecutor, ExecutionContext,
-    FetchExecutor, GeneralToolExecutor, KnowledgeExecutor, MemoryToolExecutor,
-    SkillsExecutor, TemplateDesignerExecutor, ToolExecutor, ToolExecutorRegistry,
-    ToolSensitivity, WorkspaceToolExecutor,
+    FetchExecutor, GeneralToolExecutor, KnowledgeExecutor, MemoryToolExecutor, SkillsExecutor,
+    TemplateDesignerExecutor, ToolExecutor, ToolExecutorRegistry, ToolSensitivity,
+    WorkspaceToolExecutor,
 };
 pub(crate) use crate::database::Database as MainDatabase;
-pub(crate) use crate::models::{ChatMessage as LegacyChatMessage, MultimodalContentPart, RagSourceInfo};
+pub(crate) use crate::models::{
+    ChatMessage as LegacyChatMessage, MultimodalContentPart, RagSourceInfo,
+};
 pub(crate) use crate::tools::web_search::{do_search, SearchInput, ToolConfig as WebSearchConfig};
 pub(crate) use crate::tools::ToolRegistry;
 
@@ -56,8 +58,8 @@ pub(crate) use crate::vfs::repos::VfsResourceRepo;
 // 🆕 VFS RAG 统一知识管理（2025-01）：使用 VFS 向量检索
 pub(crate) use crate::vfs::indexing::{VfsFullSearchService, VfsSearchParams};
 pub(crate) use crate::vfs::lance_store::VfsLanceStore;
-pub(crate) use crate::vfs::repos::MODALITY_TEXT;
 pub(crate) use crate::vfs::multimodal_service::VfsMultimodalService;
+pub(crate) use crate::vfs::repos::MODALITY_TEXT;
 // 🆕 MCP 工具注入支持：现在使用前端传递的 mcp_tool_schemas，无需后端 MCP Client
 pub(crate) use super::context::PipelineContext;
 pub(crate) use super::resource_types::{ContentBlock, ContextRef, ContextSnapshot};
@@ -406,19 +408,20 @@ impl ChatV2Pipeline {
             ctx.options.model_id
         );
 
-        let model_name: Option<String> =
-            if let Some(config_id) = ctx.options.model_id.as_ref().filter(|s| !s.is_empty()) {
-                // 有指定模型 ID，从 API 配置中查找
-                match self.llm_manager.get_api_configs().await {
-                    Ok(configs) => {
-                        log::info!(
-                            "[ChatV2::pipeline] Found {} API configs, looking for config_id: {}",
-                            configs.len(),
-                            config_id
-                        );
-                        // 🔧 Bug修复：优先通过 c.id 匹配，如果找不到再通过 c.model 匹配
-                        // 这样无论前端传递的是 API 配置 ID（UUID）还是模型显示名称，都能正确解析
-                        let found = configs
+        let model_name: Option<String> = if let Some(config_id) =
+            ctx.options.model_id.as_ref().filter(|s| !s.is_empty())
+        {
+            // 有指定模型 ID，从 API 配置中查找
+            match self.llm_manager.get_api_configs().await {
+                Ok(configs) => {
+                    log::info!(
+                        "[ChatV2::pipeline] Found {} API configs, looking for config_id: {}",
+                        configs.len(),
+                        config_id
+                    );
+                    // 🔧 Bug修复：优先通过 c.id 匹配，如果找不到再通过 c.model 匹配
+                    // 这样无论前端传递的是 API 配置 ID（UUID）还是模型显示名称，都能正确解析
+                    let found = configs
                             .iter()
                             .find(|c| &c.id == config_id)
                             .map(|c| c.model.clone())
@@ -451,40 +454,40 @@ impl ChatV2Pipeline {
                                     Some(config_id.clone())
                                 }
                             });
-                        log::info!("[ChatV2::pipeline] Resolved model_name: {:?}", found);
-                        found
-                    }
-                    Err(e) => {
-                        log::warn!(
-                            "[ChatV2::pipeline] Failed to get API configs for model name: {}",
-                            e
-                        );
-                        None
-                    }
+                    log::info!("[ChatV2::pipeline] Resolved model_name: {:?}", found);
+                    found
                 }
-            } else {
-                // 没有指定模型 ID（使用默认模型），从默认配置获取模型名称
-                log::info!(
-                    "[ChatV2::pipeline] options.model_id is None/empty, getting default model name"
-                );
-                match self
-                    .llm_manager
-                    .select_model_for("default", None, None, None, None, None, None)
-                    .await
-                {
-                    Ok((config, _)) => {
-                        log::info!(
-                            "[ChatV2::pipeline] Default model resolved: {}",
-                            config.model
-                        );
-                        Some(config.model)
-                    }
-                    Err(e) => {
-                        log::warn!("[ChatV2::pipeline] Failed to get default model: {}", e);
-                        None
-                    }
+                Err(e) => {
+                    log::warn!(
+                        "[ChatV2::pipeline] Failed to get API configs for model name: {}",
+                        e
+                    );
+                    None
                 }
-            };
+            }
+        } else {
+            // 没有指定模型 ID（使用默认模型），从默认配置获取模型名称
+            log::info!(
+                "[ChatV2::pipeline] options.model_id is None/empty, getting default model name"
+            );
+            match self
+                .llm_manager
+                .select_model_for("default", None, None, None, None, None, None)
+                .await
+            {
+                Ok((config, _)) => {
+                    log::info!(
+                        "[ChatV2::pipeline] Default model resolved: {}",
+                        config.model
+                    );
+                    Some(config.model)
+                }
+                Err(e) => {
+                    log::warn!("[ChatV2::pipeline] Failed to get default model: {}", e);
+                    None
+                }
+            }
+        };
 
         // 🔧 Bug修复：将模型显示名称存储到 ctx，用于消息保存
         ctx.model_display_name = model_name.clone();

@@ -44,9 +44,15 @@ fn get_tool_timeout_secs(tool_name: &str) -> u64 {
         // RAG 检索工具（可能涉及大量数据）
         "builtin-rag_search" | "builtin-multimodal_search" | "builtin-unified_search" => 180, // 3 分钟
         // 文档写入/转换工具（大文件处理可能耗时较长）
-        "builtin-docx_create" | "builtin-pptx_create" | "builtin-xlsx_create"
-        | "builtin-docx_to_spec" | "builtin-pptx_to_spec" | "builtin-xlsx_to_spec"
-        | "builtin-docx_replace_text" | "builtin-pptx_replace_text" | "builtin-xlsx_replace_text" => 300, // 5 分钟
+        "builtin-docx_create"
+        | "builtin-pptx_create"
+        | "builtin-xlsx_create"
+        | "builtin-docx_to_spec"
+        | "builtin-pptx_to_spec"
+        | "builtin-xlsx_to_spec"
+        | "builtin-docx_replace_text"
+        | "builtin-pptx_replace_text"
+        | "builtin-xlsx_replace_text" => 300, // 5 分钟
         // 子代理调用工具（可能执行复杂任务）
         "subagent_call" => 300, // 5 分钟
         _ => {

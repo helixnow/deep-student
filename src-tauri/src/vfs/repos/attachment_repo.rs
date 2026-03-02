@@ -1450,7 +1450,12 @@ impl VfsAttachmentRepo {
                 .query_row(
                     "SELECT data, external_hash FROM resources WHERE id = ?1",
                     params![resource_id],
-                    |row| Ok((row.get::<_, Option<String>>(0)?, row.get::<_, Option<String>>(1)?)),
+                    |row| {
+                        Ok((
+                            row.get::<_, Option<String>>(0)?,
+                            row.get::<_, Option<String>>(1)?,
+                        ))
+                    },
                 )
                 .optional()?
                 .unwrap_or((None, None));
@@ -2529,7 +2534,9 @@ mod tests {
         // "a+b/c" 的 URL-safe + 去 padding 形式
         let urlsafe_no_padding = "YStiL2M";
         assert!(is_probably_base64(urlsafe_no_padding));
-        assert!(is_probably_base64("data:application/octet-stream;base64,YStiL2M"));
+        assert!(is_probably_base64(
+            "data:application/octet-stream;base64,YStiL2M"
+        ));
     }
 
     #[test]
@@ -2650,16 +2657,19 @@ mod tests {
 
     #[test]
     fn test_extract_relative_from_slot_path_no_match() {
-        assert!(VfsAttachmentRepo::extract_relative_from_slot_path("/Users/alice/Documents/file.pdf").is_none());
-        assert!(VfsAttachmentRepo::extract_relative_from_slot_path("relative/path/file.txt").is_none());
+        assert!(VfsAttachmentRepo::extract_relative_from_slot_path(
+            "/Users/alice/Documents/file.pdf"
+        )
+        .is_none());
+        assert!(
+            VfsAttachmentRepo::extract_relative_from_slot_path("relative/path/file.txt").is_none()
+        );
     }
 
     #[test]
     fn test_extract_relative_from_slot_path_slot_root_only() {
         // slots/slotA/ with nothing after → should return None
-        assert!(VfsAttachmentRepo::extract_relative_from_slot_path(
-            "/data/slots/slotA/"
-        ).is_none());
+        assert!(VfsAttachmentRepo::extract_relative_from_slot_path("/data/slots/slotA/").is_none());
     }
 
     #[test]
@@ -2675,13 +2685,19 @@ mod tests {
 
         // Simulate a macOS path from another machine
         let foreign_path = "/Users/alice/Library/Application Support/com.deepstudent.app/slots/slotA/textbooks/test.pptx";
-        let candidates = VfsAttachmentRepo::build_original_path_candidates(&blobs_dir, foreign_path);
+        let candidates =
+            VfsAttachmentRepo::build_original_path_candidates(&blobs_dir, foreign_path);
 
         // Should have 2 candidates: the original absolute path + remapped path
         assert!(candidates.len() >= 2);
         // The remapped candidate should be under the current slot root
         let remapped = slot_root.join("textbooks/test.pptx");
-        assert!(candidates.contains(&remapped), "Expected remapped path {:?} in candidates {:?}", remapped, candidates);
+        assert!(
+            candidates.contains(&remapped),
+            "Expected remapped path {:?} in candidates {:?}",
+            remapped,
+            candidates
+        );
 
         std::fs::remove_dir_all(slot_root).ok();
     }

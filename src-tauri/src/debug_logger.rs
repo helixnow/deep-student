@@ -104,10 +104,14 @@ impl DebugLogger {
 
                 let should_remove = match entry.metadata() {
                     Ok(meta) => {
-                        let modified = meta.modified().ok().and_then(|t| {
-                            let duration = t.elapsed().ok()?;
-                            Some(duration.as_secs() > (Self::MAX_LOG_AGE_DAYS as u64 * 86400))
-                        }).unwrap_or(false);
+                        let modified = meta
+                            .modified()
+                            .ok()
+                            .and_then(|t| {
+                                let duration = t.elapsed().ok()?;
+                                Some(duration.as_secs() > (Self::MAX_LOG_AGE_DAYS as u64 * 86400))
+                            })
+                            .unwrap_or(false);
 
                         let oversized = meta.len() > Self::MAX_LOG_FILE_SIZE_BYTES;
 

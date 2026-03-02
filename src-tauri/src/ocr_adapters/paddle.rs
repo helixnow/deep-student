@@ -35,7 +35,9 @@ pub struct PaddleOcrVlAdapter {
 
 impl PaddleOcrVlAdapter {
     pub fn new() -> Self {
-        Self { engine: OcrEngineType::PaddleOcrVl }
+        Self {
+            engine: OcrEngineType::PaddleOcrVl,
+        }
     }
 
     pub fn with_engine(engine: OcrEngineType) -> Self {

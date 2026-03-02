@@ -26,14 +26,13 @@ use crate::file_manager::FileManager;
 use crate::llm_manager::LLMManager;
 use crate::llm_structurer::LlmStructurer;
 use crate::models::{
-    AppError, ExamCardPreview, ExamSheetPreviewPage, ExamSheetPreviewResult,
-    QuestionStatus, SourceType,
+    AppError, ExamCardPreview, ExamSheetPreviewPage, ExamSheetPreviewResult, QuestionStatus,
+    SourceType,
 };
 use crate::page_rasterizer::{PageRasterizer, PageSlice};
 use crate::vfs::database::VfsDatabase;
 use crate::vfs::repos::{
-    CreateQuestionParams, QuestionFilters, QuestionImage, VfsBlobRepo, VfsExamRepo,
-    VfsQuestionRepo,
+    CreateQuestionParams, QuestionFilters, QuestionImage, VfsBlobRepo, VfsExamRepo, VfsQuestionRepo,
 };
 use crate::vfs::types::VfsCreateExamSheetParams;
 use crate::vlm_grounding_service::{VlmExtractedQuestion, VlmGroundingService, VlmPageAnalysis};
@@ -53,10 +52,7 @@ pub enum QuestionImportProgress {
         percent: usize,
     },
     /// 页面渲染进度
-    RenderingPages {
-        current: usize,
-        total: usize,
-    },
+    RenderingPages { current: usize, total: usize },
     /// 单张图片 OCR/VLM 完成（兼容旧前端事件名）
     OcrImageCompleted {
         image_index: usize,
@@ -74,15 +70,9 @@ pub enum QuestionImportProgress {
         total_chunks: usize,
     },
     /// 配图提取进度
-    ExtractingFigures {
-        current: usize,
-        total: usize,
-    },
+    ExtractingFigures { current: usize, total: usize },
     /// 题目结构化进度
-    StructuringQuestion {
-        current: usize,
-        total: usize,
-    },
+    StructuringQuestion { current: usize, total: usize },
     /// 单道题目解析完成
     QuestionParsed {
         question: Value,
@@ -378,8 +368,7 @@ impl QuestionImportService {
             .clone()
             .unwrap_or_else(|| "导入的题目集".to_string());
 
-        let session_id =
-            self.create_import_session(vfs_db, &request, &qbank_name, &pages)?;
+        let session_id = self.create_import_session(vfs_db, &request, &qbank_name, &pages)?;
 
         // 初始 checkpoint（Stage 1 完成）
         let mut checkpoint = ImportCheckpointState {
@@ -520,13 +509,15 @@ impl QuestionImportService {
             // DocxVlmDirect: 重建 data URL，从 VLM 调用处恢复
             let mut data_urls: Vec<String> = Vec::with_capacity(blob_hashes.len());
             for (idx, hash) in blob_hashes.iter().enumerate() {
-                let mime = mime_list.get(idx).map(|s| s.as_str()).unwrap_or("image/png");
+                let mime = mime_list
+                    .get(idx)
+                    .map(|s| s.as_str())
+                    .unwrap_or("image/png");
                 match VfsBlobRepo::get_blob_path(vfs_db, hash) {
                     Ok(Some(path)) => match std::fs::read(&path) {
                         Ok(blob_data) => {
                             use base64::Engine;
-                            let b64 =
-                                base64::engine::general_purpose::STANDARD.encode(&blob_data);
+                            let b64 = base64::engine::general_purpose::STANDARD.encode(&blob_data);
                             data_urls.push(format!("data:{};base64,{}", mime, b64));
                         }
                         Err(e) => {
@@ -557,18 +548,20 @@ impl QuestionImportService {
                 });
             }
 
-            let total_saved = self.run_vlm_direct_extraction(
-                vfs_db,
-                session_id,
-                &data_urls,
-                &blob_hashes,
-                &mime_list,
-                &ext_list,
-                &clean_text,
-                &mut checkpoint,
-                already_saved,
-                progress_tx.as_ref(),
-            ).await?;
+            let total_saved = self
+                .run_vlm_direct_extraction(
+                    vfs_db,
+                    session_id,
+                    &data_urls,
+                    &blob_hashes,
+                    &mime_list,
+                    &ext_list,
+                    &clean_text,
+                    &mut checkpoint,
+                    already_saved,
+                    progress_tx.as_ref(),
+                )
+                .await?;
 
             rebuild_preview_from_questions(vfs_db, session_id);
 
@@ -692,12 +685,8 @@ impl QuestionImportService {
                             }
 
                             let card_id = format!("card_{}", nanoid::nanoid!(12));
-                            let params = json_to_question_params(
-                                &q,
-                                session_id,
-                                &card_id,
-                                total_parsed,
-                            );
+                            let params =
+                                json_to_question_params(&q, session_id, &card_id, total_parsed);
 
                             if let Err(e) = VfsQuestionRepo::create_question(vfs_db, &params) {
                                 log::warn!("[QuestionImport] 保存题目失败: {}", e);
@@ -910,8 +899,7 @@ impl QuestionImportService {
                 total: merged.len(),
             });
         }
-        let questions_with_figures =
-            figure_extractor::extract_figures(merged, pages, vfs_db);
+        let questions_with_figures = figure_extractor::extract_figures(merged, pages, vfs_db);
 
         checkpoint.current_stage = ImportStage::FiguresExtracted;
         save_checkpoint(vfs_db, session_id, checkpoint);
@@ -1183,18 +1171,20 @@ impl QuestionImportService {
         }
 
         // ===== Stage 2: VLM 流式提取 → 逐题保存 =====
-        let total_saved = self.run_vlm_direct_extraction(
-            vfs_db,
-            &session_id,
-            &data_urls,
-            &blob_hashes,
-            &mime_list,
-            &ext_list,
-            &clean_text,
-            &mut checkpoint,
-            0, // start from question 0
-            progress_tx,
-        ).await?;
+        let total_saved = self
+            .run_vlm_direct_extraction(
+                vfs_db,
+                &session_id,
+                &data_urls,
+                &blob_hashes,
+                &mime_list,
+                &ext_list,
+                &clean_text,
+                &mut checkpoint,
+                0, // start from question 0
+                progress_tx,
+            )
+            .await?;
 
         // ===== 完成 =====
         rebuild_preview_from_questions(vfs_db, &session_id);
@@ -1347,10 +1337,7 @@ impl QuestionImportService {
                 log::error!("[QuestionImport] VLM DOCX 提取失败: {}", e);
                 // 如果已保存部分题目，不算完全失败
                 if total_saved > skip_count {
-                    log::warn!(
-                        "[QuestionImport] 已保存 {} 道题目（部分成功）",
-                        total_saved
-                    );
+                    log::warn!("[QuestionImport] 已保存 {} 道题目（部分成功）", total_saved);
                 } else {
                     if let Some(tx) = progress_tx {
                         let _ = tx.send(QuestionImportProgress::Failed {
@@ -1427,9 +1414,8 @@ impl QuestionImportService {
         }
 
         let parser = DocumentParser::new();
-        let (text_with_markers, image_bytes_list) = parser
-            .extract_docx_with_images(&docx_bytes)
-            .map_err(|e| {
+        let (text_with_markers, image_bytes_list) =
+            parser.extract_docx_with_images(&docx_bytes).map_err(|e| {
                 log::error!("[QuestionImport] DOCX 解析失败: {}", e);
                 AppError::validation(format!("DOCX 解析失败: {}", e))
             })?;
@@ -1463,9 +1449,7 @@ impl QuestionImportService {
 
             let (mime, ext) = detect_image_format(img_bytes);
             let blob = VfsBlobRepo::store_blob(vfs_db, img_bytes, Some(mime), Some(ext))
-                .map_err(|e| {
-                    AppError::database(format!("图片 {} Blob 存储失败: {}", idx, e))
-                })?;
+                .map_err(|e| AppError::database(format!("图片 {} Blob 存储失败: {}", idx, e)))?;
             image_map.push(DocxImageEntry {
                 marker_index: idx,
                 blob_hash: blob.hash.clone(),
@@ -1619,11 +1603,7 @@ impl QuestionImportService {
                     ) {
                         Ok(bytes) => bytes,
                         Err(e) => {
-                            log::warn!(
-                                "[QuestionImport] 图片 {} blob 加载失败: {}",
-                                idx,
-                                e
-                            );
+                            log::warn!("[QuestionImport] 图片 {} blob 加载失败: {}", idx, e);
                             checkpoint.docx_vlm_images_completed = idx + 1;
                             save_checkpoint(vfs_db, session_id, checkpoint);
                             continue;
@@ -1643,11 +1623,7 @@ impl QuestionImportService {
                             // 安全处理：转义 >> 并截断到 500 字符
                             let safe_desc = sanitize_vlm_description(&desc, 500);
                             let preview: String = safe_desc.chars().take(80).collect();
-                            log::info!(
-                                "[QuestionImport] 图片 {} VLM 描述: {}...",
-                                idx,
-                                preview
-                            );
+                            log::info!("[QuestionImport] 图片 {} VLM 描述: {}...", idx, preview);
                             checkpoint
                                 .docx_vlm_descriptions
                                 .insert(idx.to_string(), safe_desc);
@@ -1678,10 +1654,8 @@ impl QuestionImportService {
             }
 
             // ===== 构建 VLM 增强文本 =====
-            let enriched_text = build_enriched_text(
-                &checkpoint.text_content,
-                &checkpoint.docx_vlm_descriptions,
-            );
+            let enriched_text =
+                build_enriched_text(&checkpoint.text_content, &checkpoint.docx_vlm_descriptions);
 
             // 记录标记位置
             let marker_positions = extract_marker_positions(&enriched_text);
@@ -1714,22 +1688,15 @@ impl QuestionImportService {
 
         let mut total_parsed = if chunks_start > 0 {
             // 恢复时从已有题目数开始
-            VfsQuestionRepo::list_questions(
-                vfs_db,
-                session_id,
-                &QuestionFilters::default(),
-                1,
-                1,
-            )
-            .map(|r| r.total as usize)
-            .unwrap_or(0)
+            VfsQuestionRepo::list_questions(vfs_db, session_id, &QuestionFilters::default(), 1, 1)
+                .map(|r| r.total as usize)
+                .unwrap_or(0)
         } else {
             0
         };
 
         let mut question_text_offsets: Vec<(usize, usize)> = Vec::new();
-        let mut chunk_char_offset: usize =
-            chunks.iter().take(chunks_start).map(|c| c.len()).sum();
+        let mut chunk_char_offset: usize = chunks.iter().take(chunks_start).map(|c| c.len()).sum();
 
         for (chunk_idx, chunk) in chunks.iter().enumerate() {
             if chunk_idx < chunks_start {
@@ -1780,16 +1747,14 @@ impl QuestionImportService {
                                         / (questions_in_chunk + 1).max(1),
                                 )
                             } else {
-                                (questions_in_chunk * chunk.len())
-                                    / (questions_in_chunk + 1).max(1)
+                                (questions_in_chunk * chunk.len()) / (questions_in_chunk + 1).max(1)
                             };
                             question_text_offsets
                                 .push((total_parsed, chunk_start_offset + local_pos));
                         }
 
-                        let mut params = json_to_question_params(
-                            &q, session_id, &card_id, total_parsed,
-                        );
+                        let mut params =
+                            json_to_question_params(&q, session_id, &card_id, total_parsed);
 
                         if !question_images.is_empty() {
                             params.images = Some(question_images);
@@ -1818,11 +1783,7 @@ impl QuestionImportService {
                 .await;
 
             if let Err(e) = chunk_questions {
-                log::warn!(
-                    "[QuestionImport] DOCX 块 {} 解析失败: {}",
-                    chunk_idx + 1,
-                    e
-                );
+                log::warn!("[QuestionImport] DOCX 块 {} 解析失败: {}", chunk_idx + 1, e);
             }
 
             chunk_char_offset += chunk.len();
@@ -1963,10 +1924,7 @@ impl QuestionImportService {
                     mime: orphan.mime.clone(),
                     hash: orphan.blob_hash.clone(),
                 };
-                updates
-                    .entry(question.id.clone())
-                    .or_default()
-                    .push(img);
+                updates.entry(question.id.clone()).or_default().push(img);
             }
         }
 
@@ -2031,7 +1989,10 @@ impl QuestionImportService {
         if let Some(ref tx) = progress_tx {
             let _ = tx.send(QuestionImportProgress::Preprocessing {
                 stage: "chunking".to_string(),
-                message: format!("文档解析完成，共 {} 字符，正在分块...", text_content.chars().count()),
+                message: format!(
+                    "文档解析完成，共 {} 字符，正在分块...",
+                    text_content.chars().count()
+                ),
                 percent: 15,
             });
         }
@@ -2156,12 +2117,8 @@ impl QuestionImportService {
                         }
 
                         let card_id = format!("card_{}", nanoid::nanoid!(12));
-                        let params = json_to_question_params(
-                            &q,
-                            &session_id,
-                            &card_id,
-                            total_parsed,
-                        );
+                        let params =
+                            json_to_question_params(&q, &session_id, &card_id, total_parsed);
 
                         if let Err(e) = VfsQuestionRepo::create_question(vfs_db, &params) {
                             log::warn!("[QuestionImport] 保存题目失败: {}", e);
@@ -2367,7 +2324,11 @@ impl QuestionImportService {
                 .iter()
                 .map(|p| ExamSheetPreviewPage {
                     page_index: p.page_index,
-                    cards: if p.page_index == 0 { cards.clone() } else { Vec::new() },
+                    cards: if p.page_index == 0 {
+                        cards.clone()
+                    } else {
+                        Vec::new()
+                    },
                     blob_hash: Some(p.blob_hash.clone()),
                     width: Some(p.width),
                     height: Some(p.height),
@@ -2613,19 +2574,28 @@ fn json_to_question_params(
         .unwrap_or("")
         .to_string();
 
-    let options: Option<Vec<crate::vfs::repos::QuestionOption>> = q.get("options").and_then(|v| v.as_array()).map(|arr| {
-        arr.iter()
-            .filter_map(|opt| {
-                let key = opt.get("key").and_then(|k| k.as_str()).unwrap_or("").to_string();
-                let content = opt.get("content").and_then(|c| c.as_str()).unwrap_or("").to_string();
-                if key.is_empty() && content.is_empty() {
-                    None
-                } else {
-                    Some(crate::vfs::repos::QuestionOption { key, content })
-                }
-            })
-            .collect()
-    });
+    let options: Option<Vec<crate::vfs::repos::QuestionOption>> =
+        q.get("options").and_then(|v| v.as_array()).map(|arr| {
+            arr.iter()
+                .filter_map(|opt| {
+                    let key = opt
+                        .get("key")
+                        .and_then(|k| k.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    let content = opt
+                        .get("content")
+                        .and_then(|c| c.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    if key.is_empty() && content.is_empty() {
+                        None
+                    } else {
+                        Some(crate::vfs::repos::QuestionOption { key, content })
+                    }
+                })
+                .collect()
+        });
 
     // 后处理：选择题如果 options 有实际内容，移除 content 末尾重复的选项文本
     if let Some(ref opts) = options {
@@ -2653,13 +2623,25 @@ fn json_to_question_params(
         .get("question_type")
         .and_then(|v| v.as_str())
         .and_then(|t| match t.to_lowercase().as_str() {
-            "single_choice" | "单选" | "单选题" => Some(crate::vfs::repos::QuestionType::SingleChoice),
-            "multiple_choice" | "多选" | "多选题" => Some(crate::vfs::repos::QuestionType::MultipleChoice),
-            "indefinite_choice" | "不定项" => Some(crate::vfs::repos::QuestionType::IndefiniteChoice),
-            "fill_blank" | "填空" | "填空题" => Some(crate::vfs::repos::QuestionType::FillBlank),
-            "short_answer" | "简答" | "简答题" => Some(crate::vfs::repos::QuestionType::ShortAnswer),
+            "single_choice" | "单选" | "单选题" => {
+                Some(crate::vfs::repos::QuestionType::SingleChoice)
+            }
+            "multiple_choice" | "多选" | "多选题" => {
+                Some(crate::vfs::repos::QuestionType::MultipleChoice)
+            }
+            "indefinite_choice" | "不定项" => {
+                Some(crate::vfs::repos::QuestionType::IndefiniteChoice)
+            }
+            "fill_blank" | "填空" | "填空题" => {
+                Some(crate::vfs::repos::QuestionType::FillBlank)
+            }
+            "short_answer" | "简答" | "简答题" => {
+                Some(crate::vfs::repos::QuestionType::ShortAnswer)
+            }
             "essay" | "论述" | "论述题" => Some(crate::vfs::repos::QuestionType::Essay),
-            "calculation" | "计算" | "计算题" => Some(crate::vfs::repos::QuestionType::Calculation),
+            "calculation" | "计算" | "计算题" => {
+                Some(crate::vfs::repos::QuestionType::Calculation)
+            }
             "proof" | "证明" | "证明题" => Some(crate::vfs::repos::QuestionType::Proof),
             _ => Some(crate::vfs::repos::QuestionType::Other),
         });
@@ -2687,7 +2669,10 @@ fn json_to_question_params(
         content,
         options,
         answer: q.get("answer").and_then(|v| v.as_str()).map(String::from),
-        explanation: q.get("explanation").and_then(|v| v.as_str()).map(String::from),
+        explanation: q
+            .get("explanation")
+            .and_then(|v| v.as_str())
+            .map(String::from),
         question_type,
         difficulty,
         tags,
@@ -2710,14 +2695,21 @@ fn question_to_card(q: &Value, index: usize) -> ExamCardPreview {
         tags: q
             .get("tags")
             .and_then(|v| v.as_array())
-            .map(|arr| arr.iter().filter_map(|t| t.as_str().map(String::from)).collect())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|t| t.as_str().map(String::from))
+                    .collect()
+            })
             .unwrap_or_default(),
         question_type: q
             .get("question_type")
             .and_then(|v| v.as_str())
             .and_then(|t| serde_json::from_str(&format!("\"{}\"", t)).ok()),
         answer: q.get("answer").and_then(|v| v.as_str()).map(String::from),
-        explanation: q.get("explanation").and_then(|v| v.as_str()).map(String::from),
+        explanation: q
+            .get("explanation")
+            .and_then(|v| v.as_str())
+            .map(String::from),
         difficulty: q
             .get("difficulty")
             .and_then(|v| v.as_str())
@@ -3034,9 +3026,7 @@ fn clean_image_markers_in_params(params: &mut CreateQuestionParams) {
 
     if let Some(ref mut answer) = params.answer {
         *answer = re
-            .replace_all(answer, |caps: &regex::Captures| {
-                format!("[图{}]", &caps[1])
-            })
+            .replace_all(answer, |caps: &regex::Captures| format!("[图{}]", &caps[1]))
             .to_string();
     }
 }
@@ -3048,7 +3038,10 @@ fn segment_document(content: &str, max_tokens: usize) -> Vec<String> {
         .collect();
 
     let paragraphs: Vec<&str> = if paragraphs.len() < 3 {
-        content.split('\n').filter(|p| !p.trim().is_empty()).collect()
+        content
+            .split('\n')
+            .filter(|p| !p.trim().is_empty())
+            .collect()
     } else {
         paragraphs
     };
@@ -3167,7 +3160,9 @@ fn ensure_vfs_file_for_blob(
 
     // 创建新的 file 条目
     let file_id = format!("file_{}", nanoid::nanoid!(12));
-    let now = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
+    let now = chrono::Utc::now()
+        .format("%Y-%m-%dT%H:%M:%S%.3fZ")
+        .to_string();
 
     if let Err(e) = conn.execute(
         r#"INSERT OR IGNORE INTO files (id, blob_hash, file_name, original_path, size, "type", mime_type, tags_json, is_favorite, status, created_at, updated_at)
@@ -3198,10 +3193,7 @@ fn rebuild_preview_from_questions(vfs_db: &VfsDatabase, session_id: &str) {
     ) {
         Ok(result) => result.questions,
         Err(e) => {
-            log::warn!(
-                "[QuestionImport] rebuild_preview: 读取题目失败: {}",
-                e
-            );
+            log::warn!("[QuestionImport] rebuild_preview: 读取题目失败: {}", e);
             return;
         }
     };
@@ -3214,31 +3206,34 @@ fn rebuild_preview_from_questions(vfs_db: &VfsDatabase, session_id: &str) {
     let cards: Vec<ExamCardPreview> = questions
         .iter()
         .enumerate()
-        .map(|(idx, q)| {
-            ExamCardPreview {
-                card_id: q.card_id.clone().unwrap_or_else(|| format!("card_{}", idx)),
-                page_index: 0,
-                question_label: q
-                    .question_label
-                    .clone()
-                    .unwrap_or_else(|| format!("{}", idx + 1)),
-                ocr_text: q.content.clone(),
-                tags: q.tags.clone(),
-                question_type: serde_json::to_value(&q.question_type).ok()
-                    .and_then(|v| serde_json::from_value(v).ok()),
-                answer: q.answer.clone(),
-                explanation: q.explanation.clone(),
-                difficulty: q.difficulty.as_ref().and_then(|d|
-                    serde_json::to_value(d).ok().and_then(|v| serde_json::from_value(v).ok())
-                ),
-                status: serde_json::to_value(&q.status).ok()
+        .map(|(idx, q)| ExamCardPreview {
+            card_id: q.card_id.clone().unwrap_or_else(|| format!("card_{}", idx)),
+            page_index: 0,
+            question_label: q
+                .question_label
+                .clone()
+                .unwrap_or_else(|| format!("{}", idx + 1)),
+            ocr_text: q.content.clone(),
+            tags: q.tags.clone(),
+            question_type: serde_json::to_value(&q.question_type)
+                .ok()
+                .and_then(|v| serde_json::from_value(v).ok()),
+            answer: q.answer.clone(),
+            explanation: q.explanation.clone(),
+            difficulty: q.difficulty.as_ref().and_then(|d| {
+                serde_json::to_value(d)
+                    .ok()
                     .and_then(|v| serde_json::from_value(v).ok())
-                    .unwrap_or_default(),
-                source_type: serde_json::to_value(&q.source_type).ok()
-                    .and_then(|v| serde_json::from_value(v).ok())
-                    .unwrap_or_default(),
-                ..Default::default()
-            }
+            }),
+            status: serde_json::to_value(&q.status)
+                .ok()
+                .and_then(|v| serde_json::from_value(v).ok())
+                .unwrap_or_default(),
+            source_type: serde_json::to_value(&q.source_type)
+                .ok()
+                .and_then(|v| serde_json::from_value(v).ok())
+                .unwrap_or_default(),
+            ..Default::default()
         })
         .collect();
 
@@ -3265,20 +3260,12 @@ fn rebuild_preview_from_questions(vfs_db: &VfsDatabase, session_id: &str) {
 
     match serde_json::to_value(&preview) {
         Ok(preview_json) => {
-            if let Err(e) =
-                VfsExamRepo::update_preview_json(vfs_db, session_id, preview_json)
-            {
-                log::warn!(
-                    "[QuestionImport] rebuild_preview: 更新 preview 失败: {}",
-                    e
-                );
+            if let Err(e) = VfsExamRepo::update_preview_json(vfs_db, session_id, preview_json) {
+                log::warn!("[QuestionImport] rebuild_preview: 更新 preview 失败: {}", e);
             }
         }
         Err(e) => {
-            log::warn!(
-                "[QuestionImport] rebuild_preview: 序列化失败: {}",
-                e
-            );
+            log::warn!("[QuestionImport] rebuild_preview: 序列化失败: {}", e);
         }
     }
 }
@@ -3384,7 +3371,12 @@ impl CsvImportService {
             }
         }
 
-        Ok(CsvPreviewResult { headers, rows, total_rows, encoding })
+        Ok(CsvPreviewResult {
+            headers,
+            rows,
+            total_rows,
+            encoding,
+        })
     }
 
     pub fn import_csv(
@@ -3392,7 +3384,11 @@ impl CsvImportService {
         request: &CsvImportRequest,
         progress_tx: Option<UnboundedSender<CsvImportProgress>>,
     ) -> Result<CsvImportResult, AppError> {
-        log::info!("[CsvImport] 开始导入: {} -> exam_id={}", request.file_path, request.exam_id);
+        log::info!(
+            "[CsvImport] 开始导入: {} -> exam_id={}",
+            request.file_path,
+            request.exam_id
+        );
 
         let (content, encoding) = Self::read_file_with_encoding(&request.file_path)?;
         log::info!("[CsvImport] 编码: {}", encoding);
@@ -3434,8 +3430,14 @@ impl CsvImportService {
             match result {
                 Ok(record) => {
                     match Self::process_csv_row(
-                        vfs_db, &exam_id, &headers, &record, &request.field_mapping,
-                        &request.duplicate_strategy, &mut existing_hashes, row_num,
+                        vfs_db,
+                        &exam_id,
+                        &headers,
+                        &record,
+                        &request.field_mapping,
+                        &request.duplicate_strategy,
+                        &mut existing_hashes,
+                        row_num,
                     ) {
                         Ok(CsvRowResult::Success) => success_count += 1,
                         Ok(CsvRowResult::Skipped) => skipped_count += 1,
@@ -3479,7 +3481,12 @@ impl CsvImportService {
         }
 
         let result = CsvImportResult {
-            success_count, skipped_count, failed_count, errors, exam_id, total_rows,
+            success_count,
+            skipped_count,
+            failed_count,
+            errors,
+            exam_id,
+            total_rows,
         };
 
         if let Some(ref tx) = progress_tx {
@@ -3502,11 +3509,16 @@ impl CsvImportService {
             .map_err(|e| AppError::internal(format!("打开文件失败: {}", e)))?;
         let mut reader = BufReader::new(file);
         let mut bytes = Vec::new();
-        reader.read_to_end(&mut bytes)
+        reader
+            .read_to_end(&mut bytes)
             .map_err(|e| AppError::internal(format!("读取文件失败: {}", e)))?;
 
         if let Ok(content) = String::from_utf8(bytes.clone()) {
-            let content = if content.starts_with('\u{FEFF}') { content[3..].to_string() } else { content };
+            let content = if content.starts_with('\u{FEFF}') {
+                content[3..].to_string()
+            } else {
+                content
+            };
             return Ok((content, "UTF-8".to_string()));
         }
         let (decoded, _, had_errors) = encoding_rs::GBK.decode(&bytes);
@@ -3517,26 +3529,37 @@ impl CsvImportService {
         Ok((decoded.to_string(), "GB18030".to_string()))
     }
 
-    fn validate_field_mapping(headers: &[String], field_mapping: &HashMap<String, String>) -> Result<(), AppError> {
+    fn validate_field_mapping(
+        headers: &[String],
+        field_mapping: &HashMap<String, String>,
+    ) -> Result<(), AppError> {
         if !field_mapping.values().any(|v| v == "content") {
             return Err(AppError::validation("字段映射中必须包含 content 字段"));
         }
         for csv_col in field_mapping.keys() {
             if !headers.contains(csv_col) {
-                return Err(AppError::validation(format!("CSV 文件中不存在列 '{}'", csv_col)));
+                return Err(AppError::validation(format!(
+                    "CSV 文件中不存在列 '{}'",
+                    csv_col
+                )));
             }
         }
         Ok(())
     }
 
-    fn ensure_exam_exists(vfs_db: &VfsDatabase, request: &CsvImportRequest) -> Result<String, AppError> {
+    fn ensure_exam_exists(
+        vfs_db: &VfsDatabase,
+        request: &CsvImportRequest,
+    ) -> Result<String, AppError> {
         if let Ok(Some(_)) = VfsExamRepo::get_exam_sheet(vfs_db, &request.exam_id) {
             return Ok(request.exam_id.clone());
         }
 
         let exam_name = request.exam_name.clone().unwrap_or_else(|| {
             let file_name = std::path::Path::new(&request.file_path)
-                .file_stem().and_then(|s| s.to_str()).unwrap_or("CSV导入");
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("CSV导入");
             format!("CSV导入 - {}", file_name)
         });
 
@@ -3544,18 +3567,30 @@ impl CsvImportService {
             temp_id: request.exam_id.clone(),
             exam_name: Some(exam_name.clone()),
             pages: vec![ExamSheetPreviewPage {
-                page_index: 0, cards: Vec::new(), blob_hash: None, width: None, height: None,
-                original_image_path: String::new(), raw_ocr_text: None, ocr_completed: false, parse_completed: false,
+                page_index: 0,
+                cards: Vec::new(),
+                blob_hash: None,
+                width: None,
+                height: None,
+                original_image_path: String::new(),
+                raw_ocr_text: None,
+                ocr_completed: false,
+                parse_completed: false,
             }],
-            raw_model_response: None, instructions: None, session_id: Some(request.exam_id.clone()),
+            raw_model_response: None,
+            instructions: None,
+            session_id: Some(request.exam_id.clone()),
         };
 
         let preview_json = serde_json::to_value(&preview)
             .map_err(|e| AppError::validation(format!("序列化失败: {}", e)))?;
 
         let params = VfsCreateExamSheetParams {
-            exam_name: Some(exam_name), temp_id: request.exam_id.clone(),
-            metadata_json: json!({}), preview_json, status: "completed".to_string(),
+            exam_name: Some(exam_name),
+            temp_id: request.exam_id.clone(),
+            metadata_json: json!({}),
+            preview_json,
+            status: "completed".to_string(),
             folder_id: request.folder_id.clone(),
         };
 
@@ -3564,19 +3599,27 @@ impl CsvImportService {
         Ok(request.exam_id.clone())
     }
 
-    fn get_existing_content_hashes(vfs_db: &VfsDatabase, exam_id: &str) -> Result<HashMap<String, String>, AppError> {
+    fn get_existing_content_hashes(
+        vfs_db: &VfsDatabase,
+        exam_id: &str,
+    ) -> Result<HashMap<String, String>, AppError> {
         use rusqlite::params;
-        let conn = vfs_db.get_conn_safe()
+        let conn = vfs_db
+            .get_conn_safe()
             .map_err(|e| AppError::database(format!("获取连接失败: {}", e)))?;
-        let mut stmt = conn.prepare("SELECT id, content FROM questions WHERE exam_id = ?1 AND deleted_at IS NULL")
+        let mut stmt = conn
+            .prepare("SELECT id, content FROM questions WHERE exam_id = ?1 AND deleted_at IS NULL")
             .map_err(|e| AppError::database(format!("准备查询失败: {}", e)))?;
-        let rows = stmt.query_map(params![exam_id], |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-        }).map_err(|e| AppError::database(format!("查询失败: {}", e)))?;
+        let rows = stmt
+            .query_map(params![exam_id], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })
+            .map_err(|e| AppError::database(format!("查询失败: {}", e)))?;
 
         let mut hashes = HashMap::new();
         for row in rows {
-            let (id, content) = row.map_err(|e| AppError::database(format!("读取行失败: {}", e)))?;
+            let (id, content) =
+                row.map_err(|e| AppError::database(format!("读取行失败: {}", e)))?;
             hashes.insert(Self::compute_content_hash(&content), id);
         }
         Ok(hashes)
@@ -3590,9 +3633,14 @@ impl CsvImportService {
     }
 
     fn process_csv_row(
-        vfs_db: &VfsDatabase, exam_id: &str, headers: &[String], record: &csv::StringRecord,
-        field_mapping: &HashMap<String, String>, duplicate_strategy: &CsvDuplicateStrategy,
-        existing_hashes: &mut HashMap<String, String>, row_num: usize,
+        vfs_db: &VfsDatabase,
+        exam_id: &str,
+        headers: &[String],
+        record: &csv::StringRecord,
+        field_mapping: &HashMap<String, String>,
+        duplicate_strategy: &CsvDuplicateStrategy,
+        existing_hashes: &mut HashMap<String, String>,
+        row_num: usize,
     ) -> Result<CsvRowResult, AppError> {
         let mut field_values: HashMap<String, String> = HashMap::new();
         for (csv_col, target_field) in field_mapping {
@@ -3605,10 +3653,14 @@ impl CsvImportService {
             }
         }
 
-        let content = field_values.get("content")
+        let content = field_values
+            .get("content")
             .ok_or_else(|| AppError::validation(format!("第 {} 行: content 为空", row_num)))?;
         if content.trim().is_empty() {
-            return Err(AppError::validation(format!("第 {} 行: content 为空", row_num)));
+            return Err(AppError::validation(format!(
+                "第 {} 行: content 为空",
+                row_num
+            )));
         }
 
         let content_hash = Self::compute_content_hash(content);
@@ -3639,16 +3691,27 @@ impl CsvImportService {
         Ok(CsvRowResult::Success)
     }
 
-    fn build_create_params(exam_id: &str, fv: &HashMap<String, String>, row_num: usize) -> CreateQuestionParams {
+    fn build_create_params(
+        exam_id: &str,
+        fv: &HashMap<String, String>,
+        row_num: usize,
+    ) -> CreateQuestionParams {
         CreateQuestionParams {
             exam_id: exam_id.to_string(),
             card_id: Some(format!("csv_{}", nanoid::nanoid!(10))),
-            question_label: fv.get("question_label").cloned().or_else(|| Some(format!("Q{}", row_num - 1))),
+            question_label: fv
+                .get("question_label")
+                .cloned()
+                .or_else(|| Some(format!("Q{}", row_num - 1))),
             content: fv.get("content").cloned().unwrap_or_default(),
-            options: fv.get("options").and_then(|s| Self::parse_options_string(s)),
+            options: fv
+                .get("options")
+                .and_then(|s| Self::parse_options_string(s)),
             answer: fv.get("answer").cloned(),
             explanation: fv.get("explanation").cloned(),
-            question_type: fv.get("question_type").and_then(|t| Self::parse_question_type(t)),
+            question_type: fv
+                .get("question_type")
+                .and_then(|t| Self::parse_question_type(t)),
             difficulty: fv.get("difficulty").and_then(|d| Self::parse_difficulty(d)),
             tags: fv.get("tags").and_then(|t| Self::parse_tags(t)),
             source_type: Some(crate::vfs::repos::SourceType::Imported),
@@ -3658,24 +3721,59 @@ impl CsvImportService {
         }
     }
 
-    fn build_update_params(fv: &HashMap<String, String>) -> crate::vfs::repos::UpdateQuestionParams {
+    fn build_update_params(
+        fv: &HashMap<String, String>,
+    ) -> crate::vfs::repos::UpdateQuestionParams {
         let mut params = crate::vfs::repos::UpdateQuestionParams::default();
-        if let Some(v) = fv.get("content") { params.content = Some(v.clone()); }
-        if let Some(v) = fv.get("answer") { params.answer = Some(v.clone()); }
-        if let Some(v) = fv.get("explanation") { params.explanation = Some(v.clone()); }
-        if let Some(v) = fv.get("options") { params.options = Self::parse_options_string(v); }
-        if let Some(v) = fv.get("question_type") { params.question_type = Self::parse_question_type(v); }
-        if let Some(v) = fv.get("difficulty") { params.difficulty = Self::parse_difficulty(v); }
-        if let Some(v) = fv.get("tags") { params.tags = Self::parse_tags(v); }
+        if let Some(v) = fv.get("content") {
+            params.content = Some(v.clone());
+        }
+        if let Some(v) = fv.get("answer") {
+            params.answer = Some(v.clone());
+        }
+        if let Some(v) = fv.get("explanation") {
+            params.explanation = Some(v.clone());
+        }
+        if let Some(v) = fv.get("options") {
+            params.options = Self::parse_options_string(v);
+        }
+        if let Some(v) = fv.get("question_type") {
+            params.question_type = Self::parse_question_type(v);
+        }
+        if let Some(v) = fv.get("difficulty") {
+            params.difficulty = Self::parse_difficulty(v);
+        }
+        if let Some(v) = fv.get("tags") {
+            params.tags = Self::parse_tags(v);
+        }
         params
     }
 
-    fn build_merge_params(fv: &HashMap<String, String>, existing: &crate::vfs::repos::Question) -> crate::vfs::repos::UpdateQuestionParams {
+    fn build_merge_params(
+        fv: &HashMap<String, String>,
+        existing: &crate::vfs::repos::Question,
+    ) -> crate::vfs::repos::UpdateQuestionParams {
         let mut params = crate::vfs::repos::UpdateQuestionParams::default();
-        if existing.answer.is_none() { if let Some(v) = fv.get("answer") { params.answer = Some(v.clone()); } }
-        if existing.explanation.is_none() { if let Some(v) = fv.get("explanation") { params.explanation = Some(v.clone()); } }
-        if existing.options.is_none() { if let Some(v) = fv.get("options") { params.options = Self::parse_options_string(v); } }
-        if existing.tags.is_empty() { if let Some(v) = fv.get("tags") { params.tags = Self::parse_tags(v); } }
+        if existing.answer.is_none() {
+            if let Some(v) = fv.get("answer") {
+                params.answer = Some(v.clone());
+            }
+        }
+        if existing.explanation.is_none() {
+            if let Some(v) = fv.get("explanation") {
+                params.explanation = Some(v.clone());
+            }
+        }
+        if existing.options.is_none() {
+            if let Some(v) = fv.get("options") {
+                params.options = Self::parse_options_string(v);
+            }
+        }
+        if existing.tags.is_empty() {
+            if let Some(v) = fv.get("tags") {
+                params.tags = Self::parse_tags(v);
+            }
+        }
         params
     }
 
@@ -3689,16 +3787,21 @@ impl CsvImportService {
         for sep in [';', '\n', '|'] {
             let parts: Vec<&str> = s.split(sep).filter(|p| !p.trim().is_empty()).collect();
             if parts.len() >= 2 {
-                let options: Vec<_> = parts.iter().filter_map(|part| {
-                    let part = part.trim();
-                    let re = regex::Regex::new(r"^([A-Za-z])[\.、\s]\s*(.+)$").ok()?;
-                    let caps = re.captures(part)?;
-                    Some(crate::vfs::repos::QuestionOption {
-                        key: caps.get(1)?.as_str().to_uppercase(),
-                        content: caps.get(2)?.as_str().to_string(),
+                let options: Vec<_> = parts
+                    .iter()
+                    .filter_map(|part| {
+                        let part = part.trim();
+                        let re = regex::Regex::new(r"^([A-Za-z])[\.、\s]\s*(.+)$").ok()?;
+                        let caps = re.captures(part)?;
+                        Some(crate::vfs::repos::QuestionOption {
+                            key: caps.get(1)?.as_str().to_uppercase(),
+                            content: caps.get(2)?.as_str().to_string(),
+                        })
                     })
-                }).collect();
-                if !options.is_empty() { return Some(options); }
+                    .collect();
+                if !options.is_empty() {
+                    return Some(options);
+                }
             }
         }
         None
@@ -3706,13 +3809,25 @@ impl CsvImportService {
 
     fn parse_question_type(s: &str) -> Option<crate::vfs::repos::QuestionType> {
         match s.trim().to_lowercase().as_str() {
-            "single_choice" | "单选" | "单选题" => Some(crate::vfs::repos::QuestionType::SingleChoice),
-            "multiple_choice" | "多选" | "多选题" => Some(crate::vfs::repos::QuestionType::MultipleChoice),
-            "indefinite_choice" | "不定项" => Some(crate::vfs::repos::QuestionType::IndefiniteChoice),
-            "fill_blank" | "填空" | "填空题" => Some(crate::vfs::repos::QuestionType::FillBlank),
-            "short_answer" | "简答" | "简答题" => Some(crate::vfs::repos::QuestionType::ShortAnswer),
+            "single_choice" | "单选" | "单选题" => {
+                Some(crate::vfs::repos::QuestionType::SingleChoice)
+            }
+            "multiple_choice" | "多选" | "多选题" => {
+                Some(crate::vfs::repos::QuestionType::MultipleChoice)
+            }
+            "indefinite_choice" | "不定项" => {
+                Some(crate::vfs::repos::QuestionType::IndefiniteChoice)
+            }
+            "fill_blank" | "填空" | "填空题" => {
+                Some(crate::vfs::repos::QuestionType::FillBlank)
+            }
+            "short_answer" | "简答" | "简答题" => {
+                Some(crate::vfs::repos::QuestionType::ShortAnswer)
+            }
             "essay" | "论述" | "论述题" => Some(crate::vfs::repos::QuestionType::Essay),
-            "calculation" | "计算" | "计算题" => Some(crate::vfs::repos::QuestionType::Calculation),
+            "calculation" | "计算" | "计算题" => {
+                Some(crate::vfs::repos::QuestionType::Calculation)
+            }
             "proof" | "证明" | "证明题" => Some(crate::vfs::repos::QuestionType::Proof),
             _ => Some(crate::vfs::repos::QuestionType::Other),
         }
@@ -3731,15 +3846,27 @@ impl CsvImportService {
     fn parse_tags(s: &str) -> Option<Vec<String>> {
         let s = s.trim();
         if s.starts_with('[') {
-            if let Ok(tags) = serde_json::from_str::<Vec<String>>(s) { return Some(tags); }
+            if let Ok(tags) = serde_json::from_str::<Vec<String>>(s) {
+                return Some(tags);
+            }
         }
         for sep in [',', ';', '|', '、'] {
             if s.contains(sep) {
-                let tags: Vec<String> = s.split(sep).map(|t| t.trim().to_string()).filter(|t| !t.is_empty()).collect();
-                if !tags.is_empty() { return Some(tags); }
+                let tags: Vec<String> = s
+                    .split(sep)
+                    .map(|t| t.trim().to_string())
+                    .filter(|t| !t.is_empty())
+                    .collect();
+                if !tags.is_empty() {
+                    return Some(tags);
+                }
             }
         }
-        if !s.is_empty() { Some(vec![s.to_string()]) } else { None }
+        if !s.is_empty() {
+            Some(vec![s.to_string()])
+        } else {
+            None
+        }
     }
 }
 

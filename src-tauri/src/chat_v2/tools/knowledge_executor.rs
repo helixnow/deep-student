@@ -401,7 +401,10 @@ mod tests {
 
     #[test]
     fn test_strip_namespace() {
-        assert_eq!(strip_tool_namespace("knowledge_extract"), "knowledge_extract");
+        assert_eq!(
+            strip_tool_namespace("knowledge_extract"),
+            "knowledge_extract"
+        );
     }
 
     #[test]

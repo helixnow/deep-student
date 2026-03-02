@@ -15,8 +15,7 @@ use std::sync::Arc;
 use tracing::{debug, info, warn};
 
 use crate::spaced_repetition::{
-    calculate_next_review, calculate_next_review_date, DEFAULT_EASE_FACTOR,
-    PASSING_GRADE,
+    calculate_next_review, calculate_next_review_date, DEFAULT_EASE_FACTOR, PASSING_GRADE,
 };
 use crate::vfs::database::VfsDatabase;
 use crate::vfs::repos::question_repo::{QuestionFilters, VfsQuestionRepo};
@@ -231,10 +230,13 @@ impl ReviewPlanService {
             time_spent_seconds,
         };
 
-        let conn = self.vfs_db.get_conn_safe()
+        let conn = self
+            .vfs_db
+            .get_conn_safe()
             .map_err(|e| anyhow::anyhow!("Failed to get DB connection: {}", e))?;
 
-        let tx = conn.unchecked_transaction()
+        let tx = conn
+            .unchecked_transaction()
             .with_context(|| "Failed to begin transaction for process_review")?;
 
         let updated_plan = VfsReviewPlanRepo::update_plan_with_conn(&tx, plan_id, &update_params)

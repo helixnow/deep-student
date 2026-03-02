@@ -153,7 +153,10 @@ impl ChatV2Pipeline {
     ///
     /// ## 返回
     /// 检索资源的 ContextRef 列表
-    pub(crate) async fn create_retrieval_resources(&self, sources: &MessageSources) -> Vec<ContextRef> {
+    pub(crate) async fn create_retrieval_resources(
+        &self,
+        sources: &MessageSources,
+    ) -> Vec<ContextRef> {
         use crate::vfs::types::{VfsResourceMetadata, VfsResourceType};
 
         let mut refs = Vec::new();
