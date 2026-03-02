@@ -119,7 +119,20 @@
       "title": "API Request Body",
       "copy": "Copy",
       "copySuccess": "Request body copied",
-      "copyFailed": "Copy failed"
+      "copyFailed": "Copy failed",
+      "logReadFailed": "Failed to read log file, falling back to in-memory data",
+      "persistentLogRequired": "Enable persistent debug logs to get the full raw payload; using in-memory data now",
+      "persisted": "Persisted",
+      "roundTooltip": "Round {{round}} · {{messageCount}} messages",
+      "roundTooltipWithToolCalls": "Round {{round}} · {{messageCount}} messages · {{toolCallMsgCount}} calls",
+      "stats": {
+        "bodyChars": "{{kb}}K chars",
+        "messages": "{{count}} messages",
+        "images": "{{count}} images",
+        "tools": "{{count}} tools",
+        "toolCalls": "{{count}} calls",
+        "toolResults": "{{count}} results"
+      }
     },
     "loadingFiles": "Loading files...",
     "documentPreview": "Document Preview",
@@ -553,7 +566,8 @@
       },
       "datetime": {
         "label": "Current Time",
-        "description": "Current date and time"
+        "description": "Current date and time",
+        "example": "2024-01-01 12:00"
       },
       "language": {
         "label": "Language",
@@ -1339,7 +1353,9 @@
     "customPlaceholder": "Or enter a custom answer..."
   },
   "pageRef": {
-    "clearAll": "Clear all page references"
+    "clearAll": "Clear all page references",
+    "singlePage": "Page {{page}}",
+    "pageRanges": "Pages {{pages}}"
   },
   "qbankCitation": {
     "openQbank": "Open question set: {{title}}",

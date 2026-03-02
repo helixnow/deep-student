@@ -41,6 +41,8 @@
     "lint:fix": "eslint src/ --fix",
     "lint:components": "eslint src/ --rule 'no-restricted-imports: error' --rule 'ds-components/no-native-button: warn'",
     "lint:components:strict": "eslint src/ --rule 'no-restricted-imports: error' --rule 'ds-components/no-native-button: error'",
+    "check:i18n": "node scripts/check-i18n.mjs",
+    "check:i18n:missing": "node scripts/check-missing-translations.mjs",
     "check:licenses": "node scripts/check-licenses.mjs",
     "test:lifecycle-gate": "node scripts/lifecycle-score-gate.mjs",
     "registry:sync": "node scripts/sync-model-registry.mjs"

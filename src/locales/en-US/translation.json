@@ -26,6 +26,7 @@
     "placeholder": "Translation result will appear here",
     "copy": "Copy",
     "export": "Export",
+    "export_title": "Export Translation",
     "copied": "Copied to clipboard",
     "exported": "Translation exported",
     "edit": "Edit Translation",
@@ -174,6 +175,8 @@
     "offline": "Network disconnected, please check your connection and try again",
     "offline_save": "Cannot save while offline, please check your connection",
     "offline_rate": "Cannot rate while offline, please check your connection",
+    "text_too_long": "Text exceeds maximum of {{max}} characters and will be truncated.",
+    "ocr_timeout_retry": "OCR timed out, please try again",
     "copy_failed": "Copy failed: {{error}}",
     "export_failed": "Export failed: {{error}}",
     "timeout": "Translation timed out, please try again"
@@ -198,6 +201,13 @@
     "cleared": "Cleared",
     "translating_already": "Translation is already in progress, ignoring duplicate call",
     "save_failed": "Save failed: {{error}}"
+  },
+  "export": {
+    "markdown_title": "Translation",
+    "date_label": "Date",
+    "file_filters": {
+      "markdown": "Markdown",
+      "text": "Text"
+    }
   }
 }
-

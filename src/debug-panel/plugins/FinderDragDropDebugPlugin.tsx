@@ -21,7 +21,7 @@ interface DragEvent {
  * 用于监听和调试 dnd-kit 拖放事件
  */
 export default function FinderDragDropDebugPlugin({ isActive, isActivated }: DebugPanelPluginProps) {
-  const { t } = useTranslation('debug_panel');
+  const { t } = useTranslation('common');
   const [events, setEvents] = useState<DragEvent[]>([]);
   const [isPaused, setIsPaused] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);

@@ -836,6 +836,7 @@
       "failed": "Failed"
     },
     "restore_insufficient_space": "Insufficient disk space: {{required}} GB needed, {{available}} GB available. Please free up disk space and try again.",
+    "restore_restart_required": "Restore completed. Please restart the app to ensure all changes take effect.",
     "restore_phase_pre_backup": "Creating pre-restore backup...",
     "restore_phase_scan": "Validating backup manifest",
     "restore_phase_restoring": "Restoring databases",

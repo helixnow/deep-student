@@ -111,12 +111,15 @@ impl ErrorDetailsBuilder {
     pub fn api_key_missing(service: &str) -> ErrorDetails {
         ErrorDetails::new(
             ErrorCode::ApiKeyMissing,
-            format!("{} API密钥未配置", service),
-            format!("需要配置{}的API密钥才能使用此功能", service),
+            format!("{} API key is not configured", service),
+            format!(
+                "Configure the {} API key in Settings before using this feature",
+                service
+            ),
         )
         .with_suggestion(ActionSuggestion {
             action_type: "settings".to_string(),
-            label: "前往设置".to_string(),
+            label: "Open Settings".to_string(),
             url: Some("#/settings".to_string()),
             data: Some(serde_json::json!({"section": service.to_lowercase()})),
         })

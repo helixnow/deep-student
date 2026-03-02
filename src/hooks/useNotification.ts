@@ -4,6 +4,7 @@
  */
 
 import { useState, useCallback, useRef, useEffect } from 'react';
+import i18n from '@/i18n';
 
 export interface NotificationMessage {
   id: string;
@@ -130,13 +131,21 @@ export const useNotification = () => {
     operation: string
   ) => {
     if (results.failed === 0) {
-      showSuccess(`${operation}成功完成，处理了 ${results.success} 项`);
+      showSuccess(i18n.t('common:notifications.batch.success', {
+        operation,
+        success: results.success
+      }));
     } else if (results.success === 0) {
-      showError(`${operation}失败，${results.failed} 项处理失败`);
+      showError(i18n.t('common:notifications.batch.failed', {
+        operation,
+        failed: results.failed
+      }));
     } else {
-      showWarning(
-        `${operation}部分完成：${results.success} 项成功，${results.failed} 项失败`
-      );
+      showWarning(i18n.t('common:notifications.batch.partial', {
+        operation,
+        success: results.success,
+        failed: results.failed
+      }));
     }
   }, [showSuccess, showError, showWarning]);
 
@@ -145,7 +154,11 @@ export const useNotification = () => {
     const id = `progress-${operation}`;
     updateNotification(id, {
       type: 'info',
-      text: `${operation}中... (${current}/${total})`,
+      text: i18n.t('common:notifications.batch.progress', {
+        operation,
+        current,
+        total
+      }),
       persistent: true
     });
     return id;

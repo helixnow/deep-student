@@ -9,6 +9,7 @@
 
 import { useState, useCallback, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import i18n from '@/i18n';
 import {
   ATTACHMENT_IMAGE_TYPES,
   ATTACHMENT_DOCUMENT_TYPES,
@@ -119,7 +120,11 @@ export function useAttachmentSettings(): UseAttachmentSettingsReturn {
 
   // 获取限制摘要
   const getLimitsSummary = useCallback((): string => {
-    return `图片: ${formatFileSize(settings.maxImageSize)}, 文件: ${formatFileSize(settings.maxFileSize)}, 最多 ${settings.maxAttachments} 个附件`;
+    return [
+      `${i18n.t('settings:system_settings.attachment.images')}: ${formatFileSize(settings.maxImageSize)}`,
+      `${i18n.t('settings:system_settings.attachment.documents')}: ${formatFileSize(settings.maxFileSize)}`,
+      i18n.t('chatV2:attachmentUploader.errors.maxCount', { max: settings.maxAttachments }),
+    ].join(', ');
   }, [settings, formatFileSize]);
 
   return {

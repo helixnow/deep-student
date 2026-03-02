@@ -40,6 +40,7 @@ declare module 'react-i18next' {
       practice: typeof import('../locales/zh-CN/practice.json');
       sync: typeof import('../locales/zh-CN/sync.json');
       mindmap: typeof import('../locales/zh-CN/mindmap.json');
+      vfs: typeof import('../locales/zh-CN/vfs.json');
       forms: typeof import('../locales/zh-CN/forms.json');
       console: typeof import('../locales/zh-CN/console.json');
       cloudStorage: typeof import('../locales/zh-CN/cloudStorage.json');

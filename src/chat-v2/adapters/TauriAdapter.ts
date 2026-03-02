@@ -1207,12 +1207,37 @@ export class ChatV2TauriAdapter {
    * 然后将 rawRequest 更新为后端的真实请求体（替换之前保存的前端请求）。
    */
   private handleLlmRequestBody(payload: { streamEvent: string; model: string; url: string; requestBody: unknown; logFilePath?: string | null }): void {
-    // streamEvent 格式: chat_v2_event_{session_id} 或 chat_v2_event_{session_id}_{variant_id}
     const prefix = `chat_v2_event_${this.sessionId}`;
     if (payload.streamEvent !== prefix && !payload.streamEvent.startsWith(`${prefix}_`)) {
       return;
     }
 
+    const state = this.getCurrentState();
+    const targetMsgId = state.currentStreamingMessageId
+      || (() => {
+        const lastMsgId = state.messageOrder[state.messageOrder.length - 1];
+        if (lastMsgId) {
+          const lastMsg = state.messageMap.get(lastMsgId);
+          if (lastMsg?.role === 'assistant') return lastMsgId;
+        }
+        return null;
+      })();
+
+    if (!targetMsgId) return;
+
+    const existing = state.messageMap.get(targetMsgId)?._meta?.rawRequests ?? [];
+    const entry = {
+      _source: 'backend_llm' as const,
+      model: payload.model,
+      url: payload.url,
+      body: payload.requestBody,
+      logFilePath: payload.logFilePath ?? undefined,
+      round: existing.length + 1,
+    };
+
+    const rawRequests = [...existing, entry];
+
+    // rawRequest 保持最新一轮（兼容旧逻辑）
     const rawRequest = {
       _source: 'backend_llm' as const,
       model: payload.model,
@@ -1221,20 +1246,7 @@ export class ChatV2TauriAdapter {
       logFilePath: payload.logFilePath ?? undefined,
     };
 
-    const state = this.getCurrentState();
-    const streamingMessageId = state.currentStreamingMessageId;
-    if (!streamingMessageId) {
-      const lastMsgId = state.messageOrder[state.messageOrder.length - 1];
-      if (lastMsgId) {
-        const lastMsg = state.messageMap.get(lastMsgId);
-        if (lastMsg && lastMsg.role === 'assistant') {
-          state.updateMessageMeta(lastMsgId, { rawRequest });
-        }
-      }
-      return;
-    }
-
-    state.updateMessageMeta(streamingMessageId, { rawRequest });
+    state.updateMessageMeta(targetMsgId, { rawRequest, rawRequests });
   }
 
   /**

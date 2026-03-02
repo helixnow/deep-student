@@ -4,6 +4,7 @@
 
 import { nanoid } from 'nanoid';
 import type { MindMapNode, CreateNodeParams } from '../../types';
+import i18n from '@/i18n';
 
 /** 生成节点 ID */
 export function generateNodeId(): string {
@@ -24,7 +25,7 @@ export function createNode(params: CreateNodeParams = {}): MindMapNode {
 }
 
 /** 创建根节点 */
-export function createRootNode(text: string = '中心主题'): MindMapNode {
+export function createRootNode(text: string = i18n.t('mindmap:placeholder.root')): MindMapNode {
   return {
     id: generateNodeId(),
     text,
@@ -44,4 +45,3 @@ export function cloneNode(node: MindMapNode, deep: boolean = true): MindMapNode 
   };
   return cloned;
 }
-

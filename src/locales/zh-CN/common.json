@@ -228,6 +228,14 @@
     "current": "当前",
     "calling_tool": "调用工具"
   },
+  "notifications": {
+    "batch": {
+      "success": "{{operation}}成功完成，处理了 {{success}} 项",
+      "failed": "{{operation}}失败，{{failed}} 项处理失败",
+      "partial": "{{operation}}部分完成：{{success}} 项成功，{{failed}} 项失败",
+      "progress": "{{operation}}中... ({{current}}/{{total}})"
+    }
+  },
   "chat_modes": {
     "chat": "通用对话",
     "analysis": "题目分析",
@@ -1329,6 +1337,7 @@
       "minutes_ago": "{{minutes}} 分钟前",
       "hours_ago": "{{hours}} 小时前",
       "cached_from": "缓存自",
+      "updated_at": "更新于",
       "cached": "已缓存"
     },
     "data_stats": {

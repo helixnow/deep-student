@@ -174,12 +174,12 @@ const ImageModeSelector: React.FC<ImageModeSelectorProps> = memo(({
     onChange(newModes);
   }, [selectedModes, onChange]);
 
-  // ★ P1 修复：检查模式是否已就绪（与 PdfModeSelector 保持一致）
   const isProcessing = !!processingStatus && processingStatus.stage !== 'completed' && processingStatus.stage !== 'error';
-  const readyModes = new Set(processingStatus?.readyModes || []); // 图片默认不就绪，等待预处理
+  const readyModes = new Set(processingStatus?.readyModes || []);
   
   const isModeReady = (mode: ImageInjectMode) => {
     if (!processingStatus) return true;
+    if (mode === 'image') return true;
     return readyModes.has(mode);
   };
 
@@ -366,7 +366,7 @@ export const AttachmentInjectModeSelector: React.FC<AttachmentInjectModeSelector
     ? {
         stage: 'pending',
         percent: 0,
-        readyModes: [],
+        readyModes: isImage ? ['image'] : [],
         mediaType: isPdf ? 'pdf' : 'image',
       }
     : undefined;

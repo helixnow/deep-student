@@ -636,6 +636,11 @@
     },
     "open_logs": "Open Logs Folder",
     "open_logs_failed": "Failed to open logs folder",
+    "preview_agreement": {
+      "title": "Preview Privacy Agreement",
+      "desc": "Open the user agreement and privacy policy dialog shown on first install for preview.",
+      "button": "Open Preview"
+    },
     "topbar_top_margin": {
       "title": "Topbar Top Margin Height",
       "desc": "Adjust the top margin height of content-header virtual-titlebar. Commonly used on Android to reserve space for the status bar. Unit is px, set to 0 for no margin."
@@ -648,7 +653,56 @@
       "title": "Debug Log",
       "desc": "Enable verbose debug logging to console"
     },
-    "log_type_hint": "Select log types to enable"
+    "log_type_hint": "Select log types to enable",
+    "units": {
+      "px": "px"
+    },
+    "copy_filter": {
+      "title": "Copy Content Filter",
+      "desc": "Configure how each section is handled when copying request bodies.",
+      "fields": {
+        "images": "Images",
+        "tools": "Tools",
+        "messages": "Message Content",
+        "truncate_length": "Truncate Length",
+        "thinking": "Thinking"
+      },
+      "options": {
+        "images": {
+          "full": "Original base64",
+          "placeholder": "Placeholder (with dimensions)",
+          "remove": "Remove"
+        },
+        "tools": {
+          "full": "Full schema",
+          "summary": "Summary (name + count)",
+          "names_only": "Names only",
+          "remove": "Remove"
+        },
+        "messages": {
+          "full": "Full text",
+          "truncate": "Truncate",
+          "summary": "Role + type only"
+        },
+        "thinking": {
+          "full": "Keep",
+          "remove": "Remove"
+        }
+      }
+    },
+    "persist_logs": {
+      "title": "Persist Debug Logs",
+      "desc": "When enabled, full LLM request payloads (including images and tools) are saved as JSON files in the data directory, regardless of filter level."
+    },
+    "debug_logs": {
+      "title": "Debug Log Management",
+      "summary": "{{count}} files, total {{size}}",
+      "loading": "Loading...",
+      "open": "Open",
+      "open_failed": "Failed to open debug log folder",
+      "clear_all": "Clear All",
+      "cleared": "Cleared {{count}} log files"
+    }
   },
   "subject_backfill": {
     "select_subject": "Select Subject",

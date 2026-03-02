@@ -254,7 +254,7 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
           } catch (error: unknown) {
             const msg = getErrorMessage(error);
             if (msg === 'OCR_TIMEOUT') {
-              showGlobalNotification('warning', t('translation:toast.ocr_failed', { error: 'OCR 识别超时，请重试' }));
+              showGlobalNotification('warning', t('translation:toast.ocr_failed', { error: t('translation:errors.ocr_timeout_retry') }));
             } else {
               showGlobalNotification('error', t('translation:toast.ocr_failed', { error: msg }));
             }
@@ -485,7 +485,7 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
 
       // Markdown bilingual format
       const lines: string[] = [
-        `# Translation`,
+        `# ${t('translation:export.markdown_title')}`,
         ``,
         `| | |`,
         `|---|---|`,
@@ -493,7 +493,7 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
         `| **${t('translation:languages.target_lang')}** | ${tgtName} |`,
       ];
       if (domainName) lines.push(`| **${t('translation:prompt_editor.domain')}** | ${domainName} |`);
-      lines.push(`| **Date** | ${date} |`, ``);
+      lines.push(`| **${t('translation:export.date_label')}** | ${date} |`, ``);
 
       if (glossary.length > 0) {
         lines.push(`## ${t('translation:prompt_editor.glossary_title')}`, ``);
@@ -517,7 +517,10 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
       const result = await fileManager.saveTextFile({
         title: t('translation:target_section.export_title', { defaultValue: 'Export Translation' }),
         defaultFileName: `translation_${new Date().getTime()}.md`,
-        filters: [{ name: 'Markdown', extensions: ['md'] }, { name: 'Text', extensions: ['txt'] }],
+        filters: [
+          { name: t('translation:export.file_filters.markdown'), extensions: ['md'] },
+          { name: t('translation:export.file_filters.text'), extensions: ['txt'] },
+        ],
         content,
       });
       if (result.canceled) return;

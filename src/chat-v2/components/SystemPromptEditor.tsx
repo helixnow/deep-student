@@ -107,7 +107,7 @@ function getDefaultVariables(t: (key: string) => string): PromptVariable[] {
       name: 'datetime',
       label: t('systemPrompt.variables.datetime.label'),
       description: t('systemPrompt.variables.datetime.description'),
-      example: '2024-01-01 12:00',
+      example: t('systemPrompt.variables.datetime.example'),
     },
     {
       name: 'language',
@@ -135,7 +135,7 @@ const TemplateSelector: React.FC<TemplateSelectorProps> = ({
   onDelete,
   disabled,
 }) => {
-  const { t } = useTranslation('chatV2');
+  const { t } = useTranslation(['chatV2', 'common']);
   const [isOpen, setIsOpen] = useState(false);
 
   if (templates.length === 0) {
@@ -201,7 +201,7 @@ const TemplateSelector: React.FC<TemplateSelectorProps> = ({
                   )}
                 </div>
                 {!template.builtin && onDelete && (
-                  <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); onDelete(template.id); }} className="!h-6 !w-6 hover:text-destructive hover:bg-destructive/10" aria-label="delete">
+                  <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); onDelete(template.id); }} className="!h-6 !w-6 hover:text-destructive hover:bg-destructive/10" aria-label={t('common:delete')} title={t('common:delete')}>
                     <Trash2 className="w-3.5 h-3.5" />
                   </NotionButton>
                 )}

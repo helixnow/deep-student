@@ -154,7 +154,9 @@ function main() {
   }
 
   // 保存详细报告到文件
-  const reportPath = path.join(rootDir, 'note/翻译键缺失详细报告.md');
+  const reportDir = path.join(rootDir, 'note');
+  fs.mkdirSync(reportDir, { recursive: true });
+  const reportPath = path.join(reportDir, '翻译键缺失详细报告.md');
   const reportContent = generateMarkdownReport(detailedReport, totalMissingInEn, totalMissingInZh);
   fs.writeFileSync(reportPath, reportContent, 'utf-8');
   log(colors.green, `\n✅ 详细报告已保存到: ${reportPath}`);
@@ -213,10 +215,9 @@ function generateMarkdownReport(detailedReport, totalMissingInEn, totalMissingIn
   md += `1. 优先修复 common.json，这是最核心的翻译文件\n`;
   md += `2. 为缺失的键添加对应的翻译文本\n`;
   md += `3. 确保中英文翻译键完全对应\n`;
-  md += `4. 运行 \`npm run check:i18n\` 验证修复结果\n`;
+  md += `4. 运行 \`npm run check:i18n:missing\` 验证修复结果\n`;
 
   return md;
 }
 
 main();
-

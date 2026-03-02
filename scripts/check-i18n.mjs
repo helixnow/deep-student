@@ -265,43 +265,69 @@ function checkI18nConfig() {
   }
   
   const content = fs.readFileSync(i18nPath, 'utf-8');
-  
-  // 检查命名空间声明
-  const nsMatch = content.match(/ns:\s*\[(.*?)\]/s);
-  if (nsMatch) {
-    const declaredNs = nsMatch[1]
+
+  // 检查命名空间声明：兼容 const ALL_NS + ns: ALL_NS 的写法
+  const allNsMatch = content.match(/const\s+ALL_NS\s*=\s*\[(.*?)\]/s);
+  const declaredNs = allNsMatch
+    ? allNsMatch[1]
       .split(',')
       .map(s => s.trim().replace(/['"]/g, ''))
-      .filter(s => s.length > 0);
-    
+      .filter(s => s.length > 0)
+    : [];
+
+  if (declaredNs.length > 0) {
     log('blue', `声明的命名空间 (${declaredNs.length}个):`);
     console.log('  ', declaredNs.join(', '));
-    
-    // 检查是否所有命名空间都有对应的导入
-    const importedNs = [];
-    const importPattern = /import\s+\w+\s+from\s+['"]\.\/locales\/zh-CN\/(\w+)\.json['"]/g;
-    let match;
-    while ((match = importPattern.exec(content)) !== null) {
-      importedNs.push(match[1]);
-    }
-    
-    log('blue', `\n实际导入的命名空间 (${importedNs.length}个):`);
-    console.log('  ', importedNs.join(', '));
-    
-    const notImported = declaredNs.filter(ns => !importedNs.includes(ns));
-    if (notImported.length > 0) {
-      log('yellow', '\n⚠️  声明了但未导入的命名空间:');
-      notImported.forEach(ns => console.log(`   - ${ns}`));
+
+    const zhCNDir = path.join(projectRoot, 'src/locales/zh-CN');
+    const enUSDir = path.join(projectRoot, 'src/locales/en-US');
+    const zhFiles = new Set(fs.readdirSync(zhCNDir).filter(f => f.endsWith('.json')).map(f => f.replace(/\.json$/, '')));
+    const enFiles = new Set(fs.readdirSync(enUSDir).filter(f => f.endsWith('.json')).map(f => f.replace(/\.json$/, '')));
+
+    const missingZhNs = declaredNs.filter(ns => !zhFiles.has(ns));
+    const missingEnNs = declaredNs.filter(ns => !enFiles.has(ns));
+
+    if (missingZhNs.length === 0 && missingEnNs.length === 0) {
+      log('green', '\n✅ 所有声明命名空间都存在对应 locale 文件');
     } else {
-      log('green', '\n✅ 所有声明的命名空间都已正确导入');
+      if (missingZhNs.length > 0) {
+        log('yellow', '\n⚠️  zh-CN 缺失命名空间文件:');
+        missingZhNs.forEach(ns => console.log(`   - ${ns}.json`));
+      }
+      if (missingEnNs.length > 0) {
+        log('yellow', '\n⚠️  en-US 缺失命名空间文件:');
+        missingEnNs.forEach(ns => console.log(`   - ${ns}.json`));
+      }
     }
-  }
-  
-  // 检查fallback配置
-  if (content.includes("fallbackLng: 'zh-CN'")) {
-    log('green', '\n✅ fallback语言已设置为 zh-CN');
   } else {
-    log('yellow', '\n⚠️  未找到fallback语言配置');
+    log('yellow', '⚠️  未解析到 ALL_NS 命名空间列表');
+  }
+
+  if (content.includes('ns: ALL_NS')) {
+    log('green', '\n✅ i18n ns 已绑定 ALL_NS');
+  } else {
+    log('yellow', '\n⚠️  未检测到 ns: ALL_NS');
+  }
+
+  // 检查 fallback 配置：兼容对象或字符串写法
+  const hasFallbackLng = /fallbackLng\s*:\s*({[\s\S]*?}|'[^']+'|"[^"]+")/.test(content);
+  const hasDefaultFallbackEn = /fallbackLng\s*:\s*{[\s\S]*?default\s*:\s*\[\s*['"]en-US['"]\s*]/.test(content);
+  if (hasFallbackLng) {
+    if (hasDefaultFallbackEn) {
+      log('green', '✅ fallbackLng 配置存在，且 default 包含 en-US');
+    } else {
+      log('yellow', '⚠️  fallbackLng 已配置，但未检测到 default: [\"en-US\"]');
+    }
+  } else {
+    log('yellow', '⚠️  未找到 fallbackLng 配置');
+  }
+
+  if (/fallbackNS\s*:\s*FALLBACK_NS/.test(content)) {
+    log('green', '✅ fallbackNS 已绑定 FALLBACK_NS');
+  } else if (/fallbackNS\s*:/.test(content)) {
+    log('green', '✅ fallbackNS 已配置');
+  } else {
+    log('yellow', '⚠️  未找到 fallbackNS 配置');
   }
 }
 
@@ -343,4 +369,3 @@ function main() {
 }
 
 main();
-

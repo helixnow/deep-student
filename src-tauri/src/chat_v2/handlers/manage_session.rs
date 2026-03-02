@@ -647,6 +647,32 @@ pub async fn chat_v2_empty_deleted_sessions(
     Ok(count)
 }
 
+/// 获取指定会话的消息数量
+///
+/// 轻量级查询，用于前端判断会话是否为空（无消息）。
+///
+/// ## 参数
+/// - `session_id`: 会话 ID
+///
+/// ## 返回
+/// - `Ok(u32)`: 消息数量
+/// - `Err(String)`: 查询失败
+#[tauri::command]
+pub async fn chat_v2_session_message_count(
+    session_id: String,
+    db: State<'_, Arc<ChatV2Database>>,
+) -> Result<u32, String> {
+    let conn = db.get_conn_safe().map_err(|e| e.to_string())?;
+    let count: u32 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM chat_v2_messages WHERE session_id = ?1",
+            [&session_id],
+            |row| row.get(0),
+        )
+        .map_err(|e| format!("Failed to count messages for session {}: {}", session_id, e))?;
+    Ok(count)
+}
+
 // ============================================================================
 // 内部辅助函数（调用 ChatV2Repo 实现）
 // ============================================================================

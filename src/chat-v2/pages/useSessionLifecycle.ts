@@ -196,62 +196,49 @@ export function useSessionLifecycle(deps: UseSessionLifecycleDeps) {
       // "加载更多"只针对未分组会话
       setHasMoreSessions(ungroupedResult.length >= PAGE_SIZE);
 
-      // 🔧 P1-28: 优先恢复上次打开的会话
+      // 启动行为：默认进入新空会话，除非上次会话本身就是空的则复用
       let sessionToSelect: string | null = null;
 
-      // 尝试从 localStorage 读取上次会话 ID
       try {
         const lastSessionId = localStorage.getItem(LAST_SESSION_KEY);
         if (lastSessionId) {
-          // 检查该会话是否仍然存在于列表中
-          const sessionExists = allSessions.some(s => s.id === lastSessionId);
+          const sessionExists = allSessions.some(s => s.id === lastSessionId)
+            || await invoke<ChatSession | null>('chat_v2_get_session', { sessionId: lastSessionId })
+                .then(s => !!s).catch(() => false);
+
           if (sessionExists) {
-            sessionToSelect = lastSessionId;
-            console.log('[ChatV2Page] Restoring last session:', lastSessionId);
-          } else {
-            // 🔧 批判性修复：lastSessionId 可能是：
-            // 1) 不在第一页分页结果中的 sess_...
-            // 2) Worker 会话 agent_...（被后端过滤，不会出现在 chat_v2_list_sessions）
-            // 因此不能直接清理 localStorage，而是需要向后端校验存在性。
-            try {
-              const session = await invoke<ChatSession | null>('chat_v2_get_session', { sessionId: lastSessionId });
-              if (session) {
-                sessionToSelect = lastSessionId;
-                console.log('[ChatV2Page] Restoring last session via get_session:', lastSessionId);
-              } else {
-                localStorage.removeItem(LAST_SESSION_KEY);
-                console.log('[ChatV2Page] Last session truly not found, clearing:', lastSessionId);
-              }
-            } catch (e) {
-              // 后端校验失败时，保守处理：清理 localStorage，避免死循环
-              localStorage.removeItem(LAST_SESSION_KEY);
-              console.warn('[ChatV2Page] Failed to validate last session, clearing:', lastSessionId, e);
+            const msgCount = await invoke<number>('chat_v2_session_message_count', { sessionId: lastSessionId });
+            if (msgCount === 0) {
+              sessionToSelect = lastSessionId;
+              console.log('[ChatV2Page] Reusing last empty session:', lastSessionId);
+            } else {
+              console.log('[ChatV2Page] Last session has messages, will create new empty session');
             }
+          } else {
+            localStorage.removeItem(LAST_SESSION_KEY);
           }
         }
       } catch (e) {
-        console.warn('[ChatV2Page] Failed to read last session ID:', e);
+        console.warn('[ChatV2Page] Failed to check last session:', e);
       }
 
-      // 如果没有恢复的会话，回退到第一条
-      if (!sessionToSelect && allSessions.length > 0) {
-        sessionToSelect = allSessions[0].id;
-      }
-
-      // 🔧 优化空态体验：当没有任何会话时，自动创建一个空会话
-      if (!sessionToSelect && allSessions.length === 0) {
+      if (!sessionToSelect) {
         try {
           const newSession = await createSessionWithDefaults({
-            mode: 'chat',
-            title: null,
-            metadata: null,
-          });
-          setSessions([newSession]);
-          setTotalSessionCount(1);
+                      mode: 'chat',
+                      title: null,
+                      metadata: null,
+                    });
+                    setSessions([newSession, ...allSessions]);
+                    setTotalSessionCount(totalCount + 1);
+                    setUngroupedSessionCount(ungroupedCount + 1);
           sessionToSelect = newSession.id;
-          console.log('[ChatV2Page] Auto-created initial session:', newSession.id);
+          console.log('[ChatV2Page] Created new empty session on startup:', newSession.id);
         } catch (e) {
-          console.warn('[ChatV2Page] Failed to auto-create initial session:', e);
+          console.warn('[ChatV2Page] Failed to create startup session:', e);
+          if (allSessions.length > 0) {
+            sessionToSelect = allSessions[0].id;
+          }
         }
       }
 

@@ -9,6 +9,7 @@
 
 import React from 'react';
 import { X } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
 
@@ -47,6 +48,8 @@ export const MobileSheetHeader: React.FC<MobileSheetHeaderProps> = ({
   onClose,
   className,
 }) => {
+  const { t } = useTranslation(['chatV2', 'common']);
+
   return (
     <div
       className={cn(
@@ -100,7 +103,8 @@ export const MobileSheetHeader: React.FC<MobileSheetHeaderProps> = ({
               onClose();
             }}
             className="-m-1 touch-manipulation"
-            aria-label="Close"
+            aria-label={t('common:close')}
+            title={t('common:close')}
             style={{ touchAction: 'manipulation' }}
           >
             <X size={20} />

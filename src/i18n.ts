@@ -24,7 +24,7 @@ const ALL_NS = [
   'pdf', 'textbook', 'graph_conflict', 'translation',
   'essay_grading', 'app_menu', 'learningHub', 'dstu', 'migration',
   'skills', 'command_palette', 'backend_errors', 'mcp', 'workspace',
-  'stats', 'llm_usage', 'review', 'practice', 'sync', 'mindmap',
+  'stats', 'llm_usage', 'review', 'practice', 'sync', 'mindmap', 'vfs',
   'forms', 'console', 'cloudStorage',
 ];
 

@@ -636,6 +636,11 @@
     },
     "open_logs": "打开日志文件夹",
     "open_logs_failed": "打开日志文件夹失败",
+    "preview_agreement": {
+      "title": "预览隐私协议",
+      "desc": "打开首次安装时显示的用户协议与隐私政策弹窗，用于预览效果。",
+      "button": "打开预览"
+    },
     "topbar_top_margin": {
       "title": "顶部栏顶部边距高度",
       "desc": "调整 content-header virtual-titlebar 的顶部边距高度。常用于安卓环境下为状态栏预留空间。单位为 px，设置为 0 表示无边距。"
@@ -648,7 +653,56 @@
       "title": "调试日志",
       "desc": "开启后将输出详细的调试日志到控制台"
     },
-    "log_type_hint": "选择要启用的日志类型"
+    "log_type_hint": "选择要启用的日志类型",
+    "units": {
+      "px": "px"
+    },
+    "copy_filter": {
+      "title": "复制内容过滤",
+      "desc": "控制“复制请求体”时各部分的处理方式。",
+      "fields": {
+        "images": "图片",
+        "tools": "Tools",
+        "messages": "消息内容",
+        "truncate_length": "截断长度",
+        "thinking": "Thinking"
+      },
+      "options": {
+        "images": {
+          "full": "原始 base64",
+          "placeholder": "占位符（含尺寸）",
+          "remove": "移除"
+        },
+        "tools": {
+          "full": "完整 schema",
+          "summary": "摘要（名称+数量）",
+          "names_only": "仅名称列表",
+          "remove": "移除"
+        },
+        "messages": {
+          "full": "完整文本",
+          "truncate": "截断",
+          "summary": "仅角色+类型"
+        },
+        "thinking": {
+          "full": "保留",
+          "remove": "移除"
+        }
+      }
+    },
+    "persist_logs": {
+      "title": "持久化调试日志",
+      "desc": "开启后，每次 LLM 请求的完整请求体（含图片、工具等）将以 JSON 文件保存到数据目录，不受过滤级别影响。"
+    },
+    "debug_logs": {
+      "title": "调试日志管理",
+      "summary": "{{count}} 个文件，共 {{size}}",
+      "loading": "加载中...",
+      "open": "打开",
+      "open_failed": "打开调试日志文件夹失败",
+      "clear_all": "清理全部",
+      "cleared": "已清理 {{count}} 个日志文件"
+    }
   },
   "subject_backfill": {
     "select_subject": "选择科目",

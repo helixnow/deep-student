@@ -15,6 +15,7 @@ import { getBlobAsDataUrl } from '@/chat-v2/context/blobApi';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { Skeleton } from '@/components/ui/shad/Skeleton';
 import { AlertCircle, ImageOff } from 'lucide-react';
+import i18n from '@/i18n';
 
 // ============================================================================
 // 类型定义
@@ -71,7 +72,7 @@ export const CroppedExamCardImage: React.FC<CroppedExamCardImageProps> = ({
   pageHeight,
   bbox,
   resolvedBbox,
-  alt = '题目卡片',
+  alt = i18n.t('exam_sheet:image.alt_card'),
   className,
   maxHeight = 200,
   onClick,
@@ -106,7 +107,7 @@ export const CroppedExamCardImage: React.FC<CroppedExamCardImageProps> = ({
 
     const loadAndCrop = async () => {
       if (!blobHash) {
-        setError('缺少图片哈希');
+        setError(i18n.t('exam_sheet:error_missing_card_image'));
         setIsLoading(false);
         return;
       }
@@ -126,7 +127,7 @@ export const CroppedExamCardImage: React.FC<CroppedExamCardImageProps> = ({
         
         await new Promise<void>((resolve, reject) => {
           img.onload = () => resolve();
-          img.onerror = () => reject(new Error('图片加载失败'));
+          img.onerror = () => reject(new Error(i18n.t('exam_sheet:image.load_failed')));
           img.src = dataUrl;
         });
 
@@ -142,7 +143,7 @@ export const CroppedExamCardImage: React.FC<CroppedExamCardImageProps> = ({
         const srcH = Math.min(Math.ceil(pixelBbox.height), img.height - srcY);
 
         if (srcW <= 0 || srcH <= 0) {
-          throw new Error('无效的裁剪区域');
+          throw new Error(i18n.t('common:messages.error.invalid_input'));
         }
 
         // 4. 使用 Canvas 裁剪
@@ -152,7 +153,7 @@ export const CroppedExamCardImage: React.FC<CroppedExamCardImageProps> = ({
         
         const ctx = canvas.getContext('2d');
         if (!ctx) {
-          throw new Error('Canvas 上下文创建失败');
+          throw new Error(i18n.t('common:messages.error.load_failed'));
         }
 
         ctx.drawImage(img, srcX, srcY, srcW, srcH, 0, 0, srcW, srcH);
@@ -222,7 +223,7 @@ export const CroppedExamCardImage: React.FC<CroppedExamCardImageProps> = ({
         style={{ minHeight: 100 }}
       >
         <ImageOff className="h-5 w-5" />
-        <span>图片不可用</span>
+        <span>{i18n.t('exam_sheet:image.no_image')}</span>
       </div>
     );
   }
@@ -279,7 +280,7 @@ export function useCroppedImage(
         
         await new Promise<void>((resolve, reject) => {
           img.onload = () => resolve();
-          img.onerror = () => reject(new Error('图片加载失败'));
+          img.onerror = () => reject(new Error(i18n.t('exam_sheet:image.load_failed')));
           img.src = fullDataUrl;
         });
 

@@ -1397,7 +1397,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
   }, []);
 
   // ★ P2 优化：跟踪已同步的状态，避免重复更新
-  const syncedStatusRef = useRef<Map<string, { stage: string; percent: number }>>(new Map());
+  const syncedStatusRef = useRef<Map<string, { stage: string; percent: number; readyCount: number }>>(new Map());
   const pollingInFlightRef = useRef(false);
 
   // ★ 超时保护：跟踪每个附件的累计轮询次数，防止无限轮询
@@ -1555,18 +1555,21 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
       const lastSynced = syncedStatus.get(att.id);
       const currentStage = status.stage;
       const currentPercent = Math.round(status.percent || 0);
+      const currentReadyCount = status.readyModes?.length ?? 0;
 
       // 如果状态未变化，跳过更新（允许 5% 的进度容差，减少中间状态更新频率）
+      // ★ 修复：readyModes 数量变更必须同步，否则 UI 会持有过时的就绪状态
       if (lastSynced &&
         lastSynced.stage === currentStage &&
         Math.abs(lastSynced.percent - currentPercent) < 5 &&
+        lastSynced.readyCount === currentReadyCount &&
         currentStage !== 'completed' &&
         currentStage !== 'error') {
         return;
       }
 
       // 更新已同步状态
-      syncedStatus.set(att.id, { stage: currentStage, percent: currentPercent });
+      syncedStatus.set(att.id, { stage: currentStage, percent: currentPercent, readyCount: currentReadyCount });
 
       const mediaTypeLabel = isPdf
         ? t('chatV2:inputBar.mediaType.pdf')

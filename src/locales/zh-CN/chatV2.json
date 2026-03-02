@@ -119,7 +119,20 @@
       "title": "API 请求体",
       "copy": "复制",
       "copySuccess": "已复制请求体",
-      "copyFailed": "复制失败"
+      "copyFailed": "复制失败",
+      "logReadFailed": "日志文件读取失败，回退到内存数据",
+      "persistentLogRequired": "需开启「持久化调试日志」才能获取完整原始数据，当前使用内存数据",
+      "persisted": "已持久化",
+      "roundTooltip": "第 {{round}} 轮 · {{messageCount}} 条消息",
+      "roundTooltipWithToolCalls": "第 {{round}} 轮 · {{messageCount}} 条消息 · {{toolCallMsgCount}} 次调用",
+      "stats": {
+        "bodyChars": "{{kb}}K 字符",
+        "messages": "{{count}} 条消息",
+        "images": "{{count}} 张图片",
+        "tools": "{{count}} 个工具",
+        "toolCalls": "{{count}} 次调用",
+        "toolResults": "{{count}} 个结果"
+      }
     },
     "loadingFiles": "加载文件中...",
     "documentPreview": "文档预览",
@@ -553,7 +566,8 @@
       },
       "datetime": {
         "label": "当前时间",
-        "description": "当前日期时间"
+        "description": "当前日期时间",
+        "example": "2024-01-01 12:00"
       },
       "language": {
         "label": "语言",
@@ -1339,7 +1353,9 @@
     "customPlaceholder": "或输入自定义回答..."
   },
   "pageRef": {
-    "clearAll": "清空页码引用"
+    "clearAll": "清空页码引用",
+    "singlePage": "第{{page}}页",
+    "pageRanges": "{{pages}}页"
   },
   "qbankCitation": {
     "openQbank": "打开题目集：{{title}}",

@@ -121,7 +121,7 @@ const UnifiedErrorHandler: React.FC<UnifiedErrorHandlerProps> = ({
         <div className="flex justify-end">
           <NotionButton variant="ghost" size="sm" onClick={onClearAll} className="text-xs text-gray-500 hover:text-gray-700">
             <Trash2 size={12} />
-            {t('errorHandler.clearAll', { count: errors.length })}
+            {t('messages.errorHandler.clearAll', { count: errors.length })}
           </NotionButton>
         </div>
       )}
@@ -157,7 +157,7 @@ const UnifiedErrorHandler: React.FC<UnifiedErrorHandlerProps> = ({
                 <div className="flex items-center gap-1">
                   {/* 展开/收起按钮 */}
                   {(error.details || error.context) && (
-                    <NotionButton variant="ghost" size="icon" iconOnly onClick={() => toggleExpanded(error.id)} className="!p-1 text-gray-400 hover:text-gray-600" title={isExpanded ? t('errorHandler.collapseDetails') : t('errorHandler.expandDetails')} aria-label="toggle details">
+                    <NotionButton variant="ghost" size="icon" iconOnly onClick={() => toggleExpanded(error.id)} className="!p-1 text-gray-400 hover:text-gray-600" title={isExpanded ? t('messages.errorHandler.collapseDetails') : t('messages.errorHandler.expandDetails')} aria-label={isExpanded ? t('messages.errorHandler.collapseDetails') : t('messages.errorHandler.expandDetails')}>
                       <RotateCcw 
                         size={14} 
                         className={`transform transition-transform ${isExpanded ? 'rotate-180' : ''}`}
@@ -166,7 +166,7 @@ const UnifiedErrorHandler: React.FC<UnifiedErrorHandlerProps> = ({
                   )}
                   
                   {/* 关闭按钮 */}
-                  <NotionButton variant="ghost" size="icon" iconOnly onClick={() => onDismiss(error.id)} className="!p-1 text-gray-400 hover:text-gray-600" title={t('actions.close')} aria-label="close">
+                  <NotionButton variant="ghost" size="icon" iconOnly onClick={() => onDismiss(error.id)} className="!p-1 text-gray-400 hover:text-gray-600" title={t('actions.close')} aria-label={t('actions.close')}>
                     <X size={14} />
                   </NotionButton>
                 </div>
@@ -177,7 +177,7 @@ const UnifiedErrorHandler: React.FC<UnifiedErrorHandlerProps> = ({
                 <div className="mt-3 pt-3 border-t border-gray-200">
                   {error.details && (
                     <div className="mb-2">
-                      <div className="text-xs font-medium text-gray-600 mb-1">{t('errorHandler.details')}:</div>
+                      <div className="text-xs font-medium text-gray-600 mb-1">{t('messages.errorHandler.details')}:</div>
                       <div className="text-xs text-gray-700 bg-white p-2 rounded border font-mono whitespace-pre-wrap">
                         {error.details}
                       </div>
@@ -186,7 +186,7 @@ const UnifiedErrorHandler: React.FC<UnifiedErrorHandlerProps> = ({
                   
                   {error.context && Object.keys(error.context).length > 0 && (
                     <div>
-                      <div className="text-xs font-medium text-gray-600 mb-1">{t('errorHandler.contextInfo')}:</div>
+                      <div className="text-xs font-medium text-gray-600 mb-1">{t('messages.errorHandler.contextInfo')}:</div>
                       <div className="text-xs text-gray-700 bg-white p-2 rounded border">
                         {Object.entries(error.context).map(([key, value]) => (
                           <div key={key} className="flex justify-between py-0.5">
@@ -236,7 +236,7 @@ const UnifiedErrorHandler: React.FC<UnifiedErrorHandlerProps> = ({
       {hiddenCount > 0 && (
         <div className="text-center">
           <div className="text-xs text-gray-500 bg-gray-100 rounded px-3 py-2">
-            {t('errorHandler.hiddenCount', { count: hiddenCount })}
+            {t('messages.errorHandler.hiddenCount', { count: hiddenCount })}
           </div>
         </div>
       )}
@@ -272,7 +272,7 @@ export const createUnifiedError = (
     switch (type) {
       case 'streaming':
         return {
-          title: i18n.t('common:errorHandler.title_streaming'),
+          title: i18n.t('common:messages.errorHandler.title_streaming'),
           defaultActions: [
             {
               type: 'retry' as const,
@@ -286,7 +286,7 @@ export const createUnifiedError = (
         };
       case 'network':
         return {
-          title: i18n.t('common:errorHandler.title_network'),
+          title: i18n.t('common:messages.errorHandler.title_network'),
           defaultActions: [
             {
               type: 'retry' as const,
@@ -300,27 +300,27 @@ export const createUnifiedError = (
         };
       case 'attachment':
         return {
-          title: i18n.t('common:errorHandler.title_attachment'),
+          title: i18n.t('common:messages.errorHandler.title_attachment'),
           defaultActions: [dismissAction],
         };
       case 'ocr':
         return {
-          title: i18n.t('common:errorHandler.title_ocr'),
+          title: i18n.t('common:messages.errorHandler.title_ocr'),
           defaultActions: [dismissAction],
         };
       case 'analysis':
         return {
-          title: i18n.t('common:errorHandler.title_analysis'),
+          title: i18n.t('common:messages.errorHandler.title_analysis'),
           defaultActions: [dismissAction],
         };
       case 'persistence':
         return {
-          title: i18n.t('common:errorHandler.title_persistence'),
+          title: i18n.t('common:messages.errorHandler.title_persistence'),
           defaultActions: [dismissAction],
         };
       default:
         return {
-          title: i18n.t('common:errorHandler.title_unknown'),
+          title: i18n.t('common:messages.errorHandler.title_unknown'),
           defaultActions: [dismissAction],
         };
     }

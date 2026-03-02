@@ -90,7 +90,7 @@ export const useDocumentStore = create<DocumentStore>()(
       });
     },
 
-    createNewDocument: (title = '中心主题') => {
+    createNewDocument: (title) => {
       const root = createRootNode(title);
       const doc: MindMapDocument = {
         version: '1.0',
@@ -233,4 +233,3 @@ export const useDocumentStore = create<DocumentStore>()(
     },
   }))
 );
-

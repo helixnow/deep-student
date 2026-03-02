@@ -26,6 +26,7 @@
     "placeholder": "翻译结果将显示在这里",
     "copy": "复制",
     "export": "导出",
+    "export_title": "导出翻译结果",
     "copied": "已复制到剪贴板",
     "exported": "翻译结果已导出",
     "edit": "编辑译文",
@@ -174,6 +175,8 @@
     "offline": "网络连接已断开，请检查网络后重试",
     "offline_save": "离线状态下无法保存，请检查网络连接",
     "offline_rate": "离线状态下无法评分，请检查网络连接",
+    "text_too_long": "文本超过 {{max}} 字符上限，将自动截断。",
+    "ocr_timeout_retry": "OCR 识别超时，请重试",
     "copy_failed": "复制失败：{{error}}",
     "export_failed": "导出失败：{{error}}",
     "timeout": "翻译超时，请重试"
@@ -198,6 +201,13 @@
     "cleared": "已清空",
     "translating_already": "翻译已在执行中，忽略重复调用",
     "save_failed": "保存失败：{{error}}"
+  },
+  "export": {
+    "markdown_title": "翻译结果",
+    "date_label": "日期",
+    "file_filters": {
+      "markdown": "Markdown",
+      "text": "文本"
+    }
   }
 }
-

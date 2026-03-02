@@ -135,7 +135,7 @@ export const ExternalSearchTab: React.FC<ExternalSearchTabProps> = ({
                   }}
                   className="!w-24 h-8 text-xs bg-transparent"
                 />
-                <span className="text-[11px] text-muted-foreground/70">{t('common:units.chars')}</span>
+                <span className="text-[11px] text-muted-foreground/70">{t('common:unit.chars')}</span>
               </div>
             </SettingRow>
             <SettingRow
@@ -154,7 +154,7 @@ export const ExternalSearchTab: React.FC<ExternalSearchTabProps> = ({
                   }}
                   className="!w-24 h-8 text-xs bg-transparent"
                 />
-                <span className="text-[11px] text-muted-foreground/70">{t('common:units.chars')}</span>
+                <span className="text-[11px] text-muted-foreground/70">{t('common:unit.chars')}</span>
               </div>
             </SettingRow>
           </div>

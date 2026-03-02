@@ -43,9 +43,12 @@ export interface PageRefChipsProps {
  *   [1, 2, 3, 5, 7] → "1-3, 5, 7页"
  *   [5]             → "第5页"
  */
-function formatPageRanges(pages: number[]): string {
+function formatPageRanges(
+  pages: number[],
+  t: (key: string, options?: Record<string, unknown>) => string,
+): string {
   if (pages.length === 0) return '';
-  if (pages.length === 1) return `第${pages[0]}页`;
+  if (pages.length === 1) return t('chatV2:pageRef.singlePage', { page: pages[0] });
 
   // 将连续页码分组为 [start, end] 范围
   const ranges: [number, number][] = [];
@@ -65,7 +68,7 @@ function formatPageRanges(pages: number[]): string {
 
   // 格式化每个范围
   const parts = ranges.map(([s, e]) => (s === e ? `${s}` : `${s}-${e}`));
-  return parts.join(', ') + '页';
+  return t('chatV2:pageRef.pageRanges', { pages: parts.join(', ') });
 }
 
 // ============================================================================
@@ -76,7 +79,7 @@ export const PageRefChips: React.FC<PageRefChipsProps> = memo(
   ({ pageRefs, onClearAll, disabled = false, className }) => {
     const { t } = useTranslation(['chatV2', 'common']);
 
-    const label = useMemo(() => formatPageRanges(pageRefs.pages), [pageRefs.pages]);
+    const label = useMemo(() => formatPageRanges(pageRefs.pages, t), [pageRefs.pages, t]);
 
     return (
       <div

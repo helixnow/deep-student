@@ -224,6 +224,14 @@
     "current": "Current",
     "calling_tool": "Calling tool"
   },
+  "notifications": {
+    "batch": {
+      "success": "{{operation}} completed successfully. Processed {{success}} items",
+      "failed": "{{operation}} failed. {{failed}} items failed",
+      "partial": "{{operation}} partially completed: {{success}} succeeded, {{failed}} failed",
+      "progress": "{{operation}} in progress... ({{current}}/{{total}})"
+    }
+  },
   "chat_modes": {
     "chat": "General Chat",
     "analysis": "Mistake Analysis",
@@ -1054,7 +1062,6 @@
     "contains": "contains",
     "mistakes_unit": "mistakes"
   },
-  "notifications": {},
   "status_options": {
     "all_status": "All Status",
     "pending": "Pending",

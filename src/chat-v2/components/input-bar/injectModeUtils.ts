@@ -59,9 +59,9 @@ export function getEffectiveReadyModes(
     return mediaType === 'pdf' ? ['text'] : ['image'];
   }
 
-  // 图片 processing 但首次 poll 尚未返回：后端已立即标记 image ready，
-  // 这里乐观返回 ['image'] 避免发送按钮短暂闪烁禁用
-  if (mediaType === 'image' && attachment.status === 'processing' && !effectiveStatus) {
+  // 图片附件：image 模式在上传完成后即可用（原始数据已就位），
+  // 无论后端 readyModes 是否已返回都应乐观包含 'image'
+  if (mediaType === 'image' && (attachment.status === 'processing' || attachment.status === 'ready')) {
     return ['image'];
   }
 

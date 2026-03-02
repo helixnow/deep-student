@@ -162,6 +162,16 @@ export interface MessageMeta {
   /** 完整请求体（开发者调试用） */
   rawRequest?: unknown;
 
+  /** 多轮请求体数组（工具调用循环中每轮 LLM 调用的请求体） */
+  rawRequests?: Array<{
+    _source: 'backend_llm';
+    model: string;
+    url: string;
+    body: unknown;
+    logFilePath?: string;
+    round: number;
+  }>;
+
   /** 🆕 2026-01-15: 正在准备中的工具调用信息（LLM 正在生成参数） */
   preparingToolCall?: {
     toolCallId: string;

@@ -23,6 +23,7 @@ import { PRESET_PALETTES, PALETTE_PREVIEW_COLORS, type ThemePalette } from '../.
 import { DEFAULT_UI_FONT, DEFAULT_UI_FONT_SIZE, UI_FONT_PRESET_GROUPS, UI_FONT_SIZE_PRESETS } from '../../config/fontConfig';
 import { AppSelect, type AppSelectGroup } from '../ui/app-menu';
 import { UserAgreementDialog } from '../legal/UserAgreementDialog';
+import { getDefaultConfig, configFromPreset, type CopyFilterConfig } from '../../chat-v2/hooks/useDevShowRawRequest';
 
 const DEFAULT_UI_ZOOM = 1.0;
 const UI_ZOOM_PRESETS = [
@@ -160,22 +161,33 @@ export const AppTab: React.FC<AppTabProps> = ({
   // 隐私协议预览弹窗状态
   const [showAgreementPreview, setShowAgreementPreview] = useState(false);
 
-  // 调试日志持久化 + 过滤级别
+  // 调试日志持久化 + 过滤配置
   const [debugPersistLogs, setDebugPersistLogs] = useState(false);
-  const [debugFilterLevel, setDebugFilterLevel] = useState<'full' | 'standard' | 'compact'>('standard');
+  const [filterConfig, setFilterConfig] = useState<CopyFilterConfig>(getDefaultConfig);
   const [debugLogsInfo, setDebugLogsInfo] = useState<{ count: number; total_size_display: string } | null>(null);
   const [debugLogsClearing, setDebugLogsClearing] = useState(false);
 
   useEffect(() => {
     (async () => {
       try {
-        const [persistVal, levelVal] = await Promise.all([
+        const [persistVal, configVal, legacyLevelVal] = await Promise.all([
           tauriInvoke('get_setting', { key: 'debug.persist_logs' }).catch(() => 'false') as Promise<string>,
-          tauriInvoke('get_setting', { key: 'debug.filter_level' }).catch(() => 'standard') as Promise<string>,
+          tauriInvoke('get_setting', { key: 'debug.filter_config' }).catch(() => '') as Promise<string>,
+          tauriInvoke('get_setting', { key: 'debug.filter_level' }).catch(() => '') as Promise<string>,
         ]);
         setDebugPersistLogs(String(persistVal ?? '') === 'true');
-        const lv = String(levelVal ?? '').trim().toLowerCase();
-        if (lv === 'full' || lv === 'compact') setDebugFilterLevel(lv);
+        const raw = String(configVal ?? '').trim();
+        if (raw) {
+          try {
+            const parsed = JSON.parse(raw);
+            setFilterConfig({ ...getDefaultConfig(), ...parsed });
+          } catch { /* ignore parse error */ }
+        } else {
+          const lv = String(legacyLevelVal ?? '').trim().toLowerCase();
+          if (lv === 'full' || lv === 'compact') {
+            setFilterConfig(configFromPreset(lv as 'full' | 'compact'));
+          }
+        }
       } catch { /* defaults */ }
     })();
   }, []);
@@ -461,7 +473,7 @@ export const AppTab: React.FC<AppTabProps> = ({
                   className="!w-20 h-8 text-xs bg-transparent" 
                   min="0" 
                 />
-                <span className="text-[11px] text-muted-foreground/70">px</span>
+                <span className="text-[11px] text-muted-foreground/70">{t('settings:developer.units.px')}</span>
               </div>
             </SettingRow>
 
@@ -573,37 +585,109 @@ export const AppTab: React.FC<AppTabProps> = ({
               }}
             />
 
-            {/* 复制过滤级别 */}
-            <SettingRow
-              title="复制内容过滤级别"
-              description={'控制「复制请求体」时包含的信息量。完整：含 base64 图片和 tool schema；标准：图片替换为占位符；精简：仅元数据骨架。'}
-            >
-              <AppSelect
-                value={debugFilterLevel}
-                onValueChange={async (val) => {
-                  const level = val as 'full' | 'standard' | 'compact';
-                  setDebugFilterLevel(level);
-                  try {
-                    await tauriInvoke('save_setting', { key: 'debug.filter_level', value: level });
-                    window.dispatchEvent(new CustomEvent('systemSettingsChanged', { detail: { debugFilterLevel: level } }));
-                  } catch {}
-                }}
-                options={[
-                  { value: 'full', label: '完整（含图片）' },
-                  { value: 'standard', label: '标准（默认）' },
-                  { value: 'compact', label: '精简（仅骨架）' },
-                ]}
-                size="sm"
-                variant="ghost"
-                className="h-8 text-xs bg-transparent hover:bg-muted/20 transition-colors"
-                width={130}
-              />
-            </SettingRow>
+            {/* 复制内容过滤配置 */}
+            {(() => {
+              const saveConfig = async (next: typeof filterConfig) => {
+                const cfg = { ...next, preset: 'custom' as const };
+                setFilterConfig(cfg);
+                try {
+                  await tauriInvoke('save_setting', { key: 'debug.filter_config', value: JSON.stringify(cfg) });
+                  window.dispatchEvent(new CustomEvent('systemSettingsChanged', { detail: { copyFilterConfig: cfg } }));
+                } catch {}
+              };
+
+              return (
+                <div className="py-2.5 px-1">
+                  <div className="pt-1.5 pb-1 px-1">
+                    <h3 className="text-sm text-foreground/90 leading-tight">{t('settings:developer.copy_filter.title')}</h3>
+                    <p className="text-[11px] text-muted-foreground/70 leading-relaxed mt-0.5">{t('settings:developer.copy_filter.desc')}</p>
+                  </div>
+                  <div className="mt-1.5 space-y-1.5 pl-1">
+                    <div className="flex items-center justify-between gap-3 hover:bg-muted/30 rounded px-1 py-1 transition-colors">
+                      <span className="text-xs text-muted-foreground">{t('settings:developer.copy_filter.fields.images')}</span>
+                      <AppSelect
+                        value={filterConfig.images}
+                        onValueChange={(val) => saveConfig({ ...filterConfig, images: val as typeof filterConfig.images })}
+                        options={[
+                          { value: 'full', label: t('settings:developer.copy_filter.options.images.full') },
+                          { value: 'placeholder', label: t('settings:developer.copy_filter.options.images.placeholder') },
+                          { value: 'remove', label: t('settings:developer.copy_filter.options.images.remove') },
+                        ]}
+                        size="sm" variant="ghost"
+                        className="h-7 text-xs bg-transparent hover:bg-muted/20" width={140}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between gap-3 hover:bg-muted/30 rounded px-1 py-1 transition-colors">
+                      <span className="text-xs text-muted-foreground">{t('settings:developer.copy_filter.fields.tools')}</span>
+                      <AppSelect
+                        value={filterConfig.tools}
+                        onValueChange={(val) => saveConfig({ ...filterConfig, tools: val as typeof filterConfig.tools })}
+                        options={[
+                          { value: 'full', label: t('settings:developer.copy_filter.options.tools.full') },
+                          { value: 'summary', label: t('settings:developer.copy_filter.options.tools.summary') },
+                          { value: 'names_only', label: t('settings:developer.copy_filter.options.tools.names_only') },
+                          { value: 'remove', label: t('settings:developer.copy_filter.options.tools.remove') },
+                        ]}
+                        size="sm" variant="ghost"
+                        className="h-7 text-xs bg-transparent hover:bg-muted/20" width={140}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between gap-3 hover:bg-muted/30 rounded px-1 py-1 transition-colors">
+                      <span className="text-xs text-muted-foreground">{t('settings:developer.copy_filter.fields.messages')}</span>
+                      <AppSelect
+                        value={filterConfig.messages}
+                        onValueChange={(val) => saveConfig({ ...filterConfig, messages: val as typeof filterConfig.messages })}
+                        options={[
+                          { value: 'full', label: t('settings:developer.copy_filter.options.messages.full') },
+                          { value: 'truncate', label: t('settings:developer.copy_filter.options.messages.truncate') },
+                          { value: 'summary', label: t('settings:developer.copy_filter.options.messages.summary') },
+                        ]}
+                        size="sm" variant="ghost"
+                        className="h-7 text-xs bg-transparent hover:bg-muted/20" width={140}
+                      />
+                    </div>
+                    {filterConfig.messages === 'truncate' && (
+                      <div className="flex items-center justify-between gap-3 hover:bg-muted/30 rounded px-1 py-1 transition-colors">
+                        <span className="text-xs text-muted-foreground">{t('settings:developer.copy_filter.fields.truncate_length')}</span>
+                        <div className="flex items-center gap-1.5">
+                          <Input
+                            type="number"
+                            min={100}
+                            max={50000}
+                            step={100}
+                            value={filterConfig.messageTruncateLength}
+                            onChange={(e) => {
+                              const v = parseInt(e.target.value, 10);
+                              if (!isNaN(v) && v >= 100) saveConfig({ ...filterConfig, messageTruncateLength: v });
+                            }}
+                            className="h-7 w-20 text-xs"
+                          />
+                          <span className="text-[10px] text-muted-foreground/60">{t('common:unit.chars')}</span>
+                        </div>
+                      </div>
+                    )}
+                    <div className="flex items-center justify-between gap-3 hover:bg-muted/30 rounded px-1 py-1 transition-colors">
+                      <span className="text-xs text-muted-foreground">{t('settings:developer.copy_filter.fields.thinking')}</span>
+                      <AppSelect
+                        value={filterConfig.thinking}
+                        onValueChange={(val) => saveConfig({ ...filterConfig, thinking: val as typeof filterConfig.thinking })}
+                        options={[
+                          { value: 'full', label: t('settings:developer.copy_filter.options.thinking.full') },
+                          { value: 'remove', label: t('settings:developer.copy_filter.options.thinking.remove') },
+                        ]}
+                        size="sm" variant="ghost"
+                        className="h-7 text-xs bg-transparent hover:bg-muted/20" width={140}
+                      />
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* 调试日志持久化 */}
             <SwitchRow
-              title="持久化调试日志"
-              description="开启后，每次 LLM 请求的完整请求体（含图片、工具等）将以 JSON 文件保存到数据目录，不受过滤级别影响。"
+              title={t('settings:developer.persist_logs.title')}
+              description={t('settings:developer.persist_logs.desc')}
               checked={debugPersistLogs}
               onCheckedChange={async (newValue) => {
                 setDebugPersistLogs(newValue);
@@ -619,8 +703,10 @@ export const AppTab: React.FC<AppTabProps> = ({
             {/* 调试日志管理 */}
             {debugPersistLogs && (
               <SettingRow
-                title="调试日志管理"
-                description={debugLogsInfo ? `${debugLogsInfo.count} 个文件，共 ${debugLogsInfo.total_size_display}` : '加载中...'}
+                title={t('settings:developer.debug_logs.title')}
+                description={debugLogsInfo
+                  ? t('settings:developer.debug_logs.summary', { count: debugLogsInfo.count, size: debugLogsInfo.total_size_display })
+                  : t('settings:developer.debug_logs.loading')}
               >
                 <div className="flex items-center gap-2">
                   <NotionButton
@@ -632,11 +718,11 @@ export const AppTab: React.FC<AppTabProps> = ({
                         const { revealItemInDir } = await import('@tauri-apps/plugin-opener');
                         await revealItemInDir(debugLogsDir);
                       } catch {
-                        showGlobalNotification('error', '打开调试日志文件夹失败');
+                        showGlobalNotification('error', t('settings:developer.debug_logs.open_failed'));
                       }
                     }}
                   >
-                    打开
+                    {t('settings:developer.debug_logs.open')}
                   </NotionButton>
                   <NotionButton
                     variant="ghost"
@@ -646,7 +732,7 @@ export const AppTab: React.FC<AppTabProps> = ({
                       setDebugLogsClearing(true);
                       try {
                         const removed = await tauriInvoke('clear_debug_logs') as number;
-                        showGlobalNotification('success', `已清理 ${removed} 个日志文件`);
+                        showGlobalNotification('success', t('settings:developer.debug_logs.cleared', { count: removed }));
                         await refreshDebugLogsInfo();
                       } catch (error: unknown) {
                         showGlobalNotification('error', getErrorMessage(error));
@@ -655,7 +741,7 @@ export const AppTab: React.FC<AppTabProps> = ({
                       }
                     }}
                   >
-                    {debugLogsClearing ? <Loader2 className="h-3 w-3 animate-spin" /> : '清理全部'}
+                    {debugLogsClearing ? <Loader2 className="h-3 w-3 animate-spin" /> : t('settings:developer.debug_logs.clear_all')}
                   </NotionButton>
                 </div>
               </SettingRow>

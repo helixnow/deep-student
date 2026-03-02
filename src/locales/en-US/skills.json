@@ -212,7 +212,11 @@
     "attachment-tools": "Attachment Parser",
     "docx-tools": "Word Document Tools",
     "pptx-tools": "PPT Presentation Tools",
-    "xlsx-tools": "Excel Spreadsheet Tools"
+    "xlsx-tools": "Excel Spreadsheet Tools",
+    "session-manager": "Session Manager",
+    "ask-user": "Ask User",
+    "academic-search": "Academic Search",
+    "template-designer": "Template Designer"
   },
   "builtinDescriptions": {
     "knowledge-retrieval": "Find and cite relevant knowledge from your library and external sources.",
@@ -236,7 +240,11 @@
     "attachment-tools": "Parse and extract text or metadata from uploaded files.",
     "docx-tools": "Read, write, and edit DOCX documents with structured extraction, table parsing, metadata queries, file generation, round-trip editing, and text replacement.",
     "pptx-tools": "Read, write, and edit PPTX presentations with structured extraction, file generation, round-trip editing, and text replacement.",
-    "xlsx-tools": "Read, write, and edit XLSX spreadsheets with structured extraction, table parsing, file generation, round-trip editing, cell editing, and text replacement."
+    "xlsx-tools": "Read, write, and edit XLSX spreadsheets with structured extraction, table parsing, file generation, round-trip editing, cell editing, and text replacement.",
+    "session-manager": "Manage sessions with listing, grouping, tagging, archiving, and batch operations.",
+    "ask-user": "Ask the user for confirmation or additional information.",
+    "academic-search": "Search academic papers, literature, and research resources.",
+    "template-designer": "Design and manage reusable document templates."
   },
 
   "favorite": {

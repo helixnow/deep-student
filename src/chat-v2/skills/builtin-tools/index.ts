@@ -24,6 +24,7 @@ export { academicSearchSkill } from './academic-search';
 export { docxToolsSkill } from './docx-tools';
 export { pptxToolsSkill } from './pptx-tools';
 export { xlsxToolsSkill } from './xlsx-tools';
+export { sessionManagerSkill } from './session-manager';
 
 import { knowledgeRetrievalSkill } from './knowledge-retrieval';
 import { canvasNoteSkill } from './canvas-note';
@@ -42,6 +43,7 @@ import { academicSearchSkill } from './academic-search';
 import { docxToolsSkill } from './docx-tools';
 import { pptxToolsSkill } from './pptx-tools';
 import { xlsxToolsSkill } from './xlsx-tools';
+import { sessionManagerSkill } from './session-manager';
 import type { SkillDefinition } from '../types';
 
 /**
@@ -68,6 +70,7 @@ export const builtinToolSkills: SkillDefinition[] = [
   docxToolsSkill,
   pptxToolsSkill,
   xlsxToolsSkill,
+  sessionManagerSkill,
 ];
 
 /**

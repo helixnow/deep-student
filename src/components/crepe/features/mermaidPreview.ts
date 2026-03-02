@@ -5,6 +5,7 @@
 
 import mermaid from 'mermaid';
 import DOMPurify from 'dompurify';
+import i18n from '@/i18n';
 
 let initialized = false;
 
@@ -41,7 +42,7 @@ export const renderMermaidDiagram = async (
     container.classList.add('mermaid-rendered');
   } catch (error) {
     console.error('[Mermaid] Render failed:', error);
-    container.innerHTML = `<div class="mermaid-error">图表渲染失败</div>`;
+    container.innerHTML = `<div class="mermaid-error">${i18n.t('chatV2:codeBlock.mermaidFailed')}</div>`;
     container.classList.add('mermaid-error');
   }
 };

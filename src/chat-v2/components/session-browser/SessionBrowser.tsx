@@ -266,10 +266,10 @@ const SessionCard: React.FC<SessionCardProps> = ({
               className="flex-1 h-8 px-2 text-sm bg-muted/30 border-transparent rounded-md focus:border-border focus:bg-background focus:outline-none transition-colors"
               placeholder={t('page.sessionNamePlaceholder')}
             />
-            <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); onSaveEdit(); }} className="text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10" aria-label="save">
+            <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); onSaveEdit(); }} className="text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10" aria-label={t('page.saveSessionName')} title={t('page.saveSessionName')}>
               <Check className="w-4 h-4" />
             </NotionButton>
-            <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); onCancelEdit(); }} aria-label="cancel">
+            <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); onCancelEdit(); }} aria-label={t('page.cancelEdit')} title={t('page.cancelEdit')}>
               <X className="w-4 h-4" />
             </NotionButton>
           </div>

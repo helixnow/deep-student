@@ -836,6 +836,7 @@
       "failed": "失败"
     },
     "restore_insufficient_space": "磁盘空间不足：需要 {{required}} GB，可用 {{available}} GB。请释放磁盘空间后重试。",
+    "restore_restart_required": "恢复完成，请重启应用以确保所有变更生效。",
     "restore_phase_pre_backup": "正在创建恢复前备份...",
     "restore_phase_scan": "验证备份清单",
     "restore_phase_restoring": "恢复数据库",

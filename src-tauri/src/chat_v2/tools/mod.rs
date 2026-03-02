@@ -57,6 +57,7 @@ pub mod paper_save_executor; // 🆕 论文保存+引用格式化工具执行器
 pub mod pptx_executor; // 🆕 PPTX 演示文稿读写工具执行器（ppt-rs）
 pub mod qbank_executor; // 🆕 智能题目集工具执行器
 pub mod registry;
+pub mod session_executor; // 🆕 会话管理工具执行器（AI 自主管理会话/分组/标签）
 pub mod skills_executor; // 🆕 Skills 工具执行器（渐进披露架构）
 pub mod sleep_executor;
 pub mod subagent_executor;
@@ -102,6 +103,7 @@ pub use knowledge_executor::KnowledgeExecutor; // 🆕 知识工具执行器
 pub use memory_executor::MemoryToolExecutor;
 pub use paper_save_executor::PaperSaveExecutor; // 🆕 论文保存+引用格式化工具执行器
 pub use pptx_executor::PptxToolExecutor; // 🆕 PPTX 演示文稿读写工具执行器
+pub use session_executor::SessionToolExecutor; // 🆕 会话管理工具执行器
 pub use skills_executor::SkillsExecutor; // 🆕 Skills 工具执行器
 pub use sleep_executor::{get_coordinator_sleep_tool_schema, CoordinatorSleepExecutor};
 pub use subagent_executor::{get_subagent_tool_schema, SubagentExecutor, SUBAGENT_TOOL_NAME};

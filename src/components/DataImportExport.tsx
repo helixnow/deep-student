@@ -826,7 +826,7 @@ ${resolvedPath}`);
       const restoreResult = await waitForJobTerminal(restoreJob.job_id, 'import', 600000, handleRestoreProgress);
       showGlobalNotification('success', t('data:restore_complete'));
       if (restoreResult.result?.requires_restart || restoreResult.result?.requiresRestart) {
-        showGlobalNotification('warning', t('data:governance.restore_restart_required', '恢复完成，请重启应用以确保所有变更生效'));
+        showGlobalNotification('warning', t('data:governance.restore_restart_required'));
       }
     } catch (error) {
       const errorMessage = getErrorMessage(error);
@@ -916,7 +916,7 @@ ${resolvedPath}`);
 
       showGlobalNotification('success', t('data:restore_complete'));
       if (restoreResult.result?.requires_restart || restoreResult.result?.requiresRestart) {
-        showGlobalNotification('warning', t('data:governance.restore_restart_required', '恢复完成，请重启应用以确保所有变更生效'));
+        showGlobalNotification('warning', t('data:governance.restore_restart_required'));
       }
       await loadBackupList();
     } catch (error) {
@@ -1812,7 +1812,7 @@ ${resolvedPath}`);
             <CardFooter>
               <NotionButton variant="ghost" size="sm" onClick={handleImportZipBackup} disabled={isExporting}>
                 {isExporting && restoreProgress ? (
-                  <><Loader2 className="mr-1.5 h-4 w-4 animate-spin" />{t('data:restore_in_progress')}</>
+                  <><Loader2 className="mr-1.5 h-4 w-4 animate-spin" />{t('data:governance.restore_in_progress')}</>
                 ) : (
                   t('data:actions.import_button')
                 )}

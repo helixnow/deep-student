@@ -1138,6 +1138,7 @@ pub fn run() {
             ,crate::chat_v2::handlers::manage_session::chat_v2_list_sessions
             ,crate::chat_v2::handlers::manage_session::chat_v2_list_agent_sessions
             ,crate::chat_v2::handlers::manage_session::chat_v2_count_sessions
+            ,crate::chat_v2::handlers::manage_session::chat_v2_session_message_count
             ,crate::chat_v2::handlers::manage_session::chat_v2_delete_session
             // P1-3: 清空回收站（一次性删除所有已删除会话）
             ,crate::chat_v2::handlers::manage_session::chat_v2_empty_deleted_sessions
