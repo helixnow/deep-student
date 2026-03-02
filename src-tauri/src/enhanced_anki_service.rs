@@ -504,7 +504,17 @@ impl EnhancedAnkiService {
 
         let mut remaining: Vec<DocumentTask> = self
             .doc_processor
-            .get_document_tasks(&document_id)?
+            .get_document_tasks(&document_id)
+            .map_err(|e| {
+                if let Some(mut entry) = DOCUMENT_STATES.get_mut(&document_id) {
+                    entry.running = false;
+                    if !entry.paused {
+                        drop(entry);
+                        DOCUMENT_STATES.remove(&document_id);
+                    }
+                }
+                e
+            })?
             .into_iter()
             .filter(|t| matches!(t.status, TaskStatus::Paused | TaskStatus::Pending))
             .collect();

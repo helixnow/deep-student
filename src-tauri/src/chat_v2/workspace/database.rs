@@ -121,7 +121,7 @@ CREATE TABLE IF NOT EXISTS subagent_task (
 CREATE INDEX IF NOT EXISTS idx_subagent_task_workspace ON subagent_task(workspace_id, status);
 "#;
 
-const CURRENT_SCHEMA_VERSION: i32 = 1;
+const CURRENT_SCHEMA_VERSION: i32 = 2;
 
 fn migrate_schema(conn: &Connection) -> Result<(), String> {
     let current_version: i32 = conn
@@ -133,11 +133,24 @@ fn migrate_schema(conn: &Connection) -> Result<(), String> {
         // Future migrations go here as additional version checks.
     }
 
-    // 未来新增迁移示例：
-    // if current_version < 2 {
-    //     conn.execute("ALTER TABLE agent ADD COLUMN priority INTEGER DEFAULT 0", [])
-    //         .map_err(|e| format!("Migration V2 failed: {}", e))?;
-    // }
+    if current_version < 2 {
+        // V2: align subagent_task schema with runtime query contract.
+        // Old databases may only contain task_content/last_active_at/needs_recovery.
+        let _ = conn.execute("ALTER TABLE subagent_task ADD COLUMN initial_task TEXT", []);
+        let _ = conn.execute("ALTER TABLE subagent_task ADD COLUMN started_at TEXT", []);
+        let _ = conn.execute("ALTER TABLE subagent_task ADD COLUMN completed_at TEXT", []);
+        let _ = conn.execute("ALTER TABLE subagent_task ADD COLUMN result_summary TEXT", []);
+        conn.execute(
+            "UPDATE subagent_task SET initial_task = task_content WHERE initial_task IS NULL",
+            [],
+        )
+        .map_err(|e| format!("Migration V2 failed while backfilling initial_task: {}", e))?;
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_subagent_task_workspace ON subagent_task(workspace_id, status)",
+            [],
+        )
+        .map_err(|e| format!("Migration V2 failed while ensuring index: {}", e))?;
+    }
 
     if current_version < CURRENT_SCHEMA_VERSION {
         conn.pragma_update(None, "user_version", CURRENT_SCHEMA_VERSION)

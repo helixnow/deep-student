@@ -722,11 +722,10 @@ pub async fn dstu_permanently_delete(
     // ★ P1 修复：在 purge 之前查找 resource_id（purge 会删除数据库记录）
     // ★ P1 修复：essay_session 需要收集子 essays 的 resource_ids
     let resource_id = lookup_resource_id(&db, &item_type, &id);
-    let session_essay_resource_ids: Vec<String> = if item_type == "essay"
-        && id.starts_with("essay_session_")
-    {
-        if let Ok(conn) = db.get_conn_safe() {
-            conn.prepare(
+    let session_essay_resource_ids: Vec<String> =
+        if item_type == "essay" && id.starts_with("essay_session_") {
+            if let Ok(conn) = db.get_conn_safe() {
+                conn.prepare(
                 "SELECT resource_id FROM essays WHERE session_id = ?1 AND resource_id IS NOT NULL",
             )
             .and_then(|mut stmt| {
@@ -734,12 +733,12 @@ pub async fn dstu_permanently_delete(
                     .map(|rows| rows.flatten().collect())
             })
             .unwrap_or_default()
+            } else {
+                Vec::new()
+            }
         } else {
             Vec::new()
-        }
-    } else {
-        Vec::new()
-    };
+        };
 
     // 统一使用 purge 方法进行永久删除
     let result = match item_type.as_str() {

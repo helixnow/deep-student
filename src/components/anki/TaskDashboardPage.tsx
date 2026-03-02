@@ -77,14 +77,16 @@ const POLL_ACTIVE = 5_000;
 const POLL_IDLE = 30_000;
 /** 卡片列表首次显示条数 */
 const CARDS_PAGE_SIZE = 20;
+/** 任务列表单次拉取上限（避免旧任务被分页截断） */
+const DASHBOARD_SESSION_LIMIT = 500;
 
 // ============================================================================
 // 工具函数
 // ============================================================================
 
 function classify(s: DocumentSession): SessionGroup {
-  if (s.activeTasks > 0 || s.pausedTasks > 0) return 'active';
   if (s.failedTasks > 0) return 'attention';
+  if (s.activeTasks > 0 || s.pausedTasks > 0) return 'active';
   return 'completed';
 }
 
@@ -414,7 +416,7 @@ const SessionRow: React.FC<{
         } else {
           // [M1] 使用 allSettled 避免部分失败中断其余任务
           const results = await Promise.allSettled(
-            failedTasks.map(ft => invoke('trigger_task_processing', { taskId: ft.id })),
+            failedTasks.map(ft => invoke('trigger_task_processing', { task_id: ft.id })),
           );
           const succeeded = results.filter(r => r.status === 'fulfilled').length;
           const failed = results.length - succeeded;
@@ -845,7 +847,7 @@ export const TaskDashboardPage: React.FC<TaskDashboardPageProps> = ({
   const load = useCallback(async () => {
     try {
       const [s, st] = await Promise.all([
-        invoke<DocumentSession[]>('list_document_sessions', { limit: 100 }),
+        invoke<DocumentSession[]>('list_document_sessions', { limit: DASHBOARD_SESSION_LIMIT }),
         invoke<AnkiStats>('get_anki_stats'),
       ]);
       setSessions(s);

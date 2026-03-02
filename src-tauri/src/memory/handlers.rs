@@ -245,6 +245,8 @@ pub async fn memory_write(
         result.resource_id.clone(),
     );
 
+    service.spawn_post_write_maintenance();
+
     Ok(result)
 }
 
@@ -372,6 +374,10 @@ pub async fn memory_batch_delete(
         }
     }
 
+    if succeeded > 0 {
+        service.spawn_post_write_maintenance();
+    }
+
     Ok(BatchOperationResult {
         total,
         succeeded,
@@ -453,6 +459,8 @@ pub async fn memory_update_by_id(
         result.resource_id.clone(),
     );
 
+    service.spawn_post_write_maintenance();
+
     Ok(result)
 }
 
@@ -465,7 +473,9 @@ pub async fn memory_delete(
     llm_manager: State<'_, Arc<LLMManager>>,
 ) -> Result<(), String> {
     let service = get_memory_service(&vfs_db, &lance_store, &llm_manager);
-    service.delete(&note_id).await.map_err(|e| e.to_string())
+    service.delete(&note_id).await.map_err(|e| e.to_string())?;
+    service.spawn_post_write_maintenance();
+    Ok(())
 }
 
 #[tauri::command]
@@ -621,6 +631,10 @@ pub async fn memory_write_smart(
         )
         .await
         .map_err(|e| e.to_string())?;
+
+    if result.event != "NONE" && result.event != "FILTERED" {
+        service.spawn_post_write_maintenance();
+    }
 
     Ok(result)
 }

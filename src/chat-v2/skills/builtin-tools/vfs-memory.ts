@@ -125,6 +125,10 @@ export const vfsMemorySkill: SkillDefinition = {
           content: { type: 'string', description: '可选：新的记忆内容（Markdown 格式）' },
         },
         required: ['note_id'],
+        anyOf: [
+          { required: ['title'] },
+          { required: ['content'] },
+        ],
       },
     },
     {

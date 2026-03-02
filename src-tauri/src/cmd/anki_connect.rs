@@ -6,6 +6,7 @@ use crate::commands::{get_template_config, AppState};
 use crate::models::{AnkiCard, AnkiGenerationOptions, AppError};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use tauri::{State, Window};
 use uuid::Uuid;
 
@@ -26,6 +27,69 @@ fn card_has_cloze_markup(card: &AnkiCard) -> bool {
         return true;
     }
     card.extra_fields.values().any(|v| contains_cloze_markup(v))
+}
+
+pub(crate) fn sanitize_filename_component(raw: &str, fallback: &str) -> String {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return fallback.to_string();
+    }
+
+    // 仅保留最后一个 path segment，避免路径穿越/绝对路径覆盖
+    let base = Path::new(trimmed)
+        .file_name()
+        .and_then(|v| v.to_str())
+        .unwrap_or(fallback);
+
+    let mut sanitized = base
+        .chars()
+        .map(|ch| {
+            if ch.is_control() || matches!(ch, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|')
+            {
+                '_'
+            } else {
+                ch
+            }
+        })
+        .collect::<String>();
+
+    sanitized = sanitized.trim().trim_matches('.').to_string();
+    while sanitized.contains("..") {
+        sanitized = sanitized.replace("..", ".");
+    }
+
+    if sanitized.is_empty() || sanitized == "." || sanitized == ".." {
+        fallback.to_string()
+    } else {
+        sanitized
+    }
+}
+
+pub(crate) fn sanitize_filename_with_extension(
+    raw: &str,
+    fallback_name: &str,
+    extension: &str,
+) -> String {
+    let safe = sanitize_filename_component(raw, fallback_name);
+    let required_ext = extension.trim_start_matches('.');
+    if safe
+        .to_lowercase()
+        .ends_with(&format!(".{}", required_ext.to_lowercase()))
+    {
+        safe
+    } else {
+        format!("{}.{}", safe, required_ext)
+    }
+}
+
+pub(crate) fn build_safe_output_path(
+    output_dir: &Path,
+    suggested_name: &str,
+    fallback_name: &str,
+    extension: &str,
+) -> PathBuf {
+    let safe_name = sanitize_filename_with_extension(suggested_name, fallback_name, extension);
+    output_dir.join(safe_name)
 }
 
 // ==================== AnkiConnect集成功能 ====================
@@ -77,6 +141,7 @@ pub async fn add_cards_to_anki_connect(
     selected_cards: Vec<crate::models::AnkiCard>,
     deck_name: String,
     mut note_type: String,
+    state: State<'_, AppState>,
 ) -> Result<Vec<Option<u64>>> {
     if selected_cards.is_empty() {
         return Err(AppError::validation("没有选择任何卡片".to_string()));
@@ -133,7 +198,34 @@ pub async fn add_cards_to_anki_connect(
         println!("创建牌组失败（可能已存在）: {}", e);
     }
 
-    match crate::anki_connect_service::add_notes_to_anki(selected_cards, deck_name, note_type).await
+    let mut card_models: HashMap<String, String> = HashMap::new();
+    for card in &selected_cards {
+        let Some(template_id) = card
+            .template_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+        else {
+            continue;
+        };
+        if card.id.trim().is_empty() {
+            continue;
+        }
+        if let Ok(Some(template)) = state.database.get_custom_template_by_id(template_id) {
+            let model_name = template.note_type.trim();
+            if !model_name.is_empty() {
+                card_models.insert(card.id.clone(), model_name.to_string());
+            }
+        }
+    }
+
+    match crate::anki_connect_service::add_notes_to_anki_with_card_models(
+        selected_cards,
+        deck_name,
+        note_type,
+        card_models,
+    )
+    .await
     {
         Ok(note_ids) => {
             let successful_count = note_ids.iter().filter(|id| id.is_some()).count();
@@ -148,7 +240,13 @@ pub async fn add_cards_to_anki_connect(
                 println!("部分卡片添加失败，可能是重复卡片或格式错误");
             }
 
-            Ok(note_ids)
+            if successful_count == 0 {
+                Err(AppError::validation(
+                    "所有卡片同步失败，可能是重复卡片或字段/模板不匹配".to_string(),
+                ))
+            } else {
+                Ok(note_ids)
+            }
         }
         Err(e) => {
             println!("添加卡片到Anki失败: {}", e);
@@ -236,18 +334,14 @@ pub async fn save_anki_cards(
             original_document_name: format!("Chat Cards {}", subject),
             segment_index: 0,
             content_segment,
-            status: crate::models::TaskStatus::Completed,
+            status: crate::models::TaskStatus::Pending,
             created_at: now.clone(),
             updated_at: now.clone(),
             error_message: None,
             anki_generation_options_json: options_json,
         };
 
-        database
-            .insert_document_task(&document_task)
-            .map_err(|e| AppError::database(format!("插入任务失败: {}", e)))?;
-
-        let mut saved_ids = Vec::with_capacity(request.cards.len());
+        let mut cards_to_insert = Vec::with_capacity(request.cards.len());
         for (index, payload) in request.cards.iter().enumerate() {
             let mut fields = payload.fields.clone().unwrap_or_default();
             let front = payload
@@ -293,13 +387,14 @@ pub async fn save_anki_cards(
                 card.text = card.extra_fields.get("Text").cloned();
             }
 
-            let inserted = database
-                .insert_anki_card(&card)
-                .map_err(|e| AppError::database(format!("保存卡片失败: {}", e)))?;
-            if inserted {
-                saved_ids.push(card_id);
-            }
+            cards_to_insert.push(card);
         }
+
+        let mut document_task = document_task;
+        document_task.status = crate::models::TaskStatus::Completed;
+        let saved_ids = database
+            .save_document_task_with_cards_atomic(&document_task, &cards_to_insert)
+            .map_err(|e| AppError::database(format!("保存卡片事务失败: {}", e)))?;
 
         if saved_ids.is_empty() {
             return Err(AppError::validation(
@@ -394,7 +489,8 @@ pub async fn export_cards_as_apkg_with_template(
     );
 
     // 生成默认文件名和路径（在移动端使用可写的临时目录，避免 iOS 权限问题）
-    let sanitized_filename = format!("{}.apkg", deck_name.replace("/", "_").replace("\\", "_"));
+    let sanitized_filename =
+        sanitize_filename_with_extension(&deck_name, "anki_cards", "apkg");
 
     // 在 iOS/Android：始终使用临时目录（可写）
     // 在桌面端：优先 HOME/Downloads，不可写则回退到临时目录
@@ -483,14 +579,19 @@ pub async fn export_multi_template_apkg(
                 .join("temp_apkg_export");
             std::fs::create_dir_all(&export_dir)
                 .map_err(|e| AppError::file_system(format!("创建 APKG 临时目录失败: {}", e)))?;
-            let sanitized = deck_name.replace('/', "_").replace('\\', "_");
+            let sanitized = sanitize_filename_component(&deck_name, "anki_cards");
             export_dir.join(format!("{}_{}.apkg", sanitized, Uuid::new_v4()))
         } else {
-            std::path::PathBuf::from(path)
+            let candidate = std::path::PathBuf::from(path);
+            let parent = candidate.parent().map(|p| p.to_path_buf()).unwrap_or_default();
+            let file_name = candidate
+                .file_name()
+                .and_then(|v| v.to_str())
+                .unwrap_or("anki_cards");
+            parent.join(sanitize_filename_with_extension(file_name, "anki_cards", "apkg"))
         }
     } else {
-        let sanitized = deck_name.replace('/', "_").replace('\\', "_");
-        let filename = format!("{}.apkg", sanitized);
+        let filename = sanitize_filename_with_extension(&deck_name, "anki_cards", "apkg");
         if cfg!(any(target_os = "ios", target_os = "android")) {
             std::env::temp_dir().join(&filename)
         } else {
@@ -690,6 +791,18 @@ mod batch_export_tests {
         let card = batch_export_note_to_anki_card(note, 1, None);
         assert_eq!(card.text, Some("x {{c1::y}} z".to_string()));
     }
+
+    #[test]
+    fn test_sanitize_filename_component_strips_path_segments() {
+        let got = sanitize_filename_component("../unsafe/../../deck?.apkg", "fallback");
+        assert_eq!(got, "deck_.apkg");
+    }
+
+    #[test]
+    fn test_sanitize_filename_with_extension_normalizes_suffix() {
+        let got = sanitize_filename_with_extension(" deck-name ", "fallback", "apkg");
+        assert_eq!(got, "deck-name.apkg");
+    }
 }
 
 /// 保存 JSON 文件到临时目录
@@ -698,18 +811,9 @@ pub async fn save_json_file(content: String, suggested_name: String) -> Result<S
     println!("📝 保存 JSON 文件: {}", suggested_name);
 
     let trimmed = suggested_name.trim();
-    let base_name = if trimmed.is_empty() {
-        "anki_cards.json".to_string()
-    } else {
-        trimmed.to_string()
-    };
-    let filename = if base_name.to_lowercase().ends_with(".json") {
-        base_name
-    } else {
-        format!("{}.json", base_name)
-    };
+    let filename = sanitize_filename_with_extension(trimmed, "anki_cards", "json");
     let output_dir = std::env::temp_dir();
-    let file_path = output_dir.join(&filename);
+    let file_path = build_safe_output_path(&output_dir, &filename, "anki_cards", "json");
 
     // 写入文件
     std::fs::write(&file_path, &content)

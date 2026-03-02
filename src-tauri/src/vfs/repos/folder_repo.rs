@@ -596,7 +596,7 @@ impl VfsFolderRepo {
                 r#"
                 SELECT id, folder_id, item_type, item_id, sort_order, created_at, cached_path
                 FROM folder_items
-                WHERE item_type = ?1 AND item_id = ?2
+                WHERE item_type = ?1 AND item_id = ?2 AND deleted_at IS NULL
                 "#,
                 params![item_type, item_id],
                 |row| {

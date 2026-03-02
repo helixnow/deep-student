@@ -64,7 +64,12 @@ impl MemoryEvolution {
         if now_ms - last < interval_ms {
             return None;
         }
-        LAST_EVOLUTION_MS.store(now_ms, Ordering::Relaxed);
+        if LAST_EVOLUTION_MS
+            .compare_exchange(last, now_ms, Ordering::Relaxed, Ordering::Relaxed)
+            .is_err()
+        {
+            return None;
+        }
 
         match self.run_evolution_cycle(memory_service) {
             Ok(report) => {
@@ -80,6 +85,8 @@ impl MemoryEvolution {
                 Some(report)
             }
             Err(e) => {
+                // 本轮执行失败时回滚节流时间，避免“失败也占用周期”导致长时间不重试。
+                LAST_EVOLUTION_MS.store(last, Ordering::Relaxed);
                 debug!("[Evolution] Throttled cycle failed (non-fatal): {}", e);
                 None
             }
@@ -301,7 +308,7 @@ impl MemoryEvolution {
                     }
                 }
 
-                if let Err(e) = crate::vfs::repos::note_repo::VfsNoteRepo::update_note(
+                let updated_keep = match crate::vfs::repos::note_repo::VfsNoteRepo::update_note(
                     &self.vfs_db,
                     &keep.id,
                     crate::vfs::types::VfsUpdateNoteParams {
@@ -311,11 +318,23 @@ impl MemoryEvolution {
                         expected_updated_at: None,
                     },
                 ) {
+                    Ok(note) => note,
+                    Err(e) => {
+                        warn!(
+                            "[Evolution] Failed to update merged memory {}: {}",
+                            keep.id, e
+                        );
+                        continue;
+                    }
+                };
+
+                if let Err(e) =
+                    VfsIndexStateRepo::mark_pending(&self.vfs_db, &updated_keep.resource_id)
+                {
                     warn!(
-                        "[Evolution] Failed to update merged memory {}: {}",
+                        "[Evolution] Failed to mark pending after merge update {}: {}",
                         keep.id, e
                     );
-                    continue;
                 }
 
                 for dup in &group[1..] {

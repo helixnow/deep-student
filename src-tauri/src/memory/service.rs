@@ -23,6 +23,7 @@ struct FolderIdCache {
 }
 
 use super::audit_log::{MemoryAuditLogger, MemoryOpSource, MemoryOpType, OpTimer};
+use super::auto_extractor::MemoryAutoExtractor;
 use super::config::MemoryConfig;
 use super::llm_decision::{
     MemoryDecisionResponse, MemoryEvent, MemoryLLMDecision, SimilarMemorySummary,
@@ -182,6 +183,15 @@ pub struct MemorySearchResult {
     /// 笔记的 updated_at（ISO 8601），用于时间衰减计算
     #[serde(skip_serializing_if = "Option::is_none")]
     pub updated_at: Option<String>,
+}
+
+/// 搜索用途（控制是否写入命中反馈）
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SearchPurpose {
+    /// 用户实际检索：记录命中统计，参与后续进化反馈
+    UserRetrieval,
+    /// 内部去重/决策检索：只读，不记录命中
+    InternalDedup,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -454,7 +464,70 @@ impl MemoryService {
         self.config.get_or_create_root_folder()
     }
 
+    /// 在写入/更新/删除后触发统一维护流程（画像刷新 + 分类刷新 + 自进化）
+    ///
+    /// - 设计为 fire-and-forget，不阻塞主写路径
+    /// - 分类刷新使用频率档位阈值控制，避免每次写入都触发 LLM 聚合
+    pub fn spawn_post_write_maintenance(&self) {
+        let svc = self.clone();
+        let vfs_db = self.vfs_db.clone();
+        let llm_manager = self.llm_manager.clone();
+
+        tokio::spawn(async move {
+            let svc_for_profile = svc.clone();
+            match tokio::task::spawn_blocking(move || svc_for_profile.refresh_profile_summary())
+                .await
+            {
+                Ok(Ok(())) => {}
+                Ok(Err(e)) => warn!("[Memory] Post-write profile refresh failed: {}", e),
+                Err(e) => warn!(
+                    "[Memory] Post-write profile refresh task join failed: {}",
+                    e
+                ),
+            }
+
+            let mem_cfg = MemoryConfig::new(vfs_db.clone());
+            let frequency = mem_cfg
+                .get_auto_extract_frequency()
+                .unwrap_or(super::config::AutoExtractFrequency::Balanced);
+            let privacy_mode = mem_cfg.is_privacy_mode().unwrap_or(false);
+
+            if !privacy_mode {
+                let should_refresh = match svc.list(None, 500, 0) {
+                    Ok(all) => {
+                        let total = all.iter().filter(|m| !m.title.starts_with("__")).count();
+                        frequency.should_refresh_categories(total)
+                    }
+                    Err(_) => false,
+                };
+
+                if should_refresh {
+                    let cat_mgr = super::category_manager::MemoryCategoryManager::new(
+                        vfs_db.clone(),
+                        llm_manager,
+                    );
+                    if let Err(e) = cat_mgr.refresh_all_categories(&svc).await {
+                        warn!("[Memory] Post-write category refresh failed: {}", e);
+                    }
+                }
+            }
+
+            let evolution = super::evolution::MemoryEvolution::new(vfs_db);
+            evolution.run_throttled(&svc, frequency.evolution_interval_ms());
+        });
+    }
+
     pub async fn search(&self, query: &str, top_k: usize) -> VfsResult<Vec<MemorySearchResult>> {
+        self.search_for_purpose(query, top_k, SearchPurpose::UserRetrieval)
+            .await
+    }
+
+    pub async fn search_for_purpose(
+        &self,
+        query: &str,
+        top_k: usize,
+        purpose: SearchPurpose,
+    ) -> VfsResult<Vec<MemorySearchResult>> {
         if top_k == 0 {
             return Ok(vec![]);
         }
@@ -470,7 +543,8 @@ impl MemoryService {
             .await
             .map_err(|e| VfsError::Other(format!("Embedding failed: {}", e)))?;
 
-        self.search_with_embedding(query, &embedding, top_k).await
+        self.search_with_embedding_for_purpose(query, &embedding, top_k, purpose)
+            .await
     }
 
     /// 使用预计算 embedding 搜索记忆（避免重复调用 Embedding API）
@@ -481,6 +555,22 @@ impl MemoryService {
         query: &str,
         query_embedding: &[f32],
         top_k: usize,
+    ) -> VfsResult<Vec<MemorySearchResult>> {
+        self.search_with_embedding_for_purpose(
+            query,
+            query_embedding,
+            top_k,
+            SearchPurpose::UserRetrieval,
+        )
+        .await
+    }
+
+    pub async fn search_with_embedding_for_purpose(
+        &self,
+        query: &str,
+        query_embedding: &[f32],
+        top_k: usize,
+        purpose: SearchPurpose,
     ) -> VfsResult<Vec<MemorySearchResult>> {
         if top_k == 0 {
             return Ok(vec![]);
@@ -540,11 +630,13 @@ impl MemoryService {
         // 应用时间衰减
         self.apply_time_decay(&mut results);
 
-        // 异步记录命中（不阻塞搜索返回）
-        let hit_ids: Vec<String> = results.iter().map(|r| r.note_id.clone()).collect();
-        if !hit_ids.is_empty() {
-            let svc = self.clone();
-            tokio::task::spawn_blocking(move || svc.record_search_hits(&hit_ids));
+        if purpose == SearchPurpose::UserRetrieval {
+            // 异步记录命中（不阻塞搜索返回）
+            let hit_ids: Vec<String> = results.iter().map(|r| r.note_id.clone()).collect();
+            if !hit_ids.is_empty() {
+                let svc = self.clone();
+                tokio::task::spawn_blocking(move || svc.record_search_hits(&hit_ids));
+            }
         }
 
         debug!(
@@ -590,6 +682,32 @@ impl MemoryService {
         memory_type: MemoryType,
         purpose: Option<MemoryPurpose>,
     ) -> VfsResult<MemoryWriteOutput> {
+        if title.trim().is_empty() {
+            return Err(VfsError::InvalidArgument {
+                param: "title".to_string(),
+                reason: "标题不能为空".to_string(),
+            });
+        }
+        if MemoryAutoExtractor::contains_sensitive_pattern_pub(title)
+            || MemoryAutoExtractor::contains_sensitive_pattern_pub(content)
+        {
+            return Err(VfsError::InvalidArgument {
+                param: "title/content".to_string(),
+                reason: "包含敏感信息（手机号/身份证/银行卡/邮箱/密码）".to_string(),
+            });
+        }
+        let max_chars = memory_type.max_content_chars();
+        if content.chars().count() > max_chars {
+            return Err(VfsError::InvalidArgument {
+                param: "content".to_string(),
+                reason: format!(
+                    "内容超过 {} 字限制（类型: {}）",
+                    max_chars,
+                    memory_type.as_str()
+                ),
+            });
+        }
+
         let root_id = self.ensure_root_folder_id()?;
 
         let auto_create_subfolders = self.config.is_auto_create_subfolders()?;
@@ -759,6 +877,13 @@ impl MemoryService {
         let timer = OpTimer::start();
         self.ensure_root_folder_id()?;
 
+        if title.trim().is_empty() {
+            return Err(VfsError::InvalidArgument {
+                param: "title".to_string(),
+                reason: "标题不能为空".to_string(),
+            });
+        }
+
         if content.trim().is_empty() {
             return Ok(SmartWriteOutput {
                 note_id: String::new(),
@@ -769,6 +894,43 @@ impl MemoryService {
                 resource_id: None,
                 downgraded: false,
             });
+        }
+
+        if MemoryAutoExtractor::contains_sensitive_pattern_pub(content)
+            || MemoryAutoExtractor::contains_sensitive_pattern_pub(title)
+        {
+            let output = SmartWriteOutput {
+                note_id: String::new(),
+                event: "FILTERED".to_string(),
+                is_new: false,
+                confidence: 1.0,
+                reason: "内容包含敏感信息（手机号/身份证/银行卡/邮箱/密码），已拦截。".to_string(),
+                resource_id: None,
+                downgraded: false,
+            };
+            self.audit_logger
+                .log_filtered(source, title, content, &output.reason);
+            return Ok(output);
+        }
+
+        let max_chars = memory_type.max_content_chars();
+        if content.chars().count() > max_chars {
+            let output = SmartWriteOutput {
+                note_id: String::new(),
+                event: "FILTERED".to_string(),
+                is_new: false,
+                confidence: 1.0,
+                reason: format!(
+                    "内容超过 {} 字限制（类型: {}）",
+                    max_chars,
+                    memory_type.as_str()
+                ),
+                resource_id: None,
+                downgraded: false,
+            };
+            self.audit_logger
+                .log_filtered(source, title, content, &output.reason);
+            return Ok(output);
         }
 
         if self.config.is_privacy_mode()? {
@@ -851,7 +1013,10 @@ impl MemoryService {
 
         // 1. 先搜索相似记忆（扩大范围以提高冲突检测覆盖率）
         //    embedding 不可用时降级为空结果（跳过去重，直接走 ADD 路径）
-        let similar_results = match self.search(content, 15).await {
+        let similar_results = match self
+            .search_for_purpose(content, 15, SearchPurpose::InternalDedup)
+            .await
+        {
             Ok(r) => r,
             Err(e) => {
                 warn!(
@@ -939,7 +1104,13 @@ impl MemoryService {
             }
             MemoryEvent::UPDATE => {
                 if let Some(target_id) = decision.target_note_id {
-                    match self.update_by_id(&target_id, Some(title), Some(content)) {
+                    match self.update_by_id_with_source(
+                        &target_id,
+                        Some(title),
+                        Some(content),
+                        source,
+                        session_id,
+                    ) {
                         Ok(result) => {
                             self.index_immediately(&result.resource_id).await;
                             Ok(SmartWriteOutput {
@@ -1005,7 +1176,13 @@ impl MemoryService {
                         let current = VfsNoteRepo::get_note_content(&self.vfs_db, &target_id)?
                             .unwrap_or_default();
                         let final_content = format!("{}\n\n{}", current, content);
-                        self.update_by_id(&target_id, None, Some(&final_content))
+                        self.update_by_id_with_source(
+                            &target_id,
+                            None,
+                            Some(&final_content),
+                            source,
+                            session_id,
+                        )
                     })();
 
                     match append_result {
@@ -1069,7 +1246,10 @@ impl MemoryService {
             }
             MemoryEvent::DELETE => {
                 if let Some(target_id) = decision.target_note_id {
-                    if let Err(e) = self.delete(&target_id).await {
+                    if let Err(e) = self
+                        .delete_with_source(&target_id, source, session_id)
+                        .await
+                    {
                         warn!(
                             "[Memory] DELETE target {} failed: {}, proceeding with ADD",
                             target_id, e
@@ -1238,7 +1418,7 @@ impl MemoryService {
             SELECT DISTINCT n.id
             FROM notes n
             JOIN folder_items fi ON fi.item_type = 'note' AND fi.item_id = n.id
-            WHERE fi.folder_id IN ({}) AND n.deleted_at IS NULL
+            WHERE fi.folder_id IN ({}) AND n.deleted_at IS NULL AND fi.deleted_at IS NULL
               AND n.title NOT LIKE '\_\_%\_\_%' ESCAPE '\'
             ORDER BY n.updated_at DESC
             LIMIT ? OFFSET ?
@@ -1397,7 +1577,8 @@ impl MemoryService {
                        n.created_at, n.updated_at, n.deleted_at
                 FROM notes n
                 JOIN folder_items fi ON fi.item_type = 'note' AND fi.item_id = n.id
-                WHERE n.title = ?1 AND fi.folder_id = ?2 AND n.deleted_at IS NULL
+                WHERE n.title = ?1 AND fi.folder_id = ?2
+                  AND n.deleted_at IS NULL AND fi.deleted_at IS NULL
                 LIMIT 1
                 "#,
                 params![title, fid],
@@ -1427,7 +1608,8 @@ impl MemoryService {
                            n.created_at, n.updated_at, n.deleted_at
                     FROM notes n
                     JOIN folder_items fi ON fi.item_type = 'note' AND fi.item_id = n.id
-                    WHERE n.title = ?1 AND fi.folder_id = ?2 AND n.deleted_at IS NULL
+                    WHERE n.title = ?1 AND fi.folder_id = ?2
+                      AND n.deleted_at IS NULL AND fi.deleted_at IS NULL
                     LIMIT 1
                     "#,
                     params![title, rid],
@@ -1499,8 +1681,62 @@ impl MemoryService {
         title: Option<&str>,
         content: Option<&str>,
     ) -> VfsResult<MemoryWriteOutput> {
+        self.update_by_id_with_source(note_id, title, content, MemoryOpSource::Handler, None)
+    }
+
+    pub fn update_by_id_with_source(
+        &self,
+        note_id: &str,
+        title: Option<&str>,
+        content: Option<&str>,
+        source: MemoryOpSource,
+        session_id: Option<&str>,
+    ) -> VfsResult<MemoryWriteOutput> {
+        if title.is_none() && content.is_none() {
+            return Err(VfsError::InvalidArgument {
+                param: "title/content".to_string(),
+                reason: "至少需要提供 title 或 content 之一".to_string(),
+            });
+        }
+
         let timer = OpTimer::start();
         let note = self.ensure_note_in_memory_root(note_id)?;
+        let memory_type = MemoryType::from_tags(&note.tags);
+
+        if let Some(new_title) = title {
+            if new_title.trim().is_empty() {
+                return Err(VfsError::InvalidArgument {
+                    param: "title".to_string(),
+                    reason: "标题不能为空".to_string(),
+                });
+            }
+            if MemoryAutoExtractor::contains_sensitive_pattern_pub(new_title) {
+                return Err(VfsError::InvalidArgument {
+                    param: "title".to_string(),
+                    reason: "标题包含敏感信息（手机号/身份证/银行卡/邮箱/密码）".to_string(),
+                });
+            }
+        }
+
+        if let Some(new_content) = content {
+            if MemoryAutoExtractor::contains_sensitive_pattern_pub(new_content) {
+                return Err(VfsError::InvalidArgument {
+                    param: "content".to_string(),
+                    reason: "内容包含敏感信息（手机号/身份证/银行卡/邮箱/密码）".to_string(),
+                });
+            }
+            let max_chars = memory_type.max_content_chars();
+            if new_content.chars().count() > max_chars {
+                return Err(VfsError::InvalidArgument {
+                    param: "content".to_string(),
+                    reason: format!(
+                        "内容超过 {} 字限制（类型: {}）",
+                        max_chars,
+                        memory_type.as_str()
+                    ),
+                });
+            }
+        }
 
         let updated_note = VfsNoteRepo::update_note(
             &self.vfs_db,
@@ -1523,7 +1759,7 @@ impl MemoryService {
         );
 
         self.audit_logger.log(&super::audit_log::MemoryAuditEntry {
-            source: MemoryOpSource::Handler,
+            source,
             operation: MemoryOpType::Update,
             success: true,
             note_id: Some(note.id.clone()),
@@ -1533,7 +1769,7 @@ impl MemoryService {
             event: Some("UPDATE".to_string()),
             confidence: None,
             reason: None,
-            session_id: None,
+            session_id: session_id.map(|s| s.to_string()),
             duration_ms: Some(timer.elapsed_ms()),
             extra_json: None,
         });
@@ -1551,6 +1787,16 @@ impl MemoryService {
 
     /// 删除记忆（软删除）
     pub async fn delete(&self, note_id: &str) -> VfsResult<()> {
+        self.delete_with_source(note_id, MemoryOpSource::Handler, None)
+            .await
+    }
+
+    pub async fn delete_with_source(
+        &self,
+        note_id: &str,
+        source: MemoryOpSource,
+        session_id: Option<&str>,
+    ) -> VfsResult<()> {
         let timer = OpTimer::start();
         let note = self.ensure_note_in_memory_root(note_id)?;
         let note_title = note.title.clone();
@@ -1588,7 +1834,7 @@ impl MemoryService {
         info!("[Memory] Deleted note: {}", note_id);
 
         self.audit_logger.log(&super::audit_log::MemoryAuditEntry {
-            source: MemoryOpSource::Handler,
+            source,
             operation: MemoryOpType::Delete,
             success: true,
             note_id: Some(note_id.to_string()),
@@ -1598,17 +1844,9 @@ impl MemoryService {
             event: Some("DELETE".to_string()),
             confidence: None,
             reason: None,
-            session_id: None,
+            session_id: session_id.map(|s| s.to_string()),
             duration_ms: Some(timer.elapsed_ms()),
             extra_json: None,
-        });
-
-        // 删除后异步刷新用户画像摘要（确保画像不包含已删除记忆的事实）
-        let svc = self.clone();
-        tokio::task::spawn_blocking(move || {
-            if let Err(e) = svc.refresh_profile_summary() {
-                warn!("[Memory] Profile refresh after delete failed: {}", e);
-            }
         });
 
         Ok(())

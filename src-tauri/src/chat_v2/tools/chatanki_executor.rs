@@ -35,7 +35,7 @@ use crate::chat_v2::types::{
 use crate::enhanced_anki_service::EnhancedAnkiService;
 use crate::llm_manager::ImagePayload;
 use crate::models::{
-    AnkiDocumentGenerationRequest, AnkiGenerationOptions, CreateTemplateRequest,
+    AnkiDocumentGenerationRequest, AnkiGenerationOptions, CreateTemplateRequest, DocumentTask,
     FieldExtractionRule, FieldType,
 };
 use crate::utils::text::safe_truncate_chars;
@@ -286,6 +286,52 @@ impl Default for ChatAnkiToolExecutor {
     }
 }
 
+fn verify_document_ownership(
+    db: &crate::database::Database,
+    document_id: &str,
+    session_id: &str,
+) -> Result<(), String> {
+    match db.get_document_session_source(document_id) {
+        Ok(Some(owner_session_id)) if owner_session_id == session_id => Ok(()),
+        Ok(Some(_)) | Ok(None) => Err("blocks.ankiCards.errors.statusNotFound".to_string()),
+        Err(e) => {
+            log::warn!(
+                "[ChatAnkiToolExecutor] verify_document_ownership failed for document {}: {}",
+                document_id,
+                e
+            );
+            Err("blocks.ankiCards.errors.statusNotFound".to_string())
+        }
+    }
+}
+
+fn verify_block_ownership(
+    chat_db: &crate::chat_v2::database::ChatV2Database,
+    block: &MessageBlock,
+    session_id: &str,
+) -> Result<(), String> {
+    let message = match ChatV2Repo::get_message_v2(chat_db, &block.message_id) {
+        Ok(v) => v,
+        Err(e) => {
+            log::warn!(
+                "[ChatAnkiToolExecutor] verify_block_ownership failed for block {}: {}",
+                block.id,
+                e
+            );
+            return Err("blocks.ankiCards.errors.statusNotFound".to_string());
+        }
+    };
+    if message
+        .as_ref()
+        .map(|m| m.session_id.as_str())
+        == Some(session_id)
+    {
+        Ok(())
+    } else {
+        Err("blocks.ankiCards.errors.statusNotFound".to_string())
+    }
+}
+
 #[async_trait]
 impl ToolExecutor for ChatAnkiToolExecutor {
     fn can_handle(&self, tool_name: &str) -> bool {
@@ -453,6 +499,21 @@ impl ChatAnkiToolExecutor {
             }
         };
 
+        if let Err(error_key) = verify_document_ownership(db, &document_id, &ctx.session_id) {
+            ctx.emitter
+                .emit_error(event_types::TOOL_CALL, &ctx.block_id, &error_key, None);
+            let result = ToolResultInfo::failure(
+                Some(call.id.clone()),
+                Some(ctx.block_id.clone()),
+                call.name.clone(),
+                call.arguments.clone(),
+                error_key,
+                start_time.elapsed().as_millis() as u64,
+            );
+            let _ = ctx.save_tool_block(&result);
+            return Ok(result);
+        }
+
         let tasks = db
             .get_tasks_for_document(&document_id)
             .map_err(|e| e.to_string())?;
@@ -612,6 +673,52 @@ impl ChatAnkiToolExecutor {
             return Ok(result);
         }
 
+        if let Some(doc_id) = args
+            .document_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+        {
+            if let Some(db) = &anki_db {
+                if let Err(error_key) = verify_document_ownership(db, doc_id, &ctx.session_id) {
+                    final_status = "not_found".to_string();
+                    final_error = Some(error_key);
+                }
+            }
+        }
+
+        if final_status == "not_found" {
+            let should_retry = true;
+            let tool_output = json!({
+                "status": final_status,
+                "ankiBlockId": args.anki_block_id.clone().unwrap_or_default(),
+                "documentId": args.document_id.clone(),
+                "cardsCount": 0,
+                "progress": null,
+                "ankiConnect": null,
+                "error": final_error,
+                "shouldRetry": should_retry,
+            });
+            let duration_ms = start_time.elapsed().as_millis() as u64;
+            let error_message = final_error.clone().unwrap_or_else(|| "not_found".to_string());
+            ctx.emitter
+                .emit_error(event_types::TOOL_CALL, &ctx.block_id, &error_message, None);
+            let result = ToolResultInfo {
+                tool_call_id: Some(call.id.clone()),
+                block_id: Some(ctx.block_id.clone()),
+                tool_name: call.name.clone(),
+                input: call.arguments.clone(),
+                output: tool_output,
+                success: false,
+                error: Some(error_message),
+                duration_ms: Some(duration_ms),
+                reasoning_content: None,
+                thought_signature: None,
+            };
+            let _ = ctx.save_tool_block(&result);
+            return Ok(result);
+        }
+
         loop {
             if ctx.is_cancelled() {
                 final_status = "cancelled".to_string();
@@ -656,20 +763,26 @@ impl ChatAnkiToolExecutor {
                         .any(|t| matches!(t.status, crate::models::TaskStatus::Cancelled));
 
                     // If tasks don't exist yet, keep waiting (avoid failing fast).
-                    if !tasks.is_empty() && !is_in_progress && !is_paused {
-                        final_status = if has_cancelled {
-                            "cancelled".to_string()
-                        } else if has_failed_or_truncated {
-                            "completed_with_errors".to_string()
-                        } else {
-                            "completed".to_string()
-                        };
+                    if !tasks.is_empty() {
                         final_document_id = Some(doc_id.to_string());
                         final_cards_count = Some(cards.len());
                         final_progress = Some(
                             json!({ "counts": counts.get("counts").cloned().unwrap_or(json!({})), "completedRatio": counts.get("completedRatio").cloned().unwrap_or(json!(0.0)) }),
                         );
-                        break;
+                        if is_paused {
+                            final_status = "paused".to_string();
+                            break;
+                        }
+                        if !is_in_progress {
+                            final_status = if has_cancelled {
+                                "cancelled".to_string()
+                            } else if has_failed_or_truncated {
+                                "completed_with_errors".to_string()
+                            } else {
+                                "completed".to_string()
+                            };
+                            break;
+                        }
                     }
 
                     // Progress snapshot for timeout return.
@@ -699,6 +812,12 @@ impl ChatAnkiToolExecutor {
                     let block_opt =
                         ChatV2Repo::get_block_v2(chat_db, block_id).map_err(|e| e.to_string())?;
                     if let Some(block) = block_opt {
+                        if let Err(error_key) = verify_block_ownership(chat_db, &block, &ctx.session_id)
+                        {
+                            final_status = "not_found".to_string();
+                            final_error = Some(error_key);
+                            break;
+                        }
                         block_ever_found = true;
                         final_anki_block_id = Some(block.id.clone());
 
@@ -772,6 +891,11 @@ impl ChatAnkiToolExecutor {
                 .is_empty()
             {
                 if let (Some(db), Some(doc_id)) = (&anki_db, final_document_id.as_deref()) {
+                    if let Err(error_key) = verify_document_ownership(db, doc_id, &ctx.session_id) {
+                        final_status = "not_found".to_string();
+                        final_error = Some(error_key);
+                        break;
+                    }
                     let tasks = db
                         .get_tasks_for_document(doc_id)
                         .map_err(|e| e.to_string())?;
@@ -802,20 +926,26 @@ impl ChatAnkiToolExecutor {
                         .any(|t| matches!(t.status, crate::models::TaskStatus::Cancelled));
 
                     // If tasks don't exist yet, keep waiting (avoid failing fast).
-                    if !tasks.is_empty() && !is_in_progress && !is_paused {
-                        final_status = if has_cancelled {
-                            "cancelled".to_string()
-                        } else if has_failed_or_truncated {
-                            "completed_with_errors".to_string()
-                        } else {
-                            "completed".to_string()
-                        };
+                    if !tasks.is_empty() {
                         final_document_id = Some(doc_id.to_string());
                         final_cards_count = Some(cards.len());
                         final_progress = Some(
                             json!({ "counts": counts.get("counts").cloned().unwrap_or(json!({})), "completedRatio": counts.get("completedRatio").cloned().unwrap_or(json!(0.0)) }),
                         );
-                        break;
+                        if is_paused {
+                            final_status = "paused".to_string();
+                            break;
+                        }
+                        if !is_in_progress {
+                            final_status = if has_cancelled {
+                                "cancelled".to_string()
+                            } else if has_failed_or_truncated {
+                                "completed_with_errors".to_string()
+                            } else {
+                                "completed".to_string()
+                            };
+                            break;
+                        }
                     }
 
                     // Progress snapshot for timeout return.
@@ -1223,6 +1353,22 @@ impl ChatAnkiToolExecutor {
             }
         };
 
+        if let Err(error_key) = verify_document_ownership(&db, &args.document_id, &ctx.session_id)
+        {
+            ctx.emitter
+                .emit_error(event_types::TOOL_CALL, &ctx.block_id, &error_key, None);
+            let result = ToolResultInfo::failure(
+                Some(call.id.clone()),
+                Some(ctx.block_id.clone()),
+                call.name.clone(),
+                call.arguments.clone(),
+                error_key,
+                start_time.elapsed().as_millis() as u64,
+            );
+            let _ = ctx.save_tool_block(&result);
+            return Ok(result);
+        }
+
         let cards = match db.get_cards_for_document(&args.document_id) {
             Ok(v) => v,
             Err(e) => {
@@ -1300,11 +1446,12 @@ impl ChatAnkiToolExecutor {
                 .unwrap_or_else(|| {
                     format!("{}.apkg", deck_name.replace('/', "_").replace('\\', "_"))
                 });
-            let suggested = if suggested.to_lowercase().ends_with(".apkg") {
-                suggested
-            } else {
-                format!("{}.apkg", suggested)
-            };
+            let suggested =
+                crate::cmd::anki_connect::sanitize_filename_with_extension(
+                    &suggested,
+                    "chatanki_cards",
+                    "apkg",
+                );
 
             let output_path = if cfg!(any(target_os = "ios", target_os = "android")) {
                 std::env::temp_dir().join(&suggested)
@@ -1501,6 +1648,22 @@ impl ChatAnkiToolExecutor {
                 return Ok(result);
             }
         };
+
+        if let Err(error_key) = verify_document_ownership(&db, &args.document_id, &ctx.session_id)
+        {
+            ctx.emitter
+                .emit_error(event_types::TOOL_CALL, &ctx.block_id, &error_key, None);
+            let result = ToolResultInfo::failure(
+                Some(call.id.clone()),
+                Some(ctx.block_id.clone()),
+                call.name.clone(),
+                call.arguments.clone(),
+                error_key,
+                start_time.elapsed().as_millis() as u64,
+            );
+            let _ = ctx.save_tool_block(&result);
+            return Ok(result);
+        }
 
         let cards = match db.get_cards_for_document(&args.document_id) {
             Ok(v) => v,
@@ -1837,6 +2000,21 @@ impl ChatAnkiToolExecutor {
         let action = args.action.trim().to_lowercase();
         let enhanced = EnhancedAnkiService::new(db.clone(), llm_manager.clone());
 
+        if let Err(error_key) = verify_document_ownership(&db, &document_id, &ctx.session_id) {
+            ctx.emitter
+                .emit_error(event_types::TOOL_CALL, &ctx.block_id, &error_key, None);
+            let result = ToolResultInfo::failure(
+                Some(call.id.clone()),
+                Some(ctx.block_id.clone()),
+                call.name.clone(),
+                call.arguments.clone(),
+                error_key,
+                start_time.elapsed().as_millis() as u64,
+            );
+            let _ = ctx.save_tool_block(&result);
+            return Ok(result);
+        }
+
         match action.as_str() {
             "pause" => {
                 if let Err(e) = enhanced
@@ -1889,18 +2067,42 @@ impl ChatAnkiToolExecutor {
                     let proc = crate::document_processing_service::DocumentProcessingService::new(
                         db.clone(),
                     );
-                    let _ =
-                        proc.update_task_status(task_id, crate::models::TaskStatus::Pending, None);
+                    let task = proc.get_task(task_id).map_err(|e| e.to_string())?;
+                    if task.document_id != document_id {
+                        let error_msg = "blocks.ankiCards.errors.statusNotFound".to_string();
+                        ctx.emitter.emit_error(
+                            event_types::TOOL_CALL,
+                            &ctx.block_id,
+                            &error_msg,
+                            None,
+                        );
+                        let result = ToolResultInfo::failure(
+                            Some(call.id.clone()),
+                            Some(ctx.block_id.clone()),
+                            call.name.clone(),
+                            call.arguments.clone(),
+                            error_msg,
+                            start_time.elapsed().as_millis() as u64,
+                        );
+                        let _ = ctx.save_tool_block(&result);
+                        return Ok(result);
+                    }
+                    proc.update_task_status(task_id, crate::models::TaskStatus::Pending, None)
+                        .map_err(|e| e.to_string())?;
                 } else {
                     let streaming = crate::streaming_anki_service::StreamingAnkiService::new(
                         db.clone(),
                         llm_manager.clone(),
                     );
-                    let _ = streaming.build_retry_task_for_document(&document_id).await;
+                    streaming
+                        .build_retry_task_for_document(&document_id)
+                        .await
+                        .map_err(|e| e.to_string())?;
                 }
-                let _ = enhanced
+                enhanced
                     .resume_document_processing(document_id.clone(), ctx.window.clone())
-                    .await;
+                    .await
+                    .map_err(|e| e.to_string())?;
             }
             "cancel" => {
                 let proc =
@@ -2297,6 +2499,9 @@ impl ChatAnkiToolExecutor {
         let chat_db_for_persist = chat_db.clone();
         let anki_block_id_for_persist = anki_block_id.clone();
         let message_id_for_persist = message_id.clone();
+        let anki_db_for_persist = anki_db.clone();
+        let session_id_for_persist = session_id.clone();
+        let doc_name_for_persist = derive_document_name_from_goal(&goal);
 
         let pre_doc_id_for_spawn = pre_allocated_document_id.clone();
         tokio::spawn(async move {
@@ -2321,7 +2526,7 @@ impl ChatAnkiToolExecutor {
                 debug_enabled,
                 forced_route,
                 preferred_resource_ids,
-                pre_allocated_document_id: pre_doc_id_for_spawn,
+                pre_allocated_document_id: pre_doc_id_for_spawn.clone(),
                 max_cards,
             })
             .await
@@ -2329,6 +2534,13 @@ impl ChatAnkiToolExecutor {
                 log::error!("[ChatAnkiToolExecutor] background pipeline error: {}", e);
                 // Best-effort: notify UI and persist terminal error so `chatanki_wait` can stop.
                 emit_anki_cards_error(&emitter, &anki_block_id_for_persist, &e);
+                let _ = ensure_failed_document_session(
+                    &anki_db_for_persist,
+                    &pre_doc_id_for_spawn,
+                    &session_id_for_persist,
+                    &doc_name_for_persist,
+                    &e,
+                );
                 persist_anki_cards_terminal_block(
                     &chat_db_for_persist,
                     &message_id_for_persist,
@@ -2382,7 +2594,60 @@ struct BackgroundParams {
     max_cards: Option<i32>,
 }
 
+fn derive_document_name_from_goal(goal: &str) -> String {
+    if goal.trim().is_empty() {
+        "chatanki".to_string()
+    } else {
+        let name = goal.trim();
+        if name.chars().count() > 80 {
+            format!("{}...", safe_truncate_chars(name, 77))
+        } else {
+            name.to_string()
+        }
+    }
+}
+
+fn ensure_failed_document_session(
+    db: &crate::database::Database,
+    document_id: &str,
+    session_id: &str,
+    document_name: &str,
+    error_message: &str,
+) -> Result<(), String> {
+    match db.get_tasks_for_document(document_id) {
+        Ok(existing) if !existing.is_empty() => {
+            // Existing task rows take precedence; avoid injecting placeholder failures.
+            return Ok(());
+        }
+        Ok(_) => {}
+        Err(e) => {
+            return Err(format!("failed to check existing tasks for document {}: {}", document_id, e));
+        }
+    }
+
+    let now = chrono::Utc::now().to_rfc3339();
+    let task = DocumentTask {
+        id: uuid::Uuid::new_v4().to_string(),
+        document_id: document_id.to_string(),
+        original_document_name: document_name.to_string(),
+        segment_index: 0,
+        content_segment: String::new(),
+        status: crate::models::TaskStatus::Failed,
+        created_at: now.clone(),
+        updated_at: now,
+        error_message: Some(error_message.to_string()),
+        anki_generation_options_json: "{}".to_string(),
+    };
+
+    db.insert_document_task(&task)
+        .map_err(|e| format!("failed to insert placeholder failed task: {}", e))?;
+    db.set_document_session_source(document_id, session_id)
+        .map_err(|e| format!("failed to set source_session_id for placeholder task: {}", e))?;
+    Ok(())
+}
+
 async fn run_chatanki_pipeline_background(params: BackgroundParams) -> Result<(), String> {
+    let document_name_for_errors = derive_document_name_from_goal(&params.goal);
     // 1) Check AnkiConnect early (best-effort).
     let (anki_available, anki_error) =
         match crate::anki_connect_service::check_anki_connect_availability().await {
@@ -2902,6 +3167,13 @@ async fn run_chatanki_pipeline_background(params: BackgroundParams) -> Result<()
         let error_key =
             content_error_key.unwrap_or_else(|| "blocks.ankiCards.errors.noContent".to_string());
         emit_anki_cards_error(&params.emitter, &params.anki_block_id, &error_key);
+        let _ = ensure_failed_document_session(
+            &params.anki_db,
+            &params.pre_allocated_document_id,
+            &params.session_id,
+            &document_name_for_errors,
+            &error_key,
+        );
         persist_anki_cards_terminal_block(
             &params.chat_db,
             &params.message_id,
@@ -2910,7 +3182,7 @@ async fn run_chatanki_pipeline_background(params: BackgroundParams) -> Result<()
             block_status::ERROR,
             Some(json!({
                 "cards": [],
-                "documentId": null,
+                "documentId": params.pre_allocated_document_id.clone(),
                 "syncStatus": "error",
                 "progress": { "stage": "completed", "messageKey": error_key.clone() },
             })),
@@ -2941,6 +3213,13 @@ async fn run_chatanki_pipeline_background(params: BackgroundParams) -> Result<()
             Ok(None) => {
                 let error_key = "blocks.ankiCards.errors.templateNotFound".to_string();
                 emit_anki_cards_error(&params.emitter, &params.anki_block_id, &error_key);
+                let _ = ensure_failed_document_session(
+                    &params.anki_db,
+                    &params.pre_allocated_document_id,
+                    &params.session_id,
+                    &document_name_for_errors,
+                    &error_key,
+                );
                 persist_anki_cards_terminal_block(
                     &params.chat_db,
                     &params.message_id,
@@ -2956,6 +3235,13 @@ async fn run_chatanki_pipeline_background(params: BackgroundParams) -> Result<()
                 let error_key = "blocks.ankiCards.errors.templateLoadFailed".to_string();
                 log::error!("[ChatAnkiToolExecutor] load template failed: {}", e);
                 emit_anki_cards_error(&params.emitter, &params.anki_block_id, &error_key);
+                let _ = ensure_failed_document_session(
+                    &params.anki_db,
+                    &params.pre_allocated_document_id,
+                    &params.session_id,
+                    &document_name_for_errors,
+                    &error_key,
+                );
                 persist_anki_cards_terminal_block(
                     &params.chat_db,
                     &params.message_id,
@@ -3064,17 +3350,7 @@ async fn run_chatanki_pipeline_background(params: BackgroundParams) -> Result<()
     }
     let enhanced = EnhancedAnkiService::new(params.anki_db.clone(), params.llm_manager.clone());
     // 使用 goal 作为文档名称，而不是硬编码 "chatanki"
-    let doc_name = if params.goal.trim().is_empty() {
-        "chatanki".to_string()
-    } else {
-        // 截取前 80 字符作为文档名
-        let name = params.goal.trim();
-        if name.chars().count() > 80 {
-            format!("{}...", safe_truncate_chars(name, 77))
-        } else {
-            name.to_string()
-        }
-    };
+    let doc_name = derive_document_name_from_goal(&params.goal);
     let request = AnkiDocumentGenerationRequest {
         document_content: content_text,
         original_document_name: Some(doc_name),
@@ -3110,6 +3386,13 @@ async fn run_chatanki_pipeline_background(params: BackgroundParams) -> Result<()
                 e
             );
             emit_anki_cards_error(&params.emitter, &params.anki_block_id, &error_key);
+            let _ = ensure_failed_document_session(
+                &params.anki_db,
+                &params.pre_allocated_document_id,
+                &params.session_id,
+                &document_name_for_errors,
+                &error_key,
+            );
             persist_anki_cards_terminal_block(
                 &params.chat_db,
                 &params.message_id,
@@ -5145,6 +5428,7 @@ mod tests {
     use super::*;
     use crate::models::{DocumentTask, TaskStatus};
     use crate::vfs::types::{VfsContextRefData, VfsResourceRef, VfsResourceType};
+    use tempfile::tempdir;
 
     fn make_task(status: TaskStatus) -> DocumentTask {
         DocumentTask {
@@ -5169,6 +5453,13 @@ mod tests {
             name: "ref".to_string(),
             inject_modes: None,
         }
+    }
+
+    fn make_test_db() -> (crate::database::Database, tempfile::TempDir) {
+        let dir = tempdir().expect("tempdir");
+        let db_path = dir.path().join("test.db");
+        let db = crate::database::Database::new(&db_path).expect("db");
+        (db, dir)
     }
 
     #[test]
@@ -5216,10 +5507,60 @@ mod tests {
     }
 
     #[test]
+    fn test_ensure_failed_document_session_inserts_placeholder_once() {
+        let (db, _tmp) = make_test_db();
+        ensure_failed_document_session(
+            &db,
+            "doc-placeholder",
+            "session-1",
+            "placeholder-doc",
+            "blocks.ankiCards.errors.noContent",
+        )
+        .expect("placeholder insert");
+
+        let tasks = db
+            .get_tasks_for_document("doc-placeholder")
+            .expect("load tasks");
+        assert_eq!(tasks.len(), 1);
+        assert!(matches!(tasks[0].status, TaskStatus::Failed));
+        assert_eq!(
+            tasks[0].error_message.as_deref(),
+            Some("blocks.ankiCards.errors.noContent")
+        );
+        assert_eq!(
+            db.get_document_session_source("doc-placeholder")
+                .expect("load source")
+                .as_deref(),
+            Some("session-1")
+        );
+
+        ensure_failed_document_session(
+            &db,
+            "doc-placeholder",
+            "session-1",
+            "placeholder-doc",
+            "blocks.ankiCards.errors.startFailed",
+        )
+        .expect("idempotent");
+        let tasks_after = db
+            .get_tasks_for_document("doc-placeholder")
+            .expect("load tasks after");
+        assert_eq!(tasks_after.len(), 1);
+    }
+
+    #[test]
     fn test_derive_status_snapshot_cancelled() {
         let (status, error, should_retry) =
             derive_status_snapshot(&[make_task(TaskStatus::Cancelled)], 1);
         assert_eq!(status, "cancelled");
+        assert!(error.is_none());
+        assert!(!should_retry);
+    }
+
+    #[test]
+    fn test_derive_status_snapshot_paused() {
+        let (status, error, should_retry) = derive_status_snapshot(&[make_task(TaskStatus::Paused)], 0);
+        assert_eq!(status, "paused");
         assert!(error.is_none());
         assert!(!should_retry);
     }

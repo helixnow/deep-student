@@ -423,6 +423,19 @@ const ankiCardsEventHandler: EventHandler = {
     const parsed = parseAnkiCardsChunk(chunk);
     if (!parsed) return;
     const terminal = isTerminalBlockStatus(block.status);
+    if (terminal) {
+      try {
+        window.dispatchEvent(new CustomEvent('chatanki-debug-lifecycle', {
+          detail: {
+            level: 'warn',
+            phase: 'bridge:event',
+            summary: `anki_cards chunk ignored on terminal block=${blockId.slice(0, 8)} status=${block.status}`,
+            detail: { blockId, blockStatus: block.status, cardsBefore: currentCards.length },
+          },
+        }));
+      } catch { /* debug only */ }
+      return;
+    }
 
     if (parsed.kind === 'cards') {
       const updatedCards = mergeCardsUnique(currentCards, parsed.cards);
@@ -433,27 +446,15 @@ const ankiCardsEventHandler: EventHandler = {
           templateId: currentData?.templateId || null,
           syncStatus: 'pending',
         } as AnkiCardsBlockData,
-        ...(terminal ? {} : { status: 'running' }),
+        status: 'running',
       });
-      if (terminal) {
-        try {
-          window.dispatchEvent(new CustomEvent('chatanki-debug-lifecycle', {
-            detail: {
-              level: 'warn',
-              phase: 'bridge:event',
-              summary: `anki_cards chunk merged without status downgrade block=${blockId.slice(0, 8)} terminal=${block.status}`,
-              detail: { blockId, blockStatus: block.status, cardsBefore: currentCards.length, cardsAfter: updatedCards.length },
-            },
-          }));
-        } catch { /* debug only */ }
-      }
       const docIdForLog = currentData?.documentId;
       recordCardsSourceSnapshot(
         blockId,
         'chunk-cards',
         updatedCards,
         docIdForLog,
-        terminal ? block.status : 'running',
+        'running',
       );
       return;
     }
@@ -474,7 +475,7 @@ const ankiCardsEventHandler: EventHandler = {
         templateMode: (restPatch as any)?.templateMode ?? currentData?.templateMode,
         syncStatus: (restPatch as any)?.syncStatus ?? currentData?.syncStatus ?? 'pending',
       } as AnkiCardsBlockData,
-      ...(terminal ? {} : { status: 'running' }),
+      status: 'running',
     });
     const docIdForLog =
       ((restPatch as unknown as Record<string, unknown>)?.documentId as string | undefined) ??
@@ -484,20 +485,8 @@ const ankiCardsEventHandler: EventHandler = {
       'chunk-patch',
       updatedCards,
       docIdForLog,
-      terminal ? block.status : 'running',
+      'running',
     );
-    if (terminal) {
-      try {
-        window.dispatchEvent(new CustomEvent('chatanki-debug-lifecycle', {
-          detail: {
-            level: 'warn',
-            phase: 'bridge:event',
-            summary: `anki_cards patch merged without status downgrade block=${blockId.slice(0, 8)} terminal=${block.status}`,
-            detail: { blockId, blockStatus: block.status, hasCardsPatch: Array.isArray(patchCards) },
-          },
-        }));
-      } catch { /* debug only */ }
-    }
   },
 
   /**
@@ -517,6 +506,16 @@ const ankiCardsEventHandler: EventHandler = {
 
     const currentData = block.toolOutput as AnkiCardsBlockData | undefined;
     const currentCards = currentData?.cards || [];
+    if (block.status === 'error') {
+      recordCardsSourceSnapshot(
+        blockId,
+        'end-ignored-error-terminal',
+        currentCards,
+        currentData?.documentId,
+        block.status,
+      );
+      return;
+    }
     let resultStatus: string | undefined;
     let resultError: string | undefined;
     let normalizedStatus: string | undefined;

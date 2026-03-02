@@ -344,6 +344,21 @@ pub const V20260215_ADD_IMPORT_CHECKPOINT: MigrationDef = MigrationDef::new(
 )
 .idempotent();
 
+/// V20260227: 记忆审计日志表
+pub const V20260227_ADD_MEMORY_AUDIT_LOG: MigrationDef = MigrationDef::new(
+    20260227,
+    "add_memory_audit_log",
+    include_str!("../../../migrations/vfs/V20260227__add_memory_audit_log.sql"),
+)
+.with_expected_tables(&["memory_audit_log"])
+.with_expected_indexes(&[
+    "idx_memory_audit_log_timestamp",
+    "idx_memory_audit_log_source",
+    "idx_memory_audit_log_operation",
+    "idx_memory_audit_log_note_id",
+])
+.idempotent();
+
 /// V20260302: 规范化 folder_items 时间戳列类型
 ///
 /// 将历史写入的 TEXT 时间值统一修复为 INTEGER(毫秒时间戳)，
@@ -372,6 +387,7 @@ pub const VFS_MIGRATIONS: &[MigrationDef] = &[
     V20260211_FIX_CHANGE_LOG_RECORD_ID,
     V20260212_ADD_MINDMAP_VERSIONS,
     V20260215_ADD_IMPORT_CHECKPOINT,
+    V20260227_ADD_MEMORY_AUDIT_LOG,
     V20260302_NORMALIZE_FOLDER_ITEMS_TIMESTAMPS,
 ];
 
@@ -409,6 +425,7 @@ pub const VFS_ALL_TABLE_NAMES: &[&str] = &[
     "question_sync_conflicts",
     "question_sync_logs",
     "memory_config",
+    "memory_audit_log",
     "vfs_indexing_config",
     "vfs_index_units",
     "vfs_index_segments",
@@ -451,7 +468,8 @@ mod tests {
         // + V20260209 (add_questions_images)
         // + V20260210 (add_answer_submissions)
         // + V20260211 (fix_change_log_record_id)
-        assert_eq!(VFS_MIGRATION_SET.count(), 15);
+        // + V20260227 (add_memory_audit_log)
+        assert_eq!(VFS_MIGRATION_SET.count(), 17);
     }
 
     #[test]

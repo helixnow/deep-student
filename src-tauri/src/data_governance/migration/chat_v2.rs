@@ -267,6 +267,30 @@ pub const V20260221_GROUP_PINNED_RESOURCES: MigrationDef = MigrationDef::new(
 )
 .idempotent();
 
+/// V20260301: 内容全文检索 + 会话标签系统
+pub const V20260301_CONTENT_SEARCH_AND_TAGS: MigrationDef = MigrationDef::new(
+    20260301,
+    "content_search_and_tags",
+    include_str!("../../../migrations/chat_v2/V20260301__content_search_and_tags.sql"),
+)
+.with_expected_tables(&["chat_v2_content_fts", "chat_v2_session_tags"])
+.with_expected_indexes(&["idx_session_tags_tag", "idx_session_tags_type"])
+.idempotent();
+
+/// V20260302: 对齐 subagent_task 结构到运行时代码约定
+pub const V20260302_SUBAGENT_TASK_SCHEMA_ALIGN: MigrationDef = MigrationDef::new(
+    20260302,
+    "subagent_task_schema_align",
+    include_str!("../../../migrations/chat_v2/V20260302__subagent_task_schema_align.sql"),
+)
+.with_expected_columns(&[
+    ("subagent_task", "initial_task"),
+    ("subagent_task", "started_at"),
+    ("subagent_task", "completed_at"),
+    ("subagent_task", "result_summary"),
+])
+.with_expected_indexes(&["idx_subagent_task_workspace"]);
+
 /// Chat V2 数据库迁移定义列表
 pub const CHAT_V2_MIGRATIONS: &[MigrationDef] = &[
     V20260130_INIT,
@@ -277,6 +301,8 @@ pub const CHAT_V2_MIGRATIONS: &[MigrationDef] = &[
     V20260204_SESSION_GROUPS,
     V20260207_ACTIVE_SKILL_IDS,
     V20260221_GROUP_PINNED_RESOURCES,
+    V20260301_CONTENT_SEARCH_AND_TAGS,
+    V20260302_SUBAGENT_TASK_SCHEMA_ALIGN,
 ];
 
 /// Chat V2 数据库迁移集合
@@ -296,7 +322,7 @@ mod tests {
     #[test]
     fn test_migration_set_structure() {
         assert_eq!(CHAT_V2_MIGRATION_SET.database_name, "chat_v2");
-        assert_eq!(CHAT_V2_MIGRATION_SET.count(), 8); // V20260130 ~ V20260221
+        assert_eq!(CHAT_V2_MIGRATION_SET.count(), 10); // V20260130 ~ V20260302
     }
 
     #[test]
@@ -323,45 +349,53 @@ mod tests {
 
     #[test]
     fn test_latest_version() {
-        assert_eq!(CHAT_V2_MIGRATION_SET.latest_version(), 20260221);
+        assert_eq!(CHAT_V2_MIGRATION_SET.latest_version(), 20260302);
     }
 
     #[test]
     fn test_pending_migrations() {
-        // 从版本 0 开始，应该有 8 个待执行
+        // 从版本 0 开始，应该有 10 个待执行
         let pending: Vec<_> = CHAT_V2_MIGRATION_SET.pending(0).collect();
+        assert_eq!(pending.len(), 10);
+
+        // 从版本 20260130 开始，应该有 9 个待执行
+        let pending: Vec<_> = CHAT_V2_MIGRATION_SET.pending(20260130).collect();
+        assert_eq!(pending.len(), 9);
+
+        // 从版本 20260131 开始，应该有 8 个待执行
+        let pending: Vec<_> = CHAT_V2_MIGRATION_SET.pending(20260131).collect();
         assert_eq!(pending.len(), 8);
 
-        // 从版本 20260130 开始，应该有 7 个待执行
-        let pending: Vec<_> = CHAT_V2_MIGRATION_SET.pending(20260130).collect();
+        // 从版本 20260201 开始，应该有 7 个待执行
+        let pending: Vec<_> = CHAT_V2_MIGRATION_SET.pending(20260201).collect();
         assert_eq!(pending.len(), 7);
 
-        // 从版本 20260131 开始，应该有 6 个待执行
-        let pending: Vec<_> = CHAT_V2_MIGRATION_SET.pending(20260131).collect();
+        // 从版本 20260202 开始，应该有 6 个待执行
+        let pending: Vec<_> = CHAT_V2_MIGRATION_SET.pending(20260202).collect();
         assert_eq!(pending.len(), 6);
 
-        // 从版本 20260201 开始，应该有 5 个待执行
-        let pending: Vec<_> = CHAT_V2_MIGRATION_SET.pending(20260201).collect();
+        // 从版本 20260203 开始，应该有 5 个待执行
+        let pending: Vec<_> = CHAT_V2_MIGRATION_SET.pending(20260203).collect();
         assert_eq!(pending.len(), 5);
 
-        // 从版本 20260202 开始，应该有 4 个待执行
-        let pending: Vec<_> = CHAT_V2_MIGRATION_SET.pending(20260202).collect();
+        // 从版本 20260204 开始，应该有 4 个待执行
+        let pending: Vec<_> = CHAT_V2_MIGRATION_SET.pending(20260204).collect();
         assert_eq!(pending.len(), 4);
 
-        // 从版本 20260203 开始，应该有 3 个待执行
-        let pending: Vec<_> = CHAT_V2_MIGRATION_SET.pending(20260203).collect();
+        // 从版本 20260207 开始，应该有 3 个待执行
+        let pending: Vec<_> = CHAT_V2_MIGRATION_SET.pending(20260207).collect();
         assert_eq!(pending.len(), 3);
 
-        // 从版本 20260204 开始，应该有 2 个待执行
-        let pending: Vec<_> = CHAT_V2_MIGRATION_SET.pending(20260204).collect();
+        // 从版本 20260221 开始，应该有 2 个待执行（V20260301 + V20260302）
+        let pending: Vec<_> = CHAT_V2_MIGRATION_SET.pending(20260221).collect();
         assert_eq!(pending.len(), 2);
 
-        // 从版本 20260207 开始，应该有 1 个待执行
-        let pending: Vec<_> = CHAT_V2_MIGRATION_SET.pending(20260207).collect();
+        // 从版本 20260301 开始，应该有 1 个待执行
+        let pending: Vec<_> = CHAT_V2_MIGRATION_SET.pending(20260301).collect();
         assert_eq!(pending.len(), 1);
 
-        // 从版本 20260221 开始，应该没有待执行
-        let pending: Vec<_> = CHAT_V2_MIGRATION_SET.pending(20260221).collect();
+        // 从版本 20260302 开始，应该没有待执行
+        let pending: Vec<_> = CHAT_V2_MIGRATION_SET.pending(20260302).collect();
         assert_eq!(pending.len(), 0);
     }
 }

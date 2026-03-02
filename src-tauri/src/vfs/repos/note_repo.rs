@@ -1244,7 +1244,7 @@ impl VfsNoteRepo {
             SELECT n.id, n.resource_id, n.title, n.tags, n.is_favorite, n.created_at, n.updated_at, n.deleted_at
             FROM notes n
             JOIN folder_items fi ON fi.item_type = 'note' AND fi.item_id = n.id
-            WHERE fi.folder_id IS ?1 AND n.deleted_at IS NULL
+            WHERE fi.folder_id IS ?1 AND n.deleted_at IS NULL AND fi.deleted_at IS NULL
             ORDER BY fi.sort_order ASC, n.updated_at DESC
             LIMIT ?2 OFFSET ?3
         "#;

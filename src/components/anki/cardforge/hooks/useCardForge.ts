@@ -157,6 +157,7 @@ export function useCardForge(options: UseCardForgeOptions = {}): UseCardForgeRet
 
   // 取消订阅函数引用
   const unsubscribesRef = useRef<Array<() => void>>([]);
+  const activeDocumentIdRef = useRef<string | null>(null);
 
   // 使用 ref 存储回调函数，避免依赖项变化导致重复订阅
   // 这解决了 P1 问题：如果回调没有 useCallback 包装会导致重复订阅
@@ -184,8 +185,23 @@ export function useCardForge(options: UseCardForgeOptions = {}): UseCardForgeRet
   useEffect(() => {
     if (!autoSubscribe) return;
 
+    const acceptsEvent = (eventType: string, eventDocumentId?: string): boolean => {
+      const normalized = eventDocumentId?.trim();
+      if (!normalized) return true;
+      if (!activeDocumentIdRef.current) {
+        if (eventType !== 'document:start') {
+          return false;
+        }
+        activeDocumentIdRef.current = normalized;
+        setState((prev) => (prev.documentId ? prev : { ...prev, documentId: normalized }));
+        return true;
+      }
+      return activeDocumentIdRef.current === normalized;
+    };
+
     // 订阅卡片生成事件
     const unsubCard = cardAgent.on<{ card: AnkiCardResult }>('card:generated', (event) => {
+      if (!acceptsEvent('card:generated', event.documentId)) return;
       const card = event.payload.card;
 
       setState((prev) => ({
@@ -200,6 +216,7 @@ export function useCardForge(options: UseCardForgeOptions = {}): UseCardForgeRet
     const unsubProgress = cardAgent.on<{ progress: number; status: TaskStatus }>(
       'task:progress',
       (event) => {
+        if (!acceptsEvent('task:progress', event.documentId)) return;
         const { progress } = event.payload;
         setState((prev) => ({
           ...prev,
@@ -210,19 +227,19 @@ export function useCardForge(options: UseCardForgeOptions = {}): UseCardForgeRet
     );
 
     // 订阅文档开始事件
-    const unsubStart = cardAgent.on<{ totalSegments: number }>(
-      'document:start',
-      (_event) => {
-        setState((prev) => ({
-          ...prev,
-          phase: 'generating',
-          isGenerating: true,
-        }));
-      }
-    );
+    const unsubStart = cardAgent.on<{ totalSegments: number }>('document:start', (event) => {
+      if (!acceptsEvent('document:start', event.documentId)) return;
+      setState((prev) => ({
+        ...prev,
+        documentId: prev.documentId || event.documentId || null,
+        phase: 'generating',
+        isGenerating: true,
+      }));
+    });
 
     // 订阅文档完成事件
-    const unsubComplete = cardAgent.on('document:complete', () => {
+    const unsubComplete = cardAgent.on('document:complete', (event) => {
+      if (!acceptsEvent('document:complete', event.documentId)) return;
       setState((prev) => ({
         ...prev,
         phase: 'completed',
@@ -232,7 +249,8 @@ export function useCardForge(options: UseCardForgeOptions = {}): UseCardForgeRet
     });
 
     // 订阅文档暂停事件
-    const unsubPaused = cardAgent.on('document:paused', () => {
+    const unsubPaused = cardAgent.on('document:paused', (event) => {
+      if (!acceptsEvent('document:paused', event.documentId)) return;
       setState((prev) => ({
         ...prev,
         phase: 'paused',
@@ -243,6 +261,7 @@ export function useCardForge(options: UseCardForgeOptions = {}): UseCardForgeRet
 
     // 订阅错误事件
     const unsubError = cardAgent.on<{ error: string }>('task:error', (event) => {
+      if (!acceptsEvent('task:error', event.documentId)) return;
       const errorMsg = event.payload.error;
       setState((prev) => ({
         ...prev,
@@ -274,6 +293,7 @@ export function useCardForge(options: UseCardForgeOptions = {}): UseCardForgeRet
   const generate = useCallback(
     async (input: GenerateCardsInput): Promise<GenerateCardsOutput> => {
       // 重置状态
+      activeDocumentIdRef.current = null;
       setState({
         ...initialState,
         isGenerating: true,
@@ -287,7 +307,7 @@ export function useCardForge(options: UseCardForgeOptions = {}): UseCardForgeRet
           const isPaused = !!result.paused;
           setState((prev) => ({
             ...prev,
-            documentId: result.documentId || null,
+            documentId: result.documentId || prev.documentId,
             cards: result.cards || [],
             stats: result.stats || null,
             phase: isPaused ? 'paused' : 'completed',
@@ -418,6 +438,7 @@ export function useCardForge(options: UseCardForgeOptions = {}): UseCardForgeRet
 
   /** 重置状态 */
   const reset = useCallback(() => {
+    activeDocumentIdRef.current = null;
     setState(initialState);
   }, []);
 

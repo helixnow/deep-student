@@ -3838,6 +3838,124 @@ impl Database {
         Ok(())
     }
 
+    /// 读取 document_id 对应的 source_session_id（如果有）
+    pub fn get_document_session_source(&self, document_id: &str) -> Result<Option<String>> {
+        let conn = self.get_conn_safe()?;
+        // 兼容旧库：列不存在时先补齐
+        let _ = conn.execute(
+            "ALTER TABLE document_tasks ADD COLUMN source_session_id TEXT",
+            [],
+        );
+        let source = conn
+            .query_row(
+                "SELECT source_session_id FROM document_tasks WHERE document_id = ?1 AND source_session_id IS NOT NULL LIMIT 1",
+                params![document_id],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()?;
+        Ok(source)
+    }
+
+    /// 原子保存一个文档任务及其卡片，避免出现“任务已完成但卡片部分写入”的不一致状态
+    pub fn save_document_task_with_cards_atomic(
+        &self,
+        task: &DocumentTask,
+        cards: &[AnkiCard],
+    ) -> Result<Vec<String>> {
+        let mut conn = self.get_conn_safe()?;
+        let tx = conn.transaction()?;
+
+        let has_subject_name: bool = tx
+            .query_row(
+                "SELECT COUNT(*) FROM pragma_table_info('document_tasks') WHERE name='subject_name'",
+                [],
+                |row| row.get::<_, i32>(0).map(|count| count > 0),
+            )
+            .unwrap_or(false);
+
+        if has_subject_name {
+            tx.execute(
+                "INSERT INTO document_tasks
+                 (id, document_id, original_document_name, subject_name, segment_index, content_segment,
+                  status, created_at, updated_at, error_message, anki_generation_options_json)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+                params![
+                    task.id,
+                    task.document_id,
+                    task.original_document_name,
+                    "通用",
+                    task.segment_index,
+                    task.content_segment,
+                    task.status.to_db_string(),
+                    task.created_at,
+                    task.updated_at,
+                    task.error_message,
+                    task.anki_generation_options_json
+                ],
+            )?;
+        } else {
+            tx.execute(
+                "INSERT INTO document_tasks
+                 (id, document_id, original_document_name, segment_index, content_segment,
+                  status, created_at, updated_at, error_message, anki_generation_options_json)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                params![
+                    task.id,
+                    task.document_id,
+                    task.original_document_name,
+                    task.segment_index,
+                    task.content_segment,
+                    task.status.to_db_string(),
+                    task.created_at,
+                    task.updated_at,
+                    task.error_message,
+                    task.anki_generation_options_json
+                ],
+            )?;
+        }
+
+        let mut saved_ids = Vec::with_capacity(cards.len());
+        for card in cards {
+            let rows_affected = tx.execute(
+                "INSERT OR IGNORE INTO anki_cards
+                 (id, task_id, front, back, text, tags_json, images_json,
+                  is_error_card, error_content, card_order_in_task, created_at, updated_at,
+                  extra_fields_json, template_id, source_type, source_id)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
+                params![
+                    card.id,
+                    card.task_id,
+                    card.front,
+                    card.back,
+                    card.text,
+                    serde_json::to_string(&card.tags)?,
+                    serde_json::to_string(&card.images)?,
+                    if card.is_error_card { 1 } else { 0 },
+                    card.error_content,
+                    0,
+                    card.created_at,
+                    card.updated_at,
+                    serde_json::to_string(&card.extra_fields)?,
+                    card.template_id,
+                    "document",
+                    task.document_id
+                ],
+            )?;
+            if rows_affected > 0 {
+                saved_ids.push(card.id.clone());
+            }
+        }
+
+        if !cards.is_empty() && saved_ids.is_empty() {
+            return Err(anyhow::anyhow!(
+                "no_cards_saved_in_atomic_insert: all cards were ignored"
+            ));
+        }
+
+        tx.commit()?;
+        Ok(saved_ids)
+    }
+
     /// 更新文档任务状态
     pub fn update_document_task_status(
         &self,
@@ -5439,7 +5557,7 @@ impl Database {
                  dt.source_session_id,
                  COUNT(DISTINCT dt.id) AS total_tasks,
                  COUNT(DISTINCT CASE WHEN dt.status = 'Completed' THEN dt.id END) AS completed_tasks,
-                 COUNT(DISTINCT CASE WHEN dt.status IN ('Failed', 'Truncated') THEN dt.id END) AS failed_tasks,
+                 COUNT(DISTINCT CASE WHEN dt.status IN ('Failed', 'Truncated', 'Cancelled') THEN dt.id END) AS failed_tasks,
                  COUNT(DISTINCT CASE WHEN dt.status IN ('Processing', 'Streaming', 'Pending') THEN dt.id END) AS active_tasks,
                  COUNT(DISTINCT CASE WHEN dt.status = 'Paused' THEN dt.id END) AS paused_tasks,
                  MAX(dt.updated_at) AS last_updated,
@@ -5666,7 +5784,7 @@ impl Database {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::ChatMessage;
+    use crate::models::{AnkiCard, ChatMessage, DocumentTask, TaskStatus};
     use chrono::{Duration, Utc};
     use rusqlite::params;
     use serde_json::json;
@@ -5829,6 +5947,88 @@ mod tests {
             )?
         };
         assert_eq!(assistant_row_exists, 0);
+
+        Ok(())
+    }
+
+    #[test]
+    fn save_document_task_with_cards_atomic_rolls_back_when_all_cards_ignored(
+    ) -> anyhow::Result<()> {
+        let dir = tempdir()?;
+        let db_path = dir.path().join("atomic_cards_test.db");
+        let db = Database::new(&db_path)?;
+        let now = Utc::now().to_rfc3339();
+
+        let task_1 = DocumentTask {
+            id: "task-1".to_string(),
+            document_id: "doc-1".to_string(),
+            original_document_name: "doc".to_string(),
+            segment_index: 0,
+            content_segment: "seg".to_string(),
+            status: TaskStatus::Completed,
+            created_at: now.clone(),
+            updated_at: now.clone(),
+            error_message: None,
+            anki_generation_options_json: "{}".to_string(),
+        };
+        let card_1 = AnkiCard {
+            id: "card-1".to_string(),
+            task_id: "task-1".to_string(),
+            front: "f".to_string(),
+            back: "b".to_string(),
+            text: None,
+            tags: vec![],
+            images: vec![],
+            is_error_card: false,
+            error_content: None,
+            created_at: now.clone(),
+            updated_at: now.clone(),
+            extra_fields: std::collections::HashMap::new(),
+            template_id: None,
+        };
+        let inserted_ids = db.save_document_task_with_cards_atomic(&task_1, &[card_1])?;
+        assert_eq!(inserted_ids, vec!["card-1".to_string()]);
+
+        let task_2 = DocumentTask {
+            id: "task-2".to_string(),
+            document_id: "doc-1".to_string(),
+            original_document_name: "doc".to_string(),
+            segment_index: 1,
+            content_segment: "seg2".to_string(),
+            status: TaskStatus::Completed,
+            created_at: now.clone(),
+            updated_at: now,
+            error_message: None,
+            anki_generation_options_json: "{}".to_string(),
+        };
+        let duplicate_card = AnkiCard {
+            id: "card-1".to_string(),
+            task_id: "task-2".to_string(),
+            front: "f2".to_string(),
+            back: "b2".to_string(),
+            text: None,
+            tags: vec![],
+            images: vec![],
+            is_error_card: false,
+            error_content: None,
+            created_at: Utc::now().to_rfc3339(),
+            updated_at: Utc::now().to_rfc3339(),
+            extra_fields: std::collections::HashMap::new(),
+            template_id: None,
+        };
+
+        let err = db.save_document_task_with_cards_atomic(&task_2, &[duplicate_card]);
+        assert!(err.is_err());
+
+        let task_2_exists: i64 = {
+            let conn = db.get_conn_safe()?;
+            conn.query_row(
+                "SELECT COUNT(1) FROM document_tasks WHERE id = ?1",
+                params!["task-2"],
+                |row| row.get(0),
+            )?
+        };
+        assert_eq!(task_2_exists, 0);
 
         Ok(())
     }

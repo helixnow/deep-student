@@ -11,7 +11,7 @@ use std::sync::Arc;
 use anyhow::Result;
 use tracing::{debug, info, warn};
 
-use super::audit_log::{MemoryAuditLogger, MemoryOpSource, MemoryOpType, OpTimer};
+use super::audit_log::{MemoryOpSource, OpTimer};
 use super::service::MemoryService;
 use crate::llm_manager::LLMManager;
 
@@ -103,7 +103,11 @@ impl MemoryAutoExtractor {
                 .await
             {
                 Ok(output) => {
-                    if output.event != "NONE" {
+                    let is_mutating_event = matches!(
+                        output.event.as_str(),
+                        "ADD" | "UPDATE" | "APPEND" | "DELETE"
+                    );
+                    if is_mutating_event {
                         stored_count += 1;
                         info!(
                             "[MemoryAutoExtractor] Auto-stored memory: event={}, note_id={}, title='{}'",
@@ -111,8 +115,8 @@ impl MemoryAutoExtractor {
                         );
                     } else {
                         debug!(
-                            "[MemoryAutoExtractor] Skipped (NONE): '{}' — {}",
-                            candidate.title, output.reason
+                            "[MemoryAutoExtractor] Skipped (event={}): '{}' — {}",
+                            output.event, candidate.title, output.reason
                         );
                     }
                 }

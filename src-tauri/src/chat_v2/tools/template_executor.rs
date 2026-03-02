@@ -641,7 +641,6 @@ impl TemplateDesignerExecutor {
             || req.field_extraction_rules.is_some()
             || req.is_active.is_some()
             || req.preview_data_json.is_some()
-            || req.is_built_in.is_some()
     }
 
     /// 内部验证逻辑，返回 (errors, warnings)
@@ -1060,6 +1059,11 @@ impl TemplateDesignerExecutor {
         // 兼容：允许 expectedVersion 在顶层参数传入（某些模型会放错位置）
         if update_req.expected_version.is_none() {
             update_req.expected_version = args.expected_version.clone();
+        }
+
+        if update_req.is_built_in.is_some() {
+            // isBuiltIn 是受保护字段，不允许通过 update 接口修改。
+            update_req.is_built_in = None;
         }
 
         // 强制 expected_version
@@ -1537,6 +1541,7 @@ impl ToolExecutor for TemplateDesignerExecutor {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::models::FieldType;
 
     // ------------------------------------------------------------------
     // can_handle 前缀识别
@@ -2091,6 +2096,31 @@ mod tests {
             is_active: None,
             preview_data_json: None,
             is_built_in: None,
+        };
+
+        assert!(!TemplateDesignerExecutor::has_update_changes(&req));
+    }
+
+    #[test]
+    fn test_has_update_changes_only_is_built_in_returns_false() {
+        let req = UpdateTemplateRequest {
+            name: None,
+            description: None,
+            author: None,
+            version: None,
+            expected_version: Some("1.0.0".to_string()),
+            preview_front: None,
+            preview_back: None,
+            note_type: None,
+            fields: None,
+            generation_prompt: None,
+            front_template: None,
+            back_template: None,
+            css_style: None,
+            field_extraction_rules: None,
+            is_active: None,
+            preview_data_json: None,
+            is_built_in: Some(false),
         };
 
         assert!(!TemplateDesignerExecutor::has_update_changes(&req));

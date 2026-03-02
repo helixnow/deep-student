@@ -8,9 +8,7 @@ use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
 use super::strip_tool_namespace;
 use crate::chat_v2::events::event_types;
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
-use crate::memory::{
-    MemoryAuditLogger, MemoryOpSource, MemoryOpType, MemoryService, MemoryType, OpTimer, WriteMode,
-};
+use crate::memory::{MemoryOpSource, MemoryOpType, MemoryService, MemoryType, OpTimer, WriteMode};
 use crate::vfs::lance_store::VfsLanceStore;
 
 pub const MEMORY_SEARCH: &str = "builtin-memory_search";
@@ -323,7 +321,13 @@ impl MemoryToolExecutor {
                                 content.as_ref().ok_or("Missing 'content' parameter")?;
                             let final_content = format!("{}\n\n{}", current, append_content);
                             service
-                                .update_by_id(note_id, title.as_deref(), Some(&final_content))
+                                .update_by_id_with_source(
+                                    note_id,
+                                    title.as_deref(),
+                                    Some(&final_content),
+                                    MemoryOpSource::ToolCall,
+                                    None,
+                                )
                                 .map_err(|e| e.to_string())
                         }
                         _ => {
@@ -331,7 +335,13 @@ impl MemoryToolExecutor {
                                 return Err("Missing 'title' or 'content' parameter".to_string());
                             }
                             service
-                                .update_by_id(note_id, title.as_deref(), content.as_deref())
+                                .update_by_id_with_source(
+                                    note_id,
+                                    title.as_deref(),
+                                    content.as_deref(),
+                                    MemoryOpSource::ToolCall,
+                                    None,
+                                )
                                 .map_err(|e| e.to_string())
                         }
                     }
@@ -357,23 +367,25 @@ impl MemoryToolExecutor {
             write_task.await.map_err(|e| e.to_string())??
         };
 
-        service
-            .audit_logger()
-            .log(&crate::memory::audit_log::MemoryAuditEntry {
-                source: MemoryOpSource::ToolCall,
-                operation: MemoryOpType::Write,
-                success: true,
-                note_id: Some(result.note_id.clone()),
-                title: title.clone(),
-                content_preview: content.clone(),
-                folder: folder.clone(),
-                event: Some(if result.is_new { "ADD" } else { "UPDATE" }.to_string()),
-                confidence: None,
-                reason: None,
-                session_id: None,
-                duration_ms: Some(timer.elapsed_ms()),
-                extra_json: None,
-            });
+        if note_id.is_none() {
+            service
+                .audit_logger()
+                .log(&crate::memory::audit_log::MemoryAuditEntry {
+                    source: MemoryOpSource::ToolCall,
+                    operation: MemoryOpType::Write,
+                    success: true,
+                    note_id: Some(result.note_id.clone()),
+                    title: title.clone(),
+                    content_preview: content.clone(),
+                    folder: folder.clone(),
+                    event: Some(if result.is_new { "ADD" } else { "UPDATE" }.to_string()),
+                    confidence: None,
+                    reason: None,
+                    session_id: None,
+                    duration_ms: Some(timer.elapsed_ms()),
+                    extra_json: None,
+                });
+        }
 
         let svc_for_idx = self.get_service(ctx).ok();
         if let Some(svc) = svc_for_idx {
@@ -382,19 +394,7 @@ impl MemoryToolExecutor {
                 svc.index_resource_immediately(&resource_id).await;
             });
         }
-
-        // ★ 修复不一致：工具路径写入后也刷新画像摘要
-        {
-            let svc = service.clone();
-            tokio::task::spawn_blocking(move || {
-                if let Err(e) = svc.refresh_profile_summary() {
-                    log::warn!(
-                        "[MemoryToolExecutor] Profile refresh after tool write failed: {}",
-                        e
-                    );
-                }
-            });
-        }
+        service.spawn_post_write_maintenance();
 
         Ok(json!({
             "success": true,
@@ -495,7 +495,13 @@ impl MemoryToolExecutor {
         let update_task = {
             let service = service.clone();
             tokio::task::spawn_blocking(move || {
-                service.update_by_id(&note_id, title.as_deref(), content.as_deref())
+                service.update_by_id_with_source(
+                    &note_id,
+                    title.as_deref(),
+                    content.as_deref(),
+                    MemoryOpSource::ToolCall,
+                    None,
+                )
             })
         };
 
@@ -522,6 +528,7 @@ impl MemoryToolExecutor {
                 svc.index_resource_immediately(&resource_id).await;
             });
         }
+        service.spawn_post_write_maintenance();
 
         Ok(json!({
             "success": true,
@@ -555,15 +562,19 @@ impl MemoryToolExecutor {
         // 🆕 取消支持：使用 tokio::select! 监听取消信号
         if let Some(cancel_token) = ctx.cancellation_token() {
             tokio::select! {
-                res = service.delete(note_id) => res.map_err(|e| e.to_string())?,
+                res = service.delete_with_source(note_id, MemoryOpSource::ToolCall, None) => res.map_err(|e| e.to_string())?,
                 _ = cancel_token.cancelled() => {
                     log::info!("[MemoryToolExecutor] Memory delete cancelled");
                     return Err("Memory delete cancelled during execution".to_string());
                 }
             }
         } else {
-            service.delete(note_id).await.map_err(|e| e.to_string())?
+            service
+                .delete_with_source(note_id, MemoryOpSource::ToolCall, None)
+                .await
+                .map_err(|e| e.to_string())?
         };
+        service.spawn_post_write_maintenance();
         Ok(json!({ "success": true, "note_id": note_id }))
     }
 
@@ -678,17 +689,8 @@ impl MemoryToolExecutor {
                 .map_err(|e| e.to_string())?
         };
 
-        // ★ 修复不一致：工具路径写入后也刷新画像摘要
         if result.event != "NONE" && result.event != "FILTERED" {
-            let svc = service.clone();
-            tokio::task::spawn_blocking(move || {
-                if let Err(e) = svc.refresh_profile_summary() {
-                    log::warn!(
-                        "[MemoryToolExecutor] Profile refresh after tool write failed: {}",
-                        e
-                    );
-                }
-            });
+            service.spawn_post_write_maintenance();
         }
 
         Ok(json!({

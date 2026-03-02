@@ -763,6 +763,7 @@ impl StreamingAnkiService {
                                                // 初始化SSE行缓冲器
         let mut sse_buffer = crate::utils::sse_buffer::SseLineBuffer::new();
         let mut chunk_counter: u32 = 0;
+        let mut reached_card_limit = false;
 
         loop {
             // 同时监听取消信号与流事件
@@ -825,6 +826,7 @@ impl StreamingAnkiService {
                                         "[ANKI_CARD_DEBUG] 已达到卡片上限 {}，停止解析",
                                         options.max_cards_per_mistake
                                     );
+                                    reached_card_limit = true;
                                     break;
                                 }
                                 match card_result {
@@ -893,6 +895,9 @@ impl StreamingAnkiService {
                                     }
                                 }
                             }
+                            if reached_card_limit {
+                                break;
+                            }
                         }
                         crate::providers::StreamEvent::SafetyBlocked(safety_info) => {
                             warn!("检测到安全阻断: {:?}", safety_info);
@@ -917,37 +922,45 @@ impl StreamingAnkiService {
                         _ => { /* 忽略 Reasoning/ToolCall/Usage */ }
                     }
                 }
+                if reached_card_limit {
+                    break;
+                }
+            }
+            if reached_card_limit {
+                break;
             }
         }
 
-        // 处理SSE缓冲器中剩余的不完整行
-        if let Some(remaining_line) = sse_buffer.flush() {
-            if !remaining_line.trim().is_empty() {
-                debug!(
-                    "📥 处理SSE缓冲器中的剩余数据: {} 字符",
-                    remaining_line.len()
-                );
-                // 使用适配器解析剩余的行
-                let events = adapter.parse_stream(&remaining_line);
-                for event in events {
-                    if let crate::providers::StreamEvent::ContentChunk(content) = event {
-                        chunk_counter += 1;
-                        if LOG_STREAM_CHUNKS {
-                            debug!(
-                                "[ANKI_RESPONSE_STREAM][chunk={}] {}",
-                                chunk_counter, content
-                            );
+        if !reached_card_limit {
+            // 处理SSE缓冲器中剩余的不完整行
+            if let Some(remaining_line) = sse_buffer.flush() {
+                if !remaining_line.trim().is_empty() {
+                    debug!(
+                        "📥 处理SSE缓冲器中的剩余数据: {} 字符",
+                        remaining_line.len()
+                    );
+                    // 使用适配器解析剩余的行
+                    let events = adapter.parse_stream(&remaining_line);
+                    for event in events {
+                        if let crate::providers::StreamEvent::ContentChunk(content) = event {
+                            chunk_counter += 1;
+                            if LOG_STREAM_CHUNKS {
+                                debug!(
+                                    "[ANKI_RESPONSE_STREAM][chunk={}] {}",
+                                    chunk_counter, content
+                                );
+                            }
+                            buffer.push_str(&content);
                         }
-                        buffer.push_str(&content);
                     }
                 }
             }
-        }
 
-        // 处理剩余缓冲区内容
-        if !buffer.trim().is_empty() {
-            if let Ok(error_card) = self.create_error_card(&buffer, task_id).await {
-                self.emit_error_card(error_card, document_id, window).await;
+            // 处理剩余缓冲区内容
+            if !buffer.trim().is_empty() {
+                if let Ok(error_card) = self.create_error_card(&buffer, task_id).await {
+                    self.emit_error_card(error_card, document_id, window).await;
+                }
             }
         }
 

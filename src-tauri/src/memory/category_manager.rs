@@ -46,11 +46,28 @@ impl MemoryCategoryManager {
         }
     }
 
-    fn category_note_title(category_name: &str) -> String {
+    fn category_note_title(category_key: &str) -> String {
         format!(
             "{}{}{}",
-            CATEGORY_NOTE_PREFIX, category_name, CATEGORY_NOTE_SUFFIX
+            CATEGORY_NOTE_PREFIX, category_key, CATEGORY_NOTE_SUFFIX
         )
+    }
+
+    fn encode_category_key(category_name: &str, folder_path: &str) -> String {
+        if folder_path.is_empty() {
+            return category_name.to_string();
+        }
+        format!("path:{}", urlencoding::encode(folder_path))
+    }
+
+    fn decode_category_key(category_key: &str) -> String {
+        if let Some(encoded) = category_key.strip_prefix("path:") {
+            return urlencoding::decode(encoded)
+                .map(|s| s.into_owned())
+                .unwrap_or_else(|_| encoded.to_string());
+        }
+        // 兼容历史 key：曾使用全角斜杠替换分隔符
+        category_key.replace('／', "/")
     }
 
     /// 刷新所有分类摘要文件
@@ -119,7 +136,7 @@ impl MemoryCategoryManager {
 
         let memories: Vec<&MemoryListItem> = memories
             .iter()
-            .filter(|m| !m.title.starts_with("__"))
+            .filter(|m| !m.title.starts_with("__") && !m.is_stale)
             .collect();
 
         if memories.is_empty() {
@@ -151,7 +168,9 @@ impl MemoryCategoryManager {
 
         let sys_folder_id = memory_service.get_or_create_system_folder_id()?;
 
-        let cat_title = Self::category_note_title(category_name);
+        // 使用可逆编码保存路径 key，避免路径分隔符与原始字符碰撞。
+        let category_key = Self::encode_category_key(category_name, folder_path);
+        let cat_title = Self::category_note_title(&category_key);
         self.upsert_category_note(&sys_folder_id, &cat_title, &summary)?;
 
         info!(
@@ -226,7 +245,8 @@ impl MemoryCategoryManager {
                 r#"
                 SELECT n.id FROM notes n
                 JOIN folder_items fi ON fi.item_type = 'note' AND fi.item_id = n.id
-                WHERE n.title = ?1 AND fi.folder_id = ?2 AND n.deleted_at IS NULL
+                WHERE n.title = ?1 AND fi.folder_id = ?2
+                  AND n.deleted_at IS NULL AND fi.deleted_at IS NULL
                 LIMIT 1
                 "#,
                 params![title, root_folder_id],
@@ -289,7 +309,7 @@ impl MemoryCategoryManager {
             r#"
             SELECT n.id, n.title FROM notes n
             JOIN folder_items fi ON fi.item_type = 'note' AND fi.item_id = n.id
-            WHERE fi.folder_id = ?1 AND n.deleted_at IS NULL
+            WHERE fi.folder_id = ?1 AND n.deleted_at IS NULL AND fi.deleted_at IS NULL
               AND n.title LIKE '!_!_cat!_%!_!_' ESCAPE '!'
             ORDER BY n.title
             "#,
@@ -311,7 +331,7 @@ impl MemoryCategoryManager {
                     .strip_prefix(CATEGORY_NOTE_PREFIX)
                     .and_then(|s| s.strip_suffix(CATEGORY_NOTE_SUFFIX))
                     .unwrap_or(&title);
-                results.push((cat_name.to_string(), content));
+                results.push((Self::decode_category_key(cat_name), content));
             }
         }
 
@@ -339,8 +359,34 @@ mod tests {
             "__cat_偏好__"
         );
         assert_eq!(
-            MemoryCategoryManager::category_note_title("学科状态"),
-            "__cat_学科状态__"
+            MemoryCategoryManager::category_note_title("经历／学科状态"),
+            "__cat_经历／学科状态__"
+        );
+    }
+
+    #[test]
+    fn test_category_key_roundtrip_normal_path() {
+        let key = MemoryCategoryManager::encode_category_key("学科状态", "经历/学科状态");
+        assert_eq!(
+            MemoryCategoryManager::decode_category_key(&key),
+            "经历/学科状态"
+        );
+    }
+
+    #[test]
+    fn test_category_key_roundtrip_with_fullwidth_slash() {
+        let key = MemoryCategoryManager::encode_category_key("学科状态", "经历／学科状态");
+        assert_eq!(
+            MemoryCategoryManager::decode_category_key(&key),
+            "经历／学科状态"
+        );
+    }
+
+    #[test]
+    fn test_category_key_legacy_compatibility() {
+        assert_eq!(
+            MemoryCategoryManager::decode_category_key("经历／学科状态"),
+            "经历/学科状态"
         );
     }
 }
