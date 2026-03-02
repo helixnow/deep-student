@@ -30,60 +30,22 @@ fn effective_max_tokens(max_output_tokens: u32, max_tokens_limit: Option<u32>) -
     }
 }
 
-/// ★ 2026-02-13: 统一 LLM 请求体审计日志
-///
-/// 对请求体进行脱敏后以 info 级别输出，便于审计所有 LLM 调用。
-/// - base64 图片内容替换为 `[base64:长度]`
-/// - tools 数组简化为工具名称列表 + 计数
-/// - 其余字段完整保留
+/// 统一使用 debug_log_service 的 standard 级别脱敏（准确的 base64 大小计算）
 pub(crate) fn sanitize_request_body_for_audit(body: &serde_json::Value) -> serde_json::Value {
-    let mut sanitized = body.clone();
-
-    // 1. 隐藏 messages 中的 base64 图片
-    if let Some(messages) = sanitized.get_mut("messages").and_then(|m| m.as_array_mut()) {
-        for message in messages.iter_mut() {
-            if let Some(content) = message.get_mut("content").and_then(|c| c.as_array_mut()) {
-                for part in content.iter_mut() {
-                    if part.get("type").and_then(|t| t.as_str()) == Some("image_url") {
-                        if let Some(url_val) =
-                            part.get_mut("image_url").and_then(|iu| iu.get_mut("url"))
-                        {
-                            if let Some(url_str) = url_val.as_str() {
-                                if url_str.starts_with("data:") {
-                                    let len = url_str.len();
-                                    *url_val = json!(format!("[base64:{}bytes]", len));
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // 2. 简化 tools 数组：只保留 function.name + 总数
-    if let Some(tools) = sanitized.get_mut("tools").and_then(|t| t.as_array_mut()) {
-        let count = tools.len();
-        let names: Vec<String> = tools
-            .iter()
-            .filter_map(|t| {
-                t.get("function")
-                    .and_then(|f| f.get("name"))
-                    .and_then(|n| n.as_str())
-                    .map(|s| s.to_string())
-            })
-            .collect();
-        // 替换为摘要
-        *tools = vec![json!({
-            "_audit_summary": format!("{} tools: [{}]", count, names.join(", "))
-        })];
-    }
-
-    sanitized
+    crate::debug_log_service::sanitize_for_level(
+        body,
+        crate::debug_log_service::DebugFilterLevel::Standard,
+    )
 }
 
-/// 输出审计日志（info 级别）
-pub(crate) fn log_llm_request_audit(tag: &str, url: &str, model: &str, body: &serde_json::Value) {
+/// 输出审计日志（info 级别）+ 可选文件持久化（用于无 window 的非流式路径）
+pub(crate) fn log_llm_request_audit(
+    tag: &str,
+    url: &str,
+    model: &str,
+    body: &serde_json::Value,
+    persist_config: Option<&DebugPersistConfig>,
+) {
     let sanitized = sanitize_request_body_for_audit(body);
     match serde_json::to_string_pretty(&sanitized) {
         Ok(pretty) => info!(
@@ -95,12 +57,26 @@ pub(crate) fn log_llm_request_audit(tag: &str, url: &str, model: &str, body: &se
             tag, model, url, e
         ),
     }
+
+    if let Some(c) = persist_config {
+        crate::debug_log_service::write_debug_log_entry(
+            &c.log_dir, tag, model, url, "", body,
+        );
+    }
 }
 
-/// ★ 2026-02-14: 审计日志 + 将脱敏后的 LLM 请求体推送给前端显示（合并版本，只做一次 sanitize）
+/// 调试日志持久化配置（由调用方从 DB 设置构造）
 ///
-/// 1. 输出 info 级别审计日志
-/// 2. 如果 stream_event 以 `chat_v2_event_` 开头，通过 Tauri 事件推送给前端
+/// 存在即表示已启用，不需要额外 enabled 字段。
+pub(crate) struct DebugPersistConfig {
+    pub log_dir: std::path::PathBuf,
+}
+
+/// ★ 审计日志 + 前端推送 + 可选文件持久化
+///
+/// 1. 输出 info 级别审计日志（始终 standard 级别）
+/// 2. 如果 stream_event 以 `chat_v2_event_` 开头，推送给前端
+/// 3. 如果 persist_config 存在（Some），将完整请求体写入 JSON 文件
 pub(crate) fn log_and_emit_llm_request(
     tag: &str,
     window: &tauri::Window,
@@ -108,10 +84,11 @@ pub(crate) fn log_and_emit_llm_request(
     model: &str,
     url: &str,
     body: &serde_json::Value,
+    persist_config: Option<&DebugPersistConfig>,
 ) {
     let sanitized = sanitize_request_body_for_audit(body);
 
-    // 1. 审计日志
+    // 1. 审计日志（始终 standard 级别，避免泄漏 base64）
     match serde_json::to_string_pretty(&sanitized) {
         Ok(pretty) => info!(
             "[LLM_AUDIT:{}] model={} url={}\n{}",
@@ -123,7 +100,16 @@ pub(crate) fn log_and_emit_llm_request(
         ),
     }
 
-    // 2. 推送给前端（仅 Chat V2 流）
+    // 2. 文件持久化（完整未脱敏请求体）
+    let log_file_path = persist_config
+        .and_then(|c| {
+            crate::debug_log_service::write_debug_log_entry(
+                &c.log_dir, tag, model, url, stream_event, body,
+            )
+        })
+        .map(|p| p.to_string_lossy().to_string());
+
+    // 3. 推送给前端（仅 Chat V2 流）
     let prefix = "chat_v2_event_";
     if !stream_event.starts_with(prefix) {
         return;
@@ -134,6 +120,7 @@ pub(crate) fn log_and_emit_llm_request(
         "model": model,
         "url": url,
         "requestBody": sanitized,
+        "logFilePath": log_file_path,
     });
 
     if let Err(e) = window.emit("chat_v2_llm_request_body", &payload) {
@@ -142,6 +129,25 @@ pub(crate) fn log_and_emit_llm_request(
 }
 
 impl LLMManager {
+    /// 从 DB 读取 debug 持久化配置
+    fn build_debug_persist_config(&self) -> Option<DebugPersistConfig> {
+        let enabled = self
+            .db
+            .get_setting("debug.persist_logs")
+            .ok()
+            .flatten()
+            .map(|v| v == "true")
+            .unwrap_or(false);
+        if !enabled {
+            return None;
+        }
+        Some(DebugPersistConfig {
+            log_dir: crate::debug_log_service::ensure_debug_log_dir(
+                self.file_manager.get_app_data_dir(),
+            ),
+        })
+    }
+
     // 统一AI接口层 - 模型二（核心解析/对话）- 流式版本
     pub async fn call_unified_model_2_stream(
         &self,
@@ -1012,6 +1018,7 @@ impl LLMManager {
 
         // ★ 使用 preq.body（适配器转换后的实际请求体）而非 request_body（转换前），
         // 确保 Anthropic/Gemini 等非 OpenAI 提供商的预览与实际发送内容一致
+        let debug_persist = self.build_debug_persist_config();
         log_and_emit_llm_request(
             "CHAT_STREAM",
             &window,
@@ -1019,6 +1026,7 @@ impl LLMManager {
             &config.model,
             &preq.url,
             &preq.body,
+            debug_persist.as_ref(),
         );
 
         // 发出开始事件
@@ -2331,6 +2339,7 @@ impl LLMManager {
             .map_err(|e| Self::provider_error("续写请求构建失败", e))?;
 
         // ★ 同主路径：使用适配器转换后的实际请求体
+        let debug_persist = self.build_debug_persist_config();
         log_and_emit_llm_request(
             "CONTINUE_STREAM",
             &window,
@@ -2338,6 +2347,7 @@ impl LLMManager {
             &config.model,
             &preq.url,
             &preq.body,
+            debug_persist.as_ref(),
         );
 
         let mut request_builder = self.client
@@ -3104,7 +3114,8 @@ impl LLMManager {
             )
             .map_err(|e| Self::provider_error("聊天请求构建失败", e))?;
 
-        log_llm_request_audit("CHAT_V2_STREAM", &preq.url, &config.model, &request_body);
+        let debug_persist = self.build_debug_persist_config();
+        log_llm_request_audit("CHAT_V2_STREAM", &preq.url, &config.model, &request_body, debug_persist.as_ref());
 
         let mut request_builder = self.client
             .post(&preq.url)
@@ -3320,7 +3331,7 @@ impl LLMManager {
             )
             .map_err(|e| Self::provider_error("生成聊天元数据请求构建失败", e))?;
 
-        log_llm_request_audit("METADATA", &preq.url, &config.model, &request_body);
+        log_llm_request_audit("METADATA", &preq.url, &config.model, &request_body, self.build_debug_persist_config().as_ref());
 
         let mut request_builder = self.client.post(&preq.url);
         for (key, value) in preq.headers.iter() {
@@ -3689,7 +3700,7 @@ impl LLMManager {
                 .build_request(base_url, api_key, &model, &request_body)
                 .map_err(|e| Self::provider_error("API 连通性测试请求构建失败", e))?;
 
-            log_llm_request_audit("TEST_CHAT", &preq.url, &model, &request_body);
+            log_llm_request_audit("TEST_CHAT", &preq.url, &model, &request_body, None);
 
             let mut request_builder = self.client
                 .post(&preq.url)
@@ -3961,7 +3972,7 @@ impl LLMManager {
             )
             .map_err(|e| Self::provider_error("RAW prompt 请求构建失败", e))?;
 
-        log_llm_request_audit("RAW_PROMPT", &preq.url, &config.model, &request_body);
+        log_llm_request_audit("RAW_PROMPT", &preq.url, &config.model, &request_body, self.build_debug_persist_config().as_ref());
 
         let mut request_builder = self.client
             .post(&preq.url)
@@ -4171,7 +4182,7 @@ impl LLMManager {
             )
             .map_err(|e| Self::provider_error("OCR RAW prompt 请求构建失败", e))?;
 
-        log_llm_request_audit("OCR_RAW", &preq.url, &config.model, &request_body);
+        log_llm_request_audit("OCR_RAW", &preq.url, &config.model, &request_body, self.build_debug_persist_config().as_ref());
 
         let mut request_builder = self
             .client
@@ -4281,7 +4292,7 @@ impl LLMManager {
             .build_request(&config.base_url, &api_key, &config.model, &request_body)
             .map_err(|e| Self::provider_error("OCR请求构建失败", e))?;
 
-        log_llm_request_audit("OCR_PAGES", &preq.url, &config.model, &request_body);
+        log_llm_request_audit("OCR_PAGES", &preq.url, &config.model, &request_body, self.build_debug_persist_config().as_ref());
 
         let mut header_map = reqwest::header::HeaderMap::new();
         for (k, v) in preq.headers.iter() {
@@ -4506,7 +4517,7 @@ impl LLMManager {
             )
             .map_err(|e| Self::provider_error("Anki 制卡请求构建失败", e))?;
 
-        log_llm_request_audit("ANKI_CARD", &preq.url, &config.model, &request_body);
+        log_llm_request_audit("ANKI_CARD", &preq.url, &config.model, &request_body, self.build_debug_persist_config().as_ref());
 
         let mut request_builder = self.client
             .post(&preq.url)

@@ -16,6 +16,7 @@ pub mod crypto;
 pub mod database;
 pub mod database_optimizations;
 pub mod debug_commands;
+pub mod debug_log_service; // 调试日志持久化服务（JSON 文件 + 多级过滤）
 pub mod debug_logger;
 
 pub mod anr_watchdog; // ANR 看门狗（Android 主线程卡顿检测）
@@ -829,6 +830,12 @@ pub fn run() {
             crate::commands::delete_setting,
             crate::commands::get_settings_by_prefix,
             crate::commands::delete_settings_by_prefix,
+            // 调试日志管理
+            crate::commands::get_debug_logs_info,
+            crate::commands::clear_debug_logs,
+            crate::commands::cleanup_old_debug_logs,
+            crate::commands::ensure_debug_log_dir,
+            crate::commands::read_debug_log_file,
             crate::commands::get_security_status,
             crate::commands::get_cn_whitelist_config,
             crate::commands::detect_tool_conflicts,

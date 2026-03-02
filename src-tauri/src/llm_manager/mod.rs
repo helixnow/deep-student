@@ -2886,6 +2886,7 @@ impl LLMManager {
             &preq.url,
             &config.model,
             &request_body,
+            None,
         );
 
         // 发送请求

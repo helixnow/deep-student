@@ -36,8 +36,8 @@ import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { logChatV2 } from '../debug/chatV2Logger';
 // 🆕 调试信息导出
 import { copyDebugInfoToClipboard } from '../debug/exportSessionDebug';
-// 🆕 开发者选项：显示请求体
-import { useDevShowRawRequest } from '../hooks/useDevShowRawRequest';
+// 🆕 开发者选项：显示请求体 + 过滤级别
+import { useDevShowRawRequest, useDebugFilterLevel } from '../hooks/useDevShowRawRequest';
 // 🆕 AI 内容标识（合规）
 import { AiContentLabel } from '@/components/shared/AiContentLabel';
 import { dispatchContextRefPreview } from '../utils/contextRefPreview';
@@ -136,8 +136,9 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
   
   const { t } = useTranslation('chatV2');
 
-  // 🆕 开发者选项：是否显示请求体
+  // 🆕 开发者选项：是否显示请求体 + 过滤级别
   const showRawRequest = useDevShowRawRequest();
+  const debugFilterLevel = useDebugFilterLevel();
 
   // 使用变体 UI Hook 获取变体状态和操作
   // 注意：useVariantUI 内部已订阅 message，无需额外调用 useMessage
@@ -344,10 +345,10 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
     }
   }, [canDelete, isDeletingMultiMessage, store, messageId, t]);
 
-  // 🆕 复制调试信息（思维链 + 工具调用 + 内容 + 工作区日志）
+  // 复制调试信息（JSON 格式，完整不截断）
   const handleCopyDebug = useCallback(async () => {
     try {
-      await copyDebugInfoToClipboard(store, 'text');
+      await copyDebugInfoToClipboard(store, 'json');
       showGlobalNotification('success', t('debug.copySuccessDesc'), t('debug.copySuccess'));
     } catch (error: unknown) {
       showGlobalNotification('error', t('debug.copyFailed'));
@@ -1208,12 +1209,70 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
             </div>
           )}
 
-          {/* 🆕 开发者调试：显示完整请求体（仅助手消息且设置开启时显示） */}
+          {/* 开发者调试：显示完整请求体（仅助手消息且设置开启时显示） */}
           {showRawRequest && !isUser && message._meta?.rawRequest && (() => {
-            const raw = message._meta.rawRequest as { _source?: string; model?: string; url?: string; body?: unknown };
+            const raw = message._meta.rawRequest as { _source?: string; model?: string; url?: string; body?: unknown; logFilePath?: string };
             const isBackendLlm = raw._source === 'backend_llm';
             const displayBody = isBackendLlm ? raw.body : message._meta.rawRequest;
-            const copyText = JSON.stringify(displayBody, null, 2);
+            const displayText = JSON.stringify(displayBody, null, 2);
+            const filterLabel = debugFilterLevel === 'full' ? '完整' : debugFilterLevel === 'compact' ? '精简' : '标准';
+
+            const handleCopy = async () => {
+              try {
+                let textToCopy = displayText;
+
+                if (debugFilterLevel === 'full') {
+                  if (raw.logFilePath) {
+                    try {
+                      const { invoke: tauriInvoke } = await import('@tauri-apps/api/core');
+                      const fullContent = await tauriInvoke<string>('read_debug_log_file', { path: raw.logFilePath });
+                      textToCopy = fullContent;
+                    } catch {
+                      showGlobalNotification('warning', '日志文件读取失败，已回退到标准级别');
+                    }
+                  } else {
+                    showGlobalNotification('warning', '需开启「持久化调试日志」才能复制完整内容，当前已回退到标准级别');
+                  }
+                } else if (debugFilterLevel === 'compact' && isBackendLlm && raw.body) {
+                  const body = raw.body as Record<string, unknown>;
+                  const compact: Record<string, unknown> = {};
+                  if (body.model) compact.model = body.model;
+                  if (body.stream !== undefined) compact.stream = body.stream;
+                  const msgs = body.messages as Array<{ role?: string; content?: unknown }> | undefined;
+                  if (msgs) {
+                    compact.messages_summary = msgs.map(m => ({
+                      role: m.role,
+                      content_type: Array.isArray(m.content) ? 'multimodal' : 'text',
+                      content_size: typeof m.content === 'string' ? m.content.length : Array.isArray(m.content) ? m.content.length : 0,
+                    }));
+                  }
+                  const toolsArr = body.tools as Array<Record<string, unknown>> | undefined;
+                  if (toolsArr) {
+                    const names = toolsArr.flatMap(t => {
+                      const name = (t.function as Record<string, unknown> | undefined)?.name;
+                      if (typeof name === 'string') return [name];
+                      const summary = t._summary;
+                      if (typeof summary === 'string') {
+                        const match = summary.match(/\[(.+)\]/);
+                        return match ? match[1].split(',').map(s => s.trim()) : [];
+                      }
+                      return [];
+                    });
+                    if (names.length > 0) compact.tool_names = names;
+                  }
+                  for (const k of ['temperature', 'max_tokens', 'max_completion_tokens', 'enable_thinking', 'thinking_budget', 'tool_choice', 'thinking']) {
+                    if (body[k] !== undefined) compact[k] = body[k];
+                  }
+                  textToCopy = JSON.stringify(compact, null, 2);
+                }
+
+                await copyTextToClipboard(textToCopy);
+                showGlobalNotification('success', t('messageItem.rawRequest.copySuccess'));
+              } catch (error: unknown) {
+                showGlobalNotification('error', getErrorMessage(error), t('messageItem.rawRequest.copyFailed'));
+              }
+            };
+
             return (
             <div className="mt-4 rounded-md border border-border/50 bg-muted/30 p-3">
               <div className="mb-2 text-xs font-medium text-muted-foreground flex items-center justify-between">
@@ -1224,25 +1283,19 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                   {isBackendLlm
                     ? `${t('messageItem.rawRequest.title')} — ${raw.model ?? ''}`
                     : t('messageItem.rawRequest.title')}
+                  {raw.logFilePath && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-500/10 text-green-600 dark:text-green-400">已持久化</span>
+                  )}
                 </div>
-                <NotionButton
-                  variant="ghost"
-                  size="sm"
-                  onClick={async () => {
-                    try {
-                      await copyTextToClipboard(copyText);
-                      showGlobalNotification('success', t('messageItem.rawRequest.copySuccess'));
-                    } catch (error: unknown) {
-                      showGlobalNotification('error', getErrorMessage(error), t('messageItem.rawRequest.copyFailed'));
-                    }
-                  }}
-                  title={t('messageItem.rawRequest.copy')}
-                >
-                  <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                  </svg>
-                  {t('messageItem.rawRequest.copy')}
-                </NotionButton>
+                <div className="flex items-center gap-1">
+                  <span className="text-[10px] text-muted-foreground/50">{filterLabel}</span>
+                  <NotionButton variant="ghost" size="sm" onClick={handleCopy} title={t('messageItem.rawRequest.copy')}>
+                    <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                    </svg>
+                    {t('messageItem.rawRequest.copy')}
+                  </NotionButton>
+                </div>
               </div>
               {isBackendLlm && raw.url && (
                 <div className="mb-1.5 text-[11px] text-muted-foreground/70 font-mono truncate" title={raw.url}>
@@ -1250,7 +1303,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                 </div>
               )}
               <pre className="overflow-x-auto rounded bg-background/80 p-2 text-xs text-foreground/80 font-mono max-h-80 overflow-y-auto">
-                {copyText}
+                {displayText}
               </pre>
             </div>
             );

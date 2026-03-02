@@ -487,6 +487,54 @@ pub async fn get_app_data_dir(state: State<'_, AppState>) -> Result<String> {
         .to_string())
 }
 
+// ============================================================================
+// 调试日志管理命令
+// ============================================================================
+
+/// 获取调试日志统计信息（文件数量 + 总大小）
+#[tauri::command]
+pub async fn get_debug_logs_info(
+    state: State<'_, AppState>,
+) -> Result<crate::debug_log_service::DebugLogsInfo> {
+    let data_dir = state.file_manager.get_app_data_dir();
+    Ok(crate::debug_log_service::get_debug_logs_info(data_dir))
+}
+
+/// 清除所有调试日志文件
+#[tauri::command]
+pub async fn clear_debug_logs(state: State<'_, AppState>) -> Result<usize> {
+    let data_dir = state.file_manager.get_app_data_dir();
+    crate::debug_log_service::clear_all_debug_logs(data_dir)
+        .map_err(|e| AppError::unknown(e))
+}
+
+/// 清理超过指定天数的旧调试日志
+#[tauri::command]
+pub async fn cleanup_old_debug_logs(
+    state: State<'_, AppState>,
+    max_age_days: u32,
+) -> Result<usize> {
+    let data_dir = state.file_manager.get_app_data_dir();
+    crate::debug_log_service::cleanup_old_debug_logs(data_dir, max_age_days)
+        .map_err(|e| AppError::unknown(e))
+}
+
+/// 确保 debug-logs 目录存在并返回绝对路径
+#[tauri::command]
+pub async fn ensure_debug_log_dir(state: State<'_, AppState>) -> Result<String> {
+    let data_dir = state.file_manager.get_app_data_dir();
+    let dir = crate::debug_log_service::ensure_debug_log_dir(data_dir);
+    Ok(dir.to_string_lossy().to_string())
+}
+
+/// 读取指定调试日志文件的完整内容（用于"完整"过滤级别的复制）
+#[tauri::command]
+pub async fn read_debug_log_file(path: String, state: State<'_, AppState>) -> Result<String> {
+    let data_dir = state.file_manager.get_app_data_dir();
+    crate::debug_log_service::read_debug_log_file(std::path::Path::new(&path), data_dir)
+        .map_err(|e| AppError::unknown(e))
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ActiveDatabaseKind {
     Production,

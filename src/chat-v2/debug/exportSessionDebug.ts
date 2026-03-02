@@ -101,6 +101,17 @@ export interface MessageDebugInfo {
     completionTokens?: number;
     totalTokens?: number;
   };
+  /** 完整请求体（来自 _meta.rawRequest） */
+  rawRequest?: unknown;
+  /** 调试日志文件路径（完整版可从此文件读取未脱敏请求体） */
+  logFilePath?: string;
+  /** 用户附件 */
+  attachments?: Array<{ id: string; name: string; type: string; mimeType: string; size: number }>;
+  /** 上下文快照（上下文注入引用） */
+  contextSnapshot?: {
+    userRefs: Array<{ type: string; label?: string; resourceId?: string }>;
+    retrievalRefs: Array<{ type: string; label?: string; resourceId?: string }>;
+  };
 }
 
 /** 思维链调试信息 */
@@ -325,7 +336,7 @@ export function exportSessionDebugInfo(store: StoreApi<ChatStore>): SessionDebug
     messageDebugInfos.push(debugInfo);
   }
 
-  // 🆕 收集所有块的详细信息
+  // 收集所有块的详细信息（完整内容，不截断）
   const allBlocks: BlockDebugInfo[] = [];
   blocks.forEach((block) => {
     allBlocks.push({
@@ -336,7 +347,7 @@ export function exportSessionDebugInfo(store: StoreApi<ChatStore>): SessionDebug
       toolName: block.toolName,
       toolInput: block.toolInput,
       toolOutput: block.toolOutput,
-      content: block.content ? (block.content.length > 200 ? block.content.slice(0, 200) + '...' : block.content) : undefined,
+      content: block.content || undefined,
       error: block.error,
       startedAt: block.startedAt,
       endedAt: block.endedAt,
@@ -359,7 +370,7 @@ export function exportSessionDebugInfo(store: StoreApi<ChatStore>): SessionDebug
 }
 
 /**
- * 从单条消息提取调试信息
+ * 从单条消息提取调试信息（完整版，包含所有有效信息）
  */
 function extractMessageDebugInfo(
   message: Message,
@@ -369,7 +380,6 @@ function extractMessageDebugInfo(
   const toolCalls: ToolCallDebugInfo[] = [];
   let mainContent = '';
 
-  // 遍历消息的块
   for (const blockId of message.blockIds) {
     const block = blocks.get(blockId);
     if (!block) continue;
@@ -387,38 +397,40 @@ function extractMessageDebugInfo(
         }
         break;
 
-      case 'rag':
-      case 'memory':
-      case 'graph':
-      case 'web_search':
-      case 'multimodal_rag':
-      case 'academic_search':
-      case 'ask_user':
-      case 'image_gen':
-      case 'mcp_tool':
-      case 'sleep':
-      case 'subagent_embed':
-      case 'workspace_status':
-        toolCalls.push({
-          blockId: block.id,
-          toolName: block.toolName || block.type,
-          input: block.toolInput,
-          output: block.toolOutput,
-          status: block.status,
-          durationMs: block.endedAt && block.startedAt
-            ? block.endedAt - block.startedAt
-            : undefined,
-          error: block.error,
-        });
-        break;
-
       case 'content':
         if (block.content) {
           mainContent += block.content;
         }
         break;
+
+      default:
+        // 所有非 thinking/content 块统一记录（覆盖 rag、image_gen、workspace_status 等）
+        {
+          toolCalls.push({
+            blockId: block.id,
+            toolName: block.toolName || block.type,
+            input: block.toolInput,
+            output: block.toolOutput,
+            status: block.status,
+            durationMs: block.endedAt && block.startedAt
+              ? block.endedAt - block.startedAt
+              : undefined,
+            error: block.error,
+          });
+        }
+        break;
     }
   }
+
+  // 提取 rawRequest 和 logFilePath
+  const raw = message._meta?.rawRequest as
+    | { _source?: string; model?: string; url?: string; body?: unknown; logFilePath?: string }
+    | undefined;
+
+  // 提取上下文快照
+  const ctxSnap = message._meta?.contextSnapshot as unknown as
+    | { userRefs?: Array<{ type: string; label?: string; resourceId?: string }>; retrievalRefs?: Array<{ type: string; label?: string; resourceId?: string }> }
+    | undefined;
 
   return {
     messageId: message.id,
@@ -432,6 +444,15 @@ function extractMessageDebugInfo(
       promptTokens: message._meta.usage.promptTokens,
       completionTokens: message._meta.usage.completionTokens,
       totalTokens: message._meta.usage.totalTokens,
+    } : undefined,
+    rawRequest: raw ?? message._meta?.rawRequest,
+    logFilePath: raw?.logFilePath,
+    attachments: message.attachments?.map(a => ({
+      id: a.id, name: a.name, type: a.type, mimeType: a.mimeType, size: a.size,
+    })),
+    contextSnapshot: ctxSnap ? {
+      userRefs: ctxSnap.userRefs ?? [],
+      retrievalRefs: ctxSnap.retrievalRefs ?? [],
     } : undefined,
   };
 }
@@ -607,6 +628,50 @@ export function formatDebugInfoAsText(info: SessionDebugInfo): string {
     // Token 用量
     if (msg.tokenUsage) {
       lines.push(`   📊 Token: prompt=${msg.tokenUsage.promptTokens || 0}, completion=${msg.tokenUsage.completionTokens || 0}, total=${msg.tokenUsage.totalTokens || 0}`);
+      lines.push('');
+    }
+
+    // 附件
+    if (msg.attachments && msg.attachments.length > 0) {
+      lines.push('   📎 附件:');
+      for (const att of msg.attachments) {
+        lines.push(`   - ${att.name} (${att.type}, ${att.mimeType}, ${(att.size / 1024).toFixed(1)}KB)`);
+      }
+      lines.push('');
+    }
+
+    // 上下文快照
+    if (msg.contextSnapshot) {
+      const { userRefs, retrievalRefs } = msg.contextSnapshot;
+      if (userRefs.length > 0 || retrievalRefs.length > 0) {
+        lines.push('   📌 上下文注入:');
+        if (userRefs.length > 0) {
+          lines.push(`   用户引用 (${userRefs.length}):`);
+          for (const r of userRefs) {
+            lines.push(`     - [${r.type}] ${r.label || r.resourceId || 'N/A'}`);
+          }
+        }
+        if (retrievalRefs.length > 0) {
+          lines.push(`   检索引用 (${retrievalRefs.length}):`);
+          for (const r of retrievalRefs) {
+            lines.push(`     - [${r.type}] ${r.label || r.resourceId || 'N/A'}`);
+          }
+        }
+        lines.push('');
+      }
+    }
+
+    // 请求体摘要
+    if (msg.rawRequest) {
+      const raw = msg.rawRequest as { _source?: string; model?: string; url?: string; body?: unknown };
+      lines.push('   🌐 请求体:');
+      if (raw._source === 'backend_llm') {
+        lines.push(`   来源: 后端 LLM | 模型: ${raw.model || 'N/A'}`);
+        lines.push(`   URL: ${raw.url || 'N/A'}`);
+      }
+      if (msg.logFilePath) {
+        lines.push(`   📁 完整日志: ${msg.logFilePath}`);
+      }
       lines.push('');
     }
   }
