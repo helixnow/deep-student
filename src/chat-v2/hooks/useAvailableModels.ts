@@ -7,6 +7,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import type { ModelInfo } from '../utils/parseModelMentions';
+import { useEventRegistry } from '@/hooks/useEventRegistry';
 
 // ============================================================================
 // 类型
@@ -169,20 +170,20 @@ export function useAvailableModels(): UseAvailableModelsReturn {
   }, [loadModels]);
 
   // 配置变更时清理缓存并刷新（避免 5 分钟 TTL 造成“改了配置却不生效”的错觉）
-  useEffect(() => {
-    const onChanged = () => {
-      clearModelsCache();
-      void loadModels();
-    };
-    try {
-      window.addEventListener('api_configurations_changed', onChanged as any);
-    } catch {}
-    return () => {
-      try {
-        window.removeEventListener('api_configurations_changed', onChanged as any);
-      } catch {}
-    };
+  const handleConfigChanged = useCallback(() => {
+    clearModelsCache();
+    void loadModels();
   }, [loadModels]);
+  useEventRegistry(
+    [
+      {
+        target: 'window',
+        type: 'api_configurations_changed',
+        listener: handleConfigChanged as EventListener,
+      },
+    ],
+    [handleConfigChanged]
+  );
 
   return useMemo(
     () => ({
@@ -250,10 +251,24 @@ export function isModelMultimodal(modelId: string | undefined): boolean {
  * @returns 是否支持多模态（未找到时返回 false）
  */
 export async function isModelMultimodalAsync(modelId: string | undefined): Promise<boolean> {
+  let effectiveModelId = modelId;
   console.log('[PDF_DEBUG_FE] isModelMultimodalAsync called with modelId:', modelId);
 
-  if (!modelId) {
-    console.log('[PDF_DEBUG_FE] isModelMultimodalAsync: modelId is undefined, returning false');
+  if (!effectiveModelId) {
+    try {
+      const assignments = await invoke<{ model2_config_id?: string | null }>('get_model_assignments');
+      const defaultModelId = assignments?.model2_config_id ?? undefined;
+      if (defaultModelId && defaultModelId.trim().length > 0) {
+        effectiveModelId = defaultModelId;
+        console.log('[PDF_DEBUG_FE] isModelMultimodalAsync: resolved default model2_config_id:', effectiveModelId);
+      }
+    } catch (error: unknown) {
+      console.warn('[PDF_DEBUG_FE] isModelMultimodalAsync: get_model_assignments failed:', error);
+    }
+  }
+
+  if (!effectiveModelId) {
+    console.log('[PDF_DEBUG_FE] isModelMultimodalAsync: modelId unresolved, returning false');
     return false;
   }
 
@@ -275,11 +290,11 @@ export async function isModelMultimodalAsync(modelId: string | undefined): Promi
     }
   }
 
-  const model = cachedModels?.find((m) => m.id === modelId);
+  const model = cachedModels?.find((m) => m.id === effectiveModelId);
   const result = model?.isMultimodal === true;
 
   console.log('[PDF_DEBUG_FE] isModelMultimodalAsync result:', {
-    modelId,
+    modelId: effectiveModelId,
     foundModel: model ? { id: model.id, name: model.name, isMultimodal: model.isMultimodal } : null,
     result,
   });

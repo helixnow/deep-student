@@ -28,7 +28,7 @@ import {
   resetBridgeState,
 } from '../core/middleware/eventBridge';
 import { logMultiVariant } from '../../debug-panel/plugins/MultiVariantDebugPlugin';
-import type { AnkiCard } from '@/types';
+import type { AnkiCard, ModelAssignments } from '@/types';
 import { autoSave } from '../core/middleware/autoSave';
 import { chunkBuffer } from '../core/middleware/chunkBuffer';
 import { modeRegistry } from '../registry';
@@ -98,6 +98,14 @@ function isTauriRuntimeAvailable(): boolean {
 
 const LOG_PREFIX = '[ChatV2:TauriAdapter]';
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
+
+function getCanvasNoteIdFromModeState(modeState: Record<string, unknown> | null): string | undefined {
+  if (!modeState || typeof modeState !== 'object') {
+    return undefined;
+  }
+  const raw = modeState['canvasNoteId'];
+  return typeof raw === 'string' && raw.length > 0 ? raw : undefined;
+}
 
 // ============================================================================
 // 辅助函数
@@ -1636,6 +1644,11 @@ export class ChatV2TauriAdapter {
       const activeModelId = this.getCurrentState().chatParams.modelId;
       await this.ensureModelMetadataReady(activeModelId);
       const options = this.buildSendOptions();
+      const effectiveModelId = await this.resolveEffectiveChatModelId(options.modelId);
+      if (options.modelId !== effectiveModelId) {
+        options.modelId = effectiveModelId;
+        this.store.setChatParams({ modelId: effectiveModelId });
+      }
 
       // 注意：不在这里清空 pendingParallelModelIds，等待发送成功后再清空
       // 这样如果发送失败，用户可以重试而不会丢失多变体配置
@@ -1652,7 +1665,7 @@ export class ChatV2TauriAdapter {
         (ref) => ref.typeId !== SKILL_INSTRUCTION_TYPE_ID
       );
       if (refsForUserMessage.length > 0) {
-        const currentModelId = this.getCurrentState().chatParams.modelId;
+        const currentModelId = options.modelId;
         // ★ 2026-02 修复：使用异步版本确保模型缓存已加载
         const isMultimodal = await isModelMultimodalAsync(currentModelId);
         isMultimodalModel = isMultimodal;
@@ -1802,6 +1815,11 @@ export class ChatV2TauriAdapter {
       const activeModelId = this.getCurrentState().chatParams.modelId;
       await this.ensureModelMetadataReady(activeModelId);
       const options = this.buildSendOptions();
+      const effectiveModelId = await this.resolveEffectiveChatModelId(options.modelId);
+      if (options.modelId !== effectiveModelId) {
+        options.modelId = effectiveModelId;
+        this.store.setChatParams({ modelId: effectiveModelId });
+      }
 
       // 🔧 调试打点：发送消息时的状态
       if (options.parallelModelIds && options.parallelModelIds.length >= 2) {
@@ -1832,7 +1850,7 @@ export class ChatV2TauriAdapter {
       );
       if (refsForUserMessage2.length > 0) {
         console.log(LOG_PREFIX, 'Building SendContextRefs for', refsForUserMessage2.length, 'refs (filtered', pendingContextRefs.length - refsForUserMessage2.length, 'skill_instruction refs)');
-        const currentModelId = this.getCurrentState().chatParams.modelId;
+        const currentModelId = options.modelId;
         // ★ 2026-02 修复：使用异步版本确保模型缓存已加载
         const isMultimodal = await isModelMultimodalAsync(currentModelId);
         isMultimodalModel = isMultimodal;
@@ -2068,6 +2086,12 @@ export class ChatV2TauriAdapter {
       const options = this.buildSendOptions();
       if (modelOverride) {
         options.modelId = modelOverride;
+      } else {
+        const effectiveModelId = await this.resolveEffectiveChatModelId(options.modelId);
+        if (options.modelId !== effectiveModelId) {
+          options.modelId = effectiveModelId;
+          this.store.setChatParams({ modelId: effectiveModelId });
+        }
       }
 
       // 🔧 2026-01-15: 超时机制已移除
@@ -2236,6 +2260,11 @@ export class ChatV2TauriAdapter {
       const activeModelId = this.getCurrentState().chatParams.modelId;
       await this.ensureModelMetadataReady(activeModelId);
       const options = this.buildSendOptions();
+      const effectiveModelId = await this.resolveEffectiveChatModelId(options.modelId);
+      if (options.modelId !== effectiveModelId) {
+        options.modelId = effectiveModelId;
+        this.store.setChatParams({ modelId: effectiveModelId });
+      }
 
       // 🔧 2026-01-15: 超时机制已移除
 
@@ -2254,7 +2283,7 @@ export class ChatV2TauriAdapter {
         console.log(LOG_PREFIX, 'Building SendContextRefs for editAndResend:', validContextRefs.length, '(validated from', newContextRefs.length, ')');
         
         if (validContextRefs.length > 0) {
-          const currentModelId = this.getCurrentState().chatParams.modelId;
+          const currentModelId = options.modelId;
           // ★ 2026-02 修复：使用异步版本确保模型缓存已加载
           const isMultimodal = await isModelMultimodalAsync(currentModelId);
           const { sendRefs, pathMap } = await buildSendContextRefsWithPaths(validContextRefs, { isMultimodal });
@@ -2865,6 +2894,24 @@ export class ChatV2TauriAdapter {
     }
   }
 
+  private async resolveEffectiveChatModelId(modelId: string | undefined): Promise<string> {
+    if (modelId && modelId.trim().length > 0) {
+      return modelId;
+    }
+
+    try {
+      const assignments = await invoke<ModelAssignments>('get_model_assignments');
+      const defaultModelId = assignments?.model2_config_id ?? undefined;
+      if (defaultModelId && defaultModelId.trim().length > 0) {
+        return defaultModelId;
+      }
+    } catch (error) {
+      console.warn(LOG_PREFIX, 'Failed to resolve default model assignment:', getErrorMessage(error));
+    }
+
+    throw new Error('No chat model configured: missing chatParams.modelId and model_assignments.model2_config_id');
+  }
+
   private resolveInputContextLimit(
     modelId: string | undefined,
     maxTokens: number,
@@ -3044,8 +3091,7 @@ export class ChatV2TauriAdapter {
 
       // ========== Canvas 智能笔记选项 ==========
       // 从 modeState 获取当前打开的笔记 ID，作为 Canvas 工具的默认目标
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      canvasNoteId: (modeState as any)?.canvasNoteId as string | undefined,
+      canvasNoteId: getCanvasNoteIdFromModeState(modeState),
     };
 
     // ========== Schema 工具收集（文档 26）==========

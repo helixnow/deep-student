@@ -29,25 +29,46 @@ use crate::vfs::types::{ImageInjectMode, PdfInjectMode, ResourceInjectModes, Vfs
 /// ★ 2026-01-26：根据模型 ID 判断是否支持多模态
 ///
 /// 从 LLMManager 获取模型配置，返回 is_multimodal 属性。
-/// 如果找不到模型配置，默认返回 false（安全回退到文本模式）。
+/// 当 model_id 为空时，回退到默认对话模型再判断，避免误降级为文本模式。
 async fn is_model_multimodal(llm_manager: &LLMManager, model_id: Option<&str>) -> bool {
-    let model_id = match model_id {
-        Some(id) if !id.is_empty() => id,
-        _ => return false, // 无模型 ID，使用默认（文本模式）
-    };
-
-    match llm_manager.get_api_configs().await {
-        Ok(configs) => {
-            // 先通过 config.id 匹配，再通过 config.model 匹配
-            configs
-                .iter()
-                .find(|c| c.id == model_id || c.model == model_id)
-                .map(|c| c.is_multimodal)
-                .unwrap_or(false)
+    let explicit_model_id = model_id.and_then(|id| {
+        let trimmed = id.trim();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.to_string())
         }
+    });
+
+    if let Some(model_id) = explicit_model_id {
+        return match llm_manager.get_api_configs().await {
+            Ok(configs) => {
+                // 先通过 config.id 匹配，再通过 config.model 匹配
+                configs
+                    .iter()
+                    .find(|c| c.id.as_str() == model_id || c.model.as_str() == model_id)
+                    .map(|c| c.is_multimodal)
+                    .unwrap_or(false)
+            }
+            Err(e) => {
+                log::warn!(
+                    "[ChatV2::handlers] Failed to get API configs for is_multimodal check: {}",
+                    e
+                );
+                false
+            }
+        };
+    }
+
+    // 当请求未显式传 model_id 时，回退到默认对话模型，避免误判为文本模型
+    match llm_manager
+        .select_model_for("default", None, None, None, None, None, None)
+        .await
+    {
+        Ok((config, _)) => config.is_multimodal,
         Err(e) => {
             log::warn!(
-                "[ChatV2::handlers] Failed to get API configs for is_multimodal check: {}",
+                "[ChatV2::handlers] Failed to resolve default model for is_multimodal check: {}",
                 e
             );
             false
