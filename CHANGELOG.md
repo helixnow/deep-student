@@ -10,6 +10,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.9.28](https://github.com/helixnow/deep-student/compare/v0.9.27...v0.9.28) (2026-03-02)
+
+
+### Features
+
+* add development scripts for Android environment setup ([ab2953f](https://github.com/helixnow/deep-student/commit/ab2953f4bd35ea1ba657154063ff72bf5dcd4d27))
+* **ankiCards:** enhance event handling and error reporting ([6f2642c](https://github.com/helixnow/deep-student/commit/6f2642c428e1dd2512559f1bb14b6faa20a097ba))
+* **debug:** implement debug log persistence and filtering options ([fa8f4c9](https://github.com/helixnow/deep-student/commit/fa8f4c9fc99f98ff082890a37beb51ffecbcea5f))
+* **exam:** enhance exam XML generation and qbank tools ([fc80777](https://github.com/helixnow/deep-student/commit/fc8077744d99fe66d420552401a69753d6d1b4c6))
+
+
+### Bug Fixes
+
+* **android-files:** support virtual URI import export flows ([58c4234](https://github.com/helixnow/deep-student/commit/58c4234762a9fa1eec6c7b3f0672069384c1c646))
+
 ## [0.9.27](https://github.com/helixnow/deep-student/compare/v0.9.26...v0.9.27) (2026-03-01)
 
 
