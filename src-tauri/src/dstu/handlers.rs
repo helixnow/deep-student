@@ -5752,6 +5752,7 @@ pub async fn dstu_move_to_folder(
         } else {
             format!("{}/{}", folder_path, resource_id_for_blocking)
         };
+        let now_ms = chrono::Utc::now().timestamp_millis();
 
         // 检查 folder_items 中是否已存在该资源
         let existing: Option<String> = conn
@@ -5766,8 +5767,13 @@ pub async fn dstu_move_to_folder(
         if existing.is_some() {
             // 更新现有记录
             conn.execute(
-                "UPDATE folder_items SET folder_id = ?1, cached_path = ?2, updated_at = datetime('now') WHERE item_id = ?3",
-                rusqlite::params![&target_folder_id, &full_path, &resource_id_for_blocking],
+                "UPDATE folder_items SET folder_id = ?1, cached_path = ?2, updated_at = ?3 WHERE item_id = ?4",
+                rusqlite::params![
+                    &target_folder_id,
+                    &full_path,
+                    now_ms,
+                    &resource_id_for_blocking
+                ],
             )
             .map_err(|e| e.to_string())?;
         } else {
@@ -5777,9 +5783,17 @@ pub async fn dstu_move_to_folder(
             conn.execute(
                 r#"
                 INSERT INTO folder_items (id, folder_id, item_type, item_id, sort_order, cached_path, created_at, updated_at)
-                VALUES (?1, ?2, ?3, ?4, 0, ?5, datetime('now'), datetime('now'))
+                VALUES (?1, ?2, ?3, ?4, 0, ?5, ?6, ?7)
                 "#,
-                rusqlite::params![&item_id, &target_folder_id, &resource_type_for_blocking, &resource_id_for_blocking, &full_path],
+                rusqlite::params![
+                    &item_id,
+                    &target_folder_id,
+                    &resource_type_for_blocking,
+                    &resource_id_for_blocking,
+                    &full_path,
+                    now_ms,
+                    now_ms
+                ],
             )
             .map_err(|e| e.to_string())?;
         }
@@ -5998,6 +6012,7 @@ fn move_single_item(
     } else {
         format!("{}/{}", folder_path, resource_id)
     };
+    let now_ms = chrono::Utc::now().timestamp_millis();
 
     // 检查 folder_items 中是否已存在该资源
     let existing: Option<String> = conn
@@ -6012,8 +6027,8 @@ fn move_single_item(
     if existing.is_some() {
         // 更新现有记录
         conn.execute(
-            "UPDATE folder_items SET folder_id = ?1, cached_path = ?2, updated_at = datetime('now') WHERE item_id = ?3",
-            rusqlite::params![target_folder_id, &full_path, resource_id],
+            "UPDATE folder_items SET folder_id = ?1, cached_path = ?2, updated_at = ?3 WHERE item_id = ?4",
+            rusqlite::params![target_folder_id, &full_path, now_ms, resource_id],
         )
         .map_err(|e| format!("更新 folder_items 失败 ({}): {}", resource_id, e))?;
     } else {
@@ -6023,9 +6038,17 @@ fn move_single_item(
         conn.execute(
             r#"
             INSERT INTO folder_items (id, folder_id, item_type, item_id, sort_order, cached_path, created_at, updated_at)
-            VALUES (?1, ?2, ?3, ?4, 0, ?5, datetime('now'), datetime('now'))
+            VALUES (?1, ?2, ?3, ?4, 0, ?5, ?6, ?7)
             "#,
-            rusqlite::params![&item_id, target_folder_id, &resource_type, resource_id, &full_path],
+            rusqlite::params![
+                &item_id,
+                target_folder_id,
+                &resource_type,
+                resource_id,
+                &full_path,
+                now_ms,
+                now_ms
+            ],
         )
         .map_err(|e| format!("插入 folder_items 失败 ({}): {}", resource_id, e))?;
     }

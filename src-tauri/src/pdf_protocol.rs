@@ -6,6 +6,48 @@ use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::PathBuf;
 
+const DEFAULT_CORS_ORIGIN: &str = "tauri://localhost";
+
+fn resolve_cors_origin(request: &tauri::http::Request<Vec<u8>>) -> String {
+    let origin = request
+        .headers()
+        .get("origin")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or(DEFAULT_CORS_ORIGIN);
+
+    // 兼容桌面与移动端 WebView 来源：
+    // - tauri://localhost（桌面自定义协议）
+    // - http(s)://tauri.localhost（Windows / Android）
+    // - http(s)://localhost（开发态）
+    if origin == "tauri://localhost"
+        || origin == "http://tauri.localhost"
+        || origin == "https://tauri.localhost"
+        || origin.starts_with("http://localhost")
+        || origin.starts_with("https://localhost")
+    {
+        origin.to_string()
+    } else {
+        DEFAULT_CORS_ORIGIN.to_string()
+    }
+}
+
+fn with_cors_headers(
+    mut builder: tauri::http::response::Builder,
+    request: &tauri::http::Request<Vec<u8>>,
+) -> tauri::http::response::Builder {
+    let origin = resolve_cors_origin(request);
+    builder = builder
+        .header("Access-Control-Allow-Origin", origin)
+        .header("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS")
+        .header("Access-Control-Allow-Headers", "Range")
+        .header("Vary", "Origin");
+    builder
+}
+
+pub fn cors_origin_for_request(request: &tauri::http::Request<Vec<u8>>) -> String {
+    resolve_cors_origin(request)
+}
+
 /// 从 Tauri AppHandle 解析允许的 PDF 访问目录白名单。
 /// 仅包含用户数据和文档相关目录，排除系统敏感路径。
 pub fn resolve_allowed_dirs(app: &tauri::AppHandle) -> Vec<PathBuf> {
@@ -47,6 +89,11 @@ pub fn handle_asset_protocol(
     request: &tauri::http::Request<Vec<u8>>,
     allowed_dirs: &[PathBuf],
 ) -> Result<tauri::http::Response<Vec<u8>>, Box<dyn std::error::Error>> {
+    if request.method() == tauri::http::Method::OPTIONS {
+        return Ok(with_cors_headers(tauri::http::Response::builder().status(204), request)
+            .body(Vec::new())?);
+    }
+
     let raw_uri = request.uri().to_string();
     let path = request.uri().path();
     let path = path.strip_prefix('/').unwrap_or(path);
@@ -70,7 +117,8 @@ pub fn handle_asset_protocol(
             );
             return Ok(tauri::http::Response::builder()
                 .status(404)
-                .header("Access-Control-Allow-Origin", "tauri://localhost")
+                .header("Vary", "Origin")
+                .header("Access-Control-Allow-Origin", resolve_cors_origin(request))
                 .body(Vec::new())?);
         }
     };
@@ -86,7 +134,8 @@ pub fn handle_asset_protocol(
         );
         return Ok(tauri::http::Response::builder()
             .status(403)
-            .header("Access-Control-Allow-Origin", "tauri://localhost")
+            .header("Vary", "Origin")
+            .header("Access-Control-Allow-Origin", resolve_cors_origin(request))
             .body(Vec::new())?);
     }
 
@@ -103,7 +152,8 @@ pub fn handle_asset_protocol(
         );
         return Ok(tauri::http::Response::builder()
             .status(403)
-            .header("Access-Control-Allow-Origin", "tauri://localhost")
+            .header("Vary", "Origin")
+            .header("Access-Control-Allow-Origin", resolve_cors_origin(request))
             .body(Vec::new())?);
     }
 
@@ -115,7 +165,8 @@ pub fn handle_asset_protocol(
         );
         return Ok(tauri::http::Response::builder()
             .status(404)
-            .header("Access-Control-Allow-Origin", "tauri://localhost")
+            .header("Vary", "Origin")
+            .header("Access-Control-Allow-Origin", resolve_cors_origin(request))
             .body(Vec::new())?);
     }
 
@@ -155,17 +206,20 @@ pub fn handle_asset_protocol(
                         format!("bytes {}-{}/{}", start, end, file_size),
                     )
                     .header("Accept-Ranges", "bytes")
-                .header("Access-Control-Allow-Origin", "tauri://localhost")
-                .header("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS")
-                .header("Access-Control-Allow-Headers", "Range")
-                .body(buffer)?)
+                    .header("Vary", "Origin")
+                    .header("Access-Control-Allow-Origin", resolve_cors_origin(request))
+                    .header("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS")
+                    .header("Access-Control-Allow-Headers", "Range")
+                    .body(buffer)?)
             } else {
                 // Range 格式错误
-                Ok(tauri::http::Response::builder()
-                    .status(416)
-                    .header("Content-Range", format!("bytes */{}", file_size))
-                    .header("Access-Control-Allow-Origin", "tauri://localhost")
-                    .body(Vec::new())?)
+                Ok(with_cors_headers(
+                    tauri::http::Response::builder()
+                        .status(416)
+                        .header("Content-Range", format!("bytes */{}", file_size)),
+                    request,
+                )
+                .body(Vec::new())?)
             }
         }
         None => {
@@ -178,7 +232,8 @@ pub fn handle_asset_protocol(
                 .header("Content-Type", get_mime_type(&canonical_path))
                 .header("Content-Length", file_size.to_string())
                 .header("Accept-Ranges", "bytes")
-                .header("Access-Control-Allow-Origin", "tauri://localhost")
+                .header("Vary", "Origin")
+                .header("Access-Control-Allow-Origin", resolve_cors_origin(request))
                 .header("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS")
                 .header("Access-Control-Allow-Headers", "Range")
                 .body(buffer)?)

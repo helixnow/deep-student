@@ -34,7 +34,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self' tauri: asset:; connect-src 'self' data: blob: tauri: ipc: http://ipc.localhost pdfstream: http://pdfstream.localhost https://api.openai.com https://api.anthropic.com https://generativelanguage.googleapis.com https://api.deepseek.com https://api.siliconflow.cn https://api.groq.com https://openrouter.ai https://download.deepstudent.cn https://dashscope.aliyuncs.com https://open.bigmodel.cn https://ark.cn-beijing.volces.com https://api.minimax.io https://api.moonshot.cn ws://localhost:* ws://127.0.0.1:*; font-src 'self' data:; img-src 'self' data: blob: asset: pdfstream: http://pdfstream.localhost https:; script-src 'self'; style-src 'self' 'unsafe-inline'; worker-src 'self' blob:; frame-src blob:;",
+      "csp": "default-src 'self' tauri: asset:; connect-src 'self' data: blob: tauri: ipc: http://ipc.localhost https://ipc.localhost pdfstream: http://pdfstream.localhost https://pdfstream.localhost https://api.openai.com https://api.anthropic.com https://generativelanguage.googleapis.com https://api.deepseek.com https://api.siliconflow.cn https://api.groq.com https://openrouter.ai https://download.deepstudent.cn https://dashscope.aliyuncs.com https://open.bigmodel.cn https://ark.cn-beijing.volces.com https://api.minimax.io https://api.moonshot.cn ws://localhost:* ws://127.0.0.1:*; font-src 'self' data:; img-src 'self' data: blob: asset: pdfstream: http://pdfstream.localhost https://pdfstream.localhost https:; script-src 'self'; style-src 'self' 'unsafe-inline'; worker-src 'self' blob:; frame-src blob:;",
       "assetProtocol": {
         "enable": true,
         "scope": [

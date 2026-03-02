@@ -387,7 +387,7 @@ pub async fn textbooks_add(
                     format!("fi_{}", nanoid::nanoid!(10)),
                     fid,
                     tb.id,
-                    chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string(),
+                    chrono::Utc::now().timestamp_millis(),
                 ],
             ) {
                 warn!(

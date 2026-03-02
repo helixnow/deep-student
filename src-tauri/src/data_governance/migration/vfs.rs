@@ -344,6 +344,17 @@ pub const V20260215_ADD_IMPORT_CHECKPOINT: MigrationDef = MigrationDef::new(
 )
 .idempotent();
 
+/// V20260302: 规范化 folder_items 时间戳列类型
+///
+/// 将历史写入的 TEXT 时间值统一修复为 INTEGER(毫秒时间戳)，
+/// 避免读取 folder_items.created_at 时出现类型错误。
+pub const V20260302_NORMALIZE_FOLDER_ITEMS_TIMESTAMPS: MigrationDef = MigrationDef::new(
+    20260302,
+    "normalize_folder_items_timestamps",
+    include_str!("../../../migrations/vfs/V20260302__normalize_folder_items_timestamps.sql"),
+)
+.idempotent();
+
 /// VFS 数据库所有迁移定义
 pub const VFS_MIGRATIONS: &[MigrationDef] = &[
     V20260130_INIT,
@@ -361,6 +372,7 @@ pub const VFS_MIGRATIONS: &[MigrationDef] = &[
     V20260211_FIX_CHANGE_LOG_RECORD_ID,
     V20260212_ADD_MINDMAP_VERSIONS,
     V20260215_ADD_IMPORT_CHECKPOINT,
+    V20260302_NORMALIZE_FOLDER_ITEMS_TIMESTAMPS,
 ];
 
 /// VFS 迁移集合
@@ -520,6 +532,6 @@ mod tests {
 
     #[test]
     fn test_latest_version() {
-        assert_eq!(VFS_MIGRATION_SET.latest_version(), 20260215);
+        assert_eq!(VFS_MIGRATION_SET.latest_version(), 20260302);
     }
 }

@@ -10,7 +10,7 @@
 //! - `get_items_by_folders`: 批量获取文件夹内容
 //! - `get_all_resources`: 聚合文件夹内所有资源（上下文注入用）
 
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{params, types::ValueRef, Connection, OptionalExtension};
 use tracing::{debug, info, warn};
 
 use crate::vfs::database::VfsDatabase;
@@ -35,6 +35,75 @@ const MAX_BATCH_SIZE: usize = 100;
 
 /// VFS 文件夹表 Repo
 pub struct VfsFolderRepo;
+
+fn parse_timestamp_text_to_millis(raw: &str) -> Option<i64> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    if let Ok(v) = trimmed.parse::<i64>() {
+        // 兼容秒级时间戳
+        return Some(if v.abs() < 1_000_000_000_000 {
+            v.saturating_mul(1000)
+        } else {
+            v
+        });
+    }
+
+    if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(trimmed) {
+        return Some(dt.timestamp_millis());
+    }
+
+    if let Ok(dt) = chrono::NaiveDateTime::parse_from_str(trimmed, "%Y-%m-%d %H:%M:%S") {
+        return Some(dt.and_utc().timestamp_millis());
+    }
+
+    if let Ok(date) = chrono::NaiveDate::parse_from_str(trimmed, "%Y-%m-%d") {
+        return date
+            .and_hms_opt(0, 0, 0)
+            .map(|dt| dt.and_utc().timestamp_millis());
+    }
+
+    None
+}
+
+fn read_folder_item_timestamp(
+    row: &rusqlite::Row,
+    idx: usize,
+    column_name: &'static str,
+) -> rusqlite::Result<i64> {
+    match row.get_ref(idx)? {
+        ValueRef::Integer(v) => Ok(v),
+        ValueRef::Real(v) => Ok(v as i64),
+        ValueRef::Text(bytes) => {
+            let raw = std::str::from_utf8(bytes).unwrap_or_default();
+            if let Some(ts) = parse_timestamp_text_to_millis(raw) {
+                Ok(ts)
+            } else {
+                warn!(
+                    "[VFS::FolderRepo] Invalid {} value in folder_items, fallback to 0: {:?}",
+                    column_name, raw
+                );
+                Ok(0)
+            }
+        }
+        ValueRef::Null => {
+            warn!(
+                "[VFS::FolderRepo] NULL {} value in folder_items, fallback to 0",
+                column_name
+            );
+            Ok(0)
+        }
+        ValueRef::Blob(_) => {
+            warn!(
+                "[VFS::FolderRepo] BLOB {} value in folder_items, fallback to 0",
+                column_name
+            );
+            Ok(0)
+        }
+    }
+}
 
 // ============================================================================
 // 批量操作辅助函数
@@ -537,7 +606,7 @@ impl VfsFolderRepo {
                         item_type: row.get(2)?,
                         item_id: row.get(3)?,
                         sort_order: row.get(4)?,
-                        created_at: row.get(5)?,
+                        created_at: read_folder_item_timestamp(row, 5, "created_at")?,
                         cached_path: row.get(6)?,
                     })
                 },
@@ -680,7 +749,7 @@ impl VfsFolderRepo {
                         item_type: row.get(2)?,
                         item_id: row.get(3)?,
                         sort_order: row.get(4)?,
-                        created_at: row.get(5)?,
+                        created_at: read_folder_item_timestamp(row, 5, "created_at")?,
                         cached_path: row.get(6)?,
                     })
                 },
@@ -722,7 +791,7 @@ impl VfsFolderRepo {
                         item_type: row.get(2)?,
                         item_id: row.get(3)?,
                         sort_order: row.get(4)?,
-                        created_at: row.get(5)?,
+                        created_at: read_folder_item_timestamp(row, 5, "created_at")?,
                         cached_path: row.get(6)?,
                     })
                 },
@@ -798,7 +867,7 @@ impl VfsFolderRepo {
                     item_type: row.get(2)?,
                     item_id: row.get(3)?,
                     sort_order: row.get(4)?,
-                    created_at: row.get(5)?,
+                    created_at: read_folder_item_timestamp(row, 5, "created_at")?,
                     cached_path: row.get(6)?,
                 })
             })?
@@ -1735,7 +1804,7 @@ impl VfsFolderRepo {
                     item_type: row.get(2)?,
                     item_id: row.get(3)?,
                     sort_order: row.get(4)?,
-                    created_at: row.get(5)?,
+                    created_at: read_folder_item_timestamp(row, 5, "created_at")?,
                     cached_path: row.get(6)?,
                 })
             },
@@ -2418,7 +2487,7 @@ impl VfsFolderRepo {
                     folder_id: row.get(3)?,
                     sort_order: row.get(4)?,
                     cached_path: row.get(5)?,
-                    created_at: row.get(6)?,
+                    created_at: read_folder_item_timestamp(row, 6, "created_at")?,
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;
@@ -2736,5 +2805,30 @@ mod tests {
         // 删除内容项（使用不依赖 subject 的方法）
         VfsFolderRepo::remove_item_by_item_id(&db, "note", "note_test123")
             .expect("Failed to remove");
+    }
+
+    #[test]
+    fn test_list_items_by_folder_handles_text_created_at() {
+        let (_temp_dir, db) = setup_test_db();
+        let conn = db.get_conn_safe().expect("Failed to get db connection");
+
+        let folder = VfsFolder::new("附件".to_string(), None, None, None);
+        VfsFolderRepo::create_folder_with_conn(&conn, &folder).expect("Failed to create folder");
+
+        conn.execute(
+            r#"
+            INSERT INTO folder_items (id, folder_id, item_type, item_id, sort_order, created_at, cached_path)
+            VALUES (?1, ?2, 'file', 'file_legacy', 0, ?3, '/附件/file_legacy')
+            "#,
+            rusqlite::params!["fi_legacy_text_ts", folder.id, "2026-03-02T00:00:00.000Z"],
+        )
+        .expect("Failed to insert legacy folder item");
+
+        let items = VfsFolderRepo::list_items_by_folder_with_conn(&conn, Some(&folder.id))
+            .expect("Should read legacy timestamp text");
+
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].item_id, "file_legacy");
+        assert!(items[0].created_at > 0);
     }
 }

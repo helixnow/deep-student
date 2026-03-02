@@ -1574,14 +1574,21 @@ pub fn run() {
                 Ok(response) => response,
                 Err(e) => {
                     error!("pdfstream:// 协议处理失败: {}", e);
+                    let cors_origin = crate::pdf_protocol::cors_origin_for_request(&request);
                     tauri::http::Response::builder()
                         .status(500)
-                        .header("Access-Control-Allow-Origin", "tauri://localhost")
+                        .header("Access-Control-Allow-Origin", cors_origin.clone())
+                        .header("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS")
+                        .header("Access-Control-Allow-Headers", "Range")
+                        .header("Vary", "Origin")
                         .body(b"Internal Server Error".to_vec())
                         .unwrap_or_else(|_| {
                             tauri::http::Response::builder()
                                 .status(500)
-                                .header("Access-Control-Allow-Origin", "tauri://localhost")
+                                .header("Access-Control-Allow-Origin", cors_origin)
+                                .header("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS")
+                                .header("Access-Control-Allow-Headers", "Range")
+                                .header("Vary", "Origin")
                                 .body(b"Internal Server Error".to_vec())
                                 .unwrap_or_else(|_| {
                                     tauri::http::Response::new(b"Internal Server Error".to_vec())
