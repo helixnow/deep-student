@@ -10,6 +10,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.9.29](https://github.com/helixnow/deep-student/compare/v0.9.28...v0.9.29) (2026-03-02)
+
+
+### Features
+
+* **session-management:** introduce session management tools and enhance request handling ([8d26ddb](https://github.com/helixnow/deep-student/commit/8d26ddb4eea67203a6fe18d595bc12b8d6014215))
+
+
+### Bug Fixes
+
+* **chat-v2:** enforce explicit model resolution for multimodal injection ([be308bf](https://github.com/helixnow/deep-student/commit/be308bf67f0eeb7a3bc14cbf4ef23e7874428434))
+
 ## [0.9.28](https://github.com/helixnow/deep-student/compare/v0.9.27...v0.9.28) (2026-03-02)
 
 
