@@ -6,7 +6,7 @@ use crate::commands::{get_template_config, AppState};
 use crate::models::{AnkiCard, AnkiGenerationOptions, AppError};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use tauri::State;
+use tauri::{State, Window};
 use uuid::Uuid;
 
 type Result<T> = std::result::Result<T, AppError>;
@@ -445,6 +445,7 @@ pub async fn export_multi_template_apkg(
     deck_name: String,
     output_path: Option<String>,
     state: State<'_, AppState>,
+    window: Window,
 ) -> Result<String> {
     if cards.is_empty() {
         return Err(AppError::validation("没有卡片可以导出"));
@@ -464,12 +465,29 @@ pub async fn export_multi_template_apkg(
         }
     }
 
-    let mut output_path = if let Some(path) = output_path
+    let requested_output = output_path
         .as_deref()
         .map(str::trim)
         .filter(|s| !s.is_empty())
-    {
-        std::path::PathBuf::from(path)
+        .map(|s| s.to_string());
+    let target_uri = requested_output
+        .as_ref()
+        .filter(|path| crate::unified_file_manager::is_virtual_uri(path))
+        .cloned();
+
+    let mut output_path = if let Some(path) = requested_output.as_deref() {
+        if target_uri.is_some() {
+            let export_dir = state
+                .file_manager
+                .get_writable_app_data_dir()
+                .join("temp_apkg_export");
+            std::fs::create_dir_all(&export_dir)
+                .map_err(|e| AppError::file_system(format!("创建 APKG 临时目录失败: {}", e)))?;
+            let sanitized = deck_name.replace('/', "_").replace('\\', "_");
+            export_dir.join(format!("{}_{}.apkg", sanitized, Uuid::new_v4()))
+        } else {
+            std::path::PathBuf::from(path)
+        }
     } else {
         let sanitized = deck_name.replace('/', "_").replace('\\', "_");
         let filename = format!("{}.apkg", sanitized);
@@ -490,16 +508,49 @@ pub async fn export_multi_template_apkg(
         output_path.set_extension("apkg");
     }
 
-    crate::apkg_exporter_service::export_multi_template_apkg(
+    if let Err(e) = crate::apkg_exporter_service::export_multi_template_apkg(
         cards.into_iter().filter(|c| !c.is_error_card).collect(),
         deck_name,
         output_path.clone(),
         template_map,
     )
     .await
-    .map_err(|e| AppError::validation(e))?;
+    {
+        if target_uri.is_some() {
+            if let Err(cleanup_err) = std::fs::remove_file(&output_path) {
+                log::warn!(
+                    "[anki_export] 导出失败后清理临时 APKG 文件失败 ({}): {}",
+                    output_path.display(),
+                    cleanup_err
+                );
+            }
+        }
+        return Err(AppError::validation(e));
+    }
 
-    Ok(output_path.to_string_lossy().to_string())
+    if let Some(target_path) = target_uri {
+        let staged = output_path.to_string_lossy().to_string();
+        if let Err(err) = crate::unified_file_manager::copy_file(&window, &staged, &target_path) {
+            if let Err(cleanup_err) = std::fs::remove_file(&output_path) {
+                log::warn!(
+                    "[anki_export] 写入目标 URI 失败后清理临时 APKG 文件失败 ({}): {}",
+                    output_path.display(),
+                    cleanup_err
+                );
+            }
+            return Err(AppError::file_system(format!("写入目标 URI 失败: {}", err)));
+        }
+        if let Err(e) = std::fs::remove_file(&output_path) {
+            log::warn!(
+                "[anki_export] 清理临时 APKG 文件失败 ({}): {}",
+                output_path.display(),
+                e
+            );
+        }
+        Ok(target_path)
+    } else {
+        Ok(output_path.to_string_lossy().to_string())
+    }
 }
 
 // 🔧 P0-30 修复：添加 batch_export_cards 和 save_json_file 命令

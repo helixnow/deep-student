@@ -9,13 +9,13 @@ use crate::llm_manager::{ApiConfig, ModelProfile, VendorConfig};
 #[cfg(feature = "mcp")]
 use crate::mcp::McpConfig;
 use crate::models::{
-    AnkiDocumentGenerationRequest,
-    AnkiDocumentGenerationResponse, AnkiGenerationOptions, AppError,
+    AnkiDocumentGenerationRequest, AnkiDocumentGenerationResponse, AnkiGenerationOptions, AppError,
     CreateTemplateRequest, CustomAnkiTemplate, ExamSheetSessionDetail,
     ExamSheetSessionDetailRequest, ExamSheetSessionDetailResponse, ExamSheetSessionListRequest,
-    ExamSheetSessionListResponse, ModelAssignments, PdfOcrRequest,
-    PdfOcrResult, RenameExamSheetSessionRequest, RenameExamSheetSessionResponse, StreamContext, TemplateBulkImportRequest,
-    TemplateExportResponse, TemplateImportRequest, UpdateExamSheetCardsRequest, UpdateExamSheetCardsResponse, UpdateTemplateRequest,
+    ExamSheetSessionListResponse, ModelAssignments, PdfOcrRequest, PdfOcrResult,
+    RenameExamSheetSessionRequest, RenameExamSheetSessionResponse, StreamContext,
+    TemplateBulkImportRequest, TemplateExportResponse, TemplateImportRequest,
+    UpdateExamSheetCardsRequest, UpdateExamSheetCardsResponse, UpdateTemplateRequest,
 };
 use crate::question_bank_service::{BatchResult, QuestionBankService, SubmitAnswerResult};
 use crate::vfs::repos::AnswerSubmission;
@@ -557,7 +557,6 @@ pub fn get_template_config(
     }
 }
 
-
 // PDF OCR 命令组
 #[tauri::command]
 pub async fn init_pdf_ocr_session(
@@ -764,7 +763,6 @@ pub async fn save_pdf_to_temp(
     Ok(file_path.to_string_lossy().to_string())
 }
 
-
 #[tauri::command]
 pub async fn list_exam_sheet_sessions(
     request: ExamSheetSessionListRequest,
@@ -876,7 +874,8 @@ pub async fn inspect_pdf_text_for_qbank(
 ) -> Result<crate::question_import_service::PdfTextInspection> {
     use crate::question_import_service::QuestionImportService;
 
-    let import_service = QuestionImportService::new(state.llm_manager.clone(), state.file_manager.clone());
+    let import_service =
+        QuestionImportService::new(state.llm_manager.clone(), state.file_manager.clone());
     import_service.inspect_pdf_text(&request.content)
 }
 
@@ -897,7 +896,8 @@ pub async fn import_question_bank(
         .ok_or_else(|| AppError::validation("VFS 数据库未初始化"))?;
 
     // 使用统一的 QuestionImportService
-    let import_service = QuestionImportService::new(state.llm_manager.clone(), state.file_manager.clone());
+    let import_service =
+        QuestionImportService::new(state.llm_manager.clone(), state.file_manager.clone());
 
     let import_request = ImportRequest {
         content: request.content,
@@ -949,7 +949,8 @@ pub async fn import_question_bank_stream(
         })
     };
 
-    let import_service = QuestionImportService::new(state.llm_manager.clone(), state.file_manager.clone());
+    let import_service =
+        QuestionImportService::new(state.llm_manager.clone(), state.file_manager.clone());
 
     let import_request = ImportRequest {
         content: request.content,
@@ -1103,6 +1104,7 @@ pub async fn import_questions_csv(
     request: CsvImportCommandRequest,
     state: State<'_, AppState>,
     app_handle: AppHandle,
+    window: Window,
 ) -> Result<crate::question_import_service::CsvImportResult> {
     use crate::question_import_service::{
         CsvDuplicateStrategy, CsvImportProgress, CsvImportRequest, CsvImportService,
@@ -1112,6 +1114,20 @@ pub async fn import_questions_csv(
         .vfs_db
         .as_ref()
         .ok_or_else(|| AppError::validation("VFS 数据库未初始化"))?;
+
+    let (csv_file_path, cleanup_path) = if unified_file_manager::is_virtual_uri(&request.file_path)
+    {
+        let temp_dir = state
+            .file_manager
+            .get_writable_app_data_dir()
+            .join("temp_csv_import");
+        let materialized =
+            unified_file_manager::ensure_local_path(&window, &request.file_path, &temp_dir)?;
+        let (path, cleanup) = materialized.into_owned();
+        (path.to_string_lossy().to_string(), cleanup.or(Some(path)))
+    } else {
+        (request.file_path.clone(), None)
+    };
 
     // 解析去重策略
     let duplicate_strategy = match request.duplicate_strategy.as_deref() {
@@ -1137,7 +1153,7 @@ pub async fn import_questions_csv(
     };
 
     let csv_request = CsvImportRequest {
-        file_path: request.file_path,
+        file_path: csv_file_path,
         exam_id: request.exam_id,
         field_mapping: request.field_mapping,
         duplicate_strategy,
@@ -1152,6 +1168,16 @@ pub async fn import_questions_csv(
         log::warn!("[csv_import_progress] forwarder join failed: {:?}", err);
     }
 
+    if let Some(cleanup) = cleanup_path {
+        if let Err(err) = std::fs::remove_file(&cleanup) {
+            warn!(
+                "[csv_import] 清理临时 CSV 文件失败 ({}): {}",
+                cleanup.display(),
+                err
+            );
+        }
+    }
+
     result.map_err(|e| e.into())
 }
 
@@ -1162,6 +1188,7 @@ pub async fn import_questions_csv(
 pub async fn export_questions_csv(
     request: CsvExportCommandRequest,
     state: State<'_, AppState>,
+    window: Window,
 ) -> Result<crate::question_export_service::CsvExportResult> {
     use crate::question_export_service::{CsvExportRequest, CsvExportService, ExportEncoding};
 
@@ -1169,6 +1196,24 @@ pub async fn export_questions_csv(
         .vfs_db
         .as_ref()
         .ok_or_else(|| AppError::validation("VFS 数据库未初始化"))?;
+
+    let target_path = request.file_path.clone();
+    let (export_file_path, staged_file_path) = if unified_file_manager::is_virtual_uri(&target_path)
+    {
+        let temp_dir = state
+            .file_manager
+            .get_writable_app_data_dir()
+            .join("temp_csv_export");
+        std::fs::create_dir_all(&temp_dir)
+            .map_err(|e| AppError::file_system(format!("创建 CSV 临时导出目录失败: {}", e)))?;
+        let staged = temp_dir.join(format!("questions_export_{}.csv", Uuid::new_v4()));
+        (
+            staged.to_string_lossy().to_string(),
+            Some(staged.to_string_lossy().to_string()),
+        )
+    } else {
+        (target_path.clone(), None)
+    };
 
     // 解析编码
     let encoding = match request.encoding.as_deref() {
@@ -1179,14 +1224,53 @@ pub async fn export_questions_csv(
 
     let export_request = CsvExportRequest {
         exam_id: request.exam_id,
-        file_path: request.file_path,
+        file_path: export_file_path.clone(),
         fields: request.fields,
         filters: request.filters.unwrap_or_default(),
         include_answers: request.include_answers,
         encoding,
     };
 
-    CsvExportService::export_csv(vfs_db, &export_request).map_err(|e| e.into())
+    let mut result = match CsvExportService::export_csv(vfs_db, &export_request) {
+        Ok(res) => res,
+        Err(err) => {
+            if let Some(staged) = &staged_file_path {
+                if let Err(cleanup_err) = std::fs::remove_file(staged) {
+                    warn!(
+                        "[csv_export] 导出失败后清理临时文件失败 ({}): {}",
+                        staged, cleanup_err
+                    );
+                }
+            }
+            return Err(err.into());
+        }
+    };
+
+    if staged_file_path.is_some() {
+        if let Err(err) = unified_file_manager::copy_file(&window, &export_file_path, &target_path)
+        {
+            if let Some(staged) = &staged_file_path {
+                if let Err(cleanup_err) = std::fs::remove_file(staged) {
+                    warn!(
+                        "[csv_export] 导出失败后清理临时文件失败 ({}): {}",
+                        staged, cleanup_err
+                    );
+                }
+            }
+            return Err(AppError::file_system(format!("写入目标 URI 失败: {}", err)));
+        }
+        if let Some(staged) = &staged_file_path {
+            if let Err(cleanup_err) = std::fs::remove_file(staged) {
+                warn!(
+                    "[csv_export] 清理临时导出文件失败 ({}): {}",
+                    staged, cleanup_err
+                );
+            }
+        }
+        result.file_path = target_path;
+    }
+
+    Ok(result)
 }
 
 /// 预览 CSV 文件前 N 行（用于字段映射）
@@ -1196,11 +1280,38 @@ pub async fn export_questions_csv(
 pub async fn get_csv_preview(
     file_path: String,
     rows: Option<usize>,
+    window: Window,
 ) -> Result<crate::question_import_service::CsvPreviewResult> {
     use crate::question_import_service::CsvImportService;
 
+    let (preview_file_path, cleanup_path) = if unified_file_manager::is_virtual_uri(&file_path) {
+        let temp_dir = window
+            .path()
+            .app_data_dir()
+            .unwrap_or_else(|_| std::env::temp_dir())
+            .join("temp_csv_preview");
+        let materialized = unified_file_manager::ensure_local_path(&window, &file_path, &temp_dir)?;
+        let (path, cleanup) = materialized.into_owned();
+        (path.to_string_lossy().to_string(), cleanup.or(Some(path)))
+    } else {
+        (file_path, None)
+    };
+
     let preview_rows = rows.unwrap_or(5);
-    CsvImportService::preview_csv(&file_path, preview_rows).map_err(|e| e.into())
+    let result =
+        CsvImportService::preview_csv(&preview_file_path, preview_rows).map_err(|e| e.into());
+
+    if let Some(cleanup) = cleanup_path {
+        if let Err(err) = std::fs::remove_file(&cleanup) {
+            warn!(
+                "[csv_preview] 清理临时 CSV 文件失败 ({}): {}",
+                cleanup.display(),
+                err
+            );
+        }
+    }
+
+    result
 }
 
 /// 获取可导出的字段列表
@@ -1551,7 +1662,6 @@ pub async fn test_api_connection(
 // ============================================================================
 // Batch Operations Commands
 // ============================================================================
-
 
 #[derive(Debug, Deserialize)]
 pub struct BatchDeleteRequest {
@@ -4415,15 +4525,8 @@ pub async fn load_webview_settings(state: State<'_, AppState>) -> Result<serde_j
 // ============================================================================
 
 use crate::vfs::repos::{
-    CreateQuestionParams,
-    Question,
-    QuestionBankStats,
-    QuestionFilters,
-    QuestionHistory,
-    QuestionListResult,
-    QuestionSearchFilters,
-    QuestionSearchListResult,
-    UpdateQuestionParams,
+    CreateQuestionParams, Question, QuestionBankStats, QuestionFilters, QuestionHistory,
+    QuestionListResult, QuestionSearchFilters, QuestionSearchListResult, UpdateQuestionParams,
 };
 
 /// 列出题目（分页+筛选）
@@ -5390,7 +5493,9 @@ pub async fn qbank_crop_source_image(
     request: CropSourceImageRequest,
     state: State<'_, AppState>,
 ) -> Result<crate::vfs::repos::QuestionImage> {
-    use crate::vfs::repos::{QuestionImage, UpdateQuestionParams, VfsBlobRepo, VfsFileRepo, VfsQuestionRepo};
+    use crate::vfs::repos::{
+        QuestionImage, UpdateQuestionParams, VfsBlobRepo, VfsFileRepo, VfsQuestionRepo,
+    };
 
     let vfs_db = state
         .vfs_db
@@ -5446,7 +5551,7 @@ pub async fn qbank_crop_source_image(
     let file_name = format!("crop_{}.png", &blob.hash[..8]);
     let vfs_file = VfsFileRepo::create_file(
         vfs_db,
-        &blob.hash,       // sha256（用于去重）
+        &blob.hash,        // sha256（用于去重）
         &file_name,        // file_name
         buf.len() as i64,  // size
         "image",           // file_type

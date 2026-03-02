@@ -6,23 +6,23 @@ use tracing::{debug, error, info, warn};
 
 #[cfg(feature = "data_governance")]
 use super::audit::{AuditLog, AuditOperation};
-use std::time::Instant;
 use super::backup::{
     export_backup_to_zip, AssetBackupConfig, AssetType, BackupManager, BackupSelection,
     TieredAssetConfig, ZipExportOptions,
 };
 use crate::backup_common::log_and_skip_entry_err;
 use crate::backup_job_manager::{
-    BackupJobContext, BackupJobKind, BackupJobManagerState, BackupJobParams,
-    BackupJobPhase, BackupJobResultPayload, BackupJobStatus, BackupJobSummary,
+    BackupJobContext, BackupJobKind, BackupJobManagerState, BackupJobParams, BackupJobPhase,
+    BackupJobResultPayload, BackupJobStatus, BackupJobSummary,
 };
 use crate::utils::text::safe_truncate_chars;
+use std::time::Instant;
 
 #[cfg(feature = "data_governance")]
 use super::commands::try_save_audit_log;
 use super::commands_backup::{
-    get_app_data_dir, get_backup_dir, validate_backup_id, validate_user_path,
-    sanitize_path_for_user, ensure_existing_path_within_backup_dir, acquire_backup_global_permit,
+    acquire_backup_global_permit, ensure_existing_path_within_backup_dir, get_app_data_dir,
+    get_backup_dir, sanitize_path_for_user, validate_backup_id, validate_user_path,
     BackupJobStartResponse,
 };
 
@@ -42,6 +42,13 @@ pub async fn data_governance_backup_and_export_zip(
     include_assets: Option<bool>,
     asset_types: Option<Vec<String>>,
 ) -> Result<BackupJobStartResponse, String> {
+    if crate::unified_file_manager::is_virtual_uri(&output_path) {
+        return Err(
+            "当前 ZIP 导出暂不支持直接写入虚拟 URI（如 content://）。请先导出到本地路径后再分享/复制。"
+                .to_string(),
+        );
+    }
+
     let app_data_dir = get_app_data_dir(&app)?;
     let user_output = PathBuf::from(&output_path);
     validate_user_path(&user_output, &app_data_dir)?;
@@ -405,6 +412,12 @@ pub async fn data_governance_export_zip(
 
     // P0-4: 对用户指定的 output_path 进行安全校验
     if let Some(ref p) = output_path {
+        if crate::unified_file_manager::is_virtual_uri(p) {
+            return Err(
+                "当前 ZIP 导出暂不支持直接写入虚拟 URI（如 content://）。请先导出到本地路径后再分享/复制。"
+                    .to_string(),
+            );
+        }
         let app_data_dir = get_app_data_dir(&app)?;
         let user_output = std::path::PathBuf::from(p);
         validate_user_path(&user_output, &app_data_dir)?;
@@ -1063,32 +1076,34 @@ pub async fn data_governance_import_zip(
     let app_data_dir = get_app_data_dir(&app)?;
 
     // Android content:// 等虚拟 URI 需要先物化到本地临时文件（ZIP 需要随机访问）
-    let (zip_file_path, temp_cleanup_path) = if crate::unified_file_manager::is_virtual_uri(&zip_path) {
-        let temp_dir = app_data_dir.join("temp_zip_import");
-        match crate::unified_file_manager::ensure_local_path(&window, &zip_path, &temp_dir) {
-            Ok(materialized) => {
-                let (path, cleanup) = materialized.into_owned();
-                (path.clone(), cleanup.or(Some(path)))
+    let (zip_file_path, temp_cleanup_path) =
+        if crate::unified_file_manager::is_virtual_uri(&zip_path) {
+            let temp_dir = app_data_dir.join("temp_zip_import");
+            match crate::unified_file_manager::ensure_local_path(&window, &zip_path, &temp_dir) {
+                Ok(materialized) => {
+                    let (path, cleanup) = materialized.into_owned();
+                    (path.clone(), cleanup.or(Some(path)))
+                }
+                Err(e) => {
+                    return Err(format!("无法读取 ZIP 文件: {}", e));
+                }
             }
-            Err(e) => {
-                return Err(format!("无法读取 ZIP 文件: {}", e));
+        } else {
+            let path = PathBuf::from(&zip_path);
+            validate_user_path(&path, &app_data_dir)?;
+            if !path.exists() {
+                return Err(format!(
+                    "ZIP 文件不存在: {}。请确认文件路径正确，或重新选择文件",
+                    sanitize_path_for_user(&path)
+                ));
             }
-        }
-    } else {
-        let path = PathBuf::from(&zip_path);
-        validate_user_path(&path, &app_data_dir)?;
-        if !path.exists() {
-            return Err(format!(
-                "ZIP 文件不存在: {}。请确认文件路径正确，或重新选择文件",
-                sanitize_path_for_user(&path)
-            ));
-        }
-        (path, None)
-    };
+            (path, None)
+        };
 
     info!(
         "[data_governance] 启动后台 ZIP 导入任务: zip_path={}, backup_id={:?}",
-        zip_file_path.display(), validated_backup_id
+        zip_file_path.display(),
+        validated_backup_id
     );
 
     // 使用全局单例备份任务管理器
@@ -1126,9 +1141,16 @@ pub async fn data_governance_import_zip(
         // 清理从 content:// 物化的临时 ZIP 文件
         if let Some(temp_path) = temp_cleanup_path {
             if let Err(e) = std::fs::remove_file(&temp_path) {
-                tracing::warn!("[data_governance] 临时 ZIP 文件清理失败: {} ({})", temp_path.display(), e);
+                tracing::warn!(
+                    "[data_governance] 临时 ZIP 文件清理失败: {} ({})",
+                    temp_path.display(),
+                    e
+                );
             } else {
-                tracing::info!("[data_governance] 已清理临时 ZIP 文件: {}", temp_path.display());
+                tracing::info!(
+                    "[data_governance] 已清理临时 ZIP 文件: {}",
+                    temp_path.display()
+                );
             }
         }
     });
@@ -1376,4 +1398,3 @@ async fn execute_zip_import_with_progress(
         }
     }
 }
-

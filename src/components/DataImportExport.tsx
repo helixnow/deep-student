@@ -3,7 +3,7 @@ import { showGlobalNotification } from './UnifiedNotification';
 import { getErrorMessage } from '../utils/errorUtils';
 import { TauriAPI, BackupTier } from '../utils/tauriApi';
 import { DataGovernanceApi } from '../api/dataGovernance';
-import { fileManager } from '../utils/fileManager';
+import { fileManager, extractFileName } from '../utils/fileManager';
 import { invoke } from '@tauri-apps/api/core';
 import { useTranslation } from 'react-i18next';
 import { CustomScrollArea } from './custom-scroll-area';
@@ -820,6 +820,7 @@ ${resolvedPath}`);
    */
   const handleImportZipBackup = async () => {
     setIsExporting(true);
+    let maintenanceModeEntered = false;
     try {
       const zipPath = await fileManager.pickSingleFile({
         title: t('data:dialogs.select_zip_title'),
@@ -830,20 +831,29 @@ ${resolvedPath}`);
         return;
       }
 
-      enterMaintenanceMode(t('data:governance.maintenance_import'));
-
       const isLikelyZipPath = (candidate: string) => {
         if (!candidate) return false;
-        const lower = candidate.toLowerCase();
+        const trimmed = candidate.trim();
+        if (!trimmed) return false;
+
+        const lower = trimmed.toLowerCase();
         if (lower.endsWith('.zip')) {
+          return true;
+        }
+        const extractedName = extractFileName(trimmed).toLowerCase();
+        if (extractedName.endsWith('.zip')) {
           return true;
         }
         if (lower.startsWith('content://') || lower.startsWith('file://') || lower.startsWith('ph://')) {
           return true;
         }
         try {
-          const parsed = new URL(candidate);
-          const name = parsed.searchParams.get('fileName') || parsed.searchParams.get('name');
+          const parsed = new URL(trimmed);
+          const name =
+            parsed.searchParams.get('fileName') ||
+            parsed.searchParams.get('filename') ||
+            parsed.searchParams.get('name') ||
+            parsed.searchParams.get('displayName');
           if (name && name.toLowerCase().endsWith('.zip')) {
             return true;
           }
@@ -855,7 +865,11 @@ ${resolvedPath}`);
 
       if (!isLikelyZipPath(zipPath)) {
         showGlobalNotification('warning', t('data:dialogs.invalid_zip'));
+        return;
       }
+
+      enterMaintenanceMode(t('data:governance.maintenance_import'));
+      maintenanceModeEntered = true;
 
       const importJob = await DataGovernanceApi.importZip(zipPath);
       const importResult = await waitForJobTerminal(importJob.job_id, 'import');
@@ -878,7 +892,9 @@ ${resolvedPath}`);
     } finally {
       setIsExporting(false);
       setRestoreProgress(null);
-      exitMaintenanceMode();
+      if (maintenanceModeEntered) {
+        exitMaintenanceMode();
+      }
     }
   };
 

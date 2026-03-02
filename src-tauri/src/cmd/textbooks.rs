@@ -89,7 +89,12 @@ pub async fn textbooks_add(
             progress,
             error,
         };
-        let _ = window.emit("textbook-import-progress", &payload);
+        if let Err(err) = window.emit("textbook-import-progress", &payload) {
+            warn!(
+                "[Textbooks] 发送 textbook-import-progress 事件失败: file={}, stage={}, err={}",
+                file_name, stage, err
+            );
+        }
     };
 
     let mut out: Vec<TextbookDto> = Vec::new();
@@ -100,8 +105,7 @@ pub async fn textbooks_add(
         // Layer 1: URI 路径提取（适用于 ExternalStorage / raw: 路径）
         // Layer 2: Magic bytes 检测（适用于 Media Provider / Downloads 等不透明 ID）
         // Layer 3: 无法识别 → 跳过并记录原因
-        let (resolved_name, resolved_ext) =
-            unified_file_manager::resolve_file_info(&window, src);
+        let (resolved_name, resolved_ext) = unified_file_manager::resolve_file_info(&window, src);
         let display_name = resolved_name.as_str();
 
         info!(
@@ -278,7 +282,12 @@ pub async fn textbooks_add(
                     progress: render_progress.min(85),
                     error: None,
                 };
-                let _ = window_clone.emit("textbook-import-progress", &payload);
+                if let Err(err) = window_clone.emit("textbook-import-progress", &payload) {
+                    warn!(
+                        "[Textbooks] 发送渲染进度事件失败: file={}, page={}/{}, err={}",
+                        file_name_clone, current_page, total_pages, err
+                    );
+                }
             };
 
             match render_pdf_preview_with_progress(
@@ -340,7 +349,13 @@ pub async fn textbooks_add(
                         0,
                         Some(format!("文档解析失败: {}", e)),
                     );
-                    let _ = std::fs::remove_file(&dest_path);
+                    if let Err(err) = std::fs::remove_file(&dest_path) {
+                        warn!(
+                            "[Textbooks] 文档解析失败后清理文件失败 ({}): {}",
+                            dest_path.display(),
+                            err
+                        );
+                    }
                     skipped_reasons.push(format!("{}: 文档解析失败 ({})", display_name, e));
                     continue;
                 }
@@ -436,8 +451,18 @@ pub async fn textbooks_add(
                 "type": "created",
                 "path": dstu_path,
             });
-            let _ = window.emit(&format!("dstu:change:{}", dstu_path), &watch_event);
-            let _ = window.emit("dstu:change", &watch_event);
+            if let Err(err) = window.emit(&format!("dstu:change:{}", dstu_path), &watch_event) {
+                warn!(
+                    "[Textbooks] 发送 dstu:change(路径) 事件失败: textbook_id={}, err={}",
+                    tb.id, err
+                );
+            }
+            if let Err(err) = window.emit("dstu:change", &watch_event) {
+                warn!(
+                    "[Textbooks] 发送 dstu:change 事件失败: textbook_id={}, err={}",
+                    tb.id, err
+                );
+            }
             info!(
                 "[Textbooks] Emitted dstu:change (created) for textbook: {}",
                 tb.id
@@ -452,19 +477,8 @@ pub async fn textbooks_add(
     // ★ Android 修复：当所有文件都被跳过时，通过 progress 事件发送汇总原因
     if out.is_empty() && !skipped_reasons.is_empty() {
         let summary = skipped_reasons.join("; ");
-        info!(
-            "[Textbooks] All files skipped. Reasons: {}",
-            summary
-        );
-        emit_progress(
-            &window,
-            "",
-            "error",
-            None,
-            None,
-            0,
-            Some(summary),
-        );
+        info!("[Textbooks] All files skipped. Reasons: {}", summary);
+        emit_progress(&window, "", "error", None, None, 0, Some(summary));
     }
 
     Ok(out)
@@ -559,8 +573,18 @@ pub async fn textbooks_adopt(
                 "type": "created",
                 "path": dstu_path,
             });
-            let _ = window.emit(&format!("dstu:change:{}", dstu_path), &watch_event);
-            let _ = window.emit("dstu:change", &watch_event);
+            if let Err(err) = window.emit(&format!("dstu:change:{}", dstu_path), &watch_event) {
+                warn!(
+                    "[Textbooks] 发送 dstu:change(路径) 事件失败: textbook_id={}, err={}",
+                    tb.id, err
+                );
+            }
+            if let Err(err) = window.emit("dstu:change", &watch_event) {
+                warn!(
+                    "[Textbooks] 发送 dstu:change 事件失败: textbook_id={}, err={}",
+                    tb.id, err
+                );
+            }
         }
 
         out.push(tb.to_textbook());
@@ -614,7 +638,7 @@ pub async fn textbooks_purge_trash(
                 }
                 if std::path::Path::new(path).exists() {
                     if let Err(e) = std::fs::remove_file(path) {
-                        eprintln!("⚠️ 删除文件失败: {} ({})", path, e);
+                        warn!("[Textbooks] 删除文件失败: {} ({})", path, e);
                     } else {
                         deleted_files.push(path.clone());
                     }
@@ -650,7 +674,13 @@ pub async fn textbooks_delete_permanent(
                 if !unified_file_manager::is_virtual_uri(path) {
                     let p = std::path::Path::new(path);
                     if p.exists() {
-                        let _ = std::fs::remove_file(p);
+                        if let Err(err) = std::fs::remove_file(p) {
+                            warn!(
+                                "[Textbooks] 永久删除教材时清理文件失败: {} ({})",
+                                p.display(),
+                                err
+                            );
+                        }
                     }
                 }
             }

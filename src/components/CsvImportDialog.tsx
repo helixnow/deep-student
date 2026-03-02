@@ -105,6 +105,35 @@ type StepKey = typeof STEPS[number]['key'];
 // 去重策略选项 (titles/descriptions resolved via i18n at render time)
 const DUPLICATE_STRATEGY_KEYS: DuplicateStrategy[] = ['skip', 'overwrite', 'merge'];
 
+const isLikelyCsvPath = (candidate: string): boolean => {
+  if (!candidate) return false;
+  const trimmed = candidate.trim();
+  if (!trimmed) return false;
+
+  const lower = trimmed.toLowerCase();
+  if (lower.endsWith('.csv')) return true;
+
+  // Android/iOS 虚拟 URI（如 content://）常不带后缀，允许后端继续识别
+  if (lower.startsWith('content://') || lower.startsWith('file://') || lower.startsWith('ph://')) {
+    return true;
+  }
+
+  const extractedName = extractFileName(trimmed).toLowerCase();
+  if (extractedName.endsWith('.csv')) return true;
+
+  try {
+    const parsed = new URL(trimmed);
+    const hintedName =
+      parsed.searchParams.get('fileName') ||
+      parsed.searchParams.get('filename') ||
+      parsed.searchParams.get('name') ||
+      parsed.searchParams.get('displayName');
+    return Boolean(hintedName && hintedName.toLowerCase().endsWith('.csv'));
+  } catch {
+    return false;
+  }
+};
+
 export const CsvImportDialog: React.FC<CsvImportDialogProps> = ({
   open,
   onOpenChange,
@@ -240,8 +269,7 @@ export const CsvImportDialog: React.FC<CsvImportDialogProps> = ({
       });
       
       if (filePath) {
-        // 验证文件扩展名
-        if (!filePath.toLowerCase().endsWith('.csv')) {
+        if (!isLikelyCsvPath(filePath)) {
           showGlobalNotification('warning', t('exam_sheet:csv.invalid_file_type', '请选择 CSV 格式的文件'));
           return;
         }
@@ -257,8 +285,7 @@ export const CsvImportDialog: React.FC<CsvImportDialogProps> = ({
   const handlePathsDropped = useCallback(async (paths: string[]) => {
     if (paths.length === 0) return;
     const filePath = paths[0];
-    // 验证文件扩展名
-    if (!filePath.toLowerCase().endsWith('.csv')) {
+    if (!isLikelyCsvPath(filePath)) {
       showGlobalNotification('warning', t('exam_sheet:csv.invalid_file_type', '请选择 CSV 格式的文件'));
       return;
     }

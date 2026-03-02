@@ -86,6 +86,9 @@ export const PDFPreview: React.FC<PDFPreviewProps> = ({
     return estimateBase64Size(dataUrlBase64) > LARGE_FILE_THRESHOLD;
   }, [dataUrlBase64]);
   const fileTooLarge = typeof fileSize === 'number' && fileSize > LARGE_FILE_THRESHOLD;
+  const openTargetPath = normalizedFilePath || filePath || '';
+  const isInlineOnlyTarget =
+    openTargetPath.startsWith('asset://') || openTargetPath.startsWith('data:');
 
   const pdfBytes = useMemo(() => {
     if (!inlineOpen || !cleanedBase64 || pdfUrl || base64TooLarge) return null;
@@ -102,6 +105,12 @@ export const PDFPreview: React.FC<PDFPreviewProps> = ({
     }
   }, [inlineOpen, cleanedBase64, pdfUrl, base64TooLarge]);
 
+  const canInlinePreview = pdfUrl
+    ? !dataUrlTooLarge
+    : !!cleanedBase64 && !base64TooLarge;
+  const canOpenSystem = Boolean(openTargetPath) && !isInlineOnlyTarget;
+  const showActionButtons = canInlinePreview || canOpenSystem;
+
   /**
    * 打开 PDF 文件（使用系统默认应用或跳转到教材页面）
    */
@@ -113,7 +122,14 @@ export const PDFPreview: React.FC<PDFPreviewProps> = ({
 
     try {
       const targetPath = normalizedFilePath || filePath;
-      if (targetPath.startsWith('http') || targetPath.startsWith('asset://') || targetPath.startsWith('data:')) {
+      if (targetPath.startsWith('asset://') || targetPath.startsWith('data:')) {
+        if (canInlinePreview) {
+          setInlineOpen(true);
+          return;
+        }
+        throw new Error(t('notes:previewPanel.pdf.tooLarge'));
+      }
+      if (targetPath.startsWith('http')) {
         openUrl(targetPath);
       } else {
         // 使用 Tauri opener 插件打开文件（系统默认应用）
@@ -126,13 +142,7 @@ export const PDFPreview: React.FC<PDFPreviewProps> = ({
     } finally {
       setOpening(false);
     }
-  }, [filePath, normalizedFilePath]);
-
-  const canInlinePreview = pdfUrl
-    ? !dataUrlTooLarge
-    : !!cleanedBase64 && !base64TooLarge;
-  const canOpenSystem = Boolean(normalizedFilePath || filePath);
-  const showActionButtons = canInlinePreview || canOpenSystem;
+  }, [filePath, normalizedFilePath, canInlinePreview, t]);
 
   // 加载状态
   if (loading) {

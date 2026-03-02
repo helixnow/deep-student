@@ -3,24 +3,24 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::Instant;
-use tauri::Manager;
+use tauri::{Manager, Window};
 use tracing::{debug, error, info, warn};
 
 #[cfg(feature = "data_governance")]
 use super::audit::{AuditLog, AuditOperation};
 use super::schema_registry::DatabaseId;
 use super::sync::{
-    ChangeLogEntry, DatabaseSyncState, MergeStrategy, PendingChanges, SyncChangeWithData, SyncDirection,
-    SyncExecutionResult, SyncManager, SyncManifest,
+    ChangeLogEntry, DatabaseSyncState, MergeStrategy, PendingChanges, SyncChangeWithData,
+    SyncDirection, SyncExecutionResult, SyncManager, SyncManifest,
 };
 use crate::backup_common::BACKUP_GLOBAL_LIMITER;
 use crate::cloud_storage::{create_storage, CloudStorage, CloudStorageConfig};
 
 use super::commands::{check_maintenance_mode, try_save_audit_log, SYNC_LOCK_TIMEOUT_SECS};
 use super::commands_backup::{
-    get_app_data_dir, get_active_data_dir, resolve_database_path,
-    validate_user_path, apply_downloaded_changes_to_databases, validate_backup_id,
-    ApplyToDbsResult, build_id_column_map,
+    apply_downloaded_changes_to_databases, build_id_column_map, get_active_data_dir,
+    get_app_data_dir, resolve_database_path, validate_backup_id, validate_user_path,
+    ApplyToDbsResult,
 };
 
 /// 便捷函数：获取各表主键列名映射（questions → exam_id 等）
@@ -687,8 +687,12 @@ pub async fn data_governance_run_sync(
             .map_err(|e| format!("获取数据库 {} 待同步变更失败: {}", db_id.as_str(), e))?;
 
         if pending.has_changes() {
-            let mut enriched = SyncManager::enrich_changes_with_data(&conn, &pending.entries, Some(&id_column_map()))
-                .map_err(|e| format!("补全数据库 {} 变更数据失败: {}", db_id.as_str(), e))?;
+            let mut enriched = SyncManager::enrich_changes_with_data(
+                &conn,
+                &pending.entries,
+                Some(&id_column_map()),
+            )
+            .map_err(|e| format!("补全数据库 {} 变更数据失败: {}", db_id.as_str(), e))?;
 
             // 为每条变更标注来源数据库名称，下载回放时按库路由
             for change in &mut enriched {
@@ -753,7 +757,9 @@ pub async fn data_governance_run_sync(
                     let db_path = resolve_database_path(&db_id, &active_dir);
                     if db_path.exists() {
                         if let Ok(conn) = rusqlite::Connection::open(&db_path) {
-                            if let Ok(state) = SyncManager::get_database_sync_state(&conn, db_id.as_str()) {
+                            if let Ok(state) =
+                                SyncManager::get_database_sync_state(&conn, db_id.as_str())
+                            {
                                 dbs.insert(db_id.as_str().to_string(), state);
                             }
                         }
@@ -853,7 +859,9 @@ pub async fn data_governance_run_sync(
                 let before = all_enriched.len();
                 let filtered: Vec<_> = all_enriched
                     .iter()
-                    .filter(|e| !applied_keys.contains(&(e.table_name.clone(), e.record_id.clone())))
+                    .filter(|e| {
+                        !applied_keys.contains(&(e.table_name.clone(), e.record_id.clone()))
+                    })
                     .collect();
                 let removed = before - filtered.len();
                 if removed > 0 {
@@ -870,7 +878,8 @@ pub async fn data_governance_run_sync(
 
             // 上传过滤后的变更（唯一上传点，避免重复）
             if !filtered_enriched.is_empty() {
-                let refs_vec: Vec<SyncChangeWithData> = filtered_enriched.iter().map(|e| (*e).clone()).collect();
+                let refs_vec: Vec<SyncChangeWithData> =
+                    filtered_enriched.iter().map(|e| (*e).clone()).collect();
                 manager
                     .upload_enriched_changes(storage.as_ref(), &refs_vec, None)
                     .await
@@ -911,7 +920,9 @@ pub async fn data_governance_run_sync(
                     let db_path = resolve_database_path(&db_id, &active_dir);
                     if db_path.exists() {
                         if let Ok(conn) = rusqlite::Connection::open(&db_path) {
-                            if let Ok(state) = SyncManager::get_database_sync_state(&conn, db_id.as_str()) {
+                            if let Ok(state) =
+                                SyncManager::get_database_sync_state(&conn, db_id.as_str())
+                            {
                                 dbs.insert(db_id.as_str().to_string(), state);
                             }
                         }
@@ -943,7 +954,10 @@ pub async fn data_governance_run_sync(
             };
 
             let blobs_dir = app_data_dir.join("vfs_blobs");
-            if let Err(e) = manager.sync_workspace_databases(storage.as_ref(), &active_dir).await {
+            if let Err(e) = manager
+                .sync_workspace_databases(storage.as_ref(), &active_dir)
+                .await
+            {
                 warn!("[data_governance] 工作区数据库同步失败（非致命）: {}", e);
             }
             match manager.sync_vfs_blobs(storage.as_ref(), &blobs_dir).await {
@@ -963,8 +977,10 @@ pub async fn data_governance_run_sync(
                     );
                 }
             }
-            if matches!(exec_result.direction, SyncDirection::Upload | SyncDirection::Bidirectional)
-            {
+            if matches!(
+                exec_result.direction,
+                SyncDirection::Upload | SyncDirection::Bidirectional
+            ) {
                 if let Err(e) = manager.prune_old_changes(storage.as_ref(), 30).await {
                     warn!("[data_governance] 云端变更文件清理失败（非致命）: {}", e);
                 }
@@ -1098,6 +1114,19 @@ pub struct SyncExecutionResponse {
     pub skipped_changes: usize,
 }
 
+fn cleanup_temp_sync_file(path: Option<&PathBuf>, context: &str) {
+    if let Some(temp_path) = path {
+        if let Err(err) = std::fs::remove_file(&temp_path) {
+            warn!(
+                "[data_governance] {}: 清理临时文件失败 ({}): {}",
+                context,
+                temp_path.display(),
+                err
+            );
+        }
+    }
+}
+
 /// 导出同步数据到本地文件
 ///
 /// 将同步清单和变更数据导出为 JSON 文件，用于手动同步或调试。
@@ -1111,6 +1140,7 @@ pub struct SyncExecutionResponse {
 #[tauri::command]
 pub async fn data_governance_export_sync_data(
     app: tauri::AppHandle,
+    window: Window,
     output_path: Option<String>,
 ) -> Result<SyncExportResponse, String> {
     info!("[data_governance] 导出同步数据");
@@ -1141,7 +1171,11 @@ pub async fn data_governance_export_sync_data(
                 // 获取待同步变更并补全完整数据
                 if let Ok(pending) = SyncManager::get_pending_changes(&conn, None, None) {
                     if pending.has_changes() {
-                        match SyncManager::enrich_changes_with_data(&conn, &pending.entries, Some(&id_column_map())) {
+                        match SyncManager::enrich_changes_with_data(
+                            &conn,
+                            &pending.entries,
+                            Some(&id_column_map()),
+                        ) {
                             Ok(mut enriched) => {
                                 for change in &mut enriched {
                                     change.database_name = Some(db_id.as_str().to_string());
@@ -1175,8 +1209,16 @@ pub async fn data_governance_export_sync_data(
     let json = serde_json::to_string_pretty(&export_data)
         .map_err(|e| format!("序列化导出数据失败: {}", e))?;
 
-    // 确定输出路径
+    // 确定输出路径（虚拟 URI 先导出到本地临时文件，再复制到目标 URI）
+    let mut target_virtual_uri: Option<String> = None;
     let output = match output_path {
+        Some(p) if crate::unified_file_manager::is_virtual_uri(&p) => {
+            let temp_dir = app_data_dir.join("temp_sync_export");
+            std::fs::create_dir_all(&temp_dir)
+                .map_err(|e| format!("创建同步临时导出目录失败: {}", e))?;
+            target_virtual_uri = Some(p);
+            temp_dir.join(format!("sync_export_{}.json", uuid::Uuid::new_v4()))
+        }
         Some(p) => {
             let user_path = std::path::PathBuf::from(&p);
             validate_user_path(&user_path, &app_data_dir)?;
@@ -1190,18 +1232,29 @@ pub async fn data_governance_export_sync_data(
         std::fs::create_dir_all(parent).map_err(|e| format!("创建目录失败: {}", e))?;
     }
 
-    // 写入文件
+    // 写入文件（本地）
     std::fs::write(&output, &json).map_err(|e| format!("写入文件失败: {}", e))?;
+
+    let mut final_output_path = output.to_string_lossy().to_string();
+    if let Some(target_uri) = target_virtual_uri {
+        let staged = output.to_string_lossy().to_string();
+        if let Err(err) = crate::unified_file_manager::copy_file(&window, &staged, &target_uri) {
+            cleanup_temp_sync_file(Some(&output), "sync_export");
+            return Err(format!("写入目标 URI 失败: {}", err));
+        }
+        cleanup_temp_sync_file(Some(&output), "sync_export");
+        final_output_path = target_uri;
+    }
 
     info!(
         "[data_governance] 同步数据已导出: path={}, changes={}",
-        output.display(),
+        final_output_path,
         all_enriched_changes.len()
     );
 
     Ok(SyncExportResponse {
         success: true,
-        output_path: output.to_string_lossy().to_string(),
+        output_path: final_output_path,
         manifest_databases: export_data.manifest.databases.len(),
         pending_changes_count: all_enriched_changes.len(),
     })
@@ -1245,6 +1298,7 @@ pub struct SyncExportResponse {
 #[tauri::command]
 pub async fn data_governance_import_sync_data(
     app: tauri::AppHandle,
+    window: Window,
     input_path: String,
     strategy: Option<String>,
 ) -> Result<SyncImportResponse, String> {
@@ -1253,16 +1307,39 @@ pub async fn data_governance_import_sync_data(
     let app_data_dir = get_app_data_dir(&app)?;
     let active_dir = get_active_data_dir(&app)?;
 
-    // 验证输入路径在安全范围内
-    let input_file = std::path::PathBuf::from(&input_path);
-    validate_user_path(&input_file, &app_data_dir)?;
+    let (input_file_path, cleanup_path) =
+        if crate::unified_file_manager::is_virtual_uri(&input_path) {
+            let temp_dir = app_data_dir.join("temp_sync_import");
+            let materialized =
+                crate::unified_file_manager::ensure_local_path(&window, &input_path, &temp_dir)
+                    .map_err(|e| format!("无法读取导入文件: {}", e))?;
+            let (path, cleanup) = materialized.into_owned();
+            (path.clone(), cleanup.or(Some(path)))
+        } else {
+            let input_file = std::path::PathBuf::from(&input_path);
+            validate_user_path(&input_file, &app_data_dir)?;
+            (input_file, None)
+        };
 
     // 读取文件
-    let json = std::fs::read_to_string(&input_path).map_err(|e| format!("读取文件失败: {}", e))?;
+    let json =
+        std::fs::read_to_string(&input_file_path).map_err(|e| format!("读取文件失败: {}", e));
+    let json = match json {
+        Ok(v) => v,
+        Err(e) => {
+            cleanup_temp_sync_file(cleanup_path.as_ref(), "sync_import");
+            return Err(e);
+        }
+    };
 
     // 解析（v2 格式含完整数据）
-    let import_data: SyncExportData =
-        serde_json::from_str(&json).map_err(|e| format!("解析导入数据失败: {}", e))?;
+    let import_data: SyncExportData = match serde_json::from_str(&json) {
+        Ok(data) => data,
+        Err(err) => {
+            cleanup_temp_sync_file(cleanup_path.as_ref(), "sync_import");
+            return Err(format!("解析导入数据失败: {}", err));
+        }
+    };
 
     // 创建同步管理器
     let device_id = get_device_id(&app);
@@ -1286,8 +1363,13 @@ pub async fn data_governance_import_sync_data(
     let local_manifest = manager.create_manifest(local_databases);
 
     // 检测冲突
-    let detection = SyncManager::detect_conflicts(&local_manifest, &import_data.manifest)
-        .map_err(|e| format!("冲突检测失败: {}", e))?;
+    let detection = match SyncManager::detect_conflicts(&local_manifest, &import_data.manifest) {
+        Ok(d) => d,
+        Err(err) => {
+            cleanup_temp_sync_file(cleanup_path.as_ref(), "sync_import");
+            return Err(format!("冲突检测失败: {}", err));
+        }
+    };
 
     // 解析合并策略
     let merge_strategy = match strategy.as_deref().unwrap_or("keep_latest") {
@@ -1296,16 +1378,17 @@ pub async fn data_governance_import_sync_data(
         "keep_latest" => MergeStrategy::KeepLatest,
         "manual" => MergeStrategy::Manual,
         s => {
+            cleanup_temp_sync_file(cleanup_path.as_ref(), "sync_import");
             return Err(format!(
                 "无效的合并策略: {}。可选值: keep_local, use_cloud, keep_latest, manual",
                 s
-            ))
+            ));
         }
     };
 
     // 如果有冲突且是手动模式
     if detection.has_conflicts && merge_strategy == MergeStrategy::Manual {
-        return Ok(SyncImportResponse {
+        let response = SyncImportResponse {
             success: false,
             imported_changes: 0,
             conflicts_detected: detection.total_conflicts(),
@@ -1313,7 +1396,9 @@ pub async fn data_governance_import_sync_data(
             error_message: Some(
                 "存在冲突，需要手动解决。请前往「同步」面板选择合适的解决策略".to_string(),
             ),
-        });
+        };
+        cleanup_temp_sync_file(cleanup_path.as_ref(), "sync_import");
+        return Ok(response);
     }
 
     // 应用变更到本地数据库（v2 格式已含完整数据，按数据库路由）
@@ -1339,6 +1424,7 @@ pub async fn data_governance_import_sync_data(
             }
             Err(e) => {
                 error!("[data_governance] 应用导入变更失败: {}", e);
+                cleanup_temp_sync_file(cleanup_path.as_ref(), "sync_import");
                 return Err(format!(
                     "应用导入变更失败: {}。请检查导入文件完整性后重试",
                     e
@@ -1365,13 +1451,15 @@ pub async fn data_governance_import_sync_data(
         None
     };
 
-    Ok(SyncImportResponse {
+    let response = SyncImportResponse {
         success: total_failed == 0,
         imported_changes: total_applied,
         conflicts_detected: detection.total_conflicts(),
         needs_manual_resolution: false,
         error_message,
-    })
+    };
+    cleanup_temp_sync_file(cleanup_path.as_ref(), "sync_import");
+    Ok(response)
 }
 
 /// 同步导入响应
@@ -1626,7 +1714,11 @@ pub async fn data_governance_run_sync_with_progress(
 
         match SyncManager::get_pending_changes(&conn, None, None) {
             Ok(pending) if pending.has_changes() => {
-                match SyncManager::enrich_changes_with_data(&conn, &pending.entries, Some(&id_column_map())) {
+                match SyncManager::enrich_changes_with_data(
+                    &conn,
+                    &pending.entries,
+                    Some(&id_column_map()),
+                ) {
                     Ok(mut enriched) => {
                         for change in &mut enriched {
                             change.database_name = Some(db_id.as_str().to_string());
@@ -1865,35 +1957,36 @@ async fn execute_upload_with_progress_v2(
     {
         let emitter_cb = emitter.clone();
         let last_emit_ms = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
-        let byte_progress_cb: Box<dyn Fn(u64, u64) + Send + Sync> = Box::new(move |done, total_bytes| {
-            let is_final = total_bytes > 0 && done >= total_bytes;
-            if !is_final {
-                let now_ms = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .map(|d| d.as_millis() as u64)
-                    .unwrap_or(0);
-                let last = last_emit_ms.load(std::sync::atomic::Ordering::Relaxed);
-                if now_ms.saturating_sub(last) < 100 {
-                    return;
+        let byte_progress_cb: Box<dyn Fn(u64, u64) + Send + Sync> =
+            Box::new(move |done, total_bytes| {
+                let is_final = total_bytes > 0 && done >= total_bytes;
+                if !is_final {
+                    let now_ms = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map(|d| d.as_millis() as u64)
+                        .unwrap_or(0);
+                    let last = last_emit_ms.load(std::sync::atomic::Ordering::Relaxed);
+                    if now_ms.saturating_sub(last) < 100 {
+                        return;
+                    }
+                    last_emit_ms.store(now_ms, std::sync::atomic::Ordering::Relaxed);
                 }
-                last_emit_ms.store(now_ms, std::sync::atomic::Ordering::Relaxed);
-            }
-            let pct = if total_bytes > 0 {
-                10.0_f32 + (done as f32 / total_bytes as f32) * 40.0
-            } else {
-                10.0
-            };
-            emitter_cb.emit_force_sync(SyncProgress {
-                phase: SyncPhase::Uploading,
-                percent: pct,
-                current: done,
-                total: total_bytes,
-                current_item: None,
-                speed_bytes_per_sec: None,
-                eta_seconds: None,
-                error: None,
+                let pct = if total_bytes > 0 {
+                    10.0_f32 + (done as f32 / total_bytes as f32) * 40.0
+                } else {
+                    10.0
+                };
+                emitter_cb.emit_force_sync(SyncProgress {
+                    phase: SyncPhase::Uploading,
+                    percent: pct,
+                    current: done,
+                    total: total_bytes,
+                    current_item: None,
+                    speed_bytes_per_sec: None,
+                    eta_seconds: None,
+                    error: None,
+                });
             });
-        });
         manager
             .upload_enriched_changes(storage, enriched, Some(byte_progress_cb))
             .await
@@ -2149,38 +2242,40 @@ async fn execute_bidirectional_with_progress_v2(
         // 字节级进度回调——通过流式 PUT 实时上报已传输字节数（节流 100ms）
         let emitter_cb = emitter.clone();
         let last_emit_ms = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
-        let byte_progress_cb: Box<dyn Fn(u64, u64) + Send + Sync> = Box::new(move |done, total_bytes| {
-            let is_final = total_bytes > 0 && done >= total_bytes;
-            if !is_final {
-                let now_ms = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .map(|d| d.as_millis() as u64)
-                    .unwrap_or(0);
-                let last = last_emit_ms.load(std::sync::atomic::Ordering::Relaxed);
-                if now_ms.saturating_sub(last) < 100 {
-                    return;
+        let byte_progress_cb: Box<dyn Fn(u64, u64) + Send + Sync> =
+            Box::new(move |done, total_bytes| {
+                let is_final = total_bytes > 0 && done >= total_bytes;
+                if !is_final {
+                    let now_ms = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map(|d| d.as_millis() as u64)
+                        .unwrap_or(0);
+                    let last = last_emit_ms.load(std::sync::atomic::Ordering::Relaxed);
+                    if now_ms.saturating_sub(last) < 100 {
+                        return;
+                    }
+                    last_emit_ms.store(now_ms, std::sync::atomic::Ordering::Relaxed);
                 }
-                last_emit_ms.store(now_ms, std::sync::atomic::Ordering::Relaxed);
-            }
-            let pct = if total_bytes > 0 {
-                10.0_f32 + (done as f32 / total_bytes as f32) * 40.0
-            } else {
-                10.0
-            };
-            emitter_cb.emit_force_sync(SyncProgress {
-                phase: SyncPhase::Uploading,
-                percent: pct,
-                current: done,
-                total: total_bytes,
-                current_item: None,
-                speed_bytes_per_sec: None,
-                eta_seconds: None,
-                error: None,
+                let pct = if total_bytes > 0 {
+                    10.0_f32 + (done as f32 / total_bytes as f32) * 40.0
+                } else {
+                    10.0
+                };
+                emitter_cb.emit_force_sync(SyncProgress {
+                    phase: SyncPhase::Uploading,
+                    percent: pct,
+                    current: done,
+                    total: total_bytes,
+                    current_item: None,
+                    speed_bytes_per_sec: None,
+                    eta_seconds: None,
+                    error: None,
+                });
             });
-        });
 
         // 收集引用为 owned slice 以满足 upload_enriched_changes 签名
-        let refs_vec: Vec<SyncChangeWithData> = filtered_enriched.iter().map(|e| (*e).clone()).collect();
+        let refs_vec: Vec<SyncChangeWithData> =
+            filtered_enriched.iter().map(|e| (*e).clone()).collect();
         manager
             .upload_enriched_changes(storage, &refs_vec, Some(byte_progress_cb))
             .await
@@ -2279,4 +2374,3 @@ async fn execute_bidirectional_with_progress_v2(
 
     Ok((exec_result, total_skipped))
 }
-

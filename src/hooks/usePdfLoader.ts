@@ -10,7 +10,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { base64ToFile, isLargeBase64, estimateBase64Size } from '@/utils/base64FileUtils';
+import { base64ToFile, estimateBase64Size, LARGE_FILE_THRESHOLD } from '@/utils/base64FileUtils';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import i18n from '@/i18n';
 
@@ -19,6 +19,19 @@ const pdfCache = new Map<string, File>();
 const MAX_CACHE_SIZE = 5; // 最多缓存 5 个文件
 let pdfCacheTotalSize = 0;
 const MAX_CACHE_BYTES = 100 * 1024 * 1024; // 100MB total limit
+const LARGE_FILE_HINT_THRESHOLD = 10 * 1024 * 1024;
+
+const formatBytes = (bytes: number): string => {
+  if (!Number.isFinite(bytes) || bytes <= 0) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  let size = bytes;
+  let unitIndex = 0;
+  while (size >= 1024 && unitIndex < units.length - 1) {
+    size /= 1024;
+    unitIndex += 1;
+  }
+  return `${size.toFixed(unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
+};
 
 /**
  * 清理缓存（LRU 策略 + 内存大小限制）
@@ -119,7 +132,7 @@ export function usePdfLoader({
       setLoading(false);
       setError(null);
       setFileSize(cached.size);
-      setIsLargeFile(cached.size > 10 * 1024 * 1024);
+      setIsLargeFile(cached.size > LARGE_FILE_HINT_THRESHOLD);
       return;
     }
     
@@ -154,10 +167,20 @@ export function usePdfLoader({
         // 检查是否为大文件
         const estimatedSize = estimateBase64Size(result.content);
         setFileSize(estimatedSize);
-        
-        if (isLargeBase64(result.content)) {
-          setIsLargeFile(true);
+        const isLarge = estimatedSize > LARGE_FILE_HINT_THRESHOLD;
+        setIsLargeFile(isLarge);
+
+        if (isLarge) {
           debugLog.warn('[usePdfLoader] Large file detected:', estimatedSize, 'bytes');
+        }
+
+        // 在 base64->Uint8Array 转换前熔断，避免大文件解码导致内存峰值过高
+        if (estimatedSize > LARGE_FILE_THRESHOLD) {
+          setError(
+            `${i18n.t('learningHub:file.previewTooLarge', { defaultValue: 'File is too large to preview' })} (${formatBytes(estimatedSize)})`
+          );
+          setLoading(false);
+          return;
         }
         
         // 转换 base64 为 File

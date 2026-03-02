@@ -21,9 +21,8 @@ use crate::vfs::error::{VfsError, VfsResult};
 use crate::vfs::index_service::VfsIndexService;
 use crate::vfs::pdf_processing_service::{PdfProcessingService, ProcessingStage};
 use crate::vfs::repos::{
-    VfsAttachmentRepo, VfsBlobRepo, VfsEssayRepo, VfsExamRepo, VfsIndexStateRepo,
-    VfsMindMapRepo, VfsNoteRepo, VfsResourceRepo, VfsTextbookRepo, VfsTranslationRepo,
-    INDEX_STATE_DISABLED,
+    VfsAttachmentRepo, VfsBlobRepo, VfsEssayRepo, VfsExamRepo, VfsIndexStateRepo, VfsMindMapRepo,
+    VfsNoteRepo, VfsResourceRepo, VfsTextbookRepo, VfsTranslationRepo, INDEX_STATE_DISABLED,
     INDEX_STATE_PENDING,
 };
 use crate::vfs::types::*;
@@ -1566,6 +1565,9 @@ pub struct VfsAttachmentContentResult {
     pub content: Option<String>,
     /// 是否找到附件
     pub found: bool,
+    /// 可选错误信息（向后兼容：旧前端可忽略此字段）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
 }
 
 /// 获取附件内容（Base64 编码）
@@ -1574,7 +1576,7 @@ pub struct VfsAttachmentContentResult {
 /// - `attachment_id`: 附件/文件/教材 ID（att_xxx / file_xxx / tb_xxx）
 ///
 /// ## 返回
-/// - `Ok(VfsAttachmentContentResult)`: 包含 content 和 found 字段
+/// - `Ok(VfsAttachmentContentResult)`: 包含 content/found（以及可选 error）字段
 /// - `Err(String)`: 读取失败
 ///
 /// ★ 2025-12-10 修复：返回结构体匹配前端 ImageContentView 期望的格式
@@ -1637,7 +1639,10 @@ pub async fn vfs_get_attachment_content(
                             let blob_path = match blob_path {
                                 Some(p) => p,
                                 None => {
-                                    log::warn!("[VFS::handlers] img_ blob not in DB: hash={}", blob_hash);
+                                    log::warn!(
+                                        "[VFS::handlers] img_ blob not in DB: hash={}",
+                                        blob_hash
+                                    );
                                     continue;
                                 }
                             };
@@ -1654,6 +1659,7 @@ pub async fn vfs_get_attachment_content(
                                         return Ok(VfsAttachmentContentResult {
                                             content: Some(b64),
                                             found: true,
+                                            error: None,
                                         });
                                     }
                                     Err(e) => {
@@ -1661,7 +1667,10 @@ pub async fn vfs_get_attachment_content(
                                     }
                                 }
                             } else {
-                                log::warn!("[VFS::handlers] img_ blob file not found: {:?}", blob_path);
+                                log::warn!(
+                                    "[VFS::handlers] img_ blob file not found: {:?}",
+                                    blob_path
+                                );
                             }
                         }
                     }
@@ -1676,6 +1685,7 @@ pub async fn vfs_get_attachment_content(
         return Ok(VfsAttachmentContentResult {
             content: None,
             found: false,
+            error: None,
         });
     }
 
@@ -1710,6 +1720,7 @@ pub async fn vfs_get_attachment_content(
             Ok(VfsAttachmentContentResult {
                 content: Some(content),
                 found: true,
+                error: None,
             })
         }
         Ok(None) => {
@@ -1720,17 +1731,20 @@ pub async fn vfs_get_attachment_content(
             Ok(VfsAttachmentContentResult {
                 content: None,
                 found: false,
+                error: None,
             })
         }
         Err(e) => {
+            let err_msg = e.to_string();
             log::error!(
                 "[VFS::handlers] vfs_get_attachment_content: ERROR id={}, error={}",
                 attachment_id,
-                e
+                err_msg
             );
             Ok(VfsAttachmentContentResult {
                 content: None,
                 found: false,
+                error: Some(err_msg),
             })
         }
     }
@@ -3992,7 +4006,10 @@ pub async fn vfs_get_all_index_status(
     );
 
     let mut stmt = conn.prepare(&query).map_err(|e| {
-        log::error!("[VFS::handlers] vfs_get_all_index_status: prepare error: {}", e);
+        log::error!(
+            "[VFS::handlers] vfs_get_all_index_status: prepare error: {}",
+            e
+        );
         e.to_string()
     })?;
 
