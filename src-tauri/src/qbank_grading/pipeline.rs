@@ -7,6 +7,7 @@
 /// - M-064 不完整流检测
 use futures_util::StreamExt;
 use regex::Regex;
+use rusqlite::{params, OptionalExtension};
 use serde_json::json;
 use std::sync::Arc;
 
@@ -14,7 +15,7 @@ use crate::llm_manager::{ApiConfig, LLMManager};
 use crate::models::AppError;
 use crate::providers::ProviderAdapter;
 use crate::vfs::database::VfsDatabase;
-use crate::vfs::repos::VfsQuestionRepo;
+use crate::vfs::repos::{AnswerSubmission, Question, VfsQuestionRepo};
 
 use super::events::QbankGradingEmitter;
 use super::types::{
@@ -46,14 +47,35 @@ pub async fn run_qbank_grading(
         .map_err(|e| AppError::database(e.to_string()))?
         .ok_or_else(|| AppError::not_found(format!("题目不存在: {}", request.question_id)))?;
 
-    // 2. 获取作答历史（最近 5 条）
+    // 2. 校验 submission 归属并获取当前答案（必须绑定到本次 submission）
+    let current_submission = match get_submission_by_id(&deps.vfs_db, &request.submission_id)? {
+        Some(sub) => sub,
+        None => {
+            let err = AppError::not_found(format!("作答记录不存在: {}", request.submission_id));
+            deps.emitter
+                .emit_error(&request.stream_session_id, err.message.clone());
+            return Err(err);
+        }
+    };
+    if current_submission.question_id != request.question_id {
+        let err = AppError::validation(format!(
+            "作答记录 {} 不属于题目 {}",
+            request.submission_id, request.question_id
+        ));
+        deps.emitter
+            .emit_error(&request.stream_session_id, err.message.clone());
+        return Err(err);
+    }
+
+    // 3. 获取作答历史（最近 5 条）
     let submissions = VfsQuestionRepo::get_submissions(&deps.vfs_db, &request.question_id, 5)
         .map_err(|e| AppError::database(e.to_string()))?;
 
-    // 3. 构造 Prompt
-    let (system_prompt, user_prompt) = build_prompts(&question, &submissions, &request.mode)?;
+    // 4. 构造 Prompt
+    let (system_prompt, user_prompt) =
+        build_prompts(&question, &current_submission, &submissions, &request.mode)?;
 
-    // 4. 获取模型配置
+    // 5. 获取模型配置
     let config = if let Some(ref model_id) = request.model_config_id {
         let configs = deps.llm.get_api_configs().await?;
         let found = configs
@@ -97,11 +119,11 @@ pub async fn run_qbank_grading(
     };
     let api_key = deps.llm.decrypt_api_key(&config.api_key)?;
 
-    // 5. 流式调用 LLM
+    // 6. 流式调用 LLM
     let mut accumulated = String::new();
     let stream_event = format!("qbank_grading_stream_{}", request.stream_session_id);
 
-    let stream_status = stream_grade(
+    let stream_status = match stream_grade(
         &config,
         &api_key,
         &system_prompt,
@@ -114,7 +136,15 @@ pub async fn run_qbank_grading(
                 .emit_data(&request.stream_session_id, chunk, accumulated.clone());
         },
     )
-    .await?;
+    .await
+    {
+        Ok(status) => status,
+        Err(e) => {
+            deps.emitter
+                .emit_error(&request.stream_session_id, e.message.clone());
+            return Err(e);
+        }
+    };
 
     if matches!(stream_status, StreamStatus::Cancelled) {
         deps.emitter.emit_cancelled(&request.stream_session_id);
@@ -126,9 +156,12 @@ pub async fn run_qbank_grading(
             "[QbankGrading] 流式响应未完成，丢弃不完整结果（已累积 {} 字符）",
             accumulated.len()
         );
-        return Err(AppError::llm(
+        let err = AppError::llm(
             "AI 评判流式响应异常中断，结果不完整。请检查网络连接后重试。".to_string(),
-        ));
+        );
+        deps.emitter
+            .emit_error(&request.stream_session_id, err.message.clone());
+        return Err(err);
     }
 
     // S-014: 二次检查取消状态
@@ -138,82 +171,125 @@ pub async fn run_qbank_grading(
         return Ok(None);
     }
 
-    // 6. 解析结构化输出
+    // 7. 解析结构化输出
     let (verdict, score) = if request.mode == QbankGradingMode::Grade {
         parse_verdict_and_score(&accumulated)
     } else {
         (None, None)
     };
 
-    // 7. 持久化（使用同一连接 + 事务确保一致性）
-    match deps.vfs_db.get_conn_safe() {
-        Ok(conn) => {
-            if let Err(e) = conn.execute_batch("BEGIN") {
-                log::warn!("[QbankGrading] 事务开始失败: {}", e);
-            }
+    if request.mode == QbankGradingMode::Grade && verdict.is_none() {
+        let err = AppError::llm(
+            "AI 评判结果缺少有效 verdict 标签（需为 correct|partial|incorrect）。".to_string(),
+        );
+        deps.emitter
+            .emit_error(&request.stream_session_id, err.message.clone());
+        return Err(err);
+    }
 
-            let now = chrono::Utc::now().to_rfc3339();
+    // 8. 持久化（SAVEPOINT 原子写入，任一失败即回滚并报错）
+    let conn = match deps.vfs_db.get_conn_safe() {
+        Ok(c) => c,
+        Err(e) => {
+            let err = AppError::database(format!("获取数据库连接失败: {}", e));
+            deps.emitter
+                .emit_error(&request.stream_session_id, err.message.clone());
+            return Err(err);
+        }
+    };
 
-            // ① 更新 AI 缓存
-            if let Err(e) = conn.execute(
+    if let Err(e) = conn.execute("SAVEPOINT qbank_grading_persist", []) {
+        let err = AppError::database(format!("创建 SAVEPOINT 失败: {}", e));
+        deps.emitter
+            .emit_error(&request.stream_session_id, err.message.clone());
+        return Err(err);
+    }
+
+    let persist_result = (|| -> Result<(), AppError> {
+        let now = chrono::Utc::now().to_rfc3339();
+
+        // ① 更新 AI 缓存
+        let updated = conn
+            .execute(
                 r#"UPDATE questions SET ai_feedback = ?1, ai_score = ?2, ai_graded_at = ?3, updated_at = ?3
                    WHERE id = ?4 AND deleted_at IS NULL"#,
-                rusqlite::params![&accumulated, score, &now, &request.question_id],
-            ) {
-                log::warn!("[QbankGrading] 保存 AI 反馈失败: {}", e);
+                params![&accumulated, score, &now, &request.question_id],
+            )
+            .map_err(|e| AppError::database(format!("保存 AI 反馈失败: {}", e)))?;
+        if updated == 0 {
+            return Err(AppError::not_found(format!(
+                "题目不存在或已删除: {}",
+                request.question_id
+            )));
+        }
+
+        // Grade 模式：② 更新 submission 正误 + ③ 更新 question 正误
+        if request.mode == QbankGradingMode::Grade {
+            let v = verdict
+                .as_ref()
+                .ok_or_else(|| AppError::llm("缺少评判 verdict".to_string()))?;
+            let is_correct_val: i32 = if v.is_correct() { 1 } else { 0 };
+
+            // ② 更新 submission（严格绑定 question_id，防止串题写入）
+            let submission_updated = conn
+                .execute(
+                    "UPDATE answer_submissions SET is_correct = ?1, grading_method = 'ai' WHERE id = ?2 AND question_id = ?3",
+                    params![is_correct_val, &request.submission_id, &request.question_id],
+                )
+                .map_err(|e| AppError::database(format!("更新 submission 正误失败: {}", e)))?;
+            if submission_updated == 0 {
+                return Err(AppError::not_found(format!(
+                    "作答记录不存在或不属于该题目: {}",
+                    request.submission_id
+                )));
             }
 
-            // Grade 模式：② 更新 submission 正误 + ③ 更新 question 正误
-            if request.mode == QbankGradingMode::Grade {
-                if let Some(ref v) = verdict {
-                    let is_correct = v.is_correct();
-                    let is_correct_val: i32 = if is_correct { 1 } else { 0 };
-
-                    // ② 更新 submission
-                    if let Err(e) = conn.execute(
-                        "UPDATE answer_submissions SET is_correct = ?1, grading_method = 'ai' WHERE id = ?2",
-                        rusqlite::params![is_correct_val, &request.submission_id],
-                    ) {
-                        log::warn!("[QbankGrading] 更新 submission 正误失败: {}", e);
-                    }
-
-                    // ③ 更新 question（仅当 is_correct 为 NULL 时递增 correct_count，防止重复计数）
-                    if let Err(e) = conn.execute(
-                        r#"
-                        UPDATE questions SET
-                            is_correct = ?1,
-                            correct_count = CASE
-                                WHEN is_correct IS NULL AND ?1 = 1 THEN correct_count + 1
-                                ELSE correct_count
-                            END,
-                            status = CASE
-                                WHEN ?1 = 0 THEN 'review'
-                                WHEN (CASE WHEN is_correct IS NULL AND ?1 = 1 THEN correct_count + 1 ELSE correct_count END) >= 2 THEN 'mastered'
-                                ELSE 'in_progress'
-                            END,
-                            updated_at = ?2
-                        WHERE id = ?3 AND deleted_at IS NULL
-                        "#,
-                        rusqlite::params![is_correct_val, &now, &request.question_id],
-                    ) {
-                        log::warn!("[QbankGrading] 更新 question 正误失败: {}", e);
-                    }
-                }
-            }
-
-            if let Err(e) = conn.execute_batch("COMMIT") {
-                log::warn!("[QbankGrading] 事务提交失败: {}", e);
-            }
-
-            // 刷新统计缓存（事务外执行，非关键）
-            if request.mode == QbankGradingMode::Grade && verdict.is_some() {
-                if let Err(e) = VfsQuestionRepo::refresh_stats(&deps.vfs_db, &question.exam_id) {
-                    log::warn!("[QbankGrading] 刷新统计失败: {}", e);
-                }
+            // ③ 更新 question（仅当 is_correct 为 NULL 时递增 correct_count，防止重复计数）
+            let question_updated = conn
+                .execute(
+                    r#"
+                    UPDATE questions SET
+                        is_correct = ?1,
+                        correct_count = CASE
+                            WHEN is_correct IS NULL AND ?1 = 1 THEN correct_count + 1
+                            ELSE correct_count
+                        END,
+                        status = CASE
+                            WHEN ?1 = 0 THEN 'review'
+                            WHEN (CASE WHEN is_correct IS NULL AND ?1 = 1 THEN correct_count + 1 ELSE correct_count END) >= 2 THEN 'mastered'
+                            ELSE 'in_progress'
+                        END,
+                        updated_at = ?2
+                    WHERE id = ?3 AND deleted_at IS NULL
+                    "#,
+                    params![is_correct_val, &now, &request.question_id],
+                )
+                .map_err(|e| AppError::database(format!("更新题目正误失败: {}", e)))?;
+            if question_updated == 0 {
+                return Err(AppError::not_found(format!(
+                    "题目不存在或已删除: {}",
+                    request.question_id
+                )));
             }
         }
-        Err(e) => {
-            log::warn!("[QbankGrading] 获取数据库连接失败，跳过持久化: {}", e);
+
+        conn.execute("RELEASE qbank_grading_persist", [])
+            .map_err(|e| AppError::database(format!("提交评判事务失败: {}", e)))?;
+        Ok(())
+    })();
+
+    if let Err(e) = persist_result {
+        let _ = conn.execute("ROLLBACK TO qbank_grading_persist", []);
+        let _ = conn.execute("RELEASE qbank_grading_persist", []);
+        deps.emitter
+            .emit_error(&request.stream_session_id, e.message.clone());
+        return Err(e);
+    }
+
+    // 刷新统计缓存（事务外执行，非关键）
+    if request.mode == QbankGradingMode::Grade && verdict.is_some() {
+        if let Err(e) = VfsQuestionRepo::refresh_stats(&deps.vfs_db, &question.exam_id) {
+            log::warn!("[QbankGrading] 刷新统计失败: {}", e);
         }
     }
 
@@ -223,7 +299,7 @@ pub async fn run_qbank_grading(
         Verdict::Incorrect => "incorrect".to_string(),
     });
 
-    // 8. 发送完成事件
+    // 9. 发送完成事件
     deps.emitter.emit_complete(
         &request.stream_session_id,
         request.submission_id.clone(),
@@ -242,8 +318,9 @@ pub async fn run_qbank_grading(
 
 /// 构造评判 Prompt
 fn build_prompts(
-    question: &crate::vfs::repos::Question,
-    submissions: &[crate::vfs::repos::AnswerSubmission],
+    question: &Question,
+    current_submission: &AnswerSubmission,
+    submissions: &[AnswerSubmission],
     mode: &QbankGradingMode,
 ) -> Result<(String, String), AppError> {
     let system_prompt = match mode {
@@ -284,23 +361,19 @@ fn build_prompts(
         user_prompt.push_str("\n\n");
     }
 
-    // 当前答案
-    if let Some(ref user_answer) = question.user_answer {
-        let label = match mode {
-            QbankGradingMode::Grade => "## 学生答案（待评判）",
-            QbankGradingMode::Analyze => {
-                if question.is_correct == Some(true) {
-                    "## 学生答案（正确）"
-                } else {
-                    "## 学生答案（错误）"
-                }
-            }
-        };
-        user_prompt.push_str(label);
-        user_prompt.push_str("\n");
-        user_prompt.push_str(user_answer);
-        user_prompt.push_str("\n\n");
-    }
+    // 当前答案（严格使用本次 submission 的答案，避免读取到 questions.user_answer 的竞态值）
+    let label = match mode {
+        QbankGradingMode::Grade => "## 学生答案（待评判）",
+        QbankGradingMode::Analyze => match current_submission.is_correct {
+            Some(true) => "## 学生答案（正确）",
+            Some(false) => "## 学生答案（错误）",
+            None => "## 学生答案（待评判）",
+        },
+    };
+    user_prompt.push_str(label);
+    user_prompt.push_str("\n");
+    user_prompt.push_str(&current_submission.user_answer);
+    user_prompt.push_str("\n\n");
 
     // 历次作答记录
     if !submissions.is_empty() {
@@ -324,6 +397,37 @@ fn build_prompts(
     }
 
     Ok((system_prompt, user_prompt))
+}
+
+fn get_submission_by_id(
+    db: &VfsDatabase,
+    submission_id: &str,
+) -> Result<Option<AnswerSubmission>, AppError> {
+    let conn = db
+        .get_conn_safe()
+        .map_err(|e| AppError::database(format!("获取数据库连接失败: {}", e)))?;
+
+    conn.query_row(
+        r#"
+        SELECT id, question_id, user_answer, is_correct, grading_method, submitted_at
+        FROM answer_submissions
+        WHERE id = ?1
+        "#,
+        params![submission_id],
+        |row| {
+            let is_correct: Option<i32> = row.get(3)?;
+            Ok(AnswerSubmission {
+                id: row.get(0)?,
+                question_id: row.get(1)?,
+                user_answer: row.get(2)?,
+                is_correct: is_correct.map(|v| v != 0),
+                grading_method: row.get(4)?,
+                submitted_at: row.get(5)?,
+            })
+        },
+    )
+    .optional()
+    .map_err(|e| AppError::database(format!("查询作答记录失败: {}", e)))
 }
 
 /// 解析 verdict 和 score

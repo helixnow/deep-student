@@ -271,14 +271,52 @@ impl VfsNoteRepo {
                 .as_ref()
                 .unwrap_or(&current_note.resource_id);
 
-            conn.execute(
-                r#"
-                UPDATE notes
-                SET resource_id = ?1, title = ?2, tags = ?3, updated_at = ?4
-                WHERE id = ?5
-                "#,
-                params![final_resource_id, new_title, tags_json, now, note_id],
-            )?;
+            let expected_updated_at = params
+                .expected_updated_at
+                .as_ref()
+                .map(|s| s.trim())
+                .filter(|s| !s.is_empty());
+
+            let updated_rows = if let Some(expected) = expected_updated_at {
+                conn.execute(
+                    r#"
+                    UPDATE notes
+                    SET resource_id = ?1, title = ?2, tags = ?3, updated_at = ?4
+                    WHERE id = ?5 AND deleted_at IS NULL AND updated_at = ?6
+                    "#,
+                    params![
+                        final_resource_id,
+                        new_title,
+                        tags_json,
+                        now,
+                        note_id,
+                        expected
+                    ],
+                )?
+            } else {
+                conn.execute(
+                    r#"
+                    UPDATE notes
+                    SET resource_id = ?1, title = ?2, tags = ?3, updated_at = ?4
+                    WHERE id = ?5 AND deleted_at IS NULL
+                    "#,
+                    params![final_resource_id, new_title, tags_json, now, note_id],
+                )?
+            };
+
+            if updated_rows == 0 {
+                if expected_updated_at.is_some() {
+                    return Err(VfsError::Conflict {
+                        key: "notes.conflict".to_string(),
+                        message: "The note has been updated elsewhere, please refresh.".to_string(),
+                    });
+                }
+
+                return Err(VfsError::NotFound {
+                    resource_type: "Note".to_string(),
+                    id: note_id.to_string(),
+                });
+            }
 
             info!("[VFS::NoteRepo] Updated note: {}", note_id);
 

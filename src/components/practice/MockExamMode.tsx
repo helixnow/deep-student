@@ -8,7 +8,7 @@
  * - 成绩单展示
  */
 
-import React, { useState, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/shad/Card';
@@ -95,19 +95,32 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
   // 考试计时器 — 基于绝对时间戳
   const [targetEndTime, setTargetEndTime] = useState<number | null>(null);
   const autoSubmitTriggeredRef = useRef(false);
+  const activeSession = useMemo(
+    () => (mockExamSession?.exam_id === examId ? mockExamSession : null),
+    [mockExamSession, examId],
+  );
+
+  const buildSubmitSession = useCallback((session: MockExamSession): MockExamSession => ({
+    ...session,
+    ended_at: new Date().toISOString(),
+    is_submitted: true,
+  }), []);
   
   const handleAutoSubmit = useCallback(() => {
     if (autoSubmitTriggeredRef.current) return;
     autoSubmitTriggeredRef.current = true;
-    if (mockExamSession) {
-      submitMockExam(mockExamSession).then((scoreCard) => {
+    if (activeSession) {
+      const submitSession = buildSubmitSession(activeSession);
+      submitMockExam(submitSession).then((scoreCard) => {
+        setMockExamSession(submitSession);
         setShowScoreCard(true);
         onSubmit?.(scoreCard);
       }).catch((err) => {
+        autoSubmitTriggeredRef.current = false;
         console.error('Auto-submit failed:', err);
       });
     }
-  }, [mockExamSession, submitMockExam, onSubmit]);
+  }, [activeSession, submitMockExam, onSubmit, buildSubmitSession, setMockExamSession]);
   
   const { remaining: examRemainingSeconds } = useCountdown(
     targetEndTime,
@@ -167,25 +180,42 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
       showGlobalNotification('error', msg, t('mockExam.startError', '生成考试失败'));
     }
   }, [examId, durationMinutes, totalCount, shuffle, includeMistakes, typeDistribution, difficultyDistribution, generateMockExam, onStart]);
+
+  useEffect(() => {
+    if (!activeSession || activeSession.is_submitted) {
+      setTargetEndTime(null);
+      return;
+    }
+    const startedMs = Date.parse(activeSession.started_at);
+    if (!Number.isFinite(startedMs)) return;
+    const durationMs = (activeSession.config.duration_minutes || 0) * 60 * 1000;
+    if (durationMs <= 0) return;
+    const restoredEndTime = startedMs + durationMs;
+    setTargetEndTime((prev) => prev ?? restoredEndTime);
+  }, [activeSession]);
   
   // 交卷（手动）
   const handleSubmit = useCallback(async () => {
-    if (!mockExamSession) return;
+    if (!activeSession) return;
     
     setShowConfirmDialog(false);
+    const previousTargetEndTime = targetEndTime;
     setTargetEndTime(null);
     autoSubmitTriggeredRef.current = true;
+    const submitSession = buildSubmitSession(activeSession);
     
     try {
-      const scoreCard = await submitMockExam(mockExamSession);
+      const scoreCard = await submitMockExam(submitSession);
+      setMockExamSession(submitSession);
       setShowScoreCard(true);
       onSubmit?.(scoreCard);
     } catch (err: unknown) {
       autoSubmitTriggeredRef.current = false;
+      setTargetEndTime(previousTargetEndTime);
       const msg = err instanceof Error ? err.message : String(err);
       showGlobalNotification('error', msg, t('mockExam.submitError', '交卷失败'));
     }
-  }, [mockExamSession, submitMockExam, onSubmit]);
+  }, [activeSession, submitMockExam, onSubmit, t, targetEndTime, buildSubmitSession, setMockExamSession]);
   
   // 成绩单界面
   if (showScoreCard && mockExamScoreCard) {
@@ -294,7 +324,7 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
   }
   
   // 配置界面
-  if (!mockExamSession) {
+  if (!activeSession) {
     return (
       <Card className={cn('bg-transparent border-transparent shadow-none', className)}>
         <CardHeader className="pb-4">
@@ -411,8 +441,8 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
   }
   
   // 考试中 - 进度显示（实际答题由 QuestionBankEditor 处理）
-  const progress = mockExamSession.question_ids.length > 0
-    ? (Object.keys(mockExamSession.answers).length / mockExamSession.question_ids.length) * 100
+  const progress = activeSession.question_ids.length > 0
+    ? (Object.keys(activeSession.answers).length / activeSession.question_ids.length) * 100
     : 0;
   
   return (
@@ -440,7 +470,7 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
                 {t('mockExam.inProgress', '考试中')}
               </Badge>
               <span className="text-sm text-muted-foreground">
-                {Object.keys(mockExamSession.answers).length} / {mockExamSession.question_ids.length} {t('mockExam.questions', '题')}
+                {Object.keys(activeSession.answers).length} / {activeSession.question_ids.length} {t('mockExam.questions', '题')}
               </span>
             </div>
             <NotionButton
@@ -469,9 +499,9 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
         onOpenChange={setShowConfirmDialog}
         title={t('mockExam.confirmTitle', '确认交卷')}
         description={
-          Object.keys(mockExamSession.answers).length < mockExamSession.question_ids.length
+          Object.keys(activeSession.answers).length < activeSession.question_ids.length
             ? t('mockExam.confirmWarning', '您还有 {{count}} 道题未作答，确定要交卷吗？', {
-                count: mockExamSession.question_ids.length - Object.keys(mockExamSession.answers).length,
+                count: activeSession.question_ids.length - Object.keys(activeSession.answers).length,
               })
             : t('mockExam.confirmMessage', '确定要提交考试吗？')
         }

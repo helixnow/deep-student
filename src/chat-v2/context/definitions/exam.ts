@@ -14,7 +14,7 @@
  */
 
 import type { ContextTypeDefinition, Resource, ContentBlock, FormatOptions } from '../types';
-import { createXmlTextBlock } from '../types';
+import { createTextBlock, createXmlTextBlock } from '../types';
 import type { MultimodalContentBlock } from '../vfsRefTypes';
 import { t } from '@/utils/i18n';
 
@@ -57,6 +57,23 @@ function convertMultimodalBlock(block: MultimodalContentBlock): ContentBlock {
   };
 }
 
+function escapeXmlAttr(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+function buildXmlOpenTag(tag: string, attrs: Record<string, string | undefined>): string {
+  const attrStr = Object.entries(attrs)
+    .filter(([, value]) => value !== undefined)
+    .map(([key, value]) => ` ${key}="${escapeXmlAttr(value!)}"`)
+    .join('');
+  return `<${tag}${attrStr}>`;
+}
+
 /**
  * 题目集类型定义
  *
@@ -93,7 +110,20 @@ export const examDefinition: ContextTypeDefinition = {
       // ★★★ 多模态模式：使用预先获取的 multimodalBlocks（文档25）
       if (isMultimodal && resolved.multimodalBlocks && resolved.multimodalBlocks.length > 0) {
         console.debug('[ExamDefinition] Using multimodal blocks, count:', resolved.multimodalBlocks.length);
-        return resolved.multimodalBlocks.map(convertMultimodalBlock);
+        const resolvedMetadata = resolved.metadata as ExamMetadata | undefined;
+        const attrs = {
+          title: resolvedMetadata?.title || resolved.name || '',
+          'page-count': resolvedMetadata?.pageCount !== undefined ? String(resolvedMetadata.pageCount) : undefined,
+          'question-count': resolvedMetadata?.questionCount !== undefined ? String(resolvedMetadata.questionCount) : undefined,
+          'session-id': resolved.sourceId,
+          path: resolved.path,
+          mode: 'multimodal',
+        };
+        return [
+          createTextBlock(buildXmlOpenTag('exam_sheet', attrs)),
+          ...resolved.multimodalBlocks.map(convertMultimodalBlock),
+          createTextBlock('</exam_sheet>'),
+        ];
       }
 
       // ★ 文本模式：使用实时解析的内容和路径（文档28改造：使用真实路径，移除 subject）

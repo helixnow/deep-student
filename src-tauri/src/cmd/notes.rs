@@ -485,14 +485,14 @@ pub async fn notes_list_deleted(
 // 软删除与恢复
 #[tauri::command]
 pub async fn notes_restore(
-    subject: String,
+    subject: Option<String>,
     id: String,
     state: State<'_, AppState>,
     _window: Window,
 ) -> Result<bool> {
     // 使用 spawn_blocking 避免 Lance 操作导致的死锁
     let notes_manager = state.notes_manager.clone();
-    let _subject = subject.clone(); // VFS 版本不需要 subject
+    let _subject = subject.unwrap_or_else(|| "_global".to_string()); // 兼容旧前端仅传 id 的调用
     let id_clone = id.clone();
 
     // ★ 切换到 VFS 版本

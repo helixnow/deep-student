@@ -78,6 +78,16 @@ export const CsvFieldMapper: React.FC<CsvFieldMapperProps> = ({
 
   // 检查 content 是否已映射（必需）
   const isContentMapped = mappedFields.has('content');
+  const hasDuplicateMappings = useMemo(() => {
+    const seen = new Set<string>();
+    for (const target of Object.values(fieldMapping)) {
+      if (!target) continue;
+      if (seen.has(target)) return true;
+      seen.add(target);
+    }
+    return false;
+  }, [fieldMapping]);
+  const isMappingValid = isContentMapped && !hasDuplicateMappings;
 
   // 获取某列的已选目标字段
   const getColumnTarget = useCallback(
@@ -183,11 +193,18 @@ export const CsvFieldMapper: React.FC<CsvFieldMapperProps> = ({
     <div className="space-y-4">
       {/* 映射状态提示 */}
       <div className="flex items-center gap-4 px-3 py-2 rounded-lg bg-muted/30">
-        {isContentMapped ? (
+        {isMappingValid ? (
           <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400">
             <CheckCircle2 className="w-4 h-4" />
             <span className="text-sm">
               {t('exam_sheet:csv.mapping_valid', '字段映射有效，可以开始导入')}
+            </span>
+          </div>
+        ) : hasDuplicateMappings ? (
+          <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
+            <AlertCircle className="w-4 h-4" />
+            <span className="text-sm">
+              {t('exam_sheet:csv.mapping_duplicate', '存在重复映射，请确保每个目标字段只映射一次')}
             </span>
           </div>
         ) : (

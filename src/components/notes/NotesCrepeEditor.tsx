@@ -57,6 +57,8 @@ export interface NotesCrepeEditorProps {
   readOnly?: boolean;
   /** 自定义类名 */
   className?: string;
+  /** 编辑器实例变化回调（创建/销毁） */
+  onEditorReady?: (api: CrepeEditorApi | null) => void;
 }
 
 export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
@@ -67,6 +69,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
   noteId: dstuNoteId,
   readOnly = false,
   className,
+  onEditorReady,
 }) => {
   const { t } = useTranslation(['notes', 'common']);
   const { isSmallScreen } = useBreakpoint();
@@ -496,14 +499,6 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
           .catch(() => showGlobalNotification('error', t('notes:actions.save_failed')));
         return;
       }
-      
-      // 拦截 Ctrl+F / Cmd+F 打开查找替换面板
-      if ((e.metaKey || e.ctrlKey) && e.key === 'f') {
-        e.preventDefault();
-        e.stopPropagation();
-        setIsFindReplaceOpen(true);
-        return;
-      }
     };
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
@@ -551,11 +546,18 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
   // 编辑器就绪回调
   const handleEditorReady = useCallback((api: CrepeEditorApi) => {
     setEditorApi(api);
+    onEditorReady?.(api);
     // 将 Crepe API 设置到 Context（仅 Context 模式）
     if (!isDstuMode && setEditor) {
       setEditor(api);
     }
-  }, [isDstuMode, setEditor]);
+  }, [isDstuMode, onEditorReady, setEditor]);
+
+  useEffect(() => {
+    return () => {
+      onEditorReady?.(null);
+    };
+  }, [onEditorReady]);
 
   // AI 编辑保存回调（用于 Canvas AI 编辑后自动保存）
   const handleAISave = useCallback(async (content: string) => {

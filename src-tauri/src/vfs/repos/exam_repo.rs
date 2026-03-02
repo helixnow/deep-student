@@ -106,6 +106,32 @@ impl VfsExamRepo {
         Ok(exam_sheets)
     }
 
+    /// 统计题目集数量（支持搜索条件）
+    pub fn count_exam_sheets(db: &VfsDatabase, search: Option<&str>) -> VfsResult<u32> {
+        let conn = db.get_conn_safe()?;
+        Self::count_exam_sheets_with_conn(&conn, search)
+    }
+
+    /// 统计题目集数量（使用现有连接）
+    pub fn count_exam_sheets_with_conn(conn: &Connection, search: Option<&str>) -> VfsResult<u32> {
+        let count: i64 = if let Some(q) = search {
+            let pattern = format!("%{}%", q);
+            conn.query_row(
+                "SELECT COUNT(*) FROM exam_sheets WHERE deleted_at IS NULL AND exam_name LIKE ?1",
+                params![pattern],
+                |row| row.get(0),
+            )?
+        } else {
+            conn.query_row(
+                "SELECT COUNT(*) FROM exam_sheets WHERE deleted_at IS NULL",
+                [],
+                |row| row.get(0),
+            )?
+        };
+
+        Ok(count.max(0) as u32)
+    }
+
     // ========================================================================
     // 查询单个
     // ========================================================================
@@ -126,7 +152,7 @@ impl VfsExamRepo {
             SELECT id, resource_id, exam_name, status, temp_id,
                    metadata_json, preview_json, linked_mistake_ids, is_favorite, created_at, updated_at
             FROM exam_sheets
-            WHERE id = ?1
+            WHERE id = ?1 AND deleted_at IS NULL
             "#,
         )?;
 
@@ -156,7 +182,7 @@ impl VfsExamRepo {
                 SELECT r.data
                 FROM exam_sheets e
                 JOIN resources r ON e.resource_id = r.id
-                WHERE e.id = ?1
+                WHERE e.id = ?1 AND e.deleted_at IS NULL
                 "#,
                 params![exam_id],
                 |row| row.get(0),
@@ -271,7 +297,7 @@ impl VfsExamRepo {
 
             // 3. 更新资源的 source_id
             conn.execute(
-                "UPDATE resources SET source_id = ?1 WHERE id = ?2",
+                "UPDATE resources SET source_id = COALESCE(source_id, ?1) WHERE id = ?2",
                 params![exam_id, resource_result.resource_id],
             )?;
 
@@ -285,17 +311,16 @@ impl VfsExamRepo {
                     "exam".to_string(),
                     exam_id.clone(),
                 );
-                if let Err(e) = VfsFolderRepo::add_item_to_folder_with_conn(conn, &folder_item) {
-                    warn!(
-                        "[VFS::ExamRepo] Failed to add exam to folder {}: {}",
-                        folder_id, e
-                    );
-                } else {
-                    info!(
-                        "[VFS::ExamRepo] Added exam {} to folder {}",
-                        exam_id, folder_id
-                    );
-                }
+                VfsFolderRepo::add_item_to_folder_with_conn(conn, &folder_item).map_err(|e| {
+                    VfsError::Database(format!(
+                        "Failed to add exam {} to folder {}: {}",
+                        exam_id, folder_id, e
+                    ))
+                })?;
+                info!(
+                    "[VFS::ExamRepo] Added exam {} to folder {}",
+                    exam_id, folder_id
+                );
             }
 
             info!(
@@ -428,11 +453,10 @@ impl VfsExamRepo {
             if let Some(ref resource_id) = existing.resource_id {
                 let preview_content = serde_json::to_string(&params.preview_json)
                     .map_err(|e| VfsError::Serialization(e.to_string()))?;
-                // resources 表的 updated_at 使用整数时间戳（毫秒），不是 TEXT
-                let now_millis = chrono::Utc::now().timestamp_millis();
-                conn.execute(
-                    "UPDATE resources SET data = ?1, updated_at = ?2 WHERE id = ?3",
-                    params![preview_content, now_millis, resource_id],
+                let _ = VfsResourceRepo::update_resource_data_with_conn(
+                    conn,
+                    resource_id,
+                    &preview_content,
                 )?;
             }
 
@@ -670,70 +694,105 @@ impl VfsExamRepo {
     /// ★ P0 修复：同时清理 folder_items、questions、review 相关表和 resources
     /// 注意：questions FK 对 exam_sheets 没有 ON DELETE CASCADE，必须手动删除
     pub fn purge_exam_sheet_with_conn(conn: &Connection, exam_id: &str) -> VfsResult<()> {
-        // 1. 获取 resource_id（purge 后无法再查）
-        let resource_id: Option<String> = conn
-            .query_row(
-                "SELECT resource_id FROM exam_sheets WHERE id = ?1",
+        let savepoint_name = format!("purge_exam_{}", exam_id.replace("-", "_"));
+        conn.execute(&format!("SAVEPOINT {}", savepoint_name), [])?;
+
+        let result = (|| -> VfsResult<()> {
+            // 1. 获取 resource_id（purge 后无法再查）
+            let resource_id: Option<String> = conn
+                .query_row(
+                    "SELECT resource_id FROM exam_sheets WHERE id = ?1",
+                    params![exam_id],
+                    |row| row.get(0),
+                )
+                .optional()?
+                .flatten();
+
+            // 2. 删除 folder_items（防止孤儿记录）
+            conn.execute(
+                "DELETE FROM folder_items WHERE item_type = 'exam' AND item_id = ?1",
                 params![exam_id],
-                |row| row.get(0),
-            )
-            .optional()?
-            .flatten();
+            )?;
 
-        // 2. 删除 folder_items（防止孤儿记录）
-        conn.execute(
-            "DELETE FROM folder_items WHERE item_type = 'exam' AND item_id = ?1",
-            params![exam_id],
-        )?;
-
-        // 3. 删除关联的 review_history（FK → review_plans → questions）
-        conn.execute(
+            // 3. 删除关联的 review_history（FK → review_plans → questions）
+            conn.execute(
             "DELETE FROM review_history WHERE plan_id IN (SELECT id FROM review_plans WHERE exam_id = ?1)",
             params![exam_id],
         )?;
 
-        // 4. 删除关联的 review_plans
-        conn.execute(
-            "DELETE FROM review_plans WHERE exam_id = ?1",
+            // 4. 删除关联的 review_plans
+            conn.execute(
+                "DELETE FROM review_plans WHERE exam_id = ?1",
+                params![exam_id],
+            )?;
+
+            // 5. 删除关联的 exam_stats
+            conn.execute(
+                "DELETE FROM exam_stats WHERE exam_id = ?1",
+                params![exam_id],
+            )?;
+
+            // 6. 删除关联的同步记录
+            conn.execute(
+                "DELETE FROM question_sync_conflicts WHERE exam_id = ?1",
+                params![exam_id],
+            )?;
+            conn.execute(
+                "DELETE FROM question_sync_logs WHERE exam_id = ?1",
+                params![exam_id],
+            )?;
+
+            // 7. 删除 questions 的子表，避免 FK 约束失败
+            conn.execute(
+            "DELETE FROM answer_submissions WHERE question_id IN (SELECT id FROM questions WHERE exam_id = ?1)",
             params![exam_id],
         )?;
+            conn.execute(
+                "DELETE FROM question_bank_stats WHERE exam_id = ?1",
+                params![exam_id],
+            )?;
 
-        // 5. 删除关联的 exam_stats
-        conn.execute(
-            "DELETE FROM exam_stats WHERE exam_id = ?1",
-            params![exam_id],
-        )?;
+            // 8. 删除关联的 questions
+            conn.execute("DELETE FROM questions WHERE exam_id = ?1", params![exam_id])?;
 
-        // 6. 删除关联的同步记录
-        conn.execute(
-            "DELETE FROM question_sync_conflicts WHERE exam_id = ?1",
-            params![exam_id],
-        )?;
-        conn.execute(
-            "DELETE FROM question_sync_logs WHERE exam_id = ?1",
-            params![exam_id],
-        )?;
+            // 9. 删除 exam_sheets 记录
+            let deleted =
+                conn.execute("DELETE FROM exam_sheets WHERE id = ?1", params![exam_id])?;
 
-        // 7. 删除关联的 questions
-        conn.execute("DELETE FROM questions WHERE exam_id = ?1", params![exam_id])?;
+            if deleted == 0 {
+                return Err(VfsError::NotFound {
+                    resource_type: "ExamSheet".to_string(),
+                    id: exam_id.to_string(),
+                });
+            }
 
-        // 8. 删除 exam_sheets 记录
-        let deleted = conn.execute("DELETE FROM exam_sheets WHERE id = ?1", params![exam_id])?;
+            // 10. 清理关联的 resource（仅在没有其他题目集引用时删除）
+            if let Some(rid) = resource_id {
+                let remaining_refs: i64 = conn.query_row(
+                    "SELECT COUNT(*) FROM exam_sheets WHERE resource_id = ?1",
+                    params![rid],
+                    |row| row.get(0),
+                )?;
+                if remaining_refs == 0 {
+                    conn.execute("DELETE FROM resources WHERE id = ?1", params![rid])?;
+                }
+            }
 
-        if deleted == 0 {
-            return Err(VfsError::NotFound {
-                resource_type: "ExamSheet".to_string(),
-                id: exam_id.to_string(),
-            });
+            Ok(())
+        })();
+
+        match result {
+            Ok(()) => {
+                conn.execute(&format!("RELEASE {}", savepoint_name), [])?;
+                info!("[VFS::ExamRepo] Purged exam sheet: {} (with questions, reviews, folder_items, resources)", exam_id);
+                Ok(())
+            }
+            Err(e) => {
+                let _ = conn.execute(&format!("ROLLBACK TO {}", savepoint_name), []);
+                let _ = conn.execute(&format!("RELEASE {}", savepoint_name), []);
+                Err(e)
+            }
         }
-
-        // 9. 清理关联的 resource（如果存在）
-        if let Some(rid) = resource_id {
-            conn.execute("DELETE FROM resources WHERE id = ?1", params![rid])?;
-        }
-
-        info!("[VFS::ExamRepo] Purged exam sheet: {} (with questions, reviews, folder_items, resources)", exam_id);
-        Ok(())
     }
 
     // ========================================================================
@@ -903,22 +962,39 @@ impl VfsExamRepo {
         exam_id: &str,
         preview_json: Value,
     ) -> VfsResult<()> {
-        let sql = r#"
-            UPDATE exam_sheets
-            SET preview_json = ?, updated_at = datetime('now')
-            WHERE id = ?
-        "#;
-
         let preview_str = serde_json::to_string(&preview_json).map_err(|e| {
             VfsError::Serialization(format!("Failed to serialize preview_json: {}", e))
         })?;
 
-        let affected = conn.execute(sql, params![preview_str, exam_id])?;
+        let now = chrono::Utc::now()
+            .format("%Y-%m-%dT%H:%M:%S%.3fZ")
+            .to_string();
+        let affected = conn.execute(
+            r#"
+            UPDATE exam_sheets
+            SET preview_json = ?1, updated_at = ?2
+            WHERE id = ?3
+            "#,
+            params![preview_str, now, exam_id],
+        )?;
         if affected == 0 {
             return Err(VfsError::NotFound {
                 resource_type: "ExamSheet".to_string(),
                 id: exam_id.to_string(),
             });
+        }
+
+        let resource_id: Option<String> = conn
+            .query_row(
+                "SELECT resource_id FROM exam_sheets WHERE id = ?1",
+                params![exam_id],
+                |row| row.get(0),
+            )
+            .optional()?;
+
+        if let Some(resource_id) = resource_id {
+            let _ =
+                VfsResourceRepo::update_resource_data_with_conn(conn, &resource_id, &preview_str)?;
         }
 
         info!("[VFS::ExamRepo] Updated preview_json for exam {}", exam_id);
@@ -1220,10 +1296,10 @@ impl VfsExamRepo {
     ) -> VfsResult<Vec<VfsExamSheet>> {
         let sql = r#"
             SELECT e.id, e.resource_id, e.exam_name, e.status, e.temp_id,
-                   e.metadata_json, e.preview_json, e.linked_mistake_ids, e.created_at, e.updated_at
+                   e.metadata_json, e.preview_json, e.linked_mistake_ids, e.is_favorite, e.created_at, e.updated_at
             FROM exam_sheets e
             JOIN folder_items fi ON fi.item_type = 'exam' AND fi.item_id = e.id
-            WHERE fi.folder_id IS ?1 AND e.deleted_at IS NULL
+            WHERE fi.folder_id IS ?1 AND e.deleted_at IS NULL AND fi.deleted_at IS NULL
             ORDER BY fi.sort_order ASC, e.updated_at DESC
             LIMIT ?2 OFFSET ?3
         "#;

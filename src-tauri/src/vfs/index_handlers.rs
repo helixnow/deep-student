@@ -9,7 +9,6 @@ use crate::vfs::database::VfsDatabase;
 use crate::vfs::index_service::{IndexStatusSummary, UnitIndexStatus, VfsIndexService};
 use crate::vfs::indexing::{VfsFullIndexingService, VfsIndexingService};
 use crate::vfs::lance_store::VfsLanceStore;
-use crate::vfs::repos::VfsIndexStateRepo;
 use crate::vfs::unit_builder::UnitBuildInput;
 use std::sync::Arc;
 use tauri::State;
@@ -60,32 +59,23 @@ pub async fn vfs_unified_batch_index(
     mode: String, // "text" | "mm" | "both"
     batch_size: Option<i32>,
 ) -> Result<BatchIndexResult, String> {
-    let limit = batch_size.unwrap_or(10) as u32;
+    let raw_limit = batch_size.unwrap_or(10);
+    let limit = raw_limit.clamp(1, 100) as u32;
 
     log::info!(
-        "[VFS::index_handlers] vfs_unified_batch_index: mode={}, batch_size={}",
+        "[VFS::index_handlers] vfs_unified_batch_index: mode={}, batch_size={} (raw={})",
         mode,
-        limit
+        limit,
+        raw_limit
     );
 
     // 文本模态使用 VfsFullIndexingService
     if mode == "text" || mode == "both" {
         // 获取索引配置
         let indexing_service = VfsIndexingService::new(Arc::clone(&vfs_db));
-        let config = indexing_service
+        let _config = indexing_service
             .get_indexing_config()
             .map_err(|e| e.to_string())?;
-
-        let pending = VfsIndexStateRepo::get_pending_resources(&vfs_db, limit, config.max_retries)
-            .map_err(|e| e.to_string())?;
-
-        if pending.is_empty() {
-            return Ok(BatchIndexResult {
-                success_count: 0,
-                fail_count: 0,
-                total: 0,
-            });
-        }
 
         let full_indexing_service = VfsFullIndexingService::new(
             Arc::clone(&vfs_db),

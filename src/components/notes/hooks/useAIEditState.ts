@@ -48,7 +48,7 @@ export interface AIEditState {
 
 export interface UseAIEditStateReturn {
   state: AIEditState;
-  startEdit: (request: CanvasAIEditRequest, originalContent: string) => void;
+  startEdit: (request: CanvasAIEditRequest, originalContent: string) => CanvasAIEditResult | null;
   accept: () => { proposedContent: string; result: CanvasAIEditResult } | null;
   reject: () => CanvasAIEditResult | null;
   clear: () => void;
@@ -156,7 +156,7 @@ function appendToSection(
 }
 
 function escapeRegExp(str: string): string {
-  return str.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&');
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 function computeDiffLines(original: string, proposed: string): DiffLine[] {
@@ -207,7 +207,7 @@ export function useAIEditState(): UseAIEditStateReturn {
   const stateRef = useRef(state);
   stateRef.current = state;
 
-  const startEdit = useCallback((request: CanvasAIEditRequest, originalContent: string) => {
+  const startEdit = useCallback((request: CanvasAIEditRequest, originalContent: string): CanvasAIEditResult | null => {
     const { content: proposedContent, replaceCount, error } = computeProposedContent(
       request,
       originalContent
@@ -215,6 +215,12 @@ export function useAIEditState(): UseAIEditStateReturn {
     
     if (error) {
       console.warn('[useAIEditState] Failed to compute proposed content:', error);
+      setState(initialState);
+      return {
+        requestId: request.requestId,
+        success: false,
+        error,
+      };
     }
     
     const diffLines = computeDiffLines(originalContent, proposedContent);
@@ -235,6 +241,7 @@ export function useAIEditState(): UseAIEditStateReturn {
       proposedLength: proposedContent.length,
       diffLinesCount: diffLines.length,
     });
+    return null;
   }, []);
 
   const accept = useCallback((): { proposedContent: string; result: CanvasAIEditResult } | null => {

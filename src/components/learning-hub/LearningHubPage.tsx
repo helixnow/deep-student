@@ -51,6 +51,7 @@ import { type OpenTab, type SplitViewState, MAX_TABS, createTab } from './types/
 import { TabBar } from './components/TabBar';
 import { TabPanelContainer } from './apps/TabPanelContainer';
 import { setActiveTabForExternal } from './activeTabAccessor';
+import { COMMAND_EVENTS, useCommandEvents } from '@/command-palette/hooks/useCommandEvents';
 
 // ============================================================================
 // 三屏滑动布局类型和常量
@@ -694,6 +695,37 @@ export const LearningHubPage: React.FC = () => {
     onCommandOpenEssayGrading: () => handleCreateAndOpen('essay'),
     onNavigateToKnowledge: handleNavigateToKnowledgeEvent,
   });
+
+  // ========== 笔记命令兼容层（NotesHome 已下线） ==========
+  useCommandEvents(
+    {
+      [COMMAND_EVENTS.NOTES_CREATE_NEW]: () => {
+        void handleCreateAndOpen('note');
+      },
+      [COMMAND_EVENTS.NOTES_CREATE_FOLDER]: () => {
+        window.dispatchEvent(new CustomEvent('learningHub:create-folder'));
+      },
+      [COMMAND_EVENTS.NOTES_FOCUS_SEARCH]: () => {
+        window.dispatchEvent(new CustomEvent('learningHub:focus-search'));
+      },
+      [COMMAND_EVENTS.NOTES_TOGGLE_SIDEBAR]: () => {
+        handleSidebarCollapsedChange(!sidebarCollapsed);
+      },
+      [COMMAND_EVENTS.NOTES_EXPORT_CURRENT]: () => {
+        showGlobalNotification(
+          'info',
+          t('notes:export.not_available_current', '当前版本暂未接入“导出当前笔记”快捷命令，请使用导出面板。')
+        );
+      },
+      [COMMAND_EVENTS.NOTES_EXPORT_ALL]: () => {
+        showGlobalNotification(
+          'info',
+          t('notes:export.not_available_all', '当前版本暂未接入“导出全部笔记”快捷命令，请使用导出面板。')
+        );
+      },
+    },
+    true
+  );
 
   // ========== 📱 同步应用状态到导航上下文 ==========
   useEffect(() => {

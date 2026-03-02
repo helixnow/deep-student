@@ -139,7 +139,10 @@ fn migrate_schema(conn: &Connection) -> Result<(), String> {
         let _ = conn.execute("ALTER TABLE subagent_task ADD COLUMN initial_task TEXT", []);
         let _ = conn.execute("ALTER TABLE subagent_task ADD COLUMN started_at TEXT", []);
         let _ = conn.execute("ALTER TABLE subagent_task ADD COLUMN completed_at TEXT", []);
-        let _ = conn.execute("ALTER TABLE subagent_task ADD COLUMN result_summary TEXT", []);
+        let _ = conn.execute(
+            "ALTER TABLE subagent_task ADD COLUMN result_summary TEXT",
+            [],
+        );
         conn.execute(
             "UPDATE subagent_task SET initial_task = task_content WHERE initial_task IS NULL",
             [],

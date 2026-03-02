@@ -94,6 +94,7 @@ import { useVfsContextInject } from './hooks';
 import type { VfsResourceType } from '@/chat-v2/context/types';
 import { MOBILE_LAYOUT } from '@/config/mobileLayout';
 import { consumePathsDropHandledFlag, isDragDropBlockedView } from './dragDropRouting';
+import { useCommandEvents } from '@/command-palette/hooks/useCommandEvents';
 
 /** ★ Bug4: canvas 模式下不应显示的特殊视图 folderId 集合 */
 const CANVAS_BLOCKED_VIEW_IDS = new Set(['indexStatus', 'memory', 'desktop']);
@@ -585,6 +586,26 @@ export function LearningHubSidebar({
     setCreateDialogOpen(true);
   };
 
+  const handleQuickCreateFolder = useCallback(async () => {
+    const parentId = currentPath.folderId && currentPath.folderId !== 'root'
+      ? currentPath.folderId
+      : undefined;
+    const result = await folderApi.createFolder(
+      t('finder.create.defaultFolderName', '新建文件夹'),
+      parentId
+    );
+
+    if (!isMountedRef.current) return;
+
+    if (result.ok) {
+      showGlobalNotification('success', t('finder.create.folderSuccess', '文件夹已创建'));
+      handleRefresh();
+      return;
+    }
+
+    showGlobalNotification('error', result.error.toUserMessage());
+  }, [currentPath.folderId, handleRefresh, t]);
+
   const handleNewNote = async () => {
     // ★ 2025-12-13: 改为与题目集/翻译/作文一致，直接创建空笔记
     const result = await createEmpty({
@@ -606,6 +627,32 @@ export function LearningHubSidebar({
       showGlobalNotification('error', result.error.toUserMessage());
     }
   };
+
+  const focusSearchInput = useCallback(() => {
+    setQuickAccessCollapsed(false);
+    if (isSmallScreen) {
+      setMobileSearchExpanded(true);
+    }
+    window.setTimeout(() => {
+      const input = containerRef.current?.querySelector<HTMLInputElement>('input[type="text"]');
+      if (input) {
+        input.focus();
+        input.select();
+      }
+    }, 0);
+  }, [isSmallScreen]);
+
+  useCommandEvents(
+    {
+      'learningHub:create-folder': () => {
+        void handleQuickCreateFolder();
+      },
+      'learningHub:focus-search': () => {
+        focusSearchInput();
+      },
+    },
+    true
+  );
 
   const handleNewExam = async () => {
     // ★ 创建空题目集文件并打开应用面板

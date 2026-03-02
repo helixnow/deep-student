@@ -1,28 +1,42 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { NotionDialog, NotionDialogHeader, NotionDialogTitle, NotionDialogBody, NotionAlertDialog } from '../../ui/NotionDialog';
 import { NotionButton } from '@/components/ui/NotionButton';
-import { CustomScrollArea } from '@/components/custom-scroll-area';
-import { NotesAPI, type NoteItem } from "../../../utils/notesApi";
 import { useNotes } from "../NotesContext";
 import { getErrorMessage } from "../../../utils/errorUtils";
-import { Trash2, RefreshCw, RotateCcw, X } from "lucide-react";
+import { Trash2, RotateCcw, X } from "lucide-react";
 import { format } from "date-fns";
+import { dstu } from "@/dstu";
+
+type TrashItem = {
+    id: string;
+    title: string;
+    updatedAt: number;
+};
 
 export function TrashDialog() {
     const { t } = useTranslation(['notes', 'common']);
     const { trashOpen, setTrashOpen, notify, refreshNotes } = useNotes();
 
     const [loading, setLoading] = useState(false);
-    const [items, setItems] = useState<NoteItem[]>([]);
+    const [items, setItems] = useState<TrashItem[]>([]);
     const [confirmState, setConfirmState] = useState<{ open: boolean; type: 'hard' | 'empty'; id?: string }>({ open: false, type: 'hard' });
 
     const loadTrash = useCallback(async () => {
         if (!trashOpen) return;
         setLoading(true);
         try {
-            const res = await NotesAPI.listDeleted();
-            setItems(res.items || []);
+            const res = await dstu.listDeleted('notes', 200, 0);
+            if (!res.ok) {
+                throw new Error(res.error.toUserMessage());
+            }
+            setItems(
+                res.value.map((node) => ({
+                    id: node.id,
+                    title: node.name || '',
+                    updatedAt: node.updatedAt,
+                }))
+            );
         } catch (error: unknown) {
             console.error("Failed to load trash", error);
             notify({
@@ -43,7 +57,10 @@ export function TrashDialog() {
 
     const handleRestore = async (id: string) => {
         try {
-            await NotesAPI.restore(id);
+            const res = await dstu.restore(`/${id}`);
+            if (!res.ok) {
+                throw new Error(res.error.toUserMessage());
+            }
             notify({ title: t('notes:trash.restore_success'), variant: "success" });
             loadTrash();
             refreshNotes(); // Refresh main list
@@ -61,10 +78,16 @@ export function TrashDialog() {
 
         try {
             if (confirmState.type === 'empty') {
-                await NotesAPI.emptyTrash();
+                const res = await dstu.purgeAll('notes');
+                if (!res.ok) {
+                    throw new Error(res.error.toUserMessage());
+                }
                 notify({ title: t('notes:trash.empty_success'), variant: "success" });
             } else if (confirmState.id) {
-                await NotesAPI.hardDelete(confirmState.id);
+                const res = await dstu.purge(`/${confirmState.id}`);
+                if (!res.ok) {
+                    throw new Error(res.error.toUserMessage());
+                }
                 notify({ title: t('notes:trash.delete_success'), variant: "success" });
             }
             setConfirmState({ open: false, type: 'hard' });
@@ -118,7 +141,7 @@ export function TrashDialog() {
                                         <div className="min-w-0 flex-1 mr-4">
                                             <h4 className="font-medium truncate">{item.title || t('notes:common.untitled')}</h4>
                                             <p className="text-xs text-muted-foreground mt-1">
-                                                {t('notes:common.deleted_at', 'Deleted at')}: {item.updated_at ? format(new Date(item.updated_at), 'yyyy-MM-dd HH:mm') : '-'}
+                                                {t('notes:common.deleted_at', 'Deleted at')}: {item.updatedAt ? format(new Date(item.updatedAt), 'yyyy-MM-dd HH:mm') : '-'}
                                             </p>
                                         </div>
                                         <div className="flex items-center gap-1">

@@ -5952,8 +5952,8 @@ mod tests {
     }
 
     #[test]
-    fn save_document_task_with_cards_atomic_rolls_back_when_all_cards_ignored(
-    ) -> anyhow::Result<()> {
+    fn save_document_task_with_cards_atomic_rolls_back_when_all_cards_ignored() -> anyhow::Result<()>
+    {
         let dir = tempdir()?;
         let db_path = dir.path().join("atomic_cards_test.db");
         let db = Database::new(&db_path)?;

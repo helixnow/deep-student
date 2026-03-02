@@ -62,7 +62,7 @@ pub(crate) use crate::vfs::multimodal_service::VfsMultimodalService;
 pub(crate) use crate::vfs::repos::MODALITY_TEXT;
 // 🆕 MCP 工具注入支持：现在使用前端传递的 mcp_tool_schemas，无需后端 MCP Client
 pub(crate) use super::context::PipelineContext;
-pub(crate) use super::resource_types::{ContentBlock, ContextRef, ContextSnapshot};
+pub(crate) use super::resource_types::{ContentBlock, ContextRef, ContextSnapshot, SendContextRef};
 pub(crate) use super::types::{
     block_status, block_types, feature_flags, variant_status, AttachmentInput, ChatMessage,
     MessageBlock, MessageMeta, MessageRole, MessageSources, SendMessageRequest, SendOptions,

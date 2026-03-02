@@ -1253,7 +1253,7 @@ pub async fn dstu_update(
     // 根据类型路由到对应 Repo
     let node = match resource_type.as_str() {
         "notes" | "note" => {
-            let updated_note = match VfsNoteRepo::update_note(
+            let mut updated_note = match VfsNoteRepo::update_note(
                 &vfs_db,
                 &id,
                 VfsUpdateNoteParams {
@@ -1559,7 +1559,7 @@ pub async fn dstu_rename(
     let node = match resource_type.as_str() {
         "notes" => {
             // 更新笔记标题
-            let updated_note = match VfsNoteRepo::update_note(
+            let mut updated_note = match VfsNoteRepo::update_note(
                 &vfs_db,
                 &id,
                 VfsUpdateNoteParams {
@@ -3173,8 +3173,9 @@ pub async fn dstu_set_metadata(
                         .collect::<Vec<String>>()
                 })
             });
+            let favorite = metadata.get("isFavorite").and_then(|v| v.as_bool());
 
-            let updated_note = match VfsNoteRepo::update_note(
+            let mut updated_note = match VfsNoteRepo::update_note(
                 &vfs_db,
                 &id,
                 VfsUpdateNoteParams {
@@ -3200,6 +3201,18 @@ pub async fn dstu_set_metadata(
                     return Err(e.to_string());
                 }
             };
+
+            if let Some(favorite) = favorite {
+                if let Err(e) = VfsNoteRepo::set_favorite(&vfs_db, &id, favorite) {
+                    log::error!(
+                        "[DSTU::handlers] dstu_set_metadata: FAILED - set note favorite id={}, error={}",
+                        id,
+                        e
+                    );
+                    return Err(e.to_string());
+                }
+                updated_note.is_favorite = favorite;
+            }
 
             note_to_dstu_node(&updated_note)
         }

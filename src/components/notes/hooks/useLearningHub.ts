@@ -146,8 +146,9 @@ export function useLearningHub(options?: {
   const [searchResults, setSearchResults] = useState<DstuNode[]>([]);
   const [isSearching, setIsSearching] = useState(false);
 
-  // 请求序列号（防止竞态）
-  const requestSeqRef = useRef(0);
+  // 请求序列号（防止 refresh/search 互相取消）
+  const refreshSeqRef = useRef(0);
+  const searchSeqRef = useRef(0);
 
   // ========== 核心 API 方法 ==========
 
@@ -175,7 +176,7 @@ export function useLearningHub(options?: {
    * 刷新当前目录
    */
   const refresh = useCallback(async () => {
-    const seq = ++requestSeqRef.current;
+    const seq = ++refreshSeqRef.current;
     setIsLoading(true);
     setError(null);
 
@@ -183,15 +184,15 @@ export function useLearningHub(options?: {
       const result = await list('/', { typeFilter: 'note' });
 
       // 防止竞态
-      if (seq !== requestSeqRef.current) return;
+      if (seq !== refreshSeqRef.current) return;
 
       setItems(result);
     } catch (err) {
-      if (seq !== requestSeqRef.current) return;
+      if (seq !== refreshSeqRef.current) return;
       setError(getErrorMessage(err));
       setItems([]);
     } finally {
-      if (seq === requestSeqRef.current) {
+      if (seq === refreshSeqRef.current) {
         setIsLoading(false);
       }
     }
@@ -316,31 +317,37 @@ export function useLearningHub(options?: {
     searchOptions?: DstuListOptions
   ): Promise<DstuNode[]> => {
     if (!query.trim()) {
+      // 递增序号，避免旧搜索结果“复活”
+      ++searchSeqRef.current;
       setSearchResults([]);
+      setIsSearching(false);
       return [];
     }
 
-    const seq = ++requestSeqRef.current;
+    const seq = ++searchSeqRef.current;
     setIsSearching(true);
+    try {
+      const result = await dstu.search(query, {
+        ...searchOptions,
+        typeFilter: searchOptions?.typeFilter ?? typeFilter,
+      });
 
-    const result = await dstu.search(query, {
-      ...searchOptions,
-      typeFilter: searchOptions?.typeFilter ?? typeFilter,
-    });
+      if (seq !== searchSeqRef.current) {
+        return result.ok ? result.value : [];
+      }
 
-    if (seq !== requestSeqRef.current) {
-      return result.ok ? result.value : [];
-    }
+      if (result.ok) {
+        setSearchResults(result.value);
+        return result.value;
+      }
 
-    if (result.ok) {
-      setSearchResults(result.value);
-      setIsSearching(false);
-      return result.value;
-    } else {
       reportError(result.error, i18next.t('notes:errors.search_resource'));
       setSearchResults([]);
-      setIsSearching(false);
       return [];
+    } finally {
+      if (seq === searchSeqRef.current) {
+        setIsSearching(false);
+      }
     }
   }, [typeFilter]);
 

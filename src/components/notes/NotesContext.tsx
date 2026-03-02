@@ -42,13 +42,10 @@ import { sessionManager } from "@/chat-v2/core/session";
 import { NOTE_TYPE_ID } from "@/chat-v2/context/definitions/note";
 import { TEXTBOOK_TYPE_ID } from "@/chat-v2/context/definitions/textbook";
 import { EXAM_TYPE_ID } from "@/chat-v2/context/definitions/exam";
-// 统一资源库修复：使用同步服务（写入 resources.db）
-import { 
-    syncNote, 
-    syncExam, 
-    syncTextbookPages, 
+// 统一资源库修复：直接写入 VFS 资源表
+import {
     createResource,
-    type SyncResult 
+    type SyncResult
 } from "@/services/resourceSyncService";
 
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
@@ -1231,34 +1228,22 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }, [notes, active, notify, t]);
 
     const deleteItems = useCallback(async (ids: string[]) => {
-        // Separate folders and notes
-        const folderIds = ids.filter(id => folders[id]);
         const noteIds = ids.filter(id => !folders[id]);
+        const paths = ids.map(id => `/${id}`);
+        const batchResult = await dstu.deleteMany(paths);
+        if (!batchResult.ok) {
+            reportError(batchResult.error, t('notes:errors.delete_notes'));
+            notify({
+                title: t('notes:actions.delete_failed'),
+                description: batchResult.error.toUserMessage(),
+                variant: "destructive"
+            });
+            void refreshNotes();
+            return;
+        }
 
-        // 1. Delete notes first (Critical)
+        // Update Notes State
         if (noteIds.length > 0) {
-            console.log('[NotesContext] Using DSTU API to delete notes:', noteIds);
-            const deleteResults = await Promise.all(noteIds.map(id => {
-                const dstuPath = `/${id}`;
-                return dstu.delete(dstuPath);
-            }));
-
-            // Check if all deletions succeeded
-            const failedDeletes = deleteResults.filter(r => !r.ok);
-            if (failedDeletes.length > 0) {
-                const firstError = failedDeletes[0].error;
-                reportError(firstError, t('notes:errors.delete_notes'));
-                notify({
-                    title: t('notes:actions.delete_failed'),
-                    description: firstError.toUserMessage(),
-                    variant: "destructive"
-                });
-                // If API fails, we haven't called removeFromStructure, so structure is intact.
-                void refreshNotes(); // Sync just in case
-                return;
-            }
-
-            // Update Notes State
             setNotes(prev => prev.filter(n => !noteIds.includes(n.id)));
             setLoadedContentIds(prev => {
                 const next = new Set(prev);
@@ -1516,16 +1501,24 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             let syncResult: SyncResult;
             let typeId: string;
 
-            // 2. 判断节点类型并同步到 VFS
+            // 2. 判断节点类型并写入 VFS
             const note = notes.find(n => n.id === nodeId);
             const ref = references[nodeId];
 
             if (note) {
-                // 笔记节点：直接同步到 VFS
-                console.log('[NotesContext] Syncing note to resources.db:', note.id);
-                syncResult = await syncNote(note.id);
+                // 笔记节点：直接写入 VFS
+                console.log('[NotesContext] Creating note resource:', note.id);
+                syncResult = await createResource({
+                    resourceType: 'note',
+                    data: note.content_md || '',
+                    sourceId: note.id,
+                    metadata: {
+                        title: note.title,
+                        tags: note.tags,
+                        updatedAt: note.updated_at,
+                    },
+                });
                 typeId = NOTE_TYPE_ID;
-                console.log('[NotesContext] Note sync result:', syncResult);
             } else if (ref) {
                 // Prompt 10: 检查引用是否失效
                 const invalid = isReferenceInvalidHook(nodeId);
@@ -1538,31 +1531,38 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                     return;
                 }
 
-                // 根据 sourceDb 映射类型并同步到 VFS
+                // 根据 sourceDb 映射类型并写入 VFS
+                const hubContent = await fetchRefContent(nodeId);
                 switch (ref.sourceDb) {
                     case 'textbooks': {
-                        // 同步到 VFS（不指定页面范围，同步全部）
-                        console.log('[NotesContext] Syncing textbook to resources.db:', ref.sourceId);
-                        const textbookResults = await syncTextbookPages(ref.sourceId);
-                        // 使用第一个结果（整体资源）
-                        if (textbookResults.length === 0) {
-                            throw new Error('Textbook sync returned no results');
-                        }
-                        syncResult = textbookResults[0];
+                        syncResult = await createResource({
+                            resourceType: 'textbook',
+                            data: hubContent.content,
+                            sourceId: ref.sourceId,
+                            metadata: {
+                                title: ref.title || '',
+                                ...hubContent.metadata,
+                            },
+                        });
                         typeId = TEXTBOOK_TYPE_ID;
                         break;
                     }
                     case 'exam_sessions': {
-                        // 题目集识别同步到 VFS
-                        console.log('[NotesContext] Syncing exam to resources.db:', ref.sourceId);
-                        syncResult = await syncExam(ref.sourceId);
+                        syncResult = await createResource({
+                            resourceType: 'exam',
+                            data: hubContent.content,
+                            sourceId: ref.sourceId,
+                            metadata: {
+                                title: ref.title || '',
+                                ...hubContent.metadata,
+                            },
+                        });
                         typeId = EXAM_TYPE_ID;
                         break;
                     }
                     default: {
-                        // 默认作为文件处理，通过 createResource 写入 VFS
+                        // 默认作为文件处理
                         console.log('[NotesContext] Creating file resource:', ref.sourceId);
-                        const hubContent = await fetchRefContent(nodeId);
                         syncResult = await createResource({
                             resourceType: 'file',
                             data: hubContent.content,

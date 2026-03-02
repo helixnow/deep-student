@@ -58,15 +58,31 @@ export function useCanvasAIEditHandler({
     const { proposedContent, result } = acceptResult;
     const editor = editorApiRef.current;
 
-    if (editor) {
-      editor.setMarkdown(proposedContent);
-      
-      if (onSaveRef.current) {
-        try {
-          await onSaveRef.current(proposedContent);
-        } catch (err) {
-          console.warn('[useCanvasAIEditHandler] Auto-save failed:', err);
-        }
+    if (!editor || editor.isReadonly()) {
+      await sendResult({
+        requestId: result.requestId,
+        success: false,
+        error: '编辑器不可写，修改未应用',
+      });
+      return;
+    }
+
+    editor.setMarkdown(proposedContent);
+
+    if (onSaveRef.current) {
+      try {
+        await onSaveRef.current(proposedContent);
+      } catch (err) {
+        console.warn('[useCanvasAIEditHandler] Auto-save failed:', err);
+        await sendResult({
+          requestId: result.requestId,
+          success: false,
+          error: err instanceof Error ? err.message : '保存失败，修改未落盘',
+          beforePreview: result.beforePreview,
+          afterPreview: result.afterPreview,
+          addedContent: result.addedContent,
+        });
+        return;
       }
     }
 
@@ -107,7 +123,10 @@ export function useCanvasAIEditHandler({
       }
 
       const originalContent = editor.getMarkdown();
-      startEdit(request, originalContent);
+      const immediateFailure = startEdit(request, originalContent);
+      if (immediateFailure) {
+        await sendResult(immediateFailure);
+      }
     },
     [startEdit, sendResult]
   );
@@ -116,15 +135,21 @@ export function useCanvasAIEditHandler({
     if (!enabled) return;
 
     let unlisten: UnlistenFn | null = null;
+    let active = true;
 
     const setup = async () => {
       try {
-        unlisten = await listen<CanvasAIEditRequest>(
+        const fn = await listen<CanvasAIEditRequest>(
           'canvas:ai-edit-request',
           (event) => {
             handleEditRequest(event.payload);
           }
         );
+        if (!active) {
+          fn();
+          return;
+        }
+        unlisten = fn;
         console.log('[useCanvasAIEditHandler] Listening for AI edit requests');
       } catch (err) {
         console.error('[useCanvasAIEditHandler] Failed to setup listener:', err);
@@ -134,6 +159,7 @@ export function useCanvasAIEditHandler({
     setup();
 
     return () => {
+      active = false;
       if (unlisten) {
         unlisten();
         console.log('[useCanvasAIEditHandler] Stopped listening');

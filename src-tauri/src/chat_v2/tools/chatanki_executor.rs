@@ -321,11 +321,7 @@ fn verify_block_ownership(
             return Err("blocks.ankiCards.errors.statusNotFound".to_string());
         }
     };
-    if message
-        .as_ref()
-        .map(|m| m.session_id.as_str())
-        == Some(session_id)
-    {
+    if message.as_ref().map(|m| m.session_id.as_str()) == Some(session_id) {
         Ok(())
     } else {
         Err("blocks.ankiCards.errors.statusNotFound".to_string())
@@ -700,7 +696,9 @@ impl ChatAnkiToolExecutor {
                 "shouldRetry": should_retry,
             });
             let duration_ms = start_time.elapsed().as_millis() as u64;
-            let error_message = final_error.clone().unwrap_or_else(|| "not_found".to_string());
+            let error_message = final_error
+                .clone()
+                .unwrap_or_else(|| "not_found".to_string());
             ctx.emitter
                 .emit_error(event_types::TOOL_CALL, &ctx.block_id, &error_message, None);
             let result = ToolResultInfo {
@@ -812,7 +810,8 @@ impl ChatAnkiToolExecutor {
                     let block_opt =
                         ChatV2Repo::get_block_v2(chat_db, block_id).map_err(|e| e.to_string())?;
                     if let Some(block) = block_opt {
-                        if let Err(error_key) = verify_block_ownership(chat_db, &block, &ctx.session_id)
+                        if let Err(error_key) =
+                            verify_block_ownership(chat_db, &block, &ctx.session_id)
                         {
                             final_status = "not_found".to_string();
                             final_error = Some(error_key);
@@ -1353,8 +1352,7 @@ impl ChatAnkiToolExecutor {
             }
         };
 
-        if let Err(error_key) = verify_document_ownership(&db, &args.document_id, &ctx.session_id)
-        {
+        if let Err(error_key) = verify_document_ownership(&db, &args.document_id, &ctx.session_id) {
             ctx.emitter
                 .emit_error(event_types::TOOL_CALL, &ctx.block_id, &error_key, None);
             let result = ToolResultInfo::failure(
@@ -1446,12 +1444,11 @@ impl ChatAnkiToolExecutor {
                 .unwrap_or_else(|| {
                     format!("{}.apkg", deck_name.replace('/', "_").replace('\\', "_"))
                 });
-            let suggested =
-                crate::cmd::anki_connect::sanitize_filename_with_extension(
-                    &suggested,
-                    "chatanki_cards",
-                    "apkg",
-                );
+            let suggested = crate::cmd::anki_connect::sanitize_filename_with_extension(
+                &suggested,
+                "chatanki_cards",
+                "apkg",
+            );
 
             let output_path = if cfg!(any(target_os = "ios", target_os = "android")) {
                 std::env::temp_dir().join(&suggested)
@@ -1649,8 +1646,7 @@ impl ChatAnkiToolExecutor {
             }
         };
 
-        if let Err(error_key) = verify_document_ownership(&db, &args.document_id, &ctx.session_id)
-        {
+        if let Err(error_key) = verify_document_ownership(&db, &args.document_id, &ctx.session_id) {
             ctx.emitter
                 .emit_error(event_types::TOOL_CALL, &ctx.block_id, &error_key, None);
             let result = ToolResultInfo::failure(
@@ -2621,7 +2617,10 @@ fn ensure_failed_document_session(
         }
         Ok(_) => {}
         Err(e) => {
-            return Err(format!("failed to check existing tasks for document {}: {}", document_id, e));
+            return Err(format!(
+                "failed to check existing tasks for document {}: {}",
+                document_id, e
+            ));
         }
     }
 
@@ -2642,7 +2641,12 @@ fn ensure_failed_document_session(
     db.insert_document_task(&task)
         .map_err(|e| format!("failed to insert placeholder failed task: {}", e))?;
     db.set_document_session_source(document_id, session_id)
-        .map_err(|e| format!("failed to set source_session_id for placeholder task: {}", e))?;
+        .map_err(|e| {
+            format!(
+                "failed to set source_session_id for placeholder task: {}",
+                e
+            )
+        })?;
     Ok(())
 }
 
@@ -5559,7 +5563,8 @@ mod tests {
 
     #[test]
     fn test_derive_status_snapshot_paused() {
-        let (status, error, should_retry) = derive_status_snapshot(&[make_task(TaskStatus::Paused)], 0);
+        let (status, error, should_retry) =
+            derive_status_snapshot(&[make_task(TaskStatus::Paused)], 0);
         assert_eq!(status, "paused");
         assert!(error.is_none());
         assert!(!should_retry);

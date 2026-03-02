@@ -324,6 +324,8 @@ impl ChatV2Pipeline {
         let options_arc = Arc::new(options.clone());
         let user_content_arc = Arc::new(user_content.clone());
         let session_id_arc = Arc::new(session_id.clone());
+        // ★ 2026-03 修复：共享 user_context_refs 给所有变体，确保多模态内容不丢失
+        let context_refs_arc = Arc::new(request.user_context_refs.clone().unwrap_or_default());
 
         // 🔧 P1修复：使用任务追踪器追踪并行任务
         // 创建并行任务
@@ -335,8 +337,7 @@ impl ChatV2Pipeline {
             let user_content_clone = Arc::clone(&user_content_arc);
             let session_id_clone = Arc::clone(&session_id_arc);
             let shared_ctx = Arc::clone(&shared_context);
-            // ★ 2025-12-10 统一改造：附件不再通过 request.attachments 传递
-            let attachments = Vec::new();
+            let context_refs_clone = Arc::clone(&context_refs_arc);
             let state_clone = chat_v2_state.clone();
 
             let future = async move {
@@ -347,7 +348,8 @@ impl ChatV2Pipeline {
                     (*user_content_clone).clone(),
                     (*session_id_clone).clone(),
                     shared_ctx,
-                    attachments,
+                    Vec::new(),
+                    (*context_refs_clone).clone(),
                 ).await
             };
 
@@ -645,7 +647,8 @@ impl ChatV2Pipeline {
     /// - `user_content`: 用户消息内容
     /// - `session_id`: 会话 ID
     /// - `shared_context`: 共享上下文（检索结果）
-    /// - `attachments`: 附件列表
+    /// - `attachments`: 附件列表（旧版 retry 路径兼容）
+    /// - `user_context_refs`: 用户上下文引用（含多模态 formattedBlocks）
     async fn execute_single_variant(
         &self,
         ctx: Arc<super::super::variant_context::VariantExecutionContext>,
@@ -654,6 +657,7 @@ impl ChatV2Pipeline {
         session_id: String,
         shared_context: Arc<SharedContext>,
         attachments: Vec<AttachmentInput>,
+        user_context_refs: Vec<SendContextRef>,
     ) -> ChatV2Result<()> {
         // 使用变体的模型 ID
         options.model_id = Some(ctx.model_id().to_string());
@@ -685,7 +689,7 @@ impl ChatV2Pipeline {
         trim_history_by_token_budget(&mut chat_history, max_tokens);
 
         // 构建当前用户消息
-        let current_user_message = self.build_variant_user_message(&user_content, &attachments);
+        let current_user_message = self.build_variant_user_message(&user_content, &attachments, &user_context_refs);
 
         // 创建 LLM 适配器（使用变体的事件发射）
         let enable_thinking = options.enable_thinking.unwrap_or(true);
@@ -861,6 +865,7 @@ impl ChatV2Pipeline {
         session_id: String,
         shared_context: Arc<SharedContext>,
         attachments: Vec<AttachmentInput>,
+        user_context_refs: Vec<SendContextRef>,
     ) -> ChatV2Result<()> {
         const MAX_TOOL_ROUNDS: u32 = 10;
 
@@ -886,7 +891,7 @@ impl ChatV2Pipeline {
             .map(|v| (v as usize).min(DEFAULT_MAX_HISTORY_TOKENS))
             .unwrap_or(DEFAULT_MAX_HISTORY_TOKENS);
         trim_history_by_token_budget(&mut chat_history, max_tokens_budget);
-        let current_user_message = self.build_variant_user_message(&user_content, &attachments);
+        let current_user_message = self.build_variant_user_message(&user_content, &attachments, &user_context_refs);
 
         let enable_thinking = options.enable_thinking.unwrap_or(true);
         let max_input_tokens_override = options.context_limit.map(|v| v as usize);
@@ -1773,11 +1778,133 @@ impl ChatV2Pipeline {
     }
 
     /// 构建变体用户消息
+    ///
+    /// ★ 2026-03 修复：支持 user_context_refs 多模态内容注入
+    /// 优先使用 user_context_refs 中的 formattedBlocks（与单变体路径 build_current_user_message 对齐），
+    /// 回退到旧版 attachments 路径（兼容 retry 恢复场景）。
     fn build_variant_user_message(
         &self,
         user_content: &str,
         attachments: &[AttachmentInput],
+        user_context_refs: &[SendContextRef],
     ) -> LegacyChatMessage {
+        // ★ 新路径：如果 user_context_refs 包含图片块，走多模态路径（与 prompt.rs 对齐）
+        let has_context_images = user_context_refs.iter().any(|r| {
+            r.formatted_blocks
+                .iter()
+                .any(|b| matches!(b, ContentBlock::Image { .. }))
+        });
+
+        if has_context_images {
+            let ordered_blocks =
+                PipelineContext::build_user_content_from_context_refs(user_context_refs);
+
+            let mut blocks: Vec<ContentBlock> = Vec::new();
+
+            if !user_content.is_empty() {
+                blocks.push(ContentBlock::text(format!(
+                    "<user_query>\n{}\n</user_query>",
+                    super::super::vfs_resolver::escape_xml_content(user_content)
+                )));
+            }
+
+            if !ordered_blocks.is_empty() {
+                blocks.push(ContentBlock::text("<injected_context>".to_string()));
+                blocks.extend(ordered_blocks);
+                blocks.push(ContentBlock::text("</injected_context>".to_string()));
+            }
+
+            let multimodal_parts: Vec<MultimodalContentPart> = blocks
+                .into_iter()
+                .map(|block| match block {
+                    ContentBlock::Text { text } => MultimodalContentPart::text(text),
+                    ContentBlock::Image { media_type, base64 } => {
+                        MultimodalContentPart::image(media_type, base64)
+                    }
+                })
+                .collect();
+
+            log::info!(
+                "[ChatV2::pipeline] build_variant_user_message: Using multimodal mode with {} parts from context refs",
+                multimodal_parts.len()
+            );
+
+            return LegacyChatMessage {
+                role: "user".to_string(),
+                content: String::new(),
+                timestamp: chrono::Utc::now(),
+                thinking_content: None,
+                thought_signature: None,
+                rag_sources: None,
+                memory_sources: None,
+                graph_sources: None,
+                web_search_sources: None,
+                image_paths: None,
+                image_base64: None,
+                doc_attachments: None,
+                multimodal_content: Some(multimodal_parts),
+                tool_call: None,
+                tool_result: None,
+                overrides: None,
+                relations: None,
+                persistent_stable_id: None,
+                metadata: None,
+            };
+        }
+
+        // ★ 文本模式：user_context_refs 有文本块时，合并到 content
+        if !user_context_refs.is_empty() {
+            let content_blocks =
+                PipelineContext::build_user_content_from_context_refs(user_context_refs);
+            if !content_blocks.is_empty() {
+                let mut combined = String::new();
+
+                if !user_content.is_empty() {
+                    combined.push_str(&format!(
+                        "<user_query>\n{}\n</user_query>\n\n",
+                        super::super::vfs_resolver::escape_xml_content(user_content)
+                    ));
+                }
+
+                combined.push_str("<injected_context>\n");
+                for block in content_blocks {
+                    if let ContentBlock::Text { text } = block {
+                        combined.push_str(&text);
+                        combined.push('\n');
+                    }
+                }
+                combined.push_str("</injected_context>");
+
+                log::info!(
+                    "[ChatV2::pipeline] build_variant_user_message: Using text mode with context refs, len={}",
+                    combined.len()
+                );
+
+                return LegacyChatMessage {
+                    role: "user".to_string(),
+                    content: combined,
+                    timestamp: chrono::Utc::now(),
+                    thinking_content: None,
+                    thought_signature: None,
+                    rag_sources: None,
+                    memory_sources: None,
+                    graph_sources: None,
+                    web_search_sources: None,
+                    image_paths: None,
+                    image_base64: None,
+                    doc_attachments: None,
+                    multimodal_content: None,
+                    tool_call: None,
+                    tool_result: None,
+                    overrides: None,
+                    relations: None,
+                    persistent_stable_id: None,
+                    metadata: None,
+                };
+            }
+        }
+
+        // ★ 回退路径：使用旧版 attachments（兼容 retry 恢复场景）
         let image_base64: Option<Vec<String>> = {
             let images: Vec<String> = attachments
                 .iter()
@@ -1800,11 +1927,9 @@ impl ChatV2Pipeline {
                         && !a.mime_type.starts_with("video/")
                 })
                 .map(|a| {
-                    // 🔧 P0修复：如果没有 text_content 但有 base64_content，尝试使用 DocumentParser 解析
                     let text_content = if a.text_content.is_some() {
                         a.text_content.clone()
                     } else if let Some(ref base64) = a.base64_content {
-                        // 尝试使用 DocumentParser 解析二进制文档（docx/pdf 等）
                         let parser = crate::document_parser::DocumentParser::new();
                         match parser.extract_text_from_base64(&a.name, base64) {
                             Ok(text) => {
@@ -1971,6 +2096,7 @@ impl ChatV2Pipeline {
                             (*session_id_clone).clone(),
                             shared_ctx,
                             (*attachments_clone).clone(),
+                            Vec::new(),
                         )
                         .await
                 };
@@ -2141,6 +2267,7 @@ impl ChatV2Pipeline {
 
         // 执行变体（使用完整工具循环路径，与多变体主流程保持一致）
         // 注意：model_id（原始 config_id）传递给 execute_single_variant_with_config 用于 LLM 调用
+        // retry 路径通过 user_attachments 传递图片（旧版兼容），context_refs 为空
         let result = self
             .execute_single_variant_with_config(
                 ctx.clone(),
@@ -2150,6 +2277,7 @@ impl ChatV2Pipeline {
                 session_id.clone(),
                 shared_context_arc,
                 user_attachments,
+                Vec::new(),
             )
             .await;
 

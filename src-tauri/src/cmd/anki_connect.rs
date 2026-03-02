@@ -489,8 +489,7 @@ pub async fn export_cards_as_apkg_with_template(
     );
 
     // 生成默认文件名和路径（在移动端使用可写的临时目录，避免 iOS 权限问题）
-    let sanitized_filename =
-        sanitize_filename_with_extension(&deck_name, "anki_cards", "apkg");
+    let sanitized_filename = sanitize_filename_with_extension(&deck_name, "anki_cards", "apkg");
 
     // 在 iOS/Android：始终使用临时目录（可写）
     // 在桌面端：优先 HOME/Downloads，不可写则回退到临时目录
@@ -583,12 +582,19 @@ pub async fn export_multi_template_apkg(
             export_dir.join(format!("{}_{}.apkg", sanitized, Uuid::new_v4()))
         } else {
             let candidate = std::path::PathBuf::from(path);
-            let parent = candidate.parent().map(|p| p.to_path_buf()).unwrap_or_default();
+            let parent = candidate
+                .parent()
+                .map(|p| p.to_path_buf())
+                .unwrap_or_default();
             let file_name = candidate
                 .file_name()
                 .and_then(|v| v.to_str())
                 .unwrap_or("anki_cards");
-            parent.join(sanitize_filename_with_extension(file_name, "anki_cards", "apkg"))
+            parent.join(sanitize_filename_with_extension(
+                file_name,
+                "anki_cards",
+                "apkg",
+            ))
         }
     } else {
         let filename = sanitize_filename_with_extension(&deck_name, "anki_cards", "apkg");

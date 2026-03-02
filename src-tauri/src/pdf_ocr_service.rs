@@ -5,7 +5,6 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
-use futures::stream::StreamExt;
 use image::{image_dimensions, ImageFormat};
 use pdfium_render::prelude::*;
 use serde_json::json;
@@ -301,7 +300,7 @@ impl PdfOcrService {
         let config = match self.llm_manager.get_pdf_ocr_model_config().await {
             Ok(c) => Arc::new(c),
             Err(e) => {
-                self.emit_error(&app_handle, 0, &e.to_string());
+                self.emit_error(&app_handle, &session_id, 0, &e.to_string());
                 let _ = self.emit_progress(
                     &app_handle,
                     json!({
@@ -555,7 +554,12 @@ impl PdfOcrService {
                         Ok(permit) => permit,
                         Err(e) => {
                             error!("[PDF-OCR] 获取并发信号量失败: {}", e);
-                            self.emit_error(&app_handle, page_index, "OCR 调度失败，请重试");
+                            self.emit_error(
+                                &app_handle,
+                                &session_id,
+                                page_index,
+                                "OCR 调度失败，请重试",
+                            );
                             break;
                         }
                     };
@@ -693,7 +697,10 @@ impl PdfOcrService {
                                                     "hint": hint,
                                                 }),
                                             );
-                                            sleep(Duration::from_millis(sleep_time)).await;
+                                            if Self::sleep_with_cancel(&cancel_rx, sleep_time).await
+                                            {
+                                                return;
+                                            }
                                             backoff = (backoff * 2).min(MAX_BACKOFF_MS);
                                             continue;
                                         }
@@ -725,6 +732,9 @@ impl PdfOcrService {
                 }
             }
         }
+
+        // 取消时先显式关闭接收端，避免渲染线程阻塞在 blocking_send 导致互等
+        drop(render_rx);
 
         // 等待渲染线程完成并检查错误
         let render_error = match render_handle.await {
@@ -773,13 +783,13 @@ impl PdfOcrService {
         // 如果渲染失败且没有成功的页面，发送错误
         if let Some(ref err) = render_error {
             if success_count == 0 {
-                self.emit_error(&app_handle, 0, err);
+                self.emit_error(&app_handle, &session_id, 0, err);
             }
         }
 
         // 如果总页数为 0 且无错误，说明 PDF 没有可渲染的页面
         if total_pages == 0 && render_error.is_none() {
-            self.emit_error(&app_handle, 0, "PDF 中没有可渲染的页面");
+            self.emit_error(&app_handle, &session_id, 0, "PDF 中没有可渲染的页面");
         }
 
         // ★ 2026-01 修复：在完成报告中包含渲染失败页面
@@ -917,7 +927,19 @@ impl PdfOcrService {
         let config = match self.llm_manager.get_pdf_ocr_model_config().await {
             Ok(c) => Arc::new(c),
             Err(e) => {
-                self.emit_error(&app_handle, 0, &e.to_string());
+                self.emit_error(&app_handle, &temp_id, 0, &e.to_string());
+                let _ = self.emit_progress(
+                    &app_handle,
+                    json!({
+                        "type": "Completed",
+                        "session_id": temp_id,
+                        "total_pages": total_pages,
+                        "success_count": 0,
+                        "failed_count": total_pages,
+                        "has_failures": true,
+                        "cancelled": false,
+                    }),
+                );
                 return;
             }
         };
@@ -968,6 +990,7 @@ impl PdfOcrService {
                                     error!("[PDF-OCR] 获取并发信号量失败: {}", e);
                                     self.emit_error(
                                         &app_handle,
+                                        &temp_id,
                                         page.page_index,
                                         "OCR 调度失败，请重试",
                                     );
@@ -981,7 +1004,7 @@ impl PdfOcrService {
                             let counter = completed_counter.clone();
                             let all_results = all_results.clone();
                             let failed_pages = failed_pages.clone();
-                            let _temp_id = temp_id.clone();
+                            let session_id_clone = temp_id.clone();
                             let cancel_rx = cancel_rx.clone();
 
                             join_set.spawn(async move {
@@ -997,6 +1020,7 @@ impl PdfOcrService {
                                     all_results.lock().await.insert(page_index, (page.clone(), blocks.clone()));
                                     let _ = app_handle.emit("pdf_ocr_progress", json!({
                                         "type": "PageCompleted",
+                                        "session_id": session_id_clone,
                                         "page_index": page_index,
                                         "completed": completed,
                                         "total": total_pages,
@@ -1030,6 +1054,7 @@ impl PdfOcrService {
 
                                             let _ = app_handle.emit("pdf_ocr_progress", json!({
                                                 "type": "PageCompleted",
+                                                "session_id": session_id_clone,
                                                 "page_index": page_index,
                                                 "completed": completed,
                                                 "total": total_pages,
@@ -1050,13 +1075,16 @@ impl PdfOcrService {
                                                     let sleep_time = if wait == 0 { backoff } else { wait.max(backoff) };
                                                     let _ = app_handle.emit("pdf_ocr_progress", json!({
                                                         "type": "Retrying",
+                                                        "session_id": session_id_clone,
                                                         "page_index": page_index,
                                                         "attempt": attempt,
                                                         "max_attempts": MAX_RETRY_ATTEMPTS,
                                                         "backoff_ms": sleep_time,
                                                         "hint": hint,
                                                     }));
-                                                    sleep(Duration::from_millis(sleep_time)).await;
+                                                    if Self::sleep_with_cancel(&cancel_rx, sleep_time).await {
+                                                        return;
+                                                    }
                                                     backoff = (backoff * 2).min(MAX_BACKOFF_MS);
                                                     continue;
                                                 }
@@ -1066,6 +1094,7 @@ impl PdfOcrService {
                                             failed_pages.lock().await.push((page_index, e.to_string()));
                                             let _ = app_handle.emit("pdf_ocr_progress", json!({
                                                 "type": "PageFailed",
+                                                "session_id": session_id_clone,
                                                 "page_index": page_index,
                                                 "error": e.to_string(),
                                             }));
@@ -1136,6 +1165,7 @@ impl PdfOcrService {
             &app_handle,
             json!({
                 "type": "Completed",
+                "session_id": temp_id,
                 "total_pages": total_pages,
                 "success_count": mapped_results.len(),
                 "failed_count": failed.len(),
@@ -1159,15 +1189,37 @@ impl PdfOcrService {
         handle.emit("pdf_ocr_progress", payload)
     }
 
-    fn emit_error(&self, handle: &AppHandle, page: usize, msg: &str) {
+    fn emit_error(&self, handle: &AppHandle, session_id: &str, page: usize, msg: &str) {
         let _ = handle.emit(
             "pdf_ocr_progress",
             json!({
                 "type": "PageFailed",
+                "session_id": session_id,
                 "page_index": page,
                 "error": msg
             }),
         );
+    }
+
+    async fn sleep_with_cancel(cancel_rx: &watch::Receiver<bool>, wait_ms: u64) -> bool {
+        if wait_ms == 0 {
+            return *cancel_rx.borrow();
+        }
+
+        let mut cancel_watch = cancel_rx.clone();
+        if *cancel_watch.borrow() {
+            return true;
+        }
+
+        tokio::select! {
+            _ = sleep(Duration::from_millis(wait_ms)) => false,
+            changed = cancel_watch.changed() => {
+                match changed {
+                    Ok(_) => *cancel_watch.borrow(),
+                    Err(_) => true,
+                }
+            }
+        }
     }
 
     async fn enforce_cache_budget(&self, keep_dirs: &[PathBuf]) {

@@ -82,6 +82,7 @@ export const qbankToolsSkill: SkillDefinition = {
     'builtin-qbank_reset_progress',
     'builtin-qbank_export',
     'builtin-qbank_import_document',
+    'builtin-qbank_ai_grade',
   ],
   embeddedTools: [
     {
@@ -90,7 +91,7 @@ export const qbankToolsSkill: SkillDefinition = {
       inputSchema: {
         type: 'object',
         properties: {
-          limit: { type: 'integer', default: 20, minimum: 1, maximum: 100, description: '返回数量限制' },
+          limit: { type: 'integer', default: 20, minimum: 1, maximum: 500, description: '返回数量限制' },
           offset: { type: 'integer', default: 0, minimum: 0, description: '偏移量（用于分页）' },
           search: { type: 'string', description: '搜索关键词（匹配题目集名称）' },
           include_stats: { type: 'boolean', default: true, description: '是否包含统计信息' },
@@ -108,7 +109,7 @@ export const qbankToolsSkill: SkillDefinition = {
           difficulty: { type: 'string', enum: ['easy', 'medium', 'hard', 'very_hard'], description: '筛选难度' },
           tags: { type: 'array', items: { type: 'string' }, description: '筛选标签' },
           page: { type: 'integer', default: 1, minimum: 1, description: '页码' },
-          page_size: { type: 'integer', default: 20, minimum: 1, maximum: 100, description: '每页数量' },
+          page_size: { type: 'integer', default: 20, minimum: 1, maximum: 500, description: '每页数量' },
         },
         required: ['session_id'],
       },
@@ -151,6 +152,7 @@ export const qbankToolsSkill: SkillDefinition = {
           explanation: { type: 'string', description: '更新解析' },
           difficulty: { type: 'string', enum: ['easy', 'medium', 'hard', 'very_hard'], description: '更新难度' },
           tags: { type: 'array', items: { type: 'string' }, description: '更新标签' },
+          images: { type: 'array', items: { type: 'string' }, description: '更新关联图片（图片 ID 列表）' },
           user_note: { type: 'string', description: '更新用户笔记' },
           status: { type: 'string', enum: ['new', 'in_progress', 'mastered', 'review'], description: '更新学习状态' },
         },
@@ -214,6 +216,7 @@ export const qbankToolsSkill: SkillDefinition = {
         properties: {
           session_id: { type: 'string', description: '目标题目集 ID（可选，不提供则创建新题目集）' },
           name: { type: 'string', description: '新题目集名称（创建新题目集时使用）' },
+          parent_card_id: { type: 'string', description: '默认父题 card_id（所有题目通用，可被题目内 parent_card_id 覆盖）' },
           questions: {
             type: 'array',
             items: {
@@ -291,6 +294,18 @@ export const qbankToolsSkill: SkillDefinition = {
           folder_id: { type: 'string', description: '目标文件夹 ID（创建新题目集时使用）' },
         },
         required: ['content'],
+      },
+    },
+    {
+      name: 'builtin-qbank_ai_grade',
+      description: '主观题 AI 评判提示工具。当前通过题目提交链路自动触发，此工具主要用于能力发现与参数对齐。',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          session_id: { type: 'string', description: '题目集 ID（可选）' },
+          card_id: { type: 'string', description: '题目卡片 ID（可选）' },
+          submission_id: { type: 'string', description: '提交记录 ID（可选）' },
+        },
       },
     },
   ],

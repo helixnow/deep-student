@@ -155,12 +155,14 @@ export function useQuestionBankSession({
   // Refs for concurrent request protection
   const examIdRef = useRef(examId);
   const loadRequestIdRef = useRef(0);
+  const sessionEpochRef = useRef(0);
   examIdRef.current = examId;
 
   // ========== 加载题目 ==========
   const loadQuestionsImpl = useCallback(async () => {
     const currentExamId = examIdRef.current;
     if (!currentExamId) return;
+    const epoch = sessionEpochRef.current;
 
     const requestId = ++loadRequestIdRef.current;
     setIsLoading(true);
@@ -177,7 +179,7 @@ export function useQuestionBankSession({
       ]);
 
       // Concurrent guard
-      if (loadRequestIdRef.current !== requestId) return;
+      if (loadRequestIdRef.current !== requestId || sessionEpochRef.current !== epoch || examIdRef.current !== currentExamId) return;
 
       const questionsMap = new Map<string, StoreQuestion>();
       const order: string[] = [];
@@ -197,11 +199,12 @@ export function useQuestionBankSession({
         { sessionId: currentExamId },
       );
     } catch (err: unknown) {
-      if (loadRequestIdRef.current !== requestId) return;
+      if (loadRequestIdRef.current !== requestId || sessionEpochRef.current !== epoch || examIdRef.current !== currentExamId) return;
       debugLog.error('[useQuestionBankSession] loadQuestions failed:', err);
       setError(String(err));
+      throw err instanceof Error ? err : new Error(String(err));
     } finally {
-      if (loadRequestIdRef.current === requestId) {
+      if (loadRequestIdRef.current === requestId && sessionEpochRef.current === epoch) {
         setIsLoading(false);
       }
     }
@@ -213,8 +216,20 @@ export function useQuestionBankSession({
 
   // 初始加载
   useEffect(() => {
+    sessionEpochRef.current += 1;
+    const epoch = sessionEpochRef.current;
     if (examId) {
-      void loadQuestionsImpl();
+      setLocalQuestions(new Map());
+      setLocalOrder([]);
+      setLocalStats(null);
+      setCurrentQuestionId(null);
+      setPagination({ page: 1, pageSize: PAGE_SIZE, total: 0, hasMore: false });
+      setError(null);
+      void loadQuestionsImpl().catch((err) => {
+        if (sessionEpochRef.current === epoch) {
+          debugLog.warn('[useQuestionBankSession] initial load failed:', err);
+        }
+      });
     } else {
       // Reset when examId becomes null
       setLocalQuestions(new Map());
@@ -229,12 +244,15 @@ export function useQuestionBankSession({
   const loadMoreQuestions = useCallback(async () => {
     const currentExamId = examIdRef.current;
     if (!currentExamId || isLoading || !pagination.hasMore) return;
+    const epoch = sessionEpochRef.current;
+    const nextPage = pagination.page + 1;
 
     setIsLoading(true);
     try {
       const result = await invoke<QuestionListResult>('qbank_list_questions', {
-        request: { exam_id: currentExamId, filters: {}, page: pagination.page + 1, page_size: PAGE_SIZE },
+        request: { exam_id: currentExamId, filters: {}, page: nextPage, page_size: PAGE_SIZE },
       });
+      if (sessionEpochRef.current !== epoch || examIdRef.current !== currentExamId) return;
 
       setLocalQuestions(prev => {
         const next = new Map(prev);
@@ -248,20 +266,28 @@ export function useQuestionBankSession({
       });
       setPagination(prev => ({ ...prev, page: result.page, total: result.total, hasMore: result.has_more }));
     } catch (err: unknown) {
+      if (sessionEpochRef.current !== epoch || examIdRef.current !== currentExamId) return;
       debugLog.error('[useQuestionBankSession] loadMoreQuestions failed:', err);
       setError(String(err));
     } finally {
-      setIsLoading(false);
+      if (sessionEpochRef.current === epoch) {
+        setIsLoading(false);
+      }
     }
   }, [isLoading, pagination.hasMore, pagination.page]);
 
   // ========== 提交答案 ==========
   const submitAnswer = useCallback(async (questionId: string, answer: string, isCorrectOverride?: boolean): Promise<SubmitResult> => {
+    const epoch = sessionEpochRef.current;
+    const currentExamId = examIdRef.current;
     setIsSubmitting(true);
     try {
       const result = await invoke<SubmitAnswerResult>('qbank_submit_answer', {
         request: { question_id: questionId, user_answer: answer, is_correct_override: isCorrectOverride },
       });
+      if (sessionEpochRef.current !== epoch || examIdRef.current !== currentExamId) {
+        throw new Error('Session changed before answer submission completed');
+      }
 
       // 本地更新 question + stats
       setLocalQuestions(prev => {
@@ -278,8 +304,13 @@ export function useQuestionBankSession({
         message: result.message,
         submissionId: result.submission_id,
       };
+    } catch (err: unknown) {
+      setError(String(err));
+      throw err;
     } finally {
-      setIsSubmitting(false);
+      if (sessionEpochRef.current === epoch) {
+        setIsSubmitting(false);
+      }
     }
   }, []);
 
@@ -321,11 +352,17 @@ export function useQuestionBankSession({
   const refreshStats = useCallback(async () => {
     const currentExamId = examIdRef.current;
     if (!currentExamId) return;
+    const epoch = sessionEpochRef.current;
     try {
       const stats = await invoke<StoreStats>('qbank_refresh_stats', { examId: currentExamId });
+      if (sessionEpochRef.current !== epoch || examIdRef.current !== currentExamId) return;
       setLocalStats(stats);
     } catch (err: unknown) {
       debugLog.error('[useQuestionBankSession] refreshStats failed:', err);
+      if (sessionEpochRef.current === epoch) {
+        setError(String(err));
+      }
+      throw err instanceof Error ? err : new Error(String(err));
     }
   }, []);
 

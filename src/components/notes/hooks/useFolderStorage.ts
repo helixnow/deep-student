@@ -137,17 +137,31 @@ export function useFolderStorage(notes: NoteItem[], setNotes: React.Dispatch<Rea
             });
         };
 
+        const collectFolderSubtreeIds = (folderId: string, visited = new Set<string>()): string[] => {
+            if (visited.has(folderId)) return [];
+            visited.add(folderId);
+
+            const folder = newFolders[folderId];
+            if (!folder) return [folderId];
+
+            const childFolderIds = folder.children.filter(childId => !!newFolders[childId]);
+            return [
+                folderId,
+                ...childFolderIds.flatMap(childId => collectFolderSubtreeIds(childId, visited)),
+            ];
+        };
+
         ids.forEach(id => {
-            removeId(id);
-            
-            // If it is a folder, delete the folder object
             if (newFolders[id]) {
-                // Move children to root to prevent data loss (orphaned notes)
-                const children = newFolders[id].children;
-                newRoot.push(...children);
-                delete newFolders[id];
+                const folderIdsToDelete = collectFolderSubtreeIds(id);
+                folderIdsToDelete.forEach(folderId => {
+                    removeId(folderId);
+                    delete newFolders[folderId];
+                });
+            } else {
+                removeId(id);
             }
-            
+
             // ★ 新增：如果是引用节点，从 references 中删除
             if (isReferenceId(id) && newReferences[id]) {
                 delete newReferences[id];

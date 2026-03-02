@@ -134,7 +134,7 @@ export const NotesAPI = {
     return await invoke<boolean>('notes_hard_delete', { id });
   },
   async restore(id: string): Promise<boolean> {
-    return await invoke<boolean>('notes_restore', { id });
+    return await invoke<boolean>('notes_restore', { subject: '_global', id });
   },
   async mentionsSearch(keyword: string, options?: { limit?: number }): Promise<NotesMentionSearchResult> {
     const payload: Record<string, unknown> = {

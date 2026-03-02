@@ -78,12 +78,31 @@ const ExamContentView: React.FC<ContentViewProps> = ({
   const focusMode = useQuestionBankStore(state => state.focusMode);
   const setFocusMode = useQuestionBankStore(state => state.setFocusMode);
   const checkSyncStatus = useQuestionBankStore(state => state.checkSyncStatus);
+  const setMockExamSession = useQuestionBankStore(state => state.setMockExamSession);
 
   // 高级练习模式会话数据（全局 store）
   const mockExamSession = useQuestionBankStore(state => state.mockExamSession);
   const timedSession = useQuestionBankStore(state => state.timedSession);
   const dailyPractice = useQuestionBankStore(state => state.dailyPractice);
   const generatedPaper = useQuestionBankStore(state => state.generatedPaper);
+
+  // 仅使用当前题目集的高级模式会话，避免跨题目集串会话
+  const activeMockExamSession = useMemo(
+    () => (mockExamSession?.exam_id === sessionId ? mockExamSession : null),
+    [mockExamSession, sessionId],
+  );
+  const activeTimedSession = useMemo(
+    () => (timedSession?.exam_id === sessionId ? timedSession : null),
+    [timedSession, sessionId],
+  );
+  const activeDailyPractice = useMemo(
+    () => (dailyPractice?.exam_id === sessionId ? dailyPractice : null),
+    [dailyPractice, sessionId],
+  );
+  const activeGeneratedPaper = useMemo(
+    () => (generatedPaper?.exam_id === sessionId ? generatedPaper : null),
+    [generatedPaper, sessionId],
+  );
 
   // UI 状态（保留在组件内）
   const [sessionDetail, setSessionDetail] = useState<ExamSheetSessionDetail | null>(null);
@@ -118,6 +137,10 @@ const ExamContentView: React.FC<ContentViewProps> = ({
       setIsTimerRunning(false);
     }
   }, [viewMode]);
+
+  useEffect(() => {
+    setElapsedTime(0);
+  }, [sessionId]);
   
   const toggleTimer = useCallback(() => {
     setIsTimerRunning(prev => !prev);
@@ -185,8 +208,30 @@ const ExamContentView: React.FC<ContentViewProps> = ({
   const handleSubmitAnswer = useCallback(async (questionId: string, answer: string, questionType?: QuestionType) => {
     if (!sessionId) throw new Error('No session');
     const result = await submitAnswer(questionId, answer);
+
+    // mock_exam 依赖 session.answers/results 做进度与成绩计算，提交后同步回写
+    if (
+      practiceMode === 'mock_exam' &&
+      activeMockExamSession &&
+      !activeMockExamSession.is_submitted &&
+      activeMockExamSession.question_ids.includes(questionId)
+    ) {
+      const nextAnswers = { ...activeMockExamSession.answers, [questionId]: answer };
+      const nextResults = { ...activeMockExamSession.results };
+      if (result.isCorrect === true || result.isCorrect === false) {
+        nextResults[questionId] = result.isCorrect;
+      } else {
+        delete nextResults[questionId];
+      }
+      setMockExamSession({
+        ...activeMockExamSession,
+        answers: nextAnswers,
+        results: nextResults,
+      });
+    }
+
     return result;
-  }, [sessionId, submitAnswer]);
+  }, [sessionId, submitAnswer, practiceMode, activeMockExamSession, setMockExamSession]);
 
   // 🆕 使用 Hook 的 markCorrect
   const handleMarkCorrect = useCallback(async (questionId: string, isCorrect: boolean) => {
@@ -217,29 +262,29 @@ const ExamContentView: React.FC<ContentViewProps> = ({
   const practiceQuestions = useMemo(() => {
     switch (practiceMode) {
       case 'mock_exam': {
-        if (!mockExamSession?.question_ids?.length) return questions;
-        const idSet = new Set(mockExamSession.question_ids);
+        if (!activeMockExamSession?.question_ids?.length) return questions;
+        const idSet = new Set(activeMockExamSession.question_ids);
         return questions.filter(q => idSet.has(q.id));
       }
       case 'timed': {
-        if (!timedSession?.question_ids?.length) return questions;
-        const idSet = new Set(timedSession.question_ids);
+        if (!activeTimedSession?.question_ids?.length) return questions;
+        const idSet = new Set(activeTimedSession.question_ids);
         return questions.filter(q => idSet.has(q.id));
       }
       case 'daily': {
-        if (!dailyPractice?.question_ids?.length) return questions;
-        const idSet = new Set(dailyPractice.question_ids);
+        if (!activeDailyPractice?.question_ids?.length) return questions;
+        const idSet = new Set(activeDailyPractice.question_ids);
         return questions.filter(q => idSet.has(q.id));
       }
       case 'paper': {
-        if (!generatedPaper?.questions?.length) return questions;
-        const idSet = new Set(generatedPaper.questions.map(q => q.id));
+        if (!activeGeneratedPaper?.questions?.length) return questions;
+        const idSet = new Set(activeGeneratedPaper.questions.map(q => q.id));
         return questions.filter(q => idSet.has(q.id));
       }
       default:
         return questions;
     }
-  }, [practiceMode, questions, mockExamSession, timedSession, dailyPractice, generatedPaper]);
+  }, [practiceMode, questions, activeMockExamSession, activeTimedSession, activeDailyPractice, activeGeneratedPaper]);
 
   // 高级模式下 currentIndex 需要映射到过滤后的子集
   const practiceCurrentIndex = useMemo(() => {
@@ -253,6 +298,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
 
   // PracticeLauncher 的 onStartPractice 回调
   const handleStartPractice = useCallback((mode: PracticeMode, tag?: string) => {
+    setElapsedTime(0);
     setStorePracticeMode(mode);
     if (tag) setSelectedTag(tag);
     // 对于高级模式，navigate 到过滤子集的第一题
@@ -260,10 +306,10 @@ const ExamContentView: React.FC<ContentViewProps> = ({
       // 高级模式的 question_ids 已经在全局 store 中设置好了
       // 找到第一个匹配的题目在全量 questions 中的索引
       let sessionQuestionIds: string[] = [];
-      if (mode === 'mock_exam') sessionQuestionIds = mockExamSession?.question_ids || [];
-      else if (mode === 'timed') sessionQuestionIds = timedSession?.question_ids || [];
-      else if (mode === 'daily') sessionQuestionIds = dailyPractice?.question_ids || [];
-      else if (mode === 'paper') sessionQuestionIds = generatedPaper?.questions?.map(q => q.id) || [];
+      if (mode === 'mock_exam') sessionQuestionIds = activeMockExamSession?.question_ids || [];
+      else if (mode === 'timed') sessionQuestionIds = activeTimedSession?.question_ids || [];
+      else if (mode === 'daily') sessionQuestionIds = activeDailyPractice?.question_ids || [];
+      else if (mode === 'paper') sessionQuestionIds = activeGeneratedPaper?.questions?.map(q => q.id) || [];
       
       if (sessionQuestionIds.length > 0) {
         const firstId = sessionQuestionIds[0];
@@ -275,7 +321,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
       navigate(nextIdx);
     }
     setViewMode('practice');
-  }, [questions, currentIndex, navigate, setStorePracticeMode, mockExamSession, timedSession, dailyPractice, generatedPaper]);
+  }, [questions, currentIndex, navigate, setStorePracticeMode, activeMockExamSession, activeTimedSession, activeDailyPractice, activeGeneratedPaper]);
 
   const refreshQuestionsAndStats = useCallback(async () => {
     await Promise.all([loadQuestions(), refreshStats()]);

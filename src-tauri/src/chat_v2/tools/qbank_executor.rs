@@ -65,6 +65,27 @@ impl QBankExecutor {
         Self
     }
 
+    fn read_bounded_u32(args: &Value, key: &str, default: u32, min: u32, max: u32) -> u32 {
+        let raw = args
+            .get(key)
+            .and_then(|v| v.as_i64())
+            .unwrap_or(default as i64);
+        let normalized = if raw < min as i64 { min } else { raw as u32 };
+        normalized.clamp(min, max)
+    }
+
+    fn read_non_negative_u32(args: &Value, key: &str, default: u32) -> u32 {
+        let raw = args
+            .get(key)
+            .and_then(|v| v.as_i64())
+            .unwrap_or(default as i64);
+        if raw < 0 {
+            default
+        } else {
+            raw as u32
+        }
+    }
+
     /// 读取全部题目（自动分页）
     fn list_all_questions(
         &self,
@@ -99,17 +120,8 @@ impl QBankExecutor {
 
     /// 列出所有题目集（不需要 session_id）
     async fn execute_list(&self, call: &ToolCall, ctx: &ExecutionContext) -> Result<Value, String> {
-        let limit = call
-            .arguments
-            .get("limit")
-            .and_then(|v| v.as_i64())
-            .unwrap_or(20) as u32;
-        let limit = limit.min(500); // M-043: 最大 500 条
-        let offset = call
-            .arguments
-            .get("offset")
-            .and_then(|v| v.as_i64())
-            .unwrap_or(0) as u32;
+        let limit = Self::read_bounded_u32(&call.arguments, "limit", 20, 1, 500);
+        let offset = Self::read_non_negative_u32(&call.arguments, "offset", 0);
         let search = call.arguments.get("search").and_then(|v| v.as_str());
         let include_stats = call
             .arguments
@@ -118,6 +130,8 @@ impl QBankExecutor {
             .unwrap_or(true);
 
         let vfs_db = ctx.vfs_db.as_ref().ok_or("VFS database not available")?;
+        let total = VfsExamRepo::count_exam_sheets(vfs_db, search)
+            .map_err(|e| format!("Failed to count exam sheets: {}", e))?;
         let exams = VfsExamRepo::list_exam_sheets(vfs_db, search, limit, offset)
             .map_err(|e| format!("Failed to list exam sheets: {}", e))?;
 
@@ -216,7 +230,7 @@ impl QBankExecutor {
             .collect();
 
         Ok(json!({
-            "total": question_banks.len(),
+            "total": total,
             "question_banks": question_banks,
             "limit": limit,
             "offset": offset,
@@ -246,18 +260,8 @@ impl QBankExecutor {
                     .filter_map(|v| v.as_str().map(String::from))
                     .collect()
             });
-        let page = call
-            .arguments
-            .get("page")
-            .and_then(|v| v.as_i64())
-            .unwrap_or(1) as u32;
-        let page = page.max(1);
-        let page_size = call
-            .arguments
-            .get("page_size")
-            .and_then(|v| v.as_i64())
-            .unwrap_or(20) as u32;
-        let page_size = page_size.min(500); // M-043: 最大 500 条
+        let page = Self::read_bounded_u32(&call.arguments, "page", 1, 1, u32::MAX);
+        let page_size = Self::read_bounded_u32(&call.arguments, "page_size", 20, 1, 500);
 
         // 🆕 优先使用 QuestionBankService
         if let Some(service) = &ctx.question_bank_service {
@@ -1579,7 +1583,7 @@ impl QBankExecutor {
         } else {
             return Err("Missing 'questions' parameter".to_string());
         };
-        let parent_card_id = call
+        let top_parent_card_id = call
             .arguments
             .get("parent_card_id")
             .and_then(|v| v.as_str());
@@ -1615,18 +1619,6 @@ impl QBankExecutor {
         let mut imported_count = 0;
         let mut new_card_ids: Vec<String> = Vec::new();
         let mut question_params_list: Vec<CreateQuestionParams> = Vec::new();
-
-        let parent_question_id = if let (Some(parent_card_id), Some(service)) =
-            (parent_card_id, &ctx.question_bank_service)
-        {
-            service
-                .get_question_by_card_id(&session_id, parent_card_id)
-                .ok()
-                .flatten()
-                .map(|q| q.id)
-        } else {
-            None
-        };
 
         if preview.pages.is_empty() {
             preview.pages.push(ExamSheetPreviewPage {
@@ -1670,6 +1662,21 @@ impl QBankExecutor {
                         .collect()
                 })
                 .unwrap_or_default();
+            let parent_card_id = q
+                .get("parent_card_id")
+                .and_then(|v| v.as_str())
+                .or(top_parent_card_id);
+            let parent_question_id = if let (Some(parent_card_id), Some(service)) =
+                (parent_card_id, &ctx.question_bank_service)
+            {
+                service
+                    .get_question_by_card_id(&session_id, parent_card_id)
+                    .ok()
+                    .flatten()
+                    .map(|existing| existing.id)
+            } else {
+                None
+            };
 
             let new_card = ExamCardPreview {
                 card_id: card_id.clone(),
@@ -1755,7 +1762,7 @@ impl QBankExecutor {
 
         if imported_count > 0 {
             // 如果有 parent_card_id，更新父题的 variant_ids
-            if let Some(parent_id) = parent_card_id {
+            if let Some(parent_id) = top_parent_card_id {
                 for page in &mut preview.pages {
                     for card in &mut page.cards {
                         if card.card_id == parent_id {
@@ -1987,9 +1994,9 @@ impl ToolExecutor for QBankExecutor {
     fn sensitivity_level(&self, tool_name: &str) -> ToolSensitivity {
         let stripped = strip_tool_namespace(tool_name);
         match stripped {
-            // ★ 2026-02-09: 仅保留 qbank_reset_progress 为 Medium（重置进度不可逆）
-            "qbank_reset_progress" => ToolSensitivity::Medium,
-            // 其他操作（导入/导出/提交答案/更新题目）都是创建性或学习性操作，降为 Low
+            // 涉及不可逆重置或敏感数据导出，提升敏感级别
+            "qbank_reset_progress" | "qbank_export" => ToolSensitivity::Medium,
+            // 其他操作（导入/提交答案/更新题目）默认 Low
             _ => ToolSensitivity::Low,
         }
     }

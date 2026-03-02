@@ -391,6 +391,43 @@ impl VfsTextbookRepo {
         Ok(textbooks)
     }
 
+    /// 按关键词列出教材（文件名/原始路径模糊匹配）
+    pub fn search_textbooks(
+        db: &VfsDatabase,
+        search: &str,
+        limit: u32,
+        offset: u32,
+    ) -> VfsResult<Vec<VfsTextbook>> {
+        let conn = db.get_conn_safe()?;
+        Self::search_textbooks_with_conn(&conn, search, limit, offset)
+    }
+
+    /// 按关键词列出教材（使用现有连接）
+    pub fn search_textbooks_with_conn(
+        conn: &Connection,
+        search: &str,
+        limit: u32,
+        offset: u32,
+    ) -> VfsResult<Vec<VfsTextbook>> {
+        let pattern = format!("%{}%", search.trim());
+        let mut stmt = conn.prepare(
+            r#"
+            SELECT id, resource_id, blob_hash, sha256, file_name, original_path, size, page_count,
+                   tags_json, is_favorite, last_opened_at, last_page, bookmarks_json,
+                   cover_key, status, created_at, updated_at
+            FROM files
+            WHERE status = 'active'
+              AND (file_name LIKE ?1 OR COALESCE(original_path, '') LIKE ?1)
+            ORDER BY updated_at DESC
+            LIMIT ?2 OFFSET ?3
+            "#,
+        )?;
+
+        let rows = stmt.query_map(params![pattern, limit, offset], Self::row_to_textbook)?;
+        let textbooks: Vec<VfsTextbook> = rows.filter_map(log_and_skip_err).collect();
+        Ok(textbooks)
+    }
+
     // ========================================================================
     // 更新教材
     // ========================================================================

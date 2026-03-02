@@ -102,6 +102,7 @@ export function usePdfLoader({
   
   // 追踪当前加载请求，用于取消
   const abortControllerRef = useRef<AbortController | null>(null);
+  const requestIdRef = useRef(0);
   // 追踪上一次加载的 cacheKey，避免重复加载
   const lastLoadedKeyRef = useRef<string | null>(null);
   // ★ 用 ref 追踪当前 file，避免 useCallback 依赖循环
@@ -110,8 +111,18 @@ export function usePdfLoader({
   // 从缓存获取或加载
   const loadPdf = useCallback(async () => {
     const resolvedCacheKey = cacheKey || nodeId;
+    const requestId = ++requestIdRef.current;
+
+    // 取消之前的请求（必须在任何早返回之前执行）
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     // 如果有 filePath，不需要从数据库加载
     if (filePath) {
+      abortControllerRef.current = null;
       setFile(null);
       setLoading(false);
       setError(null);
@@ -141,12 +152,6 @@ export function usePdfLoader({
       return;
     }
     
-    // 取消之前的请求
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-    }
-    abortControllerRef.current = new AbortController();
-    
     setLoading(true);
     setError(null);
     lastLoadedKeyRef.current = resolvedCacheKey;
@@ -159,7 +164,7 @@ export function usePdfLoader({
       });
       
       // 检查是否被取消
-      if (abortControllerRef.current?.signal.aborted) {
+      if (controller.signal.aborted || requestId !== requestIdRef.current) {
         return;
       }
       
@@ -205,7 +210,7 @@ export function usePdfLoader({
       }
     } catch (err: unknown) {
       // 检查是否被取消
-      if (abortControllerRef.current?.signal.aborted) {
+      if (controller.signal.aborted || requestId !== requestIdRef.current) {
         return;
       }
       

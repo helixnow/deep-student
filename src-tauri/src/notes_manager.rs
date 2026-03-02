@@ -1977,7 +1977,7 @@ impl NotesManager {
             .as_ref()
             .ok_or_else(|| AppError::configuration("VFS database not configured"))?;
 
-        VfsNoteRepo::delete_note(vfs_db, note_id)
+        VfsNoteRepo::delete_note_with_folder_item(vfs_db, note_id)
             .map_err(|e| AppError::database(format!("VFS delete_note failed: {}", e)))?;
 
         log::info!("[NotesManager::VFS] Deleted note: {}", note_id);

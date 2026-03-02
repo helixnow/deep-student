@@ -263,10 +263,16 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
   const generateCsvExport = useCallback(() => {
     // M-028: 统一 CSV 字段转义，含逗号/换行/引号时自动包裹双引号
     const escapeCsvField = (field: string): string => {
-      if (field.includes(',') || field.includes('"') || field.includes('\n') || field.includes('\r')) {
-        return `"${field.replace(/"/g, '""')}"`;
+      let value = field;
+      const first = value.charAt(0);
+      const dangerousPrefix = ['=', '+', '-', '@', '\t', '\r', '\n'].includes(first);
+      if (dangerousPrefix) {
+        value = `\t${value}`;
       }
-      return field;
+      if (value.includes(',') || value.includes('"') || value.includes('\n') || value.includes('\r') || dangerousPrefix) {
+        return `"${value.replace(/"/g, '""')}"`;
+      }
+      return value;
     };
 
     const headers = [
@@ -294,7 +300,7 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
         escapeCsvField(q.difficulty || ''),
         escapeCsvField(q.tags?.join('; ') || ''),
         ...(options.includeStatus ? [escapeCsvField(q.status || '')] : []),
-        ...(options.includeStats ? [String(q.attemptCount), String(q.correctCount)] : []),
+        ...(options.includeStats ? [String(q.attemptCount ?? 0), String(q.correctCount ?? 0)] : []),
       ];
       return row.join(',');
     });

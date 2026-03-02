@@ -1330,11 +1330,20 @@ export const useQuestionBankStore = create<QuestionBankState>()(
         set({ isLoadingPractice: true, error: null });
         
         try {
+          const normalizedSession: MockExamSession = {
+            ...session,
+            ended_at: session.ended_at || new Date().toISOString(),
+            is_submitted: true,
+          };
           const scoreCard = await invoke<MockExamScoreCard>('qbank_submit_mock_exam', {
-            request: { session },
+            request: { session: normalizedSession },
           });
           
-          set({ mockExamScoreCard: scoreCard, isLoadingPractice: false });
+          set({
+            mockExamSession: normalizedSession,
+            mockExamScoreCard: scoreCard,
+            isLoadingPractice: false,
+          });
           return scoreCard;
         } catch (err: unknown) {
           debugLog.error('[QuestionBankStore] submitMockExam failed:', err);

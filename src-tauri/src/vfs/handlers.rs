@@ -651,8 +651,8 @@ pub async fn vfs_delete_note(
     // 验证笔记 ID 格式
     validate_id_format(&id, "note_", "id")?;
 
-    // 调用 VfsNoteRepo::delete_note
-    VfsNoteRepo::delete_note(&vfs_db, &id).map_err(|e| e.to_string())
+    // 保持 notes 与 folder_items 软删除一致
+    VfsNoteRepo::delete_note_with_folder_item(&vfs_db, &id).map_err(|e| e.to_string())
 }
 
 // ============================================================================
@@ -680,7 +680,13 @@ pub async fn vfs_list_textbooks(
         params.offset
     );
 
-    VfsTextbookRepo::list_textbooks(&vfs_db, params.limit, params.offset).map_err(|e| e.to_string())
+    if let Some(search) = params.search.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+        VfsTextbookRepo::search_textbooks(&vfs_db, search, params.limit, params.offset)
+            .map_err(|e| e.to_string())
+    } else {
+        VfsTextbookRepo::list_textbooks(&vfs_db, params.limit, params.offset)
+            .map_err(|e| e.to_string())
+    }
 }
 
 /// 列出题目集识别
@@ -971,7 +977,13 @@ pub async fn vfs_search_all(
         b_time.cmp(&a_time)
     });
 
-    // 限制返回数量
+    // 应用全局分页语义（先 offset 后 limit）
+    let offset = params.offset as usize;
+    if offset >= results.len() {
+        results.clear();
+    } else if offset > 0 {
+        results = results.into_iter().skip(offset).collect();
+    }
     results.truncate(params.limit as usize);
 
     log::info!(

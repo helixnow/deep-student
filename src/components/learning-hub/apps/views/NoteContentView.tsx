@@ -24,6 +24,8 @@ import { cn } from '@/lib/utils';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { GripVertical, PanelRight } from 'lucide-react';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
+import { COMMAND_EVENTS, useCommandEvents } from '@/command-palette/hooks/useCommandEvents';
+import type { CrepeEditorApi } from '@/components/crepe';
 
 /**
  * 笔记内容视图
@@ -36,6 +38,7 @@ const NoteContentView: React.FC<ContentViewProps> = ({
   onClose,
   onTitleChange,
   readOnly = false,
+  isActive = false,
 }) => {
   const { t } = useTranslation(['notes', 'common']);
   const isSmallScreen = useMediaQuery("(max-width: 768px)");
@@ -63,6 +66,7 @@ const NoteContentView: React.FC<ContentViewProps> = ({
   const [content, setContent] = useState<string | null>(null);
   const [title, setTitle] = useState<string>(node.name || '');
   const [tags, setTags] = useState<string[]>((node.metadata?.tags as string[]) || []);
+  const editorApiRef = useRef<CrepeEditorApi | null>(null);
   
   // 🔧 追踪当前加载的笔记 ID，用于防止竞态条件
   const loadingNoteIdRef = React.useRef<string | null>(null);
@@ -161,6 +165,53 @@ const NoteContentView: React.FC<ContentViewProps> = ({
     setTags(newTags);
   }, [node.path, readOnly]);
 
+  useCommandEvents(
+    {
+      [COMMAND_EVENTS.NOTES_FORCE_SAVE]: () => {
+        if (!isActive || readOnly) return;
+        const editor = editorApiRef.current;
+        if (!editor) return;
+        void handleSave(editor.getMarkdown())
+          .then(() => {
+            showGlobalNotification('success', t('notes:actions.save_success', '保存成功'));
+          })
+          .catch((err) => {
+            const msg = err instanceof Error ? err.message : t('notes:actions.save_failed', '保存失败');
+            showGlobalNotification('error', msg);
+          });
+      },
+      [COMMAND_EVENTS.NOTES_TOGGLE_OUTLINE]: () => {
+        if (!isActive || isSmallScreen) return;
+        toggleRightPanel();
+      },
+      [COMMAND_EVENTS.NOTES_INSERT_MATH]: () => {
+        if (!isActive || readOnly) return;
+        editorApiRef.current?.insertAtCursor('\n$$\n\n$$\n');
+      },
+      [COMMAND_EVENTS.NOTES_INSERT_TABLE]: () => {
+        if (!isActive || readOnly) return;
+        editorApiRef.current?.insertTable();
+      },
+      [COMMAND_EVENTS.NOTES_INSERT_CODEBLOCK]: () => {
+        if (!isActive || readOnly) return;
+        editorApiRef.current?.insertCodeBlock();
+      },
+      [COMMAND_EVENTS.NOTES_INSERT_LINK]: () => {
+        if (!isActive || readOnly) return;
+        editorApiRef.current?.insertLink('https://', '');
+      },
+      [COMMAND_EVENTS.NOTES_INSERT_IMAGE]: () => {
+        if (!isActive || readOnly) return;
+        editorApiRef.current?.insertImage('https://', '');
+      },
+      [COMMAND_EVENTS.AI_CONTINUE_WRITING]: () => {
+        if (!isActive || readOnly) return;
+        showGlobalNotification('info', t('notes:ai.continue_not_available', 'AI 续写命令暂不可用，请使用聊天面板发起编辑。'));
+      },
+    },
+    true
+  );
+
   // ========== 渲染 ==========
   // 🔧 优化：Stale-While-Revalidate
   // 当有旧内容 (content !== null) 但正在加载新内容 (isLoading) 时，不要白屏，而是保留旧内容+顶部透明进度条
@@ -243,6 +294,9 @@ const NoteContentView: React.FC<ContentViewProps> = ({
             noteId={noteId}
             className="flex-1 min-h-0"
             readOnly={readOnly}
+            onEditorReady={(api) => {
+              editorApiRef.current = api;
+            }}
           />
         </Panel>
 

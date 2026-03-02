@@ -371,6 +371,8 @@ export const DataImportExport: React.FC<DataImportExportProps> = ({ onClose, emb
       output_path?: string;
       resolvedPath?: string;
       resolved_path?: string;
+      requiresRestart?: boolean;
+      requires_restart?: boolean;
       error?: string;
       stats?: Record<string, unknown>;
     };
@@ -443,13 +445,14 @@ export const DataImportExport: React.FC<DataImportExportProps> = ({ onClose, emb
         finished_at: job.finished_at,
         result: job.result
           ? {
-              success: job.result.success,
-              output_path: job.result.output_path,
-              resolved_path: job.result.resolved_path,
-              error: job.result.error,
-              stats: job.result.stats,
-            }
-          : undefined,
+            success: job.result.success,
+            output_path: job.result.output_path,
+            resolved_path: job.result.resolved_path,
+            requires_restart: job.result.requires_restart,
+            error: job.result.error,
+            stats: job.result.stats,
+          }
+        : undefined,
       });
 
       const isCompletedWithIssues = (payload: BackupJobEventPayload): boolean => (
@@ -531,6 +534,14 @@ export const DataImportExport: React.FC<DataImportExportProps> = ({ onClose, emb
           finish(payload, true);
         }
       }).then((fn) => {
+        if (done) {
+          try {
+            fn();
+          } catch {
+            // ignore cleanup error
+          }
+          return;
+        }
         unlisten = fn;
       }).catch((error) => {
         if (done) return;
@@ -673,7 +684,7 @@ export const DataImportExport: React.FC<DataImportExportProps> = ({ onClose, emb
         mapUiTiersToGovernance(exportBackupTiers),
         undefined,
         undefined,
-        false,
+        exportBackupTiers.includes('large_files') || exportBackupTiers.includes('vfs_full'),
       );
       const backupPayload = await waitForJobTerminal(backupJobResp.job_id, 'export', 600000);
       const backupId = resolveBackupIdFromEvent(backupPayload);
@@ -770,7 +781,7 @@ ${resolvedPath}`);
         mapUiTiersToGovernance(exportBackupTiers),
         undefined,
         undefined,
-        false,
+        exportBackupTiers.includes('large_files') || exportBackupTiers.includes('vfs_full'),
       );
       await waitForJobTerminal(backupJobResp.job_id, 'export');
       showGlobalNotification('success', t('data:auto_backup_success'));
@@ -802,9 +813,21 @@ ${resolvedPath}`);
     setRestoreProgress(null);
     enterMaintenanceMode(t('data:governance.maintenance_restore'));
     try {
+      const spaceCheck = await DataGovernanceApi.checkDiskSpaceForRestore(backupId);
+      if (!spaceCheck.has_enough_space) {
+        const availableGB = (spaceCheck.available_bytes / 1024 / 1024 / 1024).toFixed(2);
+        const requiredGB = (spaceCheck.required_bytes / 1024 / 1024 / 1024).toFixed(2);
+        throw new Error(
+          t('data:governance.restore_insufficient_space', { required: requiredGB, available: availableGB })
+        );
+      }
+
       const restoreJob = await DataGovernanceApi.restoreBackup(backupId);
-      await waitForJobTerminal(restoreJob.job_id, 'import', 600000, handleRestoreProgress);
+      const restoreResult = await waitForJobTerminal(restoreJob.job_id, 'import', 600000, handleRestoreProgress);
       showGlobalNotification('success', t('data:restore_complete'));
+      if (restoreResult.result?.requires_restart || restoreResult.result?.requiresRestart) {
+        showGlobalNotification('warning', t('data:governance.restore_restart_required', '恢复完成，请重启应用以确保所有变更生效'));
+      }
     } catch (error) {
       const errorMessage = getErrorMessage(error);
       showGlobalNotification('error', `${t('data:restore_error')}: ${errorMessage}`);
@@ -878,11 +901,23 @@ ${resolvedPath}`);
         throw new Error(t('data:errors.zip_import_backup_id_not_resolved'));
       }
 
+      const spaceCheck = await DataGovernanceApi.checkDiskSpaceForRestore(importedBackupId);
+      if (!spaceCheck.has_enough_space) {
+        const availableGB = (spaceCheck.available_bytes / 1024 / 1024 / 1024).toFixed(2);
+        const requiredGB = (spaceCheck.required_bytes / 1024 / 1024 / 1024).toFixed(2);
+        throw new Error(
+          t('data:governance.restore_insufficient_space', { required: requiredGB, available: availableGB })
+        );
+      }
+
       setRestoreProgress(null);
       const restoreJob = await DataGovernanceApi.restoreBackup(importedBackupId);
-      await waitForJobTerminal(restoreJob.job_id, 'import', 600000, handleRestoreProgress);
+      const restoreResult = await waitForJobTerminal(restoreJob.job_id, 'import', 600000, handleRestoreProgress);
 
       showGlobalNotification('success', t('data:restore_complete'));
+      if (restoreResult.result?.requires_restart || restoreResult.result?.requiresRestart) {
+        showGlobalNotification('warning', t('data:governance.restore_restart_required', '恢复完成，请重启应用以确保所有变更生效'));
+      }
       await loadBackupList();
     } catch (error) {
       const errorMessage = getErrorMessage(error);

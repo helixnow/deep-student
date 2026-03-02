@@ -6,8 +6,8 @@
 //! - 含答题记录导出：包含学习进度数据
 //!
 //! ## 功能特性
-//! - 支持 UTF-8 和 GBK 编码输出
-//! - 流式写入支持大文件
+//! - 支持 UTF-8 / UTF-8 BOM / GBK 编码输出
+//! - 分页拉取 + 流式写入，降低大文件导出的内存占用
 //! - 可选字段导出
 
 use serde::{Deserialize, Serialize};
@@ -120,10 +120,18 @@ impl CsvExportService {
             request.file_path
         );
 
-        // 1. 获取题目列表
-        let questions = Self::fetch_questions(vfs_db, &request.exam_id, &request.filters)?;
-
-        if questions.is_empty() {
+        // 1. 先拉取第一页，既用于空集校验，也用于后续流式导出
+        let page_size = 200u32;
+        let mut page = 1u32;
+        let first_page = VfsQuestionRepo::list_questions(
+            vfs_db,
+            &request.exam_id,
+            &request.filters,
+            page,
+            page_size,
+        )
+        .map_err(|e| AppError::database(format!("获取题目失败: {}", e)))?;
+        if first_page.questions.is_empty() {
             return Err(AppError::validation("没有可导出的题目"));
         }
 
@@ -156,12 +164,29 @@ impl CsvExportService {
             .collect();
         Self::write_csv_row(&mut writer, &headers, &request.encoding)?;
 
-        // 5. 写入数据行
+        // 5. 分页写入数据行（流式）
         let mut exported_count = 0u32;
-        for question in &questions {
-            let row = Self::question_to_row(question, &fields);
-            Self::write_csv_row(&mut writer, &row, &request.encoding)?;
-            exported_count += 1;
+        let mut current_page = first_page;
+        loop {
+            for question in &current_page.questions {
+                let row = Self::question_to_row(question, &fields);
+                Self::write_csv_row(&mut writer, &row, &request.encoding)?;
+                exported_count += 1;
+            }
+
+            if !current_page.has_more {
+                break;
+            }
+
+            page += 1;
+            current_page = VfsQuestionRepo::list_questions(
+                vfs_db,
+                &request.exam_id,
+                &request.filters,
+                page,
+                page_size,
+            )
+            .map_err(|e| AppError::database(format!("获取题目失败: {}", e)))?;
         }
 
         // 6. 刷新缓冲区
@@ -237,31 +262,6 @@ impl CsvExportService {
             .find(|(k, _)| *k == field)
             .map(|(_, v)| v.to_string())
             .unwrap_or_else(|| field.to_string())
-    }
-
-    /// 获取题目列表
-    fn fetch_questions(
-        vfs_db: &VfsDatabase,
-        exam_id: &str,
-        filters: &QuestionFilters,
-    ) -> Result<Vec<Question>, AppError> {
-        let mut all_questions = Vec::new();
-        let page_size = 100u32;
-        let mut page = 1u32;
-
-        loop {
-            let result = VfsQuestionRepo::list_questions(vfs_db, exam_id, filters, page, page_size)
-                .map_err(|e| AppError::database(format!("获取题目失败: {}", e)))?;
-
-            all_questions.extend(result.questions);
-
-            if !result.has_more {
-                break;
-            }
-            page += 1;
-        }
-
-        Ok(all_questions)
     }
 
     /// 将题目转换为 CSV 行
@@ -381,7 +381,12 @@ impl CsvExportService {
         let bytes = match encoding {
             ExportEncoding::Utf8 | ExportEncoding::Utf8Bom => csv_line.into_bytes(),
             ExportEncoding::Gbk => {
-                let (encoded, _, _) = encoding_rs::GBK.encode(&csv_line);
+                let (encoded, _, had_errors) = encoding_rs::GBK.encode(&csv_line);
+                if had_errors {
+                    return Err(AppError::validation(
+                        "GBK 编码失败：内容包含 GBK 不支持的字符，请改用 UTF-8 或 UTF-8 BOM 导出",
+                    ));
+                }
                 encoded.into_owned()
             }
         };
