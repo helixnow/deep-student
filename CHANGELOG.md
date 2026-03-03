@@ -10,6 +10,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.9.30](https://github.com/helixnow/deep-student/compare/v0.9.29...v0.9.30) (2026-03-03)
+
+
+### Features
+
+* add build support for linux ([#41](https://github.com/helixnow/deep-student/issues/41)) ([1d253f2](https://github.com/helixnow/deep-student/commit/1d253f25e78aaf7f3c906943bd30e332059ab4a1))
+* **memory:** implement write idempotency and enhance data integrity ([bb18278](https://github.com/helixnow/deep-student/commit/bb1827852b4018fd51de1c3bd78f6368447413d0))
+* **vfs:** mark resource as pending after successful unit sync ([77c24f1](https://github.com/helixnow/deep-student/commit/77c24f1218f402e0290b3de5bc8f199d0ebb3454))
+
+
+### Bug Fixes
+
+* add execute right for build_linux_all.sh ([1d253f2](https://github.com/helixnow/deep-student/commit/1d253f25e78aaf7f3c906943bd30e332059ab4a1))
+
 ## [0.9.29](https://github.com/helixnow/deep-student/compare/v0.9.28...v0.9.29) (2026-03-02)
 
 
