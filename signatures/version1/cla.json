@@ -1,3 +1,12 @@
 {
-   "signedContributors": []
+  "signedContributors": [
+    {
+      "name": "northgreen",
+      "id": 95436661,
+      "comment_id": 3986397997,
+      "created_at": "2026-03-02T19:24:08Z",
+      "repoId": 945925446,
+      "pullRequestNo": 41
+    }
+  ]
 }
