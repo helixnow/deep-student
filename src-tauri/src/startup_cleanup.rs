@@ -5,6 +5,11 @@ use std::path::{Path, PathBuf};
 /// 启动时清理标记文件名（位于 base_app_data_dir 根目录）
 pub const PURGE_MARKER_FILE: &str = ".purge_on_next_start";
 
+pub struct PurgeReport {
+    pub details: String,
+    pub had_errors: bool,
+}
+
 pub fn purge_marker_path(base_app_data_dir: &Path) -> PathBuf {
     base_app_data_dir.join(PURGE_MARKER_FILE)
 }
@@ -37,7 +42,7 @@ pub fn clear_purge_marker(base_app_data_dir: &Path) -> Result<(), AppError> {
 }
 
 /// 在应用启动早期执行清理：删除 active_app_data_dir 下除 backups 与 temp_restore 之外的所有内容
-pub fn purge_active_data_dir(active_app_data_dir: &Path) -> Result<String, AppError> {
+pub fn purge_active_data_dir(active_app_data_dir: &Path) -> Result<PurgeReport, AppError> {
     let mut deleted_entries = Vec::new();
     let mut errors = Vec::new();
 
@@ -90,5 +95,8 @@ pub fn purge_active_data_dir(active_app_data_dir: &Path) -> Result<String, AppEr
         }
     }
 
-    Ok(report)
+    Ok(PurgeReport {
+        details: report,
+        had_errors: !errors.is_empty(),
+    })
 }

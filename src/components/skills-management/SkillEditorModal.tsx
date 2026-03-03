@@ -19,6 +19,7 @@ import { CustomScrollArea } from '../custom-scroll-area';
 import { FileText, Settings, X, Wrench } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { MOBILE_LAYOUT } from '@/config/mobileLayout';
+import { unifiedConfirm } from '@/utils/unifiedDialogs';
 import type { SkillDefinition, SkillLocation, SkillType, ToolSchema } from '@/chat-v2/skills/types';
 import { SKILL_DEFAULT_PRIORITY } from '@/chat-v2/skills/types';
 import { EmbeddedToolsEditor } from './EmbeddedToolsEditor';
@@ -92,6 +93,14 @@ function normalizeSkillIdList(ids?: string[]): string[] {
     }
   }
   return next;
+}
+
+function serializeFormData(data: SkillFormData): string {
+  return JSON.stringify({
+    ...data,
+    relatedSkills: normalizeSkillIdList(data.relatedSkills),
+    dependencies: normalizeSkillIdList(data.dependencies),
+  });
 }
 
 function validateForm(
@@ -179,6 +188,7 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
   const [errors, setErrors] = useState<ValidationErrors>({});
   const [isSaving, setIsSaving] = useState(false);
   const [activeTab, setActiveTab] = useState<string>('basic');
+  const initialSnapshotRef = useRef<string>(serializeFormData(formData));
 
   // Refs for auto-grow textareas in embedded mode
   const descriptionRef = useRef<HTMLTextAreaElement>(null);
@@ -206,7 +216,7 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
 
   // 当 skill prop 变化时，同步更新表单数据（修复编辑时数据不更新的问题）
   useEffect(() => {
-    setFormData({
+    const nextFormData: SkillFormData = {
       id: skill?.id ?? '',
       name: skill?.name ?? '',
       description: skill?.description ?? '',
@@ -219,10 +229,14 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
       dependencies: normalizeSkillIdList(skill?.dependencies),
       content: skill?.content ?? '',
       embeddedTools: skill?.embeddedTools ?? [],
-    });
+    };
+    setFormData(nextFormData);
+    initialSnapshotRef.current = serializeFormData(nextFormData);
     setErrors({});
     setActiveTab('basic');
   }, [skill]);
+
+  const isDirty = useMemo(() => serializeFormData(formData) !== initialSnapshotRef.current, [formData]);
 
   // 更新字段
   const updateField = useCallback(<K extends keyof SkillFormData>(
@@ -271,6 +285,7 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
     setIsSaving(true);
     try {
       await onSave(trimmedPayload);
+      initialSnapshotRef.current = serializeFormData(trimmedPayload);
       onOpenChange(false);
     } catch (error) {
       console.error('[SkillEditor] 保存失败:', error);
@@ -281,8 +296,18 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
 
   // 处理取消
   const handleCancel = useCallback(() => {
+    if (isDirty && !unifiedConfirm(t('common:unsaved_changes_confirm', '有未保存的更改，确定要放弃吗？'))) {
+      return;
+    }
     onOpenChange(false);
-  }, [onOpenChange]);
+  }, [isDirty, onOpenChange, t]);
+
+  const handleModalOpenChange = useCallback((nextOpen: boolean) => {
+    if (!nextOpen && isDirty && !unifiedConfirm(t('common:unsaved_changes_confirm', '有未保存的更改，确定要放弃吗？'))) {
+      return;
+    }
+    onOpenChange(nextOpen);
+  }, [isDirty, onOpenChange, t]);
 
   // 根据名称生成建议 ID
   const suggestId = useCallback(() => {
@@ -646,7 +671,7 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
   return (
     <NotionDialog
       open={open}
-      onOpenChange={onOpenChange}
+      onOpenChange={handleModalOpenChange}
       closeOnOverlay={false}
       showClose={false}
       maxWidth="max-w-[640px]"

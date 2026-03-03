@@ -2006,6 +2006,14 @@ pub struct VfsResourceRef {
     /// 资源名称/标题
     pub name: String,
 
+    /// 可选的资源主键（res_xxx），用于 source_id 不可解析时兜底
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub resource_id: Option<String>,
+
+    /// 可选检索片段（retrieval 兜底注入）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub snippet: Option<String>,
+
     /// 用户选择的注入模式（可选，不传则使用默认模式）
     #[serde(skip_serializing_if = "Option::is_none")]
     pub inject_modes: Option<ResourceInjectModes>,

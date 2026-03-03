@@ -353,7 +353,16 @@ export const LearningHubPage: React.FC = () => {
     const container = containerRef.current;
     if (!container || !isSmallScreen) return;
 
+    const shouldIgnoreGestureTarget = (target: EventTarget | null): boolean => {
+      const element = target instanceof Element ? target : null;
+      if (!element) return false;
+      return Boolean(element.closest(
+        'input, textarea, select, [contenteditable="true"], button, [role="button"], [data-no-screen-swipe], .react-pdf__Page, .ds-pdf__viewer, .mindmap-canvas, .ProseMirror'
+      ));
+    };
+
     const onTouchStart = (e: TouchEvent) => {
+      if (shouldIgnoreGestureTarget(e.target)) return;
       const touch = e.touches[0];
       handleDragStart(touch.clientX, touch.clientY);
     };

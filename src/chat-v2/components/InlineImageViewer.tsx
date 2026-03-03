@@ -23,6 +23,7 @@ import {
   ExternalLink,
 } from 'lucide-react';
 import { fileManager } from '@/utils/fileManager';
+import { useViewStore } from '@/stores/viewStore';
 
 // ============================================================================
 // 类型定义
@@ -49,46 +50,48 @@ interface InlineImageViewerProps {
 // 辅助 Hook：获取 .chat-v2 容器
 // ============================================================================
 
-function useChatV2Container() {
+function useChatV2Container(trackBounds: boolean) {
   const [container, setContainer] = useState<HTMLElement | null>(null);
   const [bounds, setBounds] = useState<DOMRect | null>(null);
+  const [boundsReady, setBoundsReady] = useState(false);
 
   useEffect(() => {
     // ★ 查找或创建 modal 容器，避免层叠上下文问题
-    const findOrCreateContainer = () => {
-      // 优先使用已存在的 modal-root
-      let modalRoot = document.getElementById('image-viewer-root');
-      if (!modalRoot) {
-        // 创建一个挂载在 body 下的容器
-        modalRoot = document.createElement('div');
-        modalRoot.id = 'image-viewer-root';
-        modalRoot.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 99999;';
-        document.body.appendChild(modalRoot);
-      }
-      setContainer(modalRoot);
-      
-      // 获取 .chat-v2 的边界用于定位
-      const chatContainer = document.querySelector('.chat-v2') as HTMLElement;
-      if (chatContainer) {
-        setBounds(chatContainer.getBoundingClientRect());
-      }
-      return true;
-    };
-
-    findOrCreateContainer();
-
-    // 监听窗口大小变化更新边界
-    const handleResize = () => {
-      const chatContainer = document.querySelector('.chat-v2') as HTMLElement;
-      if (chatContainer) {
-        setBounds(chatContainer.getBoundingClientRect());
-      }
-    };
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+    let modalRoot = document.getElementById('image-viewer-root');
+    if (!modalRoot) {
+      // 创建一个挂载在 body 下的容器
+      modalRoot = document.createElement('div');
+      modalRoot.id = 'image-viewer-root';
+      modalRoot.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 99999;';
+      document.body.appendChild(modalRoot);
+    }
+    setContainer(modalRoot);
   }, []);
 
-  return { container, bounds };
+  useEffect(() => {
+    if (!trackBounds) return;
+
+    let rafId = 0;
+    const updateBounds = () => {
+      const chatContainer = document.querySelector('.chat-v2') as HTMLElement | null;
+      setBoundsReady(true);
+      if (!chatContainer) {
+        setBounds(null);
+      } else {
+        setBounds(chatContainer.getBoundingClientRect());
+      }
+      rafId = window.requestAnimationFrame(updateBounds);
+    };
+
+    updateBounds();
+    return () => {
+      window.cancelAnimationFrame(rafId);
+      setBounds(null);
+      setBoundsReady(false);
+    };
+  }, [trackBounds]);
+
+  return { container, bounds, boundsReady };
 }
 
 // ============================================================================
@@ -105,9 +108,10 @@ export const InlineImageViewer: React.FC<InlineImageViewerProps> = ({
   className,
 }) => {
   const { t } = useTranslation(['common', 'chatV2']);
+  const currentView = useViewStore((s) => s.currentView);
 
   // 获取 modal 容器和 .chat-v2 边界用于定位
-  const { container, bounds } = useChatV2Container();
+  const { container, bounds, boundsReady } = useChatV2Container(isOpen);
 
   // 状态
   const [scale, setScale] = useState(1);
@@ -159,6 +163,20 @@ export const InlineImageViewer: React.FC<InlineImageViewerProps> = ({
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, onClose, onNext, onPrev]);
+
+  // 聊天容器消失（切页/切视图）时自动关闭，避免预览残留在新页面
+  useEffect(() => {
+    if (isOpen && boundsReady && !bounds) {
+      onClose();
+    }
+  }, [isOpen, boundsReady, bounds, onClose]);
+
+  // 全局视图切换离开 chat-v2 时，强制关闭预览
+  useEffect(() => {
+    if (isOpen && currentView !== 'chat-v2') {
+      onClose();
+    }
+  }, [isOpen, currentView, onClose]);
 
   // 鼠标拖拽
   const handleMouseDown = useCallback(
@@ -232,19 +250,20 @@ export const InlineImageViewer: React.FC<InlineImageViewerProps> = ({
     return null;
   }
 
+  // 聊天容器不可用时不渲染，等待 effect 关闭
+  if (!bounds) {
+    return null;
+  }
+
   const currentImage = images[currentIndex] ?? '';
 
   // 使用 Portal 渲染到独立容器，使用 bounds 精确定位到 .chat-v2 区域
-  const overlayStyle: React.CSSProperties = bounds ? {
+  const overlayStyle: React.CSSProperties = {
     position: 'fixed',
     top: bounds.top,
     left: bounds.left,
     width: bounds.width,
     height: bounds.height,
-    pointerEvents: 'auto',
-  } : {
-    position: 'fixed',
-    inset: 0,
     pointerEvents: 'auto',
   };
 

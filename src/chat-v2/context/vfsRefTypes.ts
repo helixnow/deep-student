@@ -71,6 +71,12 @@ export interface VfsResourceRef {
   /** 资源名称/标题（注入时的名称，用于显示） */
   name: string;
 
+  /** 可选资源主键（res_xxx），用于 sourceId 不可解析时回退 */
+  resourceId?: string;
+
+  /** 可选检索片段（retrieval 回退注入） */
+  snippet?: string;
+
   /** ★ 用户选择的注入模式（可选，不传则使用默认模式） */
   injectModes?: ResourceInjectModes;
 }

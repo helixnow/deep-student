@@ -743,10 +743,26 @@ impl VfsNoteRepo {
         }
 
         // 4. ★ CONC-02 修复：恢复 folder_items 记录
-        let folder_items_restored = conn.execute(
-            "UPDATE folder_items SET deleted_at = NULL, updated_at = ?1 WHERE item_type = 'note' AND item_id = ?2 AND deleted_at IS NOT NULL",
-            params![now_ms, note_id],
-        )?;
+        let restored_folder_item_id: Option<String> = conn
+            .query_row(
+                r#"
+                SELECT id FROM folder_items
+                WHERE item_type = 'note' AND item_id = ?1 AND deleted_at IS NOT NULL
+                ORDER BY COALESCE(updated_at, created_at) DESC, created_at DESC
+                LIMIT 1
+                "#,
+                params![note_id],
+                |row| row.get(0),
+            )
+            .ok();
+        let folder_items_restored = if let Some(fi_id) = restored_folder_item_id {
+            conn.execute(
+                "UPDATE folder_items SET deleted_at = NULL, updated_at = ?1 WHERE id = ?2",
+                params![now_ms, fi_id],
+            )?
+        } else {
+            0
+        };
 
         if new_title != note.title {
             info!(
@@ -843,7 +859,7 @@ impl VfsNoteRepo {
                     note_id
                 );
                 let fi_deleted = conn.execute(
-                    "DELETE FROM folder_items WHERE item_id = ?1",
+                    "DELETE FROM folder_items WHERE item_type = 'note' AND item_id = ?1",
                     params![note_id],
                 )?;
                 if fi_deleted > 0 {
@@ -889,7 +905,7 @@ impl VfsNoteRepo {
         // ★ 删除 folder_items 中的关联记录（必须先删除，否则前端仍会显示）
         let fi_deleted = rollback_on_error!(
             conn.execute(
-                "DELETE FROM folder_items WHERE item_id = ?1",
+                "DELETE FROM folder_items WHERE item_type = 'note' AND item_id = ?1",
                 params![note_id]
             ),
             "Failed to delete folder_items"
@@ -1283,7 +1299,8 @@ impl VfsNoteRepo {
             FROM notes n
             JOIN folder_items fi ON fi.item_type = 'note' AND fi.item_id = n.id
             WHERE fi.folder_id IS ?1 AND n.deleted_at IS NULL AND fi.deleted_at IS NULL
-            ORDER BY fi.sort_order ASC, n.updated_at DESC
+            GROUP BY n.id
+            ORDER BY MIN(fi.sort_order) ASC, n.updated_at DESC
             LIMIT ?2 OFFSET ?3
         "#;
 

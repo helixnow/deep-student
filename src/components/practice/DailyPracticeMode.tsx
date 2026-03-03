@@ -67,6 +67,7 @@ export const DailyPracticeMode: React.FC<DailyPracticeModeProps> = ({
   
   // 配置状态
   const [dailyTarget, setDailyTarget] = useState(10);
+  const [calendarError, setCalendarError] = useState<string | null>(null);
   
   // 日历状态
   const today = new Date();
@@ -75,7 +76,16 @@ export const DailyPracticeMode: React.FC<DailyPracticeModeProps> = ({
   
   // 加载日历数据
   useEffect(() => {
-    getCheckInCalendar(examId, calendarYear, calendarMonth).catch(console.error);
+    let disposed = false;
+    setCalendarError(null);
+    getCheckInCalendar(examId, calendarYear, calendarMonth).catch((error: unknown) => {
+      if (disposed) return;
+      console.error('[DailyPracticeMode] Failed to load check-in calendar:', error);
+      setCalendarError(t('daily.calendarLoadFailed', '打卡日历加载失败，请重试'));
+    });
+    return () => {
+      disposed = true;
+    };
   }, [examId, calendarYear, calendarMonth, getCheckInCalendar]);
   
   // 开始每日一练
@@ -107,6 +117,11 @@ export const DailyPracticeMode: React.FC<DailyPracticeModeProps> = ({
       setCalendarMonth((m) => m + 1);
     }
   }, [calendarMonth]);
+
+  const normalizeDailyTarget = useCallback((value: number): number => {
+    if (!Number.isFinite(value)) return 10;
+    return Math.max(5, Math.min(50, Math.round(value)));
+  }, []);
   
   // 生成日历格子
   const calendarDays = useMemo(() => {
@@ -198,7 +213,14 @@ export const DailyPracticeMode: React.FC<DailyPracticeModeProps> = ({
                 min={5}
                 max={50}
                 value={dailyTarget}
-                onChange={(e) => setDailyTarget(Number(e.target.value))}
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  if (raw === '') return;
+                  setDailyTarget(normalizeDailyTarget(Number(raw)));
+                }}
+                onBlur={(e) => {
+                  setDailyTarget(normalizeDailyTarget(Number(e.target.value)));
+                }}
                 className="w-24 text-center text-lg font-medium"
               />
               <div className="flex gap-2">
@@ -215,6 +237,28 @@ export const DailyPracticeMode: React.FC<DailyPracticeModeProps> = ({
               </div>
             </div>
           </div>
+
+          {calendarError && (
+            <div className="flex items-center justify-between rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm">
+              <div className="flex items-center gap-2 text-destructive">
+                <AlertCircle className="w-4 h-4" />
+                <span>{calendarError}</span>
+              </div>
+              <NotionButton
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setCalendarError(null);
+                  void getCheckInCalendar(examId, calendarYear, calendarMonth).catch((error: unknown) => {
+                    console.error('[DailyPracticeMode] Retry load check-in calendar failed:', error);
+                    setCalendarError(t('daily.calendarLoadFailed', '打卡日历加载失败，请重试'));
+                  });
+                }}
+              >
+                {t('common:retry', '重试')}
+              </NotionButton>
+            </div>
+          )}
           
           {/* 今日进度 */}
           {dailyPractice && (

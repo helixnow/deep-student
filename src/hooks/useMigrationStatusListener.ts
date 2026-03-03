@@ -67,6 +67,7 @@ export function useMigrationStatusListener(options?: {
 
   useEffect(() => {
     let unlisten: UnlistenFn | null = null;
+    let disposed = false;
 
     const { showMigrationStatus, clearMigrationStatus } = useSystemStatusStore.getState();
 
@@ -144,10 +145,15 @@ export function useMigrationStatusListener(options?: {
     const setupListener = async () => {
       try {
         // 1. 设置事件监听器（用于接收后续的迁移状态变更）
-        unlisten = await listen<MigrationStatusPayload>(
+        const nextUnlisten = await listen<MigrationStatusPayload>(
           MIGRATION_STATUS_EVENT,
           (event) => handleMigrationStatus(event.payload)
         );
+        if (disposed) {
+          nextUnlisten();
+          return;
+        }
+        unlisten = nextUnlisten;
 
         // 2. 主动查询一次迁移状态，兜底 setup 期早发事件
         try {
@@ -190,9 +196,10 @@ export function useMigrationStatusListener(options?: {
       }
     };
 
-    setupListener();
+    void setupListener();
 
     return () => {
+      disposed = true;
       if (unlisten) {
         unlisten();
       }

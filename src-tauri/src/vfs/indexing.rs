@@ -2230,6 +2230,14 @@ impl VfsFullIndexingService {
                 Some(&resource.hash),
                 Some("文本内容过短，无法生成有效的索引块"),
             )?;
+
+            // 主文本为空时仍需处理其他 pending 文本单元（如 OCR/辅助文本单元）。
+            self.index_additional_pending_text_units(
+                resource_id,
+                &resource.resource_type.to_string(),
+                resolved_folder_id.as_deref(),
+            )
+            .await?;
             return Ok((0, 0));
         }
 
@@ -2299,11 +2307,12 @@ impl VfsFullIndexingService {
                         let savepoint_result: VfsResult<String> = (|| {
                             // ★ 验证 embedding_ids 数量与 chunks 数量一致
                             if embedding_ids.len() != chunks_for_db.len() {
-                                warn!(
-                            "[VfsFullIndexingService] lance_row_id count mismatch for resource {}: \
-                            embedding_ids={}, chunks={}, will generate fallback IDs with emb_ prefix",
-                            resource_id, embedding_ids.len(), chunks_for_db.len()
-                        );
+                                return Err(VfsError::Other(format!(
+                                    "lance_row_id count mismatch for resource {}: embedding_ids={}, chunks={}",
+                                    resource_id,
+                                    embedding_ids.len(),
+                                    chunks_for_db.len()
+                                )));
                             }
 
                             // 获取或创建 unit
@@ -2347,17 +2356,13 @@ impl VfsFullIndexingService {
                             for (i, chunk) in chunks_for_db.iter().enumerate() {
                                 let seg_id = format!("seg_{}", nanoid::nanoid!(10));
                                 // ★ 2026-02 修复：统一 lance_row_id 生成格式
-                                // - 首选：使用 LanceDB 返回的 embedding_id
-                                // - 回退：使用 VfsEmbedding::generate_id() 生成正确格式的 ID
-                                // - 禁止：不再使用 seg_ 前缀作为 lance_row_id（之前的 bug）
-                                let lance_row_id = embedding_ids.get(i).cloned().unwrap_or_else(|| {
-                            let fallback_id = VfsEmbedding::generate_id();
-                            warn!(
-                                "[VfsFullIndexingService] Missing embedding_id at index {} for resource {}, using fallback: {}",
-                                i, resource_id, fallback_id
-                            );
-                            fallback_id
-                        });
+                                let lance_row_id =
+                                    embedding_ids.get(i).cloned().ok_or_else(|| {
+                                        VfsError::Other(format!(
+                                            "missing embedding_id at index {} for resource {}",
+                                            i, resource_id
+                                        ))
+                                    })?;
                                 conn.execute(
                             r#"INSERT INTO vfs_index_segments (id, unit_id, segment_index, modality, embedding_dim, lance_row_id, content_text, start_pos, end_pos, metadata_json, created_at, updated_at)
                             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)"#,
@@ -2456,114 +2461,12 @@ impl VfsFullIndexingService {
                 // FileBuilder 可能创建了多个 text units（如 native + ocr），
                 // 上面的流程只处理了 resolve_indexable_content 返回的主文本（写入 unit_index=0），
                 // 这里处理剩余的 pending text units
-                {
-                    let conn = self.db.get_conn()?;
-                    let all_units = index_unit_repo::get_by_resource(&conn, resource_id)?;
-                    for unit in &all_units {
-                        if unit.text_required
-                            && unit.text_state == index_unit_repo::IndexState::Pending
-                        {
-                            if let Some(ref text) = unit.text_content {
-                                if !text.trim().is_empty() {
-                                    info!(
-                                        "[VfsFullIndexingService] Indexing additional text unit {} (source={:?}) for resource {}",
-                                        unit.id, unit.text_source, resource_id
-                                    );
-                                    let extra_chunks =
-                                        VfsChunker::chunk_text(text, &self.chunking_config);
-                                    if !extra_chunks.is_empty() {
-                                        let resource_type_str = resource.resource_type.to_string();
-                                        match self
-                                            .pipeline
-                                            .index_chunks(
-                                                resource_id,
-                                                &resource_type_str,
-                                                resolved_folder_id.as_deref(),
-                                                extra_chunks.clone(),
-                                                MODALITY_TEXT,
-                                                None,
-                                            )
-                                            .await
-                                        {
-                                            Ok(extra_result) => {
-                                                let now = chrono::Utc::now().timestamp_millis();
-                                                if let Err(e) = conn.execute(
-                                                    "UPDATE vfs_index_units SET
-                                                        text_state = 'indexing',
-                                                        text_error = NULL,
-                                                        text_embedding_dim = ?1,
-                                                        updated_at = ?2
-                                                    WHERE id = ?3",
-                                                    rusqlite::params![
-                                                        extra_result.dim,
-                                                        now,
-                                                        unit.id
-                                                    ],
-                                                ) {
-                                                    log::warn!("[VfsIndexing] Failed to update text_state to 'indexing' for unit {}: {}", unit.id, e);
-                                                }
-                                                index_segment_repo::delete_by_unit_and_modality(
-                                                    &conn,
-                                                    &unit.id,
-                                                    MODALITY_TEXT,
-                                                )?;
-                                                for (i, chunk) in extra_chunks.iter().enumerate() {
-                                                    let seg_id =
-                                                        format!("seg_{}", nanoid::nanoid!(10));
-                                                    let lance_row_id = extra_result
-                                                        .embedding_ids
-                                                        .get(i)
-                                                        .cloned()
-                                                        .unwrap_or_else(|| {
-                                                            VfsEmbedding::generate_id()
-                                                        });
-                                                    conn.execute(
-                                                        r#"INSERT INTO vfs_index_segments (id, unit_id, segment_index, modality, embedding_dim, lance_row_id, content_text, start_pos, end_pos, metadata_json, created_at, updated_at)
-                                                        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)"#,
-                                                        rusqlite::params![seg_id, unit.id, chunk.index, MODALITY_TEXT, extra_result.dim, lance_row_id, chunk.text, chunk.start_pos, chunk.end_pos, Option::<String>::None, now, now],
-                                                    )?;
-                                                }
-                                                conn.execute(
-                                                    "UPDATE vfs_index_units SET text_state = 'indexed', text_indexed_at = ?1, text_chunk_count = ?2, text_embedding_dim = ?3, updated_at = ?1 WHERE id = ?4",
-                                                    rusqlite::params![now, extra_result.count as i32, extra_result.dim, unit.id],
-                                                )?;
-                                                // M12 fix: 确保维度记录存在
-                                                embedding_dim_repo::register(
-                                                    &conn,
-                                                    extra_result.dim as i32,
-                                                    MODALITY_TEXT,
-                                                )?;
-                                                embedding_dim_repo::increment_count(
-                                                    &conn,
-                                                    extra_result.dim as i32,
-                                                    MODALITY_TEXT,
-                                                    extra_result.count as i64,
-                                                )?;
-                                                info!(
-                                                    "[VfsFullIndexingService] Additional unit {} indexed: {} chunks, dim={}",
-                                                    unit.id, extra_result.count, extra_result.dim
-                                                );
-                                            }
-                                            Err(e) => {
-                                                warn!(
-                                                    "[VfsFullIndexingService] Failed to index additional unit {} for resource {}: {}",
-                                                    unit.id, resource_id, e
-                                                );
-                                                let now = chrono::Utc::now().timestamp_millis();
-                                                if let Err(db_err) = conn.execute(
-                                                    "UPDATE vfs_index_units SET text_state = 'failed', text_error = ?1, updated_at = ?2 WHERE id = ?3",
-                                                    rusqlite::params![e.to_string(), now, unit.id],
-                                                ) {
-                                                    log::warn!("[VfsIndexing] Failed to update text_state to 'failed' for unit {}: {}", unit.id, db_err);
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
+                self.index_additional_pending_text_units(
+                    resource_id,
+                    &resource.resource_type.to_string(),
+                    resolved_folder_id.as_deref(),
+                )
+                .await?;
 
                 // 9. 更新索引状态
                 VfsIndexStateRepo::mark_indexed(&self.db, resource_id, &resource.hash)?;
@@ -2607,6 +2510,159 @@ impl VfsFullIndexingService {
                 Err(e)
             }
         }
+    }
+
+    async fn index_additional_pending_text_units(
+        &self,
+        resource_id: &str,
+        resource_type_str: &str,
+        folder_id: Option<&str>,
+    ) -> VfsResult<()> {
+        let conn = self.db.get_conn()?;
+        let all_units = index_unit_repo::get_by_resource(&conn, resource_id)?;
+
+        for unit in &all_units {
+            if !unit.text_required || unit.text_state != index_unit_repo::IndexState::Pending {
+                continue;
+            }
+            let Some(text) = unit.text_content.as_ref() else {
+                continue;
+            };
+            if text.trim().is_empty() {
+                continue;
+            }
+
+            let extra_chunks = VfsChunker::chunk_text(text, &self.chunking_config);
+            if extra_chunks.is_empty() {
+                continue;
+            }
+
+            info!(
+                "[VfsFullIndexingService] Indexing additional text unit {} (source={:?}) for resource {}",
+                unit.id, unit.text_source, resource_id
+            );
+
+            let extra_result = match self
+                .pipeline
+                .index_chunks(
+                    resource_id,
+                    resource_type_str,
+                    folder_id,
+                    extra_chunks.clone(),
+                    MODALITY_TEXT,
+                    None,
+                )
+                .await
+            {
+                Ok(result) => result,
+                Err(e) => {
+                    let now = chrono::Utc::now().timestamp_millis();
+                    let _ = conn.execute(
+                        "UPDATE vfs_index_units SET text_state = 'failed', text_error = ?1, updated_at = ?2 WHERE id = ?3",
+                        rusqlite::params![e.to_string(), now, unit.id],
+                    );
+                    warn!(
+                        "[VfsFullIndexingService] Failed to index additional unit {} for resource {}: {}",
+                        unit.id, resource_id, e
+                    );
+                    continue;
+                }
+            };
+
+            if extra_result.embedding_ids.len() != extra_chunks.len() {
+                let _ = self
+                    .lance_store
+                    .delete_by_embedding_ids(MODALITY_TEXT, &extra_result.embedding_ids)
+                    .await;
+                let now = chrono::Utc::now().timestamp_millis();
+                let err_msg = format!(
+                    "additional unit embedding_id mismatch: unit={}, embeddings={}, chunks={}",
+                    unit.id,
+                    extra_result.embedding_ids.len(),
+                    extra_chunks.len()
+                );
+                let _ = conn.execute(
+                    "UPDATE vfs_index_units SET text_state = 'failed', text_error = ?1, updated_at = ?2 WHERE id = ?3",
+                    rusqlite::params![err_msg, now, unit.id],
+                );
+                continue;
+            }
+
+            let now = chrono::Utc::now().timestamp_millis();
+            let metadata_result: VfsResult<()> = (|| {
+                conn.execute("SAVEPOINT extra_unit_metadata", rusqlite::params![])?;
+                conn.execute(
+                    "UPDATE vfs_index_units SET
+                        text_state = 'indexing',
+                        text_error = NULL,
+                        text_embedding_dim = ?1,
+                        updated_at = ?2
+                    WHERE id = ?3",
+                    rusqlite::params![extra_result.dim, now, unit.id],
+                )?;
+
+                index_segment_repo::delete_by_unit_and_modality(&conn, &unit.id, MODALITY_TEXT)?;
+                for (i, chunk) in extra_chunks.iter().enumerate() {
+                    let seg_id = format!("seg_{}", nanoid::nanoid!(10));
+                    let lance_row_id =
+                        extra_result.embedding_ids.get(i).cloned().ok_or_else(|| {
+                            VfsError::Other(format!(
+                                "missing embedding_id for additional unit {} at index {}",
+                                unit.id, i
+                            ))
+                        })?;
+                    conn.execute(
+                        r#"INSERT INTO vfs_index_segments (id, unit_id, segment_index, modality, embedding_dim, lance_row_id, content_text, start_pos, end_pos, metadata_json, created_at, updated_at)
+                        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)"#,
+                        rusqlite::params![seg_id, unit.id, chunk.index, MODALITY_TEXT, extra_result.dim, lance_row_id, chunk.text, chunk.start_pos, chunk.end_pos, Option::<String>::None, now, now],
+                    )?;
+                }
+                conn.execute(
+                    "UPDATE vfs_index_units SET text_state = 'indexed', text_indexed_at = ?1, text_chunk_count = ?2, text_embedding_dim = ?3, updated_at = ?1 WHERE id = ?4",
+                    rusqlite::params![now, extra_result.count as i32, extra_result.dim, unit.id],
+                )?;
+                embedding_dim_repo::register(&conn, extra_result.dim as i32, MODALITY_TEXT)?;
+                embedding_dim_repo::increment_count(
+                    &conn,
+                    extra_result.dim as i32,
+                    MODALITY_TEXT,
+                    extra_result.count as i64,
+                )?;
+                conn.execute("RELEASE SAVEPOINT extra_unit_metadata", rusqlite::params![])?;
+                Ok(())
+            })();
+
+            if let Err(e) = metadata_result {
+                let _ = conn.execute(
+                    "ROLLBACK TO SAVEPOINT extra_unit_metadata",
+                    rusqlite::params![],
+                );
+                let _ = conn.execute("RELEASE SAVEPOINT extra_unit_metadata", rusqlite::params![]);
+                if let Err(clean_err) = self
+                    .lance_store
+                    .delete_by_embedding_ids(MODALITY_TEXT, &extra_result.embedding_ids)
+                    .await
+                {
+                    warn!(
+                        "[VfsFullIndexingService] Failed to rollback additional unit vectors {}: {}",
+                        unit.id, clean_err
+                    );
+                }
+                let now = chrono::Utc::now().timestamp_millis();
+                let _ = conn.execute(
+                    "UPDATE vfs_index_units SET text_state = 'failed', text_error = ?1, updated_at = ?2 WHERE id = ?3",
+                    rusqlite::params![e.to_string(), now, unit.id],
+                );
+                continue;
+            }
+
+            info!(
+                "[VfsFullIndexingService] Additional unit {} indexed: {} chunks, dim={}",
+                unit.id, extra_result.count, extra_result.dim
+            );
+        }
+
+        Ok(())
     }
 
     /// 尝试自动 OCR（教材/图片/文件）

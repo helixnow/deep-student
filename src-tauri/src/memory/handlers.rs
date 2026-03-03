@@ -607,6 +607,7 @@ pub async fn memory_write_smart(
     content: String,
     memory_type: Option<String>,
     memory_purpose: Option<String>,
+    idempotency_key: Option<String>,
     vfs_db: State<'_, Arc<VfsDatabase>>,
     lance_store: State<'_, Arc<VfsLanceStore>>,
     llm_manager: State<'_, Arc<LLMManager>>,
@@ -628,6 +629,7 @@ pub async fn memory_write_smart(
             None,
             mem_type,
             purpose,
+            idempotency_key.as_deref(),
         )
         .await
         .map_err(|e| e.to_string())?;

@@ -1293,6 +1293,16 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
   // 注册在 document 上，处理后 stopPropagation 防止与命令系统双重执行
   useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const isEditableTarget = !!target && (
+        target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.isContentEditable ||
+        !!target.closest('[contenteditable="true"]')
+      );
+      const inModal = !!target?.closest('[role="dialog"], [role="alertdialog"]');
+      if (isEditableTarget || inModal) return;
+
       // ⌘⇧T / Ctrl+Shift+T: 切换推理模式（覆盖全局 toggle-theme）
       if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 't') {
         e.preventDefault();

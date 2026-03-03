@@ -361,11 +361,19 @@ export const useTauriDragAndDrop = ({
 
     let unlisten: (() => void) | undefined;
     let unlisteners: Array<() => void> = [];
+    let disposed = false;
+    const registerUnlisten = (fn: () => void) => {
+      if (disposed) {
+        fn();
+        return;
+      }
+      unlisteners.push(fn);
+    };
 
     const setupListeners = async () => {
       try {
         const webview = getCurrentWebview();
-        unlisten = await webview.onDragDropEvent((event) => {
+        const nextUnlisten = await webview.onDragDropEvent((event) => {
           // 🔥 提前静默检查可见性，不可见就直接返回，不发送任何日志
           if (!isEnabled || !isDropZoneVisible()) return;
           
@@ -403,6 +411,11 @@ export const useTauriDragAndDrop = ({
               break;
           }
         });
+        if (disposed) {
+          nextUnlisten();
+          return;
+        }
+        unlisten = nextUnlisten;
         emitDebugEvent(zoneId, 'drag_enter', 'debug', '已注册 Tauri v2 拖拽监听器', {
           api: 'getCurrentWebview().onDragDropEvent',
         });
@@ -411,7 +424,7 @@ export const useTauriDragAndDrop = ({
           error: String(e),
         });
         try {
-          unlisteners.push(
+          registerUnlisten(
             await guardedListen('tauri://drag-enter', () => {
               // 🔥 提前静默检查
               if (!isEnabled || !isDropZoneVisible()) return;
@@ -421,7 +434,7 @@ export const useTauriDragAndDrop = ({
               });
             })
           );
-          unlisteners.push(
+          registerUnlisten(
             await guardedListen('tauri://drag-leave', () => {
               // 🔥 提前静默检查
               if (!isEnabled || !isDropZoneVisible()) return;
@@ -431,7 +444,7 @@ export const useTauriDragAndDrop = ({
               });
             })
           );
-          unlisteners.push(
+          registerUnlisten(
             await guardedListen('tauri://drag-drop', (event: any) => {
               // 🔥 提前静默检查
               if (!isEnabled || !isDropZoneVisible()) return;
@@ -444,7 +457,7 @@ export const useTauriDragAndDrop = ({
             })
           );
           // 兼容 Tauri file-drop 系列事件
-          unlisteners.push(
+          registerUnlisten(
             await guardedListen('tauri://file-drop-hover', () => {
               // 🔥 提前静默检查
               if (!isEnabled || !isDropZoneVisible()) return;
@@ -454,7 +467,7 @@ export const useTauriDragAndDrop = ({
               });
             })
           );
-          unlisteners.push(
+          registerUnlisten(
             await guardedListen('tauri://file-drop-cancelled', () => {
               // 🔥 提前静默检查
               if (!isEnabled || !isDropZoneVisible()) return;
@@ -464,7 +477,7 @@ export const useTauriDragAndDrop = ({
               });
             })
           );
-          unlisteners.push(
+          registerUnlisten(
             await guardedListen('tauri://file-drop', (event: any) => {
               // 🔥 提前静默检查
               if (!isEnabled || !isDropZoneVisible()) return;
@@ -493,8 +506,10 @@ export const useTauriDragAndDrop = ({
     setupListeners();
 
     return () => {
+      disposed = true;
       unlisten?.();
       unlisteners.forEach((fn) => fn());
+      unlisteners = [];
     };
   }, [isEnabled, processFilePaths, isDropZoneVisible, zoneId, feedbackOnly, feedbackExtensions, matchesFeedbackExtensions]);
 

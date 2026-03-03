@@ -92,6 +92,8 @@ export const BottomTabBar: React.FC<BottomTabBarProps> = ({
               role="tab"
               aria-selected={isActive}
               aria-label={name}
+              tabIndex={isHidden ? -1 : 0}
+              disabled={isHidden}
               onClick={() => handleViewChange(view as CurrentView)}
               className={cn(
                 "flex flex-col items-center justify-center relative",

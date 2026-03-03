@@ -9,6 +9,7 @@
 //! 这些笔记在 list/search 中被过滤（标题以 `__` 开头）。
 
 use std::sync::Arc;
+use std::collections::HashSet;
 
 use tracing::{debug, info, warn};
 
@@ -85,7 +86,8 @@ impl MemoryCategoryManager {
             Self::collect_folder_categories(&tree.children, "", &mut categories);
         }
 
-        categories.dedup_by(|a, b| a.1 == b.1);
+        let mut seen_paths = HashSet::new();
+        categories.retain(|(_, path)| seen_paths.insert(path.clone()));
 
         for (cat_name, folder_path) in &categories {
             if let Err(e) = self
@@ -132,7 +134,7 @@ impl MemoryCategoryManager {
         category_name: &str,
         folder_path: &str,
     ) -> VfsResult<()> {
-        let memories = memory_service.list(Some(folder_path), 50, 0)?;
+        let memories = memory_service.list_shallow(Some(folder_path), 50, 0)?;
 
         let memories: Vec<&MemoryListItem> = memories
             .iter()
@@ -141,9 +143,13 @@ impl MemoryCategoryManager {
 
         if memories.is_empty() {
             debug!(
-                "[CategoryManager] No memories in '{}', skipping category file",
+                "[CategoryManager] No memories in '{}', deleting stale category file if exists",
                 folder_path
             );
+            let sys_folder_id = memory_service.get_or_create_system_folder_id()?;
+            let category_key = Self::encode_category_key(category_name, folder_path);
+            let cat_title = Self::category_note_title(&category_key);
+            self.delete_category_note_if_exists(&sys_folder_id, &cat_title)?;
             return Ok(());
         }
 
@@ -255,7 +261,7 @@ impl MemoryCategoryManager {
             .ok();
 
         if let Some(note_id) = existing {
-            VfsNoteRepo::update_note(
+            let updated = VfsNoteRepo::update_note(
                 &self.vfs_db,
                 &note_id,
                 VfsUpdateNoteParams {
@@ -265,6 +271,16 @@ impl MemoryCategoryManager {
                     expected_updated_at: None,
                 },
             )?;
+            if let Err(e) = VfsIndexStateRepo::mark_disabled_with_reason(
+                &self.vfs_db,
+                &updated.resource_id,
+                "system category note",
+            ) {
+                warn!(
+                    "[CategoryManager] Failed to disable indexing for category note update: {}",
+                    e
+                );
+            }
             debug!("[CategoryManager] Updated category note: {}", title);
         } else {
             let note = VfsNoteRepo::create_note_in_folder(
@@ -292,6 +308,32 @@ impl MemoryCategoryManager {
         Ok(())
     }
 
+    fn delete_category_note_if_exists(&self, root_folder_id: &str, title: &str) -> VfsResult<()> {
+        use rusqlite::params;
+
+        let conn = self.vfs_db.get_conn_safe()?;
+        let existing: Option<String> = conn
+            .query_row(
+                r#"
+                SELECT n.id FROM notes n
+                JOIN folder_items fi ON fi.item_type = 'note' AND fi.item_id = n.id
+                WHERE n.title = ?1 AND fi.folder_id = ?2
+                  AND n.deleted_at IS NULL AND fi.deleted_at IS NULL
+                LIMIT 1
+                "#,
+                params![title, root_folder_id],
+                |row| row.get(0),
+            )
+            .ok();
+
+        if let Some(note_id) = existing {
+            VfsNoteRepo::delete_note_with_folder_item(&self.vfs_db, &note_id)?;
+            debug!("[CategoryManager] Deleted empty category note: {}", title);
+        }
+
+        Ok(())
+    }
+
     /// 加载所有分类摘要文件内容（用于注入 system prompt）
     ///
     /// 查找顺序：__system__ 子文件夹 → 根文件夹（向后兼容）
@@ -299,11 +341,38 @@ impl MemoryCategoryManager {
         &self,
         root_folder_id: &str,
     ) -> VfsResult<Vec<(String, String)>> {
-        use rusqlite::params;
-
         let sys_folder_id = self.find_system_folder(root_folder_id)?;
-        let target_folder_id = sys_folder_id.as_deref().unwrap_or(root_folder_id);
+        let mut folder_ids = Vec::new();
+        if let Some(sys_id) = sys_folder_id {
+            folder_ids.push(sys_id);
+        }
+        folder_ids.push(root_folder_id.to_string());
 
+        let mut dedup_keys = HashSet::new();
+        let mut results = Vec::new();
+        for folder_id in folder_ids {
+            for (note_id, title) in self.list_category_notes_in_folder(&folder_id)? {
+                let cat_name = title
+                    .strip_prefix(CATEGORY_NOTE_PREFIX)
+                    .and_then(|s| s.strip_suffix(CATEGORY_NOTE_SUFFIX))
+                    .unwrap_or(&title);
+                let decoded = Self::decode_category_key(cat_name);
+                if !dedup_keys.insert(decoded.clone()) {
+                    continue;
+                }
+                let content =
+                    VfsNoteRepo::get_note_content(&self.vfs_db, &note_id)?.unwrap_or_default();
+                if !content.is_empty() {
+                    results.push((decoded, content));
+                }
+            }
+        }
+
+        Ok(results)
+    }
+
+    fn list_category_notes_in_folder(&self, folder_id: &str) -> VfsResult<Vec<(String, String)>> {
+        use rusqlite::params;
         let conn = self.vfs_db.get_conn_safe()?;
         let mut stmt = conn.prepare(
             r#"
@@ -314,28 +383,13 @@ impl MemoryCategoryManager {
             ORDER BY n.title
             "#,
         )?;
-
         let notes: Vec<(String, String)> = stmt
-            .query_map(params![target_folder_id], |row| {
+            .query_map(params![folder_id], |row| {
                 Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
             })?
             .filter_map(|r| r.ok())
             .collect();
-
-        let mut results = Vec::new();
-        for (note_id, title) in notes {
-            let content =
-                VfsNoteRepo::get_note_content(&self.vfs_db, &note_id)?.unwrap_or_default();
-            if !content.is_empty() {
-                let cat_name = title
-                    .strip_prefix(CATEGORY_NOTE_PREFIX)
-                    .and_then(|s| s.strip_suffix(CATEGORY_NOTE_SUFFIX))
-                    .unwrap_or(&title);
-                results.push((Self::decode_category_key(cat_name), content));
-            }
-        }
-
-        Ok(results)
+        Ok(notes)
     }
 
     fn find_system_folder(&self, root_folder_id: &str) -> VfsResult<Option<String>> {

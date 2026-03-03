@@ -56,6 +56,8 @@ export interface VfsRagSearchInput {
   enableReranking?: boolean;
   /** 是否启用跨维度搜索（聚合所有已分配模型的维度） */
   enableCrossDimension?: boolean;
+  /** 模态类型（默认 text） */
+  modality?: 'text' | 'multimodal' | 'mm';
 }
 
 /** RAG 搜索输出 */
@@ -115,6 +117,7 @@ export async function vfsRagSearch(input: VfsRagSearchInput): Promise<VfsRagSear
         resourceTypes: input.resourceTypes ?? null,
         topK: input.topK ?? 10,
         enableReranking: input.enableReranking ?? true,
+        modality: input.modality ?? 'text',
         enableCrossDimension: input.enableCrossDimension ?? true,
       },
     });

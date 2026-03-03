@@ -1188,7 +1188,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
           width={pageWidth}
           renderTextLayer={enableTextLayer}
           renderAnnotationLayer={enableAnnotationLayer}
-          rotate={rotation}
+          rotate={0}
           devicePixelRatio={renderDpr}
         />
 

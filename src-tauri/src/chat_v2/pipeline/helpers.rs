@@ -60,6 +60,14 @@ pub(crate) fn filter_retrieval_results(
 
     // 过滤后按分数降序再截断，避免输入无序时丢失高分结果
     let before_count = sources.len();
+    let mut sorted_all = sources.clone();
+    sorted_all.sort_by(|a, b| {
+        b.score
+            .unwrap_or(0.0)
+            .partial_cmp(&a.score.unwrap_or(0.0))
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+
     let mut filtered: Vec<SourceInfo> = sources
         .into_iter()
         .filter(|s| s.score.unwrap_or(0.0) >= dynamic_threshold)
@@ -71,6 +79,12 @@ pub(crate) fn filter_retrieval_results(
             .partial_cmp(&a.score.unwrap_or(0.0))
             .unwrap_or(std::cmp::Ordering::Equal)
     });
+
+    // 全部被阈值过滤时，保留 top1 作为保底，避免“有召回但被全滤空”导致上下文断裂。
+    if filtered.is_empty() && !sorted_all.is_empty() {
+        filtered.push(sorted_all[0].clone());
+    }
+
     filtered.truncate(max_results);
 
     let after_count = filtered.len();

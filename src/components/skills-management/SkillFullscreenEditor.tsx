@@ -22,6 +22,7 @@ import { X } from 'lucide-react';
 import { Z_INDEX } from '@/config/zIndex';
 import { HorizontalResizable } from '../shared/Resizable';
 import { cn } from '@/lib/utils';
+import { unifiedConfirm } from '@/utils/unifiedDialogs';
 import type { SkillDefinition, SkillLocation, SkillType, ToolSchema } from '@/chat-v2/skills/types';
 import { SKILL_DEFAULT_PRIORITY } from '@/chat-v2/skills/types';
 import { EmbeddedToolsEditor } from './EmbeddedToolsEditor';
@@ -85,6 +86,14 @@ function normalizeSkillIdList(ids?: string[]): string[] {
     }
   }
   return next;
+}
+
+function serializeFormData(data: SkillFormData): string {
+  return JSON.stringify({
+    ...data,
+    relatedSkills: normalizeSkillIdList(data.relatedSkills),
+    dependencies: normalizeSkillIdList(data.dependencies),
+  });
 }
 
 function validateForm(
@@ -168,6 +177,7 @@ export const SkillFullscreenEditor: React.FC<SkillFullscreenEditorProps> = ({
   const [errors, setErrors] = useState<ValidationErrors>({});
   const [isSaving, setIsSaving] = useState(false);
   const [activeTab, setActiveTab] = useState<string>('basic');
+  const initialSnapshotRef = useRef<string>(serializeFormData(formData));
   // 动画完成状态 - 用于延迟渲染重量级组件
   const [isAnimationComplete, setIsAnimationComplete] = useState(false);
 
@@ -205,12 +215,28 @@ export const SkillFullscreenEditor: React.FC<SkillFullscreenEditorProps> = ({
         content: skill?.content ?? '',
         embeddedTools: skill?.embeddedTools ?? [],
       });
+      initialSnapshotRef.current = serializeFormData({
+        id: skill?.id ?? '',
+        name: skill?.name ?? '',
+        description: skill?.description ?? '',
+        version: skill?.version ?? '',
+        author: skill?.author ?? '',
+        priority: skill?.priority ?? SKILL_DEFAULT_PRIORITY,
+        disableAutoInvoke: skill?.disableAutoInvoke ?? false,
+        skillType: skill?.skillType ?? 'standalone',
+        relatedSkills: normalizeSkillIdList(skill?.relatedSkills),
+        dependencies: normalizeSkillIdList(skill?.dependencies),
+        content: skill?.content ?? '',
+        embeddedTools: skill?.embeddedTools ?? [],
+      });
       setErrors({});
       setActiveTab('basic');
       // 重置动画状态
       setIsAnimationComplete(false);
     }
   }, [skill, open]);
+
+  const isDirty = useMemo(() => serializeFormData(formData) !== initialSnapshotRef.current, [formData]);
 
   // 更新字段
   const updateField = useCallback(<K extends keyof SkillFormData>(
@@ -255,6 +281,7 @@ export const SkillFullscreenEditor: React.FC<SkillFullscreenEditorProps> = ({
     setIsSaving(true);
     try {
       await onSave(trimmedPayload);
+      initialSnapshotRef.current = serializeFormData(trimmedPayload);
       onClose();
     } catch (error) {
       console.error('[SkillFullscreenEditor] 保存失败:', error);
@@ -262,6 +289,13 @@ export const SkillFullscreenEditor: React.FC<SkillFullscreenEditorProps> = ({
       setIsSaving(false);
     }
   }, [formData, isEdit, isBuiltinSkill, onSave, onClose, t]);
+
+  const handleCloseRequest = useCallback(() => {
+    if (isDirty && !unifiedConfirm(t('common:unsaved_changes_confirm', '有未保存的更改，确定要放弃吗？'))) {
+      return;
+    }
+    onClose();
+  }, [isDirty, onClose, t]);
 
   // 根据名称生成建议 ID
   const suggestId = useCallback(() => {
@@ -504,7 +538,7 @@ export const SkillFullscreenEditor: React.FC<SkillFullscreenEditorProps> = ({
                   <NotionButton
                     type="button"
                     variant="ghost"
-                    onClick={onClose}
+                    onClick={handleCloseRequest}
                     disabled={isSaving}
                     className="flex-1 hover:bg-muted/50 text-muted-foreground hover:text-foreground"
                   >

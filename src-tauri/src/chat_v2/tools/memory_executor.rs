@@ -3,6 +3,7 @@ use std::time::Instant;
 
 use async_trait::async_trait;
 use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
 
 use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
 use super::strip_tool_namespace;
@@ -427,11 +428,17 @@ impl MemoryToolExecutor {
             .and_then(|v| v.as_u64())
             .map(|v| v as u32)
             .unwrap_or(100);
+        let offset = call
+            .arguments
+            .get("offset")
+            .and_then(|v| v.as_u64())
+            .map(|v| v as u32)
+            .unwrap_or(0);
 
         // 🆕 取消支持：使用 spawn_blocking + tokio::select! 监听取消信号
         let list_task = {
             let service = service.clone();
-            tokio::task::spawn_blocking(move || service.list(folder.as_deref(), limit, 0))
+            tokio::task::spawn_blocking(move || service.list(folder.as_deref(), limit, offset))
         };
 
         let items = if let Some(cancel_token) = ctx.cancellation_token() {
@@ -667,23 +674,53 @@ impl MemoryToolExecutor {
         }
 
         let result = if let Some(cancel_token) = ctx.cancellation_token() {
+            let idempotency_key = Self::resolve_idempotency_key(
+                call,
+                &ctx.session_id,
+                &ctx.message_id,
+                folder,
+                title,
+                content,
+                memory_type,
+                memory_purpose,
+            );
             tokio::select! {
-                res = service.write_smart_with_source(folder, title, content, MemoryOpSource::ToolCall, None, memory_type, memory_purpose) => res.map_err(|e| e.to_string())?,
+                res = service.write_smart_with_source(
+                    folder,
+                    title,
+                    content,
+                    MemoryOpSource::ToolCall,
+                    Some(&ctx.session_id),
+                    memory_type,
+                    memory_purpose,
+                    Some(idempotency_key.as_str()),
+                ) => res.map_err(|e| e.to_string())?,
                 _ = cancel_token.cancelled() => {
                     log::info!("[MemoryToolExecutor] Memory write_smart cancelled");
                     return Err("Memory write_smart cancelled during execution".to_string());
                 }
             }
         } else {
+            let idempotency_key = Self::resolve_idempotency_key(
+                call,
+                &ctx.session_id,
+                &ctx.message_id,
+                folder,
+                title,
+                content,
+                memory_type,
+                memory_purpose,
+            );
             service
                 .write_smart_with_source(
                     folder,
                     title,
                     content,
                     MemoryOpSource::ToolCall,
-                    None,
+                    Some(&ctx.session_id),
                     memory_type,
                     memory_purpose,
+                    Some(idempotency_key.as_str()),
                 )
                 .await
                 .map_err(|e| e.to_string())?
@@ -701,6 +738,44 @@ impl MemoryToolExecutor {
             "reason": result.reason,
             "downgraded": result.downgraded
         }))
+    }
+}
+
+impl MemoryToolExecutor {
+    fn resolve_idempotency_key(
+        call: &ToolCall,
+        session_id: &str,
+        message_id: &str,
+        folder: Option<&str>,
+        title: &str,
+        content: &str,
+        memory_type: MemoryType,
+        memory_purpose: Option<crate::memory::MemoryPurpose>,
+    ) -> String {
+        if let Some(explicit) = call
+            .arguments
+            .get("idempotency_key")
+            .or_else(|| call.arguments.get("idempotencyKey"))
+            .and_then(|v| v.as_str())
+        {
+            let explicit = explicit.trim();
+            if !explicit.is_empty() {
+                return explicit.to_string();
+            }
+        }
+
+        let normalized = format!(
+            "{}|{}|{}|{}|{}",
+            folder.unwrap_or("").trim().to_lowercase(),
+            title.trim().to_lowercase(),
+            content.trim().to_lowercase(),
+            memory_type.as_str(),
+            memory_purpose.map(|p| p.as_str()).unwrap_or(""),
+        );
+        let mut hasher = Sha256::new();
+        hasher.update(normalized.as_bytes());
+        let digest = format!("{:x}", hasher.finalize());
+        format!("mem:{}:{}:{}", session_id, message_id, digest)
     }
 }
 

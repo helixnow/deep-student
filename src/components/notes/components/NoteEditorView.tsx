@@ -153,16 +153,30 @@ export const NoteEditorView: React.FC<NoteEditorViewProps> = ({
     isUnmountedRef.current = false;
     return () => {
       isUnmountedRef.current = true;
+      const pendingContent = contentRef.current;
+      const shouldFlush = !!pendingContent && pendingContent !== noteContent;
       if (saveTimerRef.current) {
         clearTimeout(saveTimerRef.current);
         saveTimerRef.current = undefined;
+      }
+      // 卸载前尽力同步最后一次编辑，避免防抖窗口内的内容丢失
+      if (shouldFlush) {
+        if (isDstuMode) {
+          if (onSave) {
+            void onSave(pendingContent).catch((err: unknown) => {
+              console.error('[NoteEditorView] DSTU flush save failed on unmount:', err);
+            });
+          }
+        } else if (noteId && saveNoteContent) {
+          void saveNoteContent(noteId, pendingContent);
+        }
       }
       if (contentChangedTimerRef.current) {
         clearTimeout(contentChangedTimerRef.current);
         contentChangedTimerRef.current = undefined;
       }
     };
-  }, []);
+  }, [isDstuMode, noteId, noteContent, onSave, saveNoteContent]);
 
   // 监听 IME composition 事件，在合成期间跳过实时事件派发
   // 🔧 修复：绑定到编辑器容器而非 window，避免换行后首次输入法卡顿

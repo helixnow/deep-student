@@ -617,6 +617,47 @@ impl VfsLanceStore {
         Ok(deleted)
     }
 
+    /// 按 embedding_id 批量删除向量（用于元数据写入失败后的补偿回滚）。
+    pub async fn delete_by_embedding_ids(
+        &self,
+        modality: &str,
+        embedding_ids: &[String],
+    ) -> VfsResult<usize> {
+        if embedding_ids.is_empty() {
+            return Ok(0);
+        }
+
+        let conn = self.connect().await?;
+        let mut deleted = 0usize;
+
+        let mut dims = self.get_registered_dimensions(modality)?;
+        for dim in self.discover_dimensions_from_disk(modality) {
+            if !dims.contains(&dim) {
+                dims.push(dim);
+            }
+        }
+        dims.sort_unstable();
+        dims.dedup();
+
+        let in_list = embedding_ids
+            .iter()
+            .map(|s| format!("'{}'", s.replace("'", "''")))
+            .collect::<Vec<_>>()
+            .join(",");
+        let expr = format!("embedding_id IN ({})", in_list);
+
+        for dim in dims {
+            let table_name = Self::table_name(modality, dim);
+            if let Ok(tbl) = conn.open_table(&table_name).execute().await {
+                if tbl.delete(expr.as_str()).await.is_ok() {
+                    deleted += 1;
+                }
+            }
+        }
+
+        Ok(deleted)
+    }
+
     // ========================================================================
     // 检索操作
     // ========================================================================

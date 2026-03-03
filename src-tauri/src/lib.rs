@@ -311,8 +311,12 @@ pub fn run() {
             if crate::startup_cleanup::should_purge_on_start(&base_app_data_dir) {
                 match crate::startup_cleanup::purge_active_data_dir(&active_app_data_dir) {
                     Ok(report) => {
-                        info!("启动阶段已执行数据清理:\n{}", report);
-                        if let Err(e) = crate::startup_cleanup::clear_purge_marker(&base_app_data_dir) {
+                        info!("启动阶段已执行数据清理:\n{}", report.details);
+                        if report.had_errors {
+                            warn!("启动阶段数据清理存在失败项，保留清理标记以便下次启动重试");
+                        } else if let Err(e) =
+                            crate::startup_cleanup::clear_purge_marker(&base_app_data_dir)
+                        {
                             warn!("清除清理标记失败: {}", e);
                         }
                     }

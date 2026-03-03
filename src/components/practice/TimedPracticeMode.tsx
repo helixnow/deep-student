@@ -67,6 +67,16 @@ export const TimedPracticeMode: React.FC<TimedPracticeModeProps> = ({
   // 配置状态
   const [durationMinutes, setDurationMinutes] = useState(30);
   const [questionCount, setQuestionCount] = useState(20);
+
+  const normalizeDurationMinutes = useCallback((value: number): number => {
+    if (!Number.isFinite(value)) return 30;
+    return Math.max(5, Math.min(180, Math.round(value)));
+  }, []);
+
+  const normalizeQuestionCount = useCallback((value: number): number => {
+    if (!Number.isFinite(value)) return 20;
+    return Math.max(5, Math.min(100, Math.round(value)));
+  }, []);
   
   // 计时器状态 — 基于绝对时间戳的高精度倒计时
   const [targetEndTime, setTargetEndTime] = useState<number | null>(null);
@@ -147,7 +157,12 @@ export const TimedPracticeMode: React.FC<TimedPracticeModeProps> = ({
                 min={5}
                 max={180}
                 value={durationMinutes}
-                onChange={(e) => setDurationMinutes(Number(e.target.value))}
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  if (raw === '') return;
+                  setDurationMinutes(normalizeDurationMinutes(Number(raw)));
+                }}
+                onBlur={(e) => setDurationMinutes(normalizeDurationMinutes(Number(e.target.value)))}
                 className="text-center text-lg font-medium"
               />
             </div>
@@ -159,7 +174,12 @@ export const TimedPracticeMode: React.FC<TimedPracticeModeProps> = ({
                 min={5}
                 max={100}
                 value={questionCount}
-                onChange={(e) => setQuestionCount(Number(e.target.value))}
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  if (raw === '') return;
+                  setQuestionCount(normalizeQuestionCount(Number(raw)));
+                }}
+                onBlur={(e) => setQuestionCount(normalizeQuestionCount(Number(e.target.value)))}
                 className="text-center text-lg font-medium"
               />
             </div>

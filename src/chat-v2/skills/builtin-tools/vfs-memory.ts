@@ -153,6 +153,7 @@ export const vfsMemorySkill: SkillDefinition = {
           content: { type: 'string', description: '【必填】记忆内容。fact 类型：关于用户的简短陈述句（≤50字）。note 类型：用户要求保存的经验、方法论、技巧等（≤2000字）。' },
           memory_type: { type: 'string', enum: ['fact', 'note'], description: '记忆类型。fact（默认）：关于用户的原子事实。note：用户明确要求保存的经验笔记/方法论/学习技巧。仅当用户明确说"记住/保存这个方法/技巧/经验"时才使用 note。' },
           memory_purpose: { type: 'string', enum: ['internalized', 'memorized', 'supplementary', 'systemic'], description: '记忆目的。internalized：用户需要理解并内化的核心内容（最高优先级）。memorized（默认）：需要单独记忆的事实。supplementary：辅助理解的补充知识。systemic：系统用于理解用户的元信息。' },
+          idempotency_key: { type: 'string', description: '可选：幂等键。重试同一次写入时复用该键，避免重复写入。' },
         },
         required: ['title', 'content'],
       },
@@ -165,6 +166,7 @@ export const vfsMemorySkill: SkillDefinition = {
         properties: {
           folder: { type: 'string', description: '相对于记忆根目录的文件夹路径，留空表示根目录' },
           limit: { type: 'integer', description: '返回数量限制，默认100条', default: 100, minimum: 1, maximum: 500 },
+          offset: { type: 'integer', description: '分页偏移量，默认0', default: 0, minimum: 0 },
         },
       },
     },

@@ -69,6 +69,17 @@ pub async fn vfs_unified_batch_index(
         raw_limit
     );
 
+    if mode == "mm" {
+        return Err(
+            "vfs_unified_batch_index: multimodal batch indexing is not supported yet".to_string(),
+        );
+    }
+    if mode == "both" {
+        log::warn!(
+            "[VFS::index_handlers] mode=both currently executes text indexing only; multimodal batch indexing is pending implementation"
+        );
+    }
+
     // 文本模态使用 VfsFullIndexingService
     if mode == "text" || mode == "both" {
         // 获取索引配置

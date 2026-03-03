@@ -4323,6 +4323,8 @@ fn build_single_ref_data_from_context_ref(context_ref: &ContextRef) -> Option<Vf
             resource_hash: context_ref.hash.clone(),
             resource_type,
             name,
+            resource_id: None,
+            snippet: None,
             inject_modes: context_ref.inject_modes.clone(),
         }],
         truncated: false,
@@ -5455,6 +5457,8 @@ mod tests {
             resource_hash: "hash".to_string(),
             resource_type,
             name: "ref".to_string(),
+            resource_id: None,
+            snippet: None,
             inject_modes: None,
         }
     }

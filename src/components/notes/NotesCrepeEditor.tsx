@@ -492,6 +492,11 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 's') {
+        const activeEl = document.activeElement as HTMLElement | null;
+        const isEditorFocused = !!activeEl && !!dropZoneRef.current?.contains(activeEl);
+        if (readOnly || !isEditorFocused) {
+          return;
+        }
         e.preventDefault();
         e.stopPropagation();
         handleManualSave()
@@ -502,7 +507,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
     };
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [handleManualSave, t]);
+  }, [handleManualSave, readOnly, t]);
 
   // Find/Replace handlers
   const handleFindReplaceClose = useCallback(() => {
@@ -696,7 +701,11 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
             
             <NotionButton
               onClick={() => {
-                try { window.dispatchEvent(new CustomEvent('notes:focus-sidebar-search')); } catch {}
+                try {
+                  window.dispatchEvent(new CustomEvent('notes:focus-sidebar-search'));
+                } catch (error: unknown) {
+                  console.warn('[NotesCrepeEditor] Failed to dispatch notes:focus-sidebar-search:', error);
+                }
               }}
               disabled={readOnly}
               className="w-full min-w-[220px] h-auto py-3 justify-between text-left"

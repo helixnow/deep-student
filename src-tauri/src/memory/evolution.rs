@@ -25,6 +25,7 @@ const STALE_THRESHOLD_DAYS: i64 = 90;
 const STALE_MIN_HITS: u32 = 2;
 const HIGH_FREQ_HITS_THRESHOLD: u32 = 5;
 const FOLDER_OVERFLOW_THRESHOLD: usize = 20;
+const EVOLUTION_SCAN_BATCH_SIZE: u32 = 200;
 
 pub struct MemoryEvolution {
     vfs_db: Arc<VfsDatabase>,
@@ -100,7 +101,20 @@ impl MemoryEvolution {
     ) -> VfsResult<EvolutionReport> {
         let mut report = EvolutionReport::default();
 
-        let all_memories = memory_service.list(None, 500, 0)?;
+        let mut all_memories = Vec::new();
+        let mut offset = 0u32;
+        loop {
+            let page = memory_service.list(None, EVOLUTION_SCAN_BATCH_SIZE, offset)?;
+            if page.is_empty() {
+                break;
+            }
+            let page_len = page.len() as u32;
+            all_memories.extend(page);
+            if page_len < EVOLUTION_SCAN_BATCH_SIZE {
+                break;
+            }
+            offset = offset.saturating_add(EVOLUTION_SCAN_BATCH_SIZE);
+        }
         if all_memories.is_empty() {
             return Ok(report);
         }
@@ -128,7 +142,7 @@ impl MemoryEvolution {
         let now = chrono::Utc::now();
         let mut demoted = 0usize;
 
-        let _ = conn.execute_batch("BEGIN IMMEDIATE");
+        conn.execute_batch("BEGIN IMMEDIATE")?;
 
         for mem in memories {
             if mem.title.starts_with("__") {
@@ -192,7 +206,7 @@ impl MemoryEvolution {
             }
         }
 
-        let _ = conn.execute_batch("COMMIT");
+        conn.execute_batch("COMMIT")?;
         Ok(demoted)
     }
 
@@ -201,7 +215,7 @@ impl MemoryEvolution {
         let conn = self.vfs_db.get_conn_safe()?;
         let mut promoted = 0usize;
 
-        let _ = conn.execute_batch("BEGIN IMMEDIATE");
+        conn.execute_batch("BEGIN IMMEDIATE")?;
 
         for mem in memories {
             if mem.title.starts_with("__") {
@@ -248,13 +262,13 @@ impl MemoryEvolution {
             }
         }
 
-        let _ = conn.execute_batch("COMMIT");
+        conn.execute_batch("COMMIT")?;
         Ok(promoted)
     }
 
     /// 检查文件夹溢出并执行合并：同一文件夹中标题完全相同的记忆合并内容后去重
     fn check_folder_overflow(&self, memory_service: &MemoryService) -> VfsResult<usize> {
-        let mut folders: Vec<String> = Vec::new();
+        let mut folders: Vec<String> = vec![String::new()];
         if let Ok(Some(tree)) = memory_service.get_tree() {
             Self::collect_all_folder_paths(&tree.children, "", &mut folders);
         }
@@ -265,7 +279,12 @@ impl MemoryEvolution {
         let conn = self.vfs_db.get_conn_safe()?;
 
         for folder in &folders {
-            let items = memory_service.list(Some(folder), 200, 0)?;
+            let folder_arg = if folder.is_empty() {
+                None
+            } else {
+                Some(folder.as_str())
+            };
+            let items = memory_service.list_shallow(folder_arg, 200, 0)?;
             let active: Vec<&MemoryListItem> = items
                 .iter()
                 .filter(|m| !m.title.starts_with("__"))
@@ -292,6 +311,7 @@ impl MemoryEvolution {
                 }
                 let keep = group[0];
                 let mut combined_content = String::new();
+                let mut seen_fragments = std::collections::HashSet::new();
                 for mem in group {
                     if let Ok(Some(content)) =
                         crate::vfs::repos::note_repo::VfsNoteRepo::get_note_content(
@@ -299,11 +319,12 @@ impl MemoryEvolution {
                             &mem.id,
                         )
                     {
-                        if !content.is_empty() {
+                        let normalized = content.trim().to_string();
+                        if !normalized.is_empty() && seen_fragments.insert(normalized.clone()) {
                             if !combined_content.is_empty() {
                                 combined_content.push_str("\n\n");
                             }
-                            combined_content.push_str(&content);
+                            combined_content.push_str(&normalized);
                         }
                     }
                 }

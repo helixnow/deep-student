@@ -254,7 +254,8 @@ export async function writeMemorySmart(
   content: string,
   folderPath?: string,
   memoryType?: 'fact' | 'note',
-  memoryPurpose?: MemoryPurposeType
+  memoryPurpose?: MemoryPurposeType,
+  idempotencyKey?: string
 ): Promise<SmartWriteOutput> {
   return invoke<SmartWriteOutput>('memory_write_smart', {
     folderPath,
@@ -262,6 +263,7 @@ export async function writeMemorySmart(
     content,
     memoryType,
     memoryPurpose,
+    idempotencyKey,
   });
 }
 

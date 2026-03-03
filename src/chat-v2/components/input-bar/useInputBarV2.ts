@@ -76,8 +76,8 @@ export function useInputBarV2(
 
   // ========== 派生状态 ==========
 
-  // 是否正在流式生成
-  const isStreaming = sessionStatus === 'streaming';
+  // 是否正在流式生成（包含 aborting，避免“可输入但无法发送”的中间态错觉）
+  const isStreaming = sessionStatus === 'streaming' || sessionStatus === 'aborting';
 
   // 是否可以发送：idle 状态下可发送
   const canSend = sessionStatus === 'idle';

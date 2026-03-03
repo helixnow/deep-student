@@ -953,7 +953,7 @@ pub async fn data_governance_run_sync(
                 });
             };
 
-            let blobs_dir = app_data_dir.join("vfs_blobs");
+            let blobs_dir = active_dir.join("vfs_blobs");
             if let Err(e) = manager
                 .sync_workspace_databases(storage.as_ref(), &active_dir)
                 .await
@@ -2039,7 +2039,7 @@ async fn execute_upload_with_progress_v2(
     emitter.emit_applying(total, total, None).await;
 
     // 文件级云同步：工作区数据库（ws_*.db）+ VFS blobs
-    let blobs_dir = app_data_dir.join("vfs_blobs");
+    let blobs_dir = active_dir.join("vfs_blobs");
     if let Err(e) = manager.sync_workspace_databases(storage, active_dir).await {
         tracing::warn!("[data_governance] 工作区数据库同步失败（非致命）: {}", e);
     }
@@ -2124,7 +2124,7 @@ async fn execute_download_with_progress_v2(
     }
 
     // 文件级云同步：工作区数据库（ws_*.db）+ VFS blobs
-    let blobs_dir = app_data_dir.join("vfs_blobs");
+    let blobs_dir = active_dir.join("vfs_blobs");
     if let Err(e) = manager.sync_workspace_databases(storage, active_dir).await {
         tracing::warn!("[data_governance] 工作区数据库同步失败（非致命）: {}", e);
     }
@@ -2337,7 +2337,7 @@ async fn execute_bidirectional_with_progress_v2(
     }
 
     // 文件级云同步：工作区数据库（ws_*.db）+ VFS blobs
-    let blobs_dir = app_data_dir.join("vfs_blobs");
+    let blobs_dir = active_dir.join("vfs_blobs");
     if let Err(e) = manager.sync_workspace_databases(storage, active_dir).await {
         tracing::warn!("[data_governance] 工作区数据库同步失败（非致命）: {}", e);
     }

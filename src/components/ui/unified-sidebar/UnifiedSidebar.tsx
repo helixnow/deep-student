@@ -539,6 +539,13 @@ export const UnifiedSidebarItem: React.FC<UnifiedSidebarItemProps> = ({
     }
   }, [isEditing, onClick, isMobileMode, closeMobile]);
 
+  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (isEditing) return;
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    e.preventDefault();
+    handleClick();
+  }, [isEditing, handleClick]);
+
   // 渲染图标
   const renderIcon = () => {
     if (colorDot) {
@@ -572,6 +579,10 @@ export const UnifiedSidebarItem: React.FC<UnifiedSidebarItemProps> = ({
   return (
     <div
       onClick={handleClick}
+      onKeyDown={handleKeyDown}
+      role="button"
+      tabIndex={isEditing ? -1 : 0}
+      aria-pressed={isSelected}
       className={cn(
         'group relative flex items-center rounded-md cursor-pointer transition-colors duration-150',
         styles.item.padding,

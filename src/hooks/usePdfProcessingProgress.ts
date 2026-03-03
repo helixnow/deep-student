@@ -71,6 +71,23 @@ type PdfProcessingErrorPayload = MediaProcessingErrorPayload;
 export function usePdfProcessingProgress(): void {
   useEffect(() => {
     const unlisteners: UnlistenFn[] = [];
+    let disposed = false;
+
+    const registerListener = async <T,>(
+      eventName: Parameters<typeof listen<T>>[0],
+      handler: Parameters<typeof listen<T>>[1],
+    ) => {
+      try {
+        const unlisten = await listen<T>(eventName, handler);
+        if (disposed) {
+          unlisten();
+          return;
+        }
+        unlisteners.push(unlisten);
+      } catch (error) {
+        console.error(`[MediaProcessing] Failed to register ${eventName} listener:`, error);
+      }
+    };
     
     console.log('[MediaProcessing] Hook 初始化，开始监听事件...');
     
@@ -159,35 +176,36 @@ export function usePdfProcessingProgress(): void {
     };
     
     // 监听新的统一事件
-    listen<MediaProcessingProgressPayload>('media-processing-progress', (event) => {
+    void registerListener<MediaProcessingProgressPayload>('media-processing-progress', (event) => {
       handleProgress(event.payload, 'unified');
-    }).then(unlisten => unlisteners.push(unlisten));
+    });
     
-    listen<MediaProcessingCompletedPayload>('media-processing-completed', (event) => {
+    void registerListener<MediaProcessingCompletedPayload>('media-processing-completed', (event) => {
       handleCompleted(event.payload, 'unified');
-    }).then(unlisten => unlisteners.push(unlisten));
+    });
     
-    listen<MediaProcessingErrorPayload>('media-processing-error', (event) => {
+    void registerListener<MediaProcessingErrorPayload>('media-processing-error', (event) => {
       handleError(event.payload, 'unified');
-    }).then(unlisten => unlisteners.push(unlisten));
+    });
     
     // 监听旧的 PDF 事件（兼容）
-    listen<PdfProcessingProgressPayload>('pdf-processing-progress', (event) => {
+    void registerListener<PdfProcessingProgressPayload>('pdf-processing-progress', (event) => {
       handleProgress({ ...event.payload, mediaType: 'pdf' }, 'legacy');
-    }).then(unlisten => unlisteners.push(unlisten));
+    });
     
-    listen<PdfProcessingCompletedPayload>('pdf-processing-completed', (event) => {
+    void registerListener<PdfProcessingCompletedPayload>('pdf-processing-completed', (event) => {
       handleCompleted({ ...event.payload, mediaType: 'pdf' }, 'legacy');
-    }).then(unlisten => unlisteners.push(unlisten));
+    });
     
-    listen<PdfProcessingErrorPayload>('pdf-processing-error', (event) => {
+    void registerListener<PdfProcessingErrorPayload>('pdf-processing-error', (event) => {
       handleError({ ...event.payload, mediaType: 'pdf' }, 'legacy');
-    }).then(unlisten => unlisteners.push(unlisten));
+    });
     
     console.log('[MediaProcessing] Hook 初始化完成，已注册 6 个事件监听器');
     
     // 清理
     return () => {
+      disposed = true;
       console.log('[MediaProcessing] Hook 清理，移除事件监听器...');
       unlisteners.forEach(unlisten => unlisten());
     };

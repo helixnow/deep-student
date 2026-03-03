@@ -1401,7 +1401,9 @@ pub async fn vfs_upload_attachment(
                     let modes = status.progress.ready_modes.clone();
                     let stage = status.progress.stage.clone();
                     // ★ v2.1: 判断是否需要继续处理（未完成且非错误状态）
-                    let needs_resume = stage != "completed" && stage != "error";
+                    let needs_resume = stage != "completed"
+                        && stage != "completed_with_issues"
+                        && stage != "error";
                     (Some(stage), Some(percent), Some(modes), needs_resume)
                 }
                 _ => {

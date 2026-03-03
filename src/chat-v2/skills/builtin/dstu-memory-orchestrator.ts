@@ -30,7 +30,6 @@ export const deepScholarSkill: SkillDefinition = {
     'builtin-web_search',
     // vfs-memory
     'builtin-memory_read',
-    'builtin-memory_write',
     'builtin-memory_update_by_id',
     'builtin-memory_delete',
     'builtin-memory_write_smart',

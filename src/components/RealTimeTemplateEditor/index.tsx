@@ -146,6 +146,7 @@ export const RealTimeTemplateEditor: React.FC<RealTimeTemplateEditorProps> = ({
 
   // 保存处理
   const handleSave = async () => {
+    if (isSaving) return;
     // 验证是否有阻塞性错误
     const hasBlockingErrors = Array.from(errors.values())
       .flat()
@@ -170,26 +171,33 @@ export const RealTimeTemplateEditor: React.FC<RealTimeTemplateEditorProps> = ({
     }
   };
 
+  const handleCancelRequest = useCallback(() => {
+    if (isDirty && !unifiedConfirm(t('common:unsaved_changes_confirm', '有未保存的更改，确定要放弃吗？'))) {
+      return;
+    }
+    onCancel();
+  }, [isDirty, onCancel, t]);
+
   // 快捷键支持
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 's') {
         e.preventDefault();
-        handleSave();
+        void handleSave();
       }
       if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
         e.preventDefault();
-        handleSave();
+        void handleSave();
       }
       if (e.key === 'Escape') {
         e.preventDefault();
-        onCancel();
+        handleCancelRequest();
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [editingTemplate]);
+  }, [handleSave, handleCancelRequest]);
 
   // 初始编译
   useEffect(() => {
@@ -221,7 +229,7 @@ export const RealTimeTemplateEditor: React.FC<RealTimeTemplateEditorProps> = ({
         </div>
         
         <div className="toolbar-right">
-          <NotionButton variant="default" size="sm" className="btn-secondary" onClick={onCancel} disabled={isSaving} title={t('cancel_edit')}>
+          <NotionButton variant="default" size="sm" className="btn-secondary" onClick={handleCancelRequest} disabled={isSaving} title={t('cancel_edit')}>
             <X size={16} />
             {t('cancel')}
           </NotionButton>

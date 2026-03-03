@@ -333,6 +333,10 @@ export async function resolveResourceRefsBatch(
 ): Promise<Map<string, ResolvedResource>> {
   const result = await resolveResourceRefsV2(refs);
   const map = new Map<string, ResolvedResource>();
+  const buildRefKey = (r: Pick<VfsResourceRef, 'sourceId' | 'resourceHash' | 'injectModes'>) => {
+    const modeKey = r.injectModes ? JSON.stringify(r.injectModes) : '';
+    return `${r.sourceId}::${r.resourceHash || ''}::${modeKey}`;
+  };
 
   if (!result.ok) {
     // 🔧 P3修复：使用非空断言确保 TypeScript 正确推断错误类型
@@ -341,8 +345,17 @@ export async function resolveResourceRefsBatch(
   }
 
   const resolved = result.value;
-  for (const resource of resolved) {
-    map.set(resource.sourceId, resource);
+  for (let i = 0; i < resolved.length; i += 1) {
+    const resource = resolved[i];
+    const ref = refs[i];
+    // 兼容旧调用：保留 sourceId 直查；若同 sourceId 多项，只保留首个。
+    if (!map.has(resource.sourceId)) {
+      map.set(resource.sourceId, resource);
+    }
+    // 精确键：避免同 sourceId 不同 hash/injectModes 互相覆盖。
+    if (ref) {
+      map.set(buildRefKey(ref), resource);
+    }
   }
 
   console.log(

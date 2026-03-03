@@ -9,6 +9,7 @@ import { attachmentDstuAdapter } from '@/dstu/adapters/attachmentDstuAdapter';
 import { extractFileName, extractDisplayFileName, fileManager } from '@/utils/fileManager';
 import { UnifiedDragDropZone, FILE_TYPES } from '@/components/shared/UnifiedDragDropZone';
 import { useDebounce } from '@/hooks/useDebounce';
+import { useViewVisibility } from '@/hooks/useViewVisibility';
 import {
   AppMenu,
   AppMenuContent,
@@ -113,6 +114,7 @@ export function LearningHubSidebar({
   hideToolbarAndNav = false,
   highlightedIds,
 }: LearningHubSidebarProps) {
+  const { isActive: isLearningHubViewActive } = useViewVisibility('learning-hub');
   const { t } = useTranslation('learningHub');
 
   // ========== 响应式布局 ==========
@@ -651,7 +653,7 @@ export function LearningHubSidebar({
         focusSearchInput();
       },
     },
-    true
+    isLearningHubViewActive
   );
 
   const handleNewExam = async () => {

@@ -164,9 +164,12 @@ export const UnifiedAppPanel: React.FC<UnifiedAppPanelProps> = ({
   const supportedTypes: ResourceType[] = [
     'note', 'textbook', 'exam', 'translation', 'essay', 'image', 'file', 'mindmap',
   ];
-  const resolvedType: ResourceType = node && supportedTypes.includes(node.type as ResourceType)
-    ? (node.type as ResourceType)
-    : type;
+  const shouldPreferExplicitType = type === 'image' || type === 'file';
+  const resolvedType: ResourceType = shouldPreferExplicitType
+    ? type
+    : (node && supportedTypes.includes(node.type as ResourceType)
+      ? (node.type as ResourceType)
+      : type);
   const commonProps: ContentViewProps = {
     node,
     onClose,

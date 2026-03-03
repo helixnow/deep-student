@@ -666,9 +666,18 @@ export const DataImportExport: React.FC<DataImportExportProps> = ({ onClose, emb
         defaultFileName: `dstu-backup-${new Date().toISOString().replace(/[:.]/g, '-')}.zip`,
         filters: [{ name: t('data:file_filter_backup_archive'), extensions: ['zip'] }],
       });
-      if (picked) {
-        targetPath = picked;
+      if (!picked) {
+        setIsExporting(false);
+        setExportJob({
+          jobId: 'cancelled',
+          progress: 0,
+          phase: 'queued',
+          status: 'cancelled',
+          message: t('common:cancelled', '已取消'),
+        });
+        return;
       }
+      targetPath = picked;
 
       enterMaintenanceMode(t('data:governance.maintenance_backup'));
 

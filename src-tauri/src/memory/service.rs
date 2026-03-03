@@ -32,6 +32,7 @@ use super::query_rewriter::MemoryQueryRewriter;
 use super::reranker::MemoryReranker;
 
 const SMART_WRITE_MUTATION_CONFIDENCE_THRESHOLD: f32 = 0.65;
+const SMART_WRITE_IDEMPOTENCY_RETENTION_HOURS: i64 = 24;
 
 /// 记忆类型标签前缀
 const TAG_TYPE_PREFIX: &str = "_type:";
@@ -493,10 +494,9 @@ impl MemoryService {
             let privacy_mode = mem_cfg.is_privacy_mode().unwrap_or(false);
 
             if !privacy_mode {
-                let should_refresh = match svc.list(None, 500, 0) {
-                    Ok(all) => {
-                        let total = all.iter().filter(|m| !m.title.starts_with("__")).count();
-                        frequency.should_refresh_categories(total)
+                let should_refresh = match svc.count_active_memories() {
+                    Ok(total) => {
+                        frequency.should_refresh_categories(total as usize)
                     }
                     Err(_) => false,
                 };
@@ -709,34 +709,7 @@ impl MemoryService {
         }
 
         let root_id = self.ensure_root_folder_id()?;
-
-        let auto_create_subfolders = self.config.is_auto_create_subfolders()?;
-        let default_category = self.config.get_default_category()?;
-        let has_default_category = !default_category.trim().is_empty();
-
-        let target_folder_id = if let Some(path) = folder_path {
-            if path.is_empty() {
-                if auto_create_subfolders && has_default_category {
-                    Some(self.ensure_folder(&root_id, &default_category)?)
-                } else {
-                    Some(root_id.clone())
-                }
-            } else if auto_create_subfolders {
-                Some(self.ensure_folder(&root_id, path)?)
-            } else {
-                let folder_id =
-                    self.resolve_path_to_folder_id(&root_id, path)?
-                        .ok_or_else(|| VfsError::NotFound {
-                            resource_type: "Folder".to_string(),
-                            id: path.to_string(),
-                        })?;
-                Some(folder_id)
-            }
-        } else if auto_create_subfolders && has_default_category {
-            Some(self.ensure_folder(&root_id, &default_category)?)
-        } else {
-            Some(root_id.clone())
-        };
+        let target_folder_id = self.resolve_write_target_folder_id(folder_path, true, &root_id)?;
 
         let mut type_tags = if memory_type == MemoryType::Note {
             vec![memory_type.to_tag()]
@@ -859,6 +832,7 @@ impl MemoryService {
             None,
             MemoryType::Fact,
             None,
+            None,
         )
         .await
     }
@@ -873,6 +847,7 @@ impl MemoryService {
         session_id: Option<&str>,
         memory_type: MemoryType,
         purpose: Option<MemoryPurpose>,
+        idempotency_key: Option<&str>,
     ) -> VfsResult<SmartWriteOutput> {
         let timer = OpTimer::start();
         self.ensure_root_folder_id()?;
@@ -894,6 +869,20 @@ impl MemoryService {
                 resource_id: None,
                 downgraded: false,
             });
+        }
+
+        let idempotency_key = idempotency_key.and_then(|k| {
+            let trimmed = k.trim();
+            if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed)
+            }
+        });
+        if let Some(key) = idempotency_key {
+            if let Some(cached) = self.get_cached_smart_write_result(key)? {
+                return Ok(cached);
+            }
         }
 
         if MemoryAutoExtractor::contains_sensitive_pattern_pub(content)
@@ -936,18 +925,9 @@ impl MemoryService {
         if self.config.is_privacy_mode()? {
             // 隐私模式下使用本地标题匹配做基础去重（不涉及外部 API 调用）
             let root_id = self.ensure_root_folder_id()?;
-            let target_folder_id = if let Some(path) = folder_path {
-                if path.is_empty() {
-                    Some(root_id.clone())
-                } else {
-                    self.resolve_path_to_folder_id(&root_id, path)?
-                        .or(Some(root_id.clone()))
-                }
-            } else {
-                Some(root_id.clone())
-            };
+            let target_folder_id = self.resolve_write_target_folder_id(folder_path, false, &root_id)?;
             if let Some(existing) = self.find_note_by_title(target_folder_id.as_deref(), title)? {
-                return Ok(SmartWriteOutput {
+                let output = SmartWriteOutput {
                     note_id: existing.id,
                     event: "NONE".to_string(),
                     is_new: false,
@@ -955,7 +935,11 @@ impl MemoryService {
                     reason: "隐私模式：同名记忆已存在（本地标题去重）".to_string(),
                     resource_id: None,
                     downgraded: false,
-                });
+                };
+                if let Some(key) = idempotency_key {
+                    let _ = self.cache_smart_write_result(key, &output);
+                }
+                return Ok(output);
             }
             let result = self.write_typed(
                 folder_path,
@@ -965,7 +949,7 @@ impl MemoryService {
                 memory_type,
                 purpose,
             )?;
-            return Ok(SmartWriteOutput {
+            let output = SmartWriteOutput {
                 note_id: result.note_id,
                 event: "ADD".to_string(),
                 is_new: true,
@@ -973,7 +957,11 @@ impl MemoryService {
                 reason: "隐私模式已启用，跳过 LLM 决策并安全降级为新增".to_string(),
                 resource_id: Some(result.resource_id),
                 downgraded: false,
-            });
+            };
+            if let Some(key) = idempotency_key {
+                let _ = self.cache_smart_write_result(key, &output);
+            }
+            return Ok(output);
         }
 
         // Note 类型快速通道：跳过 LLM 决策，直接写入
@@ -1008,6 +996,9 @@ impl MemoryService {
                 timer.elapsed_ms(),
                 session_id,
             );
+            if let Some(key) = idempotency_key {
+                let _ = self.cache_smart_write_result(key, &output);
+            }
             return Ok(output);
         }
 
@@ -1066,7 +1057,7 @@ impl MemoryService {
                 .first()
                 .map(|r| r.note_id.clone())
                 .unwrap_or_default();
-            return Ok(SmartWriteOutput {
+            let output = SmartWriteOutput {
                 note_id: existing_id,
                 event: "NONE".to_string(),
                 is_new: false,
@@ -1077,7 +1068,11 @@ impl MemoryService {
                 ),
                 resource_id: None,
                 downgraded: true,
-            });
+            };
+            if let Some(key) = idempotency_key {
+                let _ = self.cache_smart_write_result(key, &output);
+            }
+            return Ok(output);
         }
 
         // 4. 根据决策执行操作
@@ -1324,6 +1319,9 @@ impl MemoryService {
                     timer.elapsed_ms(),
                     session_id,
                 );
+                if let Some(key) = idempotency_key {
+                    let _ = self.cache_smart_write_result(key, output);
+                }
             }
             Err(e) => {
                 self.audit_logger.log_error(
@@ -1390,6 +1388,53 @@ impl MemoryService {
         limit: u32,
         offset: u32,
     ) -> VfsResult<Vec<MemoryListItem>> {
+        self.list_internal(folder_path, limit, offset, true)
+    }
+
+    pub fn list_shallow(
+        &self,
+        folder_path: Option<&str>,
+        limit: u32,
+        offset: u32,
+    ) -> VfsResult<Vec<MemoryListItem>> {
+        self.list_internal(folder_path, limit, offset, false)
+    }
+
+    pub fn count_active_memories(&self) -> VfsResult<u32> {
+        let root_id = self.ensure_root_folder_id()?;
+        let folder_ids = self.get_memory_folder_ids(&root_id)?;
+        if folder_ids.is_empty() {
+            return Ok(0);
+        }
+
+        let conn = self.vfs_db.get_conn_safe()?;
+        let placeholders = vec!["?"; folder_ids.len()].join(", ");
+        let sql = format!(
+            r#"
+            SELECT COUNT(DISTINCT n.id)
+            FROM notes n
+            JOIN folder_items fi ON fi.item_type = 'note' AND fi.item_id = n.id
+            WHERE fi.folder_id IN ({}) AND n.deleted_at IS NULL AND fi.deleted_at IS NULL
+              AND n.title NOT LIKE '\_\_%\_\_%' ESCAPE '\'
+            "#,
+            placeholders
+        );
+        let mut stmt = conn.prepare(&sql)?;
+        let params: Vec<rusqlite::types::Value> = folder_ids
+            .into_iter()
+            .map(rusqlite::types::Value::from)
+            .collect();
+        let total: i64 = stmt.query_row(rusqlite::params_from_iter(params), |row| row.get(0))?;
+        Ok(total.max(0) as u32)
+    }
+
+    fn list_internal(
+        &self,
+        folder_path: Option<&str>,
+        limit: u32,
+        offset: u32,
+        recursive: bool,
+    ) -> VfsResult<Vec<MemoryListItem>> {
         let root_id = self.ensure_root_folder_id()?;
 
         let target_root_id = if let Some(path) = folder_path {
@@ -1405,8 +1450,11 @@ impl MemoryService {
             root_id.clone()
         };
 
-        // 列表语义采用“递归列出目录下全部记忆”，避免默认分类子目录中的记忆不可见。
-        let folder_ids = self.get_memory_folder_ids(&target_root_id)?;
+        let folder_ids = if recursive {
+            self.get_memory_folder_ids(&target_root_id)?
+        } else {
+            vec![target_root_id.clone()]
+        };
         if folder_ids.is_empty() {
             return Ok(vec![]);
         }
@@ -1562,6 +1610,122 @@ impl MemoryService {
         }
 
         Ok(Some(current_parent_id))
+    }
+
+    fn resolve_write_target_folder_id(
+        &self,
+        folder_path: Option<&str>,
+        strict_missing: bool,
+        root_id: &str,
+    ) -> VfsResult<Option<String>> {
+        let auto_create_subfolders = self.config.is_auto_create_subfolders()?;
+        let default_category = self.config.get_default_category()?;
+        let has_default_category = !default_category.trim().is_empty();
+
+        if let Some(path) = folder_path {
+            if path.is_empty() {
+                if auto_create_subfolders && has_default_category {
+                    return Ok(Some(self.ensure_folder(root_id, &default_category)?));
+                }
+                return Ok(Some(root_id.to_string()));
+            }
+
+            if auto_create_subfolders {
+                return Ok(Some(self.ensure_folder(root_id, path)?));
+            }
+
+            let found = self.resolve_path_to_folder_id(root_id, path)?;
+            if strict_missing {
+                let folder_id = found.ok_or_else(|| VfsError::NotFound {
+                    resource_type: "Folder".to_string(),
+                    id: path.to_string(),
+                })?;
+                Ok(Some(folder_id))
+            } else {
+                Ok(found.or_else(|| Some(root_id.to_string())))
+            }
+        } else if auto_create_subfolders && has_default_category {
+            Ok(Some(self.ensure_folder(root_id, &default_category)?))
+        } else {
+            Ok(Some(root_id.to_string()))
+        }
+    }
+
+    fn get_cached_smart_write_result(&self, idempotency_key: &str) -> VfsResult<Option<SmartWriteOutput>> {
+        let conn = self.vfs_db.get_conn_safe()?;
+        let now_ms = chrono::Utc::now().timestamp_millis();
+        let ttl_ms = SMART_WRITE_IDEMPOTENCY_RETENTION_HOURS * 60 * 60 * 1000;
+        let min_created_at = now_ms - ttl_ms;
+
+        conn.execute(
+            "DELETE FROM memory_write_idempotency WHERE created_at < ?1",
+            params![min_created_at],
+        )?;
+
+        let row = conn
+            .query_row(
+                r#"
+                SELECT note_id, event, is_new, confidence, reason, resource_id, downgraded
+                FROM memory_write_idempotency
+                WHERE idempotency_key = ?1
+                LIMIT 1
+                "#,
+                params![idempotency_key],
+                |row| {
+                    Ok(SmartWriteOutput {
+                        note_id: row.get::<_, Option<String>>(0)?.unwrap_or_default(),
+                        event: row.get(1)?,
+                        is_new: row.get::<_, i32>(2)? != 0,
+                        confidence: row.get(3)?,
+                        reason: row.get(4)?,
+                        resource_id: row.get(5)?,
+                        downgraded: row.get::<_, i32>(6)? != 0,
+                    })
+                },
+            )
+            .ok();
+        Ok(row)
+    }
+
+    fn cache_smart_write_result(
+        &self,
+        idempotency_key: &str,
+        output: &SmartWriteOutput,
+    ) -> VfsResult<()> {
+        let conn = self.vfs_db.get_conn_safe()?;
+        let now_ms = chrono::Utc::now().timestamp_millis();
+        conn.execute(
+            r#"
+            INSERT INTO memory_write_idempotency
+              (idempotency_key, note_id, event, is_new, confidence, reason, resource_id, downgraded, created_at)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+            ON CONFLICT(idempotency_key) DO UPDATE SET
+              note_id = excluded.note_id,
+              event = excluded.event,
+              is_new = excluded.is_new,
+              confidence = excluded.confidence,
+              reason = excluded.reason,
+              resource_id = excluded.resource_id,
+              downgraded = excluded.downgraded,
+              created_at = excluded.created_at
+            "#,
+            params![
+                idempotency_key,
+                if output.note_id.is_empty() {
+                    None::<String>
+                } else {
+                    Some(output.note_id.clone())
+                },
+                output.event,
+                if output.is_new { 1 } else { 0 },
+                output.confidence,
+                output.reason,
+                output.resource_id.clone(),
+                if output.downgraded { 1 } else { 0 },
+                now_ms,
+            ],
+        )?;
+        Ok(())
     }
 
     fn find_note_by_title(

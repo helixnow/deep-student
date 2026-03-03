@@ -7,6 +7,7 @@
 //! 触发点：ChatV2Pipeline::save_results_post_commit
 
 use std::sync::Arc;
+use std::{collections::HashSet};
 
 use anyhow::Result;
 use tracing::{debug, info, warn};
@@ -88,8 +89,27 @@ impl MemoryAutoExtractor {
 
         let audit_logger = memory_service.audit_logger().clone();
         let mut stored_count = 0usize;
+        let mut seen_keys: HashSet<String> = HashSet::new();
 
         for candidate in &candidates {
+            let dedup_key = format!(
+                "{}|{}|{}",
+                candidate
+                    .folder
+                    .as_deref()
+                    .unwrap_or("")
+                    .trim()
+                    .to_lowercase(),
+                candidate.title.trim().to_lowercase(),
+                candidate.content.trim().to_lowercase(),
+            );
+            if !seen_keys.insert(dedup_key) {
+                debug!(
+                    "[MemoryAutoExtractor] Skip duplicated candidate in same batch: '{}'",
+                    candidate.title
+                );
+                continue;
+            }
             match memory_service
                 .write_smart_with_source(
                     candidate.folder.as_deref(),
@@ -98,6 +118,7 @@ impl MemoryAutoExtractor {
                     MemoryOpSource::AutoExtract,
                     None,
                     crate::memory::MemoryType::Fact,
+                    None,
                     None,
                 )
                 .await

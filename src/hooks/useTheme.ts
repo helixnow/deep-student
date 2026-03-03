@@ -306,6 +306,19 @@ export const useTheme = () => {
   }, []);
 
   useEffect(() => {
+    const handleThemeModeChanged = (event: Event) => {
+      const mode = (event as CustomEvent<{ mode?: ThemeMode }>).detail?.mode;
+      if (mode !== 'light' && mode !== 'dark' && mode !== 'auto') return;
+      setThemeState(prev => ({ ...prev, mode }));
+    };
+
+    window.addEventListener('dstu-theme-mode-changed', handleThemeModeChanged as EventListener);
+    return () => {
+      window.removeEventListener('dstu-theme-mode-changed', handleThemeModeChanged as EventListener);
+    };
+  }, []);
+
+  useEffect(() => {
     applyThemeToDom(resolvedIsDark, themeState.palette, themeState.customColor);
   }, [resolvedIsDark, themeState.palette, themeState.customColor]);
 

@@ -410,6 +410,14 @@ export const CsvImportDialog: React.FC<CsvImportDialogProps> = ({
     onOpenChange(false);
   }, [isImporting, onOpenChange, handleCancelImport]);
 
+  const handleDialogOpenChange = useCallback((nextOpen: boolean) => {
+    if (!nextOpen && isImporting) {
+      showGlobalNotification('warning', t('exam_sheet:csv.import_in_progress_close_blocked', '导入进行中，请先取消导入后再关闭窗口'));
+      return;
+    }
+    onOpenChange(nextOpen);
+  }, [isImporting, onOpenChange, t]);
+
   // 重试
   const handleRetry = useCallback(() => {
     setImportResult(null);
@@ -821,7 +829,12 @@ export const CsvImportDialog: React.FC<CsvImportDialogProps> = ({
   };
 
   return (
-    <NotionDialog open={open} onOpenChange={onOpenChange} maxWidth="max-w-2xl">
+    <NotionDialog
+      open={open}
+      onOpenChange={handleDialogOpenChange}
+      closeOnOverlay={!isImporting}
+      maxWidth="max-w-2xl"
+    >
         <NotionDialogHeader>
           <NotionDialogTitle className="flex items-center gap-2">
             <FileSpreadsheet className="w-5 h-5" />

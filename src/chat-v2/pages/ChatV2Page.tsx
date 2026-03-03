@@ -570,12 +570,13 @@ export const ChatV2Page: React.FC = () => {
   // ★ 处理从 openResource 触发的待打开资源
   // 简化逻辑：直接调用 handleOpenApp，不再通过事件传递
   useEffect(() => {
-    if (pendingOpenResource && canvasSidebarOpen) {
+    const resourcePanelReady = isSmallScreen ? mobileResourcePanelOpen : canvasSidebarOpen;
+    if (pendingOpenResource && resourcePanelReady) {
       // 侧边栏已打开，直接设置 openApp
       handleOpenApp(pendingOpenResource);
       setPendingOpenResource(null);
     }
-  }, [pendingOpenResource, canvasSidebarOpen, handleOpenApp]);
+  }, [pendingOpenResource, canvasSidebarOpen, mobileResourcePanelOpen, isSmallScreen, handleOpenApp]);
 
   // ★ 监听附件预览事件，在右侧面板打开附件
   // 使用独立的附件预览状态，不依赖于 NotesContext
@@ -629,7 +630,7 @@ export const ChatV2Page: React.FC = () => {
         />
       ) : currentSessionId ? (
         <ChatContainer
-          sessionId={deferredSessionId ?? currentSessionId}
+          sessionId={currentSessionId}
           className="flex-1 h-full"
           onViewAgentSession={handleViewAgentSession}
         />

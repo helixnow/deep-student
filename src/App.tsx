@@ -318,6 +318,7 @@ function App() {
   // 移动端 UI 强制 30px，桌面端读取用户设置或默认 0px
   const [topbarTopMargin, setTopbarTopMargin] = useState<number>(isSmallScreen ? 30 : 0);
   useEffect(() => {
+    let cancelled = false;
     // 移动端 UI 强制使用 30px，忽略用户设置
     if (isSmallScreen) {
       setTopbarTopMargin(30);
@@ -327,6 +328,7 @@ function App() {
     const loadSetting = async () => {
       try {
         const v = await invoke<string>('get_setting', { key: 'topbar.top_margin' });
+        if (cancelled) return;
         const value = String(v ?? '').trim();
         if (value) {
           const numValue = parseInt(value, 10);
@@ -335,6 +337,7 @@ function App() {
           setTopbarTopMargin(0);
         }
       } catch {
+        if (cancelled) return;
         setTopbarTopMargin(0);
       }
     };
@@ -346,7 +349,10 @@ function App() {
       }
     };
     try { window.addEventListener('systemSettingsChanged' as any, handleSettingsChange as any); } catch { /* non-critical: event listener setup may fail in test env */ }
-    return () => { try { window.removeEventListener('systemSettingsChanged' as any, handleSettingsChange as any); } catch { /* non-critical: cleanup */ } };
+    return () => {
+      cancelled = true;
+      try { window.removeEventListener('systemSettingsChanged' as any, handleSettingsChange as any); } catch { /* non-critical: cleanup */ }
+    };
   }, [isSmallScreen]); // 响应窗口大小变化，自动切换移动端/桌面端默认值
   
   const appShellCustomProperties = useMemo(() => ({
@@ -1196,11 +1202,14 @@ function App() {
   // Poll ANN status on startup
   useEffect(() => {
     let pollInterval: ReturnType<typeof setTimeout> | undefined;
+    let cancelled = false;
     
     const checkAnnStatus = async () => {
       try {
         const { invoke } = await import('@tauri-apps/api/core');
+        if (cancelled) return;
         const status = await invoke<AnnStatusResponse>('get_ann_status');
+        if (cancelled) return;
         const building = !status.indexed && status.items > 0;
         setAnnProgress({ loading: building, status });
         
@@ -1219,6 +1228,7 @@ function App() {
     
     checkAnnStatus();
     return () => {
+      cancelled = true;
       if (pollInterval) clearTimeout(pollInterval);
     };
   }, []);
@@ -1335,10 +1345,11 @@ function App() {
   // 保留初始化逻辑，但不阻塞渲染，不再显示覆盖式载入页
 
   // 🔍 诊断：分离调度延迟 vs 渲染时间（找出 200-400ms 的真正来源）
-  if (viewSwitchStartRef.current && viewSwitchStartRef.current.to === currentView) {
+  useEffect(() => {
+    if (!viewSwitchStartRef.current || viewSwitchStartRef.current.to !== currentView) return;
     const hooksMs = Math.round(performance.now() - viewSwitchStartRef.current.startTime);
     pageLifecycleTracker.log('app', 'App.tsx', 'custom', `⏱ Hooks+调度: ${hooksMs}ms | ${viewSwitchStartRef.current.from} → ${currentView}`);
-  }
+  }, [currentView]);
 
   // 🆕 用户协议检查中 —— 等待数据库查询完成
   // needsAgreement: null=检查中, true=需同意, false=已同意

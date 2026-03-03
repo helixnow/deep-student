@@ -185,16 +185,20 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
       if (!retryMessageId || modelIds.length === 0) return;
 
       try {
-        // 目前仅支持单模型重试，取第一个模型
-        // TODO: 支持多模型并行重试需要扩展后端接口
-        await store.getState().retryMessage(retryMessageId, modelIds[0]);
+        // 与正常发送路径保持一致：多模型时走 parallelModelIds，多变体并行重试
+        if (multiModelSelectEnabled && modelIds.length >= 2) {
+          store.getState().setPendingParallelModelIds(modelIds);
+          await store.getState().retryMessage(retryMessageId);
+        } else {
+          await store.getState().retryMessage(retryMessageId, modelIds[0]);
+        }
       } finally {
         // 清理状态
         store.getState().setModelRetryTarget(null);
         store.getState().setPanelState('model', false);
         clearSelectedModels();
       }
-    }, [store, clearSelectedModels]);
+    }, [store, clearSelectedModels, multiModelSelectEnabled]);
 
     // 🔧 面板关闭时清理重试状态
     const handleCloseModelPanel = useCallback(() => {

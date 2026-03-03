@@ -174,7 +174,10 @@ const ImageModeSelector: React.FC<ImageModeSelectorProps> = memo(({
     onChange(newModes);
   }, [selectedModes, onChange]);
 
-  const isProcessing = !!processingStatus && processingStatus.stage !== 'completed' && processingStatus.stage !== 'error';
+  const isProcessing = !!processingStatus
+    && processingStatus.stage !== 'completed'
+    && processingStatus.stage !== 'completed_with_issues'
+    && processingStatus.stage !== 'error';
   const readyModes = new Set(processingStatus?.readyModes || []);
   
   const isModeReady = (mode: ImageInjectMode) => {
@@ -262,7 +265,10 @@ const PdfModeSelector: React.FC<PdfModeSelectorProps> = memo(({
   }, [selectedModes, onChange]);
 
   // 🆕 检查模式是否已就绪
-  const isProcessing = !!processingStatus && processingStatus.stage !== 'completed' && processingStatus.stage !== 'error';
+  const isProcessing = !!processingStatus
+    && processingStatus.stage !== 'completed'
+    && processingStatus.stage !== 'completed_with_issues'
+    && processingStatus.stage !== 'error';
   const readyModes = new Set(processingStatus?.readyModes || []);
   
   const isModeReady = (mode: PdfInjectMode) => {

@@ -102,7 +102,7 @@ export async function getResourceUnits(resourceId: string): Promise<UnitIndexSta
 /**
  * 重新索引 Unit
  */
-export async function reindexUnit(unitId: string, mode: IndexMode = 'both'): Promise<boolean> {
+export async function reindexUnit(unitId: string, mode: IndexMode = 'text'): Promise<boolean> {
   return invoke<boolean>('vfs_reindex_unit', { unitId, mode });
 }
 
@@ -110,7 +110,7 @@ export async function reindexUnit(unitId: string, mode: IndexMode = 'both'): Pro
  * 批量索引待处理 Units
  */
 export async function batchIndexPending(
-  mode: IndexMode = 'both',
+  mode: IndexMode = 'text',
   batchSize?: number
 ): Promise<BatchIndexResult> {
   return invoke<BatchIndexResult>('vfs_unified_batch_index', { mode, batchSize });

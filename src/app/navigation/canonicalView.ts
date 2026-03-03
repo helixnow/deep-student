@@ -25,7 +25,7 @@ const DEPRECATED_VIEW_MAP: Readonly<Record<string, CurrentView>> = {
   'bridge-to-irec': 'chat-v2',
 };
 
-export const CANONICAL_VIEWS: ReadonlySet<CurrentView> = new Set([
+const BASE_CANONICAL_VIEWS: CurrentView[] = [
   'chat-v2',
   'settings',
   'dashboard',
@@ -33,12 +33,16 @@ export const CANONICAL_VIEWS: ReadonlySet<CurrentView> = new Set([
   'task-dashboard',
   'template-management',
   'template-json-preview',
-  'crepe-demo',
   'pdf-reader',
   'learning-hub',
   'skills-management',
-  'chat-v2-test',
-  'tree-test',
+];
+
+const DEV_ONLY_VIEWS: CurrentView[] = ['crepe-demo', 'chat-v2-test', 'tree-test'];
+
+export const CANONICAL_VIEWS: ReadonlySet<CurrentView> = new Set([
+  ...BASE_CANONICAL_VIEWS,
+  ...(import.meta.env.DEV ? DEV_ONLY_VIEWS : []),
 ]);
 
 export const canonicalizeView = (view: CurrentView | string): CurrentView => {

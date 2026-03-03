@@ -1288,6 +1288,23 @@ impl BackupManager {
                 .map(|mgr| mgr.active_dir())
                 .unwrap_or_else(|| self.app_data_dir.join("slots").join("slotA"));
 
+            // 恢复 manifest.files 中的可重建文件（如 lance/），避免仅恢复 DB 导致向量目录缺失。
+            match self.restore_non_database_manifest_files(
+                manifest,
+                &backup_subdir,
+                &active_restore_dir,
+            ) {
+                Ok(count) => {
+                    if count > 0 {
+                        info!("非数据库文件恢复完成: {} 个", count);
+                    }
+                }
+                Err(e) => {
+                    error!("非数据库文件恢复失败: {}", e);
+                    restore_errors.push(format!("非数据库文件恢复: {}", e));
+                }
+            }
+
             if let Some(asset_result) = &manifest.assets {
                 info!("开始恢复资产文件: {} 个", asset_result.total_files);
                 match assets::restore_assets(
@@ -1446,6 +1463,18 @@ impl BackupManager {
         // 5. 恢复资产文件到目标目录
         let mut restored_assets = 0;
         if restore_assets {
+            match self.restore_non_database_manifest_files(manifest, &backup_subdir, target_dir) {
+                Ok(count) => {
+                    if count > 0 {
+                        info!("非数据库文件恢复到目标目录完成: {} 个", count);
+                    }
+                }
+                Err(e) => {
+                    error!("非数据库文件恢复到目标目录失败: {}", e);
+                    restore_errors.push(format!("非数据库文件恢复: {}", e));
+                }
+            }
+
             if let Some(asset_result) = &manifest.assets {
                 info!(
                     "开始恢复资产文件到目标目录: {} 个",
@@ -2511,6 +2540,42 @@ impl BackupManager {
             info!("工作区数据库恢复完成: {} 个", count);
         }
         Ok(count)
+    }
+
+    /// 恢复 manifest.files 中的非数据库文件（如 lance/ 可重建索引文件）
+    fn restore_non_database_manifest_files(
+        &self,
+        manifest: &BackupManifest,
+        backup_dir: &Path,
+        target_dir: &Path,
+    ) -> Result<usize, BackupError> {
+        let mut restored = 0usize;
+
+        for backup_file in &manifest.files {
+            if backup_file.path.ends_with(".db") {
+                continue;
+            }
+
+            let rel = Path::new(&backup_file.path);
+            if rel.is_absolute() || backup_file.path.contains("..") {
+                warn!("跳过可疑备份路径（非数据库文件恢复）: {}", backup_file.path);
+                continue;
+            }
+
+            let src = backup_dir.join(rel);
+            if !src.exists() {
+                continue;
+            }
+
+            let dest = target_dir.join(rel);
+            if let Some(parent) = dest.parent() {
+                fs::create_dir_all(parent)?;
+            }
+            fs::copy(&src, &dest)?;
+            restored += 1;
+        }
+
+        Ok(restored)
     }
 
     /// 列出所有备份

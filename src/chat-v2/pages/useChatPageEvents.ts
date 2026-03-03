@@ -143,7 +143,9 @@ export function useChatPageEvents(deps: UseChatPageEventsDeps) {
           return;
         }
         // 打开 Learning Hub 侧边栏（如果还没打开）
-        if (!canvasSidebarOpen) {
+        if (isSmallScreen) {
+          setMobileResourcePanelOpen(true);
+        } else if (!canvasSidebarOpen) {
           toggleCanvasSidebar();
         }
         // 设置待打开的资源
@@ -163,7 +165,7 @@ export function useChatPageEvents(deps: UseChatPageEventsDeps) {
     // 🔧 P0-28 修复：使用命名空间注册，避免覆盖其他处理器
     const unregister = registerOpenResourceHandler(handler, 'chat-v2');
     return unregister;
-  }, [canvasSidebarOpen, t, toggleCanvasSidebar]);
+  }, [canvasSidebarOpen, isSmallScreen, setMobileResourcePanelOpen, t, toggleCanvasSidebar]);
 
   // ★ 当 Learning Hub 侧边栏打开后，处理待打开的资源
   // 直接设置 openApp 状态，复用 UnifiedAppPanel 显示资源
@@ -272,6 +274,7 @@ export function useChatPageEvents(deps: UseChatPageEventsDeps) {
       return Object.keys(RESOURCE_ID_PREFIX_MAP).some((prefix) => id.startsWith(prefix));
     };
 
+    const shouldDebugPdfRefClick = import.meta.env.DEV && Boolean((window as any).__chatV2DebugPdfRefClick);
     const debugClick = (event: MouseEvent) => {
       const rawTarget = event.target as EventTarget | null;
       const elementTarget = (rawTarget instanceof Element ? rawTarget : null);
@@ -282,7 +285,9 @@ export function useChatPageEvents(deps: UseChatPageEventsDeps) {
         pageNumber: target.dataset.pdfPage,
       });
     };
-    document.addEventListener('click', debugClick, true);
+    if (shouldDebugPdfRefClick) {
+      document.addEventListener('click', debugClick, true);
+    }
     const handlePdfRefOpen = async (event: Event) => {
       const customEvent = event as CustomEvent<{
         sourceId?: string;
@@ -454,7 +459,9 @@ export function useChatPageEvents(deps: UseChatPageEventsDeps) {
     // TODO: migrate to centralized event registry
     document.addEventListener('pdf-ref:open', handlePdfRefOpen);
     return () => {
-      document.removeEventListener('click', debugClick, true);
+      if (shouldDebugPdfRefClick) {
+        document.removeEventListener('click', debugClick, true);
+      }
       document.removeEventListener('pdf-ref:open', handlePdfRefOpen);
     };
   }, []);

@@ -320,9 +320,11 @@ export const BackupTab: React.FC<BackupTabProps> = ({
   const [includeAssets, setIncludeAssets] = useState(false);
   const [selectedAssetTypes, setSelectedAssetTypes] = useState<AssetType[]>([]);
   const [compressionLevel, setCompressionLevel] = useState(6);
+  const [isActionRunning, setIsActionRunning] = useState(false);
 
   const handleAction = async () => {
-    if (!selectedBackup || !actionType) return;
+    if (!selectedBackup || !actionType || isActionRunning) return;
+    setIsActionRunning(true);
     try {
       if (actionType === 'delete') {
         await onDeleteBackup(selectedBackup);
@@ -339,6 +341,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
         t('data:governance.action_failed')
       );
     } finally {
+      setIsActionRunning(false);
       setSelectedBackup(null);
       setActionType(null);
     }
@@ -948,6 +951,8 @@ export const BackupTab: React.FC<BackupTabProps> = ({
         cancelText={t('common:actions.cancel')}
         confirmVariant={actionType === 'delete' ? 'danger' : 'primary'}
         onConfirm={handleAction}
+        loading={isActionRunning}
+        disabled={isActionRunning}
       />
 
       {/* Task 3: 恢复完成后重启提示对话框 */}

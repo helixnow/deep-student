@@ -126,6 +126,8 @@ pub enum ProcessingStage {
     VectorIndexing,
     /// 处理完成
     Completed,
+    /// 处理完成但存在可重试问题（如 OCR/向量索引部分失败）
+    CompletedWithIssues,
     /// 处理失败
     Error,
 }
@@ -142,6 +144,7 @@ impl ProcessingStage {
             ProcessingStage::OcrProcessing => "ocr_processing",
             ProcessingStage::VectorIndexing => "vector_indexing",
             ProcessingStage::Completed => "completed",
+            ProcessingStage::CompletedWithIssues => "completed_with_issues",
             ProcessingStage::Error => "error",
         }
     }
@@ -158,10 +161,20 @@ impl ProcessingStage {
             "ocr_processing" => ProcessingStage::OcrProcessing,
             "vector_indexing" => ProcessingStage::VectorIndexing,
             "completed" => ProcessingStage::Completed,
+            "completed_with_issues" => ProcessingStage::CompletedWithIssues,
             "error" => ProcessingStage::Error,
             _ => ProcessingStage::Pending,
         }
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProcessingIssue {
+    pub stage: String,
+    pub message: String,
+    #[serde(default)]
+    pub retriable: bool,
 }
 
 /// 处理进度
@@ -186,6 +199,13 @@ pub struct ProcessingProgress {
     /// 媒体类型（v2.0 新增）
     #[serde(skip_serializing_if = "Option::is_none", alias = "media_type")]
     pub media_type: Option<String>,
+    /// 已记录的问题阶段（用于 completed_with_issues/重试定位）
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        alias = "failed_stages",
+        default
+    )]
+    pub failed_stages: Option<Vec<ProcessingIssue>>,
 }
 
 impl Default for ProcessingProgress {
@@ -197,6 +217,7 @@ impl Default for ProcessingProgress {
             percent: 0.0,
             ready_modes: vec![],
             media_type: None,
+            failed_stages: None,
         }
     }
 }
@@ -696,6 +717,8 @@ impl PdfProcessingService {
         // 确定初始就绪模式
         // ★ P0 架构改造：image 模式必须等到页面压缩完成后才就绪
         let mut ready_modes: Vec<String> = vec![];
+        let mut issues: Vec<ProcessingIssue> = Vec::new();
+        let mut issues: Vec<ProcessingIssue> = Vec::new();
         if has_extracted_text {
             ready_modes.push("text".to_string());
         }
@@ -753,6 +776,7 @@ impl PdfProcessingService {
                         percent: 5.0,
                         ready_modes: ready_modes.clone(),
                         media_type: Some("pdf".to_string()),
+                        failed_stages: None,
                     };
                     self.update_processing_status(
                         file_id,
@@ -861,6 +885,7 @@ impl PdfProcessingService {
                         percent: 20.0,
                         ready_modes: ready_modes.clone(),
                         media_type: Some("pdf".to_string()),
+                        failed_stages: None,
                     },
                     MediaType::Pdf,
                 )
@@ -895,7 +920,11 @@ impl PdfProcessingService {
                                 "[PdfProcessingService] OCR processing failed for file {}: {}",
                                 file_id, e
                             );
-                            // OCR 失败不中断流水线，不标记 error
+                            issues.push(ProcessingIssue {
+                                stage: ProcessingStage::OcrProcessing.as_str().to_string(),
+                                message: e.to_string(),
+                                retriable: true,
+                            });
                         }
                     }
                 } else {
@@ -941,24 +970,42 @@ impl PdfProcessingService {
                     "[PdfProcessingService] Vector indexing stage failed for file {}: {}",
                     file_id, e
                 );
-                // 索引失败不中断流水线，不标记 error
+                issues.push(ProcessingIssue {
+                    stage: ProcessingStage::VectorIndexing.as_str().to_string(),
+                    message: e.to_string(),
+                    retriable: true,
+                });
             }
         }
 
         // 标记完成
         let now_ms = chrono::Utc::now().timestamp_millis();
+        let completed_with_issues = !issues.is_empty();
         let progress = ProcessingProgress {
-            stage: "completed".to_string(),
+            stage: if completed_with_issues {
+                ProcessingStage::CompletedWithIssues.as_str().to_string()
+            } else {
+                ProcessingStage::Completed.as_str().to_string()
+            },
             current_page: None,
             total_pages: Some(total_pages),
             percent: 100.0,
             ready_modes: ready_modes.clone(),
             media_type: Some("pdf".to_string()),
+            failed_stages: if completed_with_issues {
+                Some(issues)
+            } else {
+                None
+            },
         };
 
         self.update_processing_status(
             file_id,
-            ProcessingStage::Completed,
+            if completed_with_issues {
+                ProcessingStage::CompletedWithIssues
+            } else {
+                ProcessingStage::Completed
+            },
             Some(&progress),
             Some(now_ms),
         )
@@ -1027,6 +1074,7 @@ impl PdfProcessingService {
         // ★ P0 架构改造：image 模式必须等到压缩完成后才就绪
         // 原因：发送时不再压缩，必须使用预处理的压缩结果
         let mut ready_modes: Vec<String> = vec![];
+        let mut issues: Vec<ProcessingIssue> = Vec::new();
         // 检查是否已有压缩版本（compressed_blob_hash 不为空且 blob 存在）
         let has_compressed: bool = conn
             .query_row(
@@ -1088,6 +1136,7 @@ impl PdfProcessingService {
                     percent: 10.0,
                     ready_modes: ready_modes.clone(),
                     media_type: Some("image".to_string()),
+                    failed_stages: None,
                 },
                 MediaType::Image,
             )
@@ -1169,6 +1218,7 @@ impl PdfProcessingService {
                     percent: 25.0,
                     ready_modes: ready_modes.clone(),
                     media_type: Some("image".to_string()),
+                    failed_stages: None,
                 },
                 MediaType::Image,
             )
@@ -1203,6 +1253,7 @@ impl PdfProcessingService {
                     percent: 40.0,
                     ready_modes: ready_modes.clone(),
                     media_type: Some("image".to_string()),
+                    failed_stages: None,
                 },
                 MediaType::Image,
             )
@@ -1235,7 +1286,11 @@ impl PdfProcessingService {
                             "[MediaProcessingService] Image OCR failed for file {}: {}",
                             file_id, e
                         );
-                        // OCR 失败不中断流水线，不标记 error
+                        issues.push(ProcessingIssue {
+                            stage: ProcessingStage::OcrProcessing.as_str().to_string(),
+                            message: e.to_string(),
+                            retriable: true,
+                        });
                     }
                 }
             } else {
@@ -1265,7 +1320,11 @@ impl PdfProcessingService {
                                 "[MediaProcessingService] Image OCR failed for file {}: {}",
                                 file_id, e
                             );
-                            // OCR 失败不中断流水线，不标记 error
+                            issues.push(ProcessingIssue {
+                                stage: ProcessingStage::OcrProcessing.as_str().to_string(),
+                                message: e.to_string(),
+                                retriable: true,
+                            });
                         }
                     }
                 } else {
@@ -1286,6 +1345,7 @@ impl PdfProcessingService {
                     percent: 60.0,
                     ready_modes: ready_modes.clone(),
                     media_type: Some("image".to_string()),
+                    failed_stages: None,
                 },
                 MediaType::Image,
             )
@@ -1322,24 +1382,42 @@ impl PdfProcessingService {
                     "[MediaProcessingService] Vector indexing stage failed for file {}: {}",
                     file_id, e
                 );
-                // 索引失败不中断流水线
+                issues.push(ProcessingIssue {
+                    stage: ProcessingStage::VectorIndexing.as_str().to_string(),
+                    message: e.to_string(),
+                    retriable: true,
+                });
             }
         }
 
         // 标记完成
         let now_ms = chrono::Utc::now().timestamp_millis();
+        let completed_with_issues = !issues.is_empty();
         let progress = ProcessingProgress {
-            stage: "completed".to_string(),
+            stage: if completed_with_issues {
+                ProcessingStage::CompletedWithIssues.as_str().to_string()
+            } else {
+                ProcessingStage::Completed.as_str().to_string()
+            },
             current_page: Some(1),
             total_pages: Some(1),
             percent: 100.0,
             ready_modes: ready_modes.clone(),
             media_type: Some("image".to_string()),
+            failed_stages: if completed_with_issues {
+                Some(issues)
+            } else {
+                None
+            },
         };
 
         self.update_processing_status(
             file_id,
-            ProcessingStage::Completed,
+            if completed_with_issues {
+                ProcessingStage::CompletedWithIssues
+            } else {
+                ProcessingStage::Completed
+            },
             Some(&progress),
             Some(now_ms),
         )
@@ -1644,6 +1722,7 @@ impl PdfProcessingService {
                     percent: progress_percent, // 5% - 20%
                     ready_modes: ready_modes.clone(),
                     media_type: Some("pdf".to_string()),
+                    failed_stages: None,
                 };
                 self.emit_progress(file_id, progress, MediaType::Pdf).await;
             }
@@ -1891,6 +1970,35 @@ impl PdfProcessingService {
                         file_id
                     ],
                 )?;
+            } else if stage == ProcessingStage::CompletedWithIssues {
+                let warning_summary = progress
+                    .and_then(|p| p.failed_stages.as_ref())
+                    .map(|issues| {
+                        issues
+                            .iter()
+                            .map(|i| format!("{}: {}", i.stage, i.message))
+                            .collect::<Vec<_>>()
+                            .join("; ")
+                    })
+                    .filter(|s| !s.trim().is_empty());
+                conn.execute(
+                    r#"
+                    UPDATE files
+                    SET processing_status = ?1,
+                        processing_progress = ?2,
+                        processing_completed_at = ?3,
+                        processing_error = COALESCE(?4, processing_error),
+                        updated_at = datetime('now')
+                    WHERE id = ?5
+                    "#,
+                    params![
+                        stage.as_str(),
+                        progress_json,
+                        completed_at.unwrap_or(now_ms),
+                        warning_summary,
+                        file_id
+                    ],
+                )?;
             } else if stage == ProcessingStage::Error {
                 // 错误 - 不设置 completed_at
                 conn.execute(
@@ -2042,7 +2150,7 @@ impl PdfProcessingService {
         let status = self.get_status(file_id)?;
 
         match status {
-            Some(s) if s.stage == "error" => {
+            Some(s) if s.stage == "error" || s.stage == "completed_with_issues" => {
                 // 检测媒体类型，选择正确的重试起始阶段
                 let media_type = self.detect_media_type(file_id)?;
                 let start_stage = match media_type {
@@ -2376,6 +2484,7 @@ impl PdfProcessingService {
                 percent: 75.0,
                 ready_modes: ready_modes.clone(),
                 media_type: Some(media_type.as_str().to_string()),
+                failed_stages: None,
             },
             media_type,
         )
@@ -2455,6 +2564,7 @@ impl PdfProcessingService {
                 percent: 85.0,
                 ready_modes: ready_modes.clone(),
                 media_type: Some(media_type.as_str().to_string()),
+                failed_stages: None,
             },
             media_type,
         )
@@ -2525,6 +2635,7 @@ impl PdfProcessingService {
                 percent: 95.0,
                 ready_modes: ready_modes.clone(),
                 media_type: Some(media_type.as_str().to_string()),
+                failed_stages: None,
             },
             media_type,
         )
@@ -2617,6 +2728,7 @@ impl PdfProcessingService {
                 percent: 20.0,
                 ready_modes: ready_modes.clone(),
                 media_type: Some("pdf".to_string()),
+                failed_stages: None,
             },
             MediaType::Pdf,
         )
@@ -2722,6 +2834,7 @@ impl PdfProcessingService {
                                     percent: ocr_progress as f32,
                                     ready_modes: ready_modes_for_task.clone(),
                                     media_type: Some("pdf".to_string()),
+                                    failed_stages: None,
                                 };
                                 let event = MediaProcessingProgressEvent {
                                     file_id: file_id.clone(),
@@ -3010,7 +3123,8 @@ impl Ord for ProcessingStage {
             ProcessingStage::OcrProcessing => 5,
             ProcessingStage::VectorIndexing => 6,
             ProcessingStage::Completed => 7,
-            ProcessingStage::Error => 8,
+            ProcessingStage::CompletedWithIssues => 8,
+            ProcessingStage::Error => 9,
         };
         let other_order = match other {
             ProcessingStage::Pending => 0,
@@ -3021,7 +3135,8 @@ impl Ord for ProcessingStage {
             ProcessingStage::OcrProcessing => 5,
             ProcessingStage::VectorIndexing => 6,
             ProcessingStage::Completed => 7,
-            ProcessingStage::Error => 8,
+            ProcessingStage::CompletedWithIssues => 8,
+            ProcessingStage::Error => 9,
         };
         self_order.cmp(&other_order)
     }

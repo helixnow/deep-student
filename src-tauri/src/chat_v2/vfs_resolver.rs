@@ -123,14 +123,17 @@ pub fn resolve_vfs_ref_to_blocks(
         VfsResourceType::Textbook => resolve_textbook(conn, blobs_dir, vfs_ref, is_multimodal),
         VfsResourceType::Exam => resolve_exam(conn, blobs_dir, vfs_ref, is_multimodal),
         VfsResourceType::Retrieval => {
-            // ★ Retrieval 是 RAG 检索结果，重试时会重新检索
-            // 返回占位文本提示用户这是历史检索结果
-            log::debug!(
-                "[VfsResolver] Retrieval type {} - returning placeholder",
-                vfs_ref.source_id
-            );
+            // Retrieval 优先注入可用片段，避免退化为占位符导致上下文丢失。
+            let text = vfs_ref
+                .snippet
+                .as_deref()
+                .or_else(|| (!vfs_ref.name.trim().is_empty()).then_some(vfs_ref.name.as_str()))
+                .unwrap_or("[检索结果]");
             vec![ContentBlock::Text {
-                text: format!("[检索结果: {}]", vfs_ref.name),
+                text: format!(
+                    "<retrieval source=\"{}\">{}</retrieval>",
+                    vfs_ref.source_id, text
+                ),
             }]
         }
         VfsResourceType::MindMap => resolve_mindmap(conn, vfs_ref),

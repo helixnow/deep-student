@@ -63,21 +63,28 @@ pub async fn vfs_get_resource_refs(
 
     let mut refs: Vec<VfsResourceRef> = Vec::new();
     let mut total_count = 0usize;
+    let mut truncated = false;
 
     for source_id in &params.source_ids {
         // 检查是否超过最大数量
         if refs.len() >= max_items {
+            truncated = true;
             break;
         }
 
         // 判断资源类型并获取引用
         if source_id.starts_with("fld_") && params.include_folder_contents {
             // 文件夹：递归获取内容
+            let folder_total = get_folder_ref_count_with_conn(&conn, source_id).unwrap_or(0);
+            total_count += folder_total;
+            if folder_total > max_items.saturating_sub(refs.len()) {
+                truncated = true;
+            }
             match get_folder_refs_with_conn(&conn, source_id, max_items - refs.len()) {
                 Ok(folder_refs) => {
-                    total_count += folder_refs.len();
                     for r in folder_refs {
                         if refs.len() >= max_items {
+                            truncated = true;
                             break;
                         }
                         refs.push(r);
@@ -113,7 +120,9 @@ pub async fn vfs_get_resource_refs(
         }
     }
 
-    let truncated = total_count > max_items;
+    if total_count > max_items {
+        truncated = true;
+    }
 
     info!(
         "[VFS::RefHandlers] Got {} refs (total_count={}, truncated={})",
@@ -350,6 +359,8 @@ fn get_resource_ref_with_conn(
                 resource_hash: hash,
                 resource_type,
                 name: title,
+                resource_id: None,
+                snippet: None,
                 inject_modes: None, // 服务端创建的引用不设置注入模式，使用默认行为
             }))
         }
@@ -423,6 +434,8 @@ fn get_essay_session_ref_with_conn(
         resource_hash: hash,
         resource_type: VfsResourceType::Essay,
         name: title,
+        resource_id: None,
+        snippet: None,
         inject_modes: None,
     }))
 }
@@ -455,6 +468,18 @@ fn get_folder_refs_with_conn(
     Ok(refs)
 }
 
+fn get_folder_ref_count_with_conn(conn: &Connection, folder_id: &str) -> VfsResult<usize> {
+    let folder_ids = VfsFolderRepo::get_folder_ids_recursive_with_conn(conn, folder_id)?;
+    let items = VfsFolderRepo::get_items_by_folders_with_conn(conn, &folder_ids)?;
+    let mut count = 0usize;
+    for item in items {
+        if get_resource_ref_for_item_with_conn(conn, &item)?.is_some() {
+            count += 1;
+        }
+    }
+    Ok(count)
+}
+
 /// 根据文件夹内容项获取资源引用
 fn get_resource_ref_for_item_with_conn(
     conn: &Connection,
@@ -474,14 +499,49 @@ fn resolve_single_ref_with_conn(
         r.source_id, r.resource_type, r.name
     );
 
-    // 根据 sourceId 前缀判断资源类型
-    let (_, table_name, _title_column) = match get_source_id_type(&r.source_id) {
+    // 根据 sourceId 前缀判断资源类型；source_id 不可解析时回退 resource_id/source_id(res_xxx)
+    let normalized_source_id = if get_source_id_type(&r.source_id).is_some() {
+        r.source_id.clone()
+    } else if let Some(source_id) = r
+        .resource_id
+        .as_deref()
+        .and_then(|resource_id| resolve_source_id_by_resource_id(conn, resource_id))
+    {
+        source_id
+    } else if r.source_id.starts_with("res_") {
+        resolve_source_id_by_resource_id(conn, &r.source_id).unwrap_or_else(|| r.source_id.clone())
+    } else {
+        r.source_id.clone()
+    };
+
+    let (_, table_name, _title_column) = match get_source_id_type(&normalized_source_id) {
         Some(info) => info,
         None => {
             warn!(
-                "[OCR_DIAG] get_source_id_type returned None for source_id={}, cannot resolve",
-                r.source_id
+                "[OCR_DIAG] get_source_id_type returned None for source_id={}, normalized_source_id={}",
+                r.source_id, normalized_source_id
             );
+            if r.resource_type == VfsResourceType::Retrieval {
+                let fallback_content = r
+                    .snippet
+                    .as_deref()
+                    .or_else(|| (!r.name.trim().is_empty()).then_some(r.name.as_str()))
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty());
+                if let Some(content) = fallback_content {
+                    return Ok(ResolvedResource {
+                        source_id: r.source_id.clone(),
+                        resource_hash: r.resource_hash.clone(),
+                        resource_type: r.resource_type.clone(),
+                        name: r.name.clone(),
+                        path: String::new(),
+                        content: Some(content),
+                        found: true,
+                        warning: Some("retrieval snippet fallback".to_string()),
+                        multimodal_blocks: None,
+                    });
+                }
+            }
             return Ok(ResolvedResource {
                 source_id: r.source_id.clone(),
                 resource_hash: r.resource_hash.clone(),
@@ -502,18 +562,18 @@ fn resolve_single_ref_with_conn(
         table_name
     );
     let exists: bool = conn
-        .query_row(&exists_sql, params![r.source_id], |_| Ok(true))
+        .query_row(&exists_sql, params![normalized_source_id], |_| Ok(true))
         .unwrap_or(false);
 
     info!(
         "[OCR_DIAG] resource exists check: source_id={}, table={}, exists={}",
-        r.source_id, table_name, exists
+        normalized_source_id, table_name, exists
     );
 
     if !exists {
         warn!(
             "[OCR_DIAG] resource NOT FOUND in table '{}': source_id={}",
-            table_name, r.source_id
+            table_name, normalized_source_id
         );
         return Ok(ResolvedResource {
             source_id: r.source_id.clone(),
@@ -529,22 +589,22 @@ fn resolve_single_ref_with_conn(
     }
 
     // 获取资源路径（通过 folder_items 表查找）
-    let path = get_resource_path_with_conn(conn, &r.source_id, &r.resource_type)?;
+    let path = get_resource_path_with_conn(conn, &normalized_source_id, &r.resource_type)?;
 
     // 获取最新的标题
-    let title = get_resource_title_with_conn(conn, &r.source_id, &r.resource_type)?
+    let title = get_resource_title_with_conn(conn, &normalized_source_id, &r.resource_type)?
         .unwrap_or_else(|| r.name.clone());
 
     // 获取资源内容
     info!(
         "[PDF_DEBUG] calling get_resource_content_with_conn: source_id={}, type={:?}",
-        r.source_id, r.resource_type
+        normalized_source_id, r.resource_type
     );
     let raw_content =
-        get_resource_content_with_conn(conn, blobs_dir, &r.source_id, &r.resource_type)?;
+        get_resource_content_with_conn(conn, blobs_dir, &normalized_source_id, &r.resource_type)?;
     info!(
         "[PDF_DEBUG] raw_content result: source_id={}, has_content={}, content_len={}",
-        r.source_id,
+        normalized_source_id,
         raw_content.is_some(),
         raw_content.as_ref().map(|c| c.len()).unwrap_or(0)
     );
@@ -1402,6 +1462,19 @@ fn get_source_id_type(source_id: &str) -> Option<(VfsResourceType, &'static str,
     } else {
         None
     }
+}
+
+fn resolve_source_id_by_resource_id(conn: &Connection, resource_id: &str) -> Option<String> {
+    conn.query_row(
+        "SELECT source_id FROM resources WHERE id = ?1 AND deleted_at IS NULL",
+        params![resource_id],
+        |row| row.get::<_, Option<String>>(0),
+    )
+    .optional()
+    .ok()
+    .flatten()
+    .flatten()
+    .filter(|s| !s.trim().is_empty())
 }
 
 /// 查询附件的实际类型（image 或 file）
@@ -2407,6 +2480,8 @@ mod tests {
             resource_hash: "sha256hash".to_string(),
             resource_type: VfsResourceType::Note,
             name: "Test Note".to_string(),
+            resource_id: None,
+            snippet: None,
             inject_modes: None,
         };
 

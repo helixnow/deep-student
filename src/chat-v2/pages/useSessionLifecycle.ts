@@ -74,10 +74,11 @@ export function useSessionLifecycle(deps: UseSessionLifecycleDeps) {
       setCurrentSessionId(session.id);
     } catch (error) {
       console.error('[ChatV2Page] Failed to create session:', getErrorMessage(error));
+      showGlobalNotification('error', t('page.createSessionFailed', '创建会话失败，请稍后重试'));
     } finally {
       setIsLoading(false);
     }
-  }, [loadUngroupedCount]);
+  }, [loadUngroupedCount, t]);
 
   // P1-06: 创建分析模式会话
   // 打开文件对话框让用户选择图片，然后创建 analysis 模式会话
@@ -157,6 +158,7 @@ export function useSessionLifecycle(deps: UseSessionLifecycleDeps) {
       console.log('[ChatV2Page] Created analysis session:', session.id, 'with', images.length, 'images');
     } catch (error) {
       console.error('[ChatV2Page] Failed to create analysis session:', getErrorMessage(error));
+      showGlobalNotification('error', t('page.createAnalysisSessionFailed', '创建分析会话失败，请稍后重试'));
     } finally {
       setIsLoading(false);
     }
@@ -245,10 +247,11 @@ export function useSessionLifecycle(deps: UseSessionLifecycleDeps) {
       setCurrentSessionId(sessionToSelect);
     } catch (error) {
       console.error('[ChatV2Page] Failed to load sessions:', getErrorMessage(error));
+      showGlobalNotification('error', t('page.loadSessionsFailed', '加载会话失败，请刷新后重试'));
     } finally {
       setIsInitialLoading(false);
     }
-  }, []);
+  }, [t]);
 
   // P1-22: 加载更多会话（无限滚动分页）
   // 🔧 分组懒加载修复：只加载更多未分组会话，已分组会话在初始加载时已全量获取
@@ -274,10 +277,11 @@ export function useSessionLifecycle(deps: UseSessionLifecycleDeps) {
       setHasMoreSessions(result.length >= PAGE_SIZE);
     } catch (error) {
       console.error('[ChatV2Page] Failed to load more sessions:', getErrorMessage(error));
+      showGlobalNotification('warning', t('page.loadMoreSessionsFailed', '加载更多会话失败，请重试'));
     } finally {
       setIsLoadingMore(false);
     }
-  }, [isLoadingMore, hasMoreSessions]);
+  }, [isLoadingMore, hasMoreSessions, t]);
 
   // ========== 🔧 P1修复：基于消息数量判断是否为空对话 ==========
   // 问题：原逻辑基于标题判断，但标题是后端异步生成的，导致有消息也不能新建
@@ -332,9 +336,10 @@ export function useSessionLifecycle(deps: UseSessionLifecycleDeps) {
         }
       } catch (error) {
         console.error('[ChatV2Page] Failed to delete session:', getErrorMessage(error));
+        showGlobalNotification('error', t('page.deleteSessionFailed', '删除会话失败，请稍后重试'));
       }
     },
-    [loadUngroupedCount] // 不再依赖 currentSessionId 和 sessions，使用 ref 和函数式更新
+    [loadUngroupedCount, t] // 不再依赖 currentSessionId 和 sessions，使用 ref 和函数式更新
   );
 
   // 🔧 P1-29: 加载已删除会话（回收站）

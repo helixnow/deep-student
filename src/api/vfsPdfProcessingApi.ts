@@ -16,7 +16,7 @@ import { invoke } from '@tauri-apps/api/core';
  */
 export interface PdfProcessingStatusResponse {
   /** 当前处理阶段 */
-  stage: 'pending' | 'text_extraction' | 'page_rendering' | 'page_compression' | 'image_compression' | 'ocr_processing' | 'vector_indexing' | 'completed' | 'error';
+  stage: 'pending' | 'text_extraction' | 'page_rendering' | 'page_compression' | 'image_compression' | 'ocr_processing' | 'vector_indexing' | 'completed' | 'completed_with_issues' | 'error';
   /** 当前处理的页码 */
   currentPage?: number;
   /** 总页数 */

@@ -2107,9 +2107,6 @@ export class ChatV2TauriAdapter {
         options,
       });
 
-      // 发送成功后清空多变体 ID
-      this.store.setPendingParallelModelIds(null);
-
       const returnedMessageId = result.message_id ?? messageId;
       const newVariantId = result.new_variant_id;
       const deletedVariantIds = result.deleted_variant_ids ?? [];
@@ -2134,6 +2131,9 @@ export class ChatV2TauriAdapter {
       const retryFailedMsg = i18n.t('chatV2:messageItem.actions.retryFailed');
       showGlobalNotification('error', `${retryFailedMsg}: ${errorMsg}`);
       throw error;
+    } finally {
+      // 无论成功/失败都清理重试阶段暂存的并行模型，避免污染下一次普通发送
+      this.store.setPendingParallelModelIds(null);
     }
   }
 

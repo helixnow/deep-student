@@ -107,6 +107,16 @@ export const useSystemSettings = () => {
     try {
       if (invoke) {
         await invoke('save_setting', { key: key as string, value: String(value) });
+        if (key === 'theme') {
+          try {
+            localStorage.setItem('dstu-theme-mode', String(value));
+            window.dispatchEvent(new CustomEvent('dstu-theme-mode-changed', {
+              detail: { mode: String(value) },
+            }));
+          } catch {
+            // ignore localStorage sync errors
+          }
+        }
         setSettings(prev => ({ ...prev, [key]: value }));
         return true;
       }
