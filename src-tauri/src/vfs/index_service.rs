@@ -6,7 +6,9 @@ use crate::vfs::database::VfsDatabase;
 use crate::vfs::error::VfsError;
 use crate::vfs::repos::index_segment_repo::{CreateSegmentInput, VfsIndexSegment};
 use crate::vfs::repos::index_unit_repo::{IndexState, VfsIndexUnit};
-use crate::vfs::repos::{embedding_dim_repo, index_segment_repo, index_unit_repo};
+use crate::vfs::repos::{
+    embedding_dim_repo, index_segment_repo, index_unit_repo, VfsIndexStateRepo,
+};
 use crate::vfs::unit_builder::{UnitBuildInput, UnitBuilderRegistry};
 use rusqlite::Connection;
 use std::sync::Arc;
@@ -124,7 +126,12 @@ impl VfsIndexService {
         input: UnitBuildInput,
     ) -> Result<Vec<VfsIndexUnit>, VfsError> {
         let conn = self.db.get_conn()?;
-        self.sync_resource_units_with_conn(&conn, input)
+        let resource_id = input.resource_id.clone();
+        let units = self.sync_resource_units_with_conn(&conn, input)?;
+        if !units.is_empty() {
+            VfsIndexStateRepo::mark_pending(&self.db, &resource_id)?;
+        }
+        Ok(units)
     }
 
     pub fn sync_resource_units_with_conn(
