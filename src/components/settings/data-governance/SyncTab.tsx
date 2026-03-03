@@ -118,7 +118,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
             {t('data:governance.device_id')}
           </div>
           <div className="text-sm font-mono truncate" title={syncStatus?.device_id}>
-            {syncStatus?.device_id?.slice(0, 8) ?? '-'}...
+            {syncStatus?.device_id ? `${syncStatus.device_id.slice(0, 8)}...` : '-'}
           </div>
         </div>
       </div>
@@ -426,6 +426,14 @@ export const SyncTab: React.FC<SyncTabProps> = ({
             })}
           </p>
 
+          {conflicts.needs_migration && (
+            <p className="text-xs text-amber-700">
+              {t('data:governance.schema_mismatch_needs_migration', {
+                defaultValue: '检测到 Schema 不匹配，请先完成迁移后再执行冲突解决。',
+              })}
+            </p>
+          )}
+
           {/* 冲突影响说明 */}
           <p className="text-xs text-muted-foreground/80">
             {t('data:governance.conflict_impact_hint')}
@@ -437,7 +445,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
               variant="ghost"
               size="sm"
               onClick={() => onResolveConflicts('keep_local')}
-              disabled={loading}
+              disabled={loading || conflicts.needs_migration}
               className="bg-background hover:bg-accent"
             >
               {t('data:governance.keep_local')}
@@ -446,7 +454,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
               variant="ghost"
               size="sm"
               onClick={() => onResolveConflicts('use_cloud')}
-              disabled={loading}
+              disabled={loading || conflicts.needs_migration}
               className="bg-background hover:bg-accent"
             >
               {t('data:governance.use_cloud')}
@@ -455,7 +463,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
               variant="ghost"
               size="sm"
               onClick={() => onResolveConflicts('keep_latest')}
-              disabled={loading}
+              disabled={loading || conflicts.needs_migration}
               className="bg-background hover:bg-accent"
             >
               {t('data:governance.keep_latest')}
@@ -464,7 +472,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
               variant="ghost"
               size="sm"
               onClick={() => onResolveConflicts('manual')}
-              disabled={loading}
+              disabled={loading || conflicts.needs_migration}
               className="bg-background hover:bg-accent"
             >
               {t('data:governance.manual')}

@@ -276,9 +276,26 @@ impl CloudSyncManager {
             file_size as f64 / 1024.0 / 1024.0
         );
 
-        // 生成版本 ID
+        // 生成版本 ID（毫秒 + 设备短 ID + 随机 nonce，避免同秒并发冲突）
         let now = Utc::now();
-        let version_id = now.format("%Y%m%d-%H%M%S").to_string();
+        let device_short = self
+            .device_id
+            .chars()
+            .filter(|c| c.is_ascii_alphanumeric())
+            .take(6)
+            .collect::<String>();
+        let nonce = Uuid::new_v4()
+            .to_string()
+            .chars()
+            .filter(|c| c.is_ascii_alphanumeric())
+            .take(8)
+            .collect::<String>();
+        let version_id = format!(
+            "{}-{}-{}",
+            now.format("%Y%m%d-%H%M%S-%3f"),
+            device_short,
+            nonce
+        );
         let remote_key = format!("{}/{}.zip", BACKUPS_DIR, version_id);
 
         // 使用流式上传（自动计算 SHA256）

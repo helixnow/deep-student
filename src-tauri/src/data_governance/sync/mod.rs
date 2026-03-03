@@ -388,6 +388,53 @@ impl BlobSyncOutcome {
     }
 }
 
+/// 通用资产目录云同步清单（images/documents/...）
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct AssetDirsManifest {
+    /// key -> 条目，key 形如 "active/images/a.png" 或 "app_data/pdf_ocr_sessions/x.json"
+    pub entries: HashMap<String, AssetFileEntry>,
+    #[serde(default)]
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct AssetFileEntry {
+    pub sha256: String,
+    pub size: u64,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct AssetSyncOutcome {
+    pub uploaded: usize,
+    pub downloaded: usize,
+    pub upload_failures: Vec<String>,
+    pub download_failures: Vec<String>,
+}
+
+impl AssetSyncOutcome {
+    pub fn has_failures(&self) -> bool {
+        !self.upload_failures.is_empty() || !self.download_failures.is_empty()
+    }
+
+    pub fn failure_summary(&self) -> Option<String> {
+        if !self.has_failures() {
+            return None;
+        }
+        Some(format!(
+            "资产目录同步部分失败：{} 个上传失败，{} 个下载失败",
+            self.upload_failures.len(),
+            self.download_failures.len()
+        ))
+    }
+}
+
+/// 下载变更结果（包含非致命解析告警）
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct DownloadChangesResult {
+    pub changes: Vec<SyncChangeWithData>,
+    pub decode_failures: Vec<String>,
+}
+
 /// 同步管理器
 pub struct SyncManager {
     /// 本地设备 ID
@@ -719,6 +766,8 @@ impl SyncManager {
         let mut any_found = false;
         let mut latest_created_at: Option<chrono::DateTime<chrono::Utc>> = None;
         let mut latest_created_at_raw = String::new();
+        let mut merged_divergence: std::collections::HashSet<String> =
+            std::collections::HashSet::new();
 
         for file in &files {
             let file_device_id = file
@@ -737,9 +786,17 @@ impl SyncManager {
                 .await
                 .map_err(|e| SyncError::Network(format!("下载设备清单失败 {}: {}", file.key, e)))?;
             if let Some(bytes) = bytes {
-                let manifest = serde_json::from_slice::<SyncManifest>(&bytes).map_err(|e| {
-                    SyncError::Database(format!("解析设备清单失败 {}: {}", file.key, e))
-                })?;
+                let manifest = match serde_json::from_slice::<SyncManifest>(&bytes) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        tracing::warn!(
+                            "[sync] 跳过损坏设备清单: key={}, error={}",
+                            file.key,
+                            e
+                        );
+                        continue;
+                    }
+                };
                 any_found = true;
                 if let Some(dt) = Self::parse_flexible_timestamp(&manifest.created_at) {
                     if latest_created_at.map_or(true, |prev| dt > prev) {
@@ -754,6 +811,13 @@ impl SyncManager {
                         .or_insert_with(|| state.clone());
                     if state.data_version > entry.data_version {
                         *entry = state.clone();
+                    } else if state.data_version == entry.data_version
+                        && !entry.checksum.is_empty()
+                        && !state.checksum.is_empty()
+                        && state.checksum != entry.checksum
+                    {
+                        merged_divergence.insert(db_name.clone());
+                        entry.checksum = Self::DIVERGED_CHECKSUM_SENTINEL.to_string();
                     }
                 }
                 tracing::debug!(
@@ -762,6 +826,17 @@ impl SyncManager {
                     manifest.databases.len()
                 );
             }
+        }
+
+        if !merged_divergence.is_empty() {
+            tracing::warn!(
+                "[sync] 检测到同版本云端分叉数据库: {}",
+                merged_divergence
+                    .iter()
+                    .cloned()
+                    .collect::<Vec<_>>()
+                    .join(",")
+            );
         }
 
         // 向后兼容：如果没有新格式清单，回退到旧的单文件
@@ -956,20 +1031,20 @@ impl SyncManager {
     /// * `per_db_since` - 各数据库的起始版本号（用于跨库过滤）
     ///
     /// # 返回
-    /// * `Ok(Vec<SyncChangeWithData>)` - 下载的变更数据（含完整记录）
+    /// * `Ok(DownloadChangesResult)` - 下载的变更数据（含完整记录）及非致命解析告警
     /// * `Err(SyncError)` - 下载失败
     pub async fn download_changes(
         &self,
         storage: &dyn CloudStorage,
         since_version: u64,
         per_db_since: Option<&HashMap<String, u64>>,
-    ) -> Result<Vec<SyncChangeWithData>, SyncError> {
+    ) -> Result<DownloadChangesResult, SyncError> {
         let files = storage
             .list(Self::CHANGES_PREFIX)
             .await
             .map_err(|e| SyncError::Network(format!("列出变更文件失败: {}", e)))?;
 
-        let mut all_changes: Vec<SyncChangeWithData> = Vec::new();
+        let mut all_changes: Vec<(u64, SyncChangeWithData)> = Vec::new();
         let mut skipped_self = 0usize;
         let mut decode_failures: Vec<String> = Vec::new();
 
@@ -1008,7 +1083,7 @@ impl SyncManager {
                                         }
                                     }
                                 }
-                                all_changes.push(change);
+                                all_changes.push((version, change));
                             }
                         } else if let Ok(changes) =
                             serde_json::from_slice::<PendingChanges>(&decoded_data)
@@ -1027,7 +1102,7 @@ impl SyncManager {
                                         }
                                     }
                                 }
-                                all_changes.push(change);
+                                all_changes.push((version, change));
                             }
                         } else {
                             decode_failures.push(file.key.clone());
@@ -1045,23 +1120,36 @@ impl SyncManager {
                 .cloned()
                 .collect::<Vec<_>>()
                 .join(", ");
-            return Err(SyncError::Database(format!(
-                "存在 {} 个无法解析的变更文件（示例: {}）",
+            tracing::warn!(
+                "[sync] 存在 {} 个无法解析的变更文件，已跳过（示例: {}）",
                 decode_failures.len(),
                 samples
-            )));
+            );
         }
 
         // 使用时间戳归一化排序（兼容 SQLite datetime 和 RFC 3339 格式）
         all_changes.sort_by(|a, b| {
-            let ta = Self::parse_flexible_timestamp(&a.changed_at);
-            let tb = Self::parse_flexible_timestamp(&b.changed_at);
+            let (a_version, a_change) = a;
+            let (b_version, b_change) = b;
+
+            match a_version.cmp(b_version) {
+                std::cmp::Ordering::Equal => {}
+                ord => return ord,
+            }
+
+            let ta = Self::parse_flexible_timestamp(&a_change.changed_at);
+            let tb = Self::parse_flexible_timestamp(&b_change.changed_at);
             match (ta, tb) {
                 (Some(a_dt), Some(b_dt)) => a_dt.cmp(&b_dt),
                 (Some(_), None) => std::cmp::Ordering::Less,
                 (None, Some(_)) => std::cmp::Ordering::Greater,
-                (None, None) => a.changed_at.cmp(&b.changed_at),
+                (None, None) => a_change.changed_at.cmp(&b_change.changed_at),
             }
+            .then_with(|| a_change.database_name.cmp(&b_change.database_name))
+            .then_with(|| a_change.table_name.cmp(&b_change.table_name))
+            .then_with(|| a_change.record_id.cmp(&b_change.record_id))
+            .then_with(|| a_change.operation.as_str().cmp(b_change.operation.as_str()))
+            .then_with(|| a_change.change_log_id.cmp(&b_change.change_log_id))
         });
 
         if skipped_self > 0 {
@@ -1078,7 +1166,10 @@ impl SyncManager {
             skipped_self
         );
 
-        Ok(all_changes)
+        Ok(DownloadChangesResult {
+            changes: all_changes.into_iter().map(|(_, change)| change).collect(),
+            decode_failures,
+        })
     }
 
     /// 判断变更文件是否属于本设备
@@ -1282,19 +1373,38 @@ impl SyncManager {
         // 1. 下载云端清单
         let cloud_manifest = self.download_manifest(storage).await?;
 
-        // 如果云端没有数据
+        // 云端无清单事务时，仍兜底扫描 changes/，避免“变更已上传但清单缺失”导致不可见
         if cloud_manifest.sync_transaction_id.is_empty() {
+            let per_db_since: HashMap<String, u64> = local_manifest
+                .databases
+                .iter()
+                .map(|(name, state)| (name.clone(), state.data_version))
+                .collect();
+            let since_version = per_db_since.values().min().copied().unwrap_or(0);
+
+            let downloaded = self
+                .download_changes(storage, since_version, Some(&per_db_since))
+                .await?;
+            let warning = if downloaded.decode_failures.is_empty() {
+                None
+            } else {
+                Some(format!(
+                    "检测到 {} 个云端变更文件解析失败，已跳过并继续同步。",
+                    downloaded.decode_failures.len()
+                ))
+            };
+
             return Ok((
                 SyncExecutionResult {
                     success: true,
                     direction: SyncDirection::Download,
                     changes_uploaded: 0,
-                    changes_downloaded: 0,
+                    changes_downloaded: downloaded.changes.len(),
                     conflicts_detected: 0,
                     duration_ms: start.elapsed().as_millis() as u64,
-                    error_message: None,
+                    error_message: warning,
                 },
-                vec![],
+                downloaded.changes,
             ));
         }
 
@@ -1334,9 +1444,17 @@ impl SyncManager {
             .collect();
         let since_version = per_db_since.values().min().copied().unwrap_or(0);
 
-        let changes = self
+        let downloaded = self
             .download_changes(storage, since_version, Some(&per_db_since))
             .await?;
+        let warning = if downloaded.decode_failures.is_empty() {
+            None
+        } else {
+            Some(format!(
+                "检测到 {} 个云端变更文件解析失败，已跳过并继续同步。",
+                downloaded.decode_failures.len()
+            ))
+        };
 
         let conflicts_count = if detection.has_conflicts {
             detection.total_conflicts()
@@ -1349,12 +1467,12 @@ impl SyncManager {
                 success: true,
                 direction: SyncDirection::Download,
                 changes_uploaded: 0,
-                changes_downloaded: changes.len(),
+                changes_downloaded: downloaded.changes.len(),
                 conflicts_detected: conflicts_count,
                 duration_ms: start.elapsed().as_millis() as u64,
-                error_message: None,
+                error_message: warning,
             },
-            changes,
+            downloaded.changes,
         ))
     }
 
@@ -1401,7 +1519,7 @@ impl SyncManager {
                 changes_downloaded: download_result.changes_downloaded,
                 conflicts_detected: download_result.conflicts_detected,
                 duration_ms: start.elapsed().as_millis() as u64,
-                error_message: None,
+                error_message: download_result.error_message,
             },
             change_ids,
             downloaded_changes,
@@ -2029,6 +2147,9 @@ impl SyncManager {
                 let applied = Self::apply_single_change(conn, change, id_column)?;
                 if applied {
                     result.success_count += 1;
+                    result
+                        .applied_keys
+                        .insert((change.table_name.clone(), change.record_id.clone()));
                 } else {
                     result.skipped_count += 1;
                 }
@@ -2785,6 +2906,9 @@ pub struct ApplyChangesResult {
     pub skipped_count: usize,
     /// 失败的详情
     pub failures: Vec<ApplyChangeFailure>,
+    /// 实际成功落地的记录 key (table_name, record_id)
+    /// 用于上层精确计算“已被云端覆盖”的本地待上传项
+    pub applied_keys: std::collections::HashSet<(String, String)>,
 }
 
 impl ApplyChangesResult {
@@ -2795,6 +2919,7 @@ impl ApplyChangesResult {
             failure_count: 0,
             skipped_count: 0,
             failures: Vec::new(),
+            applied_keys: std::collections::HashSet::new(),
         }
     }
 
@@ -2804,6 +2929,7 @@ impl ApplyChangesResult {
         self.failure_count += other.failure_count;
         self.skipped_count += other.skipped_count;
         self.failures.extend(other.failures);
+        self.applied_keys.extend(other.applied_keys);
     }
 }
 
@@ -3095,6 +3221,18 @@ impl SyncManager {
     const WORKSPACES_CLOUD_PREFIX: &'static str = "data_governance/workspaces";
     const BLOBS_MANIFEST_KEY: &'static str = "data_governance/blobs_manifest.json";
     const BLOBS_CLOUD_PREFIX: &'static str = "data_governance/blobs";
+    const ASSETS_MANIFEST_KEY: &'static str = "data_governance/assets_manifest.json";
+    const ASSETS_CLOUD_PREFIX: &'static str = "data_governance/assets";
+    const DIVERGED_CHECKSUM_SENTINEL: &'static str = "__cloud_diverged_same_version__";
+    const ACTIVE_ASSET_DIRS: [&'static str; 7] = [
+        "images",
+        "notes_assets",
+        "documents",
+        "subjects",
+        "textbooks",
+        "audio",
+        "videos",
+    ];
 
     /// 同步工作区数据库（ws_*.db）与云端
     ///
@@ -3413,6 +3551,191 @@ impl SyncManager {
                 .map_err(|e| SyncError::Database(format!("解析 blob 清单失败: {}", e))),
             None => Ok(BlobsManifest::default()),
         }
+    }
+
+    /// 同步关键资产目录（除 vfs_blobs/workspaces 外）
+    pub async fn sync_asset_directories(
+        &self,
+        storage: &dyn CloudStorage,
+        active_dir: &std::path::Path,
+        app_data_dir: &std::path::Path,
+    ) -> Result<AssetSyncOutcome, SyncError> {
+        let cloud_manifest = self.download_assets_manifest(storage).await?;
+
+        let mut local_files: HashMap<String, (std::path::PathBuf, String, u64)> = HashMap::new();
+        for dir_name in Self::ACTIVE_ASSET_DIRS {
+            let dir = active_dir.join(dir_name);
+            if !dir.exists() {
+                continue;
+            }
+            Self::scan_asset_tree(
+                "active",
+                dir_name,
+                &dir,
+                &dir,
+                &mut local_files,
+            )?;
+        }
+
+        let app_side = app_data_dir.join("pdf_ocr_sessions");
+        if app_side.exists() {
+            Self::scan_asset_tree(
+                "app_data",
+                "pdf_ocr_sessions",
+                &app_side,
+                &app_side,
+                &mut local_files,
+            )?;
+        }
+
+        let mut new_manifest = cloud_manifest.clone();
+        let mut uploaded = 0usize;
+        let mut upload_failures = Vec::new();
+
+        for (key, (path, sha256, size)) in &local_files {
+            let should_upload = match cloud_manifest.entries.get(key) {
+                None => true,
+                Some(entry) => entry.sha256 != *sha256 || entry.size != *size,
+            };
+            if !should_upload {
+                continue;
+            }
+            let remote_key = format!("{}/{}", Self::ASSETS_CLOUD_PREFIX, key);
+            match storage.put_file(&remote_key, path, None).await {
+                Ok(_) => {
+                    new_manifest.entries.insert(
+                        key.clone(),
+                        AssetFileEntry {
+                            sha256: sha256.clone(),
+                            size: *size,
+                        },
+                    );
+                    uploaded += 1;
+                }
+                Err(e) => {
+                    tracing::warn!("[sync] 资产上传失败（跳过）: {}: {}", key, e);
+                    upload_failures.push(key.clone());
+                }
+            }
+        }
+
+        let mut downloaded = 0usize;
+        let mut download_failures = Vec::new();
+        for (key, entry) in &cloud_manifest.entries {
+            if local_files.contains_key(key) {
+                continue;
+            }
+            let Some(dest) = Self::asset_local_path_from_key(active_dir, app_data_dir, key) else {
+                tracing::warn!("[sync] 非法资产键，跳过下载: {}", key);
+                continue;
+            };
+            if let Some(parent) = dest.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            let remote_key = format!("{}/{}", Self::ASSETS_CLOUD_PREFIX, key);
+            match storage.get_file(&remote_key, &dest, Some(&entry.sha256), None).await {
+                Ok(_) => downloaded += 1,
+                Err(e) => {
+                    tracing::warn!("[sync] 资产下载失败（跳过）: {}: {}", key, e);
+                    let _ = std::fs::remove_file(&dest);
+                    download_failures.push(key.clone());
+                }
+            }
+        }
+
+        if new_manifest.entries != cloud_manifest.entries {
+            new_manifest.updated_at = chrono::Utc::now().to_rfc3339();
+            let json = serde_json::to_vec(&new_manifest)
+                .map_err(|e| SyncError::Database(format!("序列化资产清单失败: {}", e)))?;
+            storage
+                .put(Self::ASSETS_MANIFEST_KEY, &json)
+                .await
+                .map_err(|e| SyncError::Network(format!("上传资产清单失败: {}", e)))?;
+        }
+
+        Ok(AssetSyncOutcome {
+            uploaded,
+            downloaded,
+            upload_failures,
+            download_failures,
+        })
+    }
+
+    async fn download_assets_manifest(
+        &self,
+        storage: &dyn CloudStorage,
+    ) -> Result<AssetDirsManifest, SyncError> {
+        match storage
+            .get(Self::ASSETS_MANIFEST_KEY)
+            .await
+            .map_err(|e| SyncError::Network(format!("获取资产清单失败: {}", e)))?
+        {
+            Some(bytes) => match serde_json::from_slice::<AssetDirsManifest>(&bytes) {
+                Ok(v) => Ok(v),
+                Err(e) => {
+                    tracing::warn!("[sync] 资产清单损坏，忽略并继续: {}", e);
+                    Ok(AssetDirsManifest::default())
+                }
+            },
+            None => Ok(AssetDirsManifest::default()),
+        }
+    }
+
+    fn scan_asset_tree(
+        root_alias: &str,
+        top_dir: &str,
+        base_dir: &std::path::Path,
+        current_dir: &std::path::Path,
+        out: &mut HashMap<String, (std::path::PathBuf, String, u64)>,
+    ) -> Result<(), SyncError> {
+        for entry in std::fs::read_dir(current_dir)
+            .map_err(|e| SyncError::Database(format!("读取资产目录失败: {}", e)))?
+        {
+            let entry =
+                entry.map_err(|e| SyncError::Database(format!("读取资产条目失败: {}", e)))?;
+            let path = entry.path();
+            if path.is_dir() {
+                Self::scan_asset_tree(root_alias, top_dir, base_dir, &path, out)?;
+                continue;
+            }
+            if !path.is_file() {
+                continue;
+            }
+
+            let rel = path
+                .strip_prefix(base_dir)
+                .unwrap_or(&path)
+                .to_string_lossy()
+                .replace('\\', "/");
+            let key = format!("{}/{}/{}", root_alias, top_dir, rel);
+            let sha256 = crate::backup_common::calculate_file_hash(&path).map_err(|e| {
+                SyncError::Database(format!("计算资产文件校验和失败 {:?}: {}", path, e))
+            })?;
+            let size = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
+            out.insert(key, (path, sha256, size));
+        }
+        Ok(())
+    }
+
+    fn asset_local_path_from_key(
+        active_dir: &std::path::Path,
+        app_data_dir: &std::path::Path,
+        key: &str,
+    ) -> Option<std::path::PathBuf> {
+        let mut parts = key.splitn(3, '/');
+        let root = parts.next()?;
+        let top = parts.next()?;
+        let rel = parts.next()?;
+        let rel_path = std::path::PathBuf::from(rel);
+        if rel_path.is_absolute() || rel_path.components().any(|c| matches!(c, std::path::Component::ParentDir)) {
+            return None;
+        }
+        let base = match root {
+            "active" => active_dir,
+            "app_data" => app_data_dir,
+            _ => return None,
+        };
+        Some(base.join(top).join(rel_path))
     }
 
     fn scan_blobs_dir(

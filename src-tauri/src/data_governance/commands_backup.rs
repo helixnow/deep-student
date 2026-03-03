@@ -188,8 +188,8 @@ fn should_apply_change_by_strategy(
 ) -> Result<bool, String> {
     match strategy {
         MergeStrategy::UseCloud => Ok(true),
-        MergeStrategy::Manual => Ok(false),
-        MergeStrategy::KeepLocal | MergeStrategy::KeepLatest => {
+        // manual 仅用于“冲突记录”人工决策；无冲突记录应按 KeepLatest 自动收敛
+        MergeStrategy::Manual | MergeStrategy::KeepLocal | MergeStrategy::KeepLatest => {
             let local = SyncManager::get_record_data(
                 conn,
                 &change.table_name,
@@ -308,8 +308,6 @@ pub(super) fn apply_downloaded_changes_to_databases(
             .map_err(|e| format!("打开数据库 {} 失败: {}", db_name, e))?;
 
         let mut owned_changes: Vec<SyncChangeWithData> = Vec::new();
-        // 先收集候选 key，仅在 apply 成功后才加入 applied_keys
-        let mut candidate_keys: Vec<(String, String)> = Vec::new();
         for c in db_changes {
             let id_column = id_column_map
                 .get(&c.table_name)
@@ -320,7 +318,6 @@ pub(super) fn apply_downloaded_changes_to_databases(
                 let mut cloned = (*c).clone();
                 cloned.suppress_change_log = Some(true);
                 owned_changes.push(cloned);
-                candidate_keys.push((c.table_name.clone(), c.record_id.clone()));
             } else {
                 agg.total_skipped += 1;
             }
@@ -335,12 +332,8 @@ pub(super) fn apply_downloaded_changes_to_databases(
                 agg.total_success += apply_result.success_count;
                 agg.total_skipped += apply_result.skipped_count;
                 agg.total_failed += apply_result.failure_count;
-                // [批判性修复] 仅在 apply 成功后才将 key 加入 applied_keys。
-                // 如果 apply 失败（事务回滚），这些 key 不应被加入，
-                // 否则对应的本地变更会被错误地从上传列表中剔除。
-                for key in candidate_keys {
-                    agg.applied_keys.insert(key);
-                }
+                // 仅收录“真实落地成功”的 key，避免 skipped 记录误参与上传过滤。
+                agg.applied_keys.extend(apply_result.applied_keys);
                 info!(
                     "[data_governance] 数据库 {} 应用变更完成: success={}, failed={}, skipped={}",
                     db_name,
@@ -352,8 +345,8 @@ pub(super) fn apply_downloaded_changes_to_databases(
             Err(e) => {
                 // 不再立即中止整个同步流程，而是记录失败并继续处理其余数据库，
                 // 避免先成功的库与后失败的库之间产生不可逆的业务撕裂。
-                // 注意：此处不添加 candidate_keys 到 applied_keys，
-                // 确保对应的本地变更仍会被上传。
+                // 注意：失败分支不会向 applied_keys 写入任何记录，
+                // 确保对应的本地变更仍可在后续轮次上传。
                 let err_msg = format!("{}", e);
                 error!(
                     "[data_governance] 数据库 {} 应用变更失败（继续处理剩余库）: {}",

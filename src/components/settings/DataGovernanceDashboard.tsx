@@ -447,8 +447,14 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
   const [syncProgress, setSyncProgress] = useState<SyncProgress | null>(null);
   const [isSyncRunning, setIsSyncRunning] = useState(false);
   const [syncStrategy, setSyncStrategy] = useState<MergeStrategy>('keep_latest');
-  // 记录最近一次同步方向（用于重试）
-  const lastSyncDirectionRef = useRef<'upload' | 'download' | 'bidirectional'>('bidirectional');
+  // 记录最近一次同步请求快照（用于重试）
+  const lastSyncRequestRef = useRef<{
+    direction: 'upload' | 'download' | 'bidirectional';
+    strategy: MergeStrategy;
+  }>({ direction: 'bidirectional', strategy: 'keep_latest' });
+  const syncInFlightRef = useRef(false);
+  const detectInFlightRef = useRef(false);
+  const resolveInFlightRef = useRef(false);
 
   // 后台备份任务状态
   const [backupJobId, setBackupJobId] = useState<string | null>(null);
@@ -1040,19 +1046,28 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
     direction: 'upload' | 'download' | 'bidirectional',
     strategy: MergeStrategy
   ) => {
-    if (isSyncRunning) {
+    if (isSyncRunning || syncInFlightRef.current) {
       showGlobalNotification(
         'warning',
         t('data:governance.sync_already_running')
       );
       return;
     }
+    syncInFlightRef.current = true;
 
-    lastSyncDirectionRef.current = direction;
+    lastSyncRequestRef.current = { direction, strategy };
     startTabLoading('sync');
     setIsSyncRunning(true);
-    setSyncProgress(null);
-    enterMaintenanceMode(t('data:governance.maintenance_sync'));
+    setSyncProgress({
+      phase: 'preparing',
+      percent: 0,
+      current: 0,
+      total: 0,
+      current_item: null,
+      speed_bytes_per_sec: null,
+      eta_seconds: null,
+      error: null,
+    });
 
     try {
       const cloudConfig = await loadCloudSyncConfig();
@@ -1066,6 +1081,7 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
         return;
       }
       setCloudSyncConfigured(true);
+      enterMaintenanceMode(t('data:governance.maintenance_sync'));
 
       const result = await DataGovernanceApi.runSyncWithProgressTracking(
         direction,
@@ -1082,9 +1098,13 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
       );
 
       if (result.success) {
-        if (result.error_message) {
-          // 部分成功：有变更被跳过（如旧格式数据不完整），用 warning 提示用户
-          showGlobalNotification('warning', result.error_message);
+        if (result.error_message || (result.skipped_changes ?? 0) > 0) {
+          const skipped = result.skipped_changes ?? 0;
+          const msg = result.error_message ?? t('data:governance.sync_partial_with_skipped', {
+            count: skipped,
+            defaultValue: `同步完成，但有 ${skipped} 条变更被跳过。`,
+          });
+          showGlobalNotification('warning', msg);
         } else {
           showGlobalNotification('success', t('data:governance.sync_success'));
         }
@@ -1130,6 +1150,7 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
     } finally {
       stopTabLoading('sync');
       setIsSyncRunning(false);
+      syncInFlightRef.current = false;
       exitMaintenanceMode();
     }
   }, [
@@ -1145,7 +1166,11 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
 
   // 检测冲突
   const detectConflicts = useCallback(async () => {
+    if (isSyncRunning || syncInFlightRef.current) return;
+    if (detectInFlightRef.current) return;
+    detectInFlightRef.current = true;
     startTabLoading('sync');
+    setConflicts(null);
     try {
       const cloudConfig = await loadCloudSyncConfig();
 
@@ -1169,17 +1194,61 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
       );
     } catch (error: unknown) {
       console.error('检测冲突失败:', error);
+      setConflicts(null);
       showGlobalNotification('error', getErrorMessage(error));
     } finally {
       stopTabLoading('sync');
+      detectInFlightRef.current = false;
     }
-  }, [loadCloudSyncConfig, startTabLoading, stopTabLoading, t]);
+  }, [isSyncRunning, loadCloudSyncConfig, startTabLoading, stopTabLoading, t]);
 
   // 解决冲突
   const resolveConflicts = useCallback(async (strategy: MergeStrategy) => {
-    // 当前实现：直接以指定策略执行双向同步来处理冲突
-    await runCloudSync('bidirectional', strategy);
-  }, [runCloudSync]);
+    if (resolveInFlightRef.current) return;
+    if (conflicts?.needs_migration) {
+      showGlobalNotification(
+        'warning',
+        t('data:governance.schema_mismatch_needs_migration', {
+          defaultValue: '检测到 Schema 不匹配，请先完成迁移后再解决冲突。',
+        })
+      );
+      return;
+    }
+    const cloudManifestJson = conflicts?.cloud_manifest_json;
+    if (!cloudManifestJson) {
+      showGlobalNotification('warning', t('data:governance.sync_conflict_manifest_missing', {
+        defaultValue: '缺少云端冲突清单，请先重新检测冲突。',
+      }));
+      return;
+    }
+    resolveInFlightRef.current = true;
+    startTabLoading('sync');
+    try {
+      const result = await DataGovernanceApi.resolveConflicts(strategy, cloudManifestJson);
+      if (result.success) {
+        if (strategy === 'manual' && result.pending_manual_conflicts > 0) {
+          showGlobalNotification(
+            'warning',
+            t('data:governance.conflicts_pending_manual', {
+              count: result.pending_manual_conflicts,
+              defaultValue: `仍有 ${result.pending_manual_conflicts} 条冲突待手动处理。`,
+            })
+          );
+        } else {
+          showGlobalNotification('success', t('data:governance.conflicts_resolved'));
+        }
+        setConflicts(null);
+        await loadSyncStatus();
+      } else {
+        showGlobalNotification('error', result.error_message || t('data:governance.sync_failed'));
+      }
+    } catch (error: unknown) {
+      showGlobalNotification('error', getErrorMessage(error));
+    } finally {
+      stopTabLoading('sync');
+      resolveInFlightRef.current = false;
+    }
+  }, [conflicts, loadSyncStatus, startTabLoading, stopTabLoading, t]);
 
   // 预取审计日志：提升切换体验（并与单测期望对齐）
   useEffect(() => {
@@ -1436,7 +1505,12 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
           onSetCloudSettingsEditorOpen={setShowCloudSettingsEditor}
           onCloudConfigChanged={handleCloudConfigChanged}
           onRunSync={runCloudSync}
-          onRetrySync={() => runCloudSync(lastSyncDirectionRef.current, syncStrategy)}
+          onRetrySync={() =>
+            runCloudSync(
+              lastSyncRequestRef.current.direction,
+              lastSyncRequestRef.current.strategy
+            )
+          }
           onViewAuditLog={() => setActiveTab('audit')}
         />
       </TabsContent>

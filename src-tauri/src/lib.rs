@@ -120,11 +120,47 @@ pub fn get_global_app_handle() -> Option<&'static AppHandle> {
 }
 // tracing 日志初始化由 tauri-plugin-log 统一管理
 
+#[cfg(target_os = "linux")]
+fn prepare_linux_appimage_runtime_env() {
+    let is_appimage = std::env::var_os("APPIMAGE").is_some() || std::env::var_os("APPDIR").is_some();
+    if !is_appimage {
+        return;
+    }
+
+    // AppImage runtime may inject GTK-related paths that mismatch host GTK modules.
+    // Clear the high-risk variables to reduce init crashes like "Failed to initialize GTK".
+    for key in [
+        "GTK_PATH",
+        "GTK_EXE_PREFIX",
+        "GTK_DATA_PREFIX",
+        "GDK_PIXBUF_MODULE_FILE",
+        "GDK_PIXBUF_MODULEDIR",
+        "GTK_IM_MODULE_FILE",
+    ] {
+        if std::env::var_os(key).is_some() {
+            std::env::remove_var(key);
+        }
+    }
+
+    // Keep backend choice flexible but prioritize Wayland when present.
+    if std::env::var_os("GDK_BACKEND").is_none() {
+        std::env::set_var("GDK_BACKEND", "wayland,x11");
+    }
+
+    // Reduce known WebKit/GPU instability on some Linux desktop stacks.
+    if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
+        std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+    }
+}
+
 /// 启动 Tauri 应用。
 ///
 /// 目前仅做最小实现，后续可补充 `invoke_handler!` 以注册命令。
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    #[cfg(target_os = "linux")]
+    prepare_linux_appimage_runtime_env();
+
     // 统一使用 tauri-plugin-log 初始化日志系统，避免与 tracing_subscriber/全局 logger 冲突
 
     // 初始化 Sentry（若有环境变量 SENTRY_DSN）

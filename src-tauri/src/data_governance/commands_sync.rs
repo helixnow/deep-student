@@ -28,6 +28,54 @@ fn id_column_map() -> HashMap<String, String> {
     build_id_column_map()
 }
 
+fn rollback_marked_sync_versions(
+    active_dir: &std::path::Path,
+    marked_by_db: &HashMap<String, Vec<i64>>,
+) {
+    for (db_name, change_ids) in marked_by_db {
+        if change_ids.is_empty() {
+            continue;
+        }
+        let db_id = DatabaseId::all_ordered()
+            .into_iter()
+            .find(|id| id.as_str() == db_name.as_str());
+        let Some(db_id) = db_id else { continue };
+        let db_path = resolve_database_path(&db_id, active_dir);
+        let Ok(conn) = rusqlite::Connection::open(&db_path) else {
+            tracing::warn!(
+                "[data_governance] 回滚 sync_version 失败：无法打开数据库 {}",
+                db_name
+            );
+            continue;
+        };
+        let placeholders = std::iter::repeat("?")
+            .take(change_ids.len())
+            .collect::<Vec<_>>()
+            .join(",");
+        let sql = format!(
+            "UPDATE __change_log SET sync_version = 0 WHERE id IN ({})",
+            placeholders
+        );
+        if let Err(e) = conn.execute(&sql, rusqlite::params_from_iter(change_ids.iter())) {
+            tracing::warn!(
+                "[data_governance] 回滚 sync_version 失败（{}，{} 条）: {}",
+                db_name,
+                change_ids.len(),
+                e
+            );
+        }
+    }
+}
+
+fn append_warning_message(base: &mut Option<String>, msg: String) {
+    let existing = base.take().unwrap_or_default();
+    *base = Some(if existing.is_empty() {
+        msg
+    } else {
+        format!("{}；{}", existing, msg)
+    });
+}
+
 /// 获取同步状态
 ///
 /// 返回当前设备的同步状态信息，包括待同步变更数量等。
@@ -731,7 +779,8 @@ pub async fn data_governance_run_sync(
                 .await
                 .map_err(|e| format!("上传同步失败: {}", e))?;
 
-            // 先标记变更为已同步
+            // 先标记变更为已同步（若后续 manifest 上传失败会回滚）
+            let mut marked_by_db: HashMap<String, Vec<i64>> = HashMap::new();
             for db_id in DatabaseId::all_ordered() {
                 let db_path = resolve_database_path(&db_id, &active_dir);
                 if !db_path.exists() {
@@ -747,6 +796,7 @@ pub async fn data_governance_run_sync(
                 if !db_change_ids.is_empty() {
                     SyncManager::mark_synced_with_timestamp(&conn, &db_change_ids)
                         .map_err(|e| format!("标记变更失败: {}", e))?;
+                    marked_by_db.insert(db_id.as_str().to_string(), db_change_ids);
                 }
             }
 
@@ -767,10 +817,10 @@ pub async fn data_governance_run_sync(
                 }
                 manager.create_manifest(dbs)
             };
-            manager
-                .upload_manifest(storage.as_ref(), &upload_manifest)
-                .await
-                .map_err(|e| format!("上传清单失败: {}", e))?;
+            if let Err(e) = manager.upload_manifest(storage.as_ref(), &upload_manifest).await {
+                rollback_marked_sync_versions(&active_dir, &marked_by_db);
+                return Err(format!("上传清单失败: {}", e));
+            }
 
             Ok((
                 SyncExecutionResult {
@@ -886,8 +936,8 @@ pub async fn data_governance_run_sync(
                     .map_err(|e| format!("上传变更失败: {}", e))?;
             }
 
-            // 下载成功应用后再标记本地变更已同步，避免中断导致"标记成功但下载未落地"。
-            // 注意：仅标记实际上传的变更，被剔除的记录不标记。
+            // 下载成功应用后再标记本地变更已同步；若 manifest 上传失败会回滚这些标记。
+            let mut marked_by_db: HashMap<String, Vec<i64>> = HashMap::new();
             for db_id in DatabaseId::all_ordered() {
                 let db_path = resolve_database_path(&db_id, &active_dir);
                 if !db_path.exists() {
@@ -903,6 +953,7 @@ pub async fn data_governance_run_sync(
                 if !db_change_ids.is_empty() {
                     SyncManager::mark_synced_with_timestamp(&conn, &db_change_ids)
                         .map_err(|e| format!("标记变更失败: {}", e))?;
+                    marked_by_db.insert(db_id.as_str().to_string(), db_change_ids);
                 }
             }
 
@@ -930,10 +981,13 @@ pub async fn data_governance_run_sync(
                 }
                 manager.create_manifest(dbs)
             };
-            manager
+            if let Err(e) = manager
                 .upload_manifest(storage.as_ref(), &refreshed_manifest)
                 .await
-                .map_err(|e| format!("上传刷新清单失败: {}", e))?;
+            {
+                rollback_marked_sync_versions(&active_dir, &marked_by_db);
+                return Err(format!("上传刷新清单失败: {}", e));
+            }
 
             Ok((exec_result, total_skipped))
         }
@@ -944,15 +998,6 @@ pub async fn data_governance_run_sync(
     match result {
         Ok((mut exec_result, skipped)) => {
             // 与带进度链路保持一致：在普通同步中也执行文件级同步
-            let append_warning = |base: &mut Option<String>, msg: String| {
-                let existing = base.take().unwrap_or_default();
-                *base = Some(if existing.is_empty() {
-                    msg
-                } else {
-                    format!("{}；{}", existing, msg)
-                });
-            };
-
             let blobs_dir = active_dir.join("vfs_blobs");
             if let Err(e) = manager
                 .sync_workspace_databases(storage.as_ref(), &active_dir)
@@ -965,15 +1010,35 @@ pub async fn data_governance_run_sync(
                     if outcome.has_failures() {
                         if let Some(msg) = outcome.failure_summary() {
                             warn!("[data_governance] VFS blob 部分失败: {}", msg);
-                            append_warning(&mut exec_result.error_message, msg);
+                            append_warning_message(&mut exec_result.error_message, msg);
                         }
                     }
                 }
                 Err(e) => {
                     error!("[data_governance] VFS blob 同步出错: {}", e);
-                    append_warning(
+                    append_warning_message(
                         &mut exec_result.error_message,
                         format!("附件同步失败: {}", e),
+                    );
+                }
+            }
+            match manager
+                .sync_asset_directories(storage.as_ref(), &active_dir, &app_data_dir)
+                .await
+            {
+                Ok(outcome) => {
+                    if outcome.has_failures() {
+                        if let Some(msg) = outcome.failure_summary() {
+                            warn!("[data_governance] 资产目录部分失败: {}", msg);
+                            append_warning_message(&mut exec_result.error_message, msg);
+                        }
+                    }
+                }
+                Err(e) => {
+                    error!("[data_governance] 资产目录同步出错: {}", e);
+                    append_warning_message(
+                        &mut exec_result.error_message,
+                        format!("资产目录同步失败: {}", e),
                     );
                 }
             }
@@ -1937,103 +2002,100 @@ async fn execute_upload_with_progress_v2(
     let total = enriched.len() as u64;
 
     if enriched.is_empty() {
-        return Ok((
-            SyncExecutionResult {
-                success: true,
-                direction: SyncDirection::Upload,
-                changes_uploaded: 0,
-                changes_downloaded: 0,
-                conflicts_detected: 0,
-                duration_ms: start.elapsed().as_millis() as u64,
-                error_message: None,
-            },
-            0,
-        ));
-    }
-
-    emitter.emit_uploading(0, total, None).await;
-
-    // 上传带完整数据的变更（带字节级进度回调，节流 100ms）
-    {
-        let emitter_cb = emitter.clone();
-        let last_emit_ms = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
-        let byte_progress_cb: Box<dyn Fn(u64, u64) + Send + Sync> =
-            Box::new(move |done, total_bytes| {
-                let is_final = total_bytes > 0 && done >= total_bytes;
-                if !is_final {
-                    let now_ms = std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .map(|d| d.as_millis() as u64)
-                        .unwrap_or(0);
-                    let last = last_emit_ms.load(std::sync::atomic::Ordering::Relaxed);
-                    if now_ms.saturating_sub(last) < 100 {
-                        return;
-                    }
-                    last_emit_ms.store(now_ms, std::sync::atomic::Ordering::Relaxed);
-                }
-                let pct = if total_bytes > 0 {
-                    10.0_f32 + (done as f32 / total_bytes as f32) * 40.0
-                } else {
-                    10.0
-                };
-                emitter_cb.emit_force_sync(SyncProgress {
-                    phase: SyncPhase::Uploading,
-                    percent: pct,
-                    current: done,
-                    total: total_bytes,
-                    current_item: None,
-                    speed_bytes_per_sec: None,
-                    eta_seconds: None,
-                    error: None,
-                });
-            });
+        // 兜底：即使当前无 pending，也尝试刷新云端 manifest，修复“上次仅变更上传成功”的可见性缺口
         manager
-            .upload_enriched_changes(storage, enriched, Some(byte_progress_cb))
+            .upload_manifest(storage, local_manifest)
             .await
-            .map_err(|e| format!("上传同步失败: {}", e))?
-    }
+            .map_err(|e| format!("上传清单失败: {}", e))?;
+    } else {
+        emitter.emit_uploading(0, total, None).await;
 
-    emitter.emit_uploading(total, total, None).await;
-
-    // 先标记变更为已同步
-    for db_id in DatabaseId::all_ordered() {
-        let db_path = resolve_database_path(&db_id, active_dir);
-        if !db_path.exists() {
-            continue;
+        // 上传带完整数据的变更（带字节级进度回调，节流 100ms）
+        {
+            let emitter_cb = emitter.clone();
+            let last_emit_ms = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
+            let byte_progress_cb: Box<dyn Fn(u64, u64) + Send + Sync> =
+                Box::new(move |done, total_bytes| {
+                    let is_final = total_bytes > 0 && done >= total_bytes;
+                    if !is_final {
+                        let now_ms = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .map(|d| d.as_millis() as u64)
+                            .unwrap_or(0);
+                        let last = last_emit_ms.load(std::sync::atomic::Ordering::Relaxed);
+                        if now_ms.saturating_sub(last) < 100 {
+                            return;
+                        }
+                        last_emit_ms.store(now_ms, std::sync::atomic::Ordering::Relaxed);
+                    }
+                    let pct = if total_bytes > 0 {
+                        10.0_f32 + (done as f32 / total_bytes as f32) * 40.0
+                    } else {
+                        10.0
+                    };
+                    emitter_cb.emit_force_sync(SyncProgress {
+                        phase: SyncPhase::Uploading,
+                        percent: pct,
+                        current: done,
+                        total: total_bytes,
+                        current_item: None,
+                        speed_bytes_per_sec: None,
+                        eta_seconds: None,
+                        error: None,
+                    });
+                });
+            manager
+                .upload_enriched_changes(storage, enriched, Some(byte_progress_cb))
+                .await
+                .map_err(|e| format!("上传同步失败: {}", e))?
         }
 
-        let db_change_ids: Vec<i64> = enriched
-            .iter()
-            .filter(|c| c.database_name.as_deref() == Some(db_id.as_str()))
-            .filter_map(|c| c.change_log_id)
-            .collect();
+        emitter.emit_uploading(total, total, None).await;
 
-        if !db_change_ids.is_empty() {
-            let conn = rusqlite::Connection::open(&db_path)
-                .map_err(|e| format!("打开数据库失败: {}", e))?;
-            SyncManager::mark_synced_with_timestamp(&conn, &db_change_ids)
-                .map_err(|e| format!("标记变更失败: {}", e))?;
-        }
-    }
-
-    // 标记完成后重建 manifest 再上传（确保 data_version 反映最新状态）
-    {
-        let mut refreshed_dbs: HashMap<String, DatabaseSyncState> = HashMap::new();
+        // 先标记变更为已同步（若后续 manifest 上传失败会执行回滚）
+        let mut marked_by_db: HashMap<String, Vec<i64>> = HashMap::new();
         for db_id in DatabaseId::all_ordered() {
             let db_path = resolve_database_path(&db_id, active_dir);
-            if db_path.exists() {
-                if let Ok(conn) = rusqlite::Connection::open(&db_path) {
-                    if let Ok(state) = SyncManager::get_database_sync_state(&conn, db_id.as_str()) {
-                        refreshed_dbs.insert(db_id.as_str().to_string(), state);
+            if !db_path.exists() {
+                continue;
+            }
+
+            let db_change_ids: Vec<i64> = enriched
+                .iter()
+                .filter(|c| c.database_name.as_deref() == Some(db_id.as_str()))
+                .filter_map(|c| c.change_log_id)
+                .collect();
+
+            if !db_change_ids.is_empty() {
+                let conn = rusqlite::Connection::open(&db_path)
+                    .map_err(|e| format!("打开数据库失败: {}", e))?;
+                SyncManager::mark_synced_with_timestamp(&conn, &db_change_ids)
+                    .map_err(|e| format!("标记变更失败: {}", e))?;
+                marked_by_db.insert(db_id.as_str().to_string(), db_change_ids);
+            }
+        }
+
+        // 标记完成后重建 manifest 再上传（确保 data_version 反映最新状态）
+        {
+            let mut refreshed_dbs: HashMap<String, DatabaseSyncState> = HashMap::new();
+            for db_id in DatabaseId::all_ordered() {
+                let db_path = resolve_database_path(&db_id, active_dir);
+                if db_path.exists() {
+                    if let Ok(conn) = rusqlite::Connection::open(&db_path) {
+                        if let Ok(state) =
+                            SyncManager::get_database_sync_state(&conn, db_id.as_str())
+                        {
+                            refreshed_dbs.insert(db_id.as_str().to_string(), state);
+                        }
                     }
                 }
             }
+            let refreshed_manifest = manager.create_manifest(refreshed_dbs);
+            if let Err(e) = manager.upload_manifest(storage, &refreshed_manifest).await {
+                rollback_marked_sync_versions(active_dir, &marked_by_db);
+                return Err(format!("上传清单失败: {}", e));
+            }
         }
-        let refreshed_manifest = manager.create_manifest(refreshed_dbs);
-        manager
-            .upload_manifest(storage, &refreshed_manifest)
-            .await
-            .map_err(|e| format!("上传清单失败: {}", e))?;
     }
 
     emitter.emit_applying(total, total, None).await;
@@ -2057,6 +2119,25 @@ async fn execute_upload_with_progress_v2(
             tracing::error!("[data_governance] VFS blob 同步出错: {}", e);
         }
     }
+    let mut upload_warning = blob_warning;
+
+    match manager
+        .sync_asset_directories(storage, active_dir, app_data_dir)
+        .await
+    {
+        Ok(outcome) => {
+            if outcome.has_failures() {
+                if let Some(msg) = outcome.failure_summary() {
+                    tracing::warn!("[data_governance] 资产目录部分失败: {}", msg);
+                    append_warning_message(&mut upload_warning, msg);
+                }
+            }
+        }
+        Err(e) => {
+            tracing::error!("[data_governance] 资产目录同步出错: {}", e);
+            append_warning_message(&mut upload_warning, format!("资产目录同步失败: {}", e));
+        }
+    }
 
     // 清理云端超过 30 天的旧变更文件（非致命）
     if let Err(e) = manager.prune_old_changes(storage, 30).await {
@@ -2071,7 +2152,7 @@ async fn execute_upload_with_progress_v2(
             changes_downloaded: 0,
             conflicts_detected: 0,
             duration_ms: start.elapsed().as_millis() as u64,
-            error_message: blob_warning,
+            error_message: upload_warning,
         },
         0,
     ))
@@ -2134,23 +2215,36 @@ async fn execute_download_with_progress_v2(
             if outcome.has_failures() {
                 let blob_msg = outcome.failure_summary().unwrap_or_default();
                 tracing::warn!("[data_governance] VFS blob 部分失败: {}", blob_msg);
-                let existing = exec_result.error_message.take().unwrap_or_default();
-                exec_result.error_message = Some(if existing.is_empty() {
-                    blob_msg
-                } else {
-                    format!("{}；{}", existing, blob_msg)
-                });
+                append_warning_message(&mut exec_result.error_message, blob_msg);
             }
         }
         Err(e) => {
             tracing::error!("[data_governance] VFS blob 同步出错: {}", e);
-            let existing = exec_result.error_message.take().unwrap_or_default();
-            let blob_msg = format!("附件同步失败: {}", e);
-            exec_result.error_message = Some(if existing.is_empty() {
-                blob_msg
-            } else {
-                format!("{}；{}", existing, blob_msg)
-            });
+            append_warning_message(
+                &mut exec_result.error_message,
+                format!("附件同步失败: {}", e),
+            );
+        }
+    }
+
+    match manager
+        .sync_asset_directories(storage, active_dir, app_data_dir)
+        .await
+    {
+        Ok(outcome) => {
+            if outcome.has_failures() {
+                if let Some(msg) = outcome.failure_summary() {
+                    tracing::warn!("[data_governance] 资产目录部分失败: {}", msg);
+                    append_warning_message(&mut exec_result.error_message, msg);
+                }
+            }
+        }
+        Err(e) => {
+            tracing::error!("[data_governance] 资产目录同步出错: {}", e);
+            append_warning_message(
+                &mut exec_result.error_message,
+                format!("资产目录同步失败: {}", e),
+            );
         }
     }
 
@@ -2286,9 +2380,10 @@ async fn execute_bidirectional_with_progress_v2(
             .await;
     }
 
-    // 下载成功应用后再标记本地变更已同步，避免中断导致"标记成功但下载未落地"。
+    // 下载成功应用后再标记本地变更已同步；若 manifest 上传失败会回滚这些标记。
     // 注意：仅标记实际上传的变更（filtered_enriched），被剔除的记录不标记，
     // 以确保下次同步时它们能被重新评估。
+    let mut marked_by_db: HashMap<String, Vec<i64>> = HashMap::new();
     for db_id in DatabaseId::all_ordered() {
         let db_path = resolve_database_path(&db_id, active_dir);
         if !db_path.exists() {
@@ -2306,6 +2401,7 @@ async fn execute_bidirectional_with_progress_v2(
                 .map_err(|e| format!("打开数据库失败: {}", e))?;
             SyncManager::mark_synced_with_timestamp(&conn, &db_change_ids)
                 .map_err(|e| format!("标记变更失败: {}", e))?;
+            marked_by_db.insert(db_id.as_str().to_string(), db_change_ids);
         }
     }
 
@@ -2330,10 +2426,10 @@ async fn execute_bidirectional_with_progress_v2(
             }
         }
         let refreshed_manifest = manager.create_manifest(refreshed_databases);
-        manager
-            .upload_manifest(storage, &refreshed_manifest)
-            .await
-            .map_err(|e| format!("上传刷新清单失败: {}", e))?;
+        if let Err(e) = manager.upload_manifest(storage, &refreshed_manifest).await {
+            rollback_marked_sync_versions(active_dir, &marked_by_db);
+            return Err(format!("上传刷新清单失败: {}", e));
+        }
     }
 
     // 文件级云同步：工作区数据库（ws_*.db）+ VFS blobs
@@ -2347,23 +2443,36 @@ async fn execute_bidirectional_with_progress_v2(
             if outcome.has_failures() {
                 let blob_msg = outcome.failure_summary().unwrap_or_default();
                 tracing::warn!("[data_governance] VFS blob 部分失败: {}", blob_msg);
-                let existing = exec_result.error_message.take().unwrap_or_default();
-                exec_result.error_message = Some(if existing.is_empty() {
-                    blob_msg
-                } else {
-                    format!("{}；{}", existing, blob_msg)
-                });
+                append_warning_message(&mut exec_result.error_message, blob_msg);
             }
         }
         Err(e) => {
             tracing::error!("[data_governance] VFS blob 同步出错: {}", e);
-            let existing = exec_result.error_message.take().unwrap_or_default();
-            let blob_msg = format!("附件同步失败: {}", e);
-            exec_result.error_message = Some(if existing.is_empty() {
-                blob_msg
-            } else {
-                format!("{}；{}", existing, blob_msg)
-            });
+            append_warning_message(
+                &mut exec_result.error_message,
+                format!("附件同步失败: {}", e),
+            );
+        }
+    }
+
+    match manager
+        .sync_asset_directories(storage, active_dir, app_data_dir)
+        .await
+    {
+        Ok(outcome) => {
+            if outcome.has_failures() {
+                if let Some(msg) = outcome.failure_summary() {
+                    tracing::warn!("[data_governance] 资产目录部分失败: {}", msg);
+                    append_warning_message(&mut exec_result.error_message, msg);
+                }
+            }
+        }
+        Err(e) => {
+            tracing::error!("[data_governance] 资产目录同步出错: {}", e);
+            append_warning_message(
+                &mut exec_result.error_message,
+                format!("资产目录同步失败: {}", e),
+            );
         }
     }
 

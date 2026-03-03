@@ -496,16 +496,17 @@ describe('DataGovernanceDashboard SyncTab conflict resolution', () => {
     useSystemStatusStore.getState().exitMaintenanceMode();
   });
 
-  it('clicking resolve strategy button calls runSyncWithProgressTracking with bidirectional + strategy', async () => {
+  it('clicking resolve strategy button calls resolveConflicts with selected strategy', async () => {
     mockDataGovernanceApi.detectConflicts.mockResolvedValue(sampleConflictDetection);
-    mockDataGovernanceApi.runSyncWithProgressTracking.mockResolvedValue({
+    mockDataGovernanceApi.resolveConflicts.mockResolvedValue({
       success: true,
-      direction: 'bidirectional',
-      changes_uploaded: 5,
-      changes_downloaded: 3,
-      conflicts_detected: 0,
+      strategy: 'keep_local',
+      synced_databases: 2,
+      resolved_conflicts: 1,
+      pending_manual_conflicts: 0,
+      records_to_push: [],
+      records_to_pull: [],
       duration_ms: 3000,
-      device_id: 'device-abc12345',
       error_message: null,
     });
 
@@ -537,17 +538,90 @@ describe('DataGovernanceDashboard SyncTab conflict resolution', () => {
       fireEvent.click(conflictKeepLocalBtn);
     });
 
-    // resolveConflicts 内部调用 runCloudSync('bidirectional', strategy)
-    // 验证 runSyncWithProgressTracking 被调用
+    // 验证调用了 resolveConflicts(strategy, cloudManifestJson)
     await waitFor(() => {
-      expect(mockDataGovernanceApi.runSyncWithProgressTracking).toHaveBeenCalled();
+      expect(mockDataGovernanceApi.resolveConflicts).toHaveBeenCalled();
     });
 
-    const call = mockDataGovernanceApi.runSyncWithProgressTracking.mock.calls[0];
-    // 第一个参数: direction = 'bidirectional'
-    expect(call[0]).toBe('bidirectional');
-    // 第四个参数: strategy = 'keep_local'
-    expect(call[3]).toBe('keep_local');
+    const call = mockDataGovernanceApi.resolveConflicts.mock.calls[0];
+    // 第一个参数: strategy = 'keep_local'
+    expect(call[0]).toBe('keep_local');
+    // 第二个参数: cloudManifestJson
+    expect(call[1]).toBe('{}');
+  });
+
+  it('prevents duplicate resolve requests on rapid double click', async () => {
+    mockDataGovernanceApi.detectConflicts.mockResolvedValue(sampleConflictDetection);
+    let resolveRequest: ((value: unknown) => void) | undefined;
+    mockDataGovernanceApi.resolveConflicts.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveRequest = resolve;
+        }),
+    );
+
+    render(<DataGovernanceDashboard embedded />);
+    await navigateToSyncTab();
+
+    const detectBtn = screen.getByRole('button', {
+      name: /检测冲突|data:governance\.detect_conflicts/i,
+    });
+    await act(async () => {
+      fireEvent.click(detectBtn);
+    });
+
+    const keepLocalBtns = screen.getAllByRole('button', {
+      name: /保留本地|data:governance\.keep_local/i,
+    });
+    const conflictKeepLocalBtn = keepLocalBtns[keepLocalBtns.length - 1];
+
+    await act(async () => {
+      fireEvent.click(conflictKeepLocalBtn);
+      fireEvent.click(conflictKeepLocalBtn);
+    });
+
+    await waitFor(() => {
+      expect(mockDataGovernanceApi.resolveConflicts).toHaveBeenCalledTimes(1);
+    });
+
+    if (resolveRequest) {
+      await act(async () => {
+        resolveRequest!({
+          success: true,
+          strategy: 'keep_local',
+          synced_databases: 1,
+          resolved_conflicts: 1,
+          pending_manual_conflicts: 0,
+          records_to_push: [],
+          records_to_pull: [],
+          duration_ms: 100,
+          error_message: null,
+        });
+      });
+    }
+  });
+
+  it('disables resolve buttons when needs_migration is true', async () => {
+    mockDataGovernanceApi.detectConflicts.mockResolvedValue({
+      ...sampleConflictDetection,
+      needs_migration: true,
+    });
+
+    render(<DataGovernanceDashboard embedded />);
+    await navigateToSyncTab();
+
+    const detectBtn = screen.getByRole('button', {
+      name: /检测冲突|data:governance\.detect_conflicts/i,
+    });
+    await act(async () => {
+      fireEvent.click(detectBtn);
+    });
+
+    const keepLocalBtns = screen.getAllByRole('button', {
+      name: /保留本地|data:governance\.keep_local/i,
+    });
+    const conflictKeepLocalBtn = keepLocalBtns[keepLocalBtns.length - 1];
+    expect(conflictKeepLocalBtn).toBeDisabled();
   });
 });
 

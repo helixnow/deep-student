@@ -1,0 +1,235 @@
+name: Hotfix Linux Release Assets
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: "要修复的 tag（例如 v0.9.30）；留空则默认使用当前 latest release"
+        required: false
+        default: ""
+        type: string
+
+concurrency:
+  group: hotfix-linux-${{ github.event.inputs.tag_name || 'latest' }}
+  cancel-in-progress: false
+
+env:
+  GITHUB_REPO: ${{ github.repository }}
+
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    outputs:
+      tag_name: ${{ steps.pick.outputs.tag_name }}
+      version: ${{ steps.pick.outputs.version }}
+    permissions:
+      contents: read
+    steps:
+      - name: Resolve target tag
+        id: pick
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          INPUT_TAG="${{ github.event.inputs.tag_name }}"
+          if [[ -n "$INPUT_TAG" ]]; then
+            TAG_NAME="$INPUT_TAG"
+          else
+            TAG_NAME=$(gh api "repos/${GITHUB_REPO}/releases/latest" -q '.tag_name')
+          fi
+
+          if [[ ! "$TAG_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Invalid tag: '$TAG_NAME'. Expected format like v0.9.30"
+            exit 1
+          fi
+
+          echo "tag_name=$TAG_NAME" >> "$GITHUB_OUTPUT"
+          echo "version=${TAG_NAME#v}" >> "$GITHUB_OUTPUT"
+          echo "✅ Target release: $TAG_NAME"
+
+  build-linux:
+    needs: [resolve]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    env:
+      NODE_OPTIONS: "--max-old-space-size=4096"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ needs.resolve.outputs.tag_name }}
+
+      - name: Verify version consistency
+        run: |
+          TAG_VERSION="${{ needs.resolve.outputs.version }}"
+          PKG_VERSION=$(jq -r '.version' package.json)
+          CARGO_VERSION=$(sed -n '/^\[package\]/,/^\[/{s/^version *= *"\(.*\)"/\1/p}' src-tauri/Cargo.toml)
+          TAURI_VERSION=$(jq -r '.version' src-tauri/tauri.conf.json)
+
+          [[ "$PKG_VERSION" == "$TAG_VERSION" ]] || { echo "::error::package.json=$PKG_VERSION != tag=$TAG_VERSION"; exit 1; }
+          [[ "$CARGO_VERSION" == "$TAG_VERSION" ]] || { echo "::error::Cargo.toml=$CARGO_VERSION != tag=$TAG_VERSION"; exit 1; }
+          [[ "$TAURI_VERSION" == "$TAG_VERSION" ]] || { echo "::error::tauri.conf.json=$TAURI_VERSION != tag=$TAG_VERSION"; exit 1; }
+          echo "✅ Version consistency verified"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            rpm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-gnu
+
+      - name: Setup protoc
+        uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "./src-tauri -> target"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate version info
+        run: node scripts/generate-version.mjs
+
+      - name: Build Linux bundles
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          SILICONFLOW_BUILTIN_TEXT_KEY: ${{ secrets.SILICONFLOW_BUILTIN_TEXT_KEY }}
+          SILICONFLOW_BUILTIN_VISION_KEY: ${{ secrets.SILICONFLOW_BUILTIN_VISION_KEY }}
+          SILICONFLOW_BUILTIN_EMBED_KEY: ${{ secrets.SILICONFLOW_BUILTIN_EMBED_KEY }}
+        run: npx tauri build --target x86_64-unknown-linux-gnu --bundles deb,rpm,appimage
+
+      - name: Rename updater artifacts with arch suffix
+        run: |
+          BUNDLE_DIR="src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/appimage"
+          for f in "$BUNDLE_DIR"/*.AppImage.tar.gz; do
+            [ -f "$f" ] || continue
+            BASE=$(basename "$f" .AppImage.tar.gz | tr ' ' '.')
+            mv "$f" "$BUNDLE_DIR/${BASE}_x86_64.AppImage.tar.gz"
+            [ -f "$f.sig" ] && mv "$f.sig" "$BUNDLE_DIR/${BASE}_x86_64.AppImage.tar.gz.sig"
+          done
+          echo "📦 Linux bundle artifacts:"
+          ls -la src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/
+
+      - name: Upload Linux artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-hotfix-x86_64
+          path: |
+            src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/deb/*.deb
+            src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/rpm/*.rpm
+            src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/appimage/*.AppImage
+            src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/appimage/*.AppImage.tar.gz
+            src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/appimage/*.AppImage.tar.gz.sig
+
+  replace-release-assets:
+    needs: [resolve, build-linux]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download Linux artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: linux-hotfix-x86_64
+          path: linux-assets
+
+      - name: Normalize artifact filenames
+        run: |
+          find linux-assets -type f -name '* *' | while IFS= read -r f; do
+            DIR=$(dirname "$f")
+            OLD=$(basename "$f")
+            NEW=$(echo "$OLD" | tr ' ' '.')
+            mv "$f" "$DIR/$NEW"
+            echo "renamed: $OLD -> $NEW"
+          done
+
+      - name: Show Linux assets
+        run: ls -lah linux-assets
+
+      - name: Remove old Linux assets from release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ needs.resolve.outputs.tag_name }}"
+          gh release view "$TAG" --repo "$GITHUB_REPO" --json assets -q '.assets[].name' > old-assets.txt
+          cat old-assets.txt | while IFS= read -r name; do
+            [[ -z "$name" ]] && continue
+            if [[ "$name" == *.AppImage || "$name" == *.AppImage.tar.gz || "$name" == *.AppImage.tar.gz.sig || "$name" == *.deb || "$name" == *.rpm ]]; then
+              echo "Deleting old Linux asset: $name"
+              gh release delete-asset "$TAG" "$name" --repo "$GITHUB_REPO" -y || true
+            fi
+          done
+
+      - name: Upload new Linux assets to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ needs.resolve.outputs.tag_name }}"
+          gh release upload "$TAG" linux-assets/* --repo "$GITHUB_REPO" --clobber
+          echo "✅ Linux assets replaced in release $TAG"
+
+      - name: Patch latest.json (linux-x86_64) and upload
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ needs.resolve.outputs.tag_name }}"
+          mkdir -p latest-json-tmp
+          gh release download "$TAG" --repo "$GITHUB_REPO" --pattern latest.json --dir latest-json-tmp
+
+          if [[ ! -f latest-json-tmp/latest.json ]]; then
+            echo "⚠️ latest.json not found in release; skip patch"
+            exit 0
+          fi
+
+          TAR=$(find linux-assets -maxdepth 1 -name "*_x86_64.AppImage.tar.gz" | head -1)
+          if [[ -z "$TAR" ]]; then
+            TAR=$(find linux-assets -maxdepth 1 -name "*.AppImage.tar.gz" | head -1)
+          fi
+          if [[ -z "$TAR" ]]; then
+            echo "::error::No AppImage updater tarball found"
+            exit 1
+          fi
+
+          SIG_FILE=""
+          if [[ -f "${TAR}.sig" ]]; then
+            SIG_FILE="${TAR}.sig"
+          else
+            SIG_FILE=$(find linux-assets -maxdepth 1 -name "$(basename "$TAR").sig" | head -1)
+          fi
+          if [[ -z "$SIG_FILE" || ! -f "$SIG_FILE" ]]; then
+            echo "::error::No signature found for $(basename "$TAR")"
+            exit 1
+          fi
+
+          TAR_NAME=$(basename "$TAR")
+          SIGNATURE=$(cat "$SIG_FILE")
+          URL="https://github.com/${GITHUB_REPO}/releases/download/${TAG}/${TAR_NAME}"
+
+          jq --arg url "$URL" --arg sig "$SIGNATURE" '
+            .platforms["linux-x86_64"] = {"url": $url, "signature": $sig}
+          ' latest-json-tmp/latest.json > latest-json-tmp/latest.patched.json
+
+          mv latest-json-tmp/latest.patched.json latest-json-tmp/latest.json
+
+          gh release upload "$TAG" latest-json-tmp/latest.json --repo "$GITHUB_REPO" --clobber
+          echo "✅ latest.json patched and replaced"

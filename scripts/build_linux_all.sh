@@ -22,8 +22,6 @@ say "Checking build environment..."
 
 require_cmd npm
 require_cmd rustup
-require_cmd linuxdeploy 
-
 cd "$REPO_ROOT"
 
 if ! command -v rustup >/dev/null 2>&1; then
@@ -70,7 +68,9 @@ for target in x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu; do
 		cp "$release_dir/rpm"/*.rpm "$BUILD_DIR/" 2>/dev/null || true
 	fi
 	if [[ -d "$release_dir/appimage" ]]; then
-		cp "$release_dir/rpm"/*.appimage "$BUILD_DIR/" 2>/dev/null || true
+		cp "$release_dir/appimage"/*.AppImage "$BUILD_DIR/" 2>/dev/null || true
+		cp "$release_dir/appimage"/*.AppImage.tar.gz "$BUILD_DIR/" 2>/dev/null || true
+		cp "$release_dir/appimage"/*.AppImage.tar.gz.sig "$BUILD_DIR/" 2>/dev/null || true
 	fi
 
 	binary="target/$target/release/deep-student"
