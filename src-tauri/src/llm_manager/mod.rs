@@ -186,6 +186,40 @@ mod tests {
         assert!(merged.supports_tools);
         assert!(merged.is_builtin);
     }
+
+    #[test]
+    fn convert_openai_tool_call_treats_empty_string_arguments_as_empty_object() {
+        let tool_call = json!({
+            "id": "call_1",
+            "type": "function",
+            "function": {
+                "name": "group_list",
+                "arguments": ""
+            }
+        });
+
+        let converted = LLMManager::convert_openai_tool_call(&tool_call)
+            .expect("empty string args should be accepted as no-arg call");
+        assert_eq!(converted.tool_name, "group_list");
+        assert_eq!(converted.args_json, json!({}));
+    }
+
+    #[test]
+    fn convert_openai_tool_call_treats_whitespace_arguments_as_empty_object() {
+        let tool_call = json!({
+            "id": "call_2",
+            "type": "function",
+            "function": {
+                "name": "tag_list_all",
+                "arguments": "   \n\t  "
+            }
+        });
+
+        let converted = LLMManager::convert_openai_tool_call(&tool_call)
+            .expect("whitespace args should be accepted as no-arg call");
+        assert_eq!(converted.tool_name, "tag_list_all");
+        assert_eq!(converted.args_json, json!({}));
+    }
 }
 
 impl IncrementalJsonArrayParser {
@@ -3690,6 +3724,16 @@ impl LLMManager {
         }
 
         let arguments_str = arguments_value.as_str().unwrap_or("{}");
+
+        // 兼容无参工具调用：部分模型会返回空字符串/空白字符串作为 arguments。
+        // 这不是截断错误，应按空对象处理。
+        if arguments_str.trim().is_empty() {
+            return Ok(crate::models::ToolCall {
+                id,
+                tool_name,
+                args_json: Value::Object(serde_json::Map::new()),
+            });
+        }
 
         // 解析 arguments 字符串为 JSON
         // 如果解析失败（常见于 LLM 输出被 max_tokens 截断），尝试修复截断的 JSON

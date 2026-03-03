@@ -504,8 +504,7 @@ pub async fn get_debug_logs_info(
 #[tauri::command]
 pub async fn clear_debug_logs(state: State<'_, AppState>) -> Result<usize> {
     let data_dir = state.file_manager.get_app_data_dir();
-    crate::debug_log_service::clear_all_debug_logs(data_dir)
-        .map_err(|e| AppError::unknown(e))
+    crate::debug_log_service::clear_all_debug_logs(data_dir).map_err(|e| AppError::unknown(e))
 }
 
 /// 清理超过指定天数的旧调试日志

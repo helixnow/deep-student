@@ -231,6 +231,87 @@ jobs:
             src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
             src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe.sig
 
+  build-linux:
+    needs: [verify]
+    runs-on: ubuntu-24.04
+    env:
+      NODE_OPTIONS: '--max-old-space-size=4096'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ needs.verify.outputs.tag_name }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            rpm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-gnu
+
+      - name: Setup protoc
+        uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate version info
+        run: node scripts/generate-version.mjs
+
+      - name: Build Tauri app
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          SILICONFLOW_BUILTIN_TEXT_KEY: ${{ secrets.SILICONFLOW_BUILTIN_TEXT_KEY }}
+          SILICONFLOW_BUILTIN_VISION_KEY: ${{ secrets.SILICONFLOW_BUILTIN_VISION_KEY }}
+          SILICONFLOW_BUILTIN_EMBED_KEY: ${{ secrets.SILICONFLOW_BUILTIN_EMBED_KEY }}
+        run: npx tauri build --target x86_64-unknown-linux-gnu --bundles deb,rpm,appimage
+
+      - name: Rename updater artifacts with arch suffix
+        run: |
+          BUNDLE_DIR="src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/appimage"
+          for f in "$BUNDLE_DIR"/*.AppImage.tar.gz; do
+            [ -f "$f" ] || continue
+            BASE=$(basename "$f" .AppImage.tar.gz | tr ' ' '.')
+            mv "$f" "$BUNDLE_DIR/${BASE}_x86_64.AppImage.tar.gz"
+            [ -f "$f.sig" ] && mv "$f.sig" "$BUNDLE_DIR/${BASE}_x86_64.AppImage.tar.gz.sig"
+          done
+          echo "📦 Linux bundle artifacts:"
+          ls -la src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-x86_64
+          path: |
+            src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/deb/*.deb
+            src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/rpm/*.rpm
+            src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/appimage/*.AppImage
+            src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/appimage/*.AppImage.tar.gz
+            src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/appimage/*.AppImage.tar.gz.sig
+
   build-android:
     needs: [verify]
     runs-on: ubuntu-latest
@@ -401,12 +482,13 @@ jobs:
   # 发布 (全平台构建完成后统一发布)
   # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   publish:
-    needs: [verify, build-macos, build-windows, build-android]
+    needs: [verify, build-macos, build-windows, build-linux, build-android]
     if: |
       always() &&
       needs.verify.result == 'success' &&
       needs.build-macos.result == 'success' &&
       needs.build-windows.result == 'success' &&
+      needs.build-linux.result == 'success' &&
       !cancelled()
     runs-on: ubuntu-latest
     permissions:
@@ -485,6 +567,27 @@ jobs:
             fi
           fi
 
+          LINUX_DIR="artifacts/linux-x86_64"
+          if [ -d "$LINUX_DIR" ]; then
+            TAR=$(find "$LINUX_DIR" -name "*_x86_64.AppImage.tar.gz" ! -name "*.sig" | head -1)
+            if [ -z "$TAR" ]; then
+              TAR=$(find "$LINUX_DIR" -name "*.AppImage.tar.gz" ! -name "*.sig" | head -1)
+            fi
+            SIG=""
+            if [ -n "$TAR" ] && [ -f "$TAR.sig" ]; then
+              SIG="$TAR.sig"
+            elif [ -n "$TAR" ]; then
+              SIG=$(find "$LINUX_DIR" -name "$(basename "$TAR").sig" | head -1)
+            fi
+            if [ -n "$TAR" ] && [ -n "$SIG" ]; then
+              TAR_NAME=$(basename "$TAR")
+              SIGNATURE=$(cat "$SIG")
+              PLATFORMS=$(echo "$PLATFORMS" | jq --arg url "https://github.com/$REPO/releases/download/$TAG/$TAR_NAME" \
+                --arg sig "$SIGNATURE" \
+                '. + {"linux-x86_64": {"url": $url, "signature": $sig}}')
+            fi
+          fi
+
           jq -n \
             --arg version "$VERSION" \
             --arg notes "Deep Student v$VERSION 更新" \
@@ -507,6 +610,11 @@ jobs:
           find artifacts -name "*.dmg" -exec cp {} release-files/ \;
           find artifacts -name "*.exe" -exec cp {} release-files/ \;
           find artifacts -name "*.exe.sig" -exec cp {} release-files/ \;
+          find artifacts -name "*.AppImage" -exec cp {} release-files/ \;
+          find artifacts -name "*.AppImage.tar.gz" -exec cp {} release-files/ \;
+          find artifacts -name "*.AppImage.tar.gz.sig" -exec cp {} release-files/ \;
+          find artifacts -name "*.deb" -exec cp {} release-files/ \;
+          find artifacts -name "*.rpm" -exec cp {} release-files/ \;
           find artifacts -name "*.apk" -exec cp {} release-files/ \;
 
           echo "📦 Release files:"
@@ -539,6 +647,8 @@ jobs:
             case "$NAME" in
               *.sig)  CT="application/pgp-signature" ;;
               *.dmg)  CT="application/x-apple-diskimage" ;;
+              *.deb)  CT="application/vnd.debian.binary-package" ;;
+              *.rpm)  CT="application/x-rpm" ;;
               *.apk)  CT="application/vnd.android.package-archive" ;;
               *)      CT="application/octet-stream" ;;
             esac

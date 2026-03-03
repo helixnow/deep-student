@@ -331,8 +331,8 @@ pub fn clear_all_debug_logs(app_data_dir: &Path) -> Result<usize, String> {
 /// 删除超过 max_age_days 天的日志
 pub fn cleanup_old_debug_logs(app_data_dir: &Path, max_age_days: u32) -> Result<usize, String> {
     let files = list_log_files(app_data_dir);
-    let cutoff = std::time::SystemTime::now()
-        - std::time::Duration::from_secs(max_age_days as u64 * 86400);
+    let cutoff =
+        std::time::SystemTime::now() - std::time::Duration::from_secs(max_age_days as u64 * 86400);
     let mut removed = 0;
 
     for f in &files {

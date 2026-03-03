@@ -37,9 +37,7 @@ use super::strip_tool_namespace;
 use crate::chat_v2::database::ChatV2Database;
 use crate::chat_v2::events::event_types;
 use crate::chat_v2::repo::ChatV2Repo;
-use crate::chat_v2::types::{
-    ChatSession, PersistStatus, SessionGroup, ToolCall, ToolResultInfo,
-};
+use crate::chat_v2::types::{ChatSession, PersistStatus, SessionGroup, ToolCall, ToolResultInfo};
 
 /// 会话管理变更事件名（前端监听以刷新侧边栏）
 const SESSION_MGMT_EVENT: &str = "session_management_change";
@@ -107,7 +105,12 @@ impl SessionToolExecutor {
         ctx.chat_v2_db
             .as_ref()
             .map(|arc| arc.as_ref())
-            .ok_or_else(|| format!("{} chat_v2_db not available in ExecutionContext", LOG_PREFIX))
+            .ok_or_else(|| {
+                format!(
+                    "{} chat_v2_db not available in ExecutionContext",
+                    LOG_PREFIX
+                )
+            })
     }
 
     // ========================================================================
@@ -129,17 +132,12 @@ impl SessionToolExecutor {
             .and_then(|v| v.as_u64())
             .unwrap_or(30)
             .min(100) as u32;
-        let offset = args
-            .get("offset")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(0) as u32;
+        let offset = args.get("offset").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
 
-        let sessions =
-            ChatV2Repo::list_sessions_with_conn(&conn, status, group_id, limit, offset)
-                .map_err(|e| e.to_string())?;
-        let total =
-            ChatV2Repo::count_sessions_with_conn(&conn, status, group_id)
-                .map_err(|e| e.to_string())?;
+        let sessions = ChatV2Repo::list_sessions_with_conn(&conn, status, group_id, limit, offset)
+            .map_err(|e| e.to_string())?;
+        let total = ChatV2Repo::count_sessions_with_conn(&conn, status, group_id)
+            .map_err(|e| e.to_string())?;
 
         let tags_map = if include_tags {
             let ids: Vec<String> = sessions.iter().map(|s| s.id.clone()).collect();
@@ -185,8 +183,7 @@ impl SessionToolExecutor {
             .unwrap_or(20)
             .min(50) as u32;
 
-        let results =
-            ChatV2Repo::search_content(&conn, query, limit).map_err(|e| e.to_string())?;
+        let results = ChatV2Repo::search_content(&conn, query, limit).map_err(|e| e.to_string())?;
 
         let items: Vec<Value> = results
             .iter()
@@ -222,8 +219,7 @@ impl SessionToolExecutor {
             .map_err(|e| e.to_string())?
             .ok_or_else(|| format!("会话不存在: {}", session_id))?;
 
-        let tags =
-            ChatV2Repo::get_session_tags(&conn, session_id).map_err(|e| e.to_string())?;
+        let tags = ChatV2Repo::get_session_tags(&conn, session_id).map_err(|e| e.to_string())?;
 
         let group_name = if let Some(ref gid) = session.group_id {
             ChatV2Repo::get_group_with_conn(&conn, gid)
@@ -302,28 +298,23 @@ impl SessionToolExecutor {
         let db = Self::get_db(ctx)?;
         let conn = db.get_conn_safe().map_err(|e| e.to_string())?;
 
-        let active =
-            ChatV2Repo::count_sessions_with_conn(&conn, Some("active"), None)
-                .map_err(|e| e.to_string())?;
-        let archived =
-            ChatV2Repo::count_sessions_with_conn(&conn, Some("archived"), None)
-                .map_err(|e| e.to_string())?;
-        let deleted =
-            ChatV2Repo::count_sessions_with_conn(&conn, Some("deleted"), None)
-                .map_err(|e| e.to_string())?;
+        let active = ChatV2Repo::count_sessions_with_conn(&conn, Some("active"), None)
+            .map_err(|e| e.to_string())?;
+        let archived = ChatV2Repo::count_sessions_with_conn(&conn, Some("archived"), None)
+            .map_err(|e| e.to_string())?;
+        let deleted = ChatV2Repo::count_sessions_with_conn(&conn, Some("deleted"), None)
+            .map_err(|e| e.to_string())?;
 
         let groups = ChatV2Repo::list_groups_with_conn(&conn, Some("active"), None)
             .map_err(|e| e.to_string())?;
 
         let ungrouped =
-            ChatV2Repo::count_sessions_with_conn(&conn, Some("active"), Some(""))
-                .unwrap_or(0);
+            ChatV2Repo::count_sessions_with_conn(&conn, Some("active"), Some("")).unwrap_or(0);
 
         let mut group_stats: Vec<Value> = Vec::new();
         for g in &groups {
-            let count =
-                ChatV2Repo::count_sessions_with_conn(&conn, Some("active"), Some(&g.id))
-                    .unwrap_or(0);
+            let count = ChatV2Repo::count_sessions_with_conn(&conn, Some("active"), Some(&g.id))
+                .unwrap_or(0);
             group_stats.push(json!({
                 "groupId": g.id,
                 "groupName": g.name,
@@ -555,14 +546,8 @@ impl SessionToolExecutor {
                 args.get("description").and_then(|v| v.as_str()),
                 existing.description,
             ),
-            icon: merge_opt(
-                args.get("icon").and_then(|v| v.as_str()),
-                existing.icon,
-            ),
-            color: merge_opt(
-                args.get("color").and_then(|v| v.as_str()),
-                existing.color,
-            ),
+            icon: merge_opt(args.get("icon").and_then(|v| v.as_str()), existing.icon),
+            color: merge_opt(args.get("color").and_then(|v| v.as_str()), existing.color),
             updated_at: chrono::Utc::now(),
             ..existing
         };

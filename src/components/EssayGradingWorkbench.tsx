@@ -415,7 +415,7 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({ on
       // ★ JS finally 总会执行，用 flag 区分"重试接管"和"真正结束"
       let scheduledRetry = false;
 
-      ocrExtractText({ imageBase64: img.base64 })
+      ocrExtractText({ imageBase64: img.dataUrl })
         .then(text => {
           // ★ 时序控制：通过 ref 同步检查图片是否仍活跃（未被用户删除）
           if (!activeImageIdsRef.current.has(img.id)) return;

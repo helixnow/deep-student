@@ -124,6 +124,17 @@ async fn run_single_ocr_request(
 }
 
 impl LLMManager {
+    fn detect_mime_from_image_bytes(data: &[u8]) -> Option<&'static str> {
+        match image::guess_format(data).ok()? {
+            image::ImageFormat::Png => Some("image/png"),
+            image::ImageFormat::Jpeg => Some("image/jpeg"),
+            image::ImageFormat::WebP => Some("image/webp"),
+            image::ImageFormat::Gif => Some("image/gif"),
+            image::ImageFormat::Bmp => Some("image/bmp"),
+            _ => None,
+        }
+    }
+
     pub async fn get_pdf_ocr_model_config(&self) -> Result<ApiConfig> {
         let engine_type = self.get_ocr_engine_type().await;
         let config = self.get_ocr_model_config().await?;
@@ -165,16 +176,18 @@ impl LLMManager {
         let result = tokio::task::spawn_blocking(move || -> Result<(String, usize)> {
             let data = std::fs::read(&abs_path)
                 .map_err(|e| AppError::file_system(format!("读取试卷图片失败: {}", e)))?;
+            let detected_mime =
+                Self::detect_mime_from_image_bytes(&data).unwrap_or(default_mime.as_str());
 
             if data.len() <= EXAM_SEGMENT_MAX_IMAGE_BYTES {
                 let encoded = general_purpose::STANDARD.encode(&data);
                 return Ok((
-                    format!("data:{};base64,{}", default_mime, encoded),
+                    format!("data:{};base64,{}", detected_mime, encoded),
                     data.len(),
                 ));
             }
 
-            let image = image::open(&abs_path)
+            let image = image::load_from_memory(&data)
                 .map_err(|e| AppError::file_system(format!("加载试卷图片失败: {}", e)))?;
             let (width, height) = image.dimensions();
             let resized =

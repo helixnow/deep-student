@@ -680,7 +680,12 @@ pub async fn vfs_list_textbooks(
         params.offset
     );
 
-    if let Some(search) = params.search.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+    if let Some(search) = params
+        .search
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
         VfsTextbookRepo::search_textbooks(&vfs_db, search, params.limit, params.offset)
             .map_err(|e| e.to_string())
     } else {

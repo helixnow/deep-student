@@ -190,6 +190,17 @@ const AsyncCitationImage: React.FC<{
 
 // 东亚文字检测：连续 2+ 个 CJK 表意文字 / 日文假名 / 韩文时视为自然语言而非数学
 const CJK_CONSECUTIVE_RE = /[\u3040-\u9fff\uac00-\ud7af]{2,}/;
+const CJK_CHAR_CLASS = '\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uac00-\ud7af';
+
+const fixCjkAdjacentBoldSyntax = (content: string): string => {
+  // 兼容「汉字**加粗**汉字」与「汉字__加粗__汉字」：
+  // 在两侧中文之间补空格，避免被 markdown 解析为普通文本。
+  const strongAsterisk = new RegExp(`([${CJK_CHAR_CLASS}])(\\*\\*[^\\n*]+?\\*\\*)([${CJK_CHAR_CLASS}])`, 'g');
+  const strongUnderscore = new RegExp(`([${CJK_CHAR_CLASS}])(__[^\\n_]+?__)([${CJK_CHAR_CLASS}])`, 'g');
+  return content
+    .replace(strongAsterisk, '$1 $2 $3')
+    .replace(strongUnderscore, '$1 $2 $3');
+};
 
 // 预处理函数：处理LaTeX和空行
 const preprocessContent = (content: string): string => {
@@ -206,6 +217,7 @@ const preprocessContent = (content: string): string => {
     codeBlockPlaceholders.push(match);
     return `\x00CB${codeBlockPlaceholders.length - 1}\x00`;
   });
+  processedContent = fixCjkAdjacentBoldSyntax(processedContent);
   processedContent = processedContent.replace(
     /(?<!\\)\\\((.+?)(?<!\\)\\\)/g,
     (match, math) => {

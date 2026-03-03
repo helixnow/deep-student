@@ -59,9 +59,7 @@ pub(crate) fn log_llm_request_audit(
     }
 
     if let Some(c) = persist_config {
-        crate::debug_log_service::write_debug_log_entry(
-            &c.log_dir, tag, model, url, "", body,
-        );
+        crate::debug_log_service::write_debug_log_entry(&c.log_dir, tag, model, url, "", body);
     }
 }
 
@@ -104,7 +102,12 @@ pub(crate) fn log_and_emit_llm_request(
     let log_file_path = persist_config
         .and_then(|c| {
             crate::debug_log_service::write_debug_log_entry(
-                &c.log_dir, tag, model, url, stream_event, body,
+                &c.log_dir,
+                tag,
+                model,
+                url,
+                stream_event,
+                body,
             )
         })
         .map(|p| p.to_string_lossy().to_string());
@@ -3115,7 +3118,13 @@ impl LLMManager {
             .map_err(|e| Self::provider_error("聊天请求构建失败", e))?;
 
         let debug_persist = self.build_debug_persist_config();
-        log_llm_request_audit("CHAT_V2_STREAM", &preq.url, &config.model, &request_body, debug_persist.as_ref());
+        log_llm_request_audit(
+            "CHAT_V2_STREAM",
+            &preq.url,
+            &config.model,
+            &request_body,
+            debug_persist.as_ref(),
+        );
 
         let mut request_builder = self.client
             .post(&preq.url)
@@ -3331,7 +3340,13 @@ impl LLMManager {
             )
             .map_err(|e| Self::provider_error("生成聊天元数据请求构建失败", e))?;
 
-        log_llm_request_audit("METADATA", &preq.url, &config.model, &request_body, self.build_debug_persist_config().as_ref());
+        log_llm_request_audit(
+            "METADATA",
+            &preq.url,
+            &config.model,
+            &request_body,
+            self.build_debug_persist_config().as_ref(),
+        );
 
         let mut request_builder = self.client.post(&preq.url);
         for (key, value) in preq.headers.iter() {
@@ -3972,7 +3987,13 @@ impl LLMManager {
             )
             .map_err(|e| Self::provider_error("RAW prompt 请求构建失败", e))?;
 
-        log_llm_request_audit("RAW_PROMPT", &preq.url, &config.model, &request_body, self.build_debug_persist_config().as_ref());
+        log_llm_request_audit(
+            "RAW_PROMPT",
+            &preq.url,
+            &config.model,
+            &request_body,
+            self.build_debug_persist_config().as_ref(),
+        );
 
         let mut request_builder = self.client
             .post(&preq.url)
@@ -4182,7 +4203,13 @@ impl LLMManager {
             )
             .map_err(|e| Self::provider_error("OCR RAW prompt 请求构建失败", e))?;
 
-        log_llm_request_audit("OCR_RAW", &preq.url, &config.model, &request_body, self.build_debug_persist_config().as_ref());
+        log_llm_request_audit(
+            "OCR_RAW",
+            &preq.url,
+            &config.model,
+            &request_body,
+            self.build_debug_persist_config().as_ref(),
+        );
 
         let mut request_builder = self
             .client
@@ -4292,7 +4319,13 @@ impl LLMManager {
             .build_request(&config.base_url, &api_key, &config.model, &request_body)
             .map_err(|e| Self::provider_error("OCR请求构建失败", e))?;
 
-        log_llm_request_audit("OCR_PAGES", &preq.url, &config.model, &request_body, self.build_debug_persist_config().as_ref());
+        log_llm_request_audit(
+            "OCR_PAGES",
+            &preq.url,
+            &config.model,
+            &request_body,
+            self.build_debug_persist_config().as_ref(),
+        );
 
         let mut header_map = reqwest::header::HeaderMap::new();
         for (k, v) in preq.headers.iter() {
@@ -4517,7 +4550,13 @@ impl LLMManager {
             )
             .map_err(|e| Self::provider_error("Anki 制卡请求构建失败", e))?;
 
-        log_llm_request_audit("ANKI_CARD", &preq.url, &config.model, &request_body, self.build_debug_persist_config().as_ref());
+        log_llm_request_audit(
+            "ANKI_CARD",
+            &preq.url,
+            &config.model,
+            &request_body,
+            self.build_debug_persist_config().as_ref(),
+        );
 
         let mut request_builder = self.client
             .post(&preq.url)

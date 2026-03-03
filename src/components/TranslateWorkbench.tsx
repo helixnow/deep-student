@@ -247,8 +247,7 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
         reader.onload = async (e) => {
           try {
             const dataUrl = e.target?.result as string;
-            const base64Content = dataUrl.split(',')[1];
-            const extracted = await ocrExtractText({ imageBase64: base64Content });
+            const extracted = await ocrExtractText({ imageBase64: dataUrl });
             handleSetSourceText(cleanOcrText(extracted));
             showGlobalNotification('success', t('translation:toast.ocr_success'));
           } catch (error: unknown) {

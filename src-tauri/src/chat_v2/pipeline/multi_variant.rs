@@ -689,7 +689,8 @@ impl ChatV2Pipeline {
         trim_history_by_token_budget(&mut chat_history, max_tokens);
 
         // 构建当前用户消息
-        let current_user_message = self.build_variant_user_message(&user_content, &attachments, &user_context_refs);
+        let current_user_message =
+            self.build_variant_user_message(&user_content, &attachments, &user_context_refs);
 
         // 创建 LLM 适配器（使用变体的事件发射）
         let enable_thinking = options.enable_thinking.unwrap_or(true);
@@ -891,7 +892,8 @@ impl ChatV2Pipeline {
             .map(|v| (v as usize).min(DEFAULT_MAX_HISTORY_TOKENS))
             .unwrap_or(DEFAULT_MAX_HISTORY_TOKENS);
         trim_history_by_token_budget(&mut chat_history, max_tokens_budget);
-        let current_user_message = self.build_variant_user_message(&user_content, &attachments, &user_context_refs);
+        let current_user_message =
+            self.build_variant_user_message(&user_content, &attachments, &user_context_refs);
 
         let enable_thinking = options.enable_thinking.unwrap_or(true);
         let max_input_tokens_override = options.context_limit.map(|v| v as usize);
