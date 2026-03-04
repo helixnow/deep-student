@@ -1267,6 +1267,7 @@ fn scan_directory_stats(dir: &Path) -> Result<AssetTypeStats, AssetBackupError> 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Write;
     use tempfile::TempDir;
 
     fn create_test_file(dir: &Path, name: &str, content: &[u8]) {

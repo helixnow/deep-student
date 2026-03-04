@@ -51,6 +51,30 @@ export interface PolishItem {
 }
 
 /**
+ * 宽松提取属性值：
+ * 允许属性值内部出现同种引号字符（例如：text="包含 "引号" 的内容"）。
+ * 结束引号判定：后续是空白+下一个属性，或字符串结束。
+ */
+function extractAttributeValue(attrs: string, attrName: string): string | undefined {
+  const attrStartRegex = new RegExp(`${attrName}\\s*=\\s*(['"])`, 'i');
+  const startMatch = attrStartRegex.exec(attrs);
+  if (!startMatch || startMatch.index == null) return undefined;
+
+  const quoteChar = startMatch[1];
+  const valueStart = startMatch.index + startMatch[0].length;
+
+  for (let i = valueStart; i < attrs.length; i += 1) {
+    if (attrs[i] !== quoteChar) continue;
+    const tail = attrs.slice(i + 1);
+    if (/^\s*$/.test(tail) || /^\s+[A-Za-z_][\w:.-]*\s*=/.test(tail)) {
+      return attrs.slice(valueStart, i);
+    }
+  }
+
+  return attrs.slice(valueStart).trim() || undefined;
+}
+
+/**
  * 流式解析结果
  */
 export interface StreamingParseResult {
@@ -113,7 +137,7 @@ function parseCompleteMarkers(text: string): { markers: StreamingMarker[], remai
   // 解析各类标记
   // del
   let match;
-  const delRegex = /<del(?:\s+reason="([^"]*)")?>([\s\S]*?)<\/del>/gi;
+  const delRegex = /<del(?:\s+([\s\S]*?))?>([\s\S]*?)<\/del>/gi;
   while ((match = delRegex.exec(text)) !== null) {
     allMatches.push({
       index: match.index,
@@ -121,7 +145,7 @@ function parseCompleteMarkers(text: string): { markers: StreamingMarker[], remai
       marker: {
         type: 'del',
         content: match[2],
-        reason: match[1] || undefined,
+        reason: extractAttributeValue(match[1] || '', 'reason'),
         isComplete: true,
       },
     });
@@ -142,24 +166,26 @@ function parseCompleteMarkers(text: string): { markers: StreamingMarker[], remai
   }
   
   // replace
-  const replaceRegex = /<replace\s+old="([^"]*)"\s+new="([^"]*)"(?:\s+reason="([^"]*)")?\/>/gi;
+  const replaceRegex = /<replace\s+([\s\S]*?)\/>/gi;
   while ((match = replaceRegex.exec(text)) !== null) {
+    const oldText = extractAttributeValue(match[1] || '', 'old');
+    const newText = extractAttributeValue(match[1] || '', 'new');
     allMatches.push({
       index: match.index,
       length: match[0].length,
       marker: {
         type: 'replace',
-        content: `${match[1]} → ${match[2]}`,
-        oldText: match[1],
-        newText: match[2],
-        reason: match[3] || undefined,
+        content: `${oldText ?? ''} → ${newText ?? ''}`,
+        oldText,
+        newText,
+        reason: extractAttributeValue(match[1] || '', 'reason'),
         isComplete: true,
       },
     });
   }
   
   // note
-  const noteRegex = /<note\s+text="([^"]*)">([\s\S]*?)<\/note>/gi;
+  const noteRegex = /<note\s+([\s\S]*?)>([\s\S]*?)<\/note>/gi;
   while ((match = noteRegex.exec(text)) !== null) {
     allMatches.push({
       index: match.index,
@@ -167,7 +193,7 @@ function parseCompleteMarkers(text: string): { markers: StreamingMarker[], remai
       marker: {
         type: 'note',
         content: match[2],
-        comment: match[1],
+        comment: extractAttributeValue(match[1] || '', 'text'),
         isComplete: true,
       },
     });
@@ -188,19 +214,18 @@ function parseCompleteMarkers(text: string): { markers: StreamingMarker[], remai
   }
   
   // err (supports both attribute orders: type/explanation or explanation/type)
-  const errRegex = /<err\s+((?:(?:type|explanation)="[^"]*?"\s*)+)>([\s\S]*?)<\/err>/gi;
+  const errRegex = /<err\s+([\s\S]*?)>([\s\S]*?)<\/err>/gi;
   while ((match = errRegex.exec(text)) !== null) {
-    const attrs = match[1];
-    const typeMatch = attrs.match(/type="([^"]*?)"/);
-    const explMatch = attrs.match(/explanation="([^"]*?)"/);
+    const attrs = match[1] || '';
+    const extractedType = extractAttributeValue(attrs, 'type');
     allMatches.push({
       index: match.index,
       length: match[0].length,
       marker: {
         type: 'err',
         content: match[2],
-        errorType: (typeMatch?.[1] || 'grammar') as StreamingMarker['errorType'],
-        explanation: explMatch?.[1] || undefined,
+        errorType: (extractedType || 'grammar') as StreamingMarker['errorType'],
+        explanation: extractAttributeValue(attrs, 'explanation'),
         isComplete: true,
       },
     });

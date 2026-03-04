@@ -13,6 +13,7 @@
 pub mod custom_modes;
 pub mod events;
 pub mod pipeline;
+pub mod text_stats;
 pub mod types;
 
 use tauri::{State, Window};

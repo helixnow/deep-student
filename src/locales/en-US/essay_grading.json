@@ -57,7 +57,10 @@
     "cancel_confirm_message": "Are you sure you want to cancel? Generated content will not be saved."
   },
   "stats": {
-    "characters": "Characters"
+    "characters": "Characters",
+    "han_chars": "Chinese chars",
+    "english_words": "English words",
+    "punctuation_total": "Punctuation"
   },
   "prompt_editor": {
     "title": "Custom Grading Prompt",

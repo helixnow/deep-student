@@ -21,6 +21,7 @@ import {
 import UnifiedDragDropZone, { FILE_TYPES } from '../shared/UnifiedDragDropZone';
 import { UnifiedModelSelector } from '../shared/UnifiedModelSelector';
 import type { GradingMode, ModelInfo } from '@/essay-grading/essayGradingApi';
+import type { EssayTextStats } from '@/essay-grading/textStats';
 import type { UploadedImage } from '../EssayGradingWorkbench';
 import { cn } from '@/lib/utils';
 import { showGlobalNotification } from '../UnifiedNotification';
@@ -58,6 +59,7 @@ interface InputPanelProps {
   onGrade: () => void;
   onCancelGrading: () => void;
   charCount: number;
+  textStats: EssayTextStats;
   // 多轮相关
   currentRound: number;
   onOpenSettings?: () => void;
@@ -131,6 +133,7 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
   onGrade,
   onCancelGrading,
   charCount,
+  textStats,
   currentRound,
   onOpenSettings,
   roundNavigation,
@@ -157,6 +160,7 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
   const defaultModel = models.find(m => m.is_default);
   const topicImageCount = topicImages?.length ?? 0;
   const hasTopicContent = Boolean(topicText?.trim()) || topicImageCount > 0;
+  const getUnicodeCharCount = (text: string): number => Array.from(text).length;
 
   // ---- 自研滚动条：合并转发 ref + textarea 自动调高 ----
   const internalRef = React.useRef<HTMLTextAreaElement>(null);
@@ -276,7 +280,11 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
           {/* 移动端：字符统计 + 清空 + 批改按钮 */}
           <div className="sm:hidden flex items-center gap-1">
             <span className="text-xs text-muted-foreground/60 tabular-nums">
-              {charCount}
+              {t('essay_grading:stats.han_chars')}: {textStats.hanChars.toLocaleString()}
+              {' · '}
+              {t('essay_grading:stats.english_words')}: {textStats.englishWords.toLocaleString()}
+              {' · '}
+              {t('essay_grading:stats.punctuation_total')}: {textStats.punctuationTotal.toLocaleString()}
             </span>
             {safeInputText && !isGrading && (
               <NotionButton variant="ghost" size="icon" iconOnly onClick={onClear} aria-label={t('common:aria.clear_content')} className="!h-7 !w-7 text-muted-foreground/60 hover:text-foreground hover:bg-muted/50">
@@ -461,13 +469,12 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
               readOnly={isGrading}
               onChange={(e) => {
                 const newValue = e.target.value;
-                if (newValue.length <= ESSAY_MAX_CHARS) {
+                if (getUnicodeCharCount(newValue) <= ESSAY_MAX_CHARS) {
                   setInputText(newValue);
-                } else if ((inputText ?? '').length < ESSAY_MAX_CHARS) {
+                } else if (getUnicodeCharCount(inputText ?? '') < ESSAY_MAX_CHARS) {
                   showGlobalNotification('warning', t('essay_grading:char_limit.reached', { max: ESSAY_MAX_CHARS.toLocaleString() }));
                 }
               }}
-              maxLength={ESSAY_MAX_CHARS}
               placeholder={t('essay_grading:input_section.placeholder')}
               className="w-full min-h-full resize-none overflow-hidden px-5 py-5 text-[15px] leading-[1.8] !border-0 !shadow-none !rounded-none !bg-transparent focus:!ring-0 focus:!ring-offset-0 focus-visible:!ring-0 focus-visible:!ring-offset-0 focus:!outline-none focus-visible:!outline-none selection:bg-primary/15 placeholder:text-muted-foreground/40"
             />
@@ -488,6 +495,12 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
                 ? "text-orange-500 dark:text-orange-400"
                 : "text-muted-foreground/50"
             )}>
+              {t('essay_grading:stats.han_chars')}: {textStats.hanChars.toLocaleString()}
+              {' · '}
+              {t('essay_grading:stats.english_words')}: {textStats.englishWords.toLocaleString()}
+              {' · '}
+              {t('essay_grading:stats.punctuation_total')}: {textStats.punctuationTotal.toLocaleString()}
+              {' · '}
               {charCount.toLocaleString()} / {ESSAY_MAX_CHARS.toLocaleString()} {t('essay_grading:stats.characters')}
             </span>
             {safeInputText && (

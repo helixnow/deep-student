@@ -4750,8 +4750,252 @@ mod tests {
                 "SELECT COUNT(*) FROM __change_log WHERE sync_version = 0",
                 [],
                 |r| r.get(0),
+        )
+        .unwrap();
+        assert_eq!(unsynced, 0, "echo logs should be marked as synced");
+    }
+
+    #[test]
+    fn test_detect_record_conflicts_with_diverged_sync_versions() {
+        let local_records = vec![RecordSnapshot {
+            table_name: "messages".to_string(),
+            record_id: "msg-1".to_string(),
+            local_version: 12,
+            sync_version: 10,
+            updated_at: "2026-02-10T10:00:00Z".to_string(),
+            deleted_at: None,
+            data: serde_json::json!({"content": "local edit"}),
+        }];
+        let cloud_records = vec![RecordSnapshot {
+            table_name: "messages".to_string(),
+            record_id: "msg-1".to_string(),
+            local_version: 21,
+            sync_version: 20,
+            updated_at: "2026-02-10T10:01:00Z".to_string(),
+            deleted_at: None,
+            data: serde_json::json!({"content": "cloud edit"}),
+        }];
+
+        let conflicts =
+            SyncManager::detect_record_conflicts("chat_v2", &local_records, &cloud_records);
+        assert_eq!(conflicts.len(), 1, "diverged sync_version should still detect conflict");
+    }
+
+    #[test]
+    fn test_detect_record_conflicts_same_data_not_conflict() {
+        let local_records = vec![RecordSnapshot {
+            table_name: "messages".to_string(),
+            record_id: "msg-1".to_string(),
+            local_version: 12,
+            sync_version: 10,
+            updated_at: "2026-02-10T10:00:00Z".to_string(),
+            deleted_at: None,
+            data: serde_json::json!({"content": "same"}),
+        }];
+        let cloud_records = vec![RecordSnapshot {
+            table_name: "messages".to_string(),
+            record_id: "msg-1".to_string(),
+            local_version: 21,
+            sync_version: 20,
+            updated_at: "2026-02-10T10:01:00Z".to_string(),
+            deleted_at: None,
+            data: serde_json::json!({"content": "same"}),
+        }];
+
+        let conflicts =
+            SyncManager::detect_record_conflicts("chat_v2", &local_records, &cloud_records);
+        assert!(
+            conflicts.is_empty(),
+            "same payload should not be treated as conflict even when both modified"
+        );
+    }
+
+    #[test]
+    fn test_apply_delete_uses_tombstone_when_column_exists() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            r#"
+            CREATE TABLE test_records (
+                id TEXT PRIMARY KEY,
+                content TEXT,
+                deleted_at TEXT
+            );
+            INSERT INTO test_records (id, content, deleted_at)
+            VALUES ('r1', 'alive', NULL);
+            "#,
+        )
+        .unwrap();
+
+        let changes = vec![SyncChangeWithData {
+            table_name: "test_records".to_string(),
+            record_id: "r1".to_string(),
+            operation: ChangeOperation::Delete,
+            data: None,
+            changed_at: "2026-02-10T00:00:00Z".to_string(),
+            change_log_id: None,
+            database_name: None,
+            suppress_change_log: None,
+        }];
+
+        let result = SyncManager::apply_downloaded_changes(&conn, &changes, None).unwrap();
+        assert_eq!(result.success_count, 1);
+
+        let row_state: (i64, Option<String>) = conn
+            .query_row(
+                "SELECT COUNT(*), MAX(deleted_at) FROM test_records WHERE id = 'r1'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
             )
             .unwrap();
-        assert_eq!(unsynced, 0, "echo logs should be marked as synced");
+        assert_eq!(row_state.0, 1, "tombstone delete should keep row");
+        assert!(row_state.1.is_some(), "deleted_at should be set");
+    }
+
+    #[test]
+    fn test_apply_downloaded_changes_rolls_back_on_fk_violation() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            r#"
+            PRAGMA foreign_keys = ON;
+            CREATE TABLE parent_records (
+                id TEXT PRIMARY KEY
+            );
+            CREATE TABLE child_records (
+                id TEXT PRIMARY KEY,
+                parent_id TEXT NOT NULL,
+                FOREIGN KEY(parent_id) REFERENCES parent_records(id)
+            );
+            CREATE TABLE test_records (
+                id TEXT PRIMARY KEY,
+                content TEXT
+            );
+            "#,
+        )
+        .unwrap();
+
+        let changes = vec![
+            SyncChangeWithData {
+                table_name: "test_records".to_string(),
+                record_id: "safe-1".to_string(),
+                operation: ChangeOperation::Insert,
+                data: Some(serde_json::json!({
+                    "id": "safe-1",
+                    "content": "should rollback"
+                })),
+                changed_at: "2026-02-10T00:00:00Z".to_string(),
+                change_log_id: None,
+                database_name: None,
+                suppress_change_log: None,
+            },
+            SyncChangeWithData {
+                table_name: "child_records".to_string(),
+                record_id: "child-1".to_string(),
+                operation: ChangeOperation::Insert,
+                data: Some(serde_json::json!({
+                    "id": "child-1",
+                    "parent_id": "missing-parent"
+                })),
+                changed_at: "2026-02-10T00:00:01Z".to_string(),
+                change_log_id: None,
+                database_name: None,
+                suppress_change_log: None,
+            },
+        ];
+
+        let result = SyncManager::apply_downloaded_changes(&conn, &changes, None);
+        assert!(result.is_err(), "fk violation should fail entire batch");
+
+        let test_records_count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM test_records", [], |row| row.get(0))
+            .unwrap();
+        let child_records_count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM child_records", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(
+            test_records_count, 0,
+            "transaction should rollback previously applied records"
+        );
+        assert_eq!(child_records_count, 0);
+    }
+
+    #[test]
+    fn test_suppress_change_log_does_not_mark_existing_user_update() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            r#"
+            CREATE TABLE test_records (
+                id TEXT PRIMARY KEY,
+                content TEXT,
+                updated_at TEXT
+            );
+            CREATE TABLE __change_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                table_name TEXT NOT NULL,
+                record_id TEXT NOT NULL,
+                operation TEXT NOT NULL,
+                changed_at TEXT NOT NULL DEFAULT (datetime('now')),
+                sync_version INTEGER DEFAULT 0
+            );
+            CREATE TRIGGER trg_echo_insert
+            AFTER INSERT ON test_records
+            BEGIN
+                INSERT INTO __change_log(table_name, record_id, operation)
+                VALUES('test_records', NEW.id, 'INSERT');
+            END;
+            CREATE TRIGGER trg_echo_update
+            AFTER UPDATE ON test_records
+            BEGIN
+                INSERT INTO __change_log(table_name, record_id, operation)
+                VALUES('test_records', NEW.id, 'UPDATE');
+            END;
+            "#,
+        )
+        .unwrap();
+
+        // 首次云端回放：应只抑制回放引入的 echo 记录
+        let replay_insert = vec![SyncChangeWithData {
+            table_name: "test_records".to_string(),
+            record_id: "r1".to_string(),
+            operation: ChangeOperation::Insert,
+            data: Some(serde_json::json!({
+                "id": "r1",
+                "content": "cloud",
+                "updated_at": "2026-02-10T00:00:00Z"
+            })),
+            changed_at: "2026-02-10T00:00:00Z".to_string(),
+            change_log_id: None,
+            database_name: None,
+            suppress_change_log: Some(true),
+        }];
+        SyncManager::apply_downloaded_changes(&conn, &replay_insert, None).unwrap();
+
+        // 本地用户编辑，产生 UPDATE 日志（应该保持未同步）
+        conn.execute(
+            "UPDATE test_records SET content = 'local-edit' WHERE id = 'r1'",
+            [],
+        )
+        .unwrap();
+        let user_update_log_id: i64 = conn
+            .query_row(
+                "SELECT id FROM __change_log WHERE operation = 'UPDATE' ORDER BY id DESC LIMIT 1",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+
+        // 再次回放同一个 INSERT，验证不会误标记用户 UPDATE 记录
+        SyncManager::apply_downloaded_changes(&conn, &replay_insert, None).unwrap();
+
+        let user_sync_version: i64 = conn
+            .query_row(
+                "SELECT sync_version FROM __change_log WHERE id = ?1",
+                params![user_update_log_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            user_sync_version, 0,
+            "existing user update log must not be marked as synced by replay suppression"
+        );
     }
 }

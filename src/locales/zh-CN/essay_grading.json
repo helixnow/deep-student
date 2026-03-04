@@ -57,7 +57,10 @@
     "cancel_confirm_message": "确定要取消当前批改吗？已生成的内容将不会保存。"
   },
   "stats": {
-    "characters": "字符数"
+    "characters": "字符数",
+    "han_chars": "中文字",
+    "english_words": "英文词",
+    "punctuation_total": "标点"
   },
   "prompt_editor": {
     "title": "自定义批改提示词",

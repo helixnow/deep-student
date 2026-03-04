@@ -5,6 +5,7 @@ import { SettingsDrawer } from './SettingsDrawer';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { HorizontalResizable, VerticalResizable } from '../shared/Resizable';
 import type { GradingMode, ModelInfo } from '@/essay-grading/essayGradingApi';
+import type { EssayTextStats } from '@/essay-grading/textStats';
 import type { UploadedImage } from '../EssayGradingWorkbench';
 import { cn } from '@/lib/utils';
 
@@ -38,6 +39,7 @@ interface GradingMainProps {
   onGrade: () => void;
   onCancelGrading: () => void;
   inputCharCount: number;
+  inputTextStats: EssayTextStats;
 
   // Image Props
   uploadedImages: UploadedImage[];
@@ -101,6 +103,7 @@ export const GradingMain: React.FC<GradingMainProps> = ({
   onGrade,
   onCancelGrading,
   inputCharCount,
+  inputTextStats,
   uploadedImages,
   onRemoveImage,
   topicText,
@@ -316,6 +319,7 @@ export const GradingMain: React.FC<GradingMainProps> = ({
                   onGrade={onGrade}
                   onCancelGrading={onCancelGrading}
                   charCount={inputCharCount}
+                  textStats={inputTextStats}
                   currentRound={currentRound}
                   roundNavigation={roundNavigation}
                   uploadedImages={uploadedImages}
@@ -421,6 +425,7 @@ export const GradingMain: React.FC<GradingMainProps> = ({
                 onGrade={onGrade}
                 onCancelGrading={onCancelGrading}
                 charCount={inputCharCount}
+                textStats={inputTextStats}
                 currentRound={currentRound}
                 roundNavigation={roundNavigation}
                 onOpenSettings={() => setShowSettingsDrawer(true)}
@@ -537,6 +542,7 @@ export const GradingMain: React.FC<GradingMainProps> = ({
                 onGrade={onGrade}
                 onCancelGrading={onCancelGrading}
                 charCount={inputCharCount}
+                textStats={inputTextStats}
                 currentRound={currentRound}
                 roundNavigation={roundNavigation}
                 onOpenSettings={() => setShowSettingsDrawer(true)}

@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   EssayGradingAPI,
@@ -24,6 +24,7 @@ import { MacTopSafeDragZone } from './layout/MacTopSafeDragZone';
 import { NotionAlertDialog } from './ui/NotionDialog';
 
 import { debugLog } from '../debug-panel/debugMasterSwitch';
+import { calculateEssayTextStats } from '@/essay-grading/textStats';
 
 // 子组件
 import { GradingMain } from './essay-grading/GradingMain';
@@ -829,9 +830,10 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({ on
     gradingStream.resetState();
   }, [gradingStream]);
 
-  // 字符统计（确保防护 undefined）
-  const inputCharCount = (inputText ?? '').length;
-  const resultCharCount = (gradingResult ?? '').length;
+  // 字符统计（统一使用 Unicode 字符口径，避免 UTF-16 length 偏差）
+  const inputTextStats = useMemo(() => calculateEssayTextStats(inputText ?? ''), [inputText]);
+  const inputCharCount = inputTextStats.totalChars;
+  const resultCharCount = Array.from(gradingResult ?? '').length;
 
   return (
     <div className="w-full h-full flex-1 min-h-0 bg-[hsl(var(--background))] flex flex-col overflow-hidden">
@@ -865,6 +867,7 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({ on
           onGrade={handleGrade}
           onCancelGrading={() => gradingStream.cancelGrading()}
           inputCharCount={inputCharCount}
+          inputTextStats={inputTextStats}
           gradingResult={gradingResult}
           resultCharCount={resultCharCount}
           onCopyResult={handleCopyResult}

@@ -25,6 +25,7 @@ use crate::vfs::repos::VfsEssayRepo;
 use crate::vfs::types::VfsCreateEssayParams;
 
 use super::events::GradingEventEmitter;
+use super::text_stats::{build_stats_prompt_block, calculate_text_stats};
 use super::types::{
     canonical_mode_id, get_builtin_grading_modes, get_default_grading_mode, DimensionScore,
     GradingMode, GradingRequest, GradingResponse, ParsedScore, MARKER_INSTRUCTIONS,
@@ -515,6 +516,7 @@ fn build_grading_prompts(
 
     // 构造用户提示
     let mut user_prompt = String::new();
+    let input_stats = calculate_text_stats(&request.input_text);
 
     // 如果有作文题干（限制长度）
     if let Some(topic) = &request.topic {
@@ -572,6 +574,9 @@ fn build_grading_prompts(
     if !essay_type_hint.is_empty() || !grade_hint.is_empty() {
         user_prompt.push_str(&format!("{} {}\n\n", essay_type_hint, grade_hint));
     }
+
+    // 添加系统统计信息，避免模型依赖 token 估算字数
+    user_prompt.push_str(&build_stats_prompt_block(&input_stats));
 
     // ★ PP-1: 作文内容本身不做净化（保留原始内容以便正确批改）
     user_prompt.push_str(&format!("【学生作文】\n{}", request.input_text));
@@ -830,4 +835,40 @@ fn guess_image_mime(base64_data: &str) -> &'static str {
     }
     // 默认 JPEG
     "image/jpeg"
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sample_request(input_text: &str) -> GradingRequest {
+        GradingRequest {
+            session_id: "session_test".to_string(),
+            stream_session_id: "stream_test".to_string(),
+            round_number: 1,
+            input_text: input_text.to_string(),
+            topic: None,
+            mode_id: None,
+            model_config_id: None,
+            essay_type: "other".to_string(),
+            grade_level: "high_school".to_string(),
+            custom_prompt: None,
+            previous_result: None,
+            previous_input: None,
+            image_base64_list: None,
+            topic_image_base64_list: None,
+        }
+    }
+
+    #[test]
+    fn prompt_includes_system_stats_block() {
+        let mode = get_default_grading_mode();
+        let request = sample_request("你好，world! It's fine.");
+        let (_, user_prompt) = build_grading_prompts(&request, &mode).expect("prompt should build");
+
+        assert!(user_prompt.contains("【写作统计（系统自动计算）】"));
+        assert!(user_prompt.contains("中文字数（汉字）"));
+        assert!(user_prompt.contains("英文词数"));
+        assert!(user_prompt.contains("标点总数"));
+    }
 }

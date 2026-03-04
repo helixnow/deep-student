@@ -6270,6 +6270,7 @@ pub async fn dstu_get_path_by_id(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::dstu::handler_utils::{create_type_folder, generate_resource_id};
 
     #[test]
     fn test_generate_resource_id() {

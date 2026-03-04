@@ -48,6 +48,30 @@ export interface DimensionScore {
 }
 
 /**
+ * 宽松提取属性值：
+ * 允许属性值内部出现同种引号字符（例如：text="包含 "引号" 的内容"）。
+ * 结束引号判定：后续是空白+下一个属性，或字符串结束。
+ */
+function extractAttributeValue(attrs: string, attrName: string): string | undefined {
+  const attrStartRegex = new RegExp(`${attrName}\\s*=\\s*(['"])`, 'i');
+  const startMatch = attrStartRegex.exec(attrs);
+  if (!startMatch || startMatch.index == null) return undefined;
+
+  const quoteChar = startMatch[1];
+  const valueStart = startMatch.index + startMatch[0].length;
+
+  for (let i = valueStart; i < attrs.length; i += 1) {
+    if (attrs[i] !== quoteChar) continue;
+    const tail = attrs.slice(i + 1);
+    if (/^\s*$/.test(tail) || /^\s+[A-Za-z_][\w:.-]*\s*=/.test(tail)) {
+      return attrs.slice(valueStart, i);
+    }
+  }
+
+  return attrs.slice(valueStart).trim() || undefined;
+}
+
+/**
  * 解析批改结果中的评分
  */
 export function parseScore(text: string): ParsedScore | null {
@@ -114,17 +138,17 @@ export function parseMarkers(text: string): ParsedMarker[] {
   // 正则表达式匹配所有标记
   const patterns = [
     // <del reason="...">...</del>
-    { regex: /<del(?:\s+reason="([^"]*)")?>([\s\S]*?)<\/del>/gi, type: 'del' as MarkerType },
+    { regex: /<del(?:\s+([\s\S]*?))?>([\s\S]*?)<\/del>/gi, type: 'del' as MarkerType },
     // <ins>...</ins>
     { regex: /<ins>([\s\S]*?)<\/ins>/gi, type: 'ins' as MarkerType },
     // <replace old="..." new="..." reason="..."/>
-    { regex: /<replace\s+old="([^"]*)"\s+new="([^"]*)"(?:\s+reason="([^"]*)")?\/>/gi, type: 'replace' as MarkerType },
+    { regex: /<replace\s+([\s\S]*?)\/>/gi, type: 'replace' as MarkerType },
     // <note text="...">...</note>
-    { regex: /<note\s+text="([^"]*)">([\s\S]*?)<\/note>/gi, type: 'note' as MarkerType },
+    { regex: /<note\s+([\s\S]*?)>([\s\S]*?)<\/note>/gi, type: 'note' as MarkerType },
     // <good>...</good>
     { regex: /<good>([\s\S]*?)<\/good>/gi, type: 'good' as MarkerType },
     // <err type="..." explanation="...">...</err> (supports both attribute orders)
-    { regex: /<err\s+((?:(?:type|explanation)="[^"]*?"\s*)+)>([\s\S]*?)<\/err>/gi, type: 'err' as MarkerType },
+    { regex: /<err\s+([\s\S]*?)>([\s\S]*?)<\/err>/gi, type: 'err' as MarkerType },
   ];
   
   // 收集所有匹配及其位置
@@ -144,31 +168,30 @@ export function parseMarkers(text: string): ParsedMarker[] {
       
       switch (pattern.type) {
         case 'del':
-          marker.reason = match[1] || undefined;
+          marker.reason = extractAttributeValue(match[1] || '', 'reason');
           marker.content = match[2];
           break;
         case 'ins':
           marker.content = match[1];
           break;
         case 'replace':
-          marker.oldText = match[1];
-          marker.newText = match[2];
-          marker.reason = match[3] || undefined;
-          marker.content = `${match[1]} → ${match[2]}`;
+          marker.oldText = extractAttributeValue(match[1] || '', 'old');
+          marker.newText = extractAttributeValue(match[1] || '', 'new');
+          marker.reason = extractAttributeValue(match[1] || '', 'reason');
+          marker.content = `${marker.oldText ?? ''} → ${marker.newText ?? ''}`;
           break;
         case 'note':
-          marker.comment = match[1];
+          marker.comment = extractAttributeValue(match[1] || '', 'text');
           marker.content = match[2];
           break;
         case 'good':
           marker.content = match[1];
           break;
         case 'err': {
-          const attrs = match[1];
-          const typeM = attrs.match(/type="([^"]*?)"/);
-          const explM = attrs.match(/explanation="([^"]*?)"/);
-          marker.errorType = (typeM?.[1] || 'grammar') as ParsedMarker['errorType'];
-          marker.explanation = explM?.[1] || undefined;
+          const attrs = match[1] || '';
+          const extractedType = extractAttributeValue(attrs, 'type');
+          marker.errorType = (extractedType || 'grammar') as ParsedMarker['errorType'];
+          marker.explanation = extractAttributeValue(attrs, 'explanation');
           marker.content = match[2];
           break;
         }
@@ -214,5 +237,4 @@ export function parseMarkers(text: string): ParsedMarker[] {
   
   return markers;
 }
-
 
