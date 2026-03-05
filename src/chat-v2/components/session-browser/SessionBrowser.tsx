@@ -228,7 +228,7 @@ const SessionCard: React.FC<SessionCardProps> = ({
       onMouseLeave={resetDeleteConfirmation}
       className={cn(
         'group relative flex flex-col justify-between',
-        'p-3 sm:p-3.5 h-[120px] sm:h-[140px]',
+        'p-3 sm:p-3.5 min-h-[120px] sm:min-h-[140px]',
         'rounded-lg border border-transparent',
         'hover:bg-muted/40 hover:border-border/40 transition-colors',
         'cursor-pointer'
@@ -322,7 +322,7 @@ const SessionCard: React.FC<SessionCardProps> = ({
 // ============================================================================
 
 const SessionCardSkeleton: React.FC = () => (
-  <div className="flex flex-col justify-between p-3 sm:p-3.5 h-[120px] sm:h-[140px] rounded-lg">
+  <div className="flex flex-col justify-between p-3 sm:p-3.5 min-h-[120px] sm:min-h-[140px] rounded-lg">
     <div className="flex flex-col gap-2">
       <Skeleton className="h-4 w-3/4" />
       <Skeleton className="h-3 w-1/2" />
