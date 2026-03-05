@@ -16,6 +16,7 @@ import { useQuestionBankSession } from '@/hooks/useQuestionBankSession';
 import { useQuestionBankStore } from '@/stores/questionBankStore';
 import { cn } from '@/lib/utils';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
+import SyncConflictDialog from '@/components/SyncConflictDialog';
 import { AppSelect } from '@/components/ui/app-menu';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import { formatTime } from '@/utils/formatUtils';
@@ -78,6 +79,8 @@ const ExamContentView: React.FC<ContentViewProps> = ({
   const focusMode = useQuestionBankStore(state => state.focusMode);
   const setFocusMode = useQuestionBankStore(state => state.setFocusMode);
   const checkSyncStatus = useQuestionBankStore(state => state.checkSyncStatus);
+  const getSyncConflicts = useQuestionBankStore(state => state.getSyncConflicts);
+  const syncConflicts = useQuestionBankStore(state => state.syncConflicts);
   const setMockExamSession = useQuestionBankStore(state => state.setMockExamSession);
 
   // 高级练习模式会话数据（全局 store）
@@ -106,6 +109,8 @@ const ExamContentView: React.FC<ContentViewProps> = ({
 
   // UI 状态（保留在组件内）
   const [sessionDetail, setSessionDetail] = useState<ExamSheetSessionDetail | null>(null);
+  const [sessionDetailError, setSessionDetailError] = useState<string | null>(null);
+  const [showSyncConflictDialog, setShowSyncConflictDialog] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [selectedTag, setSelectedTag] = useState<string>('');
   
@@ -154,27 +159,12 @@ const ExamContentView: React.FC<ContentViewProps> = ({
       const detail = await TauriAPI.getExamSheetSessionDetail(sessionId);
       emitExamSheetDebug('success', 'frontend:hook-state', `[ExamContentView] loadSessionDetail 成功: status=${detail.summary.status}, pages=${detail.preview.pages?.length ?? 0}`, { sessionId, detail: { status: detail.summary.status, pageCount: detail.preview.pages?.length, cardCount: detail.preview.pages?.reduce((s, p) => s + (p.cards?.length ?? 0), 0) } });
       setSessionDetail(detail);
+      setSessionDetailError(null);
     } catch (err: unknown) {
       emitExamSheetDebug('error', 'frontend:hook-state', `[ExamContentView] loadSessionDetail 失败: ${err}`, { sessionId });
       console.error('[ExamContentView] Failed to load session detail:', err);
-      setSessionDetail({
-        summary: {
-          id: sessionId,
-          exam_name: node.name || null,
-          mistake_id: sessionId,
-          created_at: new Date(node.createdAt).toISOString(),
-          updated_at: new Date(node.updatedAt).toISOString(),
-          status: 'empty',
-          metadata: null,
-          linked_mistake_ids: null,
-        },
-        preview: {
-          session_id: sessionId,
-          mistake_id: sessionId,
-          exam_name: node.name || null,
-          pages: [],
-        },
-      });
+      setSessionDetail(null);
+      setSessionDetailError(err instanceof Error ? err.message : String(err));
     }
   }, [sessionId, node]);
 
@@ -190,11 +180,25 @@ const ExamContentView: React.FC<ContentViewProps> = ({
         showGlobalNotification('warning', t('learningHub:exam.syncConflictWarning', {
           count: status.pending_conflict_count,
         }));
+        void getSyncConflicts(sessionId)
+          .then((conflicts) => {
+            if (conflicts.some((conflict) => conflict.status === 'pending')) {
+              setShowSyncConflictDialog(true);
+            }
+          })
+          .catch((err: unknown) => {
+            debugLog.warn('[ExamContentView] load sync conflicts failed:', err);
+            showGlobalNotification(
+              'warning',
+              t('learningHub:exam.syncConflictsLoadFailed', '检测到冲突，但加载冲突详情失败，请重试')
+            );
+          });
       }
     }).catch(err => {
       debugLog.warn('[ExamContentView] sync status check failed:', err);
+      showGlobalNotification('warning', t('learningHub:exam.syncStatusCheckFailed', '同步状态检查失败，请稍后重试'));
     });
-  }, [sessionId, checkSyncStatus, t]);
+  }, [sessionId, checkSyncStatus, getSyncConflicts, t]);
 
   const handleSessionUpdate = useCallback(async (detail: ExamSheetSessionDetail) => {
     emitExamSheetDebug('info', 'frontend:hook-state', `[ExamContentView] handleSessionUpdate: pages=${detail.preview.pages?.length}, cards=${detail.preview.pages?.reduce((s, p) => s + (p.cards?.length ?? 0), 0)}`, { sessionId });
@@ -335,16 +339,32 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     ) => {
       try {
         await mutation();
+      } catch (err: unknown) {
+        const normalized =
+          err instanceof Error ? err : new Error(typeof err === 'string' ? err : String(err));
+        (normalized as Error & { __notified?: boolean }).__notified = true;
+        showGlobalNotification('error', err, errorMessage);
+        throw normalized;
+      }
+
+      try {
         if (refreshMode === 'all') {
           await refreshQuestionsAndStats();
         } else {
           await loadQuestions();
         }
-      } catch (err: unknown) {
-        showGlobalNotification('error', err, errorMessage);
+      } catch (refreshErr: unknown) {
+        debugLog.warn('[ExamContentView] mutation refresh failed:', refreshErr);
+        showGlobalNotification(
+          'warning',
+          t(
+            'learningHub:exam.mutationRefreshFailed',
+            '操作已完成，但界面刷新失败，请手动刷新后确认最新状态'
+          )
+        );
       }
     },
-    [loadQuestions, refreshQuestionsAndStats]
+    [loadQuestions, refreshQuestionsAndStats, t]
   );
 
   const handleResetProgress = useCallback(
@@ -357,6 +377,14 @@ const ExamContentView: React.FC<ContentViewProps> = ({
               success: result.success_count,
               failed: result.failed_count,
             }));
+          } else {
+            showGlobalNotification(
+              'success',
+              t('learningHub:exam.resetProgressSuccess', {
+                count: result.success_count,
+                defaultValue: `已重置 ${result.success_count} 道题目的学习进度`,
+              })
+            );
           }
         },
         t('learningHub:exam.error.resetProgressFailed')
@@ -375,6 +403,14 @@ const ExamContentView: React.FC<ContentViewProps> = ({
               success: result.success_count,
               failed: result.failed_count,
             }));
+          } else {
+            showGlobalNotification(
+              'success',
+              t('learningHub:exam.deleteQuestionsSuccess', {
+                count: result.success_count,
+                defaultValue: `已删除 ${result.success_count} 道题目`,
+              })
+            );
           }
         },
         t('learningHub:exam.error.deleteQuestionsFailed')
@@ -498,12 +534,13 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     );
   }
 
-  if (error && !sessionDetail) {
+  if ((sessionDetailError || error) && !sessionDetail) {
+    const loadErrorMessage = sessionDetailError || error;
     return (
       <div className="flex flex-col items-center justify-center h-full gap-4">
         <AlertCircle className="w-8 h-8 text-destructive" />
         <span className="text-muted-foreground text-center max-w-md">
-          {t('exam_sheet:errors.loadFailed', '加载整卷会话失败')}: {error}
+          {t('exam_sheet:errors.loadFailed', '加载整卷会话失败')}: {loadErrorMessage}
         </span>
         <NotionButton variant="ghost" size="sm" onClick={loadSessionDetail} className="gap-2">
           <RefreshCw className="w-4 h-4" />
@@ -560,6 +597,20 @@ const ExamContentView: React.FC<ContentViewProps> = ({
                 }
               </NotionButton>
             </div>
+          </div>
+        </div>
+      )}
+
+      {error && sessionDetail && (
+        <div className="flex-shrink-0 px-3 sm:px-4 py-2 border-b border-destructive/20 bg-destructive/5">
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-sm text-destructive truncate">
+              {t('exam_sheet:errors.loadQuestionsFailed', '题目加载失败')}: {error}
+            </span>
+            <NotionButton variant="ghost" size="sm" onClick={refreshQuestionsAndStats} className="gap-1.5">
+              <RefreshCw className="w-3.5 h-3.5" />
+              {t('common:actions.retry', '重试')}
+            </NotionButton>
           </div>
         </div>
       )}
@@ -795,6 +846,17 @@ const ExamContentView: React.FC<ContentViewProps> = ({
           )}
         </Suspense>
       </div>
+
+      <SyncConflictDialog
+        open={showSyncConflictDialog}
+        onOpenChange={setShowSyncConflictDialog}
+        examId={sessionId}
+        conflicts={syncConflicts}
+        onResolved={() => {
+          void refreshQuestionsAndStats();
+          void getSyncConflicts(sessionId);
+        }}
+      />
     </div>
   );
 };

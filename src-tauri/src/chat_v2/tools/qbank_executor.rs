@@ -517,7 +517,7 @@ impl QBankExecutor {
         if let Some(service) = &ctx.question_bank_service {
             // 先通过 card_id 获取 question_id
             if let Ok(Some(question)) = service.get_question_by_card_id(session_id, card_id) {
-                match service.submit_answer(&question.id, user_answer, is_correct_override) {
+                match service.submit_answer(&question.id, user_answer, is_correct_override, None) {
                     Ok(result) => {
                         return Ok(json!({
                             "is_correct": result.is_correct,

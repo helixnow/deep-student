@@ -242,6 +242,8 @@ export interface ChatStore {
 
   /** 待发送的上下文引用列表（只存引用，不存内容） */
   pendingContextRefs: ContextRef[];
+  /** pendingContextRefs 是否被用户在当前轮编辑中显式修改过（用于 editAndResend 三态语义） */
+  pendingContextRefsDirty: boolean;
 
   // ========== 🆕 消息操作锁（❌ 不持久化） ==========
 

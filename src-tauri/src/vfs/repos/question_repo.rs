@@ -917,6 +917,8 @@ impl VfsQuestionRepo {
         page: u32,
         page_size: u32,
     ) -> VfsResult<QuestionListResult> {
+        let page = page.max(1);
+        let page_size = page_size.clamp(1, 100);
         let offset = (page.saturating_sub(1)) * page_size;
 
         // 构建 WHERE 子句
@@ -1571,7 +1573,11 @@ impl VfsQuestionRepo {
         params: &UpdateQuestionParams,
     ) -> VfsResult<Question> {
         let now = chrono::Utc::now().to_rfc3339();
-        let mut set_clauses = vec!["updated_at = ?1".to_string()];
+        let mut set_clauses = vec![
+            "updated_at = ?1".to_string(),
+            "sync_status = CASE WHEN sync_status = 'synced' THEN 'modified' ELSE sync_status END"
+                .to_string(),
+        ];
         let mut param_values: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(now.clone())];
         let mut param_idx = 2;
 
@@ -1657,7 +1663,7 @@ impl VfsQuestionRepo {
         }
 
         let sql = format!(
-            "UPDATE questions SET {} WHERE id = ?{}",
+            "UPDATE questions SET {} WHERE id = ?{} AND deleted_at IS NULL",
             set_clauses.join(", "),
             param_idx
         );
@@ -1674,10 +1680,10 @@ impl VfsQuestionRepo {
             });
         }
 
-        debug!("[VFS::QuestionRepo] Updated question id={}", question_id);
+        // 内容/元数据更新后立即重算 hash，避免同步冲突判断使用过期值
+        QuestionSyncService::update_content_hash_with_conn(conn, question_id)?;
 
-        // ★ S-030: 标记为已修改，更新同步状态
-        QuestionSyncService::mark_as_modified_with_conn(conn, question_id)?;
+        debug!("[VFS::QuestionRepo] Updated question id={}", question_id);
 
         Self::get_question_with_conn(conn, question_id)?.ok_or_else(|| VfsError::NotFound {
             resource_type: "question".to_string(),
@@ -1722,7 +1728,7 @@ impl VfsQuestionRepo {
 
         // 🔧 修复：根据 correct_count 判断状态，不是简单的答对就 mastered
         // 使用 CASE 表达式在 SQL 层实现状态转换逻辑
-        conn.execute(
+        let affected = conn.execute(
             r#"
             UPDATE questions SET
                 user_answer = ?1,
@@ -1749,6 +1755,12 @@ impl VfsQuestionRepo {
                 question_id,
             ],
         )?;
+        if affected == 0 {
+            return Err(VfsError::NotFound {
+                resource_type: "question".to_string(),
+                id: question_id.to_string(),
+            });
+        }
 
         debug!(
             "[VFS::QuestionRepo] Submitted answer for question id={}, is_correct={:?}, manual={}",
@@ -1757,6 +1769,7 @@ impl VfsQuestionRepo {
 
         // ★ S-030: 答题记录变更也触发同步标记
         QuestionSyncService::mark_as_modified_with_conn(conn, question_id)?;
+        QuestionSyncService::update_content_hash_with_conn(conn, question_id)?;
 
         Self::get_question_with_conn(conn, question_id)?.ok_or_else(|| VfsError::NotFound {
             resource_type: "question".to_string(),
@@ -2104,6 +2117,7 @@ impl VfsQuestionRepo {
         user_answer: &str,
         is_correct: Option<bool>,
         grading_method: &str,
+        client_request_id: Option<&str>,
     ) -> VfsResult<String> {
         let conn = db.get_conn_safe()?;
         Self::insert_submission_with_conn(
@@ -2112,6 +2126,7 @@ impl VfsQuestionRepo {
             user_answer,
             is_correct,
             grading_method,
+            client_request_id,
         )
     }
 
@@ -2122,17 +2137,35 @@ impl VfsQuestionRepo {
         user_answer: &str,
         is_correct: Option<bool>,
         grading_method: &str,
+        client_request_id: Option<&str>,
     ) -> VfsResult<String> {
+        let normalized_request_id = client_request_id.map(str::trim).filter(|s| !s.is_empty());
+        if let Some(req_id) = normalized_request_id {
+            if let Some(existing) =
+                Self::get_submission_by_client_request_with_conn(conn, question_id, req_id)?
+            {
+                return Ok(existing.id);
+            }
+        }
+
         let id = format!("as_{}", nanoid::nanoid!(10));
         let now = chrono::Utc::now().to_rfc3339();
         let is_correct_val = is_correct.map(|v| if v { 1 } else { 0 });
 
         conn.execute(
             r#"
-            INSERT INTO answer_submissions (id, question_id, user_answer, is_correct, grading_method, submitted_at)
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+            INSERT INTO answer_submissions (id, question_id, user_answer, is_correct, grading_method, submitted_at, client_request_id)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
             "#,
-            params![id, question_id, user_answer, is_correct_val, grading_method, now],
+            params![
+                id,
+                question_id,
+                user_answer,
+                is_correct_val,
+                grading_method,
+                now,
+                normalized_request_id
+            ],
         )?;
 
         debug!(
@@ -2141,6 +2174,37 @@ impl VfsQuestionRepo {
         );
 
         Ok(id)
+    }
+
+    /// 按客户端请求 ID 查询已存在的提交（用于幂等）
+    pub fn get_submission_by_client_request_with_conn(
+        conn: &Connection,
+        question_id: &str,
+        client_request_id: &str,
+    ) -> VfsResult<Option<AnswerSubmission>> {
+        let submission = conn
+            .query_row(
+                r#"
+                SELECT id, question_id, user_answer, is_correct, grading_method, submitted_at
+                FROM answer_submissions
+                WHERE question_id = ?1 AND client_request_id = ?2
+                ORDER BY submitted_at DESC
+                LIMIT 1
+                "#,
+                params![question_id, client_request_id],
+                |row| {
+                    Ok(AnswerSubmission {
+                        id: row.get(0)?,
+                        question_id: row.get(1)?,
+                        user_answer: row.get(2)?,
+                        is_correct: row.get::<_, Option<i32>>(3)?.map(|v| v != 0),
+                        grading_method: row.get(4)?,
+                        submitted_at: row.get(5)?,
+                    })
+                },
+            )
+            .optional()?;
+        Ok(submission)
     }
 
     /// AI 评判完成后更新 submission 的 is_correct
@@ -2208,6 +2272,13 @@ impl VfsQuestionRepo {
     /// 删除某题的所有作答记录（重置进度时调用）
     pub fn delete_submissions_by_question(db: &VfsDatabase, question_id: &str) -> VfsResult<usize> {
         let conn = db.get_conn_safe()?;
+        Self::delete_submissions_by_question_with_conn(&conn, question_id)
+    }
+
+    pub fn delete_submissions_by_question_with_conn(
+        conn: &Connection,
+        question_id: &str,
+    ) -> VfsResult<usize> {
         let deleted = conn.execute(
             "DELETE FROM answer_submissions WHERE question_id = ?1",
             params![question_id],
@@ -2218,6 +2289,13 @@ impl VfsQuestionRepo {
     /// 删除某题目集下所有题目的作答记录（重置整个题目集进度时调用）
     pub fn delete_submissions_by_exam(db: &VfsDatabase, exam_id: &str) -> VfsResult<usize> {
         let conn = db.get_conn_safe()?;
+        Self::delete_submissions_by_exam_with_conn(&conn, exam_id)
+    }
+
+    pub fn delete_submissions_by_exam_with_conn(
+        conn: &Connection,
+        exam_id: &str,
+    ) -> VfsResult<usize> {
         let deleted = conn.execute(
             r#"
             DELETE FROM answer_submissions

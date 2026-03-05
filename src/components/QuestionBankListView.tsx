@@ -391,6 +391,7 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
     const finalStatus = (newStatus !== 'all' && newStatus === statusFilter) ? 'all' : newStatus;
     const finalDifficulty = (newDifficulty !== 'all' && newDifficulty === difficultyFilter) ? 'all' : newDifficulty;
 
+    const finalFavorite = newFavorite ?? showFavoriteOnly;
     setSearchQuery(newSearch);
     setStatusFilter(finalStatus);
     setDifficultyFilter(finalDifficulty);
@@ -400,10 +401,10 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
         search: newSearch || undefined,
         status: finalStatus,
         difficulty: finalDifficulty === 'all' ? undefined : finalDifficulty,
-        isFavorite: newFavorite || undefined,
+        isFavorite: finalFavorite ? true : undefined,
       });
     }
-  }, [statusFilter, difficultyFilter, onFilterChange]);
+  }, [statusFilter, difficultyFilter, showFavoriteOnly, onFilterChange]);
   
   const handleQuestionClick = useCallback((index: number) => {
     // 找到原始索引（使用预计算 Map，O(1) 查找）
@@ -746,4 +747,3 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
 };
 
 export default QuestionBankListView;
-

@@ -8,7 +8,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { renderHook, act } from '@testing-library/react';
+import { renderHook, act, waitFor } from '@testing-library/react';
 import { useAttachmentContextRef } from '../useAttachmentContextRef';
 
 // ============================================================================
@@ -25,6 +25,11 @@ vi.mock('../../resources', () => ({
   FILE_TYPE_ID: 'file',
 }));
 
+// Mock context vfs upload api
+vi.mock('../../context', () => ({
+  uploadAttachment: vi.fn(),
+}));
+
 // Mock context definitions
 vi.mock('../../context/definitions/image', () => ({
   IMAGE_TYPE_ID: 'image',
@@ -36,7 +41,9 @@ vi.mock('../../context/definitions/file', () => ({
 
 // 获取 mock 引用
 import { resourceStoreApi } from '../../resources';
+import { uploadAttachment } from '../../context';
 const mockCreateOrReuse = vi.mocked(resourceStoreApi.createOrReuse);
+const mockUploadAttachment = vi.mocked(uploadAttachment);
 
 // ============================================================================
 // 测试数据
@@ -44,20 +51,22 @@ const mockCreateOrReuse = vi.mocked(resourceStoreApi.createOrReuse);
 
 const createMockStore = () => {
   const contextRefs: Array<{ resourceId: string; hash: string; typeId: string }> = [];
+  const state = {
+    addContextRef: vi.fn((ref) => {
+      contextRefs.push(ref);
+    }),
+    removeContextRef: vi.fn((resourceId) => {
+      const index = contextRefs.findIndex((r) => r.resourceId === resourceId);
+      if (index !== -1) {
+        contextRefs.splice(index, 1);
+      }
+    }),
+    getContextRefsByType: vi.fn(() => contextRefs),
+  };
 
   return {
-    getState: () => ({
-      addContextRef: vi.fn((ref) => {
-        contextRefs.push(ref);
-      }),
-      removeContextRef: vi.fn((resourceId) => {
-        const index = contextRefs.findIndex((r) => r.resourceId === resourceId);
-        if (index !== -1) {
-          contextRefs.splice(index, 1);
-        }
-      }),
-      getContextRefsByType: vi.fn(() => contextRefs),
-    }),
+    state,
+    getState: () => state,
     subscribe: vi.fn(() => () => {}),
     setState: vi.fn(),
   };
@@ -75,11 +84,43 @@ const createMockFile = (name: string, type: string, size: number = 1024): File =
 describe('useAttachmentContextRef', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockUploadAttachment.mockResolvedValue({
+      sourceId: 'att_default',
+      resourceHash: 'hash_att_default',
+      isNew: true,
+      attachment: {
+        id: 1,
+        sourceId: 'att_default',
+        name: 'default.png',
+        mimeType: 'image/png',
+        size: 1024,
+        storageType: 'resource',
+        contentHash: 'hash_att_default',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+    });
   });
 
   describe('handleFileUpload', () => {
     it('应该创建图片资源并添加上下文引用', async () => {
       const mockStore = createMockStore();
+      mockUploadAttachment.mockResolvedValue({
+        sourceId: 'att_img_001',
+        resourceHash: 'hash_att_img_001',
+        isNew: true,
+        attachment: {
+          id: 11,
+          sourceId: 'att_img_001',
+          name: 'test.png',
+          mimeType: 'image/png',
+          size: 1024,
+          storageType: 'resource',
+          contentHash: 'hash_att_img_001',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+      });
       mockCreateOrReuse.mockResolvedValue({
         resourceId: 'res_img_001',
         hash: 'hash_img_001',
@@ -118,6 +159,22 @@ describe('useAttachmentContextRef', () => {
 
     it('应该创建文件资源并添加上下文引用', async () => {
       const mockStore = createMockStore();
+      mockUploadAttachment.mockResolvedValue({
+        sourceId: 'att_file_001',
+        resourceHash: 'hash_att_file_001',
+        isNew: true,
+        attachment: {
+          id: 22,
+          sourceId: 'att_file_001',
+          name: 'document.pdf',
+          mimeType: 'application/pdf',
+          size: 1024,
+          storageType: 'resource',
+          contentHash: 'hash_att_file_001',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+      });
       mockCreateOrReuse.mockResolvedValue({
         resourceId: 'res_file_001',
         hash: 'hash_file_001',
@@ -165,6 +222,22 @@ describe('useAttachmentContextRef', () => {
   describe('handleBase64Upload', () => {
     it('应该从 base64 数据创建资源', async () => {
       const mockStore = createMockStore();
+      mockUploadAttachment.mockResolvedValue({
+        sourceId: 'att_b64_001',
+        resourceHash: 'hash_att_b64_001',
+        isNew: true,
+        attachment: {
+          id: 33,
+          sourceId: 'att_b64_001',
+          name: 'screenshot.jpg',
+          mimeType: 'image/jpeg',
+          size: 512,
+          storageType: 'resource',
+          contentHash: 'hash_att_b64_001',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+      });
       mockCreateOrReuse.mockResolvedValue({
         resourceId: 'res_b64_001',
         hash: 'hash_b64_001',
@@ -197,15 +270,28 @@ describe('useAttachmentContextRef', () => {
     it('应该移除附件的上下文引用', async () => {
       const mockStore = createMockStore();
       const removeContextRef = vi.fn();
-      mockStore.getState = () => ({
-        ...mockStore.getState(),
-        removeContextRef,
-      });
+      mockStore.state.removeContextRef = removeContextRef;
 
       mockCreateOrReuse.mockResolvedValue({
         resourceId: 'res_remove_001',
         hash: 'hash_remove_001',
         isNew: true,
+      });
+      mockUploadAttachment.mockResolvedValue({
+        sourceId: 'att_remove_001',
+        resourceHash: 'hash_att_remove_001',
+        isNew: true,
+        attachment: {
+          id: 44,
+          sourceId: 'att_remove_001',
+          name: 'test.png',
+          mimeType: 'image/png',
+          size: 1024,
+          storageType: 'resource',
+          contentHash: 'hash_att_remove_001',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
       });
 
       const { result } = renderHook(() =>
@@ -226,13 +312,70 @@ describe('useAttachmentContextRef', () => {
       expect(removeContextRef).toHaveBeenCalledWith('res_remove_001');
     });
 
+    it('应该支持上传未完成时先移除，再在上传完成后正确移除（防回归）', async () => {
+      const mockStore = createMockStore();
+      const removeContextRef = vi.fn();
+      mockStore.state.removeContextRef = removeContextRef;
+
+      let resolveCreateOrReuse: ((value: { resourceId: string; hash: string; isNew: boolean }) => void) | null = null;
+      mockCreateOrReuse.mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            resolveCreateOrReuse = resolve;
+          })
+      );
+      mockUploadAttachment.mockResolvedValue({
+        sourceId: 'att_async_001',
+        resourceHash: 'hash_att_async_001',
+        isNew: true,
+        attachment: {
+          id: 55,
+          sourceId: 'att_async_001',
+          name: 'async.png',
+          mimeType: 'image/png',
+          size: 1024,
+          storageType: 'resource',
+          contentHash: 'hash_att_async_001',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+      });
+
+      const { result } = renderHook(() =>
+        useAttachmentContextRef({ store: mockStore as any })
+      );
+
+      const file = createMockFile('async.png', 'image/png');
+      const uploadPromise = act(async () => {
+        await result.current.handleFileUpload(file, 'attach_async');
+      });
+
+      act(() => {
+        result.current.removeAttachmentRef('attach_async');
+      });
+      expect(removeContextRef).not.toHaveBeenCalled();
+
+      await waitFor(() => {
+        expect(resolveCreateOrReuse).toBeTruthy();
+      });
+
+      resolveCreateOrReuse?.({
+        resourceId: 'res_async_001',
+        hash: 'hash_async_001',
+        isNew: true,
+      });
+      await uploadPromise;
+
+      act(() => {
+        result.current.removeAttachmentRef('attach_async');
+      });
+      expect(removeContextRef).toHaveBeenCalledWith('res_async_001');
+    });
+
     it('应该忽略不存在的附件 ID', () => {
       const mockStore = createMockStore();
       const removeContextRef = vi.fn();
-      mockStore.getState = () => ({
-        ...mockStore.getState(),
-        removeContextRef,
-      });
+      mockStore.state.removeContextRef = removeContextRef;
 
       const { result } = renderHook(() =>
         useAttachmentContextRef({ store: mockStore as any })
@@ -251,12 +394,25 @@ describe('useAttachmentContextRef', () => {
     it('应该清空所有附件引用', async () => {
       const mockStore = createMockStore();
       const removeContextRef = vi.fn();
-      mockStore.getState = () => ({
-        ...mockStore.getState(),
-        removeContextRef,
-      });
+      mockStore.state.removeContextRef = removeContextRef;
 
       let callCount = 0;
+      mockUploadAttachment.mockImplementation(async ({ name, mimeType }) => ({
+        sourceId: `att_clear_${callCount + 1}`,
+        resourceHash: `hash_att_clear_${callCount + 1}`,
+        isNew: true,
+        attachment: {
+          id: 100 + callCount + 1,
+          sourceId: `att_clear_${callCount + 1}`,
+          name: name || `f_${callCount + 1}`,
+          mimeType: mimeType || 'application/octet-stream',
+          size: 1024,
+          storageType: 'resource',
+          contentHash: `hash_att_clear_${callCount + 1}`,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+      }));
       mockCreateOrReuse.mockImplementation(async () => {
         callCount++;
         return {

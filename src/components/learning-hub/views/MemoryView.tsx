@@ -159,6 +159,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
   const [auditSourceFilter, setAuditSourceFilter] = useState<string>('');
   const [auditSuccessFilter, setAuditSuccessFilter] = useState<string>('');
   const [auditLogOffset, setAuditLogOffset] = useState(0);
+  const [auditLoadError, setAuditLoadError] = useState<string | null>(null);
 
   // ========== 加载配置和记忆列表 ==========
   const loadConfig = useCallback(async () => {
@@ -239,6 +240,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
       setSearchResults(results);
     } catch (error: unknown) {
       console.error('[MemoryView] Search failed:', error);
+      setSearchResults([]);
       showGlobalNotification('error', t('memory.search_error', '搜索失败'));
     } finally {
       setIsLoading(false);
@@ -265,8 +267,12 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
       const result = await writeMemorySmart(newMemoryTitle, newMemoryContent, undefined, undefined, purposeArg);
       let msg: string;
       let level: 'success' | 'warning' = 'success';
+      const writeSucceeded = result.event === 'ADD' || result.event === 'UPDATE' || result.event === 'APPEND' || result.event === 'DELETE';
       if (result.downgraded) {
         msg = t('memory.create_downgraded', '置信度不足，未自动写入。请确认后手动保存。');
+        level = 'warning';
+      } else if (result.event === 'FILTERED') {
+        msg = result.reason || t('memory.create_filtered', '内容触发安全拦截，未写入记忆。');
         level = 'warning';
       } else if (result.event === 'NONE') {
         msg = t('memory.create_already_exists', '该记忆已存在，无需重复创建');
@@ -275,11 +281,13 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
         msg = t('memory.create_success', '记忆创建成功');
       }
       showGlobalNotification(level, msg);
-      setIsCreatingInline(false);
-      setNewMemoryTitle('');
-      setNewMemoryContent('');
-      setNewMemoryPurpose('memorized');
-      loadMemories();
+      if (writeSucceeded) {
+        setIsCreatingInline(false);
+        setNewMemoryTitle('');
+        setNewMemoryContent('');
+        setNewMemoryPurpose('memorized');
+        loadMemories();
+      }
     } catch (error: unknown) {
       console.error('[MemoryView] Create failed:', error);
       showGlobalNotification('error', t('memory.create_error', '创建失败'));
@@ -509,6 +517,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
         sourceFilter: auditSourceFilter || undefined,
         successFilter: auditSuccessFilter === '' ? undefined : auditSuccessFilter === 'true',
       });
+      setAuditLoadError(null);
       if (resetOffset) {
         setAuditLogs(logs);
       } else {
@@ -516,10 +525,13 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
       }
     } catch (error: unknown) {
       console.error('[MemoryView] Load audit logs failed:', error);
+      const msg = t('memory.audit_load_error', '加载操作日志失败，请重试。');
+      setAuditLoadError(msg);
+      showGlobalNotification('error', msg);
     } finally {
       setIsLoadingAuditLog(false);
     }
-  }, [auditSourceFilter, auditSuccessFilter, auditLogOffset]);
+  }, [auditSourceFilter, auditSuccessFilter, auditLogOffset, t]);
 
   const handleToggleAuditLog = useCallback(async () => {
     if (showAuditLog) {
@@ -977,6 +989,15 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
               {isLoadingAuditLog && auditLogs.length === 0 ? (
                 <div className="flex items-center justify-center py-6">
                   <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+                </div>
+              ) : auditLoadError ? (
+                <div className="px-4 py-4 text-xs text-red-500 text-center space-y-2">
+                  <div>{auditLoadError}</div>
+                  <div>
+                    <NotionButton variant="ghost" size="sm" onClick={() => loadAuditLogs(true)} className="text-xs">
+                      {t('common.retry', '重试')}
+                    </NotionButton>
+                  </div>
                 </div>
               ) : auditLogs.length === 0 ? (
                 <div className="px-4 py-4 text-xs text-muted-foreground/60 text-center">

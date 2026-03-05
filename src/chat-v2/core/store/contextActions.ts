@@ -47,20 +47,31 @@ export function createContextActions(
         if (existingIndex !== -1) {
           // 已存在相同 resourceId 的引用
           const existingRef = state.pendingContextRefs[existingIndex];
+          const mergedRef = { ...existingRef, ...ref };
+          const injectModesChanged =
+            JSON.stringify(existingRef.injectModes ?? null) !== JSON.stringify(ref.injectModes ?? null);
+          const hasMeaningfulChange =
+            existingRef.hash !== ref.hash
+            || existingRef.typeId !== ref.typeId
+            || existingRef.displayName !== ref.displayName
+            || existingRef.isSticky !== ref.isSticky
+            || existingRef.skillId !== ref.skillId
+            || injectModesChanged;
 
-          if (existingRef.hash !== ref.hash) {
-            // hash 不同，需要更新
+          if (hasMeaningfulChange) {
+            // 引用有差异，更新完整字段（不仅是 hash）
             console.log(
-              '[ChatStore] addContextRef: 更新 hash（去重）',
+              '[ChatStore] addContextRef: 更新引用（去重）',
               ref.resourceId,
               `${existingRef.hash.slice(0, 8)}... → ${ref.hash.slice(0, 8)}...`
             );
 
-            // 返回新状态：更新 hash
+            // 返回新状态：更新完整引用，避免 displayName/injectModes 等字段滞后
             return {
               pendingContextRefs: state.pendingContextRefs.map((r, idx) =>
-                idx === existingIndex ? { ...r, hash: ref.hash } : r
+                idx === existingIndex ? mergedRef : r
               ),
+              pendingContextRefsDirty: true,
             };
           } else {
             // hash 相同，完全重复，跳过
@@ -83,6 +94,7 @@ export function createContextActions(
           // 返回新状态：添加引用
           return {
             pendingContextRefs: [...state.pendingContextRefs, ref],
+            pendingContextRefsDirty: true,
           };
         }
       });
@@ -119,11 +131,15 @@ export function createContextActions(
           return {
             pendingContextRefs: newRefs,
             activeSkillIds: s.activeSkillIds.filter(id => id !== removedRef.skillId),
+            pendingContextRefsDirty: true,
           };
         }
 
         console.log('[ChatStore] removeContextRef:', resourceId);
-        return { pendingContextRefs: newRefs };
+        return {
+          pendingContextRefs: newRefs,
+          pendingContextRefsDirty: true,
+        };
       });
     },
 
@@ -144,6 +160,7 @@ export function createContextActions(
           pendingContextRefs: s.pendingContextRefs.filter(
             (r) => r.typeId !== typeId
           ),
+          pendingContextRefsDirty: true,
           // 如果是技能类型，同时清空 activeSkillIds
           ...(isSkillType ? { activeSkillIds: [] } : {}),
         }));
@@ -151,7 +168,11 @@ export function createContextActions(
         console.log('[ChatStore] clearContextRefs (type):', typeId, isSkillType ? '(+ activeSkillIds)' : '');
       } else {
         // 清空所有，同时清空 activeSkillIds
-        set({ pendingContextRefs: [], activeSkillIds: [] } as Partial<ChatStoreState>);
+        set({
+          pendingContextRefs: [],
+          pendingContextRefsDirty: true,
+          activeSkillIds: [],
+        } as Partial<ChatStoreState>);
         console.log('[ChatStore] clearContextRefs: all (including activeSkillIds)');
       }
     },
@@ -210,6 +231,7 @@ export function createContextActions(
           pendingContextRefs: state.pendingContextRefs.map((r, idx) =>
             idx === existingIndex ? { ...r, injectModes } : r
           ),
+          pendingContextRefsDirty: true,
         };
       });
     },

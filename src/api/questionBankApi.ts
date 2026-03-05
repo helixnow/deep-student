@@ -85,6 +85,7 @@ export interface SubmitResult {
 function mapQuestionType(rawType?: string): QuestionType {
   const t = rawType?.toLowerCase() || '';
   if (t.includes('single') || t.includes('单选')) return 'single_choice';
+  if (t.includes('indefinite') || t.includes('不定项')) return 'indefinite_choice';
   if (t.includes('multiple') || t.includes('多选')) return 'multiple_choice';
   if (t.includes('fill') || t.includes('填空')) return 'fill_blank';
   if (t.includes('short') || t.includes('简答')) return 'short_answer';
@@ -219,7 +220,7 @@ export async function submitAnswer(
   
   if (isSubjective) {
     return {
-      isCorrect: false,
+      isCorrect: null,
       correctAnswer: card.answer,
       message: i18n.t('practice:editor.subjectiveSubmitted', 'Subjective question submitted') + '. ' + i18n.t('practice:editor.judgeSelf', 'Please judge against the reference answer'),
       needsManualGrading: true,

@@ -3,6 +3,28 @@ import { describe, expect, it } from 'vitest';
 import { validateSkillMetadata } from '../types';
 
 describe('skill metadata dependencies validation', () => {
+  it('accepts natural language skill name', () => {
+    const result = validateSkillMetadata({
+      id: 'test-skill',
+      name: '测试技能',
+      description: 'x'.repeat(60),
+    });
+
+    expect(result.valid).toBe(true);
+    expect(result.errors).toEqual([]);
+  });
+
+  it('rejects blank skill name', () => {
+    const result = validateSkillMetadata({
+      id: 'test-skill',
+      name: '   ',
+      description: 'x'.repeat(60),
+    });
+
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContain('缺少必填字段 "name"');
+  });
+
   it('rejects non-array dependencies', () => {
     const result = validateSkillMetadata({
       id: 'test-skill',

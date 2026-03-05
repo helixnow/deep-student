@@ -91,7 +91,7 @@ export type SkillType = 'composite' | 'standalone';
  * 对应 SKILL.md 文件的 YAML frontmatter
  *
  * SKILL.md 规范：
- * - name: 小写字母+数字+连字符，≤64字符，不含保留字
+ * - name: 任意自然语言名称，≤64字符，不含保留字
  * - description: ≤1024字符，用于 LLM 自动发现和激活
  */
 export interface SkillMetadata {
@@ -100,7 +100,7 @@ export interface SkillMetadata {
 
   /**
    * 技能名称
-   * - 只允许小写字母、数字、连字符
+   * - 支持中英文等自然语言名称
    * - 最大 64 字符
    * - 不能包含保留字（deep-student）
    */
@@ -399,36 +399,33 @@ export interface SkillValidationResult {
 /** 保留字列表（不能在 name 中使用） */
 const RESERVED_WORDS = ['deep-student', 'deepstudent'];
 
-/** name 格式正则：只允许小写字母、数字、连字符 */
-const NAME_PATTERN = /^[a-z0-9-]+$/;
-
 /**
  * 验证 Skill 元数据
  *
  * SKILL.md 规范：
- * - name: 小写字母+数字+连字符，≤64字符，不含保留字
+ * - name: 任意自然语言名称，≤64字符，不含保留字
  * - description: ≤1024字符
  */
 export function validateSkillMetadata(metadata: Partial<SkillMetadata>): SkillValidationResult {
   const errors: string[] = [];
   const warnings: string[] = [];
 
-  // ========== name 验证（严格遵循 SKILL.md 规范） ==========
+  // ========== name 验证 ==========
   if (!metadata.name || typeof metadata.name !== 'string') {
     errors.push('缺少必填字段 "name"');
   } else {
-    // 长度检查
-    if (metadata.name.length > 64) {
-      errors.push(`name 长度超过限制（${metadata.name.length}/64）`);
+    const trimmedName = metadata.name.trim();
+    if (!trimmedName) {
+      errors.push('缺少必填字段 "name"');
     }
 
-    // 格式检查：只允许小写字母、数字、连字符
-    if (!NAME_PATTERN.test(metadata.name)) {
-      errors.push('name 只能包含小写字母、数字和连字符（a-z, 0-9, -）');
+    // 长度检查
+    if (trimmedName.length > 64) {
+      errors.push(`name 长度超过限制（${trimmedName.length}/64）`);
     }
 
     // 保留字检查
-    const lowerName = metadata.name.toLowerCase();
+    const lowerName = trimmedName.toLowerCase();
     for (const reserved of RESERVED_WORDS) {
       if (lowerName.includes(reserved)) {
         errors.push(`name 不能包含保留字 "${reserved}"`);

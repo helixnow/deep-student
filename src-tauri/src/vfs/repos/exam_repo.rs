@@ -748,6 +748,10 @@ impl VfsExamRepo {
             params![exam_id],
         )?;
             conn.execute(
+                "DELETE FROM question_history WHERE question_id IN (SELECT id FROM questions WHERE exam_id = ?1)",
+                params![exam_id],
+            )?;
+            conn.execute(
                 "DELETE FROM question_bank_stats WHERE exam_id = ?1",
                 params![exam_id],
             )?;

@@ -42,11 +42,12 @@ export interface MemoryReadOutput {
 export interface MemoryWriteOutput {
   noteId: string;
   isNew: boolean;
+  resourceId: string;
 }
 
 export interface SmartWriteOutput {
   noteId: string;
-  event: 'ADD' | 'UPDATE' | 'APPEND' | 'DELETE' | 'NONE';
+  event: 'ADD' | 'UPDATE' | 'APPEND' | 'DELETE' | 'NONE' | 'FILTERED';
   isNew: boolean;
   confidence: number;
   reason: string;

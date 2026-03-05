@@ -107,6 +107,20 @@ function getCanvasNoteIdFromModeState(modeState: Record<string, unknown> | null)
   return typeof raw === 'string' && raw.length > 0 ? raw : undefined;
 }
 
+interface LlmRequestBodyEventPayload {
+  streamEvent: string;
+  model: string;
+  url: string;
+  requestBody: unknown;
+  logFilePath?: string | null;
+  messageId?: string;
+}
+
+interface BuildSendOptionsSnapshot {
+  state?: ChatStore;
+  pendingContextRefs?: ContextRef[];
+}
+
 // ============================================================================
 // 辅助函数
 // ============================================================================
@@ -149,6 +163,8 @@ export class ChatV2TauriAdapter {
 
   /** 🆕 并发控制：防止 retrySetupListeners 重入 */
   private isRetryingListeners = false;
+  /** 当前会话预期流式消息（用于过滤 stale session 事件） */
+  private streamExpectation: { messageId: string; startedAt: number } | null = null;
   /** ChatAnki 桥接 chunk 日志节流计数器（按 blockId） */
   private chatAnkiChunkLogCounter = new Map<string, number>();
 
@@ -170,6 +186,89 @@ export class ChatV2TauriAdapter {
    */
   private getCurrentState(): ChatStore {
     return this.storeApi?.getState() ?? this.store;
+  }
+
+  private beginStreamExpectation(messageId: string): void {
+    if (!messageId) return;
+    this.streamExpectation = {
+      messageId,
+      startedAt: Date.now(),
+    };
+  }
+
+  private setStreamExpectationMessageId(messageId: string): void {
+    if (!messageId) return;
+    if (!this.streamExpectation) {
+      this.beginStreamExpectation(messageId);
+      return;
+    }
+    this.streamExpectation = {
+      ...this.streamExpectation,
+      messageId,
+    };
+  }
+
+  private syncStreamExpectationFromEvent(messageId: string, timestamp?: number): void {
+    if (!messageId) return;
+    if (!this.streamExpectation || this.streamExpectation.messageId !== messageId) {
+      this.streamExpectation = {
+        messageId,
+        startedAt: timestamp ?? Date.now(),
+      };
+      return;
+    }
+    if (typeof timestamp === 'number' && Number.isFinite(timestamp) && timestamp > this.streamExpectation.startedAt) {
+      this.streamExpectation = {
+        ...this.streamExpectation,
+        startedAt: timestamp,
+      };
+    }
+  }
+
+  private clearStreamExpectation(messageId?: string): void {
+    if (!this.streamExpectation) return;
+    if (!messageId || this.streamExpectation.messageId === messageId) {
+      this.streamExpectation = null;
+    }
+  }
+
+  private isStaleByExpectationTimestamp(payload: SessionEventPayload): boolean {
+    if (!payload.messageId || !this.streamExpectation) return false;
+    if (this.streamExpectation.messageId !== payload.messageId) return false;
+    if (typeof payload.timestamp !== 'number' || !Number.isFinite(payload.timestamp)) return false;
+    return payload.timestamp < this.streamExpectation.startedAt - 500;
+  }
+
+  private isTargetingCurrentStreamMessage(messageId?: string): boolean {
+    if (!messageId) return false;
+    const currentStreamingMessageId = this.getCurrentState().currentStreamingMessageId;
+    const expectedMessageId = this.streamExpectation?.messageId ?? null;
+    return messageId === currentStreamingMessageId || messageId === expectedMessageId;
+  }
+
+  private canAdoptRetryReboundStreamStart(
+    state: ChatStore,
+    incomingMessageId: string,
+    currentStreamingMessageId: string | null,
+    expectedMessageId: string | null,
+  ): boolean {
+    if (!incomingMessageId) return false;
+    if (!currentStreamingMessageId || !expectedMessageId) return false;
+    if (currentStreamingMessageId !== expectedMessageId) return false;
+    if (incomingMessageId === currentStreamingMessageId) return false;
+
+    const lock = state.messageOperationLock;
+    if (!lock || lock.operation !== 'retry' || lock.messageId !== currentStreamingMessageId) {
+      return false;
+    }
+
+    // 仅当当前流式消息仍是“清空待重试”状态时允许重绑，
+    // 避免把普通 stale 事件误接入到现有流。
+    const currentMsg = state.messageMap.get(currentStreamingMessageId);
+    if (!currentMsg || currentMsg.role !== 'assistant') {
+      return false;
+    }
+    return (currentMsg.blockIds?.length ?? 0) === 0;
   }
 
   private claimAnkiEventOwnership(source: string): void {
@@ -272,7 +371,7 @@ export class ChatV2TauriAdapter {
         listen<unknown>('anki_generation_event', (event) => {
           this.handleAnkiGenerationEvent(event.payload);
         }),
-        listen<{ streamEvent: string; model: string; url: string; requestBody: unknown; logFilePath?: string | null }>('chat_v2_llm_request_body', (event) => {
+        listen<LlmRequestBodyEventPayload>('chat_v2_llm_request_body', (event) => {
           this.handleLlmRequestBody(event.payload);
         }),
       ]);
@@ -376,7 +475,7 @@ export class ChatV2TauriAdapter {
           this.handleAnkiGenerationEvent(event.payload);
         }),
         // ★ 2026-02-14: 监听后端真实 LLM 请求体，替换前端 rawRequest
-        listen<{ streamEvent: string; model: string; url: string; requestBody: unknown; logFilePath?: string | null }>('chat_v2_llm_request_body', (event) => {
+        listen<LlmRequestBodyEventPayload>('chat_v2_llm_request_body', (event) => {
           this.handleLlmRequestBody(event.payload);
         }),
       ]);
@@ -765,6 +864,7 @@ export class ChatV2TauriAdapter {
     this.unlisteners = [];
     this.releaseAnkiEventOwnershipIfHeld('cleanup');
     this.chatAnkiChunkLogCounter.clear();
+    this.clearStreamExpectation();
     this.isSetup = false;
     console.log(LOG_PREFIX, 'Cleanup complete');
   }
@@ -1214,26 +1314,34 @@ export class ChatV2TauriAdapter {
    * 此方法按 streamEvent 中的 session_id 过滤，仅处理当前会话的事件，
    * 然后将 rawRequest 更新为后端的真实请求体（替换之前保存的前端请求）。
    */
-  private handleLlmRequestBody(payload: { streamEvent: string; model: string; url: string; requestBody: unknown; logFilePath?: string | null }): void {
+  private handleLlmRequestBody(payload: LlmRequestBodyEventPayload): void {
     const prefix = `chat_v2_event_${this.sessionId}`;
     if (payload.streamEvent !== prefix && !payload.streamEvent.startsWith(`${prefix}_`)) {
       return;
     }
 
     const state = this.getCurrentState();
-    const targetMsgId = state.currentStreamingMessageId
-      || (() => {
-        const lastMsgId = state.messageOrder[state.messageOrder.length - 1];
-        if (lastMsgId) {
-          const lastMsg = state.messageMap.get(lastMsgId);
-          if (lastMsg?.role === 'assistant') return lastMsgId;
-        }
-        return null;
-      })();
+    const expectedMessageId = this.streamExpectation?.messageId ?? null;
+    const targetMsgId = payload.messageId || state.currentStreamingMessageId || expectedMessageId;
 
     if (!targetMsgId) return;
+    if (
+      payload.messageId
+      && expectedMessageId
+      && payload.messageId !== expectedMessageId
+      && state.currentStreamingMessageId !== payload.messageId
+    ) {
+      console.warn(LOG_PREFIX, 'Ignore stale llm_request_body event:', {
+        messageId: payload.messageId,
+        expectedMessageId,
+        currentStreamingMessageId: state.currentStreamingMessageId,
+      });
+      return;
+    }
+    const targetMsg = state.messageMap.get(targetMsgId);
+    if (!targetMsg || targetMsg.role !== 'assistant') return;
 
-    const existing = state.messageMap.get(targetMsgId)?._meta?.rawRequests ?? [];
+    const existing = targetMsg._meta?.rawRequests ?? [];
     const entry = {
       _source: 'backend_llm' as const,
       model: payload.model,
@@ -1264,6 +1372,9 @@ export class ChatV2TauriAdapter {
    * 为了确保 UI 响应性，先重置状态再执行保存。
    */
   private handleSessionEvent(payload: SessionEventPayload): void {
+    if (payload.sessionId !== this.sessionId) {
+      return;
+    }
     console.log(LOG_PREFIX, 'Session event:', payload.eventType, payload);
     try {
       window.dispatchEvent(new CustomEvent('chatanki-debug-lifecycle', { detail: {
@@ -1277,6 +1388,61 @@ export class ChatV2TauriAdapter {
     try {
       switch (payload.eventType) {
         case 'stream_start': {
+          if (!payload.messageId) {
+            console.warn(LOG_PREFIX, 'Ignore stream_start without messageId');
+            break;
+          }
+          if (this.isStaleByExpectationTimestamp(payload)) {
+            console.warn(LOG_PREFIX, 'Ignore stale stream_start by timestamp:', {
+              messageId: payload.messageId,
+              eventTimestamp: payload.timestamp,
+              expectation: this.streamExpectation,
+            });
+            break;
+          }
+
+          const currentState = this.getCurrentState();
+          const currentStreamingMessageId = currentState.currentStreamingMessageId;
+          const expectedMessageId = this.streamExpectation?.messageId ?? null;
+          const hasConflictingCurrent =
+            !!currentStreamingMessageId && currentStreamingMessageId !== payload.messageId;
+          const hasConflictingExpectation =
+            !!expectedMessageId && expectedMessageId !== payload.messageId;
+          if (hasConflictingCurrent || hasConflictingExpectation) {
+            const canAdoptRetryRebound = this.canAdoptRetryReboundStreamStart(
+              currentState,
+              payload.messageId,
+              currentStreamingMessageId,
+              expectedMessageId,
+            );
+            if (canAdoptRetryRebound) {
+              console.warn(LOG_PREFIX, 'Adopt retry rebound stream_start messageId:', {
+                incomingMessageId: payload.messageId,
+                previousMessageId: currentStreamingMessageId,
+                expectedMessageId,
+              });
+              this.setStreamExpectationMessageId(payload.messageId);
+              this.store.setCurrentStreamingMessage(payload.messageId);
+            } else {
+              console.warn(LOG_PREFIX, 'Ignore stale stream_start with mismatched messageId:', {
+                incomingMessageId: payload.messageId,
+                currentStreamingMessageId,
+                expectedMessageId,
+              });
+              break;
+            }
+          }
+
+          if (!this.isTargetingCurrentStreamMessage(payload.messageId)) {
+            console.warn(LOG_PREFIX, 'Ignore stale stream_start with mismatched messageId:', {
+              incomingMessageId: payload.messageId,
+              currentStreamingMessageId: this.getCurrentState().currentStreamingMessageId,
+              expectedMessageId: this.streamExpectation?.messageId ?? null,
+            });
+            break;
+          }
+          this.syncStreamExpectationFromEvent(payload.messageId, payload.timestamp);
+
           // 流式开始
           // 🆕 2026-02-16: 重置工具调用生命周期追踪器的轮次计数器
           try {
@@ -1298,8 +1464,25 @@ export class ChatV2TauriAdapter {
           
           // 🔧 P29 修复：子代理场景下消息可能不存在（后端创建，前端未同步）
           // 检查消息是否存在，不存在则创建占位消息（与普通会话 sendMessageWithIds 等价）
-          const currentState = this.getCurrentState();
-          const messageExists = currentState.messageMap.has(payload.messageId);
+          const targetMessage = currentState.messageMap.get(payload.messageId);
+          const messageExists = !!targetMessage;
+
+          // 进一步拦截空闲态下的历史消息 start 事件：
+          // 若当前既无 active stream 也无 expectation，且该消息已有内容块，几乎可判定为 stale。
+          if (
+            messageExists
+            && !this.isTargetingCurrentStreamMessage(payload.messageId)
+            && currentState.sessionStatus === 'idle'
+            && (targetMessage?.blockIds?.length ?? 0) > 0
+          ) {
+            console.warn(LOG_PREFIX, 'Ignore stream_start for completed historical message:', {
+              messageId: payload.messageId,
+              blockCount: targetMessage?.blockIds?.length ?? 0,
+              currentStreamingMessageId,
+              expectedMessageId,
+            });
+            break;
+          }
           
           // 🔧 P31 全链路诊断
           const diagData = {
@@ -1383,6 +1566,16 @@ export class ChatV2TauriAdapter {
         }
 
         case 'stream_complete':
+          if (!payload.messageId || !this.isTargetingCurrentStreamMessage(payload.messageId) || this.isStaleByExpectationTimestamp(payload)) {
+            console.warn(LOG_PREFIX, 'Ignore stale stream_complete:', {
+              messageId: payload.messageId,
+              currentStreamingMessageId: this.getCurrentState().currentStreamingMessageId,
+              expectation: this.streamExpectation,
+              eventTimestamp: payload.timestamp,
+            });
+            break;
+          }
+          this.clearStreamExpectation(payload.messageId);
           // 流式完成 - 重置状态为 idle
           console.log(
             LOG_PREFIX,
@@ -1406,6 +1599,16 @@ export class ChatV2TauriAdapter {
           break;
 
         case 'stream_error':
+          if (!payload.messageId || !this.isTargetingCurrentStreamMessage(payload.messageId) || this.isStaleByExpectationTimestamp(payload)) {
+            console.warn(LOG_PREFIX, 'Ignore stale stream_error:', {
+              messageId: payload.messageId,
+              currentStreamingMessageId: this.getCurrentState().currentStreamingMessageId,
+              expectation: this.streamExpectation,
+              eventTimestamp: payload.timestamp,
+            });
+            break;
+          }
+          this.clearStreamExpectation(payload.messageId);
           // 流式错误 - 重置状态为 idle
           console.error(LOG_PREFIX, 'Stream error:', payload.error);
           // 🔧 P2修复：先重置状态确保 UI 响应，再异步保存
@@ -1420,6 +1623,16 @@ export class ChatV2TauriAdapter {
           break;
 
         case 'stream_cancelled':
+          if (!payload.messageId || !this.isTargetingCurrentStreamMessage(payload.messageId) || this.isStaleByExpectationTimestamp(payload)) {
+            console.warn(LOG_PREFIX, 'Ignore stale stream_cancelled:', {
+              messageId: payload.messageId,
+              currentStreamingMessageId: this.getCurrentState().currentStreamingMessageId,
+              expectation: this.streamExpectation,
+              eventTimestamp: payload.timestamp,
+            });
+            break;
+          }
+          this.clearStreamExpectation(payload.messageId);
           // 流式被取消 - 由 abortStream 处理状态重置
           console.log(LOG_PREFIX, 'Stream cancelled for message:', payload.messageId);
           // 🔧 P2修复：先重置状态确保 UI 响应，再异步保存
@@ -1616,6 +1829,8 @@ export class ChatV2TauriAdapter {
       // 1. 前端生成消息 ID（消息 ID 统一方案 B）
       const userMessageId = this.generateMessageId();
       const assistantMessageId = this.generateMessageId();
+      this.beginStreamExpectation(assistantMessageId);
+      const sendStateSnapshot = this.getCurrentState();
 
       // ⚠️ 统一上下文注入：先获取 pendingContextRefs（sendMessageWithIds 会清空）
       // ★ 使用 storeApi 获取最新状态
@@ -1641,9 +1856,12 @@ export class ChatV2TauriAdapter {
       );
 
       // 3. 构建发送选项（包含 parallelModelIds）
-      const activeModelId = this.getCurrentState().chatParams.modelId;
+      const activeModelId = sendStateSnapshot.chatParams.modelId;
       await this.ensureModelMetadataReady(activeModelId);
-      const options = this.buildSendOptions();
+      const options = this.buildSendOptions({
+        state: sendStateSnapshot,
+        pendingContextRefs,
+      });
       const effectiveModelId = await this.resolveEffectiveChatModelId(options.modelId);
       if (options.modelId !== effectiveModelId) {
         options.modelId = effectiveModelId;
@@ -1747,9 +1965,11 @@ export class ChatV2TauriAdapter {
           assistantMessageId
         );
         // 更新为后端返回的 ID（兼容旧版本后端）
+        this.setStreamExpectationMessageId(returnedAssistantMessageId);
         this.store.setCurrentStreamingMessage(returnedAssistantMessageId);
       }
     } catch (error) {
+      this.clearStreamExpectation();
       const errorMsg = getErrorMessage(error);
       console.error(LOG_PREFIX, 'Send message failed:', errorMsg);
       // 尝试恢复状态
@@ -1780,6 +2000,9 @@ export class ChatV2TauriAdapter {
     console.log(LOG_PREFIX, 'Executing sendMessage:', { content: content.substring(0, 50), userMessageId, assistantMessageId });
 
     try {
+      this.beginStreamExpectation(assistantMessageId);
+      const sendStateSnapshot = this.getCurrentState();
+
       // 🔧 重置事件桥接状态（确保序列号从 0 开始）
       resetBridgeState(this.sessionId);
 
@@ -1812,9 +2035,12 @@ export class ChatV2TauriAdapter {
       );
 
       // 2. 构建发送选项（包含 parallelModelIds）
-      const activeModelId = this.getCurrentState().chatParams.modelId;
+      const activeModelId = sendStateSnapshot.chatParams.modelId;
       await this.ensureModelMetadataReady(activeModelId);
-      const options = this.buildSendOptions();
+      const options = this.buildSendOptions({
+        state: sendStateSnapshot,
+        pendingContextRefs,
+      });
       const effectiveModelId = await this.resolveEffectiveChatModelId(options.modelId);
       if (options.modelId !== effectiveModelId) {
         options.modelId = effectiveModelId;
@@ -1970,9 +2196,11 @@ export class ChatV2TauriAdapter {
       // 6. 验证 ID 一致性
       if (returnedAssistantMessageId && returnedAssistantMessageId !== assistantMessageId) {
         console.warn(LOG_PREFIX, 'Backend returned different ID:', returnedAssistantMessageId);
+        this.setStreamExpectationMessageId(returnedAssistantMessageId);
         this.store.setCurrentStreamingMessage(returnedAssistantMessageId);
       }
     } catch (error) {
+      this.clearStreamExpectation();
       const errorMsg = getErrorMessage(error);
       console.error(LOG_PREFIX, 'Execute sendMessage failed:', errorMsg);
       try {
@@ -2031,6 +2259,7 @@ export class ChatV2TauriAdapter {
     const currentMessageId = this.getCurrentState().currentStreamingMessageId;
     if (!currentMessageId) {
       console.warn(LOG_PREFIX, 'No streaming message to abort');
+      this.clearStreamExpectation();
       return;
     }
 
@@ -2078,6 +2307,7 @@ export class ChatV2TauriAdapter {
     console.log(LOG_PREFIX, 'Executing retry for message:', messageId, 'model override:', modelOverride);
 
     try {
+      this.beginStreamExpectation(messageId);
       // 🔧 修复：重置事件桥接状态（确保序列号从 0 开始，与 executeSendMessage 保持一致）
       resetBridgeState(this.sessionId);
 
@@ -2116,6 +2346,9 @@ export class ChatV2TauriAdapter {
         newVariantId,
         deletedVariantIds: deletedVariantIds.length,
       });
+      if (returnedMessageId && returnedMessageId !== messageId) {
+        this.setStreamExpectationMessageId(returnedMessageId);
+      }
 
       // 🆕 P1 状态同步修复: 返回完整的状态变更信息
       return {
@@ -2125,6 +2358,7 @@ export class ChatV2TauriAdapter {
         deletedVariantIds: deletedVariantIds.length > 0 ? deletedVariantIds : undefined,
       };
     } catch (error) {
+      this.clearStreamExpectation(messageId);
       const errorMsg = getErrorMessage(error);
       console.error(LOG_PREFIX, 'Retry failed:', errorMsg);
       // 显示错误提示（使用 i18n）
@@ -2273,40 +2507,45 @@ export class ChatV2TauriAdapter {
       // 注意：editAndResend 的新消息由后端创建，pathMap 在后端保存时处理
       let newContextRefsForBackend = undefined;
       let newPathMap: Record<string, string> | undefined;
-      if (newContextRefs && newContextRefs.length > 0) {
-        // 🆕 P1 修复：验证并清理已删除的资源引用
-        const validContextRefs = await validateAndCleanupContextRefs(
-          this.storeApi ?? this.store,
-          newContextRefs,
-          { notifyUser: true, logDetails: true }
-        );
-        console.log(LOG_PREFIX, 'Building SendContextRefs for editAndResend:', validContextRefs.length, '(validated from', newContextRefs.length, ')');
-        
-        if (validContextRefs.length > 0) {
-          const currentModelId = options.modelId;
-          // ★ 2026-02 修复：使用异步版本确保模型缓存已加载
-          const isMultimodal = await isModelMultimodalAsync(currentModelId);
-          const { sendRefs, pathMap } = await buildSendContextRefsWithPaths(validContextRefs, { isMultimodal });
+      if (newContextRefs) {
+        if (newContextRefs.length === 0) {
+          // 显式清空上下文引用（传 [] 给后端，而不是 undefined）
+          newContextRefsForBackend = [];
+        } else {
+          // 🆕 P1 修复：验证并清理已删除的资源引用
+          const validContextRefs = await validateAndCleanupContextRefs(
+            this.storeApi ?? this.store,
+            newContextRefs,
+            { notifyUser: true, logDetails: true }
+          );
+          console.log(LOG_PREFIX, 'Building SendContextRefs for editAndResend:', validContextRefs.length, '(validated from', newContextRefs.length, ')');
+          
+          if (validContextRefs.length > 0) {
+            const currentModelId = options.modelId;
+            // ★ 2026-02 修复：使用异步版本确保模型缓存已加载
+            const isMultimodal = await isModelMultimodalAsync(currentModelId);
+            const { sendRefs, pathMap } = await buildSendContextRefsWithPaths(validContextRefs, { isMultimodal });
 
-          // Token 预估和截断（基于模型预算，防止上下文过长）
-          const contextTokenLimit = this.getContextTruncateLimit(options.contextLimit);
-          const truncateResult = truncateContextByTokens(sendRefs, contextTokenLimit);
+            // Token 预估和截断（基于模型预算，防止上下文过长）
+            const contextTokenLimit = this.getContextTruncateLimit(options.contextLimit);
+            const truncateResult = truncateContextByTokens(sendRefs, contextTokenLimit);
 
-          if (truncateResult.wasTruncated) {
-            console.warn(
-              LOG_PREFIX,
-              'Context truncated for editAndResend:',
-              `original=${truncateResult.originalTokens} tokens,`,
-              `final=${truncateResult.finalTokens} tokens,`,
-              `removed=${truncateResult.removedCount} refs`
-            );
-            this.notifyContextTruncated(truncateResult.removedCount);
-          }
+            if (truncateResult.wasTruncated) {
+              console.warn(
+                LOG_PREFIX,
+                'Context truncated for editAndResend:',
+                `original=${truncateResult.originalTokens} tokens,`,
+                `final=${truncateResult.finalTokens} tokens,`,
+                `removed=${truncateResult.removedCount} refs`
+              );
+              this.notifyContextTruncated(truncateResult.removedCount);
+            }
 
-          newContextRefsForBackend = truncateResult.truncatedRefs;
-          newPathMap = Object.keys(pathMap).length > 0 ? pathMap : undefined;
-          if (newPathMap) {
-            console.log(LOG_PREFIX, 'PathMap for editAndResend:', Object.keys(newPathMap).length, 'entries');
+            newContextRefsForBackend = truncateResult.truncatedRefs;
+            newPathMap = Object.keys(pathMap).length > 0 ? pathMap : undefined;
+            if (newPathMap) {
+              console.log(LOG_PREFIX, 'PathMap for editAndResend:', Object.keys(newPathMap).length, 'entries');
+            }
           }
         }
       }
@@ -2322,6 +2561,7 @@ export class ChatV2TauriAdapter {
         newContent,
         // 🆕 P1-2: 传递新的上下文引用给后端
         newContextRefs: newContextRefsForBackend,
+        newPathMap,
         options,
       });
 
@@ -2331,6 +2571,9 @@ export class ChatV2TauriAdapter {
       const newMessageId = result.new_message_id ?? null;
       const deletedMessageIds = result.deleted_message_ids ?? [];
       const newVariantId = result.new_variant_id;
+      if (newMessageId) {
+        this.beginStreamExpectation(newMessageId);
+      }
 
       console.log(LOG_PREFIX, 'Edit and resend initiated:', {
         newMessageId,
@@ -2374,6 +2617,7 @@ export class ChatV2TauriAdapter {
     console.log(LOG_PREFIX, 'Continue message:', messageId, 'variant:', variantId);
 
     try {
+      this.beginStreamExpectation(messageId);
       // 重置事件桥接状态
       resetBridgeState(this.sessionId);
 
@@ -2400,9 +2644,11 @@ export class ChatV2TauriAdapter {
       
       // 更新流式消息 ID
       if (resultMessageId && resultMessageId !== messageId) {
+        this.setStreamExpectationMessageId(resultMessageId);
         this.store.setCurrentStreamingMessage(resultMessageId);
       }
     } catch (error) {
+      this.clearStreamExpectation(messageId);
       const errorMsg = getErrorMessage(error);
       console.error(LOG_PREFIX, 'Continue message failed:', errorMsg);
       // 清除流式状态
@@ -2955,10 +3201,11 @@ export class ChatV2TauriAdapter {
   private notifyContextTruncated(removedCount: number): void {
     showGlobalNotification('warning', i18n.t('chatV2:chat.context_truncated', { count: removedCount }));
   }
-  private buildSendOptions(): SendOptions {
+  private buildSendOptions(snapshot?: BuildSendOptionsSnapshot): SendOptions {
     // 🔧 使用 getCurrentState() 获取最新状态，而非构造时的快照
     // 这确保了 enableThinking 等用户实时修改的参数能正确传递
-    const currentState = this.getCurrentState();
+    const currentState = snapshot?.state ?? this.getCurrentState();
+    const pendingContextRefs = snapshot?.pendingContextRefs ?? currentState.pendingContextRefs;
     const { chatParams, features, mode, modeState, sessionId, groupId, sessionMetadata } = currentState;
 
     // 获取模式插件（使用 getResolved 获取合并了继承链的完整插件）
@@ -2999,7 +3246,7 @@ export class ChatV2TauriAdapter {
     let modeEnabledTools: string[] = [];
     if (modePlugin?.getEnabledTools) {
       try {
-        modeEnabledTools = modePlugin.getEnabledTools(this.store);
+        modeEnabledTools = modePlugin.getEnabledTools(currentState);
       } catch (error) {
         console.error(LOG_PREFIX, 'Error getting enabled tools:', getErrorMessage(error));
       }
@@ -3101,7 +3348,7 @@ export class ChatV2TauriAdapter {
     {
       const mergedAllowedTools: string[] = [];
       // 来源 1：pendingContextRefs 中的 sticky skill refs
-      const skillRefs = currentState.pendingContextRefs.filter(
+      const skillRefs = pendingContextRefs.filter(
         (ref) => ref.typeId === SKILL_INSTRUCTION_TYPE_ID && ref.isSticky
       );
       const seenSkillIds = new Set<string>();
@@ -3139,7 +3386,7 @@ export class ChatV2TauriAdapter {
     }
 
     const schemaToolResult = collectSchemaToolIds({
-      pendingContextRefs: currentState.pendingContextRefs,
+      pendingContextRefs,
       // ★ 2026-01 改造：Anki 工具已迁移到内置 MCP 服务器，无需单独启用
       // 🆕 P1-B: 传递 skill allowedTools 进行过滤
       skillAllowedTools,

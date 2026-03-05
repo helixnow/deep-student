@@ -88,7 +88,7 @@ impl MemoryEvolution {
             Err(e) => {
                 // 本轮执行失败时回滚节流时间，避免“失败也占用周期”导致长时间不重试。
                 LAST_EVOLUTION_MS.store(last, Ordering::Relaxed);
-                debug!("[Evolution] Throttled cycle failed (non-fatal): {}", e);
+                warn!("[Evolution] Throttled cycle failed (non-fatal): {}", e);
                 None
             }
         }
@@ -284,7 +284,20 @@ impl MemoryEvolution {
             } else {
                 Some(folder.as_str())
             };
-            let items = memory_service.list_shallow(folder_arg, 200, 0)?;
+            let mut items: Vec<MemoryListItem> = Vec::new();
+            let mut offset = 0u32;
+            loop {
+                let page = memory_service.list_shallow(folder_arg, 200, offset)?;
+                if page.is_empty() {
+                    break;
+                }
+                let page_len = page.len() as u32;
+                items.extend(page);
+                if page_len < 200 {
+                    break;
+                }
+                offset = offset.saturating_add(200);
+            }
             let active: Vec<&MemoryListItem> = items
                 .iter()
                 .filter(|m| !m.title.starts_with("__"))
@@ -312,21 +325,50 @@ impl MemoryEvolution {
                 let keep = group[0];
                 let mut combined_content = String::new();
                 let mut seen_fragments = std::collections::HashSet::new();
+                let mut content_read_failed = false;
                 for mem in group {
-                    if let Ok(Some(content)) =
-                        crate::vfs::repos::note_repo::VfsNoteRepo::get_note_content(
-                            &self.vfs_db,
-                            &mem.id,
-                        )
-                    {
-                        let normalized = content.trim().to_string();
-                        if !normalized.is_empty() && seen_fragments.insert(normalized.clone()) {
-                            if !combined_content.is_empty() {
-                                combined_content.push_str("\n\n");
+                    match crate::vfs::repos::note_repo::VfsNoteRepo::get_note_content(
+                        &self.vfs_db,
+                        &mem.id,
+                    ) {
+                        Ok(Some(content)) => {
+                            for fragment in Self::split_merge_fragments(&content) {
+                                if seen_fragments.insert(fragment.clone()) {
+                                    if !combined_content.is_empty() {
+                                        combined_content.push_str("\n\n");
+                                    }
+                                    combined_content.push_str(&fragment);
+                                }
                             }
-                            combined_content.push_str(&normalized);
+                        }
+                        Ok(None) => {
+                            warn!(
+                                "[Evolution] Empty note content when merging group '{}': {}",
+                                keep.title, mem.id
+                            );
+                            content_read_failed = true;
+                            break;
+                        }
+                        Err(e) => {
+                            warn!(
+                                "[Evolution] Failed to read content for duplicate merge {}: {}",
+                                mem.id, e
+                            );
+                            content_read_failed = true;
+                            break;
                         }
                     }
+                }
+                if content_read_failed {
+                    continue;
+                }
+                if combined_content.trim().is_empty() {
+                    warn!(
+                        "[Evolution] Skip empty merge output for title '{}', group_size={}",
+                        keep.title,
+                        group.len()
+                    );
+                    continue;
                 }
 
                 let updated_keep = match crate::vfs::repos::note_repo::VfsNoteRepo::update_note(
@@ -364,26 +406,6 @@ impl MemoryEvolution {
                         .flatten()
                         .map(|n| n.resource_id);
 
-                    if let Some(ref res_id) = resource_id {
-                        if let Some(ref lance) = self.lance_store {
-                            let lance_c = lance.clone();
-                            let res_id_c = res_id.clone();
-                            if let Ok(handle) = tokio::runtime::Handle::try_current() {
-                                let _ = tokio::task::block_in_place(|| {
-                                    handle.block_on(async {
-                                        lance_c.delete_by_resource("text", &res_id_c).await
-                                    })
-                                });
-                            }
-                        }
-                        let _ = index_unit_repo::delete_by_resource(&conn, res_id);
-                        let _ = VfsIndexStateRepo::mark_disabled_with_reason(
-                            &self.vfs_db,
-                            res_id,
-                            "evolution merged duplicate",
-                        );
-                    }
-
                     if let Err(e) =
                         crate::vfs::repos::note_repo::VfsNoteRepo::delete_note_with_folder_item(
                             &self.vfs_db,
@@ -392,6 +414,40 @@ impl MemoryEvolution {
                     {
                         warn!("[Evolution] Failed to delete duplicate {}: {}", dup.id, e);
                     } else {
+                        if let Some(ref res_id) = resource_id {
+                            if let Some(ref lance) = self.lance_store {
+                                let lance_c = lance.clone();
+                                let res_id_c = res_id.clone();
+                                if let Ok(handle) = tokio::runtime::Handle::try_current() {
+                                    if let Err(e) = tokio::task::block_in_place(|| {
+                                        handle.block_on(async {
+                                            lance_c.delete_by_resource("text", &res_id_c).await
+                                        })
+                                    }) {
+                                        warn!(
+                                            "[Evolution] Failed to delete vector chunks for {}: {}",
+                                            res_id, e
+                                        );
+                                    }
+                                }
+                            }
+                            if let Err(e) = index_unit_repo::delete_by_resource(&conn, res_id) {
+                                warn!(
+                                    "[Evolution] Failed to delete index units for {}: {}",
+                                    res_id, e
+                                );
+                            }
+                            if let Err(e) = VfsIndexStateRepo::mark_disabled_with_reason(
+                                &self.vfs_db,
+                                res_id,
+                                "evolution merged duplicate",
+                            ) {
+                                warn!(
+                                    "[Evolution] Failed to mark index disabled for {}: {}",
+                                    res_id, e
+                                );
+                            }
+                        }
                         folder_merged += 1;
                         debug!(
                             "[Evolution] Merged duplicate '{}' ({} → {})",
@@ -445,6 +501,15 @@ impl MemoryEvolution {
     fn extract_last_hit_ms(tags: &[String]) -> Option<i64> {
         tags.iter()
             .find_map(|t| t.strip_prefix("_last_hit:").and_then(|v| v.parse().ok()))
+    }
+
+    fn split_merge_fragments(content: &str) -> Vec<String> {
+        content
+            .split("\n\n")
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_string())
+            .collect()
     }
 }
 

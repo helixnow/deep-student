@@ -13,7 +13,7 @@
 //! 4. `sync_push` - 推送本地更新
 
 use chrono::{DateTime, Utc};
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{params, types::Type, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
@@ -762,80 +762,52 @@ impl QuestionSyncService {
         conflict_id: &str,
         strategy: QuestionConflictStrategy,
     ) -> VfsResult<Question> {
-        // 获取冲突记录
-        let conflict =
-            Self::get_conflict_with_conn(conn, conflict_id)?.ok_or_else(|| VfsError::NotFound {
-                resource_type: "sync_conflict".to_string(),
-                id: conflict_id.to_string(),
-            })?;
+        conn.execute_batch("SAVEPOINT qbank_resolve_conflict")?;
 
-        if conflict.status != "pending" {
-            return Err(VfsError::InvalidOperation {
-                operation: "resolve_conflict".to_string(),
-                reason: format!("Conflict {} is already {}", conflict_id, conflict.status),
-            });
-        }
+        let result = (|| -> VfsResult<Question> {
+            // 获取冲突记录
+            let conflict =
+                Self::get_conflict_with_conn(conn, conflict_id)?.ok_or_else(|| VfsError::NotFound {
+                    resource_type: "sync_conflict".to_string(),
+                    id: conflict_id.to_string(),
+                })?;
 
-        let now = Utc::now().to_rfc3339();
-        let question_id = &conflict.question_id;
-
-        // 根据策略解决冲突
-        let _resolved_version = match strategy {
-            QuestionConflictStrategy::KeepLocal => {
-                // 保留本地版本，更新同步状态
-                Self::apply_keep_local(conn, question_id, &conflict.local_version, &now)?
+            if conflict.status != "pending" {
+                return Err(VfsError::InvalidOperation {
+                    operation: "resolve_conflict".to_string(),
+                    reason: format!("Conflict {} is already {}", conflict_id, conflict.status),
+                });
             }
-            QuestionConflictStrategy::KeepRemote => {
-                // 应用远程版本
-                Self::apply_remote_version(conn, question_id, &conflict.remote_version, &now)?
-            }
-            QuestionConflictStrategy::KeepNewer => {
-                // 比较更新时间
-                let local_ts = &conflict.local_version.updated_at;
-                let local_time = DateTime::parse_from_rfc3339(local_ts)
-                    .map(|dt| dt.with_timezone(&Utc))
-                    .unwrap_or_else(|e| {
-                        log::warn!("[QuestionSyncService] Failed to parse timestamp '{}': {}, using epoch fallback", local_ts, e);
-                        DateTime::<Utc>::from(std::time::UNIX_EPOCH)
-                    });
-                let remote_ts = &conflict.remote_version.updated_at;
-                let remote_time = DateTime::parse_from_rfc3339(remote_ts)
-                    .map(|dt| dt.with_timezone(&Utc))
-                    .unwrap_or_else(|e| {
-                        log::warn!("[QuestionSyncService] Failed to parse timestamp '{}': {}, using epoch fallback", remote_ts, e);
-                        DateTime::<Utc>::from(std::time::UNIX_EPOCH)
-                    });
 
-                if local_time >= remote_time {
+            let now = Utc::now().to_rfc3339();
+            let question_id = &conflict.question_id;
+
+            // 根据策略解决冲突
+            match strategy {
+                QuestionConflictStrategy::KeepLocal => {
+                    // 保留本地版本，更新同步状态
                     Self::apply_keep_local(conn, question_id, &conflict.local_version, &now)?
-                } else {
+                }
+                QuestionConflictStrategy::KeepRemote => {
+                    // 应用远程版本
                     Self::apply_remote_version(conn, question_id, &conflict.remote_version, &now)?
                 }
-            }
-            QuestionConflictStrategy::Merge => {
-                // 智能合并
-                let merge_result =
-                    Self::merge_versions(&conflict.local_version, &conflict.remote_version);
-                if merge_result.fully_merged {
-                    Self::apply_merged_version(conn, question_id, &merge_result.merged, &now)?
-                } else {
-                    // 无法完全合并，保留较新版本
+                QuestionConflictStrategy::KeepNewer => {
+                    // 比较更新时间
                     let local_ts = &conflict.local_version.updated_at;
-                    let local_time =
-                        DateTime::parse_from_rfc3339(local_ts)
-                            .map(|dt| dt.with_timezone(&Utc))
-                            .unwrap_or_else(|e| {
-                                log::warn!("[QuestionSyncService] Failed to parse timestamp '{}': {}, using epoch fallback", local_ts, e);
-                                DateTime::<Utc>::from(std::time::UNIX_EPOCH)
-                            });
+                    let local_time = DateTime::parse_from_rfc3339(local_ts)
+                        .map(|dt| dt.with_timezone(&Utc))
+                        .unwrap_or_else(|e| {
+                            log::warn!("[QuestionSyncService] Failed to parse timestamp '{}': {}, using epoch fallback", local_ts, e);
+                            DateTime::<Utc>::from(std::time::UNIX_EPOCH)
+                        });
                     let remote_ts = &conflict.remote_version.updated_at;
-                    let remote_time =
-                        DateTime::parse_from_rfc3339(remote_ts)
-                            .map(|dt| dt.with_timezone(&Utc))
-                            .unwrap_or_else(|e| {
-                                log::warn!("[QuestionSyncService] Failed to parse timestamp '{}': {}, using epoch fallback", remote_ts, e);
-                                DateTime::<Utc>::from(std::time::UNIX_EPOCH)
-                            });
+                    let remote_time = DateTime::parse_from_rfc3339(remote_ts)
+                        .map(|dt| dt.with_timezone(&Utc))
+                        .unwrap_or_else(|e| {
+                            log::warn!("[QuestionSyncService] Failed to parse timestamp '{}': {}, using epoch fallback", remote_ts, e);
+                            DateTime::<Utc>::from(std::time::UNIX_EPOCH)
+                        });
 
                     if local_time >= remote_time {
                         Self::apply_keep_local(conn, question_id, &conflict.local_version, &now)?
@@ -848,34 +820,104 @@ impl QuestionSyncService {
                         )?
                     }
                 }
-            }
-            QuestionConflictStrategy::Manual => {
-                // 手动模式不自动解决，保持冲突状态
+                QuestionConflictStrategy::Merge => {
+                    // 智能合并
+                    let merge_result =
+                        Self::merge_versions(&conflict.local_version, &conflict.remote_version);
+                    if merge_result.fully_merged {
+                        Self::apply_merged_version(conn, question_id, &merge_result.merged, &now)?
+                    } else {
+                        // 无法完全合并，保留较新版本
+                        let local_ts = &conflict.local_version.updated_at;
+                        let local_time =
+                            DateTime::parse_from_rfc3339(local_ts)
+                                .map(|dt| dt.with_timezone(&Utc))
+                                .unwrap_or_else(|e| {
+                                    log::warn!("[QuestionSyncService] Failed to parse timestamp '{}': {}, using epoch fallback", local_ts, e);
+                                    DateTime::<Utc>::from(std::time::UNIX_EPOCH)
+                                });
+                        let remote_ts = &conflict.remote_version.updated_at;
+                        let remote_time =
+                            DateTime::parse_from_rfc3339(remote_ts)
+                                .map(|dt| dt.with_timezone(&Utc))
+                                .unwrap_or_else(|e| {
+                                    log::warn!("[QuestionSyncService] Failed to parse timestamp '{}': {}, using epoch fallback", remote_ts, e);
+                                    DateTime::<Utc>::from(std::time::UNIX_EPOCH)
+                                });
+
+                        if local_time >= remote_time {
+                            Self::apply_keep_local(
+                                conn,
+                                question_id,
+                                &conflict.local_version,
+                                &now,
+                            )?
+                        } else {
+                            Self::apply_remote_version(
+                                conn,
+                                question_id,
+                                &conflict.remote_version,
+                                &now,
+                            )?
+                        }
+                    }
+                }
+                QuestionConflictStrategy::Manual => {
+                    // 手动模式不自动解决，保持冲突状态
+                    return Err(VfsError::InvalidOperation {
+                        operation: "resolve_conflict".to_string(),
+                        reason: "Manual strategy requires explicit version selection".to_string(),
+                    });
+                }
+            };
+
+            // 更新冲突状态为已解决
+            let affected = conn.execute(
+                r#"
+                UPDATE question_sync_conflicts
+                SET status = 'resolved', resolved_strategy = ?1, resolved_at = ?2
+                WHERE id = ?3 AND status = 'pending'
+                "#,
+                params![strategy.as_str(), now, conflict_id],
+            )?;
+            if affected == 0 {
                 return Err(VfsError::InvalidOperation {
                     operation: "resolve_conflict".to_string(),
-                    reason: "Manual strategy requires explicit version selection".to_string(),
+                    reason: format!(
+                        "Conflict {} is no longer pending while applying strategy {}",
+                        conflict_id,
+                        strategy.as_str()
+                    ),
                 });
             }
-        };
 
-        // 更新冲突状态为已解决
-        conn.execute(
-            r#"
-            UPDATE question_sync_conflicts
-            SET status = 'resolved', resolved_strategy = ?1, resolved_at = ?2
-            WHERE id = ?3
-            "#,
-            params![strategy.as_str(), now, conflict_id],
-        )?;
+            info!(
+                "[QuestionSyncService] Resolved conflict id={} with strategy={}",
+                conflict_id,
+                strategy.as_str()
+            );
 
-        info!(
-            "[QuestionSyncService] Resolved conflict id={} with strategy={}",
-            conflict_id,
-            strategy.as_str()
-        );
+            // 返回解决后的题目
+            Self::get_question_by_id(conn, question_id)
+        })();
 
-        // 返回解决后的题目
-        Self::get_question_by_id(conn, question_id)
+        match result {
+            Ok(question) => {
+                conn.execute_batch("RELEASE SAVEPOINT qbank_resolve_conflict")?;
+                Ok(question)
+            }
+            Err(e) => {
+                if let Err(rollback_err) = conn.execute_batch(
+                    "ROLLBACK TO SAVEPOINT qbank_resolve_conflict; RELEASE SAVEPOINT qbank_resolve_conflict;",
+                ) {
+                    warn!(
+                        "[QuestionSyncService] Failed to rollback conflict resolution savepoint: {}",
+                        rollback_err
+                    );
+                }
+                Err(e)
+            }
+        }
     }
 
     /// 批量解决冲突
@@ -938,7 +980,7 @@ impl QuestionSyncService {
         now: &str,
     ) -> VfsResult<()> {
         // 更新同步状态为 synced，保留本地内容
-        conn.execute(
+        let affected = conn.execute(
             r#"
             UPDATE questions SET
                 sync_status = 'synced',
@@ -950,6 +992,12 @@ impl QuestionSyncService {
             "#,
             params![now, local_version.content_hash, question_id],
         )?;
+        if affected == 0 {
+            return Err(VfsError::NotFound {
+                resource_type: "question".to_string(),
+                id: question_id.to_string(),
+            });
+        }
         Ok(())
     }
 
@@ -970,7 +1018,7 @@ impl QuestionSyncService {
         let images_json =
             serde_json::to_string(&remote_version.images).unwrap_or_else(|_| "[]".to_string());
 
-        conn.execute(
+        let affected = conn.execute(
             r#"
             UPDATE questions SET
                 content = ?1,
@@ -1019,6 +1067,12 @@ impl QuestionSyncService {
                 question_id,
             ],
         )?;
+        if affected == 0 {
+            return Err(VfsError::NotFound {
+                resource_type: "question".to_string(),
+                id: question_id.to_string(),
+            });
+        }
         Ok(())
     }
 
@@ -1038,7 +1092,7 @@ impl QuestionSyncService {
             serde_json::to_string(&merged.images).unwrap_or_else(|_| "[]".to_string());
         let new_hash = Self::compute_version_hash(merged);
 
-        conn.execute(
+        let affected = conn.execute(
             r#"
             UPDATE questions SET
                 content = ?1,
@@ -1087,6 +1141,12 @@ impl QuestionSyncService {
                 question_id,
             ],
         )?;
+        if affected == 0 {
+            return Err(VfsError::NotFound {
+                resource_type: "question".to_string(),
+                id: question_id.to_string(),
+            });
+        }
         Ok(())
     }
 
@@ -1242,54 +1302,15 @@ impl QuestionSyncService {
                 let local_snapshot_json: String = row.get(4)?;
                 let remote_snapshot_json: String = row.get(5)?;
                 let conflict_type_str: String = row.get(3)?;
+                let local_version: QuestionVersion =
+                    serde_json::from_str(&local_snapshot_json).map_err(|e| {
+                        rusqlite::Error::FromSqlConversionFailure(4, Type::Text, Box::new(e))
+                    })?;
 
-                let local_version: QuestionVersion = serde_json::from_str(&local_snapshot_json)
-                    .unwrap_or_else(|_| QuestionVersion {
-                        id: String::new(),
-                        content: String::new(),
-                        options: None,
-                        answer: None,
-                        explanation: None,
-                        question_type: QuestionType::Other,
-                        difficulty: None,
-                        tags: vec![],
-                        status: QuestionStatus::New,
-                        user_answer: None,
-                        is_correct: None,
-                        attempt_count: 0,
-                        correct_count: 0,
-                        user_note: None,
-                        is_favorite: false,
-                        is_bookmarked: false,
-                        images: vec![],
-                        content_hash: String::new(),
-                        updated_at: String::new(),
-                        remote_version: 0,
-                    });
-
-                let remote_version: QuestionVersion = serde_json::from_str(&remote_snapshot_json)
-                    .unwrap_or_else(|_| QuestionVersion {
-                        id: String::new(),
-                        content: String::new(),
-                        options: None,
-                        answer: None,
-                        explanation: None,
-                        question_type: QuestionType::Other,
-                        difficulty: None,
-                        tags: vec![],
-                        status: QuestionStatus::New,
-                        user_answer: None,
-                        is_correct: None,
-                        attempt_count: 0,
-                        correct_count: 0,
-                        user_note: None,
-                        is_favorite: false,
-                        is_bookmarked: false,
-                        images: vec![],
-                        content_hash: String::new(),
-                        updated_at: String::new(),
-                        remote_version: 0,
-                    });
+                let remote_version: QuestionVersion =
+                    serde_json::from_str(&remote_snapshot_json).map_err(|e| {
+                        rusqlite::Error::FromSqlConversionFailure(5, Type::Text, Box::new(e))
+                    })?;
 
                 Ok(SyncConflict {
                     id: row.get(0)?,
@@ -1335,53 +1356,15 @@ impl QuestionSyncService {
             let remote_snapshot_json: String = row.get(5)?;
             let conflict_type_str: String = row.get(3)?;
 
-            let local_version: QuestionVersion = serde_json::from_str(&local_snapshot_json)
-                .unwrap_or_else(|_| QuestionVersion {
-                    id: String::new(),
-                    content: String::new(),
-                    options: None,
-                    answer: None,
-                    explanation: None,
-                    question_type: QuestionType::Other,
-                    difficulty: None,
-                    tags: vec![],
-                    status: QuestionStatus::New,
-                    user_answer: None,
-                    is_correct: None,
-                    attempt_count: 0,
-                    correct_count: 0,
-                    user_note: None,
-                    is_favorite: false,
-                    is_bookmarked: false,
-                    images: vec![],
-                    content_hash: String::new(),
-                    updated_at: String::new(),
-                    remote_version: 0,
-                });
+            let local_version: QuestionVersion =
+                serde_json::from_str(&local_snapshot_json).map_err(|e| {
+                    rusqlite::Error::FromSqlConversionFailure(4, Type::Text, Box::new(e))
+                })?;
 
-            let remote_version: QuestionVersion = serde_json::from_str(&remote_snapshot_json)
-                .unwrap_or_else(|_| QuestionVersion {
-                    id: String::new(),
-                    content: String::new(),
-                    options: None,
-                    answer: None,
-                    explanation: None,
-                    question_type: QuestionType::Other,
-                    difficulty: None,
-                    tags: vec![],
-                    status: QuestionStatus::New,
-                    user_answer: None,
-                    is_correct: None,
-                    attempt_count: 0,
-                    correct_count: 0,
-                    user_note: None,
-                    is_favorite: false,
-                    is_bookmarked: false,
-                    images: vec![],
-                    content_hash: String::new(),
-                    updated_at: String::new(),
-                    remote_version: 0,
-                });
+            let remote_version: QuestionVersion =
+                serde_json::from_str(&remote_snapshot_json).map_err(|e| {
+                    rusqlite::Error::FromSqlConversionFailure(5, Type::Text, Box::new(e))
+                })?;
 
             Ok(SyncConflict {
                 id: row.get(0)?,
@@ -1397,8 +1380,8 @@ impl QuestionSyncService {
             })
         })?;
 
-        let conflicts: Vec<SyncConflict> = rows.filter_map(log_and_skip_err).collect();
-        Ok(conflicts)
+        let conflicts: Result<Vec<SyncConflict>, rusqlite::Error> = rows.collect();
+        Ok(conflicts?)
     }
 
     /// 保存冲突到数据库
@@ -1498,10 +1481,16 @@ impl QuestionSyncService {
     /// 启用/禁用同步
     pub fn set_sync_enabled(db: &VfsDatabase, exam_id: &str, enabled: bool) -> VfsResult<()> {
         let conn = db.get_conn_safe()?;
-        conn.execute(
-            "UPDATE exam_sheets SET sync_enabled = ?1 WHERE id = ?2",
+        let affected = conn.execute(
+            "UPDATE exam_sheets SET sync_enabled = ?1 WHERE id = ?2 AND deleted_at IS NULL",
             params![if enabled { 1 } else { 0 }, exam_id],
         )?;
+        if affected == 0 {
+            return Err(VfsError::NotFound {
+                resource_type: "exam_sheet".to_string(),
+                id: exam_id.to_string(),
+            });
+        }
         info!(
             "[QuestionSyncService] Set sync_enabled={} for exam_id={}",
             enabled, exam_id
@@ -1519,10 +1508,16 @@ impl QuestionSyncService {
         let config_json =
             serde_json::to_string(config).map_err(|e| VfsError::Serialization(e.to_string()))?;
 
-        conn.execute(
-            "UPDATE exam_sheets SET sync_config = ?1 WHERE id = ?2",
+        let affected = conn.execute(
+            "UPDATE exam_sheets SET sync_config = ?1 WHERE id = ?2 AND deleted_at IS NULL",
             params![config_json, exam_id],
         )?;
+        if affected == 0 {
+            return Err(VfsError::NotFound {
+                resource_type: "exam_sheet".to_string(),
+                id: exam_id.to_string(),
+            });
+        }
 
         info!(
             "[QuestionSyncService] Updated sync_config for exam_id={}",

@@ -153,12 +153,11 @@ pub(super) fn infer_database_from_table(table_name: &str) -> Option<&'static str
 
 /// 构建各表主键列名映射
 ///
-/// 大部分表使用 "id" 作为主键，少数表（如 questions 使用 exam_id，
-/// llm_usage_daily 使用复合主键）需要特殊映射。
+/// 大部分表使用 "id" 作为主键。
+/// 复合主键（如 llm_usage_daily）在上层按特殊 record_id 解析处理，
+/// 此处无需额外映射。
 pub(super) fn build_id_column_map() -> std::collections::HashMap<String, String> {
-    let mut m = std::collections::HashMap::new();
-    m.insert("questions".to_string(), "exam_id".to_string());
-    m
+    std::collections::HashMap::new()
 }
 
 fn parse_sync_timestamp(input: &str) -> Option<chrono::DateTime<chrono::Utc>> {

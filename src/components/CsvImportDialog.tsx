@@ -240,6 +240,8 @@ export const CsvImportDialog: React.FC<CsvImportDialogProps> = ({
           autoMapping[header] = 'difficulty';
         } else if (/标签|分类|tags|category/.test(headerLower)) {
           autoMapping[header] = 'tags';
+        } else if (/图片|配图|图像|images?|image/.test(headerLower)) {
+          autoMapping[header] = 'images';
         } else if (/题型|类型|type|question_type/.test(headerLower)) {
           autoMapping[header] = 'question_type';
         } else if (/题号|序号|label|number|no/.test(headerLower)) {
@@ -298,8 +300,12 @@ export const CsvImportDialog: React.FC<CsvImportDialogProps> = ({
     // Tauri 环境会使用 onPathsDropped
   }, []);
 
-  // 检查映射是否有效
-  const isMappingValid = Object.values(fieldMapping).includes('content');
+  // 检查映射是否有效（必须映射 content，且不允许重复目标字段）
+  const isMappingValid = (() => {
+    const targets = Object.values(fieldMapping).filter(Boolean);
+    if (!targets.includes('content')) return false;
+    return new Set(targets).size === targets.length;
+  })();
 
   // 开始导入
   const handleStartImport = useCallback(async () => {

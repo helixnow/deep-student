@@ -51,6 +51,10 @@ export const sessionManagerSkill: SkillDefinition = {
 - **归档会话**（session_archive）
 - **批量移动**（session_batch_move，涉及 3 个以上会话时）
 - **批量打标**（session_batch_tag，涉及 5 个以上会话时）
+- **统一批量操作**（session_batch_ops，涉及 3 个以上会话或包含 archive 时）
+
+确认后，调用 \`session_batch_ops\` 时应显式传入 \`confirmed=true\`。
+同理，\`session_batch_move\`（>3）和 \`session_batch_tag\`（>5）也应传 \`confirmed=true\`。
 
 确认时，清晰展示将要执行的操作和影响范围。
 
@@ -364,10 +368,14 @@ export const sessionManagerSkill: SkillDefinition = {
     {
       name: 'builtin-session_batch_move',
       description:
-        '批量移动多个会话到指定分组。⚠️ 超过 3 个会话时必须先使用 ask_user 确认。单次最多 50 个。',
+        '批量移动多个会话到指定分组。⚠️ 超过 3 个会话时必须先使用 ask_user 确认，并传 confirmed=true。单次最多 50 个。',
       inputSchema: {
         type: 'object',
         properties: {
+          confirmed: {
+            type: 'boolean',
+            description: '超过 3 个会话时必须为 true，表示已获得用户确认。',
+          },
           session_ids: {
             type: 'array',
             items: { type: 'string' },
@@ -384,10 +392,14 @@ export const sessionManagerSkill: SkillDefinition = {
     {
       name: 'builtin-session_batch_tag',
       description:
-        '批量给多个会话添加同一标签。⚠️ 超过 5 个会话时必须先使用 ask_user 确认。单次最多 50 个。',
+        '批量给多个会话添加同一标签。⚠️ 超过 5 个会话时必须先使用 ask_user 确认，并传 confirmed=true。单次最多 50 个。',
       inputSchema: {
         type: 'object',
         properties: {
+          confirmed: {
+            type: 'boolean',
+            description: '超过 5 个会话时必须为 true，表示已获得用户确认。',
+          },
           session_ids: {
             type: 'array',
             items: { type: 'string' },
@@ -399,6 +411,53 @@ export const sessionManagerSkill: SkillDefinition = {
           },
         },
         required: ['session_ids', 'tag'],
+      },
+    },
+    {
+      name: 'builtin-session_batch_ops',
+      description:
+        '统一批量会话操作。一次请求可混合执行 move/tag_add/tag_remove/rename/archive/restore 等动作，按 operations 顺序执行。最多涉及 50 个不同会话，且 operations 最多 200 条。⚠️ 涉及 3 个以上会话或包含 archive 时必须先 ask_user 确认，并在调用时传 confirmed=true。',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          confirmed: {
+            type: 'boolean',
+            description:
+              '高风险批量操作的显式确认标记。涉及 3 个以上会话或包含 archive 时必须为 true。',
+          },
+          operations: {
+            type: 'array',
+            description: '【必填】批量操作列表，按顺序执行',
+            items: {
+              type: 'object',
+              properties: {
+                session_id: {
+                  type: 'string',
+                  description: '【必填】目标会话 ID',
+                },
+                action: {
+                  type: 'string',
+                  enum: ['move', 'tag_add', 'tag_remove', 'rename', 'archive', 'restore'],
+                  description: '【必填】操作类型',
+                },
+                group_id: {
+                  type: 'string',
+                  description: 'action=move 时使用。不传或传空字符串表示移出分组。',
+                },
+                tag: {
+                  type: 'string',
+                  description: 'action=tag_add/tag_remove 时必填。',
+                },
+                title: {
+                  type: 'string',
+                  description: 'action=rename 时必填。',
+                },
+              },
+              required: ['session_id', 'action'],
+            },
+          },
+        },
+        required: ['operations'],
       },
     },
   ],

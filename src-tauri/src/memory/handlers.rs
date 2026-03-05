@@ -160,7 +160,7 @@ pub async fn memory_search(
     llm_manager: State<'_, Arc<LLMManager>>,
 ) -> Result<Vec<MemorySearchResult>, String> {
     let service = get_memory_service(&vfs_db, &lance_store, &llm_manager);
-    let k = top_k.unwrap_or(5);
+    let k = top_k.unwrap_or(5).clamp(1, 100);
     service
         .search_with_rerank(&query, k, false)
         .await
@@ -260,12 +260,9 @@ pub async fn memory_list(
     llm_manager: State<'_, Arc<LLMManager>>,
 ) -> Result<Vec<MemoryListItem>, String> {
     let service = get_memory_service(&vfs_db, &lance_store, &llm_manager);
+    let safe_limit = limit.unwrap_or(100).clamp(1, 500);
     service
-        .list(
-            folder_path.as_deref(),
-            limit.unwrap_or(100),
-            offset.unwrap_or(0),
-        )
+        .list(folder_path.as_deref(), safe_limit, offset.unwrap_or(0))
         .map_err(|e| e.to_string())
 }
 
@@ -511,7 +508,17 @@ pub async fn memory_set_auto_extract_frequency(
     lance_store: State<'_, Arc<VfsLanceStore>>,
     llm_manager: State<'_, Arc<LLMManager>>,
 ) -> Result<(), String> {
-    let freq = super::config::AutoExtractFrequency::from_str_lossy(&frequency);
+    let freq = match frequency.trim().to_lowercase().as_str() {
+        "off" => super::config::AutoExtractFrequency::Off,
+        "balanced" => super::config::AutoExtractFrequency::Balanced,
+        "aggressive" => super::config::AutoExtractFrequency::Aggressive,
+        other => {
+            return Err(format!(
+                "Invalid auto extract frequency '{}', expected one of: off, balanced, aggressive",
+                other
+            ));
+        }
+    };
     let service = get_memory_service(&vfs_db, &lance_store, &llm_manager);
     let cfg = super::config::MemoryConfig::new(service.vfs_db_ref().clone());
     cfg.set_auto_extract_frequency(freq)
@@ -612,14 +619,44 @@ pub async fn memory_write_smart(
     lance_store: State<'_, Arc<VfsLanceStore>>,
     llm_manager: State<'_, Arc<LLMManager>>,
 ) -> Result<SmartWriteOutput, String> {
+    if title.trim().is_empty() {
+        return Err("标题不能为空".to_string());
+    }
+    if content.trim().is_empty() {
+        return Err("内容不能为空".to_string());
+    }
+
     let service = get_memory_service(&vfs_db, &lance_store, &llm_manager);
-    let mem_type = memory_type
+    let mem_type = match memory_type
         .as_deref()
-        .map(super::service::MemoryType::from_str)
-        .unwrap_or(super::service::MemoryType::Fact);
-    let purpose = memory_purpose
+        .map(|s| s.trim().to_lowercase())
+    {
+        Some(s) if s == "fact" => super::service::MemoryType::Fact,
+        Some(s) if s == "note" => super::service::MemoryType::Note,
+        Some(s) => {
+            return Err(format!(
+                "Invalid memory_type '{}', expected one of: fact, note",
+                s
+            ));
+        }
+        None => super::service::MemoryType::Fact,
+    };
+    let purpose = match memory_purpose
         .as_deref()
-        .map(super::service::MemoryPurpose::from_str);
+        .map(|s| s.trim().to_lowercase())
+    {
+        Some(s) if s == "internalized" => Some(super::service::MemoryPurpose::Internalized),
+        Some(s) if s == "memorized" => Some(super::service::MemoryPurpose::Memorized),
+        Some(s) if s == "supplementary" => Some(super::service::MemoryPurpose::Supplementary),
+        Some(s) if s == "systemic" => Some(super::service::MemoryPurpose::Systemic),
+        Some(s) => {
+            return Err(format!(
+                "Invalid memory_purpose '{}', expected one of: internalized, memorized, supplementary, systemic",
+                s
+            ));
+        }
+        None => None,
+    };
     let result = service
         .write_smart_with_source(
             folder_path.as_deref(),
@@ -650,7 +687,7 @@ pub async fn memory_get_audit_logs(
     success_filter: Option<bool>,
     vfs_db: State<'_, Arc<VfsDatabase>>,
 ) -> Result<Vec<MemoryAuditLogItem>, String> {
-    let limit = limit.unwrap_or(50);
+    let limit = limit.unwrap_or(50).clamp(1, 200);
     let offset = offset.unwrap_or(0);
     audit_log::query_audit_logs(
         &vfs_db,
@@ -677,7 +714,7 @@ pub async fn memory_to_anki_document(
     llm_manager: State<'_, Arc<LLMManager>>,
 ) -> Result<MemoryAnkiDocument, String> {
     let service = get_memory_service(&vfs_db, &lance_store, &llm_manager);
-    let limit = limit.unwrap_or(200);
+    let limit = limit.unwrap_or(200).clamp(1, 1000);
     let items = service
         .list(folder_path.as_deref(), limit, 0)
         .map_err(|e| e.to_string())?;

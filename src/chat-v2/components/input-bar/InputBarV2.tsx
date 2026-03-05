@@ -132,7 +132,13 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
     }, [sessionId]);
 
     const handleContextRefCreated = useCallback((payload: { contextRef: { resourceId: string; hash: string; typeId: string }; attachmentId: string }) => {
-      store.getState().addContextRef(payload.contextRef);
+      const state = store.getState();
+      const attachmentStillExists = state.attachments.some((attachment) => attachment.id === payload.attachmentId);
+      if (!attachmentStillExists) {
+        console.warn('[InputBarV2] Drop stale context ref creation after attachment removed:', payload);
+        return;
+      }
+      state.addContextRef(payload.contextRef);
     }, [store]);
 
     // 切换推理模式回调（使用 store.getState 避免闭包陈旧）

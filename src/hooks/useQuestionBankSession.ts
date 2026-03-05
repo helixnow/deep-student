@@ -58,13 +58,20 @@ interface QuestionListResult {
 }
 
 interface SubmitAnswerResult {
-  is_correct: boolean;
-  correct_answer: string;
+  is_correct: boolean | null;
+  correct_answer: string | null;
   needs_manual_grading: boolean;
   message: string;
   submission_id: string;
   updated_question: StoreQuestion;
   updated_stats: StoreStats;
+}
+
+function generateClientRequestId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return `req_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
 }
 
 function convertToApiQuestion(q: StoreQuestion): Question {
@@ -283,7 +290,12 @@ export function useQuestionBankSession({
     setIsSubmitting(true);
     try {
       const result = await invoke<SubmitAnswerResult>('qbank_submit_answer', {
-        request: { question_id: questionId, user_answer: answer, is_correct_override: isCorrectOverride },
+        request: {
+          question_id: questionId,
+          user_answer: answer,
+          is_correct_override: isCorrectOverride,
+          client_request_id: generateClientRequestId(),
+        },
       });
       if (sessionEpochRef.current !== epoch || examIdRef.current !== currentExamId) {
         throw new Error('Session changed before answer submission completed');

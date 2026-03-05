@@ -10,7 +10,7 @@ impl ChatV2Pipeline {
         let canvas_note = self.build_canvas_note_info(ctx).await;
 
         // 读取用户画像摘要（如果 VFS 可用）
-        let user_profile = self.load_user_profile().await;
+        let user_profile = self.load_user_profile(ctx).await;
 
         prompt_builder::build_system_prompt_with_profile(
             &ctx.options,
@@ -25,11 +25,19 @@ impl ChatV2Pipeline {
     /// 受 memU dual-mode retrieval 启发：
     /// - LLM 直读模式（本方法）：将分类文件注入 system prompt，每次对话都有
     /// - 向量搜索模式（memory_search 工具）：LLM 按需主动搜索
-    async fn load_user_profile(&self) -> Option<String> {
-        use crate::memory::{MemoryCategoryManager, MemoryService};
+    async fn load_user_profile(&self, ctx: &PipelineContext) -> Option<String> {
+        use crate::memory::{MemoryCategoryManager, MemoryConfig, MemoryService};
         use crate::vfs::lance_store::VfsLanceStore;
 
+        if ctx.options.memory_enabled == Some(false) {
+            return None;
+        }
+
         let vfs_db = self.vfs_db.as_ref()?;
+        let mem_cfg = MemoryConfig::new(vfs_db.clone());
+        if mem_cfg.is_privacy_mode().ok()? {
+            return None;
+        }
         let lance_store = VfsLanceStore::new(vfs_db.clone())
             .ok()
             .map(std::sync::Arc::new)?;

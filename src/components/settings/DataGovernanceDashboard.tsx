@@ -561,8 +561,12 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
       setResumableJobs(jobs);
     } catch (error: unknown) {
       console.error('加载可恢复任务失败:', error);
+      showGlobalNotification(
+        'warning',
+        t('data:governance.resumable_jobs_load_failed', '加载可恢复任务失败，请稍后重试')
+      );
     }
-  }, []);
+  }, [t]);
 
   // 使用统一的备份任务监听 Hook
   const { startListening, stopListening } = useBackupJobListener({
@@ -1073,6 +1077,7 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
       const cloudConfig = await loadCloudSyncConfig();
       if (!cloudConfig) {
         setCloudSyncConfigured(false);
+        setSyncProgress(null);
         showGlobalNotification(
           'warning',
           t('data:governance.cloud_sync_not_configured'),
@@ -1166,8 +1171,20 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
 
   // 检测冲突
   const detectConflicts = useCallback(async () => {
-    if (isSyncRunning || syncInFlightRef.current) return;
-    if (detectInFlightRef.current) return;
+    if (isSyncRunning || syncInFlightRef.current) {
+      showGlobalNotification(
+        'warning',
+        t('data:governance.sync_already_running')
+      );
+      return;
+    }
+    if (detectInFlightRef.current) {
+      showGlobalNotification(
+        'warning',
+        t('data:governance.detect_conflicts_running', '冲突检测正在进行，请稍候')
+      );
+      return;
+    }
     detectInFlightRef.current = true;
     startTabLoading('sync');
     setConflicts(null);
@@ -1204,7 +1221,13 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
 
   // 解决冲突
   const resolveConflicts = useCallback(async (strategy: MergeStrategy) => {
-    if (resolveInFlightRef.current) return;
+    if (resolveInFlightRef.current) {
+      showGlobalNotification(
+        'warning',
+        t('data:governance.resolve_conflicts_running', '冲突解决正在进行，请稍候')
+      );
+      return;
+    }
     if (conflicts?.needs_migration) {
       showGlobalNotification(
         'warning',
@@ -1227,6 +1250,11 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
       const result = await DataGovernanceApi.resolveConflicts(strategy, cloudManifestJson);
       if (result.success) {
         if (strategy === 'manual' && result.pending_manual_conflicts > 0) {
+          const cloudConfig = await loadCloudSyncConfig();
+          if (cloudConfig) {
+            const refreshedConflicts = await DataGovernanceApi.detectConflicts(undefined, cloudConfig);
+            setConflicts(refreshedConflicts);
+          }
           showGlobalNotification(
             'warning',
             t('data:governance.conflicts_pending_manual', {
@@ -1236,8 +1264,8 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
           );
         } else {
           showGlobalNotification('success', t('data:governance.conflicts_resolved'));
+          setConflicts(null);
         }
-        setConflicts(null);
         await loadSyncStatus();
       } else {
         showGlobalNotification('error', result.error_message || t('data:governance.sync_failed'));
@@ -1248,7 +1276,7 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
       stopTabLoading('sync');
       resolveInFlightRef.current = false;
     }
-  }, [conflicts, loadSyncStatus, startTabLoading, stopTabLoading, t]);
+  }, [conflicts, loadCloudSyncConfig, loadSyncStatus, startTabLoading, stopTabLoading, t]);
 
   // 预取审计日志：提升切换体验（并与单测期望对齐）
   useEffect(() => {
@@ -1382,6 +1410,10 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
         }
       } catch (error: unknown) {
         console.error('检查运行中的备份任务失败:', error);
+        showGlobalNotification(
+          'warning',
+          t('data:governance.reconnect_running_job_failed', '恢复后台任务监听失败，请稍后重试')
+        );
       }
     };
 
@@ -1390,7 +1422,6 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
     return () => {
       mounted = false;
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // 仅在挂载时执行一次
 
   const content = (

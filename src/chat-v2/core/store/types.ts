@@ -196,6 +196,8 @@ export interface ChatStoreState extends StoreCallbacks {
 
   /** 待发送的上下文引用列表（只存引用，不存内容） */
   pendingContextRefs: ContextRef[];
+  /** pendingContextRefs 是否被用户在当前轮编辑中显式修改过（用于 editAndResend 三态语义） */
+  pendingContextRefsDirty: boolean;
 
   // ========== 🆕 工具审批请求（✔️ 运行时状态，文档 29 P1-3） ==========
 
@@ -285,6 +287,7 @@ export function createInitialState(sessionId: string, title?: string, descriptio
     modelRetryTarget: null,
     messageOperationLock: null, // 🆕 消息操作锁初始为 null
     pendingContextRefs: [], // 🆕 上下文引用初始为空数组
+    pendingContextRefsDirty: false,
     pendingApprovalRequest: null, // 🆕 工具审批请求初始为 null（文档 29 P1-3）
     activeSkillIds: [], // 🆕 Skills 系统：当前激活的 Skill ID 列表（支持多选）
     chatParams: createDefaultChatParams(),

@@ -63,6 +63,7 @@ const CSV_EXPORTABLE_FIELDS = [
   { key: 'explanation', default: true },
   { key: 'difficulty', default: true },
   { key: 'tags', default: true },
+  { key: 'images', default: false },
   { key: 'question_label', default: true },
   { key: 'user_answer', default: false },
   { key: 'is_correct', default: false },
@@ -604,7 +605,10 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
                                 field.key === 'content' && 'text-muted-foreground'
                               )}
                             >
-                              {t(`exam_sheet:questionBank.export.fields.${field.key}`)}
+                              {t(
+                                `exam_sheet:questionBank.export.fields.${field.key}`,
+                                field.key === 'images' ? '关联图片' : field.key
+                              )}
                             </Label>
                           </div>
                         ))}

@@ -103,6 +103,7 @@ export function createSkillActions(
           }
           return {
             pendingContextRefs: [...s.pendingContextRefs, contextRef],
+            pendingContextRefsDirty: true,
             activeSkillIds: [...s.activeSkillIds, skillId],
           };
         });

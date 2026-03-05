@@ -166,6 +166,7 @@ export function createMessageActions(
             // 🆕 Prompt 6: 发送完成后清空上下文引用
             // ★ P0-01+P0-04 修复：只清空非 sticky 的引用，保留 skill 等持久引用
             pendingContextRefs: s.pendingContextRefs.filter((ref) => ref.isSticky === true),
+            pendingContextRefsDirty: false,
           }));
 
           if (!IS_VITEST) {
@@ -442,7 +443,10 @@ export function createMessageActions(
             // 🆕 P1-2: 获取当前的 pendingContextRefs（ContextRef[] 类型）
             // Adapter 层负责转换为 SendContextRef[]
             const pendingRefs = currentState.pendingContextRefs;
-            const newContextRefs = pendingRefs.length > 0 ? [...pendingRefs] : undefined;
+            const pendingRefsDirty = currentState.pendingContextRefsDirty === true;
+            const newContextRefs: ContextRef[] | undefined = pendingRefsDirty
+              ? [...pendingRefs]
+              : undefined;
             
             // 调用编辑并重发回调（由 TauriAdapter 提供）
             // 🆕 P1-2: 传递新的上下文引用（ContextRef[] 类型）
@@ -523,6 +527,7 @@ export function createMessageActions(
             // ★ P0-01+P0-04 修复：只清空非 sticky 的引用，保留 skill 等持久引用
             set((s) => ({
               pendingContextRefs: s.pendingContextRefs.filter((ref) => ref.isSticky === true),
+              pendingContextRefsDirty: false,
             }));
 
             // 🔧 调试日志：记录成功

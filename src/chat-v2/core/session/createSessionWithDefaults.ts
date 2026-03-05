@@ -75,7 +75,7 @@ export async function createSessionWithDefaults(options: CreateSessionWithDefaul
         ? { ...ref, autoLoaded: true }
         : ref
     );
-    store.setState({ pendingContextRefs: markedRefs });
+    store.setState({ pendingContextRefs: markedRefs, pendingContextRefsDirty: false });
 
     // 🔧 通知用户哪些默认技能激活失败
     if (failedSkills.length > 0) {
@@ -125,7 +125,7 @@ export async function createSessionWithDefaults(options: CreateSessionWithDefaul
             }
           }
           if (newRefs.length > currentRefs.length) {
-            store.setState({ pendingContextRefs: newRefs });
+            store.setState({ pendingContextRefs: newRefs, pendingContextRefsDirty: false });
             console.log('[createSessionWithDefaults] Injected group pinned resources:', newRefs.length - currentRefs.length);
           }
         }

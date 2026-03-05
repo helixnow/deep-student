@@ -113,6 +113,13 @@ export interface SubmitAnswerResult {
   submission_id: string;
 }
 
+function generateClientRequestId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return `req_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
 export interface QuestionHistory {
   id: string;
   question_id: string;
@@ -1023,6 +1030,7 @@ export const useQuestionBankStore = create<QuestionBankState>()(
               question_id: questionId,
               user_answer: answer,
               is_correct_override: isCorrectOverride,
+              client_request_id: generateClientRequestId(),
             },
           });
           
@@ -1109,7 +1117,7 @@ export const useQuestionBankStore = create<QuestionBankState>()(
           const range = get().selectedDateRange;
           let defaultStartDate: string;
           const toLocalDateStr = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-          let defaultEndDate = toLocalDateStr(now);
+          const defaultEndDate = toLocalDateStr(now);
           
           switch (range) {
             case 'today':
@@ -1485,12 +1493,15 @@ export const useQuestionBankStore = create<QuestionBankState>()(
             examId,
             strategy,
           });
+          const refreshedConflicts = await invoke<SyncConflict[]>('qbank_get_sync_conflicts', {
+            examId,
+          });
           
           // 更新本地题目缓存
           set((state) => {
             const newMap = new Map(state.questions);
             questions.forEach(q => newMap.set(q.id, q));
-            return { questions: newMap, syncConflicts: [], isSyncing: false };
+            return { questions: newMap, syncConflicts: refreshedConflicts, isSyncing: false };
           });
           
           return questions;

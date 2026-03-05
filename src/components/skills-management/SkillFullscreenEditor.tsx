@@ -74,8 +74,6 @@ interface ValidationErrors {
 // 验证函数
 // ============================================================================
 
-const NAME_PATTERN = /^[a-z0-9-]+$/;
-
 function normalizeSkillIdList(ids?: string[]): string[] {
   const next: string[] = [];
   for (const id of ids ?? []) {
@@ -123,9 +121,7 @@ function validateForm(
   } else if (trimmedName.length > 64) {
     errors.name = t('skills:validation.name_too_long', '名称不能超过 64 个字符');
   } else if (!isBuiltinSkill) {
-    if (!NAME_PATTERN.test(trimmedName)) {
-      errors.name = t('skills:validation.name_format', '名称只能包含小写字母、数字和连字符（a-z, 0-9, -）');
-    } else if (/(deep-student|deepstudent)/i.test(trimmedName)) {
+    if (/(deep-student|deepstudent)/i.test(trimmedName)) {
       errors.name = t('skills:validation.name_reserved', '名称不能包含 deep-student 等保留字');
     }
   }

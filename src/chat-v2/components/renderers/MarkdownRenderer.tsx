@@ -202,6 +202,24 @@ const fixCjkAdjacentBoldSyntax = (content: string): string => {
     .replace(strongUnderscore, '$1 $2 $3');
 };
 
+const isLikelyMarkdownTableLine = (line: string): boolean => {
+  const trimmed = line.trim();
+  if (!trimmed) return false;
+  // Data/header row: | a | b |
+  if (/^\|.*\|\s*$/.test(trimmed)) return true;
+  // Separator row: |---|:---:|
+  if (/^\|?[\s:-]+\|[\s|:-]*$/.test(trimmed)) return true;
+  return false;
+};
+
+const fixCjkAdjacentBoldSyntaxSafely = (content: string): string => {
+  // Avoid touching table rows; aggressive CJK fixes can break emphasis parsing in GFM tables.
+  return content
+    .split('\n')
+    .map((line) => (isLikelyMarkdownTableLine(line) ? line : fixCjkAdjacentBoldSyntax(line)))
+    .join('\n');
+};
+
 // 预处理函数：处理LaTeX和空行
 const preprocessContent = (content: string): string => {
   if (!content) return '';
@@ -217,7 +235,7 @@ const preprocessContent = (content: string): string => {
     codeBlockPlaceholders.push(match);
     return `\x00CB${codeBlockPlaceholders.length - 1}\x00`;
   });
-  processedContent = fixCjkAdjacentBoldSyntax(processedContent);
+  processedContent = fixCjkAdjacentBoldSyntaxSafely(processedContent);
   processedContent = processedContent.replace(
     /(?<!\\)\\\((.+?)(?<!\\)\\\)/g,
     (match, math) => {

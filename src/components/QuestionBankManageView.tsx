@@ -6,7 +6,7 @@
  * 🆕 2026-01 新增
  */
 
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { Input } from '@/components/ui/shad/Input';
@@ -137,14 +137,37 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
 
   const allSelected = questions.length > 0 && selectedIds.size === questions.length;
   const someSelected = selectedIds.size > 0 && selectedIds.size < questions.length;
+  const canDelete = Boolean(onDelete);
+  const canReset = Boolean(onResetProgress);
+  const canToggleFavorite = Boolean(onToggleFavorite);
+
+  useEffect(() => {
+    setSelectedIds((prev) => {
+      if (prev.size === 0) return prev;
+      const visibleIds = new Set(questions.map((q) => q.id));
+      const next = new Set(Array.from(prev).filter((id) => visibleIds.has(id)));
+      if (next.size === prev.size) {
+        let unchanged = true;
+        for (const id of prev) {
+          if (!next.has(id)) {
+            unchanged = false;
+            break;
+          }
+        }
+        if (unchanged) return prev;
+      }
+      if (next.size !== prev.size) {
+        onSelect?.(Array.from(next));
+      }
+      return next;
+    });
+  }, [questions, onSelect]);
 
   const handleSelectAll = useCallback(() => {
-    if (allSelected) {
-      setSelectedIds(new Set());
-    } else {
-      setSelectedIds(new Set(questions.map(q => q.id)));
-    }
-  }, [questions, allSelected]);
+    const nextSelected = allSelected ? new Set<string>() : new Set(questions.map(q => q.id));
+    setSelectedIds(nextSelected);
+    onSelect?.(Array.from(nextSelected));
+  }, [questions, allSelected, onSelect]);
 
   const handleSelectOne = useCallback((id: string, checked: boolean) => {
     setSelectedIds(prev => {
@@ -154,15 +177,35 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
       } else {
         next.delete(id);
       }
+      onSelect?.(Array.from(next));
       return next;
     });
-  }, []);
+  }, [onSelect]);
 
   const handleFilterChange = useCallback((key: keyof QuestionFilters, value: unknown) => {
     const newFilters = { ...filters, [key]: value };
     setFilters(newFilters);
     onFilterChange?.(newFilters);
   }, [filters, onFilterChange]);
+
+  const handleToggleFavoriteAction = useCallback(async (questionId: string) => {
+    if (!onToggleFavorite) {
+      showGlobalNotification('warning', t('exam_sheet:questionBank.actionUnavailable', '当前操作不可用'));
+      return;
+    }
+    setActionLoading(`favorite:${questionId}`);
+    try {
+      await onToggleFavorite(questionId);
+      showGlobalNotification('success', t('exam_sheet:questionBank.favoriteUpdated', '收藏状态已更新'));
+    } catch (err: unknown) {
+      showGlobalNotification(
+        'error',
+        `${t('exam_sheet:questionBank.favoriteUpdateFailed', '更新收藏失败')}: ${err instanceof Error ? err.message : String(err)}`
+      );
+    } finally {
+      setActionLoading(null);
+    }
+  }, [onToggleFavorite, t]);
 
   // 批量操作点击（显示确认对话框）
   const handleBatchActionClick = useCallback((action: 'delete' | 'reset') => {
@@ -190,7 +233,10 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
   
   // 确认删除
   const handleDeleteConfirm = useCallback(async () => {
-    if (!onDelete) return;  // 确保回调存在
+    if (!onDelete) {
+      showGlobalNotification('warning', t('exam_sheet:questionBank.actionUnavailable', '当前操作不可用'));
+      return;
+    }
     const ids = singleDeleteId ? [singleDeleteId] : Array.from(selectedIds);
     if (ids.length === 0) return;
     
@@ -198,22 +244,34 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
     setActionLoading('delete');
     try {
       await onDelete(ids);
-      showGlobalNotification('success', t('practice:questionBank.deleteSuccess', { count: ids.length }));
-      if (!singleDeleteId) {
-        setSelectedIds(new Set());
-      }
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        ids.forEach((id) => next.delete(id));
+        onSelect?.(Array.from(next));
+        return next;
+      });
     } catch (err: unknown) {
       console.error('[QuestionBankManageView] handleDelete failed:', err);
-      showGlobalNotification('error', `${t('practice:questionBank.deleteFailed')}: ${err instanceof Error ? err.message : String(err)}`);
+      const alreadyNotified =
+        err instanceof Error && (err as Error & { __notified?: boolean }).__notified === true;
+      if (!alreadyNotified) {
+        showGlobalNotification(
+          'error',
+          `${t('practice:questionBank.deleteFailed')}: ${err instanceof Error ? err.message : String(err)}`
+        );
+      }
     } finally {
       setActionLoading(null);
       setSingleDeleteId(null);
     }
-  }, [singleDeleteId, selectedIds, onDelete]);
+  }, [singleDeleteId, selectedIds, onDelete, onSelect, t]);
   
   // 确认重置进度
   const handleResetConfirm = useCallback(async () => {
-    if (!onResetProgress) return;  // 确保回调存在
+    if (!onResetProgress) {
+      showGlobalNotification('warning', t('exam_sheet:questionBank.actionUnavailable', '当前操作不可用'));
+      return;
+    }
     const ids = singleResetId ? [singleResetId] : Array.from(selectedIds);
     if (ids.length === 0) return;
     
@@ -221,18 +279,27 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
     setActionLoading('reset');
     try {
       await onResetProgress(ids);
-      showGlobalNotification('success', t('practice:questionBank.resetSuccess', { count: ids.length }));
-      if (!singleResetId) {
-        setSelectedIds(new Set());
-      }
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        ids.forEach((id) => next.delete(id));
+        onSelect?.(Array.from(next));
+        return next;
+      });
     } catch (err: unknown) {
       console.error('[QuestionBankManageView] handleReset failed:', err);
-      showGlobalNotification('error', `${t('practice:questionBank.resetFailed')}: ${err instanceof Error ? err.message : String(err)}`);
+      const alreadyNotified =
+        err instanceof Error && (err as Error & { __notified?: boolean }).__notified === true;
+      if (!alreadyNotified) {
+        showGlobalNotification(
+          'error',
+          `${t('practice:questionBank.resetFailed')}: ${err instanceof Error ? err.message : String(err)}`
+        );
+      }
     } finally {
       setActionLoading(null);
       setSingleResetId(null);
     }
-  }, [singleResetId, selectedIds, onResetProgress]);
+  }, [singleResetId, selectedIds, onResetProgress, onSelect, t]);
 
   const totalPages = pagination ? Math.ceil(pagination.total / pagination.pageSize) : 1;
 
@@ -305,11 +372,11 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
             <span className="text-xs text-muted-foreground">
               {t('practice:questionBank.selectedCount', { count: selectedIds.size })}
             </span>
-            <NotionButton variant="ghost" size="sm" onClick={() => handleBatchActionClick('reset')} disabled={actionLoading === 'reset'} className="!h-auto !px-2 !py-1 text-xs text-sky-600 hover:bg-sky-500/10">
+            <NotionButton variant="ghost" size="sm" onClick={() => handleBatchActionClick('reset')} disabled={!canReset || actionLoading === 'reset'} className="!h-auto !px-2 !py-1 text-xs text-sky-600 hover:bg-sky-500/10">
               <RotateCcw className={cn('w-3 h-3', actionLoading === 'reset' && 'animate-spin')} />
               {t('practice:questionBank.reset')}
             </NotionButton>
-            <NotionButton variant="ghost" size="sm" onClick={() => handleBatchActionClick('delete')} disabled={actionLoading === 'delete'} className="!h-auto !px-2 !py-1 text-xs text-rose-600 hover:bg-rose-500/10">
+            <NotionButton variant="ghost" size="sm" onClick={() => handleBatchActionClick('delete')} disabled={!canDelete || actionLoading === 'delete'} className="!h-auto !px-2 !py-1 text-xs text-rose-600 hover:bg-rose-500/10">
               <Trash2 className="w-3 h-3" />
               {t('common:delete')}
             </NotionButton>
@@ -402,7 +469,8 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
                       </AppMenuTrigger>
                       <AppMenuContent align="end" width={160}>
                         <AppMenuItem
-                          onClick={() => onToggleFavorite?.(q.id)}
+                          onClick={() => void handleToggleFavoriteAction(q.id)}
+                          disabled={!canToggleFavorite || actionLoading === `favorite:${q.id}` || isLoading}
                           icon={q.isFavorite ? <StarOff className="w-4 h-4" /> : <Star className="w-4 h-4" />}
                         >
                           {q.isFavorite
@@ -412,12 +480,14 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
                         <AppMenuSeparator />
                         <AppMenuItem
                           onClick={() => handleSingleResetClick(q.id)}
+                          disabled={!canReset}
                           icon={<RotateCcw className="w-4 h-4" />}
                         >
                           {t('exam_sheet:questionBank.resetProgress', '重置进度')}
                         </AppMenuItem>
                         <AppMenuItem
                           onClick={() => handleSingleDeleteClick(q.id)}
+                          disabled={!canDelete}
                           destructive
                           icon={<Trash2 className="w-4 h-4" />}
                         >

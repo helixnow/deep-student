@@ -877,7 +877,11 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
 
   // 保存用户笔记
   const handleSaveNote = useCallback(async () => {
-    if (!currentQuestion || !onUpdateUserNote) return;
+    if (!currentQuestion) return;
+    if (!onUpdateUserNote) {
+      showGlobalNotification('warning', t('exam_sheet:errors.note_update_unavailable', '当前模式不支持保存笔记'));
+      return;
+    }
     try {
       await onUpdateUserNote(currentQuestion.id, noteText);
       setIsEditingNote(false);
@@ -885,7 +889,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
       debugLog.error('Save note failed:', err);
       showGlobalNotification('error', t('exam_sheet:errors.save_note_failed', '保存笔记失败'));
     }
-  }, [currentQuestion, noteText, onUpdateUserNote]);
+  }, [currentQuestion, noteText, onUpdateUserNote, t]);
 
   const handleManualGrade = useCallback(async (isCorrect: boolean) => {
     if (!currentQuestion || !onMarkCorrect) return;
@@ -2317,6 +2321,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                             variant="primary"
                             size="sm"
                             onClick={handleSaveNote}
+                            disabled={!onUpdateUserNote}
                           >
                             {t('editor.save')}
                           </NotionButton>
@@ -2331,7 +2336,13 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                       />
                     </div>
                   ) : (
-                    <NotionButton variant="ghost" size="sm" onClick={() => setIsEditingNote(true)} className="w-full !justify-start !h-auto !p-3 !rounded-lg border border-dashed border-border/50 hover:border-border hover:bg-muted/30 group">
+                    <NotionButton
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setIsEditingNote(true)}
+                      disabled={!onUpdateUserNote}
+                      className="w-full !justify-start !h-auto !p-3 !rounded-lg border border-dashed border-border/50 hover:border-border hover:bg-muted/30 group"
+                    >
                       <div className="flex items-center gap-2 text-sm w-full">
                         <StickyNote className="w-4 h-4 text-amber-500" />
                         <span className="font-medium">{t('editor.myNotes')}</span>

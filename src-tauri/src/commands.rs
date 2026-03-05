@@ -1186,6 +1186,7 @@ pub async fn import_questions_csv(
     // 创建进度通道
     let (progress_tx, mut progress_rx) =
         tokio::sync::mpsc::unbounded_channel::<CsvImportProgress>();
+    let progress_tx_error = progress_tx.clone();
 
     // 事件转发任务
     let event_forwarder = {
@@ -1209,6 +1210,13 @@ pub async fn import_questions_csv(
     };
 
     let result = CsvImportService::import_csv(vfs_db, &csv_request, Some(progress_tx));
+    if let Err(err) = &result {
+        let _ = progress_tx_error.send(CsvImportProgress::Failed {
+            error: err.to_string(),
+            exam_id: csv_request.exam_id.clone(),
+        });
+    }
+    drop(progress_tx_error);
 
     // 等待事件转发完成
     if let Err(err) = event_forwarder.await {
@@ -4606,7 +4614,9 @@ pub async fn qbank_list_questions(
         .ok_or_else(|| AppError::internal("QuestionBankService not initialized"))?;
 
     let filters = request.filters.unwrap_or_default();
-    service.list_questions(&request.exam_id, &filters, request.page, request.page_size)
+    let page = request.page.max(1);
+    let page_size = request.page_size.clamp(1, 100);
+    service.list_questions(&request.exam_id, &filters, page, page_size)
 }
 
 // ============================================================================
@@ -4806,6 +4816,8 @@ pub struct SubmitAnswerRequest {
     pub user_answer: String,
     #[serde(default)]
     pub is_correct_override: Option<bool>,
+    #[serde(default)]
+    pub client_request_id: Option<String>,
 }
 
 #[tauri::command]
@@ -4822,6 +4834,7 @@ pub async fn qbank_submit_answer(
         &request.question_id,
         &request.user_answer,
         request.is_correct_override,
+        request.client_request_id.as_deref(),
     )
 }
 

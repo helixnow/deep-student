@@ -1,6 +1,7 @@
 use rusqlite::params;
 use std::collections::HashSet;
 use std::sync::{Arc, RwLock};
+use std::time::Duration;
 use tracing::{debug, info, warn};
 
 use crate::llm_manager::LLMManager;
@@ -33,6 +34,7 @@ use super::reranker::MemoryReranker;
 
 const SMART_WRITE_MUTATION_CONFIDENCE_THRESHOLD: f32 = 0.65;
 const SMART_WRITE_IDEMPOTENCY_RETENTION_HOURS: i64 = 24;
+const SMART_WRITE_IDEMPOTENCY_IN_PROGRESS: &str = "IN_PROGRESS";
 
 /// 记忆类型标签前缀
 const TAG_TYPE_PREFIX: &str = "_type:";
@@ -157,6 +159,8 @@ const SYSTEM_FOLDER_TITLE: &str = "__system__";
 
 /// 用户画像摘要笔记的保留标题
 const PROFILE_NOTE_TITLE: &str = "__user_profile__";
+/// 用户可写记忆标题/路径不允许使用该前缀，避免篡改系统保留笔记
+const RESERVED_SYSTEM_PREFIX: &str = "__";
 /// 画像摘要的最大条目数
 const PROFILE_MAX_ITEMS: usize = 15;
 /// 标记记忆被搜索命中的 tag 前缀
@@ -338,6 +342,35 @@ impl MemoryService {
             .map(|f| f.id.clone()))
     }
 
+    fn is_reserved_system_name(name: &str) -> bool {
+        name.trim_start().starts_with(RESERVED_SYSTEM_PREFIX)
+    }
+
+    fn validate_user_writable_title(title: &str) -> VfsResult<()> {
+        if Self::is_reserved_system_name(title) {
+            return Err(VfsError::InvalidArgument {
+                param: "title".to_string(),
+                reason: "标题使用系统保留前缀 '__'，请更换标题".to_string(),
+            });
+        }
+        Ok(())
+    }
+
+    fn validate_user_writable_folder_path(path: Option<&str>) -> VfsResult<()> {
+        let Some(path) = path else {
+            return Ok(());
+        };
+        for segment in path.split('/').filter(|s| !s.trim().is_empty()) {
+            if Self::is_reserved_system_name(segment) {
+                return Err(VfsError::InvalidArgument {
+                    param: "folder_path".to_string(),
+                    reason: "路径包含系统保留目录（'__*'）".to_string(),
+                });
+            }
+        }
+        Ok(())
+    }
+
     /// 获取记忆文件夹 ID 列表（带缓存）
     fn get_memory_folder_ids(&self, root_id: &str) -> VfsResult<Vec<String>> {
         {
@@ -370,11 +403,15 @@ impl MemoryService {
     }
 
     pub fn get_config(&self) -> VfsResult<MemoryConfigOutput> {
-        let root_id = self.config.get_root_folder_id()?;
-        let root_title = if let Some(ref id) = root_id {
-            VfsFolderRepo::get_folder(&self.vfs_db, id)?.map(|f| f.title)
+        let configured_root_id = self.config.get_root_folder_id()?;
+        let (root_id, root_title) = if let Some(ref id) = configured_root_id {
+            if let Some(folder) = VfsFolderRepo::get_folder(&self.vfs_db, id)? {
+                (Some(id.clone()), Some(folder.title))
+            } else {
+                (None, None)
+            }
         } else {
-            None
+            (None, None)
         };
 
         Ok(MemoryConfigOutput {
@@ -398,7 +435,16 @@ impl MemoryService {
                 id: folder_id.to_string(),
             });
         }
+        if let Some(folder) = VfsFolderRepo::get_folder(&self.vfs_db, folder_id)? {
+            if Self::is_reserved_system_name(&folder.title) {
+                return Err(VfsError::InvalidArgument {
+                    param: "folder_id".to_string(),
+                    reason: "记忆根目录不能使用系统保留目录（'__*'）".to_string(),
+                });
+            }
+        }
         self.config.set_root_folder_id(folder_id)?;
+        self.invalidate_folder_cache();
         info!("[Memory] Set root folder: {}", folder_id);
         Ok(())
     }
@@ -606,6 +652,9 @@ impl MemoryService {
         for r in lance_results {
             let note = self.get_note_by_resource_id(&r.resource_id)?;
             if let Some(note) = note {
+                if !self.is_note_in_memory_root(&note.id, &root_id)? {
+                    continue;
+                }
                 if !seen_note_ids.insert(note.id.clone()) {
                     continue;
                 }
@@ -688,6 +737,8 @@ impl MemoryService {
                 reason: "标题不能为空".to_string(),
             });
         }
+        Self::validate_user_writable_title(title)?;
+        Self::validate_user_writable_folder_path(folder_path)?;
         if MemoryAutoExtractor::contains_sensitive_pattern_pub(title)
             || MemoryAutoExtractor::contains_sensitive_pattern_pub(content)
         {
@@ -763,7 +814,7 @@ impl MemoryService {
                             title: Some(title.to_string()),
                             content: Some(final_content),
                             tags: None,
-                            expected_updated_at: None,
+                            expected_updated_at: Some(note.updated_at.clone()),
                         },
                     )?;
                     // ★ P2-2 修复：更新后触发索引入队
@@ -858,6 +909,8 @@ impl MemoryService {
                 reason: "标题不能为空".to_string(),
             });
         }
+        Self::validate_user_writable_title(title)?;
+        Self::validate_user_writable_folder_path(folder_path)?;
 
         if content.trim().is_empty() {
             return Ok(SmartWriteOutput {
@@ -883,6 +936,18 @@ impl MemoryService {
             if let Some(cached) = self.get_cached_smart_write_result(key)? {
                 return Ok(cached);
             }
+            if !self.try_reserve_smart_write_key(key)? {
+                for _ in 0..20 {
+                    tokio::time::sleep(Duration::from_millis(50)).await;
+                    if let Some(cached) = self.get_cached_smart_write_result(key)? {
+                        return Ok(cached);
+                    }
+                }
+                return Err(VfsError::Conflict {
+                    key: "memory.idempotency.in_progress".to_string(),
+                    message: "同一幂等键请求正在处理中，请稍后重试".to_string(),
+                });
+            }
         }
 
         if MemoryAutoExtractor::contains_sensitive_pattern_pub(content)
@@ -899,6 +964,9 @@ impl MemoryService {
             };
             self.audit_logger
                 .log_filtered(source, title, content, &output.reason);
+            if let Some(key) = idempotency_key {
+                self.finalize_idempotency_result(key, &output);
+            }
             return Ok(output);
         }
 
@@ -919,6 +987,9 @@ impl MemoryService {
             };
             self.audit_logger
                 .log_filtered(source, title, content, &output.reason);
+            if let Some(key) = idempotency_key {
+                self.finalize_idempotency_result(key, &output);
+            }
             return Ok(output);
         }
 
@@ -937,7 +1008,7 @@ impl MemoryService {
                     downgraded: false,
                 };
                 if let Some(key) = idempotency_key {
-                    let _ = self.cache_smart_write_result(key, &output);
+                    self.finalize_idempotency_result(key, &output);
                 }
                 return Ok(output);
             }
@@ -959,7 +1030,7 @@ impl MemoryService {
                 downgraded: false,
             };
             if let Some(key) = idempotency_key {
-                let _ = self.cache_smart_write_result(key, &output);
+                self.finalize_idempotency_result(key, &output);
             }
             return Ok(output);
         }
@@ -997,7 +1068,7 @@ impl MemoryService {
                 session_id,
             );
             if let Some(key) = idempotency_key {
-                let _ = self.cache_smart_write_result(key, &output);
+                self.finalize_idempotency_result(key, &output);
             }
             return Ok(output);
         }
@@ -1027,6 +1098,8 @@ impl MemoryService {
                 content_preview: r.chunk_text.clone(),
             })
             .collect();
+        let similar_note_ids: HashSet<String> =
+            similar_results.iter().map(|r| r.note_id.clone()).collect();
 
         // 3. 调用 LLM 决策（失败时安全降级为 ADD，不阻塞用户写入意图）
         let llm_decision = MemoryLLMDecision::new(self.llm_manager.clone());
@@ -1070,7 +1143,7 @@ impl MemoryService {
                 downgraded: true,
             };
             if let Some(key) = idempotency_key {
-                let _ = self.cache_smart_write_result(key, &output);
+                self.finalize_idempotency_result(key, &output);
             }
             return Ok(output);
         }
@@ -1099,49 +1172,81 @@ impl MemoryService {
             }
             MemoryEvent::UPDATE => {
                 if let Some(target_id) = decision.target_note_id {
-                    match self.update_by_id_with_source(
-                        &target_id,
-                        Some(title),
-                        Some(content),
-                        source,
-                        session_id,
-                    ) {
-                        Ok(result) => {
-                            self.index_immediately(&result.resource_id).await;
-                            Ok(SmartWriteOutput {
-                                note_id: result.note_id,
-                                event: "UPDATE".to_string(),
-                                is_new: false,
-                                confidence: decision.confidence,
-                                reason: decision.reason,
-                                resource_id: Some(result.resource_id),
-                                downgraded: false,
-                            })
+                    if !similar_note_ids.contains(&target_id) {
+                        let result = self.write_typed(
+                            folder_path,
+                            title,
+                            content,
+                            WriteMode::Create,
+                            memory_type,
+                            purpose,
+                        )?;
+                        self.index_immediately(&result.resource_id).await;
+                        Ok(SmartWriteOutput {
+                            note_id: result.note_id,
+                            event: "ADD".to_string(),
+                            is_new: true,
+                            confidence: decision.confidence,
+                            reason: format!(
+                                "{}（target_note_id 不在候选集中，降级为 ADD）",
+                                decision.reason
+                            ),
+                            resource_id: Some(result.resource_id),
+                            downgraded: false,
+                        })
+                    } else {
+                        match self.update_by_id_with_source(
+                            &target_id,
+                            Some(title),
+                            Some(content),
+                            source,
+                            session_id,
+                        ) {
+                            Ok(result) => {
+                                if let Err(e) =
+                                    self.sync_note_system_tags(&result.note_id, memory_type, purpose)
+                                {
+                                    warn!(
+                                        "[Memory] Failed to sync system tags after UPDATE {}: {}",
+                                        result.note_id, e
+                                    );
+                                }
+                                self.index_immediately(&result.resource_id).await;
+                                Ok(SmartWriteOutput {
+                                    note_id: result.note_id,
+                                    event: "UPDATE".to_string(),
+                                    is_new: false,
+                                    confidence: decision.confidence,
+                                    reason: decision.reason,
+                                    resource_id: Some(result.resource_id),
+                                    downgraded: false,
+                                })
+                            }
+                            Err(VfsError::NotFound { .. }) => {
+                                let result = self.write_typed(
+                                    folder_path,
+                                    title,
+                                    content,
+                                    WriteMode::Create,
+                                    memory_type,
+                                    purpose,
+                                )?;
+                                self.index_immediately(&result.resource_id).await;
+                                Ok(SmartWriteOutput {
+                                    note_id: result.note_id,
+                                    event: "ADD".to_string(),
+                                    is_new: true,
+                                    confidence: decision.confidence,
+                                    reason: format!(
+                                        "{}（target_note_id 无效，降级为 ADD）",
+                                        decision.reason
+                                    ),
+                                    resource_id: Some(result.resource_id),
+                                    downgraded: false,
+                                })
+                            }
+                            Err(e) => Err(e),
                         }
-                        Err(VfsError::NotFound { .. }) => {
-                            let result = self.write_typed(
-                                folder_path,
-                                title,
-                                content,
-                                WriteMode::Create,
-                                memory_type,
-                                purpose,
-                            )?;
-                            self.index_immediately(&result.resource_id).await;
-                            Ok(SmartWriteOutput {
-                                note_id: result.note_id,
-                                event: "ADD".to_string(),
-                                is_new: true,
-                                confidence: decision.confidence,
-                                reason: format!(
-                                    "{}（target_note_id 无效，降级为 ADD）",
-                                    decision.reason
-                                ),
-                                resource_id: Some(result.resource_id),
-                                downgraded: false,
-                            })
-                        }
-                        Err(e) => Err(e),
                     }
                 } else {
                     let result = self.write_typed(
@@ -1166,57 +1271,89 @@ impl MemoryService {
             }
             MemoryEvent::APPEND => {
                 if let Some(target_id) = decision.target_note_id {
-                    let append_result: VfsResult<MemoryWriteOutput> = (|| {
-                        self.ensure_note_in_memory_root(&target_id)?;
-                        let current = VfsNoteRepo::get_note_content(&self.vfs_db, &target_id)?
-                            .unwrap_or_default();
-                        let final_content = format!("{}\n\n{}", current, content);
-                        self.update_by_id_with_source(
-                            &target_id,
-                            None,
-                            Some(&final_content),
-                            source,
-                            session_id,
-                        )
-                    })();
+                    if !similar_note_ids.contains(&target_id) {
+                        let result = self.write_typed(
+                            folder_path,
+                            title,
+                            content,
+                            WriteMode::Create,
+                            memory_type,
+                            purpose,
+                        )?;
+                        self.index_immediately(&result.resource_id).await;
+                        Ok(SmartWriteOutput {
+                            note_id: result.note_id,
+                            event: "ADD".to_string(),
+                            is_new: true,
+                            confidence: decision.confidence,
+                            reason: format!(
+                                "{}（target_note_id 不在候选集中，降级为 ADD）",
+                                decision.reason
+                            ),
+                            resource_id: Some(result.resource_id),
+                            downgraded: false,
+                        })
+                    } else {
+                        let append_result: VfsResult<MemoryWriteOutput> = (|| {
+                            self.ensure_note_in_memory_root(&target_id)?;
+                            let current = VfsNoteRepo::get_note_content(&self.vfs_db, &target_id)?
+                                .unwrap_or_default();
+                            let final_content = format!("{}\n\n{}", current, content);
+                            self.update_by_id_with_source(
+                                &target_id,
+                                None,
+                                Some(&final_content),
+                                source,
+                                session_id,
+                            )
+                        })();
 
-                    match append_result {
-                        Ok(result) => {
-                            self.index_immediately(&result.resource_id).await;
-                            Ok(SmartWriteOutput {
-                                note_id: result.note_id,
-                                event: "APPEND".to_string(),
-                                is_new: false,
-                                confidence: decision.confidence,
-                                reason: decision.reason,
-                                resource_id: Some(result.resource_id),
-                                downgraded: false,
-                            })
+                        match append_result {
+                            Ok(result) => {
+                                if let Err(e) =
+                                    self.sync_note_system_tags(&result.note_id, memory_type, purpose)
+                                {
+                                    warn!(
+                                        "[Memory] Failed to sync system tags after APPEND {}: {}",
+                                        result.note_id, e
+                                    );
+                                }
+                                self.index_immediately(&result.resource_id).await;
+                                Ok(SmartWriteOutput {
+                                    note_id: result.note_id,
+                                    event: "APPEND".to_string(),
+                                    is_new: false,
+                                    confidence: decision.confidence,
+                                    reason: decision.reason,
+                                    resource_id: Some(result.resource_id),
+                                    downgraded: false,
+                                })
+                            }
+                            Err(VfsError::NotFound { .. }) => {
+                                let result = self.write_typed(
+                                    folder_path,
+                                    title,
+                                    content,
+                                    WriteMode::Create,
+                                    memory_type,
+                                    purpose,
+                                )?;
+                                self.index_immediately(&result.resource_id).await;
+                                Ok(SmartWriteOutput {
+                                    note_id: result.note_id,
+                                    event: "ADD".to_string(),
+                                    is_new: true,
+                                    confidence: decision.confidence,
+                                    reason: format!(
+                                        "{}（target_note_id 无效，降级为 ADD）",
+                                        decision.reason
+                                    ),
+                                    resource_id: Some(result.resource_id),
+                                    downgraded: false,
+                                })
+                            }
+                            Err(e) => Err(e),
                         }
-                        Err(VfsError::NotFound { .. }) => {
-                            let result = self.write_typed(
-                                folder_path,
-                                title,
-                                content,
-                                WriteMode::Create,
-                                memory_type,
-                                purpose,
-                            )?;
-                            self.index_immediately(&result.resource_id).await;
-                            Ok(SmartWriteOutput {
-                                note_id: result.note_id,
-                                event: "ADD".to_string(),
-                                is_new: true,
-                                confidence: decision.confidence,
-                                reason: format!(
-                                    "{}（target_note_id 无效，降级为 ADD）",
-                                    decision.reason
-                                ),
-                                resource_id: Some(result.resource_id),
-                                downgraded: false,
-                            })
-                        }
-                        Err(e) => Err(e),
                     }
                 } else {
                     let result = self.write_typed(
@@ -1241,35 +1378,59 @@ impl MemoryService {
             }
             MemoryEvent::DELETE => {
                 if let Some(target_id) = decision.target_note_id {
-                    if let Err(e) = self
-                        .delete_with_source(&target_id, source, session_id)
-                        .await
-                    {
-                        warn!(
-                            "[Memory] DELETE target {} failed: {}, proceeding with ADD",
-                            target_id, e
-                        );
+                    if !similar_note_ids.contains(&target_id) {
+                        let result = self.write_typed(
+                            folder_path,
+                            title,
+                            content,
+                            WriteMode::Create,
+                            memory_type,
+                            purpose,
+                        )?;
+                        self.index_immediately(&result.resource_id).await;
+                        Ok(SmartWriteOutput {
+                            note_id: result.note_id,
+                            event: "ADD".to_string(),
+                            is_new: true,
+                            confidence: decision.confidence,
+                            reason: format!(
+                                "{}（target_note_id 不在候选集中，降级为 ADD）",
+                                decision.reason
+                            ),
+                            resource_id: Some(result.resource_id),
+                            downgraded: false,
+                        })
                     } else {
-                        info!("[Memory] DELETE conflicting memory: {}", target_id);
+                        if let Err(e) = self
+                            .delete_with_source(&target_id, source, session_id)
+                            .await
+                        {
+                            Err(VfsError::Other(format!(
+                                "DELETE 决策失败：无法删除冲突记忆 {}: {}",
+                                target_id, e
+                            )))
+                        } else {
+                            info!("[Memory] DELETE conflicting memory: {}", target_id);
+                            let result = self.write_typed(
+                                folder_path,
+                                title,
+                                content,
+                                WriteMode::Create,
+                                memory_type,
+                                purpose,
+                            )?;
+                            self.index_immediately(&result.resource_id).await;
+                            Ok(SmartWriteOutput {
+                                note_id: result.note_id,
+                                event: "DELETE".to_string(),
+                                is_new: true,
+                                confidence: decision.confidence,
+                                reason: format!("{}（已删除矛盾记忆 {}）", decision.reason, target_id),
+                                resource_id: Some(result.resource_id),
+                                downgraded: false,
+                            })
+                        }
                     }
-                    let result = self.write_typed(
-                        folder_path,
-                        title,
-                        content,
-                        WriteMode::Create,
-                        memory_type,
-                        purpose,
-                    )?;
-                    self.index_immediately(&result.resource_id).await;
-                    Ok(SmartWriteOutput {
-                        note_id: result.note_id,
-                        event: "DELETE".to_string(),
-                        is_new: true,
-                        confidence: decision.confidence,
-                        reason: format!("{}（已删除矛盾记忆 {}）", decision.reason, target_id),
-                        resource_id: Some(result.resource_id),
-                        downgraded: false,
-                    })
                 } else {
                     let result = self.write_typed(
                         folder_path,
@@ -1320,7 +1481,7 @@ impl MemoryService {
                     session_id,
                 );
                 if let Some(key) = idempotency_key {
-                    let _ = self.cache_smart_write_result(key, output);
+                    self.finalize_idempotency_result(key, output);
                 }
             }
             Err(e) => {
@@ -1334,6 +1495,9 @@ impl MemoryService {
                     session_id,
                     timer.elapsed_ms(),
                 );
+                if let Some(key) = idempotency_key {
+                    let _ = self.clear_smart_write_reservation(key);
+                }
             }
         }
 
@@ -1624,8 +1788,15 @@ impl MemoryService {
 
         if let Some(path) = folder_path {
             if path.is_empty() {
-                if auto_create_subfolders && has_default_category {
-                    return Ok(Some(self.ensure_folder(root_id, &default_category)?));
+                if has_default_category {
+                    if auto_create_subfolders {
+                        return Ok(Some(self.ensure_folder(root_id, &default_category)?));
+                    }
+                    if let Some(existing_default) =
+                        self.resolve_path_to_folder_id(root_id, &default_category)?
+                    {
+                        return Ok(Some(existing_default));
+                    }
                 }
                 return Ok(Some(root_id.to_string()));
             }
@@ -1644,8 +1815,14 @@ impl MemoryService {
             } else {
                 Ok(found.or_else(|| Some(root_id.to_string())))
             }
-        } else if auto_create_subfolders && has_default_category {
-            Ok(Some(self.ensure_folder(root_id, &default_category)?))
+        } else if has_default_category {
+            if auto_create_subfolders {
+                Ok(Some(self.ensure_folder(root_id, &default_category)?))
+            } else {
+                Ok(self
+                    .resolve_path_to_folder_id(root_id, &default_category)?
+                    .or_else(|| Some(root_id.to_string())))
+            }
         } else {
             Ok(Some(root_id.to_string()))
         }
@@ -1668,9 +1845,10 @@ impl MemoryService {
                 SELECT note_id, event, is_new, confidence, reason, resource_id, downgraded
                 FROM memory_write_idempotency
                 WHERE idempotency_key = ?1
+                  AND event != ?2
                 LIMIT 1
                 "#,
-                params![idempotency_key],
+                params![idempotency_key, SMART_WRITE_IDEMPOTENCY_IN_PROGRESS],
                 |row| {
                     Ok(SmartWriteOutput {
                         note_id: row.get::<_, Option<String>>(0)?.unwrap_or_default(),
@@ -1685,6 +1863,35 @@ impl MemoryService {
             )
             .ok();
         Ok(row)
+    }
+
+    fn try_reserve_smart_write_key(&self, idempotency_key: &str) -> VfsResult<bool> {
+        let conn = self.vfs_db.get_conn_safe()?;
+        let now_ms = chrono::Utc::now().timestamp_millis();
+        let inserted = conn.execute(
+            r#"
+            INSERT OR IGNORE INTO memory_write_idempotency
+              (idempotency_key, note_id, event, is_new, confidence, reason, resource_id, downgraded, created_at)
+            VALUES (?1, ?2, ?3, 0, 1.0, ?4, NULL, 0, ?5)
+            "#,
+            params![
+                idempotency_key,
+                "",
+                SMART_WRITE_IDEMPOTENCY_IN_PROGRESS,
+                "in_progress",
+                now_ms
+            ],
+        )?;
+        Ok(inserted > 0)
+    }
+
+    fn clear_smart_write_reservation(&self, idempotency_key: &str) -> VfsResult<()> {
+        let conn = self.vfs_db.get_conn_safe()?;
+        conn.execute(
+            "DELETE FROM memory_write_idempotency WHERE idempotency_key = ?1 AND event = ?2",
+            params![idempotency_key, SMART_WRITE_IDEMPOTENCY_IN_PROGRESS],
+        )?;
+        Ok(())
     }
 
     fn cache_smart_write_result(
@@ -1726,6 +1933,16 @@ impl MemoryService {
             ],
         )?;
         Ok(())
+    }
+
+    fn finalize_idempotency_result(&self, idempotency_key: &str, output: &SmartWriteOutput) {
+        if let Err(e) = self.cache_smart_write_result(idempotency_key, output) {
+            warn!(
+                "[Memory] Failed to cache idempotency result for key {}: {}",
+                idempotency_key, e
+            );
+            let _ = self.clear_smart_write_reservation(idempotency_key);
+        }
     }
 
     fn find_note_by_title(
@@ -1874,6 +2091,7 @@ impl MemoryService {
                     reason: "标题不能为空".to_string(),
                 });
             }
+            Self::validate_user_writable_title(new_title)?;
             if MemoryAutoExtractor::contains_sensitive_pattern_pub(new_title) {
                 return Err(VfsError::InvalidArgument {
                     param: "title".to_string(),
@@ -1909,7 +2127,7 @@ impl MemoryService {
                 title: title.map(|s| s.to_string()),
                 content: content.map(|s| s.to_string()),
                 tags: None,
-                expected_updated_at: None,
+                expected_updated_at: Some(note.updated_at.clone()),
             },
         )?;
 
@@ -1965,18 +2183,18 @@ impl MemoryService {
         let note = self.ensure_note_in_memory_root(note_id)?;
         let note_title = note.title.clone();
 
-        self.lance_store
+        VfsNoteRepo::delete_note_with_folder_item(&self.vfs_db, note_id)?;
+        // 先完成主存储删除，再做索引侧清理，避免“笔记还在但向量已删”的半成功状态。
+        if let Err(e) = self
+            .lance_store
             .delete_by_resource("text", &note.resource_id)
             .await
-            .map_err(|e| {
-                VfsError::Other(format!(
-                    "Failed to delete lance index for {}: {}",
-                    note.resource_id, e
-                ))
-            })?;
-
-        VfsNoteRepo::delete_note_with_folder_item(&self.vfs_db, note_id)?;
-        // 使用新架构删除 units（segments 级联删除）
+        {
+            warn!(
+                "[Memory] Failed to delete lance index for {} (will rely on disabled state): {}",
+                note.resource_id, e
+            );
+        }
         if let Ok(conn) = self.vfs_db.get_conn() {
             if let Err(e) = index_unit_repo::delete_by_resource(&conn, &note.resource_id) {
                 warn!(
@@ -1985,11 +2203,9 @@ impl MemoryService {
                 );
             }
         }
-        if let Err(e) = VfsIndexStateRepo::mark_disabled_with_reason(
-            &self.vfs_db,
-            &note.resource_id,
-            "note deleted",
-        ) {
+        if let Err(e) =
+            VfsIndexStateRepo::mark_disabled_with_reason(&self.vfs_db, &note.resource_id, "note deleted")
+        {
             warn!(
                 "[Memory] Failed to mark index disabled for {}: {}",
                 note.resource_id, e
@@ -2027,34 +2243,50 @@ impl MemoryService {
         }
         let note_a = self.ensure_note_in_memory_root(note_id_a)?;
         let note_b = self.ensure_note_in_memory_root(note_id_b)?;
+        let conn = self.vfs_db.get_conn_safe()?;
 
         let ref_tag_ab = format!("{}{}", TAG_REF_PREFIX, note_id_b);
         let ref_tag_ba = format!("{}{}", TAG_REF_PREFIX, note_id_a);
+        conn.execute("SAVEPOINT memory_add_relation", [])?;
+        let tx_result: VfsResult<()> = (|| {
+            let mut tags_a = note_a.tags.clone();
+            if !tags_a.contains(&ref_tag_ab) {
+                tags_a.push(ref_tag_ab);
+                VfsNoteRepo::update_note_with_conn(
+                    &conn,
+                    note_id_a,
+                    VfsUpdateNoteParams {
+                        tags: Some(tags_a),
+                        expected_updated_at: Some(note_a.updated_at.clone()),
+                        ..Default::default()
+                    },
+                )?;
+            }
 
-        let mut tags_a = note_a.tags.clone();
-        if !tags_a.contains(&ref_tag_ab) {
-            tags_a.push(ref_tag_ab);
-            VfsNoteRepo::update_note(
-                &self.vfs_db,
-                note_id_a,
-                VfsUpdateNoteParams {
-                    tags: Some(tags_a),
-                    ..Default::default()
-                },
-            )?;
-        }
-
-        let mut tags_b = note_b.tags.clone();
-        if !tags_b.contains(&ref_tag_ba) {
-            tags_b.push(ref_tag_ba);
-            VfsNoteRepo::update_note(
-                &self.vfs_db,
-                note_id_b,
-                VfsUpdateNoteParams {
-                    tags: Some(tags_b),
-                    ..Default::default()
-                },
-            )?;
+            let mut tags_b = note_b.tags.clone();
+            if !tags_b.contains(&ref_tag_ba) {
+                tags_b.push(ref_tag_ba);
+                VfsNoteRepo::update_note_with_conn(
+                    &conn,
+                    note_id_b,
+                    VfsUpdateNoteParams {
+                        tags: Some(tags_b),
+                        expected_updated_at: Some(note_b.updated_at.clone()),
+                        ..Default::default()
+                    },
+                )?;
+            }
+            Ok(())
+        })();
+        match tx_result {
+            Ok(()) => {
+                conn.execute("RELEASE memory_add_relation", [])?;
+            }
+            Err(e) => {
+                let _ = conn.execute("ROLLBACK TO memory_add_relation", []);
+                let _ = conn.execute("RELEASE memory_add_relation", []);
+                return Err(e);
+            }
         }
 
         info!("[Memory] Added relation: {} <-> {}", note_id_a, note_id_b);
@@ -2082,37 +2314,55 @@ impl MemoryService {
     pub fn remove_relation(&self, note_id_a: &str, note_id_b: &str) -> VfsResult<()> {
         let note_a = self.ensure_note_in_memory_root(note_id_a)?;
         let note_b = self.ensure_note_in_memory_root(note_id_b)?;
+        let conn = self.vfs_db.get_conn_safe()?;
 
         let ref_tag_ab = format!("{}{}", TAG_REF_PREFIX, note_id_b);
         let ref_tag_ba = format!("{}{}", TAG_REF_PREFIX, note_id_a);
+        conn.execute("SAVEPOINT memory_remove_relation", [])?;
+        let tx_result: VfsResult<()> = (|| {
+            let tags_a: Vec<String> = note_a
+                .tags
+                .iter()
+                .filter(|t| *t != &ref_tag_ab)
+                .cloned()
+                .collect();
+            VfsNoteRepo::update_note_with_conn(
+                &conn,
+                note_id_a,
+                VfsUpdateNoteParams {
+                    tags: Some(tags_a),
+                    expected_updated_at: Some(note_a.updated_at.clone()),
+                    ..Default::default()
+                },
+            )?;
 
-        let tags_a: Vec<String> = note_a
-            .tags
-            .into_iter()
-            .filter(|t| t != &ref_tag_ab)
-            .collect();
-        VfsNoteRepo::update_note(
-            &self.vfs_db,
-            note_id_a,
-            VfsUpdateNoteParams {
-                tags: Some(tags_a),
-                ..Default::default()
-            },
-        )?;
-
-        let tags_b: Vec<String> = note_b
-            .tags
-            .into_iter()
-            .filter(|t| t != &ref_tag_ba)
-            .collect();
-        VfsNoteRepo::update_note(
-            &self.vfs_db,
-            note_id_b,
-            VfsUpdateNoteParams {
-                tags: Some(tags_b),
-                ..Default::default()
-            },
-        )?;
+            let tags_b: Vec<String> = note_b
+                .tags
+                .iter()
+                .filter(|t| *t != &ref_tag_ba)
+                .cloned()
+                .collect();
+            VfsNoteRepo::update_note_with_conn(
+                &conn,
+                note_id_b,
+                VfsUpdateNoteParams {
+                    tags: Some(tags_b),
+                    expected_updated_at: Some(note_b.updated_at.clone()),
+                    ..Default::default()
+                },
+            )?;
+            Ok(())
+        })();
+        match tx_result {
+            Ok(()) => {
+                conn.execute("RELEASE memory_remove_relation", [])?;
+            }
+            Err(e) => {
+                let _ = conn.execute("ROLLBACK TO memory_remove_relation", []);
+                let _ = conn.execute("RELEASE memory_remove_relation", []);
+                return Err(e);
+            }
+        }
 
         info!("[Memory] Removed relation: {} <-> {}", note_id_a, note_id_b);
 
@@ -2210,6 +2460,7 @@ impl MemoryService {
 
     /// 移动记忆到指定文件夹路径（在记忆根目录内）
     pub fn move_to_folder(&self, note_id: &str, target_folder_path: &str) -> VfsResult<()> {
+        Self::validate_user_writable_folder_path(Some(target_folder_path))?;
         let root_id = self.ensure_root_folder_id()?;
         self.ensure_note_in_memory_root(note_id)?;
 
@@ -2248,6 +2499,37 @@ impl MemoryService {
             extra_json: None,
         });
 
+        Ok(())
+    }
+
+    fn sync_note_system_tags(
+        &self,
+        note_id: &str,
+        memory_type: MemoryType,
+        purpose: Option<MemoryPurpose>,
+    ) -> VfsResult<()> {
+        let note = self.ensure_note_in_memory_root(note_id)?;
+        let mut merged: Vec<String> = note
+            .tags
+            .iter()
+            .filter(|tag| !tag.starts_with(TAG_TYPE_PREFIX) && !tag.starts_with(TAG_PURPOSE_PREFIX))
+            .cloned()
+            .collect();
+        if memory_type == MemoryType::Note {
+            merged.push(memory_type.to_tag());
+        }
+        if let Some(p) = purpose {
+            merged.push(p.to_tag());
+        }
+        VfsNoteRepo::update_note(
+            &self.vfs_db,
+            note_id,
+            VfsUpdateNoteParams {
+                tags: Some(merged),
+                expected_updated_at: Some(note.updated_at),
+                ..Default::default()
+            },
+        )?;
         Ok(())
     }
 
@@ -2456,45 +2738,46 @@ impl MemoryService {
             );
             return;
         }
-        for note_id in note_ids {
-            let tags_json: Option<String> = conn
-                .query_row(
-                    "SELECT tags FROM notes WHERE id = ?1 AND deleted_at IS NULL",
-                    params![note_id],
-                    |row| row.get(0),
-                )
-                .ok();
-            let Some(tags_json) = tags_json else { continue };
-            let mut tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
+        let tx_result = (|| {
+            for note_id in note_ids {
+                let tags_json: Option<String> = conn
+                    .query_row(
+                        "SELECT tags FROM notes WHERE id = ?1 AND deleted_at IS NULL",
+                        params![note_id],
+                        |row| row.get(0),
+                    )
+                    .ok();
+                let Some(tags_json) = tags_json else { continue };
+                let mut tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
 
-            let mut hits: u32 = 1;
-            tags.retain(|t| {
-                if let Some(val) = t.strip_prefix(TAG_HITS_PREFIX) {
-                    hits = val.parse::<u32>().unwrap_or(0) + 1;
-                    false
-                } else if t.starts_with(TAG_LAST_HIT_PREFIX) {
-                    false
-                } else if t == "_stale" {
-                    false
-                } else {
-                    true
+                let mut hits: u32 = 1;
+                tags.retain(|t| {
+                    if let Some(val) = t.strip_prefix(TAG_HITS_PREFIX) {
+                        hits = val.parse::<u32>().unwrap_or(0) + 1;
+                        false
+                    } else if t.starts_with(TAG_LAST_HIT_PREFIX) {
+                        false
+                    } else if t == "_stale" {
+                        false
+                    } else {
+                        true
+                    }
+                });
+                tags.push(format!("{}{}", TAG_HITS_PREFIX, hits));
+                tags.push(format!("{}{}", TAG_LAST_HIT_PREFIX, now_ms));
+
+                let new_tags_json = serde_json::to_string(&tags).unwrap_or_default();
+                if let Err(e) = conn.execute(
+                    "UPDATE notes SET tags = ?1 WHERE id = ?2",
+                    params![new_tags_json, note_id],
+                ) {
+                    warn!("[Memory] Failed to record search hit for {}: {}", note_id, e);
                 }
-            });
-            tags.push(format!("{}{}", TAG_HITS_PREFIX, hits));
-            tags.push(format!("{}{}", TAG_LAST_HIT_PREFIX, now_ms));
-
-            let new_tags_json = serde_json::to_string(&tags).unwrap_or_default();
-            if let Err(e) = conn.execute(
-                "UPDATE notes SET tags = ?1 WHERE id = ?2",
-                params![new_tags_json, note_id],
-            ) {
-                warn!(
-                    "[Memory] Failed to record search hit for {}: {}",
-                    note_id, e
-                );
             }
-        }
-        if let Err(e) = conn.execute_batch("COMMIT") {
+            conn.execute_batch("COMMIT")
+        })();
+        if let Err(e) = tx_result {
+            let _ = conn.execute_batch("ROLLBACK");
             warn!("[Memory] Failed to commit search hits transaction: {}", e);
         }
     }

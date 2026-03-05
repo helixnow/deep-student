@@ -23,6 +23,7 @@ import {
   AlertTriangle,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/shad/Badge';
+import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { useTranslation, Trans } from 'react-i18next';
 import type { Question, QuestionBankStats, Difficulty } from '@/api/questionBankApi';
 
@@ -313,10 +314,13 @@ export const ReviewQuestionsView: React.FC<ReviewQuestionsViewProps> = ({
     try {
       await onResetProgress(Array.from(selectedIds));
       setSelectedIds(new Set());
+      showGlobalNotification('success', t('review:resetSuccess', '重置进度成功'));
+    } catch (err: unknown) {
+      showGlobalNotification('error', `${t('review:resetFailed', '重置进度失败')}: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setIsOperating(false);
     }
-  }, [selectedIds, onResetProgress]);
+  }, [selectedIds, onResetProgress, t]);
 
   // 删除选中题目
   const handleDelete = useCallback(async () => {
@@ -325,10 +329,13 @@ export const ReviewQuestionsView: React.FC<ReviewQuestionsViewProps> = ({
     try {
       await onDelete(Array.from(selectedIds));
       setSelectedIds(new Set());
+      showGlobalNotification('success', t('review:deleteSuccess', '删除成功'));
+    } catch (err: unknown) {
+      showGlobalNotification('error', `${t('review:deleteFailed', '删除失败')}: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setIsOperating(false);
     }
-  }, [selectedIds, onDelete]);
+  }, [selectedIds, onDelete, t]);
 
   // 点击题目
   const handleQuestionClick = useCallback((questionId: string) => {

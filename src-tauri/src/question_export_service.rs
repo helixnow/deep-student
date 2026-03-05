@@ -109,6 +109,21 @@ impl CsvExportService {
             .collect()
     }
 
+    fn validate_export_fields(fields: &[String]) -> Result<(), AppError> {
+        for field in fields {
+            let is_supported = EXPORTABLE_FIELDS
+                .iter()
+                .any(|(key, _)| *key == field.as_str());
+            if !is_supported {
+                return Err(AppError::validation(format!(
+                    "不支持的导出字段: {}",
+                    field
+                )));
+            }
+        }
+        Ok(())
+    }
+
     /// 导出 CSV
     pub fn export_csv(
         vfs_db: &VfsDatabase,
@@ -141,6 +156,7 @@ impl CsvExportService {
         } else {
             request.fields.clone()
         };
+        Self::validate_export_fields(&fields)?;
 
         // M-038: 校验路径，防止目录遍历
         Self::validate_file_path(&request.file_path)?;
@@ -300,16 +316,7 @@ impl CsvExportService {
             "created_at" => question.created_at.clone(),
             "updated_at" => question.updated_at.clone(),
             "images" => {
-                if question.images.is_empty() {
-                    String::new()
-                } else {
-                    question
-                        .images
-                        .iter()
-                        .map(|img| img.name.clone())
-                        .collect::<Vec<_>>()
-                        .join("; ")
-                }
+                serde_json::to_string(&question.images).unwrap_or_else(|_| "[]".to_string())
             }
             _ => String::new(),
         }

@@ -31,6 +31,7 @@ import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import type { Question as ApiQuestion, QuestionStatus } from '@/api/questionBankApi';
 import type { Question as StoreQuestion } from '@/stores/questionBankStore';
+import { showGlobalNotification } from '@/components/UnifiedNotification';
 
 interface QuestionFavoritesViewProps {
   examId: string;
@@ -63,6 +64,7 @@ export const QuestionFavoritesView: React.FC<QuestionFavoritesViewProps> = ({
   const [totalCount, setTotalCount] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const mapToApiQuestion = useCallback((q: StoreQuestion): ApiQuestion => ({
     id: q.id,
@@ -91,6 +93,7 @@ export const QuestionFavoritesView: React.FC<QuestionFavoritesViewProps> = ({
     if (!examId) return;
 
     setIsLoading(true);
+    setError(null);
     try {
       const result = await invoke<{ questions: StoreQuestion[]; total: number }>('qbank_list_questions', {
         request: {
@@ -104,6 +107,7 @@ export const QuestionFavoritesView: React.FC<QuestionFavoritesViewProps> = ({
       setTotalCount(result.total);
     } catch (err: unknown) {
       console.error('[QuestionFavoritesView] Failed to load favorites:', err);
+      setError(err instanceof Error ? err.message : String(err));
     } finally {
       setIsLoading(false);
     }
@@ -114,14 +118,26 @@ export const QuestionFavoritesView: React.FC<QuestionFavoritesViewProps> = ({
   }, [loadFavorites]);
 
   const handleToggleFavorite = useCallback(async (questionId: string) => {
+    if (!onToggleFavorite) {
+      showGlobalNotification(
+        'warning',
+        t('exam_sheet:questionBank.actionUnavailable', '当前操作不可用')
+      );
+      return;
+    }
     setActionLoading(questionId);
     try {
-      await onToggleFavorite?.(questionId);
+      await onToggleFavorite(questionId);
       await loadFavorites();
+    } catch (err: unknown) {
+      showGlobalNotification(
+        'error',
+        `${t('exam_sheet:questionBank.favorites.toggleFailed', '更新收藏失败')}: ${err instanceof Error ? err.message : String(err)}`
+      );
     } finally {
       setActionLoading(null);
     }
-  }, [onToggleFavorite, loadFavorites]);
+  }, [onToggleFavorite, loadFavorites, t]);
 
   const renderQuestionCard = (question: ApiQuestion) => (
     <Card
@@ -144,7 +160,7 @@ export const QuestionFavoritesView: React.FC<QuestionFavoritesViewProps> = ({
             variant="ghost"
             size="icon"
             className="h-8 w-8 flex-shrink-0"
-            disabled={actionLoading === question.id}
+            disabled={!onToggleFavorite || actionLoading === question.id}
             onClick={(e) => {
               e.stopPropagation();
               void handleToggleFavorite(question.id);
@@ -193,6 +209,16 @@ export const QuestionFavoritesView: React.FC<QuestionFavoritesViewProps> = ({
       {isLoading ? (
         <div className="flex items-center justify-center py-12">
           <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+        </div>
+      ) : error ? (
+        <div className="flex flex-col items-center justify-center py-12 text-center">
+          <AlertCircle className="w-10 h-10 text-destructive/70 mb-3" />
+          <p className="text-sm text-muted-foreground">
+            {t('exam_sheet:questionBank.favorites.loadFailed', '收藏加载失败')}
+          </p>
+          <NotionButton variant="ghost" size="sm" className="mt-3" onClick={() => void loadFavorites()}>
+            {t('common:actions.retry', '重试')}
+          </NotionButton>
         </div>
       ) : favorites.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-12 text-center">

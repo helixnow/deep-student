@@ -33,6 +33,7 @@ export const QUESTION_FIELDS = [
   { key: 'explanation', required: false },
   { key: 'difficulty', required: false },
   { key: 'tags', required: false },
+  { key: 'images', required: false },
   { key: 'question_label', required: false },
 ] as const;
 
@@ -157,6 +158,12 @@ export const CsvFieldMapper: React.FC<CsvFieldMapperProps> = ({
       '类别': 'tags',
       'tags': 'tags',
       'category': 'tags',
+      // images
+      '图片': 'images',
+      '配图': 'images',
+      '图像': 'images',
+      'images': 'images',
+      'image': 'images',
       // question_type
       '题型': 'question_type',
       '类型': 'question_type',

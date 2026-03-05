@@ -52,7 +52,7 @@ import { useTauriDragAndDrop } from '@/hooks/useTauriDragAndDrop';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { useSystemStatusStore } from '@/stores/systemStatusStore';
 import { getErrorMessage } from '@/utils/errorUtils';
-import { getBatchPdfProcessingStatus, retryPdfProcessing } from '@/api/vfsPdfProcessingApi';
+import { cancelPdfProcessing, getBatchPdfProcessingStatus, retryPdfProcessing } from '@/api/vfsPdfProcessingApi';
 import type { InputBarUIProps } from './types';
 import { vfsRefApi } from '../../context/vfsRefApi';
 import { resourceStoreApi, type ContextRef } from '../../resources';
@@ -2235,6 +2235,15 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                   {attachments.length > 0 && (
                     <NotionButton variant="danger" size="sm" onClick={() => {
                       attachments.forEach(att => {
+                        if (att.sourceId) {
+                          void cancelPdfProcessing(att.sourceId).catch((error) => {
+                            logAttachment('ui', 'cancel_processing_failed', {
+                              attachmentId: att.id,
+                              sourceId: att.sourceId,
+                              error: getErrorMessage(error),
+                            }, 'warning');
+                          });
+                        }
                         if (att.previewUrl?.startsWith('blob:')) {
                           URL.revokeObjectURL(att.previewUrl);
                         }
@@ -2423,6 +2432,15 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                               fileName: attachment.name,
                               status: attachment.status,
                             });
+                            if (attachment.sourceId) {
+                              void cancelPdfProcessing(attachment.sourceId).catch((error) => {
+                                logAttachment('ui', 'cancel_processing_failed', {
+                                  attachmentId: attachment.id,
+                                  sourceId: attachment.sourceId,
+                                  error: getErrorMessage(error),
+                                }, 'warning');
+                              });
+                            }
                             if (attachment.previewUrl?.startsWith('blob:')) {
                               URL.revokeObjectURL(attachment.previewUrl);
                             }

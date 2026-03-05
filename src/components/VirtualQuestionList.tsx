@@ -172,7 +172,7 @@ export const VirtualQuestionList: React.FC<VirtualQuestionListProps> = ({
                     <Star
                       className={cn(
                         'w-3.5 h-3.5',
-                        question.isCorrect ? 'fill-yellow-500 text-yellow-500' : 'text-muted-foreground'
+                        question.isFavorite ? 'fill-yellow-500 text-yellow-500' : 'text-muted-foreground'
                       )}
                     />
                   </NotionButton>

@@ -230,6 +230,18 @@ impl ChatV2Pipeline {
                 serde_json::to_value(web_sources).unwrap_or(Value::Null),
             );
         }
+        llm_context.insert(
+            "memory_enabled".into(),
+            Value::Bool(ctx.options.memory_enabled.unwrap_or(true)),
+        );
+        llm_context.insert(
+            "rag_enabled".into(),
+            Value::Bool(ctx.options.rag_enabled.unwrap_or(true)),
+        );
+        llm_context.insert(
+            "web_search_enabled".into(),
+            Value::Bool(ctx.options.web_search_enabled.unwrap_or(true)),
+        );
 
         // ====================================================================
         // 🆕 图片压缩策略：vision_quality 智能默认
@@ -568,6 +580,7 @@ impl ChatV2Pipeline {
             Some("chat_v2"),
             window,
             &stream_event,
+            Some(ctx.assistant_message_id.as_str()),
             None, // trace_id
             disable_tools,
             max_input_tokens_override, // 🔧 P1修复：传递 context_limit 作为输入 token 限制
@@ -657,6 +670,7 @@ impl ChatV2Pipeline {
                         Some("chat_v2"),
                         emitter.window(),
                         &stream_event,
+                        Some(ctx.assistant_message_id.as_str()),
                         None,
                         disable_tools,
                         max_input_tokens_override,
@@ -870,6 +884,9 @@ impl ChatV2Pipeline {
             let active_skill_ids = ctx.options.active_skill_ids.clone();
             let rag_top_k = ctx.options.rag_top_k;
             let rag_enable_reranking = ctx.options.rag_enable_reranking;
+            let memory_enabled = ctx.options.memory_enabled.unwrap_or(true);
+            let rag_enabled = ctx.options.rag_enabled.unwrap_or(true);
+            let web_search_enabled = ctx.options.web_search_enabled.unwrap_or(true);
             // 🆕 取消支持：传递取消令牌给工具执行器
             let cancel_token = ctx.cancellation_token();
             let tool_results = self
@@ -885,6 +902,9 @@ impl ChatV2Pipeline {
                     cancel_token,
                     rag_top_k,
                     rag_enable_reranking,
+                    memory_enabled,
+                    rag_enabled,
+                    web_search_enabled,
                     &mcp_tool_name_mapping,
                 )
                 .await?;
@@ -1325,6 +1345,9 @@ impl ChatV2Pipeline {
         cancellation_token: Option<&CancellationToken>,
         rag_top_k: Option<u32>,
         rag_enable_reranking: Option<bool>,
+        memory_enabled: bool,
+        rag_enabled: bool,
+        web_search_enabled: bool,
         tool_name_mapping: &HashMap<String, String>,
     ) -> ChatV2Result<Vec<ToolResultInfo>> {
         // 🔧 反向映射：LLM 返回的 sanitized 工具名 → 原始名（含 `:` 等特殊字符）
@@ -1460,6 +1483,9 @@ impl ChatV2Pipeline {
                     cancellation_token.cloned(),
                     rag_top_k,
                     rag_enable_reranking,
+                    memory_enabled,
+                    rag_enabled,
+                    web_search_enabled,
                 )
                 .await
             {
@@ -1660,6 +1686,9 @@ impl ChatV2Pipeline {
         cancellation_token: Option<CancellationToken>,
         rag_top_k: Option<u32>,
         rag_enable_reranking: Option<bool>,
+        memory_enabled: bool,
+        rag_enabled: bool,
+        web_search_enabled: bool,
     ) -> ChatV2Result<ToolResultInfo> {
         let block_id = MessageBlock::generate_id();
 
@@ -1682,6 +1711,54 @@ impl ChatV2Pipeline {
         // 它们由用户在 MCP 设置中手动启用，应始终可调用
         let is_external_mcp_tool =
             tool_call.name.starts_with("mcp_") && !tool_call.name.starts_with("mcp_load_skills");
+
+        let short_name = Self::canonical_tool_short_name(&tool_call.name);
+        let is_memory_tool = short_name.starts_with("memory_");
+        let is_rag_tool = short_name.starts_with("rag_");
+        let is_web_search_tool = short_name == "web_search";
+
+        if is_memory_tool && !memory_enabled {
+            return Ok(ToolResultInfo {
+                tool_call_id: Some(tool_call.id.clone()),
+                block_id: Some(block_id),
+                tool_name: tool_call.name.clone(),
+                input: tool_call.arguments.clone(),
+                output: json!(null),
+                success: false,
+                error: Some("memory 功能已关闭，工具调用被拦截".to_string()),
+                duration_ms: None,
+                reasoning_content: None,
+                thought_signature: None,
+            });
+        }
+        if is_rag_tool && !rag_enabled {
+            return Ok(ToolResultInfo {
+                tool_call_id: Some(tool_call.id.clone()),
+                block_id: Some(block_id),
+                tool_name: tool_call.name.clone(),
+                input: tool_call.arguments.clone(),
+                output: json!(null),
+                success: false,
+                error: Some("RAG 功能已关闭，工具调用被拦截".to_string()),
+                duration_ms: None,
+                reasoning_content: None,
+                thought_signature: None,
+            });
+        }
+        if is_web_search_tool && !web_search_enabled {
+            return Ok(ToolResultInfo {
+                tool_call_id: Some(tool_call.id.clone()),
+                block_id: Some(block_id),
+                tool_name: tool_call.name.clone(),
+                input: tool_call.arguments.clone(),
+                output: json!(null),
+                success: false,
+                error: Some("WebSearch 功能已关闭，工具调用被拦截".to_string()),
+                duration_ms: None,
+                reasoning_content: None,
+                thought_signature: None,
+            });
+        }
 
         if !is_load_skills_tool && !is_external_mcp_tool {
             match skill_allowed_tools {
@@ -1958,6 +2035,13 @@ impl ChatV2Pipeline {
                 })
             }
         }
+    }
+
+    fn canonical_tool_short_name(tool_name: &str) -> &str {
+        tool_name
+            .strip_prefix(super::super::tools::builtin_retrieval_executor::BUILTIN_NAMESPACE)
+            .or_else(|| tool_name.strip_prefix("mcp_"))
+            .unwrap_or(tool_name)
     }
 
     /// 请求用户审批敏感工具

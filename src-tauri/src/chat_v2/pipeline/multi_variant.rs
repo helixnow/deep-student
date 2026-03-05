@@ -468,7 +468,12 @@ impl ChatV2Pipeline {
             );
         }
 
-        save_result?;
+        if let Err(e) = save_result {
+            emitter.emit_stream_error(&assistant_message_id, &e.to_string());
+            let duration_ms = start_time.elapsed().as_millis() as u64;
+            emitter.emit_stream_complete_with_usage(&assistant_message_id, duration_ms, None);
+            return Err(e);
+        }
 
         // === 12. 发射 stream_complete（带 token 统计） ===
         let duration_ms = start_time.elapsed().as_millis() as u64;
@@ -735,6 +740,18 @@ impl ChatV2Pipeline {
                 serde_json::to_value(web_sources).unwrap_or(Value::Null),
             );
         }
+        llm_context.insert(
+            "memory_enabled".into(),
+            Value::Bool(options.memory_enabled.unwrap_or(true)),
+        );
+        llm_context.insert(
+            "rag_enabled".into(),
+            Value::Bool(options.rag_enabled.unwrap_or(true)),
+        );
+        llm_context.insert(
+            "web_search_enabled".into(),
+            Value::Bool(options.web_search_enabled.unwrap_or(true)),
+        );
 
         // 🆕 图片压缩策略：从 options 获取或使用默认值
         // 如果 options.vision_quality 未设置，默认使用 "auto" 让 file_manager 根据图片大小自动选择
@@ -800,6 +817,7 @@ impl ChatV2Pipeline {
             Some("chat_v2_variant"),
             ctx.emitter().window(),
             &stream_event,
+            Some(ctx.message_id()),
             None,
             disable_tools,
             max_input_tokens_override,
@@ -939,6 +957,18 @@ impl ChatV2Pipeline {
                 serde_json::to_value(web_sources).unwrap_or(Value::Null),
             );
         }
+        llm_context.insert(
+            "memory_enabled".into(),
+            Value::Bool(options.memory_enabled.unwrap_or(true)),
+        );
+        llm_context.insert(
+            "rag_enabled".into(),
+            Value::Bool(options.rag_enabled.unwrap_or(true)),
+        );
+        llm_context.insert(
+            "web_search_enabled".into(),
+            Value::Bool(options.web_search_enabled.unwrap_or(true)),
+        );
 
         // 🆕 图片压缩策略：从 options 获取或使用默认值
         let vq = options.vision_quality.as_deref().unwrap_or("auto");
@@ -1015,6 +1045,7 @@ impl ChatV2Pipeline {
                 Some("chat_v2_variant"),
                 ctx.emitter().window(),
                 &stream_event,
+                Some(ctx.message_id()),
                 None,
                 disable_tools,
                 max_input_tokens_override,
@@ -1111,6 +1142,9 @@ impl ChatV2Pipeline {
             let cancel_token = Some(ctx.cancel_token());
             let rag_top_k = options.rag_top_k;
             let rag_enable_reranking = options.rag_enable_reranking;
+            let memory_enabled = options.memory_enabled.unwrap_or(true);
+            let rag_enabled = options.rag_enabled.unwrap_or(true);
+            let web_search_enabled = options.web_search_enabled.unwrap_or(true);
             let tool_results = self
                 .execute_tool_calls(
                     &tool_calls,
@@ -1124,6 +1158,9 @@ impl ChatV2Pipeline {
                     cancel_token,
                     rag_top_k,
                     rag_enable_reranking,
+                    memory_enabled,
+                    rag_enabled,
+                    web_search_enabled,
                     &variant_tool_name_mapping,
                 )
                 .await?;
@@ -1157,7 +1194,7 @@ impl ChatV2Pipeline {
                                 // 追加工具 Schema 到 mcp_tool_schemas
                                 let mcp_schemas =
                                     options.mcp_tool_schemas.get_or_insert_with(Vec::new);
-                                let existing_names: std::collections::HashSet<String> =
+                                let mut existing_names: std::collections::HashSet<String> =
                                     mcp_schemas.iter().map(|t| t.name.clone()).collect();
                                 let mut added_count = 0;
                                 for skill_id in &loaded_skill_ids {
@@ -1165,6 +1202,7 @@ impl ChatV2Pipeline {
                                         for tool in tools {
                                             if !existing_names.contains(&tool.name) {
                                                 mcp_schemas.push(tool.clone());
+                                                existing_names.insert(tool.name.clone());
                                                 added_count += 1;
                                             }
                                         }
@@ -1176,17 +1214,41 @@ impl ChatV2Pipeline {
                                         added_count,
                                         loaded_skill_ids,
                                     );
+                                    let refreshed_tools: Vec<Value> = mcp_schemas
+                                        .iter()
+                                        .map(|tool| {
+                                            let raw_tool_name =
+                                                if tool.name.starts_with(BUILTIN_NAMESPACE) {
+                                                    tool.name.clone()
+                                                } else {
+                                                    format!("mcp_{}", tool.name)
+                                                };
+                                            let api_tool_name =
+                                                sanitize_tool_name_for_api(&raw_tool_name);
+                                            json!({
+                                                "type": "function",
+                                                "function": {
+                                                    "name": api_tool_name,
+                                                    "description": tool.description.clone().unwrap_or_default(),
+                                                    "parameters": tool.input_schema.clone().unwrap_or(json!({}))
+                                                }
+                                            })
+                                        })
+                                        .collect();
+                                    llm_context
+                                        .insert("tools".into(), Value::Array(refreshed_tools));
                                 }
 
                                 // 🔧 修复：同步更新 skill_allowed_tools 白名单
                                 let allowed = skill_allowed_tools.get_or_insert_with(Vec::new);
-                                let existing_allowed: std::collections::HashSet<String> =
+                                let mut existing_allowed: std::collections::HashSet<String> =
                                     allowed.iter().cloned().collect();
                                 for skill_id in &loaded_skill_ids {
                                     if let Some(tools) = embedded_tools_map.get(skill_id) {
                                         for tool in tools {
                                             if !existing_allowed.contains(&tool.name) {
                                                 allowed.push(tool.name.clone());
+                                                existing_allowed.insert(tool.name.clone());
                                             }
                                         }
                                     }
@@ -1355,7 +1417,7 @@ impl ChatV2Pipeline {
     ) -> String {
         let canvas_note = self.build_canvas_note_info_from_options(options).await;
 
-        let user_profile = self.load_user_profile_for_variant().await;
+        let user_profile = self.load_user_profile_for_variant(options).await;
 
         prompt_builder::PromptBuilder::new(options.system_prompt_override.as_deref())
             .with_shared_context(shared_context)
@@ -1365,11 +1427,19 @@ impl ChatV2Pipeline {
             .build()
     }
 
-    async fn load_user_profile_for_variant(&self) -> Option<String> {
-        use crate::memory::{MemoryCategoryManager, MemoryService};
+    async fn load_user_profile_for_variant(&self, options: &SendOptions) -> Option<String> {
+        use crate::memory::{MemoryCategoryManager, MemoryConfig, MemoryService};
         use crate::vfs::lance_store::VfsLanceStore;
 
+        if options.memory_enabled == Some(false) {
+            return None;
+        }
+
         let vfs_db = self.vfs_db.as_ref()?;
+        let mem_cfg = MemoryConfig::new(vfs_db.clone());
+        if mem_cfg.is_privacy_mode().ok()? {
+            return None;
+        }
         let lance_store = VfsLanceStore::new(vfs_db.clone())
             .ok()
             .map(std::sync::Arc::new)?;

@@ -709,73 +709,115 @@ impl VfsNoteRepo {
     /// ★ CONC-02 修复：恢复笔记时同步恢复 folder_items 记录，
     /// 确保恢复后的笔记在 Learning Hub 中可见
     pub fn restore_note_with_conn(conn: &Connection, note_id: &str) -> VfsResult<()> {
-        let now = chrono::Utc::now()
-            .format("%Y-%m-%dT%H:%M:%S%.3fZ")
-            .to_string();
-        let now_ms = chrono::Utc::now().timestamp_millis();
+        conn.execute("SAVEPOINT restore_note", [])?;
+        let tx_result: VfsResult<(String, String, usize)> = (|| {
+            let now = chrono::Utc::now()
+                .format("%Y-%m-%dT%H:%M:%S%.3fZ")
+                .to_string();
+            let now_ms = chrono::Utc::now().timestamp_millis();
 
-        // 1. 获取要恢复的笔记信息（需要读取已删除笔记）
-        let note = Self::get_note_including_deleted_with_conn(conn, note_id)?.ok_or_else(|| {
-            VfsError::NotFound {
-                resource_type: "Note".to_string(),
-                id: note_id.to_string(),
+            // 1. 获取要恢复的笔记信息（需要读取已删除笔记）
+            let note = Self::get_note_including_deleted_with_conn(conn, note_id)?.ok_or_else(|| {
+                VfsError::NotFound {
+                    resource_type: "Note".to_string(),
+                    id: note_id.to_string(),
+                }
+            })?;
+
+            // 2. 原子化重命名恢复：避免「先查重后更新」并发 TOCTOU
+            let mut restored_title: Option<String> = None;
+            for idx in 0..1000usize {
+                let candidate = if idx == 0 {
+                    note.title.clone()
+                } else {
+                    format!("{} ({})", note.title, idx)
+                };
+                let updated = conn.execute(
+                    r#"
+                    UPDATE notes
+                    SET deleted_at = NULL, title = ?1, updated_at = ?2
+                    WHERE id = ?3
+                      AND deleted_at IS NOT NULL
+                      AND NOT EXISTS (
+                        SELECT 1 FROM notes
+                        WHERE title = ?1 AND deleted_at IS NULL AND id != ?3
+                      )
+                    "#,
+                    params![candidate, now, note_id],
+                )?;
+
+                if updated == 1 {
+                    restored_title = Some(candidate);
+                    break;
+                }
+
+                // 不是重名冲突，而是记录已不存在/已恢复
+                let still_deleted: Option<i32> = conn
+                    .query_row(
+                        "SELECT 1 FROM notes WHERE id = ?1 AND deleted_at IS NOT NULL",
+                        params![note_id],
+                        |row| row.get(0),
+                    )
+                    .optional()?;
+                if still_deleted.is_none() {
+                    return Err(VfsError::NotFound {
+                        resource_type: "Note".to_string(),
+                        id: note_id.to_string(),
+                    });
+                }
             }
-        })?;
+            let new_title = restored_title.ok_or_else(|| VfsError::Conflict {
+                key: "note.restore.title_conflict".to_string(),
+                message: format!("恢复笔记失败：标题冲突重试次数过多 ({})", note_id),
+            })?;
 
-        // 2. 检查命名冲突并生成唯一名称
-        let new_title = Self::generate_unique_note_title_with_conn(
-            conn,
-            &note.title,
-            Some(note_id), // 排除自身
-        )?;
+            // 4. ★ CONC-02 修复：恢复 folder_items 记录
+            let restored_folder_item_id: Option<String> = conn
+                .query_row(
+                    r#"
+                    SELECT id FROM folder_items
+                    WHERE item_type = 'note' AND item_id = ?1 AND deleted_at IS NOT NULL
+                    ORDER BY COALESCE(updated_at, created_at) DESC, created_at DESC
+                    LIMIT 1
+                    "#,
+                    params![note_id],
+                    |row| row.get(0),
+                )
+                .optional()?;
+            let folder_items_restored = if let Some(fi_id) = restored_folder_item_id {
+                conn.execute(
+                    "UPDATE folder_items SET deleted_at = NULL, updated_at = ?1 WHERE id = ?2",
+                    params![now_ms, fi_id],
+                )?
+            } else {
+                0
+            };
 
-        // 3. 恢复笔记（同时更新标题如果有冲突）
-        let updated = conn.execute(
-            "UPDATE notes SET deleted_at = NULL, title = ?1, updated_at = ?2 WHERE id = ?3 AND deleted_at IS NOT NULL",
-            params![new_title, now, note_id],
-        )?;
+            Ok((note.title, new_title, folder_items_restored))
+        })();
 
-        if updated == 0 {
-            return Err(VfsError::NotFound {
-                resource_type: "Note".to_string(),
-                id: note_id.to_string(),
-            });
+        match tx_result {
+            Ok((old_title, new_title, folder_items_restored)) => {
+                conn.execute("RELEASE restore_note", [])?;
+                if new_title != old_title {
+                    info!(
+                        "[VFS::NoteRepo] Restored note with rename: {} -> {} ({}), folder_items restored: {}",
+                        old_title, new_title, note_id, folder_items_restored
+                    );
+                } else {
+                    info!(
+                        "[VFS::NoteRepo] Restored note: {}, folder_items restored: {}",
+                        note_id, folder_items_restored
+                    );
+                }
+                Ok(())
+            }
+            Err(e) => {
+                let _ = conn.execute("ROLLBACK TO restore_note", []);
+                let _ = conn.execute("RELEASE restore_note", []);
+                Err(e)
+            }
         }
-
-        // 4. ★ CONC-02 修复：恢复 folder_items 记录
-        let restored_folder_item_id: Option<String> = conn
-            .query_row(
-                r#"
-                SELECT id FROM folder_items
-                WHERE item_type = 'note' AND item_id = ?1 AND deleted_at IS NOT NULL
-                ORDER BY COALESCE(updated_at, created_at) DESC, created_at DESC
-                LIMIT 1
-                "#,
-                params![note_id],
-                |row| row.get(0),
-            )
-            .ok();
-        let folder_items_restored = if let Some(fi_id) = restored_folder_item_id {
-            conn.execute(
-                "UPDATE folder_items SET deleted_at = NULL, updated_at = ?1 WHERE id = ?2",
-                params![now_ms, fi_id],
-            )?
-        } else {
-            0
-        };
-
-        if new_title != note.title {
-            info!(
-                "[VFS::NoteRepo] Restored note with rename: {} -> {} ({}), folder_items restored: {}",
-                note.title, new_title, note_id, folder_items_restored
-            );
-        } else {
-            info!(
-                "[VFS::NoteRepo] Restored note: {}, folder_items restored: {}",
-                note_id, folder_items_restored
-            );
-        }
-        Ok(())
     }
 
     /// 生成唯一的笔记标题（避免同名冲突）
@@ -1209,47 +1251,60 @@ impl VfsNoteRepo {
         conn: &Connection,
         note_id: &str,
     ) -> VfsResult<()> {
-        // 1. 软删除笔记
-        Self::delete_note_with_conn(conn, note_id)?;
+        conn.execute("SAVEPOINT delete_note_with_folder_item", [])?;
+        let tx_result: VfsResult<()> = (|| {
+            // 1. 软删除笔记
+            Self::delete_note_with_conn(conn, note_id)?;
 
-        // 2. 软删除 folder_items 记录（而不是硬删除）
-        // ★ P0 修复：deleted_at 是 TEXT 列，updated_at 是 INTEGER 列，必须分开处理
-        let now_str = chrono::Utc::now()
-            .format("%Y-%m-%dT%H:%M:%S%.3fZ")
-            .to_string();
-        let now_ms = chrono::Utc::now().timestamp_millis();
-        conn.execute(
-            "UPDATE folder_items SET deleted_at = ?1, updated_at = ?2 WHERE item_type = 'note' AND item_id = ?3 AND deleted_at IS NULL",
-            params![now_str, now_ms, note_id],
-        )?;
+            // 2. 软删除 folder_items 记录（而不是硬删除）
+            // ★ P0 修复：deleted_at 是 TEXT 列，updated_at 是 INTEGER 列，必须分开处理
+            let now_str = chrono::Utc::now()
+                .format("%Y-%m-%dT%H:%M:%S%.3fZ")
+                .to_string();
+            let now_ms = chrono::Utc::now().timestamp_millis();
+            conn.execute(
+                "UPDATE folder_items SET deleted_at = ?1, updated_at = ?2 WHERE item_type = 'note' AND item_id = ?3 AND deleted_at IS NULL",
+                params![now_str, now_ms, note_id],
+            )?;
 
-        // 3. 标记索引为 disabled，防止搜索命中已删除内容
-        let resource_id: Option<String> = conn
-            .query_row(
-                "SELECT resource_id FROM notes WHERE id = ?1",
-                params![note_id],
-                |row| row.get(0),
-            )
-            .optional()?;
-        if let Some(ref rid) = resource_id {
-            let disabled_count = conn.execute(
-                "UPDATE vfs_index_units SET text_state = 'disabled', mm_state = 'disabled' WHERE resource_id = ?1",
-                params![rid],
-            ).unwrap_or(0);
-            if disabled_count > 0 {
-                info!(
-                    "[VFS::NoteRepo] Disabled {} index units for soft-deleted note {} (resource={})",
-                    disabled_count, note_id, rid
-                );
+            // 3. 标记索引为 disabled，防止搜索命中已删除内容
+            let resource_id: Option<String> = conn
+                .query_row(
+                    "SELECT resource_id FROM notes WHERE id = ?1",
+                    params![note_id],
+                    |row| row.get(0),
+                )
+                .optional()?;
+            if let Some(ref rid) = resource_id {
+                let disabled_count = conn.execute(
+                    "UPDATE vfs_index_units SET text_state = 'disabled', mm_state = 'disabled' WHERE resource_id = ?1",
+                    params![rid],
+                )?;
+                if disabled_count > 0 {
+                    info!(
+                        "[VFS::NoteRepo] Disabled {} index units for soft-deleted note {} (resource={})",
+                        disabled_count, note_id, rid
+                    );
+                }
+            }
+
+            debug!(
+                "[VFS::NoteRepo] Soft deleted note {} and its folder_items",
+                note_id
+            );
+            Ok(())
+        })();
+        match tx_result {
+            Ok(()) => {
+                conn.execute("RELEASE delete_note_with_folder_item", [])?;
+                Ok(())
+            }
+            Err(e) => {
+                let _ = conn.execute("ROLLBACK TO delete_note_with_folder_item", []);
+                let _ = conn.execute("RELEASE delete_note_with_folder_item", []);
+                Err(e)
             }
         }
-
-        debug!(
-            "[VFS::NoteRepo] Soft deleted note {} and its folder_items",
-            note_id
-        );
-
-        Ok(())
     }
 
     /// 永久删除笔记（同时删除 folder_items 记录）

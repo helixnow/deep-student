@@ -529,6 +529,7 @@ export function createRestoreActions(
             attachments: [],
             panelStates,
             pendingContextRefs,
+            pendingContextRefsDirty: false,
             // 从安全解析的结果恢复（支持多选）
             activeSkillIds: restoredActiveSkillIds,
           });
@@ -592,7 +593,7 @@ export function createRestoreActions(
                         }
                       }
                       if (newRefs.length > currentRefs.length) {
-                        set({ pendingContextRefs: newRefs });
+                        set({ pendingContextRefs: newRefs, pendingContextRefsDirty: false });
                         console.log('[ChatStore] Injected group pinned resources:', newRefs.length - currentRefs.length);
                       }
                     }
@@ -628,7 +629,10 @@ export function createRestoreActions(
                     );
 
                     if (!hasSkillRef) {
-                      set({ pendingContextRefs: [...currentRefs, { ...contextRef, autoLoaded: true }] });
+                      set({
+                        pendingContextRefs: [...currentRefs, { ...contextRef, autoLoaded: true }],
+                        pendingContextRefsDirty: false,
+                      });
                     }
                   }
                   console.log('[ChatStore] Restored active skill contextRefs:', restoredActiveSkillIds);
@@ -696,7 +700,7 @@ export function createRestoreActions(
 
                 if (invalidRefs.length > 0) {
                   console.warn('[ChatStore] Removing invalid refs:', invalidRefs.length);
-                  set({ pendingContextRefs: validRefs });
+                  set({ pendingContextRefs: validRefs, pendingContextRefsDirty: false });
                   showGlobalNotification('warning', i18n.t('chatV2:chat.context_invalid_removed', { count: invalidRefs.length }));
                 }
               }

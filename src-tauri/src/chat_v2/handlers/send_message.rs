@@ -562,6 +562,13 @@ pub async fn chat_v2_retry_message(
         .context_snapshot
         .as_ref()
         .map(|snapshot| restore_context_refs_from_snapshot(&vfs_db, snapshot, is_multimodal));
+    let restored_path_map = filter_path_map_for_send_refs(
+        user_msg_result
+            .context_snapshot
+            .as_ref()
+            .map(|snapshot| &snapshot.path_map),
+        restored_context_refs.as_deref(),
+    );
     let has_context_refs = restored_context_refs
         .as_ref()
         .map_or(false, |refs| !refs.is_empty());
@@ -752,7 +759,7 @@ pub async fn chat_v2_retry_message(
             user_message_id: None,
             assistant_message_id: Some(assistant_message_id_clone),
             user_context_refs: restored_context_refs,
-            path_map: None,
+            path_map: restored_path_map,
             workspace_id: None,
         };
 
@@ -827,6 +834,8 @@ pub async fn chat_v2_edit_and_resend(
     new_content: String,
     // 🆕 P1-2: 支持传入新的上下文引用（如果为 None，则从原消息恢复）
     new_context_refs: Option<Vec<SendContextRef>>,
+    // 🆕 path_map 覆盖（前端传新上下文时可附带）
+    new_path_map: Option<std::collections::HashMap<String, String>>,
     options: Option<SendOptions>,
     window: Window,
     db: State<'_, Arc<ChatV2Database>>,
@@ -871,42 +880,69 @@ pub async fn chat_v2_edit_and_resend(
         }
     };
 
-    // 🆕 P1-2: 如果传入了新的上下文引用，优先使用；否则从原消息恢复
-    let final_context_refs = if new_context_refs
+    let original_snapshot = original_message
+        .meta
         .as_ref()
-        .map_or(false, |refs| !refs.is_empty())
-    {
-        log::info!(
-            "[ChatV2::handlers] Edit and resend with NEW context refs: count={}",
-            new_context_refs.as_ref().unwrap().len()
-        );
-        new_context_refs
-    } else {
-        // 🆕 VFS 统一存储：从原消息的 context_snapshot 恢复上下文引用
-        // ★ 2026-01-26 修复：根据新模型的能力决定注入图片还是文本
-        let model_id = options.as_ref().and_then(|o| o.model_id.as_deref());
-        let is_multimodal = is_model_multimodal(&llm_manager, model_id).await;
-        log::info!(
-            "[ChatV2::handlers] Edit and resend: model_id={:?}, is_multimodal={}",
-            model_id,
-            is_multimodal
-        );
+        .and_then(|meta| meta.context_snapshot.as_ref());
 
-        let restored_context_refs = original_message
-            .meta
-            .as_ref()
-            .and_then(|meta| meta.context_snapshot.as_ref())
-            .map(|snapshot| restore_context_refs_from_snapshot(&vfs_db, snapshot, is_multimodal));
-        let has_context_refs = restored_context_refs
-            .as_ref()
-            .map_or(false, |refs| !refs.is_empty());
-        if has_context_refs {
-            log::info!(
-                "[ChatV2::handlers] Edit and resend with restored context refs: count={}",
-                restored_context_refs.as_ref().unwrap().len()
-            );
+    // 🆕 P1-2: 三态语义
+    // - None: 继承原消息上下文
+    // - Some([]): 显式清空
+    // - Some(non-empty): 使用新上下文
+    let final_context_refs = match new_context_refs.as_ref() {
+        Some(refs) => {
+            if refs.is_empty() {
+                log::info!("[ChatV2::handlers] Edit and resend with EXPLICIT empty context refs");
+            } else {
+                log::info!(
+                    "[ChatV2::handlers] Edit and resend with NEW context refs: count={}",
+                    refs.len()
+                );
+            }
+            Some(refs.clone())
         }
-        restored_context_refs
+        None => {
+            // 🆕 VFS 统一存储：从原消息的 context_snapshot 恢复上下文引用
+            // ★ 2026-01-26 修复：根据新模型的能力决定注入图片还是文本
+            let model_id = options.as_ref().and_then(|o| o.model_id.as_deref());
+            let is_multimodal = is_model_multimodal(&llm_manager, model_id).await;
+            log::info!(
+                "[ChatV2::handlers] Edit and resend: model_id={:?}, is_multimodal={}",
+                model_id,
+                is_multimodal
+            );
+
+            let restored_context_refs = original_snapshot.map(|snapshot| {
+                restore_context_refs_from_snapshot(&vfs_db, snapshot, is_multimodal)
+            });
+            let has_context_refs = restored_context_refs
+                .as_ref()
+                .map_or(false, |refs| !refs.is_empty());
+            if has_context_refs {
+                log::info!(
+                    "[ChatV2::handlers] Edit and resend with restored context refs: count={}",
+                    restored_context_refs.as_ref().unwrap().len()
+                );
+            }
+            restored_context_refs
+        }
+    };
+
+    let final_path_map = match new_context_refs.as_ref() {
+        Some(refs) => {
+            if refs.is_empty() {
+                None
+            } else {
+                let source_map = new_path_map
+                    .as_ref()
+                    .or_else(|| original_snapshot.map(|s| &s.path_map));
+                filter_path_map_for_send_refs(source_map, Some(refs.as_slice()))
+            }
+        }
+        None => filter_path_map_for_send_refs(
+            original_snapshot.map(|snapshot| &snapshot.path_map),
+            final_context_refs.as_deref(),
+        ),
     };
 
     // ★ 2025-12-10 统一改造：移除 original_attachments 重建逻辑
@@ -957,7 +993,15 @@ pub async fn chat_v2_edit_and_resend(
 
             let mut updated_message = original_message.clone();
             let mut meta = updated_message.meta.unwrap_or_default();
-            meta.context_snapshot = create_user_refs_snapshot(&user_refs);
+            if user_refs.is_empty() {
+                meta.context_snapshot = None;
+            } else {
+                let mut snapshot = create_user_refs_snapshot(&user_refs).unwrap_or_default();
+                if let Some(path_map) = final_path_map.as_ref() {
+                    snapshot.path_map = path_map.clone();
+                }
+                meta.context_snapshot = Some(snapshot);
+            }
             updated_message.meta = Some(meta);
 
             ChatV2Repo::update_message_with_conn(&conn, &updated_message).map_err(|e| {
@@ -1140,7 +1184,7 @@ pub async fn chat_v2_edit_and_resend(
             user_message_id: Some(original_message_id.clone()),
             assistant_message_id: Some(assistant_message_id_clone.clone()),
             user_context_refs: final_context_refs,
-            path_map: None,
+            path_map: final_path_map,
             workspace_id: None,
         };
 
@@ -1248,6 +1292,31 @@ struct UserMessageRestoreResult {
     context_snapshot: Option<ContextSnapshot>,
     /// 用户消息时间戳（用于删除后续消息）
     timestamp: i64,
+}
+
+fn filter_path_map_for_send_refs(
+    path_map: Option<&std::collections::HashMap<String, String>>,
+    refs: Option<&[SendContextRef]>,
+) -> Option<std::collections::HashMap<String, String>> {
+    let path_map = path_map?;
+    let refs = refs?;
+    if path_map.is_empty() {
+        return None;
+    }
+    if refs.is_empty() {
+        return None;
+    }
+
+    let mut filtered = path_map.clone();
+    let keep: std::collections::HashSet<&str> =
+        refs.iter().map(|r| r.resource_id.as_str()).collect();
+    filtered.retain(|resource_id, _| keep.contains(resource_id.as_str()));
+
+    if filtered.is_empty() {
+        None
+    } else {
+        Some(filtered)
+    }
 }
 
 /// 查找前一条用户消息的内容、附件和上下文快照
@@ -1551,6 +1620,13 @@ pub async fn chat_v2_continue_message(
         .context_snapshot
         .as_ref()
         .map(|snapshot| restore_context_refs_from_snapshot(&vfs_db, snapshot, is_multimodal));
+    let restored_path_map = filter_path_map_for_send_refs(
+        user_msg_result
+            .context_snapshot
+            .as_ref()
+            .map(|snapshot| &snapshot.path_map),
+        restored_context_refs.as_deref(),
+    );
 
     // 9. 构建继续执行的请求
     // 关键：使用原消息 ID 和变体 ID，这样 Pipeline 会继续在同一消息内执行
@@ -1565,7 +1641,7 @@ pub async fn chat_v2_continue_message(
             opts
         }),
         user_message_id: None,
-        path_map: None,
+        path_map: restored_path_map,
         workspace_id: None,
     };
 
@@ -1638,6 +1714,7 @@ pub async fn chat_v2_continue_message(
 mod tests {
     use super::*;
     use crate::chat_v2::types::MessageBlock;
+    use std::collections::HashMap;
 
     #[test]
     fn test_message_id_generation() {
@@ -1657,5 +1734,70 @@ mod tests {
         assert!(id1.starts_with("blk_"));
         assert!(id2.starts_with("blk_"));
         assert_ne!(id1, id2);
+    }
+
+    fn make_send_ref(resource_id: &str) -> SendContextRef {
+        SendContextRef {
+            resource_id: resource_id.to_string(),
+            hash: format!("hash_{}", resource_id),
+            type_id: "file".to_string(),
+            formatted_blocks: vec![ContentBlock::text("test")],
+            display_name: None,
+            inject_modes: None,
+        }
+    }
+
+    #[test]
+    fn test_filter_path_map_for_send_refs_returns_none_when_path_map_missing() {
+        let refs = vec![make_send_ref("res_1")];
+        let filtered = filter_path_map_for_send_refs(None, Some(refs.as_slice()));
+        assert!(filtered.is_none());
+    }
+
+    #[test]
+    fn test_filter_path_map_for_send_refs_returns_none_when_refs_missing_or_empty() {
+        let mut path_map = HashMap::new();
+        path_map.insert("res_1".to_string(), "/tmp/a.pdf".to_string());
+
+        let filtered_none_refs = filter_path_map_for_send_refs(Some(&path_map), None);
+        assert!(filtered_none_refs.is_none());
+
+        let empty_refs: Vec<SendContextRef> = Vec::new();
+        let filtered_empty_refs =
+            filter_path_map_for_send_refs(Some(&path_map), Some(empty_refs.as_slice()));
+        assert!(filtered_empty_refs.is_none());
+    }
+
+    #[test]
+    fn test_filter_path_map_for_send_refs_keeps_only_matched_resource_ids() {
+        let mut path_map = HashMap::new();
+        path_map.insert("res_1".to_string(), "/tmp/a.pdf".to_string());
+        path_map.insert("res_2".to_string(), "/tmp/b.pdf".to_string());
+        path_map.insert("res_3".to_string(), "/tmp/c.pdf".to_string());
+
+        let refs = vec![make_send_ref("res_1"), make_send_ref("res_3")];
+        let filtered =
+            filter_path_map_for_send_refs(Some(&path_map), Some(refs.as_slice())).unwrap();
+
+        assert_eq!(filtered.len(), 2);
+        assert_eq!(
+            filtered.get("res_1").map(String::as_str),
+            Some("/tmp/a.pdf")
+        );
+        assert_eq!(
+            filtered.get("res_3").map(String::as_str),
+            Some("/tmp/c.pdf")
+        );
+        assert!(!filtered.contains_key("res_2"));
+    }
+
+    #[test]
+    fn test_filter_path_map_for_send_refs_returns_none_when_no_match() {
+        let mut path_map = HashMap::new();
+        path_map.insert("res_1".to_string(), "/tmp/a.pdf".to_string());
+
+        let refs = vec![make_send_ref("res_2")];
+        let filtered = filter_path_map_for_send_refs(Some(&path_map), Some(refs.as_slice()));
+        assert!(filtered.is_none());
     }
 }

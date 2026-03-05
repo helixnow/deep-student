@@ -32,10 +32,90 @@ fn effective_max_tokens(max_output_tokens: u32, max_tokens_limit: Option<u32>) -
 
 /// 统一使用 debug_log_service 的 standard 级别脱敏（准确的 base64 大小计算）
 pub(crate) fn sanitize_request_body_for_audit(body: &serde_json::Value) -> serde_json::Value {
-    crate::debug_log_service::sanitize_for_level(
+    let mut sanitized = crate::debug_log_service::sanitize_for_level(
         body,
         crate::debug_log_service::DebugFilterLevel::Standard,
-    )
+    );
+    redact_user_profile_blocks_in_value(&mut sanitized);
+    sanitized
+}
+
+fn redact_user_profile_blocks_in_value(value: &mut serde_json::Value) {
+    match value {
+        serde_json::Value::String(s) => {
+            *s = redact_user_profile_blocks_in_text(s);
+        }
+        serde_json::Value::Array(items) => {
+            for v in items {
+                redact_user_profile_blocks_in_value(v);
+            }
+        }
+        serde_json::Value::Object(map) => {
+            for (_, v) in map {
+                redact_user_profile_blocks_in_value(v);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn redact_user_profile_blocks_in_text(text: &str) -> String {
+    const START: &str = "<user_profile>";
+    const END: &str = "</user_profile>";
+    if !text.contains(START) {
+        return text.to_string();
+    }
+
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    loop {
+        let Some(start_idx) = rest.find(START) else {
+            out.push_str(rest);
+            break;
+        };
+        out.push_str(&rest[..start_idx]);
+        let after_start = &rest[start_idx + START.len()..];
+        if let Some(end_rel) = after_start.find(END) {
+            out.push_str("<user_profile>[REDACTED]</user_profile>");
+            rest = &after_start[end_rel + END.len()..];
+        } else {
+            out.push_str("[REDACTED:user_profile]");
+            break;
+        }
+    }
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn test_redact_user_profile_blocks_in_text() {
+        let input = "A<user_profile>\nsecret\n</user_profile>B";
+        let redacted = redact_user_profile_blocks_in_text(input);
+        assert!(redacted.contains("<user_profile>[REDACTED]</user_profile>"));
+        assert!(!redacted.contains("secret"));
+    }
+
+    #[test]
+    fn test_sanitize_request_body_for_audit_redacts_user_profile() {
+        let body = json!({
+            "messages": [
+                {
+                    "role": "system",
+                    "content": "prefix <user_profile>very sensitive</user_profile> suffix"
+                }
+            ]
+        });
+        let sanitized = sanitize_request_body_for_audit(&body);
+        let content = sanitized["messages"][0]["content"]
+            .as_str()
+            .unwrap_or_default();
+        assert!(content.contains("[REDACTED]"));
+        assert!(!content.contains("very sensitive"));
+    }
 }
 
 /// 输出审计日志（info 级别）+ 可选文件持久化（用于无 window 的非流式路径）
@@ -79,6 +159,7 @@ pub(crate) fn log_and_emit_llm_request(
     tag: &str,
     window: &tauri::Window,
     stream_event: &str,
+    message_id: Option<&str>,
     model: &str,
     url: &str,
     body: &serde_json::Value,
@@ -120,6 +201,7 @@ pub(crate) fn log_and_emit_llm_request(
 
     let payload = json!({
         "streamEvent": stream_event,
+        "messageId": message_id,
         "model": model,
         "url": url,
         "requestBody": sanitized,
@@ -162,6 +244,7 @@ impl LLMManager {
         task_context: Option<&str>,
         window: Window,
         stream_event: &str,
+        message_id: Option<&str>,
         _trace_id: Option<&str>,
         disable_tools: bool,
         _max_input_tokens_override: Option<usize>,
@@ -838,8 +921,13 @@ impl LLMManager {
                         } else {
                             debug!("[Fallback] RAG 已关闭，跳过知识库注入");
                         }
+                        let web_search_enabled = context
+                            .get("web_search_enabled")
+                            .and_then(|v| v.as_bool())
+                            .unwrap_or(false);
+
                         // 调用 WebSearch 工具生成注入文本
-                        if !reuse_prefetched_web_search {
+                        if !reuse_prefetched_web_search && web_search_enabled {
                             let web_registry =
                                 crate::tools::ToolRegistry::new_with(vec![std::sync::Arc::new(
                                     crate::tools::WebSearchTool,
@@ -873,6 +961,8 @@ impl LLMManager {
                             } else {
                                 warn!("[Fallback] web_search 返回的 inject_text 为 None！");
                             }
+                        } else if !web_search_enabled {
+                            debug!("[Fallback] web_search 已关闭，跳过外部搜索注入");
                         }
                     }
 
@@ -1026,6 +1116,7 @@ impl LLMManager {
             "CHAT_STREAM",
             &window,
             stream_event,
+            message_id,
             &config.model,
             &preq.url,
             &preq.body,
@@ -2347,6 +2438,7 @@ impl LLMManager {
             "CONTINUE_STREAM",
             &window,
             stream_event,
+            None,
             &config.model,
             &preq.url,
             &preq.body,

@@ -14,7 +14,7 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::{BufReader, Read};
 use std::sync::Arc;
 use tokio::sync::mpsc::UnboundedSender;
@@ -3345,6 +3345,18 @@ pub struct CsvPreviewResult {
 
 pub struct CsvImportService;
 
+const CSV_IMPORT_TARGET_FIELDS: &[&str] = &[
+    "question_label",
+    "content",
+    "options",
+    "answer",
+    "explanation",
+    "question_type",
+    "difficulty",
+    "tags",
+    "images",
+];
+
 impl CsvImportService {
     pub fn preview_csv(file_path: &str, preview_rows: usize) -> Result<CsvPreviewResult, AppError> {
         let (content, encoding) = Self::read_file_with_encoding(file_path)?;
@@ -3544,6 +3556,27 @@ impl CsvImportService {
                 )));
             }
         }
+        for target_field in field_mapping.values() {
+            if !CSV_IMPORT_TARGET_FIELDS
+                .iter()
+                .any(|allowed| *allowed == target_field.as_str())
+            {
+                return Err(AppError::validation(format!(
+                    "不支持的目标字段 '{}', 仅支持: {}",
+                    target_field,
+                    CSV_IMPORT_TARGET_FIELDS.join(", ")
+                )));
+            }
+        }
+        let mut seen_targets = HashSet::new();
+        for target_field in field_mapping.values() {
+            if !seen_targets.insert(target_field.as_str()) {
+                return Err(AppError::validation(format!(
+                    "目标字段 '{}' 被重复映射，请确保每个目标字段只映射一次",
+                    target_field
+                )));
+            }
+        }
         Ok(())
     }
 
@@ -3664,18 +3697,25 @@ impl CsvImportService {
         }
 
         let content_hash = Self::compute_content_hash(content);
+        let parsed_images = match field_values.get("images") {
+            Some(raw) => Self::parse_images(raw)
+                .map_err(|msg| AppError::validation(format!("第 {} 行: {}", row_num, msg)))?,
+            None => None,
+        };
+
         if let Some(existing_id) = existing_hashes.get(&content_hash) {
             match duplicate_strategy {
                 CsvDuplicateStrategy::Skip => return Ok(CsvRowResult::Skipped),
                 CsvDuplicateStrategy::Overwrite => {
-                    let params = Self::build_update_params(&field_values);
+                    let params = Self::build_update_params(&field_values, parsed_images.clone());
                     VfsQuestionRepo::update_question(vfs_db, existing_id, &params)
                         .map_err(|e| AppError::database(format!("更新失败: {}", e)))?;
                     return Ok(CsvRowResult::Updated);
                 }
                 CsvDuplicateStrategy::Merge => {
                     if let Ok(Some(existing)) = VfsQuestionRepo::get_question(vfs_db, existing_id) {
-                        let params = Self::build_merge_params(&field_values, &existing);
+                        let params =
+                            Self::build_merge_params(&field_values, &existing, parsed_images.clone());
                         VfsQuestionRepo::update_question(vfs_db, existing_id, &params)
                             .map_err(|e| AppError::database(format!("合并失败: {}", e)))?;
                         return Ok(CsvRowResult::Updated);
@@ -3684,7 +3724,7 @@ impl CsvImportService {
             }
         }
 
-        let params = Self::build_create_params(exam_id, &field_values, row_num);
+        let params = Self::build_create_params(exam_id, &field_values, parsed_images, row_num);
         let new_q = VfsQuestionRepo::create_question(vfs_db, &params)
             .map_err(|e| AppError::database(format!("创建失败: {}", e)))?;
         existing_hashes.insert(content_hash, new_q.id);
@@ -3694,6 +3734,7 @@ impl CsvImportService {
     fn build_create_params(
         exam_id: &str,
         fv: &HashMap<String, String>,
+        parsed_images: Option<Vec<QuestionImage>>,
         row_num: usize,
     ) -> CreateQuestionParams {
         CreateQuestionParams {
@@ -3716,13 +3757,14 @@ impl CsvImportService {
             tags: fv.get("tags").and_then(|t| Self::parse_tags(t)),
             source_type: Some(crate::vfs::repos::SourceType::Imported),
             source_ref: Some("csv".to_string()),
-            images: None,
+            images: parsed_images,
             parent_id: None,
         }
     }
 
     fn build_update_params(
         fv: &HashMap<String, String>,
+        parsed_images: Option<Vec<QuestionImage>>,
     ) -> crate::vfs::repos::UpdateQuestionParams {
         let mut params = crate::vfs::repos::UpdateQuestionParams::default();
         if let Some(v) = fv.get("content") {
@@ -3746,12 +3788,16 @@ impl CsvImportService {
         if let Some(v) = fv.get("tags") {
             params.tags = Self::parse_tags(v);
         }
+        if let Some(images) = parsed_images {
+            params.images = Some(images);
+        }
         params
     }
 
     fn build_merge_params(
         fv: &HashMap<String, String>,
         existing: &crate::vfs::repos::Question,
+        parsed_images: Option<Vec<QuestionImage>>,
     ) -> crate::vfs::repos::UpdateQuestionParams {
         let mut params = crate::vfs::repos::UpdateQuestionParams::default();
         if existing.answer.is_none() {
@@ -3772,6 +3818,13 @@ impl CsvImportService {
         if existing.tags.is_empty() {
             if let Some(v) = fv.get("tags") {
                 params.tags = Self::parse_tags(v);
+            }
+        }
+        if existing.images.is_empty() {
+            if let Some(images) = parsed_images {
+                if !images.is_empty() {
+                    params.images = Some(images);
+                }
             }
         }
         params
@@ -3815,7 +3868,7 @@ impl CsvImportService {
             "multiple_choice" | "多选" | "多选题" => {
                 Some(crate::vfs::repos::QuestionType::MultipleChoice)
             }
-            "indefinite_choice" | "不定项" => {
+            "indefinite_choice" | "不定项" | "不定项选择题" => {
                 Some(crate::vfs::repos::QuestionType::IndefiniteChoice)
             }
             "fill_blank" | "填空" | "填空题" => {
@@ -3867,6 +3920,20 @@ impl CsvImportService {
         } else {
             None
         }
+    }
+
+    fn parse_images(s: &str) -> Result<Option<Vec<QuestionImage>>, String> {
+        let input = s.trim();
+        if input.is_empty() {
+            return Ok(None);
+        }
+        if !input.starts_with('[') {
+            return Err("images 字段必须是 JSON 数组格式".to_string());
+        }
+
+        let images: Vec<QuestionImage> =
+            serde_json::from_str(input).map_err(|e| format!("images 字段解析失败: {}", e))?;
+        Ok(Some(images))
     }
 }
 

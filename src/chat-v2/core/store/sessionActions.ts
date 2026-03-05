@@ -284,6 +284,7 @@ export function createSessionActions(
             activeBlockIds: new Set(),
             streamingVariantIds: new Set(), // 🔧 变体状态初始化
             pendingContextRefs: [], // 🆕 上下文引用初始化
+            pendingContextRefsDirty: false,
             chatParams: createDefaultChatParams(),
             features: new Map(),
             // 🔧 P0修复：保留预设的 modeState，让 onInit 决定如何处理

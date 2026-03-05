@@ -174,6 +174,16 @@ impl QuestionBankService {
         params: &UpdateQuestionParams,
         record_history: bool,
     ) -> Result<Question, AppError> {
+        self.update_question_internal(question_id, params, record_history, true)
+    }
+
+    fn update_question_internal(
+        &self,
+        question_id: &str,
+        params: &UpdateQuestionParams,
+        record_history: bool,
+        refresh_stats_on_status_change: bool,
+    ) -> Result<Question, AppError> {
         // 获取旧数据用于记录历史
         let old_question = if record_history {
             self.get_question(question_id)?
@@ -192,7 +202,7 @@ impl QuestionBankService {
         }
 
         // 如果状态变化，更新统计
-        if params.status.is_some() {
+        if refresh_stats_on_status_change && params.status.is_some() {
             if let Err(e) = self.refresh_stats(&question.exam_id) {
                 log::warn!("[QuestionBank] 统计刷新失败: {}", e);
             }
@@ -214,7 +224,7 @@ impl QuestionBankService {
         let mut exam_ids = std::collections::HashSet::new();
 
         for id in question_ids {
-            match self.update_question(id, params, false) {
+            match self.update_question_internal(id, params, false, false) {
                 Ok(q) => {
                     success_count += 1;
                     exam_ids.insert(q.exam_id);
@@ -315,11 +325,64 @@ impl QuestionBankService {
         question_id: &str,
         user_answer: &str,
         is_correct_override: Option<bool>,
+        client_request_id: Option<&str>,
     ) -> Result<SubmitAnswerResult, AppError> {
+        let mut conn = self
+            .vfs_db
+            .get_conn_safe()
+            .map_err(|e| AppError::database(e.to_string()))?;
+        let tx = conn
+            .transaction()
+            .map_err(|e| AppError::database(e.to_string()))?;
+
         // 获取题目
-        let question = self
-            .get_question(question_id)?
+        let question = VfsQuestionRepo::get_question_with_conn(&tx, question_id)
+            .map_err(|e| AppError::database(e.to_string()))?
             .ok_or_else(|| AppError::not_found(format!("Question not found: {}", question_id)))?;
+
+        // 幂等短路：同一客户端请求已处理，直接返回当前状态
+        if let Some(req_id) = client_request_id.map(str::trim).filter(|s| !s.is_empty()) {
+            if let Some(existing_submission) =
+                VfsQuestionRepo::get_submission_by_client_request_with_conn(
+                    &tx,
+                    question_id,
+                    req_id,
+                )
+                .map_err(|e| AppError::database(e.to_string()))?
+            {
+                let updated_question = VfsQuestionRepo::get_question_with_conn(&tx, question_id)
+                    .map_err(|e| AppError::database(e.to_string()))?
+                    .ok_or_else(|| {
+                        AppError::not_found(format!("Question not found: {}", question_id))
+                    })?;
+                let updated_stats =
+                    VfsQuestionRepo::refresh_stats_with_conn(&tx, &question.exam_id)
+                        .map_err(|e| AppError::database(e.to_string()))?;
+
+                tx.commit().map_err(|e| AppError::database(e.to_string()))?;
+
+                let is_correct = existing_submission.is_correct;
+                let needs_manual_grading = is_correct.is_none()
+                    && Self::is_subjective_question_type(&question.question_type);
+                let message = if needs_manual_grading {
+                    "需要手动批改".to_string()
+                } else if is_correct == Some(true) {
+                    "回答正确！".to_string()
+                } else {
+                    "回答错误".to_string()
+                };
+
+                return Ok(SubmitAnswerResult {
+                    is_correct,
+                    correct_answer: question.answer.clone(),
+                    needs_manual_grading,
+                    message,
+                    updated_question,
+                    updated_stats,
+                    submission_id: existing_submission.id,
+                });
+            }
+        }
 
         // 判断正确性
         let (raw_is_correct, needs_manual_grading) = if let Some(override_val) = is_correct_override
@@ -340,8 +403,8 @@ impl QuestionBankService {
         };
 
         // 更新题目
-        let updated_question = VfsQuestionRepo::submit_answer(
-            &self.vfs_db,
+        let updated_question = VfsQuestionRepo::submit_answer_with_conn(
+            &tx,
             question_id,
             user_answer,
             is_correct,
@@ -351,17 +414,21 @@ impl QuestionBankService {
 
         // 记录作答历史
         let grading_method = if needs_manual_grading { "ai" } else { "auto" };
-        let submission_id = VfsQuestionRepo::insert_submission(
-            &self.vfs_db,
+        let submission_id = VfsQuestionRepo::insert_submission_with_conn(
+            &tx,
             question_id,
             user_answer,
             is_correct,
             grading_method,
+            client_request_id,
         )
         .map_err(|e| AppError::database(e.to_string()))?;
 
         // 更新统计
-        let updated_stats = self.refresh_stats(&question.exam_id)?;
+        let updated_stats = VfsQuestionRepo::refresh_stats_with_conn(&tx, &question.exam_id)
+            .map_err(|e| AppError::database(e.to_string()))?;
+
+        tx.commit().map_err(|e| AppError::database(e.to_string()))?;
 
         let message = if needs_manual_grading {
             "需要手动批改".to_string()
@@ -385,6 +452,16 @@ impl QuestionBankService {
             updated_stats,
             submission_id,
         })
+    }
+
+    fn is_subjective_question_type(question_type: &QuestionType) -> bool {
+        matches!(
+            question_type,
+            QuestionType::ShortAnswer
+                | QuestionType::Essay
+                | QuestionType::Calculation
+                | QuestionType::Proof
+        )
     }
 
     /// 判断答案正确性
@@ -631,14 +708,17 @@ impl QuestionBankService {
 
     /// 重置学习进度
     pub fn reset_progress(&self, exam_id: &str) -> Result<QuestionBankStats, AppError> {
-        let conn = self
+        let mut conn = self
             .vfs_db
             .get_conn_safe()
+            .map_err(|e| AppError::database(e.to_string()))?;
+        let tx = conn
+            .transaction()
             .map_err(|e| AppError::database(e.to_string()))?;
 
         let now = chrono::Utc::now().to_rfc3339();
 
-        conn.execute(
+        tx.execute(
             r#"
             UPDATE questions SET
                 status = 'new',
@@ -658,15 +738,20 @@ impl QuestionBankService {
         .map_err(|e| AppError::database(e.to_string()))?;
 
         // 清除作答历史
-        VfsQuestionRepo::delete_submissions_by_exam(&self.vfs_db, exam_id)
+        VfsQuestionRepo::delete_submissions_by_exam_with_conn(&tx, exam_id)
             .map_err(|e| AppError::database(e.to_string()))?;
+
+        let stats = VfsQuestionRepo::refresh_stats_with_conn(&tx, exam_id)
+            .map_err(|e| AppError::database(e.to_string()))?;
+
+        tx.commit().map_err(|e| AppError::database(e.to_string()))?;
 
         info!(
             "[QuestionBankService] Reset progress for exam_id={} (including submissions & AI cache)",
             exam_id
         );
 
-        self.refresh_stats(exam_id)
+        Ok(stats)
     }
 
     /// 按题目 ID 批量重置学习进度
@@ -682,9 +767,12 @@ impl QuestionBankService {
             });
         }
 
-        let conn = self
+        let mut conn = self
             .vfs_db
             .get_conn_safe()
+            .map_err(|e| AppError::database(e.to_string()))?;
+        let tx = conn
+            .unchecked_transaction()
             .map_err(|e| AppError::database(e.to_string()))?;
         let now = chrono::Utc::now().to_rfc3339();
         let mut success_count = 0;
@@ -692,11 +780,28 @@ impl QuestionBankService {
         let mut exam_ids: HashSet<String> = HashSet::new();
 
         for question_id in question_ids {
-            match self.get_question(question_id) {
-                Ok(Some(question)) => {
-                    let affected = conn
-                        .execute(
-                            r#"
+            if let Err(e) = tx.execute_batch("SAVEPOINT qbank_reset_question_progress") {
+                errors.push(format!("{}: {}", question_id, e));
+                continue;
+            }
+
+            let per_question_result = (|| -> Result<String, AppError> {
+                let exam_id: String = tx
+                    .query_row(
+                        "SELECT exam_id FROM questions WHERE id = ?1 AND deleted_at IS NULL",
+                        rusqlite::params![question_id],
+                        |row| row.get(0),
+                    )
+                    .map_err(|e| match e {
+                        rusqlite::Error::QueryReturnedNoRows => {
+                            AppError::validation(format!("{}: not found", question_id))
+                        }
+                        _ => AppError::database(e.to_string()),
+                    })?;
+
+                let affected = tx
+                    .execute(
+                        r#"
                         UPDATE questions SET
                             status = 'new',
                             user_answer = NULL,
@@ -710,36 +815,50 @@ impl QuestionBankService {
                             updated_at = ?1
                         WHERE id = ?2 AND deleted_at IS NULL
                         "#,
-                            rusqlite::params![now, question_id],
-                        )
-                        .map_err(|e| AppError::database(e.to_string()))?;
+                        rusqlite::params![now, question_id],
+                    )
+                    .map_err(|e| AppError::database(e.to_string()))?;
 
-                    if affected == 0 {
-                        errors.push(format!("{}: not found", question_id));
-                    } else {
-                        // 清除该题的作答历史
-                        let _ = VfsQuestionRepo::delete_submissions_by_question(
-                            &self.vfs_db,
-                            question_id,
-                        );
-                        success_count += 1;
-                        exam_ids.insert(question.exam_id);
-                    }
+                if affected == 0 {
+                    return Err(AppError::validation(format!("{}: not found", question_id)));
                 }
-                Ok(None) => {
-                    errors.push(format!("{}: not found", question_id));
+
+                VfsQuestionRepo::delete_submissions_by_question_with_conn(&tx, question_id)
+                    .map_err(|e| AppError::database(e.to_string()))?;
+
+                Ok(exam_id)
+            })();
+
+            match per_question_result {
+                Ok(exam_id) => {
+                    if let Err(e) = tx.execute_batch("RELEASE SAVEPOINT qbank_reset_question_progress")
+                    {
+                        errors.push(format!("{}: {}", question_id, e));
+                        let _ = tx.execute_batch(
+                            "ROLLBACK TO SAVEPOINT qbank_reset_question_progress; RELEASE SAVEPOINT qbank_reset_question_progress;",
+                        );
+                        continue;
+                    }
+                    success_count += 1;
+                    exam_ids.insert(exam_id);
                 }
                 Err(e) => {
-                    errors.push(format!("{}: {}", question_id, e));
+                    let _ = tx.execute_batch(
+                        "ROLLBACK TO SAVEPOINT qbank_reset_question_progress; RELEASE SAVEPOINT qbank_reset_question_progress;",
+                    );
+                    errors.push(e.to_string());
                 }
             }
         }
 
-        for exam_id in exam_ids {
-            if let Err(e) = self.refresh_stats(&exam_id) {
-                log::warn!("[QuestionBank] 统计刷新失败: {}", e);
+        for exam_id in &exam_ids {
+            if let Err(e) = VfsQuestionRepo::refresh_stats_with_conn(&tx, exam_id) {
+                let msg = format!("{}: refresh stats failed: {}", exam_id, e);
+                errors.push(msg.clone());
+                log::warn!("[QuestionBank] {}", msg);
             }
         }
+        tx.commit().map_err(|e| AppError::database(e.to_string()))?;
 
         Ok(BatchResult {
             success_count,
