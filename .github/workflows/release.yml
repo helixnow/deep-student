@@ -723,12 +723,38 @@ jobs:
           node-version: 22
 
       - name: Upload to Cloudflare R2
-        continue-on-error: true
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: |
           TAG="${{ needs.verify.outputs.tag_name }}"
+          MAX_RETRIES=3
+          RETRY_DELAY=3
+          FAILED_FILES=""
+
+          upload_with_retry() {
+            local object_key="$1"
+            local file_path="$2"
+            local content_type="$3"
+            local cache_control="$4"
+
+            local attempt=1
+            while [ "$attempt" -le "$MAX_RETRIES" ]; do
+              if npx wrangler r2 object put "$object_key" \
+                --file "$file_path" --content-type "$content_type" \
+                --cache-control "$cache_control" --remote; then
+                return 0
+              fi
+              echo "    ⚠️ Attempt ${attempt}/${MAX_RETRIES} failed: $(basename "$file_path")"
+              if [ "$attempt" -lt "$MAX_RETRIES" ]; then
+                sleep "$RETRY_DELAY"
+              fi
+              attempt=$((attempt + 1))
+            done
+
+            return 1
+          }
+
           echo "📤 Uploading release ${TAG} to R2..."
           for FILE in release-files/*; do
             NAME=$(basename "$FILE")
@@ -742,20 +768,56 @@ jobs:
               *)      CT="application/octet-stream" ;;
             esac
             echo "  ⬆️ ${NAME} (${CT})"
-            npx wrangler r2 object put "${R2_BUCKET}/releases/${TAG}/${NAME}" \
-              --file "$FILE" --content-type "$CT" \
-              --cache-control "public, max-age=31536000, immutable" --remote
+
+            if ! upload_with_retry \
+              "${R2_BUCKET}/releases/${TAG}/${NAME}" \
+              "$FILE" \
+              "$CT" \
+              "public, max-age=31536000, immutable"; then
+              echo "    ❌ Failed after ${MAX_RETRIES} attempts: ${NAME}"
+              FAILED_FILES="${FAILED_FILES}${NAME}\n"
+            fi
           done
+
+          if [ -n "$FAILED_FILES" ]; then
+            echo "❌ R2 upload finished with failures:"
+            printf "%b" "$FAILED_FILES"
+            exit 1
+          fi
+
           echo "✅ R2 upload complete"
 
       - name: Generate R2 latest.json
-        continue-on-error: true
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: |
           TAG="${{ needs.verify.outputs.tag_name }}"
           R2_BASE="https://download.deepstudent.cn/releases/${TAG}"
+          MAX_RETRIES=3
+          RETRY_DELAY=3
+
+          upload_with_retry() {
+            local object_key="$1"
+            local file_path="$2"
+            local content_type="$3"
+            local cache_control="$4"
+
+            local attempt=1
+            while [ "$attempt" -le "$MAX_RETRIES" ]; do
+              if npx wrangler r2 object put "$object_key" \
+                --file "$file_path" --content-type "$content_type" \
+                --cache-control "$cache_control" --remote; then
+                return 0
+              fi
+              echo "⚠️ latest.json upload attempt ${attempt}/${MAX_RETRIES} failed"
+              if [ "$attempt" -lt "$MAX_RETRIES" ]; then
+                sleep "$RETRY_DELAY"
+              fi
+              attempt=$((attempt + 1))
+            done
+            return 1
+          }
 
           if [ ! -f latest.json ]; then
             echo "⚠️ No latest.json, skipping"
@@ -779,9 +841,11 @@ jobs:
           echo "R2 latest.json:"
           cat r2-latest.json
 
-          npx wrangler r2 object put "${R2_BUCKET}/releases/latest.json" \
-            --file r2-latest.json --content-type "application/json" \
-            --cache-control "public, max-age=300" --remote
+          upload_with_retry \
+            "${R2_BUCKET}/releases/latest.json" \
+            "r2-latest.json" \
+            "application/json" \
+            "public, max-age=300"
           echo "✅ R2 latest.json uploaded"
 
       - name: Cleanup old R2 versions

@@ -285,7 +285,6 @@ jobs:
           node-version: 22
 
       - name: Upload APK to R2 & update latest.json
-        continue-on-error: true
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -295,11 +294,38 @@ jobs:
           R2_BASE="https://download.deepstudent.cn/releases/${TAG}"
           APK_FILE=$(ls android-output/*.apk | head -1)
           APK_NAME=$(basename "$APK_FILE")
+          MAX_RETRIES=3
+          RETRY_DELAY=3
+
+          upload_with_retry() {
+            local object_key="$1"
+            local file_path="$2"
+            local content_type="$3"
+            local cache_control="$4"
+
+            local attempt=1
+            while [ "$attempt" -le "$MAX_RETRIES" ]; do
+              if npx wrangler r2 object put "$object_key" \
+                --file "$file_path" --content-type "$content_type" \
+                --cache-control "$cache_control" --remote; then
+                return 0
+              fi
+              echo "⚠️ Upload attempt ${attempt}/${MAX_RETRIES} failed: $(basename "$file_path")"
+              if [ "$attempt" -lt "$MAX_RETRIES" ]; then
+                sleep "$RETRY_DELAY"
+              fi
+              attempt=$((attempt + 1))
+            done
+
+            return 1
+          }
 
           echo "📤 Uploading APK to R2..."
-          npx wrangler r2 object put "${R2_BUCKET}/releases/${TAG}/${APK_NAME}" \
-            --file "$APK_FILE" --content-type "application/vnd.android.package-archive" \
-            --cache-control "public, max-age=31536000, immutable" --remote
+          upload_with_retry \
+            "${R2_BUCKET}/releases/${TAG}/${APK_NAME}" \
+            "$APK_FILE" \
+            "application/vnd.android.package-archive" \
+            "public, max-age=31536000, immutable"
           echo "✅ APK uploaded to R2"
 
           echo "📝 Updating R2 latest.json with new apk_url..."
@@ -313,9 +339,11 @@ jobs:
             echo "Updated latest.json:"
             cat /tmp/updated-latest.json
 
-            npx wrangler r2 object put "${R2_BUCKET}/releases/latest.json" \
-              --file /tmp/updated-latest.json --content-type "application/json" \
-              --cache-control "public, max-age=300" --remote
+            upload_with_retry \
+              "${R2_BUCKET}/releases/latest.json" \
+              "/tmp/updated-latest.json" \
+              "application/json" \
+              "public, max-age=300"
             echo "✅ R2 latest.json updated with apk_url: ${APK_URL}"
           else
             echo "⚠️ Could not fetch current latest.json from R2, skipping update"

@@ -6,6 +6,7 @@
 # 需要在仓库 Settings → Secrets 中配置:
 #   CLOUDFLARE_ACCOUNT_ID  - Cloudflare 账户 ID
 #   CLOUDFLARE_API_TOKEN   - Cloudflare API Token (需要 R2 Edit 权限)
+#   CLOUDFLARE_ZONE_ID     - download.deepstudent.cn 所在 Zone ID（用于刷新 CDN 缓存）
 
 name: Sync Release to R2 (Manual)
 
@@ -54,6 +55,33 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: |
           TAG="${{ steps.tag.outputs.value }}"
+          MAX_RETRIES=3
+          RETRY_DELAY=3
+          FAILED_FILES=""
+
+          upload_with_retry() {
+            local object_key="$1"
+            local file_path="$2"
+            local content_type="$3"
+            local cache_control="$4"
+
+            local attempt=1
+            while [ "$attempt" -le "$MAX_RETRIES" ]; do
+              if npx wrangler r2 object put "$object_key" \
+                --file "$file_path" --content-type "$content_type" \
+                --cache-control "$cache_control" --remote; then
+                return 0
+              fi
+              echo "    ⚠️ Attempt ${attempt}/${MAX_RETRIES} failed: $(basename "$file_path")"
+              if [ "$attempt" -lt "$MAX_RETRIES" ]; then
+                sleep "$RETRY_DELAY"
+              fi
+              attempt=$((attempt + 1))
+            done
+
+            return 1
+          }
+
           echo "📤 Uploading release ${TAG} to R2..."
           for FILE in dist/*; do
             NAME=$(basename "$FILE")
@@ -66,10 +94,23 @@ jobs:
               *)      CT="application/octet-stream" ;;
             esac
             echo "  ⬆️ ${NAME} (${CT})"
-            npx wrangler r2 object put "${R2_BUCKET}/releases/${TAG}/${NAME}" \
-              --file "$FILE" --content-type "$CT" \
-              --cache-control "public, max-age=31536000, immutable" --remote
+
+            if ! upload_with_retry \
+              "${R2_BUCKET}/releases/${TAG}/${NAME}" \
+              "$FILE" \
+              "$CT" \
+              "public, max-age=31536000, immutable"; then
+              echo "    ❌ Failed after ${MAX_RETRIES} attempts: ${NAME}"
+              FAILED_FILES="${FAILED_FILES}${NAME}\n"
+            fi
           done
+
+          if [ -n "$FAILED_FILES" ]; then
+            echo "❌ R2 upload finished with failures:"
+            printf "%b" "$FAILED_FILES"
+            exit 1
+          fi
+
           echo "✅ Upload complete ($(ls dist/ | wc -l | tr -d ' ') files)"
 
       - name: Generate R2 latest.json for auto-updater
@@ -79,6 +120,30 @@ jobs:
         run: |
           TAG="${{ steps.tag.outputs.value }}"
           R2_BASE="https://download.deepstudent.cn/releases/${TAG}"
+          MAX_RETRIES=3
+          RETRY_DELAY=3
+
+          upload_with_retry() {
+            local object_key="$1"
+            local file_path="$2"
+            local content_type="$3"
+            local cache_control="$4"
+
+            local attempt=1
+            while [ "$attempt" -le "$MAX_RETRIES" ]; do
+              if npx wrangler r2 object put "$object_key" \
+                --file "$file_path" --content-type "$content_type" \
+                --cache-control "$cache_control" --remote; then
+                return 0
+              fi
+              echo "⚠️ latest.json upload attempt ${attempt}/${MAX_RETRIES} failed"
+              if [ "$attempt" -lt "$MAX_RETRIES" ]; then
+                sleep "$RETRY_DELAY"
+              fi
+              attempt=$((attempt + 1))
+            done
+            return 1
+          }
 
           if [ ! -f dist/latest.json ]; then
             echo "⚠️ No latest.json in release assets, skipping"
@@ -108,10 +173,54 @@ jobs:
           jq -r '.platforms[].url' r2-latest.json
 
           # 上传到稳定路径 releases/latest.json（Tauri updater 端点）
-          npx wrangler r2 object put "${R2_BUCKET}/releases/latest.json" \
-            --file r2-latest.json --content-type "application/json" \
-            --cache-control "public, max-age=300" --remote
+          upload_with_retry \
+            "${R2_BUCKET}/releases/latest.json" \
+            "r2-latest.json" \
+            "application/json" \
+            "public, max-age=300"
           echo "✅ R2 latest.json uploaded to releases/latest.json"
+
+      - name: Purge Cloudflare CDN cache
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ZONE_ID: ${{ secrets.CLOUDFLARE_ZONE_ID }}
+        run: |
+          TAG="${{ steps.tag.outputs.value }}"
+          BASE_URL="https://download.deepstudent.cn/releases/${TAG}"
+
+          if [ -z "${CLOUDFLARE_ZONE_ID}" ]; then
+            echo "⚠️ CLOUDFLARE_ZONE_ID not configured, skip cache purge"
+            exit 0
+          fi
+
+          {
+            for FILE in dist/*; do
+              NAME=$(basename "$FILE")
+              echo "${BASE_URL}/${NAME}"
+            done
+            echo "https://download.deepstudent.cn/releases/latest.json"
+          } | sort -u > /tmp/purge-urls.txt
+
+          URL_COUNT=$(wc -l < /tmp/purge-urls.txt | tr -d ' ')
+          if [ "$URL_COUNT" -eq 0 ]; then
+            echo "⚠️ No URLs to purge"
+            exit 0
+          fi
+
+          echo "🧹 Purging ${URL_COUNT} URL(s) from Cloudflare cache..."
+          PAYLOAD=$(jq -Rn '[inputs | select(length > 0)] | {files: .}' < /tmp/purge-urls.txt)
+          RESP=$(curl -fsS -X POST \
+            "https://api.cloudflare.com/client/v4/zones/${CLOUDFLARE_ZONE_ID}/purge_cache" \
+            -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+            -H "Content-Type: application/json" \
+            --data "$PAYLOAD")
+
+          echo "$RESP" | jq .
+          if [ "$(echo "$RESP" | jq -r '.success // false')" != "true" ]; then
+            echo "❌ Cloudflare cache purge failed"
+            exit 1
+          fi
+          echo "✅ Cloudflare cache purged"
 
       - name: Cleanup old versions (keep latest ${{ env.KEEP_VERSIONS }})
         env:
