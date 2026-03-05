@@ -10,6 +10,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.9.31](https://github.com/helixnow/deep-student/compare/v0.9.30...v0.9.31) (2026-03-05)
+
+
+### Features
+
+* **workflows:** add hotfix workflow for Linux release assets and improve sync reliability ([4b7a71f](https://github.com/helixnow/deep-student/commit/4b7a71fbdc42fec4adc872c86b874713161e6739))
+
+
+### Bug Fixes
+
+* **chat:** change SessionCard height from fixed to min-height ([cbb156d](https://github.com/helixnow/deep-student/commit/cbb156d89011d51c550762aac35bf142aff725ae))
+
 ## [0.9.30](https://github.com/helixnow/deep-student/compare/v0.9.29...v0.9.30) (2026-03-03)
 
 
