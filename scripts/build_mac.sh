@@ -28,6 +28,7 @@ require_cmd npm
 require_cmd xcrun
 require_cmd codesign
 require_cmd spctl
+require_cmd lipo
 
 cd "$REPO_ROOT"
 
@@ -61,9 +62,15 @@ if [[ -z "${SKIP_BUILD:-}" ]]; then
   
   # 修复 CI 环境变量兼容性问题（新版 Tauri CLI 不接受 CI=1）
   unset CI
-  
+
+  say "Preparing universal pdfium (arm64 + x86_64)"
+  bash scripts/prepare-pdfium-macos.sh universal-apple-darwin
+
   say "Building Tauri app (Universal Binary for Intel + Apple Silicon)"
   npm run tauri build -- --target universal-apple-darwin
+
+  say "Verifying bundled pdfium architecture in universal app"
+  bash scripts/verify-macos-pdfium-bundle.sh universal-apple-darwin
 else
   warn "Skipping build as SKIP_BUILD is set"
 fi
@@ -117,6 +124,18 @@ if [[ -z "$DMG_PATH" ]]; then
 fi
 
 [[ -n "$APP_PATH" ]] || die "Could not find .app under src-tauri/target/**/bundle/macos. Build may have failed."
+
+PDFIUM_IN_APP="$APP_PATH/Contents/Resources/libpdfium.dylib"
+[[ -f "$PDFIUM_IN_APP" ]] || die "Missing bundled pdfium: $PDFIUM_IN_APP"
+PDFIUM_ARCH_INFO=$(lipo -info "$PDFIUM_IN_APP" 2>/dev/null || true)
+if [[ "$APP_PATH" == *"/universal-apple-darwin/"* ]]; then
+  [[ "$PDFIUM_ARCH_INFO" == *"arm64"* ]] || die "Bundled pdfium missing arm64: $PDFIUM_ARCH_INFO"
+  [[ "$PDFIUM_ARCH_INFO" == *"x86_64"* ]] || die "Bundled pdfium missing x86_64: $PDFIUM_ARCH_INFO"
+  say "Bundled universal pdfium verified: $PDFIUM_ARCH_INFO"
+else
+  warn "Non-universal app path detected, only checking pdfium presence."
+  say "Bundled pdfium info: $PDFIUM_ARCH_INFO"
+fi
 
 say "Found app: $APP_PATH"
 if [[ -n "$DMG_PATH" ]]; then

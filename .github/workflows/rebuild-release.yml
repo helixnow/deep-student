@@ -147,6 +147,35 @@ jobs:
       - name: Generate version info
         run: node scripts/generate-version.mjs
 
+      - name: Prepare target-specific pdfium
+        run: |
+          TARGET="${{ matrix.target }}"
+          if [[ -x "scripts/prepare-pdfium-macos.sh" ]]; then
+            bash scripts/prepare-pdfium-macos.sh "$TARGET"
+            exit 0
+          fi
+
+          echo "[warn] scripts/prepare-pdfium-macos.sh not found, falling back to legacy prepare flow."
+          if [[ ! -x "scripts/download-pdfium.sh" ]]; then
+            echo "[warn] scripts/download-pdfium.sh not found, skip pdfium prepare."
+            exit 0
+          fi
+
+          case "$TARGET" in
+            aarch64-apple-darwin)
+              rm -f src-tauri/resources/pdfium/libpdfium.dylib
+              bash scripts/download-pdfium.sh macos-arm64
+              ;;
+            x86_64-apple-darwin)
+              rm -f src-tauri/resources/pdfium/libpdfium.dylib
+              bash scripts/download-pdfium.sh macos-x64
+              ;;
+            *)
+              echo "::error::Unsupported macOS target: $TARGET"
+              exit 1
+              ;;
+          esac
+
       - name: Build Tauri app
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
@@ -155,6 +184,36 @@ jobs:
           SILICONFLOW_BUILTIN_VISION_KEY: ${{ secrets.SILICONFLOW_BUILTIN_VISION_KEY }}
           SILICONFLOW_BUILTIN_EMBED_KEY: ${{ secrets.SILICONFLOW_BUILTIN_EMBED_KEY }}
         run: npx tauri build --target ${{ matrix.target }}
+
+      - name: Verify bundled pdfium architecture
+        run: |
+          TARGET="${{ matrix.target }}"
+          if [[ -x "scripts/verify-macos-pdfium-bundle.sh" ]]; then
+            bash scripts/verify-macos-pdfium-bundle.sh "$TARGET"
+            exit 0
+          fi
+
+          echo "[warn] scripts/verify-macos-pdfium-bundle.sh not found, falling back to legacy verify flow."
+          APP_DIR=$(find "src-tauri/target/$TARGET/release/bundle/macos" -maxdepth 1 -type d -name '*.app' | head -n 1)
+          if [[ -z "$APP_DIR" ]]; then
+            echo "[warn] No .app found for $TARGET, skip verify."
+            exit 0
+          fi
+          LIB="$APP_DIR/Contents/Resources/libpdfium.dylib"
+          if [[ ! -f "$LIB" ]]; then
+            echo "[warn] Bundled libpdfium.dylib missing, skip verify."
+            exit 0
+          fi
+          ARCH_INFO=$(lipo -info "$LIB" 2>/dev/null || true)
+          case "$TARGET" in
+            aarch64-apple-darwin)
+              [[ "$ARCH_INFO" == *"arm64"* ]] || { echo "::error::Bundled libpdfium missing arm64: $ARCH_INFO"; exit 1; }
+              ;;
+            x86_64-apple-darwin)
+              [[ "$ARCH_INFO" == *"x86_64"* ]] || { echo "::error::Bundled libpdfium missing x86_64: $ARCH_INFO"; exit 1; }
+              ;;
+          esac
+          echo "Verified bundled pdfium: $ARCH_INFO"
 
       - name: Rename updater artifacts with arch suffix
         run: |

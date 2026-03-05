@@ -338,12 +338,8 @@ impl PdfOcrService {
 
         let render_handle = spawn_blocking(move || -> std::result::Result<(), String> {
             // 初始化 Pdfium
-            let pdfium = Pdfium::new(Pdfium::bind_to_system_library().map_err(|e| {
-                format!(
-                    "加载 Pdfium 库失败: {:?}。桌面版加速功能需要 pdfium 动态库支持。",
-                    e
-                )
-            })?);
+            let pdfium = crate::pdfium_utils::load_pdfium()
+                .map_err(|e| format!("加载 Pdfium 库失败: {}", e))?;
 
             // 加载 PDF
             let document = pdfium

@@ -53,6 +53,7 @@ pub fn load_pdfium() -> Result<&'static Pdfium, String> {
 fn init_pdfium() -> Result<SyncPdfium, String> {
     // 收集所有候选路径，逐一尝试
     let candidates = get_pdfium_candidate_paths();
+    let mut bind_failures: Vec<String> = Vec::new();
 
     for path in &candidates {
         if path.exists() {
@@ -62,6 +63,7 @@ fn init_pdfium() -> Result<SyncPdfium, String> {
                     return Ok(SyncPdfium(Pdfium::new(bindings)));
                 }
                 Err(e) => {
+                    bind_failures.push(format!("{:?} => {:?}", path, e));
                     debug!("[Pdfium] Failed to bind {:?}: {:?}", path, e);
                 }
             }
@@ -91,15 +93,22 @@ fn init_pdfium() -> Result<SyncPdfium, String> {
             Ok(SyncPdfium(Pdfium::new(bindings)))
         }
         Err(e) => {
+            let bind_failure_summary = if bind_failures.is_empty() {
+                "none".to_string()
+            } else {
+                bind_failures.join(" | ")
+            };
             error!(
-                "[Pdfium] No pdfium library available. Tried {} paths: {:?}. System fallback error: {:?}",
-                candidates.len(), candidates, e
+                "[Pdfium] No pdfium library available. Tried {} paths: {:?}. Bind failures: {}. System fallback error: {:?}",
+                candidates.len(), candidates, bind_failure_summary, e
             );
             Err(format!(
                 "PDF 功能不可用：未找到 pdfium 库。\
                  搜索了 {} 个路径均未找到。\
+                 候选库绑定失败：{}。\
                  桌面端请确保 libpdfium 在系统路径或应用目录中。错误: {:?}",
                 candidates.len(),
+                bind_failure_summary,
                 e
             ))
         }

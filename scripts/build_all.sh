@@ -65,26 +65,26 @@ else
 fi
 
 echo "\n[3.8/6] Checking pdfium binaries..."
-PDFIUM_DIR="src-tauri/resources/pdfium"
-PDFIUM_OK=true
-if [[ ! -f "$PDFIUM_DIR/libpdfium.dylib" ]]; then
-  echo "[warn] Missing pdfium for macOS: $PDFIUM_DIR/libpdfium.dylib"
-  PDFIUM_OK=false
+if [[ ! -x "scripts/prepare-pdfium-macos.sh" || ! -x "scripts/verify-macos-pdfium-bundle.sh" ]]; then
+  echo "[error] Missing helper scripts: scripts/prepare-pdfium-macos.sh or scripts/verify-macos-pdfium-bundle.sh"
+  exit 1
 fi
-if [[ "$PDFIUM_OK" == "false" ]]; then
-  echo "[info] Downloading missing pdfium binaries..."
-  bash scripts/download-pdfium.sh "$(uname -m | sed 's/arm64/macos-arm64/' | sed 's/x86_64/macos-x64/')" || echo "[warn] pdfium download failed, PDF features may not work"
-fi
+echo "[info] pdfium arch will be prepared per target before each macOS build."
 
 echo "\n[4/6] Building frontend..."
 npm run build
 
 echo "\n[5/6] Building macOS installers (Apple Silicon + Intel)..."
-echo " - Building for aarch64-apple-darwin (Apple Silicon)"
-$TAURI_CLI build --ci --target aarch64-apple-darwin
+for TARGET in aarch64-apple-darwin x86_64-apple-darwin; do
+  echo " - Preparing pdfium for ${TARGET}"
+  bash scripts/prepare-pdfium-macos.sh "$TARGET"
 
-echo " - Building for x86_64-apple-darwin (Intel)"
-$TAURI_CLI build --ci --target x86_64-apple-darwin
+  echo " - Building for ${TARGET}"
+  $TAURI_CLI build --ci --target "$TARGET"
+
+  echo " - Verifying bundled pdfium for ${TARGET}"
+  bash scripts/verify-macos-pdfium-bundle.sh "$TARGET"
+done
 
 echo "\nArtifacts (macOS) should be under:"
 echo "  src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/"
@@ -112,4 +112,3 @@ echo "  src-tauri/gen/apple/ (Xcode project/workspace and build products)"
 echo "  or as .ipa exported by the build command (check the tauri CLI output)."
 
 echo "\n✅ All done."
-
