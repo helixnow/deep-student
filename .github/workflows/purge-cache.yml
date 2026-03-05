@@ -6,6 +6,9 @@ on:
       tag:
         description: "要刷新的 Release tag（如 v0.9.30）"
         required: true
+      zone_id:
+        description: "Cloudflare Zone ID（可选；不填则尝试自动发现）"
+        required: false
       include_latest:
         description: "是否同时刷新 releases/latest.json"
         required: true
@@ -32,9 +35,16 @@ jobs:
       - name: Resolve Cloudflare zone id
         id: cf_zone
         env:
+          INPUT_ZONE_ID: ${{ github.event.inputs.zone_id }}
           CLOUDFLARE_ZONE_ID: ${{ secrets.CLOUDFLARE_ZONE_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: |
+          if [ -n "${INPUT_ZONE_ID}" ]; then
+            echo "✅ Using zone_id from workflow input"
+            echo "zone_id=${INPUT_ZONE_ID}" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
           if [ -n "${CLOUDFLARE_ZONE_ID}" ]; then
             echo "✅ Using CLOUDFLARE_ZONE_ID from secrets"
             echo "zone_id=${CLOUDFLARE_ZONE_ID}" >> "$GITHUB_OUTPUT"
