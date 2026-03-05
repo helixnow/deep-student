@@ -22,13 +22,45 @@ jobs:
     steps:
       - name: Validate required secrets
         run: |
-          if [ -z "${CLOUDFLARE_ZONE_ID}" ] || [ -z "${CLOUDFLARE_API_TOKEN}" ]; then
-            echo "❌ Missing required secrets: CLOUDFLARE_ZONE_ID or CLOUDFLARE_API_TOKEN"
+          if [ -z "${CLOUDFLARE_API_TOKEN}" ]; then
+            echo "❌ Missing required secret: CLOUDFLARE_API_TOKEN"
             exit 1
           fi
         env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+
+      - name: Resolve Cloudflare zone id
+        id: cf_zone
+        env:
           CLOUDFLARE_ZONE_ID: ${{ secrets.CLOUDFLARE_ZONE_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          if [ -n "${CLOUDFLARE_ZONE_ID}" ]; then
+            echo "✅ Using CLOUDFLARE_ZONE_ID from secrets"
+            echo "zone_id=${CLOUDFLARE_ZONE_ID}" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "🔎 CLOUDFLARE_ZONE_ID missing, auto-discovering by domain..."
+          ZONE_ID=""
+          for DOMAIN in "deepstudent.cn" "download.deepstudent.cn"; do
+            RESP=$(curl -fsS \
+              "https://api.cloudflare.com/client/v4/zones?name=${DOMAIN}&status=active&per_page=1" \
+              -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+              -H "Content-Type: application/json")
+            ZONE_ID=$(echo "$RESP" | jq -r '.result[0].id // empty')
+            if [ -n "$ZONE_ID" ]; then
+              echo "✅ Found zone id for ${DOMAIN}"
+              break
+            fi
+          done
+
+          if [ -z "$ZONE_ID" ]; then
+            echo "❌ Could not resolve Cloudflare zone id automatically"
+            exit 1
+          fi
+
+          echo "zone_id=${ZONE_ID}" >> "$GITHUB_OUTPUT"
 
       - name: Build purge URL list
         env:
@@ -77,7 +109,7 @@ jobs:
 
       - name: Purge Cloudflare cache by URL
         env:
-          CLOUDFLARE_ZONE_ID: ${{ secrets.CLOUDFLARE_ZONE_ID }}
+          CLOUDFLARE_ZONE_ID: ${{ steps.cf_zone.outputs.zone_id }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: |
           COUNT=$(wc -l < /tmp/purge-urls.txt | tr -d ' ')
