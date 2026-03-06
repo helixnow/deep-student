@@ -74,6 +74,7 @@ jobs:
         continue-on-error: true
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
+          skip-github-release: true
 
       - name: Resolve release result
         id: result
@@ -82,41 +83,35 @@ jobs:
           RP_CREATED: ${{ steps.release.outputs.release_created }}
           RP_TAG: ${{ steps.release.outputs.tag_name }}
           RP_OUTCOME: ${{ steps.release.outcome }}
+          HEAD_COMMIT_MSG: ${{ github.event.head_commit.message }}
+          HEAD_SHA: ${{ github.sha }}
         run: |
-          if [[ "${RP_CREATED}" == "true" && -n "${RP_TAG}" ]]; then
+          echo "ℹ️ release-please outcome: ${RP_OUTCOME}"
+
+          if [[ "${HEAD_COMMIT_MSG}" =~ ^chore\(main\):\ release\ ([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+            TAG="v${BASH_REMATCH[1]}"
+            echo "ℹ️ Detected merged release commit for ${TAG}"
+
+            if gh release view "${TAG}" >/dev/null 2>&1; then
+              echo "release_created=false" >> $GITHUB_OUTPUT
+              echo "tag_name=${TAG}" >> $GITHUB_OUTPUT
+              echo "ℹ️ Release ${TAG} already exists; skipping duplicate creation"
+              exit 0
+            fi
+
+            gh release create "${TAG}" \
+              --target "${HEAD_SHA}" \
+              --title "${TAG}" \
+              --generate-notes
+
             echo "release_created=true" >> $GITHUB_OUTPUT
-            echo "tag_name=${RP_TAG}" >> $GITHUB_OUTPUT
-            echo "✅ release-please reported: ${RP_TAG}"
+            echo "tag_name=${TAG}" >> $GITHUB_OUTPUT
+            echo "✅ Created GitHub Release ${TAG} for merged release commit"
             exit 0
           fi
 
-          if [[ "${RP_OUTCOME}" != "failure" ]]; then
-            echo "release_created=false" >> $GITHUB_OUTPUT
-            echo "⏭️ No release created this run"
-            exit 0
-          fi
-
-          echo "⚠️ release-please failed — checking if a release was created before the error..."
-          LATEST=$(gh api repos/${{ github.repository }}/releases/latest --jq '.tag_name' 2>/dev/null || echo "")
-          if [[ -z "${LATEST}" ]]; then
-            echo "release_created=false" >> $GITHUB_OUTPUT
-            echo "❌ No releases found"
-            exit 0
-          fi
-
-          LATEST_CREATED=$(gh api repos/${{ github.repository }}/releases/latest --jq '.created_at')
-          NOW=$(date -u +%s)
-          RELEASE_TS=$(date -u -d "${LATEST_CREATED}" +%s 2>/dev/null || date -u +%s)
-          AGE=$(( NOW - RELEASE_TS ))
-
-          if [[ $AGE -lt 120 ]]; then
-            echo "release_created=true" >> $GITHUB_OUTPUT
-            echo "tag_name=${LATEST}" >> $GITHUB_OUTPUT
-            echo "✅ Found recent release ${LATEST} (${AGE}s ago) — proceeding with build"
-          else
-            echo "release_created=false" >> $GITHUB_OUTPUT
-            echo "❌ Latest release ${LATEST} is ${AGE}s old — not from this run"
-          fi
+          echo "release_created=false" >> $GITHUB_OUTPUT
+          echo "⏭️ No release created this run"
 
   # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   # 阶段二: 版本号三重校验门禁
