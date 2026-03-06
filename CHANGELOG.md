@@ -10,6 +10,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.9.32](https://github.com/helixnow/deep-student/compare/v0.9.31...v0.9.32) (2026-03-06)
+
+
+### Features
+
+* **chat_v2,workspace,qbank,sync:** add cross-session permission checks and harden tool whitelist bypass ([04a9b10](https://github.com/helixnow/deep-student/commit/04a9b10ac9b8a446f811dfc06b5915f386a0a956))
+* **chat-v2,learning-hub:** enhance resource handling and state management ([168c253](https://github.com/helixnow/deep-student/commit/168c253780c9833c2fd0d6d3e19e63dbe76893f1))
+* **chat-v2:** enhance skill state management and event handling ([3c8027a](https://github.com/helixnow/deep-student/commit/3c8027aaada91c74f8a98de4b3e915a504f1ffb2))
+* **chat,vfs:** add answer submission idempotency and enhance context ref handling ([580db0f](https://github.com/helixnow/deep-student/commit/580db0f271f6ad3a03cc18b136e592437a3960cf))
+* **gemini,chat-v2,notes,providers:** enhance multimodal handling, cache tokens, and batch import cleanup ([b287a23](https://github.com/helixnow/deep-student/commit/b287a237563db711c79e6bda9e7b2933717e6a65))
+* **gemini,memory,llm:** add frequency/presence penalties, batch memory write, and provider_scope routing ([958979c](https://github.com/helixnow/deep-student/commit/958979c40c4fee5e82e4c9b5cf5161fbb4df8ba0))
+
+
+### Bug Fixes
+
+* **ci:** avoid duplicate release creation blocking release-please ([21998cc](https://github.com/helixnow/deep-student/commit/21998cc530f566e3d10f40f9e4097578d0c97194))
+
 ## [0.9.31](https://github.com/helixnow/deep-student/compare/v0.9.30...v0.9.31) (2026-03-05)
 
 
