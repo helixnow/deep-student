@@ -53,6 +53,9 @@ const defaultStats: StateStats = {
   disabled: 0,
 };
 
+// 选择资源请求序号：仅允许最新请求回写状态
+let selectResourceRequestSeq = 0;
+
 export const useUnifiedIndexStore = create<UnifiedIndexState>((set, get) => ({
   // 初始状态
   summary: null,
@@ -84,11 +87,18 @@ export const useUnifiedIndexStore = create<UnifiedIndexState>((set, get) => ({
 
   // 选择资源并加载其 Units
   selectResource: async (resourceId) => {
+    const requestId = ++selectResourceRequestSeq;
     set({ isLoading: true, error: null, selectedResourceId: resourceId });
     try {
       const units = await vfsUnifiedIndexApi.getResourceUnits(resourceId);
+      if (requestId !== selectResourceRequestSeq || get().selectedResourceId !== resourceId) {
+        return;
+      }
       set({ selectedResourceUnits: units, isLoading: false });
     } catch (err: unknown) {
+      if (requestId !== selectResourceRequestSeq || get().selectedResourceId !== resourceId) {
+        return;
+      }
       const errorMsg = err instanceof Error ? err.message : String(err);
       set({ error: errorMsg, isLoading: false, selectedResourceUnits: [] });
       console.error('[UnifiedIndexStore] selectResource failed:', err);
@@ -97,7 +107,9 @@ export const useUnifiedIndexStore = create<UnifiedIndexState>((set, get) => ({
 
   // 清除选中的资源
   clearSelectedResource: () => {
-    set({ selectedResourceId: null, selectedResourceUnits: [] });
+    // 失效所有在途 selectResource 请求，避免旧请求回写
+    selectResourceRequestSeq += 1;
+    set({ selectedResourceId: null, selectedResourceUnits: [], isLoading: false });
   },
 
   // 重新索引单个 Unit

@@ -1023,7 +1023,7 @@ impl SyncManager {
     /// - 旧格式（v1）：`PendingChanges`，仅含 ChangeLogEntry 元数据
     ///
     /// 返回统一的 `Vec<SyncChangeWithData>`，新格式数据已含 `data` 字段，
-    /// 旧格式的 INSERT/UPDATE 变更 `data` 字段为 None（回放时会报错并跳过）。
+    /// 旧格式的 INSERT/UPDATE 变更 `data` 字段为 None（回放时会记录告警并跳过）。
     ///
     /// # 参数
     /// * `storage` - 云存储实例
@@ -2248,7 +2248,7 @@ impl SyncManager {
     ///
     /// # 返回
     /// * `Ok(true)` - 成功应用
-    /// * `Ok(false)` - 跳过（如 DELETE 无数据）
+    /// * `Ok(false)` - 跳过（保留兼容语义，当前分支通常不使用）
     /// * `Err` - 应用失败
     fn apply_single_change(
         conn: &Connection,
@@ -2302,15 +2302,22 @@ impl SyncManager {
                 let data = match &change.data {
                     Some(d) => d,
                     None => {
-                        // v1 旧格式兼容：下载的变更不含记录数据，无法回放 INSERT/UPDATE。
-                        // 跳过而非报错，避免整个事务回滚。
-                        tracing::warn!(
-                            "[sync] INSERT/UPDATE 缺少数据（旧格式兼容），跳过: {}.{} = {}",
-                            change.table_name,
-                            id_column,
-                            change.record_id
-                        );
-                        return Ok(false);
+                        // 兼容旧版下载格式（v1）：仅含变更元数据，不含完整行数据。
+                        // 对这类历史数据跳过而非失败，避免旧云端数据导致整次同步回滚。
+                        if change.database_name.is_none() {
+                            tracing::warn!(
+                                "[sync] INSERT/UPDATE 缺少数据（旧格式兼容），跳过: {}.{} = {}",
+                                change.table_name,
+                                id_column,
+                                change.record_id
+                            );
+                            return Ok(false);
+                        }
+
+                        return Err(SyncError::Database(format!(
+                            "INSERT/UPDATE 缺少 data 字段: {}.{} = {}",
+                            change.table_name, id_column, change.record_id
+                        )));
                     }
                 };
 
@@ -2902,7 +2909,7 @@ pub struct ApplyChangesResult {
     pub success_count: usize,
     /// 失败的变更数
     pub failure_count: usize,
-    /// 跳过的变更数（如数据为空的 INSERT/UPDATE）
+    /// 跳过的变更数（保留字段，当前主要用于非致命跳过场景）
     pub skipped_count: usize,
     /// 失败的详情
     pub failures: Vec<ApplyChangeFailure>,
@@ -4664,6 +4671,15 @@ mod tests {
             "data=None INSERT should be skipped"
         );
         assert_eq!(result.failure_count, 0, "no failures expected");
+
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM test_records WHERE id = 'has-data'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1, "valid record should still be applied");
     }
 
     #[test]

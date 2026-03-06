@@ -69,23 +69,6 @@ impl ProviderAdapter for OpenAIAdapter {
         // 确保 API key 被 trim，移除首尾空白字符
         let trimmed_key = api_key.trim();
 
-        // 调试日志：打印 API key 掩码信息（仅显示前 4 字符 + ****，避免泄露密钥）
-        let key_debug = if trimmed_key.is_empty() {
-            "EMPTY".to_string()
-        } else if trimmed_key.len() <= 4 {
-            format!("{}**** (len={})", trimmed_key, trimmed_key.len())
-        } else {
-            format!(
-                "{}**** (len={})",
-                trimmed_key.chars().take(4).collect::<String>(),
-                trimmed_key.len()
-            )
-        };
-        println!(
-            "🔑 [OpenAIAdapter] build_request: url={}, api_key={}",
-            url, key_debug
-        );
-
         Ok(ProviderRequest {
             url,
             headers: vec![
@@ -643,43 +626,6 @@ impl ProviderAdapter for AnthropicAdapter {
         let body_value = serde_json::to_value(&request)
             .map_err(|e| ProviderError::BuildFailed(format!("构建 Anthropic 请求体失败: {}", e)))?;
 
-        // 调试日志：打印 URL 和转换后的请求体
-        println!("📤 [AnthropicAdapter] 请求 URL: {}", url);
-        println!("📤 [AnthropicAdapter] 转换后的请求体:");
-        println!("  - model: {}", request.model);
-        println!("  - max_tokens: {}", request.max_tokens);
-        println!("  - messages: {} 条", request.messages.len());
-        println!(
-            "  - tools: {:?} 个",
-            request.tools.as_ref().map(|t| t.len())
-        );
-        println!("  - thinking: {:?}", request.thinking);
-        println!("  - temperature: {:?}", request.temperature);
-        println!("  - top_p: {:?}", request.top_p);
-        println!("  - top_k: {:?}", request.top_k);
-        if let Some(ref tools) = request.tools {
-            for (i, tool) in tools.iter().take(3).enumerate() {
-                println!("  - tool[{}].name: {}", i, tool.name);
-            }
-            if tools.len() > 3 {
-                println!("  - ... 还有 {} 个工具", tools.len() - 3);
-            }
-        }
-        // 打印完整 JSON 以便调试
-        if let Ok(json_str) = serde_json::to_string_pretty(&body_value) {
-            println!("📤 [AnthropicAdapter] 请求体大小: {} 字节", json_str.len());
-            println!(
-                "📤 [AnthropicAdapter] tool_choice: {:?}",
-                request.tool_choice
-            );
-            println!("📤 [AnthropicAdapter] 完整请求体 JSON (前 3000 字符):");
-            println!("{}", &json_str.chars().take(3000).collect::<String>());
-        }
-        // 验证 JSON 是否有效
-        if let Err(e) = serde_json::to_string(&body_value) {
-            println!("❌ [AnthropicAdapter] JSON 序列化失败: {}", e);
-        }
-
         let mut beta_features: Vec<&'static str> = Vec::new();
         let has_tools = body
             .get("tools")
@@ -756,15 +702,8 @@ impl ProviderAdapter for AnthropicAdapter {
                     if delta.get("type").and_then(|v| v.as_str()) == Some("thinking_delta") {
                         if let Some(text) = delta.get("thinking").and_then(|v| v.as_str()) {
                             if !text.is_empty() {
-                                println!(
-                                    "🔍 [Provider] 解析到 thinking_delta: 长度={}, 内容预览={}",
-                                    text.len(),
-                                    &text.chars().take(50).collect::<String>()
-                                );
                                 events.push(StreamEvent::ReasoningChunk(text.to_string()));
                             }
-                        } else {
-                            println!("⚠️ [Provider] thinking_delta 类型但无 thinking 字段");
                         }
                     } else if let Some(text) = delta.get("text").and_then(|v| v.as_str()) {
                         if !text.is_empty() {

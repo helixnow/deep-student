@@ -242,6 +242,10 @@ interface ReviewPlanState {
   getTodayDueCount: () => number;
 }
 
+// 请求版本保护：仅允许最新请求回写状态
+let dueReviewsRequestSeq = 0;
+let allPlansRequestSeq = 0;
+
 // ============================================================================
 // Store 实现
 // ============================================================================
@@ -270,10 +274,16 @@ export const useReviewPlanStore = create<ReviewPlanState>()(
       error: null,
 
       // 基本 Setters
-      setCurrentExam: (examId) => set({ currentExamId: examId }),
+      setCurrentExam: (examId) => {
+        // 切换考试上下文时，失效旧请求，避免跨考试回写
+        dueReviewsRequestSeq += 1;
+        allPlansRequestSeq += 1;
+        set({ currentExamId: examId });
+      },
 
       // 数据获取
       loadDueReviews: async (examId, untilDate) => {
+        const requestId = ++dueReviewsRequestSeq;
         set({ isLoading: true, error: null });
 
         try {
@@ -282,23 +292,35 @@ export const useReviewPlanStore = create<ReviewPlanState>()(
             untilDate: untilDate || null,
           });
 
+          if (requestId !== dueReviewsRequestSeq) {
+            return;
+          }
+
           set({
             dueReviews: result.plans,
             isLoading: false,
           });
         } catch (err: unknown) {
+          if (requestId !== dueReviewsRequestSeq) {
+            return;
+          }
           debugLog.error('[ReviewPlanStore] loadDueReviews failed:', err);
           set({ error: String(err), isLoading: false });
         }
       },
 
       loadDueReviewsWithFilter: async (filter) => {
+        const requestId = ++dueReviewsRequestSeq;
         set({ isLoading: true, error: null });
 
         try {
           const result = await invoke<DueReviewsResult>('review_plan_get_due_with_filter', {
             filter,
           });
+
+          if (requestId !== dueReviewsRequestSeq) {
+            return result;
+          }
 
           set({
             dueReviews: result.plans,
@@ -307,6 +329,9 @@ export const useReviewPlanStore = create<ReviewPlanState>()(
 
           return result;
         } catch (err: unknown) {
+          if (requestId !== dueReviewsRequestSeq) {
+            throw err;
+          }
           debugLog.error('[ReviewPlanStore] loadDueReviewsWithFilter failed:', err);
           set({ error: String(err), isLoading: false });
           throw err;
@@ -340,6 +365,7 @@ export const useReviewPlanStore = create<ReviewPlanState>()(
       },
 
       loadAllPlans: async (examId) => {
+        const requestId = ++allPlansRequestSeq;
         set({ isLoading: true, error: null });
 
         try {
@@ -349,12 +375,19 @@ export const useReviewPlanStore = create<ReviewPlanState>()(
             offset: 0,
           });
 
+          if (requestId !== allPlansRequestSeq) {
+            return;
+          }
+
           set({
             allPlans: result.plans,
             currentExamId: examId,
             isLoading: false,
           });
         } catch (err: unknown) {
+          if (requestId !== allPlansRequestSeq) {
+            return;
+          }
           debugLog.error('[ReviewPlanStore] loadAllPlans failed:', err);
           set({ error: String(err), isLoading: false });
         }

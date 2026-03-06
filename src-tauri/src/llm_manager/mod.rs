@@ -347,6 +347,7 @@ const STREAM_MAX_CTX_TOKENS: usize = 200_000;
 const USER_PREFERENCES_SETTING_KEY: &str = "chat.user_preferences_profile";
 const USER_PREFERENCE_FIELD_MAX_LEN: usize = 800;
 const BUILTIN_MODEL_PROFILES_SNAPSHOT_KEY: &str = "builtin_model_profiles_snapshot";
+const HIDDEN_BUILTIN_MODEL_PROFILES_KEY: &str = "hidden_builtin_model_profile_ids";
 
 static CONTROL_CHARS_REGEX: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"[\u{0000}-\u{001F}\u{007F}]").unwrap());
@@ -982,6 +983,42 @@ impl LLMManager {
         self.db
             .save_setting(BUILTIN_MODEL_PROFILES_SNAPSHOT_KEY, &json)
             .map_err(|e| AppError::database(format!("保存内置模型快照失败: {}", e)))
+    }
+
+    fn read_hidden_builtin_model_profile_ids(&self) -> HashSet<String> {
+        let raw = match self.db.get_setting(HIDDEN_BUILTIN_MODEL_PROFILES_KEY) {
+            Ok(Some(raw)) => raw,
+            _ => return HashSet::new(),
+        };
+
+        match serde_json::from_str::<Vec<String>>(&raw) {
+            Ok(ids) => ids
+                .into_iter()
+                .map(|id| id.trim().to_string())
+                .filter(|id| !id.is_empty())
+                .collect(),
+            Err(err) => {
+                warn!(
+                    "[VendorModel] 解析隐藏内置模型列表失败，回退为空列表: {}",
+                    err
+                );
+                HashSet::new()
+            }
+        }
+    }
+
+    fn save_hidden_builtin_model_profile_ids(&self, ids: &HashSet<String>) -> Result<()> {
+        let mut sorted_ids: Vec<String> = ids
+            .iter()
+            .filter(|id| !id.trim().is_empty())
+            .cloned()
+            .collect();
+        sorted_ids.sort();
+        let json = serde_json::to_string(&sorted_ids)
+            .map_err(|e| AppError::configuration(format!("序列化隐藏内置模型列表失败: {}", e)))?;
+        self.db
+            .save_setting(HIDDEN_BUILTIN_MODEL_PROFILES_KEY, &json)
+            .map_err(|e| AppError::database(format!("保存隐藏内置模型列表失败: {}", e)))
     }
 
     pub fn new(db: Arc<Database>, file_manager: Arc<FileManager>) -> Result<Self> {
@@ -2018,6 +2055,10 @@ impl LLMManager {
     pub async fn get_model_profiles(&self) -> Result<Vec<ModelProfile>> {
         self.bootstrap_vendor_model_config().await?;
         let mut profiles = self.read_user_model_profiles().await?;
+        let hidden_builtin_ids = self.read_hidden_builtin_model_profile_ids();
+        if !hidden_builtin_ids.is_empty() {
+            profiles.retain(|profile| !hidden_builtin_ids.contains(&profile.id));
+        }
 
         // 一次性迁移：直接将内置模型的能力字段写入用户存储的 model_profiles。
         // 背景：早期版本在无快照时保守地保留了用户数据（含错误的 supports_tools=false），
@@ -2074,6 +2115,9 @@ impl LLMManager {
         let snapshot_map = self.read_builtin_profile_snapshot_map();
         if let Ok((_, builtin_profiles)) = self.load_builtin_vendor_profiles() {
             for builtin_profile in &builtin_profiles {
+                if hidden_builtin_ids.contains(&builtin_profile.id) {
+                    continue;
+                }
                 Self::merge_builtin_profile_user_aware(
                     &mut profiles,
                     builtin_profile.clone(),
@@ -2107,6 +2151,24 @@ impl LLMManager {
     pub async fn save_model_profiles(&self, profiles: &[ModelProfile]) -> Result<()> {
         // ★ 2026-01-19 修复：保存所有模型（包括 is_builtin=true），以支持用户对内置模型的收藏等自定义设置
         // 加载时按“字段级用户优先”进行合并：用户改过的字段保持不变，未改字段可接收后续内置更新
+        if let Ok((_, builtin_profiles)) = self.load_builtin_vendor_profiles() {
+            let builtin_id_set: HashSet<String> =
+                builtin_profiles.iter().map(|profile| profile.id.clone()).collect();
+            let incoming_builtin_ids: HashSet<String> = profiles
+                .iter()
+                .map(|profile| profile.id.clone())
+                .filter(|id| builtin_id_set.contains(id))
+                .collect();
+
+            if !incoming_builtin_ids.is_empty() {
+                let hidden_builtin_ids: HashSet<String> = builtin_id_set
+                    .difference(&incoming_builtin_ids)
+                    .cloned()
+                    .collect();
+                self.save_hidden_builtin_model_profile_ids(&hidden_builtin_ids)?;
+            }
+        }
+
         let json = serde_json::to_string(profiles)
             .map_err(|e| AppError::configuration(format!("序列化模型条目失败: {}", e)))?;
         self.db

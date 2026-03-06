@@ -94,26 +94,29 @@ fn resolve_retry_options(
 /// - 目标变体状态不能是 `error`
 ///
 /// ## 参数
+/// - `session_id`: 会话 ID（用于归属校验）
 /// - `message_id`: 消息 ID
 /// - `variant_id`: 目标变体 ID
 #[tauri::command]
 pub async fn chat_v2_switch_variant(
     db: State<'_, Arc<ChatV2Database>>,
+    session_id: String,
     message_id: String,
     variant_id: String,
 ) -> Result<(), String> {
     info!(
-        "[ChatV2::VariantHandler] switch_variant: message_id={}, variant_id={}",
-        message_id, variant_id
+        "[ChatV2::VariantHandler] switch_variant: session_id={}, message_id={}, variant_id={}",
+        session_id, message_id, variant_id
     );
 
-    switch_variant_impl(&db, &message_id, &variant_id)
+    switch_variant_impl(&db, &session_id, &message_id, &variant_id)
         .await
         .map_err(|e| e.to_string())
 }
 
 async fn switch_variant_impl(
     db: &ChatV2Database,
+    session_id: &str,
     message_id: &str,
     variant_id: &str,
 ) -> ChatV2Result<()> {
@@ -122,6 +125,7 @@ async fn switch_variant_impl(
     // 1. 获取消息
     let mut message = ChatV2Repo::get_message_with_conn(&conn, message_id)?
         .ok_or_else(|| ChatV2Error::MessageNotFound(message_id.to_string()))?;
+    ensure_message_owned_by_session(&message, session_id, "switch variant")?;
 
     // 2. 获取目标变体
     let variant = message
@@ -158,21 +162,23 @@ async fn switch_variant_impl(
 /// - 如果删除的是当前激活的变体，自动切换到另一个可用变体
 ///
 /// ## 参数
+/// - `session_id`: 会话 ID（用于归属校验）
 /// - `message_id`: 消息 ID
 /// - `variant_id`: 要删除的变体 ID
 #[tauri::command]
 pub async fn chat_v2_delete_variant(
     db: State<'_, Arc<ChatV2Database>>,
     window: Window,
+    session_id: String,
     message_id: String,
     variant_id: String,
 ) -> Result<DeleteVariantResult, String> {
     info!(
-        "[ChatV2::VariantHandler] delete_variant: message_id={}, variant_id={}",
-        message_id, variant_id
+        "[ChatV2::VariantHandler] delete_variant: session_id={}, message_id={}, variant_id={}",
+        session_id, message_id, variant_id
     );
 
-    delete_variant_impl(&db, &window, &message_id, &variant_id)
+    delete_variant_impl(&db, &window, &session_id, &message_id, &variant_id)
         .await
         .map_err(|e| e.to_string())
 }
@@ -180,6 +186,7 @@ pub async fn chat_v2_delete_variant(
 async fn delete_variant_impl(
     db: &ChatV2Database,
     window: &Window,
+    session_id: &str,
     message_id: &str,
     variant_id: &str,
 ) -> ChatV2Result<DeleteVariantResult> {
@@ -188,6 +195,7 @@ async fn delete_variant_impl(
     // 1. 获取消息
     let mut message = ChatV2Repo::get_message_with_conn(&conn, message_id)?
         .ok_or_else(|| ChatV2Error::MessageNotFound(message_id.to_string()))?;
+    ensure_message_owned_by_session(&message, session_id, "delete variant")?;
 
     // 2. 获取变体列表
     let variants = message
@@ -318,6 +326,7 @@ async fn delete_variant_impl(
 /// - 触发 Pipeline 重新执行，复用 `SharedContext`
 ///
 /// ## 参数
+/// - `session_id`: 会话 ID（用于归属校验）
 /// - `message_id`: 消息 ID
 /// - `variant_id`: 要重试的变体 ID
 /// - `model_override`: 可选的模型覆盖（用于切换模型重试）
@@ -328,14 +337,15 @@ pub async fn chat_v2_retry_variant(
     chat_v2_state: State<'_, Arc<ChatV2State>>,
     pipeline: State<'_, Arc<ChatV2Pipeline>>,
     window: Window,
+    session_id: String,
     message_id: String,
     variant_id: String,
     model_override: Option<String>,
     options: Option<SendOptions>,
 ) -> Result<(), String> {
     info!(
-        "[ChatV2::VariantHandler] retry_variant: message_id={}, variant_id={}, model_override={:?}",
-        message_id, variant_id, model_override
+        "[ChatV2::VariantHandler] retry_variant: session_id={}, message_id={}, variant_id={}, model_override={:?}",
+        session_id, message_id, variant_id, model_override
     );
 
     retry_variant_impl(
@@ -344,6 +354,7 @@ pub async fn chat_v2_retry_variant(
         &chat_v2_state,
         &pipeline,
         window,
+        &session_id,
         &message_id,
         &variant_id,
         model_override,
@@ -358,6 +369,7 @@ pub async fn chat_v2_retry_variant(
 /// 重新执行指定变体的 LLM 调用（允许 success 变体重试）。
 ///
 /// ## 参数
+/// - `session_id`: 会话 ID（用于归属校验）
 /// - `message_id`: 消息 ID
 /// - `variant_ids`: 要重试的变体 ID 列表
 #[tauri::command]
@@ -367,12 +379,14 @@ pub async fn chat_v2_retry_variants(
     chat_v2_state: State<'_, Arc<ChatV2State>>,
     pipeline: State<'_, Arc<ChatV2Pipeline>>,
     window: Window,
+    session_id: String,
     message_id: String,
     variant_ids: Vec<String>,
     options: Option<SendOptions>,
 ) -> Result<(), String> {
     info!(
-        "[ChatV2::VariantHandler] retry_variants: message_id={}, variant_count={}",
+        "[ChatV2::VariantHandler] retry_variants: session_id={}, message_id={}, variant_count={}",
+        session_id,
         message_id,
         variant_ids.len()
     );
@@ -383,6 +397,7 @@ pub async fn chat_v2_retry_variants(
         &chat_v2_state,
         &pipeline,
         window,
+        &session_id,
         &message_id,
         &variant_ids,
         options,
@@ -397,6 +412,7 @@ async fn retry_variant_impl(
     chat_v2_state: &ChatV2State,
     pipeline: &ChatV2Pipeline,
     window: Window,
+    requester_session_id: &str,
     message_id: &str,
     variant_id: &str,
     model_override: Option<String>,
@@ -407,6 +423,7 @@ async fn retry_variant_impl(
     // 1. 获取助手消息
     let mut message = ChatV2Repo::get_message_with_conn(&conn, message_id)?
         .ok_or_else(|| ChatV2Error::MessageNotFound(message_id.to_string()))?;
+    ensure_message_owned_by_session(&message, requester_session_id, "retry variant")?;
 
     // 2. 验证是助手消息
     if message.role != MessageRole::Assistant {
@@ -644,6 +661,7 @@ async fn retry_variants_impl(
     chat_v2_state: &Arc<ChatV2State>,
     pipeline: &ChatV2Pipeline,
     window: Window,
+    requester_session_id: &str,
     message_id: &str,
     variant_ids: &[String],
     options_override: Option<SendOptions>,
@@ -659,6 +677,7 @@ async fn retry_variants_impl(
     // 1. 获取助手消息
     let mut message = ChatV2Repo::get_message_with_conn(&conn, message_id)?
         .ok_or_else(|| ChatV2Error::MessageNotFound(message_id.to_string()))?;
+    ensure_message_owned_by_session(&message, requester_session_id, "retry variants")?;
 
     // 2. 验证是助手消息
     if message.role != MessageRole::Assistant {
@@ -937,6 +956,7 @@ async fn retry_variants_impl(
 /// - `variant_id`: 要取消的变体 ID
 #[tauri::command]
 pub async fn chat_v2_cancel_variant(
+    db: State<'_, Arc<ChatV2Database>>,
     state: State<'_, Arc<ChatV2State>>,
     llm_manager: State<'_, Arc<LLMManager>>,
     session_id: String,
@@ -947,17 +967,20 @@ pub async fn chat_v2_cancel_variant(
         session_id, variant_id
     );
 
-    cancel_variant_impl(&state, &llm_manager, &session_id, &variant_id)
+    cancel_variant_impl(&db, &state, &llm_manager, &session_id, &variant_id)
         .await
         .map_err(|e| e.to_string())
 }
 
 async fn cancel_variant_impl(
+    db: &ChatV2Database,
     state: &ChatV2State,
     llm_manager: &LLMManager,
     session_id: &str,
     variant_id: &str,
 ) -> ChatV2Result<()> {
+    ensure_variant_belongs_to_session(db, session_id, variant_id)?;
+
     let cancel_key = format!("{}:{}", session_id, variant_id);
 
     // 层 1：取消 CancellationToken（通知 pipeline 层）
@@ -989,6 +1012,44 @@ async fn cancel_variant_impl(
 // ============================================================================
 // 内部辅助函数
 // ============================================================================
+
+fn ensure_message_owned_by_session(
+    message: &ChatMessage,
+    session_id: &str,
+    action: &str,
+) -> ChatV2Result<()> {
+    if message.session_id != session_id {
+        return Err(ChatV2Error::Validation(format!(
+            "Permission denied: cannot {} for message in another session",
+            action
+        )));
+    }
+    Ok(())
+}
+
+fn ensure_variant_belongs_to_session(
+    db: &ChatV2Database,
+    session_id: &str,
+    variant_id: &str,
+) -> ChatV2Result<()> {
+    let conn = db.get_conn_safe()?;
+    let messages = ChatV2Repo::get_session_messages_with_conn(&conn, session_id)?;
+    let found = messages.iter().any(|m| {
+        m.variants
+            .as_ref()
+            .map(|variants| variants.iter().any(|v| v.id == variant_id))
+            .unwrap_or(false)
+    });
+
+    if !found {
+        return Err(ChatV2Error::Validation(format!(
+            "Variant {} does not belong to session {}",
+            variant_id, session_id
+        )));
+    }
+
+    Ok(())
+}
 
 fn resolve_context_snapshot_for_variant_retry(
     vfs_db: &VfsDatabase,

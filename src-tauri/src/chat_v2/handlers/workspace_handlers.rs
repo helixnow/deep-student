@@ -127,6 +127,22 @@ pub struct DocumentInfo {
     pub updated_at: String,
 }
 
+fn ensure_workspace_creator(
+    coordinator: &WorkspaceCoordinator,
+    workspace_id: &str,
+    session_id: &str,
+) -> Result<(), String> {
+    let workspace = coordinator
+        .get_workspace(workspace_id)?
+        .ok_or_else(|| format!("Workspace not found: {}", workspace_id))?;
+
+    if workspace.creator_session_id != session_id {
+        return Err("Permission denied: only workspace creator can perform this action".to_string());
+    }
+
+    Ok(())
+}
+
 // ============================================================
 // Tauri 命令
 // ============================================================
@@ -174,7 +190,7 @@ pub async fn workspace_close(
     session_id: String,
     workspace_id: String,
 ) -> Result<(), String> {
-    coordinator.ensure_member_or_creator(&workspace_id, &session_id)?;
+    ensure_workspace_creator(coordinator.inner().as_ref(), &workspace_id, &session_id)?;
     coordinator.close_workspace(&workspace_id)
 }
 
@@ -185,7 +201,7 @@ pub async fn workspace_delete(
     session_id: String,
     workspace_id: String,
 ) -> Result<(), String> {
-    coordinator.ensure_member_or_creator(&workspace_id, &session_id)?;
+    ensure_workspace_creator(coordinator.inner().as_ref(), &workspace_id, &session_id)?;
     coordinator.delete_workspace(&workspace_id)
 }
 

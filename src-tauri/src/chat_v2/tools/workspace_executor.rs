@@ -48,6 +48,12 @@ impl WorkspaceToolExecutor {
             .unwrap_or_else(|| strip_tool_namespace(tool_name))
     }
 
+    #[inline]
+    fn ensure_workspace_member(&self, workspace_id: &str, session_id: &str) -> Result<(), String> {
+        self.coordinator
+            .ensure_member_or_creator(workspace_id, session_id)
+    }
+
     async fn execute_create(&self, args: &Value, ctx: &ExecutionContext) -> Result<Value, String> {
         let name = args.get("name").and_then(|v| v.as_str()).map(String::from);
         let workspace = self
@@ -107,6 +113,8 @@ impl WorkspaceToolExecutor {
             "coordinator" => AgentRole::Coordinator,
             _ => AgentRole::Worker,
         };
+
+        self.ensure_workspace_member(workspace_id, &ctx.session_id)?;
 
         // 🔧 P18: 提前判断是否为 Worker（用于 system_prompt 生成）
         let is_worker = matches!(role, AgentRole::Worker);
@@ -501,7 +509,7 @@ impl WorkspaceToolExecutor {
     async fn execute_get_context(
         &self,
         args: &Value,
-        _ctx: &ExecutionContext,
+        ctx: &ExecutionContext,
     ) -> Result<Value, String> {
         let workspace_id = args
             .get("workspace_id")
@@ -511,6 +519,8 @@ impl WorkspaceToolExecutor {
             .get("key")
             .and_then(|v| v.as_str())
             .ok_or("key is required")?;
+
+        self.ensure_workspace_member(workspace_id, &ctx.session_id)?;
 
         match self.coordinator.get_context(workspace_id, key)? {
             Some(ctx) => Ok(json!({
@@ -575,7 +585,7 @@ impl WorkspaceToolExecutor {
     async fn execute_read_document(
         &self,
         args: &Value,
-        _ctx: &ExecutionContext,
+        ctx: &ExecutionContext,
     ) -> Result<Value, String> {
         let workspace_id = args
             .get("workspace_id")
@@ -585,6 +595,8 @@ impl WorkspaceToolExecutor {
             .get("document_id")
             .and_then(|v| v.as_str())
             .ok_or("document_id is required")?;
+
+        self.ensure_workspace_member(workspace_id, &ctx.session_id)?;
 
         match self.coordinator.get_document(workspace_id, doc_id)? {
             Some(doc) => Ok(json!({

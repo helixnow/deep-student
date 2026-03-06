@@ -302,6 +302,8 @@ export function handleBackendEventWithSequence(
       }, 'warning');
 
       bridgeState.pendingEvents.set(sequenceId, event);
+      // 首包非 start 也要启动恢复机制，避免在 start 丢失时永久卡住
+      ensureGapRecoveryTimer(store, bridgeState);
       return;
     }
 
@@ -375,19 +377,7 @@ export function handleBackendEventWithSequence(
   bridgeState.pendingEvents.set(sequenceId, event);
 
   // 启动 gap 超时定时器
-  if (!bridgeState.gapTimer) {
-    bridgeState.gapDetectedAt = Date.now();
-    bridgeState.gapTimer = setTimeout(() => {
-      bridgeState.gapTimer = null;
-      if (bridgeState.pendingEvents.size > 0) {
-        console.warn(
-          `[EventBridge] Gap timeout (${EVENT_BRIDGE_GAP_TIMEOUT_MS}ms) - skipping missing seqId(s). ` +
-            `Last processed: ${bridgeState.lastSequenceId}, buffered: ${bridgeState.pendingEvents.size}`
-        );
-        skipGapAndFlush(store, bridgeState);
-      }
-    }, EVENT_BRIDGE_GAP_TIMEOUT_MS);
-  }
+  ensureGapRecoveryTimer(store, bridgeState);
 }
 
 /**
@@ -422,6 +412,24 @@ function processBufferedEvents(
     bridgeState.gapTimer = null;
     bridgeState.gapDetectedAt = null;
   }
+}
+
+function ensureGapRecoveryTimer(store: ChatStore, bridgeState: EventBridgeState): void {
+  if (bridgeState.gapTimer) {
+    return;
+  }
+
+  bridgeState.gapDetectedAt = Date.now();
+  bridgeState.gapTimer = setTimeout(() => {
+    bridgeState.gapTimer = null;
+    if (bridgeState.pendingEvents.size > 0) {
+      console.warn(
+        `[EventBridge] Gap timeout (${EVENT_BRIDGE_GAP_TIMEOUT_MS}ms) - skipping missing seqId(s). ` +
+          `Last processed: ${bridgeState.lastSequenceId}, buffered: ${bridgeState.pendingEvents.size}`
+      );
+      skipGapAndFlush(store, bridgeState);
+    }
+  }, EVENT_BRIDGE_GAP_TIMEOUT_MS);
 }
 
 /**
@@ -1043,6 +1051,8 @@ export async function handleStreamComplete(
 
   // 清理事件桥接状态
   clearBridgeState(store.sessionId);
+  // 清理去重集合，避免新流复用 sequenceId 时被误判重复
+  clearProcessedEventIds(store.sessionId);
 
   // 强制立即保存
   await autoSave.forceImmediateSave(store);
@@ -1074,6 +1084,8 @@ export async function handleStreamAbort(store: ChatStore): Promise<void> {
 
   // 清理事件桥接状态
   clearBridgeState(store.sessionId);
+  // 清理去重集合，避免新流复用 sequenceId 时被误判重复
+  clearProcessedEventIds(store.sessionId);
 
   // 强制立即保存
   await autoSave.forceImmediateSave(store);

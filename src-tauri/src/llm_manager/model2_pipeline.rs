@@ -20,6 +20,26 @@ use super::{
     adapters::get_adapter, parser, ApiConfig, ImagePayload, LLMManager, MergedChatMessage, Result,
 };
 
+#[inline]
+fn is_qwen_config(config: &ApiConfig) -> bool {
+    config
+        .provider_type
+        .as_deref()
+        .map(|value| value.eq_ignore_ascii_case("qwen"))
+        .unwrap_or(false)
+        || config.model_adapter.eq_ignore_ascii_case("qwen")
+}
+
+#[inline]
+fn remove_thinking_fields_for_tool_compat(body: &mut Value) {
+    if let Some(map) = body.as_object_mut() {
+        map.remove("enable_thinking");
+        map.remove("include_thoughts");
+        map.remove("thinking_budget");
+        map.remove("thinking");
+    }
+}
+
 /// 计算有效的 max_tokens，应用供应商级别的限制
 /// DeepSeek 等供应商有 max_tokens 上限（如 8192），超出会返回 400 错误
 #[inline]
@@ -708,6 +728,17 @@ impl LLMManager {
             "messages": messages,
             "stream": true
         });
+        let has_tool_result_messages = request_body["messages"]
+            .as_array()
+            .map(|items| {
+                items.iter().any(|item| {
+                    item.get("role")
+                        .and_then(|role| role.as_str())
+                        .map(|role| role == "tool")
+                        .unwrap_or(false)
+                })
+            })
+            .unwrap_or(false);
 
         // 🆕 应用推理配置，优先使用传入的enable_thinking参数
         Self::apply_reasoning_config(&mut request_body, &config, Some(enable_thinking));
@@ -763,7 +794,14 @@ impl LLMManager {
                 tools.as_array().map(|a| a.len()).unwrap_or(0)
             );
             request_body["tools"] = tools;
-            request_body["tool_choice"] = json!("auto");
+            if !(is_qwen_config(&config) && has_tool_result_messages) {
+                request_body["tool_choice"] = json!("auto");
+            } else if let Some(map) = request_body.as_object_mut() {
+                map.remove("tool_choice");
+                debug!(
+                    "[LLM] Qwen tool-result follow-up request: removed tool_choice per official Function Calling guidance"
+                );
+            }
         } else if !disable_tools && tools_enabled && config.supports_tools {
             // 构建工具列表，包含本地工具和 MCP 工具
             let tools = self.build_tools_with_mcp(&window).await;
@@ -771,27 +809,16 @@ impl LLMManager {
             // 只有在工具列表非空时才设置 tools 和 tool_choice
             if tools.as_array().map(|arr| !arr.is_empty()).unwrap_or(false) {
                 request_body["tools"] = tools;
-                request_body["tool_choice"] = json!("auto");
+                if !(is_qwen_config(&config) && has_tool_result_messages) {
+                    request_body["tool_choice"] = json!("auto");
+                } else if let Some(map) = request_body.as_object_mut() {
+                    map.remove("tool_choice");
+                    debug!(
+                        "[LLM] Qwen tool-result follow-up request: removed tool_choice per official Function Calling guidance"
+                    );
+                }
             } else {
                 warn!("[LLM] 工具列表为空，跳过 tool_choice 设置");
-            }
-
-            // 运行时互斥修正：某些模型（如 DeepSeek V3.1）使用函数调用时需禁用思维模式字段
-            // 使用适配器系统判断是否需要禁用
-            let adapter = get_adapter(config.provider_type.as_deref(), &config.model_adapter);
-            if let Some(body_map) = request_body.as_object() {
-                if adapter.should_disable_thinking_for_tools(&config, body_map) {
-                    if let Some(m) = request_body.as_object_mut() {
-                        m.remove("enable_thinking");
-                        m.remove("include_thoughts");
-                        m.remove("thinking_budget");
-                        m.remove("thinking"); // V3.2 格式
-                        debug!(
-                            "[LLMManager] Adapter {} disabled thinking for tool calls",
-                            adapter.id()
-                        );
-                    }
-                }
             }
         } else {
             if !config.supports_tools {
@@ -1748,6 +1775,21 @@ impl LLMManager {
             }
         }
 
+        // 运行时互斥修正：某些模型使用函数调用时需要关闭 thinking 字段。
+        // 这里统一覆盖 custom_tools 和普通工具注入两条路径，避免适配逻辑漏跑。
+        if request_body.get("tools").is_some() {
+            let adapter = get_adapter(config.provider_type.as_deref(), &config.model_adapter);
+            if let Some(body_map) = request_body.as_object() {
+                if adapter.should_disable_thinking_for_tools(&config, body_map) {
+                    remove_thinking_fields_for_tool_compat(&mut request_body);
+                    debug!(
+                        "[LLMManager] Adapter {} disabled thinking for tool calls",
+                        adapter.id()
+                    );
+                }
+            }
+        }
+
         // 🔧 P0修复：Gemini 原生 SSE 不发送 `data: [DONE]`，流直接结束。
         // 如果 pending_tool_calls 中仍有未处理的工具调用，在此执行与 Done 处理器相同的 finalize 逻辑。
         if !pending_tool_calls.is_empty() {
@@ -2500,6 +2542,53 @@ impl LLMManager {
             .send()
             .await
             .map_err(|e| AppError::network(format!("请求失败: {}", e)))?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let status_code = status.as_u16();
+            let status_text = status.canonical_reason().unwrap_or("Unknown");
+            let error_text = response.text().await.unwrap_or_default();
+            let error_msg = format!(
+                "通用流式接口请求失败: HTTP {} {} - {}",
+                status_code, status_text, error_text
+            );
+
+            error!("{}", error_msg);
+
+            let error_payload = json!({
+                "type": "http_error",
+                "error": error_msg,
+                "status": status_code,
+                "stream_event": stream_event,
+                "timestamp": chrono::Utc::now().format("%Y-%m-%d %H:%M:%S%.3f").to_string()
+            });
+
+            if let Err(e) = window.emit(&format!("{}_error", stream_event), &error_payload) {
+                warn!("发送HTTP错误事件失败: {}", e);
+            }
+
+            let duration_ms = start_instant.elapsed().as_millis();
+            if let Err(e) = window.emit(
+                &format!("{}_end", stream_event),
+                &json!({
+                    "reason": "error",
+                    "stats": {
+                        "chunk_count": 0,
+                        "request_bytes": request_bytes,
+                        "response_bytes": error_text.len(),
+                        "duration_ms": duration_ms,
+                        "approx_tokens_in": 0,
+                        "approx_tokens_out": 0,
+                        "retry_count": 0
+                    }
+                }),
+            ) {
+                warn!("发送错误结束事件失败: {}", e);
+            }
+
+            self.clear_cancel_channel(stream_event).await;
+            return Err(AppError::llm(error_msg));
+        }
 
         // 流式处理响应（使用与call_unified_model_2_stream相同的逻辑）
         let mut stream = response.bytes_stream();

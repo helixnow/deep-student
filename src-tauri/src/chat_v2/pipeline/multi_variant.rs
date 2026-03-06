@@ -1015,17 +1015,28 @@ impl ChatV2Pipeline {
 
         let emitter_arc = ctx.emitter_arc();
         let canvas_note_id = options.canvas_note_id.clone();
-        // 🔧 用户可通过 disable_tool_whitelist 关闭白名单检查
+        let active_skill_ids = options.active_skill_ids.clone();
+        let has_active_skills = active_skill_ids
+            .as_ref()
+            .map(|skills| !skills.is_empty())
+            .unwrap_or(false);
+        // 🔒 安全收敛：有 active skills 时，忽略 disable_tool_whitelist，避免绕过技能白名单
         let mut skill_allowed_tools = if options.disable_tool_whitelist.unwrap_or(false) {
-            log::info!(
-                "[ChatV2::VariantPipeline] 🔓 Tool whitelist check disabled by user setting"
-            );
-            None
+            if has_active_skills {
+                log::warn!(
+                    "[ChatV2::VariantPipeline] disable_tool_whitelist ignored because active skills are present"
+                );
+                options.skill_allowed_tools.clone()
+            } else {
+                log::info!(
+                    "[ChatV2::VariantPipeline] 🔓 Tool whitelist check disabled by user setting (no active skills)"
+                );
+                None
+            }
         } else {
             options.skill_allowed_tools.clone()
         };
         let skill_contents = options.skill_contents.clone();
-        let active_skill_ids = options.active_skill_ids.clone();
         let variant_session_key = format!("{}:{}", session_id, ctx.variant_id());
 
         let mut tool_round = 0u32;

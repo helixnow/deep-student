@@ -867,6 +867,15 @@ pub async fn chat_v2_edit_and_resend(
         return Err(ChatV2Error::Validation("Can only edit user messages".to_string()).into());
     }
 
+    // 🔒 P0 修复：任何写操作之前先校验消息归属，防止跨会话篡改
+    if original_message.session_id != session_id {
+        return Err(ChatV2Error::Validation(format!(
+            "Message {} does not belong to session {}",
+            message_id, session_id
+        ))
+        .into());
+    }
+
     // 🔒 P0 修复：在任何破坏性操作之前原子注册流，消除 TOCTOU 竞态
     // 如果后续操作失败，需要在 error 路径中调用 remove_stream 清理
     let cancel_token = match chat_v2_state.try_register_stream(&session_id) {

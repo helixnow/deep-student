@@ -109,6 +109,7 @@ const VISION_ALLOWED_PATTERNS: (string | RegExp)[] = [
   'qwen2-vl',
   'qwen2.5-vl',
   'qwen3-vl',
+  /qwen3(?:[.-]5)?-(?:plus|turbo)/i,
   'qwen2.5-omni',
   'qwen3-omni',
   'qvq',

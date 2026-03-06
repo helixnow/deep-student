@@ -357,11 +357,13 @@ export class ChatV2TauriAdapter {
       this.unlisteners = [];
       this.listenerRegistrationError = null;
 
+      const currentGeneration = ++this.setupGeneration;
+
       // 重新注册监听器
       const blockEventChannel = `chat_v2_event_${this.sessionId}`;
       const sessionEventChannel = `chat_v2_session_${this.sessionId}`;
 
-      const [blockUnlisten, sessionUnlisten, ankiUnlisten, llmReqUnlisten] = await Promise.all([
+      const listenPromise = Promise.all([
         listen<BackendEvent>(blockEventChannel, (event) => {
           this.handleBlockEvent(event.payload);
         }),
@@ -376,11 +378,32 @@ export class ChatV2TauriAdapter {
         }),
       ]);
 
-      this.unlisteners.push(blockUnlisten, sessionUnlisten, ankiUnlisten, llmReqUnlisten);
-      this.claimAnkiEventOwnership('retrySetupListeners');
-      
-      // L1 修复：更新 listenersReadyPromise 为已 resolve 的 Promise
-      this.listenersReadyPromise = Promise.resolve();
+      this.listenersReadyPromise = listenPromise.then(([blockUnlisten, sessionUnlisten, ankiUnlisten, llmReqUnlisten]) => {
+        if (this.setupGeneration !== currentGeneration) {
+          console.warn(LOG_PREFIX, `Releasing stale retry listeners (gen=${currentGeneration}, current=${this.setupGeneration})`);
+          blockUnlisten();
+          sessionUnlisten();
+          ankiUnlisten();
+          llmReqUnlisten();
+          throw new Error(`Retry listener setup became stale for session ${this.sessionId}`);
+        }
+
+        this.unlisteners.push(blockUnlisten, sessionUnlisten, ankiUnlisten, llmReqUnlisten);
+        this.claimAnkiEventOwnership('retrySetupListeners');
+        this.listenerRegistrationError = null;
+      }).catch((err) => {
+        const isStaleSetupError = err instanceof Error && err.message.includes('Retry listener setup became stale');
+        if (isStaleSetupError) {
+          console.warn(LOG_PREFIX, 'Retry listener setup cancelled due to stale generation');
+          throw err;
+        }
+
+        const errorMsg = getErrorMessage(err);
+        this.listenerRegistrationError = err instanceof Error ? err : new Error(errorMsg);
+        throw this.listenerRegistrationError;
+      });
+
+      await this.waitForListenersReady();
 
       console.log(LOG_PREFIX, `Retry successful: ${this.unlisteners.length} event listeners registered`);
       
@@ -462,6 +485,7 @@ export class ChatV2TauriAdapter {
       
       // 🔧 P0修复：记录当前 setup generation，防止 cleanup→re-setup 场景下旧 listener 泄漏到新 session
       const currentGeneration = ++this.setupGeneration;
+      this.listenerRegistrationError = null;
       
       // 启动事件监听（不立即 await，后台注册）
       const listenPromise = Promise.all([
@@ -480,10 +504,44 @@ export class ChatV2TauriAdapter {
         }),
       ]);
       
-      this.listenersReadyPromise = listenPromise.then(() => {
+      this.listenersReadyPromise = listenPromise.then(([blockUnlisten, sessionUnlisten, ankiUnlisten, llmReqUnlisten]) => {
+        // 守卫：如果 cleanup/re-setup 已使当前 generation 失效，立即释放过期监听器
+        if (this.setupGeneration !== currentGeneration) {
+          console.warn(LOG_PREFIX, `Releasing stale listeners (gen=${currentGeneration}, current=${this.setupGeneration})`);
+          blockUnlisten();
+          sessionUnlisten();
+          ankiUnlisten();
+          llmReqUnlisten();
+          throw new Error(`Listener setup became stale for session ${this.sessionId}`);
+        }
+
+        this.unlisteners.push(blockUnlisten, sessionUnlisten, ankiUnlisten, llmReqUnlisten);
+        this.claimAnkiEventOwnership('setup');
+        sessionSwitchPerf.mark('listen_end');
+        this.listenerRegistrationError = null;
         console.log(LOG_PREFIX, `Listeners ready for session: ${this.sessionId}`);
+        console.log(LOG_PREFIX, `Successfully registered ${this.unlisteners.length} event listeners`);
       }).catch((err) => {
-        console.error(LOG_PREFIX, 'listenersReadyPromise rejected:', getErrorMessage(err));
+        const isStaleSetupError = err instanceof Error && err.message.includes('Listener setup became stale');
+        if (isStaleSetupError) {
+          console.warn(LOG_PREFIX, 'Listener setup cancelled due to stale generation');
+          throw err;
+        }
+
+        // 🆕 P1 修复：事件监听注册失败处理
+        const errorMsg = getErrorMessage(err);
+        console.error(LOG_PREFIX, 'Failed to setup event listeners:', errorMsg);
+        
+        // 保存错误状态，供健康检查和重试使用
+        this.listenerRegistrationError = err instanceof Error ? err : new Error(errorMsg);
+        
+        // 通知用户（使用统一通知系统）
+        showGlobalNotification(
+          'error',
+          i18n.t('chatV2:error.listenerRegistrationFailedMessage'),
+          i18n.t('chatV2:error.listenerRegistrationFailed')
+        );
+        throw this.listenerRegistrationError;
       });
 
       // 📊 细粒度打点：loadSession 开始
@@ -565,38 +623,9 @@ export class ChatV2TauriAdapter {
       sessionSwitchPerf.mark('await_load_done', { loadElapsedMs, loadResult });
       sessionSwitchPerf.mark('await_resolved');
       sessionSwitchPerf.mark('parallel_done');
-      
-      // 事件监听在后台继续，不阻塞 setup 完成
-      listenPromise.then(([blockUnlisten, sessionUnlisten, ankiUnlisten, llmReqUnlisten]) => {
-        // 守卫：如果 cleanup 已执行或已 re-setup（generation 变化），立即释放过期的监听器
-        if (!this.isSetup || this.setupGeneration !== currentGeneration) {
-          console.warn(LOG_PREFIX, `Releasing stale listeners (gen=${currentGeneration}, current=${this.setupGeneration}, isSetup=${this.isSetup})`);
-          blockUnlisten();
-          sessionUnlisten();
-          ankiUnlisten();
-          llmReqUnlisten();
-          return;
-        }
-        this.unlisteners.push(blockUnlisten, sessionUnlisten, ankiUnlisten, llmReqUnlisten);
-        this.claimAnkiEventOwnership('setup');
-        sessionSwitchPerf.mark('listen_end');
-        this.listenerRegistrationError = null;
-        console.log(LOG_PREFIX, `Successfully registered ${this.unlisteners.length} event listeners`);
-      }).catch((err) => {
-        // 🆕 P1 修复：事件监听注册失败处理
-        const errorMsg = getErrorMessage(err);
-        console.error(LOG_PREFIX, 'Failed to setup event listeners:', errorMsg);
-        
-        // 保存错误状态，供健康检查和重试使用
-        this.listenerRegistrationError = err instanceof Error ? err : new Error(errorMsg);
-        
-        // 通知用户（使用统一通知系统）
-        showGlobalNotification(
-          'error',
-          i18n.t('chatV2:error.listenerRegistrationFailedMessage'),
-          i18n.t('chatV2:error.listenerRegistrationFailed')
-        );
-      });
+
+      // setup 的就绪语义与监听真正挂载一致：这里必须等待 listenersReadyPromise
+      await this.waitForListenersReady();
 
       this.isSetup = true;
       console.log(LOG_PREFIX, 'Setup complete');
@@ -687,6 +716,8 @@ export class ChatV2TauriAdapter {
    */
   async cleanup(): Promise<void> {
     console.log(LOG_PREFIX, 'Cleaning up...');
+    // 使正在进行的 setup/listener 注册代际失效，防止过期监听器被挂回当前实例
+    this.setupGeneration += 1;
 
     // 等待监听器注册完成，确保 unlisteners 已填充
     if (this.listenersReadyPromise) {
@@ -1862,11 +1893,14 @@ export class ChatV2TauriAdapter {
         state: sendStateSnapshot,
         pendingContextRefs,
       });
-      const effectiveModelId = await this.resolveEffectiveChatModelId(options.modelId);
-      if (options.modelId !== effectiveModelId) {
-        options.modelId = effectiveModelId;
-        this.store.setChatParams({ modelId: effectiveModelId });
-      }
+      const normalizedSelection = await this.normalizeChatModelSelection(options.modelId, options.model2OverrideId);
+      options.modelId = normalizedSelection.modelId;
+      options.model2OverrideId = normalizedSelection.model2OverrideId;
+      this.store.setChatParams({
+        modelId: normalizedSelection.modelId,
+        model2OverrideId: normalizedSelection.model2OverrideId ?? null,
+        modelDisplayName: normalizedSelection.modelDisplayName || '',
+      });
 
       // 注意：不在这里清空 pendingParallelModelIds，等待发送成功后再清空
       // 这样如果发送失败，用户可以重试而不会丢失多变体配置
@@ -2041,11 +2075,14 @@ export class ChatV2TauriAdapter {
         state: sendStateSnapshot,
         pendingContextRefs,
       });
-      const effectiveModelId = await this.resolveEffectiveChatModelId(options.modelId);
-      if (options.modelId !== effectiveModelId) {
-        options.modelId = effectiveModelId;
-        this.store.setChatParams({ modelId: effectiveModelId });
-      }
+      const normalizedSelection = await this.normalizeChatModelSelection(options.modelId, options.model2OverrideId);
+      options.modelId = normalizedSelection.modelId;
+      options.model2OverrideId = normalizedSelection.model2OverrideId;
+      this.store.setChatParams({
+        modelId: normalizedSelection.modelId,
+        model2OverrideId: normalizedSelection.model2OverrideId ?? null,
+        modelDisplayName: normalizedSelection.modelDisplayName || '',
+      });
 
       // 🔧 调试打点：发送消息时的状态
       if (options.parallelModelIds && options.parallelModelIds.length >= 2) {
@@ -2314,13 +2351,19 @@ export class ChatV2TauriAdapter {
       const activeModelId = this.getCurrentState().chatParams.modelId;
       await this.ensureModelMetadataReady(activeModelId);
       const options = this.buildSendOptions();
+      const validIds = await this.getValidChatModelIdSet();
+      const normalizedSelection = await this.normalizeChatModelSelection(options.modelId, options.model2OverrideId);
+      options.modelId = normalizedSelection.modelId;
+      options.model2OverrideId = normalizedSelection.model2OverrideId;
+      this.store.setChatParams({
+        modelId: normalizedSelection.modelId,
+        model2OverrideId: normalizedSelection.model2OverrideId ?? null,
+        modelDisplayName: normalizedSelection.modelDisplayName || '',
+      });
       if (modelOverride) {
-        options.modelId = modelOverride;
-      } else {
-        const effectiveModelId = await this.resolveEffectiveChatModelId(options.modelId);
-        if (options.modelId !== effectiveModelId) {
-          options.modelId = effectiveModelId;
-          this.store.setChatParams({ modelId: effectiveModelId });
+        const trimmedOverride = modelOverride.trim();
+        if (trimmedOverride && (validIds.size === 0 || validIds.has(trimmedOverride))) {
+          options.modelId = trimmedOverride;
         }
       }
 
@@ -2494,11 +2537,14 @@ export class ChatV2TauriAdapter {
       const activeModelId = this.getCurrentState().chatParams.modelId;
       await this.ensureModelMetadataReady(activeModelId);
       const options = this.buildSendOptions();
-      const effectiveModelId = await this.resolveEffectiveChatModelId(options.modelId);
-      if (options.modelId !== effectiveModelId) {
-        options.modelId = effectiveModelId;
-        this.store.setChatParams({ modelId: effectiveModelId });
-      }
+      const normalizedSelection = await this.normalizeChatModelSelection(options.modelId, options.model2OverrideId);
+      options.modelId = normalizedSelection.modelId;
+      options.model2OverrideId = normalizedSelection.model2OverrideId;
+      this.store.setChatParams({
+        modelId: normalizedSelection.modelId,
+        model2OverrideId: normalizedSelection.model2OverrideId ?? null,
+        modelDisplayName: normalizedSelection.modelDisplayName || '',
+      });
 
       // 🔧 2026-01-15: 超时机制已移除
 
@@ -2624,6 +2670,14 @@ export class ChatV2TauriAdapter {
       const activeModelId = this.getCurrentState().chatParams.modelId;
       await this.ensureModelMetadataReady(activeModelId);
       const options = this.buildSendOptions();
+      const normalizedSelection = await this.normalizeChatModelSelection(options.modelId, options.model2OverrideId);
+      options.modelId = normalizedSelection.modelId;
+      options.model2OverrideId = normalizedSelection.model2OverrideId;
+      this.store.setChatParams({
+        modelId: normalizedSelection.modelId,
+        model2OverrideId: normalizedSelection.model2OverrideId ?? null,
+        modelDisplayName: normalizedSelection.modelDisplayName || '',
+      });
 
       // 🔧 竞态修复：invoke 前立即设置 streaming 状态，防止窗口期内重复点击
       // 与 sendMessageWithIds / retryVariant 保持一致
@@ -2898,6 +2952,7 @@ export class ChatV2TauriAdapter {
 
     try {
       await invoke('chat_v2_switch_variant', {
+        sessionId: this.sessionId,
         messageId,
         variantId,
       });
@@ -2926,6 +2981,7 @@ export class ChatV2TauriAdapter {
         remainingCount: number;
         newActiveVariantId: string | null;
       }>('chat_v2_delete_variant', {
+        sessionId: this.sessionId,
         messageId,
         variantId,
       });
@@ -2961,13 +3017,26 @@ export class ChatV2TauriAdapter {
       const activeModelId = this.getCurrentState().chatParams.modelId;
       await this.ensureModelMetadataReady(activeModelId);
       const options = this.buildSendOptions();
+      const normalizedSelection = await this.normalizeChatModelSelection(options.modelId, options.model2OverrideId);
+      options.modelId = normalizedSelection.modelId;
+      options.model2OverrideId = normalizedSelection.model2OverrideId;
+      this.store.setChatParams({
+        modelId: normalizedSelection.modelId,
+        model2OverrideId: normalizedSelection.model2OverrideId ?? null,
+        modelDisplayName: normalizedSelection.modelDisplayName || '',
+      });
       if (modelOverride) {
-        options.modelId = modelOverride;
+        const validIds = await this.getValidChatModelIdSet();
+        const trimmedOverride = modelOverride.trim();
+        if (trimmedOverride && (validIds.size === 0 || validIds.has(trimmedOverride))) {
+          options.modelId = trimmedOverride;
+        }
       }
 
       // 🔧 2026-01-15: 超时机制已移除
 
       await invoke('chat_v2_retry_variant', {
+        sessionId: this.sessionId,
         messageId,
         variantId,
         modelOverride: modelOverride ?? null,
@@ -3007,8 +3076,17 @@ export class ChatV2TauriAdapter {
       const activeModelId = this.getCurrentState().chatParams.modelId;
       await this.ensureModelMetadataReady(activeModelId);
       const options = this.buildSendOptions();
+      const normalizedSelection = await this.normalizeChatModelSelection(options.modelId, options.model2OverrideId);
+      options.modelId = normalizedSelection.modelId;
+      options.model2OverrideId = normalizedSelection.model2OverrideId;
+      this.store.setChatParams({
+        modelId: normalizedSelection.modelId,
+        model2OverrideId: normalizedSelection.model2OverrideId ?? null,
+        modelDisplayName: normalizedSelection.modelDisplayName || '',
+      });
 
       await invoke('chat_v2_retry_variants', {
+        sessionId: this.sessionId,
         messageId,
         variantIds,
         options,
@@ -3140,22 +3218,63 @@ export class ChatV2TauriAdapter {
     }
   }
 
-  private async resolveEffectiveChatModelId(modelId: string | undefined): Promise<string> {
+  private async getValidChatModelIdSet(): Promise<Set<string>> {
+    try {
+      const configs = await invoke<Array<{ id?: string | null }>>('get_api_configurations');
+      return new Set(
+        (configs || [])
+          .map((config) => (typeof config?.id === 'string' ? config.id.trim() : ''))
+          .filter((id) => id.length > 0)
+      );
+    } catch (error) {
+      console.warn(LOG_PREFIX, 'Failed to load current API configuration ids:', getErrorMessage(error));
+      return new Set();
+    }
+  }
+
+  private async resolveEffectiveChatModelId(modelId: string | undefined, validIds?: Set<string>): Promise<string> {
     if (modelId && modelId.trim().length > 0) {
-      return modelId;
+      const trimmed = modelId.trim();
+      if (!validIds || validIds.size === 0 || validIds.has(trimmed)) {
+        return trimmed;
+      }
     }
 
     try {
       const assignments = await invoke<ModelAssignments>('get_model_assignments');
       const defaultModelId = assignments?.model2_config_id ?? undefined;
       if (defaultModelId && defaultModelId.trim().length > 0) {
-        return defaultModelId;
+        const trimmed = defaultModelId.trim();
+        if (!validIds || validIds.size === 0 || validIds.has(trimmed)) {
+          return trimmed;
+        }
       }
     } catch (error) {
       console.warn(LOG_PREFIX, 'Failed to resolve default model assignment:', getErrorMessage(error));
     }
 
     throw new Error('No chat model configured: missing chatParams.modelId and model_assignments.model2_config_id');
+  }
+
+  private async normalizeChatModelSelection(
+    modelId: string | undefined,
+    model2OverrideId: string | undefined
+  ): Promise<{ modelId: string; model2OverrideId?: string; modelDisplayName?: string }> {
+    const validIds = await this.getValidChatModelIdSet();
+    let normalizedOverrideId = model2OverrideId?.trim() || undefined;
+    if (normalizedOverrideId && validIds.size > 0 && !validIds.has(normalizedOverrideId)) {
+      normalizedOverrideId = undefined;
+    }
+
+    const normalizedModelId = await this.resolveEffectiveChatModelId(modelId, validIds);
+    const modelInfo = getModelInfoByConfigId(normalizedOverrideId || normalizedModelId);
+    const modelDisplayName = modelInfo?.model || modelInfo?.name || undefined;
+
+    return {
+      modelId: normalizedModelId,
+      model2OverrideId: normalizedOverrideId,
+      modelDisplayName,
+    };
   }
 
   private resolveInputContextLimit(

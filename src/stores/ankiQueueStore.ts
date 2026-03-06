@@ -51,20 +51,76 @@ const STORAGE_KEY = 'anki.material.queue';
 
 const hasLocalStorage = () => typeof window !== 'undefined' && typeof window.localStorage !== 'undefined';
 
+const cloneMaterialsSnapshot = (materials: QueuedAnkiMaterial[]): QueuedAnkiMaterial[] =>
+  materials.map((item) => ({
+    ...item,
+    tags: item.tags ? [...item.tags] : item.tags,
+  }));
+
 const persistMaterials = async (materials: QueuedAnkiMaterial[]) => {
   const serialized = JSON.stringify(materials);
   try {
     await TauriAPI.saveSetting(STORAGE_KEY, serialized);
   } catch (error: unknown) {
     console.error('[AnkiQueue] Failed to persist material queue:', error);
+    if (!hasLocalStorage()) {
+      throw error;
+    }
     if (hasLocalStorage()) {
       try {
         window.localStorage.setItem(STORAGE_KEY, serialized);
       } catch (storageError: unknown) {
         console.error('[AnkiQueue] Failed to backup material queue to localStorage:', storageError);
+        throw storageError;
       }
     }
   }
+};
+
+interface PersistRequest {
+  version: number;
+  materials: QueuedAnkiMaterial[];
+}
+
+let latestPersistRequestVersion = 0;
+let latestPersistedVersion = 0;
+let pendingPersistRequest: PersistRequest | null = null;
+let isPersistLoopRunning = false;
+
+const flushPersistQueue = async () => {
+  if (isPersistLoopRunning) return;
+  isPersistLoopRunning = true;
+
+  try {
+    while (pendingPersistRequest) {
+      const request = pendingPersistRequest;
+      pendingPersistRequest = null;
+
+      if (request.version <= latestPersistedVersion) {
+        continue;
+      }
+
+      await persistMaterials(request.materials);
+      latestPersistedVersion = request.version;
+    }
+  } catch (err: unknown) {
+    debugLog.error('[AnkiQueue] Failed to persist materials:', err);
+    showGlobalNotification('warning', i18n.t('common:persistFailed', 'Failed to save changes'));
+  } finally {
+    isPersistLoopRunning = false;
+    if (pendingPersistRequest) {
+      void flushPersistQueue();
+    }
+  }
+};
+
+const enqueuePersistMaterials = (materials: QueuedAnkiMaterial[]) => {
+  const version = ++latestPersistRequestVersion;
+  pendingPersistRequest = {
+    version,
+    materials: cloneMaterialsSnapshot(materials),
+  };
+  void flushPersistQueue();
 };
 
 const parseTimestamp = (value?: string | null): number => {
@@ -161,29 +217,20 @@ export const useAnkiQueueStore = create<AnkiQueueState>((set, get) => {
           nextList = [material, ...others];
         }
         const sorted = nextList.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
-        persistMaterials(sorted).catch((err) => {
-          debugLog.error('[AnkiQueue] Failed to persist materials:', err);
-          showGlobalNotification('warning', i18n.t('common:persistFailed', 'Failed to save changes'));
-        });
+        enqueuePersistMaterials(sorted);
         return { materials: sorted };
       });
     },
     removeMaterial: (queueId) => {
       set((state) => {
         const updated = state.materials.filter((item) => item.queueId !== queueId);
-        persistMaterials(updated).catch((err) => {
-          debugLog.error('[AnkiQueue] Failed to persist materials:', err);
-          showGlobalNotification('warning', i18n.t('common:persistFailed', 'Failed to save changes'));
-        });
+        enqueuePersistMaterials(updated);
         return { materials: updated };
       });
     },
     clearMaterials: () => {
       set(() => {
-        persistMaterials([]).catch((err) => {
-          debugLog.error('[AnkiQueue] Failed to persist materials:', err);
-          showGlobalNotification('warning', i18n.t('common:persistFailed', 'Failed to save changes'));
-        });
+        enqueuePersistMaterials([]);
         if (hasLocalStorage()) {
           try { window.localStorage.removeItem(STORAGE_KEY); } catch (error: unknown) { console.error('[AnkiQueue] Failed to clear localStorage backup:', error); }
         }

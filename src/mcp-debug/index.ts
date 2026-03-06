@@ -27,7 +27,7 @@ import { performanceMonitor } from './core/performanceMonitor';
 import { highlighter } from './core/highlighter';
 import { asserter } from './core/asserter';
 import { smartActions } from './core/smartActions';
-import { bridge, handleCommand, getStatus, reset, setupMCPBridge } from './bridge';
+import { bridge, handleCommand, getStatus, reset, setupMCPBridge, destroyMCPBridge } from './bridge';
 
 const VERSION = '1.0.0';
 
@@ -167,6 +167,7 @@ export async function initMCPDebug(options?: {
  * 销毁 MCP Debug 模块
  */
 export function destroyMCPDebug() {
+  destroyMCPBridge();
   reset();
   delete window.__MCP_DEBUG__;
   console.log('[MCP-Debug] Destroyed');
@@ -181,7 +182,7 @@ export { performanceMonitor } from './core/performanceMonitor';
 export { highlighter } from './core/highlighter';
 export { asserter } from './core/asserter';
 export { smartActions } from './core/smartActions';
-export { bridge, handleCommand, getStatus, reset } from './bridge';
+export { bridge, handleCommand, getStatus, reset, destroyMCPBridge } from './bridge';
 export { registerAllStores, registerStore, getRegisteredStores } from './registerStores';
 
 // 导出类型

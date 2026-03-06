@@ -1,3 +1,54 @@
+const normalizeErrorLike = (input: unknown): { message: string; stack: string } => {
+  if (input instanceof Error) {
+    return {
+      message: input.message || '',
+      stack: input.stack || '',
+    };
+  }
+  if (typeof input === 'string') {
+    return { message: input, stack: '' };
+  }
+  if (input && typeof input === 'object') {
+    const record = input as Record<string, unknown>;
+    return {
+      message: typeof record.message === 'string' ? record.message : '',
+      stack: typeof record.stack === 'string' ? record.stack : '',
+    };
+  }
+  return { message: '', stack: '' };
+};
+
+const isKnownTauriHttpNoise = (message: string, stack?: string): boolean => {
+  const lcMessage = (message || '').toLowerCase();
+  const lcStack = (stack || '').toLowerCase();
+  if (!lcMessage && !lcStack) return false;
+
+  const combined = `${lcMessage}\n${lcStack}`;
+  const hasTauriHttpHint =
+    combined.includes('http.fetch_') ||
+    combined.includes('streamchannel') ||
+    combined.includes('ipc custom protocol') ||
+    combined.includes('@tauri-apps/plugin-http') ||
+    combined.includes('tauri-plugin-http') ||
+    combined.includes('tauri');
+
+  const fetchCancelBodyNoise =
+    (combined.includes('http.fetch_cancel_body') || combined.includes('fetch_cancel_body')) &&
+    hasTauriHttpHint;
+  const streamChannelBodyNoise =
+    (combined.includes('fetch_read_body') || combined.includes('fetch_send')) &&
+    combined.includes('streamchannel') &&
+    hasTauriHttpHint;
+  const staleResourceNoise =
+    combined.includes('resource id') &&
+    combined.includes('invalid') &&
+    (combined.includes('http.fetch_') ||
+      combined.includes('streamchannel') ||
+      combined.includes('ipc custom protocol'));
+
+  return fetchCancelBodyNoise || streamChannelBodyNoise || staleResourceNoise;
+};
+
 // ★ 2026-02-04: 最早的全局错误过滤器
 // 必须在任何其他代码之前运行，以便在 tauri-plugin-mcp-bridge 之前捕获错误
 // 这是一个 IIFE，在模块加载时立即执行
@@ -9,23 +60,8 @@
   // 这些错误在连接重建或 HMR 热重载时是正常现象，不影响功能
   const earlyFilter = (event: PromiseRejectionEvent) => {
     const reason = event.reason;
-    let message = '';
-    if (reason instanceof Error) {
-      message = reason.message || '';
-    } else if (typeof reason === 'string') {
-      message = reason;
-    } else if (reason && typeof reason === 'object' && 'message' in reason) {
-      message = String((reason as any).message ?? '');
-    }
-
-    const lc = message.toLowerCase();
-    if (
-      lc.includes('fetch_cancel_body') ||
-      lc.includes('http.fetch_cancel_body') ||
-      (lc.includes('fetch_read_body') && lc.includes('streamchannel')) ||
-      (lc.includes('resource id') && lc.includes('invalid')) ||
-      (lc.includes('fetch_send') && lc.includes('streamchannel'))
-    ) {
+    const { message, stack } = normalizeErrorLike(reason);
+    if (isKnownTauriHttpNoise(message, stack)) {
       event.preventDefault();
       event.stopImmediatePropagation();
       return;
@@ -40,14 +76,11 @@
   const _origConsoleError = console.error;
   console.error = (...args: any[]) => {
     try {
-      const first = typeof args[0] === 'string' ? args[0] : '';
-      const lc = first.toLowerCase();
-      if (
-        (lc.includes('resource id') && lc.includes('invalid')) ||
-        (lc.includes('fetch_read_body') && lc.includes('streamchannel')) ||
-        lc.includes('ipc custom protocol') ||
-        (lc.includes('fetch_send') && lc.includes('streamchannel'))
-      ) {
+      const first = normalizeErrorLike(args[0]);
+      const second = normalizeErrorLike(args[1]);
+      const combinedMessage = [first.message, second.message].filter(Boolean).join(' ');
+      const combinedStack = [first.stack, second.stack].filter(Boolean).join('\n');
+      if (isKnownTauriHttpNoise(combinedMessage, combinedStack)) {
         return; // 静默过滤已知无害错误
       }
     } catch { /* pass through on filter error */ }
@@ -365,6 +398,7 @@ registerCleanup(() => window.removeEventListener('systemSettingsChanged', handle
 if ((window as any).__TAURI_INTERNALS__) {
   (async () => {
     try {
+      const baseWarn = console.warn.bind(console) as (...args: unknown[]) => void;
       // 安全加载日志插件（可选）。使用 vite-ignore 避免 Vite 预打包时强制解析依赖。
       const safeLoadLogPlugin = async () => {
         try {
@@ -379,6 +413,13 @@ if ((window as any).__TAURI_INTERNALS__) {
       const logPlugin = await safeLoadLogPlugin();
       if (logPlugin && typeof logPlugin.attachConsole === 'function') {
         try { await logPlugin.attachConsole(); } catch {}
+        const safeFallbackWarn = (...warnArgs: unknown[]) => {
+          try {
+            baseWarn?.(...warnArgs);
+          } catch {
+            // ignore fallback logging failures
+          }
+        };
         const forwardConsole = (
           fnName: 'log' | 'debug' | 'info' | 'warn' | 'error',
           logger: (message: string) => Promise<void>
@@ -392,8 +433,13 @@ if ((window as any).__TAURI_INTERNALS__) {
                 if (typeof a === 'string') return a;
                 try { return JSON.stringify(a); } catch { return String(a); }
               }).join(' ');
-              logger?.(msg).catch((err) => { console.warn('[Main] console forward failed:', err); });
-            } catch {}
+              logger?.(msg).catch((err) => {
+                // 不能再走被代理 console.warn，否则 warn 通道失败时会递归。
+                safeFallbackWarn('[Main] console forward failed:', err);
+              });
+            } catch {
+              // ignore serialization/logging errors
+            }
           };
         };
         forwardConsole('log', logPlugin.trace ?? logPlugin.info);
@@ -446,7 +492,9 @@ if ((window as any).__TAURI_INTERNALS__) {
           return;
         }
         recent.set(key, now);
-        invoke('report_frontend_log', { payload }).catch((err) => { console.warn('[Main] report_frontend_log failed:', err); });
+        invoke('report_frontend_log', { payload }).catch((err) => {
+          baseWarn?.('[Main] report_frontend_log failed:', err);
+        });
       };
 
       const handleWindowError = (event: ErrorEvent) => {
@@ -492,7 +540,7 @@ if ((window as any).__TAURI_INTERNALS__) {
         // 当请求被取消时，插件内部会尝试调用 fetch_cancel_body 命令
         // 但该命令在某些情况下未正确注册，导致大量无害的错误日志
         // 参考: https://github.com/tauri-apps/plugins-workspace/issues/2557
-        if (message.includes('fetch_cancel_body') || message.includes('http.fetch_cancel_body')) {
+        if (isKnownTauriHttpNoise(message, stack || undefined)) {
           event.preventDefault(); // 阻止默认的错误输出
           return; // 静默忽略此错误
         }

@@ -327,6 +327,13 @@ impl QuestionBankService {
         is_correct_override: Option<bool>,
         client_request_id: Option<&str>,
     ) -> Result<SubmitAnswerResult, AppError> {
+        if is_correct_override.is_some() {
+            warn!(
+                "[QuestionBankService] submit_answer called with is_correct_override for question_id={}",
+                question_id
+            );
+        }
+
         let mut conn = self
             .vfs_db
             .get_conn_safe()
@@ -413,7 +420,13 @@ impl QuestionBankService {
         .map_err(|e| AppError::database(e.to_string()))?;
 
         // 记录作答历史
-        let grading_method = if needs_manual_grading { "ai" } else { "auto" };
+        let grading_method = if needs_manual_grading {
+            "ai"
+        } else if is_correct_override.is_some() {
+            "manual"
+        } else {
+            "auto"
+        };
         let submission_id = VfsQuestionRepo::insert_submission_with_conn(
             &tx,
             question_id,

@@ -999,6 +999,11 @@ pub async fn data_governance_run_sync(
         Ok((mut exec_result, skipped)) => {
             // 与带进度链路保持一致：在普通同步中也执行文件级同步
             let blobs_dir = active_dir.join("vfs_blobs");
+            let should_enforce_file_sync = matches!(
+                exec_result.direction,
+                SyncDirection::Upload | SyncDirection::Bidirectional
+            );
+            let mut file_sync_failed = false;
             if let Err(e) = manager
                 .sync_workspace_databases(storage.as_ref(), &active_dir)
                 .await
@@ -1012,6 +1017,7 @@ pub async fn data_governance_run_sync(
                             warn!("[data_governance] VFS blob 部分失败: {}", msg);
                             append_warning_message(&mut exec_result.error_message, msg);
                         }
+                        file_sync_failed = true;
                     }
                 }
                 Err(e) => {
@@ -1020,6 +1026,7 @@ pub async fn data_governance_run_sync(
                         &mut exec_result.error_message,
                         format!("附件同步失败: {}", e),
                     );
+                    file_sync_failed = true;
                 }
             }
             match manager
@@ -1032,6 +1039,7 @@ pub async fn data_governance_run_sync(
                             warn!("[data_governance] 资产目录部分失败: {}", msg);
                             append_warning_message(&mut exec_result.error_message, msg);
                         }
+                        file_sync_failed = true;
                     }
                 }
                 Err(e) => {
@@ -1040,12 +1048,13 @@ pub async fn data_governance_run_sync(
                         &mut exec_result.error_message,
                         format!("资产目录同步失败: {}", e),
                     );
+                    file_sync_failed = true;
                 }
             }
-            if matches!(
-                exec_result.direction,
-                SyncDirection::Upload | SyncDirection::Bidirectional
-            ) {
+            if should_enforce_file_sync && file_sync_failed {
+                exec_result.success = false;
+            }
+            if should_enforce_file_sync {
                 if let Err(e) = manager.prune_old_changes(storage.as_ref(), 30).await {
                     warn!("[data_governance] 云端变更文件清理失败（非致命）: {}", e);
                 }
@@ -2120,6 +2129,7 @@ async fn execute_upload_with_progress_v2(
         }
     }
     let mut upload_warning = blob_warning;
+    let mut file_sync_failed = upload_warning.is_some();
 
     match manager
         .sync_asset_directories(storage, active_dir, app_data_dir)
@@ -2131,11 +2141,13 @@ async fn execute_upload_with_progress_v2(
                     tracing::warn!("[data_governance] 资产目录部分失败: {}", msg);
                     append_warning_message(&mut upload_warning, msg);
                 }
+                file_sync_failed = true;
             }
         }
         Err(e) => {
             tracing::error!("[data_governance] 资产目录同步出错: {}", e);
             append_warning_message(&mut upload_warning, format!("资产目录同步失败: {}", e));
+            file_sync_failed = true;
         }
     }
 
@@ -2146,7 +2158,7 @@ async fn execute_upload_with_progress_v2(
 
     Ok((
         SyncExecutionResult {
-            success: true,
+            success: !file_sync_failed,
             direction: SyncDirection::Upload,
             changes_uploaded: enriched.len(),
             changes_downloaded: 0,
@@ -2438,12 +2450,14 @@ async fn execute_bidirectional_with_progress_v2(
         tracing::warn!("[data_governance] 工作区数据库同步失败（非致命）: {}", e);
     }
 
+    let mut file_sync_failed = false;
     match manager.sync_vfs_blobs(storage, &blobs_dir).await {
         Ok(outcome) => {
             if outcome.has_failures() {
                 let blob_msg = outcome.failure_summary().unwrap_or_default();
                 tracing::warn!("[data_governance] VFS blob 部分失败: {}", blob_msg);
                 append_warning_message(&mut exec_result.error_message, blob_msg);
+                file_sync_failed = true;
             }
         }
         Err(e) => {
@@ -2452,6 +2466,7 @@ async fn execute_bidirectional_with_progress_v2(
                 &mut exec_result.error_message,
                 format!("附件同步失败: {}", e),
             );
+            file_sync_failed = true;
         }
     }
 
@@ -2465,6 +2480,7 @@ async fn execute_bidirectional_with_progress_v2(
                     tracing::warn!("[data_governance] 资产目录部分失败: {}", msg);
                     append_warning_message(&mut exec_result.error_message, msg);
                 }
+                file_sync_failed = true;
             }
         }
         Err(e) => {
@@ -2473,7 +2489,12 @@ async fn execute_bidirectional_with_progress_v2(
                 &mut exec_result.error_message,
                 format!("资产目录同步失败: {}", e),
             );
+            file_sync_failed = true;
         }
+    }
+
+    if file_sync_failed {
+        exec_result.success = false;
     }
 
     // 清理云端超过 30 天的旧变更文件

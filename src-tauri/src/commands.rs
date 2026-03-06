@@ -4830,6 +4830,13 @@ pub async fn qbank_submit_answer(
         .as_ref()
         .ok_or_else(|| AppError::internal("QuestionBankService not initialized"))?;
 
+    if request.is_correct_override.is_some() {
+        log::warn!(
+            "[qbank_submit_answer] Received is_correct_override for question_id={}",
+            request.question_id
+        );
+    }
+
     service.submit_answer(
         &request.question_id,
         &request.user_answer,

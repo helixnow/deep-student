@@ -395,9 +395,8 @@ async function executeAction(action: RecordedAction): Promise<void> {
           metaKey: action.data?.modifiers?.meta,
         });
         element.dispatchEvent(event);
-        
-        // 如果是按钮或链接，也触发 click
-        if (element instanceof HTMLElement) {
+
+        if (action.type === 'click' && element instanceof HTMLElement) {
           element.click();
         }
       }

@@ -872,10 +872,25 @@ impl ChatV2Pipeline {
             // 并行执行所有工具调用
             let canvas_note_id = ctx.options.canvas_note_id.clone();
             // 🆕 P1-C: 传递 skill_allowed_tools 进行工具执行校验
-            // 🔧 用户可通过 disable_tool_whitelist 关闭白名单检查
+            // 🔒 安全收敛：有 active skills 时，忽略 disable_tool_whitelist，避免绕过技能白名单
+            let has_active_skills = ctx
+                .options
+                .active_skill_ids
+                .as_ref()
+                .map(|skills| !skills.is_empty())
+                .unwrap_or(false);
             let skill_allowed_tools = if ctx.options.disable_tool_whitelist.unwrap_or(false) {
-                log::info!("[ChatV2::pipeline] 🔓 Tool whitelist check disabled by user setting");
-                None
+                if has_active_skills {
+                    log::warn!(
+                        "[ChatV2::pipeline] disable_tool_whitelist ignored because active skills are present"
+                    );
+                    ctx.options.skill_allowed_tools.clone()
+                } else {
+                    log::info!(
+                        "[ChatV2::pipeline] 🔓 Tool whitelist check disabled by user setting (no active skills)"
+                    );
+                    None
+                }
             } else {
                 ctx.options.skill_allowed_tools.clone()
             };

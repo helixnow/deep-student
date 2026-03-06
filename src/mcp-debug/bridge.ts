@@ -13,6 +13,8 @@ import { highlighter } from './core/highlighter';
 import { asserter } from './core/asserter';
 
 const VERSION = '1.0.0';
+let bridgeUnlisten: (() => void) | null = null;
+let bridgeSetupPromise: Promise<void> | null = null;
 
 /**
  * 获取全局状态
@@ -142,9 +144,10 @@ export async function handleCommand(command: MCPDebugCommand): Promise<MCPDebugR
         actionRecorder.start();
         return { success: true, data: { message: 'Action recording started' }, timestamp };
       
-      case 'action:stopRecording':
+      case 'action:stopRecording': {
         const recorded = actionRecorder.stop();
         return { success: true, data: { actions: recorded, count: recorded.length }, timestamp };
+      }
       
       case 'action:getRecorded':
         return { success: true, data: actionRecorder.get(), timestamp };
@@ -180,22 +183,24 @@ export async function handleCommand(command: MCPDebugCommand): Promise<MCPDebugR
         performanceMonitor.clear();
         return { success: true, data: { message: 'Performance data cleared' }, timestamp };
       
-      case 'perf:gc':
+      case 'perf:gc': {
         const gcResult = performanceMonitor.gc();
         return { 
           success: gcResult, 
           data: { message: gcResult ? 'GC triggered' : 'GC not available' }, 
           timestamp 
         };
+      }
       
       // ==================== 元素高亮 ====================
-      case 'highlight:show':
+      case 'highlight:show': {
         const highlightId = highlighter.show(command.options);
         return { 
           success: !!highlightId, 
           data: highlightId ? { id: highlightId } : { error: 'Element not found' }, 
           timestamp 
         };
+      }
       
       case 'highlight:hide':
         highlighter.hide(command.id);
@@ -264,6 +269,12 @@ export async function handleCommand(command: MCPDebugCommand): Promise<MCPDebugR
  * 监听来自 Tauri 后端的调试命令
  */
 export async function setupMCPBridge() {
+  if (bridgeUnlisten) return;
+  if (bridgeSetupPromise) {
+    await bridgeSetupPromise;
+    return;
+  }
+
   // 检查 Tauri API 是否可用
   if (typeof window === 'undefined') return;
   
@@ -276,34 +287,54 @@ export async function setupMCPBridge() {
     console.log('[MCP-Debug] Tauri not detected, bridge not initialized');
     return;
   }
-  
-  try {
-    const { listen, emit } = await import('@tauri-apps/api/event');
-    
-    // 监听调试命令
-    await listen<{ correlationId: string; command: MCPDebugCommand }>('mcp-debug-command', async (event) => {
-      const { correlationId, command } = event.payload;
-      
-      console.log('[MCP-Debug] Received command:', command.cmd);
-      
-      const response = await handleCommand(command);
-      
-      // 发送响应
-      await emit('mcp-debug-response', {
-        correlationId,
-        ...response,
+
+  bridgeSetupPromise = (async () => {
+    try {
+      const { listen, emit } = await import('@tauri-apps/api/event');
+
+      // 监听调试命令
+      const unlisten = await listen<{ correlationId: string; command: MCPDebugCommand }>('mcp-debug-command', async (event) => {
+        const { correlationId, command } = event.payload;
+
+        console.log('[MCP-Debug] Received command:', command.cmd);
+
+        const response = await handleCommand(command);
+
+        // 发送响应
+        await emit('mcp-debug-response', {
+          correlationId,
+          ...response,
+        });
+
+        await emit(`mcp-debug-response:${correlationId}`, {
+          correlationId,
+          ...response,
+        });
       });
-      
-      await emit(`mcp-debug-response:${correlationId}`, {
-        correlationId,
-        ...response,
-      });
-    });
-    
-    console.log('[MCP-Debug] Bridge initialized, listening for commands');
-  } catch (error: unknown) {
-    console.warn('[MCP-Debug] Failed to setup bridge:', error);
+
+      bridgeUnlisten = unlisten;
+      console.log('[MCP-Debug] Bridge initialized, listening for commands');
+    } catch (error: unknown) {
+      console.warn('[MCP-Debug] Failed to setup bridge:', error);
+      throw error;
+    } finally {
+      bridgeSetupPromise = null;
+    }
+  })();
+
+  await bridgeSetupPromise;
+}
+
+export function destroyMCPBridge() {
+  if (bridgeUnlisten) {
+    try {
+      bridgeUnlisten();
+    } catch (error: unknown) {
+      console.warn('[MCP-Debug] Failed to teardown bridge listener:', error);
+    }
+    bridgeUnlisten = null;
   }
+  bridgeSetupPromise = null;
 }
 
 export const bridge = {
@@ -311,6 +342,7 @@ export const bridge = {
   reset,
   handleCommand,
   setupMCPBridge,
+  destroyMCPBridge,
 };
 
 export default bridge;

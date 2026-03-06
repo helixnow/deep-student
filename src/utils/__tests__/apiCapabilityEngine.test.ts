@@ -11,4 +11,10 @@ describe('apiCapabilityEngine vision inference', () => {
     const caps = inferApiCapabilities({ id: 'zai-org/GLM-4.6V' });
     expect(caps.vision).toBe(true);
   });
+
+  it('treats qwen3.5-plus as multimodal', () => {
+    const caps = inferApiCapabilities({ id: 'qwen3.5-plus' });
+    expect(caps.vision).toBe(true);
+    expect(caps.functionCalling).toBe(true);
+  });
 });

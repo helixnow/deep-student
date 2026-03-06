@@ -133,6 +133,19 @@ impl ReviewPlanService {
     /// # 返回
     /// * 创建的复习计划
     pub fn create_review_plan(&self, question_id: &str, exam_id: &str) -> Result<ReviewPlan> {
+        let question = VfsQuestionRepo::get_question(&self.vfs_db, question_id)
+            .with_context(|| format!("Failed to get question: {}", question_id))?
+            .ok_or_else(|| anyhow::anyhow!("Question not found: {}", question_id))?;
+
+        if question.exam_id != exam_id {
+            return Err(anyhow::anyhow!(
+                "Question {} belongs to exam_id={}, but got exam_id={}",
+                question_id,
+                question.exam_id,
+                exam_id
+            ));
+        }
+
         let params = CreateReviewPlanParams {
             question_id: question_id.to_string(),
             exam_id: exam_id.to_string(),
@@ -433,23 +446,59 @@ impl ReviewPlanService {
     /// # 返回
     /// * 批量创建结果
     pub fn create_plans_for_exam(&self, exam_id: &str) -> Result<BatchCreateResult> {
-        // 获取题目集的所有题目
+        // 分页获取题目集的所有题目，避免固定上限导致漏创建
         let filters = QuestionFilters::default();
-        let result = VfsQuestionRepo::list_questions(&self.vfs_db, exam_id, &filters, 1, 1000)
-            .with_context(|| format!("Failed to list questions for exam_id={}", exam_id))?;
+        let page_size = 500;
+        let mut page = 1;
 
-        let question_ids: Vec<String> = result.questions.iter().map(|q| q.id.clone()).collect();
+        let mut aggregate = BatchCreateResult {
+            created: 0,
+            skipped: 0,
+            failed: 0,
+            plans: Vec::new(),
+        };
 
-        if question_ids.is_empty() {
-            return Ok(BatchCreateResult {
-                created: 0,
-                skipped: 0,
-                failed: 0,
-                plans: Vec::new(),
-            });
+        loop {
+            let result = VfsQuestionRepo::list_questions(
+                &self.vfs_db,
+                exam_id,
+                &filters,
+                page,
+                page_size,
+            )
+            .with_context(|| {
+                format!(
+                    "Failed to list questions for exam_id={}, page={}, page_size={}",
+                    exam_id, page, page_size
+                )
+            })?;
+
+            if result.questions.is_empty() {
+                break;
+            }
+
+            let question_ids: Vec<String> =
+                result.questions.iter().map(|q| q.id.clone()).collect();
+            let batch_result = self.batch_create_from_questions(&question_ids, exam_id)?;
+
+            aggregate.created += batch_result.created;
+            aggregate.skipped += batch_result.skipped;
+            aggregate.failed += batch_result.failed;
+            aggregate.plans.extend(batch_result.plans);
+
+            if !result.has_more {
+                break;
+            }
+
+            page += 1;
         }
 
-        self.batch_create_from_questions(&question_ids, exam_id)
+        info!(
+            "[ReviewPlanService] Create plans for exam finished: exam_id={}, created={}, skipped={}, failed={}",
+            exam_id, aggregate.created, aggregate.skipped, aggregate.failed
+        );
+
+        Ok(aggregate)
     }
 
     // ========================================================================
@@ -778,4 +827,87 @@ pub async fn review_plan_get_calendar_data(
             exam_id.as_deref(),
         )
         .map_err(|e| e.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::data_governance::migration::coordinator::MigrationCoordinator;
+    use crate::data_governance::schema_registry::DatabaseId;
+    use crate::vfs::repos::exam_repo::VfsExamRepo;
+    use crate::vfs::repos::question_repo::CreateQuestionParams;
+    use crate::vfs::types::VfsCreateExamSheetParams;
+    use serde_json::json;
+    use tempfile::TempDir;
+
+    fn setup_test_db() -> (TempDir, Arc<VfsDatabase>) {
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let mut coordinator =
+            MigrationCoordinator::new(temp_dir.path().to_path_buf()).with_audit_db(None);
+        coordinator
+            .migrate_single(DatabaseId::Vfs)
+            .expect("Failed to migrate VFS database");
+        let db = Arc::new(VfsDatabase::new(temp_dir.path()).expect("Failed to create database"));
+        (temp_dir, db)
+    }
+
+    #[test]
+    fn test_create_review_plan_rejects_exam_question_mismatch() {
+        let (_temp_dir, vfs_db) = setup_test_db();
+        let service = ReviewPlanService::new(vfs_db.clone());
+
+        let exam_a = VfsExamRepo::create_exam_sheet(
+            &vfs_db,
+            VfsCreateExamSheetParams {
+                exam_name: Some("Exam A".to_string()),
+                temp_id: "tmp_exam_a".to_string(),
+                metadata_json: json!({}),
+                preview_json: json!({ "pages": [] }),
+                status: "completed".to_string(),
+                folder_id: None,
+            },
+        )
+        .expect("create exam A");
+
+        let exam_b = VfsExamRepo::create_exam_sheet(
+            &vfs_db,
+            VfsCreateExamSheetParams {
+                exam_name: Some("Exam B".to_string()),
+                temp_id: "tmp_exam_b".to_string(),
+                metadata_json: json!({}),
+                preview_json: json!({ "pages": [] }),
+                status: "completed".to_string(),
+                folder_id: None,
+            },
+        )
+        .expect("create exam B");
+
+        let question = VfsQuestionRepo::create_question(
+            &vfs_db,
+            &CreateQuestionParams {
+                exam_id: exam_a.id.clone(),
+                card_id: Some("card_1".to_string()),
+                question_label: Some("1".to_string()),
+                content: "2 + 2 = ?".to_string(),
+                options: None,
+                answer: Some("4".to_string()),
+                explanation: Some("basic math".to_string()),
+                question_type: None,
+                difficulty: None,
+                tags: None,
+                source_type: None,
+                source_ref: None,
+                images: None,
+                parent_id: None,
+            },
+        )
+        .expect("create question");
+
+        let err = service
+            .create_review_plan(&question.id, &exam_b.id)
+            .expect_err("mismatch exam_id should fail");
+
+        let msg = err.to_string();
+        assert!(msg.contains("belongs to exam_id"), "unexpected error: {}", msg);
+    }
 }
