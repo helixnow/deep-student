@@ -992,13 +992,12 @@ impl ChatV2Pipeline {
             if !is_memory_tool {
                 return false;
             }
-            let is_note = tr
+            let declared_type = tr
                 .input
                 .get("memory_type")
                 .and_then(|v| v.as_str())
-                .map(|t| t == "note")
-                .unwrap_or(false);
-            !is_note
+                .unwrap_or("fact");
+            declared_type == "fact"
         });
         if llm_wrote_fact_memory {
             log::debug!(

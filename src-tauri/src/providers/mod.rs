@@ -392,7 +392,9 @@ impl OpenAIResponsesAdapter {
         }
 
         if let Some(response_format) = body.get("response_format") {
-            payload["response_format"] = response_format.clone();
+            payload["text"] = json!({
+                "format": response_format.clone()
+            });
         }
 
         if let Some(tools) = body.get("tools").and_then(|v| v.as_array()) {
@@ -1777,7 +1779,7 @@ mod tests {
         assert_eq!(payload["reasoning"]["summary"], json!("auto"));
         assert_eq!(payload["max_output_tokens"], json!(256));
         assert_eq!(payload["temperature"], json!(0.2));
-        assert_eq!(payload["response_format"]["type"], json!("json_object"));
+        assert_eq!(payload["text"]["format"]["type"], json!("json_object"));
 
         let input = payload["input"].as_array().expect("input should be array");
         assert_eq!(input.len(), 1);

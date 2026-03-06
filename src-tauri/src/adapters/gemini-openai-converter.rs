@@ -257,6 +257,10 @@ pub struct GeminiGenerationConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub top_k: Option<i32>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub frequency_penalty: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub presence_penalty: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub max_output_tokens: Option<i32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub stop_sequences: Option<Vec<String>>,
@@ -470,6 +474,8 @@ pub fn build_gemini_request_with_version(
                 temperature: openai_req.temperature,
                 top_p: openai_req.top_p,
                 top_k: None,
+                frequency_penalty: openai_req.frequency_penalty,
+                presence_penalty: openai_req.presence_penalty,
                 max_output_tokens: openai_req.max_tokens,
                 stop_sequences: None,
                 response_mime_type: None,
@@ -568,6 +574,8 @@ pub fn build_gemini_request_with_version(
                 temperature: openai_req.temperature,
                 top_p: openai_req.top_p,
                 top_k: None,
+                frequency_penalty: openai_req.frequency_penalty,
+                presence_penalty: openai_req.presence_penalty,
                 max_output_tokens: openai_req.max_tokens,
                 stop_sequences: None,
                 response_mime_type: None,
@@ -1632,6 +1640,8 @@ fn convert_openai_to_gemini(openai_req: &OpenAIRequest) -> Result<GeminiRequest,
         temperature: openai_req.temperature,
         top_p: openai_req.top_p,
         top_k: None,
+        frequency_penalty: openai_req.frequency_penalty,
+        presence_penalty: openai_req.presence_penalty,
         max_output_tokens: openai_req.max_tokens,
         stop_sequences,
         response_mime_type: None,
@@ -1665,6 +1675,8 @@ fn convert_openai_to_gemini(openai_req: &OpenAIRequest) -> Result<GeminiRequest,
     let generation_config = if generation_config.temperature.is_some()
         || generation_config.top_p.is_some()
         || generation_config.top_k.is_some()
+        || generation_config.frequency_penalty.is_some()
+        || generation_config.presence_penalty.is_some()
         || generation_config.max_output_tokens.is_some()
         || generation_config.stop_sequences.is_some()
         || generation_config.response_mime_type.is_some()
@@ -2372,6 +2384,31 @@ mod tests {
         .expect("req");
 
         assert!(req.url.contains("/v1beta/"));
+    }
+
+    #[test]
+    fn test_penalties_flow_into_generation_config() {
+        let openai_body = json!({
+            "model": "gemini-2.5-pro",
+            "messages": [ {"role": "user", "content": "hi"} ],
+            "frequency_penalty": 0.4,
+            "presence_penalty": 0.2
+        });
+
+        let req = build_gemini_request_with_version(
+            "https://generativelanguage.googleapis.com",
+            "k",
+            "gemini-2.5-pro",
+            &openai_body,
+            Some("v1"),
+        )
+        .expect("req");
+
+        let gen = req.body.get("generationConfig").unwrap();
+        let frequency = gen.get("frequencyPenalty").and_then(|v| v.as_f64()).expect("frequencyPenalty");
+        let presence = gen.get("presencePenalty").and_then(|v| v.as_f64()).expect("presencePenalty");
+        assert!((frequency - 0.4).abs() < 1e-6);
+        assert!((presence - 0.2).abs() < 1e-6);
     }
 }
 

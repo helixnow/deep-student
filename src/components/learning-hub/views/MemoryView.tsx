@@ -50,6 +50,7 @@ import {
   List,
   GitBranch,
   Folder,
+  ListPlus,
 } from 'lucide-react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { MemoryIcon } from '../icons/ResourceIcons';
@@ -62,6 +63,7 @@ import {
   searchMemory,
   readMemory,
   writeMemorySmart,
+  writeMemoryBatch,
   listMemory,
   deleteMemory,
   updateMemoryById,
@@ -78,6 +80,7 @@ import {
   type MemoryProfileSection,
   type MemoryAuditLogItem,
   type FolderTreeNode,
+  type MemoryTypeValue,
   type MemoryPurposeType,
   batchDeleteMemories,
 } from '@/api/memoryApi';
@@ -135,7 +138,12 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
   // 创建记忆状态
   const [newMemoryTitle, setNewMemoryTitle] = useState('');
   const [newMemoryContent, setNewMemoryContent] = useState('');
+  const [newMemoryType, setNewMemoryType] = useState<MemoryTypeValue>('study');
   const [newMemoryPurpose, setNewMemoryPurpose] = useState<string>('memorized');
+  const [isBatchImporting, setIsBatchImporting] = useState(false);
+  const [batchImportText, setBatchImportText] = useState('');
+  const [batchImportType, setBatchImportType] = useState<MemoryTypeValue>('study');
+  const [batchImportPurpose, setBatchImportPurpose] = useState<string>('memorized');
   const [newRootFolderTitle, setNewRootFolderTitle] = useState('');
 
   // ★ 批量选择状态
@@ -220,6 +228,18 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
     }
   }, [config?.memoryRootFolderId, viewMode, loadTree]);
 
+  useEffect(() => {
+    if (newMemoryType !== 'fact' && newMemoryPurpose === 'systemic') {
+      setNewMemoryPurpose('memorized');
+    }
+  }, [newMemoryType, newMemoryPurpose]);
+
+  useEffect(() => {
+    if (batchImportType !== 'fact' && batchImportPurpose === 'systemic') {
+      setBatchImportPurpose('memorized');
+    }
+  }, [batchImportType, batchImportPurpose]);
+
   // ========== 搜索 ==========
   const viewModeBeforeSearch = React.useRef<'list' | 'tree'>('list');
   const handleSearch = useCallback(async () => {
@@ -264,7 +284,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
     setIsLoading(true);
     try {
       const purposeArg = newMemoryPurpose !== 'memorized' ? newMemoryPurpose as MemoryPurposeType : undefined;
-      const result = await writeMemorySmart(newMemoryTitle, newMemoryContent, undefined, undefined, purposeArg);
+      const result = await writeMemorySmart(newMemoryTitle, newMemoryContent, undefined, newMemoryType, purposeArg);
       let msg: string;
       let level: 'success' | 'warning' = 'success';
       const writeSucceeded = result.event === 'ADD' || result.event === 'UPDATE' || result.event === 'APPEND' || result.event === 'DELETE';
@@ -285,6 +305,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
         setIsCreatingInline(false);
         setNewMemoryTitle('');
         setNewMemoryContent('');
+        setNewMemoryType('study');
         setNewMemoryPurpose('memorized');
         loadMemories();
       }
@@ -294,14 +315,88 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
     } finally {
       setIsLoading(false);
     }
-  }, [newMemoryTitle, newMemoryContent, newMemoryPurpose, t, loadMemories]);
+  }, [newMemoryTitle, newMemoryContent, newMemoryType, newMemoryPurpose, t, loadMemories]);
 
   const handleCancelCreate = useCallback(() => {
     setIsCreatingInline(false);
     setNewMemoryTitle('');
     setNewMemoryContent('');
+    setNewMemoryType('study');
     setNewMemoryPurpose('memorized');
   }, []);
+
+  const handleCancelBatchImport = useCallback(() => {
+    setIsBatchImporting(false);
+    setBatchImportText('');
+    setBatchImportType('study');
+    setBatchImportPurpose('memorized');
+  }, []);
+
+  const parseBatchImportItems = useCallback((raw: string) => {
+    return raw
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => {
+        const separators = ['\t', ' | ', '｜', '：', ':'];
+        for (const separator of separators) {
+          const index = line.indexOf(separator);
+          if (index > 0) {
+            const title = line.slice(0, index).trim();
+            const content = line.slice(index + separator.length).trim();
+            if (title && content) {
+              return { title, content };
+            }
+          }
+        }
+        return { title: line, content: line };
+      });
+  }, []);
+
+  const handleBatchImport = useCallback(async () => {
+    const items = parseBatchImportItems(batchImportText);
+    if (items.length === 0) {
+      showGlobalNotification('error', t('memory.batch_import_empty', '请先粘贴要导入的内容'));
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const purposeArg = batchImportPurpose !== 'memorized' ? batchImportPurpose as MemoryPurposeType : undefined;
+      const result = await writeMemoryBatch(
+        items.map((item) => ({
+          ...item,
+          memoryType: batchImportType,
+          memoryPurpose: purposeArg,
+        })),
+        undefined,
+        batchImportType,
+        purposeArg,
+      );
+
+      const summary = t(
+        'memory.batch_import_summary',
+        '已处理 {{total}} 条：新增 {{added}}，更新 {{updated}}，跳过 {{skipped}}，拦截 {{filtered}}',
+        {
+          total: result.total,
+          added: result.added,
+          updated: result.updated,
+          skipped: result.skipped,
+          filtered: result.filtered,
+        }
+      );
+      showGlobalNotification(result.filtered > 0 ? 'warning' : 'success', summary);
+      if (result.added + result.updated > 0) {
+        handleCancelBatchImport();
+        loadMemories();
+      }
+    } catch (error: unknown) {
+      console.error('[MemoryView] Batch import failed:', error);
+      showGlobalNotification('error', t('memory.batch_import_error', '批量导入失败'));
+    } finally {
+      setIsLoading(false);
+    }
+  }, [batchImportPurpose, batchImportText, batchImportType, handleCancelBatchImport, loadMemories, parseBatchImportItems, t]);
 
   // ========== 内联展开预览 ==========
   const handleToggleExpand = useCallback(async (noteId: string) => {
@@ -825,10 +920,16 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
           <History className="w-4 h-4" />
         </NotionButton>
         {!isCreatingInline && !batchMode && (
-          <NotionButton variant="ghost" size="sm" onClick={() => setIsCreatingInline(true)} className="text-primary hover:bg-primary/10">
-            <Plus className="w-4 h-4" />
-            {t('memory.new', '新建')}
-          </NotionButton>
+          <>
+            <NotionButton variant="ghost" size="sm" onClick={() => setIsBatchImporting(true)} className="text-emerald-600 hover:bg-emerald-500/10">
+              <ListPlus className="w-4 h-4" />
+              {t('memory.batch_import', '批量导入')}
+            </NotionButton>
+            <NotionButton variant="ghost" size="sm" onClick={() => setIsCreatingInline(true)} className="text-primary hover:bg-primary/10">
+              <Plus className="w-4 h-4" />
+              {t('memory.new', '新建')}
+            </NotionButton>
+          </>
         )}
         {batchMode && (
           <>
@@ -1023,6 +1124,93 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
             </div>
           )}
 
+          {/* 批量导入表单 */}
+          {isBatchImporting && (
+            <div className="rounded-lg border border-border/60 bg-card/50 p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-muted-foreground">
+                  <ListPlus size={16} />
+                  <span className="text-sm font-medium">{t('memory.batch_import', '批量导入')}</span>
+                </div>
+                <NotionButton variant="ghost" size="icon" iconOnly onClick={handleCancelBatchImport} disabled={isLoading} aria-label="cancel batch import">
+                  <Plus className="w-4 h-4 rotate-45" />
+                </NotionButton>
+              </div>
+
+              <div className="text-xs text-muted-foreground leading-relaxed">
+                {t('memory.batch_import_hint', '每行一条，支持“标题<Tab>内容”、“标题 | 内容”或“标题：内容”。没有分隔符时将整行同时作为标题和内容。')}
+              </div>
+
+              <textarea
+                placeholder={t('memory.batch_import_placeholder', '例如：\nsubmerge\t/səbˈmɜːrdʒ/ v. 淹没；潜入水中\nrecipe | n. 方法；诀窍\n遗传易错点：显隐性判断要先看题干条件')}
+                value={batchImportText}
+                onChange={(e) => setBatchImportText(e.target.value)}
+                rows={8}
+                className="w-full px-3 py-2 text-sm bg-muted/30 border-transparent rounded-md resize-y focus:border-border focus:bg-background focus:outline-none transition-colors"
+              />
+
+              <div className="flex items-center gap-1 flex-wrap">
+                <span className="text-xs text-muted-foreground mr-1.5">{t('memory.type', '类型')}:</span>
+                {([
+                  ['fact', '用户事实'],
+                  ['study', '学习记忆'],
+                  ['note', '经验笔记'],
+                ] as const).map(([type, label]) => (
+                  <NotionButton
+                    key={type}
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setBatchImportType(type)}
+                    className={cn(
+                      '!h-auto !min-h-0 !px-2 !py-0.5 rounded text-[11px] transition-colors',
+                      batchImportType === type
+                        ? 'bg-primary/15 text-primary font-medium'
+                        : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
+                    )}
+                  >
+                    {label}
+                  </NotionButton>
+                ))}
+              </div>
+
+              <div className="flex items-center gap-1 flex-wrap">
+                <span className="text-xs text-muted-foreground mr-1.5">{t('memory.purpose', '分类')}:</span>
+                {(batchImportType === 'fact'
+                  ? (['memorized', 'internalized', 'supplementary', 'systemic'] as string[])
+                  : (['memorized', 'internalized', 'supplementary'] as string[])).map((p) => (
+                  <NotionButton
+                    key={p}
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setBatchImportPurpose(p)}
+                    className={cn(
+                      '!h-auto !min-h-0 !px-2 !py-0.5 rounded text-[11px] transition-colors',
+                      batchImportPurpose === p
+                        ? (PURPOSE_BADGE_STYLES[p] || 'bg-primary/15 text-primary') + ' font-medium'
+                        : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
+                    )}
+                  >
+                    {PURPOSE_LABELS[p]}
+                  </NotionButton>
+                ))}
+              </div>
+
+              <div className="text-xs text-muted-foreground">
+                {t('memory.batch_import_count', '预计导入 {{count}} 条', { count: parseBatchImportItems(batchImportText).length })}
+              </div>
+
+              <div className="flex gap-2 pt-1">
+                <NotionButton variant="ghost" size="sm" onClick={handleCancelBatchImport} disabled={isLoading} className="flex-1 !h-9">
+                  {t('common:cancel', '取消')}
+                </NotionButton>
+                <NotionButton variant="primary" size="sm" onClick={handleBatchImport} disabled={isLoading || parseBatchImportItems(batchImportText).length === 0} className="flex-1 !h-9">
+                  {isLoading && <Loader2 className="w-4 h-4 animate-spin" />}
+                  {t('memory.batch_import_confirm', '开始导入')}
+                </NotionButton>
+              </div>
+            </div>
+          )}
+
           {/* 内联创建表单 */}
           {isCreatingInline && (
             <div className="rounded-lg border border-border/60 bg-card/50 p-4 space-y-3">
@@ -1044,29 +1232,63 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                 className="w-full h-9 px-3 text-sm bg-muted/30 border-transparent rounded-md focus:border-border focus:bg-background focus:outline-none transition-colors"
               />
               <textarea
-                placeholder={t('memory.content_placeholder', '记忆内容...')}
+                placeholder={
+                  newMemoryType === 'fact'
+                    ? t('memory.content_placeholder_fact', '用户事实，例如：数学是弱项 / 偏好表格总结')
+                    : newMemoryType === 'study'
+                      ? t('memory.content_placeholder_study', '学习内容，例如：submerge /səbˈmɜːrdʒ/ v. 淹没；潜入水中')
+                      : t('memory.content_placeholder_note', '方法、经验或技巧总结...')
+                }
                 value={newMemoryContent}
                 onChange={(e) => setNewMemoryContent(e.target.value)}
                 rows={5}
                 className="w-full px-3 py-2 text-sm bg-muted/30 border-transparent rounded-md resize-none focus:border-border focus:bg-background focus:outline-none transition-colors"
               />
 
+              <div className="flex items-center gap-1 flex-wrap">
+                <span className="text-xs text-muted-foreground mr-1.5">{t('memory.type', '类型')}:</span>
+                {([
+                  ['fact', '用户事实'],
+                  ['study', '学习记忆'],
+                  ['note', '经验笔记'],
+                ] as const).map(([type, label]) => (
+                  <NotionButton
+                    key={type}
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setNewMemoryType(type)}
+                    className={cn(
+                      '!h-auto !min-h-0 !px-2 !py-0.5 rounded text-[11px] transition-colors',
+                      newMemoryType === type
+                        ? 'bg-primary/15 text-primary font-medium'
+                        : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
+                    )}
+                  >
+                    {label}
+                  </NotionButton>
+                ))}
+              </div>
+
               {/* 目的分类选择 */}
               <div className="flex items-center gap-1">
                 <span className="text-xs text-muted-foreground mr-1.5">{t('memory.purpose', '分类')}:</span>
-                {(['memorized', 'internalized', 'supplementary', 'systemic'] as const).map((p) => (
-                  <button
+                {(newMemoryType === 'fact'
+                  ? (['memorized', 'internalized', 'supplementary', 'systemic'] as string[])
+                  : (['memorized', 'internalized', 'supplementary'] as string[])).map((p) => (
+                  <NotionButton
                     key={p}
+                    variant="ghost"
+                    size="sm"
                     onClick={() => setNewMemoryPurpose(p)}
                     className={cn(
-                      'px-2 py-0.5 rounded text-[11px] transition-colors',
+                      '!h-auto !min-h-0 !px-2 !py-0.5 rounded text-[11px] transition-colors',
                       newMemoryPurpose === p
                         ? (PURPOSE_BADGE_STYLES[p] || 'bg-primary/15 text-primary') + ' font-medium'
                         : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
                     )}
                   >
                     {PURPOSE_LABELS[p]}
-                  </button>
+                  </NotionButton>
                 ))}
               </div>
 
@@ -1252,6 +1474,12 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                             <span className="flex items-center gap-0.5 px-1.5 py-0 rounded bg-blue-500/10 text-blue-600 text-[9px] font-medium flex-shrink-0">
                               <BookOpen className="w-2.5 h-2.5" />
                               笔记
+                            </span>
+                          )}
+                          {memory.memoryType === 'study' && (
+                            <span className="flex items-center gap-0.5 px-1.5 py-0 rounded bg-emerald-500/10 text-emerald-600 text-[9px] font-medium flex-shrink-0">
+                              <FileText className="w-2.5 h-2.5" />
+                              学习
                             </span>
                           )}
                           {memory.memoryPurpose && memory.memoryPurpose !== 'memorized' && (

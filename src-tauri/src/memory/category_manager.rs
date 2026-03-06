@@ -155,9 +155,12 @@ impl MemoryCategoryManager {
 
         let mut memory_contents: Vec<String> = Vec::new();
         for mem in &memories {
-            // note 类型内容可能很长，仅取标题避免 LLM prompt 膨胀
             if mem.memory_type == "note" {
                 memory_contents.push(format!("[经验笔记] {}", mem.title));
+                continue;
+            }
+            if mem.memory_type == "study" {
+                memory_contents.push(format!("[学习记忆] {}", mem.title));
                 continue;
             }
             let content = VfsNoteRepo::get_note_content(&self.vfs_db, &mem.id)?.unwrap_or_default();

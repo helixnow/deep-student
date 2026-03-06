@@ -306,13 +306,13 @@ export const BUILTIN_TOOLS: BuiltinToolSchema[] = [
   {
     name: `${BUILTIN_NAMESPACE}memory_write_smart`,
     displayNameKey: 'mcp.tools.memory_write_smart',
-    description: '智能写入记忆（由 LLM 决策新增/更新/追加）。',
+    description: '智能写入记忆。fact 用于用户事实；study 用于用户明确要求保存的学习内容；note 用于方法论/经验。',
     inputSchema: {
       type: 'object',
       properties: {
         folder: {
           type: 'string',
-          description: '记忆分类文件夹路径，如 "偏好"、"知识"、"经历"、"知识/数学"。留空表示存储在记忆根目录。',
+          description: '记忆分类文件夹路径，如 "偏好"、"经历"、"知识/数学"。留空表示存储在记忆根目录。',
         },
         title: {
           type: 'string',
@@ -322,8 +322,58 @@ export const BUILTIN_TOOLS: BuiltinToolSchema[] = [
           type: 'string',
           description: '记忆内容（Markdown 格式）',
         },
+        memory_type: {
+          type: 'string',
+          enum: ['fact', 'study', 'note'],
+          description: '记忆类型。fact=用户事实；study=用户显式保存的词汇/知识点/错题要点；note=用户显式保存的方法/经验。',
+        },
+        memory_purpose: {
+          type: 'string',
+          enum: ['internalized', 'memorized', 'supplementary', 'systemic'],
+          description: '记忆目的。',
+        },
       },
       required: ['title', 'content'],
+    },
+  },
+  {
+    name: `${BUILTIN_NAMESPACE}memory_write_batch`,
+    displayNameKey: 'mcp.tools.memory_write_smart',
+    description: '批量写入记忆，适合一次性保存多条词汇/知识点/要点。默认 memory_type=study。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        folder: {
+          type: 'string',
+          description: '默认文件夹路径。',
+        },
+        memory_type: {
+          type: 'string',
+          enum: ['fact', 'study', 'note'],
+          default: 'study',
+          description: '默认记忆类型。',
+        },
+        memory_purpose: {
+          type: 'string',
+          enum: ['internalized', 'memorized', 'supplementary', 'systemic'],
+          description: '默认记忆目的。',
+        },
+        items: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              title: { type: 'string' },
+              content: { type: 'string' },
+              folder: { type: 'string' },
+              memory_type: { type: 'string', enum: ['fact', 'study', 'note'] },
+              memory_purpose: { type: 'string', enum: ['internalized', 'memorized', 'supplementary', 'systemic'] },
+            },
+            required: ['title', 'content'],
+          },
+        },
+      },
+      required: ['items'],
     },
   },
   {

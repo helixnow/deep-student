@@ -55,6 +55,38 @@ export interface SmartWriteOutput {
   downgraded: boolean;
 }
 
+export type MemoryTypeValue = 'fact' | 'study' | 'note';
+
+export interface MemoryBatchWriteItemInput {
+  title: string;
+  content: string;
+  folderPath?: string;
+  memoryType?: MemoryTypeValue;
+  memoryPurpose?: MemoryPurposeType;
+  idempotencyKey?: string;
+}
+
+export interface MemoryBatchWriteItemResult {
+  title: string;
+  noteId: string;
+  event: SmartWriteOutput['event'];
+  isNew: boolean;
+  confidence: number;
+  reason: string;
+  downgraded: boolean;
+}
+
+export interface MemoryBatchWriteOutput {
+  total: number;
+  succeeded: number;
+  failed: number;
+  added: number;
+  updated: number;
+  skipped: number;
+  filtered: number;
+  results: MemoryBatchWriteItemResult[];
+}
+
 export interface FolderTreeNode {
   folder: {
     id: string;
@@ -254,7 +286,7 @@ export async function writeMemorySmart(
   title: string,
   content: string,
   folderPath?: string,
-  memoryType?: 'fact' | 'note',
+  memoryType?: MemoryTypeValue,
   memoryPurpose?: MemoryPurposeType,
   idempotencyKey?: string
 ): Promise<SmartWriteOutput> {
@@ -265,6 +297,20 @@ export async function writeMemorySmart(
     memoryType,
     memoryPurpose,
     idempotencyKey,
+  });
+}
+
+export async function writeMemoryBatch(
+  items: MemoryBatchWriteItemInput[],
+  defaultFolderPath?: string,
+  defaultMemoryType?: MemoryTypeValue,
+  defaultMemoryPurpose?: MemoryPurposeType
+): Promise<MemoryBatchWriteOutput> {
+  return invoke<MemoryBatchWriteOutput>('memory_write_batch', {
+    items,
+    defaultFolderPath,
+    defaultMemoryType,
+    defaultMemoryPurpose,
   });
 }
 

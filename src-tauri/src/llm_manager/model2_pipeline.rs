@@ -433,7 +433,11 @@ impl LLMManager {
                         .map(|s| !s.is_empty())
                         .unwrap_or(false);
                     let adapter =
-                        get_adapter(config.provider_type.as_deref(), &config.model_adapter);
+                        get_adapter(
+                            config.provider_type.as_deref(),
+                            config.provider_scope.as_deref(),
+                            &config.model_adapter,
+                        );
 
                     // 尝试使用适配器的自定义格式
                     let tool_calls_json: Vec<Value> = tool_calls_arr.clone();
@@ -636,7 +640,11 @@ impl LLMManager {
                             .map(|s| !s.is_empty())
                             .unwrap_or(false);
                         let adapter =
-                            get_adapter(config.provider_type.as_deref(), &config.model_adapter);
+                            get_adapter(
+                                config.provider_type.as_deref(),
+                                config.provider_scope.as_deref(),
+                                &config.model_adapter,
+                            );
 
                         if has_thinking && adapter.requires_thinking_in_history(&config) {
                             // 适配器要求在历史消息中保留 thinking 块
@@ -1819,7 +1827,11 @@ impl LLMManager {
         // 运行时互斥修正：某些模型使用函数调用时需要关闭 thinking 字段。
         // 这里统一覆盖 custom_tools 和普通工具注入两条路径，避免适配逻辑漏跑。
         if request_body.get("tools").is_some() {
-            let adapter = get_adapter(config.provider_type.as_deref(), &config.model_adapter);
+            let adapter = get_adapter(
+                config.provider_type.as_deref(),
+                config.provider_scope.as_deref(),
+                &config.model_adapter,
+            );
             if let Some(body_map) = request_body.as_object() {
                 if adapter.should_disable_thinking_for_tools(&config, body_map) {
                     remove_thinking_fields_for_tool_compat(&mut request_body);

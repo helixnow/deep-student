@@ -1534,6 +1534,7 @@ pub fn run() {
             ,crate::memory::handlers::memory_get_related
             ,crate::memory::handlers::memory_to_anki_document
             ,crate::memory::handlers::memory_write_smart
+            ,crate::memory::handlers::memory_write_batch
             ,crate::memory::handlers::memory_set_auto_create_subfolders
             ,crate::memory::handlers::memory_set_default_category
             ,crate::memory::handlers::memory_set_auto_extract_frequency

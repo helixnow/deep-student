@@ -148,8 +148,8 @@ impl MemoryEvolution {
             if mem.title.starts_with("__") {
                 continue;
             }
-            // note 类型记忆是用户主动保存的经验笔记，不参与自动降级
-            if mem.memory_type == "note" {
+            // 用户主动保存的经验笔记/学习记忆不参与自动降级
+            if mem.memory_type == "note" || mem.memory_type == "study" {
                 continue;
             }
 

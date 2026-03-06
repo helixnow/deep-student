@@ -188,7 +188,11 @@ pub fn get_passback_policy(config: &ApiConfig) -> ReasoningPassbackPolicy {
     }
 
     // 委托给适配器系统
-    let adapter = get_adapter(config.provider_type.as_deref(), &config.model_adapter);
+    let adapter = get_adapter(
+        config.provider_type.as_deref(),
+        config.provider_scope.as_deref(),
+        &config.model_adapter,
+    );
     let adapter_policy = adapter.get_passback_policy(config);
 
     // 转换适配器的 PassbackPolicy 到本模块的 ReasoningPassbackPolicy

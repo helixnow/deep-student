@@ -253,8 +253,16 @@ fn is_aggregator_platform(provider_type: &str) -> bool {
 /// 对于聚合平台，应使用前端推断引擎预设的 `model_adapter` 字段。
 pub fn get_adapter(
     provider_type: Option<&str>,
+    provider_scope: Option<&str>,
     model_adapter: &str,
 ) -> &'static dyn RequestAdapter {
+    if let Some(scope) = provider_scope {
+        let scope_lower = scope.to_lowercase();
+        if let Some(adapter) = ADAPTER_REGISTRY.get(scope_lower.as_str()) {
+            return adapter.as_ref();
+        }
+    }
+
     // 优先使用 provider_type（但跳过聚合平台）
     if let Some(pt) = provider_type {
         let pt_lower = pt.to_lowercase();
@@ -346,19 +354,25 @@ mod tests {
 
     #[test]
     fn test_get_adapter_by_provider_type() {
-        let adapter = get_adapter(Some("minimax"), "openai");
+        let adapter = get_adapter(Some("minimax"), None, "openai");
         assert_eq!(adapter.id(), "minimax");
     }
 
     #[test]
     fn test_get_adapter_by_model_adapter() {
-        let adapter = get_adapter(None, "anthropic");
+        let adapter = get_adapter(None, None, "anthropic");
         assert_eq!(adapter.id(), "anthropic");
     }
 
     #[test]
+    fn test_get_adapter_by_provider_scope() {
+        let adapter = get_adapter(Some("openrouter"), Some("qwen"), "general");
+        assert_eq!(adapter.id(), "qwen");
+    }
+
+    #[test]
     fn test_get_adapter_fallback_to_default() {
-        let adapter = get_adapter(None, "unknown");
+        let adapter = get_adapter(None, None, "unknown");
         assert_eq!(adapter.id(), "openai");
     }
 
@@ -372,13 +386,13 @@ mod tests {
 
     #[test]
     fn test_get_ernie_adapter() {
-        let adapter = get_adapter(Some("ernie"), "openai");
+        let adapter = get_adapter(Some("ernie"), None, "openai");
         assert_eq!(adapter.id(), "ernie");
     }
 
     #[test]
     fn test_get_ernie_adapter_by_baidu_alias() {
-        let adapter = get_adapter(Some("baidu"), "openai");
+        let adapter = get_adapter(Some("baidu"), None, "openai");
         assert_eq!(adapter.id(), "ernie");
     }
 }

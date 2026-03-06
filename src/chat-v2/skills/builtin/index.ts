@@ -481,6 +481,7 @@ export const literatureReviewSkill: SkillDefinition = {
     'builtin-memory_update_by_id',
     'builtin-memory_delete',
     'builtin-memory_write_smart',
+    'builtin-memory_write_batch',
     'builtin-memory_list',
   ],
   content: `# 文献综述助手
@@ -512,7 +513,7 @@ export const literatureReviewSkill: SkillDefinition = {
 
 | 技能组 ID | 提供的工具 | 何时加载 |
 |-----------|------------|----------|
-| \`vfs-memory\` | builtin-memory_read, builtin-memory_write, builtin-memory_update_by_id, builtin-memory_delete, builtin-memory_write_smart, builtin-memory_list | 需要保存/检索用户的研究偏好和历史时 |
+| \`vfs-memory\` | builtin-memory_read, builtin-memory_write, builtin-memory_update_by_id, builtin-memory_delete, builtin-memory_write_smart, builtin-memory_write_batch, builtin-memory_list | 需要保存/检索用户的研究偏好和历史时 |
 
 ## 📚 文献综述工作流
 
@@ -755,7 +756,7 @@ export const researchModeSkill: SkillDefinition = {
 
 | 技能组 ID | 提供的工具 | 何时加载 |
 |-----------|------------|----------|
-| \`vfs-memory\` | builtin-memory_read, builtin-memory_write, builtin-memory_update_by_id, builtin-memory_delete, builtin-memory_write_smart, builtin-memory_list | 需要检索/保存用户记忆时 |
+| \`vfs-memory\` | builtin-memory_read, builtin-memory_write, builtin-memory_update_by_id, builtin-memory_delete, builtin-memory_write_smart, builtin-memory_write_batch, builtin-memory_list | 需要检索/保存用户记忆时 |
 | \`web-fetch\` | builtin-web_fetch | 需要抓取完整网页内容时 |
 
 **注意**：技能组加载后，相应的工具才会可用。请在开始调研前确保已加载必需的技能组。

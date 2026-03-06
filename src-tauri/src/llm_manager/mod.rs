@@ -1134,7 +1134,11 @@ impl LLMManager {
 
         // 获取适配器：优先使用 provider_type，回退到 model_adapter
         // 注意：适配器类型由前端推断引擎在配置时预设，后端直接使用
-        let adapter = adapters::get_adapter(config.provider_type.as_deref(), &config.model_adapter);
+        let adapter = adapters::get_adapter(
+            config.provider_type.as_deref(),
+            config.provider_scope.as_deref(),
+            &config.model_adapter,
+        );
 
         // 移除采样参数（如果适配器要求）
         if adapter.should_remove_sampling_params(config) {

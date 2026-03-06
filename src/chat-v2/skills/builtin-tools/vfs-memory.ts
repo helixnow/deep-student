@@ -32,7 +32,15 @@ export const vfsMemorySkill: SkillDefinition = {
 ✅ "高三理科生" / "数学是弱项" / "偏好表格形式总结" / "高考在2026年6月7日"
 ❌ 写一篇知识点总结 / 罗列错题分析
 
-### 2. 经验笔记（note，仅用户明确要求时）
+### 2. 学习记忆（study，仅用户明确要求时）
+用户明确说"保存这些词汇/知识点/错题要点/复习内容"时，使用 \`memory_type: "study"\`。
+- 可以保存词汇释义、知识点、错题要点、复习提纲等（≤ 4000 字）
+- 不参与用户画像自动提取，但会进入记忆库供检索/复习/Anki 导出
+- 批量学习内容优先用 \`builtin-memory_write_batch\`
+
+✅ study 示例：用户说"把这些单词存进记忆系统" → \`memory_type: "study"\`
+
+### 3. 经验笔记（note，仅用户明确要求时）
 用户明确说"记住/保存这个方法/技巧/经验"时，使用 \`memory_type: "note"\`。
 - 可以保存方法论、解题技巧、学习经验、个人总结等（≤ 2000 字）
 - 不受"原子事实"限制，不受"禁止学科知识"限制
@@ -144,18 +152,46 @@ export const vfsMemorySkill: SkillDefinition = {
     },
     {
       name: 'builtin-memory_write_smart',
-      description: '智能写入记忆（推荐首选）。支持两种类型：fact（默认，原子事实≤50字）和 note（用户明确要求保存的经验/方法论/技巧，≤2000字）。fact 类型自动去重，note 类型直接保存。',
+      description: '智能写入记忆（推荐首选）。支持三种类型：fact（默认，用户事实）、study（用户明确要求保存的学习内容）和 note（用户明确要求保存的经验/方法论/技巧）。fact 类型自动去重；study/note 走显式保存路径。',
       inputSchema: {
         type: 'object',
         properties: {
-          folder: { type: 'string', description: '记忆分类文件夹路径，如 "偏好"、"经历"、"经历/学科状态"。留空表示存储在记忆根目录。' },
-          title: { type: 'string', description: '【必填】记忆标题（fact: 事实关键词，如"数学弱项"；note: 方法论概括，如"遗传大题解题方法"）' },
-          content: { type: 'string', description: '【必填】记忆内容。fact 类型：关于用户的简短陈述句（≤50字）。note 类型：用户要求保存的经验、方法论、技巧等（≤2000字）。' },
-          memory_type: { type: 'string', enum: ['fact', 'note'], description: '记忆类型。fact（默认）：关于用户的原子事实。note：用户明确要求保存的经验笔记/方法论/学习技巧。仅当用户明确说"记住/保存这个方法/技巧/经验"时才使用 note。' },
+          folder: { type: 'string', description: '记忆分类文件夹路径，如 "偏好"、"经历"、"经历/学科状态"、"知识/英语词汇"。留空表示存储在记忆根目录。' },
+          title: { type: 'string', description: '【必填】记忆标题（fact: 事实关键词；study: 知识点/词汇名；note: 方法论概括）' },
+          content: { type: 'string', description: '【必填】记忆内容。fact：关于用户的简短陈述句。study：用户要求保存的学习内容。note：用户要求保存的经验、方法论、技巧。' },
+          memory_type: { type: 'string', enum: ['fact', 'study', 'note'], description: '记忆类型。fact（默认）：关于用户的原子事实。study：用户明确要求保存的学习内容（词汇/知识点/错题要点）。note：用户明确要求保存的经验笔记/方法论/学习技巧。' },
           memory_purpose: { type: 'string', enum: ['internalized', 'memorized', 'supplementary', 'systemic'], description: '记忆目的。internalized：用户需要理解并内化的核心内容（最高优先级）。memorized（默认）：需要单独记忆的事实。supplementary：辅助理解的补充知识。systemic：系统用于理解用户的元信息。' },
           idempotency_key: { type: 'string', description: '可选：幂等键。重试同一次写入时复用该键，避免重复写入。' },
         },
         required: ['title', 'content'],
+      },
+    },
+    {
+      name: 'builtin-memory_write_batch',
+      description: '批量写入记忆。适合用户明确要求一次性保存多条词汇/知识点/要点。默认 memory_type=study。',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          folder: { type: 'string', description: '默认文件夹路径，单条 item 未指定时使用。' },
+          memory_type: { type: 'string', enum: ['fact', 'study', 'note'], description: '默认记忆类型；批量保存学习内容时建议用 study。', default: 'study' },
+          memory_purpose: { type: 'string', enum: ['internalized', 'memorized', 'supplementary', 'systemic'], description: '默认记忆目的。' },
+          items: {
+            type: 'array',
+            description: '要保存的记忆项列表。',
+            items: {
+              type: 'object',
+              properties: {
+                title: { type: 'string' },
+                content: { type: 'string' },
+                folder: { type: 'string' },
+                memory_type: { type: 'string', enum: ['fact', 'study', 'note'] },
+                memory_purpose: { type: 'string', enum: ['internalized', 'memorized', 'supplementary', 'systemic'] },
+              },
+              required: ['title', 'content'],
+            },
+          },
+        },
+        required: ['items'],
       },
     },
     {

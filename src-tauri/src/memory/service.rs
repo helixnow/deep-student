@@ -49,6 +49,8 @@ const TAG_REF_PREFIX: &str = "_ref:";
 pub enum MemoryType {
     /// 原子事实（默认）：关于用户的简短陈述句，≤80 字
     Fact,
+    /// 学习记忆：用户明确要求保存的词汇/知识点/错题要点等学习内容
+    Study,
     /// 经验笔记：用户明确要求保存的方法论、经验、技巧等，≤2000 字
     Note,
 }
@@ -63,12 +65,14 @@ impl MemoryType {
     pub fn as_str(&self) -> &'static str {
         match self {
             Self::Fact => "fact",
+            Self::Study => "study",
             Self::Note => "note",
         }
     }
 
     pub fn from_str(s: &str) -> Self {
         match s.to_lowercase().as_str() {
+            "study" => Self::Study,
             "note" => Self::Note,
             _ => Self::Fact,
         }
@@ -88,6 +92,7 @@ impl MemoryType {
     pub fn max_content_chars(&self) -> usize {
         match self {
             Self::Fact => 200,
+            Self::Study => 4000,
             Self::Note => 2000,
         }
     }
@@ -215,7 +220,7 @@ pub struct MemoryListItem {
     /// 是否被标记为过时（tags 包含 `_stale`）
     #[serde(default)]
     pub is_stale: bool,
-    /// 记忆类型：fact（原子事实）| note（经验笔记）
+    /// 记忆类型：fact（原子事实）| study（学习记忆）| note（经验笔记）
     #[serde(default)]
     pub memory_type: String,
     /// 记忆目的：internalized | memorized | supplementary | systemic
@@ -344,6 +349,57 @@ impl MemoryService {
 
     fn is_reserved_system_name(name: &str) -> bool {
         name.trim_start().starts_with(RESERVED_SYSTEM_PREFIX)
+    }
+
+    fn fact_hard_reject_reason(title: &str, content: &str) -> Option<&'static str> {
+        let combined = format!("{}\n{}", title, content).to_lowercase();
+        let knowledge_keywords = [
+            "知识点",
+            "词汇",
+            "单词",
+            "释义",
+            "例句",
+            "语法",
+            "定理",
+            "公式",
+            "概念",
+            "题干",
+            "选项",
+            "答案",
+            "解题",
+            "错题",
+            "文档摘要",
+            "章节概要",
+        ];
+        if knowledge_keywords.iter().any(|kw| combined.contains(kw)) {
+            return Some(
+                "fact 类型只允许保存用户事实；检测到学科知识/题目内容，请改用 memory_type='study' 或 'note'。",
+            );
+        }
+
+        let pos_markers = [" n.", " v.", " adj.", " adv.", " prep.", " pron."];
+        let looks_like_vocab = pos_markers.iter().any(|marker| combined.contains(marker))
+            && (content.contains('/') || content.contains('=') || content.contains('＝'));
+        if looks_like_vocab {
+            return Some("fact 类型不适合保存词汇释义；请改用 memory_type='study'。")
+        }
+
+        None
+    }
+
+    fn non_fact_type_tag(memory_type: MemoryType) -> Option<String> {
+        match memory_type {
+            MemoryType::Fact => None,
+            _ => Some(memory_type.to_tag()),
+        }
+    }
+
+    fn same_text(lhs: &str, rhs: &str) -> bool {
+        lhs.trim() == rhs.trim()
+    }
+
+    fn purpose_matches(tags: &[String], purpose: Option<MemoryPurpose>) -> bool {
+        MemoryPurpose::from_tags(tags) == purpose.unwrap_or_default()
     }
 
     fn validate_user_writable_title(title: &str) -> VfsResult<()> {
@@ -760,11 +816,9 @@ impl MemoryService {
         let root_id = self.ensure_root_folder_id()?;
         let target_folder_id = self.resolve_write_target_folder_id(folder_path, true, &root_id)?;
 
-        let mut type_tags = if memory_type == MemoryType::Note {
-            vec![memory_type.to_tag()]
-        } else {
-            vec![]
-        };
+        let mut type_tags = Self::non_fact_type_tag(memory_type)
+            .map(|tag| vec![tag])
+            .unwrap_or_default();
         if let Some(p) = purpose {
             type_tags.push(p.to_tag());
         }
@@ -861,6 +915,110 @@ impl MemoryService {
                     })
                 }
             }
+        }
+    }
+
+    fn upsert_study_memory(
+        &self,
+        folder_path: Option<&str>,
+        title: &str,
+        content: &str,
+        purpose: Option<MemoryPurpose>,
+    ) -> VfsResult<SmartWriteOutput> {
+        let root_id = self.ensure_root_folder_id()?;
+        let target_folder_id = self.resolve_write_target_folder_id(folder_path, true, &root_id)?;
+        let existing = self.find_note_by_title(target_folder_id.as_deref(), title)?;
+
+        if let Some(note) = existing {
+            let existing_type = MemoryType::from_tags(&note.tags);
+            if existing_type == MemoryType::Study {
+                let existing_content =
+                    VfsNoteRepo::get_note_content(&self.vfs_db, &note.id)?.unwrap_or_default();
+                if Self::same_text(&existing_content, content)
+                    && Self::purpose_matches(&note.tags, purpose)
+                {
+                    return Ok(SmartWriteOutput {
+                        note_id: note.id,
+                        event: "NONE".to_string(),
+                        is_new: false,
+                        confidence: 1.0,
+                        reason: "同名学习记忆已存在，内容一致，跳过写入".to_string(),
+                        resource_id: None,
+                        downgraded: false,
+                    });
+                }
+
+                let updated = self.update_by_id(&note.id, Some(title), Some(content))?;
+                self.sync_note_system_tags(&note.id, MemoryType::Study, purpose)?;
+                return Ok(SmartWriteOutput {
+                    note_id: updated.note_id,
+                    event: "UPDATE".to_string(),
+                    is_new: false,
+                    confidence: 1.0,
+                    reason: "同名学习记忆已存在，已更新内容".to_string(),
+                    resource_id: Some(updated.resource_id),
+                    downgraded: false,
+                });
+            }
+        }
+
+        let result = self.write_typed(
+            folder_path,
+            title,
+            content,
+            WriteMode::Create,
+            MemoryType::Study,
+            purpose,
+        )?;
+        Ok(SmartWriteOutput {
+            note_id: result.note_id,
+            event: "ADD".to_string(),
+            is_new: true,
+            confidence: 1.0,
+            reason: "学习记忆类型，已写入".to_string(),
+            resource_id: Some(result.resource_id),
+            downgraded: false,
+        })
+    }
+
+    pub fn write_explicit_memory(
+        &self,
+        folder_path: Option<&str>,
+        title: &str,
+        content: &str,
+        memory_type: MemoryType,
+        purpose: Option<MemoryPurpose>,
+    ) -> VfsResult<SmartWriteOutput> {
+        let purpose = match (memory_type, purpose) {
+            (MemoryType::Fact, p) => p,
+            (_, Some(MemoryPurpose::Systemic)) => Some(MemoryPurpose::Memorized),
+            (_, p) => p,
+        };
+        match memory_type {
+            MemoryType::Note => {
+                let result = self.write_typed(
+                    folder_path,
+                    title,
+                    content,
+                    WriteMode::Create,
+                    MemoryType::Note,
+                    purpose,
+                )?;
+                Ok(SmartWriteOutput {
+                    note_id: result.note_id,
+                    event: "ADD".to_string(),
+                    is_new: true,
+                    confidence: 1.0,
+                    reason: "经验笔记类型，直接写入".to_string(),
+                    resource_id: Some(result.resource_id),
+                    downgraded: false,
+                })
+            }
+            MemoryType::Study => self.upsert_study_memory(folder_path, title, content, purpose),
+            MemoryType::Fact => Err(VfsError::InvalidArgument {
+                param: "memory_type".to_string(),
+                reason: "fact 不是显式学习内容写入类型".to_string(),
+            }),
         }
     }
 
@@ -991,6 +1149,76 @@ impl MemoryService {
             return Ok(output);
         }
 
+        if memory_type == MemoryType::Note {
+            let output = self.write_explicit_memory(
+                folder_path,
+                title,
+                content,
+                MemoryType::Note,
+                purpose,
+            )?;
+            if let Some(resource_id) = &output.resource_id {
+                self.index_immediately(resource_id).await;
+            }
+
+            self.audit_logger.log_write_smart_result(
+                source,
+                title,
+                content,
+                folder_path,
+                &output,
+                timer.elapsed_ms(),
+                session_id,
+            );
+            if let Some(key) = idempotency_key {
+                self.finalize_idempotency_result(key, &output);
+            }
+            return Ok(output);
+        }
+
+        if memory_type == MemoryType::Study {
+            let output = self.write_explicit_memory(
+                folder_path,
+                title,
+                content,
+                MemoryType::Study,
+                purpose,
+            )?;
+            if let Some(resource_id) = &output.resource_id {
+                self.index_immediately(resource_id).await;
+            }
+            self.audit_logger.log_write_smart_result(
+                source,
+                title,
+                content,
+                folder_path,
+                &output,
+                timer.elapsed_ms(),
+                session_id,
+            );
+            if let Some(key) = idempotency_key {
+                self.finalize_idempotency_result(key, &output);
+            }
+            return Ok(output);
+        }
+
+        if let Some(reason) = Self::fact_hard_reject_reason(title, content) {
+            let output = SmartWriteOutput {
+                note_id: String::new(),
+                event: "FILTERED".to_string(),
+                is_new: false,
+                confidence: 1.0,
+                reason: reason.to_string(),
+                resource_id: None,
+                downgraded: false,
+            };
+            self.audit_logger.log_filtered(source, title, content, reason);
+            if let Some(key) = idempotency_key {
+                self.finalize_idempotency_result(key, &output);
+            }
+            return Ok(output);
+        }
+
         if self.config.is_privacy_mode()? {
             // 隐私模式下使用本地标题匹配做基础去重（不涉及外部 API 调用）
             let root_id = self.ensure_root_folder_id()?;
@@ -1028,44 +1256,6 @@ impl MemoryService {
                 resource_id: Some(result.resource_id),
                 downgraded: false,
             };
-            if let Some(key) = idempotency_key {
-                self.finalize_idempotency_result(key, &output);
-            }
-            return Ok(output);
-        }
-
-        // Note 类型快速通道：跳过 LLM 决策，直接写入
-        // 用户明确要求保存的经验/方法论不需要"是否重复"的判断
-        if memory_type == MemoryType::Note {
-            let result = self.write_typed(
-                folder_path,
-                title,
-                content,
-                WriteMode::Create,
-                MemoryType::Note,
-                purpose,
-            )?;
-            self.index_immediately(&result.resource_id).await;
-
-            let output = SmartWriteOutput {
-                note_id: result.note_id,
-                event: "ADD".to_string(),
-                is_new: true,
-                confidence: 1.0,
-                reason: "经验笔记类型，直接写入".to_string(),
-                resource_id: Some(result.resource_id),
-                downgraded: false,
-            };
-
-            self.audit_logger.log_write_smart_result(
-                source,
-                title,
-                content,
-                folder_path,
-                &output,
-                timer.elapsed_ms(),
-                session_id,
-            );
             if let Some(key) = idempotency_key {
                 self.finalize_idempotency_result(key, &output);
             }
@@ -2527,8 +2717,8 @@ impl MemoryService {
             .filter(|tag| !tag.starts_with(TAG_TYPE_PREFIX) && !tag.starts_with(TAG_PURPOSE_PREFIX))
             .cloned()
             .collect();
-        if memory_type == MemoryType::Note {
-            merged.push(memory_type.to_tag());
+        if let Some(tag) = Self::non_fact_type_tag(memory_type) {
+            merged.push(tag);
         }
         if let Some(p) = purpose {
             merged.push(p.to_tag());
@@ -2650,9 +2840,12 @@ impl MemoryService {
             if mem.title.starts_with("__") {
                 continue;
             }
-            // note 类型仅列出标题（避免长内容膨胀画像摘要）
             if mem.memory_type == "note" {
                 facts.push((&mem.folder_path, format!("[经验笔记] {}", mem.title)));
+                continue;
+            }
+            if mem.memory_type == "study" {
+                facts.push((&mem.folder_path, format!("[学习记忆] {}", mem.title)));
                 continue;
             }
             let content = VfsNoteRepo::get_note_content(&self.vfs_db, &mem.id)?.unwrap_or_default();

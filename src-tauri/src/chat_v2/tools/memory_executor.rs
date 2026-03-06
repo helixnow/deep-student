@@ -19,6 +19,7 @@ pub const MEMORY_LIST: &str = "builtin-memory_list";
 pub const MEMORY_UPDATE_BY_ID: &str = "builtin-memory_update_by_id";
 pub const MEMORY_DELETE: &str = "builtin-memory_delete";
 pub const MEMORY_WRITE_SMART: &str = "builtin-memory_write_smart";
+pub const MEMORY_WRITE_BATCH: &str = "builtin-memory_write_batch";
 
 pub struct MemoryToolExecutor;
 
@@ -39,11 +40,22 @@ impl MemoryToolExecutor {
                 | "memory_update_by_id"
                 | "memory_delete"
                 | "memory_write_smart"
+                | "memory_write_batch"
         )
     }
 
     fn needs_root_bootstrap(root_folder_id: Option<&str>) -> bool {
         root_folder_id.is_none()
+    }
+
+    fn parse_memory_type(raw: Option<&str>, default_type: MemoryType) -> Result<MemoryType, String> {
+        match raw {
+            Some("fact") => Ok(MemoryType::Fact),
+            Some("study") => Ok(MemoryType::Study),
+            Some("note") => Ok(MemoryType::Note),
+            Some(other) => Err(format!("Invalid memory_type '{}': expected fact, study, or note", other)),
+            None => Ok(default_type),
+        }
     }
 
     fn get_service(&self, ctx: &ExecutionContext) -> Result<MemoryService, String> {
@@ -611,12 +623,10 @@ impl MemoryToolExecutor {
             .and_then(|v| v.as_str())
             .ok_or("Missing 'content' parameter")?;
         let folder = call.arguments.get("folder").and_then(|v| v.as_str());
-        let memory_type = call
-            .arguments
-            .get("memory_type")
-            .and_then(|v| v.as_str())
-            .map(MemoryType::from_str)
-            .unwrap_or(MemoryType::Fact);
+        let memory_type = Self::parse_memory_type(
+            call.arguments.get("memory_type").and_then(|v| v.as_str()),
+            MemoryType::Fact,
+        )?;
         let memory_purpose = call
             .arguments
             .get("memory_purpose")
@@ -658,10 +668,17 @@ impl MemoryToolExecutor {
                     memory_type.as_str()
                 ),
             );
-            let hint = if memory_type == MemoryType::Fact {
-                format!("原子事实记忆内容过长（超过 {} 字）。请拆分为多条简短事实，或使用 memory_type='note' 保存经验笔记。", max_chars)
-            } else {
-                format!("经验笔记内容过长（超过 {} 字）。请精简内容。", max_chars)
+            let hint = match memory_type {
+                MemoryType::Fact => format!(
+                    "原子事实记忆内容过长（超过 {} 字）。请拆分为多条简短事实，或使用 memory_type='study' / 'note'。",
+                    max_chars
+                ),
+                MemoryType::Study => {
+                    format!("学习记忆内容过长（超过 {} 字）。请精简或拆分为多条。", max_chars)
+                }
+                MemoryType::Note => {
+                    format!("经验笔记内容过长（超过 {} 字）。请精简内容。", max_chars)
+                }
             };
             return Ok(json!({
                 "note_id": "",
@@ -739,6 +756,149 @@ impl MemoryToolExecutor {
             "downgraded": result.downgraded
         }))
     }
+
+    async fn execute_write_batch(
+        &self,
+        call: &ToolCall,
+        ctx: &ExecutionContext,
+    ) -> Result<Value, String> {
+        if ctx.is_cancelled() {
+            return Err("Memory write_batch cancelled before start".to_string());
+        }
+
+        let service = self.get_service(ctx)?;
+        if let Err(hint) = self.ensure_root_configured(&service) {
+            return Ok(hint);
+        }
+
+        let items = call
+            .arguments
+            .get("items")
+            .and_then(|v| v.as_array())
+            .ok_or("Missing 'items' parameter")?;
+        let default_folder = call.arguments.get("folder").and_then(|v| v.as_str());
+        let default_memory_type = Self::parse_memory_type(
+            call.arguments.get("memory_type").and_then(|v| v.as_str()),
+            MemoryType::Study,
+        )?;
+        let default_memory_purpose = call
+            .arguments
+            .get("memory_purpose")
+            .and_then(|v| v.as_str())
+            .map(crate::memory::MemoryPurpose::from_str);
+
+        let mut added = 0usize;
+        let mut updated = 0usize;
+        let mut skipped = 0usize;
+        let mut filtered = 0usize;
+        let mut results = Vec::with_capacity(items.len());
+        let mut resource_ids = Vec::new();
+
+        for (index, item) in items.iter().enumerate() {
+            let title = item
+                .get("title")
+                .and_then(|v| v.as_str())
+                .ok_or("Each batch item requires 'title'")?;
+            let content = item
+                .get("content")
+                .and_then(|v| v.as_str())
+                .ok_or("Each batch item requires 'content'")?;
+            let folder = item
+                .get("folder")
+                .or_else(|| item.get("folder_path"))
+                .and_then(|v| v.as_str())
+                .or(default_folder);
+            let memory_type = Self::parse_memory_type(
+                item.get("memory_type").and_then(|v| v.as_str()),
+                default_memory_type,
+            )?;
+            let memory_purpose = item
+                .get("memory_purpose")
+                .and_then(|v| v.as_str())
+                .map(crate::memory::MemoryPurpose::from_str)
+                .or(default_memory_purpose);
+            let idempotency_key = item
+                .get("idempotency_key")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| {
+                    format!(
+                        "{}:{}:{}",
+                        ctx.message_id,
+                        index,
+                        Self::resolve_idempotency_key(
+                            call,
+                            &ctx.session_id,
+                            &ctx.message_id,
+                            folder,
+                            title,
+                            content,
+                            memory_type,
+                            memory_purpose,
+                        )
+                    )
+                });
+
+            let output = match memory_type {
+                MemoryType::Fact => service
+                    .write_smart_with_source(
+                        folder,
+                        title,
+                        content,
+                        MemoryOpSource::ToolCall,
+                        Some(&ctx.session_id),
+                        memory_type,
+                        memory_purpose,
+                        Some(idempotency_key.as_str()),
+                    )
+                    .await
+                    .map_err(|e| e.to_string())?,
+                _ => service
+                    .write_explicit_memory(folder, title, content, memory_type, memory_purpose)
+                    .map_err(|e| e.to_string())?,
+            };
+
+            match output.event.as_str() {
+                "ADD" => added += 1,
+                "UPDATE" | "APPEND" | "DELETE" => updated += 1,
+                "FILTERED" => filtered += 1,
+                _ => skipped += 1,
+            }
+            if let Some(resource_id) = &output.resource_id {
+                resource_ids.push(resource_id.clone());
+            }
+            results.push(json!({
+                "title": title,
+                "note_id": output.note_id,
+                "event": output.event,
+                "is_new": output.is_new,
+                "confidence": output.confidence,
+                "reason": output.reason,
+                "downgraded": output.downgraded,
+            }));
+        }
+
+        if added + updated > 0 {
+            for resource_id in resource_ids {
+                let svc = service.clone();
+                tokio::spawn(async move {
+                    svc.index_resource_immediately(&resource_id).await;
+                });
+            }
+            service.spawn_post_write_maintenance();
+        }
+
+        Ok(json!({
+            "total": items.len(),
+            "succeeded": added + updated,
+            "failed": filtered,
+            "added": added,
+            "updated": updated,
+            "skipped": skipped,
+            "filtered": filtered,
+            "results": results,
+        }))
+    }
 }
 
 impl MemoryToolExecutor {
@@ -804,6 +964,7 @@ impl ToolExecutor for MemoryToolExecutor {
             "memory_update_by_id" => self.execute_update_by_id(call, ctx).await,
             "memory_delete" => self.execute_delete(call, ctx).await,
             "memory_write_smart" => self.execute_write_smart(call, ctx).await,
+            "memory_write_batch" => self.execute_write_batch(call, ctx).await,
             _ => Err(format!("Unknown memory tool: {}", call.name)),
         };
 

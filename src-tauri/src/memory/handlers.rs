@@ -33,12 +33,77 @@ pub struct MemoryReadOutput {
     pub updated_at: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MemoryBatchWriteItemInput {
+    pub title: String,
+    pub content: String,
+    #[serde(default)]
+    pub folder_path: Option<String>,
+    #[serde(default)]
+    pub memory_type: Option<String>,
+    #[serde(default)]
+    pub memory_purpose: Option<String>,
+    #[serde(default)]
+    pub idempotency_key: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MemoryBatchWriteItemResult {
+    pub title: String,
+    #[serde(flatten)]
+    pub output: SmartWriteOutput,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MemoryBatchWriteOutput {
+    pub total: usize,
+    pub succeeded: usize,
+    pub failed: usize,
+    pub added: usize,
+    pub updated: usize,
+    pub skipped: usize,
+    pub filtered: usize,
+    pub results: Vec<MemoryBatchWriteItemResult>,
+}
+
 fn get_memory_service(
     vfs_db: &Arc<VfsDatabase>,
     lance_store: &Arc<VfsLanceStore>,
     llm_manager: &Arc<LLMManager>,
 ) -> MemoryService {
     MemoryService::new(vfs_db.clone(), lance_store.clone(), llm_manager.clone())
+}
+
+fn parse_memory_type(memory_type: Option<&str>) -> Result<super::service::MemoryType, String> {
+    match memory_type.map(|s| s.trim().to_lowercase()) {
+        Some(s) if s == "fact" => Ok(super::service::MemoryType::Fact),
+        Some(s) if s == "study" => Ok(super::service::MemoryType::Study),
+        Some(s) if s == "note" => Ok(super::service::MemoryType::Note),
+        Some(s) => Err(format!(
+            "Invalid memory_type '{}', expected one of: fact, study, note",
+            s
+        )),
+        None => Ok(super::service::MemoryType::Fact),
+    }
+}
+
+fn parse_memory_purpose(
+    memory_purpose: Option<&str>,
+) -> Result<Option<super::service::MemoryPurpose>, String> {
+    match memory_purpose.map(|s| s.trim().to_lowercase()) {
+        Some(s) if s == "internalized" => Ok(Some(super::service::MemoryPurpose::Internalized)),
+        Some(s) if s == "memorized" => Ok(Some(super::service::MemoryPurpose::Memorized)),
+        Some(s) if s == "supplementary" => Ok(Some(super::service::MemoryPurpose::Supplementary)),
+        Some(s) if s == "systemic" => Ok(Some(super::service::MemoryPurpose::Systemic)),
+        Some(s) => Err(format!(
+            "Invalid memory_purpose '{}', expected one of: internalized, memorized, supplementary, systemic",
+            s
+        )),
+        None => Ok(None),
+    }
 }
 
 /// 写入后触发单资源索引，保证 write-then-search SLA。
@@ -627,30 +692,8 @@ pub async fn memory_write_smart(
     }
 
     let service = get_memory_service(&vfs_db, &lance_store, &llm_manager);
-    let mem_type = match memory_type.as_deref().map(|s| s.trim().to_lowercase()) {
-        Some(s) if s == "fact" => super::service::MemoryType::Fact,
-        Some(s) if s == "note" => super::service::MemoryType::Note,
-        Some(s) => {
-            return Err(format!(
-                "Invalid memory_type '{}', expected one of: fact, note",
-                s
-            ));
-        }
-        None => super::service::MemoryType::Fact,
-    };
-    let purpose = match memory_purpose.as_deref().map(|s| s.trim().to_lowercase()) {
-        Some(s) if s == "internalized" => Some(super::service::MemoryPurpose::Internalized),
-        Some(s) if s == "memorized" => Some(super::service::MemoryPurpose::Memorized),
-        Some(s) if s == "supplementary" => Some(super::service::MemoryPurpose::Supplementary),
-        Some(s) if s == "systemic" => Some(super::service::MemoryPurpose::Systemic),
-        Some(s) => {
-            return Err(format!(
-                "Invalid memory_purpose '{}', expected one of: internalized, memorized, supplementary, systemic",
-                s
-            ));
-        }
-        None => None,
-    };
+    let mem_type = parse_memory_type(memory_type.as_deref())?;
+    let purpose = parse_memory_purpose(memory_purpose.as_deref())?;
     let result = service
         .write_smart_with_source(
             folder_path.as_deref(),
@@ -670,6 +713,117 @@ pub async fn memory_write_smart(
     }
 
     Ok(result)
+}
+
+#[tauri::command]
+pub async fn memory_write_batch(
+    items: Vec<MemoryBatchWriteItemInput>,
+    default_folder_path: Option<String>,
+    default_memory_type: Option<String>,
+    default_memory_purpose: Option<String>,
+    vfs_db: State<'_, Arc<VfsDatabase>>,
+    lance_store: State<'_, Arc<VfsLanceStore>>,
+    llm_manager: State<'_, Arc<LLMManager>>,
+) -> Result<MemoryBatchWriteOutput, String> {
+    if items.is_empty() {
+        return Ok(MemoryBatchWriteOutput {
+            total: 0,
+            succeeded: 0,
+            failed: 0,
+            added: 0,
+            updated: 0,
+            skipped: 0,
+            filtered: 0,
+            results: vec![],
+        });
+    }
+
+    let service = get_memory_service(&vfs_db, &lance_store, &llm_manager);
+    let default_type = default_memory_type
+        .as_deref()
+        .map(|s| parse_memory_type(Some(s)))
+        .transpose()?
+        .unwrap_or(super::service::MemoryType::Study);
+    let default_purpose = parse_memory_purpose(default_memory_purpose.as_deref())?;
+
+    let mut results = Vec::with_capacity(items.len());
+    let mut added = 0usize;
+    let mut updated = 0usize;
+    let mut skipped = 0usize;
+    let mut filtered = 0usize;
+    let mut resource_ids = Vec::new();
+
+    for item in items {
+        let mem_type = item
+            .memory_type
+            .as_deref()
+            .map(|s| parse_memory_type(Some(s)))
+            .transpose()?
+            .unwrap_or(default_type);
+        let purpose = parse_memory_purpose(item.memory_purpose.as_deref())?.or(default_purpose);
+        let output = match mem_type {
+            super::service::MemoryType::Fact => service
+                .write_smart_with_source(
+                    item.folder_path.as_deref().or(default_folder_path.as_deref()),
+                    &item.title,
+                    &item.content,
+                    super::audit_log::MemoryOpSource::Handler,
+                    None,
+                    mem_type,
+                    purpose,
+                    item.idempotency_key.as_deref(),
+                )
+                .await
+                .map_err(|e| e.to_string())?,
+            _ => service
+                .write_explicit_memory(
+                    item.folder_path.as_deref().or(default_folder_path.as_deref()),
+                    &item.title,
+                    &item.content,
+                    mem_type,
+                    purpose,
+                )
+                .map_err(|e| e.to_string())?,
+        };
+
+        match output.event.as_str() {
+            "ADD" => added += 1,
+            "UPDATE" | "APPEND" | "DELETE" => updated += 1,
+            "FILTERED" => filtered += 1,
+            _ => skipped += 1,
+        }
+        if let Some(resource_id) = &output.resource_id {
+            resource_ids.push(resource_id.clone());
+        }
+        results.push(MemoryBatchWriteItemResult {
+            title: item.title,
+            output,
+        });
+    }
+
+    if !resource_ids.is_empty() {
+        for resource_id in resource_ids {
+            trigger_immediate_index(
+                Arc::clone(vfs_db.inner()),
+                Arc::clone(llm_manager.inner()),
+                Arc::clone(lance_store.inner()),
+                resource_id,
+            );
+        }
+        service.spawn_post_write_maintenance();
+    }
+
+    let succeeded = added + updated;
+    Ok(MemoryBatchWriteOutput {
+        total: results.len(),
+        succeeded,
+        failed: filtered,
+        added,
+        updated,
+        skipped,
+        filtered,
+        results,
+    })
 }
 
 #[tauri::command]
