@@ -84,6 +84,8 @@ export interface UnifiedSourceItem {
   resourceId?: string;
   /** DSTU 资源 ID（用于打开预览器，格式 tb_xxx/note_xxx 等） */
   sourceId?: string;
+  /** 资源路径（用于显式路由到 Learning Hub） */
+  path?: string;
   /** 页码（0-indexed，用于获取 PDF 页面图片） */
   pageIndex?: number;
   /** 资源类型（textbook/attachment/exam 等） */

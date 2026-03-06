@@ -6,11 +6,9 @@
  * ★ 文档28 Prompt 8: 集成真实路径导航系统
  */
 
-import React, { createContext, useContext, useState, useCallback, useMemo, useEffect, useRef } from 'react';
-import { useFolderNavigation, type RealPathBreadcrumbItem } from './hooks/useFolderNavigation';
-import { useShallow } from 'zustand/react/shallow';
+import React, { createContext, useContext, useState, useCallback, useMemo, useEffect } from 'react';
+import type { RealPathBreadcrumbItem } from './hooks/useFolderNavigation';
 import { useFinderStore } from './stores/finderStore';
-import type { ViewMode as FinderViewMode } from './stores/finderStore';
 
 // ============================================================================
 // 📱 全局导航 Ref（解决 App.tsx 无法访问 Context 的问题）
@@ -108,22 +106,26 @@ export const LearningHubNavigationProvider: React.FC<{ children: React.ReactNode
     setCloseAppCallback(() => callback);
   }, []);
 
-  // ★ 文档28 Prompt 8: 使用真实路径导航 Hook
-  const {
-    navigation,
-    navigateTo: realPathNavigateTo,
-    navigateToBreadcrumb,
-  } = useFolderNavigation();
-
-  // ★ 2026-01-15: 直接使用 finderStore 的历史栈，而不是 useFolderNavigationHistory
-  // 原因：两个独立的历史栈会互相干扰，导致循环。统一使用 finderStore 的历史栈。
   const {
     historyIndex,
     history,
     goBack: finderGoBack,
     goForward: finderGoForward,
     currentPath,
+    enterFolder,
+    jumpToBreadcrumb,
+    setCurrentPathWithoutHistory,
   } = useFinderStore();
+
+  const breadcrumbs = useMemo<RealPathBreadcrumbItem[]>(
+    () => currentPath.breadcrumbs.map((crumb) => ({
+      folderId: crumb.id,
+      name: crumb.name,
+      fullPath: crumb.dstuPath,
+    })),
+    [currentPath.breadcrumbs]
+  );
+  const currentFolderPath = breadcrumbs[breadcrumbs.length - 1]?.fullPath || '/';
 
   // 从 finderStore 的历史栈计算 canGoBack/canGoForward
   const canGoBack = historyIndex > 0;
@@ -138,20 +140,21 @@ export const LearningHubNavigationProvider: React.FC<{ children: React.ReactNode
     finderGoForward();
   }, [finderGoForward]);
 
-  // 统一导航方法：使用 finderStore.enterFolder
-  const { enterFolder } = useFinderStore(
-    useShallow((state) => ({
-      enterFolder: state.enterFolder,
-    }))
-  );
   const navigateTo = useCallback((folderId: string | null) => {
-    enterFolder(folderId ?? 'root');
-  }, [enterFolder]);
+    if (folderId) {
+      void enterFolder(folderId);
+      return;
+    }
+    jumpToBreadcrumb(-1);
+  }, [enterFolder, jumpToBreadcrumb]);
+
+  const navigateToBreadcrumb = useCallback((index: number) => {
+    jumpToBreadcrumb(index);
+  }, [jumpToBreadcrumb]);
 
   const setCurrentFolderId = useCallback((folderId: string | null) => {
-    // 不再需要，因为 finderStore 是唯一真相源
-    // 保留空实现以兼容现有接口
-  }, []);
+    void setCurrentPathWithoutHistory(folderId);
+  }, [setCurrentPathWithoutHistory]);
 
   // 📱 增强版 canGoBack：有应用打开时也返回 true
   const enhancedCanGoBack = hasOpenApp || canGoBack;
@@ -180,9 +183,9 @@ export const LearningHubNavigationProvider: React.FC<{ children: React.ReactNode
   }, [enhancedCanGoBack, canGoForward, enhancedGoBack, goForward]);
 
   const value = useMemo<LearningHubNavigationContextValue>(() => ({
-    currentFolderId: navigation.currentFolderId,
-    currentFolderPath: navigation.currentFolderPath,
-    breadcrumbs: navigation.breadcrumbs,
+    currentFolderId: currentPath.folderId,
+    currentFolderPath,
+    breadcrumbs,
     setCurrentFolderId,
     navigateTo,
     navigateToBreadcrumb,
@@ -192,16 +195,15 @@ export const LearningHubNavigationProvider: React.FC<{ children: React.ReactNode
     goForward,
     isInLearningHub,
     setIsInLearningHub,
-    isNavigationLoading: navigation.isLoading,
+    isNavigationLoading: false,
     hasOpenApp,
     setHasOpenApp,
     closeAppCallback,
     registerCloseAppCallback,
   }), [
-    navigation.currentFolderId,
-    navigation.currentFolderPath,
-    navigation.breadcrumbs,
-    navigation.isLoading,
+    currentPath.folderId,
+    currentFolderPath,
+    breadcrumbs,
     setCurrentFolderId,
     navigateTo,
     navigateToBreadcrumb,

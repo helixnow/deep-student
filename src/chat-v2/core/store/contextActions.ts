@@ -132,6 +132,7 @@ export function createContextActions(
             pendingContextRefs: newRefs,
             activeSkillIds: s.activeSkillIds.filter(id => id !== removedRef.skillId),
             pendingContextRefsDirty: true,
+            skillStateJson: null,
           };
         }
 
@@ -139,6 +140,7 @@ export function createContextActions(
         return {
           pendingContextRefs: newRefs,
           pendingContextRefsDirty: true,
+          skillStateJson: null,
         };
       });
     },
@@ -162,7 +164,7 @@ export function createContextActions(
           ),
           pendingContextRefsDirty: true,
           // 如果是技能类型，同时清空 activeSkillIds
-          ...(isSkillType ? { activeSkillIds: [] } : {}),
+          ...(isSkillType ? { activeSkillIds: [], skillStateJson: null } : {}),
         }));
         
         console.log('[ChatStore] clearContextRefs (type):', typeId, isSkillType ? '(+ activeSkillIds)' : '');
@@ -172,6 +174,7 @@ export function createContextActions(
           pendingContextRefs: [],
           pendingContextRefsDirty: true,
           activeSkillIds: [],
+          skillStateJson: null,
         } as Partial<ChatStoreState>);
         console.log('[ChatStore] clearContextRefs: all (including activeSkillIds)');
       }

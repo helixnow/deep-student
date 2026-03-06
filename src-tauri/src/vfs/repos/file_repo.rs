@@ -345,6 +345,15 @@ impl VfsFileRepo {
                     "[VFS::FileRepo] File with same sha256 already exists: {} (status: {:?})",
                     existing.id, existing.status
                 );
+                let ensure_folder_assignment = |file_id: &str| -> VfsResult<()> {
+                    let folder_item = VfsFolderItem::new(
+                        folder_id.map(|s| s.to_string()),
+                        "file".to_string(),
+                        file_id.to_string(),
+                    );
+                    VfsFolderRepo::add_item_to_folder_with_conn(conn, &folder_item)
+                };
+
                 if existing.status != "active" {
                     info!(
                         "[VFS::FileRepo] Restoring soft-deleted file: {} from status {:?} to active",
@@ -357,10 +366,13 @@ impl VfsFileRepo {
                         "UPDATE files SET status = 'active', deleted_at = NULL, updated_at = ?1 WHERE id = ?2",
                         params![now, existing.id],
                     )?;
+                    ensure_folder_assignment(&existing.id)?;
                     return Self::get_file_with_conn(conn, &existing.id)?.ok_or_else(|| {
                         VfsError::Database(format!("File {} not found after restore", existing.id))
                     });
                 }
+
+                ensure_folder_assignment(&existing.id)?;
                 return Ok(existing);
             }
 
@@ -1436,11 +1448,26 @@ impl VfsFileRepo {
 
     pub fn purge_deleted_files(db: &VfsDatabase) -> VfsResult<usize> {
         let conn = db.get_conn_safe()?;
-        Self::purge_deleted_files_with_conn(&conn)
+        Self::purge_deleted_files_with_conn(&conn, db.blobs_dir())
     }
 
-    pub fn purge_deleted_files_with_conn(conn: &Connection) -> VfsResult<usize> {
-        let count = conn.execute("DELETE FROM files WHERE status = 'deleted'", [])?;
+    pub fn purge_deleted_files_with_conn(conn: &Connection, blobs_dir: &Path) -> VfsResult<usize> {
+        let file_ids: Vec<String> = conn
+            .prepare("SELECT id FROM files WHERE status = 'deleted'")?
+            .query_map([], |row| row.get(0))?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let count = file_ids.len();
+
+        for file_id in &file_ids {
+            if let Err(e) = Self::purge_file_with_conn(conn, blobs_dir, file_id) {
+                warn!(
+                    "[VFS::FileRepo] Failed to purge deleted file {}: {}",
+                    file_id, e
+                );
+            }
+        }
+
         info!("[VFS::FileRepo] Purged {} deleted files", count);
         Ok(count)
     }
@@ -1709,4 +1736,5 @@ mod tests {
             .expect("File should exist");
         assert_eq!(restored.status, "active");
     }
+
 }

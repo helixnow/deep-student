@@ -50,6 +50,25 @@ export interface Variant {
 
   /** Token 使用统计（多变体模式，每个变体独立统计） */
   usage?: TokenUsage;
+
+  /** 变体级元数据 */
+  meta?: VariantMeta;
+}
+
+export interface SkillStateSnapshot {
+  manualPinnedSkillIds?: string[];
+  modeRequiredBundleIds?: string[];
+  agenticSessionSkillIds?: string[];
+  branchLocalSkillIds?: string[];
+  effectiveAllowedInternalTools?: string[];
+  effectiveAllowedExternalTools?: string[];
+  effectiveAllowedExternalServers?: string[];
+  version?: number;
+}
+
+export interface VariantMeta {
+  skillSnapshotBefore?: SkillStateSnapshot;
+  skillSnapshotAfter?: SkillStateSnapshot;
 }
 
 // ============================================================================
@@ -158,6 +177,15 @@ export interface MessageMeta {
 
   /** 上下文快照（发送时保存的上下文引用） */
   contextSnapshot?: ContextSnapshot;
+
+  /** 技能状态快照（执行前） */
+  skillSnapshotBefore?: SkillStateSnapshot;
+
+  /** 技能状态快照（执行后） */
+  skillSnapshotAfter?: SkillStateSnapshot;
+
+  /** 实际采用的 replay 来源 */
+  replaySource?: string;
 
   /** 完整请求体（开发者调试用） */
   rawRequest?: unknown;

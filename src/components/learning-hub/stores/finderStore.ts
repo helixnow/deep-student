@@ -6,6 +6,9 @@ import { folderApi, trashApi } from '@/dstu';
 import type { BreadcrumbItem as BackendBreadcrumbItem } from '@/dstu/api/folderApi';
 import { reportError } from '@/shared/result';
 import i18n from '@/i18n';
+import type { FinderViewKind, QuickAccessType } from '../learningHubContracts';
+import { getQuickAccessTarget } from '../learningHubContracts';
+import { getViewKindFromFolderId, isRealFolderId, isSpecialViewFolderId } from '../viewGuards';
 
 /** 视图模式 */
 export type ViewMode = 'grid' | 'list';
@@ -14,13 +17,7 @@ export type ViewMode = 'grid' | 'list';
 export type SortBy = 'name' | 'updatedAt' | 'createdAt' | 'type';
 export type SortOrder = 'asc' | 'desc';
 
-/** 快捷入口类型 */
-// ★ 2025-12-09: 添加 images 和 files 以支持附件资源
-// ★ 2025-12-11: 添加 allFiles 以支持查看真实文件夹结构
-// ★ 2026-01-15: 添加 indexStatus 以支持向量化状态视图
-// ★ 2026-01-19: 添加 memory 以支持 VFS 记忆管理
-// ★ 2026-01-31: 添加 desktop 以支持桌面快捷方式
-export type QuickAccessType = 'allFiles' | 'favorites' | 'notes' | 'textbooks' | 'exams' | 'essays' | 'translations' | 'images' | 'files' | 'mindmaps' | 'recent' | 'trash' | 'indexStatus' | 'memory' | 'desktop';
+export type { QuickAccessType } from '../learningHubContracts';
 
 /** 面包屑项 */
 export interface BreadcrumbItem {
@@ -84,7 +81,7 @@ function sortItems(items: DstuNode[], sortBy: SortBy, sortOrder: SortOrder): Dst
  */
 async function fetchBreadcrumbs(folderId: string): Promise<BreadcrumbItem[]> {
   // 特殊文件夹（root, trash）不需要调用后端 API
-  if (folderId === 'root' || folderId === 'trash') {
+  if (isSpecialViewFolderId(folderId)) {
     return [];
   }
 
@@ -122,31 +119,14 @@ async function fetchBreadcrumbs(folderId: string): Promise<BreadcrumbItem[]> {
  * 
  */
 export interface FinderPath {
-  /** 
-   * 完整路径（仅用于显示面包屑，文件夹优先模式下为文件夹路径）
-   * 
-   * @deprecated 此字段仅用于 UI 显示，调用后端时请使用 `getDstuListOptions()` 
-   * 获取 `folderId` + `typeFilter` 参数，不要直接使用 dstuPath 调用 `dstu.list()`
-   */
-  dstuPath: string;
+  /** 当前视图语义 */
+  viewKind: FinderViewKind;
   /** 面包屑显示名称数组，每个项包含完整路径 */
   breadcrumbs: BreadcrumbItem[];
-  /** ★ 当前文件夹 ID（文件夹导航模式）
-   * - null 表示根目录
-   * - 'root' 表示根目录（全部文件视图）
-   * - 'trash' 表示回收站
-   * - 'recent' 表示最近文件（前端维护）
-   * - 有值时使用 folderId 参数调用后端 */
+  /** 当前真实文件夹 ID；根目录为 null */
   folderId: string | null;
-  /** ★ 类型筛选（智能文件夹模式）
-   * - null 表示不筛选（显示混合类型）
-   * - 有值时使用 typeFilter 参数调用后端 */
+  /** 类型筛选（智能文件夹模式） */
   typeFilter: DstuNodeType | null;
-  /** 
-   * 当前筛选的资源类型
-   * @deprecated 请使用 `typeFilter` 字段 
-   */
-  resourceType: DstuNodeType | null;
 }
 
 /** 内联编辑状态 */
@@ -280,12 +260,21 @@ interface FinderState {
 }
 
 const DEFAULT_PATH: FinderPath = {
-  dstuPath: '/',
+  viewKind: 'folder',
   breadcrumbs: [],
-  folderId: 'root', // ★ 默认显示真实文件夹结构（全部文件视图）
+  folderId: null,
   typeFilter: null,
-  resourceType: null,
 };
+
+function createFinderPath(overrides: Partial<FinderPath> = {}): FinderPath {
+  return {
+    viewKind: 'folder',
+    breadcrumbs: [],
+    folderId: null,
+    typeFilter: null,
+    ...overrides,
+  };
+}
 
 /** 历史记录最大条数，防止内存无限增长 */
 const MAX_HISTORY_SIZE = 100;
@@ -354,20 +343,14 @@ export const useFinderStore = create<FinderState>()(
         // ★ 2025-12-27 修复：从后端获取真实的面包屑 ID 链
         const newBreadcrumbs = await fetchBreadcrumbs(folderId);
 
-        // 计算 dstuPath（从面包屑重建完整路径）
-        const newDstuPath = newBreadcrumbs.length > 0
-          ? newBreadcrumbs[newBreadcrumbs.length - 1].dstuPath
-          : '/';
-
         const { currentPath } = get();
-        const newPath: FinderPath = {
+        const newPath: FinderPath = createFinderPath({
           ...currentPath,
-          dstuPath: newDstuPath,
+          viewKind: 'folder',
           breadcrumbs: newBreadcrumbs,
-          folderId: folderId,
-          typeFilter: null, // ★ 进入文件夹后清除类型筛选
-          resourceType: null, // 保持兼容
-        };
+          folderId,
+          typeFilter: null,
+        });
         get().navigateTo(newPath);
       },
       
@@ -377,16 +360,14 @@ export const useFinderStore = create<FinderState>()(
         
         const newBreadcrumbs = currentPath.breadcrumbs.slice(0, -1);
         const parentFolder = newBreadcrumbs.length > 0 ? newBreadcrumbs[newBreadcrumbs.length - 1] : null;
-        
-        // 简单的路径回退逻辑，实际可能需要更复杂的路径解析
-        const newDstuPath = currentPath.dstuPath.split('/').slice(0, -1).join('/') || '/';
-        
-        const newPath: FinderPath = {
+
+        const newPath: FinderPath = createFinderPath({
           ...currentPath,
-          dstuPath: newDstuPath,
+          viewKind: 'folder',
           breadcrumbs: newBreadcrumbs,
           folderId: parentFolder ? parentFolder.id : null,
-        };
+          typeFilter: null,
+        });
         
         get().navigateTo(newPath);
       },
@@ -420,40 +401,29 @@ export const useFinderStore = create<FinderState>()(
       // ★ 2026-01-15: 设置当前路径但不添加历史记录（用于外部同步）
       // 解决 NavigationContext 和 finderStore 两个历史栈互相干扰导致的循环问题
       setCurrentPathWithoutHistory: async (folderId: string | null) => {
-        // 规范化 folderId
-        const normalizedFolderId = (folderId === 'root' || folderId === null || folderId === undefined) 
-          ? 'root' 
-          : folderId;
+        const normalizedFolderId = folderId === 'root' || folderId == null ? null : folderId;
+        const viewKind = getViewKindFromFolderId(normalizedFolderId);
         
         // 如果已经是当前路径，跳过
         const { currentPath } = get();
-        const currentNormalized = (currentPath.folderId === 'root' || currentPath.folderId === null) 
-          ? 'root' 
-          : currentPath.folderId;
-        if (currentNormalized === normalizedFolderId) {
+        if (currentPath.folderId === normalizedFolderId && currentPath.viewKind === viewKind) {
           return;
         }
         
         // 获取面包屑
-        const newBreadcrumbs = normalizedFolderId === 'root' 
-          ? [] 
-          : await fetchBreadcrumbs(normalizedFolderId);
-        
-        // 计算路径
-        const newDstuPath = newBreadcrumbs.length > 0
-          ? newBreadcrumbs[newBreadcrumbs.length - 1].dstuPath
-          : '/';
+        const newBreadcrumbs = normalizedFolderId && isRealFolderId(normalizedFolderId)
+          ? await fetchBreadcrumbs(normalizedFolderId)
+          : [];
         
         // 直接设置当前路径，不添加历史记录
         set({
-          currentPath: {
+          currentPath: createFinderPath({
             ...currentPath,
-            dstuPath: newDstuPath,
+            viewKind,
             breadcrumbs: newBreadcrumbs,
-            folderId: normalizedFolderId === 'root' ? 'root' : normalizedFolderId,
+            folderId: viewKind === 'folder' ? normalizedFolderId : null,
             typeFilter: null,
-            resourceType: null,
-          },
+          }),
           selectedIds: new Set(),
           lastSelectedId: null,
           searchQuery: '',
@@ -466,13 +436,7 @@ export const useFinderStore = create<FinderState>()(
 
         // ★ 2025-12-31: 支持 index = -1 表示跳转到根目录
         if (index === -1) {
-          const rootPath: FinderPath = {
-            dstuPath: '/',
-            breadcrumbs: [],
-            folderId: 'root',
-            typeFilter: null,
-            resourceType: null,
-          };
+          const rootPath: FinderPath = createFinderPath();
           get().navigateTo(rootPath);
           return;
         }
@@ -486,14 +450,13 @@ export const useFinderStore = create<FinderState>()(
         const targetBreadcrumb = newBreadcrumbs[index];
 
         // 使用 breadcrumb 中保存的完整路径
-        const newPath: FinderPath = {
+        const newPath: FinderPath = createFinderPath({
           ...currentPath,
-          dstuPath: targetBreadcrumb.dstuPath,
+          viewKind: 'folder',
           breadcrumbs: newBreadcrumbs,
           folderId: targetBreadcrumb.id,
-          typeFilter: null, // ★ 跳转后清除类型筛选
-          resourceType: null, // 保持兼容
-        };
+          typeFilter: null,
+        });
         get().navigateTo(newPath);
       },
       
@@ -567,6 +530,7 @@ export const useFinderStore = create<FinderState>()(
       
       executeSearch: async () => {
         const { searchQuery, getDstuListOptions, currentPath } = get();
+        const options = getDstuListOptions();
 
         // 如果搜索关键词为空，不执行搜索
         if (!searchQuery.trim()) {
@@ -580,13 +544,69 @@ export const useFinderStore = create<FinderState>()(
 
         // 根据当前路径状态选择搜索方式
         let result;
-        if (currentPath.folderId && currentPath.folderId !== 'root' && currentPath.folderId !== 'trash') {
-          // 在特定文件夹内搜索
-          const options = getDstuListOptions();
+        if (currentPath.viewKind === 'indexStatus' || currentPath.viewKind === 'memory' || currentPath.viewKind === 'desktop') {
+          result = { ok: true as const, value: [] };
+        } else if (currentPath.viewKind === 'recent') {
+          const { useRecentStore } = await import('./recentStore');
+          let recentItems = useRecentStore.getState().getRecentItems();
+          const normalizedQuery = searchQuery.trim().toLowerCase();
+          recentItems = recentItems.filter(item => {
+            if (currentPath.typeFilter && item.type !== currentPath.typeFilter) {
+              return false;
+            }
+            return item.name.toLowerCase().includes(normalizedQuery);
+          });
+
+          const recentResults = await Promise.all(
+            recentItems.map(async (recent) => {
+              let getResult = await dstu.get(recent.path);
+              if (!getResult.ok) {
+                getResult = await dstu.get(`/${recent.id}`);
+              }
+              return { recent, getResult };
+            })
+          );
+
+          const recentNodes: DstuNode[] = [];
+          for (const { recent, getResult } of recentResults) {
+            if (getResult.ok) {
+              recentNodes.push(getResult.value);
+            } else {
+              useRecentStore.getState().removeRecent(recent.id);
+            }
+          }
+          result = { ok: true as const, value: recentNodes };
+        } else if (currentPath.viewKind === 'trash') {
+          const resourceTypeMap: Record<string, string> = {
+            note: 'notes',
+            textbook: 'textbooks',
+            exam: 'exams',
+            essay: 'essays',
+            translation: 'translations',
+            image: 'images',
+            file: 'files',
+            mindmap: 'mindmaps',
+          };
+
+          const trashResult = currentPath.typeFilter && resourceTypeMap[currentPath.typeFilter]
+            ? await dstu.listDeleted(resourceTypeMap[currentPath.typeFilter], options.limit, options.offset)
+            : await trashApi.listTrash(options.limit, options.offset);
+
+          if (trashResult.ok) {
+            const normalizedQuery = searchQuery.trim().toLowerCase();
+            result = {
+              ok: true as const,
+              value: trashResult.value.filter(item => item.name.toLowerCase().includes(normalizedQuery)),
+            };
+          } else {
+            result = trashResult;
+          }
+        } else if (currentPath.viewKind === 'favorites') {
+          result = await dstu.search(searchQuery, { ...options, isFavorite: true });
+        } else if (isRealFolderId(currentPath.folderId)) {
           result = await dstu.searchInFolder(currentPath.folderId, searchQuery, options);
         } else {
           // 全局搜索
-          const options = getDstuListOptions();
           result = await dstu.search(searchQuery, options);
         }
 
@@ -599,14 +619,14 @@ export const useFinderStore = create<FinderState>()(
         if (result.ok) {
           set({
             items: result.value,
-            isSearching: false,
+            isSearching: true,
             isLoading: false
           });
         } else {
           reportError(result.error, '搜索资源');
           set({
             error: result.error.message,
-            isSearching: false,
+            isSearching: true,
             isLoading: false,
             items: []
           });
@@ -614,7 +634,11 @@ export const useFinderStore = create<FinderState>()(
       },
       
       refresh: async () => {
-        const { loadItems } = get();
+        const { searchQuery, executeSearch, loadItems } = get();
+        if (searchQuery.trim()) {
+          await executeSearch();
+          return;
+        }
         await loadItems();
       },
       
@@ -630,7 +654,9 @@ export const useFinderStore = create<FinderState>()(
         const options = getDstuListOptions();
 
         // 根据当前路径状态选择不同的加载方式
-        if (currentPath.folderId === 'recent') {
+        if (currentPath.viewKind === 'indexStatus' || currentPath.viewKind === 'memory' || currentPath.viewKind === 'desktop') {
+          items = [];
+        } else if (currentPath.viewKind === 'recent') {
           // ★ 最近文件模式：从前端存储加载访问记录
           const { useRecentStore } = await import('./recentStore');
           let recentItems = useRecentStore.getState().getRecentItems();
@@ -666,7 +692,7 @@ export const useFinderStore = create<FinderState>()(
           }
 
           items = nodes;
-        } else if (currentPath.folderId === 'trash') {
+        } else if (currentPath.viewKind === 'trash') {
           // ★ 回收站模式：加载已删除的资源
           // 将DstuNodeType映射到资源类型字符串
           const resourceTypeMap: Record<string, string> = {
@@ -705,96 +731,24 @@ export const useFinderStore = create<FinderState>()(
               return;
             }
           }
-        } else if (currentPath.folderId === 'root') {
-          // ★ 根目录模式：显示真实文件夹结构
-          const foldersResult = await folderApi.listFolders();
-          if (!foldersResult.ok) {
-            reportError(foldersResult.error, '加载文件夹列表');
-            set({ error: foldersResult.error.message, isLoading: false, items: [] });
+        } else if (currentPath.viewKind === 'favorites') {
+          const result = await dstu.list('/', { ...options, isFavorite: true });
+          if (!result.ok) {
+            reportError(result.error, '加载收藏');
+            set({ error: result.error.message, isLoading: false, items: [] });
             return;
           }
-          const allFolders = foldersResult.value;
-          const rootFolders = allFolders.filter(folder => folder.parentId === null);
-
-          const dstuResult = await dstu.list('/', {
-            ...options,
-            folderId: null,
-          });
+          items = result.value;
+        } else if (currentPath.viewKind === 'folder') {
+          const dstuResult = await dstu.list('/', options);
 
           if (!dstuResult.ok) {
-            reportError(dstuResult.error, '加载根目录');
+            reportError(dstuResult.error, currentPath.folderId ? '加载文件夹' : '加载根目录');
             set({ error: dstuResult.error.message, isLoading: false, items: [] });
             return;
           }
 
-          // 将文件夹转换为DstuNode格式并合并
-          const folderNodes: DstuNode[] = rootFolders.map(folder => ({
-            id: folder.id,
-            sourceId: folder.id,
-            path: folder.id,
-            name: folder.title,
-            type: 'folder' as DstuNodeType,
-            size: 0,
-            createdAt: folder.createdAt,
-            updatedAt: folder.updatedAt,
-            metadata: {
-              icon: folder.icon,
-              color: folder.color,
-              parentId: folder.parentId,
-              sortOrder: folder.sortOrder,
-              isExpanded: folder.isExpanded,
-              isBuiltin: folder.isBuiltin,
-              builtinType: folder.builtinType,
-            },
-          }));
-
-          items = [...folderNodes, ...dstuResult.value];
-        } else if (currentPath.folderId) {
-          // ★ 特定文件夹模式：列出文件夹下的所有内容
-          const foldersResult = await folderApi.listFolders();
-          if (!foldersResult.ok) {
-            reportError(foldersResult.error, '加载文件夹列表');
-            set({ error: foldersResult.error.message, isLoading: false, items: [] });
-            return;
-          }
-          const allFolders = foldersResult.value;
-          const subFolders = allFolders.filter(
-            folder => folder.parentId === currentPath.folderId
-          );
-
-          const dstuResult = await dstu.list('/', {
-            ...options,
-            folderId: currentPath.folderId,
-          });
-
-          if (!dstuResult.ok) {
-            reportError(dstuResult.error, '加载文件夹');
-            set({ error: dstuResult.error.message, isLoading: false, items: [] });
-            return;
-          }
-
-          // 将文件夹转换为DstuNode格式并合并
-          const folderNodes: DstuNode[] = subFolders.map(folder => ({
-            id: folder.id,
-            sourceId: folder.id,
-            path: folder.id,
-            name: folder.title,
-            type: 'folder' as DstuNodeType,
-            size: 0,
-            createdAt: folder.createdAt,
-            updatedAt: folder.updatedAt,
-            metadata: {
-              icon: folder.icon,
-              color: folder.color,
-              parentId: folder.parentId,
-              sortOrder: folder.sortOrder,
-              isExpanded: folder.isExpanded,
-              isBuiltin: folder.isBuiltin,
-              builtinType: folder.builtinType,
-            },
-          }));
-
-          items = [...folderNodes, ...dstuResult.value];
+          items = dstuResult.value;
         } else {
           // ★ 智能文件夹模式：按类型筛选
           const result = await dstu.list('/', options);
@@ -828,130 +782,15 @@ export const useFinderStore = create<FinderState>()(
       setError: (error: string | null) => set({ error }),
 
       quickAccessNavigate: (type: QuickAccessType) => {
-        // ★ 文件夹优先模型：使用 typeFilter 参数（智能文件夹模式）
         const { currentPath } = get();
-        
-        // ★ 文档28改造: 全部文件模式 - 显示真实文件夹结构（根目录）
-        if (type === 'allFiles') {
-          const newPath: FinderPath = {
-            ...currentPath,
-            dstuPath: '/',
-            breadcrumbs: [],
-            folderId: 'root', // ★ 特殊值表示根目录
-            typeFilter: null, // 不筛选类型
-            resourceType: null,
-          };
-          get().navigateTo(newPath);
-          return;
-        }
-        
-        // ★ 文档28改造: 回收站模式 - 显示已删除的资源
-        if (type === 'trash') {
-          const newPath: FinderPath = {
-            ...currentPath,
-            dstuPath: '/@trash',
-            breadcrumbs: [],
-            folderId: 'trash', // ★ 特殊值表示回收站
-            typeFilter: null,
-            resourceType: null,
-          };
-          get().navigateTo(newPath);
-          return;
-        }
-
-        // ★ 最近文件模式 - 显示最近访问的资源
-        if (type === 'recent') {
-          const newPath: FinderPath = {
-            ...currentPath,
-            dstuPath: '/@recent',
-            breadcrumbs: [],
-            folderId: 'recent', // ★ 特殊值表示最近文件
-            typeFilter: null,
-            resourceType: null,
-          };
-          get().navigateTo(newPath);
-          return;
-        }
-
-        // ★ 收藏模式 - 显示已收藏的资源
-        if (type === 'favorites') {
-          const newPath: FinderPath = {
-            ...currentPath,
-            dstuPath: '/@favorites',
-            breadcrumbs: [],
-            folderId: null,
-            typeFilter: null,
-            resourceType: null,
-          };
-          get().navigateTo(newPath);
-          return;
-        }
-
-        // ★ 2026-01-15: 向量化状态模式 - 显示向量化状态视图
-        if (type === 'indexStatus') {
-          const newPath: FinderPath = {
-            ...currentPath,
-            dstuPath: '/@indexStatus',
-            breadcrumbs: [],
-            folderId: 'indexStatus', // ★ 特殊值表示向量化状态视图
-            typeFilter: null,
-            resourceType: null,
-          };
-          get().navigateTo(newPath);
-          return;
-        }
-
-        // ★ 2026-01-19: VFS 记忆管理模式
-        if (type === 'memory') {
-          const newPath: FinderPath = {
-            ...currentPath,
-            dstuPath: '/@memory',
-            breadcrumbs: [],
-            folderId: 'memory', // ★ 特殊值表示记忆管理视图
-            typeFilter: null,
-            resourceType: null,
-          };
-          get().navigateTo(newPath);
-          return;
-        }
-
-        // ★ 2026-01-31: 桌面模式 - 显示快捷方式
-        if (type === 'desktop') {
-          const newPath: FinderPath = {
-            ...currentPath,
-            dstuPath: '/@desktop',
-            breadcrumbs: [],
-            folderId: 'desktop', // ★ 特殊值表示桌面视图
-            typeFilter: null,
-            resourceType: null,
-          };
-          get().navigateTo(newPath);
-          return;
-        }
-
-        let newTypeFilter: DstuNodeType | null = null;
-        
-        switch (type) {
-            case 'notes': newTypeFilter = 'note'; break;
-            case 'textbooks': newTypeFilter = 'textbook'; break;
-            case 'exams': newTypeFilter = 'exam'; break;
-            case 'essays': newTypeFilter = 'essay'; break;
-            case 'translations': newTypeFilter = 'translation'; break;
-            case 'images': newTypeFilter = 'image'; break;
-            case 'files': newTypeFilter = 'file'; break;
-            case 'mindmaps': newTypeFilter = 'mindmap'; break;
-            // favorites, recent, trash 等特殊文件夹在前面 if 分支处理
-            default: newTypeFilter = null;
-        }
-
-        const newPath: FinderPath = {
+        const target = getQuickAccessTarget(type);
+        const newPath: FinderPath = createFinderPath({
           ...currentPath,
-          dstuPath: `/@${type}`,
+          viewKind: target.viewKind,
           breadcrumbs: [],
-          folderId: null, // 清除文件夹导航
-          typeFilter: newTypeFilter, // ★ 设置类型筛选
-          resourceType: newTypeFilter, // 保持兼容
-        };
+          folderId: null,
+          typeFilter: target.typeFilter,
+        });
         get().navigateTo(newPath);
       },
       
@@ -964,7 +803,7 @@ export const useFinderStore = create<FinderState>()(
         };
 
         // 文件夹导航模式
-        if (currentPath.folderId) {
+        if (currentPath.viewKind === 'folder' && isRealFolderId(currentPath.folderId)) {
           options.folderId = currentPath.folderId;
         }
 
@@ -973,8 +812,7 @@ export const useFinderStore = create<FinderState>()(
           options.typeFilter = currentPath.typeFilter;
         }
 
-        // ★ 收藏模式
-        if (currentPath.dstuPath === '/@favorites') {
+        if (currentPath.viewKind === 'favorites') {
           options.isFavorite = true;
         }
 

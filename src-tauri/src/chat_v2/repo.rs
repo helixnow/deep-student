@@ -17,8 +17,8 @@ use super::database::ChatV2Database;
 use super::error::{ChatV2Error, ChatV2Result};
 use super::types::{
     AttachmentMeta, ChatMessage, ChatParams, ChatSession, DeleteVariantResult, LoadSessionResponse,
-    MessageBlock, MessageMeta, MessageRole, PanelStates, PersistStatus, SessionGroup, SessionState,
-    SharedContext, Variant,
+    MessageBlock, MessageMeta, MessageRole, PanelStates, PersistStatus, SessionGroup,
+    SessionSkillState, SessionState, SharedContext, Variant,
 };
 
 /// Chat V2 数据存取层
@@ -1427,8 +1427,8 @@ impl ChatV2Repo {
 
         conn.execute(
             r#"
-            INSERT INTO chat_v2_session_state (session_id, chat_params_json, features_json, mode_state_json, input_value, panel_states_json, pending_context_refs_json, loaded_skill_ids_json, active_skill_ids_json, updated_at)
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+            INSERT INTO chat_v2_session_state (session_id, chat_params_json, features_json, mode_state_json, input_value, panel_states_json, pending_context_refs_json, loaded_skill_ids_json, active_skill_ids_json, skill_state_json, updated_at)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
             ON CONFLICT(session_id) DO UPDATE SET
                 chat_params_json = excluded.chat_params_json,
                 features_json = excluded.features_json,
@@ -1438,6 +1438,7 @@ impl ChatV2Repo {
                 pending_context_refs_json = excluded.pending_context_refs_json,
                 loaded_skill_ids_json = excluded.loaded_skill_ids_json,
                 active_skill_ids_json = excluded.active_skill_ids_json,
+                skill_state_json = excluded.skill_state_json,
                 updated_at = excluded.updated_at
             "#,
             params![
@@ -1450,6 +1451,7 @@ impl ChatV2Repo {
                 state.pending_context_refs_json,
                 state.loaded_skill_ids_json,
                 state.active_skill_ids_json,
+                state.skill_state_json,
                 state.updated_at,
             ],
         )?;
@@ -1474,7 +1476,7 @@ impl ChatV2Repo {
     ) -> ChatV2Result<Option<SessionState>> {
         let mut stmt = conn.prepare(
             r#"
-            SELECT session_id, chat_params_json, features_json, mode_state_json, input_value, panel_states_json, pending_context_refs_json, loaded_skill_ids_json, active_skill_ids_json, updated_at
+            SELECT session_id, chat_params_json, features_json, mode_state_json, input_value, panel_states_json, pending_context_refs_json, loaded_skill_ids_json, active_skill_ids_json, skill_state_json, updated_at
             FROM chat_v2_session_state
             WHERE session_id = ?1
             "#,
@@ -1491,7 +1493,8 @@ impl ChatV2Repo {
                 let pending_context_refs_json: Option<String> = row.get(6)?;
                 let loaded_skill_ids_json: Option<String> = row.get(7)?;
                 let active_skill_ids_json: Option<String> = row.get(8)?;
-                let updated_at: String = row.get(9)?;
+                let skill_state_json: Option<String> = row.get(9)?;
+                let updated_at: String = row.get(10)?;
 
                 let chat_params: Option<ChatParams> = chat_params_json
                     .as_ref()
@@ -1519,6 +1522,7 @@ impl ChatV2Repo {
                     pending_context_refs_json,
                     loaded_skill_ids_json,
                     active_skill_ids_json,
+                    skill_state_json,
                     updated_at,
                 })
             })
@@ -1822,6 +1826,34 @@ impl ChatV2Repo {
     ) -> ChatV2Result<Option<SessionState>> {
         let conn = db.get_conn_safe()?;
         Self::load_session_state_with_conn(&conn, session_id)
+    }
+
+    /// 更新结构化 Skill 状态（使用 ChatV2Database）
+    pub fn update_session_skill_state_v2(
+        db: &ChatV2Database,
+        session_id: &str,
+        skill_state: &SessionSkillState,
+    ) -> ChatV2Result<()> {
+        let conn = db.get_conn_safe()?;
+        let mut state = Self::load_session_state_with_conn(&conn, session_id)?.unwrap_or(SessionState {
+            session_id: session_id.to_string(),
+            chat_params: None,
+            features: None,
+            mode_state: None,
+            input_value: None,
+            panel_states: None,
+            updated_at: chrono::Utc::now().to_rfc3339(),
+            pending_context_refs_json: None,
+            loaded_skill_ids_json: None,
+            active_skill_ids_json: None,
+            skill_state_json: None,
+        });
+
+        state
+            .set_skill_state(skill_state)
+            .map_err(|err| ChatV2Error::Serialization(err.to_string()))?;
+        state.updated_at = chrono::Utc::now().to_rfc3339();
+        Self::save_session_state_with_conn(&conn, session_id, &state)
     }
 
     // ========================================================================
@@ -2958,6 +2990,7 @@ mod tests {
             pending_context_refs_json: None,
             loaded_skill_ids_json: None,
             active_skill_ids_json: None,
+            skill_state_json: None,
             updated_at: Utc::now().to_rfc3339(),
         };
         ChatV2Repo::save_session_state_with_conn(&conn, "sess_full_test", &state).unwrap();
@@ -2999,6 +3032,7 @@ mod tests {
             pending_context_refs_json: None,
             loaded_skill_ids_json: None,
             active_skill_ids_json: None,
+            skill_state_json: None,
             updated_at: Utc::now().to_rfc3339(),
         };
         ChatV2Repo::save_session_state_with_conn(&conn, "sess_state_test", &state1).unwrap();
@@ -3023,6 +3057,7 @@ mod tests {
             pending_context_refs_json: None,
             loaded_skill_ids_json: None,
             active_skill_ids_json: None,
+            skill_state_json: None,
             updated_at: Utc::now().to_rfc3339(),
         };
         ChatV2Repo::save_session_state_with_conn(&conn, "sess_state_test", &state2).unwrap();
@@ -3071,6 +3106,7 @@ mod tests {
             pending_context_refs_json: Some(context_refs_json.to_string()),
             loaded_skill_ids_json: None,
             active_skill_ids_json: None,
+            skill_state_json: None,
             updated_at: Utc::now().to_rfc3339(),
         };
         ChatV2Repo::save_session_state_with_conn(&conn, "sess_context_refs_test", &state).unwrap();
@@ -3111,6 +3147,7 @@ mod tests {
             pending_context_refs_json: Some(empty_array_json.to_string()),
             loaded_skill_ids_json: None,
             active_skill_ids_json: None,
+            skill_state_json: None,
             updated_at: Utc::now().to_rfc3339(),
         };
         ChatV2Repo::save_session_state_with_conn(&conn, "sess_empty_refs_test", &state).unwrap();
@@ -3147,6 +3184,7 @@ mod tests {
             pending_context_refs_json: None,
             loaded_skill_ids_json: None,
             active_skill_ids_json: None,
+            skill_state_json: None,
             updated_at: Utc::now().to_rfc3339(),
         };
         ChatV2Repo::save_session_state_with_conn(&conn, "sess_no_refs_test", &state).unwrap();

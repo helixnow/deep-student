@@ -34,13 +34,7 @@ import {
   DesktopIcon,
   type ResourceIconProps,
 } from '../icons';
-
-// 类型定义
-type QuickAccessType = 
-  | 'desktop' | 'allFiles' | 'recent' | 'favorites' 
-  | 'notes' | 'textbooks' | 'exams' | 'essays' | 'translations' | 'mindmaps'
-  | 'images' | 'files'
-  | 'trash' | 'indexStatus' | 'memory';
+import type { QuickAccessType } from '../learningHubContracts';
 
 interface DstuAppLauncherProps {
   /** 当前选中的应用/类型 */
@@ -59,6 +53,10 @@ interface DstuAppLauncherProps {
   searchQuery?: string;
   /** 搜索变更回调 */
   onSearchChange?: (query: string) => void;
+  /** 当前视图是否禁用搜索 */
+  searchDisabled?: boolean;
+  /** 当前视图是否禁用新建 */
+  createDisabled?: boolean;
 }
 
 /**
@@ -74,6 +72,8 @@ export const DstuAppLauncher: React.FC<DstuAppLauncherProps> = React.memo(({
   className,
   searchQuery = '',
   onSearchChange,
+  searchDisabled = false,
+  createDisabled = false,
 }) => {
   const { t } = useTranslation(['learningHub', 'common']);
   const [isSearchFocused, setIsSearchFocused] = useState(false);
@@ -229,6 +229,7 @@ export const DstuAppLauncher: React.FC<DstuAppLauncherProps> = React.memo(({
             onChange={(e) => onSearchChange?.(e.target.value)}
             onFocus={() => setIsSearchFocused(true)}
             onBlur={() => setIsSearchFocused(false)}
+            disabled={searchDisabled}
             className={cn(
               "w-full h-[41px] pl-9 pr-9 text-[16px] rounded-lg outline-none transition-all duration-150",
               "bg-muted/40 placeholder:text-muted-foreground/40",
@@ -244,7 +245,16 @@ export const DstuAppLauncher: React.FC<DstuAppLauncherProps> = React.memo(({
 
         {/* 新建按钮 & 菜单 */}
         <div className="relative" ref={createMenuRef}>
-          <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setShowCreateMenu(!showCreateMenu)} className={cn(showCreateMenu ? 'bg-accent text-foreground' : 'text-muted-foreground/70 hover:text-foreground hover:bg-accent/50')} title={t('learningHub:finder.toolbar.new')} aria-label="new">
+          <NotionButton
+            variant="ghost"
+            size="icon"
+            iconOnly
+            onClick={() => !createDisabled && setShowCreateMenu(!showCreateMenu)}
+            className={cn(showCreateMenu ? 'bg-accent text-foreground' : 'text-muted-foreground/70 hover:text-foreground hover:bg-accent/50')}
+            title={t('learningHub:finder.toolbar.new')}
+            aria-label="new"
+            disabled={createDisabled}
+          >
             <Plus className="h-5 w-5" />
           </NotionButton>
 

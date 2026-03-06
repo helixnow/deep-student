@@ -793,6 +793,9 @@ impl ChatV2Pipeline {
             } else {
                 None
             },
+            skill_snapshot_before: None,
+            skill_snapshot_after: None,
+            replay_source: None,
         };
 
         let assistant_message = ChatMessage {

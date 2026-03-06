@@ -218,6 +218,9 @@ export interface ChatStoreState extends StoreCallbacks {
   /** 当前激活的 Skill ID 列表（支持多选） */
   activeSkillIds: string[];
 
+  /** 后端权威的结构化 Skill 状态缓存（JSON 字符串） */
+  skillStateJson: string | null;
+
   /** 对话参数 */
   chatParams: ChatParams;
 
@@ -290,6 +293,7 @@ export function createInitialState(sessionId: string, title?: string, descriptio
     pendingContextRefsDirty: false,
     pendingApprovalRequest: null, // 🆕 工具审批请求初始为 null（文档 29 P1-3）
     activeSkillIds: [], // 🆕 Skills 系统：当前激活的 Skill ID 列表（支持多选）
+    skillStateJson: null,
     chatParams: createDefaultChatParams(),
     features: new Map(),
     modeState: null,

@@ -36,6 +36,7 @@ import { modeRegistry } from '../registry';
 // 构造函数现在接收 storeApi 参数，消除了循环依赖的核心问题
 import { sessionManager } from '../core/session';
 import { sessionSwitchPerf } from '../debug/sessionSwitchPerf';
+import { getTestModeConfig } from '../../utils/testMode';
 import type {
   SendOptions,
   SendMessageRequest,
@@ -2350,7 +2351,11 @@ export class ChatV2TauriAdapter {
 
       const activeModelId = this.getCurrentState().chatParams.modelId;
       await this.ensureModelMetadataReady(activeModelId);
-      const options = this.buildSendOptions();
+      const options = this.applyOriginalReplaySkillState(
+        messageId,
+        this.buildSendOptions(),
+        this.getCurrentState().chatParams.selectedMcpServers,
+      );
       const validIds = await this.getValidChatModelIdSet();
       const normalizedSelection = await this.normalizeChatModelSelection(options.modelId, options.model2OverrideId);
       options.modelId = normalizedSelection.modelId;
@@ -2536,7 +2541,11 @@ export class ChatV2TauriAdapter {
 
       const activeModelId = this.getCurrentState().chatParams.modelId;
       await this.ensureModelMetadataReady(activeModelId);
-      const options = this.buildSendOptions();
+      const options = this.applyOriginalReplaySkillState(
+        messageId,
+        this.buildSendOptions(),
+        this.getCurrentState().chatParams.selectedMcpServers,
+      );
       const normalizedSelection = await this.normalizeChatModelSelection(options.modelId, options.model2OverrideId);
       options.modelId = normalizedSelection.modelId;
       options.model2OverrideId = normalizedSelection.model2OverrideId;
@@ -2669,7 +2678,11 @@ export class ChatV2TauriAdapter {
 
       const activeModelId = this.getCurrentState().chatParams.modelId;
       await this.ensureModelMetadataReady(activeModelId);
-      const options = this.buildSendOptions();
+      const options = this.applyOriginalReplaySkillState(
+        messageId,
+        this.buildSendOptions(),
+        this.getCurrentState().chatParams.selectedMcpServers,
+      );
       const normalizedSelection = await this.normalizeChatModelSelection(options.modelId, options.model2OverrideId);
       options.modelId = normalizedSelection.modelId;
       options.model2OverrideId = normalizedSelection.model2OverrideId;
@@ -2850,6 +2863,14 @@ export class ChatV2TauriAdapter {
       const loadedSkillIdsJson = loadedSkills.length > 0
         ? JSON.stringify(loadedSkills.map(s => s.id))
         : null;
+      const skillStateJson =
+        loadedSkills.length > 0 || state.activeSkillIds.length > 0
+          ? JSON.stringify({
+              manualPinnedSkillIds: state.activeSkillIds,
+              agenticSessionSkillIds: loadedSkills.map((s) => s.id),
+              version: 0,
+            })
+          : null;
 
       const sessionState = {
         sessionId: this.sessionId,
@@ -2861,6 +2882,7 @@ export class ChatV2TauriAdapter {
         pendingContextRefsJson, // 🆕 Prompt 7: 上下文引用持久化
         loadedSkillIdsJson, // 🆕 渐进披露：已加载 Skills 持久化
         activeSkillIdsJson: state.activeSkillIds.length > 0 ? JSON.stringify(state.activeSkillIds) : null, // 🆕 手动激活 Skills 持久化（多选）
+        skillStateJson,
         updatedAt: new Date().toISOString(),
       };
 
@@ -3277,6 +3299,116 @@ export class ChatV2TauriAdapter {
     };
   }
 
+  private applyOriginalReplaySkillState(
+    messageId: string,
+    options: SendOptions,
+    selectedServerIds?: string[]
+  ): SendOptions {
+    if (options.replayMode !== 'original') {
+      return options;
+    }
+
+    const currentState = this.getCurrentState();
+    const message = currentState.messageMap.get(messageId);
+    const snapshot = message?._meta?.skillSnapshotAfter || message?._meta?.skillSnapshotBefore;
+    if (!snapshot) {
+      return options;
+    }
+
+    const replaySkillIds = Array.from(new Set([
+      ...(snapshot.manualPinnedSkillIds || []),
+      ...(snapshot.agenticSessionSkillIds || []),
+      ...(snapshot.branchLocalSkillIds || []),
+      ...(snapshot.modeRequiredBundleIds || []),
+    ])).filter(Boolean);
+
+    if (replaySkillIds.length > 0) {
+      options.activeSkillIds = replaySkillIds;
+    }
+
+    const replayAllowedTools = Array.from(new Set([
+      ...(snapshot.effectiveAllowedInternalTools || []),
+      ...(snapshot.effectiveAllowedExternalTools || []),
+    ])).filter(Boolean);
+
+    if (replayAllowedTools.length > 0) {
+      options.skillAllowedTools = replayAllowedTools;
+    }
+
+    const skillContents: Record<string, string> = {};
+    const skillEmbeddedTools: Record<string, Array<{ name: string; description?: string; inputSchema?: unknown }>> = {};
+    const replayToolSchemas: Array<{ name: string; description?: string; inputSchema?: unknown }> = [
+      LOAD_SKILLS_TOOL_SCHEMA,
+    ];
+
+    for (const skillId of replaySkillIds) {
+      const skill = skillRegistry.get(skillId);
+      if (!skill) continue;
+      if (skill.content) {
+        skillContents[skill.id] = skill.content;
+      }
+      if (skill.embeddedTools && skill.embeddedTools.length > 0) {
+        const embedded = skill.embeddedTools.map(tool => ({
+          name: tool.name,
+          description: tool.description,
+          inputSchema: tool.inputSchema,
+        }));
+        skillEmbeddedTools[skill.id] = embedded;
+        replayToolSchemas.push(...embedded);
+      }
+    }
+
+    if (Object.keys(skillContents).length > 0) {
+      (options as Record<string, unknown>).skillContents = skillContents;
+    }
+    if (Object.keys(skillEmbeddedTools).length > 0) {
+      (options as Record<string, unknown>).skillEmbeddedTools = skillEmbeddedTools;
+    }
+
+    if (selectedServerIds && selectedServerIds.length > 0) {
+      for (const serverId of selectedServerIds) {
+        if (serverId === BUILTIN_SERVER_ID) continue;
+        const tools = McpService.getCachedToolsFor(serverId);
+        for (const tool of tools) {
+          replayToolSchemas.push({
+            name: tool.name,
+            description: tool.description,
+            inputSchema: tool.input_schema,
+          });
+        }
+      }
+    }
+
+    options.mcpToolSchemas = replayToolSchemas;
+    return options;
+  }
+
+  private getStructuredSkillStateFromStore(): {
+    manualPinnedSkillIds: string[];
+    modeRequiredBundleIds: string[];
+    agenticSessionSkillIds: string[];
+    branchLocalSkillIds: string[];
+  } | null {
+    const raw = this.getCurrentState().skillStateJson;
+    if (!raw) return null;
+    try {
+      const parsed = JSON.parse(raw) as {
+        manualPinnedSkillIds?: string[];
+        modeRequiredBundleIds?: string[];
+        agenticSessionSkillIds?: string[];
+        branchLocalSkillIds?: string[];
+      };
+      return {
+        manualPinnedSkillIds: Array.isArray(parsed?.manualPinnedSkillIds) ? parsed.manualPinnedSkillIds.filter(Boolean) : [],
+        modeRequiredBundleIds: Array.isArray(parsed?.modeRequiredBundleIds) ? parsed.modeRequiredBundleIds.filter(Boolean) : [],
+        agenticSessionSkillIds: Array.isArray(parsed?.agenticSessionSkillIds) ? parsed.agenticSessionSkillIds.filter(Boolean) : [],
+        branchLocalSkillIds: Array.isArray(parsed?.branchLocalSkillIds) ? parsed.branchLocalSkillIds.filter(Boolean) : [],
+      };
+    } catch {
+      return null;
+    }
+  }
+
   private resolveInputContextLimit(
     modelId: string | undefined,
     maxTokens: number,
@@ -3387,6 +3519,18 @@ export class ChatV2TauriAdapter {
       chatParams.maxTokens,
       chatParams.contextLimit
     );
+    const testModeConfig = getTestModeConfig();
+
+    const structuredSkillState = this.getStructuredSkillStateFromStore();
+    const authoritativeActiveSkillIds = structuredSkillState?.manualPinnedSkillIds?.length
+      ? structuredSkillState.manualPinnedSkillIds
+      : currentState.activeSkillIds;
+    const authoritativeLoadedSkillIds = structuredSkillState
+      ? Array.from(new Set([
+          ...structuredSkillState.agenticSessionSkillIds,
+          ...structuredSkillState.modeRequiredBundleIds,
+        ]))
+      : getLoadedSkills(this.sessionId).map(s => s.id);
 
     const options = {
       // ChatParams
@@ -3398,6 +3542,17 @@ export class ChatV2TauriAdapter {
       maxTokens: chatParams.maxTokens,
       contextLimit,
       enableThinking: chatParams.enableThinking,
+      replayMode: testModeConfig.replayMode ? 'original' as const : undefined,
+      skillStateVersion: (() => {
+        const raw = currentState.skillStateJson;
+        if (!raw) return undefined;
+        try {
+          const parsed = JSON.parse(raw) as { version?: unknown };
+          return typeof parsed?.version === 'number' ? parsed.version : undefined;
+        } catch {
+          return undefined;
+        }
+      })(),
       disableTools: chatParams.disableTools,
       model2OverrideId: chatParams.model2OverrideId || undefined,
       maxToolRecursion: chatParams.maxToolRecursion,
@@ -3453,7 +3608,7 @@ export class ChatV2TauriAdapter {
       schemaToolIds: undefined as string[] | undefined,
 
       // 🆕 激活技能列表（用于后端 allowedTools fail-closed 判定）
-      activeSkillIds: currentState.activeSkillIds.length > 0 ? currentState.activeSkillIds : undefined,
+      activeSkillIds: authoritativeActiveSkillIds.length > 0 ? authoritativeActiveSkillIds : undefined,
 
       // ========== Canvas 智能笔记选项 ==========
       // 从 modeState 获取当前打开的笔记 ID，作为 Canvas 工具的默认目标
@@ -3483,7 +3638,7 @@ export class ChatV2TauriAdapter {
         }
       }
       // 来源 2：activeSkillIds（修复 loadSession 竞态导致 pendingContextRefs 为空的情况）
-      for (const skillId of currentState.activeSkillIds) {
+      for (const skillId of authoritativeActiveSkillIds) {
         if (seenSkillIds.has(skillId)) continue;
         const skill = skillRegistry.get(skillId);
         if (skill) {
@@ -3498,7 +3653,7 @@ export class ChatV2TauriAdapter {
       // - 若没有任何技能声明 allowedTools，则不进行过滤（保持现有行为）
       if (mergedAllowedTools.length > 0) {
         skillAllowedTools = [...new Set(mergedAllowedTools)]; // 去重
-        console.log(LOG_PREFIX, '🛡️ Skill allowedTools constraint (union of', skillRefs.length, 'refs +', currentState.activeSkillIds.length, 'active):', {
+        console.log(LOG_PREFIX, '🛡️ Skill allowedTools constraint (union of', skillRefs.length, 'refs +', authoritativeActiveSkillIds.length, 'active):', {
           allowedTools: skillAllowedTools,
         });
       }
@@ -3526,8 +3681,8 @@ export class ChatV2TauriAdapter {
     // 后端 inject_synthetic_load_skills 需要它来合成 role:tool 消息
     const allSkills = skillRegistry.getAll();
     if (allSkills.length > 0) {
-      const loadedIds = new Set(getLoadedSkills(this.sessionId).map(s => s.id));
-      const activeIdSet = new Set(currentState.activeSkillIds);
+      const loadedIds = new Set(authoritativeLoadedSkillIds);
+      const activeIdSet = new Set(authoritativeActiveSkillIds);
       const skillContents: Record<string, string> = {};
       const skillEmbeddedTools: Record<string, Array<{ name: string; description?: string; inputSchema?: unknown }>> = {};
       for (const skill of allSkills) {

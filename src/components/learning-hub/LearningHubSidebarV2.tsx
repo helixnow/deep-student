@@ -21,6 +21,7 @@ import type { LearningHubSidebarProps } from './types';
 import { usePageMount } from '@/debug-panel/hooks/usePageLifecycle';
 import { FolderOpen } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { getQuickAccessTypeFromPath } from './learningHubContracts';
 import {
   NoteIcon,
   TextbookIcon,
@@ -121,35 +122,8 @@ export function LearningHubSidebarV2({
   const _navContext = useLearningHubNavigationSafe(); // 保留引用但不使用同步逻辑
 
   const activeQuickAccess = useMemo(() => {
-    // ★ 特殊文件夹判断（基于 folderId 或 dstuPath）
-    if (currentPath.folderId === 'trash' || currentPath.dstuPath === '/@trash') return 'trash';
-    if (currentPath.folderId === 'recent' || currentPath.dstuPath === '/@recent') return 'recent';
-    if (currentPath.folderId === 'indexStatus' || currentPath.dstuPath === '/@indexStatus') return 'indexStatus';
-    if (currentPath.folderId === 'memory' || currentPath.dstuPath === '/@memory') return 'memory';
-    // ★ 2026-01-31: 桌面视图
-    if (currentPath.folderId === 'desktop' || currentPath.dstuPath === '/@desktop') return 'desktop';
-    // favorites 的 folderId 是 null，需要用 dstuPath 判断
-    if (currentPath.dstuPath === '/@favorites') return 'favorites';
-    
-    // ★ 类型筛选判断
-    if (currentPath.typeFilter) {
-      // 映射 typeFilter（单数）到 QuickAccessType（复数）
-      const typeFilterToQuickAccess: Record<string, QuickAccessType> = {
-        'note': 'notes',
-        'textbook': 'textbooks',
-        'exam': 'exams',
-        'essay': 'essays',
-        'translation': 'translations',
-        'image': 'images',
-        'file': 'files',
-        'mindmap': 'mindmaps',
-      };
-      return typeFilterToQuickAccess[currentPath.typeFilter] || 'allFiles';
-    }
-    
-    // ★ 默认：全部文件
-    return 'allFiles';
-  }, [currentPath.folderId, currentPath.dstuPath, currentPath.typeFilter]);
+    return getQuickAccessTypeFromPath(currentPath) || 'allFiles';
+  }, [currentPath]);
 
   const handleQuickAccessClick = (type: QuickAccessType) => {
     // ★ 统一使用 quickAccessNavigate 处理所有类型

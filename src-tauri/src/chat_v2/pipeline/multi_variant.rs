@@ -296,6 +296,9 @@ impl ChatV2Pipeline {
                     anki_cards: None,
                     usage: None,
                     context_snapshot: None,
+                    skill_snapshot_before: None,
+                    skill_snapshot_after: None,
+                    replay_source: None,
                 }),
                 attachments: None,
                 active_variant_id: first_variant_id,
@@ -344,6 +347,7 @@ impl ChatV2Pipeline {
                 self_ref.execute_single_variant_with_config(
                     ctx_clone,
                     config_id_clone,  // 传递 API 配置 ID
+                    None,
                     (*options_clone).clone(),
                     (*user_content_clone).clone(),
                     (*session_id_clone).clone(),
@@ -879,6 +883,7 @@ impl ChatV2Pipeline {
         &self,
         ctx: Arc<super::super::variant_context::VariantExecutionContext>,
         config_id: String,
+        variant_meta: Option<crate::chat_v2::types::VariantMeta>,
         mut options: SendOptions,
         user_content: String,
         session_id: String,
@@ -890,6 +895,10 @@ impl ChatV2Pipeline {
 
         options.model_id = Some(config_id.clone());
         options.model2_override_id = Some(config_id.clone());
+
+        if let Some(meta) = variant_meta {
+            ctx.set_meta(meta);
+        }
 
         ctx.start_streaming();
 
@@ -1156,12 +1165,16 @@ impl ChatV2Pipeline {
             let memory_enabled = options.memory_enabled.unwrap_or(true);
             let rag_enabled = options.rag_enabled.unwrap_or(true);
             let web_search_enabled = options.web_search_enabled.unwrap_or(true);
+            let round_id = format!("variant-tool-round-{}", tool_round);
             let tool_results = self
                 .execute_tool_calls(
                     &tool_calls,
                     &emitter_arc,
                     &variant_session_key,
                     ctx.message_id(),
+                    Some(ctx.variant_id()),
+                    options.skill_state_version,
+                    Some(round_id.as_str()),
                     &canvas_note_id,
                     &skill_allowed_tools,
                     &skill_contents,
@@ -2123,7 +2136,11 @@ impl ChatV2Pipeline {
         // 创建并行执行管理器（多变体重试）
         let manager = ParallelExecutionManager::with_cancel_token(cancel_token.clone());
 
-        let mut variant_contexts: Vec<(Arc<VariantExecutionContext>, String)> =
+        let mut variant_contexts: Vec<(
+            Arc<VariantExecutionContext>,
+            String,
+            Option<crate::chat_v2::types::VariantMeta>,
+        )> =
             Vec::with_capacity(variants.len());
 
         for spec in &variants {
@@ -2146,7 +2163,7 @@ impl ChatV2Pipeline {
                 );
             }
 
-            variant_contexts.push((ctx, spec.config_id.clone()));
+            variant_contexts.push((ctx, spec.config_id.clone(), spec.meta.clone()));
         }
 
         // 🔧 P1修复：并行执行所有变体（使用任务追踪器）
@@ -2158,10 +2175,11 @@ impl ChatV2Pipeline {
 
         let futures: Vec<_> = variant_contexts
             .iter()
-            .map(|(ctx, config_id)| {
+            .map(|(ctx, config_id, variant_meta)| {
                 let self_ref = self_clone.clone();
                 let ctx_clone = Arc::clone(ctx);
                 let config_id_clone = config_id.clone();
+                let variant_meta_clone = variant_meta.clone();
                 let options_clone = Arc::clone(&options_arc);
                 let user_content_clone = Arc::clone(&user_content_arc);
                 let session_id_clone = Arc::clone(&session_id_arc);
@@ -2174,6 +2192,7 @@ impl ChatV2Pipeline {
                         .execute_single_variant_with_config(
                             ctx_clone,
                             config_id_clone,
+                            variant_meta_clone,
                             (*options_clone).clone(),
                             (*user_content_clone).clone(),
                             (*session_id_clone).clone(),
@@ -2197,7 +2216,7 @@ impl ChatV2Pipeline {
         let results = join_all(futures).await;
 
         for (i, result) in results.into_iter().enumerate() {
-            let (ctx, _) = &variant_contexts[i];
+            let (ctx, _, _) = &variant_contexts[i];
             match result {
                 Ok(Ok(())) => {
                     log::info!(
@@ -2226,7 +2245,7 @@ impl ChatV2Pipeline {
 
         // 持久化每个变体
         let mut update_error: Option<ChatV2Error> = None;
-        for (ctx, _) in &variant_contexts {
+        for (ctx, _, _) in &variant_contexts {
             if let Err(e) = self.update_variant_after_retry(&message_id, ctx).await {
                 log::error!(
                     "[ChatV2::pipeline] Failed to update retry variant {}: {}",
@@ -2241,7 +2260,7 @@ impl ChatV2Pipeline {
 
         // 清理 cancel token
         if let Some(ref state) = chat_v2_state {
-            for (ctx, _) in &variant_contexts {
+            for (ctx, _, _) in &variant_contexts {
                 let cancel_key = format!("{}:{}", session_id, ctx.variant_id());
                 state.remove_stream(&cancel_key);
             }
@@ -2355,6 +2374,7 @@ impl ChatV2Pipeline {
             .execute_single_variant_with_config(
                 ctx.clone(),
                 model_id.clone(),
+                None,
                 options,
                 user_content,
                 session_id.clone(),
@@ -2505,6 +2525,40 @@ impl ChatV2Pipeline {
 
         // 更新消息
         ChatV2Repo::update_message_with_conn(&conn, &message)?;
+
+        if ctx.status() == variant_status::SUCCESS {
+            if let Some(ref variants) = message.variants {
+                if let Some(active_variant) = variants.iter().find(|variant| variant.id == ctx.variant_id()) {
+                    if let Some(snapshot) = active_variant
+                        .meta
+                        .as_ref()
+                        .and_then(|meta| meta.skill_snapshot_after.as_ref().or(meta.skill_snapshot_before.as_ref()))
+                    {
+                        let mut agentic_session_skill_ids = snapshot.agentic_session_skill_ids.clone();
+                        agentic_session_skill_ids.extend(snapshot.branch_local_skill_ids.clone());
+                        agentic_session_skill_ids.sort();
+                        agentic_session_skill_ids.dedup();
+
+                        let promoted_state = crate::chat_v2::types::SessionSkillState {
+                            manual_pinned_skill_ids: snapshot.manual_pinned_skill_ids.clone(),
+                            mode_required_bundle_ids: snapshot.mode_required_bundle_ids.clone(),
+                            agentic_session_skill_ids,
+                            branch_local_skill_ids: Vec::new(),
+                            effective_allowed_internal_tools: snapshot.effective_allowed_internal_tools.clone(),
+                            effective_allowed_external_tools: snapshot.effective_allowed_external_tools.clone(),
+                            effective_allowed_external_servers: snapshot.effective_allowed_external_servers.clone(),
+                            version: snapshot.version.saturating_add(1),
+                            legacy_migrated: Some(false),
+                        };
+                        let _ = ChatV2Repo::update_session_skill_state_v2(
+                            &self.db,
+                            &message.session_id,
+                            &promoted_state,
+                        );
+                    }
+                }
+            }
+        }
 
         log::debug!(
             "[ChatV2::pipeline] Updated variant after retry: variant={}, blocks={}",
@@ -2776,6 +2830,9 @@ impl ChatV2Pipeline {
                     usage: None,
                     // 🆕 统一上下文注入系统：多变体模式支持 context_snapshot
                     context_snapshot: context_snapshot.clone(),
+                    skill_snapshot_before: None,
+                    skill_snapshot_after: None,
+                    replay_source: None,
                 }),
                 attachments: None,
                 active_variant_id: active_variant_id.map(|s| s.to_string()),

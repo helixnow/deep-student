@@ -393,6 +393,9 @@ fn test_assistant_message_meta_with_sources() {
         anki_cards: None,
         usage: None,
         context_snapshot: None,
+        skill_snapshot_before: None,
+        skill_snapshot_after: None,
+        replay_source: None,
     };
 
     assert!(meta.sources.is_some());
@@ -427,6 +430,9 @@ fn test_assistant_message_meta_with_tool_results() {
         anki_cards: None,
         usage: None,
         context_snapshot: None,
+        skill_snapshot_before: None,
+        skill_snapshot_after: None,
+        replay_source: None,
     };
 
     assert!(meta.tool_results.is_some());

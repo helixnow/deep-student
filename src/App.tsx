@@ -35,6 +35,9 @@ import {
   getGlobalLearningHubNavigation,
   subscribeLearningHubNavigation,
 } from './components/learning-hub';
+import { setActiveOpenResourceHandler } from './dstu/openResource';
+import type { ResourceLocator } from './components/learning-hub/learningHubContracts';
+import { getQuickAccessTypeFromPath } from './components/learning-hub/learningHubContracts';
 import { pageLifecycleTracker } from './debug-panel/services/pageLifecycleTracker';
 import './styles/tailwind.css'; // Tailwind (should be first to provide base/utility layers)
 import './styles/shadcn-variables.css'; // 设计令牌：支持亮/暗色变量（必须优先）
@@ -170,21 +173,11 @@ function LearningHubTopbarBreadcrumb({ currentView }: { currentView: string }) {
 
   // 计算当前视图标题
   const currentTitle = (() => {
-    if (currentPath.folderId === 'root') return undefined;
-    if (currentPath.folderId === 'trash') return t('finder.quickAccess.trash');
-    if (currentPath.folderId === 'recent') return t('finder.quickAccess.recent');
-    if (currentPath.folderId === 'indexStatus') return t('finder.quickAccess.indexStatus');
-    if (currentPath.folderId === 'memory') return t('memory.title');
-    if (currentPath.dstuPath === '/@favorites') return t('finder.quickAccess.favorites');
-    if (currentPath.typeFilter === 'note') return t('finder.quickAccess.notes');
-    if (currentPath.typeFilter === 'textbook') return t('finder.quickAccess.textbooks');
-    if (currentPath.typeFilter === 'exam') return t('finder.quickAccess.exams');
-    if (currentPath.typeFilter === 'essay') return t('finder.quickAccess.essays');
-    if (currentPath.typeFilter === 'translation') return t('finder.quickAccess.translations');
-    if (currentPath.typeFilter === 'mindmap') return t('finder.quickAccess.mindmaps');
-    if (currentPath.typeFilter === 'image') return t('finder.quickAccess.images');
-    if (currentPath.typeFilter === 'file') return t('finder.quickAccess.files');
-    return undefined;
+    const activeType = getQuickAccessTypeFromPath(currentPath);
+    if (!activeType || activeType === 'allFiles') return undefined;
+    if (activeType === 'memory') return t('memory.title');
+    if (activeType === 'desktop') return t('finder.quickAccess.desktop');
+    return t(`finder.quickAccess.${activeType}`);
   })();
 
   const breadcrumbs = currentPath.breadcrumbs;
@@ -466,6 +459,12 @@ function App() {
     // 同步当前视图到全局 store，供子组件通过 useViewVisibility 读取
     useViewStore.getState().setCurrentView(currentView);
 
+    if (currentView === 'learning-hub') {
+      setActiveOpenResourceHandler('learning-hub');
+    } else if (currentView === 'chat-v2') {
+      setActiveOpenResourceHandler('chat-v2');
+    }
+
     // 记录视图切换完成和渲染耗时
     if (viewSwitchStartRef.current && viewSwitchStartRef.current.to === currentView) {
       const { from, to, startTime } = viewSwitchStartRef.current;
@@ -669,7 +668,7 @@ function App() {
 
   // ★ 2026-01 清理：知识库导航统一跳转到 Learning Hub
   useEffect(() => {
-    const handleNavigateToKnowledgeBase = (event: CustomEvent<{ preferTab?: string; documentId?: string; fileName?: string; memoryId?: string; resourceType?: string }>) => {
+    const handleNavigateToKnowledgeBase = (event: CustomEvent<{ preferTab?: 'manage' | 'memory'; locator?: ResourceLocator }>) => {
       // 跳转到 Learning Hub（知识库入口已整合）
       setCurrentView('learning-hub');
       // 等待 React 渲染完成后发送事件让 Learning Hub 处理具体导航

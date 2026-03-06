@@ -27,6 +27,8 @@ export interface SendOptions {
   contextLimit?: number;
   maxTokens?: number;
   enableThinking?: boolean;
+  replayMode?: 'original' | 'current';
+  skillStateVersion?: number;
   disableTools?: boolean;
   model2OverrideId?: string;
 
@@ -280,6 +282,12 @@ export interface SessionEventPayload {
   /** 变体 ID（variant_deleted 事件携带） */
   variantId?: string;
 
+  /** Skill 状态版本 */
+  skillStateVersion?: number;
+
+  /** 回放模式 */
+  replayMode?: 'original' | 'current';
+
   /** 剩余变体数量（variant_deleted 事件携带） */
   remainingCount?: number;
 
@@ -376,6 +384,8 @@ export interface SessionState {
   loadedSkillIdsJson?: string;
   /** 手动激活的 Skill ID 列表（JSON 格式，支持多选） */
   activeSkillIdsJson?: string;
+  /** 结构化 Skill 状态（JSON 格式） */
+  skillStateJson?: string;
   updatedAt: string;
 }
 

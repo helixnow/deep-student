@@ -35,6 +35,26 @@ pub struct TextbookImportProgress {
 
 type Result<T> = std::result::Result<T, AppError>;
 
+fn attach_textbook_to_folder(
+    vfs_db: &crate::vfs::VfsDatabase,
+    textbook_id: &str,
+    folder_id: Option<&str>,
+) {
+    if let Some(fid) = folder_id {
+        let folder_item = crate::vfs::VfsFolderItem::new(
+            Some(fid.to_string()),
+            "file".to_string(),
+            textbook_id.to_string(),
+        );
+        if let Err(e) = crate::vfs::VfsFolderRepo::add_item_to_folder(vfs_db, &folder_item) {
+            warn!(
+                "[Textbooks] Failed to attach textbook {} to folder {}: {}",
+                textbook_id, fid, e
+            );
+        }
+    }
+}
+
 // ==================== 教材库（独立数据库）命令 ====================
 
 #[tauri::command]
@@ -181,6 +201,7 @@ pub async fn textbooks_add(
         if let Some(tb) = crate::vfs::VfsTextbookRepo::get_by_sha256(vfs_db, &sha256)
             .map_err(|e| AppError::database(format!("VFS 查询教材失败: {}", e)))?
         {
+            attach_textbook_to_folder(vfs_db, &tb.id, folder_id.as_deref());
             emit_progress(&window, display_name, "done", None, None, 100, None);
             out.push(tb.to_textbook());
             continue;
@@ -516,13 +537,30 @@ pub async fn textbooks_list(
 }
 
 #[tauri::command]
-pub async fn textbooks_remove(state: State<'_, AppState>, id: String) -> Result<bool> {
+pub async fn textbooks_remove(window: Window, state: State<'_, AppState>, id: String) -> Result<bool> {
     // ★ 切换到 VFS 版本
     let vfs_db = state
         .vfs_db
         .as_ref()
         .ok_or_else(|| AppError::configuration("VFS database not configured"))?;
-    TextbooksDb::delete_vfs(vfs_db, &id)
+
+    let deleted = TextbooksDb::delete_vfs(vfs_db, &id)?;
+
+    if deleted {
+        let dstu_path = format!("/{}", id);
+        let watch_event = serde_json::json!({
+            "type": "purged",
+            "path": dstu_path,
+        });
+        if let Err(err) = window.emit(&format!("dstu:change:{}", dstu_path), &watch_event) {
+            warn!(
+                "[Textbooks] Failed to emit purge watch event for {}: {}",
+                id, err
+            );
+        }
+    }
+
+    Ok(deleted)
 }
 
 /// 采用已有文件（不复制），直接计算哈希并入库
@@ -531,6 +569,7 @@ pub async fn textbooks_adopt(
     window: Window,
     state: State<'_, AppState>,
     paths: Vec<String>,
+    folder_id: Option<String>,
 ) -> Result<Vec<TextbookDto>> {
     if paths.is_empty() {
         return Ok(vec![]);
@@ -552,6 +591,7 @@ pub async fn textbooks_adopt(
         if let Some(tb) = crate::vfs::VfsTextbookRepo::get_by_sha256(vfs_db, &sha256)
             .map_err(|e| AppError::database(format!("VFS 查询教材失败: {}", e)))?
         {
+            attach_textbook_to_folder(vfs_db, &tb.id, folder_id.as_deref());
             out.push(tb.to_textbook());
             continue;
         }
@@ -565,6 +605,8 @@ pub async fn textbooks_adopt(
             Some(&p), // original_path
         )
         .map_err(|e| AppError::database(format!("VFS 创建教材失败: {}", e)))?;
+
+        attach_textbook_to_folder(vfs_db, &tb.id, folder_id.as_deref());
 
         // ★ 2026-02 新增：发射 DSTU watch 事件，通知前端文件列表自动刷新
         {

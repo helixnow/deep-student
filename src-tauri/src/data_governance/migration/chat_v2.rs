@@ -291,6 +291,15 @@ pub const V20260302_SUBAGENT_TASK_SCHEMA_ALIGN: MigrationDef = MigrationDef::new
 ])
 .with_expected_indexes(&["idx_subagent_task_workspace"]);
 
+/// V20260306: 添加结构化 skill_state_json
+pub const V20260306_SKILL_STATE_JSON: MigrationDef = MigrationDef::new(
+    20260306,
+    "skill_state_json",
+    include_str!("../../../migrations/chat_v2/V20260306__add_skill_state_json.sql"),
+)
+.with_expected_columns(&[("chat_v2_session_state", "skill_state_json")])
+.idempotent();
+
 /// Chat V2 数据库迁移定义列表
 pub const CHAT_V2_MIGRATIONS: &[MigrationDef] = &[
     V20260130_INIT,
@@ -303,6 +312,7 @@ pub const CHAT_V2_MIGRATIONS: &[MigrationDef] = &[
     V20260221_GROUP_PINNED_RESOURCES,
     V20260301_CONTENT_SEARCH_AND_TAGS,
     V20260302_SUBAGENT_TASK_SCHEMA_ALIGN,
+    V20260306_SKILL_STATE_JSON,
 ];
 
 /// Chat V2 数据库迁移集合
@@ -322,7 +332,7 @@ mod tests {
     #[test]
     fn test_migration_set_structure() {
         assert_eq!(CHAT_V2_MIGRATION_SET.database_name, "chat_v2");
-        assert_eq!(CHAT_V2_MIGRATION_SET.count(), 10); // V20260130 ~ V20260302
+        assert_eq!(CHAT_V2_MIGRATION_SET.count(), 11); // V20260130 ~ V20260306
     }
 
     #[test]

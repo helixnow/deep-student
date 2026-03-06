@@ -540,6 +540,10 @@ pub struct Variant {
     /// Token 使用统计（多变体模式，每个变体独立）
     #[serde(skip_serializing_if = "Option::is_none")]
     pub usage: Option<TokenUsage>,
+
+    /// 变体级元数据（用于历史重放与 branch-local skill 快照）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub meta: Option<VariantMeta>,
 }
 
 impl Variant {
@@ -559,6 +563,7 @@ impl Variant {
             error: None,
             created_at: Utc::now().timestamp_millis(),
             usage: None,
+            meta: None,
         }
     }
 
@@ -573,6 +578,7 @@ impl Variant {
             error: None,
             created_at: Utc::now().timestamp_millis(),
             usage: None,
+            meta: None,
         }
     }
 
@@ -587,6 +593,7 @@ impl Variant {
             error: None,
             created_at: Utc::now().timestamp_millis(),
             usage: None,
+            meta: None,
         }
     }
 
@@ -601,6 +608,7 @@ impl Variant {
             error: None,
             created_at: Utc::now().timestamp_millis(),
             usage: None,
+            meta: None,
         }
     }
 
@@ -677,6 +685,137 @@ impl Variant {
                 | variant_status::INTERRUPTED
         )
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SkillStateSnapshot {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub manual_pinned_skill_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub mode_required_bundle_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub agentic_session_skill_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub branch_local_skill_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub effective_allowed_internal_tools: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub effective_allowed_external_tools: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub effective_allowed_external_servers: Vec<String>,
+    #[serde(default)]
+    pub version: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionSkillState {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub manual_pinned_skill_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub mode_required_bundle_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub agentic_session_skill_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub branch_local_skill_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub effective_allowed_internal_tools: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub effective_allowed_external_tools: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub effective_allowed_external_servers: Vec<String>,
+    #[serde(default)]
+    pub version: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub legacy_migrated: Option<bool>,
+}
+
+impl SessionSkillState {
+    pub fn from_legacy(
+        active_skill_ids_json: Option<&String>,
+        loaded_skill_ids_json: Option<&String>,
+    ) -> Self {
+        let manual_pinned_skill_ids = active_skill_ids_json
+            .and_then(|raw| serde_json::from_str::<Vec<String>>(raw).ok())
+            .unwrap_or_default();
+        let agentic_session_skill_ids = loaded_skill_ids_json
+            .and_then(|raw| serde_json::from_str::<Vec<String>>(raw).ok())
+            .unwrap_or_default();
+
+        Self {
+            manual_pinned_skill_ids,
+            agentic_session_skill_ids,
+            legacy_migrated: Some(true),
+            ..Default::default()
+        }
+    }
+
+    pub fn resolved_loaded_skill_ids(&self) -> Vec<String> {
+        let mut merged = self.agentic_session_skill_ids.clone();
+        merged.extend(self.branch_local_skill_ids.clone());
+        merged.extend(self.mode_required_bundle_ids.clone());
+        merged.sort();
+        merged.dedup();
+        merged
+    }
+
+    pub fn resolved_active_skill_ids(&self) -> Vec<String> {
+        let mut merged = self.manual_pinned_skill_ids.clone();
+        merged.sort();
+        merged.dedup();
+        merged
+    }
+
+    pub fn snapshot(&self) -> SkillStateSnapshot {
+        SkillStateSnapshot {
+            manual_pinned_skill_ids: self.manual_pinned_skill_ids.clone(),
+            mode_required_bundle_ids: self.mode_required_bundle_ids.clone(),
+            agentic_session_skill_ids: self.agentic_session_skill_ids.clone(),
+            branch_local_skill_ids: self.branch_local_skill_ids.clone(),
+            effective_allowed_internal_tools: self.effective_allowed_internal_tools.clone(),
+            effective_allowed_external_tools: self.effective_allowed_external_tools.clone(),
+            effective_allowed_external_servers: self.effective_allowed_external_servers.clone(),
+            version: self.version,
+        }
+    }
+
+    pub fn with_added_agentic_skills(&self, skill_ids: &[String]) -> Self {
+        let mut next = self.clone();
+        for skill_id in skill_ids {
+            if !next.agentic_session_skill_ids.contains(skill_id) {
+                next.agentic_session_skill_ids.push(skill_id.clone());
+            }
+        }
+        next.agentic_session_skill_ids.sort();
+        next.agentic_session_skill_ids.dedup();
+        next.version = next.version.saturating_add(1);
+        next.legacy_migrated = Some(false);
+        next
+    }
+
+    pub fn with_added_branch_local_skills(&self, skill_ids: &[String]) -> Self {
+        let mut next = self.clone();
+        for skill_id in skill_ids {
+            if !next.branch_local_skill_ids.contains(skill_id) {
+                next.branch_local_skill_ids.push(skill_id.clone());
+            }
+        }
+        next.branch_local_skill_ids.sort();
+        next.branch_local_skill_ids.dedup();
+        next.version = next.version.saturating_add(1);
+        next.legacy_migrated = Some(false);
+        next
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct VariantMeta {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub skill_snapshot_before: Option<SkillStateSnapshot>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub skill_snapshot_after: Option<SkillStateSnapshot>,
 }
 
 /// 共享上下文 - 检索结果，所有变体共享，只读
@@ -1029,6 +1168,18 @@ pub struct MessageMeta {
     /// 记录消息发送时的上下文引用，只存 ContextRef 不存实际内容
     #[serde(skip_serializing_if = "Option::is_none")]
     pub context_snapshot: Option<ContextSnapshot>,
+
+    /// 技能状态快照（执行前）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub skill_snapshot_before: Option<SkillStateSnapshot>,
+
+    /// 技能状态快照（执行后）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub skill_snapshot_after: Option<SkillStateSnapshot>,
+
+    /// 实际采用的 replay 来源
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub replay_source: Option<String>,
 }
 
 impl Default for MessageMeta {
@@ -1041,8 +1192,18 @@ impl Default for MessageMeta {
             anki_cards: None,
             usage: None,
             context_snapshot: None,
+            skill_snapshot_before: None,
+            skill_snapshot_after: None,
+            replay_source: None,
         }
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ReplayMode {
+    Original,
+    Current,
 }
 
 /// 消息来源（与前端 MessageSources 对齐）
@@ -1614,6 +1775,14 @@ pub struct SendOptions {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub enable_thinking: Option<bool>,
 
+    /// 历史重放模式
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub replay_mode: Option<ReplayMode>,
+
+    /// 当前技能状态版本（用于事件去重/丢弃过期事件）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub skill_state_version: Option<u64>,
+
     /// 禁用工具调用
     #[serde(skip_serializing_if = "Option::is_none")]
     pub disable_tools: Option<bool>,
@@ -1902,6 +2071,47 @@ pub struct SessionState {
     /// 结构: ["skill-1", "skill-2", ...]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub active_skill_ids_json: Option<String>,
+
+    /// 结构化 Skill 状态（JSON 格式）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub skill_state_json: Option<String>,
+}
+
+impl SessionState {
+    pub fn resolved_skill_state(&self) -> SessionSkillState {
+        self.skill_state_json
+            .as_ref()
+            .and_then(|raw| serde_json::from_str::<SessionSkillState>(raw).ok())
+            .unwrap_or_else(|| {
+                SessionSkillState::from_legacy(
+                    self.active_skill_ids_json.as_ref(),
+                    self.loaded_skill_ids_json.as_ref(),
+                )
+            })
+    }
+
+    pub fn set_skill_state(
+        &mut self,
+        skill_state: &SessionSkillState,
+    ) -> Result<(), serde_json::Error> {
+        self.skill_state_json = Some(serde_json::to_string(skill_state)?);
+
+        let active_ids = skill_state.resolved_active_skill_ids();
+        self.active_skill_ids_json = if active_ids.is_empty() {
+            None
+        } else {
+            Some(serde_json::to_string(&active_ids)?)
+        };
+
+        let loaded_ids = skill_state.resolved_loaded_skill_ids();
+        self.loaded_skill_ids_json = if loaded_ids.is_empty() {
+            None
+        } else {
+            Some(serde_json::to_string(&loaded_ids)?)
+        };
+
+        Ok(())
+    }
 }
 
 /// 聊天参数（与前端 ChatParams 对齐）
@@ -2183,6 +2393,9 @@ mod tests {
                 anki_cards: None,
                 usage: None,
                 context_snapshot: None,
+                skill_snapshot_before: None,
+                skill_snapshot_after: None,
+                replay_source: None,
             }),
             attachments: None,
             active_variant_id: None,

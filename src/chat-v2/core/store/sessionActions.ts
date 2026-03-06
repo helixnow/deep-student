@@ -41,6 +41,11 @@ export function createSessionActions(
           scheduleAutoSaveIfReady();
         },
 
+        setSkillStateJson: (value: string | null): void => {
+          set({ skillStateJson: value });
+          scheduleAutoSaveIfReady();
+        },
+
         // ========== 功能开关 Actions ==========
 
         setFeature: (key: string, enabled: boolean): void => {

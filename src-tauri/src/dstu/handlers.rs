@@ -2075,7 +2075,7 @@ pub async fn dstu_copy(
             if let Some(ref folder_id) = dest_folder_id {
                 let folder_item = VfsFolderItem::new(
                     Some(folder_id.clone()),
-                    "textbook".to_string(),
+                    "file".to_string(),
                     new_textbook.id.clone(),
                 );
                 if let Err(e) = VfsFolderRepo::add_item_to_folder(&vfs_db, &folder_item) {
@@ -2754,7 +2754,7 @@ fn copy_resource_to_folder(
 
             let folder_item = VfsFolderItem::new(
                 Some(dest_folder_id.to_string()),
-                "textbook".to_string(),
+                "file".to_string(),
                 new_textbook.id.clone(),
             );
             VfsFolderRepo::add_item_to_folder(vfs_db, &folder_item).map_err(|e| e.to_string())?;
@@ -5618,7 +5618,7 @@ pub async fn dstu_get_resource_location(
 
     let folder_item: Option<(Option<String>, Option<String>)> = conn
         .query_row(
-            "SELECT folder_id, cached_path FROM folder_items WHERE item_id = ?1",
+            "SELECT folder_id, cached_path FROM folder_items WHERE item_id = ?1 AND deleted_at IS NULL",
             rusqlite::params![&resource_id],
             |row| Ok((row.get(0)?, row.get(1)?)),
         )
@@ -5818,7 +5818,7 @@ pub async fn dstu_move_to_folder(
         // 检查 folder_items 中是否已存在该资源
         let existing: Option<String> = conn
             .query_row(
-                "SELECT id FROM folder_items WHERE item_id = ?1",
+                "SELECT id FROM folder_items WHERE item_id = ?1 AND deleted_at IS NULL",
                 rusqlite::params![&resource_id_for_blocking],
                 |row| row.get(0),
             )

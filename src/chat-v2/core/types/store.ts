@@ -66,6 +66,10 @@ export interface BackendVariantForRestore {
   status: VariantStatus;
   error?: string;
   createdAt: number;
+  meta?: {
+    skillSnapshotBefore?: import('./message').SkillStateSnapshot;
+    skillSnapshotAfter?: import('./message').SkillStateSnapshot;
+  };
 }
 
 /**
@@ -98,6 +102,9 @@ export interface BackendMessageForRestore {
     usage?: TokenUsage;
     // 🆕 统一用户消息处理：上下文快照（用户添加的上下文引用）
     contextSnapshot?: import('../../context/types').ContextSnapshot;
+    skillSnapshotBefore?: import('./message').SkillStateSnapshot;
+    skillSnapshotAfter?: import('./message').SkillStateSnapshot;
+    replaySource?: string;
     // 注意：sources/toolResults/ankiCards 等数据现在统一存储在 blocks 表中，
     // 通过 msg.blockIds 引用，无需从 _meta 恢复
   };
@@ -124,6 +131,8 @@ export interface SessionStateForRestore {
   loadedSkillIdsJson?: string;
   /** 🆕 手动激活的 Skill ID 列表（JSON 格式，支持多选） */
   activeSkillIdsJson?: string;
+  /** 结构化 Skill 状态（JSON 格式） */
+  skillStateJson?: string;
   updatedAt: string;
 }
 

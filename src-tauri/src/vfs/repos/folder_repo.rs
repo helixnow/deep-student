@@ -819,8 +819,8 @@ impl VfsFolderRepo {
         item_id: &str,
     ) -> VfsResult<bool> {
         let deleted = conn.execute(
-            "DELETE FROM folder_items WHERE item_type = ?1 AND item_id = ?2",
-            params![item_type, item_id],
+            "DELETE FROM folder_items WHERE item_id = ?1 AND (item_type = ?2 OR (item_type = 'textbook' AND ?2 = 'file') OR (item_type = 'file' AND ?2 = 'textbook'))",
+            params![item_id, item_type],
         )?;
 
         if deleted > 0 {
@@ -934,8 +934,8 @@ impl VfsFolderRepo {
 
         // 移动时同时清空 cached_path
         let affected = conn.execute(
-            "UPDATE folder_items SET folder_id = ?1, cached_path = NULL WHERE item_type = ?2 AND item_id = ?3",
-            params![new_folder_id, item_type, item_id],
+            "UPDATE folder_items SET folder_id = ?1, cached_path = NULL WHERE item_id = ?2 AND (item_type = ?3 OR (item_type = 'textbook' AND ?3 = 'file') OR (item_type = 'file' AND ?3 = 'textbook'))",
+            params![new_folder_id, item_id, item_type],
         )?;
 
         if affected == 0 {
@@ -2227,8 +2227,8 @@ impl VfsFolderRepo {
         // - 兼容历史迁移中唯一索引缺失/错误导致的重复记录
         // - 与 get_folder_item_by_item_id_with_conn 的“单行假设”保持一致
         conn.execute(
-            "DELETE FROM folder_items WHERE item_type = ?1 AND item_id = ?2",
-            params![item.item_type, item.item_id],
+            "DELETE FROM folder_items WHERE item_id = ?1 AND (item_type = ?2 OR (item_type = 'textbook' AND ?2 = 'file') OR (item_type = 'file' AND ?2 = 'textbook'))",
+            params![item.item_id, item.item_type],
         )?;
 
         conn.execute(
@@ -2511,8 +2511,8 @@ impl VfsFolderRepo {
         item_id: &str,
     ) -> VfsResult<()> {
         conn.execute(
-            "DELETE FROM folder_items WHERE item_type = ?1 AND item_id = ?2",
-            params![item_type, item_id],
+            "DELETE FROM folder_items WHERE item_id = ?1 AND (item_type = ?2 OR (item_type = 'textbook' AND ?2 = 'file') OR (item_type = 'file' AND ?2 = 'textbook'))",
+            params![item_id, item_type],
         )?;
 
         debug!("[VFS::FolderRepo] Removed item {} ({})", item_id, item_type);
@@ -2560,8 +2560,8 @@ impl VfsFolderRepo {
 
         // ★ 移动时同时清空 cached_path，让其在下次查询时重新计算
         let affected = conn.execute(
-            "UPDATE folder_items SET folder_id = ?1, cached_path = NULL WHERE item_type = ?2 AND item_id = ?3",
-            params![new_folder_id, item_type, item_id],
+            "UPDATE folder_items SET folder_id = ?1, cached_path = NULL WHERE item_id = ?2 AND (item_type = ?3 OR (item_type = 'textbook' AND ?3 = 'file') OR (item_type = 'file' AND ?3 = 'textbook'))",
+            params![new_folder_id, item_id, item_type],
         )?;
 
         if affected == 0 {

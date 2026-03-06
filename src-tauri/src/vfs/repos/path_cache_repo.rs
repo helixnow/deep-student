@@ -615,13 +615,13 @@ impl VfsPathCacheRepo {
             SELECT fi.item_type, fi.item_id, fi.folder_id
             FROM folder_items fi
             LEFT JOIN notes n ON fi.item_type = 'note' AND fi.item_id = n.id
-            LEFT JOIN files f ON fi.item_type = 'textbook' AND fi.item_id = f.id
+            LEFT JOIN files f ON fi.item_type IN ('textbook', 'file') AND fi.item_id = f.id
             LEFT JOIN exam_sheets e ON fi.item_type = 'exam' AND fi.item_id = e.id
             LEFT JOIN translations t ON fi.item_type = 'translation' AND fi.item_id = t.id
             LEFT JOIN essays es ON fi.item_type = 'essay' AND fi.item_id = es.id
             WHERE fi.folder_id IN ({}) AND (
                 (fi.item_type = 'note' AND n.id IS NOT NULL AND (n.deleted_at IS NULL OR n.deleted_at = '')) OR
-                (fi.item_type = 'textbook' AND f.id IS NOT NULL AND (f.deleted_at IS NULL OR f.deleted_at = '')) OR
+                (fi.item_type IN ('textbook', 'file') AND f.id IS NOT NULL AND (f.deleted_at IS NULL OR f.deleted_at = '')) OR
                 (fi.item_type = 'exam' AND e.id IS NOT NULL AND (e.deleted_at IS NULL OR e.deleted_at = '')) OR
                 (fi.item_type = 'translation' AND t.id IS NOT NULL AND (t.deleted_at IS NULL OR t.deleted_at = '')) OR
                 (fi.item_type = 'essay' AND es.id IS NOT NULL AND (es.deleted_at IS NULL OR es.deleted_at = ''))
@@ -718,13 +718,13 @@ impl VfsPathCacheRepo {
             SELECT fi.item_type, fi.item_id, fi.folder_id
             FROM folder_items fi
             LEFT JOIN notes n ON fi.item_type = 'note' AND fi.item_id = n.id
-            LEFT JOIN files f ON fi.item_type = 'textbook' AND fi.item_id = f.id
+            LEFT JOIN files f ON fi.item_type IN ('textbook', 'file') AND fi.item_id = f.id
             LEFT JOIN exam_sheets e ON fi.item_type = 'exam' AND fi.item_id = e.id
             LEFT JOIN translations t ON fi.item_type = 'translation' AND fi.item_id = t.id
             LEFT JOIN essays es ON fi.item_type = 'essay' AND fi.item_id = es.id
             WHERE
                 (fi.item_type = 'note' AND n.id IS NOT NULL AND (n.deleted_at IS NULL OR n.deleted_at = '')) OR
-                (fi.item_type = 'textbook' AND f.id IS NOT NULL AND (f.deleted_at IS NULL OR f.deleted_at = '')) OR
+                (fi.item_type IN ('textbook', 'file') AND f.id IS NOT NULL AND (f.deleted_at IS NULL OR f.deleted_at = '')) OR
                 (fi.item_type = 'exam' AND e.id IS NOT NULL AND (e.deleted_at IS NULL OR e.deleted_at = '')) OR
                 (fi.item_type = 'translation' AND t.id IS NOT NULL AND (t.deleted_at IS NULL OR t.deleted_at = '')) OR
                 (fi.item_type = 'essay' AND es.id IS NOT NULL AND (es.deleted_at IS NULL OR es.deleted_at = ''))
@@ -833,7 +833,7 @@ impl VfsPathCacheRepo {
                     |row| row.get(0),
                 )
                 .optional()?,
-            "textbook" => conn
+            "textbook" | "file" => conn
                 .query_row(
                     "SELECT file_name FROM files WHERE id = ?1",
                     params![item_id],

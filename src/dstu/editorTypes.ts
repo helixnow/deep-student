@@ -14,6 +14,7 @@
 
 import type { ComponentType } from 'react';
 import type { DstuNodeType } from './types';
+import type { CurrentView } from '@/types/navigation';
 
 // ============================================================================
 // 编辑器位置与模式
@@ -184,6 +185,12 @@ export interface OpenResourceOptions {
 
   /** 是否强制只读 */
   readOnly?: boolean;
+
+  /** 显式指定目标视图，让 openResource 成为真正的路由协调器 */
+  targetView?: CurrentView;
+
+  /** 显式指定处理器命名空间，优先级高于 targetView */
+  handlerNamespace?: string;
 }
 
 // ============================================================================

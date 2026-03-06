@@ -139,7 +139,7 @@ function citationsToSourceItems(
 
     // 构造原始 RagSourceInfo（用于兼容旧 UnifiedSourcePanel）
     const raw: RagSourceInfo = {
-      document_id: groupType === 'memory' ? '' : `${blockId}-${index}`,
+      document_id: '',
       file_name: citation.title || '',
       chunk_text: citation.snippet || '',
       score: citation.score || 0,
@@ -285,8 +285,10 @@ function retrievalOutputToSourceItems(block: Block): UnifiedSourceItem[] {
     const resolvedTitle = source.title || source.note_title || '';
     const resolvedSnippet = source.snippet || source.chunk_text || source.text_content || '';
 
+    const path = (metadata.path as string | undefined) || (metadata.resourcePath as string | undefined);
+
     const raw: RagSourceInfo = {
-      document_id: groupType === 'memory' ? memoryDocumentId || '' : `${block.id}-${index}`,
+      document_id: groupType === 'memory' ? memoryDocumentId || '' : sourceId || resourceId || '',
       file_name: resolvedTitle,
       chunk_text: resolvedSnippet,
       score: source.score || 0,
@@ -320,6 +322,7 @@ function retrievalOutputToSourceItems(block: Block): UnifiedSourceItem[] {
       resourceId,
       // ★ 2026-01-22: 添加 sourceId 用于打开预览器（DSTU 资源 ID 如 tb_xxx）
       sourceId,
+      path,
       pageIndex,
       resourceType,
     };
@@ -372,7 +375,7 @@ function toolOutputToSourceItems(block: Block): UnifiedSourceItem[] {
 
     citations.forEach((cite, index) => {
       const raw: RagSourceInfo = {
-        document_id: `${block.id}-tool-${index}`,
+        document_id: '',
         file_name: cite.title || '',
         chunk_text: cite.snippet || '',
         score: cite.score || 0,
@@ -730,6 +733,7 @@ export function extractSourcesFromSharedContext(
       const sourceType = source.sourceType
         || (metadata.sourceType as string | undefined)
         || (metadata.source_type as string | undefined);
+      const path = (metadata.path as string | undefined) || (metadata.resourcePath as string | undefined);
       const memoryDocumentId =
         origin === 'memory'
           ? sourceId
@@ -773,6 +777,7 @@ export function extractSourcesFromSharedContext(
         raw,
         sourceId,
         resourceId,
+        path,
         resourceType,
         pageIndex,
         imageUrl,

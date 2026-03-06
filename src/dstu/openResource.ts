@@ -11,6 +11,7 @@ import type { DstuNode, DstuNodeType } from './types';
 import type { EditorLocation, EditorMode, EditorProps, OpenResourceOptions } from './editorTypes';
 import { editorRegistry, loadEditorComponent } from './editorRegistry';
 import { Result, ok, err, VfsError, VfsErrorCode, reportError } from '@/shared/result';
+import type { CurrentView } from '@/types/navigation';
 
 // ============================================================================
 // 资源打开状态管理
@@ -57,16 +58,13 @@ export interface OpenResourceHandler {
  */
 const handlerRegistry = new Map<string, OpenResourceHandler>();
 
-/**
- * 当前活跃的处理器命名空间
- * 最后一个注册的处理器会成为活跃处理器
- */
+/** 当前显式激活的处理器命名空间 */
 let activeHandlerNamespace: string | null = null;
 
-/**
- * 处理器注册顺序（用于确定默认处理器）
- */
-const registrationOrder: string[] = [];
+const OPEN_RESOURCE_HANDLER_BY_VIEW: Partial<Record<CurrentView, string>> = {
+  'learning-hub': 'learning-hub',
+  'chat-v2': 'chat-v2',
+};
 
 /**
  * 注册资源打开处理器
@@ -90,38 +88,19 @@ export function registerOpenResourceHandler(
   handler: OpenResourceHandler,
   namespace: string = 'default'
 ): () => void {
-  // 🔧 P0-28 修复：使用命名空间注册，不会覆盖其他处理器
   const existingHandler = handlerRegistry.get(namespace);
   if (existingHandler && existingHandler !== handler) {
     console.log(`[DSTU] 替换命名空间 "${namespace}" 的处理器`);
   }
 
   handlerRegistry.set(namespace, handler);
-
-  // 更新注册顺序
-  const orderIndex = registrationOrder.indexOf(namespace);
-  if (orderIndex >= 0) {
-    registrationOrder.splice(orderIndex, 1);
-  }
-  registrationOrder.push(namespace);
-
-  // 最新注册的成为活跃处理器
-  activeHandlerNamespace = namespace;
-  console.log(`[DSTU] 注册处理器 "${namespace}"，当前活跃: "${activeHandlerNamespace}"`);
+  console.log(`[DSTU] 注册处理器 "${namespace}"`);
 
   return () => {
     if (handlerRegistry.get(namespace) === handler) {
       handlerRegistry.delete(namespace);
-      const idx = registrationOrder.indexOf(namespace);
-      if (idx >= 0) {
-        registrationOrder.splice(idx, 1);
-      }
-
-      // 如果被移除的是活跃处理器，切换到最后一个注册的
       if (activeHandlerNamespace === namespace) {
-        activeHandlerNamespace = registrationOrder.length > 0
-          ? registrationOrder[registrationOrder.length - 1]
-          : null;
+        activeHandlerNamespace = null;
       }
       console.log(`[DSTU] 移除处理器 "${namespace}"，当前活跃: "${activeHandlerNamespace}"`);
     }
@@ -163,7 +142,22 @@ export function setActiveOpenResourceHandler(namespace: string): boolean {
  * 获取所有已注册的处理器命名空间
  */
 export function getRegisteredHandlerNamespaces(): string[] {
-  return [...registrationOrder];
+  return [...handlerRegistry.keys()];
+}
+
+function resolveOpenResourceHandler(options?: OpenResourceOptions): OpenResourceHandler | null {
+  if (options?.handlerNamespace) {
+    return getOpenResourceHandler(options.handlerNamespace);
+  }
+
+  if (options?.targetView) {
+    const namespace = OPEN_RESOURCE_HANDLER_BY_VIEW[options.targetView];
+    if (namespace) {
+      return getOpenResourceHandler(namespace);
+    }
+  }
+
+  return getOpenResourceHandler();
 }
 
 // 🔧 P0-28 兼容性：保留旧的全局处理器访问方式
@@ -196,14 +190,15 @@ export async function openResource(
   pathOrNode: string | DstuNode,
   options?: OpenResourceOptions
 ): Promise<Result<void, VfsError>> {
-  // 🔧 P0-28 修复：使用新的处理器注册系统
-  const handler = getOpenResourceHandler();
+  const handler = resolveOpenResourceHandler(options);
 
   // 如果处理器未注册，返回错误
   if (!handler) {
     const error = new VfsError(
       VfsErrorCode.INVALID_STATE,
-      'OpenResourceHandler 未注册',
+      options?.handlerNamespace || options?.targetView
+        ? `OpenResourceHandler 未注册: ${options.handlerNamespace ?? options.targetView}`
+        : 'OpenResourceHandler 未注册',
       false
     );
     console.warn('[DSTU] OpenResourceHandler not registered. Cannot open resource.');

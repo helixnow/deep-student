@@ -2,15 +2,23 @@
  * Learning Hub 拖拽导入路由工具
  */
 
-/** 不允许拖拽导入的特殊视图 ID */
-export const DRAG_DROP_BLOCKED_VIEWS = ['trash', 'indexStatus', 'memory'] as const;
+import type { FinderPathLike, FinderViewKind } from './learningHubContracts';
+import { getViewCapabilities } from './learningHubContracts';
+
+/** 不允许拖拽导入的视图类型 */
+export const DRAG_DROP_BLOCKED_VIEWS = ['favorites', 'trash', 'recent', 'indexStatus', 'memory', 'desktop'] as const;
 
 /**
  * 当前视图是否禁止拖拽导入
  */
-export function isDragDropBlockedView(folderId: string | null | undefined): boolean {
-  if (!folderId) return false;
-  return DRAG_DROP_BLOCKED_VIEWS.includes(folderId as (typeof DRAG_DROP_BLOCKED_VIEWS)[number]);
+export function isDragDropBlockedView(pathOrViewKind: FinderPathLike | FinderViewKind | string | null | undefined): boolean {
+  if (!pathOrViewKind) return false;
+  const viewKind =
+    typeof pathOrViewKind === 'string'
+      ? (pathOrViewKind === 'root' ? 'folder' : pathOrViewKind)
+      : pathOrViewKind.viewKind;
+
+  return !getViewCapabilities(viewKind as FinderViewKind).canDragDrop;
 }
 
 /**

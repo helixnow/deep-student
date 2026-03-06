@@ -14,7 +14,7 @@
 
 use crate::chat_v2::events::{event_types, ChatV2EventEmitter};
 use crate::chat_v2::types::{
-    MessageBlock, SharedContext, TokenUsage, ToolCall, ToolResultInfo, Variant,
+    MessageBlock, SharedContext, TokenUsage, ToolCall, ToolResultInfo, Variant, VariantMeta,
 };
 use crate::chat_v2::variant_status;
 use serde_json::Value;
@@ -133,6 +133,9 @@ pub struct VariantExecutionContext {
 
     /// 待回传给 LLM 的 reasoning_content（DeepSeek Thinking Mode）
     pending_reasoning_for_api: Mutex<Option<String>>,
+
+    /// 变体级元数据（用于重放 skill 快照等）
+    meta: Mutex<Option<VariantMeta>>,
 }
 
 impl VariantExecutionContext {
@@ -195,7 +198,16 @@ impl VariantExecutionContext {
             interleaved_block_ids: Mutex::new(Vec::new()),
             interleaved_blocks: Mutex::new(Vec::new()),
             pending_reasoning_for_api: Mutex::new(None),
+            meta: Mutex::new(None),
         }
+    }
+
+    pub fn set_meta(&self, meta: VariantMeta) {
+        *self.meta.lock().unwrap_or_else(|e| e.into_inner()) = Some(meta);
+    }
+
+    pub fn get_meta(&self) -> Option<VariantMeta> {
+        self.meta.lock().unwrap_or_else(|e| e.into_inner()).clone()
     }
 
     /// 🔧 P2修复：设置 config_id
@@ -884,6 +896,7 @@ impl VariantExecutionContext {
             error: self.error(),
             created_at: self.created_at, // 使用构造时记录的时间
             usage,
+            meta: self.get_meta(),
         }
     }
 

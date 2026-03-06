@@ -12,7 +12,7 @@ use crate::chat_v2::error::ChatV2Error;
 use crate::chat_v2::events::clear_session_sequence_counter;
 use crate::chat_v2::repo::ChatV2Repo;
 use crate::chat_v2::state::ChatV2State;
-use crate::chat_v2::types::{ChatSession, PersistStatus, SessionSettings, SessionState};
+use crate::chat_v2::types::{ChatSession, PersistStatus, SessionSettings, SessionSkillState, SessionState, SkillStateSnapshot};
 use crate::vfs::database::VfsDatabase;
 use crate::vfs::repos::VfsResourceRepo;
 
@@ -891,8 +891,56 @@ fn restore_session_in_db(
 
     // 更新数据库
     ChatV2Repo::update_session_v2(db, &restored_session)?;
+    let _ = rebuild_session_skill_state_from_surviving_history(session_id, db);
 
     Ok(restored_session)
+}
+
+fn session_skill_state_from_snapshot(snapshot: &SkillStateSnapshot) -> SessionSkillState {
+    SessionSkillState {
+        manual_pinned_skill_ids: snapshot.manual_pinned_skill_ids.clone(),
+        mode_required_bundle_ids: snapshot.mode_required_bundle_ids.clone(),
+        agentic_session_skill_ids: snapshot.agentic_session_skill_ids.clone(),
+        branch_local_skill_ids: snapshot.branch_local_skill_ids.clone(),
+        effective_allowed_internal_tools: snapshot.effective_allowed_internal_tools.clone(),
+        effective_allowed_external_tools: snapshot.effective_allowed_external_tools.clone(),
+        effective_allowed_external_servers: snapshot.effective_allowed_external_servers.clone(),
+        version: snapshot.version,
+        legacy_migrated: Some(false),
+    }
+}
+
+pub(crate) fn rebuild_session_skill_state_from_surviving_history(
+    session_id: &str,
+    db: &ChatV2Database,
+) -> Result<(), ChatV2Error> {
+    let messages = ChatV2Repo::get_session_messages_v2(db, session_id)?;
+    let mut rebuilt_state: Option<SessionSkillState> = None;
+
+    for message in messages.iter().rev() {
+        let Some(meta) = message.meta.as_ref() else {
+            continue;
+        };
+
+        if let Some(snapshot) = meta.skill_snapshot_after.as_ref() {
+            rebuilt_state = Some(session_skill_state_from_snapshot(snapshot));
+            break;
+        }
+
+        if let Some(snapshot) = meta.skill_snapshot_before.as_ref() {
+            rebuilt_state = Some(session_skill_state_from_snapshot(snapshot));
+            break;
+        }
+    }
+
+    let resolved_state = match rebuilt_state {
+        Some(state) => state,
+        None => ChatV2Repo::load_session_state_v2(db, session_id)?
+            .map(|state| state.resolved_skill_state())
+            .unwrap_or_default(),
+    };
+
+    ChatV2Repo::update_session_skill_state_v2(db, session_id, &resolved_state)
 }
 
 /// 会话分支核心逻辑（事务内执行）
@@ -1068,6 +1116,7 @@ fn branch_session_in_db(
                         error: v.error.clone(),
                         created_at: v.created_at,
                         usage: v.usage.clone(),
+                        meta: v.meta.clone(),
                     }
                 })
                 .collect::<Vec<_>>()
@@ -1177,6 +1226,7 @@ fn branch_session_in_db(
             pending_context_refs_json: None, // 清空待发送上下文
             loaded_skill_ids_json: source_state.loaded_skill_ids_json,
             active_skill_ids_json: source_state.active_skill_ids_json,
+            skill_state_json: source_state.skill_state_json,
         };
         let _ = ChatV2Repo::save_session_state_with_conn(&tx, &new_session_id, &branched_state);
     }

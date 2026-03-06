@@ -3,6 +3,7 @@ import { NotionButton } from '@/components/ui/NotionButton';
 import { createPortal } from 'react-dom';
 import { ChevronsLeft, ChevronsRight, Pin, PinOff, Beaker, Minus, Square, X, Command, ChevronRight, Home } from 'lucide-react';
 import { useFinderStore } from '@/components/learning-hub/stores/finderStore';
+import { getQuickAccessTypeFromPath } from '@/components/learning-hub/learningHubContracts';
 import { useCommandPalette } from '@/command-palette';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 // ★ 文档31清理：SubjectSelectShad 已删除
@@ -58,21 +59,11 @@ function LearningHubBreadcrumb() {
 
   // 计算当前视图标题
   const currentTitle = useMemo(() => {
-    if (currentPath.folderId === 'root') return undefined;
-    if (currentPath.folderId === 'trash') return t('finder.quickAccess.trash');
-    if (currentPath.folderId === 'recent') return t('finder.quickAccess.recent');
-    if (currentPath.folderId === 'indexStatus') return t('finder.quickAccess.indexStatus');
-    if (currentPath.folderId === 'memory') return t('memory.title');
-    if (currentPath.dstuPath === '/@favorites') return t('finder.quickAccess.favorites');
-    if (currentPath.typeFilter === 'note') return t('finder.quickAccess.notes');
-    if (currentPath.typeFilter === 'textbook') return t('finder.quickAccess.textbooks');
-    if (currentPath.typeFilter === 'exam') return t('finder.quickAccess.exams');
-    if (currentPath.typeFilter === 'essay') return t('finder.quickAccess.essays');
-    if (currentPath.typeFilter === 'translation') return t('finder.quickAccess.translations');
-    if (currentPath.typeFilter === 'mindmap') return t('finder.quickAccess.mindmaps');
-    if (currentPath.typeFilter === 'image') return t('finder.quickAccess.images');
-    if (currentPath.typeFilter === 'file') return t('finder.quickAccess.files');
-    return undefined;
+    const activeType = getQuickAccessTypeFromPath(currentPath);
+    if (!activeType || activeType === 'allFiles') return undefined;
+    if (activeType === 'memory') return t('memory.title');
+    if (activeType === 'desktop') return t('finder.quickAccess.desktop');
+    return t(`finder.quickAccess.${activeType}`);
   }, [currentPath, t]);
 
   const breadcrumbs = currentPath.breadcrumbs;

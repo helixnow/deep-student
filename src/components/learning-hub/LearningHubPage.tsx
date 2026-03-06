@@ -20,7 +20,7 @@ import { useTranslation } from 'react-i18next';
 import { PanelGroup, Panel, PanelResizeHandle, type ImperativePanelHandle } from 'react-resizable-panels';
 import { registerOpenResourceHandler, type OpenResourceHandler } from '@/dstu/openResource';
 import type { DstuNode } from '@/dstu/types';
-import { createEmpty, type CreatableResourceType } from '@/dstu';
+import { createEmpty, dstu, type CreatableResourceType } from '@/dstu';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { setPendingMemoryLocate } from '@/utils/pendingMemoryLocate';
 import { LearningHubSidebar } from './LearningHubSidebar';
@@ -52,6 +52,8 @@ import { TabBar } from './components/TabBar';
 import { TabPanelContainer } from './apps/TabPanelContainer';
 import { setActiveTabForExternal } from './activeTabAccessor';
 import { COMMAND_EVENTS, useCommandEvents } from '@/command-palette/hooks/useCommandEvents';
+import { getCreatableFolderId } from './viewGuards';
+import { getViewCapabilities } from './learningHubContracts';
 
 // ============================================================================
 // 三屏滑动布局类型和常量
@@ -117,6 +119,8 @@ export const LearningHubPage: React.FC = () => {
   // ========== 标签页操作函数 ==========
   const activeTabIdRef = useRef(activeTabId);
   activeTabIdRef.current = activeTabId;
+  const tabsRef = useRef(tabs);
+  tabsRef.current = tabs;
 
   const openTab = useCallback((app: Omit<OpenTab, 'tabId' | 'openedAt'>) => {
     setTabs(prev => {
@@ -203,6 +207,58 @@ export const LearningHubPage: React.FC = () => {
     closeTab(tabId);
   }, [closeTab]);
 
+  useEffect(() => {
+    const unwatch = dstu.watch('*', (event) => {
+      if (event.type !== 'deleted' && event.type !== 'purged') {
+        return;
+      }
+
+      const affectedPath = event.path || event.oldPath;
+      if (!affectedPath) return;
+
+      const affectedResourceId = affectedPath.split('/').filter(Boolean).pop();
+      if (!affectedResourceId) return;
+      const wasActiveTabAffected = tabsRef.current.some(
+        tab => tab.resourceId === affectedResourceId && tab.tabId === activeTabIdRef.current
+      );
+
+      setTabs(prev => {
+        const next = prev.filter(tab => tab.resourceId !== affectedResourceId);
+        if (next.length === prev.length) {
+          return prev;
+        }
+
+        setActiveTabId(currentId => {
+          if (!currentId) return currentId;
+          if (next.some(tab => tab.tabId === currentId)) {
+            return currentId;
+          }
+          return next[next.length - 1]?.tabId ?? null;
+        });
+
+        setSplitView(prevSplit => {
+          if (prevSplit?.rightTabId && next.some(tab => tab.tabId === prevSplit.rightTabId)) {
+            return prevSplit;
+          }
+          return null;
+        });
+
+        return next;
+      });
+
+      if (wasActiveTabAffected) {
+        showGlobalNotification(
+          'warning',
+          t('learningHub:errors.resourceDeletedOrMoved', '资源已删除或已移动，已关闭失效标签页')
+        );
+      }
+    });
+
+    return () => {
+      unwatch();
+    };
+  }, [t]);
+
   // ========== 三屏滑动布局状态（移动端） ==========
   const [screenPosition, setScreenPosition] = useState<ScreenPosition>('center');
   const [activeAppType, setActiveAppType] = useState<string>('all');
@@ -246,11 +302,12 @@ export const LearningHubPage: React.FC = () => {
   // ★ 使用 finderStore 获取实际的文件夹导航状态（而非 NavigationContext）
   // finderStore 是实际控制文件列表显示的状态，NavigationContext 只是同步层
   const finderCurrentPath = useFinderStore(state => state.currentPath);
-  const finderGoBack = useFinderStore(state => state.goBack);
+  const finderGoUp = useFinderStore(state => state.goUp);
   const finderJumpToBreadcrumb = useFinderStore(state => state.jumpToBreadcrumb);
   const finderRefresh = useFinderStore(state => state.refresh);
   const finderQuickAccessNavigate = useFinderStore(state => state.quickAccessNavigate);
   const finderBreadcrumbs = finderCurrentPath.breadcrumbs;
+  const finderViewCapabilities = getViewCapabilities(finderCurrentPath.viewKind);
 
   // ========== VFS 引用模式注入 ==========
   const { injectToChat, canInject, isInjecting } = useVfsContextInject();
@@ -423,7 +480,7 @@ export const LearningHubPage: React.FC = () => {
     onMenuClick: screenPosition === 'right'
       ? () => setScreenPosition('center')
       : screenPosition === 'center' && isInSubfolder
-        ? () => finderGoBack()
+        ? () => finderGoUp()
         : () => setScreenPosition(prev => prev === 'left' ? 'center' : 'left'),
     showBackArrow: screenPosition === 'right' || (screenPosition === 'center' && isInSubfolder),
     rightActions: screenPosition === 'right' && (activeTab?.type === 'translation' || activeTab?.type === 'essay' || activeTab?.type === 'exam') ? (
@@ -447,7 +504,7 @@ export const LearningHubPage: React.FC = () => {
         <Settings className="h-5 w-5" />
       </NotionButton>
     ) : undefined,
-  }, [screenPosition, activeTab, t, isInSubfolder, finderBreadcrumbs, finderGoBack, rootTitle, handleBreadcrumbNavigate]);
+  }, [screenPosition, activeTab, t, isInSubfolder, finderBreadcrumbs, finderGoUp, rootTitle, handleBreadcrumbNavigate]);
 
   // ========== 侧边栏收缩状态 ==========
   const globalLeftPanelCollapsed = useUIStore((state) => state.leftPanelCollapsed);
@@ -576,7 +633,7 @@ export const LearningHubPage: React.FC = () => {
     try {
       // 动态导入以避免循环依赖
       const { openResource } = await import('@/dstu/openResource');
-      const result = await openResource(dstuPath, { mode: 'view' });
+      const result = await openResource(dstuPath, { mode: 'view', targetView: 'learning-hub' });
       if (!result.ok) {
         debugLog.error('[LearningHubPage] Open resource failed:', result.error.toUserMessage());
         showGlobalNotification('error', t('learningHub:errors.openResourceFailed', '打开资源失败'));
@@ -588,47 +645,66 @@ export const LearningHubPage: React.FC = () => {
   }, [t]);
 
   const handleNavigateToKnowledgeEvent = useCallback(async (detail: NavigateToKnowledgeEventDetail) => {
-    const { preferTab, documentId, fileName, resourceType, memoryId } = detail;
+    const { preferTab, locator } = detail;
+    const fallbackMemoryId = locator?.sourceId || locator?.resourceId;
 
     // 根据 preferTab 导航到对应视图
-    if (preferTab === 'memory' || memoryId) {
+    if (preferTab === 'memory' || fallbackMemoryId) {
       // 用户记忆视图
       finderQuickAccessNavigate('memory');
-      // 如果有 memoryId，写入缓冲区供 MemoryView 消费
-      if (memoryId) {
-        setPendingMemoryLocate(memoryId);
+      if (fallbackMemoryId) {
+        setPendingMemoryLocate(fallbackMemoryId);
       }
       // 移动端：切换到中间视图显示内容
       if (isSmallScreen) {
         setScreenPosition('center');
       }
-    } else if (documentId) {
+    } else if (locator && (locator.sourceId || locator.resourceId || locator.path)) {
       // ★ 2026-01-22: 处理 VFS 资源 ID (res_xxx)，需要查询正确的 DSTU 资源 ID
-      let finalDocumentId = documentId;
+      let finalDocumentId = locator.sourceId || locator.resourceId || '';
 
-      if (documentId.startsWith('res_')) {
+      if (!finalDocumentId && locator.path) {
+        finalDocumentId = locator.path.replace(/^\//, '');
+      }
+
+      if (finalDocumentId.startsWith('res_')) {
         try {
           // 通过 VFS API 查询资源的 source_id
           const { invoke } = await import('@tauri-apps/api/core');
-          const resource = await invoke<{ sourceId?: string } | null>('vfs_get_resource', { resourceId: documentId });
+          const resource = await invoke<{ sourceId?: string } | null>('vfs_get_resource', { resourceId: finalDocumentId });
           if (resource?.sourceId) {
             finalDocumentId = resource.sourceId;
-            debugLog.log('[LearningHub] Resolved VFS resource ID:', documentId, '→', finalDocumentId);
+            debugLog.log('[LearningHub] Resolved VFS resource ID:', locator.resourceId, '→', finalDocumentId);
           } else {
-            debugLog.warn('[LearningHub] VFS resource has no sourceId:', documentId);
+            debugLog.warn('[LearningHub] VFS resource has no sourceId:', locator.resourceId);
+            showGlobalNotification('error', t('learningHub:errors.resourceNotFound', '找不到对应资源'));
+            return;
           }
         } catch (error: unknown) {
           debugLog.error('[LearningHub] Failed to resolve VFS resource:', error);
+          showGlobalNotification('error', t('learningHub:errors.resourceNotFound', '找不到对应资源'));
+          return;
         }
+      }
+
+      if (!finalDocumentId) {
+        showGlobalNotification('error', t('learningHub:errors.resourceNotFound', '找不到对应资源'));
+        return;
+      }
+
+      const verifyResult = await dstu.get(`/${finalDocumentId}`);
+      if (!verifyResult.ok || !verifyResult.value) {
+        showGlobalNotification('error', t('learningHub:errors.resourceNotFound', '找不到对应资源'));
+        return;
       }
 
       // RAG 文档 - 直接打开文档预览器
       // 优先使用后端返回的 resourceType，回退到从文件名推断
-      const appType = (resourceType as ResourceType) || inferResourceTypeFromFileName(fileName || '');
+      const appType = (locator.resourceType as ResourceType) || inferResourceTypeFromFileName(locator.title || '');
       openTab({
         type: appType,
         resourceId: finalDocumentId,
-        title: fileName || t('learningHub:document'),
+        title: locator.title || t('learningHub:document'),
         dstuPath: `/${finalDocumentId}`,
       });
       if (isSmallScreen) {
@@ -665,8 +741,13 @@ export const LearningHubPage: React.FC = () => {
 
   // ========== 快捷创建并打开资源 ==========
   const handleCreateAndOpen = useCallback(async (type: 'exam' | 'essay' | 'translation' | 'note') => {
+    if (!finderViewCapabilities.canCreate) {
+      showGlobalNotification('warning', t('learningHub:errors.createNotAllowed', '当前视图不支持新建资源'));
+      return;
+    }
+
     // 获取当前文件夹 ID
-    const currentFolderId = finderCurrentPath.folderId;
+    const currentFolderId = getCreatableFolderId(finderCurrentPath);
 
     // 调用 createEmpty 创建新资源
     const result = await createEmpty({
@@ -691,7 +772,7 @@ export const LearningHubPage: React.FC = () => {
     } else {
       showGlobalNotification('error', result.error.toUserMessage());
     }
-  }, [finderCurrentPath.folderId, finderRefresh, isSmallScreen, t, openTab]);
+  }, [finderCurrentPath, finderRefresh, finderViewCapabilities.canCreate, isSmallScreen, t, openTab]);
 
   // ========== 统一注册所有 window 事件监听器 ==========
   useLearningHubEvents({
@@ -879,6 +960,8 @@ export const LearningHubPage: React.FC = () => {
               }}
               onCreateAndOpen={handleCreateAndOpen}
               onClose={() => setScreenPosition('center')}
+              createDisabled={!finderViewCapabilities.canCreate}
+              searchDisabled={!finderViewCapabilities.canSearch}
             />
           </div>
 

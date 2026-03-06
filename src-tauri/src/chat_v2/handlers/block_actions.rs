@@ -10,6 +10,7 @@ use tauri::{AppHandle, State};
 use crate::chat_v2::database::ChatV2Database;
 use crate::chat_v2::error::ChatV2Error;
 use crate::chat_v2::events::{event_phase, event_types, next_session_sequence_id};
+use crate::chat_v2::handlers::manage_session::rebuild_session_skill_state_from_surviving_history;
 use crate::chat_v2::repo::ChatV2Repo;
 use crate::chat_v2::state::ChatV2State;
 use crate::chat_v2::types::{ChatMessage, MessageRole};
@@ -219,6 +220,7 @@ fn delete_message_from_db(
     // 删除消息（级联删除关联的块由外键约束处理）
     // 🔧 优化：使用 _with_conn 版本
     ChatV2Repo::delete_message_with_conn(&conn, message_id)?;
+    let _ = rebuild_session_skill_state_from_surviving_history(session_id, db);
 
     Ok(())
 }

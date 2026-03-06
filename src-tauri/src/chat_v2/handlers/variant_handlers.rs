@@ -21,11 +21,13 @@ use tracing::{debug, info, warn};
 use crate::chat_v2::database::ChatV2Database;
 use crate::chat_v2::error::{ChatV2Error, ChatV2Result};
 use crate::chat_v2::events::session_event_type;
+use crate::chat_v2::handlers::send_message::apply_original_skill_snapshot_overrides;
 use crate::chat_v2::pipeline::{ChatV2Pipeline, VariantRetrySpec};
 use crate::chat_v2::repo::ChatV2Repo;
 use crate::chat_v2::state::ChatV2State;
 use crate::chat_v2::types::{
-    variant_status, AttachmentInput, ChatMessage, MessageRole, SendOptions, SharedContext,
+    variant_status, AttachmentInput, ChatMessage, MessageRole, SendOptions, SessionSkillState,
+    SharedContext, SkillStateSnapshot,
 };
 use crate::chat_v2::vfs_resolver::{resolve_context_ref_data_to_content, ResolvedContent};
 use crate::llm_manager::LLMManager;
@@ -49,6 +51,40 @@ pub struct DeleteVariantResult {
     pub new_active_variant_id: Option<String>,
 }
 
+fn session_skill_state_from_snapshot(snapshot: &SkillStateSnapshot) -> SessionSkillState {
+    let mut agentic_session_skill_ids = snapshot.agentic_session_skill_ids.clone();
+    agentic_session_skill_ids.extend(snapshot.branch_local_skill_ids.clone());
+    agentic_session_skill_ids.sort();
+    agentic_session_skill_ids.dedup();
+
+    SessionSkillState {
+        manual_pinned_skill_ids: snapshot.manual_pinned_skill_ids.clone(),
+        mode_required_bundle_ids: snapshot.mode_required_bundle_ids.clone(),
+        agentic_session_skill_ids,
+        branch_local_skill_ids: Vec::new(),
+        effective_allowed_internal_tools: snapshot.effective_allowed_internal_tools.clone(),
+        effective_allowed_external_tools: snapshot.effective_allowed_external_tools.clone(),
+        effective_allowed_external_servers: snapshot.effective_allowed_external_servers.clone(),
+        version: snapshot.version.saturating_add(1),
+        legacy_migrated: Some(false),
+    }
+}
+
+fn sync_session_skill_state_from_variant(
+    db: &ChatV2Database,
+    session_id: &str,
+    variant: &crate::chat_v2::types::Variant,
+) -> ChatV2Result<()> {
+    let snapshot = variant
+        .meta
+        .as_ref()
+        .and_then(|meta| meta.skill_snapshot_after.as_ref().or(meta.skill_snapshot_before.as_ref()));
+    let Some(snapshot) = snapshot else {
+        return Ok(());
+    };
+    ChatV2Repo::update_session_skill_state_v2(db, session_id, &session_skill_state_from_snapshot(snapshot))
+}
+
 fn resolve_retry_options(
     saved_chat_params: Option<&serde_json::Value>,
     model_id: &str,
@@ -58,6 +94,9 @@ fn resolve_retry_options(
         options.model_id = Some(model_id.to_string());
         options.model2_override_id = Some(model_id.to_string());
         options.parallel_model_ids = None;
+        if options.replay_mode.is_some() {
+            options.temperature = Some(0.0);
+        }
         return options;
     }
 
@@ -77,6 +116,10 @@ fn resolve_retry_options(
             .and_then(|v| v.as_u64())
             .map(|v| v as u32);
         options.enable_thinking = params.get("enableThinking").and_then(|v| v.as_bool());
+    }
+
+    if options.replay_mode.is_some() {
+        options.temperature = Some(0.0);
     }
 
     options
@@ -130,7 +173,8 @@ async fn switch_variant_impl(
     // 2. 获取目标变体
     let variant = message
         .get_variant(variant_id)
-        .ok_or_else(|| ChatV2Error::VariantNotFound(variant_id.to_string()))?;
+        .ok_or_else(|| ChatV2Error::VariantNotFound(variant_id.to_string()))?
+        .clone();
 
     // 3. 验证变体状态不是 error
     if !variant.can_activate() {
@@ -144,6 +188,7 @@ async fn switch_variant_impl(
 
     // 5. 持久化
     ChatV2Repo::update_message_with_conn(&conn, &message)?;
+    let _ = sync_session_skill_state_from_variant(db, session_id, &variant);
 
     info!(
         "[ChatV2::VariantHandler] Variant switched: message_id={}, variant_id={}",
@@ -285,6 +330,15 @@ async fn delete_variant_impl(
 
     // 9. 持久化
     ChatV2Repo::update_message_with_conn(&conn, &message)?;
+
+    if let Some(ref next_active_variant_id) = new_active_variant_id {
+        if let Some(ref variants) = message.variants {
+            if let Some(next_variant) = variants.iter().find(|variant| variant.id == *next_active_variant_id)
+            {
+                let _ = sync_session_skill_state_from_variant(db, &message.session_id, next_variant);
+            }
+        }
+    }
 
     // 10. 发射 variant_deleted 事件
     let session_id = &message.session_id;
@@ -609,7 +663,20 @@ async fn retry_variant_impl(
 
     // 15. 构建 SendOptions（优先使用前端透传的完整选项）
     let saved_chat_params = message.meta.as_ref().and_then(|m| m.chat_params.as_ref());
-    let options = resolve_retry_options(saved_chat_params, &model_id, options_override);
+    let selected_variant_meta = message
+        .variants
+        .as_ref()
+        .and_then(|variants| variants.iter().find(|variant| variant.id == variant_id))
+        .and_then(|variant| variant.meta.as_ref())
+        .map(|meta| crate::chat_v2::types::MessageMeta {
+            skill_snapshot_before: meta.skill_snapshot_before.clone(),
+            skill_snapshot_after: meta.skill_snapshot_after.clone(),
+            ..Default::default()
+        });
+    let options = apply_original_skill_snapshot_overrides(
+        resolve_retry_options(saved_chat_params, &model_id, options_override),
+        selected_variant_meta.as_ref().or(message.meta.as_ref()),
+    );
 
     // 释放数据库连接，避免在 Pipeline 执行期间持有连接
     drop(conn);
@@ -748,6 +815,7 @@ async fn retry_variants_impl(
             variant_id: variant_id.clone(),
             model_id: display_model_id.clone(),
             config_id: config_id.clone(),
+            meta: variant.meta.clone(),
         });
 
         for block_id in &variant.block_ids {
@@ -903,7 +971,10 @@ async fn retry_variants_impl(
         .map(|spec| spec.config_id.clone())
         .unwrap_or_default();
     let saved_chat_params = message.meta.as_ref().and_then(|m| m.chat_params.as_ref());
-    let options = resolve_retry_options(saved_chat_params, &primary_model_id, options_override);
+    let options = apply_original_skill_snapshot_overrides(
+        resolve_retry_options(saved_chat_params, &primary_model_id, options_override),
+        message.meta.as_ref(),
+    );
 
     // 释放数据库连接，避免在 Pipeline 执行期间持有连接
     drop(conn);

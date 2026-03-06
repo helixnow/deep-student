@@ -14,6 +14,7 @@ import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { setPendingMemoryLocate } from '@/utils/pendingMemoryLocate';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/shad/Sheet';
 import { getReadableToolName } from '@/chat-v2/utils/toolDisplayName';
+import { canLocateResource, type ResourceLocator } from '@/components/learning-hub/learningHubContracts';
 import './UnifiedSourcePanel.css';
 
 // 来源类型映射到引用类型（与 citationParser 保持一致）
@@ -396,17 +397,27 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
     }
   };
 
+  const buildResourceLocator = useCallback((item: UnifiedSourceItem): ResourceLocator => ({
+    sourceId: item.sourceId || item.raw?.source_id || undefined,
+    resourceId: item.resourceId,
+    resourceType: item.resourceType,
+    title: item.raw.file_name || item.title,
+    path: item.path,
+  }), []);
+
   const getMemoryLocateId = (item: UnifiedSourceItem): string => {
-    return item.sourceId || item.raw?.source_id || item.raw?.document_id || '';
+    const locator = buildResourceLocator(item);
+    return locator.sourceId || locator.resourceId || '';
   };
 
   const handleLocateMemory = (item: UnifiedSourceItem) => {
-    const memoryId = getMemoryLocateId(item);
+    const locator = buildResourceLocator(item);
+    const memoryId = locator.sourceId || locator.resourceId;
     if (!memoryId) return;
     try {
       setPendingMemoryLocate(memoryId);
       window.dispatchEvent(new CustomEvent('DSTU_NAVIGATE_TO_KNOWLEDGE_BASE' as any, {
-        detail: { preferTab: 'memory', memoryId }
+        detail: { preferTab: 'memory', locator }
       }));
     } catch (error: unknown) {
       console.error('[UnifiedSourcePanel] Failed to dispatch memory navigate event:', error);
@@ -415,15 +426,11 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
 
   // 🔧 P1-34: 跳转到知识库文档并高亮
   const handleLocateRagDocument = (item: UnifiedSourceItem) => {
-    // ★ 2026-01-22: 优先使用 sourceId（DSTU 资源 ID 如 tb_xxx），回退到 resourceId（VFS 资源 ID 如 res_xxx）
-    // sourceId 是可以直接打开的上层资源 ID，resourceId 是底层存储 ID
-    const documentId = item.sourceId || item.resourceId || item.raw.source_id || item.raw.document_id;
-    const fileName = item.raw.file_name;
-    const resourceType = item.resourceType;
-    if (!documentId) return;
+    const locator = buildResourceLocator(item);
+    if (!canLocateResource(locator)) return;
     try {
       window.dispatchEvent(new CustomEvent('DSTU_NAVIGATE_TO_KNOWLEDGE_BASE' as any, {
-        detail: { documentId, fileName, resourceType, preferTab: 'manage' }
+        detail: { locator, preferTab: 'manage' }
       }));
     } catch (error: unknown) {
       console.error('[UnifiedSourcePanel] Failed to dispatch knowledge base locate event:', error);
@@ -533,7 +540,7 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
               <ExternalLink size={14} />
               {t('common:chat.sources.locateMemory')}
             </NotionButton>
-          ) : entry.item.origin === 'rag' && entry.item.raw?.document_id ? (
+          ) : entry.item.origin === 'rag' && canLocateResource(buildResourceLocator(entry.item)) ? (
             <NotionButton variant="ghost" size="sm" onClick={() => handleLocateRagDocument(entry.item)} className="text-primary">
               <ExternalLink size={14} />
               {t('common:chat.sources.locateKb')}
@@ -949,7 +956,7 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
                             <ExternalLink size={12} />
                             {t('common:chat.sources.locateMemory')}
                           </NotionButton>
-                        ) : entry.item.origin === 'rag' && entry.item.raw?.document_id ? (
+                        ) : entry.item.origin === 'rag' && canLocateResource(buildResourceLocator(entry.item)) ? (
                           /* 🔧 P1-34: RAG 来源添加“在知识库中打开”按钮 */
                           <NotionButton variant="ghost" size="sm" onClick={() => handleLocateRagDocument(entry.item)} className="text-primary !h-6 text-xs">
                             <ExternalLink size={12} />

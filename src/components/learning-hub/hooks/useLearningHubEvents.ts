@@ -16,6 +16,7 @@
 
 import { useEffect, useRef } from 'react';
 import { LEARNING_EVENTS } from '@/command-palette/modules/learning.commands';
+import type { ResourceLocator } from '../learningHubContracts';
 
 // ============================================================================
 // 事件数据类型定义
@@ -53,11 +54,8 @@ export interface OpenResourceEventDetail {
 
 /** learningHubNavigateToKnowledge 事件数据 */
 export interface NavigateToKnowledgeEventDetail {
-  preferTab?: string;
-  documentId?: string;
-  fileName?: string;
-  resourceType?: string;
-  memoryId?: string;
+  preferTab?: 'manage' | 'memory';
+  locator?: ResourceLocator;
 }
 
 // ============================================================================

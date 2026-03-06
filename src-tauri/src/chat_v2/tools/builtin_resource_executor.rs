@@ -3225,7 +3225,7 @@ impl ToolExecutor for BuiltinResourceExecutor {
             &call.name,
             call.arguments.clone(),
             Some(&call.id), // 🆕 tool_call_id
-            None,           // variant_id: 单变体模式
+            ctx.variant_id.as_deref(),
         );
 
         let result = match tool_name {
@@ -3247,14 +3247,16 @@ impl ToolExecutor for BuiltinResourceExecutor {
         match result {
             Ok(output) => {
                 // 🔧 修复：发射工具调用结束事件
-                ctx.emitter.emit_end(
+                ctx.emitter.emit_end_with_meta(
                     event_types::TOOL_CALL,
                     &ctx.block_id,
                     Some(json!({
                         "result": output,
                         "durationMs": duration,
                     })),
-                    None,
+                    ctx.variant_id.as_deref(),
+                    ctx.skill_state_version,
+                    ctx.round_id.as_deref(),
                 );
 
                 let result = ToolResultInfo::success(
@@ -3275,8 +3277,14 @@ impl ToolExecutor for BuiltinResourceExecutor {
             }
             Err(e) => {
                 // 🔧 修复：发射工具调用错误事件
-                ctx.emitter
-                    .emit_error(event_types::TOOL_CALL, &ctx.block_id, &e, None);
+                ctx.emitter.emit_error_with_meta(
+                    event_types::TOOL_CALL,
+                    &ctx.block_id,
+                    &e,
+                    ctx.variant_id.as_deref(),
+                    ctx.skill_state_version,
+                    ctx.round_id.as_deref(),
+                );
 
                 let result = ToolResultInfo::failure(
                     Some(call.id.clone()),

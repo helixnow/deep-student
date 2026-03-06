@@ -154,7 +154,7 @@ describe('ChatV2TauriAdapter', () => {
     vi.clearAllMocks();
 
     // Simulate Tauri runtime so adapter.setup() doesn't short-circuit.
-    (window as any).__TAURI__ = {};
+    (window as any).__TAURI_INTERNALS__ = {};
 
     mockStore = createMockStore();
     mockUnlisten = vi.fn();
@@ -165,17 +165,18 @@ describe('ChatV2TauriAdapter', () => {
     adapter = new ChatV2TauriAdapter('test-session-id', mockStore);
   });
 
-  afterEach(() => {
-    adapter.cleanup();
-    delete (window as any).__TAURI__;
+  afterEach(async () => {
+    await adapter.cleanup();
+    delete (window as any).__TAURI_INTERNALS__;
+    delete (window as any).__TAURI_IPC__;
   });
 
   describe('setup', () => {
     it('should setup event listeners', async () => {
       await adapter.setup();
 
-      // Should register two listeners
-      expect(listen).toHaveBeenCalledTimes(2);
+      // Should register block/session plus shared debug listeners.
+      expect(listen).toHaveBeenCalledTimes(4);
 
       // Check listener channels
       expect(listen).toHaveBeenCalledWith(
@@ -195,7 +196,7 @@ describe('ChatV2TauriAdapter', () => {
       await adapter.setup();
 
       // Should only register once
-      expect(listen).toHaveBeenCalledTimes(2);
+      expect(listen).toHaveBeenCalledTimes(4);
     });
   });
 
@@ -203,10 +204,10 @@ describe('ChatV2TauriAdapter', () => {
     it('should cleanup all listeners', async () => {
       await adapter.setup();
 
-      adapter.cleanup();
+      await adapter.cleanup();
 
-      // Should call unlisten for both listeners
-      expect(mockUnlisten).toHaveBeenCalledTimes(2);
+      // Should release all registered listeners.
+      expect(mockUnlisten).toHaveBeenCalledTimes(4);
       expect(adapter.initialized).toBe(false);
     });
 
@@ -316,6 +317,7 @@ describe('ChatV2TauriAdapter', () => {
     });
 
     it('should handle stream_complete event', () => {
+      (mockStore as any).currentStreamingMessageId = 'msg-1';
       sessionEventCallback({
         payload: {
           sessionId: 'test-session-id',
@@ -331,10 +333,12 @@ describe('ChatV2TauriAdapter', () => {
     });
 
     it('should handle stream_error event', () => {
+      (mockStore as any).currentStreamingMessageId = 'msg-1';
       sessionEventCallback({
         payload: {
           sessionId: 'test-session-id',
           eventType: 'stream_error',
+          messageId: 'msg-1',
           error: 'Test error',
           timestamp: Date.now(),
         },
@@ -345,6 +349,7 @@ describe('ChatV2TauriAdapter', () => {
     });
 
     it('should handle stream_cancelled event', () => {
+      (mockStore as any).currentStreamingMessageId = 'msg-1';
       sessionEventCallback({
         payload: {
           sessionId: 'test-session-id',
@@ -409,6 +414,9 @@ describe('ChatV2TauriAdapter', () => {
             rag: false,
             mcp: false,
           }),
+          loadedSkillIdsJson: null,
+          activeSkillIdsJson: null,
+          skillStateJson: null,
           updatedAt: expect.any(String),
         }),
       });

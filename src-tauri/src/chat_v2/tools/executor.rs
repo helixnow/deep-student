@@ -72,6 +72,12 @@ pub struct ExecutionContext {
     pub session_id: String,
     /// 消息 ID
     pub message_id: String,
+    /// 变体 ID（多变体路径下的 branch-local skill 作用域）
+    pub variant_id: Option<String>,
+    /// 当前 skill state 版本
+    pub skill_state_version: Option<u64>,
+    /// 当前工具轮次 ID
+    pub round_id: Option<String>,
     /// 块 ID（由调用方生成）
     pub block_id: String,
     /// 事件发射器
@@ -125,6 +131,9 @@ impl ExecutionContext {
         Self {
             session_id,
             message_id,
+            variant_id: None,
+            skill_state_version: None,
+            round_id: None,
             block_id,
             emitter,
             canvas_note_id: None,
@@ -145,6 +154,21 @@ impl ExecutionContext {
             rag_enable_reranking: None,
             pdf_processing_service: None,
         }
+    }
+
+    pub fn with_variant_id(mut self, variant_id: Option<String>) -> Self {
+        self.variant_id = variant_id;
+        self
+    }
+
+    pub fn with_event_meta(
+        mut self,
+        skill_state_version: Option<u64>,
+        round_id: Option<String>,
+    ) -> Self {
+        self.skill_state_version = skill_state_version;
+        self.round_id = round_id;
+        self
     }
 
     /// 🆕 设置取消令牌

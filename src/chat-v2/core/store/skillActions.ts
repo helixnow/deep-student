@@ -105,6 +105,7 @@ export function createSkillActions(
             pendingContextRefs: [...s.pendingContextRefs, contextRef],
             pendingContextRefsDirty: true,
             activeSkillIds: [...s.activeSkillIds, skillId],
+            skillStateJson: null,
           };
         });
 
@@ -159,6 +160,11 @@ export function createSkillActions(
         if (targetRef) {
           // removeContextRef 内部会同步更新 activeSkillIds
           state.removeContextRef(targetRef.resourceId);
+          void import('../../skills/progressiveDisclosure').then(({ unloadSkill }) => {
+            unloadSkill(state.sessionId, skillId);
+          }).catch((error: unknown) => {
+            console.warn(LOG_PREFIX, 'Unload skill tools failed:', error);
+          });
           console.log(LOG_PREFIX, `Deactivated skill: ${skillId}`);
         } else {
           // 🔧 兜底：ref 不存在但 activeSkillIds 中有，清理脏数据
@@ -166,6 +172,7 @@ export function createSkillActions(
           if (currentState.activeSkillIds.includes(skillId)) {
             set((s: ChatStoreState) => ({
               activeSkillIds: s.activeSkillIds.filter(id => id !== skillId),
+              skillStateJson: null,
             }));
             console.warn(LOG_PREFIX, `Cleaning stale data: activeSkillIds contains entry without matching ref: ${skillId}`);
           }
@@ -217,7 +224,7 @@ export function createSkillActions(
       if (state.activeSkillIds.length > 0 && !hasSkillRef) {
         // activeSkillIds 存在但没有对应的 skill ref → 清除 activeSkillIds
         console.warn('[SkillActions] repairSkillState: activeSkillIds exist but no ref, clearing');
-        set({ activeSkillIds: [] } as Partial<ChatStoreState>);
+        set({ activeSkillIds: [], skillStateJson: null } as Partial<ChatStoreState>);
       }
     },
 

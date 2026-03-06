@@ -64,7 +64,6 @@ const MemoryView = lazy(() => import('./views/MemoryView'));
 // ★ 2026-01-31: 懒加载桌面视图
 import { DesktopView, type CreateResourceType } from './components/finder';
 import type { DesktopRootConfig } from './stores/desktopStore';
-import { useShallow } from 'zustand/react/shallow';
 import { useFinderStore, type QuickAccessType } from './stores/finderStore';
 import { useRecentStore } from './stores/recentStore';
 import { useLearningHubNavigationSafe } from './LearningHubNavigationContext';
@@ -95,10 +94,12 @@ import { useVfsContextInject } from './hooks';
 import type { VfsResourceType } from '@/chat-v2/context/types';
 import { MOBILE_LAYOUT } from '@/config/mobileLayout';
 import { consumePathsDropHandledFlag, isDragDropBlockedView } from './dragDropRouting';
+import { getCreatableFolderId } from './viewGuards';
+import { getFinderPathDisplayPath, getQuickAccessTypeFromPath, getViewCapabilities } from './learningHubContracts';
 import { useCommandEvents } from '@/command-palette/hooks/useCommandEvents';
 
-/** ★ Bug4: canvas 模式下不应显示的特殊视图 folderId 集合 */
-const CANVAS_BLOCKED_VIEW_IDS = new Set(['indexStatus', 'memory', 'desktop']);
+/** ★ Bug4: canvas 模式下不应显示的特殊视图 */
+const CANVAS_BLOCKED_VIEW_KINDS = new Set(['indexStatus', 'memory', 'desktop']);
 
 export function LearningHubSidebar({
   mode,
@@ -146,24 +147,30 @@ export function LearningHubSidebar({
     clearSelection,
     setSelectedIds,
     setSearchQuery,
-    setItems,
-    setLoading,
-    setError,
+    refresh: finderRefresh,
     enterFolder,
     navigateTo,
     quickAccessNavigate,
     setCurrentPathWithoutHistory,
   } = useFinderStore();
 
+  const currentPathDisplay = getFinderPathDisplayPath(currentPath);
+  const viewCapabilities = getViewCapabilities(currentPath.viewKind);
+  const currentCreatableFolderId = getCreatableFolderId(currentPath);
+  const currentQuickAccessType = getQuickAccessTypeFromPath(currentPath) ?? null;
+  const isTrashView = currentPath.viewKind === 'trash';
+  const canCreateInCurrentView = viewCapabilities.canCreate;
+  const canSearchInCurrentView = viewCapabilities.canSearch;
+
   // ★ Bug4 修复：canvas 模式下，如果 currentPath 是特殊视图（indexStatus/memory/desktop），
   // 自动重置到 root，避免从 LearningHubPage 泄露的特殊视图状态影响聊天侧边栏
   // 使用 setCurrentPathWithoutHistory 避免污染共享的导航历史栈
   useEffect(() => {
-    if (mode === 'canvas' && currentPath.folderId && CANVAS_BLOCKED_VIEW_IDS.has(currentPath.folderId)) {
-      debugLog.log('[LearningHub] canvas 模式检测到特殊视图，重置到 root:', currentPath.folderId);
-      setCurrentPathWithoutHistory('root');
+    if (mode === 'canvas' && CANVAS_BLOCKED_VIEW_KINDS.has(currentPath.viewKind)) {
+      debugLog.log('[LearningHub] canvas 模式检测到特殊视图，重置到 root:', currentPath.viewKind);
+      setCurrentPathWithoutHistory(null);
     }
-  }, [mode]); // 仅在组件挂载/mode 变化时检查，避免循环
+  }, [mode, currentPath.viewKind, setCurrentPathWithoutHistory]); // 仅在组件挂载/mode 变化时检查，避免循环
 
   // ★ 搜索防抖处理：延迟 300ms 触发 API 调用，避免快速输入导致频繁请求
   const debouncedSearchQuery = useDebounce(searchQuery, 300);
@@ -251,151 +258,54 @@ export function LearningHubSidebar({
   // 导航状态应该由用户操作控制，而非组件生命周期
 
   // ★ 文档28 Prompt 8: 同步 finderStore 与 LearningHubNavigationContext
-  const navContext = useLearningHubNavigationSafe();
-  const navContextFolderId = navContext?.currentFolderId;
-
-  // ★ 2026-01-15: 规范化 folderId，统一 null/'root'/undefined 为 null
-  // 解决死循环问题：navContext 使用 null 表示根目录，finderStore 使用 'root'
-  const normalizeRootFolderId = useCallback((id: string | null | undefined): string | null => {
-    if (id === 'root' || id === null || id === undefined) return null;
-    return id;
-  }, []);
-
-  const normalizedFinderFolderId = normalizeRootFolderId(currentPath.folderId);
-  const normalizedNavFolderId = normalizeRootFolderId(navContextFolderId);
+  useLearningHubNavigationSafe();
 
   // ★ 2026-01-15: 完全移除双向同步逻辑
   // 原因：LearningHubNavigationContext 现在直接使用 finderStore 的历史栈（goBack/goForward）
   // 不再需要 navContext ↔ finderStore 的同步，因为它们现在共享同一个数据源
   // 这彻底解决了两个历史栈互相干扰导致的循环问题
 
-  // ★ 获取 DSTU 列表选项（文件夹优先模式）
-  const { getDstuListOptions } = useFinderStore(
-    useShallow((state) => ({
-      getDstuListOptions: state.getDstuListOptions,
-    }))
-  );
-
   // Load items when path changes
   // ★ 使用 debouncedSearchQuery 触发搜索，避免快速输入导致频繁 API 调用
   useEffect(() => {
-    // ★ MEDIUM-004: 使用取消标志防止快速导航时的状态不同步
     let isCancelled = false;
-    const currentPathSnapshot = currentPath; // 保存当前路径快照
 
     const loadData = async () => {
-      const start = Date.now();
-      pageLifecycleTracker.log('learning-hub-sidebar', 'LearningHubSidebar', 'data_load', `path: ${currentPath.dstuPath}`);
-      setLoading(true);
-      setError(null);
+      if (searchQuery.trim() && debouncedSearchQuery !== searchQuery) {
+        return;
+      }
 
-      let result;
+      const start = Date.now();
+      pageLifecycleTracker.log('learning-hub-sidebar', 'LearningHubSidebar', 'data_load', `path: ${currentPathDisplay}`);
 
       try {
-        // ★ 2026-01-15: indexStatus 视图不需要加载 DSTU 列表
-        // ★ 2026-01-19: memory 视图不需要加载 DSTU 列表
-        // ★ 2026-01-31: desktop 视图不需要加载 DSTU 列表
-        if (currentPath.folderId === 'indexStatus' || currentPath.folderId === 'memory' || currentPath.folderId === 'desktop') {
-          result = ok([]);
-          setLoading(false);
-          return;
-        }
-        
-        if (isSearching && debouncedSearchQuery) {
-          const listOptions = { ...getDstuListOptions() };
-          // search/searchInFolder 由参数决定范围，避免传递特殊 folderId
-          if (listOptions.folderId) {
-            delete listOptions.folderId;
-          }
-          const isSearchInFolder = Boolean(
-            currentPath.folderId &&
-            !['root', 'trash', 'recent', 'indexStatus', 'memory', 'desktop'].includes(currentPath.folderId)
+        await finderRefresh();
+        if (!isCancelled && isMountedRef.current) {
+          pageLifecycleTracker.log(
+            'learning-hub-sidebar',
+            'LearningHubSidebar',
+            'data_ready',
+            `${useFinderStore.getState().items.length} items`,
+            { duration: Date.now() - start }
           );
-          result = isSearchInFolder
-            ? await dstu.searchInFolder(currentPath.folderId, debouncedSearchQuery, listOptions)
-            : await dstu.search(debouncedSearchQuery, listOptions);
-        } else if (currentPath.folderId === 'trash') {
-          result = await trashApi.listTrash();
-        } else if (currentPath.folderId === 'recent') {
-          // 🔧 P0-11 修复: 最近文件视图使用前端存储
-          const recentStore = useRecentStore.getState();
-          const recentItems = recentStore.getRecentItems();
-          const nodes: DstuNode[] = [];
-
-          for (const recent of recentItems) {
-            // 尝试获取资源详情
-            let nodeResult = await dstu.get(recent.path);
-            if (!nodeResult.ok) {
-              // 降级：尝试用 ID 构造路径重试
-              nodeResult = await dstu.get(`/${recent.id}`);
-            }
-            if (nodeResult.ok && nodeResult.value) {
-              nodes.push(nodeResult.value);
-            } else {
-              // 资源已不存在，从最近记录中移除
-              debugLog.warn('[LearningHub] 最近文件已不存在，从记录中移除:', recent.path, recent.id);
-              recentStore.removeRecent(recent.id);
-            }
-          }
-          result = ok(nodes);
-        } else {
-          const listOptions = getDstuListOptions();
-          const path = currentPath.dstuPath.startsWith('/') ? currentPath.dstuPath : `/${currentPath.dstuPath}`;
-          result = await dstu.list(path, listOptions);
-        }
-
-        // ★ 检查是否已取消或路径已变化
-        if (isCancelled) {
-          debugLog.log('[LearningHub] 数据加载已取消，丢弃结果');
-          return;
-        }
-
-        // ★ 检查路径是否仍然匹配（避免快速导航时的数据错乱）
-        const { currentPath: latestPath } = useFinderStore.getState();
-        if (latestPath.dstuPath !== currentPathSnapshot.dstuPath ||
-            latestPath.folderId !== currentPathSnapshot.folderId) {
-          debugLog.log('[LearningHub] 路径已变化，丢弃过期数据');
-          return;
-        }
-
-        // ★ MEDIUM-005: 检查组件是否已卸载
-        if (!isMountedRef.current) {
-          debugLog.log('[LearningHub] 组件已卸载，丢弃数据加载结果');
-          return;
-        }
-
-        if (result.ok) {
-          setItems(result.value);
-          pageLifecycleTracker.log('learning-hub-sidebar', 'LearningHubSidebar', 'data_ready', `${result.value.length} items`, { duration: Date.now() - start });
-        } else {
-          debugLog.error('Failed to load items:', result.error);
-          reportError(result.error, 'load resource list');
-          setError(result.error.toUserMessage());
         }
       } catch (err) {
         if (!isCancelled && isMountedRef.current) {
           debugLog.error('Unexpected error loading items:', err);
-          setError(t('error.loadFailedRetry', '加载失败，请重试'));
-        }
-      } finally {
-        if (!isCancelled && isMountedRef.current) {
-          setLoading(false);
         }
       }
     };
 
-    loadData();
-
-    // ★ 清理函数：取消请求
+    void loadData();
     return () => {
       isCancelled = true;
     };
-  }, [currentPath.dstuPath, currentPath.folderId, currentPath.typeFilter, isSearching, debouncedSearchQuery, setItems, setLoading, setError, getDstuListOptions]);
+  }, [currentPathDisplay, currentPath.viewKind, currentPath.folderId, currentPath.typeFilter, debouncedSearchQuery, searchQuery, finderRefresh]);
 
   // Handle open item
   const handleOpen = (item: DstuNode) => {
     // ★ Bug Fix: 回收站中的资源不应记录为最近访问
-    if (item.type !== 'folder' && currentPath.folderId !== 'trash') {
+    if (item.type !== 'folder' && currentPath.viewKind !== 'trash') {
       addRecent({
         id: item.id,
         path: item.path,
@@ -450,105 +360,16 @@ export function LearningHubSidebar({
     }
   };
 
-  // ★ 刷新请求 ID，用于取消过期请求
-  const refreshRequestIdRef = useRef(0);
-
-  // Refresh current directory
   const handleRefresh = useCallback(async () => {
-    // ★ MEDIUM-005: 组件卸载检查
     if (!isMountedRef.current) return;
-
-    // ★ 生成新的请求 ID，取消之前的刷新请求
-    const requestId = ++refreshRequestIdRef.current;
-
-    setLoading(true);
-    setError(null);
-
-    let result;
-
-    try {
-      // ★ 2026-01-15: indexStatus 视图不需要刷新 DSTU 列表
-      // ★ 2026-01-19: memory 视图不需要刷新 DSTU 列表
-      // ★ 2026-01-31: desktop 视图不需要刷新 DSTU 列表
-      if (currentPath.folderId === 'indexStatus' || currentPath.folderId === 'memory' || currentPath.folderId === 'desktop') {
-        setLoading(false);
-        return;
-      }
-      
-      // ★ 使用 debouncedSearchQuery 刷新搜索结果
-      if (isSearching && debouncedSearchQuery) {
-        const listOptions = { ...getDstuListOptions() };
-        if (listOptions.folderId) {
-          delete listOptions.folderId;
-        }
-        const isSearchInFolder = Boolean(
-          currentPath.folderId &&
-          !['root', 'trash', 'recent', 'indexStatus', 'memory', 'desktop'].includes(currentPath.folderId)
-        );
-        result = isSearchInFolder
-          ? await dstu.searchInFolder(currentPath.folderId, debouncedSearchQuery, listOptions)
-          : await dstu.search(debouncedSearchQuery, listOptions);
-      } else if (currentPath.folderId === 'trash') {
-        result = await trashApi.listTrash();
-      } else if (currentPath.folderId === 'recent') {
-        // 🔧 P0-11 修复: 最近文件视图使用前端存储
-        const recentStore = useRecentStore.getState();
-        const recentItems = recentStore.getRecentItems();
-        const nodes: DstuNode[] = [];
-
-        for (const recent of recentItems) {
-          let nodeResult = await dstu.get(recent.path);
-          if (!nodeResult.ok) {
-            nodeResult = await dstu.get(`/${recent.id}`);
-          }
-          if (nodeResult.ok && nodeResult.value) {
-            nodes.push(nodeResult.value);
-          } else {
-            recentStore.removeRecent(recent.id);
-          }
-        }
-        result = ok(nodes);
-      } else {
-        const listOptions = getDstuListOptions();
-        const path = currentPath.dstuPath.startsWith('/') ? currentPath.dstuPath : `/${currentPath.dstuPath}`;
-        result = await dstu.list(path, listOptions);
-      }
-
-      // ★ 检查请求是否已过期（有更新的刷新请求发起）
-      if (refreshRequestIdRef.current !== requestId) {
-        debugLog.log('[LearningHub] handleRefresh 请求已过期，丢弃结果', { requestId, current: refreshRequestIdRef.current });
-        return;
-      }
-
-      // ★ 异步操作完成后检查组件是否已卸载
-      if (!isMountedRef.current) return;
-
-      if (result.ok) {
-        setItems(result.value);
-      } else {
-        reportError(result.error, 'refresh resource list');
-        setError(result.error.toUserMessage());
-      }
-    } catch (err) {
-      // ★ 检查请求是否已过期
-      if (refreshRequestIdRef.current !== requestId) return;
-      if (isMountedRef.current) {
-        debugLog.error('Unexpected error refreshing items:', err);
-        setError(t('error.refreshFailedRetry', '刷新失败，请重试'));
-      }
-    } finally {
-      // ★ 只有当前请求才更新 loading 状态
-      if (refreshRequestIdRef.current === requestId && isMountedRef.current) {
-        setLoading(false);
-      }
-    }
-  }, [currentPath.dstuPath, currentPath.folderId, isSearching, debouncedSearchQuery, setItems, setLoading, setError, getDstuListOptions]);
+    await finderRefresh();
+  }, [finderRefresh]);
 
   // ★ 监听 DSTU 资源变化，自动刷新列表（带防抖，避免批量操作时频繁刷新）
   const watchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    if (currentPath.folderId === 'indexStatus' || currentPath.folderId === 'memory' || currentPath.folderId === 'desktop') {
+    if (currentPath.viewKind === 'indexStatus' || currentPath.viewKind === 'memory' || currentPath.viewKind === 'desktop') {
       return;
     }
 
@@ -579,22 +400,29 @@ export function LearningHubSidebar({
         watchDebounceRef.current = null;
       }
     };
-  }, [currentPath.folderId, handleRefresh]);
+  }, [currentPath.viewKind, handleRefresh]);
 
   // Open create dialog
+  const ensureCreatableView = useCallback(() => {
+    if (canCreateInCurrentView) {
+      return true;
+    }
+    showGlobalNotification('warning', t('finder.create.notAllowedHere', '当前视图不支持新建资源'));
+    return false;
+  }, [canCreateInCurrentView, t]);
+
   const handleNewFolder = () => {
+    if (!ensureCreatableView()) return;
     setCreateDialogType('folder');
     setCreateDialogName('');
     setCreateDialogOpen(true);
   };
 
   const handleQuickCreateFolder = useCallback(async () => {
-    const parentId = currentPath.folderId && currentPath.folderId !== 'root'
-      ? currentPath.folderId
-      : undefined;
+    if (!ensureCreatableView()) return;
     const result = await folderApi.createFolder(
       t('finder.create.defaultFolderName', '新建文件夹'),
-      parentId
+      currentCreatableFolderId ?? undefined
     );
 
     if (!isMountedRef.current) return;
@@ -606,13 +434,14 @@ export function LearningHubSidebar({
     }
 
     showGlobalNotification('error', result.error.toUserMessage());
-  }, [currentPath.folderId, handleRefresh, t]);
+  }, [currentCreatableFolderId, ensureCreatableView, handleRefresh, t]);
 
   const handleNewNote = async () => {
+    if (!ensureCreatableView()) return;
     // ★ 2025-12-13: 改为与题目集/翻译/作文一致，直接创建空笔记
     const result = await createEmpty({
       type: 'note',
-      folderId: currentPath.folderId,
+      folderId: currentCreatableFolderId,
     });
 
     // ★ MEDIUM-005: 检查组件是否已卸载
@@ -657,10 +486,11 @@ export function LearningHubSidebar({
   );
 
   const handleNewExam = async () => {
+    if (!ensureCreatableView()) return;
     // ★ 创建空题目集文件并打开应用面板
     const result = await createEmpty({
       type: 'exam',
-      folderId: currentPath.folderId,
+      folderId: currentCreatableFolderId,
     });
 
     // ★ MEDIUM-005: 检查组件是否已卸载
@@ -679,6 +509,7 @@ export function LearningHubSidebar({
   };
 
   const handleNewTextbook = async () => {
+    if (!ensureCreatableView()) return;
     if (importProgress.isImporting) return; // 防止重复点击
     
     let unlisten: UnlistenFn | null = null;
@@ -761,7 +592,7 @@ export function LearningHubSidebar({
       });
 
       // ★ M-fix: 传递当前文件夹ID，使文件导入到当前浏览的文件夹中
-      const targetFolderId = currentPath.folderId && currentPath.folderId !== 'root' ? currentPath.folderId : null;
+      const targetFolderId = currentCreatableFolderId;
       const result = await textbookDstuAdapter.addTextbooks(filePaths, targetFolderId);
 
       // ★ MEDIUM-005: 检查组件是否已卸载
@@ -821,10 +652,11 @@ export function LearningHubSidebar({
   };
 
   const handleNewTranslation = async () => {
+    if (!ensureCreatableView()) return;
     // ★ 创建空翻译文件并打开应用面板
     const result = await createEmpty({
       type: 'translation',
-      folderId: currentPath.folderId,
+      folderId: currentCreatableFolderId,
     });
 
     // ★ MEDIUM-005: 检查组件是否已卸载
@@ -842,10 +674,11 @@ export function LearningHubSidebar({
   };
 
   const handleNewEssay = async () => {
+    if (!ensureCreatableView()) return;
     // ★ 创建空作文文件并打开应用面板
     const result = await createEmpty({
       type: 'essay',
-      folderId: currentPath.folderId,
+      folderId: currentCreatableFolderId,
     });
 
     // ★ MEDIUM-005: 检查组件是否已卸载
@@ -863,10 +696,11 @@ export function LearningHubSidebar({
   };
 
   const handleNewMindMap = async () => {
+    if (!ensureCreatableView()) return;
     // ★ 创建空思维导图文件并打开应用面板
     const result = await createEmpty({
       type: 'mindmap',
-      folderId: currentPath.folderId,
+      folderId: currentCreatableFolderId,
     });
 
     // ★ MEDIUM-005: 检查组件是否已卸载
@@ -890,7 +724,7 @@ export function LearningHubSidebar({
   const handlePathsDrop = useCallback(async (paths: string[]) => {
     if (paths.length === 0) return;
     // 回收站/特殊视图不允许拖入
-    if (isDragDropBlockedView(currentPath.folderId)) {
+    if (isDragDropBlockedView(currentPath)) {
       showGlobalNotification('warning', t('finder.dragDrop.notAllowedHere', '当前视图不支持拖入文件'));
       return;
     }
@@ -953,7 +787,7 @@ export function LearningHubSidebar({
         });
 
         // ★ M-fix: 拖拽导入也传递当前文件夹ID
-        const dropTargetFolderId = currentPath.folderId && currentPath.folderId !== 'root' ? currentPath.folderId : null;
+        const dropTargetFolderId = currentCreatableFolderId;
         const docResult = await textbookDstuAdapter.addTextbooks(docPaths, dropTargetFolderId);
 
         if (unlisten) { unlisten(); unlisten = null; }
@@ -1001,6 +835,7 @@ export function LearningHubSidebar({
                 const result = await attachmentDstuAdapter.create(
                   file,
                   isImage ? 'image' : 'file',
+                  currentCreatableFolderId ? { folderId: currentCreatableFolderId } : undefined,
                 );
                 return { ok: result.ok, name };
               } catch (e) {
@@ -1047,7 +882,7 @@ export function LearningHubSidebar({
       setImportProgress(prev => ({ ...prev, isImporting: false }));
       showGlobalNotification('error', t('finder.dragDrop.importFailed', '文件导入失败'));
     }
-  }, [currentPath.folderId, importProgress.isImporting, t, handleRefresh, onOpenApp]);
+  }, [currentCreatableFolderId, currentPath, importProgress.isImporting, t, handleRefresh, onOpenApp]);
 
   /**
    * 处理浏览器 File 对象拖拽（非 Tauri 环境兜底）
@@ -1058,7 +893,7 @@ export function LearningHubSidebar({
       debugLog.log('[LearningHub] 跳过 files 回调，统一走 paths 导入链路');
       return;
     }
-    if (isDragDropBlockedView(currentPath.folderId)) {
+    if (isDragDropBlockedView(currentPath)) {
       showGlobalNotification('warning', t('finder.dragDrop.notAllowedHere', '当前视图不支持拖入文件'));
       return;
     }
@@ -1111,20 +946,21 @@ export function LearningHubSidebar({
     }
 
     if (totalSuccess > 0) handleRefresh();
-  }, [currentPath.folderId, t, handleRefresh]);
+  }, [currentPath, t, handleRefresh]);
 
   // 是否允许拖拽导入（排除回收站、特殊视图等）
-  const isDragDropEnabled = mode !== 'canvas' && !isDragDropBlockedView(currentPath.folderId);
+  const isDragDropEnabled = mode !== 'canvas' && !isDragDropBlockedView(currentPath);
 
   // Create folder (note creation moved to handleNewNote)
   const handleCreate = async () => {
+    if (!ensureCreatableView()) return;
     if (!createDialogName.trim()) return;
 
     setIsCreating(true);
     // ★ 2025-12-13: 对话框现在只用于创建文件夹，笔记创建使用 createEmpty
     const result = await folderApi.createFolder(
       createDialogName.trim(),
-      currentPath.folderId ?? undefined
+      currentCreatableFolderId ?? undefined
     );
 
     // ★ MEDIUM-005: 检查组件是否已卸载
@@ -1582,9 +1418,6 @@ export function LearningHubSidebar({
   const handleClearSelection = useCallback(() => {
     clearSelection();
   }, [clearSelection]);
-
-  // ★ 2025-12-11: 检测是否在回收站视图（提前声明，供后续 useCallback 使用）
-  const isTrashView = currentPath.folderId === 'trash';
 
   // 批量删除（显示确认对话框）
   // ★ Bug Fix: 回收站视图中走永久删除路径，而非软删除
@@ -2108,21 +1941,12 @@ export function LearningHubSidebar({
       {!isSmallScreen && mode !== 'canvas' && (
         <FinderQuickAccess
           collapsed={effectiveQuickAccessCollapsed}
-          activeType={
-            // ★ 根据 currentPath 计算正确的 activeType
-            currentPath.folderId === 'root' ? 'allFiles' :
-            currentPath.folderId === 'trash' ? 'trash' :
-            currentPath.folderId === 'recent' ? 'recent' :
-            currentPath.folderId === 'indexStatus' ? 'indexStatus' :
-            currentPath.folderId === 'memory' ? 'memory' :
-            currentPath.folderId === 'desktop' ? 'desktop' :
-            currentPath.dstuPath === '/@favorites' ? 'favorites' :
-            (currentPath.typeFilter as any)
-          }
+          activeType={currentQuickAccessType}
           onNavigate={quickAccessNavigate}
           onToggleCollapse={() => setQuickAccessCollapsed(!quickAccessCollapsed)}
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
+          searchDisabled={!canSearchInCurrentView}
           onNewFolder={handleNewFolder}
           onNewNote={handleNewNote}
           onNewExam={handleNewExam}
@@ -2130,6 +1954,7 @@ export function LearningHubSidebar({
           onNewTranslation={handleNewTranslation}
           onNewEssay={handleNewEssay}
           onNewMindMap={handleNewMindMap}
+          createDisabled={!canCreateInCurrentView}
           // Counts
           favoriteCount={0}
         />
@@ -2163,6 +1988,7 @@ export function LearningHubSidebar({
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="h-7 text-sm flex-1"
                   autoFocus
+                  disabled={!canSearchInCurrentView}
                 />
                 <NotionButton
                   variant="ghost"
@@ -2185,11 +2011,10 @@ export function LearningHubSidebar({
                   className="h-7 w-7 p-0"
                   onClick={() => setMobileSearchExpanded(true)}
                   title={t('finder.search.title', '搜索')}
+                  disabled={!canSearchInCurrentView}
                 >
                   <Search className="w-4 h-4" />
                 </NotionButton>
-                {/* ★ Bug Fix: 回收站视图中隐藏"新建"菜单 */}
-                {!isTrashView && (
                 <AppMenu>
                   <AppMenuTrigger asChild>
                     <NotionButton
@@ -2197,6 +2022,7 @@ export function LearningHubSidebar({
                       size="sm"
                       className="h-7 w-7 p-0"
                       title={t('finder.toolbar.new', '新建')}
+                      disabled={!canCreateInCurrentView}
                     >
                       <Plus className="w-4 h-4" />
                     </NotionButton>
@@ -2246,7 +2072,6 @@ export function LearningHubSidebar({
                     </AppMenuItem>
                   </AppMenuContent>
                 </AppMenu>
-                )}
                 {/* 回收站视图显示清空按钮 */}
                 {isTrashView && (
                   <NotionButton
@@ -2400,7 +2225,7 @@ export function LearningHubSidebar({
         {/* ★ 2026-01-15: 向量化状态视图 */}
         {/* ★ 2026-01-19: VFS 记忆管理视图 */}
         {/* ★ 2026-01-31: 桌面视图 */}
-        {currentPath.folderId === 'indexStatus' ? (
+        {currentPath.viewKind === 'indexStatus' ? (
           <Suspense fallback={
             <div className="flex-1 flex items-center justify-center">
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -2408,7 +2233,7 @@ export function LearningHubSidebar({
           }>
             <IndexStatusView />
           </Suspense>
-        ) : currentPath.folderId === 'memory' ? (
+        ) : currentPath.viewKind === 'memory' ? (
           <Suspense fallback={
             <div className="flex-1 flex items-center justify-center">
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -2416,7 +2241,7 @@ export function LearningHubSidebar({
           }>
             <MemoryView onOpenApp={onOpenApp} />
           </Suspense>
-        ) : currentPath.folderId === 'desktop' ? (
+        ) : currentPath.viewKind === 'desktop' ? (
           <DesktopView
             onNavigateQuickAccess={quickAccessNavigate}
             onOpenResource={async (resourceId, resourceType) => {
@@ -2468,11 +2293,10 @@ export function LearningHubSidebar({
                   // 导航到根目录
                   navigateTo({
                     ...currentPath,
-                    dstuPath: '/',
+                    viewKind: 'folder',
                     folderId: null,
                     breadcrumbs: [],
                     typeFilter: null,
-                    resourceType: null,
                   });
                 }
 

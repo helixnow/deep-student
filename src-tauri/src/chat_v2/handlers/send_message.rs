@@ -254,6 +254,51 @@ fn build_backend_request_audit_payload(
     })
 }
 
+fn apply_replay_mode_overrides(mut options: SendOptions) -> SendOptions {
+    if options.replay_mode.is_some() {
+        options.temperature = Some(0.0);
+    }
+    options
+}
+
+pub(crate) fn apply_original_skill_snapshot_overrides(
+    mut options: SendOptions,
+    meta: Option<&crate::chat_v2::types::MessageMeta>,
+) -> SendOptions {
+    if options.replay_mode != Some(crate::chat_v2::types::ReplayMode::Original) {
+        return options;
+    }
+
+    let snapshot = meta
+        .and_then(|meta| meta.skill_snapshot_after.as_ref().or(meta.skill_snapshot_before.as_ref()));
+
+    let Some(snapshot) = snapshot else {
+        return options;
+    };
+
+    let mut replay_skill_ids = snapshot.manual_pinned_skill_ids.clone();
+    replay_skill_ids.extend(snapshot.agentic_session_skill_ids.clone());
+    replay_skill_ids.extend(snapshot.branch_local_skill_ids.clone());
+    replay_skill_ids.extend(snapshot.mode_required_bundle_ids.clone());
+    replay_skill_ids.sort();
+    replay_skill_ids.dedup();
+
+    if !replay_skill_ids.is_empty() {
+        options.active_skill_ids = Some(replay_skill_ids);
+    }
+
+    let mut replay_allowed_tools = snapshot.effective_allowed_internal_tools.clone();
+    replay_allowed_tools.extend(snapshot.effective_allowed_external_tools.clone());
+    replay_allowed_tools.sort();
+    replay_allowed_tools.dedup();
+
+    if !replay_allowed_tools.is_empty() {
+        options.skill_allowed_tools = Some(replay_allowed_tools);
+    }
+
+    options
+}
+
 /// 发送消息并启动流式生成
 ///
 /// 该命令会立即返回 assistant_message_id，然后在后台异步执行流水线。
@@ -358,6 +403,7 @@ pub async fn chat_v2_send_message(
 
     // 构建带有确定 ID 的请求
     let request_with_id = SendMessageRequest {
+        options: request.options.map(apply_replay_mode_overrides),
         assistant_message_id: Some(assistant_message_id.clone()),
         ..request
     };
@@ -745,7 +791,7 @@ pub async fn chat_v2_retry_message(
         // - skip_user_message_save = true：用户消息已存在，不需要创建
         // - skip_assistant_message_save = false：旧助手消息已删除，需要创建新消息（使用相同 ID）
         let merged_options = {
-            let mut opts = options.unwrap_or_default();
+            let mut opts = apply_replay_mode_overrides(options.unwrap_or_default());
             opts.skip_user_message_save = Some(true);
             // 🔧 修复：旧助手消息已被删除，需要创建新消息而非更新
             // skip_assistant_message_save 默认为 None/false，save_results 会调用 create_message_with_conn
@@ -1180,7 +1226,7 @@ pub async fn chat_v2_edit_and_resend(
         // 🔧 P0-1修复：构建 SendOptions，设置 skip_user_message_save = true
         // 这样 Pipeline 不会创建新的用户消息，避免冗余创建+删除
         let merged_options = {
-            let mut opts = options.unwrap_or_default();
+            let mut opts = apply_replay_mode_overrides(options.unwrap_or_default());
             opts.skip_user_message_save = Some(true);
             opts
         };

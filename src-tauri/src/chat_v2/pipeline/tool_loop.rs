@@ -904,12 +904,16 @@ impl ChatV2Pipeline {
             let web_search_enabled = ctx.options.web_search_enabled.unwrap_or(true);
             // 🆕 取消支持：传递取消令牌给工具执行器
             let cancel_token = ctx.cancellation_token();
+            let round_id = format!("tool-round-{}", recursion_depth);
             let tool_results = self
                 .execute_tool_calls(
                     &tool_calls,
                     &emitter,
                     &ctx.session_id,
                     &ctx.assistant_message_id,
+                    None,
+                    ctx.options.skill_state_version,
+                    Some(round_id.as_str()),
                     &canvas_note_id,
                     &skill_allowed_tools,
                     &skill_contents,
@@ -1353,6 +1357,9 @@ impl ChatV2Pipeline {
         emitter: &Arc<ChatV2EventEmitter>,
         session_id: &str,
         message_id: &str,
+        variant_id: Option<&str>,
+        skill_state_version: Option<u64>,
+        round_id: Option<&str>,
         canvas_note_id: &Option<String>,
         skill_allowed_tools: &Option<Vec<String>>,
         skill_contents: &Option<std::collections::HashMap<String, String>>,
@@ -1435,21 +1442,28 @@ impl ChatV2Pipeline {
                 );
 
                 // 发射 tool_call start 事件（创建前端块）
-                emitter.emit_tool_call_start(
+                emitter.emit_start_with_meta(
+                    event_types::TOOL_CALL,
                     message_id,
-                    &block_id,
-                    &tc.name,
-                    json!({ "_truncated": true, "_args_len": args_len }),
-                    Some(&tc.id),
-                    None, // variant_id
+                    Some(&block_id),
+                    Some(json!({
+                        "toolName": tc.name,
+                        "toolInput": { "_truncated": true, "_args_len": args_len },
+                        "toolCallId": tc.id,
+                    })),
+                    variant_id,
+                    skill_state_version,
+                    round_id,
                 );
 
                 // 发射 tool_call error 事件（标记块为错误状态）
-                emitter.emit_error(
+                emitter.emit_error_with_meta(
                     event_types::TOOL_CALL,
                     &block_id,
                     &truncation_display_msg,
-                    None, // variant_id
+                    variant_id,
+                    skill_state_version,
+                    round_id,
                 );
 
                 let retry_hint = format!(
@@ -1491,6 +1505,9 @@ impl ChatV2Pipeline {
                     emitter,
                     session_id,
                     message_id,
+                    variant_id,
+                    skill_state_version,
+                    round_id,
                     canvas_note_id,
                     skill_allowed_tools,
                     skill_contents,
@@ -1694,6 +1711,9 @@ impl ChatV2Pipeline {
         emitter: &Arc<ChatV2EventEmitter>,
         session_id: &str,
         message_id: &str,
+        variant_id: Option<&str>,
+        skill_state_version: Option<u64>,
+        round_id: Option<&str>,
         canvas_note_id: &Option<String>,
         skill_allowed_tools: &Option<Vec<String>>,
         skill_contents: &Option<std::collections::HashMap<String, String>>,
@@ -1721,11 +1741,6 @@ impl ChatV2Pipeline {
             .unwrap_or(false);
         let is_load_skills_tool =
             super::super::tools::SkillsExecutor::is_load_skills_tool(&tool_call.name);
-
-        // 🔧 外部 MCP 工具（mcp_ 前缀、非 builtin-）不受技能白名单限制
-        // 它们由用户在 MCP 设置中手动启用，应始终可调用
-        let is_external_mcp_tool =
-            tool_call.name.starts_with("mcp_") && !tool_call.name.starts_with("mcp_load_skills");
 
         let short_name = Self::canonical_tool_short_name(&tool_call.name);
         let is_memory_tool = short_name.starts_with("memory_");
@@ -1775,7 +1790,7 @@ impl ChatV2Pipeline {
             });
         }
 
-        if !is_load_skills_tool && !is_external_mcp_tool {
+        if !is_load_skills_tool {
             match skill_allowed_tools {
                 Some(allowed_tools) if allowed_tools.is_empty() => {
                     log::warn!(
@@ -2014,7 +2029,9 @@ impl ChatV2Pipeline {
         .with_chat_v2_db(Some(self.db.clone())) // 🆕 工具块防闪退保存
         .with_question_bank_service(self.question_bank_service.clone()) // 🆕 智能题目集工具
         .with_pdf_processing_service(self.pdf_processing_service.clone()) // 🆕 论文保存触发 Pipeline
-        .with_rag_config(rag_top_k, rag_enable_reranking);
+        .with_rag_config(rag_top_k, rag_enable_reranking)
+        .with_variant_id(variant_id.map(|s| s.to_string()))
+        .with_event_meta(skill_state_version, round_id.map(|s| s.to_string()));
 
         // 🆕 渐进披露：传递 skill_contents
         ctx.skill_contents = skill_contents.clone();
@@ -2028,8 +2045,14 @@ impl ChatV2Pipeline {
         match self.executor_registry.execute(tool_call, &ctx).await {
             Ok(result) => Ok(result),
             Err(error_msg) => {
-                ctx.emitter
-                    .emit_error(event_types::TOOL_CALL, &ctx.block_id, &error_msg, None);
+                ctx.emitter.emit_error_with_meta(
+                    event_types::TOOL_CALL,
+                    &ctx.block_id,
+                    &error_msg,
+                    variant_id,
+                    skill_state_version,
+                    round_id,
+                );
                 // 执行器内部错误，构造失败结果
                 log::error!(
                     "[ChatV2::pipeline] Executor error for tool {}: {}",

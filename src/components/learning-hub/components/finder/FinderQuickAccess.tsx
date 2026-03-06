@@ -36,7 +36,7 @@ import {
   AppMenuTrigger,
 } from '@/components/ui/app-menu';
 import { cn } from '@/lib/utils';
-import type { QuickAccessType } from '../../stores/finderStore';
+import type { QuickAccessType } from '../../learningHubContracts';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 
 interface FinderQuickAccessProps {
@@ -46,6 +46,7 @@ interface FinderQuickAccessProps {
   onToggleCollapse?: () => void;
   searchQuery?: string;
   onSearchChange?: (value: string) => void;
+  searchDisabled?: boolean;
   onNewFolder?: () => void;
   onNewNote?: () => void;
   onNewExam?: () => void;
@@ -53,6 +54,7 @@ interface FinderQuickAccessProps {
   onNewTranslation?: () => void;
   onNewEssay?: () => void;
   onNewMindMap?: () => void;
+  createDisabled?: boolean;
   favoriteCount?: number;
   noteCount?: number;
   textbookCount?: number;
@@ -74,6 +76,7 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
   onToggleCollapse,
   searchQuery = '',
   onSearchChange,
+  searchDisabled = false,
   onNewFolder,
   onNewNote,
   onNewExam,
@@ -81,6 +84,7 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
   onNewTranslation,
   onNewEssay,
   onNewMindMap,
+  createDisabled = false,
   favoriteCount,
   noteCount,
   textbookCount,
@@ -122,21 +126,6 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
 
   const items = [...quickAccessItems, ...resourceTypeItems, ...mediaItems, ...systemItems];
 
-  const typeFilterToQuickAccess: Record<string, QuickAccessType> = {
-    'note': 'notes',
-    'textbook': 'textbooks',
-    'exam': 'exams',
-    'essay': 'essays',
-    'translation': 'translations',
-    'image': 'images',
-    'file': 'files',
-    'mindmap': 'mindmaps',
-  };
-  
-  const normalizedActiveType = activeType 
-    ? (typeFilterToQuickAccess[activeType] || activeType) 
-    : null;
-
   const renderNavButton = (
     type: QuickAccessType,
     Icon: React.ComponentType<{ className?: string }> | undefined,
@@ -145,7 +134,7 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
     iconColor?: string,
     CustomIcon?: React.FC<ResourceIconProps>
   ) => {
-    const isActive = normalizedActiveType === type;
+    const isActive = activeType === type;
     const button = (
       <NotionButton variant="ghost" size="sm"
         className={cn(
@@ -249,6 +238,7 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
                   onChange={(e) => onSearchChange?.(e.target.value)}
                   onFocus={() => setIsSearchFocused(true)}
                   onBlur={() => setIsSearchFocused(false)}
+                  disabled={searchDisabled}
                   className={cn(
                     'h-8 pl-8 pr-8 text-[13px] rounded-lg',
                     'bg-muted/40 border-transparent',
@@ -274,6 +264,7 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
                       "transition-all duration-150"
                     )}
                     title={t('finder.toolbar.new')}
+                    disabled={createDisabled}
                   >
                     <Plus className="h-4 w-4" />
                   </NotionButton>
@@ -346,6 +337,7 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
                   size="icon" 
                   className="h-9 w-9 rounded-lg text-muted-foreground/60 hover:text-foreground hover:bg-accent/60"
                   title={t('finder.toolbar.new')}
+                  disabled={createDisabled}
                 >
                   <Plus className="h-4 w-4" />
                 </NotionButton>

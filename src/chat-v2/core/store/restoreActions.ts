@@ -15,6 +15,73 @@ import { showOperationLockNotification } from './createChatStore';
 
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
 
+type PersistedSkillState = {
+  manualPinnedSkillIds?: string[];
+  modeRequiredBundleIds?: string[];
+  agenticSessionSkillIds?: string[];
+  branchLocalSkillIds?: string[];
+  version?: number;
+};
+
+function parsePersistedSkillState(raw?: string): PersistedSkillState | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as PersistedSkillState;
+    return parsed && typeof parsed === 'object' ? parsed : null;
+  } catch (error) {
+    console.warn('[ChatStore] Failed to parse skillStateJson, falling back to legacy fields:', error);
+    return null;
+  }
+}
+
+function normalizeStringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === 'string' && item.length > 0)
+    : [];
+}
+
+function getRestoredActiveSkillIds(state?: LoadSessionResponseType['state']): string[] {
+  const parsedSkillState = parsePersistedSkillState(state?.skillStateJson);
+  const fromStructured = normalizeStringArray(parsedSkillState?.manualPinnedSkillIds);
+  if (fromStructured.length > 0) {
+    return fromStructured;
+  }
+
+  if (!state?.activeSkillIdsJson) {
+    return [];
+  }
+
+  try {
+    return normalizeStringArray(JSON.parse(state.activeSkillIdsJson));
+  } catch (error) {
+    console.warn('[ChatStore] Failed to parse activeSkillIdsJson, falling back to empty:', error);
+    return [];
+  }
+}
+
+function getRestoredLoadedSkillIds(state?: LoadSessionResponseType['state']): string[] {
+  const parsedSkillState = parsePersistedSkillState(state?.skillStateJson);
+  const fromStructured = [
+    ...normalizeStringArray(parsedSkillState?.agenticSessionSkillIds),
+    ...normalizeStringArray(parsedSkillState?.modeRequiredBundleIds),
+  ];
+
+  if (fromStructured.length > 0) {
+    return Array.from(new Set(fromStructured));
+  }
+
+  if (!state?.loadedSkillIdsJson) {
+    return [];
+  }
+
+  try {
+    return normalizeStringArray(JSON.parse(state.loadedSkillIdsJson));
+  } catch (error) {
+    console.warn('[ChatStore] Failed to parse loadedSkillIdsJson, falling back to empty:', error);
+    return [];
+  }
+}
+
 export function createRestoreActions(
   set: SetState,
   getState: GetState,
@@ -90,6 +157,9 @@ export function createRestoreActions(
                     chatParams: msg._meta.chatParams,
                     usage: msg._meta.usage,
                     contextSnapshot: msg._meta.contextSnapshot,
+                    skillSnapshotBefore: msg._meta.skillSnapshotBefore,
+                    skillSnapshotAfter: msg._meta.skillSnapshotAfter,
+                    replaySource: msg._meta.replaySource,
                   }
                 : undefined,
               // 🔧 变体字段恢复
@@ -483,20 +553,10 @@ export function createRestoreActions(
           //    让 loadSession Promise 可以更快 resolve
 
           // 🔧 安全解析 activeSkillIdsJson（统一为一次解析，防止 JSON 异常中断恢复）
-          let restoredActiveSkillIds: string[] = [];
-          if (state?.activeSkillIdsJson) {
-            try {
-              const parsed = JSON.parse(state.activeSkillIdsJson);
-              if (Array.isArray(parsed)) {
-                restoredActiveSkillIds = parsed.filter((id): id is string => typeof id === 'string');
-              }
-            } catch (e) {
-              console.warn('[ChatStore] Failed to parse activeSkillIdsJson, falling back to empty:', e);
-            }
-          }
+          let restoredActiveSkillIds: string[] = getRestoredActiveSkillIds(state);
           // 🔧 新会话（无持久化 activeSkillIdsJson）回退到默认技能
           // 避免 loadSession 竞态覆写 activateSkill 已设置的 activeSkillIds
-          if (restoredActiveSkillIds.length === 0 && !state?.activeSkillIdsJson) {
+          if (restoredActiveSkillIds.length === 0 && !state?.activeSkillIdsJson && !state?.skillStateJson) {
             restoredActiveSkillIds = skillDefaults.getAll();
           }
 
@@ -732,59 +792,58 @@ export function createRestoreActions(
 
           // 🆕 渐进披露：恢复已加载的 Skills
           // 🔧 增加 registry 就绪等待，避免 skills 尚未加载完成导致 notFound
-          if (state?.loadedSkillIdsJson) {
+          const restoredLoadedSkillIds = getRestoredLoadedSkillIds(state);
+          if (restoredLoadedSkillIds.length > 0) {
             queueMicrotask(async () => {
               try {
-                const skillIds: string[] = JSON.parse(state.loadedSkillIdsJson);
-                if (skillIds.length > 0) {
-                  // 等待 skillRegistry 初始化完成（带超时保护）
-                  const { skillRegistry } = await import('../../skills/registry');
-                  if (!skillRegistry.isInitialized()) {
-                    const ready = await skillRegistry.waitForInitialized(5000);
-                    if (!ready) {
-                      console.warn('[ChatStore] Skill registry not ready after 5s, restoring loaded skills anyway');
-                    }
+                // 等待 skillRegistry 初始化完成（带超时保护）
+                const { skillRegistry } = await import('../../skills/registry');
+                if (!skillRegistry.isInitialized()) {
+                  const ready = await skillRegistry.waitForInitialized(5000);
+                  if (!ready) {
+                    console.warn('[ChatStore] Skill registry not ready after 5s, restoring loaded skills anyway');
                   }
+                }
 
-                  const { loadSkillsToSession } = await import('../../skills/progressiveDisclosure');
-                  const attemptRestoreLoadedSkills = () => loadSkillsToSession(session.id, skillIds);
-                  const loadResult = attemptRestoreLoadedSkills();
-                  console.log('[ChatStore] Restored loaded skills:', {
-                    sessionId: session.id,
-                    requestedSkills: skillIds,
-                    loadedCount: loadResult.loaded.length,
-                    notFoundCount: loadResult.notFound.length,
-                  });
+                const { syncLoadedSkillsFromBackend } = await import('../../skills/progressiveDisclosure');
+                const attemptRestoreLoadedSkills = () =>
+                  syncLoadedSkillsFromBackend(session.id, restoredLoadedSkillIds, { replace: true });
+                const loadResult = attemptRestoreLoadedSkills();
+                console.log('[ChatStore] Restored loaded skills:', {
+                  sessionId: session.id,
+                  requestedSkills: restoredLoadedSkillIds,
+                  loadedCount: loadResult.loaded.length,
+                  notFoundCount: loadResult.notFound.length,
+                });
 
-                  // 🔧 如果部分技能未找到，可能是 skills 仍在加载中：订阅 registry 更新并重试（有限次数）
-                  if (loadResult.notFound.length > 0) {
-                    const { subscribeToSkillRegistry } = await import('../../skills/registry');
-                    let retries = 0;
-                    const maxRetries = 3;
-                    const unsubscribe = subscribeToSkillRegistry(() => {
-                      retries++;
-                      const retryResult = attemptRestoreLoadedSkills();
-                      console.log('[ChatStore] Retry restoring loaded skills:', {
-                        sessionId: session.id,
-                        retry: retries,
-                        loadedCount: retryResult.loaded.length,
-                        notFoundCount: retryResult.notFound.length,
-                      });
-
-                      if (retryResult.notFound.length === 0 || retries >= maxRetries) {
-                        unsubscribe();
-                      }
+                // 🔧 如果部分技能未找到，可能是 skills 仍在加载中：订阅 registry 更新并重试（有限次数）
+                if (loadResult.notFound.length > 0) {
+                  const { subscribeToSkillRegistry } = await import('../../skills/registry');
+                  let retries = 0;
+                  const maxRetries = 3;
+                  const unsubscribe = subscribeToSkillRegistry(() => {
+                    retries++;
+                    const retryResult = attemptRestoreLoadedSkills();
+                    console.log('[ChatStore] Retry restoring loaded skills:', {
+                      sessionId: session.id,
+                      retry: retries,
+                      loadedCount: retryResult.loaded.length,
+                      notFoundCount: retryResult.notFound.length,
                     });
 
-                    // 超时兜底：避免极端情况下不触发更新导致订阅常驻
-                    setTimeout(() => {
-                      try {
-                        unsubscribe();
-                      } catch {
-                        // ignore
-                      }
-                    }, 5000);
-                  }
+                    if (retryResult.notFound.length === 0 || retries >= maxRetries) {
+                      unsubscribe();
+                    }
+                  });
+
+                  // 超时兜底：避免极端情况下不触发更新导致订阅常驻
+                  setTimeout(() => {
+                    try {
+                      unsubscribe();
+                    } catch {
+                      // ignore
+                    }
+                  }, 5000);
                 }
               } catch (e) {
                 console.warn('[ChatStore] Failed to restore loaded skills:', e);

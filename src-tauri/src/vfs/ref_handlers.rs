@@ -923,7 +923,7 @@ fn get_resource_path_with_conn(
     // 查找资源所在的文件夹
     let folder_id: Option<String> = conn
         .query_row(
-            "SELECT folder_id FROM folder_items WHERE item_id = ?1",
+            "SELECT folder_id FROM folder_items WHERE item_id = ?1 AND deleted_at IS NULL",
             params![source_id],
             |row| row.get(0),
         )

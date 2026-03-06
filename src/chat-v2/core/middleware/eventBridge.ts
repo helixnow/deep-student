@@ -31,6 +31,8 @@ export type EventPhase = 'start' | 'chunk' | 'end' | 'error';
  * 后端事件结构
  */
 export interface BackendEvent {
+  /** 会话 ID */
+  sessionId?: string;
   /** 事件类型（如 'thinking', 'content', 'web_search', 'variant_start', 'variant_end' 等） */
   type: string;
 
@@ -57,6 +59,12 @@ export interface BackendEvent {
 
   /** 附加数据 */
   payload?: Record<string, unknown>;
+
+  /** Skill 状态版本 */
+  skillStateVersion?: number;
+
+  /** 工具轮次 ID */
+  roundId?: string;
 
   // ========== 多变体支持 (Prompt 9) ==========
 

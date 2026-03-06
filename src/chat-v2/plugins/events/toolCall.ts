@@ -24,7 +24,7 @@ import type { WorkspaceAgent, WorkspaceMessage } from '../../workspace/types';
 // 🆕 Skills 渐进披露（处理 load_skills 工具调用）
 import {
   LOAD_SKILLS_TOOL_NAME,
-  handleLoadSkillsToolCall,
+  syncLoadedSkillsFromBackend,
 } from '../../skills/progressiveDisclosure';
 // 🆕 2026-02-16: 工具调用生命周期调试插件
 import {
@@ -600,22 +600,43 @@ const toolCallEventHandler: EventHandler = {
         toolName === `builtin:${LOAD_SKILLS_TOOL_NAME}` ||
         toolName === `mcp_${LOAD_SKILLS_TOOL_NAME}`;
       if (isLoadSkillsTool) {
-        const skillResult = unwrappedResult as { status?: string; skill_ids?: string[] };
+        const skillResult = unwrappedResult as {
+          status?: string;
+          skill_ids?: string[];
+          loaded_skill_ids?: string[];
+          active_skill_ids?: string[];
+          skill_state_version?: number;
+          skill_state?: unknown;
+        };
         console.log('[ToolCall] load_skills result:', skillResult);
-        
-        // 🔧 后端返回 success 状态，前端执行实际的 Skill 加载
-        if (skillResult.status === 'success' && skillResult.skill_ids) {
-          // 前端执行实际的 Skill 加载
+
+        if (skillResult.status === 'success') {
           const sessionId = store.sessionId || 'unknown';
-          const skillArgs = { skills: skillResult.skill_ids };
-          const loadResult = handleLoadSkillsToolCall(sessionId, skillArgs);
-          
-          // 更新块的工具输出为实际的加载结果
-          store.updateBlock(blockId, {
-            toolOutput: loadResult,
+          const loadedSkillIds = Array.isArray(skillResult.loaded_skill_ids)
+            ? skillResult.loaded_skill_ids
+            : Array.isArray(skillResult.skill_ids)
+              ? skillResult.skill_ids
+              : [];
+
+          if (!event.variantId) {
+            syncLoadedSkillsFromBackend(sessionId, loadedSkillIds, { replace: true });
+          }
+
+          if (skillResult.skill_state && typeof store.setSkillStateJson === 'function') {
+            try {
+              store.setSkillStateJson(JSON.stringify(skillResult.skill_state));
+            } catch (error) {
+              console.warn('[ToolCall] Failed to serialize backend skill_state:', error);
+              store.setSkillStateJson(null);
+            }
+          }
+
+          console.log('[ToolCall] load_skills: synced from backend', {
+            sessionId,
+            loaded: loadedSkillIds.length,
+            active: Array.isArray(skillResult.active_skill_ids) ? skillResult.active_skill_ids.length : 0,
+            skillStateVersion: skillResult.skill_state_version,
           });
-          
-          console.log('[ToolCall] load_skills: skills loaded, result updated');
         }
       }
     }

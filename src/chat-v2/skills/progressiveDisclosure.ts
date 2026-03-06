@@ -314,6 +314,30 @@ export function loadSkillsToSession(
 }
 
 /**
+ * 用后端权威状态同步会话已加载 Skills。
+ *
+ * `replace=true` 时，以后端返回的完整列表覆盖本地缓存；
+ * `replace=false` 时，仅在本地补齐缺失项。
+ */
+export function syncLoadedSkillsFromBackend(
+  sessionId: string,
+  skillIds: string[],
+  options: { replace?: boolean } = {}
+): ReturnType<typeof loadSkillsToSession> {
+  const normalizedSkillIds = skillIds.filter((id): id is string => typeof id === 'string' && id.length > 0);
+
+  if (options.replace) {
+    clearSessionSkills(sessionId);
+  }
+
+  if (normalizedSkillIds.length === 0) {
+    return { loaded: [], alreadyLoaded: [], notFound: [] };
+  }
+
+  return loadSkillsToSession(sessionId, normalizedSkillIds);
+}
+
+/**
  * 清除会话的所有已加载 Skills
  */
 export function clearSessionSkills(sessionId: string): void {

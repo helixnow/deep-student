@@ -133,6 +133,10 @@ pub struct BackendEvent {
     /// 从 0 开始递增，每个会话的 EventEmitter 独立计数
     pub sequence_id: u64,
 
+    /// 会话 ID（用于事件桥与调试）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub session_id: Option<String>,
+
     /// 事件类型（如 'content', 'thinking', 'rag', 'tool_call', 'anki_cards', 'variant_start', 'variant_end'）
     pub r#type: String,
 
@@ -168,6 +172,14 @@ pub struct BackendEvent {
     /// 附加数据（任意阶段，如 toolName, toolInput）
     #[serde(skip_serializing_if = "Option::is_none")]
     pub payload: Option<Value>,
+
+    /// 技能状态版本（用于丢弃过期事件）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub skill_state_version: Option<u64>,
+
+    /// 工具轮次 ID（用于多轮 tool loop 对齐）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub round_id: Option<String>,
 
     // ========== 多变体支持字段 ==========
     /// 变体 ID（多变体模式下必填，单变体模式可选）
@@ -207,6 +219,7 @@ impl BackendEvent {
     ) -> Self {
         Self {
             sequence_id,
+            session_id: None,
             r#type: event_type.to_string(),
             phase: event_phase::START.to_string(),
             message_id: Some(message_id.to_string()),
@@ -216,6 +229,8 @@ impl BackendEvent {
             result: None,
             error: None,
             payload,
+            skill_state_version: None,
+            round_id: None,
             variant_id: variant_id.map(|s| s.to_string()),
             model_id: None,
             status: None,
@@ -240,6 +255,7 @@ impl BackendEvent {
     ) -> Self {
         Self {
             sequence_id,
+            session_id: None,
             r#type: event_type.to_string(),
             phase: event_phase::CHUNK.to_string(),
             message_id: None,
@@ -249,6 +265,8 @@ impl BackendEvent {
             result: None,
             error: None,
             payload: None,
+            skill_state_version: None,
+            round_id: None,
             variant_id: variant_id.map(|s| s.to_string()),
             model_id: None,
             status: None,
@@ -273,6 +291,7 @@ impl BackendEvent {
     ) -> Self {
         Self {
             sequence_id,
+            session_id: None,
             r#type: event_type.to_string(),
             phase: event_phase::END.to_string(),
             message_id: None,
@@ -282,6 +301,8 @@ impl BackendEvent {
             result,
             error: None,
             payload: None,
+            skill_state_version: None,
+            round_id: None,
             variant_id: variant_id.map(|s| s.to_string()),
             model_id: None,
             status: None,
@@ -306,6 +327,7 @@ impl BackendEvent {
     ) -> Self {
         Self {
             sequence_id,
+            session_id: None,
             r#type: event_type.to_string(),
             phase: event_phase::ERROR.to_string(),
             message_id: None,
@@ -315,6 +337,8 @@ impl BackendEvent {
             result: None,
             error: Some(error.to_string()),
             payload: None,
+            skill_state_version: None,
+            round_id: None,
             variant_id: variant_id.map(|s| s.to_string()),
             model_id: None,
             status: None,
@@ -337,6 +361,7 @@ impl BackendEvent {
     ) -> Self {
         Self {
             sequence_id,
+            session_id: None,
             r#type: event_types::VARIANT_START.to_string(),
             phase: event_phase::START.to_string(),
             message_id: Some(message_id.to_string()),
@@ -346,6 +371,8 @@ impl BackendEvent {
             result: None,
             error: None,
             payload: None,
+            skill_state_version: None,
+            round_id: None,
             variant_id: Some(variant_id.to_string()),
             model_id: Some(model_id.to_string()),
             status: None,
@@ -370,6 +397,7 @@ impl BackendEvent {
     ) -> Self {
         Self {
             sequence_id,
+            session_id: None,
             r#type: event_types::VARIANT_END.to_string(),
             phase: event_phase::END.to_string(),
             message_id: None,
@@ -379,6 +407,8 @@ impl BackendEvent {
             result: None,
             error: error.map(|s| s.to_string()),
             payload: None,
+            skill_state_version: None,
+            round_id: None,
             variant_id: Some(variant_id.to_string()),
             model_id: None,
             status: Some(status.to_string()),
@@ -402,6 +432,14 @@ pub struct SessionEvent {
     /// 关联的消息 ID（可选）
     #[serde(skip_serializing_if = "Option::is_none")]
     pub message_id: Option<String>,
+
+    /// Skill 状态版本
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub skill_state_version: Option<u64>,
+
+    /// 历史重放模式
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub replay_mode: Option<String>,
 
     /// 模型标识符（stream_start 事件时提供，用于前端显示）
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -439,6 +477,8 @@ impl SessionEvent {
             session_id: session_id.to_string(),
             event_type: session_event_type::STREAM_START.to_string(),
             message_id: Some(message_id.to_string()),
+            skill_state_version: None,
+            replay_mode: None,
             model_id: model_id.map(|s| s.to_string()),
             error: None,
             duration_ms: None,
@@ -455,6 +495,8 @@ impl SessionEvent {
             session_id: session_id.to_string(),
             event_type: session_event_type::STREAM_COMPLETE.to_string(),
             message_id: Some(message_id.to_string()),
+            skill_state_version: None,
+            replay_mode: None,
             model_id: None,
             error: None,
             duration_ms: Some(duration_ms),
@@ -482,6 +524,8 @@ impl SessionEvent {
             session_id: session_id.to_string(),
             event_type: session_event_type::STREAM_COMPLETE.to_string(),
             message_id: Some(message_id.to_string()),
+            skill_state_version: None,
+            replay_mode: None,
             model_id: None,
             error: None,
             duration_ms: Some(duration_ms),
@@ -498,6 +542,8 @@ impl SessionEvent {
             session_id: session_id.to_string(),
             event_type: session_event_type::STREAM_ERROR.to_string(),
             message_id: Some(message_id.to_string()),
+            skill_state_version: None,
+            replay_mode: None,
             model_id: None,
             error: Some(error.to_string()),
             duration_ms: None,
@@ -514,6 +560,8 @@ impl SessionEvent {
             session_id: session_id.to_string(),
             event_type: session_event_type::STREAM_CANCELLED.to_string(),
             message_id: Some(message_id.to_string()),
+            skill_state_version: None,
+            replay_mode: None,
             model_id: None,
             error: None,
             duration_ms: None,
@@ -530,6 +578,8 @@ impl SessionEvent {
             session_id: session_id.to_string(),
             event_type: session_event_type::SAVE_COMPLETE.to_string(),
             message_id: None,
+            skill_state_version: None,
+            replay_mode: None,
             model_id: None,
             error: None,
             duration_ms: None,
@@ -546,6 +596,8 @@ impl SessionEvent {
             session_id: session_id.to_string(),
             event_type: session_event_type::SAVE_ERROR.to_string(),
             message_id: None,
+            skill_state_version: None,
+            replay_mode: None,
             model_id: None,
             error: Some(error.to_string()),
             duration_ms: None,
@@ -562,6 +614,8 @@ impl SessionEvent {
             session_id: session_id.to_string(),
             event_type: session_event_type::TITLE_UPDATED.to_string(),
             message_id: None,
+            skill_state_version: None,
+            replay_mode: None,
             model_id: None,
             error: None,
             duration_ms: None,
@@ -578,6 +632,8 @@ impl SessionEvent {
             session_id: session_id.to_string(),
             event_type: session_event_type::SUMMARY_UPDATED.to_string(),
             message_id: None,
+            skill_state_version: None,
+            replay_mode: None,
             model_id: None,
             error: None,
             duration_ms: None,
@@ -688,8 +744,11 @@ impl ChatV2EventEmitter {
     // ========== 内部发射方法 ==========
 
     /// 发射块级事件（内部方法）
-    fn emit(&self, event: BackendEvent) {
+    fn emit(&self, mut event: BackendEvent) {
         let event_name = self.block_event_channel();
+        if event.session_id.is_none() {
+            event.session_id = Some(self.session_id.clone());
+        }
 
         if let Err(e) = self.window.emit(&event_name, &event) {
             log::error!(
@@ -753,6 +812,24 @@ impl ChatV2EventEmitter {
         block_id.map(|s| s.to_string())
     }
 
+    pub fn emit_start_with_meta(
+        &self,
+        event_type: &str,
+        message_id: &str,
+        block_id: Option<&str>,
+        payload: Option<Value>,
+        variant_id: Option<&str>,
+        skill_state_version: Option<u64>,
+        round_id: Option<&str>,
+    ) -> Option<String> {
+        let seq = self.next_sequence_id();
+        let mut event = BackendEvent::start(seq, event_type, message_id, block_id, payload, variant_id);
+        event.skill_state_version = skill_state_version;
+        event.round_id = round_id.map(|s| s.to_string());
+        self.emit(event);
+        block_id.map(|s| s.to_string())
+    }
+
     /// 发射 chunk 事件
     ///
     /// ## 参数
@@ -769,6 +846,22 @@ impl ChatV2EventEmitter {
     ) {
         let seq = self.next_sequence_id();
         let event = BackendEvent::chunk(seq, event_type, block_id, chunk, variant_id);
+        self.emit(event);
+    }
+
+    pub fn emit_chunk_with_meta(
+        &self,
+        event_type: &str,
+        block_id: &str,
+        chunk: &str,
+        variant_id: Option<&str>,
+        skill_state_version: Option<u64>,
+        round_id: Option<&str>,
+    ) {
+        let seq = self.next_sequence_id();
+        let mut event = BackendEvent::chunk(seq, event_type, block_id, chunk, variant_id);
+        event.skill_state_version = skill_state_version;
+        event.round_id = round_id.map(|s| s.to_string());
         self.emit(event);
     }
 
@@ -791,6 +884,22 @@ impl ChatV2EventEmitter {
         self.emit(event);
     }
 
+    pub fn emit_end_with_meta(
+        &self,
+        event_type: &str,
+        block_id: &str,
+        result: Option<Value>,
+        variant_id: Option<&str>,
+        skill_state_version: Option<u64>,
+        round_id: Option<&str>,
+    ) {
+        let seq = self.next_sequence_id();
+        let mut event = BackendEvent::end(seq, event_type, block_id, result, variant_id);
+        event.skill_state_version = skill_state_version;
+        event.round_id = round_id.map(|s| s.to_string());
+        self.emit(event);
+    }
+
     /// 发射 error 事件
     ///
     /// ## 参数
@@ -807,6 +916,22 @@ impl ChatV2EventEmitter {
     ) {
         let seq = self.next_sequence_id();
         let event = BackendEvent::error(seq, event_type, block_id, error, variant_id);
+        self.emit(event);
+    }
+
+    pub fn emit_error_with_meta(
+        &self,
+        event_type: &str,
+        block_id: &str,
+        error: &str,
+        variant_id: Option<&str>,
+        skill_state_version: Option<u64>,
+        round_id: Option<&str>,
+    ) {
+        let seq = self.next_sequence_id();
+        let mut event = BackendEvent::error(seq, event_type, block_id, error, variant_id);
+        event.skill_state_version = skill_state_version;
+        event.round_id = round_id.map(|s| s.to_string());
         self.emit(event);
     }
 
@@ -887,6 +1012,7 @@ impl ChatV2EventEmitter {
         });
         let event = BackendEvent {
             sequence_id: seq,
+            session_id: None,
             r#type: event_types::TOOL_CALL_PREPARING.to_string(),
             phase: "start".to_string(),
             message_id: Some(message_id.to_string()),
@@ -896,6 +1022,8 @@ impl ChatV2EventEmitter {
             result: None,
             error: None,
             payload: Some(payload),
+            skill_state_version: None,
+            round_id: None,
             variant_id: None,
             model_id: None,
             status: None,
@@ -921,6 +1049,7 @@ impl ChatV2EventEmitter {
         });
         let event = BackendEvent {
             sequence_id: seq,
+            session_id: None,
             r#type: event_types::TOOL_CALL_PREPARING.to_string(),
             phase: "start".to_string(),
             message_id: Some(message_id.to_string()),
@@ -930,6 +1059,8 @@ impl ChatV2EventEmitter {
             result: None,
             error: None,
             payload: Some(payload),
+            skill_state_version: None,
+            round_id: None,
             variant_id: Some(variant_id.to_string()),
             model_id: None,
             status: None,
@@ -1067,6 +1198,7 @@ mod tests {
     fn test_backend_event_serialization() {
         let event = BackendEvent {
             sequence_id: 42,
+            session_id: None,
             r#type: "content".to_string(),
             phase: "chunk".to_string(),
             message_id: None,
@@ -1076,6 +1208,8 @@ mod tests {
             result: None,
             error: None,
             payload: None,
+            skill_state_version: None,
+            round_id: None,
             variant_id: None,
             model_id: None,
             status: None,
@@ -1245,6 +1379,8 @@ mod tests {
             session_id: "sess_123".to_string(),
             event_type: "stream_complete".to_string(),
             message_id: Some("msg_456".to_string()),
+            skill_state_version: None,
+            replay_mode: None,
             model_id: None, // stream_complete 事件不需要 model_id
             error: None,
             duration_ms: Some(1500),
