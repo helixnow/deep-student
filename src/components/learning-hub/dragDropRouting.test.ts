@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   consumePathsDropHandledFlag,
   partitionMarkdownNoteImports,
+  summarizeFailedMarkdownFiles,
 } from './dragDropRouting';
 
 describe('dragDropRouting', () => {
@@ -35,5 +36,11 @@ describe('dragDropRouting', () => {
     expect(consumePathsDropHandledFlag(flagRef)).toBe(true);
     expect(flagRef.current).toBe(false);
     expect(consumePathsDropHandledFlag(flagRef)).toBe(false);
+  });
+
+  it('summarizes failed markdown files for notifications', () => {
+    expect(summarizeFailedMarkdownFiles([])).toBeNull();
+    expect(summarizeFailedMarkdownFiles(['a.md', 'b.md'])).toBe('a.md、b.md');
+    expect(summarizeFailedMarkdownFiles(['a.md', 'b.md', 'c.md', 'd.md'])).toBe('a.md、b.md、c.md +1');
   });
 });

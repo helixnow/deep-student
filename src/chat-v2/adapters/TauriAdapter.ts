@@ -70,9 +70,6 @@ import {
   getLoadedSkills,
   getLoadedToolSchemas,
   generateAvailableSkillsPrompt,
-  loadSkillsToSession,
-  isSkillLoaded,
-  getProgressiveDisclosureConfig,
 } from '../skills/progressiveDisclosure';
 // 🆕 工作区状态（用于传递 workspaceId 到后端）
 import { useWorkspaceStore } from '../workspace/workspaceStore';
@@ -1919,8 +1916,7 @@ export class ChatV2TauriAdapter {
       );
       if (refsForUserMessage.length > 0) {
         const currentModelId = options.modelId;
-        // ★ 2026-02 修复：使用异步版本确保模型缓存已加载
-        const isMultimodal = await isModelMultimodalAsync(currentModelId);
+        const isMultimodal = await this.shouldResolveContextAsMultimodal(options);
         isMultimodalModel = isMultimodal;
         const { sendRefs, pathMap } = await buildSendContextRefsWithPaths(refsForUserMessage, { isMultimodal });
 
@@ -2115,8 +2111,7 @@ export class ChatV2TauriAdapter {
       if (refsForUserMessage2.length > 0) {
         console.log(LOG_PREFIX, 'Building SendContextRefs for', refsForUserMessage2.length, 'refs (filtered', pendingContextRefs.length - refsForUserMessage2.length, 'skill_instruction refs)');
         const currentModelId = options.modelId;
-        // ★ 2026-02 修复：使用异步版本确保模型缓存已加载
-        const isMultimodal = await isModelMultimodalAsync(currentModelId);
+        const isMultimodal = await this.shouldResolveContextAsMultimodal(options);
         isMultimodalModel = isMultimodal;
         console.debug('[TauriAdapter] send: model =', currentModelId, 'isMultimodal =', isMultimodal);
         const { sendRefs, pathMap } = await buildSendContextRefsWithPaths(refsForUserMessage2, { isMultimodal });
@@ -2577,8 +2572,7 @@ export class ChatV2TauriAdapter {
           
           if (validContextRefs.length > 0) {
             const currentModelId = options.modelId;
-            // ★ 2026-02 修复：使用异步版本确保模型缓存已加载
-            const isMultimodal = await isModelMultimodalAsync(currentModelId);
+            const isMultimodal = await this.shouldResolveContextAsMultimodal(options);
             const { sendRefs, pathMap } = await buildSendContextRefsWithPaths(validContextRefs, { isMultimodal });
 
             // Token 预估和截断（基于模型预算，防止上下文过长）
@@ -3247,6 +3241,23 @@ export class ChatV2TauriAdapter {
     }
   }
 
+  private async shouldResolveContextAsMultimodal(options: {
+    modelId?: string;
+    parallelModelIds?: string[];
+  }): Promise<boolean> {
+    const candidateIds = [
+      ...(options.parallelModelIds ?? []),
+      ...(options.modelId ? [options.modelId] : []),
+    ].filter((id, index, list) => !!id && list.indexOf(id) === index);
+
+    if (candidateIds.length === 0) {
+      return false;
+    }
+
+    const capabilities = await Promise.all(candidateIds.map((id) => isModelMultimodalAsync(id)));
+    return capabilities.some(Boolean);
+  }
+
   private async getValidChatModelIdSet(): Promise<Set<string>> {
     try {
       const configs = await invoke<Array<{ id?: string | null }>>('get_api_configurations');
@@ -3609,12 +3620,21 @@ export class ChatV2TauriAdapter {
     const authoritativeActiveSkillIds = structuredSkillState
       ? structuredSkillState.manualPinnedSkillIds
       : currentState.activeSkillIds;
+    const modeRequiredSkillIds = (() => {
+      const currentWorkspaceId = useWorkspaceStore.getState().currentWorkspaceId;
+      return currentWorkspaceId ? ['workspace-tools'] : [];
+    })();
+
     const authoritativeLoadedSkillIds = structuredSkillState
       ? Array.from(new Set([
           ...structuredSkillState.agenticSessionSkillIds,
           ...structuredSkillState.modeRequiredBundleIds,
+          ...modeRequiredSkillIds,
         ]))
-      : getLoadedSkills(this.sessionId).map(s => s.id);
+      : Array.from(new Set([
+          ...getLoadedSkills(this.sessionId).map(s => s.id),
+          ...modeRequiredSkillIds,
+        ]));
 
     const options = {
       // ChatParams
@@ -3703,20 +3723,12 @@ export class ChatV2TauriAdapter {
     };
 
     // ========== Schema 工具收集（文档 26）==========
-    // 从多来源收集需要注入的 Schema 工具 ID
-    // 🔧 多技能修复：从所有激活的 skill refs 收集 allowedTools 取并集
+    // 从权威技能状态收集需要注入的 Schema 工具 ID
+    // skill_instruction ContextRef 仅作为 UI / 历史兼容缓存，不再参与运行时权限决策
     let skillAllowedTools: string[] | undefined;
     {
       const mergedAllowedTools: string[] = [];
-      const fallbackSkillIds = structuredSkillState
-        ? authoritativeActiveSkillIds
-        : Array.from(new Set([
-            ...pendingContextRefs
-              .filter((ref) => ref.typeId === SKILL_INSTRUCTION_TYPE_ID && ref.isSticky)
-              .map((ref) => ref.skillId ?? ref.resourceId.replace(/^skill_/, '')),
-            ...authoritativeActiveSkillIds,
-          ]));
-      for (const skillId of fallbackSkillIds) {
+      for (const skillId of authoritativeActiveSkillIds) {
         const skill = skillRegistry.get(skillId);
         if (skill) {
           const tools = skill.allowedTools ?? skill.tools;
@@ -3730,7 +3742,7 @@ export class ChatV2TauriAdapter {
       // - 若没有任何技能声明 allowedTools，则不进行过滤（保持现有行为）
       if (mergedAllowedTools.length > 0) {
         skillAllowedTools = [...new Set(mergedAllowedTools)]; // 去重
-        console.log(LOG_PREFIX, '🛡️ Skill allowedTools constraint (union of', skillRefs.length, 'refs +', authoritativeActiveSkillIds.length, 'active):', {
+        console.log(LOG_PREFIX, '🛡️ Skill allowedTools constraint (from authoritative active skills):', {
           allowedTools: skillAllowedTools,
         });
       }
@@ -3832,33 +3844,6 @@ export class ChatV2TauriAdapter {
     // 完全替代 builtinMcpServer.ts，不再支持旧的全量注入模式
     schemas.push(LOAD_SKILLS_TOOL_SCHEMA);
     console.log(LOG_PREFIX, '[ProgressiveDisclosure] Injected load_skills meta-tool');
-
-    // 🆕 自动加载配置中的默认技能（如 learning-resource 含知识导图工具）
-    const config = getProgressiveDisclosureConfig();
-    if (config.autoLoadSkills && config.autoLoadSkills.length > 0) {
-      const toLoad = config.autoLoadSkills.filter(id => !isSkillLoaded(this.sessionId, id));
-      if (toLoad.length > 0) {
-        const result = loadSkillsToSession(this.sessionId, toLoad);
-        console.log(LOG_PREFIX, '[ProgressiveDisclosure] Auto-loaded default skills:', {
-          requested: toLoad,
-          loadedCount: result.loaded.length,
-        });
-      }
-    }
-
-    // 🆕 P0 修复：工作区模式下自动加载 workspace-tools 技能
-    // 确保 coordinator_sleep 等多代理协作工具始终可见
-    const currentWorkspaceId = useWorkspaceStore.getState().currentWorkspaceId;
-    if (currentWorkspaceId) {
-      const WORKSPACE_TOOLS_SKILL_ID = 'workspace-tools';
-      if (!isSkillLoaded(this.sessionId, WORKSPACE_TOOLS_SKILL_ID)) {
-        const result = loadSkillsToSession(this.sessionId, [WORKSPACE_TOOLS_SKILL_ID]);
-        console.log(LOG_PREFIX, '[ProgressiveDisclosure] Auto-loaded workspace-tools for workspace mode:', {
-          workspaceId: currentWorkspaceId,
-          loadedCount: result.loaded.length,
-        });
-      }
-    }
 
     // 注入已加载的 Skills 工具（动态过滤 web_search 引擎）
     const effectiveLoadedSkillIds = Array.isArray(loadedSkillIds)

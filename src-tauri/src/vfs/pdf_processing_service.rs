@@ -325,6 +325,7 @@ pub struct MediaProcessingProgressEvent {
 pub struct MediaProcessingCompletedEvent {
     pub file_id: String,
     pub ready_modes: Vec<String>,
+    pub stage: String,
     pub media_type: String,
 }
 
@@ -481,6 +482,33 @@ impl PdfProcessingService {
         handle.clone()
     }
 
+    fn is_task_generation_current(&self, file_id: &str, generation: u64) -> bool {
+        self.running_tasks
+            .get(file_id)
+            .map(|entry| entry.value().1 == generation)
+            .unwrap_or(false)
+    }
+
+    fn skip_stale_task_side_effects(
+        &self,
+        file_id: &str,
+        generation: Option<u64>,
+        op: &str,
+    ) -> bool {
+        let Some(gen) = generation else {
+            return false;
+        };
+
+        let current = self.is_task_generation_current(file_id, gen);
+        if !current {
+            debug!(
+                "[MediaProcessingService] Skip stale side effect: file={}, gen={}, op={}",
+                file_id, gen, op
+            );
+        }
+        !current
+    }
+
     /// 启动媒体预处理流水线
     ///
     /// 异步执行，立即返回。处理在后台进行。
@@ -532,7 +560,7 @@ impl PdfProcessingService {
         }
 
         // 更新数据库状态
-        self.update_processing_status(&file_id, start_stage, None, None)
+        self.update_processing_status(&file_id, start_stage, None, None, Some(generation))
             .await?;
 
         // 克隆 self 用于异步任务
@@ -578,6 +606,7 @@ impl PdfProcessingService {
                             &file_id_clone,
                             start_stage,
                             cancel_token.clone(),
+                            generation,
                         )
                         .await
                 }
@@ -587,6 +616,7 @@ impl PdfProcessingService {
                             &file_id_clone,
                             start_stage,
                             cancel_token.clone(),
+                            generation,
                         )
                         .await
                 }
@@ -607,9 +637,12 @@ impl PdfProcessingService {
                         file_id_clone, mt, e
                     );
                     // 更新数据库状态为 error（使用初始阶段作为失败阶段）
-                    if let Err(db_err) =
-                        service.set_error(&file_id_clone, &e.to_string(), initial_stage)
-                    {
+                    if let Err(db_err) = service.set_error(
+                        &file_id_clone,
+                        &e.to_string(),
+                        initial_stage,
+                        Some(generation),
+                    ) {
                         error!(
                             "[MediaProcessingService] Failed to set error status: {}",
                             db_err
@@ -678,6 +711,7 @@ impl PdfProcessingService {
         file_id: &str,
         start_stage: ProcessingStage,
         cancel_token: CancellationToken,
+        generation: u64,
     ) -> VfsResult<()> {
         // 获取文件信息
         let conn = self.db.get_conn_safe()?;
@@ -733,7 +767,13 @@ impl PdfProcessingService {
             if cancel_token.is_cancelled() {
                 info!("[PdfProcessingService] Pipeline cancelled for {}", file_id);
                 let _ = self
-                    .update_processing_status(file_id, ProcessingStage::Pending, None, None)
+                    .update_processing_status(
+                        file_id,
+                        ProcessingStage::Pending,
+                        None,
+                        None,
+                        Some(generation),
+                    )
                     .await;
                 return Ok(());
             }
@@ -764,6 +804,7 @@ impl PdfProcessingService {
                         ProcessingStage::PageCompression,
                         None,
                         None,
+                        Some(generation),
                     )
                     .await?;
 
@@ -783,13 +824,21 @@ impl PdfProcessingService {
                         ProcessingStage::PageCompression,
                         Some(&progress),
                         None,
+                        Some(generation),
                     )
                     .await?;
-                    self.emit_progress(file_id, progress, MediaType::Pdf).await;
+                    self.emit_progress(file_id, progress, MediaType::Pdf, Some(generation))
+                        .await;
 
                     // 执行页面压缩
                     match self
-                        .stage_pdf_page_compression(file_id, pj, total_pages, &cancel_token)
+                        .stage_pdf_page_compression(
+                            file_id,
+                            pj,
+                            total_pages,
+                            &cancel_token,
+                            generation,
+                        )
                         .await
                     {
                         Ok(()) => {
@@ -865,14 +914,26 @@ impl PdfProcessingService {
                 if cancel_token.is_cancelled() {
                     info!("[PdfProcessingService] Pipeline cancelled for {}", file_id);
                     let _ = self
-                        .update_processing_status(file_id, ProcessingStage::Pending, None, None)
+                        .update_processing_status(
+                            file_id,
+                            ProcessingStage::Pending,
+                            None,
+                            None,
+                            Some(generation),
+                        )
                         .await;
                     return Ok(());
                 }
 
                 // 更新状态
-                self.update_processing_status(file_id, ProcessingStage::OcrProcessing, None, None)
-                    .await?;
+                self.update_processing_status(
+                    file_id,
+                    ProcessingStage::OcrProcessing,
+                    None,
+                    None,
+                    Some(generation),
+                )
+                .await?;
 
                 // 发送进度事件
                 // ★ P1-1 修复：进度单调递增（压缩 0-20% → OCR 20-75% → 向量 75-95%）
@@ -888,6 +949,7 @@ impl PdfProcessingService {
                         failed_stages: None,
                     },
                     MediaType::Pdf,
+                    Some(generation),
                 )
                 .await;
 
@@ -906,7 +968,13 @@ impl PdfProcessingService {
                 if let Some(ref pj) = preview_json {
                     // 执行 OCR 处理（复用预渲染图片）
                     match self
-                        .stage_ocr_processing(file_id, pj, &mut ready_modes, &cancel_token)
+                        .stage_ocr_processing(
+                            file_id,
+                            pj,
+                            &mut ready_modes,
+                            &cancel_token,
+                            generation,
+                        )
                         .await
                     {
                         Ok(_) => {
@@ -951,19 +1019,31 @@ impl PdfProcessingService {
             if cancel_token.is_cancelled() {
                 info!("[PdfProcessingService] Pipeline cancelled for {}", file_id);
                 let _ = self
-                    .update_processing_status(file_id, ProcessingStage::Pending, None, None)
+                    .update_processing_status(
+                        file_id,
+                        ProcessingStage::Pending,
+                        None,
+                        None,
+                        Some(generation),
+                    )
                     .await;
                 return Ok(());
             }
 
             // 更新状态
-            self.update_processing_status(file_id, ProcessingStage::VectorIndexing, None, None)
-                .await?;
+            self.update_processing_status(
+                file_id,
+                ProcessingStage::VectorIndexing,
+                None,
+                None,
+                Some(generation),
+            )
+            .await?;
 
             // 执行向量索引
             // 注意：索引失败不会中断流水线，错误会被记录
             if let Err(e) = self
-                .stage_vector_indexing(file_id, &mut ready_modes, MediaType::Pdf)
+                .stage_vector_indexing(file_id, &mut ready_modes, MediaType::Pdf, generation)
                 .await
             {
                 warn!(
@@ -1008,11 +1088,22 @@ impl PdfProcessingService {
             },
             Some(&progress),
             Some(now_ms),
+            Some(generation),
         )
         .await?;
 
         // 发送完成事件
-        self.emit_completed(file_id, ready_modes, MediaType::Pdf)
+        self.emit_completed(
+            file_id,
+            ready_modes,
+            if completed_with_issues {
+                ProcessingStage::CompletedWithIssues
+            } else {
+                ProcessingStage::Completed
+            },
+            MediaType::Pdf,
+            Some(generation),
+        )
             .await;
 
         Ok(())
@@ -1033,6 +1124,7 @@ impl PdfProcessingService {
         file_id: &str,
         start_stage: ProcessingStage,
         cancel_token: CancellationToken,
+        generation: u64,
     ) -> VfsResult<()> {
         info!(
             "[MediaProcessingService] Starting image pipeline for file: {} (from stage: {:?})",
@@ -1117,14 +1209,26 @@ impl PdfProcessingService {
             if cancel_token.is_cancelled() {
                 info!("[PdfProcessingService] Pipeline cancelled for {}", file_id);
                 let _ = self
-                    .update_processing_status(file_id, ProcessingStage::Pending, None, None)
+                    .update_processing_status(
+                        file_id,
+                        ProcessingStage::Pending,
+                        None,
+                        None,
+                        Some(generation),
+                    )
                     .await;
                 return Ok(());
             }
 
             // 更新状态
-            self.update_processing_status(file_id, ProcessingStage::ImageCompression, None, None)
-                .await?;
+            self.update_processing_status(
+                file_id,
+                ProcessingStage::ImageCompression,
+                None,
+                None,
+                Some(generation),
+            )
+            .await?;
 
             // 发送进度事件
             self.emit_progress(
@@ -1139,6 +1243,7 @@ impl PdfProcessingService {
                     failed_stages: None,
                 },
                 MediaType::Image,
+                Some(generation),
             )
             .await;
 
@@ -1221,6 +1326,7 @@ impl PdfProcessingService {
                     failed_stages: None,
                 },
                 MediaType::Image,
+                Some(generation),
             )
             .await;
         }
@@ -1234,14 +1340,26 @@ impl PdfProcessingService {
             if cancel_token.is_cancelled() {
                 info!("[PdfProcessingService] Pipeline cancelled for {}", file_id);
                 let _ = self
-                    .update_processing_status(file_id, ProcessingStage::Pending, None, None)
+                    .update_processing_status(
+                        file_id,
+                        ProcessingStage::Pending,
+                        None,
+                        None,
+                        Some(generation),
+                    )
                     .await;
                 return Ok(());
             }
 
             // 更新状态
-            self.update_processing_status(file_id, ProcessingStage::OcrProcessing, None, None)
-                .await?;
+            self.update_processing_status(
+                file_id,
+                ProcessingStage::OcrProcessing,
+                None,
+                None,
+                Some(generation),
+            )
+            .await?;
 
             // 发送进度事件
             self.emit_progress(
@@ -1256,13 +1374,17 @@ impl PdfProcessingService {
                     failed_stages: None,
                 },
                 MediaType::Image,
+                Some(generation),
             )
             .await;
 
             // 执行 OCR
             let mt = mime_type.as_deref().unwrap_or("image/png");
             if let Some(ref bh) = blob_hash {
-                match self.stage_image_ocr(file_id, bh, mt).await {
+                match self
+                    .stage_image_ocr(file_id, bh, mt, &cancel_token, generation)
+                    .await
+                {
                     Ok(ocr_text) => {
                         // ★ 2026-02-13 修复：仅当 OCR 文本非空时才标记 'ocr' 就绪
                         // 原问题：空文本时 ready_modes 虚标 'ocr'，前端认为 OCR 就绪放行发送，
@@ -1298,7 +1420,16 @@ impl PdfProcessingService {
                 let base64_content =
                     VfsFileRepo::get_content_with_conn(&conn, &blobs_dir, file_id)?;
                 if let Some(data) = base64_content {
-                    match self.stage_image_ocr_with_base64(file_id, data, mt).await {
+                    match self
+                        .stage_image_ocr_with_base64(
+                            file_id,
+                            data,
+                            mt,
+                            &cancel_token,
+                            generation,
+                        )
+                        .await
+                    {
                         Ok(ocr_text) => {
                             // ★ 2026-02-13 修复：同上，仅非空时标记就绪
                             if !ocr_text.trim().is_empty() {
@@ -1348,6 +1479,7 @@ impl PdfProcessingService {
                     failed_stages: None,
                 },
                 MediaType::Image,
+                Some(generation),
             )
             .await;
         } else if !has_ocr && !should_run_image_ocr {
@@ -1364,18 +1496,30 @@ impl PdfProcessingService {
             if cancel_token.is_cancelled() {
                 info!("[PdfProcessingService] Pipeline cancelled for {}", file_id);
                 let _ = self
-                    .update_processing_status(file_id, ProcessingStage::Pending, None, None)
+                    .update_processing_status(
+                        file_id,
+                        ProcessingStage::Pending,
+                        None,
+                        None,
+                        Some(generation),
+                    )
                     .await;
                 return Ok(());
             }
 
             // 更新状态
-            self.update_processing_status(file_id, ProcessingStage::VectorIndexing, None, None)
-                .await?;
+            self.update_processing_status(
+                file_id,
+                ProcessingStage::VectorIndexing,
+                None,
+                None,
+                Some(generation),
+            )
+            .await?;
 
             // 执行向量索引
             if let Err(e) = self
-                .stage_vector_indexing(file_id, &mut ready_modes, MediaType::Image)
+                .stage_vector_indexing(file_id, &mut ready_modes, MediaType::Image, generation)
                 .await
             {
                 warn!(
@@ -1420,11 +1564,22 @@ impl PdfProcessingService {
             },
             Some(&progress),
             Some(now_ms),
+            Some(generation),
         )
         .await?;
 
         // 发送完成事件
-        self.emit_completed(file_id, ready_modes, MediaType::Image)
+        self.emit_completed(
+            file_id,
+            ready_modes,
+            if completed_with_issues {
+                ProcessingStage::CompletedWithIssues
+            } else {
+                ProcessingStage::Completed
+            },
+            MediaType::Image,
+            Some(generation),
+        )
             .await;
 
         Ok(())
@@ -1581,6 +1736,7 @@ impl PdfProcessingService {
         preview_json: &str,
         total_pages: usize,
         cancel_token: &CancellationToken,
+        generation: u64,
     ) -> VfsResult<()> {
         use base64::Engine;
         use sha2::{Digest, Sha256};
@@ -1724,7 +1880,8 @@ impl PdfProcessingService {
                     media_type: Some("pdf".to_string()),
                     failed_stages: None,
                 };
-                self.emit_progress(file_id, progress, MediaType::Pdf).await;
+                self.emit_progress(file_id, progress, MediaType::Pdf, Some(generation))
+                    .await;
             }
         }
 
@@ -1753,6 +1910,8 @@ impl PdfProcessingService {
         file_id: &str,
         blob_hash: &str,
         mime_type: &str,
+        cancel_token: &CancellationToken,
+        generation: u64,
     ) -> VfsResult<String> {
         // 获取图片数据
         let conn = self.db.get_conn_safe()?;
@@ -1766,7 +1925,7 @@ impl PdfProcessingService {
         // 读取图片并转为 base64
         let image_data = tokio::fs::read(&blob_path).await?;
         let base64_data = base64::engine::general_purpose::STANDARD.encode(&image_data);
-        self.stage_image_ocr_with_base64(file_id, base64_data, mime_type)
+        self.stage_image_ocr_with_base64(file_id, base64_data, mime_type, cancel_token, generation)
             .await
     }
 
@@ -1776,7 +1935,15 @@ impl PdfProcessingService {
         file_id: &str,
         base64_data: String,
         mime_type: &str,
+        cancel_token: &CancellationToken,
+        generation: u64,
     ) -> VfsResult<String> {
+        if cancel_token.is_cancelled()
+            || self.skip_stale_task_side_effects(file_id, Some(generation), "stage_image_ocr:start")
+        {
+            return Ok(String::new());
+        }
+
         info!(
             "[OCR_DIAG] stage_image_ocr_with_base64 START: file_id={}, mime_type={}, base64_len={}",
             file_id,
@@ -1826,6 +1993,12 @@ impl PdfProcessingService {
                 );
                 VfsError::Other(format!("OCR API call failed: {}", e))
             })?;
+
+        if cancel_token.is_cancelled()
+            || self.skip_stale_task_side_effects(file_id, Some(generation), "stage_image_ocr:after_api")
+        {
+            return Ok(String::new());
+        }
 
         let ocr_text = result.assistant_message;
         info!(
@@ -1911,7 +2084,12 @@ impl PdfProcessingService {
         stage: ProcessingStage,
         progress: Option<&ProcessingProgress>,
         completed_at: Option<i64>,
+        generation: Option<u64>,
     ) -> VfsResult<()> {
+        if self.skip_stale_task_side_effects(file_id, generation, "update_processing_status") {
+            return Ok(());
+        }
+
         // ★ P1-4 修复：带 busy-retry 的事务开始
         // 并发处理多文件时 BEGIN IMMEDIATE 可能因 SQLITE_BUSY 失败
         // 连接在循环内获取，避免 sleep 期间持有空闲连接导致连接池饥饿
@@ -2047,7 +2225,17 @@ impl PdfProcessingService {
     }
 
     /// 设置处理错误
-    pub fn set_error(&self, file_id: &str, error: &str, stage: ProcessingStage) -> VfsResult<()> {
+    pub fn set_error(
+        &self,
+        file_id: &str,
+        error: &str,
+        stage: ProcessingStage,
+        generation: Option<u64>,
+    ) -> VfsResult<()> {
+        if self.skip_stale_task_side_effects(file_id, generation, "set_error") {
+            return Ok(());
+        }
+
         let conn = self.db.get_conn_safe()?;
         let now_ms = chrono::Utc::now().timestamp_millis();
 
@@ -2164,7 +2352,13 @@ impl PdfProcessingService {
                 );
 
                 // 重置状态并重新开始
-                self.update_processing_status(file_id, ProcessingStage::Pending, None, None)
+                self.update_processing_status(
+                    file_id,
+                    ProcessingStage::Pending,
+                    None,
+                    None,
+                    None,
+                )
                     .await?;
                 self.start_pipeline(file_id, Some(start_stage)).await
             }
@@ -2266,7 +2460,12 @@ impl PdfProcessingService {
         file_id: &str,
         progress: ProcessingProgress,
         media_type: MediaType,
+        generation: Option<u64>,
     ) {
+        if self.skip_stale_task_side_effects(file_id, generation, "emit_progress") {
+            return;
+        }
+
         // 兼容轮询链路：将最新进度持久化到 DB，避免前端只能在 completed 才看到 ready_modes 变化。
         if let Ok(conn) = self.db.get_conn_safe() {
             let progress_json = serde_json::to_string(&progress).unwrap_or_default();
@@ -2318,11 +2517,23 @@ impl PdfProcessingService {
     }
 
     /// 发送完成事件（支持媒体类型）
-    async fn emit_completed(&self, file_id: &str, ready_modes: Vec<String>, media_type: MediaType) {
+    async fn emit_completed(
+        &self,
+        file_id: &str,
+        ready_modes: Vec<String>,
+        stage: ProcessingStage,
+        media_type: MediaType,
+        generation: Option<u64>,
+    ) {
+        if self.skip_stale_task_side_effects(file_id, generation, "emit_completed") {
+            return;
+        }
+
         if let Some(app_handle) = self.get_app_handle().await {
             let event = MediaProcessingCompletedEvent {
                 file_id: file_id.to_string(),
                 ready_modes: ready_modes.clone(),
+                stage: stage.as_str().to_string(),
                 media_type: media_type.as_str().to_string(),
             };
 
@@ -2347,7 +2558,18 @@ impl PdfProcessingService {
     }
 
     /// 发送错误事件（支持媒体类型）
-    pub async fn emit_error(&self, file_id: &str, error: &str, stage: &str, media_type: MediaType) {
+    pub async fn emit_error(
+        &self,
+        file_id: &str,
+        error: &str,
+        stage: &str,
+        media_type: MediaType,
+        generation: Option<u64>,
+    ) {
+        if self.skip_stale_task_side_effects(file_id, generation, "emit_error") {
+            return;
+        }
+
         if let Some(app_handle) = self.get_app_handle().await {
             let event = MediaProcessingErrorEvent {
                 file_id: file_id.to_string(),
@@ -2401,7 +2623,12 @@ impl PdfProcessingService {
         file_id: &str,
         ready_modes: &mut Vec<String>,
         media_type: MediaType,
+        generation: u64,
     ) -> VfsResult<()> {
+        if self.skip_stale_task_side_effects(file_id, Some(generation), "stage_vector_indexing") {
+            return Ok(());
+        }
+
         info!(
             "[PdfProcessingService] Starting vector indexing for file: {}",
             file_id
@@ -2487,6 +2714,7 @@ impl PdfProcessingService {
                 failed_stages: None,
             },
             media_type,
+            Some(generation),
         )
         .await;
 
@@ -2567,6 +2795,7 @@ impl PdfProcessingService {
                 failed_stages: None,
             },
             media_type,
+            Some(generation),
         )
         .await;
 
@@ -2638,6 +2867,7 @@ impl PdfProcessingService {
                 failed_stages: None,
             },
             media_type,
+            Some(generation),
         )
         .await;
 
@@ -2668,7 +2898,12 @@ impl PdfProcessingService {
         preview_json: &str,
         ready_modes: &mut Vec<String>,
         cancel_token: &CancellationToken,
+        generation: u64,
     ) -> VfsResult<String> {
+        if self.skip_stale_task_side_effects(file_id, Some(generation), "stage_ocr_processing:start") {
+            return Ok("{}".to_string());
+        }
+
         info!(
             "[PdfProcessingService] Starting OCR processing for file: {}",
             file_id
@@ -2731,6 +2966,7 @@ impl PdfProcessingService {
                 failed_stages: None,
             },
             MediaType::Pdf,
+            Some(generation),
         )
         .await;
 
@@ -2739,7 +2975,7 @@ impl PdfProcessingService {
         let llm_manager = self.llm_manager.clone();
         let file_id_owned = file_id.to_string();
         let ready_modes_clone = ready_modes.clone();
-        let app_handle_for_progress = self.get_app_handle().await;
+        let service = self;
 
         let tasks: Vec<_> = preview
             .pages
@@ -2759,7 +2995,8 @@ impl PdfProcessingService {
                 let file_id = file_id_owned.clone();
                 let db = db.clone();
                 let ready_modes_for_task = ready_modes_clone.clone();
-                let app_handle_clone = app_handle_for_progress.clone();
+                let service = service;
+                let generation_for_task = generation;
 
                 async move {
                     // ★ P0 修复：正确处理信号量获取错误，避免 panic
@@ -2825,25 +3062,23 @@ impl PdfProcessingService {
                             // 发送进度更新（50% - 90% 之间，基于 OCR 完成比例）
                             // ★ P1-1 修复：OCR 进度范围 20%-75%，保证单调递增
                             let ocr_progress = 20.0 + (completed as f64 / total_pages as f64) * 55.0;
-                            if let Some(ref app_handle) = app_handle_clone {
-                                use tauri::Emitter;
-                                let progress = ProcessingProgress {
-                                    stage: "ocr_processing".to_string(),
-                                    current_page: Some(completed),
-                                    total_pages: Some(total_pages),
-                                    percent: ocr_progress as f32,
-                                    ready_modes: ready_modes_for_task.clone(),
-                                    media_type: Some("pdf".to_string()),
-                                    failed_stages: None,
-                                };
-                                let event = MediaProcessingProgressEvent {
-                                    file_id: file_id.clone(),
-                                    status: progress.clone(),
-                                    media_type: "pdf".to_string(),
-                                };
-                                let _ = app_handle.emit("media-processing-progress", &event);
-                                let _ = app_handle.emit("pdf-processing-progress", &event);
-                            }
+                            let progress = ProcessingProgress {
+                                stage: "ocr_processing".to_string(),
+                                current_page: Some(completed),
+                                total_pages: Some(total_pages),
+                                percent: ocr_progress as f32,
+                                ready_modes: ready_modes_for_task.clone(),
+                                media_type: Some("pdf".to_string()),
+                                failed_stages: None,
+                            };
+                            service
+                                .emit_progress(
+                                    &file_id,
+                                    progress,
+                                    MediaType::Pdf,
+                                    Some(generation_for_task),
+                                )
+                                .await;
 
                             debug!(
                                 "[PdfProcessingService] OCR completed for page {}/{} of file {} ({}%)",

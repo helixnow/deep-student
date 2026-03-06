@@ -16,7 +16,7 @@ import type {
   SkillLocation,
   SkillLoadConfig,
 } from './types';
-import { SKILL_INSTRUCTION_TYPE_ID, SKILL_DEFAULT_PRIORITY } from './types';
+import { SKILL_DEFAULT_PRIORITY } from './types';
 import { debugLog } from '../../debug-panel/debugMasterSwitch';
 import i18n from 'i18next';
 
@@ -451,10 +451,6 @@ export const skillRegistry = new SkillRegistry();
 /**
  * 获取 skill 的 ContextRef 类型 ID
  */
-export function getSkillContextTypeId(): string {
-  return SKILL_INSTRUCTION_TYPE_ID;
-}
-
 /**
  * 根据 skill ID 查找并返回 skill（便捷函数）
  */

@@ -23,6 +23,7 @@ export type ProcessingStage =
   | 'ocr_processing'      // 共享
   | 'vector_indexing'     // 共享
   | 'completed'
+  | 'completed_with_issues'
   | 'error';
 
 /**
@@ -66,7 +67,7 @@ interface PdfProcessingStoreActions {
    * @param fileId 文件 ID
    * @param readyModes 就绪的注入模式
    */
-  setCompleted: (fileId: string, readyModes: Array<'text' | 'ocr' | 'image'>) => void;
+  setCompleted: (fileId: string, readyModes: Array<'text' | 'ocr' | 'image'>, stage?: 'completed' | 'completed_with_issues') => void;
   
   /**
    * 设置文件处理错误
@@ -102,6 +103,40 @@ const MAX_ENTRIES = 100;
 /** Delay (ms) before auto-removing completed/error entries */
 const AUTO_CLEANUP_DELAY = 60_000;
 
+const TERMINAL_STAGES: ReadonlySet<ProcessingStage> = new Set(['completed', 'completed_with_issues', 'error']);
+
+const STAGE_ORDER: Record<ProcessingStage, number> = {
+  pending: 0,
+  text_extraction: 1,
+  page_rendering: 2,
+  page_compression: 3,
+  image_compression: 3,
+  ocr_processing: 4,
+  vector_indexing: 5,
+  completed: 6,
+  completed_with_issues: 6,
+  error: 7,
+};
+
+function shouldAcceptUpdate(existing: PdfProcessingStatus | undefined, next: PdfProcessingStatus): boolean {
+  if (!existing) return true;
+
+  const existingOrder = STAGE_ORDER[existing.stage] ?? 0;
+  const nextOrder = STAGE_ORDER[next.stage] ?? 0;
+
+  if (next.stage === existing.stage) {
+    return next.percent >= existing.percent
+      || (next.readyModes?.length ?? 0) >= (existing.readyModes?.length ?? 0)
+      || !!next.error;
+  }
+
+  if (next.stage === 'pending' && TERMINAL_STAGES.has(existing.stage)) {
+    return true;
+  }
+
+  return nextOrder >= existingOrder;
+}
+
 /**
  * Evict oldest completed/error entries when the map exceeds MAX_ENTRIES.
  * Entries inserted first in the Map iteration order are considered "oldest".
@@ -112,7 +147,7 @@ function enforceMaxEntries(map: Map<string, PdfProcessingStatus>): void {
   const toRemove: string[] = [];
   // First pass: collect completed/error entries (oldest first via Map insertion order)
   for (const [id, entry] of map) {
-    if (entry.stage === 'completed' || entry.stage === 'error') {
+    if (TERMINAL_STAGES.has(entry.stage)) {
       toRemove.push(id);
     }
     if (map.size - toRemove.length <= MAX_ENTRIES) break;
@@ -134,25 +169,28 @@ export const usePdfProcessingStore = create<PdfProcessingStore>((set, get) => ({
       const existing = newMap.get(fileId);
       const updated: PdfProcessingStatus = {
         stage: status.stage ?? existing?.stage ?? 'pending',
-        percent: status.percent ?? existing?.percent ?? 0,
+        percent: Math.max(status.percent ?? 0, existing?.percent ?? 0),
         readyModes: status.readyModes ?? existing?.readyModes ?? [],
         currentPage: status.currentPage ?? existing?.currentPage,
         totalPages: status.totalPages ?? existing?.totalPages,
         error: status.error ?? existing?.error,
         mediaType: status.mediaType ?? existing?.mediaType,
       };
+      if (!shouldAcceptUpdate(existing, updated)) {
+        return { statusMap: newMap };
+      }
       newMap.set(fileId, updated);
       enforceMaxEntries(newMap);
       return { statusMap: newMap };
     });
   },
   
-  setCompleted: (fileId, readyModes) => {
+  setCompleted: (fileId, readyModes, stage = 'completed') => {
     set(state => {
       const newMap = new Map(state.statusMap);
       const existing = newMap.get(fileId);
       newMap.set(fileId, {
-        stage: 'completed',
+        stage,
         percent: 100,
         readyModes,
         // 保留现有状态
@@ -168,7 +206,7 @@ export const usePdfProcessingStore = create<PdfProcessingStore>((set, get) => ({
     setTimeout(() => {
       const { statusMap } = get();
       const entry = statusMap.get(fileId);
-      if (entry?.stage === 'completed') {
+      if (entry && TERMINAL_STAGES.has(entry.stage)) {
         get().remove(fileId);
       }
     }, AUTO_CLEANUP_DELAY);
@@ -254,4 +292,3 @@ export function getProcessingHint(status: PdfProcessingStatus | undefined): stri
       return isImage ? t('learningHub:processing.imageProcessing') : t('learningHub:processing.pdfProcessing');
   }
 }
-

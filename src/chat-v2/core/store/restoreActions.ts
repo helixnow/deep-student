@@ -238,7 +238,7 @@ export function createRestoreActions(
               });
 
               // ★ P0-03 补齐旧数据迁移：历史数据可能没有 isSticky 字段
-              // - skill_instruction 必须视为持久引用（持续生效直到取消）
+              // - legacy skill_instruction 仅作历史兼容读取，不再作为运行时真相源
               pendingContextRefs = filterSkillInstructionRefsWhenStructuredStateExists(validated.map((ref) => {
                 if (ref.typeId === SKILL_INSTRUCTION_TYPE_ID) {
                   return { ...ref, isSticky: true };
@@ -676,45 +676,7 @@ export function createRestoreActions(
                 }
               }
 
-              // === Step 1: 恢复手动激活 Skills 的 ContextRefs ===
-              if (restoredActiveSkillIds.length > 0 && !state?.skillStateJson) {
-                try {
-                  const { skillRegistry } = await import('../../skills/registry');
-                  const { createResourceFromSkill } = await import('../../skills/resourceHelper');
-
-                  for (const skillId of restoredActiveSkillIds) {
-                    const skill = skillRegistry.get(skillId);
-                    if (!skill) {
-                      console.warn('[ChatStore] Active skill not found during restore:', skillId);
-                      continue;
-                    }
-
-                    const contextRef = await createResourceFromSkill(skill);
-                    if (!contextRef) {
-                      console.warn('[ChatStore] Failed to create contextRef for active skill:', skillId);
-                      continue;
-                    }
-
-                    // 避免重复添加同一 skill_instruction ref
-                    const currentRefs = getState().pendingContextRefs;
-                    const hasSkillRef = currentRefs.some(
-                      (ref) => ref.typeId === SKILL_INSTRUCTION_TYPE_ID && ref.resourceId === contextRef.resourceId
-                    );
-
-                    if (!hasSkillRef) {
-                      set({
-                        pendingContextRefs: [...currentRefs, { ...contextRef, autoLoaded: true }],
-                        pendingContextRefsDirty: false,
-                      });
-                    }
-                  }
-                  console.log('[ChatStore] Restored active skill contextRefs:', restoredActiveSkillIds);
-                } catch (error) {
-                  console.warn('[ChatStore] Failed to restore active skill contextRefs:', error);
-                }
-              }
-
-              // === Step 2: 兼容恢复 — 如果 activeSkillIdsJson 为空但存在 skill refs，从 refs 推断 ===
+              // === Step 1: 兼容恢复 — 如果 activeSkillIdsJson 为空但存在 legacy skill refs，从 refs 推断 ===
               if (restoredActiveSkillIds.length === 0 && pendingContextRefs.length > 0 && !state?.skillStateJson) {
                 const orphanSkillRefs = pendingContextRefs.filter(
                   (ref) => ref.typeId === SKILL_INSTRUCTION_TYPE_ID && ref.isSticky

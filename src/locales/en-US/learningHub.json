@@ -438,7 +438,8 @@
       "filterName": "Markdown Files",
       "success": "Imported {{count}} Markdown note(s)",
       "partial": "Imported {{success}} Markdown note(s), {{failed}} failed",
-      "failed": "Markdown import failed"
+      "failed": "Markdown import failed",
+      "failedFiles": "Failed files: {{names}}"
     },
     "contextMenu": {
       "open": "Open",

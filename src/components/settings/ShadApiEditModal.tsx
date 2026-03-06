@@ -176,8 +176,8 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
   });
 
   const inferredCaps = useMemo(
-    () => inferApiCapabilities({ id: formData.model, name: formData.name }),
-    [formData.model, formData.name]
+    () => inferApiCapabilities({ id: formData.model, name: formData.name, providerScope: formData.providerType }),
+    [formData.model, formData.name, formData.providerType]
   );
 
   const inferenceTimeoutRef = useRef<number | null>(null);
@@ -198,7 +198,11 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
     const isGemini = formData.modelAdapter === 'google' && model.includes('gemini');
     if (!isGemini) return;
 
-    const caps = inferApiCapabilities({ id: formData.model, name: formData.name });
+    const caps = inferApiCapabilities({
+      id: formData.model,
+      name: formData.name,
+      providerScope: formData.providerType,
+    });
     const shouldReason = caps.reasoning || caps.supportsReasoningEffort || caps.supportsThinkingTokens || caps.supportsHybridReasoning;
     if (!shouldReason || !caps.supportsThinkingTokens) return;
 
@@ -243,7 +247,11 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
         if (!currentModel || currentModel !== model) {
           return prev;
         }
-        const caps = inferApiCapabilities({ id: currentModel, name: prev.name });
+        const caps = inferApiCapabilities({
+          id: currentModel,
+          name: prev.name,
+          providerScope: prev.providerType,
+        });
         const shouldReason =
           caps.reasoning || caps.supportsReasoningEffort || caps.supportsThinkingTokens || caps.supportsHybridReasoning;
         let next: EditApiConfig = {

@@ -136,6 +136,95 @@ impl ProviderAdapter for OpenAIAdapter {
 pub struct OpenAIResponsesAdapter;
 
 impl OpenAIResponsesAdapter {
+    fn push_text_parts(parts: &mut Vec<Value>, content: &Value) {
+        match content {
+            Value::String(text) => {
+                if !text.trim().is_empty() {
+                    parts.push(json!({ "type": "input_text", "text": text }));
+                }
+            }
+            Value::Array(arr) => {
+                for part in arr {
+                    let ptype = part.get("type").and_then(|v| v.as_str()).unwrap_or("");
+                    match ptype {
+                        "text" => {
+                            if let Some(text) = part.get("text").and_then(|v| v.as_str()) {
+                                if !text.is_empty() {
+                                    parts.push(json!({ "type": "input_text", "text": text }));
+                                }
+                            }
+                        }
+                        "image_url" => {
+                            if let Some(url) = part
+                                .get("image_url")
+                                .and_then(|v| v.get("url"))
+                                .and_then(|v| v.as_str())
+                            {
+                                parts.push(json!({ "type": "input_image", "image_url": url }));
+                            }
+                        }
+                        _ => {
+                            if let Some(text) = part.get("text").and_then(|v| v.as_str()) {
+                                if !text.is_empty() {
+                                    parts.push(json!({ "type": "input_text", "text": text }));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn assistant_tool_call_items(message: &Value) -> Vec<Value> {
+        let mut items = Vec::new();
+        if let Some(tool_calls) = message.get("tool_calls").and_then(|v| v.as_array()) {
+            for tool_call in tool_calls {
+                let id = tool_call
+                    .get("id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("call_unknown");
+                let name = tool_call
+                    .get("function")
+                    .and_then(|f| f.get("name"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("unknown_function");
+                let arguments = tool_call
+                    .get("function")
+                    .and_then(|f| f.get("arguments"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("{}");
+                items.push(json!({
+                    "type": "function_call",
+                    "call_id": id,
+                    "name": name,
+                    "arguments": arguments,
+                }));
+            }
+        }
+        items
+    }
+
+    fn tool_result_item(message: &Value) -> Option<Value> {
+        let call_id = message.get("tool_call_id").and_then(|v| v.as_str())?;
+        let output = match message.get("content") {
+            Some(Value::String(text)) => text.clone(),
+            Some(Value::Array(parts)) => parts
+                .iter()
+                .filter_map(|part| part.get("text").and_then(|v| v.as_str()))
+                .collect::<Vec<_>>()
+                .join("\n"),
+            _ => String::new(),
+        };
+
+        Some(json!({
+            "type": "function_call_output",
+            "call_id": call_id,
+            "output": output,
+        }))
+    }
+
     fn convert_tool_call_to_response_tool_choice(value: &Value) -> Option<Value> {
         if let Some(choice) = value.as_str() {
             return match choice {
@@ -231,50 +320,16 @@ impl OpenAIResponsesAdapter {
                     continue;
                 }
 
+                if role == "tool" {
+                    if let Some(item) = Self::tool_result_item(message) {
+                        input_blocks.push(item);
+                    }
+                    continue;
+                }
+
                 let mut parts: Vec<Value> = Vec::new();
-                match message.get("content") {
-                    Some(Value::String(text)) => {
-                        if !text.trim().is_empty() {
-                            parts.push(json!({ "type": "input_text", "text": text }));
-                        }
-                    }
-                    Some(Value::Array(arr)) => {
-                        for part in arr {
-                            let ptype = part.get("type").and_then(|v| v.as_str()).unwrap_or("");
-                            match ptype {
-                                "text" => {
-                                    if let Some(text) = part.get("text").and_then(|v| v.as_str()) {
-                                        if !text.is_empty() {
-                                            parts.push(
-                                                json!({ "type": "input_text", "text": text }),
-                                            );
-                                        }
-                                    }
-                                }
-                                "image_url" => {
-                                    if let Some(url) = part
-                                        .get("image_url")
-                                        .and_then(|v| v.get("url"))
-                                        .and_then(|v| v.as_str())
-                                    {
-                                        parts.push(
-                                            json!({ "type": "input_image", "image_url": url }),
-                                        );
-                                    }
-                                }
-                                _ => {
-                                    if let Some(text) = part.get("text").and_then(|v| v.as_str()) {
-                                        if !text.is_empty() {
-                                            parts.push(
-                                                json!({ "type": "input_text", "text": text }),
-                                            );
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    _ => {}
+                if let Some(content) = message.get("content") {
+                    Self::push_text_parts(&mut parts, content);
                 }
 
                 if !parts.is_empty() {
@@ -282,6 +337,12 @@ impl OpenAIResponsesAdapter {
                         "role": role,
                         "content": parts
                     }));
+                }
+
+                if role == "assistant" {
+                    for item in Self::assistant_tool_call_items(message) {
+                        input_blocks.push(item);
+                    }
                 }
             }
         }
@@ -667,7 +728,7 @@ impl AnthropicAdapter {
             _ => None,
         });
 
-        let tool_choice = convert_tool_choice(body.get("tool_choice")).or_else(|| {
+        let mut tool_choice = convert_tool_choice(body.get("tool_choice")).or_else(|| {
             if body.get("tool_choice").is_none()
                 && tools.as_ref().map(|t| !t.is_empty()).unwrap_or(false)
             {
@@ -681,10 +742,30 @@ impl AnthropicAdapter {
             .get("response_format")
             .and_then(convert_response_format_for_anthropic);
 
-        let output_config = body
+        let mut output_config = body
             .get("effort")
             .and_then(|v| v.as_str())
             .map(|effort| json!({ "effort": effort }));
+
+        if let Some(format) = response_format.clone() {
+            match &mut output_config {
+                Some(Value::Object(map)) => {
+                    map.insert("format".to_string(), format);
+                }
+                _ => {
+                    output_config = Some(json!({ "format": format }));
+                }
+            }
+        }
+
+        if has_thinking && tools.as_ref().map(|t| !t.is_empty()).unwrap_or(false) {
+            if let Some(choice) = &tool_choice {
+                let choice_type = choice.get("type").and_then(|v| v.as_str()).unwrap_or("");
+                if !matches!(choice_type, "auto" | "none") {
+                    tool_choice = Some(json!({ "type": "auto" }));
+                }
+            }
+        }
 
         AnthropicRequest {
             model: model.to_string(),
@@ -698,7 +779,7 @@ impl AnthropicAdapter {
             top_k,
             stop_sequences,
             stream: if stream { Some(true) } else { None },
-            response_format,
+            response_format: None,
             thinking,
             output_config,
         }
@@ -1420,6 +1501,15 @@ fn build_usage_event(usage: &Value) -> Option<Value> {
         .get("total_tokens")
         .and_then(|v| v.as_i64())
         .unwrap_or((input_tokens + output_tokens) as i64) as i32;
+    let cache_creation_input_tokens = usage
+        .get("cache_creation_input_tokens")
+        .and_then(|v| v.as_i64())
+        .unwrap_or(0) as i32;
+    let cache_read_input_tokens = usage
+        .get("cache_read_input_tokens")
+        .and_then(|v| v.as_i64())
+        .unwrap_or(0) as i32;
+    let cached_tokens = cache_creation_input_tokens + cache_read_input_tokens;
 
     Some(json!({
         "input_tokens": input_tokens,
@@ -1427,6 +1517,7 @@ fn build_usage_event(usage: &Value) -> Option<Value> {
         "total_tokens": total_tokens,
         "prompt_tokens": input_tokens,
         "completion_tokens": output_tokens,
+        "cached_tokens": if cached_tokens > 0 { json!(cached_tokens) } else { Value::Null },
         "total_tokens_openai": total_tokens,
         "original": usage
     }))
@@ -1658,7 +1749,7 @@ impl ProviderAdapter for GeminiAdapter {
 
 #[cfg(test)]
 mod tests {
-    use super::{OpenAIResponsesAdapter, ProviderAdapter, StreamEvent};
+    use super::{build_usage_event, AnthropicAdapter, OpenAIResponsesAdapter, ProviderAdapter, StreamEvent};
     use serde_json::json;
 
     #[test]
@@ -1762,5 +1853,82 @@ mod tests {
         );
         assert!(matches!(events.get(1), Some(StreamEvent::Usage(_))));
         assert!(matches!(events.last(), Some(StreamEvent::Done)));
+    }
+
+    #[test]
+    fn anthropic_uses_output_config_format_for_structured_output() {
+        let adapter = AnthropicAdapter::new();
+        let body = json!({
+            "messages": [{ "role": "user", "content": "hi" }],
+            "response_format": { "type": "json_object" }
+        });
+
+        let request = adapter.convert_openai_to_anthropic("claude-sonnet-4-5", &body);
+        assert!(request.response_format.is_none());
+        assert_eq!(request.output_config.as_ref().and_then(|v| v.get("format")).and_then(|v| v.get("type")), Some(&json!("json")));
+    }
+
+    #[test]
+    fn anthropic_thinking_with_tools_forces_auto_tool_choice() {
+        let adapter = AnthropicAdapter::new();
+        let body = json!({
+            "messages": [{ "role": "user", "content": "hi" }],
+            "thinking": { "type": "enabled", "budget_tokens": 2048 },
+            "tools": [{
+                "type": "function",
+                "function": {
+                    "name": "lookup_weather",
+                    "description": "lookup",
+                    "parameters": { "type": "object", "properties": {} }
+                }
+            }],
+            "tool_choice": { "type": "function", "function": { "name": "lookup_weather" } }
+        });
+
+        let request = adapter.convert_openai_to_anthropic("claude-sonnet-4-5", &body);
+        assert_eq!(request.tool_choice, Some(json!({ "type": "auto" })));
+    }
+
+    #[test]
+    fn openai_responses_adapter_encodes_tool_history() {
+        let body = json!({
+            "messages": [
+                {
+                    "role": "assistant",
+                    "content": "Calling tool",
+                    "tool_calls": [{
+                        "id": "call_1",
+                        "type": "function",
+                        "function": {
+                            "name": "lookup_weather",
+                            "arguments": "{\"city\":\"Paris\"}"
+                        }
+                    }]
+                },
+                {
+                    "role": "tool",
+                    "tool_call_id": "call_1",
+                    "content": "Sunny"
+                }
+            ]
+        });
+
+        let payload = OpenAIResponsesAdapter::convert_to_responses_format("gpt-5.2", &body);
+        let input = payload["input"].as_array().expect("input should be array");
+        assert!(input.iter().any(|item| item["type"] == json!("function_call")));
+        assert!(input.iter().any(|item| item["type"] == json!("function_call_output")));
+    }
+
+    #[test]
+    fn anthropic_build_usage_event_collects_cached_tokens() {
+        let usage = json!({
+            "input_tokens": 100,
+            "output_tokens": 50,
+            "cache_creation_input_tokens": 20,
+            "cache_read_input_tokens": 30
+        });
+
+        let event = build_usage_event(&usage).expect("usage event");
+        assert_eq!(event["cached_tokens"], json!(50));
     }
 }

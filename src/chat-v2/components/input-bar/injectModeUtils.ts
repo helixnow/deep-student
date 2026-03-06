@@ -51,7 +51,7 @@ export function getEffectiveReadyModes(
     }
   }
 
-  if (effectiveStatus?.stage === 'completed') {
+  if (effectiveStatus?.stage === 'completed' || effectiveStatus?.stage === 'completed_with_issues') {
     return mediaType === 'pdf' ? ['text'] : ['image'];
   }
 

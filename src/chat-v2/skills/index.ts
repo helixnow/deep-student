@@ -51,22 +51,8 @@ export {
   skillRegistry,
   getSkill,
   getAutoInvokeSkills,
-  getSkillContextTypeId,
   subscribeToSkillRegistry,
 } from './registry';
-
-// 上下文类型定义
-export {
-  skillInstructionDefinition,
-  createSkillInstructionBlocks,
-} from './skillContextType';
-
-// 资源辅助函数
-export {
-  createResourceFromSkill,
-  createResourcesFromSkills,
-  isSkillContextRef,
-} from './resourceHelper';
 
 // 初始化
 export {

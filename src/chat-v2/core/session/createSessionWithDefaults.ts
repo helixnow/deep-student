@@ -67,15 +67,7 @@ export async function createSessionWithDefaults(options: CreateSessionWithDefaul
         console.warn('[createSessionWithDefaults] Failed to activate skill:', skillId, getErrorMessage(error));
       }
     }
-    // 🔧 标记默认技能为 autoLoaded，不在输入栏显示气泡
-    const { SKILL_INSTRUCTION_TYPE_ID } = await import('../../skills/types');
-    const currentRefsAfterSkills = store.getState().pendingContextRefs;
-    const markedRefs = currentRefsAfterSkills.map(ref =>
-      ref.typeId === SKILL_INSTRUCTION_TYPE_ID && !ref.autoLoaded
-        ? { ...ref, autoLoaded: true }
-        : ref
-    );
-    store.setState({ pendingContextRefs: markedRefs, pendingContextRefsDirty: false });
+    // 默认技能现在直接走结构化 skill state 主链，不再依赖 skill_instruction UI 标记
 
     // 🔧 通知用户哪些默认技能激活失败
     if (failedSkills.length > 0) {

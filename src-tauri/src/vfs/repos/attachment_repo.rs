@@ -566,7 +566,7 @@ impl VfsAttachmentRepo {
                             modes.push("text".to_string());
                         }
                         let progress = serde_json::json!({
-                            "stage": "page_rendering",
+                            "stage": "page_compression",
                             "percent": 25.0,
                             "readyModes": modes
                         });
@@ -574,7 +574,7 @@ impl VfsAttachmentRepo {
                         if let Err(e) = conn.execute(
                             r#"UPDATE files SET
                                 preview_json = ?1, extracted_text = ?2, page_count = ?3,
-                                processing_status = 'page_rendering',
+                                processing_status = 'page_compression',
                                 processing_progress = ?4
                             WHERE id = ?5"#,
                             params![
@@ -768,8 +768,8 @@ impl VfsAttachmentRepo {
         let now_ms = chrono::Utc::now().timestamp_millis();
 
         // ★ PDF 预处理流水线状态（迁移 V20260204）
-        // 由于已经调用了 render_pdf_preview()，Stage 1（文本提取）和 Stage 2（页面渲染）已完成
-        // 设置 processing_status 为 'page_rendering'，后续 pipeline 从 Stage 3（OCR）开始
+        // 由于已经调用了 render_pdf_preview()，Stage 1（文本提取）和 Stage 2（页面渲染）已完成。
+        // 后续统一进入 page_compression → OCR → vector_indexing 流程。
         let (processing_status, processing_progress, processing_started_at): (
             Option<&str>,
             Option<String>,
@@ -788,13 +788,13 @@ impl VfsAttachmentRepo {
             }
 
             let progress = serde_json::json!({
-                "stage": "page_rendering",
+                "stage": "page_compression",
                 "percent": 25.0,
                 "readyModes": ready_modes
             });
 
             (
-                Some("page_rendering"),
+                Some("page_compression"),
                 Some(progress.to_string()),
                 Some(now_ms),
             )

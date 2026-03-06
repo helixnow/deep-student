@@ -503,6 +503,8 @@ pub struct ApiConfig {
     pub vendor_name: Option<String>,
     #[serde(default)]
     pub provider_type: Option<String>,
+    #[serde(default)]
+    pub provider_scope: Option<String>,
     pub api_key: String,
     pub base_url: String,
     pub model: String,
@@ -584,6 +586,7 @@ impl Default for ApiConfig {
             vendor_id: None,
             vendor_name: None,
             provider_type: None,
+            provider_scope: None,
             api_key: String::new(),
             base_url: String::new(),
             model: String::new(),
@@ -679,6 +682,8 @@ pub struct ModelProfile {
     pub vendor_id: String,
     pub label: String,
     pub model: String,
+    #[serde(default)]
+    pub provider_scope: Option<String>,
     #[serde(default = "default_model_adapter")]
     pub model_adapter: String,
     #[serde(default)]
@@ -744,6 +749,7 @@ impl Default for ModelProfile {
             vendor_id: String::new(),
             label: "New Model".to_string(),
             model: String::new(),
+            provider_scope: None,
             model_adapter: default_model_adapter(),
             is_multimodal: false,
             is_reasoning: false,
@@ -2232,6 +2238,7 @@ impl LLMManager {
             vendor_id: Some(vendor.id.clone()),
             vendor_name: Some(vendor.name.clone()),
             provider_type: Some(vendor.provider_type.clone()),
+            provider_scope: profile.provider_scope.clone().or_else(|| Some(vendor.provider_type.clone())),
             api_key,
             base_url: vendor.base_url.clone(),
             model: profile.model.clone(),
@@ -2329,6 +2336,7 @@ impl LLMManager {
                 vendor_id: vendor_id.clone(),
                 label: cfg.name.clone(),
                 model: cfg.model.clone(),
+                provider_scope: cfg.provider_scope.clone().or_else(|| cfg.provider_type.clone()),
                 model_adapter: cfg.model_adapter.clone(),
                 is_multimodal: cfg.is_multimodal,
                 is_reasoning: cfg.is_reasoning,
@@ -2432,6 +2440,7 @@ impl LLMManager {
                     vendor_id: None,
                     vendor_name: None,
                     provider_type: None,
+                    provider_scope: None,
                     headers: None,
                     top_p_override: None,
                     frequency_penalty_override: None,
@@ -2480,6 +2489,7 @@ impl LLMManager {
                 vendor_id: None,
                 vendor_name: None,
                 provider_type: None,
+                provider_scope: None,
                 headers: None,
                 top_p_override: None,
                 frequency_penalty_override: None,
@@ -2545,6 +2555,7 @@ impl LLMManager {
                 vendor_id,
                 label: cfg.name.clone(),
                 model: cfg.model.clone(),
+                provider_scope: cfg.provider_scope.clone().or_else(|| cfg.provider_type.clone()),
                 model_adapter: cfg.model_adapter.clone(),
                 is_multimodal: cfg.is_multimodal,
                 is_reasoning: cfg.is_reasoning,

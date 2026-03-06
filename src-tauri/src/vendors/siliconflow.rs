@@ -93,6 +93,7 @@ pub fn load_builtin_api_configs() -> Result<Vec<ApiConfig>, AppError> {
                     vendor_id: Some(format!("builtin-{}", entry.id)),
                     vendor_name: Some(entry.name.to_string()),
                     provider_type: Some("openai".to_string()),
+                    provider_scope: Some("siliconflow".to_string()),
                     api_key: api_key.to_string(),
                     base_url: entry.base_url.to_string(),
                     model: entry.model.to_string(),

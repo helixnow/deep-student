@@ -24,20 +24,24 @@ vi.mock('@/chat-v2/hooks/useChatStore', () => ({
 }));
 
 // Mock i18n
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key: string) => {
-      const translations: Record<string, string> = {
-        'inputBar.placeholder': 'Type a message...',
-        'inputBar.send': 'Send',
-        'inputBar.stop': 'Stop',
-        'inputBar.addAttachment': 'Add attachment',
-        'inputBar.shortcut': 'Press Enter to send',
-      };
-      return translations[key] || key;
-    },
-  }),
-}));
+vi.mock('react-i18next', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('react-i18next')>();
+  return {
+    ...actual,
+    useTranslation: () => ({
+      t: (key: string) => {
+        const translations: Record<string, string> = {
+          'inputBar.placeholder': 'Type a message...',
+          'inputBar.send': 'Send',
+          'inputBar.stop': 'Stop',
+          'inputBar.addAttachment': 'Add attachment',
+          'inputBar.shortcut': 'Press Enter to send',
+        };
+        return translations[key] || key;
+      },
+    }),
+  };
+});
 
 import {
   useSessionStatus,

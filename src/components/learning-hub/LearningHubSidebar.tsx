@@ -43,7 +43,7 @@ interface TextbookImportProgress {
 
 /** 文档类扩展名集合（通过 textbooks_add 后端命令导入） */
 const DOCUMENT_EXTENSIONS = new Set([
-  'pdf', 'docx', 'txt', 'md', 'html', 'htm',
+  'pdf', 'docx', 'txt', 'md', 'markdown', 'html', 'htm',
   'xlsx', 'xls', 'xlsb', 'ods',
   'pptx', 'epub', 'rtf',
   'csv', 'json', 'xml',
@@ -98,6 +98,7 @@ import {
   consumePathsDropHandledFlag,
   isDragDropBlockedView,
   partitionMarkdownNoteImports,
+  summarizeFailedMarkdownFiles,
 } from './dragDropRouting';
 import { getCreatableFolderId } from './viewGuards';
 import {
@@ -464,7 +465,7 @@ export function LearningHubSidebar({
     folderId: string | null = currentCreatableFolderId,
   ) => {
     if (filePaths.length === 0) {
-      return { importedNodes: [] as DstuNode[], failedCount: 0, firstError: null as string | null };
+      return { importedNodes: [] as DstuNode[], failedCount: 0, firstError: null as string | null, failedFiles: [] as string[] };
     }
 
     const result = await notesDstuAdapter.importMarkdownFiles(
@@ -480,6 +481,7 @@ export function LearningHubSidebar({
         importedNodes: [] as DstuNode[],
         failedCount: filePaths.length,
         firstError: result.error.toUserMessage(),
+        failedFiles: filePaths.map((filePath) => extractDisplayFileName(filePath)),
       };
     }
 
@@ -487,6 +489,7 @@ export function LearningHubSidebar({
       importedNodes: result.value.imported,
       failedCount: result.value.failed.length,
       firstError: result.value.failed[0]?.message ?? null,
+      failedFiles: result.value.failed.map((item) => extractDisplayFileName(item.file_path)),
     };
   }, [currentCreatableFolderId]);
 
@@ -495,7 +498,7 @@ export function LearningHubSidebar({
     folderId: string | null = currentCreatableFolderId,
   ) => {
     if (files.length === 0) {
-      return { importedNodes: [] as DstuNode[], failedCount: 0, firstError: null as string | null };
+      return { importedNodes: [] as DstuNode[], failedCount: 0, firstError: null as string | null, failedFiles: [] as string[] };
     }
 
     const limit = pLimit(3);
@@ -504,9 +507,10 @@ export function LearningHubSidebar({
         try {
           const content = await file.text();
           const result = await notesDstuAdapter.importMarkdownContent(file.name, content, folderId);
-          return { result };
+          return { fileName: file.name, result };
         } catch (error) {
           return {
+            fileName: file.name,
             result: err(new VfsError(
               VfsErrorCode.UNKNOWN,
               error instanceof Error ? error.message : t('finder.markdownImport.failed', 'Markdown 导入失败'),
@@ -519,38 +523,48 @@ export function LearningHubSidebar({
     const importedNodes: DstuNode[] = [];
     let failedCount = 0;
     let firstError: string | null = null;
+    const failedFiles: string[] = [];
 
-    for (const { result } of results) {
+    for (const { fileName, result } of results) {
       if (result.ok) {
         importedNodes.push(result.value);
       } else {
         failedCount += 1;
         firstError ??= result.error.toUserMessage();
+        failedFiles.push(fileName);
       }
     }
 
-    return { importedNodes, failedCount, firstError };
+    return { importedNodes, failedCount, firstError, failedFiles };
   }, [currentCreatableFolderId, t]);
 
   const notifyMarkdownImportResult = useCallback((
     importedCount: number,
     failedCount: number,
+    failedFiles: string[],
     firstError?: string | null,
   ) => {
+    const failedFileSummary = summarizeFailedMarkdownFiles(failedFiles);
+    const failedFilesText = failedFileSummary
+      ? t('finder.markdownImport.failedFiles', '失败文件：{{names}}', { names: failedFileSummary })
+      : null;
+
     if (importedCount > 0 && failedCount === 0) {
       showGlobalNotification('success', t('finder.markdownImport.success', '已导入 {{count}} 个 Markdown 笔记', { count: importedCount }));
       return;
     }
 
     if (importedCount > 0) {
-      showGlobalNotification('warning', t('finder.markdownImport.partial', '成功导入 {{success}} 个 Markdown 笔记，{{failed}} 个失败', {
+      const baseMessage = t('finder.markdownImport.partial', '成功导入 {{success}} 个 Markdown 笔记，{{failed}} 个失败', {
         success: importedCount,
         failed: failedCount,
-      }));
+      });
+      showGlobalNotification('warning', failedFilesText ? `${baseMessage}；${failedFilesText}` : baseMessage);
       return;
     }
 
-    showGlobalNotification('error', firstError || t('finder.markdownImport.failed', 'Markdown 导入失败'));
+    const baseError = firstError || t('finder.markdownImport.failed', 'Markdown 导入失败');
+    showGlobalNotification('error', failedFilesText ? `${baseError}；${failedFilesText}` : baseError);
   }, [t]);
 
   const openImportedMarkdownNote = useCallback((node: DstuNode | null) => {
@@ -578,7 +592,7 @@ export function LearningHubSidebar({
       }
 
       const filePaths = Array.isArray(selected) ? selected : [selected];
-      const { importedNodes, failedCount, firstError } = await importMarkdownPathNotes(filePaths, folderId);
+      const { importedNodes, failedCount, firstError, failedFiles } = await importMarkdownPathNotes(filePaths, folderId);
 
       if (!isMountedRef.current) return;
 
@@ -587,7 +601,7 @@ export function LearningHubSidebar({
         openImportedMarkdownNote(importedNodes[0] ?? null);
       }
 
-      notifyMarkdownImportResult(importedNodes.length, failedCount, firstError);
+      notifyMarkdownImportResult(importedNodes.length, failedCount, failedFiles, firstError);
     } catch (error) {
       showGlobalNotification('error', error instanceof Error ? error.message : t('finder.markdownImport.failed', 'Markdown 导入失败'));
     }

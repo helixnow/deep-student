@@ -92,7 +92,7 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
   const getModelCapabilities = useCallback((modelLike: SiliconFlowModel | string | null | undefined) => {
     const model = typeof modelLike === 'string' ? models.find(m => m.id === modelLike) : modelLike ?? undefined;
     const desc = model ? { id: model.id, supported_features: model.supported_features } : (typeof modelLike === 'string' ? modelLike : '');
-    return inferCapabilities(desc as any);
+    return inferCapabilities({ ...(desc as any), providerScope: 'siliconflow' });
   }, [models]);
 
   const selectedModelData = useMemo(() => models.find(m => m.id === selectedModel) ?? null, [models, selectedModel]);
@@ -193,7 +193,7 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
     const modelId = selectedModelData?.id ?? selectedModel;
     if (!modelId) return baseCaps;
 
-    const extCaps = inferApiCapabilities({ id: modelId, name: selectedModelData?.name });
+    const extCaps = inferApiCapabilities({ id: modelId, name: selectedModelData?.name, providerScope: 'siliconflow' });
     // 合并：如果扩展能力检测到推理支持，覆盖基础能力
     return {
       ...baseCaps,
@@ -481,7 +481,7 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
     }
 
     const { isMultimodal, isReasoning, isEmbedding, isReranker, modelAdapter, supportsReasoning, supportsTools } = getModelCapabilities(modelInfo);
-    const capsExt = inferApiCapabilities({ id: modelInfo.id, name: modelInfo.name });
+    const capsExt = inferApiCapabilities({ id: modelInfo.id, name: modelInfo.name, providerScope: 'siliconflow' });
     // 修复：只有当模型明确支持工具调用时才启用，避免给不支持工具调用的模型传递工具配置
     const effectiveSupportsTools = supportsTools;
     const effectiveSupportsReasoning =
@@ -644,7 +644,7 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
           supportsReasoning,
           supportsTools,
         } = getModelCapabilities(presetModelData ?? modelId);
-        const capsExt = inferApiCapabilities({ id: modelId, name: presetModelData?.name });
+        const capsExt = inferApiCapabilities({ id: modelId, name: presetModelData?.name, providerScope: 'siliconflow' });
         const effectiveSupportsTools = supportsTools;
         const modelDefaults = getModelDefaultParameters(modelId);
         const effectiveSupportsReasoning =

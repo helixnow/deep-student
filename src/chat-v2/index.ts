@@ -173,7 +173,6 @@ export {
   skillRegistry,
   getSkill,
   getAutoInvokeSkills,
-  getSkillContextTypeId,
   // 类型定义
   SKILL_INSTRUCTION_TYPE_ID,
   SKILL_DEFAULT_PRIORITY,
@@ -192,10 +191,6 @@ export {
   loadSkillsFromFileSystem,
   reloadSkills,
   loadSingleSkill,
-  // 资源辅助
-  createResourceFromSkill,
-  createResourcesFromSkills,
-  isSkillContextRef,
   // UI 组件
   SkillCard,
   ActiveSkillBadge,

@@ -1940,6 +1940,33 @@ impl ChatV2Pipeline {
         if has_context_images {
             let ordered_blocks =
                 PipelineContext::build_user_content_from_context_refs(user_context_refs);
+            let text_fallback_blocks =
+                PipelineContext::build_user_content_from_context_refs(user_context_refs);
+
+            let mut combined = String::new();
+            if !user_content.is_empty() {
+                combined.push_str(&format!(
+                    "<user_query>\n{}\n</user_query>",
+                    super::super::vfs_resolver::escape_xml_content(user_content)
+                ));
+            }
+            let mut injected_text = String::new();
+            for block in text_fallback_blocks {
+                if let ContentBlock::Text { text } = block {
+                    if !injected_text.is_empty() {
+                        injected_text.push('\n');
+                    }
+                    injected_text.push_str(&text);
+                }
+            }
+            if !injected_text.is_empty() {
+                if !combined.is_empty() {
+                    combined.push_str("\n\n");
+                }
+                combined.push_str("<injected_context>\n");
+                combined.push_str(&injected_text);
+                combined.push_str("\n</injected_context>");
+            }
 
             let mut blocks: Vec<ContentBlock> = Vec::new();
 
@@ -1973,7 +2000,7 @@ impl ChatV2Pipeline {
 
             return LegacyChatMessage {
                 role: "user".to_string(),
-                content: String::new(),
+                content: combined,
                 timestamp: chrono::Utc::now(),
                 thinking_content: None,
                 thought_signature: None,

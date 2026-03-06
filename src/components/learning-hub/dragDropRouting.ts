@@ -68,3 +68,16 @@ export function partitionMarkdownNoteImports<T>(
 
   return { markdownItems, otherItems };
 }
+
+/**
+ * 将失败文件列表压缩为便于通知展示的摘要。
+ */
+export function summarizeFailedMarkdownFiles(failedFiles: string[]): string | null {
+  if (failedFiles.length === 0) {
+    return null;
+  }
+
+  const preview = failedFiles.slice(0, 3).join('、');
+  const remaining = failedFiles.length - 3;
+  return remaining > 0 ? `${preview} +${remaining}` : preview;
+}

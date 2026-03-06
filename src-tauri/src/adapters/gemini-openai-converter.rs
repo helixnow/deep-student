@@ -1323,6 +1323,11 @@ pub fn convert_gemini_nonstream_response_to_openai(
             .get("thoughtsTokenCount")
             .and_then(|t| t.as_i64())
             .map(|t| t as i32);
+        let cached_tokens = usage_metadata
+            .get("cachedContentTokenCount")
+            .or_else(|| usage_metadata.get("cacheReadInputTokens"))
+            .and_then(|t| t.as_i64())
+            .map(|t| t as i32);
 
         let mut usage_obj = json!({
             "prompt_tokens": prompt_tokens,
@@ -1333,6 +1338,9 @@ pub fn convert_gemini_nonstream_response_to_openai(
         // 添加思维 token 统计（如果存在）
         if let Some(thoughts) = thoughts_tokens {
             usage_obj["reasoning_tokens"] = json!(thoughts);
+        }
+        if let Some(cached) = cached_tokens {
+            usage_obj["cached_tokens"] = json!(cached);
         }
 
         Some(usage_obj)

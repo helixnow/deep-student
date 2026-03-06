@@ -523,7 +523,7 @@ export interface ProgressiveDisclosureConfig {
  * 所有内置工具通过 Skills 按需加载
  */
 export const DEFAULT_PROGRESSIVE_DISCLOSURE_CONFIG: ProgressiveDisclosureConfig = {
-  autoLoadSkills: ['mindmap-tools'], // 自动加载思维导图技能（会自动加载依赖的 learning-resource）
+  autoLoadSkills: [],
   preloadAllTools: false,
 };
 
@@ -535,4 +535,3 @@ let currentConfig: ProgressiveDisclosureConfig = { ...DEFAULT_PROGRESSIVE_DISCLO
 export function getProgressiveDisclosureConfig(): ProgressiveDisclosureConfig {
   return { ...currentConfig };
 }
-

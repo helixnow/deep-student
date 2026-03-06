@@ -160,6 +160,8 @@ impl ChatV2Pipeline {
         // 不再从 ctx.attachments 提取图片和文档
 
         let (combined_content, image_base64, multimodal_content) = if has_context_images {
+            let (text_fallback_content, _) = ctx.get_combined_user_content();
+
             // 使用 get_content_blocks_ordered() 获取图文交替的内容块
             let ordered_blocks = ctx.get_content_blocks_ordered();
 
@@ -179,8 +181,9 @@ impl ChatV2Pipeline {
                 multimodal_parts.len()
             );
 
-            // 多模态模式：content 为空字符串，图片在 multimodal_content 中
-            (String::new(), None, Some(multimodal_parts))
+            // 关键修复：即使构造 multimodal_content，也保留文本 fallback。
+            // 这样文本模型或错误路由到非多模态配置时，不会因为 content 为空而丢失上下文。
+            (text_fallback_content, None, Some(multimodal_parts))
         } else {
             // 传统模式：使用 get_combined_user_content()
             let (combined_content, context_images) = ctx.get_combined_user_content();

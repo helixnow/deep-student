@@ -438,7 +438,8 @@
       "filterName": "Markdown 文件",
       "success": "已导入 {{count}} 个 Markdown 笔记",
       "partial": "成功导入 {{success}} 个 Markdown 笔记，{{failed}} 个失败",
-      "failed": "Markdown 导入失败"
+      "failed": "Markdown 导入失败",
+      "failedFiles": "失败文件：{{names}}"
     },
     "contextMenu": {
       "open": "打开",

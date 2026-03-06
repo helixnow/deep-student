@@ -88,9 +88,7 @@ impl RequestAdapter for GeminiAdapter {
         config: &ApiConfig,
         enable_thinking: Option<bool>,
     ) -> bool {
-        // Gemini 不支持 frequency_penalty 和 presence_penalty
-        body.remove("frequency_penalty");
-        body.remove("presence_penalty");
+        // Gemini 2026 文档已支持 penalties；保留上层传入值
 
         let enable_thinking_value = resolve_enable_thinking(config, enable_thinking);
         let effort = get_trimmed_effort(config);
@@ -354,7 +352,7 @@ mod tests {
     }
 
     #[test]
-    fn test_removes_penalty_params() {
+    fn test_keeps_penalty_params() {
         let adapter = GeminiAdapter;
         let config = ApiConfig {
             model: "gemini-2.5-pro".to_string(),
@@ -367,8 +365,8 @@ mod tests {
 
         adapter.apply_reasoning_config(&mut body, &config, None);
 
-        assert!(!body.contains_key("frequency_penalty"));
-        assert!(!body.contains_key("presence_penalty"));
+        assert_eq!(body.get("frequency_penalty"), Some(&json!(0.5)));
+        assert_eq!(body.get("presence_penalty"), Some(&json!(0.5)));
         assert!(body.contains_key("temperature"));
     }
 }

@@ -72,6 +72,7 @@ import { ActiveFeatureChips, useActiveFeatureChips } from './ActiveFeatureChips'
 import { ToolApprovalCard } from '../ToolApprovalCard';
 import { MobileBottomSheet } from './MobileBottomSheet';
 import { MobileSheetHeader } from './MobileSheetHeader';
+import { ActiveSkillBadge } from '../../skills/components/ActiveSkillBadge';
 import { AttachmentInjectModeSelector } from './AttachmentInjectModeSelector';
 import type { AttachmentInjectModes } from '../../core/types/common';
 import {
@@ -693,7 +694,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
             const VALID_MODES = new Set(['text', 'ocr', 'image']);
             const rawModes = (uploadResult.readyModes || []).filter(m => VALID_MODES.has(m));
             const readyModes = (rawModes.length > 0 ? rawModes : ['text']) as ('text' | 'image' | 'ocr')[];
-            const isCompleted = stage === 'completed';
+            const isCompleted = stage === 'completed' || stage === 'completed_with_issues';
 
             onUpdateAttachment(attachmentId, {
               status: isCompleted ? 'ready' : 'processing',
@@ -703,7 +704,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
               uploadProgress: undefined,
               uploadStage: undefined,
               processingStatus: {
-                stage: stage as 'page_rendering' | 'page_compression' | 'ocr_processing' | 'vector_indexing' | 'completed',
+                stage: stage as 'page_rendering' | 'page_compression' | 'ocr_processing' | 'vector_indexing' | 'completed' | 'completed_with_issues',
                 percent,
                 readyModes,
                 mediaType: 'pdf',
@@ -713,7 +714,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
             // 同时更新 pdfProcessingStore
             // ★ P0 修复：使用 sourceId (file_id) 作为 key，与后端事件保持一致
             usePdfProcessingStore.getState().update(uploadResult.sourceId, {
-              stage: stage as 'page_rendering' | 'page_compression' | 'ocr_processing' | 'vector_indexing' | 'completed',
+              stage: stage as 'page_rendering' | 'page_compression' | 'ocr_processing' | 'vector_indexing' | 'completed' | 'completed_with_issues',
               percent,
               readyModes,
               mediaType: 'pdf',
@@ -737,7 +738,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
             const percent = uploadResult.processingPercent ?? 10;
             const VALID_IMG_MODES = new Set(['text', 'ocr', 'image']);
             const readyModes = (uploadResult.readyModes || []).filter(m => VALID_IMG_MODES.has(m)) as ('text' | 'image' | 'ocr')[];
-            const isCompleted = stage === 'completed';
+            const isCompleted = stage === 'completed' || stage === 'completed_with_issues';
 
             onUpdateAttachment(attachmentId, {
               status: isCompleted ? 'ready' : 'processing',
@@ -1500,7 +1501,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
             readyModes: (status.readyModes || []) as Array<'text' | 'ocr' | 'image'>,
           });
           // 处理完成或出错时清理轮询计数
-          if (status.stage === 'completed' || status.stage === 'error') {
+          if (status.stage === 'completed' || status.stage === 'completed_with_issues' || status.stage === 'error') {
             pollingCountRef.current.delete(fileId);
           }
         });
@@ -1585,7 +1586,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
         ? t('chatV2:inputBar.mediaType.pdf')
         : t('chatV2:inputBar.mediaType.image');
 
-      if (status.stage === 'completed') {
+      if (status.stage === 'completed' || status.stage === 'completed_with_issues') {
         // 完成时清理同步状态
         syncedStatus.delete(att.id);
         // ★ 调试日志：状态同步 - 完成
@@ -1598,7 +1599,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
         onUpdateAttachment(att.id, {
           status: 'ready',
           processingStatus: {
-            stage: 'completed',
+            stage: status.stage,
             percent: 100,
             readyModes: status.readyModes,
             mediaType: isPdf ? 'pdf' : 'image',
@@ -1638,7 +1639,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
         // 中间状态更新
         onUpdateAttachment(att.id, {
           processingStatus: {
-            stage: status.stage as 'page_rendering' | 'page_compression' | 'ocr_processing' | 'vector_indexing' | 'image_compression',
+            stage: status.stage as 'page_rendering' | 'page_compression' | 'ocr_processing' | 'vector_indexing' | 'image_compression' | 'completed_with_issues',
             percent: status.percent || 0,
             readyModes: status.readyModes || [],
             mediaType: isPdf ? 'pdf' : 'image',
@@ -1776,6 +1777,15 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
               models={modelMentionState.selectedModels}
               onRemove={modelMentionActions.removeSelectedModel}
               disabled={isStreaming}
+            />
+          )}
+
+          {activeSkillIds && activeSkillIds.length > 0 && onToggleSkill && (
+            <ActiveSkillBadge
+              activeSkillIds={activeSkillIds}
+              onDeactivateSkill={onToggleSkill}
+              disabled={isStreaming}
+              className="mb-2"
             />
           )}
 
@@ -2300,7 +2310,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                     const missingModesLabel = missingModes.length > 0 ? formatModeList(missingModes) : '';
                     const displayPercent = getDisplayPercent(mediaProgress, isPdf);
                     let stageLabel = getStageLabel(t, mediaProgress, isPdf, isImage);
-                    if (mediaProgress?.stage === 'completed' && missingModesLabel) {
+                    if ((mediaProgress?.stage === 'completed' || mediaProgress?.stage === 'completed_with_issues') && missingModesLabel) {
                       stageLabel = t('chatV2:inputBar.completedMissingModes', {
                         modes: missingModesLabel,
                       });
@@ -2397,7 +2407,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                                     processingStatus: {
                                       stage: isPdf ? 'ocr_processing' : 'image_compression',
                                       percent: isPdf ? 50 : 10,
-                                      readyModes: attachment.processingStatus?.readyModes || (isPdf ? ['text', 'image'] : ['image']),
+                                      readyModes: attachment.processingStatus?.readyModes || [],
                                       mediaType: isPdf ? 'pdf' : 'image',
                                     },
                                   });

@@ -39,6 +39,7 @@ interface MediaProcessingProgressPayload {
 interface MediaProcessingCompletedPayload {
   fileId: string;
   readyModes: Array<'text' | 'image' | 'ocr'>;
+  stage?: 'completed' | 'completed_with_issues';
   mediaType: MediaType;
 }
 
@@ -141,15 +142,16 @@ export function usePdfProcessingProgress(): void {
     
     // 处理完成事件的通用处理器
     const handleCompleted = (payload: MediaProcessingCompletedPayload, source: 'unified' | 'legacy') => {
-      const { fileId, readyModes, mediaType } = payload;
+      const { fileId, readyModes, mediaType, stage } = payload;
       
       console.log(`[MediaProcessing] ✅ Completed (${source}):`, {
         fileId,
         mediaType,
+        stage,
         readyModes,
       });
       
-      usePdfProcessingStore.getState().setCompleted(fileId, readyModes);
+      usePdfProcessingStore.getState().setCompleted(fileId, readyModes, stage);
 
       // ★ N1 修复：处理完成时失效 resolveCache，防止后续发送使用旧的无 OCR/text 缓存
       const invalidated = invalidateResourceCache(fileId);

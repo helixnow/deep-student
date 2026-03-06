@@ -663,8 +663,8 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
       );
       if (existing) continue; // 已存在，跳过
 
-      const caps = inferCapabilities(modelId);
-      const extCaps = inferApiCapabilities({ id: modelId, name: label });
+      const caps = inferCapabilities({ id: modelId, providerScope: vendor.providerType, name: label });
+      const extCaps = inferApiCapabilities({ id: modelId, name: label, providerScope: vendor.providerType });
       const defaults = getModelDefaultParameters(modelId);
 
       const effectiveSupportsReasoning =

@@ -16,6 +16,7 @@ pub fn create_default_api_configs() -> Vec<ApiConfig> {
             vendor_id: None,
             vendor_name: None,
             provider_type: Some("openai".to_string()),
+            provider_scope: Some("openai".to_string()),
             api_key: "".to_string(), // 用户需要填入
             base_url: "https://api.openai.com/v1".to_string(),
             model: "gpt-4-turbo-preview".to_string(),
@@ -57,6 +58,7 @@ pub fn create_default_api_configs() -> Vec<ApiConfig> {
             vendor_id: None,
             vendor_name: None,
             provider_type: Some("anthropic".to_string()),
+            provider_scope: Some("anthropic".to_string()),
             api_key: "".to_string(), // 用户需要填入
             base_url: "https://api.anthropic.com/v1".to_string(),
             model: "claude-3-5-sonnet-20241022".to_string(),

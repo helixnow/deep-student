@@ -126,6 +126,15 @@ fn cleanup_materialized_import_file(context: &str, cleanup_path: Option<std::pat
     }
 }
 
+fn cleanup_materialized_import_files<I>(context: &str, cleanup_paths: I)
+where
+    I: IntoIterator<Item = Option<std::path::PathBuf>>,
+{
+    for cleanup_path in cleanup_paths {
+        cleanup_materialized_import_file(context, cleanup_path);
+    }
+}
+
 // ================= Notes: 独立笔记系统（CRUD） =================
 
 #[tauri::command]
@@ -1421,10 +1430,27 @@ pub async fn notes_import_markdown_batch(
     for item in request.items {
         let raw_path = item.file_path.trim().to_string();
         if raw_path.is_empty() {
+            cleanup_materialized_import_files(
+                "notes_import_markdown_batch",
+                materialized_items
+                    .drain(..)
+                    .map(|(_, _, cleanup_path, _)| cleanup_path),
+            );
             return Err(AppError::validation("Markdown 文件路径不能为空"));
         }
 
-        let materialized = unified_file_manager::ensure_local_path(&window, &raw_path, &temp_dir)?;
+        let materialized = match unified_file_manager::ensure_local_path(&window, &raw_path, &temp_dir) {
+            Ok(path) => path,
+            Err(error) => {
+                cleanup_materialized_import_files(
+                    "notes_import_markdown_batch",
+                    materialized_items
+                        .drain(..)
+                        .map(|(_, _, cleanup_path, _)| cleanup_path),
+                );
+                return Err(error);
+            }
+        };
         let (import_path, cleanup_path) = materialized.into_owned();
         let note_title = derive_markdown_note_title(
             item.title_hint
@@ -1468,16 +1494,21 @@ pub async fn notes_import_markdown_batch(
     .await
     .map_err(|e| AppError::internal(format!("批量导入 Markdown 笔记任务失败: {}", e)))?;
 
-    for cleanup_path in cleanup_paths {
-        cleanup_materialized_import_file("notes_import_markdown_batch", cleanup_path);
-    }
+    cleanup_materialized_import_files("notes_import_markdown_batch", cleanup_paths);
 
     Ok(batch_result)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{decode_markdown_bytes, derive_markdown_note_title};
+    use super::{
+        cleanup_materialized_import_files, decode_markdown_bytes, derive_markdown_note_title,
+    };
+    use std::fs;
+
+    fn unique_temp_path(file_name: &str) -> std::path::PathBuf {
+        std::env::temp_dir().join(format!("{}_{}", uuid::Uuid::new_v4(), file_name))
+    }
 
     #[test]
     fn decode_markdown_bytes_strips_utf8_bom() {
@@ -1498,6 +1529,23 @@ mod tests {
     #[test]
     fn derive_markdown_note_title_uses_file_stem() {
         assert_eq!(derive_markdown_note_title("/tmp/线代笔记.md"), "线代笔记");
+    }
+
+    #[test]
+    fn cleanup_materialized_import_files_removes_existing_files() {
+        let first = unique_temp_path("md_import_cleanup_1.md");
+        let second = unique_temp_path("md_import_cleanup_2.md");
+
+        fs::write(&first, "a").expect("write first temp file");
+        fs::write(&second, "b").expect("write second temp file");
+
+        cleanup_materialized_import_files(
+            "notes_import_markdown_batch",
+            vec![Some(first.clone()), Some(second.clone())],
+        );
+
+        assert!(!first.exists(), "first temp file should be deleted");
+        assert!(!second.exists(), "second temp file should be deleted");
     }
 }
 

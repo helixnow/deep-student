@@ -106,31 +106,6 @@ export function createSkillActions(
           };
         });
 
-        // 兼容层：尽量补一个 skill_instruction ref 给现有 UI，但失败不影响激活真相
-        void import('../../skills/resourceHelper')
-          .then(({ createResourceFromSkill }) => createResourceFromSkill(skill))
-          .then((contextRef) => {
-            if (!contextRef) {
-              return;
-            }
-            set((s: ChatStoreState) => {
-              if (!s.activeSkillIds.includes(skillId)) {
-                return {};
-              }
-              const exists = s.pendingContextRefs.some((ref) => ref.resourceId === contextRef.resourceId);
-              if (exists) {
-                return {};
-              }
-              return {
-                pendingContextRefs: [...s.pendingContextRefs, contextRef],
-                pendingContextRefsDirty: true,
-              };
-            });
-          })
-          .catch((error: unknown) => {
-            console.warn(LOG_PREFIX, `Optional skill ref creation failed: ${skillId}`, error);
-          });
-
         // 🆕 激活技能时自动加载 embeddedTools，避免 load_skills 白名单死锁
         if ((skill.embeddedTools && skill.embeddedTools.length > 0)
           || (skill.dependencies && skill.dependencies.length > 0)) {
@@ -165,43 +140,33 @@ export function createSkillActions(
      * ★ 2026-01-25 修复：直接使用 ContextRef.skillId 同步查找，
      * 不再异步调用 resourceStoreApi.get()
      * 
-     * ★ removeContextRef 已经会同步更新 activeSkillIds，
-     * 无需额外手动更新
-     *
      * @param skillId 要取消的 Skill ID，如果不传则取消所有
      */
     deactivateSkill: (skillId?: string): void => {
       const state = get();
 
       if (skillId) {
-        // 🔧 直接使用 ref.skillId 同步查找，不再异步调用 API
-        const targetRef = state.pendingContextRefs.find(
-          (ref) => ref.typeId === SKILL_INSTRUCTION_TYPE_ID && ref.skillId === skillId
-        );
-
-        if (targetRef) {
-          // removeContextRef 内部会同步更新 activeSkillIds，保留兼容路径
-          state.removeContextRef(targetRef.resourceId);
-          void import('../../skills/progressiveDisclosure').then(({ unloadSkill }) => {
-            unloadSkill(state.sessionId, skillId);
-          }).catch((error: unknown) => {
-            console.warn(LOG_PREFIX, 'Unload skill tools failed:', error);
-          });
-          console.log(LOG_PREFIX, `Deactivated skill: ${skillId}`);
-        } else {
-          // 结构化状态优先：即使没有 ref，也应视为可正常停用
-          const currentState = get();
-          if (currentState.activeSkillIds.includes(skillId)) {
-            set((s: ChatStoreState) => ({
-              activeSkillIds: s.activeSkillIds.filter(id => id !== skillId),
-              skillStateJson: null,
-            }));
-            console.warn(LOG_PREFIX, `Cleaning stale data: activeSkillIds contains entry without matching ref: ${skillId}`);
-          }
-        }
+        set((s: ChatStoreState) => ({
+          activeSkillIds: s.activeSkillIds.filter(id => id !== skillId),
+          skillStateJson: null,
+          pendingContextRefs: s.pendingContextRefs.filter(
+            (ref) => !(ref.typeId === SKILL_INSTRUCTION_TYPE_ID && ref.skillId === skillId)
+          ),
+        }));
+        void import('../../skills/progressiveDisclosure').then(({ unloadSkill }) => {
+          unloadSkill(state.sessionId, skillId);
+        }).catch((error: unknown) => {
+          console.warn(LOG_PREFIX, 'Unload skill tools failed:', error);
+        });
+        console.log(LOG_PREFIX, `Deactivated skill: ${skillId}`);
       } else {
-        // 取消所有 skill（clearContextRefs 已会同步清空 activeSkillIds）
-        state.clearContextRefs(SKILL_INSTRUCTION_TYPE_ID);
+        set((s: ChatStoreState) => ({
+          activeSkillIds: [],
+          skillStateJson: null,
+          pendingContextRefs: s.pendingContextRefs.filter(
+            (ref) => ref.typeId !== SKILL_INSTRUCTION_TYPE_ID
+          ),
+        }));
         console.log(LOG_PREFIX, 'Deactivated all skills');
       }
     },
@@ -251,15 +216,7 @@ export function createSkillActions(
         return;
       }
 
-      const hasSkillRef = state.pendingContextRefs.some(
-        (ref) => ref.typeId === SKILL_INSTRUCTION_TYPE_ID && ref.isSticky
-      );
-
-      if (state.activeSkillIds.length > 0 && !hasSkillRef) {
-        // activeSkillIds 存在但没有对应的 skill ref → 清除 activeSkillIds
-        console.warn('[SkillActions] repairSkillState: activeSkillIds exist but no ref, clearing');
-        set({ activeSkillIds: [], skillStateJson: null } as Partial<ChatStoreState>);
-      }
+      // legacy skill refs no longer participate in runtime truth; no ref-based cleanup needed
     },
 
     /**

@@ -242,6 +242,7 @@ export type ProcessingStageType =
   | 'ocr_processing'      // 共享
   | 'vector_indexing'     // 共享
   | 'completed'
+  | 'completed_with_issues'
   | 'error';
 
 /**

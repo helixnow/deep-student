@@ -657,6 +657,13 @@ impl BuiltinModel {
             vendor_id: self.vendor_id.to_string(),
             label: self.label.to_string(),
             model: self.model.to_string(),
+            provider_scope: Some(
+                BUILTIN_VENDORS
+                    .iter()
+                    .find(|vendor| vendor.id == self.vendor_id)
+                    .map(|vendor| vendor.provider_type.to_string())
+                    .unwrap_or_else(|| "openai".to_string()),
+            ),
             model_adapter,
             is_multimodal: self.is_multimodal,
             is_reasoning: self.is_reasoning,

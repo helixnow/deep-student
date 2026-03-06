@@ -6,16 +6,10 @@ vi.mock('i18next', () => ({
   },
 }));
 
-vi.mock('@/chat-v2/skills/resourceHelper', () => ({
-  createResourceFromSkill: vi.fn(),
-}));
-
 import { createSkillActions } from '@/chat-v2/core/store/skillActions';
 import type { ChatStoreState, GetState, SetState } from '@/chat-v2/core/store/types';
 import { skillRegistry } from '@/chat-v2/skills/registry';
 import { clearSessionSkills, getLoadedToolSchemas } from '@/chat-v2/skills/progressiveDisclosure';
-import { SKILL_INSTRUCTION_TYPE_ID } from '@/chat-v2/skills/types';
-import { createResourceFromSkill } from '@/chat-v2/skills/resourceHelper';
 
 const SESSION_ID = 'session-active-skill-tools';
 
@@ -56,15 +50,6 @@ describe('Active skills tool access', () => {
 
     skillRegistry.register(testSkill);
 
-    vi.mocked(createResourceFromSkill).mockImplementation(async (skill) => ({
-      resourceId: `skill_${skill.id}`,
-      hash: 'hash',
-      typeId: SKILL_INSTRUCTION_TYPE_ID,
-      isSticky: true,
-      displayName: skill.name,
-      skillId: skill.id,
-    }));
-
     const state = {
       sessionId: SESSION_ID,
       pendingContextRefs: [],
@@ -85,7 +70,7 @@ describe('Active skills tool access', () => {
 
     expect(activated).toBe(true);
     expect(state.activeSkillIds).toContain('test-skill');
-    expect(state.pendingContextRefs.some((ref) => ref.skillId === 'test-skill')).toBe(true);
+    expect(state.pendingContextRefs).toEqual([]);
 
     const loadedTools = getLoadedToolSchemas(SESSION_ID);
     expect(loadedTools.map((tool) => tool.name)).toContain('test_tool');

@@ -284,6 +284,7 @@ export interface ApiConfig {
   vendorId?: string;
   vendorName?: string;
   providerType?: string;
+  providerScope?: string;
   apiKey: string;
   baseUrl: string;
   model: string;
@@ -344,6 +345,7 @@ export interface ModelProfile {
   vendorId: string;
   label: string;
   model: string;
+  providerScope?: string;
   modelAdapter: string;
   status?: string;
   enabled: boolean;

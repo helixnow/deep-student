@@ -223,14 +223,18 @@ export function useInputBarV2(
       : (state.chatParams.modelId ? [state.chatParams.modelId] : []);
 
     let hasNonMultimodalTarget = false;
+    let hasMultimodalTarget = false;
     if (selectedModelIds.length > 0) {
       const capabilities = await Promise.all(
         selectedModelIds.map(async (id) => ({ id, isMultimodal: await isModelMultimodalAsync(id) }))
       );
       hasNonMultimodalTarget = capabilities.some(c => !c.isMultimodal);
+      hasMultimodalTarget = capabilities.some(c => c.isMultimodal);
     }
 
-    if (hasNonMultimodalTarget) {
+    const shouldDowngradeForTextOnlyTargets = hasNonMultimodalTarget && !hasMultimodalTarget;
+
+    if (shouldDowngradeForTextOnlyTargets) {
       let adjustedCount = 0;
       let unresolvedCount = 0;
       effectiveAttachments = currentAttachments.map((attachment) => {
