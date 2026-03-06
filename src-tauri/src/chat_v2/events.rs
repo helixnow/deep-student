@@ -698,6 +698,15 @@ pub struct ChatV2EventEmitter {
     session_id: String,
     /// 递增序列号生成器（从 0 开始，按会话共享）
     sequence_counter: Arc<AtomicU64>,
+    /// 工具块事件元数据注册表（用于补齐 skill_state_version / round_id）
+    block_event_meta: Arc<DashMap<String, BlockEventMeta>>,
+}
+
+#[derive(Debug, Clone, Default)]
+struct BlockEventMeta {
+    variant_id: Option<String>,
+    skill_state_version: Option<u64>,
+    round_id: Option<String>,
 }
 
 impl ChatV2EventEmitter {
@@ -707,6 +716,7 @@ impl ChatV2EventEmitter {
             window,
             session_id: session_id.clone(),
             sequence_counter: get_or_create_session_counter(&session_id),
+            block_event_meta: Arc::new(DashMap::new()),
         }
     }
 
@@ -739,6 +749,42 @@ impl ChatV2EventEmitter {
     /// 获取会话级事件通道名
     fn session_event_channel(&self) -> String {
         format!("chat_v2_session_{}", self.session_id)
+    }
+
+    pub fn register_block_event_meta(
+        &self,
+        block_id: &str,
+        variant_id: Option<&str>,
+        skill_state_version: Option<u64>,
+        round_id: Option<&str>,
+    ) {
+        self.block_event_meta.insert(
+            block_id.to_string(),
+            BlockEventMeta {
+                variant_id: variant_id.map(|value| value.to_string()),
+                skill_state_version,
+                round_id: round_id.map(|value| value.to_string()),
+            },
+        );
+    }
+
+    fn apply_registered_meta(&self, block_id: Option<&str>, event: &mut BackendEvent) {
+        let Some(block_id) = block_id else {
+            return;
+        };
+        let Some(meta) = self.block_event_meta.get(block_id) else {
+            return;
+        };
+
+        if event.variant_id.is_none() {
+            event.variant_id = meta.variant_id.clone();
+        }
+        if event.skill_state_version.is_none() {
+            event.skill_state_version = meta.skill_state_version;
+        }
+        if event.round_id.is_none() {
+            event.round_id = meta.round_id.clone();
+        }
     }
 
     // ========== 内部发射方法 ==========
@@ -807,7 +853,9 @@ impl ChatV2EventEmitter {
         variant_id: Option<&str>,
     ) -> Option<String> {
         let seq = self.next_sequence_id();
-        let event = BackendEvent::start(seq, event_type, message_id, block_id, payload, variant_id);
+        let mut event =
+            BackendEvent::start(seq, event_type, message_id, block_id, payload, variant_id);
+        self.apply_registered_meta(block_id, &mut event);
         self.emit(event);
         block_id.map(|s| s.to_string())
     }
@@ -823,9 +871,11 @@ impl ChatV2EventEmitter {
         round_id: Option<&str>,
     ) -> Option<String> {
         let seq = self.next_sequence_id();
-        let mut event = BackendEvent::start(seq, event_type, message_id, block_id, payload, variant_id);
+        let mut event =
+            BackendEvent::start(seq, event_type, message_id, block_id, payload, variant_id);
         event.skill_state_version = skill_state_version;
         event.round_id = round_id.map(|s| s.to_string());
+        self.apply_registered_meta(block_id, &mut event);
         self.emit(event);
         block_id.map(|s| s.to_string())
     }
@@ -845,7 +895,8 @@ impl ChatV2EventEmitter {
         variant_id: Option<&str>,
     ) {
         let seq = self.next_sequence_id();
-        let event = BackendEvent::chunk(seq, event_type, block_id, chunk, variant_id);
+        let mut event = BackendEvent::chunk(seq, event_type, block_id, chunk, variant_id);
+        self.apply_registered_meta(Some(block_id), &mut event);
         self.emit(event);
     }
 
@@ -862,6 +913,7 @@ impl ChatV2EventEmitter {
         let mut event = BackendEvent::chunk(seq, event_type, block_id, chunk, variant_id);
         event.skill_state_version = skill_state_version;
         event.round_id = round_id.map(|s| s.to_string());
+        self.apply_registered_meta(Some(block_id), &mut event);
         self.emit(event);
     }
 
@@ -880,7 +932,8 @@ impl ChatV2EventEmitter {
         variant_id: Option<&str>,
     ) {
         let seq = self.next_sequence_id();
-        let event = BackendEvent::end(seq, event_type, block_id, result, variant_id);
+        let mut event = BackendEvent::end(seq, event_type, block_id, result, variant_id);
+        self.apply_registered_meta(Some(block_id), &mut event);
         self.emit(event);
     }
 
@@ -897,6 +950,7 @@ impl ChatV2EventEmitter {
         let mut event = BackendEvent::end(seq, event_type, block_id, result, variant_id);
         event.skill_state_version = skill_state_version;
         event.round_id = round_id.map(|s| s.to_string());
+        self.apply_registered_meta(Some(block_id), &mut event);
         self.emit(event);
     }
 
@@ -915,7 +969,8 @@ impl ChatV2EventEmitter {
         variant_id: Option<&str>,
     ) {
         let seq = self.next_sequence_id();
-        let event = BackendEvent::error(seq, event_type, block_id, error, variant_id);
+        let mut event = BackendEvent::error(seq, event_type, block_id, error, variant_id);
+        self.apply_registered_meta(Some(block_id), &mut event);
         self.emit(event);
     }
 
@@ -932,6 +987,7 @@ impl ChatV2EventEmitter {
         let mut event = BackendEvent::error(seq, event_type, block_id, error, variant_id);
         event.skill_state_version = skill_state_version;
         event.round_id = round_id.map(|s| s.to_string());
+        self.apply_registered_meta(Some(block_id), &mut event);
         self.emit(event);
     }
 
@@ -1010,7 +1066,7 @@ impl ChatV2EventEmitter {
             "toolName": tool_name,
             "status": "preparing",
         });
-        let event = BackendEvent {
+        let mut event = BackendEvent {
             sequence_id: seq,
             session_id: None,
             r#type: event_types::TOOL_CALL_PREPARING.to_string(),
@@ -1029,6 +1085,46 @@ impl ChatV2EventEmitter {
             status: None,
             usage: None,
         };
+        self.apply_registered_meta(block_id, &mut event);
+        self.emit(event);
+    }
+
+    pub fn emit_tool_call_preparing_with_meta(
+        &self,
+        message_id: &str,
+        tool_call_id: &str,
+        tool_name: &str,
+        block_id: Option<&str>,
+        variant_id: Option<&str>,
+        skill_state_version: Option<u64>,
+        round_id: Option<&str>,
+    ) {
+        let seq = self.next_sequence_id();
+        let payload = serde_json::json!({
+            "toolCallId": tool_call_id,
+            "toolName": tool_name,
+            "status": "preparing",
+        });
+        let mut event = BackendEvent {
+            sequence_id: seq,
+            session_id: None,
+            r#type: event_types::TOOL_CALL_PREPARING.to_string(),
+            phase: "start".to_string(),
+            message_id: Some(message_id.to_string()),
+            block_id: block_id.map(|s| s.to_string()),
+            block_type: None,
+            chunk: None,
+            result: None,
+            error: None,
+            payload: Some(payload),
+            skill_state_version,
+            round_id: round_id.map(|value| value.to_string()),
+            variant_id: variant_id.map(|value| value.to_string()),
+            model_id: None,
+            status: None,
+            usage: None,
+        };
+        self.apply_registered_meta(block_id, &mut event);
         self.emit(event);
     }
 
@@ -1047,7 +1143,7 @@ impl ChatV2EventEmitter {
             "toolName": tool_name,
             "status": "preparing",
         });
-        let event = BackendEvent {
+        let mut event = BackendEvent {
             sequence_id: seq,
             session_id: None,
             r#type: event_types::TOOL_CALL_PREPARING.to_string(),
@@ -1066,6 +1162,7 @@ impl ChatV2EventEmitter {
             status: None,
             usage: None,
         };
+        self.apply_registered_meta(block_id, &mut event);
         self.emit(event);
     }
 

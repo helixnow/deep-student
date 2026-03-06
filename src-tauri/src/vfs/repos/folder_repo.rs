@@ -10,12 +10,19 @@
 //! - `get_items_by_folders`: 批量获取文件夹内容
 //! - `get_all_resources`: 聚合文件夹内所有资源（上下文注入用）
 
+use std::collections::HashSet;
+use std::path::Path;
+
 use rusqlite::{params, types::ValueRef, Connection, OptionalExtension};
 use tracing::{debug, info, warn};
 
+use crate::vfs::canonical_folder_item_type;
 use crate::vfs::database::VfsDatabase;
 use crate::vfs::error::{VfsError, VfsResult};
 use crate::vfs::repos::path_cache_repo::VfsPathCacheRepo;
+use crate::vfs::repos::{
+    VfsEssayRepo, VfsExamRepo, VfsFileRepo, VfsMindMapRepo, VfsNoteRepo, VfsTranslationRepo,
+};
 use crate::vfs::types::{
     FolderResourceInfo, FolderResourcesResult, FolderTreeNode, ResourceLocation, VfsFolder,
     VfsFolderItem,
@@ -818,9 +825,10 @@ impl VfsFolderRepo {
         item_type: &str,
         item_id: &str,
     ) -> VfsResult<bool> {
+        let canonical_item_type = canonical_folder_item_type(item_type);
         let deleted = conn.execute(
-            "DELETE FROM folder_items WHERE item_id = ?1 AND (item_type = ?2 OR (item_type = 'textbook' AND ?2 = 'file') OR (item_type = 'file' AND ?2 = 'textbook'))",
-            params![item_id, item_type],
+            "DELETE FROM folder_items WHERE item_id = ?1 AND item_type = ?2",
+            params![item_id, canonical_item_type],
         )?;
 
         if deleted > 0 {
@@ -923,6 +931,7 @@ impl VfsFolderRepo {
         item_id: &str,
         new_folder_id: Option<&str>,
     ) -> VfsResult<()> {
+        let canonical_item_type = canonical_folder_item_type(item_type);
         // 检查目标文件夹存在性
         if let Some(folder_id) = new_folder_id {
             if !Self::folder_exists_with_conn(conn, folder_id)? {
@@ -934,8 +943,8 @@ impl VfsFolderRepo {
 
         // 移动时同时清空 cached_path
         let affected = conn.execute(
-            "UPDATE folder_items SET folder_id = ?1, cached_path = NULL WHERE item_id = ?2 AND (item_type = ?3 OR (item_type = 'textbook' AND ?3 = 'file') OR (item_type = 'file' AND ?3 = 'textbook'))",
-            params![new_folder_id, item_id, item_type],
+            "UPDATE folder_items SET folder_id = ?1, cached_path = NULL WHERE item_id = ?2 AND item_type = ?3 AND deleted_at IS NULL",
+            params![new_folder_id, item_id, canonical_item_type],
         )?;
 
         if affected == 0 {
@@ -1220,25 +1229,55 @@ impl VfsFolderRepo {
     /// 永久删除文件夹（从数据库彻底删除，不可恢复）
     ///
     /// ★ 2025-12-11: 统一语义，purge = 永久删除
-    /// 级联删除子文件夹（由数据库外键约束处理）。
-    /// folder_items 中的 folder_id 会被置为 NULL（移到根级）。
+    /// 递归清理文件夹树内的所有资源，再删除文件夹树本身，避免留下孤儿记录。
     pub fn purge_folder(db: &VfsDatabase, folder_id: &str) -> VfsResult<()> {
         let conn = db.get_conn_safe()?;
-        Self::purge_folder_with_conn(&conn, folder_id)
+        Self::purge_folder_with_conn(&conn, db.blobs_dir(), folder_id)
     }
 
     /// 永久删除文件夹（使用现有连接）
-    pub fn purge_folder_with_conn(conn: &Connection, folder_id: &str) -> VfsResult<()> {
-        let affected = conn.execute("DELETE FROM folders WHERE id = ?1", params![folder_id])?;
+    pub fn purge_folder_with_conn(
+        conn: &Connection,
+        blobs_dir: &Path,
+        folder_id: &str,
+    ) -> VfsResult<()> {
+        conn.execute_batch("SAVEPOINT vfs_folder_purge_tx")?;
 
-        if affected == 0 {
-            return Err(VfsError::FolderNotFound {
-                folder_id: folder_id.to_string(),
-            });
+        let result: VfsResult<()> = (|| {
+            let folder_exists: bool = conn
+                .query_row(
+                    "SELECT EXISTS(SELECT 1 FROM folders WHERE id = ?1)",
+                    params![folder_id],
+                    |row| row.get(0),
+                )
+                .unwrap_or(false);
+
+            if !folder_exists {
+                return Err(VfsError::FolderNotFound {
+                    folder_id: folder_id.to_string(),
+                });
+            }
+
+            let folder_ids = Self::get_folder_ids_for_purge_with_conn(conn, folder_id)?;
+            Self::purge_folder_tree_resources_with_conn(conn, blobs_dir, &folder_ids)?;
+
+            conn.execute("DELETE FROM folders WHERE id = ?1", params![folder_id])?;
+            Ok(())
+        })();
+
+        match result {
+            Ok(()) => {
+                conn.execute_batch("RELEASE SAVEPOINT vfs_folder_purge_tx")?;
+                info!("[VFS::FolderRepo] Purged folder tree: {}", folder_id);
+                Ok(())
+            }
+            Err(e) => {
+                let _ = conn.execute_batch(
+                    "ROLLBACK TO SAVEPOINT vfs_folder_purge_tx; RELEASE SAVEPOINT vfs_folder_purge_tx;",
+                );
+                Err(e)
+            }
         }
-
-        info!("[VFS::FolderRepo] Purged folder: {}", folder_id);
-        Ok(())
     }
 
     // ========================================================================
@@ -1509,16 +1548,123 @@ impl VfsFolderRepo {
     /// ★ 2025-12-11: 统一命名规范，purge = 永久删除
     pub fn purge_deleted_folders(db: &VfsDatabase) -> VfsResult<usize> {
         let conn = db.get_conn_safe()?;
-        Self::purge_deleted_folders_with_conn(&conn)
+        Self::purge_deleted_folders_with_conn(&conn, db.blobs_dir())
     }
 
     /// 永久删除已软删除的文件夹（使用现有连接）
-    pub fn purge_deleted_folders_with_conn(conn: &Connection) -> VfsResult<usize> {
-        let deleted = conn.execute("DELETE FROM folders WHERE deleted_at IS NOT NULL", [])?;
+    pub fn purge_deleted_folders_with_conn(
+        conn: &Connection,
+        blobs_dir: &Path,
+    ) -> VfsResult<usize> {
+        let folder_ids: Vec<String> = conn
+            .prepare(
+                "SELECT id FROM folders WHERE deleted_at IS NOT NULL AND (parent_id IS NULL OR parent_id NOT IN (SELECT id FROM folders WHERE deleted_at IS NOT NULL))",
+            )?
+            .query_map([], |row| row.get(0))?
+            .collect::<Result<Vec<_>, _>>()?;
 
-        info!("[VFS::FolderRepo] Purged {} deleted folders", deleted);
+        for folder_id in &folder_ids {
+            Self::purge_folder_with_conn(conn, blobs_dir, folder_id)?;
+        }
 
-        Ok(deleted)
+        info!(
+            "[VFS::FolderRepo] Purged {} deleted folder trees",
+            folder_ids.len()
+        );
+
+        Ok(folder_ids.len())
+    }
+
+    fn get_folder_ids_for_purge_with_conn(
+        conn: &Connection,
+        folder_id: &str,
+    ) -> VfsResult<Vec<String>> {
+        let mut stmt = conn.prepare(
+            r#"
+            WITH RECURSIVE folder_tree AS (
+                SELECT id, parent_id, 0 as depth
+                FROM folders
+                WHERE id = ?1
+                UNION ALL
+                SELECT f.id, f.parent_id, ft.depth + 1
+                FROM folders f
+                JOIN folder_tree ft ON f.parent_id = ft.id
+                WHERE ft.depth < ?2
+            )
+            SELECT id FROM folder_tree
+            "#,
+        )?;
+
+        let ids = stmt
+            .query_map(params![folder_id, MAX_FOLDER_DEPTH], |row| row.get(0))?
+            .collect::<Result<Vec<String>, _>>()?;
+
+        Ok(ids)
+    }
+
+    fn purge_folder_tree_resources_with_conn(
+        conn: &Connection,
+        blobs_dir: &Path,
+        folder_ids: &[String],
+    ) -> VfsResult<()> {
+        if folder_ids.is_empty() {
+            return Ok(());
+        }
+
+        let mut seen = HashSet::new();
+        let items = Self::get_items_by_folders_including_deleted_with_conn(conn, folder_ids)?;
+
+        for item in items {
+            let canonical_item_type = canonical_folder_item_type(&item.item_type).to_string();
+            if !seen.insert((canonical_item_type.clone(), item.item_id.clone())) {
+                continue;
+            }
+
+            match canonical_item_type.as_str() {
+                "note" => VfsNoteRepo::purge_note_with_conn(conn, &item.item_id)?,
+                "file" => VfsFileRepo::purge_file_with_conn(conn, blobs_dir, &item.item_id)?,
+                "exam" => VfsExamRepo::purge_exam_sheet_with_conn(conn, &item.item_id)?,
+                "translation" => {
+                    VfsTranslationRepo::purge_translation_with_conn(conn, &item.item_id)?
+                }
+                "essay" => VfsEssayRepo::purge_essay_with_conn(conn, &item.item_id)?,
+                "mindmap" => VfsMindMapRepo::purge_mindmap_with_conn(conn, &item.item_id)?,
+                other => {
+                    warn!(
+                        "[VFS::FolderRepo] Skipping unsupported folder item during purge: type={}, id={}",
+                        other, item.item_id
+                    );
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    fn get_items_by_folders_including_deleted_with_conn(
+        conn: &Connection,
+        folder_ids: &[String],
+    ) -> VfsResult<Vec<VfsFolderItem>> {
+        query_in_batches(
+            conn,
+            folder_ids,
+            r#"
+            SELECT id, folder_id, item_type, item_id, sort_order, created_at, cached_path
+            FROM folder_items
+            WHERE folder_id IN ({})
+            "#,
+            |row| {
+                Ok(VfsFolderItem {
+                    id: row.get(0)?,
+                    folder_id: row.get(1)?,
+                    item_type: row.get(2)?,
+                    item_id: row.get(3)?,
+                    sort_order: row.get(4)?,
+                    created_at: read_folder_item_timestamp(row, 5, "created_at")?,
+                    cached_path: row.get(6)?,
+                })
+            },
+        )
     }
 
     /// 设置文件夹展开状态
@@ -2223,12 +2369,13 @@ impl VfsFolderRepo {
 
     /// 添加内容项（使用现有连接）
     pub fn add_item_to_folder_with_conn(conn: &Connection, item: &VfsFolderItem) -> VfsResult<()> {
+        let canonical_item_type = canonical_folder_item_type(&item.item_type);
         // 位置唯一性：同一个 (item_type, item_id) 在任意时刻只能属于一个 folder_id
         // - 兼容历史迁移中唯一索引缺失/错误导致的重复记录
         // - 与 get_folder_item_by_item_id_with_conn 的“单行假设”保持一致
         conn.execute(
-            "DELETE FROM folder_items WHERE item_id = ?1 AND (item_type = ?2 OR (item_type = 'textbook' AND ?2 = 'file') OR (item_type = 'file' AND ?2 = 'textbook'))",
-            params![item.item_id, item.item_type],
+            "DELETE FROM folder_items WHERE item_id = ?1 AND item_type = ?2",
+            params![item.item_id, canonical_item_type],
         )?;
 
         conn.execute(
@@ -2239,7 +2386,7 @@ impl VfsFolderRepo {
             params![
                 item.id,
                 item.folder_id,
-                item.item_type,
+                canonical_item_type,
                 item.item_id,
                 item.sort_order,
                 item.created_at,
@@ -2341,7 +2488,7 @@ impl VfsFolderRepo {
         folder_id: Option<&str>,
     ) -> VfsResult<usize> {
         let count: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM folder_items WHERE folder_id IS ?1",
+            "SELECT COUNT(*) FROM folder_items WHERE folder_id IS ?1 AND deleted_at IS NULL",
             params![folder_id],
             |row| row.get(0),
         )?;
@@ -2510,9 +2657,10 @@ impl VfsFolderRepo {
         item_type: &str,
         item_id: &str,
     ) -> VfsResult<()> {
+        let canonical_item_type = canonical_folder_item_type(item_type);
         conn.execute(
-            "DELETE FROM folder_items WHERE item_id = ?1 AND (item_type = ?2 OR (item_type = 'textbook' AND ?2 = 'file') OR (item_type = 'file' AND ?2 = 'textbook'))",
-            params![item_id, item_type],
+            "DELETE FROM folder_items WHERE item_id = ?1 AND item_type = ?2",
+            params![item_id, canonical_item_type],
         )?;
 
         debug!("[VFS::FolderRepo] Removed item {} ({})", item_id, item_type);
@@ -2549,6 +2697,7 @@ impl VfsFolderRepo {
         item_id: &str,
         new_folder_id: Option<&str>,
     ) -> VfsResult<()> {
+        let canonical_item_type = canonical_folder_item_type(item_type);
         // 检查目标文件夹存在性
         if let Some(folder_id) = new_folder_id {
             if !Self::folder_exists_with_conn(conn, folder_id)? {
@@ -2560,8 +2709,8 @@ impl VfsFolderRepo {
 
         // ★ 移动时同时清空 cached_path，让其在下次查询时重新计算
         let affected = conn.execute(
-            "UPDATE folder_items SET folder_id = ?1, cached_path = NULL WHERE item_id = ?2 AND (item_type = ?3 OR (item_type = 'textbook' AND ?3 = 'file') OR (item_type = 'file' AND ?3 = 'textbook'))",
-            params![new_folder_id, item_id, item_type],
+            "UPDATE folder_items SET folder_id = ?1, cached_path = NULL WHERE item_id = ?2 AND item_type = ?3 AND deleted_at IS NULL",
+            params![new_folder_id, item_id, canonical_item_type],
         )?;
 
         if affected == 0 {
@@ -2576,7 +2725,7 @@ impl VfsFolderRepo {
             let fi_id = crate::vfs::VfsFolderItem::generate_id();
             conn.execute(
                 "INSERT INTO folder_items (id, item_type, item_id, folder_id, sort_order, cached_path, created_at) VALUES (?1, ?2, ?3, ?4, 0, NULL, ?5)",
-                params![fi_id, item_type, item_id, new_folder_id, now],
+                params![fi_id, canonical_item_type, item_id, new_folder_id, now],
             )?;
         }
 
@@ -2827,5 +2976,97 @@ mod tests {
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].item_id, "file_legacy");
         assert!(items[0].created_at > 0);
+    }
+
+    #[test]
+    fn test_purge_deleted_folders_reuses_resource_purge_chain() {
+        let (_temp_dir, db) = setup_test_db();
+
+        let root = VfsFolder::new("待清理根目录".to_string(), None, None, None);
+        VfsFolderRepo::create_folder(&db, &root).expect("Failed to create root folder");
+
+        let child = VfsFolder::new(
+            "待清理子目录".to_string(),
+            Some(root.id.clone()),
+            None,
+            None,
+        );
+        VfsFolderRepo::create_folder(&db, &child).expect("Failed to create child folder");
+
+        let note = crate::vfs::repos::VfsNoteRepo::create_note_in_folder(
+            &db,
+            crate::vfs::VfsCreateNoteParams {
+                title: "待删除笔记".to_string(),
+                content: "folder purge should remove note".to_string(),
+                tags: vec![],
+            },
+            Some(&child.id),
+        )
+        .expect("Failed to create note in child folder");
+
+        let file = crate::vfs::repos::VfsFileRepo::create_file_in_folder(
+            &db,
+            "sha256_folder_purge_file",
+            "待删除附件.txt",
+            12,
+            "other",
+            Some("text/plain"),
+            None,
+            None,
+            Some(&child.id),
+        )
+        .expect("Failed to create file in child folder");
+
+        VfsFolderRepo::delete_folder(&db, &root.id).expect("Failed to soft delete folder tree");
+        let purged =
+            VfsFolderRepo::purge_deleted_folders(&db).expect("Failed to purge folder tree");
+        assert_eq!(purged, 1);
+
+        let conn = db.get_conn_safe().expect("Failed to get db connection");
+
+        let remaining_folders: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM folders WHERE id IN (?1, ?2)",
+                params![root.id, child.id],
+                |row| row.get(0),
+            )
+            .expect("Failed to count folders");
+        assert_eq!(remaining_folders, 0);
+
+        let remaining_folder_items: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM folder_items WHERE item_id IN (?1, ?2)",
+                params![note.id, file.id],
+                |row| row.get(0),
+            )
+            .expect("Failed to count folder items");
+        assert_eq!(remaining_folder_items, 0);
+
+        let remaining_notes: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM notes WHERE id = ?1",
+                params![note.id],
+                |row| row.get(0),
+            )
+            .expect("Failed to count notes");
+        assert_eq!(remaining_notes, 0);
+
+        let remaining_files: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM files WHERE id = ?1",
+                params![file.id],
+                |row| row.get(0),
+            )
+            .expect("Failed to count files");
+        assert_eq!(remaining_files, 0);
+
+        let remaining_resources: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM resources WHERE id IN (?1, ?2)",
+                params![note.resource_id, file.resource_id],
+                |row| row.get(0),
+            )
+            .expect("Failed to count resources");
+        assert_eq!(remaining_resources, 0);
     }
 }

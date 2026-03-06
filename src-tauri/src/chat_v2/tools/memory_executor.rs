@@ -792,14 +792,7 @@ impl ToolExecutor for MemoryToolExecutor {
     ) -> Result<ToolResultInfo, String> {
         let start_time = Instant::now();
 
-        ctx.emitter.emit_tool_call_start(
-            &ctx.message_id,
-            &ctx.block_id,
-            &call.name,
-            call.arguments.clone(),
-            Some(&call.id),
-            None,
-        );
+        ctx.emit_tool_call_start(&call.name, call.arguments.clone(), Some(&call.id));
 
         let stripped_name = strip_tool_namespace(&call.name);
 
@@ -818,15 +811,10 @@ impl ToolExecutor for MemoryToolExecutor {
 
         match result {
             Ok(output) => {
-                ctx.emitter.emit_end(
-                    event_types::TOOL_CALL,
-                    &ctx.block_id,
-                    Some(json!({
-                        "result": output,
-                        "durationMs": duration_ms,
-                    })),
-                    None,
-                );
+                ctx.emit_tool_call_end(Some(json!({
+                    "result": output,
+                    "durationMs": duration_ms,
+                })));
                 Ok(ToolResultInfo::success(
                     Some(call.id.clone()),
                     Some(ctx.block_id.clone()),
@@ -837,8 +825,7 @@ impl ToolExecutor for MemoryToolExecutor {
                 ))
             }
             Err(e) => {
-                ctx.emitter
-                    .emit_error(event_types::TOOL_CALL, &ctx.block_id, &e, None);
+                ctx.emit_tool_call_error(&e);
                 Ok(ToolResultInfo::failure(
                     Some(call.id.clone()),
                     Some(ctx.block_id.clone()),

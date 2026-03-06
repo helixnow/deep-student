@@ -115,6 +115,15 @@ export interface EventContext {
 
   /** 变体 ID 到事件类型到块 ID 的映射（多变体时使用） */
   variantBlockIdMap: Map<string, Map<string, string>>;
+
+  /** block_id 到工具轮次的映射 */
+  blockRoundMap: Map<string, string>;
+
+  /** 当前主链工具轮次 */
+  currentRoundId?: string;
+
+  /** 当前变体工具轮次 */
+  variantRoundMap: Map<string, string>;
 }
 
 // ============================================================================
@@ -140,6 +149,9 @@ function getOrCreateContext(sessionId: string, messageId: string): EventContext 
       messageId,
       blockIdMap: new Map(),
       variantBlockIdMap: new Map(),
+      blockRoundMap: new Map(),
+      currentRoundId: undefined,
+      variantRoundMap: new Map(),
     };
     activeContexts.set(sessionId, context);
   }
@@ -219,12 +231,73 @@ export function resetBridgeState(sessionId: string): void {
   
   // 🔧 清理已处理事件 ID，开始新的去重周期
   clearProcessedEventIds(sessionId);
+  clearEventContext(sessionId);
   
   logMultiVariant('adapter', 'resetBridgeState', {
     sessionId,
     prevLastSequenceId: prevSeqId,
     prevPendingEventsCount: prevPendingCount,
   }, 'info');
+}
+
+function getCurrentSkillStateVersion(store: ChatStore): number | undefined {
+  const raw = (store as ChatStore & { skillStateJson?: string | null }).skillStateJson;
+  if (!raw) {
+    return undefined;
+  }
+  try {
+    const parsed = JSON.parse(raw) as { version?: unknown };
+    return typeof parsed?.version === 'number' ? parsed.version : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function isToolEvent(event: BackendEvent): boolean {
+  return event.type === 'tool_call' || event.type === 'tool_call_preparing';
+}
+
+function shouldDropEventBySkillVersion(store: ChatStore, event: BackendEvent): boolean {
+  const currentVersion = getCurrentSkillStateVersion(store);
+  if (event.skillStateVersion === undefined || currentVersion === undefined) {
+    return false;
+  }
+  return event.skillStateVersion < currentVersion;
+}
+
+function resolveExpectedRound(context: EventContext, event: BackendEvent): string | undefined {
+  if (event.blockId && context.blockRoundMap.has(event.blockId)) {
+    return context.blockRoundMap.get(event.blockId);
+  }
+  if (event.variantId) {
+    return context.variantRoundMap.get(event.variantId);
+  }
+  return context.currentRoundId;
+}
+
+function updateRoundContext(context: EventContext, event: BackendEvent): void {
+  if (!isToolEvent(event) || !event.roundId) {
+    return;
+  }
+
+  if (event.variantId) {
+    context.variantRoundMap.set(event.variantId, event.roundId);
+  } else {
+    context.currentRoundId = event.roundId;
+  }
+
+  if (event.blockId) {
+    context.blockRoundMap.set(event.blockId, event.roundId);
+  }
+}
+
+function shouldDropEventByRound(context: EventContext, event: BackendEvent): boolean {
+  if (!isToolEvent(event) || !event.roundId || event.phase === 'start') {
+    return false;
+  }
+
+  const expectedRound = resolveExpectedRound(context, event);
+  return !!expectedRound && expectedRound !== event.roundId;
 }
 
 // ============================================================================
@@ -494,6 +567,37 @@ function skipGapAndFlush(
 function processEventInternal(store: ChatStore, event: BackendEvent): void {
   const { type, variantId, messageId, modelId, status, error, phase, blockId, sequenceId } = event;
 
+  if (shouldDropEventBySkillVersion(store, event)) {
+    logMultiVariant('adapter', 'drop_stale_skill_state_event', {
+      type,
+      phase,
+      variantId,
+      blockId,
+      sequenceId,
+      eventSkillStateVersion: event.skillStateVersion,
+      currentSkillStateVersion: getCurrentSkillStateVersion(store),
+    }, 'warning');
+    return;
+  }
+
+  const effectiveMessageId = messageId ?? store.currentStreamingMessageId ?? '';
+  const context = getOrCreateContext(store.sessionId, effectiveMessageId);
+
+  if (shouldDropEventByRound(context, event)) {
+    logMultiVariant('adapter', 'drop_stale_round_event', {
+      type,
+      phase,
+      variantId,
+      blockId,
+      sequenceId,
+      eventRoundId: event.roundId,
+      expectedRoundId: resolveExpectedRound(context, event),
+    }, 'warning');
+    return;
+  }
+
+  updateRoundContext(context, event);
+
   // 🔧 调试打点：追踪多变体相关事件
   if (variantId || type === EVENT_TYPE_VARIANT_START || type === EVENT_TYPE_VARIANT_END) {
     logMultiVariant('adapter', 'processEventInternal', {
@@ -701,6 +805,9 @@ function handleBlockEventWithVariant(
 
         if (effectiveBlockId) {
           variantBlockIdMap.set(type, effectiveBlockId);
+          if (event.roundId) {
+            context.blockRoundMap.set(effectiveBlockId, event.roundId);
+          }
 
           // 将 block 添加到变体
           // 注意：handler.onStart 调用 store.createBlock 会将 block 添加到 message.blockIds
@@ -895,6 +1002,9 @@ export function handleBackendEvent(store: ChatStore, event: BackendEvent): void 
         // 保存 blockId 到上下文
         if (effectiveBlockId) {
           context.blockIdMap.set(type, effectiveBlockId);
+          if (event.roundId) {
+            context.blockRoundMap.set(effectiveBlockId, event.roundId);
+          }
         }
 
         // 🔧 FIX: flushSync 已移至 Store 层面的 createBlock 方法中

@@ -3714,8 +3714,11 @@ impl CsvImportService {
                 }
                 CsvDuplicateStrategy::Merge => {
                     if let Ok(Some(existing)) = VfsQuestionRepo::get_question(vfs_db, existing_id) {
-                        let params =
-                            Self::build_merge_params(&field_values, &existing, parsed_images.clone());
+                        let params = Self::build_merge_params(
+                            &field_values,
+                            &existing,
+                            parsed_images.clone(),
+                        );
                         VfsQuestionRepo::update_question(vfs_db, existing_id, &params)
                             .map_err(|e| AppError::database(format!("合并失败: {}", e)))?;
                         return Ok(CsvRowResult::Updated);

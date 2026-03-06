@@ -1,5 +1,11 @@
 use super::*;
 
+#[derive(Debug, Clone)]
+pub(crate) struct ExternalToolRoute {
+    pub raw_tool_name: String,
+    pub preferred_server_id: Option<String>,
+}
+
 impl ChatV2Pipeline {
     /// 执行 LLM 调用（支持工具递归）
     ///
@@ -167,6 +173,8 @@ impl ChatV2Pipeline {
             emitter.clone(),
             ctx.assistant_message_id.clone(),
             enable_thinking,
+            ctx.options.skill_state_version,
+            Some(format!("tool-round-{}", recursion_depth)),
         ));
 
         // 🔧 修复：存储 adapter 引用到 ctx，确保取消时可以获取已累积内容
@@ -379,7 +387,7 @@ impl ChatV2Pipeline {
 
         // 🔧 工具名称映射：sanitized API name → original name（含 `:` 等特殊字符）
         // 用于 LLM 返回工具调用时反向映射回原始名称
-        let mut mcp_tool_name_mapping: HashMap<String, String> = HashMap::new();
+        let mut mcp_tool_name_mapping: HashMap<String, ExternalToolRoute> = HashMap::new();
 
         // 🔍 调试日志：检查 mcp_tool_schemas 在 pipeline 中的状态
         let mcp_schema_count = ctx
@@ -471,10 +479,22 @@ impl ChatV2Pipeline {
                         };
                         // 🔧 修复：OpenAI API 要求 function name 匹配 ^[a-zA-Z0-9_-]+$
                         // MCP 工具名可能含 `:` 等特殊字符（如 namespace 分隔符）
-                        let api_tool_name = sanitize_tool_name_for_api(&raw_tool_name);
-                        if api_tool_name != raw_tool_name {
-                            mcp_tool_name_mapping.insert(api_tool_name.clone(), raw_tool_name);
+                        let mut api_tool_name = sanitize_tool_name_for_api(&raw_tool_name);
+                        if let Some(server_id) = tool.server_id.as_deref() {
+                            let candidate = format!(
+                                "{}__srv_{}",
+                                api_tool_name,
+                                sanitize_tool_name_for_api(server_id)
+                            );
+                            api_tool_name = candidate;
                         }
+                        mcp_tool_name_mapping.insert(
+                            api_tool_name.clone(),
+                            ExternalToolRoute {
+                                raw_tool_name,
+                                preferred_server_id: tool.server_id.clone(),
+                            },
+                        );
                         json!({
                             "type": "function",
                             "function": {
@@ -1370,22 +1390,28 @@ impl ChatV2Pipeline {
         memory_enabled: bool,
         rag_enabled: bool,
         web_search_enabled: bool,
-        tool_name_mapping: &HashMap<String, String>,
+        tool_name_mapping: &HashMap<String, ExternalToolRoute>,
     ) -> ChatV2Result<Vec<ToolResultInfo>> {
         // 🔧 反向映射：LLM 返回的 sanitized 工具名 → 原始名（含 `:` 等特殊字符）
         let tool_calls: Vec<ToolCall> = tool_calls
             .iter()
             .map(|tc| {
-                if let Some(original_name) = tool_name_mapping.get(&tc.name) {
+                if let Some(route) = tool_name_mapping.get(&tc.name) {
                     log::debug!(
                         "[ChatV2::pipeline] Reverse-mapping tool name: {} → {}",
                         tc.name,
-                        original_name
+                        route.raw_tool_name
                     );
+                    let mut arguments = tc.arguments.clone();
+                    if let Some(server_id) = route.preferred_server_id.as_deref() {
+                        if let Some(obj) = arguments.as_object_mut() {
+                            obj.insert("_serverId".to_string(), json!(server_id));
+                        }
+                    }
                     ToolCall {
                         id: tc.id.clone(),
-                        name: original_name.clone(),
-                        arguments: tc.arguments.clone(),
+                        name: route.raw_tool_name.clone(),
+                        arguments,
                     }
                 } else {
                     tc.clone()
@@ -1811,9 +1837,17 @@ impl ChatV2Pipeline {
                     });
                 }
                 Some(allowed_tools) => {
-                    let is_allowed = allowed_tools
-                        .iter()
-                        .any(|allowed| Self::skill_allows_tool(&tool_call.name, allowed));
+                    let preferred_server_id = tool_call
+                        .arguments
+                        .get("_serverId")
+                        .and_then(|value| value.as_str());
+                    let is_allowed = allowed_tools.iter().any(|allowed| {
+                        Self::skill_allows_tool_on_server(
+                            &tool_call.name,
+                            preferred_server_id,
+                            allowed,
+                        )
+                    });
 
                     if !is_allowed {
                         log::warn!(
@@ -2032,6 +2066,13 @@ impl ChatV2Pipeline {
         .with_rag_config(rag_top_k, rag_enable_reranking)
         .with_variant_id(variant_id.map(|s| s.to_string()))
         .with_event_meta(skill_state_version, round_id.map(|s| s.to_string()));
+
+        ctx.emitter.register_block_event_meta(
+            &ctx.block_id,
+            ctx.variant_id.as_deref(),
+            ctx.skill_state_version,
+            ctx.round_id.as_deref(),
+        );
 
         // 🆕 渐进披露：传递 skill_contents
         ctx.skill_contents = skill_contents.clone();

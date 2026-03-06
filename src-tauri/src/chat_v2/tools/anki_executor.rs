@@ -101,14 +101,7 @@ impl ToolExecutor for AnkiToolExecutor {
         );
 
         // 1. 发射工具调用开始事件
-        ctx.emitter.emit_tool_call_start(
-            &ctx.message_id,
-            &ctx.block_id,
-            &call.name,
-            call.arguments.clone(),
-            Some(&call.id), // 🆕 tool_call_id
-            None,           // variant_id: 单变体模式
-        );
+        ctx.emit_tool_call_start(&call.name, call.arguments.clone(), Some(&call.id));
 
         // 🆕 2026-01: 区分同步查询工具和异步执行工具
         let normalized_name = call.name.strip_prefix("builtin-").unwrap_or(&call.name);
@@ -151,8 +144,7 @@ impl AnkiToolExecutor {
 
         if document_id.is_empty() {
             let error_msg = "documentId 参数是必需的".to_string();
-            ctx.emitter
-                .emit_error(event_types::TOOL_CALL, &ctx.block_id, &error_msg, None);
+            ctx.emit_tool_call_error(&error_msg);
 
             let result = ToolResultInfo::failure(
                 Some(call.id.clone()),
@@ -172,8 +164,7 @@ impl AnkiToolExecutor {
             Some(db) => db,
             None => {
                 let error_msg = "Anki 数据库未初始化，无法查询制卡进度".to_string();
-                ctx.emitter
-                    .emit_error(event_types::TOOL_CALL, &ctx.block_id, &error_msg, None);
+                ctx.emit_tool_call_error(&error_msg);
                 let result = ToolResultInfo::failure(
                     Some(call.id.clone()),
                     Some(ctx.block_id.clone()),
@@ -242,15 +233,10 @@ impl AnkiToolExecutor {
 
         let duration_ms = start_time.elapsed().as_millis() as u64;
 
-        ctx.emitter.emit_end(
-            event_types::TOOL_CALL,
-            &ctx.block_id,
-            Some(json!({
-                "result": output,
-                "durationMs": duration_ms,
-            })),
-            None,
-        );
+        ctx.emit_tool_call_end(Some(json!({
+            "result": output,
+            "durationMs": duration_ms,
+        })));
 
         log::info!(
             "[AnkiToolExecutor] Query progress for document {} completed in {}ms",
@@ -329,8 +315,7 @@ impl AnkiToolExecutor {
 
         if let Err(e) = ctx.window.emit("anki_tool_call", &event_payload) {
             let error_msg = format!("Failed to emit Anki tool call event: {}", e);
-            ctx.emitter
-                .emit_error(event_types::TOOL_CALL, &ctx.block_id, &error_msg, None);
+            ctx.emit_tool_call_error(&error_msg);
             log::error!("[AnkiToolExecutor] {}", error_msg);
 
             let result = ToolResultInfo::failure(
@@ -365,8 +350,7 @@ impl AnkiToolExecutor {
             Err(_) => {
                 let _ = ctx.window.unlisten(listener_id);
                 let error_msg = "Anki tool call timed out".to_string();
-                ctx.emitter
-                    .emit_error(event_types::TOOL_CALL, &ctx.block_id, &error_msg, None);
+                ctx.emit_tool_call_error(&error_msg);
                 let result = ToolResultInfo::failure(
                     Some(call.id.clone()),
                     Some(ctx.block_id.clone()),
@@ -383,8 +367,7 @@ impl AnkiToolExecutor {
             Ok(Err(_)) => {
                 let _ = ctx.window.unlisten(listener_id);
                 let error_msg = "Anki tool result channel closed".to_string();
-                ctx.emitter
-                    .emit_error(event_types::TOOL_CALL, &ctx.block_id, &error_msg, None);
+                ctx.emit_tool_call_error(&error_msg);
                 let result = ToolResultInfo::failure(
                     Some(call.id.clone()),
                     Some(ctx.block_id.clone()),
@@ -410,15 +393,10 @@ impl AnkiToolExecutor {
                 };
 
                 let result = if payload.ok {
-                    ctx.emitter.emit_end(
-                        event_types::TOOL_CALL,
-                        &ctx.block_id,
-                        Some(json!({
-                            "result": output,
-                            "durationMs": duration_ms,
-                        })),
-                        None,
-                    );
+                    ctx.emit_tool_call_end(Some(json!({
+                        "result": output,
+                        "durationMs": duration_ms,
+                    })));
                     ToolResultInfo::success(
                         Some(call.id.clone()),
                         Some(ctx.block_id.clone()),
@@ -431,8 +409,7 @@ impl AnkiToolExecutor {
                     let error_msg = payload
                         .error
                         .unwrap_or_else(|| "Anki tool failed".to_string());
-                    ctx.emitter
-                        .emit_error(event_types::TOOL_CALL, &ctx.block_id, &error_msg, None);
+                    ctx.emit_tool_call_error(&error_msg);
                     ToolResultInfo::failure(
                         Some(call.id.clone()),
                         Some(ctx.block_id.clone()),

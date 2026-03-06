@@ -118,6 +118,8 @@ pub struct ChatV2LLMAdapter {
     emitter: Arc<ChatV2EventEmitter>,
     message_id: String,
     enable_thinking: bool,
+    skill_state_version: Option<u64>,
+    round_id: Option<String>,
     /// thinking 块 ID（活跃的）
     thinking_block_id: std::sync::Mutex<Option<String>>,
     /// 🔧 修复：已结束的 thinking 块 ID（finalize 后保留，确保 collect_round_blocks 能获取）
@@ -149,11 +151,15 @@ impl ChatV2LLMAdapter {
         emitter: Arc<ChatV2EventEmitter>,
         message_id: String,
         enable_thinking: bool,
+        skill_state_version: Option<u64>,
+        round_id: Option<String>,
     ) -> Self {
         Self {
             emitter,
             message_id,
             enable_thinking,
+            skill_state_version,
+            round_id,
             thinking_block_id: std::sync::Mutex::new(None),
             finalized_thinking_block_id: std::sync::Mutex::new(None),
             content_block_id: std::sync::Mutex::new(None),
@@ -786,11 +792,21 @@ impl LLMStreamHooks for ChatV2LLMAdapter {
             guard.insert(tool_call_id.to_string(), block_id.clone());
         }
 
-        self.emitter.emit_tool_call_preparing(
+        self.emitter.register_block_event_meta(
+            &block_id,
+            None,
+            self.skill_state_version,
+            self.round_id.as_deref(),
+        );
+
+        self.emitter.emit_tool_call_preparing_with_meta(
             &self.message_id,
             tool_call_id,
             tool_name,
             Some(&block_id),
+            None,
+            self.skill_state_version,
+            self.round_id.as_deref(),
         );
     }
 
@@ -827,8 +843,14 @@ impl LLMStreamHooks for ChatV2LLMAdapter {
                 guard.remove(tool_call_id).unwrap_or_default()
             };
             if !chunk.is_empty() {
-                self.emitter
-                    .emit_chunk(event_types::TOOL_CALL_PREPARING, &block_id, &chunk, None);
+                self.emitter.emit_chunk_with_meta(
+                    event_types::TOOL_CALL_PREPARING,
+                    &block_id,
+                    &chunk,
+                    None,
+                    self.skill_state_version,
+                    self.round_id.as_deref(),
+                );
             }
         }
     }

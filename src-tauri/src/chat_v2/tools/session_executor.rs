@@ -124,10 +124,7 @@ impl SessionToolExecutor {
         action_label: &str,
     ) -> Result<(), String> {
         if session_id == ctx.session_id {
-            return Err(format!(
-                "不能对当前正在使用的会话执行{}",
-                action_label
-            ));
+            return Err(format!("不能对当前正在使用的会话执行{}", action_label));
         }
         Ok(())
     }
@@ -844,7 +841,10 @@ impl SessionToolExecutor {
                     .get("group_id")
                     .and_then(|v| v.as_str())
                     .map(|s| s.to_string()),
-                tag: obj.get("tag").and_then(|v| v.as_str()).map(|s| s.to_string()),
+                tag: obj
+                    .get("tag")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string()),
                 title: obj
                     .get("title")
                     .and_then(|v| v.as_str())
@@ -860,10 +860,12 @@ impl SessionToolExecutor {
             .get("confirmed")
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
-        if Self::batch_ops_confirmation_required(unique_session_ids.len(), has_archive) && !confirmed
+        if Self::batch_ops_confirmation_required(unique_session_ids.len(), has_archive)
+            && !confirmed
         {
             return Err(
-                "批量操作需要显式确认：请先征得用户同意，然后以 confirmed=true 重新调用".to_string(),
+                "批量操作需要显式确认：请先征得用户同意，然后以 confirmed=true 重新调用"
+                    .to_string(),
             );
         }
 
@@ -883,7 +885,10 @@ impl SessionToolExecutor {
                         .map(|s| !s.trim().is_empty())
                         .unwrap_or(false);
                     if !has_tag {
-                        return Err(format!("operations[{}] action={} 缺少必需参数: tag", index, op.action));
+                        return Err(format!(
+                            "operations[{}] action={} 缺少必需参数: tag",
+                            index, op.action
+                        ));
                     }
                 }
                 "rename" => {
@@ -895,7 +900,10 @@ impl SessionToolExecutor {
                         .map(|s| !s.trim().is_empty())
                         .unwrap_or(false);
                     if !has_title {
-                        return Err(format!("operations[{}] action=rename 缺少必需参数: title", index));
+                        return Err(format!(
+                            "operations[{}] action=rename 缺少必需参数: title",
+                            index
+                        ));
                     }
                 }
                 "archive" => {
@@ -907,7 +915,10 @@ impl SessionToolExecutor {
                         .map_err(|e| format!("operations[{}]: {}", index, e))?;
                 }
                 _ => {
-                    return Err(format!("operations[{}] 不支持的 action: {}", index, op.action));
+                    return Err(format!(
+                        "operations[{}] 不支持的 action: {}",
+                        index, op.action
+                    ));
                 }
             }
         }
@@ -978,7 +989,8 @@ impl SessionToolExecutor {
                         .tag
                         .as_deref()
                         .ok_or("action=tag_remove 时缺少必需参数: tag")?;
-                    ChatV2Repo::remove_tag(&conn, &op.session_id, tag).map_err(|e| e.to_string())?;
+                    ChatV2Repo::remove_tag(&conn, &op.session_id, tag)
+                        .map_err(|e| e.to_string())?;
                     Ok(format!("已移除标签 {}", tag))
                 }
                 "rename" => {
@@ -1113,14 +1125,7 @@ impl ToolExecutor for SessionToolExecutor {
     ) -> Result<ToolResultInfo, String> {
         let start = Instant::now();
 
-        ctx.emitter.emit_tool_call_start(
-            &ctx.message_id,
-            &ctx.block_id,
-            &call.name,
-            call.arguments.clone(),
-            Some(&call.id),
-            None,
-        );
+        ctx.emit_tool_call_start(&call.name, call.arguments.clone(), Some(&call.id));
 
         let tool_name = strip_tool_namespace(&call.name);
 
@@ -1149,12 +1154,7 @@ impl ToolExecutor for SessionToolExecutor {
 
         match result {
             Ok(output) => {
-                ctx.emitter.emit_end(
-                    event_types::TOOL_CALL,
-                    &ctx.block_id,
-                    Some(json!({"result": output, "durationMs": duration_ms})),
-                    None,
-                );
+                ctx.emit_tool_call_end(Some(json!({"result": output, "durationMs": duration_ms})));
 
                 log::info!(
                     "{} Tool {} completed in {}ms",
@@ -1196,8 +1196,7 @@ impl ToolExecutor for SessionToolExecutor {
                 Ok(tool_result)
             }
             Err(error) => {
-                ctx.emitter
-                    .emit_error(event_types::TOOL_CALL, &ctx.block_id, &error, None);
+                ctx.emit_tool_call_error(&error);
 
                 log::warn!("{} Tool {} failed: {}", LOG_PREFIX, call.name, error);
 
@@ -1222,13 +1221,8 @@ impl ToolExecutor for SessionToolExecutor {
     fn sensitivity_level(&self, tool_name: &str) -> ToolSensitivity {
         match strip_tool_namespace(tool_name) {
             "session_archive" => ToolSensitivity::High,
-            "session_tag_add"
-            | "session_tag_remove"
-            | "session_move"
-            | "session_rename"
-            | "session_restore"
-            | "group_create"
-            | "group_update" => ToolSensitivity::Medium,
+            "session_tag_add" | "session_tag_remove" | "session_move" | "session_rename"
+            | "session_restore" | "group_create" | "group_update" => ToolSensitivity::Medium,
             "session_batch_tag" | "session_batch_move" | "session_batch_ops" => {
                 ToolSensitivity::Low
             }
@@ -1296,9 +1290,15 @@ mod tests {
 
     #[test]
     fn test_batch_ops_confirmation_required() {
-        assert!(!SessionToolExecutor::batch_ops_confirmation_required(3, false));
-        assert!(SessionToolExecutor::batch_ops_confirmation_required(4, false));
-        assert!(SessionToolExecutor::batch_ops_confirmation_required(1, true));
+        assert!(!SessionToolExecutor::batch_ops_confirmation_required(
+            3, false
+        ));
+        assert!(SessionToolExecutor::batch_ops_confirmation_required(
+            4, false
+        ));
+        assert!(SessionToolExecutor::batch_ops_confirmation_required(
+            1, true
+        ));
     }
 
     #[test]

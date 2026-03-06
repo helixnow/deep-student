@@ -11,7 +11,6 @@
 
 import i18n from 'i18next';
 import type { ChatStoreState, SetState, GetState } from './types';
-import type { ContextRef } from '../../context/types';
 import { SKILL_INSTRUCTION_TYPE_ID } from '../../skills/types';
 import { getLocalizedSkillDescription, getLocalizedSkillName } from '../../skills/utils';
 
@@ -20,6 +19,21 @@ import { getLocalizedSkillDescription, getLocalizedSkillName } from '../../skill
 // ============================================================================
 
 const LOG_PREFIX = '[SkillActions]';
+
+function parseManualPinnedSkillIds(raw: string | null | undefined): string[] | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as { manualPinnedSkillIds?: unknown };
+    if (!Array.isArray(parsed?.manualPinnedSkillIds)) {
+      return [];
+    }
+    return parsed.manualPinnedSkillIds.filter(
+      (skillId): skillId is string => typeof skillId === 'string' && skillId.length > 0,
+    );
+  } catch {
+    return null;
+  }
+}
 
 // ============================================================================
 // Skill Actions 创建
@@ -44,7 +58,8 @@ export function createSkillActions(
     /**
      * 激活 Skill（多选模式：添加到已激活列表）
      *
-     * 通过 skillRegistry 获取 skill 内容，创建 ContextRef 并添加到 pendingContextRefs
+     * 通过结构化 skill state + activeSkillIds 维护前端显式激活状态。
+     * skill_instruction ContextRef 仅作为兼容/UI 缓存，不再作为运行时真相源。
      *
      * @param skillId Skill ID
      * @returns Promise<boolean> 是否激活成功
@@ -68,8 +83,6 @@ export function createSkillActions(
 
         // 动态导入避免循环依赖
         const { skillRegistry } = await import('../../skills/registry');
-        const { createResourceFromSkill } = await import('../../skills/resourceHelper');
-
         // 检查 skill 是否存在
         const skill = skillRegistry.get(skillId);
         if (!skill) {
@@ -82,32 +95,41 @@ export function createSkillActions(
           return false;
         }
 
-        // 创建资源和 ContextRef
-        const contextRef = await createResourceFromSkill(skill);
-        if (!contextRef) {
-          console.error(LOG_PREFIX, `Failed to create skill resource: ${skillId}`);
-          try {
-            const { showGlobalNotification } = await import('../../../components/UnifiedNotification');
-            const localizedName = getLocalizedSkillName(skill.id, skill.name, i18n.t.bind(i18n));
-            showGlobalNotification('error', i18n.t('skills:errors.activateFailedRetry', { name: localizedName }));
-          } catch { /* notification optional */ }
-          return false;
-        }
-
-        // 🔧 原子化状态更新：将 addContextRef 和 activeSkillIds 在同一个 set() 中完成
-        // 避免两步更新之间的中间状态不一致
+        // 结构化状态优先：先更新 activeSkillIds，skill refs 仅作兼容/UI 缓存
         set((s: ChatStoreState) => {
-          // 再次检查防止并发重复添加
           if (s.activeSkillIds.includes(skillId)) {
             return {};
           }
           return {
-            pendingContextRefs: [...s.pendingContextRefs, contextRef],
-            pendingContextRefsDirty: true,
             activeSkillIds: [...s.activeSkillIds, skillId],
             skillStateJson: null,
           };
         });
+
+        // 兼容层：尽量补一个 skill_instruction ref 给现有 UI，但失败不影响激活真相
+        void import('../../skills/resourceHelper')
+          .then(({ createResourceFromSkill }) => createResourceFromSkill(skill))
+          .then((contextRef) => {
+            if (!contextRef) {
+              return;
+            }
+            set((s: ChatStoreState) => {
+              if (!s.activeSkillIds.includes(skillId)) {
+                return {};
+              }
+              const exists = s.pendingContextRefs.some((ref) => ref.resourceId === contextRef.resourceId);
+              if (exists) {
+                return {};
+              }
+              return {
+                pendingContextRefs: [...s.pendingContextRefs, contextRef],
+                pendingContextRefsDirty: true,
+              };
+            });
+          })
+          .catch((error: unknown) => {
+            console.warn(LOG_PREFIX, `Optional skill ref creation failed: ${skillId}`, error);
+          });
 
         // 🆕 激活技能时自动加载 embeddedTools，避免 load_skills 白名单死锁
         if ((skill.embeddedTools && skill.embeddedTools.length > 0)
@@ -158,7 +180,7 @@ export function createSkillActions(
         );
 
         if (targetRef) {
-          // removeContextRef 内部会同步更新 activeSkillIds
+          // removeContextRef 内部会同步更新 activeSkillIds，保留兼容路径
           state.removeContextRef(targetRef.resourceId);
           void import('../../skills/progressiveDisclosure').then(({ unloadSkill }) => {
             unloadSkill(state.sessionId, skillId);
@@ -167,7 +189,7 @@ export function createSkillActions(
           });
           console.log(LOG_PREFIX, `Deactivated skill: ${skillId}`);
         } else {
-          // 🔧 兜底：ref 不存在但 activeSkillIds 中有，清理脏数据
+          // 结构化状态优先：即使没有 ref，也应视为可正常停用
           const currentState = get();
           if (currentState.activeSkillIds.includes(skillId)) {
             set((s: ChatStoreState) => ({
@@ -203,10 +225,11 @@ export function createSkillActions(
      */
     hasActiveSkill: (): boolean => {
       const state = get();
-      const hasSkillRef = state.pendingContextRefs.some(
-        (ref) => ref.typeId === SKILL_INSTRUCTION_TYPE_ID && ref.isSticky
-      );
-      return state.activeSkillIds.length > 0 && hasSkillRef;
+      const manualPinned = parseManualPinnedSkillIds(state.skillStateJson);
+      if (manualPinned && manualPinned.length > 0) {
+        return true;
+      }
+      return state.activeSkillIds.length > 0;
     },
 
     /**
@@ -217,6 +240,17 @@ export function createSkillActions(
      */
     repairSkillState: (): void => {
       const state = get();
+      const manualPinned = parseManualPinnedSkillIds(state.skillStateJson);
+      if (manualPinned) {
+        const normalizedCurrent = [...state.activeSkillIds].sort();
+        const normalizedStructured = [...manualPinned].sort();
+        if (JSON.stringify(normalizedCurrent) !== JSON.stringify(normalizedStructured)) {
+          console.warn('[SkillActions] repairSkillState: syncing activeSkillIds from structured skill state');
+          set({ activeSkillIds: manualPinned } as Partial<ChatStoreState>);
+        }
+        return;
+      }
+
       const hasSkillRef = state.pendingContextRefs.some(
         (ref) => ref.typeId === SKILL_INSTRUCTION_TYPE_ID && ref.isSticky
       );

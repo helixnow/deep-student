@@ -1736,5 +1736,4 @@ mod tests {
             .expect("File should exist");
         assert_eq!(restored.status, "active");
     }
-
 }

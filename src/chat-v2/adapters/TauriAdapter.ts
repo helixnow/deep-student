@@ -2853,24 +2853,18 @@ export class ChatV2TauriAdapter {
       const modeStateWithCanvas = state.modeState;
       
       // 🆕 Prompt 7: 序列化待发送的上下文引用
-      const pendingContextRefsJson = state.pendingContextRefs.length > 0
-        ? JSON.stringify(state.pendingContextRefs)
+      const pendingContextRefsForPersistence = state.skillStateJson
+        ? state.pendingContextRefs.filter((ref) => ref.typeId !== SKILL_INSTRUCTION_TYPE_ID)
+        : state.pendingContextRefs;
+      const pendingContextRefsJson = pendingContextRefsForPersistence.length > 0
+        ? JSON.stringify(pendingContextRefsForPersistence)
         : null;
 
-      // 🆕 渐进披露：序列化已加载的 Skill IDs
-      const { getLoadedSkills } = await import('../skills/progressiveDisclosure');
       const loadedSkills = getLoadedSkills(this.sessionId);
+      const skillStateJson = state.skillStateJson;
       const loadedSkillIdsJson = loadedSkills.length > 0
-        ? JSON.stringify(loadedSkills.map(s => s.id))
+        ? JSON.stringify(loadedSkills.map((skill) => skill.id))
         : null;
-      const skillStateJson =
-        loadedSkills.length > 0 || state.activeSkillIds.length > 0
-          ? JSON.stringify({
-              manualPinnedSkillIds: state.activeSkillIds,
-              agenticSessionSkillIds: loadedSkills.map((s) => s.id),
-              version: 0,
-            })
-          : null;
 
       const sessionState = {
         sessionId: this.sessionId,
@@ -2880,9 +2874,9 @@ export class ChatV2TauriAdapter {
         inputValue: state.inputValue || null,
         panelStates: state.panelStates,
         pendingContextRefsJson, // 🆕 Prompt 7: 上下文引用持久化
-        loadedSkillIdsJson, // 🆕 渐进披露：已加载 Skills 持久化
+        loadedSkillIdsJson,
         activeSkillIdsJson: state.activeSkillIds.length > 0 ? JSON.stringify(state.activeSkillIds) : null, // 🆕 手动激活 Skills 持久化（多选）
-        skillStateJson,
+        skillStateJson: skillStateJson ?? null,
         updatedAt: new Date().toISOString(),
       };
 
@@ -2979,6 +2973,8 @@ export class ChatV2TauriAdapter {
         variantId,
       });
 
+      this.store.setSkillStateJson(null);
+
       console.log(LOG_PREFIX, 'Variant switched successfully:', variantId);
     } catch (error) {
       const errorMsg = getErrorMessage(error);
@@ -3007,6 +3003,8 @@ export class ChatV2TauriAdapter {
         messageId,
         variantId,
       });
+
+      this.store.setSkillStateJson(null);
 
       console.log(LOG_PREFIX, 'Variant deleted successfully:', result);
 
@@ -3038,7 +3036,12 @@ export class ChatV2TauriAdapter {
 
       const activeModelId = this.getCurrentState().chatParams.modelId;
       await this.ensureModelMetadataReady(activeModelId);
-      const options = this.buildSendOptions();
+      const options = this.applyOriginalReplaySkillState(
+        messageId,
+        this.buildSendOptions(),
+        this.getCurrentState().chatParams.selectedMcpServers,
+        variantId,
+      );
       const normalizedSelection = await this.normalizeChatModelSelection(options.modelId, options.model2OverrideId);
       options.modelId = normalizedSelection.modelId;
       options.model2OverrideId = normalizedSelection.model2OverrideId;
@@ -3097,7 +3100,11 @@ export class ChatV2TauriAdapter {
 
       const activeModelId = this.getCurrentState().chatParams.modelId;
       await this.ensureModelMetadataReady(activeModelId);
-      const options = this.buildSendOptions();
+      const options = this.applyOriginalReplaySkillState(
+        messageId,
+        this.buildSendOptions(),
+        this.getCurrentState().chatParams.selectedMcpServers,
+      );
       const normalizedSelection = await this.normalizeChatModelSelection(options.modelId, options.model2OverrideId);
       options.modelId = normalizedSelection.modelId;
       options.model2OverrideId = normalizedSelection.model2OverrideId;
@@ -3299,23 +3306,87 @@ export class ChatV2TauriAdapter {
     };
   }
 
+  private resolveReplaySkillSnapshot(
+    messageId: string,
+    variantId?: string
+  ): {
+    snapshot: {
+      manualPinnedSkillIds?: string[];
+      modeRequiredBundleIds?: string[];
+      agenticSessionSkillIds?: string[];
+      branchLocalSkillIds?: string[];
+      effectiveAllowedInternalTools?: string[];
+      effectiveAllowedExternalTools?: string[];
+      effectiveAllowedExternalServers?: string[];
+    };
+    runtimeSnapshot?: {
+      activeSkillIds?: string[];
+      skillAllowedTools?: string[];
+      skillContents?: Record<string, string>;
+      skillEmbeddedTools?: Record<string, Array<{ name: string; serverId?: string; description?: string; inputSchema?: unknown }>>;
+      mcpToolSchemas?: Array<{ name: string; serverId?: string; description?: string; inputSchema?: unknown }>;
+      selectedMcpServers?: string[];
+    };
+    selectedServerIds?: string[];
+  } | null {
+    const currentState = this.getCurrentState();
+    const message = currentState.messageMap.get(messageId);
+    if (!message) {
+      return null;
+    }
+
+    const selectedVariant = variantId
+      ? message.variants?.find((candidate) => candidate.id === variantId)
+      : undefined;
+
+    const snapshot = selectedVariant?.meta?.skillSnapshotAfter
+      || selectedVariant?.meta?.skillSnapshotBefore
+      || message._meta?.skillSnapshotAfter
+      || message._meta?.skillSnapshotBefore;
+
+    const runtimeSnapshot = selectedVariant?.meta?.skillRuntimeAfter
+      || selectedVariant?.meta?.skillRuntimeBefore
+      || message._meta?.skillRuntimeAfter
+      || message._meta?.skillRuntimeBefore;
+
+    if (!snapshot && !runtimeSnapshot) {
+      return null;
+    }
+
+    const selectedServerIds = runtimeSnapshot?.selectedMcpServers || message._meta?.chatParams?.selectedMcpServers;
+
+    return {
+      snapshot: snapshot ?? {},
+      runtimeSnapshot,
+      selectedServerIds,
+    };
+  }
+
   private applyOriginalReplaySkillState(
     messageId: string,
     options: SendOptions,
-    selectedServerIds?: string[]
+    selectedServerIds?: string[],
+    variantId?: string
   ): SendOptions {
     if (options.replayMode !== 'original') {
       return options;
     }
 
-    const currentState = this.getCurrentState();
-    const message = currentState.messageMap.get(messageId);
-    const snapshot = message?._meta?.skillSnapshotAfter || message?._meta?.skillSnapshotBefore;
-    if (!snapshot) {
+    const resolvedReplay = this.resolveReplaySkillSnapshot(messageId, variantId);
+    if (!resolvedReplay) {
       return options;
     }
+    const { snapshot, runtimeSnapshot } = resolvedReplay;
+    const effectiveSelectedServerIds =
+      (runtimeSnapshot?.selectedMcpServers && runtimeSnapshot.selectedMcpServers.length > 0
+        ? runtimeSnapshot.selectedMcpServers
+        : undefined)
+      ?? (snapshot.effectiveAllowedExternalServers && snapshot.effectiveAllowedExternalServers.length > 0
+        ? snapshot.effectiveAllowedExternalServers
+        : undefined) ?? resolvedReplay.selectedServerIds ?? selectedServerIds;
 
     const replaySkillIds = Array.from(new Set([
+      ...(runtimeSnapshot?.activeSkillIds || []),
       ...(snapshot.manualPinnedSkillIds || []),
       ...(snapshot.agenticSessionSkillIds || []),
       ...(snapshot.branchLocalSkillIds || []),
@@ -3327,6 +3398,7 @@ export class ChatV2TauriAdapter {
     }
 
     const replayAllowedTools = Array.from(new Set([
+      ...(runtimeSnapshot?.skillAllowedTools || []),
       ...(snapshot.effectiveAllowedInternalTools || []),
       ...(snapshot.effectiveAllowedExternalTools || []),
     ])).filter(Boolean);
@@ -3335,13 +3407,19 @@ export class ChatV2TauriAdapter {
       options.skillAllowedTools = replayAllowedTools;
     }
 
-    const skillContents: Record<string, string> = {};
-    const skillEmbeddedTools: Record<string, Array<{ name: string; description?: string; inputSchema?: unknown }>> = {};
-    const replayToolSchemas: Array<{ name: string; description?: string; inputSchema?: unknown }> = [
+    const skillContents: Record<string, string> = { ...(runtimeSnapshot?.skillContents || {}) };
+    const skillEmbeddedTools: Record<string, Array<{ name: string; serverId?: string; description?: string; inputSchema?: unknown }>> = {
+      ...(runtimeSnapshot?.skillEmbeddedTools || {}),
+    };
+    const replayToolSchemas: Array<{ name: string; serverId?: string; description?: string; inputSchema?: unknown }> = [
       LOAD_SKILLS_TOOL_SCHEMA,
+      ...((runtimeSnapshot?.mcpToolSchemas || []).filter(Boolean)),
     ];
 
     for (const skillId of replaySkillIds) {
+      if (skillContents[skillId] || skillEmbeddedTools[skillId]) {
+        continue;
+      }
       const skill = skillRegistry.get(skillId);
       if (!skill) continue;
       if (skill.content) {
@@ -3365,13 +3443,18 @@ export class ChatV2TauriAdapter {
       (options as Record<string, unknown>).skillEmbeddedTools = skillEmbeddedTools;
     }
 
-    if (selectedServerIds && selectedServerIds.length > 0) {
-      for (const serverId of selectedServerIds) {
+    if (
+      replayToolSchemas.length <= 1
+      && effectiveSelectedServerIds
+      && effectiveSelectedServerIds.length > 0
+    ) {
+      for (const serverId of effectiveSelectedServerIds) {
         if (serverId === BUILTIN_SERVER_ID) continue;
         const tools = McpService.getCachedToolsFor(serverId);
         for (const tool of tools) {
           replayToolSchemas.push({
             name: tool.name,
+            serverId,
             description: tool.description,
             inputSchema: tool.input_schema,
           });
@@ -3380,6 +3463,7 @@ export class ChatV2TauriAdapter {
     }
 
     options.mcpToolSchemas = replayToolSchemas;
+    options.mcpTools = effectiveSelectedServerIds;
     return options;
   }
 
@@ -3522,7 +3606,7 @@ export class ChatV2TauriAdapter {
     const testModeConfig = getTestModeConfig();
 
     const structuredSkillState = this.getStructuredSkillStateFromStore();
-    const authoritativeActiveSkillIds = structuredSkillState?.manualPinnedSkillIds?.length
+    const authoritativeActiveSkillIds = structuredSkillState
       ? structuredSkillState.manualPinnedSkillIds
       : currentState.activeSkillIds;
     const authoritativeLoadedSkillIds = structuredSkillState
@@ -3592,7 +3676,10 @@ export class ChatV2TauriAdapter {
       // ========== MCP 工具 Schema 注入 ==========
       // 从 mcpService 获取选中服务器的工具 Schema，传递给后端
       // 后端直接使用这些 Schema 注入到 LLM，而不需要自己连接 MCP 服务器
-      mcpToolSchemas: this.collectMcpToolSchemas(chatParams.selectedMcpServers),
+      mcpToolSchemas: this.collectMcpToolSchemas(
+        chatParams.selectedMcpServers,
+        authoritativeLoadedSkillIds,
+      ),
 
       // 搜索引擎（从 chatParams 获取选中的引擎）
       searchEngines: chatParams.selectedSearchEngines,
@@ -3621,25 +3708,15 @@ export class ChatV2TauriAdapter {
     let skillAllowedTools: string[] | undefined;
     {
       const mergedAllowedTools: string[] = [];
-      // 来源 1：pendingContextRefs 中的 sticky skill refs
-      const skillRefs = pendingContextRefs.filter(
-        (ref) => ref.typeId === SKILL_INSTRUCTION_TYPE_ID && ref.isSticky
-      );
-      const seenSkillIds = new Set<string>();
-      for (const ref of skillRefs) {
-        const skillId = ref.skillId ?? ref.resourceId.replace(/^skill_/, '');
-        seenSkillIds.add(skillId);
-        const skill = skillRegistry.get(skillId);
-        if (skill) {
-          const tools = skill.allowedTools ?? skill.tools;
-          if (tools && tools.length > 0) {
-            mergedAllowedTools.push(...tools);
-          }
-        }
-      }
-      // 来源 2：activeSkillIds（修复 loadSession 竞态导致 pendingContextRefs 为空的情况）
-      for (const skillId of authoritativeActiveSkillIds) {
-        if (seenSkillIds.has(skillId)) continue;
+      const fallbackSkillIds = structuredSkillState
+        ? authoritativeActiveSkillIds
+        : Array.from(new Set([
+            ...pendingContextRefs
+              .filter((ref) => ref.typeId === SKILL_INSTRUCTION_TYPE_ID && ref.isSticky)
+              .map((ref) => ref.skillId ?? ref.resourceId.replace(/^skill_/, '')),
+            ...authoritativeActiveSkillIds,
+          ]));
+      for (const skillId of fallbackSkillIds) {
         const skill = skillRegistry.get(skillId);
         if (skill) {
           const tools = skill.allowedTools ?? skill.tools;
@@ -3746,9 +3823,10 @@ export class ChatV2TauriAdapter {
    * - inputSchema: JSON Schema 定义参数
    */
   private collectMcpToolSchemas(
-    selectedServerIds?: string[]
-  ): Array<{ name: string; description?: string; inputSchema?: unknown }> {
-    const schemas: Array<{ name: string; description?: string; inputSchema?: unknown }> = [];
+    selectedServerIds?: string[],
+    loadedSkillIds?: string[]
+  ): Array<{ name: string; serverId?: string; description?: string; inputSchema?: unknown }> {
+    const schemas: Array<{ name: string; serverId?: string; description?: string; inputSchema?: unknown }> = [];
 
     // 渐进披露模式：只注入 load_skills 元工具 + 已加载的 Skills 工具
     // 完全替代 builtinMcpServer.ts，不再支持旧的全量注入模式
@@ -3783,7 +3861,13 @@ export class ChatV2TauriAdapter {
     }
 
     // 注入已加载的 Skills 工具（动态过滤 web_search 引擎）
-    const loadedTools = getLoadedToolSchemas(this.sessionId);
+    const effectiveLoadedSkillIds = Array.isArray(loadedSkillIds)
+      ? loadedSkillIds.filter((id): id is string => typeof id === 'string' && id.length > 0)
+      : getLoadedSkills(this.sessionId).map(skill => skill.id);
+    const loadedTools = effectiveLoadedSkillIds.flatMap((skillId) => {
+      const skill = skillRegistry.get(skillId);
+      return skill?.tools ?? [];
+    });
     const availableEngines = getAvailableSearchEngines();
     for (const tool of loadedTools) {
       let inputSchema = tool.inputSchema;
@@ -3822,6 +3906,7 @@ export class ChatV2TauriAdapter {
         for (const tool of tools) {
           schemas.push({
             name: tool.name,
+            serverId,
             description: tool.description,
             inputSchema: tool.input_schema,
           });

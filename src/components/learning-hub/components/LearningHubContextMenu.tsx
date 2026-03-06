@@ -77,6 +77,8 @@ export interface LearningHubContextMenuProps {
   onCreateFolder?: (parentId: string | null) => void;
   /** 新建内容（笔记、题目集识别等） */
   onCreateItem?: (type: 'note' | 'exam' | 'textbook' | 'translation' | 'essay' | 'mindmap', folderId: string | null) => void;
+  /** 导入 Markdown 笔记 */
+  onImportMarkdownNote?: (folderId: string | null) => void;
   /** 刷新 */
   onRefresh?: () => void;
   /** 打开文件夹 */
@@ -122,6 +124,7 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
   isTrashView = false,
   onCreateFolder,
   onCreateItem,
+  onImportMarkdownNote,
   onRefresh,
   onOpenFolder,
   onRenameFolder,
@@ -317,6 +320,15 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
         {t('contextMenu.newNote')}
       </AppMenuItem>
       <AppMenuItem
+        icon={<Download className="w-4 h-4" />}
+        onClick={() => {
+          onImportMarkdownNote?.(currentFolderId ?? null);
+          closeMenu();
+        }}
+      >
+        {t('contextMenu.importMarkdown', '导入 Markdown')}
+      </AppMenuItem>
+      <AppMenuItem
         icon={<ClipboardList className="w-4 h-4" />}
         onClick={() => {
           onCreateItem?.('exam', currentFolderId ?? null);
@@ -409,6 +421,15 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
         }}
       >
         {t('contextMenu.newNoteHere')}
+      </AppMenuItem>
+      <AppMenuItem
+        icon={<Download className="w-4 h-4" />}
+        onClick={() => {
+          onImportMarkdownNote?.(folder.folder.id);
+          closeMenu();
+        }}
+      >
+        {t('contextMenu.importMarkdownHere', '在此导入 Markdown')}
       </AppMenuItem>
       <AppMenuSeparator />
       

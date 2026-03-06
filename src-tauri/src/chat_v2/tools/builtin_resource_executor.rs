@@ -3219,14 +3219,7 @@ impl ToolExecutor for BuiltinResourceExecutor {
         );
 
         // 🔧 修复：发射工具调用开始事件，让前端立即显示工具调用 UI
-        ctx.emitter.emit_tool_call_start(
-            &ctx.message_id,
-            &ctx.block_id,
-            &call.name,
-            call.arguments.clone(),
-            Some(&call.id), // 🆕 tool_call_id
-            ctx.variant_id.as_deref(),
-        );
+        ctx.emit_tool_call_start(&call.name, call.arguments.clone(), Some(&call.id));
 
         let result = match tool_name {
             "resource_list" => self.execute_list(call, ctx).await,

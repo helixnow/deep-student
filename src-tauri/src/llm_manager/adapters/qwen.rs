@@ -33,6 +33,32 @@ use serde_json::{json, Map, Value};
 /// - reasoning_effort: 推理强度
 pub struct QwenAdapter;
 
+impl QwenAdapter {
+    fn is_siliconflow(config: &ApiConfig) -> bool {
+        config
+            .provider_type
+            .as_deref()
+            .map(|v| v.eq_ignore_ascii_case("siliconflow"))
+            .unwrap_or(false)
+            || config.base_url.contains("siliconflow.cn")
+            || config.base_url.contains("siliconflow.com")
+    }
+
+    fn is_dashscope(config: &ApiConfig) -> bool {
+        config
+            .provider_type
+            .as_deref()
+            .map(|v| v.eq_ignore_ascii_case("qwen"))
+            .unwrap_or(false)
+            || config.base_url.contains("dashscope.aliyuncs.com")
+            || config.base_url.contains("dashscope-intl.aliyuncs.com")
+    }
+
+    fn clamp_siliconflow_thinking_budget(budget: i32) -> i32 {
+        budget.clamp(128, 32768)
+    }
+}
+
 impl RequestAdapter for QwenAdapter {
     fn id(&self) -> &'static str {
         "qwen"
@@ -52,22 +78,32 @@ impl RequestAdapter for QwenAdapter {
         config: &ApiConfig,
         enable_thinking: Option<bool>,
     ) -> bool {
-        // Qwen 官方 API 不支持 frequency_penalty
-        body.remove("frequency_penalty");
+        let is_siliconflow = Self::is_siliconflow(config);
+        let is_dashscope = Self::is_dashscope(config);
+
+        if is_dashscope {
+            body.remove("frequency_penalty");
+        }
 
         if config.supports_reasoning {
             let enable_thinking_value = resolve_enable_thinking(config, enable_thinking);
             body.insert("enable_thinking".to_string(), json!(enable_thinking_value));
 
             if let Some(budget) = config.thinking_budget {
-                let sanitized = budget.max(0);
-                body.insert("thinking_budget".to_string(), json!(sanitized));
+                let sanitized = if is_siliconflow {
+                    Self::clamp_siliconflow_thinking_budget(budget)
+                } else {
+                    budget.max(0)
+                };
+                if sanitized > 0 {
+                    body.insert("thinking_budget".to_string(), json!(sanitized));
+                }
             }
         }
 
         if let Some(effort) = get_trimmed_effort(config) {
             if !effort.eq_ignore_ascii_case("none") && !effort.eq_ignore_ascii_case("unset") {
-                body.insert("reasoning_effort".to_string(), json!(effort));
+                body.insert("reasoning_effort".to_string(), json!(effort.to_lowercase()));
             }
         }
 
@@ -136,7 +172,11 @@ mod tests {
     #[test]
     fn test_removes_frequency_penalty() {
         let adapter = QwenAdapter;
-        let config = ApiConfig::default();
+        let config = ApiConfig {
+            provider_type: Some("qwen".to_string()),
+            base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1".to_string(),
+            ..Default::default()
+        };
         let mut body = Map::new();
         body.insert("frequency_penalty".to_string(), json!(0.5));
         body.insert("presence_penalty".to_string(), json!(0.5));
@@ -145,5 +185,39 @@ mod tests {
 
         assert!(!body.contains_key("frequency_penalty"));
         assert!(body.contains_key("presence_penalty"));
+    }
+
+    #[test]
+    fn test_siliconflow_keeps_frequency_penalty() {
+        let adapter = QwenAdapter;
+        let config = ApiConfig {
+            provider_type: Some("siliconflow".to_string()),
+            base_url: "https://api.siliconflow.cn/v1".to_string(),
+            ..Default::default()
+        };
+        let mut body = Map::new();
+        body.insert("frequency_penalty".to_string(), json!(0.5));
+
+        adapter.apply_reasoning_config(&mut body, &config, None);
+
+        assert_eq!(body.get("frequency_penalty"), Some(&json!(0.5)));
+    }
+
+    #[test]
+    fn test_siliconflow_clamps_thinking_budget() {
+        let adapter = QwenAdapter;
+        let config = ApiConfig {
+            provider_type: Some("siliconflow".to_string()),
+            base_url: "https://api.siliconflow.cn/v1".to_string(),
+            supports_reasoning: true,
+            thinking_enabled: true,
+            thinking_budget: Some(64),
+            ..Default::default()
+        };
+        let mut body = Map::new();
+
+        adapter.apply_reasoning_config(&mut body, &config, None);
+
+        assert_eq!(body.get("thinking_budget").cloned(), Some(json!(128)));
     }
 }

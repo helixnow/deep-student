@@ -137,7 +137,9 @@ fn ensure_workspace_creator(
         .ok_or_else(|| format!("Workspace not found: {}", workspace_id))?;
 
     if workspace.creator_session_id != session_id {
-        return Err("Permission denied: only workspace creator can perform this action".to_string());
+        return Err(
+            "Permission denied: only workspace creator can perform this action".to_string(),
+        );
     }
 
     Ok(())
@@ -714,6 +716,7 @@ pub async fn workspace_run_agent(
     let workspace_tool_schemas = vec![
         McpToolSchema {
             name: "builtin-workspace_send".to_string(),
+            server_id: None,
             description: Some("【必须调用】向工作区发送消息。任务完成后必须使用此工具发送 result 类型消息通知主代理。".to_string()),
             input_schema: Some(serde_json::json!({
                 "type": "object",
@@ -737,6 +740,7 @@ pub async fn workspace_run_agent(
         },
         McpToolSchema {
             name: "builtin-workspace_query".to_string(),
+            server_id: None,
             description: Some("查询工作区信息，包括共享上下文、文档等。".to_string()),
             input_schema: Some(serde_json::json!({
                 "type": "object",

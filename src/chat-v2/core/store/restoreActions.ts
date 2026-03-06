@@ -40,6 +40,16 @@ function normalizeStringArray(value: unknown): string[] {
     : [];
 }
 
+function filterSkillInstructionRefsWhenStructuredStateExists(
+  refs: import('../../context/types').ContextRef[],
+  state?: LoadSessionResponseType['state'],
+): import('../../context/types').ContextRef[] {
+  if (!state?.skillStateJson) {
+    return refs;
+  }
+  return refs.filter((ref) => ref.typeId !== SKILL_INSTRUCTION_TYPE_ID);
+}
+
 function getRestoredActiveSkillIds(state?: LoadSessionResponseType['state']): string[] {
   const parsedSkillState = parsePersistedSkillState(state?.skillStateJson);
   const fromStructured = normalizeStringArray(parsedSkillState?.manualPinnedSkillIds);
@@ -159,6 +169,8 @@ export function createRestoreActions(
                     contextSnapshot: msg._meta.contextSnapshot,
                     skillSnapshotBefore: msg._meta.skillSnapshotBefore,
                     skillSnapshotAfter: msg._meta.skillSnapshotAfter,
+                    skillRuntimeBefore: msg._meta.skillRuntimeBefore,
+                    skillRuntimeAfter: msg._meta.skillRuntimeAfter,
                     replaySource: msg._meta.replaySource,
                   }
                 : undefined,
@@ -227,12 +239,12 @@ export function createRestoreActions(
 
               // ★ P0-03 补齐旧数据迁移：历史数据可能没有 isSticky 字段
               // - skill_instruction 必须视为持久引用（持续生效直到取消）
-              pendingContextRefs = validated.map((ref) => {
+              pendingContextRefs = filterSkillInstructionRefsWhenStructuredStateExists(validated.map((ref) => {
                 if (ref.typeId === SKILL_INSTRUCTION_TYPE_ID) {
                   return { ...ref, isSticky: true };
                 }
                 return ref;
-              });
+              }), state);
               stats.parsedCount = validated.length;
               stats.failedCount = parsed.length - validated.length;
               stats.method = 'standard';
@@ -304,12 +316,12 @@ export function createRestoreActions(
 
                     if (incrementalRefs.length > 0) {
                       // ★ P0-03 补齐旧数据迁移：历史数据可能没有 isSticky 字段
-                      pendingContextRefs = incrementalRefs.map((ref) => {
+                      pendingContextRefs = filterSkillInstructionRefsWhenStructuredStateExists(incrementalRefs.map((ref) => {
                         if (ref.typeId === SKILL_INSTRUCTION_TYPE_ID) {
                           return { ...ref, isSticky: true };
                         }
                         return ref;
-                      });
+                      }), state);
                       stats.method = 'incremental';
                       parseResult = stats.failedCount > 0 ? 'partial' : 'success';
 
@@ -443,12 +455,12 @@ export function createRestoreActions(
 
                   if (scanRefs.length > 0) {
                     // ★ P0-03 补齐旧数据迁移：历史数据可能没有 isSticky 字段
-                    pendingContextRefs = scanRefs.map((ref) => {
+                    pendingContextRefs = filterSkillInstructionRefsWhenStructuredStateExists(scanRefs.map((ref) => {
                       if (ref.typeId === SKILL_INSTRUCTION_TYPE_ID) {
                         return { ...ref, isSticky: true };
                       }
                       return ref;
-                    });
+                    }), state);
                     stats.method = 'string-scan';
                     parseResult = 'partial'; // 字符串扫描一定是部分恢复
 
@@ -592,6 +604,7 @@ export function createRestoreActions(
             pendingContextRefsDirty: false,
             // 从安全解析的结果恢复（支持多选）
             activeSkillIds: restoredActiveSkillIds,
+            skillStateJson: state?.skillStateJson ?? null,
           });
 
           // 📊 细粒度打点：set 结束
@@ -664,7 +677,7 @@ export function createRestoreActions(
               }
 
               // === Step 1: 恢复手动激活 Skills 的 ContextRefs ===
-              if (restoredActiveSkillIds.length > 0) {
+              if (restoredActiveSkillIds.length > 0 && !state?.skillStateJson) {
                 try {
                   const { skillRegistry } = await import('../../skills/registry');
                   const { createResourceFromSkill } = await import('../../skills/resourceHelper');
@@ -702,7 +715,7 @@ export function createRestoreActions(
               }
 
               // === Step 2: 兼容恢复 — 如果 activeSkillIdsJson 为空但存在 skill refs，从 refs 推断 ===
-              if (restoredActiveSkillIds.length === 0 && pendingContextRefs.length > 0) {
+              if (restoredActiveSkillIds.length === 0 && pendingContextRefs.length > 0 && !state?.skillStateJson) {
                 const orphanSkillRefs = pendingContextRefs.filter(
                   (ref) => ref.typeId === SKILL_INSTRUCTION_TYPE_ID && ref.isSticky
                 );

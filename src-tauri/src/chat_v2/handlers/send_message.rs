@@ -263,23 +263,54 @@ fn apply_replay_mode_overrides(mut options: SendOptions) -> SendOptions {
 
 pub(crate) fn apply_original_skill_snapshot_overrides(
     mut options: SendOptions,
-    meta: Option<&crate::chat_v2::types::MessageMeta>,
+    preferred_meta: Option<&crate::chat_v2::types::MessageMeta>,
+    fallback_meta: Option<&crate::chat_v2::types::MessageMeta>,
 ) -> SendOptions {
     if options.replay_mode != Some(crate::chat_v2::types::ReplayMode::Original) {
         return options;
     }
 
-    let snapshot = meta
-        .and_then(|meta| meta.skill_snapshot_after.as_ref().or(meta.skill_snapshot_before.as_ref()));
+    let snapshot = preferred_meta
+        .and_then(|meta| {
+            meta.skill_snapshot_after
+                .as_ref()
+                .or(meta.skill_snapshot_before.as_ref())
+        })
+        .or_else(|| {
+            fallback_meta.and_then(|meta| {
+                meta.skill_snapshot_after
+                    .as_ref()
+                    .or(meta.skill_snapshot_before.as_ref())
+            })
+        });
 
-    let Some(snapshot) = snapshot else {
+    let runtime_snapshot = preferred_meta
+        .and_then(|meta| {
+            meta.skill_runtime_after
+                .as_ref()
+                .or(meta.skill_runtime_before.as_ref())
+        })
+        .or_else(|| {
+            fallback_meta.and_then(|meta| {
+                meta.skill_runtime_after
+                    .as_ref()
+                    .or(meta.skill_runtime_before.as_ref())
+            })
+        });
+
+    if snapshot.is_none() && runtime_snapshot.is_none() {
         return options;
-    };
+    }
 
-    let mut replay_skill_ids = snapshot.manual_pinned_skill_ids.clone();
-    replay_skill_ids.extend(snapshot.agentic_session_skill_ids.clone());
-    replay_skill_ids.extend(snapshot.branch_local_skill_ids.clone());
-    replay_skill_ids.extend(snapshot.mode_required_bundle_ids.clone());
+    let mut replay_skill_ids = runtime_snapshot
+        .map(|snapshot| snapshot.active_skill_ids.clone())
+        .unwrap_or_default();
+    if let Some(snapshot) = snapshot {
+        replay_skill_ids.extend(snapshot.manual_pinned_skill_ids.clone());
+        replay_skill_ids.extend(snapshot.agentic_session_skill_ids.clone());
+        replay_skill_ids.extend(snapshot.branch_local_skill_ids.clone());
+        replay_skill_ids.extend(snapshot.mode_required_bundle_ids.clone());
+    }
     replay_skill_ids.sort();
     replay_skill_ids.dedup();
 
@@ -287,13 +318,37 @@ pub(crate) fn apply_original_skill_snapshot_overrides(
         options.active_skill_ids = Some(replay_skill_ids);
     }
 
-    let mut replay_allowed_tools = snapshot.effective_allowed_internal_tools.clone();
-    replay_allowed_tools.extend(snapshot.effective_allowed_external_tools.clone());
+    let mut replay_allowed_tools = runtime_snapshot
+        .map(|snapshot| snapshot.skill_allowed_tools.clone())
+        .unwrap_or_default();
+    if let Some(snapshot) = snapshot {
+        replay_allowed_tools.extend(snapshot.effective_allowed_internal_tools.clone());
+        replay_allowed_tools.extend(snapshot.effective_allowed_external_tools.clone());
+    }
     replay_allowed_tools.sort();
     replay_allowed_tools.dedup();
 
     if !replay_allowed_tools.is_empty() {
         options.skill_allowed_tools = Some(replay_allowed_tools);
+    }
+
+    if let Some(runtime_snapshot) = runtime_snapshot {
+        if !runtime_snapshot.skill_contents.is_empty() {
+            options.skill_contents = Some(runtime_snapshot.skill_contents.clone());
+        }
+        if !runtime_snapshot.skill_embedded_tools.is_empty() {
+            options.skill_embedded_tools = Some(runtime_snapshot.skill_embedded_tools.clone());
+        }
+        if !runtime_snapshot.mcp_tool_schemas.is_empty() {
+            options.mcp_tool_schemas = Some(runtime_snapshot.mcp_tool_schemas.clone());
+        }
+        if !runtime_snapshot.selected_mcp_servers.is_empty() {
+            options.mcp_tools = Some(runtime_snapshot.selected_mcp_servers.clone());
+        }
+    } else if let Some(snapshot) = snapshot {
+        if !snapshot.effective_allowed_external_servers.is_empty() {
+            options.mcp_tools = Some(snapshot.effective_allowed_external_servers.clone());
+        }
     }
 
     options
@@ -1769,6 +1824,7 @@ pub async fn chat_v2_continue_message(
 mod tests {
     use super::*;
     use crate::chat_v2::types::MessageBlock;
+    use crate::chat_v2::types::{MessageMeta, ReplayMode, SkillStateSnapshot};
     use std::collections::HashMap;
 
     #[test]
@@ -1854,5 +1910,123 @@ mod tests {
         let refs = vec![make_send_ref("res_2")];
         let filtered = filter_path_map_for_send_refs(Some(&path_map), Some(refs.as_slice()));
         assert!(filtered.is_none());
+    }
+
+    #[test]
+    fn test_apply_original_skill_snapshot_overrides_restores_skill_ids_and_allowlist() {
+        let options = SendOptions {
+            replay_mode: Some(ReplayMode::Original),
+            ..Default::default()
+        };
+        let meta = MessageMeta {
+            skill_snapshot_after: Some(SkillStateSnapshot {
+                manual_pinned_skill_ids: vec!["manual-a".to_string()],
+                mode_required_bundle_ids: vec!["mode-a".to_string()],
+                agentic_session_skill_ids: vec!["agentic-a".to_string()],
+                branch_local_skill_ids: vec!["branch-a".to_string()],
+                effective_allowed_internal_tools: vec!["builtin-web_search".to_string()],
+                effective_allowed_external_tools: vec!["mcp_fetch".to_string()],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+
+        let updated = apply_original_skill_snapshot_overrides(options, Some(&meta), None);
+        assert_eq!(
+            updated.active_skill_ids.unwrap(),
+            vec![
+                "agentic-a".to_string(),
+                "branch-a".to_string(),
+                "manual-a".to_string(),
+                "mode-a".to_string(),
+            ]
+        );
+        assert_eq!(
+            updated.skill_allowed_tools.unwrap(),
+            vec!["builtin-web_search".to_string(), "mcp_fetch".to_string()]
+        );
+    }
+
+    #[test]
+    fn test_apply_original_skill_snapshot_overrides_restores_runtime_mcp_payload() {
+        let options = SendOptions {
+            replay_mode: Some(ReplayMode::Original),
+            ..Default::default()
+        };
+        let meta = MessageMeta {
+            skill_runtime_after: Some(crate::chat_v2::types::ReplaySkillPayloadSnapshot {
+                active_skill_ids: vec!["runtime-skill".to_string()],
+                skill_allowed_tools: vec!["server-a::fetch".to_string()],
+                skill_contents: std::collections::HashMap::new(),
+                skill_embedded_tools: std::collections::HashMap::new(),
+                mcp_tool_schemas: vec![crate::chat_v2::types::McpToolSchema {
+                    name: "fetch".to_string(),
+                    server_id: Some("server-a".to_string()),
+                    description: Some("fetch from server a".to_string()),
+                    input_schema: Some(serde_json::json!({ "type": "object" })),
+                }],
+                selected_mcp_servers: vec!["server-a".to_string()],
+            }),
+            ..Default::default()
+        };
+
+        let updated = apply_original_skill_snapshot_overrides(options, Some(&meta), None);
+        assert_eq!(
+            updated.active_skill_ids.unwrap(),
+            vec!["runtime-skill".to_string()]
+        );
+        assert_eq!(
+            updated.skill_allowed_tools.unwrap(),
+            vec!["server-a::fetch".to_string()]
+        );
+        assert_eq!(updated.mcp_tools.unwrap(), vec!["server-a".to_string()]);
+        assert_eq!(
+            updated.mcp_tool_schemas.unwrap()[0].server_id.as_deref(),
+            Some("server-a")
+        );
+    }
+
+    #[test]
+    fn test_apply_original_skill_snapshot_overrides_keeps_current_replay_unchanged() {
+        let options = SendOptions {
+            replay_mode: Some(ReplayMode::Current),
+            active_skill_ids: Some(vec!["current-skill".to_string()]),
+            ..Default::default()
+        };
+        let meta = MessageMeta {
+            skill_runtime_after: Some(crate::chat_v2::types::ReplaySkillPayloadSnapshot {
+                active_skill_ids: vec!["historical-skill".to_string()],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+
+        let updated = apply_original_skill_snapshot_overrides(options, Some(&meta), None);
+        assert_eq!(updated.active_skill_ids.unwrap(), vec!["current-skill".to_string()]);
+    }
+
+    #[test]
+    fn test_apply_original_skill_snapshot_overrides_prefers_preferred_meta_over_fallback() {
+        let options = SendOptions {
+            replay_mode: Some(ReplayMode::Original),
+            ..Default::default()
+        };
+        let preferred = MessageMeta {
+            skill_runtime_after: Some(crate::chat_v2::types::ReplaySkillPayloadSnapshot {
+                active_skill_ids: vec!["variant-skill".to_string()],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let fallback = MessageMeta {
+            skill_runtime_after: Some(crate::chat_v2::types::ReplaySkillPayloadSnapshot {
+                active_skill_ids: vec!["message-skill".to_string()],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+
+        let updated = apply_original_skill_snapshot_overrides(options, Some(&preferred), Some(&fallback));
+        assert_eq!(updated.active_skill_ids.unwrap(), vec!["variant-skill".to_string()]);
     }
 }

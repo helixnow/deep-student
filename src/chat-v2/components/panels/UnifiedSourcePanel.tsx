@@ -14,7 +14,12 @@ import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { setPendingMemoryLocate } from '@/utils/pendingMemoryLocate';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/shad/Sheet';
 import { getReadableToolName } from '@/chat-v2/utils/toolDisplayName';
-import { canLocateResource, type ResourceLocator } from '@/components/learning-hub/learningHubContracts';
+import {
+  buildResourceLocator,
+  canLocateResource,
+  DSTU_NAVIGATE_TO_KNOWLEDGE_BASE_EVENT,
+  type ResourceLocator,
+} from '@/components/learning-hub/learningHubContracts';
 import './UnifiedSourcePanel.css';
 
 // 来源类型映射到引用类型（与 citationParser 保持一致）
@@ -388,7 +393,7 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
   };
 
   const handleLocateGraph = (item: UnifiedSourceItem) => {
-    const cardId = (item.raw as any)?.source_id || item.raw.document_id;
+    const cardId = item.sourceId || (item.raw as any)?.source_id || item.raw.document_id;
     if (!cardId) return;
     try {
       window.dispatchEvent(new CustomEvent('DSTU_LOCATE_GRAPH_CARD' as any, { detail: { cardId } }));
@@ -397,7 +402,7 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
     }
   };
 
-  const buildResourceLocator = useCallback((item: UnifiedSourceItem): ResourceLocator => ({
+  const getItemResourceLocator = useCallback((item: UnifiedSourceItem): ResourceLocator => buildResourceLocator({
     sourceId: item.sourceId || item.raw?.source_id || undefined,
     resourceId: item.resourceId,
     resourceType: item.resourceType,
@@ -406,17 +411,17 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
   }), []);
 
   const getMemoryLocateId = (item: UnifiedSourceItem): string => {
-    const locator = buildResourceLocator(item);
+    const locator = getItemResourceLocator(item);
     return locator.sourceId || locator.resourceId || '';
   };
 
   const handleLocateMemory = (item: UnifiedSourceItem) => {
-    const locator = buildResourceLocator(item);
+    const locator = getItemResourceLocator(item);
     const memoryId = locator.sourceId || locator.resourceId;
     if (!memoryId) return;
     try {
       setPendingMemoryLocate(memoryId);
-      window.dispatchEvent(new CustomEvent('DSTU_NAVIGATE_TO_KNOWLEDGE_BASE' as any, {
+      window.dispatchEvent(new CustomEvent(DSTU_NAVIGATE_TO_KNOWLEDGE_BASE_EVENT as any, {
         detail: { preferTab: 'memory', locator }
       }));
     } catch (error: unknown) {
@@ -426,10 +431,10 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
 
   // 🔧 P1-34: 跳转到知识库文档并高亮
   const handleLocateRagDocument = (item: UnifiedSourceItem) => {
-    const locator = buildResourceLocator(item);
+    const locator = getItemResourceLocator(item);
     if (!canLocateResource(locator)) return;
     try {
-      window.dispatchEvent(new CustomEvent('DSTU_NAVIGATE_TO_KNOWLEDGE_BASE' as any, {
+      window.dispatchEvent(new CustomEvent(DSTU_NAVIGATE_TO_KNOWLEDGE_BASE_EVENT as any, {
         detail: { locator, preferTab: 'manage' }
       }));
     } catch (error: unknown) {
@@ -540,7 +545,7 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
               <ExternalLink size={14} />
               {t('common:chat.sources.locateMemory')}
             </NotionButton>
-          ) : entry.item.origin === 'rag' && canLocateResource(buildResourceLocator(entry.item)) ? (
+          ) : entry.item.origin === 'rag' && canLocateResource(getItemResourceLocator(entry.item)) ? (
             <NotionButton variant="ghost" size="sm" onClick={() => handleLocateRagDocument(entry.item)} className="text-primary">
               <ExternalLink size={14} />
               {t('common:chat.sources.locateKb')}
@@ -956,7 +961,7 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
                             <ExternalLink size={12} />
                             {t('common:chat.sources.locateMemory')}
                           </NotionButton>
-                        ) : entry.item.origin === 'rag' && canLocateResource(buildResourceLocator(entry.item)) ? (
+                        ) : entry.item.origin === 'rag' && canLocateResource(getItemResourceLocator(entry.item)) ? (
                           /* 🔧 P1-34: RAG 来源添加“在知识库中打开”按钮 */
                           <NotionButton variant="ghost" size="sm" onClick={() => handleLocateRagDocument(entry.item)} className="text-primary !h-6 text-xs">
                             <ExternalLink size={12} />

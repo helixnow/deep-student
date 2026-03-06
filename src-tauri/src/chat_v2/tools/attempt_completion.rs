@@ -185,21 +185,13 @@ impl ToolExecutor for AttemptCompletionExecutor {
         let start = Instant::now();
 
         // 发射开始事件
-        ctx.emitter.emit_tool_call_start(
-            &ctx.message_id,
-            &ctx.block_id,
-            TOOL_NAME,
-            call.arguments.clone(),
-            Some(&call.id), // 🆕 tool_call_id
-            None,           // variant_id: 单变体模式
-        );
+        ctx.emit_tool_call_start(TOOL_NAME, call.arguments.clone(), Some(&call.id));
 
         // 解析参数
         let params = match parse_params(&call.arguments) {
             Ok(p) => p,
             Err(e) => {
-                ctx.emitter
-                    .emit_error(event_types::TOOL_CALL, &ctx.block_id, &e, None);
+                ctx.emit_tool_call_error(&e);
                 let result = ToolResultInfo {
                     tool_call_id: Some(call.id.clone()),
                     block_id: Some(ctx.block_id.clone()),
@@ -238,15 +230,10 @@ impl ToolExecutor for AttemptCompletionExecutor {
         });
 
         // 发射结束事件
-        ctx.emitter.emit_end(
-            event_types::TOOL_CALL,
-            &ctx.block_id,
-            Some(json!({
-                "result": output,
-                "durationMs": duration_ms,
-            })),
-            None,
-        );
+        ctx.emit_tool_call_end(Some(json!({
+            "result": output,
+            "durationMs": duration_ms,
+        })));
 
         log::info!(
             "[AttemptCompletionExecutor] Task completed: result_len={}, command={:?}",

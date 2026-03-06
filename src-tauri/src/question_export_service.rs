@@ -115,10 +115,7 @@ impl CsvExportService {
                 .iter()
                 .any(|(key, _)| *key == field.as_str());
             if !is_supported {
-                return Err(AppError::validation(format!(
-                    "不支持的导出字段: {}",
-                    field
-                )));
+                return Err(AppError::validation(format!("不支持的导出字段: {}", field)));
             }
         }
         Ok(())

@@ -1,7 +1,7 @@
 //! 教材库命令模块
 //! 从 commands.rs 剥离 (原始行号: 7077-7400)
 
-use crate::commands::AppState;
+use crate::commands::{read_file_bytes, AppState};
 use crate::document_parser::DocumentParser;
 use crate::models::AppError;
 use crate::textbooks_db::{ListQuery as TextbooksListQuery, Textbook as TextbookDto, TextbooksDb};
@@ -11,7 +11,6 @@ use crate::vfs::repos::pdf_preview::{render_pdf_preview_with_progress, PdfPrevie
 // sync_resource_units 调用已移除，由 Pipeline 统一处理
 use crate::vfs::{PdfProcessingService, ProcessingStage};
 use serde::{Deserialize, Serialize};
-use std::path::Path;
 use std::sync::Arc;
 use tauri::{Emitter, State, Window};
 use tracing::{info, warn};
@@ -55,6 +54,55 @@ fn attach_textbook_to_folder(
     }
 }
 
+fn emit_textbook_watch_event(window: &Window, textbook_id: &str, event_type: &str) {
+    let dstu_path = format!("/{}", textbook_id);
+    let watch_event = serde_json::json!({
+        "type": event_type,
+        "path": dstu_path,
+    });
+
+    if let Err(err) = window.emit(&format!("dstu:change:{}", dstu_path), &watch_event) {
+        warn!(
+            "[Textbooks] Failed to emit dstu:change:{} for {}: {}",
+            event_type, textbook_id, err
+        );
+    }
+    if let Err(err) = window.emit("dstu:change", &watch_event) {
+        warn!(
+            "[Textbooks] Failed to emit global dstu:change:{} for {}: {}",
+            event_type, textbook_id, err
+        );
+    }
+}
+
+fn start_textbook_pipeline_if_needed(
+    pdf_processing_service: &Arc<PdfProcessingService>,
+    textbook_id: &str,
+    extension: &str,
+) {
+    if extension != "pdf" {
+        return;
+    }
+
+    let textbook_id = textbook_id.to_string();
+    let pdf_service = pdf_processing_service.clone();
+    tokio::spawn(async move {
+        info!(
+            "[Textbooks] Starting PDF pipeline for textbook: {}",
+            textbook_id
+        );
+        if let Err(e) = pdf_service
+            .start_pipeline(&textbook_id, Some(ProcessingStage::OcrProcessing))
+            .await
+        {
+            warn!(
+                "[Textbooks] Failed to start PDF pipeline for textbook {}: {}",
+                textbook_id, e
+            );
+        }
+    });
+}
+
 // ==================== 教材库（独立数据库）命令 ====================
 
 #[tauri::command]
@@ -74,16 +122,6 @@ pub async fn textbooks_add(
         .vfs_db
         .as_ref()
         .ok_or_else(|| AppError::configuration("VFS database not configured"))?;
-
-    let base_dir = state.file_manager.get_writable_app_data_dir();
-    let textbooks_dir = base_dir.join("textbooks");
-    if let Err(e) = std::fs::create_dir_all(&textbooks_dir) {
-        return Err(AppError::file_system(format!(
-            "创建教材目录失败: {} ({})",
-            textbooks_dir.display(),
-            e
-        )));
-    }
 
     // 辅助函数：发送进度事件
     let emit_progress = |window: &Window,
@@ -197,75 +235,26 @@ pub async fn textbooks_add(
             }
         };
 
-        // 若已存在，直接返回
+        // 若已存在，恢复并重新挂载到目标位置
         if let Some(tb) = crate::vfs::VfsTextbookRepo::get_by_sha256(vfs_db, &sha256)
             .map_err(|e| AppError::database(format!("VFS 查询教材失败: {}", e)))?
         {
+            let mut watch_event_type = "created";
+            if tb.status != "active" {
+                crate::vfs::VfsTextbookRepo::restore_textbook(vfs_db, &tb.id)
+                    .map_err(|e| AppError::database(format!("VFS 恢复教材失败: {}", e)))?;
+                watch_event_type = "restored";
+            }
             attach_textbook_to_folder(vfs_db, &tb.id, folder_id.as_deref());
+            emit_textbook_watch_event(&window, &tb.id, watch_event_type);
+            start_textbook_pipeline_if_needed(pdf_processing_service.inner(), &tb.id, &extension);
             emit_progress(&window, display_name, "done", None, None, 100, None);
             out.push(tb.to_textbook());
             continue;
         }
 
-        // 阶段2：复制文件到本地 textbooks 目录
-        emit_progress(&window, display_name, "copying", None, None, 10, None);
-        let mut dest_path = textbooks_dir.join(display_name);
-        // 同名冲突处理：追加序号后缀
-        if dest_path.exists() {
-            let stem = Path::new(display_name)
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .unwrap_or("textbook");
-            let mut idx = 1;
-            loop {
-                let candidate = textbooks_dir.join(format!("{}_{}.{}", stem, idx, extension));
-                if !candidate.exists() {
-                    dest_path = candidate;
-                    break;
-                }
-                idx += 1;
-                if idx > 9999 {
-                    emit_progress(
-                        &window,
-                        display_name,
-                        "error",
-                        None,
-                        None,
-                        0,
-                        Some("生成目标文件名失败".to_string()),
-                    );
-                    skipped_reasons.push(format!("{}: 生成目标文件名失败", display_name));
-                    break;
-                }
-            }
-            if idx > 9999 {
-                continue;
-            }
-        }
-
-        let dest_str = dest_path.to_string_lossy().to_string();
-        if let Err(e) = unified_file_manager::copy_file(&window, src, &dest_str) {
-            let reason = format!("{}: 复制文件失败 ({})", display_name, e);
-            warn!("[Textbooks] {}", reason);
-            emit_progress(
-                &window,
-                display_name,
-                "error",
-                None,
-                None,
-                0,
-                Some(format!("复制文件失败: {}", e)),
-            );
-            skipped_reasons.push(reason);
-            continue;
-        }
-
-        let size = unified_file_manager::get_file_size(&window, &dest_str).unwrap_or(0);
-        let file_name = dest_path
-            .file_name()
-            .and_then(|s| s.to_str())
-            .unwrap_or(display_name)
-            .to_string();
+        let size = unified_file_manager::get_file_size(&window, src).unwrap_or(0);
+        let file_name = display_name.to_string();
 
         // 阶段3：根据文件类型处理
         let conn = vfs_db
@@ -277,18 +266,20 @@ pub async fn textbooks_add(
         let (preview_json_str, extracted_text, page_count) = if extension == "pdf" {
             // PDF 文件：使用 PDF 预渲染流程
             emit_progress(&window, &file_name, "rendering", Some(0), None, 15, None);
-            let pdf_bytes = std::fs::read(&dest_path).map_err(|e| {
-                emit_progress(
-                    &window,
-                    &file_name,
-                    "error",
-                    None,
-                    None,
-                    0,
-                    Some(format!("读取 PDF 失败: {}", e)),
-                );
-                AppError::file_system(format!("读取 PDF 文件失败: {}", e))
-            })?;
+            let pdf_bytes = read_file_bytes(window.clone(), src.to_string())
+                .await
+                .map_err(|e| {
+                    emit_progress(
+                        &window,
+                        &file_name,
+                        "error",
+                        None,
+                        None,
+                        0,
+                        Some(format!("读取 PDF 失败: {}", e)),
+                    );
+                    AppError::file_system(format!("读取 PDF 文件失败: {}", e))
+                })?;
 
             let window_clone = window.clone();
             let file_name_clone = file_name.clone();
@@ -347,7 +338,7 @@ pub async fn textbooks_add(
             // 非 PDF 文件：使用 DocumentParser 提取文本
             emit_progress(&window, &file_name, "parsing", None, None, 15, None);
             let parser = DocumentParser::new();
-            match parser.extract_text_from_path(&dest_str) {
+            match parser.extract_text_from_path(src) {
                 Ok(text) => {
                     info!(
                         "[Textbooks] Document text extracted: {} chars from {}",
@@ -370,13 +361,6 @@ pub async fn textbooks_add(
                         0,
                         Some(format!("文档解析失败: {}", e)),
                     );
-                    if let Err(err) = std::fs::remove_file(&dest_path) {
-                        warn!(
-                            "[Textbooks] 文档解析失败后清理文件失败 ({}): {}",
-                            dest_path.display(),
-                            err
-                        );
-                    }
                     skipped_reasons.push(format!("{}: 文档解析失败 ({})", display_name, e));
                     continue;
                 }
@@ -390,8 +374,8 @@ pub async fn textbooks_add(
             &sha256,
             &file_name,
             size as i64,
-            None,            // blob_hash
-            Some(&dest_str), // original_path
+            None,      // blob_hash
+            Some(src), // original_path
             preview_json_str.as_deref(),
             extracted_text.as_deref(),
             page_count,
@@ -409,33 +393,15 @@ pub async fn textbooks_add(
             AppError::database(format!("VFS 创建教材失败: {}", e))
         })?;
 
-        // ★ M-fix: 创建教材后，将其放入指定文件夹（若有 folder_id）
+        // ★ 创建教材后，将其挂载到指定文件夹（若有 folder_id）
         if let Some(ref fid) = folder_id {
-            // 先删除可能已有的 folder_items 记录（create_textbook_with_preview 默认放在 root）
-            let _ = conn.execute(
-                "DELETE FROM folder_items WHERE item_type = 'file' AND item_id = ?1",
-                rusqlite::params![tb.id],
+            let folder_item = crate::vfs::VfsFolderItem::new(
+                Some(fid.to_string()),
+                "file".to_string(),
+                tb.id.clone(),
             );
-            // 插入到指定文件夹
-            if let Err(e) = conn.execute(
-                "INSERT INTO folder_items (id, folder_id, item_type, item_id, sort_order, created_at) VALUES (?1, ?2, 'file', ?3, 0, ?4)",
-                rusqlite::params![
-                    format!("fi_{}", nanoid::nanoid!(10)),
-                    fid,
-                    tb.id,
-                    chrono::Utc::now().timestamp_millis(),
-                ],
-            ) {
-                warn!(
-                    "[Textbooks] Failed to add textbook {} to folder {}: {}",
-                    tb.id, fid, e
-                );
-            } else {
-                info!(
-                    "[Textbooks] Added textbook {} to folder {}",
-                    tb.id, fid
-                );
-            }
+            crate::vfs::VfsFolderRepo::add_item_to_folder_with_conn(&conn, &folder_item)
+                .map_err(|e| AppError::database(format!("VFS 挂载教材失败: {}", e)))?;
         }
 
         // ★ 2026-02 修复：移除 sync_resource_units 调用
@@ -445,50 +411,8 @@ pub async fn textbooks_add(
 
         // ★ 2026-02 修复：PDF 上传后异步触发 Pipeline（从 OCR 阶段开始）
         // Stage 1-2（文本提取、页面渲染）已在上面完成
-        if extension == "pdf" {
-            let textbook_id = tb.id.clone();
-            let pdf_service = pdf_processing_service.inner().clone();
-            tokio::spawn(async move {
-                info!(
-                    "[Textbooks] Starting PDF pipeline for textbook: {}",
-                    textbook_id
-                );
-                if let Err(e) = pdf_service
-                    .start_pipeline(&textbook_id, Some(ProcessingStage::OcrProcessing))
-                    .await
-                {
-                    warn!(
-                        "[Textbooks] Failed to start PDF pipeline for textbook {}: {}",
-                        textbook_id, e
-                    );
-                }
-            });
-        }
-
-        // ★ 2026-02 新增：发射 DSTU watch 事件，通知前端文件列表自动刷新
-        {
-            let dstu_path = format!("/{}", tb.id);
-            let watch_event = serde_json::json!({
-                "type": "created",
-                "path": dstu_path,
-            });
-            if let Err(err) = window.emit(&format!("dstu:change:{}", dstu_path), &watch_event) {
-                warn!(
-                    "[Textbooks] 发送 dstu:change(路径) 事件失败: textbook_id={}, err={}",
-                    tb.id, err
-                );
-            }
-            if let Err(err) = window.emit("dstu:change", &watch_event) {
-                warn!(
-                    "[Textbooks] 发送 dstu:change 事件失败: textbook_id={}, err={}",
-                    tb.id, err
-                );
-            }
-            info!(
-                "[Textbooks] Emitted dstu:change (created) for textbook: {}",
-                tb.id
-            );
-        }
+        start_textbook_pipeline_if_needed(pdf_processing_service.inner(), &tb.id, &extension);
+        emit_textbook_watch_event(&window, &tb.id, "created");
 
         // 阶段5：完成
         emit_progress(&window, &file_name, "done", None, None, 100, None);
@@ -537,7 +461,15 @@ pub async fn textbooks_list(
 }
 
 #[tauri::command]
-pub async fn textbooks_remove(window: Window, state: State<'_, AppState>, id: String) -> Result<bool> {
+pub async fn textbooks_remove(
+    window: Window,
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<bool> {
+    warn!(
+        "[Textbooks] textbooks_remove is deprecated; prefer DSTU trash/purge flows for new callers. id={}",
+        id
+    );
     // ★ 切换到 VFS 版本
     let vfs_db = state
         .vfs_db
@@ -547,17 +479,7 @@ pub async fn textbooks_remove(window: Window, state: State<'_, AppState>, id: St
     let deleted = TextbooksDb::delete_vfs(vfs_db, &id)?;
 
     if deleted {
-        let dstu_path = format!("/{}", id);
-        let watch_event = serde_json::json!({
-            "type": "purged",
-            "path": dstu_path,
-        });
-        if let Err(err) = window.emit(&format!("dstu:change:{}", dstu_path), &watch_event) {
-            warn!(
-                "[Textbooks] Failed to emit purge watch event for {}: {}",
-                id, err
-            );
-        }
+        emit_textbook_watch_event(&window, &id, "purged");
     }
 
     Ok(deleted)
@@ -568,6 +490,7 @@ pub async fn textbooks_remove(window: Window, state: State<'_, AppState>, id: St
 pub async fn textbooks_adopt(
     window: Window,
     state: State<'_, AppState>,
+    pdf_processing_service: State<'_, Arc<PdfProcessingService>>,
     paths: Vec<String>,
     folder_id: Option<String>,
 ) -> Result<Vec<TextbookDto>> {
@@ -588,46 +511,96 @@ pub async fn textbooks_adopt(
             continue;
         }
         let sha256 = unified_file_manager::hash_file_sha256(&window, &p)?;
+        let (resolved_name, resolved_ext) = unified_file_manager::resolve_file_info(&window, &p);
+        let file_name = resolved_name;
+        let extension = resolved_ext.unwrap_or_else(|| {
+            std::path::Path::new(&file_name)
+                .extension()
+                .and_then(|ext| ext.to_str())
+                .unwrap_or_default()
+                .to_lowercase()
+        });
+
         if let Some(tb) = crate::vfs::VfsTextbookRepo::get_by_sha256(vfs_db, &sha256)
             .map_err(|e| AppError::database(format!("VFS 查询教材失败: {}", e)))?
         {
+            let mut watch_event_type = "created";
+            if tb.status != "active" {
+                crate::vfs::VfsTextbookRepo::restore_textbook(vfs_db, &tb.id)
+                    .map_err(|e| AppError::database(format!("VFS 恢复教材失败: {}", e)))?;
+                watch_event_type = "restored";
+            }
             attach_textbook_to_folder(vfs_db, &tb.id, folder_id.as_deref());
+            emit_textbook_watch_event(&window, &tb.id, watch_event_type);
+            start_textbook_pipeline_if_needed(pdf_processing_service.inner(), &tb.id, &extension);
             out.push(tb.to_textbook());
             continue;
         }
-        let file_name = unified_file_manager::extract_file_name(&p);
-        let tb = crate::vfs::VfsTextbookRepo::create_textbook(
-            vfs_db,
+
+        let conn = vfs_db
+            .get_conn_safe()
+            .map_err(|e| AppError::database(format!("获取 VFS 连接失败: {}", e)))?;
+        let blobs_dir = vfs_db.blobs_dir();
+
+        let (preview_json_str, extracted_text, page_count) = if extension == "pdf" {
+            let pdf_bytes = read_file_bytes(window.clone(), p.clone())
+                .await
+                .map_err(|e| AppError::file_system(format!("读取 PDF 文件失败: {}", e)))?;
+
+            match render_pdf_preview_with_progress(
+                &conn,
+                &blobs_dir,
+                &pdf_bytes,
+                &PdfPreviewConfig::default(),
+                |_current_page, _total_pages| {},
+            ) {
+                Ok(result) => (
+                    result
+                        .preview_json
+                        .as_ref()
+                        .and_then(|preview| serde_json::to_string(preview).ok()),
+                    result.extracted_text,
+                    Some(result.page_count as i32),
+                ),
+                Err(e) => {
+                    warn!(
+                        "[Textbooks] PDF preview failed during adopt, storing without preview: {}",
+                        e
+                    );
+                    (None, None, None)
+                }
+            }
+        } else {
+            let parser = DocumentParser::new();
+            match parser.extract_text_from_path(&p) {
+                Ok(text) => (None, Some(text), Some(1)),
+                Err(e) => {
+                    warn!(
+                        "[Textbooks] Document parsing failed during adopt for {}: {}",
+                        file_name, e
+                    );
+                    (None, None, None)
+                }
+            }
+        };
+
+        let tb = crate::vfs::VfsTextbookRepo::create_textbook_with_preview(
+            &conn,
             &sha256,
             &file_name,
             size as i64,
             None,     // blob_hash
             Some(&p), // original_path
+            preview_json_str.as_deref(),
+            extracted_text.as_deref(),
+            page_count,
         )
         .map_err(|e| AppError::database(format!("VFS 创建教材失败: {}", e)))?;
 
         attach_textbook_to_folder(vfs_db, &tb.id, folder_id.as_deref());
 
-        // ★ 2026-02 新增：发射 DSTU watch 事件，通知前端文件列表自动刷新
-        {
-            let dstu_path = format!("/{}", tb.id);
-            let watch_event = serde_json::json!({
-                "type": "created",
-                "path": dstu_path,
-            });
-            if let Err(err) = window.emit(&format!("dstu:change:{}", dstu_path), &watch_event) {
-                warn!(
-                    "[Textbooks] 发送 dstu:change(路径) 事件失败: textbook_id={}, err={}",
-                    tb.id, err
-                );
-            }
-            if let Err(err) = window.emit("dstu:change", &watch_event) {
-                warn!(
-                    "[Textbooks] 发送 dstu:change 事件失败: textbook_id={}, err={}",
-                    tb.id, err
-                );
-            }
-        }
+        emit_textbook_watch_event(&window, &tb.id, "created");
+        start_textbook_pipeline_if_needed(pdf_processing_service.inner(), &tb.id, &extension);
 
         out.push(tb.to_textbook());
     }
@@ -689,7 +662,7 @@ pub async fn textbooks_purge_trash(
         }
     }
 
-    let purged = crate::vfs::VfsTextbookRepo::purge_deleted_textbooks(vfs_db)
+    let purged = crate::vfs::VfsFileRepo::purge_deleted_files(vfs_db)
         .map_err(|e| AppError::database(format!("VFS 清空回收站失败: {}", e)))?;
     Ok(serde_json::json!({ "purged": purged, "deleted_files": deleted_files }))
 }
@@ -729,7 +702,7 @@ pub async fn textbooks_delete_permanent(
         }
     }
 
-    crate::vfs::VfsTextbookRepo::purge_textbook(vfs_db, &id)
+    crate::vfs::VfsTextbookRepo::purge_textbook_with_folder_item(vfs_db, &id)
         .map_err(|e| AppError::database(format!("VFS 永久删除教材失败: {}", e)))?;
     Ok(true)
 }

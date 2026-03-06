@@ -1237,14 +1237,7 @@ impl ToolExecutor for PaperSaveExecutor {
 
         log::debug!("[PaperSave] Executing: {} (full: {})", tool_name, call.name);
 
-        ctx.emitter.emit_tool_call_start(
-            &ctx.message_id,
-            &ctx.block_id,
-            &call.name,
-            call.arguments.clone(),
-            Some(&call.id),
-            None,
-        );
+        ctx.emit_tool_call_start(&call.name, call.arguments.clone(), Some(&call.id));
 
         let result = match tool_name {
             "paper_save" => self.execute_paper_save(call, ctx).await,
@@ -1256,15 +1249,10 @@ impl ToolExecutor for PaperSaveExecutor {
 
         match result {
             Ok(output) => {
-                ctx.emitter.emit_end(
-                    event_types::TOOL_CALL,
-                    &ctx.block_id,
-                    Some(json!({
-                        "result": output,
-                        "durationMs": duration,
-                    })),
-                    None,
-                );
+                ctx.emit_tool_call_end(Some(json!({
+                    "result": output,
+                    "durationMs": duration,
+                })));
 
                 let result = ToolResultInfo::success(
                     Some(call.id.clone()),
@@ -1282,8 +1270,7 @@ impl ToolExecutor for PaperSaveExecutor {
                 Ok(result)
             }
             Err(e) => {
-                ctx.emitter
-                    .emit_error(event_types::TOOL_CALL, &ctx.block_id, &e, None);
+                ctx.emit_tool_call_error(&e);
 
                 log::warn!(
                     "[PaperSave] Tool {} failed: {} ({}ms)",

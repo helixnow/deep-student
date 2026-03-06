@@ -1897,14 +1897,7 @@ impl ToolExecutor for QBankExecutor {
 
         log::debug!("[QBankExecutor] Executing tool: {}", tool_name);
 
-        ctx.emitter.emit_tool_call_start(
-            &ctx.message_id,
-            &ctx.block_id,
-            &call.name,
-            call.arguments.clone(),
-            Some(&call.id), // 🆕 tool_call_id
-            None,
-        );
+        ctx.emit_tool_call_start(&call.name, call.arguments.clone(), Some(&call.id));
 
         let result = match tool_name {
             "qbank_list" => self.execute_list(call, ctx).await,
@@ -1941,15 +1934,10 @@ impl ToolExecutor for QBankExecutor {
                 );
 
                 // 🔧 修复：发射工具调用结束事件
-                ctx.emitter.emit_end(
-                    event_types::TOOL_CALL,
-                    &ctx.block_id,
-                    Some(json!({
-                        "result": value,
-                        "durationMs": elapsed_ms,
-                    })),
-                    None,
-                );
+                ctx.emit_tool_call_end(Some(json!({
+                    "result": value,
+                    "durationMs": elapsed_ms,
+                })));
 
                 let result = ToolResultInfo::success(
                     Some(call.id.clone()),
@@ -1970,8 +1958,7 @@ impl ToolExecutor for QBankExecutor {
                 log::error!("[QBankExecutor] Tool {} failed: {}", tool_name, e);
 
                 // 🔧 修复：发射工具调用错误事件
-                ctx.emitter
-                    .emit_error(event_types::TOOL_CALL, &ctx.block_id, &e, None);
+                ctx.emit_tool_call_error(&e);
 
                 let result = ToolResultInfo::failure(
                     Some(call.id.clone()),

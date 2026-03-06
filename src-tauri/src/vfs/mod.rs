@@ -74,6 +74,23 @@ pub use types::*;
 // 统一文本抽取策略（供 DSTU 等其他模块调用）
 pub use ref_handlers::extract_file_text_with_strategy;
 
+pub const CANONICAL_FILE_FOLDER_ITEM_TYPE: &str = "file";
+
+pub fn canonical_folder_item_type(item_type: &str) -> &str {
+    match item_type {
+        "textbook" => CANONICAL_FILE_FOLDER_ITEM_TYPE,
+        other => other,
+    }
+}
+
+pub fn is_file_folder_item_type(item_type: &str) -> bool {
+    canonical_folder_item_type(item_type) == CANONICAL_FILE_FOLDER_ITEM_TYPE
+}
+
+pub fn file_folder_item_sql(column: &str) -> String {
+    format!("{} = '{}'", column, CANONICAL_FILE_FOLDER_ITEM_TYPE)
+}
+
 // ============================================================================
 // 文件夹相关常量（契约 F）
 // ============================================================================

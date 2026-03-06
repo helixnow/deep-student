@@ -560,18 +560,6 @@ pub async fn dstu_empty_trash(
         }
     }
 
-    // 教材
-    match VfsTextbookRepo::purge_deleted_textbooks(&db) {
-        Ok(count) => total_deleted += count,
-        Err(e) => {
-            error!(
-                "[DSTU::trash] dstu_empty_trash: purge_deleted_textbooks FAILED - error={}",
-                e
-            );
-            return Err(DstuError::VfsError(e.to_string()));
-        }
-    }
-
     // 题目集：逐个永久删除已软删除的记录
     let deleted_exams = match VfsExamRepo::list_deleted_exams(&db, 1000, 0) {
         Ok(exams) => exams,

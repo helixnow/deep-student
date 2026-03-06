@@ -139,8 +139,14 @@ impl ChatV2ToolAdapter {
             Some(client) => client,
             None => {
                 let error_msg = "MCP 客户端未初始化";
-                self.emitter
-                    .emit_error(event_types::TOOL_CALL, &block_id, error_msg, None);
+                self.emitter.emit_error_with_meta(
+                    event_types::TOOL_CALL,
+                    &block_id,
+                    error_msg,
+                    None,
+                    None,
+                    None,
+                );
                 log::error!("[ChatV2::tool_adapter] {}", error_msg);
                 return Err(ChatV2Error::Tool(error_msg.to_string()));
             }
@@ -160,10 +166,12 @@ impl ChatV2ToolAdapter {
                 let result_value = self.convert_mcp_tool_result(&tool_result);
 
                 // 发射 end 事件
-                self.emitter.emit_end(
+                self.emitter.emit_end_with_meta(
                     event_types::TOOL_CALL,
                     &block_id,
                     Some(result_value.clone()),
+                    None,
+                    None,
                     None,
                 );
 
@@ -178,8 +186,14 @@ impl ChatV2ToolAdapter {
             Ok(Err(mcp_error)) => {
                 // MCP 错误
                 let error_msg = format!("MCP 工具调用失败: {}", mcp_error);
-                self.emitter
-                    .emit_error(event_types::TOOL_CALL, &block_id, &error_msg, None);
+                self.emitter.emit_error_with_meta(
+                    event_types::TOOL_CALL,
+                    &block_id,
+                    &error_msg,
+                    None,
+                    None,
+                    None,
+                );
 
                 log::error!(
                     "[ChatV2::tool_adapter] MCP tool call failed: tool={}, error={}",
@@ -192,8 +206,14 @@ impl ChatV2ToolAdapter {
             Err(_) => {
                 // 超时错误
                 let error_msg = format!("工具调用超时 ({}ms): {}", self.tool_timeout_ms, tool_name);
-                self.emitter
-                    .emit_error(event_types::TOOL_CALL, &block_id, &error_msg, None);
+                self.emitter.emit_error_with_meta(
+                    event_types::TOOL_CALL,
+                    &block_id,
+                    &error_msg,
+                    None,
+                    None,
+                    None,
+                );
 
                 log::error!(
                     "[ChatV2::tool_adapter] MCP tool call timeout: tool={}, timeout_ms={}",

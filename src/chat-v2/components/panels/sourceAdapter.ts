@@ -288,7 +288,11 @@ function retrievalOutputToSourceItems(block: Block): UnifiedSourceItem[] {
     const path = (metadata.path as string | undefined) || (metadata.resourcePath as string | undefined);
 
     const raw: RagSourceInfo = {
-      document_id: groupType === 'memory' ? memoryDocumentId || '' : sourceId || resourceId || '',
+      document_id: groupType === 'memory'
+        ? memoryDocumentId || ''
+        : (metadata.document_id as string | undefined)
+          || (metadata.documentId as string | undefined)
+          || '',
       file_name: resolvedTitle,
       chunk_text: resolvedSnippet,
       score: source.score || 0,
@@ -745,11 +749,9 @@ export function extractSourcesFromSharedContext(
       const documentId =
         origin === 'memory'
           ? memoryDocumentId || ''
-          : sourceId
-            || resourceId
-            || (metadata.document_id as string | undefined)
+          : (metadata.document_id as string | undefined)
             || (metadata.documentId as string | undefined)
-            || `shared-${origin}-${index}`;
+            || '';
 
       const raw: RagSourceInfo = {
         document_id: documentId,

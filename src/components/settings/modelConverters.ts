@@ -75,10 +75,69 @@ export const convertApiConfigToProfile = (api: ApiConfig, vendorId: string): Mod
 
 export const normalizeBaseUrl = (url: string) => url.trim().replace(/\/+$/, '');
 
+export const inferProviderTypeFromBaseUrl = (baseUrl?: string | null): string | undefined => {
+  const lowerBaseUrl = normalizeBaseUrl(baseUrl ?? '').toLowerCase();
+  if (!lowerBaseUrl) return undefined;
+
+  if (lowerBaseUrl.includes('siliconflow.cn') || lowerBaseUrl.includes('siliconflow.com')) {
+    return 'siliconflow';
+  }
+  if (
+    lowerBaseUrl.includes('dashscope.aliyuncs.com') ||
+    lowerBaseUrl.includes('dashscope-intl.aliyuncs.com')
+  ) {
+    return 'qwen';
+  }
+  if (lowerBaseUrl.includes('openrouter.ai')) {
+    return 'openrouter';
+  }
+  if (lowerBaseUrl.includes('://localhost:11434') || lowerBaseUrl.includes('://127.0.0.1:11434') || lowerBaseUrl.includes('ollama')) {
+    return 'ollama';
+  }
+  if (lowerBaseUrl.includes('api.deepseek.com')) {
+    return 'deepseek';
+  }
+  if (lowerBaseUrl.includes('open.bigmodel.cn')) {
+    return 'zhipu';
+  }
+  if (lowerBaseUrl.includes('volces.com') || lowerBaseUrl.includes('volcengine.com')) {
+    return 'doubao';
+  }
+  if (lowerBaseUrl.includes('api.moonshot.cn')) {
+    return 'moonshot';
+  }
+  if (lowerBaseUrl.includes('api.openai.com')) {
+    return 'openai';
+  }
+  if (lowerBaseUrl.includes('generativelanguage.googleapis.com')) {
+    return 'gemini';
+  }
+  if (lowerBaseUrl.includes('api.x.ai')) {
+    return 'grok';
+  }
+  if (lowerBaseUrl.includes('api.anthropic.com')) {
+    return 'anthropic';
+  }
+  if (lowerBaseUrl.includes('api.minimax.io') || lowerBaseUrl.includes('api.minimax.chat')) {
+    return 'minimax';
+  }
+
+  return undefined;
+};
+
 export const providerTypeFromConfig = (providerType?: string | null, adapter?: string | null) => {
   if (providerType) return providerType;
   if (!adapter) return 'openai';
+  if (adapter === 'qwen') return 'qwen';
+  if (adapter === 'deepseek') return 'deepseek';
+  if (adapter === 'zhipu') return 'zhipu';
+  if (adapter === 'doubao') return 'doubao';
+  if (adapter === 'moonshot') return 'moonshot';
+  if (adapter === 'grok') return 'grok';
   if (adapter === 'google') return 'google';
   if (adapter === 'anthropic') return 'anthropic';
+  if (adapter === 'minimax') return 'minimax';
+  if (adapter === 'ernie') return 'ernie';
+  if (adapter === 'mistral') return 'mistral';
   return 'openai';
 };

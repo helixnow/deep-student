@@ -16,7 +16,11 @@
 
 import { useEffect, useRef } from 'react';
 import { LEARNING_EVENTS } from '@/command-palette/modules/learning.commands';
-import type { ResourceLocator } from '../learningHubContracts';
+import {
+  DSTU_NAVIGATE_TO_KNOWLEDGE_BASE_EVENT,
+  LEARNING_HUB_NAVIGATE_TO_KNOWLEDGE_EVENT,
+  type ResourceLocator,
+} from '../learningHubContracts';
 
 // ============================================================================
 // 事件数据类型定义
@@ -153,7 +157,7 @@ export function useLearningHubEvents(handlers: LearningHubEventHandlers): void {
       handlersRef.current.onCommandOpenEssayGrading?.();
     };
 
-    // ========== learningHubNavigateToKnowledge ==========
+    // ========== Learning Hub / DSTU 知识库导航 ==========
     const handleNavigateToKnowledge = (evt: Event) => {
       const detail = (evt as CustomEvent<NavigateToKnowledgeEventDetail>).detail;
       handlersRef.current.onNavigateToKnowledge?.(detail);
@@ -167,7 +171,8 @@ export function useLearningHubEvents(handlers: LearningHubEventHandlers): void {
     window.addEventListener('learningHubOpenResource', handleOpenResource);
     window.addEventListener(LEARNING_EVENTS.OPEN_TRANSLATE, handleCommandOpenTranslate);
     window.addEventListener(LEARNING_EVENTS.OPEN_ESSAY_GRADING, handleCommandOpenEssayGrading);
-    window.addEventListener('learningHubNavigateToKnowledge', handleNavigateToKnowledge);
+    window.addEventListener(LEARNING_HUB_NAVIGATE_TO_KNOWLEDGE_EVENT, handleNavigateToKnowledge);
+    window.addEventListener(DSTU_NAVIGATE_TO_KNOWLEDGE_BASE_EVENT, handleNavigateToKnowledge);
 
     // 统一清理所有事件监听器
     return () => {
@@ -178,7 +183,8 @@ export function useLearningHubEvents(handlers: LearningHubEventHandlers): void {
       window.removeEventListener('learningHubOpenResource', handleOpenResource);
       window.removeEventListener(LEARNING_EVENTS.OPEN_TRANSLATE, handleCommandOpenTranslate);
       window.removeEventListener(LEARNING_EVENTS.OPEN_ESSAY_GRADING, handleCommandOpenEssayGrading);
-      window.removeEventListener('learningHubNavigateToKnowledge', handleNavigateToKnowledge);
+      window.removeEventListener(LEARNING_HUB_NAVIGATE_TO_KNOWLEDGE_EVENT, handleNavigateToKnowledge);
+      window.removeEventListener(DSTU_NAVIGATE_TO_KNOWLEDGE_BASE_EVENT, handleNavigateToKnowledge);
     };
   }, []); // 空依赖数组 - 只在挂载时注册，卸载时清理
 }

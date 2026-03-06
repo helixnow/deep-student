@@ -30,6 +30,25 @@ const FRONTMATTER_DELIMITER = '---';
 /** 最大 frontmatter 长度（防止解析过大的文件头） */
 const MAX_FRONTMATTER_LENGTH = 4096;
 
+const KNOWN_FRONTMATTER_KEYS = new Set([
+  'name',
+  'description',
+  'version',
+  'author',
+  'priority',
+  'allowed-tools',
+  'allowedTools',
+  'tools',
+  'disableAutoInvoke',
+  'embedded-tools',
+  'embeddedTools',
+  'skill-type',
+  'skillType',
+  'related-skills',
+  'relatedSkills',
+  'dependencies',
+]);
+
 // ============================================================================
 // Frontmatter 解析
 // ============================================================================
@@ -91,6 +110,23 @@ function parseYamlFrontmatter(yamlStr: string): Record<string, unknown> {
     console.error(LOG_PREFIX, i18n.t('skills:parser.yamlParseError'), error);
     throw error;
   }
+}
+
+function extractPreservedFrontmatter(rawMetadata: Record<string, unknown>): Record<string, unknown> {
+  const preserved: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(rawMetadata)) {
+    if (!KNOWN_FRONTMATTER_KEYS.has(key)) {
+      preserved[key] = value;
+    }
+  }
+  return preserved;
+}
+
+function setIfDefined(target: Record<string, unknown>, key: string, value: unknown): void {
+  if (value === undefined) {
+    return;
+  }
+  target[key] = value;
 }
 
 /**
@@ -348,6 +384,7 @@ export function parseSkillFile(
     content: markdownContent,
     sourcePath,
     location,
+    preservedFrontmatter: extractPreservedFrontmatter(rawMetadata),
   };
 
   return {
@@ -483,109 +520,66 @@ function formatYamlValue(value: unknown): string {
  * @returns SKILL.md 格式字符串
  */
 export function serializeSkillToMarkdown(
-  metadata: Omit<SkillMetadata, 'id'>,
+  metadata: Omit<SkillMetadata, 'id'> & { preservedFrontmatter?: Record<string, unknown> },
   content: string
 ): string {
-  const lines: string[] = ['---'];
+  const frontmatter: Record<string, unknown> = {
+    ...(metadata.preservedFrontmatter ?? {}),
+  };
 
-  // 必填字段
-  lines.push(`name: ${formatYamlValue(metadata.name)}`);
-  lines.push(`description: ${formatYamlValue(metadata.description)}`);
-
-  // 可选字段（仅在有值时添加）
-  if (metadata.version) {
-    lines.push(`version: ${formatYamlValue(metadata.version)}`);
-  }
-
-  if (metadata.author) {
-    lines.push(`author: ${formatYamlValue(metadata.author)}`);
-  }
-
+  frontmatter.name = metadata.name;
+  frontmatter.description = metadata.description;
+  setIfDefined(frontmatter, 'version', metadata.version);
+  setIfDefined(frontmatter, 'author', metadata.author);
   if (metadata.priority !== undefined && metadata.priority !== SKILL_DEFAULT_PRIORITY) {
-    lines.push(`priority: ${metadata.priority}`);
+    frontmatter.priority = metadata.priority;
+  } else {
+    delete frontmatter.priority;
   }
 
-  // 优先使用 allowedTools（SKILL.md 规范），否则回退到 tools
   const toolsList = metadata.allowedTools ?? metadata.tools;
   if (toolsList && toolsList.length > 0) {
-    lines.push('allowed-tools:');  // 使用 SKILL.md 规范的字段名
-    for (const tool of toolsList) {
-      lines.push(`  - ${formatYamlValue(tool)}`);
-    }
+    frontmatter['allowed-tools'] = toolsList;
+  } else {
+    delete frontmatter['allowed-tools'];
+    delete frontmatter.allowedTools;
+    delete frontmatter.tools;
   }
 
   if (metadata.disableAutoInvoke) {
-    lines.push(`disableAutoInvoke: true`);
+    frontmatter.disableAutoInvoke = true;
+  } else {
+    delete frontmatter.disableAutoInvoke;
   }
 
-  // skillType（默认 standalone 时不写入）
   if (metadata.skillType && metadata.skillType !== 'standalone') {
-    lines.push(`skill-type: ${metadata.skillType}`);
+    frontmatter['skill-type'] = metadata.skillType;
+  } else {
+    delete frontmatter['skill-type'];
+    delete frontmatter.skillType;
   }
 
-  // relatedSkills（仅 composite 类型有意义）
   if (metadata.relatedSkills && metadata.relatedSkills.length > 0) {
-    lines.push('related-skills:');
-    for (const skillId of metadata.relatedSkills) {
-      lines.push(`  - ${formatYamlValue(skillId)}`);
-    }
+    frontmatter['related-skills'] = metadata.relatedSkills;
+  } else {
+    delete frontmatter['related-skills'];
+    delete frontmatter.relatedSkills;
   }
 
-  // dependencies（硬依赖技能列表）
   if (metadata.dependencies && metadata.dependencies.length > 0) {
-    lines.push('dependencies:');
-    for (const depId of metadata.dependencies) {
-      lines.push(`  - ${formatYamlValue(depId)}`);
-    }
+    frontmatter.dependencies = metadata.dependencies;
+  } else {
+    delete frontmatter.dependencies;
   }
 
-  // embeddedTools（渐进披露架构）
   if (metadata.embeddedTools && metadata.embeddedTools.length > 0) {
-    lines.push('embeddedTools:');
-    for (const tool of metadata.embeddedTools) {
-      lines.push(`  - name: ${formatYamlValue(tool.name)}`);
-      lines.push(`    description: ${formatYamlValue(tool.description)}`);
-      lines.push('    inputSchema:');
-      lines.push('      type: object');
-      if (Object.keys(tool.inputSchema.properties).length > 0) {
-        lines.push('      properties:');
-        for (const [propName, prop] of Object.entries(tool.inputSchema.properties)) {
-          lines.push(`        ${propName}:`);
-          if (prop.type) {
-            lines.push(`          type: ${prop.type}`);
-          }
-          if (prop.description) {
-            lines.push(`          description: ${formatYamlValue(prop.description)}`);
-          }
-          // 🔧 补充序列化：enum / default / items，避免 round-trip 数据丢失
-          if (prop.enum && Array.isArray(prop.enum) && prop.enum.length > 0) {
-            lines.push('          enum:');
-            for (const val of prop.enum) {
-              lines.push(`            - ${formatYamlValue(val)}`);
-            }
-          }
-          if (prop.default !== undefined) {
-            lines.push(`          default: ${formatYamlValue(prop.default)}`);
-          }
-          if (prop.items && typeof prop.items === 'object') {
-            lines.push('          items:');
-            if ((prop.items as Record<string, unknown>).type) {
-              lines.push(`            type: ${(prop.items as Record<string, unknown>).type}`);
-            }
-          }
-        }
-      }
-      if (tool.inputSchema.required && tool.inputSchema.required.length > 0) {
-        lines.push(`      required: [${tool.inputSchema.required.join(', ')}]`);
-      }
-      if (tool.inputSchema.additionalProperties !== undefined) {
-        lines.push(`      additionalProperties: ${tool.inputSchema.additionalProperties}`);
-      }
-    }
+    frontmatter.embeddedTools = metadata.embeddedTools;
+  } else {
+    delete frontmatter.embeddedTools;
+    delete frontmatter['embedded-tools'];
   }
 
-  lines.push('---');
-  lines.push('');
+  const lines: string[] = ['---', YAML.stringify(frontmatter).trimEnd(), '---', ''];
 
   // 添加内容
   const trimmedContent = content.trim();

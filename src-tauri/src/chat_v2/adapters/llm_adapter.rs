@@ -270,8 +270,14 @@ impl ChatV2LLMAdapter {
                 block_id,
                 tool_call_id
             );
-            self.emitter
-                .emit_error(event_types::TOOL_CALL, block_id, "Stream terminated", None);
+            self.emitter.emit_error_with_meta(
+                event_types::TOOL_CALL,
+                block_id,
+                "Stream terminated",
+                None,
+                None,
+                None,
+            );
         }
     }
 
@@ -315,8 +321,14 @@ impl ChatV2LLMAdapter {
         };
 
         for (_, block_id) in guard.iter() {
-            self.emitter
-                .emit_error(event_types::TOOL_CALL, block_id, error, None);
+            self.emitter.emit_error_with_meta(
+                event_types::TOOL_CALL,
+                block_id,
+                error,
+                None,
+                None,
+                None,
+            );
         }
     }
 

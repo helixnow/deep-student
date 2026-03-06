@@ -498,14 +498,7 @@ impl ToolExecutor for XlsxToolExecutor {
             call.name
         );
 
-        ctx.emitter.emit_tool_call_start(
-            &ctx.message_id,
-            &ctx.block_id,
-            &call.name,
-            call.arguments.clone(),
-            Some(&call.id),
-            None,
-        );
+        ctx.emit_tool_call_start(&call.name, call.arguments.clone(), Some(&call.id));
 
         let result = match tool_name {
             "xlsx_read_structured" => self.execute_read_structured(call, ctx).await,
@@ -522,15 +515,10 @@ impl ToolExecutor for XlsxToolExecutor {
 
         match result {
             Ok(output) => {
-                ctx.emitter.emit_end(
-                    event_types::TOOL_CALL,
-                    &ctx.block_id,
-                    Some(json!({
-                        "result": output,
-                        "durationMs": duration,
-                    })),
-                    None,
-                );
+                ctx.emit_tool_call_end(Some(json!({
+                    "result": output,
+                    "durationMs": duration,
+                })));
 
                 let result = ToolResultInfo::success(
                     Some(call.id.clone()),
@@ -548,8 +536,7 @@ impl ToolExecutor for XlsxToolExecutor {
                 Ok(result)
             }
             Err(e) => {
-                ctx.emitter
-                    .emit_error(event_types::TOOL_CALL, &ctx.block_id, &e, None);
+                ctx.emit_tool_call_error(&e);
 
                 let result = ToolResultInfo::failure(
                     Some(call.id.clone()),

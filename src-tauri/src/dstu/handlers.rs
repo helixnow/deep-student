@@ -67,10 +67,10 @@ use super::handler_utils::{
 use super::trash_handlers::is_resource_in_trash;
 
 use crate::vfs::{
-    repos::VfsMindMapRepo, VfsBlobRepo, VfsCreateEssaySessionParams, VfsCreateExamSheetParams,
-    VfsCreateMindMapParams, VfsCreateNoteParams, VfsDatabase, VfsEssayRepo, VfsExamRepo,
-    VfsFileRepo, VfsFolderItem, VfsFolderRepo, VfsNoteRepo, VfsTextbookRepo, VfsTranslationRepo,
-    VfsUpdateMindMapParams, VfsUpdateNoteParams,
+    canonical_folder_item_type, repos::VfsMindMapRepo, VfsBlobRepo, VfsCreateEssaySessionParams,
+    VfsCreateExamSheetParams, VfsCreateMindMapParams, VfsCreateNoteParams, VfsDatabase,
+    VfsEssayRepo, VfsExamRepo, VfsFileRepo, VfsFolderItem, VfsFolderRepo, VfsNoteRepo,
+    VfsTextbookRepo, VfsTranslationRepo, VfsUpdateMindMapParams, VfsUpdateNoteParams,
 };
 
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
@@ -1857,9 +1857,10 @@ pub async fn dstu_rename(
     // 27-DSTU统一虚拟路径架构改造：重命名后清空 cached_path
     // 因为 cached_path 中包含资源标题，重命名后需要重新计算
     if let Err(e) = vfs_db.get_conn_safe().and_then(|conn| {
+        let canonical_resource_type = canonical_folder_item_type(&resource_type);
         conn.execute(
-            "UPDATE folder_items SET cached_path = NULL WHERE item_id = ?1",
-            rusqlite::params![id],
+            "UPDATE folder_items SET cached_path = NULL WHERE item_id = ?1 AND item_type = ?2 AND deleted_at IS NULL",
+            rusqlite::params![id, canonical_resource_type],
         )
         .map_err(|e| crate::vfs::error::VfsError::Database(e.to_string()))
     }) {
@@ -3810,9 +3811,10 @@ pub async fn dstu_set_metadata(
 
     // 真实路径架构：若资源标题变化，需要重新计算 cached_path，这里先清空缓存
     if let Err(e) = vfs_db.get_conn_safe().and_then(|conn| {
+        let canonical_resource_type = canonical_folder_item_type(&resource_type);
         conn.execute(
-            "UPDATE folder_items SET cached_path = NULL WHERE item_id = ?1",
-            rusqlite::params![id],
+            "UPDATE folder_items SET cached_path = NULL WHERE item_id = ?1 AND item_type = ?2 AND deleted_at IS NULL",
+            rusqlite::params![id, canonical_resource_type],
         )
         .map_err(|e| crate::vfs::error::VfsError::Database(e.to_string()))
     }) {
@@ -5618,8 +5620,8 @@ pub async fn dstu_get_resource_location(
 
     let folder_item: Option<(Option<String>, Option<String>)> = conn
         .query_row(
-            "SELECT folder_id, cached_path FROM folder_items WHERE item_id = ?1 AND deleted_at IS NULL",
-            rusqlite::params![&resource_id],
+            "SELECT folder_id, cached_path FROM folder_items WHERE item_type = ?1 AND item_id = ?2 AND deleted_at IS NULL",
+            rusqlite::params![resource_type.as_str(), &resource_id],
             |row| Ok((row.get(0)?, row.get(1)?)),
         )
         .optional()
@@ -5786,12 +5788,13 @@ pub async fn dstu_move_to_folder(
 
     let result = tokio::task::spawn_blocking(move || {
         let conn = vfs_db_clone.get_conn_safe().map_err(|e| e.to_string())?;
+        let canonical_resource_type = canonical_folder_item_type(&resource_type_for_blocking);
 
         // 获取移动前的旧路径
         let old_path: String = conn
             .query_row(
-                "SELECT cached_path FROM folder_items WHERE item_id = ?1",
-                rusqlite::params![&resource_id_for_blocking],
+                "SELECT cached_path FROM folder_items WHERE item_type = ?1 AND item_id = ?2 AND deleted_at IS NULL",
+                rusqlite::params![canonical_resource_type, &resource_id_for_blocking],
                 |row| row.get(0),
             )
             .optional()
@@ -5818,8 +5821,8 @@ pub async fn dstu_move_to_folder(
         // 检查 folder_items 中是否已存在该资源
         let existing: Option<String> = conn
             .query_row(
-                "SELECT id FROM folder_items WHERE item_id = ?1 AND deleted_at IS NULL",
-                rusqlite::params![&resource_id_for_blocking],
+                "SELECT id FROM folder_items WHERE item_type = ?1 AND item_id = ?2 AND deleted_at IS NULL",
+                rusqlite::params![canonical_resource_type, &resource_id_for_blocking],
                 |row| row.get(0),
             )
             .optional()
@@ -5828,7 +5831,7 @@ pub async fn dstu_move_to_folder(
         if existing.is_some() {
             // 更新现有记录
             conn.execute(
-                "UPDATE folder_items SET folder_id = ?1, cached_path = ?2, updated_at = ?3 WHERE item_id = ?4",
+                "UPDATE folder_items SET folder_id = ?1, cached_path = ?2, updated_at = ?3 WHERE item_id = ?4 AND deleted_at IS NULL",
                 rusqlite::params![
                     &target_folder_id,
                     &full_path,
@@ -5849,7 +5852,7 @@ pub async fn dstu_move_to_folder(
                 rusqlite::params![
                     &item_id,
                     &target_folder_id,
-                    &resource_type_for_blocking,
+                    canonical_resource_type,
                     &resource_id_for_blocking,
                     &full_path,
                     now_ms,
@@ -6055,12 +6058,13 @@ fn move_single_item(
     // 推断资源类型
     let resource_type =
         DstuParsedPath::infer_resource_type(resource_id).unwrap_or_else(|| "unknown".to_string());
+    let canonical_resource_type = canonical_folder_item_type(&resource_type);
 
     // 获取移动前的旧路径
     let old_path: String = conn
         .query_row(
-            "SELECT cached_path FROM folder_items WHERE item_id = ?1",
-            rusqlite::params![resource_id],
+            "SELECT cached_path FROM folder_items WHERE item_type = ?1 AND item_id = ?2 AND deleted_at IS NULL",
+            rusqlite::params![canonical_resource_type, resource_id],
             |row| row.get(0),
         )
         .optional()
@@ -6078,8 +6082,8 @@ fn move_single_item(
     // 检查 folder_items 中是否已存在该资源
     let existing: Option<String> = conn
         .query_row(
-            "SELECT id FROM folder_items WHERE item_id = ?1",
-            rusqlite::params![resource_id],
+            "SELECT id FROM folder_items WHERE item_type = ?1 AND item_id = ?2 AND deleted_at IS NULL",
+            rusqlite::params![canonical_resource_type, resource_id],
             |row| row.get(0),
         )
         .optional()
@@ -6088,8 +6092,8 @@ fn move_single_item(
     if existing.is_some() {
         // 更新现有记录
         conn.execute(
-            "UPDATE folder_items SET folder_id = ?1, cached_path = ?2, updated_at = ?3 WHERE item_id = ?4",
-            rusqlite::params![target_folder_id, &full_path, now_ms, resource_id],
+            "UPDATE folder_items SET folder_id = ?1, cached_path = ?2, updated_at = ?3 WHERE item_type = ?4 AND item_id = ?5 AND deleted_at IS NULL",
+            rusqlite::params![target_folder_id, &full_path, now_ms, canonical_resource_type, resource_id],
         )
         .map_err(|e| format!("更新 folder_items 失败 ({}): {}", resource_id, e))?;
     } else {
@@ -6104,7 +6108,7 @@ fn move_single_item(
             rusqlite::params![
                 &item_id,
                 target_folder_id,
-                &resource_type,
+                canonical_resource_type,
                 resource_id,
                 &full_path,
                 now_ms,
@@ -6159,16 +6163,27 @@ pub async fn dstu_refresh_path_cache(
         let items: Vec<(String, Option<String>, String)> = if let Some(ref rid) = resource_id {
             // 刷新单个资源
             let mut stmt = conn
-                .prepare("SELECT id, folder_id, item_id FROM folder_items WHERE item_id = ?1")
+                .prepare(
+                    "SELECT id, folder_id, item_id FROM folder_items WHERE item_type = ?1 AND item_id = ?2 AND deleted_at IS NULL",
+                )
                 .map_err(|e| e.to_string())?;
             let rows: Vec<_> = stmt
-                .query_map(rusqlite::params![rid], |row| {
+                .query_map(
+                    rusqlite::params![
+                        canonical_folder_item_type(
+                            &DstuParsedPath::infer_resource_type(rid)
+                                .unwrap_or_else(|| "unknown".to_string())
+                        ),
+                        rid,
+                    ],
+                    |row| {
                     Ok((
                         row.get::<_, String>(0)?,
                         row.get::<_, Option<String>>(1)?,
                         row.get::<_, String>(2)?,
                     ))
-                })
+                    },
+                )
                 .map_err(|e| e.to_string())?
                 .filter_map(log_and_skip_err)
                 .collect();
@@ -6176,7 +6191,7 @@ pub async fn dstu_refresh_path_cache(
         } else {
             // 全量刷新
             let mut stmt = conn
-                .prepare("SELECT id, folder_id, item_id FROM folder_items")
+                .prepare("SELECT id, folder_id, item_id FROM folder_items WHERE deleted_at IS NULL")
                 .map_err(|e| e.to_string())?;
             let rows: Vec<_> = stmt
                 .query_map([], |row| {

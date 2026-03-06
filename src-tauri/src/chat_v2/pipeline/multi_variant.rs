@@ -1,5 +1,27 @@
 use super::*;
 
+fn build_replay_skill_payload_snapshot(
+    options: &SendOptions,
+) -> Option<crate::chat_v2::types::ReplaySkillPayloadSnapshot> {
+    let snapshot = crate::chat_v2::types::ReplaySkillPayloadSnapshot {
+        active_skill_ids: options.active_skill_ids.clone().unwrap_or_default(),
+        skill_allowed_tools: options.skill_allowed_tools.clone().unwrap_or_default(),
+        skill_contents: options.skill_contents.clone().unwrap_or_default(),
+        skill_embedded_tools: options.skill_embedded_tools.clone().unwrap_or_default(),
+        mcp_tool_schemas: options.mcp_tool_schemas.clone().unwrap_or_default(),
+        selected_mcp_servers: options.mcp_tools.clone().unwrap_or_default(),
+    };
+
+    let has_payload = !snapshot.active_skill_ids.is_empty()
+        || !snapshot.skill_allowed_tools.is_empty()
+        || !snapshot.skill_contents.is_empty()
+        || !snapshot.skill_embedded_tools.is_empty()
+        || !snapshot.mcp_tool_schemas.is_empty()
+        || !snapshot.selected_mcp_servers.is_empty();
+
+    has_payload.then_some(snapshot)
+}
+
 impl ChatV2Pipeline {
     // ========================================================================
     // 多模型并行变体执行 (Prompt 5)
@@ -298,6 +320,8 @@ impl ChatV2Pipeline {
                     context_snapshot: None,
                     skill_snapshot_before: None,
                     skill_snapshot_after: None,
+                    skill_runtime_before: build_replay_skill_payload_snapshot(&options),
+                    skill_runtime_after: build_replay_skill_payload_snapshot(&options),
                     replay_source: None,
                 }),
                 attachments: None,
@@ -703,7 +727,12 @@ impl ChatV2Pipeline {
 
         // 创建 LLM 适配器（使用变体的事件发射）
         let enable_thinking = options.enable_thinking.unwrap_or(true);
-        let emitter = Arc::new(VariantLLMAdapter::new(Arc::clone(&ctx), enable_thinking));
+        let emitter = Arc::new(VariantLLMAdapter::new(
+            Arc::clone(&ctx),
+            enable_thinking,
+            options.skill_state_version,
+            Some("variant-tool-round-0".to_string()),
+        ));
 
         // 注册 LLM 流式回调 hooks
         // 🔧 P0修复：每个变体使用唯一的 hook 键，避免并行执行时互相覆盖
@@ -934,7 +963,12 @@ impl ChatV2Pipeline {
         let mut messages = chat_history;
         messages.push(current_user_message);
 
-        let adapter = Arc::new(VariantLLMAdapter::new(Arc::clone(&ctx), enable_thinking));
+        let adapter = Arc::new(VariantLLMAdapter::new(
+            Arc::clone(&ctx),
+            enable_thinking,
+            options.skill_state_version,
+            Some("variant-tool-round-0".to_string()),
+        ));
         let stream_event = format!("chat_v2_event_{}_{}", session_id, ctx.variant_id());
         self.llm_manager
             .register_stream_hooks(&stream_event, adapter.clone())
@@ -984,7 +1018,8 @@ impl ChatV2Pipeline {
         llm_context.insert("vision_quality".into(), Value::String(vq.to_string()));
 
         // 🔧 工具名称映射：sanitized API name → original name
-        let mut variant_tool_name_mapping: HashMap<String, String> = HashMap::new();
+        let mut variant_tool_name_mapping: HashMap<String, super::tool_loop::ExternalToolRoute> =
+            HashMap::new();
 
         if !disable_tools {
             if let Some(ref tool_schemas) = options.mcp_tool_schemas {
@@ -996,10 +1031,21 @@ impl ChatV2Pipeline {
                         } else {
                             format!("mcp_{}", tool.name)
                         };
-                        let api_tool_name = sanitize_tool_name_for_api(&raw_tool_name);
-                        if api_tool_name != raw_tool_name {
-                            variant_tool_name_mapping.insert(api_tool_name.clone(), raw_tool_name);
+                        let mut api_tool_name = sanitize_tool_name_for_api(&raw_tool_name);
+                        if let Some(server_id) = tool.server_id.as_deref() {
+                            api_tool_name = format!(
+                                "{}__srv_{}",
+                                api_tool_name,
+                                sanitize_tool_name_for_api(server_id)
+                            );
                         }
+                        variant_tool_name_mapping.insert(
+                            api_tool_name.clone(),
+                            super::tool_loop::ExternalToolRoute {
+                                raw_tool_name,
+                                preferred_server_id: tool.server_id.clone(),
+                            },
+                        );
                         json!({
                             "type": "function",
                             "function": {
@@ -2140,8 +2186,7 @@ impl ChatV2Pipeline {
             Arc<VariantExecutionContext>,
             String,
             Option<crate::chat_v2::types::VariantMeta>,
-        )> =
-            Vec::with_capacity(variants.len());
+        )> = Vec::with_capacity(variants.len());
 
         for spec in &variants {
             let ctx = manager.create_variant(
@@ -2528,28 +2573,33 @@ impl ChatV2Pipeline {
 
         if ctx.status() == variant_status::SUCCESS {
             if let Some(ref variants) = message.variants {
-                if let Some(active_variant) = variants.iter().find(|variant| variant.id == ctx.variant_id()) {
-                    if let Some(snapshot) = active_variant
-                        .meta
-                        .as_ref()
-                        .and_then(|meta| meta.skill_snapshot_after.as_ref().or(meta.skill_snapshot_before.as_ref()))
-                    {
-                        let mut agentic_session_skill_ids = snapshot.agentic_session_skill_ids.clone();
-                        agentic_session_skill_ids.extend(snapshot.branch_local_skill_ids.clone());
-                        agentic_session_skill_ids.sort();
-                        agentic_session_skill_ids.dedup();
-
+                if let Some(active_variant) = variants
+                    .iter()
+                    .find(|variant| variant.id == ctx.variant_id())
+                {
+                    if let Some(snapshot) = active_variant.meta.as_ref().and_then(|meta| {
+                        meta.skill_snapshot_after
+                            .as_ref()
+                            .or(meta.skill_snapshot_before.as_ref())
+                    }) {
                         let promoted_state = crate::chat_v2::types::SessionSkillState {
                             manual_pinned_skill_ids: snapshot.manual_pinned_skill_ids.clone(),
                             mode_required_bundle_ids: snapshot.mode_required_bundle_ids.clone(),
-                            agentic_session_skill_ids,
-                            branch_local_skill_ids: Vec::new(),
-                            effective_allowed_internal_tools: snapshot.effective_allowed_internal_tools.clone(),
-                            effective_allowed_external_tools: snapshot.effective_allowed_external_tools.clone(),
-                            effective_allowed_external_servers: snapshot.effective_allowed_external_servers.clone(),
-                            version: snapshot.version.saturating_add(1),
+                            agentic_session_skill_ids: snapshot.agentic_session_skill_ids.clone(),
+                            branch_local_skill_ids: snapshot.branch_local_skill_ids.clone(),
+                            effective_allowed_internal_tools: snapshot
+                                .effective_allowed_internal_tools
+                                .clone(),
+                            effective_allowed_external_tools: snapshot
+                                .effective_allowed_external_tools
+                                .clone(),
+                            effective_allowed_external_servers: snapshot
+                                .effective_allowed_external_servers
+                                .clone(),
+                            version: snapshot.version,
                             legacy_migrated: Some(false),
-                        };
+                        }
+                        .promoted_branch_local_skills();
                         let _ = ChatV2Repo::update_session_skill_state_v2(
                             &self.db,
                             &message.session_id,
@@ -2832,6 +2882,8 @@ impl ChatV2Pipeline {
                     context_snapshot: context_snapshot.clone(),
                     skill_snapshot_before: None,
                     skill_snapshot_after: None,
+                    skill_runtime_before: build_replay_skill_payload_snapshot(&options),
+                    skill_runtime_after: build_replay_skill_payload_snapshot(&options),
                     replay_source: None,
                 }),
                 attachments: None,

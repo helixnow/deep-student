@@ -43,6 +43,7 @@ export interface SkillFormData {
   skillType: SkillType;
   relatedSkills?: string[];
   dependencies?: string[];
+  allowedTools?: string[];
   content: string;
   embeddedTools?: ToolSchema[];
 }
@@ -166,6 +167,7 @@ export const SkillFullscreenEditor: React.FC<SkillFullscreenEditorProps> = ({
     skillType: skill?.skillType ?? 'standalone',
     relatedSkills: normalizeSkillIdList(skill?.relatedSkills),
     dependencies: normalizeSkillIdList(skill?.dependencies),
+    allowedTools: normalizeSkillIdList(skill?.allowedTools),
     content: skill?.content ?? '',
     embeddedTools: skill?.embeddedTools ?? [],
   }));
@@ -208,6 +210,7 @@ export const SkillFullscreenEditor: React.FC<SkillFullscreenEditorProps> = ({
         skillType: skill?.skillType ?? 'standalone',
         relatedSkills: normalizeSkillIdList(skill?.relatedSkills),
         dependencies: normalizeSkillIdList(skill?.dependencies),
+        allowedTools: normalizeSkillIdList(skill?.allowedTools),
         content: skill?.content ?? '',
         embeddedTools: skill?.embeddedTools ?? [],
       });
@@ -222,6 +225,7 @@ export const SkillFullscreenEditor: React.FC<SkillFullscreenEditorProps> = ({
         skillType: skill?.skillType ?? 'standalone',
         relatedSkills: normalizeSkillIdList(skill?.relatedSkills),
         dependencies: normalizeSkillIdList(skill?.dependencies),
+        allowedTools: normalizeSkillIdList(skill?.allowedTools),
         content: skill?.content ?? '',
         embeddedTools: skill?.embeddedTools ?? [],
       });
@@ -270,6 +274,7 @@ export const SkillFullscreenEditor: React.FC<SkillFullscreenEditorProps> = ({
       skillType: formData.skillType,
       relatedSkills: normalizeSkillIdList(formData.relatedSkills),
       dependencies: normalizeSkillIdList(formData.dependencies),
+      allowedTools: normalizeSkillIdList(formData.allowedTools),
       content: formData.content.trim(),
       embeddedTools: formData.embeddedTools,
     };
@@ -515,6 +520,20 @@ export const SkillFullscreenEditor: React.FC<SkillFullscreenEditorProps> = ({
                       />
                       <p className="text-[10px] text-muted-foreground/60">
                         {t('skills:editor.related_skills_hint', '软关联：仅用于推荐，不会自动加载')}
+                      </p>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label className="text-xs font-medium text-muted-foreground/80 uppercase tracking-wider">
+                        {t('skills:editor.allowed_tools', '允许工具')}
+                      </Label>
+                      <TagInput
+                        value={formData.allowedTools ?? []}
+                        onChange={(next) => updateField('allowedTools', next)}
+                        placeholder={t('skills:editor.allowed_tools_placeholder', '用逗号分隔，例如 builtin-web_search, server-a::fetch')}
+                      />
+                      <p className="text-[10px] text-muted-foreground/60">
+                        {t('skills:editor.allowed_tools_hint', '权限白名单：支持工具名以及 server::tool 的外部服务器粒度约束')}
                       </p>
                     </div>
 

@@ -766,11 +766,12 @@ impl QuestionSyncService {
 
         let result = (|| -> VfsResult<Question> {
             // 获取冲突记录
-            let conflict =
-                Self::get_conflict_with_conn(conn, conflict_id)?.ok_or_else(|| VfsError::NotFound {
+            let conflict = Self::get_conflict_with_conn(conn, conflict_id)?.ok_or_else(|| {
+                VfsError::NotFound {
                     resource_type: "sync_conflict".to_string(),
                     id: conflict_id.to_string(),
-                })?;
+                }
+            })?;
 
             if conflict.status != "pending" {
                 return Err(VfsError::InvalidOperation {
@@ -1302,15 +1303,15 @@ impl QuestionSyncService {
                 let local_snapshot_json: String = row.get(4)?;
                 let remote_snapshot_json: String = row.get(5)?;
                 let conflict_type_str: String = row.get(3)?;
-                let local_version: QuestionVersion =
-                    serde_json::from_str(&local_snapshot_json).map_err(|e| {
+                let local_version: QuestionVersion = serde_json::from_str(&local_snapshot_json)
+                    .map_err(|e| {
                         rusqlite::Error::FromSqlConversionFailure(4, Type::Text, Box::new(e))
                     })?;
 
-                let remote_version: QuestionVersion =
-                    serde_json::from_str(&remote_snapshot_json).map_err(|e| {
-                        rusqlite::Error::FromSqlConversionFailure(5, Type::Text, Box::new(e))
-                    })?;
+                let remote_version: QuestionVersion = serde_json::from_str(&remote_snapshot_json)
+                    .map_err(|e| {
+                    rusqlite::Error::FromSqlConversionFailure(5, Type::Text, Box::new(e))
+                })?;
 
                 Ok(SyncConflict {
                     id: row.get(0)?,
@@ -1356,13 +1357,13 @@ impl QuestionSyncService {
             let remote_snapshot_json: String = row.get(5)?;
             let conflict_type_str: String = row.get(3)?;
 
-            let local_version: QuestionVersion =
-                serde_json::from_str(&local_snapshot_json).map_err(|e| {
+            let local_version: QuestionVersion = serde_json::from_str(&local_snapshot_json)
+                .map_err(|e| {
                     rusqlite::Error::FromSqlConversionFailure(4, Type::Text, Box::new(e))
                 })?;
 
-            let remote_version: QuestionVersion =
-                serde_json::from_str(&remote_snapshot_json).map_err(|e| {
+            let remote_version: QuestionVersion = serde_json::from_str(&remote_snapshot_json)
+                .map_err(|e| {
                     rusqlite::Error::FromSqlConversionFailure(5, Type::Text, Box::new(e))
                 })?;
 

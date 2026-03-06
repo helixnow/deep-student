@@ -22,7 +22,9 @@ use serde_json::json;
 use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
 use crate::chat_v2::event_types;
 use crate::chat_v2::repo::ChatV2Repo;
-use crate::chat_v2::types::{ToolCall, ToolResultInfo};
+use crate::chat_v2::types::{
+    ReplaySkillPayloadSnapshot, SessionSkillState, ToolCall, ToolResultInfo,
+};
 
 /// load_skills 工具名称
 pub const LOAD_SKILLS_TOOL_NAME: &str = "load_skills";
@@ -50,6 +52,8 @@ struct LoadSkillsOutput {
     active_skill_ids: Vec<String>,
     /// Skill 状态版本
     skill_state_version: u64,
+    /// 后端权威 Skill 状态
+    skill_state: SessionSkillState,
 }
 
 /// Skills 工具执行器
@@ -114,14 +118,7 @@ impl ToolExecutor for SkillsExecutor {
         let stripped_name = Self::strip_prefix(&call.name);
 
         // 发射工具调用开始事件
-        ctx.emitter.emit_tool_call_start(
-            &ctx.message_id,
-            &ctx.block_id,
-            &call.name,
-            call.arguments.clone(),
-            Some(&call.id),
-            None,
-        );
+        ctx.emit_tool_call_start(&call.name, call.arguments.clone(), Some(&call.id));
 
         tracing::info!(
             "[SkillsExecutor] Executing {} with input: {:?}",
@@ -138,12 +135,7 @@ impl ToolExecutor for SkillsExecutor {
                         Err(e) => {
                             let error_msg = format!("参数解析失败: {}", e);
                             let duration_ms = start_time.elapsed().as_millis() as u64;
-                            ctx.emitter.emit_error(
-                                event_types::TOOL_CALL,
-                                &ctx.block_id,
-                                &error_msg,
-                                None,
-                            );
+                            ctx.emit_tool_call_error(&error_msg);
                             return Ok(ToolResultInfo::failure(
                                 Some(call.id.clone()),
                                 Some(ctx.block_id.clone()),
@@ -158,8 +150,7 @@ impl ToolExecutor for SkillsExecutor {
                 if parsed_input.skills.is_empty() {
                     let error_msg = "请指定至少一个技能 ID".to_string();
                     let duration_ms = start_time.elapsed().as_millis() as u64;
-                    ctx.emitter
-                        .emit_error(event_types::TOOL_CALL, &ctx.block_id, &error_msg, None);
+                    ctx.emit_tool_call_error(&error_msg);
                     return Ok(ToolResultInfo::failure(
                         Some(call.id.clone()),
                         Some(ctx.block_id.clone()),
@@ -216,6 +207,7 @@ impl ToolExecutor for SkillsExecutor {
                 let mut session_loaded_skill_ids = loaded_skills.clone();
                 let mut session_active_skill_ids = Vec::new();
                 let mut skill_state_version = 0_u64;
+                let mut authoritative_skill_state = SessionSkillState::default();
 
                 if let Some(ref chat_v2_db) = ctx.chat_v2_db {
                     match ChatV2Repo::load_session_state_v2(chat_v2_db, &ctx.session_id) {
@@ -246,6 +238,7 @@ impl ToolExecutor for SkillsExecutor {
                             session_loaded_skill_ids = next_skill_state.resolved_loaded_skill_ids();
                             session_active_skill_ids = next_skill_state.resolved_active_skill_ids();
                             skill_state_version = next_skill_state.version;
+                            authoritative_skill_state = next_skill_state.clone();
                             if let Err(err) = ChatV2Repo::update_session_skill_state_v2(
                                 chat_v2_db,
                                 &ctx.session_id,
@@ -260,15 +253,61 @@ impl ToolExecutor for SkillsExecutor {
 
                             match ChatV2Repo::get_message_v2(chat_v2_db, &ctx.message_id) {
                                 Ok(Some(mut message)) => {
+                                    let previous_runtime = message
+                                        .meta
+                                        .as_ref()
+                                        .and_then(|meta| {
+                                            meta.skill_runtime_after
+                                                .clone()
+                                                .or(meta.skill_runtime_before.clone())
+                                        })
+                                        .unwrap_or_default();
+                                    let next_runtime = ReplaySkillPayloadSnapshot {
+                                        active_skill_ids: {
+                                            let mut merged = session_active_skill_ids.clone();
+                                            merged.extend(session_loaded_skill_ids.clone());
+                                            merged.sort();
+                                            merged.dedup();
+                                            merged
+                                        },
+                                        skill_allowed_tools: {
+                                            let mut allowed = authoritative_skill_state
+                                                .effective_allowed_internal_tools
+                                                .clone();
+                                            allowed.extend(
+                                                authoritative_skill_state
+                                                    .effective_allowed_external_tools
+                                                    .clone(),
+                                            );
+                                            allowed.sort();
+                                            allowed.dedup();
+                                            allowed
+                                        },
+                                        skill_contents: previous_runtime.skill_contents.clone(),
+                                        skill_embedded_tools: previous_runtime
+                                            .skill_embedded_tools
+                                            .clone(),
+                                        mcp_tool_schemas: previous_runtime.mcp_tool_schemas.clone(),
+                                        selected_mcp_servers: previous_runtime
+                                            .selected_mcp_servers
+                                            .clone(),
+                                    };
                                     if let Some(ref variant_id) = ctx.variant_id {
                                         if let Some(ref mut variants) = message.variants {
                                             if let Some(variant) = variants
                                                 .iter_mut()
                                                 .find(|variant| variant.id == *variant_id)
                                             {
-                                                let mut variant_meta = variant.meta.clone().unwrap_or_default();
-                                                variant_meta.skill_snapshot_before = Some(previous_snapshot.clone());
-                                                variant_meta.skill_snapshot_after = Some(next_snapshot.clone());
+                                                let mut variant_meta =
+                                                    variant.meta.clone().unwrap_or_default();
+                                                variant_meta.skill_snapshot_before =
+                                                    Some(previous_snapshot.clone());
+                                                variant_meta.skill_snapshot_after =
+                                                    Some(next_snapshot.clone());
+                                                variant_meta.skill_runtime_before =
+                                                    Some(previous_runtime.clone());
+                                                variant_meta.skill_runtime_after =
+                                                    Some(next_runtime.clone());
                                                 variant.meta = Some(variant_meta);
                                             }
                                         }
@@ -277,6 +316,8 @@ impl ToolExecutor for SkillsExecutor {
                                     let mut meta = message.meta.unwrap_or_default();
                                     meta.skill_snapshot_before = Some(previous_snapshot);
                                     meta.skill_snapshot_after = Some(next_snapshot);
+                                    meta.skill_runtime_before = Some(previous_runtime);
+                                    meta.skill_runtime_after = Some(next_runtime);
                                     meta.replay_source = Some("current".to_string());
                                     message.meta = Some(meta);
                                     if let Err(err) =
@@ -317,6 +358,7 @@ impl ToolExecutor for SkillsExecutor {
                     loaded_skill_ids: session_loaded_skill_ids,
                     active_skill_ids: session_active_skill_ids,
                     skill_state_version,
+                    skill_state: authoritative_skill_state,
                 };
 
                 let duration_ms = start_time.elapsed().as_millis() as u64;
@@ -333,10 +375,13 @@ impl ToolExecutor for SkillsExecutor {
                     Some(result_json.clone()),
                     ctx.variant_id.as_deref(),
                     Some(skill_state_version),
-                    None,
+                    ctx.round_id.as_deref(),
                 );
 
-                tracing::info!("[SkillsExecutor] load_skills persisted and synced: {:?}", parsed_input.skills);
+                tracing::info!(
+                    "[SkillsExecutor] load_skills persisted and synced: {:?}",
+                    parsed_input.skills
+                );
 
                 Ok(ToolResultInfo::success(
                     Some(call.id.clone()),
@@ -350,8 +395,7 @@ impl ToolExecutor for SkillsExecutor {
             _ => {
                 let error_msg = format!("未知的 Skills 工具: {}", call.name);
                 let duration_ms = start_time.elapsed().as_millis() as u64;
-                ctx.emitter
-                    .emit_error(event_types::TOOL_CALL, &ctx.block_id, &error_msg, None);
+                ctx.emit_tool_call_error(&error_msg);
                 Ok(ToolResultInfo::failure(
                     Some(call.id.clone()),
                     Some(ctx.block_id.clone()),

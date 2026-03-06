@@ -69,6 +69,8 @@ export interface BackendVariantForRestore {
   meta?: {
     skillSnapshotBefore?: import('./message').SkillStateSnapshot;
     skillSnapshotAfter?: import('./message').SkillStateSnapshot;
+    skillRuntimeBefore?: import('./message').ReplaySkillPayloadSnapshot;
+    skillRuntimeAfter?: import('./message').ReplaySkillPayloadSnapshot;
   };
 }
 
@@ -104,6 +106,8 @@ export interface BackendMessageForRestore {
     contextSnapshot?: import('../../context/types').ContextSnapshot;
     skillSnapshotBefore?: import('./message').SkillStateSnapshot;
     skillSnapshotAfter?: import('./message').SkillStateSnapshot;
+    skillRuntimeBefore?: import('./message').ReplaySkillPayloadSnapshot;
+    skillRuntimeAfter?: import('./message').ReplaySkillPayloadSnapshot;
     replaySource?: string;
     // 注意：sources/toolResults/ankiCards 等数据现在统一存储在 blocks 表中，
     // 通过 msg.blockIds 引用，无需从 _meta 恢复

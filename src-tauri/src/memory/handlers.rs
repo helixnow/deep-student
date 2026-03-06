@@ -627,10 +627,7 @@ pub async fn memory_write_smart(
     }
 
     let service = get_memory_service(&vfs_db, &lance_store, &llm_manager);
-    let mem_type = match memory_type
-        .as_deref()
-        .map(|s| s.trim().to_lowercase())
-    {
+    let mem_type = match memory_type.as_deref().map(|s| s.trim().to_lowercase()) {
         Some(s) if s == "fact" => super::service::MemoryType::Fact,
         Some(s) if s == "note" => super::service::MemoryType::Note,
         Some(s) => {
@@ -641,10 +638,7 @@ pub async fn memory_write_smart(
         }
         None => super::service::MemoryType::Fact,
     };
-    let purpose = match memory_purpose
-        .as_deref()
-        .map(|s| s.trim().to_lowercase())
-    {
+    let purpose = match memory_purpose.as_deref().map(|s| s.trim().to_lowercase()) {
         Some(s) if s == "internalized" => Some(super::service::MemoryPurpose::Internalized),
         Some(s) if s == "memorized" => Some(super::service::MemoryPurpose::Memorized),
         Some(s) if s == "supplementary" => Some(super::service::MemoryPurpose::Supplementary),

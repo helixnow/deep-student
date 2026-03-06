@@ -817,7 +817,10 @@ pub async fn data_governance_run_sync(
                 }
                 manager.create_manifest(dbs)
             };
-            if let Err(e) = manager.upload_manifest(storage.as_ref(), &upload_manifest).await {
+            if let Err(e) = manager
+                .upload_manifest(storage.as_ref(), &upload_manifest)
+                .await
+            {
                 rollback_marked_sync_versions(&active_dir, &marked_by_db);
                 return Err(format!("上传清单失败: {}", e));
             }

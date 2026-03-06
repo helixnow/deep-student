@@ -717,12 +717,13 @@ impl VfsNoteRepo {
             let now_ms = chrono::Utc::now().timestamp_millis();
 
             // 1. 获取要恢复的笔记信息（需要读取已删除笔记）
-            let note = Self::get_note_including_deleted_with_conn(conn, note_id)?.ok_or_else(|| {
-                VfsError::NotFound {
-                    resource_type: "Note".to_string(),
-                    id: note_id.to_string(),
-                }
-            })?;
+            let note =
+                Self::get_note_including_deleted_with_conn(conn, note_id)?.ok_or_else(|| {
+                    VfsError::NotFound {
+                        resource_type: "Note".to_string(),
+                        id: note_id.to_string(),
+                    }
+                })?;
 
             // 2. 原子化重命名恢复：避免「先查重后更新」并发 TOCTOU
             let mut restored_title: Option<String> = None;

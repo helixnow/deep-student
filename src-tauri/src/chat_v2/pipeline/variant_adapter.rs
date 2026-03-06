@@ -7,6 +7,8 @@ use super::*;
 pub(crate) struct VariantLLMAdapter {
     ctx: Arc<super::super::variant_context::VariantExecutionContext>,
     enable_thinking: bool,
+    skill_state_version: Option<u64>,
+    round_id: Option<String>,
     content_block_initialized: Mutex<bool>,
     thinking_block_initialized: Mutex<bool>,
     finalized_thinking_block_id: Mutex<Option<String>>,
@@ -24,10 +26,14 @@ impl VariantLLMAdapter {
     pub(crate) fn new(
         ctx: Arc<super::super::variant_context::VariantExecutionContext>,
         enable_thinking: bool,
+        skill_state_version: Option<u64>,
+        round_id: Option<String>,
     ) -> Self {
         Self {
             ctx,
             enable_thinking,
+            skill_state_version,
+            round_id,
             content_block_initialized: Mutex::new(false),
             thinking_block_initialized: Mutex::new(false),
             finalized_thinking_block_id: Mutex::new(None),
@@ -407,8 +413,21 @@ impl crate::llm_manager::LLMStreamHooks for VariantLLMAdapter {
 
         // 生成 block_id 并存储映射，供后续 args delta chunk 使用
         let block_id = ChatV2LLMAdapter::generate_block_id();
-        self.ctx
-            .emit_tool_call_preparing(tool_call_id, tool_name, Some(&block_id));
+        self.ctx.emitter().register_block_event_meta(
+            &block_id,
+            Some(self.ctx.variant_id()),
+            self.skill_state_version,
+            self.round_id.as_deref(),
+        );
+        self.ctx.emitter().emit_tool_call_preparing_with_meta(
+            self.ctx.message_id(),
+            tool_call_id,
+            tool_name,
+            Some(&block_id),
+            Some(self.ctx.variant_id()),
+            self.skill_state_version,
+            self.round_id.as_deref(),
+        );
         {
             let mut guard = self
                 .preparing_block_ids

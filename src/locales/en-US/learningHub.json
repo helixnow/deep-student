@@ -14,10 +14,12 @@
     "newNote": "New Note",
     "newExam": "New Question Set",
     "newTextbook": "Import Textbook",
+    "importMarkdown": "Import Markdown",
     "newTranslation": "New Translation",
     "newEssay": "New Essay",
     "newSubfolder": "New Subfolder",
     "newNoteHere": "New Note Here",
+    "importMarkdownHere": "Import Markdown Here",
     "rename": "Rename",
     "delete": "Delete",
     "favorite": "Favorite",
@@ -355,6 +357,7 @@
       "new": "New",
       "newFolder": "New Folder",
       "newNote": "New Note",
+      "importMarkdown": "Import Markdown",
       "newExam": "New Question Set",
       "newTextbook": "Import Textbook",
       "newTranslation": "New Translation",
@@ -429,6 +432,13 @@
       "importPartial": "{{success}} imported, {{failed}} failed",
       "importFailed": "File import failed",
       "notAllowedHere": "Cannot drop files in this view"
+    },
+    "markdownImport": {
+      "selectFiles": "Select Markdown Files",
+      "filterName": "Markdown Files",
+      "success": "Imported {{count}} Markdown note(s)",
+      "partial": "Imported {{success}} Markdown note(s), {{failed}} failed",
+      "failed": "Markdown import failed"
     },
     "contextMenu": {
       "open": "Open",

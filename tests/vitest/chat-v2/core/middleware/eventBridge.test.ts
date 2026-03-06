@@ -325,6 +325,63 @@ describe('EventBridge - 变体事件分发', () => {
     // 应该调用 createBlock（通过原有逻辑）
     expect(mockStore.createBlock).toHaveBeenCalled();
   });
+
+  it('variant A 的晚到 end 不应污染 variant B 的块', () => {
+    eventRegistry.register('tool_call', {
+      onStart: (store, messageId, _payload, blockId) => blockId ?? store.createBlock(messageId, 'mcp_tool'),
+      onEnd: (store, blockId, result) => {
+        store.setBlockResult(blockId, result);
+      },
+    });
+
+    handleBackendEventWithSequence(mockStore, {
+      type: EVENT_TYPE_VARIANT_START,
+      phase: 'start',
+      messageId: 'msg-1',
+      variantId: 'var-a',
+      modelId: 'model-a',
+      sequenceId: 0,
+    });
+    handleBackendEventWithSequence(mockStore, {
+      type: 'tool_call',
+      phase: 'start',
+      messageId: 'msg-1',
+      variantId: 'var-a',
+      blockId: 'blk-a',
+      payload: { toolName: 'fetch' },
+      sequenceId: 1,
+    });
+
+    handleBackendEventWithSequence(mockStore, {
+      type: EVENT_TYPE_VARIANT_START,
+      phase: 'start',
+      messageId: 'msg-1',
+      variantId: 'var-b',
+      modelId: 'model-b',
+      sequenceId: 2,
+    });
+    handleBackendEventWithSequence(mockStore, {
+      type: 'tool_call',
+      phase: 'start',
+      messageId: 'msg-1',
+      variantId: 'var-b',
+      blockId: 'blk-b',
+      payload: { toolName: 'fetch' },
+      sequenceId: 3,
+    });
+
+    handleBackendEventWithSequence(mockStore, {
+      type: 'tool_call',
+      phase: 'end',
+      variantId: 'var-a',
+      blockId: 'blk-a',
+      result: { ok: true },
+      sequenceId: 4,
+    });
+
+    expect(mockStore.setBlockResult).toHaveBeenCalledWith('blk-a', { ok: true });
+    expect(mockStore.setBlockResult).not.toHaveBeenCalledWith('blk-b', { ok: true });
+  });
 });
 
 // ============================================================================

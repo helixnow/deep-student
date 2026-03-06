@@ -12,6 +12,21 @@ use crate::vfs::{
     VfsNoteRepo, VfsTextbookRepo, VfsTranslationRepo,
 };
 
+fn helper_error(action: &str, resource_type: &str, id: &str, error: impl ToString) -> String {
+    DstuError::vfs_error(format!(
+        "{} failed (type={}, id={}): {}",
+        action,
+        resource_type,
+        id,
+        error.to_string()
+    ))
+    .to_string()
+}
+
+fn invalid_type_error(resource_type: &str, id: &str) -> String {
+    DstuError::invalid_node_type(format!("{} (id={})", resource_type, id)).to_string()
+}
+
 /// 根据资源类型执行软删除
 pub fn delete_resource_by_type(
     vfs_db: &Arc<VfsDatabase>,
@@ -20,7 +35,8 @@ pub fn delete_resource_by_type(
 ) -> Result<(), String> {
     match resource_type {
         "notes" | "note" => {
-            VfsNoteRepo::delete_note_with_folder_item(vfs_db, id).map_err(|e| e.to_string())?;
+            VfsNoteRepo::delete_note_with_folder_item(vfs_db, id)
+                .map_err(|e| helper_error("delete", resource_type, id, e))?;
             log::info!(
                 "[DSTU::delete_helpers] delete_resource_by_type: SUCCESS - type=note, id={}",
                 id
@@ -28,7 +44,7 @@ pub fn delete_resource_by_type(
         }
         "textbooks" | "textbook" => {
             VfsTextbookRepo::delete_textbook_with_folder_item(vfs_db, id)
-                .map_err(|e| e.to_string())?;
+                .map_err(|e| helper_error("delete", resource_type, id, e))?;
             log::info!(
                 "[DSTU::delete_helpers] delete_resource_by_type: SUCCESS - type=textbook, id={}",
                 id
@@ -36,7 +52,7 @@ pub fn delete_resource_by_type(
         }
         "translations" | "translation" => {
             VfsTranslationRepo::delete_translation_with_folder_item(vfs_db, id)
-                .map_err(|e| e.to_string())?;
+                .map_err(|e| helper_error("delete", resource_type, id, e))?;
             log::info!(
                 "[DSTU::delete_helpers] delete_resource_by_type: SUCCESS - type=translation, id={}",
                 id
@@ -44,7 +60,7 @@ pub fn delete_resource_by_type(
         }
         "exams" | "exam" => {
             VfsExamRepo::delete_exam_sheet_with_folder_item(vfs_db, id)
-                .map_err(|e| e.to_string())?;
+                .map_err(|e| helper_error("delete", resource_type, id, e))?;
             log::info!(
                 "[DSTU::delete_helpers] delete_resource_by_type: SUCCESS - type=exam, id={}",
                 id
@@ -53,11 +69,11 @@ pub fn delete_resource_by_type(
         "essays" | "essay" => {
             if id.starts_with("essay_session_") {
                 VfsEssayRepo::delete_session_with_folder_item(vfs_db, id)
-                    .map_err(|e| e.to_string())?;
+                    .map_err(|e| helper_error("delete", resource_type, id, e))?;
                 log::info!("[DSTU::delete_helpers] delete_resource_by_type: SUCCESS - type=essay_session, id={}", id);
             } else {
                 VfsEssayRepo::delete_essay_with_folder_item(vfs_db, id)
-                    .map_err(|e| e.to_string())?;
+                    .map_err(|e| helper_error("delete", resource_type, id, e))?;
                 log::info!(
                     "[DSTU::delete_helpers] delete_resource_by_type: SUCCESS - type=essay, id={}",
                     id
@@ -65,7 +81,8 @@ pub fn delete_resource_by_type(
             }
         }
         "folders" | "folder" => {
-            VfsFolderRepo::delete_folder(vfs_db, id).map_err(|e| e.to_string())?;
+            VfsFolderRepo::delete_folder(vfs_db, id)
+                .map_err(|e| helper_error("delete", resource_type, id, e))?;
             log::info!(
                 "[DSTU::delete_helpers] delete_resource_by_type: SUCCESS - type=folder, id={}",
                 id
@@ -73,21 +90,23 @@ pub fn delete_resource_by_type(
         }
         "images" | "files" | "attachments" | "image" | "file" | "attachment" => {
             // P0-FIX: 使用软删除而非硬删除，支持回收站恢复
-            VfsFileRepo::delete_file(vfs_db, id).map_err(|e| e.to_string())?;
+            VfsFileRepo::delete_file(vfs_db, id)
+                .map_err(|e| helper_error("delete", resource_type, id, e))?;
             log::info!(
                 "[DSTU::delete_helpers] delete_resource_by_type: SUCCESS - type=file, id={}",
                 id
             );
         }
         "mindmaps" | "mindmap" => {
-            VfsMindMapRepo::delete_mindmap(vfs_db, id).map_err(|e| e.to_string())?;
+            VfsMindMapRepo::delete_mindmap(vfs_db, id)
+                .map_err(|e| helper_error("delete", resource_type, id, e))?;
             log::info!(
                 "[DSTU::delete_helpers] delete_resource_by_type: SUCCESS - type=mindmap, id={}",
                 id
             );
         }
         _ => {
-            return Err(DstuError::invalid_node_type(resource_type).to_string());
+            return Err(invalid_type_error(resource_type, id));
         }
     }
     Ok(())
@@ -104,12 +123,12 @@ pub fn delete_resource_by_type_with_conn(
     match resource_type {
         "notes" | "note" => {
             VfsNoteRepo::delete_note_with_folder_item_with_conn(conn, id)
-                .map_err(|e| e.to_string())?;
+                .map_err(|e| helper_error("delete_with_conn", resource_type, id, e))?;
             log::info!("[DSTU::delete_helpers] delete_resource_by_type_with_conn: SUCCESS - type=note, id={}", id);
         }
         "textbooks" | "textbook" => {
             VfsTextbookRepo::delete_textbook_with_folder_item_with_conn(conn, id)
-                .map_err(|e| e.to_string())?;
+                .map_err(|e| helper_error("delete_with_conn", resource_type, id, e))?;
             log::info!("[DSTU::delete_helpers] delete_resource_by_type_with_conn: SUCCESS - type=textbook, id={}", id);
         }
         "translations" | "translation" => {
@@ -147,7 +166,7 @@ pub fn delete_resource_by_type_with_conn(
             log::info!("[DSTU::delete_helpers] delete_resource_by_type_with_conn: SUCCESS - type=mindmap, id={}", id);
         }
         _ => {
-            return Err(DstuError::invalid_node_type(resource_type).to_string());
+            return Err(invalid_type_error(resource_type, id));
         }
     }
     Ok(())
@@ -161,10 +180,12 @@ pub fn purge_resource_by_type(
 ) -> Result<(), String> {
     match resource_type {
         "notes" | "note" => {
-            VfsNoteRepo::purge_note(vfs_db, id).map_err(|e| e.to_string())?;
+            VfsNoteRepo::purge_note(vfs_db, id)
+                .map_err(|e| helper_error("purge", resource_type, id, e))?;
         }
         "textbooks" | "textbook" => {
-            VfsTextbookRepo::purge_textbook(vfs_db, id).map_err(|e| e.to_string())?;
+            VfsTextbookRepo::purge_textbook(vfs_db, id)
+                .map_err(|e| helper_error("purge", resource_type, id, e))?;
         }
         "translations" | "translation" => {
             VfsTranslationRepo::purge_translation(vfs_db, id).map_err(|e| e.to_string())?;
@@ -175,24 +196,29 @@ pub fn purge_resource_by_type(
         "essays" | "essay" => {
             if id.starts_with("essay_session_") {
                 // 会话没有软删除依赖，直接永久删除（同时删除其所有轮次）
-                let _ = VfsEssayRepo::purge_session(vfs_db, id).map_err(|e| e.to_string())?;
+                let _ = VfsEssayRepo::purge_session(vfs_db, id)
+                    .map_err(|e| helper_error("purge", resource_type, id, e))?;
                 // 兜底清理 folder_items（如果存在）
                 let _ = VfsFolderRepo::remove_item_by_item_id(vfs_db, "essay", id);
             } else {
-                VfsEssayRepo::purge_essay(vfs_db, id).map_err(|e| e.to_string())?;
+                VfsEssayRepo::purge_essay(vfs_db, id)
+                    .map_err(|e| helper_error("purge", resource_type, id, e))?;
             }
         }
         "folders" | "folder" => {
-            VfsFolderRepo::purge_folder(vfs_db, id).map_err(|e| e.to_string())?;
+            VfsFolderRepo::purge_folder(vfs_db, id)
+                .map_err(|e| helper_error("purge", resource_type, id, e))?;
         }
         "images" | "files" | "attachments" | "image" | "file" | "attachment" => {
-            VfsFileRepo::purge_file(vfs_db, id).map_err(|e| e.to_string())?;
+            VfsFileRepo::purge_file(vfs_db, id)
+                .map_err(|e| helper_error("purge", resource_type, id, e))?;
         }
         "mindmaps" | "mindmap" => {
-            VfsMindMapRepo::purge_mindmap(vfs_db, id).map_err(|e| e.to_string())?;
+            VfsMindMapRepo::purge_mindmap(vfs_db, id)
+                .map_err(|e| helper_error("purge", resource_type, id, e))?;
         }
         _ => {
-            return Err(DstuError::invalid_node_type(resource_type).to_string());
+            return Err(invalid_type_error(resource_type, id));
         }
     }
     log::info!(
@@ -211,10 +237,12 @@ pub fn restore_resource_by_type(
 ) -> Result<(), String> {
     match resource_type {
         "notes" | "note" => {
-            VfsNoteRepo::restore_note(vfs_db, id).map_err(|e| e.to_string())?;
+            VfsNoteRepo::restore_note(vfs_db, id)
+                .map_err(|e| helper_error("restore", resource_type, id, e))?;
         }
         "textbooks" | "textbook" => {
-            VfsTextbookRepo::restore_textbook(vfs_db, id).map_err(|e| e.to_string())?;
+            VfsTextbookRepo::restore_textbook(vfs_db, id)
+                .map_err(|e| helper_error("restore", resource_type, id, e))?;
         }
         "translations" | "translation" => {
             VfsTranslationRepo::restore_translation(vfs_db, id).map_err(|e| e.to_string())?;
@@ -240,7 +268,7 @@ pub fn restore_resource_by_type(
             VfsMindMapRepo::restore_mindmap(vfs_db, id).map_err(|e| e.to_string())?;
         }
         _ => {
-            return Err(DstuError::invalid_node_type(resource_type).to_string());
+            return Err(invalid_type_error(resource_type, id));
         }
     }
     log::info!(
@@ -261,10 +289,12 @@ pub fn restore_resource_by_type_with_conn(
 ) -> Result<(), String> {
     match resource_type {
         "notes" | "note" => {
-            VfsNoteRepo::restore_note_with_conn(conn, id).map_err(|e| e.to_string())?;
+            VfsNoteRepo::restore_note_with_conn(conn, id)
+                .map_err(|e| helper_error("restore_with_conn", resource_type, id, e))?;
         }
         "textbooks" | "textbook" => {
-            VfsTextbookRepo::restore_textbook_with_conn(conn, id).map_err(|e| e.to_string())?;
+            VfsTextbookRepo::restore_textbook_with_conn(conn, id)
+                .map_err(|e| helper_error("restore_with_conn", resource_type, id, e))?;
         }
         "translations" | "translation" => {
             VfsTranslationRepo::restore_translation_with_conn(conn, id)
@@ -291,7 +321,7 @@ pub fn restore_resource_by_type_with_conn(
                 VfsMindMapRepo::restore_mindmap_with_conn(conn, id).map_err(|e| e.to_string())?;
         }
         _ => {
-            return Err(DstuError::invalid_node_type(resource_type).to_string());
+            return Err(invalid_type_error(resource_type, id));
         }
     }
     log::info!(

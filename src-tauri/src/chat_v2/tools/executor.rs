@@ -17,10 +17,12 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use tauri::Window;
 use tokio_util::sync::CancellationToken;
 
 use crate::chat_v2::database::ChatV2Database;
+use crate::chat_v2::event_types;
 use crate::chat_v2::events::ChatV2EventEmitter;
 use crate::chat_v2::types::{block_status, MessageBlock, ToolCall, ToolResultInfo};
 use crate::database::Database;
@@ -401,6 +403,50 @@ impl ExecutionContext {
         self.rag_top_k = top_k;
         self.rag_enable_reranking = enable_reranking;
         self
+    }
+
+    pub fn emit_tool_call_start(
+        &self,
+        tool_name: &str,
+        tool_input: Value,
+        tool_call_id: Option<&str>,
+    ) {
+        let payload = serde_json::json!({
+            "toolName": tool_name,
+            "toolInput": tool_input,
+            "toolCallId": tool_call_id,
+        });
+        self.emitter.emit_start_with_meta(
+            event_types::TOOL_CALL,
+            &self.message_id,
+            Some(&self.block_id),
+            Some(payload),
+            self.variant_id.as_deref(),
+            self.skill_state_version,
+            self.round_id.as_deref(),
+        );
+    }
+
+    pub fn emit_tool_call_end(&self, result: Option<Value>) {
+        self.emitter.emit_end_with_meta(
+            event_types::TOOL_CALL,
+            &self.block_id,
+            result,
+            self.variant_id.as_deref(),
+            self.skill_state_version,
+            self.round_id.as_deref(),
+        );
+    }
+
+    pub fn emit_tool_call_error(&self, error: &str) {
+        self.emitter.emit_error_with_meta(
+            event_types::TOOL_CALL,
+            &self.block_id,
+            error,
+            self.variant_id.as_deref(),
+            self.skill_state_version,
+            self.round_id.as_deref(),
+        );
     }
 }
 

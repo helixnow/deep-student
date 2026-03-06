@@ -370,6 +370,15 @@ pub const V20260302_NORMALIZE_FOLDER_ITEMS_TIMESTAMPS: MigrationDef = MigrationD
 )
 .idempotent();
 
+/// V20260306: 统一 folder_items/path_cache 的 file 别名并补活动挂载唯一约束
+pub const V20260306_CANONICALIZE_FOLDER_ITEM_MOUNTS: MigrationDef = MigrationDef::new(
+    20260306,
+    "canonicalize_folder_item_mounts",
+    include_str!("../../../migrations/vfs/V20260306__canonicalize_folder_item_mounts.sql"),
+)
+.with_expected_indexes(&["idx_folder_items_item_active_unique"])
+.idempotent();
+
 /// VFS 数据库所有迁移定义
 pub const VFS_MIGRATIONS: &[MigrationDef] = &[
     V20260130_INIT,
@@ -389,6 +398,7 @@ pub const VFS_MIGRATIONS: &[MigrationDef] = &[
     V20260215_ADD_IMPORT_CHECKPOINT,
     V20260227_ADD_MEMORY_AUDIT_LOG,
     V20260302_NORMALIZE_FOLDER_ITEMS_TIMESTAMPS,
+    V20260306_CANONICALIZE_FOLDER_ITEM_MOUNTS,
 ];
 
 /// VFS 迁移集合
@@ -469,7 +479,9 @@ mod tests {
         // + V20260210 (add_answer_submissions)
         // + V20260211 (fix_change_log_record_id)
         // + V20260227 (add_memory_audit_log)
-        assert_eq!(VFS_MIGRATION_SET.count(), 17);
+        // + V20260302 (normalize_folder_items_timestamps)
+        // + V20260306 (canonicalize_folder_item_mounts)
+        assert_eq!(VFS_MIGRATION_SET.count(), 18);
     }
 
     #[test]
@@ -550,6 +562,6 @@ mod tests {
 
     #[test]
     fn test_latest_version() {
-        assert_eq!(VFS_MIGRATION_SET.latest_version(), 20260302);
+        assert_eq!(VFS_MIGRATION_SET.latest_version(), 20260306);
     }
 }

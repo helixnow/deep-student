@@ -6,8 +6,8 @@
 //!
 //! 触发点：ChatV2Pipeline::save_results_post_commit
 
+use std::collections::HashSet;
 use std::sync::Arc;
-use std::{collections::HashSet};
 
 use anyhow::Result;
 use tracing::{debug, info, warn};

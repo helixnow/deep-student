@@ -136,6 +136,66 @@ impl ProviderAdapter for OpenAIAdapter {
 pub struct OpenAIResponsesAdapter;
 
 impl OpenAIResponsesAdapter {
+    fn convert_tool_call_to_response_tool_choice(value: &Value) -> Option<Value> {
+        if let Some(choice) = value.as_str() {
+            return match choice {
+                "auto" | "none" | "required" => Some(json!(choice)),
+                _ => None,
+            };
+        }
+
+        let Some(obj) = value.as_object() else {
+            return None;
+        };
+
+        let choice_type = obj.get("type").and_then(|v| v.as_str()).unwrap_or("");
+        if matches!(choice_type, "function" | "tool") {
+            let name = obj
+                .get("name")
+                .and_then(|v| v.as_str())
+                .or_else(|| {
+                    obj.get("function")
+                        .and_then(|f| f.get("name"))
+                        .and_then(|v| v.as_str())
+                })?;
+            return Some(json!({
+                "type": "function",
+                "name": name,
+            }));
+        }
+
+        None
+    }
+
+    fn convert_response_tool_call(item: &Value) -> Option<Value> {
+        let item_type = item.get("type").and_then(|v| v.as_str()).unwrap_or("");
+        if item_type != "function_call" {
+            return None;
+        }
+
+        let name = item.get("name").and_then(|v| v.as_str())?;
+        let arguments = item
+            .get("arguments")
+            .and_then(|v| v.as_str())
+            .or_else(|| item.get("input").and_then(|v| v.as_str()))
+            .unwrap_or("{}");
+        let id = item
+            .get("call_id")
+            .and_then(|v| v.as_str())
+            .or_else(|| item.get("id").and_then(|v| v.as_str()))
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| format!("resp_call_{}", uuid::Uuid::new_v4()));
+
+        Some(json!({
+            "id": id,
+            "type": "function",
+            "function": {
+                "name": name,
+                "arguments": arguments,
+            }
+        }))
+    }
+
     /// 将 Chat Completions 兼容格式转换为 Responses API 请求格式。
     fn convert_to_responses_format(model: &str, body: &Value) -> Value {
         let mut input_blocks: Vec<Value> = Vec::new();
@@ -274,6 +334,23 @@ impl OpenAIResponsesAdapter {
             payload["response_format"] = response_format.clone();
         }
 
+        if let Some(tools) = body.get("tools").and_then(|v| v.as_array()) {
+            if !tools.is_empty() {
+                payload["tools"] = Value::Array(tools.clone());
+            }
+        }
+
+        if let Some(tool_choice) = body
+            .get("tool_choice")
+            .and_then(Self::convert_tool_call_to_response_tool_choice)
+        {
+            payload["tool_choice"] = tool_choice;
+        }
+
+        if let Some(parallel_tool_calls) = body.get("parallel_tool_calls") {
+            payload["parallel_tool_calls"] = parallel_tool_calls.clone();
+        }
+
         payload
     }
 
@@ -387,6 +464,32 @@ impl ProviderAdapter for OpenAIResponsesAdapter {
                     if !reasoning.is_empty() {
                         events.push(StreamEvent::ReasoningChunk(reasoning.to_string()));
                     }
+                }
+            }
+            "response.output_item.done" => {
+                if let Some(item) = parsed.get("item") {
+                    if let Some(tool_call) = Self::convert_response_tool_call(item) {
+                        events.push(StreamEvent::ToolCall(tool_call));
+                    }
+                }
+            }
+            "response.function_call_arguments.done"
+            | "response.function_call.arguments.done" => {
+                let name = parsed.get("name").and_then(|v| v.as_str());
+                let arguments = parsed.get("arguments").and_then(|v| v.as_str());
+                let call_id = parsed
+                    .get("call_id")
+                    .and_then(|v| v.as_str())
+                    .or_else(|| parsed.get("item_id").and_then(|v| v.as_str()));
+                if let (Some(name), Some(call_id)) = (name, call_id) {
+                    events.push(StreamEvent::ToolCall(json!({
+                        "id": call_id,
+                        "type": "function",
+                        "function": {
+                            "name": name,
+                            "arguments": arguments.unwrap_or("{}")
+                        }
+                    })));
                 }
             }
             "response.completed" => {
@@ -1593,6 +1696,34 @@ mod tests {
     }
 
     #[test]
+    fn openai_responses_adapter_converts_tools_and_tool_choice() {
+        let body = json!({
+            "messages": [{ "role": "user", "content": "hi" }],
+            "tools": [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "lookup_weather",
+                        "description": "lookup",
+                        "parameters": { "type": "object", "properties": {} }
+                    }
+                }
+            ],
+            "tool_choice": {
+                "type": "function",
+                "function": { "name": "lookup_weather" }
+            },
+            "parallel_tool_calls": false
+        });
+
+        let payload = OpenAIResponsesAdapter::convert_to_responses_format("gpt-5.2", &body);
+        assert_eq!(payload["tools"][0]["function"]["name"], json!("lookup_weather"));
+        assert_eq!(payload["tool_choice"]["type"], json!("function"));
+        assert_eq!(payload["tool_choice"]["name"], json!("lookup_weather"));
+        assert_eq!(payload["parallel_tool_calls"], json!(false));
+    }
+
+    #[test]
     fn openai_responses_adapter_parses_stream_events() {
         let adapter = OpenAIResponsesAdapter;
 
@@ -1612,6 +1743,11 @@ mod tests {
         );
         assert!(matches!(completed.first(), Some(StreamEvent::Usage(_))));
         assert!(matches!(completed.last(), Some(StreamEvent::Done)));
+
+        let tool_item = adapter.parse_stream(
+            r#"data: {"type":"response.output_item.done","item":{"type":"function_call","call_id":"call_1","name":"lookup_weather","arguments":"{\"city\":\"Paris\"}"}}"#,
+        );
+        assert!(matches!(tool_item.first(), Some(StreamEvent::ToolCall(v)) if v["function"]["name"] == json!("lookup_weather")));
     }
 
     #[test]

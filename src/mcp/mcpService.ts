@@ -1265,11 +1265,11 @@ class McpServiceImpl {
    * 统一工具调用。toolName 可带 namespace；会自动路由到对应 server。
    * 连接断开时会自动重连并重试一次。
    */
-  async callTool(toolName: string, args?: any, timeoutMs = 60000): Promise<{
+  async callTool(toolName: string, args?: any, timeoutMs = 60000, preferredServerId?: string): Promise<{
     ok: boolean; data?: any; error?: string; usage?: any;
   }> {
     const started = Date.now();
-    const rt = this.pickServerByTool(toolName);
+    const rt = this.pickServerByTool(toolName, preferredServerId);
     if (!rt) return { ok: false, error: i18next.t('mcp:service.tool_not_found', { toolName }) };
     
     // 参数验证：根据工具的 JSON Schema 检查参数
@@ -1428,7 +1428,14 @@ class McpServiceImpl {
     }
   }
 
-  private pickServerByTool(name: string): ServerRuntime | undefined {
+  private pickServerByTool(name: string, preferredServerId?: string): ServerRuntime | undefined {
+    if (preferredServerId) {
+      const preferred = this.servers.get(preferredServerId);
+      if (preferred && this.toolCacheByServer.get(preferredServerId)?.tools.some(t => t.name === name)) {
+        return preferred;
+      }
+    }
+
     // 优先匹配最长的 namespace（防止短前缀误匹配）
     let bestMatch: ServerRuntime | undefined;
     let bestLen = 0;
@@ -1565,7 +1572,7 @@ class McpServiceImpl {
 export const McpService = new McpServiceImpl();
 
 // Frontend bridge helpers for Tauri events
-export type BridgeRequest = { correlationId: string; tool: string; args?: any; timeoutMs?: number };
+export type BridgeRequest = { correlationId: string; tool: string; serverId?: string; args?: any; timeoutMs?: number };
 export type BridgeResponse = { correlationId: string; ok: boolean; data?: any; error?: string; usage?: any };
 
 let bridgeInitialized = false;
@@ -1582,7 +1589,7 @@ export function setupTauriBridge() {
     .then(({ listen, emit }) => {
       listen<BridgeRequest>('mcp-bridge-request', async (ev) => {
         const req = ev.payload;
-        const res = await McpService.callTool(req.tool, req.args, req.timeoutMs ?? 60000);
+        const res = await McpService.callTool(req.tool, req.args, req.timeoutMs ?? 60000, req.serverId);
         const payload: BridgeResponse = { correlationId: req.correlationId, ...res } as any;
         // Best-effort emit: response delivery failure is non-fatal; the caller will time out
         try { await emit('mcp-bridge-response', payload); } catch { /* best-effort */ }

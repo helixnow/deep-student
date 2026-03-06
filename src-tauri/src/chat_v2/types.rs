@@ -708,6 +708,23 @@ pub struct SkillStateSnapshot {
     pub version: u64,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ReplaySkillPayloadSnapshot {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub active_skill_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub skill_allowed_tools: Vec<String>,
+    #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
+    pub skill_contents: std::collections::HashMap<String, String>,
+    #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
+    pub skill_embedded_tools: std::collections::HashMap<String, Vec<McpToolSchema>>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub mcp_tool_schemas: Vec<McpToolSchema>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub selected_mcp_servers: Vec<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionSkillState {
@@ -807,15 +824,41 @@ impl SessionSkillState {
         next.legacy_migrated = Some(false);
         next
     }
+
+    pub fn promoted_branch_local_skills(&self) -> Self {
+        let mut next = self.clone();
+        next.agentic_session_skill_ids
+            .extend(next.branch_local_skill_ids.clone());
+        next.agentic_session_skill_ids.sort();
+        next.agentic_session_skill_ids.dedup();
+        next.branch_local_skill_ids.clear();
+        next.version = next.version.saturating_add(1);
+        next.legacy_migrated = Some(false);
+        next
+    }
+
+    pub fn without_branch_local_skills(&self) -> Self {
+        let mut next = self.clone();
+        if !next.branch_local_skill_ids.is_empty() {
+            next.branch_local_skill_ids.clear();
+            next.version = next.version.saturating_add(1);
+        }
+        next.legacy_migrated = Some(false);
+        next
+    }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct VariantMeta {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub skill_snapshot_before: Option<SkillStateSnapshot>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub skill_snapshot_after: Option<SkillStateSnapshot>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub skill_runtime_before: Option<ReplaySkillPayloadSnapshot>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub skill_runtime_after: Option<ReplaySkillPayloadSnapshot>,
 }
 
 /// 共享上下文 - 检索结果，所有变体共享，只读
@@ -1177,6 +1220,14 @@ pub struct MessageMeta {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub skill_snapshot_after: Option<SkillStateSnapshot>,
 
+    /// 技能运行时快照（执行前）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub skill_runtime_before: Option<ReplaySkillPayloadSnapshot>,
+
+    /// 技能运行时快照（执行后）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub skill_runtime_after: Option<ReplaySkillPayloadSnapshot>,
+
     /// 实际采用的 replay 来源
     #[serde(skip_serializing_if = "Option::is_none")]
     pub replay_source: Option<String>,
@@ -1194,6 +1245,8 @@ impl Default for MessageMeta {
             context_snapshot: None,
             skill_snapshot_before: None,
             skill_snapshot_after: None,
+            skill_runtime_before: None,
+            skill_runtime_after: None,
             replay_source: None,
         }
     }
@@ -1723,11 +1776,15 @@ pub struct AttachmentInput {
 /// MCP 工具 Schema（前端传递给后端）
 ///
 /// 结构与 OpenAI function calling 兼容
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct McpToolSchema {
     /// 工具名称（可能带命名空间前缀）
     pub name: String,
+
+    /// 所属 MCP 服务器 ID（外部工具去重/路由用）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub server_id: Option<String>,
 
     /// 工具描述
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -2395,6 +2452,8 @@ mod tests {
                 context_snapshot: None,
                 skill_snapshot_before: None,
                 skill_snapshot_after: None,
+                skill_runtime_before: None,
+                skill_runtime_after: None,
                 replay_source: None,
             }),
             attachments: None,
@@ -2718,6 +2777,7 @@ mod tests {
             error: None,
             created_at: 1234567890,
             usage: None,
+            meta: None,
         };
 
         let json = serde_json::to_string(&variant).unwrap();
@@ -3372,5 +3432,40 @@ mod tests {
         assert_eq!(usage.source, TokenSource::Api);
         assert_eq!(usage.reasoning_tokens, Some(200));
         assert!(usage.cached_tokens.is_none());
+    }
+
+    #[test]
+    fn test_session_skill_state_promoted_branch_local_skills() {
+        let state = SessionSkillState {
+            manual_pinned_skill_ids: vec!["manual-a".to_string()],
+            agentic_session_skill_ids: vec!["agentic-a".to_string()],
+            branch_local_skill_ids: vec!["branch-a".to_string()],
+            version: 3,
+            ..Default::default()
+        };
+
+        let promoted = state.promoted_branch_local_skills();
+        assert_eq!(promoted.manual_pinned_skill_ids, vec!["manual-a".to_string()]);
+        assert_eq!(
+            promoted.agentic_session_skill_ids,
+            vec!["agentic-a".to_string(), "branch-a".to_string()]
+        );
+        assert!(promoted.branch_local_skill_ids.is_empty());
+        assert_eq!(promoted.version, 4);
+    }
+
+    #[test]
+    fn test_session_skill_state_without_branch_local_skills() {
+        let state = SessionSkillState {
+            manual_pinned_skill_ids: vec!["manual-a".to_string()],
+            branch_local_skill_ids: vec!["branch-a".to_string()],
+            version: 3,
+            ..Default::default()
+        };
+
+        let trimmed = state.without_branch_local_skills();
+        assert_eq!(trimmed.manual_pinned_skill_ids, vec!["manual-a".to_string()]);
+        assert!(trimmed.branch_local_skill_ids.is_empty());
+        assert_eq!(trimmed.version, 4);
     }
 }

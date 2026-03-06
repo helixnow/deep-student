@@ -44,7 +44,6 @@ import type { VfsResourceType } from '@/chat-v2/context/types';
 import { usePageMount } from '@/debug-panel/hooks/usePageLifecycle';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
-import { useLearningHubNavigation } from './LearningHubNavigationContext';
 import { useFinderStore } from './stores/finderStore';
 import { DstuAppLauncher } from './components/DstuAppLauncher';
 import { type OpenTab, type SplitViewState, MAX_TABS, createTab } from './types/tabs';
@@ -53,7 +52,7 @@ import { TabPanelContainer } from './apps/TabPanelContainer';
 import { setActiveTabForExternal } from './activeTabAccessor';
 import { COMMAND_EVENTS, useCommandEvents } from '@/command-palette/hooks/useCommandEvents';
 import { getCreatableFolderId } from './viewGuards';
-import { getViewCapabilities } from './learningHubContracts';
+import { getQuickAccessTypeFromLauncherType, getViewCapabilities } from './learningHubContracts';
 
 // ============================================================================
 // 三屏滑动布局类型和常量
@@ -295,9 +294,6 @@ export const LearningHubPage: React.FC = () => {
 
   // 计算侧边栏宽度（移动端与设置页面保持一致的半宽 × 1.15）
   const sidebarWidth = Math.max(Math.round(containerWidth / 2 * 1.15), 200);
-
-  // ========== 📱 导航上下文（用于移动端返回按钮） ==========
-  const { setHasOpenApp, registerCloseAppCallback } = useLearningHubNavigation();
 
   // ★ 使用 finderStore 获取实际的文件夹导航状态（而非 NavigationContext）
   // finderStore 是实际控制文件列表显示的状态，NavigationContext 只是同步层
@@ -646,14 +642,14 @@ export const LearningHubPage: React.FC = () => {
 
   const handleNavigateToKnowledgeEvent = useCallback(async (detail: NavigateToKnowledgeEventDetail) => {
     const { preferTab, locator } = detail;
-    const fallbackMemoryId = locator?.sourceId || locator?.resourceId;
 
     // 根据 preferTab 导航到对应视图
-    if (preferTab === 'memory' || fallbackMemoryId) {
+    if (preferTab === 'memory') {
       // 用户记忆视图
       finderQuickAccessNavigate('memory');
-      if (fallbackMemoryId) {
-        setPendingMemoryLocate(fallbackMemoryId);
+      const memoryId = locator?.sourceId || locator?.resourceId;
+      if (memoryId) {
+        setPendingMemoryLocate(memoryId);
       }
       // 移动端：切换到中间视图显示内容
       if (isSmallScreen) {
@@ -817,17 +813,6 @@ export const LearningHubPage: React.FC = () => {
     true
   );
 
-  // ========== 📱 同步应用状态到导航上下文 ==========
-  useEffect(() => {
-    setHasOpenApp(hasOpenApp);
-
-    if (hasOpenApp) {
-      registerCloseAppCallback(handleCloseApp);
-    } else {
-      registerCloseAppCallback(null);
-    }
-  }, [hasOpenApp, setHasOpenApp, registerCloseAppCallback, handleCloseApp]);
-
   // ========== ★ 同步活跃标签页到全局访问器（供 CommandPalette 等使用） ==========
   useEffect(() => {
     setActiveTabForExternal(activeTab);
@@ -937,25 +922,7 @@ export const LearningHubPage: React.FC = () => {
                 setActiveAppType(type);
                 // ★ 2026-01-19: 调用 finderStore 进行实际导航
                 // 映射 DstuAppLauncher 的类型到 finderStore 的 QuickAccessType
-                const typeMapping: Record<string, string> = {
-                  'desktop': 'desktop',
-                  'all': 'allFiles',
-                  'note': 'notes',
-                  'textbook': 'textbooks',
-                  'exam': 'exams',
-                  'translation': 'translations',
-                  'essay': 'essays',
-                  'mindmap': 'mindmaps',
-                  'image': 'images',
-                  'file': 'files',
-                  'recent': 'recent',
-                  'favorites': 'favorites',
-                  'trash': 'trash',
-                  'indexStatus': 'indexStatus',
-                  'memory': 'memory',
-                };
-                const quickAccessType = typeMapping[type] || 'allFiles';
-                finderQuickAccessNavigate(quickAccessType as any);
+                finderQuickAccessNavigate(getQuickAccessTypeFromLauncherType(type));
                 setScreenPosition('center');
               }}
               onCreateAndOpen={handleCreateAndOpen}

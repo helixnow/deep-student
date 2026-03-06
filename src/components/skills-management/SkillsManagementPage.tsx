@@ -41,6 +41,7 @@ import {
   resetBuiltinSkillCustomization,
   parseSkillFile,
   useSkillDefaults,
+  extractCustomizationFromSkill,
 } from '@/chat-v2/skills';
 import type { SkillDefinition, SkillLocation } from '@/chat-v2/skills/types';
 import { getLocalizedSkillDescription, getLocalizedSkillName } from '@/chat-v2/skills/utils';
@@ -265,6 +266,7 @@ export const SkillsManagementPage: React.FC<SkillsManagementPageProps> = ({
           author: data.author || undefined,
           priority: data.priority,
           disableAutoInvoke: data.disableAutoInvoke,
+          allowedTools: data.allowedTools,
           skillType: data.skillType,
           relatedSkills: data.relatedSkills,
           dependencies: data.dependencies,
@@ -286,10 +288,12 @@ export const SkillsManagementPage: React.FC<SkillsManagementPageProps> = ({
             author: data.author || undefined,
             priority: data.priority,
             disableAutoInvoke: data.disableAutoInvoke,
+            allowedTools: data.allowedTools,
             skillType: data.skillType,
             relatedSkills: data.relatedSkills,
             dependencies: data.dependencies,
             embeddedTools: data.embeddedTools,
+            preservedFrontmatter: editingSkill.preservedFrontmatter,
           },
           data.content
         );
@@ -310,6 +314,7 @@ export const SkillsManagementPage: React.FC<SkillsManagementPageProps> = ({
           author: data.author || undefined,
           priority: data.priority,
           disableAutoInvoke: data.disableAutoInvoke,
+          allowedTools: data.allowedTools,
           skillType: data.skillType,
           relatedSkills: data.relatedSkills,
           dependencies: data.dependencies,
@@ -401,6 +406,7 @@ export const SkillsManagementPage: React.FC<SkillsManagementPageProps> = ({
         skillType: skill.skillType,
         relatedSkills: skill.relatedSkills,
         dependencies: skill.dependencies,
+        preservedFrontmatter: skill.preservedFrontmatter,
       },
       skill.content
     );
@@ -426,7 +432,7 @@ export const SkillsManagementPage: React.FC<SkillsManagementPageProps> = ({
 
   // 批量导出：逐个弹出保存对话框
   const handleExportAll = useCallback(async () => {
-    const userSkills = allSkills.filter(s => !s.isBuiltin);
+    const userSkills = allSkills.filter((s) => !s.isBuiltin || s.isCustomized);
     if (userSkills.length === 0) {
       showGlobalNotification('info', t('skills:management.export_no_skills', '没有可导出的用户技能'));
       return;
@@ -447,6 +453,7 @@ export const SkillsManagementPage: React.FC<SkillsManagementPageProps> = ({
           skillType: skill.skillType,
           relatedSkills: skill.relatedSkills,
           dependencies: skill.dependencies,
+          preservedFrontmatter: skill.preservedFrontmatter,
         },
         skill.content
       );
@@ -568,7 +575,12 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
 
     try {
       const existingSkill = skillRegistry.get(pendingImport.skill.id);
-      if (existingSkill && !existingSkill.isBuiltin) {
+      if (existingSkill?.isBuiltin) {
+        await saveBuiltinSkillCustomization(
+          pendingImport.skill.id,
+          extractCustomizationFromSkill(pendingImport.skill),
+        );
+      } else if (existingSkill) {
         const skillFilePath = existingSkill.sourcePath;
         await updateSkill({ path: skillFilePath, content: pendingImport.content });
       } else {

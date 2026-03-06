@@ -17,6 +17,7 @@ export interface ApiModelDescriptor {
   id: string;
   name?: string;
   capabilities?: ApiCapabilityOverride[];
+  providerScope?: string;
 }
 
 export interface InferredApiCapabilities {
@@ -409,7 +410,7 @@ const hasRegistryOptionalParam = (fields: string[] | undefined, target: string):
 export function inferApiCapabilities(descriptor: ApiModelDescriptor): InferredApiCapabilities {
   const id = toLower(descriptor.id);
   const name = toLower(descriptor.name);
-  const modelRecord = findModelRecordById(id);
+  const modelRecord = findModelRecordById(descriptor.id, { providerScope: descriptor.providerScope });
   const modelCapabilities = modelRecord?.capabilities;
   const modelOptionalParams = modelRecord?.param_format?.optional_fields;
 

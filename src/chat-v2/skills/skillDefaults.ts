@@ -19,8 +19,8 @@ const manager = new PersistentSetManager('dstu-skill-defaults', 'SkillDefaults')
 
 /**
  * 默认技能引导：
- * 1) 新用户（无存储）默认开启 deep-student
- * 2) 老用户一次性迁移：替换 legacy 默认技能并加入 deep-student（用户后续可手动关闭）
+ * 1) 新用户（无存储）不再隐式开启任何 skill，保持渐进披露的最小暴露原则
+ * 2) 老用户一次性迁移：仅替换 legacy 默认技能并保留已有显式选择
  */
 function bootstrapDefaultSkills(): void {
   if (typeof globalThis === 'undefined' || typeof globalThis.localStorage === 'undefined') {
@@ -33,19 +33,21 @@ function bootstrapDefaultSkills(): void {
     const migrated = storage.getItem(MIGRATION_KEY) === '1';
 
     if (!hasStoredDefaults) {
-      manager.add(DEFAULT_SKILL_ID);
       storage.setItem(MIGRATION_KEY, '1');
       return;
     }
 
     if (!migrated) {
+      let mutated = false;
       if (manager.has(LEGACY_DEFAULT_SKILL_ID)) {
         manager.remove(LEGACY_DEFAULT_SKILL_ID);
+        mutated = true;
       }
       if (manager.has(LEGACY_RENAMED_SKILL_ID)) {
         manager.remove(LEGACY_RENAMED_SKILL_ID);
+        mutated = true;
       }
-      if (!manager.has(DEFAULT_SKILL_ID)) {
+      if (mutated && !manager.has(DEFAULT_SKILL_ID)) {
         manager.add(DEFAULT_SKILL_ID);
       }
     }

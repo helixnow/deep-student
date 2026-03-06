@@ -588,7 +588,7 @@ mod tests {
             "loaded_skill_ids_json",     // 🆕 迁移 013 新增
             "active_skill_id",           // 🆕 迁移 014 新增
             "active_skill_ids_json",     // 🆕 迁移 015 新增（多选支持）
-            "skill_state_json",         // 🆕 2026-03-06 结构化 Skill 状态
+            "skill_state_json",          // 🆕 2026-03-06 结构化 Skill 状态
         ];
 
         let mut stmt = conn

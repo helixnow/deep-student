@@ -12,7 +12,10 @@ use crate::chat_v2::error::ChatV2Error;
 use crate::chat_v2::events::clear_session_sequence_counter;
 use crate::chat_v2::repo::ChatV2Repo;
 use crate::chat_v2::state::ChatV2State;
-use crate::chat_v2::types::{ChatSession, PersistStatus, SessionSettings, SessionSkillState, SessionState, SkillStateSnapshot};
+use crate::chat_v2::types::{
+    ChatSession, PersistStatus, SessionSettings, SessionSkillState, SessionState,
+    SkillStateSnapshot,
+};
 use crate::vfs::database::VfsDatabase;
 use crate::vfs::repos::VfsResourceRepo;
 
@@ -910,34 +913,58 @@ fn session_skill_state_from_snapshot(snapshot: &SkillStateSnapshot) -> SessionSk
     }
 }
 
+fn resolve_message_skill_snapshot(
+    message: &crate::chat_v2::types::ChatMessage,
+) -> Option<SkillStateSnapshot> {
+    if let Some(active_variant_id) = message.active_variant_id.as_deref() {
+        if let Some(snapshot) = message
+            .variants
+            .as_ref()
+            .and_then(|variants| {
+                variants
+                    .iter()
+                    .find(|variant| variant.id == active_variant_id)
+            })
+            .and_then(|variant| variant.meta.as_ref())
+            .and_then(|meta| {
+                meta.skill_snapshot_after
+                    .as_ref()
+                    .or(meta.skill_snapshot_before.as_ref())
+            })
+        {
+            return Some(snapshot.clone());
+        }
+    }
+
+    message
+        .meta
+        .as_ref()
+        .and_then(|meta| {
+            meta.skill_snapshot_after
+                .as_ref()
+                .or(meta.skill_snapshot_before.as_ref())
+        })
+        .cloned()
+}
+
 pub(crate) fn rebuild_session_skill_state_from_surviving_history(
     session_id: &str,
     db: &ChatV2Database,
 ) -> Result<(), ChatV2Error> {
     let messages = ChatV2Repo::get_session_messages_v2(db, session_id)?;
+    let existing_state = ChatV2Repo::load_session_state_v2(db, session_id)?;
     let mut rebuilt_state: Option<SessionSkillState> = None;
 
     for message in messages.iter().rev() {
-        let Some(meta) = message.meta.as_ref() else {
-            continue;
-        };
-
-        if let Some(snapshot) = meta.skill_snapshot_after.as_ref() {
-            rebuilt_state = Some(session_skill_state_from_snapshot(snapshot));
-            break;
-        }
-
-        if let Some(snapshot) = meta.skill_snapshot_before.as_ref() {
-            rebuilt_state = Some(session_skill_state_from_snapshot(snapshot));
+        if let Some(snapshot) = resolve_message_skill_snapshot(message) {
+            rebuilt_state = Some(session_skill_state_from_snapshot(&snapshot));
             break;
         }
     }
 
     let resolved_state = match rebuilt_state {
         Some(state) => state,
-        None => ChatV2Repo::load_session_state_v2(db, session_id)?
-            .map(|state| state.resolved_skill_state())
-            .unwrap_or_default(),
+        None => fallback_skill_state_after_history_rebuild(existing_state.as_ref()),
     };
 
     ChatV2Repo::update_session_skill_state_v2(db, session_id, &resolved_state)
@@ -1215,6 +1242,8 @@ fn branch_session_in_db(
     // 10. 复制 session_state（裁剪草稿字段）
     if let Ok(Some(source_state)) = ChatV2Repo::load_session_state_with_conn(&tx, source_session_id)
     {
+        let trimmed_skill_state =
+            clear_branch_local_skill_state(&source_state.resolved_skill_state());
         let branched_state = SessionState {
             session_id: new_session_id.clone(),
             chat_params: source_state.chat_params,
@@ -1224,10 +1253,12 @@ fn branch_session_in_db(
             panel_states: None, // 清空面板 UI 状态
             updated_at: now.to_rfc3339(),
             pending_context_refs_json: None, // 清空待发送上下文
-            loaded_skill_ids_json: source_state.loaded_skill_ids_json,
-            active_skill_ids_json: source_state.active_skill_ids_json,
-            skill_state_json: source_state.skill_state_json,
+            loaded_skill_ids_json: None,
+            active_skill_ids_json: None,
+            skill_state_json: None,
         };
+        let mut branched_state = branched_state;
+        let _ = branched_state.set_skill_state(&trimmed_skill_state);
         let _ = ChatV2Repo::save_session_state_with_conn(&tx, &new_session_id, &branched_state);
     }
 
@@ -1254,15 +1285,82 @@ fn save_session_state_in_db(
     let _ = ChatV2Repo::get_session_v2(db, session_id)?
         .ok_or_else(|| ChatV2Error::SessionNotFound(session_id.to_string()))?;
 
+    let existing_state = ChatV2Repo::load_session_state_v2(db, session_id)?;
+    let mut merged_state = session_state.clone();
+    if let Some(merged_skill_state) =
+        merge_session_skill_state(existing_state.as_ref(), session_state)
+    {
+        merged_state
+            .set_skill_state(&merged_skill_state)
+            .map_err(|err| ChatV2Error::Serialization(err.to_string()))?;
+    }
+
     // 保存会话状态（使用 UPSERT）
-    ChatV2Repo::save_session_state_v2(db, session_id, session_state)?;
+    ChatV2Repo::save_session_state_v2(db, session_id, &merged_state)?;
 
     Ok(())
+}
+
+fn merge_session_skill_state(
+    existing_state: Option<&SessionState>,
+    incoming_state: &SessionState,
+) -> Option<SessionSkillState> {
+    let existing_skill_state = existing_state.map(SessionState::resolved_skill_state);
+    let parsed_incoming_skill_state = incoming_state
+        .skill_state_json
+        .as_ref()
+        .and_then(|raw| serde_json::from_str::<SessionSkillState>(raw).ok());
+
+    let mut merged = parsed_incoming_skill_state
+        .clone()
+        .or_else(|| existing_skill_state.clone())?;
+
+    if parsed_incoming_skill_state.is_none() {
+        let next_manual = incoming_state
+            .active_skill_ids_json
+            .as_ref()
+            .and_then(|raw| serde_json::from_str::<Vec<String>>(raw).ok())
+            .unwrap_or_default();
+        let previous_manual = merged.manual_pinned_skill_ids.clone();
+        merged.manual_pinned_skill_ids = next_manual;
+        if merged.manual_pinned_skill_ids != previous_manual {
+            merged.version = merged.version.saturating_add(1);
+        }
+    }
+
+    merged.legacy_migrated = Some(false);
+    Some(merged)
+}
+
+fn clear_branch_local_skill_state(skill_state: &SessionSkillState) -> SessionSkillState {
+    skill_state.without_branch_local_skills()
+}
+
+fn fallback_skill_state_after_history_rebuild(
+    existing_state: Option<&SessionState>,
+) -> SessionSkillState {
+    let Some(existing_state) = existing_state else {
+        return SessionSkillState::default();
+    };
+
+    let existing = existing_state.resolved_skill_state();
+    SessionSkillState {
+        manual_pinned_skill_ids: existing.manual_pinned_skill_ids,
+        mode_required_bundle_ids: existing.mode_required_bundle_ids,
+        agentic_session_skill_ids: Vec::new(),
+        branch_local_skill_ids: Vec::new(),
+        effective_allowed_internal_tools: Vec::new(),
+        effective_allowed_external_tools: Vec::new(),
+        effective_allowed_external_servers: Vec::new(),
+        version: existing.version.saturating_add(1),
+        legacy_migrated: Some(false),
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::chat_v2::types::{ChatMessage, MessageMeta, Variant, VariantMeta};
 
     #[test]
     fn test_valid_modes() {
@@ -1301,5 +1399,155 @@ mod tests {
         // 无效的会话 ID
         assert!(!"session_12345".starts_with("sess_"));
         assert!(!"invalid".starts_with("sess_"));
+    }
+
+    #[test]
+    fn test_merge_session_skill_state_preserves_backend_loaded_state() {
+        let existing = SessionState {
+            session_id: "sess_1".to_string(),
+            chat_params: None,
+            features: None,
+            mode_state: None,
+            input_value: None,
+            panel_states: None,
+            updated_at: "2026-03-06T00:00:00Z".to_string(),
+            pending_context_refs_json: None,
+            loaded_skill_ids_json: None,
+            active_skill_ids_json: Some("[\"manual-old\"]".to_string()),
+            skill_state_json: Some(
+                serde_json::to_string(&SessionSkillState {
+                    manual_pinned_skill_ids: vec!["manual-old".to_string()],
+                    agentic_session_skill_ids: vec!["agentic-keep".to_string()],
+                    branch_local_skill_ids: vec!["branch-keep".to_string()],
+                    version: 7,
+                    ..Default::default()
+                })
+                .unwrap(),
+            ),
+        };
+
+        let incoming = SessionState {
+            session_id: "sess_1".to_string(),
+            chat_params: None,
+            features: None,
+            mode_state: None,
+            input_value: None,
+            panel_states: None,
+            updated_at: "2026-03-06T00:00:01Z".to_string(),
+            pending_context_refs_json: None,
+            loaded_skill_ids_json: None,
+            active_skill_ids_json: Some("[\"manual-new\"]".to_string()),
+            skill_state_json: None,
+        };
+
+        let merged = merge_session_skill_state(Some(&existing), &incoming).unwrap();
+        assert_eq!(
+            merged.manual_pinned_skill_ids,
+            vec!["manual-new".to_string()]
+        );
+        assert_eq!(
+            merged.agentic_session_skill_ids,
+            vec!["agentic-keep".to_string()]
+        );
+        assert_eq!(
+            merged.branch_local_skill_ids,
+            vec!["branch-keep".to_string()]
+        );
+        assert_eq!(merged.version, 8);
+    }
+
+    #[test]
+    fn test_clear_branch_local_skill_state_removes_only_branch_local() {
+        let trimmed = clear_branch_local_skill_state(&SessionSkillState {
+            manual_pinned_skill_ids: vec!["manual".to_string()],
+            agentic_session_skill_ids: vec!["agentic".to_string()],
+            branch_local_skill_ids: vec!["branch".to_string()],
+            version: 3,
+            ..Default::default()
+        });
+
+        assert_eq!(trimmed.manual_pinned_skill_ids, vec!["manual".to_string()]);
+        assert_eq!(
+            trimmed.agentic_session_skill_ids,
+            vec!["agentic".to_string()]
+        );
+        assert!(trimmed.branch_local_skill_ids.is_empty());
+    }
+
+    #[test]
+    fn test_fallback_skill_state_after_history_rebuild_clears_agentic_state() {
+        let existing = SessionState {
+            session_id: "sess_1".to_string(),
+            chat_params: None,
+            features: None,
+            mode_state: None,
+            input_value: None,
+            panel_states: None,
+            updated_at: "2026-03-06T00:00:00Z".to_string(),
+            pending_context_refs_json: None,
+            loaded_skill_ids_json: None,
+            active_skill_ids_json: None,
+            skill_state_json: Some(
+                serde_json::to_string(&SessionSkillState {
+                    manual_pinned_skill_ids: vec!["manual".to_string()],
+                    mode_required_bundle_ids: vec!["mode".to_string()],
+                    agentic_session_skill_ids: vec!["agentic".to_string()],
+                    branch_local_skill_ids: vec!["branch".to_string()],
+                    effective_allowed_internal_tools: vec!["tool_a".to_string()],
+                    version: 9,
+                    ..Default::default()
+                })
+                .unwrap(),
+            ),
+        };
+
+        let rebuilt = fallback_skill_state_after_history_rebuild(Some(&existing));
+        assert_eq!(rebuilt.manual_pinned_skill_ids, vec!["manual".to_string()]);
+        assert_eq!(rebuilt.mode_required_bundle_ids, vec!["mode".to_string()]);
+        assert!(rebuilt.agentic_session_skill_ids.is_empty());
+        assert!(rebuilt.branch_local_skill_ids.is_empty());
+        assert!(rebuilt.effective_allowed_internal_tools.is_empty());
+        assert_eq!(rebuilt.version, 10);
+    }
+
+    #[test]
+    fn test_resolve_message_skill_snapshot_prefers_active_variant_snapshot() {
+        let mut message = ChatMessage::new_assistant("sess_1".to_string());
+        message.active_variant_id = Some("var_active".to_string());
+        message.meta = Some(MessageMeta {
+            skill_snapshot_after: Some(SkillStateSnapshot {
+                manual_pinned_skill_ids: vec!["message-skill".to_string()],
+                version: 2,
+                ..Default::default()
+            }),
+            ..Default::default()
+        });
+        message.variants = Some(vec![Variant {
+            id: "var_active".to_string(),
+            model_id: "model-a".to_string(),
+            config_id: None,
+            block_ids: vec![],
+            status: crate::chat_v2::types::variant_status::SUCCESS.to_string(),
+            error: None,
+            created_at: 0,
+            usage: None,
+            meta: Some(VariantMeta {
+                skill_snapshot_before: None,
+                skill_snapshot_after: Some(SkillStateSnapshot {
+                    manual_pinned_skill_ids: vec!["variant-skill".to_string()],
+                    version: 3,
+                    ..Default::default()
+                }),
+                skill_runtime_before: None,
+                skill_runtime_after: None,
+            }),
+        }]);
+
+        let resolved = resolve_message_skill_snapshot(&message).unwrap();
+        assert_eq!(
+            resolved.manual_pinned_skill_ids,
+            vec!["variant-skill".to_string()]
+        );
+        assert_eq!(resolved.version, 3);
     }
 }

@@ -8,8 +8,8 @@
 //! 通过 `__cat_*__` 前缀笔记存储分类摘要，
 //! 这些笔记在 list/search 中被过滤（标题以 `__` 开头）。
 
-use std::sync::Arc;
 use std::collections::HashSet;
+use std::sync::Arc;
 
 use tracing::{debug, info, warn};
 

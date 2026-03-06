@@ -435,14 +435,7 @@ impl ToolExecutor for AttachmentToolExecutor {
         );
 
         // 发射工具调用开始事件
-        ctx.emitter.emit_tool_call_start(
-            &ctx.message_id,
-            &ctx.block_id,
-            &call.name,
-            call.arguments.clone(),
-            Some(&call.id),
-            None,
-        );
+        ctx.emit_tool_call_start(&call.name, call.arguments.clone(), Some(&call.id));
 
         let result = match tool_name {
             "attachment_list" => self.execute_list(call, ctx).await,
@@ -455,15 +448,10 @@ impl ToolExecutor for AttachmentToolExecutor {
         match result {
             Ok(output) => {
                 // 发射工具调用结束事件
-                ctx.emitter.emit_end(
-                    event_types::TOOL_CALL,
-                    &ctx.block_id,
-                    Some(json!({
-                        "result": output,
-                        "durationMs": duration,
-                    })),
-                    None,
-                );
+                ctx.emit_tool_call_end(Some(json!({
+                    "result": output,
+                    "durationMs": duration,
+                })));
 
                 let result = ToolResultInfo::success(
                     Some(call.id.clone()),
@@ -483,8 +471,7 @@ impl ToolExecutor for AttachmentToolExecutor {
             }
             Err(e) => {
                 // 发射工具调用错误事件
-                ctx.emitter
-                    .emit_error(event_types::TOOL_CALL, &ctx.block_id, &e, None);
+                ctx.emit_tool_call_error(&e);
 
                 let result = ToolResultInfo::failure(
                     Some(call.id.clone()),

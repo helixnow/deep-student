@@ -303,6 +303,33 @@ impl ChatV2Pipeline {
             || tool_normalized.starts_with(allowed_normalized)
     }
 
+    pub(crate) fn skill_allows_tool_on_server(
+        tool_name: &str,
+        server_id: Option<&str>,
+        allowed: &str,
+    ) -> bool {
+        let Some(server_id) = server_id
+            .map(|value| value.trim())
+            .filter(|value| !value.is_empty())
+        else {
+            return Self::skill_allows_tool(tool_name, allowed);
+        };
+
+        let allowed_lower = allowed.to_lowercase();
+        let server_lower = server_id.to_lowercase();
+
+        if let Some((allowed_server, allowed_tool)) = allowed_lower.split_once("::") {
+            return allowed_server == server_lower
+                && Self::skill_allows_tool(tool_name, allowed_tool);
+        }
+        if let Some((allowed_server, allowed_tool)) = allowed_lower.split_once('/') {
+            return allowed_server == server_lower
+                && Self::skill_allows_tool(tool_name, allowed_tool);
+        }
+
+        Self::skill_allows_tool(tool_name, allowed)
+    }
+
     /// 执行消息发送流水线
     ///
     /// ## 流程

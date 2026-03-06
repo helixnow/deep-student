@@ -541,9 +541,7 @@ impl MemoryService {
 
             if !privacy_mode {
                 let should_refresh = match svc.count_active_memories() {
-                    Ok(total) => {
-                        frequency.should_refresh_categories(total as usize)
-                    }
+                    Ok(total) => frequency.should_refresh_categories(total as usize),
                     Err(_) => false,
                 };
 
@@ -996,7 +994,8 @@ impl MemoryService {
         if self.config.is_privacy_mode()? {
             // 隐私模式下使用本地标题匹配做基础去重（不涉及外部 API 调用）
             let root_id = self.ensure_root_folder_id()?;
-            let target_folder_id = self.resolve_write_target_folder_id(folder_path, false, &root_id)?;
+            let target_folder_id =
+                self.resolve_write_target_folder_id(folder_path, false, &root_id)?;
             if let Some(existing) = self.find_note_by_title(target_folder_id.as_deref(), title)? {
                 let output = SmartWriteOutput {
                     note_id: existing.id,
@@ -1203,9 +1202,11 @@ impl MemoryService {
                             session_id,
                         ) {
                             Ok(result) => {
-                                if let Err(e) =
-                                    self.sync_note_system_tags(&result.note_id, memory_type, purpose)
-                                {
+                                if let Err(e) = self.sync_note_system_tags(
+                                    &result.note_id,
+                                    memory_type,
+                                    purpose,
+                                ) {
                                     warn!(
                                         "[Memory] Failed to sync system tags after UPDATE {}: {}",
                                         result.note_id, e
@@ -1306,13 +1307,16 @@ impl MemoryService {
                                 source,
                                 session_id,
                             )
-                        })();
+                        })(
+                        );
 
                         match append_result {
                             Ok(result) => {
-                                if let Err(e) =
-                                    self.sync_note_system_tags(&result.note_id, memory_type, purpose)
-                                {
+                                if let Err(e) = self.sync_note_system_tags(
+                                    &result.note_id,
+                                    memory_type,
+                                    purpose,
+                                ) {
                                     warn!(
                                         "[Memory] Failed to sync system tags after APPEND {}: {}",
                                         result.note_id, e
@@ -1425,7 +1429,10 @@ impl MemoryService {
                                 event: "DELETE".to_string(),
                                 is_new: true,
                                 confidence: decision.confidence,
-                                reason: format!("{}（已删除矛盾记忆 {}）", decision.reason, target_id),
+                                reason: format!(
+                                    "{}（已删除矛盾记忆 {}）",
+                                    decision.reason, target_id
+                                ),
                                 resource_id: Some(result.resource_id),
                                 downgraded: false,
                             })
@@ -1828,7 +1835,10 @@ impl MemoryService {
         }
     }
 
-    fn get_cached_smart_write_result(&self, idempotency_key: &str) -> VfsResult<Option<SmartWriteOutput>> {
+    fn get_cached_smart_write_result(
+        &self,
+        idempotency_key: &str,
+    ) -> VfsResult<Option<SmartWriteOutput>> {
         let conn = self.vfs_db.get_conn_safe()?;
         let now_ms = chrono::Utc::now().timestamp_millis();
         let ttl_ms = SMART_WRITE_IDEMPOTENCY_RETENTION_HOURS * 60 * 60 * 1000;
@@ -2203,9 +2213,11 @@ impl MemoryService {
                 );
             }
         }
-        if let Err(e) =
-            VfsIndexStateRepo::mark_disabled_with_reason(&self.vfs_db, &note.resource_id, "note deleted")
-        {
+        if let Err(e) = VfsIndexStateRepo::mark_disabled_with_reason(
+            &self.vfs_db,
+            &note.resource_id,
+            "note deleted",
+        ) {
             warn!(
                 "[Memory] Failed to mark index disabled for {}: {}",
                 note.resource_id, e
@@ -2771,7 +2783,10 @@ impl MemoryService {
                     "UPDATE notes SET tags = ?1 WHERE id = ?2",
                     params![new_tags_json, note_id],
                 ) {
-                    warn!("[Memory] Failed to record search hit for {}: {}", note_id, e);
+                    warn!(
+                        "[Memory] Failed to record search hit for {}: {}",
+                        note_id, e
+                    );
                 }
             }
             conn.execute_batch("COMMIT")

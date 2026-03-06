@@ -789,11 +789,7 @@ impl SyncManager {
                 let manifest = match serde_json::from_slice::<SyncManifest>(&bytes) {
                     Ok(v) => v,
                     Err(e) => {
-                        tracing::warn!(
-                            "[sync] 跳过损坏设备清单: key={}, error={}",
-                            file.key,
-                            e
-                        );
+                        tracing::warn!("[sync] 跳过损坏设备清单: key={}, error={}", file.key, e);
                         continue;
                     }
                 };
@@ -3575,13 +3571,7 @@ impl SyncManager {
             if !dir.exists() {
                 continue;
             }
-            Self::scan_asset_tree(
-                "active",
-                dir_name,
-                &dir,
-                &dir,
-                &mut local_files,
-            )?;
+            Self::scan_asset_tree("active", dir_name, &dir, &dir, &mut local_files)?;
         }
 
         let app_side = app_data_dir.join("pdf_ocr_sessions");
@@ -3640,7 +3630,10 @@ impl SyncManager {
                 let _ = std::fs::create_dir_all(parent);
             }
             let remote_key = format!("{}/{}", Self::ASSETS_CLOUD_PREFIX, key);
-            match storage.get_file(&remote_key, &dest, Some(&entry.sha256), None).await {
+            match storage
+                .get_file(&remote_key, &dest, Some(&entry.sha256), None)
+                .await
+            {
                 Ok(_) => downloaded += 1,
                 Err(e) => {
                     tracing::warn!("[sync] 资产下载失败（跳过）: {}: {}", key, e);
@@ -3734,7 +3727,11 @@ impl SyncManager {
         let top = parts.next()?;
         let rel = parts.next()?;
         let rel_path = std::path::PathBuf::from(rel);
-        if rel_path.is_absolute() || rel_path.components().any(|c| matches!(c, std::path::Component::ParentDir)) {
+        if rel_path.is_absolute()
+            || rel_path
+                .components()
+                .any(|c| matches!(c, std::path::Component::ParentDir))
+        {
             return None;
         }
         let base = match root {
@@ -4766,8 +4763,8 @@ mod tests {
                 "SELECT COUNT(*) FROM __change_log WHERE sync_version = 0",
                 [],
                 |r| r.get(0),
-        )
-        .unwrap();
+            )
+            .unwrap();
         assert_eq!(unsynced, 0, "echo logs should be marked as synced");
     }
 
@@ -4794,7 +4791,11 @@ mod tests {
 
         let conflicts =
             SyncManager::detect_record_conflicts("chat_v2", &local_records, &cloud_records);
-        assert_eq!(conflicts.len(), 1, "diverged sync_version should still detect conflict");
+        assert_eq!(
+            conflicts.len(),
+            1,
+            "diverged sync_version should still detect conflict"
+        );
     }
 
     #[test]

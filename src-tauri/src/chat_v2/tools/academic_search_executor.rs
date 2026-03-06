@@ -910,14 +910,7 @@ impl ToolExecutor for AcademicSearchExecutor {
         );
 
         // 发射工具调用开始事件
-        ctx.emitter.emit_tool_call_start(
-            &ctx.message_id,
-            &ctx.block_id,
-            &call.name,
-            call.arguments.clone(),
-            Some(&call.id),
-            None,
-        );
+        ctx.emit_tool_call_start(&call.name, call.arguments.clone(), Some(&call.id));
 
         let result = match tool_name {
             "arxiv_search" => self.execute_arxiv_search(call, ctx).await,
@@ -942,15 +935,10 @@ impl ToolExecutor for AcademicSearchExecutor {
                     }
                 }
 
-                ctx.emitter.emit_end(
-                    event_types::TOOL_CALL,
-                    &ctx.block_id,
-                    Some(json!({
-                        "result": output,
-                        "durationMs": duration,
-                    })),
-                    None,
-                );
+                ctx.emit_tool_call_end(Some(json!({
+                    "result": output,
+                    "durationMs": duration,
+                })));
 
                 let result = ToolResultInfo::success(
                     Some(call.id.clone()),
@@ -968,8 +956,7 @@ impl ToolExecutor for AcademicSearchExecutor {
                 Ok(result)
             }
             Err(e) => {
-                ctx.emitter
-                    .emit_error(event_types::TOOL_CALL, &ctx.block_id, &e, None);
+                ctx.emit_tool_call_error(&e);
 
                 log::warn!(
                     "[AcademicSearch] Tool {} failed: {} ({}ms)",

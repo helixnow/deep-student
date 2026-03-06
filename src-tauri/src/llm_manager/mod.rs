@@ -2152,8 +2152,10 @@ impl LLMManager {
         // ★ 2026-01-19 修复：保存所有模型（包括 is_builtin=true），以支持用户对内置模型的收藏等自定义设置
         // 加载时按“字段级用户优先”进行合并：用户改过的字段保持不变，未改字段可接收后续内置更新
         if let Ok((_, builtin_profiles)) = self.load_builtin_vendor_profiles() {
-            let builtin_id_set: HashSet<String> =
-                builtin_profiles.iter().map(|profile| profile.id.clone()).collect();
+            let builtin_id_set: HashSet<String> = builtin_profiles
+                .iter()
+                .map(|profile| profile.id.clone())
+                .collect();
             let incoming_builtin_ids: HashSet<String> = profiles
                 .iter()
                 .map(|profile| profile.id.clone())

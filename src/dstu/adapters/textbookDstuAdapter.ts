@@ -160,9 +160,9 @@ export const textbookDstuAdapter = {
    *
    * 注意：使用后端的 textbooks_add 命令，该命令会：
    * 1. 计算文件 SHA256
-   * 2. 复制文件到 textbooks 目录
-   * 3. 创建 VFS 教材记录
-   * 4. 异步触发多模态索引（图片向量化）
+   * 2. 直接以统一 VFS 导入链解析/建模，不再复制到应用内 textbooks 目录
+   * 3. 创建或恢复 VFS 教材记录，并挂载到目标文件夹
+   * 4. 异步触发 PDF Pipeline / 索引链路
    */
   async addTextbooks(filePaths: string[], folderId?: string | null): Promise<Result<DstuNode[], VfsError>> {
     console.log(LOG_PREFIX, 'addTextbooks via textbooks_add:', filePaths.length, 'files', 'folderId:', folderId);

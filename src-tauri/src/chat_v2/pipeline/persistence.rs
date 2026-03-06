@@ -1,5 +1,27 @@
 use super::*;
 
+fn build_replay_skill_payload_snapshot(
+    options: &SendOptions,
+) -> Option<crate::chat_v2::types::ReplaySkillPayloadSnapshot> {
+    let snapshot = crate::chat_v2::types::ReplaySkillPayloadSnapshot {
+        active_skill_ids: options.active_skill_ids.clone().unwrap_or_default(),
+        skill_allowed_tools: options.skill_allowed_tools.clone().unwrap_or_default(),
+        skill_contents: options.skill_contents.clone().unwrap_or_default(),
+        skill_embedded_tools: options.skill_embedded_tools.clone().unwrap_or_default(),
+        mcp_tool_schemas: options.mcp_tool_schemas.clone().unwrap_or_default(),
+        selected_mcp_servers: options.mcp_tools.clone().unwrap_or_default(),
+    };
+
+    let has_payload = !snapshot.active_skill_ids.is_empty()
+        || !snapshot.skill_allowed_tools.is_empty()
+        || !snapshot.skill_contents.is_empty()
+        || !snapshot.skill_embedded_tools.is_empty()
+        || !snapshot.mcp_tool_schemas.is_empty()
+        || !snapshot.selected_mcp_servers.is_empty();
+
+    has_payload.then_some(snapshot)
+}
+
 impl ChatV2Pipeline {
     /// 🆕 P0防闪退：用户消息即时保存
     ///
@@ -795,6 +817,8 @@ impl ChatV2Pipeline {
             },
             skill_snapshot_before: None,
             skill_snapshot_after: None,
+            skill_runtime_before: build_replay_skill_payload_snapshot(&ctx.options),
+            skill_runtime_after: build_replay_skill_payload_snapshot(&ctx.options),
             replay_source: None,
         };
 

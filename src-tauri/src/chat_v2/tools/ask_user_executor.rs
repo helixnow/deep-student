@@ -154,14 +154,7 @@ impl ToolExecutor for AskUserExecutor {
         );
 
         // 2. 发射 tool_call_start 事件（前端创建 ask_user 类型 block）
-        ctx.emitter.emit_tool_call_start(
-            &ctx.message_id,
-            &ctx.block_id,
-            &call.name,
-            call.arguments.clone(),
-            Some(&call.id),
-            None,
-        );
+        ctx.emit_tool_call_start(&call.name, call.arguments.clone(), Some(&call.id));
 
         // 3. 创建 oneshot channel，注册回调
         let (tx, rx) = oneshot::channel();
@@ -231,12 +224,7 @@ impl ToolExecutor for AskUserExecutor {
         );
 
         // 6. 发射 end 事件 + 持久化
-        ctx.emitter.emit_end(
-            event_types::TOOL_CALL,
-            &ctx.block_id,
-            Some(json!({"result": output, "durationMs": duration_ms})),
-            None,
-        );
+        ctx.emit_tool_call_end(Some(json!({"result": output, "durationMs": duration_ms})));
 
         if let Err(e) = ctx.save_tool_block(&result) {
             log::warn!("[AskUserExecutor] Failed to save tool block: {}", e);

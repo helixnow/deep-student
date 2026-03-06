@@ -4,19 +4,127 @@
 #![allow(non_snake_case)] // Tauri 命令参数使用 camelCase 与前端保持一致
 
 use crate::commands::AppState;
+use crate::dstu::handler_utils::node_converters::note_to_dstu_node;
 use crate::models::AppError;
 use crate::unified_file_manager;
 use crate::vfs::index_service::VfsIndexService;
+use crate::vfs::types::VfsCreateNoteParams;
 use crate::vfs::{VfsLanceStore, VfsNoteRepo};
 use chrono::Utc;
+use encoding_rs::{GB18030, GBK, UTF_16BE, UTF_16LE};
 use rusqlite::params;
 use serde::Serialize;
+use std::path::Path;
 use std::sync::Arc;
 use std::sync::LazyLock;
 use tauri::{Emitter, State, Window};
 use uuid::Uuid;
 
 type Result<T> = std::result::Result<T, AppError>;
+
+fn strip_bom(content: String) -> String {
+    content
+        .strip_prefix('\u{feff}')
+        .unwrap_or(&content)
+        .to_string()
+}
+
+fn decode_markdown_bytes(bytes: &[u8]) -> (String, &'static str) {
+    if bytes.starts_with(&[0xEF, 0xBB, 0xBF]) {
+        if let Ok(content) = String::from_utf8(bytes[3..].to_vec()) {
+            return (strip_bom(content), "UTF-8 BOM");
+        }
+    }
+
+    if bytes.starts_with(&[0xFF, 0xFE]) {
+        let (decoded, _, _) = UTF_16LE.decode(&bytes[2..]);
+        return (strip_bom(decoded.into_owned()), "UTF-16LE");
+    }
+
+    if bytes.starts_with(&[0xFE, 0xFF]) {
+        let (decoded, _, _) = UTF_16BE.decode(&bytes[2..]);
+        return (strip_bom(decoded.into_owned()), "UTF-16BE");
+    }
+
+    if let Ok(content) = String::from_utf8(bytes.to_vec()) {
+        return (strip_bom(content), "UTF-8");
+    }
+
+    let (decoded_gbk, _, had_gbk_errors) = GBK.decode(bytes);
+    if !had_gbk_errors {
+        return (strip_bom(decoded_gbk.into_owned()), "GBK");
+    }
+
+    let (decoded_gb18030, _, _) = GB18030.decode(bytes);
+    (strip_bom(decoded_gb18030.into_owned()), "GB18030")
+}
+
+fn read_markdown_file_with_encoding(path: &Path) -> Result<(String, &'static str)> {
+    let bytes = std::fs::read(path)
+        .map_err(|e| AppError::file_system(format!("读取 Markdown 文件失败: {}", e)))?;
+    Ok(decode_markdown_bytes(&bytes))
+}
+
+fn derive_markdown_note_title(raw_path: &str) -> String {
+    let candidate = Path::new(raw_path)
+        .file_stem()
+        .map(|stem| stem.to_string_lossy().trim().to_string())
+        .filter(|title| !title.is_empty());
+
+    candidate.unwrap_or_else(|| format!("导入笔记_{}", Utc::now().format("%Y%m%d_%H%M%S")))
+}
+
+fn normalize_folder_id(folder_id: Option<&str>) -> Option<String> {
+    folder_id.and_then(|id| {
+        let trimmed = id.trim();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.to_string())
+        }
+    })
+}
+
+fn import_markdown_note_from_local_path(
+    vfs_db: &crate::vfs::database::VfsDatabase,
+    import_path: &Path,
+    note_title: &str,
+    folder_id: Option<&str>,
+) -> Result<crate::dstu::types::DstuNode> {
+    let (content, encoding) = read_markdown_file_with_encoding(import_path)?;
+    log::info!(
+        "开始导入 Markdown 笔记，title='{}'，encoding={}，materialized_path={}",
+        note_title,
+        encoding,
+        import_path.display()
+    );
+
+    let note = VfsNoteRepo::create_note_in_folder(
+        vfs_db,
+        VfsCreateNoteParams {
+            title: note_title.to_string(),
+            content,
+            tags: vec![],
+        },
+        folder_id,
+    )
+    .map_err(|e| AppError::database(format!("导入 Markdown 笔记失败: {}", e)))?;
+
+    Ok(note_to_dstu_node(&note))
+}
+
+fn cleanup_materialized_import_file(context: &str, cleanup_path: Option<std::path::PathBuf>) {
+    if let Some(cleanup) = cleanup_path {
+        if let Err(err) = std::fs::remove_file(&cleanup) {
+            log::warn!(
+                "{}: 清理临时导入文件失败 ({}): {}",
+                context,
+                cleanup.display(),
+                err
+            );
+        }
+    }
+}
 
 // ================= Notes: 独立笔记系统（CRUD） =================
 
@@ -1192,6 +1300,205 @@ pub async fn notes_import(
         skipped_count: summary.skipped_count,
         overwritten_count: summary.overwritten_count,
     })
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NotesImportMarkdownRequest {
+    pub file_path: String,
+    #[serde(default)]
+    pub title_hint: Option<String>,
+    #[serde(default)]
+    pub folder_id: Option<String>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NotesImportMarkdownBatchItem {
+    pub file_path: String,
+    #[serde(default)]
+    pub title_hint: Option<String>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NotesImportMarkdownBatchRequest {
+    pub items: Vec<NotesImportMarkdownBatchItem>,
+    #[serde(default)]
+    pub folder_id: Option<String>,
+}
+
+#[derive(Debug, serde::Serialize)]
+pub struct NotesImportMarkdownBatchFailure {
+    pub file_path: String,
+    pub message: String,
+}
+
+#[derive(Debug, serde::Serialize)]
+pub struct NotesImportMarkdownBatchResponse {
+    pub imported: Vec<crate::dstu::types::DstuNode>,
+    pub failed: Vec<NotesImportMarkdownBatchFailure>,
+}
+
+#[tauri::command]
+pub async fn notes_import_markdown(
+    request: NotesImportMarkdownRequest,
+    state: State<'_, AppState>,
+    window: Window,
+) -> Result<crate::dstu::types::DstuNode> {
+    let raw_path = request.file_path.trim().to_string();
+    if raw_path.is_empty() {
+        return Err(AppError::validation("Markdown 文件路径不能为空"));
+    }
+
+    let vfs_db = state
+        .vfs_db
+        .clone()
+        .ok_or_else(|| AppError::configuration("VFS database not configured"))?;
+
+    let temp_dir = state
+        .file_manager
+        .get_writable_app_data_dir()
+        .join("temp_markdown_note_import");
+    let materialized = unified_file_manager::ensure_local_path(&window, &raw_path, &temp_dir)?;
+    let (import_path, cleanup_path) = materialized.into_owned();
+    let folder_id = normalize_folder_id(request.folder_id.as_deref());
+    let note_title = derive_markdown_note_title(
+        request
+            .title_hint
+            .as_deref()
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or(&raw_path),
+    );
+
+    log::info!(
+        "收到 Markdown 笔记导入命令，文件：{}，folder_id={:?}",
+        raw_path,
+        folder_id
+    );
+
+    let import_result: Result<crate::dstu::types::DstuNode> =
+        tokio::task::spawn_blocking(move || {
+            import_markdown_note_from_local_path(
+                &vfs_db,
+                &import_path,
+                &note_title,
+                folder_id.as_deref(),
+            )
+        })
+        .await
+        .map_err(|e| AppError::internal(format!("导入 Markdown 笔记任务失败: {}", e)))?;
+
+    cleanup_materialized_import_file("notes_import_markdown", cleanup_path);
+
+    import_result
+}
+
+#[tauri::command]
+pub async fn notes_import_markdown_batch(
+    request: NotesImportMarkdownBatchRequest,
+    state: State<'_, AppState>,
+    window: Window,
+) -> Result<NotesImportMarkdownBatchResponse> {
+    if request.items.is_empty() {
+        return Ok(NotesImportMarkdownBatchResponse {
+            imported: vec![],
+            failed: vec![],
+        });
+    }
+
+    let vfs_db = state
+        .vfs_db
+        .clone()
+        .ok_or_else(|| AppError::configuration("VFS database not configured"))?;
+    let folder_id = normalize_folder_id(request.folder_id.as_deref());
+    let temp_dir = state
+        .file_manager
+        .get_writable_app_data_dir()
+        .join("temp_markdown_note_import");
+
+    let mut materialized_items = Vec::with_capacity(request.items.len());
+    for item in request.items {
+        let raw_path = item.file_path.trim().to_string();
+        if raw_path.is_empty() {
+            return Err(AppError::validation("Markdown 文件路径不能为空"));
+        }
+
+        let materialized = unified_file_manager::ensure_local_path(&window, &raw_path, &temp_dir)?;
+        let (import_path, cleanup_path) = materialized.into_owned();
+        let note_title = derive_markdown_note_title(
+            item.title_hint
+                .as_deref()
+                .filter(|value| !value.trim().is_empty())
+                .unwrap_or(&raw_path),
+        );
+        materialized_items.push((raw_path, import_path, cleanup_path, note_title));
+    }
+
+    let cleanup_paths: Vec<Option<std::path::PathBuf>> = materialized_items
+        .iter()
+        .map(|(_, _, cleanup_path, _)| cleanup_path.clone())
+        .collect();
+    let task_items: Vec<(String, std::path::PathBuf, String)> = materialized_items
+        .into_iter()
+        .map(|(raw_path, import_path, _cleanup_path, note_title)| (raw_path, import_path, note_title))
+        .collect();
+    let folder_id_for_task = folder_id.clone();
+    let batch_result = tokio::task::spawn_blocking(move || {
+        let mut imported = Vec::new();
+        let mut failed = Vec::new();
+
+        for (raw_path, import_path, note_title) in &task_items {
+            match import_markdown_note_from_local_path(
+                &vfs_db,
+                import_path,
+                note_title,
+                folder_id_for_task.as_deref(),
+            ) {
+                Ok(node) => imported.push(node),
+                Err(error) => failed.push(NotesImportMarkdownBatchFailure {
+                    file_path: raw_path.clone(),
+                    message: error.to_string(),
+                }),
+            }
+        }
+
+        NotesImportMarkdownBatchResponse { imported, failed }
+    })
+    .await
+    .map_err(|e| AppError::internal(format!("批量导入 Markdown 笔记任务失败: {}", e)))?;
+
+    for cleanup_path in cleanup_paths {
+        cleanup_materialized_import_file("notes_import_markdown_batch", cleanup_path);
+    }
+
+    Ok(batch_result)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{decode_markdown_bytes, derive_markdown_note_title};
+
+    #[test]
+    fn decode_markdown_bytes_strips_utf8_bom() {
+        let bytes = vec![0xEF, 0xBB, 0xBF, b'#', b' ', b'H', b'i'];
+        let (content, encoding) = decode_markdown_bytes(&bytes);
+        assert_eq!(content, "# Hi");
+        assert_eq!(encoding, "UTF-8 BOM");
+    }
+
+    #[test]
+    fn decode_markdown_bytes_supports_utf16le() {
+        let bytes = vec![0xFF, 0xFE, 0x23, 0x00, 0x20, 0x00, 0x48, 0x00, 0x69, 0x00];
+        let (content, encoding) = decode_markdown_bytes(&bytes);
+        assert_eq!(content, "# Hi");
+        assert_eq!(encoding, "UTF-16LE");
+    }
+
+    #[test]
+    fn derive_markdown_note_title_uses_file_stem() {
+        assert_eq!(derive_markdown_note_title("/tmp/线代笔记.md"), "线代笔记");
+    }
 }
 
 // Notes DB 运维

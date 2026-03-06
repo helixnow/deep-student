@@ -844,7 +844,8 @@ impl QuestionBankService {
 
             match per_question_result {
                 Ok(exam_id) => {
-                    if let Err(e) = tx.execute_batch("RELEASE SAVEPOINT qbank_reset_question_progress")
+                    if let Err(e) =
+                        tx.execute_batch("RELEASE SAVEPOINT qbank_reset_question_progress")
                     {
                         errors.push(format!("{}: {}", question_id, e));
                         let _ = tx.execute_batch(

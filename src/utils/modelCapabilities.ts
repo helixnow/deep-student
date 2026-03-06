@@ -26,6 +26,7 @@ export interface BasicModelDescriptor {
   id: string;
   supported_features?: string[];
   name?: string;
+  providerScope?: string;
 }
 
 export interface InferredCapabilities {
@@ -108,11 +109,12 @@ function detectAdapterById(lowerId: string): ModelAdapterType {
 export function inferCapabilities(modelLike: BasicModelDescriptor | string): InferredCapabilities {
   const modelId = typeof modelLike === 'string' ? modelLike : (modelLike?.id ?? '');
   const modelName = typeof modelLike === 'string' ? undefined : modelLike?.name;
+  const providerScope = typeof modelLike === 'string' ? undefined : modelLike?.providerScope;
   const supportedFeatures = (typeof modelLike === 'string' ? undefined : modelLike?.supported_features) ?? [];
   const lowerId = toLower(modelId);
 
   // 调用统一的 apiCapabilityEngine 进行能力推断
-  const apiCaps: InferredApiCapabilities = inferApiCapabilities({ id: modelId, name: modelName });
+  const apiCaps: InferredApiCapabilities = inferApiCapabilities({ id: modelId, name: modelName, providerScope });
 
   // 从 supported_features 补充推断（SiliconFlow API 返回的特性列表）
   const featureIsMultimodal = featureHas(supportedFeatures, 'multimodal', 'vision', 'vl', 'image');
@@ -216,9 +218,10 @@ export function inferModelContextWindow(
 ): number {
   const modelId = typeof modelLike === 'string' ? modelLike : (modelLike?.id ?? '');
   const modelName = typeof modelLike === 'string' ? '' : (modelLike?.name ?? '');
+  const providerScope = typeof modelLike === 'string' ? undefined : modelLike?.providerScope;
 
   // 统一调用 apiCapabilityEngine 推断
-  const caps: InferredApiCapabilities = inferApiCapabilities({ id: modelId, name: modelName });
+  const caps: InferredApiCapabilities = inferApiCapabilities({ id: modelId, name: modelName, providerScope });
 
   // 如果推断引擎命中了规则，直接使用其值
   if (caps.contextWindow > DEFAULT_FALLBACK_CONTEXT_WINDOW) {

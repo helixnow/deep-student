@@ -459,26 +459,20 @@ impl ReviewPlanService {
         };
 
         loop {
-            let result = VfsQuestionRepo::list_questions(
-                &self.vfs_db,
-                exam_id,
-                &filters,
-                page,
-                page_size,
-            )
-            .with_context(|| {
-                format!(
-                    "Failed to list questions for exam_id={}, page={}, page_size={}",
-                    exam_id, page, page_size
-                )
-            })?;
+            let result =
+                VfsQuestionRepo::list_questions(&self.vfs_db, exam_id, &filters, page, page_size)
+                    .with_context(|| {
+                    format!(
+                        "Failed to list questions for exam_id={}, page={}, page_size={}",
+                        exam_id, page, page_size
+                    )
+                })?;
 
             if result.questions.is_empty() {
                 break;
             }
 
-            let question_ids: Vec<String> =
-                result.questions.iter().map(|q| q.id.clone()).collect();
+            let question_ids: Vec<String> = result.questions.iter().map(|q| q.id.clone()).collect();
             let batch_result = self.batch_create_from_questions(&question_ids, exam_id)?;
 
             aggregate.created += batch_result.created;
@@ -908,6 +902,10 @@ mod tests {
             .expect_err("mismatch exam_id should fail");
 
         let msg = err.to_string();
-        assert!(msg.contains("belongs to exam_id"), "unexpected error: {}", msg);
+        assert!(
+            msg.contains("belongs to exam_id"),
+            "unexpected error: {}",
+            msg
+        );
     }
 }

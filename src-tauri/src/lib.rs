@@ -122,7 +122,8 @@ pub fn get_global_app_handle() -> Option<&'static AppHandle> {
 
 #[cfg(target_os = "linux")]
 fn prepare_linux_appimage_runtime_env() {
-    let is_appimage = std::env::var_os("APPIMAGE").is_some() || std::env::var_os("APPDIR").is_some();
+    let is_appimage =
+        std::env::var_os("APPIMAGE").is_some() || std::env::var_os("APPDIR").is_some();
     if !is_appimage {
         return;
     }
@@ -1114,6 +1115,8 @@ pub fn run() {
             ,crate::commands::notes_export
             ,crate::commands::notes_export_single
             ,crate::commands::notes_import
+            ,crate::commands::notes_import_markdown
+            ,crate::commands::notes_import_markdown_batch
             ,crate::commands::notes_db_stats
             ,crate::commands::notes_db_vacuum
             ,crate::commands::notes_list_tags

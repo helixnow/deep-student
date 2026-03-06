@@ -400,14 +400,7 @@ impl ToolExecutor for CoordinatorSleepExecutor {
 
         // 🔧 P17 修复：发射工具调用开始事件，让前端立即显示睡眠块 UI
         // 🔧 P19 修复：使用填充后的参数，确保前端能获取子代理列表
-        ctx.emitter.emit_tool_call_start(
-            &ctx.message_id,
-            &ctx.block_id,
-            &call.name,
-            enriched_args, // 使用填充后的参数
-            Some(&call.id),
-            None,
-        );
+        ctx.emit_tool_call_start(&call.name, enriched_args, Some(&call.id));
 
         let result = self.execute_sleep(&call.arguments, ctx).await;
 

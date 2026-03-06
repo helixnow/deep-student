@@ -22,6 +22,7 @@ use tracing::{debug, info, warn};
 use crate::vfs::database::VfsDatabase;
 use crate::vfs::error::{VfsError, VfsResult};
 use crate::vfs::repos::folder_repo::VfsFolderRepo;
+use crate::vfs::{canonical_folder_item_type, file_folder_item_sql, is_file_folder_item_type};
 
 /// 最大路径长度（约束 D）
 const MAX_PATH_LENGTH: usize = 1000;
@@ -108,6 +109,7 @@ impl VfsPathCacheRepo {
         item_type: &str,
         item_id: &str,
     ) -> VfsResult<Option<PathCacheEntry>> {
+        let canonical_item_type = canonical_folder_item_type(item_type);
         // 确保表存在
         Self::ensure_table_exists(conn)?;
 
@@ -118,7 +120,7 @@ impl VfsPathCacheRepo {
                 FROM path_cache
                 WHERE item_type = ?1 AND item_id = ?2
                 "#,
-                params![item_type, item_id],
+                params![canonical_item_type, item_id],
                 |row| {
                     Ok(PathCacheEntry {
                         item_type: row.get(0)?,
@@ -308,11 +310,12 @@ impl VfsPathCacheRepo {
         item_type: &str,
         item_id: &str,
     ) -> VfsResult<bool> {
+        let canonical_item_type = canonical_folder_item_type(item_type);
         Self::ensure_table_exists(conn)?;
 
         let affected = conn.execute(
             "DELETE FROM path_cache WHERE item_type = ?1 AND item_id = ?2",
-            params![item_type, item_id],
+            params![canonical_item_type, item_id],
         )?;
 
         if affected > 0 {
@@ -610,24 +613,25 @@ impl VfsPathCacheRepo {
         let in_clause = placeholders.join(", ");
 
         // 通过 LEFT JOIN 各资源表检查 deleted_at 字段，只为未删除的资源创建缓存
+        let file_item_sql = file_folder_item_sql("fi.item_type");
         let sql = format!(
             r#"
             SELECT fi.item_type, fi.item_id, fi.folder_id
             FROM folder_items fi
             LEFT JOIN notes n ON fi.item_type = 'note' AND fi.item_id = n.id
-            LEFT JOIN files f ON fi.item_type IN ('textbook', 'file') AND fi.item_id = f.id
+            LEFT JOIN files f ON {} AND fi.item_id = f.id
             LEFT JOIN exam_sheets e ON fi.item_type = 'exam' AND fi.item_id = e.id
             LEFT JOIN translations t ON fi.item_type = 'translation' AND fi.item_id = t.id
             LEFT JOIN essays es ON fi.item_type = 'essay' AND fi.item_id = es.id
-            WHERE fi.folder_id IN ({}) AND (
+            WHERE fi.folder_id IN ({}) AND fi.deleted_at IS NULL AND (
                 (fi.item_type = 'note' AND n.id IS NOT NULL AND (n.deleted_at IS NULL OR n.deleted_at = '')) OR
-                (fi.item_type IN ('textbook', 'file') AND f.id IS NOT NULL AND (f.deleted_at IS NULL OR f.deleted_at = '')) OR
+                ({} AND f.id IS NOT NULL AND (f.deleted_at IS NULL OR f.deleted_at = '')) OR
                 (fi.item_type = 'exam' AND e.id IS NOT NULL AND (e.deleted_at IS NULL OR e.deleted_at = '')) OR
                 (fi.item_type = 'translation' AND t.id IS NOT NULL AND (t.deleted_at IS NULL OR t.deleted_at = '')) OR
                 (fi.item_type = 'essay' AND es.id IS NOT NULL AND (es.deleted_at IS NULL OR es.deleted_at = ''))
             )
             "#,
-            in_clause
+            file_item_sql, in_clause, file_item_sql
         );
 
         let params: Vec<&dyn rusqlite::ToSql> = folder_ids
@@ -713,23 +717,28 @@ impl VfsPathCacheRepo {
     fn rebuild_resources_cache_with_conn(conn: &Connection, now: &str) -> VfsResult<usize> {
         // 获取所有未删除的资源的 folder_items
         // 通过 LEFT JOIN 各资源表检查 deleted_at 字段，只为未删除的资源创建缓存
-        let mut stmt = conn.prepare(
+        let file_item_sql = file_folder_item_sql("fi.item_type");
+        let sql = format!(
             r#"
             SELECT fi.item_type, fi.item_id, fi.folder_id
             FROM folder_items fi
             LEFT JOIN notes n ON fi.item_type = 'note' AND fi.item_id = n.id
-            LEFT JOIN files f ON fi.item_type IN ('textbook', 'file') AND fi.item_id = f.id
+            LEFT JOIN files f ON {} AND fi.item_id = f.id
             LEFT JOIN exam_sheets e ON fi.item_type = 'exam' AND fi.item_id = e.id
             LEFT JOIN translations t ON fi.item_type = 'translation' AND fi.item_id = t.id
             LEFT JOIN essays es ON fi.item_type = 'essay' AND fi.item_id = es.id
             WHERE
+                fi.deleted_at IS NULL AND (
                 (fi.item_type = 'note' AND n.id IS NOT NULL AND (n.deleted_at IS NULL OR n.deleted_at = '')) OR
-                (fi.item_type IN ('textbook', 'file') AND f.id IS NOT NULL AND (f.deleted_at IS NULL OR f.deleted_at = '')) OR
+                ({} AND f.id IS NOT NULL AND (f.deleted_at IS NULL OR f.deleted_at = '')) OR
                 (fi.item_type = 'exam' AND e.id IS NOT NULL AND (e.deleted_at IS NULL OR e.deleted_at = '')) OR
                 (fi.item_type = 'translation' AND t.id IS NOT NULL AND (t.deleted_at IS NULL OR t.deleted_at = '')) OR
                 (fi.item_type = 'essay' AND es.id IS NOT NULL AND (es.deleted_at IS NULL OR es.deleted_at = ''))
-            "#
-        )?;
+                )
+            "#,
+            file_item_sql, file_item_sql
+        );
+        let mut stmt = conn.prepare(&sql)?;
 
         let items: Vec<(String, String, Option<String>)> = stmt
             .query_map([], |row| {
@@ -833,7 +842,7 @@ impl VfsPathCacheRepo {
                     |row| row.get(0),
                 )
                 .optional()?,
-            "textbook" | "file" => conn
+            item if is_file_folder_item_type(item) => conn
                 .query_row(
                     "SELECT file_name FROM files WHERE id = ?1",
                     params![item_id],
@@ -924,10 +933,11 @@ impl VfsPathCacheRepo {
         } else {
             // 计算资源路径
             // 先查询 folder_items 获取所在文件夹
+            let canonical_item_type = canonical_folder_item_type(item_type);
             let folder_id: Option<String> = conn
                 .query_row(
-                    "SELECT folder_id FROM folder_items WHERE item_type = ?1 AND item_id = ?2",
-                    params![item_type, item_id],
+                    "SELECT folder_id FROM folder_items WHERE item_type = ?1 AND item_id = ?2 AND deleted_at IS NULL",
+                    params![canonical_item_type, item_id],
                     |row| row.get(0),
                 )
                 .optional()?

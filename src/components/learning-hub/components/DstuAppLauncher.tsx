@@ -34,7 +34,11 @@ import {
   DesktopIcon,
   type ResourceIconProps,
 } from '../icons';
-import type { QuickAccessType } from '../learningHubContracts';
+import {
+  getLauncherTypeFromQuickAccessType,
+  getQuickAccessTypeFromLauncherType,
+  type QuickAccessType,
+} from '../learningHubContracts';
 
 interface DstuAppLauncherProps {
   /** 当前选中的应用/类型 */
@@ -95,39 +99,13 @@ export const DstuAppLauncher: React.FC<DstuAppLauncherProps> = React.memo(({
     };
   }, [showCreateMenu]);
 
-  // 映射 typeFilter（单数）到 QuickAccessType（复数）
-  const typeFilterToQuickAccess: Record<string, QuickAccessType> = {
-    'note': 'notes',
-    'textbook': 'textbooks',
-    'exam': 'exams',
-    'essay': 'essays',
-    'translation': 'translations',
-    'image': 'images',
-    'file': 'files',
-    'mindmap': 'mindmaps',
-    'all': 'allFiles',
-  };
-
   // 规范化 activeType
-  const normalizedActiveType = activeType 
-    ? (typeFilterToQuickAccess[activeType] || activeType) 
+  const normalizedActiveType = activeType
+    ? getQuickAccessTypeFromLauncherType(activeType)
     : null;
 
   const handleNavigate = (type: QuickAccessType) => {
-    // 将复数类型转换回单数类型传递给父组件（如果是资源类型）
-    const quickAccessToTypeFilter: Record<string, string> = {
-      'notes': 'note',
-      'textbooks': 'textbook',
-      'exams': 'exam',
-      'essays': 'essay',
-      'translations': 'translation',
-      'images': 'image',
-      'files': 'file',
-      'mindmaps': 'mindmap',
-      'allFiles': 'all',
-    };
-
-    const targetType = quickAccessToTypeFilter[type] || type;
+    const targetType = getLauncherTypeFromQuickAccessType(type);
     onSelectApp?.(targetType);
     onClose?.();
   };

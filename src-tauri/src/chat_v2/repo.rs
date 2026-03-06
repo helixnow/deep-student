@@ -1835,19 +1835,20 @@ impl ChatV2Repo {
         skill_state: &SessionSkillState,
     ) -> ChatV2Result<()> {
         let conn = db.get_conn_safe()?;
-        let mut state = Self::load_session_state_with_conn(&conn, session_id)?.unwrap_or(SessionState {
-            session_id: session_id.to_string(),
-            chat_params: None,
-            features: None,
-            mode_state: None,
-            input_value: None,
-            panel_states: None,
-            updated_at: chrono::Utc::now().to_rfc3339(),
-            pending_context_refs_json: None,
-            loaded_skill_ids_json: None,
-            active_skill_ids_json: None,
-            skill_state_json: None,
-        });
+        let mut state =
+            Self::load_session_state_with_conn(&conn, session_id)?.unwrap_or(SessionState {
+                session_id: session_id.to_string(),
+                chat_params: None,
+                features: None,
+                mode_state: None,
+                input_value: None,
+                panel_states: None,
+                updated_at: chrono::Utc::now().to_rfc3339(),
+                pending_context_refs_json: None,
+                loaded_skill_ids_json: None,
+                active_skill_ids_json: None,
+                skill_state_json: None,
+            });
 
         state
             .set_skill_state(skill_state)

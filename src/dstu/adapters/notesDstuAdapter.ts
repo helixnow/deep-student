@@ -16,6 +16,7 @@
  */
 
 import i18next from 'i18next';
+import { invoke } from '@tauri-apps/api/core';
 import { dstu } from '../api';
 import { pathUtils } from '../utils/pathUtils';
 import type { DstuNode, DstuNodeType, DstuListOptions } from '../types';
@@ -27,6 +28,29 @@ import { Result, VfsError, ok, err, reportError, toVfsError } from '@/shared/res
 // ============================================================================
 
 const LOG_PREFIX = '[NotesDSTU]';
+
+function deriveImportedMarkdownTitle(fileName: string): string {
+  const trimmed = fileName.trim();
+  if (!trimmed) {
+    return i18next.t('dstu:adapters.notes.untitled');
+  }
+
+  return trimmed.replace(/\.(md|markdown)$/i, '').trim() || i18next.t('dstu:adapters.notes.untitled');
+}
+
+function normalizeMarkdownContent(content: string): string {
+  return content.replace(/^\uFEFF/, '');
+}
+
+export interface ImportMarkdownBatchItem {
+  filePath: string;
+  titleHint?: string | null;
+}
+
+export interface ImportMarkdownBatchResponse {
+  imported: DstuNode[];
+  failed: Array<{ file_path: string; message: string }>;
+}
 
 // ============================================================================
 // 类型转换
@@ -153,6 +177,85 @@ export const notesDstuAdapter = {
     });
     if (!result.ok) {
       reportError(result.error, 'Create note');
+    }
+    return result;
+  },
+
+  /**
+   * 从本地 Markdown 文件导入笔记。
+   *
+   * 优先走后端命令，确保桌面端/移动端的虚拟 URI 都能正常读取。
+   */
+  async importMarkdownFile(
+    filePath: string,
+    titleHint?: string | null,
+    folderId?: string | null,
+  ): Promise<Result<DstuNode, VfsError>> {
+    console.log(LOG_PREFIX, 'importMarkdownFile via notes_import_markdown:', filePath, 'titleHint:', titleHint, 'folderId:', folderId);
+
+    try {
+      const node = await invoke<DstuNode>('notes_import_markdown', {
+        request: {
+          filePath,
+          titleHint: titleHint ?? null,
+          folderId: folderId ?? null,
+        },
+      });
+      return ok(node);
+    } catch (error: unknown) {
+      const vfsError = toVfsError(error, '导入 Markdown 笔记');
+      reportError(vfsError, '导入 Markdown 笔记');
+      return err(vfsError);
+    }
+  },
+
+  async importMarkdownFiles(
+    items: ImportMarkdownBatchItem[],
+    folderId?: string | null,
+  ): Promise<Result<ImportMarkdownBatchResponse, VfsError>> {
+    console.log(LOG_PREFIX, 'importMarkdownFiles via notes_import_markdown_batch:', items.length, 'folderId:', folderId);
+
+    try {
+      const response = await invoke<ImportMarkdownBatchResponse>('notes_import_markdown_batch', {
+        request: {
+          items: items.map((item) => ({
+            filePath: item.filePath,
+            titleHint: item.titleHint ?? null,
+          })),
+          folderId: folderId ?? null,
+        },
+      });
+      return ok(response);
+    } catch (error: unknown) {
+      const vfsError = toVfsError(error, '批量导入 Markdown 笔记');
+      reportError(vfsError, '批量导入 Markdown 笔记');
+      return err(vfsError);
+    }
+  },
+
+  /**
+   * 从浏览器 File 内容导入 Markdown 笔记。
+   *
+   * 主要用于非路径型拖拽回退分支。
+   */
+  async importMarkdownContent(
+    fileName: string,
+    content: string,
+    folderId?: string | null,
+  ): Promise<Result<DstuNode, VfsError>> {
+    const path = '/';
+    const title = deriveImportedMarkdownTitle(fileName);
+    console.log(LOG_PREFIX, 'importMarkdownContent via DSTU:', fileName, 'folderId:', folderId);
+
+    const result = await dstu.create(path, {
+      type: 'note',
+      name: title,
+      content: normalizeMarkdownContent(content),
+      metadata: folderId ? { folderId } : undefined,
+    });
+
+    if (!result.ok) {
+      reportError(result.error, 'Import markdown content');
     }
     return result;
   },

@@ -49,6 +49,9 @@ export interface ResourceLocator {
   path?: string;
 }
 
+export const DSTU_NAVIGATE_TO_KNOWLEDGE_BASE_EVENT = 'DSTU_NAVIGATE_TO_KNOWLEDGE_BASE';
+export const LEARNING_HUB_NAVIGATE_TO_KNOWLEDGE_EVENT = 'learningHubNavigateToKnowledge';
+
 export const SPECIAL_VIEW_KINDS: readonly FinderViewKind[] = [
   'favorites',
   'recent',
@@ -155,6 +158,46 @@ const QUICK_ACCESS_BY_TYPE_FILTER: Partial<Record<DstuNodeType, QuickAccessType>
   mindmap: 'mindmaps',
 };
 
+const LAUNCHER_TYPE_BY_QUICK_ACCESS: Partial<Record<QuickAccessType, string>> = {
+  allFiles: 'all',
+  notes: 'note',
+  textbooks: 'textbook',
+  exams: 'exam',
+  essays: 'essay',
+  translations: 'translation',
+  images: 'image',
+  files: 'file',
+  mindmaps: 'mindmap',
+};
+
+const QUICK_ACCESS_ALIAS_MAP: Record<string, QuickAccessType> = {
+  all: 'allFiles',
+  allFiles: 'allFiles',
+  favorites: 'favorites',
+  favorite: 'favorites',
+  notes: 'notes',
+  note: 'notes',
+  textbooks: 'textbooks',
+  textbook: 'textbooks',
+  exams: 'exams',
+  exam: 'exams',
+  essays: 'essays',
+  essay: 'essays',
+  translations: 'translations',
+  translation: 'translations',
+  images: 'images',
+  image: 'images',
+  files: 'files',
+  file: 'files',
+  mindmaps: 'mindmaps',
+  mindmap: 'mindmaps',
+  recent: 'recent',
+  trash: 'trash',
+  indexStatus: 'indexStatus',
+  memory: 'memory',
+  desktop: 'desktop',
+};
+
 export function isSpecialViewKind(viewKind: FinderViewKind): boolean {
   return SPECIAL_VIEW_KINDS.includes(viewKind);
 }
@@ -165,6 +208,14 @@ export function getViewCapabilities(viewKind: FinderViewKind): ViewCapabilities 
 
 export function getQuickAccessTarget(type: QuickAccessType): Pick<FinderPathLike, 'viewKind' | 'typeFilter'> {
   return QUICK_ACCESS_TARGETS[type];
+}
+
+export function getQuickAccessTypeFromLauncherType(type: string | null | undefined): QuickAccessType {
+  return resolveQuickAccessType(type) ?? 'allFiles';
+}
+
+export function getLauncherTypeFromQuickAccessType(type: QuickAccessType): string {
+  return LAUNCHER_TYPE_BY_QUICK_ACCESS[type] || type;
 }
 
 export function getQuickAccessTypeFromPath(path: FinderPathLike): QuickAccessType | undefined {
@@ -181,6 +232,21 @@ export function getQuickAccessTypeFromPath(path: FinderPathLike): QuickAccessTyp
   }
 
   return 'allFiles';
+}
+
+export function resolveQuickAccessType(value: string | null | undefined): QuickAccessType | null {
+  if (!value) return null;
+  return QUICK_ACCESS_ALIAS_MAP[value] ?? null;
+}
+
+export function buildResourceLocator(locator: ResourceLocator | null | undefined): ResourceLocator {
+  return {
+    sourceId: locator?.sourceId || undefined,
+    resourceId: locator?.resourceId || undefined,
+    resourceType: locator?.resourceType || undefined,
+    title: locator?.title || undefined,
+    path: locator?.path || undefined,
+  };
 }
 
 export function getFinderPathDisplayPath(path: FinderPathLike & { breadcrumbs?: Array<{ dstuPath?: string }> }): string {

@@ -75,14 +75,19 @@ fn sync_session_skill_state_from_variant(
     session_id: &str,
     variant: &crate::chat_v2::types::Variant,
 ) -> ChatV2Result<()> {
-    let snapshot = variant
-        .meta
-        .as_ref()
-        .and_then(|meta| meta.skill_snapshot_after.as_ref().or(meta.skill_snapshot_before.as_ref()));
+    let snapshot = variant.meta.as_ref().and_then(|meta| {
+        meta.skill_snapshot_after
+            .as_ref()
+            .or(meta.skill_snapshot_before.as_ref())
+    });
     let Some(snapshot) = snapshot else {
         return Ok(());
     };
-    ChatV2Repo::update_session_skill_state_v2(db, session_id, &session_skill_state_from_snapshot(snapshot))
+    ChatV2Repo::update_session_skill_state_v2(
+        db,
+        session_id,
+        &session_skill_state_from_snapshot(snapshot),
+    )
 }
 
 fn resolve_retry_options(
@@ -333,9 +338,12 @@ async fn delete_variant_impl(
 
     if let Some(ref next_active_variant_id) = new_active_variant_id {
         if let Some(ref variants) = message.variants {
-            if let Some(next_variant) = variants.iter().find(|variant| variant.id == *next_active_variant_id)
+            if let Some(next_variant) = variants
+                .iter()
+                .find(|variant| variant.id == *next_active_variant_id)
             {
-                let _ = sync_session_skill_state_from_variant(db, &message.session_id, next_variant);
+                let _ =
+                    sync_session_skill_state_from_variant(db, &message.session_id, next_variant);
             }
         }
     }
@@ -671,11 +679,14 @@ async fn retry_variant_impl(
         .map(|meta| crate::chat_v2::types::MessageMeta {
             skill_snapshot_before: meta.skill_snapshot_before.clone(),
             skill_snapshot_after: meta.skill_snapshot_after.clone(),
+            skill_runtime_before: meta.skill_runtime_before.clone(),
+            skill_runtime_after: meta.skill_runtime_after.clone(),
             ..Default::default()
         });
     let options = apply_original_skill_snapshot_overrides(
         resolve_retry_options(saved_chat_params, &model_id, options_override),
-        selected_variant_meta.as_ref().or(message.meta.as_ref()),
+        selected_variant_meta.as_ref(),
+        message.meta.as_ref(),
     );
 
     // 释放数据库连接，避免在 Pipeline 执行期间持有连接
@@ -974,6 +985,7 @@ async fn retry_variants_impl(
     let options = apply_original_skill_snapshot_overrides(
         resolve_retry_options(saved_chat_params, &primary_model_id, options_override),
         message.meta.as_ref(),
+        None,
     );
 
     // 释放数据库连接，避免在 Pipeline 执行期间持有连接
@@ -1262,6 +1274,7 @@ mod tests {
                     error: None,
                     created_at: chrono::Utc::now().timestamp_millis(),
                     usage: None,
+                    meta: None,
                 },
                 Variant {
                     id: "var_2".to_string(),
@@ -1272,6 +1285,7 @@ mod tests {
                     error: Some("Test error".to_string()),
                     created_at: chrono::Utc::now().timestamp_millis(),
                     usage: None,
+                    meta: None,
                 },
             ]),
             shared_context: None,
@@ -1327,6 +1341,34 @@ mod tests {
     }
 
     #[test]
+    fn test_session_skill_state_from_snapshot_promotes_branch_local_into_agentic() {
+        let snapshot = SkillStateSnapshot {
+            manual_pinned_skill_ids: vec!["manual-a".to_string()],
+            mode_required_bundle_ids: vec!["mode-a".to_string()],
+            agentic_session_skill_ids: vec!["agentic-a".to_string()],
+            branch_local_skill_ids: vec!["branch-a".to_string()],
+            version: 4,
+            ..Default::default()
+        };
+
+        let session_state = session_skill_state_from_snapshot(&snapshot);
+        assert_eq!(
+            session_state.manual_pinned_skill_ids,
+            vec!["manual-a".to_string()]
+        );
+        assert_eq!(
+            session_state.mode_required_bundle_ids,
+            vec!["mode-a".to_string()]
+        );
+        assert_eq!(
+            session_state.agentic_session_skill_ids,
+            vec!["agentic-a".to_string(), "branch-a".to_string()]
+        );
+        assert!(session_state.branch_local_skill_ids.is_empty());
+        assert_eq!(session_state.version, 5);
+    }
+
+    #[test]
     fn test_variant_streaming_status() {
         // streaming 状态的变体不能激活（根据 can_activate 逻辑，streaming 可以激活）
         // 但 streaming 状态的变体不能重试
@@ -1339,6 +1381,7 @@ mod tests {
             error: None,
             created_at: chrono::Utc::now().timestamp_millis(),
             usage: None,
+            meta: None,
         };
 
         // streaming 可以激活（因为不是 error）
@@ -1359,6 +1402,7 @@ mod tests {
             error: None,
             created_at: chrono::Utc::now().timestamp_millis(),
             usage: None,
+            meta: None,
         };
 
         // cancelled 可以激活
@@ -1379,6 +1423,7 @@ mod tests {
             error: None,
             created_at: chrono::Utc::now().timestamp_millis(),
             usage: None,
+            meta: None,
         };
 
         // pending 可以激活
@@ -1396,6 +1441,7 @@ mod tests {
             enable_thinking: Some(false),
             mcp_tool_schemas: Some(vec![McpToolSchema {
                 name: "builtin-web_search".to_string(),
+                server_id: None,
                 description: Some("web search".to_string()),
                 input_schema: Some(serde_json::json!({
                     "type": "object",

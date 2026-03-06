@@ -8,6 +8,9 @@ import { getViewCapabilities } from './learningHubContracts';
 /** 不允许拖拽导入的视图类型 */
 export const DRAG_DROP_BLOCKED_VIEWS = ['favorites', 'trash', 'recent', 'indexStatus', 'memory', 'desktop'] as const;
 
+/** 识别为 Markdown 笔记导入的扩展名 */
+export const MARKDOWN_NOTE_EXTENSIONS = new Set(['md', 'markdown']);
+
 /**
  * 当前视图是否禁止拖拽导入
  */
@@ -30,4 +33,38 @@ export function consumePathsDropHandledFlag(flagRef: { current: boolean }): bool
   if (!flagRef.current) return false;
   flagRef.current = false;
   return true;
+}
+
+/**
+ * 按是否应作为 Markdown 笔记导入进行分流。
+ *
+ * 当且仅当当前处于“笔记”视图时，`.md/.markdown` 会进入 `markdownItems`，
+ * 其余文件维持原链路。
+ */
+export function partitionMarkdownNoteImports<T>(
+  items: T[],
+  getName: (item: T) => string,
+  shouldImportMarkdownAsNotes: boolean,
+): { markdownItems: T[]; otherItems: T[] } {
+  if (!shouldImportMarkdownAsNotes) {
+    return {
+      markdownItems: [],
+      otherItems: [...items],
+    };
+  }
+
+  const markdownItems: T[] = [];
+  const otherItems: T[] = [];
+
+  for (const item of items) {
+    const fileName = getName(item);
+    const extension = (fileName.split('.').pop() || '').toLowerCase();
+    if (MARKDOWN_NOTE_EXTENSIONS.has(extension)) {
+      markdownItems.push(item);
+    } else {
+      otherItems.push(item);
+    }
+  }
+
+  return { markdownItems, otherItems };
 }

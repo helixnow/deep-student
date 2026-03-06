@@ -70,6 +70,7 @@ function createMockStore(): ChatStore {
     pendingApprovalRequest: null,
     activeSkillId: null,
     activeSkillIds: [],
+    skillStateJson: null,
     pendingParallelModelIds: null,
     modelRetryTarget: null,
 
@@ -138,6 +139,7 @@ function createMockStore(): ChatStore {
     getOrderedMessages: vi.fn(() => []),
     setPendingParallelModelIds: vi.fn(),
     setModelRetryTarget: vi.fn(),
+    setSkillStateJson: vi.fn(),
   } as unknown as ChatStore;
 }
 
@@ -300,6 +302,21 @@ describe('ChatV2TauriAdapter', () => {
         webSearchEnabled: false,
       });
     });
+
+    it('should prefer structured skill state over local cache', async () => {
+      await adapter.setup();
+
+      (mockStore as any).skillStateJson = JSON.stringify({
+        manualPinnedSkillIds: ['manual-skill'],
+        agenticSessionSkillIds: ['agentic-skill'],
+        version: 5,
+      });
+
+      const options = (adapter as any).buildSendOptions();
+
+      expect(options.activeSkillIds).toEqual(['manual-skill']);
+      expect(options.skillStateVersion).toBe(5);
+    });
   });
 
   describe('session events', () => {
@@ -395,6 +412,21 @@ describe('ChatV2TauriAdapter', () => {
 
     it('should save session with session state', async () => {
       vi.mocked(invoke).mockResolvedValue(undefined);
+      (mockStore as any).skillStateJson = '{"manualPinnedSkillIds":["cached-skill"],"version":9}';
+      (mockStore as any).pendingContextRefs = [
+        {
+          resourceId: 'res_1234567890',
+          hash: 'a'.repeat(64),
+          typeId: 'skill_instruction',
+          isSticky: true,
+          skillId: 'cached-skill',
+        },
+        {
+          resourceId: 'res_abcdefghij',
+          hash: 'b'.repeat(64),
+          typeId: 'file',
+        },
+      ];
 
       await adapter.saveSession();
 
@@ -414,12 +446,189 @@ describe('ChatV2TauriAdapter', () => {
             rag: false,
             mcp: false,
           }),
+          pendingContextRefsJson: JSON.stringify([
+            {
+              resourceId: 'res_abcdefghij',
+              hash: 'b'.repeat(64),
+              typeId: 'file',
+            },
+          ]),
           loadedSkillIdsJson: null,
           activeSkillIdsJson: null,
-          skillStateJson: null,
+          skillStateJson: '{"manualPinnedSkillIds":["cached-skill"],"version":9}',
           updatedAt: expect.any(String),
         }),
       });
+    });
+
+    it('should restore original replay runtime from variant snapshot first', async () => {
+      await adapter.setup();
+
+      (mockStore.messageMap as Map<string, unknown>).set('msg-replay-1', {
+        id: 'msg-replay-1',
+        _meta: {
+          skillRuntimeAfter: {
+            activeSkillIds: ['message-skill'],
+            skillAllowedTools: ['server-b::fetch'],
+            mcpToolSchemas: [{ name: 'fetch', serverId: 'server-b', description: 'b', inputSchema: { type: 'object' } }],
+            selectedMcpServers: ['server-b'],
+          },
+        },
+        activeVariantId: 'var-a',
+        variants: [
+          {
+            id: 'var-a',
+            meta: {
+              skillRuntimeAfter: {
+                activeSkillIds: ['variant-skill'],
+                skillAllowedTools: ['server-a::fetch'],
+                mcpToolSchemas: [{ name: 'fetch', serverId: 'server-a', description: 'a', inputSchema: { type: 'object' } }],
+                selectedMcpServers: ['server-a'],
+              },
+            },
+          },
+        ],
+      });
+
+      const options = (adapter as any).applyOriginalReplaySkillState(
+        'msg-replay-1',
+        { replayMode: 'original' },
+        ['fallback-server'],
+        'var-a',
+      );
+
+      expect(options.activeSkillIds).toEqual(['variant-skill']);
+      expect(options.skillAllowedTools).toEqual(['server-a::fetch']);
+      expect(options.mcpTools).toEqual(['server-a']);
+      expect(options.mcpToolSchemas).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ name: 'fetch', serverId: 'server-a' }),
+        ]),
+      );
+    });
+
+    it('should use current skill environment for retry(current)', async () => {
+      await adapter.setup();
+
+      (adapter as any).ensureModelMetadataReady = vi.fn().mockResolvedValue(undefined);
+      (adapter as any).buildSendOptions = vi.fn(() => ({
+        replayMode: 'current',
+        activeSkillIds: ['current-skill'],
+        modelId: 'test-model',
+      }));
+      (adapter as any).normalizeChatModelSelection = vi.fn().mockResolvedValue({
+        modelId: 'test-model',
+        model2OverrideId: undefined,
+        modelDisplayName: 'Test Model',
+      });
+      (adapter as any).getValidChatModelIdSet = vi.fn().mockResolvedValue(new Set<string>());
+      vi.mocked(invoke).mockResolvedValue({ message_id: 'msg-1' });
+
+      (mockStore.messageMap as Map<string, unknown>).set('msg-1', {
+        _meta: {
+          skillRuntimeAfter: {
+            activeSkillIds: ['historical-skill'],
+          },
+        },
+      });
+
+      await (adapter as any).executeRetry('msg-1');
+
+      expect(invoke).toHaveBeenCalledWith(
+        'chat_v2_retry_message',
+        expect.objectContaining({
+          options: expect.objectContaining({
+            replayMode: 'current',
+            activeSkillIds: ['current-skill'],
+          }),
+        }),
+      );
+    });
+
+    it('should restore original skill environment for continue(original)', async () => {
+      await adapter.setup();
+
+      (adapter as any).ensureModelMetadataReady = vi.fn().mockResolvedValue(undefined);
+      (adapter as any).buildSendOptions = vi.fn(() => ({
+        replayMode: 'original',
+        modelId: 'test-model',
+      }));
+      (adapter as any).normalizeChatModelSelection = vi.fn().mockResolvedValue({
+        modelId: 'test-model',
+        model2OverrideId: undefined,
+        modelDisplayName: 'Test Model',
+      });
+      vi.mocked(invoke).mockResolvedValue('msg-continue-1');
+
+      (mockStore.messageMap as Map<string, unknown>).set('msg-continue-1', {
+        _meta: {
+          skillRuntimeAfter: {
+            activeSkillIds: ['original-skill'],
+            selectedMcpServers: ['server-a'],
+          },
+        },
+      });
+
+      await adapter.continueMessage('msg-continue-1');
+
+      expect(invoke).toHaveBeenCalledWith(
+        'chat_v2_continue_message',
+        expect.objectContaining({
+          options: expect.objectContaining({
+            replayMode: 'original',
+            activeSkillIds: ['original-skill'],
+            mcpTools: ['server-a'],
+          }),
+        }),
+      );
+    });
+
+    it('should use variant snapshot for retryVariant(original)', async () => {
+      await adapter.setup();
+
+      (adapter as any).ensureModelMetadataReady = vi.fn().mockResolvedValue(undefined);
+      (adapter as any).buildSendOptions = vi.fn(() => ({
+        replayMode: 'original',
+        modelId: 'test-model',
+      }));
+      (adapter as any).normalizeChatModelSelection = vi.fn().mockResolvedValue({
+        modelId: 'test-model',
+        model2OverrideId: undefined,
+        modelDisplayName: 'Test Model',
+      });
+      vi.mocked(invoke).mockResolvedValue(undefined);
+
+      (mockStore.messageMap as Map<string, unknown>).set('msg-variant-retry', {
+        _meta: {
+          skillRuntimeAfter: {
+            activeSkillIds: ['message-skill'],
+          },
+        },
+        variants: [
+          {
+            id: 'var-1',
+            meta: {
+              skillRuntimeAfter: {
+                activeSkillIds: ['variant-skill'],
+                selectedMcpServers: ['server-a'],
+              },
+            },
+          },
+        ],
+      });
+
+      await (adapter as any).executeRetryVariant('msg-variant-retry', 'var-1');
+
+      expect(invoke).toHaveBeenCalledWith(
+        'chat_v2_retry_variant',
+        expect.objectContaining({
+          options: expect.objectContaining({
+            replayMode: 'original',
+            activeSkillIds: ['variant-skill'],
+            mcpTools: ['server-a'],
+          }),
+        }),
+      );
     });
 
     it('should create session', async () => {

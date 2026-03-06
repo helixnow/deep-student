@@ -62,8 +62,6 @@ interface LearningHubNavigationContextValue {
   currentFolderPath: string;
   /** 面包屑列表（真实路径版） */
   breadcrumbs: RealPathBreadcrumbItem[];
-  /** 设置当前文件夹 ID（不记录历史） */
-  setCurrentFolderId: (folderId: string | null) => void;
   /** 导航到文件夹（记录历史） */
   navigateTo: (folderId: string | null) => void;
   /** 导航到面包屑位置 */
@@ -80,31 +78,12 @@ interface LearningHubNavigationContextValue {
   isInLearningHub: boolean;
   /** 设置是否在 Learning Hub 页面 */
   setIsInLearningHub: (value: boolean) => void;
-  /** 是否正在加载导航 */
-  isNavigationLoading: boolean;
-  /** 📱 是否有应用打开（用于移动端返回逻辑） */
-  hasOpenApp: boolean;
-  /** 📱 设置应用打开状态 */
-  setHasOpenApp: (value: boolean) => void;
-  /** 📱 关闭应用的回调 */
-  closeAppCallback: (() => void) | null;
-  /** 📱 注册关闭应用的回调 */
-  registerCloseAppCallback: (callback: (() => void) | null) => void;
 }
 
 const LearningHubNavigationContext = createContext<LearningHubNavigationContextValue | null>(null);
 
 export const LearningHubNavigationProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [isInLearningHub, setIsInLearningHub] = useState(false);
-
-  // 📱 应用打开状态（用于移动端返回逻辑）
-  const [hasOpenApp, setHasOpenApp] = useState(false);
-  const [closeAppCallback, setCloseAppCallback] = useState<(() => void) | null>(null);
-
-  // 注册关闭应用的回调
-  const registerCloseAppCallback = useCallback((callback: (() => void) | null) => {
-    setCloseAppCallback(() => callback);
-  }, []);
 
   const {
     historyIndex,
@@ -114,7 +93,6 @@ export const LearningHubNavigationProvider: React.FC<{ children: React.ReactNode
     currentPath,
     enterFolder,
     jumpToBreadcrumb,
-    setCurrentPathWithoutHistory,
   } = useFinderStore();
 
   const breadcrumbs = useMemo<RealPathBreadcrumbItem[]>(
@@ -127,7 +105,9 @@ export const LearningHubNavigationProvider: React.FC<{ children: React.ReactNode
   );
   const currentFolderPath = breadcrumbs[breadcrumbs.length - 1]?.fullPath || '/';
 
-  // 从 finderStore 的历史栈计算 canGoBack/canGoForward
+  // 仅从 finderStore 的历史栈计算导航能力。
+  // 移动端“关闭应用 / 返回上级目录”由 LearningHubPage 顶栏箭头单独处理，
+  // 全局后退只代表历史后退，避免语义混用。
   const canGoBack = historyIndex > 0;
   const canGoForward = historyIndex < history.length - 1;
 
@@ -152,69 +132,43 @@ export const LearningHubNavigationProvider: React.FC<{ children: React.ReactNode
     jumpToBreadcrumb(index);
   }, [jumpToBreadcrumb]);
 
-  const setCurrentFolderId = useCallback((folderId: string | null) => {
-    void setCurrentPathWithoutHistory(folderId);
-  }, [setCurrentPathWithoutHistory]);
-
-  // 📱 增强版 canGoBack：有应用打开时也返回 true
-  const enhancedCanGoBack = hasOpenApp || canGoBack;
-
-  // 📱 增强版 goBack：优先关闭应用
-  const enhancedGoBack = useCallback(() => {
-    if (hasOpenApp && closeAppCallback) {
-      closeAppCallback();
-    } else {
-      goBack();
-    }
-  }, [hasOpenApp, closeAppCallback, goBack]);
-
   // 📱 同步导航状态到全局 ref（供 App.tsx 使用）
   useEffect(() => {
     const state: GlobalNavigationState = {
-      canGoBack: enhancedCanGoBack,
+      canGoBack,
       canGoForward,
-      goBack: enhancedGoBack,
+      goBack,
       goForward,
     };
     globalNavigationRef.current = state;
 
     // 触发自定义事件通知 App.tsx
     window.dispatchEvent(new CustomEvent(LEARNING_HUB_NAV_STATE_CHANGED, { detail: state }));
-  }, [enhancedCanGoBack, canGoForward, enhancedGoBack, goForward]);
+  }, [canGoBack, canGoForward, goBack, goForward]);
 
   const value = useMemo<LearningHubNavigationContextValue>(() => ({
     currentFolderId: currentPath.folderId,
     currentFolderPath,
     breadcrumbs,
-    setCurrentFolderId,
     navigateTo,
     navigateToBreadcrumb,
-    canGoBack: enhancedCanGoBack,
+    canGoBack,
     canGoForward,
-    goBack: enhancedGoBack,
+    goBack,
     goForward,
     isInLearningHub,
     setIsInLearningHub,
-    isNavigationLoading: false,
-    hasOpenApp,
-    setHasOpenApp,
-    closeAppCallback,
-    registerCloseAppCallback,
   }), [
     currentPath.folderId,
     currentFolderPath,
     breadcrumbs,
-    setCurrentFolderId,
     navigateTo,
     navigateToBreadcrumb,
-    enhancedCanGoBack,
+    canGoBack,
     canGoForward,
-    enhancedGoBack,
+    goBack,
     goForward,
     isInLearningHub,
-    hasOpenApp,
-    closeAppCallback,
-    registerCloseAppCallback,
   ]);
 
   return (

@@ -717,14 +717,7 @@ impl ToolExecutor for TodoListExecutor {
         let start = Instant::now();
 
         // 发射开始事件
-        ctx.emitter.emit_tool_call_start(
-            &ctx.message_id,
-            &ctx.block_id,
-            &call.name,
-            call.arguments.clone(),
-            Some(&call.id), // 🆕 tool_call_id
-            None,
-        );
+        ctx.emit_tool_call_start(&call.name, call.arguments.clone(), Some(&call.id));
 
         // 使用 session_id 作为隔离键（如果为空则使用 message_id）
         let session_key = if ctx.session_id.is_empty() {
@@ -748,15 +741,10 @@ impl ToolExecutor for TodoListExecutor {
         match result {
             Ok((output, continue_execution)) => {
                 // 发射结束事件
-                ctx.emitter.emit_end(
-                    event_types::TOOL_CALL,
-                    &ctx.block_id,
-                    Some(json!({
-                        "result": output,
-                        "durationMs": duration_ms,
-                    })),
-                    None,
-                );
+                ctx.emit_tool_call_end(Some(json!({
+                    "result": output,
+                    "durationMs": duration_ms,
+                })));
 
                 log::info!(
                     "[TodoListExecutor] Tool {} completed: continue_execution={}",
@@ -787,8 +775,7 @@ impl ToolExecutor for TodoListExecutor {
                 Ok(tool_result)
             }
             Err(error) => {
-                ctx.emitter
-                    .emit_error(event_types::TOOL_CALL, &ctx.block_id, &error, None);
+                ctx.emit_tool_call_error(&error);
 
                 let result = ToolResultInfo::failure(
                     Some(call.id.clone()),

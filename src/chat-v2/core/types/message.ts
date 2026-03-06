@@ -66,9 +66,20 @@ export interface SkillStateSnapshot {
   version?: number;
 }
 
+export interface ReplaySkillPayloadSnapshot {
+  activeSkillIds?: string[];
+  skillAllowedTools?: string[];
+  skillContents?: Record<string, string>;
+  skillEmbeddedTools?: Record<string, Array<{ name: string; description?: string; inputSchema?: unknown }>>;
+  mcpToolSchemas?: Array<{ name: string; serverId?: string; description?: string; inputSchema?: unknown }>;
+  selectedMcpServers?: string[];
+}
+
 export interface VariantMeta {
   skillSnapshotBefore?: SkillStateSnapshot;
   skillSnapshotAfter?: SkillStateSnapshot;
+  skillRuntimeBefore?: ReplaySkillPayloadSnapshot;
+  skillRuntimeAfter?: ReplaySkillPayloadSnapshot;
 }
 
 // ============================================================================
@@ -183,6 +194,12 @@ export interface MessageMeta {
 
   /** 技能状态快照（执行后） */
   skillSnapshotAfter?: SkillStateSnapshot;
+
+  /** 技能运行时快照（执行前） */
+  skillRuntimeBefore?: ReplaySkillPayloadSnapshot;
+
+  /** 技能运行时快照（执行后） */
+  skillRuntimeAfter?: ReplaySkillPayloadSnapshot;
 
   /** 实际采用的 replay 来源 */
   replaySource?: string;

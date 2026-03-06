@@ -243,14 +243,14 @@ describe('ImageGenEventHandler', () => {
       expect(blockId).toBe('image-gen-block-1');
 
       // 验证设置了输入信息
-      expect(mockStore.updateBlock).toHaveBeenCalledWith('image-gen-block-1', {
+      expect(mockStore.updateBlock).toHaveBeenCalledWith('image-gen-block-1', expect.objectContaining({
         toolInput: {
           prompt: 'A beautiful sunset over the ocean',
           width: 1024,
           height: 768,
           model: 'dall-e-3',
         },
-      });
+      }));
     });
   });
 

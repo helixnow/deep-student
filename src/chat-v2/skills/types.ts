@@ -251,6 +251,14 @@ export interface SkillDefinition extends SkillMetadata {
   location: SkillLocation;
 
   /**
+   * 解析后保留的未知 frontmatter 字段
+   *
+   * 用于在编辑后重新序列化时尽量保持 round-trip，
+   * 避免覆盖掉当前 UI 尚未显式支持的扩展字段。
+   */
+  preservedFrontmatter?: Record<string, unknown>;
+
+  /**
    * 是否为内置 skill
    *
    * 内置 skills 有以下特性：

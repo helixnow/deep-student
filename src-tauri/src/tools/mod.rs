@@ -402,6 +402,10 @@ impl ToolRegistry {
         // 🔧 修复：原默认 15s 太短，与 executor_registry 的 MCP 工具 180s 超时严重不匹配
         // 慢速 MCP 工具（如大数据查询）会在 bridge 层被截断，造成误报超时
         let mut tool_args = args.clone();
+        let preferred_server_id = tool_args.as_object_mut().and_then(|obj| {
+            obj.remove("_serverId")
+                .and_then(|value| value.as_str().map(|text| text.to_string()))
+        });
         let timeout_override = tool_args.as_object_mut().and_then(|obj| {
             obj.remove("_timeoutMs")
                 .or_else(|| obj.remove("__bridgeTimeoutMs"))
@@ -431,6 +435,7 @@ impl ToolRegistry {
         let payload = serde_json::json!({
             "correlationId": corr,
             "tool": tool_name,
+            "serverId": preferred_server_id,
             "args": tool_args,
             "timeoutMs": timeout_ms
         });

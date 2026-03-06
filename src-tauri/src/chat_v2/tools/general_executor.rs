@@ -70,14 +70,7 @@ impl ToolExecutor for GeneralToolExecutor {
         );
 
         // 1. 发射工具调用开始事件
-        ctx.emitter.emit_tool_call_start(
-            &ctx.message_id,
-            &ctx.block_id,
-            &call.name,
-            call.arguments.clone(),
-            Some(&call.id), // 🆕 tool_call_id: 用于前端复用 preparing 块
-            None,           // variant_id: 单变体模式
-        );
+        ctx.emit_tool_call_start(&call.name, call.arguments.clone(), Some(&call.id));
 
         // 2. 构建工具上下文
         let tool_ctx = ToolContext {
@@ -103,15 +96,10 @@ impl ToolExecutor for GeneralToolExecutor {
         if ok {
             // 工具调用成功
             let output = data.unwrap_or(json!(null));
-            ctx.emitter.emit_end(
-                event_types::TOOL_CALL,
-                &ctx.block_id,
-                Some(json!({
-                    "result": output,
-                    "durationMs": duration_ms,
-                })),
-                None,
-            );
+            ctx.emit_tool_call_end(Some(json!({
+                "result": output,
+                "durationMs": duration_ms,
+            })));
 
             log::debug!(
                 "[GeneralToolExecutor] Tool {} completed successfully in {}ms",
@@ -137,8 +125,7 @@ impl ToolExecutor for GeneralToolExecutor {
         } else {
             // 工具调用返回错误
             let error_msg = error.unwrap_or_else(|| "Tool call failed".to_string());
-            ctx.emitter
-                .emit_error(event_types::TOOL_CALL, &ctx.block_id, &error_msg, None);
+            ctx.emit_tool_call_error(&error_msg);
 
             log::warn!(
                 "[GeneralToolExecutor] Tool {} failed: {} ({}ms)",

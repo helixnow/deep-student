@@ -189,8 +189,13 @@ export async function exportAnkiCards(options: {
   return invoke<ExportAnkiCardsResult>('export_anki_cards', { request });
 }
 
-// ==================== 教材库（独立数据库） ====================
+// ==================== 教材库（兼容壳，建议迁移到 textbookDstuAdapter） ====================
+/**
+ * @deprecated 请改用 `textbookDstuAdapter.addTextbooks()`。
+ * 该兼容壳不支持传入 `folderId`，仅为历史调用保留。
+ */
 export async function textbooksAdd(filePaths: string[]): Promise<Array<{ id: string; name: string; path: string; size: number; addedAt: string }>> {
+console.warn('[chatApi] textbooksAdd() is deprecated; use textbookDstuAdapter.addTextbooks() instead.');
 const raw = await invoke<any>('textbooks_add', { sources: filePaths });
 const list = Array.isArray(raw) ? raw : [];
 const results = list.map((r: any) => ({

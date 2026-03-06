@@ -796,14 +796,7 @@ impl ToolExecutor for CanvasToolExecutor {
         );
 
         // 1. 发射工具调用开始事件
-        ctx.emitter.emit_tool_call_start(
-            &ctx.message_id,
-            &ctx.block_id,
-            &call.name,
-            call.arguments.clone(),
-            Some(&call.id), // 🆕 tool_call_id
-            None,           // variant_id: 单变体模式
-        );
+        ctx.emit_tool_call_start(&call.name, call.arguments.clone(), Some(&call.id));
 
         // 2. 解析参数：优先使用工具参数，否则使用 canvas_context 默认值
         let args = call.arguments.as_object().cloned().unwrap_or_default();
@@ -831,8 +824,7 @@ impl ToolExecutor for CanvasToolExecutor {
         // 3. 检查 noteId 是否存在（仅对需要 noteId 的工具）
         if !no_note_id_required && note_id.is_empty() {
             let error_msg = "Canvas 工具缺少必需参数: noteId（请确保已选择笔记或在工具参数中指定）";
-            ctx.emitter
-                .emit_error(event_types::TOOL_CALL, &ctx.block_id, error_msg, None);
+            ctx.emit_tool_call_error(error_msg);
             let result = ToolResultInfo::failure(
                 Some(call.id.clone()),
                 Some(ctx.block_id.clone()),
@@ -871,15 +863,10 @@ impl ToolExecutor for CanvasToolExecutor {
         // 5. 处理结果
         match result {
             Ok(output) => {
-                ctx.emitter.emit_end(
-                    event_types::TOOL_CALL,
-                    &ctx.block_id,
-                    Some(json!({
-                        "result": output,
-                        "durationMs": duration_ms,
-                    })),
-                    None,
-                );
+                ctx.emit_tool_call_end(Some(json!({
+                    "result": output,
+                    "durationMs": duration_ms,
+                })));
 
                 log::debug!(
                     "[CanvasToolExecutor] Tool {} completed successfully in {}ms",
@@ -904,8 +891,7 @@ impl ToolExecutor for CanvasToolExecutor {
                 Ok(result)
             }
             Err(error_msg) => {
-                ctx.emitter
-                    .emit_error(event_types::TOOL_CALL, &ctx.block_id, &error_msg, None);
+                ctx.emit_tool_call_error(&error_msg);
 
                 log::warn!(
                     "[CanvasToolExecutor] Tool {} failed: {} ({}ms)",

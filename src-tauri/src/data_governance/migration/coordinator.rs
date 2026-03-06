@@ -2179,8 +2179,9 @@ impl MigrationCoordinator {
                     TARGET_COLUMN,
                     "TEXT DEFAULT NULL",
                 )?;
-                let _ = conn.execute(
-                    r#"
+                let _ = conn
+                    .execute(
+                        r#"
                     UPDATE chat_v2_session_state
                     SET skill_state_json = json_object(
                         'manualPinnedSkillIds', json(COALESCE(active_skill_ids_json, '[]')),
@@ -2195,14 +2196,14 @@ impl MigrationCoordinator {
                     )
                     WHERE skill_state_json IS NULL
                     "#,
-                    [],
-                )
-                .map_err(|e| {
-                    MigrationError::Database(format!(
-                        "回填 chat_v2.skill_state_json 失败: {}",
-                        e
-                    ))
-                })?;
+                        [],
+                    )
+                    .map_err(|e| {
+                        MigrationError::Database(format!(
+                            "回填 chat_v2.skill_state_json 失败: {}",
+                            e
+                        ))
+                    })?;
                 tracing::info!(
                     "🔧 [PreRepair] chat_v2: {} 列已补齐，标记 V{} 迁移为已完成",
                     TARGET_COLUMN,

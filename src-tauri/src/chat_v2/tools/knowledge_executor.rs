@@ -200,14 +200,7 @@ impl ToolExecutor for KnowledgeExecutor {
         );
 
         // 🔧 修复：发射工具调用开始事件，让前端立即显示工具调用 UI
-        ctx.emitter.emit_tool_call_start(
-            &ctx.message_id,
-            &ctx.block_id,
-            &call.name,
-            call.arguments.clone(),
-            Some(&call.id), // 🆕 tool_call_id
-            None,           // variant_id: 单变体模式
-        );
+        ctx.emit_tool_call_start(&call.name, call.arguments.clone(), Some(&call.id));
 
         let result = match tool_name {
             "knowledge_extract" => self.execute_extract(call, ctx).await,
@@ -225,15 +218,10 @@ impl ToolExecutor for KnowledgeExecutor {
                 );
 
                 // 🔧 修复：发射工具调用结束事件
-                ctx.emitter.emit_end(
-                    event_types::TOOL_CALL,
-                    &ctx.block_id,
-                    Some(json!({
-                        "result": output,
-                        "durationMs": duration,
-                    })),
-                    None,
-                );
+                ctx.emit_tool_call_end(Some(json!({
+                    "result": output,
+                    "durationMs": duration,
+                })));
 
                 let result = ToolResultInfo::success(
                     Some(call.id.clone()),
@@ -255,8 +243,7 @@ impl ToolExecutor for KnowledgeExecutor {
                 log::error!("[KnowledgeExecutor] Tool {} failed: {}", tool_name, e);
 
                 // 🔧 修复：发射工具调用错误事件
-                ctx.emitter
-                    .emit_error(event_types::TOOL_CALL, &ctx.block_id, &e, None);
+                ctx.emit_tool_call_error(&e);
 
                 let result = ToolResultInfo::failure(
                     Some(call.id.clone()),

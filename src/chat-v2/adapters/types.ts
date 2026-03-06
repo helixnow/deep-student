@@ -65,6 +65,7 @@ export interface SendOptions {
    */
   mcpToolSchemas?: Array<{
     name: string;
+    serverId?: string;
     description?: string;
     inputSchema?: unknown;
   }>;

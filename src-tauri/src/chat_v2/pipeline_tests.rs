@@ -173,6 +173,25 @@ fn test_skill_allows_tool_with_namespace_prefixes() {
 }
 
 #[test]
+fn test_skill_allows_tool_with_server_scoped_entries() {
+    assert!(ChatV2Pipeline::skill_allows_tool_on_server(
+        "mcp_fetch",
+        Some("server-a"),
+        "server-a::fetch"
+    ));
+    assert!(ChatV2Pipeline::skill_allows_tool_on_server(
+        "mcp_fetch",
+        Some("server-a"),
+        "fetch"
+    ));
+    assert!(!ChatV2Pipeline::skill_allows_tool_on_server(
+        "mcp_fetch",
+        Some("server-b"),
+        "server-a::fetch"
+    ));
+}
+
+#[test]
 fn test_message_sources_default() {
     let sources = MessageSources::default();
     assert!(sources.rag.is_none());
@@ -395,6 +414,8 @@ fn test_assistant_message_meta_with_sources() {
         context_snapshot: None,
         skill_snapshot_before: None,
         skill_snapshot_after: None,
+        skill_runtime_before: None,
+        skill_runtime_after: None,
         replay_source: None,
     };
 
@@ -432,6 +453,8 @@ fn test_assistant_message_meta_with_tool_results() {
         context_snapshot: None,
         skill_snapshot_before: None,
         skill_snapshot_after: None,
+        skill_runtime_before: None,
+        skill_runtime_after: None,
         replay_source: None,
     };
 

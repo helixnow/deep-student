@@ -49,6 +49,7 @@ interface FinderQuickAccessProps {
   searchDisabled?: boolean;
   onNewFolder?: () => void;
   onNewNote?: () => void;
+  onImportMarkdownNote?: () => void;
   onNewExam?: () => void;
   onNewTextbook?: () => void;
   onNewTranslation?: () => void;
@@ -79,6 +80,7 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
   searchDisabled = false,
   onNewFolder,
   onNewNote,
+  onImportMarkdownNote,
   onNewExam,
   onNewTextbook,
   onNewTranslation,
@@ -286,6 +288,14 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
                       {t('finder.toolbar.newNote')}
                     </AppMenuItem>
                   )}
+                  {onImportMarkdownNote && (
+                    <AppMenuItem
+                      icon={<NoteIcon size={16} />}
+                      onClick={onImportMarkdownNote}
+                    >
+                      {t('finder.toolbar.importMarkdown', '导入 Markdown')}
+                    </AppMenuItem>
+                  )}
                   {onNewExam && (
                     <AppMenuItem 
                       icon={<ExamIcon size={16} />}
@@ -357,6 +367,14 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
                     onClick={onNewNote}
                   >
                     {t('finder.toolbar.newNote')}
+                  </AppMenuItem>
+                )}
+                {onImportMarkdownNote && (
+                  <AppMenuItem
+                    icon={<NoteIcon size={16} />}
+                    onClick={onImportMarkdownNote}
+                  >
+                    {t('finder.toolbar.importMarkdown', '导入 Markdown')}
                   </AppMenuItem>
                 )}
                 {onNewExam && (

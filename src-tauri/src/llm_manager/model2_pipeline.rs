@@ -110,6 +110,7 @@ fn redact_user_profile_blocks_in_text(text: &str) -> String {
 mod tests {
     use super::*;
     use serde_json::json;
+    use crate::llm_manager::ApiConfig;
 
     #[test]
     fn test_redact_user_profile_blocks_in_text() {
@@ -136,6 +137,46 @@ mod tests {
         assert!(content.contains("[REDACTED]"));
         assert!(!content.contains("very sensitive"));
     }
+
+    #[test]
+    fn test_should_use_openai_responses_for_o4_reasoning_models() {
+        let config = ApiConfig {
+            model_adapter: "general".to_string(),
+            model: "o4-mini".to_string(),
+            is_reasoning: true,
+            supports_reasoning: true,
+            ..Default::default()
+        };
+
+        assert!(should_use_openai_responses_for_config(&config));
+    }
+
+    #[test]
+    fn test_should_not_use_openai_responses_for_non_general_adapter() {
+        let config = ApiConfig {
+            model_adapter: "qwen".to_string(),
+            model: "o4-mini".to_string(),
+            is_reasoning: true,
+            supports_reasoning: true,
+            ..Default::default()
+        };
+
+        assert!(!should_use_openai_responses_for_config(&config));
+    }
+}
+
+fn should_use_openai_responses_for_config(config: &ApiConfig) -> bool {
+    if config.model_adapter != "general" {
+        return false;
+    }
+    if !(config.is_reasoning || config.supports_reasoning) {
+        return false;
+    }
+    let lower = config.model.to_lowercase();
+    lower.contains("o1")
+        || lower.contains("o3")
+        || lower.contains("o4")
+        || lower.contains("gpt-5")
 }
 
 /// 输出审计日志（info 级别）+ 可选文件持久化（用于无 window 的非流式路径）
@@ -4945,13 +4986,6 @@ impl LLMManager {
     }
 
     fn should_use_openai_responses(&self, config: &ApiConfig) -> bool {
-        if config.model_adapter != "general" {
-            return false;
-        }
-        if !(config.is_reasoning || config.supports_reasoning) {
-            return false;
-        }
-        let lower = config.model.to_lowercase();
-        lower.contains("o1") || lower.contains("o3") || lower.contains("gpt-5")
+        should_use_openai_responses_for_config(config)
     }
 }

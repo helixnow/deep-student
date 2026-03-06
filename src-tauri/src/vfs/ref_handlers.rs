@@ -16,6 +16,7 @@ use tauri::State;
 use tracing::{debug, info, warn};
 
 use crate::document_parser::DocumentParser;
+use crate::vfs::canonical_folder_item_type;
 use crate::vfs::database::VfsDatabase;
 use crate::vfs::error::VfsResult;
 use crate::vfs::indexing::VfsContentExtractor;
@@ -912,7 +913,7 @@ fn resolve_single_ref_with_conn(
 fn get_resource_path_with_conn(
     conn: &Connection,
     source_id: &str,
-    _resource_type: &VfsResourceType,
+    resource_type: &VfsResourceType,
 ) -> VfsResult<String> {
     // ★ FIX: 使用 source_id 作为路径末段而非标题
     // 之前使用标题（如 "有机合成完整笔记"）会导致前端 dstu.get(path) 时
@@ -920,11 +921,14 @@ fn get_resource_path_with_conn(
     // "Invalid DSTU path: Path must contain a resource ID: {title}"
     // node.name 已包含人类可读标题用于显示，path 应包含可解析的 resource ID
 
+    let resource_type_string = resource_type.to_string();
+    let canonical_item_type = canonical_folder_item_type(&resource_type_string);
+
     // 查找资源所在的文件夹
     let folder_id: Option<String> = conn
         .query_row(
-            "SELECT folder_id FROM folder_items WHERE item_id = ?1 AND deleted_at IS NULL",
-            params![source_id],
+            "SELECT folder_id FROM folder_items WHERE item_id = ?1 AND item_type = ?2 AND deleted_at IS NULL",
+            params![source_id, canonical_item_type],
             |row| row.get(0),
         )
         .optional()?

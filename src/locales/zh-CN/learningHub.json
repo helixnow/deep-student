@@ -14,10 +14,12 @@
     "newNote": "新建笔记",
     "newExam": "新建题目集",
     "newTextbook": "导入教材",
+    "importMarkdown": "导入 Markdown",
     "newTranslation": "新建翻译",
     "newEssay": "新建作文",
     "newSubfolder": "新建子文件夹",
     "newNoteHere": "在此新建笔记",
+    "importMarkdownHere": "在此导入 Markdown",
     "rename": "重命名",
     "delete": "删除",
     "favorite": "收藏",
@@ -355,6 +357,7 @@
       "new": "新建",
       "newFolder": "新建文件夹",
       "newNote": "新建笔记",
+      "importMarkdown": "导入 Markdown",
       "newExam": "新建题目集",
       "newTextbook": "导入教材",
       "newTranslation": "新建翻译",
@@ -429,6 +432,13 @@
       "importPartial": "导入 {{success}} 个成功，{{failed}} 个失败",
       "importFailed": "文件导入失败",
       "notAllowedHere": "当前视图不支持拖入文件"
+    },
+    "markdownImport": {
+      "selectFiles": "选择 Markdown 文件",
+      "filterName": "Markdown 文件",
+      "success": "已导入 {{count}} 个 Markdown 笔记",
+      "partial": "成功导入 {{success}} 个 Markdown 笔记，{{failed}} 个失败",
+      "failed": "Markdown 导入失败"
     },
     "contextMenu": {
       "open": "打开",

@@ -904,6 +904,8 @@
           "model_id": "qwen3.5",
           "release_date": "2026-02-16",
           "status": "confirmed",
+          "source_url": "https://help.aliyun.com/zh/model-studio/deep-thinking",
+          "verified_at": "2026-03-06",
           "capabilities": {
             "text": true,
             "vision": false,
@@ -916,19 +918,82 @@
             "max_output_tokens": 8192
           },
           "param_format": {
-            "family": "openai_compat_gateway_preferred",
+            "family": "qwen_openai_compat_family",
             "required_fields": ["model", "messages"],
-            "optional_fields": ["max_tokens", "temperature", "top_p", "top_k", "repetition_penalty", "tools", "tool_choice", "stream", "stream_options", "seed", "stop", "response_format"],
-            "notes": "Qwen3.5 初始公开版本与 qwen3 在网关层兼容策略基本一致，推理更偏重指令和多跳。"
+            "optional_fields": ["max_tokens", "temperature", "top_p", "top_k", "repetition_penalty", "tools", "tool_choice", "stream", "stream_options", "seed", "stop", "response_format", "enable_thinking", "thinking_budget"],
+            "notes": "Qwen3.5 家族级别 alias；具体 provider 仍需优先看 provider-scoped 记录。"
           },
           "quirks": [
-            "某些部署只支持 subset 版 3.5，需通过供应商模型列表确认可见 id。"
+            "部分环境只暴露 qwen3.5 family alias，需要通过 provider 模型列表确认实际可用 id。"
           ]
         },
         {
-          "model_id": "qwen3.5-122b-a17b",
-          "release_date": "2026-02-16",
+          "model_id": "qwen3.5-plus",
+          "provider_scope": "bailian",
+          "provider_model_id": "qwen3.5-plus",
+          "release_date": "2026-02-15",
           "status": "confirmed",
+          "source_url": "https://help.aliyun.com/zh/model-studio/deep-thinking",
+          "verified_at": "2026-03-06",
+          "capabilities": {
+            "text": true,
+            "vision": true,
+            "audio": false,
+            "video": true,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": true,
+            "max_context_tokens": 1000000,
+            "max_output_tokens": 65536
+          },
+          "param_format": {
+            "family": "aliyun_bailian_openai_chat",
+            "required_fields": ["model", "messages"],
+            "optional_fields": ["max_tokens", "temperature", "top_p", "top_k", "repetition_penalty", "tools", "tool_choice", "stream", "stream_options", "seed", "stop", "response_format", "enable_thinking"],
+            "notes": "百炼商业版 Qwen3.5 Plus，默认混合思考模式，可通过 enable_thinking 控制。"
+          },
+          "quirks": [
+            "百炼官方模型总览将 qwen3.5-plus 列为多模态商业模型；structured output 需在非 thinking 模式使用。"
+          ]
+        },
+        {
+          "model_id": "qwen3.5-plus-2026-02-15",
+          "provider_scope": "bailian",
+          "provider_model_id": "qwen3.5-plus-2026-02-15",
+          "alias_of": "qwen3.5-plus",
+          "release_date": "2026-02-15",
+          "status": "confirmed",
+          "source_url": "https://help.aliyun.com/zh/model-studio/deep-thinking",
+          "verified_at": "2026-03-06",
+          "capabilities": {
+            "text": true,
+            "vision": true,
+            "audio": false,
+            "video": true,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": true,
+            "max_context_tokens": 1000000,
+            "max_output_tokens": 65536
+          },
+          "param_format": {
+            "family": "aliyun_bailian_openai_chat",
+            "required_fields": ["model", "messages"],
+            "optional_fields": ["max_tokens", "temperature", "top_p", "top_k", "repetition_penalty", "tools", "tool_choice", "stream", "stream_options", "seed", "stop", "response_format", "enable_thinking"],
+            "notes": "百炼商业快照版；调用语义与 qwen3.5-plus 保持一致。"
+          },
+          "quirks": [
+            "快照版本优先继承 alias_of 指向的主模型能力。"
+          ]
+        },
+        {
+          "model_id": "qwen3.5-flash",
+          "provider_scope": "bailian",
+          "provider_model_id": "qwen3.5-flash",
+          "release_date": "2026-02-23",
+          "status": "confirmed",
+          "source_url": "https://help.aliyun.com/zh/model-studio/deep-thinking",
+          "verified_at": "2026-03-06",
           "capabilities": {
             "text": true,
             "vision": false,
@@ -937,23 +1002,167 @@
             "function_calling": true,
             "reasoning": true,
             "coding_agent": true,
-            "max_context_tokens": 131072,
-            "max_output_tokens": 8192
+            "max_context_tokens": 1000000,
+            "max_output_tokens": 65536
           },
           "param_format": {
-            "family": "openai_compat_gateway_preferred",
+            "family": "aliyun_bailian_openai_chat",
             "required_fields": ["model", "messages"],
-            "optional_fields": ["max_tokens", "temperature", "top_p", "top_k", "repetition_penalty", "tools", "tool_choice", "stream", "stream_options", "seed", "stop", "response_format"],
-            "notes": "MoE 规模模型，参数量与实际激活通道差异大，适配时按能力推断回退即可。"
+            "optional_fields": ["max_tokens", "temperature", "top_p", "top_k", "repetition_penalty", "tools", "tool_choice", "stream", "stream_options", "seed", "stop", "response_format", "enable_thinking"],
+            "notes": "百炼商业版 Qwen3.5 Flash，默认开启混合思考。"
           },
           "quirks": [
-            "发布说明显示为主推推理路线，成本与吞吐表现依部署卡型差异显著。"
+            "百炼 structured output 文档将 qwen3.5-flash 列入 JSON Object 支持列表，但 thinking 模式下不支持 structured output。"
+          ]
+        },
+        {
+          "model_id": "qwen3.5-flash-2026-02-23",
+          "provider_scope": "bailian",
+          "provider_model_id": "qwen3.5-flash-2026-02-23",
+          "alias_of": "qwen3.5-flash",
+          "release_date": "2026-02-23",
+          "status": "confirmed",
+          "source_url": "https://help.aliyun.com/zh/model-studio/deep-thinking",
+          "verified_at": "2026-03-06",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": true,
+            "max_context_tokens": 1000000,
+            "max_output_tokens": 65536
+          },
+          "param_format": {
+            "family": "aliyun_bailian_openai_chat",
+            "required_fields": ["model", "messages"],
+            "optional_fields": ["max_tokens", "temperature", "top_p", "top_k", "repetition_penalty", "tools", "tool_choice", "stream", "stream_options", "seed", "stop", "response_format", "enable_thinking"],
+            "notes": "百炼商业快照版；调用语义与 qwen3.5-flash 保持一致。"
+          },
+          "quirks": [
+            "快照版本优先继承 alias_of 指向的主模型能力。"
+          ]
+        },
+        {
+          "model_id": "qwen3.5-397b-a17b",
+          "release_date": "2026-02-16",
+          "status": "confirmed",
+          "source_url": "https://huggingface.co/Qwen/Qwen3.5-397B-A17B",
+          "verified_at": "2026-03-06",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": true,
+            "max_context_tokens": null,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "qwen_open_source_openai_compat",
+            "required_fields": ["model", "messages"],
+            "optional_fields": ["max_tokens", "temperature", "top_p", "top_k", "repetition_penalty", "tools", "tool_choice", "stream", "stream_options", "seed", "stop", "response_format", "enable_thinking", "thinking_budget"],
+            "notes": "Qwen3.5 开源权重；通用 OpenAI 兼容网关通常提供 enable_thinking/thinking_budget。"
+          },
+          "quirks": [
+            "不同 provider 的上下文窗口与计费能力可能不同；优先看 provider-scoped 记录。"
+          ]
+        },
+        {
+          "model_id": "qwen3.5-397b-a17b",
+          "provider_scope": "siliconflow",
+          "provider_model_id": "Qwen/Qwen3.5-397B-A17B",
+          "release_date": "2026-02-16",
+          "status": "confirmed",
+          "source_url": "https://cloud.siliconflow.cn/models?target=Qwen%2FQwen3.5-397B-A17B",
+          "verified_at": "2026-03-06",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": true,
+            "max_context_tokens": 262144,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "siliconflow_openai_chat",
+            "required_fields": ["model", "messages"],
+            "optional_fields": ["max_tokens", "temperature", "top_p", "top_k", "min_p", "frequency_penalty", "tools", "tool_choice", "stream", "stream_options", "seed", "stop", "response_format", "enable_thinking", "thinking_budget"],
+            "notes": "SiliconFlow 官方模型页标注 Thought & Function Calling；请求侧走 OpenAI Chat Completions。"
+          },
+          "quirks": [
+            "SiliconFlow 通用参数页的 enable_thinking allow-list 可能滞后于模型页更新。"
+          ]
+        },
+        {
+          "model_id": "qwen3.5-122b-a10b",
+          "release_date": "2026-02-16",
+          "status": "confirmed",
+          "source_url": "https://huggingface.co/Qwen/Qwen3.5-122B-A10B",
+          "verified_at": "2026-03-06",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": true,
+            "max_context_tokens": null,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "qwen_open_source_openai_compat",
+            "required_fields": ["model", "messages"],
+            "optional_fields": ["max_tokens", "temperature", "top_p", "top_k", "repetition_penalty", "tools", "tool_choice", "stream", "stream_options", "seed", "stop", "response_format", "enable_thinking", "thinking_budget"],
+            "notes": "Qwen3.5 开源主力 MoE 模型；百炼与兼容网关常见此基础 id。"
+          },
+          "quirks": [
+            "旧 registry 中的 a17b 为误写，应为 a10b。"
+          ]
+        },
+        {
+          "model_id": "qwen3.5-122b-a10b",
+          "provider_scope": "siliconflow",
+          "provider_model_id": "Qwen/Qwen3.5-122B-A10B",
+          "release_date": "2026-02-16",
+          "status": "confirmed",
+          "source_url": "https://cloud.siliconflow.cn/models?target=Qwen%2FQwen3.5-122B-A10B",
+          "verified_at": "2026-03-06",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": true,
+            "max_context_tokens": 262144,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "siliconflow_openai_chat",
+            "required_fields": ["model", "messages"],
+            "optional_fields": ["max_tokens", "temperature", "top_p", "top_k", "min_p", "frequency_penalty", "tools", "tool_choice", "stream", "stream_options", "seed", "stop", "response_format", "enable_thinking", "thinking_budget"],
+            "notes": "SiliconFlow 官方模型页标注 Thought & Function Calling；请求侧走 OpenAI Chat Completions。"
+          },
+          "quirks": [
+            "SiliconFlow 通用参数页的 enable_thinking allow-list 可能滞后于模型页更新。"
           ]
         },
         {
           "model_id": "qwen3.5-35b-a3b",
-          "release_date": "2026-02-24",
-          "status": "inferred",
+          "release_date": "2026-02-16",
+          "status": "confirmed",
+          "source_url": "https://huggingface.co/Qwen/Qwen3.5-35B-A3B",
+          "verified_at": "2026-03-06",
           "capabilities": {
             "text": true,
             "vision": false,
@@ -962,23 +1171,81 @@
             "function_calling": true,
             "reasoning": true,
             "coding_agent": true,
-            "max_context_tokens": 131072,
-            "max_output_tokens": 8192
+            "max_context_tokens": null,
+            "max_output_tokens": null
           },
           "param_format": {
-            "family": "openai_compat_gateway_preferred",
+            "family": "qwen_open_source_openai_compat",
             "required_fields": ["model", "messages"],
-            "optional_fields": ["max_tokens", "temperature", "top_p", "top_k", "repetition_penalty", "tools", "tool_choice", "stream", "stream_options", "seed", "stop", "response_format"],
-            "notes": "来源于 GitHub 与公告聚合，推测为 3.5 轻量 MoE 变体。"
+            "optional_fields": ["max_tokens", "temperature", "top_p", "top_k", "repetition_penalty", "tools", "tool_choice", "stream", "stream_options", "seed", "stop", "response_format", "enable_thinking", "thinking_budget"],
+            "notes": "Qwen3.5 开源轻量 MoE 变体。"
           },
           "quirks": [
-            "官方文档未统一展示 ID 与参数表，建议以你的 provider 清单为准。"
+            "当前仅确认开源官方模型页；不同 provider 的上架子集可能不同。"
+          ]
+        },
+        {
+          "model_id": "qwen3.5-32b",
+          "release_date": "2026-02-16",
+          "status": "confirmed",
+          "source_url": "https://huggingface.co/Qwen/Qwen3.5-32B",
+          "verified_at": "2026-03-06",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": true,
+            "max_context_tokens": null,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "qwen_open_source_openai_compat",
+            "required_fields": ["model", "messages"],
+            "optional_fields": ["max_tokens", "temperature", "top_p", "top_k", "repetition_penalty", "tools", "tool_choice", "stream", "stream_options", "seed", "stop", "response_format", "enable_thinking", "thinking_budget"],
+            "notes": "Qwen3.5 开源稠密文本模型。"
+          },
+          "quirks": [
+            "不同 provider 的上下文窗口差异较大；优先看 provider-scoped 记录。"
+          ]
+        },
+        {
+          "model_id": "qwen3.5-32b",
+          "provider_scope": "siliconflow",
+          "provider_model_id": "Qwen/Qwen3.5-32B",
+          "release_date": "2026-02-16",
+          "status": "confirmed",
+          "source_url": "https://cloud.siliconflow.cn/models?target=Qwen%2FQwen3.5-32B",
+          "verified_at": "2026-03-06",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": true,
+            "max_context_tokens": 32768,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "siliconflow_openai_chat",
+            "required_fields": ["model", "messages"],
+            "optional_fields": ["max_tokens", "temperature", "top_p", "top_k", "min_p", "frequency_penalty", "tools", "tool_choice", "stream", "stream_options", "seed", "stop", "response_format", "enable_thinking", "thinking_budget"],
+            "notes": "SiliconFlow 官方模型页标注 Thought & Function Calling；请求侧走 OpenAI Chat Completions。"
+          },
+          "quirks": [
+            "SiliconFlow 模型页给出的上下文为约 32.8K，这里按 32768 保守建模。"
           ]
         },
         {
           "model_id": "qwen3.5-27b",
-          "release_date": "2026-02-24",
-          "status": "inferred",
+          "release_date": "2026-02-16",
+          "status": "confirmed",
+          "source_url": "https://huggingface.co/Qwen/Qwen3.5-27B",
+          "verified_at": "2026-03-06",
           "capabilities": {
             "text": true,
             "vision": false,
@@ -987,17 +1254,17 @@
             "function_calling": true,
             "reasoning": true,
             "coding_agent": true,
-            "max_context_tokens": 131072,
-            "max_output_tokens": 8192
+            "max_context_tokens": null,
+            "max_output_tokens": null
           },
           "param_format": {
-            "family": "openai_compat_gateway_preferred",
+            "family": "qwen_open_source_openai_compat",
             "required_fields": ["model", "messages"],
-            "optional_fields": ["max_tokens", "temperature", "top_p", "top_k", "repetition_penalty", "tools", "tool_choice", "stream", "stream_options", "seed", "stop", "response_format"],
-            "notes": "同 35B 的同代轻量版本路线，未见统一 ID 标准。"
+            "optional_fields": ["max_tokens", "temperature", "top_p", "top_k", "repetition_penalty", "tools", "tool_choice", "stream", "stream_options", "seed", "stop", "response_format", "enable_thinking", "thinking_budget"],
+            "notes": "Qwen3.5 开源中等规模文本模型。"
           },
           "quirks": [
-            "部分环境可能只展示 qwen3.5 或 family alias，不直接暴露具体 27B id。"
+            "当前未在 SiliconFlow 官方公开页确认上架，先保留为通用开源记录。"
           ]
         },
         {

@@ -191,8 +191,7 @@ impl TemplateDesignerExecutor {
         start_time: Instant,
     ) -> ToolResultInfo {
         let duration_ms = start_time.elapsed().as_millis() as u64;
-        ctx.emitter
-            .emit_error(event_types::TOOL_CALL, &ctx.block_id, error_msg, None);
+        ctx.emit_tool_call_error(error_msg);
         let result = ToolResultInfo::failure(
             Some(call.id.clone()),
             Some(ctx.block_id.clone()),
@@ -213,12 +212,7 @@ impl TemplateDesignerExecutor {
         start_time: Instant,
     ) -> ToolResultInfo {
         let duration_ms = start_time.elapsed().as_millis() as u64;
-        ctx.emitter.emit_end(
-            event_types::TOOL_CALL,
-            &ctx.block_id,
-            Some(json!({ "result": output, "durationMs": duration_ms })),
-            None,
-        );
+        ctx.emit_tool_call_end(Some(json!({ "result": output, "durationMs": duration_ms })));
         let result = ToolResultInfo::success(
             Some(call.id.clone()),
             Some(ctx.block_id.clone()),
@@ -246,12 +240,9 @@ impl TemplateDesignerExecutor {
         let duration_ms = start_time.elapsed().as_millis() as u64;
 
         // 1. emit_end：发送完整数据给前端（实时渲染 + template_preview 块创建）
-        ctx.emitter.emit_end(
-            event_types::TOOL_CALL,
-            &ctx.block_id,
-            Some(json!({ "result": output_for_display, "durationMs": duration_ms })),
-            None,
-        );
+        ctx.emit_tool_call_end(Some(
+            json!({ "result": output_for_display, "durationMs": duration_ms }),
+        ));
 
         // 2. ToolResultInfo.output = 精简版（回传给 LLM，节省上下文）
         let result = ToolResultInfo::success(
@@ -1495,14 +1486,7 @@ impl ToolExecutor for TemplateDesignerExecutor {
         );
 
         // 发射 tool_call_start 事件
-        ctx.emitter.emit_tool_call_start(
-            &ctx.message_id,
-            &ctx.block_id,
-            &call.name,
-            call.arguments.clone(),
-            Some(&call.id),
-            None,
-        );
+        ctx.emit_tool_call_start(&call.name, call.arguments.clone(), Some(&call.id));
 
         let stripped_name = strip_tool_namespace(&call.name).to_string();
 
