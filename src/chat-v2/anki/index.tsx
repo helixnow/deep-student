@@ -39,6 +39,7 @@ export type AnkiCardStackPreviewStatus =
 // ============================================================================
 
 interface AnkiActionContext {
+  documentId?: string;
   templateId?: string;
   messageStableId?: string;
   blockId?: string;
@@ -77,7 +78,10 @@ export async function saveCardsToLibrary(
   try {
     const result = await ankiApiAdapter.saveAnkiCards({
       cards,
+      documentId: context?.documentId ?? null,
       businessSessionId: context?.businessSessionId ?? null,
+      messageStableId: context?.messageStableId ?? null,
+      blockId: context?.blockId ?? null,
       templateId: context?.templateId ?? null,
       options: context?.options,
     });

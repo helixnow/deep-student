@@ -378,9 +378,15 @@ class SessionManagerImpl implements ISessionManager {
     // 找到最久未使用且非 streaming、非 pending eviction 的会话
     for (const sessionId of this.lruOrder) {
       const store = this.sessions.get(sessionId);
+      const state = store?.getState();
+      const hasInFlightBlocks = !!state && (
+        state.activeBlockIds.size > 0 ||
+        Array.from(state.blocks.values()).some((block) => block.status === 'running' || block.status === 'pending')
+      );
       if (
         store &&
-        store.getState().sessionStatus !== 'streaming' &&
+        state.sessionStatus !== 'streaming' &&
+        !hasInFlightBlocks &&
         !this.pendingEvictions.has(sessionId)
       ) {
         console.log(`[SessionManager] Evicting LRU session: ${sessionId}`);

@@ -1759,6 +1759,43 @@ impl ChatV2Pipeline {
             tool_call.id
         );
 
+        let build_preflight_blocked_result = |error_message: String| {
+            let payload = json!({
+                "toolName": tool_call.name,
+                "toolInput": tool_call.arguments,
+                "toolCallId": tool_call.id,
+            });
+            emitter.emit_start_with_meta(
+                event_types::TOOL_CALL,
+                message_id,
+                Some(&block_id),
+                Some(payload),
+                variant_id,
+                skill_state_version,
+                round_id,
+            );
+            emitter.emit_error_with_meta(
+                event_types::TOOL_CALL,
+                &block_id,
+                &error_message,
+                variant_id,
+                skill_state_version,
+                round_id,
+            );
+            ToolResultInfo {
+                tool_call_id: Some(tool_call.id.clone()),
+                block_id: Some(block_id.clone()),
+                tool_name: tool_call.name.clone(),
+                input: tool_call.arguments.clone(),
+                output: json!(null),
+                success: false,
+                error: Some(error_message),
+                duration_ms: None,
+                reasoning_content: None,
+                thought_signature: None,
+            }
+        };
+
         // 🆕 P1-C: Skill allowedTools 白名单校验
         // 安全默认：当会话中有激活技能但缺失 allowedTools 时，拒绝执行（fail-closed）
         let has_active_skills = active_skill_ids
@@ -1774,46 +1811,19 @@ impl ChatV2Pipeline {
         let is_web_search_tool = short_name == "web_search";
 
         if is_memory_tool && !memory_enabled {
-            return Ok(ToolResultInfo {
-                tool_call_id: Some(tool_call.id.clone()),
-                block_id: Some(block_id),
-                tool_name: tool_call.name.clone(),
-                input: tool_call.arguments.clone(),
-                output: json!(null),
-                success: false,
-                error: Some("memory 功能已关闭，工具调用被拦截".to_string()),
-                duration_ms: None,
-                reasoning_content: None,
-                thought_signature: None,
-            });
+            return Ok(build_preflight_blocked_result(
+                "memory 功能已关闭，工具调用被拦截".to_string(),
+            ));
         }
         if is_rag_tool && !rag_enabled {
-            return Ok(ToolResultInfo {
-                tool_call_id: Some(tool_call.id.clone()),
-                block_id: Some(block_id),
-                tool_name: tool_call.name.clone(),
-                input: tool_call.arguments.clone(),
-                output: json!(null),
-                success: false,
-                error: Some("RAG 功能已关闭，工具调用被拦截".to_string()),
-                duration_ms: None,
-                reasoning_content: None,
-                thought_signature: None,
-            });
+            return Ok(build_preflight_blocked_result(
+                "RAG 功能已关闭，工具调用被拦截".to_string(),
+            ));
         }
         if is_web_search_tool && !web_search_enabled {
-            return Ok(ToolResultInfo {
-                tool_call_id: Some(tool_call.id.clone()),
-                block_id: Some(block_id),
-                tool_name: tool_call.name.clone(),
-                input: tool_call.arguments.clone(),
-                output: json!(null),
-                success: false,
-                error: Some("WebSearch 功能已关闭，工具调用被拦截".to_string()),
-                duration_ms: None,
-                reasoning_content: None,
-                thought_signature: None,
-            });
+            return Ok(build_preflight_blocked_result(
+                "WebSearch 功能已关闭，工具调用被拦截".to_string(),
+            ));
         }
 
         if !is_load_skills_tool {
@@ -1823,18 +1833,9 @@ impl ChatV2Pipeline {
                         "[ChatV2::pipeline] 🛡️ allowedTools is empty, blocking tool by default: {}",
                         tool_call.name
                     );
-                    return Ok(ToolResultInfo {
-                        tool_call_id: Some(tool_call.id.clone()),
-                        block_id: Some(block_id),
-                        tool_name: tool_call.name.clone(),
-                        input: tool_call.arguments.clone(),
-                        output: json!(null),
-                        success: false,
-                        error: Some("当前技能未声明可用工具，已安全拦截".to_string()),
-                        duration_ms: None,
-                        reasoning_content: None,
-                        thought_signature: None,
-                    });
+                    return Ok(build_preflight_blocked_result(
+                        "当前技能未声明可用工具，已安全拦截".to_string(),
+                    ));
                 }
                 Some(allowed_tools) => {
                     let preferred_server_id = tool_call
@@ -1855,21 +1856,10 @@ impl ChatV2Pipeline {
                             tool_call.name,
                             allowed_tools
                         );
-                        return Ok(ToolResultInfo {
-                            tool_call_id: Some(tool_call.id.clone()),
-                            block_id: Some(block_id),
-                            tool_name: tool_call.name.clone(),
-                            input: tool_call.arguments.clone(),
-                            output: json!(null),
-                            success: false,
-                            error: Some(format!(
-                                "当前技能不允许使用此工具，允许的工具: {:?}",
-                                allowed_tools
-                            )),
-                            duration_ms: None,
-                            reasoning_content: None,
-                            thought_signature: None,
-                        });
+                        return Ok(build_preflight_blocked_result(format!(
+                            "当前技能不允许使用此工具，允许的工具: {:?}",
+                            allowed_tools
+                        )));
                     }
                 }
                 None if has_active_skills => {
@@ -1877,18 +1867,9 @@ impl ChatV2Pipeline {
                         "[ChatV2::pipeline] 🛡️ active skills detected but allowedTools missing, blocking tool: {}",
                         tool_call.name
                     );
-                    return Ok(ToolResultInfo {
-                        tool_call_id: Some(tool_call.id.clone()),
-                        block_id: Some(block_id),
-                        tool_name: tool_call.name.clone(),
-                        input: tool_call.arguments.clone(),
-                        output: json!(null),
-                        success: false,
-                        error: Some("技能工具白名单缺失，已安全拦截".to_string()),
-                        duration_ms: None,
-                        reasoning_content: None,
-                        thought_signature: None,
-                    });
+                    return Ok(build_preflight_blocked_result(
+                        "技能工具白名单缺失，已安全拦截".to_string(),
+                    ));
                 }
                 None => {
                     log::info!(
@@ -1965,18 +1946,9 @@ impl ChatV2Pipeline {
                     );
                     if !is_allowed {
                         // 用户之前选择了"始终拒绝"
-                        return Ok(ToolResultInfo {
-                            tool_call_id: Some(tool_call.id.clone()),
-                            block_id: Some(block_id),
-                            tool_name: tool_call.name.clone(),
-                            input: tool_call.arguments.clone(),
-                            output: json!(null),
-                            success: false,
-                            error: Some("用户已拒绝此工具执行".to_string()),
-                            duration_ms: None,
-                            reasoning_content: None,
-                            thought_signature: None,
-                        });
+                        return Ok(build_preflight_blocked_result(
+                            "用户已拒绝此工具执行".to_string(),
+                        ));
                     }
                     // 用户之前选择了"始终允许"，继续执行
                 } else {
@@ -1999,46 +1971,19 @@ impl ChatV2Pipeline {
                             // 用户同意，继续执行
                         }
                         ApprovalOutcome::Rejected => {
-                            return Ok(ToolResultInfo {
-                                tool_call_id: Some(tool_call.id.clone()),
-                                block_id: Some(block_id),
-                                tool_name: tool_call.name.clone(),
-                                input: tool_call.arguments.clone(),
-                                output: json!(null),
-                                success: false,
-                                error: Some("用户拒绝执行此工具".to_string()),
-                                duration_ms: None,
-                                reasoning_content: None,
-                                thought_signature: None,
-                            });
+                            return Ok(build_preflight_blocked_result(
+                                "用户拒绝执行此工具".to_string(),
+                            ));
                         }
                         ApprovalOutcome::Timeout => {
-                            return Ok(ToolResultInfo {
-                                tool_call_id: Some(tool_call.id.clone()),
-                                block_id: Some(block_id),
-                                tool_name: tool_call.name.clone(),
-                                input: tool_call.arguments.clone(),
-                                output: json!(null),
-                                success: false,
-                                error: Some("工具审批等待超时，请重试".to_string()),
-                                duration_ms: None,
-                                reasoning_content: None,
-                                thought_signature: None,
-                            });
+                            return Ok(build_preflight_blocked_result(
+                                "工具审批等待超时，请重试".to_string(),
+                            ));
                         }
                         ApprovalOutcome::ChannelClosed => {
-                            return Ok(ToolResultInfo {
-                                tool_call_id: Some(tool_call.id.clone()),
-                                block_id: Some(block_id),
-                                tool_name: tool_call.name.clone(),
-                                input: tool_call.arguments.clone(),
-                                output: json!(null),
-                                success: false,
-                                error: Some("工具审批通道异常关闭，请重试".to_string()),
-                                duration_ms: None,
-                                reasoning_content: None,
-                                thought_signature: None,
-                            });
+                            return Ok(build_preflight_blocked_result(
+                                "工具审批通道异常关闭，请重试".to_string(),
+                            ));
                         }
                     }
                 }

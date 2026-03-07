@@ -621,11 +621,14 @@ const ActionButtons: React.FC<{
 
   const context = useMemo(
     () => ({
+      documentId: data?.documentId ?? null,
       businessSessionId: data?.businessSessionId ?? null,
+      messageStableId: data?.messageStableId ?? null,
+      blockId: block.id,
       templateId: data?.templateId ?? null,
       options: data?.options,
     }),
-    [data]
+    [block.id, data]
   );
 
   const resetStatusAfterDelay = useCallback(
@@ -1021,11 +1024,60 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
   useEffect(() => {
     if (block.status !== 'running') return;
     const timer = setInterval(() => {
-      if (block.status === 'running' && Date.now() - lastActivityRef.current > ZOMBIE_TIMEOUT_MS) {
-        console.warn('[AnkiCardsBlock] Zombie block detected, forcing error state:', block.id);
+      if (block.status !== 'running' || Date.now() - lastActivityRef.current <= ZOMBIE_TIMEOUT_MS) return;
+
+      const currentDocumentId = (store?.getState().blocks.get(block.id)?.toolOutput as AnkiCardsBlockData | undefined)?.documentId;
+      if (!currentDocumentId) {
+        console.warn('[AnkiCardsBlock] Zombie block detected without documentId, forcing error state:', block.id);
         store?.getState().setBlockError(block.id, 'Generation timed out — no updates received for 5 minutes.');
         clearInterval(timer);
+        return;
       }
+
+      void (async () => {
+        try {
+          const tasks = await invoke<Array<{ status?: string }>>('get_document_tasks', { documentId: currentDocumentId });
+          const latestBlock = store?.getState().blocks.get(block.id);
+          if (!latestBlock || latestBlock.status !== 'running') return;
+
+          const statuses = tasks.map((task) => String(task.status ?? '').toLowerCase());
+          const hasInFlight = statuses.some((status) => ['pending', 'processing', 'streaming', 'paused'].includes(status));
+          if (hasInFlight) {
+            lastActivityRef.current = Date.now();
+            return;
+          }
+
+          if (tasks.length > 0) {
+            const cards = await invoke<Array<Record<string, unknown>>>('get_document_cards', { documentId: currentDocumentId });
+            const latestData = latestBlock.toolOutput as AnkiCardsBlockData | undefined;
+            const hasFailures = statuses.some((status) => ['failed', 'truncated'].includes(status));
+            store?.getState().updateBlock(block.id, {
+              toolOutput: {
+                ...latestData,
+                cards: cards.length > 0 ? (cards as unknown as AnkiCard[]) : (latestData?.cards ?? []),
+                progress: {
+                  ...latestData?.progress,
+                  stage: hasFailures ? 'completed_with_errors' : 'completed',
+                  cardsGenerated: cards.length > 0 ? cards.length : latestData?.cards?.length ?? 0,
+                  lastUpdatedAt: new Date().toISOString(),
+                },
+              } as AnkiCardsBlockData,
+              status: hasFailures ? 'error' : 'success',
+              ...(hasFailures ? { error: 'Generation completed with errors. Please review the generated cards.' } : {}),
+            });
+            clearInterval(timer);
+            return;
+          }
+
+          console.warn('[AnkiCardsBlock] Zombie block detected, forcing error state after backend check:', block.id);
+          store?.getState().setBlockError(block.id, 'Generation timed out — no updates received for 5 minutes.');
+          clearInterval(timer);
+        } catch (err) {
+          console.warn('[AnkiCardsBlock] Zombie block backend verification failed, forcing error state:', err);
+          store?.getState().setBlockError(block.id, 'Generation timed out — no updates received for 5 minutes.');
+          clearInterval(timer);
+        }
+      })();
     }, 30_000); // check every 30s
     return () => clearInterval(timer);
   }, [block.status, block.id, store]);

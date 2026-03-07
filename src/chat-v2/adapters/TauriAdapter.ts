@@ -907,22 +907,6 @@ export class ChatV2TauriAdapter {
    * 将 NewCard/进度事件桥接到 anki_cards 块，实现实时预览
    */
   private handleAnkiGenerationEvent(payload: unknown): void {
-    if (ChatV2TauriAdapter.ankiEventOwnerAdapterId !== this.adapterInstanceId) {
-      try {
-        window.dispatchEvent(new CustomEvent('chatanki-debug-lifecycle', { detail: {
-          level: 'debug',
-          phase: 'bridge:event',
-          summary: `drop anki_generation_event: adapter#${this.adapterInstanceId} is not owner`,
-          detail: {
-            adapterId: this.adapterInstanceId,
-            ownerAdapterId: ChatV2TauriAdapter.ankiEventOwnerAdapterId,
-            sessionId: this.sessionId,
-          },
-        }}));
-      } catch { /* debug only */ }
-      return;
-    }
-
     const raw = (payload as { payload?: unknown })?.payload ?? payload;
     if (!raw || typeof raw !== 'object') return;
 
@@ -949,6 +933,26 @@ export class ChatV2TauriAdapter {
       ((cardData as any)?.document_id as string | undefined) ||
       ((raw as any)?.document_id as string | undefined) ||
       ((raw as any)?.documentId as string | undefined);
+
+    if (
+      ChatV2TauriAdapter.ankiEventOwnerAdapterId !== this.adapterInstanceId &&
+      !documentId
+    ) {
+      try {
+        window.dispatchEvent(new CustomEvent('chatanki-debug-lifecycle', { detail: {
+          level: 'debug',
+          phase: 'bridge:event',
+          summary: `drop anki_generation_event without documentId: adapter#${this.adapterInstanceId} is not owner`,
+          detail: {
+            adapterId: this.adapterInstanceId,
+            ownerAdapterId: ChatV2TauriAdapter.ankiEventOwnerAdapterId,
+            sessionId: this.sessionId,
+            type,
+          },
+        }}));
+      } catch { /* debug only */ }
+      return;
+    }
 
     const state = this.getCurrentState();
     const blocks = state.blocks;
@@ -3636,6 +3640,13 @@ export class ChatV2TauriAdapter {
           ...modeRequiredSkillIds,
         ]));
 
+    const authoritativeToolSkillIds = Array.from(
+      new Set([
+        ...authoritativeLoadedSkillIds,
+        ...authoritativeActiveSkillIds,
+      ])
+    );
+
     const options = {
       // ChatParams
       modelId: chatParams.modelId || undefined,
@@ -3698,7 +3709,7 @@ export class ChatV2TauriAdapter {
       // 后端直接使用这些 Schema 注入到 LLM，而不需要自己连接 MCP 服务器
       mcpToolSchemas: this.collectMcpToolSchemas(
         chatParams.selectedMcpServers,
-        authoritativeLoadedSkillIds,
+        authoritativeToolSkillIds,
       ),
 
       // 搜索引擎（从 chatParams 获取选中的引擎）
@@ -3728,7 +3739,7 @@ export class ChatV2TauriAdapter {
     let skillAllowedTools: string[] | undefined;
     {
       const mergedAllowedTools: string[] = [];
-      for (const skillId of authoritativeActiveSkillIds) {
+      for (const skillId of authoritativeToolSkillIds) {
         const skill = skillRegistry.get(skillId);
         if (skill) {
           const tools = skill.allowedTools ?? skill.tools;
@@ -3742,7 +3753,8 @@ export class ChatV2TauriAdapter {
       // - 若没有任何技能声明 allowedTools，则不进行过滤（保持现有行为）
       if (mergedAllowedTools.length > 0) {
         skillAllowedTools = [...new Set(mergedAllowedTools)]; // 去重
-        console.log(LOG_PREFIX, '🛡️ Skill allowedTools constraint (from authoritative active skills):', {
+        console.log(LOG_PREFIX, '🛡️ Skill allowedTools constraint (from authoritative tool skills):', {
+          skillIds: authoritativeToolSkillIds,
           allowedTools: skillAllowedTools,
         });
       }

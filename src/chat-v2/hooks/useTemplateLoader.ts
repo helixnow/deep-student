@@ -7,13 +7,22 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { TemplateService } from '@/services/templateService';
+import { templateManager } from '@/data/ankiTemplates';
 import type { CustomAnkiTemplate } from '@/types';
 
 export function useTemplateLoader(templateId?: string | null) {
   const [template, setTemplate] = useState<CustomAnkiTemplate | null>(null);
   const [loading, setLoading] = useState(false);
+  const [refreshToken, setRefreshToken] = useState(0);
   // 缓存已加载的模板，避免重复请求
   const cacheRef = useRef<Map<string, CustomAnkiTemplate>>(new Map());
+
+  useEffect(() => {
+    return templateManager.subscribe(() => {
+      cacheRef.current.clear();
+      setRefreshToken((value) => value + 1);
+    });
+  }, []);
 
   useEffect(() => {
     if (!templateId) {
@@ -55,7 +64,7 @@ export function useTemplateLoader(templateId?: string | null) {
     return () => {
       cancelled = true;
     };
-  }, [templateId]);
+  }, [templateId, refreshToken]);
 
   return { template, loading };
 }

@@ -331,6 +331,7 @@ describe('ChatV2TauriAdapter', () => {
         location: 'builtin',
         sourcePath: 'builtin://test-loaded-skill',
         content: 'test content',
+        allowedTools: ['builtin-test_loaded_tool'],
         embeddedTools: [
           {
             name: 'builtin-test_loaded_tool',
@@ -361,6 +362,9 @@ describe('ChatV2TauriAdapter', () => {
             expect.objectContaining({ name: 'load_skills' }),
             expect.objectContaining({ name: 'builtin-test_loaded_tool' }),
           ]),
+        );
+        expect(options.skillAllowedTools).toEqual(
+          expect.arrayContaining(['builtin-test_loaded_tool'])
         );
       } finally {
         skillRegistry.unregister(skillId);

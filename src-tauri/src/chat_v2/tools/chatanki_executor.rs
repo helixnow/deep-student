@@ -19,7 +19,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use async_trait::async_trait;
-use rusqlite::Connection;
+use rusqlite::{Connection, OptionalExtension};
 use serde::{Deserialize, Deserializer};
 use serde_json::{json, Value};
 use tokio::time::{sleep, Duration};
@@ -2673,9 +2673,10 @@ async fn run_chatanki_pipeline_background(params: BackgroundParams) -> Result<()
                     ) {
                         let mut resolved: Vec<ContextRef> = Vec::new();
                         for preferred in preferred_ids {
-                            match resolve_context_ref_from_vfs_source(vfs_db, preferred) {
+                            match resolve_context_ref_from_any_id(vfs_db, preferred) {
                                 Ok(Some(context_ref)) => resolved.push(context_ref),
-                                _ => return Err(err_msg.clone()),
+                                Ok(None) => return Err(err_msg.clone()),
+                                Err(resolve_err) => return Err(resolve_err),
                             }
                         }
                         if resolved.is_empty() {
@@ -2707,14 +2708,15 @@ async fn run_chatanki_pipeline_background(params: BackgroundParams) -> Result<()
 
                     let mut unresolved: Vec<String> = Vec::new();
                     for id in missing {
-                        match resolve_context_ref_from_vfs_source(vfs_db, &id) {
+                        match resolve_context_ref_from_any_id(vfs_db, &id) {
                             Ok(Some(context_ref)) => context_refs.push(context_ref),
-                            _ => unresolved.push(id),
+                            Ok(None) => unresolved.push(id),
+                            Err(resolve_err) => return Err(resolve_err),
                         }
                     }
                     if !unresolved.is_empty() {
                         return Err(format!(
-                            "Preferred resource not found in current session context: {}",
+                            "Preferred resource not found in current session context or VFS: {}",
                             unresolved.join(",")
                         ));
                     }
@@ -4242,6 +4244,115 @@ fn build_single_ref_data_from_context_ref(context_ref: &ContextRef) -> Option<Vf
     })
 }
 
+fn unsupported_chatanki_resource_message(raw_id: &str) -> Option<String> {
+    let trimmed = raw_id.trim();
+    let resource_kind = if trimmed.starts_with("mm_") {
+        Some("mindmap")
+    } else if trimmed.starts_with("note_") {
+        Some("note")
+    } else if trimmed.starts_with("exam_") {
+        Some("exam")
+    } else if trimmed.starts_with("essay_") {
+        Some("essay")
+    } else if trimmed.starts_with("tr_") {
+        Some("translation")
+    } else if trimmed.starts_with("fld_") {
+        Some("folder")
+    } else {
+        None
+    };
+
+    resource_kind.map(|kind| {
+        format!(
+            "Resource '{}' is a {} resource. chatanki_run currently supports direct file/image/textbook attachments only; please pass a file_/att_/tb_/res_ resource instead.",
+            trimmed, kind
+        )
+    })
+}
+
+fn resolve_file_like_source_id_by_resource_id(
+    vfs_db: &VfsDatabase,
+    resource_id: &str,
+) -> Result<Option<String>, String> {
+    let conn = vfs_db.get_conn_safe().map_err(|e| e.to_string())?;
+    conn.query_row(
+        "SELECT id FROM files WHERE resource_id = ?1 AND deleted_at IS NULL LIMIT 1",
+        rusqlite::params![resource_id],
+        |row| row.get::<_, String>(0),
+    )
+    .optional()
+    .map_err(|e| e.to_string())
+}
+
+fn resolve_context_ref_from_any_id(
+    vfs_db: &VfsDatabase,
+    raw_id: &str,
+) -> Result<Option<ContextRef>, String> {
+    let trimmed = raw_id.trim();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+
+    if let Some(message) = unsupported_chatanki_resource_message(trimmed) {
+        return Err(message);
+    }
+
+    if let Some(context_ref) = resolve_context_ref_from_vfs_source(vfs_db, trimmed)? {
+        return Ok(Some(context_ref));
+    }
+
+    if !trimmed.starts_with("res_") {
+        return Ok(None);
+    }
+
+    let resource = VfsResourceRepo::get_resource(vfs_db, trimmed)
+        .map_err(|e| format!("Failed to resolve resource '{}': {}", trimmed, e))?
+        .ok_or_else(|| format!("Resource '{}' not found in VFS.", trimmed))?;
+
+    if let Some(source_id) = resource.source_id.as_deref() {
+        if let Some(message) = unsupported_chatanki_resource_message(source_id) {
+            return Err(message);
+        }
+        if let Some(context_ref) = resolve_context_ref_from_vfs_source(vfs_db, source_id)? {
+            return Ok(Some(context_ref));
+        }
+    }
+
+    let source_id = match resource.resource_type {
+        VfsResourceType::File | VfsResourceType::Image | VfsResourceType::Textbook => {
+            resolve_file_like_source_id_by_resource_id(vfs_db, &resource.id)?
+        }
+        VfsResourceType::MindMap => {
+            return Err(format!(
+                "Resource '{}' is a mindmap resource and cannot be used directly by chatanki_run. Please choose the underlying file/image resource instead.",
+                trimmed
+            ));
+        }
+        VfsResourceType::Note => {
+            return Err(format!(
+                "Resource '{}' is a note resource and cannot be used directly by chatanki_run. Please export or attach the source file/text first.",
+                trimmed
+            ));
+        }
+        VfsResourceType::Exam | VfsResourceType::Essay | VfsResourceType::Translation => {
+            return Err(format!(
+                "Resource '{}' has unsupported type '{}' for chatanki_run direct input.",
+                trimmed, resource.resource_type
+            ));
+        }
+        VfsResourceType::Retrieval => None,
+    };
+
+    let Some(source_id) = source_id else {
+        return Err(format!(
+            "Resource '{}' exists, but chatanki_run cannot map it to a readable file/image source ID.",
+            trimmed
+        ));
+    };
+
+    resolve_context_ref_from_vfs_source(vfs_db, &source_id)
+}
+
 fn resolve_context_ref_from_vfs_source(
     vfs_db: &VfsDatabase,
     source_id: &str,
@@ -5604,6 +5715,22 @@ mod tests {
             .expect("should build single ref data");
         assert_eq!(ref_data.refs.len(), 1);
         assert_eq!(ref_data.refs[0].resource_type, VfsResourceType::Image);
+    }
+
+    #[test]
+    fn test_unsupported_chatanki_resource_message_for_mindmap() {
+        let message = unsupported_chatanki_resource_message("mm_demo123")
+            .expect("mindmap ids should be rejected explicitly");
+        assert!(message.contains("mindmap"));
+        assert!(message.contains("chatanki_run"));
+    }
+
+    #[test]
+    fn test_unsupported_chatanki_resource_message_allows_file_like_ids() {
+        assert!(unsupported_chatanki_resource_message("file_demo123").is_none());
+        assert!(unsupported_chatanki_resource_message("att_demo123").is_none());
+        assert!(unsupported_chatanki_resource_message("tb_demo123").is_none());
+        assert!(unsupported_chatanki_resource_message("res_demo123").is_none());
     }
 
     #[test]

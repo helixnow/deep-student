@@ -28,6 +28,8 @@ class TestSessionManager {
     let state = {
       sessionId,
       sessionStatus: 'idle' as 'idle' | 'streaming' | 'aborting',
+      activeBlockIds: new Set<string>(),
+      blocks: new Map<string, { id: string; status: string }>(),
     };
 
     const subscribers = new Set<(state: any) => void>();
@@ -163,7 +165,12 @@ class TestSessionManager {
   private evictLRU(): void {
     for (const sessionId of this.lruOrder) {
       const store = this.sessions.get(sessionId);
-      if (store && store.getState().sessionStatus !== 'streaming') {
+      const state = store?.getState();
+      const hasInFlightBlocks = !!state && (
+        state.activeBlockIds.size > 0 ||
+        Array.from(state.blocks.values()).some((block: { status: string }) => block.status === 'running' || block.status === 'pending')
+      );
+      if (store && state.sessionStatus !== 'streaming' && !hasInFlightBlocks) {
         const unsubscribe = this.streamingUnsubscribers.get(sessionId);
         if (unsubscribe) {
           unsubscribe();
@@ -305,6 +312,27 @@ describe('SessionManager', () => {
 
       // 所有会话都还在（因为无法淘汰）
       expect(manager.getSessionCount()).toBe(3);
+    });
+
+    it('should NOT evict session with in-flight blocks', () => {
+      manager.setMaxSessions(3);
+
+      const store1 = manager.getOrCreate('session_1');
+      manager.getOrCreate('session_2');
+      manager.getOrCreate('session_3');
+
+      store1.setState({
+        activeBlockIds: new Set(['blk_1']),
+        blocks: new Map([['blk_1', { id: 'blk_1', status: 'running' }]]),
+      });
+
+      manager.getOrCreate('session_4');
+
+      expect(manager.getSessionCount()).toBe(3);
+      expect(manager.has('session_1')).toBe(true);
+      expect(manager.has('session_2')).toBe(false);
+      expect(manager.has('session_3')).toBe(true);
+      expect(manager.has('session_4')).toBe(true);
     });
   });
 
