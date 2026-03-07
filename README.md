@@ -10,7 +10,10 @@
 
 > It's not that learning is hard — it's that learning tools are too scattered.
 
-**NotebookLM + Notion + XMind + Quizlet + DeepL + ...**, all in one unified learning workbench.
+Study materials, note-taking, mind maps, quizzes, translation, and flashcard review — all in one unified learning workbench.
+
+> Think of it as: **NotebookLM + Notion + XMind + Quizlet + DeepL**
+> but they all share the same learning data and workflow.
 
 [![Release](https://img.shields.io/github/v/release/helixnow/deep-student?color=blue&label=release)](https://github.com/helixnow/deep-student/releases/latest)
 [![License](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
@@ -45,27 +48,36 @@ DeepStudent's answer: **give AI native read-write access to all your learning da
 | Capability | NotebookLM | Open Notebook | DeepTutor | Notion/Obsidian | **DeepStudent** |
 |---|:---:|:---:|:---:|:---:|:---:|
 | AI Q&A over materials | ✓ Gemini only | ✓ multi-model | ✓ multi-agent | △ Notion AI | **✓ 9 providers** |
+| Unified data layer (VFS) | ✗ | ✗ | ✗ | ✗ | **✓** |
+| Note-taking system | △ simple notes | △ AI notes | △ notebook | ✓ core feature | **✓ rich text+tags+AI** |
+| AI-generated mind maps | ✓ | ✗ | △ visualization | ✗ | **✓** |
+| AI quiz + practice modes | ✓ | ✗ | ✓ exam-style | ✗ | **✓** |
+| Flashcards + SRS | △ no SRS | ✗ | ✗ | ✗ | **✓ Anki ecosystem** |
+| Translation + close reading | ✗ | ✗ | ✓ PDF translation | ✗ | **✓ 7 domain presets** |
+| Cross-module data flow | △ | △ | △ | △ | **✓** |
+
+> **The core difference isn't "more features" — it's the unified data layer.**
+> The same material can be read, queried, turned into a mind map, used to generate quizzes, made into flashcards, researched, and written back — no data shuttling between apps.
+
+<details>
+<summary><b>📊 More comparison dimensions (infrastructure · ecosystem · collaboration)</b></summary>
+
+| Capability | NotebookLM | Open Notebook | DeepTutor | Notion/Obsidian | **DeepStudent** |
+|---|:---:|:---:|:---:|:---:|:---:|
 | Local-first storage | ✗ cloud | ✓ Docker | ✓ Docker | △ | **✓** |
 | Cloud sync | ✓ native | ✗ | ✗ | ✓ | **△ experimental** |
 | Open source / self-host | ✗ | ✓ | ✓ AGPL-3.0 | ✗ | **✓ AGPL-3.0** |
 | Cross-platform out-of-box | ✓ all platforms | △ Docker | △ Docker | ✓ all platforms | **✓ Win/Mac/Linux/Android** |
 | Auto-index on import | ✓ | ✓ | ✓ | △ | **✓ incl. OCR** |
-| Unified data layer (VFS) | ✗ | ✗ | ✗ | ✗ | **✓** |
 | Smart memory system | ✗ | ✗ | △ session memory | ✗ | **✓ AI-driven persistent** |
-| Note-taking system | △ simple notes | △ AI notes | △ notebook | ✓ core feature | **✓ rich text+tags+AI** |
-| AI-generated mind maps | ✓ | ✗ | △ visualization | ✗ | **✓** |
 | Mind map ↔ outline mode | ✗ | ✗ | ✗ | △ | **✓** |
-| AI quiz + practice modes | ✓ | ✗ | ✓ exam-style | ✗ | **✓** |
 | Deep research + papers | △ Discover | ✗ | ✓ | ✗ | **✓ multi-engine+arXiv** |
-| Flashcards + SRS | △ no SRS | ✗ | ✗ | ✗ | **✓ Anki ecosystem** |
-| Translation + close reading | ✗ | ✗ | ✓ PDF translation | ✗ | **✓ 7 domain presets** |
 | AI essay correction | ✗ | ✗ | ✗ | △ Notion AI | **✓ multi-scenario** |
-| Cross-module data flow | △ | △ | △ | △ | **✓** |
 | MCP ecosystem / skills | ✗ | ✗ | ✓ MCP registry | ✗ | **✓ native+presets** |
 | Real-time collaboration | △ sharing | ✗ | ✗ | ✓ | **✗** |
 | Community & ecosystem | ✓ | △ new project | △ new project | ✓ rich plugins | **△ new project** |
 
-> **The core architectural difference:** A unified Virtual File System (VFS) makes all learning data AI-readable, AI-searchable, and AI-writable. The chat agent can retrieve your textbooks and notes to answer questions, and directly generate mind maps, questions, flashcards, and research reports back into the system. One material completes the full loop in one workbench — no data shuttling between apps.
+</details>
 
 ---
 
