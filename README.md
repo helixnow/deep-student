@@ -48,7 +48,8 @@ DeepStudent's answer: **give AI native read-write access to all your learning da
 | Capability | NotebookLM | Open Notebook | DeepTutor | Notion/Obsidian | **DeepStudent** |
 |---|:---:|:---:|:---:|:---:|:---:|
 | AI Q&A over materials | ✓ Gemini only | ✓ multi-model | ✓ multi-agent | △ Notion AI | **✓ 9 providers** |
-| Unified data layer (VFS) | ✗ | ✗ | ✗ | ✗ | **✓** |
+| Cross-platform out-of-box | ✓ all platforms | △ Docker | △ Docker | ✓ all platforms | **✓ Win/Mac/Linux/Android** |
+| Smart memory system | ✗ | ✗ | △ session memory | ✗ | **✓ AI-driven persistent** |
 | Note-taking system | △ simple notes | △ AI notes | △ notebook | ✓ core feature | **✓ rich text+tags+AI** |
 | AI-generated mind maps | ✓ | ✗ | △ visualization | ✗ | **✓** |
 | AI quiz + practice modes | ✓ | ✗ | ✓ exam-style | ✗ | **✓** |
@@ -67,9 +68,8 @@ DeepStudent's answer: **give AI native read-write access to all your learning da
 | Local-first storage | ✗ cloud | ✓ Docker | ✓ Docker | △ | **✓** |
 | Cloud sync | ✓ native | ✗ | ✗ | ✓ | **△ experimental** |
 | Open source / self-host | ✗ | ✓ | ✓ AGPL-3.0 | ✗ | **✓ AGPL-3.0** |
-| Cross-platform out-of-box | ✓ all platforms | △ Docker | △ Docker | ✓ all platforms | **✓ Win/Mac/Linux/Android** |
+| Unified data layer (VFS) | ✗ | ✗ | ✗ | ✗ | **✓** |
 | Auto-index on import | ✓ | ✓ | ✓ | △ | **✓ incl. OCR** |
-| Smart memory system | ✗ | ✗ | △ session memory | ✗ | **✓ AI-driven persistent** |
 | Mind map ↔ outline mode | ✗ | ✗ | ✗ | △ | **✓** |
 | Deep research + papers | △ Discover | ✗ | ✓ | ✗ | **✓ multi-engine+arXiv** |
 | AI essay correction | ✗ | ✗ | ✗ | △ Notion AI | **✓ multi-scenario** |
