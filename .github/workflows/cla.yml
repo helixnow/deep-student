@@ -27,11 +27,11 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           path-to-signatures: 'signatures/version1/cla.json'
-          path-to-document: 'https://github.com/${{ github.repository }}/blob/main/CLA.md'
+          path-to-document: 'https://github.com/${{ github.repository }}/blob/main/.github/CLA.md'
           branch: 'cla-signatures'
           allowlist: 'dependabot[bot],renovate[bot],github-actions[bot],bot*'
           custom-notsigned-prcomment: |
-            感谢您的贡献！在我们合并您的 Pull Request 之前，需要您签署我们的 [贡献者许可协议 (CLA)](${{ github.server_url }}/${{ github.repository }}/blob/main/CLA.md)。
+            感谢您的贡献！在我们合并您的 Pull Request 之前，需要您签署我们的 [贡献者许可协议 (CLA)](${{ github.server_url }}/${{ github.repository }}/blob/main/.github/CLA.md)。
 
             请仔细阅读 CLA 文档，然后在本 PR 下回复以下内容完成签署：
 

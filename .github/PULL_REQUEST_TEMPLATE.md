@@ -18,4 +18,4 @@ Describe what this PR changes and why.
 - [ ] I ran `npm run build` and `cargo build` locally
 - [ ] I updated docs/README if needed
 - [ ] I linked the related Issue(s)
-- [ ] I have read the [CLA](https://github.com/000haoji/deep-student/blob/main/CLA.md) and will sign it when prompted by the CLA bot
+- [ ] I have read the [CLA](https://github.com/000haoji/deep-student/blob/main/.github/CLA.md) and will sign it when prompted by the CLA bot

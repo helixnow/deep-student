@@ -77,7 +77,7 @@ We take security issues seriously. If you discover a security vulnerability, ple
 
 ### For Developers | 开发者须知
 
-- Follow the secure coding guidelines in `CODE_STYLE.md`
+- Follow the secure coding guidelines in [`CODE_STYLE.md`](../docs/CODE_STYLE.md)
 - Never commit secrets, API keys, or credentials
 - Use the secure store API (`secure_store.rs`) for sensitive data
 - Review third-party dependencies before adding

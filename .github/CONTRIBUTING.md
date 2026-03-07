@@ -33,10 +33,10 @@ npm run lint
 ### 代码风格
 - TypeScript/React：请通过 `npm run lint` 检查（ESLint）
 - Rust：`cargo fmt` 格式化，`cargo clippy` 静态分析
-- 详细规范参见 [CODE_STYLE.md](./CODE_STYLE.md)
+- 详细规范参见 [CODE_STYLE.md](../docs/CODE_STYLE.md)
 
 ### 项目规范
-- **请务必阅读 [`AGENTS.md`](./AGENTS.md)**，其中包含重要的开发规范
+- **请务必阅读 [`AGENTS.md`](../AGENTS.md)**，其中包含重要的开发规范
 - 特别注意：拖拽上传功能必须使用统一组件（`UnifiedDragDropZone` 或 `useTauriDragAndDrop`）
 
 ### CI/CD

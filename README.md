@@ -22,7 +22,7 @@ Think of DeepStudent as:<br/>
 [Quick Start](https://deepstudent.cn/docs/) ·
 [User Guide](https://deepstudent.cn/docs/) ·
 [Report Issues](https://github.com/helixnow/deep-student/issues) ·
-[Contributing](./CONTRIBUTING.md)
+[Contributing](./.github/CONTRIBUTING.md)
 
 </div>
 
@@ -43,13 +43,25 @@ DeepStudent's answer: **give AI native read-write access to all your learning da
 
 ## Understand It Through Products You Know
 
-| Need | You might use | How DeepStudent compares |
-|---|---|---|
-| Study with your materials | NotebookLM | Locked to Gemini + Google cloud; outputs stay isolated. DeepStudent is local-first, multi-model, and the same PDF flows through: Q&A → mind map → questions → flashcards → Anki, each step's output feeding the next |
-| Notes & knowledge base | Notion / Obsidian | General-purpose note tools with AI bolted on later. DeepStudent imports trigger OCR → vectorization → indexing automatically; notes, textbooks, question banks, mind maps, and translations share a unified VFS |
-| Structure your thinking | XMind / WorkFlowy | Manual node creation required. DeepStudent generates complete knowledge structures from your materials in one sentence, with multi-turn editing + node masking for self-testing |
-| Practice & review | Quizlet / Anki | Manual question entry; Anki card creation is tedious. DeepStudent: upload exams → AI generates questions → daily / timed / mock exams → mastery tracking → one-click Anki export |
-| Translation & close reading | DeepL | Output disconnected from learning workflow. DeepStudent keeps translations in your workbench — bilingual comparison, 5 domain presets — then query, generate questions, or create flashcards from the same material |
+| Capability | NotebookLM | Notion/Obsidian | XMind | Quizlet/Anki | DeepL | **DeepStudent** |
+|---|:---:|:---:|:---:|:---:|:---:|:---:|
+| AI Q&A over materials | ✓ Gemini only | △ Notion AI | ✗ | △ Q-Chat | ✗ | **✓ 9 providers** |
+| Local-first storage | ✗ cloud | △ | ✓ | △ | ✗ | **✓** |
+| Cloud sync | ✓ native | ✓ | ✓ | ✓ | ✓ | **△ experimental** |
+| Open source / self-host | ✗ | ✗ | ✗ | △ Anki is OSS | ✗ | **✓ AGPL-3.0** |
+| Auto-index on import | ✓ | △ | ✗ | ✗ | ✗ | **✓ incl. OCR** |
+| Unified data layer (VFS) | ✗ | ✗ | ✗ | ✗ | ✗ | **✓** |
+| Note-taking system | △ simple notes | ✓ core feature | △ node notes | △ Magic Notes | ✗ | **✓ rich text+tags+AI** |
+| AI-generated mind maps | ✓ | ✗ | ✓ AI Copilot | ✗ | ✗ | **✓** |
+| Mind map ↔ outline mode | ✗ | △ | ✓ Outliner | ✗ | ✗ | **✓** |
+| AI quiz + practice modes | ✓ | ✗ | ✗ | ✓ Learn mode | ✗ | **✓** |
+| Deep research + papers | ✗ | ✗ | ✗ | ✗ | ✗ | **✓ multi-engine+arXiv** |
+| Flashcards + SRS | △ no SRS | ✗ | ✗ | ✓ mature SRS | ✗ | **✓ Anki ecosystem** |
+| Translation quality | ✗ | ✗ | ✗ | ✗ | ✓ pro engine | **△ LLM-driven** |
+| AI essay correction | ✗ | △ Notion AI | ✗ | ✗ | △ DeepL Write | **✓ multi-scenario** |
+| Cross-module data flow | △ | △ | ✗ | ✗ | ✗ | **✓** |
+| Real-time collaboration | △ sharing | ✓ | △ premium | ✓ | ✗ | **✗** |
+| Community & ecosystem | ✓ | ✓ rich plugins | ✓ | ✓ | ✓ | **△ new project** |
 
 > **The core architectural difference:** A unified Virtual File System (VFS) makes all learning data AI-readable, AI-searchable, and AI-writable. The chat agent can retrieve your textbooks and notes to answer questions, and directly generate mind maps, questions, flashcards, and research reports back into the system. One material completes the full loop in one workbench — no data shuttling between apps.
 
@@ -306,7 +318,7 @@ Download the latest version from [GitHub Releases](https://github.com/helixnow/d
 | Windows | `.exe` | x86_64 |
 | Android | `.apk` | arm64 |
 
-> iOS can be built locally via Xcode. See [Build Configuration Guide](./BUILD-CONFIG.md).
+> iOS can be built locally via Xcode. See [Build Configuration Guide](./docs/BUILD-CONFIG.md).
 
 ### Getting Started
 
@@ -432,7 +444,7 @@ npm run dev
 npm run dev:tauri
 ```
 
-For more build and packaging info, see [BUILD-CONFIG.md](./BUILD-CONFIG.md)
+For more build and packaging info, see [BUILD-CONFIG.md](./docs/BUILD-CONFIG.md)
 
 ---
 
@@ -442,9 +454,9 @@ For more build and packaging info, see [BUILD-CONFIG.md](./BUILD-CONFIG.md)
 |------|------|
 | [Quick Start](https://deepstudent.cn/docs/) | 5-minute getting started guide |
 | [User Guide](https://deepstudent.cn/docs/) | Complete feature documentation |
-| [Build Configuration](./BUILD-CONFIG.md) | Cross-platform build & packaging |
+| [Build Configuration](./docs/BUILD-CONFIG.md) | Cross-platform build & packaging |
 | [Changelog](./CHANGELOG.md) | Version change history |
-| [Security Policy](./SECURITY.md) | Vulnerability reporting process |
+| [Security Policy](./.github/SECURITY.md) | Vulnerability reporting process |
 
 ---
 
@@ -483,7 +495,7 @@ DeepStudent started as a Python demo in March 2025 and has evolved through nearl
 
 Help make DeepStudent better.
 
-1. Read [CONTRIBUTING.md](./CONTRIBUTING.md) for development workflow
+1. Read [CONTRIBUTING.md](./.github/CONTRIBUTING.md) for development workflow
 2. Ensure `npm run lint` and type checks pass before submitting a PR
 3. Bugs & suggestions via [Issues](https://github.com/helixnow/deep-student/issues)
 
