@@ -88,7 +88,10 @@ jobs:
         run: |
           echo "ℹ️ release-please outcome: ${RP_OUTCOME}"
 
-          if [[ "${HEAD_COMMIT_MSG}" =~ ^chore\(main\):\ release\ ([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+          HEAD_COMMIT_SUBJECT="$(printf '%s\n' "${HEAD_COMMIT_MSG}" | head -n1)"
+          echo "ℹ️ head commit subject: ${HEAD_COMMIT_SUBJECT}"
+
+          if [[ "${HEAD_COMMIT_SUBJECT}" =~ ^chore\(main\):\ release\ ([0-9]+\.[0-9]+\.[0-9]+)(\ \(#[0-9]+\))?$ ]]; then
             TAG="v${BASH_REMATCH[1]}"
             echo "ℹ️ Detected merged release commit for ${TAG}"
 
