@@ -35,6 +35,37 @@ function parseManualPinnedSkillIds(raw: string | null | undefined): string[] | n
   }
 }
 
+function updateManualPinnedSkillState(
+  raw: string | null | undefined,
+  updater: (current: string[]) => string[]
+): string {
+  let parsed: Record<string, unknown> = {};
+  if (raw) {
+    try {
+      const candidate = JSON.parse(raw) as Record<string, unknown>;
+      if (candidate && typeof candidate === 'object') {
+        parsed = candidate;
+      }
+    } catch {
+      parsed = {};
+    }
+  }
+
+  const current = Array.isArray(parsed.manualPinnedSkillIds)
+    ? parsed.manualPinnedSkillIds.filter(
+        (skillId): skillId is string => typeof skillId === 'string' && skillId.length > 0,
+      )
+    : [];
+  const nextManualPinned = Array.from(new Set(updater(current)));
+  const currentVersion = typeof parsed.version === 'number' ? parsed.version : 0;
+
+  return JSON.stringify({
+    ...parsed,
+    manualPinnedSkillIds: nextManualPinned,
+    version: currentVersion + 1,
+  });
+}
+
 // ============================================================================
 // Skill Actions 创建
 // ============================================================================
@@ -100,9 +131,13 @@ export function createSkillActions(
           if (s.activeSkillIds.includes(skillId)) {
             return {};
           }
+          const nextActiveSkillIds = [...s.activeSkillIds, skillId];
           return {
-            activeSkillIds: [...s.activeSkillIds, skillId],
-            skillStateJson: null,
+            activeSkillIds: nextActiveSkillIds,
+            skillStateJson: updateManualPinnedSkillState(s.skillStateJson, (current) => [
+              ...current,
+              skillId,
+            ]),
           };
         });
 
@@ -148,7 +183,9 @@ export function createSkillActions(
       if (skillId) {
         set((s: ChatStoreState) => ({
           activeSkillIds: s.activeSkillIds.filter(id => id !== skillId),
-          skillStateJson: null,
+          skillStateJson: updateManualPinnedSkillState(s.skillStateJson, (current) =>
+            current.filter(id => id !== skillId)
+          ),
           pendingContextRefs: s.pendingContextRefs.filter(
             (ref) => !(ref.typeId === SKILL_INSTRUCTION_TYPE_ID && ref.skillId === skillId)
           ),
@@ -162,7 +199,7 @@ export function createSkillActions(
       } else {
         set((s: ChatStoreState) => ({
           activeSkillIds: [],
-          skillStateJson: null,
+          skillStateJson: updateManualPinnedSkillState(s.skillStateJson, () => []),
           pendingContextRefs: s.pendingContextRefs.filter(
             (ref) => ref.typeId !== SKILL_INSTRUCTION_TYPE_ID
           ),

@@ -30,6 +30,56 @@ use tokio::sync::RwLock;
 use tokio::time::{Duration, Instant};
 use uuid::Uuid;
 
+#[derive(Debug, Clone, Deserialize)]
+struct RegistryCapabilityFlags {
+    vision: bool,
+    function_calling: bool,
+    reasoning: bool,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct RegistryModelRecord {
+    model_id: String,
+    #[serde(default)]
+    provider_scope: Option<String>,
+    #[serde(default)]
+    provider_model_id: Option<String>,
+    #[serde(default)]
+    alias_of: Option<String>,
+    capabilities: RegistryCapabilityFlags,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct RegistrySeriesRecord {
+    models: Vec<RegistryModelRecord>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct RegistryDocument {
+    records: Vec<RegistrySeriesRecord>,
+}
+
+#[derive(Debug, Clone, Default)]
+struct CapabilityOverrides {
+    is_multimodal: bool,
+    supports_tools: bool,
+    supports_reasoning: bool,
+}
+
+static MODEL_CAPABILITY_REGISTRY: LazyLock<Vec<RegistryModelRecord>> = LazyLock::new(|| {
+    serde_json::from_str::<RegistryDocument>(include_str!(
+        "../../../scripts/model-capability-registry.json"
+    ))
+    .map(|doc| doc.records.into_iter().flat_map(|record| record.models).collect())
+    .unwrap_or_else(|err| {
+        eprintln!(
+            "[LLMManager] failed to parse model capability registry, falling back to empty: {}",
+            err
+        );
+        Vec::new()
+    })
+});
+
 /// 增量 JSON 数组解析器 - 用于流式解析 LLM 输出的 JSON 数组
 /// 当检测到完整的 JSON 对象时立即返回，无需等待整个数组完成
 pub(crate) struct IncrementalJsonArrayParser {
@@ -219,6 +269,54 @@ mod tests {
             .expect("whitespace args should be accepted as no-arg call");
         assert_eq!(converted.tool_name, "tag_list_all");
         assert_eq!(converted.args_json, json!({}));
+    }
+
+    #[test]
+    fn registry_inference_matches_siliconflow_glm_46v() {
+        let inferred = LLMManager::infer_capability_overrides_from_registry(
+            "zai-org/GLM-4.6V",
+            Some("siliconflow"),
+        )
+        .expect("registry should infer GLM-4.6V capabilities");
+
+        assert!(inferred.is_multimodal);
+        assert!(inferred.supports_tools);
+        assert!(!inferred.supports_reasoning);
+    }
+
+    #[test]
+    fn registry_inference_matches_base_glm_46_without_scope() {
+        let inferred =
+            LLMManager::infer_capability_overrides_from_registry("glm-4.6", Some("zhipu"))
+                .expect("registry should infer GLM-4.6 capabilities");
+
+        assert!(!inferred.is_multimodal);
+        assert!(inferred.supports_tools);
+        assert!(inferred.supports_reasoning);
+    }
+
+    #[test]
+    fn builtin_catalog_inference_covers_missing_builtin_tool_models() {
+        for (model, scope) in [
+            ("qwen3-max", Some("qwen")),
+            ("qwen-plus", Some("qwen")),
+            ("qwq-plus", Some("qwen")),
+            ("glm-5", Some("zhipu")),
+            ("kimi-latest", Some("moonshot")),
+            ("MiniMax-M2.5", Some("minimax")),
+            ("doubao-seed-2-0-pro-260215", Some("doubao")),
+            ("gpt-5-mini", Some("openai")),
+            ("o3-mini", Some("openai")),
+            ("gemini-3-pro-preview", Some("gemini")),
+        ] {
+            let inferred = LLMManager::resolve_capability_overrides(model, scope);
+            assert!(
+                inferred.supports_tools,
+                "expected builtin catalog tool support for model {} / {:?}",
+                model,
+                scope
+            );
+        }
     }
 }
 
@@ -901,6 +999,171 @@ pub trait LLMStreamHooks: Send + Sync {
 }
 
 impl LLMManager {
+    fn infer_capability_overrides_from_builtin_catalog(
+        model_id: &str,
+        provider_scope: Option<&str>,
+    ) -> Option<CapabilityOverrides> {
+        let normalized_model = Self::normalize_model_id(model_id);
+        let requested_scope = Self::normalize_provider_scope(provider_scope);
+
+        let vendor_scope_by_id: HashMap<&str, &str> = builtin_vendors::BUILTIN_VENDORS
+            .iter()
+            .map(|vendor| (vendor.id, vendor.provider_type))
+            .collect();
+
+        let mut best_match: Option<CapabilityOverrides> = None;
+        for model in builtin_vendors::BUILTIN_MODELS.iter() {
+            if Self::normalize_model_id(model.model) != normalized_model {
+                continue;
+            }
+
+            let builtin_scope = vendor_scope_by_id
+                .get(model.vendor_id)
+                .copied()
+                .and_then(|scope| Self::normalize_provider_scope(Some(scope)));
+            if let Some(requested) = requested_scope.as_deref() {
+                if builtin_scope.as_deref() != Some(requested) {
+                    continue;
+                }
+            }
+
+            best_match = Some(CapabilityOverrides {
+                is_multimodal: model.is_multimodal,
+                supports_tools: model.supports_tools,
+                supports_reasoning: model.is_reasoning,
+            });
+            break;
+        }
+
+        best_match
+    }
+
+    fn normalize_model_id(value: &str) -> String {
+        value.trim().to_lowercase()
+    }
+
+    fn normalize_provider_scope(value: Option<&str>) -> Option<String> {
+        value
+            .map(|scope| scope.trim().to_lowercase())
+            .filter(|scope| !scope.is_empty())
+    }
+
+    fn split_model_name(value: &str) -> Vec<String> {
+        Self::normalize_model_id(value)
+            .split(['/', ':', '\\'])
+            .map(|part| part.to_string())
+            .collect()
+    }
+
+    fn base_model_id(value: &str) -> String {
+        Self::split_model_name(value)
+            .last()
+            .cloned()
+            .unwrap_or_default()
+    }
+
+    fn matches_full_model_id(input: &str, candidate: Option<&str>) -> bool {
+        let Some(candidate) = candidate else {
+            return false;
+        };
+        let normalized = Self::normalize_model_id(candidate);
+        input == normalized
+            || input.ends_with(&format!("/{}", normalized))
+            || input.ends_with(&format!(":{}", normalized))
+    }
+
+    fn registry_record_score(
+        model_id: &str,
+        provider_scope: Option<&str>,
+        record: &RegistryModelRecord,
+    ) -> i32 {
+        let normalized_input = Self::normalize_model_id(model_id);
+        if normalized_input.is_empty() {
+            return -1;
+        }
+
+        let base_model_id = Self::base_model_id(model_id);
+        let requested_scope = Self::normalize_provider_scope(provider_scope);
+        let record_scope = Self::normalize_provider_scope(record.provider_scope.as_deref());
+
+        let mut score = if Self::matches_full_model_id(&normalized_input, record.provider_model_id.as_deref()) {
+            500
+        } else if Self::matches_full_model_id(&normalized_input, Some(&record.model_id)) {
+            450
+        } else if Self::matches_full_model_id(&normalized_input, record.alias_of.as_deref()) {
+            430
+        } else if record
+            .provider_model_id
+            .as_deref()
+            .map(|value| Self::base_model_id(value) == base_model_id)
+            .unwrap_or(false)
+        {
+            320
+        } else if Self::base_model_id(&record.model_id) == base_model_id {
+            300
+        } else if record
+            .alias_of
+            .as_deref()
+            .map(|value| Self::base_model_id(value) == base_model_id)
+            .unwrap_or(false)
+        {
+            280
+        } else {
+            -1
+        };
+
+        if score < 0 {
+            return score;
+        }
+
+        if let Some(requested_scope) = requested_scope {
+            if record_scope.as_deref() == Some(requested_scope.as_str()) {
+                score += 40;
+            } else if record_scope.is_none() {
+                score += 10;
+            }
+        } else if record_scope.is_none() {
+            score += 20;
+        }
+
+        score
+    }
+
+    fn infer_capability_overrides_from_registry(
+        model_id: &str,
+        provider_scope: Option<&str>,
+    ) -> Option<CapabilityOverrides> {
+        let mut best_record: Option<&RegistryModelRecord> = None;
+        let mut best_score = -1;
+
+        for record in MODEL_CAPABILITY_REGISTRY.iter() {
+            let score = Self::registry_record_score(model_id, provider_scope, record);
+            if score > best_score {
+                best_score = score;
+                best_record = Some(record);
+            }
+        }
+
+        best_record.map(|record| CapabilityOverrides {
+            is_multimodal: record.capabilities.vision,
+            supports_tools: record.capabilities.function_calling,
+            supports_reasoning: record.capabilities.reasoning,
+        })
+    }
+
+    fn resolve_capability_overrides(model_id: &str, provider_scope: Option<&str>) -> CapabilityOverrides {
+        let registry = Self::infer_capability_overrides_from_registry(model_id, provider_scope)
+            .unwrap_or_default();
+        let builtin = Self::infer_capability_overrides_from_builtin_catalog(model_id, provider_scope)
+            .unwrap_or_default();
+
+        CapabilityOverrides {
+            is_multimodal: registry.is_multimodal || builtin.is_multimodal,
+            supports_tools: registry.supports_tools || builtin.supports_tools,
+            supports_reasoning: registry.supports_reasoning || builtin.supports_reasoning,
+        }
+    }
+
     fn merge_builtin_profile_user_aware(
         profiles: &mut Vec<ModelProfile>,
         builtin_profile: ModelProfile,
@@ -2236,17 +2499,24 @@ impl LLMManager {
         let has_api_key =
             !api_key.is_empty() && api_key != "***" && !api_key.chars().all(|c| c == '*');
 
+        let provider_scope = profile
+            .provider_scope
+            .clone()
+            .or_else(|| Some(vendor.provider_type.clone()));
+        let capability_overrides =
+            Self::resolve_capability_overrides(&profile.model, provider_scope.as_deref());
+
         let runtime = ApiConfig {
             id: profile.id.clone(),
             name: profile.label.clone(),
             vendor_id: Some(vendor.id.clone()),
             vendor_name: Some(vendor.name.clone()),
             provider_type: Some(vendor.provider_type.clone()),
-            provider_scope: profile.provider_scope.clone().or_else(|| Some(vendor.provider_type.clone())),
+            provider_scope,
             api_key,
             base_url: vendor.base_url.clone(),
             model: profile.model.clone(),
-            is_multimodal: profile.is_multimodal,
+            is_multimodal: profile.is_multimodal || capability_overrides.is_multimodal,
             is_reasoning: profile.is_reasoning,
             is_embedding: profile.is_embedding,
             is_reranker: profile.is_reranker,
@@ -2254,7 +2524,7 @@ impl LLMManager {
             model_adapter: profile.model_adapter.clone(),
             max_output_tokens: profile.max_output_tokens,
             temperature: profile.temperature,
-            supports_tools: profile.supports_tools,
+            supports_tools: profile.supports_tools || capability_overrides.supports_tools,
             gemini_api_version: profile
                 .gemini_api_version
                 .clone()
@@ -2268,7 +2538,9 @@ impl LLMManager {
             min_p: profile.min_p,
             top_k: profile.top_k,
             enable_thinking: profile.enable_thinking,
-            supports_reasoning: profile.supports_reasoning || profile.is_reasoning,
+            supports_reasoning: profile.supports_reasoning
+                || profile.is_reasoning
+                || capability_overrides.supports_reasoning,
             headers: Some(vendor.headers.clone()),
             top_p_override: None,
             frequency_penalty_override: None,
@@ -2516,6 +2788,9 @@ impl LLMManager {
         let mut profiles: Vec<ModelProfile> = Vec::new();
 
         for cfg in configs {
+            let provider_scope = cfg.provider_scope.clone().or_else(|| cfg.provider_type.clone());
+            let capability_overrides =
+                Self::resolve_capability_overrides(&cfg.model, provider_scope.as_deref());
             let base_key = format!("{}::{}", cfg.base_url.trim(), cfg.api_key.trim());
             let key = cfg
                 .vendor_id
@@ -2559,14 +2834,16 @@ impl LLMManager {
                 vendor_id,
                 label: cfg.name.clone(),
                 model: cfg.model.clone(),
-                provider_scope: cfg.provider_scope.clone().or_else(|| cfg.provider_type.clone()),
+                provider_scope,
                 model_adapter: cfg.model_adapter.clone(),
-                is_multimodal: cfg.is_multimodal,
+                is_multimodal: cfg.is_multimodal || capability_overrides.is_multimodal,
                 is_reasoning: cfg.is_reasoning,
                 is_embedding: cfg.is_embedding,
                 is_reranker: cfg.is_reranker,
-                supports_tools: cfg.supports_tools,
-                supports_reasoning: cfg.supports_reasoning || cfg.is_reasoning,
+                supports_tools: cfg.supports_tools || capability_overrides.supports_tools,
+                supports_reasoning: cfg.supports_reasoning
+                    || cfg.is_reasoning
+                    || capability_overrides.supports_reasoning,
                 status: if cfg.enabled {
                     "enabled".to_string()
                 } else {

@@ -3846,13 +3846,37 @@ export class ChatV2TauriAdapter {
     console.log(LOG_PREFIX, '[ProgressiveDisclosure] Injected load_skills meta-tool');
 
     // 注入已加载的 Skills 工具（动态过滤 web_search 引擎）
+    // 关键：已加载技能的真实工具定义应来自会话 loadedSkills 缓存；
+    // 当只有结构化 loadedSkillIds 可用时，需回退读取 skill.embeddedTools。
+    const loadedToolsByKey = new Map<string, { name: string; description?: string; inputSchema?: unknown }>();
+    const appendLoadedTool = (tool: { name: string; description?: string; inputSchema?: unknown }) => {
+      if (!tool?.name) return;
+      const key = tool.name;
+      if (!loadedToolsByKey.has(key)) {
+        loadedToolsByKey.set(key, tool);
+      }
+    };
+
+    for (const tool of getLoadedToolSchemas(this.sessionId)) {
+      appendLoadedTool(tool);
+    }
+
     const effectiveLoadedSkillIds = Array.isArray(loadedSkillIds)
       ? loadedSkillIds.filter((id): id is string => typeof id === 'string' && id.length > 0)
-      : getLoadedSkills(this.sessionId).map(skill => skill.id);
-    const loadedTools = effectiveLoadedSkillIds.flatMap((skillId) => {
+      : [];
+    for (const skillId of effectiveLoadedSkillIds) {
       const skill = skillRegistry.get(skillId);
-      return skill?.tools ?? [];
-    });
+      const embeddedTools = skill?.embeddedTools ?? [];
+      const legacyTools = skill?.tools ?? [];
+      for (const tool of embeddedTools) {
+        appendLoadedTool(tool);
+      }
+      for (const tool of legacyTools) {
+        appendLoadedTool(tool);
+      }
+    }
+
+    const loadedTools = Array.from(loadedToolsByKey.values());
     const availableEngines = getAvailableSearchEngines();
     for (const tool of loadedTools) {
       let inputSchema = tool.inputSchema;

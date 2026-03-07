@@ -21,6 +21,8 @@ import { listen } from '@tauri-apps/api/event';
 import { ChatV2TauriAdapter } from '@/chat-v2/adapters/TauriAdapter';
 import type { ChatStore } from '@/chat-v2/core/types';
 import type { SessionEventPayload } from '@/chat-v2/adapters/types';
+import { skillRegistry } from '@/chat-v2/skills/registry';
+import type { SkillDefinition } from '@/chat-v2/skills/types';
 
 // ============================================================================
 // Mock Store
@@ -316,6 +318,53 @@ describe('ChatV2TauriAdapter', () => {
 
       expect(options.activeSkillIds).toEqual(['manual-skill']);
       expect(options.skillStateVersion).toBe(5);
+    });
+
+    it('should inject embeddedTools for structured loaded skills', async () => {
+      await adapter.setup();
+
+      const skillId = 'test-loaded-skill';
+      const skill: SkillDefinition = {
+        id: skillId,
+        name: 'Test Loaded Skill',
+        description: 'Regression test skill',
+        location: 'builtin',
+        sourcePath: 'builtin://test-loaded-skill',
+        content: 'test content',
+        embeddedTools: [
+          {
+            name: 'builtin-test_loaded_tool',
+            description: 'Regression tool schema',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                query: { type: 'string' },
+              },
+              required: ['query'],
+            },
+          },
+        ],
+      };
+      skillRegistry.register(skill);
+
+      try {
+        (mockStore as any).skillStateJson = JSON.stringify({
+          manualPinnedSkillIds: ['manual-skill'],
+          agenticSessionSkillIds: [skillId],
+          version: 6,
+        });
+
+        const options = (adapter as any).buildSendOptions();
+
+        expect(options.mcpToolSchemas).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({ name: 'load_skills' }),
+            expect.objectContaining({ name: 'builtin-test_loaded_tool' }),
+          ]),
+        );
+      } finally {
+        skillRegistry.unregister(skillId);
+      }
     });
   });
 

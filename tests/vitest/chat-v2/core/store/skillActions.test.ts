@@ -3,6 +3,26 @@ import { describe, expect, it, vi } from 'vitest';
 import { createSkillActions } from '@/chat-v2/core/store/skillActions';
 import type { ChatStoreState, GetState, SetState } from '@/chat-v2/core/store/types';
 
+vi.mock('@/chat-v2/skills/registry', () => ({
+  skillRegistry: {
+    get: (id: string) =>
+      id === 'deep-student'
+        ? {
+            id: 'deep-student',
+            name: '深度学者',
+            embeddedTools: [],
+            dependencies: [],
+          }
+        : undefined,
+  },
+}));
+
+vi.mock('@/chat-v2/skills/progressiveDisclosure', () => ({
+  loadSkillsToSession: vi.fn(() => ({ loaded: [], alreadyLoaded: [], notFound: [] })),
+  isSkillLoaded: vi.fn(() => false),
+  unloadSkill: vi.fn(),
+}));
+
 function createHarness(initialState: Partial<ChatStoreState> = {}) {
   let state = {
     sessionId: 'sess-skill-actions',
@@ -62,6 +82,26 @@ describe('skillActions structured state priority', () => {
     actions.deactivateSkill('deep-student');
 
     expect(getState().activeSkillIds).toEqual([]);
-    expect(getState().skillStateJson).toBeNull();
+    expect(JSON.parse(getState().skillStateJson ?? '{}')).toMatchObject({
+      manualPinnedSkillIds: [],
+      version: 4,
+    });
+  });
+
+  it('activateSkill writes manualPinnedSkillIds immediately', async () => {
+    const { actions, getState } = createHarness({
+      activeSkillIds: [],
+      pendingContextRefs: [],
+      skillStateJson: null,
+    });
+
+    const result = await actions.activateSkill('deep-student');
+
+    expect(result).toBe(true);
+    expect(getState().activeSkillIds).toEqual(['deep-student']);
+    expect(JSON.parse(getState().skillStateJson ?? '{}')).toMatchObject({
+      manualPinnedSkillIds: ['deep-student'],
+      version: 1,
+    });
   });
 });

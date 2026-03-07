@@ -88,6 +88,7 @@ function createMockStore() {
     inputValue: '',
     chatParams: { enableThinking: false },
     modelRetryTarget: null,
+    skillStateJson: null,
     setChatParams: vi.fn(),
     activeSkillIds: [],
     activateSkill: vi.fn(),
@@ -135,5 +136,37 @@ describe('InputBarV2 stale context ref guard', () => {
     });
 
     expect(addContextRef).not.toHaveBeenCalled();
+  });
+
+  it('only passes manual pinned skills to InputBarUI badges', () => {
+    const { store } = createMockStore();
+
+    act(() => {
+      store.setState({
+        activeSkillIds: ['deep-student', 'workspace-tools'],
+        skillStateJson: JSON.stringify({
+          manualPinnedSkillIds: [],
+          agenticSessionSkillIds: ['deep-student'],
+          modeRequiredBundleIds: ['workspace-tools'],
+          version: 3,
+        }),
+      });
+    });
+
+    render(<InputBarV2 store={store as any} />);
+
+    expect(capturedInputBarUIProps?.activeSkillIds).toEqual([]);
+
+    act(() => {
+      store.setState({
+        skillStateJson: JSON.stringify({
+          manualPinnedSkillIds: ['research-mode'],
+          agenticSessionSkillIds: ['deep-student'],
+          version: 4,
+        }),
+      });
+    });
+
+    expect(capturedInputBarUIProps?.activeSkillIds).toEqual(['research-mode']);
   });
 });

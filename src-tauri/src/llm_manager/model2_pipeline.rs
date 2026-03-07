@@ -1542,15 +1542,20 @@ impl LLMManager {
                                         .and_then(|v| v.as_i64())
                                         .map(|v| v as i32)
                                     {
-                                        if let Some(id) =
-                                            tool_call_value.get("id").and_then(|v| v.as_str())
-                                        {
+                                        let maybe_id = tool_call_value
+                                            .get("id")
+                                            .and_then(|v| v.as_str())
+                                            .map(|v| v.trim())
+                                            .filter(|v| !v.is_empty());
+                                        let maybe_name = tool_call_value
+                                            .get("function")
+                                            .and_then(|f| f.get("name"))
+                                            .and_then(|n| n.as_str())
+                                            .map(|v| v.trim())
+                                            .filter(|v| !v.is_empty());
+                                        if let Some(id) = maybe_id {
                                             // 这是一个新的工具调用的开始（有完整的id）
-                                            let name = tool_call_value
-                                                .get("function")
-                                                .and_then(|f| f.get("name"))
-                                                .and_then(|n| n.as_str())
-                                                .unwrap_or("unknown");
+                                            let name = maybe_name.unwrap_or("unknown");
                                             // 🔧 修复：某些 OpenAI 兼容 API 返回 arguments 为 JSON 对象而非字符串
                                             // 此时 as_str() 返回 None，导致参数被静默丢弃为 ""
                                             let args = tool_call_value
@@ -1582,7 +1587,7 @@ impl LLMManager {
                                             print!("🔧");
                                             use std::io::Write;
                                             let _ = std::io::stdout().flush();
-                                        } else if let Some((id, name, mut accumulated_args)) =
+                                        } else if let Some((id, mut name, mut accumulated_args)) =
                                             pending_tool_calls.get(&index).cloned()
                                         {
                                             // 这是工具调用的后续块（没有id，只有arguments片段）
@@ -1603,6 +1608,11 @@ impl LLMManager {
                                                     }
                                                 });
                                             if let Some(args_fragment) = args_fragment_opt {
+                                                if name == "unknown" {
+                                                    if let Some(better_name) = maybe_name {
+                                                        name = better_name.to_string();
+                                                    }
+                                                }
                                                 accumulated_args.push_str(&args_fragment);
                                                 pending_tool_calls.insert(
                                                     index,
@@ -1620,6 +1630,28 @@ impl LLMManager {
                                                     use std::io::Write;
                                                     let _ = std::io::stdout().flush();
                                                 }
+                                            }
+                                        } else if let Some(name) = maybe_name {
+                                            let args = tool_call_value
+                                                .get("function")
+                                                .and_then(|f| f.get("arguments"))
+                                                .map(|a| {
+                                                    if let Some(s) = a.as_str() {
+                                                        s.to_string()
+                                                    } else if a.is_null() {
+                                                        String::new()
+                                                    } else {
+                                                        serde_json::to_string(a).unwrap_or_default()
+                                                    }
+                                                })
+                                                .unwrap_or_default();
+                                            let synthetic_id = format!("stream_call_{}", index);
+                                            pending_tool_calls.insert(
+                                                index,
+                                                (synthetic_id.clone(), name.to_string(), args),
+                                            );
+                                            if let Some(h) = self.get_hook(stream_event).await {
+                                                h.on_tool_call_start(&synthetic_id, name);
                                             }
                                         }
                                     }
@@ -1667,6 +1699,15 @@ impl LLMManager {
                                     for (_index, (id, name, accumulated_args)) in
                                         pending_tool_calls.iter()
                                     {
+                                        if name.trim().is_empty() || name == "unknown" {
+                                            warn!(
+                                                "[llm_manager] 跳过 malformed tool call finalize: id='{}', name='{}', args_len={}",
+                                                id,
+                                                name,
+                                                accumulated_args.len()
+                                            );
+                                            continue;
+                                        }
                                         let complete_tool_call = serde_json::json!({
                                             "id": id,
                                             "type": "function",
@@ -1851,6 +1892,15 @@ impl LLMManager {
                 pending_tool_calls.len()
             );
             for (_index, (id, name, accumulated_args)) in pending_tool_calls.iter() {
+                if name.trim().is_empty() || name == "unknown" {
+                    warn!(
+                        "[llm_manager] 跳过 malformed tool call fallback finalize: id='{}', name='{}', args_len={}",
+                        id,
+                        name,
+                        accumulated_args.len()
+                    );
+                    continue;
+                }
                 let complete_tool_call = serde_json::json!({
                     "id": id,
                     "type": "function",
@@ -2750,15 +2800,20 @@ impl LLMManager {
                                         .and_then(|v| v.as_i64())
                                         .map(|v| v as i32)
                                     {
-                                        if let Some(id) =
-                                            tool_call_value.get("id").and_then(|v| v.as_str())
-                                        {
+                                        let maybe_id = tool_call_value
+                                            .get("id")
+                                            .and_then(|v| v.as_str())
+                                            .map(|v| v.trim())
+                                            .filter(|v| !v.is_empty());
+                                        let maybe_name = tool_call_value
+                                            .get("function")
+                                            .and_then(|f| f.get("name"))
+                                            .and_then(|n| n.as_str())
+                                            .map(|v| v.trim())
+                                            .filter(|v| !v.is_empty());
+                                        if let Some(id) = maybe_id {
                                             // 这是一个新的工具调用的开始（有完整的id）
-                                            let name = tool_call_value
-                                                .get("function")
-                                                .and_then(|f| f.get("name"))
-                                                .and_then(|n| n.as_str())
-                                                .unwrap_or("unknown");
+                                            let name = maybe_name.unwrap_or("unknown");
                                             // 🔧 修复：某些 OpenAI 兼容 API 返回 arguments 为 JSON 对象而非字符串
                                             let args = tool_call_value
                                                 .get("function")
@@ -2783,7 +2838,7 @@ impl LLMManager {
                                             print!("🔧");
                                             use std::io::Write;
                                             let _ = std::io::stdout().flush();
-                                        } else if let Some((id, name, mut accumulated_args)) =
+                                        } else if let Some((id, mut name, mut accumulated_args)) =
                                             pending_tool_calls.get(&index).cloned()
                                         {
                                             // 这是工具调用的后续块（没有id，只有arguments片段）
@@ -2804,6 +2859,11 @@ impl LLMManager {
                                                     }
                                                 });
                                             if let Some(args_fragment) = args_fragment_opt {
+                                                if name == "unknown" {
+                                                    if let Some(better_name) = maybe_name {
+                                                        name = better_name.to_string();
+                                                    }
+                                                }
                                                 accumulated_args.push_str(&args_fragment);
                                                 pending_tool_calls.insert(
                                                     index,
@@ -2818,6 +2878,25 @@ impl LLMManager {
                                                     let _ = std::io::stdout().flush();
                                                 }
                                             }
+                                        } else if let Some(name) = maybe_name {
+                                            let args = tool_call_value
+                                                .get("function")
+                                                .and_then(|f| f.get("arguments"))
+                                                .map(|a| {
+                                                    if let Some(s) = a.as_str() {
+                                                        s.to_string()
+                                                    } else if a.is_null() {
+                                                        String::new()
+                                                    } else {
+                                                        serde_json::to_string(a).unwrap_or_default()
+                                                    }
+                                                })
+                                                .unwrap_or_default();
+                                            let synthetic_id = format!("stream_call_{}", index);
+                                            pending_tool_calls.insert(
+                                                index,
+                                                (synthetic_id, name.to_string(), args),
+                                            );
                                         }
                                     }
                                 }
@@ -2860,6 +2939,15 @@ impl LLMManager {
                                     for (_index, (id, name, accumulated_args)) in
                                         pending_tool_calls.iter()
                                     {
+                                        if name.trim().is_empty() || name == "unknown" {
+                                            warn!(
+                                                "[llm_manager] 跳过 malformed tool call finalize: id='{}', name='{}', args_len={}",
+                                                id,
+                                                name,
+                                                accumulated_args.len()
+                                            );
+                                            continue;
+                                        }
                                         let complete_tool_call = serde_json::json!({
                                             "id": id,
                                             "type": "function",

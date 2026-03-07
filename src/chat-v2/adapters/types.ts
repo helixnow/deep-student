@@ -123,9 +123,14 @@ export interface SendOptions {
   /** Skill 白名单工具 ID 列表 */
   skillAllowedTools?: string[];
   /** Skill 内容（SKILL.md 内容） */
-  skillContents?: string[];
+  skillContents?: Record<string, string>;
   /** Skill 内嵌工具 Schema */
-  skillEmbeddedTools?: unknown[];
+  skillEmbeddedTools?: Record<string, Array<{
+    name: string;
+    serverId?: string;
+    description?: string;
+    inputSchema?: unknown;
+  }>>;
   /** 关闭工具白名单检查 */
   disableToolWhitelist?: boolean;
   /** 图片压缩质量策略 */

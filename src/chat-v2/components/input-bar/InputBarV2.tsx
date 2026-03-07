@@ -50,6 +50,28 @@ interface AggregatedStoreState {
   setChatParams: (params: any) => void;
 }
 
+function getManualPinnedSkillIds(
+  skillStateJson: string | null | undefined,
+  _fallbackActiveSkillIds: string[]
+): string[] {
+  if (!skillStateJson) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(skillStateJson) as { manualPinnedSkillIds?: unknown };
+    if (Array.isArray(parsed?.manualPinnedSkillIds)) {
+      return parsed.manualPinnedSkillIds.filter(
+        (skillId): skillId is string => typeof skillId === 'string' && skillId.length > 0
+      );
+    }
+  } catch {
+    return [];
+  }
+
+  return [];
+}
+
 export const InputBarV2: React.FC<InputBarV2Props> = memo(
   ({ store, placeholder, sendShortcut, leftAccessory, extraButtonsRight, className, onFilesUpload, textbookOpen, onTextbookToggle, availableModels }) => {
     // 🔧 订阅合并：使用单个聚合选择器 + shallow 比较，避免多次重渲染
@@ -62,6 +84,7 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
       setChatParams,
       // ★ Skills 系统（多选模式）
       activeSkillIds,
+      skillStateJson,
       activateSkill,
       deactivateSkill,
       // 🔧 P1-27: 上下文引用
@@ -82,6 +105,7 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         // ★ 2026-01 改造：Anki 工具已迁移到内置 MCP 服务器，移除 enableAnkiTools
         // ☆ Skills 系统（多选模式）
         activeSkillIds: s.activeSkillIds,
+        skillStateJson: s.skillStateJson,
         activateSkill: s.activateSkill,
         deactivateSkill: s.deactivateSkill,
         // 🔧 P1-27: 上下文引用列表
@@ -371,6 +395,11 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
       await reloadSkills();
     }, []);
 
+    const displayActiveSkillIds = useMemo(
+      () => getManualPinnedSkillIds(skillStateJson, activeSkillIds),
+      [skillStateJson, activeSkillIds]
+    );
+
     const renderSkillPanel = useMemo(() => {
       return () => (
         <SkillSelector
@@ -420,7 +449,7 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         selectedMcpServerCount={nonBuiltinMcpServerCount}
         onClearMcpServers={handleClearMcpServers}
         // ★ Skills 系统（多选模式）
-        activeSkillIds={activeSkillIds}
+        activeSkillIds={displayActiveSkillIds}
         hasLoadedSkills={hasLoadedSkills}
         onToggleSkill={handleToggleSkill}
         // 教材侧栏控制

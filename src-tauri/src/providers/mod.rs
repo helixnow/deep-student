@@ -112,7 +112,9 @@ impl ProviderAdapter for OpenAIAdapter {
                                 delta.get("tool_calls").and_then(|v| v.as_array())
                             {
                                 for tc in tool_calls {
-                                    events.push(StreamEvent::ToolCall(tc.clone()));
+                                    if is_meaningful_openai_tool_delta(tc) {
+                                        events.push(StreamEvent::ToolCall(tc.clone()));
+                                    }
                                 }
                             }
                         }
@@ -131,6 +133,37 @@ impl ProviderAdapter for OpenAIAdapter {
 
         events
     }
+}
+
+fn is_meaningful_openai_tool_delta(value: &Value) -> bool {
+    let Some(obj) = value.as_object() else {
+        return false;
+    };
+
+    let has_index = obj.get("index").and_then(|v| v.as_i64()).is_some();
+    let has_id = obj
+        .get("id")
+        .and_then(|v| v.as_str())
+        .map(|v| !v.trim().is_empty())
+        .unwrap_or(false);
+    let has_name = obj
+        .get("function")
+        .and_then(|f| f.get("name"))
+        .and_then(|v| v.as_str())
+        .map(|v| !v.trim().is_empty())
+        .unwrap_or(false);
+    let has_arguments = obj
+        .get("function")
+        .and_then(|f| f.get("arguments"))
+        .map(|arguments| {
+            arguments
+                .as_str()
+                .map(|s| !s.is_empty())
+                .unwrap_or(!arguments.is_null())
+        })
+        .unwrap_or(false);
+
+    has_index && (has_id || has_name || has_arguments)
 }
 
 pub struct OpenAIResponsesAdapter;
@@ -1751,8 +1784,40 @@ impl ProviderAdapter for GeminiAdapter {
 
 #[cfg(test)]
 mod tests {
-    use super::{build_usage_event, AnthropicAdapter, OpenAIResponsesAdapter, ProviderAdapter, StreamEvent};
+    use super::{
+        build_usage_event, is_meaningful_openai_tool_delta, AnthropicAdapter, OpenAIAdapter,
+        OpenAIResponsesAdapter, ProviderAdapter, StreamEvent,
+    };
     use serde_json::json;
+
+    #[test]
+    fn openai_tool_delta_filter_skips_empty_fragments() {
+        assert!(!is_meaningful_openai_tool_delta(&json!({
+            "index": 0,
+            "id": "",
+            "function": {}
+        })));
+
+        assert!(!is_meaningful_openai_tool_delta(&json!({
+            "id": "",
+            "function": { "name": "", "arguments": null }
+        })));
+    }
+
+    #[test]
+    fn openai_adapter_parse_stream_keeps_argument_deltas_and_skips_empty_tool_fragments() {
+        let adapter = OpenAIAdapter;
+
+        let skipped = adapter.parse_stream(
+            r#"data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"","function":{}}]}}]}"#,
+        );
+        assert!(skipped.is_empty());
+
+        let kept = adapter.parse_stream(
+            r#"data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{"}}]}}]}"#,
+        );
+        assert!(matches!(kept.first(), Some(StreamEvent::ToolCall(v)) if v["index"] == json!(0)));
+    }
 
     #[test]
     fn openai_responses_adapter_converts_messages_and_reasoning() {

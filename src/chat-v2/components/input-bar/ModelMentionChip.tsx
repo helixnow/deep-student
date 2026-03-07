@@ -55,23 +55,43 @@ export const ModelMentionChip: React.FC<ModelMentionChipProps> = ({
 
   // 简化模型名称显示：
   // 1. 移除供应商前缀（如 "SiliconFlow - xxx" -> "xxx"）
-  // 2. 对于 xxx/xxx/abc 格式，只取最后一部分 abc
-  const simplifyModelName = (name: string): string => {
-    let simplified = name;
+  // 2. 对于纯模型 ID 路径（如 "Qwen/Qwen3-8B"）才按 / 取最后一段
+  // 3. 对于 "Qwen3.5 Plus (多模态/混合思考)" 这类展示名，保留主名称并去掉括号说明
+  const simplifyModelName = (name: string, modelId?: string): string => {
+    let simplified = name || modelId || '';
     // 移除供应商前缀（格式：供应商名 - 模型名）
     const dashIndex = simplified.indexOf(' - ');
     if (dashIndex !== -1) {
       simplified = simplified.slice(dashIndex + 3);
     }
-    // 对于 xxx/xxx/abc 格式，只取最后一部分
-    const parts = simplified.split('/');
-    if (parts.length > 1) {
-      simplified = parts[parts.length - 1];
+
+    const trimmed = simplified.trim();
+    const looksLikeHumanLabel = /[\s（()\u4e00-\u9fff]/.test(trimmed);
+
+    // 对人类可读标签，优先保留括号前的主名称
+    if (looksLikeHumanLabel) {
+      simplified = trimmed
+        .replace(/[（(].*?[）)]/g, '')
+        .trim();
+    } else {
+      // 对于 xxx/xxx/abc 这类模型 ID 路径，只取最后一段
+      const parts = trimmed.split('/');
+      if (parts.length > 1) {
+        simplified = parts[parts.length - 1];
+      } else {
+        simplified = trimmed;
+      }
     }
+
+    // 兜底：如果清洗后为空，则回退到 modelId 或原始名称
+    if (!simplified) {
+      simplified = modelId || name;
+    }
+
     return simplified;
   };
 
-  const simplifiedName = simplifyModelName(model.name);
+  const simplifiedName = simplifyModelName(model.name, model.model);
   // 截断过长的名称
   const displayName = simplifiedName.length > 30 
     ? simplifiedName.slice(0, 27) + '...' 
