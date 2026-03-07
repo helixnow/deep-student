@@ -11,7 +11,6 @@
 Bring your scattered learning workflow into one place:<br/>
 **Study materials · Deep research · Notes · Mind maps · Practice questions · Translation · Flashcards**
 
-[![CI](https://github.com/helixnow/deep-student/actions/workflows/ci.yml/badge.svg)](https://github.com/helixnow/deep-student/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/helixnow/deep-student?color=blue&label=release)](https://github.com/helixnow/deep-student/releases/latest)
 [![License](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
 [![Stars](https://img.shields.io/github/stars/helixnow/deep-student?style=social)](https://github.com/helixnow/deep-student)
@@ -41,7 +40,7 @@ Learning workflows are spread across too many tools.
 
 Open a PDF reader for textbooks, XMind for mind maps, a dictionary app for translation, Notion for notes, an LMS for practice questions, CNKI and arXiv for papers, make your own flashcards and import into Anki, then screenshot problems and send them to DeepSeek or ChatGPT — this is everyday reality for many students. But once your learning data is scattered, you spend more energy shuttling between tools than actually learning.
 
-DeepStudent connects the dots: **read → ask → research → note → structure → practice → memorize — as one continuous learning chain.**
+DeepStudent's answer: **give AI native read-write access to all your learning data.** "Read → ask → research → note → structure → practice → memorize" isn't a rigid pipeline — it's driven on demand by the AI through conversation. One sentence from you, and it generates a mind map from your textbook, creates questions from your materials, turns key points into flashcards, searches and downloads papers for reading, or researches the web and writes conclusions into your notes......
 
 One workbench. Your home base for learning.
 
@@ -53,13 +52,13 @@ One workbench. Your home base for learning.
 
 | Need | You might use | How DeepStudent compares |
 |---|---|---|
-| Study with your materials | NotebookLM | NotebookLM also generates mind maps and flashcards; DeepStudent adds spaced repetition, practice modes, translation, and deep research — all stored locally |
-| Notes & knowledge base | Notion / Obsidian | Local-first knowledge organization with all learning assets unified, no cloud dependency |
-| Structure your thinking | XMind / WorkFlowy | AI-driven mind map generation & editing, expand knowledge structures from the same source material in one click |
-| Practice & review | Quizlet / Anki | AI question generation + multiple practice modes + spaced repetition + Anki export; Quizlet and Anki each cover part of this — here it's the full chain |
-| Translation & close reading | DeepL | DeepL excels at high-quality translation; DeepStudent adds paragraph-level bilingual comparison, domain presets, and custom glossaries for deep reading |
+| Study with your materials | NotebookLM | NotebookLM is locked to Gemini with data on Google's cloud; its generated mind maps and flashcards are isolated outputs that can't feed into practice or review. DeepStudent keeps all data local, supports 9+ model providers, and auto-vectorizes imports into a unified data layer — the same PDF flows through: Q&A → mind map → questions → flashcards → Anki export, each step's output feeding the next |
+| Notes & knowledge base | Notion / Obsidian | Notion / Obsidian are general-purpose note tools with AI bolted on later. DeepStudent is built around learning: imports trigger OCR → chunking → embedding → indexing automatically, making all content AI-searchable; notes, textbooks, question banks, mind maps, and translations share a unified Virtual File System (VFS) |
+| Structure your thinking | XMind / WorkFlowy | XMind requires manual node creation. DeepStudent generates complete knowledge structures from your study materials via AI, supports multi-turn conversational node editing, and offers node masking for self-testing |
+| Practice & review | Quizlet / Anki | Quizlet requires manual question entry and can't generate from your own materials; Anki card creation is tedious. DeepStudent: upload exam papers / textbooks → AI auto-generates questions → daily / timed / mock exam modes → knowledge-point mastery tracking → one-click Anki export for long-term spaced repetition |
+| Translation & close reading | DeepL | DeepL's output is disconnected from your learning workflow. DeepStudent keeps translations in your workbench — paragraph-level bilingual comparison, 5 domain presets (academic / technical / literary / legal / medical) with custom glossaries — then query, generate questions, or create flashcards from the same translated material |
 
-The difference: these capabilities aren't isolated modules — they share a single data layer and a single workflow. The same material can be read, queried, mapped, turned into questions, and converted to flashcards — without shuttling data between apps.
+The core architectural difference: DeepStudent's foundation is a unified Virtual File System (VFS). Imported materials are automatically OCR'd, vectorized, and indexed — making them AI-readable and AI-searchable. On top of this, the chat agent natively reads, searches, and writes multiple types of learning data — it can retrieve your textbooks and notes to answer questions, and directly generate mind maps, question sets, flashcards, and research reports back into the VFS. Data flows through your conversations with the agent, but you never need to leave the workbench or shuttle data between apps.
 
 ---
 
