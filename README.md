@@ -8,16 +8,14 @@
 
 ### An open-source, local-first AI learning workbench
 
-Bring your scattered learning workflow into one place:<br/>
-**Study materials · Deep research · Notes · Mind maps · Practice questions · Translation · Flashcards**
+> It's not that learning is hard — it's that learning tools are too fragmented.
+
+Think of DeepStudent as:<br/>
+**NotebookLM + Notion + XMind + Quizlet + DeepL**, in one unified data and workflow layer.
 
 [![Release](https://img.shields.io/github/v/release/helixnow/deep-student?color=blue&label=release)](https://github.com/helixnow/deep-student/releases/latest)
 [![License](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
 [![Stars](https://img.shields.io/github/stars/helixnow/deep-student?style=social)](https://github.com/helixnow/deep-student)
-
-[![macOS](https://img.shields.io/badge/-macOS-black?style=flat-square&logo=apple&logoColor=white)](#installation)
-[![Windows](https://img.shields.io/badge/-Windows-blue?style=flat-square&logo=windows&logoColor=white)](#installation)
-[![Android](https://img.shields.io/badge/-Android-green?style=flat-square&logo=android&logoColor=white)](#installation)
 
 [Website](https://deepstudent.cn) ·
 [**Download**](#installation) ·
@@ -47,8 +45,6 @@ One workbench. Your home base for learning.
 ---
 
 ## Understand It Through Products You Know
-
-> **NotebookLM + Notion + XMind + Quizlet + DeepL**, in one extensible local-first workbench.
 
 | Need | You might use | How DeepStudent compares |
 |---|---|---|
@@ -295,6 +291,10 @@ Your learning data stays under your control.
 - Cloud sync (experimental): S3-compatible storage & WebDAV
 
 ## Installation
+
+[![macOS](https://img.shields.io/badge/-macOS-black?style=flat-square&logo=apple&logoColor=white)](#installation)
+[![Windows](https://img.shields.io/badge/-Windows-blue?style=flat-square&logo=windows&logoColor=white)](#installation)
+[![Android](https://img.shields.io/badge/-Android-green?style=flat-square&logo=android&logoColor=white)](#installation)
 
 Download the latest version from [GitHub Releases](https://github.com/helixnow/deep-student/releases/latest):
 
