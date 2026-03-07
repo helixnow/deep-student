@@ -34,7 +34,55 @@ pub const BUILTIN_LOAD_SKILLS_TOOL_NAME: &str = "builtin-load_skills";
 #[derive(Debug, Deserialize)]
 struct LoadSkillsInput {
     /// 要加载的技能 ID 列表
+    #[serde(deserialize_with = "deserialize_string_or_vec")]
     skills: Vec<String>,
+}
+
+/// 自定义反序列化：兼容 JSON 数组和字符串化的 JSON 数组
+///
+/// 部分 LLM（如 Gemini）会将数组参数序列化为字符串：
+///   `"[\"knowledge-retrieval\", \"academic-search\"]"` （字符串）
+/// 而不是正确的 JSON 数组：
+///   `["knowledge-retrieval", "academic-search"]`
+///
+/// 此反序列化器同时支持两种格式。
+fn deserialize_string_or_vec<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::de;
+
+    struct StringOrVec;
+
+    impl<'de> de::Visitor<'de> for StringOrVec {
+        type Value = Vec<String>;
+
+        fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+            formatter.write_str("a string or a sequence of strings")
+        }
+
+        fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+        where
+            E: de::Error,
+        {
+            // 尝试将字符串解析为 JSON 数组
+            serde_json::from_str::<Vec<String>>(value).map_err(|_| {
+                de::Error::custom(format!(
+                    "invalid stringified array: '{}', expected a JSON array string like '[\"a\", \"b\"]'",
+                    value
+                ))
+            })
+        }
+
+        fn visit_seq<A>(self, seq: A) -> Result<Self::Value, A::Error>
+        where
+            A: de::SeqAccess<'de>,
+        {
+            Deserialize::deserialize(de::value::SeqAccessDeserializer::new(seq))
+        }
+    }
+
+    deserializer.deserialize_any(StringOrVec)
 }
 
 /// load_skills 输出结果
