@@ -134,6 +134,7 @@ interface UseQuestionBankSessionReturn {
 
   loadQuestions: () => Promise<void>;
   loadMoreQuestions: () => Promise<void>;
+  refreshQuestion: (questionId: string) => Promise<void>;
   submitAnswer: (questionId: string, answer: string, isCorrectOverride?: boolean) => Promise<SubmitResult>;
   markCorrect: (questionId: string, isCorrect: boolean) => Promise<void>;
   navigate: (index: number) => void;
@@ -163,7 +164,62 @@ export function useQuestionBankSession({
   const examIdRef = useRef(examId);
   const loadRequestIdRef = useRef(0);
   const sessionEpochRef = useRef(0);
+  const currentQuestionIdRef = useRef<string | null>(null);
+  const localOrderRef = useRef<string[]>([]);
   examIdRef.current = examId;
+  currentQuestionIdRef.current = currentQuestionId;
+  localOrderRef.current = localOrder;
+
+  const fetchAllQuestions = useCallback(async (
+    currentExamId: string,
+    epoch: number,
+    requestId: number,
+  ): Promise<QuestionListResult> => {
+    const firstPage = await invoke<QuestionListResult>('qbank_list_questions', {
+      request: { exam_id: currentExamId, filters: {}, page: 1, page_size: PAGE_SIZE },
+    });
+
+    if (loadRequestIdRef.current !== requestId || sessionEpochRef.current !== epoch || examIdRef.current !== currentExamId) {
+      return firstPage;
+    }
+
+    if (!firstPage.has_more) {
+      return firstPage;
+    }
+
+    const allQuestions = [...firstPage.questions];
+    let page = firstPage.page;
+    let hasMore = firstPage.has_more;
+
+    while (hasMore) {
+      const nextPage = page + 1;
+      const result = await invoke<QuestionListResult>('qbank_list_questions', {
+        request: { exam_id: currentExamId, filters: {}, page: nextPage, page_size: PAGE_SIZE },
+      });
+
+      if (loadRequestIdRef.current !== requestId || sessionEpochRef.current !== epoch || examIdRef.current !== currentExamId) {
+        return {
+          ...result,
+          questions: allQuestions,
+          total: result.total,
+          page: nextPage,
+          has_more: result.has_more,
+        };
+      }
+
+      allQuestions.push(...result.questions);
+      page = result.page;
+      hasMore = result.has_more;
+    }
+
+    return {
+      ...firstPage,
+      questions: allQuestions,
+      total: firstPage.total,
+      page,
+      has_more: false,
+    };
+  }, []);
 
   // ========== 加载题目 ==========
   const loadQuestionsImpl = useCallback(async () => {
@@ -178,10 +234,9 @@ export function useQuestionBankSession({
     emitExamSheetDebug('info', 'frontend:hook-state', `[Session] loadQuestions: examId=${currentExamId}`, { sessionId: currentExamId });
 
     try {
+      const previousQuestionId = currentQuestionIdRef.current;
       const [result, stats] = await Promise.all([
-        invoke<QuestionListResult>('qbank_list_questions', {
-          request: { exam_id: currentExamId, filters: {}, page: 1, page_size: PAGE_SIZE },
-        }),
+        fetchAllQuestions(currentExamId, epoch, requestId),
         invoke<StoreStats | null>('qbank_get_stats', { examId: currentExamId }),
       ]);
 
@@ -198,11 +253,14 @@ export function useQuestionBankSession({
       setLocalQuestions(questionsMap);
       setLocalOrder(order);
       setLocalStats(stats);
-      setCurrentQuestionId(result.questions[0]?.id || null);
+      const nextCurrentQuestionId = previousQuestionId && questionsMap.has(previousQuestionId)
+        ? previousQuestionId
+        : (result.questions[0]?.id || null);
+      setCurrentQuestionId(nextCurrentQuestionId);
       setPagination({ page: result.page, pageSize: result.page_size, total: result.total, hasMore: result.has_more });
 
       emitExamSheetDebug('success', 'frontend:hook-state',
-        `[Session] loadQuestions OK: ${result.questions.length} questions, total=${result.total}`,
+        `[Session] loadQuestions OK: ${result.questions.length} questions, total=${result.total}, page=${result.page}`,
         { sessionId: currentExamId },
       );
     } catch (err: unknown) {
@@ -215,7 +273,7 @@ export function useQuestionBankSession({
         setIsLoading(false);
       }
     }
-  }, []);
+  }, [fetchAllQuestions]);
 
   const loadQuestions = useCallback(async () => {
     await loadQuestionsImpl();
@@ -282,6 +340,52 @@ export function useQuestionBankSession({
       }
     }
   }, [isLoading, pagination.hasMore, pagination.page]);
+
+  // ========== 刷新单题并同步统计 ==========
+  const refreshQuestion = useCallback(async (questionId: string) => {
+    const currentExamId = examIdRef.current;
+    if (!currentExamId || !questionId) return;
+    const epoch = sessionEpochRef.current;
+
+    try {
+      const [question, stats] = await Promise.all([
+        invoke<StoreQuestion | null>('qbank_get_question', { questionId }),
+        invoke<StoreStats>('qbank_refresh_stats', { examId: currentExamId }),
+      ]);
+
+      if (sessionEpochRef.current !== epoch || examIdRef.current !== currentExamId) return;
+
+      setLocalStats(stats);
+      if (!question) {
+        setLocalQuestions(prev => {
+          if (!prev.has(questionId)) return prev;
+          const next = new Map(prev);
+          next.delete(questionId);
+          return next;
+        });
+        setLocalOrder(prev => prev.filter(id => id !== questionId));
+        setCurrentQuestionId(prev => {
+          if (prev !== questionId) return prev;
+          const remainingIds = localOrderRef.current.filter(id => id !== questionId);
+          return remainingIds[0] || null;
+        });
+        return;
+      }
+
+      setLocalQuestions(prev => {
+        const next = new Map(prev);
+        next.set(question.id, question);
+        return next;
+      });
+      setLocalOrder(prev => (prev.includes(question.id) ? prev : [...prev, question.id]));
+    } catch (err: unknown) {
+      debugLog.error('[useQuestionBankSession] refreshQuestion failed:', err);
+      if (sessionEpochRef.current === epoch) {
+        setError(String(err));
+      }
+      throw err instanceof Error ? err : new Error(String(err));
+    }
+  }, []);
 
   // ========== 提交答案 ==========
   const submitAnswer = useCallback(async (questionId: string, answer: string, isCorrectOverride?: boolean): Promise<SubmitResult> => {
@@ -418,6 +522,7 @@ export function useQuestionBankSession({
 
     loadQuestions,
     loadMoreQuestions,
+    refreshQuestion,
     submitAnswer,
     markCorrect,
     navigate,

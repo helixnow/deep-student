@@ -9,7 +9,7 @@
  * @see PracticeModeSelector 模式卡片网格
  */
 
-import React, { lazy, Suspense, useState, useCallback, useMemo } from 'react';
+import React, { lazy, Suspense, useState, useCallback, useMemo, useEffect } from 'react';
 import { cn } from '@/lib/utils';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { NotionButton } from '@/components/ui/NotionButton';
@@ -31,6 +31,7 @@ import {
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
+import { useQuestionBankStore } from '@/stores/questionBankStore';
 import type { QuestionBankStats } from '@/api/questionBankApi';
 import type { PracticeMode } from '@/api/questionBankApi';
 
@@ -69,6 +70,32 @@ export const PracticeLauncher: React.FC<PracticeLauncherProps> = ({
 }) => {
   const { t } = useTranslation(['exam_sheet', 'practice']);
   const [activeAdvanced, setActiveAdvanced] = useState<AdvancedMode>(null);
+  const timedSession = useQuestionBankStore(state => state.timedSession);
+  const mockExamSession = useQuestionBankStore(state => state.mockExamSession);
+  const mockExamScoreCard = useQuestionBankStore(state => state.mockExamScoreCard);
+
+  const activeTimedSession = useMemo(
+    () => (timedSession?.exam_id === examId ? timedSession : null),
+    [timedSession, examId],
+  );
+  const activeMockExamSession = useMemo(
+    () => (mockExamSession?.exam_id === examId ? mockExamSession : null),
+    [mockExamSession, examId],
+  );
+
+  useEffect(() => {
+    if (activeMockExamSession?.is_submitted && mockExamScoreCard?.exam_id === examId) {
+      setActiveAdvanced('mock_exam');
+      return;
+    }
+    if (activeMockExamSession && !activeMockExamSession.is_submitted) {
+      setActiveAdvanced('mock_exam');
+      return;
+    }
+    if (activeTimedSession && !activeTimedSession.is_submitted && !activeTimedSession.is_timeout) {
+      setActiveAdvanced('timed');
+    }
+  }, [activeMockExamSession, activeTimedSession, mockExamScoreCard, examId]);
 
   const allTags = useMemo(() => {
     const tagSet = new Set<string>();

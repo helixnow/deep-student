@@ -13,7 +13,6 @@ import { Input } from './ui/shad/Input';
 import { Textarea } from './ui/shad/Textarea';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { useQbankAiGrading } from '@/hooks/useQbankAiGrading';
-import { useQuestionBankStore } from '@/stores/questionBankStore';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import { formatTime } from '@/utils/formatUtils';
@@ -98,6 +97,7 @@ export interface QuestionBankEditorProps {
   onNavigate?: (index: number) => void;
   onModeChange?: (mode: PracticeMode, tag?: string) => void;
   onMarkCorrect?: (questionId: string, isCorrect: boolean) => Promise<void>;
+  onRefreshQuestion?: (questionId: string) => Promise<void>;
   onToggleFavorite?: (questionId: string, isFavorite: boolean) => Promise<void>;
   /** 编辑模式：更新题目信息 */
   onUpdateQuestion?: (questionId: string, data: QuestionUpdateData) => Promise<void>;
@@ -107,6 +107,8 @@ export interface QuestionBankEditorProps {
   className?: string;
   showTimer?: boolean;
   timerDuration?: number;
+  timerElapsedSeconds?: number;
+  allowTimerControl?: boolean;
   /** 专注模式：隐藏统计卡片和标签，聚焦刷题 */
   focusMode?: boolean;
   onFocusModeChange?: (focusMode: boolean) => void;
@@ -371,6 +373,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
   onNavigate,
   onModeChange,
   onMarkCorrect,
+  onRefreshQuestion,
   onToggleFavorite,
   onUpdateQuestion,
   onDeleteQuestion,
@@ -378,6 +381,8 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
   className,
   showTimer = true,
   timerDuration,
+  timerElapsedSeconds,
+  allowTimerControl = true,
   editMode = false,
   focusMode: focusModeProp,
   onFocusModeChange,
@@ -811,12 +816,10 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
             if (verdict) {
               const isCorrect = verdict === 'correct';
               setSubmitResult(prev => prev ? { ...prev, isCorrect, needsManualGrading: false } : null);
-              // 同步到后端
-              if (onMarkCorrect) {
-                onMarkCorrect(questionId, isCorrect).catch((err) => {
-                  debugLog.error('[QuestionBankEditor] markCorrect after AI grading failed:', err);
-                  // 回滚乐观更新，恢复手动批改状态
-                  setSubmitResult(prev => prev ? { ...prev, isCorrect: false, needsManualGrading: true } : null);
+              if (onRefreshQuestion) {
+                onRefreshQuestion(questionId).catch((err) => {
+                  debugLog.error('[QuestionBankEditor] refresh after AI grading failed:', err);
+                  setSubmitResult(prev => prev ? { ...prev, isCorrect: null, needsManualGrading: true } : null);
                   showGlobalNotification('error', t('exam_sheet:errors.manual_grade_failed', '评分同步失败，请手动重试'));
                 });
               }
@@ -863,7 +866,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
     } finally {
       setIsSubmitting(false);
     }
-  }, [currentQuestion, selectedAnswer, selectedOptions, fillBlankAnswers, fillBlankCount, onSubmitAnswer, streakCount, totalCorrectCount, currentIndex, totalQuestions, questionTimes, elapsedTime]);
+  }, [currentQuestion, selectedAnswer, selectedOptions, fillBlankAnswers, fillBlankCount, onSubmitAnswer, onRefreshQuestion, streakCount, totalCorrectCount, currentIndex, totalQuestions, questionTimes, elapsedTime, aiGrading, t]);
 
   // 重做当前题目
   const handleRetry = useCallback(() => {
@@ -934,8 +937,15 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
 
   // P1-2: 计时器控制
   const toggleTimer = useCallback(() => {
+    if (!allowTimerControl) return;
     setIsTimerRunning(prev => !prev);
-  }, []);
+  }, [allowTimerControl]);
+
+  const resolvedElapsedTime = timerElapsedSeconds ?? elapsedTime;
+  const remainingTime = timerDuration != null
+    ? Math.max(timerDuration - resolvedElapsedTime, 0)
+    : null;
+  const timerDisplay = remainingTime ?? resolvedElapsedTime;
 
   // 从 question 数据读取收藏状态（SSOT: store -> question -> UI）
   const isFavorite = currentQuestion?.isFavorite ?? false;
@@ -1140,11 +1150,20 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
             <div className="flex items-center justify-between p-3 rounded-lg bg-muted/30">
               <div className="flex items-center gap-2">
                 <Clock className={cn('w-5 h-5', isTimerRunning ? 'text-primary' : 'text-muted-foreground')} />
-                <span className="text-xl font-mono tabular-nums">{formatTime(elapsedTime)}</span>
+                <div className="flex flex-col">
+                  <span className="text-xl font-mono tabular-nums">{formatTime(timerDisplay)}</span>
+                  {remainingTime != null && (
+                    <span className="text-[11px] text-muted-foreground">
+                      {t('editor.remainingTime', '剩余时间')}
+                    </span>
+                  )}
+                </div>
               </div>
-              <NotionButton variant="ghost" size="sm" onClick={toggleTimer}>
-                {isTimerRunning ? t('editor.pause') : t('editor.resume')}
-              </NotionButton>
+              {allowTimerControl && (
+                <NotionButton variant="ghost" size="sm" onClick={toggleTimer}>
+                  {isTimerRunning ? t('editor.pause') : t('editor.resume')}
+                </NotionButton>
+              )}
             </div>
           </div>
         )}
@@ -2445,14 +2464,23 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
           examId={sessionId}
           questionId={currentQuestion.id}
           onImageAdded={() => {
-            // ★ BUG-6 修复：裁剪后需刷新 store 中的题目数据，否则 currentQuestion.images 不含新图片
-            if (currentQuestion?.id) {
-              useQuestionBankStore.getState().getQuestion(currentQuestion.id).then(() => {
-                // store 已更新后，清除图片缓存并触发重新加载
-                setQuestionImageUrls({});
-                setImageRefreshKey(k => k + 1);
-              });
+            if (!currentQuestion?.id) return;
+
+            const reloadImages = () => {
+              setQuestionImageUrls({});
+              setImageRefreshKey(k => k + 1);
+            };
+
+            if (onRefreshQuestion) {
+              onRefreshQuestion(currentQuestion.id)
+                .catch((err) => {
+                  debugLog.error('[QuestionBankEditor] refresh after crop failed:', err);
+                })
+                .finally(reloadImages);
+              return;
             }
+
+            reloadImages();
           }}
         />
       )}

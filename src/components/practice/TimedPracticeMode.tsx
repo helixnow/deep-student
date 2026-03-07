@@ -8,7 +8,7 @@
  * - 进度追踪
  */
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/shad/Card';
@@ -63,6 +63,10 @@ export const TimedPracticeMode: React.FC<TimedPracticeModeProps> = ({
     startTimedPractice,
     isLoadingPractice,
   } = useQuestionBankStore();
+  const activeSession = useMemo(
+    () => (timedSession?.exam_id === examId ? timedSession : null),
+    [timedSession, examId],
+  );
   
   // 配置状态
   const [durationMinutes, setDurationMinutes] = useState(30);
@@ -88,8 +92,8 @@ export const TimedPracticeMode: React.FC<TimedPracticeModeProps> = ({
   );
   
   // 计算进度
-  const progress = timedSession
-    ? (timedSession.answered_count / timedSession.question_count) * 100
+  const progress = activeSession
+    ? (activeSession.answered_count / activeSession.question_count) * 100
     : 0;
   
   // 开始练习
@@ -103,6 +107,18 @@ export const TimedPracticeMode: React.FC<TimedPracticeModeProps> = ({
       showGlobalNotification('error', msg, t('timed.startError', '启动限时练习失败'));
     }
   }, [examId, durationMinutes, questionCount, startTimedPractice, onStart]);
+
+  useEffect(() => {
+    if (!activeSession || activeSession.is_submitted || activeSession.is_timeout) {
+      setTargetEndTime(null);
+      return;
+    }
+    const startedMs = Date.parse(activeSession.started_at);
+    if (!Number.isFinite(startedMs)) return;
+    const durationMs = activeSession.duration_minutes * 60 * 1000;
+    if (durationMs <= 0) return;
+    setTargetEndTime((prev) => prev ?? startedMs + durationMs);
+  }, [activeSession]);
   
   // 暂停/继续
   const togglePause = useCallback(() => {
@@ -253,20 +269,20 @@ export const TimedPracticeMode: React.FC<TimedPracticeModeProps> = ({
           <div className="flex items-center justify-between text-sm">
             <span className="text-muted-foreground">{t('timed.progress')}</span>
             <span className="font-medium">
-              {timedSession?.answered_count || 0} / {timedSession?.question_count || questionCount}
+              {activeSession?.answered_count || 0} / {activeSession?.question_count || questionCount}
             </span>
           </div>
           <Progress value={progress} className="h-2" />
         </div>
         
         {/* 统计信息 */}
-        {timedSession && (
+        {activeSession && (
           <div className="grid grid-cols-2 gap-3">
             <div className="flex items-center gap-2 p-3 rounded-lg bg-emerald-500/10">
               <CheckCircle className="w-5 h-5 text-emerald-500" />
               <div>
                 <div className="text-sm text-muted-foreground">{t('timed.correct')}</div>
-                <div className="text-xl font-bold text-emerald-600">{timedSession.correct_count}</div>
+                <div className="text-xl font-bold text-emerald-600">{activeSession.correct_count}</div>
               </div>
             </div>
             <div className="flex items-center gap-2 p-3 rounded-lg bg-sky-500/10">
@@ -274,8 +290,8 @@ export const TimedPracticeMode: React.FC<TimedPracticeModeProps> = ({
               <div>
                 <div className="text-sm text-muted-foreground">{t('timed.rate')}</div>
                 <div className="text-xl font-bold text-sky-600">
-                  {timedSession.answered_count > 0
-                    ? Math.round((timedSession.correct_count / timedSession.answered_count) * 100)
+                  {activeSession.answered_count > 0
+                    ? Math.round((activeSession.correct_count / activeSession.answered_count) * 100)
                     : 0}%
                 </div>
               </div>

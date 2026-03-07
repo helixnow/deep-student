@@ -26,6 +26,7 @@ import {
   CheckCircle,
   XCircle,
   AlertCircle,
+  History,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
@@ -37,6 +38,7 @@ interface QuestionFavoritesViewProps {
   examId: string;
   onSelectQuestion?: (question: ApiQuestion) => void;
   onToggleFavorite?: (questionId: string) => Promise<void>;
+  onViewHistory?: (questionId: string) => void;
 }
 
 const statusColors: Record<QuestionStatus, string> = {
@@ -57,6 +59,7 @@ export const QuestionFavoritesView: React.FC<QuestionFavoritesViewProps> = ({
   examId,
   onSelectQuestion,
   onToggleFavorite,
+  onViewHistory,
 }) => {
   const { t } = useTranslation(['exam_sheet', 'common', 'practice']);
   const PAGE_SIZE = 500;
@@ -156,6 +159,18 @@ export const QuestionFavoritesView: React.FC<QuestionFavoritesViewProps> = ({
               {question.content.length > 80 && '...'}
             </CardDescription>
           </div>
+          <NotionButton
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 flex-shrink-0"
+            title={t('exam_sheet:questionBank.history.title', '历史记录')}
+            onClick={(e) => {
+              e.stopPropagation();
+              onViewHistory?.(question.id);
+            }}
+          >
+            <History className="w-4 h-4 text-muted-foreground" />
+          </NotionButton>
           <NotionButton
             variant="ghost"
             size="icon"

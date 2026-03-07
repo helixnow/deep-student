@@ -45,6 +45,7 @@ import {
   Upload,
   FileSpreadsheet,
   AlertTriangle,
+  History,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { Question, QuestionStatus, Difficulty, QuestionType } from '@/api/questionBankApi';
@@ -57,6 +58,7 @@ interface QuestionBankManageViewProps {
   onToggleFavorite?: (questionId: string) => Promise<void>;
   onResetProgress?: (questionIds: string[]) => Promise<void>;
   onViewDetail?: (question: Question) => void;
+  onViewHistory?: (questionId: string) => void;
   onFilterChange?: (filters: QuestionFilters) => void;
   /** CSV 导入按钮点击回调 */
   onCsvImport?: () => void;
@@ -116,6 +118,7 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
   onToggleFavorite,
   onResetProgress,
   onViewDetail,
+  onViewHistory,
   onFilterChange,
   onCsvImport,
   onCsvExport,
@@ -468,6 +471,13 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
                         </NotionButton>
                       </AppMenuTrigger>
                       <AppMenuContent align="end" width={160}>
+                        <AppMenuItem
+                          onClick={() => onViewHistory?.(q.id)}
+                          icon={<History className="w-4 h-4" />}
+                        >
+                          {t('exam_sheet:questionBank.history.title', '历史记录')}
+                        </AppMenuItem>
+                        <AppMenuSeparator />
                         <AppMenuItem
                           onClick={() => void handleToggleFavoriteAction(q.id)}
                           disabled={!canToggleFavorite || actionLoading === `favorite:${q.id}` || isLoading}
