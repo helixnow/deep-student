@@ -1,6 +1,6 @@
 import React, { lazy, Suspense, useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Loader2, AlertCircle, RefreshCw, ScanLine, RotateCcw, ListOrdered, Shuffle, Tag, Clock, CalendarDays, FileText, Timer, BookOpen, Play, Pause, RotateCw } from 'lucide-react';
+import { Loader2, AlertCircle, RefreshCw, ScanLine, RotateCcw, ListOrdered, Shuffle, Tag, Clock, CalendarDays, FileText, Timer, BookOpen, Play, Pause, RotateCw, Settings2, BarChart3, Star, Download } from 'lucide-react';
 import { TauriAPI, type ExamSheetSessionDetail } from '@/utils/tauriApi';
 import { NotionButton } from '@/components/ui/NotionButton';
 import type { ContentViewProps } from '../UnifiedAppPanel';
@@ -10,6 +10,8 @@ import {
   type QuestionBankStats,
   type PracticeMode,
   type QuestionType,
+  type QuestionStatus,
+  type Difficulty,
 } from '@/api/questionBankApi';
 import { invoke } from '@tauri-apps/api/core';
 import { useQuestionBankSession } from '@/hooks/useQuestionBankSession';
@@ -25,11 +27,25 @@ import { emitExamSheetDebug } from '@/debug-panel/plugins/ExamSheetProcessingDeb
 const ExamSheetUploader = lazy(() => import('@/components/ExamSheetUploader'));
 const QuestionBankEditor = lazy(() => import('@/components/QuestionBankEditor'));
 const QuestionBankListView = lazy(() => import('@/components/QuestionBankListView'));
+const QuestionBankManageView = lazy(() => import('@/components/QuestionBankManageView'));
+const QuestionBankStatsView = lazy(() => import('@/components/QuestionBankStatsView'));
+const QuestionFavoritesView = lazy(() => import('@/components/QuestionFavoritesView'));
+const QuestionHistoryView = lazy(() => import('@/components/QuestionHistoryView'));
 const ReviewQuestionsView = lazy(() => import('@/components/ReviewQuestionsView'));
 const TagNavigationView = lazy(() => import('@/components/TagNavigationView'));
 const PracticeLauncher = lazy(() => import('@/components/practice/PracticeLauncher'));
+const CsvImportDialog = lazy(() => import('@/components/CsvImportDialog'));
+const QuestionBankExportDialog = lazy(() => import('@/components/QuestionBankExportDialog'));
 
-type ViewMode = 'list' | 'manage' | 'practice' | 'upload' | 'review' | 'tags' | 'launcher';
+type ViewMode = 'list' | 'manage' | 'stats' | 'favorites' | 'practice' | 'upload' | 'review' | 'tags' | 'launcher';
+
+interface ManageFilters {
+  search?: string;
+  status?: QuestionStatus[];
+  difficulty?: Difficulty[];
+  questionType?: QuestionType[];
+  isFavorite?: boolean;
+}
 
 const MODE_CONFIG: Record<PracticeMode, { labelKey: string; icon: React.ElementType; descKey: string }> = {
   sequential: { labelKey: 'learningHub:exam.mode.sequential', icon: ListOrdered, descKey: 'learningHub:exam.mode.sequentialDesc' },
@@ -73,6 +89,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     setPracticeMode: setStorePracticeMode,
     practiceMode,
     refreshStats,
+    refreshQuestion,
   } = useQuestionBankSession({ examId: sessionId });
 
   // 专注模式（从 Store 获取 — 全局 UI 偏好，不需要本地化）
@@ -82,6 +99,8 @@ const ExamContentView: React.FC<ContentViewProps> = ({
   const getSyncConflicts = useQuestionBankStore(state => state.getSyncConflicts);
   const syncConflicts = useQuestionBankStore(state => state.syncConflicts);
   const setMockExamSession = useQuestionBankStore(state => state.setMockExamSession);
+  const setTimedSession = useQuestionBankStore(state => state.setTimedSession);
+  const submitMockExam = useQuestionBankStore(state => state.submitMockExam);
 
   // 高级练习模式会话数据（全局 store）
   const mockExamSession = useQuestionBankStore(state => state.mockExamSession);
@@ -113,11 +132,18 @@ const ExamContentView: React.FC<ContentViewProps> = ({
   const [showSyncConflictDialog, setShowSyncConflictDialog] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [selectedTag, setSelectedTag] = useState<string>('');
+  const [showCsvImportDialog, setShowCsvImportDialog] = useState(false);
+  const [showExportDialog, setShowExportDialog] = useState(false);
+  const [showHistoryDialog, setShowHistoryDialog] = useState(false);
+  const [historyQuestionId, setHistoryQuestionId] = useState<string | null>(null);
+  const [manageFilters, setManageFilters] = useState<ManageFilters>({});
   
   // 计时器状态
   const [elapsedTime, setElapsedTime] = useState(0);
   const [isTimerRunning, setIsTimerRunning] = useState(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const mockExamTimeoutHandledRef = useRef<string | null>(null);
+  const timedTimeoutHandledRef = useRef<string | null>(null);
   
   // 计时器逻辑
   // ★ 标签页：isActive === false 时暂停计时器，避免后台计时不精确
@@ -150,6 +176,143 @@ const ExamContentView: React.FC<ContentViewProps> = ({
   const toggleTimer = useCallback(() => {
     setIsTimerRunning(prev => !prev);
   }, []);
+
+  const activeAdvancedTimerDuration = useMemo(() => {
+    if (
+      practiceMode === 'timed' &&
+      activeTimedSession &&
+      !activeTimedSession.is_submitted &&
+      !activeTimedSession.is_timeout
+    ) {
+      return activeTimedSession.duration_minutes * 60;
+    }
+    if (
+      practiceMode === 'mock_exam' &&
+      activeMockExamSession &&
+      !activeMockExamSession.is_submitted
+    ) {
+      return activeMockExamSession.config.duration_minutes * 60;
+    }
+    return null;
+  }, [practiceMode, activeTimedSession, activeMockExamSession]);
+
+  const activeAdvancedStartedAt = useMemo(() => {
+    if (practiceMode === 'timed') return activeTimedSession?.started_at || null;
+    if (practiceMode === 'mock_exam') return activeMockExamSession?.started_at || null;
+    return null;
+  }, [practiceMode, activeTimedSession, activeMockExamSession]);
+
+  const isAdvancedRuntimeTimer = activeAdvancedTimerDuration != null;
+  const advancedTimerRemaining = useMemo(() => {
+    if (activeAdvancedTimerDuration == null) return null;
+    return Math.max(activeAdvancedTimerDuration - elapsedTime, 0);
+  }, [activeAdvancedTimerDuration, elapsedTime]);
+
+  useEffect(() => {
+    if (viewMode !== 'practice' || !activeAdvancedStartedAt || activeAdvancedTimerDuration == null) {
+      return;
+    }
+    const startedMs = Date.parse(activeAdvancedStartedAt);
+    if (!Number.isFinite(startedMs)) return;
+    const restoredElapsed = Math.min(
+      activeAdvancedTimerDuration,
+      Math.max(0, Math.floor((Date.now() - startedMs) / 1000)),
+    );
+    setElapsedTime(restoredElapsed);
+    setIsTimerRunning(true);
+  }, [viewMode, activeAdvancedStartedAt, activeAdvancedTimerDuration]);
+
+  useEffect(() => {
+    if (!activeTimedSession || activeTimedSession.is_submitted || activeTimedSession.is_timeout) {
+      timedTimeoutHandledRef.current = null;
+      return;
+    }
+    if (
+      viewMode !== 'practice' ||
+      practiceMode !== 'timed' ||
+      activeAdvancedTimerDuration == null ||
+      elapsedTime < activeAdvancedTimerDuration
+    ) {
+      return;
+    }
+    if (timedTimeoutHandledRef.current === activeTimedSession.id) {
+      return;
+    }
+    timedTimeoutHandledRef.current = activeTimedSession.id;
+    setIsTimerRunning(false);
+    setTimedSession({
+      ...activeTimedSession,
+      ended_at: new Date().toISOString(),
+      is_timeout: true,
+      is_submitted: true,
+    });
+    setViewMode('launcher');
+    showGlobalNotification(
+      'info',
+      t('learningHub:exam.timedPracticeTimeout', '限时练习已结束'),
+      t('learningHub:exam.timerEnded', '时间到'),
+    );
+  }, [
+    activeTimedSession,
+    activeAdvancedTimerDuration,
+    elapsedTime,
+    practiceMode,
+    setTimedSession,
+    t,
+    viewMode,
+  ]);
+
+  useEffect(() => {
+    if (!activeMockExamSession || activeMockExamSession.is_submitted) {
+      mockExamTimeoutHandledRef.current = null;
+      return;
+    }
+    if (
+      viewMode !== 'practice' ||
+      practiceMode !== 'mock_exam' ||
+      activeAdvancedTimerDuration == null ||
+      elapsedTime < activeAdvancedTimerDuration
+    ) {
+      return;
+    }
+    if (mockExamTimeoutHandledRef.current === activeMockExamSession.id) {
+      return;
+    }
+    mockExamTimeoutHandledRef.current = activeMockExamSession.id;
+    setIsTimerRunning(false);
+
+    const submitSession = {
+      ...activeMockExamSession,
+      ended_at: new Date().toISOString(),
+      is_submitted: true,
+    };
+
+    void submitMockExam(submitSession)
+      .then(() => {
+        setViewMode('launcher');
+        showGlobalNotification(
+          'info',
+          t('learningHub:exam.mockExamAutoSubmitted', '模拟考试已自动交卷，可在启动页查看成绩单'),
+          t('learningHub:exam.timerEnded', '时间到'),
+        );
+      })
+      .catch((err: unknown) => {
+        mockExamTimeoutHandledRef.current = null;
+        debugLog.error('[ExamContentView] auto submit mock exam failed:', err);
+        showGlobalNotification(
+          'error',
+          t('learningHub:exam.mockExamAutoSubmitFailed', '模拟考试自动交卷失败，请返回启动页手动交卷'),
+        );
+      });
+  }, [
+    activeMockExamSession,
+    activeAdvancedTimerDuration,
+    elapsedTime,
+    practiceMode,
+    submitMockExam,
+    t,
+    viewMode,
+  ]);
 
   // 🆕 加载 sessionDetail（仅用于 ExamSheetUploader 等需要原始 preview 的组件）
   const loadSessionDetail = useCallback(async () => {
@@ -262,33 +425,83 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     setViewMode('practice');
   }, [navigate]);
 
+  const handleOpenQuestion = useCallback((questionId: string) => {
+    const index = questions.findIndex((question) => question.id === questionId);
+    if (index >= 0) {
+      navigate(index);
+      setViewMode('practice');
+    }
+  }, [questions, navigate]);
+
+  const handleOpenHistory = useCallback((questionId: string) => {
+    setHistoryQuestionId(questionId);
+    setShowHistoryDialog(true);
+  }, []);
+
+  const manageQuestions = useMemo(() => {
+    const normalizedSearch = manageFilters.search?.trim().toLowerCase();
+    return questions.filter((question) => {
+      if (normalizedSearch) {
+        const matchesSearch =
+          question.content.toLowerCase().includes(normalizedSearch) ||
+          (question.questionLabel || '').toLowerCase().includes(normalizedSearch) ||
+          question.tags?.some((tag) => tag.toLowerCase().includes(normalizedSearch));
+        if (!matchesSearch) return false;
+      }
+
+      if (manageFilters.status?.length && !manageFilters.status.includes(question.status || 'new')) {
+        return false;
+      }
+
+      if (manageFilters.difficulty?.length) {
+        if (!question.difficulty || !manageFilters.difficulty.includes(question.difficulty)) {
+          return false;
+        }
+      }
+
+      if (manageFilters.questionType?.length && !manageFilters.questionType.includes(question.questionType)) {
+        return false;
+      }
+
+      if (manageFilters.isFavorite && !question.isFavorite) {
+        return false;
+      }
+
+      return true;
+    });
+  }, [questions, manageFilters]);
+
   // 高级模式题目过滤：根据 session 的 question_ids 过滤出子集
   const practiceQuestions = useMemo(() => {
+    const orderQuestionsByIds = (questionIds: string[]) => {
+      if (questionIds.length === 0) return questions;
+      const questionMap = new Map(questions.map((question) => [question.id, question]));
+      return questionIds
+        .map((questionId) => questionMap.get(questionId))
+        .filter((question): question is Question => Boolean(question));
+    };
+
     switch (practiceMode) {
       case 'mock_exam': {
-        if (!activeMockExamSession?.question_ids?.length) return questions;
-        const idSet = new Set(activeMockExamSession.question_ids);
-        return questions.filter(q => idSet.has(q.id));
+        return orderQuestionsByIds(activeMockExamSession?.question_ids || []);
       }
       case 'timed': {
-        if (!activeTimedSession?.question_ids?.length) return questions;
-        const idSet = new Set(activeTimedSession.question_ids);
-        return questions.filter(q => idSet.has(q.id));
+        return orderQuestionsByIds(activeTimedSession?.question_ids || []);
       }
       case 'daily': {
-        if (!activeDailyPractice?.question_ids?.length) return questions;
-        const idSet = new Set(activeDailyPractice.question_ids);
-        return questions.filter(q => idSet.has(q.id));
+        return orderQuestionsByIds(activeDailyPractice?.question_ids || []);
       }
       case 'paper': {
-        if (!activeGeneratedPaper?.questions?.length) return questions;
-        const idSet = new Set(activeGeneratedPaper.questions.map(q => q.id));
-        return questions.filter(q => idSet.has(q.id));
+        return orderQuestionsByIds(activeGeneratedPaper?.questions?.map((question) => question.id) || []);
       }
       default:
         return questions;
     }
   }, [practiceMode, questions, activeMockExamSession, activeTimedSession, activeDailyPractice, activeGeneratedPaper]);
+
+  const handleRefreshQuestion = useCallback(async (questionId: string) => {
+    await refreshQuestion(questionId);
+  }, [refreshQuestion]);
 
   // 高级模式下 currentIndex 需要映射到过滤后的子集
   const practiceCurrentIndex = useMemo(() => {
@@ -675,6 +888,54 @@ const ExamContentView: React.FC<ContentViewProps> = ({
               <NotionButton
                 variant="ghost"
                 size="sm"
+                onClick={() => setViewMode('manage')}
+                className={cn(
+                  'px-2.5 sm:px-3 py-1.5 text-sm rounded-md transition-colors whitespace-nowrap flex-shrink-0',
+                  viewMode === 'manage'
+                    ? 'bg-foreground text-background font-medium'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                )}
+              >
+                <Settings2 className="w-3.5 h-3.5 mr-1.5" />
+                {t('learningHub:exam.tab.manage', '管理')}
+              </NotionButton>
+            )}
+            {hasQuestions && (
+              <NotionButton
+                variant="ghost"
+                size="sm"
+                onClick={() => setViewMode('stats')}
+                className={cn(
+                  'px-2.5 sm:px-3 py-1.5 text-sm rounded-md transition-colors whitespace-nowrap flex-shrink-0',
+                  viewMode === 'stats'
+                    ? 'bg-foreground text-background font-medium'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                )}
+              >
+                <BarChart3 className="w-3.5 h-3.5 mr-1.5" />
+                {t('learningHub:exam.tab.stats', '统计')}
+              </NotionButton>
+            )}
+            {hasQuestions && (
+              <NotionButton
+                variant="ghost"
+                size="sm"
+                onClick={() => setViewMode('favorites')}
+                className={cn(
+                  'px-2.5 sm:px-3 py-1.5 text-sm rounded-md transition-colors whitespace-nowrap flex-shrink-0',
+                  viewMode === 'favorites'
+                    ? 'bg-foreground text-background font-medium'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                )}
+              >
+                <Star className="w-3.5 h-3.5 mr-1.5" />
+                {t('learningHub:exam.tab.favorites', '收藏')}
+              </NotionButton>
+            )}
+            {hasQuestions && (
+              <NotionButton
+                variant="ghost"
+                size="sm"
                 onClick={() => setViewMode('tags')}
                 className={cn(
                   'px-2.5 sm:px-3 py-1.5 text-sm rounded-md transition-colors whitespace-nowrap flex-shrink-0',
@@ -700,20 +961,32 @@ const ExamContentView: React.FC<ContentViewProps> = ({
                 <NotionButton
                   variant="ghost"
                   size="sm"
-                  onClick={toggleTimer}
+                  onClick={isAdvancedRuntimeTimer ? undefined : toggleTimer}
                   className={cn(
                     'flex items-center gap-1.5 px-2 py-1 rounded-md transition-colors text-sm flex-shrink-0',
-                    isTimerRunning ? 'text-primary bg-primary/5 hover:bg-primary/10' : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                    isAdvancedRuntimeTimer
+                      ? 'text-rose-600 bg-rose-500/10 hover:bg-rose-500/10'
+                      : isTimerRunning
+                        ? 'text-primary bg-primary/5 hover:bg-primary/10'
+                        : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
                   )}
-                  title={isTimerRunning ? t('learningHub:exam.timer.pause', '暂停') : t('learningHub:exam.timer.resume', '继续')}
+                  title={
+                    isAdvancedRuntimeTimer
+                      ? t('learningHub:exam.timer.remaining', '剩余时间')
+                      : isTimerRunning
+                        ? t('learningHub:exam.timer.pause', '暂停')
+                        : t('learningHub:exam.timer.resume', '继续')
+                  }
                 >
-                  {isTimerRunning ? (
+                  {isAdvancedRuntimeTimer ? (
+                    <Clock className="w-3.5 h-3.5" />
+                  ) : isTimerRunning ? (
                     <Pause className="w-3.5 h-3.5" />
                   ) : (
                     <Play className="w-3.5 h-3.5" />
                   )}
-                  <span className={cn("font-mono tabular-nums text-xs", !isTimerRunning && "animate-pulse")}>
-                    {formatTime(elapsedTime)}
+                  <span className={cn('font-mono tabular-nums text-xs', !isAdvancedRuntimeTimer && !isTimerRunning && 'animate-pulse')}>
+                    {formatTime(advancedTimerRemaining ?? elapsedTime)}
                   </span>
                 </NotionButton>
               </>
@@ -721,8 +994,19 @@ const ExamContentView: React.FC<ContentViewProps> = ({
           </div>
           
           {/* 右侧添加按钮（只读模式下隐藏） */}
-          {!readOnly && (
-            <div className="flex items-center flex-shrink-0">
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            {hasQuestions && (
+              <NotionButton
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowExportDialog(true)}
+                className="h-7 sm:h-8 px-2.5 sm:px-3 gap-1.5"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">{t('learningHub:exam.tab.export', '导出')}</span>
+              </NotionButton>
+            )}
+            {!readOnly && (
               <NotionButton
                 variant={viewMode === 'upload' ? 'default' : 'ghost'}
                 size="sm"
@@ -732,8 +1016,19 @@ const ExamContentView: React.FC<ContentViewProps> = ({
                 <ScanLine className="w-3.5 h-3.5" />
                 <span className="hidden sm:inline">{t('learningHub:exam.tab.add')}</span>
               </NotionButton>
-            </div>
-          )}
+            )}
+            {!readOnly && hasQuestions && (
+              <NotionButton
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowCsvImportDialog(true)}
+                className="h-7 sm:h-8 px-2.5 sm:px-3 gap-1.5"
+              >
+                <ScanLine className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">{t('learningHub:exam.tab.importCsv', '导入 CSV')}</span>
+              </NotionButton>
+            )}
+          </div>
         </div>
       </div>
 
@@ -756,6 +1051,32 @@ const ExamContentView: React.FC<ContentViewProps> = ({
               stats={stats}
               questions={questions}
               onStartPractice={handleStartPractice}
+            />
+          ) : viewMode === 'manage' && hasQuestions ? (
+            <QuestionBankManageView
+              questions={manageQuestions}
+              isLoading={isLoading}
+              onDelete={readOnly ? undefined : handleDeleteQuestions}
+              onToggleFavorite={readOnly ? undefined : handleToggleFavorite}
+              onResetProgress={readOnly ? undefined : handleResetProgress}
+              onViewDetail={(question) => handleOpenQuestion(question.id)}
+              onViewHistory={handleOpenHistory}
+              onFilterChange={setManageFilters}
+              onCsvImport={readOnly ? undefined : () => setShowCsvImportDialog(true)}
+              onCsvExport={() => setShowExportDialog(true)}
+              showCsvActions={!readOnly}
+            />
+          ) : viewMode === 'stats' && hasQuestions ? (
+            <QuestionBankStatsView
+              stats={stats}
+              examId={sessionId}
+            />
+          ) : viewMode === 'favorites' && hasQuestions ? (
+            <QuestionFavoritesView
+              examId={sessionId}
+              onSelectQuestion={(question) => handleOpenQuestion(question.id)}
+              onToggleFavorite={readOnly ? undefined : handleToggleFavorite}
+              onViewHistory={handleOpenHistory}
             />
           ) : viewMode === 'tags' && hasQuestions ? (
             /* 知识点导航视图 */
@@ -800,6 +1121,10 @@ const ExamContentView: React.FC<ContentViewProps> = ({
               stats={stats}
               currentIndex={practiceCurrentIndex}
               practiceMode={practiceMode}
+              showTimer={true}
+              timerDuration={activeAdvancedTimerDuration ?? undefined}
+              timerElapsedSeconds={isAdvancedRuntimeTimer ? elapsedTime : undefined}
+              allowTimerControl={!isAdvancedRuntimeTimer}
               selectedTag={selectedTag}
               focusMode={focusMode}
               onFocusModeChange={setFocusMode}
@@ -818,6 +1143,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
               }}
               onModeChange={handleModeChange}
               onMarkCorrect={readOnly ? undefined : handleMarkCorrect}
+              onRefreshQuestion={readOnly ? undefined : handleRefreshQuestion}
               onToggleFavorite={readOnly ? undefined : (id, _isFavorite) => handleToggleFavorite(id)}
               onUpdateQuestion={readOnly ? undefined : handleUpdateQuestion}
               onUpdateUserNote={readOnly ? undefined : async (questionId: string, note: string) => {
@@ -857,6 +1183,35 @@ const ExamContentView: React.FC<ContentViewProps> = ({
           void getSyncConflicts(sessionId);
         }}
       />
+
+      <Suspense fallback={null}>
+        <CsvImportDialog
+          open={showCsvImportDialog}
+          onOpenChange={setShowCsvImportDialog}
+          examId={sessionId}
+          examName={sessionDetail?.summary?.exam_name || node.name}
+          onImportComplete={() => {
+            void refreshQuestionsAndStats();
+          }}
+        />
+        <QuestionBankExportDialog
+          open={showExportDialog}
+          onOpenChange={setShowExportDialog}
+          questions={questions}
+          examName={sessionDetail?.summary?.exam_name || node.name}
+          examId={sessionId}
+        />
+        <QuestionHistoryView
+          questionId={historyQuestionId}
+          open={showHistoryDialog}
+          onOpenChange={(open) => {
+            setShowHistoryDialog(open);
+            if (!open) {
+              setHistoryQuestionId(null);
+            }
+          }}
+        />
+      </Suspense>
     </div>
   );
 };

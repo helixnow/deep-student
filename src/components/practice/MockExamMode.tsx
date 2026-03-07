@@ -100,6 +100,12 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
     [mockExamSession, examId],
   );
 
+  useEffect(() => {
+    if (activeSession?.is_submitted && mockExamScoreCard?.exam_id === examId) {
+      setShowScoreCard(true);
+    }
+  }, [activeSession, mockExamScoreCard, examId]);
+
   const buildSubmitSession = useCallback((session: MockExamSession): MockExamSession => ({
     ...session,
     ended_at: new Date().toISOString(),
