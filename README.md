@@ -10,7 +10,6 @@
 
 > It's not that learning is hard — it's that learning tools are too scattered.
 
-Think of DeepStudent as:<br/>
 **NotebookLM + Notion + XMind + Quizlet + DeepL + ...**, all in one unified learning workbench.
 
 [![Release](https://img.shields.io/github/v/release/helixnow/deep-student?color=blue&label=release)](https://github.com/helixnow/deep-student/releases/latest)

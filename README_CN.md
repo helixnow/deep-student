@@ -10,7 +10,6 @@
 
 > 不是学习难，是学习软件太散。
 
-可以把 DeepStudent 理解成：<br/>
 把 **NotebookLM + Notion + XMind + Quizlet + DeepL + ...**，装进一个统一的学习工作台。
 
 [![Release](https://img.shields.io/github/v/release/helixnow/deep-student?color=blue&label=release)](https://github.com/helixnow/deep-student/releases/latest)
