@@ -43,25 +43,28 @@ DeepStudent's answer: **give AI native read-write access to all your learning da
 
 ## Understand It Through Products You Know
 
-| Capability | NotebookLM | Notion/Obsidian | XMind | Quizlet/Anki | DeepL | **DeepStudent** |
-|---|:---:|:---:|:---:|:---:|:---:|:---:|
-| AI Q&A over materials | ✓ Gemini only | △ Notion AI | ✗ | △ Q-Chat | ✗ | **✓ 9 providers** |
-| Local-first storage | ✗ cloud | △ | ✓ | △ | ✗ | **✓** |
-| Cloud sync | ✓ native | ✓ | ✓ | ✓ | ✓ | **△ experimental** |
-| Open source / self-host | ✗ | ✗ | ✗ | △ Anki is OSS | ✗ | **✓ AGPL-3.0** |
-| Auto-index on import | ✓ | △ | ✗ | ✗ | ✗ | **✓ incl. OCR** |
-| Unified data layer (VFS) | ✗ | ✗ | ✗ | ✗ | ✗ | **✓** |
-| Note-taking system | △ simple notes | ✓ core feature | △ node notes | △ Magic Notes | ✗ | **✓ rich text+tags+AI** |
-| AI-generated mind maps | ✓ | ✗ | ✓ AI Copilot | ✗ | ✗ | **✓** |
-| Mind map ↔ outline mode | ✗ | △ | ✓ Outliner | ✗ | ✗ | **✓** |
-| AI quiz + practice modes | ✓ | ✗ | ✗ | ✓ Learn mode | ✗ | **✓** |
-| Deep research + papers | ✗ | ✗ | ✗ | ✗ | ✗ | **✓ multi-engine+arXiv** |
-| Flashcards + SRS | △ no SRS | ✗ | ✗ | ✓ mature SRS | ✗ | **✓ Anki ecosystem** |
-| Translation quality | ✗ | ✗ | ✗ | ✗ | ✓ pro engine | **△ LLM-driven** |
-| AI essay correction | ✗ | △ Notion AI | ✗ | ✗ | △ DeepL Write | **✓ multi-scenario** |
-| Cross-module data flow | △ | △ | ✗ | ✗ | ✗ | **✓** |
-| Real-time collaboration | △ sharing | ✓ | △ premium | ✓ | ✗ | **✗** |
-| Community & ecosystem | ✓ | ✓ rich plugins | ✓ | ✓ | ✓ | **△ new project** |
+| Capability | NotebookLM | Open Notebook | DeepTutor | Notion/Obsidian | **DeepStudent** |
+|---|:---:|:---:|:---:|:---:|:---:|
+| AI Q&A over materials | ✓ Gemini only | ✓ multi-model | ✓ multi-agent | △ Notion AI | **✓ 9 providers** |
+| Local-first storage | ✗ cloud | ✓ Docker | ✓ Docker | △ | **✓** |
+| Cloud sync | ✓ native | ✗ | ✗ | ✓ | **△ experimental** |
+| Open source / self-host | ✗ | ✓ | ✓ AGPL-3.0 | ✗ | **✓ AGPL-3.0** |
+| Cross-platform out-of-box | ✓ all platforms | △ Docker | △ Docker | ✓ all platforms | **✓ Win/Mac/Linux/Android** |
+| Auto-index on import | ✓ | ✓ | ✓ | △ | **✓ incl. OCR** |
+| Unified data layer (VFS) | ✗ | ✗ | ✗ | ✗ | **✓** |
+| Smart memory system | ✗ | ✗ | △ session memory | ✗ | **✓ AI-driven persistent** |
+| Note-taking system | △ simple notes | △ AI notes | △ notebook | ✓ core feature | **✓ rich text+tags+AI** |
+| AI-generated mind maps | ✓ | ✗ | △ visualization | ✗ | **✓** |
+| Mind map ↔ outline mode | ✗ | ✗ | ✗ | △ | **✓** |
+| AI quiz + practice modes | ✓ | ✗ | ✓ exam-style | ✗ | **✓** |
+| Deep research + papers | △ Discover | ✗ | ✓ | ✗ | **✓ multi-engine+arXiv** |
+| Flashcards + SRS | △ no SRS | ✗ | ✗ | ✗ | **✓ Anki ecosystem** |
+| Translation + close reading | ✗ | ✗ | ✓ PDF translation | ✗ | **✓ 7 domain presets** |
+| AI essay correction | ✗ | ✗ | ✗ | △ Notion AI | **✓ multi-scenario** |
+| Cross-module data flow | △ | △ | △ | △ | **✓** |
+| MCP ecosystem / skills | ✗ | ✗ | ✓ MCP registry | ✗ | **✓ native+presets** |
+| Real-time collaboration | △ sharing | ✗ | ✗ | ✓ | **✗** |
+| Community & ecosystem | ✓ | △ new project | △ new project | ✓ rich plugins | **△ new project** |
 
 > **The core architectural difference:** A unified Virtual File System (VFS) makes all learning data AI-readable, AI-searchable, and AI-writable. The chat agent can retrieve your textbooks and notes to answer questions, and directly generate mind maps, questions, flashcards, and research reports back into the system. One material completes the full loop in one workbench — no data shuttling between apps.
 
