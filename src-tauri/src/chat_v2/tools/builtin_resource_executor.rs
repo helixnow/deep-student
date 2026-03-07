@@ -1561,14 +1561,21 @@ impl BuiltinResourceExecutor {
             .map(|node| {
                 // 尝试获取内容片段
                 let snippet = self.get_search_snippet(vfs_db, &node.id, query);
+                let node_type = format!("{:?}", node.node_type).to_lowercase();
+                let chatanki_compatible = matches!(
+                    node_type.as_str(),
+                    "file" | "image" | "textbook"
+                );
 
                 json!({
                     "id": node.id,
                     "name": node.name,
-                    "type": format!("{:?}", node.node_type).to_lowercase(),
+                    "type": node_type,
                     "path": node.path,
                     "updatedAt": node.updated_at,
                     "snippet": snippet,
+                    "chatankiCompatible": chatanki_compatible,
+                    "chatankiTargetId": if chatanki_compatible { Some(node.id.clone()) } else { None },
                 })
             })
             .collect();

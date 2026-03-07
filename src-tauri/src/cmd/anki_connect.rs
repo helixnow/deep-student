@@ -281,7 +281,10 @@ pub struct SaveAnkiCardPayload {
 
 #[derive(Debug, Deserialize)]
 pub struct SaveAnkiCardsRequest {
+    pub document_id: Option<String>,
     pub business_session_id: Option<String>,
+    pub message_stable_id: Option<String>,
+    pub block_id: Option<String>,
     pub template_id: Option<String>,
     pub cards: Vec<SaveAnkiCardPayload>,
     pub options: Option<AnkiGenerationOptions>,
@@ -308,9 +311,21 @@ pub async fn save_anki_cards(
     let response = tokio::task::spawn_blocking(move || -> Result<SaveAnkiCardsResponse> {
         let subject = "未分类".to_string();
         let document_id = request
-            .business_session_id
+            .document_id
             .clone()
             .filter(|id| !id.trim().is_empty())
+            .or_else(|| {
+                request
+                    .block_id
+                    .clone()
+                    .filter(|id| !id.trim().is_empty())
+            })
+            .or_else(|| {
+                request
+                    .message_stable_id
+                    .clone()
+                    .filter(|id| !id.trim().is_empty())
+            })
             .unwrap_or_else(|| Uuid::new_v4().to_string());
         let task_id = Uuid::new_v4().to_string();
         let now = chrono::Utc::now().to_rfc3339();
@@ -323,9 +338,31 @@ pub async fn save_anki_cards(
             .unwrap_or_else(|| "{}".to_string());
 
         let content_segment = request
-            .business_session_id
+            .document_id
             .as_ref()
-            .map(|id| format!("chat_session:{}", id))
+            .filter(|id| !id.trim().is_empty())
+            .map(|id| format!("chat_document:{}", id))
+            .or_else(|| {
+                request
+                    .block_id
+                    .as_ref()
+                    .filter(|id| !id.trim().is_empty())
+                    .map(|id| format!("chat_block:{}", id))
+            })
+            .or_else(|| {
+                request
+                    .message_stable_id
+                    .as_ref()
+                    .filter(|id| !id.trim().is_empty())
+                    .map(|id| format!("chat_message:{}", id))
+            })
+            .or_else(|| {
+                request
+                    .business_session_id
+                    .as_ref()
+                    .filter(|id| !id.trim().is_empty())
+                    .map(|id| format!("chat_session:{}", id))
+            })
             .unwrap_or_else(|| "chat_session:anonymous".to_string());
 
         let document_task = crate::models::DocumentTask {
@@ -392,9 +429,30 @@ pub async fn save_anki_cards(
 
         let mut document_task = document_task;
         document_task.status = crate::models::TaskStatus::Completed;
-        let saved_ids = database
-            .save_document_task_with_cards_atomic(&document_task, &cards_to_insert)
-            .map_err(|e| AppError::database(format!("保存卡片事务失败: {}", e)))?;
+        let saved_ids = match database.save_document_task_with_cards_atomic(&document_task, &cards_to_insert) {
+            Ok(ids) => ids,
+            Err(e) if e.to_string().contains("no_cards_saved_in_atomic_insert") => {
+                for card in &cards_to_insert {
+                    database
+                        .update_anki_card(card)
+                        .map_err(|update_err| AppError::database(format!("更新已有卡片失败: {}", update_err)))?;
+                }
+                cards_to_insert.iter().map(|card| card.id.clone()).collect()
+            }
+            Err(e) => {
+                return Err(AppError::database(format!("保存卡片事务失败: {}", e)));
+            }
+        };
+
+        if let Some(session_id) = request
+            .business_session_id
+            .as_ref()
+            .filter(|id| !id.trim().is_empty())
+        {
+            database
+                .set_document_session_source(&document_task.document_id, session_id)
+                .map_err(|e| AppError::database(format!("保存文档来源会话失败: {}", e)))?;
+        }
 
         if saved_ids.is_empty() {
             return Err(AppError::validation(

@@ -392,7 +392,7 @@ export const chatAnkiSkill: SkillDefinition = {
 - **禁止在没有制卡内容时调用 chatanki_run/chatanki_start**。如果用户只说"帮我做卡片"但没有提供任何学习材料（没上传文件、没粘贴内容），你**必须先用 \`builtin-ask_user\` 询问用户补充材料**（例如“上传文件 / 粘贴文本 / 稍后提供”），**不要直接调用制卡工具**。
 - 若用户已上传文档/图片等材料：调用 \`builtin-chatanki_run\` 时**必须基于这些上下文引用制卡**（保留并使用全部可用引用）；**禁止**把文档内容改写成你自己的概述后仅放进 \`content\` 作为替代。若需指定目标文件，传 \`resourceId\`（单个）或 \`resourceIds\`（多个）；\`content\` 仅可作补充说明，不可替代文档主体。**此场景不要先调用 \`attachment_list/attachment_read\` 作为前置步骤。**
 - 若你尝试了 \`attachment_list\` 但返回空或失败，而用户明确“已上传资料”：**必须立即改走资源库路径**（\`builtin-resource_list\`/\`builtin-resource_search\`/上下文引用），然后继续 \`chatanki_run\`；**禁止**直接要求用户重传文件。
-- 执行顺序要求（有“已上传资料”语义时）：优先尝试读取当前上下文引用；若为空，再调用 \`builtin-resource_search\` 主动找资源并拿到 \`resourceId\`；随后直接调用 \`builtin-chatanki_run\`。**不要因附件工具失败而中断制卡流程。**
+- 执行顺序要求（有“已上传资料”语义时）：优先尝试读取当前上下文引用；若为空，再调用 \`builtin-resource_search\` 主动找资源。**搜索 chatanki 素材时必须限制到直接文件类资源**（例如 file / image / textbook），不要把 folder / note / mindmap / exam / essay / translation 结果直接传给 \`chatanki_run\`。拿到结果后，必须先检查返回项的 \`type\` 与 \`chatankiCompatible\`，只把直接文件类结果的 \`id\` 或 \`chatankiTargetId\` 作为 \`resourceId\` / \`resourceIds\` 传入；若结果类型不匹配，应继续筛选或重新搜索。**不要因附件工具失败而中断制卡流程。**
 - 若用户**没有上传文件**，但在聊天中粘贴了要制卡的内容：调用 \`builtin-chatanki_run\` 时必须把这段内容放进参数 \`content\`。
 - 若用户已经把内容清洗/整理成最终 Markdown：可以用 \`builtin-chatanki_start\` 直接开始制卡（跳过文件解析）。
 - **判断标准**：用户消息中是否有可识别的学习材料？如果只有"帮我做卡片""制作 Anki 卡片"等模糊指令，没有具体知识内容，则需要先追问。

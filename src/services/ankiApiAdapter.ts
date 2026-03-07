@@ -9,7 +9,10 @@ import { AnkiCard, AnkiGenerationOptions } from '../types';
 
 type SaveAnkiCardsParams = {
   cards: AnkiCard[];
+  documentId?: string | null;
   businessSessionId?: string | null;
+  messageStableId?: string | null;
+  blockId?: string | null;
   templateId?: string | null;
   options?: AnkiGenerationOptions;
 };
@@ -99,7 +102,10 @@ export const ankiApiAdapter = {
 
       return await invoke<SaveAnkiCardsResponse>('save_anki_cards', {
         request: {
+          document_id: params.documentId ?? null,
           business_session_id: params.businessSessionId ?? null,
+          message_stable_id: params.messageStableId ?? null,
+          block_id: params.blockId ?? null,
           template_id: params.templateId ?? null,
           cards: cardsPayload,
           options: params.options ?? null,

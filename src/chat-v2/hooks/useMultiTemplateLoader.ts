@@ -12,6 +12,7 @@
 
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { TemplateService } from '@/services/templateService';
+import { templateManager } from '@/data/ankiTemplates';
 import type { CustomAnkiTemplate } from '@/types';
 
 /**
@@ -23,6 +24,7 @@ import type { CustomAnkiTemplate } from '@/types';
 export function useMultiTemplateLoader(templateIds: string[]) {
   const [templateMap, setTemplateMap] = useState<Map<string, CustomAnkiTemplate>>(new Map());
   const [loading, setLoading] = useState(false);
+  const [refreshToken, setRefreshToken] = useState(0);
 
   // 跨渲染缓存，避免同一 templateId 重复请求
   const cacheRef = useRef<Map<string, CustomAnkiTemplate>>(new Map());
@@ -35,6 +37,13 @@ export function useMultiTemplateLoader(templateIds: string[]) {
 
   // 序列化 key 用于依赖比较
   const idsKey = uniqueIds.join(',');
+
+  useEffect(() => {
+    return templateManager.subscribe(() => {
+      cacheRef.current.clear();
+      setRefreshToken((value) => value + 1);
+    });
+  }, []);
 
   useEffect(() => {
     if (uniqueIds.length === 0) {
@@ -118,7 +127,7 @@ export function useMultiTemplateLoader(templateIds: string[]) {
     return () => {
       cancelled = true;
     };
-  }, [idsKey]);
+  }, [idsKey, refreshToken]);
 
   return { templateMap, loading };
 }

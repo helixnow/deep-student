@@ -19,6 +19,25 @@ use crate::chat_v2::types::{
 use crate::vfs::database::VfsDatabase;
 use crate::vfs::repos::VfsResourceRepo;
 
+fn session_has_running_anki_blocks(db: &ChatV2Database, session_id: &str) -> Result<bool, String> {
+    let conn = db.get_conn_safe().map_err(|e| e.to_string())?;
+    let count: i64 = conn
+        .query_row(
+            r#"
+            SELECT COUNT(*)
+            FROM chat_v2_blocks b
+            INNER JOIN chat_v2_messages m ON m.id = b.message_id
+            WHERE m.session_id = ?1
+              AND b.block_type = 'anki_cards'
+              AND b.status IN ('pending', 'running')
+            "#,
+            rusqlite::params![session_id],
+            |row| row.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+    Ok(count > 0)
+}
+
 /// 创建新会话
 ///
 /// 创建一个新的聊天会话，返回完整的会话信息。
@@ -460,6 +479,14 @@ pub async fn chat_v2_soft_delete_session(
         .into());
     }
 
+    if session_has_running_anki_blocks(&db, &session_id)? {
+        return Err(ChatV2Error::Other(
+            "Cannot delete session while ChatAnki generation is still running. Please wait for completion or cancel first."
+                .to_string(),
+        )
+        .into());
+    }
+
     // 软删除会话
     soft_delete_session_in_db(&session_id, &db)?;
 
@@ -541,6 +568,14 @@ pub async fn chat_v2_delete_session(
     if chat_v2_state.has_active_stream(&session_id) {
         return Err(ChatV2Error::Other(
             "Cannot delete session while streaming. Please wait for completion or cancel first."
+                .to_string(),
+        )
+        .into());
+    }
+
+    if session_has_running_anki_blocks(&db, &session_id)? {
+        return Err(ChatV2Error::Other(
+            "Cannot delete session while ChatAnki generation is still running. Please wait for completion or cancel first."
                 .to_string(),
         )
         .into());

@@ -579,6 +579,12 @@ export function createRestoreActions(
           });
 
           // 一次性更新所有状态
+          const restoredActiveBlockIds = new Set(
+            Array.from(blocksMap.values())
+              .filter((block) => block.status === 'running' || block.status === 'pending')
+              .map((block) => block.id)
+          );
+
           set({
             sessionId: session.id,
             mode: session.mode,
@@ -592,7 +598,7 @@ export function createRestoreActions(
             messageOrder,
             blocks: blocksMap,
             currentStreamingMessageId: null,
-            activeBlockIds: new Set(),
+            activeBlockIds: restoredActiveBlockIds,
             streamingVariantIds: new Set(),
             chatParams,
             features,
