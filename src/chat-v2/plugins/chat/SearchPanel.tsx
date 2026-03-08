@@ -42,7 +42,8 @@ export const SearchPanel: React.FC<SearchPanelProps> = ({ store, onClose }) => {
 
   // 从 Store 获取状态
   const sessionStatus = useStore(store, (s) => s.sessionStatus);
-  const chatParams = useStore(store, (s) => s.chatParams);
+  // 🚀 P0-2 性能优化：仅订阅实际使用的字段，避免其他 chatParams 字段变化时重渲染
+  const storeSelectedSearchEngines = useStore(store, (s) => s.chatParams.selectedSearchEngines);
   const isStreaming = sessionStatus === 'streaming';
 
   // 🔧 修复闪动：使用 ref 追踪是否已完成初始同步，避免循环更新
@@ -53,7 +54,7 @@ export const SearchPanel: React.FC<SearchPanelProps> = ({ store, onClose }) => {
   useEffect(() => {
     if (hasSyncedFromStoreRef.current || !ready) return;
     
-    const savedEngines = chatParams.selectedSearchEngines;
+    const savedEngines = storeSelectedSearchEngines;
     if (savedEngines && savedEngines.length > 0) {
       // 只恢复仍然存在的引擎
       const validEngines = savedEngines.filter((id: string) =>
@@ -64,7 +65,7 @@ export const SearchPanel: React.FC<SearchPanelProps> = ({ store, onClose }) => {
       }
     }
     hasSyncedFromStoreRef.current = true;
-  }, [ready, availableSearchEngines, chatParams.selectedSearchEngines, selectedSearchEngines, setSelectedSearchEngines]);
+  }, [ready, availableSearchEngines, storeSelectedSearchEngines, selectedSearchEngines, setSelectedSearchEngines]);
 
   // 同步选择到 Store 和持久化设置（仅在用户操作后执行）
   useEffect(() => {

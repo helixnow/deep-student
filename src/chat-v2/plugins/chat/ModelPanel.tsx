@@ -66,8 +66,8 @@ export const ModelPanel: React.FC<ModelPanelProps> = ({ store, onClose }) => {
   const isMobile = mobileLayout?.isMobile ?? false;
 
   // 从 Store 获取状态
-  const chatParams = useStore(store, (s) => s.chatParams);
-  const selectedModelId = chatParams.model2OverrideId;
+  // 🚀 P0-2 性能优化：仅订阅实际使用的字段，避免其他 chatParams 字段变化时重渲染
+  const selectedModelId = useStore(store, (s) => s.chatParams.model2OverrideId);
 
   // 本地状态
   const [models, setModels] = useState<ModelConfig[]>([]);
@@ -191,12 +191,9 @@ export const ModelPanel: React.FC<ModelPanelProps> = ({ store, onClose }) => {
   // 选择模型
   const handleSelectModel = useCallback(
     (modelId: string | null) => {
-      store.getState().setChatParams({
-        ...chatParams,
-        model2OverrideId: modelId,
-      });
+      store.getState().setChatParams({ model2OverrideId: modelId });
     },
-    [store, chatParams]
+    [store]
   );
 
   // 设为默认模型
@@ -230,10 +227,7 @@ export const ModelPanel: React.FC<ModelPanelProps> = ({ store, onClose }) => {
       setDefaultModelId(selectedModelId);
       
       // 清除临时覆盖（因为已经设为默认了）
-      store.getState().setChatParams({
-        ...chatParams,
-        model2OverrideId: null,
-      });
+      store.getState().setChatParams({ model2OverrideId: null });
       
       // 显示成功通知
       const modelName = models.find(m => m.id === selectedModelId)?.name || selectedModelId;
@@ -250,7 +244,7 @@ export const ModelPanel: React.FC<ModelPanelProps> = ({ store, onClose }) => {
     } finally {
       setSavingDefault(false);
     }
-  }, [selectedModelId, defaultModelId, store, chatParams, models, t]);
+  }, [selectedModelId, defaultModelId, store, models, t]);
 
   const selectedValue = selectedModelId ?? 'system-default';
   const hasModels = sortedAndFilteredModels.length > 0;

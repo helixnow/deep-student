@@ -46,7 +46,7 @@ export const McpPanel: React.FC<McpPanelProps> = ({ store, onClose }) => {
 
   // 从 Store 获取状态
   const sessionStatus = useStore(store, (s) => s.sessionStatus);
-  const chatParams = useStore(store, (s) => s.chatParams);
+  // 🚀 P0-2 性能优化：移除 chatParams 整体订阅，McpPanel 仅通过 store.getState() 读取
   const isStreaming = sessionStatus === 'streaming';
 
   // 本地状态

@@ -72,11 +72,9 @@ interface HpiasStore {
   selectedCount: number | null;
   metrics: any | null;
   retrievedItems: any[] | null;
-  // 时间线原始事件流（用于Timeline可视化）
-  // 内存清理策略：
-  //   1. 运行时：滑动窗口上限 2000 条（handleEvent 入口处截断）
-  //   2. 会话结束（session_completed / session_failed）：截断至最后 100 条
-  //   3. 主动清理（clear / reset）：清空为 []
+  // 🚀 P0-3: eventsLog 已移至模块级变量（_eventsLog），不再参与 store 状态更新。
+  // 通过 getEventsLog() 访问，避免高频事件触发 Zustand 通知。
+  // 保留字段签名以保持类型兼容（值始终为空数组，不被使用）。
   eventsLog: HpiasEvent[];
   roundsView: Record<number, {
     round_no: number;
@@ -104,6 +102,34 @@ interface HpiasStore {
   };
 }
 
+// 🚀 P0-3 性能优化：eventsLog 从 store 状态移至模块级数组，
+// 避免每次高频事件（subagent_thought 等）都触发 Zustand 通知和数组复制。
+// 无外部组件订阅 eventsLog，不影响 React 渲染。
+let _eventsLog: HpiasEvent[] = [];
+const EVENTS_LOG_MAX = 2000;
+const EVENTS_LOG_TRIM = 100;
+
+/** 获取当前事件日志（只读快照） */
+export const getEventsLog = (): readonly HpiasEvent[] => _eventsLog;
+
+/** 追加事件到日志（滑动窗口，不触发 store 更新） */
+const appendEventLog = (e: HpiasEvent) => {
+  _eventsLog.push(e);
+  if (_eventsLog.length > EVENTS_LOG_MAX) {
+    _eventsLog = _eventsLog.slice(-EVENTS_LOG_MAX);
+  }
+};
+
+/** 截断事件日志至 N 条（会话结束时调用） */
+const trimEventLog = (max: number = EVENTS_LOG_TRIM) => {
+  if (_eventsLog.length > max) {
+    _eventsLog = _eventsLog.slice(-max);
+  }
+};
+
+/** 清空事件日志 */
+const clearEventLog = () => { _eventsLog = []; };
+
 export const useHpiasStore = create<HpiasStore>()(
   devtools(
     subscribeWithSelector<HpiasStore>((set, get) => ({
@@ -123,9 +149,9 @@ export const useHpiasStore = create<HpiasStore>()(
       artifactsByRound: {},
       ingestion: null,
       actions: {
-        reset: (sessionId, round) => set({ sessionId, round, executionMode: null, plan: null, synthesis: null, critic: null, retrievalCount: null, selectedCount: null, metrics: null, retrievedItems: null, eventsLog: [], roundsView: {}, subAgents: {} }),
+        reset: (sessionId, round) => { clearEventLog(); set({ sessionId, round, executionMode: null, plan: null, synthesis: null, critic: null, retrievalCount: null, selectedCount: null, metrics: null, retrievedItems: null, eventsLog: [], roundsView: {}, subAgents: {} }); },
         // 完全重置所有状态，eventsLog 清空释放全部内存
-        clear: () => set({ sessionId: null, round: 0, plan: null, synthesis: null, critic: null, retrievalCount: null, selectedCount: null, metrics: null, retrievedItems: null, eventsLog: [], roundsView: {}, subAgents: {}, artifactsByRound: {}, ingestion: null }),
+        clear: () => { clearEventLog(); set({ sessionId: null, round: 0, plan: null, synthesis: null, critic: null, retrievalCount: null, selectedCount: null, metrics: null, retrievedItems: null, eventsLog: [], roundsView: {}, subAgents: {}, artifactsByRound: {}, ingestion: null }); },
         setRound: (round) => set({ round }),
         mergeArtifacts: (round, items) => set(state => {
           const prev = state.artifactsByRound[round] || [];
@@ -183,13 +209,10 @@ export const useHpiasStore = create<HpiasStore>()(
         }),
         handleEvent: (e: HpiasEvent) => {
           const s = get();
-          // 记录事件到时间线
+          // 🚀 P0-3: 事件记录到模块级数组，不触发 store 更新
           try {
             if (e.type !== 'ingestion_progress') {
-              const prev = (s as any).eventsLog as HpiasEvent[] || [];
-              const next = [...prev, e];
-              const limited = next.length > 2000 ? next.slice(next.length - 2000) : next;
-              set({ eventsLog: limited } as any);
+              appendEventLog(e);
             }
           } catch (err: unknown) {
             console.warn('[HpiasStore] eventsLog recording failed:', err);
@@ -410,20 +433,19 @@ export const useHpiasStore = create<HpiasStore>()(
             case 'session_completed':
               // 会话结束清理：将 eventsLog 截断为最后 100 条，释放长时间运行积累的内存。
               // 运行时仍保持 2000 条滑动窗口（L186），此处仅在会话完成时做二次收敛。
+              trimEventLog();
               set(state => {
                 const rno = (e as any).round as number;
                 const rv = { ...state.roundsView };
                 if (rv[rno]) rv[rno].status = 'completed';
-                const trimmed = state.eventsLog.length > 100
-                  ? state.eventsLog.slice(-100)
-                  : state.eventsLog;
-                return { roundsView: rv, eventsLog: trimmed };
+                return { roundsView: rv };
               });
               break;
             case 'session_failed':
               // 🔒 审计修复: 只将 running/pending 的 agent 标记为 failed，保留已完成的成功结果
               // 原代码将所有 agent（包括已 completed 的）全部覆盖为 failed，丢失有效研究结果
               // 会话失败清理：同 session_completed，截断 eventsLog 至最后 100 条以释放内存。
+              trimEventLog();
               set(state => ({
                 subAgents: Object.fromEntries(
                   Object.entries(state.subAgents).map(([k, v]) => [
@@ -433,9 +455,6 @@ export const useHpiasStore = create<HpiasStore>()(
                       : v // 保留 completed 状态
                   ])
                 ),
-                eventsLog: state.eventsLog.length > 100
-                  ? state.eventsLog.slice(-100)
-                  : state.eventsLog,
               }));
               break;
             case 'artifact_created': {

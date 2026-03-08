@@ -28,7 +28,8 @@ import { TauriAPI } from './utils/tauriApi';
 // ★ MistakeItem 类型导入已废弃（2026-01 清理）
 import { isWindows, isMacOS } from './utils/platform';
 // 🚀 性能优化：ChatV2Page 改为懒加载，见 lazyComponents.tsx
-import { NoteEditorPortal } from './components/notes/NoteEditorPortal';
+// 🚀 P0-1 性能优化：NoteEditorPortal 改为懒加载，避免 CrepeEditor → mermaid (~1.6MB) 进入首屏 bundle
+const LazyNoteEditorPortal = React.lazy(() => import('./components/notes/NoteEditorPortal').then(m => ({ default: m.NoteEditorPortal })));
 // 🚀 性能优化：TreeDragTest, PdfReader, LearningHubPage 改为懒加载
 import {
   LearningHubNavigationProvider,
@@ -1682,7 +1683,9 @@ function App() {
       {/* 调试面板入口由全局悬浮按钮统一控制 */}
       
       {/* 笔记编辑器 Portal - 用于白板远程桌面模式（已改造为 useNotesOptional，无需 NotesProvider） */}
-      <NoteEditorPortal />
+      <Suspense fallback={null}>
+        <LazyNoteEditorPortal />
+      </Suspense>
       </LearningHubNavigationProvider>
       </MobileHeaderProvider>
       </MobileLayoutProvider>

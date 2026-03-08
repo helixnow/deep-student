@@ -7,6 +7,7 @@
 import React, { useCallback, useEffect, useId, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useStore, type StoreApi } from 'zustand';
+import { useShallow } from 'zustand/react/shallow';
 import { SlidersHorizontal, X, MessageSquare, Thermometer, Layers, Image } from 'lucide-react';
 import { useMobileLayoutSafe } from '@/components/layout/MobileLayoutContext';
 import { cn } from '@/lib/utils';
@@ -101,7 +102,20 @@ export const AdvancedPanel: React.FC<AdvancedPanelProps> = ({ store, onClose, si
   const isMobile = mobileLayout?.isMobile ?? false;
 
   // 从 Store 获取状态
-  const chatParams = useStore(store, (s) => s.chatParams);
+  // 🚀 P0-2 性能优化：仅订阅实际使用的字段，避免其他 chatParams 字段变化时重渲染
+  const chatParams = useStore(store, useShallow((s) => ({
+    modelId: s.chatParams.modelId,
+    temperature: s.chatParams.temperature,
+    topP: s.chatParams.topP,
+    frequencyPenalty: s.chatParams.frequencyPenalty,
+    presencePenalty: s.chatParams.presencePenalty,
+    maxTokens: s.chatParams.maxTokens,
+    enableThinking: s.chatParams.enableThinking,
+    contextLimit: s.chatParams.contextLimit,
+    ragTopK: s.chatParams.ragTopK,
+    ragEnableReranking: s.chatParams.ragEnableReranking,
+    multimodalRagEnabled: s.chatParams.multimodalRagEnabled,
+  })));
   const sessionStatus = useStore(store, (s) => s.sessionStatus);
   const isStreaming = sessionStatus === 'streaming';
 

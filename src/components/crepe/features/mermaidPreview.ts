@@ -3,23 +3,23 @@
  * 在编辑器中的 mermaid 代码块下方渲染图表预览
  */
 
-import mermaid from 'mermaid';
 import DOMPurify from 'dompurify';
 import i18n from '@/i18n';
 
-let initialized = false;
+// 🚀 P1-1 性能优化：mermaid 改为动态导入，避免 ~1.6MB 进入 CrepeEditor chunk
+let mermaidInstance: typeof import('mermaid').default | null = null;
 
-const initMermaid = () => {
-  if (initialized) return;
-  
-  mermaid.initialize({
+const ensureMermaid = async () => {
+  if (mermaidInstance) return mermaidInstance;
+  const mod = await import('mermaid');
+  mermaidInstance = mod.default;
+  mermaidInstance.initialize({
     startOnLoad: false,
     theme: 'default',
     securityLevel: 'strict',
     fontFamily: 'system-ui, -apple-system, sans-serif',
   });
-  
-  initialized = true;
+  return mermaidInstance;
 };
 
 /**
@@ -29,9 +29,8 @@ export const renderMermaidDiagram = async (
   code: string,
   container: HTMLElement
 ): Promise<void> => {
-  initMermaid();
-  
   try {
+    const mermaid = await ensureMermaid();
     const id = `mermaid-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     const { svg } = await mermaid.render(id, code.trim());
     container.innerHTML = DOMPurify.sanitize(svg, {

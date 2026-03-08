@@ -9,6 +9,7 @@
 import React, { useState, useEffect, useCallback, useId } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useStore, type StoreApi } from 'zustand';
+import { useShallow } from 'zustand/react/shallow';
 import { Layers, X, Image } from 'lucide-react';
 import { useMobileLayoutSafe } from '@/components/layout/MobileLayoutContext';
 import { cn } from '@/lib/utils';
@@ -49,37 +50,42 @@ export const RagPanel: React.FC<RagPanelProps> = ({ store, onClose }) => {
 
   // 从 Store 获取状态
   const sessionStatus = useStore(store, (s) => s.sessionStatus);
-  const chatParams = useStore(store, (s) => s.chatParams);
+  // 🚀 P0-2 性能优化：仅订阅实际使用的 3 个字段，避免其他 chatParams 字段变化时重渲染
+  const { ragTopK: storeRagTopK, ragEnableReranking: storeRagEnableReranking, multimodalRagEnabled: storeMultimodalRagEnabled } = useStore(store, useShallow((s) => ({
+    ragTopK: s.chatParams.ragTopK,
+    ragEnableReranking: s.chatParams.ragEnableReranking,
+    multimodalRagEnabled: s.chatParams.multimodalRagEnabled,
+  })));
   const isStreaming = sessionStatus === 'streaming';
 
   // 本地状态（简化：只保留检索参数配置）
-  const [ragTopK, setRagTopK] = useState(chatParams.ragTopK ?? DEFAULT_RAG_TOPK);
-  const [enableReranking, setEnableReranking] = useState(chatParams.ragEnableReranking ?? DEFAULT_RAG_ENABLE_RERANKING);
-  const [multimodalEnabled, setMultimodalEnabled] = useState(chatParams.multimodalRagEnabled ?? DEFAULT_MULTIMODAL_RAG_ENABLED);
+  const [ragTopK, setRagTopK] = useState(storeRagTopK ?? DEFAULT_RAG_TOPK);
+  const [enableReranking, setEnableReranking] = useState(storeRagEnableReranking ?? DEFAULT_RAG_ENABLE_RERANKING);
+  const [multimodalEnabled, setMultimodalEnabled] = useState(storeMultimodalRagEnabled ?? DEFAULT_MULTIMODAL_RAG_ENABLED);
 
   const ragTopKFieldId = useId();
   const ragControlsDisabled = isStreaming;
 
   // 同步 ragTopK 到 Store
   useEffect(() => {
-    if (ragTopK !== (chatParams.ragTopK ?? DEFAULT_RAG_TOPK)) {
+    if (ragTopK !== (storeRagTopK ?? DEFAULT_RAG_TOPK)) {
       store.getState().setChatParams({ ragTopK });
     }
-  }, [ragTopK, chatParams.ragTopK, store]);
+  }, [ragTopK, storeRagTopK, store]);
 
   // 同步 enableReranking 到 Store
   useEffect(() => {
-    if (enableReranking !== (chatParams.ragEnableReranking ?? DEFAULT_RAG_ENABLE_RERANKING)) {
+    if (enableReranking !== (storeRagEnableReranking ?? DEFAULT_RAG_ENABLE_RERANKING)) {
       store.getState().setChatParams({ ragEnableReranking: enableReranking });
     }
-  }, [enableReranking, chatParams.ragEnableReranking, store]);
+  }, [enableReranking, storeRagEnableReranking, store]);
 
   // 同步 multimodalEnabled 到 Store
   useEffect(() => {
-    if (multimodalEnabled !== (chatParams.multimodalRagEnabled ?? DEFAULT_MULTIMODAL_RAG_ENABLED)) {
+    if (multimodalEnabled !== (storeMultimodalRagEnabled ?? DEFAULT_MULTIMODAL_RAG_ENABLED)) {
       store.getState().setChatParams({ multimodalRagEnabled: multimodalEnabled });
     }
-  }, [multimodalEnabled, chatParams.multimodalRagEnabled, store]);
+  }, [multimodalEnabled, storeMultimodalRagEnabled, store]);
 
   // 重置 TopK
   const resetTopK = useCallback(() => {
