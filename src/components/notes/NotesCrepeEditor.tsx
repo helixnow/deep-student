@@ -11,12 +11,13 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Search, FilePlus, FolderPlus, ImagePlus, ExternalLink } from 'lucide-react';
+import { Search, FilePlus, FolderPlus, ImagePlus, ExternalLink, BookOpen, PencilLine } from 'lucide-react';
 import { CrepeEditor, type CrepeEditorApi } from '../crepe';
 import { CustomScrollArea } from '../custom-scroll-area';
 import { useNotesOptional } from './NotesContext';
 import { cn } from '@/lib/utils';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
+import { CommonTooltip } from '@/components/shared/CommonTooltip';
 import { NotionButton } from '@/components/ui/NotionButton';
 // TODO: Re-import Input & Separator when Find & Replace is implemented
 // import { Input } from '../ui/shad/Input';
@@ -115,6 +116,10 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
 
   // Find & Replace 状态
   const [isFindReplaceOpen, setIsFindReplaceOpen] = useState(false);
+
+  // 阅读模式状态（防止手机滑动时弹出键盘）
+  const [readingMode, setReadingMode] = useState(false);
+  const effectiveReadOnly = readOnly || readingMode;
 
   const dropZoneRef = useRef<HTMLDivElement>(null);
   const scrollViewportRef = useRef<HTMLDivElement | null>(null);
@@ -345,12 +350,12 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
   }, [noteId]);
 
   const handleManualSave = useCallback(async () => {
-    if (readOnly) return;
+    if (effectiveReadOnly) return;
     await flushNoteDraft();
-  }, [flushNoteDraft, readOnly]);
+  }, [flushNoteDraft, effectiveReadOnly]);
 
   const handleChange = useCallback((markdown: string) => {
-    if (readOnly) {
+    if (effectiveReadOnly) {
       return;
     }
     contentRef.current = markdown;
@@ -382,7 +387,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
         detail: { noteId: eventNoteId, content: markdown }
       }));
     }, 500);
-  }, [noteId, queueSave, isDstuMode, readOnly]);
+  }, [noteId, queueSave, isDstuMode, effectiveReadOnly]);
 
   // 保存 ref
   const flushNoteDraftRef = useRef(flushNoteDraft);
@@ -494,7 +499,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
       if ((e.metaKey || e.ctrlKey) && e.key === 's') {
         const activeEl = document.activeElement as HTMLElement | null;
         const isEditorFocused = !!activeEl && !!dropZoneRef.current?.contains(activeEl);
-        if (readOnly || !isEditorFocused) {
+        if (effectiveReadOnly || !isEditorFocused) {
           return;
         }
         e.preventDefault();
@@ -507,7 +512,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
     };
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [handleManualSave, readOnly, t]);
+  }, [handleManualSave, effectiveReadOnly, t]);
 
   // Find/Replace handlers
   const handleFindReplaceClose = useCallback(() => {
@@ -523,7 +528,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
   const { isDragging: isDraggingOver } = useTauriDragAndDrop({
     dropZoneRef,
     onDropFiles: () => {}, // 不处理文件，由 CrepeEditor 内部处理
-    isEnabled: hasSelection && !readOnly,
+    isEnabled: hasSelection && !effectiveReadOnly,
     feedbackOnly: true, // 仅提供拖拽状态反馈
     feedbackExtensions: ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg', 'heic', 'heif'], // 仅对图片显示反馈
     debugZoneId: 'notes-crepe-editor',
@@ -805,11 +810,43 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
                 isSaving={isSaving}
                 // DSTU 模式 props
                 initialTitle={isDstuMode ? initialTitle : undefined}
-                onTitleChange={isDstuMode && !readOnly ? dstuOnTitleChange : undefined}
+                onTitleChange={isDstuMode && !effectiveReadOnly ? dstuOnTitleChange : undefined}
                 noteId={noteId}
-                readOnly={readOnly}
+                readOnly={effectiveReadOnly}
               />
-              <NotesEditorToolbar editor={editorApi} readOnly={readOnly} />
+              <div className="flex items-center gap-1">
+                <NotesEditorToolbar editor={editorApi} readOnly={effectiveReadOnly} />
+                {/* 阅读模式切换按钮 - 仅在非外部 readOnly 时显示 */}
+                {!readOnly && (
+                  <CommonTooltip
+                    content={readingMode ? t('notes:toolbar.editing_mode') : t('notes:toolbar.reading_mode')}
+                    position="bottom"
+                  >
+                    <NotionButton
+                      variant={readingMode ? 'primary' : 'ghost'}
+                      iconOnly
+                      size="sm"
+                      className={cn(
+                        "h-7 w-7 flex-shrink-0 transition-colors",
+                        readingMode
+                          ? "text-primary-foreground"
+                          : "text-muted-foreground hover:text-foreground"
+                      )}
+                      onClick={() => {
+                        const next = !readingMode;
+                        // 进入阅读模式时先 flush 草稿，防止丢失未保存内容
+                        if (next) {
+                          void flushNoteDraft();
+                        }
+                        setReadingMode(next);
+                        // readonly 状态由 CrepeEditor 的 readonly prop 自动同步，无需手动调用 setReadonly
+                      }}
+                    >
+                      {readingMode ? <BookOpen className="h-4 w-4" /> : <PencilLine className="h-4 w-4" />}
+                    </NotionButton>
+                  </CommonTooltip>
+                )}
+              </div>
             </div>
           </div>
           
@@ -842,7 +879,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
                 defaultValue={initialValue}
                 onChange={handleChange}
                 onReady={handleEditorReady}
-                readonly={readOnly}
+                readonly={effectiveReadOnly}
               />
             </div>
           </CustomScrollArea>

@@ -292,7 +292,11 @@
     "link": "链接",
     "image": "图片",
     "table": "表格",
-    "math": "数学公式"
+    "math": "数学公式",
+    "reading_mode": "阅读模式",
+    "editing_mode": "编辑模式",
+    "reading_mode_on": "已进入阅读模式",
+    "reading_mode_off": "已进入编辑模式"
   },
   "search": {
     "placeholder": "搜索笔记...",

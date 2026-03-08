@@ -170,7 +170,7 @@ const NoteContentView: React.FC<ContentViewProps> = ({
       [COMMAND_EVENTS.NOTES_FORCE_SAVE]: () => {
         if (!isActive || readOnly) return;
         const editor = editorApiRef.current;
-        if (!editor) return;
+        if (!editor || editor.isReadonly()) return;
         void handleSave(editor.getMarkdown())
           .then(() => {
             showGlobalNotification('success', t('notes:actions.save_success', '保存成功'));
@@ -185,27 +185,27 @@ const NoteContentView: React.FC<ContentViewProps> = ({
         toggleRightPanel();
       },
       [COMMAND_EVENTS.NOTES_INSERT_MATH]: () => {
-        if (!isActive || readOnly) return;
+        if (!isActive || readOnly || editorApiRef.current?.isReadonly()) return;
         editorApiRef.current?.insertAtCursor('\n$$\n\n$$\n');
       },
       [COMMAND_EVENTS.NOTES_INSERT_TABLE]: () => {
-        if (!isActive || readOnly) return;
+        if (!isActive || readOnly || editorApiRef.current?.isReadonly()) return;
         editorApiRef.current?.insertTable();
       },
       [COMMAND_EVENTS.NOTES_INSERT_CODEBLOCK]: () => {
-        if (!isActive || readOnly) return;
+        if (!isActive || readOnly || editorApiRef.current?.isReadonly()) return;
         editorApiRef.current?.insertCodeBlock();
       },
       [COMMAND_EVENTS.NOTES_INSERT_LINK]: () => {
-        if (!isActive || readOnly) return;
+        if (!isActive || readOnly || editorApiRef.current?.isReadonly()) return;
         editorApiRef.current?.insertLink('https://', '');
       },
       [COMMAND_EVENTS.NOTES_INSERT_IMAGE]: () => {
-        if (!isActive || readOnly) return;
+        if (!isActive || readOnly || editorApiRef.current?.isReadonly()) return;
         editorApiRef.current?.insertImage('https://', '');
       },
       [COMMAND_EVENTS.AI_CONTINUE_WRITING]: () => {
-        if (!isActive || readOnly) return;
+        if (!isActive || readOnly || editorApiRef.current?.isReadonly()) return;
         showGlobalNotification('info', t('notes:ai.continue_not_available', 'AI 续写命令暂不可用，请使用聊天面板发起编辑。'));
       },
     },

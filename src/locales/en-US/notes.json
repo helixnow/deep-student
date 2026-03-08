@@ -318,7 +318,11 @@
     "link": "Link",
     "image": "Image",
     "table": "Table",
-    "math": "Math Formula"
+    "math": "Math Formula",
+    "reading_mode": "Reading Mode",
+    "editing_mode": "Editing Mode",
+    "reading_mode_on": "Entered reading mode",
+    "reading_mode_off": "Entered editing mode"
   },
   "search": {
     "placeholder": "Search notes...",
