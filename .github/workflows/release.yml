@@ -5,8 +5,10 @@
 # ║  发布流程 (唯一路径):                                          ║
 # ║    1. 开发者向 main 推送 conventional commits                  ║
 # ║    2. release-please 自动创建/更新 Release PR (版本号升级)     ║
-# ║    3. 合并 Release PR → release-please 创建 tag + Release      ║
-# ║       同一次运行中检测到 release_created=true → 进入构建流程   ║
+# ║    3. 合并 Release PR → 三路检测 release commit:               ║
+# ║       a) release-please 输出 release_created=true              ║
+# ║       b) HEAD commit 消息匹配 chore(main): release X.Y.Z      ║
+# ║       c) HEAD 为 merge commit 时扫描父提交 (v0.9.33 修复)     ║
 # ║    4. 版本号三重校验 (tag vs 代码中 3 处版本号)                ║
 # ║    5. 通过校验 → 并行构建全平台产物                            ║
 # ║    6. 发布产物到 GitHub Release + R2 镜像                      ║
@@ -16,8 +18,8 @@
 # ║      headSha 与 tag 不一致的风险 (v0.9.21 事故根因)            ║
 # ║    - GITHUB_TOKEN 创建的 tag 不会触发后续 workflow             ║
 # ║      (GitHub 的防递归机制), 所以 tag push 触发不可行            ║
-# ║    - 唯一安全的入口是: release-please 在同一 workflow run       ║
-# ║      内报告 release_created=true, 然后直接进入构建             ║
+# ║    - 三路检测确保即使 release commit 被 merge commit 包裹      ║
+# ║      也能正确识别 (v0.9.33 事故根因: 并发 push 产生 merge)    ║
 # ║                                                                ║
 # ║  重建某个版本:                                                 ║
 # ║    使用 rebuild-release.yml 手动触发, 输入已存在的 tag 名称    ║
@@ -76,6 +78,10 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           skip-github-release: true
 
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 5
+
       - name: Resolve release result
         id: result
         env:
@@ -87,19 +93,22 @@ jobs:
           HEAD_SHA: ${{ github.sha }}
         run: |
           echo "ℹ️ release-please outcome: ${RP_OUTCOME}"
+          echo "ℹ️ RP_CREATED=${RP_CREATED}, RP_TAG=${RP_TAG}"
 
-          HEAD_COMMIT_SUBJECT="$(printf '%s\n' "${HEAD_COMMIT_MSG}" | head -n1)"
-          echo "ℹ️ head commit subject: ${HEAD_COMMIT_SUBJECT}"
+          RELEASE_PATTERN='^chore\(main\): release ([0-9]+\.[0-9]+\.[0-9]+)'
 
-          if [[ "${HEAD_COMMIT_SUBJECT}" =~ ^chore\(main\):\ release\ ([0-9]+\.[0-9]+\.[0-9]+)(\ \(#[0-9]+\))?$ ]]; then
-            TAG="v${BASH_REMATCH[1]}"
-            echo "ℹ️ Detected merged release commit for ${TAG}"
+          # Helper: create GitHub Release for a detected tag
+          try_create_release() {
+            local TAG="$1"
+            local SOURCE="$2"
+
+            echo "ℹ️ Detected release ${TAG} (via ${SOURCE})"
 
             if gh release view "${TAG}" >/dev/null 2>&1; then
               echo "release_created=false" >> $GITHUB_OUTPUT
               echo "tag_name=${TAG}" >> $GITHUB_OUTPUT
               echo "ℹ️ Release ${TAG} already exists; skipping duplicate creation"
-              exit 0
+              return 0
             fi
 
             gh release create "${TAG}" \
@@ -109,8 +118,39 @@ jobs:
 
             echo "release_created=true" >> $GITHUB_OUTPUT
             echo "tag_name=${TAG}" >> $GITHUB_OUTPUT
-            echo "✅ Created GitHub Release ${TAG} for merged release commit"
+            echo "✅ Created GitHub Release ${TAG} (detected via ${SOURCE})"
+            return 0
+          }
+
+          # Path 1: release-please directly reported a release
+          if [[ "${RP_CREATED}" == "true" && -n "${RP_TAG}" ]]; then
+            try_create_release "${RP_TAG}" "release-please output"
             exit 0
+          fi
+
+          # Path 2: HEAD commit is a release commit
+          HEAD_COMMIT_SUBJECT="$(printf '%s\n' "${HEAD_COMMIT_MSG}" | head -n1)"
+          echo "ℹ️ head commit subject: ${HEAD_COMMIT_SUBJECT}"
+
+          if [[ "${HEAD_COMMIT_SUBJECT}" =~ ^chore\(main\):\ release\ ([0-9]+\.[0-9]+\.[0-9]+)(\ \(#[0-9]+\))?$ ]]; then
+            try_create_release "v${BASH_REMATCH[1]}" "HEAD commit message"
+            exit 0
+          fi
+
+          # Path 3: HEAD is a merge commit whose parent is a release commit
+          # This handles the case where a concurrent push created a merge commit
+          # that buried the release commit (e.g. v0.9.33 incident)
+          PARENT_COUNT=$(git cat-file -p HEAD | grep -c '^parent ')
+          if [[ "$PARENT_COUNT" -gt 1 ]]; then
+            echo "ℹ️ HEAD is a merge commit with ${PARENT_COUNT} parents, scanning for release commits..."
+            while IFS= read -r PARENT_SHA; do
+              PARENT_SUBJECT=$(git log -1 --format='%s' "$PARENT_SHA" 2>/dev/null || true)
+              echo "  parent ${PARENT_SHA:0:7}: ${PARENT_SUBJECT}"
+              if [[ "${PARENT_SUBJECT}" =~ $RELEASE_PATTERN ]]; then
+                try_create_release "v${BASH_REMATCH[1]}" "merge parent ${PARENT_SHA:0:7}"
+                exit 0
+              fi
+            done < <(git cat-file -p HEAD | grep '^parent ' | awk '{print $2}')
           fi
 
           echo "release_created=false" >> $GITHUB_OUTPUT
