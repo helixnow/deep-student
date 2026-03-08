@@ -10,11 +10,11 @@ use rusqlite::{params, Connection, OptionalExtension};
 
 use crate::vfs::database::VfsDatabase;
 use crate::vfs::error::{VfsError, VfsResult};
-use crate::vfs::repos::folder_repo::{VfsFolderItem, VfsFolderRepo};
-use crate::vfs::repos::resource_repo::{VfsResourceRepo, VfsResourceType};
+use crate::vfs::repos::folder_repo::VfsFolderRepo;
+use crate::vfs::repos::resource_repo::VfsResourceRepo;
 use crate::vfs::types::{
     TodoActiveSummary, TodoStats, TodoSummaryItem, VfsCreateTodoItemParams,
-    VfsCreateTodoListParams, VfsTodoItem, VfsTodoList, VfsUpdateTodoItemParams,
+    VfsCreateTodoListParams, VfsFolderItem, VfsResourceType, VfsTodoItem, VfsTodoList, VfsUpdateTodoItemParams,
     VfsUpdateTodoListParams,
 };
 

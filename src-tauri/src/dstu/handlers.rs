@@ -61,6 +61,7 @@ use super::handler_utils::{
     search_by_index,
     session_to_dstu_node,
     textbook_to_dstu_node,
+    todo_list_to_dstu_node,
     translation_to_dstu_node,
 };
 
