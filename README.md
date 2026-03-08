@@ -111,6 +111,9 @@ Organize materials, notes, questions, mind maps, translations, and flashcards in
 - Full-format management: notes / textbooks / question banks / mind maps
 - Auto-vectorization pipeline on import (OCR → chunking → embedding → indexing), with real-time status
 - Built-in PDF / DOCX reader with dual-page view and bookmarks
+- Reading mode toggle — prevents keyboard popup on mobile during scrolling
+- Content search across sessions and resources with session tagging
+- Resource export with format-specific adapters
 - Unified data source for downstream Q&A, mind maps, question generation, and flashcards
 
 <details>
@@ -145,6 +148,7 @@ Turn textbooks and exam papers into practice-ready question banks.
 
 - Upload textbooks / exam papers, AI auto-extracts or generates question sets
 - Daily practice, timed practice, mock exams with auto-grading
+- Question history view — review past practice sessions and track progress over time
 - AI deep analysis of knowledge points and problem-solving approaches
 - Mastery tracking by knowledge point to pinpoint weak areas
 
@@ -273,6 +277,7 @@ Inspired by [mem0](https://github.com/mem0ai/mem0) and [memU](https://github.com
 
 - Auto-extracts user facts after each conversation (identity / preferences / goals / subject status)
 - Vector comparison of new vs. existing memories, LLM decides ADD / UPDATE / APPEND / DELETE / NONE
+- Batch memory write with write idempotency for data integrity
 - Aggregated into user profile, auto-injected into subsequent conversations
 - Tag system: 90-day inactivity → downweight; frequent hits → upweight; search hits auto-rehabilitate
 - Browse, edit, batch delete, export
@@ -291,7 +296,7 @@ Inspired by [mem0](https://github.com/mem0ai/mem0) and [memU](https://github.com
 An extensible workbench, not a closed feature set.
 
 - Skills load AI capabilities on demand — tools only loaded when activated, saving tokens
-- 11 built-in skills: Cards · Research · Paper · Mind Map · Q-Bank · Memory · Tutor · Literature Review · Exam Analysis · Session Manager · Office Suite
+- 12 built-in skills: Cards · Research · Paper · Mind Map · Q-Bank · Memory · Tutor · Literature Review · Exam Analysis · Session Manager · Office Suite · Todo
 - Three-tier loading (Built-in → Global → Project-level), custom skills via SKILL.md
 - MCP protocol compatible, connecting external tools like Arxiv, Context7
 - 9 pre-configured model providers, plus any OpenAI-compatible endpoint
@@ -322,6 +327,7 @@ Your learning data stays under your control.
 
 [![macOS](https://img.shields.io/badge/-macOS-black?style=flat-square&logo=apple&logoColor=white)](#installation)
 [![Windows](https://img.shields.io/badge/-Windows-blue?style=flat-square&logo=windows&logoColor=white)](#installation)
+[![Linux](https://img.shields.io/badge/-Linux-orange?style=flat-square&logo=linux&logoColor=white)](#installation)
 [![Android](https://img.shields.io/badge/-Android-green?style=flat-square&logo=android&logoColor=white)](#installation)
 
 Download the latest version from [GitHub Releases](https://github.com/helixnow/deep-student/releases/latest):
@@ -330,6 +336,7 @@ Download the latest version from [GitHub Releases](https://github.com/helixnow/d
 |:---:|---|---|
 | macOS | `.dmg` | Apple Silicon / Intel |
 | Windows | `.exe` | x86_64 |
+| Linux | `.deb` / `.AppImage` | x86_64 / arm64 |
 | Android | `.apk` | arm64 |
 
 > iOS can be built locally via Xcode. See [Build Configuration Guide](./docs/BUILD-CONFIG.md).
@@ -502,6 +509,7 @@ DeepStudent started as a Python demo in March 2025 and has evolved through nearl
 | **2025.12** | ⚡ Performance — Parallel session loading, config caching, DSTU resource protocol |
 | **2026.01** | 🧩 Skill System & VFS — File-based skill loading, unified Virtual File System |
 | **2026.02** | 🚀 Open Source Release — Renamed to DeepStudent, released v0.9.23; added Translation Workbench, Cloud Sync, Session Branching, Smart Memory enhancements, and more |
+| **2026.03** | 🐧 Linux & Hardening — Linux build support (deb/AppImage); Todo system; question history view; model capability auto-detection; reading mode for mobile; content search & session tagging; resource export; memory batch write & idempotency; cross-session permission checks; released v0.9.30–v0.9.33 |
 
 ---
 
