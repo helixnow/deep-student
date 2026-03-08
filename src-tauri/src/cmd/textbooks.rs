@@ -10,6 +10,7 @@ use crate::vfs::repos::pdf_preview::{render_pdf_preview_with_progress, PdfPrevie
 // ★ 2026-02 移除：VfsIndexService 和 UnitBuildInput 不再需要
 // sync_resource_units 调用已移除，由 Pipeline 统一处理
 use crate::vfs::{PdfProcessingService, ProcessingStage};
+use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tauri::{Emitter, State, Window};
@@ -164,7 +165,16 @@ pub async fn textbooks_add(
         // Layer 2: Magic bytes 检测（适用于 Media Provider / Downloads 等不透明 ID）
         // Layer 3: 无法识别 → 跳过并记录原因
         let (resolved_name, resolved_ext) = unified_file_manager::resolve_file_info(&window, src);
-        let display_name = resolved_name.as_str();
+        // ★ 移动端修复：当 URI 提取的文件名是不透明 document ID（如 446、document:123）时，
+        // 生成用户友好的显示名称，避免在 UI 上显示无意义的数字 ID
+        let uri_raw_name = unified_file_manager::extract_file_name(src);
+        let display_name_owned = if unified_file_manager::is_opaque_document_id(&uri_raw_name) {
+            let ext_suffix = resolved_ext.as_ref().map(|e| format!(".{}", e)).unwrap_or_default();
+            format!("导入文档_{}{}", chrono::Utc::now().format("%Y%m%d_%H%M%S"), ext_suffix)
+        } else {
+            resolved_name.clone()
+        };
+        let display_name = display_name_owned.as_str();
 
         info!(
             "[Textbooks] Resolved file info: uri={}, name={}, ext={:?}",
@@ -512,7 +522,14 @@ pub async fn textbooks_adopt(
         }
         let sha256 = unified_file_manager::hash_file_sha256(&window, &p)?;
         let (resolved_name, resolved_ext) = unified_file_manager::resolve_file_info(&window, &p);
-        let file_name = resolved_name;
+        // ★ 移动端修复：不透明 document ID → 生成友好文件名
+        let uri_raw_name = unified_file_manager::extract_file_name(&p);
+        let file_name = if unified_file_manager::is_opaque_document_id(&uri_raw_name) {
+            let ext_suffix = resolved_ext.as_ref().map(|e| format!(".{}", e)).unwrap_or_default();
+            format!("导入文档_{}{}", Utc::now().format("%Y%m%d_%H%M%S"), ext_suffix)
+        } else {
+            resolved_name
+        };
         let extension = resolved_ext.unwrap_or_else(|| {
             std::path::Path::new(&file_name)
                 .extension()

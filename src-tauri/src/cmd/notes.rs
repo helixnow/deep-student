@@ -85,6 +85,27 @@ fn normalize_folder_id(folder_id: Option<&str>) -> Option<String> {
     })
 }
 
+/// ★ 移动端修复：当标题为通用占位符（如 Android 不透明 URI 导致的 "文件"）时，
+/// 尝试从 Markdown 内容提取第一个 H1 标题作为笔记名称。
+fn extract_first_heading(content: &str) -> Option<String> {
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if let Some(heading) = trimmed.strip_prefix("# ") {
+            let title = heading.trim();
+            if !title.is_empty() {
+                return Some(title.to_string());
+            }
+        }
+    }
+    None
+}
+
+/// 判断标题是否为通用占位符（无法从 URI 解析出真实文件名时的回退值）。
+fn is_generic_note_title(title: &str) -> bool {
+    let trimmed = title.trim();
+    trimmed == "文件" || trimmed.is_empty()
+}
+
 fn import_markdown_note_from_local_path(
     vfs_db: &crate::vfs::database::VfsDatabase,
     import_path: &Path,
@@ -92,8 +113,19 @@ fn import_markdown_note_from_local_path(
     folder_id: Option<&str>,
 ) -> Result<crate::dstu::types::DstuNode> {
     let (content, encoding) = read_markdown_file_with_encoding(import_path)?;
+
+    // ★ 移动端修复：当标题为通用占位符时，从 Markdown 内容提取第一个 H1 标题
+    let effective_title = if is_generic_note_title(note_title) {
+        extract_first_heading(&content).unwrap_or_else(|| {
+            format!("导入笔记_{}", Utc::now().format("%Y%m%d_%H%M%S"))
+        })
+    } else {
+        note_title.to_string()
+    };
+
     log::info!(
-        "开始导入 Markdown 笔记，title='{}'，encoding={}，materialized_path={}",
+        "开始导入 Markdown 笔记，title='{}'（原始='{}'），encoding={}，materialized_path={}",
+        effective_title,
         note_title,
         encoding,
         import_path.display()
@@ -102,7 +134,7 @@ fn import_markdown_note_from_local_path(
     let note = VfsNoteRepo::create_note_in_folder(
         vfs_db,
         VfsCreateNoteParams {
-            title: note_title.to_string(),
+            title: effective_title,
             content,
             tags: vec![],
         },
@@ -1503,6 +1535,7 @@ pub async fn notes_import_markdown_batch(
 mod tests {
     use super::{
         cleanup_materialized_import_files, decode_markdown_bytes, derive_markdown_note_title,
+        extract_first_heading, is_generic_note_title,
     };
     use std::fs;
 
@@ -1529,6 +1562,46 @@ mod tests {
     #[test]
     fn derive_markdown_note_title_uses_file_stem() {
         assert_eq!(derive_markdown_note_title("/tmp/线代笔记.md"), "线代笔记");
+    }
+
+    #[test]
+    fn extract_first_heading_finds_h1() {
+        assert_eq!(
+            extract_first_heading("# 线性代数笔记\n\n内容..."),
+            Some("线性代数笔记".to_string())
+        );
+    }
+
+    #[test]
+    fn extract_first_heading_skips_h2() {
+        assert_eq!(extract_first_heading("## 二级标题\n\n内容"), None);
+    }
+
+    #[test]
+    fn extract_first_heading_returns_none_for_no_heading() {
+        assert_eq!(extract_first_heading("普通文本\n没有标题"), None);
+    }
+
+    #[test]
+    fn extract_first_heading_trims_whitespace() {
+        assert_eq!(
+            extract_first_heading("#   带空格的标题  \n"),
+            Some("带空格的标题".to_string())
+        );
+    }
+
+    #[test]
+    fn is_generic_note_title_detects_placeholder() {
+        assert!(is_generic_note_title("文件"));
+        assert!(is_generic_note_title("  文件  "));
+        assert!(is_generic_note_title(""));
+        assert!(is_generic_note_title("   "));
+    }
+
+    #[test]
+    fn is_generic_note_title_allows_real_names() {
+        assert!(!is_generic_note_title("线代笔记"));
+        assert!(!is_generic_note_title("notes"));
     }
 
     #[test]
