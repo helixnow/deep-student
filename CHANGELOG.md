@@ -10,6 +10,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.9.33](https://github.com/helixnow/deep-student/compare/v0.9.32...v0.9.33) (2026-03-08)
+
+
+### Features
+
+* **llm:** add model capability registry with automatic vision/tools/reasoning inference ([837aa6c](https://github.com/helixnow/deep-student/commit/837aa6ce338d2f9bbd20d98555906b93987249c1))
+* **memory-system:** hide system-reserved folders/notes with `__*__` pattern across Finder and implement memory folder navigation ([7ddf4c3](https://github.com/helixnow/deep-student/commit/7ddf4c3c743a581f25ef72ba36afd3973e8b98f7))
+* **notes,textbooks:** detect and sanitize opaque Android document IDs in filenames across frontend and backend ([d75ac97](https://github.com/helixnow/deep-student/commit/d75ac976eea724243ed1473bb54b3910fd681669))
+* **notes,textbooks:** extract H1 heading from markdown when title is generic placeholder and generate friendly names for opaque document IDs ([c62a022](https://github.com/helixnow/deep-student/commit/c62a022aad40ac6da8f2567402038762bcee778a))
+* **notes:** add reading mode toggle to prevent keyboard popup on mobile during scrolling ([648d763](https://github.com/helixnow/deep-student/commit/648d7636eea2d9d11d0f22effc8922351f91582e))
+* **pdf,polyfills:** add Promise.withResolvers polyfill for older browsers and remove unused active feature chips ([aebf481](https://github.com/helixnow/deep-student/commit/aebf481d35dd6907e0f380df04c04f7ad6fc50ce))
+* **question-bank:** add question history view and refactor timer management for advanced practice modes ([36746a8](https://github.com/helixnow/deep-student/commit/36746a8f124c82d93f61ec95c0723df7d27fdd41))
+* **skills-executor:** add custom deserializer to handle stringified array parameters from LLMs ([493677f](https://github.com/helixnow/deep-student/commit/493677fe7145a27014ba358ec5ffc3f74969151a))
+* **todo:** add user-facing todo system with database schema and system prompt integration ([ba1dfa4](https://github.com/helixnow/deep-student/commit/ba1dfa471a1c6ea49c640047e17a41525768a9e9))
+
+
+### Bug Fixes
+
+* **ci:** detect merged release commits with PR suffix ([14547bb](https://github.com/helixnow/deep-student/commit/14547bbc726bcabaf4960e2c085582f36b6cb35c))
+
 ## [0.9.32](https://github.com/helixnow/deep-student/compare/v0.9.31...v0.9.32) (2026-03-06)
 
 
