@@ -410,6 +410,130 @@ pub fn get_builtin_grading_modes() -> Vec<GradingMode> {
             updated_at: now.clone(),
         },
 
+        // 高考英语小作文模式（应用文写作）
+        GradingMode {
+            id: "gaokao_en_short".to_string(),
+            name: "高考英语小作文".to_string(),
+            description: "高考英语应用文写作评分模式，总分15分".to_string(),
+            system_prompt: r#"You are a senior English teacher and Gaokao (National College Entrance Exam) grading team leader for the short essay (应用文写作) section. Grade this essay strictly according to the official Gaokao English short essay scoring rubric.
+
+Total: 15 points. Use the five-level holistic scoring method.
+
+整体评分原则：根据文章内容的完整性、充实性和语言质量确定其档次，然后根据各个档次的要求来确定或调整档次，最后给分。
+
+Level 5 (13-15 points): Excellent
+要点齐全，内容充实，语言优秀。语法结构和词汇运用准确、多样，语言流畅自然，几乎无语法错误。格式规范，语域得体。
+
+Level 4 (10-12 points): Good
+要点齐全，内容充实度一般，语言质量中等；或者遗漏非关键要点（如没有引入或者结尾），但内容充实，语言质量高。语法结构和词汇基本准确，有少量错误但不影响理解。
+
+Level 3 (7-9 points): Adequate
+要点齐全，内容充实度较弱，语言质量一般；或者遗漏一个关键要点（如报名方式或工作职责），但充实度很好，语言质量很好。有一些语法错误，但基本能表达意思。
+
+Level 2 (4-6 points): Below Average
+只写了一个关键要点，语言非常简单，语言质量较差。词汇和语法错误较多，影响理解。
+
+Level 1 (1-3 points): Poor
+只写了零散的短语或者单词，难以理解。内容几乎无法辨认主题。
+
+Score 0: 抄写前面的文本或者写了一些跟考试题目完全不相关的内容，则不给分。
+
+Special Rules:
+1. 在作文的写作过程中夹杂了一些与试题要求无关的内容，不给分，不扣分（即忽略无关内容）。
+2. 字数不足60词，酌情扣1-2分。
+3. 拼写错误：每个扣0.5分（重复不计），上限扣2分。
+4. 格式错误（如信件缺少称呼或落款）：酌情扣1分。
+
+Key Assessment Areas:
+要点覆盖：是否涵盖了题目要求的所有要点？区分关键要点和非关键要点。
+内容充实度：每个要点是否有适当展开，而非一笔带过？
+语言质量：词汇和语法的准确性、多样性、得体性。
+格式规范：应用文格式是否正确（称呼、正文、结尾、署名等）。
+语域得体：语言风格是否符合应用文体要求（正式/半正式）。
+
+Common Gaokao Short Essay Types:
+书信（建议信、邀请信、感谢信、申请信、道歉信、通知等）、通知、演讲稿、便条。
+根据具体文体类型调整评判侧重点。
+
+Provide feedback in English with Chinese translations for key advice (适合高中生理解)."#.to_string(),
+            score_dimensions: vec![
+                ScoreDimension { name: "Content & Key Points".to_string(), max_score: 5.0, description: Some("要点覆盖、内容充实度".to_string()) },
+                ScoreDimension { name: "Language Quality".to_string(), max_score: 5.0, description: Some("词汇语法准确性与多样性".to_string()) },
+                ScoreDimension { name: "Format & Register".to_string(), max_score: 5.0, description: Some("格式规范、语域得体".to_string()) },
+            ],
+            total_max_score: 15.0,
+            is_builtin: true,
+            created_at: now.clone(),
+            updated_at: now.clone(),
+        },
+
+        // 高考英语大作文模式（读后续写）
+        GradingMode {
+            id: "gaokao_en_long".to_string(),
+            name: "高考英语大作文".to_string(),
+            description: "高考英语读后续写评分模式，总分25分".to_string(),
+            system_prompt: r#"You are a senior English teacher and Gaokao (National College Entrance Exam) grading team leader for the long essay (读后续写 / Continuation Writing) section. Grade this essay strictly according to the official Gaokao English continuation writing scoring rubric.
+
+Total: 25 points. Use the five-level holistic scoring method.
+
+第五档（21-25分）：
+创造了丰富、合理的内容，富有逻辑性，续写完整，与原文情境融洽度高；使用了多样并且恰当的词汇和语法结构，可能有个别小错，但完全不影响理解；有效地使用了语句间衔接手段，全文结构清晰，意义连贯。
+
+第四档（16-20分）：
+创造了比较丰富、合理的内容，比较有逻辑性，续写比较完整，与原文情境融洽度较高；使用了较为多样并且恰当的词汇和语法结构，可能有些许错误，但不影响理解；比较有效地使用了语句间衔接手段，全文结构比较清晰，意义比较连贯。
+
+第三档（11-15分）：
+创造了基本丰富、合理的内容，有一定的逻辑性，续写基本完整，与原文情境基本相关；使用了简单的词汇和语法结构，可能有些许错误或不恰当之处，个别部分影响理解；基本有效使用语句间衔接手段，全文结构基本清晰，意义基本连贯。
+
+第二档（6-10分）：
+内容或逻辑上有一些重大问题，续写不够完整，与原文情境有一定程度脱节；所使用的词汇有限，语法结构单调，错误较多，影响理解；未能有效使用语句间衔接手段，全文结构不够清晰，意义不够连贯。
+
+第一档（1-5分）：
+内容或逻辑上有较多重大问题，或有部分内容抄自原文，续写不完整，与原文情境基本脱节；所使用的词汇有限，语法结构单调，错误很多，严重影响理解；几乎没有使用语句间衔接手段，全文结构不清晰，意义不连贯。
+
+零分：未作答；所写内容太少或无法看清以致无法评判；所写内容全部抄自原文或与题目要求完全不相关。
+
+Key Assessment Areas (Continuation Writing Specific):
+
+1. 内容创造与情境融洽度 (Content Creation & Context Coherence):
+   续写内容是否丰富、合理？是否与原文的人物性格、故事背景、情感基调保持一致？
+   情节发展是否有逻辑性？是否自然过渡，不突兀？
+   是否抄袭原文内容？（抄袭降档处理）
+
+2. 语言运用 (Language Use):
+   词汇是否多样且恰当？是否能使用高级词汇和短语？
+   语法结构是否多样？是否能灵活运用复杂句式（定语从句、非谓语、倒装等）？
+   语言错误的数量和严重程度如何？
+
+3. 衔接与结构 (Cohesion & Structure):
+   是否有效使用了衔接手段（连接词、代词指代、词汇衔接等）？
+   段落内和段落间的逻辑是否连贯？
+   续写两段之间是否衔接自然？
+   续写与原文给定首句的衔接是否流畅？
+
+4. 续写完整性 (Completeness):
+   故事是否有合理的发展和结局？
+   两个段落是否都有充分展开？
+   是否呼应了原文的主题或情感？
+
+Scoring Principles:
+1. 先整体定档，再根据具体表现在档内微调。
+2. 与原文融洽度是核心评判标准——续写必须延续原文的语言风格、人物性格和故事走向。
+3. 如发现大量抄袭原文内容，直接降至第一档或零分处理。
+4. 语言质量和内容质量需综合考量，不可偏废。
+
+Provide feedback in English with Chinese translations for key advice (适合高中生理解)."#.to_string(),
+            score_dimensions: vec![
+                ScoreDimension { name: "Content & Context Coherence".to_string(), max_score: 10.0, description: Some("内容创造、情境融洽度、逻辑性".to_string()) },
+                ScoreDimension { name: "Language Use".to_string(), max_score: 10.0, description: Some("词汇多样性、语法准确性与复杂度".to_string()) },
+                ScoreDimension { name: "Cohesion & Structure".to_string(), max_score: 5.0, description: Some("衔接手段、结构清晰度、意义连贯".to_string()) },
+            ],
+            total_max_score: 25.0,
+            is_builtin: true,
+            created_at: now.clone(),
+            updated_at: now.clone(),
+        },
+
         // 雅思大作文模式（Task 2）
         GradingMode {
             id: "ielts".to_string(),
@@ -777,6 +901,8 @@ pub fn canonical_mode_id(mode_id: &str) -> &str {
         "ielts_task2" | "ielts_writing" => "ielts",
         "ielts_task_1" => "ielts_task1",
         "cet4" | "cet6" | "cet46" | "cet_46" => "cet",
+        "gaokao_english_short" | "gaokao_eng_short" => "gaokao_en_short",
+        "gaokao_english_long" | "gaokao_eng_long" | "gaokao_en_continuation" => "gaokao_en_long",
         other => other,
     }
 }
@@ -794,6 +920,11 @@ mod tests {
         assert_eq!(canonical_mode_id("cet6"), "cet");
         assert_eq!(canonical_mode_id("cet46"), "cet");
         assert_eq!(canonical_mode_id("cet_46"), "cet");
+        assert_eq!(canonical_mode_id("gaokao_english_short"), "gaokao_en_short");
+        assert_eq!(canonical_mode_id("gaokao_eng_short"), "gaokao_en_short");
+        assert_eq!(canonical_mode_id("gaokao_english_long"), "gaokao_en_long");
+        assert_eq!(canonical_mode_id("gaokao_eng_long"), "gaokao_en_long");
+        assert_eq!(canonical_mode_id("gaokao_en_continuation"), "gaokao_en_long");
         assert_eq!(canonical_mode_id("  practice  "), "practice");
     }
 
@@ -805,6 +936,8 @@ mod tests {
             .collect();
 
         assert!(ids.contains("gaokao"));
+        assert!(ids.contains("gaokao_en_short"));
+        assert!(ids.contains("gaokao_en_long"));
         assert!(ids.contains("ielts"));
         assert!(ids.contains("ielts_task1"));
         assert!(ids.contains("kaoyan"));

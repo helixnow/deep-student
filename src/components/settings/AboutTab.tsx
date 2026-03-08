@@ -7,7 +7,7 @@ import { NotionButton } from '../ui/NotionButton';
 import { SettingSection } from './SettingsCommon';
 import { PrivacyPolicyDialog } from '../legal/PrivacyPolicyDialog';
 import VERSION_INFO from '../../version';
-import { useAppUpdater, getUpdateChannel, setUpdateChannel, type UpdateChannel } from '../../hooks/useAppUpdater';
+import { useAppUpdater, getUpdateChannel, setUpdateChannel, type UpdateChannel, getUpdateFrequency, setUpdateFrequency, type UpdateFrequency, getUpdateFrequencyDays, setUpdateFrequencyDays, getNoRemind, setNoRemind } from '../../hooks/useAppUpdater';
 import ReactMarkdown from 'react-markdown';
 
 const GroupTitle = ({ title }: { title: string }) => (
@@ -66,12 +66,35 @@ export const AboutTab: React.FC = () => {
   const [showPrivacyPolicy, setShowPrivacyPolicy] = useState(false);
   const updater = useAppUpdater();
   const [channel, setChannel] = useState<UpdateChannel>(getUpdateChannel);
+  const [frequency, setFrequencyState] = useState<UpdateFrequency>(getUpdateFrequency);
+  const [frequencyDays, setFrequencyDaysState] = useState<number>(getUpdateFrequencyDays);
+  const [noRemind, setNoRemindState] = useState<boolean>(getNoRemind);
 
   const toggleChannel = useCallback(() => {
     const next: UpdateChannel = channel === 'stable' ? 'experimental' : 'stable';
     setUpdateChannel(next);
     setChannel(next);
   }, [channel]);
+
+  const handleFrequencyChange = useCallback((freq: UpdateFrequency) => {
+    setUpdateFrequency(freq);
+    setFrequencyState(freq);
+    if (freq !== 'never') {
+      setNoRemindState(false);
+    }
+  }, []);
+
+  const handleFrequencyDaysChange = useCallback((days: number) => {
+    const clamped = Math.max(1, Math.round(days));
+    setUpdateFrequencyDays(clamped);
+    setFrequencyDaysState(clamped);
+  }, []);
+
+  const handleResetNoRemind = useCallback(() => {
+    setNoRemind(false);
+    setNoRemindState(false);
+    handleFrequencyChange('every_launch');
+  }, [handleFrequencyChange]);
 
   return (
     <div className="space-y-1 pb-10 text-left animate-in fade-in duration-500">
@@ -127,6 +150,52 @@ export const AboutTab: React.FC = () => {
                   ? t('about.update.channelExp', '实验版')
                   : t('about.update.channelStable', '稳定版')}
               </NotionButton>
+            </SettingRow>
+
+            <SettingRow
+              title={t('about.update.frequency', '自动检查更新')}
+              description={noRemind
+                ? t('about.update.frequencyNoRemindDesc', '已关闭自动更新提醒，点击重新开启')
+                : frequency === 'never'
+                  ? t('about.update.frequencyNeverDesc', '不会自动检查更新，可手动检查')
+                  : frequency === 'every_n_days'
+                    ? t('about.update.frequencyDaysDesc', '每 {{days}} 天自动检查一次', { days: frequencyDays })
+                    : t('about.update.frequencyLaunchDesc', '每次启动时自动检查')}
+            >
+              <div className="flex items-center gap-1.5">
+                {noRemind ? (
+                  <NotionButton
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleResetNoRemind}
+                    className="h-6 px-2 text-xs text-primary"
+                  >
+                    {t('about.update.frequencyReEnable', '重新开启')}
+                  </NotionButton>
+                ) : (
+                  <>
+                    <select
+                      value={frequency}
+                      onChange={(e) => handleFrequencyChange(e.target.value as UpdateFrequency)}
+                      className="h-6 px-1.5 text-xs rounded border border-border/50 bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary/30"
+                    >
+                      <option value="every_launch">{t('about.update.freqEveryLaunch', '每次启动')}</option>
+                      <option value="every_n_days">{t('about.update.freqEveryNDays', '每 N 天')}</option>
+                      <option value="never">{t('about.update.freqNever', '永不')}</option>
+                    </select>
+                    {frequency === 'every_n_days' && (
+                      <input
+                        type="number"
+                        min={1}
+                        max={365}
+                        value={frequencyDays}
+                        onChange={(e) => handleFrequencyDaysChange(Number(e.target.value))}
+                        className="h-6 w-14 px-1.5 text-xs text-center rounded border border-border/50 bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary/30"
+                      />
+                    )}
+                  </>
+                )}
+              </div>
             </SettingRow>
 
             {/* 已是最新版本提示 */}

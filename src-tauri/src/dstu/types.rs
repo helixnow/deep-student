@@ -54,6 +54,8 @@ pub enum DstuNodeType {
     Retrieval,
     /// 知识导图
     MindMap,
+    /// 待办列表
+    Todo,
 }
 
 impl DstuNodeType {
@@ -76,6 +78,7 @@ impl DstuNodeType {
             "file" | "files" | "文件" => Some(DstuNodeType::File),
             "retrieval" | "retrievals" | "检索" | "检索结果" => Some(DstuNodeType::Retrieval),
             "mindmap" | "mindmaps" | "知识导图" | "导图" => Some(DstuNodeType::MindMap),
+            "todo" | "todos" | "待办" | "待办列表" => Some(DstuNodeType::Todo),
             // 附件类型映射到 Image（图片附件）或 File（文档附件）
             "attachment" | "attachments" | "附件" => Some(DstuNodeType::Image),
             _ => None,
@@ -97,6 +100,7 @@ impl DstuNodeType {
             DstuNodeType::File => "files",
             DstuNodeType::Retrieval => "retrievals",
             DstuNodeType::MindMap => "mindmaps",
+            DstuNodeType::Todo => "todos",
         }
     }
 
@@ -113,6 +117,7 @@ impl DstuNodeType {
             DstuNodeType::File => "dstu:types.file",
             DstuNodeType::Retrieval => "dstu:types.retrieval",
             DstuNodeType::MindMap => "dstu:types.mindmap",
+            DstuNodeType::Todo => "dstu:types.todo",
         }
     }
 
@@ -129,6 +134,7 @@ impl DstuNodeType {
             DstuNodeType::File => "none",
             DstuNodeType::Retrieval => "markdown",
             DstuNodeType::MindMap => "mindmap",
+            DstuNodeType::Todo => "todo",
         }
     }
 }
@@ -146,6 +152,7 @@ impl std::fmt::Display for DstuNodeType {
             DstuNodeType::File => "file",
             DstuNodeType::Retrieval => "retrieval",
             DstuNodeType::MindMap => "mindmap",
+            DstuNodeType::Todo => "todo",
         };
         write!(f, "{}", s)
     }

@@ -27,6 +27,7 @@ pub mod database;
 pub mod embedding_service;
 pub mod error;
 pub mod handlers;
+pub mod todo_handlers;
 pub mod index_handlers;
 pub mod index_service;
 pub mod indexing;
@@ -67,7 +68,8 @@ pub use repos::{
 };
 pub use repos::{
     VfsAttachmentRepo, VfsBlobRepo, VfsEssayRepo, VfsExamRepo, VfsFileRepo, VfsFolderRepo,
-    VfsMindMapRepo, VfsNoteRepo, VfsResourceRepo, VfsTextbookRepo, VfsTranslationRepo,
+    VfsMindMapRepo, VfsNoteRepo, VfsResourceRepo, VfsTextbookRepo, VfsTodoRepo,
+    VfsTranslationRepo,
 };
 pub use types::*;
 

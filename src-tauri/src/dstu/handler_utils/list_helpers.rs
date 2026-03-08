@@ -6,7 +6,7 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 use crate::dstu::types::{DstuListOptions, DstuNode, DstuNodeType};
-use crate::vfs::repos::VfsMindMapRepo;
+use crate::vfs::repos::{VfsMindMapRepo, VfsTodoRepo};
 use crate::vfs::{
     VfsDatabase, VfsEssayRepo, VfsExamRepo, VfsFileRepo, VfsNoteRepo, VfsTextbookRepo,
     VfsTranslationRepo,
@@ -14,7 +14,8 @@ use crate::vfs::{
 
 use super::{
     exam_to_dstu_node, file_to_dstu_node, get_resource_folder_path, mindmap_to_dstu_node,
-    note_to_dstu_node, session_to_dstu_node, textbook_to_dstu_node, translation_to_dstu_node,
+    note_to_dstu_node, session_to_dstu_node, textbook_to_dstu_node, todo_list_to_dstu_node,
+    translation_to_dstu_node,
 };
 
 /// 按类型列出资源，但返回文件夹路径（智能文件夹模式）
@@ -251,6 +252,21 @@ pub async fn list_resources_by_type_with_folder_path(
             for mm in mindmaps {
                 let folder_path = get_resource_folder_path(vfs_db, &mm.id).await?;
                 let mut node = mindmap_to_dstu_node(&mm);
+                node.path = folder_path;
+                results.push(node);
+            }
+        }
+        DstuNodeType::Todo => {
+            let todo_lists = match VfsTodoRepo::list_todo_lists(vfs_db) {
+                Ok(t) => t,
+                Err(e) => {
+                    log::error!("[DSTU::list_helpers] list_resources_by_type_with_folder_path: FAILED - list_todo_lists error={}", e);
+                    return Err(e.to_string());
+                }
+            };
+            for tl in todo_lists {
+                let folder_path = get_resource_folder_path(vfs_db, &tl.id).await?;
+                let mut node = todo_list_to_dstu_node(&tl);
                 node.path = folder_path;
                 results.push(node);
             }

@@ -219,6 +219,8 @@ export interface ScoreDimension {
 
 const BUILTIN_MODE_ORDER = [
   'gaokao',
+  'gaokao_en_short',
+  'gaokao_en_long',
   'ielts',
   'ielts_task1',
   'kaoyan',
@@ -243,6 +245,13 @@ export function canonicalizeEssayModeId(modeId: string): string {
     case 'cet46':
     case 'cet_46':
       return 'cet';
+    case 'gaokao_english_short':
+    case 'gaokao_eng_short':
+      return 'gaokao_en_short';
+    case 'gaokao_english_long':
+    case 'gaokao_eng_long':
+    case 'gaokao_en_continuation':
+      return 'gaokao_en_long';
     default:
       return trimmed;
   }

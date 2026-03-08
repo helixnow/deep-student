@@ -29,6 +29,90 @@ async function getCorsFetch(): Promise<typeof fetch> {
 export type UpdateChannel = 'stable' | 'experimental';
 const UPDATE_CHANNEL_KEY = 'ds-update-channel';
 
+// ---- Auto-update frequency & skip settings ----
+export type UpdateFrequency = 'every_launch' | 'every_n_days' | 'never';
+const UPDATE_FREQUENCY_KEY = 'ds-update-frequency';
+const UPDATE_FREQUENCY_DAYS_KEY = 'ds-update-frequency-days';
+const UPDATE_LAST_CHECK_KEY = 'ds-update-last-check';
+const UPDATE_SKIPPED_VERSION_KEY = 'ds-update-skipped-version';
+const UPDATE_NO_REMIND_KEY = 'ds-update-no-remind';
+
+export function getUpdateFrequency(): UpdateFrequency {
+  try {
+    const v = localStorage.getItem(UPDATE_FREQUENCY_KEY);
+    if (v === 'every_n_days' || v === 'never') return v;
+    return 'every_launch';
+  } catch { return 'every_launch'; }
+}
+
+export function setUpdateFrequency(freq: UpdateFrequency) {
+  try {
+    localStorage.setItem(UPDATE_FREQUENCY_KEY, freq);
+    // Changing frequency away from 'never' implicitly clears no-remind
+    if (freq !== 'never') {
+      localStorage.removeItem(UPDATE_NO_REMIND_KEY);
+    }
+  } catch {}
+}
+
+export function getUpdateFrequencyDays(): number {
+  try {
+    const v = parseInt(localStorage.getItem(UPDATE_FREQUENCY_DAYS_KEY) ?? '', 10);
+    return Number.isFinite(v) && v > 0 ? v : 3;
+  } catch { return 3; }
+}
+
+export function setUpdateFrequencyDays(days: number) {
+  try { localStorage.setItem(UPDATE_FREQUENCY_DAYS_KEY, String(Math.max(1, Math.round(days)))); } catch {}
+}
+
+export function getSkippedVersion(): string {
+  try { return localStorage.getItem(UPDATE_SKIPPED_VERSION_KEY) ?? ''; } catch { return ''; }
+}
+
+export function setSkippedVersion(version: string) {
+  try { localStorage.setItem(UPDATE_SKIPPED_VERSION_KEY, version); } catch {}
+}
+
+export function getNoRemind(): boolean {
+  try { return localStorage.getItem(UPDATE_NO_REMIND_KEY) === 'true'; } catch { return false; }
+}
+
+export function setNoRemind(value: boolean) {
+  try {
+    if (value) {
+      localStorage.setItem(UPDATE_NO_REMIND_KEY, 'true');
+    } else {
+      localStorage.removeItem(UPDATE_NO_REMIND_KEY);
+    }
+  } catch {}
+}
+
+function getLastCheckTime(): number {
+  try {
+    const v = parseInt(localStorage.getItem(UPDATE_LAST_CHECK_KEY) ?? '', 10);
+    return Number.isFinite(v) ? v : 0;
+  } catch { return 0; }
+}
+
+function setLastCheckTime() {
+  try { localStorage.setItem(UPDATE_LAST_CHECK_KEY, String(Date.now())); } catch {}
+}
+
+/** Determine if a startup auto-check should run based on user preferences */
+function shouldAutoCheck(): boolean {
+  if (getNoRemind()) return false;
+  const freq = getUpdateFrequency();
+  if (freq === 'never') return false;
+  if (freq === 'every_launch') return true;
+  // every_n_days
+  const days = getUpdateFrequencyDays();
+  const last = getLastCheckTime();
+  if (last === 0) return true;
+  const elapsed = Date.now() - last;
+  return elapsed >= days * 24 * 60 * 60 * 1000;
+}
+
 export function getUpdateChannel(): UpdateChannel {
   try {
     return localStorage.getItem(UPDATE_CHANNEL_KEY) === 'experimental' ? 'experimental' : 'stable';
@@ -103,6 +187,8 @@ interface UpdateState {
   progress: number;
   /** 错误信息（细粒度） */
   error: UpdateError | null;
+  /** 是否为启动时自动检查触发（用于弹窗判断） */
+  isStartupCheck: boolean;
 }
 
 const initialState: UpdateState = {
@@ -113,6 +199,7 @@ const initialState: UpdateState = {
   downloading: false,
   progress: 0,
   error: null,
+  isStartupCheck: false,
 };
 
 /** 根据 downloadAndInstall 抛出的原始错误推断失败阶段 */
@@ -154,10 +241,10 @@ export function useAppUpdater() {
   const mobile = isMobilePlatform();
 
   /** 检查更新 */
-  const checkForUpdate = useCallback(async (silent = false) => {
+  const checkForUpdate = useCallback(async (silent = false, startup = false): Promise<boolean> => {
     // 移动端：优先从 R2 检查最新版本，回退到 GitHub API
     if (mobile) {
-      setState(prev => ({ ...prev, checking: true, error: null, upToDate: false }));
+      setState(prev => ({ ...prev, checking: true, error: null, upToDate: false, isStartupCheck: startup }));
       try {
         const { default: VERSION_INFO } = await import('../version');
         const currentVersion = VERSION_INFO.APP_VERSION;
@@ -236,6 +323,11 @@ export function useAppUpdater() {
         }
 
         if (latestVersion && isNewerVersion(latestVersion, currentVersion)) {
+          // Startup check: skip if user chose to skip this specific version
+          if (startup && getSkippedVersion() === latestVersion) {
+            setState(prev => ({ ...prev, checking: false, available: false, upToDate: false }));
+            return;
+          }
           setState(prev => ({
             ...prev,
             checking: false,
@@ -257,12 +349,13 @@ export function useAppUpdater() {
           setState(prev => ({ ...prev, checking: false }));
           console.warn('[Updater] Mobile silent check failed:', err?.message || String(err));
         }
+        return false;
       }
-      return;
+      return true;
     }
 
     // 桌面端使用 Tauri updater 插件
-    setState(prev => ({ ...prev, checking: true, error: null, upToDate: false }));
+    setState(prev => ({ ...prev, checking: true, error: null, upToDate: false, isStartupCheck: startup }));
 
     try {
       // 稳定版用户：先从 R2 检查 latest.json 的 channel，实验版则跳过
@@ -284,17 +377,23 @@ export function useAppUpdater() {
       const update = await check();
 
       if (update) {
-        pendingUpdateRef.current = update;
-        setState(prev => ({
-          ...prev,
-          checking: false,
-          available: true,
-          info: {
-            version: update.version,
-            date: update.date ?? undefined,
-            body: update.body ?? undefined,
-          },
-        }));
+        // Startup check: skip if user chose to skip this specific version
+        if (startup && getSkippedVersion() === update.version) {
+          pendingUpdateRef.current = null;
+          setState(prev => ({ ...prev, checking: false, available: false, upToDate: false }));
+        } else {
+          pendingUpdateRef.current = update;
+          setState(prev => ({
+            ...prev,
+            checking: false,
+            available: true,
+            info: {
+              version: update.version,
+              date: update.date ?? undefined,
+              body: update.body ?? undefined,
+            },
+          }));
+        }
       } else {
         pendingUpdateRef.current = null;
         setState(prev => ({
@@ -318,7 +417,9 @@ export function useAppUpdater() {
         setState(prev => ({ ...prev, checking: false }));
         console.warn('[Updater] Silent check failed:', errorMsg);
       }
+      return false;
     }
+    return true;
   }, [mobile]);
 
   /** 下载并安装更新（仅桌面端） */
@@ -420,10 +521,27 @@ export function useAppUpdater() {
     setState(initialState);
   }, []);
 
-  // 启动后延迟静默检查
+  /** 跳过某个特定版本 */
+  const skipVersion = useCallback((version: string) => {
+    setSkippedVersion(version);
+    setState(initialState);
+  }, []);
+
+  /** 设置不再提醒 */
+  const setNeverRemind = useCallback(() => {
+    setNoRemind(true);
+    setState(initialState);
+  }, []);
+
+  // 启动后延迟静默检查（受频率设置控制）
   useEffect(() => {
-    const timer = setTimeout(() => {
-      checkForUpdate(true);
+    if (!shouldAutoCheck()) return;
+    const timer = setTimeout(async () => {
+      // Fix: 仅在检查成功时记录时间，网络失败不应延后下次检查
+      const success = await checkForUpdate(true, true);
+      if (success) {
+        setLastCheckTime();
+      }
     }, 5000);
     return () => clearTimeout(timer);
   }, [checkForUpdate]);
@@ -434,5 +552,7 @@ export function useAppUpdater() {
     checkForUpdate,
     downloadAndInstall,
     dismiss,
+    skipVersion,
+    setNeverRemind,
   };
 }

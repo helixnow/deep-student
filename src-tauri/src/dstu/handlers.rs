@@ -67,10 +67,12 @@ use super::handler_utils::{
 use super::trash_handlers::is_resource_in_trash;
 
 use crate::vfs::{
-    canonical_folder_item_type, repos::VfsMindMapRepo, VfsBlobRepo, VfsCreateEssaySessionParams,
-    VfsCreateExamSheetParams, VfsCreateMindMapParams, VfsCreateNoteParams, VfsDatabase,
-    VfsEssayRepo, VfsExamRepo, VfsFileRepo, VfsFolderItem, VfsFolderRepo, VfsNoteRepo,
-    VfsTextbookRepo, VfsTranslationRepo, VfsUpdateMindMapParams, VfsUpdateNoteParams,
+    canonical_folder_item_type,
+    repos::{VfsMindMapRepo, VfsTodoRepo},
+    VfsBlobRepo, VfsCreateEssaySessionParams, VfsCreateExamSheetParams, VfsCreateMindMapParams,
+    VfsCreateNoteParams, VfsCreateTodoListParams, VfsDatabase, VfsEssayRepo, VfsExamRepo,
+    VfsFileRepo, VfsFolderItem, VfsFolderRepo, VfsNoteRepo, VfsTextbookRepo, VfsTranslationRepo,
+    VfsUpdateMindMapParams, VfsUpdateNoteParams,
 };
 
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
@@ -1010,6 +1012,51 @@ pub async fn dstu_create(
             };
 
             mindmap_to_dstu_node(&mindmap)
+        }
+        "todos" => {
+            let description = metadata
+                .get("description")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+            let icon = metadata
+                .get("icon")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+            let color = metadata
+                .get("color")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+
+            let params = VfsCreateTodoListParams {
+                title: options.name.clone(),
+                description,
+                icon,
+                color,
+                is_default: false,
+            };
+
+            let todo_list = match VfsTodoRepo::create_todo_list_in_folder(
+                &vfs_db,
+                params,
+                folder_id.as_deref(),
+            ) {
+                Ok(t) => {
+                    log::info!(
+                        "[DSTU::handlers] dstu_create: SUCCESS - type=todo, id={}",
+                        t.id
+                    );
+                    t
+                }
+                Err(e) => {
+                    log::error!(
+                        "[DSTU::handlers] dstu_create: FAILED - type=todo, error={}",
+                        e
+                    );
+                    return Err(e.to_string());
+                }
+            };
+
+            todo_list_to_dstu_node(&todo_list)
         }
         "images" | "files" => {
             // 验证 file_base64 参数

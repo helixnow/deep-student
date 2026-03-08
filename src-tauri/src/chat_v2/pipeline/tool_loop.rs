@@ -891,30 +891,6 @@ impl ChatV2Pipeline {
 
             // 并行执行所有工具调用
             let canvas_note_id = ctx.options.canvas_note_id.clone();
-            // 🆕 P1-C: 传递 skill_allowed_tools 进行工具执行校验
-            // 🔒 安全收敛：有 active skills 时，忽略 disable_tool_whitelist，避免绕过技能白名单
-            let has_active_skills = ctx
-                .options
-                .active_skill_ids
-                .as_ref()
-                .map(|skills| !skills.is_empty())
-                .unwrap_or(false);
-            let skill_allowed_tools = if ctx.options.disable_tool_whitelist.unwrap_or(false) {
-                if has_active_skills {
-                    log::warn!(
-                        "[ChatV2::pipeline] disable_tool_whitelist ignored because active skills are present"
-                    );
-                    ctx.options.skill_allowed_tools.clone()
-                } else {
-                    log::info!(
-                        "[ChatV2::pipeline] 🔓 Tool whitelist check disabled by user setting (no active skills)"
-                    );
-                    None
-                }
-            } else {
-                ctx.options.skill_allowed_tools.clone()
-            };
-            // 🆕 渐进披露：传递 skill_contents 给工具执行器
             let skill_contents = ctx.options.skill_contents.clone();
             let active_skill_ids = ctx.options.active_skill_ids.clone();
             let rag_top_k = ctx.options.rag_top_k;
@@ -935,7 +911,6 @@ impl ChatV2Pipeline {
                     ctx.options.skill_state_version,
                     Some(round_id.as_str()),
                     &canvas_note_id,
-                    &skill_allowed_tools,
                     &skill_contents,
                     &active_skill_ids,
                     cancel_token,
@@ -1017,37 +992,6 @@ impl ChatV2Pipeline {
                                     }
                                 }
 
-                                // 🔧 修复：load_skills 加载新技能后，同步更新 skill_allowed_tools 白名单
-                                // 否则新加载技能的工具虽然有 Schema 但会被白名单拦截（"当前技能不允许使用此工具"）
-                                if let Some(ref embedded_tools_map2) =
-                                    ctx.options.skill_embedded_tools
-                                {
-                                    let allowed = ctx
-                                        .options
-                                        .skill_allowed_tools
-                                        .get_or_insert_with(Vec::new);
-                                    let existing_allowed: std::collections::HashSet<String> =
-                                        allowed.iter().cloned().collect();
-                                    let mut newly_allowed = 0;
-                                    for skill_id in &loaded_skill_ids {
-                                        if let Some(tools) = embedded_tools_map2.get(skill_id) {
-                                            for tool in tools {
-                                                if !existing_allowed.contains(&tool.name) {
-                                                    allowed.push(tool.name.clone());
-                                                    newly_allowed += 1;
-                                                }
-                                            }
-                                        }
-                                    }
-                                    if newly_allowed > 0 {
-                                        log::info!(
-                                            "[ChatV2::pipeline] 🔧 Updated skill_allowed_tools: +{} tools from {:?}, total allowed: {}",
-                                            newly_allowed,
-                                            loaded_skill_ids,
-                                            allowed.len()
-                                        );
-                                    }
-                                }
                             }
                         }
                     }
@@ -1381,7 +1325,6 @@ impl ChatV2Pipeline {
         skill_state_version: Option<u64>,
         round_id: Option<&str>,
         canvas_note_id: &Option<String>,
-        skill_allowed_tools: &Option<Vec<String>>,
         skill_contents: &Option<std::collections::HashMap<String, String>>,
         active_skill_ids: &Option<Vec<String>>,
         cancellation_token: Option<&CancellationToken>,
@@ -1535,7 +1478,6 @@ impl ChatV2Pipeline {
                     skill_state_version,
                     round_id,
                     canvas_note_id,
-                    skill_allowed_tools,
                     skill_contents,
                     active_skill_ids,
                     cancellation_token.cloned(),
@@ -1726,7 +1668,6 @@ impl ChatV2Pipeline {
     /// - `session_id`: 会话 ID（用于工具状态隔离，如 TodoList）
     /// - `message_id`: 消息 ID
     /// - `canvas_note_id`: Canvas 笔记 ID，用于 Canvas 工具默认值
-    /// - `skill_allowed_tools`: 🆕 P1-C Skill 工具白名单
     /// - `cancellation_token`: 🆕 取消令牌，用于工具执行取消
     ///
     /// ## 返回
@@ -1741,7 +1682,6 @@ impl ChatV2Pipeline {
         skill_state_version: Option<u64>,
         round_id: Option<&str>,
         canvas_note_id: &Option<String>,
-        skill_allowed_tools: &Option<Vec<String>>,
         skill_contents: &Option<std::collections::HashMap<String, String>>,
         active_skill_ids: &Option<Vec<String>>,
         cancellation_token: Option<CancellationToken>,
@@ -1796,15 +1736,7 @@ impl ChatV2Pipeline {
             }
         };
 
-        // 🆕 P1-C: Skill allowedTools 白名单校验
-        // 安全默认：当会话中有激活技能但缺失 allowedTools 时，拒绝执行（fail-closed）
-        let has_active_skills = active_skill_ids
-            .as_ref()
-            .map(|skills| !skills.is_empty())
-            .unwrap_or(false);
-        let is_load_skills_tool =
-            super::super::tools::SkillsExecutor::is_load_skills_tool(&tool_call.name);
-
+        // Feature flag checks (memory, RAG, web search)
         let short_name = Self::canonical_tool_short_name(&tool_call.name);
         let is_memory_tool = short_name.starts_with("memory_");
         let is_rag_tool = short_name.starts_with("rag_");
@@ -1824,65 +1756,6 @@ impl ChatV2Pipeline {
             return Ok(build_preflight_blocked_result(
                 "WebSearch 功能已关闭，工具调用被拦截".to_string(),
             ));
-        }
-
-        if !is_load_skills_tool {
-            match skill_allowed_tools {
-                Some(allowed_tools) if allowed_tools.is_empty() => {
-                    log::warn!(
-                        "[ChatV2::pipeline] 🛡️ allowedTools is empty, blocking tool by default: {}",
-                        tool_call.name
-                    );
-                    return Ok(build_preflight_blocked_result(
-                        "当前技能未声明可用工具，已安全拦截".to_string(),
-                    ));
-                }
-                Some(allowed_tools) => {
-                    let preferred_server_id = tool_call
-                        .arguments
-                        .get("_serverId")
-                        .and_then(|value| value.as_str());
-                    let is_allowed = allowed_tools.iter().any(|allowed| {
-                        Self::skill_allows_tool_on_server(
-                            &tool_call.name,
-                            preferred_server_id,
-                            allowed,
-                        )
-                    });
-
-                    if !is_allowed {
-                        log::warn!(
-                            "[ChatV2::pipeline] 🛡️ Tool {} blocked by Skill allowedTools constraint: {:?}",
-                            tool_call.name,
-                            allowed_tools
-                        );
-                        return Ok(build_preflight_blocked_result(format!(
-                            "当前技能不允许使用此工具，允许的工具: {:?}",
-                            allowed_tools
-                        )));
-                    }
-                }
-                None if has_active_skills => {
-                    log::warn!(
-                        "[ChatV2::pipeline] 🛡️ active skills detected but allowedTools missing, blocking tool: {}",
-                        tool_call.name
-                    );
-                    return Ok(build_preflight_blocked_result(
-                        "技能工具白名单缺失，已安全拦截".to_string(),
-                    ));
-                }
-                None => {
-                    log::info!(
-                        "[ChatV2::pipeline] No skill allowedTools constraint for tool: {}",
-                        tool_call.name
-                    );
-                }
-            }
-        } else {
-            log::info!(
-                "[ChatV2::pipeline] load_skills bypasses allowedTools gating: {}",
-                tool_call.name
-            );
         }
 
         // 🆕 文档 29 P1-3：检查工具敏感等级，决定是否需要用户审批

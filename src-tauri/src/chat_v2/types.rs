@@ -713,8 +713,6 @@ pub struct SkillStateSnapshot {
 pub struct ReplaySkillPayloadSnapshot {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub active_skill_ids: Vec<String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub skill_allowed_tools: Vec<String>,
     #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
     pub skill_contents: std::collections::HashMap<String, String>,
     #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
@@ -1994,13 +1992,7 @@ pub struct SendOptions {
     pub context_type_hints: Option<Vec<String>>,
 
     // ========== 🆕 P1-C: Skill 工具权限约束 ==========
-    /// Skill allowedTools 白名单
-    /// 如果设置，则只允许执行白名单中的工具
-    /// 工具名匹配规则：精确匹配或前缀匹配（如 "anki" 匹配 "anki_create_card"）
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub skill_allowed_tools: Option<Vec<String>>,
-
-    /// 当前会话激活的 Skill IDs（用于 fail-closed 白名单判定）
+    /// 当前会话激活的 Skill IDs
     #[serde(skip_serializing_if = "Option::is_none")]
     pub active_skill_ids: Option<Vec<String>>,
 

@@ -386,6 +386,8 @@ pub struct PromptBuilder {
     context_type_hints: Vec<String>,
     /// 用户画像摘要（始终注入，不依赖 query 匹配）
     user_profile: Option<String>,
+    /// 活跃待办摘要（始终注入）
+    active_todos: Option<String>,
 }
 
 impl PromptBuilder {
@@ -407,7 +409,14 @@ impl PromptBuilder {
             canvas_note: None,
             context_type_hints: Vec::new(),
             user_profile: None,
+            active_todos: None,
         }
+    }
+
+    /// 添加活跃待办摘要
+    pub fn with_active_todos(mut self, todos: Option<String>) -> Self {
+        self.active_todos = todos;
+        self
     }
 
     /// 添加 Canvas 笔记信息
@@ -564,6 +573,14 @@ impl PromptBuilder {
             parts.push(format!(
                 "<user_profile>\n以下是关于当前用户的已知信息，请在回答中自然地运用这些背景：\n{}\n</user_profile>",
                 profile
+            ));
+        }
+
+        // 2.9 活跃待办事项（始终注入，帮助 LLM 了解用户当前任务）
+        if let Some(todos) = self.active_todos {
+            parts.push(format!(
+                "<active_todos>\n以下是用户当前的待办事项，请在相关时自然提及或协助管理：\n{}\n</active_todos>",
+                todos
             ));
         }
 

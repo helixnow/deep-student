@@ -3336,7 +3336,6 @@ export class ChatV2TauriAdapter {
     };
     runtimeSnapshot?: {
       activeSkillIds?: string[];
-      skillAllowedTools?: string[];
       skillContents?: Record<string, string>;
       skillEmbeddedTools?: Record<string, Array<{ name: string; serverId?: string; description?: string; inputSchema?: unknown }>>;
       mcpToolSchemas?: Array<{ name: string; serverId?: string; description?: string; inputSchema?: unknown }>;
@@ -3412,15 +3411,6 @@ export class ChatV2TauriAdapter {
       options.activeSkillIds = replaySkillIds;
     }
 
-    const replayAllowedTools = Array.from(new Set([
-      ...(runtimeSnapshot?.skillAllowedTools || []),
-      ...(snapshot.effectiveAllowedInternalTools || []),
-      ...(snapshot.effectiveAllowedExternalTools || []),
-    ])).filter(Boolean);
-
-    if (replayAllowedTools.length > 0) {
-      options.skillAllowedTools = replayAllowedTools;
-    }
 
     const skillContents: Record<string, string> = { ...(runtimeSnapshot?.skillContents || {}) };
     const skillEmbeddedTools: Record<string, Array<{ name: string; serverId?: string; description?: string; inputSchema?: unknown }>> = {
@@ -3736,44 +3726,12 @@ export class ChatV2TauriAdapter {
     // ========== Schema 工具收集（文档 26）==========
     // 从权威技能状态收集需要注入的 Schema 工具 ID
     // skill_instruction ContextRef 仅作为 UI / 历史兼容缓存，不再参与运行时权限决策
-    let skillAllowedTools: string[] | undefined;
-    {
-      const mergedAllowedTools: string[] = [];
-      for (const skillId of authoritativeToolSkillIds) {
-        const skill = skillRegistry.get(skillId);
-        if (skill) {
-          const tools = skill.allowedTools ?? skill.tools;
-          if (tools && tools.length > 0) {
-            mergedAllowedTools.push(...tools);
-          }
-        }
-      }
-      // 🔧 约束规则：
-      // - 若任一激活技能声明了 allowedTools（非空），则按所有声明的 allowedTools 并集进行过滤
-      // - 若没有任何技能声明 allowedTools，则不进行过滤（保持现有行为）
-      if (mergedAllowedTools.length > 0) {
-        skillAllowedTools = [...new Set(mergedAllowedTools)]; // 去重
-        console.log(LOG_PREFIX, '🛡️ Skill allowedTools constraint (from authoritative tool skills):', {
-          skillIds: authoritativeToolSkillIds,
-          allowedTools: skillAllowedTools,
-        });
-      }
-    }
-
     const schemaToolResult = collectSchemaToolIds({
       pendingContextRefs,
-      // ★ 2026-01 改造：Anki 工具已迁移到内置 MCP 服务器，无需单独启用
-      // 🆕 P1-B: 传递 skill allowedTools 进行过滤
-      skillAllowedTools,
     });
     if (schemaToolResult.schemaToolIds.length > 0) {
       options.schemaToolIds = schemaToolResult.schemaToolIds;
       console.log(LOG_PREFIX, 'Schema tools collected:', schemaToolResult);
-    }
-
-    // 🆕 P1-C: 传递 skill allowedTools 到后端进行硬约束校验
-    if (skillAllowedTools && skillAllowedTools.length > 0) {
-      (options as Record<string, unknown>).skillAllowedTools = skillAllowedTools;
     }
 
     // 🔧 渐进披露优化：只传递尚未加载的技能 content 和 embeddedTools
@@ -3879,11 +3837,7 @@ export class ChatV2TauriAdapter {
     for (const skillId of effectiveLoadedSkillIds) {
       const skill = skillRegistry.get(skillId);
       const embeddedTools = skill?.embeddedTools ?? [];
-      const legacyTools = skill?.tools ?? [];
       for (const tool of embeddedTools) {
-        appendLoadedTool(tool);
-      }
-      for (const tool of legacyTools) {
         appendLoadedTool(tool);
       }
     }

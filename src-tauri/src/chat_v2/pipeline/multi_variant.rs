@@ -5,7 +5,6 @@ fn build_replay_skill_payload_snapshot(
 ) -> Option<crate::chat_v2::types::ReplaySkillPayloadSnapshot> {
     let snapshot = crate::chat_v2::types::ReplaySkillPayloadSnapshot {
         active_skill_ids: options.active_skill_ids.clone().unwrap_or_default(),
-        skill_allowed_tools: options.skill_allowed_tools.clone().unwrap_or_default(),
         skill_contents: options.skill_contents.clone().unwrap_or_default(),
         skill_embedded_tools: options.skill_embedded_tools.clone().unwrap_or_default(),
         mcp_tool_schemas: options.mcp_tool_schemas.clone().unwrap_or_default(),
@@ -13,7 +12,6 @@ fn build_replay_skill_payload_snapshot(
     };
 
     let has_payload = !snapshot.active_skill_ids.is_empty()
-        || !snapshot.skill_allowed_tools.is_empty()
         || !snapshot.skill_contents.is_empty()
         || !snapshot.skill_embedded_tools.is_empty()
         || !snapshot.mcp_tool_schemas.is_empty()
@@ -1070,26 +1068,6 @@ impl ChatV2Pipeline {
         let emitter_arc = ctx.emitter_arc();
         let canvas_note_id = options.canvas_note_id.clone();
         let active_skill_ids = options.active_skill_ids.clone();
-        let has_active_skills = active_skill_ids
-            .as_ref()
-            .map(|skills| !skills.is_empty())
-            .unwrap_or(false);
-        // 🔒 安全收敛：有 active skills 时，忽略 disable_tool_whitelist，避免绕过技能白名单
-        let mut skill_allowed_tools = if options.disable_tool_whitelist.unwrap_or(false) {
-            if has_active_skills {
-                log::warn!(
-                    "[ChatV2::VariantPipeline] disable_tool_whitelist ignored because active skills are present"
-                );
-                options.skill_allowed_tools.clone()
-            } else {
-                log::info!(
-                    "[ChatV2::VariantPipeline] 🔓 Tool whitelist check disabled by user setting (no active skills)"
-                );
-                None
-            }
-        } else {
-            options.skill_allowed_tools.clone()
-        };
         let skill_contents = options.skill_contents.clone();
         let variant_session_key = format!("{}:{}", session_id, ctx.variant_id());
 
@@ -1221,7 +1199,6 @@ impl ChatV2Pipeline {
                     options.skill_state_version,
                     Some(round_id.as_str()),
                     &canvas_note_id,
-                    &skill_allowed_tools,
                     &skill_contents,
                     &active_skill_ids,
                     cancel_token,
@@ -1242,7 +1219,7 @@ impl ChatV2Pipeline {
                 tool_results.len()
             );
 
-            // 🔧 渐进披露：load_skills 执行后动态追加工具 + 更新白名单
+            // 🔧 渐进披露：load_skills 执行后动态追加工具
             for tool_result in &tool_results {
                 if super::super::tools::SkillsExecutor::is_load_skills_tool(&tool_result.tool_name)
                     && tool_result.success
@@ -1306,21 +1283,6 @@ impl ChatV2Pipeline {
                                         .collect();
                                     llm_context
                                         .insert("tools".into(), Value::Array(refreshed_tools));
-                                }
-
-                                // 🔧 修复：同步更新 skill_allowed_tools 白名单
-                                let allowed = skill_allowed_tools.get_or_insert_with(Vec::new);
-                                let mut existing_allowed: std::collections::HashSet<String> =
-                                    allowed.iter().cloned().collect();
-                                for skill_id in &loaded_skill_ids {
-                                    if let Some(tools) = embedded_tools_map.get(skill_id) {
-                                        for tool in tools {
-                                            if !existing_allowed.contains(&tool.name) {
-                                                allowed.push(tool.name.clone());
-                                                existing_allowed.insert(tool.name.clone());
-                                            }
-                                        }
-                                    }
                                 }
                             }
                         }
@@ -1488,11 +1450,14 @@ impl ChatV2Pipeline {
 
         let user_profile = self.load_user_profile_for_variant(options).await;
 
+        let active_todos = self.load_active_todo_summary().await;
+
         prompt_builder::PromptBuilder::new(options.system_prompt_override.as_deref())
             .with_shared_context(shared_context)
             .with_options(options)
             .with_canvas_note(canvas_note)
             .with_user_profile(user_profile)
+            .with_active_todos(active_todos)
             .build()
     }
 
@@ -1541,6 +1506,33 @@ impl ChatV2Pipeline {
             ))
         } else {
             Some(combined)
+        }
+    }
+
+    /// 加载活跃待办摘要（注入 system prompt）
+    async fn load_active_todo_summary(&self) -> Option<String> {
+        use crate::vfs::repos::VfsTodoRepo;
+
+        let vfs_db = self.vfs_db.as_ref()?;
+        match VfsTodoRepo::get_active_todo_summary(vfs_db) {
+            Ok(Some(summary)) => {
+                let formatted = VfsTodoRepo::format_active_summary_for_prompt(&summary);
+                if formatted.is_empty() {
+                    None
+                } else {
+                    log::debug!(
+                        "[ChatV2::pipeline] Injecting active todo summary ({} today, {} overdue)",
+                        summary.stats.today_due,
+                        summary.stats.overdue_count
+                    );
+                    Some(formatted)
+                }
+            }
+            Ok(None) => None,
+            Err(e) => {
+                log::warn!("[ChatV2::pipeline] Failed to load active todo summary: {}", e);
+                None
+            }
         }
     }
 

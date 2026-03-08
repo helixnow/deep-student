@@ -30,3 +30,6 @@ export { FileViewerWrapper } from './FileViewerWrapper';
 
 // 知识导图编辑器
 export { MindMapEditorWrapper } from './MindMapEditorWrapper';
+
+// 待办列表编辑器
+export { TodoEditorWrapper } from './TodoEditorWrapper';

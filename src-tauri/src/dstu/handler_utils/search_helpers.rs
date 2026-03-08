@@ -12,12 +12,13 @@ use crate::dstu::types::{DstuListOptions, DstuNode, DstuNodeType};
 use crate::vfs::{
     VfsDatabase, VfsEssayRepo, VfsEssaySession, VfsExamRepo, VfsFile, VfsFileRepo, VfsFolderRepo,
     VfsMindMap, VfsMindMapRepo, VfsNoteRepo, VfsResourceRepo, VfsTextbook, VfsTextbookRepo,
-    VfsTranslationRepo,
+    VfsTodoList, VfsTodoRepo, VfsTranslationRepo,
 };
 
 use super::{
     exam_to_dstu_node, file_to_dstu_node, mindmap_to_dstu_node, note_to_dstu_node,
-    session_to_dstu_node, textbook_to_dstu_node, translation_to_dstu_node,
+    session_to_dstu_node, textbook_to_dstu_node, todo_list_to_dstu_node,
+    translation_to_dstu_node,
 };
 
 /// Log row-parse errors instead of silently discarding them.
@@ -547,6 +548,64 @@ pub fn search_images(
     Ok(results)
 }
 
+/// 搜索待办列表（按 title 匹配）
+pub fn search_todos(
+    vfs_db: &Arc<VfsDatabase>,
+    query: &str,
+    options: &DstuListOptions,
+) -> Result<Vec<DstuNode>, String> {
+    let conn = vfs_db.get_conn_safe().map_err(|e| e.to_string())?;
+    let escaped_query = escape_like_pattern(query);
+    let search_pattern = format!("%{}%", escaped_query);
+    let limit = options.get_limit();
+    let offset = options.get_offset();
+
+    let mut stmt = conn
+        .prepare(
+            r#"
+        SELECT id, resource_id, title, description, icon, color, sort_order, is_default, is_favorite, created_at, updated_at, deleted_at
+        FROM todo_lists
+        WHERE deleted_at IS NULL AND title LIKE ?1 ESCAPE '\'
+        ORDER BY updated_at DESC
+        LIMIT ?2 OFFSET ?3
+        "#,
+        )
+        .map_err(|e| e.to_string())?;
+
+    let rows = stmt
+        .query_map(params![search_pattern, limit, offset], |row| {
+            Ok(VfsTodoList {
+                id: row.get(0)?,
+                resource_id: row.get(1)?,
+                title: row.get(2)?,
+                description: row.get(3)?,
+                icon: row.get(4)?,
+                color: row.get(5)?,
+                sort_order: row.get(6)?,
+                is_default: row.get::<_, i32>(7)? != 0,
+                is_favorite: row.get::<_, i32>(8)? != 0,
+                created_at: row.get(9)?,
+                updated_at: row.get(10)?,
+                deleted_at: row.get(11)?,
+            })
+        })
+        .map_err(|e| e.to_string())?;
+
+    let todo_lists: Vec<VfsTodoList> = rows.filter_map(log_and_skip_err).collect();
+
+    let mut results = Vec::new();
+    for tl in todo_lists {
+        let node = todo_list_to_dstu_node(&tl);
+        if let Some(ref types) = options.types {
+            if !types.contains(&node.node_type) {
+                continue;
+            }
+        }
+        results.push(node);
+    }
+    Ok(results)
+}
+
 /// 搜索知识导图（按 title 匹配）
 pub fn search_mindmaps(
     vfs_db: &Arc<VfsDatabase>,
@@ -739,6 +798,10 @@ fn resolve_source_to_node(
             .ok()
             .flatten()
             .map(|m| mindmap_to_dstu_node(&m)),
+        "todo_lists" => VfsTodoRepo::get_todo_list(vfs_db, source_id)
+            .ok()
+            .flatten()
+            .map(|t| todo_list_to_dstu_node(&t)),
         _ => {
             log::debug!(
                 "[search_helpers] resolve_source_to_node: unknown source_table='{}'",
@@ -776,6 +839,7 @@ pub fn search_all(
             DstuNodeType::File => search_files(vfs_db, query, options),
             DstuNodeType::Image => search_images(vfs_db, query, options),
             DstuNodeType::MindMap => search_mindmaps(vfs_db, query, options),
+            DstuNodeType::Todo => search_todos(vfs_db, query, options),
             _ => Ok(Vec::new()),
         }?;
 
@@ -825,6 +889,11 @@ pub fn search_all(
     // 搜索知识导图
     if let Ok(mindmaps) = search_mindmaps(vfs_db, query, options) {
         results.extend(mindmaps);
+    }
+
+    // 搜索待办列表
+    if let Ok(todos) = search_todos(vfs_db, query, options) {
+        results.extend(todos);
     }
 
     // S-020: 按 folder_id 过滤搜索结果

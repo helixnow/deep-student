@@ -37,6 +37,7 @@ export type DstuNodeType =
   | 'image'
   | 'file'
   | 'mindmap'
+  | 'todo'
   | 'retrieval';
 
 /**
@@ -53,6 +54,7 @@ export type DstuPreviewType =
   | 'audio'
   | 'video'
   | 'mindmap'
+  | 'todo'
   | 'none'
   | 'docx'
   | 'xlsx'
@@ -450,6 +452,12 @@ export const EMPTY_RESOURCE_TEMPLATES: Record<
   Exclude<DstuNodeType, 'folder' | 'file' | 'image'>,
   DstuEmptyResourceTemplate
 > = {
+  todo: {
+    defaultName: '新待办列表',
+    content: JSON.stringify({ type: 'todo_list', title: '新待办列表', itemCount: 0 }),
+    metadata: {},
+    previewType: 'todo',
+  },
   note: {
     defaultName: '无标题笔记',
     content: '',

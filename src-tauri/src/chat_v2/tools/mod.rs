@@ -63,6 +63,7 @@ pub mod sleep_executor;
 pub mod subagent_executor;
 pub mod template_executor; // 🆕 模板设计师工具执行器
 pub mod todo_executor;
+pub mod user_todo_executor;
 pub mod types;
 pub mod workspace_executor;
 pub mod xlsx_executor; // 🆕 XLSX 电子表格读写工具执行器（umya-spreadsheet） // 🆕 Coordinator 睡眠工具执行器（睡眠/唤醒机制）
@@ -109,6 +110,7 @@ pub use sleep_executor::{get_coordinator_sleep_tool_schema, CoordinatorSleepExec
 pub use subagent_executor::{get_subagent_tool_schema, SubagentExecutor, SUBAGENT_TOOL_NAME};
 pub use template_executor::TemplateDesignerExecutor; // 🆕 模板设计师工具执行器
 pub use todo_executor::TodoListExecutor;
+pub use user_todo_executor::UserTodoExecutor;
 pub use workspace_executor::{get_workspace_tool_schemas, WorkspaceToolExecutor};
 pub use xlsx_executor::XlsxToolExecutor; // 🆕 XLSX 电子表格读写工具执行器 // 🆕 Coordinator 睡眠执行器
 

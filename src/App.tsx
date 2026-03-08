@@ -54,6 +54,8 @@ import { showGlobalNotification } from './components/UnifiedNotification';
 import { CustomScrollArea } from './components/custom-scroll-area';
 import { getErrorMessage } from './utils/errorUtils';
 import { useAppInitialization } from './hooks/useAppInitialization';
+import { useAppUpdater } from './hooks/useAppUpdater';
+import { UpdateNotificationDialog } from './components/settings/UpdateNotificationDialog';
 import { UserAgreementDialog, useUserAgreement } from './components/legal/UserAgreementDialog';
 import { useMigrationStatusListener } from './hooks/useMigrationStatusListener';
 import useTheme from './hooks/useTheme';
@@ -102,6 +104,36 @@ import {
 // ★ debugLog 别名：将本文件中的 console 调用路由到调试面板，受 debugMasterSwitch 控制
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
 const LazyGlobalDebugPanel = React.lazy(() => import('./components/dev/GlobalDebugPanel'));
+
+/**
+ * 启动时自动更新检查弹窗
+ * 仅在启动静默检查发现新版本时显示。
+ */
+function StartupUpdateNotification() {
+  const updater = useAppUpdater();
+
+  // 仅在启动检查发现更新时显示弹窗
+  const shouldShow = updater.isStartupCheck && updater.available && !!updater.info;
+
+  if (!shouldShow) return null;
+
+  return (
+    <UpdateNotificationDialog
+      open={shouldShow}
+      version={updater.info!.version}
+      body={updater.info!.body}
+      date={updater.info!.date}
+      isMobile={updater.isMobile}
+      apkUrl={updater.info!.apkUrl}
+      downloading={updater.downloading}
+      progress={updater.progress}
+      onUpdate={() => updater.downloadAndInstall()}
+      onDismiss={() => updater.dismiss()}
+      onSkipVersion={(v) => updater.skipVersion(v)}
+      onNeverRemind={() => updater.setNeverRemind()}
+    />
+  );
+}
 
 /**
  * 命令面板按钮 - 用于顶部栏
@@ -1627,6 +1659,9 @@ function App() {
       
       {/* 全局通知容器 */}
       <NotificationContainer />
+
+      {/* 启动时自动更新检查弹窗 */}
+      <StartupUpdateNotification />
       
       {/* 云存储配置弹窗 - 移到全局位置避免被 renderViewLayer 的 visibility 影响 */}
       <NotionDialog open={showCloudStorageSettings} onOpenChange={setShowCloudStorageSettings} maxWidth="max-w-[560px]">

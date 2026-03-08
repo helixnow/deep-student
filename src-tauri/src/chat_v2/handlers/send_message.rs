@@ -318,19 +318,6 @@ pub(crate) fn apply_original_skill_snapshot_overrides(
         options.active_skill_ids = Some(replay_skill_ids);
     }
 
-    let mut replay_allowed_tools = runtime_snapshot
-        .map(|snapshot| snapshot.skill_allowed_tools.clone())
-        .unwrap_or_default();
-    if let Some(snapshot) = snapshot {
-        replay_allowed_tools.extend(snapshot.effective_allowed_internal_tools.clone());
-        replay_allowed_tools.extend(snapshot.effective_allowed_external_tools.clone());
-    }
-    replay_allowed_tools.sort();
-    replay_allowed_tools.dedup();
-
-    if !replay_allowed_tools.is_empty() {
-        options.skill_allowed_tools = Some(replay_allowed_tools);
-    }
 
     if let Some(runtime_snapshot) = runtime_snapshot {
         if !runtime_snapshot.skill_contents.is_empty() {

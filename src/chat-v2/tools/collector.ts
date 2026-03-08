@@ -48,12 +48,6 @@ export interface CollectToolsOptions {
   pendingContextRefs?: ContextRef[];
   /** @deprecated Anki 工具已迁移到内置 MCP 服务器，此选项不再生效 */
   enableAnkiTools?: boolean;
-  /**
-   * 🆕 P1-B: Skill allowedTools 权限约束
-   * 如果提供，则只保留在此列表中的工具（白名单模式）
-   * undefined 表示不限制
-   */
-  skillAllowedTools?: string[];
 }
 
 /**
@@ -87,31 +81,8 @@ export function collectSchemaToolIds(options: CollectToolsOptions): CollectTools
 
   // 2. 未来可扩展：模式插件启用的工具
 
-  // 🆕 P1-B: Skill allowedTools 权限约束
-  // 如果激活的 Skill 指定了 allowedTools，则只保留白名单中的工具
-  let finalToolIds = Array.from(toolSet);
-  if (options.skillAllowedTools && options.skillAllowedTools.length > 0) {
-    const allowSet = new Set(options.skillAllowedTools.map(t => t.toLowerCase()));
-    const beforeCount = finalToolIds.length;
-    finalToolIds = finalToolIds.filter(id => {
-      const idLower = id.toLowerCase();
-      for (const allowed of allowSet) {
-        if (idLower === allowed || idLower.startsWith(allowed + '_') || idLower.startsWith(allowed)) {
-          return true;
-        }
-      }
-      return false;
-    });
-    if (finalToolIds.length < beforeCount) {
-      console.log(
-        `[ToolCollector] 🛡️ Skill allowedTools 过滤: ${beforeCount} -> ${finalToolIds.length}`,
-        { allowed: options.skillAllowedTools, remaining: finalToolIds }
-      );
-    }
-  }
-
   return {
-    schemaToolIds: finalToolIds,
+    schemaToolIds: Array.from(toolSet),
     sources,
   };
 }

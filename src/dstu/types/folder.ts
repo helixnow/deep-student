@@ -68,7 +68,7 @@ export const BUILTIN_FOLDERS: Record<BuiltinFolderType, { id: string; titleKey: 
 /**
  * 文件夹内容项类型
  */
-export type FolderItemType = 'note' | 'textbook' | 'exam' | 'translation' | 'essay' | 'image' | 'file' | 'mindmap';
+export type FolderItemType = 'note' | 'textbook' | 'exam' | 'translation' | 'essay' | 'image' | 'file' | 'mindmap' | 'todo';
 
 /**
  * VFS 文件夹内容项

@@ -285,6 +285,9 @@ export interface ChatStore {
   /** 当前激活的 Skill ID 列表（支持多选） */
   activeSkillIds: string[];
 
+  /** 后端权威的结构化 Skill 状态缓存（JSON 字符串） */
+  skillStateJson: string | null;
+
   // ========== 守卫方法 ==========
 
   /** 是否可以发送消息 */
@@ -607,6 +610,12 @@ export interface ChatStore {
 
   /** 保存会话（到数据库） */
   saveSession(): Promise<void>;
+
+  /**
+   * 设置 Skill 状态 JSON
+   * @param value Skill 状态的 JSON 字符串
+   */
+  setSkillStateJson(value: string | null): void;
 
   /**
    * 设置保存回调函数

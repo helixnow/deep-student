@@ -6,13 +6,15 @@ use std::sync::Arc;
 
 use crate::dstu::types::DstuNode;
 use crate::vfs::{
-    repos::VfsMindMapRepo, VfsDatabase, VfsEssayRepo, VfsExamRepo, VfsFileRepo, VfsNoteRepo,
-    VfsTextbookRepo, VfsTranslationRepo,
+    repos::{VfsMindMapRepo, VfsTodoRepo},
+    VfsDatabase, VfsEssayRepo, VfsExamRepo, VfsFileRepo, VfsNoteRepo, VfsTextbookRepo,
+    VfsTranslationRepo,
 };
 
 use super::{
     essay_to_dstu_node, exam_to_dstu_node, file_to_dstu_node, mindmap_to_dstu_node,
-    note_to_dstu_node, session_to_dstu_node, textbook_to_dstu_node, translation_to_dstu_node,
+    note_to_dstu_node, session_to_dstu_node, textbook_to_dstu_node, todo_list_to_dstu_node,
+    translation_to_dstu_node,
 };
 
 // ============================================================================
@@ -132,6 +134,19 @@ pub async fn get_resource_by_type_and_id(
                 Err(e.to_string())
             }
         },
+        "todos" => match VfsTodoRepo::get_todo_list(vfs_db, id) {
+            Ok(todo_list) => {
+                log::info!(
+                    "[DSTU::crud] get_resource_by_type_and_id: SUCCESS - type=todo, id={}",
+                    id
+                );
+                Ok(todo_list.map(|t| todo_list_to_dstu_node(&t)))
+            }
+            Err(e) => {
+                log::error!("[DSTU::crud] get_resource_by_type_and_id: FAILED - type=todo, id={}, error={}", id, e);
+                Err(e.to_string())
+            }
+        },
         _ => {
             log::error!(
                 "[DSTU::crud] get_resource_by_type_and_id: unsupported type={}",
@@ -185,6 +200,11 @@ pub async fn fetch_resource_as_dstu_node(
         },
         "mindmap" => match VfsMindMapRepo::get_mindmap(vfs_db, &item.item_id) {
             Ok(Some(m)) => Ok(Some(mindmap_to_dstu_node(&m))),
+            Ok(None) => Ok(None),
+            Err(e) => Err(e.to_string()),
+        },
+        "todo" => match VfsTodoRepo::get_todo_list(vfs_db, &item.item_id) {
+            Ok(Some(t)) => Ok(Some(todo_list_to_dstu_node(&t))),
             Ok(None) => Ok(None),
             Err(e) => Err(e.to_string()),
         },

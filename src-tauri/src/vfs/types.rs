@@ -731,6 +731,332 @@ pub struct VfsUpdateMindMapParams {
 }
 
 // ============================================================================
+// 待办列表元数据
+// ============================================================================
+
+/// VFS 待办列表元数据（todo_lists 表）
+///
+/// 每个 TodoList 对应 DSTU 中的一个 "todo" 类型文件，
+/// 类比 Todoist 的"项目"概念。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VfsTodoList {
+    /// 待办列表 ID（格式：`tdl_{nanoid(10)}`）
+    pub id: String,
+
+    /// 资源 ID（内容存 resources，JSON 摘要）
+    pub resource_id: String,
+
+    /// 列表名称
+    pub title: String,
+
+    /// 描述
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+
+    /// 列表图标
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub icon: Option<String>,
+
+    /// 列表颜色
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub color: Option<String>,
+
+    /// 排序序号
+    #[serde(default)]
+    pub sort_order: i32,
+
+    /// 是否为默认收件箱
+    #[serde(default)]
+    pub is_default: bool,
+
+    /// 是否收藏
+    #[serde(default)]
+    pub is_favorite: bool,
+
+    /// 创建时间（ISO 8601）
+    pub created_at: String,
+
+    /// 更新时间（ISO 8601）
+    pub updated_at: String,
+
+    /// 软删除时间
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub deleted_at: Option<String>,
+}
+
+impl VfsTodoList {
+    /// 生成待办列表 ID
+    pub fn generate_id() -> String {
+        format!("tdl_{}", nanoid::nanoid!(10))
+    }
+}
+
+/// 待办项（todo_items 表）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VfsTodoItem {
+    /// 待办项 ID（格式：`ti_{nanoid(10)}`）
+    pub id: String,
+
+    /// 所属列表 ID
+    pub todo_list_id: String,
+
+    /// 标题
+    pub title: String,
+
+    /// 详细描述（Markdown）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+
+    /// 状态：pending | completed | cancelled
+    #[serde(default = "default_todo_status")]
+    pub status: String,
+
+    /// 优先级：none | low | medium | high | urgent
+    #[serde(default = "default_todo_priority")]
+    pub priority: String,
+
+    /// 截止日期（YYYY-MM-DD）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub due_date: Option<String>,
+
+    /// 截止时间（HH:mm）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub due_time: Option<String>,
+
+    /// 提醒时间（ISO 8601）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reminder: Option<String>,
+
+    /// 标签列表（JSON 数组）
+    #[serde(default = "default_empty_json_array")]
+    pub tags_json: String,
+
+    /// 排序序号
+    #[serde(default)]
+    pub sort_order: i32,
+
+    /// 父任务 ID（子任务支持）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parent_id: Option<String>,
+
+    /// 完成时间（ISO 8601）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub completed_at: Option<String>,
+
+    /// 重复任务配置（JSON）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub repeat_json: Option<String>,
+
+    /// 关联 DSTU 资源 ID（JSON 数组）
+    #[serde(default = "default_empty_json_array")]
+    pub attachments_json: String,
+
+    /// 创建时间（ISO 8601）
+    pub created_at: String,
+
+    /// 更新时间（ISO 8601）
+    pub updated_at: String,
+
+    /// 软删除时间
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub deleted_at: Option<String>,
+}
+
+fn default_todo_status() -> String {
+    "pending".to_string()
+}
+
+fn default_todo_priority() -> String {
+    "none".to_string()
+}
+
+fn default_empty_json_array() -> String {
+    "[]".to_string()
+}
+
+impl VfsTodoItem {
+    /// 生成待办项 ID
+    pub fn generate_id() -> String {
+        format!("ti_{}", nanoid::nanoid!(10))
+    }
+}
+
+/// 创建待办列表参数
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VfsCreateTodoListParams {
+    /// 列表名称
+    pub title: String,
+
+    /// 描述
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+
+    /// 图标
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub icon: Option<String>,
+
+    /// 颜色
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub color: Option<String>,
+
+    /// 是否为默认列表
+    #[serde(default)]
+    pub is_default: bool,
+}
+
+/// 更新待办列表参数
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VfsUpdateTodoListParams {
+    /// 新标题
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+
+    /// 新描述
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+
+    /// 新图标
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub icon: Option<String>,
+
+    /// 新颜色
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub color: Option<String>,
+}
+
+/// 创建待办项参数
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VfsCreateTodoItemParams {
+    /// 所属列表 ID
+    pub todo_list_id: String,
+
+    /// 标题
+    pub title: String,
+
+    /// 描述
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+
+    /// 优先级
+    #[serde(default = "default_todo_priority")]
+    pub priority: String,
+
+    /// 截止日期
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub due_date: Option<String>,
+
+    /// 截止时间
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub due_time: Option<String>,
+
+    /// 标签
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tags: Option<Vec<String>>,
+
+    /// 父任务 ID
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parent_id: Option<String>,
+
+    /// 关联资源 ID
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub attachments: Option<Vec<String>>,
+}
+
+/// 更新待办项参数
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VfsUpdateTodoItemParams {
+    /// 新标题
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+
+    /// 新描述
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+
+    /// 新状态
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status: Option<String>,
+
+    /// 新优先级
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub priority: Option<String>,
+
+    /// 新截止日期
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub due_date: Option<String>,
+
+    /// 新截止时间
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub due_time: Option<String>,
+
+    /// 新提醒时间
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reminder: Option<String>,
+
+    /// 新标签
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tags: Option<Vec<String>>,
+
+    /// 新父任务
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parent_id: Option<String>,
+
+    /// 新关联资源
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub attachments: Option<Vec<String>>,
+
+    /// 新重复配置
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub repeat_json: Option<String>,
+}
+
+/// 活跃待办摘要（用于 System Prompt 注入）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TodoActiveSummary {
+    /// 今日到期的待办
+    pub today_items: Vec<TodoSummaryItem>,
+    /// 已过期未完成的待办
+    pub overdue_items: Vec<TodoSummaryItem>,
+    /// 近 3 天到期的高优先级待办
+    pub upcoming_high_priority: Vec<TodoSummaryItem>,
+    /// 统计
+    pub stats: TodoStats,
+}
+
+/// 待办摘要条目
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TodoSummaryItem {
+    pub id: String,
+    pub title: String,
+    pub priority: String,
+    pub due_date: Option<String>,
+    pub due_time: Option<String>,
+    pub list_title: String,
+}
+
+/// 待办统计
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TodoStats {
+    /// 总未完成数
+    pub total_pending: usize,
+    /// 今日到期数
+    pub today_due: usize,
+    /// 已过期数
+    pub overdue_count: usize,
+    /// 今日已完成数
+    pub today_completed: usize,
+}
+
+// ============================================================================
 // 文件夹相关类型（契约 B）
 // ============================================================================
 

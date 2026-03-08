@@ -49,7 +49,7 @@ export type DataView = 'folder' | 'resource';
  * ★ 2025-12-07: 添加 translation 和 essay 以支持内置文件夹
  * ★ 2025-12-09: 添加 image 和 file 以支持附件资源
  */
-export type ResourceType = 'note' | 'textbook' | 'exam' | 'translation' | 'essay' | 'image' | 'file' | 'mindmap' | 'all';
+export type ResourceType = 'note' | 'textbook' | 'exam' | 'translation' | 'essay' | 'image' | 'file' | 'mindmap' | 'todo' | 'all';
 
 /**
  * 排序字段
@@ -72,7 +72,7 @@ export interface ResourceListItem {
   /** 资源类型 */
   type: ResourceType;
   /** 预览类型 */
-  previewType: 'markdown' | 'pdf' | 'image' | 'exam' | 'none' | 'docx' | 'xlsx' | 'pptx' | 'text' | 'audio' | 'video' | 'mindmap';
+  previewType: 'markdown' | 'pdf' | 'image' | 'exam' | 'none' | 'docx' | 'xlsx' | 'pptx' | 'text' | 'audio' | 'video' | 'mindmap' | 'todo';
   /** 缩略图 URL（可选，用于 Grid 视图） */
   thumbnail?: string;
   /** 内容预览（用于笔记的 Markdown 预览，仅前 200 字符） */
@@ -83,7 +83,7 @@ export interface ResourceListItem {
   createdAt?: number;
   /** 原始来源数据库 */
   // ★ 2025-12-09: 添加 translations, essays, attachments
-  sourceDb?: 'notes' | 'textbooks' | 'exam_sessions' | 'chat_v2' | 'translations' | 'essays' | 'attachments' | 'mindmaps';
+  sourceDb?: 'notes' | 'textbooks' | 'exam_sessions' | 'chat_v2' | 'translations' | 'essays' | 'attachments' | 'mindmaps' | 'todos';
   
   // ========== 教材专属字段 ==========
   /** PDF 文件路径（教材专用，用于前端生成封面） */
@@ -353,6 +353,11 @@ export const RESOURCE_TYPE_CONFIG: Record<
     icon: 'Workflow',
     color: 'text-indigo-500',
   },
+  todo: {
+    labelKey: 'learningHub:resourceType.todo',
+    icon: 'CheckSquare',
+    color: 'text-emerald-500',
+  },
 };
 
 /**
@@ -413,6 +418,7 @@ export function itemTypeToResourceType(itemType: FolderItemType): ResourceType {
     image: 'image',
     file: 'file',
     mindmap: 'mindmap',
+    todo: 'todo',
   };
   return mapping[itemType] || 'note';
 }
@@ -432,6 +438,7 @@ export function itemTypeToPreviewType(itemType: FolderItemType): ResourceListIte
     file: 'none',
     // ★ 2026-01-30: 修复 mindmap 预览类型，与后端对齐
     mindmap: 'mindmap',
+    todo: 'todo',
   };
   return mapping[itemType] || 'none';
 }
@@ -478,6 +485,7 @@ export function nodeTypeToFolderItemType(nodeType: DstuNodeType): FolderItemType
     image: 'image',
     file: 'file',
     mindmap: 'mindmap',
+    todo: 'todo',
   };
 
   return mapping[nodeType] ?? null;
@@ -496,6 +504,7 @@ const VALID_PREVIEW_TYPES: Set<ResourceListItem['previewType']> = new Set([
   'audio',
   'video',
   'mindmap',
+  'todo',
 ]);
 
 /**
@@ -525,6 +534,7 @@ export function itemTypeToSourceDb(itemType: FolderItemType): ResourceListItem['
     image: 'attachments',
     file: 'attachments',
     mindmap: 'mindmaps',
+    todo: 'todos',
   };
   return mapping[itemType] || 'notes';
 }

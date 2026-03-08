@@ -38,7 +38,7 @@ pub(crate) use super::tools::{
     BuiltinRetrievalExecutor, CanvasToolExecutor, ChatAnkiToolExecutor, ExecutionContext,
     FetchExecutor, GeneralToolExecutor, KnowledgeExecutor, MemoryToolExecutor, SkillsExecutor,
     TemplateDesignerExecutor, ToolExecutor, ToolExecutorRegistry, ToolSensitivity,
-    WorkspaceToolExecutor,
+    UserTodoExecutor, WorkspaceToolExecutor,
 };
 pub(crate) use crate::database::Database as MainDatabase;
 pub(crate) use crate::models::{
@@ -229,6 +229,7 @@ impl ChatV2Pipeline {
         registry.register(Arc::new(super::tools::TodoListExecutor::new()));
         registry.register(Arc::new(super::tools::qbank_executor::QBankExecutor::new()));
         registry.register(Arc::new(MemoryToolExecutor::new()));
+        registry.register(Arc::new(UserTodoExecutor::new()));
         registry.register(Arc::new(super::tools::SkillsExecutor::new())); // 🆕 Skills 工具执行器（渐进披露架构）
         registry.register(Arc::new(TemplateDesignerExecutor::new())); // 🆕 模板设计师工具执行器
         registry.register(Arc::new(super::tools::AskUserExecutor::new())); // 🆕 用户提问工具执行器

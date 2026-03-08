@@ -117,11 +117,9 @@ export interface SendOptions {
    */
   contextTypeHints?: string[];
 
-  /** 当前会话激活的 Skill IDs（用于后端 fail-closed 白名单判定） */
+  /** 当前会话激活的 Skill IDs */
   activeSkillIds?: string[];
 
-  /** Skill 白名单工具 ID 列表 */
-  skillAllowedTools?: string[];
   /** Skill 内容（SKILL.md 内容） */
   skillContents?: Record<string, string>;
   /** Skill 内嵌工具 Schema */

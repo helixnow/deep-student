@@ -1362,6 +1362,26 @@ pub fn run() {
             ,crate::vfs::handlers::vfs_delete_mindmap
             ,crate::vfs::handlers::vfs_list_mindmaps
             ,crate::vfs::handlers::vfs_set_mindmap_favorite
+            // 待办列表操作
+            ,crate::vfs::todo_handlers::vfs_todo_create_list
+            ,crate::vfs::todo_handlers::vfs_todo_get_list
+            ,crate::vfs::todo_handlers::vfs_todo_list_lists
+            ,crate::vfs::todo_handlers::vfs_todo_update_list
+            ,crate::vfs::todo_handlers::vfs_todo_delete_list
+            ,crate::vfs::todo_handlers::vfs_todo_toggle_list_favorite
+            ,crate::vfs::todo_handlers::vfs_todo_ensure_inbox
+            ,crate::vfs::todo_handlers::vfs_todo_create_item
+            ,crate::vfs::todo_handlers::vfs_todo_get_item
+            ,crate::vfs::todo_handlers::vfs_todo_list_items
+            ,crate::vfs::todo_handlers::vfs_todo_update_item
+            ,crate::vfs::todo_handlers::vfs_todo_toggle_item
+            ,crate::vfs::todo_handlers::vfs_todo_delete_item
+            ,crate::vfs::todo_handlers::vfs_todo_reorder_items
+            ,crate::vfs::todo_handlers::vfs_todo_list_today
+            ,crate::vfs::todo_handlers::vfs_todo_list_overdue
+            ,crate::vfs::todo_handlers::vfs_todo_list_upcoming
+            ,crate::vfs::todo_handlers::vfs_todo_search
+            ,crate::vfs::todo_handlers::vfs_todo_get_active_summary
             // 索引诊断命令
             ,crate::vfs::handlers::vfs_debug_index_status
             ,crate::vfs::handlers::vfs_reset_disabled_to_pending
