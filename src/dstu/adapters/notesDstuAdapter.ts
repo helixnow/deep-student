@@ -17,6 +17,7 @@
 
 import i18next from 'i18next';
 import { invoke } from '@tauri-apps/api/core';
+import { isOpaqueDocumentId } from '@/utils/fileManager';
 import { dstu } from '../api';
 import { pathUtils } from '../utils/pathUtils';
 import type { DstuNode, DstuNodeType, DstuListOptions } from '../types';
@@ -35,7 +36,30 @@ function deriveImportedMarkdownTitle(fileName: string): string {
     return i18next.t('dstu:adapters.notes.untitled');
   }
 
-  return trimmed.replace(/\.(md|markdown)$/i, '').trim() || i18next.t('dstu:adapters.notes.untitled');
+  const stripped = trimmed.replace(/\.(md|markdown)$/i, '').trim();
+  if (!stripped) {
+    return i18next.t('dstu:adapters.notes.untitled');
+  }
+
+  // ★ 移动端修复：当文件名为通用占位符或不透明 document ID 时返回 null，
+  // 让调用方尝试从内容提取标题
+  if (stripped === '文件' || isOpaqueDocumentId(stripped)) {
+    return '';
+  }
+
+  return stripped;
+}
+
+/** 从 Markdown 内容提取第一个 H1 标题（与后端 extract_first_heading 对齐） */
+function extractFirstHeading(content: string): string | null {
+  for (const line of content.split('\n')) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith('# ')) {
+      const heading = trimmed.slice(2).trim();
+      if (heading) return heading;
+    }
+  }
+  return null;
 }
 
 function normalizeMarkdownContent(content: string): string {
@@ -244,8 +268,15 @@ export const notesDstuAdapter = {
     folderId?: string | null,
   ): Promise<Result<DstuNode, VfsError>> {
     const path = '/';
-    const title = deriveImportedMarkdownTitle(fileName);
-    console.log(LOG_PREFIX, 'importMarkdownContent via DSTU:', fileName, 'folderId:', folderId);
+    let title = deriveImportedMarkdownTitle(fileName);
+
+    // ★ 移动端修复：当文件名无法提取有效标题时，从 Markdown 内容提取 H1
+    if (!title) {
+      title = extractFirstHeading(content)
+        || `导入笔记_${new Date().toISOString().replace(/[-:T]/g, '').slice(0, 15)}`;
+    }
+
+    console.log(LOG_PREFIX, 'importMarkdownContent via DSTU:', fileName, 'title:', title, 'folderId:', folderId);
 
     const result = await dstu.create(path, {
       type: 'note',

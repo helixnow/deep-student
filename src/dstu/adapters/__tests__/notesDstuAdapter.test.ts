@@ -19,6 +19,20 @@ vi.mock('i18next', () => ({
   },
 }));
 
+vi.mock('@/utils/fileManager', () => ({
+  isOpaqueDocumentId: (name: string) => {
+    // 含冒号且冒号后全是数字
+    const colonIdx = name.indexOf(':');
+    if (colonIdx > 0) {
+      const afterColon = name.slice(colonIdx + 1);
+      if (afterColon.length > 0 && /^\d+$/.test(afterColon)) return true;
+    }
+    // 纯数字
+    if (name.length > 0 && /^\d+$/.test(name)) return true;
+    return false;
+  },
+}));
+
 describe('notesDstuAdapter markdown import', async () => {
   const { notesDstuAdapter } = await import('../notesDstuAdapter');
 
@@ -104,5 +118,56 @@ describe('notesDstuAdapter markdown import', async () => {
       content: 'body',
       metadata: undefined,
     });
+  });
+
+  it('extracts H1 heading when filename is opaque document ID', async () => {
+    createMock.mockResolvedValue({
+      ok: true,
+      value: { id: 'note_4', name: '线性代数笔记', type: 'note' },
+    });
+
+    await notesDstuAdapter.importMarkdownContent(
+      '446',
+      '# 线性代数笔记\n\n内容...',
+    );
+
+    expect(createMock).toHaveBeenCalledWith('/', expect.objectContaining({
+      type: 'note',
+      name: '线性代数笔记',
+    }));
+  });
+
+  it('generates timestamp title when filename is generic placeholder and no H1', async () => {
+    createMock.mockResolvedValue({
+      ok: true,
+      value: { id: 'note_5', name: '导入笔记_test', type: 'note' },
+    });
+
+    await notesDstuAdapter.importMarkdownContent(
+      '文件',
+      '没有标题的普通文本',
+    );
+
+    expect(createMock).toHaveBeenCalledWith('/', expect.objectContaining({
+      type: 'note',
+      name: expect.stringMatching(/^导入笔记_/),
+    }));
+  });
+
+  it('extracts H1 when filename is document:ID pattern', async () => {
+    createMock.mockResolvedValue({
+      ok: true,
+      value: { id: 'note_6', name: 'My Notes', type: 'note' },
+    });
+
+    await notesDstuAdapter.importMarkdownContent(
+      'document:1000019790',
+      '# My Notes\n\ncontent',
+    );
+
+    expect(createMock).toHaveBeenCalledWith('/', expect.objectContaining({
+      type: 'note',
+      name: 'My Notes',
+    }));
   });
 });

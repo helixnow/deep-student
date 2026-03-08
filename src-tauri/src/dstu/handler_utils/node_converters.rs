@@ -12,6 +12,7 @@ use tauri::{Emitter, Window};
 
 use super::super::path_parser::build_simple_resource_path;
 use super::super::types::{DstuNode, DstuNodeType, DstuWatchEvent};
+use crate::unified_file_manager;
 use crate::vfs::{
     VfsAttachment, VfsEssay, VfsEssaySession, VfsExamSheet, VfsFile, VfsMindMap, VfsNote,
     VfsTextbook, VfsTodoList, VfsTranslation,
@@ -20,6 +21,29 @@ use crate::vfs::{
 // ============================================================================
 // 辅助函数
 // ============================================================================
+
+/// ★ 移动端修复：当教材/文件的 file_name 是不透明 document ID 时，
+/// 生成用户友好的显示名称（兼容旧数据）。
+fn sanitize_textbook_display_name(file_name: &str, created_at: &str) -> String {
+    let trimmed = file_name.trim();
+    // 分离扩展名和主文件名
+    let (base, ext) = match trimmed.rfind('.') {
+        Some(dot_pos) if dot_pos > 0 && dot_pos < trimmed.len() - 1 => {
+            (&trimmed[..dot_pos], Some(&trimmed[dot_pos..]))
+        }
+        _ => (trimmed, None),
+    };
+
+    if base == "文件" || unified_file_manager::is_opaque_document_id(base) {
+        let ext_suffix = ext.unwrap_or("");
+        let ts = parse_timestamp(created_at);
+        let dt = chrono::DateTime::from_timestamp_millis(ts)
+            .unwrap_or_else(chrono::Utc::now);
+        format!("导入文档_{}{}", dt.format("%Y%m%d_%H%M%S"), ext_suffix)
+    } else {
+        file_name.to_string()
+    }
+}
 
 /// 解析时间戳字符串为毫秒
 pub fn parse_timestamp(s: &str) -> i64 {
@@ -195,10 +219,14 @@ pub fn textbook_to_dstu_node(textbook: &VfsTextbook) -> DstuNode {
     // ★ T09: 根据文件扩展名设置正确的预览类型（使用枚举）
     let preview_type = get_textbook_preview_type(&textbook.file_name);
 
+    // ★ 移动端修复：当数据库中存储的 file_name 是不透明 document ID 时，
+    // 生成用户友好的显示名称（兼容旧数据）
+    let display_name = sanitize_textbook_display_name(&textbook.file_name, &textbook.created_at);
+
     DstuNode::resource(
         &textbook.id,
         &path,
-        &textbook.file_name,
+        &display_name,
         DstuNodeType::Textbook,
         &resource_id,
     )
@@ -424,7 +452,10 @@ pub fn file_to_dstu_node(file: &VfsFile) -> DstuNode {
     // ★ T09: 使用 PreviewType 枚举
     let preview_type = get_textbook_preview_type(&file.file_name);
 
-    DstuNode::resource(&file.id, &path, &file.file_name, node_type, &file.sha256)
+    // ★ 移动端修复：file_name 不透明 ID 兼容处理
+    let display_name = sanitize_textbook_display_name(&file.file_name, &file.created_at);
+
+    DstuNode::resource(&file.id, &path, &display_name, node_type, &file.sha256)
         .with_timestamps(created_at, updated_at)
         .with_size(file.size as u64)
         .with_preview_type(preview_type.to_string())
@@ -660,5 +691,49 @@ mod tests {
         let id1 = generate_resource_id(&DstuNodeType::Note);
         let id2 = generate_resource_id(&DstuNodeType::Note);
         assert_ne!(id1, id2);
+    }
+
+    // ------------------------------------------------------------------------
+    // sanitize_textbook_display_name 测试
+    // ------------------------------------------------------------------------
+
+    #[test]
+    fn test_sanitize_keeps_normal_filenames() {
+        assert_eq!(
+            sanitize_textbook_display_name("线代笔记.pdf", "2025-01-15T10:30:00Z"),
+            "线代笔记.pdf"
+        );
+        assert_eq!(
+            sanitize_textbook_display_name("chapter1.docx", "2025-01-15T10:30:00Z"),
+            "chapter1.docx"
+        );
+    }
+
+    #[test]
+    fn test_sanitize_replaces_pure_numeric_id() {
+        let result = sanitize_textbook_display_name("446.pdf", "2025-01-15T10:30:00Z");
+        assert!(result.starts_with("导入文档_"), "got: {}", result);
+        assert!(result.ends_with(".pdf"), "got: {}", result);
+    }
+
+    #[test]
+    fn test_sanitize_replaces_document_colon_id() {
+        let result = sanitize_textbook_display_name("document:1000019790.pdf", "2025-06-01T00:00:00Z");
+        assert!(result.starts_with("导入文档_"), "got: {}", result);
+        assert!(result.ends_with(".pdf"), "got: {}", result);
+    }
+
+    #[test]
+    fn test_sanitize_replaces_generic_placeholder() {
+        let result = sanitize_textbook_display_name("文件.pdf", "2025-01-15T10:30:00Z");
+        assert!(result.starts_with("导入文档_"), "got: {}", result);
+        assert!(result.ends_with(".pdf"), "got: {}", result);
+    }
+
+    #[test]
+    fn test_sanitize_handles_no_extension() {
+        let result = sanitize_textbook_display_name("446", "2025-01-15T10:30:00Z");
+        assert!(result.starts_with("导入文档_"), "got: {}", result);
+        assert!(!result.contains('.'), "should have no extension, got: {}", result);
     }
 }

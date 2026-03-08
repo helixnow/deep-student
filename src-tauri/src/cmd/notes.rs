@@ -101,9 +101,24 @@ fn extract_first_heading(content: &str) -> Option<String> {
 }
 
 /// 判断标题是否为通用占位符（无法从 URI 解析出真实文件名时的回退值）。
+/// ★ 移动端修复：同时检测 Android 不透明 document ID（纯数字、xxx:digits 模式）
 fn is_generic_note_title(title: &str) -> bool {
     let trimmed = title.trim();
-    trimmed == "文件" || trimmed.is_empty()
+    if trimmed.is_empty() || trimmed == "文件" {
+        return true;
+    }
+    // 纯数字（如 Downloads provider 的 446）
+    if trimmed.chars().all(|c| c.is_ascii_digit()) && !trimmed.is_empty() {
+        return true;
+    }
+    // 含冒号且冒号后全是数字（如 document:1000019790、msf:62）
+    if let Some(pos) = trimmed.find(':') {
+        let after = &trimmed[pos + 1..];
+        if !after.is_empty() && after.chars().all(|c| c.is_ascii_digit()) {
+            return true;
+        }
+    }
+    false
 }
 
 fn import_markdown_note_from_local_path(
@@ -1599,9 +1614,20 @@ mod tests {
     }
 
     #[test]
+    fn is_generic_note_title_detects_opaque_document_ids() {
+        assert!(is_generic_note_title("446"));
+        assert!(is_generic_note_title("1000019790"));
+        assert!(is_generic_note_title("document:1000019790"));
+        assert!(is_generic_note_title("msf:62"));
+        assert!(is_generic_note_title("image:12345"));
+    }
+
+    #[test]
     fn is_generic_note_title_allows_real_names() {
         assert!(!is_generic_note_title("线代笔记"));
         assert!(!is_generic_note_title("notes"));
+        assert!(!is_generic_note_title("file:with_colon_text"));
+        assert!(!is_generic_note_title("chapter1"));
     }
 
     #[test]

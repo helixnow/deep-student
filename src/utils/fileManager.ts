@@ -37,7 +37,7 @@ export function extractDisplayFileName(path: string): string {
 }
 
 /** 判断提取出的名称是否为 Android 不透明 document ID 而非真实文件名 */
-function isOpaqueDocumentId(name: string): boolean {
+export function isOpaqueDocumentId(name: string): boolean {
   // 含冒号且冒号后全是数字（document:1000019790、image:12345、msf:62）
   const colonIdx = name.indexOf(':');
   if (colonIdx > 0) {
