@@ -40,7 +40,7 @@ import { PDF_OPTIONS } from '../../utils/pdfConfig';
 import { CustomScrollArea } from '../custom-scroll-area';
 
 // 配置 PDF.js worker - 使用构建基路径，避免打包后绝对路径失效
-pdfjs.GlobalWorkerOptions.workerSrc = `${import.meta.env.BASE_URL}pdf.worker.min.mjs`;
+pdfjs.GlobalWorkerOptions.workerSrc = `${import.meta.env.BASE_URL}pdf.worker.wrapper.mjs`;
 
 /** PDF 目录项 */
 interface OutlineItem {

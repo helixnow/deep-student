@@ -68,11 +68,9 @@ import { ContextRefChips } from './ContextRefChips';
 import { PageRefChips } from './PageRefChips';
 import { estimateTokenCount } from '../../utils/tokenUtils';
 import { useMobileLayoutSafe } from '@/components/layout/MobileLayoutContext';
-import { ActiveFeatureChips, useActiveFeatureChips } from './ActiveFeatureChips';
 import { ToolApprovalCard } from '../ToolApprovalCard';
 import { MobileBottomSheet } from './MobileBottomSheet';
 import { MobileSheetHeader } from './MobileSheetHeader';
-import { ActiveSkillBadge } from '../../skills/components/ActiveSkillBadge';
 import { AttachmentInjectModeSelector } from './AttachmentInjectModeSelector';
 import type { AttachmentInjectModes } from '../../core/types/common';
 import {
@@ -947,31 +945,6 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
   const hasAnyPanelOpen = panelStates.attachment || panelStates.rag || panelStates.model ||
     panelStates.advanced || panelStates.learn || panelStates.mcp || panelStates.search || panelStates.skill;
 
-  // 🔧 P3: 构建激活功能 Chips
-  // 注意：只显示真正"启用"的功能，而不是仅仅"打开面板"的功能
-  // - 面板状态（panelStates.rag/search）只表示面板是否打开，不代表功能启用
-  // - 真正的启用状态需要有独立的 boolean 标志（如 enableThinking、enableLearnMode）
-  const activeFeatures = useActiveFeatureChips({
-    // 🔧 移除推理模式 Chip：用户反馈不需要此气泡
-    // enableThinking,
-    // onToggleThinking,
-    // 🔧 移除基于面板状态的 Chip：打开面板 ≠ 启用功能
-    // ragEnabled: panelStates.rag,  // 知识库面板打开不代表启用
-    // searchEnabled: panelStates.search,  // 网络搜索面板打开不代表启用
-    textbookOpen,
-    onTextbookToggle,
-    // 🔧 MCP Chip 的关闭按钮应该清除选中的服务器，而不是关闭面板
-    onToggleMcp: onClearMcpServers,
-    selectedMcpServerCount,
-    // ★ 2026-01 改造：Anki 工具已迁移到内置 MCP 服务器，移除开关
-    // 技能 Chips 已通过 ContextRefChips 显示，这里不再重复
-    activeSkillIds,
-    onDeactivateSkill: onToggleSkill,
-  });
-
-  // 🔧 P1: 计算激活功能数量（用于 Pill Badge）
-  const activeFeatureCount = activeFeatures.length;
-
   // 🔧 面板容器 ref，用于检测点击是否在面板内
   const panelContainerRef = useRef<HTMLDivElement>(null);
   // 🔧 P1修复：检查是否有附件正在上传
@@ -1765,27 +1738,12 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
             />
           )}
 
-          {/* 🔧 P3: 激活功能 Chips - 已禁用：用户反馈不需要此功能 */}
-          {/* <ActiveFeatureChips
-            features={activeFeatures}
-            disabled={isStreaming}
-          /> */}
-
           {/* 🔧 已选中的模型 Chips */}
           {modelMentionState && modelMentionActions && (
             <ModelMentionChips
               models={modelMentionState.selectedModels}
               onRemove={modelMentionActions.removeSelectedModel}
               disabled={isStreaming}
-            />
-          )}
-
-          {activeSkillIds && activeSkillIds.length > 0 && onToggleSkill && (
-            <ActiveSkillBadge
-              activeSkillIds={activeSkillIds}
-              onDeactivateSkill={onToggleSkill}
-              disabled={isStreaming}
-              className="mb-2"
             />
           )}
 

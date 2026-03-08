@@ -88,6 +88,7 @@ const isKnownTauriHttpNoise = (message: string, stack?: string): boolean => {
   };
 })();
 
+import './polyfills/promiseWithResolvers';
 import React from "react";
 import ReactDOM from "react-dom/client";
 // 🚀 性能优化：KaTeX CSS 改为按需加载，见 src/utils/lazyStyles.ts
