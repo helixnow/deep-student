@@ -8,6 +8,9 @@ import { textbookDstuAdapter } from '@/dstu/adapters/textbookDstuAdapter';
 import { attachmentDstuAdapter } from '@/dstu/adapters/attachmentDstuAdapter';
 import { notesDstuAdapter } from '@/dstu/adapters/notesDstuAdapter';
 import { extractFileName, extractDisplayFileName, fileManager } from '@/utils/fileManager';
+import { getMemoryConfig } from '@/api/memoryApi';
+import { MemoryFolderBanner } from './components/MemoryFolderBanner';
+import { MemoryTreePreview } from './components/MemoryTreePreview';
 import { UnifiedDragDropZone, FILE_TYPES } from '@/components/shared/UnifiedDragDropZone';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useViewVisibility } from '@/hooks/useViewVisibility';
@@ -168,8 +171,23 @@ export function LearningHubSidebar({
   const currentPathDisplay = getFinderPathDisplayPath(currentPath);
   const viewCapabilities = getViewCapabilities(currentPath.viewKind);
   const currentCreatableFolderId = getCreatableFolderId(currentPath);
-  const currentQuickAccessType = getQuickAccessTypeFromPath(currentPath) ?? null;
+  const baseQuickAccessType = getQuickAccessTypeFromPath(currentPath) ?? null;
   const isTrashView = currentPath.viewKind === 'trash';
+
+  // ★ 记忆系统改造：跟踪记忆根文件夹 ID，用于高亮侧边栏
+  // 在组件挂载和 viewKind 变化时刷新（用户可能通过 MemoryView 设置了根文件夹后返回）
+  const [memoryRootFolderId, setMemoryRootFolderId] = useState<string | null>(null);
+  const refreshMemoryRootFolderId = useCallback(() => {
+    getMemoryConfig().then(c => setMemoryRootFolderId(c.memoryRootFolderId)).catch(() => {});
+  }, []);
+  useEffect(() => { refreshMemoryRootFolderId(); }, [refreshMemoryRootFolderId, currentPath.viewKind]);
+
+  // 判断当前是否在记忆文件夹内（检查面包屑中是否包含记忆根文件夹）
+  const isInMemoryFolder = memoryRootFolderId != null && (
+    currentPath.folderId === memoryRootFolderId ||
+    currentPath.breadcrumbs?.some(b => b.id === memoryRootFolderId)
+  );
+  const currentQuickAccessType = isInMemoryFolder ? 'memory' as QuickAccessType : baseQuickAccessType;
   const canCreateInCurrentView = viewCapabilities.canCreate;
   const canSearchInCurrentView = viewCapabilities.canSearch;
 
@@ -191,6 +209,14 @@ export function LearningHubSidebar({
 
   // Local state for QuickAccess collapse (折叠状态，不是隐藏)
   const [quickAccessCollapsed, setQuickAccessCollapsed] = useState(false);
+
+  // ★ 记忆系统改造：树状图预览模式（搜索时自动切回列表）
+  const [memoryTreeView, setMemoryTreeView] = useState(false);
+  useEffect(() => {
+    if (searchQuery.trim() && memoryTreeView) {
+      setMemoryTreeView(false);
+    }
+  }, [searchQuery, memoryTreeView]);
 
   // ★ 收缩态强制折叠 QuickAccess
   const effectiveQuickAccessCollapsed = quickAccessCollapsed || isCollapsed;
@@ -334,7 +360,7 @@ export function LearningHubSidebar({
         const typeSegment = parts[parts.length - 1]; // 最后一段是类型
         const quickAccessType = resolveQuickAccessType(typeSegment);
         if (quickAccessType) {
-          quickAccessNavigate(quickAccessType);
+          handleQuickAccessNavigate(quickAccessType);
           return;
         }
       }
@@ -606,6 +632,24 @@ export function LearningHubSidebar({
       showGlobalNotification('error', error instanceof Error ? error.message : t('finder.markdownImport.failed', 'Markdown 导入失败'));
     }
   }, [currentCreatableFolderId, ensureCreatableView, handleRefresh, importMarkdownPathNotes, notifyMarkdownImportResult, openImportedMarkdownNote, t]);
+
+  // ★ 记忆系统改造：拦截"记忆"入口，导航到记忆根文件夹
+  const handleQuickAccessNavigate = useCallback(async (type: QuickAccessType) => {
+    if (type === 'memory') {
+      try {
+        const config = await getMemoryConfig();
+        if (config.memoryRootFolderId) {
+          // 记忆根文件夹已配置，直接导航到该文件夹
+          enterFolder(config.memoryRootFolderId, config.memoryRootFolderTitle || '记忆');
+          return;
+        }
+      } catch (e) {
+        console.warn('[LearningHub] Failed to get memory config, falling back to MemoryView:', e);
+      }
+      // 未配置根文件夹或获取失败，回退到 MemoryView（用于引导设置）
+    }
+    quickAccessNavigate(type);
+  }, [enterFolder, quickAccessNavigate]);
 
   const focusSearchInput = useCallback(() => {
     setQuickAccessCollapsed(false);
@@ -2142,7 +2186,7 @@ export function LearningHubSidebar({
         <FinderQuickAccess
           collapsed={effectiveQuickAccessCollapsed}
           activeType={currentQuickAccessType}
-          onNavigate={quickAccessNavigate}
+          onNavigate={handleQuickAccessNavigate}
           onToggleCollapse={() => setQuickAccessCollapsed(!quickAccessCollapsed)}
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
@@ -2454,7 +2498,7 @@ export function LearningHubSidebar({
           </Suspense>
         ) : currentPath.viewKind === 'desktop' ? (
           <DesktopView
-            onNavigateQuickAccess={quickAccessNavigate}
+            onNavigateQuickAccess={handleQuickAccessNavigate}
             onOpenResource={async (resourceId, resourceType) => {
               // ★ 2026-01-31: 桌面快捷方式打开资源
               // 首先尝试从 items 中查找（如果恰好在当前视图中）
@@ -2521,6 +2565,25 @@ export function LearningHubSidebar({
             }}
           />
         ) : (
+          <>
+          {/* ★ 记忆系统改造：记忆文件夹内显示专属工具栏 */}
+          {isInMemoryFolder && mode !== 'canvas' && (
+            <MemoryFolderBanner
+              onRefresh={handleRefresh}
+              isTreeView={memoryTreeView}
+              onToggleTreeView={() => setMemoryTreeView(v => !v)}
+            />
+          )}
+          {/* ★ 记忆系统改造：树状图预览模式 */}
+          {isInMemoryFolder && memoryTreeView && mode !== 'canvas' ? (
+            <MemoryTreePreview
+              onNavigateToFolder={(folderId) => {
+                setMemoryTreeView(false);
+                enterFolder(folderId);
+              }}
+              className="flex-1"
+            />
+          ) : (
           <FinderFileList
             items={items}
             viewMode={isCollapsed || mode === 'canvas' ? 'list' : viewMode}
@@ -2564,6 +2627,8 @@ export function LearningHubSidebar({
             onRetry={handleRefresh}
             highlightedIds={highlightedIds}
           />
+          )}
+          </>
         )}
       
         {/* Batch Operation Toolbar + View Mode Toggle + App Close - canvas 模式用顶部工具栏 */}

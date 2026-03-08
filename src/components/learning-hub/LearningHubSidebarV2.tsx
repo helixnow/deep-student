@@ -6,7 +6,7 @@
  * ★ 2026-01-31: 同步桌面端分组结构和自定义 SVG 图标
  */
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useShallow } from 'zustand/react/shallow';
 import {
@@ -16,6 +16,7 @@ import {
   UnifiedSidebarItem,
 } from '@/components/ui/unified-sidebar';
 import { useFinderStore } from './stores/finderStore';
+import { getMemoryConfig } from '@/api/memoryApi';
 import { useLearningHubNavigationSafe } from './LearningHubNavigationContext';
 import type { LearningHubSidebarProps } from './types';
 import { usePageMount } from '@/debug-panel/hooks/usePageLifecycle';
@@ -104,10 +105,12 @@ export function LearningHubSidebarV2({
   const {
     currentPath,
     quickAccessNavigate,
+    enterFolder,
   } = useFinderStore(
     useShallow((state) => ({
       currentPath: state.currentPath,
       quickAccessNavigate: state.quickAccessNavigate,
+      enterFolder: state.enterFolder,
     }))
   );
 
@@ -125,10 +128,21 @@ export function LearningHubSidebarV2({
     return getQuickAccessTypeFromPath(currentPath) || 'allFiles';
   }, [currentPath]);
 
-  const handleQuickAccessClick = (type: QuickAccessType) => {
-    // ★ 统一使用 quickAccessNavigate 处理所有类型
+  // ★ 记忆系统改造：拦截“记忆”入口，导航到记忆根文件夹
+  const handleQuickAccessClick = useCallback(async (type: QuickAccessType) => {
+    if (type === 'memory') {
+      try {
+        const config = await getMemoryConfig();
+        if (config.memoryRootFolderId) {
+          enterFolder(config.memoryRootFolderId, config.memoryRootFolderTitle || '记忆');
+          return;
+        }
+      } catch (e) {
+        console.warn('[LearningHubSidebarV2] Failed to get memory config:', e);
+      }
+    }
     quickAccessNavigate(type);
-  };
+  }, [enterFolder, quickAccessNavigate]);
 
   // ★ 渲染导航项（使用自定义 SVG 图标）
   const renderNavItem = (item: QuickAccessItem) => {

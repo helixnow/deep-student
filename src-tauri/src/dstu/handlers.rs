@@ -79,6 +79,17 @@ use crate::vfs::{
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 
 // ============================================================================
+// 记忆系统隐藏名称检测
+// ============================================================================
+
+/// 检测名称是否为记忆系统保留名称（以 `__` 开头且以 `__` 结尾）
+/// 这些文件夹/笔记是记忆系统内部使用的，不应在 Finder 中展示给用户
+fn is_memory_system_hidden_name(name: &str) -> bool {
+    let trimmed = name.trim();
+    trimmed.len() > 4 && trimmed.starts_with("__") && trimmed.ends_with("__")
+}
+
+// ============================================================================
 // 输入验证常量
 // ============================================================================
 
@@ -184,6 +195,8 @@ async fn dstu_list_folder_first(
                 false
             }
         });
+        // ★ 记忆系统改造：收藏列表也需隐藏 __*__ 系统保留笔记
+        results.retain(|node| !is_memory_system_hidden_name(&node.name));
         log::info!(
             "[DSTU::handlers] dstu_list_folder_first: after favorite filter, count={}",
             results.len()
@@ -219,7 +232,10 @@ async fn dstu_list_folder_first(
                 "[DSTU::handlers] dstu_list_folder_first: smart folder mode, type_filter={:?}",
                 type_filter
             );
-            return list_resources_by_type_with_folder_path(vfs_db, type_filter, options).await;
+            let mut smart_results = list_resources_by_type_with_folder_path(vfs_db, type_filter, options).await?;
+            // ★ 记忆系统改造：智能文件夹也需隐藏 __*__ 系统保留笔记
+            smart_results.retain(|node| !is_memory_system_hidden_name(&node.name));
+            return Ok(smart_results);
         }
     }
 
@@ -292,6 +308,10 @@ async fn dstu_list_folder_first(
             crate::vfs::VfsFolderRepo::list_folders_by_parent(vfs_db, Some(actual_folder_id))
                 .map_err(|e| e.to_string())?;
         for sub_folder in sub_folders {
+            // ★ 记忆系统改造：隐藏 __system__ 等系统保留文件夹
+            if is_memory_system_hidden_name(&sub_folder.title) {
+                continue;
+            }
             let sub_path = format!("{}/{}", folder_path, sub_folder.title);
             results.push(DstuNode::folder(
                 &sub_folder.id,
@@ -319,6 +339,10 @@ async fn dstu_list_folder_first(
                 .unwrap_or_else(|| format!("{}/{}", folder_path, &item.item_id));
 
             if let Some(node) = fetch_resource_as_dstu_node(vfs_db, &item, &resource_path).await? {
+                // ★ 记忆系统改造：隐藏 __user_profile__、__cat_*__ 等系统保留笔记
+                if is_memory_system_hidden_name(&node.name) {
+                    continue;
+                }
                 results.push(node);
             }
         }
@@ -326,6 +350,9 @@ async fn dstu_list_folder_first(
         results = list_resources_by_type_with_folder_path(vfs_db, type_filter, options).await?;
     }
     // 注意：收藏模式已在函数开头优先处理，不会到达这里
+
+    // ★ 记忆系统改造：最终结果统一隐藏 __*__ 系统保留文件夹/笔记
+    results.retain(|node| !is_memory_system_hidden_name(&node.name));
 
     // 排序
     let sort_by = options.sort_by.as_deref().unwrap_or("updatedAt");
@@ -3058,7 +3085,9 @@ pub async fn dstu_search(
     log::info!("[DSTU::handlers] dstu_search: query={}", query);
 
     let options = options.unwrap_or_default();
-    let results = search_all(&vfs_db, &query, &options)?;
+    let mut results = search_all(&vfs_db, &query, &options)?;
+    // ★ 记忆系统改造：全局搜索结果也需隐藏 __*__ 系统保留笔记
+    results.retain(|node| !is_memory_system_hidden_name(&node.name));
     log::info!(
         "[DSTU::handlers] dstu_search: found {} results",
         results.len()
@@ -5467,6 +5496,10 @@ pub async fn dstu_search_in_folder(
             };
 
             if let Some(n) = node {
+                // ★ 记忆系统改造：搜索结果也需隐藏 __*__ 系统笔记
+                if is_memory_system_hidden_name(&n.name) {
+                    continue;
+                }
                 results.push(n);
             }
         }
@@ -5479,6 +5512,10 @@ pub async fn dstu_search_in_folder(
             for node in index_results {
                 // 只保留属于当前文件夹的资源
                 if folder_item_ids.contains(&node.id) {
+                    // ★ 记忆系统改造：搜索结果也需隐藏 __*__ 系统笔记
+                    if is_memory_system_hidden_name(&node.name) {
+                        continue;
+                    }
                     results.push(node);
                 }
             }

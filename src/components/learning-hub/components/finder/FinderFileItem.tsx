@@ -65,6 +65,39 @@ const TYPE_LABELS: Partial<Record<DstuNodeType, string>> = {
   retrieval: '检索',
 };
 
+// ★ 记忆系统改造：从笔记 tags 中提取记忆元数据
+const MEMORY_TYPE_LABELS: Record<string, string> = {
+  fact: '事实',
+  study: '学习',
+  note: '笔记',
+};
+const MEMORY_TYPE_STYLES: Record<string, string> = {
+  fact: 'bg-blue-500/10 text-blue-600 dark:text-blue-400',
+  study: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
+  note: 'bg-violet-500/10 text-violet-600 dark:text-violet-400',
+};
+const MEMORY_PURPOSE_LABELS: Record<string, string> = {
+  internalized: '内化',
+  supplementary: '补充',
+  systemic: '系统',
+};
+const MEMORY_PURPOSE_STYLES: Record<string, string> = {
+  internalized: 'bg-amber-500/10 text-amber-600 dark:text-amber-400',
+  supplementary: 'bg-slate-500/10 text-slate-500',
+  systemic: 'bg-rose-500/10 text-rose-500',
+};
+
+function extractMemoryMeta(tags: string[] | undefined) {
+  if (!tags || tags.length === 0) return null;
+  const typeTag = tags.find(t => t.startsWith('_type:'));
+  if (!typeTag) return null; // 不是记忆笔记
+  const memoryType = typeTag.slice(6);
+  const purposeTag = tags.find(t => t.startsWith('_purpose:'));
+  const memoryPurpose = purposeTag ? purposeTag.slice(9) : 'memorized';
+  const isImportant = tags.includes('_important');
+  return { memoryType, memoryPurpose, isImportant };
+}
+
 /** 自定义 SVG 图标映射 */
 const TYPE_CUSTOM_ICONS: Record<DstuNodeType, React.FC<ResourceIconProps>> = {
   folder: FolderIcon,
@@ -77,6 +110,7 @@ const TYPE_CUSTOM_ICONS: Record<DstuNodeType, React.FC<ResourceIconProps>> = {
   file: GenericFileIcon,
   retrieval: GenericFileIcon,
   mindmap: MindmapIcon,
+  todo: GenericFileIcon,
 };
 
 /**
@@ -106,6 +140,8 @@ export const FinderFileItem = React.memo(function FinderFileItem({
   const isFavorite = Boolean(item.metadata?.isFavorite);
   const snippet = item.metadata?.snippet as string | undefined;
   const matchSource = item.metadata?.matchSource as string | undefined;
+  // ★ 记忆系统改造：提取记忆元数据
+  const memoryMeta = item.type === 'note' ? extractMemoryMeta(item.metadata?.tags as string[] | undefined) : null;
 
   const handleClick = useCallback((e: React.MouseEvent) => {
     // 编辑模式下不处理点击事件
@@ -193,6 +229,22 @@ export const FinderFileItem = React.memo(function FinderFileItem({
           />
           {isFavorite && (
             <Star className="h-3 w-3 text-yellow-500 fill-yellow-500 shrink-0" />
+          )}
+          {/* ★ 记忆 badge */}
+          {memoryMeta && (
+            <>
+              <span className={cn('px-1 py-0 rounded text-[9px] font-medium shrink-0', MEMORY_TYPE_STYLES[memoryMeta.memoryType] || 'bg-muted')}>
+                {MEMORY_TYPE_LABELS[memoryMeta.memoryType] || memoryMeta.memoryType}
+              </span>
+              {memoryMeta.memoryPurpose !== 'memorized' && MEMORY_PURPOSE_LABELS[memoryMeta.memoryPurpose] && (
+                <span className={cn('px-1 py-0 rounded text-[9px] shrink-0', MEMORY_PURPOSE_STYLES[memoryMeta.memoryPurpose] || 'bg-muted')}>
+                  {MEMORY_PURPOSE_LABELS[memoryMeta.memoryPurpose]}
+                </span>
+              )}
+              {memoryMeta.isImportant && (
+                <Star className="h-2.5 w-2.5 text-amber-500 fill-amber-500 shrink-0" />
+              )}
+            </>
           )}
         </div>
         

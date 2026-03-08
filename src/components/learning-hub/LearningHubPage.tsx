@@ -23,6 +23,7 @@ import type { DstuNode } from '@/dstu/types';
 import { createEmpty, dstu, type CreatableResourceType } from '@/dstu';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { setPendingMemoryLocate } from '@/utils/pendingMemoryLocate';
+import { getMemoryConfig } from '@/api/memoryApi';
 import { LearningHubSidebar } from './LearningHubSidebar';
 import type { ResourceListItem, ResourceType } from './types';
 import { cn } from '@/lib/utils';
@@ -302,8 +303,23 @@ export const LearningHubPage: React.FC = () => {
   const finderJumpToBreadcrumb = useFinderStore(state => state.jumpToBreadcrumb);
   const finderRefresh = useFinderStore(state => state.refresh);
   const finderQuickAccessNavigate = useFinderStore(state => state.quickAccessNavigate);
+  const finderEnterFolder = useFinderStore(state => state.enterFolder);
   const finderBreadcrumbs = finderCurrentPath.breadcrumbs;
   const finderViewCapabilities = getViewCapabilities(finderCurrentPath.viewKind);
+
+  // ★ 记忆系统改造：导航到记忆文件夹（优先 enterFolder，回退 MemoryView）
+  const navigateToMemory = useCallback(async () => {
+    try {
+      const config = await getMemoryConfig();
+      if (config.memoryRootFolderId) {
+        finderEnterFolder(config.memoryRootFolderId, config.memoryRootFolderTitle || '记忆');
+        return;
+      }
+    } catch (e) {
+      console.warn('[LearningHubPage] Failed to get memory config:', e);
+    }
+    finderQuickAccessNavigate('memory');
+  }, [finderEnterFolder, finderQuickAccessNavigate]);
 
   // ========== VFS 引用模式注入 ==========
   const { injectToChat, canInject, isInjecting } = useVfsContextInject();
@@ -646,7 +662,7 @@ export const LearningHubPage: React.FC = () => {
     // 根据 preferTab 导航到对应视图
     if (preferTab === 'memory') {
       // 用户记忆视图
-      finderQuickAccessNavigate('memory');
+      await navigateToMemory();
       const memoryId = locator?.sourceId || locator?.resourceId;
       if (memoryId) {
         setPendingMemoryLocate(memoryId);
@@ -707,12 +723,12 @@ export const LearningHubPage: React.FC = () => {
         setScreenPosition('right');
       }
     } else {
-      finderQuickAccessNavigate('memory');
+      navigateToMemory();
       if (isSmallScreen) {
         setScreenPosition('center');
       }
     }
-  }, [finderQuickAccessNavigate, isSmallScreen, t, openTab]);
+  }, [navigateToMemory, isSmallScreen, t, openTab]);
 
   // ========== 打开应用（从 ResourceListItem） ==========
   const handleOpenApp = useCallback((item: ResourceListItem) => {
