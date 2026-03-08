@@ -318,19 +318,6 @@ impl ToolExecutor for SkillsExecutor {
                                             merged.dedup();
                                             merged
                                         },
-                                        skill_allowed_tools: {
-                                            let mut allowed = authoritative_skill_state
-                                                .effective_allowed_internal_tools
-                                                .clone();
-                                            allowed.extend(
-                                                authoritative_skill_state
-                                                    .effective_allowed_external_tools
-                                                    .clone(),
-                                            );
-                                            allowed.sort();
-                                            allowed.dedup();
-                                            allowed
-                                        },
                                         skill_contents: previous_runtime.skill_contents.clone(),
                                         skill_embedded_tools: previous_runtime
                                             .skill_embedded_tools
