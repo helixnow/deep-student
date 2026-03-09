@@ -24,6 +24,8 @@ export interface PomodoroState {
   sessionStartTime: string | null;
   settings: PomodoroSettings;
   completedPomodorosToday: number;
+  lastActiveDate: string | null;
+  isImmersive: boolean;
   
   // Actions
   start: (taskId?: string, taskTitle?: string) => void;
@@ -33,4 +35,5 @@ export interface PomodoroState {
   tick: () => void;
   completeCurrentSession: () => void;
   updateSettings: (settings: Partial<PomodoroSettings>) => void;
+  setImmersive: (value: boolean) => void;
 }

@@ -62,9 +62,16 @@ export const usePomodoroStore = create<PomodoroState>()(
       sessionStartTime: null,
       settings: DEFAULT_POMODORO_SETTINGS,
       completedPomodorosToday: 0,
+      lastActiveDate: null,
+      isImmersive: false,
 
       start: (taskId?: string, taskTitle?: string) => {
         const { mode, settings } = get();
+        
+        // 跨天归零
+        const today = new Date().toDateString();
+        const { lastActiveDate, completedPomodorosToday } = get();
+        const shouldReset = lastActiveDate !== today;
         
         if (mode === 'idle') {
           set({
@@ -74,9 +81,11 @@ export const usePomodoroStore = create<PomodoroState>()(
             currentTaskId: taskId || null,
             currentTaskTitle: taskTitle || null,
             sessionStartTime: new Date().toISOString(),
+            completedPomodorosToday: shouldReset ? 0 : completedPomodorosToday,
+            lastActiveDate: today,
           });
         } else {
-          set({ status: 'running' });
+          set({ status: 'running', lastActiveDate: today });
         }
       },
 
@@ -155,10 +164,11 @@ export const usePomodoroStore = create<PomodoroState>()(
 
           set({
             completedPomodorosToday: newCompletedCount,
+            lastActiveDate: new Date().toDateString(),
             mode: nextMode,
             status: 'paused',
             timeLeft: nextTimeLeft,
-            sessionStartTime: null,
+            sessionStartTime: new Date().toISOString(),
           });
         } else {
           // Break completed — record it too
@@ -185,12 +195,17 @@ export const usePomodoroStore = create<PomodoroState>()(
             : state.timeLeft
         }));
       },
+
+      setImmersive: (value: boolean) => {
+        set({ isImmersive: value });
+      },
     }),
     {
       name: 'pomodoro-storage',
       partialize: (state) => ({ 
         settings: state.settings,
         completedPomodorosToday: state.completedPomodorosToday,
+        lastActiveDate: state.lastActiveDate,
       }),
     }
   )

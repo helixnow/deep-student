@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { Play, Pause, Square, Coffee, BrainCircuit, X } from 'lucide-react';
+import { Play, Pause, Square, Coffee, BrainCircuit, X, Maximize2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { usePomodoroStore } from './usePomodoroStore';
+import { ImmersiveFocusMode } from './ImmersiveFocusMode';
 
 export const GlobalPomodoroWidget: React.FC = () => {
-  const { mode, status, timeLeft, currentTaskTitle, start, pause, resume, stop, tick } = usePomodoroStore();
+  const { mode, status, timeLeft, currentTaskTitle, start, pause, resume, stop, tick, isImmersive, setImmersive } = usePomodoroStore();
   const [isExpanded, setIsExpanded] = useState(false);
 
   // Setup the tick interval
@@ -63,8 +64,11 @@ export const GlobalPomodoroWidget: React.FC = () => {
     setIsExpanded(false);
   };
 
-  // If idle and not expanded, we can just show a minimal icon or nothing depending on preference.
-  // For now, let's always show it if there's an active session or if it's explicitly expanded.
+  // 沉浸式专注模式
+  if (isImmersive) {
+    return <ImmersiveFocusMode onClose={() => setImmersive(false)} />;
+  }
+
   if (mode === 'idle' && !isExpanded) {
     return (
       <div 
@@ -165,6 +169,19 @@ export const GlobalPomodoroWidget: React.FC = () => {
                 </button>
               )}
             </div>
+
+            {/* 沉浸模式入口 */}
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setImmersive(true);
+              }}
+              className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors mt-1"
+              title="进入沉浸式专注模式"
+            >
+              <Maximize2 className="w-3 h-3" />
+              <span>专注模式</span>
+            </button>
           </div>
         </>
       )}

@@ -30,8 +30,8 @@ impl VfsPomodoroRepo {
     ) -> VfsResult<PomodoroRecord> {
         let conn = db.get_conn_safe()?;
         let record_id = PomodoroRecord::generate_id();
-        let now = chrono::Utc::now()
-            .format("%Y-%m-%dT%H:%M:%S%.3fZ")
+        let now = chrono::Local::now()
+            .format("%Y-%m-%dT%H:%M:%S%.3f")
             .to_string();
 
         conn.execute(
