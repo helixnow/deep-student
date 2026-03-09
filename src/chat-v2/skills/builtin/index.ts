@@ -697,7 +697,7 @@ export const literatureReviewSkill: SkillDefinition = {
 export const researchModeSkill: SkillDefinition = {
   id: 'research-mode',
   name: '调研模式',
-  description: '系统化的调研助手，帮助用户完成深度调研任务。使用 todo 工具管理调研进度，使用网络搜索工具收集信息，使用笔记工具整理调研报告。适用于技术调研、市场调研、竞品分析、产品调研等场景。',
+  description: '系统化的调研助手，帮助用户完成深度调研任务。使用 AI 内部任务进度工具（todo-tools）管理调研进度，使用网络搜索工具收集信息，使用笔记工具整理调研报告。适用于技术调研、市场调研、竞品分析、产品调研等场景。',
   version: '2.0.0',
   author: 'Deep Student',
   location: 'builtin',

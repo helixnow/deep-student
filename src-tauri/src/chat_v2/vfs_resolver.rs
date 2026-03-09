@@ -137,6 +137,20 @@ pub fn resolve_vfs_ref_to_blocks(
             }]
         }
         VfsResourceType::MindMap => resolve_mindmap(conn, vfs_ref),
+        VfsResourceType::Todo => {
+            // 待办列表：返回列表标题作为文本块
+            let text = vfs_ref
+                .snippet
+                .as_deref()
+                .or_else(|| (!vfs_ref.name.trim().is_empty()).then_some(vfs_ref.name.as_str()))
+                .unwrap_or("[待办列表]");
+            vec![ContentBlock::Text {
+                text: format!(
+                    "<todo source=\"{}\">{}</todo>",
+                    vfs_ref.source_id, text
+                ),
+            }]
+        }
     }
 }
 

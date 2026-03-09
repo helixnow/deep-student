@@ -400,6 +400,7 @@ impl VfsContentExtractor {
             VfsResourceType::Essay => Some(data.to_string()),
             VfsResourceType::File => Self::extract_file_text(data),
             VfsResourceType::MindMap => Self::extract_mindmap_text(data),
+            VfsResourceType::Todo => Some(data.to_string()),
             // Image/Retrieval：Image 内容为二进制（走 OCR），Retrieval 为临时搜索结果（不索引）
             VfsResourceType::Image | VfsResourceType::Retrieval => None,
         }
@@ -1098,12 +1099,13 @@ fn resolve_indexable_content(
             }
         }
 
-        // Note/Translation/Essay/MindMap/Retrieval：内容已在步骤 2 从 resources.data 提取
+        // Note/Translation/Essay/MindMap/Retrieval/Todo：内容已在步骤 2 从 resources.data 提取
         VfsResourceType::Note
         | VfsResourceType::Translation
         | VfsResourceType::Essay
         | VfsResourceType::MindMap
-        | VfsResourceType::Retrieval => {}
+        | VfsResourceType::Retrieval
+        | VfsResourceType::Todo => {}
     }
 
     None
@@ -1499,12 +1501,13 @@ fn resolve_indexable_pages(
             }
         }
 
-        // Note/Translation/Essay/MindMap/Retrieval：无按页结构，跳过
+        // Note/Translation/Essay/MindMap/Retrieval/Todo：无按页结构，跳过
         VfsResourceType::Note
         | VfsResourceType::Translation
         | VfsResourceType::Essay
         | VfsResourceType::MindMap
-        | VfsResourceType::Retrieval => {}
+        | VfsResourceType::Retrieval
+        | VfsResourceType::Todo => {}
     }
 
     // 回退：尝试从 resource.data 提取
@@ -2175,6 +2178,7 @@ impl VfsFullIndexingService {
                 VfsResourceType::File => "文件内容为空",
                 VfsResourceType::Note => "笔记内容为空",
                 VfsResourceType::MindMap => "导图内容为空",
+                VfsResourceType::Todo => "待办列表内容为空",
                 VfsResourceType::Translation => "翻译内容为空",
                 VfsResourceType::Essay => "作文内容为空",
                 VfsResourceType::Retrieval => "检索结果内容为空",
@@ -2783,13 +2787,14 @@ impl VfsFullIndexingService {
                 self.try_auto_ocr_pdf_pages(resource).await
             }
 
-            // Note/Translation/Essay/Exam/MindMap/Retrieval：无需 OCR
+            // Note/Translation/Essay/Exam/MindMap/Retrieval/Todo：无需 OCR
             VfsResourceType::Note
             | VfsResourceType::Translation
             | VfsResourceType::Essay
             | VfsResourceType::Exam
             | VfsResourceType::MindMap
-            | VfsResourceType::Retrieval => Ok(None),
+            | VfsResourceType::Retrieval
+            | VfsResourceType::Todo => Ok(None),
         }
     }
 

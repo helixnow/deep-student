@@ -11,7 +11,7 @@ use crate::vfs::database::VfsDatabase;
 use crate::vfs::lance_store::VfsLanceStore;
 use crate::vfs::repos::{
     VfsEssayRepo, VfsExamRepo, VfsFileRepo, VfsFolderRepo, VfsMindMapRepo, VfsNoteRepo,
-    VfsTextbookRepo, VfsTranslationRepo,
+    VfsTextbookRepo, VfsTodoRepo, VfsTranslationRepo,
 };
 
 use super::error::DstuError;
@@ -49,6 +49,7 @@ pub(crate) fn is_resource_in_trash(db: &VfsDatabase, item_type: &str, item_id: &
         }
         "folder" => "SELECT COUNT(*) FROM folders WHERE id = ?1 AND deleted_at IS NOT NULL",
         "mindmap" => "SELECT COUNT(*) FROM mindmaps WHERE id = ?1 AND deleted_at IS NOT NULL",
+        "todo" => "SELECT COUNT(*) FROM todo_lists WHERE id = ?1 AND deleted_at IS NOT NULL",
         _ => return false,
     };
     conn.query_row(sql, params![item_id], |row| row.get::<_, i64>(0))
@@ -74,6 +75,7 @@ fn lookup_resource_id(db: &VfsDatabase, item_type: &str, item_id: &str) -> Optio
             "SELECT resource_id FROM essays WHERE id = ?1"
         }
         "mindmap" => "SELECT resource_id FROM mindmaps WHERE id = ?1",
+        "todo" => "SELECT resource_id FROM todo_lists WHERE id = ?1",
         _ => return None,
     };
     conn.query_row(sql, params![item_id], |row| row.get::<_, Option<String>>(0))
@@ -135,6 +137,7 @@ pub async fn dstu_soft_delete(
         }
         "image" | "file" => VfsFileRepo::delete_file(&db, &id),
         "mindmap" => VfsMindMapRepo::delete_mindmap(&db, &id),
+        "todo" => VfsTodoRepo::delete_todo_list(&db, &id),
         _ => {
             warn!(
                 "[DSTU::trash] Unknown item type for soft delete: {}",
@@ -196,6 +199,7 @@ pub async fn dstu_trash_restore(
         }
         "image" | "file" => VfsFileRepo::restore_file(&db, &id),
         "mindmap" => VfsMindMapRepo::restore_mindmap(&db, &id).map(|_| ()),
+        "todo" => VfsTodoRepo::restore_todo_list(&db, &id).map(|_| ()),
         _ => {
             warn!("[DSTU::trash] Unknown item type for restore: {}", item_type);
             return Err(DstuError::InvalidPath(format!(
@@ -472,6 +476,36 @@ pub async fn dstu_list_trash(
         nodes.push(node);
     }
 
+    // 8. 获取已删除的待办列表
+    let deleted_todos = match VfsTodoRepo::list_deleted_todo_lists(&db, limit + offset, 0) {
+        Ok(todos) => todos,
+        Err(e) => {
+            error!(
+                "[DSTU::trash] dstu_list_trash: list_deleted_todo_lists FAILED - error={}",
+                e
+            );
+            return Err(DstuError::VfsError(e.to_string()));
+        }
+    };
+    for tl in deleted_todos {
+        let resource_id = if tl.resource_id.is_empty() {
+            tl.id.clone()
+        } else {
+            tl.resource_id.clone()
+        };
+        let mut node = DstuNode::resource(
+            tl.id.clone(),
+            format!("/_trash/{}", tl.id),
+            tl.title.clone(),
+            DstuNodeType::Todo,
+            resource_id,
+        );
+        node.created_at = parse_timestamp(&tl.created_at);
+        node.updated_at = parse_timestamp(&tl.updated_at);
+        node.metadata = None;
+        nodes.push(node);
+    }
+
     // 全局按删除时间降序排序（updated_at 在软删除时被更新为删除时间）
     nodes.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
 
@@ -518,6 +552,7 @@ pub async fn dstu_empty_trash(
                 "SELECT resource_id FROM exam_sheets WHERE deleted_at IS NOT NULL AND resource_id IS NOT NULL",
                 "SELECT resource_id FROM translations WHERE deleted_at IS NOT NULL AND resource_id IS NOT NULL",
                 "SELECT resource_id FROM mindmaps WHERE deleted_at IS NOT NULL AND resource_id IS NOT NULL",
+                "SELECT resource_id FROM todo_lists WHERE deleted_at IS NOT NULL AND resource_id IS NOT NULL",
                 // 被删除 session 下的子 essay 的 resource_id
                 "SELECT e.resource_id FROM essays e INNER JOIN essay_sessions s ON e.session_id = s.id WHERE s.deleted_at IS NOT NULL AND e.resource_id IS NOT NULL",
             ] {
@@ -651,6 +686,18 @@ pub async fn dstu_empty_trash(
         }
     }
 
+    // 待办列表
+    match VfsTodoRepo::purge_deleted_todo_lists(&db) {
+        Ok(count) => total_deleted += count,
+        Err(e) => {
+            error!(
+                "[DSTU::trash] dstu_empty_trash: purge_deleted_todo_lists FAILED - error={}",
+                e
+            );
+            return Err(DstuError::VfsError(e.to_string()));
+        }
+    }
+
     info!(
         "[DSTU::trash] dstu_empty_trash: SUCCESS - deleted {} items",
         total_deleted
@@ -741,6 +788,7 @@ pub async fn dstu_permanently_delete(
         }
         "image" | "file" => VfsFileRepo::purge_file(&db, &id),
         "mindmap" => VfsMindMapRepo::purge_mindmap(&db, &id),
+        "todo" => VfsTodoRepo::purge_todo_list(&db, &id),
         _ => {
             warn!(
                 "[DSTU::trash] Unknown item type for permanent delete: {}",

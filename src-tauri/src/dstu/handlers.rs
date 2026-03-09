@@ -73,7 +73,7 @@ use crate::vfs::{
     VfsBlobRepo, VfsCreateEssaySessionParams, VfsCreateExamSheetParams, VfsCreateMindMapParams,
     VfsCreateNoteParams, VfsCreateTodoListParams, VfsDatabase, VfsEssayRepo, VfsExamRepo,
     VfsFileRepo, VfsFolderItem, VfsFolderRepo, VfsNoteRepo, VfsTextbookRepo, VfsTranslationRepo,
-    VfsUpdateMindMapParams, VfsUpdateNoteParams,
+    VfsUpdateMindMapParams, VfsUpdateNoteParams, VfsUpdateTodoListParams,
 };
 
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
@@ -166,6 +166,7 @@ async fn dstu_list_folder_first(
             DstuNodeType::Image,
             DstuNodeType::File,
             DstuNodeType::MindMap,
+            DstuNodeType::Todo,
         ] {
             let type_results =
                 list_resources_by_type_with_folder_path(vfs_db, *node_type, options).await?;
@@ -533,6 +534,18 @@ pub async fn dstu_get(
                 return Err(e.to_string());
             }
         },
+        "todos" => match VfsTodoRepo::get_todo_list(&vfs_db, &id) {
+            Ok(Some(todo_list)) => Some(todo_list_to_dstu_node(&todo_list)),
+            Ok(None) => None,
+            Err(e) => {
+                log::error!(
+                    "[DSTU::handlers] dstu_get: FAILED - get_todo_list error, id={}, error={}",
+                    id,
+                    e
+                );
+                return Err(e.to_string());
+            }
+        },
         "files" => match VfsFileRepo::get_file(&vfs_db, &id) {
             Ok(Some(file)) => Some(file_to_dstu_node(&file)),
             Ok(None) => None,
@@ -702,6 +715,7 @@ pub async fn dstu_create(
         DstuNodeType::Essay => "essays",
         DstuNodeType::Folder => "folders",
         DstuNodeType::MindMap => "mindmaps",
+        DstuNodeType::Todo => "todos",
         DstuNodeType::Image => "images",
         DstuNodeType::File => "files",
         _ => {
@@ -1526,6 +1540,7 @@ pub async fn dstu_move(
         "essays" => "essay",
         "folders" => "folder",
         "mindmaps" => "mindmap",
+        "todos" => "todo",
         "files" | "images" | "attachments" => "file",
         _ => {
             return Err(DstuError::invalid_node_type(resource_type).to_string());
@@ -1874,6 +1889,34 @@ pub async fn dstu_rename(
             };
 
             mindmap_to_dstu_node(&updated_mindmap)
+        }
+        "todos" => {
+            // 更新待办列表标题
+            let update_params = VfsUpdateTodoListParams {
+                title: Some(new_name.clone()),
+                description: None,
+                icon: None,
+                color: None,
+            };
+            let updated_todo = match VfsTodoRepo::update_todo_list(&vfs_db, &id, update_params) {
+                Ok(t) => {
+                    log::info!(
+                        "[DSTU::handlers] dstu_rename: SUCCESS - type=todo, id={}",
+                        id
+                    );
+                    t
+                }
+                Err(e) => {
+                    log::error!(
+                        "[DSTU::handlers] dstu_rename: FAILED - type=todo, id={}, error={}",
+                        id,
+                        e
+                    );
+                    return Err(e.to_string());
+                }
+            };
+
+            todo_list_to_dstu_node(&updated_todo)
         }
         "folders" => {
             // 获取文件夹
@@ -2518,6 +2561,57 @@ pub async fn dstu_copy(
             };
 
             mindmap_to_dstu_node(&new_mindmap)
+        }
+        "todos" => {
+            // 获取原待办列表
+            let todo_list = match VfsTodoRepo::get_todo_list(&vfs_db, &src_id) {
+                Ok(Some(t)) => t,
+                Ok(None) => {
+                    log::error!(
+                        "[DSTU::handlers] dstu_copy: FAILED - todo list not found, id={}",
+                        src_id
+                    );
+                    return Err(DstuError::not_found(&src).to_string());
+                }
+                Err(e) => {
+                    log::error!(
+                        "[DSTU::handlers] dstu_copy: FAILED - get_todo_list error, id={}, error={}",
+                        src_id,
+                        e
+                    );
+                    return Err(e.to_string());
+                }
+            };
+
+            // 创建副本
+            let new_todo = match VfsTodoRepo::create_todo_list_in_folder(
+                &vfs_db,
+                VfsCreateTodoListParams {
+                    title: format!("{} (副本)", todo_list.title),
+                    description: todo_list.description.clone(),
+                    icon: todo_list.icon.clone(),
+                    color: todo_list.color.clone(),
+                    is_default: false,
+                },
+                dest_folder_id.as_deref(),
+            ) {
+                Ok(t) => {
+                    log::info!(
+                        "[DSTU::handlers] dstu_copy: SUCCESS - created todo list copy, id={}",
+                        t.id
+                    );
+                    t
+                }
+                Err(e) => {
+                    log::error!(
+                        "[DSTU::handlers] dstu_copy: FAILED - create_todo_list error={}",
+                        e
+                    );
+                    return Err(e.to_string());
+                }
+            };
+
+            todo_list_to_dstu_node(&new_todo)
         }
         "folders" => {
             // 检查循环引用：目标文件夹不能是源文件夹或其子文件夹
@@ -3793,6 +3887,53 @@ pub async fn dstu_set_metadata(
             };
             mindmap_to_dstu_node(&updated)
         }
+        "todos" | "todo" => {
+            let mut update_params = VfsUpdateTodoListParams {
+                title: metadata.get("title").and_then(|v| v.as_str()).map(|s| s.to_string()),
+                description: metadata.get("description").and_then(|v| v.as_str()).map(|s| s.to_string()),
+                icon: metadata.get("icon").and_then(|v| v.as_str()).map(|s| s.to_string()),
+                color: metadata.get("color").and_then(|v| v.as_str()).map(|s| s.to_string()),
+            };
+
+            // 处理收藏状态
+            if let Some(favorite) = metadata.get("isFavorite").and_then(|v| v.as_bool()) {
+                // 获取当前收藏状态
+                if let Ok(Some(current)) = VfsTodoRepo::get_todo_list(&vfs_db, &id) {
+                    if current.is_favorite != favorite {
+                        let _ = VfsTodoRepo::toggle_todo_list_favorite(&vfs_db, &id);
+                    }
+                }
+            }
+
+            let has_update_fields = update_params.title.is_some() || update_params.description.is_some()
+                || update_params.icon.is_some() || update_params.color.is_some();
+
+            if has_update_fields {
+                match VfsTodoRepo::update_todo_list(&vfs_db, &id, update_params) {
+                    Ok(_) => {
+                        log::info!("[DSTU::handlers] dstu_set_metadata: updated todo list, id={}", id);
+                    }
+                    Err(e) => {
+                        log::error!("[DSTU::handlers] dstu_set_metadata: FAILED - update todo list error={}", e);
+                        return Err(e.to_string());
+                    }
+                }
+            }
+
+            // 返回更新后的节点
+            let updated = match VfsTodoRepo::get_todo_list(&vfs_db, &id) {
+                Ok(Some(t)) => t,
+                Ok(None) => {
+                    log::warn!("[DSTU::handlers] dstu_set_metadata: FAILED - todo list not found after update, id={}", id);
+                    return Err("操作失败".to_string());
+                }
+                Err(e) => {
+                    log::error!("[DSTU::handlers] dstu_set_metadata: FAILED - get_todo_list error after update, id={}, error={}", id, e);
+                    return Err(e.to_string());
+                }
+            };
+            todo_list_to_dstu_node(&updated)
+        }
         "folders" | "folder" => {
             // 获取文件夹
             let folder = match crate::vfs::VfsFolderRepo::get_folder(&vfs_db, &id) {
@@ -4120,6 +4261,24 @@ pub async fn dstu_restore(
                 None
             }
         },
+        "todos" | "todo" => match VfsTodoRepo::get_todo_list(&vfs_db, &id) {
+            Ok(Some(t)) => Some(todo_list_to_dstu_node(&t)),
+            Ok(None) => {
+                log::warn!(
+                    "[DSTU::handlers] dstu_restore: todo list not found after restore, id={}",
+                    id
+                );
+                None
+            }
+            Err(e) => {
+                log::warn!(
+                    "[DSTU::handlers] dstu_restore: get_todo_list error, id={}, error={}",
+                    id,
+                    e
+                );
+                None
+            }
+        },
         _ => None,
     };
 
@@ -4178,6 +4337,7 @@ pub async fn dstu_purge(
             "essays" | "essay" => "essay",
             "folders" | "folder" => "folder",
             "mindmaps" | "mindmap" => "mindmap",
+            "todos" | "todo" => "todo",
             _ => "",
         };
         if !trash_check_type.is_empty() && !is_resource_in_trash(&vfs_db, trash_check_type, &id) {
@@ -4512,6 +4672,19 @@ pub async fn dstu_set_favorite(
                 }
             }
         }
+        // 添加 todos 支持
+        "todos" => {
+            match VfsTodoRepo::toggle_todo_list_favorite(&vfs_db, &id) {
+                Ok(updated) => {
+                    log::info!("[DSTU::handlers] dstu_set_favorite: SUCCESS - type=todo, id={}, favorite={}", id, updated.is_favorite);
+                    todo_list_to_dstu_node(&updated)
+                }
+                Err(e) => {
+                    log::error!("[DSTU::handlers] dstu_set_favorite: FAILED - type=todo, id={}, error={}", id, e);
+                    return Err(e.to_string());
+                }
+            }
+        }
         // 添加 mindmaps 支持
         "mindmaps" => {
             match VfsMindMapRepo::set_favorite(&vfs_db, &id, favorite) {
@@ -4833,6 +5006,47 @@ pub async fn dstu_list_deleted(
 
             Ok(nodes)
         }
+        "todos" => {
+            let todos = match VfsTodoRepo::list_deleted_todo_lists(&vfs_db, limit, offset) {
+                Ok(t) => t,
+                Err(e) => {
+                    log::error!("[DSTU::handlers] dstu_list_deleted: FAILED - list_deleted_todo_lists error={}", e);
+                    return Err(e.to_string());
+                }
+            };
+
+            let nodes: Vec<DstuNode> = todos
+                .into_iter()
+                .map(|tl| {
+                    let path = build_simple_resource_path(&tl.id);
+                    let created_at = parse_timestamp(&tl.created_at);
+                    let updated_at = parse_timestamp(&tl.updated_at);
+
+                    DstuNode {
+                        id: tl.id.clone(),
+                        source_id: tl.id.clone(),
+                        name: tl.title.clone(),
+                        path,
+                        node_type: DstuNodeType::Todo,
+                        size: None,
+                        created_at,
+                        updated_at,
+                        children: None,
+                        child_count: None,
+                        resource_id: Some(tl.resource_id),
+                        resource_hash: None,
+                        preview_type: Some("todo".to_string()),
+                        metadata: Some(serde_json::json!({
+                            "is_favorite": tl.is_favorite,
+                            "is_default": tl.is_default,
+                            "deleted_at": tl.deleted_at,
+                        })),
+                    }
+                })
+                .collect();
+
+            Ok(nodes)
+        }
         _ => Err(format!(
             "Resource type '{}' does not support list_deleted operation",
             resource_type
@@ -4923,6 +5137,22 @@ pub async fn dstu_purge_all(
                 }
             }
         }
+        "todos" => match VfsTodoRepo::purge_deleted_todo_lists(&vfs_db) {
+            Ok(c) => {
+                log::info!(
+                    "[DSTU::handlers] dstu_purge_all: SUCCESS - type=todos, count={}",
+                    c
+                );
+                c
+            }
+            Err(e) => {
+                log::error!(
+                    "[DSTU::handlers] dstu_purge_all: FAILED - type=todos, error={}",
+                    e
+                );
+                return Err(e.to_string());
+            }
+        },
         _ => {
             return Err(format!(
                 "Resource type '{}' does not support purge_all operation",
@@ -5302,6 +5532,7 @@ pub async fn dstu_move_many(
             "essays" => "essay",
             "folders" => "folder",
             "mindmaps" => "mindmap",
+            "todos" => "todo",
             "files" | "images" | "attachments" => "file",
             _ => continue,
         };

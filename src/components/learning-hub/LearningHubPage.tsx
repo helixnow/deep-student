@@ -848,6 +848,7 @@ export const LearningHubPage: React.FC = () => {
       image: 'image',
       file: 'file',
       mindmap: 'mindmap',
+      todo: 'todo',
     };
     
     const sourceType = typeMapping[activeTab.type];

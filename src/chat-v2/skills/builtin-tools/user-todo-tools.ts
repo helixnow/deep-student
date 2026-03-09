@@ -11,7 +11,7 @@ import type { SkillDefinition } from '../types';
 export const userTodoToolsSkill: SkillDefinition = {
   id: 'user-todo-tools',
   name: 'user-todo-tools',
-  description: '用户待办事项管理能力组，用于创建、查看、完成用户的个人待办事项。当用户提到"帮我添加待办"、"我今天有什么任务"、"提醒我..."等与个人待办相关的请求时使用。',
+  description: '用户个人待办事项管理能力组（持久化存储），用于创建、查看、完成用户的个人待办事项。当用户提到"帮我添加待办""我今天有什么任务""提醒我..."等个人待办相关请求时使用。❗ 本工具操作用户的真实待办列表，与 AI 内部任务进度管理（todo-tools）无关。',
   version: '1.0.0',
   author: 'Deep Student',
   priority: 6,
@@ -20,7 +20,11 @@ export const userTodoToolsSkill: SkillDefinition = {
   isBuiltin: true,
   disableAutoInvoke: false,
   skillType: 'standalone',
-  content: `# 用户待办事项管理技能
+  content: `# 用户个人待办事项管理技能
+
+> ⚠️ **重要区分**：本工具组操作用户的真实待办列表（持久化存储在学习资源中心），与 AI 内部任务进度管理工具（todo-tools）完全不同。
+> - 用户说“帮我添加待办”“我今天有什么任务” → 使用本工具组 (user-todo-tools)
+> - AI 需要分解复杂任务、跟踪执行步骤 → 使用 todo-tools
 
 管理用户的个人待办事项列表。待办事项持久化存储在用户的学习资源中心。
 
@@ -43,7 +47,7 @@ export const userTodoToolsSkill: SkillDefinition = {
   embeddedTools: [
     {
       name: 'builtin-user_todo_list_lists',
-      description: '列出用户的所有待办列表。返回列表的ID、标题等信息。',
+      description: '[用户待办] 列出用户的所有个人待办列表。返回列表的ID、标题等信息。',
       inputSchema: {
         type: 'object',
         properties: {},
@@ -51,7 +55,7 @@ export const userTodoToolsSkill: SkillDefinition = {
     },
     {
       name: 'builtin-user_todo_create_item',
-      description: '在用户的待办列表中创建新的待办项。如果不指定 list_id，将使用默认收件箱。支持设置优先级和截止日期。',
+      description: '[用户待办] 在用户的个人待办列表中创建新的待办项（持久化存储）。如果不指定 list_id，将使用默认收件箱。支持设置优先级和截止日期。',
       inputSchema: {
         type: 'object',
         properties: {
@@ -76,7 +80,7 @@ export const userTodoToolsSkill: SkillDefinition = {
     },
     {
       name: 'builtin-user_todo_complete_item',
-      description: '将待办项标记为已完成。',
+      description: '[用户待办] 将用户的待办项标记为已完成。',
       inputSchema: {
         type: 'object',
         properties: {
@@ -87,7 +91,7 @@ export const userTodoToolsSkill: SkillDefinition = {
     },
     {
       name: 'builtin-user_todo_list_items',
-      description: '列出待办项。支持按列表ID筛选，也可查看今日、逾期、即将到期等视图。',
+      description: '[用户待办] 列出用户的待办项。支持按列表ID筛选，也可查看今日、逾期、即将到期等视图。',
       inputSchema: {
         type: 'object',
         properties: {
@@ -103,7 +107,7 @@ export const userTodoToolsSkill: SkillDefinition = {
     },
     {
       name: 'builtin-user_todo_get_summary',
-      description: '获取用户待办事项的总览摘要，包括今日待办、逾期项、统计数据等。',
+      description: '[用户待办] 获取用户待办事项的总览摘要，包括今日待办、逾期项、统计数据等。',
       inputSchema: {
         type: 'object',
         properties: {},
@@ -111,7 +115,7 @@ export const userTodoToolsSkill: SkillDefinition = {
     },
     {
       name: 'builtin-user_todo_update_item',
-      description: '更新待办项的属性（标题、描述、优先级、截止日期等）。',
+      description: '[用户待办] 更新用户待办项的属性（标题、描述、优先级、截止日期等）。',
       inputSchema: {
         type: 'object',
         properties: {

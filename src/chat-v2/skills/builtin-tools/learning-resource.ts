@@ -43,7 +43,7 @@ export const learningResourceSkill: SkillDefinition = {
   "limit": 20
 }
 \`\`\`
-type 可选：note/textbook/file/image/exam/essay/translation/mindmap/all
+type 可选：note/textbook/file/image/exam/essay/translation/mindmap/todo/all
 
 ### builtin-resource_read
 读取资源，参数格式：
@@ -82,6 +82,7 @@ type 可选：note/textbook/file/image/exam/essay/translation/mindmap/all
 - **essay**: 作文批改
 - **translation**: 翻译
 - **mindmap**: 知识导图
+- **todo**: 待办列表
 - **file**: 通用文件
 - **image**: 图片资源
 
@@ -109,7 +110,7 @@ parent_id 为空或 "root" 时列出根目录下的文件夹
       inputSchema: {
         type: 'object',
         properties: {
-          type: { type: 'string', description: '资源类型（可选，默认 "all" 返回所有类型）', enum: ['note', 'textbook', 'file', 'image', 'exam', 'essay', 'translation', 'mindmap', 'all'], default: 'all' },
+          type: { type: 'string', description: '资源类型（可选，默认 "all" 返回所有类型）', enum: ['note', 'textbook', 'file', 'image', 'exam', 'essay', 'translation', 'mindmap', 'todo', 'all'], default: 'all' },
           folder_id: { type: 'string', description: '可选：文件夹 ID，只列出该文件夹下的资源' },
           search: { type: 'string', description: '可选：搜索关键词，按标题/名称过滤' },
           limit: { type: 'integer', description: '返回数量限制（可选，默认 20，最多 100）。注意：此参数名为 limit，不是 max_results 或 top_k。', default: 20, minimum: 1, maximum: 100 },
@@ -142,7 +143,7 @@ parent_id 为空或 "root" 时列出根目录下的文件夹
             type: 'array',
             items: {
               type: 'string',
-              enum: ['note', 'textbook', 'file', 'image', 'exam', 'essay', 'translation', 'mindmap'],
+              enum: ['note', 'textbook', 'file', 'image', 'exam', 'essay', 'translation', 'mindmap', 'todo'],
             },
             description: '可选：限制搜索的资源类型',
           },

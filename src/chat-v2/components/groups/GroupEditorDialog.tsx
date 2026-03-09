@@ -8,7 +8,7 @@ import {
   Music, Palette, Camera, Lightbulb, Target, Trophy,
   Rocket, Brain, Sparkles, MessageSquare, FileText, Bookmark,
   Paperclip, Plus, Loader2,
-  ClipboardList, PenTool, Image as ImageIcon, File as FileIcon,
+  ClipboardList, PenTool, Image as ImageIcon, File as FileIcon, ListChecks,
 } from 'lucide-react';
 import type { VfsResourceRef } from '../../context/vfsRefTypes';
 import { getResourceRefsV2 } from '../../context/vfsRefApi';
@@ -24,6 +24,7 @@ function getResourceTypeIcon(type: string): React.ElementType {
     case 'essay': return PenTool;
     case 'image': return ImageIcon;
     case 'mindmap': return Brain;
+    case 'todo': return ListChecks;
     case 'file':
     default:
       return FileIcon;

@@ -837,8 +837,9 @@ fn resolve_single_ref_with_conn(
         | VfsResourceType::Translation
         | VfsResourceType::Essay
         | VfsResourceType::Exam
-        | VfsResourceType::Retrieval => {
-            // Note/Translation/Essay/Exam/Retrieval：直接使用 resources.data 内容
+        | VfsResourceType::Retrieval
+        | VfsResourceType::Todo => {
+            // Note/Translation/Essay/Exam/Retrieval/Todo：直接使用 resources.data 内容
             info!(
                 "[PDF_DEBUG] {:?} type: using raw_content directly, has_content={}",
                 r.resource_type,
@@ -885,13 +886,14 @@ fn resolve_single_ref_with_conn(
                 None
             }
         }
-        // Note/Translation/Essay/MindMap/Image/Retrieval：无多模态块
+        // Note/Translation/Essay/MindMap/Image/Retrieval/Todo：无多模态块
         VfsResourceType::Note
         | VfsResourceType::Translation
         | VfsResourceType::Essay
         | VfsResourceType::MindMap
         | VfsResourceType::Image
-        | VfsResourceType::Retrieval => None,
+        | VfsResourceType::Retrieval
+        | VfsResourceType::Todo => None,
     };
 
     Ok(ResolvedResource {
@@ -1086,11 +1088,12 @@ fn get_resource_content_with_conn(
             );
             Ok(None)
         }
-        // Note/Translation/Essay/Retrieval：内容在 resources.data 中，此处返回 None 走上层逻辑
+        // Note/Translation/Essay/Retrieval/Todo：内容在 resources.data 中，此处返回 None 走上层逻辑
         VfsResourceType::Note
         | VfsResourceType::Translation
         | VfsResourceType::Essay
-        | VfsResourceType::Retrieval => {
+        | VfsResourceType::Retrieval
+        | VfsResourceType::Todo => {
             info!(
                 "[PDF_DEBUG] {:?} branch: returning None (content should be in resources.data)",
                 resource_type
@@ -1463,6 +1466,8 @@ fn get_source_id_type(source_id: &str) -> Option<(VfsResourceType, &'static str,
         ))
     } else if source_id.starts_with("essay_") {
         Some((VfsResourceType::Essay, "essays", "COALESCE(title, id)"))
+    } else if source_id.starts_with("tdl_") {
+        Some((VfsResourceType::Todo, "todo_lists", "title"))
     } else {
         None
     }

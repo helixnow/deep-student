@@ -726,6 +726,10 @@ impl DstuParsedPath {
             Some("essay".to_string())
         } else if id.starts_with("fld_") {
             Some("folder".to_string())
+        } else if id.starts_with("mm_") {
+            Some("mindmap".to_string())
+        } else if id.starts_with("tdl_") {
+            Some("todo".to_string())
         } else {
             None
         }

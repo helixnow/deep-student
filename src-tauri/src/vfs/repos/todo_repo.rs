@@ -1300,6 +1300,134 @@ impl VfsTodoRepo {
         })
     }
 
+    // ========================================================================
+    // 回收站操作
+    // ========================================================================
+
+    /// 列出已删除的待办列表
+    pub fn list_deleted_todo_lists(
+        db: &VfsDatabase,
+        limit: u32,
+        offset: u32,
+    ) -> VfsResult<Vec<VfsTodoList>> {
+        let conn = db.get_conn_safe()?;
+        let mut stmt = conn.prepare(
+            r#"
+            SELECT id, resource_id, title, description, icon, color, sort_order, is_default, is_favorite, created_at, updated_at, deleted_at
+            FROM todo_lists
+            WHERE deleted_at IS NOT NULL
+            ORDER BY deleted_at DESC
+            LIMIT ?1 OFFSET ?2
+            "#,
+        )?;
+
+        let rows = stmt.query_map(params![limit, offset], Self::row_to_todo_list)?;
+        let lists: Vec<VfsTodoList> = rows.collect::<Result<Vec<_>, _>>()?;
+
+        debug!(
+            "[VFS::TodoRepo] Listed {} deleted todo lists",
+            lists.len()
+        );
+
+        Ok(lists)
+    }
+
+    /// 永久删除单个待办列表
+    pub fn purge_todo_list(db: &VfsDatabase, list_id: &str) -> VfsResult<()> {
+        let conn = db.get_conn_safe()?;
+        conn.execute("BEGIN IMMEDIATE", [])?;
+
+        let result = Self::purge_todo_list_inner(&conn, list_id);
+
+        match result {
+            Ok(_) => {
+                if let Err(commit_err) = conn.execute("COMMIT", []) {
+                    let _ = conn.execute("ROLLBACK", []);
+                    return Err(commit_err.into());
+                }
+                info!("[VFS::TodoRepo] Purged todo list: {}", list_id);
+                Ok(())
+            }
+            Err(e) => {
+                let _ = conn.execute("ROLLBACK", []);
+                Err(e)
+            }
+        }
+    }
+
+    /// 永久删除所有已删除的待办列表
+    pub fn purge_deleted_todo_lists(db: &VfsDatabase) -> VfsResult<usize> {
+        let conn = db.get_conn_safe()?;
+        let mut stmt = conn.prepare("SELECT id FROM todo_lists WHERE deleted_at IS NOT NULL")?;
+
+        let ids: Vec<String> = stmt
+            .query_map([], |row| row.get(0))?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let count = ids.len();
+        if count == 0 {
+            return Ok(0);
+        }
+
+        conn.execute("BEGIN IMMEDIATE", [])?;
+
+        let result = (|| -> VfsResult<()> {
+            for id in &ids {
+                Self::purge_todo_list_inner(&conn, id)?;
+            }
+            Ok(())
+        })();
+
+        match result {
+            Ok(_) => {
+                if let Err(commit_err) = conn.execute("COMMIT", []) {
+                    let _ = conn.execute("ROLLBACK", []);
+                    return Err(commit_err.into());
+                }
+                info!("[VFS::TodoRepo] Purged {} deleted todo lists", count);
+                Ok(count)
+            }
+            Err(e) => {
+                let _ = conn.execute("ROLLBACK", []);
+                Err(e)
+            }
+        }
+    }
+
+    /// 永久删除待办列表的内部逻辑（不含事务管理，供批量操作复用）
+    fn purge_todo_list_inner(conn: &Connection, list_id: &str) -> VfsResult<()> {
+        // 1. 获取主 resource_id
+        let resource_id: Option<String> = conn
+            .query_row(
+                "SELECT resource_id FROM todo_lists WHERE id = ?1",
+                params![list_id],
+                |row| row.get(0),
+            )
+            .optional()?;
+
+        // 2. 删除该列表下的所有待办项
+        conn.execute(
+            "DELETE FROM todo_items WHERE todo_list_id = ?1",
+            params![list_id],
+        )?;
+
+        // 3. 删除待办列表记录
+        conn.execute("DELETE FROM todo_lists WHERE id = ?1", params![list_id])?;
+
+        // 4. 删除 folder_items 记录
+        conn.execute(
+            "DELETE FROM folder_items WHERE item_id = ?1 AND item_type = 'todo'",
+            params![list_id],
+        )?;
+
+        // 5. 减少资源引用计数
+        if let Some(rid) = resource_id {
+            VfsResourceRepo::decrement_ref_with_conn(conn, &rid)?;
+        }
+
+        Ok(())
+    }
+
     fn row_to_todo_item(row: &rusqlite::Row) -> rusqlite::Result<VfsTodoItem> {
         Ok(VfsTodoItem {
             id: row.get(0)?,

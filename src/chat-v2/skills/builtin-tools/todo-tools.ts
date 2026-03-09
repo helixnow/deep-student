@@ -11,7 +11,7 @@ import type { SkillDefinition } from '../types';
 export const todoToolsSkill: SkillDefinition = {
   id: 'todo-tools',
   name: 'todo-tools',
-  description: 'TodoList 任务管理能力组，用于将复杂任务分解为可执行的子步骤并跟踪进度。当用户提出需要多步骤完成的任务时使用。',
+  description: 'AI Agent 内部任务进度管理工具，用于将复杂任务分解为可执行的子步骤并跟踪执行进度。仅用于 AI 自己的任务分解、步骤跟踪，与用户的个人待办事项无关。❗ 当用户说“帮我添加待办”“我今天有什么任务”等个人待办相关请求时，请使用 user-todo-tools 而非本工具。',
   version: '1.0.0',
   author: 'Deep Student',
   priority: 5,
@@ -20,7 +20,10 @@ export const todoToolsSkill: SkillDefinition = {
   isBuiltin: true,
   disableAutoInvoke: false,
   skillType: 'standalone',
-  content: `# TodoList 任务管理技能
+  content: `# AI Agent 内部任务进度管理技能
+
+> ⚠️ **重要区分**：本工具组是 AI 自己用于分解和跟踪任务执行步骤的内部工具，**不会**影响用户的个人待办列表。
+> 如果用户要求管理他们的个人待办事项（如“帮我添加待办”“我今天有什么任务”），请加载 **user-todo-tools** 技能组。
 
 当你需要执行多步骤任务时，使用这些工具来管理任务进度：
 
@@ -42,7 +45,7 @@ export const todoToolsSkill: SkillDefinition = {
     {
       name: 'builtin-todo_init',
       description:
-        '初始化任务列表。将复杂任务分解为可执行的子步骤。必须提供 title（标题）和 steps（步骤列表）。当用户提出需要多步骤完成的任务时使用，如"请帮我完成..."、"请调研..."等。调用后会创建任务列表，AI 可以逐步执行并更新状态。',
+        '[AI内部工具] 初始化 AI 任务执行计划。将复杂任务分解为可执行的子步骤，用于 AI 自己跟踪执行进度。不会写入用户的待办列表。当需要多步骤完成任务时使用，如调研、综述、批量处理等场景。',
       inputSchema: {
         type: 'object',
         properties: {

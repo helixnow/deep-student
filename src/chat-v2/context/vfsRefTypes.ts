@@ -27,7 +27,8 @@ export type VfsResourceType =
   | 'image'
   | 'file'
   | 'retrieval'   // ★ 检索结果
-  | 'mindmap';    // ★ 知识导图
+  | 'mindmap'     // ★ 知识导图
+  | 'todo';       // ★ 待办列表
 
 // ============================================================================
 // 上下文引用数据结构
@@ -286,6 +287,7 @@ export const VFS_REF_TYPES = [
   'image',        // att_xxx (type=image) - 图片附件
   'file',         // att_xxx (type=file) - 文档附件
   'mindmap',      // mm_xxx - 知识导图
+  'todo',         // tdl_xxx - 待办列表
 ] as const;
 
 /**
@@ -329,7 +331,7 @@ export const VFS_MAX_PATH_DEPTH = 10;
  * ★ 2026-01 添加 mindmap 类型支持
  */
 export function isVfsResourceType(type: string): type is VfsResourceType {
-  return ['note', 'textbook', 'exam', 'translation', 'essay', 'image', 'file', 'retrieval', 'mindmap'].includes(type);
+  return ['note', 'textbook', 'exam', 'translation', 'essay', 'image', 'file', 'retrieval', 'mindmap', 'todo'].includes(type);
 }
 
 /**

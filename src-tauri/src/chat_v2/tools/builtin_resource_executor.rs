@@ -110,6 +110,7 @@ impl BuiltinResourceExecutor {
             "image" | "images" => Some(DstuNodeType::Image),
             "file" | "files" => Some(DstuNodeType::File),
             "mindmap" | "mindmaps" => Some(DstuNodeType::MindMap),
+            "todo" | "todos" => Some(DstuNodeType::Todo),
             _ => None,
         }
     }
@@ -134,6 +135,8 @@ impl BuiltinResourceExecutor {
             Some("translations")
         } else if resource_id.starts_with("mm_") {
             Some("mindmaps")
+        } else if resource_id.starts_with("tdl_") {
+            Some("todos")
         } else {
             None
         }
@@ -369,6 +372,7 @@ impl BuiltinResourceExecutor {
             crate::vfs::types::VfsResourceType::Essay => Some("essays"),
             crate::vfs::types::VfsResourceType::Translation => Some("translations"),
             crate::vfs::types::VfsResourceType::MindMap => Some("mindmaps"),
+            crate::vfs::types::VfsResourceType::Todo => Some("todos"),
             crate::vfs::types::VfsResourceType::Retrieval => None,
         }
     }
@@ -388,6 +392,7 @@ impl BuiltinResourceExecutor {
             }
             "translations" => "SELECT id FROM translations WHERE resource_id = ?1 LIMIT 1",
             "mindmaps" => "SELECT id FROM mindmaps WHERE resource_id = ?1 LIMIT 1",
+            "todos" => "SELECT id FROM todo_lists WHERE resource_id = ?1 LIMIT 1",
             _ => return None,
         };
 
