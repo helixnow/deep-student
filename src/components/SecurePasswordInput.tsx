@@ -31,10 +31,9 @@ export const SecurePasswordInput: React.FC<SecurePasswordInputProps> = ({
   const [showPassword, setShowPassword] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  // 如果是敏感键且有值，显示星号掩码
-  const displayValue = isSensitive && value && !showPassword 
-    ? '●'.repeat(Math.min(value.length, 16)) 
-    : value;
+  // 直接使用原始值，依赖 type="password" 进行浏览器原生遮蔽
+  // 🔧 修复：移除 bullet 字符替换，避免用户编辑时 onChange 返回 ● 字符导致 API key 被破坏
+  const displayValue = value;
 
   const handleCopy = useCallback(async () => {
     if (isSensitive && !showPassword) {

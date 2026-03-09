@@ -1,4 +1,4 @@
-import type { Dispatch, SetStateAction } from 'react';
+import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 import type { TFunction } from 'i18next';
 import type { SystemConfig } from './types';
 import type { ApiConfig, ModelAssignments, VendorConfig, ModelProfile } from '../../types';
@@ -36,6 +36,7 @@ export interface SettingsExtra {
 
 export interface UseSettingsConfigDeps {
   setLoading: (v: boolean) => void;
+  configLoadedRef?: MutableRefObject<boolean>;
   setExtra: Dispatch<SetStateAction<SettingsExtra>>;
   setActiveTab: (v: string) => void;
   activeTab: string;

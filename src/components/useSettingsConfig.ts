@@ -21,7 +21,7 @@ const normalizeThemeMode = (value: unknown): ThemeMode => {
 };
 
 export function useSettingsConfig(deps: UseSettingsConfigDeps) {
-  const { setLoading, setExtra, setActiveTab, activeTab, modelAssignments, vendors, modelProfiles, resolvedApiConfigs, refreshVendors, refreshProfiles, refreshApiConfigsFromBackend, persistAssignments, saving, setSaving, t, config, setConfig, loading, updateIndicatorRaf } = deps;
+  const { setLoading, configLoadedRef, setExtra, setActiveTab, activeTab, modelAssignments, vendors, modelProfiles, resolvedApiConfigs, refreshVendors, refreshProfiles, refreshApiConfigsFromBackend, persistAssignments, saving, setSaving, t, config, setConfig, loading, updateIndicatorRaf } = deps;
 
 const normalizeThemePalette = (value: unknown): ThemePalette => {
   if (value === 'colorsafe' || value === 'accessible') return 'muted';
@@ -277,6 +277,8 @@ const normalizeThemePalette = (value: unknown): ThemePalette => {
         });
         
         setConfig(newConfig);
+        // 🔧 标记 config 已成功加载，允许 auto-save
+        if (configLoadedRef) configLoadedRef.current = true;
 
         // 注意：不要用后端存储的 theme/themePalette 覆盖前端 useTheme 的状态
         // useTheme 使用 localStorage 作为主题的 single source of truth
@@ -308,6 +310,7 @@ const normalizeThemePalette = (value: unknown): ThemePalette => {
               themePalette: normalizeThemePalette(parsed?.themePalette),
               mcpTools: normalized,
             }));
+            if (configLoadedRef) configLoadedRef.current = true;
           } catch (e) {
             console.error('Browser config load failed:', e);
           }

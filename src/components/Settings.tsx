@@ -394,6 +394,8 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
 
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
+  // 🔧 修复：防止 loadConfig 失败时 auto-save 用空默认值覆写后端已有配置
+  const configLoadedRef = useRef(false);
   const [extra, setExtra] = useState<SettingsExtra>({});
   const globalLeftPanelCollapsed = useUIStore((state) => state.leftPanelCollapsed);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -457,7 +459,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
   const { handleZoomChange, handleZoomReset, handleFontChange, handleFontReset, handleFontSizeChange, handleFontSizeReset, normalizedMcpServers } = useSettingsZoomFont({ isTauriEnvironment, setZoomLoading, setUiZoom, setZoomSaving, setZoomStatus, t, setFontLoading, setUiFont, setFontSaving, setFontSizeLoading, setUiFontSize, setFontSizeSaving, config });
 
   const updateIndicatorRafRef = useRef<((tabId: string) => void) | null>(null);
-  const { loadConfig, handleSave, saveSingleAssignmentField, handleTabChange } = useSettingsConfig({ setLoading, setExtra, setActiveTab, activeTab, modelAssignments, vendors, modelProfiles, resolvedApiConfigs, refreshVendors: undefined, refreshProfiles: undefined, refreshApiConfigsFromBackend, persistAssignments, saving, setSaving, t, config, setConfig, loading, updateIndicatorRaf: (tabId: string) => updateIndicatorRafRef.current?.(tabId) });
+  const { loadConfig, handleSave, saveSingleAssignmentField, handleTabChange } = useSettingsConfig({ setLoading, configLoadedRef, setExtra, setActiveTab, activeTab, modelAssignments, vendors, modelProfiles, resolvedApiConfigs, refreshVendors: undefined, refreshProfiles: undefined, refreshApiConfigsFromBackend, persistAssignments, saving, setSaving, t, config, setConfig, loading, updateIndicatorRaf: (tabId: string) => updateIndicatorRafRef.current?.(tabId) });
 
   const vendorState = useSettingsVendorState({ resolvedApiConfigs, vendorLoading, vendorSaving, vendors, modelProfiles, modelAssignments, config, t, loading, upsertVendor, upsertModelProfile, deleteModelProfile, persistAssignments, persistModelProfiles, persistVendors, closeRightPanel, refreshVendors: undefined, refreshProfiles: undefined, refreshApiConfigsFromBackend, isSmallScreen, setScreenPosition, setRightPanelType, activeTab, deleteVendorById: deleteVendor });
   const { selectedVendorId, setSelectedVendorId, vendorModalOpen, setVendorModalOpen, editingVendor, setEditingVendor, isEditingVendor, vendorFormData, setVendorFormData, modelEditor, setModelEditor, inlineEditState, setInlineEditState, isAddingNewModel, setIsAddingNewModel, modelDeleteDialog, setModelDeleteDialog, vendorDeleteDialog, setVendorDeleteDialog, testingApi, vendorBusy, sortedVendors, selectedVendor, selectedVendorModels, profileCountByVendor, selectedVendorIsSiliconflow, testApiConnection, handleOpenVendorModal, handleStartEditVendor, handleCancelEditVendor, handleSaveEditVendor, handleSaveVendorModal, handleDeleteVendor, handleSaveVendorApiKey, handleSaveVendorBaseUrl, handleReorderVendors, confirmDeleteVendor, handleOpenModelEditor, handleSaveModelProfile, handleSaveInlineEdit, handleAddModelInline, handleCloseModelEditor, handleSaveModelProfileAndClose, handleDeleteModelProfile, confirmDeleteModelProfile, handleToggleModelProfile, handleToggleFavorite, handleSiliconFlowConfig, handleAddVendorModels, getAllEnabledApis, getEmbeddingApis, getRerankerApis, toUnifiedModelInfo, handleBatchCreateConfigs, handleApplyPreset, handleBatchConfigsCreated, handleClearVendorApiKey, isSensitiveKey, PasswordInputWithToggle, maskApiKey, apiConfigsForApisTab } = vendorState;
@@ -573,8 +575,9 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
   }, [invoke]);
 
   // 处理返回按钮，确保在返回前保存配置
+  // 🔧 修复：仅在 config 成功加载后才保存，防止 loadConfig 失败时覆写后端真实配置
   const handleBack = async () => {
-    if (!loading) {
+    if (!loading && configLoadedRef.current) {
       await handleSave(true); // 静默保存
     }
     onBack();
@@ -874,7 +877,9 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
   const handleSaveRef = useRef(handleSave);
   handleSaveRef.current = handleSave;
   useEffect(() => {
-    if (!loading && config.autoSave) {
+    // 🔧 修复：仅在 config 成功加载后才允许 auto-save
+    // 防止 loadConfig 失败（setConfig 被跳过）时，用空默认值覆写后端真实配置
+    if (!loading && config.autoSave && configLoadedRef.current) {
       const timeoutId = setTimeout(() => {
         // 只保存API配置和通用设置，模型分配已经立即保存了
         handleSaveRef.current(true); // 静默保存
@@ -882,7 +887,12 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
 
       return () => clearTimeout(timeoutId);
     }
-  }, [config.autoSave, config.theme, config.themePalette, loading]);
+  }, [config.autoSave, config.theme, config.themePalette, loading,
+    // 🔧 修复：搜索引擎 API key 变更也需触发自动保存，避免用户配置后未保存即离开
+    config.webSearchGoogleKey, config.webSearchSerpApiKey, config.webSearchTavilyKey,
+    config.webSearchBraveKey, config.webSearchSearxngKey, config.webSearchZhipuKey,
+    config.webSearchBochaKey, config.webSearchSearxngEndpoint, config.webSearchGoogleCx,
+  ]);
 
   if (loading) {
     return (
