@@ -527,12 +527,30 @@ jobs:
 
       - name: Add swap space
         run: |
-          sudo fallocate -l 8G /swapfile
-          sudo chmod 600 /swapfile
-          sudo mkswap /swapfile
-          sudo swapon /swapfile
+          SWAPFILE=/swapfile
+
+          if swapon --show --noheadings | grep -q .; then
+            echo "Swap already enabled on runner; skipping allocation"
+          else
+            if ! sudo fallocate -l 8G "$SWAPFILE"; then
+              echo "::warning::fallocate failed; retrying swap creation with dd"
+              sudo dd if=/dev/zero of="$SWAPFILE" bs=1M count=8192 status=progress
+            fi
+
+            sudo chmod 600 "$SWAPFILE"
+            sudo mkswap "$SWAPFILE"
+
+            if sudo swapon "$SWAPFILE"; then
+              echo "Swap enabled at $SWAPFILE"
+            else
+              echo "::warning::Failed to enable swap on this runner; continuing without extra swap"
+              sudo rm -f "$SWAPFILE"
+            fi
+          fi
+
           echo "=== Memory + Swap ==="
           free -h
+          swapon --show || true
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -1014,3 +1032,40 @@ jobs:
           fi
           RESP=$(curl -s -X POST "$VERCEL_DEPLOY_HOOK")
           echo "🌐 Website rebuild triggered: $RESP"
+  trigger-android-rebuild:
+    needs: [verify, build-android, publish]
+    if: |
+      always() &&
+      needs.publish.result == 'success' &&
+      needs.build-android.result == 'failure'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - name: Dispatch Android rebuild workflow
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          TAG_NAME: ${{ needs.verify.outputs.tag_name }}
+        run: |
+          REF="${DEFAULT_BRANCH:-main}"
+          TAG="${TAG_NAME}"
+
+          if [ -z "$TAG" ]; then
+            echo "::error::Missing release tag output; cannot dispatch Android rebuild"
+            exit 1
+          fi
+
+          PAYLOAD=$(jq -n \
+            --arg ref "$REF" \
+            --arg tag "$TAG" \
+            '{ref: $ref, inputs: {tag_name: $tag, source_ref: $tag}}')
+
+          echo "Dispatching rebuild-android.yml for ${TAG} using workflow ref ${REF}"
+          echo "$PAYLOAD" | gh api \
+            --method POST \
+            "repos/${{ github.repository }}/actions/workflows/rebuild-android.yml/dispatches" \
+            --input -
+
+          echo "Android rebuild workflow dispatched for ${TAG}"

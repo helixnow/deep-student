@@ -405,12 +405,30 @@ jobs:
 
       - name: Add swap space
         run: |
-          sudo fallocate -l 8G /swapfile
-          sudo chmod 600 /swapfile
-          sudo mkswap /swapfile
-          sudo swapon /swapfile
+          SWAPFILE=/swapfile
+
+          if swapon --show --noheadings | grep -q .; then
+            echo "Swap already enabled on runner; skipping allocation"
+          else
+            if ! sudo fallocate -l 8G "$SWAPFILE"; then
+              echo "::warning::fallocate failed; retrying swap creation with dd"
+              sudo dd if=/dev/zero of="$SWAPFILE" bs=1M count=8192 status=progress
+            fi
+
+            sudo chmod 600 "$SWAPFILE"
+            sudo mkswap "$SWAPFILE"
+
+            if sudo swapon "$SWAPFILE"; then
+              echo "Swap enabled at $SWAPFILE"
+            else
+              echo "::warning::Failed to enable swap on this runner; continuing without extra swap"
+              sudo rm -f "$SWAPFILE"
+            fi
+          fi
+
           echo "=== Memory + Swap ==="
           free -h
+          swapon --show || true
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
