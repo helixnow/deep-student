@@ -506,8 +506,33 @@ jobs:
 
       - name: Free disk space
         run: |
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android/sdk/ndk /opt/ghc /opt/hostedtoolcache/CodeQL
+          echo "=== Disk usage BEFORE cleanup ==="
+          df -h /
+          sudo rm -rf \
+            /usr/share/dotnet \
+            /usr/share/swift \
+            /usr/local/lib/android/sdk/ndk \
+            /usr/local/share/powershell \
+            /usr/local/share/chromium \
+            /usr/local/graalvm \
+            /usr/local/lib/node_modules \
+            /opt/ghc \
+            /opt/hostedtoolcache/CodeQL \
+            /opt/hostedtoolcache/go \
+            /opt/hostedtoolcache/Python \
+            /opt/hostedtoolcache/Ruby
           sudo docker image prune --all --force
+          echo "=== Disk usage AFTER cleanup ==="
+          df -h /
+
+      - name: Add swap space
+        run: |
+          sudo fallocate -l 8G /swapfile
+          sudo chmod 600 /swapfile
+          sudo mkswap /swapfile
+          sudo swapon /swapfile
+          echo "=== Memory + Swap ==="
+          free -h
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
