@@ -733,7 +733,6 @@ export type ResourceIconType =
   | 'essay' 
   | 'translation' 
   | 'mindmap' 
-  | 'todo' 
   | 'folder' 
   | 'image' 
   | 'file'
@@ -758,7 +757,6 @@ export const ResourceIconMap: Record<ResourceIconType, React.FC<ResourceIconProp
   essay: EssayIcon,
   translation: TranslationIcon,
   mindmap: MindmapIcon,
-  todo: TodoIcon,
   folder: FolderIcon,
   image: ImageFileIcon,
   file: GenericFileIcon,

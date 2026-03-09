@@ -35,7 +35,6 @@ pub fn extract_simple_id(path: &str) -> Option<String> {
         "att_",
         "fld_",
         "mm_",
-        "tdl_",
         "res_",
         "img_",
     ];
@@ -107,8 +106,6 @@ pub fn infer_resource_type_from_id(id: &str) -> &'static str {
         "folders"
     } else if id.starts_with("mm_") {
         "mindmaps"
-    } else if id.starts_with("tdl_") {
-        "todos"
     } else if id.starts_with("res_") {
         "resources"
     } else {

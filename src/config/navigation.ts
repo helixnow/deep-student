@@ -6,6 +6,7 @@ import {
   Palette,
   Zap,
   GraduationCap,
+  ListChecks,
 } from 'lucide-react';
 import DsAnalysisIconMuted from '../components/icons/DsAnalysisIconMuted';
 
@@ -23,7 +24,8 @@ export type NavViewType =
   | 'template-management'
   | 'chat-v2'
   | 'learning-hub'
-  | 'skills-management';
+  | 'skills-management'
+  | 'todo';
 
 /**
  * 导航项类型定义
@@ -57,6 +59,12 @@ export const createNavItems = (t: TFunction): NavItem[] => {
       view: 'learning-hub',
       icon: GraduationCap,
     },
+    // ★ 待办事项放在学习资源后面
+    {
+      name: t('sidebar:navigation.todo', '待办'),
+      view: 'todo',
+      icon: ListChecks,
+    },
     // ★ 2026-01：用户记忆已集成到 Learning Hub 的 MemoryView
     {
       name: t('sidebar:navigation.skills_management', '技能管理'),
@@ -86,7 +94,7 @@ export const createNavItems = (t: TFunction): NavItem[] => {
 /**
  * 导航项总数（用于布局计算）
  */
-export const NAV_ITEMS_COUNT = 6;
+export const NAV_ITEMS_COUNT = 7;
 
 /**
  * 估算单个导航项的平均宽度（像素）

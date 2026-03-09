@@ -19,7 +19,7 @@ use serde_json::Value;
 
 use crate::dstu::error::DstuError;
 use crate::vfs::{
-    extract_file_text_with_strategy, repos::VfsTodoRepo, VfsDatabase, VfsEssayRepo, VfsExamRepo,
+    extract_file_text_with_strategy, VfsDatabase, VfsEssayRepo, VfsExamRepo,
     VfsFileRepo, VfsMindMapRepo, VfsNoteRepo, VfsResourceRepo, VfsTranslationRepo,
 };
 
@@ -398,34 +398,6 @@ pub fn get_content_by_type(
                 }
                 Err(e) => {
                     log::error!("[DSTU::content_helpers] get_content_by_type: FAILED - type=mindmap, id={}, error={}", id, e);
-                    Err(e.to_string())
-                }
-            }
-        }
-        "todos" | "todo" => {
-            // 待办列表内容：返回列表标题和待办项摘要
-            match VfsTodoRepo::get_todo_list(vfs_db, id) {
-                Ok(Some(list)) => {
-                    let items = VfsTodoRepo::list_items_by_list(vfs_db, id, true).unwrap_or_default();
-                    let mut parts = vec![format!("# 待办列表: {}", list.title)];
-                    if let Some(desc) = &list.description {
-                        if !desc.is_empty() {
-                            parts.push(desc.clone());
-                        }
-                    }
-                    for item in &items {
-                        let status_marker = if item.status == "completed" { "x" } else { " " };
-                        parts.push(format!("- [{}] {}", status_marker, item.title));
-                    }
-                    log::info!("[DSTU::content_helpers] get_content_by_type: SUCCESS - type=todo, id={}, items={}", id, items.len());
-                    Ok(parts.join("\n"))
-                }
-                Ok(None) => {
-                    log::error!("[DSTU::content_helpers] get_content_by_type: todo list not found, id={}", id);
-                    Err(DstuError::not_found(id).to_string())
-                }
-                Err(e) => {
-                    log::error!("[DSTU::content_helpers] get_content_by_type: FAILED - type=todo, id={}, error={}", id, e);
                     Err(e.to_string())
                 }
             }

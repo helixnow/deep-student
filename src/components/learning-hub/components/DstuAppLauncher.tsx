@@ -24,7 +24,6 @@ import {
   EssayIcon,
   TranslationIcon,
   MindmapIcon,
-  TodoIcon,
   ImageFileIcon,
   GenericFileIcon,
   FavoriteIcon,
@@ -48,7 +47,7 @@ interface DstuAppLauncherProps {
   /** 选择应用回调 */
   onSelectApp?: (type: string) => void;
   /** 快捷创建并打开资源回调 */
-  onCreateAndOpen?: (type: 'exam' | 'essay' | 'translation' | 'note' | 'mindmap' | 'todo') => void;
+  onCreateAndOpen?: (type: 'exam' | 'essay' | 'translation' | 'note' | 'mindmap') => void;
   /** 新建文件夹回调 */
   onNewFolder?: () => void;
   /** 关闭回调（切换到中间屏幕） */
@@ -112,7 +111,7 @@ export const DstuAppLauncher: React.FC<DstuAppLauncherProps> = React.memo(({
     onClose?.();
   };
 
-  const handleCreate = (type: 'folder' | 'exam' | 'essay' | 'translation' | 'note' | 'mindmap' | 'todo') => {
+  const handleCreate = (type: 'folder' | 'exam' | 'essay' | 'translation' | 'note' | 'mindmap') => {
     setShowCreateMenu(false);
     if (type === 'folder') {
       onNewFolder?.();
@@ -137,7 +136,6 @@ export const DstuAppLauncher: React.FC<DstuAppLauncherProps> = React.memo(({
     { type: 'essays', CustomIcon: EssayIcon, label: t('learningHub:resourceType.essay') },
     { type: 'translations', CustomIcon: TranslationIcon, label: t('learningHub:resourceType.translation') },
     { type: 'mindmaps', CustomIcon: MindmapIcon, label: t('learningHub:resourceType.mindmap') },
-    { type: 'todos', CustomIcon: TodoIcon, label: t('learningHub:resourceType.todo') },
   ];
 
   const mediaItems = [
@@ -278,10 +276,6 @@ export const DstuAppLauncher: React.FC<DstuAppLauncherProps> = React.memo(({
                 {t('learningHub:finder.toolbar.newMindMap')}
               </NotionButton>
 
-              <NotionButton variant="ghost" size="sm" onClick={() => handleCreate('todo')} className="w-full !justify-start !px-3 !py-2 text-foreground/80 hover:text-foreground">
-                <ListChecks className="w-4 h-4 text-orange-500" />
-                {t('learningHub:finder.toolbar.newTodo')}
-              </NotionButton>
             </div>
           )}
         </div>

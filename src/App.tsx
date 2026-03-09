@@ -96,6 +96,7 @@ import {
   LazyTemplateJsonPreviewPage,
   LazyLearningHubPage,
   LazyPdfReader,
+  LazyTodoPage,
   LazyTreeDragTest,
   LazyCrepeDemoPage,
   LazyChatV2IntegrationTest,
@@ -1606,6 +1607,9 @@ function App() {
               {renderViewLayer('learning-hub', learningHubContent)}
 
               {renderViewLayer('pdf-reader', pdfReaderContent)}
+
+              {/* 待办事项独立页面 */}
+              {renderViewLayer('todo', <Suspense fallback={<PageLoadingFallback />}><LazyTodoPage /></Suspense>)}
 
               {import.meta.env.DEV && renderViewLayer('tree-test', <Suspense fallback={<PageLoadingFallback />}><LazyTreeDragTest /></Suspense>)}
 

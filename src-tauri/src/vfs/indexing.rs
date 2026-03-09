@@ -400,7 +400,6 @@ impl VfsContentExtractor {
             VfsResourceType::Essay => Some(data.to_string()),
             VfsResourceType::File => Self::extract_file_text(data),
             VfsResourceType::MindMap => Self::extract_mindmap_text(data),
-            VfsResourceType::Todo => Some(data.to_string()),
             // Image/Retrieval：Image 内容为二进制（走 OCR），Retrieval 为临时搜索结果（不索引）
             VfsResourceType::Image | VfsResourceType::Retrieval => None,
         }
@@ -1104,8 +1103,7 @@ fn resolve_indexable_content(
         | VfsResourceType::Translation
         | VfsResourceType::Essay
         | VfsResourceType::MindMap
-        | VfsResourceType::Retrieval
-        | VfsResourceType::Todo => {}
+        | VfsResourceType::Retrieval => {}
     }
 
     None
@@ -1506,8 +1504,7 @@ fn resolve_indexable_pages(
         | VfsResourceType::Translation
         | VfsResourceType::Essay
         | VfsResourceType::MindMap
-        | VfsResourceType::Retrieval
-        | VfsResourceType::Todo => {}
+        | VfsResourceType::Retrieval => {}
     }
 
     // 回退：尝试从 resource.data 提取
@@ -2178,7 +2175,6 @@ impl VfsFullIndexingService {
                 VfsResourceType::File => "文件内容为空",
                 VfsResourceType::Note => "笔记内容为空",
                 VfsResourceType::MindMap => "导图内容为空",
-                VfsResourceType::Todo => "待办列表内容为空",
                 VfsResourceType::Translation => "翻译内容为空",
                 VfsResourceType::Essay => "作文内容为空",
                 VfsResourceType::Retrieval => "检索结果内容为空",
@@ -2793,8 +2789,7 @@ impl VfsFullIndexingService {
             | VfsResourceType::Essay
             | VfsResourceType::Exam
             | VfsResourceType::MindMap
-            | VfsResourceType::Retrieval
-            | VfsResourceType::Todo => Ok(None),
+            | VfsResourceType::Retrieval => Ok(None),
         }
     }
 

@@ -30,7 +30,6 @@ import {
   EssayIcon,
   TranslationIcon,
   MindmapIcon,
-  TodoIcon,
   ImageFileIcon,
   GenericFileIcon,
   FavoriteIcon,
@@ -43,7 +42,7 @@ import {
   type ResourceIconProps,
 } from './icons';
 
-type QuickAccessType = 'allFiles' | 'notes' | 'textbooks' | 'exams' | 'essays' | 'translations' | 'favorites' | 'recent' | 'trash' | 'images' | 'files' | 'mindmaps' | 'todos' | 'indexStatus' | 'memory' | 'desktop';
+type QuickAccessType = 'allFiles' | 'notes' | 'textbooks' | 'exams' | 'essays' | 'translations' | 'favorites' | 'recent' | 'trash' | 'images' | 'files' | 'mindmaps' | 'indexStatus' | 'memory' | 'desktop';
 
 interface QuickAccessItem {
   type: QuickAccessType;
@@ -68,7 +67,6 @@ const RESOURCE_TYPE_ITEMS: QuickAccessItem[] = [
   { type: 'essays', CustomIcon: EssayIcon, labelKey: 'finder.quickAccess.essays', defaultLabel: '作文' },
   { type: 'translations', CustomIcon: TranslationIcon, labelKey: 'finder.quickAccess.translations', defaultLabel: '翻译' },
   { type: 'mindmaps', CustomIcon: MindmapIcon, labelKey: 'finder.quickAccess.mindmaps', defaultLabel: '思维导图' },
-  { type: 'todos', CustomIcon: TodoIcon, labelKey: 'finder.quickAccess.todos', defaultLabel: '待办列表' },
 ];
 
 // ★ 媒体分组

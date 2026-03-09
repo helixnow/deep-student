@@ -106,8 +106,6 @@ pub enum VfsResourceType {
     Retrieval,
     /// 知识导图
     MindMap,
-    /// 待办列表
-    Todo,
 }
 
 impl std::fmt::Display for VfsResourceType {
@@ -122,7 +120,6 @@ impl std::fmt::Display for VfsResourceType {
             VfsResourceType::File => write!(f, "file"),
             VfsResourceType::Retrieval => write!(f, "retrieval"),
             VfsResourceType::MindMap => write!(f, "mindmap"),
-            VfsResourceType::Todo => write!(f, "todo"),
         }
     }
 }
@@ -140,7 +137,6 @@ impl VfsResourceType {
             "file" => Some(VfsResourceType::File),
             "retrieval" => Some(VfsResourceType::Retrieval),
             "mindmap" => Some(VfsResourceType::MindMap),
-            "todo" => Some(VfsResourceType::Todo),
             _ => None,
         }
     }
@@ -157,7 +153,6 @@ impl VfsResourceType {
             VfsResourceType::File,
             VfsResourceType::Retrieval,
             VfsResourceType::MindMap,
-            VfsResourceType::Todo,
         ]
     }
 }
@@ -739,18 +734,14 @@ pub struct VfsUpdateMindMapParams {
 // 待办列表元数据
 // ============================================================================
 
-/// VFS 待办列表元数据（todo_lists 表）
+/// 待办列表元数据（todo_lists 表）
 ///
-/// 每个 TodoList 对应 DSTU 中的一个 "todo" 类型文件，
-/// 类比 Todoist 的"项目"概念。
+/// 独立于 VFS 资源系统，类比 Todoist 的"项目"概念。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct VfsTodoList {
     /// 待办列表 ID（格式：`tdl_{nanoid(10)}`）
     pub id: String,
-
-    /// 资源 ID（内容存 resources，JSON 摘要）
-    pub resource_id: String,
 
     /// 列表名称
     pub title: String,
@@ -2834,7 +2825,7 @@ mod tests {
     #[test]
     fn test_vfs_resource_type_all() {
         let all_types = VfsResourceType::all();
-        assert_eq!(all_types.len(), 10);
+        assert_eq!(all_types.len(), 9);
         assert!(all_types.contains(&VfsResourceType::Note));
         assert!(all_types.contains(&VfsResourceType::Textbook));
         assert!(all_types.contains(&VfsResourceType::Exam));

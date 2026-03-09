@@ -28,7 +28,7 @@ pub use node_converters::{
     attachment_to_dstu_node, create_type_folder, emit_watch_event, essay_to_dstu_node,
     exam_to_dstu_node, file_to_dstu_node, generate_resource_id, item_type_to_dstu_node_type,
     mindmap_to_dstu_node, note_to_dstu_node, parse_timestamp, session_to_dstu_node,
-    textbook_to_dstu_node, todo_list_to_dstu_node, translation_to_dstu_node,
+    textbook_to_dstu_node, translation_to_dstu_node,
 };
 
 // 重导出 CRUD 辅助函数
@@ -57,5 +57,5 @@ pub use content_helpers::{
 // 重导出搜索辅助函数
 pub use search_helpers::{
     search_all, search_by_index, search_essays, search_exams, search_files, search_images,
-    search_mindmaps, search_notes, search_textbooks, search_todos, search_translations,
+    search_mindmaps, search_notes, search_textbooks, search_translations,
 };

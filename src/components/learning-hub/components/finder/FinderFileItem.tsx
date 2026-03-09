@@ -10,7 +10,6 @@ import {
   EssayIcon,
   TranslationIcon,
   MindmapIcon,
-  TodoIcon,
   FolderIcon,
   ImageFileIcon,
   GenericFileIcon,
@@ -63,7 +62,6 @@ const TYPE_LABELS: Partial<Record<DstuNodeType, string>> = {
   image: '图片',
   file: '文件',
   mindmap: '导图',
-  todo: '待办',
   retrieval: '检索',
 };
 
@@ -112,7 +110,6 @@ const TYPE_CUSTOM_ICONS: Record<DstuNodeType, React.FC<ResourceIconProps>> = {
   file: GenericFileIcon,
   retrieval: GenericFileIcon,
   mindmap: MindmapIcon,
-  todo: TodoIcon,
 };
 
 /**

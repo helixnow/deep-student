@@ -49,7 +49,6 @@ import {
   EssayIcon,
   TranslationIcon,
   MindmapIcon,
-  TodoIcon,
   GenericFileIcon,
   type ResourceIconProps
 } from '@/components/learning-hub/icons/ResourceIcons';
@@ -149,7 +148,6 @@ function getResourceIconComponent(typeId: string): React.FC<ResourceIconProps> {
     case 'essay': return EssayIcon;
     case 'translation': return TranslationIcon;
     case 'mindmap': return MindmapIcon;
-    case 'todo': return TodoIcon;
     case 'file': return GenericFileIcon;
     default: return GenericFileIcon;
   }

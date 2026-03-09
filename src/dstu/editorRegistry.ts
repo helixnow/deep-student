@@ -133,11 +133,6 @@ const lazyFileViewer = (): Promise<{ default: EditorComponent }> =>
 const lazyMindMapEditor = (): Promise<{ default: EditorComponent }> =>
   import('./editors/MindMapEditorWrapper').then((m) => ({ default: m.MindMapEditorWrapper }));
 
-/**
- * 懒加载待办列表编辑器
- */
-const lazyTodoEditor = (): Promise<{ default: EditorComponent }> =>
-  import('./editors/TodoEditorWrapper').then((m) => ({ default: m.TodoEditorWrapper }));
 
 // ============================================================================
 // 编辑器注册表
@@ -297,20 +292,6 @@ export const editorRegistry: Record<DstuNodeType, EditorRegistryEntry> = {
     displayName: 'dstu:types.mindmap',
   },
 
-  // ========== 待办列表 ==========
-  todo: {
-    type: 'todo',
-    editor: lazyTodoEditor,
-    defaultMode: 'edit',
-    defaultLocation: 'page',
-    capabilities: {
-      ...FULL_EDIT_CAPABILITIES,
-      versionable: false,
-      referenceable: false,
-    },
-    icon: 'CheckSquare',
-    displayName: 'dstu:types.todo',
-  },
 };
 
 // ============================================================================

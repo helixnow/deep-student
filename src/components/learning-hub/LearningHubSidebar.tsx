@@ -28,7 +28,6 @@ import {
   TranslationIcon,
   EssayIcon,
   MindmapIcon,
-  TodoIcon,
 } from './icons';
 
 /** 教材导入进度事件类型 */
@@ -379,7 +378,6 @@ export function LearningHubSidebar({
             case 'image': itemType = 'image'; break;
             case 'file': itemType = 'file'; break;
             case 'mindmap': itemType = 'mindmap'; break;
-            case 'todo': itemType = 'todo'; break;
             default: itemType = 'note';
         }
 
@@ -911,26 +909,6 @@ export function LearningHubSidebar({
     }
   };
 
-  const handleNewTodo = async () => {
-    if (!ensureCreatableView()) return;
-    const result = await createEmpty({
-      type: 'todo',
-      folderId: currentCreatableFolderId,
-    });
-
-    if (!isMountedRef.current) return;
-
-    if (result.ok) {
-      showGlobalNotification('success', t('finder.create.todoSuccess', '待办列表已创建'));
-      handleRefresh();
-      if (onOpenApp) {
-        onOpenApp(dstuNodeToResourceListItem(result.value, 'todo'));
-      }
-    } else {
-      showGlobalNotification('error', result.error.toUserMessage());
-    }
-  };
-
   /**
    * 处理 Tauri 原生文件路径拖拽（优先路径，性能更好）
    * 按扩展名分类后分发到对应适配器
@@ -1278,7 +1256,6 @@ export function LearningHubSidebar({
         case 'translation': itemType = 'translation'; break;
         case 'essay': itemType = 'essay'; break;
         case 'mindmap': itemType = 'mindmap'; break;
-        case 'todo': itemType = 'todo'; break;
         default: itemType = 'note';
       }
       const resourceItem = dstuNodeToResourceListItem(item, itemType);
@@ -1589,7 +1566,6 @@ export function LearningHubSidebar({
         case 'image': itemType = 'image'; break;
         case 'file': itemType = 'file'; break;
         case 'mindmap': itemType = 'mindmap'; break;
-        case 'todo': itemType = 'todo'; break;
         default: itemType = 'note';
       }
       result = await folderApi.moveItem(itemType, itemId, targetFolderId ?? undefined);
@@ -1639,7 +1615,6 @@ export function LearningHubSidebar({
             case 'image': itemType = 'image'; break;
             case 'file': itemType = 'file'; break;
             case 'mindmap': itemType = 'mindmap'; break;
-            case 'todo': itemType = 'todo'; break;
             default: itemType = 'note';
           }
           return await folderApi.moveItem(itemType, itemId, targetFolderId ?? undefined, { skipCacheRefresh: true });
@@ -2100,7 +2075,6 @@ export function LearningHubSidebar({
               case 'image': itemType = 'image'; break;
               case 'file': itemType = 'file'; break;
               case 'mindmap': itemType = 'mindmap'; break; // 🔒 审计修复: 添加遗漏的 mindmap 类型映射
-              case 'todo': itemType = 'todo'; break;
               default: itemType = 'note';
             }
             const result = await folderApi.moveItem(itemType, id, targetFolderId ?? undefined, { skipCacheRefresh: true });
@@ -2227,7 +2201,6 @@ export function LearningHubSidebar({
           onNewTranslation={handleNewTranslation}
           onNewEssay={handleNewEssay}
           onNewMindMap={handleNewMindMap}
-          onNewTodo={handleNewTodo}
           createDisabled={!canCreateInCurrentView}
           // Counts
           favoriteCount={0}
@@ -2351,12 +2324,6 @@ export function LearningHubSidebar({
                       onClick={handleNewMindMap}
                     >
                       {t('finder.toolbar.newMindMap', '新建导图')}
-                    </AppMenuItem>
-                    <AppMenuItem
-                      icon={<TodoIcon size={16} />}
-                      onClick={handleNewTodo}
-                    >
-                      {t('finder.toolbar.newTodo', '新建待办')}
                     </AppMenuItem>
                   </AppMenuContent>
                 </AppMenu>
@@ -2571,7 +2538,6 @@ export function LearningHubSidebar({
                   essay: t('finder.create.essaySuccess', '作文已创建'),
                   translation: t('finder.create.translationSuccess', '翻译已创建'),
                   mindmap: t('finder.create.mindmapSuccess', '思维导图已创建'),
-                  todo: t('finder.create.todoSuccess', '待办列表已创建'),
                 };
                 showGlobalNotification('success', resourceNames[type]);
 
@@ -2713,9 +2679,6 @@ export function LearningHubSidebar({
               break;
             case 'mindmap':
               handleNewMindMap();
-              break;
-            case 'todo':
-              handleNewTodo();
               break;
           }
         }}

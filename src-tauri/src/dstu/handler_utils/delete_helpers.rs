@@ -8,7 +8,7 @@ use rusqlite::Connection;
 
 use crate::dstu::error::DstuError;
 use crate::vfs::{
-    repos::{VfsMindMapRepo, VfsTodoRepo},
+    repos::VfsMindMapRepo,
     VfsDatabase, VfsEssayRepo, VfsExamRepo, VfsFileRepo, VfsFolderRepo, VfsNoteRepo,
     VfsTextbookRepo, VfsTranslationRepo,
 };
@@ -106,14 +106,6 @@ pub fn delete_resource_by_type(
                 id
             );
         }
-        "todos" | "todo" => {
-            VfsTodoRepo::delete_todo_list(vfs_db, id)
-                .map_err(|e| helper_error("delete", resource_type, id, e))?;
-            log::info!(
-                "[DSTU::delete_helpers] delete_resource_by_type: SUCCESS - type=todo, id={}",
-                id
-            );
-        }
         _ => {
             return Err(invalid_type_error(resource_type, id));
         }
@@ -174,10 +166,6 @@ pub fn delete_resource_by_type_with_conn(
             VfsMindMapRepo::delete_mindmap_with_conn(conn, id).map_err(|e| e.to_string())?;
             log::info!("[DSTU::delete_helpers] delete_resource_by_type_with_conn: SUCCESS - type=mindmap, id={}", id);
         }
-        "todos" | "todo" => {
-            VfsTodoRepo::delete_todo_list_with_conn(conn, id).map_err(|e| e.to_string())?;
-            log::info!("[DSTU::delete_helpers] delete_resource_by_type_with_conn: SUCCESS - type=todo, id={}", id);
-        }
         _ => {
             return Err(invalid_type_error(resource_type, id));
         }
@@ -230,10 +218,6 @@ pub fn purge_resource_by_type(
             VfsMindMapRepo::purge_mindmap(vfs_db, id)
                 .map_err(|e| helper_error("purge", resource_type, id, e))?;
         }
-        "todos" | "todo" => {
-            // Todo lists don't have a separate purge — soft delete is sufficient
-            log::debug!("[DSTU::delete_helpers] purge_resource_by_type: todo purge is no-op, id={}", id);
-        }
         _ => {
             return Err(invalid_type_error(resource_type, id));
         }
@@ -283,9 +267,6 @@ pub fn restore_resource_by_type(
         }
         "mindmaps" | "mindmap" => {
             VfsMindMapRepo::restore_mindmap(vfs_db, id).map_err(|e| e.to_string())?;
-        }
-        "todos" | "todo" => {
-            VfsTodoRepo::restore_todo_list(vfs_db, id).map_err(|e| e.to_string())?;
         }
         _ => {
             return Err(invalid_type_error(resource_type, id));
@@ -339,9 +320,6 @@ pub fn restore_resource_by_type_with_conn(
         "mindmaps" | "mindmap" => {
             let _ =
                 VfsMindMapRepo::restore_mindmap_with_conn(conn, id).map_err(|e| e.to_string())?;
-        }
-        "todos" | "todo" => {
-            VfsTodoRepo::restore_todo_list_with_conn(conn, id).map_err(|e| e.to_string())?;
         }
         _ => {
             return Err(invalid_type_error(resource_type, id));

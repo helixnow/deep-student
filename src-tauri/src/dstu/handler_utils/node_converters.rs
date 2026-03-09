@@ -15,7 +15,7 @@ use super::super::types::{DstuNode, DstuNodeType, DstuWatchEvent};
 use crate::unified_file_manager;
 use crate::vfs::{
     VfsAttachment, VfsEssay, VfsEssaySession, VfsExamSheet, VfsFile, VfsMindMap, VfsNote,
-    VfsTextbook, VfsTodoList, VfsTranslation,
+    VfsTextbook, VfsTranslation,
 };
 
 // ============================================================================
@@ -104,7 +104,6 @@ pub fn create_type_folder(node_type: DstuNodeType) -> DstuNode {
         DstuNodeType::Folder => "文件夹",
         DstuNodeType::Retrieval => "检索结果",
         DstuNodeType::MindMap => "知识导图",
-        DstuNodeType::Todo => "待办",
     };
 
     DstuNode::folder(format!("type_{}", type_segment), path, name)
@@ -123,7 +122,6 @@ pub fn generate_resource_id(node_type: &DstuNodeType) -> String {
         DstuNodeType::Folder => "folder",
         DstuNodeType::Retrieval => "ret",
         DstuNodeType::MindMap => "mm",
-        DstuNodeType::Todo => "tdl",
     };
     format!("{}_{}", prefix, nanoid::nanoid!(10))
 }
@@ -157,7 +155,6 @@ pub fn item_type_to_dstu_node_type(item_type: &str) -> Option<DstuNodeType> {
         "file" => Some(DstuNodeType::File),
         "folder" => Some(DstuNodeType::Folder),
         "mindmap" => Some(DstuNodeType::MindMap),
-        "todo" => Some(DstuNodeType::Todo),
         _ => None,
     }
 }
@@ -407,29 +404,6 @@ pub fn mindmap_to_dstu_node(mindmap: &VfsMindMap) -> DstuNode {
     }))
 }
 
-/// 将 VfsTodoList 转换为 DstuNode
-pub fn todo_list_to_dstu_node(todo_list: &VfsTodoList) -> DstuNode {
-    let path = build_simple_resource_path(&todo_list.id);
-
-    let created_at = parse_timestamp(&todo_list.created_at);
-    let updated_at = parse_timestamp(&todo_list.updated_at);
-
-    DstuNode::resource(
-        &todo_list.id,
-        &path,
-        &todo_list.title,
-        DstuNodeType::Todo,
-        &todo_list.resource_id,
-    )
-    .with_timestamps(created_at, updated_at)
-    .with_metadata(serde_json::json!({
-        "description": todo_list.description,
-        "icon": todo_list.icon,
-        "color": todo_list.color,
-        "isDefault": todo_list.is_default,
-        "isFavorite": todo_list.is_favorite,
-    }))
-}
 
 pub fn file_to_dstu_node(file: &VfsFile) -> DstuNode {
     let path = build_simple_resource_path(&file.id);

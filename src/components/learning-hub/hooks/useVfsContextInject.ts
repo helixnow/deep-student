@@ -212,7 +212,6 @@ export function useVfsContextInject(): UseVfsContextInjectReturn {
           image: 'image/*',
           file: 'application/octet-stream',
           mindmap: 'application/json',
-          todo: 'application/json',
         };
 
         const attachmentMeta: AttachmentMeta = {

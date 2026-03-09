@@ -36,6 +36,7 @@ const BASE_CANONICAL_VIEWS: CurrentView[] = [
   'pdf-reader',
   'learning-hub',
   'skills-management',
+  'todo',
 ];
 
 const DEV_ONLY_VIEWS: CurrentView[] = ['crepe-demo', 'chat-v2-test', 'tree-test'];

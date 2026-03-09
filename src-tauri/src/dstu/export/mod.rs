@@ -354,8 +354,6 @@ fn infer_node_type_from_path(path: &str) -> Result<DstuNodeType, String> {
         Ok(DstuNodeType::File)
     } else if id.starts_with("mm_") {
         Ok(DstuNodeType::MindMap)
-    } else if id.starts_with("tdl_") {
-        Ok(DstuNodeType::Todo)
     } else if id.starts_with("fld_") {
         Ok(DstuNodeType::Folder)
     } else {

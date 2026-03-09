@@ -8,7 +8,6 @@
 
 export interface TodoList {
   id: string;
-  resourceId: string;
   title: string;
   description?: string;
   icon?: string;
@@ -77,7 +76,6 @@ export interface CreateTodoListInput {
   description?: string;
   icon?: string;
   color?: string;
-  folderId?: string;
 }
 
 export interface UpdateTodoListInput {

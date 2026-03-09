@@ -14,7 +14,6 @@ import {
   EssayIcon,
   TranslationIcon,
   MindmapIcon,
-  TodoIcon,
   FolderIcon,
   ImageFileIcon,
   GenericFileIcon,
@@ -56,7 +55,6 @@ interface FinderQuickAccessProps {
   onNewTranslation?: () => void;
   onNewEssay?: () => void;
   onNewMindMap?: () => void;
-  onNewTodo?: () => void;
   createDisabled?: boolean;
   favoriteCount?: number;
   noteCount?: number;
@@ -88,7 +86,6 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
   onNewTranslation,
   onNewEssay,
   onNewMindMap,
-  onNewTodo,
   createDisabled = false,
   favoriteCount,
   noteCount,
@@ -116,7 +113,6 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
     { type: 'essays', CustomIcon: EssayIcon, label: t('finder.quickAccess.essays'), count: essayCount },
     { type: 'translations', CustomIcon: TranslationIcon, label: t('finder.quickAccess.translations'), count: translationCount },
     { type: 'mindmaps', CustomIcon: MindmapIcon, label: t('finder.quickAccess.mindmaps') },
-    { type: 'todos', CustomIcon: TodoIcon, label: t('finder.quickAccess.todos') },
   ];
 
   const mediaItems: { type: QuickAccessType; CustomIcon?: React.FC<ResourceIconProps>; icon?: any; label: string; color?: string }[] = [
@@ -340,14 +336,6 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
                       {t('finder.toolbar.newMindMap')}
                     </AppMenuItem>
                   )}
-                  {onNewTodo && (
-                    <AppMenuItem 
-                      icon={<TodoIcon size={16} />}
-                      onClick={onNewTodo}
-                    >
-                      {t('finder.toolbar.newTodo')}
-                    </AppMenuItem>
-                  )}
                 </AppMenuContent>
               </AppMenu>
             </>
@@ -429,14 +417,6 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
                     {t('finder.toolbar.newMindMap')}
                     </AppMenuItem>
                   )}
-                {onNewTodo && (
-                  <AppMenuItem 
-                    icon={<TodoIcon size={16} />}
-                    onClick={onNewTodo}
-                  >
-                    {t('finder.toolbar.newTodo')}
-                  </AppMenuItem>
-                )}
                 </AppMenuContent>
             </AppMenu>
           )}

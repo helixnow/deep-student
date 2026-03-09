@@ -752,7 +752,7 @@ export const LearningHubPage: React.FC = () => {
   }, [activeTabId, closeTab]);
 
   // ========== 快捷创建并打开资源 ==========
-  const handleCreateAndOpen = useCallback(async (type: 'exam' | 'essay' | 'translation' | 'note' | 'mindmap' | 'todo') => {
+  const handleCreateAndOpen = useCallback(async (type: 'exam' | 'essay' | 'translation' | 'note' | 'mindmap') => {
     if (!finderViewCapabilities.canCreate) {
       showGlobalNotification('warning', t('learningHub:errors.createNotAllowed', '当前视图不支持新建资源'));
       return;
@@ -848,7 +848,6 @@ export const LearningHubPage: React.FC = () => {
       image: 'image',
       file: 'file',
       mindmap: 'mindmap',
-      todo: 'todo',
     };
     
     const sourceType = typeMapping[activeTab.type];

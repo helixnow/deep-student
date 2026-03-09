@@ -205,7 +205,6 @@ export const RESOURCE_ID_PREFIX_MAP: Record<string, string> = {
   img_: 'image',
   file_: 'file',
   mm_: 'mindmap',
-  tdl_: 'todo',
 } as const;
 
 /**
@@ -222,7 +221,6 @@ export const RESOURCE_TYPE_TO_PREFIX: Record<string, string> = {
   image: 'img_',
   file: 'file_',
   mindmap: 'mm_',
-  todo: 'tdl_',
 } as const;
 
 // ============================================================================

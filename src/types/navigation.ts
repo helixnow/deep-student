@@ -20,6 +20,7 @@ export type CurrentView =
   | 'pdf-reader'
   | 'learning-hub'      // Learning Hub 学习资源全屏模式
   | 'skills-management' // 技能管理页面
+  | 'todo'              // 待办事项独立页面
   | 'chat-v2-test'      // Chat V2 集成测试页面（开发用）
   | 'tree-test';          // 树形拖拽测试（开发用）
 

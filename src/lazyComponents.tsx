@@ -98,6 +98,11 @@ export const LazyPdfReader = React.lazy(() =>
   import('./components/PdfReader').then(m => ({ default: m.default }))
 );
 
+// 待办事项
+export const LazyTodoPage = React.lazy(() =>
+  import('./components/todo/TodoPage').then(m => ({ default: m.TodoPage }))
+);
+
 // 开发专用组件：生产构建中 import.meta.env.DEV 为 false，动态 import 被 Rollup 死代码消除
 const DevNull: React.FC<any> = () => null;
 const devLazy = () => Promise.resolve({ default: DevNull as React.ComponentType<any> });

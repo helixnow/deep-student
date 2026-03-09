@@ -20,7 +20,6 @@ export type QuickAccessType =
   | 'images'
   | 'files'
   | 'mindmaps'
-  | 'todos'
   | 'recent'
   | 'trash'
   | 'indexStatus'
@@ -132,7 +131,6 @@ const QUICK_ACCESS_TARGETS: Record<QuickAccessType, Pick<FinderPathLike, 'viewKi
   images: { viewKind: 'folder', typeFilter: 'image' },
   files: { viewKind: 'folder', typeFilter: 'file' },
   mindmaps: { viewKind: 'folder', typeFilter: 'mindmap' },
-  todos: { viewKind: 'folder', typeFilter: 'todo' },
   recent: { viewKind: 'recent', typeFilter: null },
   trash: { viewKind: 'trash', typeFilter: null },
   indexStatus: { viewKind: 'indexStatus', typeFilter: null },
@@ -158,7 +156,6 @@ const QUICK_ACCESS_BY_TYPE_FILTER: Partial<Record<DstuNodeType, QuickAccessType>
   image: 'images',
   file: 'files',
   mindmap: 'mindmaps',
-  todo: 'todos',
 };
 
 const LAUNCHER_TYPE_BY_QUICK_ACCESS: Partial<Record<QuickAccessType, string>> = {
@@ -171,7 +168,6 @@ const LAUNCHER_TYPE_BY_QUICK_ACCESS: Partial<Record<QuickAccessType, string>> = 
   images: 'image',
   files: 'file',
   mindmaps: 'mindmap',
-  todos: 'todo',
 };
 
 const QUICK_ACCESS_ALIAS_MAP: Record<string, QuickAccessType> = {
@@ -195,8 +191,6 @@ const QUICK_ACCESS_ALIAS_MAP: Record<string, QuickAccessType> = {
   file: 'files',
   mindmaps: 'mindmaps',
   mindmap: 'mindmaps',
-  todos: 'todos',
-  todo: 'todos',
   recent: 'recent',
   trash: 'trash',
   indexStatus: 'indexStatus',

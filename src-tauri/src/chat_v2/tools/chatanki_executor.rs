@@ -4334,7 +4334,7 @@ fn resolve_context_ref_from_any_id(
                 trimmed
             ));
         }
-        VfsResourceType::Exam | VfsResourceType::Essay | VfsResourceType::Translation | VfsResourceType::Todo => {
+        VfsResourceType::Exam | VfsResourceType::Essay | VfsResourceType::Translation => {
             return Err(format!(
                 "Resource '{}' has unsupported type '{}' for chatanki_run direct input.",
                 trimmed, resource.resource_type

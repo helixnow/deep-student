@@ -1,7 +1,7 @@
-//! VFS 待办列表 Repo
+//! 待办列表 Repo
 //!
 //! 提供 todo_lists 和 todo_items 表的 CRUD 操作。
-//! 遵循 mindmap_repo.rs 的事务/软删除/VFS 集成模式。
+//! 独立于 VFS 资源系统，直接操作 todo_lists / todo_items 表。
 
 use std::sync::Arc;
 
@@ -10,11 +10,9 @@ use rusqlite::{params, Connection, OptionalExtension};
 
 use crate::vfs::database::VfsDatabase;
 use crate::vfs::error::{VfsError, VfsResult};
-use crate::vfs::repos::folder_repo::VfsFolderRepo;
-use crate::vfs::repos::resource_repo::VfsResourceRepo;
 use crate::vfs::types::{
     TodoActiveSummary, TodoStats, TodoSummaryItem, VfsCreateTodoItemParams,
-    VfsCreateTodoListParams, VfsFolderItem, VfsResourceType, VfsTodoItem, VfsTodoList, VfsUpdateTodoItemParams,
+    VfsCreateTodoListParams, VfsTodoItem, VfsTodoList, VfsUpdateTodoItemParams,
     VfsUpdateTodoListParams,
 };
 
@@ -67,31 +65,13 @@ impl VfsTodoRepo {
             .format("%Y-%m-%dT%H:%M:%S%.3fZ")
             .to_string();
 
-        // 创建资源记录（存储列表的 JSON 摘要）
-        let initial_content = serde_json::json!({
-            "type": "todo_list",
-            "title": final_title,
-            "itemCount": 0,
-        })
-        .to_string();
-
-        let resource_result = VfsResourceRepo::create_or_reuse_with_conn(
-            conn,
-            VfsResourceType::Note, // 复用 note 类型存储 JSON
-            &initial_content,
-            Some(&list_id),
-            Some("todo_lists"),
-            None,
-        )?;
-
         conn.execute(
             r#"
-            INSERT INTO todo_lists (id, resource_id, title, description, icon, color, sort_order, is_default, is_favorite, created_at, updated_at)
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0, ?7, 0, ?8, ?9)
+            INSERT INTO todo_lists (id, title, description, icon, color, sort_order, is_default, is_favorite, created_at, updated_at)
+            VALUES (?1, ?2, ?3, ?4, ?5, 0, ?6, 0, ?7, ?8)
             "#,
             params![
                 list_id,
-                resource_result.resource_id,
                 final_title,
                 params.description,
                 params.icon,
@@ -102,14 +82,10 @@ impl VfsTodoRepo {
             ],
         )?;
 
-        info!(
-            "[VFS::TodoRepo] Created todo list: {} (resource: {})",
-            list_id, resource_result.resource_id
-        );
+        info!("[TodoRepo] Created todo list: {}", list_id);
 
         Ok(VfsTodoList {
             id: list_id,
-            resource_id: resource_result.resource_id,
             title: final_title,
             description: params.description,
             icon: params.icon,
@@ -121,63 +97,6 @@ impl VfsTodoRepo {
             updated_at: now,
             deleted_at: None,
         })
-    }
-
-    /// 在指定文件夹中创建待办列表
-    pub fn create_todo_list_in_folder(
-        db: &VfsDatabase,
-        params: VfsCreateTodoListParams,
-        folder_id: Option<&str>,
-    ) -> VfsResult<VfsTodoList> {
-        let conn = db.get_conn_safe()?;
-        Self::create_todo_list_in_folder_with_conn(&conn, params, folder_id)
-    }
-
-    /// 在指定文件夹中创建待办列表（使用现有连接，事务保护）
-    pub fn create_todo_list_in_folder_with_conn(
-        conn: &Connection,
-        params: VfsCreateTodoListParams,
-        folder_id: Option<&str>,
-    ) -> VfsResult<VfsTodoList> {
-        conn.execute("BEGIN IMMEDIATE", [])?;
-
-        let result = (|| -> VfsResult<VfsTodoList> {
-            if let Some(fid) = folder_id {
-                if !VfsFolderRepo::folder_exists_with_conn(conn, fid)? {
-                    return Err(VfsError::NotFound {
-                        resource_type: "Folder".to_string(),
-                        id: fid.to_string(),
-                    });
-                }
-            }
-
-            let todo_list = Self::create_todo_list_with_conn(conn, params)?;
-
-            let folder_item = VfsFolderItem::new(
-                folder_id.map(|s| s.to_string()),
-                "todo".to_string(),
-                todo_list.id.clone(),
-            );
-            VfsFolderRepo::add_item_to_folder_with_conn(conn, &folder_item)?;
-
-            debug!(
-                "[VFS::TodoRepo] Created todo list {} in folder {:?}",
-                todo_list.id, folder_id
-            );
-
-            Ok(todo_list)
-        })();
-
-        match result {
-            Ok(list) => {
-                conn.execute("COMMIT", [])?;
-                Ok(list)
-            }
-            Err(e) => {
-                let _ = conn.execute("ROLLBACK", []);
-                Err(e)
-            }
-        }
     }
 
     /// 获取待办列表
@@ -194,7 +113,7 @@ impl VfsTodoRepo {
         let result = conn
             .query_row(
                 r#"
-                SELECT id, resource_id, title, description, icon, color, sort_order, is_default, is_favorite, created_at, updated_at, deleted_at
+                SELECT id, title, description, icon, color, sort_order, is_default, is_favorite, created_at, updated_at, deleted_at
                 FROM todo_lists
                 WHERE id = ?1 AND deleted_at IS NULL
                 "#,
@@ -215,7 +134,7 @@ impl VfsTodoRepo {
     pub fn list_todo_lists_with_conn(conn: &Connection) -> VfsResult<Vec<VfsTodoList>> {
         let mut stmt = conn.prepare(
             r#"
-            SELECT id, resource_id, title, description, icon, color, sort_order, is_default, is_favorite, created_at, updated_at, deleted_at
+            SELECT id, title, description, icon, color, sort_order, is_default, is_favorite, created_at, updated_at, deleted_at
             FROM todo_lists
             WHERE deleted_at IS NULL
             ORDER BY is_default DESC, sort_order ASC, updated_at DESC
@@ -259,11 +178,10 @@ impl VfsTodoRepo {
             params![final_title, final_description, final_icon, final_color, now, list_id],
         )?;
 
-        info!("[VFS::TodoRepo] Updated todo list: {}", list_id);
+        info!("[TodoRepo] Updated todo list: {}", list_id);
 
         Ok(VfsTodoList {
             id: list_id.to_string(),
-            resource_id: current.resource_id,
             title: final_title,
             description: final_description,
             icon: final_icon,
@@ -336,13 +254,6 @@ impl VfsTodoRepo {
                 params![now, now, list_id],
             )?;
 
-            // 软删除 folder_items
-            let now_ms = chrono::Utc::now().timestamp_millis();
-            conn.execute(
-                "UPDATE folder_items SET deleted_at = ?1, updated_at = ?2 WHERE item_id = ?3 AND item_type = 'todo' AND deleted_at IS NULL",
-                params![now, now_ms, list_id],
-            )?;
-
             Ok(())
         })();
 
@@ -397,13 +308,6 @@ impl VfsTodoRepo {
             conn.execute(
                 "UPDATE todo_items SET deleted_at = NULL, updated_at = ?1 WHERE todo_list_id = ?2 AND deleted_at IS NOT NULL",
                 params![now, list_id],
-            )?;
-
-            // 恢复 folder_items 记录
-            let now_ms = chrono::Utc::now().timestamp_millis();
-            conn.execute(
-                "UPDATE folder_items SET deleted_at = NULL, updated_at = ?1 WHERE item_id = ?2 AND item_type = 'todo'",
-                params![now_ms, list_id],
             )?;
 
             Ok(())
@@ -468,7 +372,7 @@ impl VfsTodoRepo {
         let existing = conn
             .query_row(
                 r#"
-                SELECT id, resource_id, title, description, icon, color, sort_order, is_default, is_favorite, created_at, updated_at, deleted_at
+                SELECT id, title, description, icon, color, sort_order, is_default, is_favorite, created_at, updated_at, deleted_at
                 FROM todo_lists
                 WHERE is_default = 1 AND deleted_at IS NULL
                 "#,
@@ -488,7 +392,7 @@ impl VfsTodoRepo {
             let existing_in_tx = conn
                 .query_row(
                     r#"
-                    SELECT id, resource_id, title, description, icon, color, sort_order, is_default, is_favorite, created_at, updated_at, deleted_at
+                    SELECT id, title, description, icon, color, sort_order, is_default, is_favorite, created_at, updated_at, deleted_at
                     FROM todo_lists
                     WHERE is_default = 1 AND deleted_at IS NULL
                     "#,
@@ -1286,17 +1190,16 @@ impl VfsTodoRepo {
     fn row_to_todo_list(row: &rusqlite::Row) -> rusqlite::Result<VfsTodoList> {
         Ok(VfsTodoList {
             id: row.get(0)?,
-            resource_id: row.get(1)?,
-            title: row.get(2)?,
-            description: row.get(3)?,
-            icon: row.get(4)?,
-            color: row.get(5)?,
-            sort_order: row.get(6)?,
-            is_default: row.get::<_, i32>(7)? != 0,
-            is_favorite: row.get::<_, i32>(8)? != 0,
-            created_at: row.get(9)?,
-            updated_at: row.get(10)?,
-            deleted_at: row.get(11)?,
+            title: row.get(1)?,
+            description: row.get(2)?,
+            icon: row.get(3)?,
+            color: row.get(4)?,
+            sort_order: row.get(5)?,
+            is_default: row.get::<_, i32>(6)? != 0,
+            is_favorite: row.get::<_, i32>(7)? != 0,
+            created_at: row.get(8)?,
+            updated_at: row.get(9)?,
+            deleted_at: row.get(10)?,
         })
     }
 
@@ -1313,7 +1216,7 @@ impl VfsTodoRepo {
         let conn = db.get_conn_safe()?;
         let mut stmt = conn.prepare(
             r#"
-            SELECT id, resource_id, title, description, icon, color, sort_order, is_default, is_favorite, created_at, updated_at, deleted_at
+            SELECT id, title, description, icon, color, sort_order, is_default, is_favorite, created_at, updated_at, deleted_at
             FROM todo_lists
             WHERE deleted_at IS NOT NULL
             ORDER BY deleted_at DESC
@@ -1396,34 +1299,14 @@ impl VfsTodoRepo {
 
     /// 永久删除待办列表的内部逻辑（不含事务管理，供批量操作复用）
     fn purge_todo_list_inner(conn: &Connection, list_id: &str) -> VfsResult<()> {
-        // 1. 获取主 resource_id
-        let resource_id: Option<String> = conn
-            .query_row(
-                "SELECT resource_id FROM todo_lists WHERE id = ?1",
-                params![list_id],
-                |row| row.get(0),
-            )
-            .optional()?;
-
-        // 2. 删除该列表下的所有待办项
+        // 1. 删除该列表下的所有待办项
         conn.execute(
             "DELETE FROM todo_items WHERE todo_list_id = ?1",
             params![list_id],
         )?;
 
-        // 3. 删除待办列表记录
+        // 2. 删除待办列表记录
         conn.execute("DELETE FROM todo_lists WHERE id = ?1", params![list_id])?;
-
-        // 4. 删除 folder_items 记录
-        conn.execute(
-            "DELETE FROM folder_items WHERE item_id = ?1 AND item_type = 'todo'",
-            params![list_id],
-        )?;
-
-        // 5. 减少资源引用计数
-        if let Some(rid) = resource_id {
-            VfsResourceRepo::decrement_ref_with_conn(conn, &rid)?;
-        }
 
         Ok(())
     }
