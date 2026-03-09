@@ -1,0 +1,46 @@
+{
+  "sections": {
+    "smartViews": "Smart Views",
+    "lists": "Lists"
+  },
+  "views": {
+    "inbox": "Inbox",
+    "today": "Today",
+    "upcoming": "Upcoming",
+    "overdue": "Overdue"
+  },
+  "actions": {
+    "quickAddPlaceholder": "Add a todo...",
+    "add": "Add",
+    "search": "Search",
+    "newListPlaceholder": "New list name...",
+    "favorite": "Favorite",
+    "unfavorite": "Unfavorite"
+  },
+  "filters": {
+    "showCompleted": "Show Completed"
+  },
+  "stats": {
+    "pending": "pending",
+    "completed": "completed"
+  },
+  "empty": {
+    "noItems": "No items yet"
+  },
+  "detail": {
+    "title": "Details"
+  },
+  "fields": {
+    "status": "Status",
+    "priority": "Priority",
+    "dueDate": "Due Date",
+    "description": "Description"
+  },
+  "status": {
+    "completed": "Completed",
+    "pending": "Pending"
+  },
+  "placeholders": {
+    "description": "Add a description..."
+  }
+}

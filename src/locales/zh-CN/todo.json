@@ -1,0 +1,46 @@
+{
+  "sections": {
+    "smartViews": "智能视图",
+    "lists": "列表"
+  },
+  "views": {
+    "inbox": "收件箱",
+    "today": "今日",
+    "upcoming": "即将到期",
+    "overdue": "已过期"
+  },
+  "actions": {
+    "quickAddPlaceholder": "添加待办事项...",
+    "add": "添加",
+    "search": "搜索",
+    "newListPlaceholder": "新建列表名称...",
+    "favorite": "收藏",
+    "unfavorite": "取消收藏"
+  },
+  "filters": {
+    "showCompleted": "显示已完成"
+  },
+  "stats": {
+    "pending": "待完成",
+    "completed": "已完成"
+  },
+  "empty": {
+    "noItems": "暂无待办事项"
+  },
+  "detail": {
+    "title": "详情"
+  },
+  "fields": {
+    "status": "状态",
+    "priority": "优先级",
+    "dueDate": "截止日期",
+    "description": "描述"
+  },
+  "status": {
+    "completed": "已完成",
+    "pending": "待完成"
+  },
+  "placeholders": {
+    "description": "添加描述..."
+  }
+}
