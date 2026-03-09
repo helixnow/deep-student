@@ -36,6 +36,8 @@ export interface TodoItem {
   completedAt?: string;
   repeatJson?: string;
   attachmentsJson: string;
+  estimatedPomodoros?: number;
+  completedPomodoros?: number;
   createdAt: string;
   updatedAt: string;
   deletedAt?: string;
@@ -111,6 +113,8 @@ export interface UpdateTodoItemInput {
   parentId?: string;
   attachments?: string[];
   repeatJson?: string;
+  estimatedPomodoros?: number;
+  completedPomodoros?: number;
 }
 
 // ============================================================================

@@ -1382,6 +1382,12 @@ pub fn run() {
             ,crate::vfs::todo_handlers::todo_list_upcoming
             ,crate::vfs::todo_handlers::todo_search
             ,crate::vfs::todo_handlers::todo_get_active_summary
+            // 番茄钟命令
+            ,crate::vfs::todo_handlers::pomodoro_create_record
+            ,crate::vfs::todo_handlers::pomodoro_get_record
+            ,crate::vfs::todo_handlers::pomodoro_list_by_todo
+            ,crate::vfs::todo_handlers::pomodoro_today_stats
+            ,crate::vfs::todo_handlers::pomodoro_list_today
             // 索引诊断命令
             ,crate::vfs::handlers::vfs_debug_index_status
             ,crate::vfs::handlers::vfs_reset_disabled_to_pending

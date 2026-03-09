@@ -849,6 +849,14 @@ pub struct VfsTodoItem {
     #[serde(default = "default_empty_json_array")]
     pub attachments_json: String,
 
+    /// 预估番茄数
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub estimated_pomodoros: Option<i32>,
+
+    /// 已完成番茄数
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub completed_pomodoros: Option<i32>,
+
     /// 创建时间（ISO 8601）
     pub created_at: String,
 
@@ -1010,6 +1018,14 @@ pub struct VfsUpdateTodoItemParams {
     /// 新重复配置
     #[serde(skip_serializing_if = "Option::is_none")]
     pub repeat_json: Option<String>,
+
+    /// 新预估番茄数
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub estimated_pomodoros: Option<i32>,
+
+    /// 新已完成番茄数
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub completed_pomodoros: Option<i32>,
 }
 
 /// 活跃待办摘要（用于 System Prompt 注入）
@@ -1050,6 +1066,104 @@ pub struct TodoStats {
     pub overdue_count: usize,
     /// 今日已完成数
     pub today_completed: usize,
+}
+
+// ============================================================================
+// 番茄钟记录
+// ============================================================================
+
+/// 番茄钟记录（pomodoro_records 表）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PomodoroRecord {
+    /// 记录 ID（格式：`pd_{nanoid(10)}`）
+    pub id: String,
+
+    /// 关联的任务 ID（可为空，代表纯番茄钟）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub todo_item_id: Option<String>,
+
+    /// 开始时间（ISO 8601）
+    pub start_time: String,
+
+    /// 结束时间（ISO 8601）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub end_time: Option<String>,
+
+    /// 计划时长（秒）
+    pub duration: i32,
+
+    /// 实际专注时长（秒）
+    #[serde(default)]
+    pub actual_duration: i32,
+
+    /// 类型：work | short_break | long_break
+    #[serde(default = "default_pomodoro_type")]
+    pub r#type: String,
+
+    /// 状态：completed | interrupted
+    #[serde(default = "default_pomodoro_status")]
+    pub status: String,
+
+    /// 创建时间（ISO 8601）
+    pub created_at: String,
+}
+
+fn default_pomodoro_type() -> String {
+    "work".to_string()
+}
+
+fn default_pomodoro_status() -> String {
+    "completed".to_string()
+}
+
+impl PomodoroRecord {
+    /// 生成番茄钟记录 ID
+    pub fn generate_id() -> String {
+        format!("pd_{}", nanoid::nanoid!(10))
+    }
+}
+
+/// 创建番茄钟记录参数
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreatePomodoroRecordParams {
+    /// 关联任务 ID
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub todo_item_id: Option<String>,
+
+    /// 开始时间
+    pub start_time: String,
+
+    /// 结束时间
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub end_time: Option<String>,
+
+    /// 计划时长（秒）
+    pub duration: i32,
+
+    /// 实际专注时长（秒）
+    pub actual_duration: i32,
+
+    /// 类型：work | short_break | long_break
+    #[serde(default = "default_pomodoro_type")]
+    pub r#type: String,
+
+    /// 状态：completed | interrupted
+    #[serde(default = "default_pomodoro_status")]
+    pub status: String,
+}
+
+/// 番茄钟今日统计
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PomodoroTodayStats {
+    /// 今日完成的番茄数
+    pub completed_count: usize,
+    /// 今日总专注时长（秒）
+    pub total_focus_seconds: i64,
+    /// 今日中断次数
+    pub interrupted_count: usize,
 }
 
 // ============================================================================

@@ -23,6 +23,7 @@ import { ModernSidebar } from './components/ModernSidebar';
 import { WindowControls } from './components/WindowControls';
 import { useFinderStore } from './components/learning-hub/stores/finderStore';
 import { MobileLayoutProvider, BottomTabBar, MobileHeaderProvider, UnifiedMobileHeader, MobileHeaderActiveViewSync } from '@/components/layout';
+import { GlobalPomodoroWidget } from '@/components/pomodoro/GlobalPomodoroWidget';
 // 🚀 性能优化：IrecServiceSwitcher, IrecGraphFlow, IrecGraphFlowDemo, CrepeDemoPage, ChatV2IntegrationTest, BridgeToIrec 改为懒加载
 import { TauriAPI } from './utils/tauriApi';
 // ★ MistakeItem 类型导入已废弃（2026-01 清理）
@@ -1683,6 +1684,9 @@ function App() {
 
       {/* 命令面板 */}
       <CommandPalette />
+
+      {/* Global Pomodoro Timer */}
+      <GlobalPomodoroWidget />
 
       {/* 调试面板入口由全局悬浮按钮统一控制 */}
       

@@ -68,7 +68,7 @@ pub use repos::{
 };
 pub use repos::{
     VfsAttachmentRepo, VfsBlobRepo, VfsEssayRepo, VfsExamRepo, VfsFileRepo, VfsFolderRepo,
-    VfsMindMapRepo, VfsNoteRepo, VfsResourceRepo, VfsTextbookRepo, VfsTodoRepo,
+    VfsMindMapRepo, VfsNoteRepo, VfsPomodoroRepo, VfsResourceRepo, VfsTextbookRepo, VfsTodoRepo,
     VfsTranslationRepo,
 };
 pub use types::*;

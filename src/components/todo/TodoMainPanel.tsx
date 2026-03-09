@@ -9,10 +9,11 @@ import { useTranslation } from 'react-i18next';
 import {
   Plus, Search, CheckCircle2, Circle, Loader2,
   Calendar, AlertTriangle, ArrowUp, ArrowDown, ArrowRight,
-  Minus, Trash2, X, MoreVertical, Check
+  Minus, Trash2, X, MoreVertical, Check, Play, BrainCircuit
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useTodoStore } from './useTodoStore';
+import { usePomodoroStore } from '../pomodoro/usePomodoroStore';
 import type { TodoItem, TodoPriority, UpdateTodoItemInput } from './types';
 import { PRIORITY_CONFIG, isOverdue, isDueToday, parseTags } from './types';
 
@@ -185,8 +186,19 @@ const TodoItemRow: React.FC<{
         </div>
 
         {/* 元信息行 - 只有在有数据时才渲染以节省空间 */}
-        {(item.dueDate || tags.length > 0 || item.priority !== 'none') && (
+        {(item.dueDate || tags.length > 0 || item.priority !== 'none' || item.estimatedPomodoros) && (
           <div className="flex items-center gap-3 mt-1">
+            {/* Pomodoro Indicator */}
+            {item.estimatedPomodoros ? (
+              <div 
+                className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-orange-500/10 text-orange-600 border border-orange-500/20 text-xs"
+                title={`${item.completedPomodoros || 0} / ${item.estimatedPomodoros} Pomodoros`}
+              >
+                <BrainCircuit className="w-3 h-3" />
+                <span>{item.completedPomodoros || 0}/{item.estimatedPomodoros}</span>
+              </div>
+            ) : null}
+
             {item.priority !== 'none' && (
               <div className="flex items-center gap-1 text-xs">
                 <PriorityIcon priority={item.priority as TodoPriority} />
@@ -223,6 +235,20 @@ const TodoItemRow: React.FC<{
         )}
       </div>
 
+      {/* Pomodoro Quick Start Button (Only for uncompleted tasks) */}
+      {!isCompleted && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            usePomodoroStore.getState().start(item.id, item.title);
+          }}
+          title="Start Focus Session"
+          className="p-1.5 rounded-full opacity-0 group-hover:opacity-100 hover:bg-orange-500/10 text-muted-foreground hover:text-orange-500 transition-all duration-200 flex-shrink-0"
+        >
+          <Play className="w-4 h-4" />
+        </button>
+      )}
+
       {/* 删除按钮 */}
       <button
         onClick={(e) => {
@@ -252,6 +278,7 @@ const TodoItemDetail: React.FC<{
   const [priority, setPriority] = useState<TodoPriority>(item.priority as TodoPriority);
   const [dueDate, setDueDate] = useState(item.dueDate || '');
   const [dueTime, setDueTime] = useState(item.dueTime || '');
+  const [estimatedPomodoros, setEstimatedPomodoros] = useState(item.estimatedPomodoros || 0);
 
   const handleSave = useCallback(async () => {
     const changes: UpdateTodoItemInput = { id: item.id };
@@ -261,10 +288,12 @@ const TodoItemDetail: React.FC<{
     if (priority !== item.priority) { changes.priority = priority; hasChanges = true; }
     if (dueDate !== (item.dueDate || '')) { changes.dueDate = dueDate; hasChanges = true; }
     if (dueTime !== (item.dueTime || '')) { changes.dueTime = dueTime; hasChanges = true; }
+    if (estimatedPomodoros !== (item.estimatedPomodoros || 0)) { changes.estimatedPomodoros = estimatedPomodoros; hasChanges = true; }
+    
     if (hasChanges) {
       await updateItem(changes);
     }
-  }, [item, title, description, priority, dueDate, dueTime, updateItem]);
+  }, [item, title, description, priority, dueDate, dueTime, estimatedPomodoros, updateItem]);
 
   // Auto-save on blur
   const handleBlur = useCallback(() => {

@@ -9,7 +9,7 @@ use serde::Deserialize;
 use tauri::{AppHandle, Manager, State};
 
 use crate::vfs::database::VfsDatabase;
-use crate::vfs::repos::VfsTodoRepo;
+use crate::vfs::repos::{VfsPomodoroRepo, VfsTodoRepo};
 use crate::vfs::types::*;
 
 // ============================================================================
@@ -93,6 +93,10 @@ pub struct UpdateTodoItemInput {
     pub attachments: Option<Vec<String>>,
     #[serde(default)]
     pub repeat_json: Option<String>,
+    #[serde(default)]
+    pub estimated_pomodoros: Option<i32>,
+    #[serde(default)]
+    pub completed_pomodoros: Option<i32>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -231,6 +235,8 @@ pub fn todo_update_item(
         parent_id: input.parent_id,
         attachments: input.attachments,
         repeat_json: input.repeat_json,
+        estimated_pomodoros: input.estimated_pomodoros,
+        completed_pomodoros: input.completed_pomodoros,
     };
     VfsTodoRepo::update_todo_item(&vfs_db, &input.id, params).map_err(|e| e.to_string())
 }
@@ -288,4 +294,80 @@ pub fn todo_get_active_summary(
 ) -> Result<Option<TodoActiveSummary>, String> {
     let vfs_db: State<Arc<VfsDatabase>> = app.state();
     VfsTodoRepo::get_active_todo_summary(&vfs_db).map_err(|e| e.to_string())
+}
+
+// ============================================================================
+// 番茄钟命令
+// ============================================================================
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreatePomodoroInput {
+    #[serde(default)]
+    pub todo_item_id: Option<String>,
+    pub start_time: String,
+    #[serde(default)]
+    pub end_time: Option<String>,
+    pub duration: i32,
+    pub actual_duration: i32,
+    #[serde(default = "default_pomodoro_type")]
+    pub r#type: String,
+    #[serde(default = "default_pomodoro_status")]
+    pub status: String,
+}
+
+fn default_pomodoro_type() -> String {
+    "work".to_string()
+}
+
+fn default_pomodoro_status() -> String {
+    "completed".to_string()
+}
+
+#[tauri::command]
+pub fn pomodoro_create_record(
+    app: AppHandle,
+    input: CreatePomodoroInput,
+) -> Result<PomodoroRecord, String> {
+    let vfs_db: State<Arc<VfsDatabase>> = app.state();
+    let params = CreatePomodoroRecordParams {
+        todo_item_id: input.todo_item_id,
+        start_time: input.start_time,
+        end_time: input.end_time,
+        duration: input.duration,
+        actual_duration: input.actual_duration,
+        r#type: input.r#type,
+        status: input.status,
+    };
+    VfsPomodoroRepo::create_record(&vfs_db, params).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn pomodoro_get_record(
+    app: AppHandle,
+    record_id: String,
+) -> Result<Option<PomodoroRecord>, String> {
+    let vfs_db: State<Arc<VfsDatabase>> = app.state();
+    VfsPomodoroRepo::get_record(&vfs_db, &record_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn pomodoro_list_by_todo(
+    app: AppHandle,
+    todo_item_id: String,
+) -> Result<Vec<PomodoroRecord>, String> {
+    let vfs_db: State<Arc<VfsDatabase>> = app.state();
+    VfsPomodoroRepo::list_by_todo_item(&vfs_db, &todo_item_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn pomodoro_today_stats(app: AppHandle) -> Result<PomodoroTodayStats, String> {
+    let vfs_db: State<Arc<VfsDatabase>> = app.state();
+    VfsPomodoroRepo::get_today_stats(&vfs_db).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn pomodoro_list_today(app: AppHandle) -> Result<Vec<PomodoroRecord>, String> {
+    let vfs_db: State<Arc<VfsDatabase>> = app.state();
+    VfsPomodoroRepo::list_today_records(&vfs_db).map_err(|e| e.to_string())
 }

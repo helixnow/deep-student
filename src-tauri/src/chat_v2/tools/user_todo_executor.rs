@@ -429,6 +429,8 @@ impl UserTodoExecutor {
             parent_id: None,
             attachments: None,
             repeat_json: None,
+            estimated_pomodoros: None,
+            completed_pomodoros: None,
         };
 
         let item =

@@ -550,6 +550,8 @@ impl VfsTodoRepo {
             completed_at: None,
             repeat_json: None,
             attachments_json,
+            estimated_pomodoros: None,
+            completed_pomodoros: None,
             created_at: now.clone(),
             updated_at: now,
             deleted_at: None,
@@ -571,7 +573,7 @@ impl VfsTodoRepo {
             .query_row(
                 r#"
                 SELECT id, todo_list_id, title, description, status, priority, due_date, due_time, reminder,
-                       tags_json, sort_order, parent_id, completed_at, repeat_json, attachments_json, created_at, updated_at, deleted_at
+                       tags_json, sort_order, parent_id, completed_at, repeat_json, attachments_json, estimated_pomodoros, completed_pomodoros, created_at, updated_at, deleted_at
                 FROM todo_items
                 WHERE id = ?1 AND deleted_at IS NULL
                 "#,
@@ -592,7 +594,7 @@ impl VfsTodoRepo {
         let sql = if include_completed {
             r#"
             SELECT id, todo_list_id, title, description, status, priority, due_date, due_time, reminder,
-                   tags_json, sort_order, parent_id, completed_at, repeat_json, attachments_json, created_at, updated_at, deleted_at
+                   tags_json, sort_order, parent_id, completed_at, repeat_json, attachments_json, estimated_pomodoros, completed_pomodoros, created_at, updated_at, deleted_at
             FROM todo_items
             WHERE todo_list_id = ?1 AND deleted_at IS NULL
             ORDER BY
@@ -603,7 +605,7 @@ impl VfsTodoRepo {
         } else {
             r#"
             SELECT id, todo_list_id, title, description, status, priority, due_date, due_time, reminder,
-                   tags_json, sort_order, parent_id, completed_at, repeat_json, attachments_json, created_at, updated_at, deleted_at
+                   tags_json, sort_order, parent_id, completed_at, repeat_json, attachments_json, estimated_pomodoros, completed_pomodoros, created_at, updated_at, deleted_at
             FROM todo_items
             WHERE todo_list_id = ?1 AND deleted_at IS NULL AND status = 'pending'
             ORDER BY
@@ -726,6 +728,16 @@ impl VfsTodoRepo {
         } else {
             current.repeat_json.clone()
         };
+        let final_estimated_pomodoros = if params.estimated_pomodoros.is_some() {
+            params.estimated_pomodoros
+        } else {
+            current.estimated_pomodoros
+        };
+        let final_completed_pomodoros = if params.completed_pomodoros.is_some() {
+            params.completed_pomodoros
+        } else {
+            current.completed_pomodoros
+        };
 
         // 处理完成时间
         let final_completed_at = if final_status == "completed" && current.status != "completed" {
@@ -741,7 +753,7 @@ impl VfsTodoRepo {
             UPDATE todo_items
             SET title = ?1, description = ?2, status = ?3, priority = ?4, due_date = ?5, due_time = ?6,
                 reminder = ?7, tags_json = ?8, parent_id = ?9, completed_at = ?10, repeat_json = ?11,
-                attachments_json = ?12, updated_at = ?13
+                attachments_json = ?12, updated_at = ?13, estimated_pomodoros = ?15, completed_pomodoros = ?16
             WHERE id = ?14
             "#,
             params![
@@ -759,6 +771,8 @@ impl VfsTodoRepo {
                 final_attachments_json,
                 now,
                 item_id,
+                final_estimated_pomodoros,
+                final_completed_pomodoros,
             ],
         )?;
 
@@ -786,6 +800,8 @@ impl VfsTodoRepo {
             completed_at: final_completed_at,
             repeat_json: final_repeat_json,
             attachments_json: final_attachments_json,
+            estimated_pomodoros: final_estimated_pomodoros,
+            completed_pomodoros: final_completed_pomodoros,
             created_at: current.created_at,
             updated_at: now,
             deleted_at: None,
@@ -919,7 +935,7 @@ impl VfsTodoRepo {
         let mut stmt = conn.prepare(
             r#"
             SELECT id, todo_list_id, title, description, status, priority, due_date, due_time, reminder,
-                   tags_json, sort_order, parent_id, completed_at, repeat_json, attachments_json, created_at, updated_at, deleted_at
+                   tags_json, sort_order, parent_id, completed_at, repeat_json, attachments_json, estimated_pomodoros, completed_pomodoros, created_at, updated_at, deleted_at
             FROM todo_items
             WHERE due_date = ?1 AND status = 'pending' AND deleted_at IS NULL
             ORDER BY
@@ -941,7 +957,7 @@ impl VfsTodoRepo {
         let mut stmt = conn.prepare(
             r#"
             SELECT id, todo_list_id, title, description, status, priority, due_date, due_time, reminder,
-                   tags_json, sort_order, parent_id, completed_at, repeat_json, attachments_json, created_at, updated_at, deleted_at
+                   tags_json, sort_order, parent_id, completed_at, repeat_json, attachments_json, estimated_pomodoros, completed_pomodoros, created_at, updated_at, deleted_at
             FROM todo_items
             WHERE due_date < ?1 AND status = 'pending' AND deleted_at IS NULL
             ORDER BY due_date ASC,
@@ -964,7 +980,7 @@ impl VfsTodoRepo {
         let mut stmt = conn.prepare(
             r#"
             SELECT id, todo_list_id, title, description, status, priority, due_date, due_time, reminder,
-                   tags_json, sort_order, parent_id, completed_at, repeat_json, attachments_json, created_at, updated_at, deleted_at
+                   tags_json, sort_order, parent_id, completed_at, repeat_json, attachments_json, estimated_pomodoros, completed_pomodoros, created_at, updated_at, deleted_at
             FROM todo_items
             WHERE due_date > ?1 AND due_date <= ?2 AND status = 'pending' AND deleted_at IS NULL
             ORDER BY due_date ASC,
@@ -984,7 +1000,7 @@ impl VfsTodoRepo {
         let mut stmt = conn.prepare(
             r#"
             SELECT id, todo_list_id, title, description, status, priority, due_date, due_time, reminder,
-                   tags_json, sort_order, parent_id, completed_at, repeat_json, attachments_json, created_at, updated_at, deleted_at
+                   tags_json, sort_order, parent_id, completed_at, repeat_json, attachments_json, estimated_pomodoros, completed_pomodoros, created_at, updated_at, deleted_at
             FROM todo_items
             WHERE (title LIKE ?1 OR description LIKE ?1) AND deleted_at IS NULL
             ORDER BY updated_at DESC
@@ -1328,9 +1344,11 @@ impl VfsTodoRepo {
             completed_at: row.get(12)?,
             repeat_json: row.get(13)?,
             attachments_json: row.get(14)?,
-            created_at: row.get(15)?,
-            updated_at: row.get(16)?,
-            deleted_at: row.get(17)?,
+            estimated_pomodoros: row.get::<_, Option<i32>>(15).unwrap_or(None),
+            completed_pomodoros: row.get::<_, Option<i32>>(16).unwrap_or(None),
+            created_at: row.get(17)?,
+            updated_at: row.get(18)?,
+            deleted_at: row.get(19)?,
         })
     }
 
@@ -1369,6 +1387,8 @@ impl Default for VfsUpdateTodoItemParams {
             parent_id: None,
             attachments: None,
             repeat_json: None,
+            estimated_pomodoros: None,
+            completed_pomodoros: None,
         }
     }
 }
