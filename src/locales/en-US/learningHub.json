@@ -42,6 +42,7 @@
     "addToDesktop": "Add to Desktop",
     "addedToDesktop": "Added to Desktop",
     "newMindMap": "New Mind Map",
+    "newTodo": "New Todo List",
     "deleteTitle": "Confirm Delete",
     "export": "Export",
     "exporting": "Exporting...",
@@ -78,7 +79,8 @@
     "essay": "Essay Grading",
     "image": "Images",
     "file": "Documents",
-    "mindmap": "Mind Maps"
+    "mindmap": "Mind Maps",
+    "todo": "Todo Lists"
   },
   "actionBar": {
     "referenceToChat": "Reference to Chat",
@@ -363,6 +365,7 @@
       "newTranslation": "New Translation",
       "newEssay": "New Essay",
       "newMindMap": "New Mind Map",
+      "newTodo": "New Todo List",
       "viewGrid": "Grid View",
       "viewList": "List View",
       "hideSidebar": "Hide Sidebar",
@@ -378,7 +381,8 @@
       "examSuccess": "Question set created",
       "translationSuccess": "Translation created",
       "essaySuccess": "Essay created",
-      "mindmapSuccess": "Mind map created"
+      "mindmapSuccess": "Mind map created",
+      "todoSuccess": "Todo list created"
     },
     "quickAccess": {
       "desktop": "Desktop",
@@ -399,7 +403,8 @@
       "resourceTypes": "Resource Types",
       "media": "Media",
       "system": "System",
-      "mindmaps": "Mind Maps"
+      "mindmaps": "Mind Maps",
+      "todos": "Todo Lists"
     },
     "search": {
       "title": "Search",
@@ -619,11 +624,13 @@
       "newEssay": "New Essay",
       "newTranslation": "New Translation",
       "newMindmap": "New Mind Map",
+      "newTodo": "New Todo List",
       "allNotes": "All Notes",
       "allExams": "All Question Sets",
       "allEssays": "All Essays",
       "allTranslations": "All Translations",
       "mindmaps": "Mind Maps",
+      "todos": "Todo Lists",
       "favorites": "Favorites",
       "recentAccess": "Recent"
     }

@@ -38,6 +38,7 @@ import {
   EssayIcon,
   TranslationIcon,
   MindmapIcon,
+  TodoIcon,
   ImageFileIcon,
   GenericFileIcon,
   type ResourceIconProps,
@@ -71,6 +72,7 @@ const TAB_ICON_MAP: Record<string, React.FC<ResourceIconProps>> = {
   image: ImageFileIcon,
   file: GenericFileIcon,
   mindmap: MindmapIcon,
+  todo: TodoIcon,
 };
 
 const getTabIcon = (type: ResourceType): React.FC<ResourceIconProps> =>

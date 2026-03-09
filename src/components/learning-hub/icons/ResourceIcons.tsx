@@ -319,6 +319,24 @@ export const MindmapIcon: React.FC<ResourceIconProps> = ({
 );
 
 // ============================================================================
+// 待办列表图标 - 橙色 (Todo)
+// ============================================================================
+export const TodoIcon: React.FC<ResourceIconProps> = ({
+  className,
+  size = defaultSize,
+}) => (
+  <DocBase size={size} color="orange" className={className}>
+    <rect x="14" y="16" width="4" height="4" rx="0.8" stroke={palette.orange.fg} strokeWidth="1.2" fill="none" />
+    <line x1="21" y1="18" x2="34" y2="18" stroke={palette.orange.fg} strokeWidth="1.5" opacity="0.7" />
+    <rect x="14" y="24" width="4" height="4" rx="0.8" stroke={palette.orange.fg} strokeWidth="1.2" fill="none" />
+    <path d="M15 26.5L16 27.5L18 25" stroke={palette.orange.fg} strokeWidth="1" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+    <line x1="21" y1="26" x2="34" y2="26" stroke={palette.orange.fg} strokeWidth="1.5" opacity="0.7" />
+    <rect x="14" y="32" width="4" height="4" rx="0.8" stroke={palette.orange.fg} strokeWidth="1.2" fill="none" />
+    <line x1="21" y1="34" x2="30" y2="34" stroke={palette.orange.fg} strokeWidth="1.5" opacity="0.7" />
+  </DocBase>
+);
+
+// ============================================================================
 // 文件夹图标 - 黄/橙色 (Notion-style Folder) - v5 重设计
 // 参考 macOS/Notion 的经典文件夹配色，更饱满的形状
 // ============================================================================
@@ -715,6 +733,7 @@ export type ResourceIconType =
   | 'essay' 
   | 'translation' 
   | 'mindmap' 
+  | 'todo' 
   | 'folder' 
   | 'image' 
   | 'file'
@@ -739,6 +758,7 @@ export const ResourceIconMap: Record<ResourceIconType, React.FC<ResourceIconProp
   essay: EssayIcon,
   translation: TranslationIcon,
   mindmap: MindmapIcon,
+  todo: TodoIcon,
   folder: FolderIcon,
   image: ImageFileIcon,
   file: GenericFileIcon,

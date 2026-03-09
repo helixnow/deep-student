@@ -10,6 +10,7 @@ export {
   EssayIcon,
   TranslationIcon,
   MindmapIcon,
+  TodoIcon,
   FolderIcon,
   ImageFileIcon,
   GenericFileIcon,

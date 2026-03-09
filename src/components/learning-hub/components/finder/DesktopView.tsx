@@ -23,6 +23,7 @@ import {
   EssayIcon,
   TranslationIcon,
   MindmapIcon,
+  TodoIcon,
   FolderIcon,
   FavoriteIcon,
   RecentIcon,
@@ -49,7 +50,7 @@ import { FolderPickerDialog } from './FolderPickerDialog';
 import { folderApi } from '@/dstu';
 
 /** 创建资源类型 */
-export type CreateResourceType = 'note' | 'exam' | 'essay' | 'translation' | 'mindmap';
+export type CreateResourceType = 'note' | 'exam' | 'essay' | 'translation' | 'mindmap' | 'todo';
 
 interface DesktopViewProps {
   /** 导航到快捷入口 */
@@ -74,6 +75,7 @@ const APP_TYPE_ICONS: Record<AppType, React.FC<ResourceIconProps>> = {
   translation: TranslationIcon,
   mindmap: MindmapIcon,
   textbook: TextbookIcon,
+  todo: TodoIcon,
 };
 
 /** 快捷入口类型对应的图标 */
@@ -83,6 +85,7 @@ const QUICK_ACCESS_ICONS: Partial<Record<QuickAccessType, React.FC<ResourceIconP
   essays: EssayIcon,
   translations: TranslationIcon,
   mindmaps: MindmapIcon,
+  todos: TodoIcon,
   textbooks: TextbookIcon,
   favorites: FavoriteIcon,
   recent: RecentIcon,
@@ -550,6 +553,7 @@ export function DesktopView({
             translation: 'translations',
             mindmap: 'mindmaps',
             textbook: 'textbooks',
+            todo: 'todos',
           };
           onNavigateQuickAccess(typeToQuickAccess[shortcut.target.appType]);
         }

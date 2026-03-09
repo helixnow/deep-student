@@ -42,6 +42,7 @@ import {
   ChevronRight,
   Image,
   File,
+  ListChecks,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
@@ -156,7 +157,7 @@ const ContextMenuPortal: React.FC<ContextMenuPortalProps> = ({
 // ============================================================================
 
 /** 新建内容类型 */
-export type CreateItemType = 'note' | 'exam' | 'textbook' | 'document' | 'translation' | 'essay';
+export type CreateItemType = 'note' | 'exam' | 'textbook' | 'document' | 'translation' | 'essay' | 'mindmap' | 'todo';
 
 export interface FolderTreeViewProps {
   /** 文件夹树数据 */
@@ -637,6 +638,15 @@ export const FolderTreeView: React.FC<FolderTreeViewProps> = ({
             >
               {t('contextMenu.newEssay', '新建作文')}
             </AppMenuItem>
+            <AppMenuItem 
+              icon={<ListChecks className="w-4 h-4" />} 
+              onClick={() => {
+                onCreateItem?.('todo', null);
+                setContextMenuOpen(false);
+              }}
+            >
+              {t('contextMenu.newTodo', '新建待办列表')}
+            </AppMenuItem>
             <AppMenuSeparator />
             {/* 刷新 */}
             <AppMenuItem 
@@ -973,6 +983,7 @@ export const FolderTreeView: React.FC<FolderTreeViewProps> = ({
                               case 'exam': ItemIcon = ClipboardList; iconColorClass = "text-purple-500"; typeLabel = t('resourceType.exam', '题目集'); break;
                               case 'translation': ItemIcon = Languages; iconColorClass = "text-indigo-500"; typeLabel = t('resourceType.translation', '翻译'); break;
                               case 'essay': ItemIcon = PenTool; iconColorClass = "text-orange-500"; typeLabel = t('resourceType.essay', '作文'); break;
+                              case 'todo': ItemIcon = ListChecks; iconColorClass = "text-amber-500"; typeLabel = t('resourceType.todo', '待办'); break;
                             }
                             
                             return (
@@ -1090,6 +1101,15 @@ export const FolderTreeView: React.FC<FolderTreeViewProps> = ({
           }}
         >
           {t('contextMenu.newEssay', '新建作文')}
+        </AppMenuItem>
+        <AppMenuItem 
+          icon={<ListChecks className="w-4 h-4" />} 
+          onClick={() => {
+            onCreateItem?.('todo', currentFolderId);
+            setContextMenuOpen(false);
+          }}
+        >
+          {t('contextMenu.newTodo', '新建待办列表')}
         </AppMenuItem>
         <AppMenuSeparator />
         {/* 刷新 */}

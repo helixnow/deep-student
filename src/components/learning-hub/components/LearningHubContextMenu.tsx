@@ -32,6 +32,7 @@ import {
   Monitor,
   CheckCircle,
   Download,
+  ListChecks,
 } from 'lucide-react';
 import { Z_INDEX } from '@/config/zIndex';
 import { cn } from '@/lib/utils';
@@ -76,7 +77,7 @@ export interface LearningHubContextMenuProps {
   /** 新建文件夹 */
   onCreateFolder?: (parentId: string | null) => void;
   /** 新建内容（笔记、题目集识别等） */
-  onCreateItem?: (type: 'note' | 'exam' | 'textbook' | 'translation' | 'essay' | 'mindmap', folderId: string | null) => void;
+  onCreateItem?: (type: 'note' | 'exam' | 'textbook' | 'translation' | 'essay' | 'mindmap' | 'todo', folderId: string | null) => void;
   /** 导入 Markdown 笔记 */
   onImportMarkdownNote?: (folderId: string | null) => void;
   /** 刷新 */
@@ -373,6 +374,15 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
       >
         {t('contextMenu.newMindMap')}
       </AppMenuItem>
+      <AppMenuItem
+        icon={<ListChecks className="w-4 h-4" />}
+        onClick={() => {
+          onCreateItem?.('todo', currentFolderId ?? null);
+          closeMenu();
+        }}
+      >
+        {t('contextMenu.newTodo')}
+      </AppMenuItem>
       <AppMenuSeparator />
       
       {/* 刷新 */}
@@ -640,6 +650,7 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
             case 'image': itemType = 'image'; break;
             case 'file': itemType = 'file'; break;
             case 'mindmap': itemType = 'mindmap'; break;
+            case 'todo': itemType = 'todo'; break;
             default: itemType = 'note';
           }
           return renderTrashItemMenu(target.item.itemId, itemType);

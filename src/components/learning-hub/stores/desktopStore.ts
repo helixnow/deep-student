@@ -30,7 +30,7 @@ export type ShortcutType =
 /**
  * 应用类型（用于 app 类型快捷方式）
  */
-export type AppType = 'note' | 'exam' | 'essay' | 'translation' | 'mindmap' | 'textbook';
+export type AppType = 'note' | 'exam' | 'essay' | 'translation' | 'mindmap' | 'textbook' | 'todo';
 
 /**
  * 应用动作
@@ -112,6 +112,11 @@ export function getPresetAppShortcuts(): PresetShortcut[] {
       target: { appType: 'mindmap', action: 'create' },
     },
     {
+      name: t('desktop.presets.newTodo', '新建待办列表'),
+      type: 'app',
+      target: { appType: 'todo', action: 'create' },
+    },
+    {
       name: t('desktop.presets.allNotes', '全部笔记'),
       type: 'quickAccess',
       target: { quickAccessType: 'notes' },
@@ -135,6 +140,11 @@ export function getPresetAppShortcuts(): PresetShortcut[] {
       name: t('desktop.presets.mindmaps', '知识导图'),
       type: 'quickAccess',
       target: { quickAccessType: 'mindmaps' },
+    },
+    {
+      name: t('desktop.presets.todos', '待办列表'),
+      type: 'quickAccess',
+      target: { quickAccessType: 'todos' },
     },
     {
       name: t('desktop.presets.favorites', '收藏'),

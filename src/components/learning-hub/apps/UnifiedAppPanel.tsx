@@ -35,6 +35,7 @@ const ImageContentView = lazy(() => import('./views/ImageContentView'));
 const FileContentView = lazy(() => import('./views/FileContentView'));
 // 🔧 MindMapContentView
 const MindMapContentView = lazy(() => import('@/components/mindmap/MindMapContentView').then(module => ({ default: module.MindMapContentView })));
+const TodoContentView = lazy(() => import('@/components/todo/TodoContentView').then(module => ({ default: module.TodoContentView })));
 
 // ============================================================================
 // 类型定义
@@ -162,7 +163,7 @@ export const UnifiedAppPanel: React.FC<UnifiedAppPanelProps> = ({
   }
 
   const supportedTypes: ResourceType[] = [
-    'note', 'textbook', 'exam', 'translation', 'essay', 'image', 'file', 'mindmap',
+    'note', 'textbook', 'exam', 'translation', 'essay', 'image', 'file', 'mindmap', 'todo',
   ];
   const shouldPreferExplicitType = type === 'image' || type === 'file';
   const resolvedType: ResourceType = shouldPreferExplicitType
@@ -199,6 +200,8 @@ export const UnifiedAppPanel: React.FC<UnifiedAppPanelProps> = ({
         return <FileContentView {...commonProps} />;
       case 'mindmap':
         return <MindMapContentView resourceId={node.id} onTitleChange={onTitleChange} isActive={isActive} className="h-full" />;
+      case 'todo':
+        return <TodoContentView todoListId={node.id} className="h-full" />;
       default:
         return (
           <div className="flex items-center justify-center h-full text-muted-foreground">

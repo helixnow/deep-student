@@ -586,6 +586,7 @@ export const useFinderStore = create<FinderState>()(
             image: 'images',
             file: 'files',
             mindmap: 'mindmaps',
+            todo: 'todos',
           };
 
           const trashResult = currentPath.typeFilter && resourceTypeMap[currentPath.typeFilter]
@@ -706,6 +707,7 @@ export const useFinderStore = create<FinderState>()(
             folder: 'folders',
             retrieval: 'retrieval',
             mindmap: 'mindmaps',
+            todo: 'todos',
           };
           if (currentPath.typeFilter && resourceTypeMap[currentPath.typeFilter]) {
             const resourceType = resourceTypeMap[currentPath.typeFilter];
