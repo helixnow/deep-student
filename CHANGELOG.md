@@ -10,6 +10,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.9.34](https://github.com/helixnow/deep-student/compare/v0.9.33...v0.9.34) (2026-03-09)
+
+
+### Features
+
+* **i18n:** add Todo localization support for en-US and zh-CN ([e61ee8e](https://github.com/helixnow/deep-student/commit/e61ee8e561e99ca44fe7b57bac283ad7eaa35494))
+* **pomodoro:** add immersive focus mode with white noise and circular progress ([2ee581c](https://github.com/helixnow/deep-student/commit/2ee581cc41cc55f2053811e414a27310c872d7e0))
+* **pomodoro:** add Pomodoro timer support for todo items ([6ad54d9](https://github.com/helixnow/deep-student/commit/6ad54d9765f0e7bd7c903525672cd1ba724c3ae8))
+* **todo:** add comprehensive Todo support across DSTU system ([3863cf9](https://github.com/helixnow/deep-student/commit/3863cf9384fc327dc6b27a089e8438ca4f1a61db))
+* **todo:** add Todo resource type support across Learning Hub ([b8e418d](https://github.com/helixnow/deep-student/commit/b8e418dd7225cf48c549c0ed419918da065bb21d))
+* **vfs:** decouple todo_lists from VFS resources system ([2be0e94](https://github.com/helixnow/deep-student/commit/2be0e943b263a0b544009c26f9b4a0121ff1cb4a))
+
+
+### Bug Fixes
+
+* **build:** bump Android versionCode to 13516 and add parse_timestamp import ([045703e](https://github.com/helixnow/deep-student/commit/045703ef5c454dcce0da62405fab03bc48b5dce2))
+* **ci:** add three-path release detection to handle merge commits burying release commit ([466152c](https://github.com/helixnow/deep-student/commit/466152c651918718833dbf311a4307ed345fe4c6))
+* **ci:** harden Android build against runner resource exhaustion ([985bc7b](https://github.com/helixnow/deep-student/commit/985bc7bc9f7ad4ced66d5d97e56fad3248024ec5))
+* **settings:** prevent auto-save from overwriting backend config when loadConfig fails ([21fbb00](https://github.com/helixnow/deep-student/commit/21fbb00106e6408e8948f171e78153040fdeab39))
+
+
+### Performance Improvements
+
+* **bundle:** optimize initial load performance with lazy loading and selective subscriptions ([0da3cba](https://github.com/helixnow/deep-student/commit/0da3cbab0f0d3a1b7ebd8315d3354c1c31f88d83))
+
 ## [0.9.33](https://github.com/helixnow/deep-student/compare/v0.9.32...v0.9.33) (2026-03-08)
 
 
