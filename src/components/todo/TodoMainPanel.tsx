@@ -14,6 +14,7 @@ import {
 import { cn } from '@/lib/utils';
 import { useTodoStore } from './useTodoStore';
 import { usePomodoroStore } from '../pomodoro/usePomodoroStore';
+import { PomodoroPanel } from '../pomodoro/PomodoroPanel';
 import type { TodoItem, TodoPriority, UpdateTodoItemInput } from './types';
 import { PRIORITY_CONFIG, isOverdue, isDueToday, parseTags } from './types';
 
@@ -480,7 +481,7 @@ export const TodoMainPanel: React.FC = () => {
   return (
     <div className="flex-1 flex flex-col h-full min-w-0 bg-background">
       {/* 头部 */}
-      <div className="flex items-center justify-between px-6 py-5 border-b border-border/40">
+      <div className="flex items-center justify-between px-6 py-4 border-b border-border/40">
         <div className="flex flex-col gap-1">
           <h2 className="text-2xl font-bold tracking-tight text-foreground">{viewTitle}</h2>
           <span className="text-sm font-medium text-muted-foreground/80">
@@ -563,6 +564,9 @@ export const TodoMainPanel: React.FC = () => {
           />
         )}
       </div>
+
+      {/* 番茄钟面板 */}
+      <PomodoroPanel />
     </div>
   );
 };
