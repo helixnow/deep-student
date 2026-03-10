@@ -2405,8 +2405,14 @@ mod tests {
         .expect("req");
 
         let gen = req.body.get("generationConfig").unwrap();
-        let frequency = gen.get("frequencyPenalty").and_then(|v| v.as_f64()).expect("frequencyPenalty");
-        let presence = gen.get("presencePenalty").and_then(|v| v.as_f64()).expect("presencePenalty");
+        let frequency = gen
+            .get("frequencyPenalty")
+            .and_then(|v| v.as_f64())
+            .expect("frequencyPenalty");
+        let presence = gen
+            .get("presencePenalty")
+            .and_then(|v| v.as_f64())
+            .expect("presencePenalty");
         assert!((frequency - 0.4).abs() < 1e-6);
         assert!((presence - 0.2).abs() < 1e-6);
     }

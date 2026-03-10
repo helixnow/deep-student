@@ -6,7 +6,7 @@
 use std::sync::Arc;
 
 use log::{debug, info, warn};
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::vfs::database::VfsDatabase;
 use crate::vfs::error::{VfsError, VfsResult};
@@ -20,6 +20,37 @@ use crate::vfs::types::{
 /// date/time columns where `NULL` is the correct "unset" representation.
 fn normalize_optional_str(v: Option<String>) -> Option<String> {
     v.filter(|s| !s.trim().is_empty())
+}
+
+const VALID_TODO_STATUSES: &[&str] = &["pending", "completed", "cancelled"];
+const VALID_TODO_PRIORITIES: &[&str] = &["none", "low", "medium", "high", "urgent"];
+
+fn validate_todo_status(status: &str) -> VfsResult<()> {
+    if VALID_TODO_STATUSES.contains(&status) {
+        Ok(())
+    } else {
+        Err(VfsError::InvalidArgument {
+            param: "status".to_string(),
+            reason: format!(
+                "Unsupported todo status '{}'; expected one of {:?}",
+                status, VALID_TODO_STATUSES
+            ),
+        })
+    }
+}
+
+fn validate_todo_priority(priority: &str) -> VfsResult<()> {
+    if VALID_TODO_PRIORITIES.contains(&priority) {
+        Ok(())
+    } else {
+        Err(VfsError::InvalidArgument {
+            param: "priority".to_string(),
+            reason: format!(
+                "Unsupported todo priority '{}'; expected one of {:?}",
+                priority, VALID_TODO_PRIORITIES
+            ),
+        })
+    }
 }
 
 fn log_and_skip_err<T>(r: Result<T, rusqlite::Error>) -> Option<T> {
@@ -153,12 +184,11 @@ impl VfsTodoRepo {
         params: VfsUpdateTodoListParams,
     ) -> VfsResult<VfsTodoList> {
         let conn = db.get_conn_safe()?;
-        let current = Self::get_todo_list_with_conn(&conn, list_id)?.ok_or_else(|| {
-            VfsError::NotFound {
+        let current =
+            Self::get_todo_list_with_conn(&conn, list_id)?.ok_or_else(|| VfsError::NotFound {
                 resource_type: "TodoList".to_string(),
                 id: list_id.to_string(),
-            }
-        })?;
+            })?;
 
         let now = chrono::Utc::now()
             .format("%Y-%m-%dT%H:%M:%S%.3fZ")
@@ -175,7 +205,14 @@ impl VfsTodoRepo {
             SET title = ?1, description = ?2, icon = ?3, color = ?4, updated_at = ?5
             WHERE id = ?6
             "#,
-            params![final_title, final_description, final_icon, final_color, now, list_id],
+            params![
+                final_title,
+                final_description,
+                final_icon,
+                final_color,
+                now,
+                list_id
+            ],
         )?;
 
         info!("[TodoRepo] Updated todo list: {}", list_id);
@@ -281,10 +318,7 @@ impl VfsTodoRepo {
     }
 
     /// 恢复软删除的待办列表（使用现有连接，事务保护）
-    pub fn restore_todo_list_with_conn(
-        conn: &Connection,
-        list_id: &str,
-    ) -> VfsResult<VfsTodoList> {
+    pub fn restore_todo_list_with_conn(conn: &Connection, list_id: &str) -> VfsResult<VfsTodoList> {
         conn.execute("BEGIN IMMEDIATE", [])?;
 
         let result = (|| -> VfsResult<()> {
@@ -333,17 +367,13 @@ impl VfsTodoRepo {
     }
 
     /// 切换列表收藏状态
-    pub fn toggle_todo_list_favorite(
-        db: &VfsDatabase,
-        list_id: &str,
-    ) -> VfsResult<VfsTodoList> {
+    pub fn toggle_todo_list_favorite(db: &VfsDatabase, list_id: &str) -> VfsResult<VfsTodoList> {
         let conn = db.get_conn_safe()?;
-        let current = Self::get_todo_list_with_conn(&conn, list_id)?.ok_or_else(|| {
-            VfsError::NotFound {
+        let current =
+            Self::get_todo_list_with_conn(&conn, list_id)?.ok_or_else(|| VfsError::NotFound {
                 resource_type: "TodoList".to_string(),
                 id: list_id.to_string(),
-            }
-        })?;
+            })?;
 
         let new_favorite = !current.is_favorite;
         let now = chrono::Utc::now()
@@ -447,6 +477,15 @@ impl VfsTodoRepo {
         conn: &Connection,
         params: VfsCreateTodoItemParams,
     ) -> VfsResult<VfsTodoItem> {
+        let final_title = params.title.trim().to_string();
+        if final_title.is_empty() {
+            return Err(VfsError::InvalidArgument {
+                param: "title".to_string(),
+                reason: "Todo item title cannot be empty".to_string(),
+            });
+        }
+        validate_todo_priority(&params.priority)?;
+
         // 验证列表存在
         let list_exists: bool = conn.query_row(
             "SELECT EXISTS(SELECT 1 FROM todo_lists WHERE id = ?1 AND deleted_at IS NULL)",
@@ -462,16 +501,30 @@ impl VfsTodoRepo {
 
         // 验证父任务存在（如果指定）
         if let Some(ref pid) = params.parent_id {
-            let parent_exists: bool = conn.query_row(
-                "SELECT EXISTS(SELECT 1 FROM todo_items WHERE id = ?1 AND deleted_at IS NULL)",
-                params![pid],
-                |row| row.get(0),
-            )?;
-            if !parent_exists {
-                return Err(VfsError::NotFound {
-                    resource_type: "TodoItem (parent)".to_string(),
-                    id: pid.clone(),
-                });
+            let parent_row: Option<(String,)> = conn
+                .query_row(
+                    "SELECT todo_list_id FROM todo_items WHERE id = ?1 AND deleted_at IS NULL",
+                    params![pid],
+                    |row| Ok((row.get::<_, String>(0)?,)),
+                )
+                .optional()?;
+            match parent_row {
+                None => {
+                    return Err(VfsError::NotFound {
+                        resource_type: "TodoItem (parent)".to_string(),
+                        id: pid.clone(),
+                    });
+                }
+                Some((parent_list_id,)) if parent_list_id != params.todo_list_id => {
+                    return Err(VfsError::InvalidOperation {
+                        operation: "create_todo_item".to_string(),
+                        reason: format!(
+                            "Parent item belongs to list '{}', expected '{}'",
+                            parent_list_id, params.todo_list_id
+                        ),
+                    });
+                }
+                _ => {}
             }
         }
 
@@ -509,11 +562,11 @@ impl VfsTodoRepo {
             params![
                 item_id,
                 params.todo_list_id,
-                params.title,
+                final_title,
                 params.description,
                 params.priority,
-                params.due_date,
-                params.due_time,
+                normalize_optional_str(params.due_date.clone()),
+                normalize_optional_str(params.due_time.clone()),
                 tags_json,
                 max_sort + 1,
                 params.parent_id,
@@ -537,12 +590,12 @@ impl VfsTodoRepo {
         Ok(VfsTodoItem {
             id: item_id,
             todo_list_id: params.todo_list_id,
-            title: params.title,
+            title: final_title,
             description: params.description,
             status: "pending".to_string(),
             priority: params.priority,
-            due_date: params.due_date,
-            due_time: params.due_time,
+            due_date: normalize_optional_str(params.due_date),
+            due_time: normalize_optional_str(params.due_time),
             reminder: None,
             tags_json,
             sort_order: max_sort + 1,
@@ -647,6 +700,12 @@ impl VfsTodoRepo {
             .to_string();
 
         let final_title = params.title.unwrap_or(current.title.clone());
+        if final_title.trim().is_empty() {
+            return Err(VfsError::InvalidArgument {
+                param: "title".to_string(),
+                reason: "Todo item title cannot be empty".to_string(),
+            });
+        }
         let final_description = if params.description.is_some() {
             params.description
         } else {
@@ -654,6 +713,8 @@ impl VfsTodoRepo {
         };
         let final_status = params.status.unwrap_or(current.status.clone());
         let final_priority = params.priority.unwrap_or(current.priority.clone());
+        validate_todo_status(&final_status)?;
+        validate_todo_priority(&final_priority)?;
         // Fix: normalize empty strings to None so that clearing a date
         // does not write "" into the DB (which SQL treats as < any date).
         let final_due_date = if params.due_date.is_some() {
@@ -712,6 +773,27 @@ impl VfsTodoRepo {
                         });
                     }
                     _ => {}
+                }
+                let creates_cycle: bool = conn.query_row(
+                    r#"
+                    WITH RECURSIVE descendants(id) AS (
+                        SELECT id FROM todo_items WHERE parent_id = ?1 AND deleted_at IS NULL
+                        UNION ALL
+                        SELECT ti.id
+                        FROM todo_items ti
+                        JOIN descendants d ON ti.parent_id = d.id
+                        WHERE ti.deleted_at IS NULL
+                    )
+                    SELECT EXISTS(SELECT 1 FROM descendants WHERE id = ?2)
+                    "#,
+                    params![item_id, pid_trimmed],
+                    |row| row.get(0),
+                )?;
+                if creates_cycle {
+                    return Err(VfsError::InvalidOperation {
+                        operation: "update_todo_item".to_string(),
+                        reason: "Cannot set parent_id to a descendant item".to_string(),
+                    });
                 }
                 Some(pid_trimmed.to_string())
             }
@@ -898,11 +980,7 @@ impl VfsTodoRepo {
     }
 
     /// 批量重排序待办项
-    pub fn reorder_items(
-        db: &VfsDatabase,
-        list_id: &str,
-        item_ids: &[String],
-    ) -> VfsResult<()> {
+    pub fn reorder_items(db: &VfsDatabase, list_id: &str, item_ids: &[String]) -> VfsResult<()> {
         let conn = db.get_conn_safe()?;
         let now = chrono::Utc::now()
             .format("%Y-%m-%dT%H:%M:%S%.3fZ")
@@ -928,11 +1006,26 @@ impl VfsTodoRepo {
     // ========================================================================
 
     /// 获取今日到期的待办项
-    pub fn list_today_items(db: &VfsDatabase) -> VfsResult<Vec<VfsTodoItem>> {
+    pub fn list_today_items(
+        db: &VfsDatabase,
+        include_completed: bool,
+    ) -> VfsResult<Vec<VfsTodoItem>> {
         let conn = db.get_conn_safe()?;
         let today = chrono::Local::now().format("%Y-%m-%d").to_string();
 
-        let mut stmt = conn.prepare(
+        let sql = if include_completed {
+            r#"
+            SELECT id, todo_list_id, title, description, status, priority, due_date, due_time, reminder,
+                   tags_json, sort_order, parent_id, completed_at, repeat_json, attachments_json, estimated_pomodoros, completed_pomodoros, created_at, updated_at, deleted_at
+            FROM todo_items
+            WHERE due_date = ?1 AND status IN ('pending', 'completed') AND deleted_at IS NULL
+            ORDER BY
+                CASE status WHEN 'pending' THEN 0 WHEN 'completed' THEN 1 ELSE 2 END,
+                CASE priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 ELSE 4 END,
+                due_time ASC NULLS LAST,
+                sort_order ASC
+            "#
+        } else {
             r#"
             SELECT id, todo_list_id, title, description, status, priority, due_date, due_time, reminder,
                    tags_json, sort_order, parent_id, completed_at, repeat_json, attachments_json, estimated_pomodoros, completed_pomodoros, created_at, updated_at, deleted_at
@@ -942,19 +1035,34 @@ impl VfsTodoRepo {
                 CASE priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 ELSE 4 END,
                 due_time ASC NULLS LAST,
                 sort_order ASC
-            "#,
-        )?;
+            "#
+        };
+
+        let mut stmt = conn.prepare(sql)?;
 
         let rows = stmt.query_map(params![today], Self::row_to_todo_item)?;
         Ok(rows.filter_map(log_and_skip_err).collect())
     }
 
     /// 获取已过期未完成的待办项
-    pub fn list_overdue_items(db: &VfsDatabase) -> VfsResult<Vec<VfsTodoItem>> {
+    pub fn list_overdue_items(
+        db: &VfsDatabase,
+        include_completed: bool,
+    ) -> VfsResult<Vec<VfsTodoItem>> {
         let conn = db.get_conn_safe()?;
         let today = chrono::Local::now().format("%Y-%m-%d").to_string();
 
-        let mut stmt = conn.prepare(
+        let sql = if include_completed {
+            r#"
+            SELECT id, todo_list_id, title, description, status, priority, due_date, due_time, reminder,
+                   tags_json, sort_order, parent_id, completed_at, repeat_json, attachments_json, estimated_pomodoros, completed_pomodoros, created_at, updated_at, deleted_at
+            FROM todo_items
+            WHERE due_date < ?1 AND status IN ('pending', 'completed') AND deleted_at IS NULL
+            ORDER BY due_date ASC,
+                CASE status WHEN 'pending' THEN 0 WHEN 'completed' THEN 1 ELSE 2 END,
+                CASE priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 ELSE 4 END
+            "#
+        } else {
             r#"
             SELECT id, todo_list_id, title, description, status, priority, due_date, due_time, reminder,
                    tags_json, sort_order, parent_id, completed_at, repeat_json, attachments_json, estimated_pomodoros, completed_pomodoros, created_at, updated_at, deleted_at
@@ -962,22 +1070,38 @@ impl VfsTodoRepo {
             WHERE due_date < ?1 AND status = 'pending' AND deleted_at IS NULL
             ORDER BY due_date ASC,
                 CASE priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 ELSE 4 END
-            "#,
-        )?;
+            "#
+        };
+
+        let mut stmt = conn.prepare(sql)?;
 
         let rows = stmt.query_map(params![today], Self::row_to_todo_item)?;
         Ok(rows.filter_map(log_and_skip_err).collect())
     }
 
     /// 获取即将到期的待办项（指定天数范围）
-    pub fn list_upcoming_items(db: &VfsDatabase, days: i64) -> VfsResult<Vec<VfsTodoItem>> {
+    pub fn list_upcoming_items(
+        db: &VfsDatabase,
+        days: i64,
+        include_completed: bool,
+    ) -> VfsResult<Vec<VfsTodoItem>> {
         let conn = db.get_conn_safe()?;
         let today = chrono::Local::now().format("%Y-%m-%d").to_string();
         let end_date = (chrono::Local::now() + chrono::Duration::days(days))
             .format("%Y-%m-%d")
             .to_string();
 
-        let mut stmt = conn.prepare(
+        let sql = if include_completed {
+            r#"
+            SELECT id, todo_list_id, title, description, status, priority, due_date, due_time, reminder,
+                   tags_json, sort_order, parent_id, completed_at, repeat_json, attachments_json, estimated_pomodoros, completed_pomodoros, created_at, updated_at, deleted_at
+            FROM todo_items
+            WHERE due_date > ?1 AND due_date <= ?2 AND status IN ('pending', 'completed') AND deleted_at IS NULL
+            ORDER BY due_date ASC,
+                CASE status WHEN 'pending' THEN 0 WHEN 'completed' THEN 1 ELSE 2 END,
+                CASE priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 ELSE 4 END
+            "#
+        } else {
             r#"
             SELECT id, todo_list_id, title, description, status, priority, due_date, due_time, reminder,
                    tags_json, sort_order, parent_id, completed_at, repeat_json, attachments_json, estimated_pomodoros, completed_pomodoros, created_at, updated_at, deleted_at
@@ -985,10 +1109,45 @@ impl VfsTodoRepo {
             WHERE due_date > ?1 AND due_date <= ?2 AND status = 'pending' AND deleted_at IS NULL
             ORDER BY due_date ASC,
                 CASE priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 ELSE 4 END
-            "#,
-        )?;
+            "#
+        };
+
+        let mut stmt = conn.prepare(sql)?;
 
         let rows = stmt.query_map(params![today, end_date], Self::row_to_todo_item)?;
+        Ok(rows.filter_map(log_and_skip_err).collect())
+    }
+
+    /// 获取已完成的待办项
+    pub fn list_completed_items(
+        db: &VfsDatabase,
+        list_id: Option<&str>,
+    ) -> VfsResult<Vec<VfsTodoItem>> {
+        let conn = db.get_conn_safe()?;
+        if let Some(list_id) = list_id {
+            let mut stmt = conn.prepare(
+                r#"
+                SELECT id, todo_list_id, title, description, status, priority, due_date, due_time, reminder,
+                       tags_json, sort_order, parent_id, completed_at, repeat_json, attachments_json, estimated_pomodoros, completed_pomodoros, created_at, updated_at, deleted_at
+                FROM todo_items
+                WHERE todo_list_id = ?1 AND status = 'completed' AND deleted_at IS NULL
+                ORDER BY completed_at DESC NULLS LAST, updated_at DESC
+                "#,
+            )?;
+            let rows = stmt.query_map(params![list_id], Self::row_to_todo_item)?;
+            return Ok(rows.filter_map(log_and_skip_err).collect());
+        }
+
+        let mut stmt = conn.prepare(
+            r#"
+            SELECT id, todo_list_id, title, description, status, priority, due_date, due_time, reminder,
+                   tags_json, sort_order, parent_id, completed_at, repeat_json, attachments_json, estimated_pomodoros, completed_pomodoros, created_at, updated_at, deleted_at
+            FROM todo_items
+            WHERE status = 'completed' AND deleted_at IS NULL
+            ORDER BY completed_at DESC NULLS LAST, updated_at DESC
+            "#,
+        )?;
+        let rows = stmt.query_map([], Self::row_to_todo_item)?;
         Ok(rows.filter_map(log_and_skip_err).collect())
     }
 
@@ -1184,7 +1343,10 @@ impl VfsTodoRepo {
                     .as_ref()
                     .map(|d| format!(" ({})", d))
                     .unwrap_or_default();
-                lines.push(format!("- [!] {}{} [{}]", item.title, date_info, item.list_title));
+                lines.push(format!(
+                    "- [!] {}{} [{}]",
+                    item.title, date_info, item.list_title
+                ));
             }
         }
 
@@ -1243,10 +1405,7 @@ impl VfsTodoRepo {
         let rows = stmt.query_map(params![limit, offset], Self::row_to_todo_list)?;
         let lists: Vec<VfsTodoList> = rows.collect::<Result<Vec<_>, _>>()?;
 
-        debug!(
-            "[VFS::TodoRepo] Listed {} deleted todo lists",
-            lists.len()
-        );
+        debug!("[VFS::TodoRepo] Listed {} deleted todo lists", lists.len());
 
         Ok(lists)
     }
@@ -1390,5 +1549,224 @@ impl Default for VfsUpdateTodoItemParams {
             estimated_pomodoros: None,
             completed_pomodoros: None,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    fn setup_test_db() -> (TempDir, VfsDatabase) {
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let db = VfsDatabase::new(temp_dir.path()).expect("Failed to create VFS database");
+        (temp_dir, db)
+    }
+
+    fn create_list(db: &VfsDatabase, title: &str) -> VfsTodoList {
+        VfsTodoRepo::create_todo_list(
+            db,
+            VfsCreateTodoListParams {
+                title: title.to_string(),
+                description: None,
+                icon: None,
+                color: None,
+                is_default: false,
+            },
+        )
+        .expect("create todo list")
+    }
+
+    fn create_item(
+        db: &VfsDatabase,
+        list_id: &str,
+        title: &str,
+        due_date: Option<String>,
+        parent_id: Option<String>,
+    ) -> VfsTodoItem {
+        VfsTodoRepo::create_todo_item(
+            db,
+            VfsCreateTodoItemParams {
+                todo_list_id: list_id.to_string(),
+                title: title.to_string(),
+                description: None,
+                priority: "none".to_string(),
+                due_date,
+                due_time: None,
+                tags: None,
+                parent_id,
+                attachments: None,
+            },
+        )
+        .expect("create todo item")
+    }
+
+    #[test]
+    fn test_create_todo_item_rejects_cross_list_parent() {
+        let (_temp_dir, db) = setup_test_db();
+        let list_a = create_list(&db, "List A");
+        let list_b = create_list(&db, "List B");
+        let parent = create_item(&db, &list_a.id, "Parent", None, None);
+
+        let err = VfsTodoRepo::create_todo_item(
+            &db,
+            VfsCreateTodoItemParams {
+                todo_list_id: list_b.id.clone(),
+                title: "Child".to_string(),
+                description: None,
+                priority: "none".to_string(),
+                due_date: None,
+                due_time: None,
+                tags: None,
+                parent_id: Some(parent.id),
+                attachments: None,
+            },
+        )
+        .expect_err("cross-list parent should be rejected");
+
+        assert!(
+            err.to_string().contains("Parent item belongs to list"),
+            "unexpected error: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn test_update_todo_item_rejects_parent_cycle() {
+        let (_temp_dir, db) = setup_test_db();
+        let list = create_list(&db, "Cycle Test");
+        let parent = create_item(&db, &list.id, "Parent", None, None);
+        let child = create_item(&db, &list.id, "Child", None, Some(parent.id.clone()));
+
+        let err = VfsTodoRepo::update_todo_item(
+            &db,
+            &parent.id,
+            VfsUpdateTodoItemParams {
+                parent_id: Some(child.id),
+                ..Default::default()
+            },
+        )
+        .expect_err("cycle should be rejected");
+
+        assert!(
+            err.to_string().contains("descendant"),
+            "unexpected error: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn test_list_today_items_include_completed_flag_controls_completed_visibility() {
+        let (_temp_dir, db) = setup_test_db();
+        let list = create_list(&db, "Today");
+        let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+
+        let pending = create_item(&db, &list.id, "Pending", Some(today.clone()), None);
+        let completed = create_item(&db, &list.id, "Completed", Some(today.clone()), None);
+
+        VfsTodoRepo::update_todo_item(
+            &db,
+            &completed.id,
+            VfsUpdateTodoItemParams {
+                status: Some("completed".to_string()),
+                ..Default::default()
+            },
+        )
+        .expect("complete todo item");
+
+        let pending_only = VfsTodoRepo::list_today_items(&db, false).expect("list pending today");
+        assert_eq!(pending_only.len(), 1);
+        assert_eq!(pending_only[0].id, pending.id);
+
+        let with_completed =
+            VfsTodoRepo::list_today_items(&db, true).expect("list today with completed");
+        assert_eq!(with_completed.len(), 2);
+        assert!(with_completed.iter().any(|item| item.id == completed.id));
+    }
+
+    #[test]
+    fn test_todo_insert_trigger_rejects_invalid_status() {
+        let (_temp_dir, db) = setup_test_db();
+        let list = create_list(&db, "Trigger");
+        let conn = db.get_conn_safe().expect("open db connection");
+        let now = chrono::Utc::now()
+            .format("%Y-%m-%dT%H:%M:%S%.3fZ")
+            .to_string();
+
+        let err = conn
+            .execute(
+                r#"
+                INSERT INTO todo_items (
+                    id, todo_list_id, title, status, priority, tags_json, attachments_json, created_at, updated_at
+                ) VALUES (?1, ?2, ?3, ?4, ?5, '[]', '[]', ?6, ?7)
+                "#,
+                params![
+                    "ti_invalid_status",
+                    list.id,
+                    "Broken",
+                    "not-a-real-status",
+                    "none",
+                    now,
+                    now,
+                ],
+            )
+            .expect_err("invalid status should be blocked by trigger");
+
+        assert!(
+            err.to_string().contains("todo_items.status is invalid"),
+            "unexpected error: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn test_create_todo_item_rejects_invalid_priority() {
+        let (_temp_dir, db) = setup_test_db();
+        let list = create_list(&db, "Priority");
+
+        let err = VfsTodoRepo::create_todo_item(
+            &db,
+            VfsCreateTodoItemParams {
+                todo_list_id: list.id,
+                title: "Broken".to_string(),
+                description: None,
+                priority: "impossible".to_string(),
+                due_date: None,
+                due_time: None,
+                tags: None,
+                parent_id: None,
+                attachments: None,
+            },
+        )
+        .expect_err("invalid priority should be rejected");
+
+        assert!(
+            err.to_string().contains("Unsupported todo priority"),
+            "unexpected error: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn test_update_todo_item_rejects_invalid_status() {
+        let (_temp_dir, db) = setup_test_db();
+        let list = create_list(&db, "Status");
+        let item = create_item(&db, &list.id, "Task", None, None);
+
+        let err = VfsTodoRepo::update_todo_item(
+            &db,
+            &item.id,
+            VfsUpdateTodoItemParams {
+                status: Some("done-ish".to_string()),
+                ..Default::default()
+            },
+        )
+        .expect_err("invalid status should be rejected");
+
+        assert!(
+            err.to_string().contains("Unsupported todo status"),
+            "unexpected error: {}",
+            err
+        );
     }
 }

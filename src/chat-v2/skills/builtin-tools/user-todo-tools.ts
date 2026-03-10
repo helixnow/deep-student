@@ -98,7 +98,7 @@ export const userTodoToolsSkill: SkillDefinition = {
           list_id: { type: 'string', description: '待办列表ID（可选）' },
           view: {
             type: 'string',
-            enum: ['all', 'today', 'overdue', 'upcoming'],
+            enum: ['all', 'today', 'overdue', 'upcoming', 'completed'],
             description: '视图过滤，默认 all',
           },
           include_completed: { type: 'boolean', description: '是否包含已完成项，默认 false' },

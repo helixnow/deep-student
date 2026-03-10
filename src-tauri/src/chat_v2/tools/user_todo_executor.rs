@@ -10,11 +10,10 @@
 //! - `user_todo_list_items`: 列出待办项
 //! - `user_todo_get_summary`: 获取待办摘要
 
-use std::sync::Arc;
 use std::time::Instant;
 
 use async_trait::async_trait;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
 use super::strip_tool_namespace;
@@ -125,7 +124,7 @@ pub fn get_user_todo_schemas() -> Vec<Value> {
                         },
                         "view": {
                             "type": "string",
-                            "enum": ["all", "today", "overdue", "upcoming"],
+                            "enum": ["all", "today", "overdue", "upcoming", "completed"],
                             "description": "视图过滤，默认 all"
                         },
                         "include_completed": {
@@ -250,18 +249,28 @@ impl UserTodoExecutor {
         let params = VfsCreateTodoItemParams {
             todo_list_id: list_id.clone(),
             title: title.clone(),
-            description: args.get("description").and_then(|v| v.as_str()).map(|s| s.to_string()),
+            description: args
+                .get("description")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
             priority: args
                 .get("priority")
                 .and_then(|v| v.as_str())
                 .unwrap_or("none")
                 .to_string(),
-            due_date: args.get("due_date").and_then(|v| v.as_str()).map(|s| s.to_string()),
-            due_time: args.get("due_time").and_then(|v| v.as_str()).map(|s| s.to_string()),
-            tags: args
-                .get("tags")
-                .and_then(|v| v.as_array())
-                .map(|arr| arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect()),
+            due_date: args
+                .get("due_date")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
+            due_time: args
+                .get("due_time")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
+            tags: args.get("tags").and_then(|v| v.as_array()).map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                    .collect()
+            }),
             parent_id: None,
             attachments: None,
         };
@@ -307,8 +316,7 @@ impl UserTodoExecutor {
             }));
         }
 
-        let item =
-            VfsTodoRepo::toggle_todo_item(vfs_db, item_id).map_err(|e| e.to_string())?;
+        let item = VfsTodoRepo::toggle_todo_item(vfs_db, item_id).map_err(|e| e.to_string())?;
 
         Ok(json!({
             "success": true,
@@ -324,29 +332,34 @@ impl UserTodoExecutor {
     fn execute_list_items(&self, args: &Value, ctx: &ExecutionContext) -> Result<Value, String> {
         let vfs_db = ctx.vfs_db.as_ref().ok_or("VFS database not available")?;
 
-        let view = args
-            .get("view")
-            .and_then(|v| v.as_str())
-            .unwrap_or("all");
+        let view = args.get("view").and_then(|v| v.as_str()).unwrap_or("all");
         let include_completed = args
             .get("include_completed")
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
 
         let items = match view {
-            "today" => VfsTodoRepo::list_today_items(vfs_db).map_err(|e| e.to_string())?,
-            "overdue" => VfsTodoRepo::list_overdue_items(vfs_db).map_err(|e| e.to_string())?,
-            "upcoming" => {
-                VfsTodoRepo::list_upcoming_items(vfs_db, 7).map_err(|e| e.to_string())?
-            }
+            "today" => VfsTodoRepo::list_today_items(vfs_db, include_completed)
+                .map_err(|e| e.to_string())?,
+            "overdue" => VfsTodoRepo::list_overdue_items(vfs_db, include_completed)
+                .map_err(|e| e.to_string())?,
+            "upcoming" => VfsTodoRepo::list_upcoming_items(vfs_db, 7, include_completed)
+                .map_err(|e| e.to_string())?,
+            "completed" => VfsTodoRepo::list_completed_items(
+                vfs_db,
+                args.get("list_id").and_then(|v| v.as_str()),
+            )
+            .map_err(|e| e.to_string())?,
             _ => {
                 if let Some(list_id) = args.get("list_id").and_then(|v| v.as_str()) {
                     VfsTodoRepo::list_items_by_list(vfs_db, list_id, include_completed)
                         .map_err(|e| e.to_string())?
                 } else {
                     // Default: list today + overdue
-                    let mut all = VfsTodoRepo::list_today_items(vfs_db).map_err(|e| e.to_string())?;
-                    let overdue = VfsTodoRepo::list_overdue_items(vfs_db).map_err(|e| e.to_string())?;
+                    let mut all = VfsTodoRepo::list_today_items(vfs_db, include_completed)
+                        .map_err(|e| e.to_string())?;
+                    let overdue = VfsTodoRepo::list_overdue_items(vfs_db, include_completed)
+                        .map_err(|e| e.to_string())?;
                     all.extend(overdue);
                     all
                 }
@@ -379,8 +392,7 @@ impl UserTodoExecutor {
     fn execute_get_summary(&self, ctx: &ExecutionContext) -> Result<Value, String> {
         let vfs_db = ctx.vfs_db.as_ref().ok_or("VFS database not available")?;
 
-        let summary =
-            VfsTodoRepo::get_active_todo_summary(vfs_db).map_err(|e| e.to_string())?;
+        let summary = VfsTodoRepo::get_active_todo_summary(vfs_db).map_err(|e| e.to_string())?;
 
         match summary {
             Some(s) => {
@@ -415,17 +427,33 @@ impl UserTodoExecutor {
             .ok_or("缺少必需参数: item_id")?;
 
         let params = VfsUpdateTodoItemParams {
-            title: args.get("title").and_then(|v| v.as_str()).map(|s| s.to_string()),
-            description: args.get("description").and_then(|v| v.as_str()).map(|s| s.to_string()),
+            title: args
+                .get("title")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
+            description: args
+                .get("description")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
             status: None,
-            priority: args.get("priority").and_then(|v| v.as_str()).map(|s| s.to_string()),
-            due_date: args.get("due_date").and_then(|v| v.as_str()).map(|s| s.to_string()),
-            due_time: args.get("due_time").and_then(|v| v.as_str()).map(|s| s.to_string()),
+            priority: args
+                .get("priority")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
+            due_date: args
+                .get("due_date")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
+            due_time: args
+                .get("due_time")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
             reminder: None,
-            tags: args
-                .get("tags")
-                .and_then(|v| v.as_array())
-                .map(|arr| arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect()),
+            tags: args.get("tags").and_then(|v| v.as_array()).map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                    .collect()
+            }),
             parent_id: None,
             attachments: None,
             repeat_json: None,

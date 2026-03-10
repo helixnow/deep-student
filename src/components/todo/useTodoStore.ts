@@ -27,6 +27,7 @@ interface TodoState {
   // 加载状态
   isLoadingLists: boolean;
   isLoadingItems: boolean;
+  itemsRequestVersion: number;
   error: string | null;
 
   // 列表操作
@@ -49,7 +50,9 @@ interface TodoState {
   loadTodayItems: () => Promise<void>;
   loadOverdueItems: () => Promise<void>;
   loadUpcomingItems: (days?: number) => Promise<void>;
+  loadCompletedItems: () => Promise<void>;
   searchItems: (query: string) => Promise<void>;
+  reloadCurrentView: () => Promise<void>;
 
   // 过滤操作
   setViewFilter: (view: TodoViewFilter) => void;
@@ -76,6 +79,7 @@ export const useTodoStore = create<TodoState>((set, get) => ({
 
   isLoadingLists: false,
   isLoadingItems: false,
+  itemsRequestVersion: 0,
   error: null,
 
   // ========================================================================
@@ -93,9 +97,15 @@ export const useTodoStore = create<TodoState>((set, get) => ({
   },
 
   setActiveList: (listId) => {
-    set({ activeListId: listId, selectedItemId: null, items: [] });
-    if (listId) {
-      get().loadItems(listId, get().filter.showCompleted);
+    set((s) => ({
+      activeListId: listId,
+      selectedItemId: null,
+      items: [],
+      isLoadingItems: false,
+      itemsRequestVersion: s.itemsRequestVersion + 1,
+    }));
+    if (get().filter.view === 'all' && listId) {
+      void get().reloadCurrentView();
     }
   },
 
@@ -127,6 +137,8 @@ export const useTodoStore = create<TodoState>((set, get) => ({
       set((s) => ({
         lists: s.lists.filter((l) => l.id !== id),
         activeListId: s.activeListId === id ? null : s.activeListId,
+        items: s.activeListId === id ? [] : s.items,
+        selectedItemId: s.activeListId === id ? null : s.selectedItemId,
       }));
     } catch (e) {
       set({ error: String(e) });
@@ -149,11 +161,21 @@ export const useTodoStore = create<TodoState>((set, get) => ({
   // ========================================================================
 
   loadItems: async (listId, includeCompleted = false) => {
-    set({ isLoadingItems: true, error: null });
+    const requestVersion = get().itemsRequestVersion + 1;
+    set({ isLoadingItems: true, itemsRequestVersion: requestVersion, error: null });
     try {
       const items = await api.listTodoItems(listId, includeCompleted);
-      set({ items, isLoadingItems: false });
+      if (get().itemsRequestVersion !== requestVersion) return;
+      const selectedItemId = get().selectedItemId;
+      set({
+        items,
+        isLoadingItems: false,
+        selectedItemId: selectedItemId && items.some((item) => item.id === selectedItemId)
+          ? selectedItemId
+          : null,
+      });
     } catch (e) {
+      if (get().itemsRequestVersion !== requestVersion) return;
       set({ error: String(e), isLoadingItems: false });
     }
   },
@@ -161,7 +183,7 @@ export const useTodoStore = create<TodoState>((set, get) => ({
   createItem: async (input) => {
     try {
       const item = await api.createTodoItem(input);
-      set((s) => ({ items: [...s.items, item] }));
+      await get().reloadCurrentView();
       return item;
     } catch (e) {
       set({ error: String(e) });
@@ -171,10 +193,8 @@ export const useTodoStore = create<TodoState>((set, get) => ({
 
   updateItem: async (input) => {
     try {
-      const updated = await api.updateTodoItem(input);
-      set((s) => ({
-        items: s.items.map((i) => (i.id === input.id ? updated : i)),
-      }));
+      await api.updateTodoItem(input);
+      await get().reloadCurrentView();
     } catch (e) {
       set({ error: String(e) });
     }
@@ -182,10 +202,8 @@ export const useTodoStore = create<TodoState>((set, get) => ({
 
   toggleItem: async (itemId) => {
     try {
-      const updated = await api.toggleTodoItem(itemId);
-      set((s) => ({
-        items: s.items.map((i) => (i.id === itemId ? updated : i)),
-      }));
+      await api.toggleTodoItem(itemId);
+      await get().reloadCurrentView();
     } catch (e) {
       set({ error: String(e) });
     }
@@ -195,9 +213,9 @@ export const useTodoStore = create<TodoState>((set, get) => ({
     try {
       await api.deleteTodoItem(itemId);
       set((s) => ({
-        items: s.items.filter((i) => i.id !== itemId),
         selectedItemId: s.selectedItemId === itemId ? null : s.selectedItemId,
       }));
+      await get().reloadCurrentView();
     } catch (e) {
       set({ error: String(e) });
     }
@@ -210,42 +228,132 @@ export const useTodoStore = create<TodoState>((set, get) => ({
   // ========================================================================
 
   loadTodayItems: async () => {
-    set({ isLoadingItems: true, error: null });
+    const requestVersion = get().itemsRequestVersion + 1;
+    set({ isLoadingItems: true, itemsRequestVersion: requestVersion, error: null });
     try {
-      const items = await api.listTodayItems();
-      set({ items, isLoadingItems: false });
+      const items = await api.listTodayItems(get().filter.showCompleted);
+      if (get().itemsRequestVersion !== requestVersion) return;
+      const selectedItemId = get().selectedItemId;
+      set({
+        items,
+        isLoadingItems: false,
+        selectedItemId: selectedItemId && items.some((item) => item.id === selectedItemId)
+          ? selectedItemId
+          : null,
+      });
     } catch (e) {
+      if (get().itemsRequestVersion !== requestVersion) return;
       set({ error: String(e), isLoadingItems: false });
     }
   },
 
   loadOverdueItems: async () => {
-    set({ isLoadingItems: true, error: null });
+    const requestVersion = get().itemsRequestVersion + 1;
+    set({ isLoadingItems: true, itemsRequestVersion: requestVersion, error: null });
     try {
-      const items = await api.listOverdueItems();
-      set({ items, isLoadingItems: false });
+      const items = await api.listOverdueItems(get().filter.showCompleted);
+      if (get().itemsRequestVersion !== requestVersion) return;
+      const selectedItemId = get().selectedItemId;
+      set({
+        items,
+        isLoadingItems: false,
+        selectedItemId: selectedItemId && items.some((item) => item.id === selectedItemId)
+          ? selectedItemId
+          : null,
+      });
     } catch (e) {
+      if (get().itemsRequestVersion !== requestVersion) return;
       set({ error: String(e), isLoadingItems: false });
     }
   },
 
   loadUpcomingItems: async (days = 7) => {
-    set({ isLoadingItems: true, error: null });
+    const requestVersion = get().itemsRequestVersion + 1;
+    set({ isLoadingItems: true, itemsRequestVersion: requestVersion, error: null });
     try {
-      const items = await api.listUpcomingItems(days);
-      set({ items, isLoadingItems: false });
+      const items = await api.listUpcomingItems(days, get().filter.showCompleted);
+      if (get().itemsRequestVersion !== requestVersion) return;
+      const selectedItemId = get().selectedItemId;
+      set({
+        items,
+        isLoadingItems: false,
+        selectedItemId: selectedItemId && items.some((item) => item.id === selectedItemId)
+          ? selectedItemId
+          : null,
+      });
     } catch (e) {
+      if (get().itemsRequestVersion !== requestVersion) return;
+      set({ error: String(e), isLoadingItems: false });
+    }
+  },
+
+  loadCompletedItems: async () => {
+    const requestVersion = get().itemsRequestVersion + 1;
+    set({ isLoadingItems: true, itemsRequestVersion: requestVersion, error: null });
+    try {
+      const items = await api.listCompletedItems(get().activeListId ?? undefined);
+      if (get().itemsRequestVersion !== requestVersion) return;
+      const selectedItemId = get().selectedItemId;
+      set({
+        items,
+        isLoadingItems: false,
+        selectedItemId: selectedItemId && items.some((item) => item.id === selectedItemId)
+          ? selectedItemId
+          : null,
+      });
+    } catch (e) {
+      if (get().itemsRequestVersion !== requestVersion) return;
       set({ error: String(e), isLoadingItems: false });
     }
   },
 
   searchItems: async (query) => {
-    set({ isLoadingItems: true, error: null });
+    const requestVersion = get().itemsRequestVersion + 1;
+    set({ isLoadingItems: true, itemsRequestVersion: requestVersion, error: null });
     try {
       const items = await api.searchTodoItems(query);
-      set({ items, isLoadingItems: false });
+      if (get().itemsRequestVersion !== requestVersion) return;
+      const selectedItemId = get().selectedItemId;
+      set({
+        items,
+        isLoadingItems: false,
+        selectedItemId: selectedItemId && items.some((item) => item.id === selectedItemId)
+          ? selectedItemId
+          : null,
+      });
     } catch (e) {
+      if (get().itemsRequestVersion !== requestVersion) return;
       set({ error: String(e), isLoadingItems: false });
+    }
+  },
+
+  reloadCurrentView: async () => {
+    const state = get();
+    if (state.filter.search.trim()) {
+      await state.searchItems(state.filter.search);
+      return;
+    }
+
+    switch (state.filter.view) {
+      case 'today':
+        await state.loadTodayItems();
+        return;
+      case 'overdue':
+        await state.loadOverdueItems();
+        return;
+      case 'upcoming':
+        await state.loadUpcomingItems();
+        return;
+      case 'completed':
+        await state.loadCompletedItems();
+        return;
+      case 'all':
+      default:
+        if (state.activeListId) {
+          await state.loadItems(state.activeListId, state.filter.showCompleted);
+          return;
+        }
+        set({ items: [], isLoadingItems: false });
     }
   },
 
@@ -254,62 +362,39 @@ export const useTodoStore = create<TodoState>((set, get) => ({
   // ========================================================================
 
   setViewFilter: (view) => {
-    set((s) => ({ filter: { ...s.filter, view } }));
-    const state = get();
-    switch (view) {
-      case 'today':
-        state.loadTodayItems();
-        break;
-      case 'overdue':
-        state.loadOverdueItems();
-        break;
-      case 'upcoming':
-        state.loadUpcomingItems();
-        break;
-      case 'all':
-        if (state.activeListId) {
-          state.loadItems(state.activeListId, state.filter.showCompleted);
-        }
-        break;
-    }
+    set((s) => ({
+      filter: { ...s.filter, view },
+      selectedItemId: null,
+      items: [],
+      isLoadingItems: false,
+      itemsRequestVersion: s.itemsRequestVersion + 1,
+    }));
+    void get().reloadCurrentView();
   },
 
   setSearch: (search) => {
-    set((s) => ({ filter: { ...s.filter, search } }));
-    if (search.trim()) {
-      get().searchItems(search);
-    } else {
-      // Fix: restore data for the current view, not just when activeListId exists
-      const state = get();
-      switch (state.filter.view) {
-        case 'today':
-          state.loadTodayItems();
-          break;
-        case 'overdue':
-          state.loadOverdueItems();
-          break;
-        case 'upcoming':
-          state.loadUpcomingItems();
-          break;
-        case 'all':
-        default:
-          if (state.activeListId) {
-            state.loadItems(state.activeListId, state.filter.showCompleted);
-          }
-          break;
-      }
-    }
+    set((s) => ({
+      filter: { ...s.filter, search },
+      selectedItemId: null,
+      items: [],
+      isLoadingItems: false,
+      itemsRequestVersion: s.itemsRequestVersion + 1,
+    }));
+    void get().reloadCurrentView();
   },
 
   setPriorityFilter: (priority) =>
     set((s) => ({ filter: { ...s.filter, priorityFilter: priority } })),
 
   setShowCompleted: (show) => {
-    set((s) => ({ filter: { ...s.filter, showCompleted: show } }));
-    const state = get();
-    if (state.activeListId) {
-      state.loadItems(state.activeListId, show);
-    }
+    set((s) => ({
+      filter: { ...s.filter, showCompleted: show },
+      selectedItemId: null,
+      items: [],
+      isLoadingItems: false,
+      itemsRequestVersion: s.itemsRequestVersion + 1,
+    }));
+    void get().reloadCurrentView();
   },
 
   // ========================================================================

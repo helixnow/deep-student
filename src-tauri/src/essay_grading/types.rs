@@ -924,7 +924,10 @@ mod tests {
         assert_eq!(canonical_mode_id("gaokao_eng_short"), "gaokao_en_short");
         assert_eq!(canonical_mode_id("gaokao_english_long"), "gaokao_en_long");
         assert_eq!(canonical_mode_id("gaokao_eng_long"), "gaokao_en_long");
-        assert_eq!(canonical_mode_id("gaokao_en_continuation"), "gaokao_en_long");
+        assert_eq!(
+            canonical_mode_id("gaokao_en_continuation"),
+            "gaokao_en_long"
+        );
         assert_eq!(canonical_mode_id("  practice  "), "practice");
     }
 

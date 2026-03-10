@@ -1530,7 +1530,10 @@ impl ChatV2Pipeline {
             }
             Ok(None) => None,
             Err(e) => {
-                log::warn!("[ChatV2::pipeline] Failed to load active todo summary: {}", e);
+                log::warn!(
+                    "[ChatV2::pipeline] Failed to load active todo summary: {}",
+                    e
+                );
                 None
             }
         }

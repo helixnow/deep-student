@@ -3437,7 +3437,10 @@ mod tests {
         };
 
         let promoted = state.promoted_branch_local_skills();
-        assert_eq!(promoted.manual_pinned_skill_ids, vec!["manual-a".to_string()]);
+        assert_eq!(
+            promoted.manual_pinned_skill_ids,
+            vec!["manual-a".to_string()]
+        );
         assert_eq!(
             promoted.agentic_session_skill_ids,
             vec!["agentic-a".to_string(), "branch-a".to_string()]
@@ -3456,7 +3459,10 @@ mod tests {
         };
 
         let trimmed = state.without_branch_local_skills();
-        assert_eq!(trimmed.manual_pinned_skill_ids, vec!["manual-a".to_string()]);
+        assert_eq!(
+            trimmed.manual_pinned_skill_ids,
+            vec!["manual-a".to_string()]
+        );
         assert!(trimmed.branch_local_skill_ids.is_empty());
         assert_eq!(trimmed.version, 4);
     }

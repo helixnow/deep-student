@@ -7,7 +7,8 @@
     "inbox": "收件箱",
     "today": "今日",
     "upcoming": "即将到期",
-    "overdue": "已过期"
+    "overdue": "已过期",
+    "completed": "已完成"
   },
   "actions": {
     "quickAddPlaceholder": "添加待办事项...",
@@ -15,7 +16,8 @@
     "search": "搜索",
     "newListPlaceholder": "新建列表名称...",
     "favorite": "收藏",
-    "unfavorite": "取消收藏"
+    "unfavorite": "取消收藏",
+    "startFocusSession": "开始专注"
   },
   "filters": {
     "showCompleted": "显示已完成"
@@ -25,22 +27,34 @@
     "completed": "已完成"
   },
   "empty": {
-    "noItems": "暂无待办事项"
+    "noItems": "暂无待办事项",
+    "hint": "今天也继续稳步推进。"
   },
   "detail": {
-    "title": "详情"
+    "title": "详情",
+    "updatedAt": "更新于 {{date}}"
   },
   "fields": {
     "status": "状态",
     "priority": "优先级",
     "dueDate": "截止日期",
+    "dueTime": "时间",
     "description": "描述"
   },
   "status": {
     "completed": "已完成",
-    "pending": "待完成"
+    "pending": "待完成",
+    "cancelled": "已取消"
+  },
+  "priority": {
+    "none": "无",
+    "low": "低",
+    "medium": "中",
+    "high": "高",
+    "urgent": "紧急"
   },
   "placeholders": {
-    "description": "添加描述..."
+    "description": "添加描述...",
+    "title": "待办标题"
   }
 }

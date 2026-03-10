@@ -68,12 +68,10 @@ use super::handler_utils::{
 use super::trash_handlers::is_resource_in_trash;
 
 use crate::vfs::{
-    canonical_folder_item_type,
-    repos::VfsMindMapRepo,
-    VfsBlobRepo, VfsCreateEssaySessionParams, VfsCreateExamSheetParams, VfsCreateMindMapParams,
-    VfsCreateNoteParams, VfsDatabase, VfsEssayRepo, VfsExamRepo,
-    VfsFileRepo, VfsFolderItem, VfsFolderRepo, VfsNoteRepo, VfsTextbookRepo, VfsTranslationRepo,
-    VfsUpdateMindMapParams, VfsUpdateNoteParams,
+    canonical_folder_item_type, repos::VfsMindMapRepo, VfsBlobRepo, VfsCreateEssaySessionParams,
+    VfsCreateExamSheetParams, VfsCreateMindMapParams, VfsCreateNoteParams, VfsDatabase,
+    VfsEssayRepo, VfsExamRepo, VfsFileRepo, VfsFolderItem, VfsFolderRepo, VfsNoteRepo,
+    VfsTextbookRepo, VfsTranslationRepo, VfsUpdateMindMapParams, VfsUpdateNoteParams,
 };
 
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
@@ -232,7 +230,8 @@ async fn dstu_list_folder_first(
                 "[DSTU::handlers] dstu_list_folder_first: smart folder mode, type_filter={:?}",
                 type_filter
             );
-            let mut smart_results = list_resources_by_type_with_folder_path(vfs_db, type_filter, options).await?;
+            let mut smart_results =
+                list_resources_by_type_with_folder_path(vfs_db, type_filter, options).await?;
             // ★ 记忆系统改造：智能文件夹也需隐藏 __*__ 系统保留笔记
             smart_results.retain(|node| !is_memory_system_hidden_name(&node.name));
             return Ok(smart_results);

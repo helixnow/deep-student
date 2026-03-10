@@ -109,8 +109,8 @@ fn redact_user_profile_blocks_in_text(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::json;
     use crate::llm_manager::ApiConfig;
+    use serde_json::json;
 
     #[test]
     fn test_redact_user_profile_blocks_in_text() {
@@ -173,10 +173,7 @@ fn should_use_openai_responses_for_config(config: &ApiConfig) -> bool {
         return false;
     }
     let lower = config.model.to_lowercase();
-    lower.contains("o1")
-        || lower.contains("o3")
-        || lower.contains("o4")
-        || lower.contains("gpt-5")
+    lower.contains("o1") || lower.contains("o3") || lower.contains("o4") || lower.contains("gpt-5")
 }
 
 /// 输出审计日志（info 级别）+ 可选文件持久化（用于无 window 的非流式路径）
@@ -432,12 +429,11 @@ impl LLMManager {
                         .as_ref()
                         .map(|s| !s.is_empty())
                         .unwrap_or(false);
-                    let adapter =
-                        get_adapter(
-                            config.provider_type.as_deref(),
-                            config.provider_scope.as_deref(),
-                            &config.model_adapter,
-                        );
+                    let adapter = get_adapter(
+                        config.provider_type.as_deref(),
+                        config.provider_scope.as_deref(),
+                        &config.model_adapter,
+                    );
 
                     // 尝试使用适配器的自定义格式
                     let tool_calls_json: Vec<Value> = tool_calls_arr.clone();
@@ -639,12 +635,11 @@ impl LLMManager {
                             .as_ref()
                             .map(|s| !s.is_empty())
                             .unwrap_or(false);
-                        let adapter =
-                            get_adapter(
-                                config.provider_type.as_deref(),
-                                config.provider_scope.as_deref(),
-                                &config.model_adapter,
-                            );
+                        let adapter = get_adapter(
+                            config.provider_type.as_deref(),
+                            config.provider_scope.as_deref(),
+                            &config.model_adapter,
+                        );
 
                         if has_thinking && adapter.requires_thinking_in_history(&config) {
                             // 适配器要求在历史消息中保留 thinking 块

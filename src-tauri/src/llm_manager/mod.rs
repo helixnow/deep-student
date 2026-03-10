@@ -70,7 +70,12 @@ static MODEL_CAPABILITY_REGISTRY: LazyLock<Vec<RegistryModelRecord>> = LazyLock:
     serde_json::from_str::<RegistryDocument>(include_str!(
         "../../../scripts/model-capability-registry.json"
     ))
-    .map(|doc| doc.records.into_iter().flat_map(|record| record.models).collect())
+    .map(|doc| {
+        doc.records
+            .into_iter()
+            .flat_map(|record| record.models)
+            .collect()
+    })
     .unwrap_or_else(|err| {
         eprintln!(
             "[LLMManager] failed to parse model capability registry, falling back to empty: {}",
@@ -313,8 +318,7 @@ mod tests {
             assert!(
                 inferred.supports_tools,
                 "expected builtin catalog tool support for model {} / {:?}",
-                model,
-                scope
+                model, scope
             );
         }
     }
@@ -1086,7 +1090,10 @@ impl LLMManager {
         let requested_scope = Self::normalize_provider_scope(provider_scope);
         let record_scope = Self::normalize_provider_scope(record.provider_scope.as_deref());
 
-        let mut score = if Self::matches_full_model_id(&normalized_input, record.provider_model_id.as_deref()) {
+        let mut score = if Self::matches_full_model_id(
+            &normalized_input,
+            record.provider_model_id.as_deref(),
+        ) {
             500
         } else if Self::matches_full_model_id(&normalized_input, Some(&record.model_id)) {
             450
@@ -1151,11 +1158,15 @@ impl LLMManager {
         })
     }
 
-    fn resolve_capability_overrides(model_id: &str, provider_scope: Option<&str>) -> CapabilityOverrides {
+    fn resolve_capability_overrides(
+        model_id: &str,
+        provider_scope: Option<&str>,
+    ) -> CapabilityOverrides {
         let registry = Self::infer_capability_overrides_from_registry(model_id, provider_scope)
             .unwrap_or_default();
-        let builtin = Self::infer_capability_overrides_from_builtin_catalog(model_id, provider_scope)
-            .unwrap_or_default();
+        let builtin =
+            Self::infer_capability_overrides_from_builtin_catalog(model_id, provider_scope)
+                .unwrap_or_default();
 
         CapabilityOverrides {
             is_multimodal: registry.is_multimodal || builtin.is_multimodal,
@@ -2612,7 +2623,10 @@ impl LLMManager {
                 vendor_id: vendor_id.clone(),
                 label: cfg.name.clone(),
                 model: cfg.model.clone(),
-                provider_scope: cfg.provider_scope.clone().or_else(|| cfg.provider_type.clone()),
+                provider_scope: cfg
+                    .provider_scope
+                    .clone()
+                    .or_else(|| cfg.provider_type.clone()),
                 model_adapter: cfg.model_adapter.clone(),
                 is_multimodal: cfg.is_multimodal,
                 is_reasoning: cfg.is_reasoning,
@@ -2788,7 +2802,10 @@ impl LLMManager {
         let mut profiles: Vec<ModelProfile> = Vec::new();
 
         for cfg in configs {
-            let provider_scope = cfg.provider_scope.clone().or_else(|| cfg.provider_type.clone());
+            let provider_scope = cfg
+                .provider_scope
+                .clone()
+                .or_else(|| cfg.provider_type.clone());
             let capability_overrides =
                 Self::resolve_capability_overrides(&cfg.model, provider_scope.as_deref());
             let base_key = format!("{}::{}", cfg.base_url.trim(), cfg.api_key.trim());

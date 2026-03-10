@@ -20,7 +20,7 @@ export const TodoContentView: React.FC<TodoContentViewProps> = ({
   todoListId,
   className,
 }) => {
-  const { initialize, setActiveList, activeListId } = useTodoStore();
+  const { initialize, setActiveList, setViewFilter, activeListId, filter } = useTodoStore();
 
   useEffect(() => {
     initialize();
@@ -28,9 +28,14 @@ export const TodoContentView: React.FC<TodoContentViewProps> = ({
 
   useEffect(() => {
     if (todoListId && todoListId !== activeListId) {
+      if (filter.view !== 'all') {
+        setActiveList(todoListId);
+        setViewFilter('all');
+        return;
+      }
       setActiveList(todoListId);
     }
-  }, [todoListId, activeListId, setActiveList]);
+  }, [todoListId, activeListId, filter.view, setActiveList, setViewFilter]);
 
   return (
     <div className={cn('flex h-full w-full overflow-hidden bg-background', className)}>

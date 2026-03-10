@@ -991,7 +991,6 @@ impl ChatV2Pipeline {
                                         );
                                     }
                                 }
-
                             }
                         }
                     }

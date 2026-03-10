@@ -120,9 +120,7 @@ impl VfsPomodoroRepo {
     /// 获取今日统计
     pub fn get_today_stats(db: &VfsDatabase) -> VfsResult<PomodoroTodayStats> {
         let conn = db.get_conn_safe()?;
-        let today_start = chrono::Local::now()
-            .format("%Y-%m-%dT00:00:00")
-            .to_string();
+        let today_start = chrono::Local::now().format("%Y-%m-%dT00:00:00").to_string();
 
         let completed_count: usize = conn
             .query_row(
@@ -167,9 +165,7 @@ impl VfsPomodoroRepo {
     /// 列出今日的所有番茄钟记录
     pub fn list_today_records(db: &VfsDatabase) -> VfsResult<Vec<PomodoroRecord>> {
         let conn = db.get_conn_safe()?;
-        let today_start = chrono::Local::now()
-            .format("%Y-%m-%dT00:00:00")
-            .to_string();
+        let today_start = chrono::Local::now().format("%Y-%m-%dT00:00:00").to_string();
 
         let mut stmt = conn.prepare(
             r#"

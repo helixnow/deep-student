@@ -48,12 +48,18 @@ impl MemoryToolExecutor {
         root_folder_id.is_none()
     }
 
-    fn parse_memory_type(raw: Option<&str>, default_type: MemoryType) -> Result<MemoryType, String> {
+    fn parse_memory_type(
+        raw: Option<&str>,
+        default_type: MemoryType,
+    ) -> Result<MemoryType, String> {
         match raw {
             Some("fact") => Ok(MemoryType::Fact),
             Some("study") => Ok(MemoryType::Study),
             Some("note") => Ok(MemoryType::Note),
-            Some(other) => Err(format!("Invalid memory_type '{}': expected fact, study, or note", other)),
+            Some(other) => Err(format!(
+                "Invalid memory_type '{}': expected fact, study, or note",
+                other
+            )),
             None => Ok(default_type),
         }
     }

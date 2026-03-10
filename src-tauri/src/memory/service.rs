@@ -381,7 +381,7 @@ impl MemoryService {
         let looks_like_vocab = pos_markers.iter().any(|marker| combined.contains(marker))
             && (content.contains('/') || content.contains('=') || content.contains('＝'));
         if looks_like_vocab {
-            return Some("fact 类型不适合保存词汇释义；请改用 memory_type='study'。")
+            return Some("fact 类型不适合保存词汇释义；请改用 memory_type='study'。");
         }
 
         None
@@ -1150,13 +1150,8 @@ impl MemoryService {
         }
 
         if memory_type == MemoryType::Note {
-            let output = self.write_explicit_memory(
-                folder_path,
-                title,
-                content,
-                MemoryType::Note,
-                purpose,
-            )?;
+            let output =
+                self.write_explicit_memory(folder_path, title, content, MemoryType::Note, purpose)?;
             if let Some(resource_id) = &output.resource_id {
                 self.index_immediately(resource_id).await;
             }
@@ -1212,7 +1207,8 @@ impl MemoryService {
                 resource_id: None,
                 downgraded: false,
             };
-            self.audit_logger.log_filtered(source, title, content, reason);
+            self.audit_logger
+                .log_filtered(source, title, content, reason);
             if let Some(key) = idempotency_key {
                 self.finalize_idempotency_result(key, &output);
             }

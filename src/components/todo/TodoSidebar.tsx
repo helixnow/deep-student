@@ -19,6 +19,7 @@ const SMART_VIEWS: { id: TodoViewFilter; icon: React.ElementType; labelKey: stri
   { id: 'today', icon: Calendar, labelKey: 'todo:views.today' },
   { id: 'upcoming', icon: Clock, labelKey: 'todo:views.upcoming' },
   { id: 'overdue', icon: AlertTriangle, labelKey: 'todo:views.overdue' },
+  { id: 'completed', icon: CheckSquare, labelKey: 'todo:views.completed' },
 ];
 
 export const TodoSidebar: React.FC = () => {
@@ -55,19 +56,23 @@ export const TodoSidebar: React.FC = () => {
   }, [handleCreateList]);
 
   const handleSmartViewClick = useCallback((view: TodoViewFilter) => {
-    setViewFilter(view);
     if (view === 'all') {
       const defaultList = lists.find(l => l.isDefault) || lists[0];
       if (defaultList) setActiveList(defaultList.id);
     } else {
       setActiveList(null);
     }
+    setViewFilter(view);
   }, [lists, setActiveList, setViewFilter]);
 
   const handleListClick = useCallback((listId: string) => {
+    if (filter.view !== 'all') {
+      setActiveList(listId);
+      setViewFilter('all');
+      return;
+    }
     setActiveList(listId);
-    setViewFilter('all');
-  }, [setActiveList, setViewFilter]);
+  }, [filter.view, setActiveList, setViewFilter]);
 
   return (
     <div className="w-60 flex-shrink-0 border-r border-border flex flex-col h-full bg-muted/30">

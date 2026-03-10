@@ -150,18 +150,18 @@ export function parseAttachments(attachmentsJson: string): string[] {
   }
 }
 
-export const PRIORITY_CONFIG: Record<TodoPriority, { label: string; color: string; icon: string }> = {
-  none: { label: '无', color: 'text-muted-foreground', icon: 'Minus' },
-  low: { label: '低', color: 'text-blue-500', icon: 'ArrowDown' },
-  medium: { label: '中', color: 'text-yellow-500', icon: 'ArrowRight' },
-  high: { label: '高', color: 'text-orange-500', icon: 'ArrowUp' },
-  urgent: { label: '紧急', color: 'text-red-500', icon: 'AlertTriangle' },
+export const PRIORITY_CONFIG: Record<TodoPriority, { labelKey: string; color: string; icon: string }> = {
+  none: { labelKey: 'todo:priority.none', color: 'text-muted-foreground', icon: 'Minus' },
+  low: { labelKey: 'todo:priority.low', color: 'text-blue-500', icon: 'ArrowDown' },
+  medium: { labelKey: 'todo:priority.medium', color: 'text-yellow-500', icon: 'ArrowRight' },
+  high: { labelKey: 'todo:priority.high', color: 'text-orange-500', icon: 'ArrowUp' },
+  urgent: { labelKey: 'todo:priority.urgent', color: 'text-red-500', icon: 'AlertTriangle' },
 };
 
-export const STATUS_CONFIG: Record<TodoStatus, { label: string; color: string }> = {
-  pending: { label: '待办', color: 'text-muted-foreground' },
-  completed: { label: '已完成', color: 'text-green-500' },
-  cancelled: { label: '已取消', color: 'text-gray-400' },
+export const STATUS_CONFIG: Record<TodoStatus, { labelKey: string; color: string }> = {
+  pending: { labelKey: 'todo:status.pending', color: 'text-muted-foreground' },
+  completed: { labelKey: 'todo:status.completed', color: 'text-green-500' },
+  cancelled: { labelKey: 'todo:status.cancelled', color: 'text-gray-400' },
 };
 
 export function isOverdue(item: TodoItem): boolean {

@@ -8,9 +8,8 @@ use rusqlite::Connection;
 
 use crate::dstu::error::DstuError;
 use crate::vfs::{
-    repos::VfsMindMapRepo,
-    VfsDatabase, VfsEssayRepo, VfsExamRepo, VfsFileRepo, VfsFolderRepo, VfsNoteRepo,
-    VfsTextbookRepo, VfsTranslationRepo,
+    repos::VfsMindMapRepo, VfsDatabase, VfsEssayRepo, VfsExamRepo, VfsFileRepo, VfsFolderRepo,
+    VfsNoteRepo, VfsTextbookRepo, VfsTranslationRepo,
 };
 
 fn helper_error(action: &str, resource_type: &str, id: &str, error: impl ToString) -> String {

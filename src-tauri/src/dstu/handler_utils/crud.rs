@@ -6,15 +6,13 @@ use std::sync::Arc;
 
 use crate::dstu::types::DstuNode;
 use crate::vfs::{
-    repos::VfsMindMapRepo,
-    VfsDatabase, VfsEssayRepo, VfsExamRepo, VfsFileRepo, VfsNoteRepo, VfsTextbookRepo,
-    VfsTranslationRepo,
+    repos::VfsMindMapRepo, VfsDatabase, VfsEssayRepo, VfsExamRepo, VfsFileRepo, VfsNoteRepo,
+    VfsTextbookRepo, VfsTranslationRepo,
 };
 
 use super::{
     essay_to_dstu_node, exam_to_dstu_node, file_to_dstu_node, mindmap_to_dstu_node,
-    note_to_dstu_node, session_to_dstu_node, textbook_to_dstu_node,
-    translation_to_dstu_node,
+    note_to_dstu_node, session_to_dstu_node, textbook_to_dstu_node, translation_to_dstu_node,
 };
 
 // ============================================================================

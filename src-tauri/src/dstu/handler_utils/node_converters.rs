@@ -37,8 +37,7 @@ fn sanitize_textbook_display_name(file_name: &str, created_at: &str) -> String {
     if base == "文件" || unified_file_manager::is_opaque_document_id(base) {
         let ext_suffix = ext.unwrap_or("");
         let ts = parse_timestamp(created_at);
-        let dt = chrono::DateTime::from_timestamp_millis(ts)
-            .unwrap_or_else(chrono::Utc::now);
+        let dt = chrono::DateTime::from_timestamp_millis(ts).unwrap_or_else(chrono::Utc::now);
         format!("导入文档_{}{}", dt.format("%Y%m%d_%H%M%S"), ext_suffix)
     } else {
         file_name.to_string()
@@ -404,7 +403,6 @@ pub fn mindmap_to_dstu_node(mindmap: &VfsMindMap) -> DstuNode {
     }))
 }
 
-
 pub fn file_to_dstu_node(file: &VfsFile) -> DstuNode {
     let path = build_simple_resource_path(&file.id);
 
@@ -692,7 +690,8 @@ mod tests {
 
     #[test]
     fn test_sanitize_replaces_document_colon_id() {
-        let result = sanitize_textbook_display_name("document:1000019790.pdf", "2025-06-01T00:00:00Z");
+        let result =
+            sanitize_textbook_display_name("document:1000019790.pdf", "2025-06-01T00:00:00Z");
         assert!(result.starts_with("导入文档_"), "got: {}", result);
         assert!(result.ends_with(".pdf"), "got: {}", result);
     }
@@ -708,6 +707,10 @@ mod tests {
     fn test_sanitize_handles_no_extension() {
         let result = sanitize_textbook_display_name("446", "2025-01-15T10:30:00Z");
         assert!(result.starts_with("导入文档_"), "got: {}", result);
-        assert!(!result.contains('.'), "should have no extension, got: {}", result);
+        assert!(
+            !result.contains('.'),
+            "should have no extension, got: {}",
+            result
+        );
     }
 }

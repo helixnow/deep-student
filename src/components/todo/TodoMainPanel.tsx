@@ -7,7 +7,7 @@
 import React, { useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  Plus, Search, CheckCircle2, Circle, Loader2,
+  Plus, Search, CheckCircle2, Loader2,
   Calendar, AlertTriangle, ArrowUp, ArrowDown, ArrowRight,
   Minus, Trash2, X, MoreVertical, Check, Play, BrainCircuit
 } from 'lucide-react';
@@ -97,9 +97,9 @@ const TodoQuickAdd: React.FC = () => {
                         ? 'bg-accent font-medium shadow-sm'
                         : 'hover:bg-accent/50 text-muted-foreground'
                     )}
-                    title={config.label}
+                    title={t(config.labelKey)}
                   >
-                    <span className={priority === p ? config.color : ''}>{config.label}</span>
+                    <span className={priority === p ? config.color : ''}>{t(config.labelKey)}</span>
                   </button>
                 );
               })}
@@ -142,6 +142,7 @@ const TodoItemRow: React.FC<{
   onDelete: (id: string) => void;
   isSelected: boolean;
 }> = ({ item, onToggle, onSelect, onDelete, isSelected }) => {
+  const { t } = useTranslation(['todo']);
   const overdue = isOverdue(item);
   const dueToday = isDueToday(item);
   const tags = parseTags(item.tagsJson);
@@ -203,7 +204,7 @@ const TodoItemRow: React.FC<{
             {item.priority !== 'none' && (
               <div className="flex items-center gap-1 text-xs">
                 <PriorityIcon priority={item.priority as TodoPriority} />
-                <span className="text-muted-foreground">{PRIORITY_CONFIG[item.priority as TodoPriority].label}</span>
+                <span className="text-muted-foreground">{t(PRIORITY_CONFIG[item.priority as TodoPriority].labelKey)}</span>
               </div>
             )}
             
@@ -243,7 +244,7 @@ const TodoItemRow: React.FC<{
             e.stopPropagation();
             usePomodoroStore.getState().start(item.id, item.title);
           }}
-          title="Start Focus Session"
+          title={t('todo:actions.startFocusSession')}
           className="p-1.5 rounded-full opacity-0 group-hover:opacity-100 hover:bg-orange-500/10 text-muted-foreground hover:text-orange-500 transition-all duration-200 flex-shrink-0"
         >
           <Play className="w-4 h-4" />
@@ -340,7 +341,7 @@ const TodoItemDetail: React.FC<{
               isCompleted && "line-through text-muted-foreground"
             )}
             rows={2}
-            placeholder="Task title"
+            placeholder={t('todo:placeholders.title')}
           />
         </div>
 
@@ -367,7 +368,7 @@ const TodoItemDetail: React.FC<{
                       : 'hover:bg-background/50 text-muted-foreground border border-transparent'
                   )}
                 >
-                  <span className={PRIORITY_CONFIG[p].color}>{PRIORITY_CONFIG[p].label}</span>
+                  <span className={PRIORITY_CONFIG[p].color}>{t(PRIORITY_CONFIG[p].labelKey)}</span>
                 </button>
               ))}
             </div>
@@ -394,7 +395,7 @@ const TodoItemDetail: React.FC<{
           {dueDate && (
              <div className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-accent/50 transition-colors group">
               <div className="w-6 flex justify-center"></div>
-              <span className="text-sm text-muted-foreground w-20">Time</span>
+              <span className="text-sm text-muted-foreground w-20">{t('todo:fields.dueTime')}</span>
               <div className="flex-1 flex items-center gap-2">
                 <input
                   type="time"
@@ -425,7 +426,7 @@ const TodoItemDetail: React.FC<{
       {/* 底部操作 */}
       <div className="px-5 py-4 border-t border-border/50 bg-muted/10 flex justify-between items-center">
         <span className="text-xs text-muted-foreground">
-          {item.updatedAt ? `Updated ${new Date(item.updatedAt).toLocaleDateString()}` : ''}
+          {item.updatedAt ? t('todo:detail.updatedAt', { date: new Date(item.updatedAt).toLocaleDateString() }) : ''}
         </span>
         <button
           onClick={() => {
@@ -461,7 +462,7 @@ export const TodoMainPanel: React.FC = () => {
   // 客户端过滤
   const filteredItems = items.filter((item) => {
     if (filter.priorityFilter && item.priority !== filter.priorityFilter) return false;
-    if (!filter.showCompleted && item.status === 'completed') return false;
+    if (filter.view !== 'completed' && !filter.showCompleted && item.status === 'completed') return false;
     return true;
   });
 
@@ -474,6 +475,7 @@ export const TodoMainPanel: React.FC = () => {
       case 'today': return t('todo:views.today');
       case 'upcoming': return t('todo:views.upcoming');
       case 'overdue': return t('todo:views.overdue');
+      case 'completed': return t('todo:views.completed');
       default: return activeList?.title || t('todo:views.inbox');
     }
   })();
@@ -511,6 +513,7 @@ export const TodoMainPanel: React.FC = () => {
                 ? 'bg-primary/10 border-primary/20 text-primary font-medium'
                 : 'bg-transparent border-border/60 text-muted-foreground hover:bg-accent hover:text-foreground'
             )}
+            disabled={filter.view === 'completed'}
           >
             <CheckCircle2 className="w-4 h-4" />
             {t('todo:filters.showCompleted')}
@@ -536,7 +539,7 @@ export const TodoMainPanel: React.FC = () => {
                   <CheckCircle2 className="w-8 h-8 opacity-40" />
                 </div>
                 <span className="text-base font-medium">{t('todo:empty.noItems')}</span>
-                <span className="text-sm text-muted-foreground/60 mt-1">Enjoy your day!</span>
+                <span className="text-sm text-muted-foreground/60 mt-1">{t('todo:empty.hint')}</span>
               </div>
             ) : (
               <div className="flex flex-col">
@@ -570,4 +573,3 @@ export const TodoMainPanel: React.FC = () => {
     </div>
   );
 };
-

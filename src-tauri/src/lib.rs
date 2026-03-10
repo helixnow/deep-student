@@ -1380,6 +1380,7 @@ pub fn run() {
             ,crate::vfs::todo_handlers::todo_list_today
             ,crate::vfs::todo_handlers::todo_list_overdue
             ,crate::vfs::todo_handlers::todo_list_upcoming
+            ,crate::vfs::todo_handlers::todo_list_completed
             ,crate::vfs::todo_handlers::todo_search
             ,crate::vfs::todo_handlers::todo_get_active_summary
             // 番茄钟命令

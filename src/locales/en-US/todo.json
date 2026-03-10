@@ -7,7 +7,8 @@
     "inbox": "Inbox",
     "today": "Today",
     "upcoming": "Upcoming",
-    "overdue": "Overdue"
+    "overdue": "Overdue",
+    "completed": "Completed"
   },
   "actions": {
     "quickAddPlaceholder": "Add a todo...",
@@ -15,7 +16,8 @@
     "search": "Search",
     "newListPlaceholder": "New list name...",
     "favorite": "Favorite",
-    "unfavorite": "Unfavorite"
+    "unfavorite": "Unfavorite",
+    "startFocusSession": "Start Focus Session"
   },
   "filters": {
     "showCompleted": "Show Completed"
@@ -25,22 +27,34 @@
     "completed": "completed"
   },
   "empty": {
-    "noItems": "No items yet"
+    "noItems": "No items yet",
+    "hint": "Keep the momentum going."
   },
   "detail": {
-    "title": "Details"
+    "title": "Details",
+    "updatedAt": "Updated {{date}}"
   },
   "fields": {
     "status": "Status",
     "priority": "Priority",
     "dueDate": "Due Date",
+    "dueTime": "Time",
     "description": "Description"
   },
   "status": {
     "completed": "Completed",
-    "pending": "Pending"
+    "pending": "Pending",
+    "cancelled": "Cancelled"
+  },
+  "priority": {
+    "none": "None",
+    "low": "Low",
+    "medium": "Medium",
+    "high": "High",
+    "urgent": "Urgent"
   },
   "placeholders": {
-    "description": "Add a description..."
+    "description": "Add a description...",
+    "title": "Task title"
   }
 }

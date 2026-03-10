@@ -314,12 +314,7 @@ pub async fn save_anki_cards(
             .document_id
             .clone()
             .filter(|id| !id.trim().is_empty())
-            .or_else(|| {
-                request
-                    .block_id
-                    .clone()
-                    .filter(|id| !id.trim().is_empty())
-            })
+            .or_else(|| request.block_id.clone().filter(|id| !id.trim().is_empty()))
             .or_else(|| {
                 request
                     .message_stable_id
@@ -429,20 +424,21 @@ pub async fn save_anki_cards(
 
         let mut document_task = document_task;
         document_task.status = crate::models::TaskStatus::Completed;
-        let saved_ids = match database.save_document_task_with_cards_atomic(&document_task, &cards_to_insert) {
-            Ok(ids) => ids,
-            Err(e) if e.to_string().contains("no_cards_saved_in_atomic_insert") => {
-                for card in &cards_to_insert {
-                    database
-                        .update_anki_card(card)
-                        .map_err(|update_err| AppError::database(format!("更新已有卡片失败: {}", update_err)))?;
+        let saved_ids =
+            match database.save_document_task_with_cards_atomic(&document_task, &cards_to_insert) {
+                Ok(ids) => ids,
+                Err(e) if e.to_string().contains("no_cards_saved_in_atomic_insert") => {
+                    for card in &cards_to_insert {
+                        database.update_anki_card(card).map_err(|update_err| {
+                            AppError::database(format!("更新已有卡片失败: {}", update_err))
+                        })?;
+                    }
+                    cards_to_insert.iter().map(|card| card.id.clone()).collect()
                 }
-                cards_to_insert.iter().map(|card| card.id.clone()).collect()
-            }
-            Err(e) => {
-                return Err(AppError::database(format!("保存卡片事务失败: {}", e)));
-            }
-        };
+                Err(e) => {
+                    return Err(AppError::database(format!("保存卡片事务失败: {}", e)));
+                }
+            };
 
         if let Some(session_id) = request
             .business_session_id

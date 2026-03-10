@@ -63,8 +63,8 @@ pub mod sleep_executor;
 pub mod subagent_executor;
 pub mod template_executor; // 🆕 模板设计师工具执行器
 pub mod todo_executor;
-pub mod user_todo_executor;
 pub mod types;
+pub mod user_todo_executor;
 pub mod workspace_executor;
 pub mod xlsx_executor; // 🆕 XLSX 电子表格读写工具执行器（umya-spreadsheet） // 🆕 Coordinator 睡眠工具执行器（睡眠/唤醒机制）
 

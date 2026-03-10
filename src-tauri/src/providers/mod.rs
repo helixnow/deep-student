@@ -272,14 +272,11 @@ impl OpenAIResponsesAdapter {
 
         let choice_type = obj.get("type").and_then(|v| v.as_str()).unwrap_or("");
         if matches!(choice_type, "function" | "tool") {
-            let name = obj
-                .get("name")
-                .and_then(|v| v.as_str())
-                .or_else(|| {
-                    obj.get("function")
-                        .and_then(|f| f.get("name"))
-                        .and_then(|v| v.as_str())
-                })?;
+            let name = obj.get("name").and_then(|v| v.as_str()).or_else(|| {
+                obj.get("function")
+                    .and_then(|f| f.get("name"))
+                    .and_then(|v| v.as_str())
+            })?;
             return Some(json!({
                 "type": "function",
                 "name": name,
@@ -569,8 +566,7 @@ impl ProviderAdapter for OpenAIResponsesAdapter {
                     }
                 }
             }
-            "response.function_call_arguments.done"
-            | "response.function_call.arguments.done" => {
+            "response.function_call_arguments.done" | "response.function_call.arguments.done" => {
                 let name = parsed.get("name").and_then(|v| v.as_str());
                 let arguments = parsed.get("arguments").and_then(|v| v.as_str());
                 let call_id = parsed
@@ -1875,7 +1871,10 @@ mod tests {
         });
 
         let payload = OpenAIResponsesAdapter::convert_to_responses_format("gpt-5.2", &body);
-        assert_eq!(payload["tools"][0]["function"]["name"], json!("lookup_weather"));
+        assert_eq!(
+            payload["tools"][0]["function"]["name"],
+            json!("lookup_weather")
+        );
         assert_eq!(payload["tool_choice"]["type"], json!("function"));
         assert_eq!(payload["tool_choice"]["name"], json!("lookup_weather"));
         assert_eq!(payload["parallel_tool_calls"], json!(false));
@@ -1905,7 +1904,9 @@ mod tests {
         let tool_item = adapter.parse_stream(
             r#"data: {"type":"response.output_item.done","item":{"type":"function_call","call_id":"call_1","name":"lookup_weather","arguments":"{\"city\":\"Paris\"}"}}"#,
         );
-        assert!(matches!(tool_item.first(), Some(StreamEvent::ToolCall(v)) if v["function"]["name"] == json!("lookup_weather")));
+        assert!(
+            matches!(tool_item.first(), Some(StreamEvent::ToolCall(v)) if v["function"]["name"] == json!("lookup_weather"))
+        );
     }
 
     #[test]
@@ -1932,7 +1933,14 @@ mod tests {
 
         let request = adapter.convert_openai_to_anthropic("claude-sonnet-4-5", &body);
         assert!(request.response_format.is_none());
-        assert_eq!(request.output_config.as_ref().and_then(|v| v.get("format")).and_then(|v| v.get("type")), Some(&json!("json")));
+        assert_eq!(
+            request
+                .output_config
+                .as_ref()
+                .and_then(|v| v.get("format"))
+                .and_then(|v| v.get("type")),
+            Some(&json!("json"))
+        );
     }
 
     #[test]
@@ -1982,8 +1990,12 @@ mod tests {
 
         let payload = OpenAIResponsesAdapter::convert_to_responses_format("gpt-5.2", &body);
         let input = payload["input"].as_array().expect("input should be array");
-        assert!(input.iter().any(|item| item["type"] == json!("function_call")));
-        assert!(input.iter().any(|item| item["type"] == json!("function_call_output")));
+        assert!(input
+            .iter()
+            .any(|item| item["type"] == json!("function_call")));
+        assert!(input
+            .iter()
+            .any(|item| item["type"] == json!("function_call_output")));
     }
 
     #[test]

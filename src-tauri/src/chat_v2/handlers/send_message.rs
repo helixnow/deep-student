@@ -318,7 +318,6 @@ pub(crate) fn apply_original_skill_snapshot_overrides(
         options.active_skill_ids = Some(replay_skill_ids);
     }
 
-
     if let Some(runtime_snapshot) = runtime_snapshot {
         if !runtime_snapshot.skill_contents.is_empty() {
             options.skill_contents = Some(runtime_snapshot.skill_contents.clone());
@@ -1989,7 +1988,10 @@ mod tests {
         };
 
         let updated = apply_original_skill_snapshot_overrides(options, Some(&meta), None);
-        assert_eq!(updated.active_skill_ids.unwrap(), vec!["current-skill".to_string()]);
+        assert_eq!(
+            updated.active_skill_ids.unwrap(),
+            vec!["current-skill".to_string()]
+        );
     }
 
     #[test]
@@ -2013,7 +2015,11 @@ mod tests {
             ..Default::default()
         };
 
-        let updated = apply_original_skill_snapshot_overrides(options, Some(&preferred), Some(&fallback));
-        assert_eq!(updated.active_skill_ids.unwrap(), vec!["variant-skill".to_string()]);
+        let updated =
+            apply_original_skill_snapshot_overrides(options, Some(&preferred), Some(&fallback));
+        assert_eq!(
+            updated.active_skill_ids.unwrap(),
+            vec!["variant-skill".to_string()]
+        );
     }
 }

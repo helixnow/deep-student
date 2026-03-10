@@ -32,11 +32,11 @@ pub mod mindmap_repo;
 pub mod note_repo;
 pub mod path_cache_repo;
 pub mod pdf_preview;
+pub mod pomodoro_repo;
 pub mod question_repo;
 pub mod resource_repo;
 pub mod review_plan_repo;
 pub mod textbook_repo;
-pub mod pomodoro_repo;
 pub mod todo_repo;
 pub mod translation_repo;
 
@@ -53,10 +53,9 @@ pub use exam_repo::{ImportingSession, VfsExamRepo};
 pub use file_repo::VfsFileRepo;
 pub use folder_repo::VfsFolderRepo;
 pub use mindmap_repo::VfsMindMapRepo;
-pub use pomodoro_repo::VfsPomodoroRepo;
-pub use todo_repo::VfsTodoRepo;
 pub use note_repo::VfsNoteRepo;
 pub use path_cache_repo::{PathCacheEntry, PathCacheStats, VfsPathCacheRepo};
+pub use pomodoro_repo::VfsPomodoroRepo;
 pub use question_repo::{
     AnswerSubmission,
     CreateQuestionParams,
@@ -82,6 +81,7 @@ pub use question_repo::{
 };
 pub use resource_repo::VfsResourceRepo;
 pub use textbook_repo::{PageIndexMeta, VfsTextbookRepo};
+pub use todo_repo::VfsTodoRepo;
 pub use translation_repo::VfsTranslationRepo;
 
 pub use embedding_dim_repo::VfsEmbeddingDim;

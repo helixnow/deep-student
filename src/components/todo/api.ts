@@ -81,16 +81,20 @@ export async function reorderTodoItems(listId: string, itemIds: string[]): Promi
 // Query API
 // ============================================================================
 
-export async function listTodayItems(): Promise<TodoItem[]> {
-  return invoke('todo_list_today');
+export async function listTodayItems(includeCompleted = false): Promise<TodoItem[]> {
+  return invoke('todo_list_today', { includeCompleted });
 }
 
-export async function listOverdueItems(): Promise<TodoItem[]> {
-  return invoke('todo_list_overdue');
+export async function listOverdueItems(includeCompleted = false): Promise<TodoItem[]> {
+  return invoke('todo_list_overdue', { includeCompleted });
 }
 
-export async function listUpcomingItems(days: number): Promise<TodoItem[]> {
-  return invoke('todo_list_upcoming', { days });
+export async function listUpcomingItems(days: number, includeCompleted = false): Promise<TodoItem[]> {
+  return invoke('todo_list_upcoming', { days, includeCompleted });
+}
+
+export async function listCompletedItems(listId?: string): Promise<TodoItem[]> {
+  return invoke('todo_list_completed', { listId });
 }
 
 export async function searchTodoItems(query: string): Promise<TodoItem[]> {

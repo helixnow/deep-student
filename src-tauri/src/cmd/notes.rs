@@ -131,9 +131,8 @@ fn import_markdown_note_from_local_path(
 
     // ★ 移动端修复：当标题为通用占位符时，从 Markdown 内容提取第一个 H1 标题
     let effective_title = if is_generic_note_title(note_title) {
-        extract_first_heading(&content).unwrap_or_else(|| {
-            format!("导入笔记_{}", Utc::now().format("%Y%m%d_%H%M%S"))
-        })
+        extract_first_heading(&content)
+            .unwrap_or_else(|| format!("导入笔记_{}", Utc::now().format("%Y%m%d_%H%M%S")))
     } else {
         note_title.to_string()
     };
@@ -1486,18 +1485,19 @@ pub async fn notes_import_markdown_batch(
             return Err(AppError::validation("Markdown 文件路径不能为空"));
         }
 
-        let materialized = match unified_file_manager::ensure_local_path(&window, &raw_path, &temp_dir) {
-            Ok(path) => path,
-            Err(error) => {
-                cleanup_materialized_import_files(
-                    "notes_import_markdown_batch",
-                    materialized_items
-                        .drain(..)
-                        .map(|(_, _, cleanup_path, _)| cleanup_path),
-                );
-                return Err(error);
-            }
-        };
+        let materialized =
+            match unified_file_manager::ensure_local_path(&window, &raw_path, &temp_dir) {
+                Ok(path) => path,
+                Err(error) => {
+                    cleanup_materialized_import_files(
+                        "notes_import_markdown_batch",
+                        materialized_items
+                            .drain(..)
+                            .map(|(_, _, cleanup_path, _)| cleanup_path),
+                    );
+                    return Err(error);
+                }
+            };
         let (import_path, cleanup_path) = materialized.into_owned();
         let note_title = derive_markdown_note_title(
             item.title_hint
@@ -1514,7 +1514,9 @@ pub async fn notes_import_markdown_batch(
         .collect();
     let task_items: Vec<(String, std::path::PathBuf, String)> = materialized_items
         .into_iter()
-        .map(|(raw_path, import_path, _cleanup_path, note_title)| (raw_path, import_path, note_title))
+        .map(|(raw_path, import_path, _cleanup_path, note_title)| {
+            (raw_path, import_path, note_title)
+        })
         .collect();
     let folder_id_for_task = folder_id.clone();
     let batch_result = tokio::task::spawn_blocking(move || {

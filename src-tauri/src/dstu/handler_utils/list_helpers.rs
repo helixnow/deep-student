@@ -14,8 +14,7 @@ use crate::vfs::{
 
 use super::{
     exam_to_dstu_node, file_to_dstu_node, get_resource_folder_path, mindmap_to_dstu_node,
-    note_to_dstu_node, session_to_dstu_node, textbook_to_dstu_node,
-    translation_to_dstu_node,
+    note_to_dstu_node, session_to_dstu_node, textbook_to_dstu_node, translation_to_dstu_node,
 };
 
 /// 按类型列出资源，但返回文件夹路径（智能文件夹模式）

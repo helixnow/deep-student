@@ -1104,7 +1104,7 @@ impl PdfProcessingService {
             MediaType::Pdf,
             Some(generation),
         )
-            .await;
+        .await;
 
         Ok(())
     }
@@ -1421,13 +1421,7 @@ impl PdfProcessingService {
                     VfsFileRepo::get_content_with_conn(&conn, &blobs_dir, file_id)?;
                 if let Some(data) = base64_content {
                     match self
-                        .stage_image_ocr_with_base64(
-                            file_id,
-                            data,
-                            mt,
-                            &cancel_token,
-                            generation,
-                        )
+                        .stage_image_ocr_with_base64(file_id, data, mt, &cancel_token, generation)
                         .await
                     {
                         Ok(ocr_text) => {
@@ -1580,7 +1574,7 @@ impl PdfProcessingService {
             MediaType::Image,
             Some(generation),
         )
-            .await;
+        .await;
 
         Ok(())
     }
@@ -1995,7 +1989,11 @@ impl PdfProcessingService {
             })?;
 
         if cancel_token.is_cancelled()
-            || self.skip_stale_task_side_effects(file_id, Some(generation), "stage_image_ocr:after_api")
+            || self.skip_stale_task_side_effects(
+                file_id,
+                Some(generation),
+                "stage_image_ocr:after_api",
+            )
         {
             return Ok(String::new());
         }
@@ -2352,13 +2350,7 @@ impl PdfProcessingService {
                 );
 
                 // 重置状态并重新开始
-                self.update_processing_status(
-                    file_id,
-                    ProcessingStage::Pending,
-                    None,
-                    None,
-                    None,
-                )
+                self.update_processing_status(file_id, ProcessingStage::Pending, None, None, None)
                     .await?;
                 self.start_pipeline(file_id, Some(start_stage)).await
             }
@@ -2900,7 +2892,11 @@ impl PdfProcessingService {
         cancel_token: &CancellationToken,
         generation: u64,
     ) -> VfsResult<String> {
-        if self.skip_stale_task_side_effects(file_id, Some(generation), "stage_ocr_processing:start") {
+        if self.skip_stale_task_side_effects(
+            file_id,
+            Some(generation),
+            "stage_ocr_processing:start",
+        ) {
             return Ok("{}".to_string());
         }
 

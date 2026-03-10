@@ -19,8 +19,8 @@ use serde_json::Value;
 
 use crate::dstu::error::DstuError;
 use crate::vfs::{
-    extract_file_text_with_strategy, VfsDatabase, VfsEssayRepo, VfsExamRepo,
-    VfsFileRepo, VfsMindMapRepo, VfsNoteRepo, VfsResourceRepo, VfsTranslationRepo,
+    extract_file_text_with_strategy, VfsDatabase, VfsEssayRepo, VfsExamRepo, VfsFileRepo,
+    VfsMindMapRepo, VfsNoteRepo, VfsResourceRepo, VfsTranslationRepo,
 };
 
 /// HIGH-R004修复: 最大内容大小限制 - 1MB (与handlers.rs保持一致)

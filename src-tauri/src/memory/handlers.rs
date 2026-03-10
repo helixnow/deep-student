@@ -764,7 +764,9 @@ pub async fn memory_write_batch(
         let output = match mem_type {
             super::service::MemoryType::Fact => service
                 .write_smart_with_source(
-                    item.folder_path.as_deref().or(default_folder_path.as_deref()),
+                    item.folder_path
+                        .as_deref()
+                        .or(default_folder_path.as_deref()),
                     &item.title,
                     &item.content,
                     super::audit_log::MemoryOpSource::Handler,
@@ -777,7 +779,9 @@ pub async fn memory_write_batch(
                 .map_err(|e| e.to_string())?,
             _ => service
                 .write_explicit_memory(
-                    item.folder_path.as_deref().or(default_folder_path.as_deref()),
+                    item.folder_path
+                        .as_deref()
+                        .or(default_folder_path.as_deref()),
                     &item.title,
                     &item.content,
                     mem_type,

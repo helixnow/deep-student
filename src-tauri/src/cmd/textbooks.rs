@@ -169,8 +169,15 @@ pub async fn textbooks_add(
         // 生成用户友好的显示名称，避免在 UI 上显示无意义的数字 ID
         let uri_raw_name = unified_file_manager::extract_file_name(src);
         let display_name_owned = if unified_file_manager::is_opaque_document_id(&uri_raw_name) {
-            let ext_suffix = resolved_ext.as_ref().map(|e| format!(".{}", e)).unwrap_or_default();
-            format!("导入文档_{}{}", chrono::Utc::now().format("%Y%m%d_%H%M%S"), ext_suffix)
+            let ext_suffix = resolved_ext
+                .as_ref()
+                .map(|e| format!(".{}", e))
+                .unwrap_or_default();
+            format!(
+                "导入文档_{}{}",
+                chrono::Utc::now().format("%Y%m%d_%H%M%S"),
+                ext_suffix
+            )
         } else {
             resolved_name.clone()
         };
@@ -525,8 +532,15 @@ pub async fn textbooks_adopt(
         // ★ 移动端修复：不透明 document ID → 生成友好文件名
         let uri_raw_name = unified_file_manager::extract_file_name(&p);
         let file_name = if unified_file_manager::is_opaque_document_id(&uri_raw_name) {
-            let ext_suffix = resolved_ext.as_ref().map(|e| format!(".{}", e)).unwrap_or_default();
-            format!("导入文档_{}{}", Utc::now().format("%Y%m%d_%H%M%S"), ext_suffix)
+            let ext_suffix = resolved_ext
+                .as_ref()
+                .map(|e| format!(".{}", e))
+                .unwrap_or_default();
+            format!(
+                "导入文档_{}{}",
+                Utc::now().format("%Y%m%d_%H%M%S"),
+                ext_suffix
+            )
         } else {
             resolved_name
         };

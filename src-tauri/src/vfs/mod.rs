@@ -27,7 +27,6 @@ pub mod database;
 pub mod embedding_service;
 pub mod error;
 pub mod handlers;
-pub mod todo_handlers;
 pub mod index_handlers;
 pub mod index_service;
 pub mod indexing;
@@ -37,6 +36,7 @@ pub mod ocr_utils;
 pub mod pdf_processing_service;
 pub mod ref_handlers;
 pub mod repos;
+pub mod todo_handlers;
 pub mod types;
 pub mod unit_builder;
 
