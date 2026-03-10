@@ -532,7 +532,35 @@ jobs:
           SILICONFLOW_BUILTIN_TEXT_KEY: ${{ secrets.SILICONFLOW_BUILTIN_TEXT_KEY }}
           SILICONFLOW_BUILTIN_VISION_KEY: ${{ secrets.SILICONFLOW_BUILTIN_VISION_KEY }}
           SILICONFLOW_BUILTIN_EMBED_KEY: ${{ secrets.SILICONFLOW_BUILTIN_EMBED_KEY }}
-        run: npx tauri android build --target aarch64
+        run: |
+          set -o pipefail
+          set +e
+
+          MAX_ATTEMPTS=3
+          TRANSIENT_PATTERN="Received status code 5[0-9]{2}|Could not GET 'https://dl\\.google\\.com|Could not get resource 'https://dl\\.google\\.com|Bad Gateway|Read timed out|Connection reset|Temporary failure in name resolution"
+
+          for attempt in $(seq 1 "$MAX_ATTEMPTS"); do
+            LOG_FILE="/tmp/tauri-android-build-${attempt}.log"
+            echo "Starting Android build attempt ${attempt}/${MAX_ATTEMPTS}"
+
+            npx tauri android build --target aarch64 2>&1 | tee "$LOG_FILE"
+            status=${PIPESTATUS[0]}
+
+            if [ "$status" -eq 0 ]; then
+              echo "Android build succeeded on attempt ${attempt}/${MAX_ATTEMPTS}"
+              exit 0
+            fi
+
+            if grep -Eq "$TRANSIENT_PATTERN" "$LOG_FILE" && [ "$attempt" -lt "$MAX_ATTEMPTS" ]; then
+              echo "::warning::Transient Android dependency/network failure detected on attempt ${attempt}/${MAX_ATTEMPTS}; retrying"
+              rm -rf "$HOME/.gradle/caches/modules-2/files-2.1" 2>/dev/null || true
+              sleep $((attempt * 20))
+              continue
+            fi
+
+            echo "::error::Android build failed on attempt ${attempt}/${MAX_ATTEMPTS}"
+            exit "$status"
+          done
 
       - name: Sign APK
         env:
