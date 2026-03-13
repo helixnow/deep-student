@@ -86,6 +86,8 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
   const [availableModels, setAvailableModels] = useState<SiliconFlowModel[]>([]); // New state for available models
   const [error, setError] = useState<string | null>(null); // New state for error message
   const [showApiKey, setShowApiKey] = useState(false);
+  const siliconFlowVendorKey = 'builtin-siliconflow.api_key';
+  const siliconFlowLegacyKey = 'siliconflow.api_key';
   const [lastFetchTime, setLastFetchTime] = useState<number | null>(null); // 上次获取时间
   const [isFromCache, setIsFromCache] = useState(false); // 是否来自缓存
 
@@ -206,26 +208,38 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
     try {
       const trimmed = value.trim();
       if (trimmed) {
-        await TauriAPI.saveSetting('siliconflow.api_key', trimmed);
+        await Promise.all([
+          TauriAPI.saveSetting(siliconFlowVendorKey, trimmed),
+          TauriAPI.saveSetting(siliconFlowLegacyKey, trimmed),
+        ]);
       } else {
-        await TauriAPI.deleteSetting('siliconflow.api_key');
+        await Promise.all([
+          TauriAPI.deleteSetting(siliconFlowVendorKey),
+          TauriAPI.deleteSetting(siliconFlowLegacyKey),
+        ]);
       }
-      // 触发自定义事件，通知其他实例更新API Key
+      // Broadcast the change so other views refresh immediately.
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('siliconflow-apikey-changed', { detail: { apiKey: trimmed } }));
+        window.dispatchEvent(new CustomEvent('api_configurations_changed'));
       }
     } catch (error: unknown) {
-      console.error('保存SiliconFlow API Key失败:', error);
+      console.error('Failed to save SiliconFlow API key:', error);
       showGlobalNotification('error', t('common:siliconflow.save_api_key_failed'));
     }
-  }, [t]);
+  }, [showGlobalNotification, siliconFlowVendorKey, siliconFlowLegacyKey, t]);
 
   // 组件加载时从持久化存储恢复API密钥
   React.useEffect(() => {
     let mounted = true;
     (async () => {
       try {
-        let savedApiKey = await TauriAPI.getSetting('siliconflow.api_key');
+        let savedApiKey = await TauriAPI.getSetting(siliconFlowVendorKey);
+        const legacyApiKey = await TauriAPI.getSetting(siliconFlowLegacyKey);
+        if (legacyApiKey?.trim() && legacyApiKey.trim() !== savedApiKey?.trim()) {
+          savedApiKey = legacyApiKey;
+          await persistApiKey(legacyApiKey);
+        }
         if (!savedApiKey && typeof window !== 'undefined' && window.localStorage) {
           const legacy = window.localStorage.getItem('siliconflow_api_key');
           if (legacy) {
@@ -244,7 +258,7 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
     return () => {
       mounted = false;
     };
-  }, [persistApiKey]);
+  }, [persistApiKey, siliconFlowVendorKey, siliconFlowLegacyKey]);
 
   // 监听其他实例的API Key变化（修复多实例状态不同步问题）
   React.useEffect(() => {

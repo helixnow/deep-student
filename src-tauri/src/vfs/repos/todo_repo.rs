@@ -6,7 +6,7 @@
 use std::sync::Arc;
 
 use log::{debug, info, warn};
-use rusqlite::{Connection, OptionalExtension, params};
+use rusqlite::{params, Connection, OptionalExtension};
 
 use crate::vfs::database::VfsDatabase;
 use crate::vfs::error::{VfsError, VfsResult};

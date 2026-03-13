@@ -34,6 +34,7 @@ use async_trait::async_trait;
 use serde_json::{json, Value};
 use tauri::Emitter;
 
+use super::arg_utils::{get_json_array_arg, get_string_array_arg};
 use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
 use super::strip_tool_namespace;
 use crate::chat_v2::database::ChatV2Database;
@@ -674,13 +675,8 @@ impl SessionToolExecutor {
         let db = Self::get_db(ctx)?;
         let conn = db.get_conn_safe().map_err(|e| e.to_string())?;
 
-        let session_ids: Vec<String> = args
-            .get("session_ids")
-            .and_then(|v| v.as_array())
-            .ok_or("缺少必需参数: session_ids")?
-            .iter()
-            .filter_map(|v| v.as_str().map(String::from))
-            .collect();
+        let session_ids: Vec<String> =
+            get_string_array_arg(args, "session_ids").ok_or("缺少必需参数: session_ids")?;
 
         let group_id = args.get("group_id").and_then(|v| v.as_str());
         let confirmed = args
@@ -735,13 +731,8 @@ impl SessionToolExecutor {
         let db = Self::get_db(ctx)?;
         let conn = db.get_conn_safe().map_err(|e| e.to_string())?;
 
-        let session_ids: Vec<String> = args
-            .get("session_ids")
-            .and_then(|v| v.as_array())
-            .ok_or("缺少必需参数: session_ids")?
-            .iter()
-            .filter_map(|v| v.as_str().map(String::from))
-            .collect();
+        let session_ids: Vec<String> =
+            get_string_array_arg(args, "session_ids").ok_or("缺少必需参数: session_ids")?;
 
         let tag = args
             .get("tag")
@@ -788,10 +779,7 @@ impl SessionToolExecutor {
         let db = Self::get_db(ctx)?;
         let conn = db.get_conn_safe().map_err(|e| e.to_string())?;
 
-        let raw_ops = args
-            .get("operations")
-            .and_then(|v| v.as_array())
-            .ok_or("缺少必需参数: operations")?;
+        let raw_ops = get_json_array_arg(args, "operations").ok_or("缺少必需参数: operations")?;
         if raw_ops.is_empty() {
             return Err("operations 不能为空".to_string());
         }

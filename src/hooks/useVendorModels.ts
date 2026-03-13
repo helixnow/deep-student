@@ -148,6 +148,18 @@ export const useVendorModels = () => {
     void loadAll();
   }, [loadAll]);
 
+  useEffect(() => {
+    const reload = () => {
+      void loadAll();
+    };
+    window.addEventListener('api_configurations_changed', reload as EventListener);
+    window.addEventListener('siliconflow-apikey-changed', reload as EventListener);
+    return () => {
+      window.removeEventListener('api_configurations_changed', reload as EventListener);
+      window.removeEventListener('siliconflow-apikey-changed', reload as EventListener);
+    };
+  }, [loadAll]);
+
   // 监听外部模型分配变更（Chat V2 修改默认模型后广播），仅刷新 assignments 避免过时状态
   useEffect(() => {
     const reloadAssignments = async () => {

@@ -2310,8 +2310,13 @@ impl LLMManager {
                     }
                 } else {
                     self.db.save_secret(&secret_key, trimmed).map_err(|e| {
-                        AppError::database(format!("保存内置供应商API密钥失败: {}", e))
+                        AppError::database(format!("Failed to save builtin vendor API key: {}", e))
                     })?;
+                    if cfg.id == "builtin-siliconflow" {
+                        self.db.save_secret("siliconflow.api_key", trimmed).map_err(|e| {
+                            AppError::database(format!("Failed to save SiliconFlow compatibility key: {}", e))
+                        })?;
+                    }
                 }
                 clone.api_key = String::new();
                 clone.is_builtin = true;

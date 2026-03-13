@@ -17,6 +17,7 @@ use async_trait::async_trait;
 use rusqlite::OptionalExtension;
 use serde_json::{json, Value};
 
+use super::arg_utils::get_json_array_arg;
 use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
 use super::strip_tool_namespace;
 use crate::chat_v2::events::event_types;
@@ -2468,10 +2469,7 @@ impl BuiltinResourceExecutor {
             .and_then(|v| v.as_str())
             .ok_or("Missing 'mindmap_id' parameter")?;
 
-        let operations = call
-            .arguments
-            .get("operations")
-            .and_then(|v| v.as_array())
+        let operations = get_json_array_arg(&call.arguments, "operations")
             .ok_or("Missing or invalid 'operations' parameter (expected array)")?;
 
         if operations.is_empty() {

@@ -37,6 +37,7 @@
 
 pub mod academic_search_executor; // 🆕 学术论文搜索执行器（arXiv + OpenAlex）
 pub mod anki_executor;
+mod arg_utils;
 pub mod ask_user_executor; // 🆕 用户提问工具执行器（轻量级问答交互） // Anki 工具执行器（桥接到前端 CardAgent）
 pub mod attachment_executor; // 🆕 附件工具执行器（解决 P0 断裂点）
 pub mod attempt_completion; // 🆕 任务完成工具（文档 29 P1-4）

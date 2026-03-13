@@ -10,6 +10,7 @@ use async_trait::async_trait;
 use chrono::{Duration, Utc};
 use serde_json::{json, Value};
 
+use super::arg_utils::get_string_array_arg;
 use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
 use crate::chat_v2::workspace::{SleepBlockData, WakeCondition, WorkspaceCoordinator};
@@ -119,15 +120,8 @@ impl CoordinatorSleepExecutor {
             .ok_or("workspace_id is required")?;
 
         // 🔧 P14 修复：如果 awaiting_agents 为空，从 workspace 查询实际的子代理
-        let mut awaiting_agents: Vec<String> = args
-            .get("awaiting_agents")
-            .and_then(|v| v.as_array())
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|v| v.as_str().map(String::from))
-                    .collect()
-            })
-            .unwrap_or_default();
+        let mut awaiting_agents: Vec<String> =
+            get_string_array_arg(args, "awaiting_agents").unwrap_or_default();
 
         // 如果 LLM 没有指定 awaiting_agents，从 workspace 查询所有 worker 代理
         if awaiting_agents.is_empty() {
@@ -368,16 +362,8 @@ impl ToolExecutor for CoordinatorSleepExecutor {
         let mut enriched_args = call.arguments.clone();
 
         // 如果 LLM 没有指定 awaiting_agents，从 workspace 查询所有 worker 代理
-        let awaiting_agents_from_args: Vec<String> = call
-            .arguments
-            .get("awaiting_agents")
-            .and_then(|v| v.as_array())
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|v| v.as_str().map(String::from))
-                    .collect()
-            })
-            .unwrap_or_default();
+        let awaiting_agents_from_args: Vec<String> =
+            get_string_array_arg(&call.arguments, "awaiting_agents").unwrap_or_default();
 
         if awaiting_agents_from_args.is_empty() && !workspace_id.is_empty() {
             if let Ok(agents) = self.coordinator.list_agents(workspace_id) {

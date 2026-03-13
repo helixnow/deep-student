@@ -23,6 +23,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tokio::sync::oneshot;
 
+use super::arg_utils::get_string_array_arg;
 use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
 use crate::chat_v2::events::event_types;
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
@@ -124,16 +125,8 @@ impl ToolExecutor for AskUserExecutor {
             .and_then(|v| v.as_str())
             .unwrap_or("")
             .to_string();
-        let options: Vec<String> = call
-            .arguments
-            .get("options")
-            .and_then(|v| v.as_array())
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|v| v.as_str().map(String::from))
-                    .collect()
-            })
-            .unwrap_or_default();
+        let options: Vec<String> =
+            get_string_array_arg(&call.arguments, "options").unwrap_or_default();
         let recommended = call
             .arguments
             .get("recommended")
