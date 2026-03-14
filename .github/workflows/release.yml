@@ -3,15 +3,23 @@
 # ╠══════════════════════════════════════════════════════════════════╣
 # ║                                                                ║
 # ║  发布流程 (唯一路径):                                          ║
+# ║    0. 修复历史遗留 autorelease: pending 标签 (防御性)          ║
 # ║    1. 开发者向 main 推送 conventional commits                  ║
 # ║    2. release-please 自动创建/更新 Release PR (版本号升级)     ║
 # ║    3. 合并 Release PR → 三路检测 release commit:               ║
 # ║       a) release-please 输出 release_created=true              ║
 # ║       b) HEAD commit 消息匹配 chore(main): release X.Y.Z      ║
 # ║       c) HEAD 为 merge commit 时扫描父提交 (v0.9.33 修复)     ║
-# ║    4. 版本号三重校验 (tag vs 代码中 3 处版本号)                ║
-# ║    5. 通过校验 → 并行构建全平台产物                            ║
-# ║    6. 发布产物到 GitHub Release + R2 镜像                      ║
+# ║    4. 创建 GitHub Release + 同步 PR 标签为 tagged              ║
+# ║    5. 版本号三重校验 (tag vs 代码中 3 处版本号)                ║
+# ║    6. 通过校验 → 并行构建全平台产物                            ║
+# ║    7. 发布产物到 GitHub Release + R2 镜像                      ║
+# ║                                                                ║
+# ║  标签生命周期 (v0.9.34 事故修复):                              ║
+# ║    - release-please 创建 PR 时: autorelease: pending           ║
+# ║    - 因 skip-github-release:true, RP 不会自动标记 tagged       ║
+# ║    - Resolve step 创建 release 后: pending → tagged            ║
+# ║    - 每次运行前: 扫描并修复历史遗留的 pending 标签             ║
 # ║                                                                ║
 # ║  为什么没有 workflow_dispatch / tag push 触发:                  ║
 # ║    - workflow_dispatch 允许在任意时间点触发构建, 存在           ║
@@ -24,11 +32,6 @@
 # ║  重建某个版本:                                                 ║
 # ║    使用 rebuild-release.yml 手动触发, 输入已存在的 tag 名称    ║
 # ║    该 workflow 走相同的校验 + 构建 + 发布流程                  ║
-# ║                                                                ║
-# ║  手动重建某个版本:                                              ║
-# ║    使用 "Rebuild Release" workflow (rebuild-release.yml)        ║
-# ║    在 GitHub Actions 页面手动触发, 输入已存在的 tag 名称        ║
-# ║    该 workflow 执行与主流程相同的版本校验 + 构建 + 发布        ║
 # ║                                                                ║
 # ╠══════════════════════════════════════════════════════════════════╣
 # ║  Secrets 配置:                                                 ║
@@ -71,6 +74,45 @@ jobs:
       release_created: ${{ steps.result.outputs.release_created }}
       tag_name: ${{ steps.result.outputs.tag_name }}
     steps:
+      # ── Step 0: 修复历史遗留的 autorelease: pending 标签 ──
+      # release-please 遇到已合并但标签仍为 pending 的 PR 会直接 abort,
+      # 所以必须在运行 release-please 之前修复这些脏数据。
+      # 根因: v0.9.34 事故 — skip-github-release:true 导致 release-please
+      # 不自行打 tag, 自定义脚本打了 tag 却没有同步标签。
+      - name: Fix stale autorelease labels
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "🔍 Scanning for merged PRs with stale 'autorelease: pending' label..."
+          STALE_PRS=$(gh pr list --state merged --label "autorelease: pending" \
+            --json number,title --jq '.[] | "\(.number)\t\(.title)"' || true)
+
+          if [[ -z "$STALE_PRS" ]]; then
+            echo "✅ No stale autorelease labels found"
+            exit 0
+          fi
+
+          FIXED=0
+          while IFS=$'\t' read -r PR_NUM PR_TITLE; do
+            # Extract version from PR title: "chore(main): release X.Y.Z"
+            if [[ "$PR_TITLE" =~ release\ ([0-9]+\.[0-9]+\.[0-9]+) ]]; then
+              TAG="v${BASH_REMATCH[1]}"
+              # Only fix if the corresponding tag actually exists
+              if git ls-remote --tags origin "refs/tags/${TAG}" | grep -q .; then
+                echo "  🔧 PR #${PR_NUM} (${TAG}): pending → tagged"
+                gh pr edit "$PR_NUM" --remove-label "autorelease: pending" --add-label "autorelease: tagged" || true
+                FIXED=$((FIXED + 1))
+              else
+                echo "  ⚠️ PR #${PR_NUM} (${TAG}): tag not found, skipping"
+              fi
+            else
+              echo "  ⚠️ PR #${PR_NUM}: title does not match release pattern, skipping"
+            fi
+          done <<< "$STALE_PRS"
+
+          echo "✅ Fixed ${FIXED} stale autorelease label(s)"
+
+      # ── Step 1: release-please ──
       - uses: googleapis/release-please-action@v4
         id: release
         continue-on-error: true
@@ -82,6 +124,7 @@ jobs:
         with:
           fetch-depth: 5
 
+      # ── Step 2: 三路检测 + GitHub Release 创建 + 标签同步 ──
       - name: Resolve release result
         id: result
         env:
@@ -97,10 +140,39 @@ jobs:
 
           RELEASE_PATTERN='^chore\(main\): release ([0-9]+\.[0-9]+\.[0-9]+)'
 
-          # Helper: create GitHub Release for a detected tag
+          # ── Helper: 同步 Release PR 的 autorelease 标签 ──
+          # 这是 v0.9.34 事故的根因修复: 确保每次创建/检测到 release 后
+          # 都将关联 PR 的标签从 pending 更新为 tagged, 防止 release-please
+          # 在后续运行中因 "untagged, merged release PRs" 而 abort。
+          mark_pr_as_tagged() {
+            local VERSION="$1"  # e.g. "0.9.35"
+            echo "🏷️ Syncing autorelease label for release ${VERSION}..."
+
+            # Find the merged release PR by title pattern
+            local PR_NUM
+            PR_NUM=$(gh pr list --state merged --label "autorelease: pending" \
+              --json number,title \
+              --jq ".[] | select(.title | test(\"release ${VERSION}\")) | .number" \
+              | head -1 || true)
+
+            if [[ -z "$PR_NUM" ]]; then
+              echo "  ℹ️ No PR with 'autorelease: pending' found for ${VERSION} (already tagged or manual release)"
+              return 0
+            fi
+
+            echo "  🔧 PR #${PR_NUM}: autorelease: pending → autorelease: tagged"
+            gh pr edit "$PR_NUM" \
+              --remove-label "autorelease: pending" \
+              --add-label "autorelease: tagged" || {
+              echo "  ⚠️ Failed to update label on PR #${PR_NUM} (non-fatal)"
+            }
+          }
+
+          # ── Helper: 创建 GitHub Release (幂等) ──
           try_create_release() {
             local TAG="$1"
             local SOURCE="$2"
+            local VERSION="${TAG#v}"
 
             echo "ℹ️ Detected release ${TAG} (via ${SOURCE})"
 
@@ -108,6 +180,8 @@ jobs:
               echo "release_created=false" >> $GITHUB_OUTPUT
               echo "tag_name=${TAG}" >> $GITHUB_OUTPUT
               echo "ℹ️ Release ${TAG} already exists; skipping duplicate creation"
+              # Still sync the label — the release exists but label may be stale
+              mark_pr_as_tagged "${VERSION}"
               return 0
             fi
 
@@ -119,6 +193,9 @@ jobs:
             echo "release_created=true" >> $GITHUB_OUTPUT
             echo "tag_name=${TAG}" >> $GITHUB_OUTPUT
             echo "✅ Created GitHub Release ${TAG} (detected via ${SOURCE})"
+
+            # Sync the label after successful release creation
+            mark_pr_as_tagged "${VERSION}"
             return 0
           }
 
@@ -1046,6 +1123,30 @@ jobs:
           fi
           RESP=$(curl -s -X POST "$VERCEL_DEPLOY_HOOK")
           echo "🌐 Website rebuild triggered: $RESP"
+
+      # ── 确保 autorelease 标签已同步 (publish 阶段兜底) ──────────
+      - name: Sync autorelease label
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ needs.verify.outputs.version }}"
+          echo "🏷️ Ensuring autorelease label is 'tagged' for release ${VERSION}..."
+
+          PR_NUM=$(gh pr list --state merged --label "autorelease: pending" \
+            --json number,title \
+            --jq ".[] | select(.title | test(\"release ${VERSION}\")) | .number" \
+            | head -1 || true)
+
+          if [[ -z "$PR_NUM" ]]; then
+            echo "  ℹ️ No PR with 'autorelease: pending' found for ${VERSION} (already tagged or manual release)"
+            exit 0
+          fi
+
+          echo "  🔧 PR #${PR_NUM}: autorelease: pending → autorelease: tagged"
+          gh pr edit "$PR_NUM" \
+            --remove-label "autorelease: pending" \
+            --add-label "autorelease: tagged" || true
   trigger-android-rebuild:
     needs: [verify, build-android, publish]
     if: |

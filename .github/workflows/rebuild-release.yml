@@ -918,3 +918,26 @@ jobs:
           fi
           RESP=$(curl -s -X POST "$VERCEL_DEPLOY_HOOK")
           echo "🌐 Website rebuild triggered: $RESP"
+
+      - name: Sync autorelease label
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ needs.verify.outputs.version }}"
+          echo "🏷️ Ensuring autorelease label is 'tagged' for release ${VERSION}..."
+
+          PR_NUM=$(gh pr list --state merged --label "autorelease: pending" \
+            --json number,title \
+            --jq ".[] | select(.title | test(\"release ${VERSION}\")) | .number" \
+            | head -1 || true)
+
+          if [[ -z "$PR_NUM" ]]; then
+            echo "  ℹ️ No PR with 'autorelease: pending' found for ${VERSION} (already tagged or manual release)"
+            exit 0
+          fi
+
+          echo "  🔧 PR #${PR_NUM}: autorelease: pending → autorelease: tagged"
+          gh pr edit "$PR_NUM" \
+            --remove-label "autorelease: pending" \
+            --add-label "autorelease: tagged" || true
