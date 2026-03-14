@@ -10,6 +10,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.9.35](https://github.com/helixnow/deep-student/compare/v0.9.34...v0.9.35) (2026-03-14)
+
+
+### Features
+
+* **todo:** add database constraints and improve code formatting ([2500b9c](https://github.com/helixnow/deep-student/commit/2500b9ce34550b131eeb3775da7658c74bd211d9))
+* **tools:** add arg_utils for JSON parsing and MCP server configuration ([44c70b4](https://github.com/helixnow/deep-student/commit/44c70b4570bffbd087c573ee9be2c37dd1940542))
+
+
+### Bug Fixes
+
+* **ci:** auto-recover android release builds ([ac74c9b](https://github.com/helixnow/deep-student/commit/ac74c9be414f2a4b61f22224cfccec7b6d2cf829))
+* **ci:** avoid android rebuild invalidation and add heartbeat ([4740877](https://github.com/helixnow/deep-student/commit/4740877946eafdabf55c6382c440e4f5be1391e3))
+* **ci:** remove android tee wrapper and add timeout ([79df4e0](https://github.com/helixnow/deep-student/commit/79df4e0813b5b3ee405105bda57e45fe96e1b097))
+* **ci:** retry transient android dependency failures ([3734c5c](https://github.com/helixnow/deep-student/commit/3734c5ce3c5612d6dc65c2cedee84d72da6a88f0))
+
 ## [0.9.34](https://github.com/helixnow/deep-student/compare/v0.9.33...v0.9.34) (2026-03-09)
 
 
