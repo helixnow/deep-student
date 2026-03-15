@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import { cn } from '../lib/utils';
@@ -1279,11 +1280,12 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
   // ========== 完成庆祝页面 ==========
   const renderCompletionCelebration = () => {
     if (!showCompletionCelebration || !completionStats) return null;
-    const correctRate = completionStats.totalAnswered > 0 
-      ? Math.round((completionStats.correctCount / completionStats.totalAnswered) * 100) 
+    const correctRate = completionStats.totalAnswered > 0
+      ? Math.round((completionStats.correctCount / completionStats.totalAnswered) * 100)
       : 0;
-    return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm">
+
+    const celebrationContent = (
+      <div className="fixed inset-0 z-[100] flex items-center justify-center bg-background/80 backdrop-blur-sm">
         <div className="max-w-sm mx-4 p-6 rounded-2xl bg-card border-transparent ring-1 ring-border/40 shadow-lg text-center space-y-4">
           <div className="flex justify-center">
             <div className="p-4 rounded-full bg-gradient-to-br from-amber-400 to-orange-500">
@@ -1313,8 +1315,8 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
             </div>
           </div>
           <div className="flex gap-2">
-            <NotionButton 
-              variant="outline" 
+            <NotionButton
+              variant="outline"
               className="flex-1"
               onClick={() => {
                 setShowCompletionCelebration(false);
@@ -1324,7 +1326,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
               <RefreshCw className="w-4 h-4 mr-1" />
               {t('editor.restart')}
             </NotionButton>
-            <NotionButton 
+            <NotionButton
               className="flex-1"
               onClick={() => setShowCompletionCelebration(false)}
             >
@@ -1334,6 +1336,9 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
         </div>
       </div>
     );
+
+    // 使用 Portal 渲染到 document.body，避免受父级 transform 影响
+    return createPortal(celebrationContent, document.body);
   };
 
   // ========== 移动端滑动布局 ==========
