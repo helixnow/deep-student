@@ -84,6 +84,7 @@ import { debugLog } from './debug-panel/debugMasterSwitch';
 import { ViewLayerRenderer } from './app/components';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { canonicalizeView } from './app/navigation/canonicalView';
+import { DESKTOP_SHELL, getShellSidebarWidth } from './app/shell/desktopShell';
 
 // 🚀 性能优化：懒加载页面组件
 import {
@@ -141,7 +142,7 @@ function StartupUpdateNotification() {
 /**
  * 命令面板按钮 - 用于顶部栏
  */
-function CommandPaletteButton() {
+function CommandPaletteButton({ className }: { className?: string }) {
   const { open } = useCommandPalette();
   const { t } = useTranslation('common');
   const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
@@ -152,7 +153,7 @@ function CommandPaletteButton() {
         variant="ghost"
         size="icon"
         onClick={open}
-        className="h-8 w-8 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/60"
+        className={cn('desktop-shell-toolbar-button', className)}
       >
         <Terminal className="h-4 w-4" />
       </NotionButton>
@@ -172,9 +173,6 @@ const BRIDGE_COMPLETION_REASONS = new Set([
   'retry',
   'delete',
 ]);
-
-const APP_SIDEBAR_WIDTH = 50;
-const DESKTOP_TITLEBAR_BASE_HEIGHT = 40;
 
 // 🚀 LRU 视图淘汰：限制保活视图数量，避免内存无限增长
 /** 始终保活的视图（不参与 LRU 淘汰） */
@@ -383,14 +381,17 @@ function App() {
     };
   }, [isSmallScreen]); // 响应窗口大小变化，自动切换移动端/桌面端默认值
   
+  const shellSidebarWidth = getShellSidebarWidth(isSmallScreen);
   const appShellCustomProperties = useMemo(() => ({
-    '--sidebar-width': `${APP_SIDEBAR_WIDTH}px`,
-    '--sidebar-expanded-width': `${APP_SIDEBAR_WIDTH}px`,
-    '--sidebar-collapsed-width': `${APP_SIDEBAR_WIDTH}px`,
-    '--desktop-titlebar-height': `${DESKTOP_TITLEBAR_BASE_HEIGHT + topbarTopMargin}px`,
+    '--sidebar-width': `${shellSidebarWidth}px`,
+    '--sidebar-expanded-width': `${shellSidebarWidth}px`,
+    '--sidebar-collapsed-width': `${shellSidebarWidth}px`,
+    '--shell-navigation-width': `${shellSidebarWidth}px`,
+    '--shell-titlebar-height': `${DESKTOP_SHELL.titlebarBaseHeight + topbarTopMargin}px`,
+    '--desktop-titlebar-height': `${DESKTOP_SHELL.titlebarBaseHeight + topbarTopMargin}px`,
     '--topbar-safe-area': `${topbarTopMargin}px`,
     '--sidebar-header-height': '65px', // 左侧导航栏第一个图标到分隔线的高度
-  }) as React.CSSProperties, [topbarTopMargin]);
+  }) as React.CSSProperties, [shellSidebarWidth, topbarTopMargin]);
 
   // 🎯 命令面板：注册内置命令
   useEffect(() => {
@@ -1268,6 +1269,25 @@ function App() {
   }, []);
 
   const navigationShortcuts = getNavigationShortcutText();
+  const desktopShellViewLabel = useMemo(() => {
+    const labels: Partial<Record<CurrentView, string>> = {
+      'chat-v2': t('sidebar:navigation.chat_v2', '聊天'),
+      'learning-hub': t('sidebar:navigation.learning_hub', '学习资源'),
+      'settings': t('sidebar:navigation.settings', '系统'),
+      'dashboard': t('common:navigation.dashboard', '总览'),
+      'task-dashboard': t('sidebar:navigation.anki_generation', '制卡任务'),
+      'skills-management': t('sidebar:navigation.skills_management', '技能管理'),
+      'data-management': t('common:navigation.data_management', '数据管理'),
+      'template-management': t('sidebar:navigation.template_management', '模板库'),
+      'template-json-preview': t('common:navigation.template_json_preview', '模板预览'),
+      'pdf-reader': t('common:navigation.pdf_reader', 'PDF 阅读器'),
+      'tree-test': t('common:navigation.tree_test', 'Tree Test'),
+      'crepe-demo': t('common:navigation.crepe_demo', 'Crepe Demo'),
+      'chat-v2-test': t('common:navigation.chat_v2_test', 'Chat V2 Test'),
+    };
+
+    return labels[currentView] ?? 'DeepStudent';
+  }, [currentView, t]);
 
   // 🚀 性能优化：memoize 各视图内容，防止切换视图时所有已缓存视图子树被重新协调
   // 当 App 因 currentView 变化而重渲染时，useMemo 返回相同的 React 元素引用，
@@ -1413,9 +1433,10 @@ function App() {
       <MobileHeaderActiveViewSync activeView={currentView} />
       <LearningHubNavigationProvider>
       <div
+        data-shell-role="app-shell"
         className={cn(
-          'h-screen w-full flex font-sans text-foreground overflow-hidden transition-colors duration-500 relative',
-          'bg-background dark:bg-zinc-950'
+          'relative flex h-dvh w-full overflow-hidden font-sans text-foreground transition-colors duration-500',
+          'bg-[color:var(--shell-backdrop)]'
         )}
         style={appShellCustomProperties}
       >
@@ -1426,11 +1447,6 @@ function App() {
         >
           {t('common:aria.skip_to_main_content', '跳转到主内容')}
         </a>
-        <div className="absolute inset-0 pointer-events-none overflow-hidden select-none">
-          <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-primary/5 rounded-full blur-[120px] opacity-0 dark:opacity-100 transition-opacity duration-1000" />
-          <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-blue-500/5 rounded-full blur-[120px] opacity-0 dark:opacity-100 transition-opacity duration-1000" />
-        </div>
-
         {/* 移动端：统一顶部导航栏 */}
         {isSmallScreen && (
           <UnifiedMobileHeader
@@ -1443,35 +1459,46 @@ function App() {
         {/* 桌面端：固定顶部栏 - 覆盖整个顶部包括侧边栏 */}
         {!isSmallScreen && (
         <header
-          className="fixed top-0 left-0 right-0 h-10 flex items-center justify-between px-4 bg-background z-[1100] border-b border-border"
+          data-shell-layer="window-chrome"
+          className="desktop-shell-titlebar fixed top-0 left-0 right-0 z-[1100] grid"
           data-tauri-drag-region
           style={{
             paddingTop: `${topbarTopMargin}px`,
-            height: `${DESKTOP_TITLEBAR_BASE_HEIGHT + topbarTopMargin}px`,
-            minHeight: `${DESKTOP_TITLEBAR_BASE_HEIGHT + topbarTopMargin}px`,
+            height: `${DESKTOP_SHELL.titlebarBaseHeight + topbarTopMargin}px`,
+            minHeight: `${DESKTOP_SHELL.titlebarBaseHeight + topbarTopMargin}px`,
+            gridTemplateColumns: 'var(--shell-navigation-width) minmax(0, 1fr)',
           }}
         >
-          <div className="flex items-center gap-3" data-no-drag>
-            {/* macOS 红绿灯留白 */}
-            {isMacOS() && <div className="w-[68px] flex-shrink-0" />}
-            <div className="flex items-center gap-1 mr-2">
+          <div className="desktop-shell-header-cell desktop-shell-header-cell--nav flex min-w-0 items-center gap-3 px-4" data-no-drag>
+            {isMacOS() && <div className="flex-shrink-0" style={{ width: DESKTOP_SHELL.macTrafficLightsSpacer }} />}
+            <div className="desktop-shell-brand-copy">
+              <span className="desktop-shell-kicker">DeepStudent</span>
+              <span className="truncate text-sm font-medium text-[color:var(--shell-navigation-foreground)]">
+                {t('common:app.workspace_shell', '桌面工作区')}
+              </span>
+            </div>
+          </div>
+
+          <div className="desktop-shell-header-cell flex min-w-0 items-center justify-between px-5" data-no-drag>
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="desktop-shell-toolbar-group">
                 <NotionButton
                   variant="ghost"
                   size="icon"
                   onClick={unifiedGoBack}
                   disabled={!unifiedCanGoBack}
-                    className="h-8 w-8 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/60"
-                    title={t('common:navigation.back_tooltip', { shortcut: navigationShortcuts.back })}
-                    aria-label={t('common:navigation.back')}
-                  >
-                    <ChevronLeft className="h-4 w-4" />
-                  </NotionButton>
-                  <NotionButton
-                    variant="ghost"
-                    size="icon"
-                    onClick={unifiedGoForward}
-                    disabled={!unifiedCanGoForward}
-                  className="h-8 w-8 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/60"
+                  className="desktop-shell-toolbar-button"
+                  title={t('common:navigation.back_tooltip', { shortcut: navigationShortcuts.back })}
+                  aria-label={t('common:navigation.back')}
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </NotionButton>
+                <NotionButton
+                  variant="ghost"
+                  size="icon"
+                  onClick={unifiedGoForward}
+                  disabled={!unifiedCanGoForward}
+                  className="desktop-shell-toolbar-button"
                   title={t('common:navigation.forward_tooltip', { shortcut: navigationShortcuts.forward })}
                   aria-label={t('common:navigation.forward')}
                 >
@@ -1483,7 +1510,7 @@ function App() {
                 variant="ghost"
                 size="sm"
                 onClick={useUIStore.getState().toggleLeftPanel}
-                className="h-8 w-8 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/60"
+                className="desktop-shell-toolbar-button"
                 title={t('common:navigation.toggle_left_panel', '切换左侧面板')}
                 aria-label={t('common:navigation.toggle_left_panel', '切换左侧面板')}
               >
@@ -1491,17 +1518,24 @@ function App() {
               </NotionButton>
               
               <CommandPaletteButton />
+
+              <div className="min-w-0 pl-1">
+                <div className="desktop-shell-kicker">
+                  {t('common:app.workspace_focus', '当前工作区')}
+                </div>
+                <div className="min-w-0 text-sm font-medium text-[color:var(--shell-navigation-foreground)]">
+                  {currentView === 'learning-hub' ? (
+                    <LearningHubTopbarBreadcrumb currentView={currentView} />
+                  ) : (
+                    <span className="block truncate">{desktopShellViewLabel}</span>
+                  )}
+                </div>
+              </div>
             </div>
 
-          {/* 面包屑导航 - 对齐到左侧栏右边界 (50px主导航 + 208px学习资源侧边栏 = 258px) */}
-          <div className="absolute left-[258px] flex items-center h-full" data-no-drag>
-            <LearningHubTopbarBreadcrumb currentView={currentView} />
-          </div>
-
-          <div className="flex-1" data-tauri-drag-region />
-
-          <div className="flex items-center gap-2" data-no-drag>
-            {isWindows() && <WindowControls />}
+            <div className="flex items-center gap-2" data-no-drag>
+              {isWindows() && <WindowControls />}
+            </div>
           </div>
         </header>
         )}
@@ -1510,10 +1544,11 @@ function App() {
         {!isSmallScreen && sidebarElement}
 
         <div
-          className="flex-1 flex flex-col h-full relative overflow-hidden bg-background/50 dark:bg-zinc-950/30 backdrop-blur-sm"
+          data-shell-layer="workspace"
+          className="desktop-shell-workspace flex flex-1 flex-col h-full min-w-0 relative overflow-hidden"
           style={{
             // 移动端：48px 基础高度 + topbarTopMargin，桌面端：使用原有标题栏高度
-            paddingTop: isSmallScreen ? `${48 + topbarTopMargin}px` : `${DESKTOP_TITLEBAR_BASE_HEIGHT + topbarTopMargin}px`,
+            paddingTop: isSmallScreen ? `${48 + topbarTopMargin}px` : `${DESKTOP_SHELL.titlebarBaseHeight + topbarTopMargin}px`,
           }}
         >
           <MigrationStatusBanner />

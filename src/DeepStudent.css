@@ -349,6 +349,8 @@ html.is-android .android-safe-top {
   --mobile-topbar-height: 56px;
   /* 桌面固定标题栏高度（统一管理） */
   --desktop-titlebar-height: 40px;
+  --shell-titlebar-height: var(--desktop-titlebar-height);
+  --shell-navigation-width: 272px;
 }
 
 /* 移动端顶部栏滑入动画 */
@@ -416,6 +418,54 @@ html.is-android .android-safe-top {
 }
 
 /* =================== 原有样式 =================== */
+
+[data-shell-layer="navigation"] {
+  background: var(--shell-navigation-surface);
+  border-right: 1px solid var(--shell-navigation-border);
+}
+
+[data-shell-window-controls] {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--shell-window-control-gap);
+  padding: 2px;
+  border-radius: calc(var(--shell-window-control-radius) + 2px);
+  border: 1px solid var(--shell-control-border);
+  background: var(--shell-control-surface);
+  box-shadow: var(--shell-shadow-active);
+}
+
+[data-shell-window-button] {
+  height: var(--shell-window-control-size) !important;
+  width: var(--shell-window-control-size) !important;
+  min-height: var(--shell-window-control-size) !important;
+  min-width: var(--shell-window-control-size) !important;
+  border-radius: var(--shell-window-control-radius) !important;
+  background: transparent !important;
+  color: var(--shell-navigation-foreground) !important;
+  border: 1px solid transparent !important;
+  box-shadow: none !important;
+}
+
+[data-shell-window-button]:hover,
+[data-shell-window-button]:focus-visible {
+  background: var(--shell-control-hover) !important;
+  color: var(--shell-navigation-foreground) !important;
+}
+
+[data-shell-window-button]:active {
+  background: var(--shell-control-active) !important;
+}
+
+[data-shell-window-button="close"]:hover,
+[data-shell-window-button="close"]:focus-visible {
+  background: var(--shell-window-close-hover) !important;
+  color: var(--shell-window-close-foreground) !important;
+}
+
+[data-shell-window-button="close"]:active {
+  background: var(--shell-window-close-active) !important;
+}
 
 /* 紧急修复：彻底禁用所有旧tooltip相关的伪元素 */
 .tooltip-container,

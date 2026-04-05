@@ -34,8 +34,9 @@ export const ViewLayerRenderer = React.memo(function ViewLayerRenderer({
 
   return (
     <div
+      data-view-layer-shell={view}
       className={cn(
-        'page-container absolute inset-0 flex flex-col',
+        'page-container desktop-shell-view-layer absolute inset-0 flex flex-col',
         extraClass,
         currentView === view ? 'opacity-100 z-10 pointer-events-auto' : 'opacity-0 z-0 pointer-events-none'
       )}

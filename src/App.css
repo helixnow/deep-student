@@ -10,6 +10,130 @@ body {
   font-family: var(--font-family);
 }
 
+:where(:root) {
+  --shell-titlebar-height: var(--desktop-titlebar-height, 40px);
+  --shell-navigation-width: var(--sidebar-width, 272px);
+  --shell-layout-gap: 14px;
+  --shell-panel-radius: 18px;
+  --shell-toolbar-radius: 16px;
+  --shell-nav-row-radius: 14px;
+  --shell-control-size: 32px;
+  --shell-window-control-size: 34px;
+  --shell-window-control-gap: 2px;
+  --shell-window-control-radius: 10px;
+  --shell-section-gap: 18px;
+}
+
+.desktop-shell-titlebar {
+  background: var(--shell-titlebar-surface);
+  border-bottom: 1px solid var(--shell-chrome-border);
+}
+
+.desktop-shell-header-cell {
+  min-width: 0;
+  min-height: var(--shell-titlebar-height);
+}
+
+.desktop-shell-header-cell--nav {
+  border-right: 1px solid var(--shell-chrome-border);
+}
+
+.desktop-shell-brand-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.desktop-shell-kicker {
+  font-size: 11px;
+  line-height: 1.2;
+  color: var(--shell-navigation-muted);
+}
+
+.desktop-shell-toolbar-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border-radius: var(--shell-toolbar-radius);
+  border: 1px solid var(--shell-control-border);
+  background: var(--shell-control-surface);
+  box-shadow: var(--shell-shadow-active);
+}
+
+.desktop-shell-toolbar-button {
+  height: var(--shell-control-size) !important;
+  width: var(--shell-control-size) !important;
+  border-radius: var(--shell-nav-row-radius) !important;
+  border: 1px solid transparent !important;
+  background: transparent !important;
+  color: var(--shell-navigation-foreground) !important;
+  box-shadow: none !important;
+}
+
+.desktop-shell-toolbar-button:hover,
+.desktop-shell-toolbar-button:focus-visible {
+  background: var(--shell-control-hover) !important;
+  color: var(--shell-navigation-foreground) !important;
+}
+
+.desktop-shell-toolbar-button:active {
+  background: var(--shell-control-active) !important;
+}
+
+.desktop-shell-sidebar-panel {
+  border-radius: var(--shell-panel-radius);
+  border: 1px solid var(--shell-navigation-border);
+  background: var(--shell-navigation-panel);
+  box-shadow: var(--shell-shadow-active);
+}
+
+.desktop-shell-nav-section-label {
+  padding-inline: 4px;
+  font-size: 11px;
+  line-height: 1.2;
+  color: var(--shell-navigation-muted);
+}
+
+.desktop-shell-nav-row {
+  min-height: 56px !important;
+  justify-content: flex-start !important;
+  border-radius: var(--shell-nav-row-radius) !important;
+  border: 1px solid transparent !important;
+  background: transparent !important;
+  color: var(--shell-navigation-foreground) !important;
+  box-shadow: none !important;
+}
+
+.desktop-shell-nav-row:hover,
+.desktop-shell-nav-row:focus-visible {
+  background: var(--shell-nav-item-hover) !important;
+  color: var(--shell-navigation-foreground) !important;
+}
+
+.desktop-shell-nav-row--active {
+  border-color: var(--shell-navigation-border) !important;
+  background: var(--shell-nav-item-active) !important;
+  color: var(--shell-nav-item-active-foreground) !important;
+  box-shadow: var(--shell-shadow-active) !important;
+}
+
+.desktop-shell-nav-meta {
+  font-size: 11px;
+  line-height: 1.2;
+  color: var(--shell-navigation-muted);
+}
+
+.desktop-shell-workspace {
+  background: var(--shell-workspace-surface);
+  box-shadow: inset 0 1px 0 var(--shell-workspace-border);
+}
+
+.desktop-shell-view-layer {
+  isolation: isolate;
+}
+
 /* ============================================
    全局移动端溢出控制
    ============================================ */

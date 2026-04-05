@@ -10,6 +10,31 @@
   --surface-overlay-strong: color-mix(in hsl, hsl(var(--card)) 65%, hsl(var(--background)) 35%);
   --surface-divider: color-mix(in hsl, hsl(var(--border)) 55%, transparent 45%);
 
+  /* Desktop shell surfaces */
+  --shell-backdrop: color-mix(in hsl, var(--surface-nav) 24%, var(--surface-root) 76%);
+  --shell-titlebar-surface: color-mix(in hsl, var(--surface-elevated) 88%, var(--surface-root) 12%);
+  --shell-navigation-surface: color-mix(in hsl, var(--surface-nav) 72%, var(--surface-elevated) 28%);
+  --shell-navigation-panel: color-mix(in hsl, var(--surface-elevated) 84%, var(--surface-root) 16%);
+  --shell-navigation-foreground: var(--text-primary);
+  --shell-navigation-muted: color-mix(in hsl, var(--text-muted) 84%, var(--text-primary) 16%);
+  --shell-navigation-border: color-mix(in hsl, var(--border-default) 78%, transparent 22%);
+  --shell-workspace-surface: color-mix(in hsl, var(--surface-root) 92%, var(--surface-elevated) 8%);
+  --shell-workspace-panel: color-mix(in hsl, var(--surface-elevated) 90%, var(--surface-root) 10%);
+  --shell-workspace-border: color-mix(in hsl, var(--border-default) 72%, transparent 28%);
+  --shell-chrome-border: color-mix(in hsl, var(--border-default) 74%, transparent 26%);
+  --shell-nav-item-hover: color-mix(in hsl, var(--surface-muted) 78%, var(--surface-elevated) 22%);
+  --shell-nav-item-active: color-mix(in hsl, hsl(var(--primary)) 10%, var(--surface-elevated) 90%);
+  --shell-nav-item-active-foreground: var(--text-primary);
+  --shell-control-surface: color-mix(in hsl, var(--surface-elevated) 88%, var(--surface-root) 12%);
+  --shell-control-border: color-mix(in hsl, var(--border-default) 80%, transparent 20%);
+  --shell-control-hover: color-mix(in hsl, var(--shell-nav-item-hover) 82%, var(--surface-elevated) 18%);
+  --shell-control-active: color-mix(in hsl, var(--shell-nav-item-active) 78%, var(--surface-elevated) 22%);
+  --shell-window-close-hover: color-mix(in hsl, hsl(var(--destructive)) 18%, var(--surface-elevated) 82%);
+  --shell-window-close-active: color-mix(in hsl, hsl(var(--destructive)) 24%, var(--surface-elevated) 76%);
+  --shell-window-close-foreground: hsl(var(--destructive));
+  --shell-shadow-soft: 0 18px 40px hsl(var(--foreground) / 0.08);
+  --shell-shadow-active: 0 8px 20px hsl(var(--foreground) / 0.06);
+
   /* Borders */
   --border-default: hsl(var(--border));
   --border-soft: color-mix(in hsl, hsl(var(--border)) 70%, transparent 30%);
@@ -56,4 +81,3 @@
   --neutral-muted: var(--neutral) / 0.35;
   --neutral-bg: var(--neutral) / 0.14;
 }
-
