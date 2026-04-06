@@ -7,6 +7,7 @@ import { getSessionTitleText } from '../utils/sessionTitle';
 import type { CreateGroupRequest, SessionGroup, UpdateGroupRequest } from '../types/group';
 import type { ChatSession } from '../types/session';
 import type { DropResult } from '@hello-pangea/dnd';
+import type { DragEndEvent } from '@dnd-kit/core';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import type { TFunction } from 'i18next';
 
@@ -264,33 +265,37 @@ export function useSessionEdit(deps: UseSessionEditDeps) {
     }
   }, [applySessionGroupUpdate, loadUngroupedCount]);
 
+  const handleGroupReorder = useCallback((event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    if (groupDragDisabled) return;
+
+    const oldIndex = visibleGroups.findIndex((g) => g.id === active.id);
+    const newIndex = visibleGroups.findIndex((g) => g.id === over.id);
+    if (oldIndex === -1 || newIndex === -1) return;
+
+    const reordered = [...visibleGroups];
+    const [moved] = reordered.splice(oldIndex, 1);
+    reordered.splice(newIndex, 0, moved);
+    reorderGroups(reordered.map((group) => group.id));
+  }, [groupDragDisabled, reorderGroups, visibleGroups]);
+
   const handleDragEnd = useCallback((result: DropResult) => {
-    const { destination, source, draggableId, type } = result;
+    const { destination, source, draggableId } = result;
     if (!destination) return;
 
-    if (type === 'GROUP') {
-      if (groupDragDisabled) return;
-      if (destination.index === source.index) return;
-      const reordered = [...visibleGroups];
-      const [moved] = reordered.splice(source.index, 1);
-      reordered.splice(destination.index, 0, moved);
-      reorderGroups(reordered.map((group) => group.id));
+    // SESSION-level drag only (group drag handled by @dnd-kit)
+    if (destination.droppableId === source.droppableId) return;
+    const sessionId = draggableId.replace(/^session:/, '');
+    if (destination.droppableId === 'session-ungrouped') {
+      moveSessionToGroup(sessionId, undefined);
       return;
     }
-
-    if (type === 'SESSION') {
-      if (destination.droppableId === source.droppableId) return;
-      const sessionId = draggableId.replace(/^session:/, '');
-      if (destination.droppableId === 'session-ungrouped') {
-        moveSessionToGroup(sessionId, undefined);
-        return;
-      }
-      if (destination.droppableId.startsWith('session-group:')) {
-        const destGroupId = destination.droppableId.replace('session-group:', '');
-        moveSessionToGroup(sessionId, destGroupId);
-      }
+    if (destination.droppableId.startsWith('session-group:')) {
+      const destGroupId = destination.droppableId.replace('session-group:', '');
+      moveSessionToGroup(sessionId, destGroupId);
     }
-  }, [groupDragDisabled, moveSessionToGroup, reorderGroups, visibleGroups]);
+  }, [moveSessionToGroup]);
 
   // 格式化时间
   const formatTime = (isoString: string) => {
@@ -321,6 +326,7 @@ export function useSessionEdit(deps: UseSessionEditDeps) {
     removeGroupFromSessions,
     confirmDeleteGroup,
     moveSessionToGroup,
+    handleGroupReorder,
     handleDragEnd,
     formatTime,
   };
