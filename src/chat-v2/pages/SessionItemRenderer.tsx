@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { PRESET_ICONS } from '../components/groups/GroupEditorDialog';
 import { shouldShowSessionActionButtons } from './sessionItemActionVisibility';
+import { getSessionTitleText } from '../utils/sessionTitle';
 import type { SessionGroup } from '../types/group';
 import type { ChatSession } from '../types/session';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
@@ -66,6 +67,7 @@ export function useSessionItemRenderer(deps: UseSessionItemRendererDeps) {
 
   // 渲染单个会话项 - Notion 风格
   const renderSessionItem = (session: ChatSession, drag?: SessionDragState) => {
+    const sessionTitle = getSessionTitleText(session.title, t('page.untitled'));
     const showActionButtons = shouldShowSessionActionButtons({
       isEditing: editingSessionId === session.id,
       isHovered: hoveredSessionId === session.id,
@@ -94,12 +96,12 @@ export function useSessionItemRenderer(deps: UseSessionItemRendererDeps) {
         setHoveredSessionId(session.id);
       }}
       className={cn(
-        'group flex items-center gap-2.5 px-2 py-1.5 mx-1 rounded-md cursor-pointer transition-all duration-150',
+        'group mx-1 flex items-start gap-2.5 rounded-2xl border border-transparent px-3 py-2 cursor-pointer transition-all duration-150',
         drag && 'cursor-grab active:cursor-grabbing',
         currentSessionId === session.id
-          ? 'bg-accent text-accent-foreground'
-          : 'hover:bg-accent/50',
-        editingSessionId === session.id && 'ring-1 ring-primary/60 bg-accent/60',
+          ? 'bg-[var(--sidebar-study-selected)] text-foreground'
+          : 'hover:bg-[var(--sidebar-study-hover)]',
+        editingSessionId === session.id && 'ring-1 ring-primary/60 bg-[var(--sidebar-study-selected)]',
         drag?.snapshot.isDragging && 'shadow-lg ring-1 ring-border bg-card z-50'
       )}
     >
@@ -174,12 +176,12 @@ export function useSessionItemRenderer(deps: UseSessionItemRendererDeps) {
           </div>
         ) : (
           <div className={cn(
-            'text-sm transition-colors',
+            'text-[13px] transition-colors',
             currentSessionId === session.id
-              ? 'text-foreground font-bold line-clamp-2 break-words'
-              : 'text-foreground/80 font-semibold truncate'
+              ? 'text-foreground font-normal hover:font-normal line-clamp-2 break-words'
+              : 'text-foreground/80 font-normal hover:font-normal truncate'
           )}>
-            {session.title || t('page.untitled')}
+            {sessionTitle}
           </div>
         )}
       </div>

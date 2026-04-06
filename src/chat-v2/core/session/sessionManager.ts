@@ -260,6 +260,7 @@ class SessionManagerImpl implements ISessionManager {
   setCurrentSessionId(sessionId: string | null): void {
     this.currentSessionId = sessionId;
     console.log('[SessionManager] setCurrentSessionId:', sessionId);
+    this.emit({ type: 'current-session-changed', sessionId: sessionId ?? '' });
   }
 
   /**

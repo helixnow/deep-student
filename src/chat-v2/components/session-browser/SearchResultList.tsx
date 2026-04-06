@@ -5,6 +5,7 @@
 import React, { useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Search, MessageSquare, Loader2, User, Bot, ChevronDown } from 'lucide-react';
+import { getSessionTitleText } from '@/chat-v2/utils/sessionTitle';
 import { cn } from '@/lib/utils';
 import type { ContentSearchResult } from '../../hooks/useContentSearch';
 
@@ -89,7 +90,7 @@ export const SearchResultList: React.FC<SearchResultListProps> = ({
             >
               <MessageSquare className="w-3.5 h-3.5 text-muted-foreground/60 shrink-0" />
               <span className="text-sm font-medium text-foreground truncate group-hover:text-primary transition-colors">
-                {title || t('page.untitled')}
+                {getSessionTitleText(title, t('page.untitled'))}
               </span>
               <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted/50 text-muted-foreground/60 shrink-0">
                 {items.length}

@@ -9,8 +9,8 @@ import React, { useRef, useState, useCallback, useEffect, useMemo } from 'react'
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
+import { ArrowUp } from '@phosphor-icons/react';
 import {
-  Send,
   Square,
   Paperclip,
   Layers,
@@ -28,7 +28,6 @@ import {
   Plus,
   Camera,
   Zap,
-  ArrowUp,
   Loader2,
   FolderOpen,
 } from 'lucide-react';
@@ -931,7 +930,18 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
   const skillPanelMotion = useDeferredOpen(panelStates.skill);
 
   // ========== 派生值 ==========
-  const iconButtonClass = 'inline-flex items-center justify-center h-9 w-9 rounded-full transition-colors hover:bg-muted/50 text-muted-foreground hover:text-foreground active:bg-muted';
+  const iconButtonClass = 'inline-flex items-center justify-center h-9 w-9 rounded-full text-[color:var(--button-utility-foreground)] transition-colors hover:bg-[color:var(--button-utility-hover)] hover:text-[color:var(--text-primary)] active:bg-[color:var(--button-utility-active)]';
+  const studyUiButtonBaseClassName =
+    'inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-[var(--button-radius)] border text-[13px] font-medium leading-none tracking-[0.01em] transition-[background-color,border-color,color,box-shadow] duration-150 ease-out outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 select-none motion-reduce:transition-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:text-inherit';
+  const studyUiButtonTonePrimaryClassName =
+    'border-[color:var(--button-prominent-border)] bg-[var(--button-prominent-bg)] text-primary-foreground hover:bg-[var(--button-prominent-hover-bg)] active:bg-[var(--button-prominent-active-bg)]';
+  const studyUiButtonSizeIconClassName =
+    'h-[var(--button-icon-size)] w-[var(--button-icon-size)] rounded-[var(--button-radius)]';
+  const studyUiSendButtonSizeClass =
+    'h-11 w-11 !rounded-full md:h-[var(--button-icon-size)] md:w-[var(--button-icon-size)]';
+  const studyUiSendButtonEmptyStateClass =
+    '!border-transparent !bg-muted-foreground hover:!bg-muted-foreground/90 active:!bg-muted-foreground/85 !text-[color:var(--interactive-selected)]';
+  const studyUiSendButtonAriaLabel = '发送消息';
   const tooltipPosition = 'top' as const;
   // 🔧 移动端禁用 tooltip（触摸设备没有 hover 交互，tooltip 会干扰）
   const tooltipDisabled = isMobile;
@@ -940,6 +950,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
   const hasText = inputValue.trim().length > 0;
   const hasAttachments = attachmentCount > 0;
   const hasContent = hasText || hasAttachments;
+  const isComposerEmpty = !hasContent;
 
   // 🔧 检查是否有任何面板打开
   const hasAnyPanelOpen = panelStates.attachment || panelStates.rag || panelStates.model ||
@@ -1674,7 +1685,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
       className={cn(
         // 🎨 布局分离：作为 flex 子项，relative 用于面板定位
         // 🔧 P0修复：移除 ring 样式，避免拖拽时显示难看的实心边框
-        'w-full flex-shrink-0 relative z-[100] transition-all duration-500 ease-out unified-input-docked',
+        'relative z-[100] w-full flex-shrink-0 border-t border-[color:var(--shell-workspace-border)] bg-[color:var(--surface-panel-strong)] px-4 pt-2.5 transition-all duration-500 ease-out unified-input-docked md:px-8 md:pb-4',
         className
       )}
       style={{
@@ -1685,11 +1696,12 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
       }}
       {...dropZoneProps}
     >
-      {/* 🎨 输入容器 - 统一全圆角悬浮卡片样式，z-[200] 确保在面板之上 */}
-      <div
-        ref={inputContainerRef}
-        className="relative z-[200] rounded-[26px] mx-2 sm:mx-4 bg-background/80 supports-[backdrop-filter]:bg-background/60 backdrop-blur-xl backdrop-saturate-150 border border-border/40 shadow-sm transition-all duration-300 p-3 pl-4 ring-1 ring-border/5"
-      >
+      <div className="mx-auto w-full max-w-[44rem]">
+        {/* study-ui 对齐：输入区回到安静的居中 composer，而不是漂浮玻璃卡片。 */}
+        <div
+          ref={inputContainerRef}
+          className="relative z-[200] overflow-hidden rounded-[28px] border border-[color:var(--input-shell-border)] bg-[color:var(--surface-elevated)] p-3 pl-4 shadow-[var(--shadow-shell-soft)] transition-shadow duration-150 ease-out focus-within:shadow-[var(--shadow-shell-panel)]"
+        >
         {/* 🔧 P0修复：拖拽遮罩层移到输入容器内部，确保与输入框完全重合 */}
         {isReady && isDragging && (
           <div className="absolute inset-0 z-[300] flex items-center justify-center bg-primary/10 border-2 border-dashed border-primary backdrop-blur-sm rounded-[26px] pointer-events-none">
@@ -1887,7 +1899,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
               }}
               readOnly={isStreaming}
               rows={1}
-              className="w-full bg-transparent border-0 outline-none text-[15px] text-foreground placeholder:text-muted-foreground/70 focus:ring-0 resize-none leading-relaxed py-1 overflow-hidden"
+              className="w-full resize-none border-0 bg-transparent py-1 text-[15px] leading-relaxed text-foreground outline-none placeholder:text-muted-foreground/70 focus:ring-0 overflow-hidden"
               style={{
                 minHeight: '40px',
                 background: 'transparent',
@@ -1938,8 +1950,8 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                     iconButtonClass,
                     'relative transition-colors',
                     enableThinking
-                      ? 'text-purple-500 hover:text-purple-600 dark:text-purple-400 dark:hover:text-purple-300'
-                      : 'text-muted-foreground hover:text-foreground'
+                      ? 'text-[color:var(--button-primary-foreground)] hover:text-[color:var(--button-primary-foreground)]'
+                      : 'text-[color:var(--button-utility-foreground)] hover:text-[color:var(--text-primary)]'
                   )}
                   aria-label={t('chatV2:inputBar.thinking')}
                   aria-pressed={enableThinking}
@@ -1947,7 +1959,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                   <span className="relative inline-flex items-center justify-center">
                     <Atom size={18} />
                     {enableThinking && (
-                      <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-purple-500 rounded-full animate-pulse" />
+                      <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-[color:var(--button-primary-foreground)] animate-pulse" />
                     )}
                   </span>
                 </NotionButton>
@@ -1962,13 +1974,13 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                 size="icon"
                 iconOnly
                 onClick={() => togglePanel('model')}
-                className={cn(
-                  iconButtonClass,
-                  'transition-colors',
-                  panelStates.model
-                    ? 'text-primary hover:text-primary/80'
-                    : 'text-muted-foreground hover:text-foreground'
-                )}
+                    className={cn(
+                      iconButtonClass,
+                      'transition-colors',
+                      panelStates.model
+                        ? 'text-[color:var(--button-primary-foreground)] hover:text-[color:var(--button-primary-foreground)]'
+                        : 'text-[color:var(--button-utility-foreground)] hover:text-[color:var(--text-primary)]'
+                    )}
                 aria-label={t('chatV2:inputBar.toggleModelPanel')}
               >
                 <span className="relative inline-flex items-center justify-center">
@@ -1996,24 +2008,24 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                   size="icon"
                   iconOnly
                   onClick={() => togglePanel('skill')}
-                  className={cn(
-                    iconButtonClass,
-                    'relative transition-colors',
-                    (panelStates.skill || (activeSkillIds && activeSkillIds.length > 0))
-                      ? 'text-amber-500 hover:text-amber-600 dark:text-amber-400 dark:hover:text-amber-300'
+                    className={cn(
+                      iconButtonClass,
+                      'relative transition-colors',
+                      (panelStates.skill || (activeSkillIds && activeSkillIds.length > 0))
+                        ? 'text-[color:var(--button-primary-foreground)] hover:text-[color:var(--button-primary-foreground)]'
                       : hasLoadedSkills
-                        ? 'text-amber-400/70 hover:text-amber-500 dark:text-amber-500/70 dark:hover:text-amber-400'
-                        : 'text-muted-foreground hover:text-foreground'
-                  )}
+                          ? 'text-[color:var(--text-secondary)] hover:text-[color:var(--text-primary)]'
+                          : 'text-[color:var(--button-utility-foreground)] hover:text-[color:var(--text-primary)]'
+                    )}
                   aria-label={t('skills:title')}
                   aria-pressed={panelStates.skill || (activeSkillIds && activeSkillIds.length > 0) || !!hasLoadedSkills}
                 >
                   <span className="relative inline-flex items-center justify-center">
                     <Zap size={18} />
                     {activeSkillIds && activeSkillIds.length > 0 ? (
-                      <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-amber-500 rounded-full animate-pulse" />
+                      <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-[color:var(--button-primary-foreground)] animate-pulse" />
                     ) : hasLoadedSkills ? (
-                      <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-amber-400/70 rounded-full" />
+                      <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-[color:var(--text-secondary)]" />
                     ) : null}
                   </span>
                 </NotionButton>
@@ -2038,20 +2050,20 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                   size="icon"
                   iconOnly
                   onClick={() => togglePanel('mcp')}
-                  className={cn(
-                    iconButtonClass,
-                    'relative transition-colors',
-                    (panelStates.mcp || mcpEnabled)
-                      ? 'text-emerald-500 hover:text-emerald-600 dark:text-emerald-400 dark:hover:text-emerald-300'
-                      : 'text-muted-foreground hover:text-foreground'
-                  )}
+                    className={cn(
+                      iconButtonClass,
+                      'relative transition-colors',
+                      (panelStates.mcp || mcpEnabled)
+                        ? 'text-[color:var(--button-primary-foreground)] hover:text-[color:var(--button-primary-foreground)]'
+                        : 'text-[color:var(--button-utility-foreground)] hover:text-[color:var(--text-primary)]'
+                    )}
                   aria-label={t('analysis:input_bar.mcp.title')}
                   aria-pressed={panelStates.mcp || mcpEnabled}
                 >
                   <span className="relative inline-flex items-center justify-center">
                     <Wrench size={18} />
                     {selectedMcpServerCount > 0 && (
-                      <span className="absolute -top-1.5 -right-2 min-w-[16px] h-4 px-1 flex items-center justify-center text-[10px] font-semibold bg-emerald-500 text-white rounded-full shadow-sm">
+                      <span className="absolute -right-2 -top-1.5 flex h-4 min-w-[16px] items-center justify-center rounded-full border border-[color:var(--button-primary-border)] bg-[color:var(--button-primary-surface)] px-1 text-[10px] font-semibold text-[color:var(--button-primary-foreground)] shadow-sm">
                         {selectedMcpServerCount > 9 ? '9+' : selectedMcpServerCount}
                       </span>
                     )}
@@ -2087,7 +2099,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                 onClick={toggleAttachmentPanel}
                 className={cn(
                   iconButtonClass,
-                  'relative text-muted-foreground hover:text-foreground transition-colors disabled:opacity-60'
+                  'relative transition-colors disabled:opacity-60'
                 )}
                 aria-label={t('analysis:input_bar.attachments.title')}
               >
@@ -2121,8 +2133,8 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                 iconOnly
                 onClick={handleStop}
                 disabled={!canAbort}
-                className="!w-8 !h-8 !rounded-full shadow-sm"
-                aria-label={t('analysis:input_bar.actions.stop')}
+                  className="!w-8 !h-8 !rounded-full shadow-sm"
+                  aria-label={t('analysis:input_bar.actions.stop')}
               >
                 <Square size={12} fill="currentColor" />
               </NotionButton>
@@ -2131,25 +2143,27 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                 content={disabledSend ? sendBlockedReason : undefined}
                 disabled={!disabledSend || isMobile || !sendBlockedReason}
               >
-                <NotionButton
+                <button
                   data-testid="btn-send"
-                  variant="primary"
-                  size="icon"
-                  iconOnly
+                  type="button"
                   onClick={handleSend}
                   disabled={disabledSend}
                   className={cn(
-                    '!w-8 !h-8 !rounded-full shadow-sm',
-                    !disabledSend && 'hover:scale-105 active:scale-95 shadow-md shadow-primary/20'
+                    studyUiButtonBaseClassName,
+                    studyUiButtonTonePrimaryClassName,
+                    studyUiButtonSizeIconClassName,
+                    studyUiSendButtonSizeClass,
+                    isComposerEmpty && studyUiSendButtonEmptyStateClass
                   )}
-                  aria-label={t('analysis:input_bar.actions.send')}
+                  aria-label={studyUiSendButtonAriaLabel}
                 >
-                  <ArrowUp size={16} strokeWidth={2.5} />
-                </NotionButton>
+                  <ArrowUp size={16} weight="bold" />
+                </button>
               </CommonTooltip>
             )}
           </div>
         </div>
+      </div>
       </div>
 
       {/* 🔧 面板容器 - 用于检测点击是否在面板内 */}

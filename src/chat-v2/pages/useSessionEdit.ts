@@ -3,6 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { sessionManager } from '../core/session/sessionManager';
 import { groupCache } from '../core/store/groupCache';
+import { getSessionTitleText } from '../utils/sessionTitle';
 import type { CreateGroupRequest, SessionGroup, UpdateGroupRequest } from '../types/group';
 import type { ChatSession } from '../types/session';
 import type { DropResult } from '@hello-pangea/dnd';
@@ -10,6 +11,10 @@ import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import type { TFunction } from 'i18next';
 
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
+
+const emitSessionListUpdated = () => {
+  window.dispatchEvent(new CustomEvent('chat-v2:sessions-updated'));
+};
 
 export interface UseSessionEditDeps {
   resetDeleteConfirmation: () => void;
@@ -61,7 +66,7 @@ export function useSessionEdit(deps: UseSessionEditDeps) {
     setRenamingSessionId(null);
     setRenameError(null);
     setEditingSessionId(session.id);
-    setEditingTitle(session.title?.trim() ?? '');
+    setEditingTitle(getSessionTitleText(session.title, ''));
     resetDeleteConfirmation();
   }, [resetDeleteConfirmation]);
 
@@ -73,9 +78,8 @@ export function useSessionEdit(deps: UseSessionEditDeps) {
       return;
     }
 
-    const currentTitle = sessionsRef.current
-      .find((s) => s.id === sessionId)
-      ?.title?.trim();
+    const currentSession = sessionsRef.current.find((s) => s.id === sessionId);
+    const currentTitle = getSessionTitleText(currentSession?.title, '');
 
     if (currentTitle === trimmedTitle) {
       setRenameError(null);
@@ -97,6 +101,7 @@ export function useSessionEdit(deps: UseSessionEditDeps) {
           s.id === sessionId ? { ...s, title: trimmedTitle } : s
         )
       );
+      emitSessionListUpdated();
       setEditingSessionId(null);
       setEditingTitle('');
     } catch (error) {

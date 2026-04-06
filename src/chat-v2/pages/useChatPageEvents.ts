@@ -109,6 +109,7 @@ export function useChatPageEvents(deps: UseChatPageEventsDeps) {
         if (prev.some((s) => s.id === session.id)) return prev;
         return [session, ...prev];
       });
+      window.dispatchEvent(new CustomEvent('chat-v2:sessions-updated'));
       // 切换到新会话
       setCurrentSessionId(session.id);
       // 刷新未分组计数
@@ -130,6 +131,35 @@ export function useChatPageEvents(deps: UseChatPageEventsDeps) {
     window.addEventListener('PIPELINE_TEST_SWITCH_SESSION', handler);
     return () => window.removeEventListener('PIPELINE_TEST_SWITCH_SESSION', handler);
   }, [setCurrentSessionId]);
+
+  const handleNavigateToSession = useCallback(async (e: Event) => {
+    const sid = (e as CustomEvent<{ sessionId?: string }>)?.detail?.sessionId;
+    if (!sid) return;
+
+    setCurrentSessionId(sid);
+
+    try {
+      const session = await invoke<ChatSession | null>('chat_v2_get_session', { sessionId: sid });
+      if (!session) return;
+
+      setSessions((prev) => {
+        if (prev.some((item) => item.id === session.id)) {
+          return prev;
+        }
+        return [session, ...prev];
+      });
+    } catch (error) {
+      console.warn('[ChatV2Page] Failed to navigate to session:', getErrorMessage(error));
+    }
+  }, [setCurrentSessionId, setSessions]);
+
+  useEventRegistry([
+    {
+      target: 'window',
+      type: 'navigate-to-session',
+      listener: handleNavigateToSession as EventListener,
+    },
+  ], [handleNavigateToSession]);
 
   // ★ 注册 OpenResourceHandler，让 openResource() 可以在 Chat V2 中工作
   useEffect(() => {

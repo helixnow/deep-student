@@ -162,6 +162,7 @@ export interface ISessionManager {
  */
 export type SessionManagerEventType =
   | 'session-created'
+  | 'current-session-changed'
   | 'session-destroyed'
   | 'session-evicted'
   | 'streaming-change';

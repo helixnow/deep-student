@@ -78,6 +78,7 @@ import { useChatPageLayout } from './useChatPageLayout';
 import { useChatPageEvents } from './useChatPageEvents';
 import { useSessionItemRenderer, resolveDragStyle } from './SessionItemRenderer';
 import { useSessionSidebarContent } from './SessionSidebarContent';
+import { getSessionTitleText } from '../utils/sessionTitle';
 
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
 
@@ -112,6 +113,8 @@ const LAST_SESSION_KEY = 'chat-v2-last-session-id';
 
 export const ChatV2Page: React.FC = () => {
   const { t } = useTranslation(['chatV2', 'learningHub', 'common']);
+  const workspaceLabel = t('workspace.title', { ns: 'chatV2', defaultValue: '工作区' });
+  const recentLabel = t('page.recentLabel', { defaultValue: '最近' });
 
   // ========== 页面生命周期监控 ==========
   usePageMount('chat-v2', 'ChatV2Page');
@@ -230,7 +233,7 @@ export const ChatV2Page: React.FC = () => {
       setShowSwitchingIndicator(false);
     }
   }, [isSessionSwitching]);
-  
+
   // 会话重命名状态
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState('');
@@ -369,13 +372,18 @@ export const ChatV2Page: React.FC = () => {
   const [deletedSessions, setDeletedSessions] = useState<ChatSession[]>([]);
   const [isLoadingTrash, setIsLoadingTrash] = useState(false);
   const [showEmptyTrashConfirm, setShowEmptyTrashConfirm] = useState(false);
+  const [chatControlPopoverOpen, setChatControlPopoverOpen] = useState(false);
+
+  useEffect(() => {
+    setChatControlPopoverOpen(false);
+  }, [currentSessionId, viewMode, groupEditorOpen]);
 
   // ===== 会话生命周期 hook =====
   const {
     loadUngroupedCount, createSession, createAnalysisSession,
     loadSessions, loadMoreSessions, deleteSession,
     loadDeletedSessions, restoreSession, permanentlyDeleteSession,
-    emptyTrash, toggleTrash, toggleChatControl, handleViewAgentSession,
+    emptyTrash, toggleTrash, handleViewAgentSession,
   } = useSessionLifecycle({
     setSessions, setCurrentSessionId, setIsLoading, setTotalSessionCount,
     setUngroupedSessionCount, setHasMoreSessions, setIsInitialLoading,
@@ -467,7 +475,7 @@ export const ChatV2Page: React.FC = () => {
     viewMode, t, sessionCount: sessions.length,
     createSession, isLoading,
     mobileResourcePanelOpen, finderBreadcrumbs, finderJumpToBreadcrumb,
-    setMobileResourcePanelOpen, setSessionSheetOpen, setViewMode,
+    setMobileResourcePanelOpen, setSessionSheetOpen, setShowChatControl, setShowTrash, setViewMode,
   });
 
   // ===== 页面事件 hook =====
@@ -504,7 +512,7 @@ export const ChatV2Page: React.FC = () => {
     hasMoreSessions, isLoadingMore, pendingDeleteSessionId,
     collapsedMap, sessionsByGroup, visibleGroups, groupDragDisabled,
     groupedSessions, timeGroupLabels, t,
-    toggleTrash, toggleChatControl, toggleGroupCollapse,
+    toggleTrash, toggleGroupCollapse,
     resetDeleteConfirmation, clearDeleteConfirmTimeout, deleteConfirmTimeoutRef,
     createSession, restoreSession, permanentlyDeleteSession, loadMoreSessions,
     openCreateGroup, openEditGroup, handleDragEnd, renderSessionItem,
@@ -524,6 +532,10 @@ export const ChatV2Page: React.FC = () => {
   const handleCloseApp = useCallback(() => {
     setOpenApp(null);
     setAttachmentPreviewOpen(false);
+  }, []);
+
+  const navigateToShellView = useCallback((view: 'learning-hub' | 'skills-management' | 'settings') => {
+    window.dispatchEvent(new CustomEvent('NAVIGATE_TO_VIEW', { detail: { view } }));
   }, []);
 
   // ★ 在学习中心打开当前资源（跳转到完整页面）
@@ -581,7 +593,7 @@ export const ChatV2Page: React.FC = () => {
   // ★ 监听附件预览事件，在右侧面板打开附件
   // 使用独立的附件预览状态，不依赖于 NotesContext
   const renderMainContent = () => (
-    <div className="flex flex-col h-full overflow-hidden relative">
+    <div className="study-shell-pane flex h-full flex-col overflow-hidden relative">
       {/* 🚀 会话切换加载指示器（防闪动：只有超过 500ms 才显示） */}
       {showSwitchingIndicator && (
         <div
@@ -597,6 +609,35 @@ export const ChatV2Page: React.FC = () => {
           </div>
         </div>
       )}
+      {!isSmallScreen && viewMode !== 'browser' && !groupEditorOpen && currentSessionId ? (
+        <div className="study-shell-toolbar flex items-center justify-end px-3 py-2 border-b shrink-0">
+          <Popover open={chatControlPopoverOpen} onOpenChange={setChatControlPopoverOpen}>
+            <PopoverTrigger asChild>
+              <NotionButton
+                variant="ghost"
+                size="icon"
+                iconOnly
+                aria-label={t('common:chat_controls')}
+                title={t('common:chat_controls')}
+                className="!h-8 !w-8 !rounded-full text-[color:var(--shell-navigation-muted)] hover:bg-[color:var(--sidebar-study-hover)] hover:text-[color:var(--shell-navigation-foreground)]"
+              >
+                <SlidersHorizontal className="w-4 h-4" />
+              </NotionButton>
+            </PopoverTrigger>
+            <PopoverContent
+              align="end"
+              side="bottom"
+              sideOffset={10}
+              className="w-[min(24rem,calc(100vw-2rem))] rounded-[var(--radius-shell-panel)] border-[color:var(--dialog-shell-border)] bg-[color:var(--dialog-shell-surface)] p-3 shadow-[var(--shadow-shell-floating)]"
+            >
+              <AdvancedPanel
+                store={sessionManager.get(currentSessionId)!}
+                onClose={() => setChatControlPopoverOpen(false)}
+              />
+            </PopoverContent>
+          </Popover>
+        </div>
+      ) : null}
       {/* 🔧 修复：使用 currentSessionId 作为主要判断条件
           deferredSessionId 可能因为 useDeferredValue 在并发模式下的行为而延迟更新
           当 ChatContainer 渲染失败时，deferredSessionId 会一直保持旧值（null）
@@ -643,7 +684,7 @@ export const ChatV2Page: React.FC = () => {
 
   return (
     <div className={cn(
-      "chat-v2 absolute inset-0 flex overflow-hidden bg-background",
+      "study-shell-page chat-v2 absolute inset-0 flex overflow-hidden",
       isSmallScreen && "flex-col"
     )}>
       {/* ===== 移动端布局：DeepSeek 风格推拉式侧边栏 ===== */}
@@ -651,7 +692,7 @@ export const ChatV2Page: React.FC = () => {
         <MobileSlidingLayout
           sidebar={
             <div 
-              className="h-full flex flex-col bg-background"
+              className="study-shell-panel h-full flex flex-col"
               style={{
                 // 使用统一常量计算底部间距：安全区域 + 底部导航栏高度
                 paddingBottom: `calc(var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px)) + ${MOBILE_LAYOUT.bottomTabBar.defaultHeight}px)`,
@@ -662,15 +703,15 @@ export const ChatV2Page: React.FC = () => {
           }
           rightPanel={
             <div
-              className="h-full flex flex-col bg-background"
+              className="study-shell-panel h-full flex flex-col"
               style={{
                 paddingBottom: `calc(var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px)) + ${MOBILE_LAYOUT.bottomTabBar.defaultHeight}px)`,
               }}
             >
               {openApp ? (
-                <div className="h-full flex flex-col">
+                <div className="study-shell-panel h-full flex flex-col">
                   {/* 附件/资源预览标题栏 */}
-                  <div className="flex items-center justify-between px-3 py-2 border-b border-border/40 bg-background/95 backdrop-blur-lg shrink-0">
+                  <div className="study-shell-toolbar study-shell-toolbar--floating flex items-center justify-between px-3 py-2 border-b shrink-0 backdrop-blur-lg">
                     <div className="flex items-center gap-2 min-w-0">
                       {(() => {
                         const AppIcon = getAppIcon(openApp.type);
@@ -784,88 +825,77 @@ export const ChatV2Page: React.FC = () => {
             autoResponsive={false}
           >
             <UnifiedSidebarHeader
-              title={t('page.sessions')}
+              title=""
               icon={MessageSquare}
-              showSearch
-              searchPlaceholder={t('page.searchPlaceholder')}
-              showCreate
-              createTitle={t('page.newSession')}
-              onCreateClick={() => createSession()}
+              showSearch={false}
+              showCreate={false}
               collapseTitle={t('page.collapseSidebar')}
               expandTitle={t('page.expandSidebar')}
-            />
+            >
+              {!sidebarCollapsed && (
+                <div className="px-2 pb-2 pt-1">
+                  <div className="space-y-0.5">
+                    <NotionButton
+                      variant="nav"
+                      size="md"
+                      onClick={() => createSession()}
+                      className="w-full justify-start rounded-2xl border border-[color:var(--shell-navigation-border)] bg-[color:var(--sidebar-quiet-active)] !px-3 !py-2.5 text-[14px] font-medium text-[color:var(--sidebar-quiet-active-foreground)]"
+                    >
+                      <MessageSquare className="h-[18px] w-[18px]" />
+                      <span>{t('page.newSession')}</span>
+                    </NotionButton>
+                  </div>
+                </div>
+              )}
+            </UnifiedSidebarHeader>
 
-            {/* 浏览所有对话入口 */}
-            {!sidebarCollapsed && (
+            {!sidebarCollapsed && (viewMode === 'browser' || showTrash || showChatControl) && (
               <div className="px-3 py-2 shrink-0 space-y-1">
+                <div className="px-1 pb-1">
+                  <p className="text-[11px] font-normal text-[color:var(--shell-navigation-muted)]">
+                    {workspaceLabel}
+                  </p>
+                </div>
                 <NotionButton
-                  variant="ghost"
+                  variant="nav"
                   size="md"
                   onClick={() => { setShowTrash(false); setViewMode(viewMode === 'browser' ? 'sidebar' : 'browser'); }}
                   className={cn(
-                    'w-full justify-between px-3 py-2.5 group',
-                    viewMode === 'browser' ? 'bg-muted' : 'bg-muted/50 hover:bg-muted'
+                    'w-full justify-between rounded-2xl !px-3 !py-2.5 group',
+                    viewMode === 'browser'
+                      ? 'border border-[color:var(--shell-navigation-border)] bg-[color:var(--sidebar-quiet-active)] text-[color:var(--sidebar-quiet-active-foreground)]'
+                      : 'text-[color:var(--shell-navigation-muted)] hover:bg-[color:var(--sidebar-quiet-hover)] hover:text-[color:var(--shell-navigation-foreground)]'
                   )}
                 >
                   <div className="flex items-center gap-2">
-                    <LayoutGrid className="w-4 h-4 text-muted-foreground group-hover:text-foreground" />
-                    <span className="text-sm font-semibold">{t('browser.allSessions')}</span>
-                    <span className="text-xs text-muted-foreground">{totalSessionCount ?? sessions.length}</span>
+                    <LayoutGrid className="w-4 h-4" />
+                    <span className="text-sm font-normal">{t('browser.allSessions')}</span>
+                    <span className="text-xs text-[color:var(--shell-navigation-muted)]">{totalSessionCount ?? sessions.length}</span>
                   </div>
-                  <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-foreground" />
+                  <ChevronRight className="w-4 h-4" />
                 </NotionButton>
 
-                {/* 🔧 P1-29: 回收站入口 */}
                 <NotionButton
-                  variant="ghost"
+                  variant="nav"
                   size="md"
                   onClick={toggleTrash}
                   className={cn(
-                    'w-full justify-between px-3 py-2 group',
-                    showTrash ? 'bg-muted' : 'hover:bg-muted/50'
+                    'w-full justify-between rounded-2xl !px-3 !py-2 group',
+                    showTrash
+                      ? 'border border-[color:var(--shell-navigation-border)] bg-[color:var(--sidebar-quiet-active)] text-[color:var(--sidebar-quiet-active-foreground)]'
+                      : 'text-[color:var(--shell-navigation-muted)] hover:bg-[color:var(--sidebar-quiet-hover)] hover:text-[color:var(--shell-navigation-foreground)]'
                   )}
                 >
                   <div className="flex items-center gap-2">
-                    <Trash2 className={cn(
-                      'w-4 h-4',
-                      showTrash ? 'text-destructive' : 'text-muted-foreground group-hover:text-foreground'
-                    )} />
-                    <span className="text-sm font-semibold">
+                    <Trash2 className="w-4 h-4" />
+                    <span className="text-sm font-normal">
                       {t('page.trash')}
                     </span>
                     {deletedSessions.length > 0 && (
-                      <span className="text-xs text-muted-foreground">{deletedSessions.length}</span>
+                      <span className="text-xs text-[color:var(--shell-navigation-muted)]">{deletedSessions.length}</span>
                     )}
                   </div>
-                  <ChevronRight className={cn(
-                    'w-4 h-4 transition-transform',
-                    showTrash ? 'rotate-90 text-foreground' : 'text-muted-foreground group-hover:text-foreground'
-                  )} />
-                </NotionButton>
-
-                {/* 🆕 对话控制入口 */}
-                <NotionButton
-                  variant="ghost"
-                  size="md"
-                  onClick={toggleChatControl}
-                  className={cn(
-                    'w-full justify-between px-3 py-2 group',
-                    showChatControl ? 'bg-muted' : 'hover:bg-muted/50'
-                  )}
-                >
-                  <div className="flex items-center gap-2">
-                    <SlidersHorizontal className={cn(
-                      'w-4 h-4',
-                      showChatControl ? 'text-primary' : 'text-muted-foreground group-hover:text-foreground'
-                    )} />
-                    <span className="text-sm font-semibold">
-                      {t('common:chat_controls')}
-                    </span>
-                  </div>
-                  <ChevronRight className={cn(
-                    'w-4 h-4 transition-transform',
-                    showChatControl ? 'rotate-90 text-foreground' : 'text-muted-foreground group-hover:text-foreground'
-                  )} />
+                  <ChevronRight className={cn('w-4 h-4 transition-transform', showTrash && 'rotate-90')} />
                 </NotionButton>
 
               </div>
@@ -928,11 +958,11 @@ export const ChatV2Page: React.FC = () => {
                               resetDeleteConfirmation();
                             }
                           }}
-                          className="group flex items-center gap-2.5 px-2 py-1.5 mx-1 rounded-md hover:bg-accent/50 transition-all duration-150"
+                          className="group flex items-center gap-2.5 px-2.5 py-1.5 mx-1 rounded-2xl hover:bg-[var(--sidebar-study-hover)] transition-[background-color,color,box-shadow] duration-150"
                         >
                           <div className="flex-1 min-w-0">
                             <div className="text-sm text-foreground/80 line-clamp-1">
-                              {session.title || t('page.untitled')}
+                              {getSessionTitleText(session.title, t('page.untitled'))}
                             </div>
                           </div>
                           <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
@@ -988,17 +1018,23 @@ export const ChatV2Page: React.FC = () => {
               ) : (
                 <>
                   <div className="py-1 space-y-2">
+                    <div className="px-3 pt-1">
+                      <p className="text-[11px] font-normal text-[color:var(--shell-navigation-muted)]">
+                        {recentLabel}
+                      </p>
+                    </div>
                     {/* 分组区域 */}
-                    <div className="flex items-center justify-between px-3 py-1.5">
-                      <span className="text-[11px] font-medium text-muted-foreground/60 uppercase tracking-wider">
-                        {t('page.groups')}
+                    <div className="flex items-center justify-between px-3 py-1">
+                      <span className="text-[11px] font-normal text-[color:var(--shell-navigation-muted)]">
+                        {t('page.groups', { defaultValue: '分组' })}
                       </span>
                       <NotionButton
-                        variant="ghost"
+                        variant="nav"
                         size="sm"
                         iconOnly
                         onClick={openCreateGroup}
                         title={t('page.createGroup')}
+                        className="!h-7 !w-7"
                       >
                         <Plus className="w-3.5 h-3.5" />
                       </NotionButton>
@@ -1040,7 +1076,7 @@ export const ChatV2Page: React.FC = () => {
                                         style={resolveDragStyle(provided.draggableProps.style, snapshot.isDragging)}
                                         className={cn(
                                           !groupDragDisabled && 'cursor-grab active:cursor-grabbing',
-                                          snapshot.isDragging && 'shadow-lg ring-1 ring-border bg-card/80 rounded-md'
+                                          snapshot.isDragging && 'shadow-lg ring-1 ring-border bg-card/80 rounded-2xl'
                                         )}
                                       >
                                         <Droppable droppableId={`session-group:${group.id}`} type="SESSION">
@@ -1049,7 +1085,7 @@ export const ChatV2Page: React.FC = () => {
                                               ref={sessionProvided.innerRef}
                                               {...sessionProvided.droppableProps}
                                               className={cn(
-                                                sessionSnapshot.isDraggingOver && 'bg-accent/30 rounded-md'
+                                                sessionSnapshot.isDraggingOver && 'bg-[var(--sidebar-study-hover)] rounded-2xl'
                                               )}
                                             >
                                               <UnifiedSidebarSection
@@ -1113,7 +1149,7 @@ export const ChatV2Page: React.FC = () => {
                             <div
                               ref={provided.innerRef}
                               {...provided.droppableProps}
-                              className={cn(snapshot.isDraggingOver && 'bg-accent/30 rounded-md')}
+                              className={cn(snapshot.isDraggingOver && 'bg-[var(--sidebar-study-hover)] rounded-2xl')}
                             >
                               <UnifiedSidebarSection
                                 id="ungrouped"
@@ -1143,7 +1179,7 @@ export const ChatV2Page: React.FC = () => {
                                       return (
                                         <div key={timeGroup} className="mb-1">
                                           <div className="px-3 py-1.5">
-                                            <span className="text-[11px] font-medium text-muted-foreground/60 uppercase tracking-wider">
+                                            <span className="text-[11px] font-normal text-muted-foreground/60">
                                               {timeGroupLabels[timeGroup]}
                                             </span>
                                           </div>
@@ -1206,15 +1242,15 @@ export const ChatV2Page: React.FC = () => {
               )}
             </UnifiedSidebarContent>
 
-
-            {/* 折叠状态下的新建按钮 */}
-            {sidebarCollapsed && (
-              <div className="p-2 flex flex-col items-center gap-1 border-t border-border/40">
-                <NotionButton variant="ghost" size="icon" iconOnly onClick={() => createSession()} disabled={isLoading} aria-label={t('page.newSession')} title={t('page.newSession')}>
-                  <Plus className="w-4 h-4" />
-                </NotionButton>
-              </div>
-            )}
+            <div className="shrink-0 border-t border-[color:var(--shell-navigation-border)] p-2">
+              {sidebarCollapsed ? (
+                <div className="flex flex-col items-center gap-1">
+                  <NotionButton variant="nav" size="icon" iconOnly onClick={() => createSession()} disabled={isLoading} aria-label={t('page.newSession')} title={t('page.newSession')}>
+                    <Plus className="w-4 h-4" />
+                  </NotionButton>
+                </div>
+              ) : null}
+            </div>
           </UnifiedSidebar>
         </>
       )}
@@ -1252,9 +1288,9 @@ export const ChatV2Page: React.FC = () => {
               {/* 内部使用 PanelGroup 实现侧边栏和应用面板的布局 */}
               {/* ★ 如果只有附件预览（attachmentPreviewOpen && !canvasSidebarOpen），直接显示应用面板 */}
               {attachmentPreviewOpen && !canvasSidebarOpen && openApp ? (
-                <div className="h-full flex flex-col bg-background">
+                <div className="study-shell-panel h-full flex flex-col">
                   {/* 应用标题栏 */}
-                  <div className="flex items-center justify-between px-3 py-2 border-b border-border/40 bg-muted/30 shrink-0">
+                  <div className="study-shell-toolbar flex items-center justify-between px-3 py-2 border-b shrink-0">
                     <div className="flex items-center gap-2 min-w-0">
                       {(() => {
                         const AppIcon = getAppIcon(openApp.type);
@@ -1327,9 +1363,9 @@ export const ChatV2Page: React.FC = () => {
                         minSize={40}
                         className="h-full"
                       >
-                        <div className="h-full flex flex-col bg-background border-l border-border">
+                        <div className="study-shell-panel h-full flex flex-col border-l border-[color:var(--shell-inspector-border)]">
                           {/* 应用标题栏 */}
-                          <div className="flex items-center justify-between px-3 py-2 border-b border-border/40 bg-muted/30 shrink-0">
+                          <div className="study-shell-toolbar flex items-center justify-between px-3 py-2 border-b shrink-0">
                             <div className="flex items-center gap-2 min-w-0">
                               {(() => {
                                 const AppIcon = getAppIcon(openApp.type);
@@ -1396,7 +1432,7 @@ export const ChatV2Page: React.FC = () => {
         >
           <div className="h-full flex flex-col">
             {/* 标题栏 */}
-            <div className="flex items-center justify-between px-4 py-3 border-b border-border/40 bg-muted/30 shrink-0">
+            <div className="study-shell-toolbar flex items-center justify-between px-4 py-3 border-b shrink-0">
               <span className="font-medium">{t('learningHub:title')}</span>
               <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setLearningHubSheetOpen(false)} aria-label={t('common:close')} title={t('common:close')} className="!h-7 !w-7">
                 <X className="w-4 h-4 text-muted-foreground" />
@@ -1406,7 +1442,7 @@ export const ChatV2Page: React.FC = () => {
               {openApp ? (
                 <div className="h-full flex flex-col">
                   {/* 应用标题栏 */}
-                  <div className="flex items-center justify-between px-3 py-2 border-b border-border/40 bg-muted/30 shrink-0">
+                  <div className="study-shell-toolbar flex items-center justify-between px-3 py-2 border-b shrink-0">
                     <div className="flex items-center gap-2 min-w-0">
                       {(() => {
                         const AppIcon = getAppIcon(openApp.type);

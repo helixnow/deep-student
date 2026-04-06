@@ -1,5 +1,5 @@
 import React from 'react';
-import { Plus, MessageSquare, Trash2, X, LayoutGrid, ChevronRight, RefreshCw, SlidersHorizontal, Folder, Settings, Loader2 } from 'lucide-react';
+import { Plus, MessageSquare, Trash2, X, LayoutGrid, ChevronRight, RefreshCw, Folder, Settings, Loader2 } from 'lucide-react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import { UnifiedSidebarSection } from '@/components/ui/unified-sidebar/UnifiedSidebarSection';
 import { NotionButton } from '@/components/ui/NotionButton';
@@ -9,6 +9,7 @@ import { ChatErrorBoundary } from '../components/ChatErrorBoundary';
 import { PRESET_ICONS } from '../components/groups/GroupEditorDialog';
 import { AdvancedPanel } from '../plugins/chat/AdvancedPanel';
 import { sessionManager } from '../core/session/sessionManager';
+import { getSessionTitleText } from '../utils/sessionTitle';
 import { resolveDragStyle, type SessionDragState } from './SessionItemRenderer';
 import type { TimeGroup } from './timeGroups';
 import type { SessionGroup } from '../types/group';
@@ -48,7 +49,6 @@ export interface UseSessionSidebarContentDeps {
   timeGroupLabels: Record<TimeGroup, string>;
   t: TFunction<any, any>;
   toggleTrash: () => void;
-  toggleChatControl: () => void;
   toggleGroupCollapse: (groupId: string) => void;
   resetDeleteConfirmation: () => void;
   clearDeleteConfirmTimeout: () => void;
@@ -73,7 +73,7 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
     hasMoreSessions, isLoadingMore, pendingDeleteSessionId,
     collapsedMap, sessionsByGroup, visibleGroups, groupDragDisabled,
     groupedSessions, timeGroupLabels, t,
-    toggleTrash, toggleChatControl, toggleGroupCollapse,
+    toggleTrash, toggleGroupCollapse,
     resetDeleteConfirmation, clearDeleteConfirmTimeout, deleteConfirmTimeoutRef,
     createSession, restoreSession, permanentlyDeleteSession, loadMoreSessions,
     openCreateGroup, openEditGroup, handleDragEnd, renderSessionItem,
@@ -91,7 +91,7 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder={t('page.searchPlaceholder')}
-            className="w-full h-[37px] px-3 text-[16px] rounded-md border border-border/40 bg-background
+            className="w-full h-[37px] px-3 text-[16px] rounded-2xl border border-[color:var(--sidebar-study-border)] bg-background/70
                        placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
           />
         </div>
@@ -107,11 +107,14 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
             setViewMode(viewMode === 'browser' ? 'sidebar' : 'browser');
             setSessionSheetOpen(false);
           }}
-          className="w-full justify-between px-3 py-[11px] bg-muted/50 hover:bg-muted group"
+          className={cn(
+            'w-full justify-between px-3 py-[11px] group rounded-2xl text-foreground/85 hover:text-foreground hover:bg-[var(--sidebar-study-hover)]',
+            viewMode === 'browser' && 'bg-[var(--sidebar-study-selected)] text-foreground hover:bg-[var(--sidebar-study-selected)]'
+          )}
         >
           <div className="flex items-center gap-2.5">
             <LayoutGrid className="w-[18px] h-[18px] text-muted-foreground group-hover:text-foreground" />
-            <span className="text-[16px] font-semibold">{t('browser.allSessions')}</span>
+            <span className="text-[16px] font-medium">{t('browser.allSessions')}</span>
             <span className="text-xs text-muted-foreground">{totalSessionCount ?? sessions.length}</span>
           </div>
           <ChevronRight className="w-[18px] h-[18px] text-muted-foreground group-hover:text-foreground" />
@@ -123,8 +126,8 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
           size="md"
           onClick={toggleTrash}
           className={cn(
-            'w-full justify-between px-3 py-[9px] group',
-            showTrash ? 'bg-muted' : 'hover:bg-muted/50'
+            'w-full justify-between px-3 py-[9px] group rounded-2xl text-foreground/85 hover:text-foreground hover:bg-[var(--sidebar-study-hover)]',
+            showTrash && 'bg-[var(--sidebar-study-selected)] text-foreground hover:bg-[var(--sidebar-study-selected)]'
           )}
         >
           <div className="flex items-center gap-2.5">
@@ -132,7 +135,7 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
               'w-[18px] h-[18px]',
               showTrash ? 'text-destructive' : 'text-muted-foreground group-hover:text-foreground'
             )} />
-            <span className="text-[16px] font-semibold">
+            <span className="text-[16px] font-medium">
               {t('page.trash')}
             </span>
             {deletedSessions.length > 0 && (
@@ -142,31 +145,6 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
           <ChevronRight className={cn(
             'w-[18px] h-[18px] transition-transform',
             showTrash ? 'rotate-90 text-foreground' : 'text-muted-foreground group-hover:text-foreground'
-          )} />
-        </NotionButton>
-
-        {/* 🆕 对话控制入口（移动端） */}
-        <NotionButton
-          variant="ghost"
-          size="md"
-          onClick={toggleChatControl}
-          className={cn(
-            'w-full justify-between px-3 py-[9px] group',
-            showChatControl ? 'bg-muted' : 'hover:bg-muted/50'
-          )}
-        >
-          <div className="flex items-center gap-2.5">
-            <SlidersHorizontal className={cn(
-              'w-[18px] h-[18px]',
-              showChatControl ? 'text-primary' : 'text-muted-foreground group-hover:text-foreground'
-            )} />
-            <span className="text-[16px] font-semibold">
-              {t('common:chat_controls')}
-            </span>
-          </div>
-          <ChevronRight className={cn(
-            'w-[18px] h-[18px] transition-transform',
-            showChatControl ? 'rotate-90 text-foreground' : 'text-muted-foreground group-hover:text-foreground'
           )} />
         </NotionButton>
 
@@ -226,11 +204,11 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
                 {deletedSessions.map((session) => (
                   <div
                     key={session.id}
-                    className="group flex items-center gap-2.5 px-3 py-2 mx-1 rounded-md hover:bg-accent/50 transition-all duration-150"
+                    className="group flex items-center gap-2.5 px-3 py-2 mx-1 rounded-2xl hover:bg-[var(--sidebar-study-hover)] transition-[background-color,color,box-shadow] duration-150"
                   >
                     <div className="flex-1 min-w-0">
                       <div className="text-sm text-foreground/80 line-clamp-1">
-                        {session.title || t('page.untitled')}
+                        {getSessionTitleText(session.title, t('page.untitled'))}
                       </div>
                     </div>
                     <div className="flex items-center gap-1">
@@ -307,7 +285,7 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
           <div className="py-1 space-y-2">
             {/* 分组区域 */}
             <div className="flex items-center justify-between px-3 py-1.5">
-              <span className="text-[13px] font-medium text-muted-foreground/60 uppercase tracking-wider">
+              <span className="text-[13px] font-normal text-muted-foreground/60">
                 {t('page.groups')}
               </span>
               <NotionButton
@@ -357,7 +335,7 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
                                 style={resolveDragStyle(provided.draggableProps.style, snapshot.isDragging)}
                                 className={cn(
                                   !groupDragDisabled && 'cursor-grab active:cursor-grabbing',
-                                  snapshot.isDragging && 'shadow-lg ring-1 ring-border bg-card/80 rounded-md'
+                                  snapshot.isDragging && 'shadow-lg ring-1 ring-border bg-card/80 rounded-2xl'
                                 )}
                               >
                                 <Droppable droppableId={`session-group:${group.id}`} type="SESSION">
@@ -366,7 +344,7 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
                                       ref={sessionProvided.innerRef}
                                       {...sessionProvided.droppableProps}
                                       className={cn(
-                                        sessionSnapshot.isDraggingOver && 'bg-accent/30 rounded-md'
+                                        sessionSnapshot.isDraggingOver && 'bg-[var(--sidebar-study-hover)] rounded-2xl'
                                       )}
                                     >
                               <UnifiedSidebarSection
@@ -430,7 +408,7 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
                     <div
                       ref={provided.innerRef}
                       {...provided.droppableProps}
-                      className={cn(snapshot.isDraggingOver && 'bg-accent/30 rounded-md')}
+                      className={cn(snapshot.isDraggingOver && 'bg-[var(--sidebar-study-hover)] rounded-2xl')}
                     >
                       <UnifiedSidebarSection
                         id="ungrouped"
@@ -460,7 +438,7 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
                               return (
                                 <div key={timeGroup} className="mb-1">
                                   <div className="px-3 py-1.5">
-                                    <span className="text-[11px] font-medium text-muted-foreground/60 uppercase tracking-wider">
+                                    <span className="text-[11px] font-normal text-muted-foreground/60">
                                       {timeGroupLabels[timeGroup]}
                                     </span>
                                   </div>

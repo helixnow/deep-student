@@ -14,11 +14,11 @@
 import React, { useRef, useEffect, useCallback, memo, useMemo, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useTranslation } from 'react-i18next';
-import { motion } from 'framer-motion';
-import { ArrowUpRight } from 'lucide-react';
+import { Sparkles } from 'lucide-react';
 import type { StoreApi } from 'zustand';
 import { cn } from '@/utils/cn';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
+import { NotionButton } from '@/components/ui/NotionButton';
 import { MessageItem } from './MessageItem';
 import { useMessageOrder, useSessionStatus, useIsDataLoaded } from '../hooks/useChatStore';
 import type { ChatStore } from '../core/types';
@@ -378,70 +378,53 @@ const MessageListInner: React.FC<MessageListProps> = ({
 
   // 空状态
   if (forceEmptyPreview || messageOrder.length === 0) {
-    const allSuggestions = [
-      { text: t('messageList.empty.suggestion1'), mobileOnly: false, desktopOnly: true },
-      { text: t('messageList.empty.suggestion2'), mobileOnly: false, desktopOnly: false },
-      { text: t('messageList.empty.suggestion3'), mobileOnly: false, desktopOnly: false },
-      { text: t('messageList.empty.suggestion4'), mobileOnly: false, desktopOnly: false },
-      { text: t('messageList.empty.suggestion5'), mobileOnly: false, desktopOnly: false },
-    ];
-    const suggestions = allSuggestions.filter(s => isSmallScreen ? !s.desktopOnly : !s.mobileOnly);
+    const starterPrompt = t('messageList.empty.suggestion2');
 
     return (
       <div
         className={cn(
-          'relative h-full w-full',
-          'text-muted-foreground',
+          'flex h-full w-full flex-col',
           className
         )}
       >
-        {/* 居中内容区域 - 绝对定位，微调垂直位置以达到视觉居中 (top-[55%]) */}
-        <div
-          className="absolute left-1/2 top-[55%] -translate-x-1/2 -translate-y-1/2 flex flex-col items-center w-full max-w-2xl px-6 md:px-0"
-        >
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8, ease: "easeOut" }}
-            className="flex flex-col items-center mb-8 md:mb-12 relative text-center"
-          >
-            {/* 品牌标题 - 移动端自适应字号 */}
-            <h1 className="relative text-5xl md:text-6xl lg:text-7xl font-bold tracking-tight mb-3 md:mb-4 bg-gradient-to-b from-foreground via-foreground/90 to-muted-foreground/70 bg-clip-text text-transparent select-none drop-shadow-sm leading-tight">
-              Deep Student
-            </h1>
+        <div className="custom-scrollbar min-h-0 flex-1 overflow-y-auto px-4 pb-6 pt-3 md:px-8 md:pb-8 md:pt-4">
+          <div className="mx-auto flex min-h-full w-full max-w-[44rem] items-center">
+            <section
+              data-slot="thread-empty-state"
+              className={cn(
+                'flex w-full flex-col items-center justify-center gap-5 text-center',
+                isSmallScreen ? 'py-10' : 'py-16'
+              )}
+            >
+              <div className="inline-flex size-12 items-center justify-center rounded-full bg-secondary text-muted-foreground">
+                <Sparkles size={20} />
+              </div>
 
-            {/* Slogan - 移动端调整字间距和字号 */}
-            <p className="relative text-sm md:text-xl text-muted-foreground/80 font-normal tracking-[0.15em] md:tracking-[0.2em] uppercase px-4">
-              {t('messageList.empty.slogan')}
-            </p>
-          </motion.div>
+              <div className="space-y-2">
+                <h2 className="text-balance text-xl font-medium text-foreground">
+                  {t('chatV2:page.newSession', { defaultValue: '开始一个新任务' })}
+                </h2>
+                <p className="text-base text-muted-foreground">
+                  {t('chatV2:messageList.empty.workspaceLabel', { defaultValue: '当前工作区：study-ui' })}
+                </p>
+                <p className="mx-auto max-w-[32rem] text-pretty text-sm leading-6 text-muted-foreground">
+                  {t('chatV2:messageList.empty.workspaceHint', {
+                    defaultValue: '把需求直接发到底部输入区。首屏保持安静，只保留当前工作区、主动作和足够的留白。',
+                  })}
+                </p>
+              </div>
 
-          {/* 快速提问建议 - 长列表排版 (图二风格) */}
-          <div className="flex flex-col gap-0 md:gap-2 w-full relative z-10">
-            {suggestions.map((suggestion, i) => (
-              <motion.button
-                key={i}
-                initial={{ opacity: 0, x: -10 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.2 + i * 0.08, duration: 0.4 }}
-                className="group relative flex items-center justify-between w-full p-3 md:p-4 text-left rounded-xl hover:bg-muted/30 dark:hover:bg-muted/10 border border-transparent hover:border-border/10 transition-all duration-200"
+              <NotionButton
+                variant="outline"
+                size="lg"
+                className="min-w-36"
                 onClick={() => {
-                  store.getState().setInputValue(suggestion.text);
+                  store.getState().setInputValue(starterPrompt);
                 }}
               >
-                <span className="text-sm md:text-base text-muted-foreground/80 group-hover:text-foreground transition-colors line-clamp-2 pr-4">
-                  {suggestion.text}
-                </span>
-
-                {/* 箭头图标 */}
-                <ArrowUpRight className="w-4 h-4 text-muted-foreground/50 group-hover:text-foreground group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-all duration-300 flex-shrink-0" />
-
-                {/* 底部细分割线 (除最后一个) */}
-                {i !== suggestions.length - 1 && (
-                  <div className="absolute bottom-0 left-4 right-4 h-px bg-border/5 group-hover:bg-transparent transition-colors" />
-                )}
-              </motion.button>
-            ))}
+                {t('chatV2:messageList.empty.showSuggestions', { defaultValue: '查看建议起点' })}
+              </NotionButton>
+            </section>
           </div>
         </div>
       </div>

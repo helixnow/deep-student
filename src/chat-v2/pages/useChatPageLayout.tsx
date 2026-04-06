@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useCallback } from 'react';
-import { Plus } from 'lucide-react';
+import { Plus, SlidersHorizontal } from 'lucide-react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { useMobileHeader } from '@/components/layout';
 import { MobileBreadcrumb } from '@/components/learning-hub/components/MobileBreadcrumb';
@@ -22,6 +22,8 @@ export interface UseChatPageLayoutDeps {
   finderJumpToBreadcrumb: (index: number) => void;
   setMobileResourcePanelOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setSessionSheetOpen: React.Dispatch<React.SetStateAction<boolean>>;
+  setShowChatControl: React.Dispatch<React.SetStateAction<boolean>>;
+  setShowTrash: React.Dispatch<React.SetStateAction<boolean>>;
   setViewMode: React.Dispatch<React.SetStateAction<'sidebar' | 'browser'>>;
 }
 
@@ -30,7 +32,7 @@ export function useChatPageLayout(deps: UseChatPageLayoutDeps) {
     currentSession, currentSessionId, expandGroup, currentSessionHasMessages,
     viewMode, t, sessionCount, createSession, isLoading,
     mobileResourcePanelOpen, finderBreadcrumbs, finderJumpToBreadcrumb,
-    setMobileResourcePanelOpen, setSessionSheetOpen, setViewMode,
+    setMobileResourcePanelOpen, setSessionSheetOpen, setShowChatControl, setShowTrash, setViewMode,
   } = deps;
 
   useEffect(() => {
@@ -68,19 +70,36 @@ export function useChatPageLayout(deps: UseChatPageLayoutDeps) {
       );
     }
     return (
-      <NotionButton
-        variant="ghost"
-        size="icon"
-        iconOnly
-        onClick={() => createSession()}
-        disabled={isLoading || isEmptyNewChat}
-        aria-label={t('page.newSession')}
-        title={t('page.newSession')}
-      >
-        <Plus className="w-5 h-5" />
-      </NotionButton>
+      <>
+        <NotionButton
+          variant="ghost"
+          size="icon"
+          iconOnly
+          onClick={() => {
+            setViewMode('sidebar');
+            setShowTrash(false);
+            setShowChatControl(true);
+            setSessionSheetOpen(true);
+          }}
+          aria-label={t('common:chat_controls')}
+          title={t('common:chat_controls')}
+        >
+          <SlidersHorizontal className="w-5 h-5" />
+        </NotionButton>
+        <NotionButton
+          variant="ghost"
+          size="icon"
+          iconOnly
+          onClick={() => createSession()}
+          disabled={isLoading || isEmptyNewChat}
+          aria-label={t('page.newSession')}
+          title={t('page.newSession')}
+        >
+          <Plus className="w-5 h-5" />
+        </NotionButton>
+      </>
     );
-  }, [viewMode, createSession, isLoading, isEmptyNewChat, t]);
+  }, [viewMode, createSession, isLoading, isEmptyNewChat, setSessionSheetOpen, setShowChatControl, setShowTrash, setViewMode, t]);
 
   // 📱 移动端资源库面包屑导航回调
   const handleFinderBreadcrumbNavigate = useCallback((index: number) => {

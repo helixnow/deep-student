@@ -11,6 +11,10 @@ import type { TFunction } from 'i18next';
 
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
 
+const emitSessionListUpdated = () => {
+  window.dispatchEvent(new CustomEvent('chat-v2:sessions-updated'));
+};
+
 export interface UseSessionLifecycleDeps {
   setSessions: React.Dispatch<React.SetStateAction<ChatSession[]>>;
   setCurrentSessionId: (id: string | null | ((prev: string | null) => string | null)) => void;
@@ -67,6 +71,7 @@ export function useSessionLifecycle(deps: UseSessionLifecycleDeps) {
       });
 
       setSessions((prev) => [session, ...prev]);
+      emitSessionListUpdated();
       setTotalSessionCount((prev) => (prev !== null ? prev + 1 : null));
       if (!groupId) {
         void loadUngroupedCount();
@@ -151,6 +156,7 @@ export function useSessionLifecycle(deps: UseSessionLifecycleDeps) {
       });
 
       setSessions((prev) => [session, ...prev]);
+      emitSessionListUpdated();
       setTotalSessionCount((prev) => (prev !== null ? prev + 1 : null));
       void loadUngroupedCount();
       setCurrentSessionId(session.id);
@@ -193,6 +199,7 @@ export function useSessionLifecycle(deps: UseSessionLifecycleDeps) {
       const allSessions = [...groupedResult, ...ungroupedResult]
         .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
       setSessions(allSessions);
+      emitSessionListUpdated();
       setTotalSessionCount(totalCount);
       setUngroupedSessionCount(ungroupedCount);
       // "加载更多"只针对未分组会话
@@ -232,6 +239,7 @@ export function useSessionLifecycle(deps: UseSessionLifecycleDeps) {
                       metadata: null,
                     });
                     setSessions([newSession, ...allSessions]);
+                    emitSessionListUpdated();
                     setTotalSessionCount(totalCount + 1);
                     setUngroupedSessionCount(ungroupedCount + 1);
           sessionToSelect = newSession.id;
@@ -272,6 +280,7 @@ export function useSessionLifecycle(deps: UseSessionLifecycleDeps) {
 
       if (result.length > 0) {
         setSessions(prev => [...prev, ...result]);
+        emitSessionListUpdated();
       }
       // 如果返回数量小于 PAGE_SIZE，说明没有更多数据
       setHasMoreSessions(result.length >= PAGE_SIZE);
@@ -294,6 +303,7 @@ export function useSessionLifecycle(deps: UseSessionLifecycleDeps) {
         // P1-23: 使用软删除代替硬删除
         await invoke('chat_v2_soft_delete_session', { sessionId });
         setSessions((prev) => prev.filter((s) => s.id !== sessionId));
+        emitSessionListUpdated();
         setTotalSessionCount((prev) => (prev !== null ? prev - 1 : null));
         void loadUngroupedCount();
 
@@ -319,6 +329,7 @@ export function useSessionLifecycle(deps: UseSessionLifecycleDeps) {
               metadata: null,
             });
             setSessions([newSession]);
+            emitSessionListUpdated();
             setTotalSessionCount(1);
             setCurrentSessionId(newSession.id);
             console.log('[ChatV2Page] Auto-created session after deleting last one:', newSession.id);
@@ -368,6 +379,7 @@ export function useSessionLifecycle(deps: UseSessionLifecycleDeps) {
       setDeletedSessions((prev) => prev.filter((s) => s.id !== sessionId));
       // 添加到活跃会话列表
       setSessions((prev) => [restoredSession, ...prev]);
+      emitSessionListUpdated();
       setTotalSessionCount((prev) => (prev !== null ? prev + 1 : null));
       void loadUngroupedCount();
       // 切换到恢复的会话

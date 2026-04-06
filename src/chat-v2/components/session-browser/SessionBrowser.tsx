@@ -26,6 +26,7 @@ import {
 import { cn } from '@/lib/utils';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { Skeleton } from '@/components/ui/shad/Skeleton';
+import { getSessionTitleText } from '@/chat-v2/utils/sessionTitle';
 import { useContentSearch } from '../../hooks/useContentSearch';
 import { useSessionTags } from '../../hooks/useSessionTags';
 import { SearchResultList } from './SearchResultList';
@@ -152,6 +153,8 @@ const SessionCard: React.FC<SessionCardProps> = ({
   onRemoveTag,
 }) => {
   const { t } = useTranslation(['chatV2', 'common']);
+  const fallbackTitle = t('page.untitled');
+  const sessionTitle = getSessionTitleText(session.title, fallbackTitle);
   const deleteConfirmTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
 
@@ -278,9 +281,9 @@ const SessionCard: React.FC<SessionCardProps> = ({
             {/* 标题 */}
             <h3 className={cn(
                 "text-sm font-medium text-foreground line-clamp-2 leading-relaxed group-hover:text-primary transition-colors",
-                !session.title && "text-muted-foreground italic"
+                sessionTitle === fallbackTitle && "text-muted-foreground italic"
             )}>
-              {session.title || t('page.untitled')}
+              {sessionTitle}
             </h3>
             {session.groupName && (
               <span className="inline-flex w-fit text-[11px] px-1.5 py-0.5 rounded bg-muted/50 text-muted-foreground">
@@ -482,7 +485,7 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
   // 开始编辑
   const handleStartEdit = useCallback((session: SessionItem) => {
     setEditingSessionId(session.id);
-    setEditingTitle(session.title || '');
+    setEditingTitle(getSessionTitleText(session.title, ''));
   }, []);
 
   // 保存编辑
