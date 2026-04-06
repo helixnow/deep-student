@@ -1,5 +1,5 @@
 import React from 'react';
-import { Plus, MessageSquare, Trash2, X, LayoutGrid, ChevronRight, RefreshCw, Folder, Settings, Loader2 } from 'lucide-react';
+import { Plus, MessageSquare, Trash2, X, LayoutGrid, ChevronRight, RefreshCw, Folder, Loader2 } from 'lucide-react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import { UnifiedSidebarSection } from '@/components/ui/unified-sidebar/UnifiedSidebarSection';
 import { NotionButton } from '@/components/ui/NotionButton';
@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { ChatErrorBoundary } from '../components/ChatErrorBoundary';
 import { PRESET_ICONS } from '../components/groups/GroupEditorDialog';
+import { SessionGroupActions } from './SessionGroupActions';
 import { AdvancedPanel } from '../plugins/chat/AdvancedPanel';
 import { sessionManager } from '../core/session/sessionManager';
 import { getSessionTitleText } from '../utils/sessionTitle';
@@ -59,6 +60,8 @@ export interface UseSessionSidebarContentDeps {
   loadMoreSessions: () => Promise<void>;
   openCreateGroup: () => void;
   openEditGroup: (group: SessionGroup) => void;
+  openRenameGroup: (group: SessionGroup) => void;
+  requestDeleteGroup: (group: SessionGroup) => void;
   handleDragEnd: (result: DropResult) => void;
   renderSessionItem: (session: ChatSession, drag?: SessionDragState) => React.ReactNode;
 }
@@ -76,7 +79,7 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
     toggleTrash, toggleGroupCollapse,
     resetDeleteConfirmation, clearDeleteConfirmTimeout, deleteConfirmTimeoutRef,
     createSession, restoreSession, permanentlyDeleteSession, loadMoreSessions,
-    openCreateGroup, openEditGroup, handleDragEnd, renderSessionItem,
+    openCreateGroup, openEditGroup, openRenameGroup, requestDeleteGroup, handleDragEnd, renderSessionItem,
   } = deps;
 
   // 渲染会话侧边栏内容（复用于移动端推拉布局和桌面端面板）
@@ -347,6 +350,21 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
                                         sessionSnapshot.isDraggingOver && 'bg-[var(--sidebar-study-hover)] rounded-2xl'
                                       )}
                                     >
+                              <SessionGroupActions
+                                group={group}
+                                labels={{
+                                  groupActions: t('page.groupActions'),
+                                  newSession: t('page.newSession'),
+                                  renameGroup: t('page.renameGroup'),
+                                  editGroup: t('page.editGroup'),
+                                  deleteGroup: t('page.deleteGroup'),
+                                }}
+                                onCreateSession={createSession}
+                                onRenameGroup={openRenameGroup}
+                                onEditGroup={openEditGroup}
+                                onDeleteGroup={requestDeleteGroup}
+                              >
+                                {({ quickAction, onContextMenu }) => (
                               <UnifiedSidebarSection
                                 id={group.id}
                                 title={title}
@@ -354,18 +372,10 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
                                 count={groupSessions.length}
                                 open={!isCollapsed}
                                 onOpenChange={() => toggleGroupCollapse(group.id)}
+                                onHeaderContextMenu={onContextMenu}
                                 twoLineLayout
                                 dragHandleProps={provided.dragHandleProps ?? undefined}
-                                quickAction={
-                                  <>
-                                    <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); openEditGroup(group); }} aria-label={t('page.editGroup')} title={t('page.editGroup')} className="!h-6 !w-6">
-                                      <Settings className="w-3.5 h-3.5" />
-                                    </NotionButton>
-                                    <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); createSession(group.id); }} aria-label={t('page.newSession')} title={t('page.newSession')} className="!h-6 !w-6">
-                                      <Plus className="w-3.5 h-3.5" />
-                                    </NotionButton>
-                                  </>
-                                }
+                                quickAction={quickAction}
                               >
                                         {groupSessions.length === 0 ? (
                                           <div className="px-3 py-2 text-xs text-muted-foreground">
@@ -388,6 +398,8 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
                                           ))
                                         )}
                                       </UnifiedSidebarSection>
+                                )}
+                              </SessionGroupActions>
                                       {sessionProvided.placeholder}
                                     </div>
                                   )}

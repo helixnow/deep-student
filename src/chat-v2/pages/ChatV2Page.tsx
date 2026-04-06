@@ -10,7 +10,7 @@
 import React, { useState, useCallback, useEffect, useMemo, useDeferredValue, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
-import { Plus, MessageSquare, Trash2, Edit2, Check, X, LayoutGrid, Library, FileText, BookOpen, ClipboardList, Image, File, Loader2, GripVertical, Menu, ChevronRight, RefreshCw, SlidersHorizontal, Folder, Settings, ExternalLink } from 'lucide-react';
+import { Plus, MessageSquare, Trash2, Edit2, Check, X, LayoutGrid, Library, FileText, BookOpen, ClipboardList, Image, File, Loader2, GripVertical, Menu, ChevronRight, RefreshCw, SlidersHorizontal, Folder, ExternalLink } from 'lucide-react';
 import { DragDropContext, Droppable, Draggable, type DropResult, type DraggableProvided, type DraggableStateSnapshot } from '@hello-pangea/dnd';
 import { UnifiedSidebar, UnifiedSidebarHeader, UnifiedSidebarContent } from '@/components/ui/unified-sidebar/UnifiedSidebar';
 import { UnifiedSidebarSection } from '@/components/ui/unified-sidebar/UnifiedSidebarSection';
@@ -38,6 +38,7 @@ import { lazy, Suspense } from 'react';
 
 import { NotionAlertDialog } from '@/components/ui/NotionDialog';
 import { GroupEditorPanel, PRESET_ICONS } from '../components/groups/GroupEditorDialog';
+import { SessionGroupActions } from './SessionGroupActions';
 import { createSessionWithDefaults } from '../core/session/createSessionWithDefaults';
 import { useGroupManagement } from '../hooks/useGroupManagement';
 import { useGroupCollapse } from '../hooks/useGroupCollapse';
@@ -256,6 +257,7 @@ export const ChatV2Page: React.FC = () => {
   const { collapsedMap, toggleGroupCollapse, expandGroup, pruneDeletedGroups } = useGroupCollapse();
   const [groupEditorOpen, setGroupEditorOpen] = useState(false);
   const [editingGroup, setEditingGroup] = useState<SessionGroup | null>(null);
+  const [groupEditorAutoFocusField, setGroupEditorAutoFocusField] = useState<'name' | null>(null);
   const [pendingDeleteGroup, setPendingDeleteGroup] = useState<SessionGroup | null>(null);
   
   // 视图模式：sidebar（侧边栏+聊天）或 browser（全宽浏览）
@@ -454,13 +456,13 @@ export const ChatV2Page: React.FC = () => {
   // ===== 会话编辑 hook =====
   const {
     startEditSession, saveSessionTitle, cancelEditSession,
-    openCreateGroup, openEditGroup, closeGroupEditor,
+    openCreateGroup, openEditGroup, openRenameGroup, closeGroupEditor,
     handleSubmitGroup, confirmDeleteGroup,
     moveSessionToGroup, handleDragEnd, formatTime,
   } = useSessionEdit({
     resetDeleteConfirmation, setEditingSessionId, setEditingTitle,
     setRenamingSessionId, setRenameError, setSessions,
-    setGroupEditorOpen, setEditingGroup, setShowTrash, setShowChatControl,
+    setGroupEditorOpen, setEditingGroup, setGroupEditorAutoFocusField, setShowTrash, setShowChatControl,
     setViewMode, setSessionSheetOpen, setPendingDeleteGroup,
     setGroupPinnedIds, setMobileResourcePanelOpen,
     editingTitle, editingGroup, pendingDeleteGroup, sessionsRef,
@@ -515,7 +517,7 @@ export const ChatV2Page: React.FC = () => {
     toggleTrash, toggleGroupCollapse,
     resetDeleteConfirmation, clearDeleteConfirmTimeout, deleteConfirmTimeoutRef,
     createSession, restoreSession, permanentlyDeleteSession, loadMoreSessions,
-    openCreateGroup, openEditGroup, handleDragEnd, renderSessionItem,
+    openCreateGroup, openEditGroup, openRenameGroup, requestDeleteGroup: setPendingDeleteGroup, handleDragEnd, renderSessionItem,
   });
 
   const handleOpenApp = useCallback((item: ResourceListItem) => {
@@ -657,6 +659,7 @@ export const ChatV2Page: React.FC = () => {
         <GroupEditorPanel
           mode={editingGroup ? 'edit' : 'create'}
           initial={editingGroup}
+          autoFocusField={groupEditorAutoFocusField}
           onSubmit={handleSubmitGroup}
           onClose={closeGroupEditor}
           onDelete={editingGroup ? () => {
@@ -1088,6 +1091,21 @@ export const ChatV2Page: React.FC = () => {
                                                 sessionSnapshot.isDraggingOver && 'bg-[var(--sidebar-study-hover)] rounded-2xl'
                                               )}
                                             >
+                                              <SessionGroupActions
+                                                group={group}
+                                                labels={{
+                                                  groupActions: t('page.groupActions'),
+                                                  newSession: t('page.newSession'),
+                                                  renameGroup: t('page.renameGroup'),
+                                                  editGroup: t('page.editGroup'),
+                                                  deleteGroup: t('page.deleteGroup'),
+                                                }}
+                                                onCreateSession={createSession}
+                                                onRenameGroup={openRenameGroup}
+                                                onEditGroup={openEditGroup}
+                                                onDeleteGroup={setPendingDeleteGroup}
+                                              >
+                                                {({ quickAction, onContextMenu }) => (
                                               <UnifiedSidebarSection
                                                 id={group.id}
                                                 title={title}
@@ -1095,18 +1113,10 @@ export const ChatV2Page: React.FC = () => {
                                                 count={groupSessions.length}
                                                 open={!isCollapsed}
                                                 onOpenChange={() => toggleGroupCollapse(group.id)}
+                                                onHeaderContextMenu={onContextMenu}
                                                 twoLineLayout
                                                 dragHandleProps={provided.dragHandleProps ?? undefined}
-                                                quickAction={
-                                                  <>
-                                                    <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); openEditGroup(group); }} aria-label={t('page.editGroup')} title={t('page.editGroup')} className="!h-6 !w-6">
-                                                      <Settings className="w-3.5 h-3.5" />
-                                                    </NotionButton>
-                                                    <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); createSession(group.id); }} aria-label={t('page.newSession')} title={t('page.newSession')} className="!h-6 !w-6">
-                                                      <Plus className="w-3.5 h-3.5" />
-                                                    </NotionButton>
-                                                  </>
-                                                }
+                                                quickAction={quickAction}
                                               >
                                                 {groupSessions.length === 0 ? (
                                                   <div className="px-3 py-2 text-xs text-muted-foreground">
@@ -1129,6 +1139,8 @@ export const ChatV2Page: React.FC = () => {
                                                   ))
                                                 )}
                                               </UnifiedSidebarSection>
+                                                )}
+                                              </SessionGroupActions>
                                               {sessionProvided.placeholder}
                                             </div>
                                           )}

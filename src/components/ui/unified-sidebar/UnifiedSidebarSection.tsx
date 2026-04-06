@@ -35,6 +35,8 @@ export interface UnifiedSidebarSectionProps {
   grouped?: boolean;
   /** 拖拽手柄属性，应用到头部使整个头部可拖拽 */
   dragHandleProps?: React.HTMLAttributes<HTMLDivElement> | null;
+  /** 头部右键菜单 */
+  onHeaderContextMenu?: React.MouseEventHandler<HTMLDivElement>;
 }
 
 export const UnifiedSidebarSection: React.FC<UnifiedSidebarSectionProps> = ({
@@ -52,6 +54,7 @@ export const UnifiedSidebarSection: React.FC<UnifiedSidebarSectionProps> = ({
   quickAction,
   grouped = false,
   dragHandleProps,
+  onHeaderContextMenu,
 }) => {
   // 使用可选上下文 - 允许在 UnifiedSidebar 外部独立使用
   const ctx = useContext(UnifiedSidebarContext);
@@ -77,10 +80,11 @@ export const UnifiedSidebarSection: React.FC<UnifiedSidebarSectionProps> = ({
         <div
           {...(dragHandleProps ?? {})}
           className={cn(
-            'flex items-center justify-between px-3 py-1.5 rounded-2xl transition-colors',
+            'group/sidebar-section flex items-center justify-between px-3 py-1.5 rounded-2xl transition-colors',
             collapsible && 'cursor-pointer hover:bg-[var(--sidebar-study-hover)]'
           )}
           onClick={() => collapsible && setIsOpen(!isOpen)}
+          onContextMenu={onHeaderContextMenu}
         >
           <div className="flex items-center gap-2">
             {Icon && <Icon className="w-4 h-4 text-muted-foreground" />}

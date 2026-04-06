@@ -73,6 +73,7 @@ import type { CreateGroupRequest, SessionGroup, UpdateGroupRequest } from '../..
 interface GroupEditorPanelProps {
   mode: 'create' | 'edit';
   initial?: SessionGroup | null;
+  autoFocusField?: 'name' | null;
   onSubmit: (payload: CreateGroupRequest | UpdateGroupRequest) => Promise<void>;
   onClose: () => void;
   onDelete?: () => void;
@@ -110,6 +111,7 @@ const PropertyRow: React.FC<{
 export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
   mode,
   initial,
+  autoFocusField = null,
   onSubmit,
   onClose,
   onDelete,
@@ -129,6 +131,7 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
   const [isSaving, setIsSaving] = useState(false);
   const [registryVersion, setRegistryVersion] = useState(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const nameInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (textareaRef.current) {
@@ -136,6 +139,15 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
         textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`;
     }
   }, [systemPrompt]);
+
+  useEffect(() => {
+    if (autoFocusField !== 'name') return;
+    const frame = window.requestAnimationFrame(() => {
+      nameInputRef.current?.focus();
+      nameInputRef.current?.select();
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [autoFocusField, initial?.id, mode]);
   useEffect(() => {
     if (mode === 'edit' && initial) {
       setName(initial.name);
@@ -299,10 +311,12 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
                 </div>
              )}
              <input
+               ref={nameInputRef}
                type="text"
                value={name}
                onChange={(e) => setName(e.target.value)}
                placeholder={t('page.groupNamePlaceholder')}
+               autoFocus={autoFocusField === 'name'}
                className="w-full text-2xl md:text-3xl font-semibold border-0 border-b-2 border-border/50 bg-transparent placeholder:text-muted-foreground/40 py-3 pr-24 md:pr-0 outline-none focus:border-primary transition-colors"
              />
           </div>

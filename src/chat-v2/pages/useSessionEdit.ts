@@ -25,6 +25,7 @@ export interface UseSessionEditDeps {
   setSessions: React.Dispatch<React.SetStateAction<ChatSession[]>>;
   setGroupEditorOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setEditingGroup: React.Dispatch<React.SetStateAction<SessionGroup | null>>;
+  setGroupEditorAutoFocusField: React.Dispatch<React.SetStateAction<'name' | null>>;
   setShowTrash: React.Dispatch<React.SetStateAction<boolean>>;
   setShowChatControl: React.Dispatch<React.SetStateAction<boolean>>;
   setViewMode: React.Dispatch<React.SetStateAction<'sidebar' | 'browser'>>;
@@ -51,7 +52,7 @@ export function useSessionEdit(deps: UseSessionEditDeps) {
   const {
     resetDeleteConfirmation, setEditingSessionId, setEditingTitle,
     setRenamingSessionId, setRenameError, setSessions,
-    setGroupEditorOpen, setEditingGroup, setShowTrash, setShowChatControl,
+    setGroupEditorOpen, setEditingGroup, setGroupEditorAutoFocusField, setShowTrash, setShowChatControl,
     setViewMode, setSessionSheetOpen, setPendingDeleteGroup,
     setGroupPinnedIds, setMobileResourcePanelOpen,
     editingTitle, editingGroup, pendingDeleteGroup, sessionsRef,
@@ -124,30 +125,43 @@ export function useSessionEdit(deps: UseSessionEditDeps) {
   // ===== 分组管理 =====
   const openCreateGroup = useCallback(() => {
     setEditingGroup(null);
+    setGroupEditorAutoFocusField('name');
     setGroupEditorOpen(true);
     setShowTrash(false);
     setShowChatControl(false);
     setViewMode('sidebar');
     setSessionSheetOpen(false);
-  }, []);
+  }, [setGroupEditorAutoFocusField]);
 
   const openEditGroup = useCallback((group: SessionGroup) => {
     setEditingGroup(group);
+    setGroupEditorAutoFocusField(null);
     setGroupEditorOpen(true);
     setShowTrash(false);
     setShowChatControl(false);
     setViewMode('sidebar');
     setSessionSheetOpen(false);
-  }, []);
+  }, [setGroupEditorAutoFocusField]);
+
+  const openRenameGroup = useCallback((group: SessionGroup) => {
+    setEditingGroup(group);
+    setGroupEditorAutoFocusField('name');
+    setGroupEditorOpen(true);
+    setShowTrash(false);
+    setShowChatControl(false);
+    setViewMode('sidebar');
+    setSessionSheetOpen(false);
+  }, [setGroupEditorAutoFocusField]);
 
   const closeGroupEditor = useCallback(() => {
     setGroupEditorOpen(false);
     setEditingGroup(null);
+    setGroupEditorAutoFocusField(null);
     // 清理分组资源选择器状态
     groupPickerAddRef.current = null;
     setGroupPinnedIds(new Set());
     setMobileResourcePanelOpen(false);
-  }, []);
+  }, [setGroupEditorAutoFocusField]);
 
   const handleSubmitGroup = useCallback(async (payload: CreateGroupRequest | UpdateGroupRequest) => {
     try {
@@ -300,6 +314,7 @@ export function useSessionEdit(deps: UseSessionEditDeps) {
     cancelEditSession,
     openCreateGroup,
     openEditGroup,
+    openRenameGroup,
     closeGroupEditor,
     handleSubmitGroup,
     applySessionGroupUpdate,
