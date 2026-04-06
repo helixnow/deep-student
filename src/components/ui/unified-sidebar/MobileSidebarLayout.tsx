@@ -54,7 +54,7 @@ export const MobileSidebarLayout: React.FC<MobileSidebarLayoutProps> = ({
 }) => {
   const { t } = useTranslation(['common']);
   return (
-    <div className={cn('flex flex-col h-full bg-background', className)}>
+    <div className={cn('font-sidebar-study-ui flex flex-col h-full bg-background', className)}>
       {/* 头部 */}
       {!hideHeader && (
         <div
@@ -135,7 +135,7 @@ export const MobileSidebarSection: React.FC<MobileSidebarSectionProps> = ({
   return (
     <div className={cn('px-3 py-2', className)}>
       {title && (
-        <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wider px-2 py-2">
+        <h4 className="text-xs font-normal text-muted-foreground/60 px-2 py-2">
           {title}
         </h4>
       )}

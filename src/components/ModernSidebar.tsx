@@ -1,13 +1,17 @@
-import React, { useMemo, useCallback } from 'react';
+import React, { useMemo, useCallback, useEffect, useState } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import { useTranslation } from 'react-i18next';
-import { Moon, Sun, Settings, Monitor } from 'lucide-react';
 import { createNavItems } from '../config/navigation';
-import useTheme from '../hooks/useTheme';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
+import { sessionManager } from '@/chat-v2/core/session/sessionManager';
+import type { ChatSession } from '@/chat-v2/types/session';
+import { getSessionTitleText } from '@/chat-v2/utils/sessionTitle';
+import { useEventRegistry } from '@/hooks/useEventRegistry';
 import type { CurrentView } from '@/types/navigation';
 import { pageLifecycleTracker } from '@/debug-panel/services/pageLifecycleTracker';
+import { StudySettingsIcon } from './icons/StudySidebarIcons';
 
 interface NavigationHistory {
   canGoBack: boolean;
@@ -31,23 +35,24 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
   onViewChange,
 }) => {
   const { t } = useTranslation(['sidebar', 'common']);
-  const { mode, setThemeMode } = useTheme();
+  const [recentSessions, setRecentSessions] = useState<ChatSession[]>([]);
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(() => {
+    try {
+      return sessionManager.getCurrentSessionId() || localStorage.getItem('chat-v2-last-session-id');
+    } catch {
+      return sessionManager.getCurrentSessionId();
+    }
+  });
 
   const navItems = useMemo(() => createNavItems(t), [t]);
-  const workspaceItems = useMemo(
-    () => navItems.filter((item) => ['chat-v2', 'learning-hub', 'skills-management'].includes(item.view)),
+  const primaryItems = useMemo(
+    () =>
+      navItems.filter((item) =>
+        ['chat-v2', 'learning-hub', 'todo', 'skills-management', 'task-dashboard', 'template-management'].includes(item.view)
+      ),
     [navItems]
   );
-  const libraryItems = useMemo(
-    () => navItems.filter((item) => ['task-dashboard', 'template-management'].includes(item.view)),
-    [navItems]
-  );
-  const modeLabel = useMemo(() => {
-    if (mode === 'light') return t('sidebar:theme_toggle.light', '亮色模式');
-    if (mode === 'dark') return t('sidebar:theme_toggle.dark', '暗色模式');
-    return t('sidebar:theme_toggle.auto', '自动模式');
-  }, [mode, t]);
-
+  const chatNavLabel = t('sidebar:navigation.chat_v2', '智能会话');
   // 包装 onViewChange，添加点击追踪
   const handleViewChange = useCallback((view: CurrentView) => {
     if (view !== currentView) {
@@ -61,41 +66,118 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
     onViewChange(view);
   }, [currentView, onViewChange]);
 
-  const cycleThemeMode = useCallback(() => {
-    if (mode === 'light') setThemeMode('dark');
-    else if (mode === 'dark') setThemeMode('auto');
-    else setThemeMode('light');
-  }, [mode, setThemeMode]);
+  const loadRecentSessions = useCallback(async () => {
+    try {
+      const result = await invoke<ChatSession[]>('chat_v2_list_sessions', {
+        status: 'active',
+        limit: 8,
+        offset: 0,
+      });
+      setRecentSessions(result);
+    } catch (error) {
+      console.warn('[ModernSidebar] Failed to load recent sessions:', error);
+      setRecentSessions([]);
+    }
+  }, []);
 
-  const renderNavRow = useCallback((view: CurrentView, label: string, Icon: React.ComponentType<any>, meta: string) => {
+  useEffect(() => {
+    void loadRecentSessions();
+  }, [loadRecentSessions]);
+
+  useEffect(() => {
+    if (currentView === 'chat-v2') {
+      setActiveSessionId(sessionManager.getCurrentSessionId());
+    }
+  }, [currentView]);
+
+  const syncActiveSession = useCallback((event?: Event) => {
+    const detail = (event as CustomEvent<{ sessionId?: string }> | undefined)?.detail;
+    setActiveSessionId(detail?.sessionId ?? sessionManager.getCurrentSessionId());
+  }, []);
+
+  const refreshSessions = useCallback(() => {
+    void loadRecentSessions();
+    syncActiveSession();
+  }, [loadRecentSessions, syncActiveSession]);
+
+  useEventRegistry([
+    {
+      target: 'window',
+      type: 'navigate-to-session',
+      listener: syncActiveSession as EventListener,
+    },
+    {
+      target: 'window',
+      type: 'chat-v2:sessions-updated',
+      listener: refreshSessions,
+    },
+    {
+      target: 'window',
+      type: 'focus',
+      listener: refreshSessions,
+    },
+  ], [refreshSessions, syncActiveSession]);
+
+  const handleRecentSessionOpen = useCallback((sessionId: string) => {
+    setActiveSessionId(sessionId);
+    if (currentView !== 'chat-v2') {
+      handleViewChange('chat-v2');
+    }
+    window.dispatchEvent(new CustomEvent('navigate-to-session', { detail: { sessionId } }));
+  }, [currentView, handleViewChange]);
+
+  const renderNavRow = useCallback((view: CurrentView, label: string, Icon: React.ComponentType<any>) => {
     const isActive = currentView === view;
 
     return (
       <NotionButton
         key={view}
-        variant="ghost"
+        variant="nav"
         size="md"
         onClick={() => handleViewChange(view)}
         aria-label={label}
         aria-current={isActive ? 'page' : undefined}
         className={cn(
-          'desktop-shell-nav-row !w-full !justify-start !px-3 !py-3 text-left',
-          isActive && 'desktop-shell-nav-row--active'
+            'desktop-shell-nav-row !w-full !justify-start !px-2.5 !py-1.5 text-left',
+            isActive && 'desktop-shell-nav-row--active'
         )}
         data-tour-id={`nav-${view}`}
-      >
-        <span className="flex min-w-0 flex-1 items-center gap-3">
-          <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-[color:var(--shell-control-surface)] text-[color:var(--shell-navigation-foreground)]">
-            <Icon className="size-5" strokeWidth={isActive ? 2.3 : 2} />
+        >
+          <span className="flex min-w-0 flex-1 items-center gap-2.5">
+            <span className="flex shrink-0 items-center justify-center text-[color:inherit]">
+              <Icon className="size-[18px]" strokeWidth={2} />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate">{label}</span>
+            </span>
           </span>
-          <span className="min-w-0 flex-1">
-            <span className="block truncate text-sm font-medium text-[color:inherit]">{label}</span>
-            <span className="desktop-shell-nav-meta block truncate">{meta}</span>
-          </span>
-        </span>
       </NotionButton>
     );
   }, [currentView, handleViewChange]);
+
+  const renderRecentSessionRow = useCallback((session: ChatSession) => {
+    const isActive = currentView === 'chat-v2' && activeSessionId === session.id;
+    const sessionTitle = getSessionTitleText(session.title, t('chatV2:page.untitled', '未命名对话'));
+
+    return (
+      <NotionButton
+        key={session.id}
+        variant="nav"
+        size="md"
+        onClick={() => handleRecentSessionOpen(session.id)}
+        aria-label={sessionTitle}
+        aria-current={isActive ? 'page' : undefined}
+        className={cn(
+          'desktop-shell-thread-row !w-full !justify-start !px-3 !py-1.5 text-left',
+          isActive && 'desktop-shell-thread-row--active'
+        )}
+      >
+        <span className="block min-w-0 flex-1 truncate leading-4">
+          {sessionTitle}
+        </span>
+      </NotionButton>
+    );
+  }, [activeSessionId, currentView, handleRecentSessionOpen, t]);
 
   return (
     <aside
@@ -103,121 +185,64 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
       aria-label={t('sidebar:aria.sidebar_navigation', '主导航')}
       data-shell-layer="navigation"
       data-shell-surface="navigation"
-      className="relative z-20 flex h-full w-[var(--shell-navigation-width)] shrink-0 flex-col text-[color:var(--shell-navigation-foreground)] transition-colors duration-500"
+      className="font-sidebar-study-ui relative z-20 flex h-full w-[var(--shell-navigation-width)] shrink-0 flex-col bg-[color:var(--shell-navigation-surface)] text-[color:var(--shell-navigation-foreground)] transition-colors duration-500"
       style={{ paddingTop: 'calc(var(--shell-titlebar-height) + var(--shell-layout-gap))' }}
     >
-      <div className="px-3 pb-3" data-no-drag>
-        <div className="desktop-shell-sidebar-panel px-3 py-3">
-          <p className="desktop-shell-kicker">DeepStudent</p>
-          <div className="mt-1 flex items-center justify-between gap-3">
-            <div className="min-w-0">
-              <p className="truncate text-sm font-medium text-[color:var(--shell-navigation-foreground)]">
-                {t('common:app.workspace_shell', '桌面工作区')}
-              </p>
-              <p className="desktop-shell-nav-meta mt-1 truncate">
-                {t('common:app.workspace_shell_hint', '先导航，再进入任务内容')}
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
+      <div className="px-2 pb-1 pt-1" data-no-drag />
 
       <CustomScrollArea className="flex-1 w-full" viewportClassName="h-full w-full">
-        <div className="flex flex-col gap-[var(--shell-section-gap)] px-3 pb-4" data-no-drag>
-          <section className="space-y-2">
-            <p className="desktop-shell-nav-section-label">{t('sidebar:sections.workspace', '核心工作区')}</p>
-            <div className="space-y-1.5">
-              {workspaceItems.map((item) =>
-                renderNavRow(
-                  item.view as CurrentView,
-                  item.name,
-                  item.icon,
-                  item.view === 'chat-v2'
-                    ? t('sidebar:section_hints.chat_v2', '默认 landing view')
-                    : item.view === 'learning-hub'
-                      ? t('sidebar:section_hints.learning_hub', '资料与文件入口')
-                      : t('sidebar:section_hints.skills_management', '管理技能与自动化')
-                )
-              )}
-            </div>
-          </section>
+        <div className="flex flex-col gap-3 px-2 pb-3 pt-1" data-no-drag>
+          <div className="space-y-1">
+            <nav aria-label={t('sidebar:aria.workspace_primary_entry', '工作区主入口')}>
+              <div className="space-y-0.5" role="list">
+                {primaryItems.map((item) =>
+                  renderNavRow(
+                    item.view as CurrentView,
+                    item.view === 'chat-v2' ? chatNavLabel : item.name,
+                    item.icon
+                  )
+                )}
+              </div>
+            </nav>
+          </div>
 
-          <section className="space-y-2">
-            <p className="desktop-shell-nav-section-label">{t('sidebar:sections.library', '任务与资产')}</p>
-            <div className="space-y-1.5">
-              {libraryItems.map((item) =>
-                renderNavRow(
-                  item.view as CurrentView,
-                  item.name,
-                  item.icon,
-                  item.view === 'task-dashboard'
-                    ? t('sidebar:section_hints.task_dashboard', '查看制卡队列与任务状态')
-                    : t('sidebar:section_hints.template_management', '模板与资源编排')
-                )
-              )}
-            </div>
-          </section>
+          {recentSessions.length > 0 ? (
+            <section className="space-y-0.5 pt-1">
+              <div className="px-3">
+                <p className="desktop-shell-nav-section-label">
+                  {t('sidebar:sections.recent', '最近')}
+                </p>
+              </div>
+              <nav aria-label={t('sidebar:aria.recent_sessions', '最近会话')}>
+                <div className="space-y-0.5" role="list">
+                  {recentSessions.map((session) => renderRecentSessionRow(session))}
+                </div>
+              </nav>
+            </section>
+          ) : null}
         </div>
       </CustomScrollArea>
 
-      <div className="mt-auto px-3 pb-4" data-no-drag>
-        <div className="desktop-shell-sidebar-panel p-2">
+      <div className="mt-auto px-2 pb-3 pt-1" data-no-drag>
+        <div className="flex justify-start">
           <NotionButton
-            variant="ghost"
-            size="md"
-            className="desktop-shell-nav-row !w-full !justify-start !px-3"
-            aria-label={t('sidebar:theme_toggle.toggle', '切换主题')}
-            onClick={cycleThemeMode}
-          >
-            <span className="flex min-w-0 flex-1 items-center gap-3">
-              <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-[color:var(--shell-control-surface)] text-[color:var(--shell-navigation-foreground)]">
-                <Sun
-                  className={cn(
-                    'absolute size-5 transition-all',
-                    mode === 'light' ? 'rotate-0 scale-100' : '-rotate-90 scale-0'
-                  )}
-                />
-                <Moon
-                  className={cn(
-                    'absolute size-5 transition-all',
-                    mode === 'dark' ? 'rotate-0 scale-100' : 'rotate-90 scale-0'
-                  )}
-                />
-                <Monitor
-                  className={cn(
-                    'absolute size-5 transition-all',
-                    mode === 'auto' ? 'rotate-0 scale-100' : 'rotate-90 scale-0'
-                  )}
-                />
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm font-medium">{t('sidebar:theme_toggle.toggle', '切换主题')}</span>
-                <span className="desktop-shell-nav-meta block truncate">{modeLabel}</span>
-              </span>
-            </span>
-          </NotionButton>
-
-          <NotionButton
-            variant="ghost"
+            variant="nav"
             size="md"
             onClick={() => handleViewChange('settings')}
-            aria-label={t('sidebar:navigation.settings', '系统')}
+            aria-label={t('sidebar:navigation.settings', '设置')}
             aria-current={currentView === 'settings' ? 'page' : undefined}
             className={cn(
-              'desktop-shell-nav-row mt-1 !w-full !justify-start !px-3',
+              'desktop-shell-nav-row !w-full !justify-start !px-2.5 !py-1.5 text-left',
               currentView === 'settings' && 'desktop-shell-nav-row--active'
             )}
             data-tour-id="nav-settings"
           >
-            <span className="flex min-w-0 flex-1 items-center gap-3">
-              <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-[color:var(--shell-control-surface)] text-[color:var(--shell-navigation-foreground)]">
-                <Settings className="size-5" strokeWidth={currentView === 'settings' ? 2.3 : 2} />
+            <span className="flex min-w-0 flex-1 items-center gap-2.5">
+              <span className="flex shrink-0 items-center justify-center text-[color:inherit]">
+                <StudySettingsIcon className="size-[18px]" strokeWidth={2} />
               </span>
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm font-medium">{t('sidebar:navigation.settings', '系统')}</span>
-                <span className="desktop-shell-nav-meta block truncate">
-                  {t('sidebar:section_hints.settings', '偏好、同步与环境设置')}
-                </span>
+                <span className="block truncate">{t('sidebar:navigation.settings', '设置')}</span>
               </span>
             </span>
           </NotionButton>

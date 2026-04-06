@@ -99,7 +99,7 @@ export const SidebarSheet: React.FC<SidebarSheetProps> = ({
       <SheetContent
         side="bottom"
         className={cn(
-          'p-0 max-h-[90vh] overflow-hidden',
+          'sidebar-shell-sheet p-0 max-h-[90vh] overflow-hidden',
           'data-[state=open]:slide-in-from-bottom data-[state=closed]:slide-out-to-bottom',
           className
         )}

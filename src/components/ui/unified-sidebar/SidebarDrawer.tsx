@@ -111,7 +111,7 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
       <SheetContent
         side={side}
         className={cn(
-          '!p-0 overflow-hidden flex flex-col [&>button]:hidden',
+          'sidebar-shell-drawer !p-0 overflow-hidden flex flex-col [&>button]:hidden',
           side === 'left' && 'data-[state=open]:slide-in-from-left data-[state=closed]:slide-out-to-left',
           side === 'right' && 'data-[state=open]:slide-in-from-right data-[state=closed]:slide-out-to-right',
           className

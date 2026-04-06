@@ -27,7 +27,7 @@
     "canvas_board": "白板",
     "learning_hub": "学习资源",
     "extensions": "扩展功能",
-    "chat_v2": "智能对话",
+    "chat_v2": "智能会话",
     "skills_management": "技能管理"
   },
   "aria": {
@@ -45,4 +45,3 @@
     "auto": "自动模式"
   }
 }
-

@@ -77,14 +77,14 @@ export const UnifiedSidebarSection: React.FC<UnifiedSidebarSectionProps> = ({
         <div
           {...(dragHandleProps ?? {})}
           className={cn(
-            'flex items-center justify-between px-3 py-1.5 rounded-md transition-colors',
-            collapsible && 'cursor-pointer hover:bg-accent/50'
+            'flex items-center justify-between px-3 py-1.5 rounded-2xl transition-colors',
+            collapsible && 'cursor-pointer hover:bg-[var(--sidebar-study-hover)]'
           )}
           onClick={() => collapsible && setIsOpen(!isOpen)}
         >
           <div className="flex items-center gap-2">
             {Icon && <Icon className="w-4 h-4 text-muted-foreground" />}
-            <span className={cn('font-semibold text-foreground/90', isMobileMode ? 'text-sm' : 'text-[13px]')}>
+            <span className={cn('font-normal text-foreground/90', isMobileMode ? 'text-sm' : 'text-[13px]')}>
               {title}
             </span>
             {count !== undefined && (
@@ -124,8 +124,8 @@ export const UnifiedSidebarSection: React.FC<UnifiedSidebarSectionProps> = ({
     <div className={cn('mb-1', containerClasses, className)}>
       <div
         className={cn(
-          'flex items-center justify-between px-3 py-1.5 rounded-md transition-colors',
-          collapsible && 'cursor-pointer hover:bg-accent/50'
+          'flex items-center justify-between px-3 py-1.5 rounded-2xl transition-colors',
+          collapsible && 'cursor-pointer hover:bg-[var(--sidebar-study-hover)]'
         )}
         onClick={() => collapsible && setIsOpen(!isOpen)}
       >
@@ -133,7 +133,7 @@ export const UnifiedSidebarSection: React.FC<UnifiedSidebarSectionProps> = ({
           {Icon && <Icon className="w-3 h-3 text-muted-foreground" />}
           <span
             className={cn(
-              'font-semibold text-muted-foreground/60 uppercase tracking-wider',
+              'font-normal text-muted-foreground/60',
               isMobileMode ? 'text-xs' : 'text-[11px]'
             )}
           >

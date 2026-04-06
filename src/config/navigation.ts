@@ -1,14 +1,13 @@
 import { TFunction } from 'i18next';
 import {
-  Brain,
-  SquareStack,
-  Settings,
-  Palette,
-  Zap,
-  GraduationCap,
-  ListChecks,
-} from 'lucide-react';
-import DsAnalysisIconMuted from '../components/icons/DsAnalysisIconMuted';
+  StudyBlocksIcon,
+  StudyBooksIcon,
+  StudyChatIcon,
+  StudyMagicWandIcon,
+  StudySettingsIcon,
+  StudyStackIcon,
+  StudyTodoIcon,
+} from '../components/icons/StudySidebarIcons';
 
 /**
  * 统一的导航视图类型定义
@@ -33,7 +32,6 @@ export type NavViewType =
 export type NavItem = {
   name: string;
   view: NavViewType;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- icon components from Lucide/custom SVG have varying prop signatures
   icon: React.ComponentType<any>;
   skipIndicator?: boolean;
 };
@@ -49,42 +47,42 @@ export const createNavItems = (t: TFunction): NavItem[] => {
   const items: NavItem[] = [
     // 🔧 Chat V2 放第一位
     {
-      name: t('sidebar:navigation.chat_v2', '聊天'),
+      name: t('sidebar:navigation.chat_v2', '智能会话'),
       view: 'chat-v2',
-      icon: DsAnalysisIconMuted,
+      icon: StudyChatIcon,
     },
     // 🔧 学习资源放第二位
     {
       name: t('sidebar:navigation.learning_hub', '学习资源'),
       view: 'learning-hub',
-      icon: GraduationCap,
+      icon: StudyBooksIcon,
     },
     // ★ 待办事项放在学习资源后面
     {
       name: t('sidebar:navigation.todo', '待办'),
       view: 'todo',
-      icon: ListChecks,
+      icon: StudyTodoIcon,
     },
     // ★ 2026-01：用户记忆已集成到 Learning Hub 的 MemoryView
     {
       name: t('sidebar:navigation.skills_management', '技能管理'),
       view: 'skills-management',
-      icon: Zap,
+      icon: StudyMagicWandIcon,
     },
     {
       name: t('sidebar:navigation.anki_generation', '制卡任务'),
       view: 'task-dashboard',
-      icon: SquareStack,
+      icon: StudyStackIcon,
     },
     {
-      name: t('sidebar:navigation.template_management', '模板库'),
+      name: t('sidebar:navigation.template_management', '模板管理'),
       view: 'template-management',
-      icon: Palette,
+      icon: StudyBlocksIcon,
     },
     {
-      name: t('sidebar:navigation.settings', '系统'),
+      name: t('sidebar:navigation.settings', '设置'),
       view: 'settings',
-      icon: Settings,
+      icon: StudySettingsIcon,
     },
   ];
 
