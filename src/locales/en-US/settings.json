@@ -331,9 +331,14 @@
   "theme": {
     "title": "Theme Settings",
     "description": "Switch appearance modes and curated palettes tailored for different environments",
+    "row_title": "Appearance / Theme",
+    "row_description": "Use light, dark, or match the system setting",
     "mode_label": "Select theme mode",
     "palette_label": "Theme Palette",
     "palette_hint": "Choose your preferred theme color for buttons, links, and interactive elements.",
+    "system_default": "System Default",
+    "system_default_hint": "Match the system appearance setting",
+    "system_status": "Current system: {{mode}}",
     "modes": {
       "auto": "Follow system",
       "light": "Light",

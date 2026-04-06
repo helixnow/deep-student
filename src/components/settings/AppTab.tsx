@@ -6,7 +6,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Monitor, Moon, SunMedium } from 'lucide-react';
 import { debugMasterSwitch } from '../../debug-panel/debugMasterSwitch';
 import { NotionButton } from '../ui/NotionButton';
 import { Input } from '../ui/shad/Input';
@@ -19,7 +19,7 @@ import { getErrorMessage } from '../../utils/errorUtils';
 import { setPendingSettingsTab } from '../../utils/pendingSettingsTab';
 import { isAndroid } from '../../utils/platform';
 import { invoke as tauriInvoke } from '@tauri-apps/api/core';
-import { PRESET_PALETTES, PALETTE_PREVIEW_COLORS, type ThemePalette } from '../../hooks/useTheme';
+import { PRESET_PALETTES, PALETTE_PREVIEW_COLORS, type ThemeMode, type ThemePalette } from '../../hooks/useTheme';
 import { DEFAULT_UI_FONT, DEFAULT_UI_FONT_SIZE, UI_FONT_PRESET_GROUPS, UI_FONT_SIZE_PRESETS } from '../../config/fontConfig';
 import { AppSelect, type AppSelectGroup } from '../ui/app-menu';
 import { UserAgreementDialog } from '../legal/UserAgreementDialog';
@@ -50,16 +50,16 @@ const SettingRow = ({
   children: React.ReactNode;
   className?: string;
 }) => (
-  <div className={cn("group flex flex-col sm:flex-row sm:items-start gap-2 py-2.5 px-1 hover:bg-muted/30 rounded transition-colors overflow-hidden", className)}>
-    <div className="flex-1 min-w-0 pt-1.5 sm:min-w-[200px]">
-      <h3 className="text-sm text-foreground/90 leading-tight">{title}</h3>
+  <div className={cn('group flex flex-col gap-3 rounded-[var(--radius-shell-control)] border border-transparent px-3 py-3.5 transition-colors overflow-hidden sm:flex-row sm:items-start sm:justify-between sm:gap-4', className)}>
+    <div className="min-w-0 flex-1 pt-0.5 sm:min-w-[220px]">
+      <h3 className="text-sm font-medium leading-tight text-foreground">{title}</h3>
       {description && (
-        <p className="text-[11px] text-muted-foreground/70 leading-relaxed mt-0.5 line-clamp-2">
+        <p className="mt-1 text-[12px] leading-5 text-muted-foreground">
           {description}
         </p>
       )}
     </div>
-    <div className="flex-shrink-0">
+    <div className="flex-shrink-0 self-start">
       {children}
     </div>
   </div>
@@ -77,11 +77,11 @@ const SwitchRow = ({
   checked: boolean;
   onCheckedChange: (checked: boolean) => void;
 }) => (
-  <div className="group flex items-center justify-between gap-4 py-2.5 px-1 hover:bg-muted/30 rounded transition-colors">
+  <div className="group flex items-center justify-between gap-4 rounded-[var(--radius-shell-control)] border border-transparent px-3 py-3.5 transition-colors">
     <div className="flex-1 min-w-0">
-      <h3 className="text-sm text-foreground/90 leading-tight">{title}</h3>
+      <h3 className="text-sm font-medium leading-tight text-foreground">{title}</h3>
       {description && (
-        <p className="text-[11px] text-muted-foreground/70 leading-relaxed mt-0.5 line-clamp-2">
+        <p className="mt-1 text-[12px] leading-5 text-muted-foreground">
           {description}
         </p>
       )}
@@ -92,8 +92,8 @@ const SwitchRow = ({
 
 // 分组标题
 const GroupTitle = ({ title }: { title: string }) => (
-  <div className="px-1 mb-3 mt-8 first:mt-0">
-    <h3 className="text-base font-semibold text-foreground">{title}</h3>
+  <div className="mb-3 px-1 first:mt-0">
+    <p className="text-[11px] font-normal text-muted-foreground">{title}</p>
   </div>
 );
 
@@ -114,6 +114,9 @@ interface AppTabProps {
   fontSizeSaving: boolean;
   handleFontSizeChange: (value: number) => Promise<void>;
   handleFontSizeReset: () => void;
+  themeMode: ThemeMode;
+  isSystemDark: boolean;
+  setThemeMode: (mode: ThemeMode) => void;
   themePalette: ThemePalette;
   setThemePalette: (palette: ThemePalette) => void;
   customColor: string;
@@ -132,6 +135,7 @@ export const AppTab: React.FC<AppTabProps> = ({
   uiZoom, zoomLoading, zoomSaving, zoomStatus, handleZoomChange, handleZoomReset,
   uiFont, fontLoading, fontSaving, handleFontChange, handleFontReset,
   uiFontSize, fontSizeLoading, fontSizeSaving, handleFontSizeChange, handleFontSizeReset,
+  themeMode, isSystemDark, setThemeMode,
   themePalette, setThemePalette, customColor, setCustomColor, topbarTopMargin, setTopbarTopMargin,
   logTypeForOpen, setLogTypeForOpen, showRawRequest, setShowRawRequest,
   isTauriEnvironment, invoke,
@@ -219,6 +223,47 @@ export const AppTab: React.FC<AppTabProps> = ({
       })),
     }));
   }, [t]);
+
+  const themeModeOptions = React.useMemo(() => [
+    {
+      mode: 'light' as const,
+      label: t('settings:theme.modes.light', '浅色'),
+      icon: SunMedium,
+    },
+    {
+      mode: 'dark' as const,
+      label: t('settings:theme.modes.dark', '深色'),
+      icon: Moon,
+    },
+    {
+      mode: 'auto' as const,
+      label: t('settings:theme.system_default', '系统默认'),
+      icon: Monitor,
+      title: t('settings:theme.system_default_hint', '匹配系统外观设置'),
+    },
+  ], [t]);
+
+  const languageOptions = React.useMemo(() => [
+    { value: 'zh-CN', label: t('settings:language.chinese', '中文') },
+    { value: 'en-US', label: t('settings:language.english', 'English') },
+  ], [t]);
+
+  const handleThemeModeChange = React.useCallback(async (nextMode: ThemeMode) => {
+    if (nextMode === themeMode) return;
+
+    const previousMode = themeMode;
+    setThemeMode(nextMode);
+
+    if (!invoke) return;
+
+    try {
+      await (invoke as typeof tauriInvoke)('save_setting', { key: 'theme', value: nextMode });
+    } catch (error: unknown) {
+      setThemeMode(previousMode);
+      showGlobalNotification('error', getErrorMessage(error));
+    }
+  }, [invoke, setThemeMode, themeMode]);
+
   return (
     <div className="space-y-1 pb-10 text-left animate-in fade-in duration-500" data-tour-id="app-settings">
       <SettingSection
@@ -229,31 +274,81 @@ export const AppTab: React.FC<AppTabProps> = ({
         hideHeader
       >
         {/* 1. 界面外观 */}
-        <div>
+        <section className="study-shell-secondary-card overflow-hidden p-4 sm:p-5">
           <GroupTitle title={t('settings:groups.appearance', '界面外观')} />
-          <div className="space-y-px">
+          <div className="space-y-1">
+            <SettingRow
+              title={t('settings:theme.row_title', '外观 / 主题')}
+              description={t('settings:theme.row_description', '使用浅色、深色，或匹配系统设置')}
+              className="items-center"
+            >
+              <div
+                role="group"
+                aria-label={t('settings:theme.mode_label', '选择主题模式')}
+                className="study-shell-segmented w-full max-w-full flex-wrap rounded-full border-[color:var(--shell-workspace-border)] bg-[color:var(--surface-panel-strong)] p-2 sm:w-auto sm:flex-nowrap"
+              >
+                {themeModeOptions.map(({ mode, label, icon: Icon, title }) => {
+                  const isSelected = themeMode === mode;
+
+                  return (
+                    <NotionButton
+                      key={mode}
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      title={title}
+                      aria-pressed={isSelected}
+                      data-selected={isSelected ? 'true' : 'false'}
+                      onClick={() => { void handleThemeModeChange(mode); }}
+                      className={cn(
+                        'study-shell-segmented-button !h-11 flex-1 rounded-full !border-transparent px-4 text-[15px] font-semibold text-foreground/70 hover:!bg-[color:var(--interactive-hover)] hover:text-foreground sm:flex-none sm:px-5',
+                        isSelected
+                          ? '!bg-[color:var(--interactive-selected)] text-foreground shadow-none hover:!bg-[color:var(--interactive-selected)]'
+                          : 'bg-transparent'
+                      )}
+                    >
+                      <Icon className="h-[18px] w-[18px]" strokeWidth={2} />
+                      <span>{label}</span>
+                    </NotionButton>
+                  );
+                })}
+              </div>
+            </SettingRow>
+
             {/* 语言切换 */}
             <SettingRow
               title={t('settings:language.title')}
               description={t('common:status.current', '当前') + ': ' + (i18n.language === 'zh-CN' ? t('settings:language.chinese', '中文') : t('settings:language.english', 'English'))}
+              className="items-center"
             >
-              <div className="flex items-center gap-2">
-                <NotionButton
-                  type="button"
-                  variant={i18n.language === 'zh-CN' ? 'primary' : 'ghost'}
-                  size="sm"
-                  onClick={() => i18n.changeLanguage('zh-CN')}
-                >
-                  {t('settings:language.chinese', '中文')}
-                </NotionButton>
-                <NotionButton
-                  type="button"
-                  variant={i18n.language === 'en-US' ? 'primary' : 'ghost'}
-                  size="sm"
-                  onClick={() => i18n.changeLanguage('en-US')}
-                >
-                  {t('settings:language.english', 'English')}
-                </NotionButton>
+              <div
+                role="group"
+                aria-label={t('settings:language.select_label', '选择语言')}
+                className="study-shell-segmented w-full max-w-full flex-wrap rounded-full border-[color:var(--shell-workspace-border)] bg-[color:var(--surface-panel-strong)] p-2 sm:w-auto sm:flex-nowrap"
+              >
+                {languageOptions.map(({ value, label }) => {
+                  const isSelected = i18n.language === value;
+
+                  return (
+                    <NotionButton
+                      key={value}
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      aria-pressed={isSelected}
+                      data-selected={isSelected ? 'true' : 'false'}
+                      onClick={() => i18n.changeLanguage(value)}
+                      className={cn(
+                        'study-shell-segmented-button !h-11 flex-1 rounded-full !border-transparent px-4 text-[15px] font-semibold text-foreground/70 hover:!bg-[color:var(--interactive-hover)] hover:text-foreground sm:flex-none sm:px-5',
+                        isSelected
+                          ? '!bg-[color:var(--interactive-selected)] text-foreground shadow-none hover:!bg-[color:var(--interactive-selected)]'
+                          : 'bg-transparent'
+                      )}
+                    >
+                      <span>{label}</span>
+                    </NotionButton>
+                  );
+                })}
               </div>
             </SettingRow>
 
@@ -434,12 +529,12 @@ export const AppTab: React.FC<AppTabProps> = ({
               </div>
             </div>
           </div>
-        </div>
+        </section>
 
         {/* 2. 开发者选项 */}
-        <div>
+        <section className="study-shell-secondary-card overflow-hidden p-4 sm:p-5">
           <GroupTitle title={t('settings:cards.developer_options_title')} />
-          <div className="space-y-px">
+          <div className="space-y-1">
             {/* 顶部栏边距 */}
             <SettingRow
               title={t('settings:developer.topbar_top_margin.title', '顶部栏顶部边距高度')}
@@ -747,15 +842,16 @@ export const AppTab: React.FC<AppTabProps> = ({
               </SettingRow>
             )}
           </div>
-        </div>
+        </section>
 
         {/* 3. 记忆设置 */}
-        <div className="mt-8">
+        <section className="study-shell-secondary-card mt-8 overflow-hidden p-4 sm:p-5">
+          <GroupTitle title={t('settings:memory.title', '记忆设置')} />
           <MemorySettingsSection embedded />
-        </div>
+        </section>
 
         {/* 4. 隐私与数据（合规要求） */}
-        <div className="mt-8">
+        <section className="study-shell-secondary-card mt-8 overflow-hidden p-4 sm:p-5">
           <GroupTitle title={t('common:legal.settingsSection.title', '隐私与数据')} />
           <div className="space-y-1">
             <SwitchRow
@@ -795,33 +891,30 @@ export const AppTab: React.FC<AppTabProps> = ({
                 {[
                   {
                     key: 'localData',
-                    color: 'bg-emerald-500',
                   },
                   {
                     key: 'llmData',
-                    color: 'bg-blue-500',
                   },
                   {
                     key: 'syncData',
-                    color: 'bg-sky-500',
                   },
                   {
                     key: 'sentryData',
-                    color: 'bg-orange-500',
                   },
                   {
                     key: 'crossBorderNote',
-                    color: 'bg-amber-500',
                   },
                 ].map((item) => (
-                  <div key={item.key} className="flex items-start gap-2 text-xs">
-                    <div className={cn('w-2 h-2 rounded-full mt-1.5 flex-shrink-0', item.color)} />
-                    <div>
+                  <div
+                    key={item.key}
+                    className="rounded-[var(--radius-shell-control)] border border-transparent px-3 py-2 transition-colors hover:bg-[color:var(--button-utility-hover)]"
+                  >
+                    <div className="text-xs leading-5">
                       <span className="font-medium text-foreground">
                         {t(`common:legal.settingsSection.dataFlow.${item.key}`)}
                       </span>
-                      <span className="text-muted-foreground ml-1">
-                        — {t(`common:legal.settingsSection.dataFlow.${item.key}Desc`)}
+                      <span className="ml-1 text-muted-foreground">
+                        {t(`common:legal.settingsSection.dataFlow.${item.key}Desc`)}
                       </span>
                     </div>
                   </div>
@@ -848,7 +941,7 @@ export const AppTab: React.FC<AppTabProps> = ({
               </SettingRow>
             </div>
           </div>
-        </div>
+        </section>
 
       </SettingSection>
 

@@ -100,22 +100,24 @@ const normalizeThemePalette = (value: unknown): ThemePalette => {
 
 
 import {
-  Bot,
-  FlaskConical,
+  BookOpen,
+  ChartBar,
+  Flask,
+  Globe,
+  Keyboard,
+  Palette,
+  Plug,
+  Robot,
+  Shield,
+  Wrench,
+} from '@phosphor-icons/react';
+import {
   Plus,
   Trash2,
   X,
   Check,
   RefreshCcw,
-  BookOpen,
-  Palette,
-  Globe,
-  Plug,
-  Wrench,
   Info as InfoIcon,
-  BarChart3,
-  Shield,
-  Keyboard,
   Layers,
   ChevronRight,
 } from 'lucide-react';
@@ -186,6 +188,22 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
       'about': t('settings:tabs.about'),
     };
     return tabLabels[activeTab] || activeTab;
+  }, [activeTab, t]);
+
+  const activeTabDescription = useMemo(() => {
+    const descriptions: Record<string, string> = {
+      app: t('settings:study_ui_descriptions.app', '管理主题、语言、界面缩放和工作区外观。'),
+      apis: t('settings:study_ui_descriptions.apis', '配置模型服务、供应商和连接方式。'),
+      models: t('settings:study_ui_descriptions.models', '把不同任务分配到合适的模型。'),
+      mcp: t('settings:study_ui_descriptions.mcp', '管理工具连接、服务器和可用能力。'),
+      search: t('settings:study_ui_descriptions.search', '设置联网搜索、外部检索和知识来源。'),
+      statistics: t('settings:study_ui_descriptions.statistics', '查看学习、对话和使用统计。'),
+      'data-governance': t('settings:study_ui_descriptions.data_governance', '处理备份、恢复、导入导出与数据治理。'),
+      params: t('settings:study_ui_descriptions.params', '调整生成参数和默认行为。'),
+      shortcuts: t('settings:study_ui_descriptions.shortcuts', '查看和整理快捷键入口。'),
+      about: t('settings:study_ui_descriptions.about', '查看版本、协议和应用说明。'),
+    };
+    return descriptions[activeTab] || t('settings:study_ui_descriptions.default', '在这里整理应用偏好与工作流设置。');
   }, [activeTab, t]);
 
   // 面包屑导航组件（内联）
@@ -697,8 +715,8 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
   const sidebarNavGroups = useMemo(() => ([
     [
       // 模型相关：放在一起（用户期望“模型服务”和“模型分配”相邻）
-      { value: 'apis', icon: Bot, label: t('settings:tabs.api_config'), tourId: 'settings-tab-apis' },
-      { value: 'models', icon: FlaskConical, label: t('settings:tabs.model_assignment'), tourId: 'settings-tab-models' },
+      { value: 'apis', icon: Robot, label: t('settings:tabs.api_config'), tourId: 'settings-tab-apis' },
+      { value: 'models', icon: Flask, label: t('settings:tabs.model_assignment'), tourId: 'settings-tab-models' },
     ],
     [
       { value: 'app', icon: Palette, label: t('settings:tabs.app') },
@@ -709,7 +727,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
       { value: 'search', icon: Globe, label: t('settings:tabs.external_search') },
     ],
     [
-      { value: 'statistics', icon: BarChart3, label: t('settings:tabs.statistics') },
+      { value: 'statistics', icon: ChartBar, label: t('settings:tabs.statistics') },
       { value: 'data-governance', icon: Shield, label: t('settings:tabs.data_governance') },
     ],
     [
@@ -924,7 +942,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
   const renderSettingsSidebar = () => (
     <SettingsSidebar
       isSmallScreen={isSmallScreen}
-      globalLeftPanelCollapsed={globalLeftPanelCollapsed}
+      globalLeftPanelCollapsed={isSmallScreen ? globalLeftPanelCollapsed : false}
       sidebarSearchQuery={sidebarSearchQuery}
       setSidebarSearchQuery={setSidebarSearchQuery}
       sidebarSearchFocused={sidebarSearchFocused}
@@ -934,14 +952,29 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
       activeTab={activeTab}
       setActiveTab={setActiveTab}
       setSidebarOpen={setSidebarOpen}
+      onBack={handleBack}
     />
   );
 
   // 渲染主内容区域
   const renderSettingsMainContent = () => (
-    <div id="settings-main-content" className="flex-1 min-w-0 h-full flex flex-col overflow-hidden max-w-full bg-background relative">
-        <CustomScrollArea className="flex-1 w-full max-w-full overflow-x-hidden" viewportClassName={cn("px-8 py-6 lg:px-10", isSmallScreen && "px-4 py-3 pb-20")} trackOffsetTop={16} trackOffsetBottom={16} trackOffsetRight={0} style={{ textAlign: 'left' }}>
-          <div>
+    <div id="settings-main-content" className="study-shell-pane flex-1 min-w-0 h-full flex flex-col overflow-hidden max-w-full bg-background relative">
+        <div className="study-shell-toolbar shrink-0 px-6 py-5 sm:px-8">
+          <div className="mx-auto w-full max-w-[72rem] text-left">
+            <p className="text-[11px] font-normal text-muted-foreground">
+              {t('settings:title')}
+            </p>
+            <h1 className="mt-1 text-2xl font-medium text-foreground">
+              {getActiveTabLabel()}
+            </h1>
+            <p className="mt-2 max-w-[42rem] text-sm leading-6 text-muted-foreground">
+              {activeTabDescription}
+            </p>
+          </div>
+        </div>
+        <CustomScrollArea className="flex-1 w-full max-w-full overflow-x-hidden" viewportClassName={cn("px-6 py-6 sm:px-8 sm:py-7", isSmallScreen && "px-4 py-3 pb-20")} trackOffsetTop={16} trackOffsetBottom={16} trackOffsetRight={0} style={{ textAlign: 'left' }}>
+          <div className="mx-auto w-full max-w-[72rem]">
+            <div className="space-y-6">
         {/* API配置管理 */}
         {/* API配置管理 */}
         {activeTab === 'apis' && (
@@ -1189,6 +1222,9 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
             fontSizeSaving={fontSizeSaving}
             handleFontSizeChange={handleFontSizeChange}
             handleFontSizeReset={handleFontSizeReset}
+            themeMode={themeMode}
+            isSystemDark={isSystemDark}
+            setThemeMode={setThemeMode}
             themePalette={themePalette}
             setThemePalette={setThemePalette}
             customColor={customColor}
@@ -1384,8 +1420,9 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
         {/* 关于页面 */}
         {/* 关于页面 */}
         {activeTab === 'about' && <AboutTab />}
-        </div>
-      </CustomScrollArea>
+            </div>
+          </div>
+        </CustomScrollArea>
     </div>
   );
 
@@ -1444,7 +1481,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
 
   if (isSmallScreen) {
     return (
-      <div className="settings absolute inset-0 flex flex-col overflow-hidden bg-background">
+      <div className="study-shell-page settings absolute inset-0 flex flex-col overflow-hidden bg-background">
         <MacTopSafeDragZone className="settings-top-safe-drag-zone" />
         <UnifiedErrorHandler errors={mcpErrors} onDismiss={dismissMcpError} onClearAll={clearMcpErrors} />
 
@@ -1527,7 +1564,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
 
   // ===== 桌面端布局 =====
   return (
-    <div className="settings absolute inset-0 flex flex-row overflow-hidden bg-background">
+    <div className="study-shell-page settings absolute inset-0 flex flex-row overflow-hidden bg-background">
       <MacTopSafeDragZone className="settings-top-safe-drag-zone" />
       <UnifiedErrorHandler errors={mcpErrors} onDismiss={dismissMcpError} onClearAll={clearMcpErrors} />
 

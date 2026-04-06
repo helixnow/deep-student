@@ -331,9 +331,14 @@
   "theme": {
     "title": "主题设置",
     "description": "切换外观模式与主题色调，适配不同的环境与阅读需求",
+    "row_title": "外观 / 主题",
+    "row_description": "使用浅色、深色，或匹配系统设置",
     "mode_label": "选择主题模式",
     "palette_label": "主题调色板",
     "palette_hint": "选择您喜欢的主题色，将应用于按钮、链接和交互元素。",
+    "system_default": "系统默认",
+    "system_default_hint": "匹配系统外观设置",
+    "system_status": "当前系统：{{mode}}",
     "modes": {
       "auto": "跟随系统",
       "light": "亮色",
