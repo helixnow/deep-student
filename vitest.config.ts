@@ -9,6 +9,7 @@ export default defineConfig({
     globals: true,
     setupFiles: ['./vitest.setup.ts'],
     include: [
+      'tests/vitest/ui-shell/**/*.{test,spec}.{ts,tsx}',
       'tests/vitest/**/*.{test,spec}.{ts,tsx}',
       'src/**/*.{test,spec}.{ts,tsx}',
     ],
