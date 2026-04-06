@@ -1,0 +1,152 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import test from "node:test";
+import { fileURLToPath } from "node:url";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const appStylesPath = path.join(__dirname, "app.css");
+
+test("shared shell tokens use soft rims instead of fully transparent borders", () => {
+  const source = readFileSync(appStylesPath, "utf8");
+
+  assert.match(source, /--border:\s*oklch\([^\n]+\/ 0\.08\);/u);
+  assert.match(source, /--shell-rim:\s*oklch\([^\n]+\/ 0\.08\);/u);
+  assert.doesNotMatch(source, /--border:\s*transparent;/u);
+});
+
+test("translucent window mode defines a dedicated shell palette instead of reusing opaque whites", () => {
+  const source = readFileSync(appStylesPath, "utf8");
+
+  assert.match(source, /\[data-window-background="translucent"\]\s*\{[\s\S]*--shell-surface:\s*#[0-9A-Fa-f]{6};/u);
+  assert.match(source, /\[data-theme="dark"\]\[data-window-background="translucent"\]\s*\{[\s\S]*--shell-surface:\s*#[0-9A-Fa-f]{6};/u);
+  assert.doesNotMatch(source, /--shell-surface:\s*rgba\(244,\s*244,\s*244,\s*0\.85\)/u);
+});
+
+test("light translucent shell palette keeps the warmer native split-view contrast", () => {
+  const source = readFileSync(appStylesPath, "utf8");
+
+  assert.match(source, /\[data-window-background="translucent"\]\s*\{[\s\S]*--sidebar:\s*#F2F2EE;/u);
+  assert.match(source, /\[data-window-background="translucent"\]\s*\{[\s\S]*--shell-backdrop:\s*#E8E9E4;/u);
+  assert.match(source, /\[data-window-background="translucent"\]\s*\{[\s\S]*--shell-panel:\s*#F2F3EF;/u);
+  assert.match(source, /\[data-window-background="translucent"\]\s*\{[\s\S]*--shell-panel-strong:\s*#FBFBF8;/u);
+  assert.match(source, /\[data-window-background="translucent"\]\s*\{[\s\S]*--shell-titlebar:\s*#ECEDE8;/u);
+});
+
+test("reduced transparency mode strengthens the shell tokens and stops relying on transparent roots", () => {
+  const source = readFileSync(appStylesPath, "utf8");
+
+  assert.match(source, /@media\s*\(prefers-reduced-transparency: reduce\)\s*\{[\s\S]*--shell-backdrop:\s*color-mix\(/u);
+  assert.match(source, /@media\s*\(prefers-reduced-transparency: reduce\)\s*\{[\s\S]*--shell-panel:\s*color-mix\(/u);
+  assert.match(source, /@media\s*\(prefers-reduced-transparency: reduce\)\s*\{[\s\S]*--shell-panel-strong:\s*color-mix\(/u);
+  assert.match(source, /@media\s*\(prefers-reduced-transparency: reduce\)\s*\{[\s\S]*--shell-titlebar:\s*color-mix\(/u);
+  assert.match(source, /@media\s*\(prefers-reduced-transparency: reduce\)\s*\{[\s\S]*--shell-float:\s*color-mix\(/u);
+  assert.match(source, /@media\s*\(prefers-reduced-transparency: reduce\)\s*\{[\s\S]*--overlay:\s*color-mix\(/u);
+  assert.match(source, /@media\s*\(prefers-reduced-transparency: reduce\)\s*\{[\s\S]*html\[data-window-background="translucent"\][\s\S]*background:\s*var\(--shell-backdrop\);/u);
+  assert.doesNotMatch(source, /backdrop-blur-/u);
+  assert.doesNotMatch(source, /@media\s*\(prefers-reduced-transparency: reduce\)\s*\{[\s\S]*backdrop-filter:/u);
+});
+
+test("light theme hover and selected tokens share the same neutral gray", () => {
+  const source = readFileSync(appStylesPath, "utf8");
+
+  assert.match(source, /:root\s*\{[\s\S]*--interactive-hover:\s*#E9E9E9;/u);
+  assert.match(source, /:root\s*\{[\s\S]*--interactive-selected:\s*#E9E9E9;/u);
+  assert.match(source, /\[data-theme="dark"\]\s*\{[\s\S]*--interactive-hover:\s*rgba\(255, 255, 255, 0\.08\);/u);
+  assert.match(source, /\[data-theme="dark"\]\s*\{[\s\S]*--interactive-selected:\s*rgba\(255, 255, 255, 0\.14\);/u);
+});
+
+test("selection token is defined directly in both themes without runtime palette injection", () => {
+  const source = readFileSync(appStylesPath, "utf8");
+
+  assert.match(source, /:root\s*\{[\s\S]*--app-selection:\s*rgba\([^)]+\);/u);
+  assert.match(source, /\[data-theme="dark"\]\s*\{[\s\S]*--app-selection:\s*rgba\([^)]+\);/u);
+});
+
+test("button-specific tokens define compact sizing and dedicated material states in both themes", () => {
+  const source = readFileSync(appStylesPath, "utf8");
+
+  assert.match(source, /:root\s*\{[\s\S]*--button-height:\s*2rem;/u);
+  assert.match(source, /:root\s*\{[\s\S]*--button-radius:\s*9px;/u);
+  assert.match(source, /:root\s*\{[\s\S]*--button-prominent-bg:\s*color-mix\(/u);
+  assert.match(source, /:root\s*\{[\s\S]*--button-outline-border:\s*color-mix\(/u);
+  assert.match(source, /\[data-theme="dark"\]\s*\{[\s\S]*--button-prominent-bg:\s*color-mix\(/u);
+  assert.match(source, /\[data-theme="dark"\]\s*\{[\s\S]*--button-outline-border:\s*color-mix\(/u);
+});
+
+test("light theme focus ring and safe-area tokens stay explicit in the shared style layer", () => {
+  const source = readFileSync(appStylesPath, "utf8");
+
+  assert.match(source, /:root\s*\{[\s\S]*--ring:\s*oklch\([^\n]+\/ 0\.34\);/u);
+  assert.match(source, /:root\s*\{[\s\S]*--safe-area-top:\s*env\(safe-area-inset-top, 0px\);/u);
+  assert.match(source, /:root\s*\{[\s\S]*--safe-area-bottom:\s*env\(safe-area-inset-bottom, 0px\);/u);
+});
+
+test("translucent shell tokens add a Windows-specific mapping on top of the macOS baseline", () => {
+  const source = readFileSync(appStylesPath, "utf8");
+
+  assert.match(source, /\[data-platform="windows"\]\[data-window-background="translucent"\]\s*\{[\s\S]*--shell-backdrop:\s*#[0-9A-Fa-f]{6};/u);
+  assert.match(source, /\[data-platform="windows"\]\[data-window-background="translucent"\]\s*\{[\s\S]*--shell-panel:\s*#[0-9A-Fa-f]{6};/u);
+  assert.match(source, /\[data-theme="dark"\]\[data-platform="windows"\]\[data-window-background="translucent"\]\s*\{[\s\S]*--shell-panel-strong:\s*#[0-9A-Fa-f]{6};/u);
+});
+
+test("custom scroll regions reserve a stable gutter so zoomed layouts do not shift at the right edge", () => {
+  const source = readFileSync(appStylesPath, "utf8");
+
+  assert.match(source, /\.custom-scrollbar\s*\{[\s\S]*scrollbar-gutter:\s*stable;/u);
+});
+
+test("unified ui whitelist locks the allowed radii, type steps, shadows, and control heights", () => {
+  const source = readFileSync(appStylesPath, "utf8");
+
+  assert.match(source, /:root\s*\{[\s\S]*--radius-control:\s*0\.5rem;/u);
+  assert.match(source, /:root\s*\{[\s\S]*--radius-panel:\s*0\.75rem;/u);
+  assert.match(source, /:root\s*\{[\s\S]*--radius-section:\s*1rem;/u);
+  assert.match(source, /:root\s*\{[\s\S]*--radius-page:\s*1\.5rem;/u);
+  assert.match(source, /:root\s*\{[\s\S]*--font-step-11:\s*0\.6875rem;/u);
+  assert.match(source, /:root\s*\{[\s\S]*--font-step-12:\s*0\.75rem;/u);
+  assert.match(source, /:root\s*\{[\s\S]*--font-step-14:\s*0\.875rem;/u);
+  assert.match(source, /:root\s*\{[\s\S]*--font-step-16:\s*1rem;/u);
+  assert.match(source, /:root\s*\{[\s\S]*--font-step-18:\s*1\.125rem;/u);
+  assert.match(source, /:root\s*\{[\s\S]*--font-step-20:\s*1\.25rem;/u);
+  assert.match(source, /:root\s*\{[\s\S]*--font-step-24:\s*1\.5rem;/u);
+  assert.match(source, /:root\s*\{[\s\S]*--shadow-surface:\s*0 16px 32px rgba\(15, 23, 42, 0\.05\);/u);
+  assert.match(source, /:root\s*\{[\s\S]*--shadow-popover:\s*0 18px 36px rgba\(15, 23, 42, 0\.08\);/u);
+  assert.match(source, /:root\s*\{[\s\S]*--control-height-compact:\s*2rem;/u);
+  assert.match(source, /:root\s*\{[\s\S]*--control-height-touch:\s*2\.75rem;/u);
+});
+
+test("composer focus shadow stays in light theme and drops out in dark theme", () => {
+  const source = readFileSync(appStylesPath, "utf8");
+
+  assert.match(source, /:root\s*\{[\s\S]*--composer-focus-shadow-color:\s*rgb\(from var\(--interactive-hover\) r g b \/ 0\.92\);/u);
+  assert.match(source, /:root\s*\{[\s\S]*--shadow-composer-focus:\s*0 6px 14px var\(--composer-focus-shadow-color\);/u);
+  assert.match(source, /\[data-theme="dark"\]\s*\{[\s\S]*--shadow-composer-focus:\s*none;/u);
+  assert.doesNotMatch(source, /\[data-theme="dark"\]\s*\{[\s\S]*--composer-focus-shadow-color:/u);
+});
+
+test("composer border keeps a lighter rim in dark theme without changing the light theme baseline", () => {
+  const source = readFileSync(appStylesPath, "utf8");
+
+  assert.match(source, /:root\s*\{[\s\S]*--composer-border:\s*#E9E9E9;/u);
+  assert.match(source, /\[data-theme="dark"\]\s*\{[\s\S]*--composer-border:\s*rgba\(255, 255, 255, 0\.08\);/u);
+});
+
+test("composer divider stays visible in light theme and disappears in dark theme", () => {
+  const source = readFileSync(appStylesPath, "utf8");
+
+  assert.match(source, /:root\s*\{[\s\S]*--composer-divider:\s*color-mix\(/u);
+  assert.match(source, /\[data-theme="dark"\]\s*\{[\s\S]*--composer-divider:\s*transparent;/u);
+});
+
+test("page-level layout tokens distinguish navigation, workspace, and composer surfaces", () => {
+  const source = readFileSync(appStylesPath, "utf8");
+
+  assert.match(source, /:root\s*\{[\s\S]*--layout-nav-width:\s*17\.5rem;/u);
+  assert.match(source, /:root\s*\{[\s\S]*--workspace-max-width:\s*44rem;/u);
+  assert.match(source, /:root\s*\{[\s\S]*--composer-max-width:\s*44rem;/u);
+  assert.match(source, /:root\s*\{[\s\S]*--composer-min-height:\s*5rem;/u);
+  assert.match(source, /:root\s*\{[\s\S]*--composer-border:\s*#E9E9E9;/u);
+  assert.match(source, /:root\s*\{[\s\S]*--composer-divider:\s*color-mix\(/u);
+  assert.match(source, /@theme inline\s*\{[\s\S]*--color-composer-border:\s*var\(--composer-border\);/u);
+});
