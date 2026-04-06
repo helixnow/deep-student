@@ -471,6 +471,29 @@ export const ChatV2Page: React.FC = () => {
     loadUngroupedCount, groupDragDisabled, visibleGroups,
   });
 
+  // ===== 左侧主导航栏分组操作事件监听 =====
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const { action, groupId, group } = (event as CustomEvent).detail ?? {};
+      switch (action) {
+        case 'create-session':
+          if (groupId) void createSession(groupId);
+          break;
+        case 'rename-group':
+          if (group) openRenameGroup(group);
+          break;
+        case 'edit-group':
+          if (group) openEditGroup(group);
+          break;
+        case 'delete-group':
+          if (group) setPendingDeleteGroup(group);
+          break;
+      }
+    };
+    window.addEventListener('modern-sidebar:group-action', handler);
+    return () => window.removeEventListener('modern-sidebar:group-action', handler);
+  }, [createSession, openRenameGroup, openEditGroup, setPendingDeleteGroup]);
+
   // ===== 页面布局 hook =====
   useChatPageLayout({
     currentSession, currentSessionId, expandGroup, currentSessionHasMessages,

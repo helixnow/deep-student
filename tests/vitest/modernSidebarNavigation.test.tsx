@@ -1,5 +1,6 @@
 import React from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ModernSidebar } from '@/components/ModernSidebar';
 
@@ -34,7 +35,15 @@ describe('ModernSidebar shell navigation', () => {
   beforeEach(() => {
     getCurrentSessionIdMock.mockReturnValue(null);
     getSessionStoreMock.mockReturnValue(undefined);
-    invokeMock.mockResolvedValue([]);
+    invokeMock.mockImplementation((command: string) => {
+      if (command === 'chat_v2_list_sessions') {
+        return Promise.resolve([]);
+      }
+      if (command === 'chat_v2_list_groups') {
+        return Promise.resolve([]);
+      }
+      return Promise.resolve([]);
+    });
   });
 
   it('keeps shared shell destinations in the global left sidebar', async () => {
@@ -110,5 +119,70 @@ describe('ModernSidebar shell navigation', () => {
     );
 
     expect(await screen.findByRole('button', { name: '智能会话' })).toBeInTheDocument();
+  });
+
+  it('renders recent sessions in collapsible groups when session groups exist', async () => {
+    getCurrentSessionIdMock.mockReturnValue('session-2');
+    invokeMock.mockImplementation((command: string) => {
+      if (command === 'chat_v2_list_sessions') {
+        return Promise.resolve([
+          { id: 'session-1', title: '代数复习', updatedAt: '2026-04-06T08:00:00Z', createdAt: '2026-04-06T08:00:00Z', mode: 'chat', groupId: 'group-math' },
+          { id: 'session-2', title: '几何证明', updatedAt: '2026-04-06T09:00:00Z', createdAt: '2026-04-06T09:00:00Z', mode: 'chat', groupId: 'group-math' },
+          { id: 'session-3', title: '未分组会话', updatedAt: '2026-04-06T07:00:00Z', createdAt: '2026-04-06T07:00:00Z', mode: 'chat' },
+        ]);
+      }
+      if (command === 'chat_v2_list_groups') {
+        return Promise.resolve([
+          { id: 'group-math', name: '数学', icon: '📘', sortOrder: 0, defaultSkillIds: [], pinnedResourceIds: [], persistStatus: 'active', createdAt: '2026-04-01T00:00:00Z', updatedAt: '2026-04-05T00:00:00Z' },
+        ]);
+      }
+      return Promise.resolve([]);
+    });
+
+    render(
+      <ModernSidebar
+        currentView="chat-v2"
+        onViewChange={() => undefined}
+      />
+    );
+
+    expect(await screen.findByRole('button', { name: /^数学$/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^未分组$/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '代数复习' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '几何证明' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '未分组会话' })).toBeInTheDocument();
+  });
+
+  it('collapses grouped recent sessions when the group header is toggled', async () => {
+    const user = userEvent.setup();
+    invokeMock.mockImplementation((command: string) => {
+      if (command === 'chat_v2_list_sessions') {
+        return Promise.resolve([
+          { id: 'session-1', title: '代数复习', updatedAt: '2026-04-06T08:00:00Z', createdAt: '2026-04-06T08:00:00Z', mode: 'chat', groupId: 'group-math' },
+        ]);
+      }
+      if (command === 'chat_v2_list_groups') {
+        return Promise.resolve([
+          { id: 'group-math', name: '数学', icon: '📘', sortOrder: 0, defaultSkillIds: [], pinnedResourceIds: [], persistStatus: 'active', createdAt: '2026-04-01T00:00:00Z', updatedAt: '2026-04-05T00:00:00Z' },
+        ]);
+      }
+      return Promise.resolve([]);
+    });
+
+    render(
+      <ModernSidebar
+        currentView="chat-v2"
+        onViewChange={() => undefined}
+      />
+    );
+
+    const groupButton = await screen.findByRole('button', { name: /数学/ });
+    expect(screen.getByRole('button', { name: '代数复习' })).toBeInTheDocument();
+
+    await user.click(groupButton);
+
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: '代数复习' })).not.toBeInTheDocument();
+    });
   });
 });
