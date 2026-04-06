@@ -68,4 +68,15 @@ small, .text-sm {
 	font-size: var(--font-size-sm);
 	font-weight: var(--font-weight-medium);
 	letter-spacing: var(--letter-spacing-normal);
-} 
+}
+
+/* study-ui 对齐：仅侧边栏范围使用更贴近参考项目的字体栈 */
+.font-sidebar-study-ui {
+	font-family: ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+	font-weight: var(--font-weight-normal);
+	font-synthesis: none;
+	--sidebar-study-surface: var(--sidebar);
+	--sidebar-study-hover: var(--interactive-hover);
+	--sidebar-study-selected: var(--interactive-selected);
+	--sidebar-study-border: var(--sidebar-border);
+}

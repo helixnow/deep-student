@@ -274,35 +274,20 @@ html.is-android-webview [contenteditable="true"] {
 @supports not (backdrop-filter: blur(1px)) {
   /* 毛玻璃效果降级为半透明背景 */
   .backdrop-blur-sm {
-    background-color: rgba(255, 255, 255, 0.95) !important;
+    background-color: color-mix(in hsl, var(--shell-titlebar-surface) 96%, transparent) !important;
   }
 
   .backdrop-blur {
-    background-color: rgba(255, 255, 255, 0.92) !important;
+    background-color: color-mix(in hsl, var(--shell-titlebar-surface) 93%, transparent) !important;
   }
 
   .backdrop-blur-md {
-    background-color: rgba(255, 255, 255, 0.90) !important;
+    background-color: color-mix(in hsl, var(--shell-titlebar-surface) 90%, transparent) !important;
   }
 
   .backdrop-blur-lg,
   .backdrop-blur-xl {
-    background-color: rgba(255, 255, 255, 0.88) !important;
-  }
-
-  /* 深色模式 fallback */
-  .dark .backdrop-blur-sm {
-    background-color: rgba(0, 0, 0, 0.92) !important;
-  }
-
-  .dark .backdrop-blur,
-  .dark .backdrop-blur-md {
-    background-color: rgba(0, 0, 0, 0.88) !important;
-  }
-
-  .dark .backdrop-blur-lg,
-  .dark .backdrop-blur-xl {
-    background-color: rgba(0, 0, 0, 0.85) !important;
+    background-color: color-mix(in hsl, var(--shell-titlebar-surface) 87%, transparent) !important;
   }
 }
 
@@ -545,7 +530,7 @@ html.is-android .android-safe-top {
 .app-title {
   font-size: 13px;
   font-weight: 500;
-  color: var(--text-secondary, #2d3748);
+  color: var(--text-secondary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -566,16 +551,16 @@ html.is-android .android-safe-top {
   justify-content: center;
   cursor: pointer;
   transition: background-color 0.2s ease;
-  color: var(--text-muted, #4a5568);
+  color: var(--text-muted);
 }
 
 .titlebar-button:hover {
-  background: rgba(59, 130, 246, 0.12);
+  background: var(--shell-control-hover);
 }
 
 .titlebar-button.close:hover {
-  background: #e53e3e;
-  color: white;
+  background: var(--button-danger-surface);
+  color: var(--button-danger-foreground);
 }
 
 .titlebar-button svg {
@@ -696,12 +681,12 @@ html.is-macos .window-controls {
 }
 
 .window-button:hover {
-  background: rgba(0, 0, 0, 0.08) !important;
+  background: var(--shell-control-hover) !important;
 }
 
 .window-button.close:hover {
-  background: #e53e3e !important;
-  color: white !important;
+  background: var(--button-danger-surface) !important;
+  color: var(--button-danger-foreground) !important;
 }
 
 .window-button:first-child {
@@ -1557,12 +1542,11 @@ div[style*="position: absolute"][style*="top: 0"][style*="right: 0"][id*="debug"
 
 .upload-section h3 {
   margin: 0 0 1.5rem 0;
-  color: hsl(var(--foreground));
-  font-size: 1.35rem !important;
-  font-weight: 700 !important;
-  /* 🎯 美化：添加底部边框和更好的间距 */
+  color: var(--text-primary);
+  font-size: 1.25rem !important;
+  font-weight: 600 !important;
   padding-bottom: 0.75rem;
-  border-bottom: 2px solid hsl(var(--border));
+  border-bottom: 1px solid var(--surface-divider);
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -1579,10 +1563,8 @@ div[style*="position: absolute"][style*="top: 0"][style*="right: 0"][id*="debug"
   display: block;
   margin-bottom: 0.75rem;
   font-weight: 600;
-  color: hsl(var(--foreground));
+  color: var(--text-secondary);
   font-size: 0.9rem;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
 }
 
 .form-group select,
@@ -1590,21 +1572,21 @@ div[style*="position: absolute"][style*="top: 0"][style*="right: 0"][id*="debug"
 .form-group textarea {
   width: 100%;
   padding: 0.875rem 1rem;
-  border: 2px solid hsl(var(--border));
+  border: 1px solid var(--input-shell-border);
   border-radius: 10px;
   font-size: 0.9rem;
-  transition: all 0.2s ease;
-  background: hsl(var(--background));
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  transition: border-color 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease;
+  background: var(--input-shell-surface);
+  box-shadow: none;
+  color: var(--text-primary);
 }
 
 .form-group select:focus,
 .form-group input:focus,
 .form-group textarea:focus {
   outline: none;
-  border-color: var(--brand-primary);
-  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1), 0 2px 8px rgba(0, 0, 0, 0.1);
-  transform: translateY(-1px);
+  border-color: var(--input-shell-focus);
+  box-shadow: 0 0 0 3px var(--input-shell-focus);
 }
 
 .image-preview {
@@ -1625,42 +1607,40 @@ div[style*="position: absolute"][style*="top: 0"][style*="right: 0"][id*="debug"
 .analyze-button {
   width: 100%;
   padding: 0.875rem 1rem;
-  background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
-  color: white;
-  border: none;
+  background: var(--button-primary-surface);
+  color: var(--button-primary-foreground);
+  border: 1px solid var(--button-primary-border);
   border-radius: 10px;
   font-size: 1rem;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.2s ease, transform 0.15s ease, box-shadow 0.15s ease;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
   margin-top: auto;
   flex-shrink: 0;
-  /* 🎯 美化：添加更好的视觉效果 */
-  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.2);
+  box-shadow: none;
 }
 
 .analyze-button:hover:not(:disabled) {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.08);
+  background: var(--button-primary-hover);
 }
 
 .analyze-button:disabled {
-  background: hsl(var(--muted));
+  background: var(--surface-panel-muted);
+  border-color: var(--shell-workspace-border);
+  color: var(--text-muted);
   cursor: not-allowed;
-  transform: none;
 }
 
 .action-buttons {
   display: flex;
   gap: 0.75rem;
   margin-top: 1.5rem;
-  /* 🎯 美化：添加顶部边框分隔 */
   padding-top: 1.5rem;
-  border-top: 1px solid #f0f4f8;
+  border-top: 1px solid var(--surface-divider);
 }
 
 /* 按钮样式 - 统一保存和重置按钮样式 */
@@ -1668,13 +1648,13 @@ div[style*="position: absolute"][style*="top: 0"][style*="right: 0"][id*="debug"
 .reset-button {
   flex: 1;
   padding: 0.875rem 1rem;
-  border: none;
+  border: 1px solid var(--button-utility-border);
   border-radius: 10px;
   font-size: 0.9rem;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.2s ease, transform 0.15s ease, box-shadow 0.15s ease;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+  box-shadow: none;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1682,28 +1662,24 @@ div[style*="position: absolute"][style*="top: 0"][style*="right: 0"][id*="debug"
 }
 
 .save-button {
-  background: linear-gradient(135deg, #38a169 0%, #2f855a 100%);
-  color: white;
+  background: var(--button-primary-surface);
+  color: var(--button-primary-foreground);
+  border-color: var(--button-primary-border);
 }
 
 .save-button:hover:not(:disabled) {
-  background: linear-gradient(135deg, #2f855a 0%, #276749 100%);
-  transform: translateY(-2px);
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.08);
+  background: var(--button-primary-hover);
 }
 
 .reset-button {
-  background: hsl(var(--secondary));
-  color: hsl(var(--secondary-foreground));
-  border: 2px solid hsl(var(--border));
+  background: var(--button-utility-surface);
+  color: var(--button-utility-foreground);
 }
 
 .reset-button:hover:not(:disabled) {
-  background: hsl(var(--accent));
-  border-color: hsl(var(--border));
-  color: hsl(var(--accent-foreground));
-  transform: translateY(-2px);
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.08);
+  background: var(--button-utility-hover);
+  border-color: var(--shell-workspace-border);
+  color: var(--text-primary);
 }
 
 .empty-result {
@@ -1713,11 +1689,11 @@ div[style*="position: absolute"][style*="top: 0"][style*="right: 0"][id*="debug"
   justify-content: center;
   height: 100%;
   text-align: center;
-  color: hsl(var(--muted-foreground));
-  background: hsl(var(--card));
+  color: var(--text-muted);
+  background: var(--shell-workspace-panel);
   border-radius: 12px;
-  border: 1px solid hsl(var(--border));
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  border: 1px solid var(--shell-workspace-border);
+  box-shadow: none;
   padding: 2rem;
 }
 
@@ -1748,7 +1724,7 @@ div[style*="position: absolute"][style*="top: 0"][style*="right: 0"][id*="debug"
 
 .result-header {
   padding: 0.75rem 1rem;
-  border-bottom: 1px solid hsl(var(--border));
+  border-bottom: 1px solid var(--surface-divider);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1765,7 +1741,7 @@ div[style*="position: absolute"][style*="top: 0"][style*="right: 0"][id*="debug"
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  color: hsl(var(--primary));
+  color: hsl(var(--warning));
   font-size: 0.875rem;
 }
 
@@ -1780,7 +1756,7 @@ div[style*="position: absolute"][style*="top: 0"][style*="right: 0"][id*="debug"
 
 .result-info {
   padding: 0.5rem 1rem;
-  border-bottom: 1px solid hsl(var(--border));
+  border-bottom: 1px solid var(--surface-divider);
   max-height: 120px;
   overflow-y: auto;
   flex-shrink: 0;
@@ -1810,8 +1786,9 @@ div[style*="position: absolute"][style*="top: 0"][style*="right: 0"][id*="debug"
 }
 
 .tag {
-  background: hsl(var(--accent));
-  color: hsl(var(--accent-foreground));
+  background: var(--surface-panel-muted);
+  color: var(--text-secondary);
+  border: 1px solid var(--shell-workspace-border);
   padding: 0.25rem 0.75rem;
   border-radius: 16px;
   font-size: 0.75rem;
@@ -1819,13 +1796,13 @@ div[style*="position: absolute"][style*="top: 0"][style*="right: 0"][id*="debug"
 }
 
 .ocr-text {
-  background: hsl(var(--muted));
+  background: var(--surface-panel-muted);
   padding: 0.5rem;
   border-radius: 6px;
-  border: 1px solid hsl(var(--border));
+  border: 1px solid var(--shell-workspace-border);
   font-size: 0.75rem;
   line-height: 1.4;
-  color: hsl(var(--foreground));
+  color: var(--text-primary);
   max-height: 80px;
   overflow-y: auto;
 }
@@ -1950,21 +1927,7 @@ div[style*="position: absolute"][style*="top: 0"][style*="right: 0"][id*="debug"
 
 /* 主题色彩优化 */
 :root {
-  --ds-primary: #3182ce;
-  --ds-primary-light: #ebf8ff;
-  --ds-secondary: #3b82f6;
-  --ds-gray-50: #f8f9fa;
-  --ds-gray-100: #f7fafc;
-  --ds-gray-200: #edf2f7;
-  --ds-gray-300: #e2e8f0;
-  --ds-gray-400: #cbd5e0;
-  --ds-gray-500: #a0aec0;
-  --ds-gray-600: #718096;
-  --ds-gray-700: #4a5568;
-  --ds-gray-800: #2d3748;
-  --ds-gray-900: #1a202c;
-  /* 统一底部区高度，确保 sidebar-footer 与 chat-input 对齐 */
-  --ds-footer-height: 72px; /* 可根据设计微调 */
+  --ds-footer-height: 72px;
 }
 
 /* 滚动条美化 */
@@ -1992,34 +1955,28 @@ div[style*="position: absolute"][style*="top: 0"][style*="right: 0"][id*="debug"
 /* 文件上传区域样式 */
 .file-upload-area {
   position: relative;
-  border: 2px dashed var(--primary-color, #8b5cf6) !important;
-  border-radius: 8px !important;
+  border: 1px dashed var(--shell-workspace-border) !important;
+  border-radius: 12px !important;
   padding: 2rem;
   text-align: center;
-  background: linear-gradient(145deg, rgba(139, 92, 246, 0.05) 0%, rgba(59, 130, 246, 0.05) 100%) !important;
-  transition: all 0.25s ease !important;
+  background: var(--surface-panel-muted) !important;
+  transition: background-color 0.18s ease, border-color 0.18s ease !important;
   cursor: pointer;
   max-width: 100%;
   box-sizing: border-box;
 }
 
 .file-upload-area:hover {
-  background: linear-gradient(145deg, rgba(139, 92, 246, 0.10) 0%, rgba(59, 130, 246, 0.10) 100%) !important;
-  box-shadow: 0 8px 20px rgba(139, 92, 246, 0.15) !important;
-  transform: translateY(-2px) !important;
-  border-color: var(--primary-color, #7c3aed) !important;
+  background: var(--button-utility-hover) !important;
+  box-shadow: none !important;
+  transform: none !important;
+  border-color: var(--border-strong) !important;
 }
 
 .file-upload-area.drag-over {
-  background: linear-gradient(145deg, rgba(139, 92, 246, 0.12) 0%, rgba(59, 130, 246, 0.12) 100%) !important;
-  border-color: var(--primary-color, #7c3aed) !important;
-  animation: pulseBorder 1.2s infinite ease-in-out !important;
-}
-
-@keyframes pulseBorder {
-  0%   { box-shadow: 0 0 0 0 rgba(139, 92, 246, 0.4); }
-  70%  { box-shadow: 0 0 0 6px rgba(139, 92, 246, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(139, 92, 246, 0); }
+  background: var(--button-primary-surface) !important;
+  border-color: var(--button-primary-border) !important;
+  animation: none !important;
 }
 
 .upload-content {

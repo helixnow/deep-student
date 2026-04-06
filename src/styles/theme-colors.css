@@ -3,37 +3,94 @@
   /* Surface layers (gradient: nav < root < elevated < muted) */
   --surface-nav: hsl(var(--nav-background));  /* 侧边栏/标题栏最深层 */
   --surface-root: hsl(var(--background));
-  --surface-root-strong: color-mix(in hsl, hsl(var(--background)) 80%, hsl(var(--foreground)) 20%);
+  --surface-root-strong: color-mix(in hsl, hsl(var(--background)) 82%, hsl(var(--card)) 18%);
   --surface-elevated: hsl(var(--card));
-  --surface-muted: color-mix(in hsl, hsl(var(--background)) 92%, hsl(var(--card)) 8%);
+  --surface-muted: hsl(var(--muted));
   --surface-overlay: color-mix(in hsl, hsl(var(--card)) 80%, transparent 20%);
   --surface-overlay-strong: color-mix(in hsl, hsl(var(--card)) 65%, hsl(var(--background)) 35%);
   --surface-divider: color-mix(in hsl, hsl(var(--border)) 55%, transparent 45%);
+  --surface-panel-muted: color-mix(in hsl, var(--surface-muted) 82%, var(--surface-elevated) 18%);
+  --surface-panel-strong: color-mix(in hsl, var(--surface-elevated) 92%, var(--surface-root) 8%);
 
   /* Desktop shell surfaces */
-  --shell-backdrop: color-mix(in hsl, var(--surface-nav) 24%, var(--surface-root) 76%);
-  --shell-titlebar-surface: color-mix(in hsl, var(--surface-elevated) 88%, var(--surface-root) 12%);
-  --shell-navigation-surface: color-mix(in hsl, var(--surface-nav) 72%, var(--surface-elevated) 28%);
-  --shell-navigation-panel: color-mix(in hsl, var(--surface-elevated) 84%, var(--surface-root) 16%);
-  --shell-navigation-foreground: var(--text-primary);
-  --shell-navigation-muted: color-mix(in hsl, var(--text-muted) 84%, var(--text-primary) 16%);
-  --shell-navigation-border: color-mix(in hsl, var(--border-default) 78%, transparent 22%);
-  --shell-workspace-surface: color-mix(in hsl, var(--surface-root) 92%, var(--surface-elevated) 8%);
-  --shell-workspace-panel: color-mix(in hsl, var(--surface-elevated) 90%, var(--surface-root) 10%);
-  --shell-workspace-border: color-mix(in hsl, var(--border-default) 72%, transparent 28%);
-  --shell-chrome-border: color-mix(in hsl, var(--border-default) 74%, transparent 26%);
-  --shell-nav-item-hover: color-mix(in hsl, var(--surface-muted) 78%, var(--surface-elevated) 22%);
-  --shell-nav-item-active: color-mix(in hsl, hsl(var(--primary)) 10%, var(--surface-elevated) 90%);
+  --interactive-hover: #E9E9E9;
+  --interactive-selected: #E9E9E9;
+  --sidebar-hover: #F9F9F9;
+  --sidebar: #F3F3F3;
+  --sidebar-foreground: oklch(0.29 0.014 264.2);
+  --sidebar-muted: oklch(0.546 0.012 264.2);
+  --sidebar-border: oklch(0.83 0.006 264.2 / 0.08);
+  --sidebar-accent: #EFEFEA;
+  --shell-backdrop: #ECECE7;
+  --shell-panel: #FFFFFF;
+  --shell-panel-strong: #FCFCFA;
+  --shell-rim: oklch(0.83 0.006 264.2 / 0.08);
+  --shell-float: #FCFCFA;
+  --shell-glow: transparent;
+  --shell-grid: transparent;
+  --shell-titlebar: #F8F8F4;
+  --shell-surface: #ECEFE8;
+  --shell-titlebar-surface: var(--shell-titlebar);
+  --shell-navigation-surface: var(--sidebar);
+  --shell-navigation-panel: var(--sidebar);
+  --shell-navigation-foreground: var(--sidebar-foreground);
+  --shell-navigation-muted: var(--sidebar-muted);
+  --shell-navigation-border: var(--sidebar-border);
+  --shell-workspace-surface: var(--shell-surface);
+  --shell-workspace-panel: var(--shell-panel);
+  --shell-workspace-border: var(--shell-rim);
+  --shell-inspector-surface: var(--shell-surface);
+  --shell-inspector-panel: var(--shell-panel-strong);
+  --shell-inspector-border: var(--shell-rim);
+  --shell-toolbar-surface: var(--shell-panel);
+  --shell-toolbar-floating-surface: var(--shell-float);
+  --shell-chrome-border: var(--shell-rim);
+  --shell-nav-item-hover: var(--interactive-hover);
+  --shell-nav-item-active: var(--interactive-selected);
   --shell-nav-item-active-foreground: var(--text-primary);
   --shell-control-surface: color-mix(in hsl, var(--surface-elevated) 88%, var(--surface-root) 12%);
   --shell-control-border: color-mix(in hsl, var(--border-default) 80%, transparent 20%);
-  --shell-control-hover: color-mix(in hsl, var(--shell-nav-item-hover) 82%, var(--surface-elevated) 18%);
-  --shell-control-active: color-mix(in hsl, var(--shell-nav-item-active) 78%, var(--surface-elevated) 22%);
+  --shell-control-hover: var(--interactive-hover);
+  --shell-control-active: var(--interactive-selected);
   --shell-window-close-hover: color-mix(in hsl, hsl(var(--destructive)) 18%, var(--surface-elevated) 82%);
   --shell-window-close-active: color-mix(in hsl, hsl(var(--destructive)) 24%, var(--surface-elevated) 76%);
   --shell-window-close-foreground: hsl(var(--destructive));
-  --shell-shadow-soft: 0 18px 40px hsl(var(--foreground) / 0.08);
-  --shell-shadow-active: 0 8px 20px hsl(var(--foreground) / 0.06);
+  --sidebar-quiet-hover: var(--interactive-hover);
+  --sidebar-quiet-active: var(--interactive-selected);
+  --sidebar-quiet-active-foreground: var(--text-primary);
+
+  --shadow-shell-soft: 0 12px 24px hsl(var(--foreground) / 0.04);
+  --shadow-shell-panel: 0 16px 32px hsl(var(--foreground) / 0.05);
+  --shadow-shell-floating: 0 18px 36px hsl(var(--foreground) / 0.08);
+  --shadow-shell-pressed: 0 8px 20px hsl(var(--foreground) / 0.05);
+  --shell-shadow-soft: var(--shadow-shell-panel);
+  --shell-shadow-active: var(--shadow-shell-pressed);
+
+  --button-primary-surface: color-mix(in hsl, hsl(var(--primary)) 10%, var(--surface-elevated) 90%);
+  --button-primary-border: color-mix(in hsl, hsl(var(--primary)) 24%, transparent 76%);
+  --button-primary-foreground: hsl(var(--primary));
+  --button-primary-hover: color-mix(in hsl, hsl(var(--primary)) 15%, var(--surface-elevated) 85%);
+  --button-primary-active: color-mix(in hsl, hsl(var(--primary)) 21%, var(--surface-elevated) 79%);
+  --button-prominent-bg: color-mix(in oklab, hsl(var(--primary)) 90%, hsl(var(--background)) 10%);
+  --button-prominent-hover-bg: color-mix(in oklab, hsl(var(--primary)) 94%, hsl(var(--foreground)) 6%);
+  --button-prominent-active-bg: color-mix(in oklab, hsl(var(--primary)) 84%, hsl(var(--foreground)) 16%);
+  --button-prominent-border: color-mix(in oklab, hsl(var(--primary)) 34%, hsl(var(--border)) 66%);
+  --button-utility-surface: color-mix(in hsl, var(--surface-elevated) 88%, var(--surface-root) 12%);
+  --button-utility-border: color-mix(in hsl, var(--border-default) 76%, transparent 24%);
+  --button-utility-foreground: var(--text-secondary);
+  --button-utility-hover: hsl(0 0% 91%);
+  --button-utility-active: hsl(0 0% 89%);
+  --button-danger-surface: color-mix(in hsl, hsl(var(--destructive)) 10%, var(--surface-elevated) 90%);
+  --button-danger-border: color-mix(in hsl, hsl(var(--destructive)) 26%, transparent 74%);
+  --button-danger-foreground: hsl(var(--destructive));
+  --button-danger-hover: color-mix(in hsl, hsl(var(--destructive)) 14%, var(--surface-elevated) 86%);
+  --button-danger-active: color-mix(in hsl, hsl(var(--destructive)) 20%, var(--surface-elevated) 80%);
+
+  --input-shell-surface: color-mix(in hsl, var(--surface-panel-muted) 84%, var(--surface-root) 16%);
+  --input-shell-border: color-mix(in hsl, var(--border-default) 70%, transparent 30%);
+  --input-shell-focus: color-mix(in hsl, hsl(var(--primary)) 24%, transparent 76%);
+  --dialog-shell-surface: color-mix(in hsl, var(--surface-panel-strong) 90%, var(--surface-root) 10%);
+  --dialog-shell-border: color-mix(in hsl, var(--border-default) 72%, transparent 28%);
 
   /* Borders */
   --border-default: hsl(var(--border));
@@ -80,4 +137,28 @@
   --neutral-foreground: var(--background);
   --neutral-muted: var(--neutral) / 0.35;
   --neutral-bg: var(--neutral) / 0.14;
+}
+
+:root.dark {
+  --interactive-hover: rgba(255, 255, 255, 0.08);
+  --interactive-selected: rgba(255, 255, 255, 0.14);
+  --sidebar-hover: #2A2A2A;
+  --sidebar: #000000;
+  --sidebar-foreground: #FFFFFF;
+  --sidebar-muted: rgba(255, 255, 255, 0.5);
+  --sidebar-border: oklch(0.7 0.008 264.2 / 0.12);
+  --sidebar-accent: #20201E;
+  --shell-backdrop: #141413;
+  --shell-panel: #1D1D1B;
+  --shell-panel-strong: #222220;
+  --shell-rim: oklch(0.7 0.008 264.2 / 0.12);
+  --shell-float: #232321;
+  --shell-glow: transparent;
+  --shell-grid: transparent;
+  --shell-titlebar: #1D1D1B;
+  --shell-surface: #171917;
+  --button-prominent-bg: color-mix(in oklab, hsl(var(--primary)) 74%, hsl(var(--background)) 26%);
+  --button-prominent-hover-bg: color-mix(in oklab, hsl(var(--primary)) 78%, hsl(var(--background)) 22%);
+  --button-prominent-active-bg: color-mix(in oklab, hsl(var(--primary)) 68%, hsl(var(--background)) 32%);
+  --button-prominent-border: color-mix(in oklab, hsl(var(--primary)) 40%, hsl(var(--border)) 60%);
 }

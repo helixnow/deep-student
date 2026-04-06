@@ -1,6 +1,23 @@
 /* shadcn 设计令牌变量 */
 :root {
   --radius: 0.5rem;
+  --radius-shell-panel: 18px;
+  --radius-shell-toolbar: 16px;
+  --radius-shell-row: 14px;
+  --radius-shell-control: 12px;
+  --radius-shell-window-control: 10px;
+  --radius-shell-dialog: 22px;
+
+  --size-shell-control: 32px;
+  --size-shell-window-control: 34px;
+  --size-shell-touch-target: 36px;
+  --size-shell-touch-target-lg: 40px;
+
+  --space-shell-layout-gap: 14px;
+  --space-shell-section-gap: 18px;
+  --space-shell-control-gap: 2px;
+  --button-icon-size: 2rem;
+  --button-radius: 9px;
   
   /* =========================================
      字体系统 (Notion-inspired)
@@ -11,6 +28,12 @@
   
   /* 中文优化字体栈 */
   --font-family-cn: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+
+  /* study-ui 全局应用字体栈 */
+  --app-font-family: "PingFang SC", -apple-system, BlinkMacSystemFont, "SF Pro Text", "Microsoft YaHei", sans-serif;
+
+  /* study-ui 风格的侧边栏字体栈，仅用于局部侧边栏范围 */
+  --font-family-sidebar-study-ui: "PingFang SC", -apple-system, BlinkMacSystemFont, "SF Pro Text", "Microsoft YaHei", sans-serif;
   
   /* 等宽字体 */
   --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
@@ -50,24 +73,24 @@
 
 /* 亮色模式基础灰度 */
 :root {
-  --titlebar-background: 220 6% 96%;
-  --nav-background: 220 6% 88%;
-  --background: 220 6% 92%;
-  --foreground: 220 10% 18%;
-  --card: 220 6% 94%;
-  --card-foreground: 220 10% 18%;
-  --popover: 220 6% 96%;
-  --popover-foreground: 220 10% 18%;
-  --secondary: 220 6% 89%;
-  --secondary-foreground: 220 10% 18%;
-  --muted: 220 6% 89%;
+  --titlebar-background: 60 22% 96%;
+  --nav-background: 0 0% 95%;
+  --background: 0 0% 100%;
+  --foreground: 220 9% 18%;
+  --card: 60 25% 98%;
+  --card-foreground: 220 9% 18%;
+  --popover: 60 25% 98%;
+  --popover-foreground: 220 9% 18%;
+  --secondary: 0 0% 98%;
+  --secondary-foreground: 220 9% 18%;
+  --muted: 60 10% 94%;
   --muted-foreground: 220 6% 42%;
-  --accent: 220 6% 85%;
-  --accent-foreground: 220 10% 18%;
+  --accent: 60 14% 93%;
+  --accent-foreground: 220 9% 18%;
   --destructive: 0 65% 51%;
   --destructive-foreground: 0 0% 100%;
-  --border: 220 6% 82%;
-  --input: 220 6% 85%;
+  --border: 60 5% 86%;
+  --input: 60 14% 95%;
 
   /* 语义状态色 */
   --success: 152 60% 36%;
@@ -89,24 +112,24 @@
 
 /* 暗色模式基础灰度 */
 :root.dark {
-  --titlebar-background: 220 5% 22%;
-  --nav-background: 220 5% 11%;
-  --background: 220 5% 14%;
-  --foreground: 220 5% 82%;
-  --card: 220 5% 17%;
-  --card-foreground: 220 5% 82%;
-  --popover: 220 5% 18%;
-  --popover-foreground: 220 5% 82%;
-  --secondary: 220 5% 20%;
-  --secondary-foreground: 220 5% 82%;
-  --muted: 220 5% 20%;
-  --muted-foreground: 220 5% 55%;
-  --accent: 220 5% 23%;
-  --accent-foreground: 220 5% 82%;
+  --titlebar-background: 60 3% 11%;
+  --nav-background: 0 0% 0%;
+  --background: 0 0% 9%;
+  --foreground: 0 0% 96%;
+  --card: 60 3% 12%;
+  --card-foreground: 0 0% 96%;
+  --popover: 60 3% 12%;
+  --popover-foreground: 0 0% 96%;
+  --secondary: 60 2% 14%;
+  --secondary-foreground: 0 0% 96%;
+  --muted: 60 2% 14%;
+  --muted-foreground: 0 0% 60%;
+  --accent: 60 2% 15%;
+  --accent-foreground: 0 0% 96%;
   --destructive: 0 55% 45%;
   --destructive-foreground: 0 0% 100%;
-  --border: 220 5% 23%;
-  --input: 220 5% 20%;
+  --border: 60 2% 18%;
+  --input: 60 2% 14%;
 
   /* 语义状态色 */
   --success: 152 55% 42%;
@@ -132,24 +155,28 @@
    ========================================= */
 :root,
 :root[data-theme-palette='default'] {
-  --primary: 217 91% 40%;
+  /* Synced from study-ui primary token: oklch(0.592 0.166 257.8) */
+  --primary: 215 72% 54.2%;
   --primary-foreground: 0 0% 100%;
-  --ring: 217 91% 40%;
+  /* Synced from study-ui ring token: oklch(0.67 0.115 255.8 / 0.34) */
+  --ring: 214.2 62.1% 62.6%;
   --brand-primary: var(--primary);
   --brand-secondary: var(--secondary);
   --brand-accent: var(--accent);
-  --brand-primary-dark: 217 91% 25%;
+  --brand-primary-dark: 215 72% 39%;
   --primary-color: hsl(var(--primary));
 }
 :root.dark,
 :root.dark[data-theme-palette='default'] {
-  --primary: 217 91% 50%;
+  /* Synced from study-ui primary token: oklch(0.72 0.118 255.4) */
+  --primary: 213.9 77.9% 68.7%;
   --primary-foreground: 0 0% 100%;
-  --ring: 217 91% 50%;
+  /* Synced from study-ui ring token: oklch(0.74 0.1 255.4 / 0.3) */
+  --ring: 214 70.8% 70.8%;
   --brand-primary: var(--primary);
   --brand-secondary: var(--secondary);
   --brand-accent: var(--accent);
-  --brand-primary-dark: 217 91% 75%;
+  --brand-primary-dark: 214 77% 81%;
   --primary-color: hsl(var(--primary));
 }
 
