@@ -10,7 +10,19 @@ import { cn } from '@/lib/utils';
  * - ghost: 灰色文字 + 透明背景（次要操作）
  * - default: 灰色文字 + 浅灰背景（默认操作）
  */
-export type NotionButtonVariant = 'primary' | 'danger' | 'success' | 'warning' | 'ghost' | 'default' | 'outline' | 'secondary' | 'destructive';
+export type NotionButtonVariant =
+  | 'primary'
+  | 'danger'
+  | 'success'
+  | 'warning'
+  | 'ghost'
+  | 'default'
+  | 'outline'
+  | 'secondary'
+  | 'destructive'
+  | 'utility'
+  | 'nav'
+  | 'shell';
 
 /**
  * Notion 风格按钮尺寸
@@ -31,17 +43,23 @@ export interface NotionButtonProps extends React.ButtonHTMLAttributes<HTMLButton
   children?: React.ReactNode;
 }
 
+const shellNavBaseClassName =
+  'inline-flex shrink-0 appearance-none items-center gap-2 whitespace-nowrap text-[13px] leading-none outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 select-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:text-inherit';
+
 const variantStyles: Record<NotionButtonVariant, string> = {
-  primary: 'text-blue-600 dark:text-blue-400 bg-blue-500/10 hover:bg-blue-500/20 active:bg-blue-500/25',
-  danger: 'text-red-600 dark:text-red-400 bg-red-500/10 hover:bg-red-500/20 active:bg-red-500/25',
-  success: 'text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 active:bg-emerald-500/25',
-  warning: 'text-orange-600 dark:text-orange-400 bg-orange-500/10 hover:bg-orange-500/20 active:bg-orange-500/25',
-  ghost: 'text-muted-foreground hover:text-foreground hover:bg-black/5 dark:hover:bg-white/10 active:bg-black/10 dark:active:bg-white/15',
-  default: 'text-foreground/80 bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 active:bg-black/15 dark:active:bg-white/15',
+  primary: 'border-[color:var(--button-primary-border)] bg-[color:var(--button-primary-surface)] text-[color:var(--button-primary-foreground)] hover:bg-[color:var(--button-primary-hover)] active:bg-[color:var(--button-primary-active)]',
+  danger: 'border-[color:var(--button-danger-border)] bg-[color:var(--button-danger-surface)] text-[color:var(--button-danger-foreground)] hover:bg-[color:var(--button-danger-hover)] active:bg-[color:var(--button-danger-active)]',
+  success: 'border-[color:var(--button-primary-border)] bg-[color:var(--button-primary-surface)] text-[color:var(--success)] hover:bg-[color:var(--button-primary-hover)] active:bg-[color:var(--button-primary-active)]',
+  warning: 'border-[color:var(--button-primary-border)] bg-[color:var(--button-primary-surface)] text-[color:hsl(var(--warning))] hover:bg-[color:var(--button-primary-hover)] active:bg-[color:var(--button-primary-active)]',
+  ghost: 'border-transparent bg-transparent text-[color:var(--button-utility-foreground)] hover:bg-[color:var(--button-utility-hover)] hover:text-[color:var(--text-primary)] active:bg-[color:var(--button-utility-active)]',
+  default: 'border-[color:var(--button-utility-border)] bg-[color:var(--button-utility-surface)] text-[color:var(--text-primary)] hover:bg-[color:var(--button-utility-hover)] active:bg-[color:var(--button-utility-active)]',
   // 兼容 shadcn 变体名称
-  outline: 'border border-input bg-background hover:bg-accent hover:text-accent-foreground',
-  secondary: 'text-foreground/80 bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 active:bg-black/15 dark:active:bg-white/15',
-  destructive: 'text-red-600 dark:text-red-400 bg-red-500/10 hover:bg-red-500/20 active:bg-red-500/25',
+  outline: 'border-[color:var(--button-utility-border)] bg-transparent text-[color:var(--text-secondary)] hover:bg-[color:var(--button-utility-hover)] hover:text-[color:var(--text-primary)]',
+  secondary: 'border-[color:var(--button-utility-border)] bg-[color:var(--button-utility-surface)] text-[color:var(--text-primary)] hover:bg-[color:var(--button-utility-hover)] active:bg-[color:var(--button-utility-active)]',
+  destructive: 'border-[color:var(--button-danger-border)] bg-[color:var(--button-danger-surface)] text-[color:var(--button-danger-foreground)] hover:bg-[color:var(--button-danger-hover)] active:bg-[color:var(--button-danger-active)]',
+  utility: 'border-[color:var(--button-utility-border)] bg-[color:var(--button-utility-surface)] text-[color:var(--button-utility-foreground)] hover:bg-[color:var(--button-utility-hover)] hover:text-[color:var(--text-primary)] active:bg-[color:var(--button-utility-active)]',
+  nav: 'flex min-h-[2.75rem] w-full min-w-0 justify-start gap-2.5 overflow-hidden rounded-2xl border-transparent bg-transparent px-2.5 py-1.5 text-left text-sm text-[color:var(--shell-navigation-muted)] md:min-h-9 hover:bg-[color:var(--sidebar-quiet-hover)] hover:text-[color:var(--shell-navigation-foreground)] active:bg-[color:var(--sidebar-quiet-active)]',
+  shell: 'border-[color:var(--button-utility-border)] bg-[color:var(--surface-panel-strong)] text-[color:var(--text-primary)] shadow-[var(--shadow-shell-soft)] hover:bg-[color:var(--button-utility-hover)] active:bg-[color:var(--button-utility-active)]',
 };
 
 const sizeStyles: Record<NotionButtonSize, string> = {
@@ -94,15 +112,16 @@ export const NotionButton = React.forwardRef<HTMLButtonElement, NotionButtonProp
         disabled={disabled}
         className={cn(
           // 基础样式
-          'inline-flex items-center justify-center font-medium rounded-md transition-colors duration-150',
+          variant === 'nav'
+            ? shellNavBaseClassName
+            : 'inline-flex items-center justify-center rounded-[var(--radius-shell-control)] border font-medium shadow-none transition-colors duration-150',
           // 防止文字换行竖排
           'whitespace-nowrap',
-          // 禁用样式
-          'disabled:opacity-40 disabled:cursor-not-allowed disabled:pointer-events-none',
+          variant === 'nav' ? null : 'disabled:opacity-40 disabled:cursor-not-allowed disabled:pointer-events-none',
           // 变体样式
           variantStyles[variant],
           // 尺寸样式
-          iconOnly ? iconSizeStyles[resolvedSize] : sizeStyles[resolvedSize],
+          iconOnly ? iconSizeStyles[resolvedSize] : variant !== 'icon' && variant !== 'nav' ? sizeStyles[resolvedSize] : null,
           className
         )}
         {...props}

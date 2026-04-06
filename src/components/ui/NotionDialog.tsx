@@ -110,12 +110,18 @@ export function NotionDialog({
           aria-modal="true"
           variants={contentVariants}
           className={cn(
-            'relative w-[92vw] rounded-xl border border-transparent ring-1 ring-border/40 bg-background text-foreground shadow-lg',
+            'relative w-[92vw] rounded-[var(--radius-shell-dialog)] border bg-background text-foreground',
             'flex flex-col overflow-hidden',
             maxWidth,
             className,
           )}
-          style={{ zIndex: Z_INDEX.modal + 1, maxHeight: 'min(85vh, 720px)' }}
+          style={{
+            zIndex: Z_INDEX.modal + 1,
+            maxHeight: 'min(85vh, 720px)',
+            background: 'var(--dialog-shell-surface)',
+            borderColor: 'var(--dialog-shell-border)',
+            boxShadow: 'var(--shadow-shell-floating)',
+          }}
           onClick={(e) => e.stopPropagation()}
         >
           {showClose && (
@@ -141,9 +147,9 @@ export function NotionDialog({
 
 export function NotionDialogHeader({ className, children, ...props }: React.HTMLAttributes<HTMLDivElement>) {
   return (
-    <div className={cn('flex-shrink-0 px-5 pt-5 pb-3 space-y-1', className)} {...props}>
-      {children}
-    </div>
+      <div className={cn('flex-shrink-0 px-5 pt-5 pb-3 space-y-1 border-b border-transparent', className)} style={{ borderColor: 'var(--dialog-shell-border)' }} {...props}>
+        {children}
+      </div>
   );
 }
 
@@ -185,8 +191,9 @@ export function NotionDialogBody({ className, children, nativeScroll = false, ..
 
 export function NotionDialogFooter({ className, children, ...props }: React.HTMLAttributes<HTMLDivElement>) {
   return (
-    <div
-      className={cn('flex-shrink-0 flex items-center justify-end gap-2 px-5 py-4 border-t border-border/40', className)}
+      <div
+      className={cn('flex-shrink-0 flex items-center justify-end gap-2 px-5 py-4 border-t border-transparent', className)}
+      style={{ borderColor: 'var(--dialog-shell-border)' }}
       {...props}
     >
       {children}
@@ -277,10 +284,15 @@ export function NotionAlertDialog({
           aria-modal="true"
           variants={alertContentVariants}
           className={cn(
-            'relative w-[92vw] max-w-md rounded-xl border border-transparent ring-1 ring-border/40 bg-background p-5 text-foreground shadow-lg',
+            'relative w-[92vw] max-w-md rounded-[var(--radius-shell-dialog)] border p-5 text-foreground',
             className,
           )}
-          style={{ zIndex: Z_INDEX.modal + 1 }}
+          style={{
+            zIndex: Z_INDEX.modal + 1,
+            background: 'var(--dialog-shell-surface)',
+            borderColor: 'var(--dialog-shell-border)',
+            boxShadow: 'var(--shadow-shell-floating)',
+          }}
           onClick={(e) => e.stopPropagation()}
         >
           {/* 标题行 */}

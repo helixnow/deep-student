@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next';
 // getCurrentWebviewWindow 已无使用（2026-02 清理）
 import { invoke } from '@tauri-apps/api/core';
 // 🚀 性能优化：Settings, Dashboard, SOTADashboard 改为懒加载
-import { ChevronLeft, ChevronRight, Terminal, PanelLeft, AlertTriangle } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Terminal, AlertTriangle } from 'lucide-react';
 import { useSystemStatusStore } from '@/stores/systemStatusStore';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
 import { cn } from '@/lib/utils';
@@ -80,11 +80,14 @@ import { useEventRegistry } from './hooks/useEventRegistry';
 import { useNetworkStatus } from './hooks/useNetworkStatus';
 import { useViewStore } from './stores/viewStore';
 import { debugLog } from './debug-panel/debugMasterSwitch';
+import { sessionManager } from './chat-v2/core/session/sessionManager';
+import { getSessionTitleText } from './chat-v2/utils/sessionTitle';
 
 import { ViewLayerRenderer } from './app/components';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { canonicalizeView } from './app/navigation/canonicalView';
 import { DESKTOP_SHELL, getShellSidebarWidth } from './app/shell/desktopShell';
+import { getMobileShellCssVars } from './app/shell/mobileShell';
 
 // 🚀 性能优化：懒加载页面组件
 import {
@@ -158,6 +161,25 @@ function CommandPaletteButton({ className }: { className?: string }) {
         <Terminal className="h-4 w-4" />
       </NotionButton>
     </CommonTooltip>
+  );
+}
+
+function SidebarDockIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 256 256" className="size-[18px] fill-current">
+      <path d="M216,40H40A16,16,0,0,0,24,56V200a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A16,16,0,0,0,216,40ZM40,56H80V200H40ZM216,200H96V56H216V200Z" />
+    </svg>
+  );
+}
+
+function SidebarUpdateBadge() {
+  return (
+    <span
+      data-slot="sidebar-update-badge"
+      className="desktop-shell-update-badge"
+    >
+      更新
+    </span>
   );
 }
 
@@ -341,13 +363,12 @@ function App() {
   usePreventScroll(contentBodyRef);
 
   // 顶部栏顶部边距高度设置
-  // 移动端 UI 强制 30px，桌面端读取用户设置或默认 0px
-  const [topbarTopMargin, setTopbarTopMargin] = useState<number>(isSmallScreen ? 30 : 0);
+  // 桌面端读取用户设置；移动端统一改由 mobile shell safe-area contract 提供。
+  const [topbarTopMargin, setTopbarTopMargin] = useState<number>(0);
   useEffect(() => {
     let cancelled = false;
-    // 移动端 UI 强制使用 30px，忽略用户设置
     if (isSmallScreen) {
-      setTopbarTopMargin(30);
+      setTopbarTopMargin(0);
       return;
     }
     // 桌面端读取用户设置
@@ -383,6 +404,7 @@ function App() {
   
   const shellSidebarWidth = getShellSidebarWidth(isSmallScreen);
   const appShellCustomProperties = useMemo(() => ({
+    ...getMobileShellCssVars(),
     '--sidebar-width': `${shellSidebarWidth}px`,
     '--sidebar-expanded-width': `${shellSidebarWidth}px`,
     '--sidebar-collapsed-width': `${shellSidebarWidth}px`,
@@ -1269,9 +1291,98 @@ function App() {
   }, []);
 
   const navigationShortcuts = getNavigationShortcutText();
+  const [currentChatHeaderTitle, setCurrentChatHeaderTitle] = useState(() =>
+    t('sidebar:navigation.chat_v2', '智能会话')
+  );
+  const currentChatHeaderStoreUnsubscribeRef = useRef<(() => void) | null>(null);
+  const currentChatHeaderSubscribedSessionIdRef = useRef<string | null>(null);
+
+  const clearCurrentChatHeaderStoreSubscription = useCallback(() => {
+    currentChatHeaderStoreUnsubscribeRef.current?.();
+    currentChatHeaderStoreUnsubscribeRef.current = null;
+    currentChatHeaderSubscribedSessionIdRef.current = null;
+  }, []);
+
+  const syncCurrentChatHeaderTitle = useCallback((sessionId?: string | null) => {
+    const chatHeaderSessionId = sessionId ?? sessionManager.getCurrentSessionId();
+    if (!chatHeaderSessionId) {
+      setCurrentChatHeaderTitle(t('sidebar:navigation.chat_v2', '智能会话'));
+      return;
+    }
+
+    const currentChatSessionTitle = sessionManager.get(chatHeaderSessionId)?.getState().title;
+    setCurrentChatHeaderTitle(
+      getSessionTitleText(currentChatSessionTitle, t('chatV2:page.untitled', '未命名会话'))
+    );
+  }, [t]);
+
+  useEffect(() => {
+    const bindCurrentChatHeaderStore = (sessionId: string | null) => {
+      if (!sessionId) {
+        clearCurrentChatHeaderStoreSubscription();
+        return;
+      }
+
+      if (currentChatHeaderSubscribedSessionIdRef.current === sessionId) {
+        return;
+      }
+
+      clearCurrentChatHeaderStoreSubscription();
+
+      const activeChatHeaderStore = sessionManager.get(sessionId);
+      if (!activeChatHeaderStore) {
+        return;
+      }
+
+      currentChatHeaderSubscribedSessionIdRef.current = sessionId;
+      currentChatHeaderStoreUnsubscribeRef.current = activeChatHeaderStore.subscribe(
+        (state, prevState) => {
+          if (state.title !== prevState.title) {
+            setCurrentChatHeaderTitle(
+              getSessionTitleText(state.title, t('chatV2:page.untitled', '未命名会话'))
+            );
+          }
+        }
+      );
+    };
+
+    const syncAndBindCurrentChatHeader = (sessionId: string | null = sessionManager.getCurrentSessionId()) => {
+      bindCurrentChatHeaderStore(sessionId);
+      syncCurrentChatHeaderTitle(sessionId);
+    };
+
+    syncAndBindCurrentChatHeader();
+
+    const unsubscribeSessionManager = sessionManager.subscribe((event) => {
+      if (event.type === 'current-session-changed') {
+        syncAndBindCurrentChatHeader(sessionManager.getCurrentSessionId());
+        return;
+      }
+
+      const activeSessionId = sessionManager.getCurrentSessionId();
+      if (!activeSessionId) {
+        syncAndBindCurrentChatHeader(null);
+        return;
+      }
+
+      if (event.sessionId === activeSessionId && (event.type === 'session-destroyed' || event.type === 'session-evicted')) {
+        syncAndBindCurrentChatHeader(activeSessionId);
+      }
+    });
+
+    return () => {
+      unsubscribeSessionManager();
+      clearCurrentChatHeaderStoreSubscription();
+    };
+  }, [clearCurrentChatHeaderStoreSubscription, syncCurrentChatHeaderTitle, t]);
+
   const desktopShellViewLabel = useMemo(() => {
+    if (currentView === 'chat-v2') {
+      return currentChatHeaderTitle;
+    }
+
     const labels: Partial<Record<CurrentView, string>> = {
-      'chat-v2': t('sidebar:navigation.chat_v2', '聊天'),
+      'chat-v2': t('sidebar:navigation.chat_v2', '智能会话'),
       'learning-hub': t('sidebar:navigation.learning_hub', '学习资源'),
       'settings': t('sidebar:navigation.settings', '系统'),
       'dashboard': t('common:navigation.dashboard', '总览'),
@@ -1286,8 +1397,8 @@ function App() {
       'chat-v2-test': t('common:navigation.chat_v2_test', 'Chat V2 Test'),
     };
 
-    return labels[currentView] ?? 'DeepStudent';
-  }, [currentView, t]);
+    return labels[currentView] ?? t('common:app.default_header', '新对话');
+  }, [currentChatHeaderTitle, currentView, t]);
 
   // 🚀 性能优化：memoize 各视图内容，防止切换视图时所有已缓存视图子树被重新协调
   // 当 App 因 currentView 变化而重渲染时，useMemo 返回相同的 React 元素引用，
@@ -1469,18 +1580,19 @@ function App() {
             gridTemplateColumns: 'var(--shell-navigation-width) minmax(0, 1fr)',
           }}
         >
-          <div className="desktop-shell-header-cell desktop-shell-header-cell--nav flex min-w-0 items-center gap-3 px-4" data-no-drag>
+          <div className="desktop-shell-header-cell desktop-shell-header-cell--nav flex min-w-0 items-center px-4" data-no-drag>
             {isMacOS() && <div className="flex-shrink-0" style={{ width: DESKTOP_SHELL.macTrafficLightsSpacer }} />}
-            <div className="desktop-shell-brand-copy">
-              <span className="desktop-shell-kicker">DeepStudent</span>
-              <span className="truncate text-sm font-medium text-[color:var(--shell-navigation-foreground)]">
-                {t('common:app.workspace_shell', '桌面工作区')}
-              </span>
-            </div>
-          </div>
-
-          <div className="desktop-shell-header-cell flex min-w-0 items-center justify-between px-5" data-no-drag>
-            <div className="flex min-w-0 items-center gap-3">
+            <div className="desktop-shell-accessory-group flex min-w-0 items-center gap-1.5">
+              <NotionButton
+                variant="ghost"
+                size="icon"
+                onClick={useUIStore.getState().toggleLeftPanel}
+                className="desktop-shell-toolbar-button desktop-shell-accessory-button"
+                title={t('common:navigation.toggle_left_panel', '切换左侧面板')}
+                aria-label={t('common:navigation.toggle_left_panel', '切换左侧面板')}
+              >
+                <SidebarDockIcon />
+              </NotionButton>
               <div className="desktop-shell-toolbar-group">
                 <NotionButton
                   variant="ghost"
@@ -1505,25 +1617,16 @@ function App() {
                   <ChevronRight className="h-4 w-4" />
                 </NotionButton>
               </div>
+              <SidebarUpdateBadge />
+            </div>
+          </div>
 
-              <NotionButton
-                variant="ghost"
-                size="sm"
-                onClick={useUIStore.getState().toggleLeftPanel}
-                className="desktop-shell-toolbar-button"
-                title={t('common:navigation.toggle_left_panel', '切换左侧面板')}
-                aria-label={t('common:navigation.toggle_left_panel', '切换左侧面板')}
-              >
-                <PanelLeft className="h-4 w-4" />
-              </NotionButton>
-              
+          <div className="desktop-shell-header-cell flex min-w-0 items-center justify-between px-5" data-no-drag>
+            <div className="flex min-w-0 items-center gap-3">
               <CommandPaletteButton />
 
               <div className="min-w-0 pl-1">
-                <div className="desktop-shell-kicker">
-                  {t('common:app.workspace_focus', '当前工作区')}
-                </div>
-                <div className="min-w-0 text-sm font-medium text-[color:var(--shell-navigation-foreground)]">
+                <div className="min-w-0 desktop-shell-header-title">
                   {currentView === 'learning-hub' ? (
                     <LearningHubTopbarBreadcrumb currentView={currentView} />
                   ) : (
@@ -1548,7 +1651,7 @@ function App() {
           className="desktop-shell-workspace flex flex-1 flex-col h-full min-w-0 relative overflow-hidden"
           style={{
             // 移动端：48px 基础高度 + topbarTopMargin，桌面端：使用原有标题栏高度
-            paddingTop: isSmallScreen ? `${48 + topbarTopMargin}px` : `${DESKTOP_SHELL.titlebarBaseHeight + topbarTopMargin}px`,
+            paddingTop: isSmallScreen ? 'var(--mobile-header-total-height)' : `${DESKTOP_SHELL.titlebarBaseHeight + topbarTopMargin}px`,
           }}
         >
           <MigrationStatusBanner />

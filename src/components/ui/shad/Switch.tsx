@@ -10,7 +10,7 @@ const Switch = React.forwardRef<
   <SwitchPrimitives.Root
     data-shad-switch=""
     className={cn(
-      'peer inline-flex shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-border/50 disabled:cursor-not-allowed disabled:opacity-50 data-[state=checked]:bg-primary data-[state=unchecked]:bg-muted/70',
+      'peer inline-flex shrink-0 cursor-pointer items-center rounded-full border border-transparent transition-colors duration-200 ease-in-out focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[color:var(--input-shell-focus)] disabled:cursor-not-allowed disabled:opacity-50 data-[state=checked]:border-[color:var(--button-primary-border)] data-[state=checked]:bg-[color:var(--button-primary-foreground)] data-[state=unchecked]:border-[color:var(--button-utility-border)] data-[state=unchecked]:bg-[color:var(--button-utility-surface)]',
       className
     )}
     {...props}
@@ -18,7 +18,7 @@ const Switch = React.forwardRef<
   >
     <SwitchPrimitives.Thumb
       className={cn(
-        'pointer-events-none block rounded-full bg-white shadow-none ring-1 ring-black/5 transition-transform duration-200 ease-in-out'
+        'pointer-events-none block rounded-full bg-[color:var(--surface-panel-strong)] shadow-none ring-1 ring-[color:var(--shell-workspace-border)] transition-transform duration-200 ease-in-out'
       )}
     />
   </SwitchPrimitives.Root>
