@@ -449,7 +449,7 @@ const NotesSidebarContent: React.FC = () => {
                     className="p-1"
                   >
                     <div 
-                      className="p-2 rounded-md hover:bg-muted/50 cursor-pointer text-sm group transition-colors h-full"
+                      className="sidebar-shell-item p-2 cursor-pointer text-sm group transition-colors h-full"
                       onClick={() => {
                         const note = notes.find(n => n.id === res.id);
                         if (note) setActive(note);
@@ -690,7 +690,7 @@ export const NotesSidebarV2: React.FC<NotesSidebarV2Props> = ({
 
   return (
     <UnifiedSidebar
-      className={className}
+      className={cn('study-shell-sidebar-frame', className)}
       autoResponsive={autoResponsive}
       displayMode={displayMode}
       drawerSide="left"
@@ -710,7 +710,7 @@ export const NotesSidebarV2: React.FC<NotesSidebarV2Props> = ({
         showCollapse
         rightActions={
           <NotionButton
-            variant="ghost"
+            variant="utility"
             size="icon"
             className="h-7 w-7"
             onClick={() => setTrashOpen(true)}

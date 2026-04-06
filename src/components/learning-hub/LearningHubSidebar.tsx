@@ -2180,7 +2180,7 @@ export function LearningHubSidebar({
   }, [selectedIds, handleSelectAll, handleBatchDelete, handleClearSelection]);
 
   return (
-    <div ref={containerRef} className={cn("flex h-full bg-background", className)} tabIndex={-1}>
+    <div ref={containerRef} className={cn("study-shell-sidebar-frame flex h-full", className)} tabIndex={-1}>
       {/* 左侧：快速导航栏（可折叠，包含搜索和新建）- 移动端和 canvas 模式隐藏 */}
       {!isSmallScreen && mode !== 'canvas' && (
         <FinderQuickAccess
@@ -2222,7 +2222,7 @@ export function LearningHubSidebar({
         {/* P1-20: 移动端顶部工具栏（搜索 + 新建文件夹 + 新建笔记 + 清空回收站） */}
         {isSmallScreen && !hideToolbarAndNav && (
           <div 
-            className="flex items-center gap-1 px-2 pb-1.5 border-b border-border/40 bg-background/95 backdrop-blur-lg shrink-0"
+            className="study-shell-toolbar study-shell-toolbar--floating flex items-center gap-1 px-2 pb-1.5 border-b backdrop-blur-lg shrink-0"
             style={{ marginTop: 3, paddingTop: 9 }}
           >
             {mobileSearchExpanded ? (
@@ -2351,7 +2351,7 @@ export function LearningHubSidebar({
 
 {/* ★ Canvas 模式导航栏：返回/前进 + 面包屑 */}
         {mode === 'canvas' && !hideToolbarAndNav && (
-          <div className="flex items-center gap-1 px-1.5 py-1 border-b border-border/40 bg-muted/30 shrink-0 min-w-0">
+          <div className="study-shell-toolbar flex items-center gap-1 px-1.5 py-1 border-b shrink-0 min-w-0">
             {/* 返回/前进按钮 */}
             <NotionButton
               variant="ghost"
@@ -2396,7 +2396,7 @@ export function LearningHubSidebar({
 
         {/* ★ Canvas 模式顶部工具栏：多选模式 + 关闭按钮 */}
         {mode === 'canvas' && (
-          <div className="flex items-center justify-between px-2 py-1.5 border-b border-border/40 bg-background/95 backdrop-blur-lg shrink-0">
+          <div className="study-shell-toolbar study-shell-toolbar--floating flex items-center justify-between px-2 py-1.5 border-b backdrop-blur-lg shrink-0">
             <div className="flex items-center gap-1.5 min-w-0">
               {isMultiSelectMode ? (
                 // 多选模式下显示选中信息和操作

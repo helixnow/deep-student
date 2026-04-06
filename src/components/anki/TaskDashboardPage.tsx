@@ -21,6 +21,7 @@ import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import { NotionButton } from '@/components/ui/NotionButton';
+import { Input } from '@/components/ui/shad/Input';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
@@ -245,9 +246,9 @@ const PropRow: React.FC<{
 const StatusTag: React.FC<{ group: SessionGroup }> = ({ group }) => {
   const { t } = useTranslation('anki');
   const config = {
-    active: { text: t('taskDashboard.statusActive'), cls: 'text-blue-600 dark:text-blue-400 bg-blue-500/8' },
-    attention: { text: t('taskDashboard.statusFailed'), cls: 'text-amber-600 dark:text-amber-400 bg-amber-500/8' },
-    completed: { text: t('taskDashboard.statusDone'), cls: 'text-emerald-600 dark:text-emerald-400 bg-emerald-500/8' },
+    active: { text: t('taskDashboard.statusActive'), cls: 'text-[color:hsl(var(--info))] bg-[color:hsl(var(--info)/0.12)]' },
+    attention: { text: t('taskDashboard.statusFailed'), cls: 'text-[color:hsl(var(--warning))] bg-[color:hsl(var(--warning)/0.14)]' },
+    completed: { text: t('taskDashboard.statusDone'), cls: 'text-[color:hsl(var(--success))] bg-[color:hsl(var(--success)/0.14)]' },
   }[group];
 
   return (
@@ -273,9 +274,9 @@ const InlineProgress: React.FC<{
   return (
     <div className="flex items-center gap-2.5">
       <div className="w-[80px] h-1.5 bg-muted/30 rounded-full overflow-hidden flex flex-shrink-0">
-        <div className="h-full bg-emerald-500/60 transition-all duration-500" style={{ width: `${pctDone}%` }} />
+        <div className="h-full bg-[color:hsl(var(--success)/0.6)] transition-all duration-500" style={{ width: `${pctDone}%` }} />
         {pctFail > 0 && (
-          <div className="h-full bg-amber-500/60 transition-all duration-500" style={{ width: `${pctFail}%` }} />
+          <div className="h-full bg-[color:hsl(var(--warning)/0.6)] transition-all duration-500" style={{ width: `${pctFail}%` }} />
         )}
       </div>
       <span className="text-xs text-muted-foreground tabular-nums flex-shrink-0">
@@ -703,7 +704,7 @@ const SessionRow: React.FC<{
 
           {/* P1: 失败警告 + 错误卡片详情 */}
           {session.failedTasks > 0 && (
-            <div className="text-xs text-amber-600 dark:text-amber-400 py-1.5 space-y-1.5">
+            <div className="text-xs text-[color:hsl(var(--warning))] py-1.5 space-y-1.5">
               <div className="flex items-center gap-2">
                 <AlertTriangle className="h-3.5 w-3.5 flex-shrink-0" />
                 {t('taskDashboard.failedSegments', { count: session.failedTasks })}
@@ -714,7 +715,7 @@ const SessionRow: React.FC<{
           {/* P1: 错误卡片详情（从已加载卡片中提取） */}
           {errorCards.length > 0 && (
             <div className="py-1 space-y-1">
-              <div className="text-xs font-medium text-amber-600 dark:text-amber-400">
+              <div className="text-xs font-medium text-[color:hsl(var(--warning))]">
                 {t('taskDashboard.errorCardsFound', { count: errorCards.length })}
               </div>
               {errorCards.slice(0, 3).map((c, i) => (
@@ -723,7 +724,7 @@ const SessionRow: React.FC<{
                     {c.front || '—'}
                   </span>
                   {c.error_content && (
-                    <span className="text-amber-600/60 dark:text-amber-400/60 ml-2">
+                    <span className="text-[color:hsl(var(--warning)/0.7)] ml-2">
                       {t('taskDashboard.errorReason')}: {c.error_content}
                     </span>
                   )}
@@ -962,9 +963,9 @@ export const TaskDashboardPage: React.FC<TaskDashboardPageProps> = ({
   // 环形图（使用主题安全的颜色 —— Tailwind 默认色在明暗模式下均可）
   const donutData = useMemo(
     () => [
-      { label: t('taskDashboard.statusDone'), value: groups.completed.length, color: '#10b981' },
-      { label: t('taskDashboard.statusActive'), value: groups.active.length, color: '#3b82f6' },
-      { label: t('taskDashboard.statusFailed'), value: groups.attention.length, color: '#f59e0b' },
+      { label: t('taskDashboard.statusDone'), value: groups.completed.length, color: 'hsl(var(--success))' },
+      { label: t('taskDashboard.statusActive'), value: groups.active.length, color: 'hsl(var(--info))' },
+      { label: t('taskDashboard.statusFailed'), value: groups.attention.length, color: 'hsl(var(--warning))' },
     ],
     [groups, t],
   );
@@ -1050,16 +1051,19 @@ export const TaskDashboardPage: React.FC<TaskDashboardPageProps> = ({
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-full gap-2 text-muted-foreground">
-        <Loader2 className="h-5 w-5 animate-spin" />
-        <span className="text-sm">{t('taskDashboard.loading')}</span>
+      <div className="study-shell-page flex h-full items-center justify-center">
+        <div className="study-shell-panel flex items-center gap-2 px-4 py-3 text-muted-foreground">
+          <Loader2 className="h-5 w-5 animate-spin" />
+          <span className="text-sm">{t('taskDashboard.loading')}</span>
+        </div>
       </div>
     );
   }
 
   return (
-    <CustomScrollArea className="h-full bg-background">
-      <div className={`max-w-[860px] mx-auto px-4 sm:px-6 py-6 sm:py-10 ${isSmallScreen ? 'pb-20' : ''}`}>
+    <div className="study-shell-page h-full">
+      <CustomScrollArea className="h-full">
+        <div className={`study-shell-pane max-w-[960px] mx-auto px-4 sm:px-6 py-6 sm:py-8 ${isSmallScreen ? 'pb-20' : ''}`}>
         {/* ======== 页面标题 ======== */}
         {!isSmallScreen && (
           <div className="mb-8">
@@ -1073,7 +1077,7 @@ export const TaskDashboardPage: React.FC<TaskDashboardPageProps> = ({
         )}
 
         {/* ======== 属性 + 可视化横向排列 ======== */}
-        <div className="grid grid-cols-1 md:grid-cols-[1fr_2fr] gap-8 mb-10">
+        <div className="study-shell-panel grid grid-cols-1 gap-8 mb-8 p-5 md:grid-cols-[1fr_2fr]">
           {/* 左：属性区 */}
           <div className="space-y-0">
             <PropRow icon={<Hash className="h-3.5 w-3.5" />} label={t('taskDashboard.propTotalCards')}>
@@ -1090,18 +1094,18 @@ export const TaskDashboardPage: React.FC<TaskDashboardPageProps> = ({
             <PropRow icon={<TrendingUp className="h-3.5 w-3.5" />} label={t('taskDashboard.propActiveJobs')}>
               {groups.active.length > 0 ? (
                 <span className="inline-flex items-center gap-1.5">
-                  <Loader2 className="h-3 w-3 text-blue-500 animate-spin" />
-                  <span className="text-blue-600 dark:text-blue-400 font-medium">{groups.active.length}</span>
+                  <Loader2 className="h-3 w-3 text-[color:hsl(var(--info))] animate-spin" />
+                  <span className="text-[color:hsl(var(--info))] font-medium">{groups.active.length}</span>
                 </span>
               ) : (
                 <span className="inline-flex items-center gap-1.5">
-                  <CheckCircle2 className="h-3 w-3 text-emerald-500" />
-                  <span className="text-emerald-600 dark:text-emerald-400">{t('taskDashboard.allDone')}</span>
+                  <CheckCircle2 className="h-3 w-3 text-[color:hsl(var(--success))]" />
+                  <span className="text-[color:hsl(var(--success))]">{t('taskDashboard.allDone')}</span>
                 </span>
               )}
             </PropRow>
             <PropRow icon={<AlertTriangle className="h-3.5 w-3.5" />} label={t('taskDashboard.propErrorRate')}>
-              <span className={`tabular-nums ${Number(metrics.errorRate) > 0 ? 'text-amber-600 dark:text-amber-400' : ''}`}>
+              <span className={`tabular-nums ${Number(metrics.errorRate) > 0 ? 'text-[color:hsl(var(--warning))]' : ''}`}>
                 {metrics.errorRate}%
               </span>
               {metrics.failedTasks > 0 && (
@@ -1177,9 +1181,9 @@ export const TaskDashboardPage: React.FC<TaskDashboardPageProps> = ({
         )}
 
         {/* ======== 数据库视图 ======== */}
-        <div>
+        <div className="study-shell-panel overflow-hidden">
           {/* 标题 + 操作 */}
-          <div className="flex items-center justify-between mb-3">
+          <div className="study-shell-toolbar flex items-center justify-between gap-3 px-4 py-3">
             <div className="flex items-center gap-3">
               <h2 className="text-[15px] font-semibold text-foreground">
                 {t('taskDashboard.title')}
@@ -1190,17 +1194,17 @@ export const TaskDashboardPage: React.FC<TaskDashboardPageProps> = ({
             </div>
             <div className="flex items-center gap-1">
               {/* P2: 排序 */}
-              <NotionButton size="sm" variant="ghost" onClick={cycleSort} className="h-7">
+              <NotionButton size="sm" variant="utility" onClick={cycleSort} className="h-7">
                 <ArrowUpDown className="h-3.5 w-3.5" />
                 <span className="hidden sm:inline text-[11px]">{sortLabel}</span>
               </NotionButton>
               <CommonTooltip content={t('taskDashboard.refresh')}>
-                <NotionButton size="sm" variant="ghost" onClick={load} className="h-7 w-7 p-0">
+                <NotionButton size="sm" variant="utility" onClick={load} className="h-7 w-7 p-0">
                   <RefreshCw className="h-3.5 w-3.5" />
                 </NotionButton>
               </CommonTooltip>
               <CommonTooltip content={t('taskDashboard.recoverStuckHint')}>
-                <NotionButton size="sm" variant="ghost" onClick={handleRecover} disabled={recovering} className="h-7">
+                <NotionButton size="sm" variant="utility" onClick={handleRecover} disabled={recovering} className="h-7">
                   {recovering
                     ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
                     : <RotateCcw className="h-3.5 w-3.5" />}
@@ -1211,19 +1215,20 @@ export const TaskDashboardPage: React.FC<TaskDashboardPageProps> = ({
           </div>
 
           {/* 筛选 tabs + 搜索 */}
-          <div className="flex items-center gap-3 mb-2 flex-wrap">
-            <div className="flex items-center gap-0.5 flex-shrink-0">
+          <div className="flex items-center gap-3 flex-wrap px-4 py-3">
+            <div className="study-shell-segmented flex-shrink-0">
               {(['all', 'active', 'attention', 'completed'] as FilterTab[]).map(tab => (
                 <NotionButton
                   key={tab}
-                  variant="ghost" size="sm"
+                  variant="nav" size="sm"
                   onClick={() => setFilter(tab)}
                   className={`
-                    !px-2.5 !py-1 !h-auto text-[12px] !rounded-sm whitespace-nowrap
+                    study-shell-segmented-button !px-2.5 !py-1 !h-auto text-[12px] whitespace-nowrap
                     ${filter === tab
-                      ? 'text-foreground font-medium bg-muted/60'
-                      : 'text-muted-foreground/60 hover:text-muted-foreground hover:bg-muted/30'}
+                      ? 'text-foreground font-medium'
+                      : 'text-muted-foreground/60'}
                   `}
+                  data-selected={filter === tab}
                 >
                   {tab === 'all'
                     ? t('taskDashboard.filterAll')
@@ -1244,17 +1249,13 @@ export const TaskDashboardPage: React.FC<TaskDashboardPageProps> = ({
             <div className="flex-1" />
 
             {/* P2: 搜索框改善可发现性 */}
-            <div className="relative max-w-[200px] flex-shrink-0">
+            <div className="relative max-w-[220px] flex-shrink-0">
               <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground/30" />
-              <input
+              <Input
                 value={search}
                 onChange={e => setSearch(e.target.value)}
                 placeholder={t('taskDashboard.searchPlaceholder')}
-                className="w-full h-7 pl-7 pr-7 text-[12px] rounded-sm bg-transparent
-                  text-foreground placeholder:text-muted-foreground/30
-                  border border-transparent outline-none
-                  focus:bg-muted/20 focus:border-border/40
-                  transition-all duration-150"
+                className="h-8 border-transparent bg-transparent pl-7 pr-7 text-[12px]"
               />
               {search && (
                 <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setSearch('')} className="absolute right-1.5 top-1/2 -translate-y-1/2 !h-auto !w-auto !p-0 text-muted-foreground/40 hover:text-muted-foreground" aria-label="clear">
@@ -1265,18 +1266,18 @@ export const TaskDashboardPage: React.FC<TaskDashboardPageProps> = ({
           </div>
 
           {/* 分隔线 */}
-          <div className="h-px bg-border/30 mb-0" />
+          <div className="h-px bg-border/20 mb-0" />
 
           {sessions.length === 0 ? (
             /* P1: 空状态 + CTA */
-            <div className="flex flex-col items-center justify-center py-24 text-center">
-              <div className="w-12 h-12 rounded-full bg-muted/30 flex items-center justify-center mb-4">
+            <div className="study-shell-empty-state m-4">
+              <div className="study-shell-empty-state__icon">
                 <FileText className="h-5 w-5 text-muted-foreground/30" />
               </div>
-              <h3 className="text-[15px] font-medium text-foreground/80 mb-1">
+              <h3 className="study-shell-empty-state__title">
                 {t('taskDashboard.empty')}
               </h3>
-              <p className="text-[13px] text-muted-foreground/50 max-w-[280px] mb-4">
+              <p className="study-shell-empty-state__description mb-4">
                 {t('taskDashboard.emptyHint')}
               </p>
               <NotionButton
@@ -1294,7 +1295,7 @@ export const TaskDashboardPage: React.FC<TaskDashboardPageProps> = ({
               </NotionButton>
             </div>
           ) : sortedAndFiltered.length === 0 ? (
-            <div className="py-16 text-center">
+            <div className="study-shell-empty-state m-4 min-h-[180px]">
               <p className="text-[13px] text-muted-foreground/40">
                 {t('taskDashboard.noMatchFilter')}
               </p>
@@ -1343,8 +1344,9 @@ export const TaskDashboardPage: React.FC<TaskDashboardPageProps> = ({
             </>
           )}
         </div>
-      </div>
-    </CustomScrollArea>
+        </div>
+      </CustomScrollArea>
+    </div>
   );
 };
 

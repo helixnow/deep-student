@@ -21,6 +21,7 @@ import {
 import { cn } from '@/lib/utils';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { NotionButton } from '@/components/ui/NotionButton';
+import { Input } from '@/components/ui/shad/Input';
 import { NotionAlertDialog } from '../ui/NotionDialog';
 import { showGlobalNotification } from '../UnifiedNotification';
 import { useMobileHeader, MobileSlidingLayout, ScreenPosition } from '@/components/layout';
@@ -712,8 +713,8 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
 
   // ========== 渲染主内容 ==========
   const renderMainContent = () => (
-    <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden bg-background">
-      <div className="flex-shrink-0 px-4 sm:px-6 py-3 border-b border-border/20 bg-background/50 backdrop-blur-sm sticky top-0 z-10 space-y-3">
+    <div className="study-shell-page flex-1 flex flex-col min-w-0 h-full overflow-hidden">
+      <div className="study-shell-toolbar flex-shrink-0 px-4 sm:px-6 py-3 sticky top-0 z-10 space-y-3">
         <div className={cn("flex items-center gap-4", isSmallScreen ? "justify-between" : "justify-between")}>
           <div className="flex items-center gap-2 text-sm text-muted-foreground min-w-0">
             <span className="font-medium text-foreground truncate">{t('skills:management.all_skills', '所有技能')}</span>
@@ -735,10 +736,10 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
             {!isSmallScreen && (
               <>
                 <NotionButton
-                  variant="primary"
+                  variant="shell"
                   size="sm"
                   onClick={handleCreate}
-                  className="h-7 text-xs px-2.5 shadow-sm"
+                  className="h-7 text-xs px-2.5"
                 >
                   <Plus size={14} className="mr-1.5" />
                   {t('skills:management.create', '新建')}
@@ -748,7 +749,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
             )}
 
             <NotionButton
-              variant="ghost"
+              variant="utility"
               size="sm"
               onClick={handleImportClick}
               className="h-7 text-xs px-2 text-muted-foreground"
@@ -758,7 +759,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
             </NotionButton>
 
             <NotionButton
-              variant="ghost"
+              variant="utility"
               size="sm"
               onClick={handleExportAll}
               disabled={allSkills.filter(s => !s.isBuiltin).length === 0}
@@ -774,16 +775,16 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
         <div className={cn("flex items-center gap-3", isSmallScreen && "flex-col items-stretch")}>
           <div className={cn("relative flex-1", !isSmallScreen && "max-w-xs")}>
             <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/50" />
-            <input
+            <Input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder={t('skills:selector.searchPlaceholder', '搜索技能...')}
-              className="w-full h-7 pl-8 pr-3 text-xs rounded-md border border-border/40 bg-muted/30 placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary/30 focus:border-primary/30"
+              className="h-8 pl-8 pr-3 text-xs"
             />
           </div>
 
-          <div className={cn("flex items-center gap-1 overflow-x-auto scrollbar-none", isSmallScreen && "-mx-1 px-1")}>
+          <div className={cn("study-shell-segmented flex items-center gap-1 overflow-x-auto scrollbar-none", isSmallScreen && "-mx-1 px-1")}>
             {locationTabs.map(tab => {
               const count = locationCounts[tab.id];
               const isActiveTab = locationFilter === tab.id;
@@ -791,14 +792,15 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
               return (
                 <NotionButton
                   key={tab.id}
-                  variant="ghost" size="sm"
+                  variant="nav" size="sm"
                   onClick={() => setLocationFilter(tab.id)}
                   className={cn(
-                    '!px-2.5 !py-1 !h-auto text-[11px] font-medium whitespace-nowrap',
+                    'study-shell-segmented-button !px-2.5 !py-1 !h-auto text-[11px] font-medium whitespace-nowrap',
                     isActiveTab
-                      ? 'bg-secondary text-secondary-foreground shadow-sm'
-                      : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
+                      ? 'text-foreground'
+                      : 'text-muted-foreground hover:text-foreground'
                   )}
+                  data-selected={isActiveTab}
                 >
                   <span className={cn("opacity-70", isActiveTab && "opacity-100")}>{tab.icon}</span>
                   <span>{tab.label}</span>
@@ -870,7 +872,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
   // ========== 移动端布局 ==========
   if (isSmallScreen) {
     return (
-      <div className={cn('skills-management-page absolute inset-0 flex flex-col overflow-hidden bg-background', className)}>
+      <div className={cn('skills-management-page study-shell-page absolute inset-0 flex flex-col overflow-hidden', className)}>
         <MobileSlidingLayout
           sidebar={null}
           rightPanel={renderRightPanel()}
@@ -913,7 +915,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
   // ========== 桌面端布局 ==========
   return (
     <LayoutGroup>
-      <div className={cn('skills-management-page absolute inset-0 flex flex-col overflow-hidden bg-background', className)}>
+      <div className={cn('skills-management-page study-shell-page absolute inset-0 flex flex-col overflow-hidden', className)}>
         {renderMainContent()}
 
         <SkillFullscreenEditor

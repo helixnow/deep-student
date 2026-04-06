@@ -910,7 +910,7 @@ export const LearningHubPage: React.FC = () => {
     return (
       <div
         ref={containerRef}
-        className="absolute inset-0 flex flex-col overflow-hidden bg-background select-none"
+        className="study-shell-page absolute inset-0 flex flex-col overflow-hidden select-none"
         style={{
           touchAction: 'pan-y pinch-zoom',
           // 给底部导航栏留空间 - 使用 CSS 变量作为 Android fallback
@@ -929,7 +929,7 @@ export const LearningHubPage: React.FC = () => {
         >
           {/* 左侧：DSTU 应用入口 */}
           <div
-            className="h-full flex-shrink-0 bg-background"
+            className="study-shell-pane h-full flex-shrink-0"
             style={{ width: sidebarWidth }}
           >
             <DstuAppLauncher
@@ -950,7 +950,7 @@ export const LearningHubPage: React.FC = () => {
 
           {/* 中间：文件视图 */}
           <div
-            className="h-full flex-shrink-0 bg-background overflow-hidden"
+            className="study-shell-pane h-full flex-shrink-0 overflow-hidden"
             style={{ width: containerWidth || '100vw' }}
           >
             <LearningHubSidebar
@@ -965,7 +965,7 @@ export const LearningHubPage: React.FC = () => {
 
           {/* 右侧：DSTU 应用内容（整宽）—— 移动端使用 TabPanelContainer 保活 */}
           <div
-            className="h-full flex-shrink-0 bg-background overflow-hidden"
+            className="study-shell-panel h-full flex-shrink-0 overflow-hidden"
             style={{ width: containerWidth || '100vw' }}
           >
             {tabs.length > 0 ? (
@@ -994,7 +994,7 @@ export const LearningHubPage: React.FC = () => {
 
   // ========== 桌面端：分栏布局 ==========
   return (
-    <div className="w-full h-full bg-background">
+    <div className="study-shell-page w-full h-full">
       <PanelGroup
         direction="horizontal"
         className="h-full"
@@ -1009,7 +1009,7 @@ export const LearningHubPage: React.FC = () => {
           order={1}
           className="h-full"
         >
-          <div className={cn("h-full", hasOpenApp && "border-r border-border/40")}>
+          <div className={cn("study-shell-pane h-full", hasOpenApp && "border-r border-[color:var(--shell-workspace-border)]")}>
             <LearningHubSidebar
               mode="fullscreen"
               onOpenPreview={handleOpenApp}
@@ -1043,7 +1043,7 @@ export const LearningHubPage: React.FC = () => {
           className="h-full"
         >
           {tabs.length > 0 && (
-            <div className="h-full flex flex-col bg-background min-w-0">
+            <div className="study-shell-panel h-full flex flex-col min-w-0">
               {/* ★ 标签页栏 */}
               <TabBar
                 tabs={tabs}

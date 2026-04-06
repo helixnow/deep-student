@@ -112,14 +112,14 @@ export const SkillsList: React.FC<SkillsListProps> = ({
 
   if (skills.length === 0) {
     return (
-      <div className={cn('flex flex-col items-center justify-center py-12 text-center', className)}>
-        <div className="p-4 rounded-full bg-muted/50 mb-4">
+      <div className={cn('study-shell-empty-state', className)}>
+        <div className="study-shell-empty-state__icon">
           <Zap size={32} className="text-muted-foreground/50" />
         </div>
-        <p className="text-sm text-muted-foreground">
+        <p className="study-shell-empty-state__title">
           {t('skills:selector.empty', '暂无可用技能')}
         </p>
-        <p className="text-xs text-muted-foreground mt-1">
+        <p className="study-shell-empty-state__description">
           {t('skills:selector.emptyHint', '点击"新建"按钮创建第一个技能')}
         </p>
       </div>
@@ -149,10 +149,9 @@ export const SkillsList: React.FC<SkillsListProps> = ({
               }
             }}
             className={cn(
-              'group relative flex flex-col p-4 rounded-xl border',
-              'bg-card border-border/40 hover:border-border/80 hover:shadow-sm',
+              'study-shell-secondary-card group relative flex flex-col p-4',
               'transition-[border-color,box-shadow] duration-200',
-              isSelected && 'ring-1 ring-primary/20 border-primary/20 bg-primary/5',
+              isSelected && 'border-[color:var(--button-primary-border)] bg-[color:var(--button-primary-surface)]',
               isEditing && 'opacity-0 pointer-events-none'
             )}
             style={{ willChange: isEditing ? 'transform' : 'auto' }}
@@ -172,9 +171,9 @@ export const SkillsList: React.FC<SkillsListProps> = ({
                     {getLocalizedSkillName(skill.id, skill.name, t)}
                   </h3>
                   {/* 收藏按钮 - 仅在 hover 或已收藏时显示 */}
-                  <NotionButton variant="ghost" size="icon" iconOnly
+                  <NotionButton variant="utility" size="icon" iconOnly
                     onClick={(e) => { e.stopPropagation(); toggleFavorite(skill.id); }}
-                    className={cn('!h-auto !w-auto !p-0 flex-shrink-0 transition-opacity duration-200', isFavorite(skill.id) ? 'opacity-100 text-amber-500 hover:text-amber-600' : 'opacity-0 group-hover:opacity-100 text-muted-foreground/40 hover:text-amber-500')}
+                    className={cn('!h-auto !w-auto !p-0 flex-shrink-0 transition-opacity duration-200', isFavorite(skill.id) ? 'opacity-100 text-[color:hsl(var(--warning))]' : 'opacity-0 group-hover:opacity-100 text-muted-foreground/40 hover:text-[color:hsl(var(--warning))]')}
                     aria-label="favorite"
                   >
                     <Star size={14} className={isFavorite(skill.id) ? 'fill-current' : ''} />
@@ -186,7 +185,7 @@ export const SkillsList: React.FC<SkillsListProps> = ({
                   {skill.version && <span>v{skill.version}</span>}
                   {skill.author && (
                      <>
-                       <span className="w-0.5 h-0.5 rounded-full bg-border" />
+                     <span className="w-0.5 h-0.5 rounded-full bg-border" />
                        <span className="truncate max-w-[80px]">{skill.author}</span>
                      </>
                   )}
@@ -203,10 +202,10 @@ export const SkillsList: React.FC<SkillsListProps> = ({
                       onToggleDefault(skill);
                     }}
                     className={cn(
-                      "flex items-center justify-center px-2 py-0.5 rounded text-[10px] font-medium transition-colors cursor-pointer border select-none",
+                      "flex items-center justify-center px-2 py-0.5 rounded-full text-[10px] font-medium transition-colors cursor-pointer border select-none",
                       isDefaultEnabled 
-                        ? "bg-primary/10 text-primary border-primary/20 hover:bg-primary/20"
-                        : "bg-transparent text-muted-foreground/50 border-transparent hover:bg-muted hover:text-muted-foreground"
+                        ? "bg-[color:var(--button-primary-surface)] text-[color:var(--button-primary-foreground)] border-[color:var(--button-primary-border)]"
+                        : "bg-transparent text-muted-foreground/50 border-transparent hover:bg-[color:var(--button-utility-hover)] hover:text-muted-foreground"
                     )}
                     title={isDefaultEnabled ? t('skills:management.is_default', '默认启用') : t('skills:management.set_default', '设为默认')}
                  >
@@ -223,14 +222,14 @@ export const SkillsList: React.FC<SkillsListProps> = ({
             </div>
 
             {/* 底部标签栏 */}
-            <div className="flex items-center justify-between gap-2 mt-3 pt-3 border-t border-border/20">
+            <div className="flex items-center justify-between gap-2 mt-3 pt-3 border-t border-[color:var(--shell-workspace-border)]">
               <div className="flex items-center gap-2">
                 {/* 位置标签 */}
                 <div className={cn(
-                  "flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded border select-none",
+                  "study-shell-badge flex items-center gap-1 text-[10px] px-1.5 py-0.5 select-none",
                   skill.location === 'builtin' 
-                    ? "bg-muted/30 text-muted-foreground border-transparent"
-                    : "bg-secondary/30 text-secondary-foreground border-transparent"
+                    ? ""
+                    : "study-shell-badge--primary"
                 )}>
                   <LocationIcon location={skill.location} />
                   <span>{t(`skills:location.${skill.location}`, skill.location)}</span>
@@ -246,7 +245,7 @@ export const SkillsList: React.FC<SkillsListProps> = ({
                 
                 {/* 自定义标记 */}
                 {isBuiltin && isCustomized && (
-                  <div className="text-[10px] text-amber-600/80 bg-amber-500/10 px-1.5 py-0.5 rounded">
+                  <div className="study-shell-badge study-shell-badge--warning text-[10px]">
                     {t('skills:management.customized', '已修改')}
                   </div>
                 )}
@@ -254,13 +253,13 @@ export const SkillsList: React.FC<SkillsListProps> = ({
 
               {/* 右下角操作按钮 */}
               <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                <NotionButton variant="ghost" size="icon" iconOnly className="!p-1.5 text-muted-foreground/60 hover:text-foreground hover:bg-muted" onClick={() => { const cardEl = cardRefs.current[skill.id]; const rect = cardEl?.getBoundingClientRect(); onEdit(skill, rect); }} title={t('common:actions.edit', '编辑')} aria-label="edit">
+                <NotionButton variant="utility" size="icon" iconOnly className="!p-1.5 text-muted-foreground/60 hover:text-foreground" onClick={() => { const cardEl = cardRefs.current[skill.id]; const rect = cardEl?.getBoundingClientRect(); onEdit(skill, rect); }} title={t('common:actions.edit', '编辑')} aria-label="edit">
                   <Pencil size={14} />
                 </NotionButton>
 
                 <AppMenu>
                   <AppMenuTrigger asChild>
-                    <NotionButton variant="ghost" size="icon" iconOnly className="!p-1.5 text-muted-foreground/60 hover:text-foreground hover:bg-muted" aria-label="more">
+                    <NotionButton variant="utility" size="icon" iconOnly className="!p-1.5 text-muted-foreground/60 hover:text-foreground" aria-label="more">
                       <MoreHorizontal size={14} />
                     </NotionButton>
                   </AppMenuTrigger>
