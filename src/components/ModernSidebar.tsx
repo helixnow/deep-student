@@ -278,6 +278,21 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
     const isActive = currentView === 'chat-v2' && activeSessionId === session.id;
     const sessionTitle = getSessionTitleText(session.title, t('chatV2:page.untitled', '未命名对话'));
 
+    const relativeTime = (() => {
+      const ts = new Date(session.updatedAt ?? session.createdAt).getTime();
+      const diffMs = Date.now() - ts;
+      const diffMins = Math.floor(diffMs / 60000);
+      const diffHours = Math.floor(diffMs / 3600000);
+      const diffDays = Math.floor(diffMs / 86400000);
+      const diffWeeks = Math.floor(diffDays / 7);
+      if (diffMins < 1) return t('common:justNow', '刚刚');
+      if (diffMins < 60) return t('common:minutesAgo', '{{count}}分钟', { count: diffMins });
+      if (diffHours < 24) return t('common:hoursAgo', '{{count}}小时', { count: diffHours });
+      if (diffDays < 7) return t('common:daysAgo', '{{count}}天', { count: diffDays });
+      if (diffWeeks < 5) return t('common:weeksAgo', '{{count}}周', { count: diffWeeks });
+      return new Date(ts).toLocaleDateString();
+    })();
+
     return (
       <NotionButton
         key={session.id}
@@ -294,6 +309,9 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
       >
         <span className="block min-w-0 flex-1 truncate leading-4">
           {sessionTitle}
+        </span>
+        <span className="ml-1 shrink-0 text-[11px] font-normal tabular-nums text-[color:var(--shell-navigation-muted)]">
+          {relativeTime}
         </span>
       </NotionButton>
     );
@@ -438,9 +456,6 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
                     <span className="block min-w-0 flex-1 truncate leading-4">
                       {group.label}
                     </span>
-                    <span className="shrink-0 text-[11px] font-normal tabular-nums text-[color:var(--shell-navigation-muted)]">
-                      {group.sessions.length}
-                    </span>
                   </span>
                   <span className="flex shrink-0 items-center gap-0.5">
                     {quickAction}
@@ -474,9 +489,6 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
             <span className="flex min-w-0 flex-1 items-center gap-2">
               <span className="block min-w-0 flex-1 truncate leading-4">
                 {group.label}
-              </span>
-              <span className="shrink-0 text-[11px] font-normal tabular-nums text-[color:var(--shell-navigation-muted)]">
-                {group.sessions.length}
               </span>
             </span>
             <span className="flex shrink-0 items-center justify-center text-[color:var(--shell-navigation-muted)]">
