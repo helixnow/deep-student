@@ -1,17 +1,30 @@
 import React from 'react';
 import { Plus, MessageSquare, Trash2, X, LayoutGrid, ChevronRight, RefreshCw, Folder, Loader2 } from 'lucide-react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
+import {
+  DndContext as DndKitContext,
+  closestCenter,
+  PointerSensor,
+  KeyboardSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  verticalListSortingStrategy,
+  sortableKeyboardCoordinates,
+} from '@dnd-kit/sortable';
+import { SortableGroupItem } from '../components/SortableGroupItem';
 import { UnifiedSidebarSection } from '@/components/ui/unified-sidebar/UnifiedSidebarSection';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { cn } from '@/lib/utils';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { ChatErrorBoundary } from '../components/ChatErrorBoundary';
-import { PRESET_ICONS } from '../components/groups/GroupEditorDialog';
-import { SessionGroupActions } from './SessionGroupActions';
 import { AdvancedPanel } from '../plugins/chat/AdvancedPanel';
 import { sessionManager } from '../core/session/sessionManager';
 import { getSessionTitleText } from '../utils/sessionTitle';
-import { resolveDragStyle, type SessionDragState } from './SessionItemRenderer';
+import type { SessionDragState } from './SessionItemRenderer';
 import type { TimeGroup } from './timeGroups';
 import type { SessionGroup } from '../types/group';
 import type { ChatSession } from '../types/session';
@@ -62,6 +75,7 @@ export interface UseSessionSidebarContentDeps {
   openEditGroup: (group: SessionGroup) => void;
   openRenameGroup: (group: SessionGroup) => void;
   requestDeleteGroup: (group: SessionGroup) => void;
+  handleGroupReorder: (event: DragEndEvent) => void;
   handleDragEnd: (result: DropResult) => void;
   renderSessionItem: (session: ChatSession, drag?: SessionDragState) => React.ReactNode;
 }
@@ -79,8 +93,19 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
     toggleTrash, toggleGroupCollapse,
     resetDeleteConfirmation, clearDeleteConfirmTimeout, deleteConfirmTimeoutRef,
     createSession, restoreSession, permanentlyDeleteSession, loadMoreSessions,
-    openCreateGroup, openEditGroup, openRenameGroup, requestDeleteGroup, handleDragEnd, renderSessionItem,
+    openCreateGroup, openEditGroup, openRenameGroup, requestDeleteGroup,
+    handleGroupReorder, handleDragEnd, renderSessionItem,
   } = deps;
+
+  // @dnd-kit sensors: long-press 300ms to trigger group drag
+  const groupDragSensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { delay: 300, tolerance: 5 },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
+  );
 
   // 渲染会话侧边栏内容（复用于移动端推拉布局和桌面端面板）
   const renderSessionSidebarContent = () => (
@@ -307,112 +332,34 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
                 {t('common:loading')}
               </div>
             ) : (
-              <DragDropContext onDragEnd={handleDragEnd}>
-                <Droppable droppableId="group-list" type="GROUP">
-                  {(groupProvided) => (
-                    <div
-                      ref={groupProvided.innerRef}
-                      {...groupProvided.droppableProps}
-                      className="space-y-2"
-                    >
-                      {visibleGroups.map((group, index) => {
-                        const groupSessions = sessionsByGroup.get(group.id) || [];
-                        const isCollapsed = collapsedMap[group.id] ?? false;
-                        // 判断 icon 是预设图标名称还是 emoji
-                        const presetIcon = group.icon ? PRESET_ICONS.find(p => p.name === group.icon) : null;
-                        // 只有 emoji 才添加到标题前面，预设图标不添加
-                        const title = (group.icon && !presetIcon) ? `${group.icon} ${group.name}` : group.name;
-                        // 预设图标使用对应组件，否则使用默认 Folder
-                        const IconComponent = presetIcon?.Icon ?? Folder;
-                        return (
-                          <Draggable
-                            key={`group:${group.id}`}
-                            draggableId={`group:${group.id}`}
-                            index={index}
-                            isDragDisabled={groupDragDisabled}
-                          >
-                            {(provided, snapshot) => (
-                              <div
-                                ref={provided.innerRef}
-                                {...provided.draggableProps}
-                                style={resolveDragStyle(provided.draggableProps.style, snapshot.isDragging)}
-                                className={cn(
-                                  !groupDragDisabled && 'cursor-grab active:cursor-grabbing',
-                                  snapshot.isDragging && 'shadow-lg ring-1 ring-border bg-card/80 rounded-2xl'
-                                )}
-                              >
-                                <Droppable droppableId={`session-group:${group.id}`} type="SESSION">
-                                  {(sessionProvided, sessionSnapshot) => (
-                                    <div
-                                      ref={sessionProvided.innerRef}
-                                      {...sessionProvided.droppableProps}
-                                      className={cn(
-                                        sessionSnapshot.isDraggingOver && 'bg-[var(--sidebar-study-hover)] rounded-2xl'
-                                      )}
-                                    >
-                              <SessionGroupActions
-                                group={group}
-                                labels={{
-                                  groupActions: t('page.groupActions'),
-                                  newSession: t('page.newSession'),
-                                  renameGroup: t('page.renameGroup'),
-                                  editGroup: t('page.editGroup'),
-                                  deleteGroup: t('page.deleteGroup'),
-                                }}
-                                onCreateSession={createSession}
-                                onRenameGroup={openRenameGroup}
-                                onEditGroup={openEditGroup}
-                                onDeleteGroup={requestDeleteGroup}
-                              >
-                                {({ quickAction, onContextMenu }) => (
-                              <UnifiedSidebarSection
-                                id={group.id}
-                                title={title}
-                                icon={IconComponent}
-                                count={groupSessions.length}
-                                open={!isCollapsed}
-                                onOpenChange={() => toggleGroupCollapse(group.id)}
-                                onHeaderContextMenu={onContextMenu}
-                                twoLineLayout
-                                dragHandleProps={provided.dragHandleProps ?? undefined}
-                                quickAction={quickAction}
-                              >
-                                        {groupSessions.length === 0 ? (
-                                          <div className="px-3 py-2 text-xs text-muted-foreground">
-                                            {t('page.noGroupSessions')}
-                                          </div>
-                                        ) : (
-                                          groupSessions.map((session, sessionIndex) => (
-                                            <Draggable
-                                              key={`session:${session.id}`}
-                                              draggableId={`session:${session.id}`}
-                                              index={sessionIndex}
-                                            >
-                                              {(sessionProvided, sessionSnapshot) =>
-                                                renderSessionItem(session, {
-                                                  provided: sessionProvided,
-                                                  snapshot: sessionSnapshot,
-                                                })
-                                              }
-                                            </Draggable>
-                                          ))
-                                        )}
-                                      </UnifiedSidebarSection>
-                                )}
-                              </SessionGroupActions>
-                                      {sessionProvided.placeholder}
-                                    </div>
-                                  )}
-                                </Droppable>
-                              </div>
-                            )}
-                          </Draggable>
-                        );
-                      })}
-                      {groupProvided.placeholder}
+              <DndKitContext
+                sensors={groupDragSensors}
+                collisionDetection={closestCenter}
+                onDragEnd={handleGroupReorder}
+              >
+                <SortableContext
+                  items={visibleGroups.map(g => g.id)}
+                  strategy={verticalListSortingStrategy}
+                >
+                  <DragDropContext onDragEnd={handleDragEnd}>
+                    <div className="space-y-2">
+                      {visibleGroups.map((group) => (
+                        <SortableGroupItem
+                          key={group.id}
+                          group={group}
+                          groupSessions={sessionsByGroup.get(group.id) || []}
+                          isCollapsed={collapsedMap[group.id] ?? false}
+                          groupDragDisabled={groupDragDisabled}
+                          toggleGroupCollapse={toggleGroupCollapse}
+                          openEditGroup={openEditGroup}
+                          openRenameGroup={openRenameGroup}
+                          requestDeleteGroup={requestDeleteGroup}
+                          createSession={createSession}
+                          renderSessionItem={renderSessionItem}
+                          t={t}
+                        />
+                      ))}
                     </div>
-                  )}
-                </Droppable>
 
                 {/* 未分组区域 */}
                 <Droppable droppableId="session-ungrouped" type="SESSION">
@@ -484,7 +431,9 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
                     </div>
                   )}
                 </Droppable>
-              </DragDropContext>
+                  </DragDropContext>
+                </SortableContext>
+              </DndKitContext>
             )}
 
             {/* P1-22: 加载更多按钮（移动端 - 列表内滚动） */}
