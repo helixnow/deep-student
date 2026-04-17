@@ -35,14 +35,13 @@ import {
   Check,
   Shield,
   ShieldCheck,
-  ToggleLeft,
-  ToggleRight,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { UnifiedCodeEditor } from '../shared/UnifiedCodeEditor';
 import { isBuiltinServer, BUILTIN_SERVER_ID } from '../../mcp/builtinMcpServer';
 import { SettingSection } from './SettingsCommon';
 import { NotionButton } from '../ui/NotionButton';
+import { Switch } from '../ui/shad/Switch';
 import { showGlobalNotification } from '../UnifiedNotification';
 import { CustomScrollArea } from '../custom-scroll-area';
 import { 
@@ -1695,8 +1694,8 @@ function ToolPermissionsSection({ toolsByServer }: {
   }, [fetchConfig]);
 
   /** 切换全局免审批开关 */
-  const handleToggleGlobalBypass = useCallback(async () => {
-    const newVal = !globalBypass;
+  const handleToggleGlobalBypass = useCallback(async (checked: boolean) => {
+    const newVal = checked;
     try {
       await invoke('save_setting', {
         key: 'tool_approval.global_bypass',
@@ -1713,7 +1712,7 @@ function ToolPermissionsSection({ toolsByServer }: {
       console.error('[ToolPermissions] Toggle global bypass failed:', err);
       showGlobalNotification('error', t('settings:tool_permissions.toggle_failed'));
     }
-  }, [globalBypass, t]);
+  }, [t]);
 
   /** 设置单个工具的等级覆盖 */
   const handleSetOverride = useCallback(async (toolName: string, level: SensitivityLevel) => {
@@ -1821,7 +1820,14 @@ function ToolPermissionsSection({ toolsByServer }: {
       ) : (
         <div className="space-y-5">
           {/* 1. 全局免审批开关 */}
-          <div className="p-4 rounded-lg bg-muted/20 border border-border/40">
+          <div
+            className={cn(
+              'p-4 rounded-lg border transition-colors duration-200',
+              globalBypass
+                ? 'border-primary/30 bg-primary/5'
+                : 'border-border/40 bg-muted/20 hover:border-border/60'
+            )}
+          >
             <div className="flex items-center justify-between">
               <div className="flex-1 mr-4">
                 <div className="flex items-center gap-2 mb-1">
@@ -1839,13 +1845,13 @@ function ToolPermissionsSection({ toolsByServer }: {
                   {t('settings:tool_permissions.global_bypass_desc')}
                 </p>
               </div>
-              <NotionButton variant="ghost" size="icon" iconOnly onClick={handleToggleGlobalBypass} className="!h-auto !w-auto" title={t('settings:tool_permissions.global_bypass_title')} aria-label="toggle bypass">
-                {globalBypass ? (
-                  <ToggleRight className="h-8 w-8 text-green-500" />
-                ) : (
-                  <ToggleLeft className="h-8 w-8 text-muted-foreground" />
-                )}
-              </NotionButton>
+              <Switch
+                checked={globalBypass}
+                onCheckedChange={handleToggleGlobalBypass}
+                aria-label={t('settings:tool_permissions.global_bypass_title')}
+                title={t('settings:tool_permissions.global_bypass_title')}
+                className="data-[state=unchecked]:bg-[color:var(--surface-panel-strong)] data-[state=unchecked]:ring-1 data-[state=unchecked]:ring-[color:var(--button-utility-border)] data-[state=checked]:shadow-[0_0_0_1px_var(--button-primary-border)]"
+              />
             </div>
           </div>
 

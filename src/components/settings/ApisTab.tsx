@@ -542,7 +542,7 @@ export const ApisTab: React.FC<ApisTabProps> = ({
                                     
                                     {/* 操作按钮区域 - 改为上下布局，始终显示 */}
                                     <div className="flex items-center gap-1 pt-2">
-                                      <Switch checked={profile.enabled} onCheckedChange={value => handleToggleModelProfile(profile, value)} disabled={(api.isBuiltin && api.isReadOnly) || vendorBusy} className="scale-75 mr-2" />
+                                      <Switch size="sm" checked={profile.enabled} onCheckedChange={value => handleToggleModelProfile(profile, value)} disabled={(api.isBuiltin && api.isReadOnly) || vendorBusy} className="mr-2" />
                                       <NotionButton size="sm" variant="ghost" iconOnly className={cn(profile.isFavorite && "text-yellow-500")} onClick={() => handleToggleFavorite(profile)} disabled={vendorBusy} title={t('settings:api_config.toggle_favorite')}>
                                         <Star className={cn("h-3.5 w-3.5", profile.isFavorite && "fill-current")} />
                                       </NotionButton>

@@ -475,10 +475,11 @@ export const AdvancedPanel: React.FC<AdvancedPanelProps> = ({ store, onClose, si
                   {t('enhanced_rag:enable_reranking')}
                 </span>
                 <Switch
+                  size="sm"
                   checked={ragEnableReranking}
                   onCheckedChange={(checked) => updateParam('ragEnableReranking', checked)}
                   disabled={isStreaming}
-                  className="scale-75 shrink-0"
+                  className="shrink-0"
                 />
               </div>
               <p className="mt-1 text-[10px] leading-3 text-muted-foreground">
@@ -496,10 +497,11 @@ export const AdvancedPanel: React.FC<AdvancedPanelProps> = ({ store, onClose, si
                   </span>
                 </div>
                 <Switch
+                  size="sm"
                   checked={multimodalRagEnabled}
                   onCheckedChange={(checked) => updateParam('multimodalRagEnabled', checked)}
                   disabled={isStreaming}
-                  className="scale-75 shrink-0"
+                  className="shrink-0"
                 />
               </div>
               <p className="mt-1 text-[10px] leading-3 text-muted-foreground">
