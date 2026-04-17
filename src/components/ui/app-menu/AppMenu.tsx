@@ -43,10 +43,12 @@ export interface AppMenuProps {
   onOpenChange?: (open: boolean) => void;
   /** 菜单模式：dropdown (下拉) 或 context (右键) */
   mode?: 'dropdown' | 'context';
+  /** 根容器类名 */
+  className?: string;
   children: React.ReactNode;
 }
 
-export function AppMenu({ open, onOpenChange, mode = 'dropdown', children }: AppMenuProps) {
+export function AppMenu({ open, onOpenChange, mode = 'dropdown', className, children }: AppMenuProps) {
   const isControlled = open !== undefined;
   const [internalOpen, setInternalOpen] = React.useState(false);
   const [position, setPosition] = React.useState({ x: 0, y: 0 });
@@ -90,7 +92,7 @@ export function AppMenu({ open, onOpenChange, mode = 'dropdown', children }: App
 
   return (
     <AppMenuContext.Provider value={{ open: actualOpen, setOpen, triggerRef: containerRef, contentRef, mode, position, setPosition }}>
-      <div ref={containerRef} className="app-menu-root relative inline-flex">
+      <div ref={containerRef} className={cn('app-menu-root relative inline-flex', className)}>
         {children}
       </div>
     </AppMenuContext.Provider>
@@ -113,7 +115,13 @@ export function AppMenuTrigger({ asChild, children }: AppMenuTriggerProps) {
   const handleClick = (e: React.MouseEvent) => {
     if (ctx.mode === 'dropdown') {
       ctx.setOpen(!ctx.open);
+      return;
     }
+
+    // Context menus should only open from the native context-menu gesture.
+    // A regular left click can still bubble to the child trigger for selection,
+    // but it should never leave the menu open or reopen it.
+    ctx.setOpen(false);
   };
 
   const handleContextMenu = (e: React.MouseEvent) => {
